@@ -81,11 +81,14 @@ describe('emailSends.createBatch', () => {
 
 		await t.run(async (ctx) => {
 			campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-			contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'db-contact@example.com',
-				firstName: 'DB',
-				lastName: 'Contact',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'db-contact@example.com',
+					firstName: 'DB',
+					lastName: 'Contact',
+				})
+			);
 		});
 
 		const created = await t.mutation(internal.delivery.sends.createBatch, {
@@ -227,85 +230,11 @@ describe('emailSends.createBatch', () => {
 			const rows = await ctx.db
 				.query('emailSends')
 				.withIndex('by_campaign_and_contact', (q) =>
-					q.eq('campaignId', campaignId!).eq('contactId', contactId!),
+					q.eq('campaignId', campaignId!).eq('contactId', contactId!)
 				)
 				.collect();
 			expect(rows).toHaveLength(1);
 		});
-	});
-});
-
-// ============ deleteByCampaign ============
-
-describe('emailSends.deleteByCampaign', () => {
-	it('should delete all sends for a campaign and return count', async () => {
-		const t = convexTest(schema, modules);
-		let campaignId: Id<'campaigns'>;
-
-		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-			const contactId = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('emailSends', createTestEmailSend({ campaignId, contactId }));
-			await ctx.db.insert('emailSends', createTestEmailSend({ campaignId, contactId }));
-			await ctx.db.insert('emailSends', createTestEmailSend({ campaignId, contactId }));
-		});
-
-		const count = await t.mutation(internal.delivery.sends.deleteByCampaign, {
-			campaignId: campaignId!,
-		});
-
-		expect(count).toBe(3);
-
-		await t.run(async (ctx) => {
-			const remaining = await ctx.db
-				.query('emailSends')
-				.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId!))
-				.collect();
-			expect(remaining).toHaveLength(0);
-		});
-	});
-
-	it('should not delete sends from other campaigns', async () => {
-		const t = convexTest(schema, modules);
-		let campaignId1: Id<'campaigns'>;
-		let campaignId2: Id<'campaigns'>;
-
-		await t.run(async (ctx) => {
-			campaignId1 = await ctx.db.insert('campaigns', createTestCampaign());
-			campaignId2 = await ctx.db.insert('campaigns', createTestCampaign());
-			const contactId = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('emailSends', createTestEmailSend({ campaignId: campaignId1, contactId }));
-			await ctx.db.insert('emailSends', createTestEmailSend({ campaignId: campaignId2, contactId }));
-		});
-
-		const count = await t.mutation(internal.delivery.sends.deleteByCampaign, {
-			campaignId: campaignId1!,
-		});
-
-		expect(count).toBe(1);
-
-		await t.run(async (ctx) => {
-			const remaining = await ctx.db
-				.query('emailSends')
-				.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId2!))
-				.collect();
-			expect(remaining).toHaveLength(1);
-		});
-	});
-
-	it('should return 0 when no sends exist for the campaign', async () => {
-		const t = convexTest(schema, modules);
-		let campaignId: Id<'campaigns'>;
-
-		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-		});
-
-		const count = await t.mutation(internal.delivery.sends.deleteByCampaign, {
-			campaignId: campaignId!,
-		});
-
-		expect(count).toBe(0);
 	});
 });
 
@@ -321,76 +250,100 @@ describe('emailSends.getStatsByCampaign', () => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 
 			// 1 queued
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'queued',
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'queued',
+				})
+			);
 
 			// 1 sent
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'sent',
-				sentAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'sent',
+					sentAt: Date.now(),
+				})
+			);
 
 			// 1 delivered
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'delivered',
-				deliveredAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'delivered',
+					deliveredAt: Date.now(),
+				})
+			);
 
 			// 1 opened (openCount=3)
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'opened',
-				openedAt: Date.now(),
-				openCount: 3,
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'opened',
+					openedAt: Date.now(),
+					openCount: 3,
+				})
+			);
 
 			// 1 clicked (with 2 clicked links, also opened)
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'clicked',
-				openedAt: Date.now() - 10000,
-				openCount: 1,
-				clickedAt: Date.now(),
-				clickedLinks: [
-					{ url: 'https://a.com', clickedAt: Date.now() },
-					{ url: 'https://b.com', clickedAt: Date.now() },
-				],
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'clicked',
+					openedAt: Date.now() - 10000,
+					openCount: 1,
+					clickedAt: Date.now(),
+					clickedLinks: [
+						{ url: 'https://a.com', clickedAt: Date.now() },
+						{ url: 'https://b.com', clickedAt: Date.now() },
+					],
+				})
+			);
 
 			// 1 hard bounce (canonical bounceType)
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'bounced',
-				bouncedAt: Date.now(),
-				bounceType: 'hard',
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'bounced',
+					bouncedAt: Date.now(),
+					bounceType: 'hard',
+				})
+			);
 
 			// 1 soft bounce
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'bounced',
-				bouncedAt: Date.now(),
-				bounceType: 'soft',
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'bounced',
+					bouncedAt: Date.now(),
+					bounceType: 'soft',
+				})
+			);
 
 			// 1 complained
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'complained',
-				complainedAt: Date.now(),
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'complained',
+					complainedAt: Date.now(),
+				})
+			);
 		});
 
 		const stats = await t.query(api.delivery.sends.getStatsByCampaign, {
@@ -430,13 +383,16 @@ describe('emailSends.getStatsByCampaign', () => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 
 			// Legacy row: only errorCode, no bounceType (pre-sendLifecycle write)
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'bounced',
-				bouncedAt: Date.now(),
-				errorCode: 'hard_bounce',
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'bounced',
+					bouncedAt: Date.now(),
+					errorCode: 'hard_bounce',
+				})
+			);
 		});
 
 		const stats = await t.query(api.delivery.sends.getStatsByCampaign, {
@@ -484,13 +440,16 @@ describe('emailSends.getStatsByCampaign', () => {
 			campaignId = await ctx.db.insert('campaigns', createTestCampaign());
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 
-			await ctx.db.insert('emailSends', createTestEmailSend({
-				campaignId,
-				contactId,
-				status: 'bounced',
-				bouncedAt: Date.now(),
-				// no bounceType, no errorCode
-			}));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'bounced',
+					bouncedAt: Date.now(),
+					// no bounceType, no errorCode
+				})
+			);
 		});
 
 		const stats = await t.query(api.delivery.sends.getStatsByCampaign, {

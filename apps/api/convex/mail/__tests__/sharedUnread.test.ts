@@ -4,7 +4,7 @@
  * When one member marks a shared-inbox message read, every other member sees it
  * read on the next reactive tick — the honest model for a support queue (LOCKED
  * decision 7 of the 2026-07-10 experience plan). Covers `mailbox.accessible`
- * and `mailbox.inboxUnreadCount` across two members and the shared
+ * and `mailbox.newestUnreadInbox` across two members and the shared
  * `messageActions.setFlags` mark-read path.
  */
 
@@ -165,9 +165,9 @@ describe('shared inbox unread is one shared truth across members', () => {
 
 		// Both members start seeing the one unread message.
 		setSession('user-A', 'editor');
-		expect(await t.query(api.mail.mailbox.inboxUnreadCount, {})).toBe(1);
+		expect((await t.query(api.mail.mailbox.newestUnreadInbox, {})).total).toBe(1);
 		setSession('user-B', 'editor');
-		expect(await t.query(api.mail.mailbox.inboxUnreadCount, {})).toBe(1);
+		expect((await t.query(api.mail.mailbox.newestUnreadInbox, {})).total).toBe(1);
 		expect(unreadFor(await t.query(api.mail.mailbox.accessible, {}), mailboxId)).toBe(1);
 
 		// user-A reads it via the shared, access-gated mark-read path.
@@ -179,7 +179,7 @@ describe('shared inbox unread is one shared truth across members', () => {
 
 		// user-B now sees it read too — the read state is shared, not per-user.
 		setSession('user-B', 'editor');
-		expect(await t.query(api.mail.mailbox.inboxUnreadCount, {})).toBe(0);
+		expect((await t.query(api.mail.mailbox.newestUnreadInbox, {})).total).toBe(0);
 		expect(unreadFor(await t.query(api.mail.mailbox.accessible, {}), mailboxId)).toBe(0);
 	});
 

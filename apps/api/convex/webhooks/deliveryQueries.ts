@@ -35,53 +35,6 @@ export const getWebhook = internalQuery({
 	},
 });
 
-/**
- * Get a delivery log by ID
- */
-export const getDeliveryLog = internalQuery({
-	args: {
-		logId: v.id('webhookDeliveryLogs'),
-	},
-	handler: async (ctx, args) => {
-		return await ctx.db.get(args.logId);
-	},
-});
-
-/**
- * List delivery logs for a webhook
- */
-export const listDeliveryLogs = internalQuery({
-	args: {
-		webhookId: v.id('webhooks'),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const limit = args.limit ?? 50;
-		const logs = await ctx.db
-			.query('webhookDeliveryLogs')
-			.withIndex('by_webhook', (q) => q.eq('webhookId', args.webhookId))
-			.order('desc')
-			.take(limit);
-
-		return logs;
-	},
-});
-
-/**
- * List recent delivery logs
- */
-export const listDeliveryLogsByTeam = internalQuery({
-	args: {
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const limit = args.limit ?? 50;
-		const logs = await ctx.db.query('webhookDeliveryLogs').order('desc').take(limit);
-
-		return logs;
-	},
-});
-
 // ============ INTERNAL MUTATIONS ============
 
 /**

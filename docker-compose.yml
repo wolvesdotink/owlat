@@ -495,11 +495,9 @@ services:
       convex:
         condition: service_healthy
     profiles:
-      # Coding-agent tasks (inbox.codeTasks) and/or Tier-3 plugin jobs. A plugin
-      # manifest flag carries only `default` + `requiredEnvVars`, so enabling a
-      # plugin that declares `worker:enqueue` does NOT bring this worker up:
-      # the operator activates `plugin-tasks` explicitly. Without it a plugin's
-      # jobs simply accumulate as `queued` rows.
+      # Coding-agent tasks (inbox.codeTasks) and the dormant Tier-3 worker
+      # protocol. No shipped host path enqueues plugin jobs; `plugin-tasks`
+      # starts only the reserved poller contract.
       - inbox-codetasks
       - plugin-tasks
       - dev

@@ -17,6 +17,8 @@ import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import type { WorkId } from '@convex-dev/workpool';
 import { rollupCampaignStatsRow } from '../campaigns/statShards';
+import type { StoredAudience } from '../campaigns/audience';
+import type { CampaignRecipient } from '../campaigns/audienceCandidates';
 
 const testWorkId = 'test-work-id' as WorkId;
 
@@ -54,6 +56,23 @@ const modules = Object.fromEntries(
 			!path.includes('delivery/workpool')
 	)
 );
+
+async function drainRecipientPages(
+	t: TestConvex<typeof schema>,
+	{ audience }: { audience: StoredAudience }
+): Promise<CampaignRecipient[]> {
+	const recipients: CampaignRecipient[] = [];
+	let cursor = '';
+	for (;;) {
+		const page = await t.query(internal.campaigns.audienceResolution.resolveRecipientPage, {
+			audience,
+			cursor,
+		});
+		recipients.push(...page.recipients);
+		if (page.nextCursor === null) return recipients;
+		cursor = page.nextCursor;
+	}
+}
 
 // Suppress unhandled rejections from convex-test trying to run excluded scheduled functions
 // (sendNow schedules emails.startCampaignSend and posthog.capture which are excluded)
@@ -355,12 +374,12 @@ describe('sendNow happy path', () => {
 
 // ============ Recipient Resolution ============
 
-describe('resolveRecipients (Audience resolution)', () => {
+describe('checkpointed audience resolution', () => {
 	it('should return only DOI-eligible contacts', async () => {
 		const t = convexTest(schema, modules);
 		const data = await setupSendFlowData(t);
 
-		const recipients = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const recipients = await drainRecipientPages(t, {
 			audience: { kind: 'topic', topicId: data.topicId },
 		});
 
@@ -381,7 +400,7 @@ describe('resolveRecipients (Audience resolution)', () => {
 			await ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: 'alice@example.com' }));
 		});
 
-		const recipients = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const recipients = await drainRecipientPages(t, {
 			audience: { kind: 'topic', topicId: data.topicId },
 		});
 
@@ -397,7 +416,7 @@ describe('resolveRecipients (Audience resolution)', () => {
 			emptyTopicId = await ctx.db.insert('topics', createTestTopic());
 		});
 
-		const recipients = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const recipients = await drainRecipientPages(t, {
 			audience: { kind: 'topic', topicId: emptyTopicId! },
 		});
 
@@ -461,7 +480,7 @@ describe('freezeCampaignAudience (ADR-0033 segment snapshot)', () => {
 		});
 
 		// Resolution against the stored (frozen) audience ignores the edit.
-		const recipients = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const recipients = await drainRecipientPages(t, {
 			audience: frozen!,
 		});
 		expect(recipients.map((r) => r.email)).toEqual(['a@frozen.com']);
@@ -738,8 +757,8 @@ describe('full campaign send lifecycle', () => {
 			expect(campaign!.status).toBe('sending');
 		});
 
-		// Step 2: resolveRecipients — should return 2 (charlie filtered out)
-		const recipients = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		// Step 2: drain recipient pages — should return 2 (charlie filtered out)
+		const recipients = await drainRecipientPages(t, {
 			audience: { kind: 'topic', topicId: data.topicId },
 		});
 

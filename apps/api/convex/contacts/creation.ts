@@ -28,18 +28,9 @@
  * See docs/adr/0038-contact-creation-module.md.
  */
 
-import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import {
-	resolveContact,
-	channelKindValidator,
-	contactSourceValidator,
-	resolveModeValidator,
-	contactFieldsValidator,
-	type ResolveSignal,
-	type ResolveResult,
-} from './resolution';
+import { resolveContact, type ResolveSignal, type ResolveResult } from './resolution';
 import { incrementContactCount } from '../lib/contactCountHelpers';
 import { recordContactActivity } from '../contactActivities/writer';
 import { scheduleFanout } from '../webhooks/scheduleFanout';
@@ -52,7 +43,7 @@ import { scheduleFanout } from '../webhooks/scheduleFanout';
  */
 export async function createContact(
 	ctx: MutationCtx,
-	signal: ResolveSignal,
+	signal: ResolveSignal
 ): Promise<ResolveResult> {
 	const result = await resolveContact(ctx, signal);
 
@@ -93,21 +84,3 @@ export async function createContact(
 
 	return result;
 }
-
-/**
- * Wire surface, symmetric to resolution's `resolve`. Production single-create
- * callers use the in-process `createContact` above to avoid the `runMutation`
- * round-trip; this `internalMutation` is the cross-runtime / test entry point.
- */
-export const create = internalMutation({
-	args: {
-		channel: channelKindValidator,
-		identifier: v.string(),
-		source: contactSourceValidator,
-		mode: resolveModeValidator,
-		contactFields: v.optional(contactFieldsValidator),
-	},
-	handler: async (ctx, args): Promise<ResolveResult> => {
-		return await createContact(ctx, args);
-	},
-});

@@ -14,9 +14,12 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
+import { createContact } from '../contacts/creation';
 import { createTestAutomation, createTestAutomationStep } from './factories';
 
-const incrementContactCountMock = vi.fn().mockResolvedValue(undefined);
+const { incrementContactCountMock } = vi.hoisted(() => ({
+	incrementContactCountMock: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('../lib/contactCountHelpers', async () => {
 	const actual = await vi.importActual('../lib/contactCountHelpers');
@@ -31,34 +34,37 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
-async function createdActivities(
+async function createThroughModule(
 	t: ReturnType<typeof convexTest>,
-	contactId: string,
+	args: Parameters<typeof createContact>[1]
 ) {
+	return t.run((ctx) => createContact(ctx, args));
+}
+
+async function createdActivities(t: ReturnType<typeof convexTest>, contactId: string) {
 	return await t.run(async (ctx) => {
 		const rows = await ctx.db.query('contactActivities').collect();
-		return rows.filter(
-			(row) => row.contactId === contactId && row.activityType === 'created',
-		);
+		return rows.filter((row) => row.contactId === contactId && row.activityType === 'created');
 	});
 }
 
@@ -71,15 +77,15 @@ describe('Contact creation (module) — a created Contact fires the trio', () =>
 		await t.run(async (ctx) => {
 			const automationId = await ctx.db.insert(
 				'automations',
-				createTestAutomation({ status: 'active', triggerType: 'contact_created' }),
+				createTestAutomation({ status: 'active', triggerType: 'contact_created' })
 			);
 			await ctx.db.insert(
 				'automationSteps',
-				createTestAutomationStep({ automationId, stepIndex: 0 }),
+				createTestAutomationStep({ automationId, stepIndex: 0 })
 			);
 		});
 
-		const result = await t.mutation(internal.contacts.creation.create, {
+		const result = await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'new@example.com',
 			source: 'inbound',
@@ -112,21 +118,21 @@ describe('Contact creation (module) — a matched upsert fires nothing', () => {
 		await t.run(async (ctx) => {
 			const automationId = await ctx.db.insert(
 				'automations',
-				createTestAutomation({ status: 'active', triggerType: 'contact_created' }),
+				createTestAutomation({ status: 'active', triggerType: 'contact_created' })
 			);
 			await ctx.db.insert(
 				'automationSteps',
-				createTestAutomationStep({ automationId, stepIndex: 0 }),
+				createTestAutomationStep({ automationId, stepIndex: 0 })
 			);
 		});
 
-		const first = await t.mutation(internal.contacts.creation.create, {
+		const first = await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'dup@example.com',
 			source: 'inbound',
 			mode: 'upsert',
 		});
-		const second = await t.mutation(internal.contacts.creation.create, {
+		const second = await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'dup@example.com',
 			source: 'inbound',
@@ -154,7 +160,7 @@ describe('Contact creation (module) — source propagation', () => {
 		const t = convexTest(schema, modules);
 		incrementContactCountMock.mockClear();
 
-		const result = await t.mutation(internal.contacts.creation.create, {
+		const result = await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'formy@example.com',
 			source: 'form',

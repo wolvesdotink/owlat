@@ -1,10 +1,9 @@
 /**
  * The BLOCK and the LIFT (P3-5), against real table writes.
  *
- * A cell whose sending domain has ANY failing alignment check cannot be moved
- * above s=0 — the gate the controller reads returns a hold, and applying it to a
- * proposed share pins the share at 0. The block LIFTS as soon as the re-check
- * records a passing verdict; nothing else has to happen.
+ * A sending domain whose alignment check fails is reported as blocked in the
+ * delivery-readiness surface. The warning LIFTS as soon as the re-check records
+ * a passing verdict; nothing else has to happen.
  *
  * Also covered here, because these are the questions the STATE layer answers and
  * the pure core cannot:
@@ -29,10 +28,6 @@ import {
 	evaluateAlignmentPreflight,
 	type AlignmentCheckResult,
 } from '@owlat/shared/deliverabilityAlignment';
-import {
-	alignmentGate,
-	applyAlignmentGateToShare,
-} from '@owlat/shared/deliverabilityAlignmentGate';
 import {
 	alignmentCheckIdValidator,
 	alignmentCheckStatusValidator,
@@ -104,7 +99,11 @@ async function seedRelayRoute(t: TestConvex<typeof schema>, kind: string): Promi
 
 async function seedDomain(
 	t: TestConvex<typeof schema>,
-	options: { relay?: 'ses' | 'resend' | 'smtp' | null; ownIdentity?: boolean; domain?: string } = {}
+	options: {
+		relay?: 'ses' | 'resend' | 'smtp' | null;
+		ownIdentity?: boolean;
+		domain?: string;
+	} = {}
 ): Promise<void> {
 	const domainName = options.domain ?? DOMAIN;
 	const relay = options.relay ?? null;
@@ -162,8 +161,8 @@ function firstPage(now: number) {
 	return { now, paginationOpts: { cursor: null, numItems: 5 } };
 }
 
-describe('a failing check blocks the cell from any share above 0', () => {
-	it('holds the gate and pins a proposed share at 0, then lifts on the re-check', async () => {
+describe('alignment readiness follows the latest pre-flight result', () => {
+	it('reports a blocked result, then lifts on the re-check', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { relay: 'ses' });
@@ -174,14 +173,11 @@ describe('a failing check blocks the cell from any share above 0', () => {
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
 
-		const blocked = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
+		const blocked = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
 			domain: DOMAIN,
 		});
-		expect(blocked.referenceArm).toBe('configured');
-		const blockedGate = alignmentGate({ ...blocked, now: NOW });
-		expect(blockedGate.allowsShareAboveZero).toBe(false);
-		expect(blockedGate.reason).toBe('blocked');
-		expect(applyAlignmentGateToShare(0.25, blockedGate)).toBe(0);
+		expect(blocked).toHaveLength(1);
+		expect(blocked[0]?.verdict).toBe('blocked');
 
 		// The re-check finds the record fixed.
 		await record(t, {
@@ -190,12 +186,11 @@ describe('a failing check blocks the cell from any share above 0', () => {
 			checkedAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 			nextCheckDueAt: NOW + 2 * ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
-		const lifted = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
+		const lifted = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
 			domain: DOMAIN,
 		});
-		const liftedGate = alignmentGate({ ...lifted, now: NOW + ALIGNMENT_RECHECK_INTERVAL_MS });
-		expect(liftedGate.allowsShareAboveZero).toBe(true);
-		expect(applyAlignmentGateToShare(0.25, liftedGate)).toBe(0.25);
+		expect(lifted).toHaveLength(1);
+		expect(lifted[0]?.verdict).toBe('aligned');
 	});
 
 	it('holds an UNKNOWN verdict without reporting a fault', async () => {
@@ -213,12 +208,10 @@ describe('a failing check blocks the cell from any share above 0', () => {
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_UNKNOWN_RETRY_MS,
 		});
-		const state = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
+		const state = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
 			domain: DOMAIN,
 		});
-		const gate = alignmentGate({ ...state, now: NOW });
-		expect(gate.reason).toBe('unknown_hold');
-		expect(gate.allowsShareAboveZero).toBe(false);
+		expect(state[0]?.verdict).toBe('unknown');
 	});
 
 	it('never lets a stale sweep overwrite a fresher verdict', async () => {
@@ -237,10 +230,10 @@ describe('a failing check blocks the cell from any share above 0', () => {
 			checkedAt: NOW - 60_000,
 			nextCheckDueAt: NOW,
 		});
-		const state = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
+		const state = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
 			domain: DOMAIN,
 		});
-		expect(state.state?.verdict).toBe('aligned');
+		expect(state[0]?.verdict).toBe('aligned');
 	});
 });
 
@@ -274,14 +267,6 @@ describe('what counts as a second arm comes from the transport surface', () => {
 			);
 			const target = page.targets[0];
 			expect(target?.reference.kind).toBe('unknown');
-
-			const gateState = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
-				domain: DOMAIN,
-			});
-			expect(gateState.referenceArm).toBe('unknown');
-			const gate = alignmentGate({ ...gateState, now: NOW });
-			expect(gate.allowsShareAboveZero).toBe(false);
-			expect(gate.reason).toBe('reference_arm_unknown');
 		});
 	}
 
@@ -290,10 +275,11 @@ describe('what counts as a second arm comes from the transport surface', () => {
 		vi.stubEnv('EMAIL_PROVIDER', 'resend');
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { relay: null });
-		const gateState = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
-			domain: DOMAIN,
-		});
-		expect(gateState.referenceArm).toBe('unknown');
+		const page = await t.query(
+			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
+			firstPage(NOW)
+		);
+		expect(page.targets[0]?.reference.kind).toBe('unknown');
 	});
 
 	// D2, and the whole reason a standalone domain is never a target: the gate is
@@ -310,34 +296,8 @@ describe('what counts as a second arm comes from the transport surface', () => {
 		);
 		expect(page.targets).toEqual([]);
 
-		const state = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
-			domain: DOMAIN,
-		});
-		expect(state.referenceArm).toBe('none');
-		expect(state.state).toBeNull();
-		const gate = alignmentGate({ ...state, now: NOW });
-		expect(gate.allowsShareAboveZero).toBe(true);
-		expect(gate.reason).toBe('single_arm');
 		// And nothing was written, so no readiness row nags a standalone operator.
 		expect(await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {})).toEqual([]);
-	});
-
-	// The one thing that must NEVER be laundered into 'no second arm': a From
-	// domain we could not look up. `relayKinds` says a relay exists; the absence of
-	// a `domains` row is evidence that we cannot SEE it, not evidence that it is
-	// not there. Answering `none` here would open the gate on two arms whose
-	// alignment has never been checked.
-	it('answers UNKNOWN for a From domain it cannot look up while a relay is configured', async () => {
-		stubTransportEnv();
-		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: 'ses' });
-		const state = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
-			domain: 'no-such-domain.example',
-		});
-		expect(state.referenceArm).toBe('unknown');
-		const gate = alignmentGate({ ...state, now: NOW });
-		expect(gate.allowsShareAboveZero).toBe(false);
-		expect(gate.reason).toBe('reference_arm_unknown');
 	});
 
 	// ...and a domain that IS stored is not turned into that case by its spelling.
@@ -352,12 +312,10 @@ describe('what counts as a second arm comes from the transport surface', () => {
 				checkedAt: NOW,
 				nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 			});
-			const state = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
+			const state = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
 				domain: spelling,
 			});
-			expect(state.referenceArm).toBe('configured');
-			expect(state.state?.verdict).toBe('aligned');
-			expect(alignmentGate({ ...state, now: NOW }).allowsShareAboveZero).toBe(true);
+			expect(state[0]?.verdict).toBe('aligned');
 		});
 	}
 
@@ -596,13 +554,8 @@ describe('every read is scoped to one organization', () => {
 			});
 		});
 
-		// org-a has no verdict of its own yet, so the gate must read `null` rather
-		// than org-b's `aligned`.
-		const state = await t.query(internal.delivery.alignmentPreflight.getAlignmentGateState, {
-			domain: DOMAIN,
-		});
-		expect(state.state).toBeNull();
-		expect(alignmentGate({ ...state, now: NOW }).reason).toBe('not_yet_checked');
+		// org-a has no verdict of its own yet, so readiness must not return org-b's
+		// `aligned` row.
 		expect(await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {})).toEqual([]);
 
 		// And writing org-a's own row leaves org-b's untouched.

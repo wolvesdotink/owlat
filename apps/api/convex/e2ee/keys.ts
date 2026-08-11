@@ -4,14 +4,12 @@
  * Keygen and sealing live in the `'use node'` sibling `e2ee/keysNode.ts` (they
  * need `openpgp` + `node:crypto`); this file owns the DB reads/writes:
  *   - `storeKeypair` (internal) — idempotent upsert of a minted keypair;
- *   - PUBLIC discovery queries that return PUBLIC key material ONLY
- *     (`getPublicKeyByAddress`, `getKeyForWkd`, `getInstancePublicKey`);
+ *   - the PUBLIC WKD discovery query, which returns PUBLIC key material only;
  *   - INTERNAL reads that expose the sealed private envelope to the action
  *     plane only (`getAddressKeyInternal`, `getInstanceIdentityInternal`);
  *   - `getKeyDirectory` (internal) — the manifest's address->fingerprint map;
  *   - `listAddressesNeedingKeys` (internal) — the backfill worklist;
  *   - `backfillKeys` (admin) — the "publish encryption keys" trigger;
- *   - `getReadiness` (admin) — local publication status for delivery readiness.
  *
  * SECURITY INVARIANT (asserted in tests): NO public function returns
  * `sealedPrivateKey`. The private key is reachable only through `internalQuery`
@@ -24,7 +22,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
-import { adminMutation, adminQuery, publicQuery } from '../lib/authedFunctions';
+import { adminMutation, publicQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 
@@ -63,12 +61,6 @@ export const sealedPrivateKeyValidator = v.object({
 	iv: v.string(),
 	authTag: v.string(),
 });
-
-/** Public projection of a keypair — PUBLIC material only, never the private half. */
-const publicKeyProjectionValidator = v.union(
-	v.null(),
-	v.object({ fingerprint: v.string(), publicKeyArmored: v.string() })
-);
 
 /**
  * Idempotently persist a minted keypair. Called only by the Node action plane
@@ -343,25 +335,6 @@ export const getKeyDirectory = internalQuery({
 });
 
 /**
- * PUBLIC: the armored public key for an address, by design world-readable
- * (Sealed Mail key discovery — anyone may fetch anyone's public key). Returns
- * PUBLIC material only.
- */
-export const getPublicKeyByAddress = publicQuery({
-	// public: OpenPGP public-key discovery is intentionally unauthenticated (WKD/E2EE).
-	args: { address: v.string() },
-	returns: publicKeyProjectionValidator,
-	handler: async (ctx, args) => {
-		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return null;
-		// The ACTIVE row — after a rotation an address has an old decrypt-only row
-		// too, and we must publish the CURRENT public key for discovery.
-		const row = await activeAddressRow(ctx, normalizeEmail(args.address));
-		if (!row) return null;
-		return { fingerprint: row.fingerprint, publicKeyArmored: row.publicKeyArmored };
-	},
-});
-
-/**
  * PUBLIC: the BINARY public-key body for a WKD `hu/<hash>` fetch, matched by
  * `domain` (the request host) + the local-part `wkdHash`. Returns the base64
  * of the `application/octet-stream` body; the Nuxt route decodes and serves it.
@@ -386,22 +359,6 @@ export const getKeyForWkd = publicQuery({
 		const row = rows.find((r) => r.isActive);
 		if (!row) return null;
 		return { binaryBase64: row.publicKeyBinaryBase64 };
-	},
-});
-
-/** PUBLIC: the instance signing identity's public key (for verifying the manifest). */
-export const getInstancePublicKey = publicQuery({
-	// public: the instance identity public key is published in the signed manifest.
-	args: {},
-	returns: publicKeyProjectionValidator,
-	handler: async (ctx) => {
-		if (!(await isFeatureEnabled(ctx, 'sealedMail'))) return null;
-		const row = await ctx.db
-			.query('keyVault')
-			.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
-			.first();
-		if (!row || !row.isActive) return null;
-		return { fingerprint: row.fingerprint, publicKeyArmored: row.publicKeyArmored };
 	},
 });
 
@@ -467,33 +424,5 @@ export const backfillKeys = adminMutation({
 		await assertFeatureEnabled(ctx, 'sealedMail');
 		await ctx.scheduler.runAfter(0, internal.e2ee.keysNode.runBackfill, {});
 		return { scheduled: true as const };
-	},
-});
-
-/**
- * Admin: local key-publication status for the delivery-readiness surface.
- * Reports whether the instance signing identity exists and how many address
- * keys are published — the local truth the "encryption keys published" readiness
- * check reads. The live counterpart that self-fetches our own WKD + manifest is
- * `domains/encryptionKeysReadiness.checkEncryptionKeysReadiness`.
- */
-export const getReadiness = adminQuery({
-	args: {},
-	handler: async (ctx) => {
-		const instance = await ctx.db
-			.query('keyVault')
-			.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
-			.first();
-		const addressKeys = await ctx.db
-			.query('keyVault')
-			.withIndex('by_kind', (q) => q.eq('kind', 'address'))
-			.take(MAX_VAULT_ROWS + 1);
-		assertWithinLimit(addressKeys, MAX_VAULT_ROWS, 'address keys');
-		const activeAddressKeys = addressKeys.filter((r) => r.isActive).length;
-		return {
-			instanceIdentityPublished: instance !== null && instance.isActive,
-			addressKeyCount: activeAddressKeys,
-			isPublished: instance !== null && instance.isActive && activeAddressKeys > 0,
-		};
 	},
 });

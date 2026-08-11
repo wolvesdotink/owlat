@@ -171,10 +171,8 @@ const recoveryKitValidator = v.union(
 
 /**
  * The recovery-kit EXPORT core (no auth) — read the address's active key and
- * assemble its kit. Hoisted out of the handler (like `discovery.ts`) so both the
- * admin-gated public action and the internal action share ONE implementation
- * without a same-module `internal` self-reference. Returns null when the address
- * has no active key.
+ * assemble its kit. Hoisted out of the handler to keep the crypto separate from
+ * the admin and feature gates. Returns null when the address has no active key.
  */
 async function exportRecoveryKitCore(ctx: ActionCtx, address: string): Promise<RecoveryKit | null> {
 	const normalized = normalizeEmail(address);
@@ -263,22 +261,4 @@ export const importRecoveryKit = authedAction({
 		await assertAdmin(ctx);
 		return importRecoveryKitCore(ctx, args.address, args.privateKeyArmored);
 	},
-});
-
-/**
- * INTERNAL export core (no auth) — reachable only from other server functions /
- * tests, never a client. Shares {@link exportRecoveryKitCore} with the admin
- * action so the crypto is exercised without auth plumbing.
- */
-export const runExportRecoveryKit = internalAction({
-	args: { address: v.string() },
-	handler: (ctx, args): Promise<RecoveryKit | null> => exportRecoveryKitCore(ctx, args.address),
-});
-
-/** INTERNAL import core (no auth) — see {@link runExportRecoveryKit}. */
-export const runImportRecoveryKit = internalAction({
-	args: { address: v.string(), privateKeyArmored: v.string() },
-	returns: v.object({ imported: v.boolean(), fingerprint: v.optional(v.string()) }),
-	handler: (ctx, args): Promise<{ imported: boolean; fingerprint?: string }> =>
-		importRecoveryKitCore(ctx, args.address, args.privateKeyArmored),
 });

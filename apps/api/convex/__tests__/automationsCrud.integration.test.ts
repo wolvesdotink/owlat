@@ -45,19 +45,20 @@ vi.mock('../lib/sessionOrganization', async () => {
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
 		})),
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') =
+					actual as typeof import('../lib/sessionOrganization');
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return { userId: sessionMock.user.id, role: sessionMock.user.role };
-			},
-		),
+			}),
 	};
 });
 
@@ -79,8 +80,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'editor') => {
@@ -100,24 +101,22 @@ async function freshT(): Promise<TestConvex<typeof schema>> {
 /** Seed an automation row directly and return its id. */
 async function seedAutomation(
 	t: TestConvex<typeof schema>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'automations'>> {
-	return t.run(async (ctx) =>
-		ctx.db.insert('automations', createTestAutomation(overrides)),
-	);
+	return t.run(async (ctx) => ctx.db.insert('automations', createTestAutomation(overrides)));
 }
 
 /** Seed one delay step on an automation and return its id. */
 async function seedStep(
 	t: TestConvex<typeof schema>,
 	automationId: Id<'automations'>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'automationSteps'>> {
 	return t.run(async (ctx) =>
 		ctx.db.insert(
 			'automationSteps',
-			createTestAutomationStep({ automationId, stepType: 'delay', ...overrides }),
-		),
+			createTestAutomationStep({ automationId, stepType: 'delay', ...overrides })
+		)
 	);
 }
 
@@ -128,7 +127,7 @@ async function seedConditionStep(
 	automationId: Id<'automations'>,
 	stepIndex: number,
 	yesBranchStepIndex: number | null,
-	noBranchStepIndex: number | null,
+	noBranchStepIndex: number | null
 ): Promise<Id<'automationSteps'>> {
 	return t.run(async (ctx) =>
 		ctx.db.insert(
@@ -147,15 +146,15 @@ async function seedConditionStep(
 					yesBranchStepIndex,
 					noBranchStepIndex,
 				},
-			}),
-		),
+			})
+		)
 	);
 }
 
 /** Read a condition step's stored branch targets. */
 async function readBranches(
 	t: TestConvex<typeof schema>,
-	stepId: Id<'automationSteps'>,
+	stepId: Id<'automationSteps'>
 ): Promise<{ yes: number | null; no: number | null; stepIndex: number | undefined }> {
 	const step = await t.run(async (ctx) => ctx.db.get(stepId));
 	const config = step?.config as {
@@ -195,7 +194,7 @@ describe('automations mutations — automations:manage role gate', () => {
 			t.mutation(api.automations.automations.create, {
 				name: 'Nope',
 				triggerType: 'contact_created',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -208,7 +207,7 @@ describe('automations mutations — automations:manage role gate', () => {
 			t.mutation(api.automations.automations.update, {
 				automationId: id,
 				name: 'Hacked',
-			}),
+			})
 		).rejects.toThrow();
 
 		setUser('user-alice', 'admin');
@@ -230,7 +229,7 @@ describe('automations mutations — automations:manage role gate', () => {
 				automationId: id,
 				triggerType: 'event_received',
 				triggerConfig: { eventName: 'signup' },
-			}),
+			})
 		).rejects.toThrow();
 
 		setUser('user-alice', 'admin');
@@ -250,7 +249,7 @@ describe('automations mutations — automations:manage role gate', () => {
 
 		setUser('user-bob', 'editor');
 		await expect(
-			t.mutation(api.automations.automations.duplicate, { automationId: id }),
+			t.mutation(api.automations.automations.duplicate, { automationId: id })
 		).rejects.toThrow();
 
 		setUser('user-alice', 'admin');
@@ -265,7 +264,7 @@ describe('automations mutations — automations:manage role gate', () => {
 			ctx.db
 				.query('automationSteps')
 				.withIndex('by_automation', (q) => q.eq('automationId', copyId))
-				.collect(),
+				.collect()
 		);
 		expect(copiedSteps).toHaveLength(1);
 	});
@@ -277,7 +276,7 @@ describe('automations mutations — automations:manage role gate', () => {
 
 		setUser('user-bob', 'editor');
 		await expect(
-			t.mutation(api.automations.automations.remove, { automationId: id }),
+			t.mutation(api.automations.automations.remove, { automationId: id })
 		).rejects.toThrow();
 
 		setUser('user-alice', 'admin');
@@ -294,7 +293,7 @@ describe('automations mutations — automations:manage role gate', () => {
 
 		setUser('user-alice', 'admin');
 		await expect(
-			t.mutation(api.automations.automations.remove, { automationId: id }),
+			t.mutation(api.automations.automations.remove, { automationId: id })
 		).rejects.toThrow();
 		const still = await t.run(async (ctx) => ctx.db.get(id));
 		expect(still).not.toBeNull();
@@ -308,7 +307,7 @@ describe('automations mutations — automations:manage role gate', () => {
 
 		setUser('user-bob', 'editor');
 		await expect(
-			t.mutation(api.automations.automations.activate, { automationId: id }),
+			t.mutation(api.automations.automations.activate, { automationId: id })
 		).rejects.toThrow();
 
 		setUser('user-alice', 'admin');
@@ -323,7 +322,7 @@ describe('automations mutations — automations:manage role gate', () => {
 
 		setUser('user-alice', 'admin');
 		await expect(
-			t.mutation(api.automations.automations.activate, { automationId: id }),
+			t.mutation(api.automations.automations.activate, { automationId: id })
 		).rejects.toThrow();
 		const still = await t.run(async (ctx) => ctx.db.get(id));
 		expect(still?.status).toBe('draft');
@@ -335,7 +334,7 @@ describe('automations mutations — automations:manage role gate', () => {
 
 		setUser('user-bob', 'editor');
 		await expect(
-			t.mutation(api.automations.automations.pause, { automationId: id }),
+			t.mutation(api.automations.automations.pause, { automationId: id })
 		).rejects.toThrow();
 
 		setUser('user-alice', 'admin');
@@ -354,28 +353,13 @@ describe('automations mutations — automations:manage role gate', () => {
 
 		setUser('user-bob', 'editor');
 		await expect(
-			t.mutation(api.automations.automations.resume, { automationId: id }),
+			t.mutation(api.automations.automations.resume, { automationId: id })
 		).rejects.toThrow();
 
 		setUser('user-alice', 'admin');
 		await t.mutation(api.automations.automations.resume, { automationId: id });
 		const resumed = await t.run(async (ctx) => ctx.db.get(id));
 		expect(resumed?.status).toBe('active');
-	});
-
-	it('revertToDraft: editor is rejected, admin can revert a paused automation', async () => {
-		const t = await freshT();
-		const id = await seedAutomation(t, { status: 'paused' });
-
-		setUser('user-bob', 'editor');
-		await expect(
-			t.mutation(api.automations.automations.revertToDraft, { automationId: id }),
-		).rejects.toThrow();
-
-		setUser('user-alice', 'admin');
-		await t.mutation(api.automations.automations.revertToDraft, { automationId: id });
-		const reverted = await t.run(async (ctx) => ctx.db.get(id));
-		expect(reverted?.status).toBe('draft');
 	});
 });
 
@@ -404,7 +388,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 				automationId: activeId,
 				stepType: 'delay',
 				config: { duration: 1, unit: 'days' },
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -418,7 +402,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 				automationId: pausedId,
 				stepType: 'delay',
 				config: { duration: 1, unit: 'days' },
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -432,7 +416,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 				automationId: draftId,
 				stepType: 'delay',
 				config: { duration: 1, unit: 'days' },
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -460,7 +444,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 			t.mutation(api.automations.steps.updateStep, {
 				stepId,
 				config: { duration: 5, unit: 'days' },
-			}),
+			})
 		).rejects.toThrow();
 		const unchanged = await t.run(async (ctx) => ctx.db.get(stepId));
 		expect((unchanged?.config as { duration: number }).duration).toBe(3);
@@ -490,7 +474,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 			t.mutation(api.automations.steps.reorderSteps, {
 				automationId: draftId,
 				stepOrder: [s0, s1],
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -513,7 +497,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 		const activeId = await seedAutomation(t, { status: 'active' });
 		const activeStep = await seedStep(t, activeId, { stepIndex: 0 });
 		await expect(
-			t.mutation(api.automations.steps.removeStep, { stepId: activeStep }),
+			t.mutation(api.automations.steps.removeStep, { stepId: activeStep })
 		).rejects.toThrow();
 		const stillThere = await t.run(async (ctx) => ctx.db.get(activeStep));
 		expect(stillThere).not.toBeNull();
@@ -532,11 +516,9 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 			t.mutation(api.automations.steps.updateStep, {
 				stepId,
 				config: { duration: 1, unit: 'days' },
-			}),
+			})
 		).rejects.toThrow();
-		await expect(
-			t.mutation(api.automations.steps.removeStep, { stepId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.automations.steps.removeStep, { stepId })).rejects.toThrow();
 	});
 
 	it('updateTrigger: rejected on an active automation (trigger is structure)', async () => {
@@ -552,7 +534,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 				automationId: activeId,
 				triggerType: 'event_received',
 				triggerConfig: { eventName: 'signup' },
-			}),
+			})
 		).rejects.toThrow();
 	});
 });

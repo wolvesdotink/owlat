@@ -7,11 +7,11 @@ hook** protocol (PP-24). It implements one thing — a **restrict-only hold gate
 
 ## What it does
 
-When Owlat is about to auto-send a reply it calls this app's `gate` hook — that
-is the contract this app implements. **Owlat does not make that call yet**: the
-hook protocol, signing, validation and delivery logging are implemented and
-tested, but no pipeline stage invokes `invokeHook`, so this reference runs
-against the protocol (and its own suites), not against live traffic. See the
+When Owlat is about to auto-send a reply, the proposed `gate` hook would call
+this app — that is the contract this reference implements. **Owlat does not make
+that call today**: the wire protocol is specified, but no Convex runtime adapter
+or pipeline stage is shipped, so this reference runs against the protocol (and
+its own suites), not against live traffic. See the
 deferral note on
 [Connected Apps](../../../apps/docs/content/3.developer/46.plugin-connected-apps.md).
 On a call, the app:

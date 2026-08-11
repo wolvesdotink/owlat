@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
 import type { QueryCtx } from '../_generated/server';
 import { publicQuery } from '../lib/authedFunctions';
 import { throwForbidden } from '../_utils/errors';
@@ -11,10 +11,10 @@ import { requireAuthenticatedIdentity } from '../lib/sessionOrganization';
  * CONTROL-PLANE-ONLY / INERT ON OSS SELF-HOST (intentional, not a bug):
  * the platform-admin console is a multi-tenant operator surface. On an OSS
  * self-host deployment NO production path populates the `platformAdmins`
- * table — `seedPlatformAdmin` (below) is an `internalMutation` with no
- * production caller (only tests invoke it), and `addPlatformAdmin` requires
- * an EXISTING platform admin to bootstrap. So `requirePlatformAdmin` always
- * throws FORBIDDEN and `isPlatformAdmin` always returns false: every
+ * table — the optional bootstrap is a hand-run migration, and
+ * `addPlatformAdmin` requires an EXISTING platform admin. So without that
+ * explicit operator action, `requirePlatformAdmin` always throws FORBIDDEN and
+ * `isPlatformAdmin` always returns false: every
  * `platformAdmin/*` function is reachable in code but unreachable in practice,
  * and the console renders empty rather than exposing cross-tenant controls.
  *
@@ -22,11 +22,10 @@ import { requireAuthenticatedIdentity } from '../lib/sessionOrganization';
  * these admins across many tenants) lives in the SEPARATE private Nest repo
  * (see MEMORY: "Nest Extracted", 2026-05-15); this repo is single-org-per-
  * deployment OSS. We keep the module so the control plane can reuse it
- * unchanged, but we do NOT wire an OSS bootstrap — granting one machine
- * operator power over the instance is a product decision for the deployer, not
- * a default. To enable it deliberately, a deployer would call
- * `seedPlatformAdmin` once (e.g. from a one-off internal mutation / setup
- * step) against their own auth user id.
+ * unchanged, but we do NOT auto-run an OSS bootstrap — granting one machine
+ * operator power over the instance is a product decision for the deployer.
+ * To enable it deliberately, a deployer runs
+ * `migrations/0036_seed_platform_admin:run` once against their own auth user id.
  *
  * Intended authorization model for the mutations/queries that DO run when a
  * platform admin exists: each is an `authedMutation` / `authedQuery` whose
@@ -121,30 +120,5 @@ export const isPlatformAdminByUserId = internalQuery({
 			.first();
 
 		return admin !== null;
-	},
-});
-
-/**
- * Internal mutation to seed a platform admin (for initial setup).
- * Only works if no admins exist yet.
- */
-export const seedPlatformAdmin = internalMutation({
-	args: {
-		authUserId: v.string(),
-		email: v.string(),
-	},
-	handler: async (ctx, args) => {
-		// Check if any admins exist
-		const existingAdmin = await ctx.db.query('platformAdmins').first();
-		if (existingAdmin) {
-			throw new Error('Platform admins already exist. Use platformAdminMutations to add more.');
-		}
-
-		return await ctx.db.insert('platformAdmins', {
-			authUserId: args.authUserId,
-			email: args.email,
-			role: 'superadmin',
-			createdAt: Date.now(),
-		});
 	},
 });

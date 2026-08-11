@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as openpgp from 'openpgp';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
+import { readInstancePublicKey } from '../../__tests__/helpers/e2eeKeys';
 import { createSecretBox } from '../../lib/credentialCrypto';
 import { wkdHashForAddress, armoredToBinaryBase64 } from '../wkd';
 
@@ -180,11 +181,6 @@ describe('e2ee/keys', () => {
 		const address = 'carol@sealed.example.com';
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
 
-		const pub = await t.query(api.e2ee.keys.getPublicKeyByAddress, { address });
-		expect(pub).not.toBeNull();
-		expect(Object.keys(pub!).sort()).toEqual(['fingerprint', 'publicKeyArmored']);
-		expect(JSON.stringify(pub)).not.toContain('PRIVATE KEY');
-
 		const wkd = await t.query(api.e2ee.keys.getKeyForWkd, {
 			domain: 'sealed.example.com',
 			wkdHash: 'fnh1sizqc1h17q515b19nhzxyddotzhd', // WKD hash of "carol"
@@ -231,14 +227,13 @@ describe('e2ee/keys', () => {
 			});
 		});
 
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
 		expect(
 			await t.query(api.e2ee.keys.getKeyForWkd, {
 				domain: 'sealed.example.com',
 				wkdHash: wkdHashForAddress(address),
 			})
 		).toBeNull();
-		expect(await t.query(api.e2ee.keys.getInstancePublicKey, {})).toBeNull();
+		expect(await t.action(api.e2ee.manifest.getSignedManifest, {})).toBeNull();
 	});
 
 	it('never exposes private material through the instance-key or manifest surfaces', async () => {
@@ -255,8 +250,9 @@ describe('e2ee/keys', () => {
 		await insertMailbox(t, 'primary@sealed.example.com');
 		await t.action(internal.e2ee.keysNode.runBackfill, {});
 
-		// getInstancePublicKey — PUBLIC signing-key discovery, public material only.
-		const instance = await t.query(api.e2ee.keys.getInstancePublicKey, {});
+		// The internal projection lets this test prove the stored instance identity
+		// is public material only without adding another anonymous discovery API.
+		const instance = await readInstancePublicKey(t);
 		expect(instance).not.toBeNull();
 		expect(Object.keys(instance!).sort()).toEqual(['fingerprint', 'publicKeyArmored']);
 		expect(JSON.stringify(instance)).not.toContain('PRIVATE');
@@ -315,7 +311,7 @@ describe('e2ee/keys', () => {
 			'team@sealed.example.com',
 		]);
 
-		const instance = await t.query(api.e2ee.keys.getInstancePublicKey, {});
+		const instance = await readInstancePublicKey(t);
 		expect(instance?.publicKeyArmored).toContain('PUBLIC KEY');
 
 		// Re-running is idempotent: nothing new is minted.

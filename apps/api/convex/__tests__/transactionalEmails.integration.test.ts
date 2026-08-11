@@ -14,7 +14,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
@@ -139,7 +143,6 @@ describe('transactionalEmails.create', () => {
 			})
 		).rejects.toThrow(/already exists/);
 	});
-
 });
 
 // ============ transactionalEmails.get ============
@@ -167,52 +170,13 @@ describe('transactionalEmails.get', () => {
 		let emailId: Id<'transactionalEmails'>;
 
 		await t.run(async (ctx) => {
-			emailId = await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail()
-			);
+			emailId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
 			await ctx.db.delete(emailId);
 		});
 
 		const email = await t.query(api.transactional.emails.get, { id: emailId! });
 		expect(email).toBeNull();
 	});
-});
-
-// ============ transactionalEmails.getBySlug ============
-
-describe('transactionalEmails.getBySlug', () => {
-	it('should return email by organization and slug', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail({
-					name: 'Order Confirmation',
-					slug: 'order-confirmation',
-				})
-			);
-		});
-
-		const email = await t.query(api.transactional.emails.getBySlug, {
-			slug: 'order-confirmation',
-		});
-
-		expect(email).toBeDefined();
-		expect(email!.name).toBe('Order Confirmation');
-	});
-
-	it('should return null for non-existent slug', async () => {
-		const t = convexTest(schema, modules);
-
-		const email = await t.query(api.transactional.emails.getBySlug, {
-			slug: 'non-existent',
-		});
-
-		expect(email).toBeNull();
-	});
-
 });
 
 // ============ transactionalEmails.update ============
@@ -466,9 +430,9 @@ describe('transactionalEmails.unpublish', () => {
 			);
 		});
 
-		await expect(
-			t.mutation(api.transactional.emails.unpublish, { id: emailId! })
-		).rejects.toThrow(/already a draft/);
+		await expect(t.mutation(api.transactional.emails.unpublish, { id: emailId! })).rejects.toThrow(
+			/already a draft/
+		);
 	});
 
 	it('should throw for non-existent email', async () => {
@@ -483,9 +447,9 @@ describe('transactionalEmails.unpublish', () => {
 			await ctx.db.delete(emailId);
 		});
 
-		await expect(
-			t.mutation(api.transactional.emails.unpublish, { id: emailId! })
-		).rejects.toThrow(/not found/);
+		await expect(t.mutation(api.transactional.emails.unpublish, { id: emailId! })).rejects.toThrow(
+			/not found/
+		);
 	});
 });
 
@@ -608,9 +572,9 @@ describe('transactionalEmails.duplicate', () => {
 			await ctx.db.delete(emailId);
 		});
 
-		await expect(
-			t.mutation(api.transactional.emails.duplicate, { id: emailId! })
-		).rejects.toThrow(/not found/);
+		await expect(t.mutation(api.transactional.emails.duplicate, { id: emailId! })).rejects.toThrow(
+			/not found/
+		);
 	});
 });
 
@@ -648,9 +612,9 @@ describe('transactionalEmails.remove', () => {
 			await ctx.db.delete(emailId);
 		});
 
-		await expect(
-			t.mutation(api.transactional.emails.remove, { id: emailId! })
-		).rejects.toThrow(/not found/);
+		await expect(t.mutation(api.transactional.emails.remove, { id: emailId! })).rejects.toThrow(
+			/not found/
+		);
 	});
 });
 
@@ -679,8 +643,7 @@ describe('transactionalEmails.countByStatus', () => {
 			);
 		});
 
-		const counts = await t.query(api.transactional.emails.countByStatus, {
-		});
+		const counts = await t.query(api.transactional.emails.countByStatus, {});
 
 		expect(counts.total).toBe(3);
 		expect(counts.draft).toBe(2);
@@ -690,8 +653,7 @@ describe('transactionalEmails.countByStatus', () => {
 	it('should return zeros when no emails exist', async () => {
 		const t = convexTest(schema, modules);
 
-		const counts = await t.query(api.transactional.emails.countByStatus, {
-		});
+		const counts = await t.query(api.transactional.emails.countByStatus, {});
 
 		expect(counts.total).toBe(0);
 		expect(counts.draft).toBe(0);
@@ -706,22 +668,12 @@ describe('transactionalEmails.list', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail({ slug: 'list-1' })
-			);
-			await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail({ slug: 'list-2' })
-			);
-			await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail({ slug: 'list-3' })
-			);
+			await ctx.db.insert('transactionalEmails', createTestTransactionalEmail({ slug: 'list-1' }));
+			await ctx.db.insert('transactionalEmails', createTestTransactionalEmail({ slug: 'list-2' }));
+			await ctx.db.insert('transactionalEmails', createTestTransactionalEmail({ slug: 'list-3' }));
 		});
 
-		const results = await t.query(api.transactional.emails.list, {
-		});
+		const results = await t.query(api.transactional.emails.list, {});
 
 		expect(results).toHaveLength(3);
 	});
@@ -898,8 +850,7 @@ describe('transactionalEmails.list', () => {
 			);
 		});
 
-		const results = await t.query(api.transactional.emails.list, {
-		});
+		const results = await t.query(api.transactional.emails.list, {});
 
 		expect(results[0]!.name).toBe('New');
 		expect(results[1]!.name).toBe('Mid');
@@ -1088,7 +1039,10 @@ describe('transactionalEmails.updateSchema', () => {
 		await expect(
 			t.mutation(api.transactional.emails.updateSchema, {
 				id: emailId!,
-				dataVariablesSchema: { name: 'array' } as unknown as Record<string, 'string' | 'number' | 'boolean' | 'date'>,
+				dataVariablesSchema: { name: 'array' } as unknown as Record<
+					string,
+					'string' | 'number' | 'boolean' | 'date'
+				>,
 			})
 		).rejects.toThrow(/Invalid type/);
 	});
@@ -1216,7 +1170,7 @@ describe('transactionalEmails.updateTranslation', () => {
 					defaultLanguage: 'en',
 					supportedLanguages: ['en', 'de'],
 					translations: JSON.stringify({
-						de: { subject: 'Hallo', blocks: { 'b1': { html: 'Alt' } } },
+						de: { subject: 'Hallo', blocks: { b1: { html: 'Alt' } } },
 					}),
 				})
 			);
@@ -1226,7 +1180,7 @@ describe('transactionalEmails.updateTranslation', () => {
 			id: emailId!,
 			language: 'de',
 			subject: 'Willkommen',
-			blocks: JSON.stringify({ 'b1': { html: 'Neu' } }),
+			blocks: JSON.stringify({ b1: { html: 'Neu' } }),
 		});
 
 		await t.run(async (ctx) => {
@@ -1413,7 +1367,7 @@ describe('transactionalEmails.getForLanguage', () => {
 					translations: JSON.stringify({
 						de: {
 							subject: 'German Subject',
-							blocks: { 'b1': { html: 'Deutsch' } },
+							blocks: { b1: { html: 'Deutsch' } },
 						},
 					}),
 				})
@@ -1446,7 +1400,7 @@ describe('transactionalEmails.getForLanguage', () => {
 					translations: JSON.stringify({
 						de: {
 							subject: 'Deutscher Betreff',
-							blocks: { 'b1': { html: 'Hallo' } },
+							blocks: { b1: { html: 'Hallo' } },
 						},
 					}),
 				})

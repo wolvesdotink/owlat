@@ -33,8 +33,7 @@ type DomainRow = Doc<'domains'>;
 /**
  * Narrow a stored `domains` row's loosely-typed `dnsRecords` /
  * `verificationResults` JSON columns to their validator-derived shapes for the
- * read queries. One copy of the cast so the three single-row readers
- * (`listByOrganization`, `get`, `getByDomain`) can't disagree.
+ * read query.
  */
 function serializeDomainRow(domain: DomainRow): DomainRow & {
 	dnsRecords: DnsRecords;
@@ -63,36 +62,6 @@ export const listByOrganization = authedQuery({
 	},
 });
 
-// Query: Get a single domain by ID
-export const get = authedQuery({
-	args: {
-		domainId: v.id('domains'),
-	},
-	handler: async (ctx, args) => {
-		const domain = await ctx.db.get(args.domainId);
-		if (!domain) return null;
-
-		return serializeDomainRow(domain);
-	},
-});
-
-// Query: Get a domain by domain name
-export const getByDomain = authedQuery({
-	args: {
-		domain: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const existing = await ctx.db
-			.query('domains')
-			.withIndex('by_domain', (q) => q.eq('domain', args.domain))
-			.first();
-
-		if (!existing) return null;
-
-		return serializeDomainRow(existing);
-	},
-});
-
 /**
  * The TCP port other mail servers connect to when delivering inbound mail to
  * this deployment's MTA. 587/465 are SMTP *submission* (authenticated sending),
@@ -117,33 +86,6 @@ export const getInboundMailConfig = authedQuery({
 		await requireOrgPermission(ctx, 'organization:manage');
 		const mailHost = getOptional('EHLO_HOSTNAME')?.trim() || null;
 		return { mailHost, inboundPort: INBOUND_SMTP_PORT };
-	},
-});
-
-// The MTA-STS policy/guidance queries (`getMtaStsPolicy`, `getMtaStsGuidance`)
-// live in the sibling `domains/mtaSts.ts`, and the live verification action in
-// `domains/mtaStsVerify.ts`.
-
-// Query: Count domains by status
-export const countByStatus = authedQuery({
-	args: {},
-	handler: async (ctx) => {
-		const domains = await ctx.db.query('domains').collect(); // bounded: per-deployment sending domain set is small (single-digit typical)
-
-		const counts = {
-			total: domains.length,
-			registering: 0,
-			pending: 0,
-			verified: 0,
-			failed: 0,
-		};
-		for (const d of domains) {
-			if (d.status === 'registering') counts.registering++;
-			else if (d.status === 'pending') counts.pending++;
-			else if (d.status === 'verified') counts.verified++;
-			else if (d.status === 'failed') counts.failed++;
-		}
-		return counts;
 	},
 });
 
@@ -298,92 +240,6 @@ export const setDmarcPolicy = authedMutation({
 				throwInvalidState('This domain has no DMARC record yet. Finish registration first.');
 			}
 		}
-	},
-});
-
-// The per-domain VERP return-path host public mutation (`setReturnPathHost`)
-// lives in the sibling `domains/returnPath.ts` (reached at
-// `api.domains.returnPath.setReturnPathHost`) — split out per CONVENTIONS.md's
-// ~500 LOC feature-file cap.
-
-// ─── Read queries used by the builder UI and outbound sending paths ────────
-
-// Query: Check if a domain is verified for sending (for UI validation)
-export const isDomainVerified = authedQuery({
-	args: {
-		domain: v.string(),
-	},
-	handler: async (ctx, args): Promise<{ verified: boolean; exists: boolean }> => {
-		const domainRecord = await ctx.db
-			.query('domains')
-			.withIndex('by_domain', (q) => q.eq('domain', args.domain.toLowerCase()))
-			.first();
-
-		if (!domainRecord) {
-			return { verified: false, exists: false };
-		}
-
-		return {
-			verified: domainRecord.status === 'verified',
-			exists: true,
-		};
-	},
-});
-
-// Query: Check if domain verification is fresh (not stale)
-export const isDomainVerificationFresh = authedQuery({
-	args: {
-		domain: v.string(),
-		maxAgeHours: v.optional(v.number()), // Default: 24 hours
-	},
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		fresh: boolean;
-		stale: boolean;
-		verified: boolean;
-		lastVerifiedAt?: number;
-	}> => {
-		const maxAgeHours = args.maxAgeHours ?? 24;
-
-		const domainRecord = await ctx.db
-			.query('domains')
-			.withIndex('by_domain', (q) => q.eq('domain', args.domain.toLowerCase()))
-			.first();
-
-		if (!domainRecord) {
-			return { fresh: false, stale: false, verified: false };
-		}
-
-		if (domainRecord.status !== 'verified') {
-			return {
-				fresh: false,
-				stale: false,
-				verified: false,
-				lastVerifiedAt: domainRecord.lastVerifiedAt,
-			};
-		}
-
-		if (!domainRecord.lastVerifiedAt) {
-			return {
-				fresh: false,
-				stale: true,
-				verified: true,
-				lastVerifiedAt: undefined,
-			};
-		}
-
-		const now = Date.now();
-		const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
-		const stale = now - domainRecord.lastVerifiedAt > maxAgeMs;
-
-		return {
-			fresh: !stale,
-			stale,
-			verified: true,
-			lastVerifiedAt: domainRecord.lastVerifiedAt,
-		};
 	},
 });
 

@@ -107,30 +107,6 @@ export const list = adminQuery({
 	},
 });
 
-// Query: Get a single audit log by ID
-export const get = adminQuery({
-	args: {
-		auditLogId: v.id('auditLogs'),
-	},
-	handler: async (ctx, args) => {
-		const organizationId = await activeAuditOrganizationId(ctx);
-		const log = await ctx.db.get(args.auditLogId);
-		if (!log) return null;
-		if (log.organizationId !== undefined && log.organizationId !== organizationId) return null;
-
-		// Query userProfile by authUserId
-		const userProfile = await ctx.db
-			.query('userProfiles')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', log.userId))
-			.first();
-
-		return {
-			...log,
-			userProfile,
-		};
-	},
-});
-
 // Query: Get audit log stats (counts by action type)
 export const getStats = adminQuery({
 	args: {

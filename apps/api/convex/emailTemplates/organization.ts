@@ -34,36 +34,6 @@ export const getRecentByOrganization = authedQuery({
 	},
 });
 
-// Mutation to create a new email template (web UI; authed org members only).
-export const createForOrganization = authedMutation({
-	args: {
-		name: v.string(),
-		subject: v.optional(v.string()),
-		previewText: v.optional(v.string()),
-		content: v.optional(v.string()),
-		type: emailTemplateTypeValidator,
-		defaultLanguage: v.optional(v.string()),
-	},
-	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const { userId } = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can create email templates');
-		// Validate input lengths
-		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
-		if (args.subject) validateStringLength(args.subject, STRING_LIMITS.SUBJECT, 'Subject');
-
-		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.create, {
-			name: args.name,
-			type: args.type,
-			subject: args.subject,
-			previewText: args.previewText,
-			content: args.content,
-			defaultLanguage: args.defaultLanguage,
-			userId,
-		});
-
-		return outcome.templateId;
-	},
-});
-
 // Mutation to create a new email template from a library preset
 export const createFromPreset = authedMutation({
 	args: {
@@ -75,7 +45,11 @@ export const createFromPreset = authedMutation({
 		defaultLanguage: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const { userId } = await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can create email templates');
+		const { userId } = await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can create email templates'
+		);
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		validateStringLength(args.subject, STRING_LIMITS.SUBJECT, 'Subject');

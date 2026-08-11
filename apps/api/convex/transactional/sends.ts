@@ -1,5 +1,4 @@
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOrThrow } from '../_utils/errors';
 
@@ -95,77 +94,6 @@ export const listByTransactionalEmail = authedQuery({
 	},
 });
 
-// Get all sends
-export const listAll = authedQuery({
-	args: {
-		limit: v.optional(v.number()),
-		offset: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const offset = args.offset || 0;
-		const limit = args.limit || 50;
-
-		// Read one past the page for an honest `hasMore`; no `total` (see
-		// listByTransactionalEmail — a true count would scan the whole table).
-		const sends = await ctx.db
-			.query('transactionalSends')
-			.order('desc')
-			// Honor the soft-delete contract: erased (GDPR) sends must not appear.
-			.filter((q) => q.eq(q.field('deletedAt'), undefined))
-			.take(offset + limit + 1);
-
-		const hasMore = sends.length > offset + limit;
-		const paginatedSends = sends.slice(offset, offset + limit);
-
-		// Batch-fetch unique transactional emails and contacts to avoid N+1.
-		// `transactionalEmailId` is optional now that non-campaign sends
-		// (automation / agent_reply) share this table and don't reference a
-		// transactional template, so filter out the absent ids.
-		const templateIds = [
-			...new Set(
-				paginatedSends.flatMap((s) => (s.transactionalEmailId ? [s.transactionalEmailId] : []))
-			),
-		];
-		const contactIds = [
-			...new Set(paginatedSends.filter((s) => s.contactId).map((s) => s.contactId!)),
-		];
-
-		const [templates, contacts] = await Promise.all([
-			Promise.all(templateIds.map((id) => ctx.db.get(id))),
-			Promise.all(contactIds.map((id) => ctx.db.get(id))),
-		]);
-
-		const templateMap = new Map(templates.filter(Boolean).map((t) => [t!._id, t!]));
-		const contactMap = new Map(contacts.filter(Boolean).map((c) => [c!._id, c!]));
-
-		const sendsWithDetails = paginatedSends.map((send) => {
-			const transactionalEmail = send.transactionalEmailId
-				? templateMap.get(send.transactionalEmailId)
-				: null;
-			const contactData = send.contactId ? contactMap.get(send.contactId) : null;
-			return {
-				...send,
-				transactionalEmail: transactionalEmail
-					? { name: transactionalEmail.name, slug: transactionalEmail.slug }
-					: null,
-				contact: contactData
-					? {
-							_id: contactData._id,
-							email: contactData.email,
-							firstName: contactData.firstName,
-							lastName: contactData.lastName,
-						}
-					: null,
-			};
-		});
-
-		return {
-			sends: sendsWithDetails,
-			hasMore,
-		};
-	},
-});
-
 // Get a single send by ID
 export const get = authedQuery({
 	args: { id: v.id('transactionalSends') },
@@ -222,74 +150,5 @@ export const getCounts = authedQuery({
 			counts[email._id] = email.sendCount ?? 0;
 		}
 		return counts;
-	},
-});
-
-// Per ADR-0021, every `transactionalSends` row write is owned by the
-// **Transactional send intake (module)** (`transactional/dispatch.ts`) at
-// create time and by the **Send lifecycle (module)** (`delivery/sendLifecycle.ts`)
-// for every transition after. The pre-ADR-0006 `create` mutation that
-// inserted directly in `sent` is gone (zero callers); the pre-ADR-0006
-// `createInternal` was already removed.
-//
-// Status writes (markAsDelivered / recordOpen / recordClick / markAsBounced
-// / markAsComplained) flow through `internal.delivery.sendLifecycle.transition`
-// with a SendRef `{ kind: 'transactional', id }`. See CONTEXT.md
-// "Send lifecycle".
-
-// Delete sends for a transactional email (used when deleting the email template)
-export const deleteByTransactionalEmail = internalMutation({
-	args: { transactionalEmailId: v.id('transactionalEmails') },
-	handler: async (ctx, args) => {
-		const sends = await ctx.db
-			.query('transactionalSends')
-			.withIndex('by_transactional_email', (q) =>
-				q.eq('transactionalEmailId', args.transactionalEmailId)
-			)
-			.collect();
-
-		for (const send of sends) {
-			await ctx.db.delete(send._id);
-		}
-
-		return sends.length;
-	},
-});
-
-// Get recent sends for a recipient email
-export const getByEmail = authedQuery({
-	args: {
-		email: v.string(),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const limit = args.limit || 10;
-		const sends = await ctx.db
-			.query('transactionalSends')
-			.withIndex('by_email', (q) => q.eq('email', args.email))
-			.order('desc')
-			// Honor the soft-delete contract: erased (GDPR) sends must not appear.
-			.filter((q) => q.eq(q.field('deletedAt'), undefined))
-			.take(limit);
-
-		// Fetch transactional email info
-		const sendsWithDetails = await Promise.all(
-			sends.map(async (send) => {
-				const transactionalEmail = send.transactionalEmailId
-					? await ctx.db.get(send.transactionalEmailId)
-					: null;
-				return {
-					...send,
-					transactionalEmail: transactionalEmail
-						? {
-								name: transactionalEmail.name,
-								slug: transactionalEmail.slug,
-							}
-						: null,
-				};
-			})
-		);
-
-		return sendsWithDetails;
 	},
 });

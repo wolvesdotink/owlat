@@ -17,6 +17,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { classifyAction, validateFields } from '../forms/submission';
+import { resolveContact, type ResolveSignal } from '../contacts/resolution';
 
 vi.mock('../lib/contactCountHelpers', async () => {
 	const actual = await vi.importActual('../lib/contactCountHelpers');
@@ -47,9 +48,13 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
+
+async function resolveThroughModule(t: TestConvex<typeof schema>, signal: ResolveSignal) {
+	return t.run((ctx) => resolveContact(ctx, signal));
+}
 
 // ─── Pure unit tests ────────────────────────────────────────────────────────
 
@@ -80,7 +85,7 @@ describe('classifyAction (pure)', () => {
 				ok: true,
 				action: 'subscribed',
 				membershipId: 'fake' as Id<'contactTopics'>,
-			}),
+			})
 		).toBe('success');
 	});
 
@@ -91,7 +96,7 @@ describe('classifyAction (pure)', () => {
 				action: 'pending_doi',
 				membershipId: 'fake' as Id<'contactTopics'>,
 				doiToken: 'tok',
-			}),
+			})
 		).toBe('pending_confirmation');
 	});
 
@@ -101,7 +106,7 @@ describe('classifyAction (pure)', () => {
 				ok: true,
 				action: 'already_member',
 				membershipId: 'fake' as Id<'contactTopics'>,
-			}),
+			})
 		).toBe('duplicate');
 	});
 
@@ -114,7 +119,7 @@ describe('classifyAction (pure)', () => {
 				ok: true,
 				action: 'subscribed',
 				membershipId: 'fake' as Id<'contactTopics'>,
-			}),
+			})
 		).toBe('success');
 	});
 
@@ -125,7 +130,7 @@ describe('classifyAction (pure)', () => {
 				action: 'pending_doi',
 				membershipId: 'fake' as Id<'contactTopics'>,
 				doiToken: 'tok',
-			}),
+			})
 		).toBe('pending_confirmation');
 	});
 });
@@ -158,20 +163,16 @@ describe('validateFields (pure)', () => {
 
 	it('reports an error for required non-email field that is empty', () => {
 		const result = validateFields(
-			[
-				emailField,
-				{ key: 'name', label: 'Name', type: 'text', required: true },
-			],
-			{ email: 'user@example.com', name: '' },
+			[emailField, { key: 'name', label: 'Name', type: 'text', required: true }],
+			{ email: 'user@example.com', name: '' }
 		);
 		expect(result.errors).toContain('Name is required');
 	});
 
 	it('falls back to "Email is required" if no email field accepted a value', () => {
-		const result = validateFields(
-			[{ key: 'name', label: 'Name', type: 'text', required: true }],
-			{ name: 'Ada' },
-		);
+		const result = validateFields([{ key: 'name', label: 'Name', type: 'text', required: true }], {
+			name: 'Ada',
+		});
 		expect(result.email).toBeNull();
 		expect(result.errors).toContain('Email is required');
 	});
@@ -182,7 +183,7 @@ describe('validateFields (pure)', () => {
 async function createTopic(
 	t: TestConvex<typeof schema>,
 	requireDoubleOptIn: boolean,
-	name = 'Newsletter',
+	name = 'Newsletter'
 ): Promise<Id<'topics'>> {
 	return await t.run(async (ctx) => {
 		return await ctx.db.insert('topics', {
@@ -206,7 +207,7 @@ async function createForm(
 			type: 'email' | 'text' | 'checkbox';
 			required: boolean;
 		}>;
-	} = {},
+	} = {}
 ): Promise<Id<'formEndpoints'>> {
 	return await t.run(async (ctx) => {
 		return await ctx.db.insert('formEndpoints', {
@@ -230,24 +231,19 @@ async function createForm(
 	});
 }
 
-async function getSubmission(
-	t: TestConvex<typeof schema>,
-	submissionId: Id<'formSubmissions'>,
-) {
+async function getSubmission(t: TestConvex<typeof schema>, submissionId: Id<'formSubmissions'>) {
 	return await t.run(async (ctx) => await ctx.db.get(submissionId));
 }
 
 async function getMembership(
 	t: TestConvex<typeof schema>,
 	contactId: Id<'contacts'>,
-	topicId: Id<'topics'>,
+	topicId: Id<'topics'>
 ) {
 	return await t.run(async (ctx) => {
 		return await ctx.db
 			.query('contactTopics')
-			.withIndex('by_contact_and_topic', (q) =>
-				q.eq('contactId', contactId).eq('topicId', topicId),
-			)
+			.withIndex('by_contact_and_topic', (q) => q.eq('contactId', contactId).eq('topicId', topicId))
 			.first();
 	});
 }
@@ -350,7 +346,7 @@ describe('submission.submit', () => {
 		const formEndpointId = await createForm(t);
 
 		// Seed an existing contact via the resolution module.
-		await t.mutation(internal.contacts.resolution.resolve, {
+		await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'returning@example.com',
 			source: 'api',
@@ -420,7 +416,7 @@ describe('submission.submit', () => {
 		}
 	});
 
-	it("REGRESSION: existing contact joining a new topic now actually gets added", async () => {
+	it('REGRESSION: existing contact joining a new topic now actually gets added', async () => {
 		// The pre-deepening form path skipped `subscribe` whenever the
 		// contact already existed — writing `duplicate` and silently dropping
 		// the membership. Under the Form submission module, an existing
@@ -430,15 +426,12 @@ describe('submission.submit', () => {
 		const formEndpointId = await createForm(t, { topicId });
 
 		// Seed an existing contact NOT on the topic.
-		const { contactId } = await t.mutation(
-			internal.contacts.resolution.resolve,
-			{
-				channel: 'email',
-				identifier: 'returning@example.com',
-				source: 'api',
-				mode: 'upsert',
-			},
-		);
+		const { contactId } = await resolveThroughModule(t, {
+			channel: 'email',
+			identifier: 'returning@example.com',
+			source: 'api',
+			mode: 'upsert',
+		});
 
 		// Confirm no membership before submission.
 		expect(await getMembership(t, contactId, topicId)).toBeNull();
@@ -464,15 +457,12 @@ describe('submission.submit', () => {
 		const formEndpointId = await createForm(t, { topicId });
 
 		// Seed contact + membership.
-		const { contactId } = await t.mutation(
-			internal.contacts.resolution.resolve,
-			{
-				channel: 'email',
-				identifier: 'member@example.com',
-				source: 'api',
-				mode: 'upsert',
-			},
-		);
+		const { contactId } = await resolveThroughModule(t, {
+			channel: 'email',
+			identifier: 'member@example.com',
+			source: 'api',
+			mode: 'upsert',
+		});
 		await t.mutation(internal.topics.subscription.subscribe, {
 			topicId,
 			contactId,
@@ -549,9 +539,7 @@ describe('submission.submit', () => {
 			submissionData: { email: 'c@example.com', _hp_field: 'spam' },
 		});
 
-		const form = await t.run(
-			async (ctx) => await ctx.db.get(formEndpointId),
-		);
+		const form = await t.run(async (ctx) => await ctx.db.get(formEndpointId));
 		expect(form?.submissionCount).toBe(3);
 	});
 });
@@ -565,23 +553,16 @@ describe('submission.markConfirmedByToken', () => {
 		const formEndpointId = await createForm(t, { topicId });
 
 		// Submit to land a pending_confirmation row + the contact's DOI token.
-		const submitOutcome = await t.mutation(
-			internal.forms.submission.submit,
-			{
-				formEndpointId,
-				submissionData: { email: 'confirm@example.com' },
-			},
-		);
-		if (!submitOutcome.ok)
-			throw new Error('submit failed: ' + submitOutcome.reason);
+		const submitOutcome = await t.mutation(internal.forms.submission.submit, {
+			formEndpointId,
+			submissionData: { email: 'confirm@example.com' },
+		});
+		if (!submitOutcome.ok) throw new Error('submit failed: ' + submitOutcome.reason);
 		const submission = await getSubmission(t, submitOutcome.submissionId);
 		const token = submission?.confirmationToken;
 		if (!token) throw new Error('expected confirmationToken on row');
 
-		const outcome = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token },
-		);
+		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, { token });
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
@@ -595,10 +576,9 @@ describe('submission.markConfirmedByToken', () => {
 	it("returns 'no_submission_for_token' for an unknown token", async () => {
 		const t = convexTest(schema, modules);
 
-		const outcome = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token: 'no-such-token' },
-		);
+		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, {
+			token: 'no-such-token',
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
@@ -611,31 +591,21 @@ describe('submission.markConfirmedByToken', () => {
 		const topicId = await createTopic(t, true);
 		const formEndpointId = await createForm(t, { topicId });
 
-		const submitOutcome = await t.mutation(
-			internal.forms.submission.submit,
-			{
-				formEndpointId,
-				submissionData: { email: 'idem@example.com' },
-			},
-		);
-		if (!submitOutcome.ok)
-			throw new Error('submit failed: ' + submitOutcome.reason);
+		const submitOutcome = await t.mutation(internal.forms.submission.submit, {
+			formEndpointId,
+			submissionData: { email: 'idem@example.com' },
+		});
+		if (!submitOutcome.ok) throw new Error('submit failed: ' + submitOutcome.reason);
 		const submission = await getSubmission(t, submitOutcome.submissionId);
 		const token = submission?.confirmationToken;
 		if (!token) throw new Error('expected confirmationToken on row');
 
 		// First confirm.
-		const first = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token },
-		);
+		const first = await t.mutation(internal.forms.submission.markConfirmedByToken, { token });
 		expect(first.ok).toBe(true);
 
 		// Second confirm — idempotent.
-		const second = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token },
-		);
+		const second = await t.mutation(internal.forms.submission.markConfirmedByToken, { token });
 		expect(second.ok).toBe(false);
 		if (!second.ok) {
 			expect(second.reason).toBe('already_confirmed');
@@ -659,10 +629,9 @@ describe('submission.markConfirmedByToken', () => {
 			});
 		});
 
-		const outcome = await t.mutation(
-			internal.forms.submission.markConfirmedByToken,
-			{ token: 'planted-token' },
-		);
+		const outcome = await t.mutation(internal.forms.submission.markConfirmedByToken, {
+			token: 'planted-token',
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {

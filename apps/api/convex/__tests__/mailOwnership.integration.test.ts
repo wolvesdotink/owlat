@@ -934,16 +934,16 @@ describe('mail.folders ownership', () => {
 		).rejects.toThrow();
 	});
 
-	it('folders.list returns [] for a non-owner', async () => {
+	it('mailbox.listFolders returns [] for a non-owner', async () => {
 		const t = convexTest(schema, modules);
 		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
 
 		setUser('user-alice', 'editor');
-		const own = await t.query(api.mail.folders.list, { mailboxId: a.mailboxId });
+		const own = await t.query(api.mail.mailbox.listFolders, { mailboxId: a.mailboxId });
 		expect(own.length).toBeGreaterThan(0);
 
 		setUser('user-bob', 'editor');
-		const foreign = await t.query(api.mail.folders.list, {
+		const foreign = await t.query(api.mail.mailbox.listFolders, {
 			mailboxId: a.mailboxId,
 		});
 		expect(foreign).toEqual([]);

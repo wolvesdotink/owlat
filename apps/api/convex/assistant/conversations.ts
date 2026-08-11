@@ -19,7 +19,12 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { rateLimiter } from '../rateLimiter';
-import { throwInvalidInput, throwNotFound, throwRateLimited, throwForbidden } from '../_utils/errors';
+import {
+	throwInvalidInput,
+	throwNotFound,
+	throwRateLimited,
+	throwForbidden,
+} from '../_utils/errors';
 import {
 	tokenUsageValidator,
 	assistantToolCallValidator,
@@ -54,7 +59,7 @@ function deriveTitle(text: string): string {
 async function loadOwnedConversation(
 	ctx: QueryCtx | MutationCtx,
 	conversationId: Id<'aiConversations'>,
-	userId: string,
+	userId: string
 ): Promise<Doc<'aiConversations'>> {
 	const convo = await ctx.db.get(conversationId);
 	if (!convo || convo.deletedAt) throwNotFound('Conversation');
@@ -114,18 +119,6 @@ export const listConversations = assistantQuery({
 	},
 });
 
-/** Fetch one conversation's metadata (owner-scoped). */
-// all-members: a member reads their own private assistant conversation (ownership checked).
-export const getConversation = assistantQuery({
-	args: { conversationId: v.id('aiConversations') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
-		const convo = await ctx.db.get(args.conversationId);
-		if (!convo || convo.deletedAt || convo.ownerId !== userId) return null;
-		return { _id: convo._id, title: convo.title, lastMessageAt: convo.lastMessageAt, messageCount: convo.messageCount };
-	},
-});
-
 /**
  * Reactive message feed for a conversation. Soft-fails to [] for a non-owner so
  * the streaming subscription never leaks another member's conversation.
@@ -169,7 +162,8 @@ export const renameConversation = assistantMutation({
 		await loadOwnedConversation(ctx, args.conversationId, userId);
 		const title = args.title.trim();
 		if (!title) throwInvalidInput('Title cannot be empty');
-		if (title.length > TITLE_MAX) throwInvalidInput(`Title must be ${TITLE_MAX} characters or fewer`);
+		if (title.length > TITLE_MAX)
+			throwInvalidInput(`Title must be ${TITLE_MAX} characters or fewer`);
 		await ctx.db.patch(args.conversationId, { title, updatedAt: Date.now() });
 	},
 });
@@ -268,11 +262,15 @@ export const getRunContext = internalQuery({
 		// Take the NEWEST MESSAGES_LIMIT (desc) then restore chronological order so
 		// the latest turns (and the just-sent user message) are what gets replayed,
 		// not the oldest rows once a conversation exceeds the cap.
-		const all = (await ctx.db
-			.query('aiMessages')
-			.withIndex('by_conversation_and_created', (q) => q.eq('conversationId', args.conversationId))
-			.order('desc')
-			.take(MESSAGES_LIMIT)).reverse();
+		const all = (
+			await ctx.db
+				.query('aiMessages')
+				.withIndex('by_conversation_and_created', (q) =>
+					q.eq('conversationId', args.conversationId)
+				)
+				.order('desc')
+				.take(MESSAGES_LIMIT)
+		).reverse();
 		// Replay only the completed prior turns — skip the streaming placeholder
 		// and any failed/stopped turns so we never feed a broken turn back in.
 		const completed: Array<{ role: 'user' | 'assistant'; text: string }> = [];

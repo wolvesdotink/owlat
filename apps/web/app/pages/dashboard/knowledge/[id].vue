@@ -90,6 +90,26 @@ const formattedExpiresAt = computed(() => {
 const showEditForm = ref(false);
 const showDeleteConfirm = ref(false);
 const isDeleting = ref(false);
+const commitmentStatus = ref<'open' | 'fulfilled' | 'cancelled'>('open');
+const setCommitmentStatus = useBackendOperation(api.knowledge.graph.setCommitmentStatus, {
+	label: 'Update commitment status',
+});
+
+watch(
+	entry,
+	(value) => {
+		commitmentStatus.value = value?.commitmentStatus ?? 'open';
+	},
+	{ immediate: true }
+);
+
+async function saveCommitmentStatus() {
+	const result = await setCommitmentStatus.run({
+		entryId: entryId.value,
+		commitmentStatus: commitmentStatus.value,
+	});
+	if (result) showToast('Commitment status updated');
+}
 
 // Seed the edit form from the loaded entry.
 const editInitialValues = computed(() => {
@@ -417,6 +437,29 @@ const handleRemoveRelation = async (relationId: string) => {
 
 				<!-- Sidebar Metadata -->
 				<div class="space-y-4">
+					<div
+						v-if="entry.entryType === 'decision' || entry.entryType === 'action_item'"
+						class="rounded-xl border border-border-subtle bg-bg-elevated p-5"
+					>
+						<h3 class="mb-3 text-sm font-semibold text-text-primary">Commitment status</h3>
+						<UiSelect
+							v-model="commitmentStatus"
+							:options="[
+								{ value: 'open', label: 'Open' },
+								{ value: 'fulfilled', label: 'Fulfilled' },
+								{ value: 'cancelled', label: 'Cancelled' },
+							]"
+						/>
+						<UiButton
+							class="mt-3"
+							size="sm"
+							:loading="setCommitmentStatus.isLoading.value"
+							@click="saveCommitmentStatus"
+						>
+							Save status
+						</UiButton>
+					</div>
+
 					<!-- Confidence -->
 					<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
 						<h3 class="text-sm font-semibold text-text-primary mb-3">Confidence</h3>

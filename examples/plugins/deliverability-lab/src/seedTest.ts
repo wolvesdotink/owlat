@@ -4,12 +4,11 @@
  * A seed test is heavier than the synchronous engine: it fans a rendered email
  * out across a seed-inbox list and reports where each landed (inbox /
  * promotions / spam). That is exactly the kind of untrusted, potentially slow
- * compute Tier 3 exists for, so the plugin does not run it in-process — it
- * ENQUEUES a job onto the PP-27 sandboxed worker queue. This module owns the
- * plugin's half of that contract:
+ * compute Tier 3 exists for. The host enqueue adapter is not shipped; this
+ * module owns the plugin-side request/result contract a future adapter uses:
  *
  *   - `buildSeedTestPayload` produces the `{ jobKind, payload }` the host's
- *     `plugins/workerTasks:enqueue` seam accepts. The job kind is namespaced to
+ *     future host ingress accepts. The job kind is namespaced to
  *     THIS plugin (`plugin.deliverability-lab.seed-test`) via the shared kernel
  *     helper, so the host's enqueue authorization can prove ownership from the
  *     string alone, and the payload is bounded to the host's byte ceiling here

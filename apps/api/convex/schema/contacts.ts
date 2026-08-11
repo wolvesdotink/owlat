@@ -87,9 +87,9 @@ export const contactTables = {
 				softBounceRaw: v.number(),
 				isSuppressed: v.boolean(),
 				// `occurredAt` of the newest suppressing activity. Scopes the sticky
-				// suppression to the recompute lookback window, which is what makes a
-				// bounce recorded in error reversible (`clearEngagementSuppression`)
-				// instead of pinning the contact to 0 forever.
+				// suppression to the recompute lookback window, so even a bounce
+				// recorded in error ages out instead of pinning the contact to 0
+				// forever.
 				suppressedAt: v.optional(v.number()),
 				// Identity (`kind:occurredAt`) of the newest activity folded into
 				// the accumulator, so an immediately-redelivered provider webhook

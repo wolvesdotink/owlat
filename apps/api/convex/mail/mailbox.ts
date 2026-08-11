@@ -649,79 +649,6 @@ export const listFolders = publicQuery({
  * Minimal fields only.
  */
 // public: soft-auth — returns null for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
-export const latestInboxUnread = publicQuery({
-	args: {},
-	handler: async (ctx) => {
-		const session = await readSession(ctx);
-		if (!session) return null;
-		const now = Date.now();
-		// The caller's own mailboxes plus any shared mailbox they belong to; the
-		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
-		const mailboxes = await loadAccessibleMailboxes(
-			ctx,
-			session.userId,
-			session.activeOrganizationId
-		);
-		let best: {
-			messageId: Id<'mailMessages'>;
-			fromName?: string;
-			fromAddress: string;
-			subject: string;
-			receivedAt: number;
-		} | null = null;
-		for (const mb of mailboxes) {
-			if (mb.status !== 'active') continue;
-			const inbox = await ctx.db
-				.query('mailFolders')
-				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mb._id).eq('role', 'inbox'))
-				.first();
-			if (!inbox) continue;
-			const recent = await ctx.db
-				.query('mailMessages')
-				.withIndex('by_folder_and_received', (q) => q.eq('folderId', inbox._id))
-				.order('desc')
-				.take(20); // bounded: scan the 20 newest for the latest visible unread
-			const hit = recent.find((m) => !m.flagSeen && !isMessageSnoozed(m, now));
-			if (hit && (!best || hit.receivedAt > best.receivedAt)) {
-				best = {
-					messageId: hit._id,
-					fromName: hit.fromName,
-					fromAddress: hit.fromAddress,
-					subject: hit.subject,
-					receivedAt: hit.receivedAt,
-				};
-			}
-		}
-		return best;
-	},
-});
-
-// public: soft-auth — returns 0 for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
-export const inboxUnreadCount = publicQuery({
-	args: {},
-	handler: async (ctx) => {
-		const session = await readSession(ctx);
-		if (!session) return 0;
-		// The caller's own mailboxes plus any shared mailbox they belong to; the
-		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
-		const mailboxes = await loadAccessibleMailboxes(
-			ctx,
-			session.userId,
-			session.activeOrganizationId
-		);
-		let unread = 0;
-		for (const mb of mailboxes) {
-			if (mb.status !== 'active') continue;
-			const inbox = await ctx.db
-				.query('mailFolders')
-				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mb._id).eq('role', 'inbox'))
-				.first();
-			if (inbox) unread += inbox.unseenCount;
-		}
-		return unread;
-	},
-});
-
 /**
  * Every mailbox the caller can actually reach — their own personal mailbox(es)
  * plus any shared/team inbox they explicitly belong to — with its label, scope,
@@ -732,8 +659,8 @@ export const inboxUnreadCount = publicQuery({
  * target (unlike `list`, which returns every org mailbox for owners/admins).
  * Suspended/deleted rows are filtered out here, so there are no dead-end targets.
  *
- * O(1) per mailbox: reads the denormalized `mailFolders.unseenCount`, same
- * source as `inboxUnreadCount`. Read state is a single shared truth per message,
+ * O(1) per mailbox: reads the denormalized `mailFolders.unseenCount`. Read
+ * state is a single shared truth per message,
  * so every member of a shared inbox sees the same count.
  */
 // public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
@@ -775,7 +702,7 @@ export const accessible = publicQuery({
  * The newest unread, not-snoozed inbox messages across the user's mailboxes
  * (plus the exact total unread count), for the desktop unread badge,
  * notification-rule filtering, and per-thread grouping. `total`
- * is the O(1) denormalized unread count (same source as `inboxUnreadCount`);
+ * is the O(1) denormalized `mailFolders.unseenCount` total;
  * `messages` is a bounded, best-effort newest-first window used only for
  * category-aware toast decisions — it never drives `total`.
  * Minimal, plain-text fields only.
@@ -819,7 +746,7 @@ export const newestUnreadInbox = publicQuery({
 			if (!inbox) continue;
 			total += inbox.unseenCount;
 			// Scan a bounded window of the newest messages and keep the visible
-			// unread ones (mirrors latestInboxUnread's take-window posture).
+			// unread ones using the same bounded-window posture as notification reads.
 			const recent = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_folder_and_received', (q) => q.eq('folderId', inbox._id))

@@ -320,14 +320,10 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   never force it to complete or advance. Step failure reasons are clamped and
   control-stripped before touching `errorMessage`; a failing audit write logs
   fixed taxonomy and never fails the executed step.
-- `firePluginTrigger` is the gated trigger seam. Recheck the catalog entry, plugin
-  attribution, flag, and `automation:trigger` grant before fanning out; any denial
-  fans out nothing without touching the module. Plugin trigger config rides the
-  `{ pluginConfig }` arm and is unwrapped before `parseConfig`; the plugin's
-  `buildTriggerData` output is untrusted and clamped (bounded keys, code points,
-  control-stripped) before it reaches `automationRuns.triggerData`. Core and
-  plugin triggers share one fanout — one running-instance guard, one no-steps
-  guard, one stats bump, one scheduled walker.
+- Plugin trigger contributions are catalogued but have no firing seam. Add one
+  only with a concrete producer; recheck catalog attribution, flag, and the
+  `automation:trigger` grant in the same transaction as fanout, and clamp any
+  plugin-owned trigger data before storing it.
 - Plugin crons derive their registrations from the generated catalog. The
   namespaced kind is also the unique Convex registration name, registration is
   idempotent, and every interval is clamped into the host scheduling limits, so
@@ -336,10 +332,9 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   interval is skipped rather than allowed to break core cron registration. A
   cron execution receives `{ signal, logger, llm }` only — never a Convex
   context, tenant id, or credential — and is reauthorized before it runs.
-- Plugin webhook events are data-only: the catalog carries the namespaced wire
-  kind, its owner, and its subscription eligibility, and the authorization seam
-  rechecks flag, grant, and env before a plugin may publish one. Emit-time
-  payload data is untrusted and is clamped and scrubbed before delivery.
+- Plugin webhook events are catalogued data only; there is no publish seam until
+  a real host producer exists. A future producer must recheck flag, grant, and
+  env and clamp/scrub emit-time payload data before delivery.
 - A bundled send transport may declare a FEEDBACK webhook on the same
   contribution; all of them arrive on one route, `POST
   /webhooks/plugin/<pluginId>`, keyed by plugin id (so at most one webhook per
@@ -364,14 +359,14 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   until the provider gives up. The route reads an unknown plugin id as 404
   before it reads a byte, and never lets an unauthenticated caller write an
   audit row.
-- Plugin import providers resolve through the host and call `authorizeStart`
-  before a run opens; the paged fetch continues only while flag, grant, env, and
-  singleton scope hold. A provider's inbound signature contract is mandatory and
-  verified by the host in constant time against the raw body
-  (`plugins/importProviderSignature.ts` — its own module so `lint:convex-orphans`
-  keeps reporting that nothing calls it); it proves origin only and carries no
-  replay resistance, so any future inbound HTTP surface must add replay defense
-  before accepting plugin-sourced traffic.
+- Plugin import providers are catalogued but the core-only import walker cannot
+  dispatch them. A future host path must recheck flag, grant, env, and singleton
+  scope immediately before opening and continuing a run. A provider's inbound
+  signature contract is mandatory and verified by the host in constant time
+  against the raw body (`plugins/importProviderSignature.ts` — its own module so
+  `lint:convex-orphans` keeps reporting that nothing calls it); it proves origin
+  only and carries no replay resistance, so any future inbound HTTP surface must
+  add replay defense before accepting plugin-sourced traffic.
 - Plugin nav and settings entries are data-only links. Core entries register
   first and registry dedup is by destination href, first-registered-wins, so a
   plugin cannot shadow a core destination. Labels are clamped to 64 UTF-16 code
@@ -406,8 +401,8 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   returned exactly once, at register or rotate, and is never stored or logged.
 - `hookProtocol` (kinds, headers, response validation) and `hookSignature`
   (canonical signing strings, constant-time verification) are pure and V8-safe.
-  Keep crypto to Web Crypto there; `hookClient` and `hookRuntime` own the Node
-  runtime, the SSRF-guarded fetch, and the plugin binding.
+  Keep crypto to Web Crypto there; `hookClient` owns the SSRF-guarded transport,
+  and any future runtime adapter must own plugin binding and outcome handling.
 - Hook fail directions are fixed: `gate` fails closed to a caution objection;
   `draft` and `score` fail open. Never add an accept value to a gate response.
 - Resolve the app and circuit state before opening the secret: a missing,
@@ -415,28 +410,21 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   short-circuits with no network call and no secret opened.
 - Scrub and clamp every app-returned string through the host untrusted-text
   policy bound to the app's plugin before any consumer sees it.
-- The hook delivery log has no column for the payload, the returned text, the
-  secret, or either signature. Record only the kind, whether a call was
-  attempted, which side won, a fixed reason code, and the duration; keep the
-  reason validator exhaustive in both directions against `HookUnavailableCode`.
-
 ## Plugin worker jobs (Tier 3)
 
-- `worker:enqueue` grants enqueue only. Claim, cancel, reclaim, and read are
-  host/operator operations, and a plugin may enqueue only its own namespaced job
-  kinds — ownership is decided from the kind string itself.
-- Clamp attempts, per-execution timeout, payload bytes, result bytes, and the
-  per-(organization, plugin) in-flight count in the enqueue transaction. Enqueue
-  fails closed: a disabled, ungranted, or undeclared plugin, a cross-plugin
-  kind, an oversized payload, or an exhausted in-flight budget inserts nothing.
+- `worker:enqueue` is a reserved capability; no Convex enqueue or operator entry
+  is shipped without a concrete host producer and UI. The code-worker protocol
+  remains dormant and must not be described as a usable plugin surface.
+- A future enqueue adapter must clamp attempts, timeout, payload bytes, result
+  bytes, and per-plugin in-flight count in its insertion transaction.
 - A cancelled queued job is marked cancelled at claim and never runs; a
   cancelled running job is killed at its next heartbeat; a cancelled job is
   never retried. Lease reclaim of an abandoned `running` row is bounded per
   sweep.
 - Job kinds map to a host-controlled command registry in the worker image. Never
   build a command from the payload, and never pass a payload through a shell.
-- Enqueue and every terminal outcome write a `pluginId`-attributed audit row;
-  terminal failure reasons are a fixed taxonomy and error messages are clamped.
+- Every terminal outcome writes a `pluginId`-attributed audit row; terminal
+  failure reasons are a fixed taxonomy and error messages are clamped.
 
 ## Environment variables
 

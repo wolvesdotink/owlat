@@ -3,7 +3,7 @@
  *
  * The interface is the test surface:
  *  1. `selectRecipient` pure unit tests (the deep core, no harness).
- *  2. Anti-drift: `countRecipients(a).eligible === resolveRecipients(a).length`.
+ *  2. Anti-drift: count eligibility equals the fully drained send pages.
  *  3. Soft-delete regression: a soft-deleted Contact appears in neither entry.
  *  4. DOI asymmetry: DOI-pending is excluded from a DOI-required topic but
  *     included in a matching segment.
@@ -14,7 +14,8 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { selectRecipient } from '../audienceCandidates';
+import { selectRecipient, type CampaignRecipient } from '../audienceCandidates';
+import type { StoredAudience } from '../audience';
 import {
 	createTestContact,
 	createTestTopic,
@@ -51,6 +52,23 @@ const modules = Object.fromEntries(
 		return [key, val];
 	})
 );
+
+async function drainRecipientPages(
+	t: TestConvex<typeof schema>,
+	{ audience }: { audience: StoredAudience }
+): Promise<CampaignRecipient[]> {
+	const recipients: CampaignRecipient[] = [];
+	let cursor = '';
+	for (;;) {
+		const page = await t.query(internal.campaigns.audienceResolution.resolveRecipientPage, {
+			audience,
+			cursor,
+		});
+		recipients.push(...page.recipients);
+		if (page.nextCursor === null) return recipients;
+		cursor = page.nextCursor;
+	}
+}
 
 // ── 1. The pure core: selectRecipient ───────────────────────────────────
 
@@ -236,7 +254,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 		const { topicId } = await seed(t);
 		const audience = { kind: 'topic' as const, topicId };
 
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, { audience });
@@ -261,7 +279,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 		const { segmentId } = await seed(t);
 		const audience = { kind: 'segment' as const, segmentId };
 
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, { audience });
@@ -284,7 +302,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 			{ kind: 'topic' as const, topicId },
 			{ kind: 'segment' as const, segmentId },
 		]) {
-			const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+			const resolved = await drainRecipientPages(t, {
 				audience,
 			});
 			expect(resolved.map((r) => String(r._id))).not.toContain(String(eveId));
@@ -343,7 +361,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 		});
 
 		const audience = { kind: 'topic' as const, topicId };
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
@@ -400,7 +418,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 		});
 
 		const audience = { kind: 'segment' as const, segmentId };
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
@@ -425,10 +443,10 @@ describe('Audience resolution — count and send share one predicate', () => {
 		const t = convexTest(schema, modules);
 		const { topicId, segmentId, charlieId } = await seed(t);
 
-		const topicResolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const topicResolved = await drainRecipientPages(t, {
 			audience: { kind: 'topic', topicId },
 		});
-		const segmentResolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const segmentResolved = await drainRecipientPages(t, {
 			audience: { kind: 'segment', segmentId },
 		});
 
@@ -479,7 +497,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 		});
 
 		const audience = { kind: 'topic' as const, topicId };
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
@@ -498,8 +516,8 @@ describe('Audience resolution — count and send share one predicate', () => {
 // ── 5. Per-page resolver: the checkpointed walker's hop ──────────────────
 //
 // resolveRecipientPage returns ONE page; looping it from cursor '' until
-// nextCursor === null must reproduce resolveRecipients EXACTLY (same eligible
-// rows, no dup, no drop), for both topic and segment, across >1 page.
+// nextCursor === null must reproduce the default page drain exactly (same
+// eligible rows, no dup, no drop), for both topic and segment, across >1 page.
 
 async function drainPages(
 	t: TestConvex<typeof schema>,
@@ -524,13 +542,13 @@ async function drainPages(
 	return { emails, totalCandidates, pageCount };
 }
 
-describe('resolveRecipientPage — per-page equivalence with resolveRecipients', () => {
+describe('resolveRecipientPage — per-page drain equivalence', () => {
 	it('topic: looping the page resolver equals the whole-audience resolve (>1 page)', async () => {
 		const t = convexTest(schema, modules);
 		const { topicId } = await seed(t);
 		const audience = { kind: 'topic' as const, topicId };
 
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
 		const drained = await drainPages(t, audience);
@@ -546,7 +564,7 @@ describe('resolveRecipientPage — per-page equivalence with resolveRecipients',
 		const { segmentId } = await seed(t);
 		const audience = { kind: 'segment' as const, segmentId };
 
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
 		const drained = await drainPages(t, audience);
@@ -571,7 +589,7 @@ describe('resolveRecipientPage — per-page equivalence with resolveRecipients',
 		});
 
 		const audience = { kind: 'topic' as const, topicId };
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
 		const drained = await drainPages(t, audience);
@@ -729,7 +747,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 
 		// Before unsubscribe: both contacts resolve (segment ignores topic
 		// membership — this is exactly why the global opt-out is needed).
-		const before = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const before = await drainRecipientPages(t, {
 			audience,
 		});
 		expect(before.map((r) => r.email).sort()).toEqual(['keep@pr09.test', 'unsub@pr09.test']);
@@ -747,7 +765,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 
 		// After unsubscribe: the unsubscribed contact is gone; the positive
 		// control (keep@) is still returned.
-		const after = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const after = await drainRecipientPages(t, {
 			audience,
 		});
 		expect(after.map((r) => r.email)).toEqual(['keep@pr09.test']);
@@ -774,7 +792,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 		// The topic membership for unsub@ was deleted by the same call, but even
 		// a contact who somehow retained a membership must be excluded by the
 		// opt-out — keep@ (still a member, not unsubscribed) is the control.
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience: { kind: 'topic', topicId },
 		});
 		expect(resolved.map((r) => r.email)).toEqual(['keep@pr09.test']);
@@ -792,7 +810,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 			source: 'public_email_link',
 			reason: 'unsubscribe',
 		});
-		const afterUnsub = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const afterUnsub = await drainRecipientPages(t, {
 			audience,
 		});
 		expect(afterUnsub.map((r) => r.email)).not.toContain('unsub@pr09.test');
@@ -807,7 +825,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 		const cleared = await t.run((ctx) => ctx.db.get(unsubId));
 		expect(cleared?.unsubscribedAt).toBeUndefined();
 
-		const afterResub = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const afterResub = await drainRecipientPages(t, {
 			audience,
 		});
 		expect(afterResub.map((r) => r.email)).toContain('unsub@pr09.test');
@@ -830,7 +848,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 
 		// Still reachable by a matching segment — a single-topic opt-out is not
 		// a global marketing opt-out.
-		const resolved = await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
 		expect(resolved.map((r) => r.email)).toContain('unsub@pr09.test');
@@ -862,7 +880,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 		expect((await t.run((ctx) => ctx.db.get(unsubId)))?.unsubscribedAt).toBeTypeOf('number');
 		expect(
 			(
-				await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+				await drainRecipientPages(t, {
 					audience,
 				})
 			).map((r) => r.email)
@@ -885,7 +903,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 		expect(pending?.doiStatus).toBe('pending');
 		expect(
 			(
-				await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+				await drainRecipientPages(t, {
 					audience,
 				})
 			).map((r) => r.email)
@@ -905,7 +923,7 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 		expect(confirmed?.unsubscribedAt).toBeUndefined();
 		expect(
 			(
-				await t.query(internal.campaigns.audienceResolution.resolveRecipients, {
+				await drainRecipientPages(t, {
 					audience,
 				})
 			).map((r) => r.email)

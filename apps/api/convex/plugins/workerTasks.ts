@@ -4,45 +4,29 @@
  * The generalized code-worker (apps/code-worker) polls `queued` `pluginTasks`,
  * runs each job as the unprivileged sandbox uid under the confined-root
  * orchestrator, and reports the outcome back through the internal mutations
- * below. This module is the queue's HOST side: it enforces enqueue authorization
- * (manifest declaration + operator grant of `worker:enqueue` + job-kind
- * ownership + payload bound), the retry ceiling, cancellation semantics, lease
- * reclaim of a crashed worker's jobs, and pluginId-attributed audit on every
- * job's enqueue and terminal outcome.
+ * below. This file retains only that worker-side protocol. There is no Convex
+ * enqueue or operator entry until a concrete host producer and UI land together,
+ * so current deployments never create these rows.
  *
  * Security posture, all enforced here so an evolving worker cannot regress them:
- *  - A plugin can only ever ENQUEUE, and only its OWN job kinds. Claiming,
- *    cancelling, reclaiming, and reading are host/operator operations.
- *  - Enqueue fails closed: a disabled, ungranted, or undeclared plugin, a
- *    cross-plugin job kind, or an oversized payload inserts nothing.
- *  - Cancellation cannot be escaped: a cancelled queued job is marked cancelled
- *    at claim (never runs); a cancelled running job's next heartbeat tells the
- *    worker to kill it, and a cancelled job is never retried.
- *  - Retries are bounded by the host-clamped `maxAttempts`; a poison job
- *    terminates as `failed` instead of looping forever.
+ *  - Claiming and outcome writes are worker-only internal functions.
+ *  - Cancellation cannot be escaped once a future producer exists: a cancelled
+ *    job never retries.
+ *  - Retries are bounded by the persisted host-clamped `maxAttempts`.
  */
 
 import {
-	PLUGIN_WORKER_CAPABILITY,
-	PLUGIN_WORKER_MAX_PENDING_JOBS,
-	PLUGIN_WORKER_PAYLOAD_MAX_BYTES,
 	PLUGIN_WORKER_RESULT_MAX_BYTES,
 	PLUGIN_WORKER_TIMEOUT_MAX_MS,
 	type PluginWorkerClaimedJob,
-	clampWorkerAttempts,
-	clampWorkerTimeoutMs,
-	isPluginWorkerJobKindOwnedBy,
 	pluginWorkerClaimedJobOf,
 } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation, internalQuery } from '../_generated/server';
-import { authedMutation, authedQuery } from '../lib/authedFunctions';
-import { getSingletonOrganizationId, requireOrgPermission } from '../lib/sessionOrganization';
-import { getOrThrow, throwInvalidState } from '../_utils/errors';
 import { recordHostedPluginAudit } from './audit';
-import { authorizeSystemBundledPlugin, type HostedPluginActorScope } from './authorization';
+import type { HostedPluginActorScope } from './authorization';
 
 /**
  * Default lease window: a `running` row whose heartbeat is older than this is
@@ -106,106 +90,6 @@ function scopeOf(task: Doc<'pluginTasks'>): HostedPluginActorScope {
 		pluginId: task.pluginId as HostedPluginActorScope['pluginId'],
 	});
 }
-
-// ============================================================
-// Enqueue (host seam — called by plugin backend contributions)
-// ============================================================
-
-/**
- * Count a plugin's in-flight jobs (`queued` + `running`) for a tenant, bounded
- * by the cap. The `by_organization_plugin_status` index means only unfinished
- * rows are scanned — a plugin's terminal history never inflates the count — and
- * `.take(cap)` keeps each status scan bounded even if the invariant is violated.
- */
-async function countPendingJobs(
-	ctx: MutationCtx,
-	organizationId: string,
-	pluginId: string
-): Promise<number> {
-	let count = 0;
-	for (const status of ['queued', 'running'] as const) {
-		const rows = await ctx.db
-			.query('pluginTasks')
-			.withIndex('by_organization_plugin_status', (q) =>
-				q.eq('organizationId', organizationId).eq('pluginId', pluginId).eq('status', status)
-			)
-			.take(PLUGIN_WORKER_MAX_PENDING_JOBS);
-		count += rows.length;
-		if (count >= PLUGIN_WORKER_MAX_PENDING_JOBS) break;
-	}
-	return count;
-}
-
-/**
- * Enqueue a job for the sandboxed worker. An `internalMutation` because only
- * host code (never a public client) may call it; it re-authorizes the plugin in
- * this transaction, so passing a mismatched `pluginId` cannot spoof another
- * plugin's grant, and `jobKind` must be namespaced to the authorized plugin.
- * Returns the new task id, or `null` on any fail-closed denial.
- */
-export const enqueue = internalMutation({
-	args: {
-		pluginId: v.string(),
-		jobKind: v.string(),
-		payload: v.string(),
-		maxAttempts: v.optional(v.number()),
-		timeoutMs: v.optional(v.number()),
-	},
-	handler: async (ctx, args): Promise<Id<'pluginTasks'> | null> => {
-		const scope = await authorizeSystemBundledPlugin(ctx, args.pluginId, PLUGIN_WORKER_CAPABILITY);
-		// Disabled / ungranted / undeclared / bad env — nothing is enqueued and no
-		// job exists to attribute, so fail closed silently.
-		if (!scope) return null;
-
-		// A plugin may only enqueue its OWN, well-formed job kinds. A cross-plugin or
-		// malformed kind is a misuse worth attributing to the (authorized) plugin.
-		if (!isPluginWorkerJobKindOwnedBy(args.jobKind, scope.pluginId)) {
-			await recordHostedPluginAudit(ctx, scope, 'worker.enqueue', 'denied', {
-				reasonCode: 'access_denied',
-			});
-			return null;
-		}
-
-		// Untrusted payload is byte-bounded; an oversized payload is rejected rather
-		// than truncated (truncation could corrupt a plugin's own framing).
-		if (Buffer.byteLength(args.payload) > PLUGIN_WORKER_PAYLOAD_MAX_BYTES) {
-			await recordHostedPluginAudit(ctx, scope, 'worker.enqueue', 'denied', {
-				reasonCode: 'access_denied',
-			});
-			return null;
-		}
-
-		// The queue is a bounded hosted resource like storage and the LLM budget: a
-		// plugin may only hold PLUGIN_WORKER_MAX_PENDING_JOBS unfinished jobs (queued
-		// + running) at once. At the cap, enqueue fails closed and audits the denial
-		// so one plugin can neither exhaust the queue's storage nor monopolize the
-		// single worker — independent of any cadence limit its caller applies.
-		const pending = await countPendingJobs(ctx, scope.organizationId, scope.pluginId);
-		if (pending >= PLUGIN_WORKER_MAX_PENDING_JOBS) {
-			await recordHostedPluginAudit(ctx, scope, 'worker.enqueue', 'denied', {
-				reasonCode: 'access_or_budget_denied',
-			});
-			return null;
-		}
-
-		const now = Date.now();
-		const taskId = await ctx.db.insert('pluginTasks', {
-			organizationId: scope.organizationId,
-			pluginId: scope.pluginId,
-			jobKind: args.jobKind,
-			payload: args.payload,
-			timeoutMs: clampWorkerTimeoutMs(args.timeoutMs),
-			status: 'queued',
-			attempts: 0,
-			maxAttempts: clampWorkerAttempts(args.maxAttempts),
-			isCancelRequested: false,
-			createdAt: now,
-			updatedAt: now,
-		});
-		await recordHostedPluginAudit(ctx, scope, 'worker.enqueue', 'completed', {});
-		return taskId;
-	},
-});
 
 // ============================================================
 // Worker-facing internal functions
@@ -412,54 +296,3 @@ async function reclaimOne(ctx: MutationCtx, task: Doc<'pluginTasks'>, now: numbe
 		attempts: task.attempts,
 	});
 }
-
-// ============================================================
-// Operator-facing functions
-// ============================================================
-
-/**
- * Request cancellation of a non-terminal job. Only flags intent: a queued job is
- * marked cancelled the moment the worker tries to claim it (so it never runs);
- * a running job is killed by the worker on its next heartbeat. Centralizing the
- * terminal transition in claim/heartbeat keeps the pluginId-attributed audit on
- * the worker-called path and avoids a torn state where the DB says cancelled but
- * a sandbox process is still alive.
- */
-export const requestCancel = authedMutation({
-	args: { taskId: v.id('pluginTasks') },
-	handler: async (ctx, args): Promise<void> => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can cancel plugin jobs'
-		);
-		const organizationId = await getSingletonOrganizationId(ctx);
-		const task = await getOrThrow(ctx, args.taskId, 'Plugin task');
-		if (task.organizationId !== organizationId) {
-			throwInvalidState('Cannot cancel a job from another organization');
-		}
-		if (task.status !== 'queued' && task.status !== 'running') {
-			throwInvalidState('Cannot cancel a job that has already finished');
-		}
-		if (task.isCancelRequested) return;
-		await ctx.db.patch(task._id, { isCancelRequested: true, updatedAt: Date.now() });
-	},
-});
-
-/** Recent jobs for this deployment's organization (dashboard/inspection). */
-export const listRecent = authedQuery({
-	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args): Promise<Doc<'pluginTasks'>[]> => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can view plugin jobs'
-		);
-		const organizationId = await getSingletonOrganizationId(ctx);
-		return await ctx.db
-			.query('pluginTasks')
-			.withIndex('by_organization', (q) => q.eq('organizationId', organizationId))
-			.order('desc')
-			.take(args.limit ?? 50);
-	},
-});

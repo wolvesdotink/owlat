@@ -22,18 +22,6 @@ import {
 import { assertTransitioned } from './lifecycle';
 import { requireDraftCampaign } from './guards';
 
-// Query to get a single campaign by ID
-export const get = authedQuery({
-	args: { campaignId: v.id('campaigns') },
-	handler: async (ctx, args) => {
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign) {
-			return null;
-		}
-		return campaign;
-	},
-});
-
 // Query to get campaign with related data (template, topic, segment)
 export const getWithRelations = authedQuery({
 	args: { campaignId: v.id('campaigns') },

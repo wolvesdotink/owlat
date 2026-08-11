@@ -12,7 +12,8 @@ import type { ContactActivityType } from '../../contactActivities/catalog';
 import { bumpSendDailyStat } from '../../lib/sendDailyStats';
 import { bumpCampaignStats } from '../../campaigns/statShards';
 import { normalizeEmail } from '../../lib/inputGuards';
-import { isMarketingOnlyBlockReason, scheduleSuppressionMirror } from '../suppressionMirror';
+import { isMarketingOnlyBlockReason } from '../suppressionMirror';
+import { scheduleSuppressionMirror } from '../suppressionMirrorScheduler';
 import type { TransportOutcomeEvent } from '../../analytics/transportOutcomes';
 import type { SendRef } from './types';
 

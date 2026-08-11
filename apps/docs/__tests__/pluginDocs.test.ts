@@ -779,19 +779,20 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		);
 	});
 
-	it('documents every hook fallback reason the log can record', () => {
-		const log = read('apps/api/convex/connectedApps/hookDeliveryLog.ts');
-		// Slice the reason validator itself rather than denylisting the hook-kind
-		// and delivery-source literals that share the file: a new kind or source
-		// must not be misread as an undocumented fallback reason.
-		const declaration = log.slice(
-			log.indexOf('export const hookUnavailableCodeValidator = v.union('),
-			log.indexOf('/** The literal union the validator accepts. */')
+	it('documents every hook fallback reason in the specified protocol', () => {
+		const transport = read('apps/api/convex/connectedApps/hookClient.ts');
+		const outcome = read('apps/api/convex/connectedApps/hookOutcome.ts');
+		const transportDeclaration = transport.slice(
+			transport.indexOf('export type HookFailureCode ='),
+			transport.indexOf('export type HookTransportOutcome =')
 		);
-		expect(declaration.length).toBeGreaterThan(0);
-		const reasons = [...declaration.matchAll(/v\.literal\('([a-z_]+)'\)/g)].map(
-			(match) => match[1]!
+		const outcomeDeclaration = outcome.slice(
+			outcome.indexOf('export type HookUnavailableCode ='),
+			outcome.indexOf('export type DraftHookOutcome =')
 		);
+		const reasons = [
+			...`${transportDeclaration}\n${outcomeDeclaration}`.matchAll(/'([a-z_]+)'/g),
+		].map((match) => match[1]!);
 		expect(reasons.length).toBeGreaterThan(15);
 		for (const reason of reasons) {
 			expect(
@@ -1268,7 +1269,6 @@ describe('plugin docs: untrusted-text controls are described as shipped, not as 
 		const boundaryFileByPhrase: Readonly<Record<string, string>> = {
 			'automation step reasons': 'apps/api/convex/automations/steps/pluginStep.ts',
 			'autonomy gate reasons': 'apps/api/convex/agent/steps/route/pluginAutoSendGates.ts',
-			'connected-app hook text': 'apps/api/convex/connectedApps/hookRuntime.ts',
 		};
 		const callers = sourceFiles('apps/api/convex').filter((file) =>
 			read(file).includes('applyPluginUntrustedTextPolicy')
@@ -1365,9 +1365,11 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
 		});
 
 		it('lists exactly the undispatched buckets as not yet invoked', () => {
-			const heading = '### Declared, catalogued and authorized — but not yet invoked';
+			const heading = '### Declared and catalogued — but not yet invoked';
 			expect(tableBuckets(heading).sort()).toEqual([...declared].sort());
-			expect(section(docs.contributions, heading)).toContain('No host path calls');
+			expect(section(docs.contributions, heading)).toContain(
+				'No host dispatch or authorization entry is shipped'
+			);
 		});
 
 		it('repeats the caveat in each undispatched bucket section', () => {
@@ -1414,34 +1416,16 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
 		}
 	});
 
-	/**
-	 * `invokeHook` is the ONLY surface that performs a signed hook call. Until a
-	 * pipeline stage calls it, every Tier-2 page saying "Owlat calls a connected
-	 * app at three decision points" is a promise the code does not keep. This
-	 * binds the claim to the real caller set: wire a call site and the deferral
-	 * markers become removable; leave it unwired and they are mandatory.
-	 */
-	it('marks the connected-app hook call sites as deferred while invokeHook has no caller', () => {
-		const HOOK_SYMBOL = 'connectedApps.hookRuntime.invokeHook';
-		const callers = sourceFiles('apps/api/convex').filter(
-			(file) =>
-				!file.includes('/__tests__/') &&
-				!file.includes('/_generated/') &&
-				!file.endsWith('connectedApps/hookRuntime.ts') &&
-				read(file).includes(HOOK_SYMBOL)
+	it('marks the connected-app hook protocol as unshipped without a runtime adapter', () => {
+		expect(sourceFiles('apps/api/convex/connectedApps')).not.toContain(
+			'apps/api/convex/connectedApps/hookRuntime.ts'
 		);
-
-		if (callers.length > 0) return; // Wired: the deferral markers may go.
-
-		expect(
-			docs.connectedApps,
-			'invokeHook has no production caller, so the connected-apps page must say so'
-		).toContain('no pipeline stage calls it yet');
-		expect(docs.overview).toContain('no pipeline call site yet');
-		expect(docs.capabilities).toContain('no pipeline stage calls it yet');
+		expect(docs.connectedApps).toContain('runtime adapter or pipeline call site');
+		expect(docs.overview).toContain('runtime adapter is not shipped');
+		expect(docs.capabilities).toContain('hook runtime adapter is not shipped');
 		expect(read('docs/adr/0052-connected-apps-and-signed-hooks.md')).toContain('## Not yet wired');
 		expect(read('examples/plugins/slack-approvals/README.md')).toContain(
-			'Owlat does not make that call yet'
+			'no Convex runtime adapter'
 		);
 	});
 

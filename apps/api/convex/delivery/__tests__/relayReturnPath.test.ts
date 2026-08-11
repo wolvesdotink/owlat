@@ -198,7 +198,7 @@ describe('relay return-path probe persistence', () => {
 		expect(again).toMatchObject({ applied: false, reason: 'already_settled' });
 	});
 
-	it('exposes the same posture through the callable query as through the resolver', async () => {
+	it('resolves posture at the current clock so an expired verdict cannot be revived', async () => {
 		const t = convexTest(schema, modules);
 		await submit(t);
 		vi.setSystemTime(T0 + 60_000);
@@ -206,34 +206,23 @@ describe('relay return-path probe persistence', () => {
 			probeMessageId: returnPathProbeMessageId(PROBE_ID),
 			at: Date.now(),
 		});
-		const viaQuery = await t.query(
-			internal.delivery.relayReturnPath.transportReturnPathCapability,
-			{ transportId: TRANSPORT_ID }
-		);
-		// One resolution, two entry points — a dashboard read and the send path
-		// can never disagree about whether a cell is degraded.
-		expect(viaQuery).toEqual(await capability(t));
-		expect(viaQuery.capability).toBe('supported');
+		const resolved = await capability(t);
+		expect(resolved.capability).toBe('supported');
 
-		// The query takes NO clock: it reads its own, so an expired verdict
-		// cannot be revived by a caller-supplied timestamp. Advancing the fake
-		// clock past the TTL is the only way to move this answer.
+		// Advancing the fake clock past the TTL is the only way to move this
+		// answer in production; callers pass Date.now() to the shared resolver.
 		vi.setSystemTime(T0 + 60_000 + RETURN_PATH_PROBE_TTL_MS);
-		const afterTtl = await t.query(
-			internal.delivery.relayReturnPath.transportReturnPathCapability,
-			{ transportId: TRANSPORT_ID }
-		);
+		const afterTtl = await capability(t);
 		expect(afterTtl.capability).toBe('unknown');
 		expect(measurementQualityOf(afterTtl)).toBe('degraded');
 	});
 
-	it('answers the callable query for an unconfigured transport without erroring', async () => {
+	it('answers the resolver for an unconfigured transport without erroring', async () => {
 		// D2: absence is a supported configuration. An id this deployment does not
 		// configure resolves to the degraded posture, never to a thrown error.
 		const t = convexTest(schema, modules);
-		const resolved = await t.query(
-			internal.delivery.relayReturnPath.transportReturnPathCapability,
-			{ transportId: 'not-a-transport' }
+		const resolved = await t.run((ctx) =>
+			returnPathCapabilityFor(ctx, 'not-a-transport', Date.now())
 		);
 		expect(resolved.capability).toBe('unknown');
 	});

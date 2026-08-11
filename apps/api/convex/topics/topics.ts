@@ -601,28 +601,6 @@ export const create = authedMutation({
 });
 
 /**
- * Reorder topics by setting displayOrder values.
- */
-export const reorder = authedMutation({
-	args: {
-		topicIds: v.array(v.id('topics')),
-	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can reorder topics');
-
-		for (let i = 0; i < args.topicIds.length; i++) {
-			const topicId = args.topicIds[i]!;
-			const topic = await ctx.db.get(topicId);
-			if (!topic) continue;
-			await ctx.db.patch(topicId, {
-				displayOrder: i,
-				updatedAt: Date.now(),
-			});
-		}
-	},
-});
-
-/**
  * Reconcile cached member counts for all topics.
  * Processes topics in batches. Called by daily cron.
  */

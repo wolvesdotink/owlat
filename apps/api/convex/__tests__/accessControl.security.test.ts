@@ -37,16 +37,14 @@ const modules = Object.fromEntries(
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider') &&
-			!path.includes('campaigns/testSend'),
-	),
+			!path.includes('campaigns/testSend')
+	)
 );
 
 const PAGE = { paginationOpts: { cursor: null, numItems: 10 } };
 
 /** Invoke `fn` with no identity and return the Operation error category (or undefined if it didn't throw). */
-async function anonCategory(
-	run: () => Promise<unknown>,
-): Promise<string | undefined> {
+async function anonCategory(run: () => Promise<unknown>): Promise<string | undefined> {
 	try {
 		await run();
 		return undefined;
@@ -60,7 +58,11 @@ describe('access control — unauthenticated callers are rejected', () => {
 	// before the remediation. Each must now reject with `unauthenticated`.
 	const queries: Array<[string, FunctionReference<'query'>, Record<string, unknown>]> = [
 		['auth.apiKeys.listByTeam', api.auth.apiKeys.listByTeam, {}],
-		['auth.accountManagement.exportContactsForOrganization', api.auth.accountManagement.exportContactsForOrganization, {}],
+		[
+			'auth.accountManagement.exportContactsForOrganization',
+			api.auth.accountManagement.exportContactsForOrganization,
+			{},
+		],
 		['providerRoutes.listRoutes', api.providerRoutes.listRoutes, {}],
 		['blockedEmails.listByTeam', api.blockedEmails.listByTeam, {}],
 		['webhooks.endpoints.listByOrganization', api.webhooks.endpoints.listByOrganization, {}],
@@ -69,8 +71,11 @@ describe('access control — unauthenticated callers are rejected', () => {
 		['semanticFiles.list', api.semanticFiles.list, PAGE],
 		['autonomy.listRules', api.autonomy.listRules, {}],
 		['contacts.contacts.list', api.contacts.contacts.list, PAGE],
-		['contacts.contacts.getAudienceStats', api.contacts.contacts.getAudienceStats, {}],
-		['contacts.organization.listAllIdsByOrganization', api.contacts.organization.listAllIdsByOrganization, {}],
+		[
+			'contacts.organization.listAllIdsByOrganization',
+			api.contacts.organization.listAllIdsByOrganization,
+			{},
+		],
 		['segments.list', api.segments.list, PAGE],
 		['mediaAssets.list', api.mediaAssets.list, PAGE],
 		['campaigns.campaigns.list', api.campaigns.campaigns.list, PAGE],
@@ -88,19 +93,27 @@ describe('access control — unauthenticated callers are rejected', () => {
 	const mutations: Array<[string, FunctionReference<'mutation'>, Record<string, unknown>]> = [
 		['auth.apiKeys.create', api.auth.apiKeys.create, { name: 'k' }],
 		['contacts.contacts.create', api.contacts.contacts.create, { email: 'a@example.com' }],
-		['providerRoutes.setRoute', api.providerRoutes.setRoute, {
-			messageType: 'campaign',
-			strategy: 'single',
-			providers: [{ providerType: 'mta', isEnabled: true }],
-		}],
+		[
+			'providerRoutes.setRoute',
+			api.providerRoutes.setRoute,
+			{
+				messageType: 'campaign',
+				strategy: 'single',
+				providers: [{ providerType: 'mta', isEnabled: true }],
+			},
+		],
 		['forms.endpoints.create', api.forms.endpoints.create, { name: 'Signup' }],
 		['topics.topics.create', api.topics.topics.create, { name: 'News' }],
-		['autonomy.upsertRule', api.autonomy.upsertRule, {
-			category: 'reply',
-			autoApproveThreshold: 0.9,
-			maxDailyAutoActions: 5,
-			isEnabled: true,
-		}],
+		[
+			'autonomy.upsertRule',
+			api.autonomy.upsertRule,
+			{
+				category: 'reply',
+				autoApproveThreshold: 0.9,
+				maxDailyAutoActions: 5,
+				isEnabled: true,
+			},
+		],
 	];
 
 	it.each(mutations)('mutation %s rejects anonymous', async (_label, fn, args) => {

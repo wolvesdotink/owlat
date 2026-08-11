@@ -465,9 +465,13 @@ describe('mail.dailyBrief.buildDailyBriefs', () => {
 		expect(res.scheduled).toBe(1);
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-		const brief = await t.query(api.mail.dailyBrief.getLatestBrief, {
-			mailboxId: seeded.mailboxId,
-		});
+		const brief = await t.run((ctx) =>
+			ctx.db
+				.query('mailDailyBriefs')
+				.withIndex('by_mailbox_and_generated', (q) => q.eq('mailboxId', seeded.mailboxId))
+				.order('desc')
+				.first()
+		);
 		expect(brief).not.toBeNull();
 
 		// Ranked "needs you" list: the commitment (high baseline) and the

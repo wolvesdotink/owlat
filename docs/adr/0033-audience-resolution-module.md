@@ -15,14 +15,14 @@ user-visible.
 
 ### Caller landscape — "who is an eligible recipient"
 
-| Site | File:line | Audience shape | Eligibility applied | Soft-delete filter |
-|---|---|---|---|---|
-| Recipient resolver (de-facto) | `emailsQueries.ts:138-267` | flat args (`audienceType` + `topicId`/`segmentId`/`segmentFilters`) | email-present, suppression, DOI-if-topic; segment match via inline `evaluateCondition` loop | ❌ **none** (`:214` scans `contacts`) |
-| Wizard count | `campaigns/organization.ts:99-152` | flat args | topic: **DOI only**; segment → `evaluateSegmentCount` | ❌ none |
-| Shared segment count | `lib/segmentEvaluation.ts:63-91` | `filters` | raw match only (`total === eligible`) | ❌ none (`:75,:80`) |
-| Wizard selection | `AudienceStep.vue:30-113` | three refs (`audienceType` + `selectedTopicId` + `selectedSegmentId`) | re-derives topic-xor-segment at `:59-69`, `:102-110` | n/a |
-| Wizard review | `new.vue:47-52, 119-125` | `AudienceStepExpose` | re-derives `audienceDisplayText` | n/a |
-| Storage | `schema/campaigns.ts:29-32` | four flat optional columns | — | — |
+| Site                          | File:line                          | Audience shape                                                        | Eligibility applied                                                                         | Soft-delete filter                    |
+| ----------------------------- | ---------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------- |
+| Recipient resolver (de-facto) | `emailsQueries.ts:138-267`         | flat args (`audienceType` + `topicId`/`segmentId`/`segmentFilters`)   | email-present, suppression, DOI-if-topic; segment match via inline `evaluateCondition` loop | ❌ **none** (`:214` scans `contacts`) |
+| Wizard count                  | `campaigns/organization.ts:99-152` | flat args                                                             | topic: **DOI only**; segment → `evaluateSegmentCount`                                       | ❌ none                               |
+| Shared segment count          | `lib/segmentEvaluation.ts:63-91`   | `filters`                                                             | raw match only (`total === eligible`)                                                       | ❌ none (`:75,:80`)                   |
+| Wizard selection              | `AudienceStep.vue:30-113`          | three refs (`audienceType` + `selectedTopicId` + `selectedSegmentId`) | re-derives topic-xor-segment at `:59-69`, `:102-110`                                        | n/a                                   |
+| Wizard review                 | `new.vue:47-52, 119-125`           | `AudienceStepExpose`                                                  | re-derives `audienceDisplayText`                                                            | n/a                                   |
+| Storage                       | `schema/campaigns.ts:29-32`        | four flat optional columns                                            | —                                                                                           | —                                     |
 
 Two orchestrator consumers of the recipient resolver (`emails.ts:325`
 first-phase, `emails.ts:731` winner-remainder); two frontend consumers
@@ -33,7 +33,7 @@ and the `updateAudience` mutation (`AudienceStep.vue:120`,
 Per LANGUAGE.md's deletion test: deleting `getCampaignRecipients` does
 not move complexity to one sibling — it scatters the eligibility rules
 (email-present + suppression + DOI + segment match) across both the
-orchestrator's first and second phase *and* re-collides them with the
+orchestrator's first and second phase _and_ re-collides them with the
 count query's separate copy. The complexity is real, it concentrates
 into a predicate, and it currently lives in three places that must
 agree and don't.
@@ -41,25 +41,24 @@ agree and don't.
 ### 1. The wizard count over-reports — `eligible` ≠ delivered
 
 `getAudienceCountByOrganization` computes `eligible` by filtering on DOI
-*only*:
+_only_:
 
 ```ts
 // campaigns/organization.ts:124-136 — topic path
 let eligible = 0;
 for (const membership of memberships) {
-  const contact = await ctx.db.get(membership.contactId);
-  if (contact) {
-    const isDoiEligible =
-      contact.doiStatus === 'confirmed' || contact.doiStatus === 'not_required';
-    if (isDoiEligible) eligible++;
-  }
+	const contact = await ctx.db.get(membership.contactId);
+	if (contact) {
+		const isDoiEligible = contact.doiStatus === "confirmed" || contact.doiStatus === "not_required";
+		if (isDoiEligible) eligible++;
+	}
 }
 ```
 
 It never drops emailless Contacts (phone/SMS/WhatsApp/generic origin) or
 `blockedEmails` suppressed Contacts. The segment path is worse — it
 delegates to `evaluateSegmentCount`, which returns `total === eligible`
-(raw match count, no eligibility at all). But the actual send *does*
+(raw match count, no eligibility at all). But the actual send _does_
 drop both:
 
 ```ts
@@ -79,9 +78,7 @@ table with no `deletedAt` filter:
 
 ```ts
 // emailsQueries.ts:214-216
-const contacts = await ctx.db
-  .query('contacts')
-  .collect();
+const contacts = await ctx.db.query("contacts").collect();
 ```
 
 CONTEXT.md's **Contact** invariant is explicit: "All list/lookup
@@ -97,9 +94,9 @@ over-count too.
 
 ### 3. Two segment-evaluation paths for the same campaign
 
-The campaign *recipient* path matches segments with an inline
+The campaign _recipient_ path matches segments with an inline
 `evaluateCondition` loop (`emailsQueries.ts:238-260`); the campaign
-*count* path matches with `evaluateSegmentCount`
+_count_ path matches with `evaluateSegmentCount`
 (`organization.ts:147`). Both call the same underlying engine
 (`evaluateOne` / `preloadConditionsLookup`) but through different
 wrappers with different post-filtering — so they can disagree on the
@@ -139,7 +136,7 @@ ordered predicate (live → email-present → not-suppressed → DOI-if-topic)
 and a load-bearing asymmetry (DOI gates topics, never segments). Lifting
 the predicate behind one module produces real leverage: the orchestrator
 and the wizard ask one question and get one answer, so the count
-*cannot* over-report again. Locality: the predicate, the suppression
+_cannot_ over-report again. Locality: the predicate, the suppression
 gate, the soft-delete filter, and the DOI asymmetry live in one place
 instead of three.
 
@@ -167,9 +164,7 @@ section landed inline with the grilling.
 // The targeting *selection* — snapshot-free. What the wizard picks and
 // what `updateAudience` writes. Ids are strings at this layer; the
 // Convex edge narrows them to Id<...>.
-export type Audience =
-  | { kind: 'topic'; topicId: string }
-  | { kind: 'segment'; segmentId: string };
+export type Audience = { kind: "topic"; topicId: string } | { kind: "segment"; segmentId: string };
 ```
 
 ```ts
@@ -177,12 +172,12 @@ export type Audience =
 // The stored segment case additionally carries the send-time snapshot;
 // `Infer` keeps it in lockstep with the shared TS type's selection subset.
 export const audienceValidator = v.union(
-  v.object({ kind: v.literal('topic'), topicId: v.id('topics') }),
-  v.object({
-    kind: v.literal('segment'),
-    segmentId: v.id('segments'),
-    frozenFilters: v.optional(segmentFiltersValidator), // copied at send time
-  }),
+	v.object({ kind: v.literal("topic"), topicId: v.id("topics") }),
+	v.object({
+		kind: v.literal("segment"),
+		segmentId: v.id("segments"),
+		frozenFilters: v.optional(segmentFiltersValidator), // copied at send time
+	}),
 );
 export type StoredAudience = Infer<typeof audienceValidator>;
 ```
@@ -200,27 +195,26 @@ even after the Segment is later edited.
 // convex/campaigns/audienceResolution.ts
 
 export interface CampaignRecipient {
-  _id: Id<'contacts'>;
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  timezone?: string;
-  language?: string;
+	_id: Id<"contacts">;
+	email: string;
+	firstName?: string;
+	lastName?: string;
+	timezone?: string;
+	language?: string;
 }
 
 // ── The pure core: the eligibility decision for one loaded Contact. ──
 // null = excluded. The ONLY definition of "eligible recipient".
 export function selectRecipient(
-  contact: Doc<'contacts'>,
-  gate: { requiresDoi: boolean; blockedEmails: ReadonlySet<string> },
+	contact: Doc<"contacts">,
+	gate: { requiresDoi: boolean; blockedEmails: ReadonlySet<string> },
 ): CampaignRecipient | null {
-  if (contact.deletedAt !== undefined) return null;          // live-contact
-  if (!contact.email) return null;                            // email-present
-  if (gate.blockedEmails.has(contact.email.toLowerCase())) return null; // suppression
-  if (gate.requiresDoi
-      && contact.doiStatus !== 'confirmed'
-      && contact.doiStatus !== 'not_required') return null;   // DOI (topic only)
-  return projectRecipient(contact);
+	if (contact.deletedAt !== undefined) return null; // live-contact
+	if (!contact.email) return null; // email-present
+	if (gate.blockedEmails.has(contact.email.toLowerCase())) return null; // suppression
+	if (gate.requiresDoi && contact.doiStatus !== "confirmed" && contact.doiStatus !== "not_required")
+		return null; // DOI (topic only)
+	return projectRecipient(contact);
 }
 
 // ── The shared async iteration: the single walk over an Audience's
@@ -229,35 +223,38 @@ export function selectRecipient(
 // asymmetry). Segment matching reuses evaluateOne/preloadConditionsLookup
 // over the soft-delete-filtered contact scan. ──
 async function forEachCandidate(
-  ctx: QueryCtx,
-  audience: StoredAudience,
-  visit: (recipient: CampaignRecipient) => void,
-): Promise<{ total: number }>;   // total = candidates examined (members / matches)
+	ctx: QueryCtx,
+	audience: StoredAudience,
+	visit: (recipient: CampaignRecipient) => void,
+): Promise<{ total: number }>; // total = candidates examined (members / matches)
 
-// ── Entry 1: materialize rows. The orchestrator's resolution step. ──
-export const resolveRecipients = internalQuery({
-  args: { audience: audienceValidator },
-  handler: async (ctx, { audience }): Promise<CampaignRecipient[]> => { /* push */ },
+// ── Entry 1: one checkpointed page of the orchestrator's walk. ──
+export const resolveRecipientPage = internalQuery({
+	args: { audience: audienceValidator, cursor: v.string() },
+	handler: async (ctx, args): Promise<ResolvedPage> => {
+		/* one page */
+	},
 });
 
 // ── Entry 2: accumulate integers. The wizard's audience-size readout.
 // Runs the IDENTICAL predicate, so `eligible` equals the delivered count. ──
 export const countRecipients = query({
-  args: { audience: v.optional(audienceValidator) },
-  handler: async (ctx, { audience }): Promise<{ total: number; eligible: number }> => {
-    /* drives forEachCandidate, counts visits; total from the walk */
-  },
+	args: { audience: v.optional(audienceValidator) },
+	handler: async (ctx, { audience }): Promise<{ total: number; eligible: number }> => {
+		/* drives forEachCandidate, counts visits; total from the walk */
+	},
 });
 ```
 
-Both entries drive `forEachCandidate` + `selectRecipient`;
-`resolveRecipients` pushes, `countRecipients` increments. That shared
-walk is the structural guarantee that count and send cannot diverge.
+Both entries drive the same candidate selection + `selectRecipient` core;
+`resolveRecipientPage` advances the send checkpoint one bounded page while
+`countRecipients` streams and increments. That shared predicate is the
+structural guarantee that count and send cannot diverge.
 
 ### Invariants
 
 - **DOI asymmetry, by design.** `requiresDoi` is set from
-  `topic.requireDoubleOptIn` for a topic Audience and is *always false*
+  `topic.requireDoubleOptIn` for a topic Audience and is _always false_
   for a segment Audience. Segments are explicit operator targeting, not
   consent-derived membership. Encoded once, in `forEachCandidate`'s gate
   construction. Do not "fix" the segment path to gate on DOI without
@@ -270,29 +267,30 @@ walk is the structural guarantee that count and send cannot diverge.
   is false — otherwise the form's DOI toggle would be silently ignored at
   send time (consent/legal exposure). The flag is only ever set on the
   topic path (there is no membership on the segment path).
-- **`eligible === resolveRecipients(audience).length`** for any Audience
-  — the two entries share one predicate.
+- **`eligible === sum(resolveRecipientPage(audience).recipients.length)`**
+  after draining every page of an Audience — the two entries share one
+  predicate.
 - **`total`** is the raw membership count (topic) or segment-match count
   (segment); `total - eligible` is the meaningful excluded gap
   (soft-deleted + emailless + suppressed + DOI-pending), which the wizard
   can now itemise honestly.
 - **Live contacts only.** `selectRecipient` rejects `deletedAt !==
-  undefined`; the segment scan applies the soft-delete filter at the
+undefined`; the segment scan applies the soft-delete filter at the
   shared `contacts` read. Closes drift #2.
 
 ### Replaces
 
-| File:line | Pre | Post |
-|---|---|---|
-| `emailsQueries.ts:138-267` `getCampaignRecipients` | inline topic + segment eligibility, no soft-delete filter | Deleted; orchestrator calls `resolveRecipients` |
-| `campaigns/organization.ts:99-152` `getAudienceCountByOrganization` | DOI-only eligible; segment → raw `evaluateSegmentCount` | Deleted; wizard calls `countRecipients` |
-| `emails.ts:325` (first-phase) | `runQuery(getCampaignRecipients, {audienceType,...})` | `runQuery(resolveRecipients, { audience })` |
-| `emails.ts:731` (winner-remainder) | same, then orchestrator-side already-sent exclusion | `runQuery(resolveRecipients, { audience })`, then unchanged exclusion |
-| `campaigns/campaigns.ts:126` `updateAudience` | three optional args (`audienceType`/`topicId`/`segmentId`) | one `audience: audienceValidator` arg |
-| `schema/campaigns.ts:29-32` | four flat optional columns | one `audience: v.optional(audienceValidator)` field |
-| `AudienceStep.vue:30-113` | three refs + re-derivation | one `audience` ref of the shared `Audience` type |
-| `new.vue:47-52,119-125` | `AudienceStepExpose` re-derivation | reads the shared `Audience` |
-| `useCampaignForm.ts:127,185` | flat-arg `updateAudience` + count | `audience`-shaped `updateAudience` + `countRecipients` |
+| File:line                                                           | Pre                                                        | Post                                                             |
+| ------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| `emailsQueries.ts:138-267` `getCampaignRecipients`                  | inline topic + segment eligibility, no soft-delete filter  | Deleted; orchestrator checkpoints through `resolveRecipientPage` |
+| `campaigns/organization.ts:99-152` `getAudienceCountByOrganization` | DOI-only eligible; segment → raw `evaluateSegmentCount`    | Deleted; wizard calls `countRecipients`                          |
+| `emails.ts:325` (first-phase)                                       | `runQuery(getCampaignRecipients, {audienceType,...})`      | checkpointed page walk through `resolveRecipientPage`            |
+| `emails.ts:731` (winner-remainder)                                  | same, then orchestrator-side already-sent exclusion        | same checkpointed page walk, with unchanged exclusion            |
+| `campaigns/campaigns.ts:126` `updateAudience`                       | three optional args (`audienceType`/`topicId`/`segmentId`) | one `audience: audienceValidator` arg                            |
+| `schema/campaigns.ts:29-32`                                         | four flat optional columns                                 | one `audience: v.optional(audienceValidator)` field              |
+| `AudienceStep.vue:30-113`                                           | three refs + re-derivation                                 | one `audience` ref of the shared `Audience` type                 |
+| `new.vue:47-52,119-125`                                             | `AudienceStepExpose` re-derivation                         | reads the shared `Audience`                                      |
+| `useCampaignForm.ts:127,185`                                        | flat-arg `updateAudience` + count                          | `audience`-shaped `updateAudience` + `countRecipients`           |
 
 `evaluateSegmentCount`, `evaluateCondition`, `evaluateOne`,
 `preloadConditionsLookup` in `lib/segmentEvaluation.ts` **stay** — they
@@ -303,11 +301,11 @@ are the shared segment-matching engine used by segment management
 ### Closes drift bugs
 
 1. **Count over-reporting** (§1) — `countRecipients` runs the same
-   `selectRecipient` predicate as `resolveRecipients`; `eligible` now
+   `selectRecipient` predicate as `resolveRecipientPage`; `eligible` now
    subtracts emailless + suppressed + DOI-pending, matching delivery.
 2. **Soft-delete leak** (§2) — `selectRecipient` rejects soft-deleted
    Contacts; the shared `contacts` scan gains the `deletedAt` filter, so
-   the campaign paths *and* `evaluateSegmentCount`'s preview counts are
+   the campaign paths _and_ `evaluateSegmentCount`'s preview counts are
    fixed in one place.
 3. **Two segment-evaluation paths** (§3) — campaign matching runs once,
    through `forEachCandidate`, for both count and send.
@@ -327,7 +325,8 @@ The interface is the test surface.
    `requiresDoi` → null; DOI-pending with `!requiresDoi` (segment) →
    recipient; confirmed/not_required → recipient. This is the deep core.
 2. **Anti-drift integration test** — for a seeded topic and segment,
-   assert `countRecipients(a).eligible === resolveRecipients(a).length`.
+   assert `countRecipients(a).eligible` equals the recipients accumulated by
+   draining `resolveRecipientPage`.
    The property that bug #1 violated.
 3. **Soft-delete regression** — a soft-deleted Contact with a surviving
    topic membership and a segment match appears in neither entry.
@@ -337,7 +336,7 @@ The interface is the test surface.
 5. **Migrating existing tests:**
    - `__tests__/sendFlow.integration.test.ts:321-...` (the
      `getCampaignRecipients` describe block, call sites `:326,:351,:371,
-     :596`) → `resolveRecipients` with `{ audience }`.
+:596`) → drain `resolveRecipientPage` from the initial cursor.
    - `__tests__/campaignsRoleEnforcement.integration.test.ts:91-107`
      (`updateAudience` role enforcement) → the `audience`-shaped arg.
    - `lib/__tests__/segmentEvaluation.integration.test.ts:684-...`
@@ -352,7 +351,7 @@ The interface is the test surface.
   `topics.reconcileMemberCounts` deferral in ADR-0032.
 - **The `frozenFilters` snapshot write.** The **Campaign send
   orchestrator (module)** / preflight copies the live Segment's filters
-  at send time; the resolver only *reads* a snapshot when handed one.
+  at send time; the resolver only _reads_ a snapshot when handed one.
 - **The A/B already-sent exclusion.** `listSentContactIdsForCampaign`
   dedup in `sendCampaignWinnerToRemainder` stays in the orchestrator —
   that is send-state, not Audience membership.
@@ -381,17 +380,17 @@ shape as the **Contact resolution (module)** (ADR-0008).
 
 **Surface area:**
 
-| Code site | Pre | Post |
-|---|---|---|
-| `emailsQueries.ts` (recipient block) | ~130 LOC | 0 (deleted) |
-| `campaigns/organization.ts` (count block) | ~54 LOC | 0 (deleted) |
-| `AudienceStep.vue` (audience state) | ~85 LOC | ~30 LOC (one ref) |
-| `new.vue` / `useCampaignForm.ts` re-derivation | ~40 LOC | ~10 LOC |
-| New `packages/shared/.../audience.ts` | — | ~15 LOC |
-| New `convex/campaigns/audience.ts` (validator) | — | ~15 LOC |
-| New `convex/campaigns/audienceResolution.ts` | — | ~140 LOC |
-| New `campaigns/__tests__/audienceResolution.test.ts` | — | ~220 LOC (≈mostly pure) |
-| Net | ~309 LOC | ~430 LOC (≈220 of it new tests) |
+| Code site                                            | Pre      | Post                            |
+| ---------------------------------------------------- | -------- | ------------------------------- |
+| `emailsQueries.ts` (recipient block)                 | ~130 LOC | 0 (deleted)                     |
+| `campaigns/organization.ts` (count block)            | ~54 LOC  | 0 (deleted)                     |
+| `AudienceStep.vue` (audience state)                  | ~85 LOC  | ~30 LOC (one ref)               |
+| `new.vue` / `useCampaignForm.ts` re-derivation       | ~40 LOC  | ~10 LOC                         |
+| New `packages/shared/.../audience.ts`                | —        | ~15 LOC                         |
+| New `convex/campaigns/audience.ts` (validator)       | —        | ~15 LOC                         |
+| New `convex/campaigns/audienceResolution.ts`         | —        | ~140 LOC                        |
+| New `campaigns/__tests__/audienceResolution.test.ts` | —        | ~220 LOC (≈mostly pure)         |
+| Net                                                  | ~309 LOC | ~430 LOC (≈220 of it new tests) |
 
 ### Migration
 
@@ -419,10 +418,10 @@ change. Mirrors ADR-0032 phase 1.
 #### Phase 3 — Land the module + tests, migrate backend consumers
 
 1. `convex/campaigns/audienceResolution.ts` with `selectRecipient`,
-   `forEachCandidate`, `resolveRecipients`, `countRecipients`.
+   `forEachCandidate`, `resolveRecipientPage`, `countRecipients`.
 2. Add the soft-delete filter to the shared `contacts` scan in
    `lib/segmentEvaluation.ts`.
-3. `emails.ts:325` and `:731` → `resolveRecipients`. Delete
+3. `emails.ts:325` and `:731` → the checkpointed `resolveRecipientPage` walk. Delete
    `getCampaignRecipients`. `_generated/api.d.ts` regenerates.
 4. New pure + anti-drift tests; migrate the `sendFlow` call sites.
 

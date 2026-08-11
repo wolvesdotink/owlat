@@ -19,8 +19,6 @@ import {
 	entryTypeValidator,
 	sourceTypeValidator,
 	relationTypeValidator,
-	edgeConfidenceTagValidator,
-	edgeProvenanceValidator,
 	commitmentStatusValidator,
 	COMMITMENT_ENTRY_TYPES,
 	POLICY_ENTRY_TYPES,
@@ -410,24 +408,6 @@ export const deleteEntry = authedMutation({
 });
 
 /**
- * Update a knowledge entry's confidence (internal, for decay/boost)
- */
-export const updateConfidence = internalMutation({
-	args: {
-		entryId: v.id('knowledgeEntries'),
-		confidence: v.number(),
-		lastValidatedAt: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		await ctx.db.patch(args.entryId, {
-			confidence: args.confidence,
-			lastValidatedAt: args.lastValidatedAt ?? Date.now(),
-			updatedAt: Date.now(),
-		});
-	},
-});
-
-/**
  * Save a knowledge entry from the agent pipeline (internal)
  */
 export const saveEntry = internalMutation({
@@ -499,42 +479,6 @@ export const saveEntry = internalMutation({
 		await insertEntryContacts(ctx, entryId, args.contactIds);
 
 		return entryId;
-	},
-});
-
-/**
- * Create a relation between two knowledge entries (internal, for the pipeline /
- * agent + tests). The public author path is `addRelation` below.
- */
-export const createRelation = internalMutation({
-	args: {
-		fromEntryId: v.id('knowledgeEntries'),
-		toEntryId: v.id('knowledgeEntries'),
-		relationType: relationTypeValidator,
-		// Optional edge evidence. Omitted ⇒ the manual/curated defaults below (a
-		// directly-authored, fully-trusted edge). The deterministic/LLM linkers
-		// pass richer attrs; for idempotent insert-or-merge they go through
-		// `knowledge.edges.upsertEdge` instead of this raw insert.
-		confidenceTag: v.optional(edgeConfidenceTagValidator),
-		confidence: v.optional(v.number()),
-		provenance: v.optional(edgeProvenanceValidator),
-		weight: v.optional(v.number()),
-		rationale: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		return await ctx.db.insert('knowledgeRelations', {
-			fromEntryId: args.fromEntryId,
-			toEntryId: args.toEntryId,
-			relationType: args.relationType,
-			confidenceTag: args.confidenceTag ?? 'extracted',
-			confidence: args.confidence ?? 1.0,
-			provenance: args.provenance ?? 'manual',
-			weight: args.weight,
-			rationale: args.rationale,
-			createdAt: now,
-			updatedAt: now,
-		});
 	},
 });
 

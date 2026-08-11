@@ -99,7 +99,7 @@ describe('analytics.llmUsage.getSpendByFeature', () => {
 	});
 });
 
-describe('plugin LLM spend reads', () => {
+describe('tenant-scoped LLM spend reads', () => {
 	it('combines legacy core with the active tenant and excludes another tenant', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
@@ -124,45 +124,15 @@ describe('plugin LLM spend reads', () => {
 		expect(byFeature.features.map((row) => row.feature).sort()).toEqual(['core', 'plugin:alpha']);
 		const byProvider = await t.query(api.analytics.llmUsage.getSpendByProvider, {});
 		expect(byProvider.totalCostUsd).toBeCloseTo(0.3);
-		const plugin = await t.query(api.analytics.llmUsage.getSpendByPlugin, { pluginId: 'alpha' });
-		expect(plugin).toMatchObject({ pluginId: 'alpha', calls: 1, totalTokens: 15, costUsd: 0.2 });
-		await expect(
-			t.query(api.analytics.llmUsage.getSpendByPlugin, { pluginId: '../secret' })
-		).rejects.toThrow();
 	});
 
-	it('shares one bounded spend-window validator across feature, provider, and plugin reads', async () => {
+	it('shares one bounded spend-window validator across feature and provider reads', async () => {
 		const t = convexTest(schema, modules);
 		for (const call of [
 			t.query(api.analytics.llmUsage.getSpendByFeature, { hoursBack: -1 }),
 			t.query(api.analytics.llmUsage.getSpendByProvider, { hoursBack: Number.POSITIVE_INFINITY }),
-			t.query(api.analytics.llmUsage.getSpendByPlugin, { pluginId: 'alpha', hoursBack: 2161 }),
 		]) {
 			await expect(call).rejects.toThrow('Invalid LLM spend window');
 		}
-	});
-
-	it('marks a plugin attribution window truncated at its bounded read ceiling', async () => {
-		const t = convexTest(schema, modules);
-		const now = Date.now();
-		for (let batch = 0; batch < 50; batch++) {
-			await t.run(async (ctx) => {
-				for (let index = 0; index < 100; index++) {
-					await ctx.db.insert('llmUsageEvents', {
-						feature: 'plugin:alpha',
-						organizationId: 'tenant-a',
-						pluginId: 'alpha',
-						modelUsed: 'gpt-4o-mini',
-						promptTokens: 1,
-						completionTokens: 1,
-						totalTokens: 2,
-						costUsd: 0.000001,
-						createdAt: now + batch * 100 + index,
-					});
-				}
-			});
-		}
-		const plugin = await t.query(api.analytics.llmUsage.getSpendByPlugin, { pluginId: 'alpha' });
-		expect(plugin).toMatchObject({ calls: 5000, isTruncated: true });
 	});
 });

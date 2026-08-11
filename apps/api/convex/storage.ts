@@ -1,5 +1,5 @@
 import { authedMutation, authedQuery } from './lib/authedFunctions';
-import { getUserIdFromSession, requireAdminContext } from './lib/sessionOrganization';
+import { getUserIdFromSession } from './lib/sessionOrganization';
 import { v } from 'convex/values';
 import { throwNotFound } from './_utils/errors';
 
@@ -48,31 +48,5 @@ export const getUrl = authedQuery({
 		}
 
 		return await ctx.storage.getUrl(args.storageId);
-	},
-});
-
-/**
- * Delete a file from storage by its storage ID.
- * Verifies the file belongs to the caller via mediaAssets ownership.
- */
-export const deleteFile = authedMutation({
-	args: { storageId: v.id('_storage') },
-	handler: async (ctx, args) => {
-		// Deleting a stored blob is admin-only: blobs back media assets, whose own
-		// delete path requires media:manage (admin). Gate the raw blob delete the
-		// same way.
-		await requireAdminContext(ctx);
-
-		// Verify the storage file belongs to the instance via mediaAssets ownership.
-		const owningAsset = await ctx.db
-			.query('mediaAssets')
-			.withIndex('by_storage_id', (q) => q.eq('storageId', args.storageId))
-			.first();
-
-		if (!owningAsset) {
-			throwNotFound('File');
-		}
-
-		await ctx.storage.delete(args.storageId);
 	},
 });

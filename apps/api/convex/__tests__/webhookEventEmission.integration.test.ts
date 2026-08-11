@@ -2,12 +2,9 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import {
-	createTestCampaign,
-	createTestContact,
-	createTestEmailSend,
-} from './factories';
+import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { createContact } from '../contacts/creation';
 
 /**
  * Regression coverage for the four customer-webhook events that the registry
@@ -23,12 +20,17 @@ import type { Id } from '../_generated/dataModel';
 
 const modules = import.meta.glob('../**/*.*s');
 
+async function createThroughModule(
+	t: ReturnType<typeof convexTest>,
+	args: Parameters<typeof createContact>[1]
+) {
+	return t.run((ctx) => createContact(ctx, args));
+}
+
 type Fanout = { event: string; data: Record<string, unknown> };
 
 /** The fanoutEvent jobs the just-run mutation scheduled, by event literal. */
-async function scheduledFanouts(
-	t: ReturnType<typeof convexTest>
-): Promise<Fanout[]> {
+async function scheduledFanouts(t: ReturnType<typeof convexTest>): Promise<Fanout[]> {
 	return await t.run(async (ctx) => {
 		const jobs = await ctx.db.system.query('_scheduled_functions').collect();
 		const out: Fanout[] = [];
@@ -140,7 +142,7 @@ describe('webhook emission — contact.created', () => {
 	it('fans out contact.created for a genuinely-new email contact, tagged with source', async () => {
 		const t = convexTest(schema, modules);
 
-		const res = await t.mutation(internal.contacts.creation.create, {
+		const res = await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'new@example.com',
 			source: 'api',
@@ -157,13 +159,13 @@ describe('webhook emission — contact.created', () => {
 	it('does not re-fan contact.created when an upsert matches an existing contact', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.contacts.creation.create, {
+		await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'dup@example.com',
 			source: 'api',
 			mode: 'strict',
 		});
-		await t.mutation(internal.contacts.creation.create, {
+		await createThroughModule(t, {
 			channel: 'email',
 			identifier: 'dup@example.com',
 			source: 'inbound',
@@ -177,7 +179,7 @@ describe('webhook emission — contact.created', () => {
 	it('does not fan out contact.created for a non-email channel (no address to report)', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.contacts.creation.create, {
+		await createThroughModule(t, {
 			channel: 'sms',
 			identifier: '+15551230000',
 			source: 'inbound',

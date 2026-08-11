@@ -648,8 +648,7 @@ export const verify = mutation({
   },
 });
 
-// Read queries (listByOrganization, get, getByDomain, countByStatus,
-// listVerified, isDomainVerified, isDomainVerificationFresh,
+// Read queries (listByOrganization, listVerified,
 // getEmailDomainVerificationStatus) — unchanged.
 ```
 

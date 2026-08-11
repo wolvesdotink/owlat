@@ -1,10 +1,9 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import type { Doc, Id } from '../_generated/dataModel';
-import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
-import { getOrThrow, throwInvalidInput } from '../_utils/errors';
-import { batchGet } from '../_utils/batchLoader';
+import { authedQuery } from '../lib/authedFunctions';
+import type { Id } from '../_generated/dataModel';
+import { getUserIdFromSession } from '../lib/sessionOrganization';
+import { getOrThrow } from '../_utils/errors';
 
 // Status type for email sends
 export type EmailSendStatus =
@@ -16,107 +15,6 @@ export type EmailSendStatus =
 	| 'bounced'
 	| 'complained'
 	| 'failed';
-
-// Get email sends for a campaign with pagination
-export const listByCampaign = authedQuery({
-	args: {
-		campaignId: v.id('campaigns'),
-		status: v.optional(
-			v.union(
-				v.literal('queued'),
-				v.literal('sent'),
-				v.literal('delivered'),
-				v.literal('opened'),
-				v.literal('clicked'),
-				v.literal('bounced'),
-				v.literal('complained'),
-				v.literal('failed')
-			)
-		),
-		limit: v.optional(v.number()),
-		offset: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-		await getOrThrow(ctx, args.campaignId, 'Campaign');
-
-		const offset = args.offset || 0;
-		const limit = args.limit || 50;
-
-		let query;
-		if (args.status) {
-			query = ctx.db
-				.query('emailSends')
-				.withIndex('by_campaign_and_status', (q) =>
-					q.eq('campaignId', args.campaignId).eq('status', args.status!)
-				);
-		} else {
-			query = ctx.db
-				.query('emailSends')
-				.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId));
-		}
-
-		// Take only what we need: skip offset items + limit items + 1 to check hasMore
-		const sends = await query.take(offset + limit + 1);
-		const total = sends.length;
-		const paginatedSends = sends.slice(offset, offset + limit);
-		const hasMore = sends.length > offset + limit;
-
-		// Use denormalized contact info (no N+1 queries)
-		const sendsWithContacts = paginatedSends.map((send) => ({
-			...send,
-			contact: {
-				email: send.contactEmail,
-				firstName: send.contactFirstName,
-				lastName: send.contactLastName,
-			},
-		}));
-
-		return {
-			sends: sendsWithContacts,
-			total,
-			hasMore,
-		};
-	},
-});
-
-// Get email sends for a contact
-export const listByContact = authedQuery({
-	args: {
-		contactId: v.id('contacts'),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-		await getOrThrow(ctx, args.contactId, 'Contact');
-
-		const limit = args.limit || 50;
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.order('desc')
-			.take(limit);
-
-		// Batch-load all campaigns at once
-		const campaignIds = sends.map((send) => send.campaignId);
-		const campaignsMap = await batchGet<Doc<'campaigns'>>(ctx, campaignIds);
-
-		const sendsWithCampaigns = sends.map((send) => {
-			const campaign = campaignsMap.get(String(send.campaignId));
-			return {
-				...send,
-				campaign: campaign
-					? {
-							name: campaign.name,
-							subject: campaign.subject,
-						}
-					: null,
-			};
-		});
-
-		return sendsWithCampaigns;
-	},
-});
 
 // Get a single email send by ID
 export const get = authedQuery({
@@ -231,48 +129,6 @@ export const getStatsByCampaign = authedQuery({
 	},
 });
 
-// Create a new email send record (when queuing for sending)
-export const create = authedMutation({
-	args: {
-		campaignId: v.id('campaigns'),
-		contactId: v.id('contacts'),
-		personalizedSubject: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'campaigns:send',
-			'You do not have permission to create email sends'
-		);
-		await getOrThrow(ctx, args.campaignId, 'Campaign');
-
-		const now = Date.now();
-
-		// Fetch contact to denormalize fields
-		const contact = await getOrThrow(ctx, args.contactId, 'Contact');
-		// Email is optional on contacts (phone/SMS/WhatsApp/generic origin);
-		// emailSends is the email send-path table, so an emailless contact
-		// here is a caller bug — refuse rather than write an empty SNAPSHOT.
-		if (!contact.email) {
-			throwInvalidInput('Cannot create an email send for a contact without an email address');
-		}
-
-		const id = await ctx.db.insert('emailSends', {
-			campaignId: args.campaignId,
-			contactId: args.contactId,
-			// Denormalize contact info to avoid N+1 queries on read
-			contactEmail: contact.email,
-			contactFirstName: contact.firstName,
-			contactLastName: contact.lastName,
-			status: 'queued',
-			personalizedSubject: args.personalizedSubject,
-			queuedAt: now,
-		});
-
-		return id;
-	},
-});
-
 // Batch create email send records. Accepts an optional `abVariant` per
 // row — set by the Campaign send orchestrator (module) when running an
 // A/B test fanout; left undefined for non-A/B campaigns.
@@ -367,23 +223,6 @@ export const createBatch = internalMutation({
 // Callers should invoke `internal.delivery.sendLifecycle.transition` with a
 // SendRef `{ kind: 'campaign', id }` and a typed transition input. See
 // CONTEXT.md "Send lifecycle".
-
-// Delete email sends for a campaign (used when deleting a campaign)
-export const deleteByCampaign = internalMutation({
-	args: { campaignId: v.id('campaigns') },
-	handler: async (ctx, args) => {
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.collect();
-
-		for (const send of sends) {
-			await ctx.db.delete(send._id);
-		}
-
-		return sends.length;
-	},
-});
 
 // Get opens timeline data for a campaign (grouped by hour)
 // Limits to first 10,000 sends to avoid unbounded reads
@@ -519,36 +358,6 @@ export const getClickedContacts = authedQuery({
 			total,
 			hasMore: offset + limit < total,
 		};
-	},
-});
-
-// Get sends that need to be processed (queued status)
-export const getQueuedSends = internalMutation({
-	args: {
-		campaignId: v.id('campaigns'),
-		limit: v.number(),
-	},
-	handler: async (ctx, args) => {
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign_and_status', (q) =>
-				q.eq('campaignId', args.campaignId).eq('status', 'queued')
-			)
-			.take(args.limit);
-
-		// Use denormalized contact info (no N+1 queries)
-		const sendsWithContacts = sends.map((send) => ({
-			id: send._id,
-			contactId: send.contactId,
-			personalizedSubject: send.personalizedSubject,
-			contact: {
-				email: send.contactEmail,
-				firstName: send.contactFirstName,
-				lastName: send.contactLastName,
-			},
-		}));
-
-		return sendsWithContacts;
 	},
 });
 

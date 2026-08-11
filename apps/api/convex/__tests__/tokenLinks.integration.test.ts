@@ -15,13 +15,15 @@
  * and a tampered one is genuinely forged.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestContact, createTestTopic } from './factories';
+import type { StoredAudience } from '../campaigns/audience';
+import type { CampaignRecipient } from '../campaigns/audienceCandidates';
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
@@ -49,6 +51,23 @@ function setupTest() {
 	const t = convexTest(schema, modules);
 	rateLimiterTest.register(t);
 	return t;
+}
+
+async function drainRecipientPages(
+	t: TestConvex<typeof schema>,
+	{ audience }: { audience: StoredAudience }
+): Promise<CampaignRecipient[]> {
+	const recipients: CampaignRecipient[] = [];
+	let cursor = '';
+	for (;;) {
+		const page = await t.query(internal.campaigns.audienceResolution.resolveRecipientPage, {
+			audience,
+			cursor,
+		});
+		recipients.push(...page.recipients);
+		if (page.nextCursor === null) return recipients;
+		cursor = page.nextCursor;
+	}
 }
 
 const SECRET = 'test-unsubscribe-secret';
@@ -679,11 +698,9 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		});
 
 		// Before: the topic audience resolves to exactly this contact.
-		const before = await t.run(async (ctx) =>
-			ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipients, {
-				audience: { kind: 'topic' as const, topicId },
-			})
-		);
+		const before = await drainRecipientPages(t, {
+			audience: { kind: 'topic' as const, topicId },
+		});
 		expect(before.map((r: { email: string }) => r.email)).toContain('audience-test@example.com');
 
 		// One-click unsubscribe.
@@ -692,11 +709,9 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		expect(res.status).toBe(200);
 
 		// After: the membership is gone, so the audience no longer includes them.
-		const after = await t.run(async (ctx) =>
-			ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipients, {
-				audience: { kind: 'topic' as const, topicId },
-			})
-		);
+		const after = await drainRecipientPages(t, {
+			audience: { kind: 'topic' as const, topicId },
+		});
 		expect(after).toHaveLength(0);
 	});
 });

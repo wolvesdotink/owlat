@@ -11,22 +11,19 @@
  * automation/agent outbound paths that bypass the application-level blocklist
  * check.
  *
- * This module is the bridge: every `blockedEmails` insert schedules
- * `mirror`, an action that POSTs the address to the MTA `POST /suppression`
+ * The sibling `suppressionMirrorScheduler.ts` is the bridge: every
+ * `blockedEmails` insert schedules `mirror`, an action that POSTs the address to the MTA `POST /suppression`
  * endpoint. It is fire-and-forget defense-in-depth — a failed mirror is
  * logged, never thrown, so it can't roll back the originating mutation or
  * block a user action. (Once PR-08 lands the single send-time chokepoint
  * check this becomes pure belt-and-suspenders.)
  *
  * Runs in the default Convex runtime (not `'use node'`) — `fetch` is available
- * there (cf. domains/trackingDomains.ts's DoH lookup), and keeping it out of
- * the Node bundle lets the non-node mutation modules import
- * `scheduleSuppressionMirror` without crossing the runtime boundary.
+ * there (cf. domains/trackingDomains.ts's DoH lookup).
  */
 
 import { v, type Validator } from 'convex/values';
-import { internalAction, type MutationCtx } from '../_generated/server';
-import { internal } from '../_generated/api';
+import { internalAction } from '../_generated/server';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { getMtaConfig } from '../mail/mtaClient';
 
@@ -112,30 +109,6 @@ export function toMtaSuppressionReason(
 		return bounceType === 'soft' ? 'manual' : 'hard_bounce';
 	}
 	return 'manual';
-}
-
-/**
- * Schedule a mirror of a single blocked address to the MTA suppression list.
- *
- * Called from every `blockedEmails` insert site (the sendLifecycle
- * `blocklist_insert` effect and the `blockedEmails` mutations). Scheduled with
- * `runAfter(0, …)` so it runs in its own transaction-free action after the
- * originating mutation commits — Convex mutations can't `fetch`, and a failed
- * push must not roll back the insert.
- *
- * `reason` is the MIRRORED subset on purpose: the marketing-only reasons are
- * excluded by the TYPE, so a future suppression source physically cannot push a
- * bulk-hygiene decision onto a list that gates transactional mail too.
- */
-export async function scheduleSuppressionMirror(
-	ctx: MutationCtx,
-	args: { email: string; reason: MirroredBlockReason; bounceType?: 'hard' | 'soft' }
-): Promise<void> {
-	await ctx.scheduler.runAfter(0, internal.delivery.suppressionMirror.mirror, {
-		email: args.email,
-		reason: args.reason,
-		...(args.bounceType ? { bounceType: args.bounceType } : {}),
-	});
 }
 
 /**

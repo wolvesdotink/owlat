@@ -14,6 +14,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import { softDeleteContact } from '../lib/contactMutations';
 import type { Id } from '../_generated/dataModel';
+import { resolveContact, type ResolveSignal } from '../contacts/resolution';
 
 vi.mock('../lib/contactCountHelpers', async () => {
 	const actual = await vi.importActual('../lib/contactCountHelpers');
@@ -28,24 +29,29 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
+
+async function resolveThroughModule(t: ReturnType<typeof convexTest>, signal: ResolveSignal) {
+	return t.run((ctx) => resolveContact(ctx, signal));
+}
 
 // ============================================================
 // upsert mode
@@ -55,7 +61,7 @@ describe('resolveContact — upsert mode', () => {
 	it('creates a new Contact + email identity row on first call', async () => {
 		const t = convexTest(schema, modules);
 
-		const result = await t.mutation(internal.contacts.resolution.resolve, {
+		const result = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'first@example.com',
 			source: 'inbound',
@@ -89,7 +95,7 @@ describe('resolveContact — upsert mode', () => {
 	it('returns matched contactId without touching fields on second call', async () => {
 		const t = convexTest(schema, modules);
 
-		const first = await t.mutation(internal.contacts.resolution.resolve, {
+		const first = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'match@example.com',
 			source: 'inbound',
@@ -97,7 +103,7 @@ describe('resolveContact — upsert mode', () => {
 			contactFields: { firstName: 'Alice' },
 		});
 
-		const second = await t.mutation(internal.contacts.resolution.resolve, {
+		const second = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'match@example.com',
 			source: 'inbound',
@@ -117,7 +123,7 @@ describe('resolveContact — upsert mode', () => {
 	it('creates Contact without `email` when channel is sms', async () => {
 		const t = convexTest(schema, modules);
 
-		const result = await t.mutation(internal.contacts.resolution.resolve, {
+		const result = await resolveThroughModule(t, {
 			channel: 'sms',
 			identifier: '+15551234567',
 			source: 'inbound',
@@ -133,9 +139,7 @@ describe('resolveContact — upsert mode', () => {
 
 			const identity = await ctx.db
 				.query('contactIdentities')
-				.withIndex('by_identifier', (q) =>
-					q.eq('channel', 'sms').eq('identifier', '+15551234567')
-				)
+				.withIndex('by_identifier', (q) => q.eq('channel', 'sms').eq('identifier', '+15551234567'))
 				.first();
 			expect(identity?.contactId).toBe(result.contactId);
 		});
@@ -144,7 +148,7 @@ describe('resolveContact — upsert mode', () => {
 	it('normalizes email identifier to lowercase', async () => {
 		const t = convexTest(schema, modules);
 
-		const result = await t.mutation(internal.contacts.resolution.resolve, {
+		const result = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'MixedCase@Example.COM',
 			source: 'api',
@@ -157,7 +161,7 @@ describe('resolveContact — upsert mode', () => {
 		});
 
 		// Subsequent lookup with different casing matches
-		const second = await t.mutation(internal.contacts.resolution.resolve, {
+		const second = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'MIXEDCASE@example.com',
 			source: 'api',
@@ -170,7 +174,7 @@ describe('resolveContact — upsert mode', () => {
 	it('does NOT normalize phone identifier to lowercase', async () => {
 		const t = convexTest(schema, modules);
 
-		const result = await t.mutation(internal.contacts.resolution.resolve, {
+		const result = await resolveThroughModule(t, {
 			channel: 'sms',
 			identifier: '+15551234',
 			source: 'inbound',
@@ -180,9 +184,7 @@ describe('resolveContact — upsert mode', () => {
 		await t.run(async (ctx) => {
 			const identity = await ctx.db
 				.query('contactIdentities')
-				.withIndex('by_identifier', (q) =>
-					q.eq('channel', 'sms').eq('identifier', '+15551234')
-				)
+				.withIndex('by_identifier', (q) => q.eq('channel', 'sms').eq('identifier', '+15551234'))
 				.first();
 			expect(identity?.contactId).toBe(result.contactId);
 		});
@@ -197,7 +199,7 @@ describe('resolveContact — strict mode', () => {
 	it('creates a new Contact on first call', async () => {
 		const t = convexTest(schema, modules);
 
-		const result = await t.mutation(internal.contacts.resolution.resolve, {
+		const result = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'strict@example.com',
 			source: 'api',
@@ -210,7 +212,7 @@ describe('resolveContact — strict mode', () => {
 	it('throws ALREADY_EXISTS when contact already exists', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.contacts.resolution.resolve, {
+		await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'duplicate@example.com',
 			source: 'api',
@@ -218,7 +220,7 @@ describe('resolveContact — strict mode', () => {
 		});
 
 		await expect(
-			t.mutation(internal.contacts.resolution.resolve, {
+			resolveThroughModule(t, {
 				channel: 'email',
 				identifier: 'duplicate@example.com',
 				source: 'api',
@@ -236,7 +238,7 @@ describe('resolveContact — merge mode', () => {
 	it('creates a new Contact on first call', async () => {
 		const t = convexTest(schema, modules);
 
-		const result = await t.mutation(internal.contacts.resolution.resolve, {
+		const result = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'merge@example.com',
 			source: 'import',
@@ -250,7 +252,7 @@ describe('resolveContact — merge mode', () => {
 	it('patches non-empty fields on match and returns action=updated', async () => {
 		const t = convexTest(schema, modules);
 
-		const first = await t.mutation(internal.contacts.resolution.resolve, {
+		const first = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'patchme@example.com',
 			source: 'import',
@@ -258,7 +260,7 @@ describe('resolveContact — merge mode', () => {
 			contactFields: { firstName: 'Bob', lastName: 'Original' },
 		});
 
-		const second = await t.mutation(internal.contacts.resolution.resolve, {
+		const second = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'patchme@example.com',
 			source: 'import',
@@ -280,7 +282,7 @@ describe('resolveContact — merge mode', () => {
 	it('surfaces the changedProperties diff so callers can fire contact_updated', async () => {
 		const t = convexTest(schema, modules);
 
-		const first = await t.mutation(internal.contacts.resolution.resolve, {
+		const first = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'diff@example.com',
 			source: 'import',
@@ -288,7 +290,7 @@ describe('resolveContact — merge mode', () => {
 			contactFields: { firstName: 'Bob', lastName: 'Original', language: 'en' },
 		});
 
-		const second = await t.mutation(internal.contacts.resolution.resolve, {
+		const second = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'diff@example.com',
 			source: 'import',
@@ -305,7 +307,7 @@ describe('resolveContact — merge mode', () => {
 	it('omits changedProperties when nothing changed', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.contacts.resolution.resolve, {
+		await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'nodiff@example.com',
 			source: 'import',
@@ -313,7 +315,7 @@ describe('resolveContact — merge mode', () => {
 			contactFields: { firstName: 'Same' },
 		});
 
-		const second = await t.mutation(internal.contacts.resolution.resolve, {
+		const second = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'nodiff@example.com',
 			source: 'import',
@@ -328,7 +330,7 @@ describe('resolveContact — merge mode', () => {
 	it('returns action=matched when merge has nothing to update', async () => {
 		const t = convexTest(schema, modules);
 
-		const first = await t.mutation(internal.contacts.resolution.resolve, {
+		const first = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'nochange@example.com',
 			source: 'import',
@@ -336,7 +338,7 @@ describe('resolveContact — merge mode', () => {
 			contactFields: { firstName: 'Same' },
 		});
 
-		const second = await t.mutation(internal.contacts.resolution.resolve, {
+		const second = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'nochange@example.com',
 			source: 'import',
@@ -351,7 +353,7 @@ describe('resolveContact — merge mode', () => {
 	it('does NOT overwrite existing fields when merge value is empty', async () => {
 		const t = convexTest(schema, modules);
 
-		const first = await t.mutation(internal.contacts.resolution.resolve, {
+		const first = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'noempty@example.com',
 			source: 'import',
@@ -359,7 +361,7 @@ describe('resolveContact — merge mode', () => {
 			contactFields: { firstName: 'Original' },
 		});
 
-		const second = await t.mutation(internal.contacts.resolution.resolve, {
+		const second = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'noempty@example.com',
 			source: 'import',
@@ -384,7 +386,7 @@ describe('resolveContact — soft-delete cascade', () => {
 	it('skips soft-deleted contacts and creates new', async () => {
 		const t = convexTest(schema, modules);
 
-		const first = await t.mutation(internal.contacts.resolution.resolve, {
+		const first = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'recycled@example.com',
 			source: 'api',
@@ -408,7 +410,7 @@ describe('resolveContact — soft-delete cascade', () => {
 		});
 
 		// A fresh resolve for the same identifier creates a NEW Contact
-		const second = await t.mutation(internal.contacts.resolution.resolve, {
+		const second = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'recycled@example.com',
 			source: 'api',
@@ -429,7 +431,7 @@ describe('resolveContact — soft-delete cascade', () => {
 	it('strict mode does not throw when the only match is soft-deleted', async () => {
 		const t = convexTest(schema, modules);
 
-		const first = await t.mutation(internal.contacts.resolution.resolve, {
+		const first = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'strict-recycled@example.com',
 			source: 'api',
@@ -440,7 +442,7 @@ describe('resolveContact — soft-delete cascade', () => {
 			await softDeleteContact(ctx, first.contactId, 'test');
 		});
 
-		const second = await t.mutation(internal.contacts.resolution.resolve, {
+		const second = await resolveThroughModule(t, {
 			channel: 'email',
 			identifier: 'strict-recycled@example.com',
 			source: 'api',
@@ -460,14 +462,14 @@ describe('resolveContact — channel isolation', () => {
 	it('treats same identifier on different channels as different identities', async () => {
 		const t = convexTest(schema, modules);
 
-		const sms = await t.mutation(internal.contacts.resolution.resolve, {
+		const sms = await resolveThroughModule(t, {
 			channel: 'sms',
 			identifier: '+15551234',
 			source: 'inbound',
 			mode: 'upsert',
 		});
 
-		const whatsapp = await t.mutation(internal.contacts.resolution.resolve, {
+		const whatsapp = await resolveThroughModule(t, {
 			channel: 'whatsapp',
 			identifier: '+15551234',
 			source: 'inbound',

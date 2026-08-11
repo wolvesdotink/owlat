@@ -33,20 +33,6 @@ export const listByTeam = authedQuery({
 	},
 });
 
-/** Fetch a single connected app in the active org. Cross-tenant ids 404. */
-export const get = authedQuery({
-	args: { connectedAppId: v.id('connectedApps') },
-	handler: async (ctx, args): Promise<PublicConnectedApp> => {
-		const { activeOrganizationId } = await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can view connected apps'
-		);
-		const row = await loadConnectedAppInOrg(ctx, args.connectedAppId, activeOrganizationId);
-		return toPublicConnectedApp(row);
-	},
-});
-
 /**
  * Load the tenant-scoped endpoint + status for the connection-test action.
  * Internal-only: the Node action (`connectedApps/actions.testConnection`) runs

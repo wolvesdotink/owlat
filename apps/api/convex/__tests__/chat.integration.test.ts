@@ -35,19 +35,20 @@ vi.mock('../lib/sessionOrganization', async () => {
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
 		})),
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') =
+					actual as typeof import('../lib/sessionOrganization');
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return { userId: sessionMock.user.id, role: sessionMock.user.role };
-			},
-		),
+			}),
 		requireAdminContext: vi.fn().mockImplementation(async () => {
 			if (sessionMock.user.role === 'editor') {
 				throw new Error('forbidden');
@@ -67,16 +68,16 @@ const modules = Object.fromEntries(
 			!path.includes('agentClassifier') &&
 			!path.includes('agentDrafter') &&
 			!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'editor') => {
@@ -111,9 +112,7 @@ describe('chat feature-flag floor (featureGated wrapper)', () => {
 		const t = convexTest(schema, modules);
 		// No enableFeatures(t, ['chat']) — the flag is off by default.
 		setUser('user-alice', 'owner');
-		await expect(t.query(api.chat.rooms.listMyChannels, {})).rejects.toThrow(
-			/disabled/i,
-		);
+		await expect(t.query(api.chat.rooms.listMyChannels, {})).rejects.toThrow(/disabled/i);
 	});
 
 	it('rejects a chatMutation when the chat flag is disabled', async () => {
@@ -123,7 +122,7 @@ describe('chat feature-flag floor (featureGated wrapper)', () => {
 			t.mutation(api.chat.rooms.createChannel, {
 				name: 'general',
 				visibility: 'public',
-			}),
+			})
 		).rejects.toThrow(/disabled/i);
 	});
 });
@@ -150,9 +149,9 @@ describe('chat.rooms.createChannel', () => {
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-alice'),
+					q.eq('roomId', roomId!).eq('memberId', 'user-alice')
 				)
-				.first(),
+				.first()
 		);
 		expect(membership?.role).toBe('admin');
 	});
@@ -170,7 +169,7 @@ describe('chat.rooms.createChannel', () => {
 			t.mutation(api.chat.rooms.createChannel, {
 				name: 'general',
 				visibility: 'private',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -190,7 +189,7 @@ describe('chat.rooms.createChannel', () => {
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room', (q) => q.eq('roomId', roomId!))
-				.collect(),
+				.collect()
 		);
 		const roleByMember = Object.fromEntries(members.map((m) => [m.memberId, m.role]));
 		expect(roleByMember['user-alice']).toBe('admin');
@@ -225,7 +224,7 @@ describe('chat.rooms.updateChannel + archiveChannel', () => {
 			t.mutation(api.chat.rooms.updateChannel, {
 				roomId: roomId!,
 				name: 'renamed',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -290,10 +289,8 @@ describe('chat.members.joinChannel + private channel access', () => {
 		const membership = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
-				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-bob'),
-				)
-				.first(),
+				.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId!).eq('memberId', 'user-bob'))
+				.first()
 		);
 		expect(membership?.role).toBe('member');
 	});
@@ -309,9 +306,7 @@ describe('chat.members.joinChannel + private channel access', () => {
 		});
 
 		setUser('user-bob', 'editor');
-		await expect(
-			t.mutation(api.chat.members.joinChannel, { roomId: roomId! }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.chat.members.joinChannel, { roomId: roomId! })).rejects.toThrow();
 	});
 
 	it('hides private rooms from getRoom for non-members', async () => {
@@ -344,7 +339,7 @@ describe('chat.messages.sendMessage', () => {
 			t.mutation(api.chat.messages.sendMessage, {
 				roomId: roomId!,
 				text: '   ',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -363,7 +358,7 @@ describe('chat.messages.sendMessage', () => {
 			t.mutation(api.chat.messages.sendMessage, {
 				roomId: roomId!,
 				text: 'hello',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -388,7 +383,7 @@ describe('chat.messages.sendMessage', () => {
 			ctx.db
 				.query('chatMessages')
 				.withIndex('by_room', (q) => q.eq('roomId', roomId!))
-				.collect(),
+				.collect()
 		);
 		expect(messages).toHaveLength(1);
 		expect(messages[0]!.text).toBe('hello');
@@ -428,7 +423,7 @@ describe('chat.dms.findOrCreateDm', () => {
 			t.mutation(api.chat.messages.sendMessage, {
 				roomId: roomId!,
 				text: 'sneaking in',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -475,9 +470,7 @@ describe('chat.mentions', () => {
 			text: 'hey @bob can you review',
 		});
 
-		const mentions = await t.run(async (ctx) =>
-			ctx.db.query('chatMentions').collect(),
-		);
+		const mentions = await t.run(async (ctx) => ctx.db.query('chatMentions').collect());
 		expect(mentions).toHaveLength(1);
 		expect(mentions[0]!.mentionedMemberId).toBe('user-bob');
 		expect(mentions[0]!.mentioningMemberId).toBe('user-alice');
@@ -520,9 +513,7 @@ describe('chat.mentions', () => {
 			text: 'secret plan, cc @bob',
 		});
 
-		const mentions = await t.run(async (ctx) =>
-			ctx.db.query('chatMentions').collect(),
-		);
+		const mentions = await t.run(async (ctx) => ctx.db.query('chatMentions').collect());
 		expect(mentions).toHaveLength(0);
 	});
 
@@ -552,9 +543,7 @@ describe('chat.mentions', () => {
 			text: 'note to @alice: ship it',
 		});
 
-		const mentions = await t.run(async (ctx) =>
-			ctx.db.query('chatMentions').collect(),
-		);
+		const mentions = await t.run(async (ctx) => ctx.db.query('chatMentions').collect());
 		expect(mentions).toHaveLength(0);
 	});
 });
@@ -593,7 +582,7 @@ describe('chat.emailLink', () => {
 			t.mutation(api.chat.emailLink.linkChannelToInboxThread, {
 				roomId: roomId!,
 				inboxThreadId,
-			}),
+			})
 		).rejects.toThrow();
 
 		// Alice (per-room admin) can.
@@ -604,66 +593,5 @@ describe('chat.emailLink', () => {
 		});
 		const room = await t.run(async (ctx) => ctx.db.get(roomId!));
 		expect(room?.linkedInboxThreadId).toBe(inboxThreadId);
-	});
-});
-
-describe('chat.cleanup.cleanupLegacyChatData', () => {
-	it('is idempotent and surgical', async () => {
-		const t = convexTest(schema, modules);
-		await enableFeatures(t, ['chat']);
-
-		// Seed legacy + non-legacy threads.
-		const legacyChannelThreadId = await t.run(async (ctx) => {
-			const now = Date.now();
-			return await ctx.db.insert('conversationThreads', {
-				subject: 'old channel',
-				normalizedSubject: 'old channel',
-				contactIdentifier: 'channel',
-				status: 'open',
-				messageCount: 0,
-				lastMessageAt: now,
-				firstMessageAt: now,
-				createdAt: now,
-			});
-		});
-		const customerThreadId = await t.run(async (ctx) => {
-			const now = Date.now();
-			return await ctx.db.insert('conversationThreads', {
-				subject: 'Real customer',
-				normalizedSubject: 'real customer',
-				contactIdentifier: 'customer@example.com',
-				status: 'open',
-				messageCount: 0,
-				lastMessageAt: now,
-				firstMessageAt: now,
-				createdAt: now,
-			});
-		});
-		// Legacy chat message attached to the legacy thread.
-		await t.run(async (ctx) => {
-			await ctx.db.insert('unifiedMessages', {
-				threadId: legacyChannelThreadId,
-				channel: 'chat',
-				direction: 'outbound',
-				memberId: 'user-alice',
-				content: JSON.stringify({ text: 'old chat' }),
-				status: 'sent',
-				createdAt: Date.now(),
-			});
-		});
-
-		setUser('user-alice', 'owner');
-		const summary1 = await t.mutation(api.chat.cleanup.cleanupLegacyChatData, {});
-		expect(summary1?.threadsToDelete).toBe(1);
-		expect(summary1?.messagesToDelete).toBe(1);
-
-		// The customer thread survives.
-		const customer = await t.run(async (ctx) => ctx.db.get(customerThreadId));
-		expect(customer?.contactIdentifier).toBe('customer@example.com');
-
-		// A second run is a no-op.
-		const summary2 = await t.mutation(api.chat.cleanup.cleanupLegacyChatData, {});
-		expect(summary2?.threadsToDelete).toBe(0);
-		expect(summary2?.messagesToDelete).toBe(0);
 	});
 });

@@ -11,27 +11,6 @@ export const listByOrganization = authedQuery({
 	},
 });
 
-// Query to get a single contact property by ID
-export const get = authedQuery({
-	args: { propertyId: v.id('contactProperties') },
-	handler: async (ctx, args) => {
-		return await ctx.db.get(args.propertyId);
-	},
-});
-
-// Query to get a contact property by key
-export const getByKey = authedQuery({
-	args: {
-		key: v.string(),
-	},
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('contactProperties')
-			.withIndex('by_key', (q) => q.eq('key', args.key))
-			.first();
-	},
-});
-
 // Mutation to create a new contact property
 export const create = authedMutation({
 	args: {
@@ -107,41 +86,5 @@ export const remove = authedMutation({
 
 		// Delete the property itself
 		await ctx.db.delete(args.propertyId);
-	},
-});
-
-// Mutation to create default properties
-export const createDefaultProperties = authedMutation({
-	args: {},
-	handler: async (ctx) => {
-		await requireContactsManage(ctx);
-
-		const defaultProperties = [
-			{ key: 'first_name', label: 'First Name', type: 'string' as const },
-			{ key: 'last_name', label: 'Last Name', type: 'string' as const },
-			{ key: 'company', label: 'Company', type: 'string' as const },
-		];
-
-		const createdIds: string[] = [];
-
-		for (const prop of defaultProperties) {
-			// Check if property already exists
-			const existing = await ctx.db
-				.query('contactProperties')
-				.withIndex('by_key', (q) => q.eq('key', prop.key))
-				.first();
-
-			if (!existing) {
-				const id = await ctx.db.insert('contactProperties', {
-					key: prop.key,
-					label: prop.label,
-					type: prop.type,
-					createdAt: Date.now(),
-				});
-				createdIds.push(id);
-			}
-		}
-
-		return createdIds;
 	},
 });

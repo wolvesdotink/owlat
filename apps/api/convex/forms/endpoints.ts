@@ -54,53 +54,6 @@ export const listByTeam = authedQuery({
 });
 
 /**
- * Get a single form endpoint by ID
- */
-export const get = authedQuery({
-	args: {
-		formEndpointId: v.id('formEndpoints'),
-	},
-	handler: async (ctx, args) => {
-		const form = await ctx.db.get(args.formEndpointId);
-		if (!form) {
-			return null;
-		}
-
-		return {
-			...form,
-			totalSubmissions: form.submissionCount ?? 0,
-			successfulSubmissions: form.successfulSubmissionCount ?? 0,
-		};
-	},
-});
-
-/**
- * Get form endpoint by ID for public submission (minimal data).
- * honeypotFieldName excluded from public response to prevent bots from reading it.
- */
-// public: embeddable signup form render — called by the public form widget with no session
-export const getForSubmission = publicQuery({
-	args: {
-		formEndpointId: v.id('formEndpoints'),
-	},
-	handler: async (ctx, args) => {
-		const form = await ctx.db.get(args.formEndpointId);
-		if (!form) {
-			return null;
-		}
-
-		return {
-			_id: form._id,
-			topicId: form.topicId,
-			fields: form.fields,
-			redirectUrl: form.redirectUrl,
-			isActive: form.isActive,
-			doubleOptIn: form.doubleOptIn,
-		};
-	},
-});
-
-/**
  * Create a new form endpoint
  */
 export const create = authedMutation({

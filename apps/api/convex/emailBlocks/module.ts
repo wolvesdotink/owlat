@@ -552,31 +552,17 @@ export const remove = internalMutation({
 });
 
 /**
- * Cross-cutting entry for the **Email template lifecycle (module)** and
+ * Cross-cutting helper for the **Email template lifecycle (module)** and
  * **Transactional email lifecycle (module)** `update_block_usage_counts`
- * effect. Single writer of `emailBlocks.usageCount`. Increments for
- * newly-added ids; decrements for newly-removed ids (floored at zero).
+ * effect. This is the single implementation of `emailBlocks.usageCount`
+ * deltas: increments for newly-added ids and decrements for newly-removed ids
+ * (floored at zero).
  *
- * Pre-ADR-0023 this helper lived in `lib/linkedBlockPropagation.ts` and
- * was also called open-coded from `emailTemplates/emails.ts:108` and
- * `transactional/emails.ts:252`; those direct call sites are now closed,
- * and the lifecycles route through this module.
- */
-export const updateBlockUsageCounts = internalMutation({
-	args: {
-		previousIds: v.array(v.string()),
-		nextIds: v.array(v.string()),
-	},
-	handler: async (ctx, args): Promise<void> => {
-		await applyUsageCountDelta(ctx, args.previousIds, args.nextIds);
-	},
-});
-
-/**
- * In-module helper for callers running inside another mutation. The
- * lifecycle modules call this directly (rather than going through
- * `ctx.runMutation`) so the count update is part of the same
- * transaction as the row write.
+ * The lifecycle modules call this directly from their mutations so the count
+ * update is atomic with the consumer row write. The former
+ * `updateBlockUsageCounts` Convex mutation only delegated here and had no
+ * production caller, so it was removed under the entry-wiring debt tracked by
+ * issue #528.
  */
 export async function applyUsageCountDelta(
 	ctx: MutationCtx,

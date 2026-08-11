@@ -1,54 +1,15 @@
-import { PLUGIN_WORKER_MAX_PENDING_JOBS } from '@owlat/plugin-kit';
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Doc, Id } from '../../_generated/dataModel';
 import schema from '../../schema';
-import {
-	claim,
-	complete,
-	enqueue,
-	fail,
-	getNextQueued,
-	heartbeat,
-	listRecent,
-	reclaimStale,
-	requestCancel,
-} from '../workerTasks';
+import { claim, complete, fail, getNextQueued, heartbeat, reclaimStale } from '../workerTasks';
 
 const modules = import.meta.glob('../../**/*.*s');
-
-/** Controls what the (mocked) system authorizer returns for enqueue. */
-const authz = vi.hoisted(() => ({
-	scope: null as null | { organizationId: string; userId: string; pluginId: string },
-}));
-vi.mock('../authorization', () => ({
-	authorizeSystemBundledPlugin: vi.fn(async () => authz.scope),
-}));
-
-const session = vi.hoisted(() => ({ organizationId: 'org-1', canManage: true }));
-vi.mock('../../lib/sessionOrganization', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../../lib/sessionOrganization')>()),
-	getSingletonOrganizationId: vi.fn(async () => session.organizationId),
-	// Satisfy the authed floor without a live BetterAuth session component.
-	requireOrgMember: vi.fn(async () => ({
-		userId: 'operator',
-		activeOrganizationId: session.organizationId,
-		role: 'owner',
-	})),
-	getMutationContext: vi.fn(async () => ({
-		session: { userId: 'operator', activeOrganizationId: session.organizationId, role: 'owner' },
-	})),
-	requireOrgPermission: vi.fn(async () => {
-		if (!session.canManage) throw new Error('forbidden');
-	}),
-}));
 
 type Ctx = Parameters<Parameters<ReturnType<typeof convexTest>['run']>[0]>[0];
 
 // Unwrap the registered functions to their raw handlers so a real convex-test db
 // ctx can drive them without going through the auth floor / component calls.
-const enqueueH = (enqueue as unknown as { _handler: (c: Ctx, a: unknown) => Promise<unknown> })
-	._handler;
 const getNextH = (
 	getNextQueued as unknown as { _handler: (c: Ctx, a: unknown) => Promise<unknown> }
 )._handler;
@@ -61,18 +22,8 @@ const completeH = (complete as unknown as { _handler: (c: Ctx, a: unknown) => Pr
 const failH = (fail as unknown as { _handler: (c: Ctx, a: unknown) => Promise<unknown> })._handler;
 const reclaimH = (reclaimStale as unknown as { _handler: (c: Ctx, a: unknown) => Promise<unknown> })
 	._handler;
-const requestCancelH = (
-	requestCancel as unknown as { _handler: (c: Ctx, a: unknown) => Promise<unknown> }
-)._handler;
-const listRecentH = (
-	listRecent as unknown as { _handler: (c: Ctx, a: unknown) => Promise<unknown> }
-)._handler;
 
 const OWNED_KIND = 'plugin.lab.seed-test';
-
-function grant(pluginId = 'lab', organizationId = 'org-1') {
-	authz.scope = { organizationId, userId: 'system:bundled_plugin', pluginId };
-}
 
 async function seedTask(
 	ctx: Ctx,
@@ -98,161 +49,6 @@ async function seedTask(
 async function auditRows(ctx: Ctx): Promise<Doc<'auditLogs'>[]> {
 	return await ctx.db.query('auditLogs').take(50);
 }
-
-beforeEach(() => {
-	authz.scope = null;
-	session.organizationId = 'org-1';
-	session.canManage = true;
-});
-
-describe('enqueue authorization + validation (fail closed)', () => {
-	it('inserts a queued job attributed to the plugin and audits the enqueue', async () => {
-		const t = convexTest(schema, modules);
-		grant();
-		await t.run(async (ctx) => {
-			const id = (await enqueueH(ctx, {
-				pluginId: 'lab',
-				jobKind: OWNED_KIND,
-				payload: '{"n":1}',
-			})) as Id<'pluginTasks'>;
-			const task = (await ctx.db.get(id))!;
-			expect(task.status).toBe('queued');
-			expect(task.attempts).toBe(0);
-			expect(task.pluginId).toBe('lab');
-			expect(task.organizationId).toBe('org-1');
-
-			const audit = await auditRows(ctx);
-			expect(audit).toHaveLength(1);
-			expect(audit[0]!.pluginId).toBe('lab');
-			expect(audit[0]!.details?.['operation']).toBe('worker.enqueue');
-			expect(audit[0]!.details?.['outcome']).toBe('completed');
-		});
-	});
-
-	it('enqueues nothing when the plugin is unauthorized (disabled/ungranted)', async () => {
-		const t = convexTest(schema, modules);
-		authz.scope = null;
-		await t.run(async (ctx) => {
-			const id = await enqueueH(ctx, { pluginId: 'lab', jobKind: OWNED_KIND, payload: '{}' });
-			expect(id).toBeNull();
-			expect(await ctx.db.query('pluginTasks').take(1)).toHaveLength(0);
-			expect(await auditRows(ctx)).toHaveLength(0);
-		});
-	});
-
-	it('rejects a cross-plugin job kind and audits the denial', async () => {
-		const t = convexTest(schema, modules);
-		grant('lab');
-		await t.run(async (ctx) => {
-			const id = await enqueueH(ctx, {
-				pluginId: 'lab',
-				jobKind: 'plugin.other.seed-test',
-				payload: '{}',
-			});
-			expect(id).toBeNull();
-			expect(await ctx.db.query('pluginTasks').take(1)).toHaveLength(0);
-			const audit = await auditRows(ctx);
-			expect(audit).toHaveLength(1);
-			expect(audit[0]!.details?.['outcome']).toBe('denied');
-		});
-	});
-
-	it('rejects an oversized payload (untrusted input bound)', async () => {
-		const t = convexTest(schema, modules);
-		grant();
-		await t.run(async (ctx) => {
-			const id = await enqueueH(ctx, {
-				pluginId: 'lab',
-				jobKind: OWNED_KIND,
-				payload: 'x'.repeat(64 * 1024 + 1),
-			});
-			expect(id).toBeNull();
-			expect(await ctx.db.query('pluginTasks').take(1)).toHaveLength(0);
-			expect((await auditRows(ctx))[0]!.details?.['outcome']).toBe('denied');
-		});
-	});
-
-	it('clamps an over-large retry budget to the host ceiling', async () => {
-		const t = convexTest(schema, modules);
-		grant();
-		await t.run(async (ctx) => {
-			const id = (await enqueueH(ctx, {
-				pluginId: 'lab',
-				jobKind: OWNED_KIND,
-				payload: '{}',
-				maxAttempts: 9999,
-				timeoutMs: 10,
-			})) as Id<'pluginTasks'>;
-			const task = (await ctx.db.get(id))!;
-			expect(task.maxAttempts).toBe(5);
-			expect(task.timeoutMs).toBe(1_000); // clamped up to the minimum budget
-		});
-	});
-
-	it('caps a plugin at PLUGIN_WORKER_MAX_PENDING_JOBS in-flight jobs (N+1 fails closed)', async () => {
-		const t = convexTest(schema, modules);
-		grant();
-		await t.run(async (ctx) => {
-			// Fill the queue to the cap with a mix of queued + running (both count).
-			for (let i = 0; i < PLUGIN_WORKER_MAX_PENDING_JOBS; i += 1) {
-				await seedTask(ctx, { status: i % 2 === 0 ? 'queued' : 'running' });
-			}
-			const before = (await ctx.db.query('pluginTasks').collect()).length;
-			expect(before).toBe(PLUGIN_WORKER_MAX_PENDING_JOBS);
-
-			// The N+1th enqueue is rejected and inserts nothing.
-			const id = await enqueueH(ctx, { pluginId: 'lab', jobKind: OWNED_KIND, payload: '{}' });
-			expect(id).toBeNull();
-			expect((await ctx.db.query('pluginTasks').collect()).length).toBe(before);
-
-			// The denial is audited against the (authorized) plugin as a budget denial.
-			const denials = (await auditRows(ctx)).filter((row) => row.details?.['outcome'] === 'denied');
-			expect(denials).toHaveLength(1);
-			expect(denials[0]!.pluginId).toBe('lab');
-			expect(denials[0]!.details?.['operation']).toBe('worker.enqueue');
-			expect(denials[0]!.details?.['reasonCode']).toBe('access_or_budget_denied');
-		});
-	});
-
-	it('does not count terminal jobs toward the in-flight cap', async () => {
-		const t = convexTest(schema, modules);
-		grant();
-		await t.run(async (ctx) => {
-			// A plugin's completed history — far beyond the cap — must not block it.
-			for (let i = 0; i < PLUGIN_WORKER_MAX_PENDING_JOBS + 5; i += 1) {
-				await seedTask(ctx, {
-					status: i % 3 === 0 ? 'succeeded' : i % 3 === 1 ? 'failed' : 'cancelled',
-				});
-			}
-			const id = await enqueueH(ctx, { pluginId: 'lab', jobKind: OWNED_KIND, payload: '{}' });
-			expect(id).not.toBeNull();
-			const task = (await ctx.db.get(id as Id<'pluginTasks'>))!;
-			expect(task.status).toBe('queued');
-		});
-	});
-
-	it('scopes the in-flight cap per plugin (a busy plugin does not block another)', async () => {
-		const t = convexTest(schema, modules);
-		await t.run(async (ctx) => {
-			// Fill plugin "busy" to the cap.
-			for (let i = 0; i < PLUGIN_WORKER_MAX_PENDING_JOBS; i += 1) {
-				await seedTask(ctx, { pluginId: 'busy', jobKind: 'plugin.busy.seed-test' });
-			}
-			// A different plugin at zero in-flight jobs still enqueues.
-			grant('lab');
-			const ok = await enqueueH(ctx, { pluginId: 'lab', jobKind: OWNED_KIND, payload: '{}' });
-			expect(ok).not.toBeNull();
-			// The busy plugin itself is now capped.
-			grant('busy');
-			const blocked = await enqueueH(ctx, {
-				pluginId: 'busy',
-				jobKind: 'plugin.busy.seed-test',
-				payload: '{}',
-			});
-			expect(blocked).toBeNull();
-		});
-	});
-});
 
 describe('claim / getNextQueued', () => {
 	it('returns the oldest queued job and claims it exactly once', async () => {
@@ -473,58 +269,6 @@ describe('reclaimStale — crashed worker lease recovery', () => {
 			});
 			await reclaimH(ctx, { now: 10_000, leaseMs: 5_000 });
 			expect((await ctx.db.get(id))!.status).toBe('failed');
-		});
-	});
-});
-
-describe('requestCancel (operator)', () => {
-	it('flags a queued job for cancellation without terminating it inline', async () => {
-		const t = convexTest(schema, modules);
-		await t.run(async (ctx) => {
-			const id = await seedTask(ctx, { status: 'queued' });
-			await requestCancelH(ctx, { taskId: id });
-			const task = (await ctx.db.get(id))!;
-			expect(task.isCancelRequested).toBe(true);
-			expect(task.status).toBe('queued'); // worker converts it at claim
-		});
-	});
-
-	it('refuses to cancel a job that has already finished', async () => {
-		const t = convexTest(schema, modules);
-		await t.run(async (ctx) => {
-			const id = await seedTask(ctx, { status: 'succeeded' });
-			await expect(requestCancelH(ctx, { taskId: id })).rejects.toThrow();
-		});
-	});
-
-	it('refuses to cancel a job owned by another organization', async () => {
-		const t = convexTest(schema, modules);
-		await t.run(async (ctx) => {
-			const id = await seedTask(ctx, { organizationId: 'org-2' });
-			await expect(requestCancelH(ctx, { taskId: id })).rejects.toThrow();
-		});
-	});
-
-	it('refuses cancellation without the manage permission', async () => {
-		const t = convexTest(schema, modules);
-		session.canManage = false;
-		await t.run(async (ctx) => {
-			const id = await seedTask(ctx, { status: 'running' });
-			await expect(requestCancelH(ctx, { taskId: id })).rejects.toThrow('forbidden');
-		});
-	});
-});
-
-describe('listRecent', () => {
-	it('returns only this organization’s jobs, newest first', async () => {
-		const t = convexTest(schema, modules);
-		await t.run(async (ctx) => {
-			await seedTask(ctx, { organizationId: 'org-1', createdAt: 1 });
-			await seedTask(ctx, { organizationId: 'org-1', createdAt: 2 });
-			await seedTask(ctx, { organizationId: 'org-2', createdAt: 3 });
-			const rows = (await listRecentH(ctx, {})) as Doc<'pluginTasks'>[];
-			expect(rows).toHaveLength(2);
-			expect(rows.every((r) => r.organizationId === 'org-1')).toBe(true);
 		});
 	});
 });

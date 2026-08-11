@@ -24,22 +24,23 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -48,7 +49,7 @@ const testUser = { subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|
 /** Insert an org-general knowledge entry, return its id. */
 async function seedEntry(
 	t: ReturnType<typeof convexTest>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'knowledgeEntries'>> {
 	let id!: Id<'knowledgeEntries'>;
 	await t.run(async (ctx) => {
@@ -61,12 +62,12 @@ async function seedEdge(
 	t: ReturnType<typeof convexTest>,
 	from: Id<'knowledgeEntries'>,
 	to: Id<'knowledgeEntries'>,
-	relationType = 'relates_to' as const,
+	relationType = 'relates_to' as const
 ): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert(
 			'knowledgeRelations',
-			createTestKnowledgeRelation({ fromEntryId: from, toEntryId: to, relationType }),
+			createTestKnowledgeRelation({ fromEntryId: from, toEntryId: to, relationType })
 		);
 	});
 }
@@ -133,8 +134,16 @@ describe('knowledgeGraphAnalytics.recomputeStats communities', () => {
 		const asUser = t.withIdentity(testUser);
 
 		// Two triangles (dense clusters) joined by a single bridge edge.
-		const a = [await seedEntry(t, { title: 'a0' }), await seedEntry(t, { title: 'a1' }), await seedEntry(t, { title: 'a2' })];
-		const b = [await seedEntry(t, { title: 'b0' }), await seedEntry(t, { title: 'b1' }), await seedEntry(t, { title: 'b2' })];
+		const a = [
+			await seedEntry(t, { title: 'a0' }),
+			await seedEntry(t, { title: 'a1' }),
+			await seedEntry(t, { title: 'a2' }),
+		];
+		const b = [
+			await seedEntry(t, { title: 'b0' }),
+			await seedEntry(t, { title: 'b1' }),
+			await seedEntry(t, { title: 'b2' }),
+		];
 		await seedEdge(t, a[0]!, a[1]!);
 		await seedEdge(t, a[1]!, a[2]!);
 		await seedEdge(t, a[2]!, a[0]!);
@@ -182,7 +191,7 @@ describe('knowledgeGraphAnalytics.recomputeStats truncation', () => {
 // ============ recomputeStats — REDACTION ============
 
 describe('knowledgeGraphAnalytics.recomputeStats redaction', () => {
-	it('excludes cross-contact-disjoint edges from surprisingConnections, counts them in aggregate, and gates detail behind admin', async () => {
+	it('excludes cross-contact-disjoint edge details and retains only the aggregate count', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.knowledge.analytics']);
 		const asUser = t.withIdentity(testUser);
@@ -216,12 +225,6 @@ describe('knowledgeGraphAnalytics.recomputeStats redaction', () => {
 		}
 		// The member read strips the admin-only cross-contact detail entirely.
 		expect(stats).not.toHaveProperty('crossContactLinks');
-
-		// The admin detail query DOES surface the disjoint edge's endpoints.
-		const adminLinks = await asUser.query(api.knowledge.graphAnalytics.getCrossContactLinks, {});
-		expect(adminLinks).toHaveLength(1);
-		expect(adminLinks[0]!.fromEntryId).toBe(entryA);
-		expect(adminLinks[0]!.toEntryId).toBe(entryB);
 	});
 });
 
@@ -318,7 +321,7 @@ describe('knowledgeGraphAnalytics.getSubgraph', () => {
 					confidenceTag: 'inferred',
 					provenance: 'llm',
 					confidence: 0.6,
-				}),
+				})
 			);
 		});
 

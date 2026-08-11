@@ -162,39 +162,6 @@ describe('auditLogs.list', () => {
 	});
 });
 
-describe('auditLogs.get', () => {
-	it('returns the row with its actor profile', async () => {
-		const t = convexTest(schema, modules);
-		await seed(t);
-		const id = await t.run(async (ctx) => {
-			const row = await ctx.db
-				.query('auditLogs')
-				.withIndex('by_action', (q) => q.eq('action', 'campaign.sent'))
-				.first();
-			return row!._id;
-		});
-
-		const res = await t.query(api.auditLogs.get, { auditLogId: id });
-		expect(res!.action).toBe('campaign.sent');
-		expect(res!.userProfile?.email).toBe('admin@example.com');
-	});
-
-	it('returns null for a deleted/missing row', async () => {
-		const t = convexTest(schema, modules);
-		const id = await t.run(async (ctx) => {
-			const rowId = await ctx.db.insert('auditLogs', {
-				userId: 'admin-1',
-				action: 'campaign.created',
-				resource: 'campaign',
-				createdAt: BASE,
-			});
-			await ctx.db.delete(rowId);
-			return rowId;
-		});
-		expect(await t.query(api.auditLogs.get, { auditLogId: id })).toBeNull();
-	});
-});
-
 describe('auditLogs.getStats', () => {
 	it('totals counts by action and resource within the range', async () => {
 		const t = convexTest(schema, modules);

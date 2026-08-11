@@ -1,5 +1,5 @@
 /**
- * Relay return-path capability — persistence + the read seam.
+ * Relay return-path capability — persistence + the shared resolver.
  *
  * The decision logic is pure and lives in its two sibling modules —
  * `lib/sendProviders/returnPathProbe.ts` (the probe state machine and its
@@ -103,30 +103,6 @@ export async function returnPathCapabilityFor(
 	const probe = await loadProbeState(ctx, transportId);
 	return resolveReturnPathCapability(transport.kind, probe, now);
 }
-
-/**
- * The resolved return-path posture for one transport, as a callable query.
- *
- * {@link returnPathCapabilityFor} already serves callers that hold a `ctx`; this
- * is the same answer for callers that do not — the ramp dashboard and the
- * measurement-quality read seam, which need to say "this cell is degraded, and
- * here is why" without reaching into the send path.
- *
- * Read-only and total, like the resolver it wraps: an id this deployment no
- * longer configures resolves to the unresolvable posture (degraded), never to
- * an error. Absence is a supported configuration (plan D2).
- *
- * No clock argument, deliberately — exactly as `resolveLastMileRoutePlan` in
- * the routing seam refuses one. A settled verdict is only rejected once it is
- * older than the probe TTL, so a backdated `at` would revive an EXPIRED
- * `supported` verdict and report the cell comparable when it is not. `now`
- * stays on {@link returnPathCapabilityFor} for tests, which call it directly.
- */
-export const transportReturnPathCapability = internalQuery({
-	args: { transportId: v.string() },
-	handler: async (ctx, args): Promise<ResolvedReturnPathCapability> =>
-		returnPathCapabilityFor(ctx, args.transportId, Date.now()),
-});
 
 /**
  * Is this transport due a (re-)probe? Never probed → yes; supported verdicts
