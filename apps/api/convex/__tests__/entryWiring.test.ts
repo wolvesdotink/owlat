@@ -564,7 +564,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'contacts/sunset.ts#setSunsetPolicy',
 	'delivery/alignmentPreflight.ts#getAlignmentGateState',
 	'delivery/ipReadinessAlerts.ts#listRecent',
-	'delivery/relayReturnPath.ts#transportReturnPathCapability',
 	'delivery/sends.ts#create',
 	'delivery/sends.ts#deleteByCampaign',
 	'delivery/sends.ts#listByCampaign',
