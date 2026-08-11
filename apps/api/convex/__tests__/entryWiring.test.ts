@@ -559,7 +559,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'delivery/sends.ts#create',
 	'delivery/sends.ts#listByCampaign',
 	'delivery/sends.ts#listByContact',
-	'delivery/suppressionMirror.ts#mirror',
 	'domains/domains.ts#countByStatus',
 	'domains/domains.ts#get',
 	'domains/domains.ts#getByDomain',

@@ -21,14 +21,11 @@
  * address — the blocklist stores normalized addresses, so the key must match.
  */
 
-import type { QueryCtx, MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
-import { normalizeEmail } from './inputGuards';
-import {
-	isMarketingOnlyBlockReason,
-	scheduleSuppressionMirror,
-	type BlockReason,
-} from '../delivery/suppressionMirror';
+import type { QueryCtx, MutationCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import { normalizeEmail } from "./inputGuards";
+import { isMarketingOnlyBlockReason, type BlockReason } from "../delivery/suppressionMirror";
+import { scheduleSuppressionMirror } from "../delivery/suppressionMirrorScheduler";
 
 /**
  * WHAT KIND OF MAIL is being gated.
@@ -48,7 +45,7 @@ import {
  * DEFAULTING TO THE STRICT SCOPE IS DELIBERATE: a new call site that forgets to
  * think about this gets the blocking behaviour, never the permissive one.
  */
-export type SuppressionScope = 'marketing' | 'transactional';
+export type SuppressionScope = "marketing" | "transactional";
 
 /**
  * Is `rawEmail` on the suppression list for `scope`? Normalizes the address to
@@ -60,14 +57,14 @@ export type SuppressionScope = 'marketing' | 'transactional';
 export async function isSuppressed(
 	ctx: QueryCtx | MutationCtx,
 	rawEmail: string,
-	options?: { scope?: SuppressionScope | undefined }
+	options?: { scope?: SuppressionScope | undefined },
 ): Promise<boolean> {
 	const blocked = await ctx.db
-		.query('blockedEmails')
-		.withIndex('by_email', (q) => q.eq('email', normalizeEmail(rawEmail)))
+		.query("blockedEmails")
+		.withIndex("by_email", (q) => q.eq("email", normalizeEmail(rawEmail)))
 		.first();
 	if (blocked === null) return false;
-	if ((options?.scope ?? 'marketing') === 'transactional') {
+	if ((options?.scope ?? "marketing") === "transactional") {
 		return !isMarketingOnlyBlockReason(blocked.reason);
 	}
 	return true;
@@ -90,9 +87,9 @@ export async function isSuppressed(
  * is doing a per-send gate and belongs on `isSuppressed`, not here.
  */
 export async function loadSuppressionSet(
-	ctx: QueryCtx | MutationCtx
+	ctx: QueryCtx | MutationCtx,
 ): Promise<ReadonlySet<string>> {
-	const records = await ctx.db.query('blockedEmails').collect(); // bounded: suppression list, one per blocked address
+	const records = await ctx.db.query("blockedEmails").collect(); // bounded: suppression list, one per blocked address
 	return new Set(records.map((b) => normalizeEmail(b.email)));
 }
 
@@ -120,7 +117,7 @@ export async function suppressEmail(
 	args: {
 		email: string;
 		reason: BlockReason;
-		bounceType?: 'hard' | 'soft' | undefined;
+		bounceType?: "hard" | "soft" | undefined;
 		notes?: string | undefined;
 		/**
 		 * The instant to stamp on the row. Callers that already hold a decision
@@ -129,16 +126,16 @@ export async function suppressEmail(
 		 * deterministic. Defaults to `Date.now()`.
 		 */
 		now?: number | undefined;
-	}
-): Promise<Id<'blockedEmails'> | null> {
+	},
+): Promise<Id<"blockedEmails"> | null> {
 	const normalized = normalizeEmail(args.email);
 	const existing = await ctx.db
-		.query('blockedEmails')
-		.withIndex('by_email', (q) => q.eq('email', normalized))
+		.query("blockedEmails")
+		.withIndex("by_email", (q) => q.eq("email", normalized))
 		.first();
 	if (existing) return null;
 
-	const blockedEmailId = await ctx.db.insert('blockedEmails', {
+	const blockedEmailId = await ctx.db.insert("blockedEmails", {
 		email: normalized,
 		reason: args.reason,
 		...(args.bounceType ? { bounceType: args.bounceType } : {}),
@@ -188,12 +185,12 @@ export interface BoundedSuppressionSet {
  */
 export async function loadSuppressionSetBounded(
 	ctx: QueryCtx | MutationCtx,
-	limit: number
+	limit: number,
 ): Promise<BoundedSuppressionSet> {
 	const bound = Math.max(0, Math.floor(limit));
 	// One extra row is the truncation probe: `bound + 1` rows means "more than
 	// `bound` exist" without a second query.
-	const records = await ctx.db.query('blockedEmails').take(bound + 1);
+	const records = await ctx.db.query("blockedEmails").take(bound + 1);
 	const truncated = records.length > bound;
 	const kept = truncated ? records.slice(0, bound) : records;
 	return {
