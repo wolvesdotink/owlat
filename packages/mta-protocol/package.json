@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/mta-protocol",
-	"version": "0.4.1",
+	"version": "0.4.2",
 	"private": true,
 	"description": "The Convex<->MTA wire contract (D7): send intake, routing decisions, the IP-reputation snapshot and the MTA webhook events, each declared exactly once and imported by both apps. Types and pure validators only — no I/O, no third-party dependencies.",
 	"homepage": "https://owlat.app",
