@@ -7,13 +7,13 @@
  * therefore isolated from the originating mutation.
  */
 
-import { internal } from "../_generated/api";
-import type { MutationCtx } from "../_generated/server";
-import type { MirroredBlockReason } from "./suppressionMirror";
+import { internal } from '../_generated/api';
+import type { MutationCtx } from '../_generated/server';
+import type { MirroredBlockReason } from './suppressionMirror';
 
 export async function scheduleSuppressionMirror(
 	ctx: MutationCtx,
-	args: { email: string; reason: MirroredBlockReason; bounceType?: "hard" | "soft" },
+	args: { email: string; reason: MirroredBlockReason; bounceType?: 'hard' | 'soft' }
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.delivery.suppressionMirror.mirror, {
 		email: args.email,

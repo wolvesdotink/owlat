@@ -95,8 +95,6 @@ const modules = Object.fromEntries(
 	)
 );
 
-
-
 // ============ listRecent ============
 
 describe('codeWorkTasks.listRecent', () => {
@@ -347,7 +345,6 @@ describe('codeWorkTasks.markFailed', () => {
 		});
 	});
 });
-
 
 // ============ createFromInbound (trust gate + code-agent guard) ============
 

@@ -21,17 +21,17 @@
  * and document budget.
  */
 
-import { v } from "convex/values";
-import { internalQuery } from "../_generated/server";
-import { authedQuery } from "../lib/authedFunctions";
-import type { QueryCtx } from "../_generated/server";
-import type { Doc } from "../_generated/dataModel";
-import { audienceValidator, type StoredAudience } from "./audience";
-import { batchGet } from "../_utils/batchLoader";
-import { logWarn } from "../lib/runtimeLog";
-import { loadSuppressionSet } from "../lib/suppression";
-import { preloadConditionsLookup, parseSegmentFilters, makeSegmentPredicate } from "../conditions";
-import type { ParsedSegmentFilters } from "../conditions";
+import { v } from 'convex/values';
+import { internalQuery } from '../_generated/server';
+import { authedQuery } from '../lib/authedFunctions';
+import type { QueryCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+import { audienceValidator, type StoredAudience } from './audience';
+import { batchGet } from '../_utils/batchLoader';
+import { logWarn } from '../lib/runtimeLog';
+import { loadSuppressionSet } from '../lib/suppression';
+import { preloadConditionsLookup, parseSegmentFilters, makeSegmentPredicate } from '../conditions';
+import type { ParsedSegmentFilters } from '../conditions';
 import {
 	countAudience,
 	selectRecipient,
@@ -39,7 +39,7 @@ import {
 	type AudienceCount,
 	type CampaignRecipient,
 	type SegmentFilters,
-} from "./audienceCandidates";
+} from './audienceCandidates';
 
 /** One resolved page: the eligible recipients, the next cursor, the raw
  *  candidate count examined on this page. `nextCursor === null` ⇒ exhausted. */
@@ -64,7 +64,7 @@ export interface ResolvedPage {
  */
 async function resolveRecipientPageImpl(
 	ctx: QueryCtx,
-	args: { audience: StoredAudience; cursor: string; numItems: number },
+	args: { audience: StoredAudience; cursor: string; numItems: number }
 ): Promise<ResolvedPage> {
 	const { audience, cursor, numItems } = args;
 
@@ -75,18 +75,18 @@ async function resolveRecipientPageImpl(
 	// hops is excluded on the later page (the "suppression mid-run" invariant).
 	const blockedEmails = await loadSuppressionSet(ctx);
 
-	if (audience.kind === "topic") {
+	if (audience.kind === 'topic') {
 		const topic = await ctx.db.get(audience.topicId);
 		const gate = { requiresDoi: topic?.requireDoubleOptIn === true, blockedEmails };
 
 		const { page, isDone, continueCursor } = await ctx.db
-			.query("contactTopics")
-			.withIndex("by_topic", (q) => q.eq("topicId", audience.topicId))
-			.paginate({ cursor: cursor === "" ? null : cursor, numItems });
+			.query('contactTopics')
+			.withIndex('by_topic', (q) => q.eq('topicId', audience.topicId))
+			.paginate({ cursor: cursor === '' ? null : cursor, numItems });
 
-		const contacts = await batchGet<Doc<"contacts">>(
+		const contacts = await batchGet<Doc<'contacts'>>(
 			ctx,
-			page.map((membership) => membership.contactId),
+			page.map((membership) => membership.contactId)
 		);
 		const recipients: CampaignRecipient[] = [];
 		for (const membership of page) {
@@ -122,7 +122,7 @@ async function resolveRecipientPageImpl(
 	try {
 		parsedFilters = parseSegmentFilters(filters);
 	} catch (err) {
-		logWarn("audienceResolution: segment filters failed to parse; resolving zero recipients", err);
+		logWarn('audienceResolution: segment filters failed to parse; resolving zero recipients', err);
 		return { recipients: [], nextCursor: null, pageCandidates: 0 };
 	}
 
@@ -135,9 +135,9 @@ async function resolveRecipientPageImpl(
 	// without a post-filter), and no single page collects the whole Contacts
 	// table.
 	const { page, isDone, continueCursor } = await ctx.db
-		.query("contacts")
-		.withIndex("by_deleted_at", (q) => q.eq("deletedAt", undefined))
-		.paginate({ cursor: cursor === "" ? null : cursor, numItems });
+		.query('contacts')
+		.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))
+		.paginate({ cursor: cursor === '' ? null : cursor, numItems });
 
 	const recipients: CampaignRecipient[] = [];
 	let pageCandidates = 0;
@@ -182,7 +182,7 @@ export const resolveRecipientPage = internalQuery({
 export const countRecipients = authedQuery({
 	args: { audience: v.optional(audienceValidator) },
 	handler: async (ctx, { audience }): Promise<AudienceCount> => {
-		if (!audience) return { total: 0, eligible: 0, completeness: "exact" };
+		if (!audience) return { total: 0, eligible: 0, completeness: 'exact' };
 		return await countAudience(ctx, audience);
 	},
 });

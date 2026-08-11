@@ -45,8 +45,6 @@ async function isTrustedInboundSender(ctx: MutationCtx, fromField: string): Prom
 	return profiles.some((p) => !p.deletedAt && normalizeEmail(p.email) === sender);
 }
 
-
-
 /**
  * List recent tasks (for dashboard / verification queue)
  */
@@ -301,7 +299,6 @@ export const markFailed = internalMutation({
 		});
 	},
 });
-
 
 /**
  * Resolve a task by its PR URL and mark it merged.

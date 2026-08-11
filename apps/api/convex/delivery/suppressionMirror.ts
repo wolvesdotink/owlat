@@ -22,13 +22,13 @@
  * there (cf. domains/trackingDomains.ts's DoH lookup).
  */
 
-import { v, type Validator } from "convex/values";
-import { internalAction } from "../_generated/server";
-import { logError, logInfo } from "../lib/runtimeLog";
-import { getMtaConfig } from "../mail/mtaClient";
+import { v, type Validator } from 'convex/values';
+import { internalAction } from '../_generated/server';
+import { logError, logInfo } from '../lib/runtimeLog';
+import { getMtaConfig } from '../mail/mtaClient';
 
 // blockedEmails.reason — the Convex-side suppression vocabulary.
-export type BlockReason = "bounced" | "complained" | "manual" | "unengaged";
+export type BlockReason = 'bounced' | 'complained' | 'manual' | 'unengaged';
 
 /**
  * The reasons that are a MARKETING-HYGIENE decision about bulk mail, not
@@ -48,7 +48,7 @@ export type BlockReason = "bounced" | "complained" | "manual" | "unengaged";
  *     that list sits UNDER Convex and would block the transactional mail the
  *     Convex-side gate just decided to allow.
  */
-export const MARKETING_ONLY_BLOCK_REASONS = ["unengaged"] as const;
+export const MARKETING_ONLY_BLOCK_REASONS = ['unengaged'] as const;
 
 export type MarketingOnlyBlockReason = (typeof MARKETING_ONLY_BLOCK_REASONS)[number];
 
@@ -63,9 +63,9 @@ export type MirroredBlockReason = Exclude<BlockReason, MarketingOnlyBlockReason>
  * than leaving a validator that still accepts the excluded reason.
  */
 export const MIRRORED_BLOCK_REASONS = [
-	"bounced",
-	"complained",
-	"manual",
+	'bounced',
+	'complained',
+	'manual',
 ] as const satisfies readonly MirroredBlockReason[];
 
 /**
@@ -74,13 +74,13 @@ export const MIRRORED_BLOCK_REASONS = [
  * `contactActivities/catalog.ts`'s `contactActivityTypeValidator`).
  */
 export const mirroredBlockReasonValidator = v.union(
-	...MIRRORED_BLOCK_REASONS.map((reason) => v.literal(reason)),
+	...MIRRORED_BLOCK_REASONS.map((reason) => v.literal(reason))
 ) as unknown as Validator<MirroredBlockReason>;
 
 const MARKETING_ONLY_SET: ReadonlySet<string> = new Set(MARKETING_ONLY_BLOCK_REASONS);
 
 export function isMarketingOnlyBlockReason(
-	reason: BlockReason,
+	reason: BlockReason
 ): reason is MarketingOnlyBlockReason {
 	return MARKETING_ONLY_SET.has(reason);
 }
@@ -88,7 +88,7 @@ export function isMarketingOnlyBlockReason(
 // SuppressionReason — the MTA-side vocabulary (apps/mta/.../suppressionList.ts).
 // Kept in sync by hand: the two enums live in separate deploy units (Convex
 // backend vs the MTA service) with no shared type.
-export type MtaSuppressionReason = "hard_bounce" | "complaint" | "manual";
+export type MtaSuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
 
 /**
  * Map a Convex `blockedEmails.reason` (+ optional bounceType) onto the MTA's
@@ -100,15 +100,15 @@ export type MtaSuppressionReason = "hard_bounce" | "complaint" | "manual";
  */
 export function toMtaSuppressionReason(
 	reason: MirroredBlockReason,
-	bounceType?: "hard" | "soft",
+	bounceType?: 'hard' | 'soft'
 ): MtaSuppressionReason {
-	if (reason === "complained") return "complaint";
-	if (reason === "bounced") {
+	if (reason === 'complained') return 'complaint';
+	if (reason === 'bounced') {
 		// A hard bounce is permanent; a soft-bounce escalation is recoverable, so
 		// it rides the MTA's expiring `manual` reason rather than a permanent one.
-		return bounceType === "soft" ? "manual" : "hard_bounce";
+		return bounceType === 'soft' ? 'manual' : 'hard_bounce';
 	}
-	return "manual";
+	return 'manual';
 }
 
 /**
@@ -123,14 +123,14 @@ export const mirror = internalAction({
 	args: {
 		email: v.string(),
 		reason: mirroredBlockReasonValidator,
-		bounceType: v.optional(v.union(v.literal("hard"), v.literal("soft"))),
+		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 	},
 	handler: async (_ctx, args) => {
 		const mta = getMtaConfig();
 		if (!mta) {
 			// No MTA in this deployment (e.g. a Resend/SES-only self-host) — the
 			// provider's account-level suppression is the backstop instead.
-			logInfo("[suppressionMirror] MTA not configured; skipping suppression mirror");
+			logInfo('[suppressionMirror] MTA not configured; skipping suppression mirror');
 			return;
 		}
 
@@ -138,15 +138,15 @@ export const mirror = internalAction({
 
 		try {
 			const res = await fetch(`${mta.baseUrl}/suppression`, {
-				method: "POST",
+				method: 'POST',
 				headers: {
-					"Content-Type": "application/json",
+					'Content-Type': 'application/json',
 					Authorization: `Bearer ${mta.apiKey}`,
 				},
 				body: JSON.stringify({
 					emails: [args.email],
 					reason: mtaReason,
-					source: "convex-blocklist",
+					source: 'convex-blocklist',
 				}),
 			});
 			if (!res.ok) {
@@ -155,7 +155,7 @@ export const mirror = internalAction({
 			}
 			logInfo(`[suppressionMirror] mirrored ${args.email} (${mtaReason}) to MTA`);
 		} catch (err) {
-			logError("[suppressionMirror] failed to mirror to MTA:", err);
+			logError('[suppressionMirror] failed to mirror to MTA:', err);
 		}
 	},
 });

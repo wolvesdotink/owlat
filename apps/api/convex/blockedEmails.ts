@@ -1,14 +1,14 @@
-import { v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { internalMutation, internalQuery } from "./_generated/server";
-import { authedQuery, authedMutation } from "./lib/authedFunctions";
-import { requireOrgPermission } from "./lib/sessionOrganization";
-import { isValidEmail, normalizeEmail } from "./lib/inputGuards";
-import { getOrThrow, throwInvalidInput, throwAlreadyExists } from "./_utils/errors";
-import { scheduleSuppressionMirror } from "./delivery/suppressionMirrorScheduler";
-import { recordAuditLog } from "./lib/auditLog";
-import { restoreSunsetSuppression } from "./contacts/sunsetRestore";
+import { v } from 'convex/values';
+import type { Doc, Id } from './_generated/dataModel';
+import type { MutationCtx, QueryCtx } from './_generated/server';
+import { internalMutation, internalQuery } from './_generated/server';
+import { authedQuery, authedMutation } from './lib/authedFunctions';
+import { requireOrgPermission } from './lib/sessionOrganization';
+import { isValidEmail, normalizeEmail } from './lib/inputGuards';
+import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/errors';
+import { scheduleSuppressionMirror } from './delivery/suppressionMirrorScheduler';
+import { recordAuditLog } from './lib/auditLog';
+import { restoreSunsetSuppression } from './contacts/sunsetRestore';
 
 // Look up a blocklist row by email. Normalizes (lowercase + trim) so every
 // caller hits the `by_email` index with the same key, then returns the first
@@ -20,25 +20,25 @@ import { restoreSunsetSuppression } from "./contacts/sunsetRestore";
 // because a second normalization would eventually disagree with this one.
 export async function findBlockedByEmail(
 	ctx: QueryCtx | MutationCtx,
-	email: string,
-): Promise<Doc<"blockedEmails"> | null> {
+	email: string
+): Promise<Doc<'blockedEmails'> | null> {
 	const normalizedEmail = normalizeEmail(email);
 	return await ctx.db
-		.query("blockedEmails")
-		.withIndex("by_email", (q) => q.eq("email", normalizedEmail))
+		.query('blockedEmails')
+		.withIndex('by_email', (q) => q.eq('email', normalizedEmail))
 		.first();
 }
 
 // Derive the polymorphic block `sourceType` from whichever source-send id was
 // supplied (emailSend vs transactionalSend), or undefined for a manual block.
 function deriveBlockSourceType(source: {
-	sourceEmailSendId?: Id<"emailSends">;
-	sourceTransactionalSendId?: Id<"transactionalSends">;
-}): "emailSend" | "transactionalSend" | undefined {
+	sourceEmailSendId?: Id<'emailSends'>;
+	sourceTransactionalSendId?: Id<'transactionalSends'>;
+}): 'emailSend' | 'transactionalSend' | undefined {
 	return source.sourceEmailSendId
-		? "emailSend"
+		? 'emailSend'
 		: source.sourceTransactionalSendId
-			? "transactionalSend"
+			? 'transactionalSend'
 			: undefined;
 }
 
@@ -58,27 +58,27 @@ export const listByTeam = authedQuery({
 	args: {
 		reason: v.optional(
 			v.union(
-				v.literal("bounced"),
-				v.literal("complained"),
-				v.literal("manual"),
+				v.literal('bounced'),
+				v.literal('complained'),
+				v.literal('manual'),
 				// The sunset engine's own reason (P4-4). Filterable like the rest:
 				// an operator looking at the blocklist has to be able to separate
 				// "we stopped mailing this address because it never engaged" from a
 				// bounce, a complaint, or a human decision.
-				v.literal("unengaged"),
-			),
+				v.literal('unengaged')
+			)
 		),
 	},
 	handler: async (ctx, args) => {
 		const reason = args.reason;
 		if (reason) {
 			return await ctx.db
-				.query("blockedEmails")
-				.withIndex("by_reason", (q) => q.eq("reason", reason))
-				.order("desc")
+				.query('blockedEmails')
+				.withIndex('by_reason', (q) => q.eq('reason', reason))
+				.order('desc')
 				.take(BLOCKLIST_VIEW_LIMIT);
 		}
-		return await ctx.db.query("blockedEmails").order("desc").take(BLOCKLIST_VIEW_LIMIT);
+		return await ctx.db.query('blockedEmails').order('desc').take(BLOCKLIST_VIEW_LIMIT);
 	},
 });
 
@@ -110,26 +110,26 @@ export const listByTeam = authedQuery({
 export const listProviderProvenance = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requireOrgPermission(ctx, "organization:manage");
+		await requireOrgPermission(ctx, 'organization:manage');
 		const entries = await ctx.db
-			.query("auditLogs")
-			.withIndex("by_action", (q) => q.eq("action", "blocklist.provider_suppressed"))
-			.order("desc")
+			.query('auditLogs')
+			.withIndex('by_action', (q) => q.eq('action', 'blocklist.provider_suppressed'))
+			.order('desc')
 			.take(BLOCKLIST_VIEW_LIMIT);
 
 		return entries.flatMap((entry) => {
 			const details = entry.details;
 			if (!entry.resourceId || !details) return [];
-			const provider = details["provider"];
-			const source = details["source"];
-			if (typeof provider !== "string" || typeof source !== "string") return [];
-			const evidence = details["evidence"];
+			const provider = details['provider'];
+			const source = details['source'];
+			if (typeof provider !== 'string' || typeof source !== 'string') return [];
+			const evidence = details['evidence'];
 			return [
 				{
 					blockedEmailId: entry.resourceId,
 					provider,
 					source,
-					evidence: typeof evidence === "string" ? evidence : null,
+					evidence: typeof evidence === 'string' ? evidence : null,
 					recordedAt: entry.createdAt,
 				},
 			];
@@ -139,7 +139,7 @@ export const listProviderProvenance = authedQuery({
 
 // Get a single blocked email by ID
 export const get = authedQuery({
-	args: { blockedEmailId: v.id("blockedEmails") },
+	args: { blockedEmailId: v.id('blockedEmails') },
 	handler: async (ctx, args) => {
 		const blockedEmail = await ctx.db.get(args.blockedEmailId);
 		if (!blockedEmail) return null;
@@ -171,34 +171,34 @@ export const getByEmail = authedQuery({
 export const add = authedMutation({
 	args: {
 		email: v.string(),
-		reason: v.union(v.literal("bounced"), v.literal("complained"), v.literal("manual")),
+		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
 		notes: v.optional(v.string()),
-		sourceEmailSendId: v.optional(v.id("emailSends")),
-		sourceTransactionalSendId: v.optional(v.id("transactionalSends")),
+		sourceEmailSendId: v.optional(v.id('emailSends')),
+		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
 	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(
 			ctx,
-			"contacts:manage",
-			"Only owners and admins can manage the blocklist",
+			'contacts:manage',
+			'Only owners and admins can manage the blocklist'
 		);
 		const normalizedEmail = normalizeEmail(args.email);
 
 		// Validate email format
 		if (!isValidEmail(normalizedEmail)) {
-			throwInvalidInput("Invalid email address format");
+			throwInvalidInput('Invalid email address format');
 		}
 
 		// Check if already blocked
 		const existing = await findBlockedByEmail(ctx, normalizedEmail);
 
 		if (existing) {
-			throwAlreadyExists("This email address is already blocked");
+			throwAlreadyExists('This email address is already blocked');
 		}
 
 		// Create the blocked email record
 		const sourceType = deriveBlockSourceType(args);
-		const blockedEmailId = await ctx.db.insert("blockedEmails", {
+		const blockedEmailId = await ctx.db.insert('blockedEmails', {
 			email: normalizedEmail,
 			reason: args.reason,
 			notes: args.notes,
@@ -210,8 +210,8 @@ export const add = authedMutation({
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,
-			action: "blocklist.added",
-			resource: "blocklist",
+			action: 'blocklist.added',
+			resource: 'blocklist',
 			resourceId: blockedEmailId,
 			details: { email: normalizedEmail, reason: args.reason },
 		});
@@ -229,14 +229,14 @@ export const add = authedMutation({
 
 // Remove an email from the blocklist
 export const remove = authedMutation({
-	args: { blockedEmailId: v.id("blockedEmails") },
+	args: { blockedEmailId: v.id('blockedEmails') },
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(
 			ctx,
-			"contacts:manage",
-			"Only owners and admins can manage the blocklist",
+			'contacts:manage',
+			'Only owners and admins can manage the blocklist'
 		);
-		const blockedEmail = await getOrThrow(ctx, args.blockedEmailId, "Blocked email");
+		const blockedEmail = await getOrThrow(ctx, args.blockedEmailId, 'Blocked email');
 
 		// A SUNSET SUPPRESSION IS UNDONE BY THE SUNSET RESTORE PATH, NOT BY A
 		// DELETE. Deleting the row alone leaves the contact's stage and quiet
@@ -246,7 +246,7 @@ export const remove = authedMutation({
 		// `restoreSunsetSuppression` deletes the same row AND sets the operator
 		// override that stops the engine touching the contact again, and it emits
 		// its own `contact.sunset_restored` audit entry.
-		if (blockedEmail.reason === "unengaged") {
+		if (blockedEmail.reason === 'unengaged') {
 			// `by_email` is NOT unique and `contacts` is a soft-delete table, so the
 			// live-row filter belongs IN the query (CONVENTIONS.md): a soft-deleted
 			// duplicate sorting first would otherwise send the operator down the
@@ -254,9 +254,9 @@ export const remove = authedMutation({
 			// `sunsetStage: 'suppressed'` with no blocklist row behind it and the
 			// engine holding on `already_suppressed` forever.
 			const contact = await ctx.db
-				.query("contacts")
-				.withIndex("by_email", (q) => q.eq("email", blockedEmail.email))
-				.filter((q) => q.eq(q.field("deletedAt"), undefined))
+				.query('contacts')
+				.withIndex('by_email', (q) => q.eq('email', blockedEmail.email))
+				.filter((q) => q.eq(q.field('deletedAt'), undefined))
 				.first();
 			if (contact !== null) {
 				const restore = await restoreSunsetSuppression(ctx, {
@@ -265,7 +265,7 @@ export const remove = authedMutation({
 					now: Date.now(),
 				});
 				// The restore removed the row and reset the stage — nothing left to do.
-				if (restore.outcome === "restored") return { success: true };
+				if (restore.outcome === 'restored') return { success: true };
 			}
 			// No live contact row behind the address (imported, merged away,
 			// hard-deleted): there is no stage to reset, so the plain delete below
@@ -276,8 +276,8 @@ export const remove = authedMutation({
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,
-			action: "blocklist.removed",
-			resource: "blocklist",
+			action: 'blocklist.removed',
+			resource: 'blocklist',
 			resourceId: args.blockedEmailId,
 			details: { email: blockedEmail.email, reason: blockedEmail.reason },
 		});
@@ -292,16 +292,16 @@ export const bulkAdd = authedMutation({
 		emails: v.array(
 			v.object({
 				email: v.string(),
-				reason: v.union(v.literal("bounced"), v.literal("complained"), v.literal("manual")),
+				reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
 				notes: v.optional(v.string()),
-			}),
+			})
 		),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
 			ctx,
-			"contacts:manage",
-			"Only owners and admins can manage the blocklist",
+			'contacts:manage',
+			'Only owners and admins can manage the blocklist'
 		);
 		const results = {
 			added: 0,
@@ -328,7 +328,7 @@ export const bulkAdd = authedMutation({
 			}
 
 			// Add to blocklist
-			await ctx.db.insert("blockedEmails", {
+			await ctx.db.insert('blockedEmails', {
 				email: normalizedEmail,
 				reason: item.reason,
 				notes: item.notes,
@@ -358,20 +358,20 @@ export const getCountsByReason = authedQuery({
 		// before the (already-capped) list view does. Counts saturate at the cap.
 		const [bounced, complained, manual, unengaged] = await Promise.all([
 			ctx.db
-				.query("blockedEmails")
-				.withIndex("by_reason", (q) => q.eq("reason", "bounced"))
+				.query('blockedEmails')
+				.withIndex('by_reason', (q) => q.eq('reason', 'bounced'))
 				.take(BLOCKLIST_VIEW_LIMIT),
 			ctx.db
-				.query("blockedEmails")
-				.withIndex("by_reason", (q) => q.eq("reason", "complained"))
+				.query('blockedEmails')
+				.withIndex('by_reason', (q) => q.eq('reason', 'complained'))
 				.take(BLOCKLIST_VIEW_LIMIT),
 			ctx.db
-				.query("blockedEmails")
-				.withIndex("by_reason", (q) => q.eq("reason", "manual"))
+				.query('blockedEmails')
+				.withIndex('by_reason', (q) => q.eq('reason', 'manual'))
 				.take(BLOCKLIST_VIEW_LIMIT),
 			ctx.db
-				.query("blockedEmails")
-				.withIndex("by_reason", (q) => q.eq("reason", "unengaged"))
+				.query('blockedEmails')
+				.withIndex('by_reason', (q) => q.eq('reason', 'unengaged'))
 				.take(BLOCKLIST_VIEW_LIMIT),
 		]);
 
@@ -423,19 +423,19 @@ export const isBlockedInternal = internalQuery({
 export const addFromEvent = internalMutation({
 	args: {
 		email: v.string(),
-		reason: v.union(v.literal("bounced"), v.literal("complained"), v.literal("manual")),
-		bounceType: v.optional(v.union(v.literal("hard"), v.literal("soft"))),
-		sourceEmailSendId: v.optional(v.id("emailSends")),
-		sourceTransactionalSendId: v.optional(v.id("transactionalSends")),
+		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
+		sourceEmailSendId: v.optional(v.id('emailSends')),
+		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
 		provenance: v.optional(
 			v.object({
 				/** Send-provider kind the suppression came from, e.g. `mandrill`. */
 				provider: v.string(),
 				/** Ongoing feedback vs. a one-off carry-over of an existing list. */
-				source: v.union(v.literal("webhook"), v.literal("import")),
+				source: v.union(v.literal('webhook'), v.literal('import')),
 				/** The provider's own reason code, e.g. `MANDRILL_REJECT_SPAM`. */
 				evidence: v.optional(v.string()),
-			}),
+			})
 		),
 	},
 	handler: async (ctx, args) => {
@@ -454,7 +454,7 @@ export const addFromEvent = internalMutation({
 
 		// Create the blocked email record
 		const sourceType = deriveBlockSourceType(args);
-		const blockedEmailId = await ctx.db.insert("blockedEmails", {
+		const blockedEmailId = await ctx.db.insert('blockedEmails', {
 			email: normalizedEmail,
 			reason: args.reason,
 			...(args.bounceType ? { bounceType: args.bounceType } : {}),
@@ -467,8 +467,8 @@ export const addFromEvent = internalMutation({
 		if (args.provenance) {
 			await recordAuditLog(ctx, {
 				userId: `system:${args.provenance.provider}_${args.provenance.source}`,
-				action: "blocklist.provider_suppressed",
-				resource: "blocklist",
+				action: 'blocklist.provider_suppressed',
+				resource: 'blocklist',
 				resourceId: blockedEmailId,
 				details: {
 					email: normalizedEmail,

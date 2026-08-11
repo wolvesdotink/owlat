@@ -52,13 +52,19 @@ describe('fireContactCreatedTrigger', () => {
 				'automations',
 				createTestAutomation({ status: 'active', triggerType: 'contact_created' })
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a1, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a1, stepIndex: 0 })
+			);
 
 			const a2 = await ctx.db.insert(
 				'automations',
 				createTestAutomation({ status: 'active', triggerType: 'contact_created' })
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a2, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a2, stepIndex: 0 })
+			);
 
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
@@ -90,7 +96,10 @@ describe('fireContactCreatedTrigger', () => {
 				'automations',
 				createTestAutomation({ status: 'draft', triggerType: 'contact_created' })
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -111,7 +120,10 @@ describe('fireContactCreatedTrigger', () => {
 				'automations',
 				createTestAutomation({ status: 'paused', triggerType: 'contact_created' })
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -152,7 +164,10 @@ describe('fireContactCreatedTrigger', () => {
 				'automations',
 				createTestAutomation({ status: 'active', triggerType: 'contact_created' })
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 
 			// Pre-existing running run
@@ -183,7 +198,10 @@ describe('fireContactCreatedTrigger', () => {
 				'automations',
 				createTestAutomation({ status: 'active', triggerType: 'contact_created' })
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 
 			// Completed run should not block
@@ -219,7 +237,10 @@ describe('fireContactCreatedTrigger', () => {
 			// Seed the initial state into the shards (3 entered, of which 2 completed
 			// ⇒ 1 active) so the rollup reproduces statsEntered 3 / statsActive 1.
 			await bumpAutomationStats(ctx, automationId, { statsEntered: 3, statsCompleted: 2 });
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -248,7 +269,10 @@ describe('fireContactCreatedTrigger', () => {
 					triggerConfig: { eventName: 'purchase' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -259,7 +283,6 @@ describe('fireContactCreatedTrigger', () => {
 
 		expect(runIds).toHaveLength(0);
 	});
-
 });
 
 // ============ fireContactUpdatedTrigger ============
@@ -278,7 +301,10 @@ describe('fireContactUpdatedTrigger', () => {
 					triggerConfig: { propertyKey: 'email' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -310,7 +336,10 @@ describe('fireContactUpdatedTrigger', () => {
 					triggerConfig: { propertyKey: 'email' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -336,7 +365,10 @@ describe('fireContactUpdatedTrigger', () => {
 					triggerConfig: undefined,
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -362,7 +394,10 @@ describe('fireContactUpdatedTrigger', () => {
 					triggerConfig: { propertyKey: 'email' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 
 			await ctx.db.insert('automationRuns', {
@@ -422,7 +457,10 @@ describe('fireContactUpdatedTrigger', () => {
 					triggerConfig: { propertyKey: 'email' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a1, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a1, stepIndex: 0 })
+			);
 
 			const a2 = await ctx.db.insert(
 				'automations',
@@ -432,7 +470,10 @@ describe('fireContactUpdatedTrigger', () => {
 					triggerConfig: { propertyKey: 'firstName' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a2, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a2, stepIndex: 0 })
+			);
 
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
@@ -462,7 +503,10 @@ describe('fireContactUpdatedTrigger', () => {
 					statsActive: 0,
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -496,7 +540,10 @@ describe('fireEventReceivedTrigger', () => {
 					triggerConfig: { eventName: 'purchase' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -522,7 +569,10 @@ describe('fireEventReceivedTrigger', () => {
 					triggerConfig: { eventName: 'purchase' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -548,7 +598,10 @@ describe('fireEventReceivedTrigger', () => {
 					triggerConfig: { eventName: 'purchase' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -585,7 +638,10 @@ describe('fireEventReceivedTrigger', () => {
 					triggerConfig: { eventName: 'login' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -619,7 +675,10 @@ describe('fireEventReceivedTrigger', () => {
 					triggerConfig: undefined,
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -645,7 +704,10 @@ describe('fireEventReceivedTrigger', () => {
 					triggerConfig: { eventName: 'purchase' },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 
 			await ctx.db.insert('automationRuns', {
@@ -709,7 +771,10 @@ describe('fireEventReceivedTrigger', () => {
 			// Seed the initial state into the shards (10 entered, 5 completed ⇒ 5
 			// active) so the rollup reproduces statsEntered 10 / statsActive 5.
 			await bumpAutomationStats(ctx, automationId, { statsEntered: 10, statsCompleted: 5 });
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -748,7 +813,10 @@ describe('fireTopicSubscribedTrigger', () => {
 					triggerConfig: { topicId },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -790,7 +858,10 @@ describe('fireTopicSubscribedTrigger', () => {
 					triggerConfig: { topicId: topicId1 },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -821,7 +892,10 @@ describe('fireTopicSubscribedTrigger', () => {
 					triggerConfig: undefined,
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -852,7 +926,10 @@ describe('fireTopicSubscribedTrigger', () => {
 					triggerConfig: { topicId },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 
 			await ctx.db.insert('automationRuns', {
@@ -925,7 +1002,10 @@ describe('fireTopicSubscribedTrigger', () => {
 					statsActive: 0,
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
@@ -960,7 +1040,10 @@ describe('fireTopicSubscribedTrigger', () => {
 					triggerConfig: { topicId },
 				})
 			);
-			await ctx.db.insert('automationSteps', createTestAutomationStep({ automationId: a, stepIndex: 0 }));
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
+			);
 			contactId = await ctx.db.insert('contacts', createTestContact());
 
 			await ctx.db.insert('automationRuns', {
@@ -993,7 +1076,7 @@ describe('fireTopicSubscribedTrigger', () => {
 describe('contact_updated fires from import + v1 API write paths', () => {
 	async function seedContactUpdatedAutomation(
 		t: ReturnType<typeof convexTest>,
-		propertyKey: string,
+		propertyKey: string
 	): Promise<Id<'automations'>> {
 		return await t.run(async (ctx) => {
 			const a = await ctx.db.insert(
@@ -1002,11 +1085,11 @@ describe('contact_updated fires from import + v1 API write paths', () => {
 					status: 'active',
 					triggerType: 'contact_updated',
 					triggerConfig: { propertyKey },
-				}),
+				})
 			);
 			await ctx.db.insert(
 				'automationSteps',
-				createTestAutomationStep({ automationId: a, stepIndex: 0 }),
+				createTestAutomationStep({ automationId: a, stepIndex: 0 })
 			);
 			return a;
 		});
@@ -1014,7 +1097,7 @@ describe('contact_updated fires from import + v1 API write paths', () => {
 
 	async function countRunsFor(
 		t: ReturnType<typeof convexTest>,
-		automationId: Id<'automations'>,
+		automationId: Id<'automations'>
 	): Promise<number> {
 		return await t.run(async (ctx) => {
 			const runs = await ctx.db.query('automationRuns').collect();
@@ -1076,7 +1159,7 @@ describe('contact_updated fires from import + v1 API write paths', () => {
 		const contactId = await t.run(async (ctx) => {
 			return await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'apiupdate@example.com', firstName: 'Old' }),
+				createTestContact({ email: 'apiupdate@example.com', firstName: 'Old' })
 			);
 		});
 
@@ -1096,7 +1179,7 @@ describe('contact_updated fires from import + v1 API write paths', () => {
 		const contactId = await t.run(async (ctx) => {
 			return await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'apinoop@example.com', firstName: 'Same' }),
+				createTestContact({ email: 'apinoop@example.com', firstName: 'Same' })
 			);
 		});
 

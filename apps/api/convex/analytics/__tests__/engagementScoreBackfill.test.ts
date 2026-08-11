@@ -403,7 +403,6 @@ describe('the acceptance criteria, end to end', () => {
 		expect(engagementBand(score ?? -1)).toBe('cold');
 	});
 
-
 	it('marks a hard-bounced contact isSuppressed on the writer hot path', async () => {
 		const t = harness();
 		const [id] = await seedContacts(t, 1, 200);

@@ -224,7 +224,6 @@ export const getCounts = authedQuery({
 	},
 });
 
-
 // Get recent sends for a recipient email
 export const getByEmail = authedQuery({
 	args: {

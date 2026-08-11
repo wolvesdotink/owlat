@@ -35,9 +35,6 @@ export const getWebhook = internalQuery({
 	},
 });
 
-
-
-
 // ============ INTERNAL MUTATIONS ============
 
 /**

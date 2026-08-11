@@ -16,10 +16,10 @@
  *  - every read is scoped to one organization.
  */
 
-import { convexTest, type TestConvex } from "convex-test";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import schema from "../../schema";
-import { api, internal } from "../../_generated/api";
+import { convexTest, type TestConvex } from 'convex-test';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import schema from '../../schema';
+import { api, internal } from '../../_generated/api';
 import {
 	ALIGNMENT_CHECK_IDS,
 	ALIGNMENT_CHECK_STATUSES,
@@ -27,35 +27,35 @@ import {
 	ALIGNMENT_UNKNOWN_RETRY_MS,
 	evaluateAlignmentPreflight,
 	type AlignmentCheckResult,
-} from "@owlat/shared/deliverabilityAlignment";
+} from '@owlat/shared/deliverabilityAlignment';
 import {
 	alignmentCheckIdValidator,
 	alignmentCheckStatusValidator,
 	alignmentVerdictValidator,
-} from "../deliverabilityValidators";
+} from '../deliverabilityValidators';
 
-import { modules } from "../../__tests__/testModules";
+import { modules } from '../../__tests__/testModules';
 
-vi.mock("../../lib/sessionOrganization", async () => {
-	const actual = await vi.importActual<typeof import("../../lib/sessionOrganization")>(
-		"../../lib/sessionOrganization",
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+		'../../lib/sessionOrganization'
 	);
 	return {
 		...actual,
-		getSingletonOrganizationId: vi.fn().mockResolvedValue("org-a"),
-		requireOrgMember: vi.fn(async () => ({ userId: "test-user", role: "admin" as const })),
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a'),
+		requireOrgMember: vi.fn(async () => ({ userId: 'test-user', role: 'admin' as const })),
 	};
 });
 
 const NOW = 1_800_000_000_000;
-const DOMAIN = "acme.com";
-const POOL_IP = "203.0.113.10";
+const DOMAIN = 'acme.com';
+const POOL_IP = '203.0.113.10';
 
 function stubTransportEnv(options: { pools?: string } = {}): void {
-	vi.stubEnv("MTA_IP_POOLS", options.pools ?? POOL_IP);
+	vi.stubEnv('MTA_IP_POOLS', options.pools ?? POOL_IP);
 	// The single-transport env must not be mistaken for a relay in these fixtures;
 	// the relay is expressed through providerRoutes.
-	vi.stubEnv("EMAIL_PROVIDER", "mta");
+	vi.stubEnv('EMAIL_PROVIDER', 'mta');
 }
 
 afterEach(() => {
@@ -63,32 +63,32 @@ afterEach(() => {
 });
 
 const BLOCKING_CHECKS: AlignmentCheckResult[] = [
-	{ id: "from_domain", status: "pass", detail: "Both arms send from acme.com.", remedy: "" },
+	{ id: 'from_domain', status: 'pass', detail: 'Both arms send from acme.com.', remedy: '' },
 	{
-		id: "spf",
-		status: "fail",
-		detail: "The merged SPF record needs 11 DNS lookups; RFC 7208 allows 10.",
-		remedy: "Flatten include:i.example",
+		id: 'spf',
+		status: 'fail',
+		detail: 'The merged SPF record needs 11 DNS lookups; RFC 7208 allows 10.',
+		remedy: 'Flatten include:i.example',
 	},
-	{ id: "dkim", status: "pass", detail: "distinct selectors", remedy: "" },
-	{ id: "dmarc", status: "pass", detail: "aligned", remedy: "" },
+	{ id: 'dkim', status: 'pass', detail: 'distinct selectors', remedy: '' },
+	{ id: 'dmarc', status: 'pass', detail: 'aligned', remedy: '' },
 ];
 
 const PASSING_CHECKS: AlignmentCheckResult[] = ALIGNMENT_CHECK_IDS.map((id) => ({
 	id,
-	status: "pass" as const,
-	detail: "ok",
-	remedy: "",
+	status: 'pass' as const,
+	detail: 'ok',
+	remedy: '',
 }));
 
 /** An enabled route entry for `kind`, i.e. "a relay is really configured". */
 async function seedRelayRoute(t: TestConvex<typeof schema>, kind: string): Promise<void> {
 	await t.run(async (ctx) => {
-		await ctx.db.insert("providerRoutes", {
-			messageType: "campaign",
-			strategy: "priority_failover",
+		await ctx.db.insert('providerRoutes', {
+			messageType: 'campaign',
+			strategy: 'priority_failover',
 			providers: [
-				{ providerType: "mta", isEnabled: true },
+				{ providerType: 'mta', isEnabled: true },
 				{ providerType: kind, isEnabled: true },
 			],
 			createdAt: NOW,
@@ -100,35 +100,35 @@ async function seedRelayRoute(t: TestConvex<typeof schema>, kind: string): Promi
 async function seedDomain(
 	t: TestConvex<typeof schema>,
 	options: {
-		relay?: "ses" | "resend" | "smtp" | null;
+		relay?: 'ses' | 'resend' | 'smtp' | null;
 		ownIdentity?: boolean;
 		domain?: string;
-	} = {},
+	} = {}
 ): Promise<void> {
 	const domainName = options.domain ?? DOMAIN;
 	const relay = options.relay ?? null;
 	await t.run(async (ctx) => {
-		const domainId = await ctx.db.insert("domains", {
+		const domainId = await ctx.db.insert('domains', {
 			domain: domainName,
-			status: "verified",
+			status: 'verified',
 			dnsRecords: { spf: { value: `v=spf1 ip4:${POOL_IP} include:amazonses.com ~all` } },
 			createdAt: NOW,
 			updatedAt: NOW,
 		});
 		if (options.ownIdentity !== false) {
-			await ctx.db.insert("sendingDomainMtaIdentities", {
+			await ctx.db.insert('sendingDomainMtaIdentities', {
 				domainId,
-				dkimSelector: "owlat",
+				dkimSelector: 'owlat',
 				createdAt: NOW,
 				updatedAt: NOW,
 			});
 		}
-		if (relay === "ses") {
-			await ctx.db.insert("sendingDomainSesIdentities", {
+		if (relay === 'ses') {
+			await ctx.db.insert('sendingDomainSesIdentities', {
 				domainId,
-				dkimTokens: ["ses-token-1"],
-				verificationToken: "token",
-				dnsRecords: { spf: { value: "v=spf1 include:amazonses.com ~all" } },
+				dkimTokens: ['ses-token-1'],
+				verificationToken: 'token',
+				dnsRecords: { spf: { value: 'v=spf1 include:amazonses.com ~all' } },
 				createdAt: NOW,
 				updatedAt: NOW,
 			});
@@ -140,12 +140,12 @@ async function seedDomain(
 async function record(
 	t: TestConvex<typeof schema>,
 	options: {
-		verdict: "aligned" | "blocked" | "unknown" | "single_arm";
+		verdict: 'aligned' | 'blocked' | 'unknown' | 'single_arm';
 		checks: AlignmentCheckResult[];
 		checkedAt: number;
 		nextCheckDueAt: number;
 		domain?: string;
-	},
+	}
 ): Promise<void> {
 	await t.mutation(internal.delivery.alignmentPreflight.recordAlignmentResult, {
 		domain: options.domain ?? DOMAIN,
@@ -161,13 +161,13 @@ function firstPage(now: number) {
 	return { now, paginationOpts: { cursor: null, numItems: 5 } };
 }
 
-describe("alignment readiness follows the latest pre-flight result", () => {
-	it("reports a blocked result, then lifts on the re-check", async () => {
+describe('alignment readiness follows the latest pre-flight result', () => {
+	it('reports a blocked result, then lifts on the re-check', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses" });
+		await seedDomain(t, { relay: 'ses' });
 		await record(t, {
-			verdict: "blocked",
+			verdict: 'blocked',
 			checks: BLOCKING_CHECKS,
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
@@ -177,11 +177,11 @@ describe("alignment readiness follows the latest pre-flight result", () => {
 			domain: DOMAIN,
 		});
 		expect(blocked).toHaveLength(1);
-		expect(blocked[0]?.verdict).toBe("blocked");
+		expect(blocked[0]?.verdict).toBe('blocked');
 
 		// The re-check finds the record fixed.
 		await record(t, {
-			verdict: "aligned",
+			verdict: 'aligned',
 			checks: PASSING_CHECKS,
 			checkedAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 			nextCheckDueAt: NOW + 2 * ALIGNMENT_RECHECK_INTERVAL_MS,
@@ -190,20 +190,20 @@ describe("alignment readiness follows the latest pre-flight result", () => {
 			domain: DOMAIN,
 		});
 		expect(lifted).toHaveLength(1);
-		expect(lifted[0]?.verdict).toBe("aligned");
+		expect(lifted[0]?.verdict).toBe('aligned');
 	});
 
-	it("holds an UNKNOWN verdict without reporting a fault", async () => {
+	it('holds an UNKNOWN verdict without reporting a fault', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses" });
+		await seedDomain(t, { relay: 'ses' });
 		await record(t, {
-			verdict: "unknown",
+			verdict: 'unknown',
 			checks: ALIGNMENT_CHECK_IDS.map((id) => ({
 				id,
-				status: "unknown" as const,
-				detail: "servfail",
-				remedy: "DNS could not be resolved.",
+				status: 'unknown' as const,
+				detail: 'servfail',
+				remedy: 'DNS could not be resolved.',
 			})),
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_UNKNOWN_RETRY_MS,
@@ -211,21 +211,21 @@ describe("alignment readiness follows the latest pre-flight result", () => {
 		const state = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
 			domain: DOMAIN,
 		});
-		expect(state[0]?.verdict).toBe("unknown");
+		expect(state[0]?.verdict).toBe('unknown');
 	});
 
-	it("never lets a stale sweep overwrite a fresher verdict", async () => {
+	it('never lets a stale sweep overwrite a fresher verdict', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses" });
+		await seedDomain(t, { relay: 'ses' });
 		await record(t, {
-			verdict: "aligned",
+			verdict: 'aligned',
 			checks: PASSING_CHECKS,
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
 		await record(t, {
-			verdict: "blocked",
+			verdict: 'blocked',
 			checks: BLOCKING_CHECKS,
 			checkedAt: NOW - 60_000,
 			nextCheckDueAt: NOW,
@@ -233,27 +233,27 @@ describe("alignment readiness follows the latest pre-flight result", () => {
 		const state = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
 			domain: DOMAIN,
 		});
-		expect(state[0]?.verdict).toBe("aligned");
+		expect(state[0]?.verdict).toBe('aligned');
 	});
 });
 
-describe("what counts as a second arm comes from the transport surface", () => {
-	it("builds the reference arm for an SES relay", async () => {
+describe('what counts as a second arm comes from the transport surface', () => {
+	it('builds the reference arm for an SES relay', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses" });
+		await seedDomain(t, { relay: 'ses' });
 		const page = await t.query(
 			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
-			firstPage(NOW),
+			firstPage(NOW)
 		);
 		const target = page.targets[0];
-		expect(target?.reference.kind).toBe("arm");
-		if (!target || target.reference.kind !== "arm") throw new Error("expected a reference arm");
-		expect(target.reference.arm.dkimSelectors).toEqual(["ses-token-1"]);
+		expect(target?.reference.kind).toBe('arm');
+		if (!target || target.reference.kind !== 'arm') throw new Error('expected a reference arm');
+		expect(target.reference.arm.dkimSelectors).toEqual(['ses-token-1']);
 		expect(target.ownArm.spfMechanisms).toEqual([`ip4:${POOL_IP}`]);
 	});
 
-	for (const kind of ["resend", "smtp", "plugin.acme.relay"] as const) {
+	for (const kind of ['resend', 'smtp', 'plugin.acme.relay'] as const) {
 		it(`records a ${kind} relay as UNKNOWN — never single_arm`, async () => {
 			stubTransportEnv();
 			const t = convexTest(schema, modules);
@@ -263,36 +263,36 @@ describe("what counts as a second arm comes from the transport surface", () => {
 			await seedRelayRoute(t, kind);
 			const page = await t.query(
 				internal.delivery.alignmentPreflight.listDueAlignmentTargets,
-				firstPage(NOW),
+				firstPage(NOW)
 			);
 			const target = page.targets[0];
-			expect(target?.reference.kind).toBe("unknown");
+			expect(target?.reference.kind).toBe('unknown');
 		});
 	}
 
-	it("treats EMAIL_PROVIDER on its own as a configured relay", async () => {
+	it('treats EMAIL_PROVIDER on its own as a configured relay', async () => {
 		stubTransportEnv();
-		vi.stubEnv("EMAIL_PROVIDER", "resend");
+		vi.stubEnv('EMAIL_PROVIDER', 'resend');
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { relay: null });
 		const page = await t.query(
 			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
-			firstPage(NOW),
+			firstPage(NOW)
 		);
-		expect(page.targets[0]?.reference.kind).toBe("unknown");
+		expect(page.targets[0]?.reference.kind).toBe('unknown');
 	});
 
 	// D2, and the whole reason a standalone domain is never a target: the gate is
 	// answered from the LIVE transport surface, so it opens with no row at all —
 	// no DNS is gathered and no `single_arm` row is written for anyone to later
 	// misread as evidence about two arms.
-	it("opens the gate with no relay anywhere, without gathering or storing anything (D2)", async () => {
+	it('opens the gate with no relay anywhere, without gathering or storing anything (D2)', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { relay: null });
 		const page = await t.query(
 			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
-			firstPage(NOW),
+			firstPage(NOW)
 		);
 		expect(page.targets).toEqual([]);
 
@@ -301,13 +301,13 @@ describe("what counts as a second arm comes from the transport surface", () => {
 	});
 
 	// ...and a domain that IS stored is not turned into that case by its spelling.
-	for (const spelling of ["ACME.com", "acme.com.", "  acme.com  "]) {
+	for (const spelling of ['ACME.com', 'acme.com.', '  acme.com  ']) {
 		it(`normalizes ${JSON.stringify(spelling)} to the stored domain`, async () => {
 			stubTransportEnv();
 			const t = convexTest(schema, modules);
-			await seedDomain(t, { relay: "ses" });
+			await seedDomain(t, { relay: 'ses' });
 			await record(t, {
-				verdict: "aligned",
+				verdict: 'aligned',
 				checks: PASSING_CHECKS,
 				checkedAt: NOW,
 				nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
@@ -315,7 +315,7 @@ describe("what counts as a second arm comes from the transport surface", () => {
 			const state = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
 				domain: spelling,
 			});
-			expect(state[0]?.verdict).toBe("aligned");
+			expect(state[0]?.verdict).toBe('aligned');
 		});
 	}
 
@@ -325,30 +325,30 @@ describe("what counts as a second arm comes from the transport surface", () => {
 		// A verified SES identity AND Resend enabled: there is no single second arm,
 		// and telling the operator to verify an identity they already have would send
 		// them to fix something that is not broken.
-		await seedDomain(t, { relay: "ses" });
-		await seedRelayRoute(t, "resend");
+		await seedDomain(t, { relay: 'ses' });
+		await seedRelayRoute(t, 'resend');
 		const page = await t.query(
 			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
-			firstPage(NOW),
+			firstPage(NOW)
 		);
 		const target = page.targets[0];
-		expect(target?.reference.kind).toBe("unknown");
-		if (!target || target.reference.kind !== "unknown") throw new Error("expected unknown");
-		expect(target.reference.detail).toContain("More than one relay is enabled");
-		expect(target.reference.detail).not.toContain("no verified signing identity");
+		expect(target?.reference.kind).toBe('unknown');
+		if (!target || target.reference.kind !== 'unknown') throw new Error('expected unknown');
+		expect(target.reference.detail).toContain('More than one relay is enabled');
+		expect(target.reference.detail).not.toContain('no verified signing identity');
 	});
 
-	it("holds when MTA_IP_POOLS is unset, rather than passing SPF on a relay-only record", async () => {
-		vi.stubEnv("MTA_IP_POOLS", "");
-		vi.stubEnv("EMAIL_PROVIDER", "mta");
+	it('holds when MTA_IP_POOLS is unset, rather than passing SPF on a relay-only record', async () => {
+		vi.stubEnv('MTA_IP_POOLS', '');
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses" });
+		await seedDomain(t, { relay: 'ses' });
 		const page = await t.query(
 			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
-			firstPage(NOW),
+			firstPage(NOW)
 		);
 		const target = page.targets[0];
-		if (!target) throw new Error("expected a due target");
+		if (!target) throw new Error('expected a due target');
 		expect(target.ownArm.spfMechanisms).toEqual([]);
 
 		const result = evaluateAlignmentPreflight({
@@ -357,27 +357,27 @@ describe("what counts as a second arm comes from the transport surface", () => {
 			dns: {
 				// The stored value for an SES-registered domain IS the relay include —
 				// which must not be enough to pass the own arm's half of the check.
-				fromDomainTxt: { state: "found", records: ["v=spf1 include:amazonses.com ~all"] },
-				dmarcTxt: { state: "found", records: ["v=DMARC1; p=none"] },
+				fromDomainTxt: { state: 'found', records: ['v=spf1 include:amazonses.com ~all'] },
+				dmarcTxt: { state: 'found', records: ['v=DMARC1; p=none'] },
 				dkimTxt: {},
 			},
 			checkedAt: NOW,
 		});
-		const spf = result.checks.find((check) => check.id === "spf");
-		expect(spf?.status).toBe("unknown");
-		expect(spf?.remedy).toContain("MTA_IP_POOLS");
-		expect(result.verdict).toBe("unknown");
+		const spf = result.checks.find((check) => check.id === 'spf');
+		expect(spf?.status).toBe('unknown');
+		expect(spf?.remedy).toContain('MTA_IP_POOLS');
+		expect(result.verdict).toBe('unknown');
 	});
 });
 
-describe("a relay-only domain is skipped, not permanently blocked", () => {
-	it("produces no target and therefore no unactionable verdict", async () => {
+describe('a relay-only domain is skipped, not permanently blocked', () => {
+	it('produces no target and therefore no unactionable verdict', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses", ownIdentity: false });
+		await seedDomain(t, { relay: 'ses', ownIdentity: false });
 		const page = await t.query(
 			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
-			firstPage(NOW),
+			firstPage(NOW)
 		);
 		expect(page.targets).toEqual([]);
 		const readiness = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {});
@@ -385,13 +385,13 @@ describe("a relay-only domain is skipped, not permanently blocked", () => {
 	});
 });
 
-describe("the sweep is due-driven and does not starve past the first page", () => {
-	it("walks every verified domain across pages", async () => {
+describe('the sweep is due-driven and does not starve past the first page', () => {
+	it('walks every verified domain across pages', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
 		const domains = Array.from({ length: 12 }, (_, index) => `d${index}.example`);
 		for (const domain of domains) {
-			await seedDomain(t, { relay: "ses", domain });
+			await seedDomain(t, { relay: 'ses', domain });
 		}
 
 		const seen: string[] = [];
@@ -409,43 +409,43 @@ describe("the sweep is due-driven and does not starve past the first page", () =
 		expect(seen.sort()).toEqual([...domains].sort());
 	});
 
-	it("skips a domain that is not due yet and returns it once it is", async () => {
+	it('skips a domain that is not due yet and returns it once it is', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses" });
+		await seedDomain(t, { relay: 'ses' });
 		expect(
 			(await t.query(internal.delivery.alignmentPreflight.listDueAlignmentTargets, firstPage(NOW)))
-				.targets,
+				.targets
 		).toHaveLength(1);
 
 		await record(t, {
-			verdict: "aligned",
+			verdict: 'aligned',
 			checks: PASSING_CHECKS,
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
 		expect(
 			(await t.query(internal.delivery.alignmentPreflight.listDueAlignmentTargets, firstPage(NOW)))
-				.targets,
+				.targets
 		).toHaveLength(0);
 		expect(
 			(
 				await t.query(
 					internal.delivery.alignmentPreflight.listDueAlignmentTargets,
-					firstPage(NOW + ALIGNMENT_RECHECK_INTERVAL_MS),
+					firstPage(NOW + ALIGNMENT_RECHECK_INTERVAL_MS)
 				)
-			).targets,
+			).targets
 		).toHaveLength(1);
 	});
 });
 
-describe("the readiness read", () => {
-	it("returns the stored verdict with the reason mapped to null when absent", async () => {
+describe('the readiness read', () => {
+	it('returns the stored verdict with the reason mapped to null when absent', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses" });
+		await seedDomain(t, { relay: 'ses' });
 		await record(t, {
-			verdict: "blocked",
+			verdict: 'blocked',
 			checks: BLOCKING_CHECKS,
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
@@ -453,99 +453,99 @@ describe("the readiness read", () => {
 		const rows = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {});
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.domain).toBe(DOMAIN);
-		expect(rows[0]?.verdict).toBe("blocked");
+		expect(rows[0]?.verdict).toBe('blocked');
 		expect(rows[0]?.measurementDegradedReason).toBeNull();
-		expect(rows[0]?.checks.find((check) => check.id === "spf")?.remedy).toContain("Flatten");
+		expect(rows[0]?.checks.find((check) => check.id === 'spf')?.remedy).toContain('Flatten');
 	});
 
-	it("surfaces the degraded-measurement reason when one was recorded", async () => {
+	it('surfaces the degraded-measurement reason when one was recorded', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses" });
+		await seedDomain(t, { relay: 'ses' });
 		await t.mutation(internal.delivery.alignmentPreflight.recordAlignmentResult, {
 			domain: DOMAIN,
-			verdict: "aligned",
+			verdict: 'aligned',
 			checks: PASSING_CHECKS,
 			isMeasurementDegraded: true,
-			measurementDegradedReason: "SES relay cannot carry our custom return path.",
+			measurementDegradedReason: 'SES relay cannot carry our custom return path.',
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
 		const rows = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {});
 		expect(rows[0]?.isMeasurementDegraded).toBe(true);
-		expect(rows[0]?.measurementDegradedReason).toContain("custom return path");
+		expect(rows[0]?.measurementDegradedReason).toContain('custom return path');
 	});
 
-	it("reports single_arm as a plain verdict with no remedy copy (D2)", async () => {
+	it('reports single_arm as a plain verdict with no remedy copy (D2)', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { relay: null });
 		await record(t, {
-			verdict: "single_arm",
+			verdict: 'single_arm',
 			checks: ALIGNMENT_CHECK_IDS.map((id) => ({
 				id,
-				status: "pass" as const,
-				detail: "Single arm — no reference transport is configured.",
-				remedy: "",
+				status: 'pass' as const,
+				detail: 'Single arm — no reference transport is configured.',
+				remedy: '',
 			})),
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
 		const rows = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {});
-		expect(rows[0]?.verdict).toBe("single_arm");
+		expect(rows[0]?.verdict).toBe('single_arm');
 		for (const check of rows[0]?.checks ?? []) {
-			expect(check.status).toBe("pass");
-			expect(check.remedy).toBe("");
+			expect(check.status).toBe('pass');
+			expect(check.remedy).toBe('');
 		}
 	});
 
-	it("filters to one domain when asked", async () => {
+	it('filters to one domain when asked', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { relay: null });
-		await seedDomain(t, { relay: null, domain: "other.example" });
+		await seedDomain(t, { relay: null, domain: 'other.example' });
 		await record(t, {
-			verdict: "aligned",
+			verdict: 'aligned',
 			checks: PASSING_CHECKS,
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
 		await record(t, {
-			verdict: "blocked",
+			verdict: 'blocked',
 			checks: BLOCKING_CHECKS,
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
-			domain: "other.example",
+			domain: 'other.example',
 		});
 		const rows = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {
-			domain: "other.example",
+			domain: 'other.example',
 		});
-		expect(rows.map((row) => row.domain)).toEqual(["other.example"]);
+		expect(rows.map((row) => row.domain)).toEqual(['other.example']);
 	});
 });
 
-describe("every read is scoped to one organization", () => {
-	it("never returns another organization’s alignment row", async () => {
+describe('every read is scoped to one organization', () => {
+	it('never returns another organization’s alignment row', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { relay: "ses" });
+		await seedDomain(t, { relay: 'ses' });
 		// A second tenant's row for the SAME domain name: dropping the org filter
 		// on either read would surface it.
 		await t.run(async (ctx) => {
-			await ctx.db.insert("deliverabilityAlignmentStates", {
-				organizationId: "org-b",
+			await ctx.db.insert('deliverabilityAlignmentStates', {
+				organizationId: 'org-b',
 				domain: DOMAIN,
-				verdict: "aligned",
+				verdict: 'aligned',
 				checks: PASSING_CHECKS,
 				isMeasurementDegraded: false,
 				checkedAt: NOW,
 				nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 				updatedAt: NOW,
 			});
-			await ctx.db.insert("deliverabilityAlignmentStates", {
-				organizationId: "org-b",
-				domain: "foreign.example",
-				verdict: "blocked",
+			await ctx.db.insert('deliverabilityAlignmentStates', {
+				organizationId: 'org-b',
+				domain: 'foreign.example',
+				verdict: 'blocked',
 				checks: BLOCKING_CHECKS,
 				isMeasurementDegraded: false,
 				checkedAt: NOW,
@@ -560,30 +560,30 @@ describe("every read is scoped to one organization", () => {
 
 		// And writing org-a's own row leaves org-b's untouched.
 		await record(t, {
-			verdict: "blocked",
+			verdict: 'blocked',
 			checks: BLOCKING_CHECKS,
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
 		const rows = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {});
 		expect(rows).toHaveLength(1);
-		expect(rows[0]?.verdict).toBe("blocked");
+		expect(rows[0]?.verdict).toBe('blocked');
 		const foreign = await t.run(async (ctx) =>
 			ctx.db
-				.query("deliverabilityAlignmentStates")
-				.withIndex("by_org_domain", (q) => q.eq("organizationId", "org-b").eq("domain", DOMAIN))
-				.unique(),
+				.query('deliverabilityAlignmentStates')
+				.withIndex('by_org_domain', (q) => q.eq('organizationId', 'org-b').eq('domain', DOMAIN))
+				.unique()
 		);
-		expect(foreign?.verdict).toBe("aligned");
+		expect(foreign?.verdict).toBe('aligned');
 	});
 });
 
-describe("the stored vocabulary matches the shared union", () => {
-	it("keeps the check-id and verdict validators in parity with the shared types", () => {
+describe('the stored vocabulary matches the shared union', () => {
+	it('keeps the check-id and verdict validators in parity with the shared types', () => {
 		const validatorIds = alignmentCheckIdValidator.members.map((member) => String(member.value));
 		expect(validatorIds.sort()).toEqual([...ALIGNMENT_CHECK_IDS].sort());
 		const verdicts = alignmentVerdictValidator.members.map((member) => String(member.value));
-		expect(verdicts.sort()).toEqual(["aligned", "blocked", "single_arm", "unknown"]);
+		expect(verdicts.sort()).toEqual(['aligned', 'blocked', 'single_arm', 'unknown']);
 	});
 
 	// The status union is the one that carries this piece's whole semantics: its
@@ -591,9 +591,9 @@ describe("the stored vocabulary matches the shared union", () => {
 	// silently lost it would turn every unresolved lookup into a write failure, and
 	// one that gained a member would let a status the evaluator never produces be
 	// stored. So it is pinned against the shared as-const exactly like the others.
-	it("keeps the check-status validator in parity with the shared union", () => {
+	it('keeps the check-status validator in parity with the shared union', () => {
 		const statuses = alignmentCheckStatusValidator.members.map((member) => String(member.value));
 		expect(statuses).toEqual([...ALIGNMENT_CHECK_STATUSES]);
-		expect(statuses).toContain("unknown");
+		expect(statuses).toContain('unknown');
 	});
 });

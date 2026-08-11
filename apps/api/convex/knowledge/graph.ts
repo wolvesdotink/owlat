@@ -409,7 +409,6 @@ export const deleteEntry = authedMutation({
 	},
 });
 
-
 /**
  * Save a knowledge entry from the agent pipeline (internal)
  */
@@ -484,7 +483,6 @@ export const saveEntry = internalMutation({
 		return entryId;
 	},
 });
-
 
 /**
  * Author a typed edge between two knowledge entries from the dashboard.

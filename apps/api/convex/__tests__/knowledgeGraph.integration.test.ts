@@ -32,22 +32,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -246,17 +247,20 @@ describe('knowledgeGraph.updateEntry', () => {
 
 		let missingId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			missingId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Temp',
-				content: 'temp',
-				sourceType: 'manual',
-			}));
+			missingId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Temp',
+					content: 'temp',
+					sourceType: 'manual',
+				})
+			);
 			await ctx.db.delete(missingId);
 		});
 
 		// Should resolve without throwing.
 		await expect(
-			asUser.mutation(api.knowledge.graph.updateEntry, { entryId: missingId, title: 'X' }),
+			asUser.mutation(api.knowledge.graph.updateEntry, { entryId: missingId, title: 'X' })
 		).resolves.toBeNull();
 	});
 });
@@ -284,11 +288,14 @@ describe('knowledgeGraph.deleteEntry', () => {
 		// A second entry related to the first, both directions.
 		let otherId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			otherId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Other',
-				content: 'survives',
-				sourceType: 'manual',
-			}));
+			otherId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Other',
+					content: 'survives',
+					sourceType: 'manual',
+				})
+			);
 			await ctx.db.insert('knowledgeRelations', {
 				fromEntryId: entryId,
 				toEntryId: otherId,
@@ -347,16 +354,19 @@ describe('knowledgeGraph.deleteEntry', () => {
 
 		let missingId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			missingId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Temp',
-				content: 'temp',
-				sourceType: 'manual',
-			}));
+			missingId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Temp',
+					content: 'temp',
+					sourceType: 'manual',
+				})
+			);
 			await ctx.db.delete(missingId);
 		});
 
 		await expect(
-			asUser.mutation(api.knowledge.graph.deleteEntry, { entryId: missingId }),
+			asUser.mutation(api.knowledge.graph.deleteEntry, { entryId: missingId })
 		).resolves.toBeNull();
 	});
 
@@ -376,11 +386,14 @@ describe('knowledgeGraph.deleteEntry', () => {
 		// rows past the cap (nothing else ever revisits a deleted entry's relations).
 		const OVER_PAGE = 501;
 		await t.run(async (ctx) => {
-			const target = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Target',
-				content: 'pointed at by the hub',
-				sourceType: 'manual',
-			}));
+			const target = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Target',
+					content: 'pointed at by the hub',
+					sourceType: 'manual',
+				})
+			);
 			for (let i = 0; i < OVER_PAGE; i++) {
 				await ctx.db.insert('knowledgeRelations', {
 					fromEntryId: entryId,
@@ -419,16 +432,22 @@ describe('knowledgeGraph.getEntry', () => {
 		let entryId2!: Id<'knowledgeEntries'>;
 
 		await t.run(async (ctx) => {
-			entryId1 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Entry 1',
-				content: 'First entry',
-				sourceType: 'manual',
-			}));
-			entryId2 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Entry 2',
-				content: 'Second entry',
-				sourceType: 'manual',
-			}));
+			entryId1 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Entry 1',
+					content: 'First entry',
+					sourceType: 'manual',
+				})
+			);
+			entryId2 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Entry 2',
+					content: 'Second entry',
+					sourceType: 'manual',
+				})
+			);
 			await ctx.db.insert('knowledgeRelations', {
 				fromEntryId: entryId1,
 				toEntryId: entryId2,
@@ -462,11 +481,14 @@ describe('knowledgeGraph.getEntry', () => {
 
 		await t.run(async (ctx) => {
 			// Insert then delete to get a valid but missing ID
-			const tempId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Temp',
-				content: 'temp',
-				sourceType: 'manual',
-			}));
+			const tempId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Temp',
+					content: 'temp',
+					sourceType: 'manual',
+				})
+			);
 			await ctx.db.delete(tempId);
 			const result = await ctx.db.get(tempId);
 			expect(result).toBeNull();
@@ -481,24 +503,33 @@ describe('knowledgeGraph.listByType', () => {
 		const t = convexTest(schema, modules);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Fact 1',
-				content: 'fact content',
-				sourceType: 'manual',
-			}));
-			await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'decision',
-				title: 'Decision 1',
-				content: 'decision content',
-				sourceType: 'manual',
-			}));
-			await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Fact 2',
-				content: 'another fact',
-				sourceType: 'manual',
-			}));
+			await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Fact 1',
+					content: 'fact content',
+					sourceType: 'manual',
+				})
+			);
+			await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'decision',
+					title: 'Decision 1',
+					content: 'decision content',
+					sourceType: 'manual',
+				})
+			);
+			await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Fact 2',
+					content: 'another fact',
+					sourceType: 'manual',
+				})
+			);
 		});
 
 		// listByType requires auth so verify via raw DB
@@ -528,27 +559,36 @@ describe('knowledgeGraph.listAll', () => {
 
 		const base = Date.now();
 		await t.run(async (ctx) => {
-			await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'A Fact',
-				content: 'fact content',
-				sourceType: 'manual',
-				createdAt: base,
-			}));
-			await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'decision',
-				title: 'A Decision',
-				content: 'decision content',
-				sourceType: 'manual',
-				createdAt: base + 1,
-			}));
-			await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'goal',
-				title: 'A Goal',
-				content: 'goal content',
-				sourceType: 'manual',
-				createdAt: base + 2,
-			}));
+			await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'A Fact',
+					content: 'fact content',
+					sourceType: 'manual',
+					createdAt: base,
+				})
+			);
+			await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'decision',
+					title: 'A Decision',
+					content: 'decision content',
+					sourceType: 'manual',
+					createdAt: base + 1,
+				})
+			);
+			await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'goal',
+					title: 'A Goal',
+					content: 'goal content',
+					sourceType: 'manual',
+					createdAt: base + 2,
+				})
+			);
 		});
 
 		const result = await asUser.query(api.knowledge.graph.listAll, {});
@@ -565,13 +605,16 @@ describe('knowledgeGraph.listAll', () => {
 		const base = Date.now();
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 5; i++) {
-				await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-					entryType: 'fact',
-					title: `Entry ${i}`,
-					content: 'c',
-					sourceType: 'manual',
-					createdAt: base + i,
-				}));
+				await ctx.db.insert(
+					'knowledgeEntries',
+					createTestKnowledgeEntry({
+						entryType: 'fact',
+						title: `Entry ${i}`,
+						content: 'c',
+						sourceType: 'manual',
+						createdAt: base + i,
+					})
+				);
 			}
 		});
 
@@ -584,12 +627,15 @@ describe('knowledgeGraph.listAll', () => {
 		vi.mocked(isActiveOrgMember).mockResolvedValueOnce(false);
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Hidden',
-				content: 'c',
-				sourceType: 'manual',
-			}));
+			await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Hidden',
+					content: 'c',
+					sourceType: 'manual',
+				})
+			);
 		});
 
 		const result = await t.query(api.knowledge.graph.listAll, {});
@@ -682,7 +728,7 @@ describe('knowledgeGraph.getByContact', () => {
 					sourceType: 'manual',
 					contactIds: [contactId],
 					createdAt: base,
-				}),
+				})
 			);
 			await ctx.db.insert('knowledgeEntryContacts', {
 				entryId: oldestEntryId,
@@ -697,7 +743,7 @@ describe('knowledgeGraph.getByContact', () => {
 						content: 'unrelated',
 						sourceType: 'manual',
 						createdAt: base + 1000 + i,
-					}),
+					})
 				);
 			}
 		});
@@ -724,7 +770,7 @@ describe('knowledgeGraph.getByContact', () => {
 						sourceType: 'manual',
 						contactIds: [contactId],
 						createdAt: base + i, // i=2 is newest
-					}),
+					})
 				);
 				await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId });
 			}
@@ -755,7 +801,7 @@ describe('knowledgeGraph.getByContact', () => {
 					sourceType: 'manual',
 					contactIds: [contactId],
 					expiresAt: Date.now() - 1000,
-				}),
+				})
 			);
 			await ctx.db.insert('knowledgeEntryContacts', { entryId: expiredId, contactId });
 		});
@@ -836,7 +882,6 @@ describe('knowledgeGraph.saveEntry', () => {
 	});
 });
 
-
 // ============ knowledgeGraph.addRelation / removeRelation (public) ============
 
 describe('knowledgeGraph.addRelation', () => {
@@ -844,12 +889,22 @@ describe('knowledgeGraph.addRelation', () => {
 		let entryId1!: Id<'knowledgeEntries'>;
 		let entryId2!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			entryId1 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Source', content: 'source', sourceType: 'manual',
-			}));
-			entryId2 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Target', content: 'target', sourceType: 'manual',
-			}));
+			entryId1 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Source',
+					content: 'source',
+					sourceType: 'manual',
+				})
+			);
+			entryId2 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Target',
+					content: 'target',
+					sourceType: 'manual',
+				})
+			);
 		});
 		return { entryId1, entryId2 };
 	};
@@ -883,10 +938,14 @@ describe('knowledgeGraph.addRelation', () => {
 		const { entryId1, entryId2 } = await seedTwoEntries(t);
 
 		const first = await asUser.mutation(api.knowledge.graph.addRelation, {
-			fromEntryId: entryId1, toEntryId: entryId2, relationType: 'relates_to',
+			fromEntryId: entryId1,
+			toEntryId: entryId2,
+			relationType: 'relates_to',
 		});
 		const second = await asUser.mutation(api.knowledge.graph.addRelation, {
-			fromEntryId: entryId1, toEntryId: entryId2, relationType: 'relates_to',
+			fromEntryId: entryId1,
+			toEntryId: entryId2,
+			relationType: 'relates_to',
 		});
 		expect(second).toBe(first);
 
@@ -906,8 +965,10 @@ describe('knowledgeGraph.addRelation', () => {
 
 		await expect(
 			asUser.mutation(api.knowledge.graph.addRelation, {
-				fromEntryId: entryId1, toEntryId: entryId1, relationType: 'relates_to',
-			}),
+				fromEntryId: entryId1,
+				toEntryId: entryId1,
+				relationType: 'relates_to',
+			})
 		).rejects.toThrow();
 	});
 
@@ -916,12 +977,16 @@ describe('knowledgeGraph.addRelation', () => {
 		const asUser = t.withIdentity(testUser);
 		const { entryId1, entryId2 } = await seedTwoEntries(t);
 
-		await t.run(async (ctx) => { await ctx.db.delete(entryId2); });
+		await t.run(async (ctx) => {
+			await ctx.db.delete(entryId2);
+		});
 
 		await expect(
 			asUser.mutation(api.knowledge.graph.addRelation, {
-				fromEntryId: entryId1, toEntryId: entryId2, relationType: 'relates_to',
-			}),
+				fromEntryId: entryId1,
+				toEntryId: entryId2,
+				relationType: 'relates_to',
+			})
 		).rejects.toThrow();
 	});
 });
@@ -933,16 +998,28 @@ describe('knowledgeGraph.removeRelation', () => {
 		let entryId1!: Id<'knowledgeEntries'>;
 		let entryId2!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			entryId1 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'A', content: 'a', sourceType: 'manual',
-			}));
-			entryId2 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'B', content: 'b', sourceType: 'manual',
-			}));
+			entryId1 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'A',
+					content: 'a',
+					sourceType: 'manual',
+				})
+			);
+			entryId2 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'B',
+					content: 'b',
+					sourceType: 'manual',
+				})
+			);
 		});
 
 		const relationId = await asUser.mutation(api.knowledge.graph.addRelation, {
-			fromEntryId: entryId1, toEntryId: entryId2, relationType: 'blocks',
+			fromEntryId: entryId1,
+			toEntryId: entryId2,
+			relationType: 'blocks',
 		});
 
 		const result = await asUser.mutation(api.knowledge.graph.removeRelation, {
@@ -961,16 +1038,31 @@ describe('knowledgeGraph.removeRelation', () => {
 		let entryId2!: Id<'knowledgeEntries'>;
 		let relationId!: Id<'knowledgeRelations'>;
 		await t.run(async (ctx) => {
-			entryId1 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'A', content: 'a', sourceType: 'manual',
-			}));
-			entryId2 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'B', content: 'b', sourceType: 'manual',
-			}));
+			entryId1 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'A',
+					content: 'a',
+					sourceType: 'manual',
+				})
+			);
+			entryId2 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'B',
+					content: 'b',
+					sourceType: 'manual',
+				})
+			);
 			relationId = await ctx.db.insert('knowledgeRelations', {
-				fromEntryId: entryId1, toEntryId: entryId2, relationType: 'causes',
-				confidenceTag: 'extracted', confidence: 1.0, provenance: 'manual',
-				createdAt: Date.now(), updatedAt: Date.now(),
+				fromEntryId: entryId1,
+				toEntryId: entryId2,
+				relationType: 'causes',
+				confidenceTag: 'extracted',
+				confidence: 1.0,
+				provenance: 'manual',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
 			});
 			await ctx.db.delete(relationId);
 		});
@@ -979,4 +1071,3 @@ describe('knowledgeGraph.removeRelation', () => {
 		expect(result).toBeNull();
 	});
 });
-

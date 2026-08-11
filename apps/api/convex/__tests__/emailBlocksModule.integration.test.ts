@@ -47,9 +47,8 @@ const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([path]) =>
-			!path.includes('emailBlocks/rendering.ts') &&
-			!path.includes('emailBlocks/renderingPool'),
-	),
+			!path.includes('emailBlocks/rendering.ts') && !path.includes('emailBlocks/renderingPool')
+	)
 );
 
 const suppressed: Error[] = [];
@@ -79,7 +78,7 @@ function buildTemplateContent(
 		type: string;
 		content: unknown;
 		savedBlockRef?: { blockId: string; groupId: string; blockName: string };
-	}>,
+	}>
 ): string {
 	return JSON.stringify({ blocks });
 }
@@ -161,7 +160,7 @@ describe('Saved block module — update', () => {
 						},
 					]),
 					linkedBlockIds: [blockId],
-				}),
+				})
 			);
 		});
 
@@ -232,7 +231,7 @@ describe('Saved block module — update', () => {
 						},
 					]),
 					linkedBlockIds: [blockId],
-				}),
+				})
 			);
 		});
 
@@ -283,7 +282,7 @@ describe('Saved block module — update', () => {
 						},
 					]),
 					linkedBlockIds: [blockId],
-				}),
+				})
 			);
 		});
 
@@ -306,9 +305,7 @@ describe('Saved block module — update', () => {
 			const auditLogs = await ctx.db
 				.query('auditLogs')
 				.collect()
-				.then((logs) =>
-					logs.filter((l) => l.action === 'email_block.updated'),
-				);
+				.then((logs) => logs.filter((l) => l.action === 'email_block.updated'));
 			expect(auditLogs.length).toBe(1);
 		});
 	});
@@ -421,7 +418,7 @@ describe('Saved block module — remove', () => {
 						},
 					]),
 					linkedBlockIds: [blockId, 'other-block-id'],
-				}),
+				})
 			);
 
 			transactionalId = await ctx.db.insert(
@@ -436,7 +433,7 @@ describe('Saved block module — remove', () => {
 						},
 					]),
 					linkedBlockIds: [blockId],
-				}),
+				})
 			);
 		});
 
@@ -567,7 +564,7 @@ describe('Saved block module — walker covers both consumer tables', () => {
 						},
 					]),
 					linkedBlockIds: [blockId],
-				}),
+				})
 			);
 
 			transactionalId = await ctx.db.insert(
@@ -582,7 +579,7 @@ describe('Saved block module — walker covers both consumer tables', () => {
 						},
 					]),
 					linkedBlockIds: [blockId],
-				}),
+				})
 			);
 		});
 

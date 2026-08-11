@@ -505,7 +505,6 @@ export const getClickedContacts = authedQuery({
 	},
 });
 
-
 // Get link click stats aggregated by URL for a campaign (for click heatmap)
 export const getLinkClickStats = authedQuery({
 	args: { campaignId: v.id('campaigns') },

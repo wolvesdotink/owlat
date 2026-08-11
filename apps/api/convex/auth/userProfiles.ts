@@ -52,7 +52,6 @@ export const create = authedIdentityMutation({
 	},
 });
 
-
 // Internal mutation to create a user profile (for seed/admin setup, no auth required)
 export const createInternal = internalMutation({
 	args: {

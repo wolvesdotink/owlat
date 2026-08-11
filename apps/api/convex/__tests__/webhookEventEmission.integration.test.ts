@@ -2,11 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import {
-	createTestCampaign,
-	createTestContact,
-	createTestEmailSend,
-} from './factories';
+import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
 import type { Id } from '../_generated/dataModel';
 import { createContact } from '../contacts/creation';
 
@@ -34,9 +30,7 @@ async function createThroughModule(
 type Fanout = { event: string; data: Record<string, unknown> };
 
 /** The fanoutEvent jobs the just-run mutation scheduled, by event literal. */
-async function scheduledFanouts(
-	t: ReturnType<typeof convexTest>
-): Promise<Fanout[]> {
+async function scheduledFanouts(t: ReturnType<typeof convexTest>): Promise<Fanout[]> {
 	return await t.run(async (ctx) => {
 		const jobs = await ctx.db.system.query('_scheduled_functions').collect();
 		const out: Fanout[] = [];

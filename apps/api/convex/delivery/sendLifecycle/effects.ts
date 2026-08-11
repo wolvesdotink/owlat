@@ -1,21 +1,21 @@
-import type { Id } from "../../_generated/dataModel";
-import { internal } from "../../_generated/api";
-import type { MutationCtx } from "../../_generated/server";
-import { logWarn } from "../../lib/runtimeLog";
-import { scheduleFanout, type FanoutSpec } from "../../webhooks/scheduleFanout";
+import type { Id } from '../../_generated/dataModel';
+import { internal } from '../../_generated/api';
+import type { MutationCtx } from '../../_generated/server';
+import { logWarn } from '../../lib/runtimeLog';
+import { scheduleFanout, type FanoutSpec } from '../../webhooks/scheduleFanout';
 import {
 	recordContactActivity,
 	type MetadataFor,
 	type RecordContactActivityArgs,
-} from "../../contactActivities/writer";
-import type { ContactActivityType } from "../../contactActivities/catalog";
-import { bumpSendDailyStat } from "../../lib/sendDailyStats";
-import { bumpCampaignStats } from "../../campaigns/statShards";
-import { normalizeEmail } from "../../lib/inputGuards";
-import { isMarketingOnlyBlockReason } from "../suppressionMirror";
-import { scheduleSuppressionMirror } from "../suppressionMirrorScheduler";
-import type { TransportOutcomeEvent } from "../../analytics/transportOutcomes";
-import type { SendRef } from "./types";
+} from '../../contactActivities/writer';
+import type { ContactActivityType } from '../../contactActivities/catalog';
+import { bumpSendDailyStat } from '../../lib/sendDailyStats';
+import { bumpCampaignStats } from '../../campaigns/statShards';
+import { normalizeEmail } from '../../lib/inputGuards';
+import { isMarketingOnlyBlockReason } from '../suppressionMirror';
+import { scheduleSuppressionMirror } from '../suppressionMirrorScheduler';
+import type { TransportOutcomeEvent } from '../../analytics/transportOutcomes';
+import type { SendRef } from './types';
 
 // ─── Effects (a discriminated list returned by reducers) ────────────────────
 
@@ -27,9 +27,9 @@ import type { SendRef } from "./types";
  */
 type ContactActivityEffect = {
 	[L in ContactActivityType]: {
-		kind: "contact_activity";
+		kind: 'contact_activity';
 		literal: L;
-		contactId: Id<"contacts">;
+		contactId: Id<'contacts'>;
 		metadata: MetadataFor<L>;
 		occurredAt: number;
 	};
@@ -37,59 +37,59 @@ type ContactActivityEffect = {
 
 export type Effect =
 	| {
-			kind: "blocklist_insert";
+			kind: 'blocklist_insert';
 			email: string;
-			reason: "bounced" | "complained";
-			bounceType?: "hard" | "soft";
+			reason: 'bounced' | 'complained';
+			bounceType?: 'hard' | 'soft';
 			source: SendRef;
 	  }
 	| {
 			// Overwrite the recipient contact's running soft-bounce counter
 			// (set to an absolute value, computed by the reducer from the
 			// already-loaded contact). `count: 0` is the delivered reset.
-			kind: "contact_soft_bounce_count";
-			contactId: Id<"contacts">;
+			kind: 'contact_soft_bounce_count';
+			contactId: Id<'contacts'>;
 			count: number;
 	  }
 	| ContactActivityEffect
 	| {
-			kind: "campaign_stats_bounced";
-			campaignId: Id<"campaigns">;
+			kind: 'campaign_stats_bounced';
+			campaignId: Id<'campaigns'>;
 			isHard: boolean;
-			previousBounceType?: "soft";
+			previousBounceType?: 'soft';
 			at: number;
 	  }
 	| {
-			kind: "campaign_stats_sent";
-			campaignId: Id<"campaigns">;
+			kind: 'campaign_stats_sent';
+			campaignId: Id<'campaigns'>;
 	  }
 	| {
-			kind: "campaign_stats_failed";
-			campaignId: Id<"campaigns">;
+			kind: 'campaign_stats_failed';
+			campaignId: Id<'campaigns'>;
 	  }
 	| {
-			kind: "campaign_stats_delivered";
-			campaignId: Id<"campaigns">;
+			kind: 'campaign_stats_delivered';
+			campaignId: Id<'campaigns'>;
 			at: number;
 	  }
 	| {
-			kind: "campaign_stats_opened";
-			campaignId: Id<"campaigns">;
+			kind: 'campaign_stats_opened';
+			campaignId: Id<'campaigns'>;
 			at: number;
 	  }
 	| {
-			kind: "campaign_stats_clicked";
-			campaignId: Id<"campaigns">;
+			kind: 'campaign_stats_clicked';
+			campaignId: Id<'campaigns'>;
 			at: number;
 	  }
 	| {
-			kind: "content_scan_complaint";
-			campaignId: Id<"campaigns">;
+			kind: 'content_scan_complaint';
+			campaignId: Id<'campaigns'>;
 			contactEmail: string;
 	  }
 	| {
-			kind: "reputation_update";
-			eventType: "send" | "deliver" | "bounce" | "hard_bounce" | "complaint";
+			kind: 'reputation_update';
+			eventType: 'send' | 'deliver' | 'bounce' | 'hard_bounce' | 'complaint';
 			domain?: string;
 	  }
 	| {
@@ -97,22 +97,22 @@ export type Effect =
 			// existing effect list rather than a parallel event stream: the cell
 			// and arm are learned by joining the send to its `sendAssignments`
 			// row, and a send without one records nothing.
-			kind: "transport_outcome";
+			kind: 'transport_outcome';
 			sendId: string;
 			event: TransportOutcomeEvent;
 			at: number;
 	  }
 	| {
-			kind: "attachment_cleanup";
+			kind: 'attachment_cleanup';
 			storageIds: ReadonlyArray<string>;
 	  }
 	| {
-			kind: "daily_stats_bump";
-			field: "sent" | "delivered" | "opened" | "clicked";
+			kind: 'daily_stats_bump';
+			field: 'sent' | 'delivered' | 'opened' | 'clicked';
 			at: number;
 	  }
 	| {
-			kind: "customer_webhook";
+			kind: 'customer_webhook';
 			spec: FanoutSpec;
 	  };
 
@@ -129,22 +129,22 @@ export type Effect =
 export const transportOutcomeEffect = (
 	ref: SendRef,
 	event: TransportOutcomeEvent,
-	at: number,
-): Effect => ({ kind: "transport_outcome", sendId: ref.id, event, at });
+	at: number
+): Effect => ({ kind: 'transport_outcome', sendId: ref.id, event, at });
 
 // ─── Runner — applies the patch, dispatches effects, schedules fanout ───────
 
 export async function applyEffects(
 	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
+	effects: ReadonlyArray<Effect>
 ): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
-			case "blocklist_insert": {
+			case 'blocklist_insert': {
 				const normalized = normalizeEmail(effect.email);
 				const existing = await ctx.db
-					.query("blockedEmails")
-					.withIndex("by_email", (q) => q.eq("email", normalized))
+					.query('blockedEmails')
+					.withIndex('by_email', (q) => q.eq('email', normalized))
 					.first();
 				if (existing) {
 					// THE BLOCKLIST KEEPS ONE ROW PER ADDRESS, so an existing row has to
@@ -167,12 +167,12 @@ export async function applyEffects(
 					// mailbox-level evidence, so the marketing-only row always yields.
 					const upgradesMarketingOnly = isMarketingOnlyBlockReason(existing.reason);
 					const upgradesSoftToHard =
-						existing.reason === "bounced" &&
-						existing.bounceType === "soft" &&
-						effect.reason === "bounced" &&
-						effect.bounceType === "hard";
+						existing.reason === 'bounced' &&
+						existing.bounceType === 'soft' &&
+						effect.reason === 'bounced' &&
+						effect.bounceType === 'hard';
 					if (!upgradesMarketingOnly && !upgradesSoftToHard) break;
-					const bounceType = upgradesSoftToHard ? "hard" : effect.bounceType;
+					const bounceType = upgradesSoftToHard ? 'hard' : effect.bounceType;
 					await ctx.db.patch(existing._id, {
 						reason: effect.reason,
 						bounceType,
@@ -186,10 +186,10 @@ export async function applyEffects(
 						// an optional field. The soft→hard upgrade keeps its note: that
 						// one is bounce provenance and still true.
 						...(upgradesMarketingOnly ? { notes: undefined } : {}),
-						sourceType: effect.source.kind === "campaign" ? "emailSend" : "transactionalSend",
-						sourceEmailSendId: effect.source.kind === "campaign" ? effect.source.id : undefined,
+						sourceType: effect.source.kind === 'campaign' ? 'emailSend' : 'transactionalSend',
+						sourceEmailSendId: effect.source.kind === 'campaign' ? effect.source.id : undefined,
 						sourceTransactionalSendId:
-							effect.source.kind === "transactional" ? effect.source.id : undefined,
+							effect.source.kind === 'transactional' ? effect.source.id : undefined,
 					});
 					await scheduleSuppressionMirror(ctx, {
 						email: normalized,
@@ -198,12 +198,12 @@ export async function applyEffects(
 					});
 					break;
 				}
-				await ctx.db.insert("blockedEmails", {
+				await ctx.db.insert('blockedEmails', {
 					email: normalized,
 					reason: effect.reason,
 					...(effect.bounceType ? { bounceType: effect.bounceType } : {}),
-					sourceType: effect.source.kind === "campaign" ? "emailSend" : "transactionalSend",
-					...(effect.source.kind === "campaign"
+					sourceType: effect.source.kind === 'campaign' ? 'emailSend' : 'transactionalSend',
+					...(effect.source.kind === 'campaign'
 						? { sourceEmailSendId: effect.source.id }
 						: { sourceTransactionalSendId: effect.source.id }),
 					createdAt: Date.now(),
@@ -220,13 +220,13 @@ export async function applyEffects(
 				});
 				break;
 			}
-			case "contact_soft_bounce_count": {
+			case 'contact_soft_bounce_count': {
 				await ctx.db.patch(effect.contactId, {
 					softBounceCount: effect.count,
 				});
 				break;
 			}
-			case "contact_activity": {
+			case 'contact_activity': {
 				// Correlated-unions: TS widens `literal`/`metadata` once the
 				// effect variant is destructured. The source-side effect type
 				// (`ContactActivityEffect`) already enforces the correlation,
@@ -243,44 +243,44 @@ export async function applyEffects(
 			// campaign_stats_* events bump a RANDOM shard of campaignStatShards
 			// (not the single campaigns row) so a blast's per-recipient counter
 			// writes don't contend; a rollup cron sums shards into campaigns.stats*.
-			case "campaign_stats_bounced": {
+			case 'campaign_stats_bounced': {
 				await bumpCampaignStats(
 					ctx,
 					effect.campaignId,
-					effect.previousBounceType === "soft"
+					effect.previousBounceType === 'soft'
 						? { statsSoftBounced: -1, statsHardBounced: 1 }
 						: {
 								statsBounced: 1,
 								...(effect.isHard ? { statsHardBounced: 1 } : { statsSoftBounced: 1 }),
-							},
+							}
 				);
 				break;
 			}
-			case "campaign_stats_sent": {
+			case 'campaign_stats_sent': {
 				await bumpCampaignStats(ctx, effect.campaignId, { statsSent: 1 });
 				break;
 			}
-			case "campaign_stats_failed": {
+			case 'campaign_stats_failed': {
 				await bumpCampaignStats(ctx, effect.campaignId, { statsFailed: 1 });
 				break;
 			}
-			case "campaign_stats_delivered": {
+			case 'campaign_stats_delivered': {
 				await bumpCampaignStats(ctx, effect.campaignId, { statsDelivered: 1 });
 				break;
 			}
-			case "campaign_stats_opened": {
+			case 'campaign_stats_opened': {
 				await bumpCampaignStats(ctx, effect.campaignId, { statsOpened: 1 });
 				break;
 			}
-			case "campaign_stats_clicked": {
+			case 'campaign_stats_clicked': {
 				await bumpCampaignStats(ctx, effect.campaignId, { statsClicked: 1 });
 				break;
 			}
-			case "content_scan_complaint": {
+			case 'content_scan_complaint': {
 				const scan = await ctx.db
-					.query("contentScanResults")
-					.withIndex("by_resource", (q) =>
-						q.eq("resourceType", "campaign").eq("resourceId", effect.campaignId),
+					.query('contentScanResults')
+					.withIndex('by_resource', (q) =>
+						q.eq('resourceType', 'campaign').eq('resourceId', effect.campaignId)
 					)
 					.first();
 				if (!scan) break;
@@ -288,23 +288,23 @@ export async function applyEffects(
 					flags: [
 						...scan.flags,
 						{
-							type: "suspicious_pattern" as const,
-							severity: "low" as const,
-							description: "Spam complaint received (feedback loop)",
+							type: 'suspicious_pattern' as const,
+							severity: 'low' as const,
+							description: 'Spam complaint received (feedback loop)',
 							match: effect.contactEmail,
 						},
 					],
 				});
 				break;
 			}
-			case "reputation_update": {
+			case 'reputation_update': {
 				await ctx.scheduler.runAfter(0, internal.analytics.sendingReputation.recordEvent, {
 					eventType: effect.eventType,
 					...(effect.domain ? { domain: effect.domain } : {}),
 				});
 				break;
 			}
-			case "transport_outcome": {
+			case 'transport_outcome': {
 				// SCHEDULED, like `reputation_update` above and for the same reason:
 				// the bump lands on one shard of a bucket every recipient of the cell
 				// writes to that day, and applying it inline makes an OCC conflict
@@ -320,21 +320,21 @@ export async function applyEffects(
 				});
 				break;
 			}
-			case "attachment_cleanup": {
+			case 'attachment_cleanup': {
 				for (const storageId of effect.storageIds) {
 					try {
-						await ctx.storage.delete(storageId as Id<"_storage">);
+						await ctx.storage.delete(storageId as Id<'_storage'>);
 					} catch (err) {
 						logWarn(`[sendLifecycle] failed to delete attachment blob ${storageId}:`, err);
 					}
 				}
 				break;
 			}
-			case "daily_stats_bump": {
+			case 'daily_stats_bump': {
 				await bumpSendDailyStat(ctx, effect.field, effect.at);
 				break;
 			}
-			case "customer_webhook": {
+			case 'customer_webhook': {
 				await scheduleFanout(ctx, effect.spec);
 				break;
 			}
@@ -355,8 +355,8 @@ export async function applyEffects(
 				// THE TAG ONLY. An effect this build cannot name may still be carrying a
 				// recipient address, and a warning is not a PII sink.
 				logWarn(
-					"[sendLifecycle] skipped effect with unknown kind:",
-					String((exhaustive as { kind?: unknown }).kind),
+					'[sendLifecycle] skipped effect with unknown kind:',
+					String((exhaustive as { kind?: unknown }).kind)
 				);
 				break;
 			}

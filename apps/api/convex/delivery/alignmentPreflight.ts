@@ -23,24 +23,24 @@
  * see records `unknown`, which HOLDS the cell at s=0.
  */
 
-import { v } from "convex/values";
-import { paginationOptsValidator } from "convex/server";
+import { v } from 'convex/values';
+import { paginationOptsValidator } from 'convex/server';
 import {
 	ALIGNMENT_SWEEP_PAGE_SIZE,
 	MULTI_RELAY_DETAIL_PREFIX,
 	normalizeDomain,
 	type AlignmentArm,
 	type ReferenceArmInput,
-} from "@owlat/shared/deliverabilityAlignment";
-import { internalMutation, internalQuery, type QueryCtx } from "../_generated/server";
-import type { Doc } from "../_generated/dataModel";
-import { authedQuery } from "../lib/authedFunctions";
-import { getOptional } from "../lib/env";
-import { getSingletonOrganizationId } from "../lib/sessionOrganization";
-import { relayIdentityProviderFor } from "../domains/providers";
-import { parsePoolIps } from "../domains/spf";
-import { alignmentCheckValidator, alignmentVerdictValidator } from "./deliverabilityValidators";
-import { configuredRelayKinds } from "./relayConfiguration";
+} from '@owlat/shared/deliverabilityAlignment';
+import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+import { authedQuery } from '../lib/authedFunctions';
+import { getOptional } from '../lib/env';
+import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { relayIdentityProviderFor } from '../domains/providers';
+import { parsePoolIps } from '../domains/spf';
+import { alignmentCheckValidator, alignmentVerdictValidator } from './deliverabilityValidators';
+import { configuredRelayKinds } from './relayConfiguration';
 
 /**
  * Own bound for the readiness READ — a UI page size, deliberately not the cron's
@@ -53,7 +53,7 @@ const ALIGNMENT_READINESS_LIMIT = 50;
  * that HAS a second arm (see `buildTarget`), so the standalone case is excluded
  * at the TYPE level rather than being a branch the gather has to remember.
  */
-export type TargetReferenceArm = Exclude<ReferenceArmInput, { kind: "none" }>;
+export type TargetReferenceArm = Exclude<ReferenceArmInput, { kind: 'none' }>;
 
 export interface AlignmentTarget {
 	domain: string;
@@ -75,11 +75,11 @@ export interface AlignmentTarget {
 function ownSpfMechanisms(): string[] {
 	let poolIps: string[];
 	try {
-		poolIps = parsePoolIps(getOptional("MTA_IP_POOLS"));
+		poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
 	} catch {
 		return [];
 	}
-	return poolIps.map((ip) => `${ip.includes(":") ? "ip6" : "ip4"}:${ip}`);
+	return poolIps.map((ip) => `${ip.includes(':') ? 'ip6' : 'ip4'}:${ip}`);
 }
 
 /**
@@ -95,9 +95,9 @@ function undescribableRelayDetail(domain: string, relayKinds: readonly string[])
 		// The prefix is shared (`MULTI_RELAY_DETAIL_PREFIX`) because the operator
 		// screens classify the two `unknown` branches from this sentence — D8's
 		// "keep the reference relay singular" warning is the multi-relay one.
-		return `${MULTI_RELAY_DETAIL_PREFIX} (${relayKinds.join(", ")}), so there is no single second arm for ${domain} to be compared against.`;
+		return `${MULTI_RELAY_DETAIL_PREFIX} (${relayKinds.join(', ')}), so there is no single second arm for ${domain} to be compared against.`;
 	}
-	return `A relay is configured (${relayKinds.join(", ")}) but ${domain} has no verified signing identity for it, so the two arms cannot be compared.`;
+	return `A relay is configured (${relayKinds.join(', ')}) but ${domain} has no verified signing identity for it, so the two arms cannot be compared.`;
 }
 
 /**
@@ -123,18 +123,18 @@ function undescribableRelayDetail(domain: string, relayKinds: readonly string[])
  */
 async function referenceFor(
 	ctx: QueryCtx,
-	domain: Doc<"domains">,
+	domain: Doc<'domains'>,
 	relayKinds: readonly string[],
-	now: number,
+	now: number
 ): Promise<ReferenceArmInput> {
-	if (relayKinds.length === 0) return { kind: "none" };
+	if (relayKinds.length === 0) return { kind: 'none' };
 	const kind = relayKinds.length === 1 ? relayKinds[0] : undefined;
 	const provider = relayIdentityProviderFor(kind);
 	if (provider) {
 		const arm = await provider.describeReferenceArm(ctx, domain, now);
-		if (arm) return { kind: "arm", arm };
+		if (arm) return { kind: 'arm', arm };
 	}
-	return { kind: "unknown", detail: undescribableRelayDetail(domain.domain, relayKinds) };
+	return { kind: 'unknown', detail: undescribableRelayDetail(domain.domain, relayKinds) };
 }
 
 /**
@@ -156,14 +156,14 @@ async function referenceFor(
  */
 async function buildTarget(
 	ctx: QueryCtx,
-	domain: Doc<"domains">,
+	domain: Doc<'domains'>,
 	relayKinds: readonly string[],
-	now: number,
+	now: number
 ): Promise<AlignmentTarget | null> {
 	const arms = await buildArms(ctx, domain, relayKinds, now);
 	if (arms === null) return null;
 	const { ownArm, reference } = arms;
-	if (reference.kind === "none") return null;
+	if (reference.kind === 'none') return null;
 	return { domain: domain.domain, ownArm, reference };
 }
 
@@ -178,18 +178,18 @@ async function buildTarget(
  */
 async function buildArms(
 	ctx: QueryCtx,
-	domain: Doc<"domains">,
+	domain: Doc<'domains'>,
 	relayKinds: readonly string[],
-	now: number,
+	now: number
 ): Promise<{ ownArm: AlignmentArm; reference: ReferenceArmInput } | null> {
 	const mtaIdentity = await ctx.db
-		.query("sendingDomainMtaIdentities")
-		.withIndex("by_domain", (q) => q.eq("domainId", domain._id))
+		.query('sendingDomainMtaIdentities')
+		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
 		.unique();
 	if (mtaIdentity === null) return null;
 	return {
 		ownArm: {
-			label: "own MTA",
+			label: 'own MTA',
 			fromDomain: domain.domain,
 			dkimDomain: domain.domain,
 			dkimSelectors: [mtaIdentity.dkimSelector],
@@ -209,12 +209,12 @@ async function buildArms(
 async function loadAlignmentState(
 	ctx: QueryCtx,
 	organizationId: string,
-	domain: string,
-): Promise<Doc<"deliverabilityAlignmentStates"> | null> {
+	domain: string
+): Promise<Doc<'deliverabilityAlignmentStates'> | null> {
 	return await ctx.db
-		.query("deliverabilityAlignmentStates")
-		.withIndex("by_org_domain", (q) =>
-			q.eq("organizationId", organizationId).eq("domain", normalizeDomain(domain)),
+		.query('deliverabilityAlignmentStates')
+		.withIndex('by_org_domain', (q) =>
+			q.eq('organizationId', organizationId).eq('domain', normalizeDomain(domain))
 		)
 		.unique();
 }
@@ -230,13 +230,13 @@ export const listDueAlignmentTargets = internalQuery({
 	args: { now: v.number(), paginationOpts: paginationOptsValidator },
 	handler: async (
 		ctx,
-		args,
+		args
 	): Promise<{ targets: AlignmentTarget[]; continueCursor: string; isDone: boolean }> => {
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const relayKinds = await configuredRelayKinds(ctx);
 		const page = await ctx.db
-			.query("domains")
-			.withIndex("by_status", (q) => q.eq("status", "verified"))
+			.query('domains')
+			.withIndex('by_status', (q) => q.eq('status', 'verified'))
 			.paginate({
 				cursor: args.paginationOpts.cursor,
 				numItems: Math.max(1, Math.min(args.paginationOpts.numItems, ALIGNMENT_SWEEP_PAGE_SIZE)),
@@ -284,7 +284,7 @@ export const recordAlignmentResult = internalMutation({
 			await ctx.db.patch(existing._id, row);
 			return;
 		}
-		await ctx.db.insert("deliverabilityAlignmentStates", row);
+		await ctx.db.insert('deliverabilityAlignmentStates', row);
 	},
 });
 
@@ -319,15 +319,15 @@ export const getAlignmentArms = authedQuery({
 	args: { domain: v.optional(v.string()) },
 	handler: async (
 		ctx,
-		args,
+		args
 	): Promise<{ domain: string; ownArm: AlignmentArm; reference: ReferenceArmInput } | null> => {
 		const relayKinds = await configuredRelayKinds(ctx);
 		const now = Date.now();
 		if (args.domain !== undefined) {
 			const fromDomain = normalizeDomain(args.domain);
 			const domain = await ctx.db
-				.query("domains")
-				.withIndex("by_domain", (q) => q.eq("domain", fromDomain))
+				.query('domains')
+				.withIndex('by_domain', (q) => q.eq('domain', fromDomain))
 				.unique();
 			if (domain === null) return null;
 			const arms = await buildArms(ctx, domain, relayKinds, now);
@@ -337,8 +337,8 @@ export const getAlignmentArms = authedQuery({
 		// more verified domains than this still gets an answer for the first one
 		// that can be compared, and the operator can name another explicitly.
 		const verified = await ctx.db
-			.query("domains")
-			.withIndex("by_status", (q) => q.eq("status", "verified"))
+			.query('domains')
+			.withIndex('by_status', (q) => q.eq('status', 'verified'))
 			.take(ALIGNMENT_READINESS_LIMIT);
 		for (const domain of verified) {
 			const arms = await buildArms(ctx, domain, relayKinds, now);
@@ -365,10 +365,10 @@ export const getAlignmentReadiness = authedQuery({
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const domainFilter = args.domain === undefined ? undefined : normalizeDomain(args.domain);
 		const rows = await ctx.db
-			.query("deliverabilityAlignmentStates")
-			.withIndex("by_org_domain", (q) => {
-				const scoped = q.eq("organizationId", organizationId);
-				return domainFilter === undefined ? scoped : scoped.eq("domain", domainFilter);
+			.query('deliverabilityAlignmentStates')
+			.withIndex('by_org_domain', (q) => {
+				const scoped = q.eq('organizationId', organizationId);
+				return domainFilter === undefined ? scoped : scoped.eq('domain', domainFilter);
 			})
 			.take(ALIGNMENT_READINESS_LIMIT);
 		return rows.map((row) => ({

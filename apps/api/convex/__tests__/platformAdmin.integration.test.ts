@@ -67,8 +67,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const setCaller = (subject: string) => {
@@ -80,7 +80,7 @@ async function seedAdmin(
 	t: ReturnType<typeof convexTest>,
 	authUserId: string,
 	role: 'admin' | 'superadmin',
-	email = `${authUserId}@example.com`,
+	email = `${authUserId}@example.com`
 ): Promise<Id<'platformAdmins'>> {
 	return await t.run(async (ctx) =>
 		ctx.db.insert('platformAdmins', {
@@ -88,7 +88,7 @@ async function seedAdmin(
 			email,
 			role,
 			createdAt: Date.now(),
-		}),
+		})
 	);
 }
 
@@ -96,7 +96,7 @@ async function seedAdmin(
 async function seedProfile(
 	t: ReturnType<typeof convexTest>,
 	authUserId: string,
-	email = `${authUserId}@example.com`,
+	email = `${authUserId}@example.com`
 ): Promise<Id<'userProfiles'>> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
@@ -113,13 +113,13 @@ async function seedProfile(
 /** Seed the singleton instanceSettings row (required by setOrganizationStatus). */
 async function seedInstanceSettings(
 	t: ReturnType<typeof convexTest>,
-	abuseStatus?: 'clean' | 'warned' | 'suspended' | 'banned',
+	abuseStatus?: 'clean' | 'warned' | 'suspended' | 'banned'
 ): Promise<Id<'instanceSettings'>> {
 	return await t.run(async (ctx) =>
 		ctx.db.insert('instanceSettings', {
 			...(abuseStatus ? { abuseStatus } : {}),
 			createdAt: Date.now(),
-		}),
+		})
 	);
 }
 
@@ -141,7 +141,7 @@ describe('requirePlatformAdmin', () => {
 			t.mutation(api.platformAdmin.mutations.setOrganizationStatus, {
 				abuseStatus: 'suspended',
 				reason: 'spam',
-			}),
+			})
 		).rejects.toThrow(/Platform admin access required/);
 	});
 });
@@ -187,7 +187,7 @@ describe('platformAdmin.setOrganizationStatus', () => {
 			ctx.db
 				.query('auditLogs')
 				.withIndex('by_action', (q) => q.eq('action', 'platform_admin.org_status_changed'))
-				.collect(),
+				.collect()
 		);
 		expect(audit).toHaveLength(1);
 		expect(audit[0]!.userId).toBe('caller-user');
@@ -207,7 +207,7 @@ describe('platformAdmin.setOrganizationStatus', () => {
 			t.mutation(api.platformAdmin.mutations.setOrganizationStatus, {
 				abuseStatus: 'suspended',
 				reason: 'no settings',
-			}),
+			})
 		).rejects.toThrow(/Organization not found/);
 	});
 });
@@ -254,7 +254,7 @@ describe('platformAdmin.addPlatformAdmin', () => {
 			ctx.db
 				.query('auditLogs')
 				.withIndex('by_action', (q) => q.eq('action', 'platform_admin.admin_added'))
-				.collect(),
+				.collect()
 		);
 		expect(audit).toHaveLength(1);
 		expect(audit[0]!.userId).toBe('super-1');
@@ -277,7 +277,7 @@ describe('platformAdmin.addPlatformAdmin', () => {
 				authUserId: 'target-1',
 				email: 'target-1@example.com',
 				role: 'admin',
-			}),
+			})
 		).rejects.toThrow(/Only superadmins can add/);
 	});
 
@@ -292,7 +292,7 @@ describe('platformAdmin.addPlatformAdmin', () => {
 				authUserId: 'ghost-user',
 				email: 'ghost@example.com',
 				role: 'admin',
-			}),
+			})
 		).rejects.toThrow(/User not found/);
 	});
 
@@ -309,7 +309,7 @@ describe('platformAdmin.addPlatformAdmin', () => {
 				authUserId: 'target-1',
 				email: 'target-1@example.com',
 				role: 'admin',
-			}),
+			})
 		).rejects.toThrow(/already a platform admin/);
 	});
 });
@@ -336,7 +336,7 @@ describe('platformAdmin.removePlatformAdmin', () => {
 			ctx.db
 				.query('auditLogs')
 				.withIndex('by_action', (q) => q.eq('action', 'platform_admin.admin_removed'))
-				.collect(),
+				.collect()
 		);
 		expect(audit).toHaveLength(1);
 		expect(audit[0]!.userId).toBe('super-1');
@@ -354,7 +354,7 @@ describe('platformAdmin.removePlatformAdmin', () => {
 		await expect(
 			t.mutation(api.platformAdmin.mutations.removePlatformAdmin, {
 				adminId: selfId,
-			}),
+			})
 		).rejects.toThrow(/Cannot remove yourself/);
 
 		// Still present.
@@ -372,7 +372,7 @@ describe('platformAdmin.removePlatformAdmin', () => {
 		await expect(
 			t.mutation(api.platformAdmin.mutations.removePlatformAdmin, {
 				adminId: targetId,
-			}),
+			})
 		).rejects.toThrow(/Only superadmins can remove/);
 
 		await t.run(async (ctx) => {
@@ -391,7 +391,7 @@ describe('platformAdmin.removePlatformAdmin', () => {
 		await expect(
 			t.mutation(api.platformAdmin.mutations.removePlatformAdmin, {
 				adminId: danglingId,
-			}),
+			})
 		).rejects.toThrow(/Platform admin not found/);
 	});
 });
@@ -424,7 +424,7 @@ describe('platform-admin bootstrap migration', () => {
 			t.mutation(internal.migrations['0036_seed_platform_admin'].run, {
 				authUserId: 'second-admin',
 				email: 'second@example.com',
-			}),
+			})
 		).rejects.toThrow(/Platform admins already exist/);
 	});
 });

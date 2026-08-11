@@ -101,10 +101,9 @@ export const addContactToTopic = createAuthenticatedHandler(
 		}
 
 		// Check if the topic exists and belongs to the organization
-		const topic = await ctx.runQuery<Topic | null>(
-			internal.topics.topics.getInternal,
-			{ topicId: topicId as Id<'topics'> }
-		);
+		const topic = await ctx.runQuery<Topic | null>(internal.topics.topics.getInternal, {
+			topicId: topicId as Id<'topics'>,
+		});
 
 		if (!topic) {
 			return errorResponse('not_found', 'Topic not found');
@@ -128,14 +127,11 @@ export const addContactToTopic = createAuthenticatedHandler(
 			const result = await ctx.runMutation<{
 				membershipId: Id<'contactTopics'>;
 				doiStatus: 'not_required' | 'pending' | 'confirmed';
-			}>(
-				internal.topics.topics.addContactInternal,
-				{
-					topicId: topicId as Id<'topics'>,
-					contactId,
-					siteUrl: getOptional('SITE_URL'),
-				}
-			);
+			}>(internal.topics.topics.addContactInternal, {
+				topicId: topicId as Id<'topics'>,
+				contactId,
+				siteUrl: getOptional('SITE_URL'),
+			});
 
 			const response: AddContactResponse = {
 				success: true,
@@ -187,10 +183,9 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 		}
 
 		// Check if the topic exists and belongs to the organization
-		const topic = await ctx.runQuery<Topic | null>(
-			internal.topics.topics.getInternal,
-			{ topicId: topicId as Id<'topics'> }
-		);
+		const topic = await ctx.runQuery<Topic | null>(internal.topics.topics.getInternal, {
+			topicId: topicId as Id<'topics'>,
+		});
 
 		if (!topic) {
 			return errorResponse('not_found', 'Topic not found');
@@ -223,13 +218,10 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 
 		// Remove contact from topic (this is idempotent, won't error if not a member)
 		try {
-			await ctx.runMutation<undefined>(
-				internal.topics.topics.removeContactInternal,
-				{
-					topicId: topicId as Id<'topics'>,
-					contactId,
-				}
-			);
+			await ctx.runMutation<undefined>(internal.topics.topics.removeContactInternal, {
+				topicId: topicId as Id<'topics'>,
+				contactId,
+			});
 
 			const response: RemoveContactResponse = {
 				success: true,
@@ -238,7 +230,8 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 
 			return jsonResponse({ data: response });
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to remove contact from topic';
+			const message =
+				error instanceof Error ? error.message : 'Failed to remove contact from topic';
 			return errorResponse('invalid_input', message);
 		}
 	}

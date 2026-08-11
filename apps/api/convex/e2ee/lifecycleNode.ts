@@ -1,4 +1,4 @@
-"use node";
+'use node';
 
 /**
  * Key lifecycle — the Node (`'use node'`) plane of Sealed Mail key rotation,
@@ -20,18 +20,18 @@
  *   - `importRecoveryKit` (admin) — restore an address key from a recovery kit.
  */
 
-import { v } from "convex/values";
-import * as openpgp from "openpgp";
-import { internalAction, type ActionCtx } from "../_generated/server";
-import { internal } from "../_generated/api";
-import { authedAction } from "../lib/authedFunctions";
-import { normalizeEmail } from "@owlat/shared";
-import { armoredToBinaryBase64, splitAddress, wkdHashForAddress } from "./wkd";
-import { openPrivateKey, reSealPrivateKey, sealPrivateKey } from "./sealing";
-import { rotationStatementText } from "./pinning";
-import { keyCertifiesAddress } from "./discovery";
-import { generateKeypair, KEY_ALGORITHM } from "./keysNode";
-import { buildRecoveryKit, type RecoveryKit } from "./recoveryKit";
+import { v } from 'convex/values';
+import * as openpgp from 'openpgp';
+import { internalAction, type ActionCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
+import { authedAction } from '../lib/authedFunctions';
+import { normalizeEmail } from '@owlat/shared';
+import { armoredToBinaryBase64, splitAddress, wkdHashForAddress } from './wkd';
+import { openPrivateKey, reSealPrivateKey, sealPrivateKey } from './sealing';
+import { rotationStatementText } from './pinning';
+import { keyCertifiesAddress } from './discovery';
+import { generateKeypair, KEY_ALGORITHM } from './keysNode';
+import { buildRecoveryKit, type RecoveryKit } from './recoveryKit';
 
 /**
  * Sign a rotation statement (old -> new) with the OLD armored private key,
@@ -39,14 +39,14 @@ import { buildRecoveryKit, type RecoveryKit } from "./recoveryKit";
  */
 async function signRotationStatement(
 	oldPrivateKeyArmored: string,
-	statement: { address: string; oldFingerprint: string; newFingerprint: string },
+	statement: { address: string; oldFingerprint: string; newFingerprint: string }
 ): Promise<string> {
 	const privateKey = await openpgp.readPrivateKey({ armoredKey: oldPrivateKeyArmored });
 	return openpgp.sign({
 		message: await openpgp.createMessage({ text: rotationStatementText(statement) }),
 		signingKeys: privateKey,
 		detached: true,
-		format: "armored",
+		format: 'armored',
 	});
 }
 
@@ -66,7 +66,7 @@ export const runRotateAddressKey = internalAction({
 	}),
 	handler: async (
 		ctx,
-		args,
+		args
 	): Promise<{ rotated: boolean; oldFingerprint?: string; newFingerprint?: string }> => {
 		const { localPart, domain } = splitAddress(args.address);
 		const address = `${localPart}@${domain}`;
@@ -152,7 +152,7 @@ async function assertAdmin(ctx: ActionCtx): Promise<void> {
 /** Feature floor for a `'use node'` action — the flag is read via an internalQuery. */
 async function assertSealedMailEnabled(ctx: ActionCtx): Promise<void> {
 	if (!(await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
-		throw new Error("Sealed Mail is not enabled for this workspace.");
+		throw new Error('Sealed Mail is not enabled for this workspace.');
 	}
 }
 
@@ -166,7 +166,7 @@ const recoveryKitValidator = v.union(
 		instructions: v.string(),
 		filename: v.string(),
 		generatedAt: v.number(),
-	}),
+	})
 );
 
 /**
@@ -195,7 +195,7 @@ async function exportRecoveryKitCore(ctx: ActionCtx, address: string): Promise<R
 async function importRecoveryKitCore(
 	ctx: ActionCtx,
 	address: string,
-	privateKeyArmored: string,
+	privateKeyArmored: string
 ): Promise<{ imported: boolean; fingerprint?: string }> {
 	const { localPart, domain } = splitAddress(address);
 	const normalized = `${localPart}@${domain}`;

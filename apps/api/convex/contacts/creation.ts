@@ -30,11 +30,7 @@
 
 import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import {
-	resolveContact,
-	type ResolveSignal,
-	type ResolveResult,
-} from './resolution';
+import { resolveContact, type ResolveSignal, type ResolveResult } from './resolution';
 import { incrementContactCount } from '../lib/contactCountHelpers';
 import { recordContactActivity } from '../contactActivities/writer';
 import { scheduleFanout } from '../webhooks/scheduleFanout';
@@ -47,7 +43,7 @@ import { scheduleFanout } from '../webhooks/scheduleFanout';
  */
 export async function createContact(
 	ctx: MutationCtx,
-	signal: ResolveSignal,
+	signal: ResolveSignal
 ): Promise<ResolveResult> {
 	const result = await resolveContact(ctx, signal);
 

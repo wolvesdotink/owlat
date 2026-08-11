@@ -46,22 +46,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -102,11 +103,14 @@ describe('contactIdentities.addIdentity', () => {
 
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
-			existingId = await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'email',
-				identifier: 'dup@example.com',
-			}));
+			existingId = await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'email',
+					identifier: 'dup@example.com',
+				})
+			);
 		});
 
 		const resultId = await t.mutation(api.contacts.identities.addIdentity, {
@@ -126,11 +130,14 @@ describe('contactIdentities.addIdentity', () => {
 		await t.run(async (ctx) => {
 			contactId1 = await ctx.db.insert('contacts', createTestContact());
 			contactId2 = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId: contactId1,
-				channel: 'phone',
-				identifier: '+1234567890',
-			}));
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId: contactId1,
+					channel: 'phone',
+					identifier: '+1234567890',
+				})
+			);
 		});
 
 		await expect(
@@ -149,12 +156,15 @@ describe('contactIdentities.addIdentity', () => {
 
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
-			firstIdentityId = await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'email',
-				identifier: 'first@example.com',
-				isPrimary: true,
-			}));
+			firstIdentityId = await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'email',
+					identifier: 'first@example.com',
+					isPrimary: true,
+				})
+			);
 		});
 
 		const secondId = await t.mutation(api.contacts.identities.addIdentity, {
@@ -182,11 +192,14 @@ describe('contactIdentities.removeIdentity', () => {
 
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			identityId = await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'twitter',
-				identifier: '@testuser',
-			}));
+			identityId = await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'twitter',
+					identifier: '@testuser',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.identities.removeIdentity, { identityId });
@@ -207,11 +220,14 @@ describe('contactIdentities.verifyIdentity', () => {
 
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			identityId = await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'email',
-				identifier: 'verify@example.com',
-			}));
+			identityId = await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'email',
+					identifier: 'verify@example.com',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.identities.verifyIdentity, { identityId });
@@ -231,12 +247,18 @@ describe('contactIdentities.findByIdentifier', () => {
 		let contactId!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({ email: 'found@example.com' }));
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'email',
-				identifier: 'found@example.com',
-			}));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'found@example.com' })
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'email',
+					identifier: 'found@example.com',
+				})
+			);
 		});
 
 		// findByIdentifier requires auth; verify via raw DB
@@ -276,21 +298,30 @@ describe('contactIdentities.listByContact', () => {
 
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'email',
-				identifier: 'a@example.com',
-			}));
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'phone',
-				identifier: '+1111111111',
-			}));
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'whatsapp',
-				identifier: '+2222222222',
-			}));
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'email',
+					identifier: 'a@example.com',
+				})
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'phone',
+					identifier: '+1111111111',
+				})
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'whatsapp',
+					identifier: '+2222222222',
+				})
+			);
 		});
 
 		await t.run(async (ctx) => {
@@ -314,19 +345,28 @@ describe('contactIdentities.getMergeSuggestions', () => {
 		let contactB!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactA = await ctx.db.insert('contacts', createTestContact({ email: 'shared@example.com' }));
+			contactA = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'shared@example.com' })
+			);
 			contactB = await ctx.db.insert('contacts', createTestContact({ email: 'other@example.com' }));
 			// Both contacts have same phone identity
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId: contactA,
-				channel: 'phone',
-				identifier: '+9999999999',
-			}));
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId: contactB,
-				channel: 'phone',
-				identifier: '+9999999999',
-			}));
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId: contactA,
+					channel: 'phone',
+					identifier: '+9999999999',
+				})
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId: contactB,
+					channel: 'phone',
+					identifier: '+9999999999',
+				})
+			);
 		});
 
 		// getMergeSuggestions requires auth; verify the logic via raw DB
@@ -364,16 +404,22 @@ describe('contactIdentities.getMergeSuggestions', () => {
 		await t.run(async (ctx) => {
 			contactA = await ctx.db.insert('contacts', createTestContact());
 			const contactB = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId: contactA,
-				channel: 'email',
-				identifier: 'unique-a@example.com',
-			}));
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId: contactB,
-				channel: 'email',
-				identifier: 'unique-b@example.com',
-			}));
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId: contactA,
+					channel: 'email',
+					identifier: 'unique-a@example.com',
+				})
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId: contactB,
+					channel: 'email',
+					identifier: 'unique-b@example.com',
+				})
+			);
 		});
 
 		await t.run(async (ctx) => {
@@ -410,13 +456,22 @@ describe('contactIdentities.mergeContacts', () => {
 		let sourceId!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({ email: 'target@example.com', firstName: 'Target' }));
-			sourceId = await ctx.db.insert('contacts', createTestContact({ email: 'source@example.com', firstName: 'Source' }));
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId: sourceId,
-				channel: 'phone',
-				identifier: '+5555555555',
-			}));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'target@example.com', firstName: 'Target' })
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'source@example.com', firstName: 'Source' })
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId: sourceId,
+					channel: 'phone',
+					identifier: '+5555555555',
+				})
+			);
 		});
 
 		const result = await t.mutation(api.contacts.identities.mergeContacts, {
@@ -448,21 +503,33 @@ describe('contactIdentities.mergeContacts', () => {
 		let sourceId!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({ email: 'target@example.com' }));
-			sourceId = await ctx.db.insert('contacts', createTestContact({ email: 'source@example.com' }));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'target@example.com' })
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'source@example.com' })
+			);
 			// Both have the same email identity
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId: targetId,
-				channel: 'email',
-				identifier: 'shared@example.com',
-				isPrimary: true,
-			}));
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId: sourceId,
-				channel: 'email',
-				identifier: 'shared@example.com',
-				isPrimary: true,
-			}));
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId: targetId,
+					channel: 'email',
+					identifier: 'shared@example.com',
+					isPrimary: true,
+				})
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId: sourceId,
+					channel: 'email',
+					identifier: 'shared@example.com',
+					isPrimary: true,
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.identities.mergeContacts, {
@@ -490,19 +557,31 @@ describe('contactIdentities.mergeContacts', () => {
 		let thirdId!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({ email: 'target@example.com' }));
-			sourceId = await ctx.db.insert('contacts', createTestContact({ email: 'source@example.com' }));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'target@example.com' })
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'source@example.com' })
+			);
 			thirdId = await ctx.db.insert('contacts', createTestContact({ email: 'third@example.com' }));
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: sourceId,
-				toContactId: thirdId,
-				relationship: 'colleague',
-			}));
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: thirdId,
-				toContactId: sourceId,
-				relationship: 'manager_of',
-			}));
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: sourceId,
+					toContactId: thirdId,
+					relationship: 'colleague',
+				})
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: thirdId,
+					toContactId: sourceId,
+					relationship: 'manager_of',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.identities.mergeContacts, {
@@ -534,8 +613,14 @@ describe('contactIdentities.mergeContacts', () => {
 		let threadId!: Id<'conversationThreads'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({ email: 'target@example.com' }));
-			sourceId = await ctx.db.insert('contacts', createTestContact({ email: 'source@example.com' }));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'target@example.com' })
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'source@example.com' })
+			);
 			const now = Date.now();
 			threadId = await ctx.db.insert('conversationThreads', {
 				subject: 'Test Thread',
@@ -568,8 +653,14 @@ describe('contactIdentities.mergeContacts', () => {
 		let messageId!: Id<'unifiedMessages'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({ email: 'target@example.com' }));
-			sourceId = await ctx.db.insert('contacts', createTestContact({ email: 'source@example.com' }));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'target@example.com' })
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'source@example.com' })
+			);
 			const now = Date.now();
 			const threadId = await ctx.db.insert('conversationThreads', {
 				subject: 'Msg Thread',
@@ -610,16 +701,22 @@ describe('contactIdentities.mergeContacts', () => {
 		let sourceId!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({
-				email: 'target@example.com',
-				firstName: undefined,
-				lastName: undefined,
-			}));
-			sourceId = await ctx.db.insert('contacts', createTestContact({
-				email: 'source@example.com',
-				firstName: 'Alice',
-				lastName: 'Smith',
-			}));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'target@example.com',
+					firstName: undefined,
+					lastName: undefined,
+				})
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'source@example.com',
+					firstName: 'Alice',
+					lastName: 'Smith',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.identities.mergeContacts, {
@@ -640,16 +737,22 @@ describe('contactIdentities.mergeContacts', () => {
 		let sourceId!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({
-				email: 'target@example.com',
-				firstName: 'TargetFirst',
-				lastName: 'TargetLast',
-			}));
-			sourceId = await ctx.db.insert('contacts', createTestContact({
-				email: 'source@example.com',
-				firstName: 'SourceFirst',
-				lastName: 'SourceLast',
-			}));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'target@example.com',
+					firstName: 'TargetFirst',
+					lastName: 'TargetLast',
+				})
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'source@example.com',
+					firstName: 'SourceFirst',
+					lastName: 'SourceLast',
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.identities.mergeContacts, {
@@ -670,8 +773,14 @@ describe('contactIdentities.mergeContacts', () => {
 		let sourceId!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({ email: 'target@example.com' }));
-			sourceId = await ctx.db.insert('contacts', createTestContact({ email: 'source@example.com' }));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'target@example.com' })
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'source@example.com' })
+			);
 		});
 
 		await t.mutation(api.contacts.identities.mergeContacts, {
@@ -693,9 +802,15 @@ describe('contactIdentities.mergeContacts', () => {
 		let fakeTargetId!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			sourceId = await ctx.db.insert('contacts', createTestContact({ email: 'source@example.com' }));
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'source@example.com' })
+			);
 			// Create and delete to get a valid but missing ID
-			fakeTargetId = await ctx.db.insert('contacts', createTestContact({ email: 'fake@example.com' }));
+			fakeTargetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'fake@example.com' })
+			);
 			await ctx.db.delete(fakeTargetId);
 		});
 
@@ -717,34 +832,97 @@ describe('contactIdentities.mergeContacts', () => {
 		let sourceOnlyPropertyId!: Id<'contactProperties'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({ email: 'target@example.com' }));
-			sourceId = await ctx.db.insert('contacts', createTestContact({ email: 'source@example.com' }));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'target@example.com' })
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'source@example.com' })
+			);
 			const now = Date.now();
 
 			// --- Topic memberships: one shared with target (dedupe), one source-only (repoint) ---
 			sharedTopicId = await ctx.db.insert('topics', createTestTopic());
 			sourceOnlyTopicId = await ctx.db.insert('topics', createTestTopic());
-			await ctx.db.insert('contactTopics', { contactId: targetId, topicId: sharedTopicId, addedAt: now });
-			await ctx.db.insert('contactTopics', { contactId: sourceId, topicId: sharedTopicId, addedAt: now });
-			await ctx.db.insert('contactTopics', { contactId: sourceId, topicId: sourceOnlyTopicId, addedAt: now });
+			await ctx.db.insert('contactTopics', {
+				contactId: targetId,
+				topicId: sharedTopicId,
+				addedAt: now,
+			});
+			await ctx.db.insert('contactTopics', {
+				contactId: sourceId,
+				topicId: sharedTopicId,
+				addedAt: now,
+			});
+			await ctx.db.insert('contactTopics', {
+				contactId: sourceId,
+				topicId: sourceOnlyTopicId,
+				addedAt: now,
+			});
 
 			// --- Property values: one shared property (dedupe, source newer wins), one source-only (repoint) ---
-			sharedPropertyId = await ctx.db.insert('contactProperties', { key: 'company', label: 'Company', type: 'string', createdAt: now });
-			sourceOnlyPropertyId = await ctx.db.insert('contactProperties', { key: 'phone', label: 'Phone', type: 'string', createdAt: now });
-			await ctx.db.insert('contactPropertyValues', { contactId: targetId, propertyId: sharedPropertyId, value: 'OldCo', createdAt: now, updatedAt: now });
-			await ctx.db.insert('contactPropertyValues', { contactId: sourceId, propertyId: sharedPropertyId, value: 'NewCo', createdAt: now, updatedAt: now + 1000 });
-			await ctx.db.insert('contactPropertyValues', { contactId: sourceId, propertyId: sourceOnlyPropertyId, value: '+1555', createdAt: now, updatedAt: now });
+			sharedPropertyId = await ctx.db.insert('contactProperties', {
+				key: 'company',
+				label: 'Company',
+				type: 'string',
+				createdAt: now,
+			});
+			sourceOnlyPropertyId = await ctx.db.insert('contactProperties', {
+				key: 'phone',
+				label: 'Phone',
+				type: 'string',
+				createdAt: now,
+			});
+			await ctx.db.insert('contactPropertyValues', {
+				contactId: targetId,
+				propertyId: sharedPropertyId,
+				value: 'OldCo',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('contactPropertyValues', {
+				contactId: sourceId,
+				propertyId: sharedPropertyId,
+				value: 'NewCo',
+				createdAt: now,
+				updatedAt: now + 1000,
+			});
+			await ctx.db.insert('contactPropertyValues', {
+				contactId: sourceId,
+				propertyId: sourceOnlyPropertyId,
+				value: '+1555',
+				createdAt: now,
+				updatedAt: now,
+			});
 
 			// --- Identity (repoint) ---
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({ contactId: sourceId, channel: 'phone', identifier: '+5551234' }));
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({ contactId: sourceId, channel: 'phone', identifier: '+5551234' })
+			);
 
 			// --- Relationships (both directions) ---
-			const thirdId = await ctx.db.insert('contacts', createTestContact({ email: 'third@example.com' }));
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({ fromContactId: sourceId, toContactId: thirdId }));
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({ fromContactId: thirdId, toContactId: sourceId }));
+			const thirdId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'third@example.com' })
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({ fromContactId: sourceId, toContactId: thirdId })
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({ fromContactId: thirdId, toContactId: sourceId })
+			);
 
 			// --- Activity ---
-			await ctx.db.insert('contactActivities', { contactId: sourceId, activityType: 'created', metadata: { source: 'api' }, occurredAt: now });
+			await ctx.db.insert('contactActivities', {
+				contactId: sourceId,
+				activityType: 'created',
+				metadata: { source: 'api' },
+				occurredAt: now,
+			});
 
 			// --- Email send ---
 			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
@@ -778,7 +956,10 @@ describe('contactIdentities.mergeContacts', () => {
 				createdAt: now,
 				updatedAt: now,
 			});
-			await ctx.db.insert('formSubmissions', createTestFormSubmission({ formEndpointId, contactId: sourceId }));
+			await ctx.db.insert(
+				'formSubmissions',
+				createTestFormSubmission({ formEndpointId, contactId: sourceId })
+			);
 
 			// --- Conversation thread + unified message + inbound message ---
 			const threadId = await ctx.db.insert('conversationThreads', {
@@ -792,8 +973,14 @@ describe('contactIdentities.mergeContacts', () => {
 				firstMessageAt: now,
 				createdAt: now,
 			});
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({ threadId, contactId: sourceId }));
-			await ctx.db.insert('inboundMessages', createTestInboundMessage({ threadId, contactId: sourceId }));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({ threadId, contactId: sourceId })
+			);
+			await ctx.db.insert(
+				'inboundMessages',
+				createTestInboundMessage({ threadId, contactId: sourceId })
+			);
 		});
 
 		await t.mutation(api.contacts.identities.mergeContacts, {
@@ -824,7 +1011,9 @@ describe('contactIdentities.mergeContacts', () => {
 					.query(table)
 					.withIndex('by_contact', (q) => q.eq('contactId', sourceId))
 					.collect();
-				expect(orphans, `${table} should have no rows pointing at the deleted source`).toHaveLength(0);
+				expect(orphans, `${table} should have no rows pointing at the deleted source`).toHaveLength(
+					0
+				);
 			}
 
 			// Relationships repointed off the source on BOTH sides.
@@ -893,27 +1082,48 @@ describe('contactIdentities.mergeContacts', () => {
 		let sharedEntryId!: Id<'knowledgeEntries'>;
 
 		await t.run(async (ctx) => {
-			targetId = await ctx.db.insert('contacts', createTestContact({ email: 'target@example.com' }));
-			sourceId = await ctx.db.insert('contacts', createTestContact({ email: 'source@example.com' }));
+			targetId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'target@example.com' })
+			);
+			sourceId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'source@example.com' })
+			);
 
 			// Entry linked only to source — should be repointed onto target.
-			sourceOnlyEntryId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Source Only',
-				content: 'c',
-				sourceType: 'manual',
-				contactIds: [sourceId],
-			}));
-			await ctx.db.insert('knowledgeEntryContacts', { entryId: sourceOnlyEntryId, contactId: sourceId });
+			sourceOnlyEntryId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Source Only',
+					content: 'c',
+					sourceType: 'manual',
+					contactIds: [sourceId],
+				})
+			);
+			await ctx.db.insert('knowledgeEntryContacts', {
+				entryId: sourceOnlyEntryId,
+				contactId: sourceId,
+			});
 
 			// Entry linked to BOTH — the source junction row is redundant and dropped.
-			sharedEntryId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				title: 'Shared',
-				content: 'c',
-				sourceType: 'manual',
-				contactIds: [targetId, sourceId],
-			}));
-			await ctx.db.insert('knowledgeEntryContacts', { entryId: sharedEntryId, contactId: targetId });
-			await ctx.db.insert('knowledgeEntryContacts', { entryId: sharedEntryId, contactId: sourceId });
+			sharedEntryId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Shared',
+					content: 'c',
+					sourceType: 'manual',
+					contactIds: [targetId, sourceId],
+				})
+			);
+			await ctx.db.insert('knowledgeEntryContacts', {
+				entryId: sharedEntryId,
+				contactId: targetId,
+			});
+			await ctx.db.insert('knowledgeEntryContacts', {
+				entryId: sharedEntryId,
+				contactId: sourceId,
+			});
 		});
 
 		await t.mutation(api.contacts.identities.mergeContacts, {
