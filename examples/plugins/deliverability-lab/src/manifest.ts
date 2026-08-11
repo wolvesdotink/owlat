@@ -13,8 +13,9 @@
  *     bucket — only the capability; the seedbox endpoint env var is declared as a
  *     forward-looking constant but is NOT a required-env enablement gate, because
  *     the bundled gate ships with no remote hook — see the constant below);
- *   - Tier 3 (sandboxed worker): the `worker:enqueue` capability the seed-list
- *     job is enqueued under (`plugin.deliverability-lab.seed-test`).
+ *   - Tier 3 (sandboxed worker): the reserved `worker:enqueue` capability and
+ *     seed-list request shape (`plugin.deliverability-lab.seed-test`); no host
+ *     enqueue adapter is shipped.
  *
  * Capability declaration is the permission ceiling: the host rejects, at codegen
  * AND at runtime, any contribution or action that needs a capability not listed

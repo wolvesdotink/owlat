@@ -15,6 +15,7 @@ import {
 	UNIFIED_MESSAGE_STORAGE_VERSION_PLAINTEXT,
 	UNIFIED_MESSAGE_STORAGE_VERSION_SEALED,
 } from '../lib/messageBody';
+import { mirrorEmailSendWrite, recordInboundMirror } from '../unifiedMessages';
 
 function expectedContentStorageVersion(content: string): number {
 	return isSealedAtRest(content)
@@ -308,9 +309,9 @@ describe('unifiedMessages.listRecent', () => {
 	});
 });
 
-// ============ recordInbound (internal) ============
+// ============ recordInboundMirror ============
 
-describe('unifiedMessages.recordInbound', () => {
+describe('unifiedMessages.recordInboundMirror', () => {
 	it('should record an inbound message', async () => {
 		const t = convexTest(schema, modules);
 		let threadId!: Id<'conversationThreads'>;
@@ -319,12 +320,14 @@ describe('unifiedMessages.recordInbound', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 		});
 
-		const msgId = await t.mutation(internal.unifiedMessages.recordInbound, {
-			threadId,
-			channel: 'email',
-			content: JSON.stringify({ text: 'Hello from customer' }),
-			externalMessageId: 'ext-123',
-		});
+		const msgId = await t.run((ctx) =>
+			recordInboundMirror(ctx, {
+				threadId,
+				channel: 'email',
+				content: JSON.stringify({ text: 'Hello from customer' }),
+				externalMessageId: 'ext-123',
+			})
+		);
 
 		expect(msgId).toBeDefined();
 
@@ -396,7 +399,7 @@ describe('unifiedMessages.recordOutbound', () => {
  * Successful Send" stat and has exactly one writer:
  * `stampChannelLastSuccessfulSend`, fired from every successful-send writer.
  * Email (the primary, default channel) records outbound through
- * `mirrorEmailSend`/`mirrorEmailSendWrite` — NOT `recordOutbound` — so without a
+ * `mirrorEmailSendWrite` — NOT `recordOutbound` — so without a
  * stamp there the email card would read "Never" after real sends. Chat is
  * terminal-on-insert. These cover all three paths.
  */
@@ -417,14 +420,16 @@ describe('unifiedMessages lastSuccessfulSend stamping', () => {
 		});
 
 		const before = Date.now();
-		await t.mutation(internal.unifiedMessages.mirrorEmailSend, {
-			threadId,
-			contactId,
-			subject: 'Re: hello',
-			textBody: 'agent reply',
-			externalMessageId: 'msg-email-1',
-			status: 'sent',
-		});
+		await t.run((ctx) =>
+			mirrorEmailSendWrite(ctx, {
+				threadId,
+				contactId,
+				subject: 'Re: hello',
+				textBody: 'agent reply',
+				externalMessageId: 'msg-email-1',
+				status: 'sent',
+			})
+		);
 
 		const config = await t.run((ctx) => ctx.db.get(configId));
 		expect(config!.lastSuccessfulSend).toBeGreaterThanOrEqual(before);
@@ -445,12 +450,14 @@ describe('unifiedMessages lastSuccessfulSend stamping', () => {
 			);
 		});
 
-		await t.mutation(internal.unifiedMessages.mirrorEmailSend, {
-			threadId,
-			contactId,
-			externalMessageId: 'msg-email-fail-1',
-			status: 'failed',
-		});
+		await t.run((ctx) =>
+			mirrorEmailSendWrite(ctx, {
+				threadId,
+				contactId,
+				externalMessageId: 'msg-email-fail-1',
+				status: 'failed',
+			})
+		);
 
 		const config = await t.run((ctx) => ctx.db.get(configId));
 		expect(config!.lastSuccessfulSend).toBeUndefined();
@@ -471,24 +478,28 @@ describe('unifiedMessages lastSuccessfulSend stamping', () => {
 			);
 		});
 
-		await t.mutation(internal.unifiedMessages.mirrorEmailSend, {
-			threadId,
-			contactId,
-			externalMessageId: 'msg-email-dup-1',
-			status: 'sent',
-		});
+		await t.run((ctx) =>
+			mirrorEmailSendWrite(ctx, {
+				threadId,
+				contactId,
+				externalMessageId: 'msg-email-dup-1',
+				status: 'sent',
+			})
+		);
 		const first = await t.run((ctx) => ctx.db.get(configId));
 		const firstStamp = first!.lastSuccessfulSend;
 		expect(firstStamp).toBeGreaterThan(0);
 
 		// Re-deliver the same provider message id: the mirror dedupe early-returns
 		// before the stamp, so the timestamp must not move.
-		await t.mutation(internal.unifiedMessages.mirrorEmailSend, {
-			threadId,
-			contactId,
-			externalMessageId: 'msg-email-dup-1',
-			status: 'sent',
-		});
+		await t.run((ctx) =>
+			mirrorEmailSendWrite(ctx, {
+				threadId,
+				contactId,
+				externalMessageId: 'msg-email-dup-1',
+				status: 'sent',
+			})
+		);
 		const second = await t.run((ctx) => ctx.db.get(configId));
 		expect(second!.lastSuccessfulSend).toBe(firstStamp);
 	});

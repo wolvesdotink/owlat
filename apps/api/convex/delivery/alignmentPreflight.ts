@@ -14,7 +14,7 @@
  * anyway, because it answers "is there a second arm?" from the LIVE transport
  * surface rather than from a stored row — so a standalone deployment ramps
  * without waiting for a sweep, and no error or "setup incomplete" nag is
- * rendered anywhere. Not writing the row is also what keeps the answer honest:
+ * rendered anywhere. Not writing the row also keeps the readiness answer honest:
  * a stored `single_arm` verdict could not go stale and be misread the day a
  * relay is configured.
  *
@@ -32,7 +32,6 @@ import {
 	type AlignmentArm,
 	type ReferenceArmInput,
 } from '@owlat/shared/deliverabilityAlignment';
-import type { ReferenceArmPresence } from '@owlat/shared/deliverabilityAlignmentGate';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';
@@ -138,18 +137,6 @@ async function referenceFor(
 	return { kind: 'unknown', detail: undescribableRelayDetail(domain.domain, relayKinds) };
 }
 
-/** The gate's view of the same question, without building the arms. */
-function referencePresence(reference: ReferenceArmInput): ReferenceArmPresence {
-	switch (reference.kind) {
-		case 'none':
-			return 'none';
-		case 'unknown':
-			return 'unknown';
-		case 'arm':
-			return 'configured';
-	}
-}
-
 /**
  * Build one target, or null when there is nothing for the pre-flight to do.
  *
@@ -235,8 +222,8 @@ async function loadAlignmentState(
 /**
  * One PAGE of verified sending domains whose alignment verdict is missing or
  * due. Paginated rather than `take`-bounded: a `take(n)` prefix means domain
- * #n+1 is never a target, so its verdict is never recorded, so the gate answers
- * `not_yet_checked` forever and that domain's cells can never ramp. The caller
+ * #n+1 is never a target, so its verdict is never recorded and readiness never
+ * reports that domain. The caller
  * carries the cursor forward exactly like `delivery/checklistSweepState.ts`.
  */
 export const listDueAlignmentTargets = internalQuery({
@@ -298,49 +285,6 @@ export const recordAlignmentResult = internalMutation({
 			return;
 		}
 		await ctx.db.insert('deliverabilityAlignmentStates', row);
-	},
-});
-
-/**
- * The gate input the ramp controller reads: the stored verdict for a domain, or
- * null when the pre-flight has not run yet. `referenceArm` is answered from the
- * shipped transport surface, NOT from the stored row, so a standalone deployment
- * opens the gate even before the first sweep (D2) — and a relay we cannot
- * describe holds even if an older row says `aligned`.
- *
- * "We could not look this domain up" is `unknown` (a HOLD), NEVER `none`. A
- * missing `domains` row while a relay IS configured is not evidence that there is
- * no second arm — it is evidence that we cannot see the one there is. The
- * argument is normalized through the shared spelling first, so that `Acme.com`
- * and `acme.com.` cannot manufacture that miss out of nothing.
- */
-export const getAlignmentGateState = internalQuery({
-	args: { domain: v.string() },
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		referenceArm: ReferenceArmPresence;
-		state: { verdict: Doc<'deliverabilityAlignmentStates'>['verdict']; checkedAt: number } | null;
-	}> => {
-		const organizationId = await getSingletonOrganizationId(ctx);
-		const fromDomain = normalizeDomain(args.domain);
-		const domain = await ctx.db
-			.query('domains')
-			.withIndex('by_domain', (q) => q.eq('domain', fromDomain))
-			.unique();
-		const relayKinds = await configuredRelayKinds(ctx);
-		const reference: ReferenceArmInput =
-			domain !== null
-				? await referenceFor(ctx, domain, relayKinds, Date.now())
-				: relayKinds.length === 0
-					? { kind: 'none' }
-					: { kind: 'unknown', detail: undescribableRelayDetail(fromDomain, relayKinds) };
-		const state = await loadAlignmentState(ctx, organizationId, fromDomain);
-		return {
-			referenceArm: referencePresence(reference),
-			state: state ? { verdict: state.verdict, checkedAt: state.checkedAt } : null,
-		};
 	},
 });
 

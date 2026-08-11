@@ -6,7 +6,7 @@ import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { isValidEmail, normalizeEmail } from './lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/errors';
-import { scheduleSuppressionMirror } from './delivery/suppressionMirror';
+import { scheduleSuppressionMirror } from './delivery/suppressionMirrorScheduler';
 import { recordAuditLog } from './lib/auditLog';
 import { restoreSunsetSuppression } from './contacts/sunsetRestore';
 
@@ -134,26 +134,6 @@ export const listProviderProvenance = authedQuery({
 				},
 			];
 		});
-	},
-});
-
-// Get a single blocked email by ID
-export const get = authedQuery({
-	args: { blockedEmailId: v.id('blockedEmails') },
-	handler: async (ctx, args) => {
-		const blockedEmail = await ctx.db.get(args.blockedEmailId);
-		if (!blockedEmail) return null;
-		return blockedEmail;
-	},
-});
-
-// Check if an email is blocked
-export const isBlocked = authedQuery({
-	args: {
-		email: v.string(),
-	},
-	handler: async (ctx, args) => {
-		return (await findBlockedByEmail(ctx, args.email)) !== null;
 	},
 });
 

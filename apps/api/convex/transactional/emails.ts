@@ -85,21 +85,6 @@ export const get = authedQuery({
 });
 
 /**
- * Get a transactional email by organization and slug (for API lookups)
- */
-export const getBySlug = authedQuery({
-	args: {
-		slug: v.string(),
-	},
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('transactionalEmails')
-			.withIndex('by_slug', (q) => q.eq('slug', args.slug))
-			.first();
-	},
-});
-
-/**
  * Count transactional emails by status for an organization
  */
 export const countByStatus = authedQuery({

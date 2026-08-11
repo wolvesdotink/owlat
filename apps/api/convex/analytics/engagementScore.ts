@@ -114,16 +114,14 @@ export type EngagementScoreState = {
 	softBounceRaw: number;
 	/**
 	 * A hard bounce or a spam complaint. Sticky within the recompute lookback
-	 * window (see `suppressedAt`) rather than permanent: a bounce recorded in
-	 * error must have a reversal path, and "forever, with no way back" is not one.
+	 * window (see `suppressedAt`) rather than permanent: even a bounce recorded
+	 * in error ages out instead of pinning the contact to zero forever.
 	 */
 	isSuppressed: boolean;
 	/**
 	 * `occurredAt` of the newest suppressing activity. This is what makes
-	 * suppression CLEARABLE: the full recompute only carries a cached suppression
-	 * forward while its instant is still inside the lookback window, so removing
-	 * or correcting the offending activity row un-suppresses the contact on the
-	 * next recompute (and `clearEngagementSuppression` forces one immediately).
+	 * suppression TIME-BOUNDED: the full recompute only carries a cached
+	 * suppression forward while its instant is inside the lookback window.
 	 * Absent whenever `isSuppressed` is false.
 	 */
 	suppressedAt?: number | undefined;

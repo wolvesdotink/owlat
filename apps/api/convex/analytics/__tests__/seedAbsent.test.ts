@@ -42,15 +42,9 @@ describe('zero seed mailboxes is a supported configuration', () => {
 		expect(accounts).toEqual([]);
 	});
 
-	// The module's ONE shipped query, driven end to end. Its gate-verdict sibling
-	// was a parallel route to the ramp's corroboration rule and is gone (#504);
-	// what survives here is the roll-up a screen reads.
-	it('answers an empty summary through the shipped getSeedPlacementSummary query', async () => {
+	it('answers an empty summary through the shared window reader', async () => {
 		const t = convexTest(schema, modules);
-		const summary = await t.query(internal.analytics.seedPlacement.getSeedPlacementSummary, {
-			organizationId: ORG,
-			now: NOW,
-		});
+		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));
 		expect(summary.rollups).toEqual([]);
 		expect(summary.seedAccountCount).toBe(0);
 		expect(summary.rotationRemindersDue).toBe(0);
@@ -243,10 +237,7 @@ describe('the shipped summary reports a provider-wide collapse', () => {
 	it('names the provider and grades the reading', async () => {
 		const t = convexTest(schema, modules);
 		await connectSeedsWithSpamProbes(t);
-		const summary = await t.query(internal.analytics.seedPlacement.getSeedPlacementSummary, {
-			organizationId: ORG,
-			now: NOW,
-		});
+		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));
 		expect(summary.rollups).toHaveLength(1);
 		expect(summary.rollups[0]).toMatchObject({
 			provider: 'gmail',
@@ -264,10 +255,7 @@ describe('the shipped summary reports a provider-wide collapse', () => {
 	it('reports a STATUS and never a placement number (D17)', async () => {
 		const t = convexTest(schema, modules);
 		await connectSeedsWithSpamProbes(t);
-		const summary = await t.query(internal.analytics.seedPlacement.getSeedPlacementSummary, {
-			organizationId: ORG,
-			now: NOW,
-		});
+		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));
 		for (const rollup of summary.rollups) {
 			expect(rollup).not.toHaveProperty('placementRate');
 			expect(rollup).not.toHaveProperty('reachedShare');

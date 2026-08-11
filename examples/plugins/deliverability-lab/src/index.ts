@@ -9,8 +9,8 @@
  *   - Tier 2: an OPTIONAL seedbox score consumed over Owlat's signed `score`
  *     hook, with a deadline and a fail-closed fallback to local scoring
  *     (`./remoteScore`);
- *   - Tier 3: a seed-list placement test enqueued onto the sandboxed worker
- *     (`./seedTest`), run by `apps/code-worker`'s host-controlled command.
+ *   - Tier 3: a seed-list placement protocol fixture (`./seedTest`) for the
+ *     host-controlled code-worker command; no host enqueue adapter is shipped.
  *
  * Every module is runtime-neutral and individually testable; the wire is the
  * plugin manifest plus the host contribution contracts from `@owlat/plugin-kit`.

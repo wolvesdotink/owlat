@@ -445,7 +445,7 @@ public mutation ever ships it owns its own auth shell), audit logs
 (separate concern owned by `recordAuditLog`), the conversation-thread
 or inbox-state side effects (those are **Inbox processing lifecycle
 (module)**'s domain), or activity reads (the read queries
-`listByContact`, `countByContact`, `getRecent`, `deleteByContact` in
+`listByContact`, `getRecent`, `deleteByContact` in
 `contacts/activities.ts` stay where they are — they are not under the
 writer-side scope this module covers).
 _Avoid_: Activity module (collides with **Agent action** the row),
@@ -1092,9 +1092,7 @@ in `dnsVerification.ts` runs `dns.resolveTxt` / `.resolveCname` /
 `recordVerification`), provider API calls (the per-provider
 adapter owns them — see below), the `trackingDomains` table
 (separate concept), `domainReputation` table (separate concept),
-or any of the read queries
-(`listByOrganization`, `get`, `getByDomain`, `countByStatus`,
-`listVerified`, `isDomainVerified`, `isDomainVerificationFresh`,
+or any of the read queries (`listByOrganization`, `listVerified`,
 `getEmailDomainVerificationStatus` — all stay where they are).
 _Avoid_: Domain lifecycle (module) (collides with
 `trackingDomains`), Domain registration lifecycle (names one
@@ -1548,10 +1546,10 @@ the counting core in the domain sibling
 `audienceResolution.ts` → `audienceCandidates.ts`). Two thin entries
 route through it so a count can never disagree with a send:
 
-- `resolveRecipients({ audience }) → CampaignRecipient[]` —
-  internalQuery; the **Campaign send orchestrator (module)**'s
-  audience-resolution step. Materializes the rows. (`frozenFilters`
-  rides _inside_ the `audience` segment case, not as a sibling arg.)
+- `resolveRecipientPage({ audience, cursor }) → ResolvedPage` —
+  internalQuery; one bounded hop of the **Campaign send orchestrator
+  (module)**'s checkpointed audience walk. (`frozenFilters` rides
+  _inside_ the `audience` segment case, not as a sibling arg.)
 - `countRecipients({ audience }) → { total, eligible, completeness }` —
   public query; the wizard's audience-size readout. `completeness` is
   the **discriminant that says what the two numbers license**, and it
@@ -1681,16 +1679,16 @@ entry points:
 - `remove({ blockId })` — detaches the saved block from every consumer
   and deletes the row. Effects: `detach_all`, `audit_log`.
 
-Plus one cross-cutting entry point used by **Saved block consumer**
-lifecycles:
+Plus one cross-cutting helper used by **Saved block consumer** lifecycles:
 
-- `updateBlockUsageCounts({ previousIds, nextIds })` —
+- `applyUsageCountDelta(ctx, previousIds, nextIds)` —
   increments/decrements `usageCount` on saved blocks based on a
   consumer's `linkedBlockIds` delta. The single writer of
   `emailBlocks.usageCount`. Called by **Email template lifecycle
   (module)**'s and **Transactional email lifecycle (module)**'s
-  `update_block_usage_counts` effect — those modules import this entry
-  and delegate.
+  `update_block_usage_counts` effect in the consumer mutation's own
+  transaction. The test-only `updateBlockUsageCounts` Convex wrapper was
+  removed under issue #528 because no production path could start it.
 
 Effects:
 
@@ -1732,8 +1730,8 @@ the decision lands.
 
 Replaces `lib/linkedBlockPropagation.ts` (deleted; its three
 propagation helpers become reducer effects, its walker helpers become
-private to `module.ts`, its `updateBlockUsageCounts` becomes the
-cross-cutting entry point) and absorbs the open-coded
+private to `module.ts`, its usage-count delta helper becomes the
+cross-cutting `applyUsageCountDelta`) and absorbs the open-coded
 `if (contentChanged) … else if (nameChanged)` branch at
 `emailBlocks.ts:196-225` into the `update` reducer's classification.
 
@@ -1879,7 +1877,7 @@ Effects:
   `auditActions/catalog.ts`.
 - `update_block_usage_counts(prev, next)` — fires when `linkedBlockIds`
   changes. Delegates to the **Saved block (module)**'s
-  `updateBlockUsageCounts` entry, the single writer of
+  `applyUsageCountDelta` helper, the single implementation of
   `emailBlocks.usageCount`. Replaces the open-coded calls at
   `emailTemplates/emails.ts:108` (still bypassing the lifecycle
   post-ADR-0022) and the pre-ADR-0022 sites at `emailTemplates.ts:102`
@@ -2089,9 +2087,9 @@ stay in the HTTP shell because they require action context and vary
 per content-type); the `transactionalEmails` CRUD (stays in
 `transactional/emails.ts`); the `transactionalEmails` translations
 CRUD (stays in `transactional/translations.ts`); the
-`transactionalSends` read queries (`listByTransactionalEmail`, `listAll`,
-`get`, `getStatsByTransactionalEmail`, `getCountByTransactionalEmail`,
-`getCounts`, `getByEmail`, `getByProviderMessageId` stay in
+`transactionalSends` read queries (`listByTransactionalEmail`, `get`,
+`getStatsByTransactionalEmail`, `getCountByTransactionalEmail`, `getCounts`,
+`getByProviderMessageId` stay in
 `transactional/sends.ts`); the worker dispatch and provider attempt
 (**Send dispatch (helper)** + `emailWorker.sendSingleEmail`); the
 `queued → sent | failed` transitions (**Send completion (module)**
@@ -2194,7 +2192,7 @@ Effects:
   `transactional/emails.ts:307-315`.
 - `update_block_usage_counts(prev, next)` — fires when `linkedBlockIds`
   changes. Delegates to the **Saved block (module)**'s
-  `updateBlockUsageCounts` entry (parallel to the **Email template
+  `applyUsageCountDelta` helper (parallel to the **Email template
   lifecycle (module)**). Also closes the open-coded direct call at
   `transactional/emails.ts:252` that bypassed the lifecycle effect
   path.
@@ -2239,7 +2237,7 @@ send intake (module)** at `transactional/dispatch.ts`), the per-send
 worker dispatch (**Send dispatch (helper)**), the translation CRUD
 (stays in `transactional/translations.ts`), the per-template
 attachment management, the `updateSchema` mutation, or the read
-queries (`get`, `getBySlug`, `list`, `countByStatus`,
+queries (`get`, `list`, `countByStatus`,
 `getStatsByTransactionalEmail`, etc. — all stay in their respective
 read-side files).
 _Avoid_: Transactional template lifecycle (overloaded — the row is
@@ -3978,8 +3976,8 @@ responsibilities behind one small interface:
 - `summarize(reader, scope)` — the only summarizer of the rolling 30-day
   window: sums the day buckets and derives `bounceRate` /
   `complaintRate` / `riskLevel` (via the pure `calculateRiskLevel`).
-  Reader-typed so the public auth-shell reads
-  (`reputationQueries.getSendingOverview` / `getDomainReputations`) and
+  Reader-typed so the public auth-shell read
+  (`reputationQueries.getSendingOverview`) and
   the platform-admin reads (`platformAdmin/queries.ts`) all cross the
   same seam — the shell-vs-engine split the **Listing engine** uses
   (ADR-0037). Derived rate/risk is computed on read, never stored: the
@@ -4740,8 +4738,8 @@ Preconditions enforced inside the `→ active` reducer (returned as
 
 Replaces the open-coded `ctx.db.patch(automation, { status: ... })`
 writes in `automations/automations.ts:333-430` (activate / pause /
-resume). Introduces a new `revertToDraft` public mutation for the
-`paused → draft` edge that did not exist pre-deepening.
+resume). The proposed `revertToDraft` shell was removed under ADR-0020
+because no product surface called it.
 
 The module does _not_ own: row creation (the `create` mutation and
 `duplicate` mutation stay as direct CRUD inserts at `status: 'draft'`
@@ -5726,8 +5724,9 @@ matching code comment at the cited file.
 
 - **`platformAdmin/*` is control-plane-only and inert on OSS self-host.**
   No production path populates the `platformAdmins` table on an OSS
-  deployment (`seedPlatformAdmin` is an `internalMutation` with no production
-  caller; `addPlatformAdmin` needs an existing admin to bootstrap), so
+  deployment (the optional first-admin bootstrap is the hand-run
+  `migrations/0036_seed_platform_admin:run`; `addPlatformAdmin` needs an
+  existing admin), so
   `requirePlatformAdmin` always throws FORBIDDEN and the console renders empty.
   Intentional: the multi-tenant control plane that would seed and use these
   admins lives in the separate private Nest repo (see _Nest Extracted_); this

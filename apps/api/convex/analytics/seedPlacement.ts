@@ -22,8 +22,8 @@
  * controller HOLDS, and nothing errors, warns, or nags.
  *
  * WHAT THIS MODULE OWNS, AND WHAT IT HANDS ON. It owns the probe ledger, the
- * per-provider roll-up, the windowed READ that feeds the ramp controller's
- * per-cell sweeps, and `getSeedPlacementSummary` for a screen to read.
+ * per-provider roll-up and the windowed READ that feeds both the ramp
+ * controller's per-cell sweeps and the deliverability dashboard.
  *
  * GATE 5'S VERDICT IS NOT HERE, AND THERE IS NO SECOND ROUTE TO IT.
  * `delivery/ramp/seedGate.ts` decides it, over the per-cell sweeps
@@ -41,7 +41,7 @@
  * `analytics/seedProbeLedger.ts`. It does NOT own the CELL DASHBOARD that
  * renders the status or the confidence line beside it — P3-6 (Independence &
  * Cells UI) and P3-8 (confidence surfacing) own that and consume
- * `getSeedPlacementSummary` as it stands. TWO PRODUCERS write this ledger, one
+ * `summarizeSeedPlacementWindow`. TWO PRODUCERS write this ledger, one
  * per shape of stream: `delivery/seedShadowCopy.ts` shadows a real campaign
  * send, and P4-7's `delivery/seedScheduledProbe.ts` mails the `transactional`
  * and `automation` streams on a cron. Same row, same classification path.
@@ -53,7 +53,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type DatabaseReader } from '../_generated/server';
+import { internalMutation, type DatabaseReader } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
 	classifySeedFolder,
@@ -464,16 +464,3 @@ export async function summarizeSeedPlacementWindow(
 		placementImprovement: placement.improvement,
 	};
 }
-
-/**
- * THE MODULE'S ONE READ SURFACE: the provider roll-up a screen renders.
- *
- * It reports STATUSES and confidence, never a verdict. Gate 5's verdict is the
- * ramp's (`delivery/ramp/seedGate.ts` over the per-cell sweeps) and reaching it
- * from here as well is the parallel route #504 removed.
- */
-export const getSeedPlacementSummary = internalQuery({
-	args: { organizationId: v.string(), now: v.number() },
-	handler: async (ctx, args): Promise<SeedPlacementSummary> =>
-		summarizeSeedPlacementWindow(ctx.db, args.organizationId, args.now),
-});

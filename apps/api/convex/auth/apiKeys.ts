@@ -38,43 +38,6 @@ export const listByTeam = authedQuery({
 	},
 });
 
-/**
- * Get a single API key by ID
- */
-export const get = authedQuery({
-	args: {
-		keyId: v.id('apiKeys'),
-	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can view API keys'
-		);
-		return await ctx.db.get(args.keyId);
-	},
-});
-
-/**
- * Count API keys for an organization
- */
-export const countByTeam = authedQuery({
-	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can view API keys'
-		);
-		const allKeys = await ctx.db.query('apiKeys').collect(); // bounded: per-org API keys (few)
-		const activeKeys = allKeys.filter((k) => k.isActive);
-
-		return {
-			active: activeKeys.length,
-		};
-	},
-});
-
 // ============ MUTATIONS ============
 
 /**
@@ -269,36 +232,6 @@ export const revoke = authedMutation({
 		});
 
 		return { success: true };
-	},
-});
-
-/**
- * Revoke every active API key bound to a plugin in one shot (Tier-2 "one-click
- * revocation"). Used when an operator disconnects a connected app: all of that
- * app's keys stop authenticating immediately. Idempotent — returns the number
- * of keys revoked, zero when the plugin has no active keys.
- */
-export const revokeByPlugin = authedMutation({
-	args: {
-		pluginId: v.string(),
-	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can revoke API keys'
-		);
-
-		// Reject an unparseable id rather than scanning for a literal that can
-		// never have been stored.
-		let pluginId;
-		try {
-			pluginId = parsePluginId(args.pluginId);
-		} catch {
-			throwInvalidInput('Invalid pluginId');
-		}
-
-		return { revoked: await revokeApiKeysForPlugin(ctx, pluginId) };
 	},
 });
 

@@ -41,10 +41,6 @@ const SEARCH_ROOTS = ['apps/api/convex', 'apps/web/app', 'apps/code-worker/src']
  * other direction.
  */
 export const AWAITING_CALL_SITE: Readonly<Record<string, string>> = Object.freeze({
-	webhookEventAuthorization:
-		'webhookEvents is dispatch: declared — the persisted event validators are closed core-only unions, so no publish path can authorize a plugin event yet',
-	importProviderAuthorization:
-		'importProviders is dispatch: declared — the import walker dispatches through a core-only provider registry, so no walk can authorize a plugin provider yet',
 	importProviderSignature:
 		'importProviders is dispatch: declared — the origin-only inbound verifier its contract declares gates no HTTP endpoint, because the bucket has no inbound surface yet',
 });

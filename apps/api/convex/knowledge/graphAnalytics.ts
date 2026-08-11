@@ -7,8 +7,7 @@
  * approximate communities (label propagation), the confidence distribution, and
  * the most "surprising" connections. THIS file owns the thin paginating queries
  * the action consumes, plus the member-only dashboard reads (`getGraphStats` /
- * `getSubgraph`); an admin pulls the redacted cross-contact detail via
- * `getCrossContactLinks`. The recompute pipeline + snapshot writer live in the
+ * `getSubgraph`). The recompute pipeline + snapshot writer live in the
  * sibling `graphAnalyticsRecompute.ts` (file-size split).
  *
  * ★ SECURITY ★
@@ -27,15 +26,14 @@
  * contact-A-only node to a contact-B-only node (a "cross-contact-disjoint" edge).
  * Surfacing such an edge in the member-visible `surprisingConnections` would draw
  * an A→B bridge in the UI, so those edges are REDACTED out of it and summarized
- * only as the aggregate `crossContactLinkCount`. Their endpoint detail lives in
- * `crossContactLinks`, which `getGraphStats` strips and only the role-gated
- * `getCrossContactLinks` adminQuery returns.
+ * only as the aggregate `crossContactLinkCount`; `getGraphStats` strips their
+ * endpoint detail.
  */
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { publicQuery, adminQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isActiveOrgMember } from '../lib/sessionOrganization';
 import { clamp } from '../lib/graphAnalyticsCompute';
@@ -201,7 +199,12 @@ export const getSubgraph = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const empty: {
-			nodes: { id: Id<'knowledgeEntries'>; title: string; entryType: Doc<'knowledgeEntries'>['entryType']; confidence: number }[];
+			nodes: {
+				id: Id<'knowledgeEntries'>;
+				title: string;
+				entryType: Doc<'knowledgeEntries'>['entryType'];
+				confidence: number;
+			}[];
 			edges: {
 				fromId: Id<'knowledgeEntries'>;
 				toId: Id<'knowledgeEntries'>;
@@ -224,7 +227,12 @@ export const getSubgraph = publicQuery({
 
 		const nodes = new Map<string, (typeof empty.nodes)[number]>();
 		const addNode = (e: Doc<'knowledgeEntries'>): void => {
-			nodes.set(e._id, { id: e._id, title: e.title, entryType: e.entryType, confidence: e.confidence });
+			nodes.set(e._id, {
+				id: e._id,
+				title: e.title,
+				entryType: e.entryType,
+				confidence: e.confidence,
+			});
 		};
 		addNode(root);
 		const edges = empty.edges;
@@ -268,22 +276,5 @@ export const getSubgraph = publicQuery({
 			if (frontier.length === 0) break;
 		}
 		return { nodes: [...nodes.values()], edges };
-	},
-});
-
-/**
- * ADMIN-only detail of the redacted cross-contact-disjoint edges (the edges
- * excluded from the member-visible `surprisingConnections`). Role-gated via
- * `adminQuery` (organization:manage); flag-gated. Returns [] when off / no snapshot.
- */
-export const getCrossContactLinks = adminQuery({
-	args: {},
-	handler: async (ctx) => {
-		if (!(await isFeatureEnabled(ctx, 'ai.knowledge.analytics'))) return [];
-		const row = await ctx.db
-			.query('knowledgeGraphStats')
-			.withIndex('by_kind', (q) => q.eq('kind', 'graph'))
-			.first();
-		return row?.crossContactLinks ?? [];
 	},
 });

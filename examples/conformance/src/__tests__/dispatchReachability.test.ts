@@ -105,12 +105,9 @@ const SEAMS: Readonly<Record<string, DispatchSeam>> = Object.freeze({
 		because: 'the settings surface must read composed panel contributions',
 	},
 	automationTriggers: {
-		// The module registry IS resolved (triggers/pluginTriggers.ts) and the fan-out
-		// mutation IS written, so the reachability question is one level up: does
-		// anything FIRE a plugin trigger? Nothing does.
-		symbol: 'firePluginTrigger',
-		definedIn: 'apps/api/convex/automations/triggers.ts',
-		because: 'a plugin trigger only fans out when some host path fires it',
+		symbol: 'BUNDLED_PLUGIN_AUTOMATION_TRIGGER_MODULES',
+		definedIn: 'apps/api/convex/plugins/automationTriggerModules.generated.ts',
+		because: 'a plugin trigger host must resolve the generated module registry',
 	},
 	automationConditions: {
 		symbol: 'BUNDLED_PLUGIN_AUTOMATION_CONDITION_MODULES',

@@ -8,20 +8,16 @@ import {
 import { isPluginId, type PluginId } from './pluginId';
 
 /**
- * Capability a plugin must declare (and the operator must grant) to enqueue work
- * onto the Tier-3 sandboxed worker queue. Enqueue is the ONLY thing a plugin can
- * do to the queue: it can add background compute, but it can never claim, cancel,
- * or read another plugin's jobs — those are host/operator operations. Like every
- * other contribution capability, the host rechecks manifest declaration + flag +
- * operator grant in the enqueue transaction, so a disabled or ungranted plugin
- * cannot enqueue.
+ * Reserved capability for a future Tier-3 host enqueue adapter. It remains in
+ * the manifest protocol so plugin packages and the worker wire format can be
+ * developed without claiming a runtime surface that Owlat does not ship yet.
  */
 export const PLUGIN_WORKER_CAPABILITY = 'worker:enqueue' as const;
 
 export type PluginWorkerCapability = typeof PLUGIN_WORKER_CAPABILITY;
 
 /**
- * Retry ceiling the host clamps every enqueue to. A job runs at least once and at
+ * Retry ceiling a future host adapter must clamp every enqueue to. A job runs at least once and at
  * most this many times across worker attempts (crash-reclaim included), so a
  * poison job can never loop forever and a plugin can never request unbounded
  * retries. Failures past the ceiling terminate the job as `failed`.
@@ -39,7 +35,7 @@ export const PLUGIN_WORKER_TIMEOUT_MIN_MS = 1_000;
 export const PLUGIN_WORKER_TIMEOUT_MAX_MS = 15 * 60_000; // 900000 (fifteen minutes)
 
 /**
- * Byte ceiling for the untrusted job payload accepted at enqueue and for the
+ * Byte ceiling for the untrusted job payload accepted by a future enqueue adapter and for the
  * untrusted result stored on completion. Plugin-produced text is untrusted, so
  * both are size-clamped: an oversized payload is rejected at enqueue and an
  * oversized result is truncated before it is persisted.
@@ -51,7 +47,7 @@ export const PLUGIN_WORKER_RESULT_MAX_BYTES = 64 * 1024; // 65536
  * Per-(organization, plugin) ceiling on jobs still occupying the queue —
  * `queued` plus `running`, i.e. work the single worker has not yet finished.
  * The worker queue is a bounded hosted resource like storage bytes and the LLM
- * daily budget, so the host caps a plugin's in-flight depth at enqueue: once a
+ * daily budget, so a future host must cap a plugin's in-flight depth at enqueue: once a
  * plugin already holds this many unfinished jobs, further enqueues fail closed.
  * This keeps one plugin from exhausting the queue's storage or monopolizing the
  * single worker's attention, independent of any cadence limit its caller adds.
@@ -59,12 +55,12 @@ export const PLUGIN_WORKER_RESULT_MAX_BYTES = 64 * 1024; // 65536
  */
 export const PLUGIN_WORKER_MAX_PENDING_JOBS = 100;
 
-/** Local job identity within a plugin. The host namespaces it with the plugin id. */
+/** Local job identity within a plugin. A host adapter namespaces it with the plugin id. */
 export type PluginWorkerJobLocalId = PluginLocalId;
 
 /**
  * Collision-safe job kind used as the queue's routing key. Namespacing every job
- * with its owning plugin id is what lets the host reject a cross-plugin enqueue
+ * with its owning plugin id lets a future host reject a cross-plugin enqueue
  * (a plugin trying to run another plugin's job kind) purely from the string.
  */
 export type PluginWorkerJobKind = PluginNamespacedKind;
@@ -76,7 +72,7 @@ export const isPluginWorkerJobLocalId = isPluginLocalId;
 
 /**
  * True iff `kind` is exactly `plugin.<pluginId>.<localId>` for the given plugin
- * with a well-formed local id. The host calls this at enqueue so a plugin can
+ * with a well-formed local id. A future host calls this at enqueue so a plugin can
  * only ever enqueue its OWN job kinds — an attempt to enqueue
  * `plugin.other-plugin.job` fails this check and is denied.
  */
@@ -92,7 +88,7 @@ export function isPluginWorkerJobKindOwnedBy(
 /**
  * Extract the local job id from a namespaced worker job kind, or null when the
  * kind is not exactly `plugin.<pluginId>.<localId>` with a well-formed plugin id
- * and local id. This is the SINGLE authority for parsing a job kind: the host
+ * and local id. This is the SINGLE authority for parsing a job kind: a future host
  * uses `isPluginWorkerJobKindOwnedBy` at enqueue and the sandbox worker uses this
  * to route a claimed job, so the two can never disagree on which kinds are
  * well-formed (both reuse `isPluginId` / `isPluginWorkerJobLocalId`).

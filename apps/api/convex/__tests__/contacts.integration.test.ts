@@ -668,18 +668,6 @@ describe('contacts.listByTeam', () => {
 	});
 });
 
-// ============ contacts.count ============
-
-describe('contacts.count', () => {
-	it('should return 0 when cached count returns 0', async () => {
-		const t = convexTest(schema, modules);
-
-		const result = await t.query(api.contacts.contacts.count, {});
-
-		expect(result).toBe(0);
-	});
-});
-
 // ============ contacts.updateNotes ============
 
 describe('contacts.updateNotes', () => {

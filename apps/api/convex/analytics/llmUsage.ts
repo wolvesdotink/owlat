@@ -22,7 +22,6 @@ import { tokenUsageValidator } from '../lib/convexValidators';
 import type { TokenUsage } from '../agent/steps/types';
 import { estimateCostUsd, providerLabelForModel } from '../lib/llm/pricing';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { parsePluginId } from '@owlat/plugin-kit';
 
 /** Persist one LLM call's token usage + priced cost. No-ops when usage is absent. */
 export const record = internalMutation({
@@ -173,39 +172,6 @@ async function activeLlmOrganizationId(ctx: QueryCtx): Promise<string> {
 	}
 	return session.activeOrganizationId;
 }
-
-/** Admin-only spend attribution for one validated plugin in the active tenant. */
-export const getSpendByPlugin = adminQuery({
-	args: {
-		pluginId: v.string(),
-		hoursBack: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const pluginId = parsePluginId(args.pluginId);
-		const hoursBack = readHoursBack(args.hoursBack);
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId || !session.role) {
-			throw new Error('Plugin spend organization unavailable');
-		}
-		const organizationId = session.activeOrganizationId;
-		const since = Date.now() - hoursBack * 60 * 60 * 1000;
-		const events = await ctx.db
-			.query('llmUsageEvents')
-			.withIndex('by_organization_id_and_plugin_id_and_created_at', (query) =>
-				query.eq('organizationId', organizationId).eq('pluginId', pluginId).gte('createdAt', since)
-			)
-			.order('desc')
-			.take(5000);
-		return {
-			pluginId,
-			hoursBack,
-			calls: events.length,
-			totalTokens: events.reduce((sum, event) => sum + event.totalTokens, 0),
-			costUsd: events.reduce((sum, event) => sum + event.costUsd, 0),
-			isTruncated: events.length === 5000,
-		};
-	},
-});
 
 function readHoursBack(value: number | undefined): number {
 	const hours = value ?? 24;

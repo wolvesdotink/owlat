@@ -399,7 +399,7 @@ export const knowledgeTables = {
 	// since surfacing one would bridge contact A → contact B in the UI. Those edges
 	// are summarized only as the aggregate `crossContactLinkCount`; their details
 	// live in `crossContactLinks`, which the member read (`getGraphStats`) strips
-	// and only the role-gated `getCrossContactLinks` adminQuery returns.
+	// and no public dashboard query returns.
 	knowledgeGraphStats: defineTable({
 		// Fixed discriminator for the singleton snapshot row (by_kind find-or-replace).
 		kind: v.literal('graph'),
@@ -447,7 +447,7 @@ export const knowledgeTables = {
 		// member-visible summary of the redacted set).
 		crossContactLinkCount: v.number(),
 		// ADMIN-ONLY detail of the redacted cross-contact-disjoint edges (cap 50).
-		// Stripped from the member read; surfaced only by `getCrossContactLinks`.
+		// Stripped from the member read; retained for recompute/audit evolution.
 		crossContactLinks: v.array(
 			v.object({
 				fromEntryId: v.id('knowledgeEntries'),

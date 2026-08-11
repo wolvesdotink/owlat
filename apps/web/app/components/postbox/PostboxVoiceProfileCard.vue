@@ -17,6 +17,21 @@ const setEnabled = useBackendOperation(api.mail.voiceProfile.setEnabled, {
 const refreshNow = useBackendOperation(api.mail.voiceProfile.requestRefresh, {
 	label: 'Refresh writing voice',
 });
+const saveInstructions = useBackendOperation(api.mail.voiceProfile.setStandingInstructions, {
+	label: 'Save writing instructions',
+});
+const removeAdjustment = useBackendOperation(api.mail.voiceProfile.removeDerivedAdjustment, {
+	label: 'Remove learned writing rule',
+});
+const instructionDraft = ref('');
+
+watch(
+	() => data.value?.standingInstructions,
+	(instructions) => {
+		instructionDraft.value = (instructions ?? []).join('\n');
+	},
+	{ immediate: true }
+);
 
 const enabled = computed(() => data.value?.isEnabled ?? false);
 const profile = computed(() => data.value?.profile ?? null);
@@ -34,6 +49,17 @@ async function onToggle(event: Event) {
 
 async function onRefresh() {
 	await refreshNow.run({ mailboxId: props.mailboxId });
+}
+
+async function onSaveInstructions() {
+	await saveInstructions.run({
+		mailboxId: props.mailboxId,
+		instructions: instructionDraft.value.split('\n'),
+	});
+}
+
+async function onRemoveAdjustment(kind: string) {
+	await removeAdjustment.run({ mailboxId: props.mailboxId, kind });
 }
 </script>
 
@@ -65,6 +91,29 @@ async function onRefresh() {
 			</p>
 
 			<template v-else>
+				<div>
+					<label class="text-xs font-medium text-text-tertiary" :for="`voice-rules-${mailboxId}`">
+						Your writing rules
+					</label>
+					<textarea
+						:id="`voice-rules-${mailboxId}`"
+						v-model="instructionDraft"
+						rows="3"
+						class="input mt-1 w-full resize-y text-sm"
+						placeholder="One instruction per line, for example: Never use exclamation marks"
+					/>
+					<div class="mt-2 flex justify-end">
+						<UiButton
+							size="sm"
+							variant="secondary"
+							:loading="saveInstructions.isLoading.value"
+							@click="onSaveInstructions"
+						>
+							Save rules
+						</UiButton>
+					</div>
+				</div>
+
 				<div v-if="isRefreshing" class="flex items-center gap-2 text-sm text-text-secondary">
 					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					Learning your writing voice…
@@ -104,6 +153,26 @@ async function onRefresh() {
 				<p v-else-if="!isRefreshing" class="text-sm text-text-secondary">
 					No voice learned yet. Refresh to analyze your recent sent mail.
 				</p>
+
+				<div v-if="data?.derivedAdjustments.length" class="space-y-2">
+					<p class="text-xs font-medium text-text-tertiary">Learned writing rules</p>
+					<div
+						v-for="adjustment in data.derivedAdjustments"
+						:key="adjustment.kind"
+						class="flex items-center justify-between gap-3 rounded-md bg-bg-surface px-3 py-2"
+					>
+						<p class="text-sm text-text-secondary">{{ adjustment.directive }}</p>
+						<UiButton
+							variant="ghost"
+							size="sm"
+							class="shrink-0 text-error hover:text-error"
+							:loading="removeAdjustment.isLoading.value"
+							@click="onRemoveAdjustment(adjustment.kind)"
+						>
+							Remove
+						</UiButton>
+					</div>
+				</div>
 
 				<div class="flex items-center justify-between gap-3 pt-1">
 					<p class="text-xs text-text-tertiary">

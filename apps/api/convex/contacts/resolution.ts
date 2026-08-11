@@ -29,7 +29,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwAlreadyExists } from '../_utils/errors';
 import { buildSearchableText } from '../lib/queryHelpers';
@@ -120,7 +120,7 @@ export interface ResolveResult {
  * Find a live Contact (and its identity row) by `(channel, identifier)`.
  * Returns null if no row matches or the matched Contact is soft-deleted.
  *
- * Exported for `addIdentity` and tests; internal callers should use `resolve`.
+ * Exported for `addIdentity` and tests; internal callers use `resolveContact`.
  */
 export async function findContactByIdentifier(
 	ctx: MutationCtx,
@@ -153,9 +153,8 @@ export interface ResolveSignal {
 }
 
 /**
- * Find-or-create a Contact. The core implementation — exported so other
- * mutations can call it directly (avoiding the `runMutation` round-trip) but
- * the public wire shape is the `resolve` mutation below.
+ * Find-or-create a Contact. Exported so mutations can call it directly without
+ * a `runMutation` round-trip.
  */
 export async function resolveContact(
 	ctx: MutationCtx,
@@ -296,29 +295,6 @@ async function insertContactRow(
 
 	return contactId;
 }
-
-// ============================================================
-// Public mutation (Convex wire surface)
-// ============================================================
-
-/**
- * `resolve` — the public wire surface. Internal callers prefer
- * `resolveContact(ctx, signal)` directly to avoid the `runMutation`
- * round-trip; external/HTTP callers (`apps/api/convex/contacts/api.ts`)
- * use this mutation.
- */
-export const resolve = internalMutation({
-	args: {
-		channel: channelKindValidator,
-		identifier: v.string(),
-		source: contactSourceValidator,
-		mode: resolveModeValidator,
-		contactFields: v.optional(contactFieldsValidator),
-	},
-	handler: async (ctx, args): Promise<ResolveResult> => {
-		return await resolveContact(ctx, args);
-	},
-});
 
 // ============================================================
 // Cascade hook — called by softDeleteContact

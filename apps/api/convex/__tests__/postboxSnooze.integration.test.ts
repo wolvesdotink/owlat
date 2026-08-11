@@ -31,11 +31,12 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -191,7 +192,12 @@ describe('postbox snooze hide-from-inbox', () => {
 		const { mailboxId, inboxId } = await seed(t);
 		const future = Date.now() + 60 * 60 * 1000;
 		await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'visible' });
-		await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'snoozed', snoozedUntil: future });
+		await seedMessage(t, {
+			mailboxId,
+			folderId: inboxId,
+			subject: 'snoozed',
+			snoozedUntil: future,
+		});
 
 		const inbox = await t.query(api.mail.mailbox.listMessages, {
 			mailboxId,
@@ -236,7 +242,12 @@ describe('postbox snooze hide-from-inbox', () => {
 			await seedMessage(t, { mailboxId, folderId: inboxId, subject: `plain-${i}` });
 		}
 		const past = Date.now() - 1000;
-		const dueId = await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'due', snoozedUntil: past });
+		const dueId = await seedMessage(t, {
+			mailboxId,
+			folderId: inboxId,
+			subject: 'due',
+			snoozedUntil: past,
+		});
 
 		const result = await t.mutation(internal.mail.snooze.internalSweep, {});
 		expect(result.woken).toBe(1);
@@ -305,7 +316,7 @@ describe('postbox snooze hide-from-inbox', () => {
 		expect((await t.run((ctx) => ctx.db.get(archiveId)))?.unseenCount).toBe(0);
 	});
 
-	it('latestInboxUnread returns the newest unread, not-snoozed message', async () => {
+	it('newestUnreadInbox returns the newest unread, not-snoozed message', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, inboxId } = await seed(t);
 		// older unread, a snoozed newer one, and the newest unread
@@ -322,19 +333,22 @@ describe('postbox snooze hide-from-inbox', () => {
 			await ctx.db.patch(newestId, { receivedAt: Date.now() + 1000 });
 		});
 
-		const latest = await t.query(api.mail.mailbox.latestInboxUnread, {});
-		expect(latest?.messageId).toBe(newestId);
-		expect(latest?.subject).toBe('newest');
+		const latest = await t.query(api.mail.mailbox.newestUnreadInbox, { limit: 1 });
+		expect(latest.messages[0]?.messageId).toBe(newestId);
+		expect(latest.messages[0]?.subject).toBe('newest');
 	});
 
-	it('latestInboxUnread returns null when nothing is unread', async () => {
+	it('newestUnreadInbox returns an empty window when nothing is unread', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, inboxId } = await seed(t);
 		const id = await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'read' });
 		await t.run(async (ctx) => {
 			await ctx.db.patch(id, { flagSeen: true });
 		});
-		expect(await t.query(api.mail.mailbox.latestInboxUnread, {})).toBeNull();
+		expect(await t.query(api.mail.mailbox.newestUnreadInbox, {})).toEqual({
+			total: 0,
+			messages: [],
+		});
 	});
 
 	it('purging the newest thread message re-derives latestMessageId to the next', async () => {
@@ -362,8 +376,20 @@ describe('postbox snooze hide-from-inbox', () => {
 				updatedAt: now,
 			});
 		});
-		const msgA = await addMessageToThread(t, { mailboxId, folderId: inboxId, threadId, subject: 'A', receivedAt: now });
-		const msgB = await addMessageToThread(t, { mailboxId, folderId: inboxId, threadId, subject: 'B', receivedAt: now + 1000 });
+		const msgA = await addMessageToThread(t, {
+			mailboxId,
+			folderId: inboxId,
+			threadId,
+			subject: 'A',
+			receivedAt: now,
+		});
+		const msgB = await addMessageToThread(t, {
+			mailboxId,
+			folderId: inboxId,
+			threadId,
+			subject: 'B',
+			receivedAt: now + 1000,
+		});
 		await t.run((ctx) => ctx.db.patch(threadId, { latestMessageId: msgB }));
 
 		await t.mutation(api.mail.messageActions.purge, { messageIds: [msgB] });
@@ -383,7 +409,10 @@ describe('postbox snooze hide-from-inbox', () => {
 		await t.mutation(api.mail.snooze.snooze, { messageId: m1, until: Date.now() + 60 * 60 * 1000 });
 		expect((await t.run((ctx) => ctx.db.get(inboxId)))?.unseenCount).toBe(1);
 		// Snooze the SAME message again — the alreadySnoozed guard must hold.
-		await t.mutation(api.mail.snooze.snooze, { messageId: m1, until: Date.now() + 2 * 60 * 60 * 1000 });
+		await t.mutation(api.mail.snooze.snooze, {
+			messageId: m1,
+			until: Date.now() + 2 * 60 * 60 * 1000,
+		});
 		expect((await t.run((ctx) => ctx.db.get(inboxId)))?.unseenCount).toBe(1);
 	});
 

@@ -129,8 +129,8 @@ a scan cap and a clamped page limit, and rows age out at the audit-log retention
 - The blast radius of a hostile or compromised connected app is bounded by the
   manifest ceiling, the operator grant, the restrict-only gate schema, the
   transport's SSRF/size/deadline limits, and the untrusted-text policy.
-- Operators get a diagnostic trail of hook behavior that is safe to read and
-  safe to retain, because it contains no sensitive bytes at all.
+- A future runtime must provide a diagnostic trail that is safe to read and
+  retain because it contains no sensitive bytes.
 - Debugging a failing hook relies on the fixed reason taxonomy rather than the
   app's own error text. That is a deliberate trade: the log stays redacted.
 - Rotating `INSTANCE_SECRET` invalidates sealed hook secrets and requires
@@ -138,13 +138,11 @@ a scan cap and a clamped page limit, and rows age out at the audit-log retention
 
 ## Not yet wired
 
-`invokeHook` is the only surface that performs a signed hook call, and it has no
-production caller: the draft, route-gate and scoring stages run core and Tier-1
-contributions only. Registration, the plugin-bound API key path, the sealed
-shared secret and the redacted delivery log are live end to end; the hook call
-sites are not. This ADR fixes the protocol and the security envelope so wiring a
-call site is a local change with no contract decisions left in it — it does not
-claim the call sites exist.
+The draft, route-gate and scoring stages run core and Tier-1 contributions only,
+and no Convex hook runtime adapter is shipped ahead of them. Registration, the
+plugin-bound API key path and the sealed shared secret are live. This ADR fixes
+the protocol and security envelope a future runtime must implement; it does not
+claim the adapter or call sites exist.
 
 ## Non-goals
 

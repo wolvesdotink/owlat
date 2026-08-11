@@ -31,6 +31,17 @@ const {
 const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
 	label: 'Save email',
 });
+const { run: publishTemplate, isLoading: isPublishing } = useBackendOperation(
+	api.emailTemplates.emails.publish,
+	{ label: 'Publish email' }
+);
+const { run: unpublishTemplate, isLoading: isUnpublishing } = useBackendOperation(
+	api.emailTemplates.emails.unpublish,
+	{ label: 'Unpublish email' }
+);
+const { showToast } = useToast();
+const isPublished = computed(() => template.value?.status === 'published');
+const isChangingPublication = computed(() => isPublishing.value || isUnpublishing.value);
 
 // Organization email theme (incl. baseWidth) from the shared source.
 const { emailTheme } = useEmailTheme();
@@ -133,6 +144,25 @@ const handleSettings = () => {
 const handleTranslations = () => {
 	router.push(`/dashboard/send/emails/${templateId.value}/translations`);
 };
+
+async function handlePublicationToggle() {
+	if (isPublished.value) {
+		const result = await unpublishTemplate({ templateId: templateId.value });
+		if (result) showToast('Email returned to draft');
+		return;
+	}
+	const htmlContent = template.value?.htmlContent;
+	if (!htmlContent) {
+		showToast('Save the email before publishing it', 'error');
+		return;
+	}
+	const result = await publishTemplate({
+		templateId: templateId.value,
+		htmlContent,
+		htmlTranslations: template.value?.htmlTranslations,
+	});
+	if (result) showToast('Email published');
+}
 </script>
 
 <template>
@@ -194,6 +224,19 @@ const handleTranslations = () => {
 				>
 					<!-- Toolbar actions -->
 					<template #toolbar-actions>
+						<UiButton
+							variant="secondary"
+							size="sm"
+							:loading="isChangingPublication"
+							:disabled="hasChanges || (!isPublished && !template?.htmlContent)"
+							:title="hasChanges ? 'Save your changes before publishing' : undefined"
+							@click="handlePublicationToggle"
+						>
+							<template #iconLeft>
+								<Icon :name="isPublished ? 'lucide:undo-2' : 'lucide:send'" class="w-4 h-4" />
+							</template>
+							{{ isPublished ? 'Unpublish' : 'Publish' }}
+						</UiButton>
 						<ShareLinksPopover :email-template-id="templateId" :has-unsaved-changes="hasChanges" />
 						<UiButton
 							variant="outline"

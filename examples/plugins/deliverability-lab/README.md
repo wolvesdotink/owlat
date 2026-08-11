@@ -3,7 +3,8 @@
 A reference Owlat plugin that runs pre-send deliverability checks and holds a
 campaign that would ship red. It exercises all three plugin tiers against the
 real contribution contracts in `@owlat/plugin-kit` and the PP-27 sandboxed
-worker — no stubs.
+worker protocol. Tier 3 is a contract example: the host enqueue adapter is not
+currently shipped.
 
 ## What it does
 
@@ -22,7 +23,7 @@ The same deterministic engine (`src/engine/`) powers every tier:
 | ---- | ------------ | ------ | ---------------- |
 | 1 (bundled, in-process) | `sendGates` restrict-only preflight gate, plus `navItems` / `settingsPanels` UI and a budgeted `crons` tip job | `src/gate.ts`, `src/cron.ts` | The gate's only results are `no-objection` / `objection`; any internal error becomes an objection. It can hold a send, never force one. |
 | 2 (connected hook) | An optional seedbox `score` hook, consumed with a deadline and a fail-closed fallback to local scoring | `src/remoteScore.ts` | The vendor answer is untrusted: strictly validated to a bounded `[0,1]` score, and on timeout/failure/invalid response the gate falls back to the local score. A remote answer can only ADD caution. |
-| 3 (sandboxed worker) | A seed-list placement test enqueued as `plugin.deliverability-lab.seed-test` | `src/seedTest.ts` (plugin side) + `apps/code-worker/src/jobs/seedTest.ts` (host-controlled worker command) | The job runs under the PP-27 sandbox (separate uid, no ambient credentials, wall-clock budget); the untrusted payload is passed as a discrete argv element and the result is byte-bounded. |
+| 3 (sandboxed worker) | A seed-list placement request shaped as `plugin.deliverability-lab.seed-test`; no shipped host adapter submits it | `src/seedTest.ts` (plugin side) + `apps/code-worker/src/jobs/seedTest.ts` (host-controlled worker command) | The protocol preserves the PP-27 sandbox boundary; this example does not claim a live enqueue path. |
 
 `llm:invoke` usage (the tip cron) goes through the host's attributed dispatch and
 is capped by the manifest's hard daily budget.

@@ -52,6 +52,7 @@ const isSnoozed = computed(
 // Org members for the assignee picker (shared-inbox team triage).
 const { members, fetchMembers } = useOrganization();
 const { user } = useAuth();
+const { isAdmin } = usePermissions();
 onMounted(() => {
 	void fetchMembers();
 });
@@ -149,6 +150,63 @@ const isRetrying = ref(false);
 const rejectReason = ref('');
 const showRejectModal = ref(false);
 const actionMessageId = ref<Id<'inboundMessages'> | null>(null);
+const clarificationAnswers = reactive<Record<string, Record<string, string>>>({});
+const now = ref(Date.now());
+let countdownTimer: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+	countdownTimer = setInterval(() => {
+		now.value = Date.now();
+	}, 250);
+});
+onBeforeUnmount(() => {
+	if (countdownTimer) clearInterval(countdownTimer);
+});
+
+const { run: answerClarification, isLoading: isAnsweringClarification } = useBackendOperation(
+	api.inbox.clarification.answerClarification,
+	{ label: 'Answer clarification' }
+);
+const { run: undoAutoSend, isLoading: isUndoingAutoSend } = useBackendOperation(
+	api.inbox.mutations.undoAutoSend,
+	{ label: 'Undo automatic send' }
+);
+
+function setClarificationAnswer(messageId: string, questionId: string, value: string) {
+	const answers = (clarificationAnswers[messageId] ??= {});
+	answers[questionId] = value;
+}
+
+function hasEveryClarificationAnswer(message: NonNullable<typeof messages.value>[number]) {
+	const answers = clarificationAnswers[message._id] ?? {};
+	return (
+		(message.pendingClarification?.questions.length ?? 0) > 0 &&
+		message.pendingClarification?.questions.every((question) => answers[question.id]?.trim())
+	);
+}
+
+async function submitClarification(message: NonNullable<typeof messages.value>[number]) {
+	if (!isAdmin.value) return;
+	const questions = message.pendingClarification?.questions ?? [];
+	const values = clarificationAnswers[message._id] ?? {};
+	const result = await answerClarification({
+		inboundMessageId: message._id,
+		answers: questions.map((question) => ({
+			questionId: question.id,
+			value: values[question.id]?.trim() ?? '',
+		})),
+	});
+	if (result) showToast('Answers saved — drafting resumed');
+}
+
+async function cancelAutoSend(messageId: Id<'inboundMessages'>) {
+	if (!isAdmin.value) return;
+	const result = await undoAutoSend({ inboundMessageId: messageId });
+	if (result?.cancelled) showToast('Automatic send cancelled and returned to review');
+}
+
+const remainingAutoSendSeconds = (sendAt: number) =>
+	Math.max(0, Math.ceil((sendAt - now.value) / 1000));
 
 // Use the shared global toast. The underlying actions go through
 // useBackendOperation, which already toasts any categorized failure — so we
@@ -516,6 +574,63 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							>
 								<Icon name="lucide:refresh-cw" class="w-3 h-3" />
 								Retry processing
+							</UiButton>
+						</div>
+
+						<div
+							v-if="
+								isAdmin &&
+								message.processingStatus === 'awaiting_clarification' &&
+								message.pendingClarification
+							"
+							class="mt-4 rounded-lg border border-warning/30 bg-warning/5 p-4"
+						>
+							<div class="mb-3 flex items-center gap-2">
+								<Icon name="lucide:message-circle-question" class="h-4 w-4 text-warning" />
+								<p class="text-sm font-medium text-text-primary">The agent needs your input</p>
+							</div>
+							<div class="space-y-3">
+								<UiInput
+									v-for="question in message.pendingClarification.questions"
+									:key="question.id"
+									:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
+									:label="question.text"
+									:placeholder="question.options?.join(' / ') || 'Type your answer'"
+									@update:model-value="
+										setClarificationAnswer(message._id, question.id, String($event))
+									"
+								/>
+								<UiButton
+									size="sm"
+									:loading="isAnsweringClarification"
+									:disabled="!hasEveryClarificationAnswer(message)"
+									@click="submitClarification(message)"
+								>
+									Answer and resume draft
+								</UiButton>
+							</div>
+						</div>
+
+						<div
+							v-if="
+								isAdmin &&
+								message.pendingAutoSend &&
+								remainingAutoSendSeconds(message.pendingAutoSend.sendAt) > 0
+							"
+							class="mt-4 flex items-center justify-between gap-3 rounded-lg border border-brand/20 bg-brand-subtle/30 p-3"
+						>
+							<div class="flex items-center gap-2 text-sm text-text-primary">
+								<Icon name="lucide:send" class="h-4 w-4 text-brand" />
+								Sending automatically in
+								{{ remainingAutoSendSeconds(message.pendingAutoSend.sendAt) }}s
+							</div>
+							<UiButton
+								variant="secondary"
+								size="sm"
+								:loading="isUndoingAutoSend"
+								@click="cancelAutoSend(message._id)"
+							>
+								Undo
 							</UiButton>
 						</div>
 

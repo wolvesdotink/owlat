@@ -8,18 +8,13 @@
  * sibling `audienceCandidates.ts`. This file owns the PAGINATED walk and the
  * Convex entry points:
  *   - `resolveRecipientPage` — internalQuery, ONE page (the walker's hop).
- *   - `resolveRecipients`    — internalQuery, materializes candidates by streaming
- *                              (test/asserts only), bounded by COUNT_CEILING.
  *   - `countRecipients`      — public query, accumulates integers by streaming,
  *                              capped at COUNT_CEILING.
  *
  * The checkpointed send walker takes ONE page per scheduled hop via
- * `resolveRecipientPageImpl` (one `.paginate()` per execution); the count and
- * materialize entries instead STREAM candidates via `streamAudienceCandidates`
- * (async iteration, no `.paginate()`) because Convex allows a single
- * `.paginate()` per function execution. All three apply the identical
- * eligibility, so the wizard count, the in-memory resolve, and the walker can
- * never disagree.
+ * `resolveRecipientPageImpl` (one `.paginate()` per execution); the count path
+ * streams candidates because Convex allows a single `.paginate()` per function
+ * execution. Both paths apply the identical eligibility predicate.
  *
  * The binding capacity pre-flight (`campaigns/capacityPreflight.ts`) calls
  * `countAudience` from `audienceCandidates.ts` directly, with its own ceiling
@@ -38,11 +33,9 @@ import { loadSuppressionSet } from '../lib/suppression';
 import { preloadConditionsLookup, parseSegmentFilters, makeSegmentPredicate } from '../conditions';
 import type { ParsedSegmentFilters } from '../conditions';
 import {
-	COUNT_CEILING,
 	countAudience,
 	selectRecipient,
 	SEND_PAGE_SIZE,
-	streamAudienceCandidates,
 	type AudienceCount,
 	type CampaignRecipient,
 	type SegmentFilters,
@@ -181,28 +174,8 @@ export const resolveRecipientPage = internalQuery({
 	},
 });
 
-// ── Entry 1: materialize rows in ONE bounded page. Used only by tests/asserts
-// (`countRecipients(a).eligible === resolveRecipients(a).length`) — no production
-// path calls this; the send paths stream via the checkpointed walker
-// (`resolveRecipientPage`, one page per scheduled hop). Convex allows a single
-// `.paginate()` per function execution, so this cannot loop pages; it resolves a
-// single page bounded by COUNT_CEILING, which is more than any test seeds. ──
-export const resolveRecipients = internalQuery({
-	args: { audience: audienceValidator },
-	handler: async (ctx, { audience }): Promise<CampaignRecipient[]> => {
-		const recipients: CampaignRecipient[] = [];
-		let candidates = 0;
-		for await (const { recipient } of streamAudienceCandidates(ctx, audience)) {
-			candidates += 1;
-			if (recipient) recipients.push(recipient);
-			if (candidates >= COUNT_CEILING) break;
-		}
-		return recipients;
-	},
-});
-
-// ── Entry 2: accumulate integers. The wizard's audience-size readout. Runs
-// the IDENTICAL predicate (via the same candidate stream) as resolveRecipients,
+// ── Entry 1: accumulate integers. The wizard's audience-size readout. Runs
+// the IDENTICAL predicate (via the same candidate core) as resolveRecipientPage,
 // so `eligible` equals the delivered count; `total - eligible` is the honest
 // excluded gap. Capped at COUNT_CEILING — past the cap it stops streaming and
 // reports `completeness: 'candidate_capped'` so the wizard renders `25,000+`. ──

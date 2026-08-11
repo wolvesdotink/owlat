@@ -1,39 +1,9 @@
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../_generated/server';
+import { internalMutation } from '../_generated/server';
 import { authedIdentityMutation } from '../lib/authedFunctions';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { requireAuthenticatedIdentity } from '../lib/sessionOrganization';
 import { throwForbidden } from '../_utils/errors';
-
-// Internal query to get a user profile by auth user ID (server-side only)
-export const getByAuthUserId = internalQuery({
-	args: { authUserId: v.string() },
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('userProfiles')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
-			.first();
-	},
-});
-
-// Internal query to get a user profile by ID (server-side only)
-export const get = internalQuery({
-	args: { userProfileId: v.id('userProfiles') },
-	handler: async (ctx, args) => {
-		return await ctx.db.get(args.userProfileId);
-	},
-});
-
-// Internal query to get a user profile by email (server-side only)
-export const getByEmail = internalQuery({
-	args: { email: v.string() },
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('userProfiles')
-			.withIndex('by_email', (q) => q.eq('email', args.email))
-			.first();
-	},
-});
 
 // Create a user profile on signup. Runs before org membership exists, so it
 // uses the authenticated-identity floor rather than the org-member one.
@@ -79,39 +49,6 @@ export const create = authedIdentityMutation({
 		});
 
 		return profileId;
-	},
-});
-
-// Internal mutation to update user profile (server-side only)
-export const update = internalMutation({
-	args: {
-		userProfileId: v.id('userProfiles'),
-		name: v.optional(v.string()),
-		image: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const now = Date.now();
-
-		// Validate input lengths
-		if (args.name !== undefined) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
-		if (args.image !== undefined) validateStringLength(args.image, STRING_LIMITS.URL, 'Image URL');
-
-		const updates: {
-			name?: string;
-			image?: string;
-			updatedAt: number;
-		} = { updatedAt: now };
-
-		if (args.name !== undefined) {
-			updates.name = args.name;
-		}
-
-		if (args.image !== undefined) {
-			updates.image = args.image;
-		}
-
-		await ctx.db.patch(args.userProfileId, updates);
-		return args.userProfileId;
 	},
 });
 

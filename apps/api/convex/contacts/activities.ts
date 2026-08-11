@@ -57,20 +57,6 @@ export const listByContact = authedQuery({
 	},
 });
 
-// Get total count of activities for a contact (capped at 10,000)
-export const countByContact = authedQuery({
-	args: {
-		contactId: v.id('contacts'),
-	},
-	handler: async (ctx, args) => {
-		const activities = await ctx.db
-			.query('contactActivities')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.take(10_000);
-		return activities.length;
-	},
-});
-
 // Get recent activities (for dashboard)
 export const getRecent = authedQuery({
 	args: {
@@ -91,15 +77,10 @@ export const getRecent = authedQuery({
 				.take(limit * 10);
 
 			const allowed = new Set<ContactActivityType>(args.activityTypes);
-			recentActivities = activities
-				.filter((a) => allowed.has(a.activityType))
-				.slice(0, limit);
+			recentActivities = activities.filter((a) => allowed.has(a.activityType)).slice(0, limit);
 		} else {
 			// No type filter — efficient take
-			recentActivities = await ctx.db
-				.query('contactActivities')
-				.order('desc')
-				.take(limit);
+			recentActivities = await ctx.db.query('contactActivities').order('desc').take(limit);
 		}
 
 		// Batch-load all contacts at once
@@ -112,14 +93,15 @@ export const getRecent = authedQuery({
 				...activity,
 				// Don't surface a soft-deleted (GDPR-erased) contact's PII
 				// (email/name) — treat it as an unresolved contact.
-				contact: contact && contact.deletedAt === undefined
-					? {
-							_id: contact._id,
-							email: contact.email,
-							firstName: contact.firstName,
-							lastName: contact.lastName,
-						}
-					: null,
+				contact:
+					contact && contact.deletedAt === undefined
+						? {
+								_id: contact._id,
+								email: contact.email,
+								firstName: contact.firstName,
+								lastName: contact.lastName,
+							}
+						: null,
 			};
 		});
 

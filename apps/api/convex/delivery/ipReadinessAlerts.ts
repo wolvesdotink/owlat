@@ -3,11 +3,9 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
-import { adminQuery } from '../lib/authedFunctions';
 
 const ALERT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 100;
-const READ_BATCH_LIMIT = 100;
 
 const alertArgs = {
 	eventId: v.string(),
@@ -39,21 +37,6 @@ export const recordRegression = internalMutation({
 		}
 		await ctx.db.insert('mtaIpReadinessAlerts', { ...args, createdAt: Date.now() });
 		return { ok: true as const, duplicate: false };
-	},
-});
-
-export const listRecent = adminQuery({
-	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const requestedLimit = args.limit ?? 50;
-		const limit = Number.isFinite(requestedLimit)
-			? Math.max(1, Math.min(READ_BATCH_LIMIT, Math.floor(requestedLimit)))
-			: 50;
-		return await ctx.db
-			.query('mtaIpReadinessAlerts')
-			.withIndex('by_observed_at')
-			.order('desc')
-			.take(limit);
 	},
 });
 

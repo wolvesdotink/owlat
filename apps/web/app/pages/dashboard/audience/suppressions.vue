@@ -15,7 +15,6 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-// Get the current user's organization
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
 
 // Filter state
@@ -245,6 +244,8 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 						</div>
 					</div>
 				</div>
+
+				<SuppressionSunsetControls />
 
 				<!-- Stats Cards -->
 				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-5 gap-4">

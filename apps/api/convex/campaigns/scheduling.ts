@@ -1,5 +1,4 @@
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
@@ -192,27 +191,5 @@ export const schedule = authedMutation({
 		assertTransitioned(outcome, 'schedule');
 
 		return args.campaignId;
-	},
-});
-
-/**
- * Internal query to find campaigns stuck in 'sending' status for too long.
- * Used by a watchdog to detect and recover failed sends.
- */
-export const listStuckCampaigns = internalQuery({
-	args: {},
-	handler: async (ctx) => {
-		const sendingCampaigns = await ctx.db
-			.query('campaigns')
-			.withIndex('by_status', (q) => q.eq('status', 'sending'))
-			.collect(); // bounded: in-flight campaigns only
-
-		const now = Date.now();
-		const stuckThreshold = 30 * 60 * 1000; // 30 minutes
-
-		return sendingCampaigns.filter((c) => {
-			const startedAt = c.updatedAt || c._creationTime;
-			return now - startedAt > stuckThreshold;
-		});
 	},
 });

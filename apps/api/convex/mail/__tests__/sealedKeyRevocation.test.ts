@@ -12,9 +12,11 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
+import { readAddressPublicKey } from '../../__tests__/helpers/e2eeKeys';
 import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { seedMailbox } from './helpers.testlib';
 import { enableSealedMail } from '../../e2ee/__tests__/sealedMailTestHelpers';
+import { wkdHashForAddress } from '../../e2ee/wkd';
 
 // One mutable session drives the `authedMutation` wrapper floors AND the
 // in-handler admin / mailbox-access gates (mirrors mailboxAccess.test.ts).
@@ -76,7 +78,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 
 		// Mint + publish the address key, then confirm it is discoverable.
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).not.toBeNull();
+		expect(await readAddressPublicKey(t, address)).not.toBeNull();
 
 		vi.useFakeTimers();
 		try {
@@ -87,7 +89,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 		}
 
 		// The public key is no longer served (revoked)...
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
+		expect(await readAddressPublicKey(t, address)).toBeNull();
 		// ...but the row is retained decrypt-only rather than deleted.
 		const rows = await t.run((ctx) =>
 			ctx.db
@@ -141,7 +143,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 		});
 
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).not.toBeNull();
+		expect(await readAddressPublicKey(t, address)).not.toBeNull();
 
 		vi.useFakeTimers();
 		try {
@@ -152,7 +154,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 		}
 
 		// Key revoked (not served), its vault row retained decrypt-only...
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
+		expect(await readAddressPublicKey(t, address)).toBeNull();
 		const rows = await t.run((ctx) =>
 			ctx.db
 				.query('keyVault')
@@ -183,7 +185,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 		);
 
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address: alias });
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address: alias })).not.toBeNull();
+		expect(await readAddressPublicKey(t, alias)).not.toBeNull();
 
 		vi.useFakeTimers();
 		try {
@@ -193,7 +195,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 			vi.useRealTimers();
 		}
 
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address: alias })).toBeNull();
+		expect(await readAddressPublicKey(t, alias)).toBeNull();
 	});
 
 	it('keeps the vault key active while public discovery is withdrawn when Sealed Mail is off', async () => {
@@ -214,6 +216,11 @@ describe('Sealed Mail revocation on address deletion', () => {
 		// Flag off ⇒ no revocation scheduled, so the vault key remains active for
 		// historical decryption. Public discovery is independently withdrawn.
 		expect(await t.query(internal.e2ee.keys.getAddressKeyInternal, { address })).not.toBeNull();
-		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
+		expect(
+			await t.query(api.e2ee.keys.getKeyForWkd, {
+				domain: 'hinterland.camp',
+				wkdHash: wkdHashForAddress(address),
+			})
+		).toBeNull();
 	});
 });

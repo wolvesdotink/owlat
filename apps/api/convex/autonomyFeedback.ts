@@ -27,8 +27,7 @@ import { getCategoryRule } from './lib/autonomyRules';
 
 /**
  * Read the most recent feedback rows for a category, newest first. The shared
- * reader behind the public `getRecentFeedback` (admin-gated) and the cron-only
- * `getRecentFeedbackInternal` (session-less) so the two can't drift.
+ * reader behind the cron-only `getRecentFeedbackInternal`.
  */
 async function loadRecentFeedback(
 	ctx: QueryCtx,
@@ -41,19 +40,6 @@ async function loadRecentFeedback(
 		.order('desc')
 		.take(limit ?? 50);
 }
-
-/**
- * Get recent feedback for a category (for analysis)
- */
-export const getRecentFeedback = adminQuery({
-	args: {
-		category: v.string(),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		return await loadRecentFeedback(ctx, args.category, args.limit);
-	},
-});
 
 /** Internal variant for the scheduled threshold-adjustment cron (no session). */
 export const getRecentFeedbackInternal = internalQuery({

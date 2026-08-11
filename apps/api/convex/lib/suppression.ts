@@ -24,11 +24,8 @@
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from './inputGuards';
-import {
-	isMarketingOnlyBlockReason,
-	scheduleSuppressionMirror,
-	type BlockReason,
-} from '../delivery/suppressionMirror';
+import { isMarketingOnlyBlockReason, type BlockReason } from '../delivery/suppressionMirror';
+import { scheduleSuppressionMirror } from '../delivery/suppressionMirrorScheduler';
 
 /**
  * WHAT KIND OF MAIL is being gated.

@@ -230,16 +230,6 @@ export const getAccuracyTrend = adminQuery({
 	},
 });
 
-/**
- * Get circuit breaker status
- */
-export const getCircuitBreakers = adminQuery({
-	args: {},
-	handler: async (ctx) => {
-		return await ctx.db.query('agentCircuitBreakers').collect(); // bounded: one row per agent category (tiny)
-	},
-});
-
 /** Internal variant for the circuit-breaker evaluator (no session). */
 export const getCircuitBreakersInternal = internalQuery({
 	args: {},

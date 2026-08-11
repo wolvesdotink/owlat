@@ -14,8 +14,8 @@
  *     hides something important is a trust-killer, so the exact bundled threads
  *     are always inspectable.
  *
- * Read-only in-app surface (getLatestBrief). Never sends or modifies mail; an
- * email delivery of the brief is a separate opt-in. Deterministic — the ranking
+ * Persisted snapshots remain available to internal reporting. Never sends or
+ * modifies mail; an email delivery of the brief is a separate opt-in. Deterministic — the ranking
  * reads scores already persisted by the Reply Queue classifier, so the cron
  * itself makes no LLM call and can't fail-open into hiding a real task.
  */
@@ -23,11 +23,9 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
-import { publicQuery } from '../lib/authedFunctions';
+import type { Id } from '../_generated/dataModel';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { urgencyFallbackScore } from './priorityScore';
-import { loadReadableMailbox } from './permissions';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 
@@ -239,23 +237,3 @@ async function buildBriefForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>
 		createdAt: now,
 	});
 }
-
-// ─── Read side (in-app surface) ──────────────────────────────────────────────
-
-/**
- * The latest Daily Brief for a mailbox — the ranked "needs you" list plus the
- * auditable low-signal bundle. Soft auth (null for anonymous / non-owner /
- * inactive mailbox).
- */
-export const getLatestBrief = publicQuery({
-	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args): Promise<Doc<'mailDailyBriefs'> | null> => {
-		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
-		if (!mailbox) return null;
-		return await ctx.db
-			.query('mailDailyBriefs')
-			.withIndex('by_mailbox_and_generated', (q) => q.eq('mailboxId', args.mailboxId))
-			.order('desc')
-			.first();
-	},
-});

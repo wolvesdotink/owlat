@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
+
 useHead({ title: 'Knowledge Graph — Owlat' });
 
 definePageMeta({
@@ -18,6 +20,22 @@ const {
 } = useKnowledgeGraph();
 
 const showCreateForm = ref(false);
+const policyTitle = ref('');
+const policyContent = ref('');
+const { data: policies } = useConvexQuery(api.knowledge.graph.listPolicies, () => ({ limit: 10 }));
+const createPolicy = useBackendOperation(api.knowledge.graph.createPolicyEntry, {
+	label: 'Create canonical answer',
+});
+
+async function handleCreatePolicy() {
+	const title = policyTitle.value.trim();
+	const content = policyContent.value.trim();
+	if (!title || !content) return;
+	const result = await createPolicy.run({ title, content, entryType: 'faq' });
+	if (!result) return;
+	policyTitle.value = '';
+	policyContent.value = '';
+}
 
 const tabs = computed(() => [
 	{ key: null as string | null, label: 'All', icon: 'lucide:layers' },
@@ -153,6 +171,42 @@ const handleCancelled = () => {
 
 			<!-- Sidebar -->
 			<div class="space-y-4">
+				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+					<h3 class="flex items-center gap-2 text-sm font-semibold text-text-primary">
+						<Icon name="lucide:badge-check" class="h-4 w-4 text-brand" />
+						Canonical answers
+					</h3>
+					<p class="mt-2 text-sm text-text-secondary">
+						Authoritative answers outrank automatically extracted facts when the agent drafts.
+					</p>
+					<div class="mt-4 space-y-2">
+						<UiInput
+							v-model="policyTitle"
+							label="Question"
+							placeholder="What is our return policy?"
+						/>
+						<UiTextarea v-model="policyContent" label="Answer" :rows="3" />
+						<UiButton
+							size="sm"
+							:loading="createPolicy.isLoading.value"
+							:disabled="!policyTitle.trim() || !policyContent.trim()"
+							@click="handleCreatePolicy"
+						>
+							Add canonical answer
+						</UiButton>
+					</div>
+					<ul v-if="policies?.length" class="mt-4 space-y-2 border-t border-border-subtle pt-4">
+						<li v-for="policy in policies" :key="policy._id">
+							<NuxtLink
+								:to="`/dashboard/knowledge/${policy._id}`"
+								class="block truncate text-sm font-medium text-text-primary hover:text-brand"
+							>
+								{{ policy.title }}
+							</NuxtLink>
+						</li>
+					</ul>
+				</div>
+
 				<!-- How it works -->
 				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
 					<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">

@@ -1,30 +1,30 @@
 # Contact resolution module — single entry point for find-or-create
 
-**Status:** accepted
+**Status:** accepted; the superseded public `findByIdentifier` query was removed under ADR-0020
 
 ## Context
 
 **Ten** sites in `apps/api/convex/` re-implement "given an identifier, find or
 create a Contact." Each varies in subtle, drift-prone ways. The pre-existing
-`contacts/identities.ts:findByIdentifier` query is the only typed read-side
-primitive — but it has no production callers because the identity table
-is only populated by *one* of the ten create paths.
+`contacts/identities.ts:findByIdentifier` query was the only typed read-side
+primitive — but it had no production callers because the identity table
+was only populated by _one_ of the ten create paths.
 
 (The original review surfaced four sites; full implementation grep against
 `ctx.db.insert('contacts',` revealed six more, all sharing the same shape.)
 
-| Site | Mode | Lookup | Soft-delete filter | `contactIdentities` row? | `'created'` activity? | `searchableText`? |
-|---|---|---|---|---|---|---|
-| `inbox/messages.ts:receiveMessage` | upsert | `contacts.by_email` | ❌ | ❌ | ✅ | ✅ |
-| `webhooks/channels.ts:processInboundChannel` | upsert | `contactIdentities` then `by_email` (generic) | ❌ | ✅ | ❌ | ❌ |
-| `automations/triggers.ts:sendEvent` | upsert | `contacts.by_email` | ❌ | ❌ | ❌ | ❌ |
-| `contacts/internal.ts:importBatchInternal` | upsert/merge | `contacts.by_email` | ❌ | ❌ | ❌ | ❌ |
-| `contacts/contacts.ts:create` | strict | `contacts.by_email` | ✅ | ❌ | ❌ | ✅ |
-| `contacts/contacts.ts:createForTeam` | strict | `contacts.by_email` | ✅ | ❌ | ❌ | ✅ |
-| `contacts/contacts.ts:importBatch` | upsert/merge | `contacts.by_email` | ❌ | ❌ | ❌ | partial |
-| `contacts/organization.ts:createForOrganization` | strict | `contacts.by_email` | ❌ | ❌ | ❌ | ✅ |
-| `contacts/organization.ts:createForOrganizationInternal` | strict | `contacts.by_email` | ❌ | ❌ | ❌ | ✅ |
-| `contacts/organization.ts:importBatchForOrganization` | upsert/merge | `contacts.by_email` | ❌ | ❌ | ❌ | partial |
+| Site                                                     | Mode         | Lookup                                        | Soft-delete filter | `contactIdentities` row? | `'created'` activity? | `searchableText`? |
+| -------------------------------------------------------- | ------------ | --------------------------------------------- | ------------------ | ------------------------ | --------------------- | ----------------- |
+| `inbox/messages.ts:receiveMessage`                       | upsert       | `contacts.by_email`                           | ❌                 | ❌                       | ✅                    | ✅                |
+| `webhooks/channels.ts:processInboundChannel`             | upsert       | `contactIdentities` then `by_email` (generic) | ❌                 | ✅                       | ❌                    | ❌                |
+| `automations/triggers.ts:sendEvent`                      | upsert       | `contacts.by_email`                           | ❌                 | ❌                       | ❌                    | ❌                |
+| `contacts/internal.ts:importBatchInternal`               | upsert/merge | `contacts.by_email`                           | ❌                 | ❌                       | ❌                    | ❌                |
+| `contacts/contacts.ts:create`                            | strict       | `contacts.by_email`                           | ✅                 | ❌                       | ❌                    | ✅                |
+| `contacts/contacts.ts:createForTeam`                     | strict       | `contacts.by_email`                           | ✅                 | ❌                       | ❌                    | ✅                |
+| `contacts/contacts.ts:importBatch`                       | upsert/merge | `contacts.by_email`                           | ❌                 | ❌                       | ❌                    | partial           |
+| `contacts/organization.ts:createForOrganization`         | strict       | `contacts.by_email`                           | ❌                 | ❌                       | ❌                    | ✅                |
+| `contacts/organization.ts:createForOrganizationInternal` | strict       | `contacts.by_email`                           | ❌                 | ❌                       | ❌                    | ✅                |
+| `contacts/organization.ts:importBatchForOrganization`    | upsert/merge | `contacts.by_email`                           | ❌                 | ❌                       | ❌                    | partial           |
 
 Five drift signals concentrate.
 
@@ -71,7 +71,8 @@ email: args.channel === 'generic' ? args.from
 
 This pollutes the `by_email` index with rows like
 `+15551234@sms.channel`, which:
-- can't be used to *actually* send email to that contact,
+
+- can't be used to _actually_ send email to that contact,
 - can match other webhook payloads that happen to share the format,
 - masks the truth that those contacts have no email at all.
 
@@ -106,33 +107,33 @@ denormalized `contacts.email` when present — see Migration below).
 ### `Contact resolution (module)` shape
 
 ```ts
-type ChannelKind = 'email' | 'sms' | 'whatsapp' | 'phone' | 'generic';
+type ChannelKind = "email" | "sms" | "whatsapp" | "phone" | "generic";
 
-type ContactSource = 'api' | 'import' | 'form' | 'transactional' | 'inbound';
+type ContactSource = "api" | "import" | "form" | "transactional" | "inbound";
 
-type ResolveMode = 'strict' | 'upsert' | 'merge';
+type ResolveMode = "strict" | "upsert" | "merge";
 
 interface ResolveSignal {
-  channel: ChannelKind;
-  identifier: string;
-  source: ContactSource;
-  mode: ResolveMode;
-  contactFields?: {
-    firstName?: string;
-    lastName?: string;
-    language?: string;
-    timezone?: string;
-  };
+	channel: ChannelKind;
+	identifier: string;
+	source: ContactSource;
+	mode: ResolveMode;
+	contactFields?: {
+		firstName?: string;
+		lastName?: string;
+		language?: string;
+		timezone?: string;
+	};
 }
 
-type ResolveAction = 'matched' | 'created' | 'updated';
+type ResolveAction = "matched" | "created" | "updated";
 
 interface ResolveResult {
-  contactId: Id<'contacts'>;
-  action: ResolveAction;
+	contactId: Id<"contacts">;
+	action: ResolveAction;
 }
 
-export const resolve: (ctx, signal: ResolveSignal) => Promise<ResolveResult>;
+export function resolveContact(ctx: MutationCtx, signal: ResolveSignal): Promise<ResolveResult>;
 ```
 
 Behaviour by `mode`:
@@ -141,7 +142,7 @@ Behaviour by `mode`:
   otherwise. Used by HTTP `POST /contacts` (the HTTP layer translates
   `AlreadyExists` to a 409 response).
 - **`upsert`** — find returns existing → return the matched contactId,
-  *no field update*. Create otherwise. Used by `receiveMessage`,
+  _no field update_. Create otherwise. Used by `receiveMessage`,
   `processInboundChannel`, and `importContacts` when
   `handleDuplicates: 'skip'`. Specifically protects against inbound
   signals overwriting user-set `firstName` with junk from
@@ -169,7 +170,7 @@ The module owns:
   identifier is stored on `contacts.email` as well as in the identity
   row. For non-email channels, `contacts.email` stays `undefined`.
 
-The module does *not* own:
+The module does _not_ own:
 
 - Activity logging (`contactActivities`). The caller decides which
   rows to insert based on the returned `action`. The inbox path
@@ -195,73 +196,64 @@ datum that should disappear on user request.
 
 ```ts
 // inbox/messages.ts (was lines 67-97)
-const { contactId, action } = await ctx.runMutation(
-  internal.contacts.resolution.resolve,
-  {
-    channel: 'email',
-    identifier: senderEmail,
-    source: 'inbound',
-    mode: 'upsert',
-    contactFields: { firstName: extractNameFromEmail(args.from) },
-  },
-);
+const { contactId, action } = await resolveContact(ctx, {
+	channel: "email",
+	identifier: senderEmail,
+	source: "inbound",
+	mode: "upsert",
+	contactFields: { firstName: extractNameFromEmail(args.from) },
+});
 
-if (action === 'created') {
-  await ctx.db.insert('contactActivities', {
-    contactId,
-    activityType: 'created',
-    metadata: { source: 'inbound' },
-    occurredAt: now,
-  });
+if (action === "created") {
+	await ctx.db.insert("contactActivities", {
+		contactId,
+		activityType: "created",
+		metadata: { source: "inbound" },
+		occurredAt: now,
+	});
 }
 ```
 
 ```ts
 // webhooks/channels.ts:processInboundChannel (was lines 80-124)
-const { contactId } = await ctx.runMutation(
-  internal.contacts.resolution.resolve,
-  {
-    channel: args.channel,
-    identifier: args.from,
-    source: 'inbound',
-    mode: 'upsert',
-  },
-);
+const { contactId } = await resolveContact(ctx, {
+	channel: args.channel,
+	identifier: args.from,
+	source: "inbound",
+	mode: "upsert",
+});
 // No fake-domain email synthesis. No inline identity insert.
 ```
 
 ```ts
 // contacts/internal.ts:importContacts (was lines 54-87)
-const { action } = await ctx.runMutation(
-  internal.contacts.resolution.resolve,
-  {
-    channel: 'email',
-    identifier: contactData.email!,
-    source,
-    mode: args.handleDuplicates === 'skip' ? 'upsert' : 'merge',
-    contactFields: {
-      firstName: contactData.firstName,
-      lastName: contactData.lastName,
-      language: contactData.language,
-    },
-  },
-);
+const { action } = await resolveContact(ctx, {
+	channel: "email",
+	identifier: contactData.email!,
+	source,
+	mode: args.handleDuplicates === "skip" ? "upsert" : "merge",
+	contactFields: {
+		firstName: contactData.firstName,
+		lastName: contactData.lastName,
+		language: contactData.language,
+	},
+});
 // Aggregate by action: 'created' → imported++, 'updated' → updated++,
 // 'matched' → skipped++.
 ```
 
 ```ts
 // contacts/contacts.ts:createForTeam (was lines 625-680)
-return await ctx.runMutation(internal.contacts.resolution.resolve, {
-  channel: 'email',
-  identifier: args.email,
-  source: args.source ?? 'api',
-  mode: 'strict',
-  contactFields: {
-    firstName: args.firstName,
-    lastName: args.lastName,
-    language: args.language,
-  },
+return await resolveContact(ctx, {
+	channel: "email",
+	identifier: args.email,
+	source: args.source ?? "api",
+	mode: "strict",
+	contactFields: {
+		firstName: args.firstName,
+		lastName: args.lastName,
+		language: args.language,
+	},
 }).then((r) => r.contactId);
 // Throws AlreadyExists → HTTP layer's existing catch translates to 409.
 ```
@@ -274,7 +266,7 @@ return await ctx.runMutation(internal.contacts.resolution.resolve, {
    `contacts.email` required; module synthesizes the fake-domain email
    internally on behalf of non-email channels. Keeps the dirt; just
    moves it. The drift-prone schema invariant survives. Rejected.
-2. **Make `contacts.email` optional, identities canonical** *(chosen)*.
+2. **Make `contacts.email` optional, identities canonical** _(chosen)_.
    Breaking schema change, but it's the only option that lets a
    phone-only Contact be honest about having no email. Single-org-per-
    deployment makes the migration tractable.
@@ -289,7 +281,7 @@ return await ctx.runMutation(internal.contacts.resolution.resolve, {
 1. **Un-delete the matched contact.** Privacy-hostile (a soft-delete
    triggered by GDPR-style request gets undone by the next inbound
    email). Rejected.
-2. **Skip and create new** *(chosen)*. Clean GDPR semantics: the
+2. **Skip and create new** _(chosen)_. Clean GDPR semantics: the
    gravestone is forgotten, the new signal starts fresh.
 3. **Branch by caller mode.** HTTP `POST /contacts` un-deletes; inbound
    paths skip. Defeats the single-entry-point property — every caller
@@ -302,7 +294,7 @@ return await ctx.runMutation(internal.contacts.resolution.resolve, {
 1. **Identities persist after Contact soft-delete.** Collides with the
    "skip and create new" rule above — the new Contact's identity row
    insert would fail uniqueness (manual or otherwise). Rejected.
-2. **Cascade-delete identities at soft-delete time** *(chosen)*. The
+2. **Cascade-delete identities at soft-delete time** _(chosen)_. The
    identifier is reclaimable on day 1. Activities/messages still
    cascade after the 30-day retention window via the existing cron.
    The identifier itself (phone, email) is the privacy-sensitive datum
@@ -320,7 +312,7 @@ return await ctx.runMutation(internal.contacts.resolution.resolve, {
    by intent. Forces the import path's `'skip' | 'update'` policy into
    yet a third operation. Rejected — three operations for what's
    structurally one lookup-then-decide.
-2. **One operation with mode flag** *(chosen)*. Matches the **Send
+2. **One operation with mode flag** _(chosen)_. Matches the **Send
    lifecycle (module)**'s pattern (typed `TransitionInput` discriminated
    by `to`). Adding a future mode (e.g. `'create-only'` for an idempotent
    replay path) is additive.
@@ -337,26 +329,26 @@ return await ctx.runMutation(internal.contacts.resolution.resolve, {
    import.skip distinction that already exists in
    `importContacts.results`. Rejected.
 3. **`{ contactId, action: 'matched' | 'created' | 'updated' }`**
-   *(chosen)*. Three-way; lines up with the existing
+   _(chosen)_. Three-way; lines up with the existing
    `results.imported/updated/skipped` accounting in `importContacts`.
 
 ### Input signal shape
 
-1. **Single `(channel, identifier)` per call** *(chosen)*. No caller
+1. **Single `(channel, identifier)` per call** _(chosen)_. No caller
    today has multi-identifier needs. Webhooks that one day include both
    an email and a phone can chain `resolve(primary)` +
    `addIdentity(secondary, contactId)`. Per LANGUAGE.md, "one adapter
    means a hypothetical seam" — don't pay for the multi-identifier
    shape until a second caller needs it.
 2. **Multi-identifier rich signal.** `{ identifiers: [...], primary: 0,
-   ... }`. Adds lookup-priority and inter-identifier conflict logic to
+... }`. Adds lookup-priority and inter-identifier conflict logic to
    the module from day one. Rejected as speculative.
 
 ### `searchableText` ownership
 
 1. **Caller passes `searchableText`.** Keeps drift — three of four
    sites forget today. Rejected.
-2. **Module computes `searchableText` from email + names** *(chosen)*.
+2. **Module computes `searchableText` from email + names** _(chosen)_.
    Locality: the denormalization rule lives one place.
 3. **Caller can override.** No caller today needs override. Rejected.
 
@@ -365,9 +357,8 @@ return await ctx.runMutation(internal.contacts.resolution.resolve, {
 ### Files that collapse / disappear
 
 All ten call sites collapse to a single `resolveContact(ctx, signal)` call
-each (the public `resolve` mutation is reserved for HTTP-side callers; the
-exported helper is used directly in mutations to avoid the `runMutation`
-round-trip).
+each. The helper is used directly in mutations to keep resolution inside the
+caller's transaction.
 
 - **Inbound paths (upsert mode):**
   - `apps/api/convex/inbox/messages.ts:67-97` — find-or-create block
@@ -401,8 +392,8 @@ round-trip).
     — strict mode; unauthenticated form ingest.
 
 - **Lookup primitive:**
-  - `apps/api/convex/contacts/identities.ts:findByIdentifier` — kept;
-    finally has production callers via the resolution module.
+  - `apps/api/convex/contacts/identities.ts:findByIdentifier` — removed after
+    callers converged on the resolution module's internal lookup helper.
 
 ### Files that grow
 
@@ -410,8 +401,7 @@ round-trip).
   `ChannelKind` / `ContactSource` / `ResolveMode` literal tuples and
   validators, the `ResolveSignal` / `ResolveResult` types, the
   `findContactByIdentifier` lookup primitive, the `resolveContact`
-  internal helper (the direct-call entry point), the `resolve`
-  `internalMutation` (the cross-runtime wire surface), and
+  internal helper (the direct-call entry point), and
   `deleteIdentitiesForContact` (the cascade helper called by
   `softDeleteContact`).
 - `apps/api/convex/schema/contacts.ts` — `contacts.email` becomes
@@ -436,8 +426,8 @@ If/when production data exists, this would need a backfill pass:
 1. **Backfill identity rows.** For every live Contact with a real
    email, insert a `contactIdentities` row with `channel: 'email'`,
    `identifier: contact.email`, `isPrimary: true`. The existing
-   `ensureEmailIdentity` internal mutation is the per-Contact primitive;
-   wrap in a batched cron.
+   Any production deployment needing this must use a bounded migration; the
+   unreachable `ensureEmailIdentity` mutation was removed under #528.
 2. **Clear fake-domain emails and backfill the real channel identity.**
    For Contacts whose `email` matches `*@(sms|whatsapp|chat).channel`,
    look up the matching channel record (via `unifiedMessages` joined
@@ -454,7 +444,7 @@ migration coordination is needed.
 
 - `apps/api/convex/__tests__/contactResolution.integration.test.ts`
   (new, 14 tests) — table-driven per `mode × match | nomatch ×
-  channel`. Covers strict/upsert/merge semantics, soft-delete-skip,
+channel`. Covers strict/upsert/merge semantics, soft-delete-skip,
   identity cascade reclaimability, email-vs-phone identifier
   normalization, and cross-channel isolation (same number on `sms` vs
   `whatsapp` produces separate Contacts).
@@ -486,11 +476,12 @@ Five drift bugs are fixed opportunistically:
 1. The three sites that forget `searchableText` get it for free.
 2. The three sites that forget the soft-delete filter get it for free.
 3. The `${from}@${channel}.channel` fake-email rows go away.
-4. `findByIdentifier` becomes a load-bearing production query.
+4. The resolution module's internal lookup becomes load-bearing; the redundant
+   public `findByIdentifier` shell is removed.
 5. The "every Contact has at least one identity" invariant becomes
    true (was true only for channel-webhook contacts before).
 
-The `'created'` activity log is *not* automatic: callers explicitly
+The `'created'` activity log is _not_ automatic: callers explicitly
 insert it when `action === 'created'`. This preserves the inbox path's
 behavior exactly and lets the import path newly distinguish
 `created` / `matched` / `updated` rows in its results summary if it

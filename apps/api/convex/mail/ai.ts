@@ -116,22 +116,6 @@ export function postProcessCompletion(raw: string): string {
 	return text.slice(0, MAX_COMPLETION_CHARS).replace(/\s+$/, '');
 }
 
-/** Summarize the conversation a message belongs to. */
-// authz: ownership enforced by mail.mailbox.listThreadMessages (returns null
-// for a non-owned message); org membership enforced by authedAction.
-export const summarizeThread = authedAction({
-	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<{ summary: string }> => {
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
-		const thread = await ctx.runQuery(api.mail.mailbox.listThreadMessages, {
-			messageId: args.messageId,
-		});
-		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
-		const summary = await runThreadSummary(ctx, thread.messages);
-		return { summary };
-	},
-});
-
 /**
  * Cached thread summary for the long-thread summary strip. Returns the persisted
  * summary when it is still fresh (its `messageCount` matches the live thread),

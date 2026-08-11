@@ -3,7 +3,6 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getDailySendVolume } from '../lib/sendingLimits';
 import {
 	summarize,
-	summarizeDomains,
 	readDomainReputationBucketGroups,
 	summarizeDomainReputationGroups,
 	type ReputationSummary,
@@ -223,42 +222,6 @@ export const getCampaignSendEstimate = authedQuery({
 	},
 });
 
-/**
- * Get per-domain reputation summaries.
- */
-export const getDomainReputations = authedQuery({
-	args: {},
-	handler: async (ctx) => {
-		// Per-domain rolling summaries, derived on read through the single
-		// summarizer (grouped by domain).
-		const summaries = await summarizeDomains(ctx.db);
-
-		// Join verification status from the domains table.
-		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
-
-		const domainStatusMap = new Map<string, string>();
-		for (const d of domains) {
-			domainStatusMap.set(d.domain, d.status);
-		}
-
-		const results = summaries.map((summary) => ({
-			domain: summary.domain,
-			riskLevel: summary.riskLevel as string,
-			bounceRate: summary.bounceRate,
-			complaintRate: summary.complaintRate,
-			totalSent: summary.totalSent,
-			totalBounced: summary.totalBounced,
-			totalComplaints: summary.totalComplaints,
-			domainStatus: domainStatusMap.get(summary.domain) ?? null,
-		}));
-
-		// Sort by totalSent descending (most active domains first)
-		results.sort((a, b) => b.totalSent - a.totalSent);
-
-		return results;
-	},
-});
-
 /** Per-record email-auth verification state for a sending domain. */
 export type DomainAuthState = { spf: boolean; dkim: boolean; dmarc: boolean };
 
@@ -371,7 +334,7 @@ export const getDeliveryDomainTable = authedQuery({
 				auth,
 				missing: missingAuthRecords(auth),
 				sent30d: summary?.totalSent ?? 0,
-				// `summarizeDomains` only returns domains with in-window activity, so a
+				// The grouped summary only contains domains with in-window activity, so a
 				// missing entry means no reputation signal yet → null, not zero.
 				riskLevel: summary?.riskLevel ?? null,
 				bounceRate: summary?.bounceRate ?? null,

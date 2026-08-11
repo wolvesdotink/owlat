@@ -66,24 +66,4 @@ describe('transactional/sends list pagination', () => {
 		expect(lastPage.sends).toHaveLength(1);
 		expect(lastPage.hasMore).toBe(false);
 	});
-
-	it('listAll returns hasMore and no total', async () => {
-		const t = convexTest(schema, modules);
-		await seed(t, 3);
-
-		const page1 = await t.query(api.transactional.sends.listAll, {
-			limit: 2,
-			offset: 0,
-		});
-		expect(page1.sends).toHaveLength(2);
-		expect(page1.hasMore).toBe(true);
-		expect('total' in page1).toBe(false);
-
-		const page2 = await t.query(api.transactional.sends.listAll, {
-			limit: 2,
-			offset: 2,
-		});
-		expect(page2.sends).toHaveLength(1);
-		expect(page2.hasMore).toBe(false);
-	});
 });

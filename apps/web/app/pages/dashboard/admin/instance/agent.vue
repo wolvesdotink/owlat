@@ -346,6 +346,8 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 					</div>
 				</div>
 
+				<AgentKnowledgeRelationBackfillCard />
+
 				<!-- Confidence & Limits Section -->
 				<div class="card">
 					<h2 class="text-lg font-medium text-text-primary mb-1">Confidence & Limits</h2>

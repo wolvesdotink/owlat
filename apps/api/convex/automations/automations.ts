@@ -327,25 +327,6 @@ export const resume = authedMutation({
 	},
 });
 
-// Revert a paused automation to draft for re-editing — auth shell over
-// `lifecycle.transition`. New `paused → draft` edge per ADR-0024.
-export const revertToDraft = authedMutation({
-	args: {
-		automationId: v.id('automations'),
-	},
-	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'automations');
-		// authz: requireAutomationManage enforces automations:manage
-		const session = await requireAutomationManage(ctx, 'revert automations to draft');
-		const outcome = await ctx.runMutation(internal.automations.lifecycle.transition, {
-			automationId: args.automationId,
-			input: { to: 'draft', at: Date.now() },
-			userId: session.userId,
-		});
-		if (!outcome.ok) throwInvalidState(reasonToMessage(outcome.reason));
-	},
-});
-
 // Duplicate an automation
 export const duplicate = authedMutation({
 	args: {

@@ -66,7 +66,19 @@ export const listCatalog = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		await requireOrgPermission(ctx, 'settings:manage');
-		return DRAFT_STRATEGY_CATALOG;
+		const organizationId = await getSingletonOrganizationId(ctx);
+		const rows = await ctx.db
+			.query('draftStrategySelections')
+			.withIndex('by_organization_scope', (q) => q.eq('organizationId', organizationId))
+			.collect(); // bounded: one row per mailbox/contact/classification override
+		return {
+			strategies: DRAFT_STRATEGY_CATALOG,
+			selections: rows.map((row) => ({
+				scopeType: row.scopeType,
+				scopeId: row.scopeId,
+				strategyKind: row.strategyKind,
+			})),
+		};
 	},
 });
 

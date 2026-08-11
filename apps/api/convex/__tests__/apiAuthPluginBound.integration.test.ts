@@ -199,28 +199,6 @@ describe('plugin-bound key enforcement on /api/v1/contacts', () => {
 		expect(res.status).toBe(403);
 	});
 
-	it('401 after one-click revokeByPlugin turns the key inactive', async () => {
-		const t = setupTest();
-		await seedSettings(
-			t,
-			{ 'plugin.acme-connector': true },
-			{ 'plugin.acme-connector': { 'contacts:read': true } }
-		);
-		await seedOneContact(t);
-		const key = await seedBoundKey(t, { pluginId: 'acme-connector', scopes: ['contacts:read'] });
-
-		expect(
-			(await t.fetch('/api/v1/contacts', { method: 'GET', headers: authHeaders(key) })).status
-		).toBe(200);
-
-		await t
-			.withIdentity(testUser)
-			.mutation(api.auth.apiKeys.revokeByPlugin, { pluginId: 'acme-connector' });
-
-		const res = await t.fetch('/api/v1/contacts', { method: 'GET', headers: authHeaders(key) });
-		expect(res.status).toBe(401);
-	});
-
 	it('a standalone key is unaffected by plugin state (migration safety)', async () => {
 		const t = setupTest();
 		await seedSettings(t, {}, {});
