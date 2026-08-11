@@ -554,7 +554,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'contacts/sunset.ts#restoreSunsetContact',
 	'contacts/sunset.ts#setSunsetContactExemption',
 	'contacts/sunset.ts#setSunsetPolicy',
-	'delivery/alignmentPreflight.ts#getAlignmentGateState',
 	'delivery/ipReadinessAlerts.ts#listRecent',
 	'delivery/sends.ts#create',
 	'delivery/sends.ts#listByCampaign',
