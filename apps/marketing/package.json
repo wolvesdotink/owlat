@@ -20,7 +20,7 @@
 		"@nuxtjs/color-mode": "catalog:vue",
 		"@nuxtjs/seo": "^5.3.10",
 		"@tailwindcss/vite": "catalog:vue",
-		"@takumi-rs/core": "^1.1.2",
+		"@takumi-rs/core": "^2.7.1",
 		"nuxt": "catalog:vue",
 		"tailwindcss": "catalog:vue",
 		"vue": "catalog:vue"

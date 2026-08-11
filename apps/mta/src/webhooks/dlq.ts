@@ -473,7 +473,7 @@ export async function getStats(redis: Redis): Promise<{
 	const total = await redis.zcard(WEBHOOK_DLQ_CREATED_KEY);
 	if (total === 0) return { total: 0, oldestTimestamp: null, newestTimestamp: null };
 	const [oldestIds, newestIds] = await Promise.all([
-		redis.zrange(WEBHOOK_DLQ_CREATED_KEY, 0, 0),
+		redis.zrange(WEBHOOK_DLQ_CREATED_KEY, '0', '0'),
 		redis.zrevrange(WEBHOOK_DLQ_CREATED_KEY, 0, 0),
 	]);
 	const [oldest, newest] = await redis.hmget(WEBHOOK_DLQ_ENTRIES_KEY, oldestIds[0]!, newestIds[0]!);
@@ -485,5 +485,5 @@ export async function getStats(redis: Redis): Promise<{
 }
 
 export async function getAllIds(redis: Redis): Promise<string[]> {
-	return await redis.zrange(WEBHOOK_DLQ_CREATED_KEY, 0, -1);
+	return await redis.zrange(WEBHOOK_DLQ_CREATED_KEY, '0', '-1');
 }
