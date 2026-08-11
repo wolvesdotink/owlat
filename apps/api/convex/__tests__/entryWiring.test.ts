@@ -104,7 +104,10 @@ function productionModules(dir: string, extensions: readonly string[]): string[]
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		const full = join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (SKIPPED_DIRECTORIES.has(entry.name) || entry.name.startsWith('.')) continue;
+			// Nuxt uses `.well-known` as a production route directory. Skip only
+			// directories named above: treating every dot-prefixed directory as build
+			// output hid the live WKD and signed-manifest callers from this walk.
+			if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
 			found.push(...productionModules(full, extensions));
 			continue;
 		}
@@ -563,11 +566,9 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'domains/encryptionKeysReadiness.ts#checkEncryptionKeysReadiness',
 	'e2ee/keys.ts#backfillKeys',
 	'e2ee/keys.ts#getInstancePublicKey',
-	'e2ee/keys.ts#getKeyForWkd',
 	'e2ee/keys.ts#getPublicKeyByAddress',
 	'e2ee/lifecycle.ts#revokeAddressKey',
 	'e2ee/lifecycle.ts#rotateAddressKey',
-	'e2ee/manifest.ts#getSignedManifest',
 	'emailTemplates/emails.ts#changeType',
 	'emailTemplates/emails.ts#publish',
 	'emailTemplates/emails.ts#unpublish',
