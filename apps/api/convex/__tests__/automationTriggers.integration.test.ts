@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, afterEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
+import { fireTrigger } from '../automations/triggers';
 import { createTestAutomation, createTestAutomationStep, createTestContact } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -23,6 +24,13 @@ const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(([path]) => !path.includes('automationStepExecutor'))
 );
+
+async function fireEventReceived(
+	t: ReturnType<typeof convexTest>,
+	args: { contactId: Id<'contacts'>; eventName: string; eventProperties?: string }
+) {
+	return t.run((ctx) => fireTrigger(ctx, 'event_received', args));
+}
 
 // Let any pending scheduler setTimeouts from this test fire BEFORE the next
 // test calls convexTest() and replaces the global state. Without this, the
@@ -492,7 +500,7 @@ describe('fireEventReceivedTrigger', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
-		const runIds = await t.mutation(internal.automations.triggers.fireEventReceivedTrigger, {
+		const runIds = await fireEventReceived(t, {
 			contactId: contactId!,
 			eventName: 'purchase',
 		});
@@ -518,7 +526,7 @@ describe('fireEventReceivedTrigger', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
-		const runIds = await t.mutation(internal.automations.triggers.fireEventReceivedTrigger, {
+		const runIds = await fireEventReceived(t, {
 			contactId: contactId!,
 			eventName: 'signup',
 		});
@@ -546,7 +554,7 @@ describe('fireEventReceivedTrigger', () => {
 
 		const eventProperties = JSON.stringify({ productId: 'abc', amount: 49.99 });
 
-		const runIds = await t.mutation(internal.automations.triggers.fireEventReceivedTrigger, {
+		const runIds = await fireEventReceived(t, {
 			contactId: contactId!,
 			eventName: 'purchase',
 			eventProperties,
@@ -581,7 +589,7 @@ describe('fireEventReceivedTrigger', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
-		const runIds = await t.mutation(internal.automations.triggers.fireEventReceivedTrigger, {
+		const runIds = await fireEventReceived(t, {
 			contactId: contactId!,
 			eventName: 'login',
 		});
@@ -615,7 +623,7 @@ describe('fireEventReceivedTrigger', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
-		const runIds = await t.mutation(internal.automations.triggers.fireEventReceivedTrigger, {
+		const runIds = await fireEventReceived(t, {
 			contactId: contactId!,
 			eventName: 'purchase',
 		});
@@ -650,7 +658,7 @@ describe('fireEventReceivedTrigger', () => {
 			});
 		});
 
-		const runIds = await t.mutation(internal.automations.triggers.fireEventReceivedTrigger, {
+		const runIds = await fireEventReceived(t, {
 			contactId: contactId!,
 			eventName: 'purchase',
 		});
@@ -675,7 +683,7 @@ describe('fireEventReceivedTrigger', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
-		const runIds = await t.mutation(internal.automations.triggers.fireEventReceivedTrigger, {
+		const runIds = await fireEventReceived(t, {
 			contactId: contactId!,
 			eventName: 'purchase',
 		});
@@ -705,7 +713,7 @@ describe('fireEventReceivedTrigger', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 
-		await t.mutation(internal.automations.triggers.fireEventReceivedTrigger, {
+		await fireEventReceived(t, {
 			contactId: contactId!,
 			eventName: 'purchase',
 		});

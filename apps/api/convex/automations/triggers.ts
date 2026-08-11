@@ -290,20 +290,6 @@ export const fireContactUpdatedTrigger = internalMutation({
 		}),
 });
 
-export const fireEventReceivedTrigger = internalMutation({
-	args: {
-		contactId: v.id('contacts'),
-		eventName: v.string(),
-		eventProperties: v.optional(v.string()),
-	},
-	handler: async (ctx, args) =>
-		fireTrigger(ctx, 'event_received', {
-			contactId: args.contactId,
-			eventName: args.eventName,
-			eventProperties: args.eventProperties,
-		}),
-});
-
 export const fireTopicSubscribedTrigger = internalMutation({
 	args: {
 		contactId: v.id('contacts'),

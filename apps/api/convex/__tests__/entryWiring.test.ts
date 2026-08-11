@@ -526,7 +526,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'auth/apiKeys.ts#get',
 	'auth/apiKeys.ts#revokeByPlugin',
 	'automations/automations.ts#revertToDraft',
-	'automations/triggers.ts#fireEventReceivedTrigger',
 	'automations/triggers.ts#firePluginTrigger',
 	'autonomyFeedback.ts#getRecentFeedback',
 	'blockedEmails.ts#get',
