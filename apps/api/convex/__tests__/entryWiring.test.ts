@@ -596,7 +596,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'knowledge/graph.ts#setCommitmentStatus',
 	'knowledge/graphAnalytics.ts#getCrossContactLinks',
 	'mail/ai.ts#summarizeThread',
-	'mail/category.ts#backfill',
 	'mail/commitments.ts#listCommitments',
 	'mail/commitments.ts#resolveCommitment',
 	'mail/dailyBrief.ts#getLatestBrief',

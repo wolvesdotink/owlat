@@ -20,8 +20,8 @@
  * remembered for that sender — see `resolveCategory` and `recategorize`.
  *
  * Trigger: `enqueueCategoryCheck` on inbound webhook delivery (inbox only,
- * bounded to the affected thread), plus a one-shot `backfill` internal action
- * for the most recent inbox threads.
+ * bounded to the affected thread), plus the hand-run
+ * `migrations/0037_backfill_mail_categories:run` for recent existing threads.
  */
 
 import { v } from 'convex/values';
@@ -29,7 +29,6 @@ import { openMailMessageInlineBody } from '../lib/messageBody';
 import {
 	internalMutation,
 	internalQuery,
-	internalAction,
 	type MutationCtx,
 	type QueryCtx,
 } from '../_generated/server';
@@ -353,24 +352,6 @@ export const recategorize = authedMutation({
 
 /** Upper bound on the one-shot backfill (most recent inbox threads). */
 const BACKFILL_LIMIT = 500;
-
-/**
- * One-shot backfill: classify the most recent inbox threads that have no
- * category yet. Bounded and idempotent — re-running only touches still-unlabeled
- * threads. Internal (ops-triggered), never on the hot path.
- */
-export const backfill = internalAction({
-	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args): Promise<{ scheduled: number }> => {
-		const threadIds = await ctx.runQuery(internal.mail.category.listUnclassifiedInbox, {
-			mailboxId: args.mailboxId,
-		});
-		for (const threadId of threadIds) {
-			await ctx.runMutation(internal.mail.category.enqueue, { threadId });
-		}
-		return { scheduled: threadIds.length };
-	},
-});
 
 /** Most recent inbox threads lacking a category (backfill candidates). */
 export const listUnclassifiedInbox = internalQuery({

@@ -764,6 +764,7 @@ import type * as migrations_0033_campaign_audience from '../migrations/0033_camp
 import type * as migrations_0034_mailbox_owner_membership from '../migrations/0034_mailbox_owner_membership.js';
 import type * as migrations_0035_seal_bodies_at_rest from '../migrations/0035_seal_bodies_at_rest.js';
 import type * as migrations_0036_seed_platform_admin from '../migrations/0036_seed_platform_admin.js';
+import type * as migrations_0037_backfill_mail_categories from '../migrations/0037_backfill_mail_categories.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
 import type * as platformAdmin_queries from '../platformAdmin/queries.js';
@@ -1741,6 +1742,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0034_mailbox_owner_membership': typeof migrations_0034_mailbox_owner_membership;
 	'migrations/0035_seal_bodies_at_rest': typeof migrations_0035_seal_bodies_at_rest;
 	'migrations/0036_seed_platform_admin': typeof migrations_0036_seed_platform_admin;
+	'migrations/0037_backfill_mail_categories': typeof migrations_0037_backfill_mail_categories;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;
 	'platformAdmin/queries': typeof platformAdmin_queries;
