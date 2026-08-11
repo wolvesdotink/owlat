@@ -410,28 +410,21 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   short-circuits with no network call and no secret opened.
 - Scrub and clamp every app-returned string through the host untrusted-text
   policy bound to the app's plugin before any consumer sees it.
-- The hook delivery log has no column for the payload, the returned text, the
-  secret, or either signature. Record only the kind, whether a call was
-  attempted, which side won, a fixed reason code, and the duration; keep the
-  reason validator exhaustive in both directions against `HookUnavailableCode`.
-
 ## Plugin worker jobs (Tier 3)
 
-- `worker:enqueue` grants enqueue only. Claim, cancel, reclaim, and read are
-  host/operator operations, and a plugin may enqueue only its own namespaced job
-  kinds — ownership is decided from the kind string itself.
-- Clamp attempts, per-execution timeout, payload bytes, result bytes, and the
-  per-(organization, plugin) in-flight count in the enqueue transaction. Enqueue
-  fails closed: a disabled, ungranted, or undeclared plugin, a cross-plugin
-  kind, an oversized payload, or an exhausted in-flight budget inserts nothing.
+- `worker:enqueue` is a reserved capability; no Convex enqueue or operator entry
+  is shipped without a concrete host producer and UI. The code-worker protocol
+  remains dormant and must not be described as a usable plugin surface.
+- A future enqueue adapter must clamp attempts, timeout, payload bytes, result
+  bytes, and per-plugin in-flight count in its insertion transaction.
 - A cancelled queued job is marked cancelled at claim and never runs; a
   cancelled running job is killed at its next heartbeat; a cancelled job is
   never retried. Lease reclaim of an abandoned `running` row is bounded per
   sweep.
 - Job kinds map to a host-controlled command registry in the worker image. Never
   build a command from the payload, and never pass a payload through a shell.
-- Enqueue and every terminal outcome write a `pluginId`-attributed audit row;
-  terminal failure reasons are a fixed taxonomy and error messages are clamped.
+- Every terminal outcome writes a `pluginId`-attributed audit row; terminal
+  failure reasons are a fixed taxonomy and error messages are clamped.
 
 ## Environment variables
 

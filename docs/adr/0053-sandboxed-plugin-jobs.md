@@ -2,12 +2,15 @@
 
 ## Status
 
-Accepted.
+Accepted as a protocol. The unreachable enqueue and operator entries were
+removed under ADR-0020; no host producer is currently shipped.
 
 ## Context
 
 ADR-0049 named sandboxed workers as the third execution tier and deferred their
-registration to a later decision. This is that decision.
+registration to a later decision. This is that protocol decision; its
+worker-facing half remains implemented, while host ingress is deliberately
+absent until a concrete producer lands.
 
 Some plugin work does not belong inside Convex: parsing untrusted input, heavy
 analysis, anything that can hang or exhaust memory. Convex actions are the wrong
@@ -22,6 +25,11 @@ existing one keeps exactly one place where untrusted compute runs.
 
 ## Decision
 
+The sections below define the accepted target protocol. The current runtime
+implements the worker-facing claim/outcome half only: it has no enqueue producer,
+operator job UI, or cancellation entry, so enabling the profile alone creates no
+work.
+
 ### One worker, two queues
 
 The `code-worker` container serves both the coding-agent queue and the plugin
@@ -30,9 +38,9 @@ executor to reason about. Compose profiles activate them independently:
 `inbox-codetasks` for the coding agent, `plugin-tasks` for plugin jobs.
 
 Enabling the profile is an explicit operator decision. A manifest flag carries
-only `default` and `requiredEnvVars`; it does not bring infrastructure up. A
-plugin that enqueues without the profile running simply accumulates `queued`
-rows.
+only `default` and `requiredEnvVars`; it does not bring infrastructure up. Once
+host ingress is implemented, a plugin that enqueues without the profile running
+will simply accumulate `queued` rows.
 
 ### Enqueue is the only thing a plugin can do
 
@@ -95,7 +103,8 @@ generously beyond the maximum execution budget is reclaimed as abandoned, with
 each sweep bounded. Terminal failure reasons are a fixed taxonomy and any error
 message is clamped.
 
-Enqueue and every terminal outcome write a `pluginId`-attributed audit row.
+A future enqueue adapter and every terminal outcome write a
+`pluginId`-attributed audit row.
 
 ## Consequences
 
@@ -106,9 +115,9 @@ Enqueue and every terminal outcome write a `pluginId`-attributed audit row.
   across the uid boundary.
 - Plugin job kinds ship with the worker image, so a new kind requires a worker
   release. That is deliberate: the command surface is the sensitive part.
-- Enabling a Tier-3 plugin is a two-part operator action — the plugin flag and
-  the compose profile. Documentation must make that explicit, because a missing
-  profile presents as jobs that never start.
+- Shipping Tier-3 ingress will require a two-part operator action — the plugin
+  flag and the compose profile. Until then, the profile is dormant because no
+  host path creates jobs.
 
 ## Non-goals
 

@@ -81,7 +81,6 @@ convex/chat/rooms.ts:unarchiveChannel
 convex/chat/rooms.ts:updateChannel
 convex/codeWorkTasks.ts:cancel
 convex/codeWorkTasks.ts:create
-convex/connectedApps/hookDeliveryLogStore.ts:listHookDeliveryLogs
 convex/connectedApps/mutations.ts:remove
 convex/connectedApps/queries.ts:get
 convex/connectedApps/queries.ts:listByTeam
@@ -226,8 +225,6 @@ convex/plugins/draftStrategySelections.ts:listCatalog
 convex/plugins/draftStrategySelections.ts:setSelection
 convex/plugins/settings.ts:resetPluginSettings
 convex/plugins/settings.ts:setPluginSettings
-convex/plugins/workerTasks.ts:listRecent
-convex/plugins/workerTasks.ts:requestCancel
 convex/providerRoutes.ts:listRelayDomainIdentities
 convex/providerRoutes.ts:removeRoute
 convex/providerRoutes.ts:setRoute

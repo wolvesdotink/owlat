@@ -1,7 +1,7 @@
 # Plugin conformance gallery
 
 The final conformance gate for the Owlat plugin platform. It drives the three
-maintained reference plugins — one per trust tier — through the **shipped** host,
+maintained reference plugins — one per trust tier — through the host contracts,
 codegen and CLI, and asserts the properties that make them a reference set
 rather than three unrelated demos.
 
@@ -9,7 +9,7 @@ rather than three unrelated demos.
 | ---- | ------------------------------- | -------------------------------------------------------- |
 | 1    | `../plugins/escalation-guard`   | Bundled, in-process contributions and the agent pipeline |
 | 2    | `../plugins/slack-approvals`    | A connected app over the signed synchronous hook         |
-| 3    | `../plugins/deliverability-lab` | A sandboxed worker job, plus a restrict-only send gate   |
+| 3    | `../plugins/deliverability-lab` | A sandboxed-worker protocol fixture, plus a live restrict-only send gate |
 
 ## Suites
 
