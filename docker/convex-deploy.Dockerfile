@@ -49,7 +49,7 @@ FROM node:26-alpine
 # this image with a newer `convex@latest` has bitten us before — CLI schema-diff
 # behaviour changes between minors. Bump this deliberately via a PR after
 # testing, don't let `latest` float.
-ARG CONVEX_CLI_VERSION=1.36.1
+ARG CONVEX_CLI_VERSION=1.43.0
 RUN npm install -g convex@${CONVEX_CLI_VERSION}
 
 WORKDIR /app

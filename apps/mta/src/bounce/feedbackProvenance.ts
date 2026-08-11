@@ -112,7 +112,7 @@ async function recipientDomain(
 	const key = recipientKey(recipient);
 	const now = Date.now();
 	await redis.zremrangebyscore(key, '-inf', String(now - FEEDBACK_TTL_MS));
-	const values = await redis.zrange(key, 0, -1);
+	const values = await redis.zrange(key, '0', '-1');
 	const domains = new Set<DeliveryDomain>();
 	for (const value of values) {
 		try {
