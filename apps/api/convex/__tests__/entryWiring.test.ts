@@ -570,8 +570,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'e2ee/keys.ts#getPublicKeyByAddress',
 	'e2ee/lifecycle.ts#revokeAddressKey',
 	'e2ee/lifecycle.ts#rotateAddressKey',
-	'e2ee/lifecycleNode.ts#runExportRecoveryKit',
-	'e2ee/lifecycleNode.ts#runImportRecoveryKit',
 	'e2ee/manifest.ts#getSignedManifest',
 	'emailTemplates/emails.ts#changeType',
 	'emailTemplates/emails.ts#publish',
