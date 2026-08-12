@@ -74,15 +74,12 @@ onMounted(() => {
 					</a>
 					<a
 						href="https://github.com/wolvesdotink/owlat/releases"
-						class="btn btn-hairline px-4 py-2 text-caption no-underline"
+						class="btn btn-primary px-4 py-2 text-caption no-underline"
 						:aria-label="downloadAriaLabel"
 						title="All platforms on the releases page"
 						@click="onDownloadClick"
 					>
 						Download
-					</a>
-					<a href="/waitlist" class="btn btn-primary px-4 py-2 text-caption no-underline">
-						Join waitlist
 					</a>
 				</div>
 
@@ -147,7 +144,7 @@ onMounted(() => {
 						</a>
 						<a
 							href="https://github.com/wolvesdotink/owlat/releases"
-							class="btn btn-hairline w-full no-underline"
+							class="btn btn-primary w-full no-underline"
 							:aria-label="downloadAriaLabel"
 							@click="onDownloadClick"
 						>
@@ -161,7 +158,6 @@ onMounted(() => {
 						>
 							All platforms
 						</a>
-						<a href="/waitlist" class="btn btn-primary w-full no-underline"> Join waitlist </a>
 					</div>
 				</div>
 			</Transition>
