@@ -307,21 +307,6 @@ fn parse_hex_color(hex: &str) -> Option<(f64, f64, f64)> {
     ))
 }
 
-/// Draw the per-workspace identity frame in the NATIVE window instead of the
-/// page (the way Arc's chrome is native rather than painted by the web view).
-///
-/// The ring is a `CALayer` border added above the webview's layer on the
-/// window's content view. Only AppKit knows the window's true rounded-corner
-/// radius — the CSS ring this replaces hard-coded 10px and visibly drifted from
-/// the OS shape — so the outer curvature is read off the theme frame's layer at
-/// apply time. A layer border draws its inner edge at `radius − width` by
-/// construction, which is exactly the "inner radius matches the outer minus the
-/// border width" rule. Layers receive no events, so clicks, drags and the
-/// traffic lights (siblings above the content view) are untouched.
-///
-/// `color: None` leaves the current border color alone (visibility-only calls,
-/// e.g. the fullscreen collapse); a color that fails to parse is ignored. The
-/// layer is created lazily on the first call that carries a color.
 /// The window's rounded-corner radius, in points. Two probes, then a fallback:
 /// the theme frame's layer radius (public property read), then the theme
 /// frame's private `-_cornerRadius` (guarded by `respondsToSelector:`; the app
@@ -355,24 +340,39 @@ fn window_corner_radius(theme_frame: Option<&objc2_app_kit::NSView>) -> f64 {
     }
 }
 
+/// Draw the per-workspace identity frame in the NATIVE window instead of the
+/// page (the way Arc's chrome is native rather than painted by the web view).
+///
+/// The ring is a `CALayer` border added above the webview's layer on the
+/// window's content view. Only AppKit knows the window's true rounded-corner
+/// radius — the CSS ring this replaces hard-coded 10px and visibly drifted from
+/// the OS shape — so the outer curvature is read off the theme frame's layer at
+/// apply time. A layer border draws its inner edge at `radius − width` by
+/// construction, which is exactly the "inner radius matches the outer minus the
+/// border width" rule. Layers receive no events, so clicks, drags and the
+/// traffic lights (siblings above the content view) are untouched.
+///
+/// `color: None` leaves the current border color alone (visibility-only calls,
+/// e.g. the fullscreen collapse); a color that fails to parse is ignored. The
+/// layer is created lazily on the first call that carries a color.
+///
+/// Everything in here can hit AppKit assertions when the window is mid-close,
+/// which is why it only ever runs under `apply_accent_frame`'s exception guard.
 #[cfg(target_os = "macos")]
-fn apply_accent_frame(window: &WebviewWindow, color: Option<&str>, visible: bool) {
-    use objc2_app_kit::{NSColor, NSWindow};
+fn paint_accent_frame(ns_window: &objc2_app_kit::NSWindow, color: Option<&str>, visible: bool) {
+    use objc2_app_kit::NSColor;
     use objc2_foundation::NSString;
     use objc2_quartz_core::{kCACornerCurveContinuous, CAAutoresizingMask, CALayer};
 
-    let Ok(ptr) = window.ns_window() else {
-        return;
-    };
-    if ptr.is_null() {
-        return;
-    }
-    // SAFETY: same contract as `apply_traffic_lights` below — the pointer is
-    // this window's NSWindow, valid for the window's lifetime, main thread only.
-    let ns_window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
     let Some(content) = ns_window.contentView() else {
         return;
     };
+    // A window mid-close detaches its content hierarchy. Repainting a detached
+    // view is useless, and the transient retain taken on it here could
+    // otherwise be the one whose release runs `-[NSView dealloc]` mid-paint.
+    if content.window().is_none() {
+        return;
+    }
     content.setWantsLayer(true);
     let Some(root) = content.layer() else {
         return;
@@ -421,6 +421,35 @@ fn apply_accent_frame(window: &WebviewWindow, color: Option<&str>, visible: bool
         layer.setBorderColor(Some(&ns_color.CGColor()));
     }
     layer.setHidden(!visible);
+}
+
+/// Resolve the window's NSWindow and run `paint_accent_frame` with AppKit
+/// exceptions contained. The containment is a crash fix: a still-in-flight
+/// `set_accent_frame` IPC can land on a window that is already tearing down
+/// (the compose window closes at will), and an AppKit assertion raised there —
+/// observed in the wild as `-[NSView dealloc]` asserting mid-paint — would
+/// otherwise unwind through these Rust frames into `std::terminate` and abort
+/// the whole app (SIGABRT). Caught, it costs one skipped repaint on a window
+/// that is going away anyway; the exception is logged for diagnosis.
+#[cfg(target_os = "macos")]
+fn apply_accent_frame(window: &WebviewWindow, color: Option<&str>, visible: bool) {
+    use objc2_app_kit::NSWindow;
+
+    let Ok(ptr) = window.ns_window() else {
+        return;
+    };
+    if ptr.is_null() {
+        return;
+    }
+    // SAFETY: same contract as `apply_traffic_lights` below — the pointer is
+    // this window's NSWindow, valid for the window's lifetime, main thread only.
+    let ns_window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+    let painted = objc2::exception::catch(std::panic::AssertUnwindSafe(|| {
+        paint_accent_frame(ns_window, color, visible);
+    }));
+    if let Err(exception) = painted {
+        eprintln!("[owlat] accent frame paint dropped (AppKit exception): {exception:?}");
+    }
 }
 
 /// Command: paint / recolor / toggle the native workspace identity frame. The
