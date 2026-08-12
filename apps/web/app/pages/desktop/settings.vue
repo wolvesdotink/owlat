@@ -306,7 +306,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 					</p>
 					<NuxtLink
 						to="/desktop/welcome"
-						class="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+						class="btn btn-primary btn-sm"
 					>
 						Connect a workspace
 					</NuxtLink>
@@ -347,7 +347,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 								</button>
 								<button
 									type="button"
-									class="text-xs text-text-secondary hover:text-red-400"
+									class="text-xs text-text-secondary hover:text-error"
 									@click="workspaceToRemove = { id: ws.id, label: ws.label }"
 								>
 									Remove
