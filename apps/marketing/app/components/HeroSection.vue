@@ -79,27 +79,9 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 
 			<!-- CTAs -->
 			<div class="lp-hero-in mt-10 flex items-center justify-center gap-3 flex-wrap" style="--i: 3">
-				<a href="/waitlist" class="btn btn-primary group px-6 no-underline">
-					<span>Get started</span>
-					<svg
-						class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
-						width="15"
-						height="15"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						aria-hidden="true"
-					>
-						<path d="M5 12h14" />
-						<path d="m12 5 7 7-7 7" />
-					</svg>
-				</a>
 				<a
 					href="https://github.com/wolvesdotink/owlat/releases"
-					class="btn btn-hairline group px-6 no-underline"
+					class="btn btn-primary group px-6 no-underline"
 					:aria-label="downloadAriaLabel"
 					@click="onDownloadClick"
 				>
