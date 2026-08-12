@@ -52,8 +52,10 @@ objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSButton", "NSContro
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
 objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSNotification", "NSOperation", "block2"] }
 # msg_send! for the guarded private `-_cornerRadius` probe (window_corner_radius),
-# Retained for the frame-change observer's window handle.
-objc2 = "0.6"
+# Retained for the frame-change observer's window handle, and `exception::catch`
+# so an AppKit assertion raised inside the native accent-frame paint cannot
+# unwind through Rust and abort the app (window.rs::apply_accent_frame).
+objc2 = { version = "0.6", features = ["exception"] }
 # The synchronous frame-change observer block (setup_traffic_lights).
 block2 = "0.6"
 
