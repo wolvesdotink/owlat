@@ -119,12 +119,7 @@ onUnmounted(stopPolling);
 
 <template>
 	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base text-text-primary">
-		<div class="absolute inset-0 hero-grid" aria-hidden="true" />
-		<div class="absolute inset-0 hero-grain" aria-hidden="true" />
-		<div class="absolute inset-0 overflow-hidden" aria-hidden="true">
-			<div class="lp-aurora lp-aurora-gold" />
-			<div class="lp-aurora lp-aurora-core" />
-		</div>
+		<UiHeroField />
 
 		<div class="relative mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">

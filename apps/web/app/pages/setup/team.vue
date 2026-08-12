@@ -49,12 +49,7 @@ async function requestAccess() {
 	<div
 		class="relative isolate min-h-screen overflow-hidden bg-bg-base flex flex-col items-center justify-center px-4 py-12"
 	>
-		<div class="absolute inset-0 hero-grid" aria-hidden="true" />
-		<div class="absolute inset-0 hero-grain" aria-hidden="true" />
-		<div class="absolute inset-0 overflow-hidden" aria-hidden="true">
-			<div class="lp-aurora lp-aurora-gold" />
-			<div class="lp-aurora lp-aurora-core" />
-		</div>
+		<UiHeroField />
 
 		<!-- Show loading while checking organization status -->
 		<div v-if="orgLoading" class="relative flex flex-col items-center">

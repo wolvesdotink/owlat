@@ -233,12 +233,7 @@ async function next() {
 
 <template>
 	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base text-text-primary">
-		<div class="absolute inset-0 hero-grid" aria-hidden="true" />
-		<div class="absolute inset-0 hero-grain" aria-hidden="true" />
-		<div class="absolute inset-0 overflow-hidden" aria-hidden="true">
-			<div class="lp-aurora lp-aurora-gold" />
-			<div class="lp-aurora lp-aurora-core" />
-		</div>
+		<UiHeroField />
 
 		<div class="relative mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
@@ -255,9 +250,7 @@ async function next() {
 			/>
 
 			<header class="mb-6">
-				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">
-					How should Owlat send <span class="lp-title-accent">mail</span>?
-				</h1>
+				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">How should Owlat send <span class="lp-title-accent">mail</span>?</h1>
 				<p class="text-text-secondary leading-relaxed">
 					Three honest ways to send: run your own mail server for full control, hand delivery to
 					Amazon SES, or relay through an SMTP provider you already pay for.

@@ -17,12 +17,7 @@ defineProps<{
 		class="relative isolate flex min-h-screen flex-col items-center justify-center overflow-hidden bg-bg-base px-4 py-16"
 	>
 		<!-- Decorative field — behind the content, ignores the pointer, hidden from AT. -->
-		<div class="absolute inset-0 hero-grid" aria-hidden="true" />
-		<div class="absolute inset-0 hero-grain" aria-hidden="true" />
-		<div class="absolute inset-0 overflow-hidden" aria-hidden="true">
-			<div class="lp-aurora lp-aurora-gold" />
-			<div class="lp-aurora lp-aurora-core" />
-		</div>
+		<UiHeroField />
 
 		<div class="relative w-full max-w-md">
 			<div class="lp-hero-in mb-8 text-center" style="--i: 0">
@@ -40,7 +35,7 @@ defineProps<{
 			</div>
 
 			<div
-				v-if="$slots.footer"
+				v-if="$slots['footer']"
 				class="lp-hero-in mt-6 text-center text-sm text-text-secondary"
 				style="--i: 2"
 			>
