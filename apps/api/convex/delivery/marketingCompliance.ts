@@ -8,7 +8,9 @@
  * header list, so composition and signing cannot silently drift apart.
  */
 
-import { SIGNED_HEADERS } from '@owlat/mail-message';
+// The crypto-free subpath, not the package barrel: the barrel re-exports the
+// DKIM signer (`node:crypto`), and this module runs in the isolate runtime.
+import { SIGNED_HEADERS } from '@owlat/mail-message/compose/signedHeaders';
 import { parseListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 
 export type EmailPurpose = 'marketing' | 'transactional';
