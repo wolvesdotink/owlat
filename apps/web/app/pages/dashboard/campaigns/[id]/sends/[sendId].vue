@@ -63,7 +63,7 @@ const {
 
 					<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
 						<div>
-							<h1 class="text-2xl font-semibold text-text-primary">
+							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 								{{ send.contactFirstName || send.contactEmail?.split('@')[0] || 'Unknown' }}
 								{{ send.contactLastName || '' }}
 							</h1>

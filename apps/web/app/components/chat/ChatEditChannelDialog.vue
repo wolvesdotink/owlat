@@ -77,30 +77,30 @@ const handleSubmit = async () => {
 			<div>
 				<label class="block text-sm font-medium text-text-secondary mb-1.5">Visibility</label>
 				<div class="flex gap-2">
-					<button
-						class="flex-1 px-3 py-2 rounded-lg border text-sm transition-colors"
-						:class="
-							visibility === 'public'
-								? 'bg-brand-subtle border-brand text-brand'
-								: 'bg-bg-surface border-border-subtle text-text-secondary hover:text-text-primary'
-						"
+					<UiButton
+						variant="outline"
+						size="sm"
+						class="flex-1"
+						:class="visibility === 'public' ? 'bg-brand-subtle text-brand' : ''"
 						@click="visibility = 'public'"
 					>
-						<Icon name="lucide:hash" class="w-4 h-4 inline mr-1" />
+						<template #iconLeft>
+							<Icon name="lucide:hash" class="w-4 h-4" />
+						</template>
 						Public
-					</button>
-					<button
-						class="flex-1 px-3 py-2 rounded-lg border text-sm transition-colors"
-						:class="
-							visibility === 'private'
-								? 'bg-brand-subtle border-brand text-brand'
-								: 'bg-bg-surface border-border-subtle text-text-secondary hover:text-text-primary'
-						"
+					</UiButton>
+					<UiButton
+						variant="outline"
+						size="sm"
+						class="flex-1"
+						:class="visibility === 'private' ? 'bg-brand-subtle text-brand' : ''"
 						@click="visibility = 'private'"
 					>
-						<Icon name="lucide:lock" class="w-4 h-4 inline mr-1" />
+						<template #iconLeft>
+							<Icon name="lucide:lock" class="w-4 h-4" />
+						</template>
 						Private
-					</button>
+					</UiButton>
 				</div>
 			</div>
 

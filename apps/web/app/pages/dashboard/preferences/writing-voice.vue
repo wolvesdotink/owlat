@@ -24,7 +24,7 @@ const { isEnabled } = useFeatureFlag();
 		</NuxtLink>
 
 		<header class="mb-6">
-			<h1 class="text-2xl font-semibold">Writing voice</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em]">Writing voice</h1>
 			<p class="text-text-secondary mt-1">
 				Owlat can learn how you write from your sent mail so AI reply suggestions sound like you.
 				This is advisory only — nothing is ever sent automatically.

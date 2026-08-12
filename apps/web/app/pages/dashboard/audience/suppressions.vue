@@ -190,7 +190,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Suppressions</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Suppressions</h1>
 					<p class="mt-1 text-text-secondary">
 						Addresses that no longer receive mail — so a bounce or complaint never happens twice
 					</p>
@@ -251,7 +251,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-5 gap-4">
 					<div class="card p-4">
 						<p class="text-sm text-text-secondary">Total suppressed</p>
-						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.total }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">{{ countsData.total }}</p>
 					</div>
 					<div v-for="tile in reasonTiles" :key="tile.key" class="card p-4">
 						<div class="flex items-center gap-2">
@@ -262,7 +262,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 							/>
 							<p class="text-sm text-text-secondary">{{ tile.label }}</p>
 						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">{{ tile.count }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">{{ tile.count }}</p>
 					</div>
 				</div>
 

@@ -61,7 +61,7 @@ const handleOpen = async (mention: {
 							<span class="text-sm font-medium text-text-primary truncate">
 								{{ mention.roomName }}
 							</span>
-							<span class="text-[11px] text-text-tertiary flex-shrink-0">
+							<span class="text-2xs text-text-tertiary flex-shrink-0">
 								{{ formatCompactRelativeTime(mention.createdAt) }}
 							</span>
 						</div>

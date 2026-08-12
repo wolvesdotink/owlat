@@ -138,7 +138,7 @@ const decisionLabel = computed(() => {
 		<header class="mb-6 flex items-start gap-3">
 			<UiIconBox icon="lucide:activity" size="lg" variant="brand" rounded="xl" />
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">{{ headline }}</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ headline }}</h1>
 				<p class="mt-1 max-w-2xl text-sm text-text-secondary">{{ subhead }}</p>
 				<p v-if="windowLabel" class="mt-1 text-xs text-text-secondary">
 					Reported window: <span data-testid="measurement-window">{{ windowLabel }}</span> · checks

@@ -26,11 +26,11 @@ const CHANNEL_CONFIG: Record<
 	UnifiedTimelineChannel,
 	{ icon: string; label: string; color: string }
 > = {
-	email: { icon: 'lucide:mail', label: 'Email', color: 'text-blue-500' },
-	sms: { icon: 'lucide:smartphone', label: 'SMS', color: 'text-green-500' },
-	whatsapp: { icon: 'lucide:message-circle', label: 'WhatsApp', color: 'text-emerald-500' },
-	chat: { icon: 'lucide:message-square', label: 'Chat', color: 'text-orange-500' },
-	generic: { icon: 'lucide:webhook', label: 'Generic', color: 'text-purple-500' },
+	email: { icon: 'lucide:mail', label: 'Email', color: 'text-chart-cat-4' },
+	sms: { icon: 'lucide:smartphone', label: 'SMS', color: 'text-chart-cat-3' },
+	whatsapp: { icon: 'lucide:message-circle', label: 'WhatsApp', color: 'text-success' },
+	chat: { icon: 'lucide:message-square', label: 'Chat', color: 'text-chart-cat-1' },
+	generic: { icon: 'lucide:webhook', label: 'Generic', color: 'text-chart-cat-2' },
 };
 
 // Shared cross-channel display helpers — reused by every unified-message view

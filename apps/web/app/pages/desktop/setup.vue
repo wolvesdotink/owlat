@@ -516,14 +516,9 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 										placeholder="~/.ssh/id_ed25519"
 										:disabled="busy"
 									/>
-									<button
-										type="button"
-										class="btn btn-outline btn-sm shrink-0 text-xs"
-										:disabled="busy"
-										@click="browseKeyFile"
-									>
+									<UiButton variant="outline" size="sm" class="shrink-0" :disabled="busy" @click="browseKeyFile">
 										Browse…
-									</button>
+									</UiButton>
 								</div>
 								<textarea
 									v-else
@@ -641,30 +636,25 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								<span>I know why this server's key changed and want to connect anyway.</span>
 							</label>
 
-							<button
-								type="button"
-								class="btn btn-sm mt-3"
-								:class="hostKeyPrompt.tone === 'danger' ? 'btn-danger' : 'btn-primary'"
+							<UiButton
+								size="sm"
+								class="mt-3"
+								:variant="hostKeyPrompt.tone === 'danger' ? 'danger' : 'primary'"
 								:disabled="busy || (hostKeyPrompt.requiresExplicitConfirmation && !mismatchAcknowledged)"
 								@click="acceptHostKey(hostKeyPrompt.isMismatch)"
 							>
-								{{ hostKeyPrompt.isMismatch ? 'Accept changed key &amp; continue' : 'Accept &amp; continue' }}
-							</button>
+								{{ hostKeyPrompt.isMismatch ? 'Accept changed key & continue' : 'Accept & continue' }}
+							</UiButton>
 						</div>
 
 						<p v-if="connectError" class="text-sm text-error">{{ connectError }}</p>
 						<p v-if="error" class="text-sm text-error">{{ error }}</p>
 
-						<button
-							v-if="stage !== 'hostkey'"
-							type="submit"
-							:disabled="busy"
-							class="btn btn-primary w-full"
-						>
+						<UiButton v-if="stage !== 'hostkey'" type="submit" :disabled="busy" full-width>
 							<span v-if="stage === 'connecting'">Connecting…</span>
 							<span v-else-if="stage === 'authenticating'">Authenticating…</span>
 							<span v-else>Connect</span>
-						</button>
+						</UiButton>
 					</form>
 				</section>
 
@@ -878,29 +868,15 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 
 						<p v-if="configError" class="mt-4 text-sm text-error">{{ configError }}</p>
 						<div class="mt-5 flex items-center gap-3 border-t border-border-subtle pt-4">
-							<button
-								v-if="stepIndex > 0"
-								type="button"
-								class="btn btn-outline btn-sm"
-								@click="prevStep"
-							>
+							<UiButton v-if="stepIndex > 0" variant="outline" size="sm" @click="prevStep">
 								Back
-							</button>
-							<button
-								v-if="!isLastStep"
-								type="button"
-								class="btn btn-primary btn-sm ml-auto"
-								@click="nextStep"
-							>
+							</UiButton>
+							<UiButton v-if="!isLastStep" size="sm" class="ml-auto" @click="nextStep">
 								Next
-							</button>
-							<button
-								v-else
-								type="submit"
-								class="btn btn-primary btn-sm ml-auto"
-							>
+							</UiButton>
+							<UiButton v-else type="submit" size="sm" class="ml-auto">
 								Provision server
-							</button>
+							</UiButton>
 						</div>
 					</form>
 				</section>
@@ -915,12 +891,9 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<Icon name="lucide:party-popper" class="size-4" /> Your server is ready
 						</p>
 						<p v-if="siteUrl" class="mt-1 text-xs text-text-secondary">{{ siteUrl }}</p>
-						<button
-							class="btn btn-primary mt-3 w-full"
-							@click="connectWorkspace"
-						>
+						<UiButton class="mt-3" full-width @click="connectWorkspace">
 							Open workspace
-						</button>
+						</UiButton>
 					</div>
 
 					<!-- FINISHING UP: installed, but the public URL isn't answering yet (DNS/TLS) -->
@@ -943,14 +916,12 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								TLS is issued automatically once they resolve (ports 80/443 open).
 							</p>
 						</div>
-						<button
-							class="btn btn-outline btn-sm mt-3"
-							:disabled="checkingReach"
-							@click="recheckReachable"
-						>
-							<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin': checkingReach }" />
+						<UiButton variant="outline" size="sm" class="mt-3" :disabled="checkingReach" @click="recheckReachable">
+							<template #iconLeft>
+								<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin': checkingReach }" />
+							</template>
 							{{ checkingReach ? 'Checking…' : 'Check again' }}
-						</button>
+						</UiButton>
 					</div>
 
 					<!-- LOOPBACK: the URL only works on the server itself -->
@@ -962,12 +933,9 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							It's installed at <span class="font-mono">{{ siteUrl }}</span>, but that address only works on
 							the server itself — not from this app. Re-run setup with a public domain to open it here.
 						</p>
-						<button
-							class="btn btn-outline btn-sm mt-3"
-							@click="retry"
-						>
+						<UiButton variant="outline" size="sm" class="mt-3" @click="retry">
 							Set a domain &amp; retry
-						</button>
+						</UiButton>
 					</div>
 
 					<!-- After any successful install: note the fate of the secrets-bearing config. -->
@@ -992,12 +960,9 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<pre class="max-h-40 overflow-auto rounded bg-bg-deep p-2 font-mono text-[11px] leading-snug text-error">{{ failureTail.join('\n') }}</pre>
 						</div>
 						<p class="mt-2 text-xs text-text-secondary">Open the server log above for the full details, then adjust your configuration and try again.</p>
-						<button
-							class="btn btn-outline btn-sm mt-3"
-							@click="retry"
-						>
+						<UiButton variant="outline" size="sm" class="mt-3" @click="retry">
 							Adjust &amp; retry
-						</button>
+						</UiButton>
 					</div>
 				</section>
 			</template>

@@ -97,13 +97,14 @@ const formatTime = (timestamp: number) => {
 		</div>
 
 		<div class="flex items-center justify-between gap-3 px-5 py-3 border-t border-border-subtle">
-			<button
-				class="text-xs text-text-tertiary hover:text-error transition-colors"
+			<UiButton
+				variant="danger-ghost"
+				size="sm"
 				:disabled="isSubmitting"
 				@click="unlinkAndClose"
 			>
 				Remove current link
-			</button>
+			</UiButton>
 			<UiButton variant="secondary" @click="emit('close')">Close</UiButton>
 		</div>
 	</ChatDialogShell>

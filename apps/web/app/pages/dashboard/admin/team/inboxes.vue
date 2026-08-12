@@ -165,7 +165,7 @@ function formatCreated(createdAt: number) {
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
 					Back to Settings
 				</NuxtLink>
-				<h1 class="text-2xl font-semibold text-text-primary">Team inboxes</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Team inboxes</h1>
 				<p class="mt-1 text-text-secondary">
 					Shared addresses your team reads and sends from together — like
 					<code>support@</code> or <code>sales@</code>.

@@ -107,7 +107,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 			<div v-else-if="blocklistImport.step.value === 'preview' && blocklistImport.validation.value">
 				<div class="grid grid-cols-3 gap-3 mb-4">
 					<div class="p-3 rounded-lg bg-success/10 border border-success/20">
-						<p class="text-2xl font-semibold text-success">
+						<p class="text-2xl font-medium tracking-[-0.02em] text-success">
 							{{ blocklistImport.validation.value.valid.length }}
 						</p>
 						<p class="text-xs text-success/80">Valid addresses</p>
@@ -121,7 +121,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 						"
 					>
 						<p
-							class="text-2xl font-semibold"
+							class="text-2xl font-medium tracking-[-0.02em]"
 							:class="
 								blocklistImport.validation.value.invalid.length > 0
 									? 'text-warning'
@@ -150,7 +150,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 						"
 					>
 						<p
-							class="text-2xl font-semibold"
+							class="text-2xl font-medium tracking-[-0.02em]"
 							:class="
 								blocklistImport.validation.value.duplicates > 0
 									? 'text-warning'

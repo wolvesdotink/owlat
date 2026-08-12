@@ -104,7 +104,7 @@ function getTypeBadgeClass(type: string): string {
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-8">
-			<h1 class="text-2xl font-semibold text-text-primary">Templates &amp; blocks</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Templates &amp; blocks</h1>
 			<p class="mt-1 text-text-secondary">Manage your email templates and reusable blocks.</p>
 		</div>
 

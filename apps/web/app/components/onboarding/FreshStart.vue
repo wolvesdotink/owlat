@@ -197,7 +197,7 @@ function skipToInbox() {
 						v-model="displayName"
 						type="text"
 						placeholder="e.g. Marcel Pfeifer"
-						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
+						class="input input-sm"
 					/>
 					<p class="mt-1 text-xs text-text-tertiary">This is the name people see on your mail.</p>
 				</div>
@@ -212,7 +212,7 @@ function skipToInbox() {
 						v-model="signatureText"
 						rows="3"
 						placeholder="e.g. Marcel · Owlat"
-						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
+						class="input input-sm"
 					/>
 					<p class="mt-1 text-xs text-text-tertiary">Added to the bottom of new messages.</p>
 				</div>
@@ -223,7 +223,7 @@ function skipToInbox() {
 					<select
 						id="fresh-notify"
 						v-model="notifyChoice"
-						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
+						class="input input-sm"
 					>
 						<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt.value" :value="opt.value">
 							{{ opt.label }}
@@ -293,7 +293,7 @@ function skipToInbox() {
 						<span
 							>Press
 							<kbd
-								class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
+								class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs font-mono"
 								>C</kbd
 							>
 							anywhere to write a new message.</span
@@ -304,10 +304,10 @@ function skipToInbox() {
 						<span>
 							Hit
 							<kbd
-								class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
+								class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs font-mono"
 								>⌘</kbd
 							><kbd
-								class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
+								class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs font-mono"
 								>K</kbd
 							>
 							to search, jump, and run any command.

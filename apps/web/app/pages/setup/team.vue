@@ -46,20 +46,29 @@ async function requestAccess() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4 py-12">
+	<div
+		class="relative isolate min-h-screen overflow-hidden bg-bg-base flex flex-col items-center justify-center px-4 py-12"
+	>
+		<div class="absolute inset-0 hero-grid" aria-hidden="true" />
+		<div class="absolute inset-0 hero-grain" aria-hidden="true" />
+		<div class="absolute inset-0 overflow-hidden" aria-hidden="true">
+			<div class="lp-aurora lp-aurora-gold" />
+			<div class="lp-aurora lp-aurora-core" />
+		</div>
+
 		<!-- Show loading while checking organization status -->
-		<div v-if="orgLoading" class="flex flex-col items-center">
+		<div v-if="orgLoading" class="relative flex flex-col items-center">
 			<Icon name="lucide:loader-2" class="w-8 h-8 text-text-tertiary animate-spin" />
 		</div>
 
 		<!-- Invite-only: no organization yet, but the door isn't locked. -->
 		<template v-else-if="!organization">
-			<div class="mb-8 text-center">
+			<div class="relative mb-8 text-center">
 				<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
 				<p class="text-text-secondary mt-2">Invitation required</p>
 			</div>
 
-			<UiCard class="w-full max-w-md">
+			<UiCard class="relative w-full max-w-md">
 				<!-- After asking: a clear, honest confirmation. -->
 				<div v-if="requested" class="text-center space-y-4">
 					<Icon name="lucide:check-circle-2" class="w-12 h-12 text-brand mx-auto" />

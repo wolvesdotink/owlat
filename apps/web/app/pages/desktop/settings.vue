@@ -113,7 +113,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 		<div class="mx-auto w-full max-w-2xl px-6 py-10">
 			<div
 				v-if="!isDesktop"
-				class="rounded-2xl border border-border-default bg-bg-surface p-8 text-sm text-text-secondary"
+				class="card p-8 text-sm text-text-secondary"
 			>
 				These settings are only available in the Owlat desktop app.
 			</div>
@@ -126,7 +126,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 					<Icon name="lucide:arrow-left" class="size-3.5" /> Back
 				</NuxtLink>
 
-				<h1 class="text-2xl font-semibold mb-1">Settings</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] mb-1">Settings</h1>
 				<p class="text-sm text-text-secondary mb-8">
 					Global settings apply to the Owlat app on this device, across every workspace.
 				</p>
@@ -134,7 +134,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 				<!-- ============ GLOBAL ============ -->
 				<h2 class="text-xs font-medium uppercase tracking-wide text-text-secondary mb-2">Global</h2>
 				<div
-					class="rounded-lg border border-border-default bg-bg-surface divide-y divide-border-subtle mb-8"
+					class="card p-0 divide-y divide-border-subtle mb-8 overflow-hidden"
 				>
 					<!-- Appearance -->
 					<div class="p-4">
@@ -190,7 +190,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 						<select
 							:value="settings.global.startupWorkspaceId ?? ''"
 							:disabled="!isReady || workspaces.length === 0"
-							class="max-w-[14rem] rounded-lg border border-border-default bg-bg-deep px-2 py-1.5 text-sm"
+							class="input input-sm max-w-[14rem] text-sm"
 							@change="onStartupWorkspaceChange"
 						>
 							<option value="">Last active workspace</option>
@@ -246,17 +246,13 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 								type="checkbox"
 								:checked="settings.global.autoCheckUpdates"
 								:disabled="!isReady"
-								class="h-5 w-5"
+								class="h-5 w-5 accent-brand"
 								@change="setGlobal('autoCheckUpdates', checked($event))"
 							/>
 						</div>
-						<button
-							type="button"
-							class="mt-3 rounded-lg border border-border-default px-3 py-1.5 text-sm hover:border-border-strong"
-							@click="checkForUpdatesNow"
-						>
+						<UiButton variant="outline" size="sm" class="mt-3" @click="checkForUpdatesNow">
 							Check for updates now
-						</button>
+						</UiButton>
 						<p v-if="updateCheckRequested" class="mt-2 text-xs text-text-secondary">
 							Checking — you'll get a notification with the result.
 						</p>
@@ -298,25 +294,22 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 
 				<div
 					v-if="workspaces.length === 0"
-					class="rounded-lg border border-border-default bg-bg-surface p-6 text-center"
+					class="card text-center"
 				>
 					<p class="text-sm text-text-secondary mb-4">
 						No workspaces connected yet. Workspace settings — members, delivery, API keys and more —
 						become available once you connect to an Owlat server.
 					</p>
-					<NuxtLink
-						to="/desktop/welcome"
-						class="btn btn-primary btn-sm"
-					>
+					<UiButton to="/desktop/welcome" size="sm">
 						Connect a workspace
-					</NuxtLink>
+					</UiButton>
 				</div>
 
 				<ul v-else class="space-y-3">
 					<li
 						v-for="ws in workspaces"
 						:key="ws.id"
-						class="rounded-lg border border-border-default bg-bg-surface p-4"
+						class="card p-4"
 					>
 						<div class="flex items-start justify-between gap-4">
 							<div class="min-w-0">
@@ -328,7 +321,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 									<span class="truncate text-sm font-medium">{{ ws.label }}</span>
 									<span
 										v-if="ws.id === activeId"
-										class="rounded-full bg-brand-subtle px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-brand"
+										class="rounded-full bg-brand-subtle px-2 py-0.5 text-2xs font-medium uppercase tracking-wide text-brand"
 									>
 										Active
 									</span>

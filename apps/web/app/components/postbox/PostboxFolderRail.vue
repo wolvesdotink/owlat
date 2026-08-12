@@ -166,7 +166,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			</template>
 			<span
 				v-else-if="replyQueueCount > 0"
-				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-white text-[10px] leading-4 font-medium text-center"
+				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-text-primary text-text-inverse text-2xs leading-4 font-medium text-center"
 				>{{ replyQueueCount > 99 ? '99+' : replyQueueCount }}</span
 			>
 		</NuxtLink>
@@ -246,7 +246,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				<input
 					v-model="newFolderName"
 					placeholder="Folder name"
-					class="w-full text-sm border border-border-subtle rounded px-2 py-1 bg-bg-surface text-text-primary"
+					class="input input-sm"
 					aria-label="New folder name"
 					@keyup.enter="confirmCreateFolder"
 					@keyup.esc="creatingFolder = false"
@@ -257,7 +257,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					<input
 						v-if="renamingFolderId === folder._id"
 						v-model="renameFolderName"
-						class="flex-1 text-sm border border-border-subtle rounded px-2 py-1 bg-bg-surface text-text-primary mx-2"
+						class="input input-sm flex-1 mx-2"
 						aria-label="Folder name"
 						@keyup.enter="confirmRenameFolder"
 						@keyup.esc="renamingFolderId = null"

@@ -232,13 +232,18 @@ async function next() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-base text-text-primary">
-		<div class="mx-auto max-w-2xl px-6 py-12">
+	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base text-text-primary">
+		<div class="absolute inset-0 hero-grid" aria-hidden="true" />
+		<div class="absolute inset-0 hero-grain" aria-hidden="true" />
+		<div class="absolute inset-0 overflow-hidden" aria-hidden="true">
+			<div class="lp-aurora lp-aurora-gold" />
+			<div class="lp-aurora lp-aurora-core" />
+		</div>
+
+		<div class="relative mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase"
-					>Owlat setup</span
-				>
+				<span class="lp-eyebrow">Owlat setup</span>
 			</div>
 
 			<UiStepIndicator
@@ -250,7 +255,9 @@ async function next() {
 			/>
 
 			<header class="mb-6">
-				<h1 class="font-display text-3xl mb-2">How should Owlat send mail?</h1>
+				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">
+					How should Owlat send <span class="lp-title-accent">mail</span>?
+				</h1>
 				<p class="text-text-secondary leading-relaxed">
 					Three honest ways to send: run your own mail server for full control, hand delivery to
 					Amazon SES, or relay through an SMTP provider you already pay for.
@@ -281,11 +288,11 @@ async function next() {
 						<label
 							v-for="opt in providerOptions"
 							:key="opt.value"
-							class="flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors"
+							class="flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring"
 							:class="
 								provider === opt.value
-									? 'border-brand ring-1 ring-brand bg-brand/5'
-									: 'border-border-default hover:border-border-strong'
+									? 'border-brand shadow-surface-2 bg-brand-soft'
+									: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
 							"
 						>
 							<input
@@ -376,7 +383,7 @@ async function next() {
 						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 							<UiInput v-model="smtpPort" label="Port" placeholder="587" autocomplete="off" />
 							<label
-								class="flex items-center gap-3 rounded-lg border border-border-default p-3 cursor-pointer transition-colors hover:border-border-strong"
+								class="flex items-center gap-3 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-3 cursor-pointer transition-[box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
 							>
 								<input
 									v-model="smtpSecure"
@@ -395,7 +402,7 @@ async function next() {
 
 					<div
 						v-if="mtaProfileEnabled"
-						class="mt-5 space-y-4 rounded-lg border border-border-default p-4"
+						class="mt-5 space-y-4 rounded-xl border border-border-subtle p-4"
 					>
 						<div>
 							<h2 class="font-medium text-text-primary">Outbound IP identity</h2>

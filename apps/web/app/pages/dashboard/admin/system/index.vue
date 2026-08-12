@@ -172,7 +172,9 @@ function formatDuration(start?: number, end?: number) {
 			>
 				← Settings
 			</NuxtLink>
-			<h1 class="mt-2 text-2xl font-semibold text-text-primary">System &amp; Updates</h1>
+			<h1 class="mt-2 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				System &amp; Updates
+			</h1>
 			<p class="mt-1 text-text-secondary text-md">
 				Current Owlat version, container health, and in-app update history.
 			</p>
@@ -182,7 +184,7 @@ function formatDuration(start?: number, end?: number) {
 		<SystemVersionCard />
 
 		<!-- Container health -->
-		<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+		<div class="card">
 			<div class="flex items-center justify-between mb-4">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
 					Container health
@@ -245,7 +247,7 @@ function formatDuration(start?: number, end?: number) {
 		<SystemLlmSpendCard />
 
 		<!-- Update check card -->
-		<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+		<div class="card">
 			<div class="flex items-start justify-between gap-4 flex-wrap">
 				<div class="min-w-0">
 					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">
@@ -285,26 +287,16 @@ function formatDuration(start?: number, end?: number) {
 				</div>
 
 				<div class="flex gap-2 flex-wrap">
-					<button
-						type="button"
-						:disabled="checking"
-						class="inline-flex items-center gap-2 px-4 py-2 text-caption font-medium text-text-primary bg-transparent border border-border-default rounded-lg transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
-						@click="checkNow"
-					>
+					<UiButton variant="outline" size="sm" :disabled="checking" @click="checkNow">
 						<Icon v-if="checking" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 						<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
 						Check now
-					</button>
+					</UiButton>
 
-					<button
-						v-if="updateAvailable"
-						type="button"
-						class="inline-flex items-center gap-2 px-4 py-2 text-caption font-semibold text-text-inverse bg-brand rounded-lg transition-all hover:bg-brand-hover hover:-translate-y-px hover:shadow-brand-hover"
-						@click="startUpdate"
-					>
+					<UiButton v-if="updateAvailable" variant="primary" size="sm" @click="startUpdate">
 						<Icon name="lucide:download" class="w-4 h-4" />
 						Update now
-					</button>
+					</UiButton>
 				</div>
 			</div>
 
@@ -343,20 +335,8 @@ function formatDuration(start?: number, end?: number) {
 				first.
 			</p>
 			<div class="flex gap-3">
-				<button
-					type="button"
-					class="px-4 py-2 text-caption font-semibold text-text-inverse bg-warning rounded-lg hover:bg-warning/90"
-					@click="confirmUpdate"
-				>
-					Yes, update now
-				</button>
-				<button
-					type="button"
-					class="px-4 py-2 text-caption font-medium text-text-primary border border-border-default rounded-lg hover:border-brand"
-					@click="cancelConfirm"
-				>
-					Cancel
-				</button>
+				<UiButton variant="primary" size="sm" @click="confirmUpdate">Yes, update now</UiButton>
+				<UiButton variant="outline" size="sm" @click="cancelConfirm">Cancel</UiButton>
 			</div>
 		</div>
 
@@ -409,7 +389,7 @@ function formatDuration(start?: number, end?: number) {
 		</div>
 
 		<!-- Update history -->
-		<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+		<div class="card">
 			<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
 				Update history
 			</h3>

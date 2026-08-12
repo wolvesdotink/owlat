@@ -125,39 +125,26 @@ async function handleSubmit() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4">
-		<!-- Registration blocked — invite-only (unless this is an invite redirect) -->
-		<template v-if="!isInviteRedirect">
-			<div class="mb-8 text-center">
-				<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-				<p class="text-text-secondary mt-2">Invite only</p>
-			</div>
+	<!-- Registration blocked — invite-only (unless this is an invite redirect) -->
+	<AuthShell v-if="!isInviteRedirect" subtitle="Owlat is invite only.">
+		<template #title>Welcome to <span class="lp-title-accent">Owlat</span></template>
 
-			<UiCard class="w-full max-w-md">
-				<div class="text-center space-y-4">
-					<Icon name="lucide:lock" class="w-12 h-12 text-text-tertiary mx-auto" />
-					<p class="text-text-secondary">
-						Registration is disabled. Contact your administrator for an invitation.
-					</p>
-				</div>
+		<div class="text-center space-y-4">
+			<Icon name="lucide:lock" class="w-12 h-12 text-text-tertiary mx-auto" />
+			<p class="text-text-secondary">
+				Registration is disabled. Contact your administrator for an invitation.
+			</p>
+		</div>
 
-				<p class="mt-6 text-center text-text-secondary text-sm">
-					Already have an account?
-					<NuxtLink to="/auth/login" class="link font-medium"> Sign in </NuxtLink>
-				</p>
-			</UiCard>
+		<template #footer>
+			Already have an account?
+			<NuxtLink to="/auth/login" class="link font-medium"> Sign in </NuxtLink>
 		</template>
+	</AuthShell>
 
-		<!-- Registration form (only accessible via invite redirect) -->
-		<template v-else>
-			<!-- Logo/Brand -->
-			<div class="mb-8 text-center">
-				<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-				<p class="text-text-secondary mt-2">Create your account</p>
-			</div>
-
-			<!-- Register Card -->
-			<UiCard class="w-full max-w-md">
+	<!-- Registration form (only accessible via invite redirect) -->
+	<AuthShell v-else subtitle="You've been invited to an Owlat workspace.">
+		<template #title>Create your <span class="lp-title-accent">account</span></template>
 				<!-- Error Message -->
 				<div
 					v-if="errorMessage"
@@ -227,12 +214,9 @@ async function handleSubmit() {
 					</UiButton>
 				</form>
 
-				<!-- Login Link -->
-				<p class="mt-6 text-center text-text-secondary text-sm">
-					Already have an account?
-					<NuxtLink to="/auth/login" class="link font-medium"> Sign in </NuxtLink>
-				</p>
-			</UiCard>
+		<template #footer>
+			Already have an account?
+			<NuxtLink to="/auth/login" class="link font-medium"> Sign in </NuxtLink>
 		</template>
-	</div>
+	</AuthShell>
 </template>

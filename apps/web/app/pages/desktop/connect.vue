@@ -117,13 +117,9 @@ async function handleSubmit() {
 						>
 							{{ connectionCode }}
 						</code>
-						<button
-							type="button"
-							class="btn btn-outline btn-sm shrink-0 text-xs"
-							@click="copyCode"
-						>
+						<UiButton variant="outline" size="sm" class="shrink-0" @click="copyCode">
 							{{ codeCopied ? 'Copied!' : 'Copy' }}
-						</button>
+						</UiButton>
 					</div>
 				</div>
 			</div>
@@ -150,13 +146,9 @@ async function handleSubmit() {
 					/>
 				</div>
 				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
-				<button
-					type="submit"
-					:disabled="isLoading"
-					class="btn btn-primary w-full"
-				>
+				<UiButton type="submit" :disabled="isLoading" full-width>
 					{{ isLoading ? 'Signing in…' : 'Sign in & connect' }}
-				</button>
+				</UiButton>
 			</form>
 		</div>
 	</div>

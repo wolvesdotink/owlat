@@ -154,13 +154,9 @@ function startOver() {
 					class="input input-sm text-sm"
 				/>
 				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
-				<button
-					type="submit"
-					:disabled="isConnecting"
-					class="btn btn-primary w-full"
-				>
+				<UiButton type="submit" :disabled="isConnecting" full-width>
 					{{ isConnecting ? 'Opening browser…' : 'Connect workspace' }}
-				</button>
+				</UiButton>
 			</form>
 
 			<div v-else class="space-y-4">
@@ -184,13 +180,9 @@ function startOver() {
 						class="input input-sm font-mono text-sm"
 					/>
 					<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
-					<button
-						type="submit"
-						:disabled="isRedeeming || !pastedCode.trim()"
-						class="btn btn-primary w-full"
-					>
+					<UiButton type="submit" :disabled="isRedeeming || !pastedCode.trim()" full-width>
 						{{ isRedeeming ? 'Connecting…' : 'Connect with code' }}
-					</button>
+					</UiButton>
 				</form>
 				<button
 					type="button"

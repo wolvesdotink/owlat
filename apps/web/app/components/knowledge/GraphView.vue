@@ -40,7 +40,7 @@ const typeFilters = computed(() => [
 	<!-- Flag gate: the view renders only when ai.knowledge.analytics is on. -->
 	<div v-if="!analyticsEnabled" class="flex flex-col items-center justify-center py-20 text-center">
 		<div
-			class="w-14 h-14 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4"
+			class="w-14 h-14 rounded-full bg-bg-surface shadow-surface-1 flex items-center justify-center mb-4"
 		>
 			<Icon name="lucide:bar-chart-3" class="w-7 h-7 text-text-tertiary" />
 		</div>
@@ -74,7 +74,7 @@ const typeFilters = computed(() => [
 			<div class="flex-1" />
 
 			<!-- depth toggle -->
-			<div class="flex items-center gap-1 rounded-lg border border-border-subtle p-0.5">
+			<div class="flex items-center gap-1 rounded-lg bg-bg-surface p-0.5">
 				<button
 					v-for="d in [1, 2] as const"
 					:key="d"
@@ -109,7 +109,7 @@ const typeFilters = computed(() => [
 				/>
 
 				<!-- Edge legend -->
-				<div class="flex flex-wrap items-center gap-4 text-[11px] text-text-tertiary px-1">
+				<div class="flex flex-wrap items-center gap-4 text-2xs text-text-tertiary px-1">
 					<span class="flex items-center gap-1.5">
 						<svg width="22" height="8">
 							<line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" stroke-width="1.5" />
@@ -154,7 +154,7 @@ const typeFilters = computed(() => [
 			<!-- Sidebar: selection (click-through) + insights -->
 			<div class="space-y-4">
 				<!-- Click-through side panel -->
-				<div v-if="selectedEntry" class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+				<div v-if="selectedEntry" class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 					<div class="flex items-start justify-between gap-2 mb-3">
 						<div class="flex items-center gap-2 min-w-0">
 							<div
@@ -175,14 +175,14 @@ const typeFilters = computed(() => [
 								<p class="text-sm font-semibold text-text-primary truncate">
 									{{ selectedEntry.title }}
 								</p>
-								<p class="text-[11px] text-text-tertiary">
+								<p class="text-2xs text-text-tertiary">
 									{{ typeLabel(selectedEntry.entryType) }}
 								</p>
 							</div>
 						</div>
 						<button
 							type="button"
-							class="text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0"
+							class="rounded text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							aria-label="Close panel"
 							@click="clearSelection"
 						>
