@@ -221,6 +221,12 @@ services:
   # hard requirement if you ever do publish the port).
   redis:
     image: redis:${REDIS_VERSION:-7.4-alpine}
+    # Run directly as the image's redis user (uid 999, gid 1000). With
+    # cap_drop: ALL the root entrypoint has no DAC_OVERRIDE, so it cannot
+    # traverse an appendonlydir created (and owned as 999) by a previous run —
+    # startup fails on preserved volumes (#551). As non-root the entrypoint
+    # skips its chown/su-exec path entirely and works for fresh volumes too.
+    user: "999:1000"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-owlat-internal}
@@ -257,6 +263,18 @@ services:
       CLAMAV_NO_FRESHCLAMD: "false"
     cap_drop:
       - ALL
+    # ClamAV's entrypoint runs as root to prepare /run/clamav and chown the
+    # signature DB under /var/lib/clamav before dropping to the clamav user.
+    # Under a bare cap_drop: ALL it restart-loops on "can't change ownership"
+    # (#551), on fresh and preserved volumes alike. These five capabilities are
+    # the minimal set its entrypoint needs — don't remove them in a hardening
+    # sweep without re-testing both volume states.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     # Profile-gated on the `clamav` docker profile — the scan.files feature flag

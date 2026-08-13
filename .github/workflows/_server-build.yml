@@ -166,6 +166,44 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+  # ── Verify the pushed images are anonymously pullable ────────────────────────
+  # Self-host installs pull these images without credentials. GHCR packages
+  # created by a GITHUB_TOKEN push default to PRIVATE, and flipping them public
+  # is a manual org-settings step with no API — so a brand-new image (or a
+  # visibility regression) ships a release nobody can install (#551). This job
+  # deliberately does NOT log in to GHCR; a failure here fails the caller's
+  # `server` job and therefore blocks the draft release from going live.
+  verify-anonymous-pull:
+    name: Verify images pull anonymously
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Inspect each release image without credentials
+        run: |
+          set -euo pipefail
+          failed=0
+          # Keep this list in sync with the build-and-push matrix above.
+          for name in web mta updater convex-deploy imap mail-sync code-worker setup; do
+            image="${IMAGE_PREFIX}/${name}:${{ inputs.version }}"
+            if docker manifest inspect "$image" > /dev/null 2>&1; then
+              echo "OK       ${image}"
+            else
+              echo "FAILED   ${image} — not anonymously pullable (package private or missing)"
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo
+            echo "One or more GHCR packages are not publicly pullable. New packages"
+            echo "default to private: make them public under the org's Packages"
+            echo "settings, then re-run this job."
+            exit 1
+          fi
+
   # ── Generate pinned compose template + attach it to the caller's Release ─────
   upload-release-assets:
     name: Upload compose assets to the Release

@@ -1,5 +1,11 @@
+'use node';
+
 /**
  * `route` Agent step (module) — see ADR-0014.
+ *
+ * Node-only like the step registry that consumes it (`../index.ts`): the
+ * hosted auto-send gates below execute plugin gate modules out of the
+ * `'use node'` generated registry.
  *
  * Routes the agent's draft based on circuit-breaker safety, graduated
  * autonomy, and DRAFT-QUALITY scoring. The auto-approve threshold is compared

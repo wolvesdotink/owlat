@@ -1,3 +1,7 @@
+'use node';
+
+// Node-only like its single caller (`./walker.ts`): it executes hosted plugin
+// step modules out of the `'use node'` registry in `./steps`.
 import type { ActionCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';

@@ -19,7 +19,6 @@ apps/api/convex/topics/subscription.ts
 apps/api/convex/topics/topics.ts
 apps/api/convex/transactional/lifecycle.ts
 apps/api/convex/unifiedMessages.ts
-apps/api/convex/visualizationAgent.ts
 apps/docs/app/components/content/ArchAgentPipeline.vue
 apps/docs/app/components/content/ArchCommunicationHub.vue
 apps/docs/app/components/content/ArchDataModel.vue
