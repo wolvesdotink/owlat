@@ -96,22 +96,22 @@ watchEffect(() => {
 
 // ── Operations ──
 const setDisplayNameOp = useBackendOperation(api.mail.mailbox.setDisplayName, {
-	label: t('welcome.freshStart.operations.saveDisplayName'),
+	label: () => t('welcome.freshStart.operations.saveDisplayName'),
 });
 const createSignatureOp = useBackendOperation(api.mail.signatures.create, {
-	label: t('welcome.freshStart.operations.saveSignature'),
+	label: () => t('welcome.freshStart.operations.saveSignature'),
 });
 const createDraftOp = useBackendOperation(api.mail.drafts.create, {
-	label: t('welcome.freshStart.operations.prepareTestEmail'),
+	label: () => t('welcome.freshStart.operations.prepareTestEmail'),
 });
 const updateDraftOp = useBackendOperation(api.mail.drafts.update, {
-	label: t('welcome.freshStart.operations.prepareTestEmail'),
+	label: () => t('welcome.freshStart.operations.prepareTestEmail'),
 });
 const sendDraftOp = useBackendOperation(api.mail.drafts.send, {
-	label: t('welcome.freshStart.operations.sendTestEmail'),
+	label: () => t('welcome.freshStart.operations.sendTestEmail'),
 });
 const completeOp = useBackendOperation(api.auth.userOnboarding.completeFreshStart, {
-	label: t('welcome.freshStart.operations.finishSetup'),
+	label: () => t('welcome.freshStart.operations.finishSetup'),
 });
 
 const testSending = ref(false);
