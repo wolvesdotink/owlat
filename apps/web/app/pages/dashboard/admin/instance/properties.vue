@@ -262,7 +262,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Contact Properties</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Contact Properties</h1>
 					<p class="mt-1 text-text-secondary">Create and manage custom fields for your contacts</p>
 				</div>
 				<UiButton @click="openCreateModal()">

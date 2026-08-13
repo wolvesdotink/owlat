@@ -17,15 +17,21 @@ function start() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-base text-text-primary grid place-items-center px-6 py-12">
-		<div class="w-full max-w-xl">
+	<div
+		class="relative isolate min-h-screen overflow-hidden bg-bg-base text-text-primary grid place-items-center px-6 py-12"
+	>
+		<UiHeroField />
+
+		<div class="relative w-full max-w-xl">
 			<UiCard padding="lg">
 				<div class="flex items-center gap-3 mb-6">
 					<UiIconBox icon="lucide:feather" size="lg" variant="brand" rounded="2xl" />
-					<span class="text-sm font-medium text-text-secondary tracking-wide uppercase">Owlat setup</span>
+					<span class="lp-eyebrow">Owlat setup</span>
 				</div>
 
-				<h1 class="font-display text-4xl leading-tight mb-3">Welcome to Owlat.</h1>
+				<h1 class="text-4xl font-medium tracking-[-0.02em] leading-tight mb-3">
+					Welcome to <span class="lp-title-accent">Owlat</span>.
+				</h1>
 				<p class="text-text-secondary leading-relaxed mb-6">
 					A few choices and we'll boot the rest of your install. You can change everything later
 					from <span class="font-mono text-sm text-text-primary">Settings → Features</span>.

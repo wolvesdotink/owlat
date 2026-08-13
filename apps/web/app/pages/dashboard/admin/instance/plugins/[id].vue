@@ -178,7 +178,7 @@ function confirmOrphanClear() {
 				<!-- Header -->
 				<div class="mb-6">
 					<div class="flex items-center gap-2 flex-wrap">
-						<h1 class="text-2xl font-semibold text-text-primary">{{ entry.pluginId }}</h1>
+						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ entry.pluginId }}</h1>
 						<UiBadge :variant="entry.enabled ? 'success' : 'neutral'" dot>
 							{{ entry.enabled ? 'Enabled' : 'Disabled' }}
 						</UiBadge>

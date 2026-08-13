@@ -108,7 +108,7 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 				Delivery setup
 			</NuxtLink>
-			<h1 class="text-2xl font-semibold text-text-primary">Migrate from Mailchimp / Mandrill</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Migrate from Mailchimp / Mandrill</h1>
 			<p class="mt-2 max-w-3xl text-sm text-text-secondary">
 				Keep sending through your existing Mailchimp Transactional account on day one — same
 				reputation, same deliverability — while Owlat measures both senders on identical

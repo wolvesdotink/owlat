@@ -192,7 +192,7 @@ const steps = computed(() =>
 		<header class="flex items-center gap-3">
 			<UiIconBox icon="lucide:mail" size="lg" variant="brand" rounded="2xl" />
 			<div>
-				<h1 class="text-2xl font-semibold">Import your mail</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em]">Import your mail</h1>
 				<p class="text-text-secondary text-sm mt-0.5">
 					Bring your existing mailbox into Owlat — and let your AI assistant learn from it.
 				</p>
@@ -442,13 +442,13 @@ const steps = computed(() =>
 
 						<div class="grid grid-cols-2 gap-3 mt-6 text-left">
 							<div class="rounded-xl bg-text-tertiary/5 p-4">
-								<p class="text-2xl font-semibold">
+								<p class="text-2xl font-medium tracking-[-0.02em]">
 									{{ migration?.messagesImported?.toLocaleString() ?? 0 }}
 								</p>
 								<p class="text-xs text-text-tertiary mt-0.5">messages imported</p>
 							</div>
 							<div v-if="isAiIndexing" class="rounded-xl bg-text-tertiary/5 p-4">
-								<p class="text-2xl font-semibold">
+								<p class="text-2xl font-medium tracking-[-0.02em]">
 									{{ migration?.messagesIndexed?.toLocaleString() ?? 0 }}
 								</p>
 								<p class="text-xs text-text-tertiary mt-0.5">conversations learned</p>

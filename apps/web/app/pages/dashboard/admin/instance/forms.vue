@@ -54,7 +54,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Form Endpoints</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Form Endpoints</h1>
 					<p class="mt-1 text-text-secondary">Create embeddable signup forms for your website</p>
 				</div>
 				<UiButton class="gap-2" @click="isAddModalOpen = true">

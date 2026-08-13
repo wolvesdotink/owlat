@@ -186,7 +186,7 @@ const buttonTextColor = computed(() => {
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 				Back to Settings
 			</NuxtLink>
-			<h1 class="text-2xl font-semibold text-text-primary">Email Theme</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Email Theme</h1>
 			<p class="mt-1 text-text-secondary">Configure default styling for your email templates</p>
 		</div>
 
@@ -225,7 +225,7 @@ const buttonTextColor = computed(() => {
 									id="primary-color-picker"
 									v-model="form.primaryColor"
 									type="color"
-									class="w-12 h-10 rounded-lg border border-border-subtle cursor-pointer bg-transparent"
+									class="w-12 h-10 rounded-lg shadow-surface-1 cursor-pointer bg-transparent"
 									:disabled="isSaving"
 								/>
 								<input
@@ -256,7 +256,7 @@ const buttonTextColor = computed(() => {
 									id="background-color-picker"
 									v-model="form.backgroundColor"
 									type="color"
-									class="w-12 h-10 rounded-lg border border-border-subtle cursor-pointer bg-transparent"
+									class="w-12 h-10 rounded-lg shadow-surface-1 cursor-pointer bg-transparent"
 									:disabled="isSaving"
 								/>
 								<input

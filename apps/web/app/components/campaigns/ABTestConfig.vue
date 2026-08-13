@@ -17,7 +17,9 @@ const props = defineProps<{
 const abTestEnabled = defineModel<boolean>('abTestEnabled', { required: true });
 const abTestType = defineModel<ABTestType>('abTestType', { required: true });
 const abVariantBSubject = defineModel<string>('abVariantBSubject', { required: true });
-const abVariantBTemplateId = defineModel<Id<'emailTemplates'> | null>('abVariantBTemplateId', { required: true });
+const abVariantBTemplateId = defineModel<Id<'emailTemplates'> | null>('abVariantBTemplateId', {
+	required: true,
+});
 const abSplitPercentage = defineModel<number>('abSplitPercentage', { required: true });
 const abWinnerCriteria = defineModel<ABWinnerCriteria>('abWinnerCriteria', { required: true });
 const abTestDuration = defineModel<number>('abTestDuration', { required: true });
@@ -111,16 +113,14 @@ const filteredTemplates = computed(() => {
 							/>
 							<div>
 								<p class="font-medium text-text-primary">Email Content</p>
-								<p class="text-sm text-text-secondary mt-0.5">
-									Test different email templates
-								</p>
+								<p class="text-sm text-text-secondary mt-0.5">Test different email templates</p>
 							</div>
 						</label>
 					</div>
 				</div>
 
 				<!-- Variant A (Current) -->
-				<div class="p-4 bg-bg-surface border border-border-subtle rounded-lg">
+				<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 					<div class="flex items-center gap-2 mb-2">
 						<div
 							class="w-6 h-6 rounded-full bg-brand/20 text-brand flex items-center justify-center text-xs font-bold"
@@ -135,7 +135,7 @@ const filteredTemplates = computed(() => {
 				</div>
 
 				<!-- Variant B Configuration -->
-				<div class="p-4 bg-bg-surface border border-border-subtle rounded-lg">
+				<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 					<div class="flex items-center gap-2 mb-3">
 						<div
 							class="w-6 h-6 rounded-full bg-brand/20 text-brand flex items-center justify-center text-xs font-bold"
@@ -166,11 +166,7 @@ const filteredTemplates = computed(() => {
 							<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
 							Email Template B
 						</label>
-						<select
-							id="abVariantBTemplate"
-							v-model="abVariantBTemplateId"
-							class="input mt-1.5"
-						>
+						<select id="abVariantBTemplate" v-model="abVariantBTemplateId" class="input mt-1.5">
 							<option :value="null" disabled>Select a template...</option>
 							<option
 								v-for="template in filteredTemplates"

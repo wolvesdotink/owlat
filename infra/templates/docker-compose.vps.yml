@@ -9,9 +9,12 @@
 #   • Every Owlat image MUST be pinned to a concrete OWLAT_VERSION (fail-
 #     closed — if unset, compose refuses to start, rather than silently
 #     pulling :latest).
-#   • Third-party images are pinned to a specific minor version tag. In
-#     production, the release pipeline rewrites these to :tag@sha256:<digest>
-#     via scripts/gen-release-compose.sh so tenants pull immutable artifacts.
+#   • Third-party images are pinned to a specific minor version tag — tag
+#     only, deliberately no @sha256: upstream registries have purged old
+#     manifests before (Convex pinned SHAs, ClamAV minor tags), and a digest
+#     that vanishes bricks every install pulling it. (The Owlat images in the
+#     RELEASE-generated docker-compose-<version>.yml ARE digest-pinned; that
+#     is scripts/gen-release-compose.sh, which does not touch this template.)
 #   • CONVEX_BACKEND_VERSION / CONVEX_DASHBOARD_VERSION let operators pin
 #     upstream Convex images without editing the template.
 #
@@ -254,10 +257,17 @@ services:
     restart: unless-stopped
 
   # ── Redis (MTA job queue) ──
-  # Pinned minor version (upgrades from 7.x to 8.x require manual approval).
-  # Production releases further pin to @sha256 via gen-release-compose.sh.
+  # Pinned minor version, tag only — see the image pinning policy above for
+  # why upstream images carry no @sha256. Upgrades from 7.x to 8.x require
+  # manual approval.
   redis:
     image: redis:7.4-alpine
+    # Run directly as the image's redis user (uid 999, gid 1000). With
+    # cap_drop: ALL the root entrypoint has no DAC_OVERRIDE, so it cannot
+    # traverse an appendonlydir created (and owned as 999) by a previous run —
+    # startup fails on preserved volumes (#551). As non-root the entrypoint
+    # skips its chown/su-exec path entirely and works for fresh volumes too.
+    user: "999:1000"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
@@ -274,8 +284,8 @@ services:
 
   # ── ClamAV (antivirus scanning) ──
   # `stable` tracks the current supported release — ClamAV deletes old minor
-  # tags from Docker Hub, so a numeric pin rots into a 404. Production
-  # releases further pin to @sha256.
+  # tags from Docker Hub, so a numeric pin rots into a 404 (and a digest pin
+  # would rot even faster; see the image pinning policy above).
   clamav:
     image: clamav/clamav:stable
     volumes:
@@ -292,6 +302,18 @@ services:
       CLAMAV_NO_FRESHCLAMD: "false"
     cap_drop:
       - ALL
+    # ClamAV's entrypoint runs as root to prepare /run/clamav and chown the
+    # signature DB under /var/lib/clamav before dropping to the clamav user.
+    # Under a bare cap_drop: ALL it restart-loops on "can't change ownership"
+    # (#551), on fresh and preserved volumes alike. These five capabilities are
+    # the minimal set its entrypoint needs — don't remove them in a hardening
+    # sweep without re-testing both volume states.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     profiles:

@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/mail-message",
-	"version": "0.4.2",
+	"version": "0.4.3",
 	"private": true,
 	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
@@ -24,6 +24,10 @@
 		"./compose/encoding": {
 			"types": "./src/compose/encoding.ts",
 			"import": "./src/compose/encoding.ts"
+		},
+		"./compose/signedHeaders": {
+			"types": "./src/compose/signedHeaders.ts",
+			"import": "./src/compose/signedHeaders.ts"
 		},
 		"./compose/messageId": {
 			"types": "./src/compose/messageId.ts",

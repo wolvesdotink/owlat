@@ -145,7 +145,9 @@ const {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:send" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Delivery provider</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						Delivery provider
+					</h1>
 					<p class="mt-1 text-text-secondary">
 						Configure and validate the email delivery provider this instance sends through
 					</p>
@@ -209,9 +211,9 @@ const {
 										Add to your <code class="text-text-primary">.env</code>, then restart the
 										instance
 									</p>
-									<button
-										type="button"
-										class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+									<UiButton
+										variant="ghost"
+										size="sm"
 										:title="isCopied('env-snippet') ? 'Copied' : 'Copy .env snippet'"
 										@click="copy(envSnippet, 'env-snippet')"
 									>
@@ -221,7 +223,7 @@ const {
 											:class="isCopied('env-snippet') ? 'text-success' : ''"
 										/>
 										{{ isCopied('env-snippet') ? 'Copied' : 'Copy' }}
-									</button>
+									</UiButton>
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
@@ -236,9 +238,9 @@ const {
 							<div>
 								<div class="flex items-center justify-between mb-2">
 									<p class="text-xs font-medium text-text-primary">Or set each one from the CLI</p>
-									<button
-										type="button"
-										class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+									<UiButton
+										variant="ghost"
+										size="sm"
 										:title="isCopied('env-cmd') ? 'Copied' : 'Copy command'"
 										@click="copy(envSetCommand, 'env-cmd')"
 									>
@@ -248,7 +250,7 @@ const {
 											:class="isCopied('env-cmd') ? 'text-success' : ''"
 										/>
 										{{ isCopied('env-cmd') ? 'Copied' : 'Copy' }}
-									</button>
+									</UiButton>
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
@@ -413,9 +415,9 @@ const {
 					<div v-if="feedbackWebhookUrl">
 						<div class="flex items-center justify-between mb-2">
 							<p class="text-xs font-medium text-text-primary">SNS subscription endpoint</p>
-							<button
-								type="button"
-								class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							<UiButton
+								variant="ghost"
+								size="sm"
 								:title="isCopied('ses-url') ? 'Copied' : 'Copy endpoint URL'"
 								@click="copy(feedbackWebhookUrl, 'ses-url')"
 							>
@@ -425,7 +427,7 @@ const {
 									:class="isCopied('ses-url') ? 'text-success' : ''"
 								/>
 								{{ isCopied('ses-url') ? 'Copied' : 'Copy' }}
-							</button>
+							</UiButton>
 						</div>
 						<pre
 							class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"

@@ -80,12 +80,7 @@ function retry() {
 				<p class="text-sm text-text-secondary">
 					This panel ran into a problem and was hidden to keep the rest of the page working.
 				</p>
-				<button
-					class="px-3 py-1 text-sm font-medium bg-bg-elevated border border-border-default rounded-md hover:bg-bg-base transition-colors"
-					@click="retry"
-				>
-					Try again
-				</button>
+				<UiButton variant="secondary" size="sm" @click="retry">Try again</UiButton>
 			</div>
 		</div>
 		<Suspense v-else :key="attempt">

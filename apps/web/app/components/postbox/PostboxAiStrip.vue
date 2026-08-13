@@ -228,31 +228,37 @@ const visible = computed(
 
 		<!-- Two ghost actions. -->
 		<div class="flex items-center gap-1 px-2 py-1">
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface"
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2.5 py-1 text-xs"
 				:aria-expanded="openSection === 'ask'"
 				aria-label="Ask about this thread"
 				@click="toggleAsk"
 			>
-				<Icon name="lucide:message-circle-question" class="w-3.5 h-3.5" />
+				<template #iconLeft>
+					<Icon name="lucide:message-circle-question" class="w-3.5 h-3.5" />
+				</template>
 				Ask
-			</button>
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50"
+			</UiButton>
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2.5 py-1 text-xs"
 				:aria-expanded="openSection === 'suggest'"
 				:disabled="suggestBusy"
 				aria-label="Draft a reply"
 				@click="toggleSuggest"
 			>
-				<Icon
-					:name="suggestBusy ? 'lucide:loader-2' : 'lucide:wand-2'"
-					class="w-3.5 h-3.5"
-					:class="{ 'animate-spin': suggestBusy }"
-				/>
+				<template #iconLeft>
+					<Icon
+						:name="suggestBusy ? 'lucide:loader-2' : 'lucide:wand-2'"
+						class="w-3.5 h-3.5"
+						:class="{ 'animate-spin': suggestBusy }"
+					/>
+				</template>
 				Draft reply
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Ask: grounded Q&A about THIS thread (ephemeral history). -->
@@ -277,7 +283,7 @@ const visible = computed(
 			</div>
 
 			<div
-				class="flex items-center gap-2 rounded-full border border-border-subtle bg-bg-surface px-3 py-1.5 focus-within:border-brand"
+				class="input input-sm flex items-center gap-2 rounded-full py-1.5 focus-within:ring-1 focus-within:ring-brand"
 			>
 				<Icon name="lucide:sparkles" class="w-4 h-4 shrink-0 text-text-tertiary" />
 				<input
