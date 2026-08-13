@@ -166,9 +166,16 @@ watch(
 	{ flush: 'post' }
 );
 
-/** Drill-in "back": from the reader to the folder's list route. */
+/**
+ * Drill-in "back": from the reader to the folder's list route. Replace, don't
+ * push — opening the message pushed the entry this button dismisses, so a push
+ * here would leave the system Back gesture reopening the reader the user just
+ * closed, and grow the history stack by two entries per open/close cycle.
+ */
 function backToList() {
-	void navigateTo(`/dashboard/postbox/${String(props.folderId ?? props.folderRole)}`);
+	void navigateTo(`/dashboard/postbox/${String(props.folderId ?? props.folderRole)}`, {
+		replace: true,
+	});
 }
 
 // Mode shortcuts (window-level, like the triage-undo chord above): B (and

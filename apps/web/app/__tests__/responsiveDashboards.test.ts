@@ -40,6 +40,12 @@ describe('Postbox — stacked drill-in below lg', () => {
 		expect(postboxLayout).toContain('@click="backToList"');
 	});
 
+	it('dismisses the reader without pushing a history entry', () => {
+		// Opening the message already pushed the entry this button dismisses: a
+		// push here makes the system Back gesture reopen the closed reader.
+		expect(postboxLayout).toMatch(/function backToList\(\)[\s\S]*?replace: true/);
+	});
+
 	it('puts the folder rail behind a drawer handle', () => {
 		expect(postboxLayout).toContain('aria-label="Open folders"');
 		expect(postboxLayout).toContain('v-model:open="railOpen"');
