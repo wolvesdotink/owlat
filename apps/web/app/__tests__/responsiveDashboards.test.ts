@@ -20,6 +20,7 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 
 const postboxLayout = read('../components/postbox/PostboxLayout.vue');
 const folderDrawer = read('../components/postbox/PostboxFolderDrawer.vue');
+const replyQueueStrip = read('../components/postbox/PostboxReplyQueueStrip.vue');
 const postboxSearch = read('../pages/dashboard/postbox/search.vue');
 const contacts = read('../pages/dashboard/audience/contacts/index.vue');
 const marketing = read('../pages/dashboard/send/marketing/index.vue');
@@ -70,6 +71,37 @@ describe('Postbox — stacked drill-in below lg', () => {
 		expect(postboxSearch).toContain(":class=\"activeMessageId ? 'hidden lg:flex' : 'flex'\"");
 		expect(postboxSearch).toContain(":class=\"activeMessageId ? 'block' : 'hidden lg:block'\"");
 		expect(postboxSearch).toContain('@click="activeMessageId = null"');
+	});
+});
+
+describe('Mobile-only controls clear the 44px touch target', () => {
+	// These four only exist below `lg`/`md`, i.e. they are only ever operated by a
+	// thumb — an icon in `p-1` is a 24px target and misses about as often as it
+	// hits. 44px is the iOS HIG / WCAG 2.5.5 minimum.
+	it('sizes the folder-drawer handle to 44px square', () => {
+		expect(postboxLayout).toMatch(/w-11 h-11[\s\S]{0,300}?aria-label="Open folders"/);
+	});
+
+	it('sizes the reader back bar to 44px tall', () => {
+		expect(postboxLayout).toMatch(/px-3 py-3[\s\S]{0,300}?@click="backToList"/);
+	});
+
+	it('sizes the search results back button to 44px tall', () => {
+		expect(postboxSearch).toMatch(/px-2 py-3[\s\S]{0,300}?@click="activeMessageId = null"/);
+	});
+
+	it('grows the contacts card checkbox hit area without growing the box', () => {
+		// The box stays 20px (the row has no room for more); the transparent
+		// pseudo-element carries the target — same trick as preferences.vue.
+		expect(contacts).toMatch(/class="contact-select /);
+		expect(contacts).toContain('.contact-select::after');
+		expect(contacts).toMatch(/inset:\s*-12px/);
+	});
+
+	it('sizes the reply-queue strip dismiss button to 44px square', () => {
+		expect(replyQueueStrip).toMatch(
+			/w-11 h-11[\s\S]{0,300}?aria-label="Dismiss reply queue reminder"/
+		);
 	});
 });
 

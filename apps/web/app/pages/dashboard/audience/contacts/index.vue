@@ -668,7 +668,7 @@ onUnmounted(() => {
 						>
 							<button
 								v-if="canManageContacts"
-								class="w-5 h-5 shrink-0 rounded border flex items-center justify-center transition-colors"
+								class="contact-select w-5 h-5 shrink-0 rounded border flex items-center justify-center transition-colors"
 								:class="[
 									bulkSelection.selectedIds.value.has(contact._id)
 										? 'bg-brand border-brand text-text-inverse'
@@ -925,3 +925,20 @@ onUnmounted(() => {
 		/>
 	</div>
 </template>
+
+<style scoped>
+/* The card list's row checkbox paints at 20px — the size the row wants — but a
+ * thumb needs 44px. A transparent pseudo-element grows the hit area without
+ * moving anything in the row (same trick as the recipient preferences page);
+ * `z-10` keeps the overlap with the row's own tap target on the checkbox. */
+.contact-select {
+	position: relative;
+	z-index: 10;
+}
+
+.contact-select::after {
+	content: '';
+	position: absolute;
+	inset: -12px;
+}
+</style>
