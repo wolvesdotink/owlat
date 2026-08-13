@@ -197,6 +197,23 @@
 			}
 		}
 	},
+	"postbox": {
+		"mailboxGuard": {
+			"loading": "Postfach wird geladen",
+			"reservedHeading": "Ihr Postfach wird eingerichtet",
+			"reservedBody": "{address} ist für Sie reserviert. Es erscheint hier automatisch, sobald es bereit ist.",
+			"awaitingDomainHeading": "Ihr Postfach ist reserviert",
+			"awaitingDomainBody": "{address} ist für Sie reserviert. Es wird hier automatisch aktiv, sobald die Versanddomain Ihres Workspace verifiziert ist.",
+			"externalHeading": "Verbinden Sie Ihre E-Mails",
+			"externalBody": "Sie haben hier noch kein Postfach — verbinden Sie ein bestehendes Konto, um darüber in der Postbox zu lesen und zu senden.",
+			"externalCta": "Konto verbinden",
+			"deadEndHeading": "Noch kein Postfach",
+			"deadEndAskedBody": "Wir haben Ihrer Administration mitgeteilt, dass Sie ein Postfach brauchen. Es erscheint hier, sobald es eingerichtet ist.",
+			"deadEndBody": "Nur eine Administration kann Ihnen ein Postfach einrichten. Senden Sie eine kurze Anfrage — sie kommt direkt in der App an.",
+			"deadEndCta": "Administration fragen",
+			"requestOperation": "Postfach anfragen"
+		}
+	},
 	"welcome": {
 		"pageTitle": "Willkommen — Owlat",
 		"loading": "Alles wird vorbereitet…",
