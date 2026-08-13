@@ -49,15 +49,21 @@ const { data: canSendData, isLoading: transportLoading } = useOrganizationQuery(
 );
 const canSend = computed(() => canSendData.value ?? false);
 
-// Did this member actually SEE the "still setting up sending" state? If they
-// did and the transport lands while they're here, the row must not just quietly
-// swap to a button — it says so. (A member who arrives after sending already
-// works was never blocked and gets the plain button.) The out-of-session case is
-// covered server-side by the "you can send now" notice — see
-// `auth/sendReadyNotices.ts`.
+// Was this member actually TOLD that sending isn't set up yet? If they were and
+// the transport lands while they're here, the row must not just quietly swap to
+// a button — it says so. (A member who arrives after sending already works was
+// never blocked and gets the plain button.) The out-of-session case is covered
+// server-side by the "you can send now" notice — see `auth/sendReadyNotices.ts`.
+//
+// The latch is permanent by design — "sending just got set up" stays true for
+// the rest of the visit — so it may only be set by a SETTLED answer. `canSend`
+// collapses `undefined` to `false`, and the probe also stops loading when it
+// errors or times out; latching on that would announce "sending just got set
+// up" the moment a hiccuping probe finally answers `true`, about an instance
+// that could send all along. Only a literal `false` from the server counts.
 const sawBlocked = ref(false);
 watchEffect(() => {
-	if (!transportLoading.value && !canSend.value) sawBlocked.value = true;
+	if (!transportLoading.value && canSendData.value === false) sawBlocked.value = true;
 });
 const justUnblocked = computed(() => sawBlocked.value && canSend.value);
 
