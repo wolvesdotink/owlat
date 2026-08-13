@@ -69,6 +69,7 @@ const channelFields: Record<ChannelKind, ConfigField[]> = {
 			label: 'Auth Token',
 			placeholder: 'Enter your Twilio auth token',
 			type: 'password',
+			hint: 'Used to send, and to verify the signature on inbound Twilio webhooks.',
 		},
 		{ key: 'phoneNumber', label: 'Phone Number', placeholder: '+1234567890', type: 'text' },
 	],
@@ -92,13 +93,21 @@ const channelFields: Record<ChannelKind, ConfigField[]> = {
 			placeholder: 'Enter your phone number ID',
 			type: 'text',
 		},
+		{
+			key: 'appSecret',
+			label: 'App Secret',
+			placeholder: 'Enter your Meta app secret',
+			type: 'password',
+			hint: 'Inbound only. Verifies the X-Hub-Signature-256 on messages Meta posts to /webhooks/whatsapp.',
+		},
+		{
+			key: 'verifyToken',
+			label: 'Verify Token',
+			placeholder: 'Any string you also paste into Meta',
+			type: 'password',
+			hint: "Inbound only. Answers Meta's subscription challenge when you point it at /webhooks/whatsapp.",
+		},
 	],
-	// No Secret Key field: its only consumer was `WebhookAdapter.validateSignature`,
-	// a verifier the inbound route never called and that D10 deleted. Inbound
-	// generic webhooks are authenticated against the GENERIC_WEBHOOK_SECRET
-	// deployment variable (apps/api/convex/webhooks/adapters/generic.ts), and the
-	// outbound POST carries no secret header — so collecting one here would seal a
-	// real shared secret into the credential envelope with nothing able to use it.
 	generic: [
 		{
 			key: 'endpointUrl',
@@ -106,6 +115,13 @@ const channelFields: Record<ChannelKind, ConfigField[]> = {
 			placeholder: 'https://example.com/webhook',
 			type: 'url',
 			hint: 'Outbound POSTs are unsigned — put any authentication in the URL itself (secret path or query token).',
+		},
+		{
+			key: 'secretKey',
+			label: 'Secret Key',
+			placeholder: 'Shared secret for inbound requests',
+			type: 'password',
+			hint: 'Inbound only. Callers to /webhooks/channel must echo it in X-Webhook-Secret or Authorization: Bearer.',
 		},
 	],
 	chat: [],
@@ -189,6 +205,15 @@ async function handleSave() {
 
 		<!-- Channel-specific fields -->
 		<template v-if="hasConfigFields">
+			<!-- Stored credentials are encrypted at rest and never read back into
+			     this form, and a save replaces the whole envelope — so a partially
+			     filled save silently drops the fields left blank, including the
+			     ones inbound verification depends on. Say so rather than let an
+			     operator discover it as a dead webhook. -->
+			<p class="text-xs text-text-tertiary">
+				Saved credentials are encrypted and not shown again. Saving replaces all of them, so fill
+				in every field you still want stored.
+			</p>
 			<div v-for="field in fields" :key="field.key">
 				<label class="block text-sm font-medium text-text-primary mb-1.5">{{ field.label }}</label>
 				<div class="relative">

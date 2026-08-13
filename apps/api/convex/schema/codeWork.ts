@@ -27,6 +27,15 @@ export const codeWorkTables = {
 		// Results
 		testResults: v.optional(v.string()),
 		errorMessage: v.optional(v.string()),
+		// Retry accounting. `attempts` counts claims (incremented when the worker
+		// takes the task), `maxAttempts` is the per-row ceiling, and
+		// `nextAttemptAt` is the backoff gate a requeued task waits behind before
+		// the worker may claim it again. All optional: rows written before retries
+		// existed carry none of them and fall back to the defaults in
+		// `lib/codeTaskRetry.ts`.
+		attempts: v.optional(v.number()),
+		maxAttempts: v.optional(v.number()),
+		nextAttemptAt: v.optional(v.number()),
 		// LLM cost tracking
 		llmCost: v.optional(v.number()),
 		// Timestamps

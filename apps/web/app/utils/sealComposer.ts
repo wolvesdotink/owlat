@@ -7,9 +7,12 @@
  * The honesty audit is a test, not a vibe: every string this can render maps 1:1
  * to a `sealState` the backend actually computed. `willSeal` is the ONLY state
  * that promises encryption; every other state explains, in plain language, why
- * the message would go out unsealed — and for `cannotSeal` sending unsealed is an
- * EXPLICIT act (the composer surfaces a distinct "Send unsealed" control, never a
- * silent plaintext send).
+ * the message would go out unsealed — and for `cannotSeal` sending unsealed is a
+ * DECISION: the sender is asked to proceed or cancel (`deriveUnsealedPrompt`)
+ * before a single plaintext message leaves, never a silent downgrade.
+ *
+ * The lock is also shown while the state is still being computed (`checking`), so
+ * the compose surface never sits silent about sealing right up until Send.
  *
  * This is the web-side mirror of the Convex `SealState` union (single source is
  * `mail/sealPolicy.ts`); the boundary keeps its own copy per this app's existing
@@ -52,9 +55,15 @@ export function sealSendBlock(
 /** The three visual tones the lock renders in (shared with the sealed badge). */
 export type SealLockTone = SealTone;
 
+/**
+ * The lock's discriminator: the three backend seal states plus `checking`, the
+ * pre-answer state the composer renders while the per-draft query is in flight.
+ */
+export type ComposerLockKind = SealState['kind'] | 'checking';
+
 export interface ComposerLockResult {
 	/** Discriminator carried through to the component for styling + branching. */
-	kind: SealState['kind'];
+	kind: ComposerLockKind;
 	/** Short lock label. */
 	summary: string;
 	/** Plain-language explanation. */
@@ -62,10 +71,11 @@ export interface ComposerLockResult {
 	tone: SealLockTone;
 	icon: string;
 	/**
-	 * True ONLY for `cannotSeal`: sending in plaintext must be an explicit act, so
-	 * the composer shows a distinct "Send unsealed" control rather than sealing
-	 * silently or blocking. `willSeal` seals automatically; `keyChanged` defers to
-	 * the key-change banner's re-accept before it can seal.
+	 * True ONLY for a `cannotSeal` state the sender can actually act on: sending in
+	 * plaintext is a decision, so the composer offers a distinct control that opens
+	 * the proceed-or-cancel prompt rather than sealing silently or dead-ending.
+	 * `willSeal` seals automatically; `keyChanged` defers to the key-change
+	 * banner's re-accept; `no_recipients` has nothing to decide yet.
 	 */
 	allowSendUnsealed: boolean;
 }
@@ -108,8 +118,22 @@ function cannotSealDetail(reason: SealSkipReason): string {
 /**
  * Derive the composer lock indicator from a draft's seal state. Pure — no I/O —
  * so the honesty audit can enumerate every reachable string against its state.
+ * `null` is the not-yet-answered state (the per-draft query is still in flight):
+ * it renders as `checking` rather than as nothing, because an absent lock reads
+ * as "nothing to say about sealing" — which is a claim of its own.
  */
-export function deriveComposerLock(state: SealState): ComposerLockResult {
+export function deriveComposerLock(state: SealState | null): ComposerLockResult {
+	if (!state) {
+		return {
+			kind: 'checking',
+			summary: 'Checking whether this message can be sealed',
+			detail:
+				'Owlat is looking up whether everyone you are writing to can receive sealed mail. This updates as you change recipients.',
+			tone: 'muted',
+			icon: 'lucide:loader-2',
+			allowSendUnsealed: false,
+		};
+	}
 	switch (state.kind) {
 		case 'willSeal':
 			return {
@@ -137,7 +161,64 @@ export function deriveComposerLock(state: SealState): ComposerLockResult {
 				detail: cannotSealDetail(state.reason),
 				tone: 'muted',
 				icon: 'lucide:lock-open',
-				allowSendUnsealed: true,
+				// Nothing to decide until there is someone to send to.
+				allowSendUnsealed: state.reason !== 'no_recipients',
 			};
 	}
+}
+
+/**
+ * The proceed-or-cancel prompt shown before a message goes out unsealed. Copy
+ * only — the caller owns the dialog.
+ */
+export interface UnsealedSendPrompt {
+	title: string;
+	/** Why it won't be sealed, then what sending anyway means. */
+	description: string;
+	confirmLabel: string;
+	cancelLabel: string;
+}
+
+/**
+ * What sending unsealed actually costs, stated once and calmly. Appended to every
+ * reason so the decision is never presented without its consequence.
+ */
+const UNSEALED_CONSEQUENCE =
+	'Owlat will send it as ordinary email, which the mail servers it passes through can read.';
+
+/** Why this draft can't be sealed, phrased as a standalone clause for the prompt. */
+function unsealedPromptReason(reason: SealSkipReason): string {
+	switch (reason) {
+		case 'policy_off':
+			return 'Sealed mail is turned off for your workspace.';
+		case 'recipient_no_key':
+			return "Some of your recipients can't receive sealed mail yet.";
+		case 'no_recipients':
+			return 'This message has no recipients yet.';
+		case 'no_signing_key':
+			return "The address you're sending from doesn't have a sealing key yet.";
+		case 'policy_ask':
+			return 'Your workspace is set to ask before sealing.';
+		case 'flag_off':
+			return 'Sealed mail is not available on this instance yet.';
+		case 'key_changed':
+			return "A recipient's key changed and still needs review.";
+	}
+}
+
+/**
+ * Derive the unsealed-send confirmation prompt for a seal state, or `null` when
+ * plaintext is not the sender's to choose: `willSeal` needs no decision,
+ * `keyChanged` must be resolved on the thread first (never bypassable), and
+ * `no_recipients` has no send to confirm. Mirrors `allowSendUnsealed` exactly, so
+ * a lock that offers the control always has a prompt behind it.
+ */
+export function deriveUnsealedPrompt(state: SealState | null): UnsealedSendPrompt | null {
+	if (!state || state.kind !== 'cannotSeal' || state.reason === 'no_recipients') return null;
+	return {
+		title: 'Send this message unsealed?',
+		description: `${unsealedPromptReason(state.reason)} ${UNSEALED_CONSEQUENCE}`,
+		confirmLabel: 'Send unsealed',
+		cancelLabel: 'Keep editing',
+	};
 }

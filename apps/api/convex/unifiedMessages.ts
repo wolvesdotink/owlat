@@ -422,11 +422,18 @@ export const getContactChannelIdentifier = internalQuery({
  * Continues the contact's most recent thread for the channel when one exists
  * (so a manual reply lands in the same conversation), otherwise opens a fresh
  * thread. Returns the thread id; the caller schedules `dispatchOutbound`.
+ *
+ * `threadId` PINS the conversation instead of inferring it. The Team Inbox
+ * replies per message, from inside a thread the agent is already reading, and
+ * "the contact's most recent thread on this channel" is not reliably that one —
+ * an older thread reopened for triage would silently answer on the newer one.
+ * The contact composer sends no thread and keeps the inferring behaviour.
  */
 export const resolveOutboundThread = internalMutation({
 	args: {
 		contactId: v.id('contacts'),
 		channel: outboundChannelValidator,
+		threadId: v.optional(v.id('conversationThreads')),
 	},
 	returns: v.id('conversationThreads'),
 	handler: async (ctx, args): Promise<Id<'conversationThreads'>> => {
@@ -462,6 +469,17 @@ export const resolveOutboundThread = internalMutation({
 			if (!identities.some((id) => accepted.includes(id.channel))) {
 				throw new Error(`This contact has no ${args.channel} address on file.`);
 			}
+		}
+
+		// A pinned thread must belong to this contact — the id reaches us from a
+		// client, so an unrelated thread would otherwise become a place to write
+		// an outbound message about someone else.
+		if (args.threadId) {
+			const thread = await ctx.db.get(args.threadId);
+			if (!thread || thread.contactId !== args.contactId) {
+				throw new Error('That conversation does not belong to this contact.');
+			}
+			return thread._id;
 		}
 
 		// Continue the most recent thread for this contact+channel if one exists.

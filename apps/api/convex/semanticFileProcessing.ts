@@ -25,6 +25,7 @@ import { runLlmObject } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
+import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
 
 /**
@@ -60,11 +61,16 @@ export const processFile = internalAction({
 		}
 
 		if (!extractedText && !file.title) {
-			// Nothing to process — store empty embedding
+			// Nothing to process — store empty embedding. Rebuild rather than
+			// overwrite with the bare filename, so the tags typed at upload stay
+			// searchable on a file we can't extract text from.
 			await ctx.runMutation(internal.semanticFiles.updateProcessedMetadata, {
 				fileId: args.fileId,
 				embedding: [],
-				searchableText: file.filename,
+				searchableText: buildFileSearchableText({
+					filename: file.filename,
+					tags: file.tags,
+				}),
 			});
 			return;
 		}
@@ -153,16 +159,14 @@ ${textForAI}`,
 		}
 
 		// 4. Build searchable text
-		const searchableText = [
-			file.filename,
+		const searchableText = buildFileSearchableText({
+			filename: file.filename,
 			title,
 			summary,
-			...(autoTags ?? []),
-			...(file.tags ?? []),
-			extractedText.slice(0, 1000),
-		]
-			.filter(Boolean)
-			.join(' ');
+			tags: file.tags,
+			autoTags,
+			extractedText,
+		});
 
 		// 5. Store results
 		await ctx.runMutation(internal.semanticFiles.updateProcessedMetadata, {
@@ -174,7 +178,7 @@ ${textForAI}`,
 			embedding,
 			embeddingModel: embedding.length > 0 ? CURRENT_EMBEDDING_MODEL : undefined,
 			embeddingGeneratedAt: embedding.length > 0 ? Date.now() : undefined,
-			searchableText: searchableText.slice(0, 5000),
+			searchableText,
 			changeSummary,
 		});
 

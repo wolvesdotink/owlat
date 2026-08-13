@@ -22,6 +22,7 @@ import {
 	DEFAULT_FILE_POLICY,
 } from '@owlat/email-scanner';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
+import { buildFileSearchableText } from './lib/fileSearchText';
 import type { Id, Doc } from './_generated/dataModel';
 
 // ============================================================
@@ -37,7 +38,7 @@ type StorageReader = { storage: { getUrl: (id: Id<'_storage'>) => Promise<string
  */
 async function hydrateFile(
 	ctx: StorageReader,
-	file: Doc<'semanticFiles'>,
+	file: Doc<'semanticFiles'>
 ): Promise<Doc<'semanticFiles'> & { url: string | null }> {
 	return { ...file, url: await ctx.storage.getUrl(file.storageId) };
 }
@@ -45,7 +46,7 @@ async function hydrateFile(
 /** Hydrate a list of file rows with storage URLs, preserving order. */
 function hydrateFiles(
 	ctx: StorageReader,
-	files: Doc<'semanticFiles'>[],
+	files: Doc<'semanticFiles'>[]
 ): Promise<Array<Doc<'semanticFiles'> & { url: string | null }>> {
 	return Promise.all(files.map((file) => hydrateFile(ctx, file)));
 }
@@ -58,7 +59,11 @@ export const get = authedQuery({
 	handler: async (ctx, args) => {
 		const file = await ctx.db.get(args.fileId);
 		if (!file) return null;
-		return hydrateFile(ctx, file);
+		// Carry the linked conversation's subject so the detail page can label the
+		// link (and prefill its picker) with one extra point-read instead of
+		// pulling the whole thread through `inbox.queries.getThread`.
+		const thread = file.threadId ? await ctx.db.get(file.threadId) : null;
+		return { ...(await hydrateFile(ctx, file)), threadSubject: thread?.subject };
 	},
 });
 
@@ -172,11 +177,9 @@ const sourceTypeValidator = v.union(
 async function applySourceFilter(
 	ctx: StorageReader,
 	results: PaginationResult<Doc<'semanticFiles'>>,
-	sourceType: 'upload' | 'email_attachment' | 'agent_generated' | undefined,
+	sourceType: 'upload' | 'email_attachment' | 'agent_generated' | undefined
 ): Promise<PaginationResult<Doc<'semanticFiles'> & { url: string | null }>> {
-	const page = sourceType
-		? results.page.filter((f) => f.sourceType === sourceType)
-		: results.page;
+	const page = sourceType ? results.page.filter((f) => f.sourceType === sourceType) : results.page;
 	const hydrated = await hydrateFiles(ctx, page);
 	return { ...results, page: hydrated };
 }
@@ -406,9 +409,7 @@ async function insertSemanticFile(
 	}
 ): Promise<Id<'semanticFiles'>> {
 	const now = Date.now();
-	const version = args.previousVersionId
-		? await getNextVersion(ctx, args.previousVersionId)
-		: 1;
+	const version = args.previousVersionId ? await getNextVersion(ctx, args.previousVersionId) : 1;
 
 	const fileId = await ctx.db.insert('semanticFiles', {
 		storageId: args.storageId,
@@ -426,7 +427,13 @@ async function insertSemanticFile(
 		version,
 		previousVersionId: args.previousVersionId,
 		embedding: [], // Populated by processFile
-		searchableText: `${args.filename} ${args.title ?? ''}`,
+		// Provisional index payload: filename + title + the tags typed at upload.
+		// `processFile` rebuilds it with the summary/auto-tags/extracted text.
+		searchableText: buildFileSearchableText({
+			filename: args.filename,
+			title: args.title,
+			tags: args.tags,
+		}),
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -492,7 +499,10 @@ export const updateProcessedMetadata = internalMutation({
 });
 
 /**
- * Update user-editable metadata
+ * Update user-editable metadata.
+ *
+ * `threadId` is tri-state: omitted leaves the conversation link alone, an id
+ * sets it, and `null` clears it (the detail page's Unlink action).
  */
 export const update = authedMutation({
 	args: {
@@ -500,14 +510,39 @@ export const update = authedMutation({
 		title: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
 		contactIds: v.optional(v.array(v.id('contacts'))),
+		threadId: v.optional(v.union(v.id('conversationThreads'), v.null())),
 	},
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
 		const { fileId, ...updates } = args;
+		const file = await ctx.db.get(fileId);
+		if (!file) throwInvalidInput('File not found');
+
 		const cleanUpdates: Partial<Doc<'semanticFiles'>> = { updatedAt: Date.now() };
 		if (updates.title !== undefined) cleanUpdates.title = updates.title;
 		if (updates.tags !== undefined) cleanUpdates.tags = updates.tags;
 		if (updates.contactIds !== undefined) cleanUpdates.contactIds = updates.contactIds;
+		if (updates.threadId !== undefined) {
+			if (updates.threadId !== null && !(await ctx.db.get(updates.threadId))) {
+				throwInvalidInput('Conversation not found');
+			}
+			// `undefined` in a patch removes the field, which is what a clear means.
+			cleanUpdates.threadId = updates.threadId ?? undefined;
+		}
+
+		// A title or tag edit changes what this file should be findable by, so
+		// rebuild the index payload instead of leaving the insert-time (or
+		// pipeline-time) one behind.
+		if (updates.title !== undefined || updates.tags !== undefined) {
+			cleanUpdates.searchableText = buildFileSearchableText({
+				filename: file.filename,
+				title: updates.title ?? file.title,
+				summary: file.summary,
+				tags: updates.tags ?? file.tags,
+				autoTags: file.autoTags,
+				extractedText: file.extractedText,
+			});
+		}
 
 		await ctx.db.patch(fileId, cleanUpdates);
 
@@ -540,7 +575,10 @@ export const remove = authedMutation({
 // Helpers
 // ============================================================
 
-async function getNextVersion(ctx: MutationCtx, previousVersionId: Id<'semanticFiles'>): Promise<number> {
+async function getNextVersion(
+	ctx: MutationCtx,
+	previousVersionId: Id<'semanticFiles'>
+): Promise<number> {
 	const prev = await ctx.db.get(previousVersionId);
 	return prev ? prev.version + 1 : 1;
 }
@@ -557,7 +595,7 @@ async function getNextVersion(ctx: MutationCtx, previousVersionId: Id<'semanticF
 export async function syncFileContacts(
 	ctx: MutationCtx,
 	fileId: Id<'semanticFiles'>,
-	contactIds: Id<'contacts'>[] | undefined,
+	contactIds: Id<'contacts'>[] | undefined
 ): Promise<void> {
 	const existing = await ctx.db
 		.query('semanticFileContacts')

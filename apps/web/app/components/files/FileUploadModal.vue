@@ -27,6 +27,9 @@ const sourceType = ref<'upload' | 'email_attachment' | 'agent_generated'>('uploa
 // Contacts this file is about — associates the upload with people so it shows
 // on their Files tab and in the file's Linked Contacts panel.
 const selectedContacts = ref<PickerContact[]>([]);
+// Conversation this file belongs to — sets the file's thread link, surfaced as
+// "Linked Conversation" on the detail page.
+const selectedThread = ref<PickerThread | null>(null);
 
 // Drag state (shared drop-zone primitive). On desktop, also accept OS-level
 // file drops from Finder/Explorer, scoped to the drop-zone element.
@@ -83,6 +86,7 @@ const resetForm = () => {
 	tagsInput.value = '';
 	sourceType.value = 'upload';
 	selectedContacts.value = [];
+	selectedThread.value = null;
 	if (fileInputRef.value) {
 		fileInputRef.value.value = '';
 	}
@@ -97,6 +101,7 @@ const handleSubmit = async () => {
 		tags: parsedTags.value.length > 0 ? parsedTags.value : undefined,
 		sourceType: sourceType.value,
 		contactIds: contactIds.length > 0 ? contactIds : undefined,
+		threadId: selectedThread.value?._id,
 		previousVersionId: props.previousVersionId,
 	});
 	if (fileId === undefined) return;
@@ -241,12 +246,19 @@ watch(
 				>
 				<FilesContactPicker v-model="selectedContacts" />
 			</div>
+
+			<div>
+				<label class="block text-sm font-medium text-text-primary mb-1.5"
+					>Linked conversation (optional)</label
+				>
+				<FilesThreadPicker v-model="selectedThread" />
+			</div>
 		</div>
 
 		<template #footer>
 			<UiButton variant="secondary" @click="close">Cancel</UiButton>
 			<UiButton
-				class="bg-brand text-white hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
+				class="bg-brand text-text-inverse hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
 				:disabled="!selectedFile || isUploading"
 				@click="handleSubmit"
 			>

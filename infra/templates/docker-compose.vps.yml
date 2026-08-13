@@ -377,6 +377,10 @@ services:
       - code-workspace:/workspace
     environment:
       CONVEX_URL: http://convex:3210
+      # The worker polls an internalQuery + drives internalMutations, so it
+      # authenticates with the deployment admin key (like imap / mail-sync).
+      # Without it the container exits at startup and tasks sit queued forever.
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}

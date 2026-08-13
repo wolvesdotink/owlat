@@ -352,6 +352,29 @@ export async function runTests(
 }
 
 /**
+ * Report a failed run to the backend and log what it decided.
+ *
+ * The retry ceiling and the backoff schedule live in the backend
+ * (`codeWorkTasks.markFailed`), which either requeues the task behind a delay
+ * or makes the failure terminal; the worker just picks the task up again on a
+ * later poll once the window has elapsed. The client is injectable so the
+ * decision-reporting can be unit-tested without a deployment.
+ */
+export async function reportTaskFailure(
+	taskId: string,
+	errorMessage: string,
+	client: ReturnType<typeof getConvexClient> = getConvexClient()
+): Promise<void> {
+	const outcome = await client.mutation(fn.markFailed, { taskId, errorMessage });
+	if (outcome?.retried) {
+		const waitSeconds = Math.max(0, Math.round(((outcome.nextAttemptAt ?? 0) - Date.now()) / 1000));
+		log(`Task ${taskId} failed on attempt ${outcome.attempts}; retrying in ~${waitSeconds}s`);
+		return;
+	}
+	log(`Task ${taskId} failed permanently after ${outcome?.attempts ?? 0} attempt(s)`);
+}
+
+/**
  * Process a single code work task end-to-end.
  */
 export async function processTask(task: CodeWorkTask): Promise<void> {
@@ -378,10 +401,11 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		const agentResult = await runCodingAgent(workDir, task.description);
 
 		if (!agentResult.success) {
-			await client.mutation(fn.markFailed, {
+			await reportTaskFailure(
 				taskId,
-				errorMessage: `Coding agent failed: ${agentResult.output.slice(0, 500)}`,
-			});
+				`Coding agent failed: ${agentResult.output.slice(0, 500)}`,
+				client
+			);
 			return;
 		}
 
@@ -389,10 +413,7 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		// tree (world-readable) and writes only the root-owned .git.
 		const diffOutput = runGit(buildDiffStatArgs(workDir), { encoding: 'utf-8' }) as string;
 		if (!diffOutput.trim()) {
-			await client.mutation(fn.markFailed, {
-				taskId,
-				errorMessage: 'Coding agent produced no changes',
-			});
+			await reportTaskFailure(taskId, 'Coding agent produced no changes', client);
 			return;
 		}
 
@@ -455,10 +476,7 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		log(`Task ${taskId} failed: ${errMsg}`);
 
 		try {
-			await client.mutation(fn.markFailed, {
-				taskId,
-				errorMessage: errMsg.slice(0, 500),
-			});
+			await reportTaskFailure(taskId, errMsg.slice(0, 500), client);
 		} catch {
 			log(`Failed to mark task ${taskId} as failed`);
 		}

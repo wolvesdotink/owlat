@@ -157,6 +157,7 @@ import type * as channels_adapters_sms from '../channels/adapters/sms.js';
 import type * as channels_adapters_types from '../channels/adapters/types.js';
 import type * as channels_adapters_webhook from '../channels/adapters/webhook.js';
 import type * as channels_adapters_whatsapp from '../channels/adapters/whatsapp.js';
+import type * as channels_credentials from '../channels/credentials.js';
 import type * as channels_outbound from '../channels/outbound.js';
 import type * as chat__helpers from '../chat/_helpers.js';
 import type * as chat_attachments from '../chat/attachments.js';
@@ -534,6 +535,7 @@ import type * as lib_automationConfigTypes from '../lib/automationConfigTypes.js
 import type * as lib_autonomyRules from '../lib/autonomyRules.js';
 import type * as lib_clock from '../lib/clock.js';
 import type * as lib_codeAgentGuard from '../lib/codeAgentGuard.js';
+import type * as lib_codeTaskRetry from '../lib/codeTaskRetry.js';
 import type * as lib_constants from '../lib/constants.js';
 import type * as lib_contactCountHelpers from '../lib/contactCountHelpers.js';
 import type * as lib_contactHelpers from '../lib/contactHelpers.js';
@@ -552,6 +554,7 @@ import type * as lib_emailProviders_sesIdentity from '../lib/emailProviders/sesI
 import type * as lib_emailTranslations from '../lib/emailTranslations.js';
 import type * as lib_env from '../lib/env.js';
 import type * as lib_featureFlags from '../lib/featureFlags.js';
+import type * as lib_fileSearchText from '../lib/fileSearchText.js';
 import type * as lib_graphAnalyticsCompute from '../lib/graphAnalyticsCompute.js';
 import type * as lib_graphRank from '../lib/graphRank.js';
 import type * as lib_httpResponse from '../lib/httpResponse.js';
@@ -762,6 +765,7 @@ import type * as migrations_0034_mailbox_owner_membership from '../migrations/00
 import type * as migrations_0035_seal_bodies_at_rest from '../migrations/0035_seal_bodies_at_rest.js';
 import type * as migrations_0036_seed_platform_admin from '../migrations/0036_seed_platform_admin.js';
 import type * as migrations_0037_backfill_mail_categories from '../migrations/0037_backfill_mail_categories.js';
+import type * as migrations_0038_rebuild_file_search_text from '../migrations/0038_rebuild_file_search_text.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
 import type * as platformAdmin_queries from '../platformAdmin/queries.js';
@@ -926,6 +930,7 @@ import type * as webhooks_adapters_resend from '../webhooks/adapters/resend.js';
 import type * as webhooks_adapters_ses from '../webhooks/adapters/ses.js';
 import type * as webhooks_adapters_twilio from '../webhooks/adapters/twilio.js';
 import type * as webhooks_channels from '../webhooks/channels.js';
+import type * as webhooks_channelSecrets from '../webhooks/channelSecrets.js';
 import type * as webhooks_cleanup from '../webhooks/cleanup.js';
 import type * as webhooks_complaintDispatch from '../webhooks/complaintDispatch.js';
 import type * as webhooks_delivery from '../webhooks/delivery.js';
@@ -1129,6 +1134,7 @@ declare const fullApi: ApiFromModules<{
 	'channels/adapters/types': typeof channels_adapters_types;
 	'channels/adapters/webhook': typeof channels_adapters_webhook;
 	'channels/adapters/whatsapp': typeof channels_adapters_whatsapp;
+	'channels/credentials': typeof channels_credentials;
 	'channels/outbound': typeof channels_outbound;
 	'chat/_helpers': typeof chat__helpers;
 	'chat/attachments': typeof chat_attachments;
@@ -1506,6 +1512,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/autonomyRules': typeof lib_autonomyRules;
 	'lib/clock': typeof lib_clock;
 	'lib/codeAgentGuard': typeof lib_codeAgentGuard;
+	'lib/codeTaskRetry': typeof lib_codeTaskRetry;
 	'lib/constants': typeof lib_constants;
 	'lib/contactCountHelpers': typeof lib_contactCountHelpers;
 	'lib/contactHelpers': typeof lib_contactHelpers;
@@ -1524,6 +1531,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/emailTranslations': typeof lib_emailTranslations;
 	'lib/env': typeof lib_env;
 	'lib/featureFlags': typeof lib_featureFlags;
+	'lib/fileSearchText': typeof lib_fileSearchText;
 	'lib/graphAnalyticsCompute': typeof lib_graphAnalyticsCompute;
 	'lib/graphRank': typeof lib_graphRank;
 	'lib/httpResponse': typeof lib_httpResponse;
@@ -1734,6 +1742,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0035_seal_bodies_at_rest': typeof migrations_0035_seal_bodies_at_rest;
 	'migrations/0036_seed_platform_admin': typeof migrations_0036_seed_platform_admin;
 	'migrations/0037_backfill_mail_categories': typeof migrations_0037_backfill_mail_categories;
+	'migrations/0038_rebuild_file_search_text': typeof migrations_0038_rebuild_file_search_text;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;
 	'platformAdmin/queries': typeof platformAdmin_queries;
@@ -1898,6 +1907,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/adapters/ses': typeof webhooks_adapters_ses;
 	'webhooks/adapters/twilio': typeof webhooks_adapters_twilio;
 	'webhooks/channels': typeof webhooks_channels;
+	'webhooks/channelSecrets': typeof webhooks_channelSecrets;
 	'webhooks/cleanup': typeof webhooks_cleanup;
 	'webhooks/complaintDispatch': typeof webhooks_complaintDispatch;
 	'webhooks/delivery': typeof webhooks_delivery;

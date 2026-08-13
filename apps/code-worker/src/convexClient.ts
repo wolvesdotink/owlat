@@ -36,8 +36,24 @@ export interface CodeWorkTask {
 	testResults?: string;
 	errorMessage?: string;
 	llmCost?: number;
+	attempts?: number;
+	maxAttempts?: number;
+	nextAttemptAt?: number;
 	createdAt: number;
 	updatedAt: number;
+}
+
+/**
+ * What the backend did with a failure report: requeued the task behind a
+ * backoff window (`retried`, with `nextAttemptAt` naming the earliest next
+ * claim) or gave up on it. The retry ceiling and schedule are backend-owned —
+ * the worker only reports the failure and logs the verdict.
+ */
+export interface CodeTaskFailureOutcome {
+	status: 'queued' | 'failed';
+	retried: boolean;
+	attempts: number;
+	nextAttemptAt?: number;
 }
 
 /**
@@ -59,8 +75,13 @@ export const fn = {
 	markTesting: makeFunctionReference<'mutation', { taskId: string }, null>(
 		'codeWorkTasks:markTesting'
 	),
-	markFailed: makeFunctionReference<'mutation', { taskId: string; errorMessage: string }, null>(
-		'codeWorkTasks:markFailed'
+	markFailed: makeFunctionReference<
+		'mutation',
+		{ taskId: string; errorMessage: string },
+		CodeTaskFailureOutcome
+	>('codeWorkTasks:markFailed'),
+	reclaimStale: makeFunctionReference<'mutation', Record<string, never>, { reclaimed: number }>(
+		'codeWorkTasks:reclaimStale'
 	),
 	completeWithPR: makeFunctionReference<
 		'mutation',

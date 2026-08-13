@@ -44,6 +44,8 @@ const isEditingTitle = ref(false);
 const editTitleInput = ref('');
 const isEditingContacts = ref(false);
 const editContacts = ref<PickerContact[]>([]);
+const isEditingThread = ref(false);
+const editThread = ref<PickerThread | null>(null);
 
 // Hydrate the file's linked contact ids into full rows so the editable picker
 // can render labels/chips (the file row carries only ids).
@@ -130,6 +132,35 @@ const saveContacts = async () => {
 
 const cancelEditContacts = () => {
 	isEditingContacts.value = false;
+};
+
+// The linked conversation, as the picker's row shape. `get` returns the
+// thread's subject alongside the file, so no extra thread fetch is needed.
+const linkedThread = computed<PickerThread | null>(() =>
+	file.value?.threadId
+		? { _id: file.value.threadId, subject: file.value.threadSubject ?? '' }
+		: null,
+);
+
+const startEditThread = () => {
+	editThread.value = linkedThread.value;
+	isEditingThread.value = true;
+};
+
+const saveThread = async () => {
+	if (!file.value) return;
+	// `null` clears the link; the mutation treats an omitted arg as "unchanged".
+	const result = await updateFile({
+		fileId: fileId.value,
+		threadId: editThread.value?._id ?? null,
+	});
+	if (result === undefined) return;
+	isEditingThread.value = false;
+	showToast('Linked conversation updated');
+};
+
+const cancelEditThread = () => {
+	isEditingThread.value = false;
 };
 
 const handleDelete = async () => {
@@ -403,15 +434,6 @@ const sourceLabel = computed(() => {
 									{{ sourceLabel }}
 								</span>
 							</div>
-							<div v-if="file.threadId">
-								<p class="text-xs text-text-tertiary mb-0.5">Linked Thread</p>
-								<NuxtLink
-									:to="`/dashboard/inbox/${file.threadId}`"
-									class="text-sm text-brand hover:underline"
-								>
-									View conversation
-								</NuxtLink>
-							</div>
 						</div>
 					</div>
 
@@ -530,6 +552,52 @@ const sourceLabel = computed(() => {
 							<p v-else class="text-sm text-text-tertiary">No linked contacts</p>
 						</div>
 					</div>
+
+					<!-- Linked conversation -->
+					<div class="bg-bg-elevated border border-border-subtle rounded-lg p-5">
+						<div class="flex items-center justify-between mb-3">
+							<h3 class="text-sm font-semibold text-text-primary">Linked Conversation</h3>
+							<button
+								v-if="!isEditingThread && isAdmin"
+								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								aria-label="Edit linked conversation"
+								@click="startEditThread"
+							>
+								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+							</button>
+						</div>
+
+						<!-- Edit: single-select thread picker -->
+						<div v-if="isEditingThread" class="space-y-3">
+							<FilesThreadPicker v-model="editThread" />
+							<div class="flex items-center gap-2">
+								<button class="text-xs text-brand font-medium hover:underline" @click="saveThread">
+									Save
+								</button>
+								<button
+									class="text-xs text-text-tertiary hover:text-text-primary"
+									@click="cancelEditThread"
+								>
+									Cancel
+								</button>
+							</div>
+						</div>
+
+						<!-- Read: the linked thread as a link into the team inbox -->
+						<div v-else>
+							<NuxtLink
+								v-if="linkedThread"
+								:to="`/dashboard/inbox/${linkedThread._id}`"
+								class="flex items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-bg-surface transition-colors"
+							>
+								<Icon name="lucide:message-square" class="w-4 h-4 text-text-tertiary" />
+								<span class="text-sm text-brand hover:underline truncate">
+									{{ threadPickerLabel(linkedThread) }}
+								</span>
+							</NuxtLink>
+							<p v-else class="text-sm text-text-tertiary">No linked conversation</p>
+						</div>
+					</div>
 				</div>
 			</div>
 		</template>
@@ -569,7 +637,7 @@ const sourceLabel = computed(() => {
 							<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
 							<UiButton
 								variant="danger"
-								class="bg-error text-white hover:bg-error/90"
+								class="bg-error text-text-inverse hover:bg-error/90"
 								:disabled="isDeleting"
 								@click="handleDelete"
 							>

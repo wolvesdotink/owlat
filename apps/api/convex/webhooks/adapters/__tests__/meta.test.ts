@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import {
-	metaAdapter,
-	handleMetaChallenge,
-	verifyMetaSignature,
-} from '../meta';
+import { metaAdapter, handleMetaChallenge, verifyMetaSignature } from '../meta';
+import type { ActionCtx } from '../../../_generated/server';
 
 const APP_SECRET = 'test-meta-app-secret';
 const VERIFY_TOKEN = 'test-meta-verify-token';
+/** Credentials an operator typed into the WhatsApp channel card. */
+const STORED_APP_SECRET = 'stored-meta-app-secret';
+const STORED_VERIFY_TOKEN = 'stored-meta-verify-token';
+
+/** An action ctx whose credential vault holds `secret` for this channel. */
+function ctxWithStoredSecret(secret: string | null): ActionCtx {
+	return { runAction: async () => secret } as unknown as ActionCtx;
+}
 const REQUEST_URL = 'https://owlat.example.com/webhooks/whatsapp';
 
 async function signSha256Hex(secret: string, body: string): Promise<string> {
@@ -17,11 +22,7 @@ async function signSha256Hex(secret: string, body: string): Promise<string> {
 		false,
 		['sign']
 	);
-	const sig = await crypto.subtle.sign(
-		'HMAC',
-		key,
-		new TextEncoder().encode(body)
-	);
+	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body));
 	return Array.from(new Uint8Array(sig))
 		.map((b) => b.toString(16).padStart(2, '0'))
 		.join('');
@@ -42,9 +43,7 @@ describe('verifyMetaSignature', () => {
 
 	it('accepts a valid signature', async () => {
 		const hex = await signSha256Hex(APP_SECRET, body);
-		expect(await verifyMetaSignature(body, `sha256=${hex}`, APP_SECRET)).toBe(
-			true
-		);
+		expect(await verifyMetaSignature(body, `sha256=${hex}`, APP_SECRET)).toBe(true);
 	});
 
 	it('rejects a missing sha256= prefix', async () => {
@@ -54,15 +53,11 @@ describe('verifyMetaSignature', () => {
 
 	it('rejects a tampered body', async () => {
 		const hex = await signSha256Hex(APP_SECRET, body);
-		expect(
-			await verifyMetaSignature(body + 'extra', `sha256=${hex}`, APP_SECRET)
-		).toBe(false);
+		expect(await verifyMetaSignature(body + 'extra', `sha256=${hex}`, APP_SECRET)).toBe(false);
 	});
 
 	it('rejects an entirely bogus signature value', async () => {
-		expect(
-			await verifyMetaSignature(body, 'sha256=deadbeef', APP_SECRET)
-		).toBe(false);
+		expect(await verifyMetaSignature(body, 'sha256=deadbeef', APP_SECRET)).toBe(false);
 	});
 });
 
@@ -71,10 +66,7 @@ describe('metaAdapter.verifySignature', () => {
 		const original = process.env['META_APP_SECRET'];
 		delete process.env['META_APP_SECRET'];
 		try {
-			const result = await metaAdapter.verifySignature(
-				makePostRequest(),
-				''
-			);
+			const result = await metaAdapter.verifySignature(makePostRequest(), '');
 			expect(result).toEqual({
 				ok: false,
 				status: 503,
@@ -118,6 +110,34 @@ describe('metaAdapter.verifySignature', () => {
 			reason: expect.stringContaining('Invalid'),
 		});
 	});
+
+	it('verifies against the channel-stored App Secret in preference to the env var', async () => {
+		process.env['META_APP_SECRET'] = APP_SECRET;
+		const body = '{"entry":[]}';
+		const hex = await signSha256Hex(STORED_APP_SECRET, body);
+		const result = await metaAdapter.verifySignature(
+			makePostRequest({ 'x-hub-signature-256': `sha256=${hex}` }),
+			body,
+			ctxWithStoredSecret(STORED_APP_SECRET)
+		);
+		expect(result).toEqual({ ok: true });
+	});
+
+	it('rejects a body signed with the env var once an App Secret is stored', async () => {
+		process.env['META_APP_SECRET'] = APP_SECRET;
+		const body = '{"entry":[]}';
+		const hex = await signSha256Hex(APP_SECRET, body);
+		const result = await metaAdapter.verifySignature(
+			makePostRequest({ 'x-hub-signature-256': `sha256=${hex}` }),
+			body,
+			ctxWithStoredSecret(STORED_APP_SECRET)
+		);
+		expect(result).toEqual({
+			ok: false,
+			status: 401,
+			reason: expect.stringContaining('Invalid'),
+		});
+	});
 });
 
 describe('metaAdapter.parseEvent', () => {
@@ -128,9 +148,7 @@ describe('metaAdapter.parseEvent', () => {
 	it('emits channel.received for a text message', () => {
 		const event = metaAdapter.parseEvent(
 			build({
-				messages: [
-					{ from: '4915123456', id: 'wamid.1', text: { body: 'hello' } },
-				],
+				messages: [{ from: '4915123456', id: 'wamid.1', text: { body: 'hello' } }],
 				contacts: [{ profile: { name: 'Alice' } }],
 			})
 		);
@@ -177,13 +195,7 @@ describe('metaAdapter.parseEvent', () => {
 	});
 
 	it('returns null when no messages are present (status-update)', () => {
-		expect(
-			metaAdapter.parseEvent(
-				build({
-					/* no messages */
-				})
-			)
-		).toBeNull();
+		expect(metaAdapter.parseEvent(build({/* no messages */}))).toBeNull();
 	});
 
 	it('returns null when entry is missing entirely', () => {
@@ -221,11 +233,11 @@ describe('metaAdapter.successResponse', () => {
 });
 
 describe('handleMetaChallenge', () => {
-	it('returns 503 when META_VERIFY_TOKEN is unset', () => {
+	it('returns 503 when META_VERIFY_TOKEN is unset', async () => {
 		const original = process.env['META_VERIFY_TOKEN'];
 		delete process.env['META_VERIFY_TOKEN'];
 		try {
-			const response = handleMetaChallenge(
+			const response = await handleMetaChallenge(
 				makeGetRequest({
 					'hub.mode': 'subscribe',
 					'hub.verify_token': 'x',
@@ -240,7 +252,7 @@ describe('handleMetaChallenge', () => {
 
 	it('echoes the challenge when token matches and mode is subscribe', async () => {
 		process.env['META_VERIFY_TOKEN'] = VERIFY_TOKEN;
-		const response = handleMetaChallenge(
+		const response = await handleMetaChallenge(
 			makeGetRequest({
 				'hub.mode': 'subscribe',
 				'hub.verify_token': VERIFY_TOKEN,
@@ -251,9 +263,9 @@ describe('handleMetaChallenge', () => {
 		expect(await response.text()).toBe('xyz123');
 	});
 
-	it('returns 403 when token does not match', () => {
+	it('returns 403 when token does not match', async () => {
 		process.env['META_VERIFY_TOKEN'] = VERIFY_TOKEN;
-		const response = handleMetaChallenge(
+		const response = await handleMetaChallenge(
 			makeGetRequest({
 				'hub.mode': 'subscribe',
 				'hub.verify_token': 'wrong-token',
@@ -263,9 +275,9 @@ describe('handleMetaChallenge', () => {
 		expect(response.status).toBe(403);
 	});
 
-	it('returns 403 when mode is not subscribe', () => {
+	it('returns 403 when mode is not subscribe', async () => {
 		process.env['META_VERIFY_TOKEN'] = VERIFY_TOKEN;
-		const response = handleMetaChallenge(
+		const response = await handleMetaChallenge(
 			makeGetRequest({
 				'hub.mode': 'unsubscribe',
 				'hub.verify_token': VERIFY_TOKEN,
@@ -275,9 +287,23 @@ describe('handleMetaChallenge', () => {
 		expect(response.status).toBe(403);
 	});
 
-	it('returns 403 when challenge query param is missing', () => {
+	it('echoes the challenge for the channel-stored verify token', async () => {
 		process.env['META_VERIFY_TOKEN'] = VERIFY_TOKEN;
-		const response = handleMetaChallenge(
+		const response = await handleMetaChallenge(
+			makeGetRequest({
+				'hub.mode': 'subscribe',
+				'hub.verify_token': STORED_VERIFY_TOKEN,
+				'hub.challenge': 'abc789',
+			}),
+			ctxWithStoredSecret(STORED_VERIFY_TOKEN)
+		);
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe('abc789');
+	});
+
+	it('returns 403 when challenge query param is missing', async () => {
+		process.env['META_VERIFY_TOKEN'] = VERIFY_TOKEN;
+		const response = await handleMetaChallenge(
 			makeGetRequest({
 				'hub.mode': 'subscribe',
 				'hub.verify_token': VERIFY_TOKEN,

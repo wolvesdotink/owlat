@@ -4,6 +4,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { createTestCodeWorkTask, createTestInboundMessage, enableFeatures } from './factories';
 import { checkCodeAgentSafety } from '../lib/codeAgentGuard';
+import { CODE_TASK_MAX_ATTEMPTS, CODE_TASK_RETRY_DELAYS_MS } from '../lib/codeTaskRetry';
 import type { Id } from '../_generated/dataModel';
 
 /** Insert a trusted org member (userProfiles row) whose email matches `email`. */
@@ -148,15 +149,62 @@ describe('codeWorkTasks.getNextQueued', () => {
 			);
 		});
 
-		const next = await t.query(internal.codeWorkTasks.getNextQueued);
+		const next = await t.query(internal.codeWorkTasks.getNextQueued, {});
 		expect(next).not.toBeNull();
 		expect(next!.description).toBe('Next in line');
 	});
 
 	it('should return null when no queued tasks exist', async () => {
 		const t = convexTest(schema, modules);
-		const next = await t.query(internal.codeWorkTasks.getNextQueued);
+		const next = await t.query(internal.codeWorkTasks.getNextQueued, {});
 		expect(next).toBeNull();
+	});
+
+	it('hides a requeued task until its backoff window has elapsed', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({
+					status: 'queued',
+					description: 'Backing off',
+					attempts: 1,
+					nextAttemptAt: now + 60_000,
+				})
+			);
+		});
+
+		expect(await t.query(internal.codeWorkTasks.getNextQueued, { now })).toBeNull();
+
+		const later = await t.query(internal.codeWorkTasks.getNextQueued, { now: now + 60_000 });
+		expect(later!.description).toBe('Backing off');
+	});
+
+	it('skips a backing-off task in favour of a claimable younger one', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({
+					status: 'queued',
+					description: 'Backing off',
+					createdAt: now - 5000,
+					attempts: 1,
+					nextAttemptAt: now + 60_000,
+				})
+			);
+			await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'queued', description: 'Ready now', createdAt: now })
+			);
+		});
+
+		const next = await t.query(internal.codeWorkTasks.getNextQueued, { now });
+		expect(next!.description).toBe('Ready now');
 	});
 });
 
@@ -247,6 +295,49 @@ describe('codeWorkTasks.claim', () => {
 		const result = await t.mutation(internal.codeWorkTasks.claim, { taskId });
 		expect(result.claimed).toBe(false);
 	});
+
+	it('counts the attempt and clears the backoff gate', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		let taskId!: Id<'codeWorkTasks'>;
+
+		await t.run(async (ctx) => {
+			taskId = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'queued', attempts: 1, nextAttemptAt: now - 1 })
+			);
+		});
+
+		expect((await t.mutation(internal.codeWorkTasks.claim, { taskId, now })).claimed).toBe(true);
+
+		await t.run(async (ctx) => {
+			const task = await ctx.db.get(taskId);
+			expect(task!.attempts).toBe(2);
+			expect(task!.nextAttemptAt).toBeUndefined();
+		});
+	});
+
+	it('refuses to claim a task still inside its backoff window', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		let taskId!: Id<'codeWorkTasks'>;
+
+		await t.run(async (ctx) => {
+			taskId = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'queued', attempts: 1, nextAttemptAt: now + 60_000 })
+			);
+		});
+
+		const result = await t.mutation(internal.codeWorkTasks.claim, { taskId, now });
+		expect(result.claimed).toBe(false);
+
+		await t.run(async (ctx) => {
+			const task = await ctx.db.get(taskId);
+			expect(task!.status).toBe('queued');
+			expect(task!.attempts).toBe(1);
+		});
+	});
 });
 
 // ============ updateBranch (internal) ============
@@ -323,25 +414,176 @@ describe('codeWorkTasks.completeWithPR', () => {
 // ============ markFailed (internal) ============
 
 describe('codeWorkTasks.markFailed', () => {
-	it('should mark task as failed with error message', async () => {
+	it('should mark a task with no attempts left as failed with error message', async () => {
 		const t = convexTest(schema, modules);
 		let taskId!: Id<'codeWorkTasks'>;
 
 		await t.run(async (ctx) => {
-			taskId = await ctx.db.insert('codeWorkTasks', createTestCodeWorkTask({ status: 'running' }));
+			taskId = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({
+					status: 'running',
+					attempts: CODE_TASK_MAX_ATTEMPTS,
+					maxAttempts: CODE_TASK_MAX_ATTEMPTS,
+				})
+			);
 		});
 
-		await t.mutation(internal.codeWorkTasks.markFailed, {
+		const outcome = await t.mutation(internal.codeWorkTasks.markFailed, {
 			taskId,
 			errorMessage: 'Build failed: TypeScript compilation error',
 			llmCost: 0.45,
 		});
+		expect(outcome).toMatchObject({ status: 'failed', retried: false });
 
 		await t.run(async (ctx) => {
 			const task = await ctx.db.get(taskId);
 			expect(task!.status).toBe('failed');
 			expect(task!.errorMessage).toBe('Build failed: TypeScript compilation error');
 			expect(task!.llmCost).toBe(0.45);
+			expect(task!.nextAttemptAt).toBeUndefined();
+		});
+	});
+
+	it('requeues a task with attempts left behind an increasing backoff', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		let taskId!: Id<'codeWorkTasks'>;
+
+		await t.run(async (ctx) => {
+			taskId = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'queued', attempts: 0, maxAttempts: 3 })
+			);
+		});
+
+		// First failure: requeued one delay-table step out.
+		await t.mutation(internal.codeWorkTasks.claim, { taskId, now });
+		const first = await t.mutation(internal.codeWorkTasks.markFailed, {
+			taskId,
+			errorMessage: 'Coding agent failed',
+			now,
+		});
+		expect(first).toMatchObject({
+			status: 'queued',
+			retried: true,
+			attempts: 1,
+			nextAttemptAt: now + CODE_TASK_RETRY_DELAYS_MS[0],
+		});
+
+		// Second failure: same task, longer window.
+		const second = now + CODE_TASK_RETRY_DELAYS_MS[0];
+		await t.mutation(internal.codeWorkTasks.claim, { taskId, now: second });
+		const outcome = await t.mutation(internal.codeWorkTasks.markFailed, {
+			taskId,
+			errorMessage: 'Coding agent failed again',
+			now: second,
+		});
+		expect(outcome).toMatchObject({
+			status: 'queued',
+			retried: true,
+			attempts: 2,
+			nextAttemptAt: second + CODE_TASK_RETRY_DELAYS_MS[1],
+		});
+
+		// Third failure exhausts the ceiling and is terminal.
+		const third = second + CODE_TASK_RETRY_DELAYS_MS[1];
+		await t.mutation(internal.codeWorkTasks.claim, { taskId, now: third });
+		const terminal = await t.mutation(internal.codeWorkTasks.markFailed, {
+			taskId,
+			errorMessage: 'Coding agent failed for the last time',
+			now: third,
+		});
+		expect(terminal).toMatchObject({ status: 'failed', retried: false, attempts: 3 });
+
+		await t.run(async (ctx) => {
+			const task = await ctx.db.get(taskId);
+			expect(task!.status).toBe('failed');
+			expect(task!.nextAttemptAt).toBeUndefined();
+		});
+	});
+
+	it('keeps a cost recorded by an earlier attempt when the report carries none', async () => {
+		const t = convexTest(schema, modules);
+		let taskId!: Id<'codeWorkTasks'>;
+
+		await t.run(async (ctx) => {
+			taskId = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'testing', attempts: 1, maxAttempts: 3, llmCost: 0.2 })
+			);
+		});
+
+		await t.mutation(internal.codeWorkTasks.markFailed, { taskId, errorMessage: 'tests blew up' });
+
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(taskId))!.llmCost).toBe(0.2);
+		});
+	});
+
+	it('never resurrects a cancelled task into another attempt', async () => {
+		const t = convexTest(schema, modules);
+		let taskId!: Id<'codeWorkTasks'>;
+
+		await t.run(async (ctx) => {
+			taskId = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'running', attempts: 1, maxAttempts: 3 })
+			);
+		});
+
+		// The user cancels while the worker is mid-run; the run then reports its
+		// own failure, which must not put the task back in the queue.
+		await t.mutation(api.codeWorkTasks.cancel, { taskId });
+		const outcome = await t.mutation(internal.codeWorkTasks.markFailed, {
+			taskId,
+			errorMessage: 'Coding agent failed',
+		});
+		expect(outcome).toMatchObject({ status: 'failed', retried: false });
+
+		await t.run(async (ctx) => {
+			const task = await ctx.db.get(taskId);
+			expect(task!.status).toBe('failed');
+			expect(task!.errorMessage).toBe('Cancelled by user');
+		});
+	});
+});
+
+// ============ reclaimStale (internal) ============
+
+describe('codeWorkTasks.reclaimStale', () => {
+	it('requeues tasks a crashed worker left mid-run and fails the exhausted ones', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		let retryable!: Id<'codeWorkTasks'>;
+		let exhausted!: Id<'codeWorkTasks'>;
+		let untouched!: Id<'codeWorkTasks'>;
+
+		await t.run(async (ctx) => {
+			retryable = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'running', attempts: 1, maxAttempts: 3 })
+			);
+			exhausted = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'testing', attempts: 3, maxAttempts: 3 })
+			);
+			untouched = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'review', attempts: 1, maxAttempts: 3 })
+			);
+		});
+
+		const { reclaimed } = await t.mutation(internal.codeWorkTasks.reclaimStale, { now });
+		expect(reclaimed).toBe(2);
+
+		await t.run(async (ctx) => {
+			const requeued = await ctx.db.get(retryable);
+			expect(requeued!.status).toBe('queued');
+			expect(requeued!.nextAttemptAt).toBe(now + CODE_TASK_RETRY_DELAYS_MS[0]);
+
+			expect((await ctx.db.get(exhausted))!.status).toBe('failed');
+			expect((await ctx.db.get(untouched))!.status).toBe('review');
 		});
 	});
 });

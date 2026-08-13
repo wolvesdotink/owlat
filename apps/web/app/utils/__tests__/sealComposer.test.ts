@@ -1,11 +1,14 @@
 /**
  * Composer-lock derivation honesty audit (Sealed Mail E5). Every reachable
  * string maps 1:1 to a `sealState`; `willSeal` is the ONLY state that promises
- * encryption, and only `cannotSeal` permits an explicit unsealed send.
+ * encryption, and only `cannotSeal` permits an explicit unsealed send — which is
+ * always a proceed-or-cancel decision (`deriveUnsealedPrompt`), never a silent
+ * downgrade.
  */
 import { describe, it, expect } from 'vitest';
 import {
 	deriveComposerLock,
+	deriveUnsealedPrompt,
 	sealSendBlock,
 	type SealSkipReason,
 	type SealState,
@@ -52,6 +55,23 @@ describe('deriveComposerLock', () => {
 		expect(lock.allowSendUnsealed).toBe(true);
 	});
 
+	it('no state yet: says it is still checking instead of claiming nothing', () => {
+		const lock = deriveComposerLock(null);
+		expect(lock.kind).toBe('checking');
+		expect(lock.summary).toBe('Checking whether this message can be sealed');
+		expect(lock.detail).toBe(
+			'Owlat is looking up whether everyone you are writing to can receive sealed mail. This updates as you change recipients.'
+		);
+		expect(lock.tone).toBe('muted');
+		// An unanswered state is never a plaintext decision the sender can take.
+		expect(lock.allowSendUnsealed).toBe(false);
+	});
+
+	it('cannotSeal(no_recipients): nothing to decide yet, so no unsealed control', () => {
+		const lock = deriveComposerLock({ kind: 'cannotSeal', reason: 'no_recipients' });
+		expect(lock.allowSendUnsealed).toBe(false);
+	});
+
 	// Verbatim per-reason copy — the honesty audit for cannotSeal explanations.
 	const REASON_COPY: Record<SealSkipReason, string> = {
 		policy_off:
@@ -81,9 +101,10 @@ describe('deriveComposerLock', () => {
 	it('"will be sealed" summary is UNREACHABLE for any non-willSeal state', () => {
 		const nonWillSeal: SealState[] = [
 			{ kind: 'keyChanged', addresses: ['x@y.test'] },
-			...(Object.keys(REASON_COPY) as SealSkipReason[]).map(
-				(reason): SealState => ({ kind: 'cannotSeal', reason })
-			),
+			...(Object.keys(REASON_COPY) as SealSkipReason[]).map((reason): SealState => ({
+				kind: 'cannotSeal',
+				reason,
+			})),
 		];
 		for (const state of nonWillSeal) {
 			expect(deriveComposerLock(state).summary).not.toBe('This message will be sealed');
@@ -109,5 +130,81 @@ describe('sealSendBlock', () => {
 		const changed: SealState = { kind: 'keyChanged', addresses: ['eve@e.test'] };
 		expect(sealSendBlock(true, changed, true)).toBe('key_changed');
 		expect(sealSendBlock(false, changed, false)).toBeNull();
+	});
+});
+
+describe('deriveUnsealedPrompt', () => {
+	// Every reason the sender can act on states WHY it won't be sealed and WHAT
+	// sending anyway means — the decision is never presented without its cost.
+	const DECIDABLE: SealSkipReason[] = [
+		'policy_off',
+		'policy_ask',
+		'recipient_no_key',
+		'no_signing_key',
+		'flag_off',
+		'key_changed',
+	];
+
+	it.each(DECIDABLE)(
+		'cannotSeal(%s) offers a proceed-or-cancel prompt with the reason',
+		(reason) => {
+			const prompt = deriveUnsealedPrompt({ kind: 'cannotSeal', reason });
+			expect(prompt).not.toBeNull();
+			expect(prompt?.title).toBe('Send this message unsealed?');
+			expect(prompt?.description).toContain(
+				'Owlat will send it as ordinary email, which the mail servers it passes through can read.'
+			);
+			// The reason clause comes first, so the prompt opens with the why.
+			expect(prompt?.description.startsWith('Owlat will send it')).toBe(false);
+			expect(prompt?.confirmLabel).toBe('Send unsealed');
+			expect(prompt?.cancelLabel).toBe('Keep editing');
+		}
+	);
+
+	it('verbatim reason clauses', () => {
+		const describeReason = (reason: SealSkipReason) =>
+			deriveUnsealedPrompt({ kind: 'cannotSeal', reason })?.description.split(
+				' Owlat will send'
+			)[0];
+		expect(describeReason('policy_off')).toBe('Sealed mail is turned off for your workspace.');
+		expect(describeReason('recipient_no_key')).toBe(
+			"Some of your recipients can't receive sealed mail yet."
+		);
+		expect(describeReason('no_signing_key')).toBe(
+			"The address you're sending from doesn't have a sealing key yet."
+		);
+		expect(describeReason('policy_ask')).toBe('Your workspace is set to ask before sealing.');
+		expect(describeReason('flag_off')).toBe('Sealed mail is not available on this instance yet.');
+		expect(describeReason('key_changed')).toBe("A recipient's key changed and still needs review.");
+	});
+
+	it('offers no prompt where plaintext is not the sender’s to choose', () => {
+		expect(deriveUnsealedPrompt(null)).toBeNull();
+		expect(deriveUnsealedPrompt({ kind: 'willSeal' })).toBeNull();
+		expect(deriveUnsealedPrompt({ kind: 'keyChanged', addresses: ['bob@b.test'] })).toBeNull();
+		expect(deriveUnsealedPrompt({ kind: 'cannotSeal', reason: 'no_recipients' })).toBeNull();
+	});
+
+	it('mirrors allowSendUnsealed exactly — every offered control has a prompt behind it', () => {
+		const states: SealState[] = [
+			{ kind: 'willSeal' },
+			{ kind: 'keyChanged', addresses: ['bob@b.test'] },
+			...(
+				[
+					'flag_off',
+					'policy_off',
+					'policy_ask',
+					'no_recipients',
+					'recipient_no_key',
+					'key_changed',
+					'no_signing_key',
+				] as SealSkipReason[]
+			).map((reason): SealState => ({ kind: 'cannotSeal', reason })),
+		];
+		for (const state of states) {
+			expect(deriveUnsealedPrompt(state) !== null).toBe(
+				deriveComposerLock(state).allowSendUnsealed
+			);
+		}
 	});
 });
