@@ -10,6 +10,8 @@ import {
 	formatTimelineTime,
 	truncateTimelineText,
 } from '~/composables/useUnifiedContactTimeline';
+import { useChannelOutbound } from '~/composables/useChannelOutbound';
+import type { SendableChannel } from '~/composables/useChannelOutbound';
 
 const props = defineProps<{
 	threadId: Id<'conversationThreads'>;
@@ -25,6 +27,47 @@ const { data: messagesData, isLoading } = useConvexQuery(
 );
 
 const timeline = computed(() => messagesData.value ?? []);
+
+// Per-message reply. Non-email channels used to be outbound-only through the AI
+// agent or the contact page's composer, so an agent reading an SMS in the Team
+// Inbox had to leave the thread to answer it. Replying here goes through the
+// SAME shared send path (`useChannelOutbound`), pinned to this thread and to the
+// channel the message arrived on. Email is excluded: it is answered by the draft
+// composer above, which carries the MTA send pipeline, identities and threading.
+const { isSending, canSendOn, send } = useChannelOutbound();
+
+type TimelineMessage = (typeof timeline.value)[number];
+
+function canReplyTo(item: TimelineMessage): boolean {
+	if (item.channel === 'email') return false;
+	// A provider send is addressed to the contact, so a row with no contact
+	// (a legacy or unlinked message) has nowhere to reply to.
+	if (item.channel !== 'chat' && !item.contactId) return false;
+	return canSendOn(item.channel);
+}
+
+const replyToId = ref<Id<'unifiedMessages'> | null>(null);
+const replyText = ref('');
+
+function openReply(item: TimelineMessage) {
+	replyToId.value = item._id;
+	replyText.value = '';
+}
+
+function cancelReply() {
+	replyToId.value = null;
+	replyText.value = '';
+}
+
+async function submitReply(item: TimelineMessage) {
+	const sent = await send({
+		channel: item.channel as SendableChannel,
+		text: replyText.value,
+		contactId: item.contactId ?? null,
+		threadId: props.threadId,
+	});
+	if (sent) cancelReply();
+}
 </script>
 
 <template>
@@ -95,6 +138,18 @@ const timeline = computed(() => messagesData.value ?? []);
 							>
 								{{ item.status }}
 							</UiBadge>
+
+							<!-- Reply on this channel -->
+							<button
+								v-if="canReplyTo(item) && replyToId !== item._id"
+								type="button"
+								class="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								:aria-label="`Reply on ${channelLabel(item.channel)}`"
+								@click="openReply(item)"
+							>
+								<Icon name="lucide:reply" class="w-3.5 h-3.5" />
+								Reply
+							</button>
 						</div>
 
 						<!-- Subject (for email) -->
@@ -111,6 +166,35 @@ const timeline = computed(() => messagesData.value ?? []);
 						<p class="text-text-tertiary text-xs mt-1">
 							{{ formatTimelineTime(item.createdAt) }}
 						</p>
+
+						<!-- Inline reply composer, scoped to this message's channel -->
+						<div
+							v-if="replyToId === item._id"
+							class="mt-2 rounded-lg border border-border-subtle bg-bg-surface p-2"
+						>
+							<UiTextarea
+								v-model="replyText"
+								:rows="2"
+								size="sm"
+								:placeholder="`Reply on ${channelLabel(item.channel)}…`"
+							/>
+							<div class="flex items-center justify-end gap-2 mt-2">
+								<UiButton variant="secondary" size="sm" :disabled="isSending" @click="cancelReply">
+									Cancel
+								</UiButton>
+								<UiButton
+									size="sm"
+									:disabled="!replyText.trim() || isSending"
+									:loading="isSending"
+									@click="submitReply(item)"
+								>
+									<template #iconLeft>
+										<Icon name="lucide:send" class="w-4 h-4" />
+									</template>
+									Send
+								</UiButton>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>

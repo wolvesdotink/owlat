@@ -48,6 +48,9 @@ ${closeScriptTag}`;
 </script>
 
 <template>
+	<!-- palette-ok: literal white, not a surface token — the agent generates
+	     visualization markup against a fixed light palette (dark text, no
+	     background of its own), so the canvas must stay light in both app themes. -->
 	<iframe
 		ref="iframeRef"
 		:srcdoc="enhancedHtml"

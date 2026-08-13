@@ -27,6 +27,15 @@ export const codeWorkTables = {
 		// Results
 		testResults: v.optional(v.string()),
 		errorMessage: v.optional(v.string()),
+		// Retry accounting. `attempts` counts claims (incremented when the worker
+		// takes the task), `maxAttempts` is the per-row ceiling, and
+		// `nextAttemptAt` is the backoff gate a requeued task waits behind before
+		// the worker may claim it again. All optional: rows written before retries
+		// existed carry none of them and fall back to the defaults in
+		// `lib/codeTaskRetry.ts`.
+		attempts: v.optional(v.number()),
+		maxAttempts: v.optional(v.number()),
+		nextAttemptAt: v.optional(v.number()),
 		// LLM cost tracking
 		llmCost: v.optional(v.number()),
 		// Timestamps
@@ -34,6 +43,10 @@ export const codeWorkTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_status', ['status'])
+		// The worker's queue read: queued rows ordered by the moment they become
+		// claimable, so the backoff gate is a range bound rather than a scan
+		// window. A never-attempted row has no `nextAttemptAt` and sorts first.
+		.index('by_status_and_next_attempt', ['status', 'nextAttemptAt'])
 		.index('by_created_at', ['createdAt'])
 		// Idempotent inbound → code-task creation (createFromInbound dedupes here).
 		.index('by_inbound', ['inboundMessageId'])

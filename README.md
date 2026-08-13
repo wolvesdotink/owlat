@@ -29,6 +29,14 @@ The one-liner installs the `owlat` CLI to `/usr/local/bin` and runs `owlat quick
 
 Already have a clone? `git clone https://github.com/wolvesdotink/owlat.git && cd owlat && scripts/owlat quickstart` runs the exact same blessed flow. The older pure-bash wizard (`bash scripts/setup.sh`) still ships as a legacy fallback — prefer `owlat quickstart` for new installs.
 
+The wizard offers to **explore with sample data**: 15 contacts across 3 topics, email templates, a sent campaign with stats, an automation and a verified `demo.localhost` domain, so an empty instance isn't your first impression. It is opt-in, inert (the sample automation arrives paused and the sample webhook disabled, so nothing fires at your real contacts), every row it writes is tagged, and one command takes it back:
+
+```sh
+owlat sample-data status   # what's still there
+owlat sample-data remove   # deletes exactly the sample rows, nothing you made
+owlat sample-data install  # add it later instead
+```
+
 See [docs/developer/self-hosting](https://docs.owlat.app/developer/self-hosting) for the detailed guide.
 
 ## Local development
@@ -44,10 +52,10 @@ bun run setup    # interactive: wizard + docker up + bootstrap admin + seed demo
 
 `bun run setup` walks through a small wizard and then asks one decision:
 
-- **Populated** *(default)* — creates an admin user and seeds realistic demo data (15 contacts across 3 topics, 3 email templates, a sent campaign with stats, an active automation, one verified sending domain). Best for working on existing features.
+- **Populated** *(default)* — creates an admin user and seeds realistic demo data (15 contacts across 3 topics, 3 email templates, a sent campaign with stats, an automation, one verified sending domain). Best for working on existing features. A local `dev` deployment (`OWLAT_DEV_MODE=true`) gets the fuller `/seed/demo` dataset on top — dummy teammate sign-ins, their Postbox mailboxes, and a live automation; any other install gets the same content through the removable sample-data path instead, because those sign-ins carry published password hashes (and there the automation is paused, so it can't mail anyone real).
 - **Blank** — brings up the stack with no admin, no data. Visit `http://localhost:3000` and the app redirects to `/auth/register` so you can exercise the real signup flow end-to-end. Use `bunx owlat-setup reset` to wipe back to blank between attempts.
 
-When working on the UI (`bun run dev`, which runs `nuxt dev`), the dashboard exposes a few admin shortcuts marked with a yellow **DEV** badge — currently a "Force Verify" button on the domains settings page that flips a domain to `verified` without running real DNS lookups. They're tree-shaken out of any `nuxt build` bundle (selfhost or hosted) via `import.meta.env.DEV`, and the backend additionally requires `OWLAT_DEV_MODE` to be set on the Convex deployment (`npx convex env set OWLAT_DEV_MODE true`). Production deployments leave it unset and the dev endpoints (`/seed/demo`, `/dev/reset`, Force Verify) fail-closed with a 403.
+When working on the UI (`bun run dev`, which runs `nuxt dev`), the dashboard exposes a few admin shortcuts marked with a yellow **DEV** badge — currently a "Force Verify" button on the domains settings page that flips a domain to `verified` without running real DNS lookups. They're tree-shaken out of any `nuxt build` bundle (selfhost or hosted) via `import.meta.env.DEV`, and the backend additionally requires `OWLAT_DEV_MODE` to be set on the Convex deployment (`npx convex env set OWLAT_DEV_MODE true`). Production deployments leave it unset and the dev endpoints (`/seed/demo`, `/dev/reset`, Force Verify) fail-closed with a 403 — nothing in the install flow turns dev mode on, because demo content for a real install goes through `owlat sample-data install` instead.
 
 The lower-level path (`bash scripts/setup.sh`) is still available for headless VPS provisioning. `bun run setup` is the path to take when you have a clone in front of you.
 

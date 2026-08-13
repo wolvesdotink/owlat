@@ -5,7 +5,6 @@ import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxCom
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
 import { mentionsAttachment } from '~/utils/attachmentMention';
-import { sealSendBlock } from '~/utils/sealComposer';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -102,11 +101,13 @@ const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
-// Sealed Mail (E5): the composer seal-lock indicator (honest per-draft seal
-// state, wired in usePostboxComposerSealLock so this file stays focused).
-const { sealedMailEnabled, composerSealState } = usePostboxComposerSealLock(
-	() => activeDraftId.value ?? undefined
-);
+// Sealed Mail (E5): the honest per-draft seal state, the lock indicator and the
+// proceed-or-cancel decision an unsealable draft needs before it can be sent —
+// all wired in usePostboxComposerSealLock so this file stays focused.
+const seal = usePostboxComposerSealLock(() => activeDraftId.value ?? undefined, {
+	flush,
+	onConfirm: (opts) => void handleSend(opts),
+});
 
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
@@ -197,22 +198,9 @@ async function handleSend(opts?: SendOptions) {
 		return;
 	}
 	if (!canSend.value || sending.value) return;
-	const sealBlock = sealSendBlock(
-		sealedMailEnabled.value,
-		composerSealState.value,
-		opts?.allowUnsealed === true
-	);
-	if (sealBlock) {
-		if (sealBlock === 'checking') {
-			await flush();
-			showToast('Checking whether this message can be sealed…');
-		} else if (sealBlock === 'key_changed') {
-			showToast('Review and confirm the changed recipient key before sending.');
-		} else {
-			showToast('Choose “Send unsealed” to confirm plaintext delivery.');
-		}
-		return;
-	}
+	// Sealed Mail (E5): an unsealable draft stops here until the sender decides
+	// (proceed or cancel) — nothing goes out in plaintext by omission.
+	if (await seal.blockSend(opts)) return;
 	// Catch the classic "I said 'attached' but forgot to attach" mistake.
 	if (
 		attachments.value.length === 0 &&
@@ -377,16 +365,15 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@apply-reply-all="onApplyReplyAll"
 		/>
 
-		<!-- Sealed Mail (E5): honest seal-lock indicator. Sending unsealed on a
-		     cannotSeal draft is an explicit act — only this control supplies the
-		     plaintext-consent bit to the shared send handler. -->
-		<div v-if="sealedMailEnabled && composerSealState" class="px-3">
-			<PostboxComposerSealLock
-				:enabled="sealedMailEnabled"
-				:seal-state="composerSealState"
-				@send-unsealed="handleSend({ allowUnsealed: true })"
-			/>
-		</div>
+		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
+		     state is being computed. Its unsealed control only REQUESTS the
+		     decision — the dialog below is the single source of plaintext consent. -->
+		<PostboxComposerSealLock
+			:enabled="seal.enabled"
+			:seal-state="seal.state"
+			:pending="seal.pending"
+			@request-unsealed="seal.requestUnsealed()"
+		/>
 
 		<div
 			v-if="isScheduled"
@@ -486,6 +473,14 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:open="scheduleOpen"
 			@update:open="scheduleOpen = $event"
 			@confirm="(ts) => handleSend({ scheduledSendAt: ts })"
+		/>
+		<!-- Sealed Mail (E5): the decision behind every unsealed send; confirming
+		     replays the parked send (scheduled time included) as an explicit act. -->
+		<PostboxComposerSealConfirmDialog
+			:open="seal.confirmOpen"
+			:seal-state="seal.state"
+			@update:open="seal.setConfirmOpen"
+			@confirm="seal.confirmUnsealed"
 		/>
 		<!-- Team-inbox collision safety: a teammate replied to this thread after
 		     this reply was opened. Confirm before sending a duplicate. -->

@@ -319,15 +319,19 @@ const loadPrevClicked = () => {
 
 				<!-- Archive Link -->
 				<div v-if="archiveUrl" class="card p-4 mb-8">
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-3">
+					<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+						<div class="flex items-center gap-3 min-w-0">
 							<UiIconBox icon="lucide:globe" size="sm" rounded="lg" />
 							<div class="min-w-0">
 								<p class="text-sm font-medium text-text-primary">Public Archive</p>
-								<p class="text-xs text-text-tertiary truncate max-w-md">{{ archiveUrl }}</p>
+								<p class="text-xs text-text-tertiary truncate sm:max-w-md">{{ archiveUrl }}</p>
 							</div>
 						</div>
-						<UiButton variant="secondary" class="text-sm gap-1.5" @click="copyArchiveLink">
+						<UiButton
+							variant="secondary"
+							class="text-sm gap-1.5 self-start sm:self-auto shrink-0"
+							@click="copyArchiveLink"
+						>
 							<Icon :name="archiveCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
 							{{ archiveCopied ? 'Copied' : 'Copy Link' }}
 						</UiButton>
@@ -335,8 +339,8 @@ const loadPrevClicked = () => {
 				</div>
 
 				<!-- Hero stat tiles -->
-				<div class="card p-6 mb-8">
-					<div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+				<div class="card p-4 sm:p-6 mb-8">
+					<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
 						<UiStatTile
 							v-for="tile in heroTiles"
 							:key="tile.key"
@@ -365,8 +369,8 @@ const loadPrevClicked = () => {
 				</div>
 
 				<!-- Open & Click rate (progress bars read better than a bare number vs a 100% target) -->
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-					<div class="card p-6">
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-8">
+					<div class="card p-4 sm:p-6">
 						<div class="flex items-baseline justify-between mb-4">
 							<h3 class="text-base font-medium text-text-primary">Open rate</h3>
 							<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
@@ -385,7 +389,7 @@ const loadPrevClicked = () => {
 						</p>
 					</div>
 
-					<div class="card p-6">
+					<div class="card p-4 sm:p-6">
 						<div class="flex items-baseline justify-between mb-4">
 							<h3 class="text-base font-medium text-text-primary">Click rate</h3>
 							<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
@@ -406,7 +410,7 @@ const loadPrevClicked = () => {
 				</div>
 
 				<!-- Opens Timeline -->
-				<div class="card p-6 mb-8">
+				<div class="card p-4 sm:p-6 mb-8">
 					<div class="flex items-baseline justify-between mb-6">
 						<h3 class="text-base font-medium text-text-primary">Opens over time</h3>
 						<span class="text-xs text-text-tertiary">First 48 hours</span>
@@ -434,7 +438,7 @@ const loadPrevClicked = () => {
 				</div>
 
 				<!-- Click Heatmap -->
-				<div v-if="campaign?.emailTemplate?.htmlContent" class="card p-6 mb-8">
+				<div v-if="campaign?.emailTemplate?.htmlContent" class="card p-4 sm:p-6 mb-8">
 					<div class="flex items-center gap-3 mb-6">
 						<UiIconBox icon="lucide:flame" size="sm" variant="warning" rounded="lg" />
 						<div>
@@ -456,7 +460,7 @@ const loadPrevClicked = () => {
 					<div class="flex border-b border-border-subtle">
 						<button
 							:class="[
-								'flex-1 px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
+								'flex-1 px-3 sm:px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
 								selectedTab === 'opened'
 									? 'text-text-primary font-semibold border-b-2 border-brand'
 									: 'text-text-secondary font-medium hover:text-text-primary',
@@ -468,7 +472,7 @@ const loadPrevClicked = () => {
 						</button>
 						<button
 							:class="[
-								'flex-1 px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
+								'flex-1 px-3 sm:px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
 								selectedTab === 'clicked'
 									? 'text-text-primary font-semibold border-b-2 border-brand'
 									: 'text-text-secondary font-medium hover:text-text-primary',
@@ -499,7 +503,7 @@ const loadPrevClicked = () => {
 								<div
 									v-for="send in openedContacts.sends"
 									:key="send._id"
-									class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors duration-(--motion-fast)"
+									class="px-4 sm:px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 								>
 									<div class="flex items-center gap-3 min-w-0">
 										<UiIconBox icon="lucide:users" size="sm" rounded="full" />
@@ -540,7 +544,7 @@ const loadPrevClicked = () => {
 
 							<div
 								v-if="openedContacts.total > pageSize"
-								class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
+								class="px-4 sm:px-6 py-4 border-t border-border-subtle flex items-center justify-between gap-3"
 							>
 								<UiButton
 									variant="secondary"
@@ -590,7 +594,7 @@ const loadPrevClicked = () => {
 								<div
 									v-for="send in clickedContacts.sends"
 									:key="send._id"
-									class="px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast)"
+									class="px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 								>
 									<div class="flex items-center justify-between">
 										<div class="flex items-center gap-3 min-w-0">
@@ -650,7 +654,7 @@ const loadPrevClicked = () => {
 
 							<div
 								v-if="clickedContacts.total > pageSize"
-								class="px-6 py-4 border-t border-border-subtle flex items-center justify-between"
+								class="px-4 sm:px-6 py-4 border-t border-border-subtle flex items-center justify-between gap-3"
 							>
 								<UiButton
 									variant="secondary"

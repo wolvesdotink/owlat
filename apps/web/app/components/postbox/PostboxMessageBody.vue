@@ -387,9 +387,10 @@ watch([showQuoted, showImages, loadEverything], () => {
 				Load everything
 			</button>
 		</div>
-		<!-- Wrapper background matches the iframe scheme so dark-rendered mail
-		     never flashes a white full-bleed; "designed" mail keeps its own
-		     colors as a light paper card on the dark app background. -->
+		<!-- palette-ok: the wrapper background matches the IFRAME's scheme, not
+		     the app's, so dark-rendered mail never flashes a white full-bleed;
+		     "designed" mail keeps its own colors as a light paper card on the dark
+		     app background. -->
 		<iframe
 			ref="iframeRef"
 			:srcdoc="displaySrcdoc"

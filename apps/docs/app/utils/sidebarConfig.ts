@@ -186,6 +186,7 @@ export const sidebarConfig: SidebarGroup[] = [
 			{ label: 'Convex Backend', to: '/developer/convex' },
 			{ label: 'Authentication', to: '/developer/authentication' },
 			{ label: 'Component Library', to: '/developer/components' },
+			{ label: 'UI Localization', to: '/developer/ui-localization' },
 			{
 				label: 'Environment Variables',
 				to: '/developer/environment-variables',

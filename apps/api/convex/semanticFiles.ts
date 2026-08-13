@@ -12,7 +12,7 @@ import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { internalQuery, internalMutation, type MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireAdminContext } from './lib/sessionOrganization';
+import { requireAdminContext, hasPermission } from './lib/sessionOrganization';
 import { throwInvalidInput } from './_utils/errors';
 import {
 	isExtensionAllowed,
@@ -22,6 +22,7 @@ import {
 	DEFAULT_FILE_POLICY,
 } from '@owlat/email-scanner';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
+import { buildFileSearchableText } from './lib/fileSearchText';
 import type { Id, Doc } from './_generated/dataModel';
 
 // ============================================================
@@ -37,7 +38,7 @@ type StorageReader = { storage: { getUrl: (id: Id<'_storage'>) => Promise<string
  */
 async function hydrateFile(
 	ctx: StorageReader,
-	file: Doc<'semanticFiles'>,
+	file: Doc<'semanticFiles'>
 ): Promise<Doc<'semanticFiles'> & { url: string | null }> {
 	return { ...file, url: await ctx.storage.getUrl(file.storageId) };
 }
@@ -45,20 +46,33 @@ async function hydrateFile(
 /** Hydrate a list of file rows with storage URLs, preserving order. */
 function hydrateFiles(
 	ctx: StorageReader,
-	files: Doc<'semanticFiles'>[],
+	files: Doc<'semanticFiles'>[]
 ): Promise<Array<Doc<'semanticFiles'> & { url: string | null }>> {
 	return Promise.all(files.map((file) => hydrateFile(ctx, file)));
 }
 
 /**
- * Get a file by ID
+ * Get a file by ID.
+ *
+ * The conversation link is admin-only. The shared inbox itself is admin-only
+ * (`organization:manage`, per the inbox access policy), so handing a non-admin
+ * member the linked thread's id — let alone its SUBJECT, which is customer text
+ * from a mailbox they cannot open — would leak the inbox through the file
+ * library. An admin gets the subject inline: one point-read to label the link
+ * and prefill the picker, instead of pulling the whole thread through
+ * `inbox.queries.getThread`.
  */
 export const get = authedQuery({
 	args: { fileId: v.id('semanticFiles') },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const file = await ctx.db.get(args.fileId);
 		if (!file) return null;
-		return hydrateFile(ctx, file);
+		const hydrated = await hydrateFile(ctx, file);
+		if (!hasPermission(session.role, 'organization:manage')) {
+			return { ...hydrated, threadId: undefined, threadSubject: undefined };
+		}
+		const thread = file.threadId ? await ctx.db.get(file.threadId) : null;
+		return { ...hydrated, threadSubject: thread?.subject };
 	},
 });
 
@@ -172,11 +186,9 @@ const sourceTypeValidator = v.union(
 async function applySourceFilter(
 	ctx: StorageReader,
 	results: PaginationResult<Doc<'semanticFiles'>>,
-	sourceType: 'upload' | 'email_attachment' | 'agent_generated' | undefined,
+	sourceType: 'upload' | 'email_attachment' | 'agent_generated' | undefined
 ): Promise<PaginationResult<Doc<'semanticFiles'> & { url: string | null }>> {
-	const page = sourceType
-		? results.page.filter((f) => f.sourceType === sourceType)
-		: results.page;
+	const page = sourceType ? results.page.filter((f) => f.sourceType === sourceType) : results.page;
 	const hydrated = await hydrateFiles(ctx, page);
 	return { ...results, page: hydrated };
 }
@@ -386,6 +398,12 @@ export const ingest = internalMutation({
  * Shared insert used by `create` (user upload) and the internal
  * attachment/agent ingestion paths. Inserts the row with provenance and a
  * provisional searchableText; the processing pipeline fills the rest.
+ *
+ * A supplied `threadId` is checked for existence here rather than in each
+ * caller: `update` has always validated the conversation link, so a file
+ * created with a dangling one was an inconsistency only the write path could
+ * produce. Validating in the one shared insert covers the user upload and both
+ * server-side ingestion sources at once.
  */
 async function insertSemanticFile(
 	ctx: MutationCtx,
@@ -405,10 +423,12 @@ async function insertSemanticFile(
 		previousVersionId?: Id<'semanticFiles'>;
 	}
 ): Promise<Id<'semanticFiles'>> {
+	if (args.threadId && !(await ctx.db.get(args.threadId))) {
+		throwInvalidInput('Conversation not found');
+	}
+
 	const now = Date.now();
-	const version = args.previousVersionId
-		? await getNextVersion(ctx, args.previousVersionId)
-		: 1;
+	const version = args.previousVersionId ? await getNextVersion(ctx, args.previousVersionId) : 1;
 
 	const fileId = await ctx.db.insert('semanticFiles', {
 		storageId: args.storageId,
@@ -426,7 +446,13 @@ async function insertSemanticFile(
 		version,
 		previousVersionId: args.previousVersionId,
 		embedding: [], // Populated by processFile
-		searchableText: `${args.filename} ${args.title ?? ''}`,
+		// Provisional index payload: filename + title + the tags typed at upload.
+		// `processFile` rebuilds it with the summary/auto-tags/extracted text.
+		searchableText: buildFileSearchableText({
+			filename: args.filename,
+			title: args.title,
+			tags: args.tags,
+		}),
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -492,7 +518,10 @@ export const updateProcessedMetadata = internalMutation({
 });
 
 /**
- * Update user-editable metadata
+ * Update user-editable metadata.
+ *
+ * `threadId` is tri-state: omitted leaves the conversation link alone, an id
+ * sets it, and `null` clears it (the detail page's Unlink action).
  */
 export const update = authedMutation({
 	args: {
@@ -500,14 +529,39 @@ export const update = authedMutation({
 		title: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
 		contactIds: v.optional(v.array(v.id('contacts'))),
+		threadId: v.optional(v.union(v.id('conversationThreads'), v.null())),
 	},
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
 		const { fileId, ...updates } = args;
+		const file = await ctx.db.get(fileId);
+		if (!file) throwInvalidInput('File not found');
+
 		const cleanUpdates: Partial<Doc<'semanticFiles'>> = { updatedAt: Date.now() };
 		if (updates.title !== undefined) cleanUpdates.title = updates.title;
 		if (updates.tags !== undefined) cleanUpdates.tags = updates.tags;
 		if (updates.contactIds !== undefined) cleanUpdates.contactIds = updates.contactIds;
+		if (updates.threadId !== undefined) {
+			if (updates.threadId !== null && !(await ctx.db.get(updates.threadId))) {
+				throwInvalidInput('Conversation not found');
+			}
+			// `undefined` in a patch removes the field, which is what a clear means.
+			cleanUpdates.threadId = updates.threadId ?? undefined;
+		}
+
+		// A title or tag edit changes what this file should be findable by, so
+		// rebuild the index payload instead of leaving the insert-time (or
+		// pipeline-time) one behind.
+		if (updates.title !== undefined || updates.tags !== undefined) {
+			cleanUpdates.searchableText = buildFileSearchableText({
+				filename: file.filename,
+				title: updates.title ?? file.title,
+				summary: file.summary,
+				tags: updates.tags ?? file.tags,
+				autoTags: file.autoTags,
+				extractedText: file.extractedText,
+			});
+		}
 
 		await ctx.db.patch(fileId, cleanUpdates);
 
@@ -540,7 +594,10 @@ export const remove = authedMutation({
 // Helpers
 // ============================================================
 
-async function getNextVersion(ctx: MutationCtx, previousVersionId: Id<'semanticFiles'>): Promise<number> {
+async function getNextVersion(
+	ctx: MutationCtx,
+	previousVersionId: Id<'semanticFiles'>
+): Promise<number> {
 	const prev = await ctx.db.get(previousVersionId);
 	return prev ? prev.version + 1 : 1;
 }
@@ -557,7 +614,7 @@ async function getNextVersion(ctx: MutationCtx, previousVersionId: Id<'semanticF
 export async function syncFileContacts(
 	ctx: MutationCtx,
 	fileId: Id<'semanticFiles'>,
-	contactIds: Id<'contacts'>[] | undefined,
+	contactIds: Id<'contacts'>[] | undefined
 ): Promise<void> {
 	const existing = await ctx.db
 		.query('semanticFileContacts')

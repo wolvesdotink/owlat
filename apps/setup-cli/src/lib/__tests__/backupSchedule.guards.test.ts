@@ -24,9 +24,13 @@ describe('scripts/owlat — backup-schedule subcommand', () => {
 
 	it('documents the subcommand in --help so it is discoverable', () => {
 		expect(owlatCli).toMatch(/owlat backup-schedule \[enable\|disable\|status\]/);
-		// the help printer must reach the line (the comment block runs past it,
-		// through the `owlat --help` entry on line 29).
-		expect(owlatCli).toMatch(/sed -n '4,29p'/);
+		// the help printer must reach the line — assert against the range the
+		// printer actually uses, so adding a subcommand above it can't silently
+		// push the entry out of `owlat --help`.
+		const range = /sed -n '4,(\d+)p'/.exec(owlatCli);
+		expect(range).not.toBeNull();
+		const printed = owlatCli.split('\n').slice(3, Number(range![1])).join('\n');
+		expect(printed).toContain('owlat backup-schedule');
 	});
 
 	it('handles enable / disable / status actions', () => {
@@ -47,7 +51,9 @@ describe('scripts/owlat — backup-schedule subcommand', () => {
 
 	it('falls back to a DAILY /etc/cron.d entry that runs scripts/backup.sh', () => {
 		expect(owlatCli).toMatch(/BACKUP_SCHEDULE_CRON="0 4 \* \* \*"/);
-		expect(owlatCli).toMatch(/\$\{BACKUP_SCHEDULE_CRON\} root cd \$\{OWLAT_DIR\} && bash scripts\/backup\.sh/);
+		expect(owlatCli).toMatch(
+			/\$\{BACKUP_SCHEDULE_CRON\} root cd \$\{OWLAT_DIR\} && bash scripts\/backup\.sh/
+		);
 	});
 
 	it('is OS-aware — systemd first, cron fallback, else a clear no-op message', () => {
@@ -55,7 +61,9 @@ describe('scripts/owlat — backup-schedule subcommand', () => {
 		const fnEnd = owlatCli.indexOf('\n}', fnStart);
 		const enableFn = owlatCli.slice(fnStart, fnEnd);
 		// the order matters: prefer systemctl, then /etc/cron.d, then warn + return 1.
-		expect(enableFn).toMatch(/command -v systemctl[\s\S]*-d \/etc\/cron\.d[\s\S]*Neither systemd nor/);
+		expect(enableFn).toMatch(
+			/command -v systemctl[\s\S]*-d \/etc\/cron\.d[\s\S]*Neither systemd nor/
+		);
 		expect(enableFn).toMatch(/return 1/);
 	});
 

@@ -58,6 +58,18 @@ async function main(): Promise<void> {
 		log(`Failed to prune stale workspaces: ${error}`);
 	}
 
+	// Reclaim code tasks a previous run left mid-flight (`running`/`testing`).
+	// One worker drains this queue one task at a time, so a freshly started
+	// process owns none of them: every such row belongs to the crashed
+	// predecessor and is requeued behind its retry backoff (or failed once the
+	// attempt ceiling is spent) instead of sitting in-flight forever.
+	try {
+		const { reclaimed } = await getConvexClient().mutation(fn.reclaimStale, {});
+		log(`Reclaimed ${reclaimed} stale code task(s)`);
+	} catch (error) {
+		log(`Failed to reclaim stale code tasks: ${error}`);
+	}
+
 	// Reclaim plugin jobs a previous run left `running` (crashed mid-job) so they
 	// are requeued or failed instead of stranded — the queue-side lease recovery.
 	//

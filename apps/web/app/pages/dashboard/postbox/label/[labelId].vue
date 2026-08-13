@@ -33,7 +33,9 @@ const labelMessages = computed(() =>
 	<div class="flex h-[calc(100vh-4rem)]">
 		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
 			<div class="flex w-full">
-				<aside class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
+				<aside
+					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex flex-col bg-bg-surface"
+				>
 					<header class="border-b border-border-subtle px-4 py-3">
 						<h2 class="text-sm font-semibold text-text-primary">Label view</h2>
 					</header>
@@ -53,7 +55,9 @@ const labelMessages = computed(() =>
 						/>
 					</div>
 				</aside>
-				<section class="flex-1 flex items-center justify-center text-text-secondary">
+				<!-- The list is the whole screen below lg, so the placeholder pane
+				     (which has nothing to select into on a phone) drops out. -->
+				<section class="flex-1 hidden lg:flex items-center justify-center text-text-secondary">
 					Select a message
 				</section>
 			</div>
