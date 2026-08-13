@@ -231,7 +231,10 @@ onBeforeUnmount(() => {
 					class="w-full h-full rounded bg-white"
 					:aria-label="`PDF preview of ${current?.filename}`"
 				>
-					<p class="p-4 text-sm text-text-primary">
+					<!-- The fallback paints inside the white <object> above, so its text is
+					     literal dark-on-white: text-text-primary would follow the app and go
+					     near-white on white in dark mode. -->
+					<p class="p-4 text-sm text-gray-900">
 						This browser can't embed PDFs —
 						<button type="button" class="underline" @click="openInNewTab">open in a new tab</button>
 						instead.

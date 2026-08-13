@@ -291,7 +291,7 @@ function openForYou(): void {
 /* Warm terracotta close affordance — on-brand, not the generic Windows red. */
 .tb-close:hover {
 	background-color: var(--color-error);
-	color: #fff;
+	color: var(--color-text-inverse);
 }
 
 @media (prefers-reduced-motion: reduce) {
