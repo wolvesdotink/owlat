@@ -162,7 +162,7 @@ describe('recent ramp decisions', () => {
 });
 
 describe('the single next action', () => {
-	it('puts resuming a globally paused ramp above everything else', () => {
+	it('puts resuming a globally paused ramp above every cell-level state', () => {
 		const action = rampNextAction(
 			controlsView({
 				isControllerPaused: true,
@@ -179,6 +179,18 @@ describe('the single next action', () => {
 		);
 		expect(action.key).toBe('enroll_cell');
 		expect(action.to).toBe('/dashboard/admin/delivery/advanced/controls');
+	});
+
+	it('invites the first enrolment even while the controller is paused', () => {
+		// The pause flag survives a deployment taking its last cell off the ramp,
+		// and the card would then head "No cell is on the ramp yet" over an action
+		// telling the operator to resume it. Nothing to move outranks the pause.
+		const controls = controlsView({
+			isControllerPaused: true,
+			cells: [cellControl({ isRampManaged: false, lastDecision: null })],
+		});
+		expect(rampPhaseNarrative(controls).key).toBe('not_started');
+		expect(rampNextAction(controls).key).toBe('enroll_cell');
 	});
 
 	it('leads with the newest retreat and quotes its notice', () => {

@@ -251,10 +251,13 @@ export interface RampNextAction {
 /**
  * ONE ACTION, CHOSEN BY WHAT IT COSTS TO IGNORE.
  *
- * A globally paused ramp outranks everything because nothing else on this card
- * can happen while it stands; a retreat outranks an operator's own hold because
- * a gate broke and the notice names what to do about it; a graduated deployment
- * still paying a relay outranks "keep watching" because that one is money.
+ * An empty ramp outranks even a pause: a controller with nothing to move is not
+ * a thing to resume, and "Resume the ramp" beside a card that says no cell is on
+ * it yet is two screens' worth of contradiction. A globally paused ramp outranks
+ * everything after that, because nothing else on this card can happen while it
+ * stands; a retreat outranks an operator's own hold because a gate broke and the
+ * notice names what to do about it; a graduated deployment still paying a relay
+ * outranks "keep watching" because that one is money.
  *
  * THE LAST ARM IS NOT A NAG. When the controller is simply working, the honest
  * next action is to look at the evidence it is working from — so the card always
@@ -263,17 +266,6 @@ export interface RampNextAction {
 export function rampNextAction(controls: RampControls): RampNextAction {
 	const managed = managedCells(controls);
 
-	if (controls.isControllerPaused) {
-		return {
-			key: 'resume_controller',
-			title: 'Resume the ramp',
-			detail:
-				'The whole ramp is paused, so no share will move — up or down — however good or bad the evidence gets. Resume it when you are ready for the controller to act again.',
-			ctaLabel: 'Open the ramp controls',
-			to: CONTROLS_HREF,
-		};
-	}
-
 	if (managed.length === 0) {
 		return {
 			key: 'enroll_cell',
@@ -281,6 +273,17 @@ export function rampNextAction(controls: RampControls): RampNextAction {
 			detail:
 				'Pick one stream and one mailbox provider — campaign mail to Gmail is the usual first choice — and the controller starts moving that slice on the evidence alone. Nothing else about your sending changes.',
 			ctaLabel: 'Choose a cell',
+			to: CONTROLS_HREF,
+		};
+	}
+
+	if (controls.isControllerPaused) {
+		return {
+			key: 'resume_controller',
+			title: 'Resume the ramp',
+			detail:
+				'The whole ramp is paused, so no share will move — up or down — however good or bad the evidence gets. Resume it when you are ready for the controller to act again.',
+			ctaLabel: 'Open the ramp controls',
 			to: CONTROLS_HREF,
 		};
 	}
