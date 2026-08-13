@@ -17,7 +17,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, h, ref } from 'vue';
 
 import { createTestI18n, expectFullyLocalized, i18nStubs } from './i18n';
-import UiInput from '../../../../packages/ui/components/ui/Input.vue';
+import UiInput from '@owlat/ui/components/ui/Input.vue';
 import AuthShell from '../components/auth/AuthShell.vue';
 import LoginPage from '../pages/auth/login.vue';
 import RegisterPage from '../pages/auth/register.vue';
