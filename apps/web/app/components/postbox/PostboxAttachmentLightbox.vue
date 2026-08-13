@@ -144,13 +144,13 @@ onBeforeUnmount(() => {
 
 <template>
 	<Teleport to="body">
-		<!-- palette-ok-start: every colour below is drawn on the fixed black scrim
-		     this dialog paints, not on an app surface — the chrome is white in both
+		<!-- palette-ok-start: every colour below is drawn on the fixed scrim this
+		     dialog paints, not on an app surface — the chrome is white in both
 		     themes and the PDF/image canvas is white because the document is. A
 		     theme token here would follow the app and disappear in light mode. -->
 		<div
 			ref="containerRef"
-			class="fixed inset-0 z-(--z-overlay) flex flex-col bg-black/85"
+			class="fixed inset-0 z-(--z-overlay) flex flex-col bg-scrim/85"
 			role="dialog"
 			aria-modal="true"
 			:aria-label="current ? `Preview of ${current.filename}` : 'Attachment preview'"

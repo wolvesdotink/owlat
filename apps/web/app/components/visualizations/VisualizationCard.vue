@@ -139,7 +139,7 @@ const handleRemove = async () => {
 					v-if="showConfirmRemove"
 					class="fixed inset-0 z-50 flex items-center justify-center p-4"
 				>
-					<div class="absolute inset-0 bg-black/60" @click="showConfirmRemove = false" />
+					<div class="absolute inset-0 bg-scrim/60" @click="showConfirmRemove = false" />
 					<div
 						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
 					>

@@ -31,7 +31,7 @@ const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
 	>
 		<div
 			v-if="open"
-			class="fixed inset-0 bg-black/50 z-40 lg:hidden"
+			class="fixed inset-0 bg-scrim/50 z-40 lg:hidden"
 			@click="emit('update:open', false)"
 		/>
 	</Transition>

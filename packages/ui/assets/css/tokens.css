@@ -14,6 +14,11 @@
 	--color-bg-surface-hover: color-mix(in srgb, var(--color-bg-surface) 94%, var(--surface-tint));
 	--color-bg-overlay: var(--surface-5);
 	--color-bg-soft: var(--surface-2);
+	/* The dimmer BEHIND a modal, not a surface painted on the page — it darkens
+	   whatever it covers, so it is the same in both themes on purpose and light
+	   and dark deliberately do not override it. Always used with an opacity
+	   (bg-scrim/50); a bare bg-scrim would be an opaque black page. */
+	--color-scrim: #000000;
 
 	/* === PRIMARY: TERRACOTTA === */
 	--color-brand: #b86b4d;
