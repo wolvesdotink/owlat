@@ -61,8 +61,16 @@ COPY --from=deps /app/packages/*/node_modules ./packages/
 # Copy source for the api and its workspace deps — keep in sync with the
 # `@owlat/*` imports under apps/api/convex (grep them when this fails with
 # "Could not resolve @owlat/...").
+# `__tests__` directories MUST NOT reach this image: the Convex CLI's
+# entry-point walk skips only multi-dot basenames (`*.test.ts`), so a
+# single-dot helper like convex/__tests__/testModules.ts gets pushed as a real
+# entry module — and its `import.meta.glob` fails backend analysis, killing
+# every `convex deploy` from the released image (found by the e2e-install
+# release gate). Excluding them here also keeps the in-image function-graph
+# smoke below (which skips __tests__ by rule) aligned with what the CLI
+# actually deploys from this image.
 COPY tsconfig.base.json ./
-COPY apps/api/ apps/api/
+COPY --exclude=convex/__tests__ --exclude=convex/**/__tests__ apps/api/ apps/api/
 # This copy makes the deploy stage depend on the successful clean composition
 # check above and uses its verified generated backend module.
 COPY --from=composition-check /app/apps/api/convex/plugins/plugins.generated.ts apps/api/convex/plugins/plugins.generated.ts
