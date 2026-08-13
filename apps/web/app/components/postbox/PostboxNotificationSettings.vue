@@ -7,6 +7,15 @@
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { POSTBOX_NOTIFY_ABOUT_OPTIONS } from '~/utils/postboxNotify';
 
+// This surface is not localized yet (see docs 3.developer/23.ui-localization),
+// so its scope labels sit inline with the rest of its hardcoded English copy
+// rather than in the message catalog.
+const NOTIFY_ABOUT_LABELS: Record<PostboxNotifyAbout, string> = {
+	everything: 'Everything',
+	'people-important': 'People & important only',
+	nothing: 'Nothing',
+};
+
 const {
 	notifyAbout,
 	setNotifyAbout,
@@ -53,8 +62,8 @@ function onSenderScreenerChange(event: Event) {
 				:disabled="isSaving"
 				@change="onNotifyAboutChange"
 			>
-				<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt.value" :value="opt.value">
-					{{ opt.label }}
+				<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt" :value="opt">
+					{{ NOTIFY_ABOUT_LABELS[opt] }}
 				</option>
 			</select>
 		</div>

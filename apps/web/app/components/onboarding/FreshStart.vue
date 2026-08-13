@@ -67,6 +67,11 @@ const signatureText = ref('');
 const notifyChoice = ref<PostboxNotifyAbout>('everything');
 const seededFromMailbox = ref(false);
 
+/** The scope values are a stable union; only their labels are translated. */
+function notifyOptionLabel(value: PostboxNotifyAbout): string {
+	return t(`welcome.freshStart.notifyOptions.${value}`);
+}
+
 // Seed the display name once from server state, without clobbering later edits.
 watchEffect(() => {
 	const mb = mailbox.value;
@@ -268,8 +273,8 @@ function skipToInbox() {
 						v-model="notifyChoice"
 						class="input input-sm"
 					>
-						<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt.value" :value="opt.value">
-							{{ opt.label }}
+						<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt" :value="opt">
+							{{ notifyOptionLabel(opt) }}
 						</option>
 					</select>
 					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.notifyHint') }}</p>

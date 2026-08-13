@@ -30,13 +30,16 @@ export type PostboxMailCategory =
 	| 'receipt'
 	| 'other';
 
-export const POSTBOX_NOTIFY_ABOUT_OPTIONS: Array<{
-	value: PostboxNotifyAbout;
-	label: string;
-}> = [
-	{ value: 'everything', label: 'Everything' },
-	{ value: 'people-important', label: 'People & important only' },
-	{ value: 'nothing', label: 'Nothing' },
+/**
+ * Every scope, in the order a picker offers them. VALUES ONLY — a label pinned
+ * here would be English forever: the extracted surfaces resolve their labels
+ * through the message catalog, and a surface that isn't extracted yet keeps its
+ * English copy next to the rest of its own hardcoded copy.
+ */
+export const POSTBOX_NOTIFY_ABOUT_OPTIONS: readonly PostboxNotifyAbout[] = [
+	'everything',
+	'people-important',
+	'nothing',
 ];
 
 /**

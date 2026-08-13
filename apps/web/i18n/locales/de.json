@@ -224,6 +224,11 @@
 			"signaturePlaceholder": "z. B. Marcel · Owlat",
 			"signatureHint": "Wird unter neue Nachrichten gesetzt.",
 			"notifyLabel": "Benachrichtigen bei",
+			"notifyOptions": {
+				"everything": "Alles",
+				"people-important": "Nur Personen & Wichtiges",
+				"nothing": "Nichts"
+			},
 			"notifyHint": "Das können Sie später in den Postbox-Einstellungen feinjustieren.",
 			"checkingTransport": "Es wird geprüft, ob der Versand bereit ist…",
 			"readyNowTitle": "Der Versand ist jetzt bereit",

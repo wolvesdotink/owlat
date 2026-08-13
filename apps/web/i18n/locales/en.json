@@ -224,6 +224,11 @@
 			"signaturePlaceholder": "e.g. Marcel · Owlat",
 			"signatureHint": "Added to the bottom of new messages.",
 			"notifyLabel": "Notify me about",
+			"notifyOptions": {
+				"everything": "Everything",
+				"people-important": "People & important only",
+				"nothing": "Nothing"
+			},
 			"notifyHint": "You can fine-tune this later in Postbox settings.",
 			"checkingTransport": "Checking whether sending is ready…",
 			"readyNowTitle": "Sending is ready now",
