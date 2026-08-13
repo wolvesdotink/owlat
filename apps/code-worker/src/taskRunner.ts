@@ -357,13 +357,10 @@ export async function runTests(
  * The retry ceiling and the backoff schedule live in the backend
  * (`codeWorkTasks.markFailed`), which either requeues the task behind a delay
  * or makes the failure terminal; the worker just picks the task up again on a
- * later poll once the window has elapsed. The client is injectable so the
- * decision-reporting can be unit-tested without a deployment.
- *
- * `terminal` is for the failures a retry cannot change — the worker is the only
- * side that knows which those are. Each attempt is a fresh clone, a full coding
- * agent run and the test suite, so re-running a deterministic outcome spends
- * that twice over to reach the same verdict.
+ * later poll once the window has elapsed. `terminal` is the worker's statement
+ * that a retry cannot change the outcome — it is the only side that knows, and
+ * an attempt costs a whole clone/agent/test cycle. The client is injectable so
+ * the reporting can be unit-tested without a deployment.
  */
 export async function reportTaskFailure(
 	taskId: string,
@@ -423,12 +420,10 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		// tree (world-readable) and writes only the root-owned .git.
 		const diffOutput = runGit(buildDiffStatArgs(workDir), { encoding: 'utf-8' }) as string;
 		if (!diffOutput.trim()) {
-			// Deterministic: the agent ran to completion and decided the task needed
-			// no code change. Two more clone/agent/test cycles reach the same answer,
-			// so this failure is terminal rather than retried.
-			await reportTaskFailure(taskId, 'Coding agent produced no changes', client, {
-				terminal: true,
-			});
+			// Deterministic: the agent finished and decided nothing needed changing,
+			// so a retry reaches the same answer. Terminal, not requeued.
+			const noChanges = 'Coding agent produced no changes';
+			await reportTaskFailure(taskId, noChanges, client, { terminal: true });
 			return;
 		}
 

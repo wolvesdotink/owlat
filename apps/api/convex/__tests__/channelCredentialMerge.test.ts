@@ -4,7 +4,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { decryptChannelCreds } from '../channels/credentials';
 import { createTestChannelConfig } from './factories';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 
 /**
  * Partial channel-credential saves must MERGE, never replace.
@@ -45,9 +45,11 @@ beforeEach(() => {
 	process.env['INSTANCE_SECRET'] = 'test-instance-secret';
 });
 
+type Harness = ReturnType<typeof convexTest>;
+
 /** Save credentials through the real encrypt-on-write action. */
 async function saveConfig(
-	t: ReturnType<typeof convexTest>,
+	t: Harness,
 	channel: 'sms' | 'whatsapp' | 'generic',
 	config: Record<string, string>
 ) {
@@ -58,16 +60,11 @@ async function saveConfig(
 }
 
 /** Read the row back and open its envelope the way the dispatch path does. */
-async function storedCreds(
-	t: ReturnType<typeof convexTest>,
-	channel: 'sms' | 'whatsapp' | 'generic'
-) {
-	const row = await t.run(async (ctx) =>
-		ctx.db
-			.query('channelConfigs')
-			.withIndex('by_channel', (q) => q.eq('channel', channel))
-			.first()
-	);
+async function storedCreds(t: Harness, channel: 'sms' | 'whatsapp' | 'generic') {
+	const row = (await t.run(async (ctx) => {
+		const rows = await ctx.db.query('channelConfigs').collect();
+		return rows.find((r) => r.channel === channel) ?? null;
+	})) as Doc<'channelConfigs'> | null;
 	return {
 		row,
 		creds: row?.config ? decryptChannelCreds(row.config, channel) : null,
