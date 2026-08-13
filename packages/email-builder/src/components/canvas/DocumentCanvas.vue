@@ -234,9 +234,10 @@ function blockTabIndex(blockId: string): number {
 }
 
 /**
- * List navigation, listbox-style. Alt+Arrow is deliberately left alone: the editor's global
- * keydown routing (utils/editorKeyboard) uses it to *move* the selected block,
- * so here it must not also move the selection.
+ * List navigation, listbox-style: arrows, Home and End move the selection.
+ * Alt+Arrow is deliberately left alone — the editor's global keydown routing
+ * (utils/editorKeyboard) uses it to *move* the selected block, so here it must
+ * not also move the selection.
  */
 function handleListKeydown(event: KeyboardEvent) {
 	if (event.altKey || event.metaKey || event.ctrlKey) return;
