@@ -4,6 +4,10 @@
 @source "../../../../../packages/ui/components/**/*.vue";
 @source "../../../../../packages/ui/composables/**/*.ts";
 
+/* The landing idioms (lp-eyebrow, lp-title, lp-card, hero-grain/grid, aurora,
+ * lp-hero-in, btn-hairline, …) live in packages/ui/assets/css/landing.css —
+ * shared with the product app. This file keeps only marketing-specific pieces. */
+
 /* Marketing-only syntax highlighting tokens */
 :root {
 	--color-syntax-fn: #d9946e;
@@ -19,28 +23,6 @@
 }
 
 /* ═══════════════ UTILITIES ═══════════════ */
-
-@utility btn-press {
-	transition: transform var(--motion-fast) var(--ease-spring);
-
-	&:active {
-		transform: scale(0.98);
-	}
-}
-
-@utility section-divider {
-	display: flex;
-	align-items: center;
-	gap: 1.5rem;
-
-	&::before,
-	&::after {
-		content: '';
-		flex: 1;
-		height: 1px;
-		background: var(--color-border-default);
-	}
-}
 
 /* Syntax highlighting */
 @utility c-kw {
@@ -62,164 +44,6 @@
 
 @utility c-comment {
 	color: var(--color-text-tertiary);
-}
-
-/* ═══════════════ LANDING — section rhythm ═══════════════ */
-
-/* Eyebrow → title → sub. Every section header uses these three. */
-@utility lp-eyebrow {
-	display: block;
-	font-size: var(--text-caption);
-	line-height: var(--text-caption--line-height);
-	font-weight: 450;
-	text-transform: uppercase;
-	letter-spacing: 0.1em;
-	color: var(--color-text-tertiary);
-}
-
-@utility lp-title {
-	font-size: clamp(2rem, 4.5vw, 3.25rem);
-	font-weight: 450;
-	letter-spacing: -0.02em;
-	line-height: 1.12;
-	color: var(--color-text-primary);
-}
-
-/* The one italic display word/phrase inside a headline. */
-@utility lp-title-accent {
-	font-family: var(--font-display);
-	font-style: italic;
-	font-weight: 400;
-	letter-spacing: -0.01em;
-}
-
-/* Warm gradient for the hero's display line. */
-@utility lp-warm-gradient {
-	background: linear-gradient(100deg, var(--color-text-primary) 15%, var(--color-brand) 80%);
-	-webkit-background-clip: text;
-	background-clip: text;
-	color: transparent;
-}
-
-/* ═══════════════ LANDING — cards & buttons ═══════════════ */
-
-/* White card, hairline border, hover: border darkens + shadow lifts. */
-@utility lp-card {
-	background: var(--surface-3);
-	border: 1px solid var(--color-border-subtle);
-	border-radius: var(--radius-card);
-	box-shadow: var(--shadow-1);
-	transition:
-		border-color var(--motion-fast) var(--ease-spring),
-		box-shadow var(--motion-fast) var(--ease-spring);
-
-	&:hover {
-		border-color: var(--color-border-default);
-		box-shadow: var(--shadow-3);
-	}
-}
-
-/* Ghost pill: hairline border + secondary text. Compose with `.btn`. */
-@utility btn-hairline {
-	border: 1px solid var(--color-border-default);
-	background: transparent;
-	color: var(--color-text-secondary);
-
-	&:hover {
-		border-color: var(--color-border-strong);
-		color: var(--color-text-primary);
-	}
-}
-
-/* ═══════════════ LANDING — hero background layers ═══════════════ */
-
-/* Grain: inline SVG turbulence tile at very low opacity. */
-@utility hero-grain {
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-	opacity: 0.035;
-}
-
-/* Fine 1px grid, faded out from center via radial mask. */
-@utility hero-grid {
-	background-image:
-		linear-gradient(to right, rgba(0, 0, 0, 0.028) 1px, transparent 1px),
-		linear-gradient(to bottom, rgba(0, 0, 0, 0.028) 1px, transparent 1px);
-	background-size: 72px 72px;
-	mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, #000 25%, transparent 78%);
-	-webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, #000 25%, transparent 78%);
-}
-
-/* Aurora — large blurred blobs anchored at the section's bottom edge. */
-.lp-aurora {
-	position: absolute;
-	border-radius: 50%;
-	filter: blur(120px);
-	pointer-events: none;
-	will-change: transform;
-}
-
-.lp-aurora-core {
-	width: 60vw;
-	height: 44vh;
-	left: 20%;
-	bottom: -26vh;
-	background: radial-gradient(ellipse closest-side, rgba(196, 120, 90, 0.45), transparent 72%);
-	animation: lp-aurora-breathe 12s ease-in-out infinite alternate;
-}
-
-.lp-aurora-gold {
-	width: 42vw;
-	height: 34vh;
-	left: -6%;
-	bottom: -20vh;
-	background: radial-gradient(ellipse closest-side, rgba(212, 165, 116, 0.3), transparent 72%);
-	animation: lp-aurora-sway 16s ease-in-out infinite alternate;
-}
-
-.lp-aurora-rose {
-	width: 42vw;
-	height: 34vh;
-	right: -6%;
-	bottom: -20vh;
-	background: radial-gradient(ellipse closest-side, rgba(214, 140, 128, 0.26), transparent 72%);
-	animation: lp-aurora-sway 14s ease-in-out infinite alternate-reverse;
-}
-
-@keyframes lp-aurora-breathe {
-	from {
-		transform: translateY(0) scale(1);
-	}
-	to {
-		transform: translateY(-5vh) scale(1.12);
-	}
-}
-
-@keyframes lp-aurora-sway {
-	from {
-		transform: translateX(0) scale(1);
-	}
-	to {
-		transform: translateX(6vw) scale(1.08);
-	}
-}
-
-/* ═══════════════ LANDING — hero entrance ═══════════════ */
-
-.lp-hero-in {
-	opacity: 0;
-	animation: lp-rise var(--motion-choreo) var(--ease-spring) both;
-	animation-delay: calc(var(--i, 0) * 110ms);
-}
-
-@keyframes lp-rise {
-	from {
-		opacity: 0;
-		transform: translateY(16px);
-	}
-	to {
-		opacity: 1;
-		transform: none;
-	}
 }
 
 /* ═══════════════ LANDING — marquee ticker ═══════════════ */
@@ -296,18 +120,10 @@
 
 /* ═══════════════ LANDING — reduced motion ═══════════════ */
 
-/* The global backstop collapses durations; looping/entrance decoration is
- * removed outright here so nothing keeps moving. */
+/* Shared landing.css already stops the aurora + hero entrance; the marquee is
+ * marketing-only so its stop lives here. */
 @media (prefers-reduced-motion: reduce) {
-	.lp-aurora-core,
-	.lp-aurora-gold,
-	.lp-aurora-rose,
 	.lp-marquee-track {
 		animation: none;
-	}
-
-	.lp-hero-in {
-		animation: none;
-		opacity: 1;
 	}
 }

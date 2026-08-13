@@ -330,6 +330,13 @@ jobs:
       - name: Verify Convex plugin composition bundle
         run: bun run plugins:test-convex-bundle
 
+      # Bundles EVERY function module under apps/api/convex with Convex's real
+      # isolate/node runtime split — the composition bundle above only covers
+      # convex.config.ts, which is how the v0.4.2 runtime-boundary breakage
+      # shipped unnoticed (#551).
+      - name: Verify Convex function-graph bundle
+        run: bun run plugins:test-convex-function-graph
+
       - name: Lint
         run: bun run ci:lint
 

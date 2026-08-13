@@ -46,6 +46,14 @@ WORKDIR /app
 COPY --from=builder /app/apps/mta/runtime ./dist
 COPY apps/mta/package.json ./
 
+# groupmq loads its Redis Lua scripts from disk at runtime, resolving them
+# relative to the module directory — after bundling that is /app/dist, and the
+# loader probes <dir>/<name>.lua then <dir>/lua/<name>.lua. Ship the scripts
+# alongside the bundle, and fail the build (not production) if a groupmq
+# upgrade moves or renames them.
+COPY --from=builder /app/apps/mta/node_modules/groupmq/dist/lua/ ./dist/lua/
+RUN test -f dist/lua/reserve-batch.lua && ls dist/lua/*.lua >/dev/null
+
 # Version metadata — injected by CI on release
 ARG OWLAT_VERSION=dev
 ARG OWLAT_GIT_SHA=unknown

@@ -80,16 +80,10 @@ async function handleSubmit() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4">
-		<!-- Logo/Brand -->
-		<div class="mb-8 text-center">
-			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="text-text-secondary mt-2">Sign in to your account</p>
-		</div>
+	<AuthShell subtitle="Sign in to your Owlat account.">
+		<template #title>Welcome <span class="lp-title-accent">back</span></template>
 
-		<!-- Login Card -->
-		<UiCard class="w-full max-w-md">
-			<!-- Post-setup success banner -->
+		<!-- Post-setup success banner -->
 			<div
 				v-if="justCompletedSetup"
 				class="mb-6 p-4 bg-success-subtle border border-success/30 rounded-lg text-success text-sm"
@@ -141,11 +135,9 @@ async function handleSubmit() {
 				</UiButton>
 			</form>
 
-			<!-- Register Link -->
-			<p class="mt-6 text-center text-text-secondary text-sm">
-				Don't have an account?
-				<NuxtLink to="/auth/register" class="link font-medium"> Create one </NuxtLink>
-			</p>
-		</UiCard>
-	</div>
+		<template #footer>
+			Don't have an account?
+			<NuxtLink to="/auth/register" class="link font-medium"> Create one </NuxtLink>
+		</template>
+	</AuthShell>
 </template>

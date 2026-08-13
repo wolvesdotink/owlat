@@ -920,6 +920,7 @@ import type * as transactional_translations from '../transactional/translations.
 import type * as translate from '../translate.js';
 import type * as unifiedMessages from '../unifiedMessages.js';
 import type * as visualizationAgent from '../visualizationAgent.js';
+import type * as visualizationAgentActions from '../visualizationAgentActions.js';
 import type * as webhooks_adapters_emailit from '../webhooks/adapters/emailit.js';
 import type * as webhooks_adapters_generic from '../webhooks/adapters/generic.js';
 import type * as webhooks_adapters_index from '../webhooks/adapters/index.js';
@@ -1897,6 +1898,7 @@ declare const fullApi: ApiFromModules<{
 	translate: typeof translate;
 	unifiedMessages: typeof unifiedMessages;
 	visualizationAgent: typeof visualizationAgent;
+	visualizationAgentActions: typeof visualizationAgentActions;
 	'webhooks/adapters/emailit': typeof webhooks_adapters_emailit;
 	'webhooks/adapters/generic': typeof webhooks_adapters_generic;
 	'webhooks/adapters/index': typeof webhooks_adapters_index;

@@ -103,7 +103,7 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 		<div class="flex items-center gap-4 mb-8">
 			<UiIconBox icon="lucide:activity" size="xl" variant="brand" rounded="full" />
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Agent Health & Monitoring</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Agent Health & Monitoring</h1>
 				<p class="text-text-secondary mt-1">
 					Monitor the AI agent pipeline performance, circuit breaker states, and key metrics.
 				</p>

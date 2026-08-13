@@ -23,7 +23,7 @@ const notFound = computed(() => !mailboxLoading.value && mailbox.value === null)
 	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
 		<PreferencesBackLink />
 
-		<h1 class="text-2xl font-semibold">Team inbox members</h1>
+		<h1 class="text-2xl font-medium tracking-[-0.02em]">Team inbox members</h1>
 		<p v-if="mailbox" class="text-text-secondary mt-1">
 			Who can read and send from <code>{{ mailbox.address }}</code
 			>.

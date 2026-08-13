@@ -77,8 +77,9 @@ onMounted(async () => {
 				<!-- Shared header -->
 				<div class="text-center">
 					<UiIconBox icon="lucide:party-popper" variant="brand" size="lg" class="mx-auto mb-6" />
-					<h1 class="text-2xl font-semibold text-text-primary">
-						Welcome to {{ instanceName }}<template v-if="firstName">, {{ firstName }}</template>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						Welcome to <span class="lp-title-accent">{{ instanceName }}</span
+						><template v-if="firstName">, {{ firstName }}</template>
 					</h1>
 					<p class="mt-2 text-text-secondary">
 						This is your team's home for email. Let's get you in.

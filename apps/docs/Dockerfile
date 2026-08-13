@@ -4,7 +4,12 @@
 FROM node:26-alpine AS deps
 
 RUN apk add --no-cache python3 make g++
-RUN npm install -g bun
+# node-gyp must be preinstalled: better-sqlite3 ships a binding.gyp with no
+# install script, so bun runs the default `node-gyp rebuild` — and when
+# node-gyp is not on PATH, bun shims it through a `bunx node-gyp@latest`
+# NETWORK FETCH into a shared /tmp cache at install-script time, which has
+# produced half-installed trees (ENOENT proc-log) and flaky image builds.
+RUN npm install -g bun node-gyp
 
 WORKDIR /app
 

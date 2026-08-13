@@ -62,8 +62,7 @@ const isTestEmailModalOpen = ref(false);
  * D14), so the refusal is claimed here and rendered as a calm panel rather than
  * left to the generic red `invalid_state` toast.
  */
-const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } =
-	useCapacityRefusal();
+const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();
 
 // Mutations
 const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
@@ -225,9 +224,7 @@ const variantBTemplateName = computed(() => {
 			<!-- Campaign Details Summary -->
 			<div class="space-y-4">
 				<!-- Campaign Name -->
-				<div
-					class="flex items-start justify-between p-4 bg-bg-surface border border-border-subtle rounded-lg"
-				>
+				<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:file-text" size="sm" rounded="lg" />
 						<div>
@@ -236,7 +233,7 @@ const variantBTemplateName = computed(() => {
 						</div>
 					</div>
 					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
+						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'setup')"
 						aria-label="Edit"
 					>
@@ -245,9 +242,7 @@ const variantBTemplateName = computed(() => {
 				</div>
 
 				<!-- From Info -->
-				<div
-					class="flex items-start justify-between p-4 bg-bg-surface border border-border-subtle rounded-lg"
-				>
+				<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:user" size="sm" rounded="lg" />
 						<div>
@@ -260,7 +255,7 @@ const variantBTemplateName = computed(() => {
 						</div>
 					</div>
 					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
+						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'setup')"
 						aria-label="Edit"
 					>
@@ -269,9 +264,7 @@ const variantBTemplateName = computed(() => {
 				</div>
 
 				<!-- Audience -->
-				<div
-					class="flex items-start justify-between p-4 bg-bg-surface border border-border-subtle rounded-lg"
-				>
+				<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:users" size="sm" variant="success" rounded="lg" />
 						<div>
@@ -284,7 +277,7 @@ const variantBTemplateName = computed(() => {
 						</div>
 					</div>
 					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
+						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'setup')"
 						aria-label="Edit"
 					>
@@ -293,9 +286,7 @@ const variantBTemplateName = computed(() => {
 				</div>
 
 				<!-- Email Content -->
-				<div
-					class="flex items-start justify-between p-4 bg-bg-surface border border-border-subtle rounded-lg"
-				>
+				<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:mail" size="sm" variant="warning" rounded="lg" />
 						<div class="flex-1 min-w-0">
@@ -311,7 +302,7 @@ const variantBTemplateName = computed(() => {
 						</div>
 					</div>
 					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
+						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'content')"
 						aria-label="Edit"
 					>
@@ -375,7 +366,7 @@ const variantBTemplateName = computed(() => {
 						</div>
 					</div>
 					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-colors"
+						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'setup')"
 						aria-label="Edit"
 					>
@@ -483,7 +474,7 @@ const variantBTemplateName = computed(() => {
 							<!-- Timezone Scheduling Option -->
 							<div class="mt-4">
 								<label
-									class="flex items-start gap-3 p-3 bg-bg-elevated border border-border-subtle rounded-lg cursor-pointer hover:border-border-default transition-colors"
+									class="flex items-start gap-3 p-3 bg-bg-elevated shadow-surface-1 rounded-lg cursor-pointer hover:bg-bg-surface-hover transition-colors"
 								>
 									<input
 										v-model="useRecipientTimezone"
@@ -509,7 +500,7 @@ const variantBTemplateName = computed(() => {
 							<!-- Scheduled Time Preview -->
 							<div
 								v-if="scheduledDate && scheduledTime"
-								class="p-3 bg-bg-elevated border border-border-subtle rounded-lg"
+								class="p-3 bg-bg-elevated shadow-surface-1 rounded-lg"
 							>
 								<template v-if="useRecipientTimezone">
 									<p class="text-sm text-text-secondary">Your campaign will be sent at:</p>

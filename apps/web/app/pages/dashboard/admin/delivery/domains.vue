@@ -344,7 +344,7 @@ onBeforeUnmount(() => {
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Sending Domains</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Sending Domains</h1>
 					<p class="mt-1 text-text-secondary">
 						Configure custom sending domains for better email deliverability
 					</p>

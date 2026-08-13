@@ -62,7 +62,7 @@ const matchesQuery = (name: string) => {
 				<Icon name="lucide:at-sign" class="w-4 h-4" />
 				<span
 					v-if="mentionCount > 0"
-					class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-error text-white text-[9px] font-semibold flex items-center justify-center"
+					class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-error text-white text-2xs font-semibold flex items-center justify-center"
 				>
 					{{ mentionCount > 9 ? '9+' : mentionCount }}
 				</span>
@@ -80,7 +80,7 @@ const matchesQuery = (name: string) => {
 					v-model="searchQuery"
 					type="text"
 					placeholder="Search…"
-					class="w-full pl-9 pr-3 py-2 bg-bg-surface border border-border-subtle rounded-lg text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+					class="input input-sm pl-9"
 				/>
 			</div>
 		</div>
@@ -96,7 +96,7 @@ const matchesQuery = (name: string) => {
 				<!-- Channels -->
 				<div class="px-3 mt-2">
 					<div class="flex items-center justify-between px-1 py-1">
-						<span class="text-[11px] uppercase tracking-wider font-semibold text-text-tertiary">
+						<span class="text-2xs uppercase tracking-wider font-semibold text-text-tertiary">
 							Channels
 						</span>
 						<div class="flex items-center gap-1">
@@ -140,13 +140,13 @@ const matchesQuery = (name: string) => {
 						</span>
 						<span
 							v-if="channel.unread.hasMention"
-							class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-error text-white"
+							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-white"
 						>
 							@
 						</span>
 						<span
 							v-else-if="channel.unread.unreadCount > 0"
-							class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-brand text-white"
+							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-text-primary text-text-inverse"
 						>
 							{{ channel.unread.unreadCount > 99 ? '99+' : channel.unread.unreadCount }}
 						</span>
@@ -156,7 +156,7 @@ const matchesQuery = (name: string) => {
 				<!-- Archived channels (collapsed by default) -->
 				<div v-if="archivedChannels.length > 0" class="px-3 mt-3">
 					<button
-						class="w-full flex items-center gap-1.5 px-1 py-1 text-[11px] uppercase tracking-wider font-semibold text-text-tertiary hover:text-text-secondary transition-colors"
+						class="w-full flex items-center gap-1.5 px-1 py-1 text-2xs uppercase tracking-wider font-semibold text-text-tertiary hover:text-text-secondary transition-colors"
 						@click="showArchived = !showArchived"
 					>
 						<Icon
@@ -193,7 +193,7 @@ const matchesQuery = (name: string) => {
 				<!-- DMs -->
 				<div class="px-3 mt-4">
 					<div class="flex items-center justify-between px-1 py-1">
-						<span class="text-[11px] uppercase tracking-wider font-semibold text-text-tertiary">
+						<span class="text-2xs uppercase tracking-wider font-semibold text-text-tertiary">
 							Direct messages
 						</span>
 						<button
@@ -225,7 +225,7 @@ const matchesQuery = (name: string) => {
 						</span>
 						<span
 							v-if="dm.unread.unreadCount > 0"
-							class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-brand text-white"
+							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-text-primary text-text-inverse"
 						>
 							{{ dm.unread.unreadCount > 99 ? '99+' : dm.unread.unreadCount }}
 						</span>

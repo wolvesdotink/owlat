@@ -260,7 +260,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Team Members</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Team Members</h1>
 					<p class="mt-1 text-text-secondary">Manage who has access to your team</p>
 				</div>
 				<UiButton v-if="canManageMembers" @click="inviteModal?.open()">

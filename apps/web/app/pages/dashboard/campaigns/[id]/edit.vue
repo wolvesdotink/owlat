@@ -201,14 +201,14 @@ const shownCapacityPlan = computed(() => {
 				<div class="flex items-center justify-between">
 					<div class="flex items-center gap-4">
 						<button
-							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="handleBack"
 							aria-label="Back"
 						>
 							<Icon name="lucide:arrow-left" class="w-5 h-5" />
 						</button>
 						<div>
-							<h1 class="text-lg font-semibold text-text-primary">
+							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 								{{ isScheduled ? 'Edit Scheduled Campaign' : 'Edit Campaign' }}
 							</h1>
 							<p class="text-sm text-text-secondary">
@@ -560,7 +560,7 @@ const shownCapacityPlan = computed(() => {
 							</label>
 
 							<!-- Audience Count -->
-							<div class="p-4 bg-bg-surface border border-border-subtle rounded-lg">
+							<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 								<div class="flex items-center justify-between">
 									<div class="flex items-center gap-2">
 										<Icon name="lucide:users" class="w-5 h-5 text-text-tertiary" />
@@ -616,7 +616,7 @@ const shownCapacityPlan = computed(() => {
 								<label class="label">Email Template <span class="text-error">*</span></label>
 								<div
 									v-if="selectedTemplate"
-									class="mt-2 p-4 bg-bg-surface border border-border-subtle rounded-lg"
+									class="mt-2 p-4 bg-bg-surface shadow-surface-1 rounded-lg"
 								>
 									<div class="flex items-center justify-between">
 										<div class="flex items-center gap-3">
@@ -652,7 +652,7 @@ const shownCapacityPlan = computed(() => {
 								</div>
 								<div
 									v-else
-									class="mt-2 p-4 bg-bg-surface border border-border-subtle rounded-lg text-text-tertiary"
+									class="mt-2 p-4 bg-bg-surface shadow-surface-1 rounded-lg text-text-tertiary"
 								>
 									No template selected
 								</div>
@@ -749,7 +749,7 @@ const shownCapacityPlan = computed(() => {
 						<!-- Timezone Scheduling Option (also honored on reschedule — toggles local-time delivery) -->
 						<div class="mt-4">
 							<label
-								class="flex items-start gap-3 p-3 bg-bg-elevated border border-border-subtle rounded-lg cursor-pointer hover:border-border-default transition-colors"
+								class="flex items-start gap-3 p-3 bg-bg-elevated shadow-surface-1 rounded-lg cursor-pointer hover:bg-bg-surface-hover transition-colors"
 							>
 								<input
 									v-model="useRecipientTimezone"
@@ -774,7 +774,7 @@ const shownCapacityPlan = computed(() => {
 
 						<div
 							v-if="scheduledDate && scheduledTime"
-							class="mt-4 p-3 bg-bg-surface border border-border-subtle rounded-lg"
+							class="mt-4 p-3 bg-bg-surface shadow-surface-1 rounded-lg"
 						>
 							<template v-if="useRecipientTimezone">
 								<p class="text-sm text-text-secondary">Campaign will be sent at:</p>
