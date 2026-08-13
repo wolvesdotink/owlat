@@ -182,6 +182,61 @@ describe('codeWorkTasks.getNextQueued', () => {
 		expect(later!.description).toBe('Backing off');
 	});
 
+	it('finds the one ready task behind a queue full of backing-off ones', async () => {
+		// The old fixed scan window looked at the 25 oldest queued rows and gave up
+		// if they were all inside their backoff windows — a ready task further back
+		// idled the worker. The index range makes the gate part of the lookup.
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 40; i++) {
+				await ctx.db.insert(
+					'codeWorkTasks',
+					createTestCodeWorkTask({
+						status: 'queued',
+						description: `Backing off ${i}`,
+						createdAt: now - 100_000 + i,
+						attempts: 1,
+						nextAttemptAt: now + 60_000,
+					})
+				);
+			}
+			await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({
+					status: 'queued',
+					description: 'Ready now',
+					createdAt: now,
+					attempts: 1,
+					nextAttemptAt: now - 1,
+				})
+			);
+		});
+
+		const next = await t.query(internal.codeWorkTasks.getNextQueued, { now });
+		expect(next!.description).toBe('Ready now');
+	});
+
+	it('serves never-attempted tasks oldest first', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'queued', description: 'Older', createdAt: now - 5000 })
+			);
+			await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'queued', description: 'Newer', createdAt: now })
+			);
+		});
+
+		const next = await t.query(internal.codeWorkTasks.getNextQueued, { now });
+		expect(next!.description).toBe('Older');
+	});
+
 	it('skips a backing-off task in favour of a claimable younger one', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
@@ -443,6 +498,39 @@ describe('codeWorkTasks.markFailed', () => {
 			expect(task!.llmCost).toBe(0.45);
 			expect(task!.nextAttemptAt).toBeUndefined();
 		});
+	});
+
+	it('does not retry a failure the worker reports as terminal', async () => {
+		// "The agent produced no changes" is deterministic: two more full
+		// clone/agent/test cycles reach the same verdict, so attempts left or not,
+		// the task is done.
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		let taskId!: Id<'codeWorkTasks'>;
+
+		await t.run(async (ctx) => {
+			taskId = await ctx.db.insert(
+				'codeWorkTasks',
+				createTestCodeWorkTask({ status: 'queued', attempts: 0, maxAttempts: 3 })
+			);
+		});
+		await t.mutation(internal.codeWorkTasks.claim, { taskId, now });
+
+		const outcome = await t.mutation(internal.codeWorkTasks.markFailed, {
+			taskId,
+			errorMessage: 'Coding agent produced no changes',
+			terminal: true,
+			now,
+		});
+		expect(outcome).toMatchObject({ status: 'failed', retried: false, attempts: 1 });
+
+		await t.run(async (ctx) => {
+			const task = await ctx.db.get(taskId);
+			expect(task!.status).toBe('failed');
+			expect(task!.nextAttemptAt).toBeUndefined();
+		});
+		// And it is not sitting in the queue waiting to be picked up again.
+		expect(await t.query(internal.codeWorkTasks.getNextQueued, { now })).toBeNull();
 	});
 
 	it('requeues a task with attempts left behind an increasing backoff', async () => {

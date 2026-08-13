@@ -7,6 +7,7 @@
  *   - a spent day is never rendered as "about 0 contacts"
  *   - a growth the projection does not show is never promised
  *   - an audience over today's cap is PACED, not failed
+ *   - an uncounted audience is never rendered as an audience of zero
  */
 import { describe, it, expect } from 'vitest';
 
@@ -59,6 +60,16 @@ describe('sendReadinessNote — the capped answer', () => {
 	it('reads as English at a capacity of one', () => {
 		const note = sendReadinessNote(capped({ today: 1 }), { now: NOW });
 		expect(note?.headline).toBe('You can send to about 1 contact today');
+	});
+
+	it('treats an audience of zero as one nobody has counted yet', () => {
+		// The wizard passes `count ?? 0` while its count query is in flight, and an
+		// empty segment reads the same way. Neither is an audience that "fits".
+		const loading = sendReadinessNote(capped({ today: 500 }), { audienceSize: 0, now: NOW });
+		expect(loading?.tone).toBe('ready');
+		expect(loading?.headline).toBe('You can send to about 500 contacts today');
+		expect(loading?.detail).toBeNull();
+		expect(loading?.detail ?? '').not.toContain('audience of 0');
 	});
 
 	it('says the audience fits when it does', () => {

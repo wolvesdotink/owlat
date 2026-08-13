@@ -28,12 +28,12 @@ function handleSelect(type: BlockType, afterBlockId: string) {
 
 <template>
 	<!--
-		Pointer-only affordance: it lives between two options of the canvas
-		listbox, is invisible until hover, and every insertion it offers is also
-		reachable from the keyboard (quick-insert sidebar, slash menu, Enter after
-		the selected block). Exposing it would put an unnamed, invisible tab stop
-		between every pair of blocks and break listbox → option ownership, so it
-		stays out of the accessibility tree.
+		Pointer-only affordance: it trails the block it belongs to (inside that
+		block's list item, so it is never a stray child of the canvas list), is
+		invisible until hover, and every insertion it offers is also reachable
+		from the keyboard (quick-insert sidebar, slash menu, Enter after the
+		selected block). Exposing it would put an unnamed, invisible tab stop
+		between every pair of blocks, so it stays out of the accessibility tree.
 	-->
 	<div
 		v-if="!isDragging"

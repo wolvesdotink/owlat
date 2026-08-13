@@ -8,8 +8,11 @@
  *   - neither does a channel that is not configured/enabled, nor a row with no
  *     contact to address
  *
- * The shared send path (`useChannelOutbound`) is mocked — its own gating and
- * backend calls are exercised where it lives.
+ * The shared send path (`useChannelOutbound`) is mocked here, so `canSendOn`
+ * standing in for the real gate is an assumption of these cases, not something
+ * they prove. Its own admin gate, enabled-channel filter, chat-vs-provider
+ * branch and argument shaping are exercised against the real composable in
+ * `app/composables/__tests__/useChannelOutbound.test.ts`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';

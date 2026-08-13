@@ -357,15 +357,22 @@ export async function runTests(
  * The retry ceiling and the backoff schedule live in the backend
  * (`codeWorkTasks.markFailed`), which either requeues the task behind a delay
  * or makes the failure terminal; the worker just picks the task up again on a
- * later poll once the window has elapsed. The client is injectable so the
- * decision-reporting can be unit-tested without a deployment.
+ * later poll once the window has elapsed. `terminal` is the worker's statement
+ * that a retry cannot change the outcome — it is the only side that knows, and
+ * an attempt costs a whole clone/agent/test cycle. The client is injectable so
+ * the reporting can be unit-tested without a deployment.
  */
 export async function reportTaskFailure(
 	taskId: string,
 	errorMessage: string,
-	client: ReturnType<typeof getConvexClient> = getConvexClient()
+	client: ReturnType<typeof getConvexClient> = getConvexClient(),
+	options: { terminal?: boolean } = {}
 ): Promise<void> {
-	const outcome = await client.mutation(fn.markFailed, { taskId, errorMessage });
+	const outcome = await client.mutation(fn.markFailed, {
+		taskId,
+		errorMessage,
+		...(options.terminal ? { terminal: true } : {}),
+	});
 	if (outcome?.retried) {
 		const waitSeconds = Math.max(0, Math.round(((outcome.nextAttemptAt ?? 0) - Date.now()) / 1000));
 		log(`Task ${taskId} failed on attempt ${outcome.attempts}; retrying in ~${waitSeconds}s`);
@@ -413,7 +420,10 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		// tree (world-readable) and writes only the root-owned .git.
 		const diffOutput = runGit(buildDiffStatArgs(workDir), { encoding: 'utf-8' }) as string;
 		if (!diffOutput.trim()) {
-			await reportTaskFailure(taskId, 'Coding agent produced no changes', client);
+			// Deterministic: the agent finished and decided nothing needed changing,
+			// so a retry reaches the same answer. Terminal, not requeued.
+			const noChanges = 'Coding agent produced no changes';
+			await reportTaskFailure(taskId, noChanges, client, { terminal: true });
 			return;
 		}
 

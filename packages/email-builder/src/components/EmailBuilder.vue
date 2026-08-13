@@ -32,7 +32,7 @@ import { useFocusMode } from '../composables/useFocusMode';
 import { useBlockState } from '../composables/useBlockState';
 import { useBlockManagement } from '../composables/useBlockManagement';
 import { useRecentColors } from '../composables/useRecentColors';
-import { useHistory } from '../composables/useHistory';
+import { useHistory, type HistoryState } from '../composables/useHistory';
 import { useInlineTextEdit } from '../composables/useInlineTextEdit';
 import { useLinkedBlocks } from '../composables/useLinkedBlocks';
 import { useSavedBlockPicker } from '../composables/useSavedBlockPicker';
@@ -45,6 +45,8 @@ import type { PreviewRenderOptions } from '@owlat/email-previewer';
 
 // Utilities
 import { createBlock, createColumnItem, withPrimaryStoredImage } from '../utils/blocks';
+import { moveBlock, type MoveDirection } from '../utils/blockMove';
+import { resolveEditorKeyAction } from '../utils/editorKeyboard';
 import { htmlToBlocks } from '../utils/htmlToBlocks';
 import { generateId } from '../utils/id';
 import { setByPath } from '../utils/propertyPath';
@@ -132,6 +134,25 @@ watch(
 	},
 	{ immediate: true }
 );
+
+/**
+ * Replace the whole editing state at once — the explicit load path for a host
+ * that restores a version snapshot.
+ *
+ * The `props.blocks` watcher above deliberately ignores an incoming array whose
+ * block ids match what we last emitted: the host's live query echoes the saved
+ * document back while the user keeps typing, and re-seeding the canvas from it
+ * would drop those in-flight edits. A restore usually keeps the same block ids
+ * and changes only their content, so it looks exactly like that echo — hence
+ * this second, unambiguous door.
+ */
+function loadState(state: HistoryState) {
+	canvasBlocks.value = [...state.blocks];
+	formName.value = state.name;
+	formSubject.value = state.subject;
+}
+
+defineExpose({ loadState });
 
 watch(
 	() => props.subject,
@@ -405,61 +426,39 @@ function clearSelection() {
 // Keyboard shortcuts help sheet (opened with `?` or the header button)
 const showShortcutsDialog = ref(false);
 
-// Simplified keyboard shortcuts (no TipTap dependencies)
+// Global shortcuts. The routing itself lives in utils/editorKeyboard so it is
+// testable without the editor; here we only dispatch.
 function handleKeydown(event: KeyboardEvent) {
-	const target = event.target as HTMLElement;
-	const isEditable =
-		target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+	const action = resolveEditorKeyAction(event, {
+		isInlineEditing: isInlineEditing.value,
+		isShortcutsDialogOpen: showShortcutsDialog.value,
+		hasActiveBlock: Boolean(activeBlock.value),
+	});
+	if (!action) return;
 
-	// Escape: exit inline edit first
-	if (event.key === 'Escape' && isInlineEditing.value) {
-		event.preventDefault();
-		exitInlineEdit();
-		return;
-	}
-
-	// The shortcuts sheet has no inputs of its own, so block-level keys (Delete,
-	// Alt+Arrow, …) would otherwise still act on the canvas behind it.
-	if (showShortcutsDialog.value) return;
-
-	// Undo/Redo (Cmd/Ctrl+Z). `event.key` is uppercase while Shift is held, so
-	// lowercase it — otherwise Cmd/Ctrl+Shift+Z never reaches the redo branch.
-	if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !isEditable) {
-		event.preventDefault();
-		if (event.shiftKey) redo();
-		else undo();
-		return;
-	}
-
-	if (isEditable) return;
-
-	// Shortcuts help sheet
-	if (event.key === '?') {
-		event.preventDefault();
-		showShortcutsDialog.value = true;
-		return;
-	}
-
-	// Move selected block (Alt+Arrow) — same array move a drag reorder performs,
-	// so it lands in undo history as a single step.
-	if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && event.altKey && activeBlock.value) {
-		event.preventDefault();
-		handleMoveBlock(event.key === 'ArrowUp' ? 'up' : 'down');
-		return;
-	}
-
-	// Delete selected block
-	if ((event.key === 'Delete' || event.key === 'Backspace') && activeBlock.value) {
-		event.preventDefault();
-		handleDeleteActiveBlock();
-		return;
-	}
-
-	// Duplicate (Cmd/Ctrl+D)
-	if ((event.metaKey || event.ctrlKey) && event.key === 'd' && activeBlock.value) {
-		event.preventDefault();
-		handleDuplicateBlock(activeBlock.value.id);
-		return;
+	event.preventDefault();
+	switch (action.type) {
+		case 'exit-inline-edit':
+			exitInlineEdit();
+			break;
+		case 'undo':
+			undo();
+			break;
+		case 'redo':
+			redo();
+			break;
+		case 'show-shortcuts':
+			showShortcutsDialog.value = true;
+			break;
+		case 'move':
+			handleMoveBlock(action.direction);
+			break;
+		case 'delete':
+			handleDeleteActiveBlock();
+			break;
+		case 'duplicate':
+			if (activeBlock.value) handleDuplicateBlock(activeBlock.value.id);
+			break;
 	}
 }
 
@@ -692,50 +691,21 @@ function handleDuplicateActiveBlock() {
 	}
 }
 
-function handleMoveBlock(direction: 'up' | 'down') {
+function handleMoveBlock(direction: MoveDirection) {
 	if (!activeBlock.value) return;
-	const blockId = activeBlock.value.id;
 
-	if (selectedColumnItemId.value && blockState.selectedColumnContext.value) {
-		const ctx = blockState.selectedColumnContext.value;
-		const block = canvasBlocks.value.find((b) => b.id === ctx.blockId);
-		if (!block || block.type !== 'columns') return;
-		const content = block.content as ColumnsBlockContent;
-		const col = [...content.columns[ctx.columnIndex]!];
-		const idx = col.findIndex((item) => item.id === blockId);
-		if (idx === -1) return;
-		const newIdx = direction === 'up' ? idx - 1 : idx + 1;
-		if (newIdx < 0 || newIdx >= col.length) return;
-		[col[idx], col[newIdx]] = [col[newIdx]!, col[idx]!];
-		const newColumns = [...content.columns];
-		newColumns[ctx.columnIndex] = col;
-		const parentIdx = canvasBlocks.value.findIndex((b) => b.id === ctx.blockId);
-		canvasBlocks.value[parentIdx] = {
-			...block,
-			content: { ...content, columns: newColumns },
-		} as EditorBlock;
-	} else if (selectedContainerItemId.value && blockState.selectedContainerContext.value) {
-		const ctx = blockState.selectedContainerContext.value;
-		const block = canvasBlocks.value.find((b) => b.id === ctx.blockId);
-		if (!block) return;
-		const content = block.content as ContainerBlockContent;
-		const items = [...content.items];
-		const idx = items.findIndex((item) => item.id === blockId);
-		if (idx === -1) return;
-		const newIdx = direction === 'up' ? idx - 1 : idx + 1;
-		if (newIdx < 0 || newIdx >= items.length) return;
-		[items[idx], items[newIdx]] = [items[newIdx]!, items[idx]!];
-		const parentIdx = canvasBlocks.value.findIndex((b) => b.id === ctx.blockId);
-		canvasBlocks.value[parentIdx] = { ...block, content: { ...content, items } } as EditorBlock;
-	} else {
-		const idx = canvasBlocks.value.findIndex((b) => b.id === blockId);
-		if (idx === -1) return;
-		const newIdx = direction === 'up' ? idx - 1 : idx + 1;
-		if (newIdx < 0 || newIdx >= canvasBlocks.value.length) return;
-		const blocks = [...canvasBlocks.value];
-		[blocks[idx], blocks[newIdx]] = [blocks[newIdx]!, blocks[idx]!];
-		canvasBlocks.value = blocks;
-	}
+	// One whole-array write, whatever level the moved item lives at, so the
+	// history watcher records the move as a single undoable step.
+	const moved = moveBlock(
+		canvasBlocks.value,
+		{
+			itemId: activeBlock.value.id,
+			column: selectedColumnItemId.value ? blockState.selectedColumnContext.value : null,
+			container: selectedContainerItemId.value ? blockState.selectedContainerContext.value : null,
+		},
+		direction
+	);
+	if (moved) canvasBlocks.value = moved;
 }
 
 function handleAddChild(blockId: string, childType: BlockType) {
