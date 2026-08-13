@@ -32,7 +32,7 @@ import { useFocusMode } from '../composables/useFocusMode';
 import { useBlockState } from '../composables/useBlockState';
 import { useBlockManagement } from '../composables/useBlockManagement';
 import { useRecentColors } from '../composables/useRecentColors';
-import { useHistory } from '../composables/useHistory';
+import { useHistory, type HistoryState } from '../composables/useHistory';
 import { useInlineTextEdit } from '../composables/useInlineTextEdit';
 import { useLinkedBlocks } from '../composables/useLinkedBlocks';
 import { useSavedBlockPicker } from '../composables/useSavedBlockPicker';
@@ -132,6 +132,25 @@ watch(
 	},
 	{ immediate: true }
 );
+
+/**
+ * Replace the whole editing state at once — the explicit load path for a host
+ * that restores a version snapshot.
+ *
+ * The `props.blocks` watcher above deliberately ignores an incoming array whose
+ * block ids match what we last emitted: the host's live query echoes the saved
+ * document back while the user keeps typing, and re-seeding the canvas from it
+ * would drop those in-flight edits. A restore usually keeps the same block ids
+ * and changes only their content, so it looks exactly like that echo — hence
+ * this second, unambiguous door.
+ */
+function loadState(state: HistoryState) {
+	canvasBlocks.value = [...state.blocks];
+	formName.value = state.name;
+	formSubject.value = state.subject;
+}
+
+defineExpose({ loadState });
 
 watch(
 	() => props.subject,
