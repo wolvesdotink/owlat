@@ -1,6 +1,24 @@
 <script setup lang="ts">
+// Capability spread mirrors the feature packs an install can turn on
+// (README: campaigns, personal mailbox, team inbox, transactional, own MTA).
+const capabilities = [
+	'Campaigns',
+	'Automations',
+	'Transactional',
+	'Team inbox',
+	'Personal mail',
+	'Own MTA',
+];
+
 useHead({
-	title: 'Owlat - Email Marketing Made Simple',
+	title: 'Owlat — Self-hosted email platform',
+	meta: [
+		{
+			name: 'description',
+			content:
+				'Owlat is an open-source, self-hosted email platform: campaigns, automations, transactional sends, team inbox and personal mail, with its own MTA and deliverability tooling.',
+		},
+	],
 });
 </script>
 
@@ -17,7 +35,7 @@ useHead({
 		<!-- Floating pill navigation -->
 		<header class="fixed top-4 inset-x-0 z-10 flex justify-center px-4 md:top-6">
 			<nav
-				class="flex items-center gap-1 rounded-full border border-border-default bg-white/85 backdrop-blur-md py-1.5 pr-1.5 pl-5 shadow-surface-2"
+				class="flex items-center gap-1 rounded-full border border-border-default bg-bg-elevated/85 backdrop-blur-md py-1.5 pr-1.5 pl-5 shadow-surface-2"
 				aria-label="Main"
 			>
 				<NuxtLink to="/" class="font-display text-xl text-text-primary pr-4">Owlat</NuxtLink>
@@ -30,20 +48,39 @@ useHead({
 		<main
 			class="relative flex-1 flex flex-col items-center justify-center px-6 pt-32 pb-16 text-center"
 		>
+			<p
+				class="mb-8 inline-flex items-center gap-2 rounded-full border border-border-subtle bg-bg-elevated/70 backdrop-blur-sm px-4 py-1.5 text-sm text-text-secondary"
+			>
+				<span class="w-1.5 h-1.5 rounded-full bg-brand" aria-hidden="true"></span>
+				Open source &middot; Self-hosted
+			</p>
 			<h1 class="text-5xl md:text-6xl lg:text-7xl text-text-primary mb-6">
-				<span class="block font-medium tracking-tight">Email marketing</span>
-				<span class="block font-display italic font-normal">made simple</span>
+				<span class="block font-medium tracking-tight">Send better email.</span>
+				<span class="block font-display italic font-normal">Own the whole stack.</span>
 			</h1>
-			<p class="text-lg md:text-xl text-text-secondary mb-10 max-w-xl">
-				Build beautiful emails, grow your audience, and track what works. Everything you need to
-				connect with your customers.
+			<p class="text-lg md:text-xl text-text-secondary mb-10 max-w-2xl">
+				Owlat is an open-source, self-hosted email platform. Campaigns, automations, transactional
+				sends, a team inbox and personal mail — with its own MTA and deliverability tooling built
+				in.
 			</p>
 			<div class="flex flex-col sm:flex-row items-center gap-3">
-				<UiButton size="lg" to="/auth/register"> Get started free </UiButton>
-				<UiButton variant="outline" size="lg" to="/auth/login" class="bg-white/60">
+				<UiButton size="lg" to="/auth/register">Get started</UiButton>
+				<UiButton variant="outline" size="lg" to="/auth/login" class="bg-bg-elevated/60">
 					Log in
 				</UiButton>
 			</div>
+			<ul
+				class="mt-14 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm text-text-tertiary"
+			>
+				<li
+					v-for="(capability, index) in capabilities"
+					:key="capability"
+					class="flex items-center"
+				>
+					<span v-if="index > 0" class="mr-3 text-text-disabled" aria-hidden="true">&middot;</span>
+					{{ capability }}
+				</li>
+			</ul>
 		</main>
 
 		<!-- Footer -->
@@ -64,7 +101,8 @@ useHead({
 
 <style scoped>
 /* Decorative layer stack. Kept in the SFC so the splash stays self-contained;
-   colors ride the shared tokens (hairlines) plus the two fixed aurora washes. */
+   every color rides a shared token, so the field follows light/dark with the
+   rest of the app. */
 .landing-field {
 	position: absolute;
 	inset: 0;
@@ -89,7 +127,8 @@ useHead({
 
 /* Bottom aurora: a terracotta core with a warm-gold wing, heavily blurred so
    they read as light, not shapes. --blob-shift keeps each blob's horizontal
-   offset out of the shared breathing keyframe. */
+   offset out of the shared breathing keyframe. color-mix carries the alpha so
+   the washes can ride the brand/accent tokens instead of fixed rgba. */
 .landing-blob {
 	position: absolute;
 	border-radius: 9999px;
@@ -104,7 +143,11 @@ useHead({
 	height: 26rem;
 	left: 50%;
 	bottom: -14rem;
-	background: radial-gradient(closest-side, rgba(196, 120, 90, 0.35), transparent 70%);
+	background: radial-gradient(
+		closest-side,
+		color-mix(in srgb, var(--color-brand-glow) 35%, transparent),
+		transparent 70%
+	);
 	animation: landing-breathe 14s ease-in-out infinite;
 }
 
@@ -114,7 +157,11 @@ useHead({
 	height: 22rem;
 	left: 50%;
 	bottom: -12rem;
-	background: radial-gradient(closest-side, rgba(212, 165, 116, 0.25), transparent 70%);
+	background: radial-gradient(
+		closest-side,
+		color-mix(in srgb, var(--color-accent) 25%, transparent),
+		transparent 70%
+	);
 	animation: landing-breathe 16s ease-in-out infinite;
 	animation-delay: -6s;
 }
