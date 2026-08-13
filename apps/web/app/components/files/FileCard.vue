@@ -69,7 +69,7 @@ const displayTags = computed(() => {
 
 <template>
 	<div
-		class="group bg-bg-elevated border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-all duration-(--motion-moderate) hover:border-border-default hover:shadow-sm"
+		class="group bg-bg-elevated shadow-surface-1 rounded-(--radius-card) overflow-hidden cursor-pointer transition-all duration-(--motion-moderate) hover:shadow-surface-2"
 		@click="navigate"
 	>
 		<!-- Icon area -->
@@ -97,7 +97,7 @@ const displayTags = computed(() => {
 				<span
 					v-for="tag in displayTags"
 					:key="tag"
-					class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-bg-surface text-text-secondary"
+					class="inline-flex items-center px-1.5 py-0.5 text-2xs font-medium rounded bg-bg-surface text-text-secondary"
 				>
 					{{ tag }}
 				</span>
@@ -106,11 +106,10 @@ const displayTags = computed(() => {
 			<!-- Source badge -->
 			<div class="flex items-center justify-between">
 				<span
-					class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full"
+					class="inline-flex items-center gap-1 px-2 py-0.5 text-2xs font-medium rounded-full"
 					:class="{
 						'bg-bg-surface text-text-secondary': sourceType === 'upload',
-						'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300':
-							sourceType === 'email_attachment',
+						'bg-info-subtle text-info': sourceType === 'email_attachment',
 						'bg-brand-subtle text-brand': sourceType === 'agent_generated',
 					}"
 				>

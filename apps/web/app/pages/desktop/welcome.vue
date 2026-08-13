@@ -84,7 +84,7 @@ function startOver() {
 
 		<div
 			v-if="!isDesktop"
-			class="w-full max-w-md rounded-2xl border border-border-default bg-bg-surface p-8 text-sm text-text-secondary"
+			class="card w-full max-w-md p-8 text-sm text-text-secondary"
 		>
 			The workspace connector is only available in the desktop app.
 		</div>
@@ -92,17 +92,17 @@ function startOver() {
 		<!-- ============ STEP 1: WELCOME ============ -->
 		<div v-else-if="view === 'welcome'" class="w-full max-w-md text-center">
 			<img src="/owlat.svg" alt="" class="mx-auto mb-6 size-14" />
-			<h1 class="font-display text-4xl mb-2">Welcome to Owlat</h1>
-			<p class="text-sm text-text-secondary mb-10">
+			<h1 class="font-display text-4xl mb-2">Welcome to <span class="italic">Owlat</span></h1>
+			<p class="text-md text-text-secondary mb-10">
 				Your self-hosted home for email, contacts and marketing.
 			</p>
 
 			<NuxtLink
 				to="/desktop/setup"
-				class="group flex w-full items-center gap-4 rounded-2xl border-2 border-brand bg-brand-subtle p-5 text-left transition-colors hover:bg-brand/10"
+				class="group card flex w-full items-center gap-4 p-5 text-left transition-[border-color,box-shadow] duration-(--motion-fast) ease-spring hover:border-brand-border hover:shadow-surface-3"
 			>
 				<span
-					class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand text-white"
+					class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand"
 				>
 					<Icon name="lucide:server" class="size-5" />
 				</span>
@@ -112,14 +112,17 @@ function startOver() {
 						>Install Owlat on a fresh Linux server over SSH.</span
 					>
 				</span>
-				<Icon name="lucide:chevron-right" class="size-4 shrink-0 text-brand" />
+				<Icon
+					name="lucide:arrow-right"
+					class="size-4 shrink-0 text-text-tertiary transition-transform duration-(--motion-fast) group-hover:translate-x-[2px] group-hover:text-brand"
+				/>
 			</NuxtLink>
 
 			<p class="mt-5 text-xs text-text-secondary">
 				Already have a server?
 				<button
 					type="button"
-					class="font-medium text-brand hover:text-brand-hover"
+					class="link font-medium"
 					@click="view = 'connect'"
 				>
 					Connect an existing server →
@@ -128,16 +131,16 @@ function startOver() {
 		</div>
 
 		<!-- ============ STEP 2: CONNECT ============ -->
-		<div v-else class="w-full max-w-md rounded-2xl border border-border-default bg-bg-surface p-8">
+		<div v-else class="card w-full max-w-md p-8">
 			<button
 				type="button"
-				class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
+				class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
 				@click="view = 'welcome'"
 			>
 				<Icon name="lucide:arrow-left" class="size-3.5" /> Back
 			</button>
 
-			<h1 class="text-xl font-semibold mb-1">Connect to your Owlat server</h1>
+			<h1 class="text-xl font-medium tracking-[-0.01em] mb-1">Connect to your Owlat server</h1>
 			<p class="text-sm text-text-secondary mb-6">
 				Enter the address of your Owlat instance. You'll sign in through your browser.
 			</p>
@@ -148,16 +151,12 @@ function startOver() {
 					type="text"
 					inputmode="url"
 					placeholder="https://your-instance.owlat.app"
-					class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
+					class="input input-sm text-sm"
 				/>
-				<p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>
-				<button
-					type="submit"
-					:disabled="isConnecting"
-					class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-				>
+				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
+				<UiButton type="submit" :disabled="isConnecting" full-width>
 					{{ isConnecting ? 'Opening browser…' : 'Connect workspace' }}
-				</button>
+				</UiButton>
 			</form>
 
 			<div v-else class="space-y-4">
@@ -165,7 +164,7 @@ function startOver() {
 					Finish signing in in your browser — this app reconnects automatically.
 				</p>
 				<form
-					class="space-y-3 border-t border-border-default pt-4"
+					class="space-y-3 border-t border-border-subtle pt-4"
 					@submit.prevent="handlePastedCode"
 				>
 					<label class="block text-sm" for="connection-code">
@@ -178,20 +177,16 @@ function startOver() {
 						autocomplete="off"
 						spellcheck="false"
 						placeholder="e.g. 4f2c…:Jh…"
-						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm font-mono"
+						class="input input-sm font-mono text-sm"
 					/>
-					<p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>
-					<button
-						type="submit"
-						:disabled="isRedeeming || !pastedCode.trim()"
-						class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-					>
+					<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
+					<UiButton type="submit" :disabled="isRedeeming || !pastedCode.trim()" full-width>
 						{{ isRedeeming ? 'Connecting…' : 'Connect with code' }}
-					</button>
+					</UiButton>
 				</form>
 				<button
 					type="button"
-					class="text-xs text-text-secondary hover:text-text-primary"
+					class="text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
 					@click="startOver"
 				>
 					Start over
@@ -202,11 +197,11 @@ function startOver() {
 				<h2 class="text-xs font-medium uppercase tracking-wide text-text-secondary mb-2">
 					Your workspaces
 				</h2>
-				<ul class="space-y-1">
+				<ul class="space-y-1.5">
 					<li
 						v-for="ws in workspaces"
 						:key="ws.id"
-						class="flex items-center justify-between rounded-lg border border-border-default px-3 py-2"
+						class="flex items-center justify-between rounded-xl surface-1 px-3 py-2"
 					>
 						<button
 							class="flex-1 text-left text-sm"
@@ -217,7 +212,7 @@ function startOver() {
 							<span class="block text-xs text-text-secondary">{{ ws.siteUrl }}</span>
 						</button>
 						<button
-							class="ml-3 text-xs text-text-secondary hover:text-red-400"
+							class="ml-3 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-error"
 							@click="removeWorkspace(ws.id)"
 						>
 							Remove

@@ -69,76 +69,73 @@ async function handleSubmit() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4">
-		<!-- Logo/Brand -->
-		<div class="mb-8 text-center">
-			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="text-text-secondary mt-2">{{ t('auth.resetPassword.tagline') }}</p>
+	<AuthShell>
+		<template #title>
+			{{ t('auth.resetPassword.title') }}
+			<span class="lp-title-accent">{{ t('auth.resetPassword.titleAccent') }}</span>
+		</template>
+
+		<!-- No token -->
+		<div v-if="!token" class="text-center">
+			<h2 class="text-lg font-semibold text-text-primary mb-2">
+				{{ t('auth.resetPassword.invalidHeading') }}
+			</h2>
+			<p class="text-text-secondary text-sm mb-6">{{ t('auth.resetPassword.invalidBody') }}</p>
+			<NuxtLink to="/auth/forgot-password" class="link font-medium text-sm">
+				{{ t('auth.resetPassword.requestNewLink') }}
+			</NuxtLink>
 		</div>
 
-		<UiCard class="w-full max-w-md">
-			<!-- No token -->
-			<div v-if="!token" class="text-center">
-				<h2 class="text-lg font-semibold text-text-primary mb-2">
-					{{ t('auth.resetPassword.invalidHeading') }}
-				</h2>
-				<p class="text-text-secondary text-sm mb-6">{{ t('auth.resetPassword.invalidBody') }}</p>
-				<NuxtLink to="/auth/forgot-password" class="link font-medium text-sm">
-					{{ t('auth.resetPassword.requestNewLink') }}
-				</NuxtLink>
+		<!-- Success State -->
+		<div v-else-if="isSuccess" class="text-center">
+			<div class="mb-4 text-4xl">&#10003;</div>
+			<h2 class="text-lg font-semibold text-text-primary mb-2">
+				{{ t('auth.resetPassword.successHeading') }}
+			</h2>
+			<p class="text-text-secondary text-sm mb-6">{{ t('auth.resetPassword.successBody') }}</p>
+			<NuxtLink to="/auth/login" class="link font-medium text-sm">
+				{{ t('auth.resetPassword.signIn') }}
+			</NuxtLink>
+		</div>
+
+		<!-- Form State -->
+		<template v-else>
+			<!-- Error Message -->
+			<div
+				v-if="errorMessage"
+				class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
+			>
+				{{ errorMessage }}
 			</div>
 
-			<!-- Success State -->
-			<div v-else-if="isSuccess" class="text-center">
-				<div class="mb-4 text-4xl">&#10003;</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">
-					{{ t('auth.resetPassword.successHeading') }}
-				</h2>
-				<p class="text-text-secondary text-sm mb-6">{{ t('auth.resetPassword.successBody') }}</p>
-				<NuxtLink to="/auth/login" class="link font-medium text-sm">
-					{{ t('auth.resetPassword.signIn') }}
-				</NuxtLink>
-			</div>
+			<form class="space-y-5" @submit.prevent="handleSubmit">
+				<UiInput
+					id="new-password"
+					v-model="newPassword"
+					type="password"
+					autocomplete="new-password"
+					:label="t('auth.resetPassword.newPasswordLabel')"
+					:placeholder="t('auth.fields.strongPasswordPlaceholder')"
+					:help-text="t('auth.fields.passwordHelp')"
+					:error="errors.newPassword"
+					@blur="validateNewPassword"
+				/>
 
-			<!-- Form State -->
-			<template v-else>
-				<!-- Error Message -->
-				<div
-					v-if="errorMessage"
-					class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
-				>
-					{{ errorMessage }}
-				</div>
+				<UiInput
+					id="confirm-password"
+					v-model="confirmPassword"
+					type="password"
+					autocomplete="new-password"
+					:label="t('auth.resetPassword.confirmPasswordLabel')"
+					:placeholder="t('auth.resetPassword.confirmPasswordPlaceholder')"
+					:error="errors.confirmPassword"
+					@blur="validateConfirmPassword"
+				/>
 
-				<form class="space-y-5" @submit.prevent="handleSubmit">
-					<UiInput
-						id="new-password"
-						v-model="newPassword"
-						type="password"
-						autocomplete="new-password"
-						:label="t('auth.resetPassword.newPasswordLabel')"
-						:placeholder="t('auth.fields.strongPasswordPlaceholder')"
-						:help-text="t('auth.fields.passwordHelp')"
-						:error="errors.newPassword"
-						@blur="validateNewPassword"
-					/>
-
-					<UiInput
-						id="confirm-password"
-						v-model="confirmPassword"
-						type="password"
-						autocomplete="new-password"
-						:label="t('auth.resetPassword.confirmPasswordLabel')"
-						:placeholder="t('auth.resetPassword.confirmPasswordPlaceholder')"
-						:error="errors.confirmPassword"
-						@blur="validateConfirmPassword"
-					/>
-
-					<UiButton type="submit" size="lg" full-width :loading="isLoading">
-						{{ isLoading ? t('auth.resetPassword.submitting') : t('auth.resetPassword.submit') }}
-					</UiButton>
-				</form>
-			</template>
-		</UiCard>
-	</div>
+				<UiButton type="submit" size="lg" full-width :loading="isLoading">
+					{{ isLoading ? t('auth.resetPassword.submitting') : t('auth.resetPassword.submit') }}
+				</UiButton>
+			</form>
+		</template>
+	</AuthShell>
 </template>

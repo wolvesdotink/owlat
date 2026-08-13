@@ -306,7 +306,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 								<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
 									<Icon name="lucide:list" class="w-5 h-5 text-brand" />
 								</div>
-								<h1 class="text-2xl font-semibold text-text-primary">
+								<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 									{{ topic.name }}
 								</h1>
 							</div>

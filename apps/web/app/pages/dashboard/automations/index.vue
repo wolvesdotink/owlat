@@ -227,7 +227,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Automations</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Automations</h1>
 				<p class="mt-1 text-text-secondary">Create automated email workflows triggered by events</p>
 			</div>
 			<UiButton size="sm" @click="handleNewAutomation">
@@ -428,7 +428,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 											<button
 												v-if="automation.status !== 'draft'"
 												:class="[
-													'p-2 rounded-lg transition-colors',
+													'p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 													automation.status === 'active'
 														? 'text-warning hover:text-warning hover:bg-warning/10'
 														: 'text-success hover:text-success hover:bg-success/10',
@@ -451,7 +451,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 											</button>
 											<!-- Edit -->
 											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												title="Edit"
 												@click="handleEdit(automation._id)"
 											>
@@ -460,7 +460,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 											<!-- More Actions Dropdown -->
 											<div class="relative" data-dropdown>
 												<button
-													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 													@click="toggleDropdown(automation._id)"
 													aria-label="More actions"
 												>

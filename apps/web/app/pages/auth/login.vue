@@ -82,57 +82,54 @@ async function handleSubmit() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4">
-		<!-- Logo/Brand -->
-		<div class="mb-8 text-center">
-			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="text-text-secondary mt-2">{{ t('auth.login.tagline') }}</p>
+	<AuthShell :subtitle="t('auth.login.tagline')">
+		<template #title>
+			{{ t('auth.login.title') }}
+			<span class="lp-title-accent">{{ t('auth.login.titleAccent') }}</span>
+		</template>
+
+		<!-- Post-setup success banner -->
+		<div
+			v-if="justCompletedSetup"
+			class="mb-6 p-4 bg-success-subtle border border-success/30 rounded-lg text-success text-sm"
+		>
+			{{ t('auth.login.postSetupBanner') }}
 		</div>
 
-		<!-- Login Card -->
-		<UiCard class="w-full max-w-md">
-			<!-- Post-setup success banner -->
-			<div
-				v-if="justCompletedSetup"
-				class="mb-6 p-4 bg-success-subtle border border-success/30 rounded-lg text-success text-sm"
-			>
-				{{ t('auth.login.postSetupBanner') }}
-			</div>
+		<!-- Error Message -->
+		<div
+			v-if="errorMessage"
+			class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
+		>
+			{{ errorMessage }}
+		</div>
 
-			<!-- Error Message -->
-			<div
-				v-if="errorMessage"
-				class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
-			>
-				{{ errorMessage }}
-			</div>
+		<form class="space-y-5" @submit.prevent="handleSubmit">
+			<!-- Email Field -->
+			<UiInput
+				id="email"
+				v-model="email"
+				type="email"
+				autocomplete="email"
+				:label="t('auth.fields.email')"
+				:placeholder="t('auth.fields.emailPlaceholder')"
+				:error="errors.email"
+				@blur="validateEmail"
+			/>
 
-			<form class="space-y-5" @submit.prevent="handleSubmit">
-				<!-- Email Field -->
-				<UiInput
-					id="email"
-					v-model="email"
-					type="email"
-					autocomplete="email"
-					:label="t('auth.fields.email')"
-					:placeholder="t('auth.fields.emailPlaceholder')"
-					:error="errors.email"
-					@blur="validateEmail"
-				/>
+			<!-- Password Field -->
+			<UiInput
+				id="password"
+				v-model="password"
+				type="password"
+				autocomplete="current-password"
+				:label="t('auth.fields.password')"
+				:placeholder="t('auth.login.passwordPlaceholder')"
+				:error="errors.password"
+				@blur="validatePassword"
+			/>
 
-				<!-- Password Field -->
-				<UiInput
-					id="password"
-					v-model="password"
-					type="password"
-					autocomplete="current-password"
-					:label="t('auth.fields.password')"
-					:placeholder="t('auth.login.passwordPlaceholder')"
-					:error="errors.password"
-					@blur="validatePassword"
-				/>
-
-				<!-- Forgot Password Link -->
+			<!-- Forgot Password Link -->
 			<div class="flex justify-end -mt-1">
 				<NuxtLink to="/auth/forgot-password" class="text-sm link">{{
 					t('auth.login.forgotPassword')
@@ -140,18 +137,16 @@ async function handleSubmit() {
 			</div>
 
 			<!-- Submit Button -->
-				<UiButton type="submit" size="lg" full-width :loading="isLoading">
-					{{ isLoading ? t('auth.login.submitting') : t('auth.login.submit') }}
-				</UiButton>
-			</form>
+			<UiButton type="submit" size="lg" full-width :loading="isLoading">
+				{{ isLoading ? t('auth.login.submitting') : t('auth.login.submit') }}
+			</UiButton>
+		</form>
 
-			<!-- Register Link -->
-			<p class="mt-6 text-center text-text-secondary text-sm">
-				{{ t('auth.login.noAccount') }}
-				<NuxtLink to="/auth/register" class="link font-medium">
-					{{ t('auth.login.createAccount') }}
-				</NuxtLink>
-			</p>
-		</UiCard>
-	</div>
+		<template #footer>
+			{{ t('auth.login.noAccount') }}
+			<NuxtLink to="/auth/register" class="link font-medium">
+				{{ t('auth.login.createAccount') }}
+			</NuxtLink>
+		</template>
+	</AuthShell>
 </template>

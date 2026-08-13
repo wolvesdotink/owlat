@@ -199,7 +199,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:bot" size="xl" variant="brand" rounded="full" />
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">AI Agent</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">AI Agent</h1>
 					<p class="text-text-secondary mt-1">
 						Configure how the AI agent processes inbound messages and generates drafts.
 					</p>

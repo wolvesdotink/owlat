@@ -177,7 +177,7 @@ function onBlur() {
 				:key="addr"
 				draggable="true"
 				class="inline-flex items-center gap-1 pl-0.5 pr-2 py-0.5 rounded-full bg-bg-surface text-xs cursor-grab active:cursor-grabbing"
-				:class="isExternal(addr) ? 'ring-1 ring-amber-400/70 dark:ring-amber-500/60' : ''"
+				:class="isExternal(addr) ? 'ring-1 ring-warning/70' : ''"
 				:title="isExternal(addr) && ownDomainLabel ? `outside ${ownDomainLabel}` : undefined"
 				@dragstart="onChipDragStart($event, addr)"
 			>

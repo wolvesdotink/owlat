@@ -5,7 +5,7 @@ defineProps<{ hasMail: boolean }>();
 <template>
 	<header class="mb-6 flex items-center justify-between">
 		<div>
-			<h1 class="text-2xl font-semibold">Preferences</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em]">Preferences</h1>
 			<p class="text-text-secondary mt-1">Settings that affect only you.</p>
 		</div>
 		<UiButton v-if="hasMail" @click="navigateTo('/dashboard/preferences/add-account')">

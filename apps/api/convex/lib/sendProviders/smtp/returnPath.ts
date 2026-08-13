@@ -1,10 +1,13 @@
+'use node';
+
 /**
  * The relay arm's RETURN-PATH decision (plan G-08).
  *
  * Split out of `./index.ts` so the one rule that governs bounce attribution on
  * the relay arm is a small, pure, exhaustively-fixtured module rather than a
  * paragraph inside the send path. No clock, no env, no sockets — every input is
- * a parameter.
+ * a parameter, but VERP minting HMACs with `node:crypto`, so the module lives
+ * in the Node runtime with its only caller (`./index.ts`).
  */
 
 import { buildVerpAddress, isUsableVerpKey, normalizeVerpKey } from '@owlat/shared/verp';

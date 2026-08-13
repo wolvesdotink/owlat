@@ -167,7 +167,7 @@ const dateRangeOptions = [
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Audit Log</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Audit Log</h1>
 					<p class="mt-1 text-text-secondary">Track all team member actions and changes</p>
 				</div>
 			</div>
@@ -227,14 +227,14 @@ const dateRangeOptions = [
 				<div v-if="statsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
 					<div class="card p-4">
 						<p class="text-sm text-text-secondary">Total Actions</p>
-						<p class="text-2xl font-semibold text-text-primary mt-1">{{ statsData.total }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">{{ statsData.total }}</p>
 					</div>
 					<div class="card p-4">
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:send" class="w-4 h-4 text-brand" />
 							<p class="text-sm text-text-secondary">Campaigns</p>
 						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
 							{{ statsData.byResource['campaign'] ?? 0 }}
 						</p>
 					</div>
@@ -243,7 +243,7 @@ const dateRangeOptions = [
 							<Icon name="lucide:users" class="w-4 h-4 text-brand" />
 							<p class="text-sm text-text-secondary">Contacts</p>
 						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
 							{{ statsData.byResource['contact'] ?? 0 }}
 						</p>
 					</div>
@@ -252,7 +252,7 @@ const dateRangeOptions = [
 							<Icon name="lucide:settings" class="w-4 h-4 text-warning" />
 							<p class="text-sm text-text-secondary">Settings</p>
 						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
 							{{ statsData.byResource['settings'] ?? 0 }}
 						</p>
 					</div>

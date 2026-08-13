@@ -317,7 +317,7 @@ const showEmptyState = computed(
 	<div class="p-6 lg:p-8">
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Campaigns</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Campaigns</h1>
 				<p class="mt-1 text-text-secondary">
 					Everything you've sent and everything waiting on you, in one place.
 				</p>

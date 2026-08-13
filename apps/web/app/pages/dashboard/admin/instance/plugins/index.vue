@@ -44,7 +44,7 @@ async function confirmPurge() {
 <template>
 	<div class="p-6 lg:p-8 max-w-4xl mx-auto">
 		<div class="mb-8">
-			<h1 class="text-2xl font-semibold text-text-primary">Plugins</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Plugins</h1>
 			<p class="mt-1 text-text-secondary max-w-2xl">
 				Configure each installed plugin. Enabling a plugin and approving the capabilities it
 				requests happens under

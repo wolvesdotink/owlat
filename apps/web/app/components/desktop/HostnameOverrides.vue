@@ -55,7 +55,7 @@ function setLabel(key: SubdomainKey, value: string): void {
 const preview = computed(() => deriveHostnames(props.domain, labels.value));
 
 const inputBase =
-	'w-full rounded-lg border bg-bg-deep px-3 py-2 font-mono text-xs text-text-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50';
+	'input input-sm font-mono text-xs disabled:cursor-not-allowed disabled:opacity-50';
 </script>
 
 <template>
@@ -85,7 +85,7 @@ const inputBase =
 						:id="`hostname-${f.key}`"
 						:value="labels[f.key]"
 						:disabled="isDisabled(f.key)"
-						:class="[inputBase, errors[f.key] && !isDisabled(f.key) ? 'border-red-500/60' : 'border-border-default focus:border-brand']"
+						:class="[inputBase, errors[f.key] && !isDisabled(f.key) ? 'input-error' : '']"
 						:aria-invalid="errors[f.key] && !isDisabled(f.key) ? 'true' : undefined"
 						:aria-describedby="`hostname-${f.key}-hint`"
 						autocapitalize="off"
@@ -103,7 +103,7 @@ const inputBase =
 					<p
 						v-else-if="errors[f.key]"
 						:id="`hostname-${f.key}-hint`"
-						class="mt-1 text-[11px] leading-snug text-red-400"
+						class="mt-1 text-[11px] leading-snug text-error"
 					>
 						{{ errors[f.key] }}
 					</p>

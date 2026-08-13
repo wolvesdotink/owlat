@@ -39,7 +39,7 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 			</span>
 			<span
 				class="select-all whitespace-nowrap"
-				:class="r.placeholder ? 'italic text-amber-300' : 'text-text-secondary'"
+				:class="r.placeholder ? 'italic text-warning' : 'text-text-secondary'"
 				>{{ r.value }}</span
 			>
 			<button
@@ -53,7 +53,7 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 				<Icon
 					:name="isCopied(keyOf(r)) ? 'lucide:check' : 'lucide:copy'"
 					class="size-3.5"
-					:class="isCopied(keyOf(r)) ? 'text-emerald-400' : ''"
+					:class="isCopied(keyOf(r)) ? 'text-success' : ''"
 				/>
 			</button>
 			<span

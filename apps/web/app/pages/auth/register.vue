@@ -127,124 +127,115 @@ async function handleSubmit() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4">
-		<!-- Registration blocked — invite-only (unless this is an invite redirect) -->
-		<template v-if="!isInviteRedirect">
-			<div class="mb-8 text-center">
-				<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-				<p class="text-text-secondary mt-2">{{ t('auth.register.inviteOnlyTagline') }}</p>
-			</div>
-
-			<UiCard class="w-full max-w-md">
-				<div class="text-center space-y-4">
-					<Icon name="lucide:lock" class="w-12 h-12 text-text-tertiary mx-auto" />
-					<p class="text-text-secondary">{{ t('auth.register.inviteOnlyBody') }}</p>
-				</div>
-
-				<p class="mt-6 text-center text-text-secondary text-sm">
-					{{ t('auth.register.haveAccount') }}
-					<NuxtLink to="/auth/login" class="link font-medium">
-						{{ t('auth.register.signIn') }}
-					</NuxtLink>
-				</p>
-			</UiCard>
+	<!-- Registration blocked — invite-only (unless this is an invite redirect) -->
+	<AuthShell v-if="!isInviteRedirect" :subtitle="t('auth.register.inviteOnlyTagline')">
+		<template #title>
+			{{ t('auth.register.inviteOnlyTitle') }}
+			<span class="lp-title-accent">{{ t('auth.register.inviteOnlyTitleAccent') }}</span>
 		</template>
 
-		<!-- Registration form (only accessible via invite redirect) -->
-		<template v-else>
-			<!-- Logo/Brand -->
-			<div class="mb-8 text-center">
-				<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-				<p class="text-text-secondary mt-2">{{ t('auth.register.tagline') }}</p>
+		<div class="text-center space-y-4">
+			<Icon name="lucide:lock" class="w-12 h-12 text-text-tertiary mx-auto" />
+			<p class="text-text-secondary">{{ t('auth.register.inviteOnlyBody') }}</p>
+		</div>
+
+		<template #footer>
+			{{ t('auth.register.haveAccount') }}
+			<NuxtLink to="/auth/login" class="link font-medium">
+				{{ t('auth.register.signIn') }}
+			</NuxtLink>
+		</template>
+	</AuthShell>
+
+	<!-- Registration form (only accessible via invite redirect) -->
+	<AuthShell v-else :subtitle="t('auth.register.tagline')">
+		<template #title>
+			{{ t('auth.register.title') }}
+			<span class="lp-title-accent">{{ t('auth.register.titleAccent') }}</span>
+		</template>
+
+		<!-- Error Message -->
+		<div
+			v-if="errorMessage"
+			class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
+		>
+			{{ errorMessage }}
+		</div>
+
+		<form class="space-y-5" @submit.prevent="handleSubmit">
+			<!-- Name Field -->
+			<UiInput
+				id="name"
+				v-model="name"
+				type="text"
+				autocomplete="name"
+				:label="t('auth.register.nameLabel')"
+				:placeholder="t('auth.register.namePlaceholder')"
+				:error="errors.name"
+				@blur="validateName"
+			/>
+
+			<!-- Email Field -->
+			<UiInput
+				id="email"
+				v-model="email"
+				type="email"
+				autocomplete="email"
+				:label="t('auth.fields.email')"
+				:placeholder="t('auth.fields.emailPlaceholder')"
+				:error="errors.email"
+				@blur="validateEmail"
+			/>
+
+			<!-- Password Field -->
+			<UiInput
+				id="password"
+				v-model="password"
+				type="password"
+				autocomplete="new-password"
+				:label="t('auth.fields.password')"
+				:placeholder="t('auth.fields.strongPasswordPlaceholder')"
+				:error="errors.password"
+				:help-text="t('auth.fields.passwordHelp')"
+				@blur="validatePassword"
+			/>
+
+			<!-- Terms Checkbox -->
+			<div>
+				<label class="flex items-start gap-2 cursor-pointer">
+					<input
+						v-model="termsAccepted"
+						type="checkbox"
+						class="mt-1 h-4 w-4 rounded border-border-primary text-brand focus:ring-brand"
+						@change="errors.terms = ''"
+					/>
+					<I18nT
+						keypath="auth.register.terms"
+						tag="span"
+						scope="global"
+						class="text-sm text-text-secondary"
+					>
+						<template #termsLink>
+							<NuxtLink to="/terms" target="_blank" class="link font-medium">
+								{{ t('auth.register.termsLink') }}
+							</NuxtLink>
+						</template>
+					</I18nT>
+				</label>
+				<p v-if="errors.terms" class="mt-1 text-sm text-error">{{ errors.terms }}</p>
 			</div>
 
-			<!-- Register Card -->
-			<UiCard class="w-full max-w-md">
-				<!-- Error Message -->
-				<div
-					v-if="errorMessage"
-					class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
-				>
-					{{ errorMessage }}
-				</div>
+			<!-- Submit Button -->
+			<UiButton type="submit" size="lg" full-width :loading="isLoading">
+				{{ isLoading ? t('auth.register.submitting') : t('auth.register.submit') }}
+			</UiButton>
+		</form>
 
-				<form class="space-y-5" @submit.prevent="handleSubmit">
-					<!-- Name Field -->
-					<UiInput
-						id="name"
-						v-model="name"
-						type="text"
-						autocomplete="name"
-						:label="t('auth.register.nameLabel')"
-						:placeholder="t('auth.register.namePlaceholder')"
-						:error="errors.name"
-						@blur="validateName"
-					/>
-
-					<!-- Email Field -->
-					<UiInput
-						id="email"
-						v-model="email"
-						type="email"
-						autocomplete="email"
-						:label="t('auth.fields.email')"
-						:placeholder="t('auth.fields.emailPlaceholder')"
-						:error="errors.email"
-						@blur="validateEmail"
-					/>
-
-					<!-- Password Field -->
-					<UiInput
-						id="password"
-						v-model="password"
-						type="password"
-						autocomplete="new-password"
-						:label="t('auth.fields.password')"
-						:placeholder="t('auth.fields.strongPasswordPlaceholder')"
-						:error="errors.password"
-						:help-text="t('auth.fields.passwordHelp')"
-						@blur="validatePassword"
-					/>
-
-					<!-- Terms Checkbox -->
-					<div>
-						<label class="flex items-start gap-2 cursor-pointer">
-							<input
-								v-model="termsAccepted"
-								type="checkbox"
-								class="mt-1 h-4 w-4 rounded border-border-primary text-brand focus:ring-brand"
-								@change="errors.terms = ''"
-							/>
-							<I18nT
-								keypath="auth.register.terms"
-								tag="span"
-								scope="global"
-								class="text-sm text-text-secondary"
-							>
-								<template #termsLink>
-									<NuxtLink to="/terms" target="_blank" class="link font-medium">
-										{{ t('auth.register.termsLink') }}
-									</NuxtLink>
-								</template>
-							</I18nT>
-						</label>
-						<p v-if="errors.terms" class="mt-1 text-sm text-error">{{ errors.terms }}</p>
-					</div>
-
-					<!-- Submit Button -->
-					<UiButton type="submit" size="lg" full-width :loading="isLoading">
-						{{ isLoading ? t('auth.register.submitting') : t('auth.register.submit') }}
-					</UiButton>
-				</form>
-
-				<!-- Login Link -->
-				<p class="mt-6 text-center text-text-secondary text-sm">
-					{{ t('auth.register.haveAccount') }}
-					<NuxtLink to="/auth/login" class="link font-medium">
-						{{ t('auth.register.signIn') }}
-					</NuxtLink>
-				</p>
-			</UiCard>
+		<template #footer>
+			{{ t('auth.register.haveAccount') }}
+			<NuxtLink to="/auth/login" class="link font-medium">
+				{{ t('auth.register.signIn') }}
+			</NuxtLink>
 		</template>
-	</div>
+	</AuthShell>
 </template>

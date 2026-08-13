@@ -46,19 +46,22 @@ async function draft() {
 <template>
 	<div class="mt-1.5">
 		<div class="flex items-center gap-1.5">
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50"
+			<UiButton
+				variant="outline"
+				size="sm"
+				class="gap-1.5 px-2.5 py-1 text-xs"
 				:disabled="suggestOp.isLoading.value"
 				@click="draft"
 			>
-				<Icon
-					:name="suggestOp.isLoading.value ? 'lucide:loader-2' : 'lucide:calendar-clock'"
-					class="w-3.5 h-3.5"
-					:class="{ 'animate-spin': suggestOp.isLoading.value }"
-				/>
+				<template #iconLeft>
+					<Icon
+						:name="suggestOp.isLoading.value ? 'lucide:loader-2' : 'lucide:calendar-clock'"
+						class="w-3.5 h-3.5"
+						:class="{ 'animate-spin': suggestOp.isLoading.value }"
+					/>
+				</template>
 				Scheduling request — draft a reply?
-			</button>
+			</UiButton>
 			<button
 				type="button"
 				class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
