@@ -9,6 +9,13 @@ FROM oven/bun:1.3.14-alpine AS deps
 # full workspace install (apps/docs uses better-sqlite3 as a devDep). Matches
 # what apps/web/Dockerfile does.
 RUN apk add --no-cache python3 make g++
+# node-gyp must be preinstalled (lands in /usr/local/bin): better-sqlite3
+# ships a binding.gyp with no install script, so bun runs the default
+# `node-gyp rebuild` — and when node-gyp is not on PATH, bun shims it through
+# a `bunx node-gyp@latest` NETWORK FETCH into a shared /tmp cache at
+# install-script time, which has produced half-installed trees (ENOENT
+# proc-log) and flaky image builds.
+RUN bun install -g node-gyp
 
 WORKDIR /app
 
