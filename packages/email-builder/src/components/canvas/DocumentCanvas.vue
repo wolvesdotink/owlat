@@ -234,8 +234,8 @@ function optionTabIndex(blockId: string): number {
 }
 
 /**
- * Listbox navigation. Alt+Arrow is deliberately left alone: the global
- * keyboard handler (useKeyboardHandlers) uses it to *move* the selected block,
+ * Listbox navigation. Alt+Arrow is deliberately left alone: the editor's global
+ * keydown routing (utils/editorKeyboard) uses it to *move* the selected block,
  * so here it must not also move the selection.
  */
 function handleListboxKeydown(event: KeyboardEvent) {

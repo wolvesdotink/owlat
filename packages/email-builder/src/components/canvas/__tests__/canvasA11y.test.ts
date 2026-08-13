@@ -11,8 +11,9 @@
 // follows selection.
 //
 // Alt+Arrow stays out of this file on purpose: that shortcut *moves* the
-// selected block and is owned by useKeyboardHandlers (and covered by its own
-// test). Here we only assert the canvas does not also steal it.
+// selected block and is owned by the editor's global keydown routing
+// (utils/editorKeyboard, covered by its own test). Here we only assert the
+// canvas does not also steal it.
 import { describe, it, expect, afterEach } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { Trash2 } from '@lucide/vue';

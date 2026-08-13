@@ -2,8 +2,8 @@
  * Canonical list of the editor's keyboard shortcuts.
  *
  * Single source of truth for both the help sheet (KeyboardShortcutsDialog) and
- * the button tooltips — anything bound in `useKeyboardHandlers` / EmailBuilder's
- * keydown handler should be listed here so it is discoverable.
+ * the button tooltips — anything bound in `utils/editorKeyboard` or the canvas
+ * listbox navigation should be listed here so it is discoverable.
  */
 
 /** Section a shortcut is grouped under in the help sheet. */
