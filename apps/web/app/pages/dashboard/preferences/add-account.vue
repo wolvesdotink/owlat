@@ -137,7 +137,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
 		<PreferencesBackLink />
 
-		<h1 class="text-2xl font-semibold">Add mail account</h1>
+		<h1 class="text-2xl font-medium tracking-[-0.02em]">Add mail account</h1>
 
 		<!-- Step 1: choose address -->
 		<section v-if="step === 1" class="card mt-6 p-6">

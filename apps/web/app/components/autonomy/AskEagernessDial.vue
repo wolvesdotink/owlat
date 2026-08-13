@@ -73,11 +73,11 @@ async function choose(mode: EagernessMode) {
 				role="radio"
 				:aria-checked="selected === opt.value"
 				:disabled="isSaving"
-				class="w-full text-left rounded-lg border px-3 py-2.5 transition-colors disabled:opacity-60"
+				class="w-full text-left rounded-lg border px-3 py-2.5 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				:class="
 					selected === opt.value
 						? 'border-brand bg-brand-subtle'
-						: 'border-border hover:border-border-strong'
+						: 'border-border-default hover:border-border-strong'
 				"
 				@click="choose(opt.value)"
 			>

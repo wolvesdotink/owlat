@@ -23,30 +23,28 @@ const emit = defineEmits<{ godNodeClick: [entryId: string] }>();
 const bars = computed(() => confidenceBucketBars(props.stats?.confidenceBuckets ?? []));
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const computedAtLabel = computed(() =>
-	props.stats ? new Date(props.stats.computedAt).toLocaleString() : '',
+	props.stats ? new Date(props.stats.computedAt).toLocaleString() : ''
 );
-const maxCommunity = computed(() =>
-	Math.max(1, ...(props.stats?.communitySizes ?? [1])),
-);
+const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes ?? [1])));
 </script>
 
 <template>
-	<div v-if="!stats" class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+	<div v-if="!stats" class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 		<h3 class="text-sm font-semibold text-text-primary mb-1.5">Graph insights</h3>
 		<p class="text-sm text-text-tertiary">
-			No analytics snapshot yet. Insights are computed on a daily cron once the
-			knowledge graph has connected entries.
+			No analytics snapshot yet. Insights are computed on a daily cron once the knowledge graph has
+			connected entries.
 		</p>
 	</div>
 
 	<div v-else class="space-y-4">
 		<!-- Summary -->
-		<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<div class="flex items-center justify-between mb-3">
 				<h3 class="text-sm font-semibold text-text-primary">Graph insights</h3>
 				<span
 					v-if="stats.isTruncated"
-					class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-warning/10 text-warning"
+					class="text-2xs uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-warning/10 text-warning"
 					title="The graph is large; figures are approximate (scan was capped)."
 				>
 					Approximate
@@ -62,11 +60,11 @@ const maxCommunity = computed(() =>
 					<p class="text-xs text-text-tertiary">Relations</p>
 				</div>
 			</div>
-			<p class="text-[11px] text-text-tertiary mt-3">Computed {{ computedAtLabel }}</p>
+			<p class="text-2xs text-text-tertiary mt-3">Computed {{ computedAtLabel }}</p>
 		</div>
 
 		<!-- God nodes -->
-		<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
 				<Icon name="lucide:zap" class="w-4 h-4 text-brand" />
 				Hubs (god nodes)
@@ -89,12 +87,14 @@ const maxCommunity = computed(() =>
 							:name="entryTypeIcon(g.entryType)"
 							class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0"
 						/>
-						<span class="text-sm text-text-primary truncate group-hover:text-brand transition-colors">
+						<span
+							class="text-sm text-text-primary truncate group-hover:text-brand transition-colors"
+						>
 							{{ g.title }}
 						</span>
 					</button>
 					<span
-						class="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-brand-subtle text-brand flex-shrink-0"
+						class="text-2xs font-medium px-1.5 py-0.5 rounded-full bg-brand-subtle text-brand flex-shrink-0"
 						:title="`${g.inDegree} in / ${g.outDegree} out`"
 					>
 						{{ g.degree }}
@@ -111,7 +111,7 @@ const maxCommunity = computed(() =>
 		</div>
 
 		<!-- Confidence histogram -->
-		<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-3">Confidence distribution</h3>
 			<div class="flex items-end gap-1 h-24">
 				<div
@@ -126,23 +126,21 @@ const maxCommunity = computed(() =>
 					/>
 				</div>
 			</div>
-			<div class="flex justify-between text-[10px] text-text-tertiary mt-1.5">
+			<div class="flex justify-between text-2xs text-text-tertiary mt-1.5">
 				<span>0%</span>
 				<span>100%</span>
 			</div>
 			<div class="flex items-center justify-between text-xs text-text-secondary mt-3">
 				<span>Mean {{ pct(stats.confidenceMean) }}</span>
 				<span>Median {{ pct(stats.confidenceMedian) }}</span>
-				<span
-					:class="stats.belowReviewThreshold > 0 ? 'text-warning' : 'text-text-tertiary'"
-				>
+				<span :class="stats.belowReviewThreshold > 0 ? 'text-warning' : 'text-text-tertiary'">
 					{{ stats.belowReviewThreshold }} low-confidence
 				</span>
 			</div>
 		</div>
 
 		<!-- Communities -->
-		<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-1 flex items-center gap-2">
 				<Icon name="lucide:boxes" class="w-4 h-4 text-text-tertiary" />
 				Communities
@@ -153,7 +151,7 @@ const maxCommunity = computed(() =>
 				<span
 					v-for="(size, i) in stats.communitySizes.slice(0, 12)"
 					:key="i"
-					class="text-[11px] px-2 py-0.5 rounded-full bg-bg-surface text-text-secondary border border-border-subtle"
+					class="text-2xs px-2 py-0.5 rounded-full bg-bg-surface text-text-secondary border border-border-subtle"
 					:style="{ opacity: 0.5 + 0.5 * (size / maxCommunity) }"
 				>
 					{{ size }}
@@ -162,7 +160,7 @@ const maxCommunity = computed(() =>
 		</div>
 
 		<!-- Surprising connections (redacted) -->
-		<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
 				<Icon name="lucide:sparkles" class="w-4 h-4 text-brand" />
 				Surprising connections
@@ -182,7 +180,7 @@ const maxCommunity = computed(() =>
 					>
 						{{ c.fromTitle }}
 					</NuxtLink>
-					<span class="text-[10px] uppercase tracking-wide text-text-tertiary flex-shrink-0">
+					<span class="text-2xs uppercase tracking-wide text-text-tertiary flex-shrink-0">
 						{{ relationLabel(c.relationType) }}
 					</span>
 					<NuxtLink
@@ -195,10 +193,12 @@ const maxCommunity = computed(() =>
 			</ul>
 			<p
 				v-if="stats.crossContactLinkCount > 0"
-				class="text-[11px] text-text-tertiary mt-3 flex items-center gap-1.5"
+				class="text-2xs text-text-tertiary mt-3 flex items-center gap-1.5"
 			>
 				<Icon name="lucide:shield" class="w-3.5 h-3.5 flex-shrink-0" />
-				{{ stats.crossContactLinkCount }} cross-contact connection{{ stats.crossContactLinkCount === 1 ? '' : 's' }}
+				{{ stats.crossContactLinkCount }} cross-contact connection{{
+					stats.crossContactLinkCount === 1 ? '' : 's'
+				}}
 				hidden to protect contact isolation.
 			</p>
 		</div>

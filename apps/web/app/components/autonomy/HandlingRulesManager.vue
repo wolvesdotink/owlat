@@ -97,22 +97,25 @@ function matcherSummary(matcher: {
 				v-model="instruction"
 				type="text"
 				placeholder="e.g. always draft a polite decline for recruiters"
-				class="flex-1 px-2.5 py-1.5 rounded-md border border-border-subtle bg-bg-surface text-sm text-text-primary placeholder:text-text-tertiary"
+				class="input input-sm flex-1"
 				:disabled="busy"
 				aria-label="New handling rule"
 			/>
-			<button
+			<UiButton
 				type="submit"
-				class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50"
+				variant="outline"
+				size="sm"
 				:disabled="busy || !instruction.trim()"
 			>
-				<Icon
-					:name="busy ? 'lucide:loader-2' : 'lucide:sparkles'"
-					class="w-4 h-4"
-					:class="{ 'animate-spin': busy }"
-				/>
+				<template #iconLeft>
+					<Icon
+						:name="busy ? 'lucide:loader-2' : 'lucide:sparkles'"
+						class="w-4 h-4"
+						:class="{ 'animate-spin': busy }"
+					/>
+				</template>
 				Teach rule
-			</button>
+			</UiButton>
 		</form>
 		<p v-if="compileOp.inlineError.value" class="text-xs text-error">
 			{{ compileOp.inlineError.value }}
@@ -123,7 +126,7 @@ function matcherSummary(matcher: {
 			<li
 				v-for="rule in rules"
 				:key="rule._id"
-				class="flex items-start justify-between gap-3 p-2.5 rounded-md border border-border-subtle"
+				class="flex items-start justify-between gap-3 p-2.5 rounded-md bg-surface-2 shadow-surface-1"
 				:class="{ 'opacity-60': !rule.isEnabled }"
 			>
 				<div class="min-w-0">

@@ -17,7 +17,7 @@ defineProps<{
 
 <template>
 	<header class="pbx-reader-header mb-4">
-		<h1 class="text-2xl font-semibold text-text-primary">
+		<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 			{{ subject || '(no subject)' }}
 			<span
 				v-if="messageCount > 1"

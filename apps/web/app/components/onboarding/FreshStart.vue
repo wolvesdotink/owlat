@@ -228,7 +228,7 @@ function skipToInbox() {
 						v-model="displayName"
 						type="text"
 						:placeholder="t('welcome.freshStart.namePlaceholder')"
-						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
+						class="input input-sm"
 					/>
 					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.nameHint') }}</p>
 				</div>
@@ -253,7 +253,7 @@ function skipToInbox() {
 						v-model="signatureText"
 						rows="3"
 						:placeholder="t('welcome.freshStart.signaturePlaceholder')"
-						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
+						class="input input-sm"
 					/>
 					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.signatureHint') }}</p>
 				</div>
@@ -266,7 +266,7 @@ function skipToInbox() {
 					<select
 						id="fresh-notify"
 						v-model="notifyChoice"
-						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
+						class="input input-sm"
 					>
 						<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt.value" :value="opt.value">
 							{{ opt.label }}
@@ -346,7 +346,7 @@ function skipToInbox() {
 						<I18nT keypath="welcome.freshStart.tips.compose" tag="span" scope="global">
 							<template #key>
 								<kbd
-									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
+									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs font-mono"
 									>C</kbd
 								>
 							</template>
@@ -357,10 +357,10 @@ function skipToInbox() {
 						<I18nT keypath="welcome.freshStart.tips.command" tag="span" scope="global">
 							<template #keys>
 								<kbd
-									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
+									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs font-mono"
 									>⌘</kbd
 								><kbd
-									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
+									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs font-mono"
 									>K</kbd
 								>
 							</template>

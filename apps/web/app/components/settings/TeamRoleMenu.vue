@@ -179,7 +179,7 @@ onUnmounted(removeListeners);
 		<button
 			ref="triggerRef"
 			type="button"
-			class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-border-subtle text-xs font-medium text-text-primary transition-colors hover:border-border-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
+			class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg shadow-surface-1 text-xs font-medium text-text-primary transition-colors hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
 			:disabled="disabled"
 			aria-haspopup="menu"
 			:aria-expanded="isOpen"
@@ -208,7 +208,7 @@ onUnmounted(removeListeners);
 					ref="menuRef"
 					role="menu"
 					aria-label="Assign role"
-					class="fixed z-50 w-72 rounded-xl border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+					class="fixed z-50 w-72 rounded-xl bg-bg-elevated py-1 shadow-lg"
 					:style="{
 						top: openDirection === 'up' ? 'auto' : `${panelPosition.top}px`,
 						bottom: openDirection === 'up' ? `${panelPosition.bottom}px` : 'auto',

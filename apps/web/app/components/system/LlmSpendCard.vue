@@ -29,7 +29,7 @@ const { data: spendBudget } = useOrganizationQuery(
 	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 		<div class="flex items-baseline justify-between gap-4 flex-wrap mb-4">
 			<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">LLM spend · last 7 days</h3>
-			<p class="text-2xl font-semibold text-text-primary">${{ (llmSpend?.totalCostUsd ?? 0).toFixed(2) }}</p>
+			<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary">${{ (llmSpend?.totalCostUsd ?? 0).toFixed(2) }}</p>
 		</div>
 		<div v-if="llmSpend && llmSpend.features.length" class="space-y-2">
 			<div

@@ -277,6 +277,11 @@ const configSteps = [
 	{ id: 'admin', label: 'Admin', icon: 'lucide:user-cog' },
 ] as const;
 type ConfigStep = (typeof configSteps)[number]['id'];
+const stepOptions = configSteps.map((s) => ({ value: s.id, label: s.label }));
+const AUTH_OPTIONS = [
+	{ value: 'key', label: 'Private key' },
+	{ value: 'password', label: 'Password' },
+];
 const configStep = ref<ConfigStep>('features');
 const stepIndex = computed(() => configSteps.findIndex((s) => s.id === configStep.value));
 const isLastStep = computed(() => stepIndex.value === configSteps.length - 1);
@@ -443,8 +448,9 @@ watch(stage, (s) => {
 		reachTimer = setInterval(() => void recheckReachable(), 5000);
 	}
 });
-const inputClass =
-	'w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none';
+// Shared design-system input (packages/ui components.css) — same recipe the
+// dashboard and the marketing site build on.
+const inputClass = 'input input-sm text-sm';
 const labelClass = 'mb-1 block text-xs font-medium text-text-secondary';
 /** Section headers in the configure step (above groups of fields). */
 const sectionClass = 'mb-2 block text-xs font-semibold uppercase tracking-wide text-text-secondary';
@@ -455,23 +461,25 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 	<div class="min-h-screen bg-bg-deep text-text-primary" :class="{ 'pt-[38px]': isDesktop }">
 		<DesktopTitlebar />
 		<div class="mx-auto max-w-xl px-4 py-10">
-			<div v-if="!isDesktop" class="rounded-2xl border border-border-default bg-bg-surface p-8 text-sm text-text-secondary">
+			<div v-if="!isDesktop" class="card p-8 text-sm text-text-secondary">
 				The server installer is only available in the desktop app.
 			</div>
 
 			<template v-else>
 				<header class="mb-6">
-					<NuxtLink to="/desktop/welcome" class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary">
+					<NuxtLink to="/desktop/welcome" class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary">
 						<Icon name="lucide:arrow-left" class="size-3.5" /> Back
 					</NuxtLink>
-					<h1 class="text-2xl font-semibold">Set up a new server</h1>
-					<p class="mt-1 text-sm text-text-secondary">
+					<h1 class="text-3xl font-medium tracking-[-0.02em] text-text-primary">
+						Set up a <span class="font-display italic">new server</span>
+					</h1>
+					<p class="mt-2 text-md leading-[1.65] text-text-secondary">
 						Connect to a fresh Linux server over SSH and Owlat will install and configure itself.
 					</p>
 				</header>
 
 				<!-- ============ CONNECT ============ -->
-				<section v-if="inConnect" class="rounded-2xl border border-border-default bg-bg-surface p-6">
+				<section v-if="inConnect" class="card">
 					<form class="space-y-4" @submit.prevent="onConnect">
 						<div class="grid grid-cols-[1fr_5rem] gap-3">
 							<div>
@@ -491,23 +499,13 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 
 						<div>
 							<label :class="labelClass">Authentication</label>
-							<div class="mb-2 inline-flex rounded-lg border border-border-default p-0.5 text-xs">
-								<button
-									type="button"
-									class="rounded-md px-3 py-1"
-									:class="authMethod === 'key' ? 'bg-brand text-white' : 'text-text-secondary'"
-									@click="authMethod = 'key'"
-								>
-									Private key
-								</button>
-								<button
-									type="button"
-									class="rounded-md px-3 py-1"
-									:class="authMethod === 'password' ? 'bg-brand text-white' : 'text-text-secondary'"
-									@click="authMethod = 'password'"
-								>
-									Password
-								</button>
+							<div class="mb-2 inline-block" role="group" aria-label="Authentication method">
+								<UiSegmentedControl
+									size="sm"
+									:options="AUTH_OPTIONS"
+									:model-value="authMethod"
+									@update:model-value="authMethod = $event as 'key' | 'password'"
+								/>
 							</div>
 
 							<template v-if="authMethod === 'key'">
@@ -518,14 +516,9 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 										placeholder="~/.ssh/id_ed25519"
 										:disabled="busy"
 									/>
-									<button
-										type="button"
-										class="shrink-0 rounded-lg border border-border-default px-3 py-2 text-xs font-medium text-text-secondary hover:border-brand hover:text-text-primary"
-										:disabled="busy"
-										@click="browseKeyFile"
-									>
+									<UiButton variant="outline" size="sm" class="shrink-0" :disabled="busy" @click="browseKeyFile">
 										Browse…
-									</button>
+									</UiButton>
 								</div>
 								<textarea
 									v-else
@@ -590,7 +583,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<label class="flex cursor-pointer items-start gap-2.5 text-sm">
 										<input v-model="imageMode" type="radio" value="local" class="peer sr-only" />
 										<span
-											class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg-surface"
+											class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
 											:class="imageMode === 'local' ? 'border-brand' : 'border-border-default'"
 										>
 											<span v-if="imageMode === 'local'" class="size-2 rounded-full bg-brand" />
@@ -605,7 +598,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<label class="flex cursor-pointer items-start gap-2.5 text-sm">
 										<input v-model="imageMode" type="radio" value="server" class="peer sr-only" />
 										<span
-											class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg-surface"
+											class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
 											:class="imageMode === 'server' ? 'border-brand' : 'border-border-default'"
 										>
 											<span v-if="imageMode === 'server'" class="size-2 rounded-full bg-brand" />
@@ -624,10 +617,10 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						<!-- host key confirmation -->
 						<div
 							v-if="stage === 'hostkey' && hostKeyPrompt"
-							class="rounded-lg border p-3"
-							:class="hostKeyPrompt.tone === 'danger' ? 'border-red-500/40 bg-red-500/5' : 'border-amber-500/30 bg-amber-500/5'"
+							class="rounded-xl border p-3"
+							:class="hostKeyPrompt.tone === 'danger' ? 'border-error/40 bg-error/5' : 'border-warning/40 bg-warning/5'"
 						>
-							<p class="text-sm font-medium" :class="hostKeyPrompt.tone === 'danger' ? 'text-red-300' : 'text-amber-300'">
+							<p class="text-sm font-medium" :class="hostKeyPrompt.tone === 'danger' ? 'text-error' : 'text-warning'">
 								<Icon name="lucide:shield-alert" class="mb-0.5 mr-1 inline size-4" />
 								{{ hostKeyPrompt.title }}
 							</p>
@@ -637,55 +630,48 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<!-- A CHANGED key (possible interception) demands an explicit opt-in. -->
 							<label
 								v-if="hostKeyPrompt.requiresExplicitConfirmation"
-								class="mt-3 flex cursor-pointer items-start gap-2 text-xs text-red-300"
+								class="mt-3 flex cursor-pointer items-start gap-2 text-xs text-error"
 							>
 								<input v-model="mismatchAcknowledged" type="checkbox" class="mt-0.5" :disabled="busy" />
 								<span>I know why this server's key changed and want to connect anyway.</span>
 							</label>
 
-							<button
-								type="button"
-								class="mt-3 rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
-								:class="hostKeyPrompt.tone === 'danger' ? 'bg-red-600' : 'bg-brand'"
+							<UiButton
+								size="sm"
+								class="mt-3"
+								:variant="hostKeyPrompt.tone === 'danger' ? 'danger' : 'primary'"
 								:disabled="busy || (hostKeyPrompt.requiresExplicitConfirmation && !mismatchAcknowledged)"
 								@click="acceptHostKey(hostKeyPrompt.isMismatch)"
 							>
-								{{ hostKeyPrompt.isMismatch ? 'Accept changed key &amp; continue' : 'Accept &amp; continue' }}
-							</button>
+								{{ hostKeyPrompt.isMismatch ? 'Accept changed key & continue' : 'Accept & continue' }}
+							</UiButton>
 						</div>
 
-						<p v-if="connectError" class="text-sm text-red-400">{{ connectError }}</p>
-						<p v-if="error" class="text-sm text-red-400">{{ error }}</p>
+						<p v-if="connectError" class="text-sm text-error">{{ connectError }}</p>
+						<p v-if="error" class="text-sm text-error">{{ error }}</p>
 
-						<button
-							v-if="stage !== 'hostkey'"
-							type="submit"
-							:disabled="busy"
-							class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-						>
+						<UiButton v-if="stage !== 'hostkey'" type="submit" :disabled="busy" full-width>
 							<span v-if="stage === 'connecting'">Connecting…</span>
 							<span v-else-if="stage === 'authenticating'">Authenticating…</span>
 							<span v-else>Connect</span>
-						</button>
+						</UiButton>
 					</form>
 				</section>
 
 				<!-- ============ CONFIGURE ============ -->
-				<section v-else-if="stage === 'configure'" class="rounded-2xl border border-border-default bg-bg-surface p-6">
+				<section v-else-if="stage === 'configure'" class="card">
 					<!-- step menu -->
-					<nav class="mb-5 flex gap-1 rounded-lg border border-border-default p-1">
-						<button
-							v-for="(st, i) in configSteps"
-							:key="st.id"
-							type="button"
-							class="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
-							:class="configStep === st.id ? 'bg-brand text-white' : 'text-text-secondary hover:text-text-primary'"
-							@click="goStep(st.id)"
+					<nav class="mb-5" aria-label="Setup steps">
+						<UiSegmentedControl
+							:options="stepOptions"
+							:model-value="configStep"
+							@update:model-value="goStep($event as ConfigStep)"
 						>
-							<Icon :name="st.icon" class="size-3.5 shrink-0" />
-							<span class="hidden sm:inline">{{ st.label }}</span>
-							<span class="sm:hidden">{{ i + 1 }}</span>
-						</button>
+							<template v-for="st in configSteps" :key="st.id" #[`option-${st.id}`]>
+								<Icon :name="st.icon" class="size-3.5 shrink-0" />
+								<span class="hidden sm:inline">{{ st.label }}</span>
+							</template>
+						</UiSegmentedControl>
 					</nav>
 
 					<form @submit.prevent="onProvision">
@@ -699,7 +685,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								>
 									<input v-model="packs[opt.key]" type="checkbox" class="peer sr-only" />
 									<span
-										class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg-surface"
+										class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
 										:class="packs[opt.key] ? 'border-brand bg-brand' : 'border-border-default'"
 									>
 										<Icon v-if="packs[opt.key]" name="lucide:check" class="size-3 text-text-inverse" />
@@ -789,19 +775,19 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 											class="h-full flex-1 rounded-full transition-colors"
 											:class="seg <= passwordAssessment.score
 												? (passwordAssessment.strength === 'strong'
-													? 'bg-emerald-400'
+													? 'bg-success'
 													: passwordAssessment.strength === 'fair'
-														? 'bg-amber-400'
-														: 'bg-red-400')
+														? 'bg-warning'
+														: 'bg-error')
 												: 'bg-border-default'"
 										/>
 									</div>
 									<span
 										class="w-20 shrink-0 text-right text-xs"
-										:class="passwordAssessment.meetsMinLength ? 'text-text-secondary' : 'text-red-400'"
+										:class="passwordAssessment.meetsMinLength ? 'text-text-secondary' : 'text-error'"
 									>{{ passwordAssessment.label }}</span>
 								</div>
-								<p v-if="adminPasswordError" class="text-xs text-red-400">{{ adminPasswordError }}</p>
+								<p v-if="adminPasswordError" class="text-xs text-error">{{ adminPasswordError }}</p>
 							</div>
 						</div>
 
@@ -818,7 +804,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									Leave blank only when installing on this machine.
 								</template>
 							</p>
-							<p v-if="isRemoteTarget && !hasDomain" class="mt-1.5 text-xs text-amber-300">
+							<p v-if="isRemoteTarget && !hasDomain" class="mt-1.5 text-xs text-warning">
 								<Icon name="lucide:triangle-alert" class="mb-0.5 mr-1 inline size-3.5" />
 								Without a domain this install is only reachable on the server itself.
 							</p>
@@ -860,7 +846,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<p v-if="dnsRecords.length" class="mt-2 text-xs text-text-secondary">
 										TLS certificates are issued automatically once these resolve — keep ports 80/443 open.
 									</p>
-									<p v-if="sendingProvider === 'mta' && dnsRecords.length" class="mt-1.5 text-xs text-amber-300">
+									<p v-if="sendingProvider === 'mta' && dnsRecords.length" class="mt-1.5 text-xs text-warning">
 										<Icon name="lucide:info" class="mb-0.5 mr-1 inline size-3.5" />
 										These get the app online. For deliverable email, finish SPF, DKIM and DMARC in
 										<span class="font-medium">Settings → Domains</span> after first sign-in — DKIM is generated there.
@@ -872,7 +858,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						<label v-show="configStep === 'admin'" class="mt-4 flex cursor-pointer items-center gap-2.5 text-sm">
 							<input v-model="seedDemo" type="checkbox" class="peer sr-only" />
 							<span
-								class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg-surface"
+								class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
 								:class="seedDemo ? 'border-brand bg-brand' : 'border-border-default'"
 							>
 								<Icon v-if="seedDemo" name="lucide:check" class="size-3 text-text-inverse" />
@@ -880,56 +866,39 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<span>Seed demo data (for evaluating)</span>
 						</label>
 
-						<p v-if="configError" class="mt-4 text-sm text-red-400">{{ configError }}</p>
-						<div class="mt-5 flex items-center gap-3 border-t border-border-default pt-4">
-							<button
-								v-if="stepIndex > 0"
-								type="button"
-								class="rounded-lg border border-border-default px-3 py-2 text-sm text-text-secondary hover:border-brand hover:text-text-primary"
-								@click="prevStep"
-							>
+						<p v-if="configError" class="mt-4 text-sm text-error">{{ configError }}</p>
+						<div class="mt-5 flex items-center gap-3 border-t border-border-subtle pt-4">
+							<UiButton v-if="stepIndex > 0" variant="outline" size="sm" @click="prevStep">
 								Back
-							</button>
-							<button
-								v-if="!isLastStep"
-								type="button"
-								class="ml-auto rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-								@click="nextStep"
-							>
+							</UiButton>
+							<UiButton v-if="!isLastStep" size="sm" class="ml-auto" @click="nextStep">
 								Next
-							</button>
-							<button
-								v-else
-								type="submit"
-								class="ml-auto rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-							>
+							</UiButton>
+							<UiButton v-else type="submit" size="sm" class="ml-auto">
 								Provision server
-							</button>
+							</UiButton>
 						</div>
 					</form>
 				</section>
 
 				<!-- ============ PROVISION / DONE / ERROR ============ -->
-				<section v-else class="rounded-2xl border border-border-default bg-bg-surface p-6">
+				<section v-else class="card">
 					<DesktopProvisioningTimeline :steps="steps" :logs="logs" :progress="progress" />
 
 					<!-- READY: the public URL is up and reachable -->
-					<div v-if="stage === 'done' && canOpenWorkspace" class="mt-6 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
-						<p class="flex items-center gap-2 text-sm font-medium text-emerald-300">
+					<div v-if="stage === 'done' && canOpenWorkspace" class="mt-6 rounded-xl border border-success/30 bg-success/5 p-4">
+						<p class="flex items-center gap-2 text-sm font-medium text-success">
 							<Icon name="lucide:party-popper" class="size-4" /> Your server is ready
 						</p>
 						<p v-if="siteUrl" class="mt-1 text-xs text-text-secondary">{{ siteUrl }}</p>
-						<button
-							class="mt-3 w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white"
-							@click="connectWorkspace"
-						>
+						<UiButton class="mt-3" full-width @click="connectWorkspace">
 							Open workspace
-						</button>
+						</UiButton>
 					</div>
 
 					<!-- FINISHING UP: installed, but the public URL isn't answering yet (DNS/TLS) -->
-					<div v-else-if="stage === 'done' && !siteIsLoopback" class="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-						<p class="flex items-center gap-2 text-sm font-medium text-amber-300">
+					<div v-else-if="stage === 'done' && !siteIsLoopback" class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4">
+						<p class="flex items-center gap-2 text-sm font-medium text-warning">
 							<Icon name="lucide:loader-circle" class="size-4" :class="{ 'animate-spin': checkingReach }" />
 							Finishing up — add your DNS records, then open your workspace
 						</p>
@@ -947,61 +916,53 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								TLS is issued automatically once they resolve (ports 80/443 open).
 							</p>
 						</div>
-						<button
-							class="mt-3 inline-flex items-center gap-2 rounded-lg border border-border-default px-3 py-2 text-sm hover:border-brand disabled:opacity-60"
-							:disabled="checkingReach"
-							@click="recheckReachable"
-						>
-							<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin': checkingReach }" />
+						<UiButton variant="outline" size="sm" class="mt-3" :disabled="checkingReach" @click="recheckReachable">
+							<template #iconLeft>
+								<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin': checkingReach }" />
+							</template>
 							{{ checkingReach ? 'Checking…' : 'Check again' }}
-						</button>
+						</UiButton>
 					</div>
 
 					<!-- LOOPBACK: the URL only works on the server itself -->
-					<div v-else-if="stage === 'done'" class="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-						<p class="flex items-center gap-2 text-sm font-medium text-amber-300">
+					<div v-else-if="stage === 'done'" class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4">
+						<p class="flex items-center gap-2 text-sm font-medium text-warning">
 							<Icon name="lucide:circle-check" class="size-4" /> Your server is running
 						</p>
 						<p class="mt-1 text-xs text-text-secondary">
 							It's installed at <span class="font-mono">{{ siteUrl }}</span>, but that address only works on
 							the server itself — not from this app. Re-run setup with a public domain to open it here.
 						</p>
-						<button
-							class="mt-3 inline-block rounded-lg border border-border-default px-3 py-2 text-sm hover:border-brand"
-							@click="retry"
-						>
+						<UiButton variant="outline" size="sm" class="mt-3" @click="retry">
 							Set a domain &amp; retry
-						</button>
+						</UiButton>
 					</div>
 
 					<!-- After any successful install: note the fate of the secrets-bearing config. -->
 					<div v-if="stage === 'done'" class="mt-3 flex items-start gap-2 text-xs text-text-secondary">
-						<Icon :name="secretsRemoved ? 'lucide:shield-check' : 'lucide:shield-alert'" class="mt-0.5 size-3.5 shrink-0" :class="secretsRemoved ? 'text-emerald-400' : 'text-amber-300'" />
+						<Icon :name="secretsRemoved ? 'lucide:shield-check' : 'lucide:shield-alert'" class="mt-0.5 size-3.5 shrink-0" :class="secretsRemoved ? 'text-success' : 'text-warning'" />
 						<span v-if="secretsRemoved">
 							The setup file — which held your admin password and provider API keys in plaintext — was
 							removed from the server.
 						</span>
-						<span v-else class="text-amber-300">
+						<span v-else class="text-warning">
 							Couldn't auto-remove the setup file. It holds your admin password and provider keys in
 							plaintext — delete <span class="font-mono">.owlat-setup.json</span> from the install directory.
 						</span>
 					</div>
 
-					<div v-else-if="stage === 'error'" class="mt-6 rounded-lg border border-red-500/30 bg-red-500/5 p-4">
-						<p class="text-sm font-medium text-red-300">Provisioning failed</p>
+					<div v-else-if="stage === 'error'" class="mt-6 rounded-xl border border-error/40 bg-error/5 p-4">
+						<p class="text-sm font-medium text-error">Provisioning failed</p>
 						<p class="mt-1 text-xs text-text-secondary">{{ error }}</p>
 						<!-- The failing step's stderr tail, pinned so the root cause stays readable. -->
 						<div v-if="failureTail.length" class="mt-2">
 							<p class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">Last error output</p>
-							<pre class="max-h-40 overflow-auto rounded bg-bg-deep p-2 font-mono text-[11px] leading-snug text-red-300">{{ failureTail.join('\n') }}</pre>
+							<pre class="max-h-40 overflow-auto rounded bg-bg-deep p-2 font-mono text-[11px] leading-snug text-error">{{ failureTail.join('\n') }}</pre>
 						</div>
 						<p class="mt-2 text-xs text-text-secondary">Open the server log above for the full details, then adjust your configuration and try again.</p>
-						<button
-							class="mt-3 inline-block rounded-lg border border-border-default px-3 py-2 text-sm hover:border-brand"
-							@click="retry"
-						>
+						<UiButton variant="outline" size="sm" class="mt-3" @click="retry">
 							Adjust &amp; retry
-						</button>
+						</UiButton>
 					</div>
 				</section>
 			</template>

@@ -250,7 +250,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 			</NuxtLink>
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Review Queue</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Review Queue</h1>
 				<p class="text-text-secondary mt-1">
 					Agent-generated drafts and escalations waiting for your action.
 				</p>
