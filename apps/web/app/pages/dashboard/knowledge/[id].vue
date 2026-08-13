@@ -622,7 +622,7 @@ const handleRemoveRelation = async (relationId: string) => {
 							<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
 							<UiButton
 								variant="danger"
-								class="bg-error text-white hover:bg-error/90"
+								class="bg-error text-text-inverse hover:bg-error/90"
 								:disabled="isDeleting"
 								@click="handleDelete"
 							>

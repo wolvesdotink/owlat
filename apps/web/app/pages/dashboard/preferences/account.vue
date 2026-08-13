@@ -664,7 +664,7 @@ const daysRemaining = computed(() => {
 				<UiButton
 					variant="danger"
 					type="button"
-					class="gap-2 bg-error text-white hover:bg-error/90"
+					class="gap-2 bg-error text-text-inverse hover:bg-error/90"
 					:disabled="isDeleting || deleteConfirmText !== 'DELETE'"
 					@click="handleDeleteAccount"
 				>

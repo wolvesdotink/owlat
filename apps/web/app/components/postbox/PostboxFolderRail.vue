@@ -166,7 +166,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			</template>
 			<span
 				v-else-if="replyQueueCount > 0"
-				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-white text-[10px] leading-4 font-medium text-center"
+				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-[10px] leading-4 font-medium text-center"
 				>{{ replyQueueCount > 99 ? '99+' : replyQueueCount }}</span
 			>
 		</NuxtLink>

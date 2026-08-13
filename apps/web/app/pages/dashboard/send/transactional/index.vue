@@ -322,7 +322,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									<Icon name="lucide:copy" class="w-4 h-4" />
 								</button>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors"
 									@click.stop="openDeleteModal(email._id, email.name)"
 									aria-label="Delete"
 								>

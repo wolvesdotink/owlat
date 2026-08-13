@@ -97,6 +97,10 @@ const inputClass =
 				:class="booleanValue ? 'bg-brand' : 'bg-bg-surface-hover'"
 				@click="toggle"
 			>
+				<!-- palette-ok: the thumb is a fixed white puck in both themes, the one
+				     packages/ui Switch.vue draws — it rides a brand/surface TRACK, so a
+				     surface token would make it vanish into the off state, and there is no
+				     inverse-surface token to name it with. -->
 				<span
 					class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
 					:class="booleanValue ? 'translate-x-[22px]' : 'translate-x-[2px]'"

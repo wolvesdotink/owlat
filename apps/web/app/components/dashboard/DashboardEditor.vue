@@ -228,7 +228,7 @@ const roleOptions = ROLE_OPTIONS;
 											class="px-2 py-1 text-xs font-medium rounded transition-colors"
 											:class="
 												card.size === opt.value
-													? 'bg-brand text-white'
+													? 'bg-brand text-text-inverse'
 													: 'bg-bg-surface text-text-secondary hover:text-text-primary'
 											"
 											@click="card.size = opt.value"
@@ -356,7 +356,7 @@ const roleOptions = ROLE_OPTIONS;
 												class="px-2 py-1 text-xs font-medium rounded transition-colors"
 												:class="
 													rule.dayOfWeek.includes(day.value)
-														? 'bg-brand text-white'
+														? 'bg-brand text-text-inverse'
 														: 'bg-bg-surface text-text-secondary hover:text-text-primary'
 												"
 												@click="toggleRuleDay(rule, day.value)"
@@ -377,7 +377,7 @@ const roleOptions = ROLE_OPTIONS;
 												class="px-2 py-1 text-xs font-medium rounded transition-colors"
 												:class="
 													rule.role === opt.value
-														? 'bg-brand text-white'
+														? 'bg-brand text-text-inverse'
 														: 'bg-bg-surface text-text-secondary hover:text-text-primary'
 												"
 												@click="setRuleRole(rule, opt.value)"
@@ -409,7 +409,7 @@ const roleOptions = ROLE_OPTIONS;
 														class="px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors"
 														:class="
 															card.size === opt.value
-																? 'bg-brand text-white'
+																? 'bg-brand text-text-inverse'
 																: 'bg-bg-elevated text-text-secondary hover:text-text-primary'
 														"
 														@click="card.size = opt.value"

@@ -306,7 +306,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 					</p>
 					<NuxtLink
 						to="/desktop/welcome"
-						class="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+						class="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-text-inverse"
 					>
 						Connect a workspace
 					</NuxtLink>

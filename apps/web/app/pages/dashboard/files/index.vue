@@ -37,7 +37,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 			</div>
 			<UiButton
 				v-if="isAdmin"
-				class="bg-brand text-white hover:bg-brand/90"
+				class="bg-brand text-text-inverse hover:bg-brand/90"
 				@click="showUploadModal = true"
 			>
 				<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
@@ -143,7 +143,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 				</p>
 				<UiButton
 					v-if="!searchQuery && isAdmin"
-					class="bg-brand text-white hover:bg-brand/90 mt-4"
+					class="bg-brand text-text-inverse hover:bg-brand/90 mt-4"
 					@click="showUploadModal = true"
 				>
 					<Icon name="lucide:upload" class="w-4 h-4 mr-2" />

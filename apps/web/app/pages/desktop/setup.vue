@@ -495,7 +495,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								<button
 									type="button"
 									class="rounded-md px-3 py-1"
-									:class="authMethod === 'key' ? 'bg-brand text-white' : 'text-text-secondary'"
+									:class="authMethod === 'key' ? 'bg-brand text-text-inverse' : 'text-text-secondary'"
 									@click="authMethod = 'key'"
 								>
 									Private key
@@ -503,7 +503,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								<button
 									type="button"
 									class="rounded-md px-3 py-1"
-									:class="authMethod === 'password' ? 'bg-brand text-white' : 'text-text-secondary'"
+									:class="authMethod === 'password' ? 'bg-brand text-text-inverse' : 'text-text-secondary'"
 									@click="authMethod = 'password'"
 								>
 									Password
@@ -645,8 +645,8 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 
 							<button
 								type="button"
-								class="mt-3 rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
-								:class="hostKeyPrompt.tone === 'danger' ? 'bg-red-600' : 'bg-brand'"
+								class="mt-3 rounded-lg px-3 py-1.5 text-sm font-medium text-text-inverse disabled:opacity-60"
+								:class="hostKeyPrompt.tone === 'danger' ? 'bg-error' : 'bg-brand'"
 								:disabled="busy || (hostKeyPrompt.requiresExplicitConfirmation && !mismatchAcknowledged)"
 								@click="acceptHostKey(hostKeyPrompt.isMismatch)"
 							>
@@ -661,7 +661,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							v-if="stage !== 'hostkey'"
 							type="submit"
 							:disabled="busy"
-							class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+							class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-text-inverse disabled:opacity-60"
 						>
 							<span v-if="stage === 'connecting'">Connecting…</span>
 							<span v-else-if="stage === 'authenticating'">Authenticating…</span>
@@ -679,7 +679,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							:key="st.id"
 							type="button"
 							class="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
-							:class="configStep === st.id ? 'bg-brand text-white' : 'text-text-secondary hover:text-text-primary'"
+							:class="configStep === st.id ? 'bg-brand text-text-inverse' : 'text-text-secondary hover:text-text-primary'"
 							@click="goStep(st.id)"
 						>
 							<Icon :name="st.icon" class="size-3.5 shrink-0" />
@@ -893,7 +893,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<button
 								v-if="!isLastStep"
 								type="button"
-								class="ml-auto rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+								class="ml-auto rounded-lg bg-brand px-4 py-2 text-sm font-medium text-text-inverse"
 								@click="nextStep"
 							>
 								Next
@@ -901,7 +901,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<button
 								v-else
 								type="submit"
-								class="ml-auto rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+								class="ml-auto rounded-lg bg-brand px-4 py-2 text-sm font-medium text-text-inverse"
 							>
 								Provision server
 							</button>
@@ -920,7 +920,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						</p>
 						<p v-if="siteUrl" class="mt-1 text-xs text-text-secondary">{{ siteUrl }}</p>
 						<button
-							class="mt-3 w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white"
+							class="mt-3 w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-text-inverse"
 							@click="connectWorkspace"
 						>
 							Open workspace

@@ -138,7 +138,7 @@ function openForYou(): void {
 					v-if="active"
 					to="/dashboard/postbox/inbox#postbox-for-you"
 					class="tb-unread"
-					:class="unreadCount > 0 ? 'text-white' : 'tb-unread-idle'"
+					:class="unreadCount > 0 ? 'text-text-inverse' : 'tb-unread-idle'"
 					:aria-label="
 						unreadCount > 0 ? `${unreadCount} awaiting you in Postbox` : 'Open Postbox inbox'
 					"
@@ -232,7 +232,9 @@ function openForYou(): void {
 }
 
 /* Right-side unread pill — the one place terracotta appears as a small chip.
-   The white text comes from the `text-white` utility on the element. */
+   The on-fill text color comes from the `text-text-inverse` utility on the
+   element (light copy on the light-mode fill, dark on the lighter dark-mode
+   terracotta). */
 .tb-unread {
 	display: inline-flex;
 	align-items: center;

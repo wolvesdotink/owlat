@@ -151,7 +151,7 @@ const handleRemove = async () => {
 							<UiButton variant="secondary" @click="showConfirmRemove = false">Cancel</UiButton>
 							<UiButton
 								variant="danger"
-								class="bg-error text-white hover:bg-error/90"
+								class="bg-error text-text-inverse hover:bg-error/90"
 								:disabled="isRemoving"
 								@click="handleRemove"
 							>

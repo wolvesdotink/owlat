@@ -94,7 +94,7 @@ defineExpose({ pickIndex });
 				class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border transition-colors duration-(--motion-fast) disabled:opacity-50"
 				:class="
 					selectedChip === option
-						? 'bg-brand text-white border-brand'
+						? 'bg-brand text-text-inverse border-brand'
 						: 'border-border-subtle text-text-secondary hover:bg-bg-elevated'
 				"
 				@click.stop="pick(option)"

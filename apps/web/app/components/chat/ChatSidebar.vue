@@ -62,7 +62,7 @@ const matchesQuery = (name: string) => {
 				<Icon name="lucide:at-sign" class="w-4 h-4" />
 				<span
 					v-if="mentionCount > 0"
-					class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-error text-white text-[9px] font-semibold flex items-center justify-center"
+					class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-error text-text-inverse text-[9px] font-semibold flex items-center justify-center"
 				>
 					{{ mentionCount > 9 ? '9+' : mentionCount }}
 				</span>
@@ -140,13 +140,13 @@ const matchesQuery = (name: string) => {
 						</span>
 						<span
 							v-if="channel.unread.hasMention"
-							class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-error text-white"
+							class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
 						>
 							@
 						</span>
 						<span
 							v-else-if="channel.unread.unreadCount > 0"
-							class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-brand text-white"
+							class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-brand text-text-inverse"
 						>
 							{{ channel.unread.unreadCount > 99 ? '99+' : channel.unread.unreadCount }}
 						</span>
@@ -225,7 +225,7 @@ const matchesQuery = (name: string) => {
 						</span>
 						<span
 							v-if="dm.unread.unreadCount > 0"
-							class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-brand text-white"
+							class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-brand text-text-inverse"
 						>
 							{{ dm.unread.unreadCount > 99 ? '99+' : dm.unread.unreadCount }}
 						</span>

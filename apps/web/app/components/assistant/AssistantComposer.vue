@@ -60,7 +60,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 				class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors"
 				:class="
 					canSend
-						? 'bg-brand text-white hover:bg-brand/90'
+						? 'bg-brand text-text-inverse hover:bg-brand/90'
 						: 'bg-bg-surface text-text-tertiary border border-border-subtle cursor-not-allowed'
 				"
 				title="Send"

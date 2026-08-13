@@ -102,7 +102,7 @@ function startOver() {
 				class="group flex w-full items-center gap-4 rounded-2xl border-2 border-brand bg-brand-subtle p-5 text-left transition-colors hover:bg-brand/10"
 			>
 				<span
-					class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand text-white"
+					class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand text-text-inverse"
 				>
 					<Icon name="lucide:server" class="size-5" />
 				</span>
@@ -154,7 +154,7 @@ function startOver() {
 				<button
 					type="submit"
 					:disabled="isConnecting"
-					class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+					class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-text-inverse disabled:opacity-60"
 				>
 					{{ isConnecting ? 'Opening browser…' : 'Connect workspace' }}
 				</button>
@@ -184,7 +184,7 @@ function startOver() {
 					<button
 						type="submit"
 						:disabled="isRedeeming || !pastedCode.trim()"
-						class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+						class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-text-inverse disabled:opacity-60"
 					>
 						{{ isRedeeming ? 'Connecting…' : 'Connect with code' }}
 					</button>

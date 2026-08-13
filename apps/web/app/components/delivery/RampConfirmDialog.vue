@@ -171,7 +171,7 @@ function confirm(): void {
 				<button
 					type="button"
 					:disabled="!canConfirm"
-					class="rounded-md bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+					class="rounded-md bg-brand px-3 py-2 text-sm font-medium text-text-inverse disabled:opacity-50"
 					data-testid="ramp-confirm-submit"
 					@click="confirm"
 				>
