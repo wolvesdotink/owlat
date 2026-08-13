@@ -51,7 +51,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 			</NuxtLink>
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary flex items-center gap-3">
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3">
 					<Icon name="lucide:alert-triangle" class="w-7 h-7 text-error" />
 					Failed Messages
 				</h1>

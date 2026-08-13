@@ -250,7 +250,7 @@ const activeKeysCount = computed(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">API Keys</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">API Keys</h1>
 				<p class="mt-1 text-text-secondary">Manage API keys for authenticating your API requests</p>
 			</div>
 			<UiButton v-if="canManage" class="gap-2" @click="openCreateModal">
@@ -471,20 +471,20 @@ const activeKeysCount = computed(() => {
 									<div v-if="renamingId === key._id" class="flex items-center gap-1">
 										<input
 											v-model="renameDraft"
-											class="text-sm border border-border-subtle rounded px-2 py-1 bg-bg-surface text-text-primary"
+											class="input input-sm"
 											aria-label="API key name"
 											@keyup.enter="saveRename"
 											@keyup.esc="renamingId = null"
 										/>
 										<button
-											class="p-1 text-success hover:bg-success/10 rounded"
+											class="p-1 text-success hover:bg-success/10 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											title="Save"
 											@click="saveRename"
 										>
 											<Icon name="lucide:check" class="w-4 h-4" />
 										</button>
 										<button
-											class="p-1 text-text-tertiary hover:bg-bg-surface rounded"
+											class="p-1 text-text-tertiary hover:bg-bg-surface-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											title="Cancel"
 											@click="renamingId = null"
 										>
@@ -534,7 +534,7 @@ const activeKeysCount = computed(() => {
 									<div class="flex items-center justify-end gap-1">
 										<button
 											v-if="canManage && renamingId !== key._id"
-											class="p-2 rounded-lg text-text-tertiary hover:text-brand hover:bg-brand/10 transition-colors"
+											class="p-2 rounded-lg text-text-tertiary hover:text-brand hover:bg-brand/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											title="Rename Key"
 											@click="startRename(key._id, key.name)"
 										>
@@ -542,14 +542,14 @@ const activeKeysCount = computed(() => {
 										</button>
 										<button
 											v-if="key.isActive"
-											class="p-2 rounded-lg text-text-tertiary hover:text-warning hover:bg-warning/10 transition-colors"
+											class="p-2 rounded-lg text-text-tertiary hover:text-warning hover:bg-warning/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											title="Revoke Key"
 											@click="openRevokeModal(key._id, key.name)"
 										>
 											<Icon name="lucide:eye-off" class="w-4 h-4" />
 										</button>
 										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors"
+											class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											title="Delete Key"
 											@click="openDeleteModal(key._id, key.name)"
 										>
@@ -615,7 +615,7 @@ const activeKeysCount = computed(() => {
 						<label
 							v-for="scope in AVAILABLE_SCOPES"
 							:key="scope.value"
-							class="flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:bg-bg-surface"
+							class="flex items-start gap-3 p-3 rounded-lg shadow-surface-1 cursor-pointer hover:bg-bg-surface-hover"
 							:class="{ 'opacity-60 cursor-not-allowed': isCreating }"
 						>
 							<input

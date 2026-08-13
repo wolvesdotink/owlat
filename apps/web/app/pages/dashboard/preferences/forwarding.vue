@@ -68,7 +68,7 @@ async function confirmRemove() {
 		<PreferencesBackLink />
 
 		<header class="mb-6">
-			<h1 class="text-2xl font-semibold">Forwarding</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em]">Forwarding</h1>
 			<p class="text-text-secondary mt-1">
 				Auto-forward inbound mail to an external address. Mailing-list and auto-submitted mail is
 				skipped to prevent loops.

@@ -79,12 +79,17 @@ onMounted(async () => {
 				<!-- Shared header -->
 				<div class="text-center">
 					<UiIconBox icon="lucide:party-popper" variant="brand" size="lg" class="mx-auto mb-6" />
-					<h1 class="text-2xl font-semibold text-text-primary">
-						{{
-							firstName
-								? t('welcome.headingWithName', { instance: instanceName, name: firstName })
-								: t('welcome.heading', { instance: instanceName })
-						}}
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						<I18nT
+							:keypath="firstName ? 'welcome.headingWithName' : 'welcome.heading'"
+							scope="global"
+							tag="span"
+						>
+							<template #instance
+								><span class="lp-title-accent">{{ instanceName }}</span></template
+							>
+							<template #name>{{ firstName }}</template>
+						</I18nT>
 					</h1>
 					<p class="mt-2 text-text-secondary">{{ t('welcome.subheading') }}</p>
 				</div>

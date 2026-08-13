@@ -239,7 +239,9 @@ const handleEdit = () => {
 				<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 					<div>
 						<div class="flex items-center gap-3">
-							<h1 class="text-2xl font-semibold text-text-primary">{{ automation.name }}</h1>
+							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+								{{ automation.name }}
+							</h1>
 							<span
 								:class="[
 									'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
@@ -280,7 +282,7 @@ const handleEdit = () => {
 						</div>
 						<span class="text-sm text-text-secondary">{{ stat.label }}</span>
 					</div>
-					<span class="text-2xl font-semibold text-text-primary">
+					<span class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ stat.value.toLocaleString() }}
 					</span>
 				</div>

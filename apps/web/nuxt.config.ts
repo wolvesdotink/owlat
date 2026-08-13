@@ -205,6 +205,15 @@ export default defineNuxtConfig({
 
 	icon: {
 		serverBundle: 'local',
+		// The desktop build (`generate:desktop`) is served statically inside the
+		// Tauri webview — there is no Nitro server, so the default
+		// /api/_nuxt_icon endpoint never exists and every icon request fails.
+		// Bundling all statically-referenced icons into the client JS makes them
+		// render offline in the desktop app (and skips the fetch on the web too).
+		clientBundle: {
+			scan: true,
+			sizeLimitKb: 512,
+		},
 	},
 
 	app: {

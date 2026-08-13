@@ -79,7 +79,7 @@ const presets: { duration: number; unit: Unit; label: string }[] = [
 				<button
 					v-for="preset in presets"
 					:key="preset.label"
-					class="px-3 py-1.5 text-sm rounded-lg border transition-colors"
+					class="px-3 py-1.5 text-sm rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:class="
 						modelValue.duration === preset.duration && modelValue.unit === preset.unit
 							? 'bg-brand/10 border-brand text-brand'
@@ -92,7 +92,7 @@ const presets: { duration: number; unit: Unit; label: string }[] = [
 			</div>
 		</div>
 
-		<div class="p-4 bg-bg-surface border border-border-subtle rounded-lg">
+		<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-3">
 				Duration Preview
 			</p>

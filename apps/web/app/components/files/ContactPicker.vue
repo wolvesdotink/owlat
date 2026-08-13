@@ -45,7 +45,7 @@ const unpick = (contactId: Id<'contacts'>) => {
 				{{ contactPickerLabel(contact) }}
 				<button
 					type="button"
-					class="p-0.5 rounded-full text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+					class="p-0.5 rounded-full text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:aria-label="`Remove ${contactPickerLabel(contact)}`"
 					@click="unpick(contact._id)"
 				>
@@ -59,18 +59,18 @@ const unpick = (contactId: Id<'contacts'>) => {
 			<input
 				v-model="search"
 				type="text"
-				class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+				class="input input-sm"
 				placeholder="Search contacts by name or email…"
 				autocomplete="off"
 			/>
 			<ul
 				v-if="search && candidates.length > 0"
-				class="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-lg border border-border-subtle bg-bg-elevated shadow-lg"
+				class="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-lg surface-3"
 			>
 				<li v-for="candidate in candidates" :key="candidate._id">
 					<button
 						type="button"
-						class="w-full text-left px-3 py-2 text-sm text-text-primary hover:bg-bg-surface transition-colors"
+						class="w-full text-left px-3 py-2 text-sm text-text-primary hover:bg-bg-surface-hover transition-colors"
 						@click="pick(candidate)"
 					>
 						{{ contactPickerLabel(candidate) }}

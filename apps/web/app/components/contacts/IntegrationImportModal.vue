@@ -615,42 +615,42 @@ const suppressionSummary = computed(() => {
 				</div>
 				<div v-if="!isSuppressionOnly" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-semibold text-success">{{ importProgress?.imported || 0 }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-success">{{ importProgress?.imported || 0 }}</p>
 						<p class="text-xs text-text-tertiary mt-1">Imported</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-semibold text-brand">{{ importProgress?.updated || 0 }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-brand">{{ importProgress?.updated || 0 }}</p>
 						<p class="text-xs text-text-tertiary mt-1">Updated</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-semibold text-text-secondary">
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
 							{{ importProgress?.skipped || 0 }}
 						</p>
 						<p class="text-xs text-text-tertiary mt-1">Skipped</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-semibold text-error">{{ importProgress?.failed || 0 }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-error">{{ importProgress?.failed || 0 }}</p>
 						<p class="text-xs text-text-tertiary mt-1">Failed</p>
 					</div>
 				</div>
 				<!-- Suppression carry-over (plan D9) -->
 				<div v-if="suppressionSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-semibold text-warning">{{ suppressionSummary.blocked }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-warning">{{ suppressionSummary.blocked }}</p>
 						<p class="text-xs text-text-tertiary mt-1">Suppressed</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-semibold text-brand">{{ suppressionSummary.unsubscribed }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-brand">{{ suppressionSummary.unsubscribed }}</p>
 						<p class="text-xs text-text-tertiary mt-1">Unsubscribed</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-semibold text-text-secondary">
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
 							{{ suppressionSummary.alreadySuppressed }}
 						</p>
 						<p class="text-xs text-text-tertiary mt-1">Already suppressed</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-semibold text-text-secondary">
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
 							{{ suppressionSummary.skipped }}
 						</p>
 						<p class="text-xs text-text-tertiary mt-1">Not applicable</p>

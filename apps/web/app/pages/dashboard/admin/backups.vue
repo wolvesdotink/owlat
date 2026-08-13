@@ -72,7 +72,7 @@ async function recordRun(status: 'success' | 'failed') {
 			>
 				← Settings
 			</NuxtLink>
-			<h1 class="mt-2 text-2xl font-semibold text-text-primary">Backups</h1>
+			<h1 class="mt-2 text-2xl font-medium tracking-[-0.02em] text-text-primary">Backups</h1>
 			<p class="mt-1 text-text-secondary">
 				Keep a safe copy of your mail, contacts, and settings. Set backups up before you store real
 				data.

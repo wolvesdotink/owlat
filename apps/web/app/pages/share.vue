@@ -150,7 +150,7 @@ onMounted(async () => {
 			<!-- Header -->
 			<header class="border-b border-border-subtle bg-bg-elevated pt-[env(safe-area-inset-top)]">
 				<div class="mx-auto max-w-3xl px-5 py-4">
-					<h1 class="text-lg font-semibold break-words text-text-primary">
+					<h1 class="text-lg font-medium tracking-[-0.02em] break-words text-text-primary">
 						{{ shareData.subject }}
 					</h1>
 					<p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-secondary">

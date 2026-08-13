@@ -124,7 +124,7 @@ onMounted(async () => {
 			<!-- Header -->
 			<header class="border-b border-border-subtle bg-bg-elevated pt-[env(safe-area-inset-top)]">
 				<div class="mx-auto max-w-3xl px-5 py-4">
-					<h1 class="text-lg font-semibold break-words text-text-primary">
+					<h1 class="text-lg font-medium tracking-[-0.02em] break-words text-text-primary">
 						{{ archiveData.subject }}
 					</h1>
 					<p class="mt-1 text-sm break-words text-text-secondary">

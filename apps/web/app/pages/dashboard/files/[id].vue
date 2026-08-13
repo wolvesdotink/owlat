@@ -239,7 +239,7 @@ const sourceLabel = computed(() => {
 			<div class="flex items-start justify-between gap-4 mb-8">
 				<div class="flex items-start gap-4 min-w-0">
 					<div
-						class="flex-shrink-0 w-14 h-14 rounded-xl bg-bg-surface border border-border-subtle flex items-center justify-center"
+						class="flex-shrink-0 w-14 h-14 rounded-xl bg-bg-surface shadow-surface-1 flex items-center justify-center"
 					>
 						<Icon :name="mimeIcon" class="w-7 h-7 text-text-tertiary" />
 					</div>
@@ -249,20 +249,20 @@ const sourceLabel = computed(() => {
 							<input
 								v-model="editTitleInput"
 								type="text"
-								class="rounded-lg border border-border-subtle bg-bg-base px-3 py-1.5 text-lg font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+								class="input input-sm text-lg font-semibold"
 								placeholder="File title..."
 								@keyup.enter="saveTitle"
 								@keyup.escape="cancelEditTitle"
 							/>
 							<button
-								class="p-1 rounded text-brand hover:bg-brand-subtle transition-colors"
+								class="p-1 rounded text-brand hover:bg-brand-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="saveTitle"
 								aria-label="Save title"
 							>
 								<Icon name="lucide:check" class="w-4 h-4" />
 							</button>
 							<button
-								class="p-1 rounded text-text-tertiary hover:bg-bg-surface transition-colors"
+								class="p-1 rounded text-text-tertiary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="cancelEditTitle"
 								aria-label="Cancel editing title"
 							>
@@ -271,7 +271,7 @@ const sourceLabel = computed(() => {
 						</div>
 						<h1
 							v-else
-							class="text-xl font-semibold text-text-primary group"
+							class="text-2xl font-medium tracking-[-0.02em] text-text-primary group"
 							:class="{ 'cursor-pointer': isAdmin }"
 							@click="isAdmin && startEditTitle()"
 						>
@@ -301,11 +301,7 @@ const sourceLabel = computed(() => {
 						<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
 						New Version
 					</UiButton>
-					<UiButton
-						v-if="isAdmin"
-						class="border border-error/30 text-error hover:bg-error-subtle transition-colors"
-						@click="showDeleteConfirm = true"
-					>
+					<UiButton v-if="isAdmin" variant="danger-outline" @click="showDeleteConfirm = true">
 						<Icon name="lucide:trash-2" class="w-4 h-4 mr-2" />
 						Delete
 					</UiButton>
@@ -316,7 +312,7 @@ const sourceLabel = computed(() => {
 				<!-- Main content -->
 				<div class="lg:col-span-2 space-y-6">
 					<!-- AI Summary -->
-					<div v-if="file.summary" class="bg-bg-elevated border border-border-subtle rounded-lg">
+					<div v-if="file.summary" class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card)">
 						<button
 							class="w-full flex items-center justify-between px-5 py-4"
 							@click="showSummary = !showSummary"
@@ -341,7 +337,7 @@ const sourceLabel = computed(() => {
 					<!-- Extracted text -->
 					<div
 						v-if="file.extractedText"
-						class="bg-bg-elevated border border-border-subtle rounded-lg"
+						class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card)"
 					>
 						<button
 							class="w-full flex items-center justify-between px-5 py-4"
@@ -365,7 +361,7 @@ const sourceLabel = computed(() => {
 					</div>
 
 					<!-- Version history -->
-					<div class="bg-bg-elevated border border-border-subtle rounded-lg">
+					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card)">
 						<button
 							class="w-full flex items-center justify-between px-5 py-4"
 							@click="showVersions = !showVersions"
@@ -392,7 +388,7 @@ const sourceLabel = computed(() => {
 				<!-- Sidebar metadata -->
 				<div class="space-y-6">
 					<!-- File info -->
-					<div class="bg-bg-elevated border border-border-subtle rounded-lg p-5 space-y-4">
+					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5 space-y-4">
 						<h3 class="text-sm font-semibold text-text-primary">Details</h3>
 
 						<div class="space-y-3">
@@ -416,8 +412,7 @@ const sourceLabel = computed(() => {
 									class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-full"
 									:class="{
 										'bg-bg-surface text-text-secondary': file.sourceType === 'upload',
-										'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300':
-											file.sourceType === 'email_attachment',
+										'bg-info-subtle text-info': file.sourceType === 'email_attachment',
 										'bg-brand-subtle text-brand': file.sourceType === 'agent_generated',
 									}"
 								>
@@ -438,12 +433,12 @@ const sourceLabel = computed(() => {
 					</div>
 
 					<!-- Tags -->
-					<div class="bg-bg-elevated border border-border-subtle rounded-lg p-5">
+					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5">
 						<div class="flex items-center justify-between mb-3">
 							<h3 class="text-sm font-semibold text-text-primary">Tags</h3>
 							<button
 								v-if="!isEditingTags && isAdmin"
-								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="startEditTags"
 								aria-label="Edit"
 							>
@@ -455,7 +450,7 @@ const sourceLabel = computed(() => {
 							<input
 								v-model="editTagsInput"
 								type="text"
-								class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+								class="input input-sm"
 								placeholder="tag1, tag2, tag3..."
 								@keyup.enter="saveTags"
 							/>
@@ -502,12 +497,12 @@ const sourceLabel = computed(() => {
 					</div>
 
 					<!-- Linked contacts -->
-					<div class="bg-bg-elevated border border-border-subtle rounded-lg p-5">
+					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5">
 						<div class="flex items-center justify-between mb-3">
 							<h3 class="text-sm font-semibold text-text-primary">Linked Contacts</h3>
 							<button
 								v-if="!isEditingContacts && isAdmin"
-								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								aria-label="Edit linked contacts"
 								@click="startEditContacts"
 							>
@@ -626,7 +621,7 @@ const sourceLabel = computed(() => {
 				>
 					<div class="absolute inset-0 bg-black/60" @click="showDeleteConfirm = false" />
 					<div
-						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
+						class="relative card w-full max-w-sm"
 					>
 						<h3 class="text-lg font-semibold text-text-primary mb-2">Delete File</h3>
 						<p class="text-sm text-text-secondary mb-6">
@@ -635,12 +630,7 @@ const sourceLabel = computed(() => {
 						</p>
 						<div class="flex items-center justify-end gap-3">
 							<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
-							<UiButton
-								variant="danger"
-								class="bg-error text-text-inverse hover:bg-error/90"
-								:disabled="isDeleting"
-								@click="handleDelete"
-							>
+							<UiButton variant="danger" :disabled="isDeleting" @click="handleDelete">
 								{{ isDeleting ? 'Deleting...' : 'Delete' }}
 							</UiButton>
 						</div>

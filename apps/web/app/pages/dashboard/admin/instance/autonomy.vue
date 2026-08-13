@@ -204,7 +204,7 @@ const handleSaveWorkingHours = async (payload: {
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:sliders-horizontal" size="xl" variant="brand" rounded="full" />
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Graduated Autonomy</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Graduated Autonomy</h1>
 					<p class="text-text-secondary mt-1 max-w-xl">
 						Configure per-category rules that control when the AI agent can auto-approve actions and
 						when human review is required. Thresholds automatically adjust based on human feedback

@@ -137,7 +137,7 @@ const copyUrl = async (url: string) => {
 		<!-- Header -->
 		<div class="flex items-center justify-between mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Media Library</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Media Library</h1>
 				<p v-if="stats" class="text-sm text-text-secondary mt-1">
 					{{ stats.totalCount }} files &middot; {{ formatCompactFileSize(stats.totalBytes) }} used
 				</p>

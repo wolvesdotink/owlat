@@ -196,7 +196,7 @@ async function onSubmitAdd() {
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 				Back to Settings
 			</NuxtLink>
-			<h1 class="text-2xl font-semibold text-text-primary">Campaign senders</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Campaign senders</h1>
 			<p class="mt-1 text-text-secondary">
 				The from-addresses your team can choose when sending a campaign.
 			</p>

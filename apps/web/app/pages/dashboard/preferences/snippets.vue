@@ -78,7 +78,7 @@ async function confirmRemove() {
 
 		<header class="mb-6 flex items-center justify-between">
 			<div>
-				<h1 class="text-2xl font-semibold">Snippets</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em]">Snippets</h1>
 				<p class="text-text-secondary mt-1">
 					Canned responses you can drop into a message. In the composer, type
 					<code>/</code> at the start of a line to pick one. Use
