@@ -170,22 +170,19 @@ async function runReSeal() {
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 				Back to Settings
 			</NuxtLink>
-			<h1 class="text-2xl font-semibold text-text-primary">Sealed Mail</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Sealed Mail</h1>
 			<p class="mt-1 text-text-secondary">
 				How Owlat encrypts personal mail between you and other Owlat workspaces.
 			</p>
 		</div>
 
-		<div
-			v-if="!hasActiveOrganization"
-			class="rounded border border-border-subtle p-6 text-text-secondary"
-		>
+		<div v-if="!hasActiveOrganization" class="card text-text-secondary">
 			Select a workspace to manage its sealing policy.
 		</div>
 		<template v-else>
 			<div
 				v-if="!sealedMailEnabled"
-				class="flex items-start gap-2.5 rounded border border-border-subtle bg-bg-elevated p-4"
+				class="flex items-start gap-2.5 card p-4"
 			>
 				<Icon name="lucide:info" class="w-4 h-4 text-text-tertiary flex-shrink-0 mt-0.5" />
 				<p class="text-sm text-text-secondary">
@@ -199,11 +196,11 @@ async function runReSeal() {
 				<label
 					v-for="opt in OPTIONS"
 					:key="opt.value"
-					class="flex items-start gap-3 rounded border p-4 cursor-pointer transition-colors"
+					class="flex items-start gap-3 rounded-(--radius-card) border p-4 cursor-pointer transition-colors"
 					:class="
 						policy === opt.value
 							? 'border-brand bg-brand/5'
-							: 'border-border-subtle hover:bg-bg-elevated'
+							: 'border-transparent shadow-surface-1 hover:bg-bg-elevated'
 					"
 				>
 					<input
@@ -223,7 +220,7 @@ async function runReSeal() {
 				</label>
 			</fieldset>
 
-			<section class="space-y-4 rounded border border-border-subtle p-5">
+			<section class="space-y-4 card p-5">
 				<div class="flex items-start justify-between gap-4">
 					<div class="min-w-0">
 						<h2 class="text-base font-semibold text-text-primary">Require TLS for incoming mail</h2>
@@ -248,7 +245,7 @@ async function runReSeal() {
 
 			<!-- Recovery kit (E6 / D7): download the private key for an address so
 			     sealed mail can be restored later; import one to restore access. -->
-			<section class="space-y-4 rounded border border-border-subtle p-5">
+			<section class="space-y-4 card p-5">
 				<div>
 					<h2 class="text-base font-semibold text-text-primary">Recovery kit</h2>
 					<p class="mt-1 text-sm text-text-secondary">
@@ -272,7 +269,7 @@ async function runReSeal() {
 							autocomplete="off"
 							placeholder="you@your-domain.com"
 							data-testid="recovery-kit-address"
-							class="min-w-0 flex-1 rounded border border-border-subtle bg-bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							class="input input-sm min-w-0 flex-1"
 						/>
 						<UiButton
 							variant="secondary"
@@ -301,7 +298,7 @@ async function runReSeal() {
 						autocomplete="off"
 						placeholder="you@your-domain.com"
 						data-testid="recovery-kit-import-address"
-						class="w-full rounded border border-border-subtle bg-bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						class="input input-sm"
 					/>
 					<textarea
 						id="kit-import-key"
@@ -310,7 +307,7 @@ async function runReSeal() {
 						spellcheck="false"
 						placeholder="Paste the ASCII-armored private key from your recovery kit"
 						data-testid="recovery-kit-import-key"
-						class="w-full rounded border border-border-subtle bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						class="input input-sm font-mono text-xs"
 					/>
 					<div class="flex justify-end">
 						<UiButton
@@ -328,7 +325,7 @@ async function runReSeal() {
 
 			<!-- Re-seal after an instance-secret change (E6). The reachable trigger the
 			     self-host docs point at for the INSTANCE_SECRET rotation acceptance. -->
-			<section class="space-y-4 rounded border border-border-subtle p-5">
+			<section class="space-y-4 card p-5">
 				<div>
 					<h2 class="text-base font-semibold text-text-primary">
 						After changing the instance secret

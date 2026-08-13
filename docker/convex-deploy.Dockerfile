@@ -9,6 +9,13 @@ FROM oven/bun:1.3.14-alpine AS deps
 # full workspace install (apps/docs uses better-sqlite3 as a devDep). Matches
 # what apps/web/Dockerfile does.
 RUN apk add --no-cache python3 make g++
+# node-gyp must be preinstalled (lands in /usr/local/bin): better-sqlite3
+# ships a binding.gyp with no install script, so bun runs the default
+# `node-gyp rebuild` — and when node-gyp is not on PATH, bun shims it through
+# a `bunx node-gyp@latest` NETWORK FETCH into a shared /tmp cache at
+# install-script time, which has produced half-installed trees (ENOENT
+# proc-log) and flaky image builds.
+RUN bun install -g node-gyp
 
 WORKDIR /app
 
@@ -61,12 +68,23 @@ COPY --from=deps /app/packages/*/node_modules ./packages/
 # Copy source for the api and its workspace deps — keep in sync with the
 # `@owlat/*` imports under apps/api/convex (grep them when this fails with
 # "Could not resolve @owlat/...").
+# `__tests__` directories MUST NOT reach this image: the Convex CLI's
+# entry-point walk skips only multi-dot basenames (`*.test.ts`), so a
+# single-dot helper like convex/__tests__/testModules.ts gets pushed as a real
+# entry module — and its `import.meta.glob` fails backend analysis, killing
+# every `convex deploy` from the released image (found by the e2e-install
+# release gate). Excluding them here also keeps the in-image function-graph
+# smoke below (which skips __tests__ by rule) aligned with what the CLI
+# actually deploys from this image.
 COPY tsconfig.base.json ./
-COPY apps/api/ apps/api/
+COPY --exclude=convex/__tests__ --exclude=convex/**/__tests__ apps/api/ apps/api/
 # This copy makes the deploy stage depend on the successful clean composition
 # check above and uses its verified generated backend module.
 COPY --from=composition-check /app/apps/api/convex/plugins/plugins.generated.ts apps/api/convex/plugins/plugins.generated.ts
 COPY packages/shared/ packages/shared/
+COPY packages/mail-message/ packages/mail-message/
+COPY packages/mail-canon/ packages/mail-canon/
+COPY packages/smtp-client/ packages/smtp-client/
 COPY packages/mta-protocol/ packages/mta-protocol/
 COPY packages/email-renderer/ packages/email-renderer/
 COPY packages/email-scanner/ packages/email-scanner/
@@ -77,11 +95,17 @@ COPY --from=deps /app/packages/provider-kit/dist/ packages/provider-kit/dist/
 COPY packages/plugin-kit/package.json packages/plugin-kit/package.json
 COPY --from=deps /app/packages/plugin-kit/dist/ packages/plugin-kit/dist/
 COPY packages/plugin-codegen/scripts/convexBundleSmoke.ts packages/plugin-codegen/scripts/convexBundleSmoke.ts
+COPY packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts
 
 # Fail the image build if either package export points at an artifact that was
 # not copied into the final deploy image.
-RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/provider-kit', '@owlat/plugin-kit', '@owlat/mta-protocol'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
+RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/provider-kit', '@owlat/plugin-kit', '@owlat/mta-protocol', '@owlat/shared', '@owlat/mail-message', '@owlat/mail-canon', '@owlat/smtp-client'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
 RUN OWLAT_CONVEX_BUNDLE_PRODUCTION_ONLY=1 node packages/plugin-codegen/scripts/convexBundleSmoke.ts
+# Bundle the full function graph with Convex's isolate/node runtime split
+# against exactly what this image ships — catches both a workspace package
+# missing from the COPY set above and an isolate module reaching Node-only
+# code (#551), before the image can reach a user's `convex deploy`.
+RUN node packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts
 
 # Version metadata — injected by CI on release
 ARG OWLAT_VERSION=dev

@@ -94,12 +94,12 @@ defineExpose({ pickIndex });
 				class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border transition-colors duration-(--motion-fast) disabled:opacity-50"
 				:class="
 					selectedChip === option
-						? 'bg-brand text-white border-brand'
+						? 'bg-text-primary text-text-inverse border-text-primary'
 						: 'border-border-subtle text-text-secondary hover:bg-bg-elevated'
 				"
 				@click.stop="pick(option)"
 			>
-				<kbd v-if="i < 9" class="font-mono text-[9px] leading-none opacity-60" aria-hidden="true">{{
+				<kbd v-if="i < 9" class="font-mono text-2xs leading-none opacity-60" aria-hidden="true">{{
 					i + 1
 				}}</kbd>
 				{{ option }}
@@ -113,7 +113,7 @@ defineExpose({ pickIndex });
 			:placeholder="
 				placeholder ?? (options.length > 0 ? 'Or type an answer…' : 'Type your answer…')
 			"
-			class="w-full text-sm px-2 py-1.5 rounded border border-border-subtle bg-bg-surface focus:outline-none focus:ring-1 focus:ring-brand/40"
+			class="input input-sm"
 			:class="options.length > 0 ? 'mt-1.5' : ''"
 			@input="onTextInput"
 			@keydown.enter.stop.prevent="emit('submit')"

@@ -165,7 +165,7 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 	<div class="p-6 lg:p-8 max-w-4xl mx-auto">
 		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Connected apps</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Connected apps</h1>
 				<p class="mt-1 text-text-secondary max-w-2xl">
 					External apps that talk to Owlat through a scoped, plugin-bound secret and signed hooks. A
 					connected app can add work or caution — it can never approve, unblock, or send for you.

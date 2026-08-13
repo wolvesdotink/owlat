@@ -307,7 +307,7 @@ onUnmounted(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Customers</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Customers</h1>
 				<p class="mt-1 text-text-secondary">People your team knows and their recent activity</p>
 			</div>
 			<div v-if="canManageContacts" class="flex gap-2">
@@ -556,7 +556,7 @@ onUnmounted(() => {
 					</div>
 
 					<button
-						class="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+						class="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="bulkSelection.clearSelection()"
 						aria-label="Clear selection"
 					>

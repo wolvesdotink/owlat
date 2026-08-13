@@ -87,6 +87,20 @@ describe('verifyComposeTemplate', () => {
 		).toThrow(/hash mismatch/);
 	});
 
+	it('accepts a digest-pinned image reference (the release artifact format)', () => {
+		// gen-release-compose.sh pins release images to `:<version>@sha256:<digest>`
+		// — the version check must keep matching that form, not just a bare tag.
+		const pinned = `services:\n  web:\n    image: ghcr.io/wolvesdotink/web:${VERSION}@sha256:${'a'.repeat(64)}\n`;
+		const pinnedDigest = createHash('sha256').update(pinned).digest('hex');
+		expect(() =>
+			verifyComposeTemplate({
+				composeTemplate: pinned,
+				expectedSha256: pinnedDigest,
+				targetVersion: VERSION,
+			})
+		).not.toThrow();
+	});
+
 	it('rejects a template that does not reference the expected web image', () => {
 		// A validly-hashed template that pins the wrong image version.
 		const wrongImage = 'services:\n  web:\n    image: ghcr.io/wolvesdotink/web:9.9.9\n';

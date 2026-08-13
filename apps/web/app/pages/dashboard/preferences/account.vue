@@ -316,7 +316,7 @@ const daysRemaining = computed(() => {
 		<!-- Header -->
 		<div class="mb-6">
 			<PreferencesBackLink />
-			<h1 class="text-2xl font-semibold text-text-primary">Account Management</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Account Management</h1>
 			<p class="mt-1 text-text-secondary">Manage your profile, password, data, and account</p>
 		</div>
 

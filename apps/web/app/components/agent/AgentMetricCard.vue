@@ -30,7 +30,7 @@ const trendConfig = computed(() => {
 				<Icon :name="trendConfig.icon" class="w-4 h-4" :class="trendConfig.color" />
 			</div>
 		</div>
-		<p class="text-2xl font-semibold text-text-primary">{{ value }}</p>
+		<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ value }}</p>
 		<p class="text-sm text-text-secondary mt-1">{{ label }}</p>
 		<p v-if="description" class="text-xs text-text-tertiary mt-1">{{ description }}</p>
 	</UiCard>

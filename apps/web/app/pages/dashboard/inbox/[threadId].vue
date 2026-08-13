@@ -366,7 +366,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			<!-- Header -->
 			<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ thread.subject || 'No subject' }}
 					</h1>
 					<div class="flex items-center gap-3 mt-2">
@@ -400,14 +400,17 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							<Icon name="lucide:message-circle" class="w-3.5 h-3.5" />
 							#{{ channel.name }}
 						</NuxtLink>
-						<button
+						<UiButton
 							v-if="discussionChannels.length === 0"
-							class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-bg-surface border border-border-subtle text-text-secondary hover:text-text-primary transition-colors"
+							variant="outline"
+							size="sm"
 							@click="showNewChannel = true"
 						>
-							<Icon name="lucide:message-circle-plus" class="w-3.5 h-3.5" />
+							<template #iconLeft>
+								<Icon name="lucide:message-circle-plus" class="w-3.5 h-3.5" />
+							</template>
 							Discuss in channel
-						</button>
+						</UiButton>
 					</div>
 					<!-- Assignee picker — avatar popover (Me / members / Unassign). -->
 					<InboxAssignPopover
@@ -713,7 +716,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<!-- Soft-hold reason: a teammate is replying; releases on its own. -->
 								<p
 									v-if="isHeld && holdReason"
-									class="mt-2 inline-flex items-center gap-1.5 text-[11px] text-text-tertiary"
+									class="mt-2 inline-flex items-center gap-1.5 text-2xs text-text-tertiary"
 									data-testid="thread-held-reason"
 									role="status"
 								>
@@ -791,7 +794,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 									<template #trigger>
 										<button
 											type="button"
-											class="w-full flex items-center gap-2 text-sm border border-border-subtle rounded-lg px-2 py-1.5 bg-bg-surface text-text-primary hover:bg-(--surface-1-hover) transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+											class="w-full flex items-center gap-2 text-sm border border-border-subtle rounded-lg px-2 py-1.5 bg-bg-surface text-text-primary hover:bg-(--surface-1-hover) transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											aria-label="Assign thread to a teammate"
 										>
 											<UiAvatar

@@ -232,7 +232,7 @@ const anyMutationLoading = computed(
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:shield-alert" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Operator Console</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Operator Console</h1>
 					<p class="mt-1 text-text-secondary">
 						Platform-admin controls: review held content, manage workspace sending status, and
 						curate admins.
@@ -246,25 +246,25 @@ const anyMutationLoading = computed(
 		<!-- ── OVERVIEW ── -->
 		<div v-if="activeTab === 'overview'" class="space-y-6">
 			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-				<div class="rounded-xl border border-border-default bg-bg-elevated p-5">
+				<div class="card p-5">
 					<p class="text-xs text-text-tertiary uppercase tracking-wider">Total sent (30d)</p>
-					<p class="mt-1 text-2xl font-semibold text-text-primary">
+					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ stats?.sending.totalSent ?? 0 }}
 					</p>
 				</div>
-				<div class="rounded-xl border border-border-default bg-bg-elevated p-5">
+				<div class="card p-5">
 					<p class="text-xs text-text-tertiary uppercase tracking-wider">Bounce rate</p>
-					<p class="mt-1 text-2xl font-semibold text-text-primary">
+					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ formatRate(stats?.sending.bounceRate) }}
 					</p>
 				</div>
-				<div class="rounded-xl border border-border-default bg-bg-elevated p-5">
+				<div class="card p-5">
 					<p class="text-xs text-text-tertiary uppercase tracking-wider">Complaint rate</p>
-					<p class="mt-1 text-2xl font-semibold text-text-primary">
+					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ formatRate(stats?.sending.complaintRate) }}
 					</p>
 				</div>
-				<div class="rounded-xl border border-border-default bg-bg-elevated p-5">
+				<div class="card p-5">
 					<p class="text-xs text-text-tertiary uppercase tracking-wider">Abuse status</p>
 					<div class="mt-1.5">
 						<UiBadge :variant="abuseStatusVariant(stats?.abuseStatus)" size="md">
@@ -275,7 +275,7 @@ const anyMutationLoading = computed(
 			</div>
 
 			<!-- Recent abuse signals -->
-			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+			<div class="card">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
 					Recent abuse signals
 				</h3>
@@ -325,7 +325,7 @@ const anyMutationLoading = computed(
 
 		<!-- ── CONTENT REVIEW ── -->
 		<div v-else-if="activeTab === 'review'" class="space-y-6">
-			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+			<div class="card">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
 					Held for review
 				</h3>
@@ -341,7 +341,7 @@ const anyMutationLoading = computed(
 					<div
 						v-for="item in reviewQueue.pending as ReviewItem[]"
 						:key="`${item.type}-${item.id}`"
-						class="flex items-start justify-between gap-4 rounded-lg border border-border-subtle p-4"
+						class="flex items-start justify-between gap-4 rounded-lg shadow-surface-1 p-4"
 					>
 						<div class="min-w-0">
 							<div class="flex items-center gap-2 flex-wrap">
@@ -384,7 +384,7 @@ const anyMutationLoading = computed(
 			<!-- Recently reviewed -->
 			<div
 				v-if="reviewQueue && reviewQueue.recentlyReviewed.length"
-				class="rounded-xl border border-border-default bg-bg-elevated p-6"
+				class="card"
 			>
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
 					Recently reviewed
@@ -405,7 +405,7 @@ const anyMutationLoading = computed(
 		<!-- ── ORGANIZATIONS ── -->
 		<div v-else-if="activeTab === 'organizations'" class="space-y-6">
 			<!-- Sending status control -->
-			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+			<div class="card">
 				<div class="flex items-start justify-between gap-4 flex-wrap">
 					<div>
 						<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">
@@ -456,7 +456,7 @@ const anyMutationLoading = computed(
 			</div>
 
 			<!-- Flagged organizations -->
-			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+			<div class="card">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
 					Flagged workspaces
 				</h3>
@@ -470,7 +470,7 @@ const anyMutationLoading = computed(
 					<li
 						v-for="(o, i) in flaggedOrgs"
 						:key="i"
-						class="flex items-center justify-between gap-4 rounded-lg border border-border-subtle p-4"
+						class="flex items-center justify-between gap-4 rounded-lg shadow-surface-1 p-4"
 					>
 						<div>
 							<div class="flex items-center gap-2">
@@ -487,7 +487,7 @@ const anyMutationLoading = computed(
 			</div>
 
 			<!-- All organizations -->
-			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+			<div class="card">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
 					Workspaces
 				</h3>
@@ -524,7 +524,7 @@ const anyMutationLoading = computed(
 
 		<!-- ── ADMINS ── -->
 		<div v-else-if="activeTab === 'admins'" class="space-y-6">
-			<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+			<div class="card">
 				<div class="flex items-center justify-between mb-4">
 					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
 						Platform admins

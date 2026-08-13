@@ -264,7 +264,7 @@ async function handleRemoveSuppression() {
 				<div class="flex items-center gap-4">
 					<UiIconBox icon="lucide:user" size="xl" variant="surface" rounded="full" />
 					<div>
-						<h1 class="text-2xl font-semibold text-text-primary">
+						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 							{{
 								contact.firstName || contact.lastName
 									? `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim()

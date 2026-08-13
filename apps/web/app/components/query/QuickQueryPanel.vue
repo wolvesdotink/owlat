@@ -68,7 +68,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 		>
 			<div
 				v-if="isOpen"
-				class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+				class="fixed inset-0 bg-bg-deep/80 backdrop-blur-sm z-50"
 				@click="emit('close')"
 			/>
 		</Transition>
@@ -84,7 +84,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 		>
 			<div
 				v-if="isOpen"
-				class="fixed inset-x-4 top-[12%] mx-auto max-w-2xl bg-bg-elevated border border-border-default rounded-xl shadow-2xl z-50 overflow-hidden"
+				class="fixed inset-x-4 top-[12%] mx-auto max-w-2xl bg-bg-elevated border border-border-default rounded-xl shadow-lg z-50 overflow-hidden"
 				@keydown="handleKeydown"
 			>
 				<!-- Input -->
@@ -139,19 +139,19 @@ const handleKeydown = (e: KeyboardEvent) => {
 					class="px-4 py-2 border-t border-border-subtle bg-bg-surface text-xs text-text-tertiary flex items-center gap-4"
 				>
 					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]"
+						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>↵</kbd
 						>
 						Search
 					</span>
 					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]"
+						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>ESC</kbd
 						>
 						Close
 					</span>
 					<span class="ml-auto flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]">
+						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs">
 							<span class="text-xs">⌘</span>⇧K
 						</kbd>
 						Toggle

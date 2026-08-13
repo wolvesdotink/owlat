@@ -194,27 +194,27 @@ function clampPercent(value: number): number {
 				This cell is not on the ramp yet, so there is nothing to control. Putting it on the ramp
 				hands its share to the controller, which then moves it only on the evidence.
 			</p>
-			<button
-				type="button"
+			<UiButton
+				variant="outline"
+				size="sm"
 				:disabled="busy === true"
-				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
 				data-testid="ramp-control-enroll"
 				@click="emit('enroll')"
 			>
 				Put this cell on the ramp
-			</button>
+			</UiButton>
 		</div>
 
 		<div class="flex flex-wrap gap-2">
-			<button
-				type="button"
+			<UiButton
+				variant="outline"
+				size="sm"
 				:disabled="isDisabled"
-				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
 				data-testid="ramp-control-pause"
 				@click="emit('pause', !cell.isPaused)"
 			>
 				{{ cell.isPaused ? 'Resume this cell' : 'Pause this cell' }}
-			</button>
+			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-pause-note">
 			{{
@@ -235,29 +235,29 @@ function clampPercent(value: number): number {
 					type="number"
 					min="0"
 					max="100"
-					class="w-24 rounded-md border border-border-subtle bg-bg-base px-2 py-1 text-sm"
+					class="input input-sm w-24"
 					data-testid="ramp-control-pin-input"
 				/>
 			</div>
-			<button
-				type="button"
+			<UiButton
+				variant="outline"
+				size="sm"
 				:disabled="isDisabled"
-				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
 				data-testid="ramp-control-pin"
 				@click="emit('pin', clampPercent(pinPercent) / 100)"
 			>
 				Pin
-			</button>
-			<button
+			</UiButton>
+			<UiButton
 				v-if="cell.pinnedShare !== null"
-				type="button"
+				variant="outline"
+				size="sm"
 				:disabled="isDisabled"
-				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
 				data-testid="ramp-control-unpin"
 				@click="emit('pin', null)"
 			>
 				Remove pin
-			</button>
+			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-pin-note">
 			A pin is a ceiling, not a floor: it holds an increase back, and never pulls a cell that is
@@ -278,19 +278,19 @@ function clampPercent(value: number): number {
 					type="number"
 					min="0"
 					max="100"
-					class="w-24 rounded-md border border-border-subtle bg-bg-base px-2 py-1 text-sm"
+					class="input input-sm w-24"
 					data-testid="ramp-control-force-input"
 				/>
 			</div>
-			<button
-				type="button"
+			<UiButton
+				variant="outline"
+				size="sm"
 				:disabled="isDisabled"
-				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
 				data-testid="ramp-control-force-advance"
 				@click="emit('forceAdvance', clampPercent(forcePercent) / 100)"
 			>
 				Force-advance…
-			</button>
+			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-force-advance-warning">
 			Force-advance moves the share past the evidence. It asks you to type “{{
@@ -301,17 +301,17 @@ function clampPercent(value: number): number {
 
 		<div class="flex flex-wrap items-center gap-2">
 			<span class="text-xs text-text-secondary">Reset to phase</span>
-			<button
+			<UiButton
 				v-for="rung in PHASE_RUNGS"
 				:key="rung"
-				type="button"
+				variant="outline"
+				size="sm"
 				:disabled="isDisabled || !isRungOffered(rung)"
-				class="rounded-md border border-border-subtle px-2 py-1 text-sm disabled:opacity-50"
 				:data-testid="`ramp-control-phase-${rung}`"
 				@click="emit('resetPhase', rung)"
 			>
 				{{ Math.round(rung * 100) }}%
-			</button>
+			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-reset-note">
 			{{
@@ -331,15 +331,15 @@ function clampPercent(value: number): number {
 			opens a confirmation, and this one writes on the click.
 		-->
 		<div class="flex flex-wrap items-center gap-2">
-			<button
-				type="button"
+			<UiButton
+				variant="outline"
+				size="sm"
 				:disabled="isDisabled || !isPromotable"
-				class="rounded-md border border-border-subtle px-3 py-2 text-sm disabled:opacity-50"
 				data-testid="ramp-control-promote-phase"
 				@click="emit('promotePhase')"
 			>
 				Promote a phase
-			</button>
+			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-promote-note">
 			{{ promoteNote }}

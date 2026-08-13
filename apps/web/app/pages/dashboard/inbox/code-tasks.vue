@@ -68,7 +68,7 @@ const handleCreate = async () => {
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
 				</NuxtLink>
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Code Tasks</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Code Tasks</h1>
 					<p class="text-text-secondary mt-1">
 						Code tasks: feature requests, bug fixes, and improvements tracked from request through
 						merge.

@@ -155,25 +155,20 @@ async function copyReport() {
 			<div class="flex items-start gap-3">
 				<UiIconBox icon="lucide:shield-check" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Deliverability</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Deliverability</h1>
 					<p class="mt-1 max-w-2xl text-sm text-text-secondary">
 						See what is healthy, fix the most important issue next, and verify every change with a
 						live check.
 					</p>
 				</div>
 			</div>
-			<button
-				v-if="center"
-				type="button"
-				class="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-surface hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-				@click="copyReport"
-			>
+			<UiButton v-if="center" variant="ghost" size="sm" class="w-fit" @click="copyReport">
 				<Icon
 					:name="isCopied('deliverability-report') ? 'lucide:check' : 'lucide:clipboard-copy'"
 					class="h-4 w-4"
 				/>
 				{{ isCopied('deliverability-report') ? 'Report copied' : 'Copy setup report' }}
-			</button>
+			</UiButton>
 		</header>
 
 		<UiQueryBoundary
@@ -203,7 +198,7 @@ async function copyReport() {
 
 			<div v-if="center" class="space-y-6">
 				<section
-					class="overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated"
+					class="overflow-hidden rounded-(--radius-card) surface-2"
 					aria-labelledby="deliverability-grade-heading"
 				>
 					<div
