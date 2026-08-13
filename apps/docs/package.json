@@ -27,6 +27,7 @@
 		"@nuxt/content": "^3.15.2",
 		"@nuxt/fonts": "catalog:vue",
 		"@nuxtjs/color-mode": "catalog:vue",
+		"@nuxtjs/i18n": "^10.6.0",
 		"@nuxtjs/seo": "^5.3.10",
 		"@owlat/shared": "workspace:*",
 		"@tailwindcss/vite": "catalog:vue",

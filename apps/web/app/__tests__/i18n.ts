@@ -13,13 +13,36 @@ import type { VueWrapper } from '@vue/test-utils';
 import { createI18n, useI18n } from 'vue-i18n';
 import en from '~~/i18n/locales/en.json';
 
+// TEMPORARY EXTRACTION SHIM — while the full-app extraction is in flight, each
+// batch lands its messages as i18n/fragments/<batch>.en.json; the merge step
+// folds them into locales/en.json and deletes this overlay along with the
+// fragments directory.
+type Catalog = { [key: string]: string | Catalog };
+const fragmentModules = import.meta.glob('../../i18n/fragments/*.en.json', {
+	eager: true,
+}) as Record<string, { default: Catalog }>;
+
+function deepMerge(target: Catalog, source: Catalog): Catalog {
+	for (const [key, value] of Object.entries(source)) {
+		const existing = target[key];
+		if (typeof value === 'object' && typeof existing === 'object') deepMerge(existing, value);
+		else target[key] = value;
+	}
+	return target;
+}
+
+const catalogWithFragments = Object.values(fragmentModules).reduce(
+	(merged, module) => deepMerge(merged, module.default),
+	structuredClone(en) as Catalog,
+);
+
 /** A fresh i18n instance per suite — locale state must not leak between mounts. */
 export function createTestI18n() {
 	return createI18n({
 		legacy: false,
 		locale: 'en',
 		fallbackLocale: 'en',
-		messages: { en },
+		messages: { en: structuredClone(catalogWithFragments) },
 	});
 }
 
@@ -30,7 +53,8 @@ export function createTestI18n() {
 export const i18nStubs = { useI18n };
 
 /** A message key that leaked into the page instead of its translation. */
-const RAW_KEY_PATH = /\b(?:common|auth|recipient|postbox|welcome)(?:\.[A-Za-z][A-Za-z0-9-]*){2,}\b/;
+const RAW_KEY_PATH =
+	/\b(?:common|auth|recipient|postbox|welcome|dashboard|components|shared|desktop|setup|invite|compose|imprint|terms|home|cancelDeletion|shell|ui)(?:\.[A-Za-z][A-Za-z0-9-]*){2,}\b/;
 /** An interpolation the page never filled in — `{email}` in front of a stranger. */
 const UNFILLED_PLACEHOLDER = /\{\s*[A-Za-z][A-Za-z0-9_]*\s*\}/;
 
