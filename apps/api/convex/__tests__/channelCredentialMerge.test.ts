@@ -16,8 +16,12 @@ import type { Id } from '../_generated/dataModel';
  * retyping the Access Token dropped the App Secret inbound signature
  * verification needs — a configured channel silently 503ing on inbound.
  *
- * These cover the merge itself and the non-secret presence map
- * (`configuredFields`) the form uses to mark a credential as already stored.
+ * These cover the merge itself, the non-secret presence map
+ * (`configuredFields`) the form uses to mark a credential as already stored,
+ * and the diagnostics on the read side — a stored envelope that will not open
+ * (rotated INSTANCE_SECRET) or a credential the operator never filled in are
+ * the two ways inbound 503s with a channel that looks configured, so both say
+ * so in the log without ever naming a value.
  */
 
 const modules = import.meta.glob('../**/*.*s');
@@ -193,6 +197,67 @@ describe('channels.outbound.encryptAndPersistConfig', () => {
 		expect([...(row!.configuredFields ?? [])].sort()).toEqual(['accessToken', 'appSecret']);
 		// Names only — a value must never ride along in the presence map.
 		expect(row!.configuredFields).not.toContain('meta-access-token');
+	});
+});
+
+describe('channels.credentials.getInboundSecret', () => {
+	it('says so in the log when the stored envelope will not open', async () => {
+		const t = convexTest(schema, modules);
+		await t.run((ctx) =>
+			ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'whatsapp', config: 'not-an-envelope' })
+			)
+		);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const secret = await t.action(internal.channels.credentials.getInboundSecret, {
+			channel: 'whatsapp',
+			field: 'signature',
+		});
+
+		expect(secret).toBeNull();
+		const messages = logged.mock.calls.map((call) => String(call[0]));
+		expect(messages.some((m) => m.includes('whatsapp') && /could not be opened/.test(m))).toBe(
+			true
+		);
+		logged.mockRestore();
+	});
+
+	it('names the missing field — never a value — when the credential was never filled in', async () => {
+		const t = convexTest(schema, modules);
+		await t.run((ctx) =>
+			ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'whatsapp' }))
+		);
+		// Outbound credentials only: the inbound App Secret is left unset.
+		await saveConfig(t, 'whatsapp', { accessToken: 'meta-access-token', phoneNumberId: '123456' });
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const secret = await t.action(internal.channels.credentials.getInboundSecret, {
+			channel: 'whatsapp',
+			field: 'signature',
+		});
+
+		expect(secret).toBeNull();
+		const messages = logged.mock.calls.map((call) => String(call[0]));
+		expect(messages.some((m) => m.includes("no 'appSecret'"))).toBe(true);
+		expect(messages.every((m) => !m.includes('meta-access-token'))).toBe(true);
+		logged.mockRestore();
+	});
+
+	it('hands over the stored secret when it is there', async () => {
+		const t = convexTest(schema, modules);
+		await t.run((ctx) =>
+			ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'whatsapp' }))
+		);
+		await saveConfig(t, 'whatsapp', { appSecret: 'meta-app-secret' });
+
+		await expect(
+			t.action(internal.channels.credentials.getInboundSecret, {
+				channel: 'whatsapp',
+				field: 'signature',
+			})
+		).resolves.toBe('meta-app-secret');
 	});
 });
 
