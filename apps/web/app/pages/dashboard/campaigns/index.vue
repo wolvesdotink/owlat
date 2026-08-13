@@ -359,7 +359,7 @@ const showEmptyState = computed(
 					v-model="searchQuery"
 					type="text"
 					placeholder="Search campaigns…"
-					class="input pl-10 w-64"
+					class="input pl-10 w-full sm:w-64"
 				/>
 			</div>
 		</div>

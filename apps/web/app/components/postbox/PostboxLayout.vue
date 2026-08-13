@@ -152,12 +152,36 @@ function viewAutoFiled() {
 // from Today mode; the rail consumes + clears the flag on mount).
 const searchAutofocus = useState('postbox:search-autofocus', () => false);
 
+// ── Below `lg` the three panes become a stacked drill-in (the shell's mobile
+// pattern): the folder rail is an off-canvas drawer, and the list and reader
+// swap based on whether a message is open. Purely class-driven so there is no
+// breakpoint state to keep in sync — `railOpen` is the drawer's own state.
+const railOpen = ref(false);
+// Any navigation (folder link, message row) dismisses the drawer.
+watch(
+	[folderRef, folderIdRef, () => props.activeMessageId],
+	() => {
+		railOpen.value = false;
+	},
+	{ flush: 'post' }
+);
+
+/** Drill-in "back": from the reader to the folder's list route. */
+function backToList() {
+	void navigateTo(`/dashboard/postbox/${String(props.folderId ?? props.folderRole)}`);
+}
+
 // Mode shortcuts (window-level, like the triage-undo chord above): B (and
 // Cmd/Ctrl-B) toggles Today ↔ Browse from the inbox list; Esc returns from
 // Browse to Today; `/` from Today jumps to Browse with the search focused
 // (search never renders inside the Today column). All inert in text inputs,
 // while a message is open, and while any dialog is up.
 function onModeKeydown(event: KeyboardEvent) {
+	// The mobile folder drawer owns Esc while it is open.
+	if (event.key === 'Escape' && railOpen.value) {
+		railOpen.value = false;
+		return;
+	}
 	if (folderRef.value !== 'inbox' || props.folderId || props.activeMessageId) return;
 	if (isEditableTarget(event.target)) return;
 	if (event.defaultPrevented) return;
@@ -263,15 +287,22 @@ const showReplyQueueStrip = computed(
 			/>
 			<div v-else class="flex w-full min-w-0">
 				<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
-		     folder CRUD, labels, Reply Queue/Snoozed/Contacts, Cmd+Shift+D). -->
-				<PostboxFolderRail
+		     folder CRUD, labels, Reply Queue/Snoozed/Contacts, Cmd+Shift+D).
+		     Below lg the drawer wrapper takes it off-canvas so the list gets the
+		     full width. -->
+				<PostboxFolderDrawer
+					v-model:open="railOpen"
 					:mailbox-id="mailboxId"
 					:folder-role="folderRole"
 					:folder-id="folderId"
 				/>
 
-				<!-- Pane 2: thread/message list -->
-				<section class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
+				<!-- Pane 2: thread/message list — the whole width below lg, and hidden
+			     entirely once a message is open (the reader takes over). -->
+				<section
+					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex-col bg-bg-surface"
+					:class="activeMessageId ? 'hidden lg:flex' : 'flex'"
+				>
 					<!-- Quiet offline banner: cached list + already-read bodies stay
 			     readable; server-backed actions degrade with clear affordances. -->
 					<div
@@ -284,20 +315,35 @@ const showReplyQueueStrip = computed(
 							>Offline — showing recent mail from this device. Actions are paused.</span
 						>
 					</div>
-					<header class="border-b border-border-subtle px-4 py-3 flex items-center justify-between">
-						<h2 class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2">
-							{{ currentFolderName }}
-							<!-- Cold start from the device cache: a quiet "updating…" hint
+					<header
+						class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2"
+					>
+						<div class="flex items-center gap-2 min-w-0">
+							<!-- Drawer handle for the folder rail (mobile only). -->
+							<button
+								type="button"
+								class="lg:hidden -ml-1 p-1 rounded text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+								aria-label="Open folders"
+								@click="railOpen = true"
+							>
+								<Icon name="lucide:panel-left" class="w-4 h-4" />
+							</button>
+							<h2
+								class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2 min-w-0"
+							>
+								<span class="truncate">{{ currentFolderName }}</span>
+								<!-- Cold start from the device cache: a quiet "updating…" hint
 					     while the live query catches up. Live rows replace in place. -->
-							<!-- Suppressed while offline: the live query never settles, so a
+								<!-- Suppressed while offline: the live query never settles, so a
 					     permanent "updating…" would read as stuck — the offline banner
 					     already communicates the state. -->
-							<span
-								v-if="showingCached && !isOffline"
-								class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
-								>updating…</span
-							>
-						</h2>
+								<span
+									v-if="showingCached && !isOffline"
+									class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
+									>updating…</span
+								>
+							</h2>
+						</div>
 						<div v-if="folderRole === 'inbox'" class="flex items-center gap-2">
 							<!-- Back to the focused Today landing view (Esc / B do the same). -->
 							<button
@@ -411,8 +457,24 @@ const showReplyQueueStrip = computed(
 					</template>
 				</section>
 
-				<!-- Pane 3: reader -->
-				<section class="flex-1 overflow-auto bg-bg-base">
+				<!-- Pane 3: reader — below lg it replaces the list rather than sitting
+			     beside it, so the empty "Select a message" pane never shows there. -->
+				<section
+					class="flex-1 min-w-0 overflow-auto bg-bg-base"
+					:class="activeMessageId ? 'block' : 'hidden lg:block'"
+				>
+					<!-- Drill-in back navigation (mobile only; on lg the list is still
+				     on screen beside the reader). -->
+					<button
+						v-if="activeMessageId"
+						type="button"
+						class="lg:hidden sticky top-0 z-10 w-full flex items-center gap-1.5 border-b border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+						@click="backToList"
+					>
+						<Icon name="lucide:arrow-left" class="w-4 h-4" />
+						<span class="capitalize truncate">{{ currentFolderName }}</span>
+					</button>
+
 					<Transition name="pbx-reader" mode="out-in">
 						<PostboxThreadReader
 							v-if="activeMessage"

@@ -129,6 +129,10 @@ const toggleContactSelection = (contactId: Id<'contacts'>) => {
 	bulkSelection.toggleSelection(contactId);
 };
 
+/** First + last for the card list, which has no room for a column each. */
+const contactName = (contact: { firstName?: string | null; lastName?: string | null }) =>
+	[contact.firstName, contact.lastName].filter(Boolean).join(' ');
+
 // Right-click row menu — reuses the row's existing affordances (open + select)
 // plus a native copy. No new mutation path: one action source, two entry points.
 async function copyEmail(email: string) {
@@ -653,7 +657,55 @@ onUnmounted(() => {
 
 				<!-- Data Table -->
 				<div v-else>
-					<div class="overflow-x-auto">
+					<!-- Below md the columns can't fit — the same rows become a card
+					     list (one tap opens the contact, the checkbox still selects). -->
+					<ul class="md:hidden divide-y divide-border-subtle">
+						<li
+							v-for="contact in contacts"
+							:key="contact._id"
+							class="flex items-center gap-3 px-4 py-3 transition-colors"
+							:class="bulkSelection.selectedIds.value.has(contact._id) ? 'bg-brand/5' : ''"
+						>
+							<button
+								v-if="canManageContacts"
+								class="w-5 h-5 shrink-0 rounded border flex items-center justify-center transition-colors"
+								:class="[
+									bulkSelection.selectedIds.value.has(contact._id)
+										? 'bg-brand border-brand text-text-inverse'
+										: 'border-border-default',
+								]"
+								:aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`"
+								@click="toggleContactSelection(contact._id)"
+							>
+								<Icon
+									v-if="bulkSelection.selectedIds.value.has(contact._id)"
+									name="lucide:check"
+									class="w-3 h-3"
+								/>
+							</button>
+							<button
+								type="button"
+								class="flex-1 min-w-0 text-left"
+								@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
+							>
+								<span class="block text-text-primary font-medium truncate">{{
+									contact.email
+								}}</span>
+								<span
+									v-if="contactName(contact)"
+									class="block text-sm text-text-secondary truncate"
+								>
+									{{ contactName(contact) }}
+								</span>
+								<span class="block text-xs text-text-tertiary mt-0.5">
+									Added {{ formatDate(contact.createdAt) }}
+								</span>
+							</button>
+							<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary shrink-0" />
+						</li>
+					</ul>
+
+					<div class="hidden md:block overflow-x-auto">
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">

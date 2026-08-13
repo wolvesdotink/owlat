@@ -130,20 +130,28 @@ const previewSrcdoc = computed(() => {
 			</div>
 		</div>
 
-		<!-- Email Preview with Heatmap -->
-		<div class="border border-border-subtle rounded-xl overflow-hidden bg-white">
-			<!-- Email content container (sandboxed: no scripts, no app origin) -->
+		<!-- Email Preview with Heatmap.
+		     palette-ok: the paper stays literally white in both app themes — campaign
+		     HTML carries its own (light) colors and the srcdoc body is painted #fff,
+		     so a theme token here would only show as a mismatched flash behind the
+		     frame. -->
+		<!-- Campaign HTML is laid out for ~600px, so on a narrow screen the frame
+		     keeps its natural width and the reader pans instead of getting a
+		     squeezed, unreadable render. -->
+		<div class="border border-border-subtle rounded-xl overflow-x-auto bg-white">
+			<!-- Email content container (sandboxed: no scripts, no app origin).
+			     palette-ok: same white paper as the frame above. -->
 			<iframe
 				:srcdoc="previewSrcdoc"
 				sandbox=""
-				class="w-full h-[600px] border-0 bg-white"
+				class="w-full min-w-[640px] h-[600px] border-0 bg-white"
 				title="Campaign content with click heatmap"
 			/>
 		</div>
 
 		<!-- Click Stats Table -->
 		<div v-if="processedContent.links.length > 0" class="card overflow-hidden">
-			<div class="px-6 py-4 border-b border-border-subtle">
+			<div class="px-4 sm:px-6 py-4 border-b border-border-subtle">
 				<div class="flex items-center gap-3">
 					<UiIconBox icon="lucide:mouse-pointer-click" size="sm" variant="warning" rounded="lg" />
 					<div>
@@ -157,9 +165,9 @@ const previewSrcdoc = computed(() => {
 				<div
 					v-for="(link, index) in processedContent.links"
 					:key="index"
-					class="px-6 py-4 hover:bg-bg-surface transition-colors"
+					class="px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors"
 				>
-					<div class="flex items-start justify-between gap-4">
+					<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1">
 								<Icon name="lucide:external-link" class="w-4 h-4 text-text-tertiary shrink-0" />
@@ -177,7 +185,7 @@ const previewSrcdoc = computed(() => {
 							</a>
 						</div>
 
-						<div class="flex items-center gap-6 shrink-0">
+						<div class="flex items-center gap-4 sm:gap-6 shrink-0">
 							<!-- Click Count -->
 							<div class="text-right">
 								<div class="text-lg font-semibold text-text-primary">

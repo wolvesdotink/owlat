@@ -427,7 +427,7 @@ onUnmounted(() => {
 									<Icon name="lucide:copy" class="w-4 h-4" />
 								</button>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors"
 									@click.stop="openDeleteModal(template._id, template.name)"
 									aria-label="Delete"
 								>
@@ -488,7 +488,63 @@ onUnmounted(() => {
 
 				<!-- List View -->
 				<UiCard v-else padding="none" overflow="hidden">
-					<div class="overflow-x-auto">
+					<!-- Below md the columns can't fit — the same rows become a card
+					     list, with the row actions folded into the overflow menu. -->
+					<ul class="md:hidden divide-y divide-border-subtle">
+						<li v-for="template in templates" :key="template._id">
+							<div class="flex items-start gap-3 px-4 py-3">
+								<button
+									type="button"
+									class="flex-1 min-w-0 text-left"
+									:aria-label="`Edit ${template.name}`"
+									@click="handleEdit(template._id)"
+								>
+									<span class="block text-text-primary font-medium truncate">{{
+										template.name
+									}}</span>
+									<span class="block text-sm text-text-secondary truncate">
+										{{ template.subject || 'No subject' }}
+									</span>
+									<span class="flex items-center gap-2 mt-1.5">
+										<span
+											:class="[
+												'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
+												getStatusBadge(template.status).color,
+											]"
+										>
+											{{ getStatusBadge(template.status).label }}
+										</span>
+										<span class="text-xs text-text-tertiary">
+											Updated {{ formatDate(template.updatedAt) }}
+										</span>
+									</span>
+								</button>
+								<UiDropdownMenu v-model:open="dropdownOpenStates[template._id]">
+									<template #trigger>
+										<UiButton variant="ghost" size="sm" aria-label="Template actions">
+											<Icon name="lucide:more-vertical" class="w-4 h-4" />
+										</UiButton>
+									</template>
+									<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(template._id)">
+										Edit
+									</UiDropdownMenuItem>
+									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(template._id)">
+										Duplicate
+									</UiDropdownMenuItem>
+									<UiDropdownDivider />
+									<UiDropdownMenuItem
+										icon="lucide:trash-2"
+										danger
+										@click="openDeleteModal(template._id, template.name)"
+									>
+										Delete
+									</UiDropdownMenuItem>
+								</UiDropdownMenu>
+							</div>
+						</li>
+					</ul>
+
+					<div class="hidden md:block overflow-x-auto">
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">

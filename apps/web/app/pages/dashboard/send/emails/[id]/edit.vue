@@ -19,6 +19,7 @@ const router = useRouter();
 const templateId = useRouteId<'emailTemplates'>();
 const { hasActiveOrganization } = useOrganizationContext();
 const { isFocusMode } = useFocusMode();
+const builderFits = useEmailBuilderViewport();
 
 // Fetch template data
 const {
@@ -218,6 +219,13 @@ async function handlePublicationToggle() {
 					<UiButton @click="handleBack">Back to Emails</UiButton>
 				</div>
 			</div>
+
+			<!-- Too narrow for the canvas — an honest gate beats a broken editor. -->
+			<EmailBuilderViewportGate v-else-if="!builderFits">
+				<template #action>
+					<UiButton variant="secondary" @click="handleBack">Back to Emails</UiButton>
+				</template>
+			</EmailBuilderViewportGate>
 
 			<!-- Email Builder -->
 			<UiErrorBoundary
