@@ -15,6 +15,12 @@
  * `INSTANCE_SECRET` (the same on-box operator credential that creates the first
  * admin through `POST /seed/admin`).
  *
+ * Installation is inert by construction: the loaders run with
+ * `{ inert: true }`, so the fixture automation is written paused and the
+ * fixture webhook disabled. Neither can act on the contacts the operator
+ * actually cares about, and an operator who wants to watch them run has to
+ * turn them on deliberately.
+ *
  * Removal is exact by construction: it deletes rows carrying a seed tag and
  * nothing else, and re-checks the tag inside the delete transaction. A contact
  * the operator edited is still tagged and still goes; a contact they created is
@@ -44,13 +50,16 @@ function assertSeededTable(table: string): TableNames {
 /**
  * Insert the sample dataset. Idempotent: every loader dedupes on its natural
  * key (contact email, topic slug, domain, …) and reports the row as skipped.
+ *
+ * `{ inert: true }` is not optional here — it is the difference between demo
+ * scenery and a live automation mailing the instance's next real signup.
  */
 export const install = internalMutation({
 	args: {},
 	handler: async (
 		ctx
 	): Promise<{ inserted: Record<string, number>; skipped: Record<string, number> }> =>
-		await applyLoaders(ctx, SAMPLE_DATA_MODULES),
+		await applyLoaders(ctx, SAMPLE_DATA_MODULES, { inert: true }),
 });
 
 /** One page of seed-tagged row ids in one table. Read-only — see `pageSeedTaggedIds`. */

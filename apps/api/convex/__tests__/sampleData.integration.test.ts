@@ -6,6 +6,9 @@
  *     nobody has to unlock the dev endpoints to get demo content;
  *   - it creates NO sign-ins (the dummy teammate accounts carry published
  *     password hashes and stay on the dev-only path);
+ *   - nothing it writes can ACT: the sample automation is paused and the sample
+ *     webhook disabled, so the operator's own contacts are never mailed or
+ *     exfiltrated by demo scenery;
  *   - removal deletes exactly the seeded rows and leaves the operator's own
  *     data alone, however similar it looks;
  *   - both directions are idempotent, so a re-run is never destructive.
@@ -14,6 +17,8 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
+import { internal } from '../_generated/api';
+import { applyLoaders } from '../seedDemo/pipeline';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -102,6 +107,19 @@ describe('sample data — install', () => {
 		expect(contacts).toHaveLength(15);
 	});
 
+	it('leaves the compliance telemetry fixtures on the dev-only path', async () => {
+		const t = convexTest(schema, modules);
+		const summary = await install(t);
+
+		// Gmail bulk-sender rollups for demo.example read as a real domain just
+		// under the threshold in the compliance view — dev scenery only.
+		expect(summary['inserted']).not.toHaveProperty('complianceTelemetry');
+		const rollups = await t.run(
+			async (ctx) => await ctx.db.query('gmailDomainVolumeRollups').collect()
+		);
+		expect(rollups).toHaveLength(0);
+	});
+
 	it('tags every row it writes so removal can find them again', async () => {
 		const t = convexTest(schema, modules);
 		await install(t);
@@ -116,6 +134,75 @@ describe('sample data — install', () => {
 			return rows.filter((row) => (row as { seedTag?: string }).seedTag !== 'demo');
 		});
 		expect(untagged).toEqual([]);
+	});
+});
+
+describe('sample data — inert on a real instance', () => {
+	it('installs the automation paused, so a real signup is never mailed', async () => {
+		const t = convexTest(schema, modules);
+		await install(t);
+
+		const automations = await t.run(async (ctx) => await ctx.db.query('automations').collect());
+		expect(automations.length).toBeGreaterThan(0);
+		expect(automations.filter((a) => a.status === 'active')).toEqual([]);
+		// No activation timestamp either — a paused row that claims it was
+		// activated is a lie the automations UI would repeat.
+		expect(automations.filter((a) => a.activatedAt !== undefined)).toEqual([]);
+
+		// The fixture automation triggers on contact_created and sends the
+		// "Summer sale" template. The next genuine signup must get nothing.
+		const contactId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert('contacts', {
+					email: 'genuine.signup@customer.example',
+					source: 'form' as const,
+					doiStatus: 'confirmed' as const,
+					searchableText: 'genuine.signup@customer.example',
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				})
+		);
+		await t.mutation(internal.automations.triggers.fireContactCreatedTrigger, { contactId });
+
+		const runs = await t.run(async (ctx) => await ctx.db.query('automationRuns').collect());
+		expect(runs).toEqual([]);
+	});
+
+	it('keeps the dev seed live — inert is the sample-data caller, not the loaders', async () => {
+		const t = convexTest(schema, modules);
+		// What `/seed/demo` runs: no options, so the throwaway dev instance still
+		// gets the live automation and webhook it has always had.
+		await t.run(async (ctx) => {
+			await applyLoaders(ctx, ['emailTemplates', 'automations', 'webhooks']);
+		});
+
+		const state = await t.run(async (ctx) => ({
+			automations: await ctx.db.query('automations').collect(),
+			webhooks: await ctx.db.query('webhooks').collect(),
+		}));
+		expect(state.automations.filter((a) => a.status === 'active').length).toBeGreaterThan(0);
+		expect(
+			state.automations.every((a) => a.status !== 'active' || a.activatedAt !== undefined)
+		).toBe(true);
+		expect(state.webhooks.filter((w) => w.isActive).length).toBeGreaterThan(0);
+	});
+
+	it('installs the webhook disabled, so no contact details leave the instance', async () => {
+		const t = convexTest(schema, modules);
+		await install(t);
+
+		const webhooks = await t.run(async (ctx) => await ctx.db.query('webhooks').collect());
+		expect(webhooks.length).toBeGreaterThan(0);
+		expect(webhooks.filter((w) => w.isActive)).toEqual([]);
+
+		// The fixture URL is a host nobody configured; the delivery pool must not
+		// consider the row a subscriber to the operator's own events.
+		for (const event of ['contact.created', 'email.sent'] as const) {
+			const subscribers = await t.query(internal.webhooks.deliveryQueries.getWebhooksForEvent, {
+				event,
+			});
+			expect(subscribers).toEqual([]);
+		}
 	});
 });
 
