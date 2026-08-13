@@ -126,8 +126,13 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 				</a>
 			</div>
 
+			<!-- Maturity note under the download CTA — README: Owlat, the desktop app included, is in alpha. -->
+			<p class="lp-hero-in mt-5 text-caption text-text-tertiary" style="--i: 4">
+				Desktop app for macOS, Windows and Linux — in alpha, like the rest of Owlat.
+			</p>
+
 			<!-- Standards ticker -->
-			<div class="lp-hero-in mt-20 w-full max-w-[620px]" style="--i: 4">
+			<div class="lp-hero-in mt-14 w-full max-w-[620px]" style="--i: 5">
 				<p
 					class="font-mono text-2xs font-medium uppercase tracking-[0.18em] text-text-tertiary mb-5"
 				>

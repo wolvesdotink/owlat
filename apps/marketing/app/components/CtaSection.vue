@@ -7,11 +7,14 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 
 // Grounded in README: "Open-source (Apache 2.0) · Free to self-host ·
 // no per-contact pricing · 10 minutes from empty VPS to working install."
+// The last item sets expectations for the download CTA above it — the desktop
+// app carries the same alpha status as the rest of Owlat.
 const trustItems = [
 	'Apache 2.0',
 	'Free to self-host',
 	'No per-contact pricing',
 	'10-minute install',
+	'Desktop app in alpha',
 ];
 </script>
 

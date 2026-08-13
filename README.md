@@ -142,7 +142,7 @@ owlat/
 │   ├── updater/          # In-place update sidecar
 │   ├── docs/             # Documentation site (Nuxt Content)
 │   ├── marketing/        # Landing / marketing site
-│   ├── desktop/          # Desktop client shell (experimental)
+│   ├── desktop/          # Desktop client shell (alpha)
 │   └── code-worker/      # Code-task worker (for `inbox.codeTasks`)
 ├── packages/
 │   ├── email-builder/    # Block-based email editor (Vue)
