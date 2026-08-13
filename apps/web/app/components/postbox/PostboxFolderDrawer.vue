@@ -15,7 +15,9 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 
 // Off-canvas is a transform, not an unmount, so the rail's links and controls
 // would otherwise stay in the tab order and the accessibility tree while the
-// drawer is closed. Same `:inert` treatment as the dashboard shell's sidebar.
+// drawer is closed. (The dashboard shell also inerts its sidebar, but only for
+// the desktop auto-hide/focus-mode state — its mobile drawer is not covered, so
+// this needs its own viewport check rather than the shell's condition.)
 const isDesktopViewport = useMediaQuery('(min-width: 1024px)');
 const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
 </script>

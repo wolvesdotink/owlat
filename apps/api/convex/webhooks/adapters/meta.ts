@@ -16,6 +16,8 @@
 import { constantTimeEqual, hmacSha256Hex } from '../security';
 import { missingChannelSecretResult, resolveChannelInboundSecret } from '../channelSecrets';
 import { logError } from '../../lib/runtimeLog';
+import { internal } from '../../_generated/api';
+import { getClientIp, rateLimitedResponse } from '../../publicRateLimit';
 import type { ActionCtx } from '../../_generated/server';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
@@ -131,8 +133,34 @@ export const metaAdapter: InboundAdapter = {
  * param and `hub.mode === 'subscribe'`, echo back `hub.challenge`. The token is
  * the WhatsApp channel's stored Verify Token, falling back to
  * `META_VERIFY_TOKEN` (see `webhooks/channelSecrets.ts`).
+ *
+ * This route is UNAUTHENTICATED by nature — the handshake is what establishes
+ * the relationship — and answering it costs a Node action plus a DB read, so
+ * the two cheap gates come first: the request must look like a challenge at
+ * all, and it spends a token from the same `webhookIngestion` bucket the POST
+ * path spends before verifying a signature (`webhooks/pipeline.ts`).
  */
 export async function handleMetaChallenge(request: Request, ctx?: ActionCtx): Promise<Response> {
+	const url = new URL(request.url);
+	const mode = url.searchParams.get('hub.mode');
+	const token = url.searchParams.get('hub.verify_token') ?? '';
+	const challenge = url.searchParams.get('hub.challenge');
+	// Not a challenge at all (a scanner, a browser, a probe): refuse before
+	// spending a rate-limit token or opening the credential vault.
+	if (mode !== 'subscribe' || !challenge) {
+		return new Response('Verification failed', { status: 403 });
+	}
+
+	if (ctx) {
+		// Keyed apart from the inbound-message buckets so a flood here cannot 429
+		// real provider deliveries, matching the per-source keying in the pipeline.
+		const { ok, retryAfter } = await ctx.runMutation(
+			internal.publicRateLimit.checkPublicRateLimit,
+			{ limitType: 'webhookIngestion', key: `whatsapp-challenge:${getClientIp(request)}` }
+		);
+		if (!ok) return rateLimitedResponse(retryAfter);
+	}
+
 	const verifyToken = await resolveChannelInboundSecret(
 		'whatsapp',
 		'verifyToken',
@@ -147,12 +175,7 @@ export async function handleMetaChallenge(request: Request, ctx?: ActionCtx): Pr
 		});
 	}
 
-	const url = new URL(request.url);
-	const mode = url.searchParams.get('hub.mode');
-	const token = url.searchParams.get('hub.verify_token') ?? '';
-	const challenge = url.searchParams.get('hub.challenge');
-
-	if (mode === 'subscribe' && challenge && constantTimeEqual(token, verifyToken)) {
+	if (constantTimeEqual(token, verifyToken)) {
 		return new Response(challenge, { status: 200 });
 	}
 	return new Response('Verification failed', { status: 403 });

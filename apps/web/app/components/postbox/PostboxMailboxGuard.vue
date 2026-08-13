@@ -20,6 +20,8 @@
 import { api } from '@owlat/api';
 import { deriveMailboxGuardState } from '~/utils/freshStart';
 
+const { t } = useI18n();
+
 const props = defineProps<{
 	mailboxId: string | null;
 	loading: boolean;
@@ -58,7 +60,7 @@ const reservationAwaitingDomain = computed(
 const requested = ref(false);
 const { run: requestMailbox, isLoading: requesting } = useBackendOperation(
 	api.mail.mailboxRequest.request,
-	{ label: 'Request a mailbox' }
+	{ label: () => t('postbox.mailboxGuard.requestOperation') }
 );
 
 async function askAdmin() {
@@ -76,7 +78,7 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 		<Icon
 			name="lucide:loader-2"
 			class="w-6 h-6 animate-spin text-text-tertiary"
-			aria-label="Loading mailbox"
+			:aria-label="t('postbox.mailboxGuard.loading')"
 		/>
 	</div>
 
@@ -94,18 +96,35 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 		<div class="w-full max-w-sm text-center">
 			<Icon name="lucide:mail-check" class="w-10 h-10 mx-auto text-text-tertiary" />
 			<template v-if="reservationAwaitingDomain">
-				<h2 class="text-lg font-semibold text-text-primary mt-4">Your mailbox is reserved</h2>
-				<p class="text-sm text-text-secondary mt-2" data-testid="mailbox-guard-reserved-awaiting">
-					<span class="font-medium text-text-primary">{{ reservedAddress }}</span> is held for you.
-					It activates here automatically as soon as your workspace's sending domain verifies.
-				</p>
+				<h2 class="text-lg font-semibold text-text-primary mt-4">
+					{{ t('postbox.mailboxGuard.awaitingDomainHeading') }}
+				</h2>
+				<I18nT
+					keypath="postbox.mailboxGuard.awaitingDomainBody"
+					tag="p"
+					scope="global"
+					class="text-sm text-text-secondary mt-2"
+					data-testid="mailbox-guard-reserved-awaiting"
+				>
+					<template #address
+						><span class="font-medium text-text-primary">{{ reservedAddress }}</span></template
+					>
+				</I18nT>
 			</template>
 			<template v-else>
-				<h2 class="text-lg font-semibold text-text-primary mt-4">Your mailbox is being set up</h2>
-				<p class="text-sm text-text-secondary mt-2">
-					<span class="font-medium text-text-primary">{{ reservedAddress }}</span> is reserved for
-					you. It'll appear here automatically as soon as it's ready.
-				</p>
+				<h2 class="text-lg font-semibold text-text-primary mt-4">
+					{{ t('postbox.mailboxGuard.reservedHeading') }}
+				</h2>
+				<I18nT
+					keypath="postbox.mailboxGuard.reservedBody"
+					tag="p"
+					scope="global"
+					class="text-sm text-text-secondary mt-2"
+				>
+					<template #address
+						><span class="font-medium text-text-primary">{{ reservedAddress }}</span></template
+					>
+				</I18nT>
 			</template>
 		</div>
 	</div>
@@ -118,12 +137,15 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 	>
 		<div class="w-full max-w-sm text-center">
 			<Icon name="lucide:link" class="w-10 h-10 mx-auto text-text-tertiary" />
-			<h2 class="text-lg font-semibold text-text-primary mt-4">Connect your mail</h2>
+			<h2 class="text-lg font-semibold text-text-primary mt-4">
+				{{ t('postbox.mailboxGuard.externalHeading') }}
+			</h2>
 			<p class="text-sm text-text-secondary mt-2">
-				You don't have a mailbox here yet — connect an existing account to read and send from it in
-				Postbox.
+				{{ t('postbox.mailboxGuard.externalBody') }}
 			</p>
-			<UiButton to="/dashboard/preferences/add-account" class="mt-6"> Connect an account </UiButton>
+			<UiButton to="/dashboard/preferences/add-account" class="mt-6">
+				{{ t('postbox.mailboxGuard.externalCta') }}
+			</UiButton>
 		</div>
 	</div>
 
@@ -135,18 +157,21 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 	>
 		<div class="w-full max-w-sm text-center">
 			<Icon name="lucide:mailbox" class="w-10 h-10 mx-auto text-text-tertiary" />
-			<h2 class="text-lg font-semibold text-text-primary mt-4">No mailbox yet</h2>
+			<h2 class="text-lg font-semibold text-text-primary mt-4">
+				{{ t('postbox.mailboxGuard.deadEndHeading') }}
+			</h2>
 			<template v-if="alreadyAsked">
 				<p class="text-sm text-text-secondary mt-2">
-					We've let your admins know you need a mailbox. You'll see it here once they set one up.
+					{{ t('postbox.mailboxGuard.deadEndAskedBody') }}
 				</p>
 			</template>
 			<template v-else>
 				<p class="text-sm text-text-secondary mt-2">
-					Only an admin can set up a mailbox for you. Send them a quick request and they'll get it
-					in-app.
+					{{ t('postbox.mailboxGuard.deadEndBody') }}
 				</p>
-				<UiButton class="mt-6" :loading="requesting" @click="askAdmin"> Ask an admin </UiButton>
+				<UiButton class="mt-6" :loading="requesting" @click="askAdmin">
+					{{ t('postbox.mailboxGuard.deadEndCta') }}
+				</UiButton>
 			</template>
 		</div>
 	</div>

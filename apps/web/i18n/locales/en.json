@@ -197,6 +197,23 @@
 			}
 		}
 	},
+	"postbox": {
+		"mailboxGuard": {
+			"loading": "Loading mailbox",
+			"reservedHeading": "Your mailbox is being set up",
+			"reservedBody": "{address} is reserved for you. It'll appear here automatically as soon as it's ready.",
+			"awaitingDomainHeading": "Your mailbox is reserved",
+			"awaitingDomainBody": "{address} is held for you. It activates here automatically as soon as your workspace's sending domain verifies.",
+			"externalHeading": "Connect your mail",
+			"externalBody": "You don't have a mailbox here yet — connect an existing account to read and send from it in Postbox.",
+			"externalCta": "Connect an account",
+			"deadEndHeading": "No mailbox yet",
+			"deadEndAskedBody": "We've let your admins know you need a mailbox. You'll see it here once they set one up.",
+			"deadEndBody": "Only an admin can set up a mailbox for you. Send them a quick request and they'll get it in-app.",
+			"deadEndCta": "Ask an admin",
+			"requestOperation": "Request a mailbox"
+		}
+	},
 	"welcome": {
 		"pageTitle": "Welcome — Owlat",
 		"loading": "Getting things ready…",
@@ -224,6 +241,11 @@
 			"signaturePlaceholder": "e.g. Marcel · Owlat",
 			"signatureHint": "Added to the bottom of new messages.",
 			"notifyLabel": "Notify me about",
+			"notifyOptions": {
+				"everything": "Everything",
+				"people-important": "People & important only",
+				"nothing": "Nothing"
+			},
 			"notifyHint": "You can fine-tune this later in Postbox settings.",
 			"checkingTransport": "Checking whether sending is ready…",
 			"readyNowTitle": "Sending is ready now",

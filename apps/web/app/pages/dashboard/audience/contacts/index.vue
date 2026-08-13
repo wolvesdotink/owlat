@@ -40,6 +40,12 @@ const csvImport = useCsvImport();
 // Keyboard shortcuts
 const { registerNewShortcut, registerEscapeHandler, unregisterShortcut } = useKeyboardShortcuts();
 
+// Below `md` the columns can't fit, so the same rows render as a card list.
+// Exactly one of the two trees is mounted: the app runs with `ssr: false`, so
+// the first value is already the real one, and mounting both (a CSS-only
+// `md:hidden` switch) doubles the row DOM and lets the copies drift apart.
+const tableFits = useDataTableViewport();
+
 // Modal states
 const isExportModalOpen = ref(false);
 const isIntegrationImportModalOpen = ref(false);
@@ -659,53 +665,84 @@ onUnmounted(() => {
 				<div v-else>
 					<!-- Below md the columns can't fit — the same rows become a card
 					     list (one tap opens the contact, the checkbox still selects). -->
-					<ul class="md:hidden divide-y divide-border-subtle">
-						<li
-							v-for="contact in contacts"
-							:key="contact._id"
-							class="flex items-center gap-3 px-4 py-3 transition-colors"
-							:class="bulkSelection.selectedIds.value.has(contact._id) ? 'bg-brand/5' : ''"
+					<template v-if="!tableFits">
+						<!-- The table's select-all sits in a `thead` the card list has no
+						     room for, so bulk selection was desktop-only here. Full-width
+						     row: it doubles as its own 44px touch target. -->
+						<button
+							v-if="canManageContacts"
+							type="button"
+							class="w-full flex items-center gap-3 px-4 py-3 border-b border-border-subtle text-left transition-colors hover:bg-bg-surface"
+							@click="toggleSelectAll"
 						>
-							<button
-								v-if="canManageContacts"
+							<span
 								class="w-5 h-5 shrink-0 rounded border flex items-center justify-center transition-colors"
 								:class="[
-									bulkSelection.selectedIds.value.has(contact._id)
+									isAllPageSelected
 										? 'bg-brand border-brand text-text-inverse'
-										: 'border-border-default',
+										: bulkSelection.hasSelected.value
+											? 'border-brand bg-brand/20'
+											: 'border-border-default',
 								]"
-								:aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`"
-								@click="toggleContactSelection(contact._id)"
 							>
-								<Icon
-									v-if="bulkSelection.selectedIds.value.has(contact._id)"
-									name="lucide:check"
-									class="w-3 h-3"
-								/>
-							</button>
-							<button
-								type="button"
-								class="flex-1 min-w-0 text-left"
-								@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
-							>
-								<span class="block text-text-primary font-medium truncate">{{
-									contact.email
-								}}</span>
+								<Icon v-if="isAllPageSelected" name="lucide:check" class="w-3 h-3" />
 								<span
-									v-if="contactName(contact)"
-									class="block text-sm text-text-secondary truncate"
+									v-else-if="bulkSelection.hasSelected.value"
+									class="w-2 h-0.5 bg-brand rounded"
+								/>
+							</span>
+							<span class="text-sm text-text-secondary">
+								{{ isAllPageSelected ? 'Deselect all' : 'Select all' }}
+							</span>
+						</button>
+						<ul class="divide-y divide-border-subtle">
+							<li
+								v-for="contact in contacts"
+								:key="contact._id"
+								class="flex items-center gap-3 px-4 py-3 transition-colors"
+								:class="bulkSelection.selectedIds.value.has(contact._id) ? 'bg-brand/5' : ''"
+							>
+								<button
+									v-if="canManageContacts"
+									class="contact-select w-5 h-5 shrink-0 rounded border flex items-center justify-center transition-colors"
+									:class="[
+										bulkSelection.selectedIds.value.has(contact._id)
+											? 'bg-brand border-brand text-text-inverse'
+											: 'border-border-default',
+									]"
+									:aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`"
+									@click="toggleContactSelection(contact._id)"
 								>
-									{{ contactName(contact) }}
-								</span>
-								<span class="block text-xs text-text-tertiary mt-0.5">
-									Added {{ formatDate(contact.createdAt) }}
-								</span>
-							</button>
-							<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary shrink-0" />
-						</li>
-					</ul>
+									<Icon
+										v-if="bulkSelection.selectedIds.value.has(contact._id)"
+										name="lucide:check"
+										class="w-3 h-3"
+									/>
+								</button>
+								<button
+									type="button"
+									class="flex-1 min-w-0 text-left"
+									@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
+								>
+									<span class="block text-text-primary font-medium truncate">{{
+										contact.email
+									}}</span>
+									<span
+										v-if="contactName(contact)"
+										class="block text-sm text-text-secondary truncate"
+									>
+										{{ contactName(contact) }}
+									</span>
+									<span class="block text-xs text-text-tertiary mt-0.5">
+										Added {{ formatDate(contact.createdAt) }}
+									</span>
+								</button>
+								<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary shrink-0" />
+							</li>
+						</ul>
+					</template>
 
-					<div class="hidden md:block overflow-x-auto">
+					<div v-else class="overflow-x-auto">
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
@@ -925,3 +962,20 @@ onUnmounted(() => {
 		/>
 	</div>
 </template>
+
+<style scoped>
+/* The card list's row checkbox paints at 20px — the size the row wants — but a
+ * thumb needs 44px. A transparent pseudo-element grows the hit area without
+ * moving anything in the row (same trick as the recipient preferences page);
+ * `z-10` keeps the overlap with the row's own tap target on the checkbox. */
+.contact-select {
+	position: relative;
+	z-index: 10;
+}
+
+.contact-select::after {
+	content: '';
+	position: absolute;
+	inset: -12px;
+}
+</style>

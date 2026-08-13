@@ -6,8 +6,8 @@
  * The number comes from the same paced warming projection the binding gate and
  * the multi-day walker meter against (`campaigns/sendingReadiness.ts`), so this
  * line and the capacity schedule panel beside it can never disagree. The copy
- * itself is derived once in `~/lib/sendReadiness` because three surfaces render
- * it (the campaign editor, the wizard's review step, the getting-started card).
+ * itself is derived once in `~/lib/sendReadiness` because both surfaces that
+ * render this note do (the campaign editor and the wizard's review step).
  *
  * Informational treatment, never the error one: a capped day is a normal state
  * for a warming deployment (deliverability plan D14). Nothing renders at all

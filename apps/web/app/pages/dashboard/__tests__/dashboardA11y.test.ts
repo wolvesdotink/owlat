@@ -15,7 +15,14 @@
  * looks at twice.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { auditA11y, installNuxtStubs, paginatedResult, queryResult } from '~/__tests__/a11y';
+import type { Component } from 'vue';
+import {
+	auditA11y,
+	dashboardShellStubs,
+	installNuxtStubs,
+	paginatedResult,
+	queryResult,
+} from '~/__tests__/a11y';
 import { useBulkOperation } from '~/composables/useBulkOperation';
 import { useBulkSelection } from '~/composables/useBulkSelection';
 import { useCampaignStatusBadge } from '~/composables/useCampaignStatusBadge';
@@ -62,51 +69,7 @@ beforeEach(() => {
 			meta: {},
 		}),
 		// Shell composables — the layout destructures each of these at setup.
-		useSidebarState: () => ({
-			isCollapsed: ref(false),
-			isHidden: ref(false),
-			effectiveHidden: ref(false),
-			sidebarMode: ref('expanded'),
-			isPeeking: ref(false),
-			sectionStates: ref({}),
-			toggleCollapsed: vi.fn(),
-			setCollapsed: vi.fn(),
-			toggleHidden: vi.fn(),
-			setHidden: vi.fn(),
-			openPeek: vi.fn(),
-			closePeek: vi.fn(),
-			setDesktopViewport: vi.fn(),
-			toggleSection: vi.fn(),
-			isSectionExpanded: () => true,
-			initFromStorage: vi.fn(),
-		}),
-		useFocusMode: () => ({ isFocusMode: ref(false), setFocusMode: vi.fn() }),
-		// Web, not Tauri: the desktop branch dynamically imports @owlat/desktop.
-		useDesktopContext: () => ({
-			isDesktop: ref(false),
-			isMac: ref(false),
-			isWindows: ref(false),
-			isLinux: ref(false),
-		}),
-		useDesktopNotifications: () => ({ isDesktop: ref(false) }),
-		useWorkspaceHotkeys: vi.fn(),
-		useCommandPalette: () => ({ open: ref(false) }),
-		useChatMentions: () => ({ candidates: ref([]), isLoading: ref(false) }),
-		useDeliveryHealth: () => ({
-			level: ref('ok'),
-			reason: ref(null),
-			isVisible: ref(false),
-			dotClass: ref(''),
-		}),
-		useSidebarContext: () => ({
-			showToggle: ref(false),
-			activeContext: ref('marketing'),
-			sidebarSections: ref([]),
-			firstSharedKey: ref(null),
-			switchContext: vi.fn(),
-		}),
-		useDashboardNavigation: () => ({ sections: ref([]) }),
-		useSendReadyNotice: () => ({ isSendPathReady: ref(true) }),
+		...dashboardShellStubs(),
 
 		// Pure page composables run for real — the markup branches on them, so a
 		// stub would audit a page that never renders in the app.
@@ -169,16 +132,34 @@ beforeEach(() => {
 });
 
 describe('dashboard shell layout — accessibility', () => {
-	it('has no axe violations', async () => {
+	it('has no axe violations, landmarks and skip link included', async () => {
 		const violations = await auditA11y(DashboardLayout, {
 			slots: { default: '<h1>Page under the shell</h1>' },
-			prepare: (wrapper) => expect(wrapper.find('nav').exists()).toBe(true),
+			// The shell is the one mount that owns a whole document: <main>, the
+			// skip link and the landmark structure are all its markup, so it is
+			// audited at page scope with the document-scope rules back on.
+			pageContext: true,
+			// A rail that rendered no destinations would sail through every rule
+			// here; the real section list is dozens of links deep.
+			prepare: (wrapper) => {
+				expect(wrapper.findAll('nav a').length).toBeGreaterThan(3);
+				expect(wrapper.find('main#main-content').exists()).toBe(true);
+			},
 		});
 		expect(violations).toEqual([]);
 	});
 });
 
-const pages = [
+interface AuditedPage {
+	name: string;
+	component: Component;
+	/** Copy that only exists once the page finished rendering its loaded state. */
+	loaded: string;
+	/** False for a page whose title lives in the shell header, not its own body. */
+	ownsH1?: boolean;
+}
+
+const pages: readonly AuditedPage[] = [
 	{ name: 'dashboard home', component: DashboardHome, loaded: 'Welcome back' },
 	{ name: 'campaigns list', component: CampaignsIndex, loaded: 'New campaign' },
 	{ name: 'new campaign wizard', component: CampaignsNew, loaded: 'Create Campaign' },
@@ -189,16 +170,16 @@ const pages = [
 	{ name: 'admin overview', component: AdminIndex, loaded: 'Your instance at a glance' },
 	// The settings screen is the one page here whose title lives in the shell
 	// header rather than in its own body, so it owns h2 sections and no h1.
-	{ name: 'settings overview', component: SettingsIndex, loaded: 'Mailboxes', ownsTitle: false },
-] as const;
+	{ name: 'settings overview', component: SettingsIndex, loaded: 'Mailboxes', ownsH1: false },
+];
 
-describe.each(pages)('$name — accessibility', ({ component, loaded, ...page }) => {
+describe.each(pages)('$name — accessibility', ({ component, loaded, ownsH1 }) => {
 	it('has no axe violations on an empty instance', async () => {
 		const violations = await auditA11y(component, {
 			// A page that threw or rendered nothing would pass an empty audit.
 			prepare: (wrapper) => {
 				expect(wrapper.text()).toContain(loaded);
-				if (!('ownsTitle' in page)) expect(wrapper.findAll('h1')).toHaveLength(1);
+				if (ownsH1 !== false) expect(wrapper.findAll('h1')).toHaveLength(1);
 			},
 		});
 		expect(violations).toEqual([]);

@@ -141,13 +141,20 @@ const {
 	},
 });
 
-// Version history restore: assign the snapshot to the very refs the editor
-// edits, so the builder's change watcher records it as one more undoable step.
+// Version history restore: push the snapshot through the builder's explicit
+// load path. Assigning `blocks` alone is not enough — a restore keeps the block
+// ids and changes only their content, which the builder's prop watcher cannot
+// tell apart from the live query echoing the saved document back, so it drops
+// it. `loadState` re-seeds the canvas and emits back into these refs, which
+// marks the editor dirty and records the restore as one more undoable step.
 // Nothing is persisted until the user saves.
+const builderRef = ref<{ loadState: (state: HistoryState) => void } | null>(null);
+
 const handleRestoreVersion = (state: HistoryState) => {
 	blocks.value = state.blocks;
 	name.value = state.name;
 	subject.value = state.subject;
+	builderRef.value?.loadState(state);
 };
 
 // Back handler
@@ -233,6 +240,7 @@ async function handlePublicationToggle() {
 				fallback-message="The email editor hit an unexpected error. Please refresh — your last saved version is safe."
 			>
 				<EmailBuilder
+					ref="builderRef"
 					v-model:blocks="blocks"
 					v-model:subject="subject"
 					v-model:name="name"

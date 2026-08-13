@@ -39,14 +39,19 @@ beforeEach(() => {
 	});
 });
 
+// `invalidFields` is how many inputs the page marks `aria-invalid` after an
+// empty submit — one per validated field. Asserting the count, not just that
+// the word "required" appeared somewhere, is what makes the error branch a real
+// audit: a page that validated only its first field would otherwise pass while
+// the rest of the error markup went unscanned.
 const pages = [
-	{ name: 'login', component: LoginPage, loaded: 'Sign in' },
-	{ name: 'register', component: RegisterPage, loaded: 'Create' },
-	{ name: 'forgot password', component: ForgotPasswordPage, loaded: 'Reset' },
-	{ name: 'reset password', component: ResetPasswordPage, loaded: 'password' },
+	{ name: 'login', component: LoginPage, loaded: 'Sign in', invalidFields: 2 },
+	{ name: 'register', component: RegisterPage, loaded: 'Create', invalidFields: 3 },
+	{ name: 'forgot password', component: ForgotPasswordPage, loaded: 'Reset', invalidFields: 1 },
+	{ name: 'reset password', component: ResetPasswordPage, loaded: 'password', invalidFields: 2 },
 ] as const;
 
-describe.each(pages)('$name page — accessibility', ({ component, loaded }) => {
+describe.each(pages)('$name page — accessibility', ({ component, loaded, invalidFields }) => {
 	it('has no axe violations at rest', async () => {
 		const violations = await auditA11y(component, {
 			global: { plugins: [createTestI18n()], components: { AuthShell } },
@@ -65,6 +70,7 @@ describe.each(pages)('$name page — accessibility', ({ component, loaded }) => 
 				// Guards the audit against a form that silently accepted the empty
 				// submit — then this test would be scanning the resting page twice.
 				expect(wrapper.text()).toContain('required');
+				expect(wrapper.findAll('[aria-invalid="true"]')).toHaveLength(invalidFields);
 			},
 		});
 		expect(violations).toEqual([]);

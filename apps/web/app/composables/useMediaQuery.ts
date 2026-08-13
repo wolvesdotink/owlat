@@ -27,3 +27,13 @@ export function useMediaQuery(query: string): Ref<boolean> {
 export function useEmailBuilderViewport(): Ref<boolean> {
 	return useMediaQuery('(min-width: 768px)');
 }
+
+/**
+ * Is the viewport wide enough for a multi-column data table? Below Tailwind's
+ * `md` (768px) the dashboard tables render the same rows as a card list. The
+ * two are alternatives, not layers: mounting both and hiding one with `md:hidden`
+ * doubles the DOM and lets the copies drift apart.
+ */
+export function useDataTableViewport(): Ref<boolean> {
+	return useMediaQuery('(min-width: 768px)');
+}
