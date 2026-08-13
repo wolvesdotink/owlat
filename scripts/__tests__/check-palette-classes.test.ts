@@ -29,16 +29,20 @@ afterEach(() => {
 
 type Result = { status: number; output: string };
 
+/** The roots the script walks — both have to exist for a case to reach the scan. */
+const ROOTS = ['apps/web/app', 'packages/ui/components'];
+
 /**
  * A miniature repository: the real script at scripts/, and whatever sources the
- * case seeds under the apps/web/app root it walks.
+ * case seeds under the roots it walks.
  */
 function run(files: Record<string, string>, options: { seedRoot?: boolean } = {}): Result {
 	const root = mkdtempSync(join(tmpdir(), 'owlat-palette-'));
 	sandboxes.push(root);
 	mkdirSync(join(root, 'scripts'), { recursive: true });
 	copyFileSync(SCRIPT, join(root, 'scripts/check-palette-classes.ts'));
-	if (options.seedRoot !== false) mkdirSync(join(root, 'apps/web/app'), { recursive: true });
+	if (options.seedRoot !== false)
+		for (const scanned of ROOTS) mkdirSync(join(root, scanned), { recursive: true });
 	for (const [path, contents] of Object.entries(files)) {
 		const absolute = join(root, path);
 		mkdirSync(dirname(absolute), { recursive: true });
@@ -82,6 +86,23 @@ describe('the raw-palette gate, spellings of a banned class', () => {
 		['bg-white/10', 'class="bg-white/10"'],
 		['text-white/70', 'class="text-white/70"'],
 		['bg-gray-900/50', 'class="bg-gray-900/50"'],
+		// The scrim colour, and the two prefixes that paint an edge rather than a face.
+		['bg-black/60', 'class="bg-black/60"'],
+		['border-white', 'class="border-white"'],
+		['ring-white/20', 'class="ring-white/20"'],
+		['ring-black/10', 'class="ring-1 ring-inset ring-black/10"'],
+		// The other neutral ladders Tailwind ships, which read identically.
+		['border-slate-700', 'class="border-slate-700"'],
+		['text-zinc-400', 'class="text-zinc-400"'],
+		['bg-neutral-100', 'class="bg-neutral-100"'],
+		['text-stone-500', 'class="text-stone-500"'],
+		// And the chromatic families: a shade is a fixed hex, so it is legible on
+		// exactly the one theme it was written against — text-red-300 reads on a dark
+		// page and lands at ~1.7:1 on the light one.
+		['text-red-300', 'class="text-red-300"'],
+		['bg-amber-500/10', 'class="bg-amber-500/10"'],
+		['text-emerald-300', 'class="text-emerald-300"'],
+		['border-blue-500', 'class="border-blue-500"'],
 		// A bound value ships the same class by a different spelling.
 		['a bound ternary', `:class="on ? 'bg-white' : 'bg-bg-surface'"`],
 		['a bound array', `:class="['bg-white', size]"`],
@@ -104,8 +125,11 @@ describe('the raw-palette gate, spellings of a banned class', () => {
 		['a longer class that ends in the token', 'class="bg-bg-white"'],
 		['a longer class that starts with it', 'class="text-white-ish"'],
 		['a gray shade with no number', 'class="text-grayscale"'],
-		// Only the named families are banned; the rest is the sweep's business.
-		['another palette family', 'class="text-red-400"'],
+		['a family name with no shade', 'class="bg-rose"'],
+		// Only the palette FAMILIES are banned; a keyword and a semantic token that
+		// merely start the same way carry no fixed colour of their own.
+		['a keyword colour', 'class="border-transparent"'],
+		['a semantic error token', 'class="bg-error-strong text-text-inverse"'],
 	])('passes %s', (_label, attribute) => {
 		const result = run({ 'apps/web/app/components/Card.vue': component(attribute) });
 
@@ -176,7 +200,28 @@ describe('the raw-palette gate, what it reads', () => {
 		expect(result.status).toBe(0);
 	});
 
-	it('ignores files that are neither .vue nor .ts', () => {
+	it('reads .css, where an @apply moves the same colour one file away', () => {
+		const result = run({
+			'apps/web/app/assets/css/paper.css': ['.paper {', '\t@apply bg-white;', '}', ''].join('\n'),
+		});
+
+		expect(result.output).toContain('apps/web/app/assets/css/paper.css:2');
+		expect(result.status).toBe(1);
+	});
+
+	it('reads the design system, where one class paints every call site at once', () => {
+		// The leak this second root exists for: `.btn-danger` kept a literal
+		// `text-white` through a whole sweep of the app, and every danger button
+		// rendered it while the handful swept by hand did not.
+		const result = run({
+			'packages/ui/components/ui/Button.vue': component('class="bg-error text-white"'),
+		});
+
+		expect(result.output).toContain('packages/ui/components/ui/Button.vue:2');
+		expect(result.status).toBe(1);
+	});
+
+	it('ignores files that are none of .vue, .ts or .css', () => {
 		const result = run({ 'apps/web/app/README.md': 'Never write `bg-white` here.\n' });
 
 		expect(result.output).toBe('');
@@ -233,12 +278,19 @@ describe('the raw-palette gate, what it reads', () => {
 		expect(result.status).toBe(1);
 	});
 
-	it('fails when the scan root has moved', () => {
+	it.each(ROOTS)('fails when the %s scan root has moved', (moved) => {
 		// A root that is not there must be a build failure, not an empty scan that
-		// keeps reporting a clean surface it never read.
-		const result = run({}, { seedRoot: false });
+		// keeps reporting a clean surface it never read — and EACH root has to say so
+		// on its own, or adding a second one quietly makes the first optional.
+		const present = ROOTS.filter((scanned) => scanned !== moved);
+		const result = run(
+			Object.fromEntries(
+				present.map((scanned) => [`${scanned}/Card.vue`, component('class="p-4"')])
+			),
+			{ seedRoot: false }
+		);
 
-		expect(result.output).toContain('Cannot scan apps/web/app');
+		expect(result.output).toContain(`Cannot scan ${moved}`);
 		expect(result.status).toBe(1);
 	});
 });

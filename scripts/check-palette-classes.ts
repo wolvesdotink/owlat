@@ -16,10 +16,29 @@ import { join, relative } from 'node:path';
  */
 
 const workspace = join(import.meta.dirname, '..');
-const root = join(workspace, 'apps', 'web', 'app');
+
+/**
+ * Both surfaces the app is painted from.
+ *
+ * The design system is scanned too, because a raw class there ships the same
+ * opt-out to every call site at once and reads as clean from the app: `.btn-danger`
+ * kept a literal `text-white` through a whole sweep of `apps/web/app`, so most
+ * danger buttons still rendered white on `--color-error` while the handful the
+ * sweep touched by hand did not.
+ */
+const roots = [
+	join(workspace, 'apps', 'web', 'app'),
+	join(workspace, 'packages', 'ui', 'components'),
+];
 
 /**
  * The banned classes, as whole utility tokens.
+ *
+ * EVERY Tailwind colour family, because every one of them is theme-locked: a
+ * shade is a fixed hex, so `text-red-300` is legible on the dark page it was
+ * written against and ~1.7:1 on the light one. The neutrals map onto the surface
+ * and text ladders; the chromatic families map onto error/warning/success/info
+ * and the chart palette. `white`/`black` carry no shade number; the rest all do.
  *
  * `(?<![\w-])` lets the variant prefixes through (`hover:bg-white`,
  * `dark:text-gray-400`) while keeping a longer class that merely ends in one out
@@ -27,7 +46,8 @@ const root = join(workspace, 'apps', 'web', 'app');
  * boundary but deliberately admits `/`, because `bg-white/10` and `text-white/70`
  * are the same opt-out with an opacity on it.
  */
-const PALETTE = /(?<![\w-])(?:(?:bg|text)-white|(?:bg|text|border)-gray-\d+)(?![\w-])/g;
+const PALETTE =
+	/(?<![\w-])(?:bg|text|border|ring)-(?:white|black|(?:gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+)(?![\w-])/g;
 
 /**
  * TWO comment shapes, because the two jobs want opposite risk.
@@ -74,7 +94,9 @@ async function sources(directory: string): Promise<string[]> {
 			// names by construction.
 			if (entry.isDirectory()) return entry.name === '__tests__' ? [] : sources(path);
 			if (/\.(?:test|spec)\.ts$/.test(entry.name)) return [];
-			return /\.(?:vue|ts)$/.test(entry.name) ? [path] : [];
+			// `.css` for the same reason a `<style>` block is read: `@apply bg-white`
+			// in a stylesheet is the same opt-out, one file removed from the markup.
+			return /\.(?:vue|ts|css)$/.test(entry.name) ? [path] : [];
 		})
 	);
 	return nested.flat();
@@ -211,12 +233,16 @@ function resolve(
 	return { exemptions, malformed };
 }
 
-const files = await sources(root).catch((error: unknown) => {
-	// A root that moved must be a build failure, not an empty scan that keeps
-	// reporting a clean surface it never read.
-	console.error(`Cannot scan ${relative(workspace, root)}: ${String(error)}`);
-	process.exit(1);
-});
+const files: string[] = [];
+for (const root of roots) {
+	const found = await sources(root).catch((error: unknown) => {
+		// A root that moved must be a build failure, not an empty scan that keeps
+		// reporting a clean surface it never read.
+		console.error(`Cannot scan ${relative(workspace, root)}: ${String(error)}`);
+		process.exit(1);
+	});
+	files.push(...found);
+}
 
 const violations: string[] = [];
 const unused: string[] = [];
@@ -240,7 +266,11 @@ for (const file of files) {
 
 if (violations.length > 0) {
 	console.error(
-		'Raw palette classes in apps/web/app — these opt out of the light/dark token swap. Use the semantic tokens (bg-bg-surface, text-text-secondary, border-border-subtle, …):'
+		`Raw palette classes in ${roots
+			.map((root) => relative(workspace, root))
+			.join(
+				' and '
+			)} — these opt out of the light/dark token swap. Use the semantic tokens (bg-bg-surface, text-text-secondary, border-border-subtle, …):`
 	);
 	console.error(violations.join('\n'));
 	console.error(
