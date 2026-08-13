@@ -371,11 +371,21 @@ run_wizard() {
 		warn "Could not pin the setup wizard image to ref '$OWLAT_REF' (not a vX.Y.Z release tag) — using the mutable ':latest' wizard image, which may not match the checked-out sources."
 	fi
 	local setup_image="${OWLAT_SETUP_IMAGE:-ghcr.io/${OWLAT_GH_SLUG%/*}/setup:${setup_tag}}"
-	if ! docker image inspect "$setup_image" >/dev/null 2>&1 \
-		&& ! docker pull "$setup_image" >/dev/null 2>&1; then
-		warn "Setup image $setup_image is not available — falling back to the bash wizard."
-		echo
-		exec bash scripts/setup.sh "${bash_args[@]}"
+	if ! docker image inspect "$setup_image" >/dev/null 2>&1; then
+		info "Pulling setup wizard image ${setup_image}…"
+		local pull_output
+		if ! pull_output=$(docker pull "$setup_image" 2>&1); then
+			# Fail LOUDLY before falling back: swallowing this error once hid a
+			# release whose GHCR packages were private (403 on every pull) behind
+			# a silent switch to the legacy wizard (#554). The docker error names
+			# the actual cause (denied / manifest unknown / network) — show it.
+			error "Failed to pull the setup wizard image: ${setup_image}"
+			printf '%s\n' "$pull_output" | tail -n 5 | sed 's/^/    /' >&2
+			warn "A 'denied' error usually means the GHCR package is private or the release is broken — please report it: https://github.com/${OWLAT_GH_SLUG}/issues"
+			warn "Falling back to the legacy bash setup wizard. If the failure above looks transient (network), abort with Ctrl-C and re-run this installer instead."
+			echo
+			exec bash scripts/setup.sh "${bash_args[@]}"
+		fi
 	fi
 
 	# Route to the end-to-end `quickstart` flow (config + docker up + convex
