@@ -10,7 +10,8 @@
  *     webhook disabled, so the operator's own contacts are never mailed or
  *     exfiltrated by demo scenery;
  *   - removal deletes exactly the seeded rows and leaves the operator's own
- *     data alone, however similar it looks;
+ *     data alone, however similar it looks — and cascades, so their rows
+ *     hanging off a sample contact go with it instead of dangling;
  *   - both directions are idempotent, so a re-run is never destructive.
  */
 
@@ -274,6 +275,99 @@ describe('sample data — status and removal', () => {
 		expect(survivors.contact).not.toBeNull();
 		expect(survivors.topic).not.toBeNull();
 		expect(survivors.contacts).toHaveLength(1);
+	});
+
+	it('cascades, so the operator’s own rows against a demo contact never dangle', async () => {
+		const t = convexTest(schema, modules);
+		await install(t);
+
+		// An operator poking at the sample data leaves rows of their own behind:
+		// a note on a demo contact, that contact enrolled in THEIR automation,
+		// one of their contacts subscribed to a demo topic. Every one of those
+		// carries a required FK, so a bare delete of the parent strands it.
+		const own = await t.run(async (ctx) => {
+			const now = Date.now();
+			const demoContact = await ctx.db
+				.query('contacts')
+				.withIndex('by_email', (q) => q.eq('email', 'ada.lovelace@example.com'))
+				.first();
+			if (!demoContact) throw new Error('sample contact fixture missing');
+			const demoTopic = await ctx.db.query('topics').first();
+			if (!demoTopic) throw new Error('sample topic fixture missing');
+
+			const myAutomation = await ctx.db.insert('automations', {
+				name: 'My real automation',
+				triggerType: 'contact_created' as const,
+				status: 'active' as const,
+				activatedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const runId = await ctx.db.insert('automationRuns', {
+				automationId: myAutomation,
+				contactId: demoContact._id,
+				status: 'running' as const,
+				currentStepIndex: 0,
+				startedAt: now,
+				triggeredBy: 'contact_created',
+			});
+			const activityId = await ctx.db.insert('contactActivities', {
+				contactId: demoContact._id,
+				activityType: 'inbound_received' as const,
+				occurredAt: now,
+			});
+			const myContact = await ctx.db.insert('contacts', {
+				email: 'real.customer@example.com',
+				source: 'api' as const,
+				doiStatus: 'confirmed' as const,
+				searchableText: 'real.customer@example.com',
+				createdAt: now,
+				updatedAt: now,
+			});
+			const membershipId = await ctx.db.insert('contactTopics', {
+				contactId: myContact,
+				topicId: demoTopic._id,
+				addedAt: now,
+			});
+			return { runId, activityId, membershipId, myContact, myAutomation };
+		});
+
+		await post(t, '/sample-data/remove', SECRET);
+
+		const after = await t.run(async (ctx) => ({
+			run: await ctx.db.get(own.runId),
+			activity: await ctx.db.get(own.activityId),
+			membership: await ctx.db.get(own.membershipId),
+			myContact: await ctx.db.get(own.myContact),
+			myAutomation: await ctx.db.get(own.myAutomation),
+			orphanRuns: (await ctx.db.query('automationRuns').collect()).length,
+			orphanActivities: (await ctx.db.query('contactActivities').collect()).length,
+			orphanMemberships: (await ctx.db.query('contactTopics').collect()).length,
+		}));
+
+		// Children of a removed sample parent go with it...
+		expect(after.run).toBeNull();
+		expect(after.activity).toBeNull();
+		expect(after.membership).toBeNull();
+		expect(after.orphanRuns).toBe(0);
+		expect(after.orphanActivities).toBe(0);
+		expect(after.orphanMemberships).toBe(0);
+		// ...while the operator's own untagged rows are untouched.
+		expect(after.myContact).not.toBeNull();
+		expect(after.myAutomation).not.toBeNull();
+	});
+
+	it('leaves the cached contact count alone — the loaders never raised it', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', { contactCount: 7, createdAt: Date.now() });
+		});
+
+		await install(t);
+		await post(t, '/sample-data/remove', SECRET);
+
+		const settings = await t.run(async (ctx) => await ctx.db.query('instanceSettings').first());
+		expect(settings?.contactCount).toBe(7);
 	});
 
 	it('reports a scan it could not finish rather than under-counting silently', async () => {

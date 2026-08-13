@@ -28,8 +28,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
-import type { TableNames } from '../_generated/dataModel';
+import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import type { Id, TableNames } from '../_generated/dataModel';
 import {
 	applyLoaders,
 	isRemovableSeedRow,
@@ -37,6 +37,7 @@ import {
 	SAMPLE_DATA_MODULES,
 	SEEDED_TABLES,
 } from '../seedDemo/pipeline';
+import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
 
 /** Rows scanned per page. Well under the per-transaction read budget. */
 export const SCAN_PAGE_SIZE = 512;
@@ -93,9 +94,55 @@ export const deleteTaggedRows = internalMutation({
 			if (!id) continue;
 			const row = await ctx.db.get(id);
 			if (!row || !isRemovableSeedRow(row)) continue;
-			await ctx.db.delete(id);
+			await deleteSeededRow(ctx, known, id);
 			deleted++;
 		}
 		return deleted;
 	},
 });
+
+/**
+ * Delete one seed-tagged row, honouring its table's cascade contract.
+ *
+ * A bare `ctx.db.delete` is only correct for leaf rows. `contacts` and `topics`
+ * are parents, and an operator exploring the sample data leaves rows of their
+ * own hanging off them — an activity logged against a demo contact, that
+ * contact enrolled in one of THEIR automations, one of their contacts
+ * subscribed to a demo topic. Those children carry required foreign keys, so
+ * dropping the parent alone strands them.
+ *
+ * The contact cascade is owned by `permanentlyDeleteContactWithRelations`
+ * (`lib/contactMutations.ts`) — the same helper the retention cron uses, and
+ * per `schema/contacts.ts` the only sanctioned place that cascade lives. The
+ * topic cascade mirrors `topics.remove`: memberships, then the topic.
+ *
+ * `decrementCount: false` because the seed loaders never incremented
+ * `instanceSettings.contactCount` in the first place; decrementing here would
+ * push the operator's own contact count below the truth.
+ */
+async function deleteSeededRow(
+	ctx: MutationCtx,
+	table: TableNames,
+	id: Id<TableNames>
+): Promise<void> {
+	if (table === 'contacts') {
+		// Narrowing `table` does not narrow the id's phantom table type; the
+		// branch is the guarantee.
+		await permanentlyDeleteContactWithRelations(ctx, id as Id<'contacts'>, {
+			decrementCount: false,
+		});
+		return;
+	}
+
+	if (table === 'topics') {
+		const memberships = await ctx.db
+			.query('contactTopics')
+			.withIndex('by_topic', (q) => q.eq('topicId', id as Id<'topics'>))
+			.collect(); // bounded: one topic's memberships (cascade)
+		for (const membership of memberships) {
+			await ctx.db.delete(membership._id);
+		}
+	}
+
+	await ctx.db.delete(id);
+}
