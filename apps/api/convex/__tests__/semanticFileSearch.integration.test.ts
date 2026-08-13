@@ -193,6 +193,46 @@ describe('semanticFiles.update — conversation linking', () => {
 			/Conversation not found/
 		);
 	});
+
+	// The link is validated on the way IN as well, in the one shared insert, so
+	// no writer can create the dangling link `update` refuses to set.
+	it('refuses to create a file linked to a thread that does not exist', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await insertThread(t, 'Deleted thread');
+		await t.run((ctx) => ctx.db.delete(threadId));
+		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['body'])));
+
+		await expect(
+			t.mutation(api.semanticFiles.create, {
+				storageId,
+				filename: 'quote.txt',
+				mimeType: 'text/plain',
+				fileSize: 4,
+				sourceType: 'upload',
+				threadId,
+			})
+		).rejects.toThrow(/Conversation not found/);
+
+		expect(await t.run((ctx) => ctx.db.query('semanticFiles').collect())).toHaveLength(0);
+	});
+
+	it('refuses the same dangling link on the server-side ingestion path', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await insertThread(t, 'Deleted thread');
+		await t.run((ctx) => ctx.db.delete(threadId));
+		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['body'])));
+
+		await expect(
+			t.mutation(internal.semanticFiles.ingest, {
+				storageId,
+				filename: 'attachment.txt',
+				mimeType: 'text/plain',
+				fileSize: 4,
+				sourceType: 'email_attachment',
+				threadId,
+			})
+		).rejects.toThrow(/Conversation not found/);
+	});
 });
 
 describe('migration 0038 — rebuild searchableText', () => {
