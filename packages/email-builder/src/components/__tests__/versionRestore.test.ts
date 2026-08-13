@@ -66,9 +66,9 @@ describe('EmailBuilder version restore', () => {
 		expect(w.text()).not.toContain('Current copy');
 		// The restore round-trips back to the host, so a save persists what the
 		// canvas shows.
-		expect((w.emitted('update:blocks')?.at(-1)?.[0] as EditorBlock[])[0]).toMatchObject({
-			id: 'b-1',
-		});
+		const emitted = (w.emitted('update:blocks')?.at(-1)?.[0] ?? []) as EditorBlock[];
+		expect(emitted).toHaveLength(1);
+		expect((emitted[0]!.content as TextBlockContent).html).toContain('Yesterday copy');
 		expect(w.emitted('update:name')?.at(-1)).toEqual(['Restored name']);
 		expect(w.emitted('update:subject')?.at(-1)).toEqual(['Restored subject']);
 	});
