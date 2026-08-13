@@ -75,12 +75,22 @@ export const channelSecretFieldValidator = v.union(
  * that is not a decryptable envelope (tampered, encrypted under a rotated
  * INSTANCE_SECRET, or a row from before encrypt-on-write) — every caller here
  * is fail-safe and treats null as "not configured".
+ *
+ * That fail-safe silence is exactly what makes the rotated-INSTANCE_SECRET case
+ * unexplainable from the outside: the row is right there in Settings → Channels
+ * and inbound still 503s (or quietly falls back to the deployment env var). So a
+ * stored-but-unopenable envelope is logged — the channel and the failure only,
+ * never the envelope, the plaintext or any credential value.
  */
-export function decryptChannelCreds(config: string): ChannelCreds | null {
+export function decryptChannelCreds(config: string, channel: string): ChannelCreds | null {
 	try {
 		const envelope = JSON.parse(config) as EncryptedEnvelope;
 		return JSON.parse(decryptSecret(envelope)) as ChannelCreds;
-	} catch {
+	} catch (error) {
+		// eslint-disable-next-line no-console
+		console.error(
+			`[channels] stored credential envelope for '${channel}' could not be opened (tampered row, or encrypted under a rotated INSTANCE_SECRET) — treating the channel as not configured: ${error instanceof Error ? error.message : String(error)}`
+		);
 		return null;
 	}
 }
@@ -111,11 +121,25 @@ export const getInboundSecret = internalAction({
 		});
 		if (!config?.config) return null;
 
-		const creds = decryptChannelCreds(config.config);
+		// decryptChannelCreds logs the undecryptable case (it is the one this
+		// route cannot otherwise explain).
+		const creds = decryptChannelCreds(config.config, args.channel);
 		if (!creds) return null;
 
 		const key = args.field === 'verifyToken' ? 'verifyToken' : INBOUND_SIGNING_FIELD[args.channel];
 		const value = creds[key];
-		return typeof value === 'string' && value.length > 0 ? value : null;
+		if (typeof value !== 'string' || value.length === 0) {
+			// The channel IS configured, just not with this field — the partial-save
+			// shape an operator hits when they fill the outbound credentials and
+			// leave the inbound ones blank. Say which field is missing (name only,
+			// never a value) so the fallback-or-503 in webhooks/channelSecrets.ts is
+			// traceable to a configuration gap rather than a decryption failure.
+			// eslint-disable-next-line no-console
+			console.error(
+				`[channels] stored credentials for '${args.channel}' carry no '${key}' — falling back to the deployment env var for inbound ${args.field}`
+			);
+			return null;
+		}
+		return value;
 	},
 });
