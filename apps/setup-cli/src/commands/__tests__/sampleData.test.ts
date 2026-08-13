@@ -44,8 +44,12 @@ describe('parseAction', () => {
 });
 
 describe('formatCounts', () => {
+	// picocolors wraps the numbers when the environment forces color (CI does),
+	// so assertions compare the text content, not the escape codes around it.
+	const stripAnsi = (s: string) => s.replace(/\u001b\[\d+m/g, '');
+
 	it('lists non-zero counts and drops the zeros', () => {
-		const out = formatCounts({ contacts: 15, topics: 3, webhooks: 0 });
+		const out = stripAnsi(formatCounts({ contacts: 15, topics: 3, webhooks: 0 }));
 		expect(out).toContain('15 contacts');
 		expect(out).toContain('3 topics');
 		expect(out).not.toContain('webhooks');
