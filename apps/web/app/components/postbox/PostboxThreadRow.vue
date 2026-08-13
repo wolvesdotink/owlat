@@ -159,7 +159,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 					class="mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
 					:class="
 						selected
-							? 'bg-brand border-brand text-white'
+							? 'bg-brand border-brand text-text-inverse'
 							: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100'
 					"
 					:aria-label="selected ? 'Deselect' : 'Select'"

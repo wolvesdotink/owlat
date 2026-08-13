@@ -52,7 +52,7 @@ const emit = defineEmits<{
 			</button>
 			<button
 				type="button"
-				class="inline-flex items-center gap-1 rounded bg-brand px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
+				class="inline-flex items-center gap-1 rounded bg-brand px-2.5 py-1 text-xs font-medium text-text-inverse hover:opacity-90"
 				@click="emit('apply')"
 			>
 				<Icon name="lucide:check" class="h-3.5 w-3.5" />

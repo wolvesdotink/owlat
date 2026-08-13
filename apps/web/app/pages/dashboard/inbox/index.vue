@@ -176,7 +176,7 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 					Review Queue
 					<span
 						v-if="stats?.draftReady"
-						class="ml-1 bg-white/20 text-white text-xs px-1.5 py-0.5 rounded-full"
+						class="ml-1 bg-text-inverse/20 text-text-inverse text-xs px-1.5 py-0.5 rounded-full"
 					>
 						{{ stats.draftReady }}
 					</span>

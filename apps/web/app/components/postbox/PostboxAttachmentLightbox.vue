@@ -144,9 +144,13 @@ onBeforeUnmount(() => {
 
 <template>
 	<Teleport to="body">
+		<!-- palette-ok-start: every colour below is drawn on the fixed scrim this
+		     dialog paints, not on an app surface — the chrome is white in both
+		     themes and the PDF/image canvas is white because the document is. A
+		     theme token here would follow the app and disappear in light mode. -->
 		<div
 			ref="containerRef"
-			class="fixed inset-0 z-(--z-overlay) flex flex-col bg-black/85"
+			class="fixed inset-0 z-(--z-overlay) flex flex-col bg-scrim/85"
 			role="dialog"
 			aria-modal="true"
 			:aria-label="current ? `Preview of ${current.filename}` : 'Attachment preview'"
@@ -227,7 +231,10 @@ onBeforeUnmount(() => {
 					class="w-full h-full rounded bg-white"
 					:aria-label="`PDF preview of ${current?.filename}`"
 				>
-					<p class="p-4 text-sm text-text-primary">
+					<!-- The fallback paints inside the white <object> above, so its text is
+					     literal dark-on-white: text-text-primary would follow the app and go
+					     near-white on white in dark mode. -->
+					<p class="p-4 text-sm text-gray-900">
 						This browser can't embed PDFs —
 						<button type="button" class="underline" @click="openInNewTab">open in a new tab</button>
 						instead.
@@ -246,5 +253,6 @@ onBeforeUnmount(() => {
 				</button>
 			</div>
 		</div>
+		<!-- palette-ok-end -->
 	</Teleport>
 </template>
