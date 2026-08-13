@@ -270,7 +270,7 @@ async function changePreset(
 <template>
 	<div class="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
 		<header class="mb-6">
-			<h1 class="text-2xl font-semibold text-text-primary">Delivery controls</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Delivery controls</h1>
 			<!-- The action clause used to be conditional, as the header's half of an
 			     in-template admin gate. The `admin` route middleware means every
 			     reader of this page is an admin, so the lede promises the controls
@@ -313,17 +313,17 @@ async function changePreset(
 				<UiCard>
 					<h2 class="text-base font-semibold text-text-primary">Pick a cell</h2>
 					<div class="mt-3 flex flex-wrap gap-2">
-						<button
+						<UiButton
 							v-for="cell in cells"
 							:key="cell.cellKey"
-							type="button"
-							class="rounded-md border border-border-subtle px-2 py-1 text-sm"
+							variant="outline"
+							size="sm"
 							:aria-pressed="cell.cellKey === selectedCellKey"
 							:data-testid="`ramp-select-${cell.cellKey}`"
 							@click="selectCell(cell.cellKey)"
 						>
 							{{ rampCellLabel(cell.cell) }} · {{ shareLabel(cell.ownShare) }}
-						</button>
+						</UiButton>
 					</div>
 				</UiCard>
 

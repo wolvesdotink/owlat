@@ -241,7 +241,7 @@ onBeforeUnmount(() => {
 			leave-from-class="opacity-100"
 			leave-to-class="opacity-0"
 		>
-			<div v-if="open" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" @click="close" />
+			<div v-if="open" class="fixed inset-0 bg-bg-deep/80 backdrop-blur-sm z-50" @click="close" />
 		</Transition>
 
 		<Transition
@@ -352,7 +352,7 @@ onBeforeUnmount(() => {
 							</span>
 							<kbd
 								v-if="item.hint"
-								class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
+								class="text-2xs text-text-tertiary border border-border-subtle rounded px-1"
 								>{{ item.hint }}</kbd
 							>
 						</button>
@@ -364,19 +364,19 @@ onBeforeUnmount(() => {
 					class="px-4 py-2 border-t border-border-subtle bg-bg-surface text-xs text-text-tertiary flex items-center gap-4"
 				>
 					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]"
+						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>↑↓</kbd
 						>
 						Navigate
 					</span>
 					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]"
+						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>↵</kbd
 						>
 						Select
 					</span>
 					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px]"
+						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>esc</kbd
 						>
 						Close

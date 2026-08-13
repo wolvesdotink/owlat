@@ -126,7 +126,9 @@ describe('custom sort dropdowns expose listbox semantics linked to their trigger
 
 	for (const { name, src, id } of cases) {
 		it(`${name}: trigger and listbox are aria-linked with per-option state`, () => {
-			const trigger = pick(src, 'aria-haspopup="listbox"', 'button');
+			// UiButton renders a native <button> and forwards aria-* via $attrs,
+			// so the design-system trigger satisfies the same contract.
+			const trigger = pick(src, 'aria-haspopup="listbox"', 'UiButton');
 			expect(trigger).toMatch(/:aria-expanded=/);
 			expect(trigger).toContain(`aria-controls="${id}"`);
 

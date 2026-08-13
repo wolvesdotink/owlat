@@ -126,7 +126,7 @@ const formatDate = (ts: number) =>
 						v-model="editingTitle"
 						type="text"
 						maxlength="120"
-						class="flex-1 min-w-0 bg-transparent outline-none border-b border-border-subtle"
+						class="input input-sm flex-1 min-w-0"
 						@click.stop
 						@blur="commitRename"
 						@keyup.enter="commitRename"
@@ -134,11 +134,11 @@ const formatDate = (ts: number) =>
 					/>
 					<template v-else>
 						<span class="flex-1 truncate">{{ c.title }}</span>
-						<span class="text-[11px] text-text-tertiary flex-shrink-0">{{
+						<span class="text-2xs text-text-tertiary flex-shrink-0">{{
 							formatDate(c.lastMessageAt)
 						}}</span>
 						<button
-							class="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-text-primary transition-opacity flex-shrink-0"
+							class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-text-primary transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							title="Rename conversation"
 							aria-label="Rename conversation"
 							@click.stop="startRename(c._id, c.title)"
@@ -146,7 +146,7 @@ const formatDate = (ts: number) =>
 							<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
 						</button>
 						<button
-							class="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-error transition-opacity flex-shrink-0"
+							class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-error transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							title="Delete conversation"
 							aria-label="Delete conversation"
 							@click.stop="pendingDelete = { _id: c._id, title: c.title }"
@@ -190,7 +190,7 @@ const formatDate = (ts: number) =>
 						<button
 							v-for="prompt in examplePrompts"
 							:key="prompt"
-							class="text-left text-sm px-4 py-2.5 rounded-xl border border-border-subtle text-text-secondary hover:bg-bg-surface hover:text-text-primary transition-colors"
+							class="text-left text-sm px-4 py-2.5 rounded-xl bg-surface-1 shadow-surface-1 text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="onExample(prompt)"
 						>
 							{{ prompt }}

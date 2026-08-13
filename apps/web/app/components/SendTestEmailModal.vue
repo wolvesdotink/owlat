@@ -230,9 +230,9 @@ watch(
 								v-model="testEmails[index]"
 								type="email"
 								placeholder="email@example.com"
-								class="w-full pl-10 pr-4 py-2.5 bg-bg-surface border border-border-default rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
+								class="input pl-10"
 								:class="{
-									'border-error': testEmails[index] && !isValidEmail(testEmails[index]),
+									'input-error': testEmails[index] && !isValidEmail(testEmails[index]),
 								}"
 							/>
 							<Icon
@@ -273,7 +273,7 @@ watch(
 							v-model="sampleData['firstName']"
 							type="text"
 							placeholder="First Name"
-							class="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border-default rounded-lg text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
+							class="input input-sm pl-10"
 						/>
 						<Icon
 							name="lucide:user"
@@ -285,7 +285,7 @@ watch(
 							v-model="sampleData['lastName']"
 							type="text"
 							placeholder="Last Name"
-							class="w-full px-4 py-2 bg-bg-surface border border-border-default rounded-lg text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
+							class="input input-sm"
 						/>
 					</div>
 				</div>
@@ -303,7 +303,7 @@ watch(
 							v-model="dataVariableValues[variable.key]"
 							type="text"
 							:placeholder="variable.key"
-							class="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border-default rounded-lg text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
+							class="input input-sm pl-10"
 						/>
 						<Icon
 							name="lucide:variable"
@@ -334,21 +334,14 @@ watch(
 		</div>
 
 		<template #footer>
-			<button
-				class="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-				@click="close"
-			>
-				Cancel
-			</button>
-			<button
-				class="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-brand text-text-inverse rounded-lg hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-				:disabled="!canSend || isSending"
-				@click="handleSend"
-			>
-				<UiSpinner v-if="isSending" size="xs" tone="inverse" />
-				<Icon v-else name="lucide:send" class="w-4 h-4" />
+			<UiButton variant="ghost" @click="close"> Cancel </UiButton>
+			<UiButton :disabled="!canSend || isSending" @click="handleSend">
+				<template #iconLeft>
+					<UiSpinner v-if="isSending" size="xs" tone="inverse" />
+					<Icon v-else name="lucide:send" class="w-4 h-4" />
+				</template>
 				<span>{{ isSending ? 'Queueing...' : 'Queue Test' }}</span>
-			</button>
+			</UiButton>
 		</template>
 	</UiModal>
 </template>

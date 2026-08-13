@@ -21,7 +21,7 @@ const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
 		<div class="h-16 flex items-center justify-between px-4">
 			<div class="flex items-center">
 				<button
-					class="p-2 text-text-secondary hover:text-text-primary"
+					class="p-2 rounded-lg text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					aria-label="Open navigation menu"
 					@click="emit('openNavigation')"
 				>
@@ -37,7 +37,7 @@ const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
 			</div>
 
 			<button
-				class="p-2 text-text-secondary hover:text-text-primary"
+				class="p-2 rounded-lg text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				aria-label="Search"
 				@click="emit('openSearch')"
 			>

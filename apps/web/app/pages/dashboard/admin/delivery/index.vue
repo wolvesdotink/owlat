@@ -176,7 +176,7 @@ const sendingDetail = computed(() => {
 				<UiIconBox icon="lucide:shield-check" size="lg" variant="brand" rounded="xl" />
 				<div>
 					<div class="flex items-center gap-2.5">
-						<h1 class="text-2xl font-semibold text-text-primary">Delivery health</h1>
+						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Delivery health</h1>
 						<span
 							class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
 							:class="verdictChipClass"

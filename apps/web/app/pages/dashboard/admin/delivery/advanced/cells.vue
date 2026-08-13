@@ -95,7 +95,7 @@ function select(cellKey: string): void {
 <template>
 	<div class="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
 		<header class="mb-6">
-			<h1 class="text-2xl font-semibold text-text-primary">Delivery cells</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Delivery cells</h1>
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
 				Every stream and mailbox provider the ramp manages, what it is doing, and why. Open a cell
 				for the numbers behind each check.

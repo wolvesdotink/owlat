@@ -75,22 +75,24 @@ onMounted(async () => {
 </script>
 
 <template>
-	<div class="min-h-screen bg-gray-50">
+	<div class="min-h-screen bg-bg-base">
 		<!-- Loading State -->
 		<div v-if="isLoading" class="flex items-center justify-center min-h-screen">
 			<div class="flex flex-col items-center gap-4">
 				<UiSpinner size="lg" tone="brand" />
-				<p class="text-gray-500 text-sm">Loading archive...</p>
+				<p class="text-text-secondary text-sm">Loading archive...</p>
 			</div>
 		</div>
 
 		<!-- Error State -->
 		<div v-else-if="error" class="flex items-center justify-center min-h-screen px-4">
 			<div class="text-center max-w-md">
-				<div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-50 flex items-center justify-center">
+				<div
+					class="w-16 h-16 mx-auto mb-4 rounded-full bg-error-subtle flex items-center justify-center"
+				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-red-400"
+						class="h-8 w-8 text-error"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -103,18 +105,20 @@ onMounted(async () => {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-gray-900 mb-2">Archive Not Available</h2>
-				<p class="text-gray-500">{{ error }}</p>
+				<h2 class="text-lg font-semibold text-text-primary mb-2">Archive Not Available</h2>
+				<p class="text-text-secondary">{{ error }}</p>
 			</div>
 		</div>
 
 		<!-- Archive Content -->
 		<div v-else-if="archiveData">
 			<!-- Header -->
-			<div class="bg-white border-b border-gray-200">
+			<div class="bg-bg-elevated border-b border-border-default">
 				<div class="max-w-3xl mx-auto px-4 py-4">
-					<h1 class="text-lg font-semibold text-gray-900">{{ archiveData.subject }}</h1>
-					<p class="text-sm text-gray-500 mt-1">
+					<h1 class="text-lg font-medium tracking-[-0.02em] text-text-primary">
+						{{ archiveData.subject }}
+					</h1>
+					<p class="text-sm text-text-secondary mt-1">
 						{{ archiveData.organizationName }}
 						<span v-if="formattedDate"> &middot; {{ formattedDate }}</span>
 					</p>
@@ -123,7 +127,9 @@ onMounted(async () => {
 
 			<!-- Email Content in sandboxed iframe -->
 			<div class="max-w-3xl mx-auto my-6 px-4">
-				<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+				<div
+					class="bg-bg-elevated rounded-lg shadow-sm border border-border-default overflow-hidden"
+				>
 					<!--
 						`allow-same-origin` is required so the @load handler can read
 						contentDocument to size the frame to the email. NEVER add
@@ -146,7 +152,7 @@ onMounted(async () => {
 			</div>
 
 			<!-- Footer -->
-			<div class="text-center py-6 text-gray-400 text-sm">
+			<div class="text-center py-6 text-text-tertiary text-sm">
 				Powered by <span class="font-semibold">Owlat</span>
 			</div>
 		</div>

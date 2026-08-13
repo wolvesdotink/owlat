@@ -127,9 +127,9 @@ const lastEventLabel = computed(() =>
 			<div v-if="hasUrl">
 				<div class="flex items-center justify-between mb-2">
 					<p class="text-xs font-medium text-text-primary">Webhook URL</p>
-					<button
-						type="button"
-						class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					<UiButton
+						variant="ghost"
+						size="sm"
 						:title="isCopied('signed-webhook-url') ? 'Copied' : 'Copy webhook URL'"
 						@click="copy(webhookUrl, 'signed-webhook-url')"
 					>
@@ -139,7 +139,7 @@ const lastEventLabel = computed(() =>
 							:class="isCopied('signed-webhook-url') ? 'text-success' : ''"
 						/>
 						{{ isCopied('signed-webhook-url') ? 'Copied' : 'Copy' }}
-					</button>
+					</UiButton>
 				</div>
 				<pre
 					class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
