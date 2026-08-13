@@ -52,7 +52,7 @@ const ICON_BY_ROLE: Record<string, string> = {
 			     visible without the label. -->
 			<span
 				v-else-if="folder.unseenCount > 0"
-				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-white text-[10px] leading-4 font-medium text-center"
+				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-[10px] leading-4 font-medium text-center"
 			>{{ folder.unseenCount > 99 ? '99+' : folder.unseenCount }}</span>
 		</NuxtLink>
 	</nav>

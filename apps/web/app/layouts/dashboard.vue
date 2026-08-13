@@ -436,7 +436,7 @@ const sidebarDesktopClass = computed(() => {
 		>
 			<div
 				v-if="isSidebarOpen"
-				class="fixed inset-0 bg-black/50 z-40 lg:hidden"
+				class="fixed inset-0 bg-scrim/50 z-40 lg:hidden"
 				@click="isSidebarOpen = false"
 			/>
 		</Transition>

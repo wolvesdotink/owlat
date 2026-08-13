@@ -88,6 +88,18 @@ const { data: domainVerificationStatus } = useOrganizationQuery(
 	}
 );
 
+// TODAY'S HEADROOM, shown with the send options rather than after the send is
+// attempted. Same paced projection the binding gate meters against
+// (`campaigns/sendingReadiness.ts`), so this line and a capacity refusal can
+// never quote different numbers.
+const { data: sendingReadiness } = useOrganizationQuery(
+	api.campaigns.sendingReadiness.getSendingReadiness,
+	() => {
+		const from = props.data.fromEmail.trim();
+		return isValidEmail(from) ? { fromEmail: from } : {};
+	}
+);
+
 const sendBlockedReason = computed(() => {
 	const status = domainVerificationStatus.value;
 	if (!status) return null;
@@ -387,6 +399,13 @@ const variantBTemplateName = computed(() => {
 				<Icon name="lucide:alert-circle" class="mt-0.5 h-4 w-4 shrink-0" />
 				<p>{{ sendBlockedReason }}</p>
 			</div>
+
+			<!-- What can actually go out today, before either option is chosen. -->
+			<CampaignsSendReadinessNote
+				:readiness="sendingReadiness"
+				:audience-size="data.audienceCount"
+				class="mb-4"
+			/>
 
 			<div class="space-y-4">
 				<!-- Send Now Option -->

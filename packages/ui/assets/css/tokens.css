@@ -14,6 +14,11 @@
 	--color-bg-surface-hover: color-mix(in srgb, var(--color-bg-surface) 94%, var(--surface-tint));
 	--color-bg-overlay: var(--surface-5);
 	--color-bg-soft: var(--surface-2);
+	/* The dimmer BEHIND a modal, not a surface painted on the page — it darkens
+	   whatever it covers, so it is the same in both themes on purpose and light
+	   and dark deliberately do not override it. Always used with an opacity
+	   (bg-scrim/50); a bare bg-scrim would be an opaque black page. */
+	--color-scrim: #000000;
 
 	/* === PRIMARY: TERRACOTTA === */
 	--color-brand: #b86b4d;
@@ -48,6 +53,13 @@
 	--color-warning-subtle: #faf5ea;
 	--color-error: #a85545;
 	--color-error-subtle: #faf0ee;
+	/* Solid danger FILLS only (.btn-danger, the danger confirmation button).
+	   --color-error is tuned to sit quietly as text and hairlines, which in dark
+	   mode puts it within ~13 of one channel of --color-brand (#c46b5a vs #c4785a)
+	   — a filled Delete button and a filled brand button read as the same colour.
+	   This one is redder and further from terracotta, and still clears AA against
+	   --color-text-inverse in both themes (6.8:1 light, 5.1:1 dark). */
+	--color-error-strong: #9c3520;
 	--color-info: #4a7a9a;
 	--color-info-subtle: #eff5f9;
 

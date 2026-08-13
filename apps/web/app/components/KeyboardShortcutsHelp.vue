@@ -51,7 +51,7 @@ const handleBackdropClick = () => {
 		>
 			<div
 				v-if="isHelpModalOpen"
-				class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+				class="fixed inset-0 bg-scrim/60 backdrop-blur-sm z-50"
 				@click="handleBackdropClick"
 			/>
 		</Transition>

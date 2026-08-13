@@ -277,6 +277,12 @@ async function copyReport() {
 					@verify="verify"
 				/>
 
+				<!-- The checks above are about what your DNS says; this is about what
+				     the ramp controller is doing with your traffic. It reads for itself
+				     and states its own faults, so the checklist query this page's
+				     boundary speaks for stays the only thing it speaks for. -->
+				<DeliveryRampNarrativeCard />
+
 				<DeliveryDeliverabilityChecklistGroups
 					:groups="center.groups"
 					:verifying-item-key="verifyingItemKey"

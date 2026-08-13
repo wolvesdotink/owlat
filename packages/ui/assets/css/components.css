@@ -43,8 +43,15 @@
 		@apply bg-transparent text-text-secondary shadow-surface-1 hover:text-text-primary hover:shadow-surface-2;
 	}
 
+	/* Solid danger: the SEPARATE error-strong fill (--color-error reads as brand
+	   terracotta once it is a whole button in dark mode), and the same reasoning
+	   as .btn-primary for the label — the fill is a token that flips with the
+	   theme, so the text has to flip with it. A literal white stayed legible on
+	   the light fill and dropped to ~3.7:1 on the dark one. The ghost/outline
+	   danger variants keep the quiet --color-error: they are tinted text on an
+	   app surface, not a fill that has to shout. */
 	.btn-danger {
-		@apply bg-error text-white hover:bg-error/90;
+		@apply bg-error-strong text-text-inverse hover:bg-error-strong/90;
 	}
 
 	.btn-danger-ghost {
