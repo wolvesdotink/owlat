@@ -60,8 +60,12 @@ export function resolveEditorKeyAction(
 
 	// Move the selected block (Alt+Arrow). Alt (not Cmd/Ctrl) keeps macOS' native
 	// word navigation and the browser's history bindings intact, and leaves the
-	// plain arrows to the canvas listbox, which moves the *selection*.
-	if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && event.altKey && ctx.hasActiveBlock) {
+	// plain arrows to the canvas list, which moves the *selection*.
+	if (
+		(event.key === 'ArrowUp' || event.key === 'ArrowDown') &&
+		event.altKey &&
+		ctx.hasActiveBlock
+	) {
 		return { type: 'move', direction: event.key === 'ArrowUp' ? 'up' : 'down' };
 	}
 

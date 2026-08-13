@@ -33,7 +33,11 @@ function swap<T>(list: readonly T[], index: number, direction: MoveDirection): T
 }
 
 /** Replace one block of `blocks` by index, returning a new array. */
-function replaceAt(blocks: readonly EditorBlock[], index: number, block: EditorBlock): EditorBlock[] {
+function replaceAt(
+	blocks: readonly EditorBlock[],
+	index: number,
+	block: EditorBlock
+): EditorBlock[] {
 	const next = [...blocks];
 	next[index] = block;
 	return next;

@@ -60,10 +60,7 @@ describe('moveBlock — root blocks', () => {
 describe('moveBlock — column items', () => {
 	const blocks = () => [
 		block('before'),
-		columns('cols', [
-			[textItem('c1'), textItem('c2'), textItem('c3')],
-			[textItem('other')],
-		]),
+		columns('cols', [[textItem('c1'), textItem('c2'), textItem('c3')], [textItem('other')]]),
 	];
 	const target = { itemId: 'c2', column: { blockId: 'cols', columnIndex: 0 } };
 
@@ -128,7 +125,9 @@ describe('moveBlock — container items', () => {
 	it('stops at the ends and ignores unknown ids', () => {
 		expect(moveBlock(blocks(), { itemId: 'i1', container: { blockId: 'box' } }, 'up')).toBeNull();
 		expect(moveBlock(blocks(), { itemId: 'i3', container: { blockId: 'box' } }, 'down')).toBeNull();
-		expect(moveBlock(blocks(), { itemId: 'ghost', container: { blockId: 'box' } }, 'up')).toBeNull();
+		expect(
+			moveBlock(blocks(), { itemId: 'ghost', container: { blockId: 'box' } }, 'up')
+		).toBeNull();
 		expect(moveBlock(blocks(), { itemId: 'i2', container: { blockId: 'gone' } }, 'up')).toBeNull();
 	});
 

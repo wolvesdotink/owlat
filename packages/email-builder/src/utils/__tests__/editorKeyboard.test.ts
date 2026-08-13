@@ -24,9 +24,11 @@ function key(init: KeyboardEventInit, target?: HTMLElement): KeyboardEvent {
 
 describe('resolveEditorKeyAction — undo/redo', () => {
 	it('redoes on Cmd/Ctrl+Shift+Z (event.key is uppercased by Shift)', () => {
-		expect(resolveEditorKeyAction(key({ key: 'Z', metaKey: true, shiftKey: true }), ctx())).toEqual({
-			type: 'redo',
-		});
+		expect(resolveEditorKeyAction(key({ key: 'Z', metaKey: true, shiftKey: true }), ctx())).toEqual(
+			{
+				type: 'redo',
+			}
+		);
 	});
 
 	it('undoes on Cmd/Ctrl+Z', () => {
@@ -53,7 +55,7 @@ describe('resolveEditorKeyAction — Alt+Arrow reorder', () => {
 		});
 	});
 
-	it('ignores plain arrows — those belong to the canvas listbox selection', () => {
+	it('ignores plain arrows — those belong to the canvas list selection', () => {
 		expect(resolveEditorKeyAction(key({ key: 'ArrowUp' }), ctx())).toBeNull();
 	});
 
@@ -104,9 +106,9 @@ describe('resolveEditorKeyAction — block keys', () => {
 
 describe('resolveEditorKeyAction — modal and inline-edit guards', () => {
 	it('leaves inline editing on Escape before anything else', () => {
-		expect(
-			resolveEditorKeyAction(key({ key: 'Escape' }), ctx({ isInlineEditing: true }))
-		).toEqual({ type: 'exit-inline-edit' });
+		expect(resolveEditorKeyAction(key({ key: 'Escape' }), ctx({ isInlineEditing: true }))).toEqual({
+			type: 'exit-inline-edit',
+		});
 	});
 
 	it('ignores Escape when nothing is being edited inline', () => {
