@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { isValidEmail } from '~/utils/validation';
 
-useHead({ title: 'Login \u2014 Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('auth.login.pageTitle') });
 
 definePageMeta({
 	middleware: 'guest',
@@ -29,11 +31,11 @@ const errors = reactive({
 // Validate email
 function validateEmail(): boolean {
 	if (!email.value) {
-		errors.email = 'Email is required';
+		errors.email = t('auth.validation.emailRequired');
 		return false;
 	}
 	if (!isValidEmail(email.value)) {
-		errors.email = 'Please enter a valid email address';
+		errors.email = t('auth.validation.emailInvalid');
 		return false;
 	}
 	errors.email = '';
@@ -43,11 +45,11 @@ function validateEmail(): boolean {
 // Validate password
 function validatePassword(): boolean {
 	if (!password.value) {
-		errors.password = 'Password is required';
+		errors.password = t('auth.validation.passwordRequired');
 		return false;
 	}
 	if (password.value.length < 10) {
-		errors.password = 'Password must be at least 10 characters';
+		errors.password = t('auth.validation.passwordTooShort');
 		return false;
 	}
 	errors.password = '';
@@ -84,7 +86,7 @@ async function handleSubmit() {
 		<!-- Logo/Brand -->
 		<div class="mb-8 text-center">
 			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="text-text-secondary mt-2">Sign in to your account</p>
+			<p class="text-text-secondary mt-2">{{ t('auth.login.tagline') }}</p>
 		</div>
 
 		<!-- Login Card -->
@@ -94,7 +96,7 @@ async function handleSubmit() {
 				v-if="justCompletedSetup"
 				class="mb-6 p-4 bg-success-subtle border border-success/30 rounded-lg text-success text-sm"
 			>
-				Your Owlat instance is ready. Sign in with the admin account you just created.
+				{{ t('auth.login.postSetupBanner') }}
 			</div>
 
 			<!-- Error Message -->
@@ -112,8 +114,8 @@ async function handleSubmit() {
 					v-model="email"
 					type="email"
 					autocomplete="email"
-					label="Email"
-					placeholder="you@example.com"
+					:label="t('auth.fields.email')"
+					:placeholder="t('auth.fields.emailPlaceholder')"
 					:error="errors.email"
 					@blur="validateEmail"
 				/>
@@ -124,27 +126,31 @@ async function handleSubmit() {
 					v-model="password"
 					type="password"
 					autocomplete="current-password"
-					label="Password"
-					placeholder="Enter your password"
+					:label="t('auth.fields.password')"
+					:placeholder="t('auth.login.passwordPlaceholder')"
 					:error="errors.password"
 					@blur="validatePassword"
 				/>
 
 				<!-- Forgot Password Link -->
 			<div class="flex justify-end -mt-1">
-				<NuxtLink to="/auth/forgot-password" class="text-sm link">Forgot password?</NuxtLink>
+				<NuxtLink to="/auth/forgot-password" class="text-sm link">{{
+					t('auth.login.forgotPassword')
+				}}</NuxtLink>
 			</div>
 
 			<!-- Submit Button -->
 				<UiButton type="submit" size="lg" full-width :loading="isLoading">
-					{{ isLoading ? 'Signing in...' : 'Sign in' }}
+					{{ isLoading ? t('auth.login.submitting') : t('auth.login.submit') }}
 				</UiButton>
 			</form>
 
 			<!-- Register Link -->
 			<p class="mt-6 text-center text-text-secondary text-sm">
-				Don't have an account?
-				<NuxtLink to="/auth/register" class="link font-medium"> Create one </NuxtLink>
+				{{ t('auth.login.noAccount') }}
+				<NuxtLink to="/auth/register" class="link font-medium">
+					{{ t('auth.login.createAccount') }}
+				</NuxtLink>
 			</p>
 		</UiCard>
 	</div>

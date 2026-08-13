@@ -27,6 +27,7 @@
 	"dependencies": {
 		"@convex-dev/better-auth": "catalog:convex",
 		"@nuxtjs/color-mode": "catalog:vue",
+		"@nuxtjs/i18n": "^10.6.0",
 		"@owlat/api": "workspace:*",
 		"@owlat/email-builder": "workspace:*",
 		"@owlat/email-previewer": "workspace:*",
@@ -67,6 +68,7 @@
 		"tailwindcss": "catalog:vue",
 		"typescript": "catalog:",
 		"vitest": "catalog:",
+		"vue-i18n": "^11.4.8",
 		"vue-tsc": "catalog:"
 	}
 }

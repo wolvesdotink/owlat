@@ -37,7 +37,30 @@ export default defineNuxtConfig({
 		},
 	},
 
-	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon'],
+	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon', '@nuxtjs/i18n'],
+
+	i18n: {
+		defaultLocale: 'en',
+		// `no_prefix`: the locale never appears in the URL. Every path in this app
+		// is either a dashboard route or a token link printed inside an already-sent
+		// email (/unsubscribe?token=…), so a locale segment would break live links
+		// and would have to be mirrored in every `routeRules` redirect above.
+		strategy: 'no_prefix',
+		// Message files live in i18n/locales/ (the module's `restructureDir`) and are
+		// loaded on demand — the default locale's bundle is the only one a visitor
+		// ever downloads.
+		locales: [
+			{ code: 'en', language: 'en-US', name: 'English', file: 'en.json' },
+			{ code: 'de', language: 'de-DE', name: 'Deutsch', file: 'de.json' },
+		],
+		// Browser-language detection stays OFF until the whole UI is extracted:
+		// today only the recipient-facing, auth and welcome surfaces have messages,
+		// so auto-switching a German visitor would hand them a half-translated app.
+		// Flip this to `{ useCookie: true, cookieKey: 'owlat-locale' }` once
+		// `i18n/locales/*.json` covers the dashboard. See apps/docs → Adding a UI
+		// language.
+		detectBrowserLanguage: false,
+	},
 
 	fonts: {
 		// Variable wght axis required: the design system's weight-based emphasis

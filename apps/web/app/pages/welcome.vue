@@ -18,7 +18,9 @@ import { api } from '@owlat/api';
  * mid-flow costs nothing.
  */
 
-useHead({ title: 'Welcome — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('welcome.pageTitle') });
 
 definePageMeta({
 	middleware: 'auth',
@@ -70,7 +72,7 @@ onMounted(async () => {
 			<!-- Loading the instance mode -->
 			<div v-if="isLoadingSettings" class="card flex items-center justify-center gap-3 py-16">
 				<UiSpinner size="sm" />
-				<span class="text-sm text-text-secondary">Getting things ready…</span>
+				<span class="text-sm text-text-secondary">{{ t('welcome.loading') }}</span>
 			</div>
 
 			<div v-else class="card">
@@ -78,11 +80,13 @@ onMounted(async () => {
 				<div class="text-center">
 					<UiIconBox icon="lucide:party-popper" variant="brand" size="lg" class="mx-auto mb-6" />
 					<h1 class="text-2xl font-semibold text-text-primary">
-						Welcome to {{ instanceName }}<template v-if="firstName">, {{ firstName }}</template>
+						{{
+							firstName
+								? t('welcome.headingWithName', { instance: instanceName, name: firstName })
+								: t('welcome.heading', { instance: instanceName })
+						}}
 					</h1>
-					<p class="mt-2 text-text-secondary">
-						This is your team's home for email. Let's get you in.
-					</p>
+					<p class="mt-2 text-text-secondary">{{ t('welcome.subheading') }}</p>
 				</div>
 
 				<!-- MIGRATION MODE: two equal choices -->
@@ -93,14 +97,12 @@ onMounted(async () => {
 							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-all hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 						>
 							<UiIconBox icon="lucide:import" variant="surface" size="sm" />
-							<h2 class="mt-4 font-medium text-text-primary">Bring my email with me</h2>
-							<p class="mt-1 text-sm text-text-secondary">
-								Import your existing inbox so nothing is left behind.
-							</p>
+							<h2 class="mt-4 font-medium text-text-primary">{{ t('welcome.migrate.title') }}</h2>
+							<p class="mt-1 text-sm text-text-secondary">{{ t('welcome.migrate.body') }}</p>
 							<span
 								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
 							>
-								Start import
+								{{ t('welcome.migrate.cta') }}
 								<Icon name="lucide:chevron-right" class="h-4 w-4" />
 							</span>
 						</NuxtLink>
@@ -110,14 +112,12 @@ onMounted(async () => {
 							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-all hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 						>
 							<UiIconBox icon="lucide:sparkles" variant="surface" size="sm" />
-							<h2 class="mt-4 font-medium text-text-primary">Start fresh</h2>
-							<p class="mt-1 text-sm text-text-secondary">
-								Skip the import and begin with a clean inbox.
-							</p>
+							<h2 class="mt-4 font-medium text-text-primary">{{ t('welcome.fresh.title') }}</h2>
+							<p class="mt-1 text-sm text-text-secondary">{{ t('welcome.fresh.body') }}</p>
 							<span
 								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
 							>
-								Go to my inbox
+								{{ t('welcome.fresh.cta') }}
 								<Icon name="lucide:chevron-right" class="h-4 w-4" />
 							</span>
 						</NuxtLink>
@@ -128,7 +128,7 @@ onMounted(async () => {
 							to="/dashboard"
 							class="text-sm text-text-tertiary transition-colors hover:text-text-secondary"
 						>
-							I'll do this later
+							{{ t('welcome.later') }}
 						</NuxtLink>
 					</div>
 				</template>

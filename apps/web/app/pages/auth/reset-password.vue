@@ -1,5 +1,7 @@
 <script setup lang="ts">
-useHead({ title: 'Reset Password — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('auth.resetPassword.pageTitle') });
 
 definePageMeta({
 	middleware: 'guest',
@@ -24,11 +26,11 @@ const errors = reactive({
 
 function validateNewPassword(): boolean {
 	if (!newPassword.value) {
-		errors.newPassword = 'Password is required';
+		errors.newPassword = t('auth.validation.passwordRequired');
 		return false;
 	}
 	if (newPassword.value.length < 10) {
-		errors.newPassword = 'Password must be at least 10 characters';
+		errors.newPassword = t('auth.validation.passwordTooShort');
 		return false;
 	}
 	errors.newPassword = '';
@@ -37,11 +39,11 @@ function validateNewPassword(): boolean {
 
 function validateConfirmPassword(): boolean {
 	if (!confirmPassword.value) {
-		errors.confirmPassword = 'Please confirm your password';
+		errors.confirmPassword = t('auth.validation.confirmPasswordRequired');
 		return false;
 	}
 	if (confirmPassword.value !== newPassword.value) {
-		errors.confirmPassword = 'Passwords do not match';
+		errors.confirmPassword = t('auth.validation.passwordsDoNotMatch');
 		return false;
 	}
 	errors.confirmPassword = '';
@@ -62,7 +64,7 @@ async function handleSubmit() {
 	await submit(async () => {
 		await resetPassword(newPassword.value, token.value);
 		isSuccess.value = true;
-	}, 'Failed to reset password. The link may have expired.');
+	}, t('auth.resetPassword.failed'));
 }
 </script>
 
@@ -71,30 +73,30 @@ async function handleSubmit() {
 		<!-- Logo/Brand -->
 		<div class="mb-8 text-center">
 			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="text-text-secondary mt-2">Set a new password</p>
+			<p class="text-text-secondary mt-2">{{ t('auth.resetPassword.tagline') }}</p>
 		</div>
 
 		<UiCard class="w-full max-w-md">
 			<!-- No token -->
 			<div v-if="!token" class="text-center">
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Invalid or missing reset link</h2>
-				<p class="text-text-secondary text-sm mb-6">
-					This link is invalid or has expired. Please request a new password reset.
-				</p>
+				<h2 class="text-lg font-semibold text-text-primary mb-2">
+					{{ t('auth.resetPassword.invalidHeading') }}
+				</h2>
+				<p class="text-text-secondary text-sm mb-6">{{ t('auth.resetPassword.invalidBody') }}</p>
 				<NuxtLink to="/auth/forgot-password" class="link font-medium text-sm">
-					Request new reset link
+					{{ t('auth.resetPassword.requestNewLink') }}
 				</NuxtLink>
 			</div>
 
 			<!-- Success State -->
 			<div v-else-if="isSuccess" class="text-center">
 				<div class="mb-4 text-4xl">&#10003;</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Password reset successfully</h2>
-				<p class="text-text-secondary text-sm mb-6">
-					Your password has been updated. You can now sign in with your new password.
-				</p>
+				<h2 class="text-lg font-semibold text-text-primary mb-2">
+					{{ t('auth.resetPassword.successHeading') }}
+				</h2>
+				<p class="text-text-secondary text-sm mb-6">{{ t('auth.resetPassword.successBody') }}</p>
 				<NuxtLink to="/auth/login" class="link font-medium text-sm">
-					Sign in
+					{{ t('auth.resetPassword.signIn') }}
 				</NuxtLink>
 			</div>
 
@@ -114,9 +116,9 @@ async function handleSubmit() {
 						v-model="newPassword"
 						type="password"
 						autocomplete="new-password"
-						label="New password"
-						placeholder="Choose a strong password"
-						help-text="Must be at least 10 characters"
+						:label="t('auth.resetPassword.newPasswordLabel')"
+						:placeholder="t('auth.fields.strongPasswordPlaceholder')"
+						:help-text="t('auth.fields.passwordHelp')"
 						:error="errors.newPassword"
 						@blur="validateNewPassword"
 					/>
@@ -126,14 +128,14 @@ async function handleSubmit() {
 						v-model="confirmPassword"
 						type="password"
 						autocomplete="new-password"
-						label="Confirm password"
-						placeholder="Re-enter your new password"
+						:label="t('auth.resetPassword.confirmPasswordLabel')"
+						:placeholder="t('auth.resetPassword.confirmPasswordPlaceholder')"
 						:error="errors.confirmPassword"
 						@blur="validateConfirmPassword"
 					/>
 
 					<UiButton type="submit" size="lg" full-width :loading="isLoading">
-						{{ isLoading ? 'Resetting...' : 'Reset password' }}
+						{{ isLoading ? t('auth.resetPassword.submitting') : t('auth.resetPassword.submit') }}
 					</UiButton>
 				</form>
 			</template>

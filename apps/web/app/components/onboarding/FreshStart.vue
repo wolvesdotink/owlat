@@ -11,7 +11,11 @@
  * server-side (in `mail.drafts.send`, which itself gates the stamp on a
  * transport). When there is no send path yet we show an honest "your admin is
  * still setting up sending" note instead of a check the member can't complete,
- * and the unified onboarding checklist reflects that `firstSendDone` stays open.
+ * and the unified onboarding checklist shows `firstSendDone` as BLOCKED rather
+ * than merely open. Waiting is no longer open-ended in either place: the backend
+ * notifies the member the moment the instance can send (`auth/sendReadyNotices`),
+ * and a transport that lands while they are still on this screen turns the note
+ * into a visible "sending is ready now".
  *
  * When the member has no mailbox and no way to make one, the same honest
  * next-step surface the Postbox guard uses is shown (reserved / connect an
@@ -20,6 +24,7 @@
 import { api } from '@owlat/api';
 import { POSTBOX_NOTIFY_ABOUT_OPTIONS, type PostboxNotifyAbout } from '~/utils/postboxNotify';
 
+const { t } = useI18n();
 const { user } = useAuth();
 const userId = computed(() => user.value?.id ?? null);
 
@@ -43,6 +48,18 @@ const { data: canSendData, isLoading: transportLoading } = useOrganizationQuery(
 	}
 );
 const canSend = computed(() => canSendData.value ?? false);
+
+// Did this member actually SEE the "still setting up sending" state? If they
+// did and the transport lands while they're here, the row must not just quietly
+// swap to a button — it says so. (A member who arrives after sending already
+// works was never blocked and gets the plain button.) The out-of-session case is
+// covered server-side by the "you can send now" notice — see
+// `auth/sendReadyNotices.ts`.
+const sawBlocked = ref(false);
+watchEffect(() => {
+	if (!transportLoading.value && !canSend.value) sawBlocked.value = true;
+});
+const justUnblocked = computed(() => sawBlocked.value && canSend.value);
 
 // ── Two-minute setup fields ──
 const displayName = ref('');
@@ -74,16 +91,22 @@ watchEffect(() => {
 
 // ── Operations ──
 const setDisplayNameOp = useBackendOperation(api.mail.mailbox.setDisplayName, {
-	label: 'Save display name',
+	label: t('welcome.freshStart.operations.saveDisplayName'),
 });
 const createSignatureOp = useBackendOperation(api.mail.signatures.create, {
-	label: 'Save signature',
+	label: t('welcome.freshStart.operations.saveSignature'),
 });
-const createDraftOp = useBackendOperation(api.mail.drafts.create, { label: 'Prepare test email' });
-const updateDraftOp = useBackendOperation(api.mail.drafts.update, { label: 'Prepare test email' });
-const sendDraftOp = useBackendOperation(api.mail.drafts.send, { label: 'Send test email' });
+const createDraftOp = useBackendOperation(api.mail.drafts.create, {
+	label: t('welcome.freshStart.operations.prepareTestEmail'),
+});
+const updateDraftOp = useBackendOperation(api.mail.drafts.update, {
+	label: t('welcome.freshStart.operations.prepareTestEmail'),
+});
+const sendDraftOp = useBackendOperation(api.mail.drafts.send, {
+	label: t('welcome.freshStart.operations.sendTestEmail'),
+});
 const completeOp = useBackendOperation(api.auth.userOnboarding.completeFreshStart, {
-	label: 'Finish setup',
+	label: t('welcome.freshStart.operations.finishSetup'),
 });
 
 const testSending = ref(false);
@@ -109,12 +132,13 @@ async function sendTestEmail() {
 	try {
 		const created = await createDraftOp.run({ mailboxId: mb._id });
 		if (!created) return;
+		const testBody = t('welcome.freshStart.testEmail.body');
 		const updated = await updateDraftOp.run({
 			draftId: created.draftId,
 			toAddresses: [mb.address],
-			subject: 'Hello from Owlat',
-			bodyText: 'This is my first message from Owlat — everything works.',
-			bodyHtml: '<p>This is my first message from Owlat — everything works.</p>',
+			subject: t('welcome.freshStart.testEmail.subject'),
+			bodyText: testBody,
+			bodyHtml: `<p>${testBody}</p>`,
 		});
 		// Bail if the update failed (error already toasted): sending a
 		// recipient-less draft would only produce a second "No recipients" toast.
@@ -142,7 +166,7 @@ async function finishSetup() {
 			if (sig) {
 				await createSignatureOp.run({
 					mailboxId: mb._id,
-					name: 'Default',
+					name: t('welcome.freshStart.defaultSignatureName'),
 					html: signatureToHtml(sig),
 					isDefault: true,
 				});
@@ -183,43 +207,62 @@ function skipToInbox() {
 		<!-- Two-minute setup for a member who has a mailbox. -->
 		<div v-else class="space-y-6">
 			<div class="space-y-5">
-				<p class="text-sm text-text-secondary">
-					You'll send from
-					<span class="font-medium text-text-primary">{{ mailbox.address }}</span
-					>.
-				</p>
+				<I18nT
+					keypath="welcome.freshStart.sendFrom"
+					tag="p"
+					scope="global"
+					class="text-sm text-text-secondary"
+				>
+					<template #address>
+						<span class="font-medium text-text-primary">{{ mailbox.address }}</span>
+					</template>
+				</I18nT>
 
 				<!-- Display name -->
 				<div>
-					<label for="fresh-display-name" class="mb-1.5 block text-sm font-medium">Your name</label>
+					<label for="fresh-display-name" class="mb-1.5 block text-sm font-medium">
+						{{ t('welcome.freshStart.nameLabel') }}
+					</label>
 					<input
 						id="fresh-display-name"
 						v-model="displayName"
 						type="text"
-						placeholder="e.g. Marcel Pfeifer"
+						:placeholder="t('welcome.freshStart.namePlaceholder')"
 						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
 					/>
-					<p class="mt-1 text-xs text-text-tertiary">This is the name people see on your mail.</p>
+					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.nameHint') }}</p>
 				</div>
 
 				<!-- Signature -->
 				<div>
-					<label for="fresh-signature" class="mb-1.5 block text-sm font-medium">
-						Signature <span class="font-normal text-text-tertiary">(optional)</span>
-					</label>
+					<I18nT
+						keypath="welcome.freshStart.signatureLabel"
+						tag="label"
+						scope="global"
+						for="fresh-signature"
+						class="mb-1.5 block text-sm font-medium"
+					>
+						<template #optional>
+							<span class="font-normal text-text-tertiary">
+								{{ t('welcome.freshStart.optional') }}
+							</span>
+						</template>
+					</I18nT>
 					<textarea
 						id="fresh-signature"
 						v-model="signatureText"
 						rows="3"
-						placeholder="e.g. Marcel · Owlat"
+						:placeholder="t('welcome.freshStart.signaturePlaceholder')"
 						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
 					/>
-					<p class="mt-1 text-xs text-text-tertiary">Added to the bottom of new messages.</p>
+					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.signatureHint') }}</p>
 				</div>
 
 				<!-- Notification preference -->
 				<div>
-					<label for="fresh-notify" class="mb-1.5 block text-sm font-medium">Notify me about</label>
+					<label for="fresh-notify" class="mb-1.5 block text-sm font-medium">
+						{{ t('welcome.freshStart.notifyLabel') }}
+					</label>
 					<select
 						id="fresh-notify"
 						v-model="notifyChoice"
@@ -229,9 +272,7 @@ function skipToInbox() {
 							{{ opt.label }}
 						</option>
 					</select>
-					<p class="mt-1 text-xs text-text-tertiary">
-						You can fine-tune this later in Postbox settings.
-					</p>
+					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.notifyHint') }}</p>
 				</div>
 
 				<!-- Optional test email — only an honest option when a transport exists. -->
@@ -240,15 +281,27 @@ function skipToInbox() {
 					     between the button and the "still setting up" note. -->
 					<div v-if="transportLoading" class="flex items-center gap-3">
 						<UiSpinner size="sm" />
-						<p class="text-xs text-text-tertiary">Checking whether sending is ready…</p>
+						<p class="text-xs text-text-tertiary">
+							{{ t('welcome.freshStart.checkingTransport') }}
+						</p>
 					</div>
 
 					<!-- A real transport exists: offer the completable test send. -->
 					<div v-else-if="canSend" class="flex items-center justify-between gap-4">
 						<div class="min-w-0">
-							<p class="text-sm font-medium">Send yourself a test</p>
+							<p class="text-sm font-medium" :class="justUnblocked ? 'text-success' : ''">
+								{{
+									justUnblocked
+										? t('welcome.freshStart.readyNowTitle')
+										: t('welcome.freshStart.testTitle')
+								}}
+							</p>
 							<p class="mt-0.5 text-xs text-text-tertiary">
-								Confirms everything works — it lands in your inbox.
+								{{
+									justUnblocked
+										? t('welcome.freshStart.readyNowBody')
+										: t('welcome.freshStart.testBody')
+								}}
 							</p>
 						</div>
 						<UiButton
@@ -258,13 +311,14 @@ function skipToInbox() {
 							:loading="testSending"
 							@click="sendTestEmail"
 						>
-							Email myself
+							{{ t('welcome.freshStart.emailMyself') }}
 						</UiButton>
 						<span
 							v-else
 							class="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-success"
 						>
-							<Icon name="lucide:check-circle-2" class="h-4 w-4" /> Sent
+							<Icon name="lucide:check-circle-2" class="h-4 w-4" />
+							{{ t('welcome.freshStart.sent') }}
 						</span>
 					</div>
 
@@ -274,10 +328,9 @@ function skipToInbox() {
 					<div v-else class="flex items-start gap-3">
 						<Icon name="lucide:clock" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<div class="min-w-0">
-							<p class="text-sm font-medium">Your admin is still setting up sending</p>
+							<p class="text-sm font-medium">{{ t('welcome.freshStart.blockedTitle') }}</p>
 							<p class="mt-0.5 text-xs text-text-tertiary">
-								You can finish your profile now — the moment a sending transport is ready, you'll be
-								able to send your first message.
+								{{ t('welcome.freshStart.blockedBody') }}
 							</p>
 						</div>
 					</div>
@@ -286,39 +339,40 @@ function skipToInbox() {
 
 			<!-- Teach-the-product: what Postbox gives you as mail arrives. -->
 			<div class="rounded-xl border border-border-subtle bg-bg-surface/50 p-5">
-				<h2 class="mb-3 text-sm font-semibold">A few things you'll love</h2>
+				<h2 class="mb-3 text-sm font-semibold">{{ t('welcome.freshStart.tipsHeading') }}</h2>
 				<ul class="space-y-3 text-sm text-text-secondary">
 					<li class="flex items-start gap-3">
 						<Icon name="lucide:pen-line" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
-						<span
-							>Press
-							<kbd
-								class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
-								>C</kbd
-							>
-							anywhere to write a new message.</span
-						>
+						<I18nT keypath="welcome.freshStart.tips.compose" tag="span" scope="global">
+							<template #key>
+								<kbd
+									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
+									>C</kbd
+								>
+							</template>
+						</I18nT>
 					</li>
 					<li class="flex items-start gap-3">
 						<Icon name="lucide:command" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
-						<span>
-							Hit
-							<kbd
-								class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
-								>⌘</kbd
-							><kbd
-								class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
-								>K</kbd
-							>
-							to search, jump, and run any command.
-						</span>
+						<I18nT keypath="welcome.freshStart.tips.command" tag="span" scope="global">
+							<template #keys>
+								<kbd
+									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
+									>⌘</kbd
+								><kbd
+									class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-[10px] font-mono"
+									>K</kbd
+								>
+							</template>
+						</I18nT>
 					</li>
 					<li class="flex items-start gap-3">
 						<Icon name="lucide:sparkles" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
-						<span>
-							The <span class="font-medium text-text-primary">Knowledge</span> tab turns your mail
-							into answers — it gets sharper as messages pile up.
-						</span>
+						<I18nT keypath="welcome.freshStart.tips.knowledge" tag="span" scope="global">
+							<template #tab>
+								<span class="font-medium text-text-primary">Knowledge</span>
+							</template>
+						</I18nT>
 					</li>
 				</ul>
 			</div>
@@ -329,9 +383,11 @@ function skipToInbox() {
 					class="text-sm text-text-tertiary transition-colors hover:text-text-secondary"
 					@click="skipToInbox"
 				>
-					Skip for now
+					{{ t('welcome.freshStart.skip') }}
 				</button>
-				<UiButton :loading="finishing" @click="finishSetup">Go to my inbox</UiButton>
+				<UiButton :loading="finishing" @click="finishSetup">
+					{{ t('welcome.freshStart.finish') }}
+				</UiButton>
 			</div>
 		</div>
 	</div>

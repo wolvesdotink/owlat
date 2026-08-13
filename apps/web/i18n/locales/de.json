@@ -1,0 +1,251 @@
+{
+	"common": {
+		"poweredBy": "Bereitgestellt von {brand}"
+	},
+	"auth": {
+		"validation": {
+			"emailRequired": "E-Mail-Adresse ist erforderlich",
+			"emailInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
+			"passwordRequired": "Passwort ist erforderlich",
+			"passwordTooShort": "Das Passwort muss mindestens 10 Zeichen lang sein",
+			"nameRequired": "Name ist erforderlich",
+			"nameTooShort": "Der Name muss mindestens 2 Zeichen lang sein",
+			"termsRequired": "Sie müssen den Nutzungsbedingungen zustimmen",
+			"confirmPasswordRequired": "Bitte bestätigen Sie Ihr Passwort",
+			"passwordsDoNotMatch": "Die Passwörter stimmen nicht überein"
+		},
+		"fields": {
+			"email": "E-Mail",
+			"emailPlaceholder": "sie{'@'}beispiel.de",
+			"password": "Passwort",
+			"passwordHelp": "Mindestens 10 Zeichen",
+			"strongPasswordPlaceholder": "Wählen Sie ein sicheres Passwort"
+		},
+		"login": {
+			"pageTitle": "Anmelden — Owlat",
+			"tagline": "Melden Sie sich bei Ihrem Konto an",
+			"postSetupBanner": "Ihre Owlat-Instanz ist bereit. Melden Sie sich mit dem gerade erstellten Administratorkonto an.",
+			"passwordPlaceholder": "Passwort eingeben",
+			"forgotPassword": "Passwort vergessen?",
+			"submit": "Anmelden",
+			"submitting": "Anmeldung läuft...",
+			"noAccount": "Sie haben noch kein Konto?",
+			"createAccount": "Jetzt erstellen"
+		},
+		"register": {
+			"pageTitle": "Registrieren — Owlat",
+			"inviteOnlyTagline": "Nur mit Einladung",
+			"inviteOnlyBody": "Die Registrierung ist deaktiviert. Wenden Sie sich für eine Einladung an Ihre Administration.",
+			"tagline": "Erstellen Sie Ihr Konto",
+			"nameLabel": "Name",
+			"namePlaceholder": "Ihr Name",
+			"terms": "Ich stimme den {termsLink} zu",
+			"termsLink": "Nutzungsbedingungen",
+			"submit": "Konto erstellen",
+			"submitting": "Konto wird erstellt...",
+			"haveAccount": "Sie haben bereits ein Konto?",
+			"signIn": "Anmelden",
+			"createProfileOperation": "Profil erstellen"
+		},
+		"forgotPassword": {
+			"pageTitle": "Passwort vergessen — Owlat",
+			"tagline": "Passwort zurücksetzen",
+			"intro": "Geben Sie Ihre E-Mail-Adresse ein und wir senden Ihnen einen Link zum Zurücksetzen Ihres Passworts.",
+			"successHeading": "Prüfen Sie Ihre E-Mails",
+			"successBody": "Falls ein Konto für {email} existiert, haben wir einen Link zum Zurücksetzen des Passworts gesendet. Es kann einige Minuten dauern, bis er ankommt.",
+			"backToLogin": "Zurück zur Anmeldung",
+			"submit": "Link senden",
+			"submitting": "Wird gesendet..."
+		},
+		"resetPassword": {
+			"pageTitle": "Passwort zurücksetzen — Owlat",
+			"tagline": "Neues Passwort festlegen",
+			"invalidHeading": "Ungültiger oder fehlender Link",
+			"invalidBody": "Dieser Link ist ungültig oder abgelaufen. Bitte fordern Sie das Zurücksetzen erneut an.",
+			"requestNewLink": "Neuen Link anfordern",
+			"successHeading": "Passwort erfolgreich zurückgesetzt",
+			"successBody": "Ihr Passwort wurde aktualisiert. Sie können sich jetzt mit dem neuen Passwort anmelden.",
+			"signIn": "Anmelden",
+			"newPasswordLabel": "Neues Passwort",
+			"confirmPasswordLabel": "Passwort bestätigen",
+			"confirmPasswordPlaceholder": "Neues Passwort erneut eingeben",
+			"submit": "Passwort zurücksetzen",
+			"submitting": "Wird zurückgesetzt...",
+			"failed": "Das Passwort konnte nicht zurückgesetzt werden. Der Link ist möglicherweise abgelaufen."
+		}
+	},
+	"recipient": {
+		"shared": {
+			"emailPreferences": "E-Mail-Einstellungen",
+			"verifying": "Ihr Link wird geprüft..."
+		},
+		"archive": {
+			"pageTitle": "Kampagnen-Archiv — Owlat",
+			"seoTitle": "Kampagnen-Archiv",
+			"seoTitleLoaded": "{subject} — {organization}",
+			"ogDescription": "E-Mail von {organization}",
+			"loading": "Archiv wird geladen...",
+			"errorHeading": "Archiv nicht verfügbar",
+			"frameTitle": "Archivierte E-Mail",
+			"errors": {
+				"missingToken": "Es fehlt ein Archiv-Token. Bitte nutzen Sie den Link aus Ihrer E-Mail.",
+				"unavailable": "Dieser Archiv-Link ist ungültig oder die Kampagne ist nicht mehr verfügbar.",
+				"loadFailed": "Das Kampagnen-Archiv konnte nicht geladen werden. Bitte versuchen Sie es später erneut."
+			}
+		},
+		"share": {
+			"pageTitle": "Geteilte Vorschau — Owlat",
+			"seoTitle": "Geteilte Vorschau",
+			"seoTitleLoaded": "{subject} — {organization}",
+			"ogDescription": "E-Mail-Vorschau von {organization}",
+			"loading": "Vorschau wird geladen...",
+			"expiredHeading": "Vorschau-Link abgelaufen",
+			"expiredBody": "Dieser Vorschau-Link ist abgelaufen. Bitte fordern Sie beim Absender einen neuen Link an.",
+			"errorHeading": "Vorschau nicht verfügbar",
+			"expiresIn": "Läuft in {hours} Std. ab",
+			"frameTitle": "Geteilte E-Mail-Vorschau",
+			"errors": {
+				"missingToken": "Es fehlt ein Freigabe-Token. Bitte nutzen Sie den Link, den Sie erhalten haben.",
+				"revoked": "Dieser Freigabe-Link ist ungültig oder wurde widerrufen.",
+				"loadFailed": "Die Vorschau konnte nicht geladen werden. Bitte versuchen Sie es später erneut."
+			}
+		},
+		"unsubscribe": {
+			"pageTitle": "Abmelden — Owlat",
+			"metaDescription": "Verwalten Sie Ihre E-Mail-Einstellungen.",
+			"errorHeading": "Abmeldung nicht möglich",
+			"successHeading": "Erfolgreich abgemeldet",
+			"alreadyHeading": "Bereits abgemeldet",
+			"successBody": "Sie haben sich von E-Mails von {organization} abgemeldet.",
+			"alreadyBody": "Sie waren bereits von E-Mails von {organization} abgemeldet.",
+			"successNote": "Sie erhalten künftig keine Marketing-E-Mails mehr an {email}.",
+			"alreadyStateBody": "Sie sind bereits von E-Mails von {organization} abgemeldet.",
+			"alreadyStateNote": "An {email} werden keine Marketing-E-Mails gesendet.",
+			"confirmHeading": "Von E-Mails abmelden",
+			"greeting": "Hallo {name},",
+			"confirmBody": "Möchten Sie {email} wirklich von E-Mails von {organization} abmelden?",
+			"submit": "Ja, abmelden",
+			"processing": "Wird verarbeitet...",
+			"footnote": "Sie erhalten dann keine Marketing-E-Mails mehr. Transaktions-E-Mails können weiterhin gesendet werden.",
+			"errors": {
+				"missingToken": "Es fehlt ein Abmelde-Token. Bitte nutzen Sie den Link aus Ihrer E-Mail.",
+				"expired": "Dieser Abmelde-Link ist abgelaufen. Bitte nutzen Sie den Link aus einer neueren E-Mail.",
+				"invalid": "Ungültiger Abmelde-Link. Bitte nutzen Sie den Link aus Ihrer E-Mail.",
+				"verifyFailed": "Ihr Abmelde-Link konnte nicht geprüft werden. Bitte versuchen Sie es später erneut.",
+				"processFailed": "Die Abmeldung konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut."
+			}
+		},
+		"confirm": {
+			"pageTitle": "Anmeldung bestätigen — Owlat",
+			"header": "E-Mail-Bestätigung",
+			"errorHeading": "Bestätigung nicht möglich",
+			"successHeading": "Anmeldung bestätigt!",
+			"alreadyHeading": "Bereits bestätigt",
+			"successBody": "Sie haben Ihre Anmeldung bei {organization} erfolgreich bestätigt.",
+			"alreadyBody": "Ihre Anmeldung bei {organization} war bereits bestätigt.",
+			"successNote": "{email} ist jetzt angemeldet und erhält Neuigkeiten.",
+			"alreadyStateBody": "Ihre Anmeldung bei {organization} wurde bereits bestätigt.",
+			"alreadyStateNote": "{email} ist angemeldet und erhält Neuigkeiten.",
+			"confirmHeading": "Anmeldung bestätigen",
+			"confirmBody": "Klicken Sie auf die Schaltfläche, um Ihre Anmeldung bei {organization} mit der E-Mail-Adresse {email} zu bestätigen.",
+			"submit": "Anmeldung bestätigen",
+			"processing": "Wird bestätigt...",
+			"footnote": "Mit der Bestätigung willigen Sie ein, E-Mails von {organization} zu erhalten.",
+			"errors": {
+				"missingToken": "Es fehlt ein Bestätigungs-Token. Bitte nutzen Sie den Link aus Ihrer E-Mail.",
+				"noServer": "Verbindung zum Server nicht möglich. Bitte versuchen Sie es später erneut.",
+				"invalid": "Ungültiger Bestätigungslink. Bitte nutzen Sie den Link aus Ihrer E-Mail.",
+				"verifyFailed": "Ihr Bestätigungslink konnte nicht geprüft werden. Bitte versuchen Sie es später erneut.",
+				"alreadyProcessed": "Diese Anmeldung wurde bereits verarbeitet.",
+				"expired": "Dieser Bestätigungslink ist abgelaufen. Bitte fordern Sie einen neuen an.",
+				"confirmFailed": "Die Anmeldung konnte nicht bestätigt werden. Bitte versuchen Sie es erneut."
+			}
+		},
+		"preferences": {
+			"pageTitle": "E-Mail-Einstellungen — Owlat",
+			"metaDescription": "Verwalten Sie Ihre E-Mail-Themen und -Einstellungen.",
+			"loading": "Ihre Einstellungen werden geladen...",
+			"errorHeading": "Einstellungen können nicht geladen werden",
+			"heading": "Ihre E-Mail-Einstellungen verwalten",
+			"greeting": "Hallo {name},",
+			"intro": "Aktualisieren Sie Ihre E-Mail-Einstellungen für {organization}.",
+			"saved": "Ihre Einstellungen wurden gespeichert.",
+			"globalToggleLabel": "E-Mails abonniert",
+			"globalToggleHint": "Schalten Sie dies aus, um sich von allen Themen abzumelden.",
+			"globalSwitchLabel": "Alle E-Mails abonniert",
+			"topicsHeading": "Themen",
+			"topicSwitchLabel": "Abonnement für {topic}",
+			"noTopics": "Keine Themen verfügbar.",
+			"save": "Einstellungen speichern",
+			"saving": "Wird gespeichert...",
+			"noChanges": "Keine Änderungen",
+			"footnote": "Transaktions-E-Mails (etwa zum Zurücksetzen des Passworts) können unabhängig von diesen Einstellungen gesendet werden.",
+			"errors": {
+				"missingToken": "Es fehlt ein Einstellungs-Token. Bitte nutzen Sie den Link aus Ihrer E-Mail.",
+				"expired": "Dieser Einstellungs-Link ist abgelaufen. Bitte nutzen Sie den Link aus einer neueren E-Mail.",
+				"invalid": "Ungültiger Einstellungs-Link. Bitte nutzen Sie den Link aus Ihrer E-Mail.",
+				"verifyFailed": "Ihr Einstellungs-Link konnte nicht geprüft werden. Bitte versuchen Sie es später erneut.",
+				"saveFailed": "Die Einstellungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut."
+			}
+		}
+	},
+	"welcome": {
+		"pageTitle": "Willkommen — Owlat",
+		"loading": "Alles wird vorbereitet…",
+		"heading": "Willkommen bei {instance}",
+		"headingWithName": "Willkommen bei {instance}, {name}",
+		"subheading": "Hier ist die E-Mail-Zentrale Ihres Teams. Los geht's.",
+		"later": "Das mache ich später",
+		"migrate": {
+			"title": "Meine E-Mails mitnehmen",
+			"body": "Importieren Sie Ihr bestehendes Postfach, damit nichts zurückbleibt.",
+			"cta": "Import starten"
+		},
+		"fresh": {
+			"title": "Neu anfangen",
+			"body": "Den Import überspringen und mit einem leeren Posteingang starten.",
+			"cta": "Zum Posteingang"
+		},
+		"freshStart": {
+			"sendFrom": "Sie senden von {address}.",
+			"nameLabel": "Ihr Name",
+			"namePlaceholder": "z. B. Marcel Pfeifer",
+			"nameHint": "Diesen Namen sehen die Empfänger Ihrer Mail.",
+			"signatureLabel": "Signatur {optional}",
+			"optional": "(optional)",
+			"signaturePlaceholder": "z. B. Marcel · Owlat",
+			"signatureHint": "Wird unter neue Nachrichten gesetzt.",
+			"notifyLabel": "Benachrichtigen bei",
+			"notifyHint": "Das können Sie später in den Postbox-Einstellungen feinjustieren.",
+			"checkingTransport": "Es wird geprüft, ob der Versand bereit ist…",
+			"readyNowTitle": "Der Versand ist jetzt bereit",
+			"readyNowBody": "Der Versand wurde gerade eingerichtet — senden Sie sich zum Abschluss eine Test-E-Mail.",
+			"testTitle": "Test-E-Mail an sich selbst",
+			"testBody": "Bestätigt, dass alles funktioniert — sie landet in Ihrem Posteingang.",
+			"emailMyself": "An mich senden",
+			"sent": "Gesendet",
+			"blockedTitle": "Ihre Administration richtet den Versand noch ein",
+			"blockedBody": "Sie können Ihr Profil jetzt fertigstellen — wir melden uns, sobald der Versand bereit ist, damit Sie nicht nachsehen müssen.",
+			"tipsHeading": "Ein paar Dinge, die Sie mögen werden",
+			"tips": {
+				"compose": "Drücken Sie überall {key}, um eine neue Nachricht zu schreiben.",
+				"command": "Mit {keys} suchen Sie, springen Sie und führen jeden Befehl aus.",
+				"knowledge": "Der Tab {tab} macht aus Ihrer Post Antworten — und wird mit jeder Nachricht besser."
+			},
+			"skip": "Später",
+			"finish": "Zum Posteingang",
+			"defaultSignatureName": "Standard",
+			"testEmail": {
+				"subject": "Hallo von Owlat",
+				"body": "Das ist meine erste Nachricht aus Owlat — alles funktioniert."
+			},
+			"operations": {
+				"saveDisplayName": "Anzeigenamen speichern",
+				"saveSignature": "Signatur speichern",
+				"prepareTestEmail": "Test-E-Mail vorbereiten",
+				"sendTestEmail": "Test-E-Mail senden",
+				"finishSetup": "Einrichtung abschließen"
+			}
+		}
+	}
+}
