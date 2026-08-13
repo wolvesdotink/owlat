@@ -98,7 +98,10 @@ beforeEach(() => {
 const NuxtLinkStub = defineComponent({
 	name: 'NuxtLink',
 	props: { to: { type: String, default: '' } },
-	setup: (props, { slots }) => () => h('a', { href: props.to }, slots.default?.()),
+	setup:
+		(props, { slots }) =>
+		() =>
+			h('a', { href: props.to }, slots.default?.()),
 });
 
 /** The decorative background field carries no copy; everything else is real. */
@@ -242,9 +245,7 @@ describe('auth/reset-password', () => {
 		expect(w.text()).toContain('Set a new');
 		expect(w.text()).toContain('New password');
 		expect(w.text()).toContain('Confirm password');
-		expect(w.get('#confirm-password').attributes('placeholder')).toBe(
-			'Re-enter your new password'
-		);
+		expect(w.get('#confirm-password').attributes('placeholder')).toBe('Re-enter your new password');
 		expect(w.text()).toContain('Reset password');
 		expectFullyLocalized(w);
 	});

@@ -23,12 +23,7 @@ export type PostboxNotifyAbout = 'everything' | 'people-important' | 'nothing';
  * Smart-inbox category label (mirrors `mailMessages.category.label`). `person`
  * is the only "people & important" class; the rest are lower-signal.
  */
-export type PostboxMailCategory =
-	| 'person'
-	| 'newsletter'
-	| 'notification'
-	| 'receipt'
-	| 'other';
+export type PostboxMailCategory = 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
 
 /**
  * Every scope, in the order a picker offers them. VALUES ONLY — a label pinned
@@ -54,7 +49,7 @@ export function defaultPostboxNotifyAbout(categoriesLive: boolean): PostboxNotif
 /** Normalise a stored/unknown value to a valid scope, defaulting safely. */
 export function resolvePostboxNotifyAbout(
 	value: string | undefined | null,
-	categoriesLive: boolean,
+	categoriesLive: boolean
 ): PostboxNotifyAbout {
 	if (value === 'everything' || value === 'people-important' || value === 'nothing') {
 		return value;
