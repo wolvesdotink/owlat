@@ -259,7 +259,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			<button
 				v-if="!isLoading && visibleRows.length > 0"
 				type="button"
-				class="ml-auto inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-brand text-white hover:bg-brand/90 transition-colors duration-(--motion-fast)"
+				class="ml-auto inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-brand text-text-inverse hover:bg-brand/90 transition-colors duration-(--motion-fast)"
 				@click="emit('focus')"
 			>
 				<Icon name="lucide:target" class="w-4 h-4" />

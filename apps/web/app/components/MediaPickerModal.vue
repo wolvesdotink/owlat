@@ -243,12 +243,16 @@ const getFileIcon = (mimeType: string) => {
 							asset.filename
 						}}</span>
 					</div>
+					<!-- palette-ok-start: the caption sits on a black gradient painted over
+					     the asset thumbnail, not on an app surface, so it stays white in
+					     both themes — a text token would go unreadable in light mode. -->
 					<div
 						class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity"
 					>
 						<p class="text-[10px] text-white truncate">{{ asset.filename }}</p>
 						<p class="text-[9px] text-white/70">{{ formatCompactFileSize(asset.fileSize) }}</p>
 					</div>
+					<!-- palette-ok-end -->
 				</button>
 			</div>
 
