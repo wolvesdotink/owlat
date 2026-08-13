@@ -10,27 +10,13 @@ const capabilities = [
 	'Own MTA',
 ];
 
-useHead({
-	title: 'Owlat — Self-hosted email platform',
-	meta: [
-		{
-			name: 'description',
-			content:
-				'Owlat is an open-source, self-hosted email platform: campaigns, automations, transactional sends, team inbox and personal mail, with its own MTA and deliverability tooling.',
-		},
-	],
-});
+useHead({ title: 'Self-hosted email platform — Owlat' });
 </script>
 
 <template>
 	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base flex flex-col">
-		<!-- Decorative field: hairline grid + soft bottom aurora. Purely ornamental —
-		     sits behind the content, ignores the pointer, hidden from AT. -->
-		<div class="landing-field" aria-hidden="true">
-			<span class="landing-grid"></span>
-			<span class="landing-blob landing-blob--core"></span>
-			<span class="landing-blob landing-blob--wing"></span>
-		</div>
+		<!-- Decorative field — behind the content, ignores the pointer, hidden from AT. -->
+		<UiHeroField />
 
 		<!-- Floating pill navigation -->
 		<header class="fixed top-4 inset-x-0 z-10 flex justify-center px-4 md:top-6">
@@ -54,9 +40,9 @@ useHead({
 				<span class="w-1.5 h-1.5 rounded-full bg-brand" aria-hidden="true"></span>
 				Open source &middot; Self-hosted
 			</p>
-			<h1 class="text-5xl md:text-6xl lg:text-7xl text-text-primary mb-6">
-				<span class="block font-medium tracking-tight">Send better email.</span>
-				<span class="block font-display italic font-normal">Own the whole stack.</span>
+			<h1 class="lp-title mb-6">
+				<span class="block">Send better email.</span>
+				<span class="lp-title-accent block">Own the whole stack.</span>
 			</h1>
 			<p class="text-lg md:text-xl text-text-secondary mb-10 max-w-2xl">
 				Owlat is an open-source, self-hosted email platform. Campaigns, automations, transactional
@@ -98,90 +84,3 @@ useHead({
 		</footer>
 	</div>
 </template>
-
-<style scoped>
-/* Decorative layer stack. Kept in the SFC so the splash stays self-contained;
-   every color rides a shared token, so the field follows light/dark with the
-   rest of the app. */
-.landing-field {
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	overflow: hidden;
-	pointer-events: none;
-}
-
-/* Very subtle 1px grid, masked radially so it only whispers around the hero
-   and fades out before it reaches the edges. */
-.landing-grid {
-	position: absolute;
-	inset: 0;
-	background-image:
-		linear-gradient(to right, var(--color-border-default) 1px, transparent 1px),
-		linear-gradient(to bottom, var(--color-border-default) 1px, transparent 1px);
-	background-size: 56px 56px;
-	opacity: 0.5;
-	-webkit-mask-image: radial-gradient(ellipse 85% 70% at 50% 62%, black 0%, transparent 72%);
-	mask-image: radial-gradient(ellipse 85% 70% at 50% 62%, black 0%, transparent 72%);
-}
-
-/* Bottom aurora: a terracotta core with a warm-gold wing, heavily blurred so
-   they read as light, not shapes. --blob-shift keeps each blob's horizontal
-   offset out of the shared breathing keyframe. color-mix carries the alpha so
-   the washes can ride the brand/accent tokens instead of fixed rgba. */
-.landing-blob {
-	position: absolute;
-	border-radius: 9999px;
-	filter: blur(110px);
-	transform: translateX(var(--blob-shift));
-	will-change: transform, opacity;
-}
-
-.landing-blob--core {
-	--blob-shift: -58%;
-	width: 44rem;
-	height: 26rem;
-	left: 50%;
-	bottom: -14rem;
-	background: radial-gradient(
-		closest-side,
-		color-mix(in srgb, var(--color-brand-glow) 35%, transparent),
-		transparent 70%
-	);
-	animation: landing-breathe 14s ease-in-out infinite;
-}
-
-.landing-blob--wing {
-	--blob-shift: 4%;
-	width: 36rem;
-	height: 22rem;
-	left: 50%;
-	bottom: -12rem;
-	background: radial-gradient(
-		closest-side,
-		color-mix(in srgb, var(--color-accent) 25%, transparent),
-		transparent 70%
-	);
-	animation: landing-breathe 16s ease-in-out infinite;
-	animation-delay: -6s;
-}
-
-@keyframes landing-breathe {
-	0%,
-	100% {
-		opacity: 0.75;
-		transform: translateX(var(--blob-shift)) scale(1);
-	}
-	50% {
-		opacity: 1;
-		transform: translateX(var(--blob-shift)) scale(1.08);
-	}
-}
-
-/* Motion policy: the aurora holds a calm, static frame under reduced motion. */
-@media (prefers-reduced-motion: reduce) {
-	.landing-blob {
-		animation: none;
-	}
-}
-</style>
