@@ -42,6 +42,9 @@ const handleToggle = () => {
 		]"
 		@click="handleToggle"
 	>
+		<!-- palette-ok: the knob is a fixed light puck in both themes — it has to stay
+		     lighter than BOTH the brand on-track and the neutral off-track, which no
+		     single theme token does (text-inverse goes near-black in dark). -->
 		<span
 			:class="[
 				'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-(--motion-moderate) ease-spring',

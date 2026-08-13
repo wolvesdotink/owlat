@@ -148,7 +148,7 @@ function pickCategory(label: MailCategory) {
 								</p>
 								<span
 									v-if="t.unreadCount > 0"
-									class="text-xs bg-brand text-white rounded-full px-1.5 min-w-[1.25rem] text-center"
+									class="text-xs bg-brand text-text-inverse rounded-full px-1.5 min-w-[1.25rem] text-center"
 								>{{ t.unreadCount }}</span>
 							</div>
 							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">{{ t.latestSnippet }}</p>

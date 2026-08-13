@@ -32,7 +32,7 @@ defineProps<{
 				<div
 					class="relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
 					:class="version._id === currentVersionId
-						? 'bg-brand text-white'
+						? 'bg-brand text-text-inverse'
 						: 'bg-bg-surface border border-border-subtle text-text-tertiary'"
 				>
 					<span class="text-xs font-semibold">{{ version.version ?? versions.length - index }}</span>

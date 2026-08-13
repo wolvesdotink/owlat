@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import PostboxMailboxGuard from '../PostboxMailboxGuard.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 type FreshStatus = {
 	hasMailbox: boolean;
@@ -35,12 +36,16 @@ beforeAll(() => {
 	}));
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
 function mountGuard() {
 	return mount(PostboxMailboxGuard, {
 		props: { mailboxId: null, loading: false },
-		global: { stubs: { Icon: true, NuxtLink: true, UiButton: true } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: true, NuxtLink: true, UiButton: true },
+		},
 	});
 }
 

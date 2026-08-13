@@ -223,6 +223,14 @@ export const eraseMemberData = internalMutation({
 			.first(); // bounded: at most one row per user
 		if (onboarding) await ctx.db.delete(onboarding._id);
 
+		// Their "you can send now" onboarding notices go with that checklist —
+		// without the row they point at, they are orphaned nudges nobody reads.
+		const sendReadyNotices = await ctx.db
+			.query('sendReadyNotices')
+			.withIndex('by_user_and_created', (q) => q.eq('userId', args.authUserId))
+			.collect(); // bounded: at most one pending notice per readiness edge
+		for (const notice of sendReadyNotices) await ctx.db.delete(notice._id);
+
 		// Open/resolved mailbox requests carry the member's email + name; drop
 		// them so no PII survives on the admin dashboard.
 		const mailboxRequests = await ctx.db

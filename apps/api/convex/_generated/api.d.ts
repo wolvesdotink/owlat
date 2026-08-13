@@ -97,6 +97,7 @@ import type * as auth_invitationResend from '../auth/invitationResend.js';
 import type * as auth_memberErasure from '../auth/memberErasure.js';
 import type * as auth_membership from '../auth/membership.js';
 import type * as auth_onboarding from '../auth/onboarding.js';
+import type * as auth_sendReadyNotices from '../auth/sendReadyNotices.js';
 import type * as auth_userOnboarding from '../auth/userOnboarding.js';
 import type * as auth_userProfiles from '../auth/userProfiles.js';
 import type * as automations_analytics from '../automations/analytics.js';
@@ -150,6 +151,7 @@ import type * as campaigns_sendPlanQueries from '../campaigns/sendPlanQueries.js
 import type * as campaigns_sendQueries from '../campaigns/sendQueries.js';
 import type * as campaigns_sendVariantSplit from '../campaigns/sendVariantSplit.js';
 import type * as campaigns_senders from '../campaigns/senders.js';
+import type * as campaigns_sendingReadiness from '../campaigns/sendingReadiness.js';
 import type * as campaigns_statShards from '../campaigns/statShards.js';
 import type * as campaigns_testSend from '../campaigns/testSend.js';
 import type * as channels_adapters_index from '../channels/adapters/index.js';
@@ -841,6 +843,8 @@ import type * as publicRateLimit from '../publicRateLimit.js';
 import type * as quickQuery from '../quickQuery.js';
 import type * as quickQueryGate from '../quickQueryGate.js';
 import type * as rateLimiter from '../rateLimiter.js';
+import type * as sampleData_index from '../sampleData/index.js';
+import type * as sampleData_manageHttp from '../sampleData/manageHttp.js';
 import type * as schema_alignment from '../schema/alignment.js';
 import type * as schema_askEagerness from '../schema/askEagerness.js';
 import type * as schema_assistant from '../schema/assistant.js';
@@ -894,6 +898,7 @@ import type * as seedDemo_loaders_transactionalEmails from '../seedDemo/loaders/
 import type * as seedDemo_loaders_types from '../seedDemo/loaders/types.js';
 import type * as seedDemo_loaders_webhooks from '../seedDemo/loaders/webhooks.js';
 import type * as seedDemo_messages from '../seedDemo/messages.js';
+import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
 import type * as segments from '../segments.js';
 import type * as segments_listing from '../segments/listing.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
@@ -1075,6 +1080,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/memberErasure': typeof auth_memberErasure;
 	'auth/membership': typeof auth_membership;
 	'auth/onboarding': typeof auth_onboarding;
+	'auth/sendReadyNotices': typeof auth_sendReadyNotices;
 	'auth/userOnboarding': typeof auth_userOnboarding;
 	'auth/userProfiles': typeof auth_userProfiles;
 	'automations/analytics': typeof automations_analytics;
@@ -1128,6 +1134,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/sendQueries': typeof campaigns_sendQueries;
 	'campaigns/sendVariantSplit': typeof campaigns_sendVariantSplit;
 	'campaigns/senders': typeof campaigns_senders;
+	'campaigns/sendingReadiness': typeof campaigns_sendingReadiness;
 	'campaigns/statShards': typeof campaigns_statShards;
 	'campaigns/testSend': typeof campaigns_testSend;
 	'channels/adapters/index': typeof channels_adapters_index;
@@ -1819,6 +1826,8 @@ declare const fullApi: ApiFromModules<{
 	quickQuery: typeof quickQuery;
 	quickQueryGate: typeof quickQueryGate;
 	rateLimiter: typeof rateLimiter;
+	'sampleData/index': typeof sampleData_index;
+	'sampleData/manageHttp': typeof sampleData_manageHttp;
 	'schema/alignment': typeof schema_alignment;
 	'schema/askEagerness': typeof schema_askEagerness;
 	'schema/assistant': typeof schema_assistant;
@@ -1872,6 +1881,7 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/loaders/types': typeof seedDemo_loaders_types;
 	'seedDemo/loaders/webhooks': typeof seedDemo_loaders_webhooks;
 	'seedDemo/messages': typeof seedDemo_messages;
+	'seedDemo/pipeline': typeof seedDemo_pipeline;
 	segments: typeof segments;
 	'segments/listing': typeof segments_listing;
 	semanticFileProcessing: typeof semanticFileProcessing;

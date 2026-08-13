@@ -4,8 +4,16 @@ import type { OperationError } from '@owlat/shared/operationError';
 import { normalizeToOperationError, categoryTreatment, operationCopy } from '~/lib/operationError';
 
 export interface BackendOperationOptions {
-	/** Short human label for the operation — used in telemetry on genuine faults. */
-	label: string;
+	/**
+	 * Short human label for the operation — used in telemetry on genuine faults.
+	 *
+	 * Pass a GETTER on a localized surface. A plain `t('…')` is evaluated once,
+	 * while the composable is set up, so it would freeze the label at whatever
+	 * locale was active then and keep reporting that one after a locale change;
+	 * a getter is called at report time and always matches the UI the member was
+	 * looking at when the operation failed.
+	 */
+	label: string | (() => string);
 	/** `'mutation'` (default) or `'action'`. The udf type isn't on the reference at runtime. */
 	type?: 'mutation' | 'action';
 	/**
@@ -73,7 +81,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		if (treatment.report) {
 			posthog.captureError(e, {
 				$exception_source: 'backend_operation',
-				operation_label: opts.label,
+				operation_label: typeof opts.label === 'function' ? opts.label() : opts.label,
 				error_category: op.category,
 			});
 		}

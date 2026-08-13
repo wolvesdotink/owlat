@@ -30,6 +30,14 @@ export interface ToastOptions {
 	durationMs?: number;
 	/** Optional inline action button (e.g. "Undo"); clicking it dismisses the toast. */
 	action?: ToastAction;
+	/**
+	 * Called exactly once when the toast leaves the screen — auto-dismiss, the
+	 * close button, the action button, or {@link useToast.clearToasts}. For
+	 * callers whose follow-up write means "the user has seen this" (marking a
+	 * once-ever nudge acknowledged), which is not the same moment as "we put it
+	 * on screen".
+	 */
+	onDismiss?: () => void;
 }
 
 /**
@@ -49,6 +57,12 @@ export const DEFAULT_DURATIONS_MS: Record<ToastType, number> = {
 
 // Global state for toasts (shared across all components)
 const toasts = ref<Toast[]>([]);
+
+// Dismiss callbacks, kept beside the reactive list rather than on the toast
+// itself: the toast objects are rendered props, and a function on them would be
+// reactive state nothing reads. Removing the entry as it fires is what makes
+// the callback exactly-once.
+const dismissHandlers = new Map<string, () => void>();
 
 export function useToast() {
 	/**
@@ -72,6 +86,8 @@ export function useToast() {
 			...(options?.action ? { action: options.action } : {}),
 		});
 
+		if (options?.onDismiss) dismissHandlers.set(id, options.onDismiss);
+
 		// Auto-dismiss after the resolved window. A non-positive or non-finite
 		// duration means "sticky" — leave it up until dismissed manually.
 		const durationMs = options?.durationMs ?? DEFAULT_DURATIONS_MS[type];
@@ -85,20 +101,30 @@ export function useToast() {
 	};
 
 	/**
-	 * Remove a specific toast by ID
+	 * Remove a specific toast by ID, running its `onDismiss` callback if it has
+	 * one. A second call for the same id is a no-op — the callback is gone with
+	 * the toast.
 	 */
 	const removeToast = (id: string) => {
 		const index = toasts.value.findIndex((t) => t.id === id);
 		if (index > -1) {
 			toasts.value.splice(index, 1);
 		}
+		const onDismiss = dismissHandlers.get(id);
+		if (onDismiss) {
+			dismissHandlers.delete(id);
+			onDismiss();
+		}
 	};
 
 	/**
-	 * Clear all toasts
+	 * Clear all toasts. Each one is still a dismissal, so `onDismiss` fires —
+	 * `removeToast` on an already-emptied list is just the callback.
 	 */
 	const clearToasts = () => {
+		const ids = toasts.value.map((t) => t.id);
 		toasts.value = [];
+		for (const id of ids) removeToast(id);
 	};
 
 	return {

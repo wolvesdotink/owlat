@@ -21,7 +21,7 @@ useModalFocus(panelRef, () => true, () => emit('close'));
 <template>
 	<Teleport to="body">
 		<div
-			class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+			class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim/50"
 			@click.self="emit('close')"
 		>
 			<div

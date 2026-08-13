@@ -11,7 +11,8 @@
  * Order of operations:
  *   1. Wipe all tenant tables (contacts/automations/templates/campaigns/…)
  *   2. Wipe BetterAuth tables (user/account/organization/member)
- *   3. Wipe Owlat-local auth tables (userProfiles/instanceSettings/onboardingProgress/userOnboarding)
+ *   3. Wipe Owlat-local auth tables (userProfiles/instanceSettings/
+ *      onboardingProgress/userOnboarding/sendReadyNotices/sendPathReadiness)
  *
  * Protected by:
  *   - X-Instance-Secret header (timing-safe compare)
@@ -38,6 +39,8 @@ interface ResetCounts {
 	instanceSettings: number;
 	onboardingProgress: number;
 	userOnboarding: number;
+	sendReadyNotices: number;
+	sendPathReadiness: number;
 	tenantRows: number;
 }
 
@@ -53,6 +56,8 @@ export const runReset = internalMutation({
 			instanceSettings: 0,
 			onboardingProgress: 0,
 			userOnboarding: 0,
+			sendReadyNotices: 0,
+			sendPathReadiness: 0,
 			tenantRows: 0,
 		};
 
@@ -98,6 +103,24 @@ export const runReset = internalMutation({
 		for (const o of userOnboarding) {
 			await ctx.db.delete(o._id);
 			counts.userOnboarding++;
+		}
+
+		// "You can send now" nudges are keyed by BetterAuth user id — after the
+		// user wipe above they point at nobody, and a leftover pending row would
+		// toast the first account created on the fresh instance.
+		const sendReadyNotices = await ctx.db.query('sendReadyNotices').collect(); // bounded: dev-only; at most one row per user per transport change
+		for (const n of sendReadyNotices) {
+			await ctx.db.delete(n._id);
+			counts.sendReadyNotices++;
+		}
+
+		// The edge detector's last sample. Leaving it behind would make a blank
+		// instance look like sending was ALREADY known-good, so the next cron tick
+		// would see no edge and never notify. Cleared, the next tick re-baselines.
+		const sendPathReadiness = await ctx.db.query('sendPathReadiness').collect(); // bounded: dev-only; singleton readiness row
+		for (const r of sendPathReadiness) {
+			await ctx.db.delete(r._id);
+			counts.sendPathReadiness++;
 		}
 
 		return counts;

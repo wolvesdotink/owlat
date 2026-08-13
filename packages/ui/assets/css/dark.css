@@ -105,6 +105,7 @@
 	--color-warning-subtle: #221c12;
 	--color-error: #c46b5a;
 	--color-error-subtle: #241614;
+	--color-error-strong: #dd6450; /* solid danger fills — see tokens.css */
 	--color-info: #6b8fa8;
 	--color-info-subtle: #121b22;
 

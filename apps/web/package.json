@@ -27,6 +27,7 @@
 	"dependencies": {
 		"@convex-dev/better-auth": "catalog:convex",
 		"@nuxtjs/color-mode": "catalog:vue",
+		"@nuxtjs/i18n": "^10.6.0",
 		"@owlat/api": "workspace:*",
 		"@owlat/email-builder": "workspace:*",
 		"@owlat/email-previewer": "workspace:*",
@@ -62,12 +63,14 @@
 		"@vitest/coverage-v8": "catalog:",
 		"@vue/test-utils": "^2.4.6",
 		"autoprefixer": "^10.4.27",
+		"axe-core": "^4.13.0",
 		"cross-env": "^10.1.0",
 		"happy-dom": "^20.8.4",
 		"postcss": "^8.5.26",
 		"tailwindcss": "catalog:vue",
 		"typescript": "catalog:",
 		"vitest": "catalog:",
+		"vue-i18n": "^11.4.8",
 		"vue-tsc": "catalog:"
 	}
 }
