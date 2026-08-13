@@ -36,6 +36,7 @@ export type {
 	ComposerOutput,
 	ContactInfo,
 	SendCompositionKind,
+	SendTemplate,
 	TestComposeInput,
 	TransactionalComposeInput,
 } from './types';
@@ -43,12 +44,11 @@ export type { TransformConfig } from './transform';
 
 /**
  * Per-kind composers return everything but the `text` alternative — that is
- * derived centrally in `composeForSend` from the untracked `html` so the
- * `text/plain` part stays clean (no tracking pixel / redirect links).
+ * resolved centrally in `composeForSend` (template `plainTextContent` first,
+ * else a strip of the untracked `html`) so the `text/plain` part stays clean
+ * (no tracking pixel / redirect links).
  */
-type ComposerFn<K extends SendCompositionKind> = (
-	input: ComposeInputForKind<K>,
-) => ComposerOutput;
+type ComposerFn<K extends SendCompositionKind> = (input: ComposeInputForKind<K>) => ComposerOutput;
 
 type ComposerRegistry = {
 	[K in SendCompositionKind]: ComposerFn<K>;
@@ -70,10 +70,34 @@ const COMPOSERS = {
 export function composeForSend(input: ComposeInput): ComposeOutput {
 	const composer = COMPOSERS[input.kind] as ComposerFn<typeof input.kind>;
 	const composed = composer(input);
-	// Derive the text/plain alternative from the UNTRACKED html the composer
-	// returns (the tracking pixel + link rewriting happen later, in the Node
-	// `transformHtml` half), so the text part carries no pixel/redirect URL.
-	return { ...composed, text: htmlToPlainText(composed.html) };
+	// The text/plain alternative, in preference order:
+	//  1. the template's `plainTextContent` — the author's manual override, or
+	//     the body generated from the block document at save time. It is
+	//     personalized here with the same variables the subject uses, under the
+	//     `plain` escape policy (a text part must NOT be HTML-escaped).
+	//  2. a strip of the UNTRACKED html the composer returns (the tracking pixel
+	//     + link rewriting happen later, in the Node `transformHtml` half), so
+	//     the text part carries no pixel/redirect URL either way.
+	const stored = input.template.plainTextContent?.trim();
+	const text = stored
+		? personalize(stored, variablesFor(input), { escape: 'plain' })
+		: htmlToPlainText(composed.html);
+	return { ...composed, text };
+}
+
+/** The personalization variables this send kind substitutes into its content. */
+function variablesFor(input: ComposeInput): Record<string, unknown> {
+	switch (input.kind) {
+		case 'campaign':
+		case 'automation':
+			return input.contactInfo;
+		case 'transactional':
+			return input.dataVariables ?? {};
+		case 'test':
+			return input.sampleContact;
+		case 'archive_snapshot':
+			return { email: '', firstName: '', lastName: '' };
+	}
 }
 
 /**
@@ -89,18 +113,5 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
  * personalized value cannot inject a second mail header (RFC 5322 §2.2).
  */
 export function personalizeSubject(input: ComposeInput): string {
-	const subjectVars: Record<string, unknown> = (() => {
-		switch (input.kind) {
-			case 'campaign':
-			case 'automation':
-				return input.contactInfo;
-			case 'transactional':
-				return input.dataVariables ?? {};
-			case 'test':
-				return input.sampleContact;
-			case 'archive_snapshot':
-				return { email: '', firstName: '', lastName: '' };
-		}
-	})();
-	return personalize(input.template.subject, subjectVars, { escape: 'header' });
+	return personalize(input.template.subject, variablesFor(input), { escape: 'header' });
 }

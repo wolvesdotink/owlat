@@ -63,7 +63,13 @@ import DocumentCanvas from './canvas/DocumentCanvas.vue';
 import FloatingBlockSidebar from './canvas/FloatingBlockSidebar.vue';
 import SubjectFields from './canvas/SubjectFields.vue';
 import UnifiedToolbar from './canvas/UnifiedToolbar.vue';
-import { SaveBlockModal, UnsavedChangesDialog, LinkDialog, VariableCreateDialog } from './dialogs';
+import {
+	SaveBlockModal,
+	UnsavedChangesDialog,
+	LinkDialog,
+	VariableCreateDialog,
+	KeyboardShortcutsDialog,
+} from './dialogs';
 import SavedBlockPickerMenu from './canvas/SavedBlockPickerMenu.vue';
 import UiConfirmationDialog from '@owlat/ui/components/ui/ConfirmationDialog.vue';
 
@@ -78,6 +84,14 @@ const props = defineProps<{
 	variables: Variable[];
 	config?: EmailBuilderConfig;
 	isSaving?: boolean;
+	/**
+	 * The author's manual text/plain body, persisted with the email. Empty string
+	 * (the default) means "ship the body generated from the blocks". Pass it and
+	 * handle `update:plainTextOverride` to enable the Text view's editor.
+	 */
+	plainTextOverride?: string;
+	/** Whether this host persists a plain-text override. */
+	allowPlainTextOverride?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -90,6 +104,7 @@ const emit = defineEmits<{
 	(e: 'settings'): void;
 	(e: 'send-test', html: string): void;
 	(e: 'create-variable', variable: { key: string; type?: string }): void;
+	(e: 'update:plainTextOverride', value: string): void;
 }>();
 
 // ---------------------------------------------------------------------------
@@ -387,6 +402,9 @@ function clearSelection() {
 	clearBlockSelection();
 }
 
+// Keyboard shortcuts help sheet (opened with `?` or the header button)
+const showShortcutsDialog = ref(false);
+
 // Simplified keyboard shortcuts (no TipTap dependencies)
 function handleKeydown(event: KeyboardEvent) {
 	const target = event.target as HTMLElement;
@@ -400,8 +418,13 @@ function handleKeydown(event: KeyboardEvent) {
 		return;
 	}
 
-	// Undo/Redo (Cmd/Ctrl+Z)
-	if ((event.metaKey || event.ctrlKey) && event.key === 'z' && !isEditable) {
+	// The shortcuts sheet has no inputs of its own, so block-level keys (Delete,
+	// Alt+Arrow, …) would otherwise still act on the canvas behind it.
+	if (showShortcutsDialog.value) return;
+
+	// Undo/Redo (Cmd/Ctrl+Z). `event.key` is uppercase while Shift is held, so
+	// lowercase it — otherwise Cmd/Ctrl+Shift+Z never reaches the redo branch.
+	if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !isEditable) {
 		event.preventDefault();
 		if (event.shiftKey) redo();
 		else undo();
@@ -409,6 +432,21 @@ function handleKeydown(event: KeyboardEvent) {
 	}
 
 	if (isEditable) return;
+
+	// Shortcuts help sheet
+	if (event.key === '?') {
+		event.preventDefault();
+		showShortcutsDialog.value = true;
+		return;
+	}
+
+	// Move selected block (Alt+Arrow) — same array move a drag reorder performs,
+	// so it lands in undo history as a single step.
+	if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && event.altKey && activeBlock.value) {
+		event.preventDefault();
+		handleMoveBlock(event.key === 'ArrowUp' ? 'up' : 'down');
+		return;
+	}
 
 	// Delete selected block
 	if ((event.key === 'Delete' || event.key === 'Backspace') && activeBlock.value) {
@@ -461,6 +499,7 @@ const {
 	generatedHtml: previewHtml,
 	isGeneratingHtml,
 	plainText: previewPlainText,
+	plainTextSource: previewPlainTextSource,
 	ampHtml: previewAmpHtml,
 	renderWarnings: previewRenderWarnings,
 	emailAnalysis: previewEmailAnalysis,
@@ -964,6 +1003,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				@settings="emit('settings')"
 				@undo="undo"
 				@redo="redo"
+				@show-shortcuts="showShortcutsDialog = true"
 			>
 				<template v-if="$slots['toolbar-actions']" #toolbar-actions>
 					<slot name="toolbar-actions" />
@@ -1071,6 +1111,9 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:is-generating="isGeneratingHtml"
 				:dark-mode="previewDarkMode"
 				:plain-text="previewPlainText"
+				:plain-text-source="previewPlainTextSource"
+				:plain-text-override="props.plainTextOverride ?? ''"
+				:allow-plain-text-override="props.allowPlainTextOverride ?? false"
 				:amp-html="previewAmpHtml"
 				:render-warnings="previewRenderWarnings"
 				:email-analysis="previewEmailAnalysis"
@@ -1081,6 +1124,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				@update:render-options="renderOptions = $event"
 				@update:dark-mode="handlePreviewDarkMode"
 				@send-test="emit('send-test', previewHtml)"
+				@update:plain-text-override="emit('update:plainTextOverride', $event)"
 			/>
 		</div>
 
@@ -1122,6 +1166,12 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 			:existing-keys="existingVariableKeys"
 			@create="handleVariableCreate"
 			@close="showVariableDialog = false"
+		/>
+
+		<!-- Keyboard shortcuts help sheet -->
+		<KeyboardShortcutsDialog
+			:show="showShortcutsDialog"
+			@close="showShortcutsDialog = false"
 		/>
 
 		<!-- Detach confirmation dialog -->

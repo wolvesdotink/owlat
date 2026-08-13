@@ -31,6 +31,16 @@ export type { UseRecentColorsReturn } from './useRecentColors';
 export { useHistory } from './useHistory';
 export type { HistoryState, UseHistoryOptions, UseHistoryReturn } from './useHistory';
 
+export {
+	EDITOR_SHORTCUTS,
+	EDITOR_SHORTCUT_GROUPS,
+	formatShortcut,
+	formatShortcutKeys,
+	findShortcut,
+	isApplePlatform,
+} from './editorShortcuts';
+export type { EditorShortcut, EditorShortcutGroup } from './editorShortcuts';
+
 export { useKeyboardHandlers } from './useKeyboardHandlers';
 export type {
 	KeyboardHandlerCallbacks,
@@ -53,10 +63,7 @@ export type {
 } from './useLinkedBlocks';
 
 export { useLinkedBlockDrag } from './useLinkedBlockDrag';
-export type {
-	UseLinkedBlockDragOptions,
-	UseLinkedBlockDragReturn,
-} from './useLinkedBlockDrag';
+export type { UseLinkedBlockDragOptions, UseLinkedBlockDragReturn } from './useLinkedBlockDrag';
 
 export { useDevicePreview } from './useDevicePreview';
 export type {
@@ -77,4 +84,3 @@ export type { UseInlineTextEditOptions, UseInlineTextEditReturn } from './useInl
 
 export { useSlashCommands } from './useSlashCommands';
 export type { UseSlashCommandsReturn } from './useSlashCommands';
-

@@ -474,6 +474,8 @@ import type * as emailTemplates_lifecycle from '../emailTemplates/lifecycle.js';
 import type * as emailTemplates_listing from '../emailTemplates/listing.js';
 import type * as emailTemplates_organization from '../emailTemplates/organization.js';
 import type * as emailTemplates_translationMerge from '../emailTemplates/translationMerge.js';
+import type * as emailTemplates_versionSnapshot from '../emailTemplates/versionSnapshot.js';
+import type * as emailTemplates_versions from '../emailTemplates/versions.js';
 import type * as eventsApi from '../eventsApi.js';
 import type * as forms_apiHttp from '../forms/apiHttp.js';
 import type * as forms_endpoints from '../forms/endpoints.js';
@@ -1444,6 +1446,8 @@ declare const fullApi: ApiFromModules<{
 	'emailTemplates/listing': typeof emailTemplates_listing;
 	'emailTemplates/organization': typeof emailTemplates_organization;
 	'emailTemplates/translationMerge': typeof emailTemplates_translationMerge;
+	'emailTemplates/versionSnapshot': typeof emailTemplates_versionSnapshot;
+	'emailTemplates/versions': typeof emailTemplates_versions;
 	eventsApi: typeof eventsApi;
 	'forms/apiHttp': typeof forms_apiHttp;
 	'forms/endpoints': typeof forms_endpoints;

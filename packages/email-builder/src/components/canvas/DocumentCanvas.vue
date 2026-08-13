@@ -10,6 +10,8 @@ import InlineTextEditor from './InlineTextEditor.vue';
 import ColorField from '../panel/fields/ColorField.vue';
 import { useDraggable } from 'vue-draggable-plus';
 import { Link } from '@lucide/vue';
+import { blockAccessibleLabel } from '../../utils/blockLabel';
+import { isEditableTarget, nextListboxIndex } from '../../utils/canvasListboxNav';
 
 const props = defineProps<{
 	blocks: EditorBlock[];
@@ -206,10 +208,66 @@ function handleBlockDoubleClick(blockId: string, blockType: string) {
 	}
 }
 
-// Ref callback to register block elements
+// Ref callback to register block elements. The same elements are the listbox
+// options, so keep a local map for focus management instead of re-querying by
+// id (block ids come from the host and are not selector-safe).
+const optionElements = new Map<string, HTMLElement>();
+
 function setBlockRef(blockId: string, el: HTMLElement | null) {
+	if (el) optionElements.set(blockId, el);
+	else optionElements.delete(blockId);
 	setBlockElement(blockId, el);
 }
+
+// ---------------------------------------------------------------------------
+// Listbox semantics: roving tabindex + focus that tracks selection
+// ---------------------------------------------------------------------------
+
+/**
+ * Roving tabindex. Exactly one option is tabbable so the canvas is a single
+ * Tab stop; with nothing selected that is the first block, which is where
+ * arrow navigation starts from.
+ */
+function optionTabIndex(blockId: string): number {
+	if (props.selectedBlockId) return props.selectedBlockId === blockId ? 0 : -1;
+	return props.blocks[0]?.id === blockId ? 0 : -1;
+}
+
+/**
+ * Listbox navigation. Alt+Arrow is deliberately left alone: the global
+ * keyboard handler (useKeyboardHandlers) uses it to *move* the selected block,
+ * so here it must not also move the selection.
+ */
+function handleListboxKeydown(event: KeyboardEvent) {
+	if (event.altKey || event.metaKey || event.ctrlKey) return;
+	if (isEditableTarget(event.target)) return;
+
+	const blocks = props.blocks;
+	const current = blocks.findIndex((b) => b.id === props.selectedBlockId);
+	const next = nextListboxIndex(event.key, current, blocks.length);
+	if (next === null) return;
+
+	event.preventDefault();
+	const target = blocks[next];
+	if (target && target.id !== props.selectedBlockId) emit('select', target.id);
+}
+
+// Focus follows selection, so the block a screen reader announces is the block
+// the keyboard acts on. Focus is only pulled when it already lives inside the
+// canvas (or nowhere) — a selection driven from the toolbar or a panel field
+// must not yank focus out of the control the user is operating.
+watch(
+	() => props.selectedBlockId,
+	(blockId) => {
+		if (!blockId || props.inlineEditBlockId === blockId) return;
+		const active = document.activeElement;
+		if (active && active !== document.body && !containerRef.value?.contains(active)) return;
+		nextTick(() => {
+			const el = optionElements.get(blockId);
+			if (el && el !== document.activeElement) el.focus({ preventScroll: true });
+		});
+	}
+);
 
 // Track inline editor refs from InlineTextEditor
 type InlineEditorComponentRef = {
@@ -244,6 +302,9 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 					type="button"
 					class="absolute -top-3 right-4 z-10 flex items-center gap-1.5 h-6 pl-1 pr-2 rounded-full bg-bg-elevated border border-border-subtle shadow-sm cursor-pointer transition-shadow hover:shadow-md"
 					title="Email background color"
+					aria-label="Email background color"
+					aria-haspopup="dialog"
+					:aria-expanded="showBgColorPopover"
 					@click="toggleBgColorPopover"
 				>
 					<span
@@ -265,6 +326,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 					>
 						<div class="text-[11px] font-medium text-text-secondary uppercase tracking-wide mb-2">Email Background</div>
 						<ColorField
+							label="Email background"
 							:value="backgroundColor || '#ffffff'"
 							@update="emit('update:backgroundColor', $event)"
 						/>
@@ -272,14 +334,31 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 				</Teleport>
 				<slot name="subject-fields" />
 
-				<div ref="containerRef" class="min-h-[100px]">
-					<div v-for="item in displayItems" :key="item.id">
+				<!--
+					The block list is a listbox: one option per block, selection wired to
+					`selectedBlockId`, roving tabindex so the canvas is a single Tab stop.
+					The per-group wrapper is `presentation` so Sortable can keep its own
+					element without breaking listbox → option ownership.
+				-->
+				<div
+					ref="containerRef"
+					class="min-h-[100px]"
+					role="listbox"
+					aria-label="Email blocks"
+					aria-orientation="vertical"
+					@keydown="handleListboxKeydown"
+				>
+					<div v-for="item in displayItems" :key="item.id" role="presentation">
 						<div
 							v-for="block in item.blocks"
 							:key="block.id"
 							:ref="(el) => setBlockRef(block.id, el as HTMLElement)"
+							role="option"
+							:aria-selected="selectedBlockId === block.id"
+							:aria-label="blockAccessibleLabel(block)"
+							:tabindex="optionTabIndex(block.id)"
 							:class="[
-								'relative group/block transition-all duration-(--motion-moderate) rounded-md',
+								'relative group/block transition-all duration-(--motion-moderate) rounded-md eb-canvas-option',
 								isLinkedBlockFn(block.id)
 									? [
 										'border-x-2 border-y-0 border-dashed border-border-default my-0 rounded-none',
@@ -325,6 +404,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 								<button
 									class="inline-flex items-center justify-center w-[18px] h-[18px] p-0 text-text-tertiary bg-transparent border-none rounded-[3px] cursor-pointer transition-colors duration-(--motion-fast) hover:text-brand hover:bg-brand/10"
 									title="Detach"
+									:aria-label="`Detach ${block.savedBlockRef?.blockName || 'linked block'}`"
 									type="button"
 									@click.stop="requestDetachLinkedBlock(block.id)"
 								>
@@ -379,19 +459,21 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 				/>
 
 				<!-- Empty state -->
-				<div
+				<button
 					v-if="blocks.length === 0"
-					class="flex flex-col items-center justify-center gap-2 h-60 border-2 border-dashed border-border-subtle rounded-lg my-4 cursor-pointer transition-[border-color,background-color] duration-(--motion-fast) hover:border-brand hover:bg-brand/[0.02]"
+					type="button"
+					class="flex flex-col items-center justify-center gap-2 w-full h-60 border-2 border-dashed border-border-subtle rounded-lg my-4 cursor-pointer transition-[border-color,background-color] duration-(--motion-fast) hover:border-brand hover:bg-brand/[0.02]"
+					aria-label="Start building your email — add a text block"
 					@click="emit('add-text-block')"
 				>
-					<svg class="text-text-tertiary" width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+					<svg class="text-text-tertiary" aria-hidden="true" width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
 						<rect x="6" y="6" width="36" height="36" rx="4" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" />
 						<line x1="24" y1="16" x2="24" y2="32" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 						<line x1="16" y1="24" x2="32" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 					</svg>
-					<p class="text-sm font-medium text-text-secondary m-0">Start building your email</p>
-					<p class="text-[13px] text-text-tertiary m-0">Click to start typing or use the toolbar above</p>
-				</div>
+					<span class="block text-sm font-medium text-text-secondary">Start building your email</span>
+					<span class="block text-[13px] text-text-tertiary">Click to start typing or use the toolbar above</span>
+				</button>
 			</div>
 
 			<!-- Slot for content below the email canvas (e.g. attachments) -->

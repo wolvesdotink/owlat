@@ -114,6 +114,10 @@ const attachments = ref<StoredAttachment[]>([]);
 // and consumed at send time by the delivery worker.
 const showUnsubscribe = ref(false);
 
+// The author's manual text/plain body ('' = ship the generated one). Edited in
+// the builder's Text view; dirty-tracked and saved with the rest of the email.
+const plainTextOverride = ref('');
+
 // Email editor bridge — owns the handler set, the load→dirty→save loop, and the
 // media-picker / test-email plumbing. The transactional editor adds attachments
 // to the dirty-tracked refs and supplies its own publishable save.
@@ -135,11 +139,16 @@ const {
 	save: handleSave,
 } = useEmailEditorBridge({
 	source: email,
-	extraWatch: [() => attachments.value, () => showUnsubscribe.value],
+	extraWatch: [
+		() => attachments.value,
+		() => showUnsubscribe.value,
+		() => plainTextOverride.value,
+	],
 	initialize: (e, ctx) => {
 		ctx.name.value = e.name;
 		ctx.subject.value = e.subject;
 		showUnsubscribe.value = e.showUnsubscribe ?? false;
+		plainTextOverride.value = e.plainTextOverride ?? '';
 		try {
 			const parsed = JSON.parse(e.content || '[]');
 			if (Array.isArray(parsed)) {
@@ -165,6 +174,7 @@ const {
 			renderOptions: { theme: emailTheme.value, variableType: 'data' },
 			supportedLanguages: email.value?.supportedLanguages ?? [],
 			defaultLanguage: email.value?.defaultLanguage ?? 'en',
+			plainTextOverride: plainTextOverride.value,
 			update: async (payload) => {
 				// The bridge clears the dirty flag only when save() resolves. The
 				// operation module has toasted any categorized failure; throw so the
@@ -177,6 +187,8 @@ const {
 					htmlContent: payload.htmlContent,
 					htmlTranslations: payload.htmlTranslations,
 					linkedBlockIds: payload.linkedBlockIds,
+					plainTextContent: payload.plainTextContent,
+					plainTextOverride: payload.plainTextOverride,
 					attachments: JSON.stringify(attachments.value),
 					showUnsubscribe: showUnsubscribe.value,
 				});
@@ -314,6 +326,9 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 					hideSubject: false,
 				}"
 				:is-saving="isSaving"
+				:plain-text-override="plainTextOverride"
+				:allow-plain-text-override="true"
+				@update:plain-text-override="plainTextOverride = $event"
 				@save="handleSave"
 				@back="handleBack"
 				@send-test="handleSendTest"

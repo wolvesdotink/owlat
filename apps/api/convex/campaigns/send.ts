@@ -335,6 +335,14 @@ export const startCampaignSend = internalAction({
 			}
 		}
 
+		// Version history: record the template state this send is going out
+		// with, past the content-scan gate so a blocked/held campaign leaves no
+		// "sent" snapshot. Deduplicated and capped by the versions module.
+		await ctx.runMutation(internal.emailTemplates.versions.captureForSend, {
+			templateId: campaign.emailTemplateId,
+			userId: LIFECYCLE_USER_ORCHESTRATOR,
+		});
+
 		// Archive snapshot: generate public archive if enabled. The "view in
 		// browser" URL is re-derived per page by the walker from the stored
 		// `archiveToken`, so PREP only writes the snapshot here.
@@ -431,6 +439,8 @@ type EnqueueVariantArgs = {
 	abVariant: 'A' | 'B' | undefined;
 	subject: string;
 	htmlContent: string;
+	/** Pre-generated (or author-overridden) text/plain body; default language only. */
+	plainTextContent?: string;
 	from: string;
 	replyTo?: string;
 	audienceType?: 'topic' | 'segment';
@@ -538,6 +548,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 				replyTo: args.replyTo,
 				subject: args.subject,
 				htmlContent: args.htmlContent,
+				plainTextContent: args.plainTextContent,
 				convexSiteUrl: args.convexSiteUrl,
 				siteUrl: args.siteUrl,
 				audienceType: args.audienceType,
@@ -938,6 +949,9 @@ export const resolveCampaignPage = internalAction({
 				// variantBSubject (subject test) or variantBTemplateId (content test).
 				let subject: string;
 				let htmlContent: string;
+				// The text/plain body travels with the html it belongs to — the
+				// per-language query returns it for the default language only.
+				let plainTextContent: string | undefined;
 				if (bucket.variant === 'B') {
 					if (variantBTemplateId) {
 						const bContent = await ctx.runQuery(
@@ -947,6 +961,7 @@ export const resolveCampaignPage = internalAction({
 						if (!bContent) continue;
 						subject = bContent.subject;
 						htmlContent = bContent.htmlContent;
+						plainTextContent = bContent.plainTextContent;
 					} else {
 						// Subject test — variant B reuses A's html with the alt subject.
 						const aContent = await ctx.runQuery(
@@ -956,6 +971,7 @@ export const resolveCampaignPage = internalAction({
 						if (!aContent) continue;
 						subject = variantBSubject ?? campaignSubjectOverride ?? aContent.subject;
 						htmlContent = aContent.htmlContent;
+						plainTextContent = aContent.plainTextContent;
 					}
 				} else {
 					const aContent = await ctx.runQuery(
@@ -965,6 +981,7 @@ export const resolveCampaignPage = internalAction({
 					if (!aContent) continue;
 					subject = campaignSubjectOverride ?? aContent.subject;
 					htmlContent = aContent.htmlContent;
+					plainTextContent = aContent.plainTextContent;
 				}
 
 				pageEnqueued += await enqueueVariantBatch(ctx, {
@@ -973,6 +990,7 @@ export const resolveCampaignPage = internalAction({
 					abVariant: bucket.variant,
 					subject,
 					htmlContent,
+					plainTextContent,
 					from,
 					replyTo: campaign.replyTo,
 					audienceType,

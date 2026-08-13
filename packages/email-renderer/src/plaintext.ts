@@ -14,20 +14,54 @@ import './blocks/_builtin-modules';
  */
 const renderBlockPlainText = (block: EditorBlock): string => {
 	const mod = moduleFor(block.type);
-	return mod?.plaintext?.({
-		block,
-		content: block.content,
-		walk: renderBlockPlainText,
-	}) ?? '';
+	return (
+		mod?.plaintext?.({
+			block,
+			content: block.content,
+			walk: renderBlockPlainText,
+		}) ?? ''
+	);
 };
+
+/**
+ * Normalize the joined body: strip trailing spaces, collapse runs of blank
+ * lines to one, and trim the ends. Block modules emit their own internal
+ * spacing, so a decorative block that resolves to '' cannot leave a hole.
+ */
+const normalize = (text: string): string =>
+	text
+		.replace(/\r\n/g, '\n')
+		.replace(/[ \t]+\n/g, '\n')
+		.replace(/\n{3,}/g, '\n\n')
+		.trim();
 
 /**
  * Render an array of EditorBlocks to plain text.
  * Useful for multipart email (text/plain) which improves deliverability.
  */
-export const renderPlainText = (blocks: EditorBlock[], _options?: RenderOptions): string => {
-	return blocks
-		.map((block) => renderBlockPlainText(block))
-		.filter(Boolean)
-		.join('\n\n');
-};
+export const renderPlainText = (blocks: EditorBlock[], _options?: RenderOptions): string =>
+	normalize(
+		blocks
+			.map((block) => renderBlockPlainText(block))
+			.filter(Boolean)
+			.join('\n\n')
+	);
+
+/**
+ * Whether a stored manual override actually carries content. Whitespace-only
+ * overrides (a cleared editor) fall back to the generated body.
+ */
+export const hasPlainTextOverride = (override: string | null | undefined): boolean =>
+	typeof override === 'string' && override.trim().length > 0;
+
+/**
+ * The text/plain body to ship: the author's manual override when they wrote
+ * one, otherwise the body generated from the block document. Every send path
+ * resolves through this so "override wins" is stated once.
+ */
+export const resolvePlainText = (
+	blocks: EditorBlock[],
+	override: string | null | undefined,
+	options?: RenderOptions
+): string =>
+	hasPlainTextOverride(override) ? normalize(override!) : renderPlainText(blocks, options);

@@ -17,6 +17,12 @@ export interface KeyboardHandlerCallbacks {
 	onClearImageContent: (content: ImageBlockContent) => void;
 	/** Called on Ctrl/Cmd+D for container item duplication */
 	onDuplicateSelectedContainerItem: () => void;
+	/**
+	 * Called on Alt+ArrowUp / Alt+ArrowDown to reorder the current selection.
+	 * Must perform the same block-array move a drag-and-drop reorder does so the
+	 * change lands in undo history as one step.
+	 */
+	onMoveSelection?: (direction: 'up' | 'down') => void;
 	/** Called on Enter to insert a text item after the selected column item */
 	onInsertColumnItemAfter: (
 		blockId: string,
@@ -66,7 +72,11 @@ export interface UseKeyboardHandlersOptions {
  * - Escape to close menus
  * - Delete/Backspace for block/item deletion or image clearing
  * - Ctrl/Cmd+D for duplication
+ * - Alt+ArrowUp / Alt+ArrowDown to reorder the selection
  * - Enter to insert new text blocks/items
+ *
+ * Every shortcut handled here is listed in `EDITOR_SHORTCUTS` (editorShortcuts.ts)
+ * so it shows up in the keyboard shortcuts help sheet.
  */
 export function useKeyboardHandlers(options: UseKeyboardHandlersOptions) {
 	const {
@@ -87,11 +97,17 @@ export function useKeyboardHandlers(options: UseKeyboardHandlersOptions) {
 	};
 
 	const handleUndoRedoKeydown = (event: KeyboardEvent) => {
-		// Check for Cmd/Ctrl + Z (undo) or Cmd/Ctrl + Shift + Z (redo)
-		if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
+		// Check for Cmd/Ctrl + Z (undo) or Cmd/Ctrl + Shift + Z (redo).
+		// `event.key` is uppercase 'Z' while Shift is held, so compare lowercased —
+		// otherwise the redo branch below is unreachable.
+		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
 			// Don't intercept if we're in a text input
-			const target = event.target as HTMLElement;
-			if (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+			const target = event.target as HTMLElement | null;
+			if (
+				target?.isContentEditable ||
+				target?.tagName === 'INPUT' ||
+				target?.tagName === 'TEXTAREA'
+			) {
 				return;
 			}
 
@@ -127,6 +143,20 @@ export function useKeyboardHandlers(options: UseKeyboardHandlersOptions) {
 		}
 
 		if (isEditableTarget(event.target)) return;
+
+		// Alt+ArrowUp / Alt+ArrowDown reorders the current selection. Alt (not
+		// Cmd/Ctrl) keeps macOS' native word-navigation and Windows' browser
+		// history bindings intact.
+		if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && event.altKey) {
+			const hasSelection = Boolean(
+				selectedContainerItem.value || selectedColumnItem.value || selectedBlock.value
+			);
+			if (hasSelection && callbacks.onMoveSelection) {
+				callbacks.onMoveSelection(event.key === 'ArrowUp' ? 'up' : 'down');
+				event.preventDefault();
+				return;
+			}
+		}
 
 		// Handle Delete/Backspace for container items
 		if (event.key === 'Delete' || event.key === 'Backspace') {

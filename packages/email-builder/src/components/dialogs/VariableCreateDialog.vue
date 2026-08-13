@@ -53,8 +53,9 @@ watch(
 	<UiModal :open="show" title="Add data variable" @update:open="handleClose">
 		<div class="space-y-4">
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-2">Variable name</label>
+				<label class="block text-sm font-medium text-text-secondary mb-2" for="variable-name">Variable name</label>
 				<input
+					id="variable-name"
 					v-model="variableKey"
 					type="text"
 					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand focus:ring-1 focus:ring-brand"
@@ -70,8 +71,9 @@ watch(
 			</div>
 
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-2">Type</label>
+				<label class="block text-sm font-medium text-text-secondary mb-2" for="variable-type">Type</label>
 				<select
+					id="variable-type"
 					v-model="variableType"
 					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand"
 				>

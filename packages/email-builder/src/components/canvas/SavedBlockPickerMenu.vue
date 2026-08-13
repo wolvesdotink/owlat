@@ -75,10 +75,11 @@ onUnmounted(() => {
 			@keydown="handleKeydown"
 		>
 			<div class="relative p-2 border-b border-border-subtle">
-				<Search :size="14" class="absolute top-1/2 left-[18px] -translate-y-1/2 text-text-tertiary pointer-events-none" />
+				<Search :size="14" aria-hidden="true" class="absolute top-1/2 left-[18px] -translate-y-1/2 text-text-tertiary pointer-events-none" />
 				<input
 					ref="searchEl"
 					v-model="searchQuery"
+					aria-label="Search saved blocks"
 					class="w-full py-1.5 pr-2 pl-7 text-[13px] border border-transparent rounded-md bg-bg-surface outline-none text-text-primary focus:border-brand focus:shadow-[0_0_0_3px_rgba(196,120,90,0.08)] focus:bg-bg-surface-hover"
 					type="text"
 					placeholder="Search saved blocks..."
@@ -94,12 +95,15 @@ onUnmounted(() => {
 				{{ searchQuery ? `No blocks match "${searchQuery}"` : 'No saved blocks yet' }}
 			</div>
 
-			<div v-else class="overflow-y-auto p-1 max-h-[300px]">
+			<div v-else role="listbox" aria-label="Saved blocks" class="overflow-y-auto p-1 max-h-[300px]">
 				<button
 					v-for="(block, i) in filteredBlocks"
 					:key="block._id"
 					class="flex items-center gap-2.5 w-full py-2 px-2.5 text-left border-none rounded-md bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) hover:bg-bg-surface-hover"
 					:class="{ 'bg-brand/[0.08]': i === selectedIndex }"
+					type="button"
+					role="option"
+					:aria-selected="i === selectedIndex"
 					@mousedown.prevent="emit('select', block)"
 					@mouseenter="selectedIndex = i"
 				>

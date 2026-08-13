@@ -52,8 +52,18 @@ const props = withDefaults(
 		showSendTest?: boolean;
 		/** Optional nesting depth analysis result to show warning in compatibility panel */
 		nestingDepthWarning?: NestingDepthResult | null;
-		/** Plain text version of the email */
+		/** Plain text version of the email (generated from the block document) */
 		plainText?: string;
+		/**
+		 * The generated plain text WITHOUT preview variable substitution — what a
+		 * new manual override is seeded from, so `{{firstName}}` tokens survive
+		 * into the stored body instead of being frozen at a preview value.
+		 */
+		plainTextSource?: string;
+		/** The author's manual text/plain body; empty string when none is stored. */
+		plainTextOverride?: string;
+		/** Whether the host persists a manual plain-text override. */
+		allowPlainTextOverride?: boolean;
 		/** AMP HTML version of the email */
 		ampHtml?: string;
 		/** Render warnings from the renderer */
@@ -86,6 +96,9 @@ const props = withDefaults(
 		showSendTest: false,
 		nestingDepthWarning: null,
 		plainText: '',
+		plainTextSource: '',
+		plainTextOverride: '',
+		allowPlainTextOverride: false,
 		ampHtml: '',
 		renderWarnings: () => [],
 		emailAnalysis: null,
@@ -104,6 +117,7 @@ const emit = defineEmits<{
 	(e: 'send-test'): void;
 	(e: 'update:render-options', options: Partial<PreviewRenderOptions>): void;
 	(e: 'update:dark-mode', value: boolean): void;
+	(e: 'update:plain-text-override', value: string): void;
 }>();
 
 // State
@@ -163,6 +177,59 @@ const hasSimulationAdjustments = computed(
 const hasAnalysisData = computed(
 	() => props.emailAnalysis || props.healthScore || props.validationIssues?.length
 );
+
+// Plain-text override. The stored override is the source of truth; the local
+// draft exists so typing does not wait on a round-trip through the host.
+const plainTextDraft = ref(props.plainTextOverride);
+watch(
+	() => props.plainTextOverride,
+	(v) => {
+		if (v !== plainTextDraft.value) plainTextDraft.value = v;
+	}
+);
+
+const isPlainTextOverridden = computed(() => props.plainTextOverride.trim().length > 0);
+
+// Whether the editor is open, tracked separately from "an override is stored":
+// clearing the textarea mid-edit must not yank the editor out from under the
+// cursor — it only means the generated body wins if the author leaves it empty.
+const isEditingPlainText = ref(isPlainTextOverridden.value);
+watch(isPlainTextOverridden, (overridden) => {
+	// A template loading in with a stored override opens straight into the editor.
+	if (overridden) isEditingPlainText.value = true;
+});
+
+/** The one-line explanation of what recipients on a text-only client will get. */
+const plainTextStatus = computed(() => {
+	if (!isEditingPlainText.value) return 'Generated from your blocks';
+	return isPlainTextOverridden.value
+		? 'Custom text — sent instead of the generated version'
+		: 'Empty — the generated text will be sent';
+});
+
+/** What the Text view shows: the author's body when set, else the generated one. */
+const displayPlainText = computed(() =>
+	isPlainTextOverridden.value ? props.plainTextOverride : props.plainText
+);
+
+function startPlainTextOverride() {
+	// Seed from the UNFILLED generated body so variable tokens survive editing.
+	const seed = props.plainTextSource || props.plainText;
+	isEditingPlainText.value = true;
+	plainTextDraft.value = seed;
+	emit('update:plain-text-override', seed);
+}
+
+function updatePlainTextOverride(value: string) {
+	plainTextDraft.value = value;
+	emit('update:plain-text-override', value);
+}
+
+function resetPlainTextOverride() {
+	isEditingPlainText.value = false;
+	plainTextDraft.value = '';
+	emit('update:plain-text-override', '');
+}
 
 const hasWarnings = computed(() => (props.renderWarnings?.length ?? 0) > 0);
 const hasDiff = computed(() => props.emailDiff && !props.emailDiff.identical);
@@ -359,9 +426,9 @@ function handleClickOutside(event: MouseEvent) {
 							<Check v-if="copiedFormat === 'html'" class="ep-export-check" />
 						</button>
 						<button
-							v-if="plainText"
+							v-if="displayPlainText"
 							class="ep-export-item"
-							@click="copyToClipboard(plainText, 'text')"
+							@click="copyToClipboard(displayPlainText, 'text')"
 						>
 							<Copy class="ep-export-item-icon" />
 							<span>Copy Plain Text</span>
@@ -376,9 +443,9 @@ function handleClickOutside(event: MouseEvent) {
 							<span>Download .html</span>
 						</button>
 						<button
-							v-if="plainText"
+							v-if="displayPlainText"
 							class="ep-export-item"
-							@click="downloadFile(plainText, 'email.txt', 'text/plain')"
+							@click="downloadFile(displayPlainText, 'email.txt', 'text/plain')"
 						>
 							<Download class="ep-export-item-icon" />
 							<span>Download .txt</span>
@@ -505,7 +572,33 @@ function handleClickOutside(event: MouseEvent) {
 
 			<!-- Plain Text Mode -->
 			<div v-else-if="viewMode === 'plaintext'" class="ep-code-area">
-				<pre class="ep-code-block ep-plaintext-block">{{ plainText || 'No plain text generated.' }}</pre>
+				<div v-if="allowPlainTextOverride" class="ep-plaintext-bar">
+					<span class="ep-plaintext-status">
+						{{ plainTextStatus }}
+					</span>
+					<button
+						v-if="!isEditingPlainText"
+						class="ep-plaintext-action"
+						@click="startPlainTextOverride"
+					>
+						Edit text
+					</button>
+					<button v-else class="ep-plaintext-action" @click="resetPlainTextOverride">
+						Use generated
+					</button>
+				</div>
+				<textarea
+					v-if="allowPlainTextOverride && isEditingPlainText"
+					:value="plainTextDraft"
+					class="ep-code-block ep-plaintext-block ep-plaintext-editor"
+					spellcheck="false"
+					aria-label="Plain text body"
+					@input="updatePlainTextOverride(($event.target as HTMLTextAreaElement).value)"
+				></textarea>
+				<pre
+					v-else
+					class="ep-code-block ep-plaintext-block"
+				>{{ displayPlainText || 'No plain text generated.' }}</pre>
 			</div>
 
 			<!-- AMP Mode -->
@@ -935,6 +1028,40 @@ function handleClickOutside(event: MouseEvent) {
 .ep-plaintext-block {
 	white-space: pre-wrap;
 	word-wrap: break-word;
+}
+
+.ep-plaintext-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 8px;
+}
+
+.ep-plaintext-status {
+	font-size: 12px;
+	color: var(--ep-text-secondary);
+}
+
+.ep-plaintext-action {
+	padding: 4px 10px;
+	border: 1px solid var(--ep-border-subtle);
+	border-radius: 6px;
+	background: var(--ep-bg-surface);
+	color: var(--ep-text-primary);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.ep-plaintext-action:hover {
+	background: var(--ep-bg-elevated);
+}
+
+.ep-plaintext-editor {
+	display: block;
+	width: 100%;
+	min-height: 320px;
+	resize: vertical;
 }
 
 /* Meta Preview */

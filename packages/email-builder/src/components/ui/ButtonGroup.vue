@@ -4,6 +4,8 @@ import type { Component } from 'vue';
 defineProps<{
 	options: { value: string; icon: Component; label: string }[];
 	value: string;
+	/** Names the group of choices (e.g. "Alignment") for assistive tech. */
+	label?: string;
 }>();
 
 const emit = defineEmits<{
@@ -12,7 +14,11 @@ const emit = defineEmits<{
 </script>
 
 <template>
-	<div class="inline-flex border border-border-subtle rounded-lg overflow-hidden bg-bg-surface">
+	<div
+		class="inline-flex border border-border-subtle rounded-lg overflow-hidden bg-bg-surface"
+		role="group"
+		:aria-label="label"
+	>
 		<button
 			v-for="(opt, i) in options"
 			:key="opt.value"
@@ -25,9 +31,11 @@ const emit = defineEmits<{
 			]"
 			type="button"
 			:title="opt.label"
+			:aria-label="opt.label"
+			:aria-pressed="value === opt.value"
 			@click="emit('update', opt.value)"
 		>
-			<component :is="opt.icon" :size="16" />
+			<component :is="opt.icon" :size="16" aria-hidden="true" />
 		</button>
 	</div>
 </template>
