@@ -163,7 +163,7 @@ watch(
 		<!-- Selected file preview -->
 		<div
 			v-else
-			class="flex items-center gap-3 p-4 bg-bg-surface border border-border-subtle rounded-xl"
+			class="flex items-center gap-3 p-4 bg-bg-surface shadow-surface-1 rounded-xl"
 		>
 			<Icon name="lucide:file" class="w-8 h-8 text-text-tertiary flex-shrink-0" />
 			<div class="min-w-0 flex-1">
@@ -173,7 +173,7 @@ watch(
 				</p>
 			</div>
 			<button
-				class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors flex-shrink-0"
+				class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				@click="removeSelectedFile"
 				aria-label="Remove file"
 			>
@@ -193,7 +193,7 @@ watch(
 					id="title"
 					v-model="title"
 					type="text"
-					class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+					class="input input-sm"
 					placeholder="Give this file a descriptive title..."
 				/>
 			</div>
@@ -206,7 +206,7 @@ watch(
 					id="tagsinput"
 					v-model="tagsInput"
 					type="text"
-					class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+					class="input input-sm"
 					placeholder="invoice, report, Q1 (comma-separated)"
 				/>
 				<div v-if="parsedTags.length > 0" class="flex flex-wrap gap-1.5 mt-2">
@@ -227,7 +227,7 @@ watch(
 				<select
 					id="sourcetype"
 					v-model="sourceType"
-					class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+					class="input input-sm"
 				>
 					<option value="upload">Manual Upload</option>
 					<option value="email_attachment">Email Attachment</option>
@@ -245,11 +245,7 @@ watch(
 
 		<template #footer>
 			<UiButton variant="secondary" @click="close">Cancel</UiButton>
-			<UiButton
-				class="bg-brand text-white hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
-				:disabled="!selectedFile || isUploading"
-				@click="handleSubmit"
-			>
+			<UiButton :disabled="!selectedFile || isUploading" @click="handleSubmit">
 				<template v-if="isUploading">
 					<UiSpinner size="xs" tone="inverse" class="mr-2" />
 					Uploading...

@@ -221,7 +221,9 @@ onUnmounted(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Marketing Templates</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					Marketing Templates
+				</h1>
 				<p class="mt-1 text-text-secondary">
 					Create and manage marketing email templates for campaigns and newsletters
 				</p>
@@ -259,18 +261,23 @@ onUnmounted(() => {
 
 				<!-- Sort Dropdown -->
 				<div class="relative" data-sort-dropdown>
-					<button
-						class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary bg-bg-surface border border-border-subtle rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					<UiButton
+						variant="outline"
+						size="sm"
 						aria-haspopup="listbox"
 						:aria-expanded="isSortDropdownOpen"
 						aria-controls="marketing-sort-listbox"
 						aria-label="Sort templates"
 						@click="isSortDropdownOpen = !isSortDropdownOpen"
 					>
-						<Icon name="lucide:arrow-up-down" class="w-4 h-4" />
+						<template #iconLeft>
+							<Icon name="lucide:arrow-up-down" class="w-4 h-4" />
+						</template>
 						<span class="hidden sm:inline">{{ currentSort.label }}</span>
-						<Icon name="lucide:chevron-down" class="w-4 h-4" />
-					</button>
+						<template #iconRight>
+							<Icon name="lucide:chevron-down" class="w-4 h-4" />
+						</template>
+					</UiButton>
 					<Transition
 						enter-active-class="duration-(--motion-moderate) ease-spring"
 						enter-from-class="opacity-0 scale-95"
@@ -413,21 +420,21 @@ onUnmounted(() => {
 								class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
 							>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleEdit(template._id)"
 									aria-label="Edit"
 								>
 									<Icon name="lucide:pencil" class="w-4 h-4" />
 								</button>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleDuplicate(template._id)"
 									aria-label="Copy"
 								>
 									<Icon name="lucide:copy" class="w-4 h-4" />
 								</button>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="openDeleteModal(template._id, template.name)"
 									aria-label="Delete"
 								>
@@ -543,21 +550,21 @@ onUnmounted(() => {
 									<td class="px-6 py-4">
 										<div class="flex items-center justify-end gap-1" @click.stop>
 											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												@click="handleEdit(template._id)"
 												aria-label="Edit"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												@click="handleDuplicate(template._id)"
 												aria-label="Copy"
 											>
 												<Icon name="lucide:copy" class="w-4 h-4" />
 											</button>
 											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors"
+												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												@click="openDeleteModal(template._id, template.name)"
 												aria-label="Delete"
 											>

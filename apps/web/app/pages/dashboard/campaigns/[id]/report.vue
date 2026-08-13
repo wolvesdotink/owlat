@@ -279,7 +279,7 @@ const loadPrevClicked = () => {
 					</NuxtLink>
 					<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 						<div>
-							<h1 class="text-2xl font-semibold text-text-primary">{{ campaign.name }}</h1>
+							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ campaign.name }}</h1>
 							<p
 								class="mt-1 text-text-secondary text-sm flex flex-wrap items-center gap-x-2 gap-y-1"
 							>

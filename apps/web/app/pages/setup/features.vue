@@ -57,13 +57,13 @@ function togglePack(packKey: FeaturePackKey) {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-base text-text-primary">
-		<div class="mx-auto max-w-3xl px-6 py-12">
+	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base text-text-primary">
+		<UiHeroField />
+
+		<div class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase"
-					>Owlat setup</span
-				>
+				<span class="lp-eyebrow">Owlat setup</span>
 			</div>
 
 			<UiStepIndicator
@@ -75,7 +75,9 @@ function togglePack(packKey: FeaturePackKey) {
 			/>
 
 			<header class="mb-6">
-				<h1 class="font-display text-3xl mb-2">Pick what to enable</h1>
+				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">
+					Pick what to <span class="lp-title-accent">enable</span>
+				</h1>
 				<p class="text-text-secondary leading-relaxed">
 					Toggle a master feature off and its sub-features disable automatically. You can change all
 					of this later.
@@ -99,7 +101,7 @@ function togglePack(packKey: FeaturePackKey) {
 					<li
 						v-for="packKey in ALL_FEATURE_PACK_KEYS"
 						:key="packKey"
-						class="rounded-lg border border-border-subtle p-4 transition-colors"
+						class="rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-4 transition-[box-shadow,opacity] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
 						:class="{ 'opacity-60': packState[packKey] === 'off' }"
 					>
 						<label class="flex items-start gap-3 cursor-pointer">
@@ -134,7 +136,7 @@ function togglePack(packKey: FeaturePackKey) {
 					<li
 						v-for="def in defs"
 						:key="def.key"
-						class="rounded-lg border border-border-subtle bg-bg-elevated p-4 transition-colors"
+						class="rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-4 transition-[box-shadow,opacity] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
 						:class="{ 'opacity-60': !resolved[def.key] }"
 					>
 						<label class="flex items-start gap-3 cursor-pointer">

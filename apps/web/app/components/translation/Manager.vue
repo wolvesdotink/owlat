@@ -525,7 +525,7 @@ const isCellSaving = (rowId: string, language: string) => {
 		>
 			<div class="flex items-center gap-4">
 				<button
-					class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
+					class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					@click="handleBack"
 					aria-label="Back"
 				>
@@ -582,7 +582,7 @@ const isCellSaving = (rowId: string, language: string) => {
 				</div>
 
 				<!-- Translation Table -->
-				<div v-else class="border border-border-subtle rounded-xl bg-bg-elevated overflow-hidden">
+				<div v-else class="rounded-(--radius-card) surface-2 overflow-hidden">
 					<div class="overflow-x-auto">
 						<table class="w-full">
 							<thead>
@@ -617,7 +617,7 @@ const isCellSaving = (rowId: string, language: string) => {
 											<div class="flex items-center gap-1">
 												<button
 													v-if="isTranslating !== lang"
-													class="p-1 rounded hover:bg-brand/10 text-text-tertiary hover:text-brand transition-colors"
+													class="p-1 rounded hover:bg-brand/10 text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 													title="Auto-translate with AI"
 													@click="autoTranslateColumn(lang)"
 												>
@@ -625,7 +625,7 @@ const isCellSaving = (rowId: string, language: string) => {
 												</button>
 												<UiSpinner v-else size="xs" />
 												<button
-													class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error transition-colors"
+													class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 													title="Remove language"
 													@click="removeLanguage(lang)"
 												>
@@ -644,13 +644,10 @@ const isCellSaving = (rowId: string, language: string) => {
 											v-model:open="addLanguageDropdownOpen"
 										>
 											<template #trigger>
-												<button
-													class="flex items-center gap-1.5 px-2 py-1 text-sm rounded-lg border border-dashed border-border-default text-text-tertiary hover:text-text-primary hover:border-border-strong transition-colors"
-													:disabled="isSaving"
-												>
+												<UiButton variant="outline" size="sm" :disabled="isSaving">
 													<Icon name="lucide:plus" class="w-4 h-4" />
 													Add Language
-												</button>
+												</UiButton>
 											</template>
 
 											<UiDropdownMenuItem
@@ -713,7 +710,7 @@ const isCellSaving = (rowId: string, language: string) => {
 				</div>
 
 				<!-- Info Card -->
-				<div class="mt-6 p-4 bg-bg-surface border border-border-subtle rounded-xl">
+				<div class="mt-6 p-4 rounded-xl surface-3">
 					<div class="flex gap-3">
 						<Icon name="lucide:globe" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 						<div class="text-sm">

@@ -80,15 +80,15 @@ function getFileIcon(contentType: string) {
 }
 
 function getFileExtColor(contentType: string) {
-	if (contentType === 'application/pdf') return 'text-red-500 bg-red-500/10';
-	if (contentType.startsWith('image/')) return 'text-violet-500 bg-violet-500/10';
+	if (contentType === 'application/pdf') return 'text-error bg-error/10';
+	if (contentType.startsWith('image/')) return 'text-info bg-info/10';
 	if (
 		contentType.includes('spreadsheet') ||
 		contentType.includes('csv') ||
 		contentType.includes('excel')
 	)
-		return 'text-emerald-500 bg-emerald-500/10';
-	if (contentType.includes('zip')) return 'text-amber-500 bg-amber-500/10';
+		return 'text-success bg-success/10';
+	if (contentType.includes('zip')) return 'text-warning bg-warning/10';
 	return 'text-text-secondary bg-bg-surface';
 }
 

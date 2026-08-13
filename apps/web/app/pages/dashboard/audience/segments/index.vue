@@ -142,7 +142,7 @@ onMounted(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Segments</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Segments</h1>
 				<p class="mt-1 text-text-secondary">
 					Create and manage audience segments for targeted campaigns
 				</p>
@@ -306,20 +306,20 @@ onMounted(() => {
 										<div class="flex items-center justify-end gap-1">
 											<NuxtLink
 												:to="`/dashboard/audience/segments/${segment._id}`"
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												title="View contacts"
 											>
 												<Icon name="lucide:users" class="w-4 h-4" />
 											</NuxtLink>
 											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												title="Edit segment"
 												@click="openEditModal(segment)"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												title="Delete segment"
 												@click="openDeleteModal(segment)"
 											>
@@ -403,7 +403,7 @@ onMounted(() => {
 							:class="[
 								'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
 								segmentForm.filters.logic === 'AND'
-									? 'bg-brand text-text-inverse'
+									? 'bg-text-primary text-text-inverse'
 									: 'bg-bg-surface text-text-secondary hover:text-text-primary',
 							]"
 							@click="segmentForm.filters.logic = 'AND'"
@@ -415,7 +415,7 @@ onMounted(() => {
 							:class="[
 								'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
 								segmentForm.filters.logic === 'OR'
-									? 'bg-brand text-text-inverse'
+									? 'bg-text-primary text-text-inverse'
 									: 'bg-bg-surface text-text-secondary hover:text-text-primary',
 							]"
 							@click="segmentForm.filters.logic = 'OR'"
@@ -488,7 +488,7 @@ onMounted(() => {
 								<!-- Remove button -->
 								<button
 									type="button"
-									class="shrink-0 p-1.5 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+									class="shrink-0 p-1.5 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									title="Remove condition"
 									@click="removeCondition(index)"
 								>

@@ -146,7 +146,7 @@ watch(
 						v-for="(l, i) in logs"
 						:key="i"
 						class="whitespace-pre-wrap break-all"
-						:class="l.stream === 'stderr' ? 'text-amber-400/80' : 'text-text-secondary'"
+						:class="l.stream === 'stderr' ? 'text-warning/80' : 'text-text-secondary'"
 					>
 						{{ l.line }}
 					</p>
