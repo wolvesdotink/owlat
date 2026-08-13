@@ -1,7 +1,8 @@
 /**
  * Generic shared-secret webhook adapter — verifies a constant-time
- * compare against `GENERIC_WEBHOOK_SECRET` from either `x-webhook-secret`
- * or `Authorization: Bearer ...`, then parses a forgiving JSON envelope
+ * compare against the channel's stored Secret Key (falling back to
+ * `GENERIC_WEBHOOK_SECRET`, see `../channelSecrets.ts`) taken from either
+ * `x-webhook-secret` or `Authorization: Bearer ...`, then parses a JSON envelope
  * (`{from ?? sender ?? 'webhook'}`, text/message/content cascades) into
  * a `channel.received` event with `channel: 'generic'`.
  *
@@ -12,8 +13,8 @@
  * No `successResponse` — inherits the pipeline's default JSON envelope.
  */
 
-import { getOptional } from '../../lib/env';
-import { constantTimeEqual, missingSecretResult } from '../security';
+import { constantTimeEqual } from '../security';
+import { missingChannelSecretResult, resolveChannelInboundSecret } from '../channelSecrets';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 
@@ -41,10 +42,15 @@ function extractHeaderSecret(request: Request): string | null {
 export const genericAdapter: InboundAdapter = {
 	source: 'generic',
 
-	async verifySignature(request) {
-		const secret = getOptional('GENERIC_WEBHOOK_SECRET');
+	async verifySignature(request, _rawBody, ctx) {
+		const secret = await resolveChannelInboundSecret(
+			'generic',
+			'signature',
+			'GENERIC_WEBHOOK_SECRET',
+			ctx
+		);
 		if (!secret) {
-			return missingSecretResult('GENERIC_WEBHOOK_SECRET');
+			return missingChannelSecretResult('GENERIC_WEBHOOK_SECRET', 'webhook channel Secret Key');
 		}
 
 		const provided = extractHeaderSecret(request);

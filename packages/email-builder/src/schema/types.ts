@@ -10,6 +10,8 @@
  */
 export type FieldType =
 	| 'text'
+	/** Text input plus the "missing alt text" nudge (image alt fields) */
+	| 'altText'
 	| 'textarea'
 	| 'richtext'
 	| 'number'

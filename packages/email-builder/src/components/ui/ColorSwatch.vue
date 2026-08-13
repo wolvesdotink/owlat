@@ -2,6 +2,8 @@
 defineProps<{
 	color: string;
 	selected?: boolean;
+	/** Names the swatch when the raw colour value is not descriptive enough. */
+	label?: string;
 }>();
 
 defineEmits<{
@@ -17,7 +19,9 @@ defineEmits<{
 			'shadow-[0_0_0_2px_var(--color-brand)] border-brand scale-[1.08]': selected,
 		}"
 		:style="color !== 'transparent' ? { backgroundColor: color } : undefined"
-		:title="color"
+		:title="label ?? color"
+		:aria-label="label ?? `Color ${color}`"
+		:aria-pressed="selected === true"
 		type="button"
 		@click="$emit('click')"
 	/>

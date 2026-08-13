@@ -174,7 +174,11 @@ defineExpose({
 										]"
 										@click="selectPreset(preset.id)"
 									>
-										<!-- Preview Thumbnail -->
+										<!-- Preview Thumbnail.
+										     palette-ok: preset markup ships its own fixed light
+										     palette, so the paper behind it is literally white in
+										     both app themes; only the empty-canvas tile follows
+										     the surface tokens. -->
 										<div
 											:class="[
 												'aspect-[4/3] overflow-hidden',
@@ -229,6 +233,7 @@ defineExpose({
 								class="lg:w-1/2 p-6 bg-bg-surface border-b lg:border-b-0 lg:border-r border-border-subtle"
 							>
 								<h3 class="text-sm font-medium text-text-secondary mb-3">Preview</h3>
+								<!-- palette-ok: email paper — white in both themes (see thumbnail note above). -->
 								<div class="bg-white rounded-lg shadow-sm overflow-hidden">
 									<div
 										v-if="selectedPresetData"

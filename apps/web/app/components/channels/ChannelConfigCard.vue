@@ -10,7 +10,12 @@ interface ChannelConfig {
 	channel: ChannelKind;
 	isEnabled: boolean;
 	displayName?: string;
-	config?: string;
+	/**
+	 * Credential field names already stored — never the values. The encrypted
+	 * envelope itself stays in the backend (`getChannelConfigs` strips it); this
+	 * is all the config form needs to mark a credential as stored.
+	 */
+	configuredFields?: string[];
 	healthStatus?: ChannelHealthStatus;
 	lastHealthCheckAt?: number;
 	lastSuccessfulSend?: number;
@@ -229,7 +234,7 @@ function handleConfigCancelled() {
 			<div v-if="isConfiguring" class="mt-4 pt-4 border-t border-border-subtle">
 				<ChannelsChannelConfigForm
 					:channel="channelConfig.channel"
-					:current-config="channelConfig.config ?? null"
+					:stored-fields="channelConfig.configuredFields ?? []"
 					:display-name="channelConfig.displayName ?? ''"
 					@saved="handleConfigSaved"
 					@cancelled="handleConfigCancelled"

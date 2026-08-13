@@ -65,6 +65,9 @@ export const TENANT_TABLES = [
 	'formEndpoints',
 
 	// ── Templates & content ──
+	// Snapshot history holds full copies of the template bodies, so it is the
+	// same tenant business data and wipes with (and before) its parent.
+	'emailTemplateVersions',
 	'emailTemplates',
 	'emailBlocks',
 
@@ -257,6 +260,14 @@ export const NON_TENANT_TABLES = [
 	// Deleted with the departing user in the member-erasure path and cleared by
 	// the dev reset step; never org-scoped, so not swept by the tenant walker.
 	'userOnboarding',
+	// "You can send now" onboarding nudges, keyed by authUserId like
+	// `userOnboarding` and deleted with the departing member in the member-erasure
+	// path. Holds no contact business data — a user id and two timestamps.
+	'sendReadyNotices',
+	// Last observed "can this instance send at all?" sample — deployment
+	// infrastructure state (the edge detector behind those notices), recreated by
+	// the next cron tick like the other regenerable telemetry singletons.
+	'sendPathReadiness',
 	'platformAdmins',
 	// The deletion-tracking table itself — account deletion patches the request
 	// row to `completed`, so it must survive the wipe.

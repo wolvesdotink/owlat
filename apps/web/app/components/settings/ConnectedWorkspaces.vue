@@ -57,6 +57,8 @@ function addWorkspace(): void {
 				:key="ws.id"
 				class="flex items-center gap-3 p-4"
 			>
+				<!-- palette-ok: hairline on the workspace's own accent colour, as in
+				     WorkspaceMenu — it edges an arbitrary user value, not a token surface. -->
 				<span
 					class="h-2.5 w-2.5 rounded-full shrink-0 ring-1 ring-inset ring-black/10"
 					:style="{ backgroundColor: ws.accentColor }"

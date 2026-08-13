@@ -6,6 +6,8 @@ import ColorSwatch from '../../ui/ColorSwatch.vue';
 const props = defineProps<{
 	value: string;
 	placeholder?: string;
+	/** Names the control for assistive tech; the visible label sits outside this component. */
+	label?: string;
 }>();
 
 const emit = defineEmits<{
@@ -61,10 +63,12 @@ function selectSwatch(color: string) {
 				:style="value && value !== 'transparent' ? { backgroundColor: value } : undefined"
 				type="button"
 				title="Open color picker"
+				:aria-label="`Open color picker${label ? `, ${label}` : ''}`"
 				@click="openColorPicker"
 			/>
 			<input
 				type="text"
+				:aria-label="label ? `${label}, hex value` : 'Hex color value'"
 				class="flex-1 py-2 px-2 text-[13px] font-mono border-none bg-transparent text-text-primary outline-none min-w-0"
 				:value="value"
 				:placeholder="placeholder ?? '#000000'"
@@ -76,6 +80,7 @@ function selectSwatch(color: string) {
 				class="flex items-center justify-center w-8 h-[34px] border-none border-l border-l-border-subtle bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-secondary"
 				type="button"
 				title="Pick color"
+				:aria-label="label ? `Pick color, ${label}` : 'Pick color'"
 				@click="openColorPicker"
 			>
 				<Pipette :size="13" />
@@ -83,6 +88,8 @@ function selectSwatch(color: string) {
 			<input
 				ref="colorInputRef"
 				type="color"
+				tabindex="-1"
+				aria-hidden="true"
 				class="absolute w-0 h-0 opacity-0 pointer-events-none"
 				:value="value && value !== 'transparent' ? value : '#000000'"
 				@input="handleNativeColor"

@@ -11,12 +11,34 @@ import { openInboundMessageBody } from './lib/messageBody';
 import { normalizeEmail } from '@owlat/shared';
 import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
+import type { Doc } from './_generated/dataModel';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { isFeatureEnabled } from './lib/featureFlags';
 import { getOrThrow, throwInvalidState } from './_utils/errors';
 import { extractEmail } from './lib/emailAddress';
 import { checkCodeAgentSafety } from './lib/codeAgentGuard';
+import { CODE_TASK_MAX_ATTEMPTS, codeTaskRetryDecision } from './lib/codeTaskRetry';
+
+/** Upper bound on rows a single reclaim sweep touches — keeps it bounded. */
+const RECLAIM_SCAN_LIMIT = 100;
+
+/** Statuses in which the code-worker (not the user) owns the task. */
+const WORKER_OWNED_STATUSES = ['running', 'testing'] as const;
+
+type CodeTaskStatus = Doc<'codeWorkTasks'>['status'];
+
+function isWorkerOwned(status: CodeTaskStatus): boolean {
+	return (WORKER_OWNED_STATUSES as readonly CodeTaskStatus[]).includes(status);
+}
+
+/** What `markFailed` did with the task — the worker logs the retry schedule. */
+export type CodeTaskFailureOutcome = {
+	status: 'queued' | 'failed';
+	retried: boolean;
+	attempts: number;
+	nextAttemptAt?: number;
+};
 
 /**
  * Is the inbound sender a trusted org member?
@@ -66,13 +88,30 @@ export const listRecent = authedQuery({
  * code-worker Docker sidecar, which connects with the deployment admin key
  * (like apps/imap and apps/mail-sync) — it has no user session, so an
  * `authedQuery` floor would reject it. No dashboard surface reads this.
+ *
+ * A task requeued after a failure carries `nextAttemptAt`; it stays invisible
+ * to the worker until that backoff window elapses. `now` is injectable so the
+ * schedule can be exercised deterministically in tests.
+ *
+ * The backoff gate is part of the INDEX RANGE, not a scan-then-filter: the
+ * `by_status_and_next_attempt` index orders queued rows by the moment they
+ * become claimable, so `lte(nextAttemptAt, now)` names exactly the ready ones
+ * and the query reads a single row. A fixed scan window instead used to idle
+ * the whole queue whenever the oldest rows were all inside their backoff
+ * windows — with enough backing-off tasks ahead of it, a task that was ready
+ * right now was never even looked at. A never-attempted row has no
+ * `nextAttemptAt` at all, which sorts before every timestamp, so fresh work
+ * still comes first and ties break on insertion order (oldest first).
  */
 export const getNextQueued = internalQuery({
-	args: {},
-	handler: async (ctx) => {
+	args: { now: v.optional(v.number()) },
+	handler: async (ctx, args) => {
+		const now = args.now ?? Date.now();
 		return await ctx.db
 			.query('codeWorkTasks')
-			.withIndex('by_status', (q) => q.eq('status', 'queued'))
+			.withIndex('by_status_and_next_attempt', (q) =>
+				q.eq('status', 'queued').lte('nextAttemptAt', now)
+			)
 			.order('asc')
 			.first();
 	},
@@ -101,6 +140,8 @@ export const create = authedMutation({
 			description: args.description,
 			inboundMessageId: args.inboundMessageId,
 			status: 'queued',
+			attempts: 0,
+			maxAttempts: CODE_TASK_MAX_ATTEMPTS,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -121,9 +162,12 @@ export const cancel = authedMutation({
 		const task = await getOrThrow(ctx, args.taskId, 'Task');
 		if (task.status === 'merged') throwInvalidState('Cannot cancel a merged task');
 
+		// Terminal: clearing the backoff gate keeps a cancelled retry from looking
+		// like a task still waiting for its next attempt.
 		await ctx.db.patch(args.taskId, {
 			status: 'failed',
 			errorMessage: 'Cancelled by user',
+			nextAttemptAt: undefined,
 			updatedAt: Date.now(),
 		});
 	},
@@ -205,6 +249,8 @@ export const createFromInbound = internalMutation({
 			description,
 			inboundMessageId: args.inboundMessageId,
 			status: 'queued',
+			attempts: 0,
+			maxAttempts: CODE_TASK_MAX_ATTEMPTS,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -212,19 +258,28 @@ export const createFromInbound = internalMutation({
 });
 
 /**
- * Claim a task for processing (code-worker calls this)
+ * Claim a task for processing (code-worker calls this).
+ *
+ * Counts the attempt and re-checks the backoff gate: a poll result can be a
+ * moment stale, and a retry must never start before its window has elapsed.
  */
 export const claim = internalMutation({
-	args: { taskId: v.id('codeWorkTasks') },
+	args: { taskId: v.id('codeWorkTasks'), now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
+		const now = args.now ?? Date.now();
 		const task = await ctx.db.get(args.taskId);
 		if (!task || task.status !== 'queued') {
+			return { claimed: false };
+		}
+		if ((task.nextAttemptAt ?? 0) > now) {
 			return { claimed: false };
 		}
 
 		await ctx.db.patch(args.taskId, {
 			status: 'running',
-			updatedAt: Date.now(),
+			attempts: (task.attempts ?? 0) + 1,
+			nextAttemptAt: undefined,
+			updatedAt: now,
 		});
 
 		return { claimed: true };
@@ -282,21 +337,111 @@ export const completeWithPR = internalMutation({
 });
 
 /**
- * Mark a task as failed
+ * Report a failed run of a task the worker owns.
+ *
+ * Applies the retry decision: attempts left → requeue behind a backoff window
+ * (the worker picks it up again once the window elapses); attempts exhausted →
+ * terminal `failed`.
+ *
+ * `terminal` is the caller's statement that re-running would fail identically.
+ * The retry schedule exists for the transient failures (an LLM endpoint hiccup,
+ * a network blip, a restarted worker); a deterministic outcome like "the agent
+ * produced no changes" is not one of them, and retrying it burns two more full
+ * clone/agent/test cycles to reach the same answer. The worker names those
+ * explicitly rather than the backend guessing from an error string.
+ *
+ * Only a `running`/`testing` task is touched. A task the user cancelled is
+ * already terminal `failed`, and the in-flight run reporting its own failure
+ * must never resurrect it into another attempt — cancellation is not escapable
+ * by failing, the same rule the Tier-3 plugin queue enforces.
  */
 export const markFailed = internalMutation({
 	args: {
 		taskId: v.id('codeWorkTasks'),
 		errorMessage: v.string(),
 		llmCost: v.optional(v.number()),
+		terminal: v.optional(v.boolean()),
+		now: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<CodeTaskFailureOutcome> => {
+		const now = args.now ?? Date.now();
+		const task = await ctx.db.get(args.taskId);
+		if (!task || !isWorkerOwned(task.status)) {
+			return { status: 'failed', retried: false, attempts: task?.attempts ?? 0 };
+		}
+
+		// Keep a cost already recorded for the task when this report carries none.
+		const cost = args.llmCost ?? task.llmCost;
+		const decision = args.terminal
+			? ({ retry: false, attempts: task.attempts ?? 0 } as const)
+			: codeTaskRetryDecision(task, now);
+
+		if (decision.retry) {
+			await ctx.db.patch(args.taskId, {
+				status: 'queued',
+				errorMessage: args.errorMessage,
+				llmCost: cost,
+				nextAttemptAt: decision.nextAttemptAt,
+				updatedAt: now,
+			});
+			return {
+				status: 'queued',
+				retried: true,
+				attempts: decision.attempts,
+				nextAttemptAt: decision.nextAttemptAt,
+			};
+		}
+
 		await ctx.db.patch(args.taskId, {
 			status: 'failed',
 			errorMessage: args.errorMessage,
-			llmCost: args.llmCost,
-			updatedAt: Date.now(),
+			llmCost: cost,
+			nextAttemptAt: undefined,
+			updatedAt: now,
 		});
+		return { status: 'failed', retried: false, attempts: decision.attempts };
+	},
+});
+
+/**
+ * Reclaim tasks abandoned mid-run by a crashed or restarted worker.
+ *
+ * The code-worker calls this on startup. This is a SINGLE-worker deployment
+ * (one sidecar drains the queue, one task at a time), so a freshly started
+ * process provably owns no task: every `running`/`testing` row is residue of
+ * its crashed predecessor, whatever its timestamps say — hence no lease window.
+ * That premise is not a hope: both compose files pin `code-worker` to
+ * `deploy.replicas: 1`, because a second worker starting up would requeue the
+ * first one's in-flight task.
+ * Each row goes through the same retry decision as a reported failure, so a
+ * crash costs an attempt and backs off rather than stranding the task forever.
+ */
+export const reclaimStale = internalMutation({
+	args: { now: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<{ reclaimed: number }> => {
+		const now = args.now ?? Date.now();
+		const errorMessage = 'Worker restarted mid-run; task reclaimed';
+
+		let reclaimed = 0;
+		for (const status of WORKER_OWNED_STATUSES) {
+			const stale = await ctx.db
+				.query('codeWorkTasks')
+				.withIndex('by_status', (q) => q.eq('status', status))
+				.order('asc')
+				.take(RECLAIM_SCAN_LIMIT);
+
+			for (const task of stale) {
+				const decision = codeTaskRetryDecision(task, now);
+				await ctx.db.patch(task._id, {
+					status: decision.retry ? 'queued' : 'failed',
+					errorMessage,
+					nextAttemptAt: decision.retry ? decision.nextAttemptAt : undefined,
+					updatedAt: now,
+				});
+				reclaimed += 1;
+			}
+		}
+		return { reclaimed };
 	},
 });
 

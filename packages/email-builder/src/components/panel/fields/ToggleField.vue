@@ -20,6 +20,7 @@ const emit = defineEmits<{
 			:class="value ? 'bg-brand' : 'bg-bg-overlay'"
 			type="button"
 			role="switch"
+			:aria-label="label"
 			:aria-checked="value"
 		>
 			<span

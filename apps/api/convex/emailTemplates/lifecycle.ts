@@ -23,18 +23,13 @@
 import { v } from 'convex/values';
 import { emailTemplateTypeValidator } from '../lib/convexValidators';
 import { throwInvalidState } from '../_utils/errors';
-import {
-	internalMutation,
-	type MutationCtx,
-} from '../_generated/server';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { applyUsageCountDelta } from '../emailBlocks/module';
+import { deleteTemplateVersions } from './versions';
 import { buildSearchableText } from '../lib/queryHelpers';
-import {
-	CURRENT_CONTENT_BLOCK_VERSION,
-	CURRENT_RENDERER_VERSION,
-} from '../lib/constants';
+import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -73,9 +68,7 @@ export type EmailTemplateDuplicateOutcome =
 	| { ok: true; templateId: Id<'emailTemplates'> }
 	| { ok: false; reason: 'template_not_found' };
 
-export type EmailTemplateRemoveOutcome =
-	| { ok: true }
-	| { ok: false; reason: 'template_not_found' };
+export type EmailTemplateRemoveOutcome = { ok: true } | { ok: false; reason: 'template_not_found' };
 
 // ─── Validators ─────────────────────────────────────────────────────────────
 
@@ -86,15 +79,12 @@ const transitionInputValidator = v.union(
 		htmlContent: v.string(),
 		htmlTranslations: v.optional(v.string()),
 	}),
-	v.object({ to: v.literal('draft'), at: v.number() }),
+	v.object({ to: v.literal('draft'), at: v.number() })
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 
-export const LEGAL_EDGES: Record<
-	EmailTemplateStatus,
-	ReadonlySet<EmailTemplateStatus>
-> = {
+export const LEGAL_EDGES: Record<EmailTemplateStatus, ReadonlySet<EmailTemplateStatus>> = {
 	draft: new Set<EmailTemplateStatus>(['published']),
 	published: new Set<EmailTemplateStatus>(['draft']),
 };
@@ -126,7 +116,7 @@ type ReducerResult = {
 function reduce(
 	template: Doc<'emailTemplates'>,
 	input: EmailTemplateTransitionInput,
-	userId: string,
+	userId: string
 ): ReducerResult {
 	const from = template.status as EmailTemplateStatus;
 
@@ -199,10 +189,7 @@ function buildPatch(input: EmailTemplateTransitionInput): Record<string, unknown
 
 // ─── Effect runner ──────────────────────────────────────────────────────────
 
-async function applyEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
-): Promise<void> {
+async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'audit_log': {
@@ -229,7 +216,7 @@ async function dispatch(
 	ctx: MutationCtx,
 	template: Doc<'emailTemplates'>,
 	input: EmailTemplateTransitionInput,
-	userId: string,
+	userId: string
 ): Promise<EmailTemplateTransitionOutcome> {
 	const from = template.status as EmailTemplateStatus;
 	const isLegal = LEGAL_EDGES[from].has(input.to);
@@ -242,10 +229,7 @@ async function dispatch(
 	const result = reduce(template, input, userId);
 
 	if (Object.keys(result.patch).length > 0) {
-		await ctx.db.patch(
-			template._id,
-			result.patch as Partial<Doc<'emailTemplates'>>,
-		);
+		await ctx.db.patch(template._id, result.patch as Partial<Doc<'emailTemplates'>>);
 	}
 	await applyEffects(ctx, result.effects);
 
@@ -378,8 +362,7 @@ export const duplicate = internalMutation({
 			supportedLanguages: template.supportedLanguages,
 			translations: template.translations,
 			linkedBlockIds: template.linkedBlockIds,
-			contentBlockVersion:
-				template.contentBlockVersion ?? CURRENT_CONTENT_BLOCK_VERSION,
+			contentBlockVersion: template.contentBlockVersion ?? CURRENT_CONTENT_BLOCK_VERSION,
 			rendererVersion: template.rendererVersion ?? CURRENT_RENDERER_VERSION,
 			searchableText,
 			createdAt: now,
@@ -413,9 +396,10 @@ export const duplicate = internalMutation({
 });
 
 /**
- * Delete an email template. Emits an audit log and decrements the usage
- * counts of any saved blocks the template linked, so the block library's
- * "X uses" count stays accurate after a delete.
+ * Delete an email template. Emits an audit log, cascades to the template's
+ * version snapshots, and decrements the usage counts of any saved blocks the
+ * template linked, so the block library's "X uses" count stays accurate after
+ * a delete.
  */
 export const remove = internalMutation({
 	args: {
@@ -428,6 +412,8 @@ export const remove = internalMutation({
 
 		const name = template.name;
 		await ctx.db.delete(args.templateId);
+		// Cascade: version snapshots are owned by the template row.
+		await deleteTemplateVersions(ctx, args.templateId);
 
 		const effects: Effect[] = [
 			{
@@ -466,12 +452,11 @@ export const remove = internalMutation({
  */
 export function assertEditableForPublishableChange(
 	template: Doc<'emailTemplates'>,
-	force?: boolean,
+	force?: boolean
 ): void {
 	if (template.status === 'published' && !force) {
-		throwInvalidState(
-			'Template is published. Pass forceWhilePublished: true or unpublish first.',
-			{ action: 'unpublish' },
-		);
+		throwInvalidState('Template is published. Pass forceWhilePublished: true or unpublish first.', {
+			action: 'unpublish',
+		});
 	}
 }

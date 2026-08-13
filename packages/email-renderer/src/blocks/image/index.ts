@@ -21,7 +21,13 @@ const renderImgElement = (content: ImageBlockContent, baseWidth: number): string
 	if (!content.src) return '';
 
 	const widthPx = toPixelWidth(content.width, baseWidth);
-	const imgStyles: string[] = ['display:block', `width:${widthPx}px`, 'max-width:100%', 'border:0', 'outline:none'];
+	const imgStyles: string[] = [
+		'display:block',
+		`width:${widthPx}px`,
+		'max-width:100%',
+		'border:0',
+		'outline:none',
+	];
 	if (content.height) imgStyles.push(`height:${content.height}px`);
 	else imgStyles.push('height:auto');
 	if (content.borderRadius) imgStyles.push(`border-radius:${content.borderRadius}px`);
@@ -31,21 +37,29 @@ const renderImgElement = (content: ImageBlockContent, baseWidth: number): string
 	const srcsetAttr = content.srcset ? ` srcset="${escapeAttr(content.srcset)}"` : '';
 	const sizesAttr = content.sizes ? ` sizes="${escapeAttr(content.sizes)}"` : '';
 	const safeSrc = escapeAttr(sanitizeUrl(content.src));
-	const safeAlt = escapeAttr(content.alt || '');
+	// A decorative image is intentionally hidden from assistive tech: empty alt
+	// plus role="presentation", whatever alt text may still be stored.
+	const isDecorative = content.decorative === true;
+	const safeAlt = isDecorative ? '' : escapeAttr(content.alt || '');
+	const roleAttr = isDecorative ? ' role="presentation"' : '';
 
 	let imageHtml: string;
 	if (content.darkSrc) {
 		const safeDarkSrc = escapeAttr(sanitizeUrl(content.darkSrc));
-		const lightClasses = [content.fluidOnMobile ? 'owlat-fluid-img' : '', 'owlat-light-img'].filter(Boolean).join(' ');
-		const darkClasses = [content.fluidOnMobile ? 'owlat-fluid-img' : '', 'owlat-dark-img'].filter(Boolean).join(' ');
-		const lightImg = `<img src="${safeSrc}" alt="${safeAlt}"${titleAttr} width="${widthPx}" border="0" class="${lightClasses}"${srcsetAttr}${sizesAttr} style="${imgStyles.join(';')}" />`;
-		const darkImg = `<img src="${safeDarkSrc}" alt="${safeAlt}"${titleAttr} width="${widthPx}" border="0" class="${darkClasses}"${srcsetAttr}${sizesAttr} style="${[...imgStyles, 'display:none'].join(';')}" />`;
+		const lightClasses = [content.fluidOnMobile ? 'owlat-fluid-img' : '', 'owlat-light-img']
+			.filter(Boolean)
+			.join(' ');
+		const darkClasses = [content.fluidOnMobile ? 'owlat-fluid-img' : '', 'owlat-dark-img']
+			.filter(Boolean)
+			.join(' ');
+		const lightImg = `<img src="${safeSrc}" alt="${safeAlt}"${roleAttr}${titleAttr} width="${widthPx}" border="0" class="${lightClasses}"${srcsetAttr}${sizesAttr} style="${imgStyles.join(';')}" />`;
+		const darkImg = `<img src="${safeDarkSrc}" alt="${safeAlt}"${roleAttr}${titleAttr} width="${widthPx}" border="0" class="${darkClasses}"${srcsetAttr}${sizesAttr} style="${[...imgStyles, 'display:none'].join(';')}" />`;
 		imageHtml = lightImg + darkImg;
 	} else {
-		imageHtml = `<img src="${safeSrc}" alt="${safeAlt}"${titleAttr} width="${widthPx}" border="0"${fluidClass}${srcsetAttr}${sizesAttr} style="${imgStyles.join(';')}" />`;
+		imageHtml = `<img src="${safeSrc}" alt="${safeAlt}"${roleAttr}${titleAttr} width="${widthPx}" border="0"${fluidClass}${srcsetAttr}${sizesAttr} style="${imgStyles.join(';')}" />`;
 	}
 
-	const linkAriaLabel = content.alt ? ` aria-label="${safeAlt}"` : '';
+	const linkAriaLabel = !isDecorative && content.alt ? ` aria-label="${safeAlt}"` : '';
 	if (content.linkUrl) {
 		return `<a href="${escapeAttr(sanitizeUrl(content.linkUrl))}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;border:0;display:block"${linkAriaLabel}>${imageHtml}</a>`;
 	}
@@ -55,14 +69,18 @@ const renderImgElement = (content: ImageBlockContent, baseWidth: number): string
 /** Root placement: alignment table wraps the image. */
 const renderRoot = (content: ImageBlockContent, baseWidth: number): string => {
 	if (!content.src) return '';
-	const tableAlign = (['center', 'right', 'left'] as const).includes(content.align as never) ? content.align : 'center';
+	const tableAlign = (['center', 'right', 'left'] as const).includes(content.align as never)
+		? content.align
+		: 'center';
 	return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${tableAlign}"><tr><td>${renderImgElement(content, baseWidth)}</td></tr></table>`;
 };
 
 /** Column/container placement: padding cell + alignment table. */
 const renderInColumn = (content: ImageBlockContent, baseWidth: number): string => {
 	if (!content.src) return '';
-	const tableAlign = (['center', 'right', 'left'] as const).includes(content.align as never) ? content.align : 'center';
+	const tableAlign = (['center', 'right', 'left'] as const).includes(content.align as never)
+		? content.align
+		: 'center';
 	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0"><table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${tableAlign}"><tr><td>${renderImgElement(content, baseWidth)}</td></tr></table></td></tr></table>`;
 };
 
@@ -75,9 +93,10 @@ export const imageModule: BlockModule<'image'> = {
 	},
 
 	html({ block, content, ctx, placement, width }) {
-		const transformed = ctx.linkTransform && content.linkUrl
-			? { ...content, linkUrl: transformUrl(content.linkUrl, 'image', block.id, ctx) }
-			: content;
+		const transformed =
+			ctx.linkTransform && content.linkUrl
+				? { ...content, linkUrl: transformUrl(content.linkUrl, 'image', block.id, ctx) }
+				: content;
 		// At root, the renderer's existing wrapSection uses ctx.baseWidth.
 		// At column, the parent passes the column's allotted width via `width`.
 		const widthForRender = placement === 'root' ? ctx.baseWidth : width;
@@ -87,6 +106,12 @@ export const imageModule: BlockModule<'image'> = {
 	},
 
 	plaintext({ content }) {
+		// An image the author marked decorative carries nothing a text-only reader
+		// can act on (unless it links somewhere), so it is skipped rather than
+		// emitting a bare `[Image]` placeholder between paragraphs. A content
+		// image whose alt text is merely missing still gets the placeholder —
+		// dropping it would hide from the text part that anything was there.
+		if (content.decorative && !content.linkUrl) return '';
 		const alt = content.alt ? `[Image: ${content.alt}]` : '[Image]';
 		return content.linkUrl ? `${alt} (${content.linkUrl})` : alt;
 	},
@@ -192,7 +217,8 @@ export const imageModule: BlockModule<'image'> = {
 				feature: 'max-width CSS',
 				description: 'CSS max-width property for image sizing',
 				support: { ...fullSupport, outlookDesktop: 'none' },
-				fallback: 'Outlook needs explicit width attribute on img tag — Owlat sets this automatically',
+				fallback:
+					'Outlook needs explicit width attribute on img tag — Owlat sets this automatically',
 				owlatHandled: true,
 				canIEmailSlug: 'css-max-width',
 			},
@@ -261,27 +287,71 @@ export const imageModule: BlockModule<'image'> = {
 
 	validate({ block, content, ctx }) {
 		// Shape
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'src', check: isString, code: 'IMAGE_SRC_TYPE', message: 'src must be a string' },
-			{ field: 'alt', check: isString, code: 'IMAGE_ALT_TYPE', message: 'alt must be a string' },
-			{ field: 'width', check: isNumber, code: 'IMAGE_WIDTH_TYPE', message: 'width must be a number' },
-			{ field: 'align', check: (v) => isOneOf(v, ALIGNS), code: 'IMAGE_ALIGN_INVALID', message: 'align must be left, center, or right' },
-		], block.id, 'image', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{ field: 'src', check: isString, code: 'IMAGE_SRC_TYPE', message: 'src must be a string' },
+				{ field: 'alt', check: isString, code: 'IMAGE_ALT_TYPE', message: 'alt must be a string' },
+				{
+					field: 'width',
+					check: isNumber,
+					code: 'IMAGE_WIDTH_TYPE',
+					message: 'width must be a number',
+				},
+				{
+					field: 'align',
+					check: (v) => isOneOf(v, ALIGNS),
+					code: 'IMAGE_ALIGN_INVALID',
+					message: 'align must be left, center, or right',
+				},
+			],
+			block.id,
+			'image',
+			ctx.issues
+		);
 
 		// Semantic
 		if (!content.src || content.src.trim() === '') {
-			ctx.issues.push({ blockId: block.id, blockType: 'image', severity: 'error', code: 'IMAGE_NO_SRC', message: 'Image block has no source URL' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'image',
+				severity: 'error',
+				code: 'IMAGE_NO_SRC',
+				message: 'Image block has no source URL',
+			});
 		}
-		if (!content.alt || content.alt.trim() === '') {
-			ctx.issues.push({ blockId: block.id, blockType: 'image', severity: 'warning', code: 'IMAGE_NO_ALT', message: 'Image block is missing alt text (accessibility)' });
+		// `decorative` is the explicit "empty alt is intentional" opt-out, so it
+		// satisfies the alt-text requirement instead of tripping it.
+		if (!content.decorative && (!content.alt || content.alt.trim() === '')) {
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'image',
+				severity: 'warning',
+				code: 'IMAGE_NO_ALT',
+				message: 'Image block is missing alt text (accessibility)',
+			});
 		}
 		if (content.src?.startsWith('data:')) {
-			ctx.issues.push({ blockId: block.id, blockType: 'image', severity: 'warning', code: 'IMAGE_DATA_URI', message: 'Image uses a data URI — this increases email size significantly and some clients block data URIs. Use a hosted URL instead.' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'image',
+				severity: 'warning',
+				code: 'IMAGE_DATA_URI',
+				message:
+					'Image uses a data URI — this increases email size significantly and some clients block data URIs. Use a hosted URL instead.',
+			});
 		}
 
 		// Outlook
 		if (!content.width || content.width <= 0) {
-			ctx.issues.push({ blockId: block.id, blockType: 'image', severity: 'warning', code: 'OUTLOOK_IMAGE_NO_WIDTH', message: 'Image has no explicit width — Outlook may render at full size or 0px. Always set a width.' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'image',
+				severity: 'warning',
+				code: 'OUTLOOK_IMAGE_NO_WIDTH',
+				message:
+					'Image has no explicit width — Outlook may render at full size or 0px. Always set a width.',
+			});
 		}
 	},
 };

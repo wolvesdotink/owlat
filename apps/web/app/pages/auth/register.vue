@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import { isValidEmail } from '~/utils/validation';
 
-useHead({ title: 'Sign Up — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('auth.register.pageTitle') });
 
 definePageMeta({
 	middleware: 'guest',
@@ -10,7 +12,7 @@ definePageMeta({
 
 const { signUpWithEmail } = useAuth();
 const { run: createUserProfile } = useBackendOperation(api.auth.userProfiles.create, {
-	label: 'Create profile',
+	label: () => t('auth.register.createProfileOperation'),
 });
 const router = useRouter();
 const route = useRoute();
@@ -40,11 +42,11 @@ const errors = reactive({
 // Validate name
 function validateName(): boolean {
 	if (!name.value) {
-		errors.name = 'Name is required';
+		errors.name = t('auth.validation.nameRequired');
 		return false;
 	}
 	if (name.value.length < 2) {
-		errors.name = 'Name must be at least 2 characters';
+		errors.name = t('auth.validation.nameTooShort');
 		return false;
 	}
 	errors.name = '';
@@ -54,11 +56,11 @@ function validateName(): boolean {
 // Validate email
 function validateEmail(): boolean {
 	if (!email.value) {
-		errors.email = 'Email is required';
+		errors.email = t('auth.validation.emailRequired');
 		return false;
 	}
 	if (!isValidEmail(email.value)) {
-		errors.email = 'Please enter a valid email address';
+		errors.email = t('auth.validation.emailInvalid');
 		return false;
 	}
 	errors.email = '';
@@ -68,11 +70,11 @@ function validateEmail(): boolean {
 // Validate password
 function validatePassword(): boolean {
 	if (!password.value) {
-		errors.password = 'Password is required';
+		errors.password = t('auth.validation.passwordRequired');
 		return false;
 	}
 	if (password.value.length < 10) {
-		errors.password = 'Password must be at least 10 characters';
+		errors.password = t('auth.validation.passwordTooShort');
 		return false;
 	}
 	errors.password = '';
@@ -82,7 +84,7 @@ function validatePassword(): boolean {
 // Validate terms acceptance
 function validateTerms(): boolean {
 	if (!termsAccepted.value) {
-		errors.terms = 'You must agree to the Terms of Service';
+		errors.terms = t('auth.validation.termsRequired');
 		return false;
 	}
 	errors.terms = '';
@@ -126,97 +128,114 @@ async function handleSubmit() {
 
 <template>
 	<!-- Registration blocked — invite-only (unless this is an invite redirect) -->
-	<AuthShell v-if="!isInviteRedirect" subtitle="Owlat is invite only.">
-		<template #title>Welcome to <span class="lp-title-accent">Owlat</span></template>
+	<AuthShell v-if="!isInviteRedirect" :subtitle="t('auth.register.inviteOnlyTagline')">
+		<template #title>
+			{{ t('auth.register.inviteOnlyTitle') }}
+			<span class="lp-title-accent">{{ t('auth.register.inviteOnlyTitleAccent') }}</span>
+		</template>
 
 		<div class="text-center space-y-4">
 			<Icon name="lucide:lock" class="w-12 h-12 text-text-tertiary mx-auto" />
-			<p class="text-text-secondary">
-				Registration is disabled. Contact your administrator for an invitation.
-			</p>
+			<p class="text-text-secondary">{{ t('auth.register.inviteOnlyBody') }}</p>
 		</div>
 
 		<template #footer>
-			Already have an account?
-			<NuxtLink to="/auth/login" class="link font-medium"> Sign in </NuxtLink>
+			{{ t('auth.register.haveAccount') }}
+			<NuxtLink to="/auth/login" class="link font-medium">
+				{{ t('auth.register.signIn') }}
+			</NuxtLink>
 		</template>
 	</AuthShell>
 
 	<!-- Registration form (only accessible via invite redirect) -->
-	<AuthShell v-else subtitle="You've been invited to an Owlat workspace.">
-		<template #title>Create your <span class="lp-title-accent">account</span></template>
-				<!-- Error Message -->
-				<div
-					v-if="errorMessage"
-					class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
-				>
-					{{ errorMessage }}
-				</div>
+	<AuthShell v-else :subtitle="t('auth.register.tagline')">
+		<template #title>
+			{{ t('auth.register.title') }}
+			<span class="lp-title-accent">{{ t('auth.register.titleAccent') }}</span>
+		</template>
 
-				<form class="space-y-5" @submit.prevent="handleSubmit">
-					<!-- Name Field -->
-					<UiInput
-						id="name"
-						v-model="name"
-						type="text"
-						autocomplete="name"
-						label="Name"
-						placeholder="Your name"
-						:error="errors.name"
-						@blur="validateName"
+		<!-- Error Message -->
+		<div
+			v-if="errorMessage"
+			class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
+		>
+			{{ errorMessage }}
+		</div>
+
+		<form class="space-y-5" @submit.prevent="handleSubmit">
+			<!-- Name Field -->
+			<UiInput
+				id="name"
+				v-model="name"
+				type="text"
+				autocomplete="name"
+				:label="t('auth.register.nameLabel')"
+				:placeholder="t('auth.register.namePlaceholder')"
+				:error="errors.name"
+				@blur="validateName"
+			/>
+
+			<!-- Email Field -->
+			<UiInput
+				id="email"
+				v-model="email"
+				type="email"
+				autocomplete="email"
+				:label="t('auth.fields.email')"
+				:placeholder="t('auth.fields.emailPlaceholder')"
+				:error="errors.email"
+				@blur="validateEmail"
+			/>
+
+			<!-- Password Field -->
+			<UiInput
+				id="password"
+				v-model="password"
+				type="password"
+				autocomplete="new-password"
+				:label="t('auth.fields.password')"
+				:placeholder="t('auth.fields.strongPasswordPlaceholder')"
+				:error="errors.password"
+				:help-text="t('auth.fields.passwordHelp')"
+				@blur="validatePassword"
+			/>
+
+			<!-- Terms Checkbox -->
+			<div>
+				<label class="flex items-start gap-2 cursor-pointer">
+					<input
+						v-model="termsAccepted"
+						type="checkbox"
+						class="mt-1 h-4 w-4 rounded border-border-primary text-brand focus:ring-brand"
+						@change="errors.terms = ''"
 					/>
+					<I18nT
+						keypath="auth.register.terms"
+						tag="span"
+						scope="global"
+						class="text-sm text-text-secondary"
+					>
+						<template #termsLink>
+							<NuxtLink to="/terms" target="_blank" class="link font-medium">
+								{{ t('auth.register.termsLink') }}
+							</NuxtLink>
+						</template>
+					</I18nT>
+				</label>
+				<p v-if="errors.terms" class="mt-1 text-sm text-error">{{ errors.terms }}</p>
+			</div>
 
-					<!-- Email Field -->
-					<UiInput
-						id="email"
-						v-model="email"
-						type="email"
-						autocomplete="email"
-						label="Email"
-						placeholder="you@example.com"
-						:error="errors.email"
-						@blur="validateEmail"
-					/>
-
-					<!-- Password Field -->
-					<UiInput
-						id="password"
-						v-model="password"
-						type="password"
-						autocomplete="new-password"
-						label="Password"
-						placeholder="Choose a strong password"
-						:error="errors.password"
-						help-text="Must be at least 10 characters"
-						@blur="validatePassword"
-					/>
-
-					<!-- Terms Checkbox -->
-					<div>
-						<label class="flex items-start gap-2 cursor-pointer">
-							<input
-								v-model="termsAccepted"
-								type="checkbox"
-								class="mt-1 h-4 w-4 rounded border-border-primary text-brand focus:ring-brand"
-								@change="errors.terms = ''"
-							/>
-							<span class="text-sm text-text-secondary">
-								I agree to the
-								<NuxtLink to="/terms" target="_blank" class="link font-medium">Terms of Service</NuxtLink>
-							</span>
-						</label>
-						<p v-if="errors.terms" class="mt-1 text-sm text-error">{{ errors.terms }}</p>
-					</div>
-
-					<!-- Submit Button -->
-					<UiButton type="submit" size="lg" full-width :loading="isLoading">
-						{{ isLoading ? 'Creating account...' : 'Create account' }}
-					</UiButton>
-				</form>
+			<!-- Submit Button -->
+			<UiButton type="submit" size="lg" full-width :loading="isLoading">
+				{{ isLoading ? t('auth.register.submitting') : t('auth.register.submit') }}
+			</UiButton>
+		</form>
 
 		<template #footer>
-			Already have an account?
-			<NuxtLink to="/auth/login" class="link font-medium"> Sign in </NuxtLink>
+			{{ t('auth.register.haveAccount') }}
+			<NuxtLink to="/auth/login" class="link font-medium">
+				{{ t('auth.register.signIn') }}
+			</NuxtLink>
 		</template>
 	</AuthShell>
 </template>

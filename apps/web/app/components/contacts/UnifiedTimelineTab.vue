@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { useChannelOutbound } from '~/composables/useChannelOutbound';
+import type { SendableChannel } from '~/composables/useChannelOutbound';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -23,31 +24,17 @@ const {
 	truncate,
 } = useUnifiedContactTimeline(contactIdRef);
 
-// Manual outbound compose. The non-email channels (sms/whatsapp/generic) have a
-// fully-built provider dispatch (channels/outbound.ts) that, until now, only the
-// AI agent reply path triggered — so an admin who configured SMS/WhatsApp/generic
-// creds had no way to send through them. This composer is that user-initiated
-// path: it calls `channels.outbound.sendChannelMessage`, which resolves/opens the
-// thread and schedules the same fail-safe dispatch.
-//
-// Native `chat` is different: it has no provider/credentials and writes straight
-// into Convex via `unifiedMessages.sendChatMessage` (keyed to a conversation
-// thread). It's offered whenever the contact already has a thread to reply on —
-// no channel config required. Both paths are admin-only (the backend re-checks
-// `organization:manage`).
-const OUTBOUND_CHANNELS = ['sms', 'whatsapp', 'generic'] as const;
-type SendableChannel = (typeof OUTBOUND_CHANNELS)[number] | 'chat';
+// Manual outbound compose, over the shared send path (`useChannelOutbound`) the
+// Team Inbox's per-message reply also uses. This surface's own job is only the
+// target picker: every provider channel the admin has enabled, plus native chat
+// once the contact has a thread to post on (chat needs no credentials, just a
+// thread). Sending, gating and the toast belong to the composable.
+const { isAdmin, enabledProviderChannels, isSending, send: sendOnChannel } = useChannelOutbound();
 
-const { role } = useOrganizationContext();
-const isAdmin = computed(() => role.value === 'owner' || role.value === 'admin');
-
-const { data: channelConfigs } = useConvexQuery(api.unifiedMessages.getChannelConfigs, () => ({}));
-
-// Provider channels the admin has enabled, plus native chat once a thread exists.
-const sendableChannels = computed(() => {
-	const list = (channelConfigs.value ?? [])
-		.filter((c) => c.isEnabled && (OUTBOUND_CHANNELS as readonly string[]).includes(c.channel))
-		.map((c) => ({ value: c.channel as SendableChannel, label: channelLabel(c.channel) }));
+const sendableChannels = computed<Array<{ value: SendableChannel; label: string }>>(() => {
+	const list: Array<{ value: SendableChannel; label: string }> = enabledProviderChannels.value.map(
+		(channel) => ({ value: channel, label: channelLabel(channel) }),
+	);
 	if (latestThreadId.value !== null) {
 		list.push({ value: 'chat', label: channelLabel('chat') });
 	}
@@ -62,44 +49,21 @@ watch(sendableChannels, (list) => {
 	if (!composeChannel.value && list.length) composeChannel.value = list[0]!.value;
 });
 
-const { showToast } = useToast();
-const { run: sendChannelMessage, isLoading: isSendingChannel } = useBackendOperation(
-	api.channels.outbound.sendChannelMessage,
-	{ label: 'Send channel message', type: 'action' },
-);
-const { run: sendChatMessage, isLoading: isSendingChat } = useBackendOperation(
-	api.unifiedMessages.sendChatMessage,
-	{ label: 'Send chat message', type: 'mutation' },
-);
-
-const isSending = computed(() => isSendingChannel.value || isSendingChat.value);
-
 const canSend = computed(
 	() => isAdmin.value && composeChannel.value !== null && composeText.value.trim().length > 0 && !isSending.value,
 );
 
 async function send() {
 	if (!canSend.value || composeChannel.value === null) return;
-	const text = composeText.value.trim();
-	let result: unknown;
-	if (composeChannel.value === 'chat') {
-		// Native chat posts directly onto the contact's most recent thread.
-		if (latestThreadId.value === null) return;
-		result = await sendChatMessage({
-			threadId: latestThreadId.value,
-			text,
-			contactId: props.contactId,
-		});
-	} else {
-		result = await sendChannelMessage({
-			contactId: props.contactId,
-			channel: composeChannel.value,
-			text,
-		});
-	}
-	if (result === undefined) return; // useBackendOperation already surfaced the error
-	composeText.value = '';
-	showToast('Message sent', 'success');
+	// Chat posts onto the contact's most recent thread; a provider channel lets
+	// the backend resolve (or open) the thread for that channel.
+	const sent = await sendOnChannel({
+		channel: composeChannel.value,
+		text: composeText.value,
+		contactId: props.contactId,
+		...(composeChannel.value === 'chat' ? { threadId: latestThreadId.value } : {}),
+	});
+	if (sent) composeText.value = '';
 }
 </script>
 

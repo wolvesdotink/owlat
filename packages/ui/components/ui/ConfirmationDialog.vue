@@ -33,7 +33,7 @@ const emit = defineEmits<{
 const variantConfig: Record<Variant, { icon: string; buttonClass: string; iconClass: string }> = {
 	danger: {
 		icon: 'lucide:trash-2',
-		buttonClass: 'bg-error hover:bg-error/90 text-white',
+		buttonClass: 'bg-error-strong hover:bg-error-strong/90 text-text-inverse',
 		iconClass: 'bg-error/10 text-error',
 	},
 	warning: {

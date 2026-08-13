@@ -6,11 +6,13 @@
  *
  *   1. Sanity-check (in monorepo? Docker reachable?)
  *   2. Run the existing setup wizard if `.env` / override don't exist yet
- *   3. Prompt for mode: populated (default) | blank | custom
+ *   3. Prompt for mode: populated / "explore with sample data" (default) |
+ *      blank | custom
  *   4. `docker compose up -d` for the selfhost stack
  *   5. Wait for Convex backend to come up
  *   6. Bootstrap admin    (skipped in blank mode)
- *   7. Seed demo data     (skipped in blank mode)
+ *   7. Install sample data (skipped in blank mode; POST /sample-data/install,
+ *      or the fuller dev-only /seed/demo when OWLAT_DEV_MODE is already on)
  *   8. Print summary
  *
  * Non-interactive: --assume-yes + --mode + --email/--password/--no-seed for CI.
@@ -49,6 +51,7 @@ import { isValidEmail } from '../lib/validators';
 import { runSetup } from './setup';
 import { bootstrap } from './bootstrap-org';
 import { runSeed } from './seed';
+import { installSampleData } from './sampleData';
 import type { CliOptions } from '../lib/cliOptions';
 import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
 import { resolveLocalHost } from '../lib/localHost';
@@ -157,9 +160,9 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	}
 
 	// Step 3: mode + bootstrap/seed decisions. Derived from the config file when
-	// present (non-interactive), otherwise prompted. The deploy step needs to
-	// know whether demo-seeding is requested (it must enable OWLAT_DEV_MODE so the
-	// /seed/demo endpoint is reachable).
+	// present (non-interactive), otherwise prompted. Sample data is opt-in and
+	// reversible in one command (`owlat sample-data remove`), so a real install
+	// can say yes here without committing to demo rows forever.
 	let mode: Mode;
 	let shouldBootstrap: boolean;
 	let shouldSeed: boolean;
@@ -180,7 +183,12 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		shouldSeed =
 			mode !== 'blank' &&
 			!flags.skipSeed &&
-			(mode === 'populated' || (await askYesNo('Seed demo data?', true, opts.assumeYes)));
+			(mode === 'populated' ||
+				(await askYesNo(
+					'Explore with sample data? (removable later with `owlat sample-data remove`)',
+					true,
+					opts.assumeYes
+				)));
 	}
 
 	// Step 3c: edge TLS — when public URLs are configured, generate a Caddyfile
@@ -344,7 +352,6 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	const deployCode = await deployBackend(
 		opts.owlatDir,
 		envPath,
-		shouldSeed,
 		reporter,
 		opts.buildLocal ?? false,
 		checkpoint
@@ -426,10 +433,14 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		if (checkpoint.isComplete('seed-demo')) {
 			reporter.skip('completed in an earlier run');
 		} else {
-			const exit = await runSeed(
-				{ ...opts, positional: [] },
-				config?.network ? localSite : undefined
-			);
+			// A REAL install gets the sample-data path: the same content, minus the
+			// dummy teammate sign-ins (published password hashes) and their hosted
+			// mailboxes, over an endpoint that needs no OWLAT_DEV_MODE. A local dev
+			// deployment — one that already opted into the dev endpoints — keeps the
+			// fuller /seed/demo dataset, teammates and Postbox threads included.
+			const devEndpointsEnabled = env['OWLAT_DEV_MODE']?.toLowerCase() === 'true';
+			const seed = devEndpointsEnabled ? runSeed : installSampleData;
+			const exit = await seed({ ...opts, positional: [] }, config?.network ? localSite : undefined);
 			if (exit !== 0) {
 				reporter.fail('Demo seed failed');
 				reporter.done(false);
@@ -501,16 +512,19 @@ export function dnsInstructions(config: SetupConfig): string[] {
  * Turn the EMPTY freshly-booted backend into a working deployment:
  *   1. mint the backend admin key (if not already real) and persist to .env
  *   2. deploy apps/api functions + schema + http routes
- *   3. enable OWLAT_DEV_MODE when demo-seeding (so /seed/demo isn't fail-closed)
- *   4. push the function-runtime env vars into the deployment
+ *   3. push the function-runtime env vars into the deployment
  *
- * Steps 2–4 run through the `convex-deploy` container, which reads the admin
+ * Steps 2–3 run through the `convex-deploy` container, which reads the admin
  * key from .env (compose interpolation) — hence step 1 writes it first.
+ *
+ * Seeding does NOT change what happens here: demo content for a real install
+ * goes through `POST /sample-data/install`, so nothing has to flip
+ * `OWLAT_DEV_MODE` (which would also unlock `POST /dev/reset` and disable
+ * BetterAuth rate limiting on a production instance).
  */
 async function deployBackend(
 	owlatDir: string,
 	envPath: string,
-	seeding: boolean,
 	reporter: Reporter,
 	buildLocal: boolean,
 	checkpoint: ProvisioningCheckpoint
@@ -565,13 +579,7 @@ async function deployBackend(
 		}
 	}
 
-	// 3. Enable dev endpoints when seeding (otherwise /seed/demo is fail-closed).
-	if (seeding && env['OWLAT_DEV_MODE']?.toLowerCase() !== 'true') {
-		env = { ...env, OWLAT_DEV_MODE: 'true' };
-		await writeEnv(envPath, env);
-	}
-
-	// 4. Push function-runtime env vars into the deployment. This is also the
+	// 3. Push function-runtime env vars into the deployment. This is also the
 	// reseed step for secrets sealed at rest in the `.env` backup (envsealed:v1:…
 	// tokens, e.g. the SMTP relay password written by the in-app transport
 	// editor): `selectRuntimeEnvVars` unseals them so the deployment receives the
@@ -723,9 +731,9 @@ async function pickMode(fromFlag: Mode | undefined, assumeYes: boolean): Promise
 	if (assumeYes) return 'populated';
 	const options: Array<{ label: string; value: Mode; hint?: string }> = [
 		{
-			label: 'Populated — admin + realistic demo data',
+			label: 'Explore with sample data — admin + a realistic populated instance',
 			value: 'populated',
-			hint: 'recommended for working on existing features',
+			hint: 'contacts, topics, templates, a sent campaign; remove it any time with `owlat sample-data remove`',
 		},
 		{
 			label: 'Blank — no admin, no data',
@@ -738,7 +746,7 @@ async function pickMode(fromFlag: Mode | undefined, assumeYes: boolean): Promise
 		},
 	];
 	const choice = await select({
-		message: 'What kind of dev environment do you want?',
+		message: 'How do you want to start?',
 		options,
 		initialValue: 'populated',
 	});
@@ -791,7 +799,9 @@ export function formatSummary(args: { mode: Mode; adminEmail?: string; baseUrl: 
 	}
 	lines.push('');
 	lines.push(pc.dim('View logs:  docker compose logs -f web'));
-	lines.push(pc.dim('Re-seed:    bunx owlat-setup seed --reset'));
+	if (args.mode === 'populated') {
+		lines.push(pc.dim('Sample data: owlat sample-data remove   (deletes only the sample rows)'));
+	}
 	lines.push(pc.dim('Wipe + retest signup:  bunx owlat-setup reset'));
 	// Backups are operator-owned: there is no managed/off-box backup, so always
 	// spell out the command and what it protects. This block must stay even in

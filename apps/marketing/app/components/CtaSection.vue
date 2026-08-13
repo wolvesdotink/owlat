@@ -7,6 +7,8 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 
 // Grounded in README: "Open-source (Apache 2.0) · Free to self-host ·
 // no per-contact pricing · 10 minutes from empty VPS to working install."
+// The alpha caveat lives on the hero caption, where a visitor first meets the
+// download CTA, rather than being repeated here.
 const trustItems = [
 	'Apache 2.0',
 	'Free to self-host',

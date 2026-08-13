@@ -24,12 +24,30 @@ export type AttachmentRef = {
 	url: string;
 };
 
+/**
+ * The rendered content every composer works from.
+ *
+ * `plainTextContent` is the template's pre-generated (or author-overridden)
+ * text/plain body — see `schema/templates.ts`. It travels with the html so the
+ * text part can carry the block document's real structure (headings, list
+ * markers, `label (url)` links) instead of a regex strip of the html.
+ * Producers that have no template row omit it and `composeForSend` derives the
+ * text part from the html as before.
+ */
+export type SendTemplate = {
+	subject: string;
+	htmlContent: string;
+	plainTextContent?: string;
+};
+
 export type ComposeOutput = {
 	subject: string;
 	html: string;
 	/**
-	 * Plain-text alternative (RFC 2046 §5.1.4) derived from the *untracked*
-	 * `html` above by `composeForSend`. The producer passes this to the
+	 * Plain-text alternative (RFC 2046 §5.1.4), resolved by `composeForSend`:
+	 * the template's `plainTextContent` (author override, else the body
+	 * generated from the block document) when it has one, otherwise a strip of
+	 * the *untracked* `html` above. Either way the producer passes this to the
 	 * provider so the `text/plain` part is clean content — NOT a regex strip of
 	 * the tracked HTML (which would carry `/t/c/` redirect links and is one
 	 * tweak from leaking the tracking-pixel URL). Populated centrally in
@@ -71,7 +89,7 @@ export type ContactInfo = {
  */
 export type CampaignComposeInput = {
 	kind: 'campaign';
-	template: { subject: string; htmlContent: string };
+	template: SendTemplate;
 	contactInfo: ContactInfo;
 	audienceType?: 'topic' | 'segment';
 	emailSendId?: Id<'emailSends'>;
@@ -109,7 +127,7 @@ export type CampaignComposeInput = {
 
 export type TransactionalComposeInput = {
 	kind: 'transactional';
-	template: { subject: string; htmlContent: string };
+	template: SendTemplate;
 	dataVariables?: Record<string, unknown>;
 	attachmentRefs?: AttachmentRef[];
 	// RFC 3834 Auto-Submitted classification. The transactional composer is the
@@ -142,18 +160,18 @@ export type TransactionalComposeInput = {
 
 export type TestComposeInput = {
 	kind: 'test';
-	template: { subject: string; htmlContent: string };
+	template: SendTemplate;
 	sampleContact: Record<string, unknown>;
 };
 
 export type ArchiveSnapshotComposeInput = {
 	kind: 'archive_snapshot';
-	template: { subject: string; htmlContent: string };
+	template: SendTemplate;
 };
 
 export type AutomationComposeInput = {
 	kind: 'automation';
-	template: { subject: string; htmlContent: string };
+	template: SendTemplate;
 	contactInfo: ContactInfo;
 	// Pre-built List-Unsubscribe header (caller owns HMAC). Set for marketing
 	// automation steps (drip series, broadcasts) so Gmail/Yahoo's 2024 bulk-

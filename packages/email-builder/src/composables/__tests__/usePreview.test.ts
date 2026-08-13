@@ -143,3 +143,26 @@ describe('usePreview', () => {
 		expect(preview.previewMode.value).toBe('edit');
 	});
 });
+
+describe('usePreview — plain-text override source', () => {
+	it('keeps variable tokens raw in plainTextSource while the preview fills them', () => {
+		const canvasBlocks = ref<EditorBlock[]>([textBlock('a', 'Hi {{firstName}}')]);
+		const preview = usePreview({
+			canvasBlocks,
+			theme: computed(() => defaultTheme),
+			variableType: computed<VariableType>(() => 'personalization'),
+			showMandatoryUnsubscribeFooter: computed(() => false),
+			renderOptions: ref<Partial<PreviewRenderOptions>>({
+				variableValues: { firstName: 'Jane' },
+			}),
+		});
+
+		preview.togglePreviewMode();
+
+		// The preview substitutes so the author sees a realistic body…
+		expect(preview.plainText.value).toBe('Hi Jane');
+		// …but a manual override is seeded from the raw body, so the stored text
+		// still personalizes per recipient at send time.
+		expect(preview.plainTextSource.value).toBe('Hi {{firstName}}');
+	});
+});

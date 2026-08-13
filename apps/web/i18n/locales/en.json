@@ -1,0 +1,281 @@
+{
+	"common": {
+		"poweredBy": "Powered by {brand}"
+	},
+	"auth": {
+		"validation": {
+			"emailRequired": "Email is required",
+			"emailInvalid": "Please enter a valid email address",
+			"passwordRequired": "Password is required",
+			"passwordTooShort": "Password must be at least 10 characters",
+			"nameRequired": "Name is required",
+			"nameTooShort": "Name must be at least 2 characters",
+			"termsRequired": "You must agree to the Terms of Service",
+			"confirmPasswordRequired": "Please confirm your password",
+			"passwordsDoNotMatch": "Passwords do not match"
+		},
+		"fields": {
+			"email": "Email",
+			"emailPlaceholder": "you{'@'}example.com",
+			"password": "Password",
+			"passwordHelp": "Must be at least 10 characters",
+			"strongPasswordPlaceholder": "Choose a strong password"
+		},
+		"login": {
+			"pageTitle": "Login — Owlat",
+			"title": "Welcome",
+			"titleAccent": "back",
+			"tagline": "Sign in to your Owlat account.",
+			"postSetupBanner": "Your Owlat instance is ready. Sign in with the admin account you just created.",
+			"passwordPlaceholder": "Enter your password",
+			"forgotPassword": "Forgot password?",
+			"submit": "Sign in",
+			"submitting": "Signing in...",
+			"noAccount": "Don't have an account?",
+			"createAccount": "Create one"
+		},
+		"register": {
+			"pageTitle": "Sign Up — Owlat",
+			"inviteOnlyTitle": "Welcome to",
+			"inviteOnlyTitleAccent": "Owlat",
+			"inviteOnlyTagline": "Owlat is invite only.",
+			"inviteOnlyBody": "Registration is disabled. Contact your administrator for an invitation.",
+			"title": "Create your",
+			"titleAccent": "account",
+			"tagline": "You've been invited to an Owlat workspace.",
+			"nameLabel": "Name",
+			"namePlaceholder": "Your name",
+			"terms": "I agree to the {termsLink}",
+			"termsLink": "Terms of Service",
+			"submit": "Create account",
+			"submitting": "Creating account...",
+			"haveAccount": "Already have an account?",
+			"signIn": "Sign in",
+			"createProfileOperation": "Create profile"
+		},
+		"forgotPassword": {
+			"pageTitle": "Forgot Password — Owlat",
+			"title": "Reset your",
+			"titleAccent": "password",
+			"intro": "Enter your email address and we'll send you a link to reset your password.",
+			"successHeading": "Check your email",
+			"successBody": "If an account exists for {email}, we've sent a password reset link. It may take a few minutes to arrive.",
+			"backToLogin": "Back to login",
+			"submit": "Send reset link",
+			"submitting": "Sending..."
+		},
+		"resetPassword": {
+			"pageTitle": "Reset Password — Owlat",
+			"title": "Set a new",
+			"titleAccent": "password",
+			"invalidHeading": "Invalid or missing reset link",
+			"invalidBody": "This link is invalid or has expired. Please request a new password reset.",
+			"requestNewLink": "Request new reset link",
+			"successHeading": "Password reset successfully",
+			"successBody": "Your password has been updated. You can now sign in with your new password.",
+			"signIn": "Sign in",
+			"newPasswordLabel": "New password",
+			"confirmPasswordLabel": "Confirm password",
+			"confirmPasswordPlaceholder": "Re-enter your new password",
+			"submit": "Reset password",
+			"submitting": "Resetting...",
+			"failed": "Failed to reset password. The link may have expired."
+		}
+	},
+	"recipient": {
+		"shared": {
+			"emailPreferences": "Email Preferences",
+			"verifying": "Verifying your link..."
+		},
+		"archive": {
+			"pageTitle": "Campaign Archive — Owlat",
+			"seoTitle": "Campaign Archive",
+			"seoTitleLoaded": "{subject} — {organization}",
+			"ogDescription": "Email from {organization}",
+			"loading": "Loading archive...",
+			"errorHeading": "Archive Not Available",
+			"frameTitle": "Archived email",
+			"errors": {
+				"missingToken": "Missing archive token. Please use the link from your email.",
+				"unavailable": "This archive link is invalid or the campaign is no longer available.",
+				"loadFailed": "Unable to load the campaign archive. Please try again later."
+			}
+		},
+		"share": {
+			"pageTitle": "Shared Preview — Owlat",
+			"seoTitle": "Shared Preview",
+			"seoTitleLoaded": "{subject} — {organization}",
+			"ogDescription": "Email preview from {organization}",
+			"loading": "Loading preview...",
+			"expiredHeading": "Preview Link Expired",
+			"expiredBody": "This preview link has expired. Please ask the sender for a new link.",
+			"errorHeading": "Preview Not Available",
+			"expiresIn": "Expires in {hours}h",
+			"frameTitle": "Shared email preview",
+			"errors": {
+				"missingToken": "Missing share token. Please use the link you were given.",
+				"revoked": "This share link is invalid or has been revoked.",
+				"loadFailed": "Unable to load the preview. Please try again later."
+			}
+		},
+		"unsubscribe": {
+			"pageTitle": "Unsubscribe — Owlat",
+			"metaDescription": "Manage your email subscription preferences.",
+			"errorHeading": "Unable to Unsubscribe",
+			"successHeading": "Successfully Unsubscribed",
+			"alreadyHeading": "Already Unsubscribed",
+			"successBody": "You have been unsubscribed from emails from {organization}.",
+			"alreadyBody": "You were already unsubscribed from emails from {organization}.",
+			"successNote": "You will no longer receive marketing emails at {email}.",
+			"alreadyStateBody": "You are already unsubscribed from emails from {organization}.",
+			"alreadyStateNote": "No marketing emails will be sent to {email}.",
+			"confirmHeading": "Unsubscribe from Emails",
+			"greeting": "Hi {name},",
+			"confirmBody": "Are you sure you want to unsubscribe {email} from emails sent by {organization}?",
+			"submit": "Yes, Unsubscribe Me",
+			"processing": "Processing...",
+			"footnote": "You will stop receiving marketing emails. Transactional emails may still be sent.",
+			"errors": {
+				"missingToken": "Missing unsubscribe token. Please use the link from your email.",
+				"expired": "This unsubscribe link has expired. Please use a more recent email to unsubscribe.",
+				"invalid": "Invalid unsubscribe link. Please use the link from your email.",
+				"verifyFailed": "Unable to verify your unsubscribe link. Please try again later.",
+				"processFailed": "Failed to process unsubscribe request. Please try again."
+			}
+		},
+		"confirm": {
+			"pageTitle": "Confirm Submission — Owlat",
+			"header": "Email Confirmation",
+			"errorHeading": "Unable to Confirm",
+			"successHeading": "Subscription Confirmed!",
+			"alreadyHeading": "Already Confirmed",
+			"successBody": "You have successfully confirmed your subscription to {organization}.",
+			"alreadyBody": "Your subscription to {organization} was already confirmed.",
+			"successNote": "{email} is now subscribed and will receive updates.",
+			"alreadyStateBody": "Your subscription to {organization} has already been confirmed.",
+			"alreadyStateNote": "{email} is subscribed and will receive updates.",
+			"confirmHeading": "Confirm Your Subscription",
+			"confirmBody": "Click the button below to confirm your subscription to {organization} with the email address {email}.",
+			"submit": "Confirm Subscription",
+			"processing": "Confirming...",
+			"footnote": "By confirming, you agree to receive emails from {organization}.",
+			"errors": {
+				"missingToken": "Missing confirmation token. Please use the link from your email.",
+				"noServer": "Unable to connect to the server. Please try again later.",
+				"invalid": "Invalid confirmation link. Please use the link from your email.",
+				"verifyFailed": "Unable to verify your confirmation link. Please try again later.",
+				"alreadyProcessed": "This subscription has already been processed.",
+				"expired": "This confirmation link has expired. Please request a new one.",
+				"confirmFailed": "Failed to confirm subscription. Please try again."
+			}
+		},
+		"preferences": {
+			"pageTitle": "Email Preferences — Owlat",
+			"metaDescription": "Manage your email subscription topics and preferences.",
+			"loading": "Loading your preferences...",
+			"errorHeading": "Unable to Load Preferences",
+			"heading": "Manage Your Email Preferences",
+			"greeting": "Hi {name},",
+			"intro": "Update your email preferences for {organization}.",
+			"saved": "Your preferences have been saved successfully.",
+			"globalToggleLabel": "Subscribed to emails",
+			"globalToggleHint": "Turn this off to unsubscribe from all topics at once.",
+			"globalSwitchLabel": "Subscribed to all emails",
+			"topicsHeading": "Topics",
+			"topicSwitchLabel": "Subscription to {topic}",
+			"noTopics": "No topics available.",
+			"save": "Save Preferences",
+			"saving": "Saving...",
+			"noChanges": "No Changes to Save",
+			"footnote": "Transactional emails (like password resets) may still be sent regardless of these preferences.",
+			"errors": {
+				"missingToken": "Missing preference token. Please use the link from your email.",
+				"expired": "This preference link has expired. Please use a more recent email to manage your preferences.",
+				"invalid": "Invalid preference link. Please use the link from your email.",
+				"verifyFailed": "Unable to verify your preference link. Please try again later.",
+				"saveFailed": "Failed to save preferences. Please try again."
+			}
+		}
+	},
+	"postbox": {
+		"mailboxGuard": {
+			"loading": "Loading mailbox",
+			"reservedHeading": "Your mailbox is being set up",
+			"reservedBody": "{address} is reserved for you. It'll appear here automatically as soon as it's ready.",
+			"awaitingDomainHeading": "Your mailbox is reserved",
+			"awaitingDomainBody": "{address} is held for you. It activates here automatically as soon as your workspace's sending domain verifies.",
+			"externalHeading": "Connect your mail",
+			"externalBody": "You don't have a mailbox here yet — connect an existing account to read and send from it in Postbox.",
+			"externalCta": "Connect an account",
+			"deadEndHeading": "No mailbox yet",
+			"deadEndAskedBody": "We've let your admins know you need a mailbox. You'll see it here once they set one up.",
+			"deadEndBody": "Only an admin can set up a mailbox for you. Send them a quick request and they'll get it in-app.",
+			"deadEndCta": "Ask an admin",
+			"requestOperation": "Request a mailbox"
+		}
+	},
+	"welcome": {
+		"pageTitle": "Welcome — Owlat",
+		"loading": "Getting things ready…",
+		"heading": "Welcome to {instance}",
+		"headingWithName": "Welcome to {instance}, {name}",
+		"subheading": "This is your team's home for email. Let's get you in.",
+		"later": "I'll do this later",
+		"migrate": {
+			"title": "Bring my email with me",
+			"body": "Import your existing inbox so nothing is left behind.",
+			"cta": "Start import"
+		},
+		"fresh": {
+			"title": "Start fresh",
+			"body": "Skip the import and begin with a clean inbox.",
+			"cta": "Go to my inbox"
+		},
+		"freshStart": {
+			"sendFrom": "You'll send from {address}.",
+			"nameLabel": "Your name",
+			"namePlaceholder": "e.g. Marcel Pfeifer",
+			"nameHint": "This is the name people see on your mail.",
+			"signatureLabel": "Signature {optional}",
+			"optional": "(optional)",
+			"signaturePlaceholder": "e.g. Marcel · Owlat",
+			"signatureHint": "Added to the bottom of new messages.",
+			"notifyLabel": "Notify me about",
+			"notifyOptions": {
+				"everything": "Everything",
+				"people-important": "People & important only",
+				"nothing": "Nothing"
+			},
+			"notifyHint": "You can fine-tune this later in Postbox settings.",
+			"checkingTransport": "Checking whether sending is ready…",
+			"readyNowTitle": "Sending is ready now",
+			"readyNowBody": "Sending just got set up — send yourself a test to finish.",
+			"testTitle": "Send yourself a test",
+			"testBody": "Confirms everything works — it lands in your inbox.",
+			"emailMyself": "Email myself",
+			"sent": "Sent",
+			"blockedTitle": "Your admin is still setting up sending",
+			"blockedBody": "You can finish your profile now — we'll let you know the moment sending is ready, so you don't have to keep checking.",
+			"tipsHeading": "A few things you'll love",
+			"tips": {
+				"compose": "Press {key} anywhere to write a new message.",
+				"command": "Hit {keys} to search, jump, and run any command.",
+				"knowledge": "The {tab} tab turns your mail into answers — it gets sharper as messages pile up."
+			},
+			"skip": "Skip for now",
+			"finish": "Go to my inbox",
+			"defaultSignatureName": "Default",
+			"testEmail": {
+				"subject": "Hello from Owlat",
+				"body": "This is my first message from Owlat — everything works."
+			},
+			"operations": {
+				"saveDisplayName": "Save display name",
+				"saveSignature": "Save signature",
+				"prepareTestEmail": "Prepare test email",
+				"sendTestEmail": "Send test email",
+				"finishSetup": "Finish setup"
+			}
+		}
+	}
+}

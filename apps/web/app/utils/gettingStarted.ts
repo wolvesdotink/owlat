@@ -65,6 +65,14 @@ export interface GettingStartedStep {
 	cta: string;
 	icon: string;
 	completed: boolean;
+	/**
+	 * The member cannot do this step yet — something outside their control is
+	 * missing. A blocked step renders as an honest waiting state (no CTA into a
+	 * dead end) and unblocks itself the moment the reason goes away.
+	 */
+	blocked?: boolean;
+	/** What is being waited on, shown in place of the CTA. Set iff `blocked`. */
+	blockedReason?: string;
 }
 
 export interface GettingStartedSection {
@@ -186,6 +194,64 @@ export interface GettingStartedInput {
 	userDismissed: boolean;
 	/** The resolved set of completed personal step ids (incl. derived aiConnected). */
 	personalCompleted: ReadonlySet<ChecklistStepId>;
+	/**
+	 * Whether the instance can actually deliver mail (member-safe read of the
+	 * same signal as the admin `sendPathReady` flag). While false, the personal
+	 * send steps are BLOCKED rather than merely open — see
+	 * {@link SEND_BLOCKED_STEP_IDS}.
+	 */
+	sendPathReady: boolean;
+	/**
+	 * Campaign volume still sendable TODAY under the IP warm-up cap, or `null`
+	 * when there is no cap to quote / it could not be measured. Folded into the
+	 * "Send a campaign" step so the ramp is visible before a campaign is built
+	 * around an audience it cannot carry — see {@link sentCampaignDescription}.
+	 */
+	sendCapacityToday: number | null;
+}
+
+/**
+ * The personal steps a member cannot complete without an instance-wide outbound
+ * transport. Sending from Owlat is silently dropped without one, so these must
+ * never be presented as a check the member is failing to tick — they are shown
+ * as waiting on setup, and unblock themselves as soon as sending works.
+ */
+export const SEND_BLOCKED_STEP_IDS: ReadonlySet<ChecklistStepId> = new Set([
+	'sendingSwitched',
+	'firstSendDone',
+]);
+
+/** What a send-blocked step shows in place of its CTA. */
+export const SEND_BLOCKED_REASON = 'Waiting on sending setup';
+
+/**
+ * The "Send a campaign" description, with today's real sending headroom folded
+ * in when it is known (`campaigns/sendingReadiness.ts` measures it off the same
+ * paced warming projection the send gate meters against).
+ *
+ * The point is that a warming deployment's cap is met HERE — on the way in —
+ * rather than as a pre-flight refusal after the operator has built a campaign
+ * for an audience today's capacity cannot carry. `null` is "not measured, or no
+ * cap applies", and then the step says nothing extra: an invented number beside
+ * a checklist item is worse than no number (deliverability plan D14).
+ *
+ * WHY THIS IS NOT `sendReadinessNote`. That helper (`~/lib/sendReadiness`)
+ * builds the same measurement into a two-line NOTE — a heading and a detail —
+ * for the surfaces that render one beside a send button. A checklist step has
+ * one description to extend and no audience to compare against, so it needs the
+ * number as a clause rather than a heading, and it is the only surface that has
+ * to explain the limit at all ("while your IPs warm up") because it has no
+ * capacity panel beside it. The NUMBER is single-sourced — both read
+ * `campaigns/sendingReadiness.ts` — the sentence around it is not.
+ */
+export function sentCampaignDescription(capacityToday: number | null): string {
+	const base = 'Send your first email campaign to your audience.';
+	if (capacityToday === null) return base;
+	if (capacityToday <= 0) {
+		return `${base} Today's warm-up capacity is used up — schedule it and it goes out as capacity returns.`;
+	}
+	const contacts = capacityToday === 1 ? 'contact' : 'contacts';
+	return `${base} About ${capacityToday.toLocaleString()} ${contacts} can be reached today while your IPs warm up.`;
 }
 
 const EMPTY_MODEL: GettingStartedModel = {
@@ -224,6 +290,11 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 			...INSTANCE_STEPS.map((step) => ({
 				...step,
 				completed: input.instanceFlags[step.id],
+				// The send step is the one whose feasibility depends on live warm-up
+				// state, so it carries today's headroom rather than a static sentence.
+				...(step.id === 'sentCampaign'
+					? { description: sentCampaignDescription(input.sendCapacityToday) }
+					: {}),
 			})),
 		];
 		if (input.showBackupsStep && input.isSelfHost) {
@@ -241,15 +312,24 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 	const personalComplete = isChecklistComplete(input.mode, input.personalCompleted);
 	const personalActive = !input.userDismissed && !personalComplete;
 	if (personalActive) {
-		const steps: GettingStartedStep[] = visibleChecklistSteps(input.mode).map((step) => ({
-			id: step.id,
-			title: step.title,
-			description: step.description,
-			href: step.href,
-			cta: step.cta,
-			icon: step.icon,
-			completed: input.personalCompleted.has(step.id),
-		}));
+		const steps: GettingStartedStep[] = visibleChecklistSteps(input.mode).map((step) => {
+			const completed = input.personalCompleted.has(step.id);
+			// A send step with no transport behind it is blocked, not open: the
+			// member has nothing to do until the instance can send. The block lifts
+			// on its own the moment `sendPathReady` flips (the same edge that
+			// notifies them — see `auth/sendReadyNotices.ts`).
+			const blocked = !completed && !input.sendPathReady && SEND_BLOCKED_STEP_IDS.has(step.id);
+			return {
+				id: step.id,
+				title: step.title,
+				description: step.description,
+				href: step.href,
+				cta: step.cta,
+				icon: step.icon,
+				completed,
+				...(blocked ? { blocked: true, blockedReason: SEND_BLOCKED_REASON } : {}),
+			};
+		});
 		sections.push({
 			id: 'personal',
 			title: 'Finish setting up your account',

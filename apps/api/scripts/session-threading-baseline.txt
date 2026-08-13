@@ -242,7 +242,6 @@ convex/transactional/emails.ts:updateSchema
 convex/transactional/translations.ts:addTranslation
 convex/transactional/translations.ts:removeTranslation
 convex/transactional/translations.ts:updateTranslation
-convex/unifiedMessages.ts:getChannelConfigs
 convex/unifiedMessages.ts:sendChatMessage
 convex/unifiedMessages.ts:updateChannelConfig
 convex/visualizationAgent.ts:createFromPrompt

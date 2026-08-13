@@ -24,11 +24,19 @@ export interface PublishableEmailSaveArgs {
 	supportedLanguages: string[];
 	/** The default language, excluded from the translation set. */
 	defaultLanguage: string;
+	/**
+	 * The author's manual text/plain body, or '' when they never wrote one. It is
+	 * persisted verbatim AND resolved into `plainTextContent` (the body the send
+	 * path actually ships).
+	 */
+	plainTextOverride?: string;
 	/** Persist the rendered fields. The surface adds name/subject/content/id. */
 	update: (payload: {
 		htmlContent: string;
 		htmlTranslations: string;
 		linkedBlockIds: string[];
+		plainTextContent: string;
+		plainTextOverride: string;
 	}) => Promise<void>;
 }
 
@@ -36,17 +44,18 @@ export interface PublishableEmailSaveArgs {
 function deriveLinkedBlockIds(blocks: EditorBlock[]): string[] {
 	return [
 		...new Set(
-			blocks
-				.filter((block) => block.savedBlockRef)
-				.map((block) => block.savedBlockRef!.blockId)
+			blocks.filter((block) => block.savedBlockRef).map((block) => block.savedBlockRef!.blockId)
 		),
 	];
 }
 
 export async function publishableEmailSave(args: PublishableEmailSaveArgs): Promise<void> {
-	const { renderBlocksToHtml, buildHtmlTranslationsForEmail } = useEmailHtmlRendering();
+	const { renderBlocksToHtml, renderBlocksToPlainText, buildHtmlTranslationsForEmail } =
+		useEmailHtmlRendering();
 
 	const htmlContent = renderBlocksToHtml(args.blocks, args.renderOptions);
+	const plainTextOverride = args.plainTextOverride ?? '';
+	const plainTextContent = renderBlocksToPlainText(args.blocks, plainTextOverride);
 	const linkedBlockIds = deriveLinkedBlockIds(args.blocks);
 
 	// `buildHtmlTranslationsForEmail` merges each language's text overlay onto the
@@ -63,6 +72,8 @@ export async function publishableEmailSave(args: PublishableEmailSaveArgs): Prom
 		htmlContent,
 		htmlTranslations: JSON.stringify(translationsObject),
 		linkedBlockIds,
+		plainTextContent,
+		plainTextOverride,
 	});
 
 	// Now that the new content is persisted, rebuild the translations so each
@@ -80,6 +91,12 @@ export async function publishableEmailSave(args: PublishableEmailSaveArgs): Prom
 	);
 	const freshJson = JSON.stringify(freshTranslations);
 	if (freshJson !== JSON.stringify(translationsObject)) {
-		await args.update({ htmlContent, htmlTranslations: freshJson, linkedBlockIds });
+		await args.update({
+			htmlContent,
+			htmlTranslations: freshJson,
+			linkedBlockIds,
+			plainTextContent,
+			plainTextOverride,
+		});
 	}
 }

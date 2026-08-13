@@ -15,8 +15,10 @@
  * runs in the outer shell before `runInboundPipeline`.
  *
  * Security guarantees (fail-closed): every adapter rejects with 503 when
- * its required secret env var is unset. Never accept an unsigned request
- * "for now."
+ * it has no secret to verify against. The secret is the credential stored
+ * on the channel's own `channelConfigs` row, falling back to the
+ * deployment env var (`webhooks/channelSecrets.ts`). Never accept an
+ * unsigned request "for now."
  */
 
 import { httpAction } from '../_generated/server';
@@ -39,7 +41,7 @@ export const handleSmsWebhook = httpAction((ctx, request) =>
  * GET  /webhooks/whatsapp — Meta verification challenge (out-of-band)
  */
 export const handleWhatsAppWebhook = httpAction(async (ctx, request) => {
-	if (request.method === 'GET') return handleMetaChallenge(request);
+	if (request.method === 'GET') return await handleMetaChallenge(request, ctx);
 	return runInboundPipeline(ctx, request, metaAdapter);
 });
 

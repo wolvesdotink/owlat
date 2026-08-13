@@ -1,5 +1,7 @@
 # Owlat Desktop
 
+> The desktop app is in **alpha**, the same status as the rest of Owlat — it works end-to-end, but expect rough edges and breaking changes between releases.
+
 Tauri 2 + Rust shell that bundles the `apps/web` SPA and connects to one or more
 remote owlat instances (multi-workspace). The same web UI is used everywhere — no
 duplicated components.

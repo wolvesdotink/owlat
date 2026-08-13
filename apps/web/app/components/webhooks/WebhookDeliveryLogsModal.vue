@@ -176,7 +176,7 @@ const emit = defineEmits<{
 			</UiButton>
 			<UiButton
 				v-if="!regeneratedSecret"
-				class="bg-warning text-white hover:bg-warning/90 gap-2"
+				class="bg-warning text-text-inverse hover:bg-warning/90 gap-2"
 				:disabled="isRegenerating"
 				@click="emit('regenerate')"
 			>
@@ -221,7 +221,7 @@ const emit = defineEmits<{
 			</UiButton>
 			<UiButton
 				variant="danger"
-				class="bg-error text-white hover:bg-error/90 gap-2"
+				class="gap-2"
 				:disabled="isDeleting"
 				@click="emit('confirmDelete')"
 			>

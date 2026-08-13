@@ -21,7 +21,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { storeSealedBlob, sealedBlobUrl } from '../lib/sealedBlob';
-import { renderEmailHtml, renderPlainText, renderAmpEmail } from '@owlat/email-renderer';
+import { renderEmailHtml, resolvePlainText, renderAmpEmail } from '@owlat/email-renderer';
 import type { EditorBlock } from '@owlat/shared/types';
 import { getMailSyncConfig, getMtaConfig, scanAttachmentBytes } from './mtaClient';
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
@@ -57,7 +57,7 @@ function renderDraftBodies(draft: DraftRow): { html: string; text: string; amp?:
 			const blocks = JSON.parse(draft.bodyBlocks) as EditorBlock[];
 			if (blocks.length > 0) {
 				const html = renderEmailHtml(blocks);
-				const text = draft.bodyText ?? renderPlainText(blocks);
+				const text = resolvePlainText(blocks, draft.bodyText);
 				// Only attach an AMP part when the design actually uses an
 				// interactive block — otherwise the AMP body is byte-for-byte
 				// equivalent to the static fallback and just inflates the message.
@@ -78,7 +78,7 @@ function renderDraftBodies(draft: DraftRow): { html: string; text: string; amp?:
 		content: { html: draft.bodyHtml || '' },
 	} as unknown as EditorBlock;
 	const html = renderEmailHtml([wrapped]);
-	const text = draft.bodyText ?? renderPlainText([wrapped]);
+	const text = resolvePlainText([wrapped], draft.bodyText);
 	return { html, text };
 }
 

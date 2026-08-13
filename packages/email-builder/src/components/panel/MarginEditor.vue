@@ -84,7 +84,11 @@ function sideValue(key: string): number {
 	<div class="flex flex-col gap-2">
 		<!-- Mode toggle -->
 		<div class="flex items-center justify-end">
-			<div class="inline-flex border border-border-subtle rounded-md overflow-hidden bg-bg-surface">
+			<div
+				class="inline-flex border border-border-subtle rounded-md overflow-hidden bg-bg-surface"
+				role="group"
+				aria-label="Margin mode"
+			>
 				<!-- Axis pairs: square with crosshair -->
 				<button
 					class="flex items-center justify-center w-[26px] h-[22px] border-none cursor-pointer transition-[background-color,color] duration-(--motion-fast)"
@@ -93,6 +97,8 @@ function sideValue(key: string): number {
 						: 'bg-transparent text-text-disabled hover:bg-bg-surface-hover hover:text-text-tertiary'"
 					type="button"
 					title="Vertical & horizontal pairs"
+					aria-label="Vertical & horizontal pairs"
+					:aria-pressed="mode === 'axis'"
 					@click="setMode('axis')"
 				>
 					<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -109,6 +115,8 @@ function sideValue(key: string): number {
 						: 'bg-transparent text-text-disabled hover:bg-bg-surface-hover hover:text-text-tertiary'"
 					type="button"
 					title="Individual sides"
+					aria-label="Individual sides"
+					:aria-pressed="mode === 'individual'"
 					@click="setMode('individual')"
 				>
 					<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -133,6 +141,7 @@ function sideValue(key: string): number {
 					:min="0"
 					:max="100"
 					unit="px"
+					label="Vertical margin"
 					@update="handleVerticalInput"
 				/>
 			</div>
@@ -146,6 +155,7 @@ function sideValue(key: string): number {
 					:min="0"
 					:max="100"
 					unit="px"
+					label="Horizontal margin"
 					@update="handleHorizontalInput"
 				/>
 			</div>
@@ -159,6 +169,7 @@ function sideValue(key: string): number {
 					<div class="flex items-center border border-border-subtle rounded-lg bg-bg-surface eb-input-ring">
 						<input
 							type="number"
+							:aria-label="`${side.label} margin`"
 							class="w-full py-1.5 px-2 text-[13px] font-medium tabular-nums text-text-primary bg-transparent border-none outline-none appearance-number-plain"
 							:value="sideValue(side.key)"
 							min="0"

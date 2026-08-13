@@ -18,10 +18,13 @@ export {
 	EmailBuilderHandlersKey,
 	useFocusMode,
 	useHistory,
+	EDITOR_SHORTCUTS,
+	formatShortcut,
 } from './composables';
+export type { EditorShortcut, EditorShortcutGroup, HistoryState } from './composables';
 
 // Dialogs
-export { UnsavedChangesDialog } from './components/dialogs';
+export { UnsavedChangesDialog, KeyboardShortcutsDialog } from './components/dialogs';
 
 // Types
 export type {
@@ -92,7 +95,13 @@ export {
 	getBlockBorderRadius,
 	updateBlockBorderRadius,
 	getColumnWidths,
+	serializeHistoryState,
+	deserializeVersionSnapshot,
+	parseSnapshotBlocks,
+	snapshotMatchesState,
+	formatSnapshotSize,
 } from './utils';
+export type { VersionSnapshotPayload } from './utils';
 
 // Defaults
 export {

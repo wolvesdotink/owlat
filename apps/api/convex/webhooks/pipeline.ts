@@ -117,13 +117,20 @@ export type AnyInboundParser<S extends string = string> = InboundParser<S> | Inb
  */
 export interface InboundAdapter<S extends string = string> extends InboundParser<S> {
 	/**
-	 * Verify the request signature. Must read its secret via
-	 * `lib/env.getOptional` and fail-closed with status 503 when the secret
-	 * is unset.
+	 * Verify the request signature. Must fail closed with status 503 when no
+	 * secret is configured.
+	 *
+	 * `ctx` is supplied by {@link runInboundPipeline} for the adapters whose
+	 * secret can live on a database row rather than only in the environment —
+	 * the channel adapters resolve theirs through `./channelSecrets.ts`, which
+	 * reads the credential an operator typed into Settings → Channels and falls
+	 * back to `lib/env.getOptional`. Adapters whose secret is env-only (or that
+	 * fetch it, like SNS) simply declare the two parameters they use.
 	 */
 	verifySignature(
 		request: Request,
-		rawBody: string
+		rawBody: string,
+		ctx?: ActionCtx
 	): Promise<{ ok: true } | { ok: false; status: number; reason: string }>;
 }
 
@@ -167,7 +174,7 @@ export async function runInboundPipeline(
 		return jsonResponse(400, { error: 'Failed to read request body' });
 	}
 
-	const verification = await adapter.verifySignature(request, rawBody);
+	const verification = await adapter.verifySignature(request, rawBody, ctx);
 	if (!verification.ok) {
 		logError(`[${adapter.source} Webhook] ${verification.reason}`);
 		return jsonResponse(verification.status, { error: verification.reason });
