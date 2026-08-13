@@ -48,6 +48,13 @@
 	--color-warning-subtle: #faf5ea;
 	--color-error: #a85545;
 	--color-error-subtle: #faf0ee;
+	/* Solid danger FILLS only (.btn-danger, the danger confirmation button).
+	   --color-error is tuned to sit quietly as text and hairlines, which in dark
+	   mode puts it within ~13 of one channel of --color-brand (#c46b5a vs #c4785a)
+	   — a filled Delete button and a filled brand button read as the same colour.
+	   This one is redder and further from terracotta, and still clears AA against
+	   --color-text-inverse in both themes (6.8:1 light, 5.1:1 dark). */
+	--color-error-strong: #9c3520;
 	--color-info: #4a7a9a;
 	--color-info-subtle: #eff5f9;
 

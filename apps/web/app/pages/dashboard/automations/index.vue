@@ -583,7 +583,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 				</UiButton>
 				<UiButton
 					variant="danger"
-					class="bg-error text-text-inverse hover:bg-error/90 gap-2"
+					class="gap-2"
 					:disabled="isDeleting || automationToDelete?.status === 'active'"
 					@click="handleDelete"
 				>
