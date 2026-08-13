@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/provider-kit",
-	"version": "0.4.2",
+	"version": "0.4.3",
 	"description": "Runtime-neutral contracts for Owlat send-provider bundles",
 	"license": "Apache-2.0",
 	"files": [
