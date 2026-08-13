@@ -57,7 +57,7 @@ async function confirmRemove() {
 		<PreferencesBackLink />
 
 		<header class="mb-6">
-			<h1 class="text-2xl font-semibold">Aliases</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em]">Aliases</h1>
 			<p class="text-text-secondary mt-1">
 				Alternate addresses that deliver into
 				<span v-if="currentMailbox" class="font-mono text-sm">{{ currentMailbox.address }}</span

@@ -30,16 +30,12 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 		<!-- Header -->
 		<div class="flex items-center justify-between mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Files</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Files</h1>
 				<p class="text-text-secondary mt-1 text-sm">
 					Manage documents, attachments, and AI-generated files.
 				</p>
 			</div>
-			<UiButton
-				v-if="isAdmin"
-				class="bg-brand text-text-inverse hover:bg-brand/90"
-				@click="showUploadModal = true"
-			>
+			<UiButton v-if="isAdmin" @click="showUploadModal = true">
 				<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
 				Upload
 			</UiButton>
@@ -57,7 +53,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 					<input
 						v-model="searchQuery"
 						type="text"
-						class="w-full rounded-lg border border-border-subtle bg-bg-base pl-9 pr-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+						class="input input-sm pl-9"
 						placeholder="Search files..."
 					/>
 				</div>
@@ -69,7 +65,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 					v-for="opt in sourceFilterOptions"
 					:key="String(opt.value)"
 					type="button"
-					class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors"
+					class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:class="
 						sourceFilter === opt.value
 							? 'bg-brand/10 border-brand text-brand'
@@ -85,7 +81,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 			<!-- View toggle -->
 			<div class="flex items-center border border-border-subtle rounded-lg overflow-hidden ml-auto">
 				<button
-					class="p-2 transition-colors"
+					class="p-2 transition-colors hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
 					:class="
 						viewMode === 'grid'
 							? 'bg-bg-surface text-text-primary'
@@ -97,7 +93,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 					<Icon name="lucide:layout-grid" class="w-4 h-4" />
 				</button>
 				<button
-					class="p-2 transition-colors"
+					class="p-2 transition-colors hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
 					:class="
 						viewMode === 'list'
 							? 'bg-bg-surface text-text-primary'
@@ -141,11 +137,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 								: 'Files will appear here once an admin uploads them.'
 					}}
 				</p>
-				<UiButton
-					v-if="!searchQuery && isAdmin"
-					class="bg-brand text-text-inverse hover:bg-brand/90 mt-4"
-					@click="showUploadModal = true"
-				>
+				<UiButton v-if="!searchQuery && isAdmin" class="mt-4" @click="showUploadModal = true">
 					<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
 					Upload a file
 				</UiButton>
@@ -172,7 +164,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 			</div>
 
 			<!-- List view -->
-			<div v-else class="bg-bg-elevated border border-border-subtle rounded-lg overflow-hidden">
+			<div v-else class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) overflow-hidden">
 				<table class="w-full">
 					<thead>
 						<tr class="border-b border-border-subtle">
@@ -249,11 +241,10 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 							</td>
 							<td class="px-4 py-3">
 								<span
-									class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full"
+									class="inline-flex items-center gap-1 px-2 py-0.5 text-2xs font-medium rounded-full"
 									:class="{
 										'bg-bg-surface text-text-secondary': file.sourceType === 'upload',
-										'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300':
-											file.sourceType === 'email_attachment',
+										'bg-info-subtle text-info': file.sourceType === 'email_attachment',
 										'bg-brand-subtle text-brand': file.sourceType === 'agent_generated',
 									}"
 								>

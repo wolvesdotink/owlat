@@ -153,30 +153,30 @@ function confirm(): void {
 					type="text"
 					autocomplete="off"
 					spellcheck="false"
-					class="w-full rounded-md border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary"
+					class="input input-sm"
 					data-testid="ramp-confirm-input"
 					@keydown.enter.prevent="confirm"
 				/>
 			</div>
 
 			<div class="flex justify-end gap-2">
-				<button
-					type="button"
-					class="rounded-md px-3 py-2 text-sm text-text-secondary"
+				<UiButton
+					variant="ghost"
+					size="sm"
 					data-testid="ramp-confirm-cancel"
 					@click="emit('cancel')"
 				>
 					Cancel
-				</button>
-				<button
-					type="button"
+				</UiButton>
+				<UiButton
+					variant="primary"
+					size="sm"
 					:disabled="!canConfirm"
-					class="rounded-md bg-brand px-3 py-2 text-sm font-medium text-text-inverse disabled:opacity-50"
 					data-testid="ramp-confirm-submit"
 					@click="confirm"
 				>
 					{{ confirmLabel }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 	</div>

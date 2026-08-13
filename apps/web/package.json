@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/web",
-	"version": "0.4.2",
+	"version": "0.4.3",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -50,6 +50,7 @@
 	},
 	"devDependencies": {
 		"@faker-js/faker": "^10.3.0",
+		"@iconify-json/lucide": "^1.2.123",
 		"@nuxt/fonts": "catalog:vue",
 		"@nuxt/icon": "^2.2.1",
 		"@owlat/ui": "workspace:*",

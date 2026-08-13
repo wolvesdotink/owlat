@@ -239,7 +239,7 @@ async function togglePack(packKey: FeaturePackKey) {
 	<div class="p-6 lg:p-8 max-w-4xl mx-auto">
 		<!-- Header -->
 		<div class="mb-8">
-			<h1 class="text-2xl font-semibold text-text-primary">Features</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Features</h1>
 			<p class="mt-1 text-text-secondary max-w-2xl">
 				Toggle the product surfaces this Owlat instance exposes. Disabled features hide from the
 				navigation, gate their APIs, and don't start their background services.

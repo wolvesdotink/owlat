@@ -232,7 +232,7 @@ async function handleReset() {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:route" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h1 class="text-2xl font-semibold text-text-primary">Provider Routing</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Provider Routing</h1>
 					<p class="mt-1 text-text-secondary">
 						Choose which email provider sends each message type, with failover and weighted
 						workload-split across providers

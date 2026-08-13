@@ -72,7 +72,9 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">Transactional Emails</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					Transactional Emails
+				</h1>
 				<p class="mt-1 text-text-secondary">API-triggered emails for your application</p>
 			</div>
 			<UiButton size="sm" @click="openCreateModal">
@@ -123,18 +125,23 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 
 				<!-- Sort Dropdown -->
 				<div class="relative" data-sort-dropdown>
-					<button
-						class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary bg-bg-surface border border-border-subtle rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					<UiButton
+						variant="outline"
+						size="sm"
 						aria-haspopup="listbox"
 						:aria-expanded="isSortDropdownOpen"
 						aria-controls="transactional-sort-listbox"
 						aria-label="Sort emails"
 						@click="isSortDropdownOpen = !isSortDropdownOpen"
 					>
-						<Icon name="lucide:arrow-up-down" class="w-4 h-4" />
+						<template #iconLeft>
+							<Icon name="lucide:arrow-up-down" class="w-4 h-4" />
+						</template>
 						<span class="hidden sm:inline">{{ currentSort.label }}</span>
-						<Icon name="lucide:chevron-down" class="w-4 h-4" />
-					</button>
+						<template #iconRight>
+							<Icon name="lucide:chevron-down" class="w-4 h-4" />
+						</template>
+					</UiButton>
 					<Transition
 						enter-active-class="duration-(--motion-moderate) ease-spring"
 						enter-from-class="opacity-0 scale-95"
@@ -300,7 +307,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
 							>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									title="View API Code"
 									aria-label="View API Code"
 									@click.stop="openCodeSnippetModal(email._id, email.name, email.slug)"
@@ -308,21 +315,21 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									<Icon name="lucide:code" class="w-4 h-4" />
 								</button>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleEdit(email._id)"
 									aria-label="Edit"
 								>
 									<Icon name="lucide:pencil" class="w-4 h-4" />
 								</button>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleDuplicate(email._id)"
 									aria-label="Copy"
 								>
 									<Icon name="lucide:copy" class="w-4 h-4" />
 								</button>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="openDeleteModal(email._id, email.name)"
 									aria-label="Delete"
 								>
@@ -470,7 +477,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									<td class="px-6 py-4">
 										<div class="flex items-center justify-end gap-1" @click.stop>
 											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												title="View API Code"
 												aria-label="View API Code"
 												@click="openCodeSnippetModal(email._id, email.name, email.slug)"
@@ -478,7 +485,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 												<Icon name="lucide:code" class="w-4 h-4" />
 											</button>
 											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												title="Edit"
 												aria-label="Edit"
 												@click="handleEdit(email._id)"
@@ -488,7 +495,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 											<UiDropdownMenu v-model:open="dropdownOpenStates[email._id]">
 												<template #trigger>
 													<button
-														class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+														class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 														aria-label="More actions"
 													>
 														<Icon name="lucide:more-vertical" class="w-4 h-4" />
@@ -636,13 +643,13 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 				>
 					<!-- Backdrop -->
 					<div
-						class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+						class="absolute inset-0 bg-bg-deep/80 backdrop-blur-sm"
 						@click="closeCodeSnippetModal"
 					/>
 
 					<!-- Modal Content -->
 					<div
-						class="relative z-10 w-full max-w-2xl mx-4 bg-bg-elevated border border-border-subtle rounded-2xl shadow-xl"
+						class="relative z-10 w-full max-w-2xl mx-4 bg-bg-elevated border border-border-subtle rounded-2xl shadow-lg"
 					>
 						<!-- Header -->
 						<div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
@@ -653,7 +660,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</p>
 							</div>
 							<button
-								class="p-1 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								class="p-1 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="closeCodeSnippetModal"
 								aria-label="Close"
 							>
@@ -668,7 +675,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								<div class="flex items-center justify-between mb-2">
 									<h3 class="text-sm font-medium text-text-primary">cURL</h3>
 									<button
-										class="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
+										class="flex items-center gap-1.5 rounded text-xs text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 										@click="copyToClipboard('curl')"
 									>
 										<Icon
@@ -690,7 +697,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								<div class="flex items-center justify-between mb-2">
 									<h3 class="text-sm font-medium text-text-primary">JavaScript</h3>
 									<button
-										class="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
+										class="flex items-center gap-1.5 rounded text-xs text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 										@click="copyToClipboard('javascript')"
 									>
 										<Icon
@@ -712,7 +719,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								<div class="flex items-center justify-between mb-2">
 									<h3 class="text-sm font-medium text-text-primary">Python</h3>
 									<button
-										class="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
+										class="flex items-center gap-1.5 rounded text-xs text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 										@click="copyToClipboard('python')"
 									>
 										<Icon

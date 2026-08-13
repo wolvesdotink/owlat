@@ -71,7 +71,7 @@ const handleCancelled = () => {
 					<Icon name="lucide:brain" class="w-6 h-6 text-brand" />
 				</div>
 				<div>
-					<h1 class="text-xl font-bold text-text-primary">Knowledge Graph</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Knowledge Graph</h1>
 					<p class="text-sm text-text-secondary mt-0.5">
 						Browse, search, and manage extracted knowledge from your conversations and files.
 					</p>
@@ -285,7 +285,7 @@ const handleCancelled = () => {
 			>
 				<div
 					v-if="showCreateForm"
-					class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+					class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-deep/80"
 					@click.self="handleCancelled"
 				>
 					<Transition
@@ -298,14 +298,14 @@ const handleCancelled = () => {
 					>
 						<div
 							v-if="showCreateForm"
-							class="w-full max-w-lg bg-bg-elevated border border-border-subtle rounded-xl shadow-xl max-h-[90vh] overflow-y-auto"
+							class="w-full max-w-lg bg-bg-elevated border border-border-subtle rounded-xl shadow-lg max-h-[90vh] overflow-y-auto"
 						>
 							<div
 								class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10"
 							>
 								<h3 class="text-base font-semibold text-text-primary">Create Knowledge Entry</h3>
 								<button
-									class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
+									class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click="handleCancelled"
 									aria-label="Close"
 								>

@@ -588,14 +588,14 @@ const sidebarDesktopClass = computed(() => {
 							<!-- Chat mention badge: inline expanded; corner overlay collapsed. -->
 							<span
 								v-if="section.key === 'chat' && liveChatMentionCount > 0 && !isCollapsed"
-								class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
+								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
 								:title="`${liveChatMentionCount} unread mention${liveChatMentionCount === 1 ? '' : 's'}`"
 							>
 								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
 							</span>
 							<span
 								v-if="section.key === 'chat' && liveChatMentionCount > 0 && isCollapsed"
-								class="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-error text-text-inverse text-[10px] leading-4 font-semibold text-center ring-2 ring-bg-elevated"
+								class="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-error text-text-inverse text-2xs leading-4 font-semibold text-center ring-2 ring-bg-elevated"
 								:title="`${liveChatMentionCount} unread mention${liveChatMentionCount === 1 ? '' : 's'}`"
 							>
 								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
@@ -625,7 +625,7 @@ const sidebarDesktopClass = computed(() => {
 							<span v-if="!isCollapsed" class="flex-1 text-left">{{ section.name }}</span>
 							<span
 								v-if="section.key === 'chat' && liveChatMentionCount > 0"
-								class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
+								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
 								:title="`${liveChatMentionCount} unread mention${liveChatMentionCount === 1 ? '' : 's'}`"
 							>
 								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}

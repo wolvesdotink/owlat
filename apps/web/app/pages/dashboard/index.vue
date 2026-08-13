@@ -62,8 +62,10 @@ async function handleSave(
 		<!-- Header -->
 		<div class="flex items-center justify-between mb-8">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">
-					Welcome back{{ user?.name ? `, ${user.name.split(' ')[0]}` : '' }}
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					Welcome back<template v-if="user?.name"
+						>, <span class="lp-title-accent">{{ user.name.split(' ')[0] }}</span></template
+					>
 				</h1>
 				<p class="mt-1 text-text-secondary">
 					{{

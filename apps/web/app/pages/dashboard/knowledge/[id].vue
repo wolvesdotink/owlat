@@ -220,7 +220,7 @@ const handleRemoveRelation = async (relationId: string) => {
 		<!-- Not Found -->
 		<div v-else-if="!entry" class="flex flex-col items-center justify-center py-20 text-center">
 			<div
-				class="w-14 h-14 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4"
+				class="w-14 h-14 rounded-full bg-bg-surface shadow-surface-1 flex items-center justify-center mb-4"
 			>
 				<Icon name="lucide:file-question" class="w-7 h-7 text-text-tertiary" />
 			</div>
@@ -250,7 +250,9 @@ const handleRemoveRelation = async (relationId: string) => {
 					</div>
 					<div class="min-w-0">
 						<div class="flex items-center gap-2 mb-1">
-							<h1 class="text-xl font-bold text-text-primary">{{ entry.title }}</h1>
+							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+								{{ entry.title }}
+							</h1>
 							<span
 								class="text-xs font-medium px-2 py-0.5 rounded-full uppercase tracking-wide"
 								:class="{
@@ -274,10 +276,7 @@ const handleRemoveRelation = async (relationId: string) => {
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 						Edit
 					</UiButton>
-					<UiButton
-						class="border border-error/30 text-error hover:bg-error-subtle transition-colors gap-2"
-						@click="showDeleteConfirm = true"
-					>
+					<UiButton variant="danger-outline" class="gap-2" @click="showDeleteConfirm = true">
 						<Icon name="lucide:trash-2" class="w-4 h-4" />
 						Delete
 					</UiButton>
@@ -288,7 +287,7 @@ const handleRemoveRelation = async (relationId: string) => {
 				<!-- Main Content -->
 				<div class="lg:col-span-2 space-y-6">
 					<!-- Content -->
-					<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 						<h3 class="text-sm font-semibold text-text-primary mb-3">Content</h3>
 						<p class="text-sm text-text-secondary whitespace-pre-wrap leading-relaxed">
 							{{ entry.content }}
@@ -298,7 +297,7 @@ const handleRemoveRelation = async (relationId: string) => {
 					<!-- Tags -->
 					<div
 						v-if="entry.tags && entry.tags.length > 0"
-						class="rounded-xl border border-border-subtle bg-bg-elevated p-5"
+						class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5"
 					>
 						<h3 class="text-sm font-semibold text-text-primary mb-3">Tags</h3>
 						<div class="flex flex-wrap gap-2">
@@ -313,7 +312,7 @@ const handleRemoveRelation = async (relationId: string) => {
 					</div>
 
 					<!-- Relations -->
-					<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 						<div class="flex items-center justify-between mb-4">
 							<h3 class="text-sm font-semibold text-text-primary">Relations</h3>
 							<UiButton
@@ -332,7 +331,7 @@ const handleRemoveRelation = async (relationId: string) => {
 						<!-- Add-relation form -->
 						<div
 							v-if="showRelationForm"
-							class="rounded-lg border border-border-subtle bg-bg-surface p-4 mb-4 space-y-3"
+							class="rounded-lg bg-bg-surface shadow-surface-1 p-4 mb-4 space-y-3"
 						>
 							<div>
 								<label
@@ -357,12 +356,12 @@ const handleRemoveRelation = async (relationId: string) => {
 								</label>
 								<div
 									v-if="selectedTarget"
-									class="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-bg-elevated border border-border-subtle"
+									class="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-bg-elevated shadow-surface-1"
 								>
 									<span class="text-sm text-text-primary truncate">{{ selectedTarget.title }}</span>
 									<button
 										type="button"
-										class="text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0"
+										class="rounded text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 										aria-label="Clear selection"
 										@click="selectedTarget = null"
 									>
@@ -380,7 +379,7 @@ const handleRemoveRelation = async (relationId: string) => {
 									/>
 									<div
 										v-if="relationSearch.trim() && relationCandidates.length > 0"
-										class="mt-2 rounded-lg border border-border-subtle bg-bg-elevated overflow-hidden divide-y divide-border-subtle"
+										class="mt-2 rounded-lg bg-bg-elevated shadow-surface-1 overflow-hidden divide-y divide-border-subtle"
 									>
 										<button
 											v-for="candidate in relationCandidates"
@@ -395,7 +394,7 @@ const handleRemoveRelation = async (relationId: string) => {
 											/>
 											<span class="text-sm text-text-primary truncate">{{ candidate.title }}</span>
 											<span
-												class="text-[10px] uppercase tracking-wide text-text-tertiary ml-auto flex-shrink-0"
+												class="text-2xs uppercase tracking-wide text-text-tertiary ml-auto flex-shrink-0"
 											>
 												{{ typeLabel(candidate.entryType) }}
 											</span>
@@ -439,7 +438,7 @@ const handleRemoveRelation = async (relationId: string) => {
 				<div class="space-y-4">
 					<div
 						v-if="entry.entryType === 'decision' || entry.entryType === 'action_item'"
-						class="rounded-xl border border-border-subtle bg-bg-elevated p-5"
+						class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5"
 					>
 						<h3 class="mb-3 text-sm font-semibold text-text-primary">Commitment status</h3>
 						<UiSelect
@@ -461,7 +460,7 @@ const handleRemoveRelation = async (relationId: string) => {
 					</div>
 
 					<!-- Confidence -->
-					<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 						<h3 class="text-sm font-semibold text-text-primary mb-3">Confidence</h3>
 						<div class="flex items-center gap-3">
 							<UiProgressBar
@@ -481,7 +480,7 @@ const handleRemoveRelation = async (relationId: string) => {
 					</div>
 
 					<!-- Source -->
-					<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 						<h3 class="text-sm font-semibold text-text-primary mb-3">Source</h3>
 						<div class="flex items-center gap-2">
 							<div class="w-8 h-8 rounded-lg bg-bg-surface flex items-center justify-center">
@@ -507,7 +506,7 @@ const handleRemoveRelation = async (relationId: string) => {
 					</div>
 
 					<!-- Dates -->
-					<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 						<h3 class="text-sm font-semibold text-text-primary mb-3">Details</h3>
 						<dl class="space-y-2.5 text-sm">
 							<div class="flex justify-between">
@@ -531,7 +530,7 @@ const handleRemoveRelation = async (relationId: string) => {
 					<!-- Linked Contacts -->
 					<div
 						v-if="entry.contactIds && entry.contactIds.length > 0"
-						class="rounded-xl border border-border-subtle bg-bg-elevated p-5"
+						class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5"
 					>
 						<h3 class="text-sm font-semibold text-text-primary mb-3">Linked Contacts</h3>
 						<div class="space-y-2">
@@ -563,18 +562,18 @@ const handleRemoveRelation = async (relationId: string) => {
 			>
 				<div
 					v-if="showEditForm && entry"
-					class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+					class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-deep/80"
 					@click.self="showEditForm = false"
 				>
 					<div
-						class="w-full max-w-lg bg-bg-elevated border border-border-subtle rounded-xl shadow-xl max-h-[90vh] overflow-y-auto"
+						class="w-full max-w-lg bg-bg-elevated border border-border-subtle rounded-xl shadow-lg max-h-[90vh] overflow-y-auto"
 					>
 						<div
 							class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10"
 						>
 							<h3 class="text-base font-semibold text-text-primary">Edit Knowledge Entry</h3>
 							<button
-								class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="showEditForm = false"
 								aria-label="Close"
 							>
@@ -609,7 +608,7 @@ const handleRemoveRelation = async (relationId: string) => {
 					v-if="showDeleteConfirm"
 					class="fixed inset-0 z-50 flex items-center justify-center p-4"
 				>
-					<div class="absolute inset-0 bg-black/60" @click="showDeleteConfirm = false" />
+					<div class="absolute inset-0 bg-bg-deep/80" @click="showDeleteConfirm = false" />
 					<div
 						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
 					>
@@ -620,12 +619,7 @@ const handleRemoveRelation = async (relationId: string) => {
 						</p>
 						<div class="flex items-center justify-end gap-3">
 							<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
-							<UiButton
-								variant="danger"
-								class="bg-error text-text-inverse hover:bg-error/90"
-								:disabled="isDeleting"
-								@click="handleDelete"
-							>
+							<UiButton variant="danger" :disabled="isDeleting" @click="handleDelete">
 								{{ isDeleting ? 'Deleting...' : 'Delete' }}
 							</UiButton>
 						</div>

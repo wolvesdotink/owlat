@@ -1,5 +1,11 @@
+'use node';
+
 /**
  * Semantic File Processing
+ *
+ * Node runtime: both actions run the shared LLM dispatch
+ * (`lib/llm/dispatch`, itself `'use node'`), and this module defines nothing
+ * but actions (the remaining exports are pure helpers used only by tests).
  *
  * AI-powered processing pipeline for uploaded files:
  * 1. Text extraction (based on MIME type)

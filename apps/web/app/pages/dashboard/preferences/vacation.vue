@@ -80,7 +80,7 @@ async function confirmDisable() {
 		<PreferencesBackLink />
 
 		<header class="mb-6">
-			<h1 class="text-2xl font-semibold">Vacation auto-reply</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em]">Vacation auto-reply</h1>
 			<p class="text-text-secondary mt-1">
 				Reply once per sender per N days while you're away. Mailing-list and auto-submitted mail is
 				silently skipped (RFC 3834).

@@ -1,3 +1,8 @@
+'use node';
+
+// Node-only: this is the EXECUTION half of the autonomy-gate split — it runs
+// hosted gate modules out of the `'use node'` generated registry (the
+// isolate-safe metadata half stays in `plugins/autonomyGateCatalog`).
 import {
 	parsePluginId,
 	PLUGIN_AUTONOMY_GATE_TIMEOUT_MAX_MS,

@@ -64,7 +64,7 @@ function cancelEditingDashboard() {
 <template>
 	<div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
 		<!-- Convex dashboard -->
-		<div class="flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3">
+		<div class="flex flex-col gap-1 rounded-lg bg-surface-2 shadow-surface-1 p-3">
 			<a
 				:href="convexDashboardUrl"
 				target="_blank"
@@ -106,12 +106,8 @@ function cancelEditingDashboard() {
 					inputmode="url"
 					placeholder="http://localhost:6791"
 					aria-label="Convex dashboard URL"
-					class="w-full rounded-md border bg-bg-surface px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1"
-					:class="
-						dashboardDraftInvalid
-							? 'border-error focus:ring-error'
-							: 'border-border-default focus:ring-brand'
-					"
+					class="input input-sm text-xs"
+					:class="{ 'input-error': dashboardDraftInvalid }"
 					@keydown.enter.prevent="saveDashboardUrl"
 					@keydown.esc.prevent="cancelEditingDashboard"
 				/>
@@ -143,7 +139,7 @@ function cancelEditingDashboard() {
 			href="https://docs.owlat.app/developer/self-hosting"
 			target="_blank"
 			rel="noopener"
-			class="group flex flex-col gap-1 rounded-lg border border-border-default bg-bg-elevated p-3 transition-all hover:-translate-y-px hover:border-brand/40"
+			class="group flex flex-col gap-1 rounded-lg bg-surface-2 shadow-surface-1 border border-transparent p-3 transition-all hover:-translate-y-px hover:border-brand/40"
 		>
 			<div class="flex items-center gap-2">
 				<Icon name="lucide:book-open" class="h-4 w-4 text-text-tertiary" />

@@ -57,7 +57,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
 			<div>
-				<h1 class="text-2xl font-semibold text-text-primary">All activity</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">All activity</h1>
 				<p class="text-text-secondary mt-1">Every message across email, SMS, WhatsApp and chat</p>
 			</div>
 		</div>
@@ -136,8 +136,8 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 									:class="[
 										'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
 										item.direction === 'inbound'
-											? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
-											: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400',
+											? 'bg-info-subtle text-info'
+											: 'bg-success-subtle text-success',
 									]"
 								>
 									<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />

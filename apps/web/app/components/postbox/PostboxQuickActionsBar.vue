@@ -91,46 +91,58 @@ const movableFolders = computed(() =>
 		>
 			<span class="font-medium">{{ bulk.count.value }} selected</span>
 			<span class="w-px h-4 bg-border-subtle mx-1" />
-			<button
-				type="button"
-				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Mark as read"
 				@click="bulk.markRead(true)"
 			>
-				<Icon name="lucide:mail-open" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:mail-open" class="w-4 h-4" />
+				</template>
 				Read
-			</button>
-			<button
-				type="button"
-				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+			</UiButton>
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Mark as unread"
 				@click="bulk.markRead(false)"
 			>
-				<Icon name="lucide:mail" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:mail" class="w-4 h-4" />
+				</template>
 				Unread
-			</button>
-			<button
-				type="button"
-				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+			</UiButton>
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Star"
 				@click="bulk.star(true)"
 			>
-				<Icon name="lucide:star" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:star" class="w-4 h-4" />
+				</template>
 				Star
-			</button>
+			</UiButton>
 			<span class="w-px h-4 bg-border-subtle mx-1" />
 			<div class="relative">
-				<button
-					type="button"
-					class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+				<UiButton
+					variant="ghost"
+					size="sm"
+					class="gap-1.5 px-2 py-1"
 					@click="
 						moveOpen = !moveOpen;
 						labelOpen = false;
 					"
 				>
-					<Icon name="lucide:folder-input" class="w-4 h-4" />
+					<template #iconLeft>
+						<Icon name="lucide:folder-input" class="w-4 h-4" />
+					</template>
 					Move
-				</button>
+				</UiButton>
 				<div
 					v-if="moveOpen"
 					class="absolute top-full mt-1 left-0 bg-bg-elevated border border-border-subtle rounded shadow-lg w-44 max-h-64 overflow-auto z-20"
@@ -150,17 +162,20 @@ const movableFolders = computed(() =>
 				</div>
 			</div>
 			<div class="relative">
-				<button
-					type="button"
-					class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+				<UiButton
+					variant="ghost"
+					size="sm"
+					class="gap-1.5 px-2 py-1"
 					@click="
 						labelOpen = !labelOpen;
 						moveOpen = false;
 					"
 				>
-					<Icon name="lucide:tag" class="w-4 h-4" />
+					<template #iconLeft>
+						<Icon name="lucide:tag" class="w-4 h-4" />
+					</template>
 					Label
-				</button>
+				</UiButton>
 				<div
 					v-if="labelOpen"
 					class="absolute top-full mt-1 left-0 bg-bg-elevated border border-border-subtle rounded shadow-lg w-44 max-h-64 overflow-auto z-20"
@@ -183,80 +198,101 @@ const movableFolders = computed(() =>
 					</div>
 				</div>
 			</div>
-			<button
+			<UiButton
 				v-if="props.folderRole !== 'snoozed'"
-				type="button"
-				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Snooze"
 				@click="snoozeOpen = true"
 			>
-				<Icon name="lucide:clock" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:clock" class="w-4 h-4" />
+				</template>
 				Snooze
-			</button>
-			<button
+			</UiButton>
+			<UiButton
 				v-else
-				type="button"
-				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Un-snooze — return to its folder now"
 				@click="unsnoozeSelected()"
 			>
-				<Icon name="lucide:alarm-clock-off" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:alarm-clock-off" class="w-4 h-4" />
+				</template>
 				Un-snooze
-			</button>
-			<button
+			</UiButton>
+			<UiButton
 				v-if="props.folderRole === 'spam'"
-				type="button"
-				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Not spam — move to Inbox"
 				@click="bulk.notSpamSelected()"
 			>
-				<Icon name="lucide:shield-check" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:shield-check" class="w-4 h-4" />
+				</template>
 				Not spam
-			</button>
-			<button
+			</UiButton>
+			<UiButton
 				v-else
-				type="button"
-				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Report spam"
 				@click="bulk.reportSpamSelected()"
 			>
-				<Icon name="lucide:shield-alert" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:shield-alert" class="w-4 h-4" />
+				</template>
 				Spam
-			</button>
+			</UiButton>
 			<span class="flex-1" />
-			<button
-				type="button"
-				class="px-2 py-1 rounded hover:bg-bg-surface flex items-center gap-1.5"
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Archive"
 				@click="bulk.archiveSelected()"
 			>
-				<Icon name="lucide:archive" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:archive" class="w-4 h-4" />
+				</template>
 				Archive
-			</button>
-			<button
+			</UiButton>
+			<UiButton
 				v-if="props.folderRole === 'trash'"
-				type="button"
-				class="px-2 py-1 rounded hover:bg-error/10 text-error flex items-center gap-1.5"
+				variant="danger-ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Permanently delete — frees storage and cannot be undone"
 				@click="purgeSelected()"
 			>
-				<Icon name="lucide:trash-2" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:trash-2" class="w-4 h-4" />
+				</template>
 				Delete forever
-			</button>
-			<button
+			</UiButton>
+			<UiButton
 				v-else
-				type="button"
-				class="px-2 py-1 rounded hover:bg-error/10 text-error flex items-center gap-1.5"
+				variant="danger-ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
 				title="Move to Trash"
 				@click="bulk.trashSelected()"
 			>
-				<Icon name="lucide:trash" class="w-4 h-4" />
+				<template #iconLeft>
+					<Icon name="lucide:trash" class="w-4 h-4" />
+				</template>
 				Delete
-			</button>
+			</UiButton>
 			<span class="w-px h-4 bg-border-subtle mx-1" />
 			<button
 				type="button"
-				class="p-1 rounded hover:bg-bg-surface"
+				class="p-1 rounded hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				title="Clear selection"
 				@click="bulk.clear()"
 			>

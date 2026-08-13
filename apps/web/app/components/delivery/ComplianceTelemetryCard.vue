@@ -59,7 +59,7 @@ const SPAM_RATE_LABEL = {
 							{{ SPAM_RATE_LABEL[telemetry.spamRate.status] }}
 						</span>
 					</div>
-					<p class="mt-2 text-2xl font-semibold tabular-nums text-text-primary">
+					<p class="mt-2 text-2xl font-medium tracking-[-0.02em] tabular-nums text-text-primary">
 						{{
 							telemetry.spamRate.spamRate === null
 								? 'No data'
@@ -98,7 +98,7 @@ const SPAM_RATE_LABEL = {
 					"
 				>
 					<p class="text-sm font-medium text-text-primary">Gmail-provider proximity · 24 h</p>
-					<p class="mt-2 text-2xl font-semibold tabular-nums text-text-primary">
+					<p class="mt-2 text-2xl font-medium tracking-[-0.02em] tabular-nums text-text-primary">
 						{{ formatNumber(telemetry.gmail.highestVolumeDomain?.delivered24h ?? 0) }}
 						<span class="text-sm font-normal text-text-secondary">/ ~5,000</span>
 					</p>
@@ -133,7 +133,7 @@ const SPAM_RATE_LABEL = {
 					"
 				>
 					<p class="text-sm font-medium text-text-primary">One-click processing p95</p>
-					<p class="mt-2 text-2xl font-semibold tabular-nums text-text-primary">
+					<p class="mt-2 text-2xl font-medium tracking-[-0.02em] tabular-nums text-text-primary">
 						{{ formatDuration(telemetry.unsubscribe.p95Ms) }}
 					</p>
 					<p class="mt-1 text-xs text-text-secondary">

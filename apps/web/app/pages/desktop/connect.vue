@@ -94,69 +94,61 @@ async function handleSubmit() {
 	<div
 		class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4 text-text-primary"
 	>
-		<div class="w-full max-w-sm rounded-2xl border border-border-default bg-bg-surface p-8">
-			<h1 class="text-xl font-semibold mb-1">Connect the desktop app</h1>
+		<div class="card w-full max-w-sm p-8">
+			<h1 class="text-xl font-medium tracking-[-0.01em] mb-1">Connect the desktop app</h1>
 			<p class="text-sm text-text-secondary mb-6">
 				Sign in to link this workspace to the Owlat desktop app.
 			</p>
 
-			<div v-if="!redirectValid" class="text-sm text-red-400">
+			<div v-if="!redirectValid" class="text-sm text-error">
 				Invalid or missing return link. Re-open this page from the desktop app.
 			</div>
 
 			<div v-else-if="handingBack || (user && !isPending)" class="text-sm text-text-secondary">
 				<p>Signing you in to the desktop app…</p>
-				<div v-if="connectionCode" class="mt-6 border-t border-border-default pt-4">
+				<div v-if="connectionCode" class="mt-6 border-t border-border-subtle pt-4">
 					<p class="mb-2">
 						Desktop app didn't open? Paste this code into its connect screen (valid for a few
 						minutes):
 					</p>
 					<div class="flex items-center gap-2">
 						<code
-							class="min-w-0 flex-1 truncate rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-xs select-all"
+							class="min-w-0 flex-1 truncate rounded-xl bg-bg-deep px-3 py-2 text-xs select-all shadow-surface-1"
 						>
 							{{ connectionCode }}
 						</code>
-						<button
-							type="button"
-							class="shrink-0 rounded-lg border border-border-default px-3 py-2 text-xs hover:text-text-primary"
-							@click="copyCode"
-						>
+						<UiButton variant="outline" size="sm" class="shrink-0" @click="copyCode">
 							{{ codeCopied ? 'Copied!' : 'Copy' }}
-						</button>
+						</UiButton>
 					</div>
 				</div>
 			</div>
 
 			<form v-else class="space-y-4" @submit.prevent="handleSubmit">
 				<div>
-					<label class="block text-sm mb-1" for="email">Email</label>
+					<label class="label mb-1 text-sm" for="email">Email</label>
 					<input
 						id="email"
 						v-model="email"
 						type="email"
 						autocomplete="email"
-						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
+						class="input input-sm text-sm"
 					/>
 				</div>
 				<div>
-					<label class="block text-sm mb-1" for="password">Password</label>
+					<label class="label mb-1 text-sm" for="password">Password</label>
 					<input
 						id="password"
 						v-model="password"
 						type="password"
 						autocomplete="current-password"
-						class="w-full rounded-lg border border-border-default bg-bg-deep px-3 py-2 text-sm"
+						class="input input-sm text-sm"
 					/>
 				</div>
-				<p v-if="errorMessage" class="text-sm text-red-400">{{ errorMessage }}</p>
-				<button
-					type="submit"
-					:disabled="isLoading"
-					class="w-full rounded-lg bg-brand px-3 py-2 text-sm font-medium text-text-inverse disabled:opacity-60"
-				>
+				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
+				<UiButton type="submit" :disabled="isLoading" full-width>
 					{{ isLoading ? 'Signing in…' : 'Sign in & connect' }}
-				</button>
+				</UiButton>
 			</form>
 		</div>
 	</div>

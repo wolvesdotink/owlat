@@ -270,7 +270,7 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<h1 class="text-2xl font-semibold text-text-primary">General</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">General</h1>
 			<p class="mt-1 text-text-secondary">Workspace-wide identity and sending defaults</p>
 		</div>
 
