@@ -7,7 +7,14 @@ import type { ChannelKind } from '~/utils/channelKinds';
 
 const props = defineProps<{
 	channel: ChannelKind;
-	currentConfig: string | null;
+	/**
+	 * Names of the credential fields already stored for this channel
+	 * (`channelConfigs.configuredFields`). The values themselves are encrypted at
+	 * rest and openable only in a Node action, so they are never read back into
+	 * this form — the names are what lets it say "stored" instead of rendering an
+	 * empty input that looks unset.
+	 */
+	storedFields: string[];
 	displayName: string;
 }>();
 
@@ -28,17 +35,10 @@ const { run: updateChannelConfig } = useBackendOperation(api.unifiedMessages.upd
 // Display name
 const localDisplayName = ref(props.displayName);
 
-// Parse existing config
-function parseConfig(configStr: string | null): Record<string, string> {
-	if (!configStr) return {};
-	try {
-		return JSON.parse(configStr);
-	} catch {
-		return {};
-	}
+/** Does the backend already hold a value for this credential field? */
+function isStored(key: string): boolean {
+	return props.storedFields.includes(key);
 }
-
-const parsedConfig = parseConfig(props.currentConfig);
 
 // Channel-specific field definitions
 interface ConfigField {
@@ -130,10 +130,21 @@ const channelFields: Record<ChannelKind, ConfigField[]> = {
 const fields = computed(() => channelFields[props.channel] ?? []);
 const hasConfigFields = computed(() => fields.value.length > 0);
 
-// Initialize field values from existing config
+// Every input starts blank: stored values are encrypted at rest and are never
+// sent back to the browser. A field left blank keeps whatever is stored (the
+// backend merges the save over it), so blank means "unchanged", not "clear".
 const fieldValues = reactive<Record<string, string>>({});
 for (const field of channelFields[props.channel] ?? []) {
-	fieldValues[field.key] = parsedConfig[field.key] ?? '';
+	fieldValues[field.key] = '';
+}
+
+/**
+ * What an empty input should say. A stored credential says so rather than
+ * showing the example value, which would read as an unset required field and
+ * invite an operator to retype every credential on every edit.
+ */
+function inputPlaceholder(field: ConfigField): string {
+	return isStored(field.key) ? '•••••••• stored — leave blank to keep' : field.placeholder;
 }
 
 // Channel info messages for the built-in channels (no per-channel credentials).
@@ -205,24 +216,29 @@ async function handleSave() {
 
 		<!-- Channel-specific fields -->
 		<template v-if="hasConfigFields">
-			<!-- Stored credentials are encrypted at rest and never read back into
-			     this form, and a save replaces the whole envelope — so a partially
-			     filled save silently drops the fields left blank, including the
-			     ones inbound verification depends on. Say so rather than let an
-			     operator discover it as a dead webhook. -->
+			<!-- Stored credentials are encrypted at rest and are never read back
+			     into this form, so a blank input is not an empty credential — the
+			     backend merges each save over what is stored. Say so, and mark the
+			     fields that already hold a value, so a partial edit is a safe and
+			     obvious thing to do. -->
 			<p class="text-xs text-text-tertiary">
-				Saved credentials are encrypted and not shown again. Saving replaces all of them, so fill
-				in every field you still want stored.
+				Saved credentials are encrypted and not shown again. Leave a field blank to keep its stored
+				value; type in one to replace just that credential.
 			</p>
 			<div v-for="field in fields" :key="field.key">
-				<label class="block text-sm font-medium text-text-primary mb-1.5">{{ field.label }}</label>
+				<label class="flex items-center gap-2 text-sm font-medium text-text-primary mb-1.5">
+					{{ field.label }}
+					<span v-if="isStored(field.key)" class="text-xs font-normal text-text-tertiary"
+						>stored</span
+					>
+				</label>
 				<div class="relative">
 					<input
 						v-model="fieldValues[field.key]"
 						:type="field.type === 'password' && !visibleFields[field.key] ? 'password' : 'text'"
 						class="input w-full"
 						:class="field.type === 'password' ? 'pr-10' : ''"
-						:placeholder="field.placeholder"
+						:placeholder="inputPlaceholder(field)"
 					/>
 					<button
 						v-if="field.type === 'password'"

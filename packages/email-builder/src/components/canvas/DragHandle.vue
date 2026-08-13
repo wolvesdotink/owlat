@@ -9,8 +9,8 @@ defineProps<{
 <template>
 	<!--
 		Pointer-only grip: it is not focusable, and keyboard users reorder with
-		Alt+Arrow, so it stays out of the accessibility tree rather than adding a
-		non-option child to the canvas listbox.
+		Alt+Arrow, so it stays out of the accessibility tree rather than adding an
+		unnamed control to every block in the canvas list.
 	-->
 	<div
 		aria-hidden="true"

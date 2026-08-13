@@ -45,6 +45,27 @@ describe('reportTaskFailure', () => {
 		logged.mockRestore();
 	});
 
+	it('marks a deterministic failure terminal so the backend does not retry it', async () => {
+		const { calls, client } = fakeClient({ status: 'failed', retried: false, attempts: 1 });
+		const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+		await reportTaskFailure('task_3', 'Coding agent produced no changes', client, {
+			terminal: true,
+		});
+
+		expect(calls).toEqual([
+			{
+				name: 'markFailed',
+				args: {
+					taskId: 'task_3',
+					errorMessage: 'Coding agent produced no changes',
+					terminal: true,
+				},
+			},
+		]);
+		logged.mockRestore();
+	});
+
 	it('logs a terminal failure once the backend stops retrying', async () => {
 		const { client } = fakeClient({ status: 'failed', retried: false, attempts: 3 });
 		const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -78,5 +99,13 @@ describe('code-worker compose wiring', () => {
 		const service = codeWorkerService(readFileSync(resolve(REPO_ROOT, path), 'utf8'));
 		expect(service).toMatch(/^ {6}CONVEX_ADMIN_KEY: \$\{CONVEX_ADMIN_KEY(:-)?\}$/m);
 		expect(service).toMatch(/^ {6}CONVEX_URL: http:\/\/convex:3210$/m);
+	});
+
+	// `codeWorkTasks.reclaimStale` requeues every running/testing row whenever a
+	// worker starts, on the premise that a fresh process owns none of them. A
+	// second replica would therefore rip the first one's in-flight task away.
+	it.each(composeFiles)('%s pins the code-worker to a single replica', (path) => {
+		const service = codeWorkerService(readFileSync(resolve(REPO_ROOT, path), 'utf8'));
+		expect(service).toMatch(/^ {4}deploy:\n {6}replicas: 1$/m);
 	});
 });

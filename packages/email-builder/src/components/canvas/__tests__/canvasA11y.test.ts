@@ -4,15 +4,21 @@
 //
 // The canvas used to be an unnamed pile of divs: no structure a screen reader
 // could report ("list of 5 blocks, item 2 of 5"), no names on the blocks, and
-// no way to move between them from the keyboard. It is now a listbox — one
-// option per block, `aria-selected` wired to the editor's existing selection
-// model, an accessible name of the form "<type label>: <content excerpt>", a
-// roving tabindex so the whole canvas is a single Tab stop, and focus that
-// follows selection.
+// no way to move between them from the keyboard. It is now a list — one list
+// item per draggable unit, each block inside it a named `group` with an
+// accessible name of the form "<type label>: <content excerpt>", `aria-current`
+// wired to the editor's existing selection model, a roving tabindex so the
+// whole canvas is a single Tab stop, and focus that follows selection.
+//
+// It is deliberately NOT a listbox: a block owns real controls (drag handle,
+// detach button, the inline text editor's contenteditable), and `option` — like
+// `button` and `tab` — makes every descendant presentational, which would strip
+// all of them from the accessibility tree.
 //
 // Alt+Arrow stays out of this file on purpose: that shortcut *moves* the
-// selected block and is owned by useKeyboardHandlers (and covered by its own
-// test). Here we only assert the canvas does not also steal it.
+// selected block and is owned by the editor's global keydown routing
+// (utils/editorKeyboard, covered by its own test). Here we only assert the
+// canvas does not also steal it.
 import { describe, it, expect, afterEach } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { Trash2 } from '@lucide/vue';
@@ -67,26 +73,46 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-describe('canvas listbox semantics', () => {
-	it('exposes the block list as a named listbox with one option per block', () => {
+describe('canvas list semantics', () => {
+	it('exposes the block list as a named list with one item per block', () => {
 		const w = mountCanvas({ blocks: blocks(), selectedBlockId: null });
 
-		const listbox = w.find('[role="listbox"]');
-		expect(listbox.exists()).toBe(true);
-		expect(listbox.attributes('aria-label')).toBe('Email blocks');
-		expect(listbox.attributes('aria-orientation')).toBe('vertical');
+		const list = w.find('[role="list"]');
+		expect(list.exists()).toBe(true);
+		expect(list.attributes('aria-label')).toBe('Email blocks');
 
-		const options = w.findAll('[role="option"]');
-		expect(options).toHaveLength(3);
-		// Every option is owned by the listbox — nothing else may carry the role.
-		for (const option of options) {
-			expect(listbox.element.contains(option.element)).toBe(true);
+		const items = w.findAll('[role="listitem"]');
+		expect(items).toHaveLength(3);
+		// A list owns only list items — the hover-only insert points ride inside
+		// an item rather than dangling between them.
+		for (const item of items) {
+			expect(item.element.parentElement).toBe(list.element);
 		}
+		expect(w.findAll('[role="group"]')).toHaveLength(3);
 	});
 
-	it('names each option "<block type>: <content excerpt>"', () => {
+	it('never uses a role that makes the block content presentational', () => {
+		// `option`, `button` and `tab` strip every descendant from the a11y tree,
+		// which would silently hide the drag handle, the detach button and the
+		// inline text editor living inside each block.
+		const w = mountCanvas({
+			blocks: blocks(),
+			selectedBlockId: 'b-1',
+			inlineEditBlockId: 'b-1',
+		} as never);
+
+		for (const role of ['option', 'button', 'tab']) {
+			expect(w.findAll(`[role="${role}"]`)).toHaveLength(0);
+		}
+		// The editable surface inside the block is exposed, not swallowed.
+		const editable = w.find('[data-block-id="b-1"] [contenteditable="true"]');
+		expect(editable.exists()).toBe(true);
+		expect(editable.element.closest('[aria-hidden="true"]')).toBeNull();
+	});
+
+	it('names each block "<block type>: <content excerpt>"', () => {
 		const w = mountCanvas({ blocks: blocks(), selectedBlockId: null });
-		const labels = w.findAll('[role="option"]').map((o) => o.attributes('aria-label'));
+		const labels = w.findAll('[role="group"]').map((o) => o.attributes('aria-label'));
 
 		expect(labels).toEqual([
 			'Text: Welcome aboard',
@@ -95,20 +121,20 @@ describe('canvas listbox semantics', () => {
 		]);
 	});
 
-	it('mirrors the selection model onto aria-selected', async () => {
+	it('mirrors the selection model onto aria-current', async () => {
 		const w = mountCanvas({ blocks: blocks(), selectedBlockId: 'b-2' });
 
-		const selectedStates = () =>
-			w.findAll('[role="option"]').map((o) => o.attributes('aria-selected'));
-		expect(selectedStates()).toEqual(['false', 'true', 'false']);
+		const currentStates = () =>
+			w.findAll('[role="group"]').map((o) => o.attributes('aria-current'));
+		expect(currentStates()).toEqual([undefined, 'true', undefined]);
 
 		await w.setProps({ selectedBlockId: 'b-3' });
-		expect(selectedStates()).toEqual(['false', 'false', 'true']);
+		expect(currentStates()).toEqual([undefined, undefined, 'true']);
 	});
 
 	it('keeps the canvas to a single Tab stop with a roving tabindex', async () => {
 		const w = mountCanvas({ blocks: blocks(), selectedBlockId: null });
-		const tabIndexes = () => w.findAll('[role="option"]').map((o) => o.attributes('tabindex'));
+		const tabIndexes = () => w.findAll('[role="group"]').map((o) => o.attributes('tabindex'));
 
 		// Nothing selected: the first block is the entry point.
 		expect(tabIndexes()).toEqual(['0', '-1', '-1']);
@@ -117,19 +143,21 @@ describe('canvas listbox semantics', () => {
 		expect(tabIndexes()).toEqual(['-1', '-1', '0']);
 	});
 
-	it('does not expose the hover-only insert points as options or tab stops', () => {
+	it('does not expose the hover-only insert points as list items or tab stops', () => {
 		const w = mountCanvas({ blocks: blocks(), selectedBlockId: null });
 
-		expect(w.findAll('[role="option"]')).toHaveLength(3);
-		for (const hidden of w.findAll('[aria-hidden="true"] button')) {
-			expect(hidden.attributes('tabindex')).toBe('-1');
+		for (const insertPoint of w.findAll('[aria-hidden="true"]')) {
+			expect(insertPoint.attributes('role')).toBeUndefined();
+			for (const hidden of insertPoint.findAll('button')) {
+				expect(hidden.attributes('tabindex')).toBe('-1');
+			}
 		}
 	});
 });
 
-describe('canvas listbox keyboard navigation', () => {
+describe('canvas list keyboard navigation', () => {
 	async function press(w: VueWrapper, key: string, modifiers: Record<string, boolean> = {}) {
-		await w.find('[role="listbox"]').trigger('keydown', { key, ...modifiers });
+		await w.find('[role="list"]').trigger('keydown', { key, ...modifiers });
 	}
 
 	it('moves the selection with the arrow keys, Home and End', async () => {
@@ -182,7 +210,7 @@ describe('canvas listbox keyboard navigation', () => {
 		// A real event from a real input: vue-test-utils cannot fake `target`, and
 		// the guard is about where the keystroke originated, not where it lands.
 		const input = document.createElement('input');
-		w.find('[role="listbox"]').element.appendChild(input);
+		w.find('[role="list"]').element.appendChild(input);
 		input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 		await flushPromises();
 
@@ -197,7 +225,7 @@ describe('canvas focus tracks selection', () => {
 		await w.setProps({ selectedBlockId: 'b-2' });
 		await flushPromises();
 
-		expect(document.activeElement).toBe(w.findAll('[role="option"]')[1]!.element);
+		expect(document.activeElement).toBe(w.findAll('[role="group"]')[1]!.element);
 	});
 
 	it('leaves focus alone when the selection changes from outside the canvas', async () => {
@@ -226,7 +254,7 @@ describe('canvas focus tracks selection', () => {
 		await w.setProps({ selectedBlockId: 'b-1' });
 		await flushPromises();
 
-		expect(document.activeElement).not.toBe(w.findAll('[role="option"]')[0]!.element);
+		expect(document.activeElement).not.toBe(w.findAll('[role="group"]')[0]!.element);
 	});
 });
 

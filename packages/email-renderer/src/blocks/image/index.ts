@@ -106,10 +106,12 @@ export const imageModule: BlockModule<'image'> = {
 	},
 
 	plaintext({ content }) {
-		// A decorative image — no alt text, no link — carries nothing a text-only
-		// reader can act on, so it is skipped rather than emitting a bare
-		// `[Image]` placeholder between paragraphs.
-		if (!content.alt && !content.linkUrl) return '';
+		// An image the author marked decorative carries nothing a text-only reader
+		// can act on (unless it links somewhere), so it is skipped rather than
+		// emitting a bare `[Image]` placeholder between paragraphs. A content
+		// image whose alt text is merely missing still gets the placeholder —
+		// dropping it would hide from the text part that anything was there.
+		if (content.decorative && !content.linkUrl) return '';
 		const alt = content.alt ? `[Image: ${content.alt}]` : '[Image]';
 		return content.linkUrl ? `${alt} (${content.linkUrl})` : alt;
 	},
