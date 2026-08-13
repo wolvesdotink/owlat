@@ -109,9 +109,27 @@ describe('Data tables — card list below md', () => {
 	it.each([
 		['contacts', contacts],
 		['campaign templates', marketing],
-	])('%s render a card list and hide the table below md', (_label, source) => {
-		expect(source).toContain('<ul class="md:hidden divide-y divide-border-subtle">');
-		expect(source).toContain('<div class="hidden md:block overflow-x-auto">');
+	])('%s render the card list below md and the table above it', (_label, source) => {
+		expect(source).toContain('const tableFits = useDataTableViewport();');
+		expect(source).toMatch(/v-if="!tableFits"/);
+		expect(source).toContain('<div v-else class="overflow-x-auto">');
+	});
+
+	it.each([
+		['contacts', contacts],
+		['campaign templates', marketing],
+	])('%s mount one of the two trees, not both', (_label, source) => {
+		// A CSS-only switch keeps both copies of every row in the DOM: twice the
+		// layout work on the weakest device, and two copies to keep in step.
+		expect(source).not.toMatch(/class="[^"]*\bmd:hidden\b/);
+		expect(source).not.toMatch(/class="[^"]*\bhidden md:block\b/);
+	});
+
+	it('gives the contacts card list its own select-all', () => {
+		// The table's select-all lives in a `thead` that the card list has no room
+		// for, so bulk selection was desktop-only on the card list.
+		expect(contacts).toMatch(/Deselect all' : 'Select all'/);
+		expect(contacts).toMatch(/@click="toggleSelectAll"[\s\S]{0,900}?<ul class="divide-y/);
 	});
 });
 

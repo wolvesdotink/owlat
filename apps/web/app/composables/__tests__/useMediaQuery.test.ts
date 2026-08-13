@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { effectScope } from 'vue';
-import { useMediaQuery, useEmailBuilderViewport } from '../useMediaQuery';
+import { useMediaQuery, useEmailBuilderViewport, useDataTableViewport } from '../useMediaQuery';
 
 /**
  * `useMediaQuery` decides whether whole panes render (the postbox folder rail's
@@ -106,6 +106,19 @@ describe('useMediaQuery', () => {
 		const matches = scope.run(() => useMediaQuery('(min-width: 1024px)'))!;
 
 		expect(matches.value).toBe(true);
+		scope.stop();
+	});
+});
+
+describe('useDataTableViewport', () => {
+	it('gates on md, below which the tables render as card lists', () => {
+		const media = installMatchMedia(false);
+		const scope = effectScope();
+
+		const fits = scope.run(() => useDataTableViewport())!;
+
+		expect(media.matchMedia).toHaveBeenCalledWith('(min-width: 768px)');
+		expect(fits.value).toBe(false);
 		scope.stop();
 	});
 });

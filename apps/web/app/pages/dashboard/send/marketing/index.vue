@@ -17,6 +17,13 @@ const router = useRouter();
 // Keyboard shortcuts
 const { registerNewShortcut, registerEscapeHandler, unregisterShortcut } = useKeyboardShortcuts();
 
+// Below `md` the list view's columns can't fit, so the same rows render as a
+// card list. Exactly one of the two trees is mounted: the app runs with
+// `ssr: false`, so the first value is already the real one, and mounting both (a
+// CSS-only `md:hidden` switch) doubles the row DOM — and, here, would give the
+// two copies of every row overflow menu the same `dropdownOpenStates` entry.
+const tableFits = useDataTableViewport();
+
 // View mode and search (using useDataTable for search functionality)
 const viewMode = ref<'grid' | 'list'>('grid');
 const { searchQuery, debouncedSearch, clearSearch } = useDataTable({
@@ -497,7 +504,7 @@ onUnmounted(() => {
 				<UiCard v-else padding="none" overflow="hidden">
 					<!-- Below md the columns can't fit — the same rows become a card
 					     list, with the row actions folded into the overflow menu. -->
-					<ul class="md:hidden divide-y divide-border-subtle">
+					<ul v-if="!tableFits" class="divide-y divide-border-subtle">
 						<li v-for="template in templates" :key="template._id">
 							<div class="flex items-start gap-3 px-4 py-3">
 								<button
@@ -551,7 +558,7 @@ onUnmounted(() => {
 						</li>
 					</ul>
 
-					<div class="hidden md:block overflow-x-auto">
+					<div v-else class="overflow-x-auto">
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
