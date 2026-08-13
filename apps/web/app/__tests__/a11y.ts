@@ -20,9 +20,11 @@
  *   - `color-contrast` needs a layout/CSS engine happy-dom does not have (no
  *     stylesheet is loaded here at all, so every colour would resolve to the
  *     initial value and the result would be fiction);
- *   - `region` / `landmark-one-main` / `page-has-heading-one` describe a whole
- *     DOCUMENT, and these mounts are page bodies whose `<main>` and skip link
- *     come from the layout above them (the layout is audited separately);
+ *   - `region` / `landmark-one-main` / `page-has-heading-one` / `bypass`
+ *     describe a whole DOCUMENT, and most mounts here are page bodies whose
+ *     `<main>` and skip link come from the layout above them. They are back ON
+ *     for the audits that pass `pageContext: true` — the layout audits, which
+ *     are exactly the ones that own that structure;
  *   - `scrollable-region-focusable` needs real scroll metrics.
  * Everything else in wcag2a/2aa/21a/21aa plus axe's best-practice set runs.
  */
@@ -49,18 +51,34 @@ import {
 	type Component,
 } from 'vue';
 import { useAuthForm } from '~/composables/useAuthForm';
+import { buildNavigationSections, type NavigationSection } from '~/lib/dashboardNavigation';
+import { splitSectionsByContext } from '~/lib/sidebarContext';
 
-const DISABLED_RULES = [
-	'color-contrast',
+/**
+ * Rules that describe a whole document rather than a fragment. Off by default,
+ * back on for a `pageContext: true` audit (see `auditA11y`).
+ */
+const DOCUMENT_SCOPE_RULES = [
 	'region',
 	'landmark-one-main',
 	'page-has-heading-one',
-	'scrollable-region-focusable',
+	'bypass',
 ] as const;
+
+const DISABLED_RULES = [
+	'color-contrast',
+	'scrollable-region-focusable',
+	...DOCUMENT_SCOPE_RULES,
+] as const;
+
+const DOCUMENT_SCOPE_ENABLED: RunOptions['rules'] = Object.fromEntries(
+	DOCUMENT_SCOPE_RULES.map((rule) => [rule, { enabled: true }])
+);
 
 const RUN_OPTIONS: RunOptions = {
 	// Collecting passes and incomplete results is the expensive half of a run and
-	// nothing here reads them; the suites stay in the tens of milliseconds.
+	// a fragment scan reads neither; the suites stay in the tens of milliseconds.
+	// (A page-scope scan adds `incomplete` back — see `REVIEW_AS_FAILURE`.)
 	resultTypes: ['violations'],
 	// axe reaches into same-origin frames by postMessage, which happy-dom's
 	// `srcdoc` frames cannot answer — the archive/share previews would throw
@@ -101,7 +119,16 @@ const IconStub = defineComponent({
 	setup: () => () => h('span', { 'aria-hidden': 'true' }),
 });
 
-export const a11yGlobal = {
+/**
+ * Component names Vue could not resolve during the audit currently running.
+ * Feature components land here on purpose (they are left unresolved so a page
+ * audit stays about the page's own chrome); a `Ui*` name landing here means the
+ * real UI layer silently dropped out of the audit, which `auditA11y` fails on.
+ */
+const unresolvedComponents = new Set<string>();
+const UNRESOLVED_COMPONENT = /Failed to resolve component: (\S+)/;
+
+const a11yGlobal = {
 	components: { ...uiComponents, NuxtLink: NuxtLinkStub, Icon: IconStub },
 	// Several components pick their root element with
 	// `<component :is="cond ? 'div' : resolveComponent('NuxtLink')">` (the app
@@ -113,9 +140,13 @@ export const a11yGlobal = {
 	mocks: { resolveComponent },
 	config: {
 		// A page under audit deliberately leaves its feature components
-		// unresolved; the resulting warning storm would bury a real one.
+		// unresolved; the resulting warning storm would bury a real one. Swallowed
+		// is not the same as ignored, though — every name is recorded so a rename
+		// in the UI layer cannot quietly shrink what the audit covers.
 		warnHandler: (message: string): void => {
-			if (!message.includes('Failed to resolve component')) console.warn(message);
+			const unresolved = UNRESOLVED_COMPONENT.exec(message);
+			if (unresolved?.[1]) unresolvedComponents.add(unresolved[1]);
+			else console.warn(message);
 		},
 	},
 };
@@ -334,11 +365,94 @@ export function installNuxtStubs(overrides: Record<string, unknown> = {}): void 
 	}
 }
 
+/**
+ * The sidebar destinations a fully-featured instance shows an owner, built by
+ * the REAL builder rather than hand-written here — a rail stubbed empty renders
+ * a `<nav>` with nothing in it, and auditing that proves nothing about the
+ * dozens of links, section toggles and badges a real rail carries.
+ */
+function navigationSections(): NavigationSection[] {
+	return buildNavigationSections({ isFeatureEnabled: () => true, isDesktop: false, role: 'owner' });
+}
+
+/**
+ * The shell composables the dashboard layout and its overlays destructure at
+ * setup. Shared by every suite that mounts shell-aware markup so the two cannot
+ * drift into stubbing different shapes of the same composable.
+ */
+export function dashboardShellStubs(): Record<string, unknown> {
+	const sections = navigationSections();
+	return {
+		useSidebarState: () => ({
+			isCollapsed: ref(false),
+			isHidden: ref(false),
+			effectiveHidden: ref(false),
+			sidebarMode: ref('expanded'),
+			isPeeking: ref(false),
+			sectionStates: ref({}),
+			toggleCollapsed: vi.fn(),
+			setCollapsed: vi.fn(),
+			toggleHidden: vi.fn(),
+			setHidden: vi.fn(),
+			openPeek: vi.fn(),
+			closePeek: vi.fn(),
+			setDesktopViewport: vi.fn(),
+			toggleSection: vi.fn(),
+			isSectionExpanded: () => true,
+			initFromStorage: vi.fn(),
+		}),
+		useFocusMode: () => ({ isFocusMode: ref(false), setFocusMode: vi.fn() }),
+		// Web, not Tauri: the desktop branch dynamically imports @owlat/desktop.
+		useDesktopContext: () => ({
+			isDesktop: ref(false),
+			isMac: ref(false),
+			isWindows: ref(false),
+			isLinux: ref(false),
+		}),
+		useDesktopNotifications: () => ({ isDesktop: ref(false) }),
+		useWorkspaceHotkeys: vi.fn(),
+		useCommandPalette: () => ({ open: ref(false) }),
+		useChatMentions: () => ({
+			count: ref(0),
+			mentions: ref([]),
+			mentionsLoading: ref(false),
+			markMentionRead: vi.fn(),
+		}),
+		useDeliveryHealth: () => ({
+			level: ref('ok'),
+			reason: ref(null),
+			isVisible: ref(false),
+			dotClass: ref(''),
+		}),
+		// Every section at once (not one context's slice): the audit should see
+		// the widest rail the app can render. `firstSharedKey` still comes from
+		// the real split so the divider branch renders where it really would.
+		useSidebarContext: () => ({
+			showToggle: ref(true),
+			activeContext: ref('marketing'),
+			sidebarSections: ref(sections),
+			firstSharedKey: ref(splitSectionsByContext(sections).shared[0]?.key ?? null),
+			switchContext: vi.fn(),
+		}),
+		useDashboardNavigation: () => ({ navigationSections: ref(sections) }),
+		useSendReadyNotice: () => ({ isSendPathReady: ref(true) }),
+	};
+}
+
 export interface AuditOptions extends MountingOptions<Record<string, unknown>> {
 	/** Runs after mount and after pending microtasks, before the scan. */
 	prepare?: (wrapper: VueWrapper) => void | Promise<void>;
 	/** Extra axe rule toggles, merged over the defaults. */
 	rules?: RunOptions['rules'];
+	/**
+	 * Audit the mount as a whole PAGE rather than as a fragment: the document
+	 * gets the `lang` and title a Nuxt-rendered one carries, the scan takes the
+	 * document, and the four document-scope rules (`region`,
+	 * `landmark-one-main`, `page-has-heading-one`, `bypass`) come back on. For
+	 * the layout audits — a layout is what owns `<main>`, the skip link and the
+	 * landmark structure those rules describe, so nothing else can cover them.
+	 */
+	pageContext?: boolean;
 }
 
 /**
@@ -351,13 +465,15 @@ export async function auditA11y(
 	component: Component,
 	options: AuditOptions = {}
 ): Promise<string[]> {
-	const { prepare, rules, global: globalOptions, ...mountOptions } = options;
+	const { prepare, rules, pageContext = false, global: globalOptions, ...mountOptions } = options;
 
 	// axe reads layout and visibility off the live document, so the tree has to
 	// be attached rather than rendered into a detached fragment.
 	const container = document.createElement('div');
 	document.body.appendChild(container);
 	const preexisting = new Set(document.body.children);
+	const restoreDocument = pageContext ? applyPageContext() : undefined;
+	unresolvedComponents.clear();
 
 	const wrapper = mount(component, {
 		...mountOptions,
@@ -379,40 +495,96 @@ export async function auditA11y(
 		await flushAsync();
 		await prepare?.(wrapper);
 		await flushAsync();
+		assertUiLayerResolved();
 		// Dialogs `<Teleport to="body">`, so their markup is a sibling of the
-		// container rather than a descendant. Scanning the document instead would
-		// drag in happy-dom's bare `<html>` (no lang, no title) and report the
-		// harness's own shell as the app's defect, so the scan takes the container
-		// plus exactly what this mount added to the body.
+		// container rather than a descendant. Scanning the document by default
+		// would drag in happy-dom's bare `<html>` (no lang, no title) and report
+		// the harness's own shell as the app's defect, so a fragment scan takes
+		// the container plus exactly what this mount added to the body. A
+		// `pageContext` audit dresses the document first and then takes all of it,
+		// which is also what makes axe run its page-level rules.
 		const teleported = [...document.body.children].filter(
 			(child) => child !== container && !preexisting.has(child)
 		);
-		const context = teleported.length > 0 ? { include: [container, ...teleported] } : container;
-		return await describeViolations(context, rules);
+		const fragment: ElementContext =
+			teleported.length > 0 ? { include: [container, ...teleported] } : container;
+		return pageContext
+			? await scan(document, { ...DOCUMENT_SCOPE_ENABLED, ...rules }, true)
+			: await scan(fragment, rules, false);
 	} finally {
 		wrapper.unmount();
 		container.remove();
+		restoreDocument?.();
 	}
 }
 
+/**
+ * Give happy-dom's bare shell the `lang` and title every Nuxt-rendered document
+ * carries (`nuxt.config`'s `htmlAttrs.lang`, the page's `useHead` title), so a
+ * page-scope scan reports the app's landmarks rather than the harness's own
+ * missing chrome. Returns the undo.
+ */
+function applyPageContext(): () => void {
+	const html = document.documentElement;
+	const previousLang = html.getAttribute('lang');
+	const previousTitle = document.title;
+	html.setAttribute('lang', 'en');
+	document.title = 'Owlat';
+	return () => {
+		if (previousLang === null) html.removeAttribute('lang');
+		else html.setAttribute('lang', previousLang);
+		document.title = previousTitle;
+	};
+}
+
+/**
+ * A page is allowed to leave its feature components unresolved — that is the
+ * deal this harness makes. The UI layer is not: `UiInput` owns the label-to-
+ * control binding and `UiModal` the dialog roles, so one of them failing to
+ * resolve turns a real audit into an audit of inert unknown elements that
+ * passes. Renaming a component out of the registered globs fails here instead.
+ */
+function assertUiLayerResolved(): void {
+	const missing = [...unresolvedComponents].filter((name) => name.startsWith('Ui')).sort();
+	if (missing.length === 0) return;
+	throw new Error(
+		`The audited tree left UI-layer components unresolved, so their markup was never scanned: ${missing.join(', ')}. ` +
+			'Check the component globs at the top of app/__tests__/a11y.ts.'
+	);
+}
+
 /** Drain the mount's pending microtask chain and let every resulting render land. */
-export async function flushAsync(turns = 5): Promise<void> {
+async function flushAsync(turns = 5): Promise<void> {
 	for (let turn = 0; turn < turns; turn++) {
 		await Promise.resolve();
 		await nextTick();
 	}
 }
 
-/** Scan an already-rendered element (for suites that own their own mount). */
-export async function describeViolations(
+/**
+ * axe marks `bypass` `reviewOnFail`, so a page with no skip link, no heading and
+ * no `<main>` lands in `incomplete` rather than `violations` — collecting only
+ * violations would let the layout drop its skip link silently. There is nothing
+ * for a human to review here: on a page-scope scan the rule either found the
+ * mechanism or the page has none.
+ */
+const REVIEW_AS_FAILURE = new Set<string>(['bypass']);
+
+/** Scan an already-rendered context. */
+async function scan(
 	target: ElementContext,
-	rules?: RunOptions['rules']
+	rules: RunOptions['rules'],
+	pageContext: boolean
 ): Promise<string[]> {
 	const results = await axe.run(target, {
 		...RUN_OPTIONS,
+		...(pageContext ? { resultTypes: ['violations' as const, 'incomplete' as const] } : {}),
 		rules: { ...RUN_OPTIONS.rules, ...rules },
 	});
-	return results.violations.flatMap(describeViolation);
+	const reviewed = pageContext
+		? results.incomplete.filter((result) => REVIEW_AS_FAILURE.has(result.id))
+		: [];
+	return [...results.violations, ...reviewed].flatMap(describeViolation);
 }
 
 function describeViolation(violation: Result): string[] {
