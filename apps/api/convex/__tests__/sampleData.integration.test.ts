@@ -189,10 +189,29 @@ describe('sample data — status and removal', () => {
 		expect(survivors.contacts).toHaveLength(1);
 	});
 
+	it('reports a scan it could not finish rather than under-counting silently', async () => {
+		const t = convexTest(schema, modules);
+		await install(t);
+
+		const status = (await (await post(t, '/sample-data/status', SECRET)).json()) as {
+			truncated: boolean;
+		};
+		const removed = (await (await post(t, '/sample-data/remove', SECRET)).json()) as {
+			truncated: boolean;
+		};
+		// Nothing here is near the page cap, so both scans completed — the flag
+		// exists so a caller can tell "nothing left" from "stopped looking".
+		expect(status.truncated).toBe(false);
+		expect(removed.truncated).toBe(false);
+	});
+
 	it('is a no-op on an instance that never installed sample data', async () => {
 		const t = convexTest(schema, modules);
 		const res = await post(t, '/sample-data/remove', SECRET);
 		expect(res.status).toBe(200);
-		expect((await res.json()) as { deleted: Record<string, number> }).toEqual({ deleted: {} });
+		expect((await res.json()) as { deleted: Record<string, number>; truncated: boolean }).toEqual({
+			deleted: {},
+			truncated: false,
+		});
 	});
 });
