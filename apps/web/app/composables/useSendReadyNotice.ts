@@ -20,6 +20,11 @@ import {
  * member is usually not in the app when the transport lands, so the notice has
  * to wait for them across sessions — and then go away for good.
  *
+ * Because it goes away for good, the toast is STICKY and the acknowledge waits
+ * for the dismissal, not the render: a once-ever notice that spent three
+ * seconds on screen while the member was reading something else is a notice
+ * they never received, and it is already marked as delivered.
+ *
  * Mounted once from the dashboard layout.
  */
 export function useSendReadyNotice() {
@@ -30,28 +35,34 @@ export function useSendReadyNotice() {
 		label: 'Acknowledge sending-ready notice',
 	});
 
-	// Ids toasted this session. Guards the window between showing the toast and
-	// the acknowledge write landing, during which the query still reports the
-	// notice as pending.
+	// Ids covered by a toast this session. Guards the window between showing the
+	// toast and the acknowledge write landing, during which the query still
+	// reports the notices as pending — and with the acknowledge now waiting for
+	// a dismissal, that window is as long as the member leaves the toast up.
+	// Every id in the burst is recorded, not just the one the toast names: they
+	// all say the same thing, so a re-report must not toast the older rows again.
 	const surfaced = new Set<string>();
 
 	watch(
 		() => data.value,
-		async (state) => {
-			const notice = planSendReadyToast(state?.notices as SendReadyNotice[] | undefined, surfaced);
+		(state) => {
+			const pending = (state?.notices as SendReadyNotice[] | undefined) ?? [];
+			const notice = planSendReadyToast(pending, surfaced);
 			if (!notice) return;
-			surfaced.add(notice.id);
+			for (const covered of pending) surfaced.add(covered.id);
 
 			showToast(sendReadyToastMessage(), 'success', {
+				// Sticky: this one never comes back, so it waits to be read.
+				durationMs: 0,
 				action: {
 					label: 'Finish setup',
 					onAction: () => void navigateTo(SEND_READY_DEEP_LINK),
 				},
+				// Fires once, on the close button, the action button, or a clear —
+				// so "acknowledged" means the member actually dealt with it.
+				onDismiss: () => void acknowledge({}),
 			});
-			await acknowledge({});
 		},
 		{ immediate: true, deep: true }
 	);
-
-	return { isSendPathReady: computed(() => data.value?.isReady ?? false) };
 }

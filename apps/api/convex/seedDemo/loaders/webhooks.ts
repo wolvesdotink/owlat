@@ -4,11 +4,17 @@
  * Direct insert — public mutation is session-gated. The deliveries pool would
  * not touch a freshly-created webhook anyway (it only fires when events
  * arrive), so no side effect to bypass.
+ *
+ * It fires on the operator's OWN events, though: `webhooks/deliveryQueries.ts`
+ * picks up every active subscription with no seed-tag filter, so on a real
+ * install an active fixture webhook would POST real contacts' details to a
+ * fixture URL the operator never configured. A REAL install therefore runs this
+ * loader INERT (`options.inert`), which writes the row disabled.
  */
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
-import { SEED_TAG, type LoadResult, type Loader } from './types';
+import { SEED_TAG, type LoadResult, type Loader, type LoaderOptions, type SeedRefs } from './types';
 
 type WebhookEvent =
 	| 'email.sent'
@@ -31,6 +37,8 @@ interface WebhookFixture {
 async function load(
 	ctx: MutationCtx,
 	rawRecords: unknown[],
+	_refs: SeedRefs,
+	options: LoaderOptions
 ): Promise<LoadResult> {
 	const records = rawRecords as WebhookFixture[];
 	let inserted = 0;
@@ -57,7 +65,8 @@ async function load(
 			url: rec.url,
 			events: rec.events,
 			secret,
-			isActive: rec.isActive,
+			// Inert mode never writes a live subscription, whatever the fixture says.
+			isActive: options.inert ? false : rec.isActive,
 			seedTag: SEED_TAG,
 			createdAt: now,
 			updatedAt: now,

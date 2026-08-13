@@ -18,7 +18,9 @@ export const SEND_READY_STEP_ID = 'firstSendDone' as const;
 
 /**
  * Where the notice's action lands: the dashboard's Getting started card, with
- * the first-send step named so the card can scroll to and highlight it.
+ * the first-send step named in `?step=` so the card can scroll to and highlight
+ * it. The card reads the param; a build that does not yet simply lands the
+ * member on the dashboard, which is where the step lives either way.
  */
 export const SEND_READY_DEEP_LINK = `/dashboard?step=${SEND_READY_STEP_ID}`;
 

@@ -166,9 +166,16 @@ watch(
 	{ flush: 'post' }
 );
 
-/** Drill-in "back": from the reader to the folder's list route. */
+/**
+ * Drill-in "back": from the reader to the folder's list route. Replace, don't
+ * push — opening the message pushed the entry this button dismisses, so a push
+ * here would leave the system Back gesture reopening the reader the user just
+ * closed, and grow the history stack by two entries per open/close cycle.
+ */
 function backToList() {
-	void navigateTo(`/dashboard/postbox/${String(props.folderId ?? props.folderRole)}`);
+	void navigateTo(`/dashboard/postbox/${String(props.folderId ?? props.folderRole)}`, {
+		replace: true,
+	});
 }
 
 // Mode shortcuts (window-level, like the triage-undo chord above): B (and
@@ -259,15 +266,6 @@ const advanceIds = computed(() =>
 			// to leave `messages` anyway, so the order is at worst one row stale.
 			(threadListRef.value?.visibleIds ?? messages.value.map((m) => m._id))
 );
-
-// Reply Queue inbox "waiting on your reply" strip. The strip is dismissible for
-// the session (in-memory state, resets on reload) and only renders while the
-// queue is non-empty. (The rail's own badge subscribes separately/deduped.)
-const { count: replyQueueCount } = usePostboxReplyQueue(mailboxIdRef);
-const replyQueueStripDismissed = useState('postbox:reply-queue-strip-dismissed', () => false);
-const showReplyQueueStrip = computed(
-	() => folderRef.value === 'inbox' && replyQueueCount.value > 0 && !replyQueueStripDismissed.value
-);
 </script>
 
 <template>
@@ -319,10 +317,12 @@ const showReplyQueueStrip = computed(
 						class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2"
 					>
 						<div class="flex items-center gap-2 min-w-0">
-							<!-- Drawer handle for the folder rail (mobile only). -->
+							<!-- Drawer handle for the folder rail (mobile only). 44px square for
+							     the thumb; the negative margins keep it from growing the header
+							     past the height the 16px icon alone would give it. -->
 							<button
 								type="button"
-								class="lg:hidden -ml-1 p-1 rounded text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+								class="lg:hidden -ml-2 -my-2 w-11 h-11 flex items-center justify-center flex-shrink-0 rounded text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
 								aria-label="Open folders"
 								@click="railOpen = true"
 							>
@@ -380,31 +380,7 @@ const showReplyQueueStrip = computed(
 					<template v-else>
 						<!-- Compact "waiting on your reply" strip — inbox only, non-empty
 				     queue only, dismissible for the session. -->
-						<div
-							v-if="showReplyQueueStrip"
-							class="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-brand/5 text-sm"
-						>
-							<Icon name="lucide:reply" class="w-4 h-4 text-brand flex-shrink-0" />
-							<span class="flex-1 truncate text-text-secondary">
-								{{ replyQueueCount }} {{ replyQueueCount === 1 ? 'email is' : 'emails are' }}
-								waiting on your reply
-							</span>
-							<NuxtLink
-								to="/dashboard/postbox/reply-queue"
-								class="text-brand hover:underline flex-shrink-0"
-							>
-								Open queue
-							</NuxtLink>
-							<button
-								type="button"
-								class="p-0.5 rounded text-text-tertiary hover:text-text-primary flex-shrink-0"
-								title="Dismiss for this session"
-								aria-label="Dismiss reply queue reminder"
-								@click="replyQueueStripDismissed = true"
-							>
-								<Icon name="lucide:x" class="w-3.5 h-3.5" />
-							</button>
-						</div>
+						<PostboxReplyQueueStrip :mailbox-id="mailboxId" :folder-role="folderRole" />
 						<PostboxQuickActionsBar
 							v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
 							:mailbox-id="mailboxId"
@@ -464,11 +440,12 @@ const showReplyQueueStrip = computed(
 					:class="activeMessageId ? 'block' : 'hidden lg:block'"
 				>
 					<!-- Drill-in back navigation (mobile only; on lg the list is still
-				     on screen beside the reader). -->
+				     on screen beside the reader). py-3 puts the full-width bar past
+				     the 44px touch target — it is the only way out of the reader. -->
 					<button
 						v-if="activeMessageId"
 						type="button"
-						class="lg:hidden sticky top-0 z-10 w-full flex items-center gap-1.5 border-b border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+						class="lg:hidden sticky top-0 z-10 w-full flex items-center gap-1.5 border-b border-border-subtle bg-bg-base px-3 py-3 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
 						@click="backToList"
 					>
 						<Icon name="lucide:arrow-left" class="w-4 h-4" />

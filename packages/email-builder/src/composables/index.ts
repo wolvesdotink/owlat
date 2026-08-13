@@ -41,13 +41,6 @@ export {
 } from './editorShortcuts';
 export type { EditorShortcut, EditorShortcutGroup } from './editorShortcuts';
 
-export { useKeyboardHandlers } from './useKeyboardHandlers';
-export type {
-	KeyboardHandlerCallbacks,
-	KeyboardHandlerState,
-	UseKeyboardHandlersOptions,
-} from './useKeyboardHandlers';
-
 export { useBackgroundColorControl } from './useBackgroundColorControl';
 export type {
 	ColorPreset,

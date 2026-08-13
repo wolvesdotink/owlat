@@ -43,6 +43,10 @@ export const codeWorkTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_status', ['status'])
+		// The worker's queue read: queued rows ordered by the moment they become
+		// claimable, so the backoff gate is a range bound rather than a scan
+		// window. A never-attempted row has no `nextAttemptAt` and sorts first.
+		.index('by_status_and_next_attempt', ['status', 'nextAttemptAt'])
 		.index('by_created_at', ['createdAt'])
 		// Idempotent inbound → code-task creation (createFromInbound dedupes here).
 		.index('by_inbound', ['inboundMessageId'])

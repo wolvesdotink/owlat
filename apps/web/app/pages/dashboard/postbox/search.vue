@@ -100,13 +100,16 @@ function removeChip(key: string) {
 					class="flex-1 min-w-0 overflow-auto bg-bg-base"
 					:class="activeMessageId ? 'block' : 'hidden lg:block'"
 				>
+					<!-- The bar carries no vertical padding of its own: the button owns it,
+					     so the whole 44px height is a touch target and not just its
+					     middle third. -->
 					<div
 						v-if="activeMessageId"
-						class="lg:hidden sticky top-0 z-10 flex items-center border-b border-border-subtle bg-bg-base px-3 py-2"
+						class="lg:hidden sticky top-0 z-10 flex items-center border-b border-border-subtle bg-bg-base px-2"
 					>
 						<button
 							type="button"
-							class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none rounded px-1 py-0.5"
+							class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none rounded px-2 py-3"
 							@click="activeMessageId = null"
 						>
 							<Icon name="lucide:arrow-left" class="w-4 h-4" />

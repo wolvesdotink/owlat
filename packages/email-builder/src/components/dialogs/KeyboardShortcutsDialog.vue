@@ -5,6 +5,7 @@ import {
 	EDITOR_SHORTCUTS,
 	EDITOR_SHORTCUT_GROUPS,
 	formatShortcutKeys,
+	useApplePlatform,
 } from '../../composables/editorShortcuts';
 
 defineProps<{
@@ -15,11 +16,18 @@ const emit = defineEmits<{
 	(e: 'close'): void;
 }>();
 
+// Post-mount platform ref, so the server and the first client render agree on
+// the modifier chip (⌘ vs Ctrl) instead of tripping a hydration mismatch.
+const isApplePlatform = useApplePlatform();
+
 const sections = computed(() =>
 	EDITOR_SHORTCUT_GROUPS.map((group) => ({
 		group,
 		shortcuts: EDITOR_SHORTCUTS.filter((shortcut) => shortcut.group === group).map(
-			(shortcut) => ({ ...shortcut, keys: formatShortcutKeys(shortcut.keys) })
+			(shortcut) => ({
+				...shortcut,
+				keys: formatShortcutKeys(shortcut.keys, isApplePlatform.value),
+			})
 		),
 	})).filter((section) => section.shortcuts.length > 0)
 );

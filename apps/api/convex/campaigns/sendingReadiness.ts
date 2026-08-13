@@ -129,6 +129,30 @@ async function measureSendingReadiness(
 }
 
 /**
+ * The measurement, FAIL-QUIET. This renders beside a send button; an exception
+ * escaping here would break the page that sends mail over a readout that is
+ * advisory by construction, so every fault degrades to "no cap to quote".
+ *
+ * Separate from the query so the catch arm is reachable in a test: a query's
+ * handler cannot be handed a context whose reads throw, and an arm that
+ * guarantees a measurement fault can never break the send page is exactly the
+ * one that must be proven rather than assumed (the same seam
+ * `assessCampaignCapacity` keeps for the pre-flight's fail-open).
+ */
+export async function readSendingReadiness(
+	ctx: Ctx,
+	fromEmail: string | undefined,
+	now: number
+): Promise<SendingReadiness> {
+	try {
+		return await measureSendingReadiness(ctx, fromEmail, now);
+	} catch (err) {
+		logWarn('sendingReadiness: capacity could not be measured', err);
+		return { capped: false, reason: 'measurement_failed' };
+	}
+}
+
+/**
  * Today's sending headroom, for the surfaces that have to say it BEFORE the send
  * button: the campaign send/schedule flow and the getting-started checklist.
  *
@@ -145,15 +169,6 @@ async function measureSendingReadiness(
 // already render to any member, with no per-recipient or credential data in it.
 export const getSendingReadiness = authedQuery({
 	args: { fromEmail: v.optional(v.string()) },
-	handler: async (ctx, args): Promise<SendingReadiness> => {
-		// FAIL QUIET. This renders beside a send button; an exception here would
-		// break the page that sends mail over a readout that is advisory by
-		// construction.
-		try {
-			return await measureSendingReadiness(ctx, args.fromEmail, Date.now());
-		} catch (err) {
-			logWarn('sendingReadiness: capacity could not be measured', err);
-			return { capped: false, reason: 'measurement_failed' };
-		}
-	},
+	handler: async (ctx, args): Promise<SendingReadiness> =>
+		await readSendingReadiness(ctx, args.fromEmail, Date.now()),
 });

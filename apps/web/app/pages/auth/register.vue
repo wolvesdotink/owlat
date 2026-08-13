@@ -12,7 +12,7 @@ definePageMeta({
 
 const { signUpWithEmail } = useAuth();
 const { run: createUserProfile } = useBackendOperation(api.auth.userProfiles.create, {
-	label: t('auth.register.createProfileOperation'),
+	label: () => t('auth.register.createProfileOperation'),
 });
 const router = useRouter();
 const route = useRoute();

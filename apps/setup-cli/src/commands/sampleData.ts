@@ -43,8 +43,18 @@ interface SampleDataResponse {
 	deleted?: Record<string, number>;
 	present?: Record<string, number>;
 	total?: number;
+	/**
+	 * The backend's per-table scan hit its page cap, so the counts above are a
+	 * floor. Only reachable on an instance with millions of rows in one table;
+	 * re-running the command continues from where the cap stopped.
+	 */
+	truncated?: boolean;
 	error?: string;
 }
+
+/** Message for a scan the backend could not finish. Shared by remove + status. */
+export const TRUNCATED_SCAN_NOTE =
+	'The scan stopped at its page limit, so these counts are a lower bound. Run the command again to continue.';
 
 /** The subcommand, or an error string naming what was passed instead. */
 export function parseAction(positional: string[]): SampleDataAction | { error: string } {
@@ -111,6 +121,11 @@ async function removeSampleData(opts: RunOptions, baseUrlOverride?: string): Pro
 
 	const deleted = response.deleted ?? {};
 	log.info(`Deleted: ${formatCounts(deleted)}`);
+	if (response.truncated) {
+		log.warn(TRUNCATED_SCAN_NOTE);
+		outro(pc.yellow('Sample data partially removed.'));
+		return 0;
+	}
 	outro(pc.green('Sample data removed.'));
 	return 0;
 }
@@ -122,12 +137,16 @@ async function statusSampleData(opts: RunOptions, baseUrlOverride?: string): Pro
 	const response = await call(ctx, '/sample-data/status', 'Counting sample-data rows');
 	if (typeof response === 'number') return response;
 
+	if (response.truncated) log.warn(TRUNCATED_SCAN_NOTE);
+
 	if (!response.total) {
 		outro(`No sample data on this instance. ${pc.dim('owlat sample-data install')}`);
 		return 0;
 	}
 	log.info(`Present: ${formatCounts(response.present ?? {})}`);
-	outro(`${response.total} sample rows. ${pc.dim('Remove them with: owlat sample-data remove')}`);
+	outro(
+		`${response.total}${response.truncated ? '+' : ''} sample rows. ${pc.dim('Remove them with: owlat sample-data remove')}`
+	);
 	return 0;
 }
 
