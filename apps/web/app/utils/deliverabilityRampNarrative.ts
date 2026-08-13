@@ -290,13 +290,12 @@ export function rampNextAction(controls: RampControls): RampNextAction {
 
 	const retreating = leadingRetreat(managed);
 	if (retreating !== null) {
-		const decision = retreating.lastDecision;
 		return {
 			key: 'read_pull_back',
-			title: `The controller pulled ${rampCellLabel(retreating.cell)} back`,
+			title: `The controller pulled ${rampCellLabel(retreating.cell.cell)} back`,
 			// The controller's own notice where it wrote one, its decision sentence
 			// otherwise. Both name the gate that broke; neither is re-worded here.
-			detail: decision === null ? '' : (decision.adminNotice ?? decision.message),
+			detail: retreating.decision.adminNotice ?? retreating.decision.message,
 			ctaLabel: 'See the evidence behind it',
 			to: CELLS_HREF,
 		};
@@ -342,12 +341,20 @@ export function rampNextAction(controls: RampControls): RampNextAction {
 	};
 }
 
-/** The most recently retreated cell that is still sitting in that retreat. */
-function leadingRetreat(cells: readonly RampCellControl[]): RampCellControl | null {
-	let worst: RampCellControl | null = null;
+/**
+ * The most recently retreated cell that is still sitting in that retreat, WITH
+ * the decision that put it there — the two travel together because the caller
+ * needs both, and returning the cell alone would leave it re-reading a
+ * `lastDecision` this search has already proved is a retreat.
+ */
+function leadingRetreat(
+	cells: readonly RampCellControl[]
+): { cell: RampCellControl; decision: RampCellDecision } | null {
+	let worst: { cell: RampCellControl; decision: RampCellDecision } | null = null;
 	for (const cell of cells) {
-		if (cell.lastDecision?.direction !== 'decrease') continue;
-		if (worst === null || cell.lastDecision.at > (worst.lastDecision?.at ?? 0)) worst = cell;
+		const decision = cell.lastDecision;
+		if (decision === null || decision.direction !== 'decrease') continue;
+		if (worst === null || decision.at > worst.decision.at) worst = { cell, decision };
 	}
 	return worst;
 }
