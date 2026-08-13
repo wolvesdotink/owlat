@@ -779,7 +779,7 @@ onUnmounted(() => {
 				>
 					<!-- Backdrop -->
 					<div
-						class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+						class="absolute inset-0 bg-scrim/50 backdrop-blur-sm"
 						@click="showActivateConfirmModal = false"
 					/>
 

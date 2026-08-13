@@ -41,7 +41,7 @@ const handleConfirm = () => {
 					variant="danger"
 					v-if="!showConfirm"
 					data-testid="kill-switch-open"
-					class="bg-error text-white hover:bg-error/90 gap-2 mt-4"
+					class="gap-2 mt-4"
 					:disabled="busy"
 					@click="showConfirm = true"
 				>
@@ -54,7 +54,7 @@ const handleConfirm = () => {
 					<UiButton
 						variant="danger"
 						data-testid="kill-switch-confirm"
-						class="bg-error text-white hover:bg-error/90 gap-2"
+						class="gap-2"
 						:disabled="busy"
 						@click="handleConfirm"
 					>

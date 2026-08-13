@@ -201,9 +201,16 @@ const { public: config } = useRuntimeConfig();
 						{{ config.companyStreet }}, {{ config.companyPostalCode }} {{ config.companyCity }},
 						{{ config.companyCountry }}<br />
 						Email:
-						<a :href="`mailto:${config.companyEmail}`" class="text-brand hover:underline">{{
-							config.companyEmail
-						}}</a>
+						<!-- The legal company details default to empty on a self-host install;
+						     an unset address must not leave an empty `mailto:` link in the tab
+						     order with no accessible name. -->
+						<a
+							v-if="config.companyEmail"
+							:href="`mailto:${config.companyEmail}`"
+							class="text-brand hover:underline"
+							>{{ config.companyEmail }}</a
+						>
+						<span v-else class="text-text-tertiary">not provided</span>
 					</p>
 				</section>
 			</article>

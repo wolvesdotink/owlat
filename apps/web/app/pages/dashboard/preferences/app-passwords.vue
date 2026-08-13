@@ -158,7 +158,7 @@ const smtpHost = computed(() => imapHost.value);
 		<!-- Generate dialog -->
 		<div
 			v-if="showCreate"
-			class="fixed inset-0 bg-black/50 flex items-center justify-center z-40"
+			class="fixed inset-0 bg-scrim/50 flex items-center justify-center z-40"
 			@click.self="showCreate = false"
 		>
 			<form

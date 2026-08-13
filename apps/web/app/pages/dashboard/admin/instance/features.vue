@@ -302,6 +302,7 @@ async function togglePack(packKey: FeaturePackKey) {
 								:disabled="isSavingPack"
 								@click="togglePack(packKey)"
 							>
+								<!-- palette-ok: fixed white thumb on a brand/warning/surface track (the puck packages/ui Switch.vue draws; this tri-state toggle stays bespoke). -->
 								<span
 									class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform"
 									:class="
@@ -396,6 +397,7 @@ async function togglePack(packKey: FeaturePackKey) {
 								"
 								@click="onToggle(def.key, !resolved[def.key])"
 							>
+								<!-- palette-ok: fixed white thumb on a brand/surface track, as above. -->
 								<span
 									class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform"
 									:class="resolved[def.key] ? 'translate-x-[22px]' : 'translate-x-0.5'"

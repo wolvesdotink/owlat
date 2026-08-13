@@ -34,9 +34,7 @@ watch(results, (rows) => {
 });
 
 const { data: activeMessage } = useConvexQuery(api.mail.mailbox.getMessage, () =>
-	activeMessageId.value
-		? { messageId: activeMessageId.value as Id<'mailMessages'> }
-		: 'skip'
+	activeMessageId.value ? { messageId: activeMessageId.value as Id<'mailMessages'> } : 'skip'
 );
 
 watch(query, (q) => {
@@ -52,57 +50,81 @@ function removeChip(key: string) {
 <template>
 	<div class="flex h-[calc(100vh-4rem)]">
 		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
-		<div class="flex w-full">
-			<aside class="w-[420px] border-r border-border-subtle flex flex-col bg-bg-surface">
-				<header class="border-b border-border-subtle px-4 py-3 space-y-2">
-					<PostboxSearchBar v-model="query" />
-					<div v-if="chips.length > 0" class="flex flex-wrap gap-1">
+			<div class="flex w-full">
+				<!-- Below lg the results and the reader are a stacked drill-in: one at a
+			     time, with a back button in the reader. -->
+				<aside
+					class="w-full lg:w-[420px] lg:flex-shrink-0 border-r border-border-subtle flex-col bg-bg-surface"
+					:class="activeMessageId ? 'hidden lg:flex' : 'flex'"
+				>
+					<header class="border-b border-border-subtle px-4 py-3 space-y-2">
+						<PostboxSearchBar v-model="query" />
+						<div v-if="chips.length > 0" class="flex flex-wrap gap-1">
+							<button
+								v-for="chip in chips"
+								:key="chip.label"
+								type="button"
+								class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-bg-elevated text-text-secondary hover:text-text-primary"
+								@click="removeChip(chip.key)"
+							>
+								{{ chip.label }}
+								<Icon name="lucide:x" class="w-3 h-3" />
+							</button>
+						</div>
+					</header>
+					<div class="flex-1 overflow-auto">
+						<div v-if="!query.trim()" class="p-6 text-sm text-text-tertiary">
+							Try operators like <code>from:sara</code>, <code>has:attachment</code>,
+							<code>before:2024-01-01</code>, <code>label:work</code>, <code>is:unread</code>.
+						</div>
+						<PostboxThreadListSkeleton v-else-if="isLoading" :rows="6" />
+						<PostboxEmptyState
+							v-else-if="results.length === 0"
+							icon="lucide:search-x"
+							title="No results for this search"
+							hint="Try fewer or broader terms, or operators like from:, has:attachment, is:unread."
+						/>
+						<PostboxThreadList
+							v-else-if="mailboxId"
+							:mailbox-id="mailboxId"
+							:messages="results"
+							:loading="false"
+							folder-role="inbox"
+							selectable
+							:active-message-id="activeMessageId"
+							@select="activeMessageId = $event"
+						/>
+					</div>
+				</aside>
+				<section
+					class="flex-1 min-w-0 overflow-auto bg-bg-base"
+					:class="activeMessageId ? 'block' : 'hidden lg:block'"
+				>
+					<!-- The bar carries no vertical padding of its own: the button owns it,
+					     so the whole 44px height is a touch target and not just its
+					     middle third. -->
+					<div
+						v-if="activeMessageId"
+						class="lg:hidden sticky top-0 z-10 flex items-center border-b border-border-subtle bg-bg-base px-2"
+					>
 						<button
-							v-for="chip in chips"
-							:key="chip.label"
 							type="button"
-							class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-bg-elevated text-text-secondary hover:text-text-primary"
-							@click="removeChip(chip.key)"
+							class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none rounded px-2 py-3"
+							@click="activeMessageId = null"
 						>
-							{{ chip.label }}
-							<Icon name="lucide:x" class="w-3 h-3" />
+							<Icon name="lucide:arrow-left" class="w-4 h-4" />
+							Results
 						</button>
 					</div>
-				</header>
-				<div class="flex-1 overflow-auto">
-					<div v-if="!query.trim()" class="p-6 text-sm text-text-tertiary">
-						Try operators like <code>from:sara</code>, <code>has:attachment</code>,
-						<code>before:2024-01-01</code>, <code>label:work</code>, <code>is:unread</code>.
+					<PostboxThreadReader v-if="activeMessage" :message="activeMessage" />
+					<div v-else class="h-full flex items-center justify-center">
+						<div class="text-center">
+							<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
+							<p class="mt-4 text-text-secondary">Select a result</p>
+						</div>
 					</div>
-					<PostboxThreadListSkeleton v-else-if="isLoading" :rows="6" />
-					<PostboxEmptyState
-						v-else-if="results.length === 0"
-						icon="lucide:search-x"
-						title="No results for this search"
-						hint="Try fewer or broader terms, or operators like from:, has:attachment, is:unread."
-					/>
-					<PostboxThreadList
-						v-else-if="mailboxId"
-						:mailbox-id="mailboxId"
-						:messages="results"
-						:loading="false"
-						folder-role="inbox"
-						selectable
-						:active-message-id="activeMessageId"
-						@select="activeMessageId = $event"
-					/>
-				</div>
-			</aside>
-			<section class="flex-1 overflow-auto bg-bg-base">
-				<PostboxThreadReader v-if="activeMessage" :message="activeMessage" />
-				<div v-else class="h-full flex items-center justify-center">
-					<div class="text-center">
-						<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-						<p class="mt-4 text-text-secondary">Select a result</p>
-					</div>
-				</div>
-			</section>
-		</div>
+				</section>
+			</div>
 		</PostboxMailboxGuard>
 		<PostboxComposerStack />
 		<PostboxShortcutHelp />

@@ -126,6 +126,9 @@ onUnmounted(() => {
 			aria-label="Switch workspace"
 			@click="toggle"
 		>
+			<!-- palette-ok: the hairline rides on the workspace's own accent colour (an
+			     arbitrary user value below), not on an app surface — it exists to keep a
+			     pale accent from bleeding into the menu, so it stays dark in both themes. -->
 			<span
 				v-if="active"
 				class="h-2.5 w-2.5 rounded-full shrink-0 ring-1 ring-inset ring-black/10"

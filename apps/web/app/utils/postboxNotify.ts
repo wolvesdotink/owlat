@@ -23,20 +23,18 @@ export type PostboxNotifyAbout = 'everything' | 'people-important' | 'nothing';
  * Smart-inbox category label (mirrors `mailMessages.category.label`). `person`
  * is the only "people & important" class; the rest are lower-signal.
  */
-export type PostboxMailCategory =
-	| 'person'
-	| 'newsletter'
-	| 'notification'
-	| 'receipt'
-	| 'other';
+export type PostboxMailCategory = 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
 
-export const POSTBOX_NOTIFY_ABOUT_OPTIONS: Array<{
-	value: PostboxNotifyAbout;
-	label: string;
-}> = [
-	{ value: 'everything', label: 'Everything' },
-	{ value: 'people-important', label: 'People & important only' },
-	{ value: 'nothing', label: 'Nothing' },
+/**
+ * Every scope, in the order a picker offers them. VALUES ONLY — a label pinned
+ * here would be English forever: the extracted surfaces resolve their labels
+ * through the message catalog, and a surface that isn't extracted yet keeps its
+ * English copy next to the rest of its own hardcoded copy.
+ */
+export const POSTBOX_NOTIFY_ABOUT_OPTIONS: readonly PostboxNotifyAbout[] = [
+	'everything',
+	'people-important',
+	'nothing',
 ];
 
 /**
@@ -51,7 +49,7 @@ export function defaultPostboxNotifyAbout(categoriesLive: boolean): PostboxNotif
 /** Normalise a stored/unknown value to a valid scope, defaulting safely. */
 export function resolvePostboxNotifyAbout(
 	value: string | undefined | null,
-	categoriesLive: boolean,
+	categoriesLive: boolean
 ): PostboxNotifyAbout {
 	if (value === 'everything' || value === 'people-important' || value === 'nothing') {
 		return value;
