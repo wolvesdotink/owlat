@@ -53,25 +53,33 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 		</div>
 
 		<div class="flex flex-col gap-1 mb-2">
+			<!--
+				The row is a plain container, not a `role="button"`: it holds the
+				Remove button, and a button makes all of its descendants
+				presentational, which stripped that control out of the a11y tree
+				entirely. The row's own "edit this child" action is a real <button>
+				spanning the label, so the two controls are siblings.
+			-->
 			<div
 				v-for="child in children"
 				:key="child.id"
-				class="group/item flex items-center gap-1.5 py-[7px] px-2 border border-border-subtle rounded-lg cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-border-subtle"
-				role="button"
-				tabindex="0"
-				:aria-label="`Edit ${child.label}`"
-				@click="emit('select-child', child.id)"
-				@keydown.enter.prevent="emit('select-child', child.id)"
-				@keydown.space.prevent="emit('select-child', child.id)"
+				class="group/item flex items-center gap-1.5 py-[7px] px-2 border border-border-subtle rounded-lg transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-border-subtle"
 			>
-				<component
-					v-if="child.icon"
-					:is="child.icon"
-					:size="14"
-					class="text-text-tertiary shrink-0 group-hover/item:text-brand"
-				/>
-				<span class="flex-1 text-xs text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ child.label }}</span>
-				<ChevronRight :size="12" class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)" />
+				<button
+					class="flex flex-1 items-center gap-1.5 min-w-0 border-none bg-transparent p-0 text-left cursor-pointer"
+					type="button"
+					:aria-label="`Edit ${child.label}`"
+					@click="emit('select-child', child.id)"
+				>
+					<component
+						v-if="child.icon"
+						:is="child.icon"
+						:size="14"
+						class="text-text-tertiary shrink-0 group-hover/item:text-brand"
+					/>
+					<span class="flex-1 text-xs text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ child.label }}</span>
+					<ChevronRight :size="12" class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)" />
+				</button>
 				<button
 					class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
 					type="button"

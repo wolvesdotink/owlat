@@ -98,17 +98,22 @@
 	opacity: 0.035;
 }
 
-/* Fine 1px grid, faded out from center via radial mask. */
+/* Fine 1px grid, faded out from center via radial mask. The hairline rides the
+ * border token so it stays a whisper in light mode instead of an invisible
+ * black line in dark mode; color-mix carries the alpha. */
 @utility hero-grid {
+	--hero-grid-line: color-mix(in srgb, var(--color-border-default) 25%, transparent);
 	background-image:
-		linear-gradient(to right, rgba(0, 0, 0, 0.028) 1px, transparent 1px),
-		linear-gradient(to bottom, rgba(0, 0, 0, 0.028) 1px, transparent 1px);
+		linear-gradient(to right, var(--hero-grid-line) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--hero-grid-line) 1px, transparent 1px);
 	background-size: 72px 72px;
-	mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, #000 25%, transparent 78%);
-	-webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, #000 25%, transparent 78%);
+	mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, black 25%, transparent 78%);
+	-webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, black 25%, transparent 78%);
 }
 
-/* Aurora — large blurred blobs anchored at the section's bottom edge. */
+/* Aurora — large blurred blobs anchored at the section's bottom edge. Each wash
+ * rides a brand token through color-mix (which carries the alpha), so the hues
+ * follow the theme instead of freezing a light-mode rgba into dark mode. */
 .lp-aurora {
 	position: absolute;
 	border-radius: 50%;
@@ -122,7 +127,11 @@
 	height: 44vh;
 	left: 20%;
 	bottom: -26vh;
-	background: radial-gradient(ellipse closest-side, rgba(196, 120, 90, 0.45), transparent 72%);
+	background: radial-gradient(
+		ellipse closest-side,
+		color-mix(in srgb, var(--color-brand-glow) 45%, transparent),
+		transparent 72%
+	);
 	animation: lp-aurora-breathe 12s ease-in-out infinite alternate;
 }
 
@@ -131,7 +140,11 @@
 	height: 34vh;
 	left: -6%;
 	bottom: -20vh;
-	background: radial-gradient(ellipse closest-side, rgba(212, 165, 116, 0.3), transparent 72%);
+	background: radial-gradient(
+		ellipse closest-side,
+		color-mix(in srgb, var(--color-accent) 30%, transparent),
+		transparent 72%
+	);
 	animation: lp-aurora-sway 16s ease-in-out infinite alternate;
 }
 
@@ -140,7 +153,16 @@
 	height: 34vh;
 	right: -6%;
 	bottom: -20vh;
-	background: radial-gradient(ellipse closest-side, rgba(214, 140, 128, 0.26), transparent 72%);
+	/* Third hue: the brand glow leaning into the gold, so it reads apart from the core. */
+	background: radial-gradient(
+		ellipse closest-side,
+		color-mix(
+			in srgb,
+			color-mix(in srgb, var(--color-brand-glow) 60%, var(--color-accent)) 26%,
+			transparent
+		),
+		transparent 72%
+	);
 	animation: lp-aurora-sway 14s ease-in-out infinite alternate-reverse;
 }
 

@@ -124,14 +124,26 @@ describe('renderPlainText — decorative blocks', () => {
 			content: { src: 'x.png', ...content } as ImageBlockContent,
 		}) as EditorBlock;
 
-	it('skips a spacer and an image with no alt text or link', () => {
+	it('skips a spacer and an image the author marked decorative', () => {
 		const blocks: EditorBlock[] = [
 			text('Above'),
 			{ id: 's1', type: 'spacer', content: { height: 32 } } as unknown as EditorBlock,
-			image({}, 'i1'),
+			image({ decorative: true }, 'i1'),
 			text('Below'),
 		];
 		expect(renderPlainText(blocks)).toBe('Above\n\nBelow');
+	});
+
+	it('keeps a content image whose alt text is merely missing', () => {
+		// Missing alt is an authoring gap the analyzer already flags — dropping the
+		// image would hide from the text part that anything was there at all.
+		expect(renderPlainText([image({}, 'i1')])).toBe('[Image]');
+	});
+
+	it('keeps a decorative image that links somewhere', () => {
+		expect(renderPlainText([image({ decorative: true, linkUrl: 'https://owlat.dev' }, 'i1')])).toBe(
+			'[Image] (https://owlat.dev)'
+		);
 	});
 
 	it('keeps an image that carries alt text or a link', () => {
@@ -198,10 +210,18 @@ describe('resolvePlainText', () => {
 		expect(resolvePlainText(blocks, null)).toBe('Generated body');
 	});
 
-	it('normalizes CRLF and trailing whitespace in an override', () => {
-		expect(resolvePlainText(blocks, 'Line one   \r\nLine two\r\n\r\n\r\n')).toBe(
+	it('canonicalizes the line endings and the document ends of an override', () => {
+		expect(resolvePlainText(blocks, '\r\nLine one\r\nLine two\r\n\r\n\r\n')).toBe(
 			'Line one\nLine two'
 		);
+	});
+
+	it('ships the rest of an override exactly as the author wrote it', () => {
+		// The generated branch collapses blank-line runs to close the holes its own
+		// decorative blocks leave. In a hand-written body that spacing is the
+		// author's — a stanza break, an ASCII rule, an indented signature.
+		const written = 'Header\n\n\n---\n\n\n  Regards,\n  Marcel';
+		expect(resolvePlainText(blocks, written)).toBe(written);
 	});
 
 	it('reports whether an override is meaningful', () => {

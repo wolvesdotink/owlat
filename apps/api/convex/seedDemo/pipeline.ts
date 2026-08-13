@@ -10,7 +10,8 @@
  *   - `sampleData/*` — the opt-in "explore with sample data" path a REAL
  *     install can use. Runs `SAMPLE_DATA_MODULES` only: the same content, minus
  *     anything that would put throwaway credentials or an unowned mailbox on a
- *     production instance.
+ *     production instance — and runs it INERT (`LoaderOptions.inert`), so no
+ *     fixture row can act on the operator's own data.
  *
  * Both write the same `seedTag`, so one sweep removes either one exactly.
  */
@@ -45,7 +46,7 @@ import { webhooksLoader } from './loaders/webhooks';
 import { domainsLoader } from './loaders/domains';
 import { mailboxesLoader } from './loaders/mailboxes';
 import { complianceTelemetryLoader } from './loaders/complianceTelemetry';
-import type { Loader, SeedRefs } from './loaders/types';
+import type { Loader, LoaderOptions, SeedRefs } from './loaders/types';
 
 // Order matters: each entry's `dependencies` reference earlier modules in the
 // list. Keeping the list ordered makes the topological sort a single pass.
@@ -75,10 +76,15 @@ export const LOADERS: Array<{ loader: Loader; records: unknown[] }> = [
  *     `seedDemo/messages.ts` delivers into them). Without the accounts they
  *     have no owner, and they are BetterAuth/tenant rows the tagged sweep
  *     cannot take back.
+ *   - `complianceTelemetry` — Gmail bulk-sender volume rollups for
+ *     `demo.example`, thousands of delivered messages a day. Harmless as dev
+ *     scenery; on a real install it reads as a genuine domain sitting just
+ *     under the bulk-sender threshold in the compliance view, which is exactly
+ *     the number an operator is supposed to act on.
  *
  * Everything else is `seedTag`-tagged and removable, so the subset must stay
  * dependency-closed: `applyLoaders` throws if a selected loader depends on an
- * excluded one.
+ * excluded one. The subset is also loaded INERT — see {@link LoaderOptions}.
  */
 export const SAMPLE_DATA_MODULES: readonly string[] = [
 	'topics',
@@ -91,7 +97,6 @@ export const SAMPLE_DATA_MODULES: readonly string[] = [
 	'automations',
 	'webhooks',
 	'domains',
-	'complianceTelemetry',
 ];
 
 /** Tables that may carry seed-tagged rows. Used by every tagged sweep. */
@@ -137,10 +142,14 @@ export function isRemovableSeedRow(row: unknown): boolean {
  * Run the loader graph, optionally restricted to `modules`. A restricted run
  * whose selection is not dependency-closed throws rather than inserting a
  * half-linked dataset.
+ *
+ * `options.inert` defaults to false — the dev seed's live dataset. The
+ * sample-data path passes `{ inert: true }`; see {@link LoaderOptions}.
  */
 export async function applyLoaders(
 	ctx: MutationCtx,
-	modules?: readonly string[]
+	modules?: readonly string[],
+	options: LoaderOptions = { inert: false }
 ): Promise<{ inserted: Record<string, number>; skipped: Record<string, number> }> {
 	const selected = modules ? new Set(modules) : null;
 	const inserted: Record<string, number> = {};
@@ -156,7 +165,7 @@ export async function applyLoaders(
 				);
 			}
 		}
-		const result = await loader.load(ctx, records, refs);
+		const result = await loader.load(ctx, records, refs, options);
 		refs[loader.module] = result.ids;
 		inserted[loader.module] = result.inserted;
 		skipped[loader.module] = result.skipped;

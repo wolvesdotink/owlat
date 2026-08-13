@@ -39,6 +39,11 @@ const DELETE_BATCH = 100;
  * Defensive cap on pages scanned per table (`SCAN_PAGE_SIZE` rows each), so a
  * pathological cursor can never spin an action forever. 4k pages covers ~2M
  * rows in one table.
+ *
+ * Hitting it is reported as `truncated: true` rather than swallowed: the counts
+ * a truncated scan produces are a floor, not a total, and an operator told
+ * "0 sample rows left" by a scan that simply stopped looking would believe the
+ * removal was complete. Re-running `remove` picks up where the cap left off.
  */
 const MAX_PAGES = 4000;
 
@@ -60,8 +65,15 @@ function unauthorizedOrNull(request: Request): Response | null {
 	return null;
 }
 
-/** Every seed-tagged row id in one table, gathered without deleting anything. */
-async function collectTaggedIds(ctx: ActionCtx, table: TableNames): Promise<string[]> {
+/**
+ * Every seed-tagged row id in one table, gathered without deleting anything.
+ * `truncated` says the `MAX_PAGES` cap stopped the scan before the end of the
+ * table, so `ids` is a prefix rather than the whole set.
+ */
+async function collectTaggedIds(
+	ctx: ActionCtx,
+	table: TableNames
+): Promise<{ ids: string[]; truncated: boolean }> {
 	const ids: string[] = [];
 	let cursor: string | null = null;
 	for (let page = 0; page < MAX_PAGES; page++) {
@@ -70,20 +82,24 @@ async function collectTaggedIds(ctx: ActionCtx, table: TableNames): Promise<stri
 			{ table, cursor }
 		);
 		ids.push(...result.ids);
-		if (result.isDone) break;
+		if (result.isDone) return { ids, truncated: false };
 		cursor = result.cursor;
 	}
-	return ids;
+	return { ids, truncated: true };
 }
 
 /** Seed-tagged row counts per table, omitting tables with none. */
-async function countTagged(ctx: ActionCtx): Promise<Record<string, number>> {
+async function countTagged(
+	ctx: ActionCtx
+): Promise<{ counts: Record<string, number>; truncated: boolean }> {
 	const counts: Record<string, number> = {};
+	let truncated = false;
 	for (const table of SEEDED_TABLES) {
-		const ids = await collectTaggedIds(ctx, table);
-		if (ids.length > 0) counts[table] = ids.length;
+		const scan = await collectTaggedIds(ctx, table);
+		truncated ||= scan.truncated;
+		if (scan.ids.length > 0) counts[table] = scan.ids.length;
 	}
-	return counts;
+	return { counts, truncated };
 }
 
 const sampleDataInstallHttp = httpAction(async (ctx, request) => {
@@ -106,18 +122,20 @@ const sampleDataRemoveHttp = httpAction(async (ctx, request) => {
 
 	try {
 		const deleted: Record<string, number> = {};
+		let truncated = false;
 		for (const table of SEEDED_TABLES) {
-			const ids = await collectTaggedIds(ctx, table);
+			const scan = await collectTaggedIds(ctx, table);
+			truncated ||= scan.truncated;
 			let removed = 0;
-			for (let i = 0; i < ids.length; i += DELETE_BATCH) {
+			for (let i = 0; i < scan.ids.length; i += DELETE_BATCH) {
 				removed += await ctx.runMutation(internal.sampleData.index.deleteTaggedRows, {
 					table,
-					ids: ids.slice(i, i + DELETE_BATCH),
+					ids: scan.ids.slice(i, i + DELETE_BATCH),
 				});
 			}
 			if (removed > 0) deleted[table] = removed;
 		}
-		return jsonResponse({ deleted }, 200);
+		return jsonResponse({ deleted, truncated }, 200);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Internal error';
 		return jsonResponse({ error: message }, 500);
@@ -129,9 +147,9 @@ const sampleDataStatusHttp = httpAction(async (ctx, request) => {
 	if (unauthorized) return unauthorized;
 
 	try {
-		const present = await countTagged(ctx);
+		const { counts: present, truncated } = await countTagged(ctx);
 		const total = Object.values(present).reduce((sum, n) => sum + n, 0);
-		return jsonResponse({ present, total }, 200);
+		return jsonResponse({ present, total, truncated }, 200);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Internal error';
 		return jsonResponse({ error: message }, 500);

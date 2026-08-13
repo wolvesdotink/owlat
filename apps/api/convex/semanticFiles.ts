@@ -12,7 +12,7 @@ import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { internalQuery, internalMutation, type MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireAdminContext } from './lib/sessionOrganization';
+import { requireAdminContext, hasPermission } from './lib/sessionOrganization';
 import { throwInvalidInput } from './_utils/errors';
 import {
 	isExtensionAllowed,
@@ -52,18 +52,27 @@ function hydrateFiles(
 }
 
 /**
- * Get a file by ID
+ * Get a file by ID.
+ *
+ * The conversation link is admin-only. The shared inbox itself is admin-only
+ * (`organization:manage`, per the inbox access policy), so handing a non-admin
+ * member the linked thread's id — let alone its SUBJECT, which is customer text
+ * from a mailbox they cannot open — would leak the inbox through the file
+ * library. An admin gets the subject inline: one point-read to label the link
+ * and prefill the picker, instead of pulling the whole thread through
+ * `inbox.queries.getThread`.
  */
 export const get = authedQuery({
 	args: { fileId: v.id('semanticFiles') },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const file = await ctx.db.get(args.fileId);
 		if (!file) return null;
-		// Carry the linked conversation's subject so the detail page can label the
-		// link (and prefill its picker) with one extra point-read instead of
-		// pulling the whole thread through `inbox.queries.getThread`.
+		const hydrated = await hydrateFile(ctx, file);
+		if (!hasPermission(session.role, 'organization:manage')) {
+			return { ...hydrated, threadId: undefined, threadSubject: undefined };
+		}
 		const thread = file.threadId ? await ctx.db.get(file.threadId) : null;
-		return { ...(await hydrateFile(ctx, file)), threadSubject: thread?.subject };
+		return { ...hydrated, threadSubject: thread?.subject };
 	},
 });
 
@@ -389,6 +398,12 @@ export const ingest = internalMutation({
  * Shared insert used by `create` (user upload) and the internal
  * attachment/agent ingestion paths. Inserts the row with provenance and a
  * provisional searchableText; the processing pipeline fills the rest.
+ *
+ * A supplied `threadId` is checked for existence here rather than in each
+ * caller: `update` has always validated the conversation link, so a file
+ * created with a dangling one was an inconsistency only the write path could
+ * produce. Validating in the one shared insert covers the user upload and both
+ * server-side ingestion sources at once.
  */
 async function insertSemanticFile(
 	ctx: MutationCtx,
@@ -408,6 +423,10 @@ async function insertSemanticFile(
 		previousVersionId?: Id<'semanticFiles'>;
 	}
 ): Promise<Id<'semanticFiles'>> {
+	if (args.threadId && !(await ctx.db.get(args.threadId))) {
+		throwInvalidInput('Conversation not found');
+	}
+
 	const now = Date.now();
 	const version = args.previousVersionId ? await getNextVersion(ctx, args.previousVersionId) : 1;
 

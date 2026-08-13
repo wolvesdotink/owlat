@@ -6,14 +6,20 @@
  *     nobody has to unlock the dev endpoints to get demo content;
  *   - it creates NO sign-ins (the dummy teammate accounts carry published
  *     password hashes and stay on the dev-only path);
+ *   - nothing it writes can ACT: the sample automation is paused and the sample
+ *     webhook disabled, so the operator's own contacts are never mailed or
+ *     exfiltrated by demo scenery;
  *   - removal deletes exactly the seeded rows and leaves the operator's own
- *     data alone, however similar it looks;
+ *     data alone, however similar it looks — and cascades, so their rows
+ *     hanging off a sample contact go with it instead of dangling;
  *   - both directions are idempotent, so a re-run is never destructive.
  */
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
+import { internal } from '../_generated/api';
+import { applyLoaders } from '../seedDemo/pipeline';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -102,6 +108,19 @@ describe('sample data — install', () => {
 		expect(contacts).toHaveLength(15);
 	});
 
+	it('leaves the compliance telemetry fixtures on the dev-only path', async () => {
+		const t = convexTest(schema, modules);
+		const summary = await install(t);
+
+		// Gmail bulk-sender rollups for demo.example read as a real domain just
+		// under the threshold in the compliance view — dev scenery only.
+		expect(summary['inserted']).not.toHaveProperty('complianceTelemetry');
+		const rollups = await t.run(
+			async (ctx) => await ctx.db.query('gmailDomainVolumeRollups').collect()
+		);
+		expect(rollups).toHaveLength(0);
+	});
+
 	it('tags every row it writes so removal can find them again', async () => {
 		const t = convexTest(schema, modules);
 		await install(t);
@@ -116,6 +135,75 @@ describe('sample data — install', () => {
 			return rows.filter((row) => (row as { seedTag?: string }).seedTag !== 'demo');
 		});
 		expect(untagged).toEqual([]);
+	});
+});
+
+describe('sample data — inert on a real instance', () => {
+	it('installs the automation paused, so a real signup is never mailed', async () => {
+		const t = convexTest(schema, modules);
+		await install(t);
+
+		const automations = await t.run(async (ctx) => await ctx.db.query('automations').collect());
+		expect(automations.length).toBeGreaterThan(0);
+		expect(automations.filter((a) => a.status === 'active')).toEqual([]);
+		// No activation timestamp either — a paused row that claims it was
+		// activated is a lie the automations UI would repeat.
+		expect(automations.filter((a) => a.activatedAt !== undefined)).toEqual([]);
+
+		// The fixture automation triggers on contact_created and sends the
+		// "Summer sale" template. The next genuine signup must get nothing.
+		const contactId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert('contacts', {
+					email: 'genuine.signup@customer.example',
+					source: 'form' as const,
+					doiStatus: 'confirmed' as const,
+					searchableText: 'genuine.signup@customer.example',
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				})
+		);
+		await t.mutation(internal.automations.triggers.fireContactCreatedTrigger, { contactId });
+
+		const runs = await t.run(async (ctx) => await ctx.db.query('automationRuns').collect());
+		expect(runs).toEqual([]);
+	});
+
+	it('keeps the dev seed live — inert is the sample-data caller, not the loaders', async () => {
+		const t = convexTest(schema, modules);
+		// What `/seed/demo` runs: no options, so the throwaway dev instance still
+		// gets the live automation and webhook it has always had.
+		await t.run(async (ctx) => {
+			await applyLoaders(ctx, ['emailTemplates', 'automations', 'webhooks']);
+		});
+
+		const state = await t.run(async (ctx) => ({
+			automations: await ctx.db.query('automations').collect(),
+			webhooks: await ctx.db.query('webhooks').collect(),
+		}));
+		expect(state.automations.filter((a) => a.status === 'active').length).toBeGreaterThan(0);
+		expect(
+			state.automations.every((a) => a.status !== 'active' || a.activatedAt !== undefined)
+		).toBe(true);
+		expect(state.webhooks.filter((w) => w.isActive).length).toBeGreaterThan(0);
+	});
+
+	it('installs the webhook disabled, so no contact details leave the instance', async () => {
+		const t = convexTest(schema, modules);
+		await install(t);
+
+		const webhooks = await t.run(async (ctx) => await ctx.db.query('webhooks').collect());
+		expect(webhooks.length).toBeGreaterThan(0);
+		expect(webhooks.filter((w) => w.isActive)).toEqual([]);
+
+		// The fixture URL is a host nobody configured; the delivery pool must not
+		// consider the row a subscriber to the operator's own events.
+		for (const event of ['contact.created', 'email.sent'] as const) {
+			const subscribers = await t.query(internal.webhooks.deliveryQueries.getWebhooksForEvent, {
+				event,
+			});
+			expect(subscribers).toEqual([]);
+		}
 	});
 });
 
@@ -189,10 +277,122 @@ describe('sample data — status and removal', () => {
 		expect(survivors.contacts).toHaveLength(1);
 	});
 
+	it('cascades, so the operator’s own rows against a demo contact never dangle', async () => {
+		const t = convexTest(schema, modules);
+		await install(t);
+
+		// An operator poking at the sample data leaves rows of their own behind:
+		// a note on a demo contact, that contact enrolled in THEIR automation,
+		// one of their contacts subscribed to a demo topic. Every one of those
+		// carries a required FK, so a bare delete of the parent strands it.
+		const own = await t.run(async (ctx) => {
+			const now = Date.now();
+			const demoContact = await ctx.db
+				.query('contacts')
+				.withIndex('by_email', (q) => q.eq('email', 'ada.lovelace@example.com'))
+				.first();
+			if (!demoContact) throw new Error('sample contact fixture missing');
+			const demoTopic = await ctx.db.query('topics').first();
+			if (!demoTopic) throw new Error('sample topic fixture missing');
+
+			const myAutomation = await ctx.db.insert('automations', {
+				name: 'My real automation',
+				triggerType: 'contact_created' as const,
+				status: 'active' as const,
+				activatedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const runId = await ctx.db.insert('automationRuns', {
+				automationId: myAutomation,
+				contactId: demoContact._id,
+				status: 'running' as const,
+				currentStepIndex: 0,
+				startedAt: now,
+				triggeredBy: 'contact_created',
+			});
+			const activityId = await ctx.db.insert('contactActivities', {
+				contactId: demoContact._id,
+				activityType: 'inbound_received' as const,
+				occurredAt: now,
+			});
+			const myContact = await ctx.db.insert('contacts', {
+				email: 'real.customer@example.com',
+				source: 'api' as const,
+				doiStatus: 'confirmed' as const,
+				searchableText: 'real.customer@example.com',
+				createdAt: now,
+				updatedAt: now,
+			});
+			const membershipId = await ctx.db.insert('contactTopics', {
+				contactId: myContact,
+				topicId: demoTopic._id,
+				addedAt: now,
+			});
+			return { runId, activityId, membershipId, myContact, myAutomation };
+		});
+
+		await post(t, '/sample-data/remove', SECRET);
+
+		const after = await t.run(async (ctx) => ({
+			run: await ctx.db.get(own.runId),
+			activity: await ctx.db.get(own.activityId),
+			membership: await ctx.db.get(own.membershipId),
+			myContact: await ctx.db.get(own.myContact),
+			myAutomation: await ctx.db.get(own.myAutomation),
+			orphanRuns: (await ctx.db.query('automationRuns').collect()).length,
+			orphanActivities: (await ctx.db.query('contactActivities').collect()).length,
+			orphanMemberships: (await ctx.db.query('contactTopics').collect()).length,
+		}));
+
+		// Children of a removed sample parent go with it...
+		expect(after.run).toBeNull();
+		expect(after.activity).toBeNull();
+		expect(after.membership).toBeNull();
+		expect(after.orphanRuns).toBe(0);
+		expect(after.orphanActivities).toBe(0);
+		expect(after.orphanMemberships).toBe(0);
+		// ...while the operator's own untagged rows are untouched.
+		expect(after.myContact).not.toBeNull();
+		expect(after.myAutomation).not.toBeNull();
+	});
+
+	it('leaves the cached contact count alone — the loaders never raised it', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', { contactCount: 7, createdAt: Date.now() });
+		});
+
+		await install(t);
+		await post(t, '/sample-data/remove', SECRET);
+
+		const settings = await t.run(async (ctx) => await ctx.db.query('instanceSettings').first());
+		expect(settings?.contactCount).toBe(7);
+	});
+
+	it('reports a scan it could not finish rather than under-counting silently', async () => {
+		const t = convexTest(schema, modules);
+		await install(t);
+
+		const status = (await (await post(t, '/sample-data/status', SECRET)).json()) as {
+			truncated: boolean;
+		};
+		const removed = (await (await post(t, '/sample-data/remove', SECRET)).json()) as {
+			truncated: boolean;
+		};
+		// Nothing here is near the page cap, so both scans completed — the flag
+		// exists so a caller can tell "nothing left" from "stopped looking".
+		expect(status.truncated).toBe(false);
+		expect(removed.truncated).toBe(false);
+	});
+
 	it('is a no-op on an instance that never installed sample data', async () => {
 		const t = convexTest(schema, modules);
 		const res = await post(t, '/sample-data/remove', SECRET);
 		expect(res.status).toBe(200);
-		expect((await res.json()) as { deleted: Record<string, number> }).toEqual({ deleted: {} });
+		expect((await res.json()) as { deleted: Record<string, number>; truncated: boolean }).toEqual({
+			deleted: {},
+			truncated: false,
+		});
 	});
 });

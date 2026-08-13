@@ -77,7 +77,7 @@ export const fn = {
 	),
 	markFailed: makeFunctionReference<
 		'mutation',
-		{ taskId: string; errorMessage: string },
+		{ taskId: string; errorMessage: string; terminal?: boolean },
 		CodeTaskFailureOutcome
 	>('codeWorkTasks:markFailed'),
 	reclaimStale: makeFunctionReference<'mutation', Record<string, never>, { reclaimed: number }>(
