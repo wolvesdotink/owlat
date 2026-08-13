@@ -51,6 +51,11 @@ import {
 	type Component,
 } from 'vue';
 import { useAuthForm } from '~/composables/useAuthForm';
+import {
+	useMediaQuery,
+	useEmailBuilderViewport,
+	useDataTableViewport,
+} from '~/composables/useMediaQuery';
 import { buildNavigationSections, type NavigationSection } from '~/lib/dashboardNavigation';
 import { splitSectionsByContext } from '~/lib/sidebarContext';
 
@@ -265,6 +270,11 @@ function defaultStubs(): Record<string, unknown> {
 		// App-wide composables. Pure ones (no backend, no browser API) are wired
 		// to their REAL implementation so the audit sees the real markup path.
 		useAuthForm,
+		// Real media-query composables too: happy-dom implements matchMedia, and
+		// its default viewport is desktop-sized, so audits see the table branch.
+		useMediaQuery,
+		useEmailBuilderViewport,
+		useDataTableViewport,
 		useAuth: () => ({
 			user: ref({ id: 'user1', name: 'Ada Lovelace', email: 'ada@example.com' }),
 			sessionData: ref(null),
