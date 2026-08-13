@@ -228,10 +228,10 @@
 	}
 }
 
-/* Keyboard focus ring for the canvas listbox options. Options are plain divs
-   with no default outline worth keeping, and focus tracks selection, so the
-   ring only shows for keyboard-driven focus. */
-@utility eb-canvas-option {
+/* Keyboard focus ring for the focusable blocks in the canvas list. They are
+   plain divs with no default outline worth keeping, and focus tracks selection,
+   so the ring only shows for keyboard-driven focus. */
+@utility eb-canvas-block {
 	outline: none;
 
 	&:focus-visible {

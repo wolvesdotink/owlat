@@ -2,9 +2,11 @@
  * Canonical list of the editor's keyboard shortcuts.
  *
  * Single source of truth for both the help sheet (KeyboardShortcutsDialog) and
- * the button tooltips — anything bound in `useKeyboardHandlers` / EmailBuilder's
- * keydown handler should be listed here so it is discoverable.
+ * the button tooltips — anything bound in `utils/editorKeyboard` or the canvas
+ * listbox navigation should be listed here so it is discoverable.
  */
+
+import { onMounted, ref, type Ref } from 'vue';
 
 /** Section a shortcut is grouped under in the help sheet. */
 export type EditorShortcutGroup = 'General' | 'Blocks' | 'Editing';
@@ -61,6 +63,23 @@ export const EDITOR_SHORTCUT_GROUPS: readonly EditorShortcutGroup[] = [
 export function isApplePlatform(): boolean {
 	if (typeof navigator === 'undefined') return false;
 	return /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent || '');
+}
+
+/**
+ * The platform, resolved after mount.
+ *
+ * Reading `navigator` while rendering makes the server (always `Ctrl`) and a
+ * macOS client (`⌘`) disagree on markup Vue then has to reconcile — a hydration
+ * mismatch on every shortcut label and tooltip. Starting at `false` and
+ * flipping in `onMounted` keeps the first client render identical to the
+ * server's; the labels correct themselves a tick later.
+ */
+export function useApplePlatform(): Ref<boolean> {
+	const isApple = ref(false);
+	onMounted(() => {
+		isApple.value = isApplePlatform();
+	});
+	return isApple;
 }
 
 /** Replace the `Mod` token with the platform modifier symbol. */

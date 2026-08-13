@@ -19,12 +19,18 @@ import { dirname, resolve } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, '..', 'pages', 'index.vue'), 'utf8');
 
-const styleBlock = source.slice(source.indexOf('<style'));
+// The decoration itself lives in the shared landing stylesheet (the same one
+// AuthShell and the setup flow paint from), two levels up in packages/ui.
+const landingCss = readFileSync(
+	resolve(here, '..', '..', '..', '..', 'packages', 'ui', 'assets', 'css', 'landing.css'),
+	'utf8'
+);
 
 describe('landing page copy', () => {
 	it('titles the tab with the platform positioning, not the old marketing pitch', () => {
 		const title = source.match(/title:\s*'([^']+)'/)?.[1] ?? '';
-		expect(title).toContain('Owlat');
+		// `<Page> — Owlat` is the convention every other page in the app follows.
+		expect(title).toMatch(/ — Owlat$/);
 		expect(title.toLowerCase()).not.toContain('marketing');
 	});
 
@@ -41,17 +47,56 @@ describe('landing page copy', () => {
 	});
 });
 
+const COLOR_UTILITIES = 'bg|text|border|from|via|to|ring|outline|divide|fill|stroke|decoration';
+const TAILWIND_PALETTE = [
+	'white',
+	'black',
+	'slate',
+	'gray',
+	'zinc',
+	'neutral',
+	'stone',
+	'red',
+	'orange',
+	'amber',
+	'yellow',
+	'lime',
+	'green',
+	'emerald',
+	'teal',
+	'cyan',
+	'sky',
+	'blue',
+	'indigo',
+	'violet',
+	'purple',
+	'fuchsia',
+	'pink',
+	'rose',
+].join('|');
+
 describe('landing page theming', () => {
 	it('uses semantic color tokens, never raw palette utilities', () => {
-		const rawPalette =
-			/\b(?:bg|text|border|from|to|via)-(?:white|black|gray|slate|zinc|neutral|stone)\b/g;
+		// Both escapes from the token layer are caught: a palette scale
+		// (`bg-slate-800`) and an arbitrary value (`text-[#111]`). Either one
+		// freezes a color that then ignores the .dark flip.
+		const rawPalette = new RegExp(
+			String.raw`\b(?:${COLOR_UTILITIES})-(?:(?:${TAILWIND_PALETTE})\b|\[)`,
+			'g'
+		);
 		expect(source.match(rawPalette) ?? []).toEqual([]);
 	});
 
-	it('drives the decorative aurora from tokens, not literal colors', () => {
-		expect(styleBlock).not.toMatch(/rgba?\(/);
-		expect(styleBlock).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-		expect(styleBlock).toContain('var(--color-brand-glow)');
+	it('reuses the shared hero field instead of forking a scoped copy of it', () => {
+		expect(source).toContain('<UiHeroField />');
+		expect(source).toContain('lp-title-accent');
+		expect(source).not.toContain('<style');
+	});
+
+	it('drives the shared decorative aurora from tokens, not literal colors', () => {
+		expect(landingCss).not.toMatch(/rgba?\(/);
+		expect(landingCss).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+		expect(landingCss).toContain('var(--color-brand-glow)');
 	});
 });
 
