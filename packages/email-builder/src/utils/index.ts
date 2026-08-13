@@ -33,11 +33,20 @@ export {
 	reconstructState,
 } from './deltaHistory';
 export {
+	type VersionSnapshotPayload,
+	serializeHistoryState,
+	deserializeVersionSnapshot,
+	parseSnapshotBlocks,
+	snapshotMatchesState,
+	formatSnapshotSize,
+} from './versionSnapshot';
+export {
 	containsVariable,
 	extractVariableName,
 	extractVariableNames,
 	fillPreviewVariables,
 } from './variables';
+export { blockAccessibleLabel, blockContentExcerpt } from './blockLabel';
 export { getByPath, setByPath } from './propertyPath';
 export { gradientCss } from './gradient';
 export {

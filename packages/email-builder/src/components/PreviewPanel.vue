@@ -14,6 +14,10 @@ const props = defineProps<{
 	subject?: string;
 	isGenerating?: boolean;
 	plainText?: string;
+	/** Generated body without preview variable substitution — seeds a new override. */
+	plainTextSource?: string;
+	plainTextOverride?: string;
+	allowPlainTextOverride?: boolean;
 	ampHtml?: string;
 	renderWarnings?: string[];
 	emailAnalysis?: PreviewEmailAnalysis | null;
@@ -28,6 +32,7 @@ const emit = defineEmits<{
 	(e: 'send-test'): void;
 	(e: 'update:render-options', options: Partial<PreviewRenderOptions>): void;
 	(e: 'update:dark-mode', value: boolean): void;
+	(e: 'update:plain-text-override', value: string): void;
 }>();
 </script>
 
@@ -43,6 +48,9 @@ const emit = defineEmits<{
 			:html="props.html"
 			:subject="props.subject"
 			:plain-text="props.plainText"
+			:plain-text-source="props.plainTextSource"
+			:plain-text-override="props.plainTextOverride"
+			:allow-plain-text-override="props.allowPlainTextOverride"
 			:amp-html="props.ampHtml"
 			:render-warnings="props.renderWarnings"
 			:email-analysis="props.emailAnalysis"
@@ -61,6 +69,7 @@ const emit = defineEmits<{
 			@send-test="emit('send-test')"
 			@update:render-options="emit('update:render-options', $event)"
 			@update:dark-mode="emit('update:dark-mode', $event)"
+			@update:plain-text-override="emit('update:plain-text-override', $event)"
 		/>
 	</div>
 </template>

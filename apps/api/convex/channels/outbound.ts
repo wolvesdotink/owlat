@@ -13,10 +13,11 @@
  * `channelConfigs` row:
  *   1. `encryptAndPersistConfig` — the encrypt-on-write half of A3. The public
  *      `unifiedMessages.updateChannelConfig` mutation (v8) cannot encrypt
- *      itself, so it schedules this action with the plaintext config; we wrap
- *      it in an AES-256-GCM envelope (lib/credentialCrypto) and patch the row.
- *      The `channelConfigs.config` column therefore never holds plaintext on
- *      disk. Atomic single-org policy: no dual plaintext read path.
+ *      itself, so it schedules this action with the plaintext config; we merge
+ *      it over the stored credentials, wrap the result in an AES-256-GCM
+ *      envelope (lib/credentialCrypto) and patch the row. The
+ *      `channelConfigs.config` column therefore never holds plaintext on disk.
+ *      Atomic single-org policy: no dual plaintext read path.
  *   2. `dispatchOutbound` — reads + decrypts the channel's creds, instantiates
  *      the matching adapter (sms→Twilio, whatsapp→Meta, generic→HTTP POST),
  *      sends, and records a `unifiedMessages` outbound row reflecting the
@@ -31,42 +32,29 @@ import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
 import { outboundChannelValidator } from '../lib/convexValidators';
-import { encryptSecret, decryptSecret } from '../lib/credentialCrypto';
+import { encryptSecret } from '../lib/credentialCrypto';
+import { decryptChannelCreds } from './credentials';
+import type { ChannelCreds } from './credentials';
 import { SmsAdapter, WhatsAppAdapter, WebhookAdapter } from './adapters';
 import type { ChannelAdapter, ChannelHealth, OutboundMessage, SendResult } from './adapters';
 import { unifiedMessageChannelValidator as channelValidator } from '../lib/convexValidators';
 import type { UnifiedMessageChannel, OutboundChannel } from '../lib/convexValidators';
 
 /**
- * Shape of the plaintext credential blob entered in the channel config form
- * (`apps/web/app/components/channels/ChannelConfigForm.vue`). This mirrors that
- * form exactly — every key the form can write is listed and nothing else, so a
- * field with no writer cannot masquerade as a stored credential. Only the keys
- * `buildAdapter` reads below reach a provider; the one that does not is marked
- * and explained in the note there.
+ * Encrypt a channel's plaintext credential fields and persist the envelope on
+ * the channelConfigs row. Scheduled by `unifiedMessages.updateChannelConfig` so
+ * the plaintext is never written to disk. Fails safe: on any error the row keeps
+ * its previous (encrypted) config rather than storing plaintext.
  *
- * A pre-existing row may still carry a `secretKey` from before D10 removed the
- * field; it is deliberately absent here, so nothing reads it and re-saving the
- * channel drops it. See the note on `buildAdapter`.
- */
-interface ChannelCreds {
-	// sms (Twilio)
-	accountSid?: string;
-	authToken?: string;
-	phoneNumber?: string;
-	// whatsapp (Meta Cloud API)
-	businessAccountId?: string; // stored only — the send call is keyed on phoneNumberId
-	accessToken?: string;
-	phoneNumberId?: string;
-	// generic webhook
-	endpointUrl?: string;
-}
-
-/**
- * Encrypt a plaintext channel `config` JSON string and persist the envelope on
- * the channelConfigs row. Scheduled by `unifiedMessages.updateChannelConfig`
- * so the plaintext is never written to disk. Fails safe: on any error the row
- * keeps its previous (encrypted) config rather than storing plaintext.
+ * MERGE, NEVER REPLACE. The stored envelope is opened first and the supplied
+ * fields are laid over it, so a partial save keeps every credential it did not
+ * mention — the same rule the plugin settings module follows ("an omitted secret
+ * in a partial update keeps the stored one"). Without this, adding the WhatsApp
+ * App Secret would drop the Access Token the outbound adapter sends with, and
+ * retyping the Access Token would drop the App Secret inbound signature
+ * verification needs: the form cannot read the encrypted values back, so every
+ * field it cannot prefill would be erased on the next save. An empty string is
+ * "not supplied" for the same reason, never "clear this credential".
  */
 export const encryptAndPersistConfig = internalAction({
 	args: {
@@ -76,10 +64,23 @@ export const encryptAndPersistConfig = internalAction({
 	returns: v.null(),
 	handler: async (ctx, args) => {
 		try {
-			const envelope = encryptSecret(args.plaintextConfig);
+			const supplied = parseSuppliedCreds(args.plaintextConfig);
+			const existing = await ctx.runQuery(internal.unifiedMessages.getChannelConfigInternal, {
+				channel: args.channel,
+			});
+			// An undecryptable stored envelope (rotated INSTANCE_SECRET, tampered
+			// row) is already unusable to every reader, so treat it as empty and let
+			// this save re-establish the channel. `decryptChannelCreds` logs it.
+			const stored = existing?.config
+				? (decryptChannelCreds(existing.config, args.channel) ?? {})
+				: {};
+
+			const merged: ChannelCreds = { ...stored, ...supplied };
+			const envelope = encryptSecret(JSON.stringify(merged));
 			await ctx.runMutation(internal.unifiedMessages.setChannelConfigSecret, {
 				channel: args.channel,
 				config: JSON.stringify(envelope),
+				configuredFields: nonEmptyFieldNames(merged),
 			});
 		} catch (error) {
 			// Never throw out of the scheduled job — leave the prior config intact.
@@ -91,6 +92,38 @@ export const encryptAndPersistConfig = internalAction({
 		return null;
 	},
 });
+
+/**
+ * The credential fields a save actually supplies: the string entries of the
+ * submitted JSON object that carry a value. Anything else (blank field, a
+ * non-string, a non-object payload) contributes nothing to the merge, so a
+ * malformed or partially-filled submission can never blank a stored credential.
+ */
+function parseSuppliedCreds(plaintextConfig: string): ChannelCreds {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(plaintextConfig);
+	} catch {
+		parsed = null;
+	}
+	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+		// eslint-disable-next-line no-console
+		console.warn('[channels] channel config payload was not a JSON object; nothing merged');
+		return {};
+	}
+	const supplied: Record<string, string> = {};
+	for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+		if (typeof value === 'string' && value.length > 0) supplied[key] = value;
+	}
+	return supplied as ChannelCreds;
+}
+
+/** Field NAMES (never values) with a stored credential — the form's presence map. */
+function nonEmptyFieldNames(creds: ChannelCreds): string[] {
+	return Object.entries(creds)
+		.filter(([, value]) => typeof value === 'string' && value.length > 0)
+		.map(([key]) => key);
+}
 
 /**
  * Send a message out through a configured channel and record the result.
@@ -212,10 +245,12 @@ export const dispatchOutbound = internalAction({
  *
  * The fail-safe `dispatchOutbound` above is reached only from the AI agent reply
  * path; this is the manual counterpart — an owner/admin composing an outbound
- * message to a contact on a configured channel from the contact's Unified
- * Timeline. It resolves (or opens) the conversation thread, then schedules the
- * same `dispatchOutbound` so a manual send and an agent reply share one provider
- * path and one timeline writer.
+ * message to a contact on a configured channel, either from the contact's
+ * Unified Timeline or as a per-message reply in the Team Inbox thread view. It
+ * resolves (or opens) the conversation thread, then schedules the same
+ * `dispatchOutbound` so a manual send and an agent reply share one provider
+ * path and one timeline writer. An inbox reply passes the `threadId` it is
+ * replying inside; the contact composer omits it and the thread is inferred.
  *
  * Unlike the agent path, misconfiguration here THROWS (channel disabled, no
  * contact address) so the admin sees the error in the compose UI rather than a
@@ -231,6 +266,9 @@ export const sendChannelMessage = authedAction({
 		contactId: v.id('contacts'),
 		channel: outboundChannelValidator,
 		text: v.string(),
+		// Reply inside a known conversation (Team Inbox) rather than the
+		// contact's most recent thread on the channel.
+		threadId: v.optional(v.id('conversationThreads')),
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
@@ -245,6 +283,7 @@ export const sendChannelMessage = authedAction({
 		const threadId = await ctx.runMutation(internal.unifiedMessages.resolveOutboundThread, {
 			contactId: args.contactId,
 			channel: args.channel,
+			...(args.threadId ? { threadId: args.threadId } : {}),
 		});
 
 		// Hand off to the shared fail-safe dispatch (records the outbound timeline
@@ -380,16 +419,8 @@ async function loadAdapter(
 		return { adapter: null, error: 'Channel not configured' };
 	}
 
-	let creds: ChannelCreds;
-	try {
-		const envelope = JSON.parse(config.config) as {
-			ciphertext: string;
-			iv: string;
-			authTag: string;
-			version: number;
-		};
-		creds = JSON.parse(decryptSecret(envelope)) as ChannelCreds;
-	} catch {
+	const creds: ChannelCreds | null = decryptChannelCreds(config.config, channel);
+	if (!creds) {
 		return { adapter: null, error: 'Could not decrypt channel credentials' };
 	}
 
@@ -412,21 +443,13 @@ async function loadAdapter(
  * operator reference data, because the Meta Cloud API send and health calls are
  * keyed on the phone number ID, so WhatsAppAdapter never needs it.
  *
- * THE GENERIC CHANNEL'S `secretKey` IS GONE, not merely unread. It was an
- * INBOUND credential (the shared secret an external system echoes back to us)
- * whose only consumer was `WebhookAdapter.validateSignature` — the caller-less
- * verifier D10 deleted. The shipped inbound route verifies generic webhooks in
- * `webhooks/adapters/generic.ts` against the `GENERIC_WEBHOOK_SECRET`
- * deployment variable, and the outbound POST carries no secret header at all,
- * so keeping the form field would have sealed a real shared secret into the
- * AES-256-GCM envelope with nothing able to answer with it. Making a stored
- * per-channel secret the one the inbound route trusts is a real change to who
- * can post to Owlat, not a refactor — it needs its own piece, and that piece
- * re-adds the field.
- *
- * (Meta's `hub.verify_token` is not in `ChannelCreds` at all — the form never
- * collected it, so no row ever carried one. The subscription challenge is
- * answered from `META_VERIFY_TOKEN` in `webhooks/adapters/meta.ts`.)
+ * THE INBOUND-ONLY CREDENTIALS ARE NOT MISSING EITHER, they just belong to the
+ * other plane: `secretKey` (generic), `appSecret` and `verifyToken` (WhatsApp)
+ * are read by the inbound webhook routes via
+ * `internal.channels.credentials.getInboundSecret`, never by an outbound
+ * adapter — the generic POST carries no secret header at all. SMS is the one
+ * overlap: Twilio signs inbound requests with the same `authToken` the outbound
+ * adapter authenticates with.
  */
 function buildAdapter(channel: string, creds: ChannelCreds): ChannelAdapter | null {
 	switch (channel) {

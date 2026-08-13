@@ -19,6 +19,7 @@ const blockId = useRouteId<'emailBlocks'>();
 const { hasActiveOrganization } = useOrganizationContext();
 const { showToast } = useToast();
 const { isFocusMode } = useFocusMode();
+const builderFits = useEmailBuilderViewport();
 
 // Fetch block data
 const { data: block, isLoading: blockLoading } = useConvexQuery(api.emailBlocks.blocks.get, () => ({
@@ -193,6 +194,13 @@ const handleSettings = () => {
 				<UiButton @click="handleBack">Back to Blocks</UiButton>
 			</div>
 		</div>
+
+		<!-- Too narrow for the canvas — an honest gate beats a broken editor. -->
+		<EmailBuilderViewportGate v-else-if="!builderFits">
+			<template #action>
+				<UiButton variant="secondary" @click="handleBack">Back to Blocks</UiButton>
+			</template>
+		</EmailBuilderViewportGate>
 
 		<!-- Email Builder (Full TipTap Editor with Slash Commands) -->
 		<EmailBuilder

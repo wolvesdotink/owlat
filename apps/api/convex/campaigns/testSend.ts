@@ -174,7 +174,11 @@ export const sendTestEmail = authedAction({
 		// Compose subject + body for the test kind (no tracking, no footer).
 		const composed = composeForSend({
 			kind: 'test',
-			template: { subject, htmlContent: langContent.htmlContent },
+			template: {
+				subject,
+				htmlContent: langContent.htmlContent,
+				plainTextContent: langContent.plainTextContent,
+			},
 			sampleContact: testContact,
 		});
 

@@ -19,7 +19,7 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { renderEmailHtml } from '@owlat/email-renderer';
+import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
 import type { EmailTheme } from '@owlat/shared';
 import { parseContentBlocks } from './module';
 import {
@@ -43,7 +43,7 @@ import {
  */
 function mergeTranslatedBlocks(
 	defaultBlocks: BlockLikeItem[],
-	translationBlocks: Record<string, TranslatableBlockContent> | undefined,
+	translationBlocks: Record<string, TranslatableBlockContent> | undefined
 ): BlockLikeItem[] {
 	if (!translationBlocks) return defaultBlocks;
 	return defaultBlocks.map((block) => mergeTranslationIntoItem(block, translationBlocks));
@@ -65,25 +65,29 @@ type RerenderableRow = {
 	translations?: string;
 	supportedLanguages?: string[];
 	defaultLanguage?: string;
+	/** Author's hand-written text/plain body — never overwritten by a rerender. */
+	plainTextOverride?: string;
 };
 
 export function rerenderRow(
 	row: RerenderableRow,
 	variableType: 'personalization' | 'data',
-	theme: EmailTheme | undefined,
-): { html: string; htmlTranslations: string | undefined } {
+	theme: EmailTheme | undefined
+): { html: string; htmlTranslations: string | undefined; plainTextContent: string | undefined } {
 	const blocks = parseContentBlocks(row.content);
-	const html = renderEmailHtml(
-		blocks as Parameters<typeof renderEmailHtml>[0],
-		{ variableType, theme },
-	);
+	const html = renderEmailHtml(blocks as Parameters<typeof renderEmailHtml>[0], {
+		variableType,
+		theme,
+	});
+	// The text/plain body tracks the blocks exactly as the html does — EXCEPT
+	// when the author wrote their own, which a saved-block edit must not clobber.
+	const plainTextContent = row.plainTextOverride?.trim()
+		? undefined
+		: renderPlainText(blocks as Parameters<typeof renderPlainText>[0]);
 
 	let htmlTranslations: string | undefined;
 	if (row.translations && row.supportedLanguages?.length) {
-		const translationsObj: Record<
-			string,
-			{ htmlContent: string; subject: string }
-		> = {};
+		const translationsObj: Record<string, { htmlContent: string; subject: string }> = {};
 		try {
 			const translations = JSON.parse(row.translations) as Record<
 				string,
@@ -100,11 +104,11 @@ export function rerenderRow(
 				// default-language body for every language.
 				const translatedBlocks = mergeTranslatedBlocks(
 					blocks as BlockLikeItem[],
-					langTranslation.blocks,
+					langTranslation.blocks
 				);
 				const translatedHtml = renderEmailHtml(
 					translatedBlocks as unknown as Parameters<typeof renderEmailHtml>[0],
-					{ variableType, theme },
+					{ variableType, theme }
 				);
 
 				translationsObj[lang] = {
@@ -121,7 +125,7 @@ export function rerenderRow(
 		}
 	}
 
-	return { html, htmlTranslations };
+	return { html, htmlTranslations, plainTextContent };
 }
 
 export const reRenderEmails = internalAction({
@@ -135,51 +139,42 @@ export const reRenderEmails = internalAction({
 		// falls back to DEFAULT_THEME and silently reverts the org's
 		// primaryColor/fontFamily/backgroundColor/baseWidth on every consumer.
 		const theme =
-			(await ctx.runQuery(
-				internal.emailBlocks.renderingPool.getEmailTheme,
-				{},
-			)) ?? undefined;
+			(await ctx.runQuery(internal.emailBlocks.renderingPool.getEmailTheme, {})) ?? undefined;
 
 		for (const templateId of args.templateIds) {
-			const template = await ctx.runQuery(
-				internal.emailBlocks.renderingPool.getTemplate,
-				{ templateId: templateId as Id<'emailTemplates'> },
-			);
+			const template = await ctx.runQuery(internal.emailBlocks.renderingPool.getTemplate, {
+				templateId: templateId as Id<'emailTemplates'>,
+			});
 			if (!template) continue;
 
-			const { html, htmlTranslations } = rerenderRow(
+			const { html, htmlTranslations, plainTextContent } = rerenderRow(
 				template,
 				'personalization',
-				theme,
+				theme
 			);
 
-			await ctx.runMutation(
-				internal.emailBlocks.renderingPool.patchTemplateHtml,
-				{
-					templateId: templateId as Id<'emailTemplates'>,
-					htmlContent: html,
-					htmlTranslations,
-				},
-			);
+			await ctx.runMutation(internal.emailBlocks.renderingPool.patchTemplateHtml, {
+				templateId: templateId as Id<'emailTemplates'>,
+				htmlContent: html,
+				htmlTranslations,
+				plainTextContent,
+			});
 		}
 
 		for (const emailId of args.transactionalIds) {
-			const email = await ctx.runQuery(
-				internal.emailBlocks.renderingPool.getTransactionalEmail,
-				{ emailId: emailId as Id<'transactionalEmails'> },
-			);
+			const email = await ctx.runQuery(internal.emailBlocks.renderingPool.getTransactionalEmail, {
+				emailId: emailId as Id<'transactionalEmails'>,
+			});
 			if (!email) continue;
 
-			const { html, htmlTranslations } = rerenderRow(email, 'data', theme);
+			const { html, htmlTranslations, plainTextContent } = rerenderRow(email, 'data', theme);
 
-			await ctx.runMutation(
-				internal.emailBlocks.renderingPool.patchTransactionalHtml,
-				{
-					emailId: emailId as Id<'transactionalEmails'>,
-					htmlContent: html,
-					htmlTranslations,
-				},
-			);
+			await ctx.runMutation(internal.emailBlocks.renderingPool.patchTransactionalHtml, {
+				emailId: emailId as Id<'transactionalEmails'>,
+				htmlContent: html,
+				htmlTranslations,
+				plainTextContent,
+			});
 		}
 	},
 });

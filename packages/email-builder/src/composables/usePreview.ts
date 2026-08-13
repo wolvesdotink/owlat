@@ -58,6 +58,8 @@ export interface UsePreviewReturn {
 	generatedHtml: Ref<string>;
 	isGeneratingHtml: Ref<boolean>;
 	plainText: Ref<string>;
+	/** The generated plain text WITHOUT preview variable substitution. */
+	plainTextSource: Ref<string>;
 	ampHtml: Ref<string>;
 	renderWarnings: Ref<string[]>;
 	emailAnalysis: Ref<EmailAnalysis | null>;
@@ -67,7 +69,7 @@ export interface UsePreviewReturn {
 	emailDiff: Ref<EmailDiff | null>;
 
 	generateEmailHtml: (darkMode?: boolean) => string;
-	generatePlainText: () => string;
+	generatePlainText: (options?: { fillVariables?: boolean }) => string;
 	generateAmpHtml: () => string;
 	runAnalysis: () => void;
 	regenerate: () => void;
@@ -94,6 +96,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 	const generatedHtml = ref('');
 	const isGeneratingHtml = ref(false);
 	const plainText = ref('');
+	const plainTextSource = ref('');
 	const ampHtml = ref('');
 	const renderWarnings = ref<string[]>([]);
 	const emailAnalysis = ref<EmailAnalysis | null>(null);
@@ -175,10 +178,14 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		return appendMandatoryUnsubscribeFooter(fillVariables(html, true));
 	};
 
-	// Generate plain text from blocks
-	const generatePlainText = (): string => {
+	// Generate plain text from blocks. Variables are filled for the preview, but
+	// a caller seeding a manual override wants the raw `{{token}}` body — the
+	// stored override is personalized per recipient at send time, so freezing a
+	// preview value into it would ship the same name to everyone.
+	const generatePlainText = (options?: { fillVariables?: boolean }): string => {
 		const opts = buildRenderOptions();
-		return fillVariables(renderPlainText(canvasBlocks.value, opts), false);
+		const raw = renderPlainText(canvasBlocks.value, opts);
+		return options?.fillVariables === false ? raw : fillVariables(raw, false);
 	};
 
 	// Generate AMP HTML from blocks
@@ -245,6 +252,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		previousHtml.value = generatedHtml.value;
 		generatedHtml.value = generateEmailHtml(previewDarkMode.value);
 		plainText.value = generatePlainText();
+		plainTextSource.value = generatePlainText({ fillVariables: false });
 		ampHtml.value = generateAmpHtml();
 		runAnalysis();
 		computeDiff();
@@ -284,6 +292,7 @@ export function usePreview(options: UsePreviewOptions): UsePreviewReturn {
 		generatedHtml,
 		isGeneratingHtml,
 		plainText,
+		plainTextSource,
 		ampHtml,
 		renderWarnings,
 		emailAnalysis,

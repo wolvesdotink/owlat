@@ -362,7 +362,7 @@ const isStarterSpf = (r: DnsRecordRow) => r.type === 'TXT' && r.value.startsWith
  */
 const spfLookupKey = computed(() => {
 	const row = dnsRecords.value.find(isStarterSpf);
-	return row ? `${row.name} ${row.value}` : '';
+	return row ? `${row.name}\u0000${row.value}` : '';
 });
 
 /**

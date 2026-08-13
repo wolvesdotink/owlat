@@ -65,6 +65,8 @@ const emit = defineEmits<{
 			v-if="isFocusMode"
 			class="fixed top-[calc(var(--titlebar-h,0px)+1rem)] right-4 z-[10050] p-2.5 rounded-[10px] bg-bg-elevated/85 backdrop-blur-overlay border border-border-subtle text-text-secondary cursor-pointer opacity-30 transition-all duration-(--motion-moderate) hover:opacity-100 hover:text-text-primary hover:bg-bg-elevated/95 hover:scale-105 active:scale-95"
 			title="Exit focus mode (Esc)"
+			aria-label="Exit focus mode"
+			type="button"
 			@click="emit('exit')"
 		>
 			<X :size="20" />

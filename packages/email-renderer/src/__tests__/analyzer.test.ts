@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeEmail } from '../analyzer';
+import { analyzeEmail, getEmailHealthScore } from '../analyzer';
+import type { EditorBlock, ImageBlockContent } from '@owlat/shared';
 
 describe('analyzeEmail', () => {
-	const minimalHtml = '<html><body><p>Hello world, this is a test email with enough text content to pass the threshold check for having text content in the analysis.</p></body></html>';
+	const minimalHtml =
+		'<html><body><p>Hello world, this is a test email with enough text content to pass the threshold check for having text content in the analysis.</p></body></html>';
 
 	it('returns linkCount, hasTextContent, textToImageRatio, displayNoneCount', () => {
 		const result = analyzeEmail(minimalHtml);
@@ -13,7 +15,8 @@ describe('analyzeEmail', () => {
 	});
 
 	it('counts <a tags correctly', () => {
-		const html = '<html><body><a href="https://a.com">A</a> text <a href="https://b.com">B</a> more <a href="https://c.com">C</a></body></html>';
+		const html =
+			'<html><body><a href="https://a.com">A</a> text <a href="https://b.com">B</a> more <a href="https://c.com">C</a></body></html>';
 		const result = analyzeEmail(html);
 		expect(result.linkCount).toBe(3);
 	});
@@ -30,7 +33,8 @@ describe('analyzeEmail', () => {
 	});
 
 	it('calculates textToImageRatio correctly', () => {
-		const html = '<html><body><p>Some reasonable text content here</p><img src="a.jpg" /></body></html>';
+		const html =
+			'<html><body><p>Some reasonable text content here</p><img src="a.jpg" /></body></html>';
 		const result = analyzeEmail(html);
 		expect(result.textToImageRatio).toBeGreaterThan(0);
 		expect(result.imageCount).toBe(1);
@@ -38,19 +42,24 @@ describe('analyzeEmail', () => {
 
 	it('displayNoneCount subtracts 2 for preheader divs', () => {
 		// 2 display:none from preheader + 1 extra
-		const html = '<html><body><div style="display:none">preheader</div><div style="display:none">padding</div><div style="display:none">hidden</div></body></html>';
+		const html =
+			'<html><body><div style="display:none">preheader</div><div style="display:none">padding</div><div style="display:none">hidden</div></body></html>';
 		const result = analyzeEmail(html);
 		expect(result.displayNoneCount).toBe(1);
 	});
 
 	it('displayNoneCount is 0 when only preheader display:none exists', () => {
-		const html = '<html><body><div style="display:none">preheader</div><div style="display:none">padding</div><p>content</p></body></html>';
+		const html =
+			'<html><body><div style="display:none">preheader</div><div style="display:none">padding</div><p>content</p></body></html>';
 		const result = analyzeEmail(html);
 		expect(result.displayNoneCount).toBe(0);
 	});
 
 	it('warns when link count exceeds 60', () => {
-		const links = Array.from({ length: 61 }, (_, i) => `<a href="https://example.com/${i}">Link ${i}</a>`).join('');
+		const links = Array.from(
+			{ length: 61 },
+			(_, i) => `<a href="https://example.com/${i}">Link ${i}</a>`
+		).join('');
 		const html = `<html><body>${links}</body></html>`;
 		const result = analyzeEmail(html);
 		expect(result.warnings.some((w) => w.includes('link count'))).toBe(true);
@@ -63,7 +72,8 @@ describe('analyzeEmail', () => {
 	});
 
 	it('warns for low text-to-image ratio', () => {
-		const html = '<html><body><p>Hi</p><img src="a.jpg" /><img src="b.jpg" /><img src="c.jpg" /></body></html>';
+		const html =
+			'<html><body><p>Hi</p><img src="a.jpg" /><img src="b.jpg" /><img src="c.jpg" /></body></html>';
 		const result = analyzeEmail(html);
 		expect(result.warnings.some((w) => w.includes('text-to-image ratio'))).toBe(true);
 	});
@@ -82,5 +92,38 @@ describe('analyzeEmail', () => {
 		const result = analyzeEmail(minimalHtml, { subjectLine: 'Your weekly update' });
 		expect(result.warnings.some((w) => w.includes('Subject line'))).toBe(false);
 		expect(result.warnings.some((w) => w.includes('ALL CAPS'))).toBe(false);
+	});
+});
+
+describe('getEmailHealthScore — accessibility sub-score', () => {
+	const html =
+		'<html><body><p>Enough copy here to count as real text content for the analyzer.</p></body></html>';
+	const imageBlock = (content: Partial<ImageBlockContent>): EditorBlock => ({
+		id: 'img-1',
+		type: 'image',
+		content: {
+			src: 'https://example.com/a.png',
+			alt: '',
+			width: 100,
+			align: 'center',
+			...content,
+		} as ImageBlockContent,
+	});
+
+	it('penalizes an image with no alt text', () => {
+		const score = getEmailHealthScore([imageBlock({})], html);
+		expect(score.accessibility).toBeLessThan(100);
+		expect(score.recommendations.some((r) => r.category === 'accessibility')).toBe(true);
+	});
+
+	it('treats a decorative image as satisfying the alt-text requirement', () => {
+		const score = getEmailHealthScore([imageBlock({ decorative: true })], html);
+		expect(score.accessibility).toBe(100);
+		expect(score.recommendations.some((r) => r.category === 'accessibility')).toBe(false);
+	});
+
+	it('treats a described image as satisfying the alt-text requirement', () => {
+		const score = getEmailHealthScore([imageBlock({ alt: 'A red bicycle' })], html);
+		expect(score.accessibility).toBe(100);
 	});
 });

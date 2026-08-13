@@ -3,6 +3,7 @@ import {
 	EmailBuilder,
 	UnsavedChangesDialog,
 	useFocusMode,
+	type HistoryState,
 	type Variable,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
@@ -18,6 +19,7 @@ const router = useRouter();
 const templateId = useRouteId<'emailTemplates'>();
 const { hasActiveOrganization } = useOrganizationContext();
 const { isFocusMode } = useFocusMode();
+const builderFits = useEmailBuilderViewport();
 
 // Fetch template data
 const {
@@ -71,6 +73,10 @@ const variables = computed<Variable[]>(() => {
 	return [...builtInVariables, ...customVars];
 });
 
+// The author's manual text/plain body ('' = ship the generated one). Edited in
+// the builder's Text view; dirty-tracked and saved with the rest of the email.
+const plainTextOverride = ref('');
+
 // Email editor bridge — owns the handler set, the load→dirty→save loop, and the
 // media-picker / test-email plumbing. The template editor supplies only its own
 // parse + publishable save.
@@ -92,9 +98,11 @@ const {
 	save: handleSave,
 } = useEmailEditorBridge({
 	source: template,
+	extraWatch: [() => plainTextOverride.value],
 	initialize: (t, ctx) => {
 		ctx.name.value = t.name;
 		ctx.subject.value = t.subject;
+		plainTextOverride.value = t.plainTextOverride ?? '';
 		try {
 			const parsed = JSON.parse(t.content || '[]');
 			if (Array.isArray(parsed)) {
@@ -111,6 +119,7 @@ const {
 			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
 			supportedLanguages: template.value?.supportedLanguages ?? [],
 			defaultLanguage: template.value?.defaultLanguage ?? 'en',
+			plainTextOverride: plainTextOverride.value,
 			update: async (payload) => {
 				// The bridge clears the dirty flag only when save() resolves. The
 				// operation module has toasted any categorized failure; throw so the
@@ -123,12 +132,30 @@ const {
 					htmlContent: payload.htmlContent,
 					htmlTranslations: payload.htmlTranslations,
 					linkedBlockIds: payload.linkedBlockIds,
+					plainTextContent: payload.plainTextContent,
+					plainTextOverride: payload.plainTextOverride,
 				});
 				if (result === undefined) throw new Error('Save failed');
 			},
 		});
 	},
 });
+
+// Version history restore: push the snapshot through the builder's explicit
+// load path. Assigning `blocks` alone is not enough — a restore keeps the block
+// ids and changes only their content, which the builder's prop watcher cannot
+// tell apart from the live query echoing the saved document back, so it drops
+// it. `loadState` re-seeds the canvas and emits back into these refs, which
+// marks the editor dirty and records the restore as one more undoable step.
+// Nothing is persisted until the user saves.
+const builderRef = ref<{ loadState: (state: HistoryState) => void } | null>(null);
+
+const handleRestoreVersion = (state: HistoryState) => {
+	blocks.value = state.blocks;
+	name.value = state.name;
+	subject.value = state.subject;
+	builderRef.value?.loadState(state);
+};
 
 // Back handler
 const handleBack = () => {
@@ -200,12 +227,20 @@ async function handlePublicationToggle() {
 				</div>
 			</div>
 
+			<!-- Too narrow for the canvas — an honest gate beats a broken editor. -->
+			<EmailBuilderViewportGate v-else-if="!builderFits">
+				<template #action>
+					<UiButton variant="secondary" @click="handleBack">Back to Emails</UiButton>
+				</template>
+			</EmailBuilderViewportGate>
+
 			<!-- Email Builder -->
 			<UiErrorBoundary
 				v-else
 				fallback-message="The email editor hit an unexpected error. Please refresh — your last saved version is safe."
 			>
 				<EmailBuilder
+					ref="builderRef"
 					v-model:blocks="blocks"
 					v-model:subject="subject"
 					v-model:name="name"
@@ -217,6 +252,9 @@ async function handlePublicationToggle() {
 						showSettings: true,
 					}"
 					:is-saving="isSaving"
+					:plain-text-override="plainTextOverride"
+					:allow-plain-text-override="true"
+					@update:plain-text-override="plainTextOverride = $event"
 					@save="handleSave"
 					@back="handleBack"
 					@settings="handleSettings"
@@ -237,6 +275,11 @@ async function handlePublicationToggle() {
 							</template>
 							{{ isPublished ? 'Unpublish' : 'Publish' }}
 						</UiButton>
+						<EmailTemplateHistoryPanel
+							:template-id="templateId"
+							:has-unsaved-changes="hasChanges"
+							@restore="handleRestoreVersion"
+						/>
 						<ShareLinksPopover :email-template-id="templateId" :has-unsaved-changes="hasChanges" />
 						<UiButton
 							variant="outline"

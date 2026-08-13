@@ -7,6 +7,8 @@ const props = defineProps<{
 	max?: number;
 	step?: number;
 	unit?: string;
+	/** Names the slider for assistive tech; the visible label sits outside this component. */
+	label?: string;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +34,7 @@ function handleInput(event: Event) {
 	<div class="flex items-center gap-2.5 min-h-8">
 		<input
 			type="range"
+			:aria-label="label"
 			class="flex-1 slider-thumb-brand"
 			:value="value"
 			:min="effectiveMin"

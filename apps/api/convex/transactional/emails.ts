@@ -159,6 +159,10 @@ export const update = authedMutation({
 		subject: v.optional(v.string()),
 		content: v.optional(v.string()),
 		htmlContent: v.optional(v.string()),
+		// text/plain alternative + the author's override, as on `emailTemplates`.
+		// An EMPTY `plainTextOverride` reverts to the generated body.
+		plainTextContent: v.optional(v.string()),
+		plainTextOverride: v.optional(v.string()),
 		dataVariablesSchema: v.optional(dataVariablesSchemaValidator),
 		showUnsubscribe: v.optional(v.boolean()),
 		// Multi-language support fields
@@ -210,6 +214,8 @@ export const update = authedMutation({
 			subject: string;
 			content: string;
 			htmlContent: string;
+			plainTextContent: string;
+			plainTextOverride: string | undefined;
 			dataVariablesSchema: Record<string, DataVariableType>;
 			showUnsubscribe: boolean;
 			defaultLanguage: string;
@@ -229,6 +235,15 @@ export const update = authedMutation({
 		if (args.subject !== undefined) updates.subject = args.subject;
 		if (args.content !== undefined) updates.content = args.content;
 		if (args.htmlContent !== undefined) updates.htmlContent = args.htmlContent;
+		if (args.plainTextContent !== undefined) updates.plainTextContent = args.plainTextContent;
+		if (args.plainTextOverride !== undefined) {
+			// Patching to `undefined` REMOVES the column — that is what "the author
+			// cleared the override editor" means; an empty string would otherwise
+			// keep winning over the generated body.
+			updates.plainTextOverride = args.plainTextOverride.trim()
+				? args.plainTextOverride
+				: undefined;
+		}
 		if (args.dataVariablesSchema !== undefined)
 			updates.dataVariablesSchema = args.dataVariablesSchema;
 		if (args.showUnsubscribe !== undefined) updates.showUnsubscribe = args.showUnsubscribe;

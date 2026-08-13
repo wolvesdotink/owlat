@@ -8,6 +8,8 @@ const props = defineProps<{
 	max?: number;
 	step?: number;
 	unit?: string;
+	/** Names the input for assistive tech; the visible label sits outside this component. */
+	label?: string;
 }>();
 
 const emit = defineEmits<{
@@ -42,6 +44,7 @@ function clamp(val: number): number {
 			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
 			type="button"
 			tabindex="-1"
+			aria-hidden="true"
 			:disabled="min !== undefined && value <= min"
 			@click="decrement"
 		>
@@ -49,6 +52,7 @@ function clamp(val: number): number {
 		</button>
 		<input
 			type="number"
+			:aria-label="label"
 			class="flex-1 w-0 min-w-[2.5rem] py-1.5 px-0 text-[13px] font-medium tabular-nums text-center border-none bg-transparent text-text-primary outline-none appearance-number-plain"
 			:value="value"
 			:min="min"
@@ -61,6 +65,7 @@ function clamp(val: number): number {
 			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
 			type="button"
 			tabindex="-1"
+			aria-hidden="true"
 			:disabled="max !== undefined && value >= max"
 			@click="increment"
 		>

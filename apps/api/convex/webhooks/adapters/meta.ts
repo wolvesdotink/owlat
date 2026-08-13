@@ -13,9 +13,12 @@
  * https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks
  */
 
-import { getOptional } from '../../lib/env';
-import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
+import { constantTimeEqual, hmacSha256Hex } from '../security';
+import { missingChannelSecretResult, resolveChannelInboundSecret } from '../channelSecrets';
 import { logError } from '../../lib/runtimeLog';
+import { internal } from '../../_generated/api';
+import { getClientIp, rateLimitedResponse } from '../../publicRateLimit';
+import type { ActionCtx } from '../../_generated/server';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 
@@ -57,10 +60,15 @@ const META_SUCCESS_BODY = 'OK';
 export const metaAdapter: InboundAdapter = {
 	source: 'meta',
 
-	async verifySignature(request, rawBody) {
-		const appSecret = getOptional('META_APP_SECRET');
+	async verifySignature(request, rawBody, ctx) {
+		const appSecret = await resolveChannelInboundSecret(
+			'whatsapp',
+			'signature',
+			'META_APP_SECRET',
+			ctx
+		);
 		if (!appSecret) {
-			return missingSecretResult('META_APP_SECRET');
+			return missingChannelSecretResult('META_APP_SECRET', 'WhatsApp channel App Secret');
 		}
 
 		const signature = request.headers.get('x-hub-signature-256');
@@ -121,25 +129,53 @@ export const metaAdapter: InboundAdapter = {
  * event — it's a one-shot protocol handshake that Meta uses to confirm
  * webhook ownership when subscriptions are activated.
  *
- * Spec: when `META_VERIFY_TOKEN` matches the `hub.verify_token` query
- * param and `hub.mode === 'subscribe'`, echo back `hub.challenge`.
+ * Spec: when the configured verify token matches the `hub.verify_token` query
+ * param and `hub.mode === 'subscribe'`, echo back `hub.challenge`. The token is
+ * the WhatsApp channel's stored Verify Token, falling back to
+ * `META_VERIFY_TOKEN` (see `webhooks/channelSecrets.ts`).
+ *
+ * This route is UNAUTHENTICATED by nature — the handshake is what establishes
+ * the relationship — and answering it costs a Node action plus a DB read, so
+ * the two cheap gates come first: the request must look like a challenge at
+ * all, and it spends a token from the same `webhookIngestion` bucket the POST
+ * path spends before verifying a signature (`webhooks/pipeline.ts`).
  */
-export function handleMetaChallenge(request: Request): Response {
-	const verifyToken = getOptional('META_VERIFY_TOKEN');
+export async function handleMetaChallenge(request: Request, ctx?: ActionCtx): Promise<Response> {
+	const url = new URL(request.url);
+	const mode = url.searchParams.get('hub.mode');
+	const token = url.searchParams.get('hub.verify_token') ?? '';
+	const challenge = url.searchParams.get('hub.challenge');
+	// Not a challenge at all (a scanner, a browser, a probe): refuse before
+	// spending a rate-limit token or opening the credential vault.
+	if (mode !== 'subscribe' || !challenge) {
+		return new Response('Verification failed', { status: 403 });
+	}
+
+	if (ctx) {
+		// Keyed apart from the inbound-message buckets so a flood here cannot 429
+		// real provider deliveries, matching the per-source keying in the pipeline.
+		const { ok, retryAfter } = await ctx.runMutation(
+			internal.publicRateLimit.checkPublicRateLimit,
+			{ limitType: 'webhookIngestion', key: `whatsapp-challenge:${getClientIp(request)}` }
+		);
+		if (!ok) return rateLimitedResponse(retryAfter);
+	}
+
+	const verifyToken = await resolveChannelInboundSecret(
+		'whatsapp',
+		'verifyToken',
+		'META_VERIFY_TOKEN',
+		ctx
+	);
 	if (!verifyToken) {
-		logError('[Meta Webhook] handleMetaChallenge: META_VERIFY_TOKEN is not set');
+		logError('[Meta Webhook] handleMetaChallenge: no verify token configured');
 		return new Response(JSON.stringify({ error: 'Webhook endpoint is not configured securely' }), {
 			status: 503,
 			headers: { 'Content-Type': 'application/json' },
 		});
 	}
 
-	const url = new URL(request.url);
-	const mode = url.searchParams.get('hub.mode');
-	const token = url.searchParams.get('hub.verify_token') ?? '';
-	const challenge = url.searchParams.get('hub.challenge');
-
-	if (mode === 'subscribe' && challenge && constantTimeEqual(token, verifyToken)) {
+	if (constantTimeEqual(token, verifyToken)) {
 		return new Response(challenge, { status: 200 });
 	}
 	return new Response('Verification failed', { status: 403 });

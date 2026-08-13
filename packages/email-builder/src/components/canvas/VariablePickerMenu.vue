@@ -48,6 +48,8 @@ watch(
 <template>
 	<div
 		ref="menuEl"
+		role="listbox"
+		aria-label="Variables"
 		class="absolute z-[100] min-w-[200px] max-w-[280px] max-h-60 overflow-y-auto bg-bg-elevated border border-border-subtle rounded-lg shadow-[0_4px_6px_-1px_rgba(0,0,0,0.15),0_2px_4px_-2px_rgba(0,0,0,0.15)] p-1 animate-eb-slide-up"
 		:style="{ top: `${position.top}px`, left: `${position.left}px` }"
 	>
@@ -67,6 +69,9 @@ watch(
 					'bg-brand/[0.08]':
 						flatList.indexOf(v) === selectedIndex,
 				}"
+				type="button"
+				role="option"
+				:aria-selected="flatList.indexOf(v) === selectedIndex"
 				@mousedown.prevent="emit('select', v)"
 			>
 				<span class="font-medium text-brand font-mono text-xs">{{ v.key }}</span>

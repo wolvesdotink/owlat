@@ -130,12 +130,16 @@ function handlePickerSelect(type: BlockType) {
 			ref="sidebarRef"
 			class="light fixed z-[999] flex flex-col items-center gap-0.5 p-1 bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_2px_8px_rgba(0,0,0,0.08)] animate-eb-fade-in"
 			:style="{ top: `${posTop}px`, left: `${posLeft}px`, width: '40px' }"
+			role="toolbar"
+			aria-orientation="vertical"
+			aria-label="Insert block"
 		>
 			<button
 				v-for="block in quickBlocks"
 				:key="block.type"
 				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary active:scale-[0.92]"
 				:title="block.label"
+				:aria-label="`Add ${block.label} block`"
 				type="button"
 				@click="emit('add-block', block.type)"
 			>
@@ -148,6 +152,9 @@ function handlePickerSelect(type: BlockType) {
 				ref="moreButtonRef"
 				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong active:scale-[0.92]"
 				title="More blocks..."
+				aria-label="More blocks"
+				aria-haspopup="menu"
+				:aria-expanded="showPicker"
 				type="button"
 				@click="showPicker = !showPicker"
 			>

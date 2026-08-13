@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Confirm Submission \u2014 Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('recipient.confirm.pageTitle') });
 
 // Public confirmation page - no auth middleware needed
 definePageMeta({
@@ -30,13 +32,13 @@ const token = computed(() => route.query['token'] as string | undefined);
 // Verify the token on mount
 onMounted(async () => {
 	if (!token.value) {
-		error.value = 'Missing confirmation token. Please use the link from your email.';
+		error.value = t('recipient.confirm.errors.missingToken');
 		isLoading.value = false;
 		return;
 	}
 
 	if (!convex) {
-		error.value = 'Unable to connect to the server. Please try again later.';
+		error.value = t('recipient.confirm.errors.noServer');
 		isLoading.value = false;
 		return;
 	}
@@ -48,7 +50,7 @@ onMounted(async () => {
 		});
 
 		if (!submission) {
-			error.value = 'Invalid confirmation link. Please use the link from your email.';
+			error.value = t('recipient.confirm.errors.invalid');
 			isLoading.value = false;
 			return;
 		}
@@ -65,7 +67,7 @@ onMounted(async () => {
 			alreadyConfirmed.value = true;
 		}
 	} catch (err) {
-		error.value = 'Unable to verify your confirmation link. Please try again later.';
+		error.value = t('recipient.confirm.errors.verifyFailed');
 	} finally {
 		isLoading.value = false;
 	}
@@ -86,13 +88,13 @@ async function handleConfirm() {
 
 		if (!result.success) {
 			if (result.error === 'invalid_token') {
-				error.value = 'Invalid confirmation link. Please use the link from your email.';
+				error.value = t('recipient.confirm.errors.invalid');
 			} else if (result.error === 'invalid_status') {
-				error.value = 'This subscription has already been processed.';
+				error.value = t('recipient.confirm.errors.alreadyProcessed');
 			} else if (result.error === 'token_expired') {
-				error.value = 'This confirmation link has expired. Please request a new one.';
+				error.value = t('recipient.confirm.errors.expired');
 			} else {
-				error.value = 'Failed to confirm subscription. Please try again.';
+				error.value = t('recipient.confirm.errors.confirmFailed');
 			}
 			return;
 		}
@@ -101,7 +103,7 @@ async function handleConfirm() {
 		alreadyConfirmed.value = result.alreadyConfirmed || false;
 	} catch (err) {
 		error.value =
-			err instanceof Error ? err.message : 'Failed to confirm subscription. Please try again.';
+			err instanceof Error ? err.message : t('recipient.confirm.errors.confirmFailed');
 	} finally {
 		isProcessing.value = false;
 	}
@@ -109,30 +111,35 @@ async function handleConfirm() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4">
+	<!-- Recipient-facing page: opened from an email client, mostly on a phone.
+	     Single column, dvh (mobile browser chrome collapses the visual viewport)
+	     and safe-area padding so nothing sits under a notch or home indicator. -->
+	<div
+		class="flex min-h-dvh flex-col items-center justify-center gap-8 bg-bg-deep px-5 pt-[max(2.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))] text-text-primary"
+	>
 		<!-- Logo/Brand -->
-		<div class="mb-8 text-center">
+		<header class="text-center">
 			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="text-text-secondary mt-2">Email Confirmation</p>
-		</div>
+			<p class="mt-2 text-text-secondary">{{ t('recipient.confirm.header') }}</p>
+		</header>
 
 		<!-- Loading State -->
-		<div v-if="isLoading" class="card w-full max-w-md text-center py-12">
+		<div v-if="isLoading" class="card w-full max-w-md py-8 text-center">
 			<div class="flex flex-col items-center gap-4">
 				<UiSpinner size="lg" />
-				<p class="text-text-secondary">Verifying your link...</p>
+				<p class="text-text-secondary">{{ t('recipient.shared.verifying') }}</p>
 			</div>
 		</div>
 
 		<!-- Error State -->
 		<div v-else-if="error" class="card w-full max-w-md">
-			<div class="text-center py-8">
+			<div class="py-2 text-center sm:py-4">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-error-subtle flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error-subtle sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-error"
+						class="h-7 w-7 text-error sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -145,20 +152,22 @@ async function handleConfirm() {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Unable to Confirm</h2>
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{ t('recipient.confirm.errorHeading') }}
+				</h2>
 				<p class="text-text-secondary">{{ error }}</p>
 			</div>
 		</div>
 
 		<!-- Success State -->
 		<div v-else-if="confirmSuccess" class="card w-full max-w-md">
-			<div class="text-center py-8">
+			<div class="py-2 text-center sm:py-4">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-success-subtle flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success-subtle sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-success"
+						class="h-7 w-7 text-success sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -171,35 +180,45 @@ async function handleConfirm() {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">
-					{{ alreadyConfirmed ? 'Already Confirmed' : 'Subscription Confirmed!' }}
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{
+						alreadyConfirmed
+							? t('recipient.confirm.alreadyHeading')
+							: t('recipient.confirm.successHeading')
+					}}
 				</h2>
-				<p class="text-text-secondary mb-6">
-					<template v-if="alreadyConfirmed">
-						Your subscription to <strong>{{ submissionInfo?.organizationName }}</strong> was already
-						confirmed.
-					</template>
-					<template v-else>
-						You have successfully confirmed your subscription to
-						<strong>{{ submissionInfo?.organizationName }}</strong
-						>.
-					</template>
-				</p>
-				<p class="text-text-tertiary text-sm">
-					<strong>{{ submissionInfo?.email }}</strong> is now subscribed and will receive updates.
-				</p>
+				<!-- break-words: contact emails and org names are unbounded strings and
+				     these cards are read at 320px. -->
+				<I18nT
+					:keypath="
+						alreadyConfirmed ? 'recipient.confirm.alreadyBody' : 'recipient.confirm.successBody'
+					"
+					tag="p"
+					scope="global"
+					class="mb-6 break-words text-text-secondary"
+				>
+					<template #organization><strong>{{ submissionInfo?.organizationName }}</strong></template>
+				</I18nT>
+				<I18nT
+					keypath="recipient.confirm.successNote"
+					tag="p"
+					scope="global"
+					class="text-sm break-words text-text-tertiary"
+				>
+					<template #email><strong>{{ submissionInfo?.email }}</strong></template>
+				</I18nT>
 			</div>
 		</div>
 
 		<!-- Already Confirmed State (before clicking button) -->
 		<div v-else-if="alreadyConfirmed && submissionInfo" class="card w-full max-w-md">
-			<div class="text-center py-8">
+			<div class="py-2 text-center sm:py-4">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-brand-subtle flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-subtle sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-brand"
+						class="h-7 w-7 text-brand sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -212,26 +231,37 @@ async function handleConfirm() {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Already Confirmed</h2>
-				<p class="text-text-secondary">
-					Your subscription to <strong>{{ submissionInfo.organizationName }}</strong> has already
-					been confirmed.
-				</p>
-				<p class="text-text-tertiary text-sm mt-4">
-					<strong>{{ submissionInfo.email }}</strong> is subscribed and will receive updates.
-				</p>
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{ t('recipient.confirm.alreadyHeading') }}
+				</h2>
+				<I18nT
+					keypath="recipient.confirm.alreadyStateBody"
+					tag="p"
+					scope="global"
+					class="break-words text-text-secondary"
+				>
+					<template #organization><strong>{{ submissionInfo.organizationName }}</strong></template>
+				</I18nT>
+				<I18nT
+					keypath="recipient.confirm.alreadyStateNote"
+					tag="p"
+					scope="global"
+					class="mt-4 text-sm break-words text-text-tertiary"
+				>
+					<template #email><strong>{{ submissionInfo.email }}</strong></template>
+				</I18nT>
 			</div>
 		</div>
 
 		<!-- Confirmation State -->
 		<div v-else-if="submissionInfo" class="card w-full max-w-md">
-			<div class="text-center py-8">
+			<div class="py-2 text-center sm:py-4">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-brand-subtle flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-subtle sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-brand"
+						class="h-7 w-7 text-brand sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -244,33 +274,39 @@ async function handleConfirm() {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Confirm Your Subscription</h2>
-				<p class="text-text-secondary mb-6">
-					Click the button below to confirm your subscription to
-					<strong>{{ submissionInfo.organizationName }}</strong> with the email address
-					<strong>{{ submissionInfo.email }}</strong
-					>.
-				</p>
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{ t('recipient.confirm.confirmHeading') }}
+				</h2>
+				<I18nT
+					keypath="recipient.confirm.confirmBody"
+					tag="p"
+					scope="global"
+					class="mb-6 break-words text-text-secondary"
+				>
+					<template #organization><strong>{{ submissionInfo.organizationName }}</strong></template>
+					<template #email><strong>{{ submissionInfo.email }}</strong></template>
+				</I18nT>
 
-				<div class="space-y-3">
-					<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleConfirm">
-						<span v-if="isProcessing" class="flex items-center justify-center gap-2">
-							<UiSpinner size="sm" tone="inverse" />
-							Confirming...
-						</span>
-						<span v-else>Confirm Subscription</span>
-					</UiButton>
-				</div>
+				<!-- h-12: the only action on the page, sized past the 44px touch target. -->
+				<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleConfirm">
+					<span v-if="isProcessing" class="flex items-center justify-center gap-2">
+						<UiSpinner size="sm" tone="inverse" />
+						{{ t('recipient.confirm.processing') }}
+					</span>
+					<span v-else>{{ t('recipient.confirm.submit') }}</span>
+				</UiButton>
 
-				<p class="text-text-tertiary text-xs mt-6">
-					By confirming, you agree to receive emails from {{ submissionInfo.organizationName }}.
+				<p class="mt-6 text-xs break-words text-text-tertiary">
+					{{
+						t('recipient.confirm.footnote', { organization: submissionInfo.organizationName })
+					}}
 				</p>
 			</div>
 		</div>
 
 		<!-- Footer -->
-		<p class="mt-8 text-text-tertiary text-sm">
-			Powered by <span class="font-display">Owlat</span>
-		</p>
+		<I18nT keypath="common.poweredBy" tag="p" scope="global" class="text-sm text-text-tertiary">
+			<template #brand><span class="font-display">Owlat</span></template>
+		</I18nT>
 	</div>
 </template>

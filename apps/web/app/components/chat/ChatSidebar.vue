@@ -62,7 +62,7 @@ const matchesQuery = (name: string) => {
 				<Icon name="lucide:at-sign" class="w-4 h-4" />
 				<span
 					v-if="mentionCount > 0"
-					class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-error text-white text-2xs font-semibold flex items-center justify-center"
+					class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-error text-text-inverse text-2xs font-semibold flex items-center justify-center"
 				>
 					{{ mentionCount > 9 ? '9+' : mentionCount }}
 				</span>
@@ -140,7 +140,7 @@ const matchesQuery = (name: string) => {
 						</span>
 						<span
 							v-if="channel.unread.hasMention"
-							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-white"
+							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
 						>
 							@
 						</span>

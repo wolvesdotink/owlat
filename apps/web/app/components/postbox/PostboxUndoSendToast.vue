@@ -48,7 +48,7 @@ async function handleUndo() {
 	<Transition name="pbx-toast">
 	<div
 		v-if="state.visible && remainingSec > 0"
-		class="fixed bottom-4 left-4 bg-text-primary text-white rounded-md shadow-lg px-4 py-3 flex items-center gap-3 z-50"
+		class="fixed bottom-4 left-4 bg-text-primary text-text-inverse rounded-md shadow-lg px-4 py-3 flex items-center gap-3 z-50"
 	>
 		<Icon name="lucide:send" class="w-4 h-4" />
 		<span class="text-sm">Sending… ({{ remainingSec }}s)</span>
