@@ -181,6 +181,21 @@ const { data: capacityPreviewRaw } = useOrganizationQuery(
 	}
 );
 
+// TODAY'S HEADROOM, beside the send buttons. The capacity plan above answers
+// "how long will this take"; this answers the question the operator asks first —
+// how much can go out right now, and when does that grow. Same paced projection
+// as the gate, so the two lines cannot disagree. `fromEmail` is passed whenever
+// it is valid (it decides whether warm-up overflow absorbs the tail); without
+// one the backend answers conservatively rather than skipping, so the line is
+// still there while the address is being typed.
+const { data: sendingReadiness } = useOrganizationQuery(
+	api.campaigns.sendingReadiness.getSendingReadiness,
+	() => {
+		const from = fromEmail.value.trim();
+		return isValidEmail(from) ? { fromEmail: from } : {};
+	}
+);
+
 /**
  * The schedule to render: the one pre-flight actually refused with, else the
  * preview. The refusal wins — it is the authoritative answer for the send the
@@ -900,6 +915,15 @@ const shownCapacityPlan = computed(() => {
 							</div>
 						</div>
 					</div>
+
+					<!-- Sending readiness, immediately above the send/schedule buttons: the
+					     ramp cap belongs where the decision is made, not in a pre-flight
+					     refusal after it (deliverability plan D14). Renders nothing when
+					     capacity is unmeasured or uncapped-and-unremarkable. -->
+					<CampaignsSendReadinessNote
+						:readiness="sendingReadiness"
+						:audience-size="audienceCount?.eligible ?? null"
+					/>
 
 					<!-- Actions -->
 					<div class="flex items-center justify-between pt-4">

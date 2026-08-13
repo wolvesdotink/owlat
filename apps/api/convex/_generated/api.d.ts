@@ -151,6 +151,7 @@ import type * as campaigns_sendPlanQueries from '../campaigns/sendPlanQueries.js
 import type * as campaigns_sendQueries from '../campaigns/sendQueries.js';
 import type * as campaigns_sendVariantSplit from '../campaigns/sendVariantSplit.js';
 import type * as campaigns_senders from '../campaigns/senders.js';
+import type * as campaigns_sendingReadiness from '../campaigns/sendingReadiness.js';
 import type * as campaigns_statShards from '../campaigns/statShards.js';
 import type * as campaigns_testSend from '../campaigns/testSend.js';
 import type * as channels_adapters_index from '../channels/adapters/index.js';
@@ -1132,6 +1133,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/sendQueries': typeof campaigns_sendQueries;
 	'campaigns/sendVariantSplit': typeof campaigns_sendVariantSplit;
 	'campaigns/senders': typeof campaigns_senders;
+	'campaigns/sendingReadiness': typeof campaigns_sendingReadiness;
 	'campaigns/statShards': typeof campaigns_statShards;
 	'campaigns/testSend': typeof campaigns_testSend;
 	'channels/adapters/index': typeof channels_adapters_index;
