@@ -27,13 +27,13 @@ function custom() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-base text-text-primary">
-		<div class="mx-auto max-w-3xl px-6 py-12">
+	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base text-text-primary">
+		<UiHeroField />
+
+		<div class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase"
-					>Owlat setup</span
-				>
+				<span class="lp-eyebrow">Owlat setup</span>
 			</div>
 
 			<UiStepIndicator
@@ -45,7 +45,9 @@ function custom() {
 			/>
 
 			<header class="mb-6">
-				<h1 class="font-display text-3xl mb-2">How will you run Owlat?</h1>
+				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">
+					How will you run <span class="lp-title-accent">Owlat</span>?
+				</h1>
 				<p class="text-text-secondary leading-relaxed">
 					Pick the closest mode to pre-fill your features — you can fine-tune everything on the next
 					step. See
@@ -53,7 +55,7 @@ function custom() {
 						href="https://docs.owlat.app/guide/operating-modes"
 						target="_blank"
 						rel="noopener"
-						class="text-brand hover:text-brand-hover underline"
+						class="link"
 						>Operating Modes</a
 					>
 					for the full matrix.
@@ -62,7 +64,7 @@ function custom() {
 
 			<!-- Fresh start vs. migration. Default: fresh (Owlat is its own platform).
 			     When "moving" is chosen, first-login onboarding offers a mail import. -->
-			<fieldset class="mb-8 rounded-xl border border-border-default bg-bg-elevated p-5">
+			<fieldset class="card mb-8 p-5">
 				<legend class="px-2 text-sm font-medium text-text-primary">
 					Are you moving from another platform, or starting fresh on Owlat?
 				</legend>
@@ -70,11 +72,11 @@ function custom() {
 					<button
 						type="button"
 						:aria-pressed="!isMigrationMode"
-						class="rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						class="rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:class="
 							!isMigrationMode
-								? 'border-brand bg-brand/5'
-								: 'border-border-default hover:border-brand'
+								? 'border-brand shadow-surface-2 bg-brand-soft'
+								: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
 						"
 						@click="isMigrationMode = false"
 					>
@@ -89,11 +91,11 @@ function custom() {
 					<button
 						type="button"
 						:aria-pressed="isMigrationMode"
-						class="rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						class="rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:class="
 							isMigrationMode
-								? 'border-brand bg-brand/5'
-								: 'border-border-default hover:border-brand'
+								? 'border-brand shadow-surface-2 bg-brand-soft'
+								: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
 						"
 						@click="isMigrationMode = true"
 					>
@@ -112,7 +114,7 @@ function custom() {
 				<li v-for="key in OPERATING_MODE_KEYS" :key="key">
 					<button
 						type="button"
-						class="group w-full text-left rounded-xl border border-border-default bg-bg-elevated p-5 transition-colors hover:border-brand"
+						class="group w-full text-left rounded-xl border border-transparent bg-surface-1 shadow-surface-1 p-5 transition-[border-color,box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
 						@click="pick(key)"
 					>
 						<div class="flex flex-wrap items-center gap-2">

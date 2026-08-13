@@ -90,7 +90,7 @@ async function confirmRemove() {
 
 		<header class="mb-6 flex items-center justify-between">
 			<div>
-				<h1 class="text-2xl font-semibold">Filters</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em]">Filters</h1>
 				<p class="text-text-secondary mt-1">
 					Auto-route inbound mail to folders, apply labels, mark read, or forward.
 				</p>

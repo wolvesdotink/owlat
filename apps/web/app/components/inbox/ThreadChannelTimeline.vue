@@ -117,8 +117,8 @@ async function submitReply(item: TimelineMessage) {
 								:class="[
 									'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
 									item.direction === 'inbound'
-										? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
-										: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400',
+										? 'bg-info-subtle text-info'
+										: 'bg-success-subtle text-success',
 								]"
 							>
 								<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />

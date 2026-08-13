@@ -72,7 +72,7 @@ const smtpHost = computed(() => imapHost.value);
 
 		<header class="mb-6 flex items-center justify-between">
 			<div>
-				<h1 class="text-2xl font-semibold">App passwords</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em]">App passwords</h1>
 				<p class="text-text-secondary mt-1">
 					Generate per-device credentials for native mail clients (Apple Mail, Thunderbird, Gmail
 					mobile, …).

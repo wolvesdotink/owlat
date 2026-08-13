@@ -310,7 +310,7 @@ const topicAssignmentSummary = computed(() => {
 				<!-- Validation Summary Cards -->
 				<div v-if="validationResult" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
 					<div class="p-3 rounded-lg bg-success/10 border border-success/20">
-						<p class="text-2xl font-semibold text-success">{{ validationResult.validCount }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-success">{{ validationResult.validCount }}</p>
 						<p class="text-xs text-success/80">Valid contacts</p>
 					</div>
 					<div
@@ -322,7 +322,7 @@ const topicAssignmentSummary = computed(() => {
 						"
 					>
 						<p
-							class="text-2xl font-semibold"
+							class="text-2xl font-medium tracking-[-0.02em]"
 							:class="
 								validationResult.invalidEmails.length > 0 ? 'text-warning' : 'text-text-tertiary'
 							"
@@ -347,7 +347,7 @@ const topicAssignmentSummary = computed(() => {
 						"
 					>
 						<p
-							class="text-2xl font-semibold"
+							class="text-2xl font-medium tracking-[-0.02em]"
 							:class="
 								validationResult.duplicateEmails.length > 0 ? 'text-warning' : 'text-text-tertiary'
 							"
@@ -374,7 +374,7 @@ const topicAssignmentSummary = computed(() => {
 						"
 					>
 						<p
-							class="text-2xl font-semibold"
+							class="text-2xl font-medium tracking-[-0.02em]"
 							:class="
 								validationResult.missingEmails.length > 0 ? 'text-error' : 'text-text-tertiary'
 							"

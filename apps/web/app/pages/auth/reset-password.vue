@@ -67,14 +67,8 @@ async function handleSubmit() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4">
-		<!-- Logo/Brand -->
-		<div class="mb-8 text-center">
-			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="text-text-secondary mt-2">Set a new password</p>
-		</div>
-
-		<UiCard class="w-full max-w-md">
+	<AuthShell>
+		<template #title>Set a new <span class="lp-title-accent">password</span></template>
 			<!-- No token -->
 			<div v-if="!token" class="text-center">
 				<h2 class="text-lg font-semibold text-text-primary mb-2">Invalid or missing reset link</h2>
@@ -137,6 +131,5 @@ async function handleSubmit() {
 					</UiButton>
 				</form>
 			</template>
-		</UiCard>
-	</div>
+	</AuthShell>
 </template>

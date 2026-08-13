@@ -85,7 +85,7 @@ function close() {
 					v-if="editingId === label._id"
 					v-model="editingName"
 					type="text"
-					class="flex-1 bg-transparent outline-none"
+					class="input input-sm flex-1"
 					@blur="commitRename"
 					@keyup.enter="commitRename"
 					@keyup.escape="editingId = null"

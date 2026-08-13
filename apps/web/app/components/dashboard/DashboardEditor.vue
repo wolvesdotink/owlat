@@ -154,17 +154,17 @@ const roleOptions = ROLE_OPTIONS;
 		<Transition name="slide">
 			<div v-if="isOpen" class="fixed inset-0 z-50">
 				<!-- Backdrop -->
-				<div class="absolute inset-0 bg-black/30" @click="handleCancel" />
+				<div class="absolute inset-0 bg-bg-deep/80 backdrop-blur-sm" @click="handleCancel" />
 
 				<!-- Panel -->
 				<div
-					class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-bg-base border-l border-border-subtle shadow-xl flex flex-col"
+					class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-bg-base border-l border-border-subtle shadow-lg flex flex-col"
 				>
 					<!-- Header -->
 					<div class="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
 						<h2 class="text-lg font-semibold text-text-primary">Customize Dashboard</h2>
 						<button
-							class="p-1.5 rounded-lg hover:bg-bg-surface transition-colors text-text-secondary"
+							class="p-1.5 rounded-lg hover:bg-bg-surface-hover transition-colors text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="handleCancel"
 							aria-label="Close"
 						>
@@ -188,13 +188,13 @@ const roleOptions = ROLE_OPTIONS;
 								<div
 									v-for="(card, index) in editableCards"
 									:key="`${card.type}-${index}`"
-									class="flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5"
+									class="flex items-center gap-2 rounded-lg bg-surface-2 shadow-surface-1 px-3 py-2.5"
 								>
 									<!-- Reorder buttons -->
 									<div class="flex flex-col gap-0.5 shrink-0">
 										<button
 											:disabled="index === 0"
-											class="p-0.5 rounded text-text-tertiary hover:text-text-primary disabled:opacity-30 transition-colors"
+											class="p-0.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover disabled:opacity-30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											@click="moveCard(index, 'up')"
 											aria-label="Move up"
 										>
@@ -202,7 +202,7 @@ const roleOptions = ROLE_OPTIONS;
 										</button>
 										<button
 											:disabled="index === editableCards.length - 1"
-											class="p-0.5 rounded text-text-tertiary hover:text-text-primary disabled:opacity-30 transition-colors"
+											class="p-0.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover disabled:opacity-30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											@click="moveCard(index, 'down')"
 											aria-label="Move down"
 										>
@@ -225,10 +225,10 @@ const roleOptions = ROLE_OPTIONS;
 										<button
 											v-for="opt in sizeOptions"
 											:key="opt.value"
-											class="px-2 py-1 text-xs font-medium rounded transition-colors"
+											class="px-2 py-1 text-xs font-medium rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											:class="
 												card.size === opt.value
-													? 'bg-brand text-white'
+													? 'bg-text-primary text-text-inverse'
 													: 'bg-bg-surface text-text-secondary hover:text-text-primary'
 											"
 											@click="card.size = opt.value"
@@ -239,7 +239,7 @@ const roleOptions = ROLE_OPTIONS;
 
 									<!-- Remove button -->
 									<button
-										class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0"
+										class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 										@click="removeCard(index)"
 										aria-label="Remove card"
 									>
@@ -258,7 +258,7 @@ const roleOptions = ROLE_OPTIONS;
 								<button
 									v-for="card in availableToAdd"
 									:key="card.type"
-									class="w-full flex items-center gap-3 rounded-lg border border-dashed border-border-subtle px-3 py-2.5 hover:border-brand hover:bg-brand/5 transition-colors text-left"
+									class="w-full flex items-center gap-3 rounded-lg border border-dashed border-border-subtle px-3 py-2.5 hover:border-brand hover:bg-brand-soft transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click="addCard(card.type)"
 								>
 									<div
@@ -280,13 +280,12 @@ const roleOptions = ROLE_OPTIONS;
 								<h3 class="text-sm font-semibold text-text-secondary uppercase tracking-wide">
 									Adaptive Rules
 								</h3>
-								<button
-									class="flex items-center gap-1 text-xs font-medium text-brand hover:text-brand-hover transition-colors"
-									@click="addRule"
-								>
-									<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+								<UiButton variant="ghost" size="sm" @click="addRule">
+									<template #iconLeft>
+										<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+									</template>
 									Add rule
-								</button>
+								</UiButton>
 							</div>
 							<p class="text-xs text-text-tertiary mb-3">
 								Show a different set of cards by time of day, day of week, or role. Higher priority
@@ -303,7 +302,7 @@ const roleOptions = ROLE_OPTIONS;
 								<div
 									v-for="(rule, ruleIndex) in editableRules"
 									:key="`rule-${ruleIndex}`"
-									class="rounded-lg border border-border-subtle bg-bg-elevated p-3 space-y-3"
+									class="rounded-lg bg-surface-2 shadow-surface-1 p-3 space-y-3"
 								>
 									<!-- Rule header: priority + remove -->
 									<div class="flex items-center justify-between gap-2">
@@ -312,12 +311,12 @@ const roleOptions = ROLE_OPTIONS;
 											<input
 												v-model.number="rule.priority"
 												type="number"
-												class="w-16 bg-bg-surface border border-border-default rounded-md text-text-primary text-sm px-2 py-1 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+												class="input input-sm w-16"
 												aria-label="Rule priority"
 											/>
 										</div>
 										<button
-											class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0"
+											class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											aria-label="Remove rule"
 											@click="removeRule(ruleIndex)"
 										>
@@ -332,14 +331,14 @@ const roleOptions = ROLE_OPTIONS;
 											<input
 												v-model="rule.timeStart"
 												type="time"
-												class="flex-1 bg-bg-surface border border-border-default rounded-md text-text-primary text-sm px-2 py-1 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+												class="input input-sm flex-1"
 												aria-label="Start time"
 											/>
 											<span class="text-text-tertiary text-xs">to</span>
 											<input
 												v-model="rule.timeEnd"
 												type="time"
-												class="flex-1 bg-bg-surface border border-border-default rounded-md text-text-primary text-sm px-2 py-1 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+												class="input input-sm flex-1"
 												aria-label="End time"
 											/>
 										</div>
@@ -353,10 +352,10 @@ const roleOptions = ROLE_OPTIONS;
 												v-for="day in dayOptions"
 												:key="day.value"
 												type="button"
-												class="px-2 py-1 text-xs font-medium rounded transition-colors"
+												class="px-2 py-1 text-xs font-medium rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												:class="
 													rule.dayOfWeek.includes(day.value)
-														? 'bg-brand text-white'
+														? 'bg-text-primary text-text-inverse'
 														: 'bg-bg-surface text-text-secondary hover:text-text-primary'
 												"
 												@click="toggleRuleDay(rule, day.value)"
@@ -374,10 +373,10 @@ const roleOptions = ROLE_OPTIONS;
 												v-for="opt in roleOptions"
 												:key="opt.value || 'any'"
 												type="button"
-												class="px-2 py-1 text-xs font-medium rounded transition-colors"
+												class="px-2 py-1 text-xs font-medium rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												:class="
 													rule.role === opt.value
-														? 'bg-brand text-white'
+														? 'bg-text-primary text-text-inverse'
 														: 'bg-bg-surface text-text-secondary hover:text-text-primary'
 												"
 												@click="setRuleRole(rule, opt.value)"
@@ -397,7 +396,7 @@ const roleOptions = ROLE_OPTIONS;
 											<div
 												v-for="(card, cardIndex) in rule.cards"
 												:key="`${card.type}-${cardIndex}`"
-												class="flex items-center gap-2 rounded-md border border-border-subtle bg-bg-surface px-2 py-1.5"
+												class="flex items-center gap-2 rounded-md bg-surface-3 shadow-surface-1 px-2 py-1.5"
 											>
 												<p class="flex-1 min-w-0 text-xs font-medium text-text-primary truncate">
 													{{ getCardLabel(card.type) }}
@@ -406,10 +405,10 @@ const roleOptions = ROLE_OPTIONS;
 													<button
 														v-for="opt in sizeOptions"
 														:key="opt.value"
-														class="px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors"
+														class="px-1.5 py-0.5 text-2xs font-medium rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 														:class="
 															card.size === opt.value
-																? 'bg-brand text-white'
+																? 'bg-text-primary text-text-inverse'
 																: 'bg-bg-elevated text-text-secondary hover:text-text-primary'
 														"
 														@click="card.size = opt.value"
@@ -418,7 +417,7 @@ const roleOptions = ROLE_OPTIONS;
 													</button>
 												</div>
 												<button
-													class="p-0.5 rounded text-text-tertiary hover:text-error transition-colors shrink-0"
+													class="p-0.5 rounded text-text-tertiary hover:text-error transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 													aria-label="Remove card from rule"
 													@click="removeRuleCard(rule, cardIndex)"
 												>
@@ -431,7 +430,7 @@ const roleOptions = ROLE_OPTIONS;
 												v-for="card in ruleCardsToAdd(rule)"
 												:key="card.type"
 												type="button"
-												class="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-border-subtle text-text-secondary hover:border-brand hover:text-brand transition-colors"
+												class="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-border-subtle text-text-secondary hover:border-brand hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												@click="addRuleCard(rule, card.type)"
 											>
 												<Icon name="lucide:plus" class="w-3 h-3" />

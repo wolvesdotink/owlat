@@ -78,7 +78,7 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 
 		<header class="mb-6 flex items-center justify-between">
 			<div>
-				<h1 class="text-2xl font-semibold">Signatures</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em]">Signatures</h1>
 				<p class="text-text-secondary mt-1">
 					Default signature is appended to new drafts. Pick a different one per message via the
 					composer toolbar.

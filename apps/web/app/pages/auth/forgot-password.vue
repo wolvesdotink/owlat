@@ -54,14 +54,8 @@ async function handleSubmit() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4">
-		<!-- Logo/Brand -->
-		<div class="mb-8 text-center">
-			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="text-text-secondary mt-2">Reset your password</p>
-		</div>
-
-		<UiCard class="w-full max-w-md">
+	<AuthShell>
+		<template #title>Reset your <span class="lp-title-accent">password</span></template>
 			<!-- Success State -->
 			<div v-if="isSuccess" class="text-center">
 				<div class="mb-4 text-4xl">&#9993;</div>
@@ -109,6 +103,5 @@ async function handleSubmit() {
 					<NuxtLink to="/auth/login" class="link font-medium">Back to login</NuxtLink>
 				</p>
 			</template>
-		</UiCard>
-	</div>
+	</AuthShell>
 </template>

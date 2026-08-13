@@ -135,7 +135,7 @@ function confirmRelayRemoval(): void {
 <template>
 	<div class="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
 		<header class="mb-6">
-			<h1 class="text-2xl font-semibold text-text-primary">{{ headline }}</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ headline }}</h1>
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
 				{{ independenceSubhead({ isRelayConfigured, referenceTransportId }) }}
 			</p>
@@ -218,14 +218,15 @@ function confirmRelayRemoval(): void {
 							}}
 						</p>
 					</template>
-					<button
-						type="button"
-						class="mt-3 rounded-md border border-border-subtle px-3 py-2 text-sm"
+					<UiButton
+						variant="outline"
+						size="sm"
+						class="mt-3"
 						data-testid="relay-removal-open"
 						@click="isRemovalDialogOpen = true"
 					>
 						Disconnect the relay…
-					</button>
+					</UiButton>
 				</UiCard>
 			</div>
 		</UiQueryBoundary>

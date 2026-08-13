@@ -1,4 +1,7 @@
-import { EmailErrorCode, isRetryableErrorCode, type SendProviderKind } from './sendProviders';
+// From `./sendProviders/types`, not the `./sendProviders` barrel: the barrel is
+// `'use node'` (it composes the executable transports), and this module must
+// stay loadable in the isolate runtime.
+import { EmailErrorCode, isRetryableErrorCode, type SendProviderKind } from './sendProviders/types';
 import { deduplicatesOnIdempotencyKeyFor, isSendProviderKind } from './sendProviders/catalog';
 
 export type SystemMailRetryDisposition = 'safe_to_retry' | 'terminal';

@@ -19,7 +19,7 @@ const {
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-8">
-			<h1 class="text-2xl font-semibold text-text-primary">Visualizations</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Visualizations</h1>
 			<p class="text-text-secondary mt-1">
 				Generate interactive charts from natural language prompts. Use illustrative sample data for
 				layout mockups, or pick a live dataset to chart your account's real numbers.

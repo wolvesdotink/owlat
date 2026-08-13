@@ -118,13 +118,13 @@ onUnmounted(stopPolling);
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-base text-text-primary">
-		<div class="mx-auto max-w-2xl px-6 py-12">
+	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base text-text-primary">
+		<UiHeroField />
+
+		<div class="relative mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="text-sm font-medium text-text-secondary tracking-wide uppercase"
-					>Owlat setup</span
-				>
+				<span class="lp-eyebrow">Owlat setup</span>
 			</div>
 
 			<UiStepIndicator
@@ -136,7 +136,9 @@ onUnmounted(stopPolling);
 			/>
 
 			<header class="mb-6">
-				<h1 class="font-display text-3xl mb-2">Review &amp; launch</h1>
+				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">
+					Review &amp; <span class="lp-title-accent">launch</span>
+				</h1>
 				<p class="text-text-secondary leading-relaxed">
 					Last chance to change anything. You can also flip toggles from Settings → Features after
 					launch.

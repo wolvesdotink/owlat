@@ -122,9 +122,9 @@ const previewSrcdoc = computed(() => {
 			<div class="flex items-center gap-2">
 				<span class="text-xs">Low</span>
 				<div class="flex h-3 rounded overflow-hidden">
-					<div class="w-6 bg-yellow-400/50" />
-					<div class="w-6 bg-orange-500/60" />
-					<div class="w-6 bg-red-500/70" />
+					<div class="w-6 bg-warning/50" />
+					<div class="w-6 bg-chart-cat-1/60" />
+					<div class="w-6 bg-error/70" />
 				</div>
 				<span class="text-xs">High</span>
 			</div>

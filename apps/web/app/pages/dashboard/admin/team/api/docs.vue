@@ -57,7 +57,7 @@ const endpoints = [
 				<Icon name="lucide:arrow-left" class="w-3.5 h-3.5" />
 				Back to API Keys
 			</NuxtLink>
-			<h1 class="text-2xl font-semibold text-text-primary">API Quickstart</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">API Quickstart</h1>
 			<p class="text-text-secondary mt-1">
 				Authenticate with a scoped API key from
 				<NuxtLink to="/dashboard/admin/team/api" class="link">Settings → API Keys</NuxtLink>.
