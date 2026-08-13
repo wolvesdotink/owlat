@@ -1,8 +1,10 @@
 <script setup lang="ts">
+const { t } = useI18n();
+
 useSeoMeta({
-	title: 'Unsubscribe \u2014 Owlat',
-	description: 'Manage your email subscription preferences.',
-	ogTitle: 'Unsubscribe \u2014 Owlat',
+	title: () => t('recipient.unsubscribe.pageTitle'),
+	description: () => t('recipient.unsubscribe.metaDescription'),
+	ogTitle: () => t('recipient.unsubscribe.pageTitle'),
 });
 
 // Public unsubscribe page - no auth middleware needed
@@ -32,7 +34,7 @@ const token = computed(() => route.query['token'] as string | undefined);
 // Verify the token on mount
 onMounted(async () => {
 	if (!token.value) {
-		error.value = 'Missing unsubscribe token. Please use the link from your email.';
+		error.value = t('recipient.unsubscribe.errors.missingToken');
 		isLoading.value = false;
 		return;
 	}
@@ -44,12 +46,10 @@ onMounted(async () => {
 		const body = await response.json();
 
 		if (!body.ok) {
-			if (body.reason === 'expired') {
-				error.value =
-					'This unsubscribe link has expired. Please use a more recent email to unsubscribe.';
-			} else {
-				error.value = 'Invalid unsubscribe link. Please use the link from your email.';
-			}
+			error.value =
+				body.reason === 'expired'
+					? t('recipient.unsubscribe.errors.expired')
+					: t('recipient.unsubscribe.errors.invalid');
 			isLoading.value = false;
 			return;
 		}
@@ -67,7 +67,7 @@ onMounted(async () => {
 			alreadyUnsubscribed.value = true;
 		}
 	} catch (err) {
-		error.value = 'Unable to verify your unsubscribe link. Please try again later.';
+		error.value = t('recipient.unsubscribe.errors.verifyFailed');
 	} finally {
 		isLoading.value = false;
 	}
@@ -98,9 +98,7 @@ async function handleUnsubscribe() {
 		}
 	} catch (err) {
 		error.value =
-			err instanceof Error
-				? err.message
-				: 'Failed to process unsubscribe request. Please try again.';
+			err instanceof Error ? err.message : t('recipient.unsubscribe.errors.processFailed');
 	} finally {
 		isProcessing.value = false;
 	}
@@ -108,30 +106,35 @@ async function handleUnsubscribe() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4">
+	<!-- Recipient-facing page: opened from an email client, mostly on a phone.
+	     Single column, dvh (mobile browser chrome collapses the visual viewport)
+	     and safe-area padding so nothing sits under a notch or home indicator. -->
+	<div
+		class="flex min-h-dvh flex-col items-center justify-center gap-8 bg-bg-deep px-5 pt-[max(2.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))] text-text-primary"
+	>
 		<!-- Logo/Brand -->
-		<div class="mb-8 text-center">
+		<header class="text-center">
 			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="text-text-secondary mt-2">Email Preferences</p>
-		</div>
+			<p class="mt-2 text-text-secondary">{{ t('recipient.shared.emailPreferences') }}</p>
+		</header>
 
 		<!-- Loading State -->
-		<div v-if="isLoading" class="card w-full max-w-md text-center py-12">
+		<div v-if="isLoading" class="card w-full max-w-md py-8 text-center">
 			<div class="flex flex-col items-center gap-4">
 				<UiSpinner size="lg" />
-				<p class="text-text-secondary">Verifying your link...</p>
+				<p class="text-text-secondary">{{ t('recipient.shared.verifying') }}</p>
 			</div>
 		</div>
 
 		<!-- Error State -->
 		<div v-else-if="error" class="card w-full max-w-md">
-			<div class="text-center py-8">
+			<div class="py-2 text-center sm:py-4">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-error-subtle flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error-subtle sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-error"
+						class="h-7 w-7 text-error sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -144,20 +147,22 @@ async function handleUnsubscribe() {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Unable to Unsubscribe</h2>
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{ t('recipient.unsubscribe.errorHeading') }}
+				</h2>
 				<p class="text-text-secondary">{{ error }}</p>
 			</div>
 		</div>
 
 		<!-- Success State -->
 		<div v-else-if="unsubscribeSuccess" class="card w-full max-w-md">
-			<div class="text-center py-8">
+			<div class="py-2 text-center sm:py-4">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-success-subtle flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success-subtle sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-success"
+						class="h-7 w-7 text-success sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -170,36 +175,47 @@ async function handleUnsubscribe() {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">
-					{{ alreadyUnsubscribed ? 'Already Unsubscribed' : 'Successfully Unsubscribed' }}
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{
+						alreadyUnsubscribed
+							? t('recipient.unsubscribe.alreadyHeading')
+							: t('recipient.unsubscribe.successHeading')
+					}}
 				</h2>
-				<p class="text-text-secondary mb-6">
-					<template v-if="alreadyUnsubscribed">
-						You were already unsubscribed from emails from
-						<strong>{{ contactInfo?.teamName }}</strong
-						>.
-					</template>
-					<template v-else>
-						You have been unsubscribed from emails from <strong>{{ contactInfo?.teamName }}</strong
-						>.
-					</template>
-				</p>
-				<p class="text-text-tertiary text-sm">
-					You will no longer receive marketing emails at <strong>{{ contactInfo?.email }}</strong
-					>.
-				</p>
+				<!-- break-words: contact emails and org names are unbounded strings and
+				     these cards are read at 320px. -->
+				<I18nT
+					:keypath="
+						alreadyUnsubscribed
+							? 'recipient.unsubscribe.alreadyBody'
+							: 'recipient.unsubscribe.successBody'
+					"
+					tag="p"
+					scope="global"
+					class="mb-6 break-words text-text-secondary"
+				>
+					<template #organization><strong>{{ contactInfo?.teamName }}</strong></template>
+				</I18nT>
+				<I18nT
+					keypath="recipient.unsubscribe.successNote"
+					tag="p"
+					scope="global"
+					class="text-sm break-words text-text-tertiary"
+				>
+					<template #email><strong>{{ contactInfo?.email }}</strong></template>
+				</I18nT>
 			</div>
 		</div>
 
 		<!-- Already Unsubscribed State (before clicking button) -->
 		<div v-else-if="alreadyUnsubscribed && contactInfo" class="card w-full max-w-md">
-			<div class="text-center py-8">
+			<div class="py-2 text-center sm:py-4">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-brand-subtle flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-subtle sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-brand"
+						class="h-7 w-7 text-brand sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -212,27 +228,37 @@ async function handleUnsubscribe() {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Already Unsubscribed</h2>
-				<p class="text-text-secondary">
-					You are already unsubscribed from emails from <strong>{{ contactInfo.teamName }}</strong
-					>.
-				</p>
-				<p class="text-text-tertiary text-sm mt-4">
-					No marketing emails will be sent to <strong>{{ contactInfo.email }}</strong
-					>.
-				</p>
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{ t('recipient.unsubscribe.alreadyHeading') }}
+				</h2>
+				<I18nT
+					keypath="recipient.unsubscribe.alreadyStateBody"
+					tag="p"
+					scope="global"
+					class="break-words text-text-secondary"
+				>
+					<template #organization><strong>{{ contactInfo.teamName }}</strong></template>
+				</I18nT>
+				<I18nT
+					keypath="recipient.unsubscribe.alreadyStateNote"
+					tag="p"
+					scope="global"
+					class="mt-4 text-sm break-words text-text-tertiary"
+				>
+					<template #email><strong>{{ contactInfo.email }}</strong></template>
+				</I18nT>
 			</div>
 		</div>
 
 		<!-- Confirmation State -->
 		<div v-else-if="contactInfo" class="card w-full max-w-md">
-			<div class="text-center py-8">
+			<div class="py-2 text-center sm:py-4">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-bg-elevated flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-bg-surface sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-text-secondary"
+						class="h-7 w-7 text-text-secondary sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -245,33 +271,35 @@ async function handleUnsubscribe() {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Unsubscribe from Emails</h2>
-				<p class="text-text-secondary mb-6">
-					<template v-if="contactInfo.firstName"> Hi {{ contactInfo.firstName }}, </template>
-					Are you sure you want to unsubscribe <strong>{{ contactInfo.email }}</strong> from emails
-					sent by <strong>{{ contactInfo.teamName }}</strong
-					>?
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{ t('recipient.unsubscribe.confirmHeading') }}
+				</h2>
+				<p class="mb-6 break-words text-text-secondary">
+					<template v-if="contactInfo.firstName">
+						{{ t('recipient.unsubscribe.greeting', { name: contactInfo.firstName }) }}
+					</template>
+					<I18nT keypath="recipient.unsubscribe.confirmBody" tag="span" scope="global">
+						<template #email><strong>{{ contactInfo.email }}</strong></template>
+						<template #organization><strong>{{ contactInfo.teamName }}</strong></template>
+					</I18nT>
 				</p>
 
-				<div class="space-y-3">
-					<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleUnsubscribe">
-						<span v-if="isProcessing" class="flex items-center justify-center gap-2">
-							<UiSpinner size="sm" tone="inverse" />
-							Processing...
-						</span>
-						<span v-else>Yes, Unsubscribe Me</span>
-					</UiButton>
-				</div>
+				<!-- h-12: the only action on the page, sized past the 44px touch target. -->
+				<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleUnsubscribe">
+					<span v-if="isProcessing" class="flex items-center justify-center gap-2">
+						<UiSpinner size="sm" tone="inverse" />
+						{{ t('recipient.unsubscribe.processing') }}
+					</span>
+					<span v-else>{{ t('recipient.unsubscribe.submit') }}</span>
+				</UiButton>
 
-				<p class="text-text-tertiary text-xs mt-6">
-					You will stop receiving marketing emails. Transactional emails may still be sent.
-				</p>
+				<p class="mt-6 text-xs text-text-tertiary">{{ t('recipient.unsubscribe.footnote') }}</p>
 			</div>
 		</div>
 
 		<!-- Footer -->
-		<p class="mt-8 text-text-tertiary text-sm">
-			Powered by <span class="font-display">Owlat</span>
-		</p>
+		<I18nT keypath="common.poweredBy" tag="p" scope="global" class="text-sm text-text-tertiary">
+			<template #brand><span class="font-display">Owlat</span></template>
+		</I18nT>
 	</div>
 </template>

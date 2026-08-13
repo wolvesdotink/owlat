@@ -21,6 +21,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 const { renderBlocksToHtml, buildHtmlTranslationsForEmail } = useEmailHtmlRendering();
 const { isFocusMode } = useFocusMode();
 const { emailTheme } = useEmailTheme();
+const builderFits = useEmailBuilderViewport();
 
 // Fetch transactional email data
 const {
@@ -312,6 +313,13 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 					<UiButton @click="handleBack">Back to Emails</UiButton>
 				</div>
 			</div>
+
+			<!-- Too narrow for the canvas — an honest gate beats a broken editor. -->
+			<EmailBuilderViewportGate v-else-if="!builderFits">
+				<template #action>
+					<UiButton variant="secondary" @click="handleBack">Back to Emails</UiButton>
+				</template>
+			</EmailBuilderViewportGate>
 
 			<!-- Email Builder + Attachments -->
 			<EmailBuilder

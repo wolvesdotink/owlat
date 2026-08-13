@@ -1,5 +1,7 @@
 <script setup lang="ts">
-useHead({ title: 'Shared Preview — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('recipient.share.pageTitle') });
 
 definePageMeta({
 	layout: false,
@@ -32,16 +34,21 @@ const hoursRemaining = computed(() => {
 useSeoMeta({
 	title: () =>
 		shareData.value
-			? `${shareData.value.subject} — ${shareData.value.organizationName}`
-			: 'Shared Preview',
-	ogTitle: () => shareData.value?.subject ?? 'Shared Preview',
+			? t('recipient.share.seoTitleLoaded', {
+					subject: shareData.value.subject,
+					organization: shareData.value.organizationName,
+				})
+			: t('recipient.share.seoTitle'),
+	ogTitle: () => shareData.value?.subject ?? t('recipient.share.seoTitle'),
 	ogDescription: () =>
-		shareData.value ? `Email preview from ${shareData.value.organizationName}` : undefined,
+		shareData.value
+			? t('recipient.share.ogDescription', { organization: shareData.value.organizationName })
+			: undefined,
 });
 
 onMounted(async () => {
 	if (!token.value) {
-		error.value = 'Missing share token. Please use the link you were given.';
+		error.value = t('recipient.share.errors.missingToken');
 		isLoading.value = false;
 		return;
 	}
@@ -60,12 +67,12 @@ onMounted(async () => {
 		} else if (result.kind === 'ok') {
 			shareData.value = result.data;
 		} else {
-			error.value = 'This share link is invalid or has been revoked.';
+			error.value = t('recipient.share.errors.revoked');
 		}
 	} catch (err) {
 		// eslint-disable-next-line no-console
 		console.error('[SharePage] Failed to fetch preview:', err);
-		error.value = 'Unable to load the preview. Please try again later.';
+		error.value = t('recipient.share.errors.loadFailed');
 	} finally {
 		isLoading.value = false;
 	}
@@ -73,24 +80,24 @@ onMounted(async () => {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-base">
+	<div class="min-h-dvh bg-bg-deep text-text-primary">
 		<!-- Loading State -->
-		<div v-if="isLoading" class="flex items-center justify-center min-h-screen">
+		<div v-if="isLoading" class="flex min-h-dvh items-center justify-center px-5">
 			<div class="flex flex-col items-center gap-4">
 				<UiSpinner size="lg" tone="brand" />
-				<p class="text-text-secondary text-sm">Loading preview...</p>
+				<p class="text-sm text-text-secondary">{{ t('recipient.share.loading') }}</p>
 			</div>
 		</div>
 
 		<!-- Expired State -->
-		<div v-else-if="isExpired" class="flex items-center justify-center min-h-screen px-4">
-			<div class="text-center max-w-md">
+		<div v-else-if="isExpired" class="flex min-h-dvh items-center justify-center px-5">
+			<div class="w-full max-w-md text-center">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-bg-elevated flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-bg-surface sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-text-tertiary"
+						class="h-7 w-7 text-text-tertiary sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -103,22 +110,22 @@ onMounted(async () => {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Preview Link Expired</h2>
-				<p class="text-text-secondary">
-					This preview link has expired. Please ask the sender for a new link.
-				</p>
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{ t('recipient.share.expiredHeading') }}
+				</h2>
+				<p class="text-text-secondary">{{ t('recipient.share.expiredBody') }}</p>
 			</div>
 		</div>
 
 		<!-- Error State -->
-		<div v-else-if="error" class="flex items-center justify-center min-h-screen px-4">
-			<div class="text-center max-w-md">
+		<div v-else-if="error" class="flex min-h-dvh items-center justify-center px-5">
+			<div class="w-full max-w-md text-center">
 				<div
-					class="w-16 h-16 mx-auto mb-4 rounded-full bg-error-subtle flex items-center justify-center"
+					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error-subtle sm:h-16 sm:w-16"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						class="h-8 w-8 text-error"
+						class="h-7 w-7 text-error sm:h-8 sm:w-8"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -131,7 +138,9 @@ onMounted(async () => {
 						/>
 					</svg>
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary mb-2">Preview Not Available</h2>
+				<h2 class="mb-2 text-lg font-semibold text-text-primary">
+					{{ t('recipient.share.errorHeading') }}
+				</h2>
 				<p class="text-text-secondary">{{ error }}</p>
 			</div>
 		</div>
@@ -139,20 +148,20 @@ onMounted(async () => {
 		<!-- Preview Content -->
 		<div v-else-if="shareData">
 			<!-- Header -->
-			<div class="bg-bg-elevated border-b border-border-default">
-				<div class="max-w-3xl mx-auto px-4 py-4">
-					<h1 class="text-lg font-medium tracking-[-0.02em] text-text-primary">
+			<header class="border-b border-border-subtle bg-bg-elevated pt-[env(safe-area-inset-top)]">
+				<div class="mx-auto max-w-3xl px-5 py-4">
+					<h1 class="text-lg font-medium tracking-[-0.02em] break-words text-text-primary">
 						{{ shareData.subject }}
 					</h1>
-					<p class="text-sm text-text-secondary mt-1">
-						{{ shareData.organizationName }}
+					<p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-secondary">
+						<span class="break-words">{{ shareData.organizationName }}</span>
 						<span
 							v-if="hoursRemaining > 0"
-							class="ml-2 inline-flex items-center gap-1 text-xs text-text-tertiary"
+							class="inline-flex items-center gap-1 text-xs text-text-tertiary"
 						>
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
-								class="h-3 w-3"
+								class="h-3 w-3 shrink-0"
 								fill="none"
 								viewBox="0 0 24 24"
 								stroke="currentColor"
@@ -164,42 +173,56 @@ onMounted(async () => {
 									d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
 								/>
 							</svg>
-							Expires in {{ hoursRemaining }}h
+							{{ t('recipient.share.expiresIn', { hours: hoursRemaining }) }}
 						</span>
 					</p>
 				</div>
-			</div>
+			</header>
 
 			<!-- Email Content in sandboxed iframe -->
-			<div class="max-w-3xl mx-auto my-6 px-4">
-				<div
-					class="bg-bg-elevated rounded-lg shadow-sm border border-border-default overflow-hidden"
-				>
+			<div class="mx-auto my-5 max-w-3xl px-5 sm:my-8">
+				<div class="overflow-hidden rounded-(--radius-card) shadow-surface-2">
 					<!--
-						`allow-same-origin` is required so the @load handler can read
-						contentDocument to size the frame to the email. NEVER add
-						`allow-scripts`: same-origin + scripts lets the framed HTML
-						escape the sandbox entirely. This frame renders untrusted
-						email HTML, so it must stay script-free.
+						The email was authored for a light canvas, so the paper stays
+						light in BOTH color schemes: `light` re-resolves the token layer
+						for this subtree (see packages/ui/assets/css/light.css) and
+						`scheme-only-light` keeps the framed document from picking up the
+						recipient's dark preference. Inverting it would leave dark-on-dark
+						email text unreadable.
 					-->
-					<iframe
-						:srcdoc="shareData.html"
-						sandbox="allow-same-origin"
-						class="w-full border-0"
-						style="min-height: 600px"
-						@load="
-							($event.target as HTMLIFrameElement).style.height =
-								(($event.target as HTMLIFrameElement).contentDocument?.documentElement
-									?.scrollHeight ?? 600) + 'px'
-						"
-					/>
+					<div class="light bg-surface-3">
+						<!--
+							`allow-same-origin` is required so the @load handler can read
+							contentDocument to size the frame to the email. NEVER add
+							`allow-scripts`: same-origin + scripts lets the framed HTML
+							escape the sandbox entirely. This frame renders untrusted
+							email HTML, so it must stay script-free.
+						-->
+						<iframe
+							:srcdoc="shareData.html"
+							sandbox="allow-same-origin"
+							:title="t('recipient.share.frameTitle')"
+							class="w-full border-0 scheme-only-light"
+							style="min-height: 600px"
+							@load="
+								($event.target as HTMLIFrameElement).style.height =
+									(($event.target as HTMLIFrameElement).contentDocument?.documentElement
+										?.scrollHeight ?? 600) + 'px'
+							"
+						/>
+					</div>
 				</div>
 			</div>
 
 			<!-- Footer -->
-			<div class="text-center py-6 text-text-tertiary text-sm">
-				Powered by <span class="font-semibold">Owlat</span>
-			</div>
+			<I18nT
+				keypath="common.poweredBy"
+				tag="p"
+				scope="global"
+				class="pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center text-sm text-text-tertiary"
+			>
+				<template #brand><span class="font-display">Owlat</span></template>
+			</I18nT>
 		</div>
 	</div>
 </template>

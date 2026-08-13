@@ -63,6 +63,7 @@
 		"@vitest/coverage-v8": "catalog:",
 		"@vue/test-utils": "^2.4.6",
 		"autoprefixer": "^10.4.27",
+		"axe-core": "^4.13.0",
 		"cross-env": "^10.1.0",
 		"happy-dom": "^20.8.4",
 		"postcss": "^8.5.26",
