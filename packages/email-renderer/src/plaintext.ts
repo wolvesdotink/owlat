@@ -58,10 +58,18 @@ export const hasPlainTextOverride = (override: string | null | undefined): boole
  * The text/plain body to ship: the author's manual override when they wrote
  * one, otherwise the body generated from the block document. Every send path
  * resolves through this so "override wins" is stated once.
+ *
+ * An override is shipped as written. Only line endings are canonicalized and
+ * the document ends trimmed — `normalize()`'s blank-line collapsing belongs to
+ * the generated branch, where the holes it closes are the renderer's own; in a
+ * hand-written body the spacing is the author's, and quietly rewriting it
+ * (ASCII rules, stanza breaks, an indented signature) is not ours to do.
  */
 export const resolvePlainText = (
 	blocks: EditorBlock[],
 	override: string | null | undefined,
 	options?: RenderOptions
 ): string =>
-	hasPlainTextOverride(override) ? normalize(override!) : renderPlainText(blocks, options);
+	hasPlainTextOverride(override)
+		? override!.replace(/\r\n/g, '\n').trim()
+		: renderPlainText(blocks, options);
