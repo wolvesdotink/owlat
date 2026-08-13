@@ -23,6 +23,7 @@ import { runDoctor } from './commands/doctor';
 import { runQuickstart } from './commands/quickstart';
 import { runBootstrapOrg } from './commands/bootstrap-org';
 import { runSeed } from './commands/seed';
+import { runSampleData } from './commands/sampleData';
 import { runReset } from './commands/reset';
 
 const VERSION = '0.4.2'; // x-release-version (kept in sync by scripts/release.ts)
@@ -38,7 +39,11 @@ Commands:
   setup              First-run config wizard (writes .env + compose override).
   config             Re-open the wizard for an existing install.
   bootstrap-org      Create the first admin user + singleton org.
-  seed [--reset]     Populate the running instance with realistic demo data.
+  sample-data <install|remove|status>
+                     Opt-in demo content for a real install, and its exact
+                     removal. Works without OWLAT_DEV_MODE.
+  seed [--reset]     Dev-only full demo seed (needs OWLAT_DEV_MODE; also
+                     creates the dummy teammate sign-ins).
   reset              Wipe instance back to blank (for testing signup flow).
   feature <key> <on|off>
                      Toggle a single feature flag.
@@ -120,6 +125,8 @@ async function main(): Promise<number> {
 				return await runBootstrapOrg({ ...opts, positional });
 			case 'seed':
 				return await runSeed({ ...opts, positional });
+			case 'sample-data':
+				return await runSampleData({ ...opts, positional });
 			case 'reset':
 				return await runReset({ ...opts, positional });
 			case 'feature':

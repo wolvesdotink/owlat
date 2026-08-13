@@ -9,94 +9,28 @@
  *   1. `safeCompare` against `INSTANCE_SECRET`
  *   2. `assertDevDeployment()` — refuses prod-prefixed deployments
  *
- * Loaders run in topological order based on their declared `dependencies`.
- * Each loader inserts rows tagged with `seedTag: 'demo'` so reset can find
- * them again. Exception: the `accounts` loader writes BetterAuth component
- * rows, which cannot carry the tag — it dedupes by email instead and is only
- * wiped by the full `POST /dev/reset`.
+ * DEV ONLY, and it stays that way: this endpoint seeds the dummy teammate
+ * sign-ins whose passwords are published fixture hashes. A real install that
+ * wants demo content uses the sample-data path instead (`sampleData/`,
+ * `POST /sample-data/install`), which runs the same loaders minus the
+ * accounts/mailboxes and needs no dev mode.
+ *
+ * Loaders run in topological order based on their declared `dependencies`
+ * (see `./pipeline`). Each loader inserts rows tagged with `seedTag: 'demo'`
+ * so reset can find them again. Exception: the `accounts` loader writes
+ * BetterAuth component rows, which cannot carry the tag — it dedupes by email
+ * instead and is only wiped by the full `POST /dev/reset`.
  */
 
 import { v } from 'convex/values';
-import type { TableNames } from '../_generated/dataModel';
 import { httpAction, internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { safeCompare } from '../lib/safeCompare';
 import { devDeploymentResponseOrNull } from '../devShortcuts/_guard';
+import { applyLoaders, isRemovableSeedRow, SEEDED_TABLES, type SeedSummary } from './pipeline';
 
-import accountsFixture from './fixtures/accounts.json';
-import topicsFixture from './fixtures/topics.json';
-import contactsFixture from './fixtures/contacts.json';
-import contactTopicsFixture from './fixtures/contactTopics.json';
-import savedBlocksFixture from './fixtures/savedBlocks.json';
-import emailTemplatesFixture from './fixtures/emailTemplates.json';
-import transactionalEmailsFixture from './fixtures/transactionalEmails.json';
-import campaignsFixture from './fixtures/campaigns.json';
-import automationsFixture from './fixtures/automations.json';
-import webhooksFixture from './fixtures/webhooks.json';
-import domainsFixture from './fixtures/domains.json';
-import mailboxesFixture from './fixtures/mailboxes.json';
-import complianceTelemetryFixture from './fixtures/complianceTelemetry.json';
-
-import { accountsLoader } from './loaders/accounts';
-import { topicsLoader } from './loaders/topics';
-import { contactsLoader } from './loaders/contacts';
-import { contactTopicsLoader } from './loaders/contactTopics';
-import { savedBlocksLoader } from './loaders/savedBlocks';
-import { emailTemplatesLoader } from './loaders/emailTemplates';
-import { transactionalEmailsLoader } from './loaders/transactionalEmails';
-import { campaignsLoader } from './loaders/campaigns';
-import { automationsLoader } from './loaders/automations';
-import { webhooksLoader } from './loaders/webhooks';
-import { domainsLoader } from './loaders/domains';
-import { mailboxesLoader } from './loaders/mailboxes';
-import { complianceTelemetryLoader } from './loaders/complianceTelemetry';
-import type { Loader, SeedRefs } from './loaders/types';
-
-// Order matters: each entry's `dependencies` reference earlier modules in the
-// list. Keeping the list ordered makes the topological sort a single pass.
-const LOADERS: Array<{ loader: Loader; records: unknown[] }> = [
-	{ loader: accountsLoader, records: accountsFixture },
-	{ loader: topicsLoader, records: topicsFixture },
-	{ loader: contactsLoader, records: contactsFixture },
-	{ loader: contactTopicsLoader, records: contactTopicsFixture },
-	{ loader: savedBlocksLoader, records: savedBlocksFixture },
-	{ loader: emailTemplatesLoader, records: emailTemplatesFixture },
-	{ loader: transactionalEmailsLoader, records: transactionalEmailsFixture },
-	{ loader: campaignsLoader, records: campaignsFixture },
-	{ loader: automationsLoader, records: automationsFixture },
-	{ loader: webhooksLoader, records: webhooksFixture },
-	{ loader: domainsLoader, records: domainsFixture },
-	{ loader: mailboxesLoader, records: mailboxesFixture },
-	{ loader: complianceTelemetryLoader, records: complianceTelemetryFixture },
-];
-
-// Tables that may carry `seedTag: 'demo'` rows. Used by reset to wipe them.
-const SEEDED_TABLES: TableNames[] = [
-	'topics',
-	'contactTopics',
-	'contacts',
-	'contactIdentities',
-	'emailBlocks',
-	'emailTemplates',
-	'transactionalEmails',
-	'campaigns',
-	'emailSends',
-	'automations',
-	'automationSteps',
-	'webhooks',
-	'domains',
-	'sendingDomainMtaIdentities',
-	'gmailVolumeBuckets',
-	'gmailDomainVolumeRollups',
-	'gmailDomainVolumeRollupJobs',
-];
-
-export interface SeedSummary {
-	inserted: Record<string, number>;
-	skipped: Record<string, number>;
-	deleted?: Record<string, number>;
-}
+export type { SeedSummary } from './pipeline';
 
 export const runSeedDemo = internalMutation({
 	args: {
@@ -111,8 +45,7 @@ export const runSeedDemo = internalMutation({
 				const rows = await ctx.db.query(table).collect(); // bounded: dev-only seed table
 				let removed = 0;
 				for (const row of rows) {
-					const tagged = (row as { seedTag?: string }).seedTag;
-					if (tagged === 'demo' || tagged === 'dev-forced') {
+					if (isRemovableSeedRow(row)) {
 						await ctx.db.delete(row._id);
 						removed++;
 					}
@@ -121,21 +54,9 @@ export const runSeedDemo = internalMutation({
 			}
 		}
 
-		const refs: SeedRefs = {};
-		for (const { loader, records } of LOADERS) {
-			for (const dep of loader.dependencies) {
-				if (!(dep in refs)) {
-					throw new Error(
-						`Seed loader '${loader.module}' depends on '${dep}', which has not been loaded yet.`
-					);
-				}
-			}
-			const result = await loader.load(ctx, records, refs);
-			refs[loader.module] = result.ids;
-			summary.inserted[loader.module] = result.inserted;
-			summary.skipped[loader.module] = result.skipped;
-		}
-
+		const { inserted, skipped } = await applyLoaders(ctx);
+		summary.inserted = inserted;
+		summary.skipped = skipped;
 		return summary;
 	},
 });

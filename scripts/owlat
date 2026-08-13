@@ -11,6 +11,7 @@
 #   owlat setup               — alias for quickstart (containerized TS CLI)
 #   owlat setup --legacy      — run the legacy bash setup.sh
 #   owlat config              — re-open the wizard for an existing install
+#   owlat sample-data [install|remove|status] — opt-in demo content, removable
 #   owlat feature <key> on|off — toggle a single feature flag
 #   owlat env <KEY> <VALUE>   — set a single env var in .env
 #   owlat start               — docker compose up -d
@@ -62,7 +63,7 @@ fi
 
 show_help() {
 	# Print the whole subcommand block from the header comment (through `--help`).
-	sed -n '4,29p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '4,30p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # ── Scheduled backups ─────────────────────────────────────────────────────────
@@ -369,6 +370,34 @@ case "$cmd" in
 			-v "$OWLAT_DIR:/opt/owlat" \
 			${CONFIG_MOUNT_ARGS[@]+"${CONFIG_MOUNT_ARGS[@]}"} \
 			"$OWLAT_SETUP_IMAGE" config "$@"
+		;;
+	sample-data)
+		# Opt-in demo content for a real install (install | remove | status).
+		# Unlike `feature`/`env`, this talks to the running backend's published
+		# Convex site port, so the container needs the same networking treatment
+		# as quickstart: host networking on Linux, host.docker.internal under
+		# Docker Desktop (where the container's localhost is the VM, not the box).
+		sample_data_docker_desktop=0
+		if [[ "$(uname -s)" != "Linux" ]]; then
+			sample_data_docker_desktop=1
+		elif docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi 'docker desktop'; then
+			sample_data_docker_desktop=1
+		fi
+		if [[ "$sample_data_docker_desktop" == "1" ]]; then
+			exec docker run --rm $([ -t 1 ] && echo "-it") \
+				--add-host=host.docker.internal:host-gateway \
+				-v "$OWLAT_DIR:/opt/owlat" \
+				-e "OWLAT_DIR=/opt/owlat" \
+				-e "OWLAT_LOCAL_HOST=host.docker.internal" \
+				-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
+				"$OWLAT_SETUP_IMAGE" sample-data "$@"
+		fi
+		exec docker run --rm $([ -t 1 ] && echo "-it") \
+			--network host \
+			-v "$OWLAT_DIR:/opt/owlat" \
+			-e "OWLAT_DIR=/opt/owlat" \
+			-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
+			"$OWLAT_SETUP_IMAGE" sample-data "$@"
 		;;
 	feature)
 		exec docker run --rm \

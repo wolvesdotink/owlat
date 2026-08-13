@@ -187,6 +187,35 @@ export const authTables = {
 		updatedAt: v.number(),
 	}).index('by_auth_user_id', ['authUserId']),
 
+	// "You can send now" notices — the unblock signal for the member who reached
+	// the personal first-send step while the instance had no outbound transport
+	// and was told "your admin is still setting up sending".
+	//
+	// Written ONLY on the instance-wide no-transport → transport EDGE (see
+	// `auth/sendReadyNotices.ts`), one row per member whose first-send step was
+	// still open at that instant. `acknowledgedAt` — not the session-memory
+	// de-dup the inbox assignment notices use — is what makes the nudge survive a
+	// reload: the member this is for is usually NOT looking at the app when the
+	// admin finishes the transport setup, so the notice has to wait for them.
+	sendReadyNotices: defineTable({
+		userId: v.string(), // BetterAuth user id of the member who was waiting
+		createdAt: v.number(),
+		// Set once the member's session has surfaced the notice; unset ⇒ pending.
+		acknowledgedAt: v.optional(v.number()),
+	}).index('by_user_and_created', ['userId', 'createdAt']),
+
+	// Last observed answer to "can this instance deliver mail at all?" — the one
+	// row that turns that LEVEL (`isDeliveryConfigured`, derived live from
+	// provider routes + env) into an EDGE the notice fan-out can fire on. The
+	// first sample only records a baseline, so an instance that could always send
+	// never notifies anyone. Singleton (single org per deployment): read with
+	// `.first()`, no index needed.
+	sendPathReadiness: defineTable({
+		isReady: v.boolean(),
+		// When the readiness answer last CHANGED (not when it was last sampled).
+		changedAt: v.number(),
+	}),
+
 	// Access requests — the door out of the "invitation required" dead-end.
 	//
 	// A signed-in user who belongs to no organization (they authenticated but
