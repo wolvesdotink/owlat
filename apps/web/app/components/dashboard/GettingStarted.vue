@@ -90,10 +90,16 @@ const showBackupsStep = computed(
 // outbound transport; with it they render as blocked and unblock themselves the
 // moment sending works (the same edge that notifies the waiting member — see
 // `auth/sendReadyNotices.ts`).
-const { data: sendReadyState, isLoading: isLoadingSendReady } = useOrganizationQuery(
-	api.auth.sendReadyNotices.getState
-);
-const sendPathReady = computed(() => sendReadyState.value?.isReady ?? false);
+const { data: sendReadyState } = useOrganizationQuery(api.auth.sendReadyNotices.getState);
+// UNRESOLVED IS "NOT BLOCKED", NOT "NOT READY". An unanswered `getState` is
+// UNKNOWN, and rendering it as "cannot send" would flash the personal send steps
+// as blocked (a non-clickable waiting row) on an instance that can in fact send.
+// The gate is HERE rather than in the card's own loading flag: this query is
+// org-scoped, so it stays skipped for as long as there is no active organization
+// to answer it — and a card-level gate would then hide the whole checklist
+// indefinitely rather than for a paint. The steps settle into their blocked
+// state the moment the query says the instance cannot send.
+const sendPathReady = computed(() => sendReadyState.value?.isReady ?? true);
 
 // How much can actually go out today under the IP warm-up cap. Admins only —
 // only they see the "Send a campaign" go-live step this qualifies, and there is
@@ -138,16 +144,14 @@ const instanceFlags = computed<Record<InstanceFlagId, boolean>>(() => ({
 	setupDomain: instanceProgress.value?.setupDomain ?? false,
 }));
 
-// Every gate the card's contents depend on, including the send-readiness one:
-// an unresolved `getState` is UNKNOWN, not "not ready", and rendering it as the
-// latter would flash the personal send steps as blocked (a non-clickable
-// waiting row) on an instance that can in fact send.
+// Every gate the card's CONTENTS depend on. Each of these decides whether a step
+// exists or is ticked, so the card stays hidden until they answer; the
+// send-readiness read is deliberately not among them (see `sendPathReady`).
 const isLoading = computed(
 	() =>
 		isLoadingOnboarding.value ||
 		isLoadingSettings.value ||
 		isLoadingAiConfig.value ||
-		isLoadingSendReady.value ||
 		(isInstanceViewer.value && isLoadingInstance.value)
 );
 

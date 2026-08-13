@@ -208,37 +208,38 @@ function handleBlockDoubleClick(blockId: string, blockType: string) {
 	}
 }
 
-// Ref callback to register block elements. The same elements are the listbox
-// options, so keep a local map for focus management instead of re-querying by
+// Ref callback to register block elements. The same elements are the focusable
+// blocks, so keep a local map for focus management instead of re-querying by
 // id (block ids come from the host and are not selector-safe).
-const optionElements = new Map<string, HTMLElement>();
+const focusableBlocks = new Map<string, HTMLElement>();
 
 function setBlockRef(blockId: string, el: HTMLElement | null) {
-	if (el) optionElements.set(blockId, el);
-	else optionElements.delete(blockId);
+	if (el) focusableBlocks.set(blockId, el);
+	else focusableBlocks.delete(blockId);
 	setBlockElement(blockId, el);
 }
 
 // ---------------------------------------------------------------------------
-// Listbox semantics: roving tabindex + focus that tracks selection
+// List semantics: roving tabindex + focus that tracks selection
 // ---------------------------------------------------------------------------
 
 /**
- * Roving tabindex. Exactly one option is tabbable so the canvas is a single
+ * Roving tabindex. Exactly one block is tabbable so the canvas is a single
  * Tab stop; with nothing selected that is the first block, which is where
  * arrow navigation starts from.
  */
-function optionTabIndex(blockId: string): number {
+function blockTabIndex(blockId: string): number {
 	if (props.selectedBlockId) return props.selectedBlockId === blockId ? 0 : -1;
 	return props.blocks[0]?.id === blockId ? 0 : -1;
 }
 
 /**
- * Listbox navigation. Alt+Arrow is deliberately left alone: the global
- * keyboard handler (useKeyboardHandlers) uses it to *move* the selected block,
- * so here it must not also move the selection.
+ * List navigation, listbox-style: arrows, Home and End move the selection.
+ * Alt+Arrow is deliberately left alone — the editor's global keydown routing
+ * (utils/editorKeyboard) uses it to *move* the selected block, so here it must
+ * not also move the selection.
  */
-function handleListboxKeydown(event: KeyboardEvent) {
+function handleListKeydown(event: KeyboardEvent) {
 	if (event.altKey || event.metaKey || event.ctrlKey) return;
 	if (isEditableTarget(event.target)) return;
 
@@ -263,7 +264,7 @@ watch(
 		const active = document.activeElement;
 		if (active && active !== document.body && !containerRef.value?.contains(active)) return;
 		nextTick(() => {
-			const el = optionElements.get(blockId);
+			const el = focusableBlocks.get(blockId);
 			if (el && el !== document.activeElement) el.focus({ preventScroll: true });
 		});
 	}
@@ -335,30 +336,34 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 				<slot name="subject-fields" />
 
 				<!--
-					The block list is a listbox: one option per block, selection wired to
-					`selectedBlockId`, roving tabindex so the canvas is a single Tab stop.
-					The per-group wrapper is `presentation` so Sortable can keep its own
-					element without breaking listbox → option ownership.
+					The block list is a list, not a listbox: a block is a container of
+					real controls (drag handle, detach button, the inline text editor's
+					contenteditable), and an `option` makes every one of its descendants
+					presentational — they would all vanish from the a11y tree. So: one
+					`listitem` per draggable unit (Sortable's own element, which also
+					keeps the hover-only insert point inside the item instead of
+					dangling as a stray child of the list), each block inside it a named
+					`group` carrying `aria-current` for the selection and the roving
+					tabindex that keeps the canvas a single Tab stop.
 				-->
 				<div
 					ref="containerRef"
 					class="min-h-[100px]"
-					role="listbox"
+					role="list"
 					aria-label="Email blocks"
-					aria-orientation="vertical"
-					@keydown="handleListboxKeydown"
+					@keydown="handleListKeydown"
 				>
-					<div v-for="item in displayItems" :key="item.id" role="presentation">
+					<div v-for="item in displayItems" :key="item.id" role="listitem">
 						<div
 							v-for="block in item.blocks"
 							:key="block.id"
 							:ref="(el) => setBlockRef(block.id, el as HTMLElement)"
-							role="option"
-							:aria-selected="selectedBlockId === block.id"
+							role="group"
+							:aria-current="selectedBlockId === block.id ? 'true' : undefined"
 							:aria-label="blockAccessibleLabel(block)"
-							:tabindex="optionTabIndex(block.id)"
+							:tabindex="blockTabIndex(block.id)"
 							:class="[
-								'relative group/block transition-all duration-(--motion-moderate) rounded-md eb-canvas-option',
+								'relative group/block transition-all duration-(--motion-moderate) rounded-md eb-canvas-block',
 								isLinkedBlockFn(block.id)
 									? [
 										'border-x-2 border-y-0 border-dashed border-border-default my-0 rounded-none',

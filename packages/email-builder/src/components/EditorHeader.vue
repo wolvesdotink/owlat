@@ -16,7 +16,7 @@ import {
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 import type { PreviewMode, EmailBuilderConfig } from '../types';
-import { findShortcut, formatShortcut } from '../composables/editorShortcuts';
+import { findShortcut, formatShortcut, useApplePlatform } from '../composables/editorShortcuts';
 
 const props = defineProps<{
 	name: string;
@@ -52,8 +52,15 @@ const previewModeOptions = computed(() => [
 // Tooltips read from the shortcut registry so they can never drift from the
 // bindings or from the help sheet. The fallback keys only apply if an entry is
 // ever renamed out of the registry, so the tooltip degrades instead of vanishing.
+// The modifier symbol comes from a post-mount ref, so the server and the first
+// client render agree on the markup.
+const isApplePlatform = useApplePlatform();
+
 function shortcutTitle(description: string, fallbackKeys: string[]): string {
-	return `${description} (${formatShortcut(findShortcut(description)?.keys ?? fallbackKeys)})`;
+	return `${description} (${formatShortcut(
+		findShortcut(description)?.keys ?? fallbackKeys,
+		isApplePlatform.value
+	)})`;
 }
 
 const undoTitle = computed(() => shortcutTitle('Undo', ['Mod', 'Z']));

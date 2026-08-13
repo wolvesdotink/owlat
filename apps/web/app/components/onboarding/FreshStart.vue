@@ -49,15 +49,21 @@ const { data: canSendData, isLoading: transportLoading } = useOrganizationQuery(
 );
 const canSend = computed(() => canSendData.value ?? false);
 
-// Did this member actually SEE the "still setting up sending" state? If they
-// did and the transport lands while they're here, the row must not just quietly
-// swap to a button — it says so. (A member who arrives after sending already
-// works was never blocked and gets the plain button.) The out-of-session case is
-// covered server-side by the "you can send now" notice — see
-// `auth/sendReadyNotices.ts`.
+// Was this member actually TOLD that sending isn't set up yet? If they were and
+// the transport lands while they're here, the row must not just quietly swap to
+// a button — it says so. (A member who arrives after sending already works was
+// never blocked and gets the plain button.) The out-of-session case is covered
+// server-side by the "you can send now" notice — see `auth/sendReadyNotices.ts`.
+//
+// The latch is permanent by design — "sending just got set up" stays true for
+// the rest of the visit — so it may only be set by a SETTLED answer. `canSend`
+// collapses `undefined` to `false`, and the probe also stops loading when it
+// errors or times out; latching on that would announce "sending just got set
+// up" the moment a hiccuping probe finally answers `true`, about an instance
+// that could send all along. Only a literal `false` from the server counts.
 const sawBlocked = ref(false);
 watchEffect(() => {
-	if (!transportLoading.value && !canSend.value) sawBlocked.value = true;
+	if (!transportLoading.value && canSendData.value === false) sawBlocked.value = true;
 });
 const justUnblocked = computed(() => sawBlocked.value && canSend.value);
 
@@ -66,6 +72,11 @@ const displayName = ref('');
 const signatureText = ref('');
 const notifyChoice = ref<PostboxNotifyAbout>('everything');
 const seededFromMailbox = ref(false);
+
+/** The scope values are a stable union; only their labels are translated. */
+function notifyOptionLabel(value: PostboxNotifyAbout): string {
+	return t(`welcome.freshStart.notifyOptions.${value}`);
+}
 
 // Seed the display name once from server state, without clobbering later edits.
 watchEffect(() => {
@@ -91,22 +102,22 @@ watchEffect(() => {
 
 // ── Operations ──
 const setDisplayNameOp = useBackendOperation(api.mail.mailbox.setDisplayName, {
-	label: t('welcome.freshStart.operations.saveDisplayName'),
+	label: () => t('welcome.freshStart.operations.saveDisplayName'),
 });
 const createSignatureOp = useBackendOperation(api.mail.signatures.create, {
-	label: t('welcome.freshStart.operations.saveSignature'),
+	label: () => t('welcome.freshStart.operations.saveSignature'),
 });
 const createDraftOp = useBackendOperation(api.mail.drafts.create, {
-	label: t('welcome.freshStart.operations.prepareTestEmail'),
+	label: () => t('welcome.freshStart.operations.prepareTestEmail'),
 });
 const updateDraftOp = useBackendOperation(api.mail.drafts.update, {
-	label: t('welcome.freshStart.operations.prepareTestEmail'),
+	label: () => t('welcome.freshStart.operations.prepareTestEmail'),
 });
 const sendDraftOp = useBackendOperation(api.mail.drafts.send, {
-	label: t('welcome.freshStart.operations.sendTestEmail'),
+	label: () => t('welcome.freshStart.operations.sendTestEmail'),
 });
 const completeOp = useBackendOperation(api.auth.userOnboarding.completeFreshStart, {
-	label: t('welcome.freshStart.operations.finishSetup'),
+	label: () => t('welcome.freshStart.operations.finishSetup'),
 });
 
 const testSending = ref(false);
@@ -268,8 +279,8 @@ function skipToInbox() {
 						v-model="notifyChoice"
 						class="input input-sm"
 					>
-						<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt.value" :value="opt.value">
-							{{ opt.label }}
+						<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt" :value="opt">
+							{{ notifyOptionLabel(opt) }}
 						</option>
 					</select>
 					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.notifyHint') }}</p>

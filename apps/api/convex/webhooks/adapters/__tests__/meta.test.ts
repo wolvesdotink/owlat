@@ -8,9 +8,16 @@ const VERIFY_TOKEN = 'test-meta-verify-token';
 const STORED_APP_SECRET = 'stored-meta-app-secret';
 const STORED_VERIFY_TOKEN = 'stored-meta-verify-token';
 
-/** An action ctx whose credential vault holds `secret` for this channel. */
-function ctxWithStoredSecret(secret: string | null): ActionCtx {
-	return { runAction: async () => secret } as unknown as ActionCtx;
+/**
+ * An action ctx whose credential vault holds `secret` for this channel. The
+ * rate-limit gate on the GET challenge runs through `runMutation`; `allowed`
+ * drives what it answers.
+ */
+function ctxWithStoredSecret(secret: string | null, allowed = true): ActionCtx {
+	return {
+		runAction: async () => secret,
+		runMutation: async () => ({ ok: allowed, retryAfter: allowed ? 0 : 60_000 }),
+	} as unknown as ActionCtx;
 }
 const REQUEST_URL = 'https://owlat.example.com/webhooks/whatsapp';
 
@@ -310,5 +317,35 @@ describe('handleMetaChallenge', () => {
 			})
 		);
 		expect(response.status).toBe(403);
+	});
+
+	it('refuses a non-challenge GET without touching the credential vault', async () => {
+		process.env['META_VERIFY_TOKEN'] = VERIFY_TOKEN;
+		let vaultReads = 0;
+		const ctx = {
+			runAction: async () => {
+				vaultReads++;
+				return null;
+			},
+			runMutation: async () => ({ ok: true, retryAfter: 0 }),
+		} as unknown as ActionCtx;
+
+		// A bare probe of the endpoint — no hub.* params at all.
+		const response = await handleMetaChallenge(makeGetRequest({}), ctx);
+		expect(response.status).toBe(403);
+		expect(vaultReads).toBe(0);
+	});
+
+	it('rate-limits the unauthenticated challenge before opening the vault', async () => {
+		process.env['META_VERIFY_TOKEN'] = VERIFY_TOKEN;
+		const response = await handleMetaChallenge(
+			makeGetRequest({
+				'hub.mode': 'subscribe',
+				'hub.verify_token': VERIFY_TOKEN,
+				'hub.challenge': 'xyz',
+			}),
+			ctxWithStoredSecret(STORED_VERIFY_TOKEN, false)
+		);
+		expect(response.status).toBe(429);
 	});
 });

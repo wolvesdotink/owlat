@@ -65,6 +65,13 @@ export const messagingTables = {
 		displayName: v.optional(v.string()),
 		// Encrypted credentials (JSON string, encrypted at rest)
 		config: v.optional(v.string()),
+		// Non-secret presence map for the config form: the credential field NAMES
+		// the stored envelope currently holds a non-empty value for — never a
+		// value. The envelope is AES-256-GCM and only openable in a `'use node'`
+		// action, so a v8 query (and therefore the settings form) cannot derive
+		// this itself. Sole writer: `unifiedMessages.setChannelConfigSecret`,
+		// alongside the envelope it describes.
+		configuredFields: v.optional(v.array(v.string())),
 		// Health monitoring
 		healthStatus: v.optional(
 			v.union(v.literal('healthy'), v.literal('degraded'), v.literal('down'))

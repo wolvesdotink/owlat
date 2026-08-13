@@ -234,6 +234,15 @@ export const SEND_BLOCKED_REASON = 'Waiting on sending setup';
  * for an audience today's capacity cannot carry. `null` is "not measured, or no
  * cap applies", and then the step says nothing extra: an invented number beside
  * a checklist item is worse than no number (deliverability plan D14).
+ *
+ * WHY THIS IS NOT `sendReadinessNote`. That helper (`~/lib/sendReadiness`)
+ * builds the same measurement into a two-line NOTE — a heading and a detail —
+ * for the surfaces that render one beside a send button. A checklist step has
+ * one description to extend and no audience to compare against, so it needs the
+ * number as a clause rather than a heading, and it is the only surface that has
+ * to explain the limit at all ("while your IPs warm up") because it has no
+ * capacity panel beside it. The NUMBER is single-sourced — both read
+ * `campaigns/sendingReadiness.ts` — the sentence around it is not.
  */
 export function sentCampaignDescription(capacityToday: number | null): string {
 	const base = 'Send your first email campaign to your audience.';

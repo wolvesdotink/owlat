@@ -412,6 +412,13 @@ services:
       GITHUB_REPO: ${GITHUB_REPO:-}
       GIT_REPO_URL: ${GIT_REPO_URL:-}
       GIT_BASE_BRANCH: ${GIT_BASE_BRANCH:-main}
+    # EXACTLY ONE worker. `codeWorkTasks.reclaimStale` requeues every running /
+    # testing row on startup, because a single worker that has just started
+    # provably owns none of them. Scale this to two and each start would rip the
+    # other's in-flight task out from under it, so the invariant is pinned here
+    # rather than left to whoever runs `--scale`.
+    deploy:
+      replicas: 1
     # Hard resource ceilings: this container executes UNTRUSTED, inbound-email-
     # driven code (git / vitest / the coding agent), so a single task could
     # otherwise fork-bomb or OOM the whole host. Cap memory, CPU and the process

@@ -3,10 +3,16 @@
  * once.
  *
  * The backend answers how much campaign volume can go out today and when that
- * number next grows (`campaigns/sendingReadiness.ts`). Three surfaces say it —
- * the campaign editor, the new-campaign wizard's review step and the
- * getting-started checklist — and they must say the SAME thing, so the sentence
- * is built here rather than three times in three templates.
+ * number next grows (`campaigns/sendingReadiness.ts`). Two surfaces render that
+ * answer as a NOTE beside the send button — the campaign editor and the
+ * new-campaign wizard's review step — and they must say the SAME thing, so the
+ * sentence is built here rather than twice in two templates.
+ *
+ * The getting-started checklist quotes the same measurement, but not through
+ * here: it has no note to render, only a step DESCRIPTION to extend, and a
+ * heading plus a second line does not fit inside one. `sentCampaignDescription`
+ * in `~/utils/gettingStarted` owns that one sentence and says why it words the
+ * same number differently.
  *
  * The rule throughout is the deliverability plan's D14: say exactly what is
  * known and nothing more. An unmeasurable cap produces `null` (the surface
@@ -74,7 +80,8 @@ function growthSentence(
  * `audienceSize` is the eligible recipient count when the surface knows it (the
  * campaign editor and the review step do; the checklist does not). Knowing it
  * turns a bare capacity figure into the answer the operator actually wants —
- * does what I am about to send fit today.
+ * does what I am about to send fit today. Anything that is not a positive count
+ * means it is NOT known, and the note falls back to the capacity figure alone.
  */
 export function sendReadinessNote(
 	readiness: SendingReadiness | null | undefined,
@@ -101,7 +108,13 @@ export function sendReadinessNote(
 	}
 
 	const headline = `You can send to about ${readiness.today.toLocaleString()} ${readiness.today === 1 ? 'contact' : 'contacts'} today`;
-	const audienceSize = options.audienceSize ?? null;
+	// A NON-POSITIVE SIZE IS AN UNKNOWN ONE, never an audience of zero. The
+	// count is still loading on both surfaces that pass one (the wizard hands
+	// over `... ?? 0` while its count query resolves), and an empty segment has
+	// nothing to fit either — "your audience of 0 fits in today's capacity" would
+	// be a claim about an audience nobody has chosen yet.
+	const size = options.audienceSize ?? 0;
+	const audienceSize = size > 0 ? size : null;
 	// No audience yet (or a surface that never has one): the capacity figure and
 	// the growth are the whole, honest answer.
 	if (audienceSize === null) return { tone: 'ready', headline, detail: growth };
