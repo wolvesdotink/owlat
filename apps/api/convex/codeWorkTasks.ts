@@ -20,14 +20,6 @@ import { extractEmail } from './lib/emailAddress';
 import { checkCodeAgentSafety } from './lib/codeAgentGuard';
 import { CODE_TASK_MAX_ATTEMPTS, codeTaskRetryDecision } from './lib/codeTaskRetry';
 
-/**
- * Rows a single `getNextQueued` poll inspects. Queued tasks are ordered oldest
- * first, but a retry waits behind its backoff gate, so the head of the queue is
- * not always claimable — the window lets the worker look past a handful of
- * backing-off rows without an unbounded scan.
- */
-const QUEUE_SCAN_LIMIT = 25;
-
 /** Upper bound on rows a single reclaim sweep touches — keeps it bounded. */
 const RECLAIM_SCAN_LIMIT = 100;
 
@@ -100,17 +92,28 @@ export const listRecent = authedQuery({
  * A task requeued after a failure carries `nextAttemptAt`; it stays invisible
  * to the worker until that backoff window elapses. `now` is injectable so the
  * schedule can be exercised deterministically in tests.
+ *
+ * The backoff gate is part of the INDEX RANGE, not a scan-then-filter: the
+ * `by_status_and_next_attempt` index orders queued rows by the moment they
+ * become claimable, so `lte(nextAttemptAt, now)` names exactly the ready ones
+ * and the query reads a single row. A fixed scan window instead used to idle
+ * the whole queue whenever the oldest rows were all inside their backoff
+ * windows — with enough backing-off tasks ahead of it, a task that was ready
+ * right now was never even looked at. A never-attempted row has no
+ * `nextAttemptAt` at all, which sorts before every timestamp, so fresh work
+ * still comes first and ties break on insertion order (oldest first).
  */
 export const getNextQueued = internalQuery({
 	args: { now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const now = args.now ?? Date.now();
-		const queued = await ctx.db
+		return await ctx.db
 			.query('codeWorkTasks')
-			.withIndex('by_status', (q) => q.eq('status', 'queued'))
+			.withIndex('by_status_and_next_attempt', (q) =>
+				q.eq('status', 'queued').lte('nextAttemptAt', now)
+			)
 			.order('asc')
-			.take(QUEUE_SCAN_LIMIT);
-		return queued.find((task) => (task.nextAttemptAt ?? 0) <= now) ?? null;
+			.first();
 	},
 });
 
@@ -340,6 +343,13 @@ export const completeWithPR = internalMutation({
  * (the worker picks it up again once the window elapses); attempts exhausted →
  * terminal `failed`.
  *
+ * `terminal` is the caller's statement that re-running would fail identically.
+ * The retry schedule exists for the transient failures (an LLM endpoint hiccup,
+ * a network blip, a restarted worker); a deterministic outcome like "the agent
+ * produced no changes" is not one of them, and retrying it burns two more full
+ * clone/agent/test cycles to reach the same answer. The worker names those
+ * explicitly rather than the backend guessing from an error string.
+ *
  * Only a `running`/`testing` task is touched. A task the user cancelled is
  * already terminal `failed`, and the in-flight run reporting its own failure
  * must never resurrect it into another attempt — cancellation is not escapable
@@ -350,6 +360,7 @@ export const markFailed = internalMutation({
 		taskId: v.id('codeWorkTasks'),
 		errorMessage: v.string(),
 		llmCost: v.optional(v.number()),
+		terminal: v.optional(v.boolean()),
 		now: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<CodeTaskFailureOutcome> => {
@@ -361,7 +372,9 @@ export const markFailed = internalMutation({
 
 		// Keep a cost already recorded for the task when this report carries none.
 		const cost = args.llmCost ?? task.llmCost;
-		const decision = codeTaskRetryDecision(task, now);
+		const decision = args.terminal
+			? ({ retry: false, attempts: task.attempts ?? 0 } as const)
+			: codeTaskRetryDecision(task, now);
 
 		if (decision.retry) {
 			await ctx.db.patch(args.taskId, {
@@ -397,6 +410,9 @@ export const markFailed = internalMutation({
  * (one sidecar drains the queue, one task at a time), so a freshly started
  * process provably owns no task: every `running`/`testing` row is residue of
  * its crashed predecessor, whatever its timestamps say — hence no lease window.
+ * That premise is not a hope: both compose files pin `code-worker` to
+ * `deploy.replicas: 1`, because a second worker starting up would requeue the
+ * first one's in-flight task.
  * Each row goes through the same retry decision as a reported failure, so a
  * crash costs an attempt and backs off rather than stranding the task forever.
  */

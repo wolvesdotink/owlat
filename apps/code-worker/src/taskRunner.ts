@@ -359,13 +359,23 @@ export async function runTests(
  * or makes the failure terminal; the worker just picks the task up again on a
  * later poll once the window has elapsed. The client is injectable so the
  * decision-reporting can be unit-tested without a deployment.
+ *
+ * `terminal` is for the failures a retry cannot change — the worker is the only
+ * side that knows which those are. Each attempt is a fresh clone, a full coding
+ * agent run and the test suite, so re-running a deterministic outcome spends
+ * that twice over to reach the same verdict.
  */
 export async function reportTaskFailure(
 	taskId: string,
 	errorMessage: string,
-	client: ReturnType<typeof getConvexClient> = getConvexClient()
+	client: ReturnType<typeof getConvexClient> = getConvexClient(),
+	options: { terminal?: boolean } = {}
 ): Promise<void> {
-	const outcome = await client.mutation(fn.markFailed, { taskId, errorMessage });
+	const outcome = await client.mutation(fn.markFailed, {
+		taskId,
+		errorMessage,
+		...(options.terminal ? { terminal: true } : {}),
+	});
 	if (outcome?.retried) {
 		const waitSeconds = Math.max(0, Math.round(((outcome.nextAttemptAt ?? 0) - Date.now()) / 1000));
 		log(`Task ${taskId} failed on attempt ${outcome.attempts}; retrying in ~${waitSeconds}s`);
@@ -413,7 +423,12 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		// tree (world-readable) and writes only the root-owned .git.
 		const diffOutput = runGit(buildDiffStatArgs(workDir), { encoding: 'utf-8' }) as string;
 		if (!diffOutput.trim()) {
-			await reportTaskFailure(taskId, 'Coding agent produced no changes', client);
+			// Deterministic: the agent ran to completion and decided the task needed
+			// no code change. Two more clone/agent/test cycles reach the same answer,
+			// so this failure is terminal rather than retried.
+			await reportTaskFailure(taskId, 'Coding agent produced no changes', client, {
+				terminal: true,
+			});
 			return;
 		}
 
