@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import en from '~~/i18n/locales/en.json';
 
 const { PLUGIN_KIND, PLUGIN_TOKEN_ENV, pluginCatalog } = vi.hoisted(() => {
 	const kind = 'plugin.mock-esp.relay';
@@ -78,12 +79,16 @@ describe('a bundled plugin transport reaches the credential UI', () => {
 	});
 
 	it('renders capability-derived DNS guidance from the composed entry', () => {
-		expect(transportDnsGuidance(PLUGIN_KIND)).toEqual(
+		const guidance = transportDnsGuidance(PLUGIN_KIND);
+		// The label is the plugin's own (never keyed); the prose is a catalog key
+		// the screen resolves, so the words are asserted through the catalog.
+		expect(guidance).toEqual(
 			expect.objectContaining({
 				label: 'Mock ESP',
-				lead: expect.stringContaining('identity API'),
+				lead: 'shared.transportDnsGuidance.api.lead',
 			})
 		);
+		expect(en.shared.transportDnsGuidance.api.lead).toContain('identity API');
 	});
 
 	it('renders and seeds its generated write-only descriptor', () => {

@@ -99,8 +99,10 @@ describe('Mobile-only controls clear the 44px touch target', () => {
 	});
 
 	it('sizes the reply-queue strip dismiss button to 44px square', () => {
+		// The accessible name is a catalog lookup since the extraction, so the
+		// anchor is the keypath — the copy behind it lives in i18n/locales.
 		expect(replyQueueStrip).toMatch(
-			/w-11 h-11[\s\S]{0,300}?aria-label="Dismiss reply queue reminder"/
+			/w-11 h-11[\s\S]{0,300}?:aria-label="t\('components\.postbox\.postboxReplyQueueStrip\.dismissLabel'\)"/
 		);
 	});
 });

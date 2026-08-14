@@ -16,7 +16,8 @@ beforeAll(() => {
 const help = {
 	provider: 'Gmail',
 	url: 'https://myaccount.google.com/apppasswords',
-	steps: 'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.',
+	steps:
+		'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.',
 };
 
 function mountCallout(authError?: boolean) {

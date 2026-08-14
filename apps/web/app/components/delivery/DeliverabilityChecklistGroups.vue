@@ -22,6 +22,17 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+/**
+ * `formatVerificationAge` carries an i18n key plus the number it interpolates
+ * (the registry convention for module-scope sentences); rendered unresolved it
+ * paints the serialized object at the operator instead of "3 minutes ago".
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
 const { copy, isCopied } = useCopyToClipboard();
 
 const groupIcon = {
@@ -72,7 +83,7 @@ const groupIcon = {
 									{{ t('components.delivery.deliverabilityChecklistGroups.thisServer') }}</span
 								>
 								<span v-if="item.lastCheckedAt">
-									· {{ formatVerificationAge(item.lastCheckedAt) }}</span
+									· {{ localized(formatVerificationAge(item.lastCheckedAt)) }}</span
 								>
 							</p>
 						</div>

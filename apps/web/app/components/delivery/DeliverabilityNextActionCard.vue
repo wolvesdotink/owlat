@@ -19,6 +19,17 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+/**
+ * `formatVerificationAge` carries an i18n key plus the number it interpolates
+ * (the registry convention for module-scope sentences); rendered unresolved it
+ * paints the serialized object at the operator instead of "3 minutes ago".
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
 const { copy, isCopied } = useCopyToClipboard();
 const clock = ref(Date.now());
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -169,7 +180,7 @@ async function copyValue(value: string, key: string) {
 					{{ item.lockedReason }}
 				</p>
 				<p v-else-if="item.lastCheckedAt" class="text-xs text-text-tertiary">
-					{{ formatVerificationAge(item.lastCheckedAt, clock) }}
+					{{ localized(formatVerificationAge(item.lastCheckedAt, clock)) }}
 				</p>
 				<div class="sm:ml-auto flex flex-wrap items-center gap-3">
 					<button

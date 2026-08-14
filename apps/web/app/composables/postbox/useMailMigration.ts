@@ -36,7 +36,7 @@ export type MigrationStatus = NonNullable<
 export function deriveMigrationStep(
 	status: MigrationStatus | null | undefined,
 	isConnected: boolean,
-	accountStatus?: string | null,
+	accountStatus?: string | null
 ): MigrationStep {
 	switch (status) {
 		case 'importing':
@@ -60,16 +60,14 @@ export function useMailMigration() {
 	const { data: statusData } = useConvexQuery(api.mail.migration.getStatus, () => ({}));
 	const { data: accountData } = useConvexQuery(
 		api.mail.externalAccounts.getForCurrentUser,
-		() => ({}),
+		() => ({})
 	);
 
 	const migration = computed(() => statusData.value ?? null);
 	const account = computed(() => accountData.value ?? null);
 	const isConnected = computed(() => account.value?.configured === true);
 	// `getForCurrentUser` only exposes `status` on a configured account.
-	const accountStatus = computed(() =>
-		account.value?.configured ? account.value.status : null,
-	);
+	const accountStatus = computed(() => (account.value?.configured ? account.value.status : null));
 
 	const startOp = useBackendOperation(api.mail.migration.start, {
 		label: () => t('shared.postbox.useMailMigration.startOperation'),
@@ -79,7 +77,7 @@ export function useMailMigration() {
 	});
 
 	const step = computed<MigrationStep>(() =>
-		deriveMigrationStep(migration.value?.status, isConnected.value, accountStatus.value),
+		deriveMigrationStep(migration.value?.status, isConnected.value, accountStatus.value)
 	);
 
 	const importPercent = computed(() => migration.value?.importPercent ?? 0);
@@ -89,7 +87,7 @@ export function useMailMigration() {
 	// Before the worker reports any folder counts, the total is 0 — show an
 	// indeterminate "discovering your mailbox" state rather than a stuck 0%.
 	const isDiscovering = computed(
-		() => step.value === 'importing' && (migration.value?.messagesTotal ?? 0) === 0,
+		() => step.value === 'importing' && (migration.value?.messagesTotal ?? 0) === 0
 	);
 
 	async function start(source: 'google' | 'imap' = 'google') {

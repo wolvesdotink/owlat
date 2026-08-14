@@ -64,7 +64,7 @@ describe('PostboxOfflineStore', () => {
 		expect(await store.loadBody(MBX, 'missing')).toBeNull();
 	});
 
-	it('never serves one mailbox\'s cache to another (namespace isolation)', async () => {
+	it("never serves one mailbox's cache to another (namespace isolation)", async () => {
 		const store = new PostboxOfflineStore(memoryDriver());
 		// Mailbox A caches rows + a body.
 		await store.saveThreads('mbxA', 'inbox', [row('secret-a')]);

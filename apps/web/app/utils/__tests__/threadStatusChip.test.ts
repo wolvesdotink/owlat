@@ -75,9 +75,10 @@ describe('threadStatusChip', () => {
 	});
 
 	it('draft_ready outranks waiting', () => {
-		expect(chip({ status: 'waiting', latestDraftStatus: 'pending', now: NOW })).toEqual(
-			{ label: 'Draft ready', variant: 'warning' }
-		);
+		expect(chip({ status: 'waiting', latestDraftStatus: 'pending', now: NOW })).toEqual({
+			label: 'Draft ready',
+			variant: 'warning',
+		});
 	});
 
 	it('does not read a lapsed snooze as Snoozed', () => {

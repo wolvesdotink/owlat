@@ -32,7 +32,11 @@ describe('DecisionRationale', () => {
 		const wrapper = mount(DecisionRationale, {
 			...mountOpts,
 			props: {
-				decision: { decision: 'human_review', reason: 'Draft quality 0.2 < threshold 0.8. Routing to human review.', confidence: 0.9 },
+				decision: {
+					decision: 'human_review',
+					reason: 'Draft quality 0.2 < threshold 0.8. Routing to human review.',
+					confidence: 0.9,
+				},
 				groundingSources: [
 					{ type: 'thread', id: 'm1', title: 'Order 123' },
 					{ type: 'knowledge', id: 'k1', title: 'Shipping policy' },
@@ -54,7 +58,11 @@ describe('DecisionRationale', () => {
 		const wrapper = mount(DecisionRationale, {
 			...mountOpts,
 			props: {
-				decision: { decision: 'auto_approve', reason: 'Draft quality 0.92 >= threshold 0.8. Auto-approving.', confidence: 0.95 },
+				decision: {
+					decision: 'auto_approve',
+					reason: 'Draft quality 0.92 >= threshold 0.8. Auto-approving.',
+					confidence: 0.95,
+				},
 				groundingSources: [],
 			},
 		});
@@ -75,7 +83,11 @@ describe('DecisionRationale', () => {
 		const wrapper = mount(DecisionRationale, {
 			...mountOpts,
 			props: {
-				decision: { decision: 'human_review', reason: 'Auto-reply is disabled. Routing to human review.', confidence: 0.5 },
+				decision: {
+					decision: 'human_review',
+					reason: 'Auto-reply is disabled. Routing to human review.',
+					confidence: 0.5,
+				},
 			},
 		});
 		expect(wrapper.text()).toContain('Held because');

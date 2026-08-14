@@ -14,7 +14,7 @@
  */
 
 /** The onboarding step this notice unblocks. */
-export const SEND_READY_STEP_ID = "firstSendDone" as const;
+export const SEND_READY_STEP_ID = 'firstSendDone' as const;
 
 /**
  * Where the notice's action lands: the dashboard's Getting started card, with
@@ -40,7 +40,7 @@ export interface SendReadyNotice {
  */
 export function planSendReadyToast(
 	notices: readonly SendReadyNotice[] | undefined,
-	surfaced: ReadonlySet<string>,
+	surfaced: ReadonlySet<string>
 ): SendReadyNotice | null {
 	if (!notices || notices.length === 0) return null;
 	const fresh = notices.filter((notice) => !surfaced.has(notice.id));
@@ -55,5 +55,5 @@ export function planSendReadyToast(
  * the composable that shows the toast (`useSendReadyNotice`) resolves it.
  */
 export function sendReadyToastMessage(): string {
-	return "shared.onboarding.sendReadyNotice.toast";
+	return 'shared.onboarding.sendReadyNotice.toast';
 }

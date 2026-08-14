@@ -19,7 +19,18 @@ import {
 	formatCapacityDay,
 	isCapacityDayToday,
 	type CampaignCapacitySchedulePlan,
+	type CapacityMessage,
 } from '../campaignCapacityRefusal';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The module decides the sentence but never speaks it: module scope cannot call
+ * `useI18n`, so it returns a catalog key plus its parameters. Rendering through
+ * the real catalog keeps these assertions on the words the panel shows.
+ */
+const { t } = createTestI18n().global;
+const render = (message: CapacityMessage | null): string | null =>
+	message === null ? null : t(message.key, message.params ?? {});
 
 function refusal(capacityPlan: unknown): OperationError {
 	return {
@@ -102,29 +113,31 @@ describe('capacityRefusalPlan', () => {
 
 describe('capacityScheduleHeadline', () => {
 	it('quotes the day count as the finish when the plan is complete', () => {
-		expect(capacityScheduleHeadline({ ...VALID_PLAN })).toBe('Sending over 5 days');
+		expect(render(capacityScheduleHeadline({ ...VALID_PLAN }))).toBe('Sending over 5 days');
 	});
 
 	it('quotes a floor when the audience is only known as a lower bound', () => {
-		expect(capacityScheduleHeadline({ ...VALID_PLAN, audienceUnderCounted: true })).toBe(
+		expect(render(capacityScheduleHeadline({ ...VALID_PLAN, audienceUnderCounted: true }))).toBe(
 			'Sending over at least 5 days'
 		);
 	});
 
 	it('never quotes the day count as a finish for a truncated enumeration', () => {
-		expect(capacityScheduleHeadline({ ...VALID_PLAN, truncated: true })).toBe(
+		expect(render(capacityScheduleHeadline({ ...VALID_PLAN, truncated: true }))).toBe(
 			'Sending over more than 5 days'
 		);
 	});
 
 	it('truncation wins over an under-counted audience — the weaker claim', () => {
 		expect(
-			capacityScheduleHeadline({ ...VALID_PLAN, truncated: true, audienceUnderCounted: true })
+			render(
+				capacityScheduleHeadline({ ...VALID_PLAN, truncated: true, audienceUnderCounted: true })
+			)
 		).toBe('Sending over more than 5 days');
 	});
 
 	it('says "day" in the singular', () => {
-		expect(capacityScheduleHeadline({ ...VALID_PLAN, days: 1, slices: [1] })).toBe(
+		expect(render(capacityScheduleHeadline({ ...VALID_PLAN, days: 1, slices: [1] }))).toBe(
 			'Sending over 1 day'
 		);
 	});
@@ -179,11 +192,13 @@ describe('capacity plan dates', () => {
 	 */
 	describe('capacityFinishSentence', () => {
 		it('names the finish day when the plan knows one', () => {
-			expect(capacityFinishSentence(PLAN)).toBe('Everyone is reached by Friday, January 9.');
+			expect(render(capacityFinishSentence(PLAN))).toBe(
+				'Everyone is reached by Friday, January 9.'
+			);
 		});
 
 		it('qualifies the finish day when the audience is only a lower bound', () => {
-			expect(capacityFinishSentence({ ...PLAN, audienceUnderCounted: true })).toBe(
+			expect(render(capacityFinishSentence({ ...PLAN, audienceUnderCounted: true }))).toBe(
 				'Everyone is reached by Friday, January 9 at the earliest.'
 			);
 		});

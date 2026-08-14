@@ -7,6 +7,11 @@ import {
 	formatRate,
 	auditActionLabel,
 } from '../operatorConsole';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The console is mapping-only, so an audit action arrives as a message key; the
+// words an operator reads are resolved through the real catalog.
+const { t } = createTestI18n().global;
 
 describe('abuseStatusVariant', () => {
 	it('maps clean to success', () => {
@@ -78,15 +83,15 @@ describe('formatRate', () => {
 
 describe('auditActionLabel', () => {
 	it('humanizes known platform-admin actions', () => {
-		expect(auditActionLabel('platform_admin.content_approved')).toBe('Approved content');
-		expect(auditActionLabel('platform_admin.content_rejected')).toBe('Rejected content');
-		expect(auditActionLabel('platform_admin.org_status_changed')).toBe('Changed org status');
-		expect(auditActionLabel('platform_admin.admin_added')).toBe('Added admin');
-		expect(auditActionLabel('platform_admin.admin_removed')).toBe('Removed admin');
+		expect(t(auditActionLabel('platform_admin.content_approved'))).toBe('Approved content');
+		expect(t(auditActionLabel('platform_admin.content_rejected'))).toBe('Rejected content');
+		expect(t(auditActionLabel('platform_admin.org_status_changed'))).toBe('Changed org status');
+		expect(t(auditActionLabel('platform_admin.admin_added'))).toBe('Added admin');
+		expect(t(auditActionLabel('platform_admin.admin_removed'))).toBe('Removed admin');
 	});
 
 	it('echoes unknown actions unchanged and handles undefined', () => {
 		expect(auditActionLabel('something.else')).toBe('something.else');
-		expect(auditActionLabel(undefined)).toBe('Unknown action');
+		expect(t(auditActionLabel(undefined))).toBe('Unknown action');
 	});
 });

@@ -601,7 +601,8 @@ export function useCsvImport() {
 
 			return aggregatedResults;
 		} catch (err) {
-			error.value = err instanceof Error ? err.message : t('shared.useCsvImport.errors.importFailed');
+			error.value =
+				err instanceof Error ? err.message : t('shared.useCsvImport.errors.importFailed');
 			step.value = 'mapping';
 			throw err;
 		}

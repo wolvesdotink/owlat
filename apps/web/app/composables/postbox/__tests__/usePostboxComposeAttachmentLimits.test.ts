@@ -91,7 +91,7 @@ describe('usePostboxComposeAttachments — compose limits', () => {
 
 		// One more than the allowed count, each tiny so only the COUNT gate trips.
 		const files = Array.from({ length: ATTACHMENT_COMPOSE_LIMITS.maxCount + 1 }, (_, i) =>
-			makeFile(`f${i}.bin`, 1024),
+			makeFile(`f${i}.bin`, 1024)
 		);
 		await composer.addFiles(files);
 

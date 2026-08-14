@@ -15,10 +15,15 @@ import { useCsvImport, mappableFields } from '../useCsvImport';
 const { t } = createTestI18n().global;
 
 type PapaMock = {
-	mockImplementation: (fn: (_file: unknown, options: {
-		complete: (result: { data: string[][]; errors: Array<{ message: string }> }) => void;
-		error: (error: { message: string }) => void;
-	}) => void) => void;
+	mockImplementation: (
+		fn: (
+			_file: unknown,
+			options: {
+				complete: (result: { data: string[][]; errors: Array<{ message: string }> }) => void;
+				error: (error: { message: string }) => void;
+			}
+		) => void
+	) => void;
 };
 
 /**
@@ -341,7 +346,11 @@ describe('useCsvImport', () => {
 
 		it("maps unknown headers to 'ignore'", async () => {
 			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'Company', 'Phone'], [['a@b.com', 'Acme', '555']]);
+			await simulateFileSelect(
+				csvImport,
+				['Email', 'Company', 'Phone'],
+				[['a@b.com', 'Acme', '555']]
+			);
 			expect(csvImport.columnMapping.value[1]).toBe('ignore');
 			expect(csvImport.columnMapping.value[2]).toBe('ignore');
 		});
@@ -637,7 +646,14 @@ describe('useCsvImport', () => {
 		it('handles no valid contacts (empty emails)', async () => {
 			const csvImport = useCsvImport();
 
-			await simulateFileSelect(csvImport, ['Email', 'Name'], [['', 'Alice'], ['', 'Bob']]);
+			await simulateFileSelect(
+				csvImport,
+				['Email', 'Name'],
+				[
+					['', 'Alice'],
+					['', 'Bob'],
+				]
+			);
 			csvImport.columnMapping.value = { 0: 'email', 1: 'ignore' };
 
 			const importFn = vi.fn(async () => ({
@@ -717,9 +733,7 @@ describe('useCsvImport', () => {
 
 			csvImport.goToPreview();
 
-			expect(csvImport.validation.value!.invalidEmails).toEqual([
-				{ row: 1, email: 'notanemail' },
-			]);
+			expect(csvImport.validation.value!.invalidEmails).toEqual([{ row: 1, email: 'notanemail' }]);
 			expect(csvImport.validation.value!.validCount).toBe(1);
 		});
 
@@ -777,8 +791,8 @@ describe('useCsvImport', () => {
 				[
 					['alice@example.com'],
 					['alice@example.com'], // duplicate
-					['notanemail'],        // invalid
-					['', ''],              // missing
+					['notanemail'], // invalid
+					['', ''], // missing
 					['bob@example.com'],
 				]
 			);

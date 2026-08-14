@@ -95,7 +95,9 @@ describe('relayDomainDisplay', () => {
 	it('separates the two states no provider reports: provisioning and the primary domain', () => {
 		// Both are facts about the DOMAIN, synthesised by the query — a relay with
 		// no row for a domain cannot distinguish them, and neither reads as an error.
-		expect(say(relayDomainDisplay(row({ status: 'provisioning' }), NOW).label)).toBe('Provisioning');
+		expect(say(relayDomainDisplay(row({ status: 'provisioning' }), NOW).label)).toBe(
+			'Provisioning'
+		);
 		expect(
 			say(relayDomainDisplay(row({ status: 'awaiting_primary_verification' }), NOW).label)
 		).toBe('Waiting on this domain');
@@ -154,7 +156,8 @@ describe('relayDomainOutstanding', () => {
 	});
 
 	it('keeps ownership outstanding even when both records are valid', () => {
-		expect(relayDomainOutstanding(row({ isOwnershipVerified: false })).map((item) => t(item))
+		expect(
+			relayDomainOutstanding(row({ isOwnershipVerified: false })).map((item) => t(item))
 		).toEqual(['domain ownership']);
 	});
 

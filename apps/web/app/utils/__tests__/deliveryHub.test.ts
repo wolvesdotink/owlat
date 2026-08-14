@@ -1,11 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { deliveryVerdict, warmupSentence, deliveryStatTiles } from '../deliveryHub';
+import {
+	deliveryVerdict,
+	warmupSentence,
+	deliveryStatTiles,
+	type LocalizedText,
+} from '../deliveryHub';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The verdict map and the tiles are module scope, so they carry catalog keys
+ * plus the numbers they interpolate. Rendering them through the real English
+ * catalog keeps these assertions on the copy the hub paints.
+ */
+const { t } = createTestI18n().global;
+const localized = (value: LocalizedText): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 describe('deliveryVerdict', () => {
 	it('maps every roll-up level to a human label + tone', () => {
-		expect(deliveryVerdict('ok')).toEqual({ label: 'Healthy', tone: 'ok' });
-		expect(deliveryVerdict('warn')).toEqual({ label: 'At risk', tone: 'warn' });
-		expect(deliveryVerdict('error')).toEqual({ label: 'Blocked', tone: 'error' });
+		expect(localized(deliveryVerdict('ok').label)).toBe('Healthy');
+		expect(deliveryVerdict('ok').tone).toBe('ok');
+		expect(localized(deliveryVerdict('warn').label)).toBe('At risk');
+		expect(deliveryVerdict('warn').tone).toBe('warn');
+		expect(localized(deliveryVerdict('error').label)).toBe('Blocked');
+		expect(deliveryVerdict('error').tone).toBe('error');
 	});
 });
 
@@ -15,23 +33,23 @@ describe('warmupSentence', () => {
 	});
 
 	it('reads fully warmed', () => {
-		expect(warmupSentence({ phase: 'graduated', ips: [] })).toBe(
+		expect(localized(warmupSentence({ phase: 'graduated', ips: [] })!)).toBe(
 			'Fully warmed — sending at full volume.'
 		);
 	});
 
 	it('reads paused', () => {
-		expect(warmupSentence({ phase: 'plateau', ips: [] })).toMatch(/paused/i);
+		expect(localized(warmupSentence({ phase: 'plateau', ips: [] })!)).toMatch(/paused/i);
 	});
 
 	it('reports the furthest IP day as a percent of the 30-day warm-up', () => {
-		expect(warmupSentence({ phase: 'ramp', ips: [{ currentDay: 15 }, { currentDay: 9 }] })).toBe(
-			'Warming up — day 15 of 30 · 50% of full sending volume'
-		);
+		expect(
+			localized(warmupSentence({ phase: 'ramp', ips: [{ currentDay: 15 }, { currentDay: 9 }] })!)
+		).toBe('Warming up — day 15 of 30 · 50% of full sending volume');
 	});
 
 	it('handles a ramping phase with no IPs yet (day 0)', () => {
-		expect(warmupSentence({ phase: 'ramp', ips: [] })).toBe(
+		expect(localized(warmupSentence({ phase: 'ramp', ips: [] })!)).toBe(
 			'Warming up — day 0 of 30 · 0% of full sending volume'
 		);
 	});
@@ -42,8 +60,8 @@ describe('deliveryStatTiles — threshold copy + tone', () => {
 		const tiles = deliveryStatTiles({ bounceRate: 0.005, complaintRate: 0.0005 }, null);
 		const bounce = tiles.find((t) => t.key === 'bounce')!;
 		const complaint = tiles.find((t) => t.key === 'complaint')!;
-		expect(bounce.threshold).toBe('limit 2%');
-		expect(complaint.threshold).toBe('limit 0.1%');
+		expect(localized(bounce.threshold)).toBe('limit 2%');
+		expect(localized(complaint.threshold)).toBe('limit 0.1%');
 		expect(bounce.tone).toBe('ok');
 		expect(complaint.tone).toBe('ok');
 	});
@@ -71,7 +89,7 @@ describe('deliveryStatTiles — threshold copy + tone', () => {
 		});
 		const budget = tiles.find((t) => t.key === 'budget')!;
 		expect(budget.value).toBe('900');
-		expect(budget.threshold).toBe('cap 1,000');
+		expect(localized(budget.threshold)).toBe('cap 1,000');
 		expect(budget.tone).toBe('ok');
 	});
 
@@ -87,7 +105,7 @@ describe('deliveryStatTiles — threshold copy + tone', () => {
 	it('falls back gracefully when warming has not synced', () => {
 		const budget = deliveryStatTiles(null, null).find((t) => t.key === 'budget')!;
 		expect(budget.value).toBe('—');
-		expect(budget.threshold).toMatch(/not synced/i);
+		expect(localized(budget.threshold)).toMatch(/not synced/i);
 	});
 });
 

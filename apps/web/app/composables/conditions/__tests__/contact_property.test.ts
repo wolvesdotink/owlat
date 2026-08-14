@@ -2,10 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import type { Doc } from '@owlat/api/dataModel';
 import { contactPropertyEditorModule } from '../contact_property';
-import {
-	operatorsForField,
-	operatorNeedsValue,
-} from '../contact_property';
+import { operatorsForField, operatorNeedsValue } from '../contact_property';
 import type { ConditionEditorContext, LocalizedText } from '../types';
 import { createTestI18n } from '~/__tests__/i18n';
 
@@ -17,9 +14,7 @@ import { createTestI18n } from '~/__tests__/i18n';
 const { t } = createTestI18n().global;
 const render = (text: LocalizedText) => t(text.key, text.params ?? {});
 
-const makeCtx = (
-	contactProperties: Doc<'contactProperties'>[] = []
-): ConditionEditorContext => ({
+const makeCtx = (contactProperties: Doc<'contactProperties'>[] = []): ConditionEditorContext => ({
 	contactProperties: computed(() => contactProperties),
 	topics: computed(() => []),
 });

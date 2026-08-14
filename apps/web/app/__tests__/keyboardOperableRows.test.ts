@@ -88,7 +88,7 @@ describe('delivery expandable rows are keyboard-operable', () => {
 		expect(domainsRow).toContain(':id="' + '`' + 'domain-records-');
 		// The nested Remove control is named for screen readers, and nesting is
 		// real (@click.stop) — which is why the header keydown must be `.self`.
-		expect(domainsRow).toMatch(/aria-label="Remove domain"/);
+		expect(domainsRow).toMatch(/:aria-label="t\('components\.domains\.recordRow\.removeDomain'\)"/);
 		expect(domainsRow).toMatch(/@click\.stop=/);
 	});
 

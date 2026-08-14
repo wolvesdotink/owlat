@@ -100,7 +100,12 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 			id: 'core:verbs',
 			priority: 20,
 			build: ({ query }): PaletteGroup[] => [
-				{ key: 'verbs', heading: 'common.create', order: 5, items: filterItems(deps.verbItems(), query) },
+				{
+					key: 'verbs',
+					heading: 'common.create',
+					order: 5,
+					items: filterItems(deps.verbItems(), query),
+				},
 			],
 		},
 		{

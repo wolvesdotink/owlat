@@ -14,45 +14,45 @@
  * + heading + call to action), and it is the one no screenshot review ever
  * looks at twice.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Component } from "vue";
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Component } from 'vue';
 import {
 	auditA11y,
 	dashboardShellStubs,
 	installNuxtStubs,
 	paginatedResult,
 	queryResult,
-} from "~/__tests__/a11y";
-import { createTestI18n, i18nStubs } from "~/__tests__/i18n";
-import { useBulkOperation } from "~/composables/useBulkOperation";
-import { useBulkSelection } from "~/composables/useBulkSelection";
-import { useCampaignStatusBadge } from "~/composables/useCampaignStatusBadge";
-import { useClickOutside } from "~/composables/useClickOutside";
-import { useContactBulkOperations } from "~/composables/useContactBulkOperations";
-import { useCsvImport } from "~/composables/useCsvImport";
-import { useDataTable } from "~/composables/useDataTable";
-import { useDebouncedSearch } from "~/composables/useDebouncedSearch";
-import { useFormModal } from "~/composables/useFormModal";
-import { usePostboxListKeyboard } from "~/composables/postbox/usePostboxListKeyboard";
-import { useWizard } from "~/composables/useWizard";
-import DashboardLayout from "~/layouts/dashboard.vue";
-import DashboardHome from "../index.vue";
-import CampaignsIndex from "../campaigns/index.vue";
-import CampaignsNew from "../campaigns/new.vue";
-import AudienceIndex from "../audience/index.vue";
-import ContactsIndex from "../audience/contacts/index.vue";
-import SendIndex from "../send/index.vue";
-import InboxIndex from "../inbox/index.vue";
-import AdminIndex from "../admin/index.vue";
-import SettingsIndex from "../preferences/index.vue";
-import GettingStarted from "~/components/dashboard/GettingStarted.vue";
+} from '~/__tests__/a11y';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { useBulkOperation } from '~/composables/useBulkOperation';
+import { useBulkSelection } from '~/composables/useBulkSelection';
+import { useCampaignStatusBadge } from '~/composables/useCampaignStatusBadge';
+import { useClickOutside } from '~/composables/useClickOutside';
+import { useContactBulkOperations } from '~/composables/useContactBulkOperations';
+import { useCsvImport } from '~/composables/useCsvImport';
+import { useDataTable } from '~/composables/useDataTable';
+import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
+import { useFormModal } from '~/composables/useFormModal';
+import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyboard';
+import { useWizard } from '~/composables/useWizard';
+import DashboardLayout from '~/layouts/dashboard.vue';
+import DashboardHome from '../index.vue';
+import CampaignsIndex from '../campaigns/index.vue';
+import CampaignsNew from '../campaigns/new.vue';
+import AudienceIndex from '../audience/index.vue';
+import ContactsIndex from '../audience/contacts/index.vue';
+import SendIndex from '../send/index.vue';
+import InboxIndex from '../inbox/index.vue';
+import AdminIndex from '../admin/index.vue';
+import SettingsIndex from '../preferences/index.vue';
+import GettingStarted from '~/components/dashboard/GettingStarted.vue';
 
 // The inbox page imports this composable explicitly rather than by auto-import,
 // so a global stub cannot reach it — and the real module builds a BetterAuth
 // client that opens a socket to the dev server on import.
-vi.mock("~/composables/useOrganization", () => ({
+vi.mock('~/composables/useOrganization', () => ({
 	useOrganization: () => ({
-		organization: ref({ id: "org1", name: "Owlat" }),
+		organization: ref({ id: 'org1', name: 'Owlat' }),
 		members: ref([]),
 		fetchMembers: vi.fn(),
 		isLoading: ref(false),
@@ -64,9 +64,9 @@ beforeEach(() => {
 		// Extracted surfaces render through vue-i18n; `useI18n` is an auto-import.
 		...i18nStubs,
 		useRoute: () => ({
-			path: "/dashboard",
-			fullPath: "/dashboard",
-			name: "dashboard",
+			path: '/dashboard',
+			fullPath: '/dashboard',
+			name: 'dashboard',
 			query: {},
 			params: {},
 			meta: {},
@@ -98,10 +98,10 @@ beforeEach(() => {
 			isEditing: ref(false),
 			saveLayout: vi.fn(),
 		}),
-		useTopicsList: () => ({ results: ref([]), isLoading: ref(false), status: ref("Exhausted") }),
+		useTopicsList: () => ({ results: ref([]), isLoading: ref(false), status: ref('Exhausted') }),
 		useInbox: () => ({
-			filter: ref("open"),
-			sort: ref("newest"),
+			filter: ref('open'),
+			sort: ref('newest'),
 			toggleSort: vi.fn(),
 			filterCounts: ref({}),
 			threads: ref([]),
@@ -113,7 +113,7 @@ beforeEach(() => {
 		}),
 		useInboxTriage: () => ({ visible: ref([]), run: vi.fn(), onWindowKeydown: vi.fn() }),
 		useOrganization: () => ({
-			organization: ref({ id: "org1", name: "Owlat" }),
+			organization: ref({ id: 'org1', name: 'Owlat' }),
 			members: ref([]),
 			fetchMembers: vi.fn(),
 			isLoading: ref(false),
@@ -134,10 +134,10 @@ beforeEach(() => {
 	});
 });
 
-describe("dashboard shell layout — accessibility", () => {
-	it("has no axe violations, landmarks and skip link included", async () => {
+describe('dashboard shell layout — accessibility', () => {
+	it('has no axe violations, landmarks and skip link included', async () => {
 		const violations = await auditA11y(DashboardLayout, {
-			slots: { default: "<h1>Page under the shell</h1>" },
+			slots: { default: '<h1>Page under the shell</h1>' },
 			// The shell renders its chrome — skip link, rail labels, sign out —
 			// through vue-i18n.
 			global: { plugins: [createTestI18n()] },
@@ -148,8 +148,8 @@ describe("dashboard shell layout — accessibility", () => {
 			// A rail that rendered no destinations would sail through every rule
 			// here; the real section list is dozens of links deep.
 			prepare: (wrapper) => {
-				expect(wrapper.findAll("nav a").length).toBeGreaterThan(3);
-				expect(wrapper.find("main#main-content").exists()).toBe(true);
+				expect(wrapper.findAll('nav a').length).toBeGreaterThan(3);
+				expect(wrapper.find('main#main-content').exists()).toBe(true);
 			},
 		});
 		expect(violations).toEqual([]);
@@ -166,40 +166,40 @@ interface AuditedPage {
 }
 
 const pages: readonly AuditedPage[] = [
-	{ name: "dashboard home", component: DashboardHome, loaded: "Welcome back" },
-	{ name: "campaigns list", component: CampaignsIndex, loaded: "New campaign" },
-	{ name: "new campaign wizard", component: CampaignsNew, loaded: "Create Campaign" },
-	{ name: "audience overview", component: AudienceIndex, loaded: "Add Contact" },
-	{ name: "contacts list", component: ContactsIndex, loaded: "No contacts yet" },
-	{ name: "send overview", component: SendIndex, loaded: "Templates & blocks" },
-	{ name: "team inbox", component: InboxIndex, loaded: "Inbox zero" },
-	{ name: "admin overview", component: AdminIndex, loaded: "Your instance at a glance" },
+	{ name: 'dashboard home', component: DashboardHome, loaded: 'Welcome back' },
+	{ name: 'campaigns list', component: CampaignsIndex, loaded: 'New campaign' },
+	{ name: 'new campaign wizard', component: CampaignsNew, loaded: 'Create Campaign' },
+	{ name: 'audience overview', component: AudienceIndex, loaded: 'Add Contact' },
+	{ name: 'contacts list', component: ContactsIndex, loaded: 'No contacts yet' },
+	{ name: 'send overview', component: SendIndex, loaded: 'Templates & blocks' },
+	{ name: 'team inbox', component: InboxIndex, loaded: 'Inbox zero' },
+	{ name: 'admin overview', component: AdminIndex, loaded: 'Your instance at a glance' },
 	// The settings screen is the one page here whose title lives in the shell
 	// header rather than in its own body, so it owns h2 sections and no h1.
-	{ name: "settings overview", component: SettingsIndex, loaded: "Mailboxes", ownsH1: false },
+	{ name: 'settings overview', component: SettingsIndex, loaded: 'Mailboxes', ownsH1: false },
 ];
 
-describe.each(pages)("$name — accessibility", ({ component, loaded, ownsH1 }) => {
-	it("has no axe violations on an empty instance", async () => {
+describe.each(pages)('$name — accessibility', ({ component, loaded, ownsH1 }) => {
+	it('has no axe violations on an empty instance', async () => {
 		const violations = await auditA11y(component, {
 			// Extracted pages render their chrome through vue-i18n.
 			global: { plugins: [createTestI18n()] },
 			// A page that threw or rendered nothing would pass an empty audit.
 			prepare: (wrapper) => {
 				expect(wrapper.text()).toContain(loaded);
-				if (ownsH1 !== false) expect(wrapper.findAll("h1")).toHaveLength(1);
+				if (ownsH1 !== false) expect(wrapper.findAll('h1')).toHaveLength(1);
 			},
 		});
 		expect(violations).toEqual([]);
 	});
 });
 
-describe("getting-started checklist — accessibility", () => {
-	it("has no axe violations for an admin on a fresh instance", async () => {
+describe('getting-started checklist — accessibility', () => {
+	it('has no axe violations for an admin on a fresh instance', async () => {
 		const violations = await auditA11y(GettingStarted, {
-			props: { userId: "user1", isAdmin: true },
+			props: { userId: 'user1', isAdmin: true },
 			global: { plugins: [createTestI18n()] },
-			prepare: (wrapper) => expect(wrapper.text()).toContain("Getting started"),
+			prepare: (wrapper) => expect(wrapper.text()).toContain('Getting started'),
 		});
 		expect(violations).toEqual([]);
 	});

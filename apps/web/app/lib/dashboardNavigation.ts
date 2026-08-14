@@ -105,8 +105,16 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		icon: 'lucide:inbox',
 		gate: flag('inbox'),
 		items: [
-			{ name: 'shared.dashboardNavigation.items.inbox.allThreads', href: '/dashboard/inbox', icon: 'lucide:message-square' },
-			{ name: 'shared.dashboardNavigation.items.inbox.allActivity', href: '/dashboard/inbox/activity', icon: 'lucide:activity' },
+			{
+				name: 'shared.dashboardNavigation.items.inbox.allThreads',
+				href: '/dashboard/inbox',
+				icon: 'lucide:message-square',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.inbox.allActivity',
+				href: '/dashboard/inbox/activity',
+				icon: 'lucide:activity',
+			},
 			{
 				name: 'shared.dashboardNavigation.items.inbox.reviewQueue',
 				href: '/dashboard/inbox/review',
@@ -136,12 +144,36 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		// Every postbox page renders its own folder rail, so the sidebar shows one
 		// flat link; these items are palette-only.
 		items: [
-			{ name: 'shared.dashboardNavigation.items.postbox.inbox', href: '/dashboard/postbox/inbox', icon: 'lucide:inbox' },
-			{ name: 'shared.dashboardNavigation.items.postbox.sent', href: '/dashboard/postbox/sent', icon: 'lucide:send' },
-			{ name: 'shared.dashboardNavigation.items.postbox.drafts', href: '/dashboard/postbox/drafts', icon: 'lucide:file-edit' },
-			{ name: 'shared.dashboardNavigation.items.postbox.spam', href: '/dashboard/postbox/spam', icon: 'lucide:shield-alert' },
-			{ name: 'shared.dashboardNavigation.items.postbox.trash', href: '/dashboard/postbox/trash', icon: 'lucide:trash' },
-			{ name: 'shared.dashboardNavigation.items.postbox.preferences', href: '/dashboard/preferences', icon: 'lucide:settings' },
+			{
+				name: 'shared.dashboardNavigation.items.postbox.inbox',
+				href: '/dashboard/postbox/inbox',
+				icon: 'lucide:inbox',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.sent',
+				href: '/dashboard/postbox/sent',
+				icon: 'lucide:send',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.drafts',
+				href: '/dashboard/postbox/drafts',
+				icon: 'lucide:file-edit',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.spam',
+				href: '/dashboard/postbox/spam',
+				icon: 'lucide:shield-alert',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.trash',
+				href: '/dashboard/postbox/trash',
+				icon: 'lucide:trash',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.preferences',
+				href: '/dashboard/preferences',
+				icon: 'lucide:settings',
+			},
 		],
 	},
 	{
@@ -150,7 +182,13 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		icon: 'lucide:message-circle',
 		href: '/dashboard/chat',
 		gate: (env) => adminOnly(env) && flag('chat')(env),
-		items: [{ name: 'shared.dashboardNavigation.items.chat.messages', href: '/dashboard/chat', icon: 'lucide:message-circle' }],
+		items: [
+			{
+				name: 'shared.dashboardNavigation.items.chat.messages',
+				href: '/dashboard/chat',
+				icon: 'lucide:message-circle',
+			},
+		],
 	},
 	{
 		key: 'assistant',
@@ -158,7 +196,13 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		icon: 'lucide:sparkles',
 		href: '/dashboard/assistant',
 		gate: (env) => adminOnly(env) && flag('ai.assistant')(env),
-		items: [{ name: 'shared.dashboardNavigation.items.assistant.chat', href: '/dashboard/assistant', icon: 'lucide:sparkles' }],
+		items: [
+			{
+				name: 'shared.dashboardNavigation.items.assistant.chat',
+				href: '/dashboard/assistant',
+				icon: 'lucide:sparkles',
+			},
+		],
 	},
 	{
 		// Unified "Send" section: everything you send from, in one place.
@@ -204,7 +248,11 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 				icon: 'lucide:layout-dashboard',
 				gate: adminOnly,
 			},
-			{ name: 'shared.dashboardNavigation.items.audience.contacts', href: '/dashboard/audience/contacts', icon: 'lucide:users' },
+			{
+				name: 'shared.dashboardNavigation.items.audience.contacts',
+				href: '/dashboard/audience/contacts',
+				icon: 'lucide:users',
+			},
 			{
 				name: 'shared.dashboardNavigation.items.audience.topics',
 				href: '/dashboard/audience/topics',
@@ -217,7 +265,11 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 				icon: 'lucide:user-plus',
 				gate: adminOnly,
 			},
-			{ name: 'shared.dashboardNavigation.items.audience.suppressions', href: '/dashboard/audience/suppressions', icon: 'lucide:ban' },
+			{
+				name: 'shared.dashboardNavigation.items.audience.suppressions',
+				href: '/dashboard/audience/suppressions',
+				icon: 'lucide:ban',
+			},
 		],
 	},
 	{
@@ -226,7 +278,11 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		icon: 'lucide:brain',
 		gate: (env) => adminOnly(env) && flag('ai.knowledge')(env),
 		items: [
-			{ name: 'shared.dashboardNavigation.items.knowledge.explorer', href: '/dashboard/knowledge', icon: 'lucide:brain' },
+			{
+				name: 'shared.dashboardNavigation.items.knowledge.explorer',
+				href: '/dashboard/knowledge',
+				icon: 'lucide:brain',
+			},
 			{
 				name: 'shared.dashboardNavigation.items.knowledge.graph',
 				href: '/dashboard/knowledge/graph',
@@ -246,9 +302,21 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 				href: '/dashboard/admin',
 				icon: 'lucide:gauge',
 			},
-			{ name: 'shared.dashboardNavigation.items.administration.delivery', href: '/dashboard/admin/delivery', icon: 'lucide:truck' },
-			{ name: 'shared.dashboardNavigation.items.administration.teamAccess', href: '/dashboard/admin/team', icon: 'lucide:users-round' },
-			{ name: 'shared.dashboardNavigation.items.administration.instance', href: '/dashboard/admin/instance', icon: 'lucide:server-cog' },
+			{
+				name: 'shared.dashboardNavigation.items.administration.delivery',
+				href: '/dashboard/admin/delivery',
+				icon: 'lucide:truck',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.administration.teamAccess',
+				href: '/dashboard/admin/team',
+				icon: 'lucide:users-round',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.administration.instance',
+				href: '/dashboard/admin/instance',
+				icon: 'lucide:server-cog',
+			},
 		],
 	},
 	{
@@ -257,8 +325,16 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 		icon: 'lucide:settings',
 		href: '/dashboard/preferences',
 		items: [
-			{ name: 'shared.dashboardNavigation.items.preferences.overview', href: '/dashboard/preferences', icon: 'lucide:settings' },
-			{ name: 'shared.dashboardNavigation.items.preferences.account', href: '/dashboard/preferences/account', icon: 'lucide:user-cog' },
+			{
+				name: 'shared.dashboardNavigation.items.preferences.overview',
+				href: '/dashboard/preferences',
+				icon: 'lucide:settings',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.preferences.account',
+				href: '/dashboard/preferences/account',
+				icon: 'lucide:user-cog',
+			},
 			{
 				name: 'shared.dashboardNavigation.items.preferences.filters',
 				href: '/dashboard/preferences/filters',
@@ -277,7 +353,12 @@ const CORE_SECTIONS: readonly CoreSection[] = [
 				icon: 'lucide:mail-plus',
 				gate: anyFlag('postbox', 'mail.external'),
 			},
-			{ name: 'shared.dashboardNavigation.items.preferences.desktop', href: '/desktop/settings', icon: 'lucide:monitor', gate: desktopOnly },
+			{
+				name: 'shared.dashboardNavigation.items.preferences.desktop',
+				href: '/desktop/settings',
+				icon: 'lucide:monitor',
+				gate: desktopOnly,
+			},
 		],
 	},
 ];

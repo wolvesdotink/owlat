@@ -1,4 +1,8 @@
-import { isFcrdnsVerdict, reverseDnsGuidance, type FcrdnsFailureReason } from '@owlat/shared/fcrdns';
+import {
+	isFcrdnsVerdict,
+	reverseDnsGuidance,
+	type FcrdnsFailureReason,
+} from '@owlat/shared/fcrdns';
 import type { DnsblStatus, IpReadinessBlockReason } from '@owlat/shared/ipReadiness';
 import type { HealthTone } from './healthTone';
 

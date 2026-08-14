@@ -12,6 +12,11 @@ import {
 	mandrillOutstanding,
 	type MandrillRelayIdentityInput,
 } from '../mandrillRelayStatus';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The outstanding items come back as message keys — this module is module scope
+// and never calls `useI18n` — so the words are resolved through the real catalog.
+const { t } = createTestI18n().global;
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 7, 5, 12);
@@ -43,12 +48,14 @@ describe('mandrillOutstanding', () => {
 		expect(
 			mandrillOutstanding(
 				identity({ spf: { isValid: false }, dkim: { isValid: false }, verifiedAt: null })
-			)
+			).map((key) => t(key))
 		).toEqual(['SPF', 'DKIM', 'domain ownership']);
 	});
 
 	it('keeps ownership outstanding even when both records are valid', () => {
-		expect(mandrillOutstanding(identity({ verifiedAt: null }))).toEqual(['domain ownership']);
+		expect(mandrillOutstanding(identity({ verifiedAt: null })).map((key) => t(key))).toEqual([
+			'domain ownership',
+		]);
 	});
 
 	it('is empty for a fully verified domain', () => {

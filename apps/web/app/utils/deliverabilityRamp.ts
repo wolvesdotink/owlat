@@ -71,7 +71,11 @@ export interface RampCellStatus {
  */
 export function rampCellStatus(cell: RampCellControl): RampCellStatus {
 	if (!cell.isRampManaged) {
-		return { key: 'unmanaged', label: 'shared.deliverabilityRamp.status.unmanaged', tone: 'neutral' };
+		return {
+			key: 'unmanaged',
+			label: 'shared.deliverabilityRamp.status.unmanaged',
+			tone: 'neutral',
+		};
 	}
 	if (cell.graduatedAt !== null) {
 		return { key: 'graduated', label: 'shared.deliverabilityRamp.status.graduated', tone: 'ok' };
@@ -90,7 +94,11 @@ export function rampCellStatus(cell: RampCellControl): RampCellStatus {
 		};
 	}
 	if (cell.lastDecision?.direction === 'decrease') {
-		return { key: 'retreating', label: 'shared.deliverabilityRamp.status.retreating', tone: 'attention' };
+		return {
+			key: 'retreating',
+			label: 'shared.deliverabilityRamp.status.retreating',
+			tone: 'attention',
+		};
 	}
 	if (cell.lastDecision?.direction === 'increase') {
 		return { key: 'advancing', label: 'shared.deliverabilityRamp.status.advancing', tone: 'ok' };

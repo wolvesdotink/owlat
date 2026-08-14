@@ -7,13 +7,13 @@ export function useContactIdentities(contactId: Ref<Id<'contacts'>>) {
 	// Fetch identities
 	const { data: identities, isLoading: identitiesLoading } = useConvexQuery(
 		api.contacts.identities.listByContact,
-		() => ({ contactId: contactId.value }),
+		() => ({ contactId: contactId.value })
 	);
 
 	// Fetch merge suggestions
 	const { data: mergeSuggestions, isLoading: mergeLoading } = useConvexQuery(
 		api.contacts.identities.getMergeSuggestions,
-		() => ({ contactId: contactId.value }),
+		() => ({ contactId: contactId.value })
 	);
 
 	// Mutations

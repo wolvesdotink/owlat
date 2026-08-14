@@ -238,7 +238,10 @@ export function createIndexedDbDriver(
 		get: <T>(key: string) => tx<T | undefined>('readonly', (s) => s.get(key)),
 		set: (key, value) => tx<void>('readwrite', (s) => s.put(value, key)),
 		delete: (key) => tx<void>('readwrite', (s) => s.delete(key)),
-		keys: () => tx<string[]>('readonly', (s) => s.getAllKeys() as IDBRequest).then((k) => (k as unknown as string[]) ?? []),
+		keys: () =>
+			tx<string[]>('readonly', (s) => s.getAllKeys() as IDBRequest).then(
+				(k) => (k as unknown as string[]) ?? []
+			),
 		clear: () => tx<void>('readwrite', (s) => s.clear()),
 	};
 }

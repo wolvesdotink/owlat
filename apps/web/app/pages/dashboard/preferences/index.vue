@@ -115,6 +115,8 @@ async function handleDelete() {
 
 		<PreferencesAppearance />
 
+		<PreferencesLanguage />
+
 		<template v-if="hasMail">
 			<PreferencesMailLinks />
 

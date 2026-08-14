@@ -23,18 +23,16 @@ export function usePostboxComposerKeys(options: {
 	onMinimize: () => void;
 }) {
 	const { t } = useI18n();
-	const isMac = computed(
-		() => import.meta.client && /Mac|iP(hone|ad|od)/.test(navigator.platform),
-	);
+	const isMac = computed(() => import.meta.client && /Mac|iP(hone|ad|od)/.test(navigator.platform));
 	const sendShortcutHint = computed(() =>
 		isMac.value
 			? t('shared.postbox.usePostboxComposerKeys.sendMac')
-			: t('shared.postbox.usePostboxComposerKeys.send'),
+			: t('shared.postbox.usePostboxComposerKeys.send')
 	);
 	const scheduleShortcutHint = computed(() =>
 		isMac.value
 			? t('shared.postbox.usePostboxComposerKeys.scheduleMac')
-			: t('shared.postbox.usePostboxComposerKeys.schedule'),
+			: t('shared.postbox.usePostboxComposerKeys.schedule')
 	);
 
 	/**
@@ -53,10 +51,7 @@ export function usePostboxComposerKeys(options: {
 	function onComposerKeydown(event: KeyboardEvent) {
 		if (event.isComposing) return;
 		const action = resolveComposerKeyAction(event, {
-			canSend:
-				options.canSend.value &&
-				!options.sending.value &&
-				!options.isScheduled.value,
+			canSend: options.canSend.value && !options.sending.value && !options.isScheduled.value,
 			overlayOpen: hasOpenInnerOverlay(event),
 		});
 		if (!action) return;

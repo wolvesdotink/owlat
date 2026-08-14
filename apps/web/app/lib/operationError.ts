@@ -10,12 +10,12 @@ import {
 	type OperationError,
 	type OperationErrorCategory,
 	extractOperationError,
-} from "@owlat/shared/operationError";
+} from '@owlat/shared/operationError';
 
-export type ErrorSurface = "toast" | "inline" | "redirect";
+export type ErrorSurface = 'toast' | 'inline' | 'redirect';
 
 /** The line shown when nothing more specific can be said. */
-const GENERIC_COPY_KEY = "shared.operationError.generic";
+const GENERIC_COPY_KEY = 'shared.operationError.generic';
 
 export interface CategoryTreatment {
 	/** Where the failure shows up in the UI. */
@@ -40,27 +40,27 @@ export interface CategoryTreatment {
  */
 const TREATMENT: Record<OperationErrorCategory, CategoryTreatment> = {
 	unauthenticated: {
-		surface: "redirect",
+		surface: 'redirect',
 		report: false,
-		genericCopyKey: "shared.operationError.sessionExpired",
+		genericCopyKey: 'shared.operationError.sessionExpired',
 	},
-	forbidden: { surface: "toast", report: false },
-	not_found: { surface: "toast", report: false },
-	invalid_input: { surface: "inline", report: false },
-	already_exists: { surface: "inline", report: false },
-	conflict: { surface: "toast", report: false },
-	invalid_state: { surface: "toast", report: false },
-	rate_limited: { surface: "toast", report: false },
-	limit_reached: { surface: "toast", report: false },
+	forbidden: { surface: 'toast', report: false },
+	not_found: { surface: 'toast', report: false },
+	invalid_input: { surface: 'inline', report: false },
+	already_exists: { surface: 'inline', report: false },
+	conflict: { surface: 'toast', report: false },
+	invalid_state: { surface: 'toast', report: false },
+	rate_limited: { surface: 'toast', report: false },
+	limit_reached: { surface: 'toast', report: false },
 	internal: {
-		surface: "toast",
+		surface: 'toast',
 		report: true,
 		genericCopyKey: GENERIC_COPY_KEY,
 	},
 	network: {
-		surface: "toast",
+		surface: 'toast',
 		report: true,
-		genericCopyKey: "shared.operationError.network",
+		genericCopyKey: 'shared.operationError.network',
 	},
 };
 
@@ -77,17 +77,17 @@ export function categoryTreatment(category: OperationErrorCategory): CategoryTre
  * the `network` vs `internal` split for uncategorized throws.
  */
 export function isTransportFailure(e: unknown): boolean {
-	if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+	if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
 	const message = (e instanceof Error ? e.message : String(e)).toLowerCase();
 	return (
-		(e instanceof TypeError && message.includes("fetch")) ||
-		message.includes("failed to fetch") ||
-		message.includes("network") ||
-		message.includes("connection") ||
-		message.includes("offline") ||
-		message.includes("websocket") ||
-		message.includes("timed out") ||
-		message.includes("timeout")
+		(e instanceof TypeError && message.includes('fetch')) ||
+		message.includes('failed to fetch') ||
+		message.includes('network') ||
+		message.includes('connection') ||
+		message.includes('offline') ||
+		message.includes('websocket') ||
+		message.includes('timed out') ||
+		message.includes('timeout')
 	);
 }
 
@@ -100,9 +100,9 @@ export function normalizeToOperationError(e: unknown): OperationError {
 	const op = extractOperationError(e);
 	if (op) return op;
 	if (isTransportFailure(e)) {
-		return { category: "network", message: e instanceof Error ? e.message : "Network error" };
+		return { category: 'network', message: e instanceof Error ? e.message : 'Network error' };
 	}
-	return { category: "internal", message: e instanceof Error ? e.message : String(e) };
+	return { category: 'internal', message: e instanceof Error ? e.message : String(e) };
 }
 
 /**
@@ -130,7 +130,7 @@ export function operationCopy(op: OperationError): OperationCopy {
 /** Resolve {@link operationCopy} at a render boundary that holds a `t`. */
 export function resolveOperationCopy(
 	copy: OperationCopy,
-	translate: (key: string) => string,
+	translate: (key: string) => string
 ): string {
-	return "text" in copy ? copy.text : translate(copy.key);
+	return 'text' in copy ? copy.text : translate(copy.key);
 }

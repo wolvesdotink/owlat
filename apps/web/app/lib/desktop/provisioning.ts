@@ -416,22 +416,74 @@ interface TimelineSpec {
 export const PROVISION_TIMELINE: readonly TimelineSpec[] = [
 	{ id: 'ssh-connect', title: 'shared.desktop.provisioning.timeline.sshConnect', group: 'connect' },
 	{ id: 'host-key', title: 'shared.desktop.provisioning.timeline.hostKey', group: 'connect' },
-	{ id: 'authenticate', title: 'shared.desktop.provisioning.timeline.authenticate', group: 'connect' },
-	{ id: 'system-check', title: 'shared.desktop.provisioning.timeline.systemCheck', group: 'connect' },
-	{ id: 'install-docker', title: 'shared.desktop.provisioning.timeline.installDocker', group: 'connect' },
+	{
+		id: 'authenticate',
+		title: 'shared.desktop.provisioning.timeline.authenticate',
+		group: 'connect',
+	},
+	{
+		id: 'system-check',
+		title: 'shared.desktop.provisioning.timeline.systemCheck',
+		group: 'connect',
+	},
+	{
+		id: 'install-docker',
+		title: 'shared.desktop.provisioning.timeline.installDocker',
+		group: 'connect',
+	},
 	{ id: 'fetch-owlat', title: 'shared.desktop.provisioning.timeline.fetchOwlat', group: 'connect' },
-	{ id: 'upload-config', title: 'shared.desktop.provisioning.timeline.uploadConfig', group: 'connect' },
-	{ id: SetupStep.Preflight, title: 'shared.desktop.provisioning.timeline.preflight', group: 'server' },
+	{
+		id: 'upload-config',
+		title: 'shared.desktop.provisioning.timeline.uploadConfig',
+		group: 'connect',
+	},
+	{
+		id: SetupStep.Preflight,
+		title: 'shared.desktop.provisioning.timeline.preflight',
+		group: 'server',
+	},
 	{ id: SetupStep.Config, title: 'shared.desktop.provisioning.timeline.config', group: 'server' },
-	{ id: SetupStep.ComposeUp, title: 'shared.desktop.provisioning.timeline.composeUp', group: 'server' },
-	{ id: SetupStep.MtaIdentity, title: 'shared.desktop.provisioning.timeline.mtaIdentity', group: 'server' },
-	{ id: SetupStep.WaitConvex, title: 'shared.desktop.provisioning.timeline.waitConvex', group: 'server' },
-	{ id: SetupStep.AdminKey, title: 'shared.desktop.provisioning.timeline.adminKey', group: 'server' },
-	{ id: SetupStep.DeployFunctions, title: 'shared.desktop.provisioning.timeline.deployFunctions', group: 'server' },
+	{
+		id: SetupStep.ComposeUp,
+		title: 'shared.desktop.provisioning.timeline.composeUp',
+		group: 'server',
+	},
+	{
+		id: SetupStep.MtaIdentity,
+		title: 'shared.desktop.provisioning.timeline.mtaIdentity',
+		group: 'server',
+	},
+	{
+		id: SetupStep.WaitConvex,
+		title: 'shared.desktop.provisioning.timeline.waitConvex',
+		group: 'server',
+	},
+	{
+		id: SetupStep.AdminKey,
+		title: 'shared.desktop.provisioning.timeline.adminKey',
+		group: 'server',
+	},
+	{
+		id: SetupStep.DeployFunctions,
+		title: 'shared.desktop.provisioning.timeline.deployFunctions',
+		group: 'server',
+	},
 	{ id: SetupStep.EnvSet, title: 'shared.desktop.provisioning.timeline.envSet', group: 'server' },
-	{ id: SetupStep.WaitRoutes, title: 'shared.desktop.provisioning.timeline.waitRoutes', group: 'server' },
-	{ id: SetupStep.BootstrapAdmin, title: 'shared.desktop.provisioning.timeline.bootstrapAdmin', group: 'server' },
-	{ id: SetupStep.SeedDemo, title: 'shared.desktop.provisioning.timeline.seedDemo', group: 'server' },
+	{
+		id: SetupStep.WaitRoutes,
+		title: 'shared.desktop.provisioning.timeline.waitRoutes',
+		group: 'server',
+	},
+	{
+		id: SetupStep.BootstrapAdmin,
+		title: 'shared.desktop.provisioning.timeline.bootstrapAdmin',
+		group: 'server',
+	},
+	{
+		id: SetupStep.SeedDemo,
+		title: 'shared.desktop.provisioning.timeline.seedDemo',
+		group: 'server',
+	},
 	{ id: 'finish', title: 'shared.desktop.provisioning.timeline.finish', group: 'finish' },
 ] as const;
 

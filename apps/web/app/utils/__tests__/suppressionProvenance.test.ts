@@ -51,7 +51,9 @@ describe('suppressionProvenanceLine', () => {
 			'Reported by your SMTP relay'
 		);
 		expect(
-			render(suppressionProvenanceLine(entry({ provider: 'mta', source: 'import', evidence: null })))
+			render(
+				suppressionProvenanceLine(entry({ provider: 'mta', source: 'import', evidence: null }))
+			)
 		).toBe('Carried over from your own mail server');
 	});
 

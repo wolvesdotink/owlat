@@ -268,7 +268,8 @@ async function addWorkspace(siteUrlInput: string): Promise<void> {
  */
 export async function completeConnection(params: { ott: string; state: string }): Promise<void> {
 	const entry = pending.get(params.state);
-	if (!entry) throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.stateMismatch');
+	if (!entry)
+		throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.stateMismatch');
 	pending.delete(params.state);
 
 	const { id, info } = entry;

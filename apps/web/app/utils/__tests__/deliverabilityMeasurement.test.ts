@@ -54,9 +54,23 @@ import {
 	measurementSubhead,
 	standaloneNote,
 	type DeliverabilityDashboardGate,
+	type LocalizedText,
 } from '~/utils/deliverabilityMeasurement';
+import { createTestI18n } from '~/__tests__/i18n';
 import { decisionWindowLabel, reportedWindowLabel } from '~/utils/deliverabilityWindows';
 import { formatShortDate } from '~/utils/formatters';
+
+/**
+ * Every sentence in this module is module scope, so it arrives as the catalog
+ * key plus the numbers it interpolates. The suite renders each one through the
+ * real English catalog, because the unit nouns it pins live in the copy.
+ */
+const { t } = createTestI18n().global;
+const localized = (value: LocalizedText): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const explain = (gate: DeliverabilityDashboardGate): string => localized(gateExplanation(gate));
+const noteFor = (input: Parameters<typeof standaloneNote>[0]): string =>
+	localized(standaloneNote(input));
 
 /**
  * THE SECOND ARM IS NAMED, NOT KEYED. `referenceTransportId` arrives as the
@@ -67,7 +81,7 @@ import { formatShortDate } from '~/utils/formatters';
  */
 describe('measurementSubhead', () => {
 	const measured = (referenceTransportId: string | null): string =>
-		measurementSubhead({ hasReferenceArm: true, referenceTransportId });
+		localized(measurementSubhead({ hasReferenceArm: true, referenceTransportId }));
 
 	it('names the relay the way the transport card does', () => {
 		expect(measured('ses')).toContain('compares with Amazon SES');
@@ -80,16 +94,18 @@ describe('measurementSubhead', () => {
 	});
 
 	it('leaves the standalone sentence alone — there is no relay to compare with', () => {
-		expect(measurementSubhead({ hasReferenceArm: false, referenceTransportId: null })).toContain(
-			'What your own server is sending'
-		);
+		expect(
+			localized(measurementSubhead({ hasReferenceArm: false, referenceTransportId: null }))
+		).toContain('What your own server is sending');
 	});
 
 	it('still says a comparison happened when no single relay can be named', () => {
 		// TWO RELAY KINDS: the configuration has no single arm to name and every
 		// cell is still measured against one. Keyed to the id alone this screen
 		// claimed the deployment sends entirely from its own server.
-		const subhead = measurementSubhead({ hasReferenceArm: true, referenceTransportId: null });
+		const subhead = localized(
+			measurementSubhead({ hasReferenceArm: true, referenceTransportId: null })
+		);
 		expect(subhead).toContain('compares with the relays carrying the same traffic');
 		expect(subhead).not.toContain('What your own server is sending');
 	});
@@ -97,9 +113,9 @@ describe('measurementSubhead', () => {
 	it('drops to the standalone sentence for a named relay that carried nothing', () => {
 		// The divergence the other way: a relay is configured, no cell was measured
 		// against it, and the gates below graded every cell standalone.
-		expect(measurementSubhead({ hasReferenceArm: false, referenceTransportId: 'ses' })).toContain(
-			'What your own server is sending'
-		);
+		expect(
+			localized(measurementSubhead({ hasReferenceArm: false, referenceTransportId: 'ses' }))
+		).toContain('What your own server is sending');
 	});
 });
 
@@ -114,7 +130,7 @@ describe('measurementSubhead', () => {
  */
 describe('standaloneNote', () => {
 	it('offers a relay only where there is none to have gone quiet', () => {
-		const note = standaloneNote({
+		const note = noteFor({
 			isRelayConfigured: false,
 			referenceTransportId: null,
 			hasPlottedRelayHistory: false,
@@ -129,7 +145,7 @@ describe('standaloneNote', () => {
 		// THE CONTRADICTION THIS PINS: keyed to the measurement, this sentence
 		// offered SES to a deployment already relaying through SES, directly above
 		// a card saying that SES carried the cell earlier in this window.
-		const note = standaloneNote({
+		const note = noteFor({
 			isRelayConfigured: true,
 			referenceTransportId: 'ses',
 			hasPlottedRelayHistory: true,
@@ -145,7 +161,7 @@ describe('standaloneNote', () => {
 		// today, a relay enabled for a messageType outside these streams: the relay
 		// is configured and carried nothing anywhere in the seven days the cards
 		// plot, so the explanation stands and the promise about the bars does not.
-		const note = standaloneNote({
+		const note = noteFor({
 			isRelayConfigured: true,
 			referenceTransportId: 'ses',
 			hasPlottedRelayHistory: false,
@@ -158,7 +174,7 @@ describe('standaloneNote', () => {
 	it('speaks of relays in the plural when there is no single one to name', () => {
 		// The two-relay deployment: a relay exists, so the offer is still wrong,
 		// and `referenceTransportId` is null for the OTHER reason.
-		const note = standaloneNote({
+		const note = noteFor({
 			isRelayConfigured: true,
 			referenceTransportId: null,
 			hasPlottedRelayHistory: true,
@@ -169,7 +185,7 @@ describe('standaloneNote', () => {
 	});
 
 	it('drops the plural promise on the same premise', () => {
-		const note = standaloneNote({
+		const note = noteFor({
 			isRelayConfigured: true,
 			referenceTransportId: null,
 			hasPlottedRelayHistory: false,
@@ -180,7 +196,7 @@ describe('standaloneNote', () => {
 
 	it('names a plugin relay the way the transport card does', () => {
 		expect(
-			standaloneNote({
+			noteFor({
 				isRelayConfigured: true,
 				referenceTransportId: 'plugin.mail-pack.postmark',
 				hasPlottedRelayHistory: true,
@@ -191,12 +207,12 @@ describe('standaloneNote', () => {
 
 describe('gateExplanation — units', () => {
 	it('denominates an ordinary verdict in sends', () => {
-		expect(gateExplanation(passingGate())).toContain('over 1,000 sends');
-		expect(gateExplanation(failingGate())).toContain('over 1,200 sends');
+		expect(explain(passingGate())).toContain('over 1,000 sends');
+		expect(explain(failingGate())).toContain('over 1,200 sends');
 	});
 
 	it('never calls a classified SMTP response a send', () => {
-		const sentence = gateExplanation(blockMessageHalt());
+		const sentence = explain(blockMessageHalt());
 		expect(sentence).toContain('240 classified SMTP responses');
 		expect(sentence).toContain('block messages');
 		// THE DEFECT THIS PINS: the generic branch would have printed "over 240
@@ -205,28 +221,28 @@ describe('gateExplanation — units', () => {
 	});
 
 	it('still reports the limit the halt compared against', () => {
-		expect(gateExplanation(blockMessageHalt())).toContain('0.50%');
+		expect(explain(blockMessageHalt())).toContain('0.50%');
 	});
 
 	it('prints the own sample against its floor in the SAME unit on a hold', () => {
-		expect(gateExplanation(holdingGate())).toContain('124 of 400 sends');
+		expect(explain(holdingGate())).toContain('124 of 400 sends');
 	});
 
 	it('never calls a seed probe a send, on either sentence', () => {
 		// `evaluateSeedGate` denominates BOTH `ownSample` and `minSample` in seed
 		// probes, so the decided sentence and the below-floor hold are both wrong
 		// under the generic noun.
-		const decided = gateExplanation(seedPlacementGate());
+		const decided = explain(seedPlacementGate());
 		expect(decided).toContain('10 seed probes');
 		expect(decided).not.toContain('sends');
 
-		const held = gateExplanation(seedPlacementHold());
+		const held = explain(seedPlacementHold());
 		expect(held).toContain('8 of 20 seed probes');
 		expect(held).not.toContain('sends');
 
 		// THE THIRD SENTENCE. The comparison sweep is thin, and its sample is seed
 		// probes too — the reason names the OTHER series, not another unit.
-		const referenceHeld = gateExplanation(seedPlacementReferenceHold());
+		const referenceHeld = explain(seedPlacementReferenceHold());
 		expect(referenceHeld).toContain('3 of 5 seed probes');
 		expect(referenceHeld).not.toContain('sends');
 	});
@@ -242,12 +258,12 @@ describe('gateExplanation — units', () => {
 		// including the fall-through, because the noun is the whole point.
 		const wide = { ...seedPlacementPass().measurement, ownSample: 80, referenceSample: 80 };
 		const sentences = [
-			gateExplanation({ ...seedPlacementPass(), measurement: wide }),
-			gateExplanation({ ...seedPlacementGate(), measurement: wide }),
-			gateExplanation({ ...seedPlacementReferenceBreach(), measurement: wide }),
-			gateExplanation(seedPlacementHold()),
-			gateExplanation(seedPlacementReferenceHold()),
-			gateExplanation({ ...seedPlacementReferenceBreach(), reason: 'trailing_baseline_breached' }),
+			explain({ ...seedPlacementPass(), measurement: wide }),
+			explain({ ...seedPlacementGate(), measurement: wide }),
+			explain({ ...seedPlacementReferenceBreach(), measurement: wide }),
+			explain(seedPlacementHold()),
+			explain(seedPlacementReferenceHold()),
+			explain({ ...seedPlacementReferenceBreach(), reason: 'trailing_baseline_breached' }),
 		];
 		for (const sentence of sentences) {
 			expect(sentence).toContain('seed probes');
@@ -255,7 +271,7 @@ describe('gateExplanation — units', () => {
 		}
 		// The mailbox NOUN still belongs to the fact that is actually about
 		// mailboxes — the improvement invitation, which counts connected accounts.
-		expect(improvementCopy('add_seed_mailboxes')).toContain('seed mailboxes');
+		expect(localized(improvementCopy('add_seed_mailboxes'))).toContain('seed mailboxes');
 	});
 });
 
@@ -273,7 +289,7 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 
 	it('quotes no share, threshold or tolerance on a decided placement verdict', () => {
 		for (const gate of [seedPlacementPass(), seedPlacementGate(), seedPlacementReferenceBreach()]) {
-			const sentence = gateExplanation(gate);
+			const sentence = explain(gate);
 			expect(sentence).not.toMatch(PERCENTAGE);
 			// The three numbers the shipped sentence leaked: the own share, the
 			// inbox floor, and the reference tolerance in percentage points.
@@ -287,12 +303,12 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 		// `isSeedPlacementReached` counts `category` — a Gmail tab — as reached, and
 		// `inbox_dominant` is documented as "the inbox or a tab". "Reached the inbox"
 		// alone reports a Promotions-filed probe as a miss the gate did not find.
-		const sentence = gateExplanation(seedPlacementPass());
+		const sentence = explain(seedPlacementPass());
 		expect(sentence).toContain('Effectively all of the 10 seed probes reached the inbox or a tab');
 	});
 
 	it('says an absolute breach missed, and covers every placement that counts as missing', () => {
-		const sentence = gateExplanation(seedPlacementGate());
+		const sentence = explain(seedPlacementGate());
 		expect(sentence).toContain('Some of the 10 seed probes did not reach the inbox or a tab');
 		// Not-reached is spam, deleted OR missing — the shipped sentence named two
 		// of the three and left an auto-deleted probe unaccounted for.
@@ -303,7 +319,7 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 		// `reference_tolerance_breached` is the one seed verdict about the RELAY, and
 		// it compares two SHARES over independently-sized sweeps. The sizes are
 		// context; the size of the GAP is the number D17 forbids quoting.
-		const sentence = gateExplanation(seedPlacementReferenceBreach());
+		const sentence = explain(seedPlacementReferenceBreach());
 		expect(sentence).toContain('less often than the comparison transport');
 		expect(sentence).toContain('10 swept here, 12 there');
 		expect(sentence).not.toContain('Comparison transport:');
@@ -317,7 +333,7 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 		// comparative clause rather than swapping a baseline one in. So a seed
 		// verdict carrying it gets the status word and the sweep size — never a
 		// sentence about "its own recent sweeps" that no gate computed.
-		const sentence = gateExplanation({
+		const sentence = explain({
 			...seedPlacementReferenceBreach(),
 			reason: 'trailing_baseline_breached',
 		});
@@ -331,7 +347,7 @@ describe('gateExplanation — the seed gate states a status, never a placement r
 		// tolerance, and MORE probes reached the inbox on this side — so the
 		// count-flavoured "fewer of ours reached than of theirs" was a false
 		// sentence, in the ordinary late-ramp shape rather than an exotic one.
-		const sentence = gateExplanation(seedPlacementReferenceBreachOutgrown());
+		const sentence = explain(seedPlacementReferenceBreachOutgrown());
 		expect(sentence).toContain('less often than the comparison transport');
 		expect(sentence).toContain('20 swept here, 5 there');
 		expect(sentence).not.toContain('Fewer');
@@ -381,7 +397,7 @@ describe('gateExplanation — a hold is never rendered as a fault', () => {
 
 	for (const reason of HOLD_REASONS) {
 		it(`${reason} renders a sentence, never an error`, () => {
-			const sentence = gateExplanation(held(reason));
+			const sentence = explain(held(reason));
 			expect(sentence.length).toBeGreaterThan(0);
 			expect(sentence).not.toContain('undefined');
 			const lower = sentence.toLowerCase();
@@ -396,10 +412,10 @@ describe('gateExplanation — a hold is never rendered as a fault', () => {
 		// produce the identical number, and the operator has to be able to tell them
 		// apart on the screen — so the sentence must not read as a healthy window,
 		// and must not borrow the thin-sample story either.
-		const uninstrumented = gateExplanation(held('own_deferral_telemetry_absent'));
+		const uninstrumented = explain(held('own_deferral_telemetry_absent'));
 		expect(uninstrumented).toContain('recorded');
-		expect(uninstrumented).not.toBe(gateExplanation(held('own_sample_below_floor')));
-		expect(uninstrumented).not.toBe(gateExplanation(held('evidence_absent')));
+		expect(uninstrumented).not.toBe(explain(held('own_sample_below_floor')));
+		expect(uninstrumented).not.toBe(explain(held('evidence_absent')));
 		expect(uninstrumented).not.toMatch(/\d+%/);
 	});
 
@@ -407,8 +423,8 @@ describe('gateExplanation — a hold is never rendered as a fault', () => {
 		// `*_not_a_denominator` and `*_rate_unmeasurable` are two different stories
 		// and must not share one sentence: one sends the operator to investigate a
 		// poisoned bucket, the other says there is simply nothing to divide by.
-		const clean = gateExplanation(held('baseline_not_a_denominator'));
-		const poisoned = gateExplanation(held('baseline_rate_unmeasurable'));
+		const clean = explain(held('baseline_not_a_denominator'));
+		const poisoned = explain(held('baseline_rate_unmeasurable'));
 		expect(clean).not.toBe(poisoned);
 		expect(clean).toContain('too clean');
 	});

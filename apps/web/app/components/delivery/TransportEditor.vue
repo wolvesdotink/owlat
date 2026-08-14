@@ -61,6 +61,19 @@ const props = defineProps<{
 const emit = defineEmits<{ applied: [] }>();
 
 const { t } = useI18n();
+
+/**
+ * The removal guard's sentences arrive as catalog keys plus figures (and, for a
+ * refusal the endpoint wrote, as a sentence already); rendering one unresolved
+ * paints the serialized object into the dialog an operator is reading to decide
+ * whether to disconnect their relay.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText | null): string {
+	if (value === null) return '';
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
 const { showToast } = useToast();
 
 const isEditing = ref(false);
@@ -456,12 +469,12 @@ function cancel() {
 				@confirm="confirmRelayRemoval"
 			>
 				<template #consequence>
-					<p data-testid="transport-removal-consequence">{{ dialogConsequence }}</p>
+					<p data-testid="transport-removal-consequence">{{ localized(dialogConsequence) }}</p>
 					<p
 						v-if="removalConsequence.safeDate !== null"
 						data-testid="transport-removal-dialog-date"
 					>
-						{{ removalConsequence.safeDate }}
+						{{ localized(removalConsequence.safeDate) }}
 					</p>
 				</template>
 			</DeliveryRampConfirmDialog>

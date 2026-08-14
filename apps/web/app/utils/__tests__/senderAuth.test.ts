@@ -201,9 +201,9 @@ describe('deriveSenderHeuristicLines', () => {
 	});
 
 	it('names the resembled domain in the look-alike line', () => {
-		expect(deriveSenderHeuristicLines({ lookalikeOfContactDomain: 'stripe.com' }).map(render)).toEqual([
-			"This sender's domain looks like stripe.com, but is not it.",
-		]);
+		expect(
+			deriveSenderHeuristicLines({ lookalikeOfContactDomain: 'stripe.com' }).map(render)
+		).toEqual(["This sender's domain looks like stripe.com, but is not it."]);
 	});
 
 	it('ignores a blank look-alike domain', () => {

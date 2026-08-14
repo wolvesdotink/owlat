@@ -17,12 +17,7 @@
 import { ref } from 'vue';
 
 /** The fixed set of one-tap rewrite intents. Mirrors the backend union. */
-export type RewriteIntent =
-	| 'shorter'
-	| 'friendlier'
-	| 'formal'
-	| 'grammar'
-	| 'translate';
+export type RewriteIntent = 'shorter' | 'friendlier' | 'formal' | 'grammar' | 'translate';
 
 export interface SelectionRewriteInput {
 	/** The selected text to rewrite (the user's own draft). */
@@ -37,10 +32,7 @@ export interface SelectionRewriteInput {
 
 export interface UsePostboxSelectionRewriteOptions {
 	/** Perform the rewrite; reject/ignore when `signal` aborts. */
-	requestRewrite: (
-		input: SelectionRewriteInput,
-		signal: AbortSignal
-	) => Promise<string>;
+	requestRewrite: (input: SelectionRewriteInput, signal: AbortSignal) => Promise<string>;
 	/** Surface a fail-soft error (e.g. a toast). Selection is left untouched. */
 	onError?: (message: string) => void;
 }
@@ -65,9 +57,7 @@ export function isRewriteEligible(enabled: boolean, selectionText: string): bool
 	return countWords(selectionText) >= MIN_REWRITE_WORDS;
 }
 
-export function usePostboxSelectionRewrite(
-	options: UsePostboxSelectionRewriteOptions
-) {
+export function usePostboxSelectionRewrite(options: UsePostboxSelectionRewriteOptions) {
 	const { t } = useI18n();
 	/** 'idle' | 'loading' (request in flight) | 'preview' (result ready). */
 	const status = ref<'idle' | 'loading' | 'preview'>('idle');

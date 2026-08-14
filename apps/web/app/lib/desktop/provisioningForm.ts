@@ -175,7 +175,7 @@ export function isIpv6(value: string): boolean {
  * injection-safe; callers treat any failure/empty output as "unknown".
  */
 export function detectPublicIpCommand(): string {
-	return 'curl -fsS https://api.ipify.org 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk \'{print $7; exit}\'';
+	return "curl -fsS https://api.ipify.org 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}'";
 }
 
 export function parsePublicIp(output: string): string | null {
@@ -255,7 +255,7 @@ export function buildDnsRecords({ hosts, withMta, serverIp }: DnsRecordsInput): 
 				type: 'TXT',
 				value: 'v=DMARC1; p=none;',
 				note: 'shared.desktop.provisioningForm.dnsNotes.dmarc',
-			},
+			}
 		);
 	}
 	return rows;
@@ -276,7 +276,10 @@ export function removeSetupConfigCommand(installDir: string): string {
  * The last `max` stderr lines from a streamed log — kept on failure so a long
  * build's root-cause error stays visible even after later output scrolls past.
  */
-export function stderrTail(logs: ReadonlyArray<{ stream: 'stdout' | 'stderr'; line: string }>, max = 40): string[] {
+export function stderrTail(
+	logs: ReadonlyArray<{ stream: 'stdout' | 'stderr'; line: string }>,
+	max = 40
+): string[] {
 	const out: string[] = [];
 	for (let i = logs.length - 1; i >= 0 && out.length < max; i--) {
 		const l = logs[i];

@@ -20,6 +20,11 @@ import { transportKindLabel } from '~/utils/transportState';
 import SignedWebhookCard from '../SignedWebhookCard.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
+/** The kind vocabulary is keyed; the page resolves it before handing it over. */
+const { t } = createTestI18n().global;
+const localized = (value: string | { key: string; params?: Record<string, unknown> }): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 const stubs = {
 	Icon: { template: '<i />' },
 	UiCard: { template: '<div><slot name="header" /><slot /></div>' },
@@ -61,8 +66,9 @@ function mountForKind(
 	return mountCard({
 		providerKind: kind,
 		// The page's own label derivation, not `entry.label`: the two differ for
-		// Mandrill, and this card renders whatever the page hands it.
-		providerLabel: transportKindLabel(kind),
+		// Mandrill, and this card renders whatever the page hands it — a resolved
+		// name, since `transportKindLabel` returns the catalog key.
+		providerLabel: localized(transportKindLabel(kind)),
 		signingKeyEnvVar: entry?.providerFeedback?.signingKeyEnvVar ?? '',
 		webhookUrl: `https://acme.convex.site${entry?.providerFeedback?.webhookPath ?? ''}`,
 		...props,

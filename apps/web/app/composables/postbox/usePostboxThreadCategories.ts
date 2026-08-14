@@ -92,17 +92,12 @@ export function usePostboxThreadCategories(args: {
 	const sections = computed(() =>
 		CATEGORY_SECTIONS.map((section) => ({
 			...section,
-			threads: threads.value.filter(
-				(t) => (t.category?.label ?? 'other') === section.key
-			),
+			threads: threads.value.filter((t) => (t.category?.label ?? 'other') === section.key),
 		})).filter((section) => section.threads.length > 0)
 	);
 
 	// Collapsed state per category, remembered across navigations for the session.
-	const collapsed = useState<Record<string, boolean>>(
-		'postbox:category-collapsed',
-		() => ({})
-	);
+	const collapsed = useState<Record<string, boolean>>('postbox:category-collapsed', () => ({}));
 	function toggle(key: MailCategory) {
 		collapsed.value = { ...collapsed.value, [key]: !collapsed.value[key] };
 	}

@@ -154,11 +154,9 @@ describe('usePostboxTriageUndo', () => {
 	it('registerMoveBack runs before → grouped move-backs → after', async () => {
 		const undoState = usePostboxTriageUndo();
 		const calls: string[] = [];
-		const runMove = vi.fn(
-			async (a: { messageIds: unknown[]; targetFolderId: unknown }) => {
-				calls.push(`move:${String(a.targetFolderId)}:${a.messageIds.length}`);
-			}
-		);
+		const runMove = vi.fn(async (a: { messageIds: unknown[]; targetFolderId: unknown }) => {
+			calls.push(`move:${String(a.targetFolderId)}:${a.messageIds.length}`);
+		});
 
 		undoState.registerMoveBack({
 			label: 'Marked as spam',

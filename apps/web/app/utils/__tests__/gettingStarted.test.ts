@@ -8,9 +8,18 @@ import {
 	SEND_BLOCKED_STEP_IDS,
 	sentCampaignDescription,
 	type GettingStartedInput,
+	type GettingStartedMessage,
 	type InstanceFlagId,
 } from '../gettingStarted';
 import { CHECKLIST_STEPS, visibleChecklistSteps, type ChecklistStepId } from '../welcomeFlow';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The model is a pure derivation, so every step's words arrive as a message key
+// (the sending headroom as its interpolation); the copy a member reads is
+// resolved through the real catalog.
+const { t } = createTestI18n().global;
+const say = (value: GettingStartedMessage) =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 const NO_FLAGS: Record<InstanceFlagId, boolean> = {
 	sendPathReady: false,
@@ -278,12 +287,16 @@ describe("the send-a-campaign step carries today's sending headroom", () => {
 
 	it('quotes the measured capacity so the ramp is met before a campaign is built', () => {
 		const model = buildGettingStarted(input({ role: 'admin', sendCapacityToday: 1200 }));
-		expect(campaignStep(model)?.description).toContain('About 1,200 contacts can be reached today');
+		const description = campaignStep(model)?.description;
+		expect(description === undefined ? '' : say(description)).toContain(
+			'About 1,200 contacts can be reached today'
+		);
 	});
 
 	it('says the day is spent rather than quoting "about 0 contacts"', () => {
 		const model = buildGettingStarted(input({ role: 'admin', sendCapacityToday: 0 }));
-		const description = campaignStep(model)?.description ?? '';
+		const message = campaignStep(model)?.description;
+		const description = message === undefined ? '' : say(message);
 		expect(description).toContain('used up');
 		expect(description).not.toContain('About 0');
 		// Never a dead end: scheduling is still the thing to do.
@@ -292,7 +305,8 @@ describe("the send-a-campaign step carries today's sending headroom", () => {
 
 	it('invents nothing when capacity is unmeasured or uncapped', () => {
 		const model = buildGettingStarted(input({ role: 'admin', sendCapacityToday: null }));
-		expect(campaignStep(model)?.description).toBe(
+		const description = campaignStep(model)?.description;
+		expect(description === undefined ? '' : say(description)).toBe(
 			'Send your first email campaign to your audience.'
 		);
 	});
@@ -302,11 +316,13 @@ describe("the send-a-campaign step carries today's sending headroom", () => {
 		const others = model.sections
 			.find((s) => s.id === 'instance')
 			?.steps.filter((step) => step.id !== 'sentCampaign');
-		expect(others?.some((step) => step.description.includes('500'))).toBe(false);
+		expect(others?.some((step) => say(step.description).includes('500'))).toBe(false);
 	});
 
 	it('is pure: the same input always yields the same sentence', () => {
-		expect(sentCampaignDescription(null)).toBe('Send your first email campaign to your audience.');
-		expect(sentCampaignDescription(1)).toContain('About 1 contact can be reached today');
+		expect(say(sentCampaignDescription(null))).toBe(
+			'Send your first email campaign to your audience.'
+		);
+		expect(say(sentCampaignDescription(1))).toContain('About 1 contact can be reached today');
 	});
 });

@@ -1,7 +1,12 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { BATCH_SIZES } from '~/constants/operations';
-import { buildContactsCsv, downloadCsv, fetchPropertyValuesChunked, type CsvContact } from '~/utils/contactsCsv';
+import {
+	buildContactsCsv,
+	downloadCsv,
+	fetchPropertyValuesChunked,
+	type CsvContact,
+} from '~/utils/contactsCsv';
 
 export function useContactBulkOperations(deps: {
 	bulkSelection: ReturnType<typeof useBulkSelection<Id<'contacts'>>>;
@@ -51,7 +56,7 @@ export function useContactBulkOperations(deps: {
 		try {
 			const { ids, truncated } = await convex.query(
 				api.contacts.organization.listAllIdsByOrganization,
-				{ search: deps.debouncedSearch.value || undefined },
+				{ search: deps.debouncedSearch.value || undefined }
 			);
 			deps.bulkSelection.setAllMatching(ids);
 			if (truncated) {
@@ -62,7 +67,7 @@ export function useContactBulkOperations(deps: {
 					t('shared.useContactBulkOperations.selectionTruncated', {
 						count: new Intl.NumberFormat(locale.value).format(ids.length),
 					}),
-					'error',
+					'error'
 				);
 			}
 		} catch {
@@ -90,7 +95,7 @@ export function useContactBulkOperations(deps: {
 				if (result === undefined) throw ABORTED;
 				return result;
 			},
-			{ batchSize: BATCH_SIZES.CONTACTS_ADD_TO_LIST, type: 'add' },
+			{ batchSize: BATCH_SIZES.CONTACTS_ADD_TO_LIST, type: 'add' }
 		);
 		if (!success) return;
 
@@ -122,7 +127,7 @@ export function useContactBulkOperations(deps: {
 				if (result === undefined) throw ABORTED;
 				return result;
 			},
-			{ batchSize: BATCH_SIZES.CONTACTS_REMOVE_FROM_LIST, type: 'remove' },
+			{ batchSize: BATCH_SIZES.CONTACTS_REMOVE_FROM_LIST, type: 'remove' }
 		);
 		if (!success) return;
 
@@ -156,7 +161,7 @@ export function useContactBulkOperations(deps: {
 				if (result === undefined) throw ABORTED;
 				return result;
 			},
-			{ batchSize: BATCH_SIZES.CONTACTS_DELETE, type: 'delete' },
+			{ batchSize: BATCH_SIZES.CONTACTS_DELETE, type: 'delete' }
 		);
 		if (!success) return;
 
@@ -181,8 +186,7 @@ export function useContactBulkOperations(deps: {
 	};
 
 	const handleBulkExport = async () => {
-		if (!convex || deps.bulkSelection.selectedIds.value.size === 0)
-			return;
+		if (!convex || deps.bulkSelection.selectedIds.value.size === 0) return;
 
 		isBulkActionDropdownOpen.value = false;
 
@@ -201,7 +205,9 @@ export function useContactBulkOperations(deps: {
 						{ search: deps.debouncedSearch.value || undefined }
 					);
 					const contactsToExport =
-						allContacts?.filter((c: { _id: string }) => selectedContactIds!.includes(c._id as Id<'contacts'>)) || [];
+						allContacts?.filter((c: { _id: string }) =>
+							selectedContactIds!.includes(c._id as Id<'contacts'>)
+						) || [];
 
 					if (contactsToExport.length === 0) {
 						showToast(t('shared.useContactBulkOperations.noContactsToExport'));
@@ -215,13 +221,13 @@ export function useContactBulkOperations(deps: {
 						(chunk) =>
 							convex.query(api.contacts.organization.getPropertyValuesForContacts, {
 								contactIds: chunk,
-							}),
+							})
 					);
 
 					const csv = buildContactsCsv(
 						contactsToExport as CsvContact[],
 						propertyValues as Record<string, Record<string, string>>,
-						deps.contactProperties.value || [],
+						deps.contactProperties.value || []
 					);
 
 					const timestamp = new Date().toISOString().slice(0, 10);
@@ -240,7 +246,7 @@ export function useContactBulkOperations(deps: {
 					showToast(t('shared.useContactBulkOperations.exportFailed'), 'error');
 				}
 			},
-			{ type: 'export' },
+			{ type: 'export' }
 		);
 	};
 

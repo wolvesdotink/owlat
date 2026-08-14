@@ -48,7 +48,11 @@ export interface AddableChannel {
  */
 export const ADDABLE_CHANNEL_KINDS: AddableChannel[] = [
 	{ kind: 'sms', icon: 'lucide:smartphone', label: 'shared.channelKinds.addable.sms' },
-	{ kind: 'whatsapp', icon: 'lucide:message-circle', label: 'shared.channelKinds.addable.whatsapp' },
+	{
+		kind: 'whatsapp',
+		icon: 'lucide:message-circle',
+		label: 'shared.channelKinds.addable.whatsapp',
+	},
 	{ kind: 'generic', icon: 'lucide:webhook', label: 'shared.channelKinds.addable.generic' },
 ];
 
@@ -100,5 +104,9 @@ export function channelHealthDot(status: ChannelHealthStatus | undefined | null)
 			label: 'shared.channelKinds.health.degraded',
 		};
 	}
-	return { variant: 'success', dotClass: 'bg-success', label: 'shared.channelKinds.health.healthy' };
+	return {
+		variant: 'success',
+		dotClass: 'bg-success',
+		label: 'shared.channelKinds.health.healthy',
+	};
 }

@@ -3,11 +3,23 @@ import type { OutboundTransportFacts } from '@owlat/shared';
 import {
 	deriveDeliveryReadiness,
 	readinessInputFromSources,
+	type LocalizedText,
 	type ReadinessDomainRow,
 	type ReadinessGateKey,
 	type ReadinessInput,
 } from '../deliveryReadiness';
 import { summarizeDualArmAlignment, type ReadinessDualArmRow } from '../dualArmAlignment';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The gates are built outside a component, so every headline, detail and action
+ * label is a catalog key plus what it interpolates. Rendering them through the
+ * real English catalog keeps these assertions on the sentence a person reads —
+ * and a server-authored detail, which rides through as itself, still resolves.
+ */
+const { t } = createTestI18n().global;
+const localized = (value: LocalizedText): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 /** A fully-ready instance; override one fact at a time to exercise each gate. */
 function input(overrides: Partial<ReadinessInput> = {}): ReadinessInput {
@@ -33,7 +45,7 @@ describe('deriveDeliveryReadiness — overall level', () => {
 		expect(r.level).toBe('ready');
 		expect(r.canSend).toBe(true);
 		expect(r.tone).toBe('success');
-		expect(r.headline).toBe('Ready to send');
+		expect(localized(r.headline)).toBe('Ready to send');
 	});
 
 	it('is blocked with no transport (the hard gate) — canSend false, red', () => {
@@ -56,7 +68,7 @@ describe('deriveDeliveryReadiness — overall level', () => {
 		expect(r.level).toBe('incomplete');
 		expect(r.canSend).toBe(true);
 		expect(r.tone).toBe('warning');
-		expect(r.headline).toBe('Ready to send — finish setup');
+		expect(localized(r.headline)).toBe('Ready to send — finish setup');
 	});
 });
 
@@ -89,7 +101,7 @@ describe('deriveDeliveryReadiness — domain gate', () => {
 			'domain'
 		);
 		expect(g.status).toBe('attention');
-		expect(g.actionLabel).toBe('Add a domain');
+		expect(localized(g.actionLabel)).toBe('Add a domain');
 		expect(g.actionHref).toBe('/dashboard/admin/delivery/domains');
 	});
 
@@ -101,7 +113,7 @@ describe('deriveDeliveryReadiness — domain gate', () => {
 			'domain'
 		);
 		expect(g.status).toBe('pending');
-		expect(g.actionLabel).toBe('Check verification');
+		expect(localized(g.actionLabel)).toBe('Check verification');
 	});
 });
 
@@ -124,7 +136,7 @@ describe('deriveDeliveryReadiness — authentication gate', () => {
 			'authentication'
 		);
 		expect(g.status).toBe('attention');
-		expect(g.detail).toContain('DKIM, DMARC');
+		expect(localized(g.detail)).toContain('DKIM, DMARC');
 		expect(g.actionHref).toBe('/dashboard/admin/delivery/domains');
 	});
 
@@ -136,11 +148,11 @@ describe('deriveDeliveryReadiness — authentication gate', () => {
 describe('deriveDeliveryReadiness — summary', () => {
 	it('leads with the first unfinished gate', () => {
 		const r = deriveDeliveryReadiness(input({ transportConfigured: false }));
-		expect(r.summary).toContain('No transport is configured');
+		expect(localized(r.summary)).toContain('No transport is configured');
 	});
 
 	it('gives an all-clear line when everything is ready', () => {
-		expect(deriveDeliveryReadiness(input()).summary).toContain('can send');
+		expect(localized(deriveDeliveryReadiness(input()).summary)).toContain('can send');
 	});
 });
 
@@ -161,7 +173,7 @@ describe('deriveDeliveryReadiness — MTA-STS enforce gate', () => {
 		expect(g.tone).toBe('warning');
 		expect(g.actionHref).toBe('/dashboard/admin/delivery/domains');
 		// The summary leads with the unfinished MTA-STS step.
-		expect(r.summary).toContain('MTA-STS');
+		expect(localized(r.summary)).toContain('MTA-STS');
 	});
 
 	it('stays blocked (not merely incomplete) when the transport is also missing', () => {
@@ -194,9 +206,9 @@ describe('deriveDeliveryReadiness — sender-alignment gate', () => {
 		expect(g.status).toBe('attention');
 		expect(g.tone).toBe('warning');
 		expect(g.actionHref).toBe('/dashboard/admin/delivery/transport');
-		expect(g.detail).toContain('sendgrid.net');
+		expect(localized(g.detail)).toContain('sendgrid.net');
 		// The summary leads with the unfinished alignment step.
-		expect(r.summary).toContain('sendgrid.net');
+		expect(localized(r.summary)).toContain('sendgrid.net');
 	});
 
 	it('names the misaligned domains when no explicit reason is supplied', () => {
@@ -206,7 +218,7 @@ describe('deriveDeliveryReadiness — sender-alignment gate', () => {
 			),
 			'alignment'
 		);
-		expect(g.detail).toContain('acme.com, widgets.io');
+		expect(localized(g.detail)).toContain('acme.com, widgets.io');
 	});
 
 	it('stays blocked (not merely incomplete) when the transport is also missing', () => {
@@ -462,7 +474,7 @@ describe('the dual-transport alignment gate', () => {
 		);
 		expect(standalone.gates.some((g) => g.key === 'dual-arm-alignment')).toBe(false);
 		expect(standalone.level).toBe('ready');
-		expect(standalone.summary).toContain('Everything checks out');
+		expect(localized(standalone.summary)).toContain('Everything checks out');
 	});
 
 	it('renders a ready gate when both arms align, without changing the verdict', () => {
@@ -478,7 +490,7 @@ describe('the dual-transport alignment gate', () => {
 		);
 		const dualArm = gate(readiness, 'dual-arm-alignment');
 		expect(dualArm.status).toBe('ready');
-		expect(dualArm.detail).toContain('look identical to mailboxes');
+		expect(localized(dualArm.detail)).toContain('look identical to mailboxes');
 		expect(readiness.level).toBe('ready');
 	});
 
@@ -488,8 +500,8 @@ describe('the dual-transport alignment gate', () => {
 		);
 		const dualArm = gate(readiness, 'dual-arm-alignment');
 		expect(dualArm.status).toBe('attention');
-		expect(dualArm.detail).toContain('Flatten include:j.example');
-		expect(dualArm.actionLabel).toBe('Review records');
+		expect(localized(dualArm.detail)).toContain('Flatten include:j.example');
+		expect(localized(dualArm.actionLabel)).toBe('Review records');
 		// The ramp is held; the instance is still ready to send.
 		expect(readiness.canSend).toBe(true);
 		expect(readiness.level).toBe('ready');
@@ -504,7 +516,7 @@ describe('the dual-transport alignment gate', () => {
 		const dualArm = gate(readiness, 'dual-arm-alignment');
 		expect(dualArm.status).toBe('pending');
 		expect(dualArm.actionHref).toBeNull();
-		expect(dualArm.detail).toContain('nothing for you to do');
+		expect(localized(dualArm.detail)).toContain('nothing for you to do');
 	});
 
 	it('appends the degraded-measurement line to an otherwise aligned gate', () => {
@@ -516,7 +528,7 @@ describe('the dual-transport alignment gate', () => {
 				}),
 			])
 		);
-		expect(gate(readiness, 'dual-arm-alignment').detail).toContain(
+		expect(localized(gate(readiness, 'dual-arm-alignment').detail)).toContain(
 			'Measurement confidence is lowered'
 		);
 	});

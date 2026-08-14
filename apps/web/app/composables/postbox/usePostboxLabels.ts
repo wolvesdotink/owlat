@@ -53,11 +53,7 @@ export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		await toggleOnMessage.run({ messageId, labelId, add });
 	}
 
-	async function setOnThread(
-		threadId: Id<'mailThreads'>,
-		labelId: Id<'mailLabels'>,
-		add: boolean
-	) {
+	async function setOnThread(threadId: Id<'mailThreads'>, labelId: Id<'mailLabels'>, add: boolean) {
 		await toggleOnThread.run({ threadId, labelId, add });
 	}
 

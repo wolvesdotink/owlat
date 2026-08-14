@@ -129,7 +129,7 @@ export function usePostboxComposeAttachments(opts: {
 						filename: file.name,
 						max: formatMb(MAX_ATTACHMENT_MB),
 					}),
-					'error',
+					'error'
 				);
 				continue;
 			}
@@ -138,7 +138,7 @@ export function usePostboxComposeAttachments(opts: {
 					t('shared.postbox.usePostboxComposeAttachments.tooManyFiles', {
 						count: ATTACHMENT_COMPOSE_LIMITS.maxCount,
 					}),
-					'error',
+					'error'
 				);
 				break;
 			}
@@ -147,7 +147,7 @@ export function usePostboxComposeAttachments(opts: {
 					t('shared.postbox.usePostboxComposeAttachments.totalTooLarge', {
 						max: formatMb(MAX_TOTAL_MB),
 					}),
-					'error',
+					'error'
 				);
 				break;
 			}
@@ -180,7 +180,7 @@ export function usePostboxComposeAttachments(opts: {
 	 * so the editor simply inserts nothing rather than breaking the compose flow.
 	 */
 	async function addInlineImage(
-		file: File,
+		file: File
 	): Promise<{ contentId: string; previewUrl: string } | null> {
 		if (!file.type.startsWith('image/')) return null;
 		const id = await opts.ensureDraft();
@@ -193,7 +193,7 @@ export function usePostboxComposeAttachments(opts: {
 					filename: file.name,
 					max: formatMb(MAX_ATTACHMENT_MB),
 				}),
-				'error',
+				'error'
 			);
 			return null;
 		}
@@ -211,7 +211,7 @@ export function usePostboxComposeAttachments(opts: {
 			if (!res.ok) {
 				showToast(
 					t('shared.postbox.usePostboxComposeAttachments.uploadFailed', { filename: file.name }),
-					'error',
+					'error'
 				);
 				return null;
 			}

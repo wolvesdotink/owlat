@@ -116,7 +116,10 @@ const GUIDANCE: Partial<Record<DeliveryProviderKind, Guidance>> = {
 	},
 	resend: {
 		lead: 'shared.transportDnsGuidance.resend.lead',
-		points: ['shared.transportDnsGuidance.resend.records', 'shared.transportDnsGuidance.resend.dmarc'],
+		points: [
+			'shared.transportDnsGuidance.resend.records',
+			'shared.transportDnsGuidance.resend.dmarc',
+		],
 	},
 	// Three items, not two — and the third is the one that surprises people. A
 	// domain with flawless SPF and DKIM but no completed ownership check is one

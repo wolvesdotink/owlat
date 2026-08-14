@@ -27,7 +27,11 @@ describe('useContactDetail.diffPropertyValues', () => {
 	});
 
 	it('skips unchanged properties', () => {
-		const result = diffPropertyValues(['p1', 'p2'], { p1: 'Acme', p2: 'gold' }, { p1: 'Acme', p2: 'gold' });
+		const result = diffPropertyValues(
+			['p1', 'p2'],
+			{ p1: 'Acme', p2: 'gold' },
+			{ p1: 'Acme', p2: 'gold' }
+		);
 		expect(result.toSet).toEqual([]);
 		expect(result.toRemove).toEqual([]);
 	});
@@ -53,7 +57,7 @@ describe('useContactDetail.diffPropertyValues', () => {
 		const result = diffPropertyValues(
 			['p1', 'p2', 'p3', 'p4'],
 			{ p1: 'new', p2: '', p3: 'same', p4: 'changed' },
-			{ p1: '', p2: 'old', p3: 'same', p4: 'before' },
+			{ p1: '', p2: 'old', p3: 'same', p4: 'before' }
 		);
 		expect(result.toSet).toEqual([
 			{ propertyId: 'p1', value: 'new' },

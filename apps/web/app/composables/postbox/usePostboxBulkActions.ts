@@ -10,9 +10,7 @@ import type { Id } from '@owlat/api/dataModel';
 
 export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
-	const stateKey = computed(
-		() => `postbox:bulk:${mailboxId.value ?? 'no-mailbox'}`
-	);
+	const stateKey = computed(() => `postbox:bulk:${mailboxId.value ?? 'no-mailbox'}`);
 
 	const selected = useState<Set<Id<'mailMessages'>>>(stateKey.value, () => new Set());
 

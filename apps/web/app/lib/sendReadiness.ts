@@ -21,7 +21,7 @@
  * described as PACED — not as a failure, because it is not one.
  */
 
-import { CAPACITY_DAY_MS, formatCapacityDay } from "~/lib/campaignCapacityRefusal";
+import { CAPACITY_DAY_MS, formatCapacityDay } from '~/lib/campaignCapacityRefusal';
 
 /** The readiness answer, in the shape `getSendingReadiness` returns it. */
 export type SendingReadiness =
@@ -34,7 +34,7 @@ export type SendingReadiness =
  * - `paced` — it will go out, over more than one day. Informational, never red.
  * - `waiting` — nothing more can go out today; the cap returns later.
  */
-export type SendReadinessTone = "ready" | "paced" | "waiting";
+export type SendReadinessTone = 'ready' | 'paced' | 'waiting';
 
 /**
  * One line of the note, as a catalog KEY (with its parameters when it has any).
@@ -59,8 +59,8 @@ export interface SendReadinessNote {
  * honest render for that is nothing at all.
  */
 const UNCAPPED_DETAIL: Readonly<Record<string, string>> = {
-	warmup_overflow_absorbs: "shared.sendReadiness.uncapped.warmupOverflowAbsorbs",
-	not_own_mta: "shared.sendReadiness.uncapped.notOwnMta",
+	warmup_overflow_absorbs: 'shared.sendReadiness.uncapped.warmupOverflowAbsorbs',
+	not_own_mta: 'shared.sendReadiness.uncapped.notOwnMta',
 };
 
 /**
@@ -72,21 +72,21 @@ const UNCAPPED_DETAIL: Readonly<Record<string, string>> = {
  * thing in ONE sentence pair, and gluing two translated halves together is not a
  * sentence any translator can move the words around in.
  */
-type Growth = { variant: "tomorrow" | "onDate"; params: Record<string, unknown> };
+type Growth = { variant: 'tomorrow' | 'onDate'; params: Record<string, unknown> };
 
 function growth(
 	readiness: Extract<SendingReadiness, { capped: true }>,
 	now: number,
-	locale?: string,
+	locale?: string
 ): Growth | null {
 	const { growsTo, growsAt } = readiness;
 	if (growsTo === null || growsAt === null) return null;
 	const count = growsTo.toLocaleString(locale);
 	const dayZero = Math.floor(now / CAPACITY_DAY_MS) * CAPACITY_DAY_MS;
-	if (growsAt - dayZero === CAPACITY_DAY_MS) return { variant: "tomorrow", params: { count } };
+	if (growsAt - dayZero === CAPACITY_DAY_MS) return { variant: 'tomorrow', params: { count } };
 	return {
-		variant: "onDate",
-		params: { count, date: formatCapacityDay(growsAt, "short") },
+		variant: 'onDate',
+		params: { count, date: formatCapacityDay(growsAt, 'short') },
 	};
 }
 
@@ -107,31 +107,31 @@ function growthMessage(value: Growth | null): ReadinessMessage | null {
  */
 export function sendReadinessNote(
 	readiness: SendingReadiness | null | undefined,
-	options: { audienceSize?: number | null; now: number; locale?: string },
+	options: { audienceSize?: number | null; now: number; locale?: string }
 ): SendReadinessNote | null {
 	if (!readiness) return null;
 
 	if (!readiness.capped) {
 		const detail = UNCAPPED_DETAIL[readiness.reason];
 		if (!detail) return null;
-		return { tone: "ready", headline: "shared.sendReadiness.uncapped.headline", detail };
+		return { tone: 'ready', headline: 'shared.sendReadiness.uncapped.headline', detail };
 	}
 
 	const projected = growth(readiness, options.now, options.locale);
 
 	if (readiness.today <= 0) {
 		return {
-			tone: "waiting",
-			headline: "shared.sendReadiness.spent.headline",
-			detail: growthMessage(projected) ?? "shared.sendReadiness.spent.detail",
+			tone: 'waiting',
+			headline: 'shared.sendReadiness.spent.headline',
+			detail: growthMessage(projected) ?? 'shared.sendReadiness.spent.detail',
 		};
 	}
 
 	const headline: ReadinessMessage = {
 		key:
 			readiness.today === 1
-				? "shared.sendReadiness.capacity.one"
-				: "shared.sendReadiness.capacity.other",
+				? 'shared.sendReadiness.capacity.one'
+				: 'shared.sendReadiness.capacity.other',
 		params: { count: readiness.today.toLocaleString(options.locale) },
 	};
 	// A NON-POSITIVE SIZE IS AN UNKNOWN ONE, never an audience of zero. The
@@ -143,18 +143,18 @@ export function sendReadinessNote(
 	const audienceSize = size > 0 ? size : null;
 	// No audience yet (or a surface that never has one): the capacity figure and
 	// the growth are the whole, honest answer.
-	if (audienceSize === null) return { tone: "ready", headline, detail: growthMessage(projected) };
+	if (audienceSize === null) return { tone: 'ready', headline, detail: growthMessage(projected) };
 
 	const audience = audienceSize.toLocaleString(options.locale);
 	if (audienceSize <= readiness.today) {
 		return {
-			tone: "ready",
+			tone: 'ready',
 			headline,
-			detail: { key: "shared.sendReadiness.audienceFits", params: { audience } },
+			detail: { key: 'shared.sendReadiness.audienceFits', params: { audience } },
 		};
 	}
 	return {
-		tone: "paced",
+		tone: 'paced',
 		headline,
 		// Capacity is a SCHEDULE, not a failure: the send is not blocked, it is
 		// spread. The exact day count comes from the capacity plan panel beside
@@ -164,11 +164,11 @@ export function sendReadinessNote(
 		detail: projected
 			? {
 					key:
-						projected.variant === "tomorrow"
-							? "shared.sendReadiness.paced.detailGrowsTomorrow"
-							: "shared.sendReadiness.paced.detailGrowsOnDate",
+						projected.variant === 'tomorrow'
+							? 'shared.sendReadiness.paced.detailGrowsTomorrow'
+							: 'shared.sendReadiness.paced.detailGrowsOnDate',
 					params: { audience, ...projected.params },
 				}
-			: { key: "shared.sendReadiness.paced.detail", params: { audience } },
+			: { key: 'shared.sendReadiness.paced.detail', params: { audience } },
 	};
 }

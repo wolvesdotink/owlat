@@ -14,7 +14,7 @@ export function useContactRelationships(contactId: Ref<Id<'contacts'>>) {
 	// Fetch relationships
 	const { data: relationships, isLoading: relationshipsLoading } = useConvexQuery(
 		api.contacts.relationships.listByContact,
-		() => ({ contactId: contactId.value }),
+		() => ({ contactId: contactId.value })
 	);
 
 	// Contact picker for the Add Relationship form. The target contact is chosen
@@ -26,13 +26,11 @@ export function useContactRelationships(contactId: Ref<Id<'contacts'>>) {
 	const { results: targetCandidatesRaw } = usePaginatedQuery(
 		api.contacts.contacts.list,
 		() => ({ search: targetSearchDebounced.value || undefined }),
-		{ initialNumItems: 8 },
+		{ initialNumItems: 8 }
 	);
 	// Never offer the contact you're on as its own relationship target.
 	const targetCandidates = computed(() =>
-		(targetCandidatesRaw.value as ContactSearchResult[]).filter(
-			(c) => c._id !== contactId.value,
-		),
+		(targetCandidatesRaw.value as ContactSearchResult[]).filter((c) => c._id !== contactId.value)
 	);
 
 	const contactLabel = (contact: ContactSearchResult): string => {
@@ -49,7 +47,7 @@ export function useContactRelationships(contactId: Ref<Id<'contacts'>>) {
 	});
 	const { run: updateConfidence } = useBackendOperation(
 		api.contacts.relationships.updateConfidence,
-		{ label: () => t('shared.useContactRelationships.updateConfidenceOperation') },
+		{ label: () => t('shared.useContactRelationships.updateConfidenceOperation') }
 	);
 
 	// Add form state
@@ -104,7 +102,7 @@ export function useContactRelationships(contactId: Ref<Id<'contacts'>>) {
 	// alike — both map to a single contactRelationships document).
 	const handleUpdateConfidence = async (
 		relationshipId: Id<'contactRelationships'>,
-		confidence: number,
+		confidence: number
 	) => {
 		const clamped = Math.min(1, Math.max(0, confidence));
 		await updateConfidence({ relationshipId, confidence: clamped });

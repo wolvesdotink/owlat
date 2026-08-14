@@ -154,9 +154,7 @@ watch(
 function forYouDetail(item: ReplyQueueItem): string {
 	const who = item.fromName?.trim() || item.fromAddress;
 	const snippet = item.snippet?.trim();
-	return snippet
-		? t('components.postbox.postboxTodayView.forYouDetail', { who, snippet })
-		: who;
+	return snippet ? t('components.postbox.postboxTodayView.forYouDetail', { who, snippet }) : who;
 }
 
 /** The strip's action says what happens (no jargon). */
@@ -307,7 +305,7 @@ function closeOverlay() {
 					{{ t('components.postbox.postboxTodayView.allClear') }}
 				</p>
 				<p v-if="autoFiledLine" class="mt-2 text-xs text-text-tertiary">
-					{{ t(autoFiledLine) }} ·
+					{{ t(autoFiledLine.key, autoFiledLine.params) }} ·
 					<button
 						type="button"
 						class="text-brand hover:underline focus-visible:ring-1 focus-visible:ring-brand/40 rounded outline-none"
@@ -326,12 +324,13 @@ function closeOverlay() {
 						class="px-3 py-2 rounded text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface focus-visible:ring-1 focus-visible:ring-brand/40 outline-none tabular-nums"
 						@click="showPast = true"
 					>
-						{{
-							t('components.postbox.postboxTodayView.showPast', { count: olderCountLabel })
-						}}
+						{{ t('components.postbox.postboxTodayView.showPast', { count: olderCountLabel }) }}
 					</button>
 				</div>
-				<section v-else-if="showPast" :aria-label="t('components.postbox.postboxTodayView.pastMails')">
+				<section
+					v-else-if="showPast"
+					:aria-label="t('components.postbox.postboxTodayView.pastMails')"
+				>
 					<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
 						{{ t('components.postbox.postboxTodayView.past') }}
 					</h2>
