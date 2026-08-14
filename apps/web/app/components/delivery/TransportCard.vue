@@ -15,11 +15,22 @@
  * being able to change it.
  */
 import { api } from '@owlat/api';
-import { deriveTransportDisplay } from '~/utils/transportState';
+import { deriveTransportDisplay, type TransportText } from '~/utils/transportState';
 import { healthChipClass, healthDotClass } from '~/utils/healthTone';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 
 const { t } = useI18n();
+
+/**
+ * The transport name and its one-line description come out of
+ * `utils/transportState`, a module-scope definition set that carries i18n keys
+ * rather than sentences (the registry convention), and a key may arrive with the
+ * values its message interpolates. A plain string is still accepted so a name
+ * from the catalog, the backend or an unknown `EMAIL_PROVIDER` reads as itself.
+ */
+function localized(value: TransportText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
 
 const {
 	data: summary,
@@ -78,9 +89,9 @@ const infrastructureChecks = computed(() => {
 							{{ t('components.delivery.transportCard.eyebrow') }}
 						</p>
 						<h2 class="text-lg font-semibold text-text-primary truncate">
-							{{ t(display.label) }}
+							{{ localized(display.label) }}
 						</h2>
-						<p class="text-sm text-text-secondary mt-0.5">{{ t(display.description) }}</p>
+						<p class="text-sm text-text-secondary mt-0.5">{{ localized(display.description) }}</p>
 					</div>
 				</div>
 				<span

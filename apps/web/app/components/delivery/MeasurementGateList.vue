@@ -23,8 +23,8 @@ import {
 	gateLabel,
 	gateStatusLabel,
 	gateTone,
-	type DeliverabilityDashboardGate,
-} from '~/utils/deliverabilityMeasurement';
+} from '~/utils/deliverabilityGateCopy';
+import type { DeliverabilityDashboardGate } from '~/utils/deliverabilityMeasurement';
 
 const props = defineProps<{
 	gates: readonly DeliverabilityDashboardGate[];

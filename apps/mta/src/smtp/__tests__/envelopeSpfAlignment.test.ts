@@ -199,10 +199,10 @@ describe('return-path SPF in the DNS guide', () => {
 		const { fileURLToPath } = await import('node:url');
 		const { dirname, resolve } = await import('node:path');
 		const here = dirname(fileURLToPath(import.meta.url));
-		// apps/mta/src/smtp/__tests__ → repo apps/docs/content/...
+		// apps/mta/src/smtp/__tests__ → repo apps/docs/content/en/...
 		const guidePath = resolve(
 			here,
-			'../../../../docs/content/3.developer/32.self-hosting-dns-email.md'
+			'../../../../docs/content/en/3.developer/32.self-hosting-dns-email.md'
 		);
 		const guide = readFileSync(guidePath, 'utf-8');
 

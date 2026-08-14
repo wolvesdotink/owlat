@@ -185,6 +185,65 @@ describe('useContactDetail.saveChanges (custom property clears)', () => {
 });
 
 /**
+ * The language/timezone catalogs live at module scope in `~/data/languageOptions`,
+ * so they carry message keys — `languageSelectOptions` is a factory taking a
+ * translator. The composable must resolve both where `t` is in hand; a raw key
+ * leaking into a `<select>` option would be the regression this guards.
+ */
+describe('useContactDetail picker catalogs', () => {
+	const setup = () => {
+		vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
+		let convexQueryCall = 0;
+		vi.stubGlobal('useConvexQuery', () => {
+			convexQueryCall += 1;
+			if (convexQueryCall === 1) {
+				return { data: ref({ _id: 'c1', email: 'a@b.com' }), isLoading: ref(false) };
+			}
+			return { data: ref([]), isLoading: ref(false) };
+		});
+		vi.stubGlobal('useOrganizationQuery', () => ({ data: ref([]) }));
+		vi.stubGlobal('useI18n', () => ({ t }));
+		vi.stubGlobal('useBackendOperation', () => ({
+			run: () => Promise.resolve({ _id: 'c1' }),
+			isLoading: ref(false),
+			inlineError: ref(null),
+		}));
+		return useContactDetail(ref('c1') as never);
+	};
+
+	it('exposes translated timezone options, not message keys', () => {
+		const { commonTimezones } = setup();
+		expect(commonTimezones.value[0]).toEqual({
+			value: '',
+			label: 'Not set (use campaign default)',
+		});
+		expect(commonTimezones.value).toContainEqual({
+			value: 'Europe/Berlin',
+			label: 'Berlin (CET)',
+		});
+		for (const zone of commonTimezones.value) {
+			expect(zone.label).not.toContain('shared.data.languageOptions');
+		}
+	});
+
+	it('exposes translated language options with endonyms', () => {
+		const { commonLanguages } = setup();
+		expect(commonLanguages.value[0]).toEqual({ value: '', label: 'Not set (use email default)' });
+		expect(commonLanguages.value).toContainEqual({ value: 'en', label: 'English' });
+		expect(commonLanguages.value).toContainEqual({ value: 'de', label: 'German (Deutsch)' });
+	});
+
+	it('resolves display labels for a stored timezone and language', () => {
+		const detail = setup();
+		expect(detail.getTimezoneLabel('Europe/London')).toBe('London (GMT/BST)');
+		expect(detail.getLanguageLabel('fr')).toBe('French (Français)');
+		// Unknown values fall back to the raw code; unset reads as "Not set".
+		expect(detail.getTimezoneLabel('Mars/Olympus')).toBe('Mars/Olympus');
+		expect(detail.getLanguageLabel(undefined)).toBe('Not set');
+	});
+});
+
+/**
  * resendDoiConfirmation wires the orphaned `topics.resendDoiConfirmation`
  * mutation onto the contact detail page. It only fires for a contact in the
  * `pending` DOI state and forwards the contactId; the confirmation-link host

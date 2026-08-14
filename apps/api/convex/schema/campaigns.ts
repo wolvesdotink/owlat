@@ -223,7 +223,7 @@ export const campaignTables = {
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` indexes campaign
 		// METADATA (name, subject), not a sealed 1:1 message body — campaigns are the
 		// plaintext broadcast plane (D5) and are out of E8b's at-rest sealing scope.
-		// See lib/atRestBodies.ts and apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
+		// See lib/atRestBodies.ts and apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_campaigns', {
 			searchField: 'searchableText',
 			filterFields: ['status'],

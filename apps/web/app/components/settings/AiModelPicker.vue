@@ -6,9 +6,9 @@
  * text as separate form fields — `resolveModelId(choice, custom)` collapses them
  * back to the effective id at save time.
  */
-import { CUSTOM_MODEL_VALUE, type SelectOption } from '~/utils/aiProviders';
+import { CUSTOM_MODEL_VALUE, type AiProviderText, type SelectOption } from '~/utils/aiProviders';
 
-defineProps<{
+const props = defineProps<{
 	label: string;
 	options: SelectOption[];
 	hint?: string;
@@ -18,12 +18,25 @@ defineProps<{
 const choice = defineModel<string>('choice', { required: true });
 const custom = defineModel<string>('custom', { required: true });
 
-const { t } = useI18n();
+const { t, te } = useI18n();
+
+/**
+ * `SelectOption.label` is copy as a message key (or a `{ key, params }` pair)
+ * and data — a model id — verbatim. `UiSelect` takes rendered strings, so the
+ * resolution happens here: a key is translated, an id has no catalog entry and
+ * passes through unchanged.
+ */
+const localized = (text: AiProviderText): string =>
+	typeof text === 'string' ? (te(text) ? t(text) : text) : t(text.key, text.params ?? {});
+
+const selectOptions = computed(() =>
+	props.options.map((option) => ({ value: option.value, label: localized(option.label) }))
+);
 </script>
 
 <template>
 	<div>
-		<UiSelect v-model="choice" :label="label" :options="options" :disabled="disabled" />
+		<UiSelect v-model="choice" :label="label" :options="selectOptions" :disabled="disabled" />
 		<UiInput
 			v-if="choice === CUSTOM_MODEL_VALUE"
 			v-model="custom"

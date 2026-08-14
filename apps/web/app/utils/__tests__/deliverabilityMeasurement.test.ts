@@ -48,8 +48,8 @@ import {
 	seedPlacementReferenceBreachOutgrown,
 	seedPlacementReferenceHold,
 } from '~/components/delivery/__tests__/measurementFixtures';
+import { gateExplanation } from '~/utils/deliverabilityGateCopy';
 import {
-	gateExplanation,
 	improvementCopy,
 	measurementSubhead,
 	standaloneNote,

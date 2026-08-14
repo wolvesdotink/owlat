@@ -4,6 +4,7 @@ import {
 	ADDABLE_CHANNEL_KINDS,
 	availableChannelKinds as computeAvailableChannelKinds,
 	type ChannelKind,
+	type LocalizedText,
 } from '~/utils/channelKinds';
 
 definePageMeta({
@@ -12,6 +13,15 @@ definePageMeta({
 });
 
 const { t } = useI18n();
+
+/**
+ * `ADDABLE_CHANNEL_KINDS` is a module-scope registry evaluated at import time,
+ * so it carries message KEYS (optionally with params) rather than sentences —
+ * resolving them is the consumer's job. A plain string still reads as a key.
+ */
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
 
 useHead({ title: () => t('dashboard.admin.instance.channels.pageTitle') });
 
@@ -138,7 +148,7 @@ const handleChannelError = (message: string) => {
 					:icon="option.icon"
 					@click="addChannel(option.kind)"
 				>
-					{{ t(option.label) }}
+					{{ localized(option.label) }}
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
 		</div>

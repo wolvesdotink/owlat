@@ -32,7 +32,7 @@ export interface GalleryEntry {
 	readonly manifest: PluginManifest;
 }
 
-const DASHBOARD_NAVIGATION_PATH = 'apps/web/app/lib/dashboardNavigation.ts';
+const DASHBOARD_NAVIGATION_PATH = 'apps/web/app/lib/dashboardNavigationCore.ts';
 const CORE_SECTIONS_DECLARATION = 'const CORE_SECTIONS: readonly CoreSection[] = [';
 
 /**

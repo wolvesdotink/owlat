@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { useCampaignCommandRows } from '~/composables/useCampaignCommandRows';
 import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
-import { CAMPAIGN_ATTENTION_DISPLAY, classifyCampaignAttention } from '~/utils/campaignAttention';
 import type { CampaignRowFields, DecoratedRow } from '~/utils/campaignCommandRow';
 
 const { t } = useI18n();
@@ -126,84 +126,15 @@ function handleLoadMore() {
 	if (canLoadMore.value) loadMore(100);
 }
 
-const { getStatusBadge } = useCampaignStatusBadge();
-
 // --- Row model: campaign + its attention roll-up + derived rates ------------
-// The row TYPE + row COMPONENT live in siblings (utils/campaignCommandRow +
-// components/campaigns/CommandRow) so this page stays a controller; here we only
-// DERIVE the rows.
-
-function rate(numer: number | undefined, denom: number | undefined): number | null {
-	if (!denom || denom <= 0) return null;
-	return ((numer ?? 0) / denom) * 100;
-}
-
-function decorate(campaign: CampaignRowFields): DecoratedRow {
-	const attention = classifyCampaignAttention({
-		status: campaign.status,
-		scheduledAt: campaign.scheduledAt,
-		isABTest: campaign.isABTest,
-		abTestStatus: campaign.abTestStatus,
-		abWinner: campaign.abWinner,
-		contentBlockReason: campaign.contentBlockReason,
-	});
-	const display = attention.reason ? CAMPAIGN_ATTENTION_DISPLAY[attention.reason] : null;
-	const openRate = rate(campaign.statsOpened, campaign.statsDelivered);
-	const clickRate = rate(campaign.statsClicked, campaign.statsDelivered);
-	// A/B campaigns carry two comparable sends (variant A = main stats,
-	// variant B = abVariantB* fields) — a genuine two-point open-rate trend.
-	const variantA = openRate;
-	const variantB = rate(campaign.abVariantBOpened, campaign.abVariantBSent);
-	const spark =
-		campaign.isABTest === true && variantA != null && variantB != null ? [variantA, variantB] : [];
-	return {
-		campaign,
-		needsAttention: attention.needsAttention,
-		reason: attention.reason,
-		reasonChip: display ? { label: display.chipLabel, dot: display.dot } : null,
-		statusBadge: getStatusBadge(campaign.status),
-		actionLabel: attention.actionLabel,
-		openRate,
-		clickRate,
-		variantA,
-		variantB,
-		spark,
-	};
-}
-
-// Sort helper: attention first, then most-recent (updatedAt) — the design
-// brief's "surface what needs a decision, then the freshest work".
-function byAttentionThenRecency(a: DecoratedRow, b: DecoratedRow): number {
-	if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1;
-	return b.campaign.updatedAt - a.campaign.updatedAt;
-}
-
-// Attention rows come from the org-wide candidate scan, then the client
-// classifier (the source of truth) keeps only the ones genuinely waiting.
-// The browse pills search server-side, but the attention set is fetched
-// unsearched, so we apply the same debounced query here (case-insensitive
-// name/subject over the bounded candidate set) — otherwise typing on the
-// default pill would silently no-op and the "No results" empty state would
-// lie about a search that never ran.
-const attentionRows = computed<DecoratedRow[]>(() => {
-	const q = debouncedSearch.value.toLowerCase();
-	return (attentionCandidates.value ?? [])
-		.map(decorate)
-		.filter((r) => r.needsAttention)
-		.filter((r) => {
-			if (!q) return true;
-			const c = r.campaign;
-			return c.name.toLowerCase().includes(q) || (c.subject?.toLowerCase().includes(q) ?? false);
-		})
-		.sort((a, b) => b.campaign.updatedAt - a.campaign.updatedAt);
+// The DERIVATION, the row TYPE and the row COMPONENT all live in siblings
+// (composables/useCampaignCommandRows + utils/campaignCommandRow +
+// components/campaigns/CommandRow) so this page stays a controller.
+const { attentionRows, attentionCount, browseRows } = useCampaignCommandRows({
+	rows: () => rows.value,
+	attentionCandidates: () => attentionCandidates.value,
+	search: () => debouncedSearch.value,
 });
-
-const attentionCount = computed(() => attentionRows.value.length);
-
-// Browse rows come from the paginated (optionally status-filtered) window.
-const browseRows = computed<DecoratedRow[]>(() =>
-	(rows.value ?? []).map(decorate).sort(byAttentionThenRecency)
-);
 
 const visibleRows = computed(() =>
 	selectedPill.value === 'attention' ? attentionRows.value : browseRows.value

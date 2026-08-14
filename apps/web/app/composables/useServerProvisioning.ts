@@ -15,20 +15,14 @@ import {
 	createTimeline,
 	createTauriTransport,
 	systemCheckCommand,
-	dockerPlatform,
 	installDockerCommand,
 	fetchOwlatCommand,
-	prepareInstallDirCommand,
-	buildSetupImageCommand,
-	localBuildInvocation,
-	localSetupImageInvocation,
 	installerCommand,
 	installSource,
 	setupConfigPath,
 	canOpenWorkspaceUrl,
 	isLoopbackUrl,
 	DEFAULT_REMOTE,
-	DEV_IMAGES,
 	type ProvisionTransport,
 	type ConnectInfo,
 	type ExecEvent,
@@ -44,6 +38,7 @@ import {
 	parsePublicIp,
 	resolveServerIp,
 } from '~/lib/desktop/provisioningForm';
+import { installLocalSource } from '~/composables/serverProvisioningLocalSource';
 
 export type ProvisionStage =
 	| 'idle'
@@ -278,92 +273,20 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 
 			const source = installSource(remote);
 			if (source !== 'git' && remote.localSource) {
-				// fetch-owlat — upload the local working tree instead of cloning
-				// (dev mode: nothing published yet, or testing local script changes).
-				setStepState(steps, 'fetch-owlat', 'running');
-				const prep = await ssh.execStream(
+				// The dev modes: upload the local working tree instead of cloning, then
+				// get the images onto the server the way this mode calls for.
+				await installLocalSource({
+					ssh,
 					sessionId,
-					prepareInstallDirCommand(remote),
-					(e: ExecEvent) => {
-						if (e.kind !== 'exit') pushLog(e.kind, e.line);
-					}
-				);
-				if (prep !== 0) {
-					setStepState(
-						steps,
-						'fetch-owlat',
-						'failed',
-						t('shared.useServerProvisioning.exitCode', { code: prep })
-					);
-					throw new Error(
-						t('shared.useServerProvisioning.stepFailed', { step: 'fetch-owlat', code: prep })
-					);
-				}
-				await ssh.uploadDir(sessionId, remote.localSource, remote.installDir);
-				setStepState(
 					steps,
-					'fetch-owlat',
-					'ok',
-					t('shared.useServerProvisioning.uploadedLocalSource')
-				);
-
-				if (source === 'local-push') {
-					// build-images-local — every stack image, built HERE for the
-					// server's platform (cross-built via Rosetta/qemu when they differ).
-					const platform = dockerPlatform(serverArch);
-					setStepState(steps, 'build-images-local', 'running', platform);
-					const stack = localBuildInvocation(platform);
-					const onLine = (e: ExecEvent) => {
-						if (e.kind !== 'exit') pushLog(e.kind, e.line);
-					};
-					const buildCode = await ssh.localExec(
-						stack.program,
-						stack.args,
-						remote.localSource,
-						stack.env,
-						onLine
-					);
-					if (buildCode !== 0) {
-						setStepState(
-							steps,
-							'build-images-local',
-							'failed',
-							t('shared.useServerProvisioning.exitCode', { code: buildCode })
-						);
-						throw new Error(
-							t('shared.useServerProvisioning.localBuildFailed', { code: buildCode })
-						);
-					}
-					const setup = localSetupImageInvocation(platform);
-					const setupCode = await ssh.localExec(
-						setup.program,
-						setup.args,
-						remote.localSource,
-						setup.env,
-						onLine
-					);
-					if (setupCode !== 0) {
-						setStepState(
-							steps,
-							'build-images-local',
-							'failed',
-							t('shared.useServerProvisioning.exitCode', { code: setupCode })
-						);
-						throw new Error(
-							t('shared.useServerProvisioning.localSetupImageFailed', { code: setupCode })
-						);
-					}
-					setStepState(steps, 'build-images-local', 'ok', platform);
-
-					// push-images — docker save → gzip → ssh → docker load.
-					setStepState(steps, 'push-images', 'running');
-					await ssh.pushImages(sessionId, [...DEV_IMAGES], onLine);
-					setStepState(steps, 'push-images', 'ok');
-				} else {
-					// build-setup-image — quickstart runs inside this image, so it must
-					// exist on the server before the installer step (it is never pulled).
-					await runExecStep(sessionId, 'build-setup-image', buildSetupImageCommand(remote));
-				}
+					remote,
+					localSource: remote.localSource,
+					source,
+					serverArch,
+					pushLog,
+					runExecStep: (stepId, command) => runExecStep(sessionId, stepId, command),
+					t,
+				});
 			} else {
 				// fetch-owlat — clone or fast-forward the repo.
 				await runExecStep(sessionId, 'fetch-owlat', fetchOwlatCommand(remote));

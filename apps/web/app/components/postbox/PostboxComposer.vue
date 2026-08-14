@@ -324,43 +324,14 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				{{ t('components.postbox.postboxComposer.dropHint') }}
 			</span>
 		</div>
-		<header
-			class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle"
-		>
-			<span class="text-sm font-semibold">
-				{{ subject || t('components.postbox.postboxComposer.newMessage') }}
-			</span>
-			<div class="flex items-center gap-1">
-				<button
-					v-if="inline"
-					type="button"
-					class="p-1 hover:bg-bg-elevated rounded"
-					:title="t('components.postbox.postboxComposer.openInPopup')"
-					:aria-label="t('components.postbox.postboxComposer.openInPopup')"
-					:disabled="promoting"
-					@click="handlePromote"
-				>
-					<Icon name="lucide:maximize-2" class="w-4 h-4" />
-				</button>
-				<button
-					v-else
-					type="button"
-					class="p-1 hover:bg-bg-elevated rounded"
-					:title="t('components.postbox.postboxComposer.minimize')"
-					@click="emit('minimize')"
-				>
-					<Icon name="lucide:minus" class="w-4 h-4" />
-				</button>
-				<button
-					type="button"
-					class="p-1 hover:bg-bg-elevated rounded"
-					:title="t('common.discard')"
-					@click="handleDiscard"
-				>
-					<Icon name="lucide:x" class="w-4 h-4" />
-				</button>
-			</div>
-		</header>
+		<PostboxComposerHeader
+			:subject="subject"
+			:inline="inline"
+			:promoting="promoting"
+			@promote="handlePromote"
+			@minimize="emit('minimize')"
+			@discard="handleDiscard"
+		/>
 
 		<PostboxComposerEnvelope
 			v-model:to-addresses="toAddresses"
@@ -391,9 +362,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		>
 			<span class="inline-flex items-center gap-1.5 text-text-secondary">
 				<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
-				{{
-					t('components.postbox.postboxComposer.scheduledFor', { datetime: scheduledLabel })
-				}}
+				{{ t('components.postbox.postboxComposer.scheduledFor', { datetime: scheduledLabel }) }}
 			</span>
 			<UiButton
 				variant="ghost"

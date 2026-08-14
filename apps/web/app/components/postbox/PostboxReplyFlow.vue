@@ -18,6 +18,7 @@ import {
 	formatReplyQueueDueHint,
 	replyQueueSection,
 	type ReplyQueueItem,
+	type ReplyQueueText,
 } from '~/utils/postboxReplyQueue';
 
 /**
@@ -30,7 +31,27 @@ import {
  */
 const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+
+/**
+ * The queue helpers are pure, so copy reaches us as an i18n key (optionally
+ * with params) while message-derived text (a subject, an AI ask summary)
+ * arrives as itself — resolve both here, the rendering layer.
+ */
+function replyQueueText(value: ReplyQueueText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+/** The card headline for a row, resolved for display. */
+function headline(item: ReplyQueueItem): string {
+	return replyQueueText(replyQueueHeadline(item));
+}
+
+/** The "Due Jul 3" chip, or undefined when the row states no deadline. */
+function dueLabel(dueHint: string | undefined): string | undefined {
+	const due = formatReplyQueueDueHint(dueHint, locale.value);
+	return due === null ? undefined : replyQueueText(due);
+}
 
 const mailboxIdRef = computed(() => props.mailboxId as Id<'mailboxes'> | null);
 const { items, isLoading } = usePostboxReplyQueue(mailboxIdRef);
@@ -55,9 +76,7 @@ const currentKind = computed<TaskFlowKind | null>(() =>
 	current.value ? orderKey(current.value).kind : null
 );
 const estimateLabel = computed(() => formatTaskFlowEstimate(flow.remainingSeconds.value));
-const peekLabel = computed(() =>
-	flow.nextItem.value ? replyQueueHeadline(flow.nextItem.value) : ''
-);
+const peekLabel = computed(() => (flow.nextItem.value ? headline(flow.nextItem.value) : ''));
 
 // Enter the flow once the live queue has loaded with at least one item.
 const started = ref(false);
@@ -298,7 +317,7 @@ function urgencyLabel(urgency: string): string {
 					:who="current.fromName || current.fromAddress"
 					:name="current.fromName"
 					:email="current.fromAddress"
-					:due="formatReplyQueueDueHint(current.dueHint) ?? undefined"
+					:due="dueLabel(current.dueHint)"
 					:meta="formatCompactRelativeTime(current.receivedAt)"
 				>
 					<template #chips>
@@ -322,7 +341,7 @@ function urgencyLabel(urgency: string): string {
 					</template>
 				</TaskContext>
 
-				<TaskAsk class="mt-3 mb-4" :ask="replyQueueHeadline(current)" :detail="current.snippet" />
+				<TaskAsk class="mt-3 mb-4" :ask="headline(current)" :detail="current.snippet" />
 
 				<!-- Draft-on-arrival review slot (human review only). -->
 				<PostboxReviewSlot

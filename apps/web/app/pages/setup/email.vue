@@ -1,14 +1,7 @@
 <script setup lang="ts">
-import {
-	SETUP_WIZARD_STEPS,
-	SMTP_RELAY_PRESETS,
-	buildProviderEnv,
-	type EmailStepDraft,
-	type ProviderChoice,
-	type SmtpPreset,
-} from '~/composables/useSetupWizard';
-import { emailStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
-import { getActiveProfiles } from '@owlat/shared/featureFlags';
+import { SETUP_WIZARD_STEPS, buildProviderEnv } from '~/composables/useSetupWizard';
+import { emailStepIsValid } from '~/composables/setupWizardValidation';
+import { useSetupEmailStepForm } from '~/composables/useSetupEmailStepForm';
 
 definePageMeta({ layout: false });
 
@@ -20,94 +13,41 @@ const router = useRouter();
 const { env, flags, requiresProvider, setupToken, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'email');
 
-// Seed from prior values so navigating back does not wipe operator input.
-const initialProvider = (env.value['EMAIL_PROVIDER'] as ProviderChoice | undefined) ?? null;
-const provider = ref<ProviderChoice>(initialProvider ?? (requiresProvider.value ? 'mta' : 'none'));
-const mtaProfileEnabled = computed(() =>
-	getActiveProfiles(flags.value, { deliveryProvider: provider.value }).includes('mta')
-);
-const transactionalIps = ref(env.value['IP_POOLS_TRANSACTIONAL'] ?? '');
-const campaignIps = ref(env.value['IP_POOLS_CAMPAIGN'] ?? '');
-const ehloHostname = ref(env.value['EHLO_HOSTNAME'] ?? '');
-const ehloHostnames = ref(env.value['EHLO_HOSTNAMES'] ?? '');
-const resendKey = ref(env.value['RESEND_API_KEY'] ?? '');
-const emailitKey = ref(env.value['EMAILIT_API_KEY'] ?? '');
-const mandrillKey = ref(env.value['MANDRILL_API_KEY'] ?? '');
-const sesRegion = ref(env.value['AWS_SES_REGION'] ?? 'us-east-1');
-const sesAccess = ref(env.value['AWS_SES_ACCESS_KEY_ID'] ?? '');
-const sesSecret = ref(env.value['AWS_SES_SECRET_ACCESS_KEY'] ?? '');
-const fromEmail = ref(env.value['DEFAULT_FROM_EMAIL'] ?? '');
-const fromName = ref(env.value['DEFAULT_FROM_NAME'] ?? '');
-
-// Restore a matching relay preset, otherwise fall back to Custom.
-const initialSmtpHost = env.value['SMTP_RELAY_HOST'] ?? '';
-const initialSmtpPreset: SmtpPreset = (() => {
-	if (!initialSmtpHost) return 'mailgun';
-	const match = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).find(
-		(p) => p !== 'custom' && SMTP_RELAY_PRESETS[p].host === initialSmtpHost
-	);
-	return match ?? 'custom';
-})();
-const smtpPreset = ref<SmtpPreset>(initialSmtpPreset);
-const smtpHost = ref(initialSmtpHost || SMTP_RELAY_PRESETS[initialSmtpPreset].host);
-const smtpPort = ref(env.value['SMTP_RELAY_PORT'] ?? SMTP_RELAY_PRESETS[initialSmtpPreset].port);
-const smtpSecure = ref(
-	env.value['SMTP_RELAY_SECURE'] !== undefined
-		? env.value['SMTP_RELAY_SECURE'] === 'true'
-		: SMTP_RELAY_PRESETS[initialSmtpPreset].secure
-);
-const smtpUsername = ref(env.value['SMTP_RELAY_USERNAME'] ?? '');
-const smtpPassword = ref(env.value['SMTP_RELAY_PASSWORD'] ?? '');
-
-// Vendor names from the shared preset table (`@owlat/shared`, also read by the
-// setup CLI): not app copy, so they are rendered as the table spells them.
-const smtpPresetOptions = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).map((key) => ({
-	value: key,
-	label: SMTP_RELAY_PRESETS[key].label,
-}));
-
-watch(smtpPreset, (preset) => {
-	if (preset === 'custom') return;
-	const cfg = SMTP_RELAY_PRESETS[preset];
-	smtpHost.value = cfg.host;
-	smtpPort.value = cfg.port;
-	smtpSecure.value = cfg.secure;
-});
+// Field state, the SMTP relay presets, the transport choice cards and the
+// validated draft they add up to — see `useSetupEmailStepForm`.
+const {
+	provider,
+	mtaProfileEnabled,
+	transactionalIps,
+	campaignIps,
+	ehloHostname,
+	ehloHostnames,
+	resendKey,
+	emailitKey,
+	mandrillKey,
+	sesRegion,
+	sesAccess,
+	sesSecret,
+	fromEmail,
+	fromName,
+	smtpPreset,
+	smtpHost,
+	smtpPort,
+	smtpSecure,
+	smtpUsername,
+	smtpPassword,
+	smtpPresetOptions,
+	providerOptions,
+	draft,
+	errors,
+} = useSetupEmailStepForm({ env, flags, requiresProvider });
 
 const submitting = ref(false);
 const submitted = ref(false);
 const generalError = ref('');
 
-const draft = computed<EmailStepDraft>(() => ({
-	provider: provider.value,
-	requiresProvider: requiresProvider.value,
-	resendKey: resendKey.value,
-	emailitKey: emailitKey.value,
-	mandrillKey: mandrillKey.value,
-	ses: { region: sesRegion.value, accessKeyId: sesAccess.value, secretAccessKey: sesSecret.value },
-	smtp: {
-		preset: smtpPreset.value,
-		host: smtpHost.value,
-		port: smtpPort.value,
-		secure: smtpSecure.value,
-		username: smtpUsername.value,
-		password: smtpPassword.value,
-	},
-	mtaProfileEnabled: mtaProfileEnabled.value,
-	mtaIdentity: {
-		transactionalIps: transactionalIps.value,
-		campaignIps: campaignIps.value,
-		ehloHostname: ehloHostname.value,
-		ehloHostnames: ehloHostnames.value,
-	},
-	fromEmail: fromEmail.value,
-	fromName: fromName.value,
-}));
-
-// Inline field errors surface after an advance attempt. The rules module is
-// pure, so its fields carry message keys (see the i18n registry convention); an
-// already-translated string passes through `t` unchanged.
-const errors = computed(() => validateEmailStep(draft.value));
+// Inline field errors surface after an advance attempt; the rules module reports
+// message keys (an already-translated string passes through `t` unchanged).
 const showErrors = computed(() => submitted.value);
 function errorText(value: string | undefined): string | undefined {
 	return value ? t(value) : undefined;
@@ -116,56 +56,6 @@ function errorText(value: string | undefined): string | undefined {
 // A live provider check (Resend / SMTP) calls a privileged setup endpoint, which
 // requires the one-time setup token echoed in the X-Setup-Token header.
 const needsLiveCheck = computed(() => ['resend', 'emailit', 'smtp'].includes(provider.value));
-
-const providerOptions = computed(() => {
-	const base: { value: ProviderChoice; label: string; hint: string; icon: string }[] = [
-		{
-			value: 'mta',
-			label: t('setup.email.providers.mta.label'),
-			hint: t('setup.email.providers.mta.hint'),
-			icon: 'lucide:server',
-		},
-		{
-			value: 'ses',
-			label: t('setup.email.providers.ses.label'),
-			hint: t('setup.email.providers.ses.hint'),
-			icon: 'lucide:cloud',
-		},
-		{
-			value: 'smtp',
-			label: t('setup.email.providers.smtp.label'),
-			hint: t('setup.email.providers.smtp.hint'),
-			icon: 'lucide:route',
-		},
-		{
-			value: 'resend',
-			label: t('setup.email.providers.resend.label'),
-			hint: t('setup.email.providers.resend.hint'),
-			icon: 'lucide:zap',
-		},
-		{
-			value: 'mandrill',
-			label: t('setup.email.providers.mandrill.label'),
-			hint: t('setup.email.providers.mandrill.hint'),
-			icon: 'lucide:shuffle',
-		},
-		{
-			value: 'emailit',
-			label: t('setup.email.providers.emailit.label'),
-			hint: t('setup.email.providers.emailit.hint'),
-			icon: 'lucide:send',
-		},
-	];
-	if (!requiresProvider.value) {
-		base.push({
-			value: 'none',
-			label: t('setup.email.providers.none.label'),
-			hint: t('setup.email.providers.none.hint'),
-			icon: 'lucide:inbox',
-		});
-	}
-	return base;
-});
 
 async function next() {
 	submitted.value = true;
@@ -318,8 +208,8 @@ async function next() {
 								rounded="lg"
 							/>
 							<div class="flex-1">
-								<div class="font-medium text-text-primary">{{ opt.label }}</div>
-								<div class="text-sm text-text-secondary">{{ opt.hint }}</div>
+								<div class="font-medium text-text-primary">{{ t(opt.label) }}</div>
+								<div class="text-sm text-text-secondary">{{ t(opt.hint) }}</div>
 							</div>
 						</label>
 					</fieldset>
@@ -443,7 +333,9 @@ async function next() {
 						class="mt-5 space-y-4 rounded-xl border border-border-subtle p-4"
 					>
 						<div>
-							<h2 class="font-medium text-text-primary">{{ t('setup.email.mtaIdentityHeading') }}</h2>
+							<h2 class="font-medium text-text-primary">
+								{{ t('setup.email.mtaIdentityHeading') }}
+							</h2>
 							<p class="text-sm text-text-secondary mt-1">
 								{{ t('setup.email.mtaIdentityIntro') }}
 							</p>
@@ -491,7 +383,12 @@ async function next() {
 					</div>
 
 					<div class="mt-6 border-t border-border-subtle pt-6">
-						<I18nT keypath="setup.email.fromIdentityHeading" tag="h2" scope="global" class="font-medium text-text-primary">
+						<I18nT
+							keypath="setup.email.fromIdentityHeading"
+							tag="h2"
+							scope="global"
+							class="font-medium text-text-primary"
+						>
 							<template #optional>
 								<span class="text-sm font-normal text-text-tertiary">{{
 									t('setup.email.fromIdentityOptional')

@@ -212,7 +212,7 @@ export const knowledgeTables = {
 		// plaintext at ingest) stay PLAINTEXT-DERIVED — Convex indexes plaintext, so
 		// sealing them would break server-side search and semantic retrieval. This is
 		// the documented, deliberate exception. See lib/atRestBodies.ts and
-		// apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
+		// apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_knowledge', {
 			searchField: 'searchableText',
 			filterFields: ['entryType'],
@@ -320,7 +320,7 @@ export const knowledgeTables = {
 		// `searchableText` (full-text) and `embedding` (vector) stay PLAINTEXT-DERIVED
 		// so file search + semantic retrieval keep working — Convex indexes plaintext.
 		// Documented, deliberate exception. See lib/atRestBodies.ts and
-		// apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
+		// apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_files', {
 			searchField: 'searchableText',
 			filterFields: [],

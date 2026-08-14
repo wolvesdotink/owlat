@@ -1,4 +1,4 @@
-import { ref, watch, type ComputedRef } from 'vue';
+import { computed, ref, watch, type ComputedRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { languageSelectOptions, timezoneOptions } from '~/data/languageOptions';
@@ -35,11 +35,6 @@ export function diffPropertyValues(
 
 	return { toSet, toRemove };
 }
-
-// Dropdown catalogs — sourced from the single language/timezone home so the
-// contact detail picker can't drift from every other language/timezone picker.
-const commonTimezones = timezoneOptions;
-const commonLanguages = languageSelectOptions;
 
 interface DoiStatusBadge {
 	/** Message key — this map is module scope, so it holds keys, not copy. */
@@ -270,16 +265,27 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 		router.push('/dashboard/audience/contacts');
 	};
 
+	// Dropdown catalogs — sourced from the single language/timezone home so the
+	// contact detail picker can't drift from every other language/timezone
+	// picker. Those catalogs are module scope, so they carry message keys: the
+	// `{ value, label }` pairs the picker renders can only be built here, where a
+	// translator is in hand. Computed, so the labels follow a locale switch.
+	const translate = (key: string) => t(key);
+	const commonTimezones = computed(() =>
+		timezoneOptions.map((zone) => ({ value: zone.value, label: translate(zone.label) }))
+	);
+	const commonLanguages = computed(() => languageSelectOptions(translate));
+
 	// COMPUTED: display helpers
 	const getTimezoneLabel = (tz: string | undefined) => {
 		if (!tz) return t('shared.useContactDetail.notSet');
-		const found = commonTimezones.find((zone) => zone.value === tz);
+		const found = commonTimezones.value.find((zone) => zone.value === tz);
 		return found ? found.label : tz;
 	};
 
 	const getLanguageLabel = (lang: string | undefined) => {
 		if (!lang) return t('shared.useContactDetail.notSet');
-		const found = commonLanguages.find((l) => l.value === lang);
+		const found = commonLanguages.value.find((l) => l.value === lang);
 		return found ? found.label : lang;
 	};
 

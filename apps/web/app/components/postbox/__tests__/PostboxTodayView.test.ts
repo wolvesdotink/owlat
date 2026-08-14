@@ -35,9 +35,12 @@ const feed = {
 	hasMore: ref(false),
 	loadMore: vi.fn(),
 };
+// `items` is hoisted out of the object literal so `count` can read it without
+// referencing `queue` inside its own initializer (which types as `any`).
+const queueItems = ref<ReplyQueueItem[]>([]);
 const queue = {
-	items: ref<ReplyQueueItem[]>([]),
-	count: computed(() => queue.items.value.length),
+	items: queueItems,
+	count: computed(() => queueItems.value.length),
 	isLoading: ref(false),
 };
 const threads = ref<{ threads: Array<Record<string, unknown>> } | undefined>({ threads: [] });

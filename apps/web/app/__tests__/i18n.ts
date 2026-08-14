@@ -19,7 +19,9 @@ export function createTestI18n() {
 		legacy: false,
 		locale: 'en',
 		fallbackLocale: 'en',
-		messages: { en },
+		// `de` present but empty: @nuxtjs/i18n augments createI18n to require every
+		// declared locale, and these suites only ever mount the English copy.
+		messages: { en, de: {} },
 	});
 }
 
@@ -38,13 +40,18 @@ const UNFILLED_PLACEHOLDER = /\{\s*[A-Za-z][A-Za-z0-9_]*\s*\}/;
 /** Everything a person reads or hears: body copy, placeholders, accessible names. */
 function renderedStrings(wrapper: VueWrapper): string[] {
 	const strings = [wrapper.text()];
-	const carriers = wrapper.element.querySelectorAll('[placeholder], [aria-label], [title]');
-	for (const el of Array.from(carriers)) {
+	// `wrapper.element` is `ComponentPublicInstance['$el']`, i.e. `any`; naming the
+	// DOM type here is what keeps the elements below typed rather than `unknown`.
+	const root: Element = wrapper.element;
+	const carriers: NodeListOf<HTMLElement> = root.querySelectorAll(
+		'[placeholder], [aria-label], [title]'
+	);
+	carriers.forEach((el: HTMLElement) => {
 		for (const attr of ['placeholder', 'aria-label', 'title']) {
 			const value = el.getAttribute(attr);
 			if (value) strings.push(value);
 		}
-	}
+	});
 	return strings;
 }
 

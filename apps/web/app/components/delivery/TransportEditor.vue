@@ -17,6 +17,7 @@ import {
 import { useRelayRemovalGuard } from '~/composables/useRelayRemovalGuard';
 import { credentialEnvVarFor } from '~/composables/setupWizardCredentials';
 import TransportCredentialFields from './TransportCredentialFields.vue';
+import TransportFromIdentityFields from './TransportFromIdentityFields.vue';
 
 /**
  * In-app transport editor. Reuses the setup wizard's provider picker, SMTP
@@ -362,33 +363,11 @@ function cancel() {
 				</template>
 			</TransportCredentialFields>
 
-			<div class="border-t border-border-subtle pt-5">
-				<h3 class="font-medium text-text-primary">
-					{{ t('components.delivery.transportEditor.fromIdentity') }}
-					<span class="text-sm font-normal text-text-tertiary">
-						{{ t('components.delivery.transportEditor.optionalSuffix') }}
-					</span>
-				</h3>
-				<p class="text-sm text-text-secondary mb-3">
-					{{ t('components.delivery.transportEditor.fromIdentityHint') }}
-				</p>
-				<div class="space-y-4">
-					<UiInput
-						v-model="fromEmail"
-						type="email"
-						:label="t('components.delivery.transportEditor.fromEmailLabel')"
-						:placeholder="t('components.delivery.transportEditor.fromEmailPlaceholder')"
-						autocomplete="off"
-						:error="showErrors ? errors.fromEmail : undefined"
-					/>
-					<UiInput
-						v-model="fromName"
-						:label="t('components.delivery.transportEditor.fromNameLabel')"
-						:placeholder="t('components.delivery.transportEditor.fromNamePlaceholder')"
-						autocomplete="off"
-					/>
-				</div>
-			</div>
+			<TransportFromIdentityFields
+				v-model:email="fromEmail"
+				v-model:name="fromName"
+				:error="showErrors ? errors.fromEmail : undefined"
+			/>
 
 			<!-- Test result -->
 			<UiErrorAlert

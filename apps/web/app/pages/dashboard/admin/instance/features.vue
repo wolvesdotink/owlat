@@ -20,6 +20,7 @@ import { hasInboundFeature, INBOUND_FEATURE_FLAGS } from '~/utils/inboundDns';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
 import PluginConfigStatusNotice from '~/components/settings/PluginConfigStatusNotice.vue';
+import FeatureFlagToggleDialogs from '~/components/settings/FeatureFlagToggleDialogs.vue';
 
 const pluginFeatureFlagDefinitions =
 	getBundledPluginFeatureFlagDefinitions(bundledPluginComposition);
@@ -453,117 +454,17 @@ async function togglePack(packKey: FeaturePackKey) {
 			</div>
 		</UiQueryBoundary>
 
-		<!-- Cascade confirmation -->
-		<UiConfirmationDialog
-			:open="!!pendingCascade"
-			variant="warning"
-			:title="
-				pendingCascade
-					? t('dashboard.admin.instance.features.cascade.title', {
-							label: featureFlagRegistry[pendingCascade.flag]?.label ?? pendingCascade.flag,
-						})
-					: t('dashboard.admin.instance.features.cascade.titleFallback')
-			"
-			:description="t('dashboard.admin.instance.features.cascade.description')"
-			:confirm-text="t('dashboard.admin.instance.features.cascade.confirm')"
-			:cancel-text="t('common.cancel')"
-			:is-loading="isSavingFlag"
-			@update:open="(v: boolean) => !v && (pendingCascade = null)"
-			@confirm="confirmCascade"
-		>
-			<ul v-if="pendingCascade" class="mt-4 text-left space-y-1.5">
-				<li
-					v-for="key in pendingCascade.cascaded"
-					:key="key"
-					class="text-sm text-text-secondary flex items-center gap-2"
-				>
-					<Icon name="lucide:corner-down-right" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
-					<code class="text-xs bg-bg-surface px-1.5 py-0.5 rounded">{{ key }}</code>
-					<span class="truncate">{{ featureFlagRegistry[key]?.label ?? key }}</span>
-				</li>
-			</ul>
-		</UiConfirmationDialog>
-
-		<!-- Bundled plugin capability approval -->
-		<UiConfirmationDialog
-			:open="!!pendingPluginApproval"
-			variant="warning"
-			:title="
-				pendingPluginApproval
-					? t('dashboard.admin.instance.features.approval.title', {
-							label:
-								featureFlagRegistry[pendingPluginApproval.flag]?.label ??
-								pendingPluginApproval.flag,
-						})
-					: t('dashboard.admin.instance.features.approval.titleFallback')
-			"
-			:description="t('dashboard.admin.instance.features.approval.description')"
-			:confirm-text="t('dashboard.admin.instance.features.approval.confirm')"
-			:cancel-text="t('common.cancel')"
-			:is-loading="isSavingFlag"
-			@update:open="(value: boolean) => !value && (pendingPluginApproval = null)"
-			@confirm="confirmPluginApproval"
-		>
-			<ul v-if="pendingPluginApproval" class="mt-4 text-left space-y-1.5">
-				<li
-					v-for="capability in pendingPluginApproval.capabilities"
-					:key="capability"
-					class="text-sm text-text-secondary flex items-center gap-2"
-				>
-					<Icon name="lucide:shield-check" class="w-3.5 h-3.5 text-warning shrink-0" />
-					<code class="text-xs bg-bg-surface px-1.5 py-0.5 rounded">{{ capability }}</code>
-				</li>
-			</ul>
-		</UiConfirmationDialog>
-
-		<!-- Missing env hint -->
-		<UiModal
-			:open="!!missingEnv"
-			:title="
-				missingEnv
-					? t('dashboard.admin.instance.features.missingEnv.title', {
-							label: featureFlagRegistry[missingEnv.flag]?.label ?? missingEnv.flag,
-						})
-					: t('dashboard.admin.instance.features.missingEnv.titleFallback')
-			"
-			@update:open="(v: boolean) => !v && (missingEnv = null)"
-		>
-			<I18nT
-				keypath="dashboard.admin.instance.features.missingEnv.body"
-				tag="p"
-				scope="global"
-				class="text-text-secondary"
-			>
-				<template #path>
-					<code class="text-sm bg-bg-surface px-1.5 py-0.5 rounded">/opt/owlat/.env</code>
-				</template>
-			</I18nT>
-			<ul class="mt-3 space-y-1.5">
-				<li v-for="v in missingEnv?.vars ?? []" :key="v">
-					<code class="text-sm bg-bg-surface px-1.5 py-0.5 rounded">{{ v }}</code>
-				</li>
-			</ul>
-			<I18nT
-				keypath="dashboard.admin.instance.features.missingEnv.howTo"
-				tag="p"
-				scope="global"
-				class="mt-3 text-sm text-text-tertiary"
-			>
-				<template #envCommand>
-					<code class="bg-bg-surface px-1.5 py-0.5 rounded"
-						>owlat env &lt;KEY&gt; &lt;VALUE&gt;</code
-					>
-				</template>
-				<template #restartCommand>
-					<code class="bg-bg-surface px-1.5 py-0.5 rounded">owlat restart</code>
-				</template>
-			</I18nT>
-
-			<template #footer>
-				<UiButton @click="missingEnv = null">{{
-					t('dashboard.admin.instance.features.missingEnv.gotIt')
-				}}</UiButton>
-			</template>
-		</UiModal>
+		<FeatureFlagToggleDialogs
+			:pending-cascade="pendingCascade"
+			:pending-plugin-approval="pendingPluginApproval"
+			:missing-env="missingEnv"
+			:registry="featureFlagRegistry"
+			:is-saving="isSavingFlag"
+			@close-cascade="pendingCascade = null"
+			@close-approval="pendingPluginApproval = null"
+			@close-missing-env="missingEnv = null"
+			@confirm-cascade="confirmCascade"
+			@confirm-approval="confirmPluginApproval"
+		/>
 	</div>
 </template>

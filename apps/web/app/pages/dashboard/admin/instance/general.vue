@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
+import { instanceTimezoneSelectOptions } from '~/data/instanceTimezoneOptions';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isValidEmail } from '~/utils/validation';
 import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
@@ -91,87 +92,9 @@ const isFormDirty = ref(false);
 const isSaving = ref(false);
 
 // Common timezones for dropdown — a computed so the labels follow the active
-// locale rather than the one that happened to be active at setup.
-const timezones = computed(() => [
-	{ value: '', label: t('dashboard.admin.instance.general.timezones.placeholder') },
-	{
-		value: 'America/New_York',
-		label: t('dashboard.admin.instance.general.timezones.americaNewYork'),
-	},
-	{
-		value: 'America/Chicago',
-		label: t('dashboard.admin.instance.general.timezones.americaChicago'),
-	},
-	{ value: 'America/Denver', label: t('dashboard.admin.instance.general.timezones.americaDenver') },
-	{
-		value: 'America/Los_Angeles',
-		label: t('dashboard.admin.instance.general.timezones.americaLosAngeles'),
-	},
-	{
-		value: 'America/Anchorage',
-		label: t('dashboard.admin.instance.general.timezones.americaAnchorage'),
-	},
-	{
-		value: 'Pacific/Honolulu',
-		label: t('dashboard.admin.instance.general.timezones.pacificHonolulu'),
-	},
-	{
-		value: 'America/Phoenix',
-		label: t('dashboard.admin.instance.general.timezones.americaPhoenix'),
-	},
-	{
-		value: 'America/Toronto',
-		label: t('dashboard.admin.instance.general.timezones.americaToronto'),
-	},
-	{
-		value: 'America/Vancouver',
-		label: t('dashboard.admin.instance.general.timezones.americaVancouver'),
-	},
-	{ value: 'Europe/London', label: t('dashboard.admin.instance.general.timezones.europeLondon') },
-	{ value: 'Europe/Paris', label: t('dashboard.admin.instance.general.timezones.europeParis') },
-	{ value: 'Europe/Berlin', label: t('dashboard.admin.instance.general.timezones.europeBerlin') },
-	{
-		value: 'Europe/Amsterdam',
-		label: t('dashboard.admin.instance.general.timezones.europeAmsterdam'),
-	},
-	{ value: 'Europe/Madrid', label: t('dashboard.admin.instance.general.timezones.europeMadrid') },
-	{ value: 'Europe/Rome', label: t('dashboard.admin.instance.general.timezones.europeRome') },
-	{ value: 'Europe/Zurich', label: t('dashboard.admin.instance.general.timezones.europeZurich') },
-	{
-		value: 'Europe/Stockholm',
-		label: t('dashboard.admin.instance.general.timezones.europeStockholm'),
-	},
-	{ value: 'Europe/Warsaw', label: t('dashboard.admin.instance.general.timezones.europeWarsaw') },
-	{ value: 'Europe/Moscow', label: t('dashboard.admin.instance.general.timezones.europeMoscow') },
-	{ value: 'Asia/Dubai', label: t('dashboard.admin.instance.general.timezones.asiaDubai') },
-	{ value: 'Asia/Kolkata', label: t('dashboard.admin.instance.general.timezones.asiaKolkata') },
-	{ value: 'Asia/Singapore', label: t('dashboard.admin.instance.general.timezones.asiaSingapore') },
-	{ value: 'Asia/Hong_Kong', label: t('dashboard.admin.instance.general.timezones.asiaHongKong') },
-	{ value: 'Asia/Shanghai', label: t('dashboard.admin.instance.general.timezones.asiaShanghai') },
-	{ value: 'Asia/Tokyo', label: t('dashboard.admin.instance.general.timezones.asiaTokyo') },
-	{ value: 'Asia/Seoul', label: t('dashboard.admin.instance.general.timezones.asiaSeoul') },
-	{
-		value: 'Australia/Sydney',
-		label: t('dashboard.admin.instance.general.timezones.australiaSydney'),
-	},
-	{
-		value: 'Australia/Melbourne',
-		label: t('dashboard.admin.instance.general.timezones.australiaMelbourne'),
-	},
-	{
-		value: 'Australia/Brisbane',
-		label: t('dashboard.admin.instance.general.timezones.australiaBrisbane'),
-	},
-	{
-		value: 'Australia/Perth',
-		label: t('dashboard.admin.instance.general.timezones.australiaPerth'),
-	},
-	{
-		value: 'Pacific/Auckland',
-		label: t('dashboard.admin.instance.general.timezones.pacificAuckland'),
-	},
-	{ value: 'UTC', label: t('dashboard.admin.instance.general.timezones.utc') },
-]);
+// locale rather than the one that happened to be active at setup. The catalog
+// itself lives in ~/data/instanceTimezoneOptions.
+const timezones = computed(() => instanceTimezoneSelectOptions(t));
 
 // Initialize form when organization settings load
 watch(

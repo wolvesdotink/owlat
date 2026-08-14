@@ -26,7 +26,11 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
-import { replyQueueHeadline, type ReplyQueueItem } from '~/utils/postboxReplyQueue';
+import {
+	replyQueueHeadline,
+	type ReplyQueueItem,
+	type ReplyQueueText,
+} from '~/utils/postboxReplyQueue';
 
 /**
  * Client detection that is both SSR-safe (no `window` on the server) and
@@ -151,6 +155,20 @@ watch(
 );
 
 /** One muted line of context under the ask: who it is + what they wrote. */
+/**
+ * The queue helpers are pure, so copy reaches us as an i18n key (optionally
+ * with params) while message-derived text (a subject, an AI ask summary)
+ * arrives as itself — resolve both here, the rendering layer.
+ */
+function replyQueueText(value: ReplyQueueText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+/** The strip's headline — the AI's ask summary, the subject, or the fallback copy. */
+function forYouHeadline(item: ReplyQueueItem): string {
+	return replyQueueText(replyQueueHeadline(item));
+}
+
 function forYouDetail(item: ReplyQueueItem): string {
 	const who = item.fromName?.trim() || item.fromAddress;
 	const snippet = item.snippet?.trim();
@@ -261,7 +279,7 @@ function closeOverlay() {
 							/>
 							<span class="flex-1 min-w-0">
 								<span class="block truncate text-sm font-semibold text-text-primary">
-									{{ t(replyQueueHeadline(item)) }}
+									{{ forYouHeadline(item) }}
 								</span>
 								<span class="block truncate text-xs text-text-tertiary mt-0.5">
 									{{ forYouDetail(item) }}

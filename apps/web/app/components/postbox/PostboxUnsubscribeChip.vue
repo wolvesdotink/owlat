@@ -44,8 +44,9 @@ const targetHost = computed(() => {
 });
 
 async function onClick() {
-	const t = props.unsubscribe;
-	if (t.oneClick && t.httpUrl) {
+	// NOT named `t` — that is the i18n translator this function calls.
+	const target = props.unsubscribe;
+	if (target.oneClick && target.httpUrl) {
 		// Explicit confirm — the POST is a state-changing request to a third
 		// party and must never fire on render or by accident.
 		const host =
@@ -67,12 +68,12 @@ async function onClick() {
 					'error'
 				);
 			}
-			window.open(t.httpUrl, '_blank', 'noopener,noreferrer');
+			window.open(target.httpUrl, '_blank', 'noopener,noreferrer');
 		}
 		return;
 	}
-	if (t.mailtoUrl) {
-		const mailto = parseUnsubscribeMailto(t.mailtoUrl);
+	if (target.mailtoUrl) {
+		const mailto = parseUnsubscribeMailto(target.mailtoUrl);
 		if (mailto) {
 			stack.open({
 				mailboxId: props.mailboxId as Id<'mailboxes'>,
@@ -85,8 +86,8 @@ async function onClick() {
 			return;
 		}
 	}
-	if (t.httpUrl) {
-		window.open(t.httpUrl, '_blank', 'noopener,noreferrer');
+	if (target.httpUrl) {
+		window.open(target.httpUrl, '_blank', 'noopener,noreferrer');
 	}
 }
 </script>

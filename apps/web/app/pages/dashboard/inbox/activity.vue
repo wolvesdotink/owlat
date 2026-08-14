@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { ChannelHealthDot } from '~/utils/channelKinds';
 
 const { t, te } = useI18n();
 
@@ -56,10 +57,17 @@ const deliveryStatusName = (meta: { label: string }, status: string): string => 
 	const key = `dashboard.inbox.activity.deliveryStatuses.${status}`;
 	return te(key) ? t(key) : meta.label;
 };
-/** The health dot's variant is the stable enum here — its label is English copy. */
-const healthName = (health: { variant: string; label: string }): string => {
+/**
+ * The health dot's variant is the stable enum here; its `label` is the shared
+ * registry's message key (or a `{ key, params }` pair), which stands in when
+ * this page has no wording of its own for the variant.
+ */
+const healthName = (health: ChannelHealthDot): string => {
 	const key = `dashboard.inbox.activity.health.${health.variant}`;
-	return te(key) ? t(key) : health.label;
+	if (te(key)) return t(key);
+	return typeof health.label === 'string'
+		? t(health.label)
+		: t(health.label.key, health.label.params ?? {});
 };
 
 const activeFilterLabel = computed(() =>

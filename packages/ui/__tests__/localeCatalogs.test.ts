@@ -89,7 +89,15 @@ describe('UI layer message catalogs', () => {
 	// compiler chokes on is a failed deploy — and one it accepts but that leaks a
 	// `{placeholder}` is a visible defect in every app that extends this layer.
 	it.each(localeCodes)('%s compiles and interpolates every message', (code) => {
-		const i18n = createI18n({ legacy: false, locale: code, messages: { [code]: sources[code] } });
+		// Both catalogs are passed (the augmented overloads require every declared
+		// locale), but `locale: code` with `fallbackLocale: code` means only the
+		// catalog under test can ever answer.
+		const i18n = createI18n({
+			legacy: false,
+			locale: code,
+			fallbackLocale: code,
+			messages: sources,
+		});
 		const broken: string[] = [];
 		for (const [key, message] of catalogs[code]) {
 			const params = Object.fromEntries(placeholders(message).map((name) => [name, 'X']));

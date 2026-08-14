@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AUDIT_ACTION_LITERALS, HOSTED_PLUGIN_OPERATION_LITERALS } from '@owlat/api/auditActions';
+import { buildActionTypeGroups } from '../auditLogFilterCatalog';
 import {
-	buildActionTypeGroups,
 	getActionLabel,
 	getActionIcon,
 	getActionColorClass,

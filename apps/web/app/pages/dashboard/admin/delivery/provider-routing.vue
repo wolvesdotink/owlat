@@ -163,16 +163,6 @@ function startEdit(messageType: MessageType) {
 	editOpen.value = true;
 }
 
-function moveProvider(index: number, direction: -1 | 1) {
-	const target = index + direction;
-	if (target < 0 || target >= editProviders.value.length) return;
-	const next = [...editProviders.value];
-	const [moved] = next.splice(index, 1);
-	if (!moved) return;
-	next.splice(target, 0, moved);
-	editProviders.value = next;
-}
-
 // A controller-owned strategy is displayed, never picked — and it is written
 // back unchanged, so an unrelated edit cannot downgrade the route.
 const isEditStrategyManaged = computed(() => isControllerOwnedStrategy(editStrategy.value));
@@ -409,83 +399,12 @@ async function handleReset() {
 				</div>
 
 				<!-- Providers -->
-				<div>
-					<div class="flex items-center justify-between mb-2">
-						<span class="label mb-0">{{
-							t('dashboard.admin.delivery.providerRouting.editModal.providers')
-						}}</span>
-						<span class="text-xs text-text-tertiary">
-							{{
-								editStrategy === 'priority_failover'
-									? t('dashboard.admin.delivery.providerRouting.editModal.failoverOrder')
-									: ''
-							}}
-						</span>
-					</div>
-					<div class="space-y-2">
-						<div
-							v-for="(provider, index) in editProviders"
-							:key="provider.providerType"
-							class="flex items-center gap-3 p-3 rounded-lg border border-border-subtle bg-bg-surface/40"
-						>
-							<!-- Reorder -->
-							<div class="flex flex-col">
-								<button
-									type="button"
-									class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
-									:disabled="index === 0"
-									:title="t('dashboard.admin.delivery.providerRouting.editModal.moveUp')"
-									@click="moveProvider(index, -1)"
-								>
-									<Icon name="lucide:chevron-up" class="w-4 h-4" />
-								</button>
-								<button
-									type="button"
-									class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
-									:disabled="index === editProviders.length - 1"
-									:title="t('dashboard.admin.delivery.providerRouting.editModal.moveDown')"
-									@click="moveProvider(index, 1)"
-								>
-									<Icon name="lucide:chevron-down" class="w-4 h-4" />
-								</button>
-							</div>
-
-							<!-- Enabled toggle + name -->
-							<label class="flex items-center gap-2 flex-1 cursor-pointer">
-								<input
-									v-model="provider.isEnabled"
-									type="checkbox"
-									class="rounded border-border-subtle text-brand focus:ring-brand"
-									:disabled="!providerAvailable(provider.providerType)"
-								/>
-								<span class="text-sm font-medium text-text-primary">
-									{{ providerLabel(provider.providerType) }}
-								</span>
-								<span v-if="!providerAvailable(provider.providerType)" class="text-xs text-warning">
-									{{ t('dashboard.admin.delivery.providerRouting.editModal.unavailable') }}
-								</span>
-							</label>
-
-							<!-- Weight (workload_split only) -->
-							<div v-if="editStrategy === 'workload_split'" class="flex items-center gap-1.5">
-								<input
-									v-model.number="provider.weight"
-									type="number"
-									min="0"
-									max="100"
-									class="input w-20 text-sm"
-									:disabled="!provider.isEnabled"
-								/>
-								<span class="text-xs text-text-tertiary">{{
-									t('dashboard.admin.delivery.providerRouting.editModal.weightUnit')
-								}}</span>
-							</div>
-						</div>
-					</div>
-					<p v-if="enabledProviderCount === 0" class="mt-2 text-xs text-error">
-						{{ t('dashboard.admin.delivery.providerRouting.editModal.enableOne') }}
-					</p>
-				</div>
+				<DeliveryProviderRouteProviderList
+					v-model="editProviders"
+					:strategy="editStrategy"
+					:provider-label="providerLabel"
+					:provider-available="providerAvailable"
+				/>
 
 				<!-- IP pool -->
 				<div>

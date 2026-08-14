@@ -18,8 +18,8 @@ const {
 	isSaving,
 	isTesting,
 	isLoadingModels,
-	providerOptions,
-	embeddingOptions,
+	providerOptions: providerOptionKeys,
+	embeddingOptions: embeddingOptionKeys,
 	form,
 	languageError,
 	embeddingError,
@@ -47,6 +47,16 @@ const {
 	handleTest,
 	handleLoadModels,
 } = useAiProviderForm();
+
+// The registry hands option labels over as message keys (aiProviders.ts:
+// "the renderer translates it") — resolve them here so the provider selects
+// paint words, not key paths.
+const providerOptions = computed(() =>
+	providerOptionKeys.map((option) => ({ ...option, label: t(option.label) }))
+);
+const embeddingOptions = computed(() =>
+	embeddingOptionKeys.map((option) => ({ ...option, label: t(option.label) }))
+);
 </script>
 
 <template>

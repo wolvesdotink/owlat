@@ -1,22 +1,21 @@
 /**
  * Server provisioning core (desktop "set up a new server" flow).
  *
- * Pure, framework-free building blocks the wizard composable orchestrates:
- *  - the canonical, ordered timeline (desktop SSH steps + the server-side steps
- *    that arrive as `@@OWLAT_PROGRESS@@` NDJSON from the installer);
- *  - `applyStepEvent`, which folds a parsed progress event into the timeline.
+ * Pure, framework-free building blocks the wizard composable orchestrates: the
+ * SSH transport contract, the setup config the wizard produces, the apex-domain
+ * → hostname expansion, and the reachability / host-key guards.
  *
- * The command strings driven over SSH live in `provisioningCommands.ts`.
+ * The command strings driven over SSH live in `provisioningCommands.ts`, and the
+ * step timeline (plus `applyStepEvent`) in `provisioningTimeline.ts`.
  *
  * Keeping this here (no Vue, no Tauri) means the whole orchestration is unit
  * testable with a fake transport and scripted events — the SSH path itself can
  * only be exercised against a real server.
  */
-import { SetupStep, type ProgressStepEvent } from '@owlat/shared/setupProgress';
-import type { InstallSource } from './provisioningCommands';
 
 // Split to stay under the file-size cap; consumers keep importing from here.
 export * from './provisioningCommands';
+export * from './provisioningTimeline';
 
 // ---- transport (implemented by the native bridge, faked in tests) ----------
 
@@ -384,173 +383,4 @@ export function describeHostKey(status: ConnectInfo['knownHostStatus']): HostKey
 		title: 'shared.desktop.provisioning.hostKey.verify.title',
 		body: 'shared.desktop.provisioning.hostKey.verify.body',
 	};
-}
-
-// ---- the timeline ----------------------------------------------------------
-
-export type StepState = 'pending' | 'running' | 'ok' | 'warn' | 'failed' | 'skipped';
-export type StepGroup = 'connect' | 'server' | 'finish';
-
-export interface TimelineStep {
-	id: string;
-	/** i18n key — the timeline component translates it. */
-	title: string;
-	group: StepGroup;
-	state: StepState;
-	/** Raw text streamed up from the installer; never a message key. */
-	detail?: string;
-}
-
-interface TimelineSpec {
-	id: string;
-	/** i18n key. */
-	title: string;
-	group: StepGroup;
-}
-
-/**
- * The full ordered roadmap, shown up-front so the user can see what's done,
- * what's running, and what's still to come. The `server` ids match
- * `SetupStep` so the installer's NDJSON drives them directly.
- */
-export const PROVISION_TIMELINE: readonly TimelineSpec[] = [
-	{ id: 'ssh-connect', title: 'shared.desktop.provisioning.timeline.sshConnect', group: 'connect' },
-	{ id: 'host-key', title: 'shared.desktop.provisioning.timeline.hostKey', group: 'connect' },
-	{
-		id: 'authenticate',
-		title: 'shared.desktop.provisioning.timeline.authenticate',
-		group: 'connect',
-	},
-	{
-		id: 'system-check',
-		title: 'shared.desktop.provisioning.timeline.systemCheck',
-		group: 'connect',
-	},
-	{
-		id: 'install-docker',
-		title: 'shared.desktop.provisioning.timeline.installDocker',
-		group: 'connect',
-	},
-	{ id: 'fetch-owlat', title: 'shared.desktop.provisioning.timeline.fetchOwlat', group: 'connect' },
-	{
-		id: 'upload-config',
-		title: 'shared.desktop.provisioning.timeline.uploadConfig',
-		group: 'connect',
-	},
-	{
-		id: SetupStep.Preflight,
-		title: 'shared.desktop.provisioning.timeline.preflight',
-		group: 'server',
-	},
-	{ id: SetupStep.Config, title: 'shared.desktop.provisioning.timeline.config', group: 'server' },
-	{
-		id: SetupStep.ComposeUp,
-		title: 'shared.desktop.provisioning.timeline.composeUp',
-		group: 'server',
-	},
-	{
-		id: SetupStep.MtaIdentity,
-		title: 'shared.desktop.provisioning.timeline.mtaIdentity',
-		group: 'server',
-	},
-	{
-		id: SetupStep.WaitConvex,
-		title: 'shared.desktop.provisioning.timeline.waitConvex',
-		group: 'server',
-	},
-	{
-		id: SetupStep.AdminKey,
-		title: 'shared.desktop.provisioning.timeline.adminKey',
-		group: 'server',
-	},
-	{
-		id: SetupStep.DeployFunctions,
-		title: 'shared.desktop.provisioning.timeline.deployFunctions',
-		group: 'server',
-	},
-	{ id: SetupStep.EnvSet, title: 'shared.desktop.provisioning.timeline.envSet', group: 'server' },
-	{
-		id: SetupStep.WaitRoutes,
-		title: 'shared.desktop.provisioning.timeline.waitRoutes',
-		group: 'server',
-	},
-	{
-		id: SetupStep.BootstrapAdmin,
-		title: 'shared.desktop.provisioning.timeline.bootstrapAdmin',
-		group: 'server',
-	},
-	{
-		id: SetupStep.SeedDemo,
-		title: 'shared.desktop.provisioning.timeline.seedDemo',
-		group: 'server',
-	},
-	{ id: 'finish', title: 'shared.desktop.provisioning.timeline.finish', group: 'finish' },
-] as const;
-
-/**
- * A fresh timeline (all steps pending). In the local-source modes
- * `fetch-owlat` becomes an upload, and image steps appear before the config
- * upload: built on the server (`local-build`) or built here and streamed over
- * SSH (`local-push`).
- */
-export function createTimeline(source: InstallSource = 'git'): TimelineStep[] {
-	const steps = PROVISION_TIMELINE.map((s) => ({ ...s, state: 'pending' as StepState }));
-	if (source === 'git') return steps;
-	const fetch = steps.find((s) => s.id === 'fetch-owlat');
-	if (fetch) fetch.title = 'shared.desktop.provisioning.timeline.fetchOwlatLocal';
-	const at = steps.findIndex((s) => s.id === 'upload-config');
-	const inserted: TimelineStep[] =
-		source === 'local-push'
-			? [
-					{
-						id: 'build-images-local',
-						title: 'shared.desktop.provisioning.timeline.buildImagesLocal',
-						group: 'connect',
-						state: 'pending',
-					},
-					{
-						id: 'push-images',
-						title: 'shared.desktop.provisioning.timeline.pushImages',
-						group: 'connect',
-						state: 'pending',
-					},
-				]
-			: [
-					{
-						id: 'build-setup-image',
-						title: 'shared.desktop.provisioning.timeline.buildSetupImage',
-						group: 'connect',
-						state: 'pending',
-					},
-				];
-	steps.splice(at, 0, ...inserted);
-	return steps;
-}
-
-const STATE_BY_STATUS: Record<ProgressStepEvent['status'], StepState> = {
-	running: 'running',
-	ok: 'ok',
-	failed: 'failed',
-	skipped: 'skipped',
-};
-
-/** Fold a parsed server `step` event into the timeline (mutates the matching step). */
-export function applyStepEvent(steps: TimelineStep[], ev: ProgressStepEvent): void {
-	const step = steps.find((s) => s.id === ev.id);
-	if (!step) return;
-	step.state = ev.status === 'ok' && ev.warn ? 'warn' : STATE_BY_STATUS[ev.status];
-	if (ev.detail) step.detail = ev.detail;
-}
-
-/** Mark a desktop-driven (non-NDJSON) step. */
-export function setStepState(
-	steps: TimelineStep[],
-	id: string,
-	state: StepState,
-	detail?: string
-): void {
-	const step = steps.find((s) => s.id === id);
-	if (!step) return;
-	step.state = state;
-	if (detail !== undefined) step.detail = detail;
 }

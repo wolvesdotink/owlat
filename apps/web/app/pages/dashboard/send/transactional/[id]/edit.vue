@@ -346,93 +346,15 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 				@create-variable="handleCreateVariable"
 			>
 				<template #toolbar-actions>
-					<!-- Current lifecycle status — draft / awaiting review / published.
-				     `pending_review` is shown distinctly so the author knows the
-				     template is NOT sendable yet (the send API rejects it). -->
-					<span
-						:class="[
-							'inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium',
-							isPublished
-								? 'bg-success/10 text-success'
-								: isPendingReview
-									? 'bg-warning/10 text-warning'
-									: 'bg-text-tertiary/10 text-text-tertiary',
-						]"
-						:title="
-							isPublished
-								? t('dashboard.send.transactional.detail.edit.statusHint.published')
-								: isPendingReview
-									? t('dashboard.send.transactional.detail.edit.statusHint.pendingReview')
-									: t('dashboard.send.transactional.detail.edit.statusHint.draft')
-						"
-					>
-						<Icon
-							:name="
-								isPublished
-									? 'lucide:check-circle'
-									: isPendingReview
-										? 'lucide:clock-3'
-										: 'lucide:pencil'
-							"
-							class="w-3.5 h-3.5"
-						/>
-						{{
-							isPublished
-								? t('dashboard.send.transactional.detail.edit.status.published')
-								: isPendingReview
-									? t('dashboard.send.transactional.detail.edit.status.pendingReview')
-									: t('dashboard.send.transactional.detail.edit.status.draft')
-						}}
-					</span>
-					<ShareLinksPopover :transactional-email-id="emailId" :has-unsaved-changes="hasChanges" />
-					<UiButton
-						variant="outline"
-						size="sm"
-						:title="t('dashboard.send.transactional.detail.edit.manageTranslations')"
-						@click="handleTranslations"
-					>
-						<template #iconLeft>
-							<Icon name="lucide:languages" class="w-4 h-4" />
-						</template>
-						{{ t('dashboard.send.transactional.detail.edit.translations') }}
-					</UiButton>
-					<!-- Awaiting review — no author-side action moves this forward, so the
-				     primary action is a disabled, honest state rather than "Publish". -->
-					<UiButton
-						v-if="isPendingReview"
-						variant="secondary"
-						size="sm"
-						disabled
-						:title="t('dashboard.send.transactional.detail.edit.pendingReviewButtonHint')"
-					>
-						<template #iconLeft>
-							<Icon name="lucide:clock-3" class="w-4 h-4" />
-						</template>
-						{{ t('dashboard.send.transactional.detail.edit.status.pendingReview') }}
-					</UiButton>
-					<!-- Publish / Unpublish — the only affordance that makes a transactional
-				     email sendable; without it the send API rejects every request. -->
-					<UiButton
-						v-else
-						:variant="isPublished ? 'secondary' : 'primary'"
-						size="sm"
-						:loading="isPublishing"
-						:title="
-							isPublished
-								? t('dashboard.send.transactional.detail.edit.publishHint.unpublish')
-								: t('dashboard.send.transactional.detail.edit.publishHint.publish')
-						"
-						@click="handleTogglePublish"
-					>
-						<template v-if="!isPublishing" #iconLeft>
-							<Icon :name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'" class="w-4 h-4" />
-						</template>
-						{{
-							isPublished
-								? t('dashboard.send.transactional.detail.edit.unpublish')
-								: t('dashboard.send.transactional.detail.edit.publish')
-						}}
-					</UiButton>
+					<TransactionalEditorToolbarActions
+						:email-id="emailId"
+						:is-published="isPublished"
+						:is-pending-review="isPendingReview"
+						:is-publishing="isPublishing"
+						:has-changes="hasChanges"
+						@toggle-publish="handleTogglePublish"
+						@translations="handleTranslations"
+					/>
 				</template>
 				<template #after-canvas>
 					<!-- Awaiting-review banner — the content scanner flagged this email, so

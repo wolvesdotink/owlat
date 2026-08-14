@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
-import { createAutoRecheckPoller, type AutoRecheckPoller } from '~/utils/domainAutoRecheck';
+import { useDomainAutoRecheck } from '~/composables/useDomainAutoRecheck';
 import type { DmarcPolicy } from '~/utils/domainStatus';
 
 const { t } = useI18n();
@@ -260,77 +260,14 @@ const toggleDomainExpansion = (domainId: Id<'domains'>) => {
 	});
 };
 
-// Gentle auto-recheck: once a domain panel is expanded, keep quietly re-running
-// verifyDomain on a slow interval so the user doesn't have to click Verify over
-// and over while DNS propagates. Only runs for domains that can still become
-// verified — never for already-verified, still-registering, or
-// failed-registration domains. Stops on verify, collapse, unmount, or the cap.
-const autoRecheckActive = ref(false);
-
-type AutoRecheckStatus = { status: string; lastRegistrationError?: string | null };
-const isAutoRecheckable = (domain: AutoRecheckStatus | undefined): boolean => {
-	if (!domain) return false;
-	if (domain.status === 'verified' || domain.status === 'registering') return false;
-	// A failed *registration* is not something re-running DNS verification fixes.
-	if (domain.status === 'failed' && domain.lastRegistrationError) return false;
-	return true;
-};
-
-let recheckPoller: AutoRecheckPoller | null = null;
-let recheckDomainId: Id<'domains'> | null = null;
-
-const stopAutoRecheck = () => {
-	recheckPoller?.stop();
-	recheckPoller = null;
-	recheckDomainId = null;
-	autoRecheckActive.value = false;
-};
-
-const startAutoRecheck = (domainId: Id<'domains'>) => {
-	// Already polling this exact domain — leave the existing poller running. A
-	// poller that has self-stopped (verified / cap reached) reports isRunning()
-	// false, so it is not mistaken for a live one and auto-recheck can restart.
-	if (recheckPoller && recheckDomainId === domainId && recheckPoller.isRunning()) return;
-	stopAutoRecheck();
-	recheckDomainId = domainId;
-	autoRecheckActive.value = true;
-	recheckPoller = createAutoRecheckPoller({
-		onTick: async () => {
-			// Never overlap with a manual Verify the user just clicked.
-			if (verifyingDomainId.value === domainId) return false;
-			const result = await verifyDomain({ domainId });
-			// run() already surfaced any failure; treat undefined as "keep trying".
-			return result?.allVerified === true;
-		},
-		onStopped: () => {
-			// The poller stopped itself (domain verified, or the ~5-min cap was
-			// reached). Reconcile the component's mirror state so the subtle
-			// "Checking DNS…" indicator stops instead of spinning forever, and a
-			// later domainsData tick can start a fresh poller.
-			if (recheckDomainId === domainId) {
-				recheckPoller = null;
-				recheckDomainId = null;
-				autoRecheckActive.value = false;
-			}
-		},
-	});
-	recheckPoller.start();
-};
-
-// Drive the poller from whichever panel is open and that domain's live status
-// (domainsData is a real-time subscription, so a verify elsewhere collapses it).
-watch([expandedDomainId, () => domainsData.value], () => {
-	const id = expandedDomainId.value;
-	const domain = id ? (domainsData.value ?? []).find((d) => d._id === id) : undefined;
-	if (id && isAutoRecheckable(domain)) {
-		startAutoRecheck(id);
-	} else {
-		stopAutoRecheck();
-	}
-});
-
-onBeforeUnmount(() => {
-	stopAutoRecheck();
+// Gentle auto-recheck while a domain panel is open: the polling lifecycle (which
+// domain, the mirrored "Checking DNS…" flag, teardown) lives in its own
+// composable, over the framework-agnostic poller in `utils/domainAutoRecheck`.
+const { autoRecheckActive } = useDomainAutoRecheck({
+	expandedDomainId,
+	domains: () => domainsData.value ?? [],
+	isVerifying: (domainId) => verifyingDomainId.value === domainId,
+	verifyDomain,
 });
 </script>
 

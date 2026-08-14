@@ -2,7 +2,7 @@
 	<NuxtLink v-if="internalTo" :to="internalTo" :target="target">
 		<slot />
 	</NuxtLink>
-	<a v-else :href="href" :target="target" :rel="external ? 'noopener noreferrer' : undefined">
+	<a v-else :href="href" :target="target ?? undefined" :rel="external ? 'noopener noreferrer' : undefined">
 		<slot />
 	</a>
 </template>

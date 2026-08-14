@@ -46,7 +46,9 @@ export function createForeignI18n() {
 		legacy: false,
 		locale: 'en',
 		fallbackLocale: 'en',
-		messages: { en: { app: { unrelated: 'unrelated' } } },
+		// `de` present but empty: an app that has adopted i18n declares every
+		// locale, and the augmented createI18n overloads require all of them.
+		messages: { en: { app: { unrelated: 'unrelated' } }, de: {} },
 	});
 }
 

@@ -9,7 +9,7 @@ import {
 } from '~/utils/providerFeedbackPanel';
 import { transportKindLabel } from '~/utils/transportState';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 /**
  * `utils/transportState` is a module-scope definition set whose kind labels carry
@@ -84,14 +84,6 @@ const { data: feedbackStatus } = useOrganizationQuery(
 			? { transportId: status.value.provider }
 			: undefined
 );
-const lastSesEventLabel = computed(() => {
-	const at = feedbackStatus.value?.lastEventAt;
-	if (!at) return null;
-	return new Intl.DateTimeFormat(locale.value, {
-		dateStyle: 'medium',
-		timeStyle: 'medium',
-	}).format(new Date(at));
-});
 
 // Names of the required env vars the active provider is MISSING. Names only —
 // `getStatus` never returns credential values, so nothing secret reaches here.
@@ -457,101 +449,11 @@ const {
 			/>
 
 			<!-- SNS-topic feedback (bounces & complaints delivered through a topic) -->
-			<UiCard v-if="feedbackPanel === 'sns-topic'" padding="none" overflow="hidden">
-				<template #header>
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:radio" size="sm" variant="surface" rounded="lg" />
-						<div>
-							<h2 class="text-lg font-semibold text-text-primary">
-								{{ t('dashboard.admin.delivery.transport.sns.title') }}
-							</h2>
-							<p class="text-sm text-text-secondary">
-								{{ t('dashboard.admin.delivery.transport.sns.subtitle') }}
-							</p>
-						</div>
-					</div>
-				</template>
-
-				<div class="p-6 space-y-5">
-					<p class="text-sm text-text-secondary">
-						{{ t('dashboard.admin.delivery.transport.sns.intro') }}
-					</p>
-
-					<!-- Webhook endpoint -->
-					<div v-if="feedbackWebhookUrl">
-						<div class="flex items-center justify-between mb-2">
-							<p class="text-xs font-medium text-text-primary">
-								{{ t('dashboard.admin.delivery.transport.sns.endpointTitle') }}
-							</p>
-							<UiButton
-								variant="ghost"
-								size="sm"
-								:title="
-									isCopied('ses-url')
-										? t('common.copied')
-										: t('dashboard.admin.delivery.transport.sns.copyEndpoint')
-								"
-								@click="copy(feedbackWebhookUrl, 'ses-url')"
-							>
-								<Icon
-									:name="isCopied('ses-url') ? 'lucide:check' : 'lucide:copy'"
-									class="w-3.5 h-3.5"
-									:class="isCopied('ses-url') ? 'text-success' : ''"
-								/>
-								{{ isCopied('ses-url') ? t('common.copied') : t('common.copy') }}
-							</UiButton>
-						</div>
-						<pre
-							class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-							>{{ feedbackWebhookUrl }}</pre>
-					</div>
-					<p v-else class="text-xs text-text-tertiary">
-						{{ t('dashboard.admin.delivery.transport.sns.noSiteUrl') }}
-					</p>
-
-					<!-- Setup steps -->
-					<ol class="space-y-2 text-sm text-text-secondary list-decimal pl-5">
-						<I18nT keypath="dashboard.admin.delivery.transport.sns.step1" tag="li" scope="global">
-							<template #topic><code class="text-text-primary">owlat-ses-feedback</code></template>
-							<template #https><span class="text-text-primary">HTTPS</span></template>
-						</I18nT>
-						<I18nT keypath="dashboard.admin.delivery.transport.sns.step2" tag="li" scope="global">
-							<template #envVar>
-								<code class="text-text-primary">SES_SNS_TOPIC_ARN</code>
-							</template>
-						</I18nT>
-						<I18nT keypath="dashboard.admin.delivery.transport.sns.step3" tag="li" scope="global">
-							<template #configurationSet>
-								<span class="text-text-primary">Configuration Set</span>
-							</template>
-							<template #bounce><code class="text-text-primary">Bounce</code></template>
-							<template #complaint><code class="text-text-primary">Complaint</code></template>
-							<template #delivery><code class="text-text-primary">Delivery</code></template>
-						</I18nT>
-						<I18nT keypath="dashboard.admin.delivery.transport.sns.step4" tag="li" scope="global">
-							<template #envVar>
-								<code class="text-text-primary">SES_CONFIGURATION_SET</code>
-							</template>
-						</I18nT>
-					</ol>
-
-					<!-- Live "last event received" line -->
-					<div class="flex items-center gap-2 text-xs">
-						<template v-if="lastSesEventLabel">
-							<Icon name="lucide:check-circle-2" class="w-3.5 h-3.5 text-success" />
-							<span class="text-success">{{
-								t('dashboard.admin.delivery.transport.sns.lastEvent', { at: lastSesEventLabel })
-							}}</span>
-						</template>
-						<template v-else>
-							<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
-							<span class="text-text-tertiary">
-								{{ t('dashboard.admin.delivery.transport.sns.noEvents') }}
-							</span>
-						</template>
-					</div>
-				</div>
-			</UiCard>
+			<DeliverySnsTopicCard
+				v-if="feedbackPanel === 'sns-topic'"
+				:webhook-url="feedbackWebhookUrl"
+				:last-event-at="feedbackStatus?.lastEventAt ?? null"
+			/>
 
 			<!-- Inbound TLS reports (TLS-RPT, RFC 8460) partners send us -->
 			<DeliveryTlsReportCard

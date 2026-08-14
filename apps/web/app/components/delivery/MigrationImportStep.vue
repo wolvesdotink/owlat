@@ -45,12 +45,10 @@ const { t, locale } = useI18n();
 const count = (value: number): string => new Intl.NumberFormat(locale.value).format(value);
 
 /**
- * The suppression table is module scope and never calls `useI18n`: it hands back
- * catalog keys, and this step is the render boundary that turns them into words.
+ * The suppression table is module scope and never calls `useI18n`: every bucket
+ * name it hands back is a bare catalog key (`MigrationCarriedCount.label`), and
+ * this step is the render boundary that turns them into words.
  */
-type CarriedMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: CarriedMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const isMailchimpEnabled = computed(() => isFeatureEnabled('imports.mailchimp'));
@@ -314,14 +312,14 @@ const progressText = computed(() => {
 				}}</span>
 				<span
 					v-for="entry in carried"
-					:key="typeof entry.label === 'string' ? entry.label : entry.label.key"
+					:key="entry.label"
 					class="ml-2 text-text-primary"
 					data-testid="migration-carried-count"
 				>
 					{{
 						t('components.delivery.migrationImportStep.carriedEntry', {
 							count: count(entry.value),
-							label: message(entry.label),
+							label: t(entry.label),
 						})
 					}}
 				</span>

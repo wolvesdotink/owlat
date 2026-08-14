@@ -63,33 +63,6 @@ const isSaving = ref(false);
 const persistedDefaultLanguage = ref('en');
 const persistedType = ref<'marketing' | 'transactional'>('marketing');
 
-// Currently selected language for editing
-const selectedLanguage = ref<string | null>(null);
-
-// Computed: selected translation object (for type safety)
-const selectedTranslation = computed(() => {
-	if (!selectedLanguage.value) return null;
-	return translations.value[selectedLanguage.value] || null;
-});
-
-// Computed: available languages to add (not yet in supportedLanguages)
-const availableLanguages = computed(() => {
-	return languageOptions.filter(
-		(lang) => !form.supportedLanguages.includes(lang.value) && lang.value !== form.defaultLanguage
-	);
-});
-
-// Get language label
-const getLanguageLabel = (code: string) => {
-	const lang = languageOptions.find((l) => l.value === code);
-	return lang
-		? t('dashboard.send.emails.detail.settings.languageWithNative', {
-				label: t(lang.label),
-				native: lang.nativeLabel,
-			})
-		: code;
-};
-
 // Get language native label
 const getLanguageNativeLabel = (code: string) => {
 	const lang = languageOptions.find((l) => l.value === code);
@@ -152,7 +125,6 @@ const addLanguage = (langCode: string) => {
 		form.supportedLanguages.push(langCode);
 		translations.value[langCode] = { subject: '', previewText: '' };
 		rawTranslations.value[langCode] = {};
-		selectedLanguage.value = langCode;
 	}
 };
 
@@ -161,9 +133,6 @@ const removeLanguage = (langCode: string) => {
 	form.supportedLanguages = form.supportedLanguages.filter((l) => l !== langCode);
 	delete translations.value[langCode];
 	delete rawTranslations.value[langCode];
-	if (selectedLanguage.value === langCode) {
-		selectedLanguage.value = null;
-	}
 };
 
 // Build translations JSON for saving
@@ -338,146 +307,13 @@ const handleBack = () => {
 						:published="template.status === 'published'"
 					/>
 
-					<!-- Translations Section -->
-					<UiCard>
-						<div class="flex items-center justify-between mb-6">
-							<div class="flex items-center gap-3">
-								<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
-									<Icon name="lucide:languages" class="w-5 h-5 text-brand" />
-								</div>
-								<div>
-									<h2 class="text-lg font-semibold text-text-primary">
-										{{ t('dashboard.send.emails.detail.settings.translations.title') }}
-									</h2>
-									<p class="text-sm text-text-secondary">
-										{{ t('dashboard.send.emails.detail.settings.translations.description') }}
-									</p>
-								</div>
-							</div>
-
-							<!-- Add Language Dropdown -->
-							<UiDropdownMenu v-if="availableLanguages.length > 0">
-								<template #trigger>
-									<UiButton variant="secondary" size="sm">
-										<template #iconLeft>
-											<Icon name="lucide:plus" class="w-4 h-4" />
-										</template>
-										{{ t('dashboard.send.emails.detail.settings.translations.addLanguage') }}
-									</UiButton>
-								</template>
-
-								<UiDropdownMenuItem
-									v-for="lang in availableLanguages"
-									:key="lang.value"
-									@click="addLanguage(lang.value)"
-								>
-									<Icon name="lucide:globe" class="w-4 h-4" />
-									{{
-										t('dashboard.send.emails.detail.settings.languageWithNative', {
-											label: t(lang.label),
-											native: lang.nativeLabel,
-										})
-									}}
-								</UiDropdownMenuItem>
-							</UiDropdownMenu>
-						</div>
-
-						<!-- Empty State -->
-						<div
-							v-if="form.supportedLanguages.length === 0"
-							class="text-center py-8 border border-dashed border-border-subtle rounded-xl"
-						>
-							<Icon name="lucide:globe" class="w-8 h-8 text-text-tertiary mx-auto mb-3" />
-							<p class="text-text-secondary mb-1">
-								{{ t('dashboard.send.emails.detail.settings.translations.emptyTitle') }}
-							</p>
-							<p class="text-sm text-text-tertiary">
-								{{ t('dashboard.send.emails.detail.settings.translations.emptyDescription') }}
-							</p>
-						</div>
-
-						<!-- Language Tabs -->
-						<div v-else>
-							<!-- Language Pills -->
-							<div class="flex flex-wrap gap-2 mb-6">
-								<div
-									v-for="langCode in form.supportedLanguages"
-									:key="langCode"
-									:class="[
-										'group flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors cursor-pointer',
-										selectedLanguage === langCode
-											? 'bg-brand/10 border-brand text-brand'
-											: 'bg-bg-surface border-border-default text-text-secondary hover:border-border-strong',
-									]"
-									@click="selectedLanguage = langCode"
-								>
-									<span class="text-sm font-medium">{{ getLanguageNativeLabel(langCode) }}</span>
-									<button
-										class="p-0.5 rounded hover:bg-error/20 hover:text-error transition-colors"
-										:title="t('dashboard.send.emails.detail.settings.translations.removeLanguage')"
-										@click.stop="removeLanguage(langCode)"
-									>
-										<Icon name="lucide:trash-2" class="w-3 h-3" />
-									</button>
-								</div>
-							</div>
-
-							<!-- Selected Language Editor -->
-							<Transition name="fade" mode="out-in">
-								<div
-									v-if="selectedLanguage && selectedTranslation"
-									:key="selectedLanguage"
-									class="border border-border-subtle rounded-xl p-6 bg-bg-surface/50"
-								>
-									<div class="flex items-center gap-2 mb-4">
-										<Icon name="lucide:globe" class="w-4 h-4 text-brand" />
-										<h3 class="font-medium text-text-primary">
-											{{ getLanguageLabel(selectedLanguage) }}
-										</h3>
-									</div>
-
-									<div class="space-y-4">
-										<UiInput
-											v-model="selectedTranslation.subject"
-											:label="t('dashboard.send.emails.detail.settings.translations.subjectLabel')"
-											:placeholder="
-												t('dashboard.send.emails.detail.settings.translations.subjectPlaceholder', {
-													language: getLanguageNativeLabel(selectedLanguage),
-												})
-											"
-											:help-text="
-												t('dashboard.send.emails.detail.settings.translations.subjectHelp')
-											"
-										/>
-
-										<UiTextarea
-											v-model="selectedTranslation.previewText"
-											:label="t('dashboard.send.emails.detail.settings.translations.previewLabel')"
-											:placeholder="
-												t('dashboard.send.emails.detail.settings.translations.previewPlaceholder', {
-													language: getLanguageNativeLabel(selectedLanguage),
-												})
-											"
-											:rows="2"
-											:max-length="150"
-											:help-text="
-												t('dashboard.send.emails.detail.settings.translations.previewHelp')
-											"
-										/>
-									</div>
-								</div>
-
-								<div
-									v-else
-									class="border border-dashed border-border-subtle rounded-xl p-8 text-center"
-								>
-									<p class="text-text-secondary">
-										{{ t('dashboard.send.emails.detail.settings.translations.selectPrompt') }}
-									</p>
-								</div>
-							</Transition>
-						</div>
-					</UiCard>
+					<EmailTranslationsCard
+						v-model:translations="translations"
+						:supported-languages="form.supportedLanguages"
+						:default-language="form.defaultLanguage"
+						@add-language="addLanguage"
+						@remove-language="removeLanguage"
+					/>
 
 					<!-- Info Card -->
 					<UiCard variant="info">
@@ -506,15 +342,3 @@ const handleBack = () => {
 		/>
 	</div>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-	transition: opacity var(--motion-fast) var(--ease-spring);
-}
-
-.fade-enter-from,
-.fade-leave-to {
-	opacity: 0;
-}
-</style>

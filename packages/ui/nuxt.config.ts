@@ -25,9 +25,12 @@ const config = {
 	modules: ['@nuxtjs/color-mode'],
 
 	i18n: {
+		// The `as const` codes matter: an app that installs @nuxtjs/i18n gains a
+		// type augmentation narrowing `locales[].code` to its declared union, and a
+		// widened `string` here would fail THAT app's typecheck of this layer.
 		locales: [
-			{ code: 'en', language: 'en-US', name: 'English', file: 'en.json' },
-			{ code: 'de', language: 'de-DE', name: 'Deutsch', file: 'de.json' },
+			{ code: 'en' as const, language: 'en-US', name: 'English', file: 'en.json' },
+			{ code: 'de' as const, language: 'de-DE', name: 'Deutsch', file: 'de.json' },
 		],
 	},
 };

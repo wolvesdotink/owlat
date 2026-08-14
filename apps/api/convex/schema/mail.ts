@@ -667,7 +667,7 @@ export const mailTables = {
 		// Convex full-text search indexes the plaintext of `searchField`. This is
 		// the documented, deliberate exception — `snippet` is a short excerpt, never
 		// the full body, and losing it would break server-side mail search. See
-		// lib/atRestBodies.ts and apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
+		// lib/atRestBodies.ts and apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_messages', {
 			searchField: 'snippet',
 			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
