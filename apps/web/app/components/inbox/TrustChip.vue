@@ -13,9 +13,23 @@ import type { TrustLabel } from '~/utils/trustLabel';
  */
 const props = defineProps<{
 	trust: TrustLabel;
-	/** Optional extra quiet footer line, e.g. "Classifier confidence 45%". */
+	/** Optional extra quiet footer line, already translated by the caller. */
 	extraDetail?: string;
 }>();
+
+const { t } = useI18n();
+
+/**
+ * The trust vocabulary is a module-scope registry, so its label/reason/detail
+ * fields hold i18n keys — parameterized ones as `{ key, params }` (see the
+ * localization guide). Render every one of them through here.
+ */
+type Translatable = string | { key: string; params?: Record<string, unknown> };
+function tv(value: Translatable): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+const trustText = computed(() => tv(props.trust.label));
 
 const open = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
@@ -47,38 +61,38 @@ const VARIANT_CLASS: Record<TrustLabel['variant'], string> = {
 			class="inline-flex items-center text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/60"
 			:class="VARIANT_CLASS[props.trust.variant]"
 			:aria-expanded="open"
-			:aria-label="`${props.trust.label} — see why`"
+			:aria-label="t('components.inbox.trustChip.seeWhy', { label: trustText })"
 			@click.stop.prevent="open = !open"
 		>
-			{{ props.trust.label }}
+			{{ trustText }}
 		</button>
 		<div
 			v-if="open"
 			data-testid="trust-chip-popover"
 			role="dialog"
-			:aria-label="props.trust.label"
+			:aria-label="trustText"
 			class="absolute left-0 top-full mt-1 z-20 w-64 rounded-lg border border-border-subtle bg-bg-elevated shadow-lg p-3 text-left"
 			@click.stop
 		>
-			<p class="text-xs font-medium text-text-primary">{{ props.trust.label }}</p>
+			<p class="text-xs font-medium text-text-primary">{{ trustText }}</p>
 			<ul data-testid="trust-chip-reasons" class="mt-1.5 space-y-1">
 				<li
-					v-for="reason in props.trust.reasons"
-					:key="reason"
+					v-for="(reason, i) in props.trust.reasons"
+					:key="i"
 					class="flex items-start gap-1.5 text-xs text-text-secondary"
 				>
 					<span
 						class="mt-1.5 h-1 w-1 rounded-full bg-current opacity-60 shrink-0"
 						aria-hidden="true"
 					/>
-					<span>{{ reason }}</span>
+					<span>{{ tv(reason) }}</span>
 				</li>
 			</ul>
 			<p
 				data-testid="trust-chip-detail"
 				class="mt-2 pt-2 border-t border-border-subtle text-[11px] text-text-tertiary tabular-nums"
 			>
-				{{ props.trust.detail
+				{{ tv(props.trust.detail)
 				}}<template v-if="props.extraDetail"> · {{ props.extraDetail }}</template>
 			</p>
 		</div>

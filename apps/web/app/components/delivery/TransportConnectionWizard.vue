@@ -88,6 +88,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ applied: [] }>();
 
+const { t } = useI18n();
+
 const isOpen = ref(false);
 const state = ref(createTransportWizardState());
 const skipImpact = skippingWizardImpact();
@@ -95,8 +97,12 @@ const skipImpact = skippingWizardImpact();
 const steps = TRANSPORT_WIZARD_STEPS;
 const currentIndex = computed(() => stepIndex(state.value.current));
 const currentStep = computed(() => stepById(state.value.current));
-const positionLabel = computed(
-	() => `Step ${currentIndex.value + 1} of ${steps.length}: ${currentStep.value.title}`
+const positionLabel = computed(() =>
+	t('components.delivery.transportConnectionWizard.position', {
+		index: currentIndex.value + 1,
+		total: steps.length,
+		title: t(currentStep.value.title),
+	})
 );
 
 function setStatus(id: TransportWizardStepId, status: WizardStepStatus) {
@@ -176,14 +182,14 @@ async function checkAlignment() {
 		const result = await runAlignmentProbe(arms.ownArm, arms.reference, Date.now());
 		alignmentFindingRows.value = alignmentFindings(result);
 		alignmentDegradedReason.value = result.measurementDegradedReason ?? '';
-		alignmentSummary.value = alignmentVerdictSummary(result);
+		alignmentSummary.value = t(alignmentVerdictSummary(result));
 		setStatus('alignment', alignmentStepStatus(result));
 	} catch {
 		// A throw here (a malformed arm, an unexpected evaluator shape) must not
 		// pin the step at `running` — a blocking step that is neither passed nor
 		// resolvable strands the operator with no message and no way forward.
 		// `unknown` is the honest verdict: we could not find out.
-		alignmentSummary.value = 'The check could not run. Nothing has changed — try again.';
+		alignmentSummary.value = t('components.delivery.transportConnectionWizard.checkFailed');
 		setStatus('alignment', 'unknown');
 	} finally {
 		alignmentChecking.value = false;
@@ -219,10 +225,12 @@ watch(
 					<UiIconBox icon="lucide:plug" size="sm" variant="surface" rounded="lg" />
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary">
-							{{ TRANSPORT_WIZARD_ENTRY.title }}
-							<span class="text-sm font-normal text-text-tertiary">(optional)</span>
+							{{ t(TRANSPORT_WIZARD_ENTRY.title) }}
+							<span class="text-sm font-normal text-text-tertiary">
+								{{ t('components.delivery.transportConnectionWizard.optionalSuffix') }}
+							</span>
 						</h2>
-						<p class="text-sm text-text-secondary">{{ TRANSPORT_WIZARD_ENTRY.body }}</p>
+						<p class="text-sm text-text-secondary">{{ t(TRANSPORT_WIZARD_ENTRY.body) }}</p>
 					</div>
 				</div>
 				<UiButton v-if="!isOpen" ref="entryActionRef" variant="secondary" size="sm" @click="open">
@@ -237,7 +245,10 @@ watch(
 
 		<div v-else class="p-6 space-y-6">
 			<!-- Step rail -->
-			<ol class="flex flex-wrap gap-x-6 gap-y-2" aria-label="Connection steps">
+			<ol
+				class="flex flex-wrap gap-x-6 gap-y-2"
+				:aria-label="t('components.delivery.transportConnectionWizard.stepsLabel')"
+			>
 				<li
 					v-for="(step, index) in steps"
 					:key="step.id"
@@ -256,7 +267,7 @@ watch(
 						"
 						>{{ index + 1 }}</span
 					>
-					{{ step.title }}
+					{{ t(step.title) }}
 				</li>
 			</ol>
 
@@ -268,9 +279,9 @@ watch(
 					tabindex="-1"
 					class="text-base font-semibold text-text-primary outline-none"
 				>
-					{{ currentStep.title }}
+					{{ t(currentStep.title) }}
 				</h3>
-				<p class="text-sm text-text-secondary">{{ currentStep.description }}</p>
+				<p class="text-sm text-text-secondary">{{ t(currentStep.description) }}</p>
 			</div>
 
 			<!-- Step 1: credentials — its own component; the shell never sees a secret -->
@@ -288,11 +299,10 @@ watch(
 			<!-- Step 3: alignment -->
 			<div v-if="state.current === 'alignment'" class="space-y-4">
 				<p v-if="alignmentArms === undefined" class="text-sm text-text-secondary">
-					Reading the sending domain…
+					{{ t('components.delivery.transportConnectionWizard.readingDomain') }}
 				</p>
 				<p v-else-if="alignmentArms === null" class="text-sm text-text-secondary">
-					No verified sending domain with an own-MTA signing identity was found, so there is nothing
-					to compare yet. Verify a sending domain first.
+					{{ t('components.delivery.transportConnectionWizard.noSendingDomain') }}
 				</p>
 				<template v-else>
 					<UiButton
@@ -301,7 +311,11 @@ watch(
 						:disabled="alignmentChecking"
 						@click="checkAlignment"
 					>
-						{{ alignmentChecking ? 'Checking DNS…' : 'Check alignment' }}
+						{{
+							alignmentChecking
+								? t('components.delivery.transportConnectionWizard.checkingDns')
+								: t('components.delivery.transportConnectionWizard.checkAlignment')
+						}}
 					</UiButton>
 					<p v-if="alignmentSummary" class="text-sm text-text-secondary" aria-live="polite">
 						{{ alignmentSummary }}
@@ -320,25 +334,27 @@ watch(
 			<!-- Step 4: return-path capability -->
 			<div v-if="state.current === 'return_path'" class="space-y-3">
 				<p v-if="hasNoReferenceTransport" class="text-sm text-text-secondary">
-					{{ RETURN_PATH_NO_REFERENCE_NOTE }}
+					{{ t(RETURN_PATH_NO_REFERENCE_NOTE) }}
 				</p>
 				<template v-else>
 					<p v-if="!returnPathRow" class="text-sm text-text-secondary">
-						Reading the recorded return-path capability…
+						{{ t('components.delivery.transportConnectionWizard.readingReturnPath') }}
 					</p>
 					<WizardFindingRow v-else :finding="returnPathRow" />
-					<p class="text-sm text-text-secondary">{{ RETURN_PATH_SETTLES_NOTE }}</p>
+					<p class="text-sm text-text-secondary">{{ t(RETURN_PATH_SETTLES_NOTE) }}</p>
 				</template>
 			</div>
 
 			<!-- Navigation -->
 			<div class="flex flex-wrap items-center gap-3 border-t border-border-subtle pt-5">
-				<UiButton variant="ghost" :disabled="!canGoBack(state)" @click="goBack">Back</UiButton>
+				<UiButton variant="ghost" :disabled="!canGoBack(state)" @click="goBack">
+					{{ t('common.back') }}
+				</UiButton>
 				<UiButton v-if="!isLastStep(state)" :disabled="!canAdvance(state)" @click="goNext">
-					Next
+					{{ t('common.next') }}
 				</UiButton>
 				<UiButton variant="ghost" @click="dismiss">
-					{{ isLastStep(state) ? 'Done' : TRANSPORT_WIZARD_ENTRY.dismissLabel }}
+					{{ isLastStep(state) ? t('common.done') : t(TRANSPORT_WIZARD_ENTRY.dismissLabel) }}
 				</UiButton>
 			</div>
 		</div>

@@ -22,6 +22,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
+const { t } = useI18n();
+
 const { data: requests, isLoading } = useConvexQuery(
 	api.mail.mailboxRequest.listPending,
 	() => ({})
@@ -39,10 +41,10 @@ const hostedConfigured = computed(() => (verifiedDomains.value?.length ?? 0) > 0
 
 const { run: provisionRequest } = useBackendOperation(
 	api.mail.mailboxRequest.provisionFromRequest,
-	{ label: 'Provision mailbox' }
+	{ label: () => t('components.dashboard.mailboxRequests.provisionOperation') }
 );
 const { run: resolveRequest } = useBackendOperation(api.mail.mailboxRequest.resolve, {
-	label: 'Resolve mailbox request',
+	label: () => t('components.dashboard.mailboxRequests.resolveOperation'),
 });
 
 const openRequests = computed(() => requests.value ?? []);
@@ -76,11 +78,17 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 		<div class="flex items-center gap-3 mb-4">
 			<UiIconBox icon="lucide:mailbox" variant="surface" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Mailbox requests</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.dashboard.mailboxRequests.title') }}
+				</h2>
 				<p class="text-sm text-text-secondary mt-0.5">
-					{{ openRequests.length }} teammate{{ openRequests.length === 1 ? '' : 's' }} need a
-					mailbox. Provision one straight from the request, or mark it done if you've handled it
-					another way.
+					{{
+						t(
+							'components.dashboard.mailboxRequests.summary',
+							{ count: openRequests.length },
+							openRequests.length
+						)
+					}}
 				</p>
 			</div>
 		</div>
@@ -94,7 +102,13 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 				<div class="min-w-0">
 					<p class="font-medium text-text-primary truncate">{{ req.name || req.email }}</p>
 					<p class="text-sm text-text-secondary truncate">
-						{{ req.name ? req.email : '' }}<span v-if="req.note"> — “{{ req.note }}”</span>
+						<template v-if="req.note">{{
+							t('components.dashboard.mailboxRequests.emailWithNote', {
+								email: req.name ? req.email : '',
+								note: req.note,
+							})
+						}}</template>
+						<template v-else>{{ req.name ? req.email : '' }}</template>
 					</p>
 				</div>
 				<div class="flex shrink-0 items-center gap-2">
@@ -109,10 +123,10 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 							"
 							@click="provision(req.id)"
 						>
-							Provision now
+							{{ t('components.dashboard.mailboxRequests.provision') }}
 						</UiButton>
 						<p v-if="domainsLoaded && !hostedConfigured" class="text-xs text-text-tertiary">
-							Verify a sending domain first
+							{{ t('components.dashboard.mailboxRequests.verifyDomainFirst') }}
 						</p>
 					</div>
 					<UiButton
@@ -122,7 +136,7 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 						:disabled="busy !== null && !(busy.id === req.id && busy.action === 'resolve')"
 						@click="resolve(req.id)"
 					>
-						Mark done
+						{{ t('components.dashboard.mailboxRequests.markDone') }}
 					</UiButton>
 				</div>
 			</li>

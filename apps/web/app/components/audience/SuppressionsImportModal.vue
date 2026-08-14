@@ -7,16 +7,18 @@ const emit = defineEmits<{
 	import: [];
 }>();
 
+const { t } = useI18n();
+
 const stepDescription = computed(() => {
 	switch (props.blocklistImport.step.value) {
 		case 'upload':
-			return 'Upload a list of addresses';
+			return t('components.audience.suppressionsImportModal.steps.upload');
 		case 'preview':
-			return 'Review before import';
+			return t('components.audience.suppressionsImportModal.steps.preview');
 		case 'importing':
-			return 'Importing addresses...';
+			return t('components.audience.suppressionsImportModal.steps.importing');
 		case 'complete':
-			return 'Import complete';
+			return t('components.audience.suppressionsImportModal.steps.complete');
 		default:
 			return '';
 	}
@@ -41,7 +43,9 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox icon="lucide:file-up" size="sm" variant="surface" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Import suppressions</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.audience.suppressionsImportModal.title') }}
+				</h2>
 				<p class="text-sm text-text-tertiary">{{ stepDescription }}</p>
 			</div>
 		</div>
@@ -87,18 +91,24 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 							<Icon name="lucide:upload" class="w-8 h-8 text-text-tertiary" />
 						</div>
 						<div>
-							<p class="text-text-primary font-medium">Drop your file here or click to browse</p>
-							<p class="text-sm text-text-tertiary mt-1">Supports .csv and .txt files</p>
+							<p class="text-text-primary font-medium">
+								{{ t('components.audience.suppressionsImportModal.dropzoneTitle') }}
+							</p>
+							<p class="text-sm text-text-tertiary mt-1">
+								{{ t('components.audience.suppressionsImportModal.dropzoneHint') }}
+							</p>
 						</div>
 					</div>
 				</div>
 				<div class="mt-6 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-2">File Format Tips</h4>
+					<h4 class="text-sm font-medium text-text-primary mb-2">
+						{{ t('components.audience.suppressionsImportModal.formatTipsTitle') }}
+					</h4>
 					<ul class="text-sm text-text-secondary space-y-1">
-						<li>One email address per line, or the first column of a CSV</li>
-						<li>A leading "email" header row is ignored</li>
-						<li>Invalid and duplicate addresses are skipped automatically</li>
-						<li>Imported addresses are added as manual suppressions</li>
+						<li>{{ t('components.audience.suppressionsImportModal.formatTips.perLine') }}</li>
+						<li>{{ t('components.audience.suppressionsImportModal.formatTips.headerRow') }}</li>
+						<li>{{ t('components.audience.suppressionsImportModal.formatTips.skipped') }}</li>
+						<li>{{ t('components.audience.suppressionsImportModal.formatTips.manual') }}</li>
 					</ul>
 				</div>
 			</div>
@@ -110,7 +120,9 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 						<p class="text-2xl font-medium tracking-[-0.02em] text-success">
 							{{ blocklistImport.validation.value.valid.length }}
 						</p>
-						<p class="text-xs text-success/80">Valid addresses</p>
+						<p class="text-xs text-success/80">
+							{{ t('components.audience.suppressionsImportModal.validAddresses') }}
+						</p>
 					</div>
 					<div
 						class="p-3 rounded-lg"
@@ -138,7 +150,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 									: 'text-text-tertiary'
 							"
 						>
-							Invalid
+							{{ t('components.audience.suppressionsImportModal.invalid') }}
 						</p>
 					</div>
 					<div
@@ -167,17 +179,18 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 									: 'text-text-tertiary'
 							"
 						>
-							Duplicates
+							{{ t('components.audience.suppressionsImportModal.duplicates') }}
 						</p>
 					</div>
 				</div>
 
 				<p class="text-sm text-text-secondary mb-2">
-					Preview of first
-					{{ Math.min(10, blocklistImport.validation.value.valid.length) }} addresses ({{
-						blocklistImport.validation.value.valid.length
+					{{
+						t('components.audience.suppressionsImportModal.previewSummary', {
+							shown: Math.min(10, blocklistImport.validation.value.valid.length),
+							total: blocklistImport.validation.value.valid.length,
+						})
 					}}
-					total)
 				</p>
 				<div class="rounded-lg border border-border-subtle divide-y divide-border-subtle">
 					<div
@@ -194,7 +207,9 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 					v-if="blocklistImport.validation.value.invalid.length > 0"
 					class="mt-4 p-3 rounded-lg bg-warning/5 border border-warning/20"
 				>
-					<h5 class="text-sm font-medium text-warning mb-1">Skipped (invalid format)</h5>
+					<h5 class="text-sm font-medium text-warning mb-1">
+						{{ t('components.audience.suppressionsImportModal.skippedInvalidFormat') }}
+					</h5>
 					<ul class="text-xs text-text-secondary space-y-0.5">
 						<li
 							v-for="(entry, index) in blocklistImport.validation.value.invalid.slice(0, 10)"
@@ -206,7 +221,11 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 							v-if="blocklistImport.validation.value.invalid.length > 10"
 							class="text-text-tertiary"
 						>
-							...and {{ blocklistImport.validation.value.invalid.length - 10 }} more
+							{{
+								t('components.audience.suppressionsImportModal.andMore', {
+									count: blocklistImport.validation.value.invalid.length - 10,
+								})
+							}}
 						</li>
 					</ul>
 				</div>
@@ -221,7 +240,9 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 							class="absolute inset-0 w-20 h-20 rounded-full border-4 border-brand border-t-transparent animate-spin"
 						/>
 					</div>
-					<p class="text-lg font-medium text-text-primary">Importing addresses...</p>
+					<p class="text-lg font-medium text-text-primary">
+						{{ t('components.audience.suppressionsImportModal.steps.importing') }}
+					</p>
 				</div>
 			</div>
 
@@ -231,17 +252,19 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 					<div class="p-3 rounded-full bg-success/10">
 						<Icon name="lucide:check" class="w-8 h-8 text-success" />
 					</div>
-					<p class="text-lg font-medium text-text-primary">Import Complete!</p>
+					<p class="text-lg font-medium text-text-primary">
+						{{ t('components.audience.suppressionsImportModal.completeTitle') }}
+					</p>
 				</div>
 				<div class="grid grid-cols-2 gap-4 mb-6">
 					<UiStatCard
 						:value="blocklistImport.results.value?.added || 0"
-						label="Added"
+						:label="t('components.audience.suppressionsImportModal.added')"
 						variant="success"
 					/>
 					<UiStatCard
 						:value="blocklistImport.results.value?.skipped || 0"
-						label="Skipped"
+						:label="t('components.audience.suppressionsImportModal.skipped')"
 						variant="secondary"
 					/>
 				</div>
@@ -252,7 +275,11 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 					class="p-4 rounded-lg bg-error-subtle border border-error/20"
 				>
 					<h4 class="text-sm font-medium text-error mb-2">
-						Errors ({{ blocklistImport.results.value.errors.length }})
+						{{
+							t('components.audience.suppressionsImportModal.errorsHeading', {
+								count: blocklistImport.results.value.errors.length,
+							})
+						}}
 					</h4>
 					<ul class="text-sm text-error/80 space-y-1">
 						<li
@@ -269,17 +296,25 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 		<!-- Footer -->
 		<template #footer>
 			<template v-if="blocklistImport.step.value === 'upload'">
-				<UiButton variant="secondary" @click="blocklistImport.close()">Cancel</UiButton>
+				<UiButton variant="secondary" @click="blocklistImport.close()">{{
+					t('common.cancel')
+				}}</UiButton>
 			</template>
 			<template v-else-if="blocklistImport.step.value === 'preview'">
-				<UiButton variant="secondary" @click="blocklistImport.goBackToUpload()">Back</UiButton>
+				<UiButton variant="secondary" @click="blocklistImport.goBackToUpload()">{{
+					t('common.back')
+				}}</UiButton>
 				<UiButton :disabled="!blocklistImport.canImport.value" @click="emit('import')">
 					<template #iconLeft><Icon name="lucide:upload" class="w-4 h-4" /></template>
-					Import {{ blocklistImport.validCount.value }} Addresses
+					{{
+						t('components.audience.suppressionsImportModal.importAddresses', {
+							count: blocklistImport.validCount.value,
+						})
+					}}
 				</UiButton>
 			</template>
 			<template v-else-if="blocklistImport.step.value === 'complete'">
-				<UiButton @click="blocklistImport.close()">Done</UiButton>
+				<UiButton @click="blocklistImport.close()">{{ t('common.done') }}</UiButton>
 			</template>
 		</template>
 	</UiModal>

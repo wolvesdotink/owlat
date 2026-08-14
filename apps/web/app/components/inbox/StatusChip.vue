@@ -23,6 +23,8 @@ const props = defineProps<{
 	snoozeReturnedAt?: number | null;
 }>();
 
+const { t } = useI18n();
+
 const chip = computed(() =>
 	threadStatusChip({
 		status: props.status,
@@ -34,16 +36,20 @@ const chip = computed(() =>
 const dotClass = computed(() => threadChipDotClass(chip.value.variant));
 
 // Only surface the "returned" marker while the thread is not currently snoozed
-// (a fresh snooze supersedes a stale marker).
+// (a fresh snooze supersedes a stale marker). The chip's label is an i18n key,
+// so the snoozed state is read off the `info` variant the snooze branch carries.
 const showReturned = computed(
-	() => props.snoozeReturnedAt != null && chip.value.label !== 'Snoozed'
+	() => props.snoozeReturnedAt != null && chip.value.variant !== 'info'
 );
 </script>
 
 <template>
 	<span class="inline-flex items-center gap-1.5 text-xs text-text-secondary">
 		<span class="w-1.5 h-1.5 rounded-full" :class="dotClass" aria-hidden="true" />
-		<span>{{ chip.label }}</span>
-		<span v-if="showReturned" class="text-text-tertiary">· Returned</span>
+		<!-- The status vocabulary holds i18n keys, not copy (see the localization guide). -->
+		<span>{{ t(chip.label) }}</span>
+		<span v-if="showReturned" class="text-text-tertiary">
+			{{ t('components.inbox.statusChip.returned') }}
+		</span>
 	</span>
 </template>

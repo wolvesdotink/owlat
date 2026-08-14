@@ -1,0 +1,70 @@
+{
+	"components": {
+		"postbox": {
+			"postboxReplyGuard": {
+				"title": "Dieser Absender konnte nicht verifiziert werden",
+				"body": "Diese Nachricht hat die Absender-Authentifizierung nicht bestanden und stammt möglicherweise nicht wirklich von der angegebenen Person. Wenn Sie antworten, geht Ihre Antwort an denjenigen, der sie tatsächlich gesendet hat. Trotzdem antworten?",
+				"replyAnyway": "Trotzdem antworten"
+			},
+			"postboxReplyQueueStrip": {
+				"waiting": "{count} E-Mail wartet auf Ihre Antwort | {count} E-Mails warten auf Ihre Antwort",
+				"openQueue": "Warteschlange öffnen",
+				"dismissTitle": "Für diese Sitzung ausblenden",
+				"dismissLabel": "Erinnerung an die Antwort-Warteschlange ausblenden"
+			},
+			"postboxReviewSlot": {
+				"draftReady": "Entwurf bereit",
+				"optionCount": "{count} Optionen",
+				"reviewAndSend": "Prüfen & senden"
+			},
+			"postboxRewriteActions": {
+				"shorter": "Kürzer",
+				"friendlier": "Freundlicher",
+				"formal": "Förmlicher",
+				"grammar": "Grammatik korrigieren",
+				"translate": "Übersetzen",
+				"translateTitle": "Übersetzen…"
+			},
+			"postboxRewriteLayer": {
+				"rewritten": "Umgeschrieben",
+				"undo": "Rückgängig"
+			},
+			"postboxRewritePill": {
+				"toolbarLabel": "Auswahl mit KI umschreiben"
+			},
+			"postboxRewritePreview": {
+				"dialogLabel": "Vorschau der Umschreibung",
+				"original": "Original",
+				"rewritten": "Umgeschrieben"
+			},
+			"postboxScheduleDialog": {
+				"title": "Senden planen",
+				"tomorrowMorning": "Morgen früh",
+				"tomorrowAfternoon": "Morgen Nachmittag",
+				"mondayMorning": "Montagmorgen",
+				"custom": "Benutzerdefiniert",
+				"schedule": "Planen"
+			},
+			"postboxSchedulingChip": {
+				"draftOperation": "Terminantwort entwerfen",
+				"prompt": "Terminanfrage — Antwort entwerfen?",
+				"dismissLabel": "Terminvorschlag ausblenden",
+				"drafting": "Entwurf wird erstellt…",
+				"repliesLabel": "Vorgeschlagene Terminantworten"
+			},
+			"postboxSearchBar": {
+				"placeholder": "E-Mails durchsuchen (from:sara has:attachment older_than:7d…)"
+			},
+			"postboxSecurityBadge": {
+				"encrypted": "Ende-zu-Ende-verschlüsselt",
+				"signed": "Digital signiert",
+				"encryptedTooltip": "{technology}: Owlat kann diese Nachricht nicht entschlüsseln — der verschlüsselte Inhalt wird unverändert angezeigt.",
+				"signedTooltip": "{technology}: Eine kryptografische Signatur ist vorhanden, wird von Owlat aber nicht verifiziert.",
+				"cantDecryptSuffix": "· nicht entschlüsselbar",
+				"notVerifiedSuffix": "· nicht verifiziert",
+				"copyCiphertext": "Verschlüsselte Nachricht kopieren",
+				"downloadEml": "Rohdatei .eml herunterladen"
+			}
+		}
+	}
+}

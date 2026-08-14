@@ -18,6 +18,7 @@ const emit = defineEmits<{
 	verify: [item: DeliverabilityChecklistItem];
 }>();
 
+const { t } = useI18n();
 const { copy, isCopied } = useCopyToClipboard();
 const clock = ref(Date.now());
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -54,7 +55,7 @@ async function copyValue(value: string, key: string) {
 		<div class="border-b border-border-subtle bg-brand/5 px-5 py-3 sm:px-6">
 			<p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand">
 				<Icon name="lucide:arrow-right-circle" class="h-4 w-4" />
-				Do this next
+				{{ t('components.delivery.deliverabilityNextActionCard.doThisNext') }}
 			</p>
 		</div>
 
@@ -65,7 +66,10 @@ async function copyValue(value: string, key: string) {
 					<p class="mt-1 text-sm text-text-tertiary">
 						{{ item.protocol }}
 						<span v-if="item.scope.kind === 'domain'"> · {{ item.scope.domain }}</span>
-						<span v-else> · This server</span>
+						<span v-else>
+							·
+							{{ t('components.delivery.deliverabilityNextActionCard.thisServer') }}</span
+						>
 					</p>
 				</div>
 				<span
@@ -79,7 +83,7 @@ async function copyValue(value: string, key: string) {
 						class="h-3.5 w-3.5"
 						:class="{ 'animate-spin': item.status === 'pending-dns' }"
 					/>
-					{{ status.label }}
+					{{ t(status.label) }}
 				</span>
 			</div>
 
@@ -93,14 +97,21 @@ async function copyValue(value: string, key: string) {
 			>
 				<template v-if="item.status === 'pending-dns'">
 					<p class="font-medium text-text-primary">
-						Checking for your change — DNS can take up to an hour to spread.
+						{{ t('components.delivery.deliverabilityNextActionCard.pendingTitle') }}
 					</p>
-					<p class="mt-1 text-sm text-text-secondary">
-						We’ll keep checking automatically
-						<span v-if="nextCheckLabel">
-							(next check in <span class="tabular-nums">{{ nextCheckLabel }}</span
-							>)</span
-						>. You can safely leave this page.
+					<I18nT
+						v-if="nextCheckLabel"
+						keypath="components.delivery.deliverabilityNextActionCard.pendingBodyWithCountdown"
+						tag="p"
+						scope="global"
+						class="mt-1 text-sm text-text-secondary"
+					>
+						<template #countdown>
+							<span class="tabular-nums">{{ nextCheckLabel }}</span>
+						</template>
+					</I18nT>
+					<p v-else class="mt-1 text-sm text-text-secondary">
+						{{ t('components.delivery.deliverabilityNextActionCard.pendingBody') }}
 					</p>
 				</template>
 				<template v-else>
@@ -112,9 +123,17 @@ async function copyValue(value: string, key: string) {
 						{{ item.nextStep }}
 					</p>
 				</template>
-				<p v-if="item.observed.length" class="mt-2 break-words text-xs text-text-tertiary">
-					Last observed: <span class="font-mono">{{ item.observed.join(' · ') }}</span>
-				</p>
+				<I18nT
+					v-if="item.observed.length"
+					keypath="components.delivery.deliverabilityNextActionCard.lastObserved"
+					tag="p"
+					scope="global"
+					class="mt-2 break-words text-xs text-text-tertiary"
+				>
+					<template #values>
+						<span class="font-mono">{{ item.observed.join(' · ') }}</span>
+					</template>
+				</I18nT>
 			</div>
 
 			<DeliverabilitySetupValues
@@ -140,7 +159,11 @@ async function copyValue(value: string, key: string) {
 					<template #iconLeft>
 						<Icon v-if="!isVerifying" name="lucide:refresh-cw" class="h-4 w-4" />
 					</template>
-					{{ item.status === 'pending-dns' ? 'Check again now' : 'I’ve set it — verify now' }}
+					{{
+						item.status === 'pending-dns'
+							? t('components.delivery.deliverabilityNextActionCard.checkAgain')
+							: t('components.delivery.deliverabilityNextActionCard.verifyNow')
+					}}
 				</UiButton>
 				<p v-if="item.lockedReason" class="text-xs text-text-secondary">
 					{{ item.lockedReason }}
@@ -156,8 +179,8 @@ async function copyValue(value: string, key: string) {
 					>
 						{{
 							isCopied(`${scopedItemKey}:diagnostic`)
-								? 'Diagnostic copied'
-								: 'Copy diagnostic report'
+								? t('components.delivery.deliverabilityNextActionCard.diagnosticCopied')
+								: t('components.delivery.deliverabilityNextActionCard.copyDiagnostic')
 						}}
 					</button>
 					<a
@@ -166,7 +189,7 @@ async function copyValue(value: string, key: string) {
 						rel="noopener noreferrer"
 						class="text-sm text-text-secondary hover:text-brand"
 					>
-						How this works
+						{{ t('components.delivery.deliverabilityNextActionCard.howThisWorks') }}
 					</a>
 				</div>
 			</div>
@@ -177,12 +200,14 @@ async function copyValue(value: string, key: string) {
 		<div class="flex items-start gap-4">
 			<UiIconBox icon="lucide:party-popper" size="lg" variant="success" rounded="xl" />
 			<div>
-				<p class="text-xs font-semibold uppercase tracking-wide text-success">Setup complete</p>
+				<p class="text-xs font-semibold uppercase tracking-wide text-success">
+					{{ t('components.delivery.deliverabilityNextActionCard.complete.eyebrow') }}
+				</p>
 				<h2 class="mt-1 text-xl font-semibold text-text-primary">
-					Every required check is verified
+					{{ t('components.delivery.deliverabilityNextActionCard.complete.title') }}
 				</h2>
 				<p class="mt-1 text-sm text-text-secondary">
-					Keep the daily checks enabled and run the end-to-end proof below when you’re ready.
+					{{ t('components.delivery.deliverabilityNextActionCard.complete.body') }}
 				</p>
 			</div>
 		</div>

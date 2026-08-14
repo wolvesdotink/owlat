@@ -40,6 +40,17 @@ const props = defineProps<{
 	decisionWindowLabel: string;
 }>();
 
+const { t } = useI18n();
+
+/**
+ * The gate table is module scope and never calls `useI18n`: it hands back
+ * catalog keys (with the numbers a verdict is denominated in as parameters),
+ * and this list is the render boundary that turns them into words.
+ */
+type GateMessage = string | { key: string; params?: Record<string, unknown> };
+const message = (value: GateMessage): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 const TONE_CLASS = {
 	ok: 'border-success/40 bg-success/5 text-success',
 	attention: 'border-warning/40 bg-warning/5 text-warning',
@@ -50,9 +61,9 @@ const TONE_CLASS = {
 const rows = computed(() =>
 	props.gates.map((gate) => ({
 		gate,
-		label: gateLabel(gate.gate),
-		statusLabel: gateStatusLabel(gate.status),
-		explanation: gateExplanation(gate),
+		label: message(gateLabel(gate.gate)),
+		statusLabel: message(gateStatusLabel(gate.status)),
+		explanation: message(gateExplanation(gate)),
 		toneClass: TONE_CLASS[gateTone(gate.status)],
 		isCorroborationPending:
 			props.requiresCorroboration && props.failedGate === gate.gate && gate.status !== 'pass',
@@ -62,13 +73,19 @@ const rows = computed(() =>
 
 <template>
 	<div>
-		<h4 class="text-sm font-semibold text-text-primary">Checks</h4>
+		<h4 class="text-sm font-semibold text-text-primary">
+			{{ t('components.delivery.measurementGateList.title') }}
+		</h4>
 		<!--
 			The span, once, above the list — every sentence below is over it, and
 			none of them is over the window the surrounding card reports.
 		-->
 		<p class="mt-1 text-xs text-text-secondary" data-testid="measurement-gate-window">
-			Decided over {{ props.decisionWindowLabel }} — the same window the ramp controller acts on.
+			{{
+				t('components.delivery.measurementGateList.decidedOver', {
+					window: props.decisionWindowLabel,
+				})
+			}}
 		</p>
 		<ul class="mt-2 space-y-2" data-testid="measurement-gate-list">
 			<li
@@ -93,8 +110,7 @@ const rows = computed(() =>
 					class="mt-1 text-xs text-text-secondary"
 					data-testid="measurement-gate-corroboration"
 				>
-					This is a tripwire, not a measurement — it is confirmed against the bounce and deferral
-					checks before anything acts on it.
+					{{ t('components.delivery.measurementGateList.corroboration') }}
 				</p>
 			</li>
 		</ul>

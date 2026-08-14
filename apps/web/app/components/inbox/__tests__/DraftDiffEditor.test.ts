@@ -1,6 +1,13 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import DraftDiffEditor from '../DraftDiffEditor.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// Every visible string flows through vue-i18n now: mount with the real catalog
+// and expose `useI18n`, which is a Nuxt auto-import in the app.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 /**
  * The review-gate draft editor shows a live before/after diff of the original
@@ -10,7 +17,7 @@ function mountEditor(props: { original: string; modelValue: string; saving?: boo
 	return mount(DraftDiffEditor, {
 		props,
 		// `<Icon>` is a Nuxt auto-import that is not registered in unit tests.
-		global: { stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 	});
 }
 

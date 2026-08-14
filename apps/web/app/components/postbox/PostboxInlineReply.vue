@@ -31,6 +31,8 @@ const emit = defineEmits<{
 	(e: 'collapse'): void;
 }>();
 
+const { t } = useI18n();
+
 const stack = usePostboxComposerStack();
 const undoSend = usePostboxUndoSend();
 
@@ -95,14 +97,16 @@ defineExpose({
 				@click="emit('expand', 'reply')"
 			>
 				<Icon name="lucide:reply" class="w-4 h-4 flex-shrink-0" />
-				<span class="truncate">Reply to {{ senderLabel }}…</span>
+				<span class="truncate">{{
+					t('components.postbox.postboxInlineReply.replyTo', { sender: senderLabel })
+				}}</span>
 			</button>
 			<button
 				v-if="showReplyAll"
 				type="button"
 				class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated"
-				title="Reply all"
-				aria-label="Reply all"
+				:title="t('components.postbox.postboxInlineReply.replyAll')"
+				:aria-label="t('components.postbox.postboxInlineReply.replyAll')"
 				@click="emit('expand', 'replyAll')"
 			>
 				<Icon name="lucide:reply-all" class="w-4 h-4" />
@@ -110,8 +114,8 @@ defineExpose({
 			<button
 				type="button"
 				class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated"
-				title="Forward"
-				aria-label="Forward"
+				:title="t('components.postbox.postboxInlineReply.forward')"
+				:aria-label="t('components.postbox.postboxInlineReply.forward')"
 				@click="emit('expand', 'forward')"
 			>
 				<Icon name="lucide:forward" class="w-4 h-4" />

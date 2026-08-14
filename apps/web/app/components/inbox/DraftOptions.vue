@@ -19,6 +19,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ 'update:modelValue': [index: number] }>();
 
+const { t } = useI18n();
+
 const selected = computed({
 	get: () => props.modelValue,
 	set: (i: number) => emit('update:modelValue', i),
@@ -29,14 +31,22 @@ const selected = computed({
 	<div class="bg-brand-subtle/30 rounded-lg p-4">
 		<div class="flex items-center gap-2 mb-3">
 			<Icon name="lucide:bot" class="w-4 h-4 text-brand" />
-			<p class="text-xs font-medium text-brand uppercase tracking-wider">Agent Draft — pick one</p>
+			<p class="text-xs font-medium text-brand uppercase tracking-wider">
+				{{ t('components.inbox.draftOptions.heading') }}
+			</p>
 		</div>
-		<div role="radiogroup" aria-label="Draft options" class="flex flex-col gap-2">
+		<div
+			role="radiogroup"
+			:aria-label="t('components.inbox.draftOptions.groupLabel')"
+			class="flex flex-col gap-2"
+		>
 			<label
 				v-for="(option, i) in options"
 				:key="i"
 				class="flex items-start gap-2 rounded-md border p-3 cursor-pointer transition-colors"
-				:class="selected === i ? 'border-brand bg-brand-subtle/40' : 'border-border hover:border-brand/50'"
+				:class="
+					selected === i ? 'border-brand bg-brand-subtle/40' : 'border-border hover:border-brand/50'
+				"
 			>
 				<input
 					type="radio"

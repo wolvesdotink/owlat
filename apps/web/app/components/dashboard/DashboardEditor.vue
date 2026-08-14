@@ -35,6 +35,8 @@ const emit = defineEmits<{
 	save: [pinnedCards: CardEntry[], rules: SavedRule[]];
 }>();
 
+const { t } = useI18n();
+
 const editableCards = ref<CardEntry[]>([]);
 const editableRules = ref<EditableRule[]>([]);
 
@@ -139,14 +141,37 @@ function handleCancel() {
 	emit('close');
 }
 
-const sizeOptions: { value: CardSize; label: string }[] = [
-	{ value: 'small', label: 'S' },
-	{ value: 'medium', label: 'M' },
-	{ value: 'large', label: 'L' },
-];
+// The three shorthand size letters, the weekday initials and the role names are
+// display-only: the stored values stay the untranslated `CardSize` / weekday
+// number / role literals.
+const sizeOptions = computed<{ value: CardSize; label: string }[]>(() => [
+	{ value: 'small', label: t('components.dashboard.dashboardEditor.sizes.small') },
+	{ value: 'medium', label: t('components.dashboard.dashboardEditor.sizes.medium') },
+	{ value: 'large', label: t('components.dashboard.dashboardEditor.sizes.large') },
+]);
 
-const dayOptions = DAY_OF_WEEK_LABELS;
-const roleOptions = ROLE_OPTIONS;
+const DAY_KEYS: Record<number, string> = {
+	0: 'sun',
+	1: 'mon',
+	2: 'tue',
+	3: 'wed',
+	4: 'thu',
+	5: 'fri',
+	6: 'sat',
+};
+
+const dayOptions = computed(() =>
+	DAY_OF_WEEK_LABELS.map((day) => ({
+		value: day.value,
+		label: t(`components.dashboard.dashboardEditor.days.${DAY_KEYS[day.value]}`),
+	}))
+);
+const roleOptions = computed(() =>
+	ROLE_OPTIONS.map((role) => ({
+		value: role.value,
+		label: t(`components.dashboard.dashboardEditor.roles.${role.value || 'any'}`),
+	}))
+);
 </script>
 
 <template>
@@ -162,11 +187,13 @@ const roleOptions = ROLE_OPTIONS;
 				>
 					<!-- Header -->
 					<div class="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
-						<h2 class="text-lg font-semibold text-text-primary">Customize Dashboard</h2>
+						<h2 class="text-lg font-semibold text-text-primary">
+							{{ t('components.dashboard.dashboardEditor.title') }}
+						</h2>
 						<button
 							class="p-1.5 rounded-lg hover:bg-bg-surface-hover transition-colors text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="handleCancel"
-							aria-label="Close"
+							:aria-label="t('common.close')"
 						>
 							<Icon name="lucide:x" class="w-5 h-5" />
 						</button>
@@ -177,11 +204,11 @@ const roleOptions = ROLE_OPTIONS;
 						<!-- Current Cards -->
 						<div class="px-5 py-4">
 							<h3 class="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-3">
-								Active Cards
+								{{ t('components.dashboard.dashboardEditor.activeCards') }}
 							</h3>
 
 							<div v-if="editableCards.length === 0" class="py-6 text-center">
-								<p class="text-sm text-text-tertiary">No cards added yet. Add cards below.</p>
+								<p class="text-sm text-text-tertiary">{{ t('components.dashboard.dashboardEditor.noCards') }}</p>
 							</div>
 
 							<div v-else class="space-y-2">
@@ -196,7 +223,7 @@ const roleOptions = ROLE_OPTIONS;
 											:disabled="index === 0"
 											class="p-0.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover disabled:opacity-30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											@click="moveCard(index, 'up')"
-											aria-label="Move up"
+											:aria-label="t('components.dashboard.dashboardEditor.moveUp')"
 										>
 											<Icon name="lucide:chevron-up" class="w-3.5 h-3.5" />
 										</button>
@@ -204,7 +231,7 @@ const roleOptions = ROLE_OPTIONS;
 											:disabled="index === editableCards.length - 1"
 											class="p-0.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover disabled:opacity-30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											@click="moveCard(index, 'down')"
-											aria-label="Move down"
+											:aria-label="t('components.dashboard.dashboardEditor.moveDown')"
 										>
 											<Icon name="lucide:chevron-down" class="w-3.5 h-3.5" />
 										</button>
@@ -241,7 +268,7 @@ const roleOptions = ROLE_OPTIONS;
 									<button
 										class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 										@click="removeCard(index)"
-										aria-label="Remove card"
+										:aria-label="t('components.dashboard.dashboardEditor.removeCard')"
 									>
 										<Icon name="lucide:x" class="w-4 h-4" />
 									</button>
@@ -252,7 +279,7 @@ const roleOptions = ROLE_OPTIONS;
 						<!-- Available Cards -->
 						<div v-if="availableToAdd.length > 0" class="px-5 py-4 border-t border-border-subtle">
 							<h3 class="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-3">
-								Add Cards
+								{{ t('components.dashboard.dashboardEditor.addCards') }}
 							</h3>
 							<div class="space-y-2">
 								<button
@@ -278,23 +305,22 @@ const roleOptions = ROLE_OPTIONS;
 						<div class="px-5 py-4 border-t border-border-subtle">
 							<div class="flex items-center justify-between mb-1">
 								<h3 class="text-sm font-semibold text-text-secondary uppercase tracking-wide">
-									Adaptive Rules
+									{{ t('components.dashboard.dashboardEditor.adaptiveRules') }}
 								</h3>
 								<UiButton variant="ghost" size="sm" @click="addRule">
 									<template #iconLeft>
 										<Icon name="lucide:plus" class="w-3.5 h-3.5" />
 									</template>
-									Add rule
+									{{ t('components.dashboard.dashboardEditor.addRule') }}
 								</UiButton>
 							</div>
 							<p class="text-xs text-text-tertiary mb-3">
-								Show a different set of cards by time of day, day of week, or role. Higher priority
-								wins when several rules match.
+								{{ t('components.dashboard.dashboardEditor.adaptiveRulesHint') }}
 							</p>
 
 							<div v-if="editableRules.length === 0" class="py-4 text-center">
 								<p class="text-sm text-text-tertiary">
-									No adaptive rules. The active cards above show by default.
+									{{ t('components.dashboard.dashboardEditor.noRules') }}
 								</p>
 							</div>
 
@@ -307,12 +333,14 @@ const roleOptions = ROLE_OPTIONS;
 									<!-- Rule header: priority + remove -->
 									<div class="flex items-center justify-between gap-2">
 										<div class="flex items-center gap-2">
-											<label class="text-xs font-medium text-text-secondary">Priority</label>
+											<label class="text-xs font-medium text-text-secondary">{{
+												t('components.dashboard.dashboardEditor.priority')
+											}}</label>
 											<input
 												v-model.number="rule.priority"
 												type="number"
 												class="input input-sm w-16"
-												aria-label="Rule priority"
+												:aria-label="t('components.dashboard.dashboardEditor.rulePriority')"
 											/>
 										</div>
 										<button
@@ -326,27 +354,27 @@ const roleOptions = ROLE_OPTIONS;
 
 									<!-- Time range -->
 									<div>
-										<p class="text-xs font-medium text-text-secondary mb-1">Time range</p>
+										<p class="text-xs font-medium text-text-secondary mb-1">{{ t('components.dashboard.dashboardEditor.timeRange') }}</p>
 										<div class="flex items-center gap-2">
 											<input
 												v-model="rule.timeStart"
 												type="time"
 												class="input input-sm flex-1"
-												aria-label="Start time"
+												:aria-label="t('components.dashboard.dashboardEditor.startTime')"
 											/>
-											<span class="text-text-tertiary text-xs">to</span>
+											<span class="text-text-tertiary text-xs">{{ t('components.dashboard.dashboardEditor.timeRangeTo') }}</span>
 											<input
 												v-model="rule.timeEnd"
 												type="time"
 												class="input input-sm flex-1"
-												aria-label="End time"
+												:aria-label="t('components.dashboard.dashboardEditor.endTime')"
 											/>
 										</div>
 									</div>
 
 									<!-- Days of week -->
 									<div>
-										<p class="text-xs font-medium text-text-secondary mb-1">Days</p>
+										<p class="text-xs font-medium text-text-secondary mb-1">{{ t('components.dashboard.dashboardEditor.daysLabel') }}</p>
 										<div class="flex flex-wrap gap-1">
 											<button
 												v-for="day in dayOptions"
@@ -367,7 +395,7 @@ const roleOptions = ROLE_OPTIONS;
 
 									<!-- Role -->
 									<div>
-										<p class="text-xs font-medium text-text-secondary mb-1">Role</p>
+										<p class="text-xs font-medium text-text-secondary mb-1">{{ t('components.dashboard.dashboardEditor.roleLabel') }}</p>
 										<div class="flex flex-wrap gap-1">
 											<button
 												v-for="opt in roleOptions"
@@ -388,9 +416,9 @@ const roleOptions = ROLE_OPTIONS;
 
 									<!-- Cards in this rule -->
 									<div>
-										<p class="text-xs font-medium text-text-secondary mb-1">Cards to show</p>
+										<p class="text-xs font-medium text-text-secondary mb-1">{{ t('components.dashboard.dashboardEditor.cardsToShow') }}</p>
 										<div v-if="rule.cards.length === 0" class="text-xs text-text-tertiary mb-2">
-											Add at least one card — empty rules are skipped.
+											{{ t('components.dashboard.dashboardEditor.emptyRuleHint') }}
 										</div>
 										<div v-else class="space-y-1.5 mb-2">
 											<div
@@ -418,7 +446,7 @@ const roleOptions = ROLE_OPTIONS;
 												</div>
 												<button
 													class="p-0.5 rounded text-text-tertiary hover:text-error transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-													aria-label="Remove card from rule"
+													:aria-label="t('components.dashboard.dashboardEditor.removeRuleCard')"
 													@click="removeRuleCard(rule, cardIndex)"
 												>
 													<Icon name="lucide:x" class="w-3.5 h-3.5" />
@@ -445,8 +473,10 @@ const roleOptions = ROLE_OPTIONS;
 
 					<!-- Footer -->
 					<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
-						<UiButton variant="ghost" @click="handleCancel"> Cancel </UiButton>
-						<UiButton @click="handleSave"> Save Layout </UiButton>
+						<UiButton variant="ghost" @click="handleCancel">{{ t('common.cancel') }}</UiButton>
+						<UiButton @click="handleSave">
+						{{ t('components.dashboard.dashboardEditor.saveLayout') }}
+					</UiButton>
 					</div>
 				</div>
 			</div>

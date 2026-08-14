@@ -31,19 +31,22 @@ const emit = defineEmits<{
 	delete: [messageId: Id<'chatMessages'>];
 }>();
 
+const { t, locale } = useI18n();
+
 const messagesEndRef = ref<HTMLElement | null>(null);
 
 // Group messages by date for date separators.
 const groupedMessages = computed(() => {
+	const dateFormat = new Intl.DateTimeFormat(locale.value, {
+		weekday: 'long',
+		year: 'numeric',
+		month: 'long',
+		day: 'numeric',
+	});
 	const groups: { date: string; messages: Message[] }[] = [];
 	let currentDate = '';
 	for (const message of props.messages) {
-		const messageDate = new Date(message.createdAt).toLocaleDateString(undefined, {
-			weekday: 'long',
-			year: 'numeric',
-			month: 'long',
-			day: 'numeric',
-		});
+		const messageDate = dateFormat.format(new Date(message.createdAt));
 		if (messageDate !== currentDate) {
 			currentDate = messageDate;
 			groups.push({ date: messageDate, messages: [] });
@@ -76,8 +79,12 @@ onMounted(scrollToBottom);
 			>
 				<Icon name="lucide:message-circle" class="w-6 h-6 text-text-tertiary" />
 			</div>
-			<p class="text-text-secondary font-medium">No messages yet</p>
-			<p class="text-sm text-text-tertiary mt-1">Send the first one.</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('components.chat.chatMessageList.emptyTitle') }}
+			</p>
+			<p class="text-sm text-text-tertiary mt-1">
+				{{ t('components.chat.chatMessageList.emptyBody') }}
+			</p>
 		</div>
 
 		<template v-else>

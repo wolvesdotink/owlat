@@ -37,6 +37,8 @@ const showMenu = ref(false);
 // an email thread" affordance on the same capability; keep it shown for an
 // already-linked room so the change/unlink action stays reachable.
 const { canManageMembers: canReadInbox } = useOrganization();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -60,13 +62,13 @@ const { canManageMembers: canReadInbox } = useOrganization();
 					v-if="room.linkedInboxThreadId"
 					class="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-brand-subtle text-brand"
 				>
-					linked email
+					{{ t('components.chat.chatRoomHeader.linkedEmailBadge') }}
 				</span>
 				<span
 					v-if="room.archivedAt"
 					class="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-bg-surface text-text-tertiary"
 				>
-					archived
+					{{ t('components.chat.chatRoomHeader.archivedBadge') }}
 				</span>
 			</div>
 			<p v-if="room.description" class="text-xs text-text-tertiary truncate">
@@ -86,7 +88,7 @@ const { canManageMembers: canReadInbox } = useOrganization();
 			<button
 				class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
 				@click="showMenu = !showMenu"
-			 aria-label="More actions">
+			 :aria-label="t('components.chat.chatRoomHeader.moreActions')">
 				<Icon name="lucide:more-horizontal" class="w-4 h-4" />
 			</button>
 
@@ -101,7 +103,11 @@ const { canManageMembers: canReadInbox } = useOrganization();
 					@click="emit('linkEmail')"
 				>
 					<Icon name="lucide:link" class="w-3.5 h-3.5" />
-					{{ room.linkedInboxThreadId ? 'Change linked email' : 'Link an email thread' }}
+					{{
+						room.linkedInboxThreadId
+							? t('components.chat.chatRoomHeader.changeLinkedEmail')
+							: t('components.chat.chatRoomHeader.linkEmailThread')
+					}}
 				</button>
 				<button
 					v-if="room.kind === 'channel' && room.myRole === 'admin'"
@@ -109,7 +115,7 @@ const { canManageMembers: canReadInbox } = useOrganization();
 					@click="emit('editChannel')"
 				>
 					<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-					Edit channel
+					{{ t('components.chat.chatRoomHeader.editChannel') }}
 				</button>
 				<button
 					v-if="room.kind === 'channel' && room.myRole === 'admin' && !room.archivedAt"
@@ -117,7 +123,7 @@ const { canManageMembers: canReadInbox } = useOrganization();
 					@click="emit('archive')"
 				>
 					<Icon name="lucide:archive" class="w-3.5 h-3.5" />
-					Archive channel
+					{{ t('components.chat.chatRoomHeader.archiveChannel') }}
 				</button>
 				<button
 					v-if="room.kind === 'channel' && room.myRole === 'admin' && room.archivedAt"
@@ -125,7 +131,7 @@ const { canManageMembers: canReadInbox } = useOrganization();
 					@click="emit('unarchive')"
 				>
 					<Icon name="lucide:archive-restore" class="w-3.5 h-3.5" />
-					Unarchive channel
+					{{ t('components.chat.chatRoomHeader.unarchiveChannel') }}
 				</button>
 				<button
 					v-if="room.kind === 'channel' && room.isMember"
@@ -133,7 +139,7 @@ const { canManageMembers: canReadInbox } = useOrganization();
 					@click="emit('leave')"
 				>
 					<Icon name="lucide:log-out" class="w-3.5 h-3.5" />
-					Leave channel
+					{{ t('components.chat.chatRoomHeader.leaveChannel') }}
 				</button>
 			</div>
 		</div>

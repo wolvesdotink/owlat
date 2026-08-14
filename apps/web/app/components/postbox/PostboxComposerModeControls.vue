@@ -17,6 +17,8 @@ const emit = defineEmits<{
 	(e: 'toggle-toolbar'): void;
 	(e: 'switch-mode', mode: ComposerMode): void;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -29,8 +31,8 @@ const emit = defineEmits<{
 			:aria-pressed="persistentToolbar"
 			:title="
 				persistentToolbar
-					? 'Hide formatting toolbar (show on selection)'
-					: 'Show formatting toolbar'
+					? t('components.postbox.postboxComposerModeControls.hideToolbar')
+					: t('components.postbox.postboxComposerModeControls.showToolbar')
 			"
 			@click="emit('toggle-toolbar')"
 		>
@@ -46,7 +48,11 @@ const emit = defineEmits<{
 				:name="mode === 'simple' ? 'lucide:layout-template' : 'lucide:pen-line'"
 				class="w-4 h-4"
 			/>
-			{{ mode === 'simple' ? 'Design layout…' : 'Return to writing' }}
+			{{
+				mode === 'simple'
+					? t('components.postbox.postboxComposerModeControls.designLayout')
+					: t('components.postbox.postboxComposerModeControls.returnToWriting')
+			}}
 		</UiButton>
 	</div>
 </template>

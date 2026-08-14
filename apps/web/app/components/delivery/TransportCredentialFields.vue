@@ -104,6 +104,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{ 'update:preset': [SmtpPreset] }>();
 
+const { t } = useI18n();
+
 const fields = computed(() => credentialFieldsFor(props.kind));
 
 /**
@@ -224,7 +226,7 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 				<UiSelect
 					v-if="presetOptions.length > 0"
 					:model-value="preset"
-					label="Provider preset"
+					:label="t('components.delivery.transportCredentialFields.providerPreset')"
 					:options="presetOptions"
 					@update:model-value="emit('update:preset', $event as SmtpPreset)"
 				/>
@@ -247,7 +249,7 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 				>
 					<UiInput
 						:model-value="textValue(field.portEnvVar)"
-						label="Port"
+						:label="t('components.delivery.transportCredentialFields.port')"
 						:placeholder="field.portDefault"
 						autocomplete="off"
 						@update:model-value="set(field.portEnvVar, $event)"
@@ -263,7 +265,11 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 							@change="onCheckbox(field.secureEnvVar, $event)"
 						/>
 						<span class="text-sm text-text-secondary">
-							Implicit TLS (port 465). Leave off for STARTTLS on {{ field.portDefault }}.
+							{{
+								t('components.delivery.transportCredentialFields.implicitTls', {
+									port: field.portDefault,
+								})
+							}}
 						</span>
 					</label>
 				</div>

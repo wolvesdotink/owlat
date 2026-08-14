@@ -24,7 +24,13 @@ const emit = defineEmits<{
 	confirm: [];
 }>();
 
+const { t } = useI18n();
+
 const prompt = computed(() => deriveUnsealedPrompt(props.sealState));
+
+/** The derivation hands back message keys (parameterized ones as `{ key, params }`). */
+const localize = (value: string | { key: string; params?: Record<string, unknown> }): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 </script>
 
 <template>
@@ -32,10 +38,10 @@ const prompt = computed(() => deriveUnsealedPrompt(props.sealState));
 		v-if="prompt"
 		:open="open"
 		variant="warning"
-		:title="prompt.title"
-		:description="prompt.description"
-		:confirm-text="prompt.confirmLabel"
-		:cancel-text="prompt.cancelLabel"
+		:title="localize(prompt.title)"
+		:description="localize(prompt.description)"
+		:confirm-text="localize(prompt.confirmLabel)"
+		:cancel-text="localize(prompt.cancelLabel)"
 		@update:open="emit('update:open', $event)"
 		@confirm="emit('confirm')"
 	/>

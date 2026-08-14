@@ -42,6 +42,12 @@ const emit = defineEmits<{
 	'request-unsealed': [];
 }>();
 
+const { t } = useI18n();
+
+/** The lock derivation hands back message keys (parameterized ones as `{ key, params }`). */
+const localize = (value: string | { key: string; params?: Record<string, unknown> }): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 // Nothing to say only before a draft exists (no query yet): from the moment the
 // state is being computed the lock speaks, first as `checking`.
 const lock = computed(() =>
@@ -67,10 +73,10 @@ const toneClasses = computed(() =>
 				class="w-3.5 h-3.5"
 				:class="[toneClasses.icon, lock.kind === 'checking' && 'animate-spin']"
 			/>
-			<span data-testid="seal-lock-summary">{{ lock.summary }}</span>
+			<span data-testid="seal-lock-summary">{{ localize(lock.summary) }}</span>
 		</div>
 		<p class="mt-1.5 text-xs text-text-secondary max-w-prose" data-testid="seal-lock-detail">
-			{{ lock.detail }}
+			{{ localize(lock.detail) }}
 		</p>
 		<div v-if="lock.allowSendUnsealed" class="mt-1.5 flex flex-wrap items-center gap-2">
 			<button
@@ -79,7 +85,7 @@ const toneClasses = computed(() =>
 				data-testid="seal-lock-send-unsealed"
 				@click="emit('request-unsealed')"
 			>
-				Send unsealed…
+				{{ t('components.postbox.postboxComposerSealLock.sendUnsealed') }}
 			</button>
 		</div>
 	</div>

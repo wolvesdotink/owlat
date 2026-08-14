@@ -14,9 +14,10 @@
  * branch and argument shaping are exercised against the real composable in
  * `app/composables/__tests__/useChannelOutbound.test.ts`.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, h, ref } from 'vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const send = vi.fn().mockResolvedValue(true);
 const canSendOn = vi.fn((channel: string) => channel === 'sms' || channel === 'chat');
@@ -47,8 +48,15 @@ const UiTextareaStub = defineComponent({
 	},
 });
 
+// Every visible string flows through vue-i18n now: mount with the real catalog
+// and expose `useI18n`, which is a Nuxt auto-import in the app.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
 const mountOpts = {
 	global: {
+		plugins: [createTestI18n()],
 		stubs: { Icon: true, UiBadge: true, UiSpinner: true },
 		components: { UiTextarea: UiTextareaStub },
 	},

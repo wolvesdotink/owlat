@@ -1,0 +1,185 @@
+{
+	"components": {
+		"delivery": {
+			"deliverabilitySetupValues": {
+				"fields": {
+					"name": "Name",
+					"type": "Typ",
+					"value": "Wert",
+					"ttl": "TTL",
+					"domain": "Domain",
+					"mechanisms": "Mechanismen",
+					"setting": "Einstellung"
+				},
+				"copyLabels": {
+					"name": "Namen",
+					"type": "Typ",
+					"value": "Wert",
+					"ttl": "TTL",
+					"domain": "Domain",
+					"mechanisms": "Mechanismen",
+					"setting": "Einstellung"
+				},
+				"copyAria": "{field} für {identifier} kopieren"
+			},
+			"deliveryMeasurementCoverageCard": {
+				"acknowledgeOperation": "Wechsel der Zugangsdaten bestätigen",
+				"providers": {
+					"other": "Andere"
+				},
+				"noFeedConfigured": "Kein Feed konfiguriert; der Versand bleibt verfügbar.",
+				"feedsConfigured": "{count} Feed konfiguriert | {count} Feeds konfiguriert",
+				"title": "Messabdeckung",
+				"summary": "{count} Testpostfächer verbunden · Microsoft-Feedback {feedback}",
+				"feedbackConnected": "verbunden",
+				"feedbackNotConnected": "nicht verbunden",
+				"measured": "Gemessen",
+				"detailsLabel": "Messdetails",
+				"testMailboxes": "Testpostfächer",
+				"mailboxCounts": "{connected} verbunden; bei {due} müssen die Zugangsdaten gewechselt werden.",
+				"microsoftFeedback": "Microsoft-Absender-Feedback",
+				"accountsTitle": "Testpostfach-Konten",
+				"addMailbox": "Testpostfach hinzufügen",
+				"credentialsRotated": "Zugangsdaten gewechselt"
+			},
+			"domainDnsGuidance": {
+				"heading": "DNS für {transport}"
+			},
+			"domainTable": {
+				"title": "Versanddomains",
+				"subtitle": "Verifizierung, internes Feedback und Google-Postmaster-Signale pro Domain · {guide}",
+				"setupGuide": "Einrichtungsanleitung",
+				"status": {
+					"registering": "Wird registriert",
+					"pending": "Nicht verifiziert",
+					"verified": "Verifiziert",
+					"failed": "Fehlgeschlagen"
+				},
+				"emptyTitle": "Noch keine Versanddomains",
+				"emptyDescription": "Fügen Sie eine Domain hinzu und veröffentlichen Sie ihre DNS-Einträge, um von Ihrer eigenen Domain aus zu senden.",
+				"addDomain": "Domain hinzufügen",
+				"authAllPass": "SPF · DKIM · DMARC ✓",
+				"missingRecords": "Fehlt: {records}",
+				"fix": "Beheben",
+				"sentCount": "{count} gesendet",
+				"window30d": "30 T",
+				"bounceLine": "{bounced} unzustellbar · {complaints} Beschwerden",
+				"fblSpamLine": "Owlat-FBL-Spam {rate} · Ziel {lessThan} {target} · Hartgrenze {hard}",
+				"googleSpam": "Google-Spam {rate}",
+				"reputationUnavailable": "Domain- und IP-Reputation sind in der Google-API v2 nicht verfügbar",
+				"googleDataFor": "Google-Daten vom {date}",
+				"cleanDayEvidence": "Owlat-Nachweis {days} / {total} saubere Tage"
+			},
+			"independenceTrendChart": {
+				"noSending": "In diesem Zeitraum wurde noch kein Versand erfasst.",
+				"summary": "Täglicher Versand über {days} Tage: {own} Nachrichten von Ihrem eigenen Server.",
+				"summaryWithRelay": "Täglicher Versand über {days} Tage: {own} Nachrichten von Ihrem eigenen Server und {reference} über das Relay.",
+				"emptyNothingSent": "Es wurde noch nichts gesendet, daher gibt es keinen Verlauf zu zeichnen. Das füllt sich von selbst, sobald E-Mails hinausgehen.",
+				"emptyOneDay": "Bisher ein Tag Verlauf — ein Trend braucht mindestens zwei. Das füllt sich von selbst, sobald E-Mails hinausgehen.",
+				"ownServer": "Ihr Server",
+				"relay": "Relay",
+				"day": "Tag"
+			},
+			"measurementCellCard": {
+				"ownShare": "Ihr eigener Server übernimmt {share} dieses Verkehrs.",
+				"comparison": "Vergleich",
+				"empty": "In dieser Zelle wurde im berichteten Zeitraum nichts gesendet. Es gibt noch nichts zu messen, und das ist in Ordnung.",
+				"tableCaption": "Versandergebnisse für {cell} im berichteten Zeitraum",
+				"metric": "Metrik",
+				"ownServer": "Ihr Server",
+				"trend": "Verlauf",
+				"quietRelay": "Ihr Relay hat diese Zelle früher im berichteten Zeitraum getragen, zuletzt aber nicht mehr. Die Prüfungen hatten daher nichts zum Vergleichen und die Vergleichsspalte fehlt. Die Tage, an denen es getragen hat, sind unten weiterhin abgebildet.",
+				"trendSent": "{count} gesendet",
+				"trendSentWithReference": "{count} gesendet / {reference}",
+				"improveTitle": "Diese Messung verbessern"
+			},
+			"measurementGateList": {
+				"title": "Prüfungen",
+				"decidedOver": "Entschieden über {window} — dasselbe Zeitfenster, auf das die Ramp-Steuerung reagiert.",
+				"corroboration": "Das ist ein Stolperdraht, keine Messung — es wird gegen die Prüfungen für Unzustellbarkeiten und Verzögerungen bestätigt, bevor etwas darauf reagiert."
+			},
+			"migrationImportStep": {
+				"importingContacts": "Kontakte werden importiert…",
+				"importingSuppressions": "Sperrlisten werden importiert…",
+				"runAgain": "Übernahme erneut ausführen",
+				"start": "Übernahme starten",
+				"startFailed": "Der Import konnte nicht gestartet werden.",
+				"importFailed": "Der Import ist fehlgeschlagen.",
+				"suppressionStartFailed": "Der Sperrlisten-Import konnte nicht gestartet werden.",
+				"processed": "{count} verarbeitet",
+				"flagsOff": "Beide Integrationsimporte sind für diesen Workspace abgeschaltet. Aktivieren Sie {mailchimpFlag} und {mandrillFlag} unter {settingsLink}, um Ihre Historie zu übernehmen.",
+				"mailchimpFlag": "Mailchimp-Import",
+				"mandrillFlag": "Mandrill-Sperrlisten-Import",
+				"settingsLink": "Einstellungen → Funktionen",
+				"apiKeyLabel": "Mailchimp-Marketing-API-Schlüssel",
+				"apiKeyPlaceholder": "abc123…-us21",
+				"listIdLabel": "Audience-(Listen-)ID",
+				"listIdPlaceholder": "a1b2c3d4e5",
+				"explainer": "Zuerst werden Kontakte und ihre Mailchimp-Abmeldungen importiert; die Reject-Liste von Mandrill folgt von selbst. Es läuft immer nur ein Import, daher startet der zweite, sobald der erste fertig ist. Ein späterer erneuter Durchlauf ist unbedenklich — jede Adresse wird über ihre E-Mail-Adresse abgeglichen, es entstehen also keine Duplikate.",
+				"contactsSummary": "Kontakte: {imported} importiert, {updated} aktualisiert, {skipped} übersprungen.",
+				"carriedOver": "Übernommen:",
+				"carriedEntry": "{count} {label}",
+				"nothingToCarry": "Nichts Neues zu übernehmen — die Sperrliste hier stimmt bereits überein.",
+				"done": "Historie übernommen."
+			},
+			"migrationPresetStep": {
+				"applyRouteOperation": "Migrationsroute anwenden",
+				"setPaceOperation": "Ramp-Tempo festlegen",
+				"bulletStreams": "{streams} wechseln alle auf die gemessene Aufteilung ({strategy}) über Ihren eigenen MTA und Mailchimp Transactional.",
+				"bulletStreamsNames": "Transaktional, Kampagne und Automation",
+				"bulletFallback": "Mailchimp Transactional wird für jeden davon das Zustellbarkeits-Fallback-Relay.",
+				"bulletPace": "Jeder Stream rampt im Tempo {pace} — kleinere Schritte, mehr saubere Zeitfenster pro Schritt. Sie können das später auf dem Bildschirm für die Ramp-Steuerung ändern.",
+				"bulletPaceName": "konservativ",
+				"bulletStart": "Ihr eigener MTA startet bei {share} des Verkehrs. An der heutigen Zustellung ändert sich nichts; Owlat beginnt, beide Arme mit identischer Instrumentierung zu messen.",
+				"reapply": "Migrationsvoreinstellung erneut anwenden",
+				"apply": "Migrationsvoreinstellung anwenden",
+				"applying": "Wird angewendet…",
+				"routeWrite": "{stream}-Route",
+				"paceWrite": "{stream}-Ramp-Tempo",
+				"appliedEntry": "{write} angewendet",
+				"stoppedAt": "Gestoppt bei: {write}. Alles oben Aufgeführte ist bereits eingerichtet — beheben Sie das Problem oben und wenden Sie erneut an; das erneute Anwenden des bereits Übernommenen ist unbedenklich."
+			},
+			"mtaStsModeCard": {
+				"updateOperation": "MTA-STS-Modus aktualisieren",
+				"title": "Eingehende TLS-Richtlinie (MTA-STS)",
+				"subtitle": "Lassen Sie Absender verschlüsselte Zustellung an Ihren Mailserver verlangen",
+				"loading": "Richtlinie wird geladen…",
+				"modeGroup": "MTA-STS-Modus",
+				"modes": {
+					"none": "Aus",
+					"testing": "Testbetrieb",
+					"enforce": "Erzwingen"
+				},
+				"descriptions": {
+					"none": "Es wird keine Richtlinie veröffentlicht. Absender stellen Ihnen E-Mails genau wie heute zu.",
+					"testing": "Eine Richtlinie wird veröffentlicht, aber Absender melden TLS-Probleme nur — die Zustellung schlägt nie fehl. Der sichere erste Schritt, während Sie auf Probleme achten.",
+					"enforce": "Absender müssen über verifiziertes TLS zustellen, sonst wird die Nachricht abgelehnt. Aktivieren Sie das erst, wenn der Testbetrieb sauber aussieht."
+				},
+				"savedToasts": {
+					"none": "MTA-STS abgeschaltet — es wird keine Richtlinie veröffentlicht.",
+					"testing": "MTA-STS auf Testbetrieb gesetzt — Absender melden TLS-Probleme, ohne dass die Zustellung fehlschlägt.",
+					"enforce": "MTA-STS auf Erzwingen gesetzt — veröffentlichen Sie die DNS-Einträge, damit Absender verifiziertes TLS verlangen."
+				},
+				"dnsRecords": "Fügen Sie die DNS-Einträge {policyRecord} und {hostRecord} auf der {domainsLink} hinzu, damit Absender diese Richtlinie finden und ihr vertrauen können.",
+				"domainsLink": "Domains-Seite",
+				"enforceWithoutHost": "Es ist kein eingehender Mail-Host konfiguriert, daher kann eine erzwungene Richtlinie noch nicht ausgeliefert werden. Richten Sie zuerst den Empfang ein oder wechseln Sie zurück in den Testbetrieb.",
+				"adminsOnly": "Nur Eigentümer und Administratoren können das ändern."
+			},
+			"postmasterComplianceCard": {
+				"title": "Gmail-Konformität",
+				"subtitle": "Was die Google Postmaster Tools über Ihre Versanddomains melden",
+				"unavailableTitle": "Gmail-Konformität konnte nicht geladen werden",
+				"unavailableBody": "Googles Sicht auf Ihren Versand konnte gerade nicht gelesen werden, daher zeigt diese Karte lieber nichts an, als zu raten. Ihr E-Mail-Versand ist davon nicht betroffen — diese Karte liest nur.",
+				"notConnectedTitle": "Nicht verbunden",
+				"notConnectedBody": "Der Versand funktioniert auch ohne dies genau gleich. Ein kostenloses Google-Postmaster-Konto ergänzt Gmails eigene Sicht auf Ihre Spam-Rate und Authentifizierung, was die Messsicherheit erhöht.",
+				"howToConnect": "So stellen Sie die Verbindung her",
+				"allClear": "Google meldet keine fehlgeschlagenen Prüfungen für Ihre Versanddomain. | Google meldet keine fehlgeschlagenen Prüfungen für Ihre Versanddomains.",
+				"googleDataFor": "Google-Daten vom {date}"
+			},
+			"providerRouteSummary": {
+				"ipPool": "IP-Pool: {pool}",
+				"relayFallback": "Automatisches Relay-Fallback: {provider}"
+			}
+		}
+	}
+}

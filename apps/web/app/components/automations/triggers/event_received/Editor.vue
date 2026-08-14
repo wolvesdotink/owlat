@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { EventReceivedTriggerConfig } from '~/composables/automations/triggers';
 
+const { t } = useI18n();
+
 const props = defineProps<{
 	modelValue: EventReceivedTriggerConfig;
 	error?: string;
@@ -20,16 +22,17 @@ const updateEventName = (event: Event) => {
 	<div>
 		<label for="eventName" class="label flex items-center gap-2">
 			<Icon name="lucide:radio" class="w-4 h-4 text-warning" />
-			Event Name <span class="text-error">*</span>
+			{{ t('components.automations.triggers.eventReceived.editor.eventNameLabel') }}
+			<span class="text-error">*</span>
 		</label>
 		<p class="text-sm text-text-tertiary mt-1 mb-3">
-			This automation will trigger when this event is received from your application via the API.
+			{{ t('components.automations.triggers.eventReceived.editor.eventNameHint') }}
 		</p>
 		<input
 			id="eventName"
 			:value="modelValue.eventName"
 			type="text"
-			placeholder="e.g., user.signed_up, purchase.completed"
+			:placeholder="t('components.automations.triggers.eventReceived.editor.eventNamePlaceholder')"
 			:class="['input', error ? 'input-error' : '']"
 			@input="updateEventName"
 		/>

@@ -7,8 +7,16 @@ const props = defineProps<{
 	topics?: Array<{ _id: string; name: string }>;
 }>();
 
+const { t, locale } = useI18n();
+
 const convex = useConvex();
 const { showToast } = useToast();
+
+/** `>` cannot live in a message value (the catalog guard rejects markup), so the
+ *  breadcrumb separator is passed in as a value. */
+const chevron = '>';
+
+const formatCount = (value: number) => new Intl.NumberFormat(locale.value).format(value);
 
 const isOpen = defineModel<boolean>('open', { default: false });
 
@@ -70,13 +78,23 @@ const progressText = computed(() => {
 				carried.skipped
 			: 0;
 		return p.totalEstimate
-			? `Reviewed ${seen.toLocaleString()} of ~${p.totalEstimate.toLocaleString()} blacklist entries...`
-			: `Reviewed ${seen.toLocaleString()} blacklist entries...`;
+			? t('components.contacts.integrationImportModal.progress.reviewedOfTotal', {
+					seen: formatCount(seen),
+					total: formatCount(p.totalEstimate),
+				})
+			: t('components.contacts.integrationImportModal.progress.reviewed', {
+					seen: formatCount(seen),
+				});
 	}
 	if (p.totalEstimate) {
-		return `Imported ${processed.toLocaleString()} of ~${p.totalEstimate.toLocaleString()}...`;
+		return t('components.contacts.integrationImportModal.progress.importedOfTotal', {
+			processed: formatCount(processed),
+			total: formatCount(p.totalEstimate),
+		});
 	}
-	return `Imported ${processed.toLocaleString()} contacts...`;
+	return t('components.contacts.integrationImportModal.progress.imported', {
+		processed: formatCount(processed),
+	});
 });
 
 // Watch for import completion
@@ -90,7 +108,11 @@ watch(importProgress, (p) => {
 		if (p.imported > 0 || p.updated > 0) {
 			const totalProcessed = p.imported + p.updated;
 			showToast(
-				`Successfully processed ${totalProcessed} contact${totalProcessed !== 1 ? 's' : ''} from ${name}`
+				t(
+					'components.contacts.integrationImportModal.toasts.processed',
+					{ count: totalProcessed, provider: name },
+					totalProcessed
+				)
 			);
 		} else if (carried) {
 			const suppressed =
@@ -100,7 +122,11 @@ watch(importProgress, (p) => {
 				carried.manual +
 				carried.unsubscribed;
 			showToast(
-				`Carried over ${suppressed} suppression${suppressed !== 1 ? 's' : ''} from ${name}`
+				t(
+					'components.contacts.integrationImportModal.toasts.carriedOver',
+					{ count: suppressed, provider: name },
+					suppressed
+				)
 			);
 		}
 	}
@@ -109,7 +135,8 @@ watch(importProgress, (p) => {
 		const lastError = p.errors[p.errors.length - 1];
 		// If nothing was imported, go back to configure with the error
 		if (p.imported === 0 && p.updated === 0) {
-			error.value = lastError || 'Import failed';
+			error.value =
+				lastError || t('components.contacts.integrationImportModal.errors.importFailed');
 			step.value = 'configure';
 		} else {
 			// Partial results — show complete step with errors
@@ -125,24 +152,26 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const allIntegrations = [
 	{
 		id: 'mailchimp' as const,
-		name: 'Mailchimp',
-		description: 'Import contacts from a Mailchimp audience list',
+		// Message KEYS, not copy: this list is built once at setup, so the
+		// component translates `name`/`description` where it renders them.
+		name: 'components.contacts.integrationImportModal.providers.mailchimp.name',
+		description: 'components.contacts.integrationImportModal.providers.mailchimp.description',
 		icon: 'lucide:mail',
 		color: 'text-[#FFE01B]',
 		bgColor: 'bg-[#FFE01B]/10',
 	},
 	{
 		id: 'stripe' as const,
-		name: 'Stripe',
-		description: 'Import customers from your Stripe account',
+		name: 'components.contacts.integrationImportModal.providers.stripe.name',
+		description: 'components.contacts.integrationImportModal.providers.stripe.description',
 		icon: 'lucide:credit-card',
 		color: 'text-[#635BFF]',
 		bgColor: 'bg-[#635BFF]/10',
 	},
 	{
 		id: 'mandrill' as const,
-		name: 'Mandrill suppression list',
-		description: "Carry a Mandrill account's rejection blacklist into your suppression list",
+		name: 'components.contacts.integrationImportModal.providers.mandrill.name',
+		description: 'components.contacts.integrationImportModal.providers.mandrill.description',
 		icon: 'lucide:shield-ban',
 		color: 'text-[#F0483E]',
 		bgColor: 'bg-[#F0483E]/10',
@@ -195,25 +224,24 @@ const validateConfig = (): boolean => {
 	error.value = '';
 	if (selectedIntegration.value === 'mailchimp') {
 		if (!credentials.mailchimp.apiKey.trim()) {
-			error.value = 'Mailchimp API key is required';
+			error.value = t('components.contacts.integrationImportModal.errors.mailchimpApiKeyRequired');
 			return false;
 		}
 		if (!credentials.mailchimp.apiKey.includes('-')) {
-			error.value =
-				'Invalid API key format. Expected format: apikey-datacenter (e.g., abc123-us21)';
+			error.value = t('components.contacts.integrationImportModal.errors.mailchimpApiKeyFormat');
 			return false;
 		}
 		if (!credentials.mailchimp.listId.trim()) {
-			error.value = 'Audience List ID is required';
+			error.value = t('components.contacts.integrationImportModal.errors.audienceListIdRequired');
 			return false;
 		}
 	} else if (selectedIntegration.value === 'stripe') {
 		if (!credentials.stripe.apiKey.trim()) {
-			error.value = 'Stripe API key is required';
+			error.value = t('components.contacts.integrationImportModal.errors.stripeApiKeyRequired');
 			return false;
 		}
 		if (!credentials.stripe.apiKey.startsWith('sk_')) {
-			error.value = 'Invalid Stripe API key. Must start with sk_ (secret key)';
+			error.value = t('components.contacts.integrationImportModal.errors.stripeApiKeyFormat');
 			return false;
 		}
 	}
@@ -256,11 +284,16 @@ const startImport = async () => {
 				topicId: topicId as Id<'topics'> | undefined,
 			});
 		} else {
-			throw new Error('No integration selected');
+			throw new Error(
+				t('components.contacts.integrationImportModal.errors.noIntegrationSelected')
+			);
 		}
 		// Import started — progress will update via the reactive query
 	} catch (err) {
-		error.value = err instanceof Error ? err.message : 'Failed to start import';
+		error.value =
+			err instanceof Error
+				? err.message
+				: t('components.contacts.integrationImportModal.errors.startFailed');
 		step.value = 'configure';
 	}
 };
@@ -316,14 +349,26 @@ const suppressionSummary = computed(() => {
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox icon="lucide:link-2" size="sm" variant="surface" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Import from Integration</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.contacts.integrationImportModal.title') }}
+				</h2>
 				<p class="text-sm text-text-tertiary">
-					<template v-if="step === 'select'">Choose an integration</template>
-					<template v-else-if="step === 'configure'">Configure {{ integrationName }}</template>
-					<template v-else-if="step === 'importing'">{{
-						isSuppressionOnly ? 'Importing suppressions...' : 'Importing contacts...'
+					<template v-if="step === 'select'">{{
+						t('components.contacts.integrationImportModal.steps.select')
 					}}</template>
-					<template v-else-if="step === 'complete'">Import complete</template>
+					<template v-else-if="step === 'configure'">{{
+						t('components.contacts.integrationImportModal.steps.configure', {
+							provider: integrationName,
+						})
+					}}</template>
+					<template v-else-if="step === 'importing'">{{
+						isSuppressionOnly
+							? t('components.contacts.integrationImportModal.steps.importingSuppressions')
+							: t('components.contacts.integrationImportModal.steps.importingContacts')
+					}}</template>
+					<template v-else-if="step === 'complete'">{{
+						t('components.contacts.integrationImportModal.steps.complete')
+					}}</template>
 				</p>
 			</div>
 		</div>
@@ -349,10 +394,11 @@ const suppressionSummary = computed(() => {
 					<div class="inline-flex p-3 rounded-full bg-bg-elevated mb-3">
 						<Icon name="lucide:toggle-right" class="w-6 h-6 text-text-tertiary" />
 					</div>
-					<p class="font-medium text-text-primary">No integrations enabled</p>
+					<p class="font-medium text-text-primary">
+						{{ t('components.contacts.integrationImportModal.select.emptyTitle') }}
+					</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm mx-auto">
-						Turn on Mailchimp import or Stripe customer sync to import contacts from a connected
-						service.
+						{{ t('components.contacts.integrationImportModal.select.emptyBody') }}
 					</p>
 					<NuxtLink
 						to="/dashboard/admin/instance/features"
@@ -360,7 +406,7 @@ const suppressionSummary = computed(() => {
 						@click="close"
 					>
 						<Icon name="lucide:settings" class="w-4 h-4" />
-						Enable in Settings &gt; Features
+						{{ t('components.contacts.integrationImportModal.select.enableLink', { chevron }) }}
 					</NuxtLink>
 				</div>
 				<div v-else class="space-y-3">
@@ -374,17 +420,18 @@ const suppressionSummary = computed(() => {
 							<Icon :name="integration.icon" :class="['w-6 h-6', integration.color]" />
 						</div>
 						<div class="flex-1">
-							<p class="font-medium text-text-primary">{{ integration.name }}</p>
-							<p class="text-sm text-text-tertiary">{{ integration.description }}</p>
+							<p class="font-medium text-text-primary">{{ t(integration.name) }}</p>
+							<p class="text-sm text-text-tertiary">{{ t(integration.description) }}</p>
 						</div>
 						<Icon name="lucide:chevron-right" class="w-5 h-5 text-text-tertiary" />
 					</button>
 				</div>
 				<div v-if="integrations.length > 0" class="mt-6 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-2">Note</h4>
+					<h4 class="text-sm font-medium text-text-primary mb-2">
+						{{ t('components.contacts.integrationImportModal.select.noteTitle') }}
+					</h4>
 					<p class="text-sm text-text-secondary">
-						Your API keys are used only for this import and are not stored. We recommend using
-						read-only API keys when available.
+						{{ t('components.contacts.integrationImportModal.select.noteBody') }}
 					</p>
 				</div>
 			</div>
@@ -394,12 +441,17 @@ const suppressionSummary = computed(() => {
 				<!-- Mailchimp Config -->
 				<div v-if="selectedIntegration === 'mailchimp'" class="space-y-4">
 					<div>
-						<label class="label">Mailchimp API Key <span class="text-error">*</span></label>
+						<label class="label"
+							>{{ t('components.contacts.integrationImportModal.configure.mailchimpApiKey') }}
+							<span class="text-error">*</span></label
+						>
 						<div class="relative">
 							<input
 								v-model="credentials.mailchimp.apiKey"
 								:type="credentials.mailchimp.showApiKey ? 'text' : 'password'"
-								placeholder="abc123def456-us21"
+								:placeholder="
+									t('components.contacts.integrationImportModal.configure.mailchimpApiKeyPlaceholder')
+								"
 								class="input pr-10"
 							/>
 							<button
@@ -412,34 +464,43 @@ const suppressionSummary = computed(() => {
 							</button>
 						</div>
 						<p class="text-xs text-text-tertiary mt-1">
-							Find your API key in Mailchimp: Account > Extras > API keys
+							{{
+								t('components.contacts.integrationImportModal.configure.mailchimpApiKeyHint', {
+									chevron,
+								})
+							}}
 						</p>
 					</div>
 					<div>
 						<label for="credentials-mailchimp-listid" class="label"
-							>Audience List ID <span class="text-error">*</span></label
+							>{{ t('components.contacts.integrationImportModal.configure.audienceListId') }}
+							<span class="text-error">*</span></label
 						>
 						<input
 							id="credentials-mailchimp-listid"
 							v-model="credentials.mailchimp.listId"
 							type="text"
-							placeholder="abc123def4"
+							:placeholder="
+								t('components.contacts.integrationImportModal.configure.audienceListIdPlaceholder')
+							"
 							class="input"
 						/>
 						<p class="text-xs text-text-tertiary mt-1">
-							Find your List ID in Mailchimp: Audience > Settings > Audience name and defaults
+							{{
+								t('components.contacts.integrationImportModal.configure.audienceListIdHint', {
+									chevron,
+								})
+							}}
 						</p>
 					</div>
 					<label class="flex items-start gap-3 p-4 rounded-lg bg-bg-surface cursor-pointer">
 						<input v-model="importSuppressions" type="checkbox" class="w-4 h-4 mt-0.5 text-brand" />
 						<span>
-							<span class="block text-sm font-medium text-text-primary"
-								>Also carry over suppressions</span
-							>
+							<span class="block text-sm font-medium text-text-primary">{{
+								t('components.contacts.integrationImportModal.configure.carrySuppressions')
+							}}</span>
 							<span class="block text-xs text-text-tertiary mt-1">
-								Unsubscribed members are recorded as opt-outs and cleaned (hard-bounced) addresses
-								are added to your suppression list, so this audience is never re-mailed from Owlat.
-								Carried-over suppressions do not expire.
+								{{ t('components.contacts.integrationImportModal.configure.carrySuppressionsHint') }}
 							</span>
 						</span>
 					</label>
@@ -449,16 +510,17 @@ const suppressionSummary = computed(() => {
 							     environment variable (plan D2). -->
 				<div v-else-if="selectedIntegration === 'mandrill'" class="space-y-4">
 					<div class="p-4 rounded-lg bg-bg-surface">
-						<p class="text-sm text-text-secondary">
-							Imports the rejection blacklist from the Mandrill account configured in this
-							deployment's <code>MANDRILL_API_KEY</code> — the same key the Mandrill send transport
-							uses. Hard bounces, soft bounces and spam complaints are added to your suppression
-							list, <code>unsub</code> entries are recorded as opt-outs, and entries that describe
-							your account rather than a recipient are ignored.
-						</p>
+						<I18nT
+							keypath="components.contacts.integrationImportModal.configure.mandrillBody"
+							tag="p"
+							class="text-sm text-text-secondary"
+							scope="global"
+						>
+							<template #apiKeyVar><code>MANDRILL_API_KEY</code></template>
+							<template #unsubEntry><code>unsub</code></template>
+						</I18nT>
 						<p class="text-xs text-text-tertiary mt-2">
-							No contacts are imported. Carried-over suppressions do not expire — remove an address
-							from the suppression list to resume mailing it.
+							{{ t('components.contacts.integrationImportModal.configure.mandrillNote') }}
 						</p>
 					</div>
 				</div>
@@ -466,12 +528,17 @@ const suppressionSummary = computed(() => {
 				<!-- Stripe Config -->
 				<div v-else-if="selectedIntegration === 'stripe'" class="space-y-4">
 					<div>
-						<label class="label">Stripe Secret Key <span class="text-error">*</span></label>
+						<label class="label"
+							>{{ t('components.contacts.integrationImportModal.configure.stripeSecretKey') }}
+							<span class="text-error">*</span></label
+						>
 						<div class="relative">
 							<input
 								v-model="credentials.stripe.apiKey"
 								:type="credentials.stripe.showApiKey ? 'text' : 'password'"
-								placeholder="sk_live_..."
+								:placeholder="
+									t('components.contacts.integrationImportModal.configure.stripeSecretKeyPlaceholder')
+								"
 								class="input pr-10"
 							/>
 							<button
@@ -484,16 +551,22 @@ const suppressionSummary = computed(() => {
 							</button>
 						</div>
 						<p class="text-xs text-text-tertiary mt-1">
-							Find your API key in Stripe Dashboard: Developers > API keys
+							{{
+								t('components.contacts.integrationImportModal.configure.stripeApiKeyHint', {
+									chevron,
+								})
+							}}
 						</p>
 					</div>
 					<div class="p-4 rounded-lg bg-warning-subtle border border-warning/20">
 						<div class="flex items-start gap-3">
 							<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 							<div>
-								<p class="text-sm text-warning font-medium">Use a restricted key</p>
+								<p class="text-sm text-warning font-medium">
+									{{ t('components.contacts.integrationImportModal.configure.restrictedKeyTitle') }}
+								</p>
 								<p class="text-xs text-warning/80 mt-1">
-									For security, create a restricted API key with only "Customers: Read" permission.
+									{{ t('components.contacts.integrationImportModal.configure.restrictedKeyBody') }}
 								</p>
 							</div>
 						</div>
@@ -502,7 +575,9 @@ const suppressionSummary = computed(() => {
 
 				<!-- Handle Duplicates (contact imports only) -->
 				<div v-if="selectedIntegration !== 'mandrill'" class="mt-6 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-3">Handle Duplicates</h4>
+					<h4 class="text-sm font-medium text-text-primary mb-3">
+						{{ t('components.contacts.integrationImportModal.configure.handleDuplicates') }}
+					</h4>
 					<div class="flex gap-4">
 						<label class="flex items-center gap-2 cursor-pointer">
 							<input
@@ -511,7 +586,9 @@ const suppressionSummary = computed(() => {
 								value="skip"
 								class="w-4 h-4 text-brand"
 							/>
-							<span class="text-sm text-text-secondary">Skip duplicates</span>
+							<span class="text-sm text-text-secondary">{{
+								t('components.contacts.integrationImportModal.configure.skipDuplicates')
+							}}</span>
 						</label>
 						<label class="flex items-center gap-2 cursor-pointer">
 							<input
@@ -520,7 +597,9 @@ const suppressionSummary = computed(() => {
 								value="update"
 								class="w-4 h-4 text-brand"
 							/>
-							<span class="text-sm text-text-secondary">Update existing</span>
+							<span class="text-sm text-text-secondary">{{
+								t('components.contacts.integrationImportModal.configure.updateExisting')
+							}}</span>
 						</label>
 					</div>
 				</div>
@@ -530,34 +609,68 @@ const suppressionSummary = computed(() => {
 					v-if="availableLists.length > 0 && selectedIntegration !== 'mandrill'"
 					class="mt-4 p-4 rounded-lg bg-bg-surface"
 				>
-					<h4 class="text-sm font-medium text-text-primary mb-3">Add to Topic</h4>
+					<h4 class="text-sm font-medium text-text-primary mb-3">
+						{{ t('components.contacts.integrationImportModal.configure.addToTopic') }}
+					</h4>
 					<select
 						:value="selectedTopicId ?? ''"
 						class="input w-full"
 						@change="selectedTopicId = ($event.target as HTMLSelectElement).value || null"
 					>
-						<option value="">None</option>
+						<option value="">{{ t('common.none') }}</option>
 						<option v-for="list in availableLists" :key="list._id" :value="list._id">
 							{{ list.name }}
 						</option>
 					</select>
 					<p class="text-xs text-text-tertiary mt-2">
-						All imported contacts will be added to this topic.
+						{{ t('components.contacts.integrationImportModal.configure.addToTopicHint') }}
 					</p>
 				</div>
 
 				<!-- Field Mapping Info -->
 				<div v-if="selectedIntegration !== 'mandrill'" class="mt-4 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-2">Field Mapping</h4>
+					<h4 class="text-sm font-medium text-text-primary mb-2">
+						{{ t('components.contacts.integrationImportModal.configure.fieldMapping') }}
+					</h4>
 					<ul class="text-sm text-text-secondary space-y-1">
 						<template v-if="selectedIntegration === 'mailchimp'">
-							<li>Email > Email</li>
-							<li>FNAME > First Name</li>
-							<li>LNAME > Last Name</li>
+							<li>
+								{{
+									t('components.contacts.integrationImportModal.fieldMapping.mailchimpEmail', {
+										chevron,
+									})
+								}}
+							</li>
+							<li>
+								{{
+									t('components.contacts.integrationImportModal.fieldMapping.mailchimpFirstName', {
+										chevron,
+									})
+								}}
+							</li>
+							<li>
+								{{
+									t('components.contacts.integrationImportModal.fieldMapping.mailchimpLastName', {
+										chevron,
+									})
+								}}
+							</li>
 						</template>
 						<template v-else-if="selectedIntegration === 'stripe'">
-							<li>Customer email > Email</li>
-							<li>Customer name > First Name, Last Name</li>
+							<li>
+								{{
+									t('components.contacts.integrationImportModal.fieldMapping.stripeEmail', {
+										chevron,
+									})
+								}}
+							</li>
+							<li>
+								{{
+									t('components.contacts.integrationImportModal.fieldMapping.stripeName', {
+										chevron,
+									})
+								}}
+							</li>
 						</template>
 					</ul>
 				</div>
@@ -574,20 +687,26 @@ const suppressionSummary = computed(() => {
 					</div>
 					<div class="text-center">
 						<p class="text-lg font-medium text-text-primary">
-							Importing from {{ integrationName }}...
+							{{
+								t('components.contacts.integrationImportModal.importing.title', {
+									provider: integrationName,
+								})
+							}}
 						</p>
 						<p class="text-sm text-text-tertiary mt-1">
-							{{ progressText || 'Starting import...' }}
+							{{
+								progressText || t('components.contacts.integrationImportModal.importing.starting')
+							}}
 						</p>
 					</div>
 					<UiProgressBar
 						class="max-w-xs"
 						size="sm"
 						:value="progressPercent"
-						aria-label="Integration import progress"
+						:aria-label="t('components.contacts.integrationImportModal.importing.progressLabel')"
 					/>
 					<p class="text-xs text-text-tertiary">
-						You can close this dialog — the import will continue in the background.
+						{{ t('components.contacts.integrationImportModal.importing.background') }}
 					</p>
 				</div>
 			</div>
@@ -610,50 +729,70 @@ const suppressionSummary = computed(() => {
 						/>
 					</div>
 					<p class="text-lg font-medium text-text-primary">
-						{{ importProgress?.status === 'failed' ? 'Import Failed' : 'Import Complete!' }}
+						{{
+							importProgress?.status === 'failed'
+								? t('components.contacts.integrationImportModal.complete.failedTitle')
+								: t('components.contacts.integrationImportModal.complete.title')
+						}}
 					</p>
 				</div>
 				<div v-if="!isSuppressionOnly" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
 						<p class="text-2xl font-medium tracking-[-0.02em] text-success">{{ importProgress?.imported || 0 }}</p>
-						<p class="text-xs text-text-tertiary mt-1">Imported</p>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('components.contacts.integrationImportModal.complete.imported') }}
+						</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
 						<p class="text-2xl font-medium tracking-[-0.02em] text-brand">{{ importProgress?.updated || 0 }}</p>
-						<p class="text-xs text-text-tertiary mt-1">Updated</p>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('components.contacts.integrationImportModal.complete.updated') }}
+						</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
 							{{ importProgress?.skipped || 0 }}
 						</p>
-						<p class="text-xs text-text-tertiary mt-1">Skipped</p>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('components.contacts.integrationImportModal.complete.skipped') }}
+						</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
 						<p class="text-2xl font-medium tracking-[-0.02em] text-error">{{ importProgress?.failed || 0 }}</p>
-						<p class="text-xs text-text-tertiary mt-1">Failed</p>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('components.contacts.integrationImportModal.complete.failed') }}
+						</p>
 					</div>
 				</div>
 				<!-- Suppression carry-over (plan D9) -->
 				<div v-if="suppressionSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
 						<p class="text-2xl font-medium tracking-[-0.02em] text-warning">{{ suppressionSummary.blocked }}</p>
-						<p class="text-xs text-text-tertiary mt-1">Suppressed</p>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('components.contacts.integrationImportModal.complete.suppressed') }}
+						</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
 						<p class="text-2xl font-medium tracking-[-0.02em] text-brand">{{ suppressionSummary.unsubscribed }}</p>
-						<p class="text-xs text-text-tertiary mt-1">Unsubscribed</p>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('components.contacts.integrationImportModal.complete.unsubscribed') }}
+						</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
 							{{ suppressionSummary.alreadySuppressed }}
 						</p>
-						<p class="text-xs text-text-tertiary mt-1">Already suppressed</p>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('components.contacts.integrationImportModal.complete.alreadySuppressed') }}
+						</p>
 					</div>
 					<div class="p-4 rounded-lg bg-bg-surface text-center">
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
 							{{ suppressionSummary.skipped }}
 						</p>
-						<p class="text-xs text-text-tertiary mt-1">Not applicable</p>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('components.contacts.integrationImportModal.complete.notApplicable') }}
+						</p>
 					</div>
 				</div>
 
@@ -661,7 +800,9 @@ const suppressionSummary = computed(() => {
 					v-if="importProgress?.errors && importProgress.errors.length > 0"
 					class="p-4 rounded-lg bg-error-subtle border border-error/20"
 				>
-					<h4 class="text-sm font-medium text-error mb-2">Errors</h4>
+					<h4 class="text-sm font-medium text-error mb-2">
+						{{ t('components.contacts.integrationImportModal.complete.errorsTitle') }}
+					</h4>
 					<ul class="text-sm text-error/80 space-y-1">
 						<li v-for="(err, index) in importProgress.errors.slice(0, 5)" :key="index">
 							{{ err }}
@@ -674,21 +815,23 @@ const suppressionSummary = computed(() => {
 		<!-- Footer -->
 		<template #footer>
 			<template v-if="step === 'select'">
-				<UiButton variant="secondary" @click="close">Cancel</UiButton>
+				<UiButton variant="secondary" @click="close">{{ t('common.cancel') }}</UiButton>
 			</template>
 			<template v-else-if="step === 'configure'">
-				<UiButton variant="secondary" @click="goBackToSelect">Back</UiButton>
+				<UiButton variant="secondary" @click="goBackToSelect">{{ t('common.back') }}</UiButton>
 				<UiButton @click="startImport">
 					<template #iconLeft><Icon name="lucide:upload" class="w-4 h-4" /></template>
-					Start Import
+					{{ t('components.contacts.integrationImportModal.footer.startImport') }}
 				</UiButton>
 			</template>
 			<template v-else-if="step === 'importing'">
-				<UiButton variant="secondary" @click="handleCancel">Cancel Import</UiButton>
-				<UiButton variant="secondary" @click="close">Close</UiButton>
+				<UiButton variant="secondary" @click="handleCancel">{{
+					t('components.contacts.integrationImportModal.footer.cancelImport')
+				}}</UiButton>
+				<UiButton variant="secondary" @click="close">{{ t('common.close') }}</UiButton>
 			</template>
 			<template v-else-if="step === 'complete'">
-				<UiButton @click="close">Done</UiButton>
+				<UiButton @click="close">{{ t('common.done') }}</UiButton>
 			</template>
 		</template>
 	</UiModal>

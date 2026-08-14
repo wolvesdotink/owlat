@@ -14,23 +14,41 @@ import { api } from '@owlat/api';
 
 type EagernessMode = 'cautious' | 'balanced' | 'confident' | 'off';
 
+const { t } = useI18n();
+
 const { data: setting, isLoading } = useConvexQuery(
 	api.inbox.askEagernessSettings.getAskEagerness,
 	() => ({})
 );
 
 const { run: setEagerness } = useBackendOperation(api.inbox.askEagernessSettings.setAskEagerness, {
-	label: 'Save ask-eagerness',
+	label: () => t('components.autonomy.askEagernessDial.saveOperation'),
 });
 
 const { showToast } = useToast();
 
-const options: { value: EagernessMode; label: string; hint: string }[] = [
-	{ value: 'cautious', label: 'Cautious', hint: 'Asks more — checks every unclear reply' },
-	{ value: 'balanced', label: 'Balanced', hint: 'Asks on genuinely open, important slots' },
-	{ value: 'confident', label: 'Confident', hint: 'Asks less — only high-stakes decisions' },
-	{ value: 'off', label: 'Off', hint: 'Never asks — always drafts for your review' },
-];
+const options = computed<{ value: EagernessMode; label: string; hint: string }[]>(() => [
+	{
+		value: 'cautious',
+		label: t('components.autonomy.askEagernessDial.options.cautious.label'),
+		hint: t('components.autonomy.askEagernessDial.options.cautious.hint'),
+	},
+	{
+		value: 'balanced',
+		label: t('components.autonomy.askEagernessDial.options.balanced.label'),
+		hint: t('components.autonomy.askEagernessDial.options.balanced.hint'),
+	},
+	{
+		value: 'confident',
+		label: t('components.autonomy.askEagernessDial.options.confident.label'),
+		hint: t('components.autonomy.askEagernessDial.options.confident.hint'),
+	},
+	{
+		value: 'off',
+		label: t('components.autonomy.askEagernessDial.options.off.label'),
+		hint: t('components.autonomy.askEagernessDial.options.off.hint'),
+	},
+]);
 
 // The persisted mode, defaulting the DISPLAY to Balanced when unset (null).
 const selected = computed<EagernessMode>(() => setting.value?.mode ?? 'balanced');
@@ -42,7 +60,7 @@ async function choose(mode: EagernessMode) {
 	isSaving.value = true;
 	try {
 		await setEagerness({ mode });
-		showToast('Ask-eagerness updated');
+		showToast(t('components.autonomy.askEagernessDial.updatedToast'));
 	} finally {
 		isSaving.value = false;
 	}
@@ -53,19 +71,24 @@ async function choose(mode: EagernessMode) {
 	<UiCard>
 		<div class="flex items-center gap-3 mb-2">
 			<UiIconBox icon="lucide:help-circle" size="sm" variant="surface" />
-			<h3 class="text-base font-medium text-text-primary">Ask eagerness</h3>
+			<h3 class="text-base font-medium text-text-primary">
+				{{ t('components.autonomy.askEagernessDial.title') }}
+			</h3>
 		</div>
 		<p class="text-sm text-text-secondary mb-4">
-			How readily Owlat stops to ask you a quick question before drafting. High-stakes slots
-			(money, commitments, dates, tone) always lean cautious; routine acknowledgements are never
-			asked about.
+			{{ t('components.autonomy.askEagernessDial.body') }}
 		</p>
 
 		<div v-if="isLoading" class="flex justify-center py-4">
 			<UiSpinner />
 		</div>
 
-		<div v-else class="space-y-2" role="radiogroup" aria-label="Ask eagerness">
+		<div
+			v-else
+			class="space-y-2"
+			role="radiogroup"
+			:aria-label="t('components.autonomy.askEagernessDial.title')"
+		>
 			<button
 				v-for="opt in options"
 				:key="opt.value"

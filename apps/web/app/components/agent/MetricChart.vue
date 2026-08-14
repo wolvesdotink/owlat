@@ -14,6 +14,8 @@ const props = withDefaults(defineProps<Props>(), {
 	color: 'var(--color-brand)',
 });
 
+const { t } = useI18n();
+
 const chartHeight = 120;
 const chartPadding = { top: 16, right: 12, bottom: 24, left: 48 };
 
@@ -114,7 +116,7 @@ function formatTime(ts: number): string {
 	<div>
 		<p class="text-sm font-medium text-text-secondary mb-2">{{ label }}</p>
 		<div v-if="!hasData" class="flex items-center justify-center h-[120px] bg-bg-surface rounded-lg">
-			<p class="text-sm text-text-tertiary">No data available</p>
+			<p class="text-sm text-text-tertiary">{{ t('components.agent.metricChart.noData') }}</p>
 		</div>
 		<svg
 			v-else

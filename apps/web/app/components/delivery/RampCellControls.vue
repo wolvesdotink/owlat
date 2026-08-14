@@ -64,6 +64,27 @@ const emit = defineEmits<{
 	promotePhase: [];
 }>();
 
+const { t, locale } = useI18n();
+
+/**
+ * The cell's own name comes from `utils/deliverabilityRamp`, a module-scope
+ * vocabulary that carries i18n keys rather than sentences (the registry
+ * convention); a plain string is still accepted so an unparseable cell reads as
+ * itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+/** Rungs and shares are numbers, so they format against the active locale. */
+const percentFormatter = computed(
+	() => new Intl.NumberFormat(locale.value, { style: 'percent', maximumFractionDigits: 0 })
+);
+function percentLabel(share: number): string {
+	return percentFormatter.value.format(share);
+}
+
 const headingId = useId();
 const pinInputId = useId();
 const forceInputId = useId();
@@ -158,12 +179,10 @@ const isPromotable = computed(() => currentRung.value < TOP_RUNG);
 const hasSecondSender = computed(() => props.hasRelayConfigured || props.cell.isShareRamped);
 
 const promoteNote = computed(() => {
-	if (!isPromotable.value)
-		return 'This cell is already on the top phase rung, so there is nothing left to promote.';
-	const effect = hasSecondSender.value
-		? 'Promoting raises the ceiling one rung and re-shuffles which arm every recipient of this cell lands in.'
-		: 'Promoting raises the ceiling one rung. Nothing is carrying this cell but your own server, so there is no second arm to shuffle recipients between: the rung is recorded and binds the day a second sender carries this cell again.';
-	return `${effect} It checks the evidence for the next rung first, and says what is still outstanding if it is not there yet.`;
+	if (!isPromotable.value) return t('components.delivery.rampCellControls.promoteNoteAtTop');
+	return hasSecondSender.value
+		? t('components.delivery.rampCellControls.promoteNoteSecondSender')
+		: t('components.delivery.rampCellControls.promoteNoteStandalone');
 });
 
 function clampPercent(value: number): number {
@@ -176,10 +195,14 @@ function clampPercent(value: number): number {
 	<section :aria-labelledby="headingId" class="space-y-4" data-testid="ramp-cell-controls">
 		<header>
 			<h3 :id="headingId" class="text-base font-semibold text-text-primary">
-				{{ rampCellLabel(cell.cell) }}
+				{{ localized(rampCellLabel(cell.cell)) }}
 			</h3>
 			<p class="mt-1 text-sm text-text-secondary">
-				Currently at {{ shareLabel(cell.ownShare) }} on your own server.
+				{{
+					t('components.delivery.rampCellControls.currentShare', {
+						share: shareLabel(cell.ownShare),
+					})
+				}}
 			</p>
 		</header>
 
@@ -191,8 +214,7 @@ function clampPercent(value: number): number {
 		-->
 		<div v-if="!cell.isRampManaged" class="space-y-2" data-testid="ramp-controls-unmanaged">
 			<p class="text-sm text-text-secondary">
-				This cell is not on the ramp yet, so there is nothing to control. Putting it on the ramp
-				hands its share to the controller, which then moves it only on the evidence.
+				{{ t('components.delivery.rampCellControls.unmanagedNote') }}
 			</p>
 			<UiButton
 				variant="outline"
@@ -201,7 +223,7 @@ function clampPercent(value: number): number {
 				data-testid="ramp-control-enroll"
 				@click="emit('enroll')"
 			>
-				Put this cell on the ramp
+				{{ t('components.delivery.rampCellControls.enroll') }}
 			</UiButton>
 		</div>
 
@@ -213,22 +235,26 @@ function clampPercent(value: number): number {
 				data-testid="ramp-control-pause"
 				@click="emit('pause', !cell.isPaused)"
 			>
-				{{ cell.isPaused ? 'Resume this cell' : 'Pause this cell' }}
+				{{
+					cell.isPaused
+						? t('components.delivery.rampCellControls.resume')
+						: t('components.delivery.rampCellControls.pause')
+				}}
 			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-pause-note">
 			{{
 				cell.isShareRamped
-					? 'Pausing holds both dials where they are — the share and the warm-up pace. A relay is carrying this cell, so the share is the dial that climbs and that is the number a pause freezes.'
-					: 'Pausing holds both dials where they are — the share and the warm-up pace. Nothing is carrying this cell but your own server, so the share is not the dial that climbs: the warm-up pace is, and a pause is the only control that holds it.'
+					? t('components.delivery.rampCellControls.pauseNoteShareDial')
+					: t('components.delivery.rampCellControls.pauseNotePaceDial')
 			}}
-			The checks keep running and an automatic retreat still happens — a pause never blocks a safety
-			response.
 		</p>
 
 		<div class="flex flex-wrap items-end gap-2">
 			<div>
-				<label :for="pinInputId" class="block text-xs text-text-secondary">Pin at (%)</label>
+				<label :for="pinInputId" class="block text-xs text-text-secondary">
+					{{ t('components.delivery.rampCellControls.pinAtLabel') }}
+				</label>
 				<input
 					:id="pinInputId"
 					v-model.number="pinPercent"
@@ -246,7 +272,7 @@ function clampPercent(value: number): number {
 				data-testid="ramp-control-pin"
 				@click="emit('pin', clampPercent(pinPercent) / 100)"
 			>
-				Pin
+				{{ t('components.delivery.rampCellControls.pin') }}
 			</UiButton>
 			<UiButton
 				v-if="cell.pinnedShare !== null"
@@ -256,22 +282,22 @@ function clampPercent(value: number): number {
 				data-testid="ramp-control-unpin"
 				@click="emit('pin', null)"
 			>
-				Remove pin
+				{{ t('components.delivery.rampCellControls.removePin') }}
 			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-pin-note">
-			A pin is a ceiling, not a floor: it holds an increase back, and never pulls a cell that is
-			already higher down to the number you type.
 			{{
 				cell.isShareRamped
-					? 'A relay is carrying this cell, so the share is the dial that climbs and the pin bounds it: the ramp climbs to the pin on the usual evidence and stops there.'
-					: 'Nothing is carrying this cell but your own server, so the warm-up pace is the dial that climbs, and no pin can bound it — pausing the cell is what holds it. The pin is still recorded against the share, and bounds the climb again the day a relay carries this cell.'
+					? t('components.delivery.rampCellControls.pinNoteShareDial')
+					: t('components.delivery.rampCellControls.pinNotePaceDial')
 			}}
 		</p>
 
 		<div class="flex flex-wrap items-end gap-2">
 			<div>
-				<label :for="forceInputId" class="block text-xs text-text-secondary"> Force to (%) </label>
+				<label :for="forceInputId" class="block text-xs text-text-secondary">
+					{{ t('components.delivery.rampCellControls.forceToLabel') }}
+				</label>
 				<input
 					:id="forceInputId"
 					v-model.number="forcePercent"
@@ -289,18 +315,21 @@ function clampPercent(value: number): number {
 				data-testid="ramp-control-force-advance"
 				@click="emit('forceAdvance', clampPercent(forcePercent) / 100)"
 			>
-				Force-advance…
+				{{ t('components.delivery.rampCellControls.forceAdvance') }}
 			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-force-advance-warning">
-			Force-advance moves the share past the evidence. It asks you to type “{{
-				FORCE_ADVANCE_CONFIRMATION
-			}}” first, because a bad move here costs weeks of reputation and cannot be undone by putting
-			the number back.
+			{{
+				t('components.delivery.rampCellControls.forceAdvanceWarning', {
+					phrase: FORCE_ADVANCE_CONFIRMATION,
+				})
+			}}
 		</p>
 
 		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-xs text-text-secondary">Reset to phase</span>
+			<span class="text-xs text-text-secondary">
+				{{ t('components.delivery.rampCellControls.resetToPhase') }}
+			</span>
 			<UiButton
 				v-for="rung in PHASE_RUNGS"
 				:key="rung"
@@ -310,17 +339,19 @@ function clampPercent(value: number): number {
 				:data-testid="`ramp-control-phase-${rung}`"
 				@click="emit('resetPhase', rung)"
 			>
-				{{ Math.round(rung * 100) }}%
+				{{ percentLabel(rung) }}
 			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-reset-note">
 			{{
 				hasSecondSender
-					? 'Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there.'
-					: 'Resetting a phase restarts the clean streak. Nothing is carrying this cell but your own server, so there is no second sender to hand traffic to: the rung is recorded and your share stays where it is, and it binds again the day a second sender appears.'
+					? t('components.delivery.rampCellControls.resetNoteSecondSender', {
+							rung: percentLabel(currentRung),
+						})
+					: t('components.delivery.rampCellControls.resetNoteStandalone', {
+							rung: percentLabel(currentRung),
+						})
 			}}
-			Only rungs at or below the cell's current {{ Math.round(currentRung * 100) }}% rung are a
-			reset — going higher is a promotion, which is its own control below.
 		</p>
 
 		<!--
@@ -338,7 +369,7 @@ function clampPercent(value: number): number {
 				data-testid="ramp-control-promote-phase"
 				@click="emit('promotePhase')"
 			>
-				Promote a phase
+				{{ t('components.delivery.rampCellControls.promotePhase') }}
 			</UiButton>
 		</div>
 		<p class="text-xs text-text-secondary" data-testid="ramp-promote-note">

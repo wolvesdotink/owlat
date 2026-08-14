@@ -5,6 +5,8 @@ const props = defineProps<{
 	contactId: Id<'contacts'>;
 }>();
 
+const { t } = useI18n();
+
 const contactIdRef = computed(() => props.contactId);
 
 const {
@@ -46,9 +48,9 @@ const cancelEditConfidence = () => {
 const saveConfidence = async (id: Id<'contactRelationships'>) => {
 	try {
 		await handleUpdateConfidence(id, editingConfidence.value);
-		emit('toast', 'Confidence updated');
+		emit('toast', t('components.contacts.relationshipsTab.toasts.confidenceUpdated'));
 	} catch {
-		emit('toast', 'Failed to update confidence');
+		emit('toast', t('components.contacts.relationshipsTab.toasts.confidenceUpdateFailed'));
 	} finally {
 		editingConfidenceId.value = null;
 	}
@@ -57,18 +59,18 @@ const saveConfidence = async (id: Id<'contactRelationships'>) => {
 const onAdd = async () => {
 	try {
 		await handleAddRelationship();
-		emit('toast', 'Relationship added');
+		emit('toast', t('components.contacts.relationshipsTab.toasts.added'));
 	} catch {
-		emit('toast', 'Failed to add relationship');
+		emit('toast', t('components.contacts.relationshipsTab.toasts.addFailed'));
 	}
 };
 
 const onRemove = async (id: Id<'contactRelationships'>) => {
 	try {
 		await handleRemoveRelationship(id);
-		emit('toast', 'Relationship removed');
+		emit('toast', t('components.contacts.relationshipsTab.toasts.removed'));
 	} catch {
-		emit('toast', 'Failed to remove relationship');
+		emit('toast', t('components.contacts.relationshipsTab.toasts.removeFailed'));
 	}
 };
 </script>
@@ -77,17 +79,25 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 	<div class="space-y-6">
 		<div class="card">
 			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-lg font-medium text-text-primary">Relationships</h2>
+				<h2 class="text-lg font-medium text-text-primary">
+					{{ t('components.contacts.relationshipsTab.title') }}
+				</h2>
 				<UiButton variant="secondary" size="sm" class="gap-1" @click="showAddForm = !showAddForm">
 					<Icon :name="showAddForm ? 'lucide:x' : 'lucide:plus'" class="w-3 h-3" />
-					{{ showAddForm ? 'Cancel' : 'Add Relationship' }}
+					{{
+						showAddForm
+							? t('common.cancel')
+							: t('components.contacts.relationshipsTab.addRelationship')
+					}}
 				</UiButton>
 			</div>
 
 			<!-- Add Form -->
 			<div v-if="showAddForm" class="mb-6 p-4 bg-bg-surface rounded-lg space-y-3">
 				<div>
-					<label for="addform-tocontact" class="label">Related contact</label>
+					<label for="addform-tocontact" class="label">{{
+						t('components.contacts.relationshipsTab.relatedContact')
+					}}</label>
 					<!-- Chosen target shown as a removable chip. -->
 					<div
 						v-if="addForm.toContactId"
@@ -97,7 +107,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 						<button
 							type="button"
 							class="flex-shrink-0 text-text-tertiary hover:text-text-primary"
-							title="Clear selected contact"
+							:title="t('components.contacts.relationshipsTab.clearSelected')"
 							@click="clearTargetContact"
 						>
 							<Icon name="lucide:x" class="w-4 h-4" />
@@ -110,7 +120,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 							v-model="targetSearch"
 							type="text"
 							class="input w-full"
-							placeholder="Search contacts by name or email…"
+							:placeholder="t('components.contacts.relationshipsTab.searchPlaceholder')"
 							autocomplete="off"
 						/>
 						<ul
@@ -137,16 +147,18 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 							v-else-if="targetSearch && targetCandidates.length === 0"
 							class="text-xs text-text-tertiary mt-1"
 						>
-							No matching contacts.
+							{{ t('components.contacts.relationshipsTab.noMatches') }}
 						</p>
 						<p v-else class="text-xs text-text-tertiary mt-1">
-							Search for the related contact by name or email.
+							{{ t('components.contacts.relationshipsTab.searchHint') }}
 						</p>
 					</div>
 				</div>
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 					<div>
-						<label for="addform-relationship" class="label">Relationship Type</label>
+						<label for="addform-relationship" class="label">{{
+							t('components.contacts.relationshipsTab.relationshipType')
+						}}</label>
 						<select id="addform-relationship" v-model="addForm.relationship" class="input w-full">
 							<option v-for="type in relationshipTypes" :key="type" :value="type">
 								{{ type.replace(/_/g, ' ') }}
@@ -154,7 +166,9 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 						</select>
 					</div>
 					<div>
-						<label class="label">Confidence</label>
+						<label class="label">{{
+							t('components.contacts.relationshipsTab.confidence')
+						}}</label>
 						<div class="flex items-center gap-2">
 							<input
 								v-model.number="addForm.confidence"
@@ -171,7 +185,11 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 					</div>
 				</div>
 				<UiButton size="sm" :disabled="!addForm.toContactId || isAdding" @click="onAdd">
-					{{ isAdding ? 'Adding...' : 'Add Relationship' }}
+					{{
+						isAdding
+							? t('components.contacts.relationshipsTab.adding')
+							: t('components.contacts.relationshipsTab.addRelationship')
+					}}
 				</UiButton>
 			</div>
 
@@ -189,9 +207,11 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 					rounded="full"
 					class="mb-3 mx-auto"
 				/>
-				<p class="text-text-tertiary text-sm">No relationships found.</p>
+				<p class="text-text-tertiary text-sm">
+					{{ t('components.contacts.relationshipsTab.emptyTitle') }}
+				</p>
 				<p class="text-text-tertiary text-xs mt-1">
-					Add a relationship to map how this contact connects to others.
+					{{ t('components.contacts.relationshipsTab.emptyBody') }}
 				</p>
 			</div>
 
@@ -220,11 +240,13 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 										: rel.relatedContact.email
 								}}
 							</NuxtLink>
-							<span v-else class="text-text-tertiary text-sm">Unknown contact</span>
+							<span v-else class="text-text-tertiary text-sm">{{
+								t('components.contacts.relationshipsTab.unknownContact')
+							}}</span>
 						</div>
 						<div class="flex items-center gap-2 mt-0.5">
 							<span class="text-xs text-text-tertiary">
-								{{ getDirectionLabel(rel.direction) }}
+								{{ t(getDirectionLabel(rel.direction)) }}
 							</span>
 							<span
 								class="text-xs px-1.5 py-0.5 rounded bg-bg-elevated text-text-secondary capitalize"
@@ -246,7 +268,13 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 									max="1"
 									step="0.1"
 									class="w-24 h-2 bg-bg-elevated rounded-lg appearance-none cursor-pointer accent-brand"
-									:aria-label="`Confidence for ${rel.relatedContact?.email ?? 'relationship'}`"
+									:aria-label="
+										t('components.contacts.relationshipsTab.confidenceFor', {
+											target:
+												rel.relatedContact?.email ??
+												t('components.contacts.relationshipsTab.confidenceForFallback'),
+										})
+									"
 								/>
 								<span class="text-xs text-text-secondary font-mono w-9 text-right">
 									{{ Math.round(editingConfidence * 100) }}%
@@ -254,7 +282,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 								<button
 									type="button"
 									class="p-1 rounded text-text-tertiary hover:text-brand hover:bg-bg-elevated transition-colors"
-									title="Save confidence"
+									:title="t('components.contacts.relationshipsTab.saveConfidence')"
 									@click="saveConfidence(rel._id)"
 								>
 									<Icon name="lucide:check" class="w-3.5 h-3.5" />
@@ -262,7 +290,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 								<button
 									type="button"
 									class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-									title="Cancel"
+									:title="t('common.cancel')"
 									@click="cancelEditConfidence"
 								>
 									<Icon name="lucide:x" class="w-3.5 h-3.5" />
@@ -272,7 +300,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 								v-else
 								type="button"
 								class="text-xs text-text-tertiary font-mono hover:text-brand transition-colors"
-								title="Edit confidence"
+								:title="t('components.contacts.relationshipsTab.editConfidence')"
 								@click="startEditConfidence(rel._id, rel.confidence ?? 1)"
 							>
 								{{ Math.round((rel.confidence ?? 1) * 100) }}%
@@ -281,7 +309,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 					</div>
 					<button
 						class="p-1.5 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-all"
-						title="Remove relationship"
+						:title="t('components.contacts.relationshipsTab.removeRelationship')"
 						@click="onRemove(rel._id)"
 					>
 						<Icon name="lucide:trash-2" class="w-4 h-4" />

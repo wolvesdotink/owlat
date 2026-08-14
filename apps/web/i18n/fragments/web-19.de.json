@@ -1,0 +1,84 @@
+{
+	"components": {
+		"postbox": {
+			"postboxClarificationCard": {
+				"cardLabel": "Ihre Eingabe erforderlich: {subject}",
+				"statusNeedsInput": "Ihre Eingabe erforderlich",
+				"statusDraftReady": "Entwurf bereit",
+				"answer": "Antworten",
+				"hintPick": "Auswählen",
+				"hintLater": "Später",
+				"drafting": "Ihre Antwort wird entworfen…",
+				"answerLater": "Ich antworte später",
+				"openDraft": "Entwurf öffnen"
+			},
+			"postboxCoachPanel": {
+				"run": "Meinen Entwurf prüfen",
+				"hint": "Prüft Ihre Formulierung — schreibt sie nie um.",
+				"clean": "Sieht gut aus — keine Auffälligkeiten gefunden.",
+				"suggestionCategory": "{category}:"
+			},
+			"postboxComposeButton": {
+				"compose": "Verfassen"
+			},
+			"postboxComposer": {
+				"uploadingToast": "Warten, bis die Anhänge vollständig hochgeladen sind…",
+				"attachmentMentionConfirm": "Ihre Nachricht erwähnt einen Anhang, es ist aber keiner angehängt. Trotzdem senden?",
+				"composerName": "Postbox-Entwurf {timestamp}",
+				"savedAt": "Gespeichert {time}",
+				"dropHint": "Zum Anhängen ablegen · in den Text ziehen zum Einbetten",
+				"newMessage": "Neue Nachricht",
+				"openInPopup": "In Popup öffnen",
+				"minimize": "Minimieren",
+				"scheduledFor": "Geplant für {datetime}",
+				"unschedule": "Planung aufheben zum Bearbeiten",
+				"bodyPlaceholder": "Schreiben Sie Ihre Nachricht…"
+			},
+			"postboxComposerAttachments": {
+				"remove": "{filename} entfernen",
+				"failed": "Fehlgeschlagen",
+				"retry": "{filename} erneut versuchen",
+				"retryTitle": "Upload erneut versuchen",
+				"dismiss": "{filename} ausblenden",
+				"cancel": "{filename} abbrechen",
+				"percent": "{value} %",
+				"sizeOf": "{used} von {budget}",
+				"largeWarning": "Große Anhänge können unzustellbar sein — teilen Sie übergroße Dateien besser als Link."
+			},
+			"postboxComposerDock": {
+				"reopen": "Erneut öffnen: {subject}",
+				"draft": "Entwurf"
+			},
+			"postboxComposerEnvelope": {
+				"from": "Von",
+				"sendAs": "Senden als",
+				"to": "An",
+				"cc": "Cc",
+				"bcc": "Bcc",
+				"subject": "Betreff",
+				"replyingSenderOnly": "Antwort nur an den Absender",
+				"switchToAll": "an alle antworten",
+				"alsoInclude": "{names} ebenfalls einbeziehen",
+				"replyingEveryone": "Antwort an alle"
+			},
+			"postboxComposerFollowUp": {
+				"title": "Erinnern, falls keine Antwort kommt",
+				"armedTitle": "Erinnerung, falls bis {datetime} keine Antwort kommt — zum Entfernen klicken"
+			},
+			"postboxComposerFooter": {
+				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…",
+				"sending": "Wird gesendet…",
+				"attachFiles": "Dateien anhängen",
+				"moreOptions": "Weitere Optionen zum Verfassen",
+				"signature": "Signatur",
+				"scheduleSend": "Senden planen…"
+			},
+			"postboxComposerModeControls": {
+				"hideToolbar": "Formatierungsleiste ausblenden (bei Auswahl anzeigen)",
+				"showToolbar": "Formatierungsleiste anzeigen",
+				"designLayout": "Layout gestalten…",
+				"returnToWriting": "Zurück zum Schreiben"
+			}
+		}
+	}
+}

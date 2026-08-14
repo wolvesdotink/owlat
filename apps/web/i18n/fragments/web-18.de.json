@@ -1,0 +1,203 @@
+{
+	"components": {
+		"knowledge": {
+			"graphStatsPanel": {
+				"title": "Graph-Einblicke",
+				"emptyBody": "Noch keine Analyse-Momentaufnahme. Einblicke werden täglich per Cron berechnet, sobald der Wissensgraph verbundene Einträge enthält.",
+				"approximate": "Ungefähr",
+				"approximateHint": "Der Graph ist groß; die Zahlen sind ungefähr (der Scan wurde begrenzt).",
+				"entries": "Einträge",
+				"relations": "Beziehungen",
+				"computedAt": "Berechnet {timestamp}",
+				"hubs": "Knotenpunkte (God Nodes)",
+				"noHubs": "Noch keine Knotenpunkte — die Beziehungen sind spärlich.",
+				"degreeHint": "{incoming} eingehend / {outgoing} ausgehend",
+				"openEntry": "{title} öffnen",
+				"confidenceTitle": "Konfidenzverteilung",
+				"bucketHint": "{range}: {count}",
+				"mean": "Mittelwert {value}",
+				"median": "Median {value}",
+				"lowConfidence": "{count} mit geringer Konfidenz",
+				"communities": "Communitys",
+				"communityCount": "(~{count})",
+				"communitiesHint": "Ungefähre Cluster (Label Propagation).",
+				"surprising": "Überraschende Verbindungen",
+				"surprisingEmpty": "Keine gefunden.",
+				"hiddenCrossContact": "{count} kontaktübergreifende Verbindung wird ausgeblendet, um die Trennung der Kontakte zu schützen. | {count} kontaktübergreifende Verbindungen werden ausgeblendet, um die Trennung der Kontakte zu schützen.",
+				"relationTypes": {
+					"supports": "Unterstützt",
+					"contradicts": "Widerspricht",
+					"supersedes": "Ersetzt",
+					"relates_to": "Bezieht sich auf",
+					"causes": "Verursacht",
+					"blocks": "Blockiert"
+				}
+			},
+			"graphView": {
+				"analyticsOffTitle": "Graph-Analysen sind deaktiviert",
+				"analyticsOffBody": "Aktivieren Sie {setting} in den Einstellungen, um den Graphen und seine Einblicke zu sehen.",
+				"analyticsOffSetting": "Wissensgraph-Analysen",
+				"hops": "{count} Sprung | {count} Sprünge",
+				"legendExtracted": "Extrahiert",
+				"legendInferred": "Abgeleitet",
+				"legendAmbiguous": "Mehrdeutig",
+				"legendHub": "Knotenpunkt",
+				"closePanel": "Panel schließen",
+				"centerHere": "Hier zentrieren",
+				"entryTypes": {
+					"fact": "Fakt",
+					"decision": "Entscheidung",
+					"event": "Ereignis",
+					"preference": "Präferenz",
+					"goal": "Ziel",
+					"relationship": "Beziehung",
+					"action_item": "Aufgabe"
+				}
+			},
+			"entryCard": {
+				"confidence": "Konfidenz",
+				"entryTypes": {
+					"fact": "Fakt",
+					"decision": "Entscheidung",
+					"event": "Ereignis",
+					"preference": "Präferenz",
+					"goal": "Ziel",
+					"relationship": "Beziehung",
+					"action_item": "Aufgabe"
+				},
+				"sourceTypes": {
+					"email": "E-Mail",
+					"chat": "Chat",
+					"manual": "Manuell",
+					"file": "Datei",
+					"agent_extracted": "KI-extrahiert"
+				}
+			},
+			"entryForm": {
+				"type": "Typ",
+				"title": "Titel",
+				"titlePlaceholder": "Kurzer, aussagekräftiger Titel",
+				"content": "Inhalt",
+				"contentPlaceholder": "Ausführlicher Inhalt des Wissenseintrags...",
+				"source": "Quelle",
+				"confidence": "Konfidenz",
+				"confidenceValue": "({value} %)",
+				"confidenceLow": "Niedrig",
+				"confidenceHigh": "Hoch",
+				"tags": "Tags",
+				"tagsHint": "(kommagetrennt)",
+				"tagsPlaceholder": "z. B. wichtig, kunde, q1-2026",
+				"expiresIn": "Läuft ab in",
+				"expiresInHint": "(optional, Tage ab heute)",
+				"expiresInPlaceholder": "z. B. 30",
+				"submitUpdate": "Eintrag aktualisieren",
+				"submitCreate": "Eintrag erstellen",
+				"entryTypes": {
+					"fact": "Fakt",
+					"decision": "Entscheidung",
+					"event": "Ereignis",
+					"preference": "Präferenz",
+					"goal": "Ziel",
+					"relationship": "Beziehung",
+					"action_item": "Aufgabe"
+				},
+				"sourceTypes": {
+					"email": "E-Mail",
+					"chat": "Chat",
+					"manual": "Manuell",
+					"file": "Datei",
+					"agent_extracted": "KI-extrahiert"
+				}
+			},
+			"relationsList": {
+				"outgoing": "Ausgehende Beziehungen",
+				"incoming": "Eingehende Beziehungen",
+				"count": "({count})",
+				"noOutgoing": "Keine ausgehenden Beziehungen.",
+				"noIncoming": "Keine eingehenden Beziehungen.",
+				"removeRelation": "Beziehung entfernen",
+				"relationTypes": {
+					"supports": "Unterstützt",
+					"contradicts": "Widerspricht",
+					"supersedes": "Ersetzt",
+					"relates_to": "Bezieht sich auf",
+					"causes": "Verursacht",
+					"blocks": "Blockiert"
+				},
+				"entryTypes": {
+					"fact": "Fakt",
+					"decision": "Entscheidung",
+					"event": "Ereignis",
+					"preference": "Präferenz",
+					"goal": "Ziel",
+					"relationship": "Beziehung",
+					"action_item": "Aufgabe"
+				}
+			}
+		},
+		"mail": {
+			"templateLibraryModal": {
+				"libraryTitle": "Vorlage auswählen",
+				"customizeTitle": "Vorlage anpassen",
+				"backToTemplates": "Zurück zu den Vorlagen",
+				"intro": "Starten Sie mit einer Vorlage, um schneller voranzukommen, oder beginnen Sie bei null.",
+				"emptyCanvas": "Leere Arbeitsfläche",
+				"emptyTemplate": "Leere Vorlage",
+				"nameLabel": "Vorlagenname",
+				"namePlaceholder": "z. B. Wöchentlicher Newsletter",
+				"nameRequired": "Ein Vorlagenname ist erforderlich",
+				"createFailed": "Vorlage konnte nicht erstellt werden"
+			}
+		},
+		"postbox": {
+			"aiStrip": {
+				"summarizeOperation": "Thread zusammenfassen",
+				"askOperation": "Zu diesem Thread fragen",
+				"suggestOperation": "Antworten vorschlagen",
+				"summaryLabel": "Zusammenfassung:",
+				"toggleSummaryDetail": "Details der Zusammenfassung umschalten",
+				"more": "mehr",
+				"less": "weniger",
+				"ask": "Fragen",
+				"askAbout": "Zu diesem Thread fragen",
+				"askPlaceholder": "Zu diesem Thread fragen…",
+				"draftReply": "Antwort entwerfen",
+				"draftAReply": "Eine Antwort entwerfen",
+				"thinking": "Denkt nach…",
+				"askFailed": "Das ließ sich gerade nicht beantworten. Versuchen Sie es gleich noch einmal.",
+				"working": "Wird bearbeitet…",
+				"suggestedReplies": "Antwortvorschläge",
+				"noSuggestions": "Derzeit keine Vorschläge. Versuchen Sie es gleich noch einmal."
+			},
+			"appPasswordCallout": {
+				"heading": "{provider} benötigt ein App-Passwort",
+				"headingAuthError": "{provider} benötigt ein App-Passwort, nicht Ihr Kontopasswort",
+				"openPage": "App-Passwort-Seite von {provider} öffnen"
+			},
+			"appPasswordReveal": {
+				"title": "Speichern Sie dieses Passwort jetzt",
+				"body": "Owlat speichert den Klartext nicht — sobald Sie diesen Dialog schließen, ist er endgültig weg. Fügen Sie ihn in {client} ein und widerrufen Sie diesen Eintrag, um ihn später zu wechseln.",
+				"yourClient": "Ihren Client",
+				"saved": "Ich habe es gespeichert"
+			},
+			"attachmentLightbox": {
+				"previewOf": "Vorschau von {filename}",
+				"attachmentPreview": "Anhangsvorschau",
+				"position": "{index} von {total}",
+				"openInNewTab": "In neuem Tab öffnen",
+				"download": "{filename} herunterladen",
+				"closePreview": "Vorschau schließen",
+				"previous": "Vorheriger Anhang",
+				"next": "Nächster Anhang",
+				"loading": "Vorschau wird geladen…",
+				"previewUnavailable": "Vorschau nicht verfügbar — nutzen Sie stattdessen den Download.",
+				"pdfPreviewOf": "PDF-Vorschau von {filename}",
+				"pdfFallback": "Dieser Browser kann keine PDFs einbetten — {link}.",
+				"pdfFallbackLink": "öffnen Sie es stattdessen in einem neuen Tab"
+			},
+			"basicEditor": {
+				"placeholder": "Schreiben Sie Ihre Nachricht…"
+			}
+		}
+	}
+}

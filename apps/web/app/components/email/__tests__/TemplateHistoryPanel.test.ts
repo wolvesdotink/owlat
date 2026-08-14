@@ -24,6 +24,7 @@ vi.mock('@owlat/email-builder', () => ({
 }));
 
 import TemplateHistoryPanel from '../TemplateHistoryPanel.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const VERSION = {
 	_id: 'version1',
@@ -55,6 +56,7 @@ function mountPanel(hasUnsavedChanges: boolean) {
 		props: { templateId: 'template1' as never, hasUnsavedChanges },
 		attachTo: document.body,
 		global: {
+			plugins: [createTestI18n()],
 			// Auto-imported utils are read off the render context in templates, so a
 			// global stub alone does not reach them.
 			mocks: { formatRelativeTime: () => '2 days ago' },
@@ -85,6 +87,7 @@ function restoreButton(wrapper: ReturnType<typeof mountPanel>) {
 
 beforeEach(() => {
 	document.body.innerHTML = '';
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useConvexQuery', () => ({
 		data: ref([VERSION]),
 		isLoading: ref(false),

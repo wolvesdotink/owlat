@@ -20,6 +20,8 @@ const emit = defineEmits<{
 	save: [];
 }>();
 
+const { t } = useI18n();
+
 const ctx = useConditionEditorContext();
 
 const operators = computed(() => operatorsForField(props.modelValue.field, ctx.contactProperties.value));
@@ -57,15 +59,22 @@ const updateValue = (event: Event) => {
 	<!-- Row variant: compact, table-row layout for the segment editor modal -->
 	<template v-if="variant === 'row'">
 		<div>
-			<label class="text-xs text-text-tertiary mb-1 block">Property</label>
+			<label class="text-xs text-text-tertiary mb-1 block">{{
+				t('components.conditions.contactProperty.editor.property')
+			}}</label>
 			<select :value="modelValue.field" class="input" @change="updateField">
-				<option value="">Select property...</option>
-				<optgroup label="Built-in Fields">
+				<option value="">
+					{{ t('components.conditions.contactProperty.editor.selectPropertyShort') }}
+				</option>
+				<optgroup :label="t('components.conditions.contactProperty.editor.builtInFields')">
 					<option v-for="field in BUILT_IN_FIELDS" :key="field.value" :value="field.value">
-						{{ field.label }}
+						{{ t(field.label) }}
 					</option>
 				</optgroup>
-				<optgroup v-if="ctx.contactProperties.value.length" label="Custom Properties">
+				<optgroup
+					v-if="ctx.contactProperties.value.length"
+					:label="t('components.conditions.contactProperty.editor.customProperties')"
+				>
 					<option v-for="prop in ctx.contactProperties.value" :key="prop.key" :value="prop.key">
 						{{ prop.label }}
 					</option>
@@ -74,20 +83,24 @@ const updateValue = (event: Event) => {
 		</div>
 		<div class="flex gap-3">
 			<div class="flex-1">
-				<label class="text-xs text-text-tertiary mb-1 block">Condition</label>
+				<label class="text-xs text-text-tertiary mb-1 block">{{
+					t('components.conditions.contactProperty.editor.condition')
+				}}</label>
 				<select :value="modelValue.operator" class="input" @change="updateOperator">
 					<option v-for="op in operators" :key="op.value" :value="op.value">
-						{{ op.label }}
+						{{ t(op.label) }}
 					</option>
 				</select>
 			</div>
 			<div v-if="needsValue" class="flex-1">
-				<label class="text-xs text-text-tertiary mb-1 block">Value</label>
+				<label class="text-xs text-text-tertiary mb-1 block">{{
+					t('components.conditions.contactProperty.editor.value')
+				}}</label>
 				<input
 					:value="modelValue.value ?? ''"
 					type="text"
 					class="input"
-					placeholder="Enter value..."
+					:placeholder="t('components.conditions.contactProperty.editor.valuePlaceholder')"
 					@input="updateValue"
 				/>
 			</div>
@@ -98,16 +111,20 @@ const updateValue = (event: Event) => {
 	<template v-else>
 		<div class="space-y-4">
 			<div>
-				<label for="conditionProperty" class="label">Property</label>
+				<label for="conditionProperty" class="label">{{
+					t('components.conditions.contactProperty.editor.property')
+				}}</label>
 				<select
 					id="conditionProperty"
 					:value="modelValue.field"
 					class="input mt-1.5"
 					@change="updateField"
 				>
-					<option value="">Select a property...</option>
+					<option value="">
+						{{ t('components.conditions.contactProperty.editor.selectProperty') }}
+					</option>
 					<option v-for="field in BUILT_IN_FIELDS" :key="field.value" :value="field.value">
-						{{ field.label }}
+						{{ t(field.label) }}
 					</option>
 					<option v-for="prop in ctx.contactProperties.value" :key="prop.key" :value="prop.key">
 						{{ prop.label }}
@@ -116,7 +133,9 @@ const updateValue = (event: Event) => {
 			</div>
 
 			<div>
-				<label for="conditionOperator" class="label">Operator</label>
+				<label for="conditionOperator" class="label">{{
+					t('components.conditions.contactProperty.editor.operator')
+				}}</label>
 				<select
 					id="conditionOperator"
 					:value="modelValue.operator"
@@ -124,18 +143,20 @@ const updateValue = (event: Event) => {
 					@change="updateOperator"
 				>
 					<option v-for="op in operators" :key="op.value" :value="op.value">
-						{{ op.label }}
+						{{ t(op.label) }}
 					</option>
 				</select>
 			</div>
 
 			<div v-if="needsValue">
-				<label for="conditionValue" class="label">Value</label>
+				<label for="conditionValue" class="label">{{
+					t('components.conditions.contactProperty.editor.value')
+				}}</label>
 				<input
 					id="conditionValue"
 					:value="modelValue.value ?? ''"
 					type="text"
-					placeholder="Enter value to compare..."
+					:placeholder="t('components.conditions.contactProperty.editor.comparePlaceholder')"
 					class="input mt-1.5"
 					@blur="updateValue"
 				/>

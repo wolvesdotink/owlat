@@ -1,0 +1,83 @@
+{
+	"components": {
+		"inbox": {
+			"assignPopover": {
+				"assignToMe": "Assign to me",
+				"teammate": "Teammate",
+				"unassign": "Unassign"
+			},
+			"attachSuggestion": {
+				"attachFile": "Attach {file}",
+				"pickOne": "Attach a file — pick one",
+				"severalMatch": "Several files could match — choose the one to attach:",
+				"suggested": "Suggested attachment"
+			},
+			"decisionRationale": {
+				"groundedIn": "Grounded in:",
+				"heldBecause": "Held because:",
+				"sentBecause": "Sent because:"
+			},
+			"draftDiffEditor": {
+				"originalDraft": "Original draft",
+				"saveAndApprove": "Save & Approve",
+				"textareaLabel": "Edit draft response",
+				"yourEdit": "Your edit"
+			},
+			"draftOptions": {
+				"groupLabel": "Draft options",
+				"heading": "Agent Draft — pick one"
+			},
+			"inboxFilterPills": {
+				"groupLabel": "Filter threads"
+			},
+			"inboxThreadPresence": {
+				"manyHere": "{count} people here",
+				"moreHere": "{count} more here",
+				"namesMany": "{first}, {second} and {count} others",
+				"namesManyOne": "{first}, {second} and 1 other",
+				"namesTwo": "{first} and {second}",
+				"oneHere": "1 person here",
+				"replyingBannerMany": "{names} are replying to this thread right now.",
+				"replyingBannerOne": "{names} is replying to this thread right now.",
+				"titleReplying": "{name} is replying",
+				"titleViewing": "{name} is viewing"
+			},
+			"inboxThreadRow": {
+				"assign": "Assign",
+				"assignThread": "Assign thread",
+				"assignedTo": "Assigned to {name}",
+				"channel": {
+					"sms": "SMS",
+					"whatsapp": "WhatsApp"
+				},
+				"noSubject": "No subject",
+				"openThread": "Open thread",
+				"resolve": "Resolve",
+				"snooze": "Snooze",
+				"unknownSender": "Unknown sender",
+				"unread": "Unread"
+			},
+			"statusChip": {
+				"returned": "· Returned"
+			},
+			"threadChannelTimeline": {
+				"empty": "No cross-channel messages yet.",
+				"reply": "Reply",
+				"replyOn": "Reply on {channel}",
+				"replyPlaceholder": "Reply on {channel}…",
+				"subtitle": "Every message on this thread across all channels.",
+				"title": "Cross-channel Timeline"
+			},
+			"trustChip": {
+				"seeWhy": "{label} — see why"
+			}
+		},
+		"knowledge": {
+			"graphCanvas": {
+				"ariaLabel": "Knowledge graph",
+				"emptyHint": "Link entries to build out the graph.",
+				"emptyTitle": "No connected knowledge to display."
+			}
+		}
+	}
+}

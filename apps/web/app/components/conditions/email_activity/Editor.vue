@@ -14,6 +14,8 @@ const emit = defineEmits<{
 	save: [];
 }>();
 
+const { t } = useI18n();
+
 const onChange = (event: Event) => {
 	const key = (event.target as HTMLSelectElement).value;
 	const option = ACTIVITY_OPTIONS.find((o) => `${o.field}:${o.operator}` === key);
@@ -30,15 +32,19 @@ const onChange = (event: Event) => {
 <template>
 	<template v-if="variant === 'row'">
 		<div>
-			<label class="text-xs text-text-tertiary mb-1 block">Activity type</label>
+			<label class="text-xs text-text-tertiary mb-1 block">{{
+				t('components.conditions.emailActivity.editor.activityType')
+			}}</label>
 			<select :value="activityKey(modelValue)" class="input" @change="onChange">
-				<option value="">Select activity...</option>
+				<option value="">
+					{{ t('components.conditions.emailActivity.editor.selectActivity') }}
+				</option>
 				<option
 					v-for="option in ACTIVITY_OPTIONS"
 					:key="`${option.field}:${option.operator}`"
 					:value="`${option.field}:${option.operator}`"
 				>
-					{{ option.label }}
+					{{ t(option.label) }}
 				</option>
 			</select>
 		</div>
@@ -47,7 +53,9 @@ const onChange = (event: Event) => {
 	<template v-else>
 		<div class="space-y-4">
 			<div>
-				<label for="emailActivity" class="label">Activity</label>
+				<label for="emailActivity" class="label">{{
+					t('components.conditions.emailActivity.editor.activity')
+				}}</label>
 				<select
 					id="emailActivity"
 					:value="activityKey(modelValue)"
@@ -59,11 +67,11 @@ const onChange = (event: Event) => {
 						:key="`${option.field}:${option.operator}`"
 						:value="`${option.field}:${option.operator}`"
 					>
-						{{ option.label }}
+						{{ t(option.label) }}
 					</option>
 				</select>
 				<p class="text-xs text-text-tertiary mt-1.5">
-					Check if the contact has performed this email activity.
+					{{ t('components.conditions.emailActivity.editor.help') }}
 				</p>
 			</div>
 		</div>

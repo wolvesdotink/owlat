@@ -2,7 +2,9 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import DeliverabilityChecklistGroups from '../DeliverabilityChecklistGroups.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
+vi.stubGlobal('useI18n', i18nStubs.useI18n);
 vi.stubGlobal('useCopyToClipboard', () => ({
 	copy: vi.fn(),
 	isCopied: vi.fn(() => false),
@@ -43,6 +45,7 @@ describe('DeliverabilityChecklistGroups', () => {
 				] as never,
 			},
 			global: {
+				plugins: [createTestI18n()],
 				stubs: {
 					Icon: { template: '<i />' },
 					UiButton: { template: '<button><slot /></button>' },
@@ -50,6 +53,8 @@ describe('DeliverabilityChecklistGroups', () => {
 				},
 			},
 		});
+		expectFullyLocalized(wrapper);
+		expect(wrapper.text()).toContain('Verify now');
 		expect(wrapper.text()).toContain('Authorize receiver feedback.');
 		expect(wrapper.text()).toContain('Open Google Postmaster Tools.');
 	});

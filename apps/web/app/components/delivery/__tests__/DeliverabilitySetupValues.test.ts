@@ -2,11 +2,13 @@
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DeliverabilitySetupValues from '../DeliverabilitySetupValues.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const copy = vi.fn(async () => true);
 const isCopied = vi.fn(() => false);
 
 beforeEach(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	copy.mockClear();
 	isCopied.mockClear();
 	vi.stubGlobal('useCopyToClipboard', () => ({ copy, isCopied }));
@@ -36,7 +38,7 @@ describe('DeliverabilitySetupValues', () => {
 						},
 					],
 				},
-				global: { stubs: { Icon: { template: '<i />' } } },
+				global: { plugins: [createTestI18n()], stubs: { Icon: { template: '<i />' } } },
 			});
 
 			await wrapper
@@ -65,7 +67,7 @@ describe('DeliverabilitySetupValues', () => {
 					},
 				],
 			},
-			global: { stubs: { Icon: { template: '<i />' } } },
+			global: { plugins: [createTestI18n()], stubs: { Icon: { template: '<i />' } } },
 		});
 
 		expect(wrapper.text()).toContain('Do not publish a second SPF record.');
@@ -95,7 +97,7 @@ describe('DeliverabilitySetupValues', () => {
 					},
 				],
 			},
-			global: { stubs: { Icon: { template: '<i />' } } },
+			global: { plugins: [createTestI18n()], stubs: { Icon: { template: '<i />' } } },
 		});
 
 		expect(wrapper.text()).toContain('EHLO hostname');

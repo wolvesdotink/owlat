@@ -23,6 +23,19 @@ const { data: alignmentArms } = useOrganizationQuery(
 );
 
 const notice = computed(() => referenceRelayNotice(alignmentArms.value));
+
+const { t } = useI18n();
+
+/**
+ * The notice's own copy lives in `utils/referenceRelay` as i18n keys rather than
+ * sentences (the registry convention for module-scope definitions); a plain
+ * string is still accepted, which is what the backend's verbatim detail — the
+ * sentence naming the relays — stays.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
 </script>
 
 <template>
@@ -34,12 +47,12 @@ const notice = computed(() => referenceRelayNotice(alignmentArms.value));
 		<div class="flex gap-3">
 			<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 			<div class="min-w-0 space-y-1.5">
-				<h3 class="font-medium text-text-primary">{{ notice.title }}</h3>
+				<h3 class="font-medium text-text-primary">{{ localized(notice.title) }}</h3>
 				<!-- The backend's own sentence, verbatim: it names the relays. -->
 				<p class="text-sm text-text-secondary" data-testid="reference-relay-detail">
 					{{ notice.detail }}
 				</p>
-				<p class="text-sm text-text-secondary">{{ notice.remedy }}</p>
+				<p class="text-sm text-text-secondary">{{ localized(notice.remedy) }}</p>
 			</div>
 		</div>
 	</div>

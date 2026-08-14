@@ -7,10 +7,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const readRepoFile = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
 
-const guide = readRepoFile('apps/docs/content/1.guide/21.deliverability.md');
-const providers = readRepoFile('apps/docs/content/3.developer/15.providers.md');
+const guide = readRepoFile('apps/docs/content/en/1.guide/21.deliverability.md');
+const providers = readRepoFile('apps/docs/content/en/3.developer/15.providers.md');
 const infrastructure = readRepoFile(
-	'apps/docs/content/3.developer/19.deliverability-infrastructure.md'
+	'apps/docs/content/en/3.developer/19.deliverability-infrastructure.md'
 );
 
 describe('deliverability routing documentation', () => {

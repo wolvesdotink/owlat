@@ -32,6 +32,8 @@ interface Props {
 	// Key ("category::sender" or suggestion id) currently being accepted.
 	pendingKey?: string | null;
 }
+const { t, locale } = useI18n();
+
 const props = withDefaults(defineProps<Props>(), {
 	offers: () => [],
 	suggestions: () => [],
@@ -50,7 +52,8 @@ const hasNudges = computed(
 	() => readyOffers.value.length > 0 || (props.suggestions ?? []).length > 0
 );
 
-const pct = (n: number) => `${Math.round(n * 100)}%`;
+const pct = (n: number) =>
+	new Intl.NumberFormat(locale.value, { style: 'percent', maximumFractionDigits: 0 }).format(n);
 </script>
 
 <template>
@@ -58,10 +61,11 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 		<div class="flex items-center gap-3 mb-4">
 			<UiIconBox icon="lucide:trending-up" size="sm" variant="brand" />
 			<div>
-				<h3 class="text-base font-medium text-text-primary">Ready to graduate</h3>
+				<h3 class="text-base font-medium text-text-primary">
+					{{ t('components.autonomy.autonomyGraduationNudge.title') }}
+				</h3>
 				<p class="text-xs text-text-tertiary">
-					The agent has earned more autonomy. Review the evidence and enable it — nothing widens
-					without your explicit approval.
+					{{ t('components.autonomy.autonomyGraduationNudge.body') }}
 				</p>
 			</div>
 		</div>
@@ -76,11 +80,30 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 			>
 				<div class="min-w-0">
 					<p class="text-sm text-text-primary">
-						You approved <strong>{{ offer.matched }}</strong> of
-						<strong>{{ offer.wouldHaveSent }}</strong> {{ offer.category }} drafts to
-						<strong class="break-all">{{ offer.sender }}</strong> unedited — enable auto-send?
+						<I18nT
+							keypath="components.autonomy.autonomyGraduationNudge.offer"
+							tag="span"
+							scope="global"
+						>
+							<template #matched>
+								<strong>{{ offer.matched }}</strong>
+							</template>
+							<template #total>
+								<strong>{{ offer.wouldHaveSent }}</strong>
+							</template>
+							<template #category>{{ offer.category }}</template>
+							<template #sender>
+								<strong class="break-all">{{ offer.sender }}</strong>
+							</template>
+						</I18nT>
 					</p>
-					<p class="text-xs text-text-tertiary mt-0.5">Match rate {{ pct(offer.matchRate) }}</p>
+					<p class="text-xs text-text-tertiary mt-0.5">
+						{{
+							t('components.autonomy.autonomyGraduationNudge.matchRate', {
+								rate: pct(offer.matchRate),
+							})
+						}}
+					</p>
 				</div>
 				<UiButton
 					size="sm"
@@ -88,7 +111,7 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 					:disabled="pendingKey === `${offer.category}::${offer.sender}`"
 					@click="emit('accept-offer', { category: offer.category, sender: offer.sender })"
 				>
-					Enable auto-send
+					{{ t('components.autonomy.autonomyGraduationNudge.enableAutoSend') }}
 				</UiButton>
 			</li>
 
@@ -101,14 +124,30 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 			>
 				<div class="min-w-0">
 					<p class="text-sm text-text-primary">
-						Lower the <strong>{{ s.category }}</strong> auto-approve threshold from
-						<strong>{{ pct(s.currentThreshold) }}</strong> to
-						<strong>{{ pct(s.suggestedThreshold) }}</strong
-						>?
+						<I18nT
+							keypath="components.autonomy.autonomyGraduationNudge.suggestion"
+							tag="span"
+							scope="global"
+						>
+							<template #category>
+								<strong>{{ s.category }}</strong>
+							</template>
+							<template #current>
+								<strong>{{ pct(s.currentThreshold) }}</strong>
+							</template>
+							<template #suggested>
+								<strong>{{ pct(s.suggestedThreshold) }}</strong>
+							</template>
+						</I18nT>
 					</p>
 					<p class="text-xs text-text-tertiary mt-0.5">
-						{{ s.evidence.approved }}/{{ s.evidence.sampleSize }} approved,
-						{{ pct(s.evidence.rejectionRate) }} rejection rate
+						{{
+							t('components.autonomy.autonomyGraduationNudge.suggestionEvidence', {
+								approved: s.evidence.approved,
+								sampleSize: s.evidence.sampleSize,
+								rate: pct(s.evidence.rejectionRate),
+							})
+						}}
 					</p>
 				</div>
 				<UiButton
@@ -117,7 +156,7 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 					:disabled="pendingKey === s._id"
 					@click="emit('accept-suggestion', { suggestionId: s._id })"
 				>
-					Apply
+					{{ t('common.apply') }}
 				</UiButton>
 			</li>
 		</ul>

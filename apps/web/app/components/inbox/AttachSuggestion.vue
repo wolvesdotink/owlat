@@ -36,6 +36,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ attach: [candidate: AttachmentCandidate] }>();
 
+const { t } = useI18n();
+
 /** Prefer a human title over the raw filename for the chip label. */
 function label(candidate: AttachmentCandidate): string {
 	return candidate.title?.trim() || candidate.filename;
@@ -47,7 +49,11 @@ function label(candidate: AttachmentCandidate): string {
 		<div class="flex items-center gap-2 mb-2">
 			<Icon name="lucide:paperclip" class="w-4 h-4 text-brand" />
 			<p class="text-xs font-medium text-brand uppercase tracking-wider">
-				{{ props.suggestions.ambiguous ? 'Attach a file — pick one' : 'Suggested attachment' }}
+				{{
+					props.suggestions.ambiguous
+						? t('components.inbox.attachSuggestion.pickOne')
+						: t('components.inbox.attachSuggestion.suggested')
+				}}
 			</p>
 		</div>
 
@@ -62,13 +68,17 @@ function label(candidate: AttachmentCandidate): string {
 			@click="emit('attach', props.suggestions.candidates[0]!)"
 		>
 			<Icon name="lucide:paperclip" class="w-3 h-3" />
-			Attach {{ label(props.suggestions.candidates[0]!) }}
+			{{
+				t('components.inbox.attachSuggestion.attachFile', {
+					file: label(props.suggestions.candidates[0]!),
+				})
+			}}
 		</UiButton>
 
 		<!-- Ambiguous → the owner picks which file (no guessing). -->
 		<div v-else class="flex flex-col gap-2">
 			<p class="text-xs text-text-secondary">
-				Several files could match — choose the one to attach:
+				{{ t('components.inbox.attachSuggestion.severalMatch') }}
 			</p>
 			<div class="flex flex-wrap gap-2">
 				<UiButton

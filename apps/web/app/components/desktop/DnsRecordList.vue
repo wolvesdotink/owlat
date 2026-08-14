@@ -24,6 +24,7 @@ interface DnsRecord {
 
 defineProps<{ records: DnsRecord[] }>();
 
+const { t } = useI18n();
 const { copy, isCopied } = useCopyToClipboard();
 const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 </script>
@@ -46,8 +47,12 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 				v-if="!r.placeholder"
 				type="button"
 				class="flex size-6 items-center justify-center justify-self-end rounded text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-				:aria-label="`Copy value for ${r.name}`"
-				:title="isCopied(keyOf(r)) ? 'Copied' : `Copy value for ${r.name}`"
+				:aria-label="t('components.desktop.dnsRecordList.copyValue', { name: r.name })"
+				:title="
+					isCopied(keyOf(r))
+						? t('common.copied')
+						: t('components.desktop.dnsRecordList.copyValue', { name: r.name })
+				"
 				@click="copy(r.value, keyOf(r))"
 			>
 				<Icon
@@ -59,7 +64,7 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 			<span
 				v-else
 				class="flex size-6 items-center justify-center justify-self-end text-text-tertiary"
-				:title="`Set the server's public IP to copy the value for ${r.name}`"
+				:title="t('components.desktop.dnsRecordList.placeholderTitle', { name: r.name })"
 			>
 				<Icon name="lucide:copy" class="size-3.5 opacity-30" />
 			</span>

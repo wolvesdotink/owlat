@@ -1,0 +1,204 @@
+{
+	"components": {
+		"contacts": {
+			"suppressionNotice": {
+				"title": "Abgemeldet",
+				"why": "Warum?",
+				"detail": "{headline} — {reason}.",
+				"removing": "Wird aufgehoben …",
+				"remove": "Sperrung aufheben?"
+			},
+			"timelineStatsCard": {
+				"title": "Kommunikation",
+				"messages": "Nachrichten",
+				"threads": "Konversationen",
+				"byChannel": "Nach Kanal",
+				"firstContact": "Erster Kontakt",
+				"lastContact": "Letzter Kontakt",
+				"empty": "Noch keine Kommunikationsdaten",
+				"channels": {
+					"email": "E-Mail",
+					"sms": "SMS",
+					"whatsapp": "WhatsApp",
+					"chat": "Chat",
+					"generic": "Allgemein"
+				}
+			},
+			"unifiedTimelineTab": {
+				"title": "Kanalübergreifende Chronik",
+				"subtitle": "Jede Nachricht über alle Kanäle hinweg, neueste zuerst.",
+				"sendTitle": "Nachricht senden",
+				"channelPlaceholder": "Kanal",
+				"messagePlaceholder": "Schreiben Sie eine Nachricht für diesen Kanal …",
+				"loading": "Chronik wird geladen ...",
+				"empty": "Noch keine Nachrichten",
+				"emptyForChannel": "Keine Nachrichten über {channel}",
+				"emptyHint": "Kanalübergreifende Nachrichten erscheinen hier, sobald sie gesendet und empfangen werden.",
+				"channels": {
+					"email": "E-Mail",
+					"sms": "SMS",
+					"whatsapp": "WhatsApp",
+					"chat": "Chat",
+					"generic": "Allgemein"
+				},
+				"directions": {
+					"inbound": "Empfangen",
+					"outbound": "Gesendet"
+				},
+				"statuses": {
+					"queued": "in Warteschlange",
+					"delivered": "zugestellt",
+					"read": "gelesen",
+					"failed": "fehlgeschlagen"
+				}
+			}
+		},
+		"dashboard": {
+			"accessRequests": {
+				"resolveOperation": "Zugriffsanfrage bearbeiten",
+				"title": "Zugriffsanfragen",
+				"subtitle": "{count} Person möchte beitreten. Laden Sie sie unter „Mitglieder“ ein und markieren Sie die Anfrage anschließend als erledigt. | {count} Personen möchten beitreten. Laden Sie sie unter „Mitglieder“ ein und markieren Sie die Anfragen anschließend als erledigt.",
+				"markDone": "Als erledigt markieren"
+			},
+			"auditLogList": {
+				"unknownUser": "Unbekannter Benutzer",
+				"itemCount": "{count} Einträge",
+				"loadMore": "Mehr laden"
+			},
+			"campaignAbComparison": {
+				"title": "A/B-Test",
+				"testing": "Test von {testType}",
+				"testType": {
+					"content": "E-Mail-Inhalt",
+					"subject": "Betreffzeilen"
+				},
+				"winnerChip": "Variante {variant} hat gewonnen",
+				"testingInProgress": "Test läuft",
+				"variantLabel": "Variante {variant}",
+				"sentCount": "{count} gesendet",
+				"openRate": "Öffnungsrate",
+				"clickRate": "Klickrate",
+				"pickPrompt": "Wählen Sie die Gewinnervariante, die an den Rest der Zielgruppe gesendet wird.",
+				"pickVariant": "Variante {variant} wählen",
+				"criteria": {
+					"openRate": "bester Öffnungsrate",
+					"clickRate": "bester Klickrate",
+					"manual": "manueller Auswahl"
+				},
+				"metric": {
+					"openRate": "Öffnungsrate",
+					"clickRate": "Klickrate"
+				},
+				"points": "+{points} Pkt.",
+				"winnerSummary": "Variante {variant} hat mit {difference} höherer {metric} gewonnen.",
+				"winnerSummaryPicked": "Variante {variant} hat mit {difference} höherer {metric} gewonnen · ausgewählt nach {criteria} am {date}."
+			},
+			"clickHeatmap": {
+				"legendTitle": "Klick-Heatmap",
+				"low": "Niedrig",
+				"high": "Hoch",
+				"frameTitle": "Kampagneninhalt mit Klick-Heatmap",
+				"detailsTitle": "Details zu Linkklicks",
+				"detailsSubtitle": "Klickzahlen pro Link in Ihrer E-Mail",
+				"clicks": "Klicks",
+				"unique": "eindeutig",
+				"rate": "Rate",
+				"noLinks": "Keine nachverfolgbaren Links in dieser E-Mail gefunden",
+				"noClicks": "Keine Linkklicks erfasst",
+				"noClicksHint": "Linkklicks erscheinen hier, sobald Empfänger mit Ihrer E-Mail interagieren"
+			},
+			"dashboardCardRenderer": {
+				"unknownCardType": "Unbekannter Kartentyp: {type}"
+			},
+			"dashboardEditor": {
+				"title": "Dashboard anpassen",
+				"activeCards": "Aktive Karten",
+				"noCards": "Noch keine Karten hinzugefügt. Fügen Sie unten Karten hinzu.",
+				"moveUp": "Nach oben verschieben",
+				"moveDown": "Nach unten verschieben",
+				"removeCard": "Karte entfernen",
+				"addCards": "Karten hinzufügen",
+				"adaptiveRules": "Adaptive Regeln",
+				"addRule": "Regel hinzufügen",
+				"adaptiveRulesHint": "Zeigen Sie je nach Tageszeit, Wochentag oder Rolle andere Karten an. Bei mehreren passenden Regeln gewinnt die höhere Priorität.",
+				"noRules": "Keine adaptiven Regeln. Standardmäßig werden die aktiven Karten oben angezeigt.",
+				"priority": "Priorität",
+				"rulePriority": "Priorität der Regel",
+				"timeRange": "Zeitraum",
+				"startTime": "Startzeit",
+				"endTime": "Endzeit",
+				"timeRangeTo": "bis",
+				"daysLabel": "Tage",
+				"days": {
+					"mon": "Mo",
+					"tue": "Di",
+					"wed": "Mi",
+					"thu": "Do",
+					"fri": "Fr",
+					"sat": "Sa",
+					"sun": "So"
+				},
+				"roleLabel": "Rolle",
+				"roles": {
+					"any": "Beliebige Rolle",
+					"owner": "Inhaber",
+					"admin": "Admin",
+					"editor": "Redakteur"
+				},
+				"cardsToShow": "Anzuzeigende Karten",
+				"emptyRuleHint": "Fügen Sie mindestens eine Karte hinzu — leere Regeln werden übersprungen.",
+				"removeRuleCard": "Karte aus Regel entfernen",
+				"saveLayout": "Layout speichern",
+				"sizes": {
+					"small": "S",
+					"medium": "M",
+					"large": "L"
+				}
+			},
+			"dashboardShellHeader": {
+				"openNavigation": "Navigationsmenü öffnen"
+			},
+			"emailSendTimeline": {
+				"title": "Ereignis-Chronik",
+				"events": {
+					"queued": "In Warteschlange",
+					"sent": "Gesendet",
+					"delivered": "Zugestellt",
+					"opened": "Geöffnet",
+					"clicked": "Geklickt",
+					"bounced": "Unzustellbar",
+					"complained": "Beschwerde"
+				},
+				"afterEvent": "{duration} nach {event}",
+				"previousEvent": "vorherigem Ereignis",
+				"opensTotal": "{count} Öffnungen insgesamt",
+				"notReached": "Noch nicht erreicht",
+				"clickedLinks": "Geklickte Links",
+				"errorDetails": "Fehlerdetails",
+				"errorCode": "Code:",
+				"providerMessageId": "Nachrichten-ID des Anbieters",
+				"dataVariables": "Datenvariablen",
+				"duration": {
+					"seconds": "{seconds} Sek.",
+					"minutes": "{minutes} Min.",
+					"minutesSeconds": "{minutes} Min. {seconds} Sek.",
+					"hours": "{hours} Std.",
+					"hoursMinutes": "{hours} Std. {minutes} Min.",
+					"days": "{days} Tg.",
+					"daysHours": "{days} Tg. {hours} Std."
+				}
+			},
+			"gettingStarted": {
+				"title": "Erste Schritte",
+				"subtitle": "Alles, was noch zu tun ist, damit Owlat für Sie arbeitet — an einem Ort.",
+				"dismissLabel": "Erste Schritte ausblenden",
+				"progress": "Fortschritt",
+				"progressCount": "{completed} von {total} erledigt",
+				"progressLabel": "Fortschritt der ersten Schritte",
+				"later": "Das mache ich später",
+				"dismissInstanceOperation": "Onboarding ausblenden",
+				"dismissUserOperation": "Checkliste ausblenden"
+			}
+		}
+	}
+}

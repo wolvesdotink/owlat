@@ -47,6 +47,8 @@ import TransportCredentialFields from './TransportCredentialFields.vue';
  */
 const emit = defineEmits<{ settled: [{ ok: boolean }]; applied: [] }>();
 
+const { t } = useI18n();
+
 const relay = useRelayCredentialDraft('resend');
 const {
 	provider,
@@ -129,7 +131,7 @@ async function applyCredentials() {
 		emit('settled', { ok: true });
 		emit('applied');
 	} catch (e) {
-		fail((e as Error).message || 'Could not apply the transport. Try again.');
+		fail((e as Error).message || t('components.delivery.transportCredentialsStep.applyFailed'));
 	} finally {
 		applying.value = false;
 	}
@@ -139,7 +141,9 @@ async function applyCredentials() {
 <template>
 	<div class="space-y-4">
 		<fieldset class="space-y-2">
-			<legend class="text-sm font-medium text-text-primary">Provider</legend>
+			<legend class="text-sm font-medium text-text-primary">
+				{{ t('components.delivery.transportCredentialsStep.providerLegend') }}
+			</legend>
 			<label
 				v-for="opt in providerOptions"
 				:key="opt.value"
@@ -157,15 +161,14 @@ async function applyCredentials() {
 					class="mt-1 h-4 w-4 border-border-default bg-bg-deep text-brand"
 				/>
 				<span>
-					<span class="block font-medium text-text-primary">{{ opt.label }}</span>
-					<span class="block text-sm text-text-secondary">{{ opt.hint }}</span>
+					<span class="block font-medium text-text-primary">{{ t(opt.label) }}</span>
+					<span class="block text-sm text-text-secondary">{{ t(opt.hint) }}</span>
 				</span>
 			</label>
 		</fieldset>
 
 		<p class="text-xs text-text-tertiary">
-			Credentials are sealed on the server. They are never shown again and never returned to this
-			screen.
+			{{ t('components.delivery.transportCredentialsStep.sealedNote') }}
 		</p>
 
 		<!-- The consequence, before the button that causes it. This is the guided
@@ -173,9 +176,7 @@ async function applyCredentials() {
 		     transport at this provider, so Owlat sends through it and your own
 		     server stops being the default sender until you switch back. -->
 		<p class="text-sm text-text-secondary">
-			Saving makes this provider the transport Owlat sends through. Your own server keeps running
-			and stays one switch away under “Change provider”, but it stops being the default sender until
-			you switch back.
+			{{ t('components.delivery.transportCredentialsStep.consequence') }}
 		</p>
 
 		<!-- ONE form for every relay: the selected entry's `credentialFields`
@@ -199,26 +200,37 @@ async function applyCredentials() {
 		     `setupProbe`; this line renders only for the selected kind, so it names
 		     that one rather than listing the vendors that lack a probe. -->
 		<p v-if="!canValidateLive" class="text-xs text-text-tertiary">
-			This provider can’t be checked before applying — the live send test in the next step confirms
-			it.
+			{{ t('components.delivery.transportCredentialsStep.noPreApplyCheck') }}
 		</p>
 
 		<div v-if="validationResult && !validationResult.ok" role="alert">
-			<UiErrorAlert variant="error" title="Test failed" :message="validationResult.message" />
+			<UiErrorAlert
+				variant="error"
+				:title="t('components.delivery.transportCredentialsStep.testFailedTitle')"
+				:message="validationResult.message"
+			/>
 		</div>
 
 		<div v-if="credentialError" role="alert">
-			<UiErrorAlert variant="error" title="Couldn't apply" :message="credentialError" />
+			<UiErrorAlert
+				variant="error"
+				:title="t('components.delivery.transportCredentialsStep.applyFailedTitle')"
+				:message="credentialError"
+			/>
 		</div>
 		<UiErrorAlert
 			v-if="restartNotice"
 			variant="info"
-			title="Restart required"
+			:title="t('components.delivery.transportCredentialsStep.restartRequiredTitle')"
 			:message="restartNotice"
 		/>
 
 		<UiButton :loading="applying" :disabled="applying" @click="applyCredentials">
-			{{ applying ? 'Applying…' : 'Save credentials' }}
+			{{
+				applying
+					? t('components.delivery.transportCredentialsStep.applying')
+					: t('components.delivery.transportCredentialsStep.saveCredentials')
+			}}
 		</UiButton>
 	</div>
 </template>

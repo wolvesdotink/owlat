@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, useId } from 'vue';
 import { useModalFocus } from '../../composables/useModalFocus';
+import { useUiI18n } from '../../composables/useUiI18n';
 
 type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | 'full';
 
@@ -36,6 +37,8 @@ const sizeClasses: Record<ModalSize, string> = {
 	'4xl': 'max-w-4xl',
 	full: 'max-w-[95vw]',
 };
+
+const { t } = useUiI18n();
 
 const dialogRef = ref<HTMLElement | null>(null);
 // Unique per instance — the old hardcoded 'modal-title' produced duplicate
@@ -95,7 +98,7 @@ useModalFocus(
 							v-if="closable"
 							class="p-2 hover:bg-bg-surface rounded-lg transition-colors"
 							type="button"
-							aria-label="Close dialog"
+							:aria-label="t('ui.modal.close')"
 							@click="close"
 						>
 							<Icon name="lucide:x" class="w-5 h-5 text-text-tertiary" />

@@ -1,0 +1,340 @@
+{
+	"components": {
+		"conditions": {
+			"contactProperty": {
+				"editor": {
+					"property": "Property",
+					"selectPropertyShort": "Select property...",
+					"selectProperty": "Select a property...",
+					"builtInFields": "Built-in Fields",
+					"customProperties": "Custom Properties",
+					"condition": "Condition",
+					"operator": "Operator",
+					"value": "Value",
+					"valuePlaceholder": "Enter value...",
+					"comparePlaceholder": "Enter value to compare..."
+				}
+			},
+			"emailActivity": {
+				"editor": {
+					"activityType": "Activity type",
+					"selectActivity": "Select activity...",
+					"activity": "Activity",
+					"help": "Check if the contact has performed this email activity."
+				}
+			},
+			"topicMembership": {
+				"editor": {
+					"topic": "Topic",
+					"selectTopicShort": "Select topic...",
+					"selectTopic": "Select a topic...",
+					"condition": "Condition",
+					"help": "Check if the contact is subscribed to this topic."
+				}
+			}
+		},
+		"contacts": {
+			"bulkDeleteModal": {
+				"title": "Delete Contacts",
+				"subtitle": "This action cannot be undone",
+				"warning": "You are about to delete {count} contact | You are about to delete {count} contacts",
+				"warningDetail": "This will also remove them from all topics and delete their custom property values.",
+				"confirmQuestion": "Are you sure you want to proceed? This action is permanent and cannot be reversed.",
+				"confirm": "Delete {count} Contact | Delete {count} Contacts"
+			},
+			"contactFilesTab": {
+				"title": "Files",
+				"count": "{count} file | {count} files",
+				"loading": "Loading files...",
+				"emptyTitle": "No files linked to this contact",
+				"emptyBody": "Files from email attachments and uploads will appear here.",
+				"sources": {
+					"upload": "Uploaded",
+					"emailAttachment": "Email Attachment",
+					"agentGenerated": "AI Generated"
+				}
+			},
+			"contactKnowledgeTab": {
+				"title": "Knowledge",
+				"count": "{count} entry | {count} entries",
+				"loading": "Loading knowledge...",
+				"emptyTitle": "No knowledge entries yet",
+				"emptyBody": "Knowledge is automatically extracted from conversations with this contact.",
+				"confidence": "{percent}% confidence"
+			},
+			"csvImportModal": {
+				"title": "Import Contacts",
+				"unknownList": "Unknown list",
+				"emptyCell": "(empty)",
+				"steps": {
+					"upload": "Upload a CSV file",
+					"mapping": "Map columns to fields",
+					"listMapping": "Map list names",
+					"preview": "Review before import",
+					"importing": "Importing contacts...",
+					"complete": "Import complete"
+				},
+				"topicAssignment": {
+					"global": "All contacts will be added to \"{name}\"",
+					"column": "Contacts will be added to topics based on CSV mapping ({mapped} topic mapped, {skipped} skipped) | Contacts will be added to topics based on CSV mapping ({mapped} topics mapped, {skipped} skipped)"
+				},
+				"upload": {
+					"dropzone": "Drop your CSV file here or click to browse",
+					"supports": "Supports .csv files with headers",
+					"tipsTitle": "CSV Format Tips",
+					"tips": {
+						"headers": "First row should contain column headers",
+						"emailColumn": "Must include an email column",
+						"optionalColumns": "Optional: first name, last name, language",
+						"customProperty": "Map any extra column to \"Custom property\" to import it"
+					}
+				},
+				"mapping": {
+					"found": "Found {count} contacts in {filename}",
+					"sample": "e.g., {value}",
+					"handleDuplicates": "Handle Duplicates",
+					"skipDuplicates": "Skip duplicates",
+					"updateExisting": "Update existing",
+					"addToTopic": "Add to Topic",
+					"topicMappedHint": "Disabled because a column is mapped to \"Topic\". Remove that mapping to select a global topic.",
+					"globalTopicHint": "All imported contacts will be added to this topic. Or map a CSV column to \"Topic\" for per-contact assignment."
+				},
+				"listMapping": {
+					"found": "We found {count} unique topic name in your CSV. Map each to an existing Owlat topic or skip it. | We found {count} unique topic names in your CSV. Map each to an existing Owlat topic or skip it.",
+					"skip": "— Skip",
+					"noneFound": "No topic names found in the mapped column. All cells were empty."
+				},
+				"preview": {
+					"validContacts": "Valid contacts",
+					"invalidEmails": "Invalid emails",
+					"duplicates": "Duplicates",
+					"missingEmails": "Missing emails",
+					"noValidContacts": "No valid contacts found. Please fix your CSV and re-upload.",
+					"rowsPreview": "Preview of first {shown} rows ({total} total)",
+					"firstName": "First Name",
+					"lastName": "Last Name",
+					"viewIssues": "View issue details",
+					"invalidEmailsTitle": "Invalid Emails",
+					"duplicateEmailsTitle": "Duplicate Emails",
+					"missingEmailsTitle": "Missing Emails",
+					"rowEntry": "Row {row}: {value}",
+					"andMore": "...and {count} more",
+					"summaryTitle": "Import Summary",
+					"summaryCount": "{valid} of {total} contacts will be imported",
+					"summaryDuplicatesSkipped": "Duplicates will be skipped",
+					"summaryDuplicatesUpdated": "Duplicates will be updated",
+					"summaryProperties": "{count} custom property will be imported: {keys} | {count} custom properties will be imported: {keys}"
+				},
+				"importing": {
+					"title": "Importing contacts...",
+					"percent": "{percent}% complete",
+					"progressLabel": "CSV import progress"
+				},
+				"complete": {
+					"title": "Import Complete!",
+					"imported": "Imported",
+					"updated": "Updated",
+					"skipped": "Skipped",
+					"failed": "Failed",
+					"addedToTopics": "{count} contact added to topic | {count} contacts added to topics",
+					"errorsTitle": "Errors (first {count})"
+				},
+				"footer": {
+					"import": "Import {count} Contacts"
+				}
+			},
+			"exportModal": {
+				"title": "Export Contacts",
+				"subtitle": "Download as CSV file",
+				"whatToExport": "What to export",
+				"allContacts": "All contacts",
+				"allContactsDescription": "Export all {count} contacts",
+				"searchResults": "Current search results",
+				"searchResultsDescription": "Export contacts matching \"{query}\"",
+				"includesTitle": "Export includes",
+				"includes": {
+					"identity": "Email, name, and subscription status",
+					"metadata": "Source, created date, and timestamps",
+					"customProperties": "All custom contact properties"
+				},
+				"exporting": "Exporting...",
+				"submit": "Export to CSV",
+				"noContacts": "No contacts to export",
+				"exported": "Exported {count} contact to {filename} | Exported {count} contacts to {filename}",
+				"failed": "Export failed. Please try again."
+			},
+			"identitiesTab": {
+				"title": "Channel Identities",
+				"addIdentity": "Add Identity",
+				"channel": "Channel",
+				"identifier": "Identifier",
+				"identifierPlaceholder": {
+					"email": "email{'@'}example.com",
+					"phone": "+1234567890",
+					"other": "Handle or ID"
+				},
+				"setPrimary": "Set as primary",
+				"adding": "Adding...",
+				"empty": "No identities linked yet.",
+				"primary": "Primary",
+				"verified": "Verified",
+				"markVerified": "Mark as verified",
+				"removeIdentity": "Remove identity",
+				"mergeSuggestions": "Merge Suggestions",
+				"mergeSuggestionsIntro": "These contacts share identifiers and may be the same person.",
+				"matching": "Matching: {identifiers}",
+				"merge": "Merge",
+				"toasts": {
+					"added": "Identity added",
+					"addFailed": "Failed to add identity",
+					"removed": "Identity removed",
+					"removeFailed": "Failed to remove identity",
+					"verified": "Identity verified",
+					"verifyFailed": "Failed to verify identity",
+					"merged": "Contacts merged",
+					"mergeFailed": "Failed to merge contacts"
+				}
+			},
+			"integrationImportModal": {
+				"title": "Import from Integration",
+				"steps": {
+					"select": "Choose an integration",
+					"configure": "Configure {provider}",
+					"importingSuppressions": "Importing suppressions...",
+					"importingContacts": "Importing contacts...",
+					"complete": "Import complete"
+				},
+				"providers": {
+					"mailchimp": {
+						"name": "Mailchimp",
+						"description": "Import contacts from a Mailchimp audience list"
+					},
+					"stripe": {
+						"name": "Stripe",
+						"description": "Import customers from your Stripe account"
+					},
+					"mandrill": {
+						"name": "Mandrill suppression list",
+						"description": "Carry a Mandrill account's rejection blacklist into your suppression list"
+					}
+				},
+				"select": {
+					"emptyTitle": "No integrations enabled",
+					"emptyBody": "Turn on Mailchimp import or Stripe customer sync to import contacts from a connected service.",
+					"enableLink": "Enable in Settings {chevron} Features",
+					"noteTitle": "Note",
+					"noteBody": "Your API keys are used only for this import and are not stored. We recommend using read-only API keys when available."
+				},
+				"configure": {
+					"mailchimpApiKey": "Mailchimp API Key",
+					"mailchimpApiKeyPlaceholder": "abc123def456-us21",
+					"mailchimpApiKeyHint": "Find your API key in Mailchimp: Account {chevron} Extras {chevron} API keys",
+					"audienceListId": "Audience List ID",
+					"audienceListIdPlaceholder": "abc123def4",
+					"audienceListIdHint": "Find your List ID in Mailchimp: Audience {chevron} Settings {chevron} Audience name and defaults",
+					"carrySuppressions": "Also carry over suppressions",
+					"carrySuppressionsHint": "Unsubscribed members are recorded as opt-outs and cleaned (hard-bounced) addresses are added to your suppression list, so this audience is never re-mailed from Owlat. Carried-over suppressions do not expire.",
+					"mandrillBody": "Imports the rejection blacklist from the Mandrill account configured in this deployment's {apiKeyVar} — the same key the Mandrill send transport uses. Hard bounces, soft bounces and spam complaints are added to your suppression list, {unsubEntry} entries are recorded as opt-outs, and entries that describe your account rather than a recipient are ignored.",
+					"mandrillNote": "No contacts are imported. Carried-over suppressions do not expire — remove an address from the suppression list to resume mailing it.",
+					"stripeSecretKey": "Stripe Secret Key",
+					"stripeSecretKeyPlaceholder": "sk_live_...",
+					"stripeApiKeyHint": "Find your API key in Stripe Dashboard: Developers {chevron} API keys",
+					"restrictedKeyTitle": "Use a restricted key",
+					"restrictedKeyBody": "For security, create a restricted API key with only \"Customers: Read\" permission.",
+					"handleDuplicates": "Handle Duplicates",
+					"skipDuplicates": "Skip duplicates",
+					"updateExisting": "Update existing",
+					"addToTopic": "Add to Topic",
+					"addToTopicHint": "All imported contacts will be added to this topic.",
+					"fieldMapping": "Field Mapping"
+				},
+				"fieldMapping": {
+					"mailchimpEmail": "Email {chevron} Email",
+					"mailchimpFirstName": "FNAME {chevron} First Name",
+					"mailchimpLastName": "LNAME {chevron} Last Name",
+					"stripeEmail": "Customer email {chevron} Email",
+					"stripeName": "Customer name {chevron} First Name, Last Name"
+				},
+				"importing": {
+					"title": "Importing from {provider}...",
+					"starting": "Starting import...",
+					"progressLabel": "Integration import progress",
+					"background": "You can close this dialog — the import will continue in the background."
+				},
+				"progress": {
+					"reviewed": "Reviewed {seen} blacklist entries...",
+					"reviewedOfTotal": "Reviewed {seen} of ~{total} blacklist entries...",
+					"imported": "Imported {processed} contacts...",
+					"importedOfTotal": "Imported {processed} of ~{total}..."
+				},
+				"complete": {
+					"title": "Import Complete!",
+					"failedTitle": "Import Failed",
+					"imported": "Imported",
+					"updated": "Updated",
+					"skipped": "Skipped",
+					"failed": "Failed",
+					"suppressed": "Suppressed",
+					"unsubscribed": "Unsubscribed",
+					"alreadySuppressed": "Already suppressed",
+					"notApplicable": "Not applicable",
+					"errorsTitle": "Errors"
+				},
+				"footer": {
+					"startImport": "Start Import",
+					"cancelImport": "Cancel Import"
+				},
+				"errors": {
+					"importFailed": "Import failed",
+					"mailchimpApiKeyRequired": "Mailchimp API key is required",
+					"mailchimpApiKeyFormat": "Invalid API key format. Expected format: apikey-datacenter (e.g., abc123-us21)",
+					"audienceListIdRequired": "Audience List ID is required",
+					"stripeApiKeyRequired": "Stripe API key is required",
+					"stripeApiKeyFormat": "Invalid Stripe API key. Must start with sk_ (secret key)",
+					"noIntegrationSelected": "No integration selected",
+					"startFailed": "Failed to start import"
+				},
+				"toasts": {
+					"processed": "Successfully processed {count} contact from {provider} | Successfully processed {count} contacts from {provider}",
+					"carriedOver": "Carried over {count} suppression from {provider} | Carried over {count} suppressions from {provider}"
+				}
+			},
+			"relationshipsTab": {
+				"title": "Relationships",
+				"addRelationship": "Add Relationship",
+				"relatedContact": "Related contact",
+				"clearSelected": "Clear selected contact",
+				"searchPlaceholder": "Search contacts by name or email…",
+				"noMatches": "No matching contacts.",
+				"searchHint": "Search for the related contact by name or email.",
+				"relationshipType": "Relationship Type",
+				"confidence": "Confidence",
+				"adding": "Adding...",
+				"emptyTitle": "No relationships found.",
+				"emptyBody": "Add a relationship to map how this contact connects to others.",
+				"unknownContact": "Unknown contact",
+				"confidenceFor": "Confidence for {target}",
+				"confidenceForFallback": "relationship",
+				"saveConfidence": "Save confidence",
+				"editConfidence": "Edit confidence",
+				"removeRelationship": "Remove relationship",
+				"toasts": {
+					"confidenceUpdated": "Confidence updated",
+					"confidenceUpdateFailed": "Failed to update confidence",
+					"added": "Relationship added",
+					"addFailed": "Failed to add relationship",
+					"removed": "Relationship removed",
+					"removeFailed": "Failed to remove relationship"
+				}
+			},
+			"sunsetClockBanner": {
+				"confirmOperation": "Confirm clock",
+				"confirmedToast": "Clock confirmed — the sunset sweep resumes on its next hourly tick",
+				"title": "Automatic sunsetting is paused",
+				"body": "This deployment's clock disagrees with the timestamps it wrote earlier, so nobody is being auto-suppressed for inactivity. Nothing has changed and nothing will change until this clears. Check the server clock (NTP) — and if it is correct (a deployment that was simply paused for a long time looks the same from here), confirm it below to resume the hourly sweep.",
+				"confirming": "Confirming…",
+				"confirm": "Confirm clock"
+			}
+		}
+	}
+}

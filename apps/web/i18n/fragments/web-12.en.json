@@ -1,0 +1,185 @@
+{
+	"components": {
+		"delivery": {
+			"deliverabilitySetupValues": {
+				"fields": {
+					"name": "Name",
+					"type": "Type",
+					"value": "Value",
+					"ttl": "TTL",
+					"domain": "Domain",
+					"mechanisms": "Mechanisms",
+					"setting": "Setting"
+				},
+				"copyLabels": {
+					"name": "name",
+					"type": "type",
+					"value": "value",
+					"ttl": "ttl",
+					"domain": "domain",
+					"mechanisms": "mechanisms",
+					"setting": "setting"
+				},
+				"copyAria": "Copy {field} for {identifier}"
+			},
+			"deliveryMeasurementCoverageCard": {
+				"acknowledgeOperation": "Acknowledge credential rotation",
+				"providers": {
+					"other": "Other"
+				},
+				"noFeedConfigured": "No feed configured; sending remains available.",
+				"feedsConfigured": "{count} feed configured | {count} feeds configured",
+				"title": "Measurement coverage",
+				"summary": "{count} test mailboxes connected · Microsoft feedback {feedback}",
+				"feedbackConnected": "connected",
+				"feedbackNotConnected": "not connected",
+				"measured": "Measured",
+				"detailsLabel": "Measurement details",
+				"testMailboxes": "Test mailboxes",
+				"mailboxCounts": "{connected} connected; {due} need credential rotation.",
+				"microsoftFeedback": "Microsoft sender feedback",
+				"accountsTitle": "Test mailbox accounts",
+				"addMailbox": "Add test mailbox",
+				"credentialsRotated": "Credentials rotated"
+			},
+			"domainDnsGuidance": {
+				"heading": "DNS for {transport}"
+			},
+			"domainTable": {
+				"title": "Sending domains",
+				"subtitle": "Verification, internal feedback, and Google Postmaster signals per domain · {guide}",
+				"setupGuide": "setup guide",
+				"status": {
+					"registering": "Registering",
+					"pending": "Not verified",
+					"verified": "Verified",
+					"failed": "Failed"
+				},
+				"emptyTitle": "No sending domains yet",
+				"emptyDescription": "Add a domain and publish its DNS records to start sending from your own domain.",
+				"addDomain": "Add a domain",
+				"authAllPass": "SPF · DKIM · DMARC ✓",
+				"missingRecords": "Missing {records}",
+				"fix": "Fix",
+				"sentCount": "{count} sent",
+				"window30d": "30d",
+				"bounceLine": "{bounced} bounced · {complaints} complaints",
+				"fblSpamLine": "Owlat FBL spam {rate} · target {lessThan} {target} · hard {hard}",
+				"googleSpam": "Google spam {rate}",
+				"reputationUnavailable": "Domain and IP reputation are unavailable in Google API v2",
+				"googleDataFor": "Google data for {date}",
+				"cleanDayEvidence": "Owlat evidence {days} / {total} clean days"
+			},
+			"independenceTrendChart": {
+				"noSending": "No sending recorded in this window yet.",
+				"summary": "Daily sending over {days} days: {own} messages from your own server.",
+				"summaryWithRelay": "Daily sending over {days} days: {own} messages from your own server and {reference} through the relay.",
+				"emptyNothingSent": "Nothing has been sent yet, so there is no trend to draw. This fills in on its own as mail goes out.",
+				"emptyOneDay": "One day of history so far — a trend needs at least two. This fills in on its own as mail goes out.",
+				"ownServer": "Your server",
+				"relay": "Relay",
+				"day": "Day"
+			},
+			"measurementCellCard": {
+				"ownShare": "Your own server carries {share} of this traffic.",
+				"comparison": "Comparison",
+				"empty": "Nothing has been sent in this cell during the reported window. There is nothing to measure yet, and that is fine.",
+				"tableCaption": "Sending outcomes for {cell} over the reported window",
+				"metric": "Metric",
+				"ownServer": "Your server",
+				"trend": "Trend",
+				"quietRelay": "Your relay carried this cell earlier in the reported window but not recently, so the checks had nothing to compare against and the comparison column is gone. The days it did carry are still plotted below.",
+				"trendSent": "{count} sent",
+				"trendSentWithReference": "{count} sent / {reference}",
+				"improveTitle": "Improve this measurement"
+			},
+			"measurementGateList": {
+				"title": "Checks",
+				"decidedOver": "Decided over {window} — the same window the ramp controller acts on.",
+				"corroboration": "This is a tripwire, not a measurement — it is confirmed against the bounce and deferral checks before anything acts on it."
+			},
+			"migrationImportStep": {
+				"importingContacts": "Importing contacts…",
+				"importingSuppressions": "Importing suppressions…",
+				"runAgain": "Run the carry-over again",
+				"start": "Start the carry-over",
+				"startFailed": "The import could not be started.",
+				"importFailed": "The import failed.",
+				"suppressionStartFailed": "The suppression import could not be started.",
+				"processed": "{count} processed",
+				"flagsOff": "Both integration imports are switched off for this workspace. Turn on {mailchimpFlag} and {mandrillFlag} under {settingsLink} to carry your history across.",
+				"mailchimpFlag": "Mailchimp import",
+				"mandrillFlag": "Mandrill suppression import",
+				"settingsLink": "Settings → Features",
+				"apiKeyLabel": "Mailchimp Marketing API key",
+				"apiKeyPlaceholder": "abc123…-us21",
+				"listIdLabel": "Audience (list) ID",
+				"listIdPlaceholder": "a1b2c3d4e5",
+				"explainer": "Contacts and their Mailchimp unsubscribes import first; Mandrill's reject list follows on its own. Only one import runs at a time, so the second starts when the first finishes. Running this again later is safe — every address is matched on its email, so nothing is duplicated.",
+				"contactsSummary": "Contacts: {imported} imported, {updated} updated, {skipped} skipped.",
+				"carriedOver": "Carried over:",
+				"carriedEntry": "{count} {label}",
+				"nothingToCarry": "Nothing new to carry — the suppression list here already matches.",
+				"done": "History carried over."
+			},
+			"migrationPresetStep": {
+				"applyRouteOperation": "Apply the migration route",
+				"setPaceOperation": "Set the ramp pace",
+				"bulletStreams": "{streams} all move to the measured split ({strategy}) over your own MTA and Mailchimp Transactional.",
+				"bulletStreamsNames": "Transactional, campaign and automation",
+				"bulletFallback": "Mailchimp Transactional becomes the deliverability-fallback relay for each of them.",
+				"bulletPace": "Every stream ramps at the {pace} pace — smaller steps, more clean windows per step. You can change it later on the ramp controls screen.",
+				"bulletPaceName": "conservative",
+				"bulletStart": "Your own MTA starts at {share} of traffic. Nothing about today's delivery changes; Owlat starts measuring both arms on identical instrumentation.",
+				"reapply": "Re-apply the migration preset",
+				"apply": "Apply the migration preset",
+				"applying": "Applying…",
+				"routeWrite": "{stream} route",
+				"paceWrite": "{stream} ramp pace",
+				"appliedEntry": "{write} applied",
+				"stoppedAt": "Stopped at the {write}. Everything listed above is already in place — fix the problem above and apply again; re-applying what landed is harmless."
+			},
+			"mtaStsModeCard": {
+				"updateOperation": "Update MTA-STS mode",
+				"title": "Inbound TLS policy (MTA-STS)",
+				"subtitle": "Let senders require encrypted delivery to your mail server",
+				"loading": "Loading policy…",
+				"modeGroup": "MTA-STS mode",
+				"modes": {
+					"none": "Off",
+					"testing": "Testing",
+					"enforce": "Enforce"
+				},
+				"descriptions": {
+					"none": "No policy is published. Senders deliver mail to you exactly as they do today.",
+					"testing": "A policy is published, but senders only report TLS problems — they never fail delivery. The safe first step while you watch for issues.",
+					"enforce": "Senders must deliver over verified TLS or the message is rejected. Turn this on only once testing looks clean."
+				},
+				"savedToasts": {
+					"none": "MTA-STS turned off — no policy is published.",
+					"testing": "MTA-STS set to testing — senders will report TLS problems without failing delivery.",
+					"enforce": "MTA-STS set to enforce — publish the DNS records so senders require verified TLS."
+				},
+				"dnsRecords": "Add the {policyRecord} and {hostRecord} DNS records on the {domainsLink} so senders can find and trust this policy.",
+				"domainsLink": "Domains page",
+				"enforceWithoutHost": "No inbound mail host is configured, so an enforced policy can't be served yet. Set up receiving first, or switch back to testing.",
+				"adminsOnly": "Only owners and admins can change this."
+			},
+			"postmasterComplianceCard": {
+				"title": "Gmail compliance",
+				"subtitle": "What Google Postmaster Tools reports about your sending domains",
+				"unavailableTitle": "Couldn’t load Gmail compliance",
+				"unavailableBody": "Google’s view of your sending could not be read just now, so this card is showing nothing rather than guessing. Your mail is unaffected — this card only reads.",
+				"notConnectedTitle": "Not connected",
+				"notConnectedBody": "Sending works exactly the same without this. Connecting a free Google Postmaster account adds Gmail's own view of your spam rate and authentication, which raises measurement confidence.",
+				"howToConnect": "How to connect",
+				"allClear": "Google reports no failing checks for your sending domain. | Google reports no failing checks for your sending domains.",
+				"googleDataFor": "Google data for {date}"
+			},
+			"providerRouteSummary": {
+				"ipPool": "IP pool: {pool}",
+				"relayFallback": "Automatic relay fallback: {provider}"
+			}
+		}
+	}
+}

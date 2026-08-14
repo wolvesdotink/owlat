@@ -1,0 +1,124 @@
+{
+	"components": {
+		"agentTasks": {
+			"taskOptions": {
+				"orTypeAnswerPlaceholder": "Oder geben Sie eine Antwort ein…",
+				"typeAnswerPlaceholder": "Geben Sie Ihre Antwort ein…"
+			}
+		},
+		"ai": {
+			"reviseBox": {
+				"toggle": "Überarbeiten…",
+				"instructionPlaceholder": "z. B. neu schreiben, aber höflich ablehnen",
+				"submit": "Überarbeiten",
+				"submitting": "Wird überarbeitet…",
+				"injectionWarning": "Diese Überarbeitung enthält Text, der wie eine eingebettete Anweisung aussieht — prüfen Sie sie vor dem Senden."
+			}
+		},
+		"assistant": {
+			"assistantComposer": {
+				"placeholder": "Fragen Sie den Assistenten alles…",
+				"unavailablePlaceholder": "Der Assistent ist nicht verfügbar",
+				"stop": "Generierung stoppen",
+				"hint": "Enter zum Senden · Umschalt+Enter für einen Zeilenumbruch · der Assistent kann Ihren Workspace durchsuchen und Texte entwerfen"
+			},
+			"assistantMessage": {
+				"assistant": "Assistent",
+				"typing": "Der Assistent schreibt",
+				"genericError": "Der Assistent konnte diese Antwort nicht abschließen.",
+				"stopped": "Gestoppt"
+			},
+			"assistantToolCalls": {
+				"summary": "{count} Tools verwendet",
+				"tools": {
+					"searchKnowledge": "Wissensdatenbank durchsucht",
+					"searchFiles": "Dateien durchsucht",
+					"searchEverything": "Workspace durchsucht",
+					"getCampaignStats": "Kampagnenstatistiken abgerufen",
+					"getEmailStats": "E-Mail-Statistiken abgerufen",
+					"draftEmailReply": "E-Mail-Antwort entworfen",
+					"draftCampaignCopy": "Kampagnentext entworfen"
+				}
+			}
+		},
+		"audience": {
+			"suppressionSunsetControls": {
+				"title": "Automatische Listenbereinigung",
+				"description": "Verschieben Sie stille Kontakte in die Reaktivierung und sperren Sie sie nach einem längeren Zeitraum.",
+				"reengageAfterDays": "Reaktivierung nach Tagen",
+				"suppressAfterDays": "Sperrung nach Tagen",
+				"reengagementTrack": "Reaktivierungspfad",
+				"reengagementEmpty": "Derzeit befinden sich keine Kontakte auf diesem Pfad.",
+				"autoSuppressed": "Automatisch gesperrte Kontakte",
+				"autoSuppressedEmpty": "Es wurden keine Kontakte automatisch gesperrt.",
+				"noEmail": "Keine E-Mail",
+				"exempt": "Ausnehmen",
+				"removeExemption": "Ausnahme entfernen",
+				"restore": "Wiederherstellen",
+				"savePolicyOperation": "Bereinigungsrichtlinie speichern",
+				"setExemptionOperation": "Bereinigungsausnahme ändern",
+				"restoreOperation": "Bereinigten Kontakt wiederherstellen",
+				"policySavedToast": "Bereinigungsrichtlinie gespeichert",
+				"exemptedToast": "Kontakt ausgenommen",
+				"exemptionRemovedToast": "Ausnahme entfernt",
+				"restoredToast": "Kontakt wiederhergestellt und ausgenommen"
+			},
+			"suppressionsImportModal": {
+				"title": "Sperrliste importieren",
+				"steps": {
+					"upload": "Laden Sie eine Adressliste hoch",
+					"preview": "Vor dem Import prüfen",
+					"importing": "Adressen werden importiert...",
+					"complete": "Import abgeschlossen"
+				},
+				"dropzoneTitle": "Datei hier ablegen oder zum Auswählen klicken",
+				"dropzoneHint": "Unterstützt .csv- und .txt-Dateien",
+				"formatTipsTitle": "Hinweise zum Dateiformat",
+				"formatTips": {
+					"perLine": "Eine E-Mail-Adresse pro Zeile oder in der ersten Spalte einer CSV-Datei",
+					"headerRow": "Eine führende Kopfzeile „email“ wird ignoriert",
+					"skipped": "Ungültige und doppelte Adressen werden automatisch übersprungen",
+					"manual": "Importierte Adressen werden als manuelle Sperreinträge hinzugefügt"
+				},
+				"validAddresses": "Gültige Adressen",
+				"invalid": "Ungültig",
+				"duplicates": "Duplikate",
+				"previewSummary": "Vorschau der ersten {shown} Adressen (insgesamt {total})",
+				"skippedInvalidFormat": "Übersprungen (ungültiges Format)",
+				"andMore": "...und {count} weitere",
+				"completeTitle": "Import abgeschlossen!",
+				"added": "Hinzugefügt",
+				"skipped": "Übersprungen",
+				"errorsHeading": "Fehler ({count})",
+				"importAddresses": "{count} Adressen importieren"
+			}
+		},
+		"automations": {
+			"stepEditorPanel": {
+				"title": "Schritteinstellungen",
+				"save": "Änderungen speichern",
+				"delete": "Schritt löschen",
+				"emptyTitle": "Schritt auswählen",
+				"emptyBody": "Klicken Sie im Workflow auf einen Schritt, um dessen Einstellungen zu konfigurieren."
+			},
+			"steps": {
+				"condition": {
+					"editor": {
+						"branchPaths": "Verzweigungspfade",
+						"ifTrue": "Wenn die Bedingung WAHR ist",
+						"ifFalse": "Wenn die Bedingung FALSCH ist",
+						"continueToNextStep": "Mit nächstem Schritt fortfahren",
+						"goToStep": "Zu Schritt {index} springen: {label}",
+						"branchHint": "Wählen Sie, wohin der Workflow abhängig vom Ergebnis der Bedingung verzweigt.",
+						"previewTitle": "Vorschau der Bedingung",
+						"stepTypes": {
+							"email": "E-Mail senden",
+							"delay": "Warten/Verzögerung",
+							"condition": "Bedingung"
+						}
+					}
+				}
+			}
+		}
+	}
+}

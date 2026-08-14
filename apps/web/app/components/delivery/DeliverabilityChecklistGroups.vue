@@ -21,6 +21,7 @@ const emit = defineEmits<{
 	verify: [item: DeliverabilityChecklistItem];
 }>();
 
+const { t } = useI18n();
 const { copy, isCopied } = useCopyToClipboard();
 
 const groupIcon = {
@@ -66,7 +67,10 @@ const groupIcon = {
 							<p class="mt-0.5 truncate text-xs text-text-tertiary">
 								{{ item.protocol }}
 								<span v-if="item.scope.kind === 'domain'"> · {{ item.scope.domain }}</span>
-								<span v-else> · This server</span>
+								<span v-else>
+									·
+									{{ t('components.delivery.deliverabilityChecklistGroups.thisServer') }}</span
+								>
 								<span v-if="item.lastCheckedAt">
 									· {{ formatVerificationAge(item.lastCheckedAt) }}</span
 								>
@@ -76,7 +80,7 @@ const groupIcon = {
 							class="hidden rounded-full border px-2 py-0.5 text-xs font-medium sm:inline-flex"
 							:class="DELIVERABILITY_STATUS_PRESENTATION[item.status].className"
 						>
-							{{ DELIVERABILITY_STATUS_PRESENTATION[item.status].label }}
+							{{ t(DELIVERABILITY_STATUS_PRESENTATION[item.status].label) }}
 						</span>
 						<Icon
 							name="lucide:chevron-down"
@@ -98,7 +102,11 @@ const groupIcon = {
 								v-if="item.observed.length"
 								class="mt-2 break-words font-mono text-xs text-text-tertiary"
 							>
-								Observed: {{ item.observed.join(' · ') }}
+								{{
+									t('components.delivery.deliverabilityChecklistGroups.observed', {
+										values: item.observed.join(' · '),
+									})
+								}}
 							</p>
 						</div>
 
@@ -129,7 +137,7 @@ const groupIcon = {
 										class="h-3.5 w-3.5"
 									/>
 								</template>
-								Verify now
+								{{ t('components.delivery.deliverabilityChecklistGroups.verifyNow') }}
 							</UiButton>
 							<p v-if="item.lockedReason" class="text-xs text-text-secondary">
 								{{ item.lockedReason }}
@@ -142,8 +150,8 @@ const groupIcon = {
 								>
 									{{
 										isCopied(`${itemKey(item.scope, item.id)}:diagnostic`)
-											? 'Diagnostic copied'
-											: 'Copy diagnostic'
+											? t('components.delivery.deliverabilityChecklistGroups.diagnosticCopied')
+											: t('components.delivery.deliverabilityChecklistGroups.copyDiagnostic')
 									}}
 								</button>
 								<a
@@ -152,7 +160,7 @@ const groupIcon = {
 									rel="noopener noreferrer"
 									class="text-xs text-brand hover:underline"
 								>
-									How this works
+									{{ t('components.delivery.deliverabilityChecklistGroups.howThisWorks') }}
 								</a>
 							</div>
 						</div>

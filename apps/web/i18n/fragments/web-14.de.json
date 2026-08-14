@@ -1,0 +1,146 @@
+{
+	"components": {
+		"delivery": {
+			"testSendCard": {
+				"operationLabel": "Test-E-Mail senden",
+				"title": "Test-E-Mail senden",
+				"subtitle": "Verfolgen Sie mit einer echten Nachricht, ob alles bis zur Annahme durch den Anbieter bereit ist",
+				"recipientLabel": "Empfänger",
+				"recipientPlaceholder": "sie{'@'}beispiel.de",
+				"sendButton": "Test-E-Mail senden",
+				"sending": "Wird gesendet…",
+				"invalidRecipient": "Geben Sie eine gültige E-Mail-Adresse des Empfängers ein.",
+				"acceptedToast": "Test-E-Mail für {email} angenommen",
+				"sendFailed": "Der Testversand ist fehlgeschlagen.",
+				"receipt": "{provider} hat die Nachricht {messageId} in {latencyMs} ms nach {attempts} angenommen. Die Zustellung an den Empfänger ist damit {not} bestätigt; prüfen Sie sie im Postfach des Empfängers oder in den Rückmeldungen des Anbieters.",
+				"receiptAttempts": "1 Versuch | {count} Versuchen",
+				"receiptNot": "nicht",
+				"needsProvider": "Richten Sie einen Versandanbieter ein, bevor Sie einen Test senden.",
+				"lastSuccess": "Letzter erfolgreicher Test: {timestamp}"
+			},
+			"tlsReportCard": {
+				"eyebrow": "Eingehende TLS-Berichte",
+				"title": "Wie Partner uns über TLS erreichen",
+				"subtitle": "Tägliche Berichte anderer Mailserver darüber, wie eingehende Mail verschlüsselt wurde.",
+				"loading": "TLS-Berichte werden geladen…",
+				"error": "TLS-Berichte konnten gerade nicht geladen werden. Laden Sie die Seite neu, um es erneut zu versuchen.",
+				"empty": "Noch keine TLS-Berichte. Sobald Sie eine Berichtsadresse veröffentlichen, senden Partner diese täglich — dann erscheinen sie hier.",
+				"encryptedShare": "{share} verschlüsselt",
+				"volumeSummary": "{sessions} Verbindungen · {reports} Berichte · letzte {days} Tage",
+				"byOrganization": "Nach berichtender Organisation",
+				"whatWentWrong": "Was schiefgelaufen ist"
+			},
+			"transportCard": {
+				"loading": "Es wird geprüft, wie diese Instanz sendet…",
+				"error": "Der Versandtransport konnte gerade nicht geladen werden. Laden Sie die Seite neu, um es erneut zu versuchen.",
+				"eyebrow": "Versandtransport",
+				"lastChecked": "Geprüft {when}",
+				"checks": {
+					"queueStore": "Warteschlangenspeicher",
+					"deliveryWorker": "Versand-Worker",
+					"dnsResolver": "DNS-Resolver",
+					"outboundSmtp": "Ausgehendes SMTP"
+				},
+				"notConfigured": "Es ist noch kein nutzbarer Transport eingerichtet, daher können Kampagnen und Antworten nicht hinausgehen. Wählen Sie einen Transport, um mit dem Senden zu beginnen.",
+				"advancedRoutingActive": "Das erweiterte Routing überschreibt den Instanz-Transport für eine oder mehrere Nachrichtenarten.",
+				"changeTransport": "Transport wechseln",
+				"setUpSending": "Versand einrichten",
+				"advancedRouting": "Erweitertes Routing"
+			},
+			"transportConnectionWizard": {
+				"optionalSuffix": "(optional)",
+				"stepsLabel": "Verbindungsschritte",
+				"position": "Schritt {index} von {total}: {title}",
+				"readingDomain": "Die Versanddomain wird gelesen…",
+				"noSendingDomain": "Es wurde keine verifizierte Versanddomain mit einer eigenen MTA-Signaturidentität gefunden, daher gibt es noch nichts zu vergleichen. Verifizieren Sie zuerst eine Versanddomain.",
+				"checkingDns": "DNS wird geprüft…",
+				"checkAlignment": "Ausrichtung prüfen",
+				"checkFailed": "Die Prüfung konnte nicht ausgeführt werden. Es hat sich nichts geändert — versuchen Sie es erneut.",
+				"readingReturnPath": "Die erfasste Return-Path-Fähigkeit wird gelesen…"
+			},
+			"transportCredentialFields": {
+				"providerPreset": "Anbieter-Voreinstellung",
+				"port": "Port",
+				"implicitTls": "Implizites TLS (Port 465). Für STARTTLS auf {port} deaktiviert lassen."
+			},
+			"transportCredentialsStep": {
+				"providerLegend": "Anbieter",
+				"sealedNote": "Zugangsdaten werden auf dem Server versiegelt. Sie werden nie wieder angezeigt und nie an diesen Bildschirm zurückgegeben.",
+				"consequence": "Mit dem Speichern wird dieser Anbieter zu dem Transport, über den Owlat sendet. Ihr eigener Server läuft weiter und bleibt unter „Anbieter wechseln“ einen Klick entfernt, ist aber nicht mehr der Standardabsender, bis Sie zurückwechseln.",
+				"noPreApplyCheck": "Dieser Anbieter kann vor dem Anwenden nicht geprüft werden — der Live-Testversand im nächsten Schritt bestätigt ihn.",
+				"testFailedTitle": "Test fehlgeschlagen",
+				"applyFailedTitle": "Konnte nicht angewendet werden",
+				"restartRequiredTitle": "Neustart erforderlich",
+				"applying": "Wird angewendet…",
+				"saveCredentials": "Zugangsdaten speichern",
+				"applyFailed": "Der Transport konnte nicht angewendet werden. Versuchen Sie es erneut."
+			},
+			"transportEditor": {
+				"title": "Anbieter wechseln",
+				"subtitle": "Transport wechseln oder Zugangsdaten aktualisieren — hier getestet und angewendet, ganz ohne CLI",
+				"editTransport": "Transport bearbeiten",
+				"providerLegend": "Versandanbieter",
+				"credentialsNeverShown": "Vorhandene Zugangsdaten werden nie angezeigt. Geben Sie sie erneut ein, um den Transport zu ändern.",
+				"requireVerifiedWarning": "„Immer verschlüsseln und verifizieren“ kann dazu führen, dass Mail an Empfänger zurückkommt, deren Mailserver ein falsch konfiguriertes oder selbstsigniertes Zertifikat haben. Nutzen Sie diese Option nur, wenn Sie wissen, dass Ihre Empfänger gültige Zertifikate pflegen.",
+				"fromIdentity": "Absenderidentität",
+				"optionalSuffix": "(optional)",
+				"fromIdentityHint": "Leer lassen, um die aktuelle Standard-Absenderadresse beizubehalten.",
+				"fromEmailLabel": "Standard-Absenderadresse",
+				"fromEmailPlaceholder": "noreply{'@'}ihredomain.de",
+				"fromNameLabel": "Absendername",
+				"fromNamePlaceholder": "Owlat",
+				"credentialsVerifiedTitle": "Zugangsdaten bestätigt",
+				"testFailedTitle": "Test fehlgeschlagen",
+				"noPreApplyCheck": "Dieser Transport kann vor dem Anwenden nicht getestet werden — wenden Sie ihn an und nutzen Sie dann unten „Test-E-Mail senden“, um die Zustellung zu bestätigen.",
+				"applyFailedTitle": "Konnte nicht angewendet werden",
+				"restartRequiredTitle": "Neustart erforderlich",
+				"testing": "Wird getestet…",
+				"testCredentials": "Zugangsdaten testen",
+				"applying": "Wird angewendet…",
+				"applyTransport": "Transport anwenden",
+				"disconnectDialogTitle": "Relay trennen?",
+				"disconnectConfirmLabel": "Trennen und zu meinem eigenen MTA wechseln",
+				"activeTransport": "Der aktive Transport ist {provider}. Wählen Sie einen anderen Anbieter oder erneuern Sie dessen Zugangsdaten — die Änderung wird hier getestet und direkt angewendet.",
+				"notSet": "nicht gesetzt",
+				"guidedVersionNote": "„E-Mail-Anbieter verbinden“ unten ist die geführte Variante davon: dieselbe Änderung, Schritt für Schritt mit einem Live-Testversand und DNS-Ausrichtungsprüfungen.",
+				"probeFailed": "Der Anbieter konnte nicht erreicht werden. Versuchen Sie es erneut.",
+				"applyFailed": "Der Transport konnte nicht angewendet werden. Versuchen Sie es erneut."
+			},
+			"trustedForwardersCard": {
+				"operationLabel": "Vertrauenswürdige Weiterleiter aktualisieren",
+				"title": "Vertrauenswürdige Weiterleiter",
+				"subtitle": "Halten Sie Mailinglisten- und weitergeleitete Mail aus dem Spam-Ordner, wenn der Weiterleiter dafür bürgt",
+				"loading": "Weiterleiter werden geladen…",
+				"explainer": "Mailinglisten und Weiterleitungsdienste versenden Nachrichten erneut über ihre eigenen Server, wodurch diese normalerweise die Absenderprüfungen nicht bestehen und im Spam landen. Ein Weiterleiter auf dieser Liste ist einer, dem Sie zutrauen zu bestätigen, dass eine Nachricht wirklich von ihrem ursprünglichen Absender stammt — solche Nachrichten bleiben in Ihrem Posteingang und tragen den Hinweis \"über Weiterleiter verifiziert\".",
+				"removeDomain": "{domain} entfernen",
+				"emptyState": "Es sind keine Weiterleiter als vertrauenswürdig eingestuft, daher wird weitergeleitete Mail nie gerettet — sie folgt den normalen Absenderprüfungen.",
+				"addPlaceholder": "lists.beispiel.de",
+				"addLabel": "Domain eines vertrauenswürdigen Weiterleiters hinzufügen",
+				"resetToDefaults": "Auf Standardwerte zurücksetzen",
+				"adminsOnly": "Nur Inhaber und Administratoren können dies ändern.",
+				"clearedToast": "Vertrauenswürdige Weiterleiter geleert — weitergeleitete Mail wird nicht mehr gerettet.",
+				"savedToast": "Vertrauenswürdige Weiterleiter gespeichert."
+			}
+		},
+		"desktop": {
+			"desktopTitlebar": {
+				"alphaBadge": "Alpha",
+				"searchPill": "Suchen…",
+				"unreadAriaLabel": "{count} warten in Postbox auf Sie",
+				"unreadTitle": "{count} warten auf Sie",
+				"openPostbox": "Postbox-Posteingang öffnen",
+				"postbox": "Postbox",
+				"minimize": "Minimieren",
+				"maximize": "Maximieren"
+			},
+			"dnsRecordList": {
+				"copyValue": "Wert für {name} kopieren",
+				"placeholderTitle": "Hinterlegen Sie die öffentliche IP des Servers, um den Wert für {name} zu kopieren"
+			},
+			"hostnameOverrides": {
+				"toggle": "Erweitert: Hostnamen anpassen",
+				"intro": "Jedes Label wird Ihrer Domain vorangestellt. Ändern Sie eines nur, wenn der Standard mit einem bestehenden Eintrag kollidiert — jedes Label muss eindeutig sein."
+			}
+		}
+	}
+}

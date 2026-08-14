@@ -21,6 +21,8 @@
  */
 import { api } from '@owlat/api';
 
+const { t } = useI18n();
+
 const { canManageContacts } = usePermissions();
 const { showToast: showNotification } = useToast();
 
@@ -31,13 +33,13 @@ const isSweepStalled = computed(() => sunsetPolicies.value?.clock.isSweepStalled
 
 const { run: confirmSunsetClock, isLoading: isConfirming } = useBackendOperation(
 	api.contacts.sunset.confirmSunsetClock,
-	{ label: 'Confirm clock' }
+	{ label: () => t('components.contacts.sunsetClockBanner.confirmOperation') }
 );
 
 const handleConfirmClock = async () => {
 	const confirmedAt = await confirmSunsetClock({});
 	if (confirmedAt === undefined) return;
-	showNotification('Clock confirmed — the sunset sweep resumes on its next hourly tick');
+	showNotification(t('components.contacts.sunsetClockBanner.confirmedToast'));
 };
 </script>
 
@@ -47,13 +49,11 @@ const handleConfirmClock = async () => {
 		<div class="flex gap-4">
 			<UiIconBox icon="lucide:clock" size="sm" variant="warning" rounded="lg" />
 			<div class="flex-1">
-				<h3 class="font-medium text-text-primary mb-1">Automatic sunsetting is paused</h3>
+				<h3 class="font-medium text-text-primary mb-1">
+					{{ t('components.contacts.sunsetClockBanner.title') }}
+				</h3>
 				<p class="text-sm text-text-secondary">
-					This deployment's clock disagrees with the timestamps it wrote earlier, so nobody is being
-					auto-suppressed for inactivity. Nothing has changed and nothing will change until this
-					clears. Check the server clock (NTP) — and if it is correct (a deployment that was simply
-					paused for a long time looks the same from here), confirm it below to resume the hourly
-					sweep.
+					{{ t('components.contacts.sunsetClockBanner.body') }}
 				</p>
 				<UiButton
 					variant="secondary"
@@ -64,7 +64,11 @@ const handleConfirmClock = async () => {
 					@click="handleConfirmClock"
 				>
 					<Icon name="lucide:check" class="w-4 h-4" />
-					{{ isConfirming ? 'Confirming…' : 'Confirm clock' }}
+					{{
+						isConfirming
+							? t('components.contacts.sunsetClockBanner.confirming')
+							: t('components.contacts.sunsetClockBanner.confirm')
+					}}
 				</UiButton>
 			</div>
 		</div>

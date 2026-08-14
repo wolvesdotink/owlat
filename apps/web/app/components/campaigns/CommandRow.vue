@@ -14,18 +14,34 @@ const emit = defineEmits<{
 
 const dropdownOpen = ref(false);
 
+const { t, locale } = useI18n();
+
+/**
+ * The row model is decorated by the page (and by `~/utils/campaignAttention`),
+ * both of which are module scope: their labels arrive as catalog keys, and this
+ * is the render boundary that turns them into words.
+ */
+type RowMessage = string | { key: string; params?: Record<string, unknown> };
+const message = (value: RowMessage): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 // Right-click menu — the same verbs as the row's overflow dropdown + primary
 // action (one action source, two entry points; Delete is withheld mid-send,
 // mirroring the dropdown).
 const contextItems = computed<ContextMenuItem[]>(() => {
 	const items: ContextMenuItem[] = [
-		{ id: 'open', label: 'Open', icon: 'lucide:arrow-right', run: () => emit('open') },
-		{ id: 'duplicate', label: 'Duplicate', icon: 'lucide:copy', run: () => emit('duplicate') },
+		{ id: 'open', label: t('common.open'), icon: 'lucide:arrow-right', run: () => emit('open') },
+		{
+			id: 'duplicate',
+			label: t('common.duplicate'),
+			icon: 'lucide:copy',
+			run: () => emit('duplicate'),
+		},
 	];
 	if (props.row.campaign.status !== 'sending') {
 		items.push({
 			id: 'delete',
-			label: 'Delete',
+			label: t('common.delete'),
 			icon: 'lucide:trash-2',
 			danger: true,
 			separatorBefore: true,
@@ -39,30 +55,36 @@ const contextItems = computed<ContextMenuItem[]>(() => {
 const metaLine = computed(() => {
 	const row = props.row;
 	const c = row.campaign;
+	const meta = 'components.campaigns.commandRow.meta';
 	if (row.reason === 'ab_decision') {
 		const a = row.variantA;
 		const b = row.variantB;
 		if (a != null && b != null) {
 			const diff = Math.abs(a - b);
 			const leader = b >= a ? 'B' : 'A';
-			if (diff >= 0.1) return `Variant ${leader} leads by ${diff.toFixed(1)} pts`;
-			return 'Variants are running even';
+			if (diff >= 0.1) return t(`${meta}.variantLeads`, { variant: leader, points: diff.toFixed(1) });
+			return t(`${meta}.variantsEven`);
 		}
-		return 'A/B test in progress';
+		return t(`${meta}.abInProgress`);
 	}
 	if (c.status === 'scheduled') {
-		return c.scheduledAt ? `Scheduled for ${formatDateTime(c.scheduledAt)}` : 'Scheduled';
+		return c.scheduledAt
+			? t(`${meta}.scheduledFor`, { at: formatDateTime(c.scheduledAt) })
+			: t(`${meta}.scheduled`);
 	}
-	if (c.status === 'sending') return 'Sending now';
-	if (c.status === 'cancelled') return 'Send was stopped';
+	if (c.status === 'sending') return t(`${meta}.sendingNow`);
+	if (c.status === 'cancelled') return t(`${meta}.sendStopped`);
 	if (c.status === 'sent') {
 		const recipients = c.statsDelivered ?? c.statsSent ?? 0;
-		return `Sent ${formatDate(c.sentAt)} · ${recipients.toLocaleString()} recipients`;
+		return t(`${meta}.sent`, {
+			at: formatDate(c.sentAt),
+			count: recipients.toLocaleString(locale.value),
+		});
 	}
 	if (c.status === 'pending_review') {
-		return `Awaiting review · updated ${formatCompactRelativeTime(c.updatedAt)}`;
+		return t(`${meta}.awaitingReview`, { updated: formatCompactRelativeTime(c.updatedAt) });
 	}
-	return `Draft · updated ${formatCompactRelativeTime(c.updatedAt)}`;
+	return t(`${meta}.draft`, { updated: formatCompactRelativeTime(c.updatedAt) });
 });
 </script>
 
@@ -73,7 +95,9 @@ const metaLine = computed(() => {
 				class="group flex items-center gap-4 px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast) ease-spring cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
 				tabindex="0"
 				role="link"
-				:aria-label="`Open ${row.campaign.name}`"
+				:aria-label="
+					t('components.campaigns.commandRow.openCampaign', { name: row.campaign.name })
+				"
 				@click="emit('open')"
 				@keydown.enter="emit('open')"
 				@keydown.space.prevent="emit('open')"
@@ -93,10 +117,10 @@ const metaLine = computed(() => {
 				<span
 					v-if="row.campaign.isABTest"
 					class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium text-text-secondary bg-bg-elevated shrink-0"
-					title="A/B test"
+					:title="t('components.campaigns.commandRow.abTest')"
 				>
 					<Icon name="lucide:split" class="w-3 h-3" />
-					A/B
+					{{ t('components.campaigns.commandRow.abBadge') }}
 				</span>
 			</div>
 
@@ -107,7 +131,7 @@ const metaLine = computed(() => {
 					class="inline-flex items-center gap-1.5 text-xs text-text-secondary shrink-0"
 				>
 					<span :class="['w-1.5 h-1.5 rounded-full', row.reasonChip.dot]" />
-					{{ row.reasonChip.label }}
+					{{ message(row.reasonChip.label) }}
 				</span>
 				<span
 					v-else
@@ -120,7 +144,7 @@ const metaLine = computed(() => {
 						:name="row.statusBadge.icon"
 						:class="['w-3 h-3', row.campaign.status === 'sending' ? 'animate-spin' : '']"
 					/>
-					{{ row.statusBadge.label }}
+					{{ message(row.statusBadge.label) }}
 				</span>
 				<span class="text-xs text-text-tertiary truncate">{{ metaLine }}</span>
 			</div>
@@ -130,7 +154,9 @@ const metaLine = computed(() => {
 		<UiSparkline
 			v-if="row.spark.length >= 2"
 			:data="row.spark"
-			:ariaLabel="`Variant open-rate trend for ${row.campaign.name}`"
+			:ariaLabel="
+				t('components.campaigns.commandRow.sparklineLabel', { name: row.campaign.name })
+			"
 			class="hidden md:inline-block shrink-0"
 		/>
 
@@ -139,13 +165,17 @@ const metaLine = computed(() => {
 				<p class="text-sm font-semibold tabular-nums text-text-primary">
 					{{ row.openRate != null ? `${row.openRate.toFixed(1)}%` : '—' }}
 				</p>
-				<p class="text-[11px] text-text-tertiary">Open</p>
+				<p class="text-[11px] text-text-tertiary">
+					{{ t('components.campaigns.commandRow.openRate') }}
+				</p>
 			</div>
 			<div class="text-right w-16">
 				<p class="text-sm font-semibold tabular-nums text-text-primary">
 					{{ row.clickRate != null ? `${row.clickRate.toFixed(1)}%` : '—' }}
 				</p>
-				<p class="text-[11px] text-text-tertiary">Click</p>
+				<p class="text-[11px] text-text-tertiary">
+					{{ t('components.campaigns.commandRow.clickRate') }}
+				</p>
 			</div>
 		</div>
 
@@ -157,7 +187,7 @@ const metaLine = computed(() => {
 			@keydown.space.stop
 		>
 			<UiButton v-if="row.actionLabel" size="sm" variant="secondary" @click="emit('runAction')">
-				{{ row.actionLabel }}
+				{{ message(row.actionLabel) }}
 			</UiButton>
 			<!-- Completed A/B tests keep a discoverable path to their results -->
 			<button
@@ -165,13 +195,13 @@ const metaLine = computed(() => {
 				class="text-xs font-medium text-brand hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand rounded px-1 py-1"
 				@click="emit('abResults')"
 			>
-				A/B results
+				{{ t('components.campaigns.commandRow.abResults') }}
 			</button>
 			<button
 				v-else
 				class="ui-hover-reveal p-2 rounded-lg text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
-				title="View campaign"
-				aria-label="View campaign"
+				:title="t('components.campaigns.commandRow.viewCampaign')"
+				:aria-label="t('components.campaigns.commandRow.viewCampaign')"
 				@click="emit('open')"
 			>
 				<Icon name="lucide:arrow-right" class="w-4 h-4" />
@@ -182,13 +212,13 @@ const metaLine = computed(() => {
 				<template #trigger>
 					<button
 						class="ui-hover-reveal p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
-						aria-label="More actions"
+						:aria-label="t('components.campaigns.commandRow.moreActions')"
 					>
 						<Icon name="lucide:more-vertical" class="w-4 h-4" />
 					</button>
 				</template>
 				<UiDropdownMenuItem icon="lucide:copy" @click="emit('duplicate')">
-					Duplicate
+					{{ t('common.duplicate') }}
 				</UiDropdownMenuItem>
 				<UiDropdownDivider v-if="row.campaign.status !== 'sending'" />
 				<UiDropdownMenuItem
@@ -197,7 +227,7 @@ const metaLine = computed(() => {
 					danger
 					@click="emit('delete')"
 				>
-					Delete
+					{{ t('common.delete') }}
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
 			</div>

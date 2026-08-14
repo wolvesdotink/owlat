@@ -44,6 +44,8 @@ const emit = defineEmits<{
 	(e: 'promote', payload: ComposerPromotePayload): void;
 }>();
 
+const { t, locale } = useI18n();
+
 const {
 	draftId: activeDraftId,
 	toAddresses,
@@ -149,7 +151,11 @@ function onApplyReplyAll() {
 	ccAddresses.value = converted.cc;
 }
 
-const composerName = ref(`Postbox compose ${new Date().toLocaleString()}`);
+const composerName = ref(
+	t('components.postbox.postboxComposer.composerName', {
+		timestamp: new Date().toLocaleString(locale.value),
+	})
+);
 const backgroundColor = ref('#ffffff');
 
 const builderConfig = computed(() => ({
@@ -194,7 +200,7 @@ async function handleSend(opts?: SendOptions) {
 	// than losing the not-yet-committed attachment. Keep this above the canSend
 	// short-circuit so the toast still fires when uploading is the sole blocker.
 	if (isUploading.value) {
-		showToast('Waiting for attachments to finish uploading…');
+		showToast(t('components.postbox.postboxComposer.uploadingToast'));
 		return;
 	}
 	if (!canSend.value || sending.value) return;
@@ -205,7 +211,7 @@ async function handleSend(opts?: SendOptions) {
 	if (
 		attachments.value.length === 0 &&
 		mentionsAttachment(subject.value, bodyHtml.value) &&
-		!window.confirm('Your message mentions an attachment, but none is attached. Send anyway?')
+		!window.confirm(t('components.postbox.postboxComposer.attachmentMentionConfirm'))
 	) {
 		return;
 	}
@@ -272,9 +278,11 @@ const scheduledLabel = computed(() =>
 );
 
 const lastSavedLabel = computed(() => {
-	if (isSaving.value) return 'Saving…';
+	if (isSaving.value) return t('common.saving');
 	if (!lastSavedAt.value) return '';
-	return `Saved ${new Date(lastSavedAt.value).toLocaleTimeString()}`;
+	return t('components.postbox.postboxComposer.savedAt', {
+		time: new Date(lastSavedAt.value).toLocaleTimeString(locale.value),
+	});
 });
 
 // Scoped OS-level file drops and clipboard attachment pastes.
@@ -312,21 +320,23 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			v-if="dragActive"
 			class="absolute inset-0 z-10 flex items-center justify-center bg-brand/10 border-2 border-dashed border-brand rounded pointer-events-none"
 		>
-			<span class="text-sm font-medium text-brand"> Drop to attach · drop in text to embed </span>
+			<span class="text-sm font-medium text-brand">
+				{{ t('components.postbox.postboxComposer.dropHint') }}
+			</span>
 		</div>
 		<header
 			class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle"
 		>
 			<span class="text-sm font-semibold">
-				{{ subject || 'New message' }}
+				{{ subject || t('components.postbox.postboxComposer.newMessage') }}
 			</span>
 			<div class="flex items-center gap-1">
 				<button
 					v-if="inline"
 					type="button"
 					class="p-1 hover:bg-bg-elevated rounded"
-					title="Open in popup"
-					aria-label="Open in popup"
+					:title="t('components.postbox.postboxComposer.openInPopup')"
+					:aria-label="t('components.postbox.postboxComposer.openInPopup')"
 					:disabled="promoting"
 					@click="handlePromote"
 				>
@@ -336,7 +346,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 					v-else
 					type="button"
 					class="p-1 hover:bg-bg-elevated rounded"
-					title="Minimize"
+					:title="t('components.postbox.postboxComposer.minimize')"
 					@click="emit('minimize')"
 				>
 					<Icon name="lucide:minus" class="w-4 h-4" />
@@ -344,7 +354,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				<button
 					type="button"
 					class="p-1 hover:bg-bg-elevated rounded"
-					title="Discard"
+					:title="t('common.discard')"
 					@click="handleDiscard"
 				>
 					<Icon name="lucide:x" class="w-4 h-4" />
@@ -381,7 +391,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		>
 			<span class="inline-flex items-center gap-1.5 text-text-secondary">
 				<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
-				Scheduled for {{ scheduledLabel }}
+				{{
+					t('components.postbox.postboxComposer.scheduledFor', { datetime: scheduledLabel })
+				}}
 			</span>
 			<UiButton
 				variant="ghost"
@@ -391,7 +403,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				@click="handleUnschedule"
 			>
 				<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin" />
-				Unschedule to edit
+				{{ t('components.postbox.postboxComposer.unschedule') }}
 			</UiButton>
 		</div>
 
@@ -400,7 +412,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				v-if="composerMode === 'simple'"
 				ref="basicEditor"
 				v-model="bodyHtml"
-				placeholder="Write your message…"
+				:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"
 				:suggestions-enabled="ghostSuggestionsEnabled"
 				:ghost-thread-context="subject"
 				:rewrite-enabled="aiRewriteEnabled"

@@ -6,6 +6,8 @@ const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 }>();
 
+const { t } = useI18n();
+
 const stack = usePostboxComposerStack();
 
 const { data, isLoading } = useConvexQuery(api.mail.drafts.listForMailbox, () => ({
@@ -33,7 +35,9 @@ function preview(bodyHtml: string | undefined): string {
 	</div>
 	<div v-else-if="drafts.length === 0" class="p-12 text-center">
 		<Icon name="lucide:file-edit" class="w-10 h-10 mx-auto text-text-tertiary" />
-		<p class="text-sm text-text-secondary mt-3">No drafts</p>
+		<p class="text-sm text-text-secondary mt-3">
+			{{ t('components.postbox.postboxDraftList.empty') }}
+		</p>
 	</div>
 	<ul v-else class="divide-y divide-border-subtle">
 		<li v-for="d in drafts" :key="d._id">
@@ -44,7 +48,11 @@ function preview(bodyHtml: string | undefined): string {
 			>
 				<div class="flex items-baseline justify-between gap-3">
 					<span class="truncate text-sm font-medium text-text-primary">
-						{{ d.toAddresses.length > 0 ? d.toAddresses.join(', ') : 'No recipient' }}
+						{{
+							d.toAddresses.length > 0
+								? d.toAddresses.join(', ')
+								: t('components.postbox.postboxDraftList.noRecipient')
+						}}
 					</span>
 					<span class="text-xs text-text-tertiary flex-shrink-0">
 						{{ formatThreadTimestamp(d.lastEditedAt) }}
@@ -55,10 +63,14 @@ function preview(bodyHtml: string | undefined): string {
 					class="inline-flex items-center gap-1 mt-1 text-xs text-brand"
 				>
 					<Icon name="lucide:clock" class="w-3 h-3" />
-					Scheduled {{ formatDateTime(d.scheduledSendAt) }}
+					{{
+						t('components.postbox.postboxDraftList.scheduled', {
+							when: formatDateTime(d.scheduledSendAt),
+						})
+					}}
 				</p>
 				<p class="truncate text-sm text-text-secondary mt-0.5">
-					{{ d.subject || '(no subject)' }}
+					{{ d.subject || t('components.postbox.postboxDraftList.noSubject') }}
 				</p>
 				<p class="text-xs text-text-tertiary truncate mt-0.5">{{ preview(d.bodyHtml) }}</p>
 			</button>

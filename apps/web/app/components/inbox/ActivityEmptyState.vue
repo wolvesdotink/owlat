@@ -16,6 +16,8 @@ defineProps<{
 	/** Whether the current member can manage channels (owner/admin). */
 	canManage: boolean;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -28,10 +30,14 @@ defineProps<{
 			class="mb-4"
 		/>
 		<p class="text-text-primary font-medium">
-			{{ filterLabel ? `No ${filterLabel} messages yet` : 'No messages yet' }}
+			{{
+				filterLabel
+					? t('components.inbox.activityEmptyState.emptyForChannel', { channel: filterLabel })
+					: t('components.inbox.activityEmptyState.empty')
+			}}
 		</p>
 		<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-			Cross-channel messages appear here once a channel is connected.
+			{{ t('components.inbox.activityEmptyState.description') }}
 		</p>
 		<UiButton
 			v-if="canManage"
@@ -40,7 +46,7 @@ defineProps<{
 			data-testid="connect-channel-cta"
 		>
 			<Icon name="lucide:plus" class="w-4 h-4" />
-			Connect a channel
+			{{ t('components.inbox.activityEmptyState.connectChannel') }}
 		</UiButton>
 	</div>
 </template>

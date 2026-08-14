@@ -1,0 +1,111 @@
+{
+	"components": {
+		"agent": {
+			"circuitBreakerStatus": {
+				"breakers": {
+					"llmFailure": "LLM Failure",
+					"confidenceDegradation": "Confidence Degradation",
+					"rejectionSpike": "Rejection Spike"
+				},
+				"states": {
+					"healthy": "Healthy",
+					"tripped": "Tripped",
+					"recovering": "Recovering"
+				},
+				"current": "Current: {value}%",
+				"threshold": "Threshold: {value}%",
+				"trippedAgo": "Tripped {ago}"
+			},
+			"metricChart": {
+				"noData": "No data available"
+			}
+		},
+		"agentTasks": {
+			"agentTaskFlow": {
+				"progress": "{position} of {total}",
+				"newCount": "+{count} new",
+				"newCountTitle": "{count} arrived since you started",
+				"estimateLeft": "{estimate} left",
+				"undo": "Undo",
+				"undoTitle": "Undo last (⌘Z)",
+				"exit": "Exit",
+				"exitTitle": "Exit (Esc)",
+				"nextLabel": "Next:"
+			},
+			"taskCardLoading": {
+				"label": "Loading task"
+			},
+			"taskCardFallback": {
+				"cardLabel": "Unavailable task",
+				"disabled": {
+					"defaultLabel": "This task type",
+					"title": "{label} is turned off",
+					"body": "Re-enable its feature to review it in the flow, or skip it for now."
+				},
+				"unknown": {
+					"title": "This task can't be shown here",
+					"body": "It may belong to a plugin that is no longer installed. Skip it to move on."
+				}
+			},
+			"reviewBrowseList": {
+				"title": "Review Queue",
+				"subtitle": "Agent-generated drafts and escalations waiting for your action.",
+				"focus": "Focus",
+				"loading": "Loading review queue...",
+				"listLabel": "Review queue",
+				"empty": {
+					"title": "All caught up!",
+					"body": "No drafts need your review right now."
+				},
+				"viewThread": "View thread",
+				"openThread": "Open thread",
+				"classifierConfidence": "Classifier confidence {percent}%",
+				"escalatedBecause": "Escalated because: {reason}",
+				"heldBecause": "Held because: {reason}",
+				"noTextContent": "(No text content)",
+				"escalatedHeading": "Escalated — write a reply",
+				"subjectPlaceholder": "Subject (optional)",
+				"replyPlaceholder": "Type your reply…",
+				"sendReply": "Send Reply",
+				"agentDraft": "Agent Draft",
+				"approveAndSend": "Approve & Send",
+				"reject": "Reject",
+				"toasts": {
+					"suggestedAttachment": "Suggested attachment: {filename} — open the reply to attach and send",
+					"draftApproved": "Draft approved and queued for sending",
+					"draftRejected": "Draft rejected",
+					"replySent": "Reply sent"
+				}
+			},
+			"reviewFocusFlow": {
+				"empty": {
+					"title": "All caught up!",
+					"body": "No drafts need your review right now."
+				},
+				"backToList": "Back to list",
+				"backToInbox": "Back to inbox",
+				"noSubject": "(no subject)",
+				"noTextContent": "(No text content)",
+				"escalatedBecause": "Escalated because: {reason}",
+				"heldBecause": "Held because: {reason}",
+				"replyPlaceholder": "Type your reply…",
+				"sendReply": "Send Reply",
+				"openThread": "Open thread",
+				"draftReady": "Draft ready",
+				"pickAnotherOption": "Edit in thread to pick another option",
+				"approveAndSend": "Approve & Send",
+				"reject": "Reject",
+				"editInThread": "Edit in thread",
+				"done": {
+					"title": "All caught up",
+					"summary": "{summary} this session.",
+					"body": "New drafts and escalations will appear here as the agent routes them."
+				},
+				"toasts": {
+					"draftApproved": "Draft approved and queued for sending",
+					"replySent": "Reply sent"
+				}
+			}
+		}
+	}
+}

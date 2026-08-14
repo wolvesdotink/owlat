@@ -13,6 +13,8 @@ interface Props {
 
 const props = defineProps<Props>();
 
+const { t } = useI18n();
+
 // Create a lookup map for quick access to link stats by URL
 const linkStatsMap = computed(() => {
 	const map: Record<string, LinkStat> = {};
@@ -117,16 +119,16 @@ const previewSrcdoc = computed(() => {
 		<div class="flex items-center gap-4 text-sm text-text-secondary">
 			<div class="flex items-center gap-2">
 				<Icon name="lucide:mouse-pointer-click" class="w-4 h-4" />
-				<span>Click Heatmap</span>
+				<span>{{ t('components.dashboard.clickHeatmap.legendTitle') }}</span>
 			</div>
 			<div class="flex items-center gap-2">
-				<span class="text-xs">Low</span>
+				<span class="text-xs">{{ t('components.dashboard.clickHeatmap.low') }}</span>
 				<div class="flex h-3 rounded overflow-hidden">
 					<div class="w-6 bg-warning/50" />
 					<div class="w-6 bg-chart-cat-1/60" />
 					<div class="w-6 bg-error/70" />
 				</div>
-				<span class="text-xs">High</span>
+				<span class="text-xs">{{ t('components.dashboard.clickHeatmap.high') }}</span>
 			</div>
 		</div>
 
@@ -145,7 +147,7 @@ const previewSrcdoc = computed(() => {
 				:srcdoc="previewSrcdoc"
 				sandbox=""
 				class="w-full min-w-[640px] h-[600px] border-0 bg-white"
-				title="Campaign content with click heatmap"
+				:title="t('components.dashboard.clickHeatmap.frameTitle')"
 			/>
 		</div>
 
@@ -155,8 +157,8 @@ const previewSrcdoc = computed(() => {
 				<div class="flex items-center gap-3">
 					<UiIconBox icon="lucide:mouse-pointer-click" size="sm" variant="warning" rounded="lg" />
 					<div>
-						<h3 class="text-lg font-medium text-text-primary">Link Click Details</h3>
-						<p class="text-sm text-text-secondary">Click counts per link in your email</p>
+						<h3 class="text-lg font-medium text-text-primary">{{ t('components.dashboard.clickHeatmap.detailsTitle') }}</h3>
+						<p class="text-sm text-text-secondary">{{ t('components.dashboard.clickHeatmap.detailsSubtitle') }}</p>
 					</div>
 				</div>
 			</div>
@@ -191,7 +193,7 @@ const previewSrcdoc = computed(() => {
 								<div class="text-lg font-semibold text-text-primary">
 									{{ link.stats?.clicks || 0 }}
 								</div>
-								<div class="text-xs text-text-tertiary">clicks</div>
+								<div class="text-xs text-text-tertiary">{{ t('components.dashboard.clickHeatmap.clicks') }}</div>
 							</div>
 
 							<!-- Unique Clickers -->
@@ -199,7 +201,7 @@ const previewSrcdoc = computed(() => {
 								<div class="text-lg font-semibold text-warning">
 									{{ link.stats?.uniqueClickers || 0 }}
 								</div>
-								<div class="text-xs text-text-tertiary">unique</div>
+								<div class="text-xs text-text-tertiary">{{ t('components.dashboard.clickHeatmap.unique') }}</div>
 							</div>
 
 							<!-- Click Rate -->
@@ -207,7 +209,7 @@ const previewSrcdoc = computed(() => {
 								<div class="text-lg font-semibold text-brand">
 									{{ getClickRate(link.stats?.uniqueClickers || 0).toFixed(1) }}%
 								</div>
-								<div class="text-xs text-text-tertiary">rate</div>
+								<div class="text-xs text-text-tertiary">{{ t('components.dashboard.clickHeatmap.rate') }}</div>
 							</div>
 
 							<!-- Heat Indicator -->
@@ -222,7 +224,7 @@ const previewSrcdoc = computed(() => {
 				<!-- Empty state for no links -->
 				<div v-if="processedContent.links.length === 0" class="px-6 py-12 text-center">
 					<Icon name="lucide:info" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-					<p class="text-text-secondary">No trackable links found in this email</p>
+					<p class="text-text-secondary">{{ t('components.dashboard.clickHeatmap.noLinks') }}</p>
 				</div>
 			</div>
 		</div>
@@ -230,9 +232,9 @@ const previewSrcdoc = computed(() => {
 		<!-- No Clicks State -->
 		<div v-else-if="linkStats.length === 0" class="card p-8 text-center">
 			<Icon name="lucide:mouse-pointer-click" class="w-12 h-12 text-text-tertiary mx-auto mb-3" />
-			<p class="text-text-secondary font-medium">No link clicks recorded</p>
+			<p class="text-text-secondary font-medium">{{ t('components.dashboard.clickHeatmap.noClicks') }}</p>
 			<p class="text-sm text-text-tertiary mt-1">
-				Link clicks will appear here as recipients interact with your email
+				{{ t('components.dashboard.clickHeatmap.noClicksHint') }}
 			</p>
 		</div>
 	</div>

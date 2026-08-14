@@ -4,6 +4,9 @@
 // packages/smtp-client).
 const standards = ['SMTP', 'DKIM', 'SPF', 'DMARC', 'ARC', 'MTA-STS', 'TLS-RPT', 'DANE', 'IMAP'];
 
+const { t } = useI18n();
+const localePath = useLocalePath();
+
 const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload();
 </script>
 
@@ -32,15 +35,15 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 		>
 			<!-- Announcement chip — README: "Hosted cloud is on the roadmap — join the waitlist." -->
 			<a
-				href="/waitlist"
+				:href="localePath('/waitlist')"
 				class="lp-hero-in group inline-flex items-center gap-2 rounded-full border border-border-subtle bg-surface-3/70 backdrop-blur-sm px-4 py-2 text-caption text-text-secondary no-underline transition-colors duration-(--motion-fast) hover:border-border-default hover:text-text-primary"
 				style="--i: 0"
 			>
 				<span class="w-1.5 h-1.5 rounded-full bg-brand" aria-hidden="true" />
-				<span>Hosted Cloud coming soon</span>
+				<span>{{ t('hero.badgeStatus') }}</span>
 				<span class="text-text-disabled" aria-hidden="true">·</span>
 				<span class="inline-flex items-center gap-1 font-medium text-text-primary">
-					Join the waitlist
+					{{ t('hero.badgeCta') }}
 					<svg
 						class="transition-transform duration-(--motion-fast) group-hover:translate-x-[2px]"
 						width="12"
@@ -64,8 +67,8 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 				class="lp-hero-in mt-9 text-[clamp(2.75rem,6.5vw,4.75rem)] font-medium tracking-[-0.02em] leading-[1.04] text-text-primary"
 				style="--i: 1"
 			>
-				Send better email.
-				<span class="block lp-title-accent lp-warm-gradient pb-1">Own the whole stack.</span>
+				{{ t('hero.titleLead') }}
+				<span class="block lp-title-accent lp-warm-gradient pb-1">{{ t('hero.titleAccent') }}</span>
 			</h1>
 
 			<!-- Sub -->
@@ -73,8 +76,7 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 				class="lp-hero-in mt-6 text-md md:text-lg text-text-secondary leading-[1.65] max-w-[540px]"
 				style="--i: 2"
 			>
-				Owlat is an open-source, self-hosted email platform. Campaigns, automations, transactional
-				sends, and audience ops — with its own MTA and deliverability tooling built in.
+				{{ t('hero.subtitle') }}
 			</p>
 
 			<!-- CTAs -->
@@ -85,7 +87,9 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 					:aria-label="downloadAriaLabel"
 					@click="onDownloadClick"
 				>
-					<span>{{ platformLabel ? `Download for ${platformLabel}` : 'Download the app' }}</span>
+					<span>{{
+						platformLabel ? t('download.labelFor', { platform: platformLabel }) : t('download.app')
+					}}</span>
 					<svg
 						class="transition-transform duration-(--motion-fast) group-hover:translate-y-[2px]"
 						width="15"
@@ -107,7 +111,7 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 					href="https://docs.owlat.app/developer/self-hosting"
 					class="btn btn-hairline group px-6 no-underline"
 				>
-					<span>Self-host</span>
+					<span>{{ t('hero.selfHost') }}</span>
 					<svg
 						class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
 						width="15"
@@ -128,7 +132,7 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 
 			<!-- Maturity note under the download CTA — README: Owlat, the desktop app included, is in alpha. -->
 			<p class="lp-hero-in mt-5 text-caption text-text-tertiary" style="--i: 4">
-				Desktop app for macOS, Windows and Linux — in alpha, like the rest of Owlat.
+				{{ t('hero.desktopNote') }}
 			</p>
 
 			<!-- Standards ticker -->
@@ -136,7 +140,7 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 				<p
 					class="font-mono text-2xs font-medium uppercase tracking-[0.18em] text-text-tertiary mb-5"
 				>
-					Built on open standards
+					{{ t('hero.standards') }}
 				</p>
 				<div class="lp-marquee">
 					<div class="lp-marquee-track">

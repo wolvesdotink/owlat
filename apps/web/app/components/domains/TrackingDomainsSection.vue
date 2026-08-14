@@ -14,6 +14,8 @@ import { formatDateTime } from '~/utils/formatters';
 // free-form). Distinct from the sending flow's mail/post/send.
 const TRACKING_SUGGESTIONS = ['track', 'links', 'click'] as const;
 
+const { t } = useI18n();
+
 const { hasActiveOrganization } = useOrganizationContext();
 
 // Real-time list of tracking domains for the active org.
@@ -25,15 +27,15 @@ const { data: trackingDomains, isLoading } = useOrganizationQuery(
 // the error vocabulary, toasts and telemetry policy used elsewhere.
 const { run: addTrackingDomain } = useBackendOperation(
 	api.domains.trackingDomains.addTrackingDomain,
-	{ label: 'Add tracking domain' }
+	{ label: () => t('components.domains.trackingDomainsSection.operations.add') }
 );
 const { run: removeTrackingDomain } = useBackendOperation(
 	api.domains.trackingDomains.removeTrackingDomain,
-	{ label: 'Remove tracking domain' }
+	{ label: () => t('components.domains.trackingDomainsSection.operations.remove') }
 );
 const { run: verifyTrackingDomain } = useBackendOperation(
 	api.domains.trackingDomains.verifyTrackingDomain,
-	{ label: 'Verify tracking domain' }
+	{ label: () => t('components.domains.trackingDomainsSection.operations.verify') }
 );
 
 const { showToast } = useToast();
@@ -74,7 +76,7 @@ const handleAdd = async (payload: { domain: string; returnPathHost: string | nul
 	if (result === undefined) return;
 
 	addModal.close();
-	showToast('Tracking domain added. Add the CNAME record below, then verify.');
+	showToast(t('components.domains.trackingDomainsSection.toasts.added'));
 };
 
 const handleDelete = async () => {
@@ -89,7 +91,7 @@ const handleDelete = async () => {
 	if (result === undefined) return;
 
 	deleteModal.close();
-	showToast('Tracking domain removed');
+	showToast(t('components.domains.trackingDomainsSection.toasts.removed'));
 };
 
 // Verify schedules a DNS check on the backend; the row flips to verified via the
@@ -101,9 +103,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		const result = await verifyTrackingDomain({ trackingDomainId: id });
 		if (result === undefined) return; // run() already surfaced the failure
 		expandedId.value = id;
-		showToast(
-			'Checking DNS for this tracking domain. It will show as verified once the CNAME resolves.'
-		);
+		showToast(t('components.domains.trackingDomainsSection.toasts.verifying'));
 	} finally {
 		verifyingId.value = null;
 	}
@@ -115,9 +115,11 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		<!-- Section header -->
 		<div class="flex items-center justify-between mb-4">
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Tracking Domains</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.domains.trackingDomainsSection.title') }}
+				</h2>
 				<p class="mt-1 text-sm text-text-secondary">
-					Serve open &amp; click tracking from your own branded subdomain
+					{{ t('components.domains.trackingDomainsSection.subtitle') }}
 				</p>
 			</div>
 			<UiButton

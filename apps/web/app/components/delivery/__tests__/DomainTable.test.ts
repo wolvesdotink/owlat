@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import DomainTable from '../DomainTable.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -33,7 +38,7 @@ describe('DomainTable internal clean-day evidence', () => {
 	it('shows per-domain evidence without an eligibility tone', () => {
 		let wrapper = mount(DomainTable, {
 			props: { rows: [domainRow(6)] },
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		let recovery = wrapper.find('[data-testid="domain-spam-recovery"]');
 		expect(recovery.text().replace(/\s+/g, ' ')).toContain('Owlat evidence 6 / 7 clean days');
@@ -41,7 +46,7 @@ describe('DomainTable internal clean-day evidence', () => {
 
 		wrapper = mount(DomainTable, {
 			props: { rows: [domainRow(7)] },
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		recovery = wrapper.find('[data-testid="domain-spam-recovery"]');
 		expect(recovery.text().replace(/\s+/g, ' ')).toContain('Owlat evidence 7 / 7 clean days');
@@ -63,7 +68,7 @@ describe('DomainTable Google Postmaster comparison', () => {
 					},
 				],
 			},
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		const signal = wrapper.find('[data-testid="google-postmaster-signal"]');
 		expect(signal.text().replace(/\s+/g, ' ')).toContain('Google spam 0.120%');

@@ -9,6 +9,8 @@ const emit = defineEmits<{
 	(e: 'update:open', value: boolean): void;
 }>();
 
+const { t } = useI18n();
+
 const { copy, copiedKey } = useCopyToClipboard();
 const copied = computed(() => copiedKey.value === 'app-password');
 
@@ -32,12 +34,19 @@ function close() {
 					<Icon name="lucide:key-round" class="w-5 h-5" />
 				</div>
 				<div class="flex-1">
-					<h2 class="text-lg font-semibold">Save this password now</h2>
-					<p class="text-sm text-text-secondary mt-0.5">
-						Owlat does not store the cleartext — once you close this dialog it is gone for good.
-						Paste it into <strong>{{ label || 'your client' }}</strong>
-						and revoke this entry to rotate later.
-					</p>
+					<h2 class="text-lg font-semibold">
+						{{ t('components.postbox.appPasswordReveal.title') }}
+					</h2>
+					<I18nT
+						keypath="components.postbox.appPasswordReveal.body"
+						tag="p"
+						scope="global"
+						class="text-sm text-text-secondary mt-0.5"
+					>
+						<template #client>
+							<strong>{{ label || t('components.postbox.appPasswordReveal.yourClient') }}</strong>
+						</template>
+					</I18nT>
 				</div>
 			</header>
 
@@ -50,9 +59,11 @@ function close() {
 			<div class="flex items-center justify-between mt-4">
 				<UiButton variant="ghost" type="button" @click="copyPassword">
 					<Icon :name="copied ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4 mr-1.5" />
-					{{ copied ? 'Copied' : 'Copy' }}
+					{{ copied ? t('common.copied') : t('common.copy') }}
 				</UiButton>
-				<UiButton type="button" @click="close">I've saved it</UiButton>
+				<UiButton type="button" @click="close">{{
+					t('components.postbox.appPasswordReveal.saved')
+				}}</UiButton>
 			</div>
 		</div>
 	</UiModal>

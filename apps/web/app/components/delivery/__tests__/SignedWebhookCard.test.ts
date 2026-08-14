@@ -18,6 +18,7 @@ import {
 } from '@owlat/shared/sendProviderCatalog';
 import { transportKindLabel } from '~/utils/transportState';
 import SignedWebhookCard from '../SignedWebhookCard.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -28,6 +29,9 @@ const stubs = {
 beforeEach(() => {
 	vi.stubGlobal('computed', computed);
 	vi.stubGlobal('useCopyToClipboard', () => ({ copy: vi.fn(), isCopied: () => false }));
+	// The card's copy flows through vue-i18n now; `useI18n` is a Nuxt auto-import,
+	// so it has to exist as a bare global for the component's setup.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
 function mountCard(props: Partial<InstanceType<typeof SignedWebhookCard>['$props']> = {}) {
@@ -41,7 +45,7 @@ function mountCard(props: Partial<InstanceType<typeof SignedWebhookCard>['$props
 			lastEventAt: null,
 			...props,
 		},
-		global: { stubs },
+		global: { stubs, plugins: [createTestI18n()] },
 	});
 }
 

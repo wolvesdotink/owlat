@@ -21,6 +21,7 @@ import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { ref, computed } from 'vue';
 
 import DesktopTitlebar from '../DesktopTitlebar.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { WORKSPACE_ACCENTS } from '~/lib/desktop/workspaceTypes';
 
 const { setWindowTitleMock, setWindowThemeMock } = vi.hoisted(() => ({
@@ -74,6 +75,8 @@ beforeAll(async () => {
 	vi.stubGlobal('useCommandPalette', () => ({ open: vi.fn() }));
 	vi.stubGlobal('useAppTheme', () => ({ themePreference }));
 	vi.stubGlobal('navigateTo', navigateToMock);
+	// The bar renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
 beforeEach(() => {
@@ -96,6 +99,7 @@ function mountBar(props: { showSearch?: boolean } = { showSearch: true }) {
 	return mount(DesktopTitlebar, {
 		props,
 		global: {
+			plugins: [createTestI18n()],
 			components: {
 				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,

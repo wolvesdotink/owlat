@@ -17,6 +17,7 @@ import { defineComponent, h, ref, Teleport } from 'vue';
 
 import { useClickOutside } from '~/composables/useClickOutside';
 import { formatDateTime } from '~/utils/formatters';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxComposerFooter from '../PostboxComposerFooter.vue';
 import PostboxComposerFollowUp from '../PostboxComposerFollowUp.vue';
 import PostboxOverflowMenu from '../PostboxOverflowMenu.vue';
@@ -27,6 +28,9 @@ beforeAll(() => {
 		useClickOutside,
 		formatDateTime,
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
+		// The footer/toggle copy flows through vue-i18n now; `useI18n` is a Nuxt
+		// auto-import, so it has to exist as a global for their setup.
+		useI18n: i18nStubs.useI18n,
 	});
 });
 
@@ -71,6 +75,7 @@ function mountFooter() {
 			followUpRemindAt: null,
 		},
 		global: {
+			plugins: [createTestI18n()],
 			components: {
 				PostboxOverflowMenu,
 				PostboxComposerFollowUp,

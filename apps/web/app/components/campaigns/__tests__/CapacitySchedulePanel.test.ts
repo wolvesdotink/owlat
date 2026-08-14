@@ -17,6 +17,11 @@ import { mount } from '@vue/test-utils';
 
 import CapacitySchedulePanel from '../CapacitySchedulePanel.vue';
 import type { CampaignCapacitySchedulePlan } from '~/lib/campaignCapacityRefusal';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The panel renders its copy through the real catalog, so `useI18n` has to
+// resolve exactly as it does in the app (an auto-import, hence a global).
+Object.assign(globalThis, i18nStubs);
 
 const iconStub = { props: ['name'], template: '<span />' };
 
@@ -52,7 +57,7 @@ function mountPanel(
 ) {
 	return mount(CapacitySchedulePanel, {
 		props: { plan: { ...BASE, ...plan }, dismissible, now },
-		global: { stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
 

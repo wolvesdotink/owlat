@@ -1,0 +1,215 @@
+{
+	"components": {
+		"automations": {
+			"steps": {
+				"delay": {
+					"editor": {
+						"durationLabel": "Delay Duration",
+						"unitOptions": {
+							"minutes": "Minutes",
+							"hours": "Hours",
+							"days": "Days",
+							"weeks": "Weeks"
+						},
+						"durationHint": "How long to wait before proceeding to the next step.",
+						"presetsLabel": "Quick Presets",
+						"presets": {
+							"minutes30": "30 min",
+							"hours1": "1 hour",
+							"hours24": "24 hours",
+							"days1": "1 day",
+							"days3": "3 days",
+							"weeks1": "1 week",
+							"weeks2": "2 weeks"
+						},
+						"previewLabel": "Duration Preview",
+						"preview": {
+							"minutes": "{count} minute | {count} minutes",
+							"hours": "{count} hour | {count} hours",
+							"days": "{count} day | {count} days",
+							"weeks": "{count} week | {count} weeks"
+						},
+						"previewHint": "This is how the delay will appear in the workflow"
+					}
+				},
+				"email": {
+					"editor": {
+						"templateLabel": "Email Template",
+						"templatePlaceholder": "Select a template...",
+						"templateOption": "{name} ({status})",
+						"templateHint": "Choose the email template to send to the contact.",
+						"noTemplates": "No automation templates found. {link} with type \"Automation\" first.",
+						"noTemplatesLink": "Create an email template",
+						"createPrompt": "Or create a new email template for this automation:",
+						"createCta": "Create New Email",
+						"subjectLabel": "Subject Line Override (optional)",
+						"subjectPlaceholder": "Leave blank to use template subject",
+						"subjectHint": "Override the template's subject line for this automation.",
+						"previewLabel": "Template Preview",
+						"previewSubject": "Subject: {subject}",
+						"editTemplate": "Edit template →"
+					}
+				}
+			},
+			"triggers": {
+				"contactUpdated": {
+					"editor": {
+						"propertyLabel": "Property to Watch",
+						"propertyHint": "This automation will trigger when the selected property changes for any contact.",
+						"propertyPlaceholder": "Select a property...",
+						"builtInGroup": "Built-in Properties",
+						"properties": {
+							"email": "Email",
+							"firstName": "First Name",
+							"lastName": "Last Name",
+							"timezone": "Timezone",
+							"language": "Language"
+						}
+					}
+				},
+				"eventReceived": {
+					"editor": {
+						"eventNameLabel": "Event Name",
+						"eventNameHint": "This automation will trigger when this event is received from your application via the API.",
+						"eventNamePlaceholder": "e.g., user.signed_up, purchase.completed"
+					}
+				},
+				"topicSubscribed": {
+					"editor": {
+						"topicLabel": "Topic",
+						"topicHint": "This automation will trigger when a contact subscribes to the selected topic.",
+						"topicPlaceholder": "Select a topic...",
+						"topicOptionWithCount": "{name} ({count} contacts)",
+						"noTopics": "No topics found. {link}",
+						"noTopicsLink": "Create a topic"
+					}
+				}
+			}
+		},
+		"autonomy": {
+			"askEagernessDial": {
+				"title": "Ask eagerness",
+				"body": "How readily Owlat stops to ask you a quick question before drafting. High-stakes slots (money, commitments, dates, tone) always lean cautious; routine acknowledgements are never asked about.",
+				"saveOperation": "Save ask-eagerness",
+				"updatedToast": "Ask-eagerness updated",
+				"options": {
+					"cautious": {
+						"label": "Cautious",
+						"hint": "Asks more — checks every unclear reply"
+					},
+					"balanced": {
+						"label": "Balanced",
+						"hint": "Asks on genuinely open, important slots"
+					},
+					"confident": {
+						"label": "Confident",
+						"hint": "Asks less — only high-stakes decisions"
+					},
+					"off": {
+						"label": "Off",
+						"hint": "Never asks — always drafts for your review"
+					}
+				}
+			},
+			"autonomyDemotionAlerts": {
+				"title": "Auto-send paused after a bad outcome",
+				"body": "These senders were reverted to draft-only after a confirmed bad auto-send. Review before re-enabling.",
+				"incident": "{sender} ({category})",
+				"defaultReason": "Auto-demoted to draft-only after a bad outcome."
+			},
+			"autonomyGraduationNudge": {
+				"title": "Ready to graduate",
+				"body": "The agent has earned more autonomy. Review the evidence and enable it — nothing widens without your explicit approval.",
+				"offer": "You approved {matched} of {total} {category} drafts to {sender} unedited — enable auto-send?",
+				"matchRate": "Match rate {rate}",
+				"enableAutoSend": "Enable auto-send",
+				"suggestion": "Lower the {category} auto-approve threshold from {current} to {suggested}?",
+				"suggestionEvidence": "{approved}/{sampleSize} approved, {rate} rejection rate"
+			},
+			"autonomyKillSwitch": {
+				"title": "Stop auto-sending now",
+				"body": "Instantly revert to {mode}: turns off graduated autonomy and the legacy auto-reply, and pulls back any auto-send still in its undo window. The agent keeps drafting replies for you to review — nothing is dropped.",
+				"bodyMode": "draft-only",
+				"stopCta": "Stop auto-sending",
+				"confirmQuestion": "Revert to draft-only?",
+				"confirmCta": "Yes, stop now"
+			},
+			"autonomyLearningControls": {
+				"strategiesTitle": "Draft strategies",
+				"strategiesBody": "Choose a bundled drafting strategy for each message category. Default uses Owlat's built-in drafter.",
+				"categories": {
+					"support": "support",
+					"sales": "sales",
+					"billing": "billing",
+					"feature_request": "feature request",
+					"complaint": "complaint",
+					"spam": "spam",
+					"internal": "internal",
+					"other": "other"
+				},
+				"memoryTitle": "Learned answers",
+				"memoryBody": "Answers you gave when the agent needed a missing fact. Forget stale answers or carefully widen a contact-specific answer to every sender.",
+				"memoryEmpty": "No learned answers yet.",
+				"scopeAllSenders": "All senders",
+				"scopeOneContact": "One contact",
+				"answeredTimes": "{scope} · answered {count} time | {scope} · answered {count} times",
+				"useForEveryone": "Use for everyone",
+				"forget": "Forget",
+				"forgetOperation": "Forget learned answer",
+				"promoteOperation": "Use learned answer for everyone",
+				"setStrategyOperation": "Set draft strategy",
+				"forgottenToast": "Learned answer forgotten",
+				"promotedToast": "Learned answer now applies to every sender",
+				"strategyUpdatedToast": "Draft strategy updated for {category}"
+			},
+			"autonomyRuleEditor": {
+				"saveOperation": "Save autonomy rule",
+				"deleteOperation": "Delete autonomy rule",
+				"categories": {
+					"support": "Support",
+					"sales": "Sales",
+					"billing": "Billing",
+					"feature_request": "Feature Request",
+					"complaint": "Complaint",
+					"spam": "Spam",
+					"internal": "Internal",
+					"other": "Other"
+				},
+				"categoryPlaceholder": "Select category",
+				"thresholdLabel": "Auto-Approve Threshold",
+				"thresholdHint": "Minimum confidence score required for the agent to auto-approve actions in this category.",
+				"thresholdMin": "0% (all auto)",
+				"thresholdMax": "100% (all manual)",
+				"maxDailyLabel": "Max Daily Auto-Actions",
+				"maxDailyHint": "Maximum number of actions the agent can auto-approve per day for this category.",
+				"todayCount": "Today: {current} / {max}",
+				"deleteRule": "Delete Rule",
+				"createRule": "Create Rule",
+				"saveChanges": "Save Changes",
+				"deleteConfirm": "Are you sure you want to delete the autonomy rule for {category}? This action cannot be undone."
+			},
+			"autonomyWorkingHours": {
+				"title": "Working hours",
+				"subtitle": "Only auto-send during business hours.",
+				"on": "On",
+				"off": "Off",
+				"timezoneLabel": "Timezone",
+				"timezonePlaceholder": "e.g. America/New_York",
+				"fromLabel": "From",
+				"toLabel": "To",
+				"daysLabel": "Days",
+				"weekdays": {
+					"mon": "Mon",
+					"tue": "Tue",
+					"wed": "Wed",
+					"thu": "Thu",
+					"fri": "Fri",
+					"sat": "Sat",
+					"sun": "Sun"
+				},
+				"hint": "Replies decided outside these hours are held for morning human review — not sent.",
+				"save": "Save working hours"
+			}
+		}
+	}
+}

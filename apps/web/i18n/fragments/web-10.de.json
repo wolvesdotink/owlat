@@ -1,0 +1,135 @@
+{
+	"components": {
+		"dashboard": {
+			"gettingStartedResources": {
+				"convexTitle": "Convex-Dashboard öffnen",
+				"convexDescription": "Untersuchen Sie Ihre Datenbank, Funktionen und Logs.",
+				"convexCta": "Dashboard starten ↗",
+				"guessHint": "Nur geraten — das Dashboard liegt oft auf einem separaten Host oder hinter einem SSH-Tunnel.",
+				"customizeBehindProxy": "Anpassen, wenn Sie hinter einem Proxy arbeiten",
+				"customizeUrl": "Dashboard-URL anpassen",
+				"urlPlaceholder": "http://localhost:6791",
+				"urlLabel": "Convex-Dashboard-URL",
+				"urlInvalid": "Geben Sie eine gültige http(s)-URL ein oder lassen Sie das Feld leer, um zurückzusetzen.",
+				"docsTitle": "Self-Hosting-Dokumentation lesen",
+				"docsDescription": "DNS, Produktionskonfiguration, Wartung.",
+				"docsCta": "Dokumentation öffnen ↗"
+			},
+			"mailboxRequests": {
+				"title": "Postfach-Anfragen",
+				"summary": "{count} Teammitglied benötigt ein Postfach. Richten Sie eines direkt aus der Anfrage ein oder markieren Sie die Anfrage als erledigt, wenn Sie sie anders gelöst haben. | {count} Teammitglieder benötigen ein Postfach. Richten Sie eines direkt aus der Anfrage ein oder markieren Sie die Anfrage als erledigt, wenn Sie sie anders gelöst haben.",
+				"emailWithNote": "{email} — „{note}“",
+				"provision": "Jetzt einrichten",
+				"verifyDomainFirst": "Verifizieren Sie zuerst eine Absenderdomain",
+				"markDone": "Als erledigt markieren",
+				"provisionOperation": "Postfach einrichten",
+				"resolveOperation": "Postfach-Anfrage abschließen"
+			},
+			"sendStatusBadge": {
+				"status": {
+					"queued": "In Warteschlange",
+					"sent": "Gesendet",
+					"delivered": "Zugestellt",
+					"opened": "Geöffnet",
+					"clicked": "Geklickt",
+					"bounced": "Unzustellbar",
+					"complained": "Beschwerde"
+				}
+			},
+			"cards": {
+				"accuracyTrend": {
+					"title": "Genauigkeitstrend",
+					"details": "Details",
+					"loading": "Wird geladen",
+					"empty": "Noch keine Genauigkeitsdaten erfasst",
+					"autoApprove": "Automatisch freigegeben",
+					"rejection": "Ablehnung",
+					"autoApproveRatio": "Quote automatischer Freigaben",
+					"rejectionRate": "Ablehnungsquote"
+				},
+				"agentHealth": {
+					"title": "Agent-Zustand",
+					"status": {
+						"healthy": "Fehlerfrei",
+						"warning": "Warnung",
+						"degraded": "Beeinträchtigt",
+						"idle": "Im Leerlauf"
+					},
+					"metrics": {
+						"queue": "Warteschlange",
+						"failed": "Fehlgeschlagen",
+						"quarantined": "In Quarantäne",
+						"total": "Gesamt"
+					}
+				},
+				"campaignPerformance": {
+					"title": "Kampagnen-Performance",
+					"allCampaigns": "Alle Kampagnen",
+					"emailsInThirtyDays": "E-Mails in 30 Tagen",
+					"openRate": "Öffnungsrate",
+					"clickRate": "Klickrate"
+				},
+				"channelHealth": {
+					"title": "Kanal-Zustand",
+					"empty": "Keine Kanäle konfiguriert",
+					"channels": {
+						"email": "E-Mail",
+						"sms": "SMS",
+						"whatsapp": "WhatsApp",
+						"generic": "Generischer Webhook",
+						"chat": "Chat"
+					},
+					"status": {
+						"degraded": "Beeinträchtigt",
+						"down": "Ausgefallen",
+						"healthy": "Fehlerfrei"
+					}
+				},
+				"costByStep": {
+					"title": "LLM-Kosten nach Schritt",
+					"window": "letzte 24 Std.",
+					"loading": "Wird geladen",
+					"empty": "Noch keine Token-Nutzung erfasst",
+					"tokensUsed": "Tokens verbraucht",
+					"listLabel": "Token-Nutzung pro Pipeline-Schritt",
+					"barLabel": "{step}: {tokens} Tokens über {actions} Aktionen",
+					"actionCount": "{count} Aktion | {count} Aktionen",
+					"steps": {
+						"securityScan": "Sicherheitsprüfung",
+						"contextRetrieval": "Kontextabruf",
+						"classify": "Klassifizierung",
+						"draft": "Entwurf",
+						"route": "Weiterleitung"
+					}
+				},
+				"deliveryRates": {
+					"title": "Sendekapazität",
+					"details": "Details",
+					"empty": "Keine Sendedaten verfügbar",
+					"phase": {
+						"ramp": "Aufwärmphase",
+						"plateau": "Hochlauf",
+						"graduated": "Vollständig aufgewärmt",
+						"none": "Kein IP-Warming"
+					},
+					"dailyLimitUsage": "Auslastung des Tageslimits",
+					"usageBarLabel": "Auslastung des täglichen Sendelimits",
+					"remaining": "{count} verbleibend",
+					"limit": "{count} Limit",
+					"unlimitedTitle": "Unbegrenztes Senden",
+					"unlimitedBody": "Kein Tageslimit aktiv"
+				},
+				"knowledge": {
+					"title": "Wissen",
+					"empty": "Noch keine Wissenseinträge"
+				},
+				"pinnedVisualizations": {
+					"title": "Visualisierungen",
+					"emptyTitle": "Keine angehefteten Visualisierungen",
+					"emptyBody": "Heften Sie eine Visualisierung im Dashboard an, um sie hier zu sehen.",
+					"morePinned": "+{count} weitere angeheftet"
+				}
+			}
+		}
+	}
+}

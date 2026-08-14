@@ -10,17 +10,26 @@ export interface SelectedChatMember {
 	label: string;
 }
 
-withDefaults(
+const props = withDefaults(
 	defineProps<{
 		label?: string;
 		labelHint?: string;
 		placeholder?: string;
 	}>(),
 	{
-		label: 'Members',
+		label: undefined,
 		labelHint: '',
-		placeholder: 'Search by name or email…',
+		placeholder: undefined,
 	},
+);
+
+const { t } = useI18n();
+
+// Defaults live here rather than in `withDefaults` because prop defaults are
+// evaluated outside of setup, where `t` is not available.
+const labelText = computed(() => props.label ?? t('components.chat.chatMemberPicker.label'));
+const placeholderText = computed(
+	() => props.placeholder ?? t('components.chat.chatMemberPicker.placeholder'),
 );
 
 // Selected members are owned here so add/remove + chip rendering live in one
@@ -45,10 +54,16 @@ const removeMember = (memberId: string) => {
 <template>
 	<div>
 		<label for="query" class="block text-sm font-medium text-text-secondary mb-1.5">
-			{{ label }}
+			{{ labelText }}
 			<span v-if="labelHint" class="text-text-tertiary font-normal">{{ labelHint }}</span>
 		</label>
-		<input id="query" v-model="query" type="text" :placeholder="placeholder" class="input w-full" />
+		<input
+			id="query"
+			v-model="query"
+			type="text"
+			:placeholder="placeholderText"
+			class="input w-full"
+		/>
 
 		<!-- Candidate dropdown markup differs per dialog, so it's supplied via slot. -->
 		<slot name="candidates" :add-member="addMember" :selected-ids="selectedIds" :query="query" />
@@ -60,7 +75,10 @@ const removeMember = (memberId: string) => {
 				class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-subtle text-brand text-xs"
 			>
 				{{ member.label }}
-				<button @click="removeMember(member.memberId)" :aria-label="`Remove ${member.label}`">
+				<button
+					@click="removeMember(member.memberId)"
+					:aria-label="t('components.chat.chatMemberPicker.removeMember', { name: member.label })"
+				>
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
 			</span>

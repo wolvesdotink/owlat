@@ -1,0 +1,156 @@
+{
+	"components": {
+		"email": {
+			"emailBuilderViewportGate": {
+				"title": "The editor needs a bigger screen",
+				"body": "Drag-and-drop editing doesn't fit on a phone. Open this on a tablet or desktop to make changes — everything you've saved is exactly as you left it."
+			},
+			"emailSubjectSettingsCard": {
+				"title": "Subject & Preview Text",
+				"subtitle": "The subject line and preview text for your default language",
+				"emailTypeLabel": "Email type",
+				"emailTypeHelp": "Unpublish this email before changing its type.",
+				"emailTypes": {
+					"marketing": "Marketing",
+					"transactional": "Transactional"
+				},
+				"defaultLanguageLabel": "Default Language",
+				"languageOption": "{label} ({nativeLabel})",
+				"subjectLabel": "Subject Line",
+				"subjectPlaceholder": "Enter email subject line",
+				"subjectHelp": "The subject line recipients will see in their inbox.",
+				"previewTextLabel": "Preview Text",
+				"previewTextPlaceholder": "Enter preview text (optional)",
+				"previewTextHelp": "The preview text appears after the subject line in email clients. Keep it under 150 characters."
+			},
+			"templateHistoryPanel": {
+				"trigger": "History",
+				"triggerTitle": "Version history",
+				"title": "Version history",
+				"subtitle": "Snapshots taken on every save, publish and send",
+				"empty": "No versions yet. Saving this email records one.",
+				"triggers": {
+					"save": "Saved",
+					"publish": "Published",
+					"send": "Sent"
+				},
+				"previewAction": "Preview this version",
+				"restoreAction": "Restore this version into the editor",
+				"frameTitle": "Version preview",
+				"restore": "Restore this version",
+				"loadFailed": "Couldn't load that version",
+				"restored": "Version loaded into the editor — save to keep it, or undo to go back",
+				"restoreFailed": "Couldn't restore that version",
+				"confirmTitle": "Replace your unsaved changes?",
+				"confirmDescription": "This email has edits you haven't saved. Restoring loads the older version onto the canvas — you can undo it, but the restore itself is not saved until you save.",
+				"confirmAction": "Restore version"
+			}
+		},
+		"files": {
+			"contactPicker": {
+				"searchPlaceholder": "Search contacts by name or email…",
+				"remove": "Remove {name}",
+				"empty": "No matching contacts."
+			},
+			"fileCard": {
+				"sources": {
+					"upload": "Upload",
+					"email_attachment": "Email",
+					"agent_generated": "AI"
+				}
+			},
+			"fileUploadModal": {
+				"title": "Upload File",
+				"titleNewVersion": "Upload New Version",
+				"newVersionHint": "This file will be added as a new version. The previous version stays in the version history.",
+				"nativePickerTitle": "Choose a file",
+				"dropzone": "Drop a file here or click to browse",
+				"dropzoneHint": "Any file type up to {size} MB",
+				"removeFile": "Remove file",
+				"titleLabel": "Title (optional)",
+				"titlePlaceholder": "Give this file a descriptive title...",
+				"tagsLabel": "Tags (optional)",
+				"tagsPlaceholder": "invoice, report, Q1 (comma-separated)",
+				"sourceLabel": "Source",
+				"sources": {
+					"upload": "Manual Upload",
+					"email_attachment": "Email Attachment",
+					"agent_generated": "AI Generated"
+				},
+				"contactsLabel": "Linked contacts (optional)",
+				"threadLabel": "Linked conversation (optional)",
+				"uploading": "Uploading...",
+				"submitNewVersion": "Upload Version"
+			},
+			"threadPicker": {
+				"searchPlaceholder": "Search conversations by subject or sender…",
+				"remove": "Remove {name}",
+				"empty": "No matching conversations."
+			},
+			"versionHistory": {
+				"empty": "No previous versions.",
+				"current": "Current",
+				"download": "Download this version"
+			}
+		},
+		"forms": {
+			"fieldsEditor": {
+				"label": "Fields",
+				"addField": "Add field",
+				"help": "Each field becomes an input in the embedded form. {firstName} and {lastName} keys map onto the contact; {email} is required.",
+				"keyLabel": "Key",
+				"keyPlaceholder": "e.g., firstName",
+				"labelLabel": "Label",
+				"labelPlaceholder": "e.g., First name",
+				"typeLabel": "Type",
+				"types": {
+					"email": "Email",
+					"text": "Text",
+					"checkbox": "Checkbox"
+				},
+				"moveUp": "Move up",
+				"moveDown": "Move down",
+				"removeField": "Remove field"
+			},
+			"submissionsPanel": {
+				"title": "Recent submissions",
+				"empty": "No submissions yet.",
+				"statuses": {
+					"success": "success",
+					"pending_confirmation": "pending_confirmation",
+					"duplicate": "duplicate",
+					"spam": "spam",
+					"invalid": "invalid"
+				},
+				"confirmationSent": "Confirmation email sent {time}"
+			}
+		},
+		"inbox": {
+			"activityEmptyState": {
+				"empty": "No messages yet",
+				"emptyForChannel": "No {channel} messages yet",
+				"description": "Cross-channel messages appear here once a channel is connected.",
+				"connectChannel": "Connect a channel"
+			},
+			"agentActionTimeline": {
+				"toggle": "Agent processing trace",
+				"empty": "No agent actions recorded.",
+				"actions": {
+					"security_scan": "Security scan",
+					"context_retrieval": "Context retrieval",
+					"classify": "Classify",
+					"draft": "Draft reply",
+					"route": "Route"
+				},
+				"statuses": {
+					"pending": "pending",
+					"running": "running",
+					"completed": "completed",
+					"failed": "failed",
+					"abandoned": "abandoned",
+					"skipped": "skipped"
+				}
+			}
+		}
+	}
+}

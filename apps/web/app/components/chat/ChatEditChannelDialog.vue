@@ -9,6 +9,8 @@ interface Props {
 	initialVisibility: 'public' | 'private';
 }
 
+const { t } = useI18n();
+
 const props = defineProps<Props>();
 const emit = defineEmits<{
 	close: [];
@@ -25,7 +27,10 @@ const visibility = ref<'public' | 'private'>(props.initialVisibility);
 const error = ref<string | null>(null);
 const { run: updateChannel, isLoading: isSaving } = useBackendOperation(
 	api.chat.rooms.updateChannel,
-	{ label: 'Update channel', inlineTarget: error }
+	{
+		label: () => t('components.chat.chatEditChannelDialog.operations.updateChannel'),
+		inlineTarget: error,
+	}
 );
 
 const handleSubmit = async () => {
@@ -47,35 +52,50 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-	<ChatDialogShell title="Edit channel" @close="emit('close')">
+	<ChatDialogShell
+		:title="t('components.chat.chatEditChannelDialog.title')"
+		@close="emit('close')"
+	>
 		<div class="px-5 py-4 space-y-4">
 			<div>
-				<label for="edit-name" class="block text-sm font-medium text-text-secondary mb-1.5"
-					>Name</label
-				>
+				<label for="edit-name" class="block text-sm font-medium text-text-secondary mb-1.5">{{
+					t('common.name')
+				}}</label>
 				<input
 					id="edit-name"
 					v-model="name"
 					type="text"
-					placeholder="e.g. general"
+					:placeholder="t('components.chat.chatEditChannelDialog.namePlaceholder')"
 					class="input w-full"
 					@keydown.enter.prevent="handleSubmit"
 				/>
 			</div>
 			<div>
-				<label for="edit-description" class="block text-sm font-medium text-text-secondary mb-1.5">
-					Description <span class="text-text-tertiary font-normal">(optional)</span>
-				</label>
+				<I18nT
+					keypath="components.chat.chatEditChannelDialog.descriptionLabel"
+					tag="label"
+					scope="global"
+					for="edit-description"
+					class="block text-sm font-medium text-text-secondary mb-1.5"
+				>
+					<template #optional>
+						<span class="text-text-tertiary font-normal">{{
+							t('components.chat.chatEditChannelDialog.optional')
+						}}</span>
+					</template>
+				</I18nT>
 				<input
 					id="edit-description"
 					v-model="description"
 					type="text"
-					placeholder="What is this channel about?"
+					:placeholder="t('components.chat.chatEditChannelDialog.descriptionPlaceholder')"
 					class="input w-full"
 				/>
 			</div>
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-1.5">Visibility</label>
+				<label class="block text-sm font-medium text-text-secondary mb-1.5">{{
+					t('components.chat.chatEditChannelDialog.visibilityLabel')
+				}}</label>
 				<div class="flex gap-2">
 					<UiButton
 						variant="outline"
@@ -87,7 +107,7 @@ const handleSubmit = async () => {
 						<template #iconLeft>
 							<Icon name="lucide:hash" class="w-4 h-4" />
 						</template>
-						Public
+						{{ t('components.chat.chatEditChannelDialog.public') }}
 					</UiButton>
 					<UiButton
 						variant="outline"
@@ -99,7 +119,7 @@ const handleSubmit = async () => {
 						<template #iconLeft>
 							<Icon name="lucide:lock" class="w-4 h-4" />
 						</template>
-						Private
+						{{ t('components.chat.chatEditChannelDialog.private') }}
 					</UiButton>
 				</div>
 			</div>
@@ -108,11 +128,11 @@ const handleSubmit = async () => {
 		</div>
 
 		<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
-			<UiButton variant="secondary" @click="emit('close')">Cancel</UiButton>
+			<UiButton variant="secondary" @click="emit('close')">{{ t('common.cancel') }}</UiButton>
 			<UiButton class="gap-2" :disabled="!name.trim() || isSaving" @click="handleSubmit">
 				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:check" class="w-4 h-4" />
-				Save
+				{{ t('common.save') }}
 			</UiButton>
 		</div>
 	</ChatDialogShell>

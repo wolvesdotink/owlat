@@ -1,13 +1,18 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import {
 	type AuditLogEntry,
 	useAuditLogPresentation,
 } from '../../../composables/useAuditLogPresentation';
 import AuditLogList from '../AuditLogList.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 vi.stubGlobal('useAuditLogPresentation', useAuditLogPresentation);
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 describe('AuditLogList hosted plugin details', () => {
 	it('renders plugin attribution and allowlisted operations for every outcome', () => {
@@ -46,7 +51,7 @@ describe('AuditLogList hosted plugin details', () => {
 function mountList(logs: AuditLogEntry[]) {
 	return mount(AuditLogList, {
 		props: { logs, hasMore: false },
-		global: { stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 	});
 }
 

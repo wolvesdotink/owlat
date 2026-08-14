@@ -23,12 +23,14 @@ const emit = defineEmits<{
 	cancelled: [];
 }>();
 
+const { t } = useI18n();
+
 const isSaving = ref(false);
 // Bound as the inline target so config-validation failures show on the form.
 const formError = ref<string | null>('');
 
 const { run: updateChannelConfig } = useBackendOperation(api.unifiedMessages.updateChannelConfig, {
-	label: 'Save channel configuration',
+	label: () => t('components.channels.channelConfigForm.operations.saveConfiguration'),
 	inlineTarget: formError,
 });
 
@@ -43,85 +45,96 @@ function isStored(key: string): boolean {
 // Channel-specific field definitions
 interface ConfigField {
 	key: string;
+	/** Message key for the field label. */
 	label: string;
+	/** Message key for the empty-input placeholder. */
 	placeholder: string;
 	type: 'text' | 'password' | 'url';
 	/**
-	 * Optional clarifying line under the input, same treatment as the Display
-	 * Name hint. Used to say what a stored value actually does — a credential
-	 * the operator believes is in force but that nothing reads is the failure
-	 * mode this exists to prevent.
+	 * Message key for an optional clarifying line under the input, same treatment
+	 * as the Display Name hint. Used to say what a stored value actually does — a
+	 * credential the operator believes is in force but that nothing reads is the
+	 * failure mode this exists to prevent.
 	 */
 	hint?: string;
 }
+
+// The definitions are built once, so they carry message KEYS and are translated
+// where they are rendered.
+const F = 'components.channels.channelConfigForm.fields';
 
 const channelFields: Record<ChannelKind, ConfigField[]> = {
 	email: [],
 	sms: [
 		{
 			key: 'accountSid',
-			label: 'Account SID',
-			placeholder: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+			label: `${F}.accountSid.label`,
+			placeholder: `${F}.accountSid.placeholder`,
 			type: 'text',
 		},
 		{
 			key: 'authToken',
-			label: 'Auth Token',
-			placeholder: 'Enter your Twilio auth token',
+			label: `${F}.authToken.label`,
+			placeholder: `${F}.authToken.placeholder`,
 			type: 'password',
-			hint: 'Used to send, and to verify the signature on inbound Twilio webhooks.',
+			hint: `${F}.authToken.hint`,
 		},
-		{ key: 'phoneNumber', label: 'Phone Number', placeholder: '+1234567890', type: 'text' },
+		{
+			key: 'phoneNumber',
+			label: `${F}.phoneNumber.label`,
+			placeholder: `${F}.phoneNumber.placeholder`,
+			type: 'text',
+		},
 	],
 	whatsapp: [
 		{
 			key: 'businessAccountId',
-			label: 'Business Account ID',
-			placeholder: 'Enter your WhatsApp Business Account ID',
+			label: `${F}.businessAccountId.label`,
+			placeholder: `${F}.businessAccountId.placeholder`,
 			type: 'text',
-			hint: 'Recorded for reference. Outbound sends are keyed on the Phone Number ID below.',
+			hint: `${F}.businessAccountId.hint`,
 		},
 		{
 			key: 'accessToken',
-			label: 'Access Token',
-			placeholder: 'Enter your access token',
+			label: `${F}.accessToken.label`,
+			placeholder: `${F}.accessToken.placeholder`,
 			type: 'password',
 		},
 		{
 			key: 'phoneNumberId',
-			label: 'Phone Number ID',
-			placeholder: 'Enter your phone number ID',
+			label: `${F}.phoneNumberId.label`,
+			placeholder: `${F}.phoneNumberId.placeholder`,
 			type: 'text',
 		},
 		{
 			key: 'appSecret',
-			label: 'App Secret',
-			placeholder: 'Enter your Meta app secret',
+			label: `${F}.appSecret.label`,
+			placeholder: `${F}.appSecret.placeholder`,
 			type: 'password',
-			hint: 'Inbound only. Verifies the X-Hub-Signature-256 on messages Meta posts to /webhooks/whatsapp.',
+			hint: `${F}.appSecret.hint`,
 		},
 		{
 			key: 'verifyToken',
-			label: 'Verify Token',
-			placeholder: 'Any string you also paste into Meta',
+			label: `${F}.verifyToken.label`,
+			placeholder: `${F}.verifyToken.placeholder`,
 			type: 'password',
-			hint: "Inbound only. Answers Meta's subscription challenge when you point it at /webhooks/whatsapp.",
+			hint: `${F}.verifyToken.hint`,
 		},
 	],
 	generic: [
 		{
 			key: 'endpointUrl',
-			label: 'Endpoint URL',
-			placeholder: 'https://example.com/webhook',
+			label: `${F}.endpointUrl.label`,
+			placeholder: `${F}.endpointUrl.placeholder`,
 			type: 'url',
-			hint: 'Outbound POSTs are unsigned — put any authentication in the URL itself (secret path or query token).',
+			hint: `${F}.endpointUrl.hint`,
 		},
 		{
 			key: 'secretKey',
-			label: 'Secret Key',
-			placeholder: 'Shared secret for inbound requests',
+			label: `${F}.secretKey.label`,
+			placeholder: `${F}.secretKey.placeholder`,
 			type: 'password',
-			hint: 'Inbound only. Callers to /webhooks/channel must echo it in X-Webhook-Secret or Authorization: Bearer.',
+			hint: `${F}.secretKey.hint`,
 		},
 	],
 	chat: [],
@@ -144,20 +157,27 @@ for (const field of channelFields[props.channel] ?? []) {
  * invite an operator to retype every credential on every edit.
  */
 function inputPlaceholder(field: ConfigField): string {
-	return isStored(field.key) ? '•••••••• stored — leave blank to keep' : field.placeholder;
+	return isStored(field.key)
+		? t('components.channels.channelConfigForm.storedPlaceholder')
+		: t(field.placeholder);
 }
 
 // Channel info messages for the built-in channels (no per-channel credentials).
 // Email/chat are not offered in the Add-channel menu; these only render for an
 // existing email/chat config row. Email sending lives elsewhere — point there.
+// Message keys, translated where the info box renders them.
 const channelInfoMessages: Record<ChannelKind, string> = {
-	email:
-		'Email is built in — there are no credentials to set here. Configure email sending under Sending Domains and your delivery provider in Technical settings.',
-	chat: 'Chat is natively integrated and requires no additional configuration.',
+	email: 'components.channels.channelConfigForm.info.email',
+	chat: 'components.channels.channelConfigForm.info.chat',
 	sms: '',
 	whatsapp: '',
 	generic: '',
 };
+
+const channelInfoMessage = computed(() => {
+	const key = channelInfoMessages[props.channel];
+	return key ? t(key) : '';
+});
 
 // Password visibility toggles
 const visibleFields = reactive<Record<string, boolean>>({});
@@ -199,18 +219,18 @@ async function handleSave() {
 	<div class="space-y-4">
 		<!-- Display Name -->
 		<div>
-			<label for="localdisplayname" class="block text-sm font-medium text-text-primary mb-1.5"
-				>Display Name</label
-			>
+			<label for="localdisplayname" class="block text-sm font-medium text-text-primary mb-1.5">{{
+				t('components.channels.channelConfigForm.displayNameLabel')
+			}}</label>
 			<input
 				id="localdisplayname"
 				v-model="localDisplayName"
 				type="text"
 				class="input w-full"
-				placeholder="Custom name for this channel"
+				:placeholder="t('components.channels.channelConfigForm.displayNamePlaceholder')"
 			/>
 			<p class="text-xs text-text-tertiary mt-1">
-				Optional. Shown in the UI instead of the default channel name.
+				{{ t('components.channels.channelConfigForm.displayNameHint') }}
 			</p>
 		</div>
 
@@ -222,15 +242,14 @@ async function handleSave() {
 			     fields that already hold a value, so a partial edit is a safe and
 			     obvious thing to do. -->
 			<p class="text-xs text-text-tertiary">
-				Saved credentials are encrypted and not shown again. Leave a field blank to keep its stored
-				value; type in one to replace just that credential.
+				{{ t('components.channels.channelConfigForm.credentialsNotice') }}
 			</p>
 			<div v-for="field in fields" :key="field.key">
 				<label class="flex items-center gap-2 text-sm font-medium text-text-primary mb-1.5">
-					{{ field.label }}
-					<span v-if="isStored(field.key)" class="text-xs font-normal text-text-tertiary"
-						>stored</span
-					>
+					{{ t(field.label) }}
+					<span v-if="isStored(field.key)" class="text-xs font-normal text-text-tertiary">{{
+						t('components.channels.channelConfigForm.stored')
+					}}</span>
 				</label>
 				<div class="relative">
 					<input
@@ -243,7 +262,11 @@ async function handleSave() {
 					<button
 						v-if="field.type === 'password'"
 						type="button"
-						:aria-label="visibleFields[field.key] ? 'Hide value' : 'Show value'"
+						:aria-label="
+							visibleFields[field.key]
+								? t('components.channels.channelConfigForm.hideValue')
+								: t('components.channels.channelConfigForm.showValue')
+						"
 						class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-tertiary hover:text-text-secondary transition-colors"
 						@click="toggleFieldVisibility(field.key)"
 					>
@@ -254,7 +277,7 @@ async function handleSave() {
 					</button>
 				</div>
 				<p v-if="field.hint" class="text-xs text-text-tertiary mt-1">
-					{{ field.hint }}
+					{{ t(field.hint) }}
 				</p>
 			</div>
 		</template>
@@ -266,7 +289,7 @@ async function handleSave() {
 		>
 			<Icon name="lucide:info" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 			<p class="text-sm text-text-secondary">
-				{{ channelInfoMessages[channel] }}
+				{{ channelInfoMessage }}
 			</p>
 		</div>
 
@@ -282,11 +305,11 @@ async function handleSave() {
 		<!-- Actions -->
 		<div class="flex items-center justify-end gap-3 pt-2">
 			<UiButton variant="secondary" :disabled="isSaving" @click="emit('cancelled')">
-				Cancel
+				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton class="gap-2" :disabled="isSaving" @click="handleSave">
 				<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-				{{ isSaving ? 'Saving...' : 'Save Configuration' }}
+				{{ isSaving ? t('common.saving') : t('components.channels.channelConfigForm.save') }}
 			</UiButton>
 		</div>
 	</div>

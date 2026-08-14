@@ -1,26 +1,48 @@
 <script setup lang="ts">
+const { t } = useI18n();
+const localePath = useLocalePath();
+
 const { target, isVisible } = useScrollReveal();
 
+// The cell values are message keys too, not just the row labels: "4 GB" and
+// "2 vCPU" happen to survive translation unchanged, but "Required" does not,
+// and a locale that writes units differently needs the whole cell.
 const resourceRows = [
-	{ label: 'RAM', min: '4 GB', recommended: '8 GB' },
-	{ label: 'Disk', min: '20 GB', recommended: '40 GB' },
-	{ label: 'CPU', min: '2 vCPU', recommended: '4 vCPU' },
-	{ label: 'Domain + DNS', min: 'Required', recommended: 'Required' },
+	{
+		labelKey: 'pricing.resources.ram',
+		minKey: 'pricing.resources.ramMin',
+		recommendedKey: 'pricing.resources.ramRecommended',
+	},
+	{
+		labelKey: 'pricing.resources.disk',
+		minKey: 'pricing.resources.diskMin',
+		recommendedKey: 'pricing.resources.diskRecommended',
+	},
+	{
+		labelKey: 'pricing.resources.cpu',
+		minKey: 'pricing.resources.cpuMin',
+		recommendedKey: 'pricing.resources.cpuRecommended',
+	},
+	{
+		labelKey: 'pricing.resources.domain',
+		minKey: 'pricing.resources.required',
+		recommendedKey: 'pricing.resources.required',
+	},
 ];
 
 const selfHostFeatures = [
-	'All features — no gated tiers',
-	'Unlimited sends',
-	'Unlimited team members',
-	'Unlimited contacts',
-	'In-app updates (one-click)',
-	'Apache 2.0 licensed',
+	'pricing.selfHost.features.allFeatures',
+	'pricing.selfHost.features.sends',
+	'pricing.selfHost.features.members',
+	'pricing.selfHost.features.contacts',
+	'pricing.selfHost.features.updates',
+	'pricing.selfHost.features.license',
 ];
 
 const hostedFeatures = [
-	'Managed infrastructure',
-	'Dedicated IPs & warmup',
-	'Automatic updates & backups',
+	'pricing.hosted.features.managed',
+	'pricing.hosted.features.ips',
+	'pricing.hosted.features.backups',
 ];
 </script>
 
@@ -34,16 +56,23 @@ const hostedFeatures = [
 		<div class="max-w-[1200px] mx-auto">
 			<!-- Section header -->
 			<div class="mb-16 max-md:mb-12">
-				<span class="price-el lp-eyebrow mb-4" style="--i: 0">Pricing</span>
-				<h2 class="price-el lp-title mb-4" style="--i: 1">
-					Free <span class="lp-title-accent">forever</span>. Your infrastructure.
-				</h2>
+				<span class="price-el lp-eyebrow mb-4" style="--i: 0">{{ t('pricing.eyebrow') }}</span>
+				<I18nT
+					keypath="pricing.title"
+					tag="h2"
+					class="price-el lp-title mb-4"
+					style="--i: 1"
+					scope="global"
+				>
+					<template #accent>
+						<span class="lp-title-accent">{{ t('pricing.titleAccent') }}</span>
+					</template>
+				</I18nT>
 				<p
 					class="price-el text-base text-text-secondary leading-relaxed max-w-[540px]"
 					style="--i: 2"
 				>
-					Open-source under Apache 2.0. Hosted cloud is coming later — self-host today and own your
-					data.
+					{{ t('pricing.intro') }}
 				</p>
 			</div>
 
@@ -51,15 +80,17 @@ const hostedFeatures = [
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
 				<!-- Self-Host (featured: stronger border + black pill CTA) -->
 				<div class="price-card price-card-highlight" style="--i: 3">
-					<p class="text-caption text-text-tertiary mb-3">Available today</p>
-					<h3 class="text-lg font-medium tracking-[-0.01em] text-text-primary mb-1">Self-Host</h3>
-					<p class="text-caption text-text-tertiary mb-5">
-						Run on your own VPS. No limits. No billing.
-					</p>
+					<p class="text-caption text-text-tertiary mb-3">{{ t('pricing.selfHost.badge') }}</p>
+					<h3 class="text-lg font-medium tracking-[-0.01em] text-text-primary mb-1">
+						{{ t('pricing.selfHost.name') }}
+					</h3>
+					<p class="text-caption text-text-tertiary mb-5">{{ t('pricing.selfHost.tagline') }}</p>
 
 					<p class="mb-6">
-						<span class="text-4xl font-medium text-text-primary tracking-tight">Free</span>
-						<span class="text-sm text-text-tertiary"> forever</span>
+						<span class="text-4xl font-medium text-text-primary tracking-tight">{{
+							t('pricing.selfHost.price')
+						}}</span>
+						<span class="text-sm text-text-tertiary">&nbsp;{{ t('pricing.selfHost.period') }}</span>
 					</p>
 
 					<ul class="space-y-2.5 mb-7">
@@ -80,7 +111,7 @@ const hostedFeatures = [
 							>
 								<path d="M20 6 9 17l-5-5" />
 							</svg>
-							{{ feature }}
+							{{ t(feature) }}
 						</li>
 					</ul>
 
@@ -88,7 +119,7 @@ const hostedFeatures = [
 						href="https://docs.owlat.app/developer/self-hosting"
 						class="btn btn-primary btn-sm group w-full no-underline"
 					>
-						<span>Start self-hosting</span>
+						<span>{{ t('pricing.selfHost.cta') }}</span>
 						<svg
 							class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
 							width="14"
@@ -109,15 +140,17 @@ const hostedFeatures = [
 
 				<!-- Hosted Cloud (coming soon) -->
 				<div class="price-card" style="--i: 4">
-					<p class="text-caption text-text-tertiary mb-3">Coming soon</p>
+					<p class="text-caption text-text-tertiary mb-3">{{ t('pricing.hosted.badge') }}</p>
 					<h3 class="text-lg font-medium tracking-[-0.01em] text-text-primary mb-1">
-						Hosted Cloud
+						{{ t('pricing.hosted.name') }}
 					</h3>
-					<p class="text-caption text-text-tertiary mb-5">We run it for you. Launch in Q3.</p>
+					<p class="text-caption text-text-tertiary mb-5">{{ t('pricing.hosted.tagline') }}</p>
 
 					<p class="mb-6">
-						<span class="text-4xl font-medium text-text-secondary tracking-tight">€—</span>
-						<span class="text-sm text-text-tertiary"> /mo</span>
+						<span class="text-4xl font-medium text-text-secondary tracking-tight">{{
+							t('pricing.hosted.price')
+						}}</span>
+						<span class="text-sm text-text-tertiary">&nbsp;{{ t('pricing.hosted.period') }}</span>
 					</p>
 
 					<ul class="space-y-2.5 mb-7">
@@ -138,12 +171,12 @@ const hostedFeatures = [
 							>
 								<path d="M20 6 9 17l-5-5" />
 							</svg>
-							{{ feature }}
+							{{ t(feature) }}
 						</li>
 					</ul>
 
-					<a href="/waitlist" class="btn btn-hairline btn-sm w-full no-underline">
-						Join waitlist
+					<a :href="localePath('/waitlist')" class="btn btn-hairline btn-sm w-full no-underline">
+						{{ t('pricing.hosted.cta') }}
 					</a>
 				</div>
 			</div>
@@ -151,24 +184,28 @@ const hostedFeatures = [
 			<!-- Resource requirements -->
 			<div class="price-card" style="--i: 5">
 				<h3 class="text-base font-medium tracking-[-0.01em] text-text-primary mb-1">
-					Resource requirements
+					{{ t('pricing.resources.title') }}
 				</h3>
-				<p class="text-caption text-text-tertiary mb-5">What your VPS needs to run Owlat.</p>
+				<p class="text-caption text-text-tertiary mb-5">{{ t('pricing.resources.subtitle') }}</p>
 				<div class="rounded-(--radius-card) border border-border-subtle overflow-x-auto">
 					<table class="w-full text-caption">
 						<thead>
 							<tr class="border-b border-border-subtle">
 								<th class="px-3.5 py-2.5 text-left text-text-tertiary font-medium" />
-								<th class="px-3.5 py-2.5 text-right text-text-tertiary font-medium">Minimum</th>
-								<th class="px-3.5 py-2.5 text-right text-text-tertiary font-medium">Recommended</th>
+								<th class="px-3.5 py-2.5 text-right text-text-tertiary font-medium">
+									{{ t('pricing.resources.minimum') }}
+								</th>
+								<th class="px-3.5 py-2.5 text-right text-text-tertiary font-medium">
+									{{ t('pricing.resources.recommended') }}
+								</th>
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-border-subtle">
-							<tr v-for="row in resourceRows" :key="row.label">
-								<td class="px-3.5 py-2 text-text-primary font-medium">{{ row.label }}</td>
-								<td class="px-3.5 py-2 text-right text-text-secondary">{{ row.min }}</td>
+							<tr v-for="row in resourceRows" :key="row.labelKey">
+								<td class="px-3.5 py-2 text-text-primary font-medium">{{ t(row.labelKey) }}</td>
+								<td class="px-3.5 py-2 text-right text-text-secondary">{{ t(row.minKey) }}</td>
 								<td class="px-3.5 py-2 text-right text-text-primary font-medium">
-									{{ row.recommended }}
+									{{ t(row.recommendedKey) }}
 								</td>
 							</tr>
 						</tbody>

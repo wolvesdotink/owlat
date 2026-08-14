@@ -3,6 +3,8 @@ import { languageOptions } from '~/data/languageOptions';
 
 defineProps<{ published: boolean }>();
 
+const { t } = useI18n();
+
 const emailType = defineModel<'marketing' | 'transactional'>('emailType', { required: true });
 const defaultLanguage = defineModel<string>('defaultLanguage', { required: true });
 const subject = defineModel<string>('subject', { required: true });
@@ -16,9 +18,11 @@ const previewText = defineModel<string>('previewText', { required: true });
 				<Icon name="lucide:mail" class="w-5 h-5 text-brand" />
 			</div>
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Subject & Preview Text</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.email.emailSubjectSettingsCard.title') }}
+				</h2>
 				<p class="text-sm text-text-secondary">
-					The subject line and preview text for your default language
+					{{ t('components.email.emailSubjectSettingsCard.subtitle') }}
 				</p>
 			</div>
 		</div>
@@ -26,38 +30,47 @@ const previewText = defineModel<string>('previewText', { required: true });
 		<div class="space-y-6">
 			<UiSelect
 				v-model="emailType"
-				label="Email type"
+				:label="t('components.email.emailSubjectSettingsCard.emailTypeLabel')"
 				:disabled="published"
 				:options="[
-					{ value: 'marketing', label: 'Marketing' },
-					{ value: 'transactional', label: 'Transactional' },
+					{
+						value: 'marketing',
+						label: t('components.email.emailSubjectSettingsCard.emailTypes.marketing'),
+					},
+					{
+						value: 'transactional',
+						label: t('components.email.emailSubjectSettingsCard.emailTypes.transactional'),
+					},
 				]"
-				help-text="Unpublish this email before changing its type."
+				:help-text="t('components.email.emailSubjectSettingsCard.emailTypeHelp')"
 			/>
 			<UiSelect
 				v-model="defaultLanguage"
-				label="Default Language"
+				:label="t('components.email.emailSubjectSettingsCard.defaultLanguageLabel')"
 				:options="
 					languageOptions.map((language) => ({
 						value: language.value,
-						label: `${language.label} (${language.nativeLabel})`,
+						label: t('components.email.emailSubjectSettingsCard.languageOption', {
+							label: language.label,
+							nativeLabel: language.nativeLabel,
+						}),
 					}))
 				"
 			/>
 			<UiInput
 				v-model="subject"
-				label="Subject Line"
-				placeholder="Enter email subject line"
+				:label="t('components.email.emailSubjectSettingsCard.subjectLabel')"
+				:placeholder="t('components.email.emailSubjectSettingsCard.subjectPlaceholder')"
 				:required="true"
-				help-text="The subject line recipients will see in their inbox."
+				:help-text="t('components.email.emailSubjectSettingsCard.subjectHelp')"
 			/>
 			<UiTextarea
 				v-model="previewText"
-				label="Preview Text"
-				placeholder="Enter preview text (optional)"
+				:label="t('components.email.emailSubjectSettingsCard.previewTextLabel')"
+				:placeholder="t('components.email.emailSubjectSettingsCard.previewTextPlaceholder')"
 				:rows="2"
 				:max-length="150"
-				help-text="The preview text appears after the subject line in email clients. Keep it under 150 characters."
+				:help-text="t('components.email.emailSubjectSettingsCard.previewTextHelp')"
 			/>
 		</div>
 	</UiCard>

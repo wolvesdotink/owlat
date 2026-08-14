@@ -35,7 +35,7 @@ function read(relativePath: string): string {
 	return readFileSync(resolve(repoRoot, relativePath), 'utf8');
 }
 
-const CONTENT_DIR = 'apps/docs/content/3.developer';
+const CONTENT_DIR = 'apps/docs/content/en/3.developer';
 
 const PAGES = {
 	overview: '40.plugin-platform.md',

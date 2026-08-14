@@ -85,6 +85,8 @@ const emit = defineEmits<{
 	(e: 'update:modelValue', value: string): void;
 }>();
 
+const { t } = useI18n();
+
 const editorRef = ref<HTMLDivElement | null>(null);
 const surfaceRef = ref<HTMLDivElement | null>(null);
 
@@ -365,7 +367,7 @@ defineExpose({ focus: focusEditor });
 				v-if="isEmpty"
 				class="absolute top-3 left-3 text-text-tertiary text-sm pointer-events-none select-none"
 			>
-				{{ placeholder ?? 'Write your message…' }}
+				{{ placeholder ?? t('components.postbox.basicEditor.placeholder') }}
 			</div>
 			<!--
 				Ghost text: non-editable, positioned at the caret. Lives OUTSIDE the

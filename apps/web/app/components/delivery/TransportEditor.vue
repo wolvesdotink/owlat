@@ -60,6 +60,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ applied: [] }>();
 
+const { t } = useI18n();
 const { showToast } = useToast();
 
 const isEditing = ref(false);
@@ -163,7 +164,7 @@ async function handleTest() {
 	} catch (e) {
 		testResult.value = {
 			ok: false,
-			message: (e as Error).message || 'Could not reach the provider. Try again.',
+			message: (e as Error).message || t('components.delivery.transportEditor.probeFailed'),
 		};
 	} finally {
 		testing.value = false;
@@ -246,7 +247,7 @@ async function apply(relayRemovalConfirmation?: string): Promise<void> {
 		relay.clearEnteredSecrets();
 		emit('applied');
 	} catch (e) {
-		applyError.value = (e as Error).message || 'Could not apply the transport. Try again.';
+		applyError.value = (e as Error).message || t('components.delivery.transportEditor.applyFailed');
 	} finally {
 		applying.value = false;
 	}
@@ -270,22 +271,26 @@ function cancel() {
 				<div class="flex items-center gap-3">
 					<UiIconBox icon="lucide:pencil" size="sm" variant="surface" rounded="lg" />
 					<div>
-						<h2 class="text-lg font-semibold text-text-primary">Change provider</h2>
+						<h2 class="text-lg font-semibold text-text-primary">
+							{{ t('components.delivery.transportEditor.title') }}
+						</h2>
 						<p class="text-sm text-text-secondary">
-							Switch transport or update credentials — tested and applied here, no CLI needed
+							{{ t('components.delivery.transportEditor.subtitle') }}
 						</p>
 					</div>
 				</div>
 				<UiButton v-if="!isEditing" variant="secondary" size="sm" @click="isEditing = true">
 					<template #iconLeft><Icon name="lucide:settings-2" class="w-4 h-4" /></template>
-					Edit transport
+					{{ t('components.delivery.transportEditor.editTransport') }}
 				</UiButton>
 			</div>
 		</template>
 
 		<div v-if="isEditing" class="p-6 space-y-5">
 			<fieldset class="space-y-2">
-				<legend class="sr-only">Delivery provider</legend>
+				<legend class="sr-only">
+					{{ t('components.delivery.transportEditor.providerLegend') }}
+				</legend>
 				<label
 					v-for="opt in providerOptions"
 					:key="opt.value"
@@ -309,15 +314,15 @@ function cancel() {
 						rounded="lg"
 					/>
 					<div class="flex-1">
-						<div class="font-medium text-text-primary">{{ opt.label }}</div>
-						<div class="text-sm text-text-secondary">{{ opt.hint }}</div>
+						<div class="font-medium text-text-primary">{{ t(opt.label) }}</div>
+						<div class="text-sm text-text-secondary">{{ t(opt.hint) }}</div>
 					</div>
 				</label>
 			</fieldset>
 
 			<p class="text-xs text-text-tertiary flex items-center gap-1.5">
 				<Icon name="lucide:shield" class="w-3.5 h-3.5" />
-				Existing credentials are never shown. Re-enter them to change the transport.
+				{{ t('components.delivery.transportEditor.credentialsNeverShown') }}
 			</p>
 
 			<!-- ONE form for every transport: the selected entry's `credentialFields`
@@ -333,38 +338,42 @@ function cancel() {
 				@update:preset="preset = $event"
 			>
 				<template #outboundTlsMode="{ value }">
-					<p class="text-sm text-text-secondary">{{ outboundTlsHint(value) }}</p>
+					<p class="text-sm text-text-secondary">{{ t(outboundTlsHint(value)) }}</p>
 					<p
 						v-if="value === 'require-verified'"
 						class="text-xs text-warning flex items-start gap-1.5"
 					>
 						<Icon name="lucide:alert-circle" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
-						<span>
-							“Always encrypt and verify” can bounce mail to receivers whose mail servers have a
-							misconfigured or self-signed certificate. Use it only if you know your recipients keep
-							valid certificates.
-						</span>
+						<span>{{ t('components.delivery.transportEditor.requireVerifiedWarning') }}</span>
 					</p>
 				</template>
 			</TransportCredentialFields>
 
 			<div class="border-t border-border-subtle pt-5">
 				<h3 class="font-medium text-text-primary">
-					From identity <span class="text-sm font-normal text-text-tertiary">(optional)</span>
+					{{ t('components.delivery.transportEditor.fromIdentity') }}
+					<span class="text-sm font-normal text-text-tertiary">
+						{{ t('components.delivery.transportEditor.optionalSuffix') }}
+					</span>
 				</h3>
 				<p class="text-sm text-text-secondary mb-3">
-					Leave blank to keep the current default From address.
+					{{ t('components.delivery.transportEditor.fromIdentityHint') }}
 				</p>
 				<div class="space-y-4">
 					<UiInput
 						v-model="fromEmail"
 						type="email"
-						label="Default From address"
-						placeholder="noreply@yourdomain.com"
+						:label="t('components.delivery.transportEditor.fromEmailLabel')"
+						:placeholder="t('components.delivery.transportEditor.fromEmailPlaceholder')"
 						autocomplete="off"
 						:error="showErrors ? errors.fromEmail : undefined"
 					/>
-					<UiInput v-model="fromName" label="From name" placeholder="Owlat" autocomplete="off" />
+					<UiInput
+						v-model="fromName"
+						:label="t('components.delivery.transportEditor.fromNameLabel')"
+						:placeholder="t('components.delivery.transportEditor.fromNamePlaceholder')"
+						autocomplete="off"
+					/>
 				</div>
 			</div>
 
@@ -372,7 +381,11 @@ function cancel() {
 			<UiErrorAlert
 				v-if="testResult"
 				:variant="testResult.ok ? 'info' : 'error'"
-				:title="testResult.ok ? 'Credentials verified' : 'Test failed'"
+				:title="
+					testResult.ok
+						? t('components.delivery.transportEditor.credentialsVerifiedTitle')
+						: t('components.delivery.transportEditor.testFailedTitle')
+				"
 				:message="testResult.message"
 			/>
 
@@ -382,21 +395,20 @@ function cancel() {
 			     that one rather than listing the vendors that lack a probe. -->
 			<p v-if="!canTest" class="text-xs text-text-tertiary flex items-center gap-1.5">
 				<Icon name="lucide:info" class="w-3.5 h-3.5" />
-				This transport can't be tested before applying — apply, then use "Send a test email" below
-				to confirm delivery.
+				{{ t('components.delivery.transportEditor.noPreApplyCheck') }}
 			</p>
 
 			<!-- Apply error / restart handoff -->
 			<UiErrorAlert
 				v-if="applyError"
 				variant="error"
-				title="Couldn't apply"
+				:title="t('components.delivery.transportEditor.applyFailedTitle')"
 				:message="applyError"
 			/>
 			<UiErrorAlert
 				v-if="restartNotice"
 				variant="info"
-				title="Restart required"
+				:title="t('components.delivery.transportEditor.restartRequiredTitle')"
 				:message="restartNotice"
 			/>
 
@@ -412,23 +424,33 @@ function cancel() {
 					<template v-if="!testing" #iconLeft>
 						<Icon name="lucide:plug-zap" class="w-4 h-4" />
 					</template>
-					{{ testing ? 'Testing…' : 'Test credentials' }}
+					{{
+						testing
+							? t('components.delivery.transportEditor.testing')
+							: t('components.delivery.transportEditor.testCredentials')
+					}}
 				</UiButton>
 				<UiButton :loading="applying" :disabled="applying || testing" @click="handleApply">
 					<template v-if="!applying" #iconLeft>
 						<Icon name="lucide:check" class="w-4 h-4" />
 					</template>
-					{{ applying ? 'Applying…' : 'Apply transport' }}
+					{{
+						applying
+							? t('components.delivery.transportEditor.applying')
+							: t('components.delivery.transportEditor.applyTransport')
+					}}
 				</UiButton>
-				<UiButton variant="ghost" :disabled="applying || testing" @click="cancel">Cancel</UiButton>
+				<UiButton variant="ghost" :disabled="applying || testing" @click="cancel">
+					{{ t('common.cancel') }}
+				</UiButton>
 			</div>
 
 			<!-- The one transport change that can lose reputation names what it costs. -->
 			<DeliveryRampConfirmDialog
 				:open="isRemovalDialogOpen"
-				title="Disconnect the relay?"
+				:title="t('components.delivery.transportEditor.disconnectDialogTitle')"
 				:phrase="RELAY_REMOVAL_CONFIRMATION"
-				confirm-label="Disconnect and switch to my own MTA"
+				:confirm-label="t('components.delivery.transportEditor.disconnectConfirmLabel')"
 				:busy="applying"
 				@cancel="isRemovalDialogOpen = false"
 				@confirm="confirmRelayRemoval"
@@ -446,17 +468,22 @@ function cancel() {
 		</div>
 
 		<div v-else class="px-6 py-5">
-			<p class="text-sm text-text-secondary">
-				The active transport is
-				<span class="font-medium text-text-primary">{{ currentProvider ?? 'not set' }}</span
-				>. Choose a different provider or rotate its credentials — the change is tested and applied
-				in place.
-			</p>
+			<I18nT
+				keypath="components.delivery.transportEditor.activeTransport"
+				tag="p"
+				scope="global"
+				class="text-sm text-text-secondary"
+			>
+				<template #provider>
+					<span class="font-medium text-text-primary">
+						{{ currentProvider ?? t('components.delivery.transportEditor.notSet') }}
+					</span>
+				</template>
+			</I18nT>
 			<!-- One endpoint, two doors: name the relationship so neither affordance
 			     looks like it does something the other does not. -->
 			<p class="text-sm text-text-secondary mt-2">
-				“Connect an email provider” below is the guided version of this: the same change, walked
-				step by step with a live send test and DNS alignment checks.
+				{{ t('components.delivery.transportEditor.guidedVersionNote') }}
 			</p>
 		</div>
 	</UiCard>

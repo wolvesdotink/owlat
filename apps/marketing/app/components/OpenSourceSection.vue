@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const { t } = useI18n();
+
 const { target, isVisible } = useScrollReveal();
 
 const links = [
@@ -6,15 +8,15 @@ const links = [
 		href: 'https://github.com/wolvesdotink/owlat',
 		external: true,
 		icon: 'github',
-		title: 'View on GitHub',
-		desc: 'Every line of code is auditable. Report issues, submit PRs, and shape the roadmap.',
+		titleKey: 'openSource.github.title',
+		descKey: 'openSource.github.desc',
 	},
 	{
 		href: 'https://docs.owlat.app/developer/self-hosting',
 		external: false,
 		icon: 'server',
-		title: 'Self-hosting guide',
-		desc: 'Deploy on your own infrastructure. Your data stays where you decide — no vendor lock-in.',
+		titleKey: 'openSource.selfHosting.title',
+		descKey: 'openSource.selfHosting.desc',
 	},
 ];
 </script>
@@ -29,17 +31,24 @@ const links = [
 		<div class="max-w-[1200px] mx-auto">
 			<!-- Section header -->
 			<div class="mb-16 max-md:mb-12">
-				<span class="oss-el lp-eyebrow mb-4" style="--i: 0">Open Source</span>
-				<h2 class="oss-el lp-title mb-4" style="--i: 1">
-					Built in the open,<br class="max-md:hidden" />
-					owned by <span class="lp-title-accent">you</span>
-				</h2>
+				<span class="oss-el lp-eyebrow mb-4" style="--i: 0">{{ t('openSource.eyebrow') }}</span>
+				<I18nT
+					keypath="openSource.title"
+					tag="h2"
+					class="oss-el lp-title mb-4"
+					style="--i: 1"
+					scope="global"
+				>
+					<template #break><br class="max-md:hidden" /></template>
+					<template #accent>
+						<span class="lp-title-accent">{{ t('openSource.titleAccent') }}</span>
+					</template>
+				</I18nT>
 				<p
 					class="oss-el text-base text-text-secondary leading-relaxed max-w-[540px]"
 					style="--i: 2"
 				>
-					Inspect every line, self-host on your terms, and contribute to the platform you rely on.
-					Fork it, extend it, migrate away — you always own your email stack.
+					{{ t('openSource.intro') }}
 				</p>
 			</div>
 
@@ -47,7 +56,7 @@ const links = [
 			<div class="grid grid-cols-2 gap-4 max-md:grid-cols-1">
 				<a
 					v-for="link in links"
-					:key="link.title"
+					:key="link.titleKey"
 					:href="link.href"
 					:target="link.external ? '_blank' : undefined"
 					:rel="link.external ? 'noopener noreferrer' : undefined"
@@ -91,7 +100,7 @@ const links = [
 							<span
 								class="flex items-center gap-1.5 text-md font-medium text-text-primary leading-[1.3] mb-1.5"
 							>
-								{{ link.title }}
+								{{ t(link.titleKey) }}
 								<svg
 									width="13"
 									height="13"
@@ -109,7 +118,7 @@ const links = [
 								</svg>
 							</span>
 							<span class="block text-caption text-text-secondary leading-[1.65]">
-								{{ link.desc }}
+								{{ t(link.descKey) }}
 							</span>
 						</div>
 					</div>

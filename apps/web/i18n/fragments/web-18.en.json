@@ -1,0 +1,203 @@
+{
+	"components": {
+		"knowledge": {
+			"graphStatsPanel": {
+				"title": "Graph insights",
+				"emptyBody": "No analytics snapshot yet. Insights are computed on a daily cron once the knowledge graph has connected entries.",
+				"approximate": "Approximate",
+				"approximateHint": "The graph is large; figures are approximate (scan was capped).",
+				"entries": "Entries",
+				"relations": "Relations",
+				"computedAt": "Computed {timestamp}",
+				"hubs": "Hubs (god nodes)",
+				"noHubs": "No hubs yet — relations are sparse.",
+				"degreeHint": "{incoming} in / {outgoing} out",
+				"openEntry": "Open {title}",
+				"confidenceTitle": "Confidence distribution",
+				"bucketHint": "{range}: {count}",
+				"mean": "Mean {value}",
+				"median": "Median {value}",
+				"lowConfidence": "{count} low-confidence",
+				"communities": "Communities",
+				"communityCount": "(~{count})",
+				"communitiesHint": "Approximate clusters (label propagation).",
+				"surprising": "Surprising connections",
+				"surprisingEmpty": "None surfaced.",
+				"hiddenCrossContact": "{count} cross-contact connection hidden to protect contact isolation. | {count} cross-contact connections hidden to protect contact isolation.",
+				"relationTypes": {
+					"supports": "Supports",
+					"contradicts": "Contradicts",
+					"supersedes": "Supersedes",
+					"relates_to": "Relates to",
+					"causes": "Causes",
+					"blocks": "Blocks"
+				}
+			},
+			"graphView": {
+				"analyticsOffTitle": "Graph analytics are off",
+				"analyticsOffBody": "Enable {setting} in Settings to view the graph and its insights.",
+				"analyticsOffSetting": "Knowledge graph analytics",
+				"hops": "{count} hop | {count} hops",
+				"legendExtracted": "Extracted",
+				"legendInferred": "Inferred",
+				"legendAmbiguous": "Ambiguous",
+				"legendHub": "Hub",
+				"closePanel": "Close panel",
+				"centerHere": "Center here",
+				"entryTypes": {
+					"fact": "Fact",
+					"decision": "Decision",
+					"event": "Event",
+					"preference": "Preference",
+					"goal": "Goal",
+					"relationship": "Relationship",
+					"action_item": "Action Item"
+				}
+			},
+			"entryCard": {
+				"confidence": "Confidence",
+				"entryTypes": {
+					"fact": "Fact",
+					"decision": "Decision",
+					"event": "Event",
+					"preference": "Preference",
+					"goal": "Goal",
+					"relationship": "Relationship",
+					"action_item": "Action Item"
+				},
+				"sourceTypes": {
+					"email": "Email",
+					"chat": "Chat",
+					"manual": "Manual",
+					"file": "File",
+					"agent_extracted": "AI Extracted"
+				}
+			},
+			"entryForm": {
+				"type": "Type",
+				"title": "Title",
+				"titlePlaceholder": "Short, descriptive title",
+				"content": "Content",
+				"contentPlaceholder": "Detailed knowledge entry content...",
+				"source": "Source",
+				"confidence": "Confidence",
+				"confidenceValue": "({value}%)",
+				"confidenceLow": "Low",
+				"confidenceHigh": "High",
+				"tags": "Tags",
+				"tagsHint": "(comma-separated)",
+				"tagsPlaceholder": "e.g. important, customer, q1-2026",
+				"expiresIn": "Expires in",
+				"expiresInHint": "(optional, days from now)",
+				"expiresInPlaceholder": "e.g. 30",
+				"submitUpdate": "Update Entry",
+				"submitCreate": "Create Entry",
+				"entryTypes": {
+					"fact": "Fact",
+					"decision": "Decision",
+					"event": "Event",
+					"preference": "Preference",
+					"goal": "Goal",
+					"relationship": "Relationship",
+					"action_item": "Action Item"
+				},
+				"sourceTypes": {
+					"email": "Email",
+					"chat": "Chat",
+					"manual": "Manual",
+					"file": "File",
+					"agent_extracted": "AI Extracted"
+				}
+			},
+			"relationsList": {
+				"outgoing": "Outgoing Relations",
+				"incoming": "Incoming Relations",
+				"count": "({count})",
+				"noOutgoing": "No outgoing relations.",
+				"noIncoming": "No incoming relations.",
+				"removeRelation": "Remove relation",
+				"relationTypes": {
+					"supports": "Supports",
+					"contradicts": "Contradicts",
+					"supersedes": "Supersedes",
+					"relates_to": "Relates to",
+					"causes": "Causes",
+					"blocks": "Blocks"
+				},
+				"entryTypes": {
+					"fact": "Fact",
+					"decision": "Decision",
+					"event": "Event",
+					"preference": "Preference",
+					"goal": "Goal",
+					"relationship": "Relationship",
+					"action_item": "Action Item"
+				}
+			}
+		},
+		"mail": {
+			"templateLibraryModal": {
+				"libraryTitle": "Choose a Template",
+				"customizeTitle": "Customize Your Template",
+				"backToTemplates": "Back to templates",
+				"intro": "Start with a template to speed up your workflow, or begin from scratch.",
+				"emptyCanvas": "Empty Canvas",
+				"emptyTemplate": "Empty template",
+				"nameLabel": "Template Name",
+				"namePlaceholder": "e.g., Weekly Newsletter",
+				"nameRequired": "Template name is required",
+				"createFailed": "Failed to create template"
+			}
+		},
+		"postbox": {
+			"aiStrip": {
+				"summarizeOperation": "Summarize thread",
+				"askOperation": "Ask about this thread",
+				"suggestOperation": "Suggest replies",
+				"summaryLabel": "Summary:",
+				"toggleSummaryDetail": "Toggle summary detail",
+				"more": "more",
+				"less": "less",
+				"ask": "Ask",
+				"askAbout": "Ask about this thread",
+				"askPlaceholder": "Ask about this thread…",
+				"draftReply": "Draft reply",
+				"draftAReply": "Draft a reply",
+				"thinking": "Thinking…",
+				"askFailed": "Couldn't answer that right now. Try again in a moment.",
+				"working": "Working…",
+				"suggestedReplies": "Suggested replies",
+				"noSuggestions": "No suggestions right now. Try again in a moment."
+			},
+			"appPasswordCallout": {
+				"heading": "{provider} needs an app password",
+				"headingAuthError": "{provider} needs an app password, not your account password",
+				"openPage": "Open {provider} app-password page"
+			},
+			"appPasswordReveal": {
+				"title": "Save this password now",
+				"body": "Owlat does not store the cleartext — once you close this dialog it is gone for good. Paste it into {client} and revoke this entry to rotate later.",
+				"yourClient": "your client",
+				"saved": "I've saved it"
+			},
+			"attachmentLightbox": {
+				"previewOf": "Preview of {filename}",
+				"attachmentPreview": "Attachment preview",
+				"position": "{index} of {total}",
+				"openInNewTab": "Open in new tab",
+				"download": "Download {filename}",
+				"closePreview": "Close preview",
+				"previous": "Previous attachment",
+				"next": "Next attachment",
+				"loading": "Loading preview…",
+				"previewUnavailable": "Preview unavailable — use Download instead.",
+				"pdfPreviewOf": "PDF preview of {filename}",
+				"pdfFallback": "This browser can't embed PDFs — {link}.",
+				"pdfFallbackLink": "open it in a new tab instead"
+			},
+			"basicEditor": {
+				"placeholder": "Write your message…"
+			}
+		}
+	}
+}

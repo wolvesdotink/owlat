@@ -1,9 +1,13 @@
 <script setup lang="ts">
+const { t } = useI18n();
+const localePath = useLocalePath();
+
+// Getters: `useSeoMeta` captures its options once, so a plain `t()` would pin
+// the title to the locale that was active at setup.
 useSeoMeta({
-	title: 'Hosted Cloud Waitlist — Owlat',
-	ogTitle: 'Hosted Cloud Waitlist — Owlat',
-	description:
-		'Be first in line when Owlat Cloud launches. Until then, self-hosting is free and fully supported.',
+	title: () => t('seo.waitlist.title'),
+	ogTitle: () => t('seo.waitlist.title'),
+	description: () => t('seo.waitlist.description'),
 	robots: 'noindex',
 });
 
@@ -19,12 +23,14 @@ const company = ref('');
 const volume = ref('');
 const errorMessage = ref('');
 
+// The submitted `value` is the machine-readable bucket and never changes with
+// the locale; only its label is translated.
 const volumeOptions = [
-	{ value: '', label: 'Rough monthly send volume' },
-	{ value: '<10k', label: 'Under 10,000 / month' },
-	{ value: '10k-100k', label: '10,000 – 100,000 / month' },
-	{ value: '100k-1m', label: '100,000 – 1,000,000 / month' },
-	{ value: '>1m', label: 'Over 1,000,000 / month' },
+	{ value: '', labelKey: 'waitlist.volume.none' },
+	{ value: '<10k', labelKey: 'waitlist.volume.under10k' },
+	{ value: '10k-100k', labelKey: 'waitlist.volume.to100k' },
+	{ value: '100k-1m', labelKey: 'waitlist.volume.to1m' },
+	{ value: '>1m', labelKey: 'waitlist.volume.over1m' },
 ];
 
 async function submit(e: Event) {
@@ -35,7 +41,7 @@ async function submit(e: Event) {
 	const emailTrimmed = email.value.trim();
 	if (!emailTrimmed || !emailTrimmed.includes('@')) {
 		state.value = 'error';
-		errorMessage.value = 'Please enter a valid email address.';
+		errorMessage.value = t('waitlist.errors.invalidEmail');
 		return;
 	}
 
@@ -67,12 +73,12 @@ async function submit(e: Event) {
 			body: JSON.stringify(payload),
 		});
 		if (!res.ok) {
-			throw new Error(`Waitlist signup failed (HTTP ${res.status})`);
+			throw new Error(t('waitlist.errors.requestFailed', { status: res.status }));
 		}
 		state.value = 'success';
 	} catch (err) {
 		state.value = 'error';
-		errorMessage.value = err instanceof Error ? err.message : 'Something went wrong.';
+		errorMessage.value = err instanceof Error ? err.message : t('waitlist.errors.generic');
 	}
 }
 </script>
@@ -83,30 +89,38 @@ async function submit(e: Event) {
 	>
 		<div class="relative w-full max-w-[560px] mx-auto">
 			<!-- Eyebrow -->
-			<span class="lp-eyebrow mb-4"> Hosted Cloud · Coming soon </span>
+			<span class="lp-eyebrow mb-4">{{ t('waitlist.eyebrow') }}</span>
 
-			<h1
+			<I18nT
+				keypath="waitlist.title"
+				tag="h1"
 				class="text-[clamp(2.2rem,4.5vw,3.25rem)] font-medium leading-[1.1] tracking-[-0.02em] text-text-primary mb-5"
+				scope="global"
 			>
-				Be first when <span class="lp-title-accent">Owlat Cloud</span> opens.
-			</h1>
+				<template #accent>
+					<span class="lp-title-accent">{{ t('waitlist.titleAccent') }}</span>
+				</template>
+			</I18nT>
 
-			<p class="text-[1.0625rem] text-text-secondary leading-[1.65] mb-8">
-				We're polishing the managed version. Leave your email and we'll let you know when it's
-				ready. In the meantime —
-				<a href="https://docs.owlat.app/developer/self-hosting" class="text-brand hover:underline"
-					>self-hosting is free and fully supported</a
-				>.
-			</p>
+			<I18nT
+				keypath="waitlist.intro"
+				tag="p"
+				class="text-[1.0625rem] text-text-secondary leading-[1.65] mb-8"
+				scope="global"
+			>
+				<template #link>
+					<a href="https://docs.owlat.app/developer/self-hosting" class="text-brand hover:underline">
+						{{ t('waitlist.introLink') }}
+					</a>
+				</template>
+			</I18nT>
 
 			<!-- Form / Success states -->
 			<template v-if="state !== 'success'">
 				<form class="lp-card p-8 max-sm:p-6 space-y-4" @submit="submit">
 					<div>
-						<label
-							for="wl-email"
-							class="block text-[0.8125rem] font-medium text-text-primary mb-1.5"
-							>Email <span class="text-brand">*</span></label
+						<label for="wl-email" class="block text-[0.8125rem] font-medium text-text-primary mb-1.5"
+							>{{ t('waitlist.emailLabel') }} <span class="text-brand">*</span></label
 						>
 						<input
 							id="wl-email"
@@ -114,7 +128,7 @@ async function submit(e: Event) {
 							type="email"
 							required
 							autocomplete="email"
-							placeholder="you@company.com"
+							:placeholder="t('waitlist.emailPlaceholder')"
 							class="w-full rounded-xl border border-border-default bg-bg-elevated px-4 py-2.5 text-[0.9375rem] text-text-primary placeholder-text-disabled focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors"
 						/>
 					</div>
@@ -124,7 +138,7 @@ async function submit(e: Event) {
 							<label
 								for="wl-name"
 								class="block text-[0.8125rem] font-medium text-text-primary mb-1.5"
-								>Name</label
+								>{{ t('waitlist.nameLabel') }}</label
 							>
 							<input
 								id="wl-name"
@@ -139,7 +153,7 @@ async function submit(e: Event) {
 							<label
 								for="wl-company"
 								class="block text-[0.8125rem] font-medium text-text-primary mb-1.5"
-								>Company</label
+								>{{ t('waitlist.companyLabel') }}</label
 							>
 							<input
 								id="wl-company"
@@ -155,7 +169,7 @@ async function submit(e: Event) {
 						<label
 							for="wl-volume"
 							class="block text-[0.8125rem] font-medium text-text-primary mb-1.5"
-							>Expected volume</label
+							>{{ t('waitlist.volumeLabel') }}</label
 						>
 						<select
 							id="wl-volume"
@@ -163,7 +177,7 @@ async function submit(e: Event) {
 							class="w-full rounded-xl border border-border-default bg-bg-elevated px-4 py-2.5 text-[0.9375rem] text-text-primary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors"
 						>
 							<option v-for="opt in volumeOptions" :key="opt.value" :value="opt.value">
-								{{ opt.label }}
+								{{ t(opt.labelKey) }}
 							</option>
 						</select>
 					</div>
@@ -180,7 +194,9 @@ async function submit(e: Event) {
 						:disabled="state === 'submitting'"
 						class="btn btn-primary group w-full px-7 text-md"
 					>
-						<span>{{ state === 'submitting' ? 'Submitting…' : 'Join waitlist' }}</span>
+						<span>{{
+							state === 'submitting' ? t('waitlist.submitting') : t('waitlist.submit')
+						}}</span>
 						<svg
 							v-if="state !== 'submitting'"
 							class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
@@ -199,7 +215,7 @@ async function submit(e: Event) {
 					</button>
 
 					<p class="text-[0.75rem] text-text-tertiary text-center mt-2">
-						We'll email you only when there's news about Owlat Cloud. No spam.
+						{{ t('waitlist.disclaimer') }}
 					</p>
 				</form>
 			</template>
@@ -219,16 +235,27 @@ async function submit(e: Event) {
 						<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
 						<path d="m9 11 3 3L22 4" />
 					</svg>
-					<h2 class="font-display text-2xl text-text-primary mb-2">You're on the list.</h2>
-					<p class="text-[0.9375rem] text-text-secondary leading-relaxed mb-6">
-						We'll reach out as soon as Owlat Cloud is ready. Until then,
-						<a
-							href="https://docs.owlat.app/developer/self-hosting"
-							class="text-brand hover:underline"
-							>self-hosting takes about 10 minutes</a
-						>.
-					</p>
-					<a href="/" class="btn btn-hairline btn-sm no-underline"> ← Back to owlat.app </a>
+					<h2 class="font-display text-2xl text-text-primary mb-2">
+						{{ t('waitlist.success.title') }}
+					</h2>
+					<I18nT
+						keypath="waitlist.success.body"
+						tag="p"
+						class="text-[0.9375rem] text-text-secondary leading-relaxed mb-6"
+						scope="global"
+					>
+						<template #link>
+							<a
+								href="https://docs.owlat.app/developer/self-hosting"
+								class="text-brand hover:underline"
+							>
+								{{ t('waitlist.success.bodyLink') }}
+							</a>
+						</template>
+					</I18nT>
+					<a :href="localePath('/')" class="btn btn-hairline btn-sm no-underline">
+						{{ t('waitlist.success.back') }}
+					</a>
 				</div>
 			</template>
 		</div>

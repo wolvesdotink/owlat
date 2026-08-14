@@ -30,6 +30,17 @@ const props = defineProps<{
 	heuristics?: SenderHeuristics;
 }>();
 
+const { t } = useI18n();
+
+/**
+ * Every string this badge shows is derived by the module-scope `senderAuth`
+ * registry, so it arrives as a message key (or a `{ key, params }` pair for the
+ * parameterized lines) and is resolved here at render time.
+ */
+type Message = string | { key: string; params?: Record<string, unknown> };
+const message = (value: Message) =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 const result = computed(() => (props.enabled ? deriveSenderAuth(props.auth) : null));
 
 // Secondary impersonation lines, shown only when the badge itself renders (a
@@ -88,7 +99,7 @@ const toneClasses = computed(() => {
 			@click="expanded = !expanded"
 		>
 			<Icon :name="result.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
-			<span data-testid="auth-badge-summary">{{ result.summary }}</span>
+			<span data-testid="auth-badge-summary">{{ message(result.summary) }}</span>
 			<Icon
 				:name="expanded ? 'lucide:chevron-up' : 'lucide:chevron-down'"
 				class="w-3 h-3 text-text-tertiary"
@@ -99,14 +110,14 @@ const toneClasses = computed(() => {
 			class="mt-1.5 text-xs text-text-secondary max-w-prose"
 			data-testid="auth-badge-detail"
 		>
-			{{ result.detail }}
+			{{ message(result.detail) }}
 		</p>
 		<ul
 			v-if="expanded && heuristicLines.length"
 			class="mt-1.5 space-y-1 text-xs text-text-secondary max-w-prose list-disc pl-4"
 			data-testid="auth-badge-heuristics"
 		>
-			<li v-for="line in heuristicLines" :key="line">{{ line }}</li>
+			<li v-for="(line, i) in heuristicLines" :key="i">{{ message(line) }}</li>
 		</ul>
 	</div>
 </template>

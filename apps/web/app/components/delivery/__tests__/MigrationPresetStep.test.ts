@@ -14,6 +14,7 @@ import { nextTick, ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
 import type { MigrationRouteView, MigrationTransportEntry } from '~/utils/mandrillMigration';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -43,6 +44,7 @@ function catalog(over: Partial<Record<string, boolean>> = {}): MigrationTranspor
 }
 
 async function mountStep(props: Partial<Record<string, unknown>> = {}) {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useBackendOperation', (operation: FunctionReference<'mutation'>) => {
 		const name = getFunctionName(operation);
 		return {
@@ -59,7 +61,7 @@ async function mountStep(props: Partial<Record<string, unknown>> = {}) {
 	const component = (await import('../MigrationPresetStep.vue')).default;
 	return mount(component, {
 		props: { catalog: catalog(), routes: [] as MigrationRouteView[], isApplied: false, ...props },
-		global: { stubs },
+		global: { plugins: [createTestI18n()], stubs },
 	});
 }
 

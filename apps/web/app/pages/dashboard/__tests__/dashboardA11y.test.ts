@@ -23,6 +23,7 @@ import {
 	paginatedResult,
 	queryResult,
 } from '~/__tests__/a11y';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useBulkOperation } from '~/composables/useBulkOperation';
 import { useBulkSelection } from '~/composables/useBulkSelection';
 import { useCampaignStatusBadge } from '~/composables/useCampaignStatusBadge';
@@ -60,6 +61,8 @@ vi.mock('~/composables/useOrganization', () => ({
 
 beforeEach(() => {
 	installNuxtStubs({
+		// Extracted surfaces render through vue-i18n; `useI18n` is an auto-import.
+		...i18nStubs,
 		useRoute: () => ({
 			path: '/dashboard',
 			fullPath: '/dashboard',
@@ -190,6 +193,7 @@ describe('getting-started checklist — accessibility', () => {
 	it('has no axe violations for an admin on a fresh instance', async () => {
 		const violations = await auditA11y(GettingStarted, {
 			props: { userId: 'user1', isAdmin: true },
+			global: { plugins: [createTestI18n()] },
 			prepare: (wrapper) => expect(wrapper.text()).toContain('Getting started'),
 		});
 		expect(violations).toEqual([]);

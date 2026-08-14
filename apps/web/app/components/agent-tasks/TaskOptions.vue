@@ -39,6 +39,8 @@ const emit = defineEmits<{
 	(e: 'submit'): void;
 }>();
 
+const { t } = useI18n();
+
 // Which input mode produced the current value. Initialized from the incoming
 // modelValue (an external value matching a chip counts as a chip pick), then
 // owned by user interaction.
@@ -111,7 +113,10 @@ defineExpose({ pickIndex });
 			:data-testid="inputTestId"
 			:disabled="disabled"
 			:placeholder="
-				placeholder ?? (options.length > 0 ? 'Or type an answer…' : 'Type your answer…')
+				placeholder ??
+				(options.length > 0
+					? t('components.agentTasks.taskOptions.orTypeAnswerPlaceholder')
+					: t('components.agentTasks.taskOptions.typeAnswerPlaceholder'))
 			"
 			class="input input-sm"
 			:class="options.length > 0 ? 'mt-1.5' : ''"

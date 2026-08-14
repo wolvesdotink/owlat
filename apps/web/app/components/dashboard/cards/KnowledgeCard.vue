@@ -2,10 +2,12 @@
 import { api } from '@owlat/api';
 import { entryTypeLabel, entryTypeVariant } from '~/utils/knowledgeEntryTypes';
 
-const { data: entries, isLoading } = useOrganizationQuery(
-	api.knowledge.graph.listByType,
-	{ entryType: 'fact', limit: 5 }
-);
+const { t } = useI18n();
+
+const { data: entries, isLoading } = useOrganizationQuery(api.knowledge.graph.listByType, {
+	entryType: 'fact',
+	limit: 5,
+});
 
 interface KnowledgeEntry {
 	_id: string;
@@ -31,7 +33,9 @@ function truncateContent(content: string, maxLength = 80): string {
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
 					<UiIconBox icon="lucide:brain" size="sm" variant="brand" />
-					<h3 class="text-sm font-semibold text-text-primary">Knowledge</h3>
+					<h3 class="text-sm font-semibold text-text-primary">
+						{{ t('components.dashboard.cards.knowledge.title') }}
+					</h3>
 				</div>
 			</div>
 
@@ -40,7 +44,9 @@ function truncateContent(content: string, maxLength = 80): string {
 			</div>
 
 			<div v-else-if="entryList.length === 0" class="py-4 text-center">
-				<p class="text-sm text-text-tertiary">No knowledge entries yet</p>
+				<p class="text-sm text-text-tertiary">
+					{{ t('components.dashboard.cards.knowledge.empty') }}
+				</p>
 			</div>
 
 			<div v-else class="space-y-2">
@@ -51,7 +57,7 @@ function truncateContent(content: string, maxLength = 80): string {
 				>
 					<div class="flex items-center gap-2 mb-1">
 						<UiBadge :variant="entryTypeVariant(entry.entryType)" size="sm">
-							{{ entryTypeLabel(entry.entryType) }}
+							{{ t(entryTypeLabel(entry.entryType)) }}
 						</UiBadge>
 						<span class="text-xs font-medium text-text-primary truncate">{{ entry.title }}</span>
 					</div>

@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 
 const emit = defineEmits<{ close: [] }>();
 
+const { t } = useI18n();
 const router = useRouter();
 const { channels, isLoading } = useChatPublicChannels();
 
@@ -20,7 +21,7 @@ const filtered = computed(() => {
 });
 
 const { run: joinMutate } = useBackendOperation(api.chat.members.joinChannel, {
-	label: 'Join channel',
+	label: () => t('components.chat.chatChannelBrowser.operations.joinChannel'),
 });
 
 const handleJoinAndOpen = async (channelId: Id<'chatRooms'>) => {
@@ -37,13 +38,17 @@ const handleOpen = (channelId: Id<'chatRooms'>) => {
 </script>
 
 <template>
-	<ChatDialogShell title="Browse channels" size="lg" @close="emit('close')">
+	<ChatDialogShell
+		:title="t('components.chat.chatChannelBrowser.title')"
+		size="lg"
+		@close="emit('close')"
+	>
 
 				<div class="px-5 py-3 border-b border-border-subtle">
 					<input
 						v-model="search"
 						type="text"
-						placeholder="Search public channels…"
+						:placeholder="t('components.chat.chatChannelBrowser.searchPlaceholder')"
 						class="input w-full"
 					/>
 				</div>
@@ -53,7 +58,7 @@ const handleOpen = (channelId: Id<'chatRooms'>) => {
 						<UiSpinner size="md" />
 					</div>
 					<div v-else-if="filtered.length === 0" class="text-center py-8 text-text-tertiary text-sm">
-						No public channels yet.
+						{{ t('components.chat.chatChannelBrowser.empty') }}
 					</div>
 					<div v-else class="space-y-1">
 						<div
@@ -75,14 +80,14 @@ const handleOpen = (channelId: Id<'chatRooms'>) => {
 								class="text-xs text-text-secondary hover:text-text-primary px-2 py-1 rounded hover:bg-bg-elevated"
 								@click="handleOpen(channel._id)"
 							>
-								Open
+								{{ t('common.open') }}
 							</button>
 							<button
 								v-else
 								class="text-xs text-brand hover:text-brand/80 font-medium px-2 py-1"
 								@click="handleJoinAndOpen(channel._id)"
 							>
-								Join
+								{{ t('components.chat.chatChannelBrowser.join') }}
 							</button>
 						</div>
 					</div>

@@ -39,6 +39,8 @@ const props = withDefaults(
 	{ disabledKeys: () => [], disabledHint: '' },
 );
 
+const { t } = useI18n();
+
 /** The current label values (two-way bound; the parent seeds the defaults). */
 const labels = defineModel<SubdomainLabels>({ required: true });
 
@@ -67,18 +69,17 @@ const inputBase =
 			aria-controls="hostname-overrides-panel"
 			@click="open = !open"
 		>
-			{{ open ? '−' : '+' }} Advanced: customize hostnames
+			{{ open ? '−' : '+' }} {{ t('components.desktop.hostnameOverrides.toggle') }}
 		</button>
 
 		<div v-show="open" id="hostname-overrides-panel" class="mt-2 space-y-2.5">
 			<p class="text-xs text-text-secondary">
-				Each label is prepended to your domain. Change one only if the default clashes with an existing
-				record — every label must be distinct.
+				{{ t('components.desktop.hostnameOverrides.intro') }}
 			</p>
 			<div v-for="f in SUBDOMAIN_FIELDS" :key="f.key" class="grid grid-cols-[8rem_1fr] items-start gap-2">
 				<label :for="`hostname-${f.key}`" class="pt-2 text-xs text-text-secondary">
-					{{ f.label }}
-					<span class="block text-[11px] text-text-tertiary">{{ f.hint }}</span>
+					{{ t(f.label) }}
+					<span class="block text-[11px] text-text-tertiary">{{ t(f.hint) }}</span>
 				</label>
 				<div>
 					<input

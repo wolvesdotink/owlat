@@ -27,6 +27,7 @@ const isOpen = ref(false);
 const triggerRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 
+const { t, locale } = useI18n();
 const { emailTheme } = useEmailTheme();
 const { renderBlocksToHtml } = useEmailHtmlRendering();
 const { showToast } = useToast();
@@ -40,11 +41,18 @@ const { data: versions, isLoading } = useConvexQuery(api.emailTemplates.versions
 
 type VersionSummary = NonNullable<typeof versions.value>[number];
 
-const TRIGGER_LABELS: Record<VersionSummary['trigger'], string> = {
-	save: 'Saved',
-	publish: 'Published',
-	send: 'Sent',
+// Message keys, not text: the record is built once at setup, so holding the
+// translated string here would freeze the locale that happened to be active.
+const TRIGGER_LABEL_KEYS: Record<VersionSummary['trigger'], string> = {
+	save: 'components.email.templateHistoryPanel.triggers.save',
+	publish: 'components.email.templateHistoryPanel.triggers.publish',
+	send: 'components.email.templateHistoryPanel.triggers.send',
 };
+
+const triggerLabel = (trigger: VersionSummary['trigger']) => t(TRIGGER_LABEL_KEYS[trigger]);
+
+/** Absolute snapshot timestamp, formatted for whichever locale is active. */
+const absoluteTime = (createdAt: number) => new Date(createdAt).toLocaleString(locale.value);
 
 const TRIGGER_ICONS: Record<VersionSummary['trigger'], string> = {
 	save: 'lucide:save',
@@ -82,7 +90,7 @@ async function openPreview(version: VersionSummary) {
 		});
 	} catch {
 		previewVersion.value = null;
-		showToast("Couldn't load that version", 'error');
+		showToast(t('components.email.templateHistoryPanel.loadFailed'), 'error');
 	} finally {
 		isPreviewLoading.value = false;
 	}
@@ -115,9 +123,9 @@ async function applyRestore(version: VersionSummary) {
 		emit('restore', deserializeVersionSnapshot(snapshot));
 		isOpen.value = false;
 		previewVersion.value = null;
-		showToast('Version loaded into the editor — save to keep it, or undo to go back');
+		showToast(t('components.email.templateHistoryPanel.restored'));
 	} catch {
-		showToast("Couldn't restore that version", 'error');
+		showToast(t('components.email.templateHistoryPanel.restoreFailed'), 'error');
 	} finally {
 		isRestoring.value = false;
 		pendingRestore.value = null;
@@ -155,11 +163,16 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 <template>
 	<div class="relative inline-block">
 		<div ref="triggerRef">
-			<UiButton variant="outline" size="sm" title="Version history" @click.stop="isOpen = !isOpen">
+			<UiButton
+				variant="outline"
+				size="sm"
+				:title="t('components.email.templateHistoryPanel.triggerTitle')"
+				@click.stop="isOpen = !isOpen"
+			>
 				<template #iconLeft>
 					<Icon name="lucide:history" class="w-4 h-4" />
 				</template>
-				History
+				{{ t('components.email.templateHistoryPanel.trigger') }}
 			</UiButton>
 		</div>
 
@@ -182,9 +195,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 					}"
 				>
 					<div class="p-3 border-b border-border-subtle">
-						<h3 class="text-sm font-medium text-text-primary">Version history</h3>
+						<h3 class="text-sm font-medium text-text-primary">
+							{{ t('components.email.templateHistoryPanel.title') }}
+						</h3>
 						<p class="text-xs text-text-tertiary mt-0.5">
-							Snapshots taken on every save, publish and send
+							{{ t('components.email.templateHistoryPanel.subtitle') }}
 						</p>
 					</div>
 
@@ -197,7 +212,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 							v-else-if="!versions?.length"
 							class="px-3 py-4 text-center text-xs text-text-tertiary"
 						>
-							No versions yet. Saving this email records one.
+							{{ t('components.email.templateHistoryPanel.empty') }}
 						</div>
 
 						<template v-else>
@@ -213,11 +228,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 											class="w-3.5 h-3.5 text-text-tertiary shrink-0"
 										/>
 										<span class="text-xs font-medium text-text-primary">
-											{{ TRIGGER_LABELS[version.trigger] }}
+											{{ triggerLabel(version.trigger) }}
 										</span>
 										<span
 											class="text-xs text-text-tertiary"
-											:title="new Date(version.createdAt).toLocaleString()"
+											:title="absoluteTime(version.createdAt)"
 										>
 											{{ formatRelativeTime(version.createdAt) }}
 										</span>
@@ -231,14 +246,14 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 								<div class="flex items-center gap-1 shrink-0">
 									<button
 										class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
-										title="Preview this version"
+										:title="t('components.email.templateHistoryPanel.previewAction')"
 										@click="openPreview(version)"
 									>
 										<Icon name="lucide:eye" class="w-3.5 h-3.5" />
 									</button>
 									<button
 										class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
-										title="Restore this version into the editor"
+										:title="t('components.email.templateHistoryPanel.restoreAction')"
 										:disabled="isRestoring"
 										@click="requestRestore(version)"
 									>
@@ -261,7 +276,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 						{{ previewVersion?.name }}
 					</h2>
 					<p class="text-sm text-text-secondary truncate">
-						{{ previewVersion ? TRIGGER_LABELS[previewVersion.trigger] : '' }}
+						{{ previewVersion ? triggerLabel(previewVersion.trigger) : '' }}
 						{{ previewVersion ? formatRelativeTime(previewVersion.createdAt) : '' }}
 						&middot; {{ previewVersion?.subject }}
 					</p>
@@ -279,14 +294,16 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 					v-else
 					:srcdoc="previewHtml"
 					sandbox=""
-					title="Version preview"
+					:title="t('components.email.templateHistoryPanel.frameTitle')"
 					class="w-full h-full bg-white"
 				/>
 				<!-- palette-ok-end -->
 			</div>
 
 			<UiModalFooter>
-				<UiButton variant="secondary" @click="isPreviewOpen = false">Close</UiButton>
+				<UiButton variant="secondary" @click="isPreviewOpen = false">
+					{{ t('common.close') }}
+				</UiButton>
 				<UiButton
 					:loading="isRestoring"
 					:disabled="!previewVersion"
@@ -295,16 +312,16 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 					<template #iconLeft>
 						<Icon name="lucide:rotate-ccw" class="w-4 h-4" />
 					</template>
-					Restore this version
+					{{ t('components.email.templateHistoryPanel.restore') }}
 				</UiButton>
 			</UiModalFooter>
 		</UiModal>
 
 		<UiConfirmationDialog
 			:open="pendingRestore !== null"
-			title="Replace your unsaved changes?"
-			description="This email has edits you haven't saved. Restoring loads the older version onto the canvas — you can undo it, but the restore itself is not saved until you save."
-			confirm-text="Restore version"
+			:title="t('components.email.templateHistoryPanel.confirmTitle')"
+			:description="t('components.email.templateHistoryPanel.confirmDescription')"
+			:confirm-text="t('components.email.templateHistoryPanel.confirmAction')"
 			variant="warning"
 			:is-loading="isRestoring"
 			@update:open="(open: boolean) => { if (!open) pendingRestore = null; }"

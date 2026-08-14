@@ -47,6 +47,8 @@ withDefaults(
 
 const emit = defineEmits<{ (e: 'exit'): void; (e: 'undo'): void }>();
 
+const { t } = useI18n();
+
 // Esc exits from anywhere in the flow (position is preserved by the page).
 function onKeydown(event: KeyboardEvent) {
 	if (event.key === 'Escape') {
@@ -68,17 +70,22 @@ const MAX_DOTS = 9;
 			<div class="flex items-center justify-between gap-4">
 				<div class="flex items-baseline gap-2 min-w-0">
 					<span class="text-sm font-medium text-text-primary tabular-nums">
-						{{ complete ? total : position }} of {{ total }}
+						{{
+							t('components.agentTasks.agentTaskFlow.progress', {
+								position: complete ? total : position,
+								total,
+							})
+						}}
 					</span>
 					<span
 						v-if="newCount > 0 && !complete"
 						class="text-xs text-brand tabular-nums"
-						:title="`${newCount} arrived since you started`"
+						:title="t('components.agentTasks.agentTaskFlow.newCountTitle', { count: newCount })"
 					>
-						+{{ newCount }} new
+						{{ t('components.agentTasks.agentTaskFlow.newCount', { count: newCount }) }}
 					</span>
 					<span v-if="estimateLabel && !complete" class="text-xs text-text-tertiary truncate">
-						· {{ estimateLabel }} left
+						· {{ t('components.agentTasks.agentTaskFlow.estimateLeft', { estimate: estimateLabel }) }}
 					</span>
 				</div>
 				<div class="flex items-center gap-3 flex-shrink-0">
@@ -86,20 +93,20 @@ const MAX_DOTS = 9;
 						v-if="canUndo"
 						type="button"
 						class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-						title="Undo last (⌘Z)"
+						:title="t('components.agentTasks.agentTaskFlow.undoTitle')"
 						@click="emit('undo')"
 					>
 						<Icon name="lucide:undo-2" class="w-3.5 h-3.5" />
-						Undo
+						{{ t('components.agentTasks.agentTaskFlow.undo') }}
 					</button>
 					<button
 						type="button"
 						class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-						title="Exit (Esc)"
+						:title="t('components.agentTasks.agentTaskFlow.exitTitle')"
 						@click="emit('exit')"
 					>
 						<Icon name="lucide:x" class="w-3.5 h-3.5" />
-						Exit
+						{{ t('components.agentTasks.agentTaskFlow.exit') }}
 					</button>
 				</div>
 			</div>
@@ -162,7 +169,9 @@ const MAX_DOTS = 9;
 		<!-- Muted "next:" peek — depth on demand, one task still the focus. -->
 		<footer v-if="!complete && (peekLabel || $slots['peek'])" class="mt-4 px-1">
 			<p class="text-xs text-text-tertiary truncate">
-				<span class="text-text-tertiary/80">Next:</span>
+				<span class="text-text-tertiary/80">{{
+					t('components.agentTasks.agentTaskFlow.nextLabel')
+				}}</span>
 				<slot name="peek">{{ peekLabel }}</slot>
 			</p>
 		</footer>

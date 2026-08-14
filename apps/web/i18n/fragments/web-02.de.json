@@ -1,0 +1,111 @@
+{
+	"components": {
+		"agent": {
+			"circuitBreakerStatus": {
+				"breakers": {
+					"llmFailure": "LLM-Ausfall",
+					"confidenceDegradation": "Nachlassende Konfidenz",
+					"rejectionSpike": "Ablehnungsspitze"
+				},
+				"states": {
+					"healthy": "Intakt",
+					"tripped": "Ausgelöst",
+					"recovering": "Erholt sich"
+				},
+				"current": "Aktuell: {value} %",
+				"threshold": "Schwellwert: {value} %",
+				"trippedAgo": "Ausgelöst {ago}"
+			},
+			"metricChart": {
+				"noData": "Keine Daten verfügbar"
+			}
+		},
+		"agentTasks": {
+			"agentTaskFlow": {
+				"progress": "{position} von {total}",
+				"newCount": "+{count} neu",
+				"newCountTitle": "{count} seit Ihrem Start hinzugekommen",
+				"estimateLeft": "noch {estimate}",
+				"undo": "Rückgängig",
+				"undoTitle": "Letzte Aktion rückgängig machen (⌘Z)",
+				"exit": "Beenden",
+				"exitTitle": "Beenden (Esc)",
+				"nextLabel": "Als Nächstes:"
+			},
+			"taskCardLoading": {
+				"label": "Aufgabe wird geladen"
+			},
+			"taskCardFallback": {
+				"cardLabel": "Nicht verfügbare Aufgabe",
+				"disabled": {
+					"defaultLabel": "Dieser Aufgabentyp",
+					"title": "{label} ist deaktiviert",
+					"body": "Aktivieren Sie die zugehörige Funktion wieder, um die Aufgabe im Ablauf zu prüfen, oder überspringen Sie sie vorerst."
+				},
+				"unknown": {
+					"title": "Diese Aufgabe kann hier nicht angezeigt werden",
+					"body": "Sie gehört möglicherweise zu einem Plugin, das nicht mehr installiert ist. Überspringen Sie sie, um fortzufahren."
+				}
+			},
+			"reviewBrowseList": {
+				"title": "Prüf-Warteschlange",
+				"subtitle": "Vom Agenten erstellte Entwürfe und Eskalationen, die auf Ihre Aktion warten.",
+				"focus": "Fokus",
+				"loading": "Prüf-Warteschlange wird geladen...",
+				"listLabel": "Prüf-Warteschlange",
+				"empty": {
+					"title": "Alles erledigt!",
+					"body": "Derzeit muss kein Entwurf von Ihnen geprüft werden."
+				},
+				"viewThread": "Konversation ansehen",
+				"openThread": "Konversation öffnen",
+				"classifierConfidence": "Klassifikator-Konfidenz {percent} %",
+				"escalatedBecause": "Eskaliert, weil: {reason}",
+				"heldBecause": "Zurückgehalten, weil: {reason}",
+				"noTextContent": "(Kein Textinhalt)",
+				"escalatedHeading": "Eskaliert — schreiben Sie eine Antwort",
+				"subjectPlaceholder": "Betreff (optional)",
+				"replyPlaceholder": "Schreiben Sie Ihre Antwort…",
+				"sendReply": "Antwort senden",
+				"agentDraft": "Agenten-Entwurf",
+				"approveAndSend": "Freigeben & senden",
+				"reject": "Ablehnen",
+				"toasts": {
+					"suggestedAttachment": "Vorgeschlagener Anhang: {filename} — öffnen Sie die Antwort, um ihn anzuhängen und zu senden",
+					"draftApproved": "Entwurf freigegeben und zum Senden eingereiht",
+					"draftRejected": "Entwurf abgelehnt",
+					"replySent": "Antwort gesendet"
+				}
+			},
+			"reviewFocusFlow": {
+				"empty": {
+					"title": "Alles erledigt!",
+					"body": "Derzeit muss kein Entwurf von Ihnen geprüft werden."
+				},
+				"backToList": "Zurück zur Liste",
+				"backToInbox": "Zurück zum Posteingang",
+				"noSubject": "(kein Betreff)",
+				"noTextContent": "(Kein Textinhalt)",
+				"escalatedBecause": "Eskaliert, weil: {reason}",
+				"heldBecause": "Zurückgehalten, weil: {reason}",
+				"replyPlaceholder": "Schreiben Sie Ihre Antwort…",
+				"sendReply": "Antwort senden",
+				"openThread": "Konversation öffnen",
+				"draftReady": "Entwurf bereit",
+				"pickAnotherOption": "In der Konversation bearbeiten, um eine andere Option zu wählen",
+				"approveAndSend": "Freigeben & senden",
+				"reject": "Ablehnen",
+				"editInThread": "In Konversation bearbeiten",
+				"done": {
+					"title": "Alles erledigt",
+					"summary": "{summary} in dieser Sitzung.",
+					"body": "Neue Entwürfe und Eskalationen erscheinen hier, sobald der Agent sie weiterleitet."
+				},
+				"toasts": {
+					"draftApproved": "Entwurf freigegeben und zum Senden eingereiht",
+					"replySent": "Antwort gesendet"
+				}
+			}
+		}
+	}
+}

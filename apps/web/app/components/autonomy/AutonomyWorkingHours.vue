@@ -17,6 +17,8 @@ interface Props {
 	days?: number[];
 	busy?: boolean;
 }
+const { t } = useI18n();
+
 const props = withDefaults(defineProps<Props>(), {
 	enabled: false,
 	timezone: '',
@@ -58,15 +60,20 @@ const form = reactive({
 	days: [...props.days],
 });
 
-const weekdayLabels = [
-	{ value: 1, label: 'Mon' },
-	{ value: 2, label: 'Tue' },
-	{ value: 3, label: 'Wed' },
-	{ value: 4, label: 'Thu' },
-	{ value: 5, label: 'Fri' },
-	{ value: 6, label: 'Sat' },
-	{ value: 0, label: 'Sun' },
-];
+const weekdayLabels = computed(() =>
+	[
+		{ value: 1, key: 'mon' },
+		{ value: 2, key: 'tue' },
+		{ value: 3, key: 'wed' },
+		{ value: 4, key: 'thu' },
+		{ value: 5, key: 'fri' },
+		{ value: 6, key: 'sat' },
+		{ value: 0, key: 'sun' },
+	].map((day) => ({
+		value: day.value,
+		label: t(`components.autonomy.autonomyWorkingHours.weekdays.${day.key}`),
+	}))
+);
 
 const toggleDay = (day: number) => {
 	const i = form.days.indexOf(day);
@@ -91,37 +98,57 @@ const handleSave = () => {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:clock" size="sm" variant="surface" />
 				<div>
-					<h3 class="text-base font-medium text-text-primary">Working hours</h3>
-					<p class="text-xs text-text-tertiary">Only auto-send during business hours.</p>
+					<h3 class="text-base font-medium text-text-primary">
+						{{ t('components.autonomy.autonomyWorkingHours.title') }}
+					</h3>
+					<p class="text-xs text-text-tertiary">
+						{{ t('components.autonomy.autonomyWorkingHours.subtitle') }}
+					</p>
 				</div>
 			</div>
-			<UiToggle v-model="form.enabled" :label="form.enabled ? 'On' : 'Off'" size="sm" />
+			<UiToggle
+				v-model="form.enabled"
+				:label="
+					form.enabled
+						? t('components.autonomy.autonomyWorkingHours.on')
+						: t('components.autonomy.autonomyWorkingHours.off')
+				"
+				size="sm"
+			/>
 		</div>
 
 		<div v-if="form.enabled" class="space-y-4">
 			<div>
-				<label class="text-sm font-medium text-text-primary">Timezone</label>
+				<label class="text-sm font-medium text-text-primary">
+					{{ t('components.autonomy.autonomyWorkingHours.timezoneLabel') }}
+				</label>
 				<input
 					v-model="form.timezone"
 					type="text"
 					class="input w-full mt-1"
-					placeholder="e.g. America/New_York"
+					:placeholder="t('components.autonomy.autonomyWorkingHours.timezonePlaceholder')"
 				/>
 			</div>
 
 			<div class="flex items-center gap-4">
 				<div>
-					<label class="text-sm font-medium text-text-primary">From</label>
+					<label class="text-sm font-medium text-text-primary">
+						{{ t('components.autonomy.autonomyWorkingHours.fromLabel') }}
+					</label>
 					<input v-model="form.start" type="time" class="input mt-1" />
 				</div>
 				<div>
-					<label class="text-sm font-medium text-text-primary">To</label>
+					<label class="text-sm font-medium text-text-primary">
+						{{ t('components.autonomy.autonomyWorkingHours.toLabel') }}
+					</label>
 					<input v-model="form.end" type="time" class="input mt-1" />
 				</div>
 			</div>
 
 			<div>
-				<label class="text-sm font-medium text-text-primary">Days</label>
+				<label class="text-sm font-medium text-text-primary">
+					{{ t('components.autonomy.autonomyWorkingHours.daysLabel') }}
+				</label>
 				<div class="flex flex-wrap gap-2 mt-2">
 					<button
 						v-for="d in weekdayLabels"
@@ -141,14 +168,14 @@ const handleSave = () => {
 			</div>
 
 			<p class="text-xs text-text-tertiary">
-				Replies decided outside these hours are held for morning human review — not sent.
+				{{ t('components.autonomy.autonomyWorkingHours.hint') }}
 			</p>
 		</div>
 
 		<div class="flex justify-end mt-5 pt-4 border-t border-border-subtle">
 			<UiButton class="gap-2" :disabled="busy" @click="handleSave">
 				<Icon name="lucide:save" class="w-4 h-4" />
-				Save working hours
+				{{ t('components.autonomy.autonomyWorkingHours.save') }}
 			</UiButton>
 		</div>
 	</UiCard>

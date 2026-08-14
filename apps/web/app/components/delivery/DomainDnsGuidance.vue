@@ -17,7 +17,17 @@
 import { api } from '@owlat/api';
 import { transportDnsGuidance } from '~/utils/transportDnsGuidance';
 
+const { t } = useI18n();
 const { data: summary } = useOrganizationQuery(api.delivery.status.getTransportSummary);
+
+/**
+ * The guidance table is module scope, so it never calls `useI18n`: it hands back
+ * catalog keys (with parameters where it has any) and this render boundary is
+ * what turns them into words.
+ */
+type GuidanceMessage = string | { key: string; params?: Record<string, unknown> };
+const message = (value: GuidanceMessage): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 const guidance = computed(() => transportDnsGuidance(summary.value?.provider ?? undefined));
 
@@ -35,8 +45,12 @@ const open = ref(false);
 			<span class="flex items-center gap-2.5 min-w-0">
 				<Icon name="lucide:shield-check" class="w-4 h-4 text-text-tertiary shrink-0" />
 				<span class="text-sm text-text-secondary truncate">
-					<span class="font-medium text-text-primary">DNS for {{ guidance.label }}</span> —
-					{{ guidance.lead }}
+					<span class="font-medium text-text-primary">{{
+						t('components.delivery.domainDnsGuidance.heading', {
+							transport: message(guidance.label),
+						})
+					}}</span>
+					— {{ message(guidance.lead) }}
 				</span>
 			</span>
 			<Icon
@@ -53,7 +67,7 @@ const open = ref(false);
 					class="flex items-start gap-2 text-sm text-text-secondary"
 				>
 					<Icon name="lucide:check" class="w-4 h-4 text-success mt-0.5 shrink-0" />
-					<span>{{ point }}</span>
+					<span>{{ message(point) }}</span>
 				</li>
 			</ul>
 		</div>

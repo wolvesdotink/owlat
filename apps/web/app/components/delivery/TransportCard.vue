@@ -19,6 +19,8 @@ import { deriveTransportDisplay } from '~/utils/transportState';
 import { healthChipClass, healthDotClass } from '~/utils/healthTone';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 
+const { t } = useI18n();
+
 const {
 	data: summary,
 	isLoading,
@@ -36,10 +38,16 @@ const infrastructureChecks = computed(() => {
 	const health = summary.value?.infrastructure;
 	if (!health) return [];
 	return [
-		{ label: 'Queue store', ok: health.isRedisConnected },
-		{ label: 'Delivery worker', ok: health.isWorkerAlive },
-		{ label: 'DNS resolver', ok: health.isDnsReachable },
-		{ label: 'Outbound SMTP', ok: health.smtpOutbound?.status === 'ok' },
+		{ label: t('components.delivery.transportCard.checks.queueStore'), ok: health.isRedisConnected },
+		{
+			label: t('components.delivery.transportCard.checks.deliveryWorker'),
+			ok: health.isWorkerAlive,
+		},
+		{ label: t('components.delivery.transportCard.checks.dnsResolver'), ok: health.isDnsReachable },
+		{
+			label: t('components.delivery.transportCard.checks.outboundSmtp'),
+			ok: health.smtpOutbound?.status === 'ok',
+		},
 	];
 });
 </script>
@@ -49,14 +57,14 @@ const infrastructureChecks = computed(() => {
 		<!-- Loading -->
 		<div v-if="isLoading" class="p-6 flex items-center gap-3 text-text-tertiary">
 			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin" />
-			<span class="text-sm">Checking how this instance sends…</span>
+			<span class="text-sm">{{ t('components.delivery.transportCard.loading') }}</span>
 		</div>
 
 		<!-- Error (e.g. transiently unavailable) -->
 		<div v-else-if="error" class="p-6 flex items-start gap-3">
 			<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning mt-0.5 shrink-0" />
 			<p class="text-sm text-text-secondary">
-				Couldn’t load the sending transport just now. Reload to try again.
+				{{ t('components.delivery.transportCard.error') }}
 			</p>
 		</div>
 
@@ -67,19 +75,19 @@ const infrastructureChecks = computed(() => {
 					<UiIconBox icon="lucide:send" size="md" variant="brand" rounded="lg" />
 					<div class="min-w-0">
 						<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary">
-							Sending transport
+							{{ t('components.delivery.transportCard.eyebrow') }}
 						</p>
 						<h2 class="text-lg font-semibold text-text-primary truncate">
-							{{ display.label }}
+							{{ t(display.label) }}
 						</h2>
-						<p class="text-sm text-text-secondary mt-0.5">{{ display.description }}</p>
+						<p class="text-sm text-text-secondary mt-0.5">{{ t(display.description) }}</p>
 					</div>
 				</div>
 				<span
 					class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
 					:class="healthChipClass[display.configuredTone]"
 				>
-					{{ display.configuredLabel }}
+					{{ t(display.configuredLabel) }}
 				</span>
 			</div>
 
@@ -90,10 +98,10 @@ const infrastructureChecks = computed(() => {
 					:class="healthChipClass[display.healthTone]"
 				>
 					<span class="w-1.5 h-1.5 rounded-full" :class="healthDotClass[display.healthTone]" />
-					{{ display.healthLabel }}
+					{{ t(display.healthLabel) }}
 				</span>
 				<span v-if="lastCheckedLabel" class="text-xs text-text-tertiary">
-					Checked {{ lastCheckedLabel }}
+					{{ t('components.delivery.transportCard.lastChecked', { when: lastCheckedLabel }) }}
 				</span>
 			</div>
 
@@ -122,10 +130,7 @@ const infrastructureChecks = computed(() => {
 				class="flex items-start gap-2 text-sm text-text-secondary rounded-lg bg-bg-surface px-3 py-2"
 			>
 				<Icon name="lucide:info" class="w-4 h-4 text-warning mt-0.5 shrink-0" />
-				<span>
-					No usable transport is configured yet, so campaigns and replies can’t go out. Choose a
-					transport to start sending.
-				</span>
+				<span>{{ t('components.delivery.transportCard.notConfigured') }}</span>
 			</p>
 
 			<!-- Advanced-routing-in-use note -->
@@ -134,23 +139,25 @@ const infrastructureChecks = computed(() => {
 				class="flex items-start gap-2 text-sm text-text-secondary rounded-lg bg-bg-surface px-3 py-2"
 			>
 				<Icon name="lucide:route" class="w-4 h-4 text-text-tertiary mt-0.5 shrink-0" />
-				<span>
-					Advanced routing is overriding the instance transport for one or more message types.
-				</span>
+				<span>{{ t('components.delivery.transportCard.advancedRoutingActive') }}</span>
 			</p>
 
 			<!-- Actions -->
 			<div class="flex flex-wrap items-center gap-3 pt-1">
 				<UiButton to="/dashboard/admin/delivery/transport">
 					<Icon name="lucide:settings-2" class="w-4 h-4" />
-					{{ display.isConfigured ? 'Change transport' : 'Set up sending' }}
+					{{
+						display.isConfigured
+							? t('components.delivery.transportCard.changeTransport')
+							: t('components.delivery.transportCard.setUpSending')
+					}}
 				</UiButton>
 				<NuxtLink
 					to="/dashboard/admin/delivery/provider-routing"
 					class="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary hover:text-brand transition-colors duration-(--motion-fast)"
 				>
 					<Icon name="lucide:route" class="w-4 h-4" />
-					Advanced routing
+					{{ t('components.delivery.transportCard.advancedRouting') }}
 				</NuxtLink>
 			</div>
 		</div>

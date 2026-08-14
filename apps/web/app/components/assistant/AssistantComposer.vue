@@ -2,6 +2,8 @@
 const props = defineProps<{ streaming?: boolean; disabled?: boolean }>();
 const emit = defineEmits<{ send: [text: string]; stop: [] }>();
 
+const { t } = useI18n();
+
 const text = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
@@ -37,7 +39,11 @@ const handleKeydown = (event: KeyboardEvent) => {
 			<textarea
 				ref="textareaRef"
 				v-model="text"
-				:placeholder="disabled ? 'Assistant is unavailable' : 'Ask the assistant anything…'"
+				:placeholder="
+					disabled
+						? t('components.assistant.assistantComposer.unavailablePlaceholder')
+						: t('components.assistant.assistantComposer.placeholder')
+				"
 				:disabled="disabled"
 				rows="1"
 				class="flex-1 resize-none bg-bg-surface border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-60"
@@ -48,8 +54,8 @@ const handleKeydown = (event: KeyboardEvent) => {
 			<button
 				v-if="streaming"
 				class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center bg-bg-surface border border-border-subtle text-text-secondary hover:text-text-primary transition-colors"
-				title="Stop generating"
-				aria-label="Stop generating"
+				:title="t('components.assistant.assistantComposer.stop')"
+				:aria-label="t('components.assistant.assistantComposer.stop')"
 				@click="emit('stop')"
 			>
 				<Icon name="lucide:square" class="w-4 h-4" />
@@ -63,15 +69,15 @@ const handleKeydown = (event: KeyboardEvent) => {
 						? 'bg-brand text-text-inverse hover:bg-brand/90'
 						: 'bg-bg-surface text-text-tertiary border border-border-subtle cursor-not-allowed'
 				"
-				title="Send"
-				aria-label="Send"
+				:title="t('common.send')"
+				:aria-label="t('common.send')"
 				@click="submit"
 			>
 				<Icon name="lucide:send" class="w-4 h-4" />
 			</button>
 		</div>
 		<p class="text-[11px] text-text-tertiary mt-1.5 px-1">
-			Enter to send · Shift+Enter for newline · the assistant can search your workspace and draft copy
+			{{ t('components.assistant.assistantComposer.hint') }}
 		</p>
 	</div>
 </template>

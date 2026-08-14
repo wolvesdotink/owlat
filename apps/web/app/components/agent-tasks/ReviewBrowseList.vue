@@ -21,6 +21,18 @@ import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trust
  */
 const emit = defineEmits<{ (e: 'focus'): void }>();
 
+const { t } = useI18n();
+
+/**
+ * Collision copy lives in utils/replyCollision as an i18n key + params (the
+ * registry convention for module-scope definitions); the string form is still
+ * accepted so a plain sentence renders as itself.
+ */
+type CollisionMessage = string | { key: string; params?: Record<string, unknown> };
+function collisionText(message: CollisionMessage): string {
+	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+}
+
 const {
 	reviewItems,
 	isLoading,
@@ -51,7 +63,11 @@ function onAttachSuggested(
 	threadId: string | undefined,
 	candidate: { fileId: string; filename: string }
 ) {
-	showToast(`Suggested attachment: ${candidate.filename} — open the reply to attach and send`);
+	showToast(
+		t('components.agentTasks.reviewBrowseList.toasts.suggestedAttachment', {
+			filename: candidate.filename,
+		})
+	);
 	if (threadId) {
 		navigateTo(`/dashboard/inbox/${threadId}`);
 	}
@@ -110,7 +126,9 @@ function rowTrust(message: ReviewRow['message']): TrustLabel {
 function rowTrustDetail(message: ReviewRow['message']): string | undefined {
 	const confidence = message.classification?.confidence;
 	return typeof confidence === 'number'
-		? `Classifier confidence ${Math.round(confidence * 100)}%`
+		? t('components.agentTasks.reviewBrowseList.classifierConfidence', {
+				percent: Math.round(confidence * 100),
+			})
 		: undefined;
 }
 
@@ -122,7 +140,9 @@ function rowTrustDetail(message: ReviewRow['message']): string | undefined {
 function rowWhy(message: ReviewRow['message']): string | undefined {
 	const reason = message.agentDecision?.reason;
 	if (!reason) return undefined;
-	return needsReply(message) ? `Escalated because: ${reason}` : `Held because: ${reason}`;
+	return needsReply(message)
+		? t('components.agentTasks.reviewBrowseList.escalatedBecause', { reason })
+		: t('components.agentTasks.reviewBrowseList.heldBecause', { reason });
 }
 
 // Optimistic row removal — approve/reject hide the row immediately and the live
@@ -133,7 +153,10 @@ const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOpt
 // report it handled so callers stop before claiming a false success.
 function handledReplyCollision(result: unknown): boolean {
 	if (!isReplyCollision(result)) return false;
-	showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+	showToast(
+		collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+		'error'
+	);
 	return true;
 }
 
@@ -142,7 +165,7 @@ function handledReplyCollision(result: unknown): boolean {
 async function runOptimistic(
 	messageId: Id<'inboundMessages'>,
 	send: () => Promise<unknown>,
-	successMsg = 'Draft approved and queued for sending'
+	successMsg = t('components.agentTasks.reviewBrowseList.toasts.draftApproved')
 ) {
 	actionInProgress.value = messageId;
 	hideRow(messageId);
@@ -177,7 +200,11 @@ const onApproveOptionClick = async (
 };
 
 const onRejectClick = (messageId: Id<'inboundMessages'>) =>
-	runOptimistic(messageId, () => onReject(messageId), 'Draft rejected');
+	runOptimistic(
+		messageId,
+		() => onReject(messageId),
+		t('components.agentTasks.reviewBrowseList.toasts.draftRejected')
+	);
 
 // Keyboard-first triage: j/k move, Enter opens the thread, a approves (through
 // the SAME undo-guarded send the button calls), e edits, x/# rejects. Built by
@@ -232,7 +259,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 		if (result === undefined || handledReplyCollision(result)) return; // no-op or collision
 		delete composeBody[messageId];
 		delete composeSubject[messageId];
-		showToast('Reply sent');
+		showToast(t('components.agentTasks.reviewBrowseList.toasts.replySent'));
 	} finally {
 		actionInProgress.value = null;
 	}
@@ -250,9 +277,11 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 			</NuxtLink>
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Review Queue</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('components.agentTasks.reviewBrowseList.title') }}
+				</h1>
 				<p class="text-text-secondary mt-1">
-					Agent-generated drafts and escalations waiting for your action.
+					{{ t('components.agentTasks.reviewBrowseList.subtitle') }}
 				</p>
 			</div>
 			<!-- Focus: switch to the one-task-at-a-time card-stack flow. -->
@@ -263,7 +292,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 				@click="emit('focus')"
 			>
 				<Icon name="lucide:target" class="w-4 h-4" />
-				Focus
+				{{ t('components.agentTasks.reviewBrowseList.focus') }}
 			</button>
 		</div>
 
@@ -283,7 +312,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 					class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
 					>{{ k }}</kbd
 				>
-				<span>{{ hint.label }}</span>
+				<span>{{ t(hint.label) }}</span>
 			</span>
 		</div>
 
@@ -291,7 +320,9 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading review queue...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('components.agentTasks.reviewBrowseList.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -307,8 +338,12 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 				rounded="full"
 				class="mb-4"
 			/>
-			<p class="text-text-secondary font-medium">All caught up!</p>
-			<p class="text-sm text-text-tertiary mt-1">No drafts need your review right now.</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('components.agentTasks.reviewBrowseList.empty.title') }}
+			</p>
+			<p class="text-sm text-text-tertiary mt-1">
+				{{ t('components.agentTasks.reviewBrowseList.empty.body') }}
+			</p>
 		</div>
 
 		<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/1-9/a/e/s/x) of shared agent task cards. -->
@@ -317,7 +352,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			ref="listboxEl"
 			tabindex="0"
 			role="listbox"
-			aria-label="Review queue"
+			:aria-label="t('components.agentTasks.reviewBrowseList.listLabel')"
 			:aria-activedescendant="activeRowId"
 			class="space-y-4 outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset rounded-lg"
 			@keydown="onQueueKeydown"
@@ -340,7 +375,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 								:to="`/dashboard/inbox/${row.thread._id}`"
 								class="text-brand hover:underline"
 							>
-								View thread
+								{{ t('components.agentTasks.reviewBrowseList.viewThread') }}
 							</NuxtLink>
 						</template>
 					</template>
@@ -362,7 +397,9 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 				<TaskAsk
 					class="mt-3 mb-4"
 					:ask="row.message.subject || undefined"
-					:detail="row.message.textBody || '(No text content)'"
+					:detail="
+						row.message.textBody || t('components.agentTasks.reviewBrowseList.noTextContent')
+					"
 					:why="rowWhy(row.message)"
 				/>
 
@@ -372,20 +409,20 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 						<div class="flex items-center gap-2 mb-3">
 							<Icon name="lucide:user-round" class="w-4 h-4 text-warning" />
 							<p class="text-xs font-medium text-warning uppercase tracking-wider">
-								Escalated — write a reply
+								{{ t('components.agentTasks.reviewBrowseList.escalatedHeading') }}
 							</p>
 						</div>
 						<input
 							v-model="composeSubject[row.message._id]"
 							type="text"
 							class="input w-full text-sm mb-3"
-							placeholder="Subject (optional)"
+							:placeholder="t('components.agentTasks.reviewBrowseList.subjectPlaceholder')"
 						/>
 						<textarea
 							v-model="composeBody[row.message._id]"
 							rows="6"
 							class="input w-full text-sm resize-y"
-							placeholder="Type your reply…"
+							:placeholder="t('components.agentTasks.reviewBrowseList.replyPlaceholder')"
 						/>
 						<!-- Coach the ADMIN's own reply before they send it. Advisory only — never rewrites the text. -->
 						<PostboxCoachPanel
@@ -400,12 +437,12 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 
 					<!-- Actions -->
 					<TaskActions
-						primary-label="Send Reply"
+						:primary-label="t('components.agentTasks.reviewBrowseList.sendReply')"
 						primary-icon="lucide:send"
 						:primary-disabled="
 							actionInProgress === row.message._id || !composeBody[row.message._id]?.trim()
 						"
-						skip-label="Dismiss"
+						:skip-label="t('common.dismiss')"
 						skip-destructive
 						:skip-disabled="actionInProgress === row.message._id"
 						@primary="onComposeSend(row.message._id)"
@@ -417,7 +454,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 							class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 						>
 							<Icon name="lucide:external-link" class="w-3 h-3" />
-							Open thread
+							{{ t('components.agentTasks.reviewBrowseList.openThread') }}
 						</NuxtLink>
 					</TaskActions>
 				</template>
@@ -437,7 +474,9 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 					<div v-else class="bg-brand-subtle/30 rounded-lg p-4 mb-4">
 						<div class="flex items-center gap-2 mb-2">
 							<Icon name="lucide:bot" class="w-4 h-4 text-brand" />
-							<p class="text-xs font-medium text-brand uppercase tracking-wider">Agent Draft</p>
+							<p class="text-xs font-medium text-brand uppercase tracking-wider">
+								{{ t('components.agentTasks.reviewBrowseList.agentDraft') }}
+							</p>
 						</div>
 						<p class="text-text-primary text-sm whitespace-pre-wrap">
 							{{ row.message.draftResponse }}
@@ -467,10 +506,10 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 
 					<!-- Actions -->
 					<TaskActions
-						primary-label="Approve & Send"
+						:primary-label="t('components.agentTasks.reviewBrowseList.approveAndSend')"
 						primary-icon="lucide:check"
 						:primary-disabled="actionInProgress === row.message._id"
-						skip-label="Reject"
+						:skip-label="t('components.agentTasks.reviewBrowseList.reject')"
 						skip-destructive
 						:skip-disabled="actionInProgress === row.message._id"
 						@primary="
@@ -488,7 +527,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 							class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 						>
 							<Icon name="lucide:pencil" class="w-3 h-3" />
-							Edit
+							{{ t('common.edit') }}
 						</NuxtLink>
 					</TaskActions>
 				</template>

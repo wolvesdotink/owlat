@@ -6,12 +6,13 @@
  * caught at the boundary and collapsed to the placeholder — a broken plugin can
  * never crash or empty the flow. Every branch stays skippable.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 
 import TaskCardRenderer from '../TaskCardRenderer.vue';
 import { createTaskCardRegistry } from '~/utils/taskCardRegistry';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -19,12 +20,17 @@ const stubs = {
 	UiSpinner: { template: '<i />' },
 };
 
+// The fallback/loading cards call `useI18n`, a Nuxt auto-import (bare global).
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
+
 function mountRenderer(props: Record<string, unknown>) {
 	// isFlagEnabled is a required prop (fail-closed); default it to "on" here so
 	// each test only overrides it when exercising the gate.
 	return mount(TaskCardRenderer, {
 		props: { isFlagEnabled: () => true, ...props },
-		global: { stubs },
+		global: { stubs, plugins: [createTestI18n()] },
 	});
 }
 

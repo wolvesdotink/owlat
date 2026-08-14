@@ -1,0 +1,136 @@
+{
+	"components": {
+		"delivery": {
+			"rampCellControls": {
+				"currentShare": "Currently at {share} on your own server.",
+				"unmanagedNote": "This cell is not on the ramp yet, so there is nothing to control. Putting it on the ramp hands its share to the controller, which then moves it only on the evidence.",
+				"enroll": "Put this cell on the ramp",
+				"pause": "Pause this cell",
+				"resume": "Resume this cell",
+				"pauseNoteShareDial": "Pausing holds both dials where they are — the share and the warm-up pace. A relay is carrying this cell, so the share is the dial that climbs and that is the number a pause freezes. The checks keep running and an automatic retreat still happens — a pause never blocks a safety response.",
+				"pauseNotePaceDial": "Pausing holds both dials where they are — the share and the warm-up pace. Nothing is carrying this cell but your own server, so the share is not the dial that climbs: the warm-up pace is, and a pause is the only control that holds it. The checks keep running and an automatic retreat still happens — a pause never blocks a safety response.",
+				"pinAtLabel": "Pin at (%)",
+				"pin": "Pin",
+				"removePin": "Remove pin",
+				"pinNoteShareDial": "A pin is a ceiling, not a floor: it holds an increase back, and never pulls a cell that is already higher down to the number you type. A relay is carrying this cell, so the share is the dial that climbs and the pin bounds it: the ramp climbs to the pin on the usual evidence and stops there.",
+				"pinNotePaceDial": "A pin is a ceiling, not a floor: it holds an increase back, and never pulls a cell that is already higher down to the number you type. Nothing is carrying this cell but your own server, so the warm-up pace is the dial that climbs, and no pin can bound it — pausing the cell is what holds it. The pin is still recorded against the share, and bounds the climb again the day a relay carries this cell.",
+				"forceToLabel": "Force to (%)",
+				"forceAdvance": "Force-advance…",
+				"forceAdvanceWarning": "Force-advance moves the share past the evidence. It asks you to type “{phrase}” first, because a bad move here costs weeks of reputation and cannot be undone by putting the number back.",
+				"resetToPhase": "Reset to phase",
+				"resetNoteSecondSender": "Resetting a phase restarts the clean streak and brings the share back under the rung you pick: the cell re-earns its way up from there. Only rungs at or below the cell's current {rung} rung are a reset — going higher is a promotion, which is its own control below.",
+				"resetNoteStandalone": "Resetting a phase restarts the clean streak. Nothing is carrying this cell but your own server, so there is no second sender to hand traffic to: the rung is recorded and your share stays where it is, and it binds again the day a second sender appears. Only rungs at or below the cell's current {rung} rung are a reset — going higher is a promotion, which is its own control below.",
+				"promotePhase": "Promote a phase",
+				"promoteNoteAtTop": "This cell is already on the top phase rung, so there is nothing left to promote.",
+				"promoteNoteSecondSender": "Promoting raises the ceiling one rung and re-shuffles which arm every recipient of this cell lands in. It checks the evidence for the next rung first, and says what is still outstanding if it is not there yet.",
+				"promoteNoteStandalone": "Promoting raises the ceiling one rung. Nothing is carrying this cell but your own server, so there is no second arm to shuffle recipients between: the rung is recorded and binds the day a second sender carries this cell again. It checks the evidence for the next rung first, and says what is still outstanding if it is not there yet."
+			},
+			"rampCellsGrid": {
+				"columns": {
+					"cell": "Cell",
+					"ownShare": "Own share",
+					"state": "State",
+					"holdingItBack": "Holding it back",
+					"lastDecision": "Last decision"
+				},
+				"noDecisionYet": "No decision recorded yet — nothing has needed deciding."
+			},
+			"rampConfirmDialog": {
+				"typeToConfirm": "Type {phrase} to confirm"
+			},
+			"rampDecisionTimeline": {
+				"empty": "No decisions recorded for this cell yet. The controller writes one every time it looks, so this fills in on its own."
+			},
+			"rampDecreaseNotices": {
+				"empty": "Nothing has been pulled back. Every automatic retreat shows up here, naming the check that broke and what to do about it.",
+				"hardStop": "Hard stop"
+			},
+			"rampNarrativeCard": {
+				"eyebrow": "Your sending ramp",
+				"errorTitle": "Couldn’t load the ramp",
+				"errorMessage": "What the ramp is doing could not be read. Your mail is unaffected — this card only reads, and nothing here has changed.",
+				"loading": "Loading your sending ramp",
+				"decisionsTitle": "What the controller decided recently",
+				"noDecisions": "Nothing yet. The controller writes a line every time it looks at a cell — including the times it decides to change nothing — so this fills in on its own.",
+				"goDeeper": "Go deeper"
+			},
+			"rampPresetPicker": {
+				"legend": "{stream} mail",
+				"deploymentDefault": "Default for this deployment: {preset}.",
+				"useDefault": "Use the default",
+				"useDefaultDescription": "Follows the deployment default, including if that changes later.",
+				"standaloneNote": "With no relay connected the engagement check is the weaker signal, so this pace advances on evidence nothing else has corroborated."
+			},
+			"readinessPanel": {
+				"error": "Couldn't check delivery readiness just now. Reload to try again.",
+				"eyebrow": "Delivery readiness",
+				"title": "Can this instance send?"
+			},
+			"relayDomainStatus": {
+				"title": "Relay sending domains",
+				"intro": "Publish these records before automatic fallback can activate. A shown apex SPF value is authoritatively merged with the owned-MTA policy. If no SPF row is shown, preserve your existing SPF record and complete a reviewed additive merge; never replace it with a relay-only value. Your primary DMARC record remains unchanged.",
+				"verifyDns": "Verify DNS",
+				"verifyOperation": "Verify relay domain",
+				"verifyRefreshed": "Relay DNS verification refreshed",
+				"notScheduled": "not scheduled",
+				"outstanding": "Outstanding: {items}",
+				"spfError": "SPF: {error}",
+				"dkimError": "DKIM: {error}",
+				"spfNotApplicable": "Apex SPF: not applicable to this relay's proof. Keep the reviewed manual primary SPF policy; {provider} is authenticated by its verified DKIM and its own return-path records.",
+				"recordPriority": "priority {priority}",
+				"ownership": "Ownership",
+				"ownershipLine": "Ownership: {instruction}",
+				"ownershipGeneric": "complete {provider}'s own domain verification for this domain in its console.",
+				"ownershipMandrill": "this account verifies domains from its dashboard rather than with a TXT record. Open Mailchimp Transactional → Settings → Domains → Sending Domains and complete the verification for this domain.",
+				"freshness": "Last confirmed {lastConfirmed} · next automatic check {nextCheck}",
+				"loadMore": "Load more domains"
+			},
+			"sendingDetails": {
+				"title": "Outbound IPs",
+				"subtitle": "The identities recipient mail servers see when Owlat delivers directly.",
+				"synced": "Synced {relativeTime}",
+				"empty": "No outbound IP status has synced from the MTA yet.",
+				"ipMeta": "{pool} pool · warm-up day {day} · {sent} / {cap} today",
+				"ptrRecord": "PTR record",
+				"notFound": "Not found",
+				"ehloHostname": "EHLO hostname",
+				"notReported": "Not reported",
+				"blocklists": "Blocklists",
+				"ptrRemediation": "Set the PTR value to {ehlo}, then wait for DNS to update.",
+				"recoverySteps": "{blocklist} recovery steps",
+				"totalSentToday": "Total emails sent today (all types)"
+			},
+			"signedWebhookCard": {
+				"title": "{provider} feedback webhook",
+				"subtitle": "Let {provider} tell Owlat when mail bounces, is marked as spam, or is rejected — so those addresses are suppressed and the ramp can see this arm's real behaviour",
+				"webhookUrl": "Webhook URL",
+				"copyWebhookUrl": "Copy webhook URL",
+				"createWebhook": "Create a webhook in your {provider} console pointing at this URL.",
+				"urlNoteGeneric": "{provider} signs every delivery over this exact string — a redirect or a trailing-slash difference fails the signature.",
+				"noUrl": "Set your site URL to see the endpoint {provider} should post to.",
+				"enableEvents": "Enable exactly these events",
+				"eventsGeneric": "Enable the delivery, bounce, complaint, unsubscribe and rejection events {provider} offers. Owlat records the ones it understands — suppressing the addresses behind bounces and complaints — and ignores the rest.",
+				"trackingEventsOff": "Leave {open} and {click} tracking switched OFF. Owlat tracks opens and clicks first-party, identically on every transport, so the engagement gate compares the two arms on the same instrument.",
+				"keyIssuanceGeneric": "{provider} issues this key when the webhook is created",
+				"keyNote": "{issuance} — copy it into your environment and restart. Until it is set, Owlat rejects every posted batch rather than trusting an unsigned one.",
+				"keyPresent": "present",
+				"keyMissing": "missing",
+				"lastEvent": "Last event received: {at}",
+				"noFeedback": "No feedback received yet. Once the webhook is saved and a message bounces, is marked as spam, or is rejected, it appears here.",
+				"mandrill": {
+					"events": {
+						"send": "confirms Mandrill accepted the message",
+						"deferral": "a receiver asked Mandrill to try later",
+						"hardBounce": "suppresses the address and feeds the bounce gate",
+						"softBounce": "counts toward the arm’s deferral picture",
+						"spam": "suppresses the address and feeds the complaint gate",
+						"unsub": "records the unsubscribe against this arm",
+						"reject": "mirrors Mandrill’s own blacklist into your suppression list"
+					},
+					"urlNote": "Mandrill checks the URL before saving the webhook, and signs every later delivery over this exact string — a redirect or a trailing-slash difference fails the signature.",
+					"keyIssuance": "Mandrill shows this key once, after the webhook is created"
+				}
+			}
+		}
+	}
+}

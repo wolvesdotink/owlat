@@ -1,0 +1,83 @@
+{
+	"components": {
+		"inbox": {
+			"assignPopover": {
+				"assignToMe": "Mir zuweisen",
+				"teammate": "Teammitglied",
+				"unassign": "Zuweisung aufheben"
+			},
+			"attachSuggestion": {
+				"attachFile": "{file} anhängen",
+				"pickOne": "Datei anhängen — bitte auswählen",
+				"severalMatch": "Mehrere Dateien kommen infrage — wählen Sie die passende aus:",
+				"suggested": "Vorgeschlagener Anhang"
+			},
+			"decisionRationale": {
+				"groundedIn": "Basiert auf:",
+				"heldBecause": "Zurückgehalten, weil:",
+				"sentBecause": "Gesendet, weil:"
+			},
+			"draftDiffEditor": {
+				"originalDraft": "Ursprünglicher Entwurf",
+				"saveAndApprove": "Speichern & freigeben",
+				"textareaLabel": "Antwortentwurf bearbeiten",
+				"yourEdit": "Ihre Bearbeitung"
+			},
+			"draftOptions": {
+				"groupLabel": "Entwurfsoptionen",
+				"heading": "Agenten-Entwurf — bitte auswählen"
+			},
+			"inboxFilterPills": {
+				"groupLabel": "Konversationen filtern"
+			},
+			"inboxThreadPresence": {
+				"manyHere": "{count} Personen hier",
+				"moreHere": "{count} weitere hier",
+				"namesMany": "{first}, {second} und {count} weitere",
+				"namesManyOne": "{first}, {second} und 1 weitere Person",
+				"namesTwo": "{first} und {second}",
+				"oneHere": "1 Person hier",
+				"replyingBannerMany": "{names} antworten gerade auf diese Konversation.",
+				"replyingBannerOne": "{names} antwortet gerade auf diese Konversation.",
+				"titleReplying": "{name} antwortet gerade",
+				"titleViewing": "{name} liest gerade mit"
+			},
+			"inboxThreadRow": {
+				"assign": "Zuweisen",
+				"assignThread": "Konversation zuweisen",
+				"assignedTo": "Zugewiesen an {name}",
+				"channel": {
+					"sms": "SMS",
+					"whatsapp": "WhatsApp"
+				},
+				"noSubject": "Kein Betreff",
+				"openThread": "Konversation öffnen",
+				"resolve": "Erledigen",
+				"snooze": "Zurückstellen",
+				"unknownSender": "Unbekannter Absender",
+				"unread": "Ungelesen"
+			},
+			"statusChip": {
+				"returned": "· Zurückgekehrt"
+			},
+			"threadChannelTimeline": {
+				"empty": "Noch keine kanalübergreifenden Nachrichten.",
+				"reply": "Antworten",
+				"replyOn": "Über {channel} antworten",
+				"replyPlaceholder": "Über {channel} antworten…",
+				"subtitle": "Alle Nachrichten dieser Konversation über sämtliche Kanäle hinweg.",
+				"title": "Kanalübergreifender Verlauf"
+			},
+			"trustChip": {
+				"seeWhy": "{label} — Begründung anzeigen"
+			}
+		},
+		"knowledge": {
+			"graphCanvas": {
+				"ariaLabel": "Wissensgraph",
+				"emptyHint": "Verknüpfen Sie Einträge, um den Graphen aufzubauen.",
+				"emptyTitle": "Kein verknüpftes Wissen vorhanden."
+			}
+		}
+	}
+}

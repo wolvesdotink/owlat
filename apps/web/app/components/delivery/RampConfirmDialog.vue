@@ -52,6 +52,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ confirm: [phrase: string]; cancel: [] }>();
 
+const { t } = useI18n();
+
 const typed = ref('');
 const headingId = useId();
 const descriptionId = useId();
@@ -144,7 +146,15 @@ function confirm(): void {
 
 			<div class="space-y-1">
 				<label :for="inputId" class="block text-sm text-text-primary">
-					Type <span class="font-mono font-semibold">{{ phrase }}</span> to confirm
+					<I18nT
+						keypath="components.delivery.rampConfirmDialog.typeToConfirm"
+						tag="span"
+						scope="global"
+					>
+						<template #phrase>
+							<span class="font-mono font-semibold">{{ phrase }}</span>
+						</template>
+					</I18nT>
 				</label>
 				<input
 					:id="inputId"
@@ -166,7 +176,7 @@ function confirm(): void {
 					data-testid="ramp-confirm-cancel"
 					@click="emit('cancel')"
 				>
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
 					variant="primary"

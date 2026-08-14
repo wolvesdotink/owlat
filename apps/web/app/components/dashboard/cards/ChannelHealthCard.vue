@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
+const { t } = useI18n();
+
 const { data: channels, isLoading } = useOrganizationQuery(api.unifiedMessages.getChannelConfigs);
 
 interface ChannelConfigRow {
@@ -21,12 +23,13 @@ const CHANNEL_ICONS: Record<string, string> = {
 	chat: 'lucide:message-square',
 };
 
-const CHANNEL_LABELS: Record<string, string> = {
-	email: 'Email',
-	sms: 'SMS',
-	whatsapp: 'WhatsApp',
-	generic: 'Generic webhook',
-	chat: 'Chat',
+/** Message keys, resolved per render so the labels follow the active locale. */
+const CHANNEL_LABEL_KEYS: Record<string, string> = {
+	email: 'components.dashboard.cards.channelHealth.channels.email',
+	sms: 'components.dashboard.cards.channelHealth.channels.sms',
+	whatsapp: 'components.dashboard.cards.channelHealth.channels.whatsapp',
+	generic: 'components.dashboard.cards.channelHealth.channels.generic',
+	chat: 'components.dashboard.cards.channelHealth.channels.chat',
 };
 
 function getChannelIcon(channel: string): string {
@@ -34,7 +37,9 @@ function getChannelIcon(channel: string): string {
 }
 
 function getChannelName(channel: ChannelConfigRow): string {
-	return channel.displayName || CHANNEL_LABELS[channel.channel] || channel.channel;
+	if (channel.displayName) return channel.displayName;
+	const key = CHANNEL_LABEL_KEYS[channel.channel];
+	return key ? t(key) : channel.channel;
 }
 
 function getStatusVariant(channel: ChannelConfigRow): 'success' | 'warning' | 'error' | 'neutral' {
@@ -45,10 +50,12 @@ function getStatusVariant(channel: ChannelConfigRow): 'success' | 'warning' | 'e
 }
 
 function getStatusLabel(channel: ChannelConfigRow): string {
-	if (!channel.isEnabled) return 'Disabled';
-	if (channel.healthStatus === 'degraded') return 'Degraded';
-	if (channel.healthStatus === 'down') return 'Down';
-	return 'Healthy';
+	if (!channel.isEnabled) return t('common.disabled');
+	if (channel.healthStatus === 'degraded')
+		return t('components.dashboard.cards.channelHealth.status.degraded');
+	if (channel.healthStatus === 'down')
+		return t('components.dashboard.cards.channelHealth.status.down');
+	return t('components.dashboard.cards.channelHealth.status.healthy');
 }
 </script>
 
@@ -57,7 +64,9 @@ function getStatusLabel(channel: ChannelConfigRow): string {
 		<div class="p-5">
 			<div class="flex items-center gap-2.5 mb-4">
 				<UiIconBox icon="lucide:radio" size="sm" variant="success" />
-				<h3 class="text-sm font-semibold text-text-primary">Channel Health</h3>
+				<h3 class="text-sm font-semibold text-text-primary">
+					{{ t('components.dashboard.cards.channelHealth.title') }}
+				</h3>
 			</div>
 
 			<div v-if="isLoading" class="flex items-center justify-center py-6">
@@ -65,7 +74,9 @@ function getStatusLabel(channel: ChannelConfigRow): string {
 			</div>
 
 			<div v-else-if="channelList.length === 0" class="py-4 text-center">
-				<p class="text-sm text-text-tertiary">No channels configured</p>
+				<p class="text-sm text-text-tertiary">
+					{{ t('components.dashboard.cards.channelHealth.empty') }}
+				</p>
 			</div>
 
 			<div v-else class="space-y-2">

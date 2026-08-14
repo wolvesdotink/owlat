@@ -1,0 +1,215 @@
+{
+	"components": {
+		"automations": {
+			"steps": {
+				"delay": {
+					"editor": {
+						"durationLabel": "Wartedauer",
+						"unitOptions": {
+							"minutes": "Minuten",
+							"hours": "Stunden",
+							"days": "Tage",
+							"weeks": "Wochen"
+						},
+						"durationHint": "Wie lange gewartet wird, bevor es mit dem nächsten Schritt weitergeht.",
+						"presetsLabel": "Schnellauswahl",
+						"presets": {
+							"minutes30": "30 Min.",
+							"hours1": "1 Stunde",
+							"hours24": "24 Stunden",
+							"days1": "1 Tag",
+							"days3": "3 Tage",
+							"weeks1": "1 Woche",
+							"weeks2": "2 Wochen"
+						},
+						"previewLabel": "Vorschau der Dauer",
+						"preview": {
+							"minutes": "{count} Minute | {count} Minuten",
+							"hours": "{count} Stunde | {count} Stunden",
+							"days": "{count} Tag | {count} Tage",
+							"weeks": "{count} Woche | {count} Wochen"
+						},
+						"previewHint": "So erscheint die Wartezeit im Workflow"
+					}
+				},
+				"email": {
+					"editor": {
+						"templateLabel": "E-Mail-Vorlage",
+						"templatePlaceholder": "Vorlage auswählen...",
+						"templateOption": "{name} ({status})",
+						"templateHint": "Wählen Sie die E-Mail-Vorlage, die an den Kontakt gesendet wird.",
+						"noTemplates": "Keine Automations-Vorlagen gefunden. {link} mit dem Typ „Automation“.",
+						"noTemplatesLink": "Erstellen Sie zuerst eine E-Mail-Vorlage",
+						"createPrompt": "Oder erstellen Sie eine neue E-Mail-Vorlage für diese Automation:",
+						"createCta": "Neue E-Mail erstellen",
+						"subjectLabel": "Abweichender Betreff (optional)",
+						"subjectPlaceholder": "Leer lassen, um den Betreff der Vorlage zu verwenden",
+						"subjectHint": "Überschreibt den Betreff der Vorlage für diese Automation.",
+						"previewLabel": "Vorschau der Vorlage",
+						"previewSubject": "Betreff: {subject}",
+						"editTemplate": "Vorlage bearbeiten →"
+					}
+				}
+			},
+			"triggers": {
+				"contactUpdated": {
+					"editor": {
+						"propertyLabel": "Zu überwachende Eigenschaft",
+						"propertyHint": "Diese Automation wird ausgelöst, wenn sich die ausgewählte Eigenschaft bei einem Kontakt ändert.",
+						"propertyPlaceholder": "Eigenschaft auswählen...",
+						"builtInGroup": "Integrierte Eigenschaften",
+						"properties": {
+							"email": "E-Mail",
+							"firstName": "Vorname",
+							"lastName": "Nachname",
+							"timezone": "Zeitzone",
+							"language": "Sprache"
+						}
+					}
+				},
+				"eventReceived": {
+					"editor": {
+						"eventNameLabel": "Ereignisname",
+						"eventNameHint": "Diese Automation wird ausgelöst, wenn dieses Ereignis über die API aus Ihrer Anwendung empfangen wird.",
+						"eventNamePlaceholder": "z. B. user.signed_up, purchase.completed"
+					}
+				},
+				"topicSubscribed": {
+					"editor": {
+						"topicLabel": "Thema",
+						"topicHint": "Diese Automation wird ausgelöst, wenn ein Kontakt das ausgewählte Thema abonniert.",
+						"topicPlaceholder": "Thema auswählen...",
+						"topicOptionWithCount": "{name} ({count} Kontakte)",
+						"noTopics": "Keine Themen gefunden. {link}",
+						"noTopicsLink": "Thema erstellen"
+					}
+				}
+			}
+		},
+		"autonomy": {
+			"askEagernessDial": {
+				"title": "Rückfrage-Bereitschaft",
+				"body": "Wie schnell Owlat innehält, um Ihnen vor dem Entwurf eine kurze Frage zu stellen. Bei heiklen Punkten (Geld, Zusagen, Termine, Tonfall) wird immer vorsichtig nachgefragt; bei Routine-Bestätigungen wird nie nachgefragt.",
+				"saveOperation": "Rückfrage-Bereitschaft speichern",
+				"updatedToast": "Rückfrage-Bereitschaft aktualisiert",
+				"options": {
+					"cautious": {
+						"label": "Vorsichtig",
+						"hint": "Fragt mehr — prüft jede unklare Antwort"
+					},
+					"balanced": {
+						"label": "Ausgewogen",
+						"hint": "Fragt bei wirklich offenen, wichtigen Punkten"
+					},
+					"confident": {
+						"label": "Selbstsicher",
+						"hint": "Fragt seltener — nur bei folgenreichen Entscheidungen"
+					},
+					"off": {
+						"label": "Aus",
+						"hint": "Fragt nie — erstellt immer Entwürfe zu Ihrer Prüfung"
+					}
+				}
+			},
+			"autonomyDemotionAlerts": {
+				"title": "Automatischer Versand nach einem schlechten Ergebnis pausiert",
+				"body": "Diese Absender wurden nach einem bestätigten schlechten automatischen Versand auf reine Entwürfe zurückgestuft. Prüfen Sie sie, bevor Sie sie wieder aktivieren.",
+				"incident": "{sender} ({category})",
+				"defaultReason": "Nach einem schlechten Ergebnis automatisch auf reine Entwürfe zurückgestuft."
+			},
+			"autonomyGraduationNudge": {
+				"title": "Bereit für mehr Autonomie",
+				"body": "Der Agent hat sich mehr Autonomie verdient. Prüfen Sie die Belege und aktivieren Sie sie — ohne Ihre ausdrückliche Zustimmung wird nichts erweitert.",
+				"offer": "Sie haben {matched} von {total} {category}-Entwürfen an {sender} unverändert freigegeben — automatischen Versand aktivieren?",
+				"matchRate": "Übereinstimmungsrate {rate}",
+				"enableAutoSend": "Automatischen Versand aktivieren",
+				"suggestion": "Die Schwelle für die automatische Freigabe von {category} von {current} auf {suggested} senken?",
+				"suggestionEvidence": "{approved}/{sampleSize} freigegeben, {rate} Ablehnungsquote"
+			},
+			"autonomyKillSwitch": {
+				"title": "Automatischen Versand jetzt stoppen",
+				"body": "Sofort zurück auf {mode}: schaltet die abgestufte Autonomie und die alte automatische Antwort ab und holt jeden automatischen Versand zurück, der noch im Rückgängig-Fenster ist. Der Agent entwirft weiterhin Antworten zu Ihrer Prüfung — nichts geht verloren.",
+				"bodyMode": "nur Entwürfe",
+				"stopCta": "Automatischen Versand stoppen",
+				"confirmQuestion": "Zurück auf nur Entwürfe?",
+				"confirmCta": "Ja, jetzt stoppen"
+			},
+			"autonomyLearningControls": {
+				"strategiesTitle": "Entwurfsstrategien",
+				"strategiesBody": "Wählen Sie für jede Nachrichtenkategorie eine mitgelieferte Entwurfsstrategie. Der Standard nutzt den integrierten Entwurfsdienst von Owlat.",
+				"categories": {
+					"support": "Support",
+					"sales": "Vertrieb",
+					"billing": "Abrechnung",
+					"feature_request": "Funktionswunsch",
+					"complaint": "Beschwerde",
+					"spam": "Spam",
+					"internal": "Intern",
+					"other": "Sonstiges"
+				},
+				"memoryTitle": "Gelernte Antworten",
+				"memoryBody": "Antworten, die Sie gegeben haben, als dem Agenten eine Information fehlte. Vergessen Sie veraltete Antworten oder weiten Sie eine kontaktbezogene Antwort bewusst auf alle Absender aus.",
+				"memoryEmpty": "Noch keine gelernten Antworten.",
+				"scopeAllSenders": "Alle Absender",
+				"scopeOneContact": "Ein Kontakt",
+				"answeredTimes": "{scope} · {count}-mal beantwortet | {scope} · {count}-mal beantwortet",
+				"useForEveryone": "Für alle verwenden",
+				"forget": "Vergessen",
+				"forgetOperation": "Gelernte Antwort vergessen",
+				"promoteOperation": "Gelernte Antwort für alle verwenden",
+				"setStrategyOperation": "Entwurfsstrategie festlegen",
+				"forgottenToast": "Gelernte Antwort vergessen",
+				"promotedToast": "Die gelernte Antwort gilt jetzt für jeden Absender",
+				"strategyUpdatedToast": "Entwurfsstrategie für {category} aktualisiert"
+			},
+			"autonomyRuleEditor": {
+				"saveOperation": "Autonomieregel speichern",
+				"deleteOperation": "Autonomieregel löschen",
+				"categories": {
+					"support": "Support",
+					"sales": "Vertrieb",
+					"billing": "Abrechnung",
+					"feature_request": "Funktionswunsch",
+					"complaint": "Beschwerde",
+					"spam": "Spam",
+					"internal": "Intern",
+					"other": "Sonstiges"
+				},
+				"categoryPlaceholder": "Kategorie auswählen",
+				"thresholdLabel": "Schwelle für automatische Freigabe",
+				"thresholdHint": "Mindest-Konfidenzwert, den der Agent benötigt, um Aktionen in dieser Kategorie automatisch freizugeben.",
+				"thresholdMin": "0 % (alles automatisch)",
+				"thresholdMax": "100 % (alles manuell)",
+				"maxDailyLabel": "Maximale automatische Aktionen pro Tag",
+				"maxDailyHint": "Maximale Anzahl an Aktionen, die der Agent pro Tag in dieser Kategorie automatisch freigeben kann.",
+				"todayCount": "Heute: {current} / {max}",
+				"deleteRule": "Regel löschen",
+				"createRule": "Regel erstellen",
+				"saveChanges": "Änderungen speichern",
+				"deleteConfirm": "Möchten Sie die Autonomieregel für {category} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+			},
+			"autonomyWorkingHours": {
+				"title": "Arbeitszeiten",
+				"subtitle": "Automatisch nur während der Geschäftszeiten senden.",
+				"on": "An",
+				"off": "Aus",
+				"timezoneLabel": "Zeitzone",
+				"timezonePlaceholder": "z. B. America/New_York",
+				"fromLabel": "Von",
+				"toLabel": "Bis",
+				"daysLabel": "Tage",
+				"weekdays": {
+					"mon": "Mo",
+					"tue": "Di",
+					"wed": "Mi",
+					"thu": "Do",
+					"fri": "Fr",
+					"sat": "Sa",
+					"sun": "So"
+				},
+				"hint": "Antworten, die außerhalb dieser Zeiten entschieden werden, werden für die morgendliche Prüfung durch einen Menschen zurückgehalten — nicht gesendet.",
+				"save": "Arbeitszeiten speichern"
+			}
+		}
+	}
+}

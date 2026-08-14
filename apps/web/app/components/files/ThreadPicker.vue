@@ -7,6 +7,8 @@ import { api } from '@owlat/api';
 // second lookup; it maps to `threadId` for `semanticFiles.update`.
 const selected = defineModel<PickerThread | null>({ default: null });
 
+const { t } = useI18n();
+
 const search = ref('');
 
 // `conversationThreads` carries no full-text index, so — like the chat
@@ -38,7 +40,9 @@ const pick = (thread: PickerThread) => {
 				<button
 					type="button"
 					class="p-0.5 rounded-full text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-					:aria-label="`Remove ${threadPickerLabel(selected)}`"
+					:aria-label="
+						t('components.files.threadPicker.remove', { name: threadPickerLabel(selected) })
+					"
 					@click="selected = null"
 				>
 					<Icon name="lucide:x" class="w-3 h-3" />
@@ -52,7 +56,7 @@ const pick = (thread: PickerThread) => {
 				v-model="search"
 				type="text"
 				class="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
-				placeholder="Search conversations by subject or sender…"
+				:placeholder="t('components.files.threadPicker.searchPlaceholder')"
 				autocomplete="off"
 			/>
 			<ul
@@ -73,7 +77,7 @@ const pick = (thread: PickerThread) => {
 				</li>
 			</ul>
 			<p v-else-if="search && !isLoading" class="text-xs text-text-tertiary mt-1">
-				No matching conversations.
+				{{ t('components.files.threadPicker.empty') }}
 			</p>
 		</div>
 	</div>

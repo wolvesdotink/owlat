@@ -15,6 +15,8 @@ const emit = defineEmits<{
 	save: [];
 }>();
 
+const { t } = useI18n();
+
 const ctx = useConditionEditorContext();
 
 const updateTopic = (event: Event) => {
@@ -33,19 +35,25 @@ const updateOperator = (event: Event) => {
 <template>
 	<template v-if="variant === 'row'">
 		<div>
-			<label class="text-xs text-text-tertiary mb-1 block">Topic</label>
+			<label class="text-xs text-text-tertiary mb-1 block">{{
+				t('components.conditions.topicMembership.editor.topic')
+			}}</label>
 			<select :value="modelValue.topicId" class="input" @change="updateTopic">
-				<option value="">Select topic...</option>
+				<option value="">
+					{{ t('components.conditions.topicMembership.editor.selectTopicShort') }}
+				</option>
 				<option v-for="topic in ctx.topics.value" :key="topic._id" :value="topic._id">
 					{{ topic.name }}
 				</option>
 			</select>
 		</div>
 		<div>
-			<label class="text-xs text-text-tertiary mb-1 block">Condition</label>
+			<label class="text-xs text-text-tertiary mb-1 block">{{
+				t('components.conditions.topicMembership.editor.condition')
+			}}</label>
 			<select :value="modelValue.operator" class="input" @change="updateOperator">
 				<option v-for="op in TOPIC_OPERATORS" :key="op.value" :value="op.value">
-					{{ op.label }}
+					{{ t(op.label) }}
 				</option>
 			</select>
 		</div>
@@ -54,24 +62,30 @@ const updateOperator = (event: Event) => {
 	<template v-else>
 		<div class="space-y-4">
 			<div>
-				<label for="topic" class="label">Topic</label>
+				<label for="topic" class="label">{{
+					t('components.conditions.topicMembership.editor.topic')
+				}}</label>
 				<select
 					id="topic"
 					:value="modelValue.topicId"
 					class="input mt-1.5"
 					@change="updateTopic"
 				>
-					<option value="">Select a topic...</option>
+					<option value="">
+						{{ t('components.conditions.topicMembership.editor.selectTopic') }}
+					</option>
 					<option v-for="topic in ctx.topics.value" :key="topic._id" :value="topic._id">
 						{{ topic.name }}
 					</option>
 				</select>
 				<p class="text-xs text-text-tertiary mt-1.5">
-					Check if the contact is subscribed to this topic.
+					{{ t('components.conditions.topicMembership.editor.help') }}
 				</p>
 			</div>
 			<div>
-				<label for="topicOperator" class="label">Condition</label>
+				<label for="topicOperator" class="label">{{
+					t('components.conditions.topicMembership.editor.condition')
+				}}</label>
 				<select
 					id="topicOperator"
 					:value="modelValue.operator"
@@ -79,7 +93,7 @@ const updateOperator = (event: Event) => {
 					@change="updateOperator"
 				>
 					<option v-for="op in TOPIC_OPERATORS" :key="op.value" :value="op.value">
-						{{ op.label }}
+						{{ t(op.label) }}
 					</option>
 				</select>
 			</div>

@@ -25,6 +25,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -85,6 +86,9 @@ function mandrillRow(over: Partial<Row> = {}): Row {
 
 async function mountPanel(rows: Row[]) {
 	vi.stubGlobal('computed', computed);
+	// The panel's copy flows through vue-i18n now; `useI18n` is a Nuxt
+	// auto-import, so it has to exist as a bare global for the setup.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	// REAL refs, not `{ value }` literals: the template renders the rows through a
 	// computed, and Vue only unwraps something `isRef` says is a ref.
 	vi.stubGlobal('usePaginatedQuery', () => ({
@@ -95,7 +99,7 @@ async function mountPanel(rows: Row[]) {
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn() }));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	const component = (await import('../RelayDomainStatus.vue')).default;
-	return mount(component, { global: { stubs } });
+	return mount(component, { global: { stubs, plugins: [createTestI18n()] } });
 }
 
 function isRendered(wrapper: { find: (selector: string) => { exists: () => boolean } }): boolean {

@@ -18,6 +18,11 @@ import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import CampaignSendPlanLine from '../CampaignSendPlanLine.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The line renders every sentence through the real catalog, so `useI18n` has to
+// resolve exactly as it does in the app (an auto-import, hence a global).
+Object.assign(globalThis, i18nStubs);
 
 interface Progress {
 	isMultiDay: boolean;
@@ -43,7 +48,10 @@ function progress(overrides: Partial<Progress> = {}): Progress {
 }
 
 function render(value: Progress | null | undefined) {
-	return mount(CampaignSendPlanLine, { props: { progress: value } });
+	return mount(CampaignSendPlanLine, {
+		props: { progress: value },
+		global: { plugins: [createTestI18n()] },
+	});
 }
 
 describe('CampaignSendPlanLine — when it renders at all', () => {

@@ -26,6 +26,8 @@ const props = withDefaults(defineProps<Props>(), {
 	mentionCount: 0,
 });
 
+const { t } = useI18n();
+
 const showArchived = ref(false);
 
 const archivedMatches = computed(() =>
@@ -53,10 +55,12 @@ const matchesQuery = (name: string) => {
 	<div class="flex flex-col h-full bg-bg-elevated border-r border-border-subtle">
 		<!-- Header -->
 		<div class="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-			<h2 class="text-sm font-semibold text-text-primary">Chat</h2>
+			<h2 class="text-sm font-semibold text-text-primary">
+				{{ t('components.chat.chatSidebar.title') }}
+			</h2>
 			<button
 				class="relative w-7 h-7 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-				title="Mentions"
+				:title="t('components.chat.chatSidebar.mentions')"
 				@click="emit('mentions')"
 			>
 				<Icon name="lucide:at-sign" class="w-4 h-4" />
@@ -79,7 +83,7 @@ const matchesQuery = (name: string) => {
 				<input
 					v-model="searchQuery"
 					type="text"
-					placeholder="Search…"
+					:placeholder="t('components.chat.chatSidebar.searchPlaceholder')"
 					class="input input-sm pl-9"
 				/>
 			</div>
@@ -97,19 +101,19 @@ const matchesQuery = (name: string) => {
 				<div class="px-3 mt-2">
 					<div class="flex items-center justify-between px-1 py-1">
 						<span class="text-2xs uppercase tracking-wider font-semibold text-text-tertiary">
-							Channels
+							{{ t('components.chat.chatSidebar.channels') }}
 						</span>
 						<div class="flex items-center gap-1">
 							<button
 								class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-								title="Browse channels"
+								:title="t('components.chat.chatSidebar.browseChannels')"
 								@click="emit('browseChannels')"
 							>
 								<Icon name="lucide:hash" class="w-3.5 h-3.5" />
 							</button>
 							<button
 								class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-								title="New channel"
+								:title="t('components.chat.chatSidebar.newChannel')"
 								@click="emit('newChannel')"
 							>
 								<Icon name="lucide:plus" class="w-3.5 h-3.5" />
@@ -118,7 +122,7 @@ const matchesQuery = (name: string) => {
 					</div>
 
 					<div v-if="channels.length === 0" class="px-1 py-2 text-xs text-text-tertiary">
-						No channels yet.
+						{{ t('components.chat.chatSidebar.noChannels') }}
 					</div>
 					<button
 						v-for="channel in channels.filter((c) => matchesQuery(c.displayName))"
@@ -163,13 +167,13 @@ const matchesQuery = (name: string) => {
 							:name="showArchived ? 'lucide:chevron-down' : 'lucide:chevron-right'"
 							class="w-3.5 h-3.5"
 						/>
-						<span>Archived</span>
+						<span>{{ t('components.chat.chatSidebar.archived') }}</span>
 						<span class="text-text-tertiary normal-case tracking-normal">({{ archivedChannels.length }})</span>
 					</button>
 
 					<template v-if="showArchived">
 						<div v-if="archivedMatches.length === 0" class="px-1 py-2 text-xs text-text-tertiary">
-							No matching archived channels.
+							{{ t('components.chat.chatSidebar.noArchivedMatches') }}
 						</div>
 						<button
 							v-for="channel in archivedMatches"
@@ -194,11 +198,11 @@ const matchesQuery = (name: string) => {
 				<div class="px-3 mt-4">
 					<div class="flex items-center justify-between px-1 py-1">
 						<span class="text-2xs uppercase tracking-wider font-semibold text-text-tertiary">
-							Direct messages
+							{{ t('components.chat.chatSidebar.directMessages') }}
 						</span>
 						<button
 							class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-							title="New DM"
+							:title="t('components.chat.chatSidebar.newDm')"
 							@click="emit('newDm')"
 						>
 							<Icon name="lucide:plus" class="w-3.5 h-3.5" />
@@ -206,7 +210,7 @@ const matchesQuery = (name: string) => {
 					</div>
 
 					<div v-if="dms.length === 0" class="px-1 py-2 text-xs text-text-tertiary">
-						No conversations yet.
+						{{ t('components.chat.chatSidebar.noDms') }}
 					</div>
 					<button
 						v-for="dm in dms.filter((d) => matchesQuery(d.displayName))"

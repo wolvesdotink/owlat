@@ -36,6 +36,9 @@ import MeasurementGateList from '../MeasurementGateList.vue';
 import { improvementCopy, confidenceLabel } from '~/utils/deliverabilityMeasurement';
 import { holdingGate } from './measurementFixtures';
 import { adminNotice, cellControl, controlsView, NOW } from './rampFixtures';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const ALARM = /text-error|bg-error|setup incomplete|action required|something went wrong/i;
 
@@ -341,6 +344,7 @@ describe('calm states', () => {
 				requiresCorroboration: false,
 				decisionWindowLabel: 'the last 24 hours',
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.text()).toContain('Not enough data yet');
 		expect(wrapper.html()).not.toMatch(ALARM);
@@ -364,6 +368,7 @@ describe('calm states', () => {
 	it('draws no chart, and no alarm, with nothing or one day of history', () => {
 		const empty = mount(IndependenceTrendChart, {
 			props: { points: [], hasReference: false, labelledBy: 'chart' },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(empty.find('[data-testid="independence-chart-empty"]').text()).toContain(
 			'Nothing has been sent yet'
@@ -377,6 +382,7 @@ describe('calm states', () => {
 				hasReference: false,
 				labelledBy: 'chart',
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(single.find('[data-testid="independence-chart-empty"]').text()).toContain(
 			'One day of history'
@@ -392,6 +398,7 @@ describe('calm states', () => {
 		}));
 		const wrapper = mount(IndependenceTrendChart, {
 			props: { points, hasReference: false, labelledBy: 'chart' },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.find('[data-testid="own-band"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="reference-band"]').exists()).toBe(false);

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useUiI18n } from '../../composables/useUiI18n';
+
 type ProgressVariant = 'brand' | 'success' | 'warning' | 'error';
 
 interface Props {
@@ -20,6 +22,8 @@ const props = withDefaults(defineProps<Props>(), {
 	size: 'md',
 });
 
+const { t } = useUiI18n();
+
 const clamped = computed(() => Math.max(0, Math.min(100, Math.round(props.value))));
 
 const fillColor: Record<ProgressVariant, string> = {
@@ -39,7 +43,7 @@ const trackHeight = computed(() => (props.size === 'sm' ? 'h-1.5' : 'h-2.5'));
 		role="progressbar"
 		:aria-label="ariaLabel"
 		:aria-valuenow="indeterminate ? undefined : clamped"
-		:aria-valuetext="indeterminate ? 'Loading…' : undefined"
+		:aria-valuetext="indeterminate ? t('ui.progress.loading') : undefined"
 		aria-valuemin="0"
 		aria-valuemax="100"
 	>

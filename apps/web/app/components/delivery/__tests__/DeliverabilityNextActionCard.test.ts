@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DeliverabilityChecklistItem } from '~/utils/deliverabilityCenter';
 import DeliverabilityNextActionCard from '../DeliverabilityNextActionCard.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 const copy = vi.fn(async () => true);
 const isCopied = vi.fn(() => false);
@@ -62,19 +63,21 @@ function item(status: DeliverabilityChecklistItem['status']): DeliverabilityChec
 function mountCard(check: DeliverabilityChecklistItem) {
 	return mount(DeliverabilityNextActionCard, {
 		props: { item: check },
-		global: { stubs },
+		global: { plugins: [createTestI18n()], stubs },
 	});
 }
 
 beforeEach(() => {
 	copy.mockClear();
 	isCopied.mockClear();
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useCopyToClipboard', () => ({ copy, isCopied }));
 });
 
 describe('DeliverabilityNextActionCard', () => {
 	it('renders DNS propagation as waiting, never as a failure', () => {
 		const wrapper = mountCard(item('pending-dns'));
+		expectFullyLocalized(wrapper);
 		expect(wrapper.text()).toContain('Checking for your change');
 		expect(wrapper.text()).toContain('DNS can take up to an hour');
 		expect(wrapper.text()).toContain('You can safely leave this page');

@@ -42,17 +42,37 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (event: 'applied'): void }>();
 
+const { t } = useI18n();
+
+/**
+ * The migration table is module scope and never calls `useI18n`: it hands back
+ * catalog keys, and this step is the render boundary that turns them into words.
+ */
+type MigrationMessage = string | { key: string; params?: Record<string, unknown> };
+const message = (value: MigrationMessage): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 const { run: setRoute } = useBackendOperation(api.providerRoutes.setRoute, {
-	label: 'Apply the migration route',
+	label: () => t('components.delivery.migrationPresetStep.applyRouteOperation'),
 });
 const { run: setStreamPreset } = useBackendOperation(api.delivery.rampControls.setStreamPreset, {
-	label: 'Set the ramp pace',
+	label: () => t('components.delivery.migrationPresetStep.setPaceOperation'),
 });
 
 const isApplying = ref(false);
-/** The writes that landed, in order, so a partial apply is legible. */
-const applied = ref<string[]>([]);
-const failedAt = ref<string | null>(null);
+/**
+ * The writes that landed, in order, so a partial apply is legible. Each is named
+ * by the key it renders under plus the stream it was for, so a locale switch
+ * re-words a list that is already on screen.
+ */
+interface AppliedWrite {
+	readonly key: string;
+	readonly stream: string;
+}
+const applied = ref<AppliedWrite[]>([]);
+const failedAt = ref<AppliedWrite | null>(null);
+
+const writeLabel = (write: AppliedWrite): string => t(write.key, { stream: write.stream });
 
 const preflight = computed(() => migrationPresetIssue(props.catalog));
 const relayWarning = computed(() => competingRelayWarning(props.routes));
@@ -72,20 +92,28 @@ async function apply(): Promise<void> {
 				providers: payload.providers.map((provider) => ({ ...provider })),
 				deliverabilityFallback: { ...payload.deliverabilityFallback },
 			});
+			const write: AppliedWrite = {
+				key: 'components.delivery.migrationPresetStep.routeWrite',
+				stream: payload.messageType,
+			};
 			// `run` returns undefined on failure and has already surfaced why.
 			if (result === undefined) {
-				failedAt.value = `${payload.messageType} route`;
+				failedAt.value = write;
 				return;
 			}
-			applied.value = [...applied.value, `${payload.messageType} route`];
+			applied.value = [...applied.value, write];
 		}
 		for (const stream of MIGRATION_MESSAGE_TYPES) {
 			const result = await setStreamPreset({ stream, preset: MIGRATION_RAMP_PRESET });
+			const write: AppliedWrite = {
+				key: 'components.delivery.migrationPresetStep.paceWrite',
+				stream,
+			};
 			if (result === undefined) {
-				failedAt.value = `${stream} ramp pace`;
+				failedAt.value = write;
 				return;
 			}
-			applied.value = [...applied.value, `${stream} ramp pace`];
+			applied.value = [...applied.value, write];
 		}
 		emit('applied');
 	} finally {
@@ -101,36 +129,52 @@ async function apply(): Promise<void> {
 		</p>
 
 		<ul class="text-sm text-text-secondary space-y-1 list-disc pl-5">
-			<li>
-				<strong>Transactional, campaign and automation</strong> all move to the measured split
-				(<code>adaptive_mix</code>) over your own MTA and Mailchimp Transactional.
-			</li>
-			<li>Mailchimp Transactional becomes the deliverability-fallback relay for each of them.</li>
-			<li>
-				Every stream ramps at the <strong>conservative</strong> pace — smaller steps, more clean
-				windows per step. You can change it later on the ramp controls screen.
-			</li>
-			<li>
-				Your own MTA starts at <strong>0%</strong> of traffic. Nothing about today's delivery
-				changes; Owlat starts measuring both arms on identical instrumentation.
-			</li>
+			<I18nT
+				keypath="components.delivery.migrationPresetStep.bulletStreams"
+				tag="li"
+				scope="global"
+			>
+				<template #streams>
+					<strong>{{ t('components.delivery.migrationPresetStep.bulletStreamsNames') }}</strong>
+				</template>
+				<template #strategy>
+					<code>adaptive_mix</code>
+				</template>
+			</I18nT>
+			<li>{{ t('components.delivery.migrationPresetStep.bulletFallback') }}</li>
+			<I18nT keypath="components.delivery.migrationPresetStep.bulletPace" tag="li" scope="global">
+				<template #pace>
+					<strong>{{ t('components.delivery.migrationPresetStep.bulletPaceName') }}</strong>
+				</template>
+			</I18nT>
+			<I18nT keypath="components.delivery.migrationPresetStep.bulletStart" tag="li" scope="global">
+				<template #share>
+					<strong>0%</strong>
+				</template>
+			</I18nT>
 		</ul>
 
 		<DeliveryReferenceRelayNotice />
 
 		<p v-if="relayWarning" class="text-sm text-warning" data-testid="migration-relay-warning">
-			{{ relayWarning }}
+			{{ message(relayWarning) }}
 		</p>
 
 		<p v-if="preflight" class="text-sm text-error" data-testid="migration-preset-preflight">
-			{{ preflight }}
+			{{ message(preflight) }}
 		</p>
 
 		<div class="flex items-center gap-3">
 			<UiButton :disabled="!canApply" data-testid="migration-preset-apply" @click="apply">
-				{{ isApplied ? 'Re-apply the migration preset' : 'Apply the migration preset' }}
+				{{
+					isApplied
+						? t('components.delivery.migrationPresetStep.reapply')
+						: t('components.delivery.migrationPresetStep.apply')
+				}}
 			</UiButton>
-			<span v-if="isApplying" class="text-sm text-text-secondary">Applying…</span>
+			<span v-if="isApplying" class="text-sm text-text-secondary">{{
+				t('components.delivery.migrationPresetStep.applying')
+			}}</span>
 		</div>
 
 		<ul
@@ -138,12 +182,15 @@ async function apply(): Promise<void> {
 			class="text-sm text-success space-y-1"
 			data-testid="migration-preset-applied"
 		>
-			<li v-for="entry in applied" :key="entry">{{ entry }} applied</li>
+			<li v-for="entry in applied" :key="`${entry.key}:${entry.stream}`">
+				{{
+					t('components.delivery.migrationPresetStep.appliedEntry', { write: writeLabel(entry) })
+				}}
+			</li>
 		</ul>
 
 		<p v-if="failedAt" class="text-sm text-error" data-testid="migration-preset-failure">
-			Stopped at the {{ failedAt }}. Everything listed above is already in place — fix the problem
-			above and apply again; re-applying what landed is harmless.
+			{{ t('components.delivery.migrationPresetStep.stoppedAt', { write: writeLabel(failedAt) }) }}
 		</p>
 	</div>
 </template>

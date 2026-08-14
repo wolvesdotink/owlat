@@ -1,0 +1,313 @@
+{
+	"brand": {
+		"docs": "Owlat Docs"
+	},
+	"breadcrumb": {
+		"label": "Brotkrumen-Navigation",
+		"root": "Doku"
+	},
+	"error": {
+		"pageNotFound": "Seite nicht gefunden",
+		"backHome": "Zurück zur Doku-Startseite",
+		"readTheGuide": "Zum Guide",
+		"notFound": {
+			"title": "Diese Seite gibt es nicht.",
+			"body": "Der Link ist womöglich veraltet oder die Seite wurde verschoben. Über den Guide und die Suche finden Sie zurück."
+		},
+		"generic": {
+			"title": "Da ist etwas schiefgegangen.",
+			"body": "Die Dokumentation konnte nicht geladen werden. Versuchen Sie es erneut oder kehren Sie zur Doku-Startseite zurück."
+		}
+	},
+	"footer": {
+		"editOnGitHub": "Diese Seite auf GitHub bearbeiten",
+		"copyright": "© {year} {company}. Alle Rechte vorbehalten."
+	},
+	"home": {
+		"seo": {
+			"title": "Owlat Docs — E-Mail-Infrastruktur für Produktteams",
+			"description": "Produkt-Guides, API-Referenz und Entwicklerdokumentation für Owlat. Erstellen, versenden und optimieren Sie E-Mails — mit Drag-and-drop-Vorlagen, transaktionalen APIs und Werkzeugen für die Zustellbarkeit.",
+			"ogDescription": "E-Mail-Infrastruktur für Produktteams"
+		},
+		"hero": {
+			"eyebrow": "Dokumentation",
+			"title": "E-Mail-Infrastruktur, {accent}",
+			"titleAccent": "von Anfang bis Ende.",
+			"tagline": "Alles, was Sie brauchen, um E-Mails zu erstellen, zu versenden und zu optimieren — von Drag-and-drop-Vorlagen über transaktionale APIs bis zu Werkzeugen für die Zustellbarkeit.",
+			"startGuide": "Mit dem Guide starten",
+			"exploreApi": "Die API entdecken"
+		},
+		"sections": {
+			"guide": {
+				"label": "Guide",
+				"description": "Produktabläufe, Einrichtung und der tägliche Betrieb",
+				"count": "19 Artikel"
+			},
+			"api": {
+				"label": "API-Referenz",
+				"description": "Referenz der authentifizierten und öffentlichen HTTP-Endpunkte",
+				"count": "11 Referenzen"
+			},
+			"developer": {
+				"label": "Entwickler",
+				"description": "Architektur, Backend-Muster und Komponentensystem",
+				"count": "12 Guides"
+			},
+			"sdks": {
+				"label": "SDKs",
+				"description": "Offizielle TypeScript- und Java-SDKs für die serverseitige Integration",
+				"count": "2 Referenzen"
+			},
+			"examples": {
+				"label": "Beispiele",
+				"description": "Kopierfertige Integrationsmuster für häufige Anwendungsfälle",
+				"count": "6 Beispiele"
+			}
+		},
+		"popular": {
+			"eyebrow": "Guides",
+			"title": "Beliebte {accent}",
+			"titleAccent": "Anleitungen."
+		},
+		"guides": {
+			"quickStart": {
+				"title": "Schnellstart",
+				"description": "In fünf Minuten einsatzbereit"
+			},
+			"emailEditor": {
+				"title": "E-Mail-Editor",
+				"description": "E-Mails im blockbasierten Editor gestalten"
+			},
+			"campaigns": {
+				"title": "Kampagnen",
+				"description": "E-Mail-Kampagnen versenden und auswerten"
+			},
+			"transactional": {
+				"title": "Transaktionale Einrichtung",
+				"description": "Transaktionale E-Mails über die API versenden"
+			},
+			"contacts": {
+				"title": "Kontakte",
+				"description": "Ihre Zielgruppe und Kontakte verwalten"
+			},
+			"deliverability": {
+				"title": "Zustellbarkeit",
+				"description": "Posteingangsplatzierung und Absenderreputation verbessern"
+			}
+		},
+		"quickstart": {
+			"eyebrow": "Schnellstart",
+			"title": "Versenden Sie Ihre erste E-Mail in {accent}",
+			"titleAccent": "Sekunden."
+		},
+		"oss": {
+			"label": "Open {accent}",
+			"labelAccent": "Source.",
+			"description": "Owlat ist Open Source und wird von der Community getragen. Sehen Sie sich den Quellcode an, melden Sie Fehler oder tragen Sie auf GitHub bei.",
+			"cta": "Auf GitHub ansehen"
+		}
+	},
+	"language": {
+		"label": "Sprache"
+	},
+	"nav": {
+		"primary": "Hauptnavigation",
+		"sidebar": "Dokumentationsnavigation",
+		"guide": "Guide",
+		"api": "API",
+		"developer": "Entwickler",
+		"vision": "Vision",
+		"toggleSidebar": "Seitenleiste ein- oder ausblenden",
+		"closeSidebar": "Seitenleiste schließen"
+	},
+	"prevNext": {
+		"previous": "Zurück",
+		"next": "Weiter"
+	},
+	"search": {
+		"trigger": "Suchen …",
+		"open": "Suche öffnen",
+		"placeholder": "Dokumentation durchsuchen …",
+		"escapeKey": "ESC",
+		"noResults": "Keine Ergebnisse für „{query}“",
+		"prompt": "Tippen Sie, um die Dokumentation zu durchsuchen",
+		"navigate": "Navigieren",
+		"select": "Auswählen",
+		"sectionFallback": "Doku"
+	},
+	"sections": {
+		"guide": "Guide",
+		"api": "API-Referenz",
+		"developer": "Entwickler",
+		"decisions": "Entscheidungen",
+		"examples": "Beispiele",
+		"vision": "Vision"
+	},
+	"seo": {
+		"pageTitle": "{title} | Owlat Docs"
+	},
+	"sidebar": {
+		"groups": {
+			"guide-getting-started": "Erste Schritte",
+			"guide-building-emails": "E-Mails gestalten",
+			"guide-your-audience": "Ihre Zielgruppe",
+			"guide-campaigns": "Kampagnen",
+			"guide-transactional-automations": "Transaktional & Automationen",
+			"guide-personal-email-postbox": "Persönliche E-Mail (Postbox)",
+			"guide-team-inbox": "Team-Postfach",
+			"guide-knowledge-collaboration": "Wissen & Zusammenarbeit",
+			"guide-operations": "Betrieb",
+			"api-overview": "Überblick",
+			"api-core-endpoints": "Kern-Endpunkte",
+			"api-delivery-public-endpoints": "Zustellung & öffentliche Endpunkte",
+			"developer-architecture": "Architektur",
+			"developer-email-delivery": "E-Mail & Zustellung",
+			"developer-subsystem-internals": "Subsystem-Interna",
+			"developer-plugin-platform": "Plugin-Plattform",
+			"developer-self-hosting": "Self-Hosting",
+			"developer-decisions": "Entscheidungen",
+			"examples-examples": "Beispiele",
+			"vision-vision": "Vision"
+		},
+		"items": {
+			"guide": "Guide-Überblick",
+			"guide-getting-started": "Willkommen bei Owlat",
+			"guide-quick-start": "Schnellstart",
+			"guide-operating-modes": "Betriebsmodi",
+			"guide-email-editor": "E-Mail-Editor",
+			"guide-email-templates": "E-Mail-Vorlagen",
+			"guide-saved-blocks": "Gespeicherte Blöcke",
+			"guide-media-library": "Medienbibliothek",
+			"guide-email-theme": "E-Mail-Theme",
+			"guide-translations": "Übersetzungen",
+			"guide-share-links": "Freigabelinks",
+			"guide-contacts": "Kontakte",
+			"guide-contact-properties": "Kontakteigenschaften",
+			"guide-audience-data": "Identitäten & Beziehungen",
+			"guide-importing-contacts": "Import & Export",
+			"guide-topics": "Themen",
+			"guide-segments": "Segmente",
+			"guide-forms": "Formulare",
+			"guide-campaigns": "Kampagnen & Auswertung",
+			"guide-ab-testing": "A/B-Tests",
+			"guide-create-campaign": "Kampagne erstellen",
+			"guide-send-campaign": "Kampagne senden & überwachen",
+			"guide-transactional": "Transaktionale E-Mails",
+			"guide-transactional-setup": "Transaktionale Einrichtung",
+			"guide-automations": "Automationen",
+			"guide-postbox": "Postbox",
+			"guide-reply-queue": "Antwort-Warteschlange",
+			"guide-smart-inbox": "Smart Inbox",
+			"guide-calendar-availability": "Kalenderverfügbarkeit",
+			"guide-postbox-settings": "Postbox-Einstellungen",
+			"guide-secure-email": "Sichere E-Mail, erklärt",
+			"guide-sealed-mail": "Sealed Mail",
+			"guide-sealed-mail-recovery-kit": "Sealed-Mail-Wiederherstellungskit",
+			"guide-migrate-from-google": "Von Google migrieren",
+			"guide-postbox-connect-an-external-mailbox": "Externes Postfach verbinden",
+			"guide-connect-your-ai": "Ihre KI verbinden",
+			"guide-team-inbox": "Team-Postfach",
+			"guide-ai-agent": "KI-Agent & Autonomie",
+			"guide-ai-agent-visualization-agent-adaptive-dashboards": "KI-Dashboards",
+			"guide-code-tasks": "Code-Aufgaben",
+			"guide-knowledge-graph": "Wissensgraph",
+			"guide-files": "Dateien",
+			"guide-ai-assistant": "KI-Assistent",
+			"guide-chat": "Team-Chat",
+			"guide-channels": "Kommunikationskanäle",
+			"guide-desktop-app": "Desktop-App",
+			"guide-deliverability": "Zustellbarkeit",
+			"guide-sending-from-a-vps": "Versand von einem VPS",
+			"guide-security-scanning": "Sicherheit & Scans",
+			"guide-api-keys-webhooks": "API-Schlüssel & Webhooks",
+			"guide-team-permissions": "Team & Berechtigungen",
+			"guide-audit-logs": "Audit-Protokolle",
+			"guide-feature-flags": "Feature-Flags",
+			"guide-account": "Konto & Daten",
+			"guide-system-updates": "System & Updates",
+			"api": "API-Überblick",
+			"api-authentication": "Authentifizierung",
+			"api-sdk": "TypeScript-SDK",
+			"api-sdk-java": "Java-SDK",
+			"api-contacts": "Kontakte-API",
+			"api-topics": "Themen-API",
+			"api-events": "Events-API",
+			"api-transactional": "Transaktions-API",
+			"api-forms": "Formulare-API",
+			"api-webhooks": "Webhooks",
+			"api-webhook-payloads": "Webhook-Payloads",
+			"api-inbound-channels": "Eingehende Kanäle",
+			"api-public-endpoints": "Öffentliche Endpunkte",
+			"developer": "Überblick",
+			"developer-architecture": "Architektur",
+			"developer-scopes": "Scopes",
+			"developer-convex": "Convex-Backend",
+			"developer-authentication": "Authentifizierung",
+			"developer-components": "Komponentenbibliothek",
+			"developer-ui-localization": "UI-Lokalisierung",
+			"developer-environment-variables": "Umgebungsvariablen",
+			"developer-feature-flags": "Feature-Flags",
+			"developer-email-system": "E-Mail-System",
+			"developer-email-renderer": "E-Mail-Renderer",
+			"developer-how-email-works": "Wie E-Mail funktioniert",
+			"developer-email-security": "E-Mail-Sicherheit",
+			"developer-sealed-mail-at-rest": "Sealed Mail im Ruhezustand",
+			"developer-transport-security": "Transportsicherheit",
+			"developer-mta-system": "MTA-System",
+			"developer-providers": "Anbieter",
+			"developer-deliverability-infrastructure": "Zustellbarkeits-Infrastruktur",
+			"developer-campaign-internals": "Kampagnen-Interna",
+			"developer-audience-internals": "Zielgruppen-Interna",
+			"developer-automation-internals": "Automations-Interna",
+			"developer-postbox-architecture": "Postbox-Architektur",
+			"developer-plugin-platform": "Plugin-Plattform",
+			"developer-plugin-authoring": "Ein Plugin erstellen",
+			"developer-plugin-contributions": "Contribution-Referenz",
+			"developer-plugin-capabilities": "Capabilities & Vertrauen",
+			"developer-plugin-operations": "Installieren & Betreiben",
+			"developer-plugin-cli": "Plugin-CLI",
+			"developer-plugin-send-providers": "Einen Sendeanbieter entwickeln",
+			"developer-plugin-connected-apps": "Verbundene Apps",
+			"developer-plugin-sandboxed-jobs": "Sandboxed Jobs",
+			"developer-plugin-troubleshooting": "Fehlerbehebung",
+			"developer-self-hosting": "Self-Hosting",
+			"developer-self-hosting-desktop": "Desktop-Installer",
+			"developer-self-hosting-config": "Konfiguration",
+			"developer-self-hosting-dns-email": "DNS- & E-Mail-Einrichtung",
+			"developer-self-hosting-production": "Produktiv-Deployment",
+			"developer-self-hosting-maintenance": "Wartung & Updates",
+			"developer-setup-cli": "Setup-CLI & Installer",
+			"developer-platform-operations": "Plattformbetrieb",
+			"developer-decisions": "Überblick",
+			"developer-decisions-001-custom-email-renderer": "ADR-001: Eigener E-Mail-Renderer",
+			"developer-decisions-002-convex-backend": "ADR-002: Convex-Backend",
+			"developer-decisions-003-notion-like-builder": "ADR-003: Notion-artiger Builder",
+			"developer-decisions-004-monorepo-bun-workspaces": "ADR-004: Monorepo & Bun",
+			"developer-decisions-005-custom-mta": "ADR-005: Eigener MTA",
+			"developer-decisions-006-self-hosted-convex": "ADR-006: Selbstgehostetes Convex",
+			"developer-decisions-007-pluggable-llm": "ADR-007: Austauschbares LLM",
+			"developer-decisions-008-process-architecture": "ADR-008: Prozessarchitektur",
+			"developer-decisions-009-model-routing": "ADR-009: Modell-Routing",
+			"developer-decisions-010-listing-engine": "ADR-010: Listing-Engine",
+			"examples": "Überblick",
+			"examples-welcome-email": "Willkommens-E-Mail",
+			"examples-billing-email": "Rechnungs-E-Mail",
+			"examples-event-automation": "Event-Automation",
+			"examples-contact-sync": "Kontakt-Synchronisierung",
+			"examples-webhook-handler": "Webhook-Handler",
+			"examples-multilingual-email": "Mehrsprachige E-Mail",
+			"vision": "Die Zukunft von Owlat",
+			"vision-roadmap": "Roadmap",
+			"vision-self-hosting": "Self-Hosting-Architektur",
+			"vision-agent-pipeline": "Agent-Pipeline",
+			"vision-knowledge-graph": "Wissensgraph",
+			"vision-multi-channel": "Multi-Channel & CRM",
+			"vision-file-system": "Semantisches Dateisystem",
+			"vision-desktop-app": "Desktop-App & fortgeschrittene Agenten"
+		}
+	},
+	"toc": {
+		"label": "Inhaltsverzeichnis",
+		"title": "Auf dieser Seite"
+	}
+}

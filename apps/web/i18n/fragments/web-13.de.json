@@ -1,0 +1,136 @@
+{
+	"components": {
+		"delivery": {
+			"rampCellControls": {
+				"currentShare": "Aktuell bei {share} auf Ihrem eigenen Server.",
+				"unmanagedNote": "Diese Zelle ist noch nicht auf der Ramp, es gibt hier also nichts zu steuern. Wenn Sie sie auf die Ramp setzen, übergeben Sie ihren Anteil an den Controller, der ihn dann nur anhand der Belege bewegt.",
+				"enroll": "Diese Zelle auf die Ramp setzen",
+				"pause": "Diese Zelle pausieren",
+				"resume": "Diese Zelle fortsetzen",
+				"pauseNoteShareDial": "Eine Pause hält beide Regler dort, wo sie stehen — den Anteil und das Aufwärmtempo. Ein Relay trägt diese Zelle, also ist der Anteil der Regler, der steigt, und genau diese Zahl friert eine Pause ein. Die Prüfungen laufen weiter und ein automatischer Rückzug findet weiterhin statt — eine Pause blockiert niemals eine Sicherheitsreaktion.",
+				"pauseNotePaceDial": "Eine Pause hält beide Regler dort, wo sie stehen — den Anteil und das Aufwärmtempo. Nichts außer Ihrem eigenen Server trägt diese Zelle, also ist der Anteil nicht der Regler, der steigt: Es ist das Aufwärmtempo, und eine Pause ist die einzige Steuerung, die es hält. Die Prüfungen laufen weiter und ein automatischer Rückzug findet weiterhin statt — eine Pause blockiert niemals eine Sicherheitsreaktion.",
+				"pinAtLabel": "Begrenzen auf (%)",
+				"pin": "Begrenzen",
+				"removePin": "Begrenzung entfernen",
+				"pinNoteShareDial": "Eine Begrenzung ist eine Obergrenze, kein Mindestwert: Sie hält eine Erhöhung zurück und zieht eine Zelle, die bereits höher liegt, niemals auf den eingegebenen Wert herunter. Ein Relay trägt diese Zelle, also ist der Anteil der Regler, der steigt, und die Begrenzung deckelt ihn: Die Ramp steigt anhand der üblichen Belege bis zur Begrenzung und hält dort an.",
+				"pinNotePaceDial": "Eine Begrenzung ist eine Obergrenze, kein Mindestwert: Sie hält eine Erhöhung zurück und zieht eine Zelle, die bereits höher liegt, niemals auf den eingegebenen Wert herunter. Nichts außer Ihrem eigenen Server trägt diese Zelle, also ist das Aufwärmtempo der Regler, der steigt, und keine Begrenzung kann es deckeln — die Zelle zu pausieren ist das, was es hält. Die Begrenzung wird trotzdem für den Anteil festgehalten und deckelt den Anstieg wieder an dem Tag, an dem ein Relay diese Zelle trägt.",
+				"forceToLabel": "Erzwingen auf (%)",
+				"forceAdvance": "Vorrücken erzwingen…",
+				"forceAdvanceWarning": "Erzwungenes Vorrücken bewegt den Anteil über die Belege hinaus. Sie müssen zuerst „{phrase}“ eingeben, denn ein Fehlgriff kostet hier wochenlang aufgebaute Reputation und lässt sich nicht rückgängig machen, indem Sie die Zahl zurücksetzen.",
+				"resetToPhase": "Auf Phase zurücksetzen",
+				"resetNoteSecondSender": "Eine Phase zurückzusetzen startet die Serie sauberer Fenster neu und bringt den Anteil unter die von Ihnen gewählte Stufe: Die Zelle erarbeitet sich ihren Weg von dort erneut nach oben. Nur Stufen auf oder unterhalb der aktuellen Stufe der Zelle von {rung} sind ein Zurücksetzen — höher zu gehen ist eine Beförderung, die weiter unten ihre eigene Steuerung hat.",
+				"resetNoteStandalone": "Eine Phase zurückzusetzen startet die Serie sauberer Fenster neu. Nichts außer Ihrem eigenen Server trägt diese Zelle, es gibt also keinen zweiten Absender, an den Traffic übergeben werden könnte: Die Stufe wird festgehalten und Ihr Anteil bleibt, wo er ist; sie bindet wieder an dem Tag, an dem ein zweiter Absender auftaucht. Nur Stufen auf oder unterhalb der aktuellen Stufe der Zelle von {rung} sind ein Zurücksetzen — höher zu gehen ist eine Beförderung, die weiter unten ihre eigene Steuerung hat.",
+				"promotePhase": "Eine Phase befördern",
+				"promoteNoteAtTop": "Diese Zelle steht bereits auf der obersten Phasenstufe, es gibt also nichts mehr zu befördern.",
+				"promoteNoteSecondSender": "Eine Beförderung hebt die Obergrenze um eine Stufe an und verteilt neu, in welchem Arm jeder Empfänger dieser Zelle landet. Sie prüft zuerst die Belege für die nächste Stufe und nennt, was noch aussteht, falls sie noch nicht vorliegen.",
+				"promoteNoteStandalone": "Eine Beförderung hebt die Obergrenze um eine Stufe an. Nichts außer Ihrem eigenen Server trägt diese Zelle, es gibt also keinen zweiten Arm, zwischen dem Empfänger verteilt werden könnten: Die Stufe wird festgehalten und bindet an dem Tag, an dem wieder ein zweiter Absender diese Zelle trägt. Sie prüft zuerst die Belege für die nächste Stufe und nennt, was noch aussteht, falls sie noch nicht vorliegen."
+			},
+			"rampCellsGrid": {
+				"columns": {
+					"cell": "Zelle",
+					"ownShare": "Eigener Anteil",
+					"state": "Status",
+					"holdingItBack": "Was sie zurückhält",
+					"lastDecision": "Letzte Entscheidung"
+				},
+				"noDecisionYet": "Noch keine Entscheidung festgehalten — es gab nichts zu entscheiden."
+			},
+			"rampConfirmDialog": {
+				"typeToConfirm": "Geben Sie zur Bestätigung {phrase} ein"
+			},
+			"rampDecisionTimeline": {
+				"empty": "Für diese Zelle sind noch keine Entscheidungen festgehalten. Der Controller schreibt bei jedem Blick eine Zeile, das füllt sich also von selbst."
+			},
+			"rampDecreaseNotices": {
+				"empty": "Es wurde nichts zurückgenommen. Jeder automatische Rückzug erscheint hier und nennt die Prüfung, die fehlgeschlagen ist, und was dagegen zu tun ist.",
+				"hardStop": "Harter Stopp"
+			},
+			"rampNarrativeCard": {
+				"eyebrow": "Ihre Versand-Ramp",
+				"errorTitle": "Die Ramp konnte nicht geladen werden",
+				"errorMessage": "Was die Ramp gerade tut, konnte nicht gelesen werden. Ihre E-Mails sind davon nicht betroffen — diese Karte liest nur, und hier hat sich nichts geändert.",
+				"loading": "Ihre Versand-Ramp wird geladen",
+				"decisionsTitle": "Was der Controller zuletzt entschieden hat",
+				"noDecisions": "Noch nichts. Der Controller schreibt bei jedem Blick auf eine Zelle eine Zeile — auch dann, wenn er nichts ändert —, das füllt sich also von selbst.",
+				"goDeeper": "Mehr im Detail"
+			},
+			"rampPresetPicker": {
+				"legend": "{stream}-Mail",
+				"deploymentDefault": "Standard für diese Installation: {preset}.",
+				"useDefault": "Standard verwenden",
+				"useDefaultDescription": "Folgt dem Standard der Installation, auch wenn dieser sich später ändert.",
+				"standaloneNote": "Ohne verbundenes Relay ist die Engagement-Prüfung das schwächere Signal, dieses Tempo rückt also anhand von Belegen vor, die nichts anderes bestätigt hat."
+			},
+			"readinessPanel": {
+				"error": "Die Versandbereitschaft konnte gerade nicht geprüft werden. Laden Sie die Seite neu, um es erneut zu versuchen.",
+				"eyebrow": "Versandbereitschaft",
+				"title": "Kann diese Instanz senden?"
+			},
+			"relayDomainStatus": {
+				"title": "Relay-Versanddomains",
+				"intro": "Veröffentlichen Sie diese Einträge, bevor die automatische Ausweichroute aktiv werden kann. Ein angezeigter SPF-Wert für die Apex-Domain ist verbindlich mit der Richtlinie der eigenen MTA zusammengeführt. Wird keine SPF-Zeile angezeigt, behalten Sie Ihren bestehenden SPF-Eintrag und führen Sie eine geprüfte, ergänzende Zusammenführung durch; ersetzen Sie ihn niemals durch einen reinen Relay-Wert. Ihr primärer DMARC-Eintrag bleibt unverändert.",
+				"verifyDns": "DNS prüfen",
+				"verifyOperation": "Relay-Domain verifizieren",
+				"verifyRefreshed": "Relay-DNS-Prüfung aktualisiert",
+				"notScheduled": "nicht geplant",
+				"outstanding": "Offen: {items}",
+				"spfError": "SPF: {error}",
+				"dkimError": "DKIM: {error}",
+				"spfNotApplicable": "Apex-SPF: für den Nachweis dieses Relays nicht relevant. Behalten Sie die geprüfte, manuell gepflegte primäre SPF-Richtlinie; {provider} authentifiziert sich über sein verifiziertes DKIM und seine eigenen Return-Path-Einträge.",
+				"recordPriority": "Priorität {priority}",
+				"ownership": "Inhaberschaft",
+				"ownershipLine": "Inhaberschaft: {instruction}",
+				"ownershipGeneric": "schließen Sie die eigene Domainprüfung von {provider} für diese Domain in dessen Konsole ab.",
+				"ownershipMandrill": "dieses Konto verifiziert Domains über sein Dashboard statt über einen TXT-Eintrag. Öffnen Sie Mailchimp Transactional → Settings → Domains → Sending Domains und schließen Sie die Verifizierung für diese Domain ab.",
+				"freshness": "Zuletzt bestätigt {lastConfirmed} · nächste automatische Prüfung {nextCheck}",
+				"loadMore": "Weitere Domains laden"
+			},
+			"sendingDetails": {
+				"title": "Ausgehende IPs",
+				"subtitle": "Die Identitäten, die empfangende Mailserver sehen, wenn Owlat direkt zustellt.",
+				"synced": "Synchronisiert {relativeTime}",
+				"empty": "Von der MTA wurde noch kein Status ausgehender IPs synchronisiert.",
+				"ipMeta": "Pool {pool} · Aufwärmtag {day} · {sent} / {cap} heute",
+				"ptrRecord": "PTR-Eintrag",
+				"notFound": "Nicht gefunden",
+				"ehloHostname": "EHLO-Hostname",
+				"notReported": "Nicht gemeldet",
+				"blocklists": "Sperrlisten",
+				"ptrRemediation": "Setzen Sie den PTR-Wert auf {ehlo} und warten Sie, bis das DNS aktualisiert ist.",
+				"recoverySteps": "{blocklist}: Schritte zur Wiederherstellung",
+				"totalSentToday": "Heute insgesamt gesendete E-Mails (alle Arten)"
+			},
+			"signedWebhookCard": {
+				"title": "{provider}-Feedback-Webhook",
+				"subtitle": "Lassen Sie {provider} Owlat mitteilen, wenn E-Mails unzustellbar sind, als Spam markiert oder abgewiesen werden — damit diese Adressen unterdrückt werden und die Ramp das tatsächliche Verhalten dieses Arms sehen kann",
+				"webhookUrl": "Webhook-URL",
+				"copyWebhookUrl": "Webhook-URL kopieren",
+				"createWebhook": "Erstellen Sie in Ihrer {provider}-Konsole einen Webhook, der auf diese URL zeigt.",
+				"urlNoteGeneric": "{provider} signiert jede Zustellung über genau diese Zeichenfolge — eine Weiterleitung oder ein abweichender Schrägstrich am Ende lässt die Signatur fehlschlagen.",
+				"noUrl": "Hinterlegen Sie Ihre Website-URL, um den Endpunkt zu sehen, an den {provider} senden soll.",
+				"enableEvents": "Aktivieren Sie genau diese Ereignisse",
+				"eventsGeneric": "Aktivieren Sie die Ereignisse für Zustellung, Unzustellbarkeit, Beschwerde, Abmeldung und Abweisung, die {provider} anbietet. Owlat erfasst die, die es versteht — und unterdrückt die Adressen hinter Unzustellbarkeiten und Beschwerden —, den Rest ignoriert es.",
+				"trackingEventsOff": "Lassen Sie das Tracking von {open} und {click} AUSGESCHALTET. Owlat erfasst Öffnungen und Klicks selbst, auf jedem Transport identisch, damit die Engagement-Prüfung beide Arme mit demselben Instrument vergleicht.",
+				"keyIssuanceGeneric": "{provider} stellt diesen Schlüssel aus, wenn der Webhook erstellt wird",
+				"keyNote": "{issuance} — kopieren Sie ihn in Ihre Umgebung und starten Sie neu. Solange er nicht gesetzt ist, weist Owlat jede eingehende Sendung zurück, statt einer unsignierten zu vertrauen.",
+				"keyPresent": "vorhanden",
+				"keyMissing": "fehlt",
+				"lastEvent": "Letztes Ereignis empfangen: {at}",
+				"noFeedback": "Noch kein Feedback empfangen. Sobald der Webhook gespeichert ist und eine Nachricht unzustellbar ist, als Spam markiert oder abgewiesen wird, erscheint es hier.",
+				"mandrill": {
+					"events": {
+						"send": "bestätigt, dass Mandrill die Nachricht angenommen hat",
+						"deferral": "ein Empfänger hat Mandrill gebeten, es später erneut zu versuchen",
+						"hardBounce": "unterdrückt die Adresse und fließt in die Bounce-Prüfung ein",
+						"softBounce": "zählt in das Zurückstellungsbild dieses Arms ein",
+						"spam": "unterdrückt die Adresse und fließt in die Beschwerde-Prüfung ein",
+						"unsub": "hält die Abmeldung für diesen Arm fest",
+						"reject": "spiegelt Mandrills eigene Sperrliste in Ihre Unterdrückungsliste"
+					},
+					"urlNote": "Mandrill prüft die URL, bevor der Webhook gespeichert wird, und signiert jede spätere Zustellung über genau diese Zeichenfolge — eine Weiterleitung oder ein abweichender Schrägstrich am Ende lässt die Signatur fehlschlagen.",
+					"keyIssuance": "Mandrill zeigt diesen Schlüssel nur einmal an, nachdem der Webhook erstellt wurde"
+				}
+			}
+		}
+	}
+}

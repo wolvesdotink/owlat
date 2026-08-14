@@ -9,11 +9,15 @@ interface Props {
 
 const props = defineProps<Props>();
 
+const { t } = useI18n();
+
 const formattedName = computed(() => {
 	const names: Record<string, string> = {
-		llm_failure: 'LLM Failure',
-		confidence_degradation: 'Confidence Degradation',
-		rejection_spike: 'Rejection Spike',
+		llm_failure: t('components.agent.circuitBreakerStatus.breakers.llmFailure'),
+		confidence_degradation: t(
+			'components.agent.circuitBreakerStatus.breakers.confidenceDegradation'
+		),
+		rejection_spike: t('components.agent.circuitBreakerStatus.breakers.rejectionSpike'),
 	};
 	return names[props.breakerType] ?? titleCaseEnum(props.breakerType);
 });
@@ -21,14 +25,29 @@ const formattedName = computed(() => {
 const stateConfig = computed(() => {
 	switch (props.state) {
 		case 'closed':
-			return { label: 'Healthy', color: 'text-success', bg: 'bg-success', dotBg: 'bg-success' };
+			return {
+				label: t('components.agent.circuitBreakerStatus.states.healthy'),
+				color: 'text-success',
+				bg: 'bg-success',
+				dotBg: 'bg-success',
+			};
 		case 'open':
-			return { label: 'Tripped', color: 'text-error', bg: 'bg-error', dotBg: 'bg-error' };
+			return {
+				label: t('components.agent.circuitBreakerStatus.states.tripped'),
+				color: 'text-error',
+				bg: 'bg-error',
+				dotBg: 'bg-error',
+			};
 		case 'half_open':
-			return { label: 'Recovering', color: 'text-warning', bg: 'bg-warning', dotBg: 'bg-warning' };
+			return {
+				label: t('components.agent.circuitBreakerStatus.states.recovering'),
+				color: 'text-warning',
+				bg: 'bg-warning',
+				dotBg: 'bg-warning',
+			};
 		default:
 			return {
-				label: 'Unknown',
+				label: t('common.unknown'),
 				color: 'text-text-tertiary',
 				bg: 'bg-bg-surface',
 				dotBg: 'bg-bg-surface',
@@ -77,8 +96,12 @@ const progressPercent = computed(() => {
 		<div class="space-y-3">
 			<div>
 				<div class="flex items-center justify-between text-xs text-text-tertiary mb-1">
-					<span>Current: {{ currentPercent }}%</span>
-					<span>Threshold: {{ thresholdPercent }}%</span>
+					<span>{{
+						t('components.agent.circuitBreakerStatus.current', { value: currentPercent })
+					}}</span>
+					<span>{{
+						t('components.agent.circuitBreakerStatus.threshold', { value: thresholdPercent })
+					}}</span>
 				</div>
 				<div class="w-full h-2 bg-bg-surface rounded-full overflow-hidden">
 					<div
@@ -92,7 +115,7 @@ const progressPercent = computed(() => {
 			</div>
 
 			<p v-if="state !== 'closed' && trippedAgo" class="text-xs" :class="stateConfig.color">
-				Tripped {{ trippedAgo }}
+				{{ t('components.agent.circuitBreakerStatus.trippedAgo', { ago: trippedAgo }) }}
 			</p>
 		</div>
 	</UiCard>

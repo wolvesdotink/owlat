@@ -1,0 +1,226 @@
+{
+	"components": {
+		"campaigns": {
+			"steps": {
+				"setupSenderPicker": {
+					"sendFrom": "Send from",
+					"loading": "Loading senders…",
+					"loadFailed": "Could not load campaign senders. Please try again.",
+					"emptyTitle": "No campaign senders have been set up yet.",
+					"addSender": "Add a campaign sender",
+					"askAdmin": "Ask your admin to add a campaign sender before you can send.",
+					"selectPlaceholder": "Choose a sender",
+					"curatedHint": "Recipients see this name and address. Manage the list in Settings → Campaign senders.",
+					"fromNameLabel": "From Name",
+					"fromNamePlaceholder": "e.g., John from Acme Inc",
+					"fromNameHint": "The name recipients will see when they receive your email.",
+					"fromEmailLabel": "From Email",
+					"fromEmailPlaceholder": "e.g., hello{'@'}acme.com",
+					"fromEmailHint": "The email address your campaign will be sent from.",
+					"domainVerified": "Domain \"{domain}\" is verified",
+					"domainNotRegistered": "Domain \"{domain}\" is not registered. You can continue editing, but sending is disabled until you add and verify this domain in Settings > Domains.",
+					"domainNotVerified": "Domain \"{domain}\" is not verified. You can continue editing, but sending is disabled until DNS verification completes in Settings > Domains.",
+					"domainStale": "Domain verification is stale (last checked {lastChecked}). Consider re-verifying.",
+					"domainNeverChecked": "never",
+					"errors": {
+						"noneSelected": "Choose who this campaign sends from",
+						"missingName": "Enter a from name",
+						"invalidEmail": "Enter a valid from address",
+						"senderBlocked": "This sender can’t be used right now."
+					}
+				},
+				"setupStep": {
+					"detailsTitle": "Campaign Details",
+					"detailsSubtitle": "Name your campaign and set the sender.",
+					"nameLabel": "Campaign Name",
+					"namePlaceholder": "e.g., Summer Newsletter 2026",
+					"nameHint": "This name is for your reference and won't be visible to recipients.",
+					"replyToLabel": "Reply-to Email {optional}",
+					"optional": "(optional)",
+					"replyToPlaceholder": "e.g., support{'@'}acme.com",
+					"replyToHint": "Replies will be sent to this address. Leave empty to use the From Email.",
+					"addABTest": "Add an A/B test",
+					"addABTestHint": "Optional — send two versions to part of your audience, then the winner to the rest.",
+					"removeABTest": "Remove A/B test",
+					"errors": {
+						"nameRequired": "Campaign name is required",
+						"replyToInvalid": "Please enter a valid email address",
+						"topicRequired": "Please select a topic",
+						"segmentRequired": "Please select a segment"
+					},
+					"operations": {
+						"createCampaign": "Create campaign",
+						"updateBasics": "Update campaign basics",
+						"updateAudience": "Update campaign audience",
+						"enableABTest": "Enable A/B test",
+						"disableABTest": "Disable A/B test"
+					}
+				}
+			}
+		},
+		"channels": {
+			"channelConfigCard": {
+				"channels": {
+					"email": {
+						"label": "Email",
+						"description": "Send and receive emails via the built-in MTA."
+					},
+					"sms": {
+						"label": "SMS",
+						"description": "Send text messages via Twilio or compatible providers."
+					},
+					"whatsapp": {
+						"label": "WhatsApp",
+						"description": "Send messages via the WhatsApp Business API."
+					},
+					"generic": {
+						"label": "Generic webhook",
+						"description": "Receive inbound messages from any HTTP endpoint via a shared secret."
+					},
+					"chat": {
+						"label": "Chat",
+						"description": "Native in-app chat powered by the built-in messaging system."
+					}
+				},
+				"health": {
+					"degraded": "Degraded",
+					"down": "Down",
+					"healthy": "Healthy"
+				},
+				"toggleLabel": "Enable {channel} channel",
+				"lastChecked": "Last Checked",
+				"lastSuccessfulSend": "Last Successful Send",
+				"lastError": "Last Error",
+				"updated": "Updated {time}",
+				"configure": "Configure",
+				"operations": {
+					"toggleChannel": "Toggle channel"
+				}
+			},
+			"channelConfigForm": {
+				"displayNameLabel": "Display Name",
+				"displayNamePlaceholder": "Custom name for this channel",
+				"displayNameHint": "Optional. Shown in the UI instead of the default channel name.",
+				"credentialsNotice": "Saved credentials are encrypted and not shown again. Leave a field blank to keep its stored value; type in one to replace just that credential.",
+				"stored": "stored",
+				"storedPlaceholder": "•••••••• stored — leave blank to keep",
+				"hideValue": "Hide value",
+				"showValue": "Show value",
+				"save": "Save Configuration",
+				"info": {
+					"email": "Email is built in — there are no credentials to set here. Configure email sending under Sending Domains and your delivery provider in Technical settings.",
+					"chat": "Chat is natively integrated and requires no additional configuration."
+				},
+				"fields": {
+					"accountSid": {
+						"label": "Account SID",
+						"placeholder": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+					},
+					"authToken": {
+						"label": "Auth Token",
+						"placeholder": "Enter your Twilio auth token",
+						"hint": "Used to send, and to verify the signature on inbound Twilio webhooks."
+					},
+					"phoneNumber": {
+						"label": "Phone Number",
+						"placeholder": "+1234567890"
+					},
+					"businessAccountId": {
+						"label": "Business Account ID",
+						"placeholder": "Enter your WhatsApp Business Account ID",
+						"hint": "Recorded for reference. Outbound sends are keyed on the Phone Number ID below."
+					},
+					"accessToken": {
+						"label": "Access Token",
+						"placeholder": "Enter your access token"
+					},
+					"phoneNumberId": {
+						"label": "Phone Number ID",
+						"placeholder": "Enter your phone number ID"
+					},
+					"appSecret": {
+						"label": "App Secret",
+						"placeholder": "Enter your Meta app secret",
+						"hint": "Inbound only. Verifies the X-Hub-Signature-256 on messages Meta posts to /webhooks/whatsapp."
+					},
+					"verifyToken": {
+						"label": "Verify Token",
+						"placeholder": "Any string you also paste into Meta",
+						"hint": "Inbound only. Answers Meta's subscription challenge when you point it at /webhooks/whatsapp."
+					},
+					"endpointUrl": {
+						"label": "Endpoint URL",
+						"placeholder": "https://example.com/webhook",
+						"hint": "Outbound POSTs are unsigned — put any authentication in the URL itself (secret path or query token)."
+					},
+					"secretKey": {
+						"label": "Secret Key",
+						"placeholder": "Shared secret for inbound requests",
+						"hint": "Inbound only. Callers to /webhooks/channel must echo it in X-Webhook-Secret or Authorization: Bearer."
+					}
+				},
+				"operations": {
+					"saveConfiguration": "Save channel configuration"
+				}
+			}
+		},
+		"chat": {
+			"chatChannelBrowser": {
+				"title": "Browse channels",
+				"searchPlaceholder": "Search public channels…",
+				"empty": "No public channels yet.",
+				"join": "Join",
+				"operations": {
+					"joinChannel": "Join channel"
+				}
+			},
+			"chatEditChannelDialog": {
+				"title": "Edit channel",
+				"namePlaceholder": "e.g. general",
+				"descriptionLabel": "Description {optional}",
+				"optional": "(optional)",
+				"descriptionPlaceholder": "What is this channel about?",
+				"visibilityLabel": "Visibility",
+				"public": "Public",
+				"private": "Private",
+				"operations": {
+					"updateChannel": "Update channel"
+				}
+			},
+			"chatInput": {
+				"removeAttachment": "Remove attachment {filename}",
+				"attachFile": "Attach file",
+				"placeholder": "Type a message… use {'@'} to mention",
+				"hint": "Enter to send · Shift+Enter for newline · {'@'} to mention · paste or attach files"
+			},
+			"chatLinkEmailDialog": {
+				"title": "Link an email thread",
+				"searchPlaceholder": "Search inbox threads…",
+				"empty": "No inbox threads found.",
+				"removeLink": "Remove current link"
+			},
+			"chatLinkedEmailPanel": {
+				"heading": "Linked email",
+				"messageCount": "{count} message | {count} messages",
+				"collapse": "Collapse",
+				"expand": "Expand",
+				"openInInbox": "Open in Inbox",
+				"noMessages": "No inbound messages yet."
+			},
+			"chatMemberList": {
+				"heading": "Members ({count})",
+				"searchPlaceholder": "Search org members…",
+				"you": "(you)",
+				"admin": "Admin",
+				"promote": "Promote to admin",
+				"demote": "Demote to member",
+				"removeDialog": {
+					"title": "Remove member?",
+					"description": "Remove {name} from the channel? They will lose access to it.",
+					"thisMember": "this member",
+					"confirm": "Remove member"
+				}
+			}
+		}
+	}
+}
