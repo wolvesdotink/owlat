@@ -19,6 +19,8 @@ const props = withDefaults(defineProps<Props>(), {
 	showEventActions: false,
 });
 
+const { t } = useI18n();
+
 const emit = defineEmits<{
 	close: [];
 	submit: [];
@@ -66,13 +68,13 @@ const localUrl = computed({
 			<!-- Name Field -->
 			<div class="mb-4">
 				<label for="webhook-form-name" class="label">
-					Name <span class="text-error">*</span>
+					{{ t('common.name') }} <span class="text-error">*</span>
 				</label>
 				<input
 					id="webhook-form-name"
 					v-model="localName"
 					type="text"
-					placeholder="e.g., Email Events, CRM Integration"
+					:placeholder="t('components.webhooks.webhookFormModal.namePlaceholder')"
 					class="input"
 					:disabled="isSubmitting"
 				/>
@@ -81,32 +83,36 @@ const localUrl = computed({
 			<!-- URL Field -->
 			<div class="mb-4">
 				<label for="webhook-form-url" class="label">
-					Endpoint URL <span class="text-error">*</span>
+					{{ t('components.webhooks.webhookFormModal.urlLabel') }}
+					<span class="text-error">*</span>
 				</label>
 				<input
 					id="webhook-form-url"
 					v-model="localUrl"
 					type="url"
-					placeholder="https://your-server.com/webhooks"
+					:placeholder="t('components.webhooks.webhookFormModal.urlPlaceholder')"
 					class="input"
 					:disabled="isSubmitting"
 				/>
 				<p class="mt-1 text-xs text-text-tertiary">
-					We'll send POST requests to this URL when events occur.
+					{{ t('components.webhooks.webhookFormModal.urlHelp') }}
 				</p>
 			</div>
 
 			<!-- Events Field -->
 			<div>
 				<div class="flex items-center justify-between mb-2">
-					<label class="label mb-0"> Events <span class="text-error">*</span> </label>
+					<label class="label mb-0">
+						{{ t('components.webhooks.webhookFormModal.eventsLabel') }}
+						<span class="text-error">*</span>
+					</label>
 					<div v-if="showEventActions" class="flex items-center gap-2">
 						<button
 							type="button"
 							class="text-xs text-brand hover:text-brand-hover"
 							@click="emit('selectAllEvents')"
 						>
-							Select all
+							{{ t('components.webhooks.webhookFormModal.selectAll') }}
 						</button>
 						<span class="text-text-tertiary">|</span>
 						<button
@@ -114,7 +120,7 @@ const localUrl = computed({
 							class="text-xs text-text-secondary hover:text-text-primary"
 							@click="emit('clearAllEvents')"
 						>
-							Clear
+							{{ t('components.webhooks.webhookFormModal.clear') }}
 						</button>
 					</div>
 				</div>
@@ -150,8 +156,9 @@ const localUrl = computed({
 							/>
 						</div>
 						<div>
-							<p class="text-sm font-medium text-text-primary">{{ event.label }}</p>
-							<p class="text-xs text-text-tertiary">{{ event.description }}</p>
+							<!-- WEBHOOK_EVENTS holds message keys (registry convention). -->
+							<p class="text-sm font-medium text-text-primary">{{ t(event.label) }}</p>
+							<p class="text-xs text-text-tertiary">{{ t(event.description) }}</p>
 						</div>
 					</label>
 				</div>
@@ -160,7 +167,7 @@ const localUrl = computed({
 
 		<template #footer>
 			<UiButton variant="secondary" type="button" :disabled="isSubmitting" @click="emit('close')">
-				Cancel
+				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="submit" form="webhook-form" class="gap-2" :disabled="isSubmitting">
 				<Icon v-if="isSubmitting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />

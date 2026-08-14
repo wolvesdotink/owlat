@@ -37,6 +37,7 @@ import {
 	controlsView,
 } from '~/components/delivery/__tests__/rampFixtures';
 import type { RampControls } from '~/utils/deliverabilityRamp';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 /** The one cell the picker offers has never been ramp-managed. */
 const unmanaged = controlsView({ cells: [cellControl({ isRampManaged: false })] });
@@ -44,6 +45,9 @@ const unmanaged = controlsView({ cells: [cellControl({ isRampManaged: false })] 
 const ALARM = /text-error|bg-error|setup incomplete|action required|denied|forbidden/i;
 
 function stubPage(view: RampControls = controlsView()): void {
+	// The screen's copy flows through vue-i18n now; `useI18n` is a Nuxt
+	// auto-import, so it has to exist as a bare global for the page's setup.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
@@ -77,6 +81,7 @@ const globalOptions = {
 		DeliveryRampDecreaseNotices: RampDecreaseNotices,
 		DeliveryRampPresetPicker: RampPresetPicker,
 	},
+	plugins: [createTestI18n()],
 };
 
 describe('the ramp controls are admin-only, and the route is the gate', () => {

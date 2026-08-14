@@ -1,0 +1,550 @@
+{
+	"dashboard": {
+		"send": {
+			"emails": {
+				"detail": {
+					"edit": {
+						"pageTitle": "Edit Email — Owlat",
+						"operations": {
+							"save": "Save email",
+							"publish": "Publish email",
+							"unpublish": "Unpublish email"
+						},
+						"variables": {
+							"firstName": "First Name",
+							"lastName": "Last Name"
+						},
+						"toasts": {
+							"unpublished": "Email returned to draft",
+							"saveBeforePublish": "Save the email before publishing it",
+							"published": "Email published"
+						},
+						"loadError": "Couldn't load this template",
+						"loading": "Loading template...",
+						"notFound": {
+							"title": "Template not found",
+							"description": "This email template doesn't exist or has been deleted."
+						},
+						"backToEmails": "Back to Emails",
+						"builderError": "The email editor hit an unexpected error. Please refresh — your last saved version is safe.",
+						"saveBeforePublishHint": "Save your changes before publishing",
+						"publish": "Publish",
+						"unpublish": "Unpublish",
+						"manageTranslations": "Manage translations",
+						"translations": "Translations"
+					},
+					"settings": {
+						"pageTitle": "Email Settings — Owlat",
+						"operations": {
+							"save": "Save settings",
+							"changeType": "Change email type",
+							"changeDefaultLanguage": "Change default language"
+						},
+						"languageWithNative": "{label} ({native})",
+						"toasts": {
+							"missingOverlay": "Add a {language} translation before making it the default language.",
+							"defaultLanguageUpdated": "Default language updated",
+							"saved": "Settings saved successfully"
+						},
+						"title": "Email Settings",
+						"unsavedChanges": "Unsaved changes",
+						"saveChanges": "Save Changes",
+						"loadError": "Couldn't load this template",
+						"loading": "Loading template...",
+						"notFound": {
+							"title": "Template not found",
+							"description": "This email template doesn't exist or has been deleted."
+						},
+						"backToEmails": "Back to Emails",
+						"translations": {
+							"title": "Translations",
+							"description": "Add translated subject lines and preview text for different languages",
+							"addLanguage": "Add Language",
+							"emptyTitle": "No translations added yet",
+							"emptyDescription": "Add languages to provide translated subject lines and preview text",
+							"removeLanguage": "Remove language",
+							"subjectLabel": "Subject Line",
+							"subjectPlaceholder": "Subject in {language}",
+							"subjectHelp": "Leave empty to use the default subject.",
+							"previewLabel": "Preview Text",
+							"previewPlaceholder": "Preview text in {language}",
+							"previewHelp": "Leave empty to use the default preview text.",
+							"selectPrompt": "Select a language above to edit its translation"
+						},
+						"info": {
+							"title": "How translations work",
+							"body": "When sending an email, the system checks each recipient's language preference. If a translation exists for their language, they'll receive the translated subject and preview text. Otherwise, they'll receive the default language content."
+						}
+					},
+					"translations": {
+						"pageTitle": "Email Translations — Owlat"
+					}
+				}
+			},
+			"marketing": {
+				"index": {
+					"pageTitle": "Marketing Emails — Owlat",
+					"sort": {
+						"updatedDesc": "Last modified",
+						"updatedAsc": "Oldest modified",
+						"createdDesc": "Newest created",
+						"createdAsc": "Oldest created",
+						"nameAsc": "Name (A-Z)",
+						"nameDesc": "Name (Z-A)"
+					},
+					"operations": {
+						"duplicate": "Duplicate template",
+						"delete": "Delete template",
+						"create": "Create template"
+					},
+					"status": {
+						"published": "Published",
+						"draft": "Draft"
+					},
+					"toasts": {
+						"duplicated": "Template duplicated successfully",
+						"deleted": "Template deleted successfully"
+					},
+					"title": "Marketing Templates",
+					"subtitle": "Create and manage marketing email templates for campaigns and newsletters",
+					"newTemplate": "New Marketing Template",
+					"templateCount": "{count} marketing template | {count} marketing templates",
+					"searchPlaceholder": "Search templates...",
+					"sortLabel": "Sort templates",
+					"gridView": "Grid view",
+					"listView": "List view",
+					"loadError": "Couldn't load templates",
+					"loadingTemplates": "Loading templates...",
+					"emptyNoTeam": {
+						"title": "No team selected",
+						"description": "Create or select a team to start creating email templates."
+					},
+					"empty": {
+						"title": "No marketing templates yet",
+						"description": "Create your first marketing template to start sending campaigns and newsletters.",
+						"action": "Create Marketing Template"
+					},
+					"noResults": {
+						"title": "No results found",
+						"description": "No templates match “{query}”. Try a different search term."
+					},
+					"clearSearch": "Clear search",
+					"editAriaLabel": "Edit {name}",
+					"noSubject": "No subject",
+					"updatedAt": "Updated {date}",
+					"rowActions": "Template actions",
+					"columns": {
+						"subject": "Subject",
+						"updated": "Updated"
+					},
+					"creating": "Creating...",
+					"createAndEdit": "Create & Edit",
+					"delete": {
+						"title": "Delete Template",
+						"confirm": "Are you sure you want to delete {name}?",
+						"description": "This action cannot be undone. The template will be permanently deleted.",
+						"confirmButton": "Delete Template",
+						"deleting": "Deleting..."
+					}
+				}
+			},
+			"transactional": {
+				"index": {
+					"pageTitle": "Transactional Emails — Owlat",
+					"title": "Transactional Emails",
+					"subtitle": "API-triggered emails for your application",
+					"newEmail": "New Transactional Email",
+					"searchPlaceholder": "Search by name or slug...",
+					"sortLabel": "Sort emails",
+					"gridView": "Grid view",
+					"listView": "List view",
+					"loadError": "Couldn't load transactional emails",
+					"loadingEmails": "Loading transactional emails...",
+					"emptyNoWorkspace": {
+						"title": "No workspace selected",
+						"description": "Create or select a workspace to start creating transactional emails."
+					},
+					"empty": {
+						"title": "No transactional emails yet",
+						"description": "Transactional emails are triggered by your application via API. Create your first one to get started.",
+						"action": "Create Transactional Email"
+					},
+					"noResults": {
+						"title": "No results found",
+						"description": "No transactional emails match “{query}”. Try a different search term."
+					},
+					"clearSearch": "Clear search",
+					"editAriaLabel": "Edit {name}",
+					"viewApiCode": "View API Code",
+					"viewSends": "View sends",
+					"noSubject": "No subject",
+					"sendCount": "{count} sends",
+					"updatedAt": "Updated {date}",
+					"moreActions": "More actions",
+					"columns": {
+						"slug": "Slug",
+						"sends": "Sends",
+						"updated": "Updated"
+					},
+					"create": {
+						"title": "Create Transactional Email",
+						"namePlaceholder": "e.g., Welcome Email, Order Confirmation",
+						"slugLabel": "Slug",
+						"slugPlaceholder": "e.g., welcome-email, order-confirmation",
+						"slugHelp": "Used to identify this email in API calls. Use lowercase letters, numbers, and hyphens.",
+						"defaultLanguage": "Default Language",
+						"creating": "Creating...",
+						"submit": "Create & Edit"
+					},
+					"delete": {
+						"title": "Delete Transactional Email",
+						"confirm": "Are you sure you want to delete {name}?",
+						"description": "This action cannot be undone. Any API calls referencing this email will fail.",
+						"deleting": "Deleting..."
+					},
+					"apiUsage": {
+						"title": "API Usage",
+						"subtitle": "Send “{name}” via API",
+						"copied": "Copied!",
+						"note": "{label} Replace {placeholder} with your actual API key. You can create API keys in {settings}.",
+						"noteLabel": "Note:"
+					}
+				},
+				"detail": {
+					"edit": {
+						"pageTitle": "Edit Transactional Email — Owlat",
+						"operations": {
+							"save": "Save email",
+							"publish": "Publish email",
+							"unpublish": "Unpublish email",
+							"saveVariable": "Save variable"
+						},
+						"variableGroup": "Data Variables",
+						"toasts": {
+							"invalidVariableName": "Variable names must start with a letter and use letters, numbers, or underscores.",
+							"duplicateVariable": "That variable already exists."
+						},
+						"loadError": "Couldn't load this email",
+						"loading": "Loading email...",
+						"notFound": {
+							"title": "Email not found",
+							"description": "This transactional email doesn't exist or has been deleted."
+						},
+						"backToEmails": "Back to Emails",
+						"status": {
+							"published": "Published",
+							"pendingReview": "Awaiting review",
+							"draft": "Draft"
+						},
+						"statusHint": {
+							"published": "This email is live and can be sent via the API.",
+							"pendingReview": "This email was flagged by the content scanner and cannot be sent until an admin approves it.",
+							"draft": "This email is a draft. Publish it to make it sendable via the API."
+						},
+						"manageTranslations": "Manage translations",
+						"translations": "Translations",
+						"pendingReviewButtonHint": "Flagged by the content scanner — an admin must approve this email before it can be sent.",
+						"publishHint": {
+							"unpublish": "Return this email to draft (stops new sends)",
+							"publish": "Publish this email to make it sendable via the API"
+						},
+						"publish": "Publish",
+						"unpublish": "Unpublish",
+						"reviewBanner": {
+							"title": "Awaiting review",
+							"body": "This email was flagged by our content scanner and is pending review by a platform administrator. It is not published and the send API will reject requests for it until it has been approved. Edit the content and publish again to re-run the scan."
+						},
+						"unsubscribe": {
+							"title": "Show unsubscribe link",
+							"description": "Append a Manage Preferences and Unsubscribe footer to every send of this email. Leave off for receipts, password resets, and other mail recipients can't opt out of."
+						}
+					},
+					"translations": {
+						"pageTitle": "Transactional Email Translations — Owlat"
+					},
+					"sends": {
+						"detail": {
+							"pageTitle": "Send Details — Owlat",
+							"loading": "Loading send details...",
+							"notFound": {
+								"title": "Send not found",
+								"description": "This email send may have been deleted or you don't have access to it."
+							},
+							"backToList": "Back to Transactional Emails"
+						}
+					}
+				}
+			}
+		}
+	},
+	"desktop": {
+		"connect": {
+			"pageTitle": "Connect desktop app — Owlat",
+			"errors": {
+				"tokenRequestFailed": "Could not create a sign-in token.",
+				"noToken": "No token returned by the server.",
+				"generic": "Something went wrong.",
+				"credentialsRequired": "Email and password are required.",
+				"signInFailed": "Sign-in failed."
+			},
+			"title": "Connect the desktop app",
+			"subtitle": "Sign in to link this workspace to the Owlat desktop app.",
+			"invalidReturnLink": "Invalid or missing return link. Re-open this page from the desktop app.",
+			"signingIn": "Signing you in to the desktop app…",
+			"fallbackCodeHint": "Desktop app didn't open? Paste this code into its connect screen (valid for a few minutes):",
+			"copied": "Copied!",
+			"password": "Password",
+			"signingInButton": "Signing in…",
+			"submit": "Sign in & connect"
+		},
+		"welcome": {
+			"pageTitle": "Welcome — Owlat",
+			"errors": {
+				"urlRequired": "Enter your owlat server URL.",
+				"connectFailed": "Could not connect to that server.",
+				"invalidCode": "That does not look like a connection code.",
+				"codeRedeemFailed": "Could not connect with that code — try signing in again."
+			},
+			"desktopOnly": "The workspace connector is only available in the desktop app.",
+			"heading": "Welcome to {brand}",
+			"tagline": "Your self-hosted home for email, contacts and marketing.",
+			"setup": {
+				"title": "Set up a new server",
+				"description": "Install Owlat on a fresh Linux server over SSH."
+			},
+			"haveServer": "Already have a server?",
+			"connectExisting": "Connect an existing server →",
+			"connect": {
+				"title": "Connect to your Owlat server",
+				"description": "Enter the address of your Owlat instance. You'll sign in through your browser.",
+				"urlPlaceholder": "https://your-instance.owlat.app",
+				"opening": "Opening browser…",
+				"submit": "Connect workspace",
+				"finishInBrowser": "Finish signing in in your browser — this app reconnects automatically.",
+				"pasteCodeLabel": "Nothing happening? Paste the connection code shown in the browser:",
+				"codePlaceholder": "e.g. 4f2c…:Jh…",
+				"redeeming": "Connecting…",
+				"redeemSubmit": "Connect with code",
+				"startOver": "Start over"
+			},
+			"workspaces": "Your workspaces"
+		},
+		"settings": {
+			"pageTitle": "Settings — Owlat",
+			"theme": {
+				"light": "Light",
+				"dark": "Dark",
+				"system": "System"
+			},
+			"desktopOnly": "These settings are only available in the Owlat desktop app.",
+			"subtitle": "Global settings apply to the Owlat app on this device, across every workspace.",
+			"globalHeading": "Global",
+			"appearance": {
+				"title": "Appearance",
+				"description": "Theme for the whole app on this device."
+			},
+			"autostart": {
+				"title": "Launch at login",
+				"description": "Start Owlat automatically when you log in."
+			},
+			"startup": {
+				"title": "Open at startup",
+				"description": "Which workspace Owlat opens when it launches.",
+				"lastActive": "Last active workspace"
+			},
+			"notifications": {
+				"title": "Desktop notifications",
+				"description": "Show native notifications for new mail and activity."
+			},
+			"unreadBadge": {
+				"title": "Unread badge",
+				"description": "Show the unread count on the app icon."
+			},
+			"updates": {
+				"title": "Updates",
+				"version": "Owlat {version}.",
+				"description": "Check for new versions when the app starts.",
+				"checkNow": "Check for updates now",
+				"checking": "Checking — you'll get a notification with the result."
+			},
+			"defaultApp": {
+				"title": "Default email app",
+				"description": "Make Owlat open when you click a {mailto} link. Your operating system controls the default mail app, so this is a one-time step you take there:",
+				"macos": "Open {path} and set {setting} to Owlat.",
+				"macosPath": "Mail > Settings > General",
+				"macosSetting": "Default email reader",
+				"windows": "Open {path}, search for Owlat, and set it as the handler for {scheme}.",
+				"windowsPath": "Settings > Apps > Default apps",
+				"linux": "Set Owlat as your {handler} default (for example with {command}, or via your desktop environment's default-applications settings).",
+				"other": "Set Owlat as the {scheme} handler in your operating system's default-apps settings."
+			},
+			"workspaces": {
+				"heading": "Workspaces",
+				"empty": "No workspaces connected yet. Workspace settings — members, delivery, API keys and more — become available once you connect to an Owlat server.",
+				"connect": "Connect a workspace",
+				"settings": "Workspace settings",
+				"accent": "Accent",
+				"accentOption": "{accent} accent",
+				"mute": "Mute notifications",
+				"removeDialog": {
+					"title": "Remove workspace?",
+					"description": "Remove {workspace} from this device? You'll be signed out here; the workspace itself and your account are untouched.",
+					"fallbackName": "this workspace",
+					"confirm": "Remove workspace"
+				}
+			}
+		},
+		"setup": {
+			"pageTitle": "Set up a server — Owlat",
+			"errors": {
+				"hostRequired": "Enter the server address.",
+				"usernameRequired": "Enter the SSH user.",
+				"passwordRequired": "Enter the password.",
+				"keyPathRequired": "Enter the path to your private key file.",
+				"privateKeyRequired": "Paste your private key.",
+				"domainRequired": "Remote servers need a public domain so you can reach the app after install. Add one under Domain & DNS.",
+				"invalidHostLabels": "Fix the customised hostnames — each label must be a valid, distinct DNS label.",
+				"adminEmailInvalid": "Enter a valid admin email.",
+				"adminNameRequired": "Enter an admin name.",
+				"adminPasswordInvalid": "Check the admin password."
+			},
+			"packs": {
+				"emailClient": "Email client",
+				"marketing": "Marketing",
+				"ai": "AI"
+			},
+			"hostLabels": {
+				"inactiveHint": "Only used with the self-hosted mail server."
+			},
+			"steps": {
+				"features": "Features",
+				"providers": "Providers",
+				"domain": "Domain & DNS",
+				"admin": "Admin"
+			},
+			"auth": {
+				"key": "Private key",
+				"password": "Password"
+			},
+			"desktopOnly": "The server installer is only available in the desktop app.",
+			"heading": "Set up a {accent}",
+			"headingAccent": "new server",
+			"subtitle": "Connect to a fresh Linux server over SSH and Owlat will install and configure itself.",
+			"fields": {
+				"host": "Server address",
+				"hostPlaceholder": "203.0.113.5 or vps.example.com",
+				"port": "Port",
+				"sshUser": "SSH user",
+				"authentication": "Authentication",
+				"authMethod": "Authentication method",
+				"browse": "Browse…",
+				"pasteKeyInstead": "Paste the key instead",
+				"useKeyFileInstead": "Use a key file instead",
+				"passphrasePlaceholder": "Key passphrase (optional)",
+				"sshPasswordPlaceholder": "SSH password",
+				"installDir": "Install directory",
+				"branch": "Branch",
+				"localSource": "Local source folder (development)",
+				"localSourcePlaceholder": "/path/to/your/owlat checkout (optional)",
+				"localSourceHint": "Uploads this machine's checkout to the server — for testing the installer without a published repo or registry."
+			},
+			"showAdvanced": "+ Show advanced",
+			"hideAdvanced": "− Hide advanced",
+			"imageMode": {
+				"localTitle": "Build images on this machine",
+				"localHint": "Needs Docker running here; images stream to the server over SSH. Works on small servers.",
+				"serverTitle": "Build images on the server",
+				"serverHint": "No local Docker needed, but the web build wants ~4 GB RAM (or swap) on the server."
+			},
+			"hostKey": {
+				"acknowledge": "I know why this server's key changed and want to connect anyway.",
+				"acceptChanged": "Accept changed key & continue",
+				"accept": "Accept & continue"
+			},
+			"connecting": "Connecting…",
+			"authenticating": "Authenticating…",
+			"connect": "Connect",
+			"stepsLabel": "Setup steps",
+			"sections": {
+				"featurePacks": "Feature packs",
+				"emailSending": "Email sending",
+				"ai": "AI (optional)",
+				"admin": "Admin account"
+			},
+			"sending": {
+				"mta": "Owlat MTA (self-hosted)",
+				"resend": "Resend",
+				"ses": "Amazon SES",
+				"resendKeyPlaceholder": "Resend API key (re_…)",
+				"sesRegionPlaceholder": "AWS region (us-east-1)",
+				"sesAccessKeyPlaceholder": "Access key ID",
+				"sesSecretPlaceholder": "Secret access key",
+				"mtaHint": "Mail hostnames ({outbound} for outbound, {returns} for returns) come from the domain you set below."
+			},
+			"ai": {
+				"openrouter": "OpenRouter",
+				"openai": "OpenAI",
+				"ollama": "Ollama (local)",
+				"keyPlaceholder": "API key"
+			},
+			"admin": {
+				"namePlaceholder": "Your name",
+				"passwordPlaceholder": "Password (min 12 chars)",
+				"hidePassword": "Hide password",
+				"showPassword": "Show password",
+				"confirmPasswordPlaceholder": "Confirm password",
+				"seedDemo": "Seed demo data (for evaluating)"
+			},
+			"domain": {
+				"label": "Domain (for remote access)",
+				"labelRequired": "Domain (required for a remote server)",
+				"placeholder": "wolves.ink (optional)",
+				"placeholderRequired": "wolves.ink",
+				"hint": "Enter one domain — Owlat derives every hostname from it (app, API, mail).",
+				"hintRemote": "A remote server needs a domain so you can open it from this app after install — its own {localhost} is not reachable from here.",
+				"hintLocal": "Leave blank only when installing on this machine.",
+				"noDomainWarning": "Without a domain this install is only reachable on the server itself.",
+				"publicIpLabel": "Server's public IP (for the A records)",
+				"publicIpHint": "You connected by hostname. We try to read the server's public IP over the SSH session and fill it in here; if that's blank or wrong, paste it from your host's dashboard so the A records show a real, copyable address."
+			},
+			"dns": {
+				"createTitle": "DNS records to create",
+				"enterDomain": "Enter a domain above to see the records you need.",
+				"enterDomainRemote": "A remote server needs one to be reachable from this app.",
+				"enterDomainLocal": "Leave it blank for a local install on this machine (no DNS required).",
+				"tlsHint": "TLS certificates are issued automatically once these resolve — keep ports 80/443 open.",
+				"deliverabilityHint": "These get the app online. For deliverable email, finish SPF, DKIM and DMARC in {settings} after first sign-in — DKIM is generated there.",
+				"settingsDomains": "Settings → Domains",
+				"spfMergedNote": "SPF — merged with the existing SPF record at this host so your other mail provider keeps working. SPF allows at most 10 DNS lookups — double-check it stays within that limit. Confirm in Settings → Domains."
+			},
+			"provision": "Provision server",
+			"done": {
+				"readyTitle": "Your server is ready",
+				"openWorkspace": "Open workspace"
+			},
+			"finishing": {
+				"title": "Finishing up — add your DNS records, then open your workspace",
+				"body": "Owlat is installed at {url}, but the address can't be reached yet. Create the records below; once they resolve and TLS is issued, this turns into “Open workspace” automatically.",
+				"createRecords": "Create these DNS records",
+				"tlsHint": "TLS is issued automatically once they resolve (ports 80/443 open).",
+				"checking": "Checking…",
+				"checkAgain": "Check again"
+			},
+			"loopback": {
+				"title": "Your server is running",
+				"body": "It's installed at {url}, but that address only works on the server itself — not from this app. Re-run setup with a public domain to open it here.",
+				"retry": "Set a domain & retry"
+			},
+			"secrets": {
+				"removed": "The setup file — which held your admin password and provider API keys in plaintext — was removed from the server.",
+				"notRemoved": "Couldn't auto-remove the setup file. It holds your admin password and provider keys in plaintext — delete {file} from the install directory."
+			},
+			"failure": {
+				"title": "Provisioning failed",
+				"lastOutput": "Last error output",
+				"hint": "Open the server log above for the full details, then adjust your configuration and try again.",
+				"retry": "Adjust & retry"
+			}
+		}
+	}
+}

@@ -11,18 +11,26 @@ import { formatNumber, formatPercentage } from '~/utils/formatters';
  * the dot can never disagree.
  */
 
+/**
+ * A translatable value produced by a module-scope definition set: the message
+ * KEY the page resolves, plus the parameters it interpolates. These tables are
+ * evaluated at import time, long before a locale is active, so they carry keys
+ * rather than sentences.
+ */
+export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+
 /** Health tone shared by the verdict chip and the stat tiles. */
 export type DeliveryTone = 'ok' | 'warn' | 'error';
 
 export interface DeliveryVerdict {
-	label: string;
+	label: LocalizedText;
 	tone: DeliveryTone;
 }
 
 const VERDICT: Record<DeliveryHealthLevel, DeliveryVerdict> = {
-	ok: { label: 'Healthy', tone: 'ok' },
-	warn: { label: 'At risk', tone: 'warn' },
-	error: { label: 'Blocked', tone: 'error' },
+	ok: { label: 'shared.deliveryHub.verdict.ok', tone: 'ok' },
+	warn: { label: 'shared.deliveryHub.verdict.warn', tone: 'warn' },
+	error: { label: 'shared.deliveryHub.verdict.error', tone: 'error' },
 };
 
 /** Map the roll-up level to the header chip's human label + tone. */
@@ -44,14 +52,17 @@ const WARMUP_DAYS = 30;
  * warming data yet (so the page omits the line rather than inventing one). No AI
  * jargon, no raw enum — plain words only.
  */
-export function warmupSentence(warming: WarmupInput | null): string | null {
+export function warmupSentence(warming: WarmupInput | null): LocalizedText | null {
 	if (!warming) return null;
-	if (warming.phase === 'graduated') return 'Fully warmed — sending at full volume.';
-	if (warming.phase === 'plateau') return 'Warm-up paused — sending is temporarily held.';
+	if (warming.phase === 'graduated') return 'shared.deliveryHub.warmup.graduated';
+	if (warming.phase === 'plateau') return 'shared.deliveryHub.warmup.plateau';
 
 	const day = warming.ips.length ? Math.max(...warming.ips.map((ip) => ip.currentDay)) : 0;
 	const pct = Math.min(100, Math.max(0, Math.round((day / WARMUP_DAYS) * 100)));
-	return `Warming up — day ${day} of ${WARMUP_DAYS} · ${pct}% of full sending volume`;
+	return {
+		key: 'shared.deliveryHub.warmup.warming',
+		params: { day, total: WARMUP_DAYS, percent: pct },
+	};
 }
 
 /** Glyph direction for a day-over-day delta. */
@@ -62,10 +73,10 @@ export type StatDeltaTone = 'positive' | 'negative' | 'neutral';
 /** A single stat tile on the health hub, threshold copy included. */
 export interface DeliveryStatTile {
 	key: 'bounce' | 'complaint' | 'budget';
-	label: string;
+	label: LocalizedText;
 	value: string;
 	/** Threshold reminder shown under the value ("limit 2%", "cap 50,000"). */
-	threshold: string;
+	threshold: LocalizedText;
 	tone: DeliveryTone;
 	/** Signed day-over-day change text ("0.30%"), or `undefined` with no prior day. */
 	delta?: string;
@@ -134,9 +145,12 @@ export function deliveryStatTiles(
 
 	const bounce: DeliveryStatTile = {
 		key: 'bounce',
-		label: 'Bounce rate',
+		label: 'shared.deliveryHub.tiles.bounce.label',
 		value: reputation ? formatPercentage(reputation.bounceRate, 2) : '—',
-		threshold: `limit ${formatPercentage(bounceLimit, 0)}`,
+		threshold: {
+			key: 'shared.deliveryHub.tiles.limit',
+			params: { limit: formatPercentage(bounceLimit, 0) },
+		},
 		tone: reputation ? rateTone(reputation.bounceRate, REPUTATION_THRESHOLDS.bounce) : 'ok',
 		...(reputation
 			? lowerIsBetterDelta(reputation.bounceRate, previous?.bounceRate ?? null)
@@ -145,9 +159,12 @@ export function deliveryStatTiles(
 
 	const complaint: DeliveryStatTile = {
 		key: 'complaint',
-		label: 'Complaint rate',
+		label: 'shared.deliveryHub.tiles.complaint.label',
 		value: reputation ? formatPercentage(reputation.complaintRate, 2) : '—',
-		threshold: `limit ${formatPercentage(complaintLimit, 1)}`,
+		threshold: {
+			key: 'shared.deliveryHub.tiles.limit',
+			params: { limit: formatPercentage(complaintLimit, 1) },
+		},
 		tone: reputation ? rateTone(reputation.complaintRate, REPUTATION_THRESHOLDS.complaint) : 'ok',
 		...(reputation
 			? lowerIsBetterDelta(reputation.complaintRate, previous?.complaintRate ?? null)
@@ -161,9 +178,12 @@ export function deliveryStatTiles(
 			budget.remainingToday <= 0 ? 'error' : usedFraction >= 0.9 ? 'warn' : 'ok';
 		budgetTile = {
 			key: 'budget',
-			label: "Today's send budget",
+			label: 'shared.deliveryHub.tiles.budget.label',
 			value: formatNumber(budget.remainingToday),
-			threshold: `cap ${formatNumber(budget.totalDailyCap)}`,
+			threshold: {
+				key: 'shared.deliveryHub.tiles.cap',
+				params: { cap: formatNumber(budget.totalDailyCap) },
+			},
 			tone: budgetTone,
 			// Today's budget is a live counter, not a persisted daily snapshot, so
 			// there's no meaningful day-over-day delta to draw.
@@ -172,9 +192,9 @@ export function deliveryStatTiles(
 	} else {
 		budgetTile = {
 			key: 'budget',
-			label: "Today's send budget",
+			label: 'shared.deliveryHub.tiles.budget.label',
 			value: '—',
-			threshold: 'cap not synced yet',
+			threshold: 'shared.deliveryHub.tiles.capUnsynced',
 			tone: 'ok',
 			...NO_DELTA,
 		};

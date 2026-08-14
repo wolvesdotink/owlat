@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
 import { diffPropertyValues, useContactDetail } from '../useContactDetail';
+
+// The composable runs outside a component here, so `useI18n` is stubbed with the
+// real catalog's `t`: the operation labels it routes on stay the English ones.
+const { t } = createTestI18n().global;
 
 describe('useContactDetail.diffPropertyValues', () => {
 	it('sets a property that gained a value', () => {
@@ -127,11 +132,12 @@ describe('useContactDetail.saveChanges (custom property clears)', () => {
 			return { data: ref(storedValues), isLoading: ref(false) };
 		});
 		vi.stubGlobal('useOrganizationQuery', () => ({ data: ref(propertyDefs) }));
-		vi.stubGlobal('useBackendOperation', (_fn: unknown, options: { label: string }) => ({
-			run: (args: unknown) => runByLabel[options.label]!(args),
+		vi.stubGlobal('useBackendOperation', (_fn: unknown, options: { label: () => string }) => ({
+			run: (args: unknown) => runByLabel[options.label()]!(args),
 			isLoading: ref(false),
 			inlineError: ref(null),
 		}));
+		vi.stubGlobal('useI18n', () => ({ t }));
 	});
 
 	const make = () => useContactDetail(ref('c1') as never);
@@ -199,9 +205,10 @@ describe('useContactDetail.resendDoiConfirmation', () => {
 			return { data: ref([]), isLoading: ref(false) };
 		});
 		vi.stubGlobal('useOrganizationQuery', () => ({ data: ref([]) }));
-		vi.stubGlobal('useBackendOperation', (_fn: unknown, options: { label: string }) => ({
+		vi.stubGlobal('useI18n', () => ({ t }));
+		vi.stubGlobal('useBackendOperation', (_fn: unknown, options: { label: () => string }) => ({
 			run: (args: unknown) => {
-				if (options.label === 'Resend confirmation email') {
+				if (options.label() === 'Resend confirmation email') {
 					resendCalls.push(args);
 					return Promise.resolve({ success: true });
 				}

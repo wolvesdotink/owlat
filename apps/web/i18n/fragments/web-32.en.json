@@ -1,0 +1,755 @@
+{
+	"dashboard": {
+		"audience": {
+			"contacts": {
+				"detail": {
+					"activity": {
+						"emptyBody": "Activity will appear here when you send emails to this contact.",
+						"emptyTitle": "No activity yet",
+						"loadMore": "Load More",
+						"loading": "Loading activities...",
+						"title": "Activity Timeline"
+					},
+					"backToCustomers": "Back to Customers",
+					"contactDetails": "Contact Details",
+					"created": "Created",
+					"customProperties": "Custom Properties",
+					"deleteDialog": {
+						"body": "Are you sure you want to delete {email}? The contact is hidden immediately and permanently erased — along with its topic memberships and custom properties — after the 30-day retention period.",
+						"subtitle": "Hidden now, permanently erased after 30 days.",
+						"title": "Delete Contact"
+					},
+					"deleting": "Deleting...",
+					"details": "Details",
+					"doiStatus": "{status} confirmation",
+					"exportData": "Export data",
+					"exportDataTitle": "Export this contact's personal data (GDPR access request)",
+					"exporting": "Exporting…",
+					"fields": {
+						"email": "Email Address",
+						"emailPlaceholder": "email{'@'}example.com",
+						"firstName": "First Name",
+						"firstNamePlaceholder": "First name",
+						"language": "Preferred Language",
+						"lastName": "Last Name",
+						"lastNamePlaceholder": "Last name",
+						"timezone": "Timezone"
+					},
+					"lastUpdated": "Last Updated",
+					"loading": "Loading contact...",
+					"notFound": {
+						"action": "Back to Contacts",
+						"body": "This contact may have been deleted or you don't have access.",
+						"title": "Contact not found"
+					},
+					"notSet": "Not set",
+					"operations": {
+						"addToTopic": "Add to topic",
+						"removeFromTopic": "Remove from topic",
+						"removeSuppression": "Remove suppression",
+						"saveNote": "Save customer note"
+					},
+					"pageTitle": "Contact Details — Owlat",
+					"resendDoi": "Resend confirmation",
+					"resendDoiTitle": "Re-send the double-opt-in confirmation email to this pending contact",
+					"saveChanges": "Save Changes",
+					"sending": "Sending…",
+					"source": "Source",
+					"tabs": {
+						"activity": "Activity",
+						"files": "Files",
+						"identities": "Identities",
+						"knowledge": "Knowledge",
+						"profile": "Profile",
+						"relationships": "Relationships",
+						"timeline": "Timeline"
+					},
+					"teamNote": {
+						"placeholder": "Add a helpful note about this customer…",
+						"save": "Save note",
+						"subtitle": "Shared context for future conversations.",
+						"title": "Team note"
+					},
+					"toasts": {
+						"addedToTopic": "Added to \"{topic}\"",
+						"doiFailed": "Could not resend confirmation",
+						"doiSent": "Confirmation email sent",
+						"noteSaved": "Customer note saved",
+						"removedFromTopic": "Removed from \"{topic}\"",
+						"suppressionRemoved": "Suppression removed"
+					},
+					"topicFallback": "topic",
+					"topics": {
+						"addToTopic": "Add to Topic",
+						"allTopics": "Contact is already in all topics",
+						"createOne": "Create a topic",
+						"none": "Not in any topics",
+						"noneCreated": "No topics created yet",
+						"remove": "Remove from topic",
+						"title": "Topics"
+					}
+				},
+				"index": {
+					"addContact": "Add Contact",
+					"addedOn": "Added {date}",
+					"allLoaded": "All contacts loaded",
+					"bulk": {
+						"addToTopic": "Add to Topic",
+						"deleteSelected": "Delete Selected",
+						"exportSelected": "Export Selected",
+						"noTopics": "No topics available.",
+						"progress": {
+							"add": "Adding to topic...",
+							"delete": "Deleting...",
+							"export": "Exporting...",
+							"remove": "Removing from topic..."
+						},
+						"removeFromTopic": "Remove from Topic"
+					},
+					"clearSearch": "Clear search",
+					"clearSelection": "Clear selection",
+					"contextMenu": {
+						"copyEmail": "Copy email address",
+						"deselect": "Deselect",
+						"open": "Open contact",
+						"select": "Select"
+					},
+					"createContact": "Create Contact",
+					"creating": "Creating...",
+					"deselectAll": "Deselect all",
+					"deselectContact": "Deselect {email}",
+					"empty": {
+						"descriptionManage": "Get started by adding your first customer or importing a CSV file.",
+						"descriptionReadOnly": "No customers have been added yet.",
+						"title": "No contacts yet"
+					},
+					"export": "Export",
+					"form": {
+						"emailPlaceholder": "email{'@'}example.com",
+						"firstNamePlaceholder": "John",
+						"languageLabel": "Preferred Language",
+						"languagePlaceholder": "Select a language",
+						"lastNamePlaceholder": "Doe"
+					},
+					"import": "Import",
+					"importMenu": {
+						"csvDescription": "Import from spreadsheet",
+						"csvTitle": "CSV File",
+						"integrationsDescription": "Mailchimp, Stripe",
+						"integrationsTitle": "Integrations"
+					},
+					"loadMore": "Load More",
+					"noResults": {
+						"description": "No contacts match \"{query}\". Try a different search term.",
+						"title": "No results found"
+					},
+					"noTeam": {
+						"description": "Create or select a team to start managing your contacts.",
+						"title": "No team selected"
+					},
+					"operations": {
+						"addContact": "Add contact",
+						"importContacts": "Import contacts",
+						"registerProperty": "Register property"
+					},
+					"pageTitle": "Contacts — Owlat",
+					"searchPlaceholder": "Search by email or name...",
+					"selectAll": "Select all",
+					"selectAllMatching": "Select all {count}",
+					"selectContact": "Select {email}",
+					"showing": {
+						"empty": "0 contacts",
+						"loaded": "{count} contact loaded | {count} contacts loaded"
+					},
+					"subtitle": "People your team knows and their recent activity",
+					"table": {
+						"created": "Created",
+						"firstName": "First Name",
+						"lastName": "Last Name"
+					},
+					"title": "Customers",
+					"toasts": {
+						"copyFailed": "Could not copy to clipboard",
+						"created": "Contact {email} created successfully",
+						"emailCopied": "Email address copied",
+						"imported": "Successfully processed {count} contact | Successfully processed {count} contacts"
+					}
+				}
+			},
+			"index": {
+				"activity": {
+					"descriptions": {
+						"created": "was added",
+						"topicConfirmed": "confirmed subscription",
+						"topicSubscribed": "was subscribed to a topic",
+						"topicUnsubscribed": "was unsubscribed from a topic"
+					},
+					"emptyBody": "Activity will appear here as contacts subscribe to or unsubscribe from topics.",
+					"emptyTitle": "No recent activity",
+					"errorTitle": "Couldn't load recent activity",
+					"loading": "Loading activity...",
+					"title": "Recent Activity"
+				},
+				"addContact": "Add Contact",
+				"growth": {
+					"barValue": "{count} new subscribers",
+					"chartLabel": "New subscribers per day over the last 30 days",
+					"errorTitle": "Couldn't load subscriber growth",
+					"loading": "Loading chart...",
+					"newCount": "+{count} new",
+					"title": "Subscriber Growth (30 days)"
+				},
+				"pageTitle": "Audience — Owlat",
+				"quickActions": {
+					"addContact": {
+						"description": "Manually add a new contact",
+						"label": "Add Contact"
+					},
+					"createSegment": {
+						"description": "Build a dynamic audience segment",
+						"label": "Create Segment"
+					},
+					"createTopic": {
+						"description": "Create a new topic",
+						"label": "Create Topic"
+					}
+				},
+				"quickActionsHeading": "Quick Actions",
+				"recentContacts": {
+					"emptyBody": "Add your first contact to get started.",
+					"emptyTitle": "No contacts yet",
+					"errorTitle": "Couldn't load recent contacts",
+					"loading": "Loading contacts...",
+					"title": "Recently Added"
+				},
+				"stats": {
+					"segments": "Segments",
+					"topics": "Topics",
+					"totalContacts": "Total Contacts"
+				},
+				"subtitle": "Manage your contacts, topics, and segments.",
+				"title": "Audience",
+				"topTopics": {
+					"contactCount": "{count} contacts",
+					"createTopic": "Create Topic",
+					"emptyBody": "Create a topic to organize your contacts.",
+					"emptyTitle": "No topics yet",
+					"errorTitle": "Couldn't load top topics",
+					"loading": "Loading topics...",
+					"title": "Top Topics"
+				}
+			},
+			"segments": {
+				"detail": {
+					"index": {
+						"breadcrumbs": {
+							"audience": "Audience",
+							"segments": "Segments"
+						},
+						"clearSearch": "Clear search",
+						"createdOn": "Created {date}",
+						"empty": {
+							"action": "Edit Segment",
+							"body": "No contacts currently match this segment's filters. Adjust the filters or add more contacts.",
+							"title": "No contacts match this segment"
+						},
+						"export": {
+							"done": "Exported {count} contact | Exported {count} contacts",
+							"failed": "Export failed. Please try again.",
+							"none": "No contacts to export",
+							"truncated": "Exported the first {count} contacts (segment is larger; export was capped)"
+						},
+						"exportCsv": "Export CSV",
+						"loading": "Loading segment...",
+						"matchingContacts": "{count} matching contact | {count} matching contacts",
+						"noResults": {
+							"body": "No contacts match \"{query}\". Try a different search term.",
+							"title": "No results found"
+						},
+						"notFound": {
+							"action": "Back to Segments",
+							"body": "This segment may have been deleted or doesn't exist.",
+							"title": "Segment not found"
+						},
+						"pageTitle": "Segment — Owlat",
+						"pagination": {
+							"next": "Next",
+							"previous": "Previous"
+						},
+						"searchPlaceholder": "Search contacts in this segment...",
+						"showing": {
+							"empty": "0 contacts",
+							"label": "Showing {range}",
+							"range": "{start}-{end} of {total}"
+						},
+						"table": {
+							"added": "Added",
+							"firstName": "First Name",
+							"lastName": "Last Name"
+						}
+					}
+				},
+				"index": {
+					"actions": {
+						"delete": "Delete segment",
+						"edit": "Edit segment",
+						"viewContacts": "View contacts"
+					},
+					"clearSearch": "Clear search",
+					"count": "{count} segment | {count} segments",
+					"deleteDialog": {
+						"body": "Are you sure you want to delete \"{name}\"?",
+						"note": "This action cannot be undone. Any campaigns using this segment will need to be updated.",
+						"title": "Delete Segment"
+					},
+					"deleting": "Deleting...",
+					"empty": {
+						"description": "Create your first segment to filter contacts based on properties, activity, and more.",
+						"title": "No segments yet"
+					},
+					"errorTitle": "Couldn't load segments",
+					"modal": {
+						"addCondition": "Add Condition",
+						"conditions": "Conditions",
+						"createTitle": "Create Segment",
+						"descriptionPlaceholder": "Optional description for this segment...",
+						"editTitle": "Edit Segment",
+						"logicAnd": "All conditions (AND)",
+						"logicOr": "Any condition (OR)",
+						"matchLabel": "Match contacts that meet",
+						"matchingContacts": "Matching contacts",
+						"namePlaceholder": "e.g., Active Subscribers",
+						"noConditions": "No conditions added yet",
+						"noConditionsHint": "Click \"Add Condition\" to start filtering contacts",
+						"removeCondition": "Remove condition",
+						"saveChanges": "Save Changes"
+					},
+					"newSegment": "New Segment",
+					"noResults": {
+						"description": "No segments match \"{query}\". Try a different search term.",
+						"title": "No results found"
+					},
+					"noWorkspace": {
+						"description": "Create or select a workspace to start managing your segments.",
+						"title": "No workspace selected"
+					},
+					"pageTitle": "Segments — Owlat",
+					"searchPlaceholder": "Search segments...",
+					"subtitle": "Create and manage audience segments for targeted campaigns",
+					"table": {
+						"contacts": "Contacts",
+						"created": "Created",
+						"filters": "Filters"
+					},
+					"title": "Segments"
+				}
+			},
+			"suppressions": {
+				"addSuppression": "Add suppression",
+				"adding": "Adding...",
+				"backToAudience": "Back to Audience",
+				"empty": {
+					"description": "Nothing is suppressed. Addresses are added automatically when they bounce or when someone marks a send as spam.",
+					"title": "No suppressions"
+				},
+				"errorTitle": "Couldn't load suppressions",
+				"filters": {
+					"all": "All reasons",
+					"bounced": "Bounced",
+					"complained": "Complained",
+					"manual": "Manually suppressed",
+					"unengaged": "Unengaged"
+				},
+				"form": {
+					"emailLabel": "Email Address",
+					"emailPlaceholder": "email{'@'}example.com",
+					"notesHelp": "Add a note to help you remember why this address was suppressed.",
+					"notesLabel": "Notes (optional)",
+					"notesPlaceholder": "Why suppress this address?"
+				},
+				"import": "Import",
+				"info": {
+					"body": "Suppressed addresses stop receiving mail from your campaigns and automations. An address is added automatically when it bounces (the mailbox doesn't exist) or when someone marks a send as spam — so you never send to it again. You can also suppress an address by hand to stop sending to a specific recipient.",
+					"title": "What are suppressions?"
+				},
+				"loading": "Loading suppressions...",
+				"noResults": {
+					"description": "No suppressions match \"{query}\". Try a different search term.",
+					"title": "No results found"
+				},
+				"noWorkspace": {
+					"description": "Create or select a workspace to manage your suppressions.",
+					"title": "No workspace selected"
+				},
+				"operations": {
+					"add": "Add to blocklist",
+					"import": "Import blocklist",
+					"remove": "Remove from blocklist"
+				},
+				"pageTitle": "Suppressions — Owlat",
+				"removeDescription": "Removing the suppression on \"{email}\" lets them receive your mail again.",
+				"removeSuppression": "Remove suppression",
+				"searchPlaceholder": "Search by email address...",
+				"subtitle": "Addresses that no longer receive mail — so a bounce or complaint never happens twice",
+				"table": {
+					"dateAdded": "Date Added",
+					"email": "Email Address",
+					"notes": "Notes",
+					"reason": "Reason"
+				},
+				"tiles": {
+					"bounced": "Bounced",
+					"complained": "Complained",
+					"manual": "Manual",
+					"total": "Total suppressed",
+					"unengaged": "Unengaged"
+				},
+				"title": "Suppressions",
+				"toasts": {
+					"added": "Address suppressed",
+					"imported": "Imported {count} address ({skipped} skipped) | Imported {count} addresses ({skipped} skipped)",
+					"importedNoSkips": "Imported {count} address | Imported {count} addresses",
+					"importedNone": "No new addresses added — all were already suppressed or invalid",
+					"removed": "Suppression removed"
+				},
+				"validation": {
+					"emailRequired": "Email address is required"
+				}
+			},
+			"topics": {
+				"detail": {
+					"contacts": {
+						"detail": {
+							"backToTopic": "Back to {topic}",
+							"breadcrumbs": {
+								"audience": "Audience",
+								"topics": "Topics"
+							},
+							"emailHistory": {
+								"campaign": "Campaign",
+								"clicks": "Clicks",
+								"emptyBody": "Emails from campaigns targeting this topic will appear here.",
+								"emptyTitle": "No emails sent yet",
+								"opens": "Opens",
+								"scope": "(from this topic)",
+								"sent": "Sent",
+								"title": "Email History"
+							},
+							"emailStatus": {
+								"bounced": "Bounced",
+								"clicked": "Clicked",
+								"complained": "Complained",
+								"delivered": "Delivered",
+								"opened": "Opened",
+								"queued": "Queued",
+								"sent": "Sent"
+							},
+							"engagement": {
+								"clickRate": "Click rate",
+								"lastEngagement": "Last engagement",
+								"none": "No engagement yet",
+								"openRate": "Open rate",
+								"received": "Emails received",
+								"title": "Engagement"
+							},
+							"loading": "Loading contact details...",
+							"membership": {
+								"addedAt": "Added to topic",
+								"title": "Topic Membership"
+							},
+							"notFound": {
+								"action": "Back to Topic",
+								"body": "This contact may have been removed from the topic or doesn't exist.",
+								"title": "Contact not found in this topic"
+							},
+							"operations": {
+								"removeContact": "Remove from topic"
+							},
+							"pageTitle": "Contact Details — Owlat",
+							"removeDialog": {
+								"description": "Remove \"{email}\" from this topic? The contact will not be deleted, only removed from \"{topic}\"."
+							},
+							"removeFromTopic": "Remove from Topic",
+							"toasts": {
+								"removed": "Contact removed from topic"
+							},
+							"viewFullProfile": "View Full Profile",
+							"viewFullProfileLink": "View full profile"
+						}
+					},
+					"index": {
+						"breadcrumbs": {
+							"audience": "Audience",
+							"topics": "Topics"
+						},
+						"clearSearch": "Clear search",
+						"contactCount": "{count} contact | {count} contacts",
+						"contactFallback": "contact",
+						"createdOn": "Created {date}",
+						"doiRequired": "Double Opt-In Required",
+						"empty": {
+							"action": "Browse Contacts",
+							"body": "Add contacts to this topic from the contact detail page.",
+							"title": "No contacts in this topic"
+						},
+						"loading": "Loading topic...",
+						"noResults": {
+							"body": "No contacts match \"{query}\". Try a different search term.",
+							"title": "No results found"
+						},
+						"notFound": {
+							"action": "Back to Topics",
+							"body": "This topic may have been deleted or doesn't exist.",
+							"title": "Topic not found"
+						},
+						"operations": {
+							"removeContact": "Remove from topic"
+						},
+						"pageTitle": "Subscription topic — Owlat",
+						"pagination": {
+							"next": "Next",
+							"previous": "Previous"
+						},
+						"removeDialog": {
+							"description": "Remove \"{email}\" from this topic? The contact will not be deleted, only removed from \"{topic}\".",
+							"title": "Remove from Topic"
+						},
+						"removeFromTopic": "Remove from topic",
+						"searchPlaceholder": "Search contacts in this topic...",
+						"showing": {
+							"empty": "0 contacts",
+							"label": "Showing {range}",
+							"range": "{start}-{end} of {total}"
+						},
+						"table": {
+							"added": "Added",
+							"firstName": "First Name",
+							"lastName": "Last Name"
+						},
+						"toasts": {
+							"removed": "Removed \"{email}\" from the topic"
+						}
+					}
+				},
+				"index": {
+					"actions": {
+						"delete": "Delete topic",
+						"edit": "Edit topic"
+					},
+					"clearSearch": "Clear search",
+					"count": "{count} topic | {count} topics",
+					"createModal": {
+						"title": "Create Topic"
+					},
+					"creating": "Creating...",
+					"deleteModal": {
+						"body": "Are you sure you want to delete \"{name}\"?",
+						"contactsKept": "The {count} contact in this topic will not be deleted, only removed from the topic. | The {count} contacts in this topic will not be deleted, only removed from the topic.",
+						"irreversible": "This action cannot be undone.",
+						"title": "Delete Topic"
+					},
+					"deleting": "Deleting...",
+					"editModal": {
+						"title": "Edit Topic"
+					},
+					"empty": {
+						"description": "Create your first topic to organize contacts for targeted email campaigns.",
+						"title": "No topics yet"
+					},
+					"errorTitle": "Couldn't load topics",
+					"form": {
+						"descriptionPlaceholder": "Optional description for this topic...",
+						"doiDescription": "New subscribers must confirm their email before being added to this topic",
+						"doiLabel": "Require double opt-in",
+						"namePlaceholder": "e.g., Newsletter Subscribers"
+					},
+					"newTopic": "New Topic",
+					"noResults": {
+						"description": "No topics match \"{query}\". Try a different search term.",
+						"title": "No results found"
+					},
+					"noWorkspace": {
+						"description": "Create or select a workspace to start managing your topics.",
+						"title": "No workspace selected"
+					},
+					"operations": {
+						"create": "Create topic",
+						"delete": "Delete topic",
+						"update": "Update topic"
+					},
+					"pageTitle": "Subscription topics — Owlat",
+					"saveChanges": "Save Changes",
+					"searchPlaceholder": "Search topics...",
+					"subtitle": "What contacts subscribe to — group them for targeted campaigns",
+					"table": {
+						"contacts": "Contacts",
+						"created": "Created"
+					},
+					"title": "Subscription topics",
+					"toasts": {
+						"created": "Topic \"{name}\" created successfully",
+						"deleted": "Topic \"{name}\" deleted successfully",
+						"updated": "Topic \"{name}\" updated successfully"
+					},
+					"validation": {
+						"nameRequired": "Topic name is required"
+					}
+				}
+			}
+		},
+		"automations": {
+			"detail": {
+				"edit": {
+					"activate": "Activate",
+					"activateDialog": {
+						"automation": "Automation",
+						"body": "Once activated, this automation will start running and will trigger for new contacts that match the trigger criteria.",
+						"stepCount": "{count} step | {count} steps",
+						"steps": "Steps",
+						"title": "Activate Automation?"
+					},
+					"activateTitle": "Activate this automation",
+					"activating": "Activating...",
+					"addStep": "Add Step",
+					"cannotActivate": "Cannot activate automation",
+					"configureCondition": "Configure condition",
+					"editWorkflow": "Edit workflow",
+					"empty": {
+						"addDelay": "Add Delay Step",
+						"addEmail": "Add Email Step",
+						"body": "Add steps to define what happens when the automation is triggered.",
+						"title": "No steps yet"
+					},
+					"endOfAutomation": "End of Automation",
+					"notFound": {
+						"action": "Back to Automations",
+						"body": "The automation you're looking for doesn't exist.",
+						"title": "Automation not found"
+					},
+					"operations": {
+						"activate": "Activate automation",
+						"pause": "Pause automation",
+						"resume": "Resume automation",
+						"saveDraft": "Save automation draft"
+					},
+					"pageTitle": "Edit Automation — Owlat",
+					"pause": "Pause",
+					"resume": "Resume",
+					"saveDraft": "Save Draft",
+					"status": {
+						"draft": "Draft",
+						"paused": "Paused"
+					},
+					"stepNumber": "Step {number}",
+					"steps": {
+						"buildWorkflow": "Build Workflow",
+						"chooseTrigger": "Choose Trigger"
+					},
+					"toasts": {
+						"activated": "Automation activated",
+						"draftSaved": "Draft saved",
+						"paused": "Automation paused",
+						"resumed": "Automation resumed"
+					},
+					"trigger": "Trigger",
+					"validation": {
+						"title": "Fix these issues before activating:"
+					}
+				}
+			},
+			"index": {
+				"actions": {
+					"activate": "Activate",
+					"more": "More actions",
+					"pause": "Pause",
+					"viewDetails": "View Details"
+				},
+				"clearSearch": "Clear search",
+				"deleteDialog": {
+					"activeWarning": "Active automations must be paused before deletion.",
+					"body": "Are you sure you want to delete {name}?",
+					"note": "This action cannot be undone. The automation and all its steps will be permanently deleted.",
+					"title": "Delete Automation"
+				},
+				"deleting": "Deleting...",
+				"empty": {
+					"action": "Create Automation",
+					"description": "Create your first automation to send emails automatically when a contact signs up, subscribes, or triggers an event.",
+					"title": "No automations yet"
+				},
+				"errorTitle": "Couldn't load automations",
+				"newAutomation": "New Automation",
+				"noResults": {
+					"description": "No automations match \"{query}\". Try a different search term.",
+					"title": "No results found"
+				},
+				"noTeam": {
+					"description": "Create or select a team to start creating automations.",
+					"title": "No team selected"
+				},
+				"operations": {
+					"delete": "Delete automation",
+					"duplicate": "Duplicate automation",
+					"pause": "Pause automation",
+					"resume": "Resume automation"
+				},
+				"pageTitle": "Automations — Owlat",
+				"searchPlaceholder": "Search automations...",
+				"status": {
+					"draft": "Draft",
+					"paused": "Paused"
+				},
+				"subtitle": "Create automated email workflows triggered by events",
+				"table": {
+					"contactsInFlow": "Contacts in Flow",
+					"created": "Created",
+					"trigger": "Trigger"
+				},
+				"title": "Automations",
+				"toasts": {
+					"activated": "\"{name}\" is now active",
+					"deleted": "Automation deleted successfully",
+					"draftNotToggleable": "Please complete and activate this automation from the builder",
+					"duplicated": "Automation duplicated successfully",
+					"paused": "\"{name}\" has been paused"
+				}
+			},
+			"new": {
+				"chooseTrigger": {
+					"subtitle": "Select what event will start this automation workflow.",
+					"title": "Choose a Trigger"
+				},
+				"contactCreatedInfo": {
+					"body": "This trigger will fire automatically whenever a new contact is added to your audience via any method (API, import, or form submission).",
+					"title": "Ready to use"
+				},
+				"continue": "Continue to Workflow",
+				"creating": "Creating...",
+				"editTriggerTitle": "Edit Trigger",
+				"form": {
+					"descriptionPlaceholder": "Describe what this automation does...",
+					"nameHelp": "A name to identify this automation in your dashboard.",
+					"nameLabel": "Automation Name",
+					"namePlaceholder": "e.g., Welcome Series, Re-engagement Flow",
+					"optionalHint": "(optional)",
+					"triggerTypeLabel": "Trigger Type"
+				},
+				"operations": {
+					"create": "Create automation",
+					"updateTrigger": "Update automation trigger"
+				},
+				"pageTitle": "Create Automation — Owlat",
+				"steps": {
+					"buildWorkflow": "Build Workflow",
+					"chooseTrigger": "Choose Trigger"
+				},
+				"subtitle": "Set up an automated email workflow",
+				"title": "Create Automation",
+				"validation": {
+					"nameRequired": "Automation name is required",
+					"triggerRequired": "Please select a trigger type"
+				}
+			}
+		}
+	}
+}

@@ -25,7 +25,6 @@ import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import {
 	detectTrackers,
 	stripTrackerPixels,
-	trackerPixelLabel,
 	type TrackerDetection,
 } from '@owlat/shared/postboxTrackers';
 import { applyLinkTransparency } from '@owlat/shared/postboxLinkTransparency';
@@ -61,6 +60,8 @@ const emit = defineEmits<{
 	/** Fires with the current tracker detection so the reader header can badge it. */
 	trackers: [detection: TrackerDetection];
 }>();
+
+const { t } = useI18n();
 
 const { isDark } = useAppTheme();
 
@@ -177,7 +178,7 @@ function gateImages(html: string, allow: boolean): string {
 		const srcMatch = attrs.match(/src=(["'])(?<url>[^"']+)\1/);
 		const url = srcMatch?.groups?.['url'];
 		if (!url || url.startsWith('data:') || url.startsWith('cid:')) return match;
-		return `<span data-blocked-img="${url}" style="display:inline-block;padding:4px 8px;background:#eee;color:#666;font-size:11px;border-radius:3px;">[image]</span>`;
+		return `<span data-blocked-img="${url}" style="display:inline-block;padding:4px 8px;background:#eee;color:#666;font-size:11px;border-radius:3px;">${t('components.postbox.postboxMessageBody.blockedImage')}</span>`;
 	});
 }
 
@@ -236,7 +237,7 @@ function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 	// Link transparency (real-host tooltips, phish-mismatch markers, tracking
 	// param stripping) runs on sanitized output only and fails soft to a no-op.
 	const linked = rewriteLinks(applyLinkTransparency(gated));
-	const srcdoc = `<!doctype html><html><head>${META_CSP}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${linked || '(empty message)'}</body></html>`;
+	const srcdoc = `<!doctype html><html><head>${META_CSP}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${linked || t('components.postbox.postboxMessageBody.emptyMessage')}</body></html>`;
 	return { srcdoc, renderScheme: adapted.scheme, detection };
 }
 
@@ -355,17 +356,24 @@ watch([showQuoted, showImages, loadEverything], () => {
 		>
 			<span class="text-text-secondary">
 				<template v-if="hasTrackers">
-					Images blocked —
-					{{ trackerPixelLabel(trackerDetection.pixelCount) }} detected.
+					{{
+						t(
+							'components.postbox.postboxMessageBody.imagesBlockedTrackers',
+							{ count: trackerDetection.pixelCount },
+							trackerDetection.pixelCount
+						)
+					}}
 				</template>
-				<template v-else> Images blocked to protect your privacy. </template>
+				<template v-else>
+					{{ t('components.postbox.postboxMessageBody.imagesBlocked') }}
+				</template>
 			</span>
 			<button
 				type="button"
 				class="text-brand font-medium hover:underline"
 				@click="showImages = true"
 			>
-				Show images
+				{{ t('components.postbox.postboxMessageBody.showImages') }}
 			</button>
 		</div>
 		<!-- After "Show images", probable tracking pixels stay stripped until
@@ -376,15 +384,20 @@ watch([showQuoted, showImages, loadEverything], () => {
 		>
 			<span class="text-text-secondary inline-flex items-center gap-1.5">
 				<Icon name="lucide:shield" class="w-3.5 h-3.5 flex-shrink-0" />
-				{{ trackerPixelLabel(trackerDetection.pixelCount) }}
-				kept blocked.
+				{{
+					t(
+						'components.postbox.postboxMessageBody.trackersKeptBlocked',
+						{ count: trackerDetection.pixelCount },
+						trackerDetection.pixelCount
+					)
+				}}
 			</span>
 			<button
 				type="button"
 				class="text-text-tertiary font-medium hover:underline"
 				@click="loadEverything = true"
 			>
-				Load everything
+				{{ t('components.postbox.postboxMessageBody.loadEverything') }}
 			</button>
 		</div>
 		<!-- palette-ok: the wrapper background matches the IFRAME's scheme, not
@@ -411,7 +424,11 @@ watch([showQuoted, showImages, loadEverything], () => {
 			@click="showQuoted = !showQuoted"
 		>
 			<Icon :name="showQuoted ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="w-3.5 h-3.5" />
-			{{ showQuoted ? 'Hide quoted text' : 'Show quoted text' }}
+			{{
+				showQuoted
+					? t('components.postbox.postboxMessageBody.hideQuoted')
+					: t('components.postbox.postboxMessageBody.showQuoted')
+			}}
 		</button>
 	</div>
 </template>

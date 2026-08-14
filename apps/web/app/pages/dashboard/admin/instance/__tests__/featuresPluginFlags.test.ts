@@ -30,6 +30,7 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 }));
 
 import FeaturesPage from '../features.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const liveFlags = ref<Record<string, boolean>>({});
 const configStatus = ref<Record<string, string[]> | undefined>({});
@@ -42,6 +43,7 @@ let queryCall = 0;
 let operationCall = 0;
 
 beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast }));
@@ -108,6 +110,7 @@ const buttonStub = {
 function mountPage() {
 	return mount(FeaturesPage, {
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiQueryBoundary: passthroughStub,
 				UiCard: passthroughStub,

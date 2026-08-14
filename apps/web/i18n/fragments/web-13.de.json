@@ -96,6 +96,12 @@
 				"ehloHostname": "EHLO-Hostname",
 				"notReported": "Nicht gemeldet",
 				"blocklists": "Sperrlisten",
+				"dnsblStatus": {
+					"unknown": "Unbekannt",
+					"clean": "Sauber",
+					"degraded": "Beeinträchtigt",
+					"critical": "Kritisch"
+				},
 				"ptrRemediation": "Setzen Sie den PTR-Wert auf {ehlo} und warten Sie, bis das DNS aktualisiert ist.",
 				"recoverySteps": "{blocklist}: Schritte zur Wiederherstellung",
 				"totalSentToday": "Heute insgesamt gesendete E-Mails (alle Arten)"

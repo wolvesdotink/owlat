@@ -15,6 +15,7 @@ const emit = defineEmits<{
 	back: [];
 }>();
 
+const { t } = useI18n();
 const router = useRouter();
 const { showToast } = useToast();
 const { emailTheme } = useEmailTheme();
@@ -88,35 +89,35 @@ const isLoading = computed(() => {
 
 // Mutations
 const { run: updateMarketingTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
-	label: 'Save translations',
+	label: () => t('components.translation.manager.saveTranslationsOperation'),
 });
 const { run: addMarketingTranslation } = useBackendOperation(
 	api.emailTemplates.i18n.addTranslation,
-	{ label: 'Add language' }
+	{ label: () => t('components.translation.manager.addLanguageOperation') }
 );
 const { run: updateMarketingTranslation } = useBackendOperation(
 	api.emailTemplates.i18n.updateTranslation,
-	{ label: 'Save translation' }
+	{ label: () => t('components.translation.manager.saveTranslationOperation') }
 );
 const { run: removeMarketingTranslation } = useBackendOperation(
 	api.emailTemplates.i18n.removeTranslation,
-	{ label: 'Remove language' }
+	{ label: () => t('components.translation.manager.removeLanguageOperation') }
 );
 
 const { run: updateTransactionalEmail } = useBackendOperation(api.transactional.emails.update, {
-	label: 'Save translations',
+	label: () => t('components.translation.manager.saveTranslationsOperation'),
 });
 const { run: addTransactionalTranslation } = useBackendOperation(
 	api.transactional.translations.addTranslation,
-	{ label: 'Add language' }
+	{ label: () => t('components.translation.manager.addLanguageOperation') }
 );
 const { run: updateTransactionalTranslation } = useBackendOperation(
 	api.transactional.translations.updateTranslation,
-	{ label: 'Save translation' }
+	{ label: () => t('components.translation.manager.saveTranslationOperation') }
 );
 const { run: removeTransactionalTranslation } = useBackendOperation(
 	api.transactional.translations.removeTranslation,
-	{ label: 'Remove language' }
+	{ label: () => t('components.translation.manager.removeLanguageOperation') }
 );
 
 // State
@@ -193,6 +194,11 @@ const getLanguageInfo = (code: string) => {
 	return languageOptions.find((l) => l.value === code) || { label: code, nativeLabel: code };
 };
 
+// The catalog carries message keys for the localized names; the endonym is the
+// same in every locale, so an unknown one falls through as its own text.
+const languageLabel = (code: string) => t(getLanguageInfo(code).label);
+const languageNativeLabel = (code: string) => t(getLanguageInfo(code).nativeLabel);
+
 const persistHtmlTranslations = async () => {
 	const payload = JSON.stringify(htmlTranslations.value);
 	if (props.emailType === 'marketing') {
@@ -233,7 +239,7 @@ const translatableRows = computed((): TranslatableRow[] => {
 		id: '_subject',
 		fieldType: 'subject',
 		sourceText: email.value.subject || '',
-		label: 'Subject Line',
+		label: t('components.translation.manager.subjectLine'),
 	});
 
 	// Preview text (marketing only)
@@ -242,7 +248,7 @@ const translatableRows = computed((): TranslatableRow[] => {
 			id: '_previewText',
 			fieldType: 'previewText',
 			sourceText: email.value.previewText,
-			label: 'Preview Text',
+			label: t('components.translation.manager.previewText'),
 		});
 	}
 
@@ -272,7 +278,7 @@ const extractBlockRows = (blocks: Block[], rows: TranslatableRow[], prefix = '')
 				blockId: block.id,
 				fieldType: 'html',
 				sourceText: block.content.html,
-				label: `${prefix}Text Block ${textBlockIndex}`,
+				label: t('components.translation.manager.textBlock', { prefix, index: textBlockIndex }),
 			});
 		} else if (block.type === 'button' && block.content.text) {
 			buttonBlockIndex++;
@@ -281,7 +287,7 @@ const extractBlockRows = (blocks: Block[], rows: TranslatableRow[], prefix = '')
 				blockId: block.id,
 				fieldType: 'buttonText',
 				sourceText: block.content.text,
-				label: `${prefix}Button: "${block.content.text}"`,
+				label: t('components.translation.manager.buttonBlock', { prefix, text: block.content.text }),
 			});
 		} else if (block.type === 'image' && block.content.alt) {
 			imageBlockIndex++;
@@ -290,12 +296,19 @@ const extractBlockRows = (blocks: Block[], rows: TranslatableRow[], prefix = '')
 				blockId: block.id,
 				fieldType: 'alt',
 				sourceText: block.content.alt,
-				label: `${prefix}Image ${imageBlockIndex} Alt Text`,
+				label: t('components.translation.manager.imageBlock', { prefix, index: imageBlockIndex }),
 			});
 		} else if (block.type === 'columns' && block.content.columns) {
 			// Recursively extract from column items
 			block.content.columns.forEach((column, colIndex) => {
-				extractBlockRows(column, rows, `${prefix}Column ${colIndex + 1} > `);
+				// The " > " chain is a structural separator, not copy, so it is joined
+				// around the translated segment rather than baked into the message
+				// (the catalog guard rejects angle brackets in a message value).
+				extractBlockRows(
+					column,
+					rows,
+					`${t('components.translation.manager.columnPrefix', { prefix, index: colIndex + 1 })} > `
+				);
 			});
 		} else if (block.type === 'container' && block.content.items) {
 			// Recursively extract from container items
@@ -303,7 +316,7 @@ const extractBlockRows = (blocks: Block[], rows: TranslatableRow[], prefix = '')
 			extractBlockRows(
 				block.content.items,
 				rows,
-				`${prefix}Container ${containerBlockIndex} > `
+				`${t('components.translation.manager.containerPrefix', { prefix, index: containerBlockIndex })} > `
 			);
 		}
 	}
@@ -419,7 +432,7 @@ const addLanguage = async (langCode: string) => {
 					});
 		if (added === undefined) return;
 		await regenerateRenderedLanguage(langCode);
-		showToast(`Added ${getLanguageInfo(langCode).label} translation`);
+		showToast(t('components.translation.manager.languageAdded', { language: languageLabel(langCode) }));
 	} finally {
 		isSaving.value = false;
 	}
@@ -451,7 +464,7 @@ const confirmRemoveLanguage = async () => {
 		if (removed === undefined) return;
 		delete htmlTranslations.value[langCode];
 		await persistHtmlTranslations();
-		showToast(`Removed ${getLanguageInfo(langCode).label} translation`);
+		showToast(t('components.translation.manager.languageRemoved', { language: languageLabel(langCode) }));
 	} finally {
 		isSaving.value = false;
 		languageToRemove.value = null;
@@ -473,15 +486,15 @@ const autoTranslateColumn = async (targetLanguage: string) => {
 			}));
 
 		if (itemsToTranslate.length === 0) {
-			showToast('All fields are already translated');
+			showToast(t('components.translation.manager.allTranslated'));
 			return;
 		}
 
 		// Call AI translation action via Convex
 		const result = await requireConvex().action(api.translate.translateBatch, {
 			items: itemsToTranslate,
-			sourceLanguage: getLanguageInfo(defaultLanguage.value).label,
-			targetLanguage: getLanguageInfo(targetLanguage).label,
+			sourceLanguage: languageLabel(defaultLanguage.value),
+			targetLanguage: languageLabel(targetLanguage),
 		});
 
 		// Apply translations
@@ -493,10 +506,13 @@ const autoTranslateColumn = async (targetLanguage: string) => {
 		}
 
 		showToast(
-			`Translated ${result.translations.length} fields to ${getLanguageInfo(targetLanguage).label}`
+			t('components.translation.manager.autoTranslated', {
+				count: result.translations.length,
+				language: languageLabel(targetLanguage),
+			})
 		);
 	} catch (error) {
-		showToast('Failed to auto-translate. Check API configuration.', 'error');
+		showToast(t('components.translation.manager.autoTranslateFailed'), 'error');
 	} finally {
 		isTranslating.value = null;
 	}
@@ -527,7 +543,7 @@ const isCellSaving = (rowId: string, language: string) => {
 				<button
 					class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					@click="handleBack"
-					aria-label="Back"
+					:aria-label="t('common.back')"
 				>
 					<Icon name="lucide:arrow-left" class="w-5 h-5" />
 				</button>
@@ -535,7 +551,7 @@ const isCellSaving = (rowId: string, language: string) => {
 				<div class="flex items-center gap-2">
 					<Icon name="lucide:globe" class="w-5 h-5 text-text-tertiary" />
 					<span class="text-text-primary font-medium">
-						{{ email?.name || 'Email' }} - Translations
+						{{ t('components.translation.manager.heading', { name: email?.name || t('components.translation.manager.emailFallbackName') }) }}
 					</span>
 				</div>
 			</div>
@@ -543,7 +559,7 @@ const isCellSaving = (rowId: string, language: string) => {
 			<div class="flex items-center gap-3">
 				<span v-if="hasChanges" class="text-sm text-warning flex items-center gap-1.5">
 					<Icon name="lucide:alert-circle" class="w-4 h-4" />
-					Unsaved changes
+					{{ t('components.translation.manager.unsavedChanges') }}
 				</span>
 			</div>
 		</div>
@@ -552,7 +568,7 @@ const isCellSaving = (rowId: string, language: string) => {
 		<div v-if="isLoading" class="flex-1 flex items-center justify-center">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading email...</p>
+				<p class="text-text-secondary text-sm">{{ t('components.translation.manager.loadingEmail') }}</p>
 			</div>
 		</div>
 
@@ -560,9 +576,9 @@ const isCellSaving = (rowId: string, language: string) => {
 		<div v-else-if="!email" class="flex-1 flex items-center justify-center">
 			<div class="text-center">
 				<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
-				<h2 class="text-xl font-semibold text-text-primary mb-2">Email not found</h2>
-				<p class="text-text-secondary mb-6">This email doesn't exist or has been deleted.</p>
-				<UiButton @click="handleBack">Go Back</UiButton>
+				<h2 class="text-xl font-semibold text-text-primary mb-2">{{ t('components.translation.manager.notFoundTitle') }}</h2>
+				<p class="text-text-secondary mb-6">{{ t('components.translation.manager.notFoundDescription') }}</p>
+				<UiButton @click="handleBack">{{ t('components.translation.manager.goBack') }}</UiButton>
 			</div>
 		</div>
 
@@ -575,9 +591,9 @@ const isCellSaving = (rowId: string, language: string) => {
 					class="text-center py-16 border border-dashed border-border-subtle rounded-xl"
 				>
 					<Icon name="lucide:globe" class="w-10 h-10 text-text-tertiary mx-auto mb-4" />
-					<h3 class="text-lg font-medium text-text-primary mb-2">No translatable content</h3>
+					<h3 class="text-lg font-medium text-text-primary mb-2">{{ t('components.translation.manager.emptyTitle') }}</h3>
 					<p class="text-text-secondary">
-						Add text, buttons, or images with alt text to your email to enable translations.
+						{{ t('components.translation.manager.emptyDescription') }}
 					</p>
 				</div>
 
@@ -591,7 +607,7 @@ const isCellSaving = (rowId: string, language: string) => {
 									<th
 										class="px-4 py-3 text-left text-sm font-medium text-text-secondary sticky left-0 bg-bg-surface/50 min-w-[200px]"
 									>
-										Field
+										{{ t('components.translation.manager.fieldColumn') }}
 									</th>
 
 									<!-- Default language column -->
@@ -599,10 +615,10 @@ const isCellSaving = (rowId: string, language: string) => {
 										class="px-4 py-3 text-left text-sm font-medium text-text-secondary min-w-[250px]"
 									>
 										<div class="flex items-center gap-2">
-											<span>{{ getLanguageInfo(defaultLanguage).nativeLabel }}</span>
-											<span class="text-xs text-brand bg-brand/10 px-1.5 py-0.5 rounded"
-												>default</span
-											>
+											<span>{{ languageNativeLabel(defaultLanguage) }}</span>
+											<span class="text-xs text-brand bg-brand/10 px-1.5 py-0.5 rounded">{{
+												t('components.translation.manager.defaultBadge')
+											}}</span>
 										</div>
 									</th>
 
@@ -613,12 +629,12 @@ const isCellSaving = (rowId: string, language: string) => {
 										class="px-4 py-3 text-left text-sm font-medium text-text-secondary min-w-[250px]"
 									>
 										<div class="flex items-center justify-between">
-											<span>{{ getLanguageInfo(lang).nativeLabel }}</span>
+											<span>{{ languageNativeLabel(lang) }}</span>
 											<div class="flex items-center gap-1">
 												<button
 													v-if="isTranslating !== lang"
 													class="p-1 rounded hover:bg-brand/10 text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-													title="Auto-translate with AI"
+													:title="t('components.translation.manager.autoTranslateTitle')"
 													@click="autoTranslateColumn(lang)"
 												>
 													<Icon name="lucide:sparkles" class="w-4 h-4" />
@@ -626,7 +642,7 @@ const isCellSaving = (rowId: string, language: string) => {
 												<UiSpinner v-else size="xs" />
 												<button
 													class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-													title="Remove language"
+													:title="t('components.translation.manager.removeLanguageTitle')"
 													@click="removeLanguage(lang)"
 												>
 													<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -646,7 +662,7 @@ const isCellSaving = (rowId: string, language: string) => {
 											<template #trigger>
 												<UiButton variant="outline" size="sm" :disabled="isSaving">
 													<Icon name="lucide:plus" class="w-4 h-4" />
-													Add Language
+													{{ t('components.translation.manager.addLanguage') }}
 												</UiButton>
 											</template>
 
@@ -656,7 +672,12 @@ const isCellSaving = (rowId: string, language: string) => {
 												@click="addLanguage(lang.value)"
 											>
 												<Icon name="lucide:globe" class="w-4 h-4" />
-												{{ lang.label }} ({{ lang.nativeLabel }})
+												{{
+													t('components.translation.manager.languageOption', {
+														label: t(lang.label),
+														nativeLabel: t(lang.nativeLabel),
+													})
+												}}
 											</UiDropdownMenuItem>
 										</UiDropdownMenu>
 									</th>
@@ -678,7 +699,7 @@ const isCellSaving = (rowId: string, language: string) => {
 											v-if="row.fieldType === 'html'"
 											class="ml-1.5 text-xs text-text-tertiary bg-bg-surface px-1 py-0.5 rounded"
 										>
-											HTML
+											{{ t('components.translation.manager.htmlBadge') }}
 										</span>
 									</td>
 
@@ -714,11 +735,9 @@ const isCellSaving = (rowId: string, language: string) => {
 					<div class="flex gap-3">
 						<Icon name="lucide:globe" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 						<div class="text-sm">
-							<p class="text-text-primary font-medium mb-1">How translations work</p>
+							<p class="text-text-primary font-medium mb-1">{{ t('components.translation.manager.infoTitle') }}</p>
 							<p class="text-text-secondary">
-								Click any cell to edit the translation. Changes are saved automatically. Use the
-								sparkle icon to auto-translate empty fields using AI. The default language content
-								is read-only here - edit it in the main email editor.
+								{{ t('components.translation.manager.infoBody') }}
 							</p>
 						</div>
 					</div>
@@ -727,13 +746,13 @@ const isCellSaving = (rowId: string, language: string) => {
 			<UiConfirmationDialog
 				:open="!!languageToRemove"
 				variant="danger"
-				title="Remove translation?"
+				:title="t('components.translation.manager.removeConfirmTitle')"
 				:description="
 					languageToRemove
-						? `Remove the ${getLanguageInfo(languageToRemove).label} translation? This cannot be undone.`
-						: 'This cannot be undone.'
+						? t('components.translation.manager.removeConfirmDescription', { language: languageLabel(languageToRemove) })
+						: t('components.translation.manager.removeConfirmFallback')
 				"
-				confirm-text="Remove translation"
+				:confirm-text="t('components.translation.manager.removeConfirmAction')"
 				:is-loading="isSaving"
 				@update:open="(v: boolean) => !v && (languageToRemove = null)"
 				@confirm="confirmRemoveLanguage"

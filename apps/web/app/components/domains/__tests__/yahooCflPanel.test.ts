@@ -17,6 +17,10 @@ import { ref, type Ref } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 
 import YahooCflPanel from '../YahooCflPanel.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The panel renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 import {
 	yahooCflAvailableActions,
 	yahooCflGuidedSteps,
@@ -122,12 +126,15 @@ function stubBackend(guide: unknown) {
 		confirmEnrollment: vi.fn(async () => null),
 		resetEnrollment: vi.fn(async () => null),
 	};
-	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: string }) => {
+	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: string | (() => string) }) => {
 		// The operation label is the only handle on WHICH mutation was bound, since
-		// the api object is stubbed out of this environment.
-		const key = opts.label.includes('submission')
+		// the api object is stubbed out of this environment. It is a getter now (the
+		// label is a translated message read when the operation runs, not frozen at
+		// setup), so resolve it before matching.
+		const label = typeof opts.label === 'function' ? opts.label() : opts.label;
+		const key = label.includes('submission')
 			? 'submitEnrollment'
-			: opts.label.includes('Confirm')
+			: label.includes('Confirm')
 				? 'confirmEnrollment'
 				: 'resetEnrollment';
 		return { run: runs[key], isLoading: ref(false) as Ref<boolean> };
@@ -138,7 +145,10 @@ function mountPanel(guide: unknown, canManage = true) {
 	stubBackend(guide);
 	return mount(YahooCflPanel, {
 		props: { domainId: 'domain_1', canManage },
-		global: { stubs: { Icon: { props: ['name'], template: '<i :data-icon="name" />' } } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: { props: ['name'], template: '<i :data-icon="name" />' } },
+		},
 	});
 }
 

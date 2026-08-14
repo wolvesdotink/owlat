@@ -1,0 +1,418 @@
+{
+	"dashboard": {
+		"automations": {
+			"detail": {
+				"index": {
+					"pageTitle": "Automatisierungsdetails — Owlat",
+					"loading": "Automatisierung wird geladen …",
+					"notFoundTitle": "Automatisierung nicht gefunden",
+					"notFoundDescription": "Diese Automatisierung wurde möglicherweise gelöscht oder Sie haben keinen Zugriff darauf.",
+					"backToAutomations": "Zurück zu den Automatisierungen",
+					"createdAt": "Erstellt {date}",
+					"editAutomation": "Automatisierung bearbeiten",
+					"completionRate": "Abschlussquote",
+					"completionRateLabel": "Abschlussquote der Automatisierung",
+					"completedOfEntered": "{completed} von {total} Kontakten haben alle Schritte abgeschlossen",
+					"stats": {
+						"contactsEntered": "Eingetretene Kontakte",
+						"completed": "Abgeschlossen",
+						"emailsSent": "Gesendete E-Mails"
+					},
+					"funnel": {
+						"title": "Schritt-Funnel",
+						"emptyTitle": "Keine Schritte konfiguriert",
+						"emptyDescription": "Fügen Sie Ihrer Automatisierung Schritte hinzu, um Funnel-Analysen zu sehen",
+						"configureSteps": "Schritte konfigurieren",
+						"trigger": "Auslöser",
+						"entered": "{count} eingetreten",
+						"step": "Schritt {number}",
+						"stepSummary": "{label} · {completed} abgeschlossen",
+						"pending": "{count} ausstehend",
+						"executing": "{count} in Ausführung",
+						"failed": "{count} fehlgeschlagen"
+					},
+					"runs": {
+						"title": "Kontakte in der Automatisierung",
+						"inProgress": "In Bearbeitung",
+						"completed": "Abgeschlossen",
+						"cancelled": "Abgebrochen",
+						"emptyTitle": "Noch keine Kontakte in dieser Automatisierung",
+						"emptyDescription": "Kontakte erscheinen hier, sobald die Automatisierung ausgelöst wird",
+						"noEmail": "Keine E-Mail",
+						"stepAndTime": "Schritt {number} · {time}",
+						"viewContact": "Kontakt ansehen",
+						"previous": "Zurück",
+						"next": "Weiter",
+						"range": "{from}–{to}"
+					}
+				}
+			}
+		},
+		"campaigns": {
+			"index": {
+				"pageTitle": "Kampagnen — Owlat",
+				"title": "Kampagnen",
+				"subtitle": "Alles, was Sie versendet haben, und alles, was auf Sie wartet – an einem Ort.",
+				"newCampaign": "Neue Kampagne",
+				"searchPlaceholder": "Kampagnen suchen …",
+				"pills": {
+					"attention": "Braucht Aufmerksamkeit",
+					"drafts": "Entwürfe",
+					"scheduled": "Geplant",
+					"sent": "Versendet"
+				},
+				"errorTitle": "Kampagnen konnten nicht geladen werden",
+				"errorMessage": "Beim Laden Ihrer Kampagnen ist ein Fehler aufgetreten. Laden Sie die Seite neu, um es erneut zu versuchen.",
+				"attentionEmpty": {
+					"title": "Nichts wartet auf Sie.",
+					"description": "Derzeit wartet keine Kampagne auf eine Entscheidung."
+				},
+				"searchEmpty": {
+					"title": "Keine Ergebnisse gefunden",
+					"description": "Keine Kampagne passt zu \"{query}\". Versuchen Sie einen anderen Suchbegriff.",
+					"clear": "Suche zurücksetzen"
+				},
+				"listEmpty": {
+					"title": "Hier gibt es noch keine Kampagnen",
+					"description": "Erstellen Sie Ihre erste Kampagne, um Ihre Zielgruppe zu erreichen."
+				},
+				"loadMore": "Mehr laden",
+				"allLoaded": "Alle Kampagnen geladen",
+				"duplicateOperation": "Kampagne duplizieren",
+				"deleteOperation": "Kampagne löschen",
+				"toasts": {
+					"duplicated": "Kampagne dupliziert",
+					"deleted": "Kampagne gelöscht"
+				},
+				"deleteDialog": {
+					"title": "Kampagne löschen",
+					"confirmQuestion": "Möchten Sie {name} wirklich löschen?",
+					"description": "Diese Aktion kann nicht rückgängig gemacht werden. Die Kampagne und ihre Daten werden dauerhaft gelöscht.",
+					"deleting": "Wird gelöscht …",
+					"confirm": "Kampagne löschen"
+				}
+			},
+			"new": {
+				"pageTitle": "Kampagne erstellen — Owlat",
+				"title": "Kampagne erstellen",
+				"subtitle": "Richten Sie Ihre E-Mail-Kampagne ein",
+				"steps": {
+					"setup": "Einrichtung",
+					"content": "Inhalt",
+					"review": "Prüfen"
+				},
+				"audience": {
+					"notConfigured": "Nicht konfiguriert",
+					"topic": "Thema: {name}",
+					"segment": "Segment: {name}"
+				}
+			},
+			"detail": {
+				"edit": {
+					"pageTitle": "Kampagne bearbeiten — Owlat",
+					"title": "Kampagne bearbeiten",
+					"titleScheduled": "Geplante Kampagne bearbeiten",
+					"loadingName": "Wird geladen …",
+					"badges": {
+						"scheduled": "Geplant",
+						"draft": "Entwurf",
+						"underReview": "In Prüfung"
+					},
+					"errorTitle": "Diese Kampagne konnte nicht geladen werden",
+					"loadingLabel": "Kampagne wird geladen …",
+					"notFoundTitle": "Kampagne nicht gefunden",
+					"notFoundDescription": "Die gesuchte Kampagne existiert nicht oder Sie haben keinen Zugriff darauf.",
+					"backToCampaigns": "Zurück zu den Kampagnen",
+					"cannotEditTitle": "Diese Kampagne kann nicht bearbeitet werden",
+					"cannotEditDescription": "Diese Kampagne ist {status} und kann nicht bearbeitet werden.",
+					"underReview": {
+						"title": "Kampagne in Prüfung",
+						"description": "Diese Kampagne wurde von unserem Inhaltsscanner markiert und wartet auf die Prüfung durch eine Plattformadministration. Sobald sie freigegeben ist, können Sie sie versenden.",
+						"issuesTitle": "Inhaltsprobleme erkannt"
+					},
+					"contentBlocked": {
+						"title": "Inhalt blockiert",
+						"description": "Ihr letzter Sendeversuch wurde von unserem Inhaltsscanner blockiert. Bitte aktualisieren Sie Ihren Inhalt und versuchen Sie es erneut."
+					},
+					"scheduledNotice": {
+						"title": "Kampagne geplant",
+						"description": "Diese Kampagne ist für den Versand am {date} geplant. Sie können sie neu planen, jetzt senden oder abbrechen.",
+						"unschedule": "Planung aufheben zum Bearbeiten",
+						"cancelCampaign": "Kampagne abbrechen"
+					},
+					"details": {
+						"title": "Kampagnendetails",
+						"campaignName": "Kampagnenname",
+						"campaignNamePlaceholder": "z. B. Sommer-Newsletter 2026",
+						"fromName": "Absendername",
+						"fromNamePlaceholder": "z. B. Anna von Acme GmbH",
+						"fromEmail": "Absenderadresse",
+						"fromEmailPlaceholder": "z. B. hallo{'@'}acme.com",
+						"replyTo": "Antwortadresse",
+						"optionalSuffix": "(optional)",
+						"replyToPlaceholder": "z. B. support{'@'}acme.com"
+					},
+					"audience": {
+						"title": "Zielgruppe",
+						"topicTitle": "Bestimmtes Thema",
+						"topicDescription": "An Kontakte senden, die ein bestimmtes Thema abonniert haben.",
+						"selectTopic": "Thema auswählen …",
+						"topicOption": "{name} ({count} Kontakte)",
+						"segmentTitle": "Gespeichertes Segment",
+						"segmentDescription": "Kontakte ansprechen, die bestimmte Kriterien erfüllen.",
+						"selectSegment": "Segment auswählen …",
+						"eligibleForTopic": "berechtigte Empfänger für dieses Thema",
+						"eligible": "berechtigte Empfänger",
+						"ineligibleTitle": "Einige Abonnenten erhalten diese Kampagne nicht",
+						"ineligibleDescription": "{excluded} von {total} Kontakten in diesem Thema sind nicht berechtigt (keine E-Mail-Adresse, abgemeldet/gesperrt oder Double-Opt-in nicht abgeschlossen) und werden ausgeschlossen."
+					},
+					"content": {
+						"title": "E-Mail-Inhalt",
+						"template": "E-Mail-Vorlage",
+						"noSubject": "Kein Betreff",
+						"editEmail": "E-Mail bearbeiten",
+						"noTemplate": "Keine Vorlage ausgewählt",
+						"linkedEmailNote": "Diese Kampagne ist mit einer Marketing-E-Mail verknüpft. Bearbeiten Sie die verknüpfte E-Mail im Builder.",
+						"subject": "E-Mail-Betreff",
+						"subjectPlaceholder": "z. B. Ihr wöchentlicher Newsletter ist da!"
+					},
+					"archive": {
+						"title": "Öffentliches Archiv",
+						"description": "Fügt oben in versendeten E-Mails einen Link „Im Browser ansehen“ hinzu und erstellt eine öffentliche Archivseite.",
+						"switchLabel": "Öffentliches Archiv"
+					},
+					"schedule": {
+						"title": "Kampagne planen",
+						"retitle": "Kampagne neu planen",
+						"date": "Datum",
+						"time": "Uhrzeit",
+						"recipientTimezone": "Zur lokalen Zeit der Empfänger senden",
+						"recipientTimezoneHint": "E-Mails werden um {time} in der Zeitzone des jeweiligen Kontakts gesendet. Kontakte ohne Zeitzone erhalten die E-Mail zu Ihrer gewählten Zeit.",
+						"theScheduledTime": "der geplanten Zeit",
+						"willBeSentAt": "Kampagne wird gesendet um:",
+						"inRecipientTimezone": "{time} in der Zeitzone der jeweiligen Empfänger",
+						"timezoneExamples": "Zum Beispiel: {time} ET, {time} PT, {time} GMT usw.",
+						"willBeSent": "Kampagne wird gesendet:"
+					},
+					"test": {
+						"title": "Test-E-Mail senden",
+						"description": "Sehen Sie sich an, wie Ihre E-Mail aussehen wird.",
+						"button": "Test senden"
+					},
+					"warmup": {
+						"title": "IP-Warmup-Status",
+						"subtitle": "Ihre Sendekapazität basierend auf dem Aufwärmen der IP-Reputation",
+						"graduatedTitle": "Vollständig aufgewärmt",
+						"graduatedDescription": "Ihre IPs sind vollständig aufgewärmt. Kampagnen werden mit voller Geschwindigkeit versendet.",
+						"progress": "Warmup-Fortschritt",
+						"dayOf": "Tag {day} von ca. 30",
+						"remainingCapacity": "Heute verbleibende Kapazität",
+						"remainingOfCap": "{remaining} von {cap} E-Mails",
+						"estimatedDays": "Geschätzte Sendedauer: ca. 1 Tag | Geschätzte Sendedauer: ca. {days} Tage",
+						"estimateDetail": "Diese Kampagne hat {count} Empfänger. {message}"
+					},
+					"actions": {
+						"saveDraft": "Entwurf speichern",
+						"schedule": "Planen",
+						"reschedule": "Neu planen",
+						"sendNow": "Jetzt senden"
+					},
+					"sendConfirm": {
+						"title": "Kampagne jetzt senden?",
+						"description": "Damit wird sofort an {count} Empfänger gesendet; das lässt sich nicht rückgängig machen."
+					}
+				},
+				"report": {
+					"pageTitle": "Kampagnenbericht — Owlat",
+					"duplicateOperation": "Kampagne duplizieren",
+					"declareWinnerOperation": "A/B-Test-Gewinner festlegen",
+					"toasts": {
+						"duplicated": "Kampagne erfolgreich dupliziert",
+						"winnerDeclared": "Variante {variant} wurde als Gewinner festgelegt!"
+					},
+					"errorTitle": "Dieser Bericht konnte nicht geladen werden",
+					"loadingLabel": "Bericht wird geladen …",
+					"notFoundTitle": "Kampagne nicht gefunden",
+					"notFoundDescription": "Diese Kampagne wurde möglicherweise gelöscht oder Sie haben keinen Zugriff darauf.",
+					"backToCampaigns": "Zurück zu den Kampagnen",
+					"sentAt": "Gesendet {date}",
+					"recipients": "{count} Empfänger",
+					"duplicating": "Wird dupliziert …",
+					"sentBadge": "Versendet",
+					"archive": {
+						"title": "Öffentliches Archiv",
+						"copyLink": "Link kopieren"
+					},
+					"tiles": {
+						"delivered": "Zugestellt",
+						"opened": "Geöffnet",
+						"clicked": "Geklickt",
+						"bounced": "Unzustellbar"
+					},
+					"comparison": {
+						"changeVsPrevious": "Veränderung gegenüber Ihrem letzten Versand · {name}",
+						"changeVsPreviousAb": "Veränderung gegenüber Ihrem letzten A/B-Versand · {name}",
+						"noComparable": "Es gibt noch keinen vergleichbaren früheren Versand."
+					},
+					"openRate": "Öffnungsrate",
+					"openedOfDelivered": "{opened} von {delivered} zugestellten geöffnet",
+					"clickRate": "Klickrate",
+					"clickedOfDelivered": "{clicked} von {delivered} zugestellten haben einen Link geklickt",
+					"timeline": {
+						"title": "Öffnungen im Zeitverlauf",
+						"window": "Erste 48 Stunden",
+						"emptyTitle": "Noch keine Öffnungen erfasst",
+						"emptyDescription": "Öffnungen erscheinen hier, sobald Empfänger Ihre E-Mail ansehen.",
+						"chartLabel": "Öffnungen in den ersten 48 Stunden"
+					},
+					"heatmap": {
+						"title": "Heatmap der Linkklicks",
+						"subtitle": "Visuelle Darstellung der Linkinteraktionen"
+					},
+					"tabs": {
+						"opened": "Geöffnet ({count})",
+						"clicked": "Geklickt ({count})"
+					},
+					"openedEmpty": "Bisher hat kein Kontakt diese E-Mail geöffnet",
+					"clickedEmpty": "Bisher hat kein Kontakt Links in dieser E-Mail geklickt",
+					"noEmail": "Keine E-Mail",
+					"opensCount": "{count} Öffnungen",
+					"viewSendDetails": "Versanddetails ansehen",
+					"pagination": {
+						"previous": "Zurück",
+						"next": "Weiter",
+						"range": "{from}-{to} von {total}"
+					},
+					"linksCount": "1 Link | {count} Links",
+					"moreLinks": "+{count} weitere Links"
+				},
+				"sends": {
+					"detail": {
+						"pageTitle": "Versanddetails — Owlat",
+						"errorTitle": "Versanddetails konnten nicht geladen werden",
+						"loadingLabel": "Versanddetails werden geladen …",
+						"notFoundTitle": "Versand nicht gefunden",
+						"notFoundDescription": "Dieser E-Mail-Versand wurde möglicherweise gelöscht oder Sie haben keinen Zugriff darauf.",
+						"backToReport": "Zurück zum Kampagnenbericht",
+						"variant": "Variante {variant}"
+					}
+				}
+			}
+		},
+		"chat": {
+			"index": {
+				"pageTitle": "Chat — Owlat",
+				"emptyTitle": "Team-Chat",
+				"emptyDescription": "Wählen Sie einen Kanal oder eine Direktnachricht in der Seitenleiste oder starten Sie etwas Neues.",
+				"browseChannels": "Kanäle durchsuchen",
+				"newChannel": "Neuer Kanal"
+			},
+			"detail": {
+				"pageTitle": "Chat — Owlat",
+				"pageTitleForRoom": "{room} — Chat — Owlat",
+				"unavailableTitle": "Raum nicht verfügbar",
+				"unavailableDescription": "Dieser Raum wurde möglicherweise archiviert oder Sie haben keinen Zugriff mehr.",
+				"backToChat": "Zurück zum Chat",
+				"previewNotice": "Sie sehen eine Vorschau dieses Kanals. Treten Sie bei, um Nachrichten zu senden.",
+				"join": "Beitreten",
+				"loadEarlier": "Ältere Nachrichten laden",
+				"archiveConfirm": {
+					"title": "Kanal archivieren?",
+					"description": "Durch das Archivieren wird dieser Kanal aus der Seitenleiste ausgeblendet. Eine Administration kann ihn später über eine Wiederherstellungsansicht reaktivieren.",
+					"confirm": "Kanal archivieren"
+				}
+			}
+		},
+		"files": {
+			"index": {
+				"pageTitle": "Dateien — Owlat",
+				"title": "Dateien",
+				"subtitle": "Verwalten Sie Dokumente, Anhänge und KI-generierte Dateien.",
+				"searchPlaceholder": "Dateien suchen …",
+				"sources": {
+					"all": "Alle Quellen",
+					"uploads": "Uploads",
+					"emailAttachments": "E-Mail-Anhänge",
+					"aiGenerated": "KI-generiert"
+				},
+				"gridView": "Rasteransicht",
+				"listView": "Listenansicht",
+				"errorTitle": "Dateien konnten nicht geladen werden",
+				"loadingLabel": "Dateien werden geladen …",
+				"empty": {
+					"noMatches": "Keine Dateien passen zu Ihrer Suche",
+					"noFiles": "Noch keine Dateien",
+					"adjustSearch": "Passen Sie Ihre Suchbegriffe an.",
+					"uploadFirst": "Laden Sie Ihre erste Datei hoch, um zu beginnen.",
+					"waitForAdmin": "Dateien erscheinen hier, sobald eine Administration sie hochlädt."
+				},
+				"uploadFile": "Datei hochladen",
+				"columns": {
+					"type": "Typ",
+					"size": "Größe",
+					"source": "Quelle",
+					"date": "Datum"
+				},
+				"size": {
+					"bytes": "{size} B",
+					"kilobytes": "{size} KB",
+					"megabytes": "{size} MB"
+				},
+				"sourceBadge": {
+					"upload": "Upload",
+					"email": "E-Mail",
+					"ai": "KI"
+				},
+				"loadMore": "Mehr laden"
+			},
+			"detail": {
+				"pageTitle": "Dateidetails — Owlat",
+				"updateOperation": "Datei aktualisieren",
+				"deleteOperation": "Datei löschen",
+				"toasts": {
+					"tagsUpdated": "Tags aktualisiert",
+					"titleUpdated": "Titel aktualisiert",
+					"contactsUpdated": "Verknüpfte Kontakte aktualisiert",
+					"threadUpdated": "Verknüpfte Unterhaltung aktualisiert",
+					"fileDeleted": "Datei gelöscht"
+				},
+				"source": {
+					"upload": "Manueller Upload",
+					"emailAttachment": "E-Mail-Anhang",
+					"aiGenerated": "KI-generiert"
+				},
+				"backToFiles": "Zurück zu den Dateien",
+				"loading": "Datei wird geladen …",
+				"notFound": "Datei nicht gefunden",
+				"returnToFiles": "Zurück zu den Dateien",
+				"titlePlaceholder": "Dateititel …",
+				"saveTitle": "Titel speichern",
+				"cancelEditingTitle": "Titelbearbeitung abbrechen",
+				"newVersion": "Neue Version",
+				"aiSummary": "KI-Zusammenfassung",
+				"extractedText": "Extrahierter Text",
+				"versionHistory": "Versionsverlauf",
+				"details": "Details",
+				"mimeType": "MIME-Typ",
+				"fileSize": "Dateigröße",
+				"created": "Erstellt",
+				"sourceLabel": "Quelle",
+				"tags": "Tags",
+				"tagsPlaceholder": "tag1, tag2, tag3 …",
+				"noTags": "Keine Tags",
+				"autoDetected": "Automatisch erkannt",
+				"linkedContacts": "Verknüpfte Kontakte",
+				"editLinkedContacts": "Verknüpfte Kontakte bearbeiten",
+				"noLinkedContacts": "Keine verknüpften Kontakte",
+				"linkedConversation": "Verknüpfte Unterhaltung",
+				"editLinkedConversation": "Verknüpfte Unterhaltung bearbeiten",
+				"noLinkedConversation": "Keine verknüpfte Unterhaltung",
+				"deleteDialog": {
+					"title": "Datei löschen",
+					"description": "Damit werden diese Datei und ihr gesamter Versionsverlauf dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden."
+				},
+				"deleting": "Wird gelöscht …"
+			}
+		}
+	}
+}

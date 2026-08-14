@@ -7,7 +7,9 @@ import {
 	type EmailBuilderConfig,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
-useHead({ title: 'Edit Email Block — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.send.blocks.detail.edit.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -28,7 +30,7 @@ const { data: block, isLoading: blockLoading } = useConvexQuery(api.emailBlocks.
 
 // Mutations
 const { run: updateBlock } = useBackendOperation(api.emailBlocks.blocks.update, {
-	label: 'Save block',
+	label: () => t('dashboard.send.blocks.detail.edit.saveOperation'),
 });
 
 // Fetch organization settings for email theme
@@ -41,11 +43,19 @@ const { data: contactProperties } = useOrganizationQuery(
 );
 
 // Built-in contact variables (always available)
-const builtInVariables: Variable[] = [
-	{ key: 'email', label: 'Email', isBuiltIn: true },
-	{ key: 'firstName', label: 'First Name', isBuiltIn: true },
-	{ key: 'lastName', label: 'Last Name', isBuiltIn: true },
-];
+const builtInVariables = computed<Variable[]>(() => [
+	{ key: 'email', label: t('dashboard.send.blocks.detail.edit.variables.email'), isBuiltIn: true },
+	{
+		key: 'firstName',
+		label: t('dashboard.send.blocks.detail.edit.variables.firstName'),
+		isBuiltIn: true,
+	},
+	{
+		key: 'lastName',
+		label: t('dashboard.send.blocks.detail.edit.variables.lastName'),
+		isBuiltIn: true,
+	},
+]);
 
 // Combine built-in and custom contact properties
 const variables = computed<Variable[]>(() => {
@@ -57,7 +67,7 @@ const variables = computed<Variable[]>(() => {
 			isBuiltIn: false,
 		}));
 
-	return [...builtInVariables, ...customVars];
+	return [...builtInVariables.value, ...customVars];
 });
 
 // Page-owned editor state.
@@ -126,7 +136,7 @@ const {
 	},
 	save: async (ctx) => {
 		if (ctx.blocks.value.length === 0) {
-			showToast('Add at least one block before saving', 'error');
+			showToast(t('dashboard.send.blocks.detail.edit.emptyBlockError'), 'error');
 			throw new Error('Cannot save an empty block');
 		}
 		// Save in multi-block format. The operation module toasts any categorized
@@ -144,7 +154,7 @@ const {
 			}),
 		});
 		if (result === undefined) throw new Error('Save failed');
-		showToast('Block saved successfully');
+		showToast(t('dashboard.send.blocks.detail.edit.savedToast'));
 	},
 });
 
@@ -181,7 +191,9 @@ const handleSettings = () => {
 		<div v-if="blockLoading" class="h-full flex items-center justify-center bg-bg-deep">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading block...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('dashboard.send.blocks.detail.edit.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -189,16 +201,24 @@ const handleSettings = () => {
 		<div v-else-if="!block" class="h-full flex items-center justify-center bg-bg-deep">
 			<div class="text-center">
 				<Icon name="lucide:alert-circle" class="w-12 h-12 text-error mx-auto mb-4" />
-				<h2 class="text-xl font-semibold text-text-primary mb-2">Block not found</h2>
-				<p class="text-text-secondary mb-6">This saved block doesn't exist or has been deleted.</p>
-				<UiButton @click="handleBack">Back to Blocks</UiButton>
+				<h2 class="text-xl font-semibold text-text-primary mb-2">
+					{{ t('dashboard.send.blocks.detail.edit.notFoundTitle') }}
+				</h2>
+				<p class="text-text-secondary mb-6">
+					{{ t('dashboard.send.blocks.detail.edit.notFoundBody') }}
+				</p>
+				<UiButton @click="handleBack">
+					{{ t('dashboard.send.blocks.detail.edit.backToBlocks') }}
+				</UiButton>
 			</div>
 		</div>
 
 		<!-- Too narrow for the canvas — an honest gate beats a broken editor. -->
 		<EmailBuilderViewportGate v-else-if="!builderFits">
 			<template #action>
-				<UiButton variant="secondary" @click="handleBack">Back to Blocks</UiButton>
+				<UiButton variant="secondary" @click="handleBack">
+					{{ t('dashboard.send.blocks.detail.edit.backToBlocks') }}
+				</UiButton>
 			</template>
 		</EmailBuilderViewportGate>
 
@@ -225,23 +245,36 @@ const handleSettings = () => {
 		/>
 
 		<!-- Block Settings Modal -->
-		<UiModal v-model:open="showSettingsModal" title="Block Settings" size="md">
+		<UiModal
+			v-model:open="showSettingsModal"
+			:title="t('dashboard.send.blocks.detail.edit.settingsTitle')"
+			size="md"
+		>
 			<div class="space-y-4">
 				<!-- Name Field -->
-				<UiInput v-model="name" label="Name" placeholder="Block name" required />
+				<UiInput
+					v-model="name"
+					:label="t('common.name')"
+					:placeholder="t('dashboard.send.blocks.detail.edit.namePlaceholder')"
+					required
+				/>
 
 				<!-- Description Field -->
 				<UiTextarea
 					v-model="description"
-					label="Description"
-					placeholder="Brief description of the block..."
+					:label="t('common.description')"
+					:placeholder="t('dashboard.send.blocks.detail.edit.descriptionPlaceholder')"
 					:rows="2"
 				/>
 			</div>
 
 			<template #footer>
-				<UiButton variant="secondary" @click="showSettingsModal = false">Cancel</UiButton>
-				<UiButton variant="primary" @click="showSettingsModal = false">Done</UiButton>
+				<UiButton variant="secondary" @click="showSettingsModal = false">
+					{{ t('common.cancel') }}
+				</UiButton>
+				<UiButton variant="primary" @click="showSettingsModal = false">
+					{{ t('common.done') }}
+				</UiButton>
 			</template>
 		</UiModal>
 
@@ -258,7 +291,7 @@ const handleSettings = () => {
 			v-if="hasActiveOrganization"
 			v-model:open="showTestEmailModal"
 			:html="testEmailHtml"
-			:subject="name || 'Block Preview'"
+			:subject="name || t('dashboard.send.blocks.detail.edit.previewSubject')"
 			:variables="variables"
 		/>
 	</div>

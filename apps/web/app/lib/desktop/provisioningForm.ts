@@ -19,12 +19,19 @@ export const MIN_ADMIN_PASSWORD_LENGTH = 12;
 
 export type PasswordStrength = 'empty' | 'weak' | 'fair' | 'strong';
 
+/**
+ * A message the form translates: this module is module scope and never calls
+ * `useI18n`, so its copy travels as an i18n key — with its interpolation
+ * parameters when it has any.
+ */
+export type ProvisioningMessage = string | { key: string; params?: Record<string, unknown> };
+
 export interface PasswordAssessment {
 	length: number;
 	meetsMinLength: boolean;
 	strength: PasswordStrength;
-	/** Short human label for the strength meter. */
-	label: string;
+	/** Short human label for the strength meter (i18n key). */
+	label: ProvisioningMessage;
 	/** Filled meter segments, 0–4. */
 	score: number;
 }
@@ -39,7 +46,13 @@ export function assessPassword(password: string): PasswordAssessment {
 	const length = password.length;
 	const meetsMinLength = length >= MIN_ADMIN_PASSWORD_LENGTH;
 	if (length === 0) {
-		return { length, meetsMinLength: false, strength: 'empty', label: 'Enter a password', score: 0 };
+		return {
+			length,
+			meetsMinLength: false,
+			strength: 'empty',
+			label: 'shared.desktop.provisioningForm.password.enter',
+			score: 0,
+		};
 	}
 	let variety = 0;
 	if (/[a-z]/.test(password)) variety++;
@@ -47,20 +60,48 @@ export function assessPassword(password: string): PasswordAssessment {
 	if (/\d/.test(password)) variety++;
 	if (/[^A-Za-z0-9]/.test(password)) variety++;
 	if (!meetsMinLength) {
-		return { length, meetsMinLength, strength: 'weak', label: `Too short (${length}/${MIN_ADMIN_PASSWORD_LENGTH})`, score: 1 };
+		return {
+			length,
+			meetsMinLength,
+			strength: 'weak',
+			label: {
+				key: 'shared.desktop.provisioningForm.password.tooShort',
+				params: { length, min: MIN_ADMIN_PASSWORD_LENGTH },
+			},
+			score: 1,
+		};
 	}
 	if (length >= 16 && variety >= 3) {
-		return { length, meetsMinLength, strength: 'strong', label: 'Strong', score: 4 };
+		return {
+			length,
+			meetsMinLength,
+			strength: 'strong',
+			label: 'shared.desktop.provisioningForm.password.strong',
+			score: 4,
+		};
 	}
 	if (length >= 14 || variety >= 3) {
-		return { length, meetsMinLength, strength: 'fair', label: 'Fair', score: 3 };
+		return {
+			length,
+			meetsMinLength,
+			strength: 'fair',
+			label: 'shared.desktop.provisioningForm.password.fair',
+			score: 3,
+		};
 	}
-	return { length, meetsMinLength, strength: 'fair', label: 'OK', score: 2 };
+	return {
+		length,
+		meetsMinLength,
+		strength: 'fair',
+		label: 'shared.desktop.provisioningForm.password.ok',
+		score: 2,
+	};
 }
 
 export interface AdminPasswordCheck {
 	ok: boolean;
-	error: string | null;
+	/** i18n key (with params where the message interpolates), or null. */
+	error: ProvisioningMessage | null;
 }
 
 /**
@@ -70,18 +111,24 @@ export interface AdminPasswordCheck {
  */
 export function validateAdminPassword(password: string, confirm: string): AdminPasswordCheck {
 	if (password.length < MIN_ADMIN_PASSWORD_LENGTH) {
-		return { ok: false, error: `Admin password must be at least ${MIN_ADMIN_PASSWORD_LENGTH} characters.` };
+		return {
+			ok: false,
+			error: {
+				key: 'shared.desktop.provisioningForm.errors.passwordTooShort',
+				params: { min: MIN_ADMIN_PASSWORD_LENGTH },
+			},
+		};
 	}
 	if (password !== confirm) {
-		return { ok: false, error: 'The two passwords do not match.' };
+		return { ok: false, error: 'shared.desktop.provisioningForm.errors.passwordMismatch' };
 	}
 	return { ok: true, error: null };
 }
 
 // ---- DNS records + server-IP resolution ------------------------------------
 
-/** Shown in the A-record column when no real server IP is known yet. */
-export const SERVER_IP_PLACEHOLDER = "your server's public IP";
+/** Shown in the A-record column when no real server IP is known yet (i18n key). */
+export const SERVER_IP_PLACEHOLDER = 'shared.desktop.provisioningForm.serverIpPlaceholder';
 
 const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
@@ -161,7 +208,7 @@ export interface DnsRecordRow {
 	value: string;
 	/** True when `value` is a placeholder (no real IP yet) — copy must be disabled. */
 	placeholder?: boolean;
-	/** Optional inline note (PTR reminder, deliverability follow-up). */
+	/** Optional inline note (PTR reminder, deliverability follow-up) — an i18n key. */
 	note?: string;
 }
 
@@ -189,10 +236,26 @@ export function buildDnsRecords({ hosts, withMta, serverIp }: DnsRecordsInput): 
 	];
 	if (withMta) {
 		rows.push(
-			{ name: hosts.mail, type: 'A', value: target, placeholder, note: 'Also set reverse DNS (PTR) for this IP at your host.' },
+			{
+				name: hosts.mail,
+				type: 'A',
+				value: target,
+				placeholder,
+				note: 'shared.desktop.provisioningForm.dnsNotes.ptr',
+			},
 			{ name: hosts.bounce, type: 'MX', value: hosts.mail },
-			{ name: hosts.bounce, type: 'TXT', value: `v=spf1 a:${hosts.mail} -all`, note: 'SPF — starter value; confirm in Settings → Domains.' },
-			{ name: `_dmarc.${hosts.bounce}`, type: 'TXT', value: 'v=DMARC1; p=none;', note: 'DMARC — starter value; tighten after monitoring.' },
+			{
+				name: hosts.bounce,
+				type: 'TXT',
+				value: `v=spf1 a:${hosts.mail} -all`,
+				note: 'shared.desktop.provisioningForm.dnsNotes.spf',
+			},
+			{
+				name: `_dmarc.${hosts.bounce}`,
+				type: 'TXT',
+				value: 'v=DMARC1; p=none;',
+				note: 'shared.desktop.provisioningForm.dnsNotes.dmarc',
+			},
 		);
 	}
 	return rows;

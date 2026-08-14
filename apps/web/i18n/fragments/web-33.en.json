@@ -1,0 +1,418 @@
+{
+	"dashboard": {
+		"automations": {
+			"detail": {
+				"index": {
+					"pageTitle": "Automation Details — Owlat",
+					"loading": "Loading automation...",
+					"notFoundTitle": "Automation not found",
+					"notFoundDescription": "This automation may have been deleted or you don't have access to it.",
+					"backToAutomations": "Back to Automations",
+					"createdAt": "Created {date}",
+					"editAutomation": "Edit Automation",
+					"completionRate": "Completion Rate",
+					"completionRateLabel": "Automation completion rate",
+					"completedOfEntered": "{completed} of {total} contacts completed all steps",
+					"stats": {
+						"contactsEntered": "Contacts Entered",
+						"completed": "Completed",
+						"emailsSent": "Emails Sent"
+					},
+					"funnel": {
+						"title": "Step Funnel",
+						"emptyTitle": "No steps configured",
+						"emptyDescription": "Add steps to your automation to see funnel analytics",
+						"configureSteps": "Configure Steps",
+						"trigger": "Trigger",
+						"entered": "{count} entered",
+						"step": "Step {number}",
+						"stepSummary": "{label} · {completed} completed",
+						"pending": "{count} pending",
+						"executing": "{count} executing",
+						"failed": "{count} failed"
+					},
+					"runs": {
+						"title": "Contacts in Automation",
+						"inProgress": "In Progress",
+						"completed": "Completed",
+						"cancelled": "Cancelled",
+						"emptyTitle": "No contacts in this automation yet",
+						"emptyDescription": "Contacts will appear here when the automation is triggered",
+						"noEmail": "No email",
+						"stepAndTime": "Step {number} · {time}",
+						"viewContact": "View contact",
+						"previous": "Previous",
+						"next": "Next",
+						"range": "{from}–{to}"
+					}
+				}
+			}
+		},
+		"campaigns": {
+			"index": {
+				"pageTitle": "Campaigns — Owlat",
+				"title": "Campaigns",
+				"subtitle": "Everything you've sent and everything waiting on you, in one place.",
+				"newCampaign": "New campaign",
+				"searchPlaceholder": "Search campaigns…",
+				"pills": {
+					"attention": "Needs attention",
+					"drafts": "Drafts",
+					"scheduled": "Scheduled",
+					"sent": "Sent"
+				},
+				"errorTitle": "Couldn't load campaigns",
+				"errorMessage": "We hit an error loading your campaigns. Reload the page to try again.",
+				"attentionEmpty": {
+					"title": "Nothing needs you.",
+					"description": "No campaigns are waiting on a decision right now."
+				},
+				"searchEmpty": {
+					"title": "No results found",
+					"description": "No campaigns match \"{query}\". Try a different search term.",
+					"clear": "Clear search"
+				},
+				"listEmpty": {
+					"title": "No campaigns here yet",
+					"description": "Create your first campaign to start reaching your audience."
+				},
+				"loadMore": "Load more",
+				"allLoaded": "All campaigns loaded",
+				"duplicateOperation": "Duplicate campaign",
+				"deleteOperation": "Delete campaign",
+				"toasts": {
+					"duplicated": "Campaign duplicated",
+					"deleted": "Campaign deleted"
+				},
+				"deleteDialog": {
+					"title": "Delete campaign",
+					"confirmQuestion": "Are you sure you want to delete {name}?",
+					"description": "This action cannot be undone. The campaign and its data will be permanently deleted.",
+					"deleting": "Deleting…",
+					"confirm": "Delete campaign"
+				}
+			},
+			"new": {
+				"pageTitle": "Create Campaign — Owlat",
+				"title": "Create Campaign",
+				"subtitle": "Set up your email campaign",
+				"steps": {
+					"setup": "Setup",
+					"content": "Content",
+					"review": "Review"
+				},
+				"audience": {
+					"notConfigured": "Not configured",
+					"topic": "Topic: {name}",
+					"segment": "Segment: {name}"
+				}
+			},
+			"detail": {
+				"edit": {
+					"pageTitle": "Edit Campaign — Owlat",
+					"title": "Edit Campaign",
+					"titleScheduled": "Edit Scheduled Campaign",
+					"loadingName": "Loading...",
+					"badges": {
+						"scheduled": "Scheduled",
+						"draft": "Draft",
+						"underReview": "Under Review"
+					},
+					"errorTitle": "Couldn't load this campaign",
+					"loadingLabel": "Loading campaign...",
+					"notFoundTitle": "Campaign not found",
+					"notFoundDescription": "The campaign you're looking for doesn't exist or you don't have access to it.",
+					"backToCampaigns": "Back to Campaigns",
+					"cannotEditTitle": "Cannot edit this campaign",
+					"cannotEditDescription": "This campaign is {status} and cannot be edited.",
+					"underReview": {
+						"title": "Campaign Under Review",
+						"description": "This campaign has been flagged by our content scanner and is pending review by a platform administrator. You will be able to send it once it has been approved.",
+						"issuesTitle": "Content Issues Detected"
+					},
+					"contentBlocked": {
+						"title": "Content Blocked",
+						"description": "Your previous send attempt was blocked by our content scanner. Please update your content and try again."
+					},
+					"scheduledNotice": {
+						"title": "Campaign Scheduled",
+						"description": "This campaign is scheduled to send on {date}. You can reschedule it, send it now, or cancel it.",
+						"unschedule": "Unschedule to Edit",
+						"cancelCampaign": "Cancel Campaign"
+					},
+					"details": {
+						"title": "Campaign Details",
+						"campaignName": "Campaign Name",
+						"campaignNamePlaceholder": "e.g., Summer Newsletter 2026",
+						"fromName": "From Name",
+						"fromNamePlaceholder": "e.g., John from Acme Inc",
+						"fromEmail": "From Email",
+						"fromEmailPlaceholder": "e.g., hello{'@'}acme.com",
+						"replyTo": "Reply-to Email",
+						"optionalSuffix": "(optional)",
+						"replyToPlaceholder": "e.g., support{'@'}acme.com"
+					},
+					"audience": {
+						"title": "Audience",
+						"topicTitle": "Specific Topic",
+						"topicDescription": "Send to contacts subscribed to a specific topic.",
+						"selectTopic": "Select a topic...",
+						"topicOption": "{name} ({count} contacts)",
+						"segmentTitle": "Saved Segment",
+						"segmentDescription": "Target contacts matching specific criteria.",
+						"selectSegment": "Select a segment...",
+						"eligibleForTopic": "eligible recipients for this topic",
+						"eligible": "eligible recipients",
+						"ineligibleTitle": "Some subscribers won't receive this campaign",
+						"ineligibleDescription": "{excluded} of {total} contacts in this topic are not eligible (no email address, unsubscribed/suppressed, or double opt-in not completed) and will be excluded."
+					},
+					"content": {
+						"title": "Email Content",
+						"template": "Email Template",
+						"noSubject": "No subject",
+						"editEmail": "Edit Email",
+						"noTemplate": "No template selected",
+						"linkedEmailNote": "This campaign is linked to one marketing email. Edit the linked email in the builder.",
+						"subject": "Email Subject",
+						"subjectPlaceholder": "e.g., Your weekly newsletter is here!"
+					},
+					"archive": {
+						"title": "Public Archive",
+						"description": "Add a \"View in browser\" link at the top of sent emails and create a public archive page.",
+						"switchLabel": "Public archive"
+					},
+					"schedule": {
+						"title": "Schedule Campaign",
+						"retitle": "Reschedule Campaign",
+						"date": "Date",
+						"time": "Time",
+						"recipientTimezone": "Send at recipient's local time",
+						"recipientTimezoneHint": "Emails will be sent at {time} in each contact's timezone. Contacts without a timezone will receive the email at your selected time.",
+						"theScheduledTime": "the scheduled time",
+						"willBeSentAt": "Campaign will be sent at:",
+						"inRecipientTimezone": "{time} in each recipient's timezone",
+						"timezoneExamples": "For example: {time} ET, {time} PT, {time} GMT, etc.",
+						"willBeSent": "Campaign will be sent:"
+					},
+					"test": {
+						"title": "Send Test Email",
+						"description": "Preview how your email will look.",
+						"button": "Send Test"
+					},
+					"warmup": {
+						"title": "IP Warmup Status",
+						"subtitle": "Your sending capacity based on IP reputation warming",
+						"graduatedTitle": "Fully Warmed",
+						"graduatedDescription": "Your IPs are fully warmed. Campaigns will send at full speed.",
+						"progress": "Warmup progress",
+						"dayOf": "Day {day} of ~30",
+						"remainingCapacity": "Today's remaining capacity",
+						"remainingOfCap": "{remaining} of {cap} emails",
+						"estimatedDays": "Estimated send time: ~1 day | Estimated send time: ~{days} days",
+						"estimateDetail": "This campaign has {count} recipients. {message}"
+					},
+					"actions": {
+						"saveDraft": "Save Draft",
+						"schedule": "Schedule",
+						"reschedule": "Reschedule",
+						"sendNow": "Send Now"
+					},
+					"sendConfirm": {
+						"title": "Send campaign now?",
+						"description": "This sends to {count} recipient(s) immediately and can't be undone."
+					}
+				},
+				"report": {
+					"pageTitle": "Campaign Report — Owlat",
+					"duplicateOperation": "Duplicate campaign",
+					"declareWinnerOperation": "Declare A/B test winner",
+					"toasts": {
+						"duplicated": "Campaign duplicated successfully",
+						"winnerDeclared": "Variant {variant} declared as winner!"
+					},
+					"errorTitle": "Couldn't load this report",
+					"loadingLabel": "Loading report...",
+					"notFoundTitle": "Campaign not found",
+					"notFoundDescription": "This campaign may have been deleted or you don't have access to it.",
+					"backToCampaigns": "Back to Campaigns",
+					"sentAt": "Sent {date}",
+					"recipients": "{count} recipients",
+					"duplicating": "Duplicating...",
+					"sentBadge": "Sent",
+					"archive": {
+						"title": "Public Archive",
+						"copyLink": "Copy Link"
+					},
+					"tiles": {
+						"delivered": "Delivered",
+						"opened": "Opened",
+						"clicked": "Clicked",
+						"bounced": "Bounced"
+					},
+					"comparison": {
+						"changeVsPrevious": "Change vs your previous send · {name}",
+						"changeVsPreviousAb": "Change vs your previous A/B send · {name}",
+						"noComparable": "No comparable prior send to compare against yet."
+					},
+					"openRate": "Open rate",
+					"openedOfDelivered": "{opened} of {delivered} delivered opened",
+					"clickRate": "Click rate",
+					"clickedOfDelivered": "{clicked} of {delivered} delivered clicked a link",
+					"timeline": {
+						"title": "Opens over time",
+						"window": "First 48 hours",
+						"emptyTitle": "No opens recorded yet",
+						"emptyDescription": "Opens will appear here as recipients view your email.",
+						"chartLabel": "Opens over the first 48 hours"
+					},
+					"heatmap": {
+						"title": "Link click heatmap",
+						"subtitle": "Visual representation of link engagement"
+					},
+					"tabs": {
+						"opened": "Opened ({count})",
+						"clicked": "Clicked ({count})"
+					},
+					"openedEmpty": "No contacts have opened this email yet",
+					"clickedEmpty": "No contacts have clicked links in this email yet",
+					"noEmail": "No email",
+					"opensCount": "{count} opens",
+					"viewSendDetails": "View send details",
+					"pagination": {
+						"previous": "Previous",
+						"next": "Next",
+						"range": "{from}-{to} of {total}"
+					},
+					"linksCount": "1 link | {count} links",
+					"moreLinks": "+{count} more links"
+				},
+				"sends": {
+					"detail": {
+						"pageTitle": "Send Details — Owlat",
+						"errorTitle": "Couldn't load send details",
+						"loadingLabel": "Loading send details...",
+						"notFoundTitle": "Send not found",
+						"notFoundDescription": "This email send may have been deleted or you don't have access to it.",
+						"backToReport": "Back to Campaign Report",
+						"variant": "Variant {variant}"
+					}
+				}
+			}
+		},
+		"chat": {
+			"index": {
+				"pageTitle": "Chat — Owlat",
+				"emptyTitle": "Team chat",
+				"emptyDescription": "Pick a channel or DM from the sidebar, or start something new.",
+				"browseChannels": "Browse channels",
+				"newChannel": "New channel"
+			},
+			"detail": {
+				"pageTitle": "Chat — Owlat",
+				"pageTitleForRoom": "{room} — Chat — Owlat",
+				"unavailableTitle": "Room unavailable",
+				"unavailableDescription": "This room may have been archived or you no longer have access.",
+				"backToChat": "Back to chat",
+				"previewNotice": "You're previewing this channel. Join to send messages.",
+				"join": "Join",
+				"loadEarlier": "Load earlier messages",
+				"archiveConfirm": {
+					"title": "Archive channel?",
+					"description": "Archiving hides this channel from the sidebar. An admin can unarchive it later from a restore view.",
+					"confirm": "Archive channel"
+				}
+			}
+		},
+		"files": {
+			"index": {
+				"pageTitle": "Files — Owlat",
+				"title": "Files",
+				"subtitle": "Manage documents, attachments, and AI-generated files.",
+				"searchPlaceholder": "Search files...",
+				"sources": {
+					"all": "All sources",
+					"uploads": "Uploads",
+					"emailAttachments": "Email attachments",
+					"aiGenerated": "AI generated"
+				},
+				"gridView": "Grid view",
+				"listView": "List view",
+				"errorTitle": "Couldn't load files",
+				"loadingLabel": "Loading files...",
+				"empty": {
+					"noMatches": "No files match your search",
+					"noFiles": "No files yet",
+					"adjustSearch": "Try adjusting your search terms.",
+					"uploadFirst": "Upload your first file to get started.",
+					"waitForAdmin": "Files will appear here once an admin uploads them."
+				},
+				"uploadFile": "Upload a file",
+				"columns": {
+					"type": "Type",
+					"size": "Size",
+					"source": "Source",
+					"date": "Date"
+				},
+				"size": {
+					"bytes": "{size} B",
+					"kilobytes": "{size} KB",
+					"megabytes": "{size} MB"
+				},
+				"sourceBadge": {
+					"upload": "Upload",
+					"email": "Email",
+					"ai": "AI"
+				},
+				"loadMore": "Load more"
+			},
+			"detail": {
+				"pageTitle": "File Details — Owlat",
+				"updateOperation": "Update file",
+				"deleteOperation": "Delete file",
+				"toasts": {
+					"tagsUpdated": "Tags updated",
+					"titleUpdated": "Title updated",
+					"contactsUpdated": "Linked contacts updated",
+					"threadUpdated": "Linked conversation updated",
+					"fileDeleted": "File deleted"
+				},
+				"source": {
+					"upload": "Manual Upload",
+					"emailAttachment": "Email Attachment",
+					"aiGenerated": "AI Generated"
+				},
+				"backToFiles": "Back to Files",
+				"loading": "Loading file...",
+				"notFound": "File not found",
+				"returnToFiles": "Return to Files",
+				"titlePlaceholder": "File title...",
+				"saveTitle": "Save title",
+				"cancelEditingTitle": "Cancel editing title",
+				"newVersion": "New Version",
+				"aiSummary": "AI Summary",
+				"extractedText": "Extracted Text",
+				"versionHistory": "Version History",
+				"details": "Details",
+				"mimeType": "MIME Type",
+				"fileSize": "File Size",
+				"created": "Created",
+				"sourceLabel": "Source",
+				"tags": "Tags",
+				"tagsPlaceholder": "tag1, tag2, tag3...",
+				"noTags": "No tags",
+				"autoDetected": "Auto-detected",
+				"linkedContacts": "Linked Contacts",
+				"editLinkedContacts": "Edit linked contacts",
+				"noLinkedContacts": "No linked contacts",
+				"linkedConversation": "Linked Conversation",
+				"editLinkedConversation": "Edit linked conversation",
+				"noLinkedConversation": "No linked conversation",
+				"deleteDialog": {
+					"title": "Delete File",
+					"description": "This will permanently delete this file and all its version history. This action cannot be undone."
+				},
+				"deleting": "Deleting..."
+			}
+		}
+	}
+}

@@ -36,6 +36,8 @@ import { replyQueueHeadline, type ReplyQueueItem } from '~/utils/postboxReplyQue
  */
 const IS_CLIENT = typeof window !== 'undefined';
 
+const { t } = useI18n();
+
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	/** Deep-link seed (/dashboard/postbox/inbox/<id> in Today mode): open this
@@ -152,14 +154,17 @@ watch(
 function forYouDetail(item: ReplyQueueItem): string {
 	const who = item.fromName?.trim() || item.fromAddress;
 	const snippet = item.snippet?.trim();
-	return snippet ? `${who} — ${snippet}` : who;
+	return snippet
+		? t('components.postbox.postboxTodayView.forYouDetail', { who, snippet })
+		: who;
 }
 
 /** The strip's action says what happens (no jargon). */
 function forYouAction(item: ReplyQueueItem): string {
-	if (item.kind === 'followup') return 'Open';
-	if (item.draftSlot || item.clarification?.draft) return 'Review & send';
-	return 'Answer';
+	if (item.kind === 'followup') return t('common.open');
+	if (item.draftSlot || item.clarification?.draft)
+		return t('components.postbox.postboxTodayView.reviewAndSend');
+	return t('components.postbox.postboxTodayView.answer');
 }
 
 // Older mail stays one interaction away: collapsed behind the centered
@@ -208,17 +213,17 @@ function closeOverlay() {
 			<!-- Minimal header: the count + the one way out to the full UI. -->
 			<header class="flex items-center justify-between">
 				<h1 class="text-lg font-semibold text-text-primary">
-					Inbox
+					{{ t('components.postbox.postboxTodayView.inbox') }}
 					<span class="font-normal text-text-tertiary tabular-nums">({{ todayRows.length }})</span>
 				</h1>
 				<button
 					type="button"
 					class="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
 					aria-keyshortcuts="b"
-					title="Browse all folders (B)"
+					:title="t('components.postbox.postboxTodayView.browseTitle')"
 					@click="emit('browse')"
 				>
-					Browse
+					{{ t('components.postbox.postboxTodayView.browse') }}
 					<kbd
 						class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
 						aria-hidden="true"
@@ -233,11 +238,16 @@ function closeOverlay() {
 			<PostboxDailyBrief :mailbox-id="mailboxId" />
 
 			<!-- FOR YOU: what the agent queued for the owner, why in one muted line. -->
-			<section v-if="forYouCount > 0" id="postbox-for-you" ref="forYouSection" aria-label="For you">
+			<section
+				v-if="forYouCount > 0"
+				id="postbox-for-you"
+				ref="forYouSection"
+				:aria-label="t('components.postbox.postboxTodayView.forYou')"
+			>
 				<h2
 					class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary tabular-nums"
 				>
-					For you ({{ forYouCount }})
+					{{ t('components.postbox.postboxTodayView.forYouHeading', { count: forYouCount }) }}
 				</h2>
 				<ul
 					class="mt-2 divide-y divide-border-subtle rounded-lg border border-border-subtle bg-bg-surface overflow-hidden"
@@ -253,7 +263,7 @@ function closeOverlay() {
 							/>
 							<span class="flex-1 min-w-0">
 								<span class="block truncate text-sm font-semibold text-text-primary">
-									{{ replyQueueHeadline(item) }}
+									{{ t(replyQueueHeadline(item)) }}
 								</span>
 								<span class="block truncate text-xs text-text-tertiary mt-0.5">
 									{{ forYouDetail(item) }}
@@ -267,14 +277,16 @@ function closeOverlay() {
 				</ul>
 				<div v-if="forYouCount > FOR_YOU_CAP" class="mt-1.5 text-right">
 					<NuxtLink to="/dashboard/postbox/reply-queue" class="text-xs text-brand hover:underline">
-						View all {{ forYouCount }}
+						{{ t('components.postbox.postboxTodayView.viewAllCount', { count: forYouCount }) }}
 					</NuxtLink>
 				</div>
 			</section>
 
 			<!-- TODAY: the day's mail, same rows/shortcuts as the browse list. -->
-			<section id="postbox-today" aria-label="Today">
-				<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">Today</h2>
+			<section id="postbox-today" :aria-label="t('common.today')">
+				<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+					{{ t('common.today') }}
+				</h2>
 				<div
 					v-if="todayRows.length > 0"
 					class="mt-2 rounded-lg border border-border-subtle bg-bg-surface overflow-hidden"
@@ -291,15 +303,17 @@ function closeOverlay() {
 				</div>
 				<PostboxThreadListSkeleton v-else-if="isLoading" class="mt-2" />
 				<!-- Inbox zero: one quiet line; the Brief + past mail stay put. -->
-				<p v-else class="mt-3 text-sm text-text-tertiary">All clear — nothing new needs you.</p>
+				<p v-else class="mt-3 text-sm text-text-tertiary">
+					{{ t('components.postbox.postboxTodayView.allClear') }}
+				</p>
 				<p v-if="autoFiledLine" class="mt-2 text-xs text-text-tertiary">
-					{{ autoFiledLine }} ·
+					{{ t(autoFiledLine) }} ·
 					<button
 						type="button"
 						class="text-brand hover:underline focus-visible:ring-1 focus-visible:ring-brand/40 rounded outline-none"
 						@click="emit('view-auto-filed')"
 					>
-						view
+						{{ t('components.postbox.postboxTodayView.view') }}
 					</button>
 				</p>
 			</section>
@@ -312,12 +326,14 @@ function closeOverlay() {
 						class="px-3 py-2 rounded text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface focus-visible:ring-1 focus-visible:ring-brand/40 outline-none tabular-nums"
 						@click="showPast = true"
 					>
-						Show past mails ({{ olderCountLabel }})
+						{{
+							t('components.postbox.postboxTodayView.showPast', { count: olderCountLabel })
+						}}
 					</button>
 				</div>
-				<section v-else-if="showPast" aria-label="Past mails">
+				<section v-else-if="showPast" :aria-label="t('components.postbox.postboxTodayView.pastMails')">
 					<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
-						Past
+						{{ t('components.postbox.postboxTodayView.past') }}
 					</h2>
 					<div class="mt-2 rounded-lg border border-border-subtle bg-bg-surface overflow-hidden">
 						<PostboxThreadList

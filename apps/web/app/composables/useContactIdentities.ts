@@ -2,6 +2,8 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 export function useContactIdentities(contactId: Ref<Id<'contacts'>>) {
+	const { t } = useI18n();
+
 	// Fetch identities
 	const { data: identities, isLoading: identitiesLoading } = useConvexQuery(
 		api.contacts.identities.listByContact,
@@ -16,16 +18,16 @@ export function useContactIdentities(contactId: Ref<Id<'contacts'>>) {
 
 	// Mutations
 	const { run: addIdentity } = useBackendOperation(api.contacts.identities.addIdentity, {
-		label: 'Add identity',
+		label: () => t('shared.useContactIdentities.addIdentityOperation'),
 	});
 	const { run: removeIdentity } = useBackendOperation(api.contacts.identities.removeIdentity, {
-		label: 'Remove identity',
+		label: () => t('shared.useContactIdentities.removeIdentityOperation'),
 	});
 	const { run: verifyIdentity } = useBackendOperation(api.contacts.identities.verifyIdentity, {
-		label: 'Verify identity',
+		label: () => t('shared.useContactIdentities.verifyIdentityOperation'),
 	});
 	const { run: mergeContacts } = useBackendOperation(api.contacts.identities.mergeContacts, {
-		label: 'Merge contacts',
+		label: () => t('shared.useContactIdentities.mergeContactsOperation'),
 	});
 
 	// Add form state
@@ -69,14 +71,27 @@ export function useContactIdentities(contactId: Ref<Id<'contacts'>>) {
 		});
 	};
 
-	// Channel helpers
+	// Channel helpers. `label` is a message key — the identities tab renders it
+	// through `t()`, so an unmapped channel can fall back to its raw value.
 	const channelOptions = [
-		{ value: 'email', label: 'Email', icon: 'lucide:mail' },
-		{ value: 'phone', label: 'Phone', icon: 'lucide:phone' },
-		{ value: 'whatsapp', label: 'WhatsApp', icon: 'lucide:message-circle' },
-		{ value: 'twitter', label: 'Twitter/X', icon: 'lucide:twitter' },
-		{ value: 'linkedin', label: 'LinkedIn', icon: 'lucide:linkedin' },
-		{ value: 'other', label: 'Other', icon: 'lucide:link' },
+		{ value: 'email', label: 'shared.useContactIdentities.channels.email', icon: 'lucide:mail' },
+		{ value: 'phone', label: 'shared.useContactIdentities.channels.phone', icon: 'lucide:phone' },
+		{
+			value: 'whatsapp',
+			label: 'shared.useContactIdentities.channels.whatsapp',
+			icon: 'lucide:message-circle',
+		},
+		{
+			value: 'twitter',
+			label: 'shared.useContactIdentities.channels.twitter',
+			icon: 'lucide:twitter',
+		},
+		{
+			value: 'linkedin',
+			label: 'shared.useContactIdentities.channels.linkedin',
+			icon: 'lucide:linkedin',
+		},
+		{ value: 'other', label: 'shared.useContactIdentities.channels.other', icon: 'lucide:link' },
 	];
 
 	const getChannelIcon = (channel: string) => {

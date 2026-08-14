@@ -28,14 +28,17 @@ export function resolveReviewShortcut(key: string): ReviewShortcutAction | null 
 	}
 }
 
-/** Data source for the inline keyboard hint on the Review Queue page. */
+/**
+ * Data source for the inline keyboard hint on the Review Queue page. `label`
+ * is an i18n key — this module is pure, so the page runs it through `t()`.
+ */
 export const REVIEW_SHORTCUT_GROUPS: ReadonlyArray<{ keys: readonly string[]; label: string }> = [
-	{ keys: ['j', '↓'], label: 'Next' },
-	{ keys: ['k', '↑'], label: 'Previous' },
-	{ keys: ['Enter'], label: 'Open thread' },
-	{ keys: ['1–9'], label: 'Pick option' },
-	{ keys: ['a'], label: 'Approve & send' },
-	{ keys: ['e'], label: 'Edit' },
-	{ keys: ['s'], label: 'Skip' },
-	{ keys: ['x', '#'], label: 'Reject' },
+	{ keys: ['j', '↓'], label: 'shared.reviewShortcuts.labels.next' },
+	{ keys: ['k', '↑'], label: 'shared.reviewShortcuts.labels.previous' },
+	{ keys: ['Enter'], label: 'shared.reviewShortcuts.labels.openThread' },
+	{ keys: ['1–9'], label: 'shared.reviewShortcuts.labels.pickOption' },
+	{ keys: ['a'], label: 'shared.reviewShortcuts.labels.approveAndSend' },
+	{ keys: ['e'], label: 'shared.reviewShortcuts.labels.edit' },
+	{ keys: ['s'], label: 'shared.reviewShortcuts.labels.skip' },
+	{ keys: ['x', '#'], label: 'shared.reviewShortcuts.labels.reject' },
 ];

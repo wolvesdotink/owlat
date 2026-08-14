@@ -1,0 +1,99 @@
+{
+	"shared": {
+		"contactActivities": {
+			"topicSubscribed": {
+				"label": "Thema abonniert",
+				"description": "Thema abonniert",
+				"descriptionWithTopic": "{topic} abonniert"
+			},
+			"topicUnsubscribed": {
+				"label": "Von Thema abgemeldet",
+				"description": "Von Thema abgemeldet",
+				"descriptionWithTopic": "Von {topic} abgemeldet"
+			}
+		},
+		"postbox": {
+			"useDraftRevise": {
+				"failed": "Überarbeitung fehlgeschlagen — Ihr Entwurf bleibt unverändert."
+			},
+			"useMailMigration": {
+				"startOperation": "Postfachmigration starten",
+				"cancelOperation": "Postfachmigration abbrechen"
+			},
+			"usePostboxAppPasswords": {
+				"generateOperation": "App-Passwort erzeugen",
+				"revokeOperation": "App-Passwort widerrufen",
+				"revokeAllOperation": "Alle App-Passwörter widerrufen"
+			},
+			"usePostboxBulkActions": {
+				"setFlagsOperation": "Nachrichten aktualisieren",
+				"archiveOperation": "Nachrichten archivieren",
+				"trashOperation": "Nachrichten in den Papierkorb verschieben",
+				"purgeOperation": "Nachrichten löschen",
+				"moveOperation": "Nachrichten verschieben",
+				"reportSpamOperation": "Als Spam melden",
+				"notSpamOperation": "Kein Spam",
+				"undo": {
+					"archived": "Archiviert",
+					"archivedMany": "{count} Nachrichten archiviert",
+					"trashed": "In den Papierkorb verschoben",
+					"trashedMany": "{count} Nachrichten in den Papierkorb verschoben",
+					"moved": "Verschoben",
+					"movedMany": "{count} Nachrichten verschoben",
+					"spam": "Als Spam markiert",
+					"spamMany": "{count} Nachrichten als Spam markiert"
+				}
+			},
+			"usePostboxCoach": {
+				"failed": "Dieser Entwurf konnte nicht geprüft werden. Bitte versuchen Sie es erneut.",
+				"categories": {
+					"tone": "Ton",
+					"ambiguity": "Mehrdeutigkeit",
+					"clarity": "Klarheit",
+					"missingAnswer": "Fehlende Antwort"
+				}
+			},
+			"usePostboxCommandSurface": {
+				"groups": {
+					"mailbox": "Postfach",
+					"postbox": "Postbox",
+					"switchMailbox": "Postfach wechseln"
+				},
+				"items": {
+					"compose": "Neue Nachricht verfassen",
+					"replyAll": "Allen antworten",
+					"forward": "Weiterleiten",
+					"reportSpam": "Als Spam melden",
+					"blockSender": "Absender blockieren",
+					"move": "Konversation verschieben…",
+					"print": "Konversation drucken",
+					"archive": "Archiv",
+					"snoozed": "Zurückgestellt",
+					"search": "E-Mails durchsuchen",
+					"contacts": "Kontakte",
+					"switchToMailbox": "Zu {mailbox} wechseln",
+					"switchToTeamInbox": "Zu {mailbox} wechseln (Team-Postfach)",
+					"checkUpdates": "Nach Updates suchen"
+				}
+			},
+			"usePostboxCompose": {
+				"createOperation": "Entwurf erstellen",
+				"saveOperation": "Entwurf speichern",
+				"setIdentityOperation": "Absender ändern",
+				"discardOperation": "Entwurf verwerfen",
+				"sendOperation": "E-Mail senden",
+				"undoSendOperation": "Senden rückgängig machen",
+				"cancelScheduledOperation": "Geplanten Versand abbrechen"
+			},
+			"usePostboxComposeAttachments": {
+				"prepareUploadOperation": "Upload vorbereiten",
+				"attachOperation": "Datei anhängen",
+				"removeOperation": "Anhang entfernen",
+				"tooLarge": "{filename} ist zu groß (max. {max} MB).",
+				"tooManyFiles": "Sie können bis zu {count} Dateien anhängen.",
+				"totalTooLarge": "Die Anhänge überschreiten das Gesamtlimit von {max} MB.",
+				"uploadFailed": "{filename} konnte nicht hochgeladen werden."
+			}
+		}
+	}
+}

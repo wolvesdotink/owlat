@@ -6,9 +6,15 @@
  *     count as a corner badge and a tooltip/aria-label carrying the name, and
  *   - flipping `collapsed` back re-expands to the labelled rows.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import PostboxFolderList from '../PostboxFolderList.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The rows render their copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const nuxtLinkStub = {
@@ -24,15 +30,18 @@ const folders = [
 function mountList(collapsed: boolean) {
 	return mount(PostboxFolderList, {
 		props: { folders, unreadCounts: { inbox: 4 }, activeFolder: 'inbox', collapsed },
-		global: { components: { Icon: iconStub, NuxtLink: nuxtLinkStub } },
+		global: {
+			plugins: [createTestI18n()],
+			components: { Icon: iconStub, NuxtLink: nuxtLinkStub },
+		},
 	});
 }
 
 describe('PostboxFolderList', () => {
 	it('renders labelled rows with an inline unread count when expanded', () => {
 		const w = mountList(false);
-		expect(w.text()).toContain('inbox');
-		expect(w.text()).toContain('sent');
+		expect(w.text()).toContain('Inbox');
+		expect(w.text()).toContain('Sent');
 		// unread count present
 		expect(w.text()).toContain('4');
 	});
@@ -46,8 +55,8 @@ describe('PostboxFolderList', () => {
 		expect(w.text().toLowerCase()).not.toContain('sent');
 		// The name lives on the link tooltip/aria-label for hover + a11y.
 		const links = w.findAll('a');
-		expect(links[0].attributes('title')).toBe('inbox');
-		expect(links[0].attributes('aria-label')).toContain('inbox');
+		expect(links[0].attributes('title')).toBe('Inbox');
+		expect(links[0].attributes('aria-label')).toContain('Inbox');
 		expect(links[0].attributes('aria-label')).toContain('4 unread');
 		// Unread count still surfaced as a badge.
 		expect(w.text()).toContain('4');
@@ -57,7 +66,7 @@ describe('PostboxFolderList', () => {
 		const w = mountList(true);
 		expect(w.text().toLowerCase()).not.toContain('inbox');
 		await w.setProps({ collapsed: false });
-		expect(w.text()).toContain('inbox');
-		expect(w.text()).toContain('sent');
+		expect(w.text()).toContain('Inbox');
+		expect(w.text()).toContain('Sent');
 	});
 });

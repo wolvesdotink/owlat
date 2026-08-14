@@ -65,6 +65,12 @@
 				"reply": "Antworten",
 				"replyOn": "Über {channel} antworten",
 				"replyPlaceholder": "Über {channel} antworten…",
+				"status": {
+					"delivered": "zugestellt",
+					"failed": "fehlgeschlagen",
+					"queued": "in Warteschlange",
+					"read": "gelesen"
+				},
 				"subtitle": "Alle Nachrichten dieser Konversation über sämtliche Kanäle hinweg.",
 				"title": "Kanalübergreifender Verlauf"
 			},

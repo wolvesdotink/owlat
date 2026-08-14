@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import ConnectedAppRegisterModal from '../ConnectedAppRegisterModal.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const ONE_PLUGIN = [{ pluginId: 'policy-pack', capabilities: ['send:gate', 'mail:read'] }];
 
@@ -28,6 +29,9 @@ const emptyStub = {
 
 beforeEach(() => {
 	vi.stubGlobal('useHead', vi.fn());
+	// `useI18n` is an auto-import in the app; the real one resolves against the
+	// instance `global.plugins` installs.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
 function mountModal(props: Record<string, unknown> = {}, attach = false) {
@@ -43,6 +47,7 @@ function mountModal(props: Record<string, unknown> = {}, attach = false) {
 		// updates `document.activeElement`.
 		...(attach ? { attachTo: document.body } : {}),
 		global: {
+			plugins: [createTestI18n()],
 			stubs: { UiModal: modalStub, UiButton: buttonStub, UiEmptyState: emptyStub, Icon: true },
 		},
 	});

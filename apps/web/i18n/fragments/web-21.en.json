@@ -1,0 +1,165 @@
+{
+	"components": {
+		"postbox": {
+			"postboxFolderList": {
+				"roles": {
+					"inbox": "Inbox",
+					"sent": "Sent",
+					"drafts": "Drafts",
+					"trash": "Trash",
+					"spam": "Spam",
+					"archive": "Archive"
+				},
+				"unreadAriaLabel": "{name}, {count} unread"
+			},
+			"postboxFolderRail": {
+				"replyQueue": "Reply Queue",
+				"replyQueueAriaLabel": "Reply Queue, {count}",
+				"snoozed": "Snoozed",
+				"contacts": "Contacts",
+				"foldersHeading": "Folders",
+				"newFolder": "New folder",
+				"folderNamePlaceholder": "Folder name",
+				"newFolderNameAriaLabel": "New folder name",
+				"folderNameAriaLabel": "Folder name",
+				"renameFolder": "Rename folder",
+				"deleteFolder": "Delete folder",
+				"deleteFolderDescription": "Delete the folder \"{name}\"? Messages in it are relocated, not deleted.",
+				"noCustomFolders": "No custom folders",
+				"labelsHeading": "Labels",
+				"manageLabels": "Manage labels",
+				"noLabels": "No labels yet",
+				"expandSidebarTitle": "Expand sidebar (Cmd+Shift+D)",
+				"collapseSidebarTitle": "Collapse sidebar (Cmd+Shift+D)",
+				"expandSidebar": "Expand sidebar",
+				"collapseSidebar": "Collapse sidebar",
+				"collapse": "Collapse"
+			},
+			"postboxFollowUpChip": {
+				"armOperation": "Set reply reminder",
+				"cancelOperation": "Cancel reply reminder",
+				"noReplyYet": "No reply yet",
+				"noReplyYetWaitingOn": "No reply yet — waiting on {name}",
+				"dismissReminder": "Dismiss reminder",
+				"armedTitle": "You'll be reminded if nobody replies by {date}",
+				"armedChip": "Reply reminder · {date}",
+				"cancelReminder": "Cancel reminder",
+				"remindMe": "Remind me if no reply"
+			},
+			"postboxFollowUpDialog": {
+				"title": "Remind me if no reply by",
+				"confirmLabel": "Remind me",
+				"presets": {
+					"tomorrow": "Tomorrow",
+					"inThreeDays": "In 3 days",
+					"nextWeek": "Next week",
+					"morning": "9:00 AM",
+					"mondayMorning": "Mon 9:00 AM"
+				}
+			},
+			"postboxInlineReply": {
+				"replyTo": "Reply to {sender}…",
+				"replyAll": "Reply all",
+				"forward": "Forward",
+				"dialogLabel": "Inline reply"
+			},
+			"postboxInviteCard": {
+				"fallbackSummary": "Invitation",
+				"organizer": "Organizer: {name}",
+				"attendees": "· {count} attendee(s)",
+				"accept": "Accept",
+				"maybe": "Maybe",
+				"decline": "Decline",
+				"reply": {
+					"subjectAccepted": "Accepted: {summary}",
+					"subjectDeclined": "Declined: {summary}",
+					"subjectTentative": "Tentative: {summary}",
+					"bodyAccepted": "I have accepted the invitation: {summary}.",
+					"bodyDeclined": "I have declined the invitation: {summary}.",
+					"bodyTentative": "I have tentatively accepted the invitation: {summary}."
+				}
+			},
+			"postboxKeyChangeBanner": {
+				"acceptOperation": "Accept recipient key",
+				"title": "This person's sealing key changed",
+				"body": "The key Owlat uses to seal mail to {address} is different from the one you trusted before. Until you confirm the new key, messages to them are sent normally instead of sealed. Only accept it if you were expecting this change.",
+				"previousKey": "Previous key",
+				"newKey": "New key",
+				"error": "Couldn't accept the new key. It may have already been accepted by someone else — try reopening this thread.",
+				"accepting": "Accepting…",
+				"accept": "Accept new key",
+				"adminOnly": "Ask a workspace admin to review this key change before sealed mail resumes to this person."
+			},
+			"postboxLabelManager": {
+				"title": "Manage labels",
+				"newNamePlaceholder": "New label name",
+				"setColor": "Set color {color}",
+				"deleteLabel": "Delete label",
+				"empty": "No labels yet. Create one above."
+			},
+			"postboxLabelPickerDialog": {
+				"title": "Add label",
+				"empty": "No labels yet"
+			},
+			"postboxLayout": {
+				"offlineBanner": "Offline — showing recent mail from this device. Actions are paused.",
+				"openFolders": "Open folders",
+				"folderFallback": "Folder",
+				"folderRoles": {
+					"inbox": "Inbox",
+					"sent": "Sent",
+					"drafts": "Drafts",
+					"trash": "Trash",
+					"spam": "Spam",
+					"archive": "Archive",
+					"snoozed": "Snoozed"
+				},
+				"updating": "updating…",
+				"backToTodayTitle": "Back to Today (Esc)",
+				"escKey": "esc",
+				"inboxView": "Inbox view",
+				"viewModes": {
+					"flat": "Flat",
+					"conversations": "Conversations",
+					"categories": "Categories"
+				},
+				"selectMessage": "Select a message"
+			},
+			"postboxMailboxConnectForm": {
+				"testOperation": "Test mail connection",
+				"connectOperation": "Connect mailbox",
+				"connectSharedOperation": "Connect team inbox",
+				"connectSeedOperation": "Connect test mailbox",
+				"updateOperation": "Update mail credentials",
+				"updateSharedOperation": "Update team inbox credentials",
+				"missingMailboxError": "Cannot reconnect this team inbox: its mailbox is missing.",
+				"addressLabel": "{provider} address",
+				"emailPlaceholder": "you{'@'}example.com",
+				"passwordLabel": "Password",
+				"appPasswordPlaceholder": "Paste the app password",
+				"passwordPlaceholder": "App password recommended",
+				"passwordHelp": "Stored encrypted — only the sync worker can read it.",
+				"advancedSettings": "Advanced server settings",
+				"imapHost": "IMAP host",
+				"imapHostPlaceholder": "imap.example.com",
+				"imapPort": "IMAP port",
+				"smtpHost": "SMTP host",
+				"smtpHostPlaceholder": "smtp.example.com",
+				"smtpPort": "SMTP port",
+				"ssl": "SSL",
+				"username": "Username",
+				"usernamePlaceholder": "Defaults to your email address",
+				"incomingMail": "Incoming mail {status}",
+				"outgoingMail": "Outgoing mail {status}",
+				"reachable": "reachable",
+				"failed": "failed",
+				"saveCredentials": "Save credentials",
+				"connectShared": "Connect team inbox",
+				"connectSeed": "Connect test mailbox",
+				"connect": "Connect & import",
+				"testConnection": "Test connection",
+				"testNeedsPassword": "Enter the password to test the connection"
+			}
+		}
+	}
+}

@@ -1,0 +1,297 @@
+{
+	"dashboard": {
+		"preferences": {
+			"index": {
+				"pageTitle": "Preferences — Owlat",
+				"renameOperation": "Rename mailbox",
+				"deleteOperation": "Delete mailbox",
+				"reading": "Reading",
+				"autoAdvanceLabel": "After archiving, deleting or snoozing",
+				"autoAdvanceHelp": "What the reader shows once the open conversation is triaged away.",
+				"densityLabel": "Density",
+				"densityHelp": "How tightly the message list and reader are packed. Compact drops the snippet line for single-line rows.",
+				"replyDefaultLabel": "Default reply behavior",
+				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
+				"writingSuggestionsLabel": "Writing suggestions",
+				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
+				"autoSummarizeLabel": "Auto-summarize long threads",
+				"autoSummarizeHelp": "Show a one-line AI summary at the top of long conversations. Click it to expand the key points.",
+				"sendSoundLabel": "Play sound when sending",
+				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
+				"mailboxes": "Mailboxes",
+				"noMailboxes": "No mailboxes yet. Add your first account to start receiving mail.",
+				"mailboxMeta": "{displayName} · {megabytes} MB used",
+				"noDisplayName": "(no display name)",
+				"mailboxStatus": {
+					"active": "active",
+					"suspended": "suspended",
+					"deleted": "deleted"
+				},
+				"teamManage": "Team · manage",
+				"renameMailbox": "Rename mailbox",
+				"deleteMailbox": "Delete mailbox",
+				"renameIntro": "Display name for {address}. The address itself can't be changed.",
+				"displayName": "Display name",
+				"displayNamePlaceholder": "Marcel Pfeifer",
+				"displayNameHelp": "Leave blank to clear it.",
+				"deleteMailboxDescription": "Deleting \"{address}\" stops it from receiving new mail. Existing messages stay on the server but the address is removed from routing."
+			},
+			"filters": {
+				"pageTitle": "Filters — Owlat",
+				"title": "Filters",
+				"intro": "Auto-route inbound mail to folders, apply labels, mark read, or forward.",
+				"newFilter": "New filter",
+				"saveChanges": "Save changes",
+				"createFilter": "Create filter",
+				"activeFilters": "Active filters",
+				"empty": "No filters yet. Create your first one to start routing mail.",
+				"stopBadge": "Stop",
+				"stopTitle": "Stops further filters",
+				"ruleSummary": "{conditions} condition(s) · {actions} action(s)",
+				"noMailbox": "No mailbox configured.",
+				"deleteTitle": "Delete filter?",
+				"deleteDescription": "This filter will stop routing inbound mail. This action cannot be undone.",
+				"deleteConfirm": "Delete filter"
+			},
+			"forwarding": {
+				"pageTitle": "Forwarding — Owlat",
+				"createOperation": "Add forwarding rule",
+				"updateOperation": "Update forwarding rule",
+				"removeOperation": "Remove forwarding rule",
+				"title": "Forwarding",
+				"intro": "Auto-forward inbound mail to an external address. Mailing-list and auto-submitted mail is skipped to prevent loops.",
+				"forwardTo": "Forward to",
+				"addressPlaceholder": "archive{'@'}example.com",
+				"keepLocalCopy": "Keep local copy",
+				"activeRules": "Active rules",
+				"empty": "No forwarding rules yet.",
+				"forwardOnly": "Forward only (no inbox copy)",
+				"noMailbox": "No mailbox configured.",
+				"removeTitle": "Remove forwarding rule?",
+				"removeDescription": "Inbound mail will no longer be forwarded to this address.",
+				"removeConfirm": "Remove rule"
+			},
+			"signatures": {
+				"pageTitle": "Signatures — Owlat",
+				"title": "Signatures",
+				"intro": "Default signature is appended to new drafts. Pick a different one per message via the composer toolbar.",
+				"newSignature": "New signature",
+				"namePlaceholder": "Signature name (e.g. Work)",
+				"bodyPlaceholder": "— Marcel",
+				"useAsDefault": "Use as the default signature for new drafts",
+				"saveChanges": "Save changes",
+				"yourSignatures": "Your signatures",
+				"empty": "No signatures yet.",
+				"makeDefault": "Make default",
+				"noMailbox": "No mailbox configured.",
+				"deleteTitle": "Delete signature?",
+				"deleteDescription": "This signature will be removed. This action cannot be undone.",
+				"deleteConfirm": "Delete signature"
+			},
+			"snippets": {
+				"pageTitle": "Snippets — Owlat",
+				"title": "Snippets",
+				"intro": "Canned responses you can drop into a message. In the composer, type {slashKey} at the start of a line to pick one. Use {firstNameToken} to greet the recipient by name.",
+				"newSnippet": "New snippet",
+				"namePlaceholder": "Snippet name (e.g. Thanks)",
+				"shortcutPlaceholder": "shortcut",
+				"bodyPlaceholder": "Hi {firstName}, thanks for reaching out…",
+				"saveChanges": "Save changes",
+				"yourSnippets": "Your snippets",
+				"empty": "No snippets yet.",
+				"noMailbox": "No mailbox configured.",
+				"deleteTitle": "Delete snippet?",
+				"deleteDescription": "This snippet will be removed. This action cannot be undone.",
+				"deleteConfirm": "Delete snippet"
+			},
+			"vacation": {
+				"pageTitle": "Vacation auto-reply — Owlat",
+				"saveOperation": "Save auto-reply",
+				"turnOffOperation": "Turn off auto-reply",
+				"defaultSubject": "Out of office",
+				"defaultBody": "I'm away from email and will respond when I return.",
+				"title": "Vacation auto-reply",
+				"intro": "Reply once per sender per N days while you're away. Mailing-list and auto-submitted mail is silently skipped (RFC 3834).",
+				"enabledLabel": "Auto-reply enabled",
+				"subject": "Subject",
+				"message": "Message",
+				"start": "Start (optional)",
+				"end": "End (optional)",
+				"replyInterval": "Reply once per N days",
+				"turnOff": "Turn off",
+				"noMailbox": "No mailbox configured.",
+				"turnOffTitle": "Turn off auto-reply?",
+				"turnOffDescription": "The vacation auto-responder will stop replying to incoming mail."
+			},
+			"writingVoice": {
+				"pageTitle": "Writing voice — Owlat",
+				"title": "Writing voice",
+				"intro": "Owlat can learn how you write from your sent mail so AI reply suggestions sound like you. This is advisory only — nothing is ever sent automatically.",
+				"aiDisabled": "AI features are disabled for this workspace, so there is no writing voice to personalize.",
+				"noMailboxes": "No mailboxes yet. Add an account and send a few messages first."
+			},
+			"members": {
+				"detail": {
+					"pageTitle": "Team inbox members — Owlat",
+					"title": "Team inbox members",
+					"intro": "Who can read and send from {address}.",
+					"notFoundTitle": "This team inbox isn't available",
+					"notFoundBody": "It doesn't exist, or you don't have access to manage its members.",
+					"backToPreferences": "Back to Preferences"
+				}
+			}
+		},
+		"send": {
+			"index": {
+				"pageTitle": "Templates & blocks — Owlat",
+				"title": "Templates & blocks",
+				"subtitle": "Manage your email templates and reusable blocks.",
+				"loadError": "Some mail data couldn't be loaded. Reload the page to try again.",
+				"stats": {
+					"totalTemplates": "Total Templates",
+					"marketing": "Marketing",
+					"transactional": "Transactional",
+					"savedBlocks": "Saved Blocks"
+				},
+				"quickActionsHeading": "Quick Actions",
+				"quickActions": {
+					"marketing": {
+						"label": "Marketing Emails",
+						"description": "Create a newsletter or promotional email"
+					},
+					"transactional": {
+						"label": "Transactional Emails",
+						"description": "Create an API-triggered email"
+					},
+					"blocks": {
+						"label": "Browse Blocks",
+						"description": "View and manage saved blocks"
+					},
+					"media": {
+						"label": "Media",
+						"description": "Upload and manage images"
+					},
+					"files": {
+						"label": "Files",
+						"description": "Browse uploaded files"
+					}
+				},
+				"recentlyEdited": "Recently Edited",
+				"noTemplatesTitle": "No templates yet",
+				"noTemplatesDescription": "Create your first email template to get started.",
+				"createTemplate": "Create Template",
+				"templateTypes": {
+					"marketing": "marketing",
+					"transactional": "transactional"
+				},
+				"savedBlocks": "Saved Blocks",
+				"noBlocksTitle": "No blocks saved",
+				"noBlocksDescription": "Save reusable blocks from your email editor to use across templates.",
+				"blockCount": "{count} blocks",
+				"usedTimes": "Used {count} times"
+			},
+			"media": {
+				"pageTitle": "Media Library — Owlat",
+				"title": "Media Library",
+				"stats": "{count} files · {size} used",
+				"types": {
+					"images": "Images",
+					"pdf": "PDF",
+					"video": "Video",
+					"audio": "Audio"
+				},
+				"urlCopied": "URL copied to clipboard",
+				"deleteSelected": "Delete ({count})",
+				"searchPlaceholder": "Search media...",
+				"allTags": "All tags",
+				"dropToUpload": "Drop files to upload",
+				"emptyTitle": "No media yet",
+				"emptyDescriptionAdmin": "Upload images to use across your email templates.",
+				"emptyDescriptionMember": "Media will appear here once an admin uploads it.",
+				"uploadFirst": "Upload your first image",
+				"noResults": "No media found matching your search.",
+				"loadMore": "Load more",
+				"detailTitle": "Asset Details",
+				"usageNone": "Not used in any email yet",
+				"usageCount": "Used in {count} email | Used in {count} emails",
+				"altText": "Alt text",
+				"altPlaceholder": "Describe this image...",
+				"tags": "Tags",
+				"tagsPlaceholder": "Comma-separated tags...",
+				"copyUrl": "Copy URL",
+				"deleteTitle": "Delete selected media",
+				"deleteDescription": "Are you sure you want to delete {count} selected asset(s)? This cannot be undone."
+			},
+			"blocks": {
+				"index": {
+					"pageTitle": "Email Blocks — Owlat",
+					"title": "Saved Blocks",
+					"subtitle": "Reusable email components for your templates",
+					"newBlock": "New Block",
+					"sort": {
+						"recent": "Most Recent",
+						"mostUsed": "Most Used",
+						"name": "Name (A-Z)"
+					},
+					"duplicateOperation": "Duplicate block",
+					"deleteOperation": "Delete block",
+					"createOperation": "Create block",
+					"updateOperation": "Update block",
+					"duplicatedToast": "Block duplicated successfully",
+					"deletedToast": "Block deleted successfully",
+					"updatedToast": "Block updated successfully",
+					"nameRequired": "Name is required",
+					"blockCount": "{count} block | {count} blocks",
+					"searchPlaceholder": "Search blocks...",
+					"loading": "Loading blocks...",
+					"noWorkspaceTitle": "No workspace selected",
+					"noWorkspaceDescription": "Create or select a workspace to start managing reusable blocks.",
+					"emptyTitle": "No saved blocks yet",
+					"emptyDescription": "Save blocks from your email templates to reuse across multiple emails.",
+					"createBlock": "Create Block",
+					"noResultsTitle": "No results found",
+					"noResultsDescription": "No blocks match \"{query}\". Try a different search term.",
+					"clearSearch": "Clear search",
+					"editContent": "Edit Content",
+					"quickSettings": "Quick Settings",
+					"noDescription": "No description",
+					"blocksBadge": "{count} blocks",
+					"usesBadge": "{count} uses",
+					"updatedAt": "Updated {date}",
+					"namePlaceholder": "e.g., Hero Banner, Call to Action",
+					"descriptionPlaceholder": "Brief description of the block...",
+					"creating": "Creating...",
+					"editBlock": "Edit Block",
+					"saveChanges": "Save Changes",
+					"savingChanges": "Saving...",
+					"deleteBlock": "Delete Block",
+					"deleteConfirmQuestion": "Are you sure you want to delete {name}?",
+					"deleteIrreversible": "This action cannot be undone. The block will be removed from the library.",
+					"deleteUsageWarning": "This block has been used {count} time. Linked instances in emails will be automatically detached. | This block has been used {count} times. Linked instances in emails will be automatically detached.",
+					"deleting": "Deleting..."
+				},
+				"detail": {
+					"edit": {
+						"pageTitle": "Edit Email Block — Owlat",
+						"saveOperation": "Save block",
+						"variables": {
+							"email": "Email",
+							"firstName": "First Name",
+							"lastName": "Last Name"
+						},
+						"emptyBlockError": "Add at least one block before saving",
+						"savedToast": "Block saved successfully",
+						"loading": "Loading block...",
+						"notFoundTitle": "Block not found",
+						"notFoundBody": "This saved block doesn't exist or has been deleted.",
+						"backToBlocks": "Back to Blocks",
+						"settingsTitle": "Block Settings",
+						"namePlaceholder": "Block name",
+						"descriptionPlaceholder": "Brief description of the block...",
+						"previewSubject": "Block Preview"
+					}
+				}
+			}
+		}
+	}
+}

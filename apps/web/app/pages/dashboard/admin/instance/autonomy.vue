@@ -9,7 +9,9 @@ definePageMeta({
 	requiresFeature: 'ai.autonomy',
 });
 
-useHead({ title: 'Autonomy Rules — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.autonomy.pageTitle') });
 
 // Fetch existing rules
 const {
@@ -42,21 +44,21 @@ const { data: agentConfig } = useConvexQuery(api.agentConfigMutations.getConfig,
 
 // Mutations
 const { run: runKillSwitch } = useBackendOperation(api.agentConfigMutations.killSwitch, {
-	label: 'Stop auto-sending',
+	label: () => t('dashboard.admin.instance.autonomy.operations.killSwitch'),
 });
 const { run: runSetSenderAutonomy } = useBackendOperation(api.autonomy.setSenderAutonomy, {
-	label: 'Enable auto-send for sender',
+	label: () => t('dashboard.admin.instance.autonomy.operations.enableSender'),
 });
 const { run: runAcceptSuggestion } = useBackendOperation(
 	api.autonomySuggestions.acceptGraduationSuggestion,
-	{ label: 'Apply graduation suggestion' }
+	{ label: () => t('dashboard.admin.instance.autonomy.operations.applySuggestion') }
 );
 const { run: runAcknowledgeDemotion } = useBackendOperation(
 	api.autonomyOutcome.acknowledgeAutoDemotion,
-	{ label: 'Dismiss demotion alert' }
+	{ label: () => t('dashboard.admin.instance.autonomy.operations.dismissDemotion') }
 );
 const { run: runUpdateConfig } = useBackendOperation(api.agentConfigMutations.updateConfig, {
-	label: 'Save working hours',
+	label: () => t('dashboard.admin.instance.autonomy.operations.saveWorkingHours'),
 });
 
 const killSwitchBusy = ref(false);
@@ -101,11 +103,11 @@ const { showToast: displayToast } = useToast();
 
 const handleRuleSaved = () => {
 	isAddingNew.value = false;
-	displayToast('Autonomy rule saved successfully');
+	displayToast(t('dashboard.admin.instance.autonomy.toasts.ruleSaved'));
 };
 
 const handleRuleDeleted = () => {
-	displayToast('Autonomy rule deleted');
+	displayToast(t('dashboard.admin.instance.autonomy.toasts.ruleDeleted'));
 };
 
 const handleNewCancelled = () => {
@@ -117,7 +119,7 @@ const handleKillSwitch = async () => {
 	try {
 		const result = await runKillSwitch({});
 		if (result === undefined) return;
-		displayToast('Auto-sending stopped — reverted to draft-only');
+		displayToast(t('dashboard.admin.instance.autonomy.toasts.autoSendingStopped'));
 	} finally {
 		killSwitchBusy.value = false;
 	}
@@ -132,7 +134,9 @@ const handleAcceptOffer = async (payload: { category: string; sender: string }) 
 			isEnabled: true,
 		});
 		if (result === undefined) return;
-		displayToast(`Auto-send enabled for ${payload.sender}`);
+		displayToast(
+			t('dashboard.admin.instance.autonomy.toasts.senderEnabled', { sender: payload.sender })
+		);
 	} finally {
 		nudgePendingKey.value = null;
 	}
@@ -145,7 +149,7 @@ const handleAcceptSuggestion = async (payload: { suggestionId: string }) => {
 			suggestionId: payload.suggestionId as Id<'autonomySuggestions'>,
 		});
 		if (result === undefined) return;
-		displayToast('Graduation suggestion applied');
+		displayToast(t('dashboard.admin.instance.autonomy.toasts.suggestionApplied'));
 	} finally {
 		nudgePendingKey.value = null;
 	}
@@ -158,7 +162,7 @@ const handleAcknowledgeDemotion = async (payload: { ruleId: string }) => {
 			ruleId: payload.ruleId as Id<'autonomyRules'>,
 		});
 		if (result === undefined) return;
-		displayToast('Alert dismissed');
+		displayToast(t('dashboard.admin.instance.autonomy.toasts.alertDismissed'));
 	} finally {
 		demotionPendingId.value = null;
 	}
@@ -181,7 +185,7 @@ const handleSaveWorkingHours = async (payload: {
 			workingHoursDays: payload.days,
 		});
 		if (result === undefined) return;
-		displayToast('Working hours saved');
+		displayToast(t('dashboard.admin.instance.autonomy.toasts.workingHoursSaved'));
 	} finally {
 		workingHoursBusy.value = false;
 	}
@@ -196,7 +200,7 @@ const handleSaveWorkingHours = async (payload: {
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Settings
+			{{ t('dashboard.admin.instance.autonomy.backToSettings') }}
 		</NuxtLink>
 
 		<!-- Header -->
@@ -204,11 +208,11 @@ const handleSaveWorkingHours = async (payload: {
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:sliders-horizontal" size="xl" variant="brand" rounded="full" />
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Graduated Autonomy</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.instance.autonomy.title') }}
+					</h1>
 					<p class="text-text-secondary mt-1 max-w-xl">
-						Configure per-category rules that control when the AI agent can auto-approve actions and
-						when human review is required. Thresholds automatically adjust based on human feedback
-						patterns.
+						{{ t('dashboard.admin.instance.autonomy.subtitle') }}
 					</p>
 				</div>
 			</div>
@@ -219,7 +223,7 @@ const handleSaveWorkingHours = async (payload: {
 				@click="isAddingNew = true"
 			>
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				Add Rule
+				{{ t('dashboard.admin.instance.autonomy.addRule') }}
 			</UiButton>
 		</div>
 
@@ -227,14 +231,16 @@ const handleSaveWorkingHours = async (payload: {
 		<div v-if="rulesLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading autonomy rules...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('dashboard.admin.instance.autonomy.loading') }}
+				</p>
 			</div>
 		</div>
 
 		<UiErrorAlert
 			v-else-if="rulesError"
-			title="Couldn't load autonomy rules"
-			message="We hit an error loading autonomy rules. Reload to try again."
+			:title="t('dashboard.admin.instance.autonomy.errorTitle')"
+			:message="t('dashboard.admin.instance.autonomy.errorMessage')"
 			class="my-8"
 		/>
 
@@ -286,15 +292,14 @@ const handleSaveWorkingHours = async (payload: {
 								class="mx-auto mb-4"
 							/>
 							<h3 class="text-base font-medium text-text-primary mb-2">
-								No autonomy rules configured
+								{{ t('dashboard.admin.instance.autonomy.emptyTitle') }}
 							</h3>
 							<p class="text-sm text-text-tertiary mb-4 max-w-sm mx-auto">
-								Create rules to control how the AI agent handles different types of messages. Each
-								category can have its own confidence threshold and daily limits.
+								{{ t('dashboard.admin.instance.autonomy.emptyBody') }}
 							</p>
 							<UiButton class="gap-2" @click="isAddingNew = true">
 								<Icon name="lucide:plus" class="w-4 h-4" />
-								Create First Rule
+								{{ t('dashboard.admin.instance.autonomy.createFirstRule') }}
 							</UiButton>
 						</div>
 					</UiCard>
@@ -324,7 +329,9 @@ const handleSaveWorkingHours = async (payload: {
 					<UiCard>
 						<div class="flex items-center gap-3 mb-4">
 							<UiIconBox icon="lucide:info" size="sm" variant="surface" />
-							<h3 class="text-base font-medium text-text-primary">How It Works</h3>
+							<h3 class="text-base font-medium text-text-primary">
+								{{ t('dashboard.admin.instance.autonomy.howItWorks.title') }}
+							</h3>
 						</div>
 						<div class="space-y-3 text-sm text-text-secondary">
 							<div class="flex gap-3">
@@ -332,34 +339,28 @@ const handleSaveWorkingHours = async (payload: {
 									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
 									>1</span
 								>
-								<p>The agent classifies each inbound message into a category.</p>
+								<p>{{ t('dashboard.admin.instance.autonomy.howItWorks.step1') }}</p>
 							</div>
 							<div class="flex gap-3">
 								<span
 									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
 									>2</span
 								>
-								<p>
-									If confidence exceeds the threshold and daily limit is not reached, the action is
-									auto-approved.
-								</p>
+								<p>{{ t('dashboard.admin.instance.autonomy.howItWorks.step2') }}</p>
 							</div>
 							<div class="flex gap-3">
 								<span
 									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
 									>3</span
 								>
-								<p>Otherwise, the action goes to the review queue for human approval.</p>
+								<p>{{ t('dashboard.admin.instance.autonomy.howItWorks.step3') }}</p>
 							</div>
 							<div class="flex gap-3">
 								<span
 									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
 									>4</span
 								>
-								<p>
-									Thresholds auto-adjust weekly based on rejection patterns. High rejections tighten
-									the threshold; low rejections loosen it.
-								</p>
+								<p>{{ t('dashboard.admin.instance.autonomy.howItWorks.step4') }}</p>
 							</div>
 						</div>
 					</UiCard>

@@ -3,7 +3,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
 
-useHead({ title: 'Team inboxes — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.team.inboxes.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -34,25 +36,25 @@ type SharedInbox = NonNullable<typeof inboxes.value>[number];
 const { switchToMailbox } = usePostboxMailbox();
 
 const publishKeysOp = useBackendOperation(api.e2ee.keys.backfillKeys, {
-	label: 'Publish encryption keys',
+	label: () => t('dashboard.admin.team.inboxes.operations.publishKeys'),
 });
 const rotateKeyOp = useBackendOperation(api.e2ee.lifecycle.rotateAddressKey, {
-	label: 'Rotate encryption key',
+	label: () => t('dashboard.admin.team.inboxes.operations.rotateKey'),
 });
 const revokeKeyOp = useBackendOperation(api.e2ee.lifecycle.revokeAddressKey, {
-	label: 'Revoke encryption key',
+	label: () => t('dashboard.admin.team.inboxes.operations.revokeKey'),
 });
 const revokeKeyTarget = ref<SharedInbox | null>(null);
 const { showToast } = useToast();
 
 async function publishMissingKeys() {
 	const result = await publishKeysOp.run({});
-	if (result?.scheduled) showToast('Encryption-key publication scheduled');
+	if (result?.scheduled) showToast(t('dashboard.admin.team.inboxes.toasts.keysScheduled'));
 }
 
 async function rotateKey(address: string) {
 	const result = await rotateKeyOp.run({ address });
-	if (result?.scheduled) showToast(`Key rotation scheduled for ${address}`);
+	if (result?.scheduled) showToast(t('dashboard.admin.team.inboxes.toasts.rotationScheduled', { address }));
 }
 
 async function confirmRevokeKey() {
@@ -60,7 +62,7 @@ async function confirmRevokeKey() {
 	if (!target) return;
 	const result = await revokeKeyOp.run({ address: target.address });
 	if (!result) return;
-	showToast(`Encryption key revoked for ${target.address}`);
+	showToast(t('dashboard.admin.team.inboxes.toasts.keyRevoked', { address: target.address }));
 	revokeKeyTarget.value = null;
 }
 
@@ -122,7 +124,7 @@ function onReconnected() {
 // so the affordance is scoped to `kind === 'external'` inboxes.
 const purgeTarget = ref<SharedInbox | null>(null);
 const purgeOp = useBackendOperation(api.mail.externalSharedInbox.purgeShared, {
-	label: 'Delete team inbox',
+	label: () => t('dashboard.admin.team.inboxes.operations.deleteInbox'),
 });
 async function confirmPurge() {
 	const target = purgeTarget.value;
@@ -145,11 +147,11 @@ function avatarPreview(inbox: SharedInbox) {
 }
 
 function formatCreated(createdAt: number) {
-	return new Date(createdAt).toLocaleDateString(undefined, {
+	return new Intl.DateTimeFormat(locale.value, {
 		year: 'numeric',
 		month: 'short',
 		day: 'numeric',
-	});
+	}).format(new Date(createdAt));
 }
 </script>
 
@@ -163,13 +165,15 @@ function formatCreated(createdAt: number) {
 					class="inline-flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors mb-4"
 				>
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
-					Back to Settings
+					{{ t('dashboard.admin.team.inboxes.backToSettings') }}
 				</NuxtLink>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Team inboxes</h1>
-				<p class="mt-1 text-text-secondary">
-					Shared addresses your team reads and sends from together — like
-					<code>support@</code> or <code>sales@</code>.
-				</p>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.admin.team.inboxes.title') }}
+				</h1>
+				<I18nT keypath="dashboard.admin.team.inboxes.intro" tag="p" scope="global" class="mt-1 text-text-secondary">
+					<template #supportAddress><code>support@</code></template>
+					<template #salesAddress><code>sales@</code></template>
+				</I18nT>
 			</div>
 			<div v-if="!showAdminGate" class="mt-9 flex shrink-0 items-center gap-2">
 				<UiButton
@@ -179,11 +183,11 @@ function formatCreated(createdAt: number) {
 					@click="publishMissingKeys"
 				>
 					<Icon name="lucide:key-round" class="w-4 h-4 mr-1.5" />
-					Publish keys
+					{{ t('dashboard.admin.team.inboxes.publishKeys') }}
 				</UiButton>
 				<UiButton to="/dashboard/preferences/add-account?mode=team">
 					<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
-					New team inbox
+					{{ t('dashboard.admin.team.inboxes.newInbox') }}
 				</UiButton>
 			</div>
 		</div>
@@ -194,9 +198,9 @@ function formatCreated(createdAt: number) {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">Admins only</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.inboxes.adminGate.title') }}</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Team inboxes can be managed by workspace owners and admins.
+				{{ t('dashboard.admin.team.inboxes.adminGate.description') }}
 			</p>
 		</div>
 
@@ -206,9 +210,9 @@ function formatCreated(createdAt: number) {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:mails" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No workspace selected</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.inboxes.noWorkspace.title') }}</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select a workspace to manage team inboxes.
+				{{ t('dashboard.admin.team.inboxes.noWorkspace.description') }}
 			</p>
 		</div>
 
@@ -218,7 +222,7 @@ function formatCreated(createdAt: number) {
 		</div>
 
 		<!-- Error -->
-		<UiErrorAlert v-else-if="error" message="Could not load team inboxes. Please try again." />
+		<UiErrorAlert v-else-if="error" :message="t('dashboard.admin.team.inboxes.loadError')" />
 
 		<!-- Empty state -->
 		<div v-else-if="(inboxes?.length ?? 0) === 0" class="card py-16 px-6 text-center">
@@ -229,14 +233,18 @@ function formatCreated(createdAt: number) {
 				rounded="full"
 				class="mb-4 mx-auto"
 			/>
-			<h2 class="font-semibold text-text-primary">No team inboxes yet</h2>
-			<p class="text-sm text-text-secondary mt-2 max-w-md mx-auto">
-				Create a shared address like <code>support@</code> so your whole team can read and reply
-				from one place. You choose who's a member; everyone else can't see it.
-			</p>
+			<h2 class="font-semibold text-text-primary">{{ t('dashboard.admin.team.inboxes.empty.title') }}</h2>
+			<I18nT
+				keypath="dashboard.admin.team.inboxes.empty.description"
+				tag="p"
+				scope="global"
+				class="text-sm text-text-secondary mt-2 max-w-md mx-auto"
+			>
+				<template #supportAddress><code>support@</code></template>
+			</I18nT>
 			<UiButton to="/dashboard/preferences/add-account?mode=team" class="mt-6">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
-				Create your first team inbox
+				{{ t('dashboard.admin.team.inboxes.empty.action') }}
 			</UiButton>
 		</div>
 
@@ -261,20 +269,20 @@ function formatCreated(createdAt: number) {
 								v-if="inbox.status === 'suspended'"
 								class="text-xs px-2 py-0.5 rounded bg-warning/10 text-warning"
 							>
-								Suspended
+								{{ t('dashboard.admin.team.inboxes.badges.suspended') }}
 							</span>
 							<span
 								v-if="hasConnectionError(inbox)"
 								class="text-xs px-2 py-0.5 rounded bg-error/10 text-error"
 								:title="inbox.externalLastError || undefined"
 							>
-								Needs attention
+								{{ t('dashboard.admin.team.inboxes.badges.needsAttention') }}
 							</span>
 							<span
 								v-if="inbox.kind === 'external'"
 								class="text-xs px-2 py-0.5 rounded bg-bg-surface text-text-tertiary"
 							>
-								External
+								{{ t('dashboard.admin.team.inboxes.badges.external') }}
 							</span>
 							<UiButton
 								v-if="needsReconnect(inbox)"
@@ -284,16 +292,16 @@ function formatCreated(createdAt: number) {
 								@click="toggleReconnect(inbox._id)"
 							>
 								<Icon name="lucide:refresh-cw" class="w-4 h-4 mr-1.5" />
-								{{ reconnectId === inbox._id ? 'Cancel' : 'Reconnect' }}
+								{{ reconnectId === inbox._id ? t('common.cancel') : t('dashboard.admin.team.inboxes.reconnect') }}
 							</UiButton>
 							<UiButton
 								variant="ghost"
 								size="sm"
-								title="Make this the active mailbox in Postbox"
+								:title="t('dashboard.admin.team.inboxes.openInboxTitle')"
 								@click="switchToMailbox(inbox._id)"
 							>
 								<Icon name="lucide:arrow-right" class="w-4 h-4 mr-1.5" />
-								Open inbox
+								{{ t('dashboard.admin.team.inboxes.openInbox') }}
 							</UiButton>
 							<UiButton
 								variant="secondary"
@@ -305,13 +313,13 @@ function formatCreated(createdAt: number) {
 									:name="expandedId === inbox._id ? 'lucide:chevron-up' : 'lucide:users'"
 									class="w-4 h-4 mr-1.5"
 								/>
-								{{ expandedId === inbox._id ? 'Done' : 'Manage members' }}
+								{{ expandedId === inbox._id ? t('common.done') : t('dashboard.admin.team.inboxes.manageMembers') }}
 							</UiButton>
 							<UiButton
 								v-if="sealedMailEnabled"
 								variant="ghost"
 								size="sm"
-								title="Rotate this inbox's Sealed Mail key"
+								:title="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
 								@click="rotateKey(inbox.address)"
 							>
 								<Icon name="lucide:key-round" class="w-4 h-4" />
@@ -321,7 +329,7 @@ function formatCreated(createdAt: number) {
 								variant="ghost"
 								size="sm"
 								class="text-error hover:text-error"
-								title="Stop publishing this inbox's Sealed Mail key"
+								:title="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
 								@click="revokeKeyTarget = inbox"
 							>
 								<Icon name="lucide:key-round-x" class="w-4 h-4" />
@@ -331,7 +339,7 @@ function formatCreated(createdAt: number) {
 								variant="ghost"
 								size="sm"
 								class="text-error hover:text-error"
-								title="Delete this team inbox permanently"
+								:title="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
 								@click="purgeTarget = inbox"
 							>
 								<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -354,16 +362,22 @@ function formatCreated(createdAt: number) {
 								/>
 							</div>
 							<span class="text-text-secondary">
-								{{ inbox.memberCount }} {{ inbox.memberCount === 1 ? 'member' : 'members'
+								{{ t('dashboard.admin.team.inboxes.memberCount', inbox.memberCount)
 								}}<template v-if="inbox.memberCount > AVATAR_PREVIEW_LIMIT">
-									(+{{ inbox.memberCount - AVATAR_PREVIEW_LIMIT }} more)</template
+									{{
+										t('dashboard.admin.team.inboxes.moreMembers', {
+											count: inbox.memberCount - AVATAR_PREVIEW_LIMIT,
+										})
+									}}</template
 								>
 							</span>
 						</div>
 						<span v-if="ownerOf(inbox)" class="text-text-tertiary">
-							Owned by {{ ownerOf(inbox) }}
+							{{ t('dashboard.admin.team.inboxes.ownedBy', { owner: ownerOf(inbox) }) }}
 						</span>
-						<span class="text-text-tertiary">Created {{ formatCreated(inbox.createdAt) }}</span>
+						<span class="text-text-tertiary">
+							{{ t('dashboard.admin.team.inboxes.createdOn', { date: formatCreated(inbox.createdAt) }) }}
+						</span>
 					</div>
 
 					<!-- Pending invites: reserved memberships waiting on org-invite acceptance. -->
@@ -372,9 +386,16 @@ function formatCreated(createdAt: number) {
 						class="mt-3 text-xs text-text-tertiary flex items-center gap-1.5"
 					>
 						<Icon name="lucide:mail-plus" class="w-3.5 h-3.5" />
-						{{ inbox.pendingInvites.length }}
-						{{ inbox.pendingInvites.length === 1 ? 'invitation' : 'invitations' }} pending:
-						{{ inbox.pendingInvites.join(', ') }}
+						{{
+							t(
+								'dashboard.admin.team.inboxes.pendingInvites',
+								{
+									count: inbox.pendingInvites.length,
+									invitees: inbox.pendingInvites.join(', '),
+								},
+								inbox.pendingInvites.length
+							)
+						}}
 					</p>
 
 					<!-- Connection is broken but the inbox is suspended, so the in-place
@@ -384,10 +405,7 @@ function formatCreated(createdAt: number) {
 						class="mt-3 text-xs text-text-tertiary flex items-start gap-1.5"
 					>
 						<Icon name="lucide:triangle-alert" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
-						<span>
-							This inbox's mail connection stopped working, but it's suspended — restore it first to
-							reconnect the mailbox.
-						</span>
+						<span>{{ t('dashboard.admin.team.inboxes.reconnectBlocked') }}</span>
 					</p>
 				</div>
 
@@ -406,10 +424,9 @@ function formatCreated(createdAt: number) {
 					class="border-t border-border-subtle bg-bg-surface/40 p-5 space-y-4"
 				>
 					<div>
-						<h3 class="font-semibold text-text-primary">Reconnect this inbox</h3>
+						<h3 class="font-semibold text-text-primary">{{ t('dashboard.admin.team.inboxes.reconnectPanel.title') }}</h3>
 						<p class="text-sm text-text-secondary mt-1">
-							Its mail connection stopped working. Re-enter the mailbox password (an app password if
-							the provider requires one) to resume syncing. Your team and its mail are kept.
+							{{ t('dashboard.admin.team.inboxes.reconnectPanel.description') }}
 						</p>
 						<p v-if="inbox.externalLastError" class="text-xs text-error mt-2">
 							{{ inbox.externalLastError }}
@@ -438,9 +455,13 @@ function formatCreated(createdAt: number) {
 		<UiConfirmationDialog
 			:open="!!revokeKeyTarget"
 			variant="danger"
-			title="Revoke encryption key?"
-			:description="`New Sealed Mail senders will stop encrypting to ${revokeKeyTarget?.address ?? 'this inbox'} until a new key is published.`"
-			confirm-text="Revoke key"
+			:title="t('dashboard.admin.team.inboxes.revokeKeyDialog.title')"
+			:description="
+				t('dashboard.admin.team.inboxes.revokeKeyDialog.description', {
+					address: revokeKeyTarget?.address ?? t('dashboard.admin.team.inboxes.revokeKeyDialog.thisInbox'),
+				})
+			"
+			:confirm-text="t('dashboard.admin.team.inboxes.revokeKeyDialog.confirm')"
 			:is-loading="revokeKeyOp.isLoading.value"
 			@update:open="(open: boolean) => !open && (revokeKeyTarget = null)"
 			@confirm="confirmRevokeKey"
@@ -451,9 +472,13 @@ function formatCreated(createdAt: number) {
 		<UiConfirmationDialog
 			:open="purgeTarget !== null"
 			variant="danger"
-			title="Delete team inbox permanently?"
-			:description="`Delete &quot;${purgeTarget?.displayName || purgeTarget?.address}&quot;? Its synced mail, the member roster, and the stored mailbox connection are erased for everyone. This cannot be undone.`"
-			confirm-text="Delete permanently"
+			:title="t('dashboard.admin.team.inboxes.deleteDialog.title')"
+			:description="
+				t('dashboard.admin.team.inboxes.deleteDialog.description', {
+					name: purgeTarget?.displayName || purgeTarget?.address,
+				})
+			"
+			:confirm-text="t('dashboard.admin.team.inboxes.deleteDialog.confirm')"
 			:is-loading="purgeOp.isLoading.value"
 			@update:open="
 				(v: boolean) => {

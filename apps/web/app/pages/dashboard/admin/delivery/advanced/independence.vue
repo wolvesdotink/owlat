@@ -34,6 +34,19 @@ import {
 } from '~/utils/deliverabilityIndependenceCopy';
 import { formatNumber, formatShortDate } from '~/utils/formatters';
 
+const { t, locale } = useI18n();
+
+/**
+ * `utils/deliverabilityRamp` and `utils/deliverabilityIndependenceCopy` are
+ * module-scope definition sets whose sentences carry i18n keys rather than
+ * sentences (the registry convention); a plain string is still accepted so a
+ * value with nothing to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
 const {
@@ -59,11 +72,14 @@ const referenceTransportId = computed<string | null>(
 // page has always shown for the moment it knows nothing.
 const isRelayConfigured = computed(() => summary.value?.isRelayConfigured ?? false);
 const isStandalone = computed(() => !isRelayConfigured.value);
-const headline = computed(() => independenceHeadline(isRelayConfigured.value));
+const headline = computed(() => localized(independenceHeadline(isRelayConfigured.value)));
 // THE TAB TITLE FOLLOWS THE H1. A static "Sending independence" would leave a
 // standalone deployment reading "Warm-up autopilot" on the page and something
 // else in its browser tab — the D14 rename half-applied.
-useHead(computed(() => ({ title: `${headline.value} — Owlat` })));
+useHead({
+	title: () =>
+		t('dashboard.admin.delivery.advanced.independence.pageTitle', { headline: headline.value }),
+});
 const chartHeadingId = useId();
 
 /**
@@ -78,7 +94,9 @@ const headlineValue = computed(() => {
 		// The same formatting as the sentence under it (`capacityCopy`): a headline
 		// reading "4000" above a note reading "4,000 more messages" looks like two
 		// different figures on the screen people screenshot.
-		return data.capacity.remainingToday === null ? '—' : formatNumber(data.capacity.remainingToday);
+		return data.capacity.remainingToday === null
+			? '—'
+			: formatNumber(data.capacity.remainingToday, locale.value);
 	}
 	return data.ownShare === null ? '—' : shareLabel(data.ownShare);
 });
@@ -114,13 +132,17 @@ const projectedSafeAt = computed(() => {
  * the card, and a second hand-written sentence in the dialog is the shortest
  * distance to two claims about one click.
  */
-const removalConsequence = computed(() =>
-	relayRemovalConsequenceCopy({
+const removalConsequence = computed(() => {
+	const copy = relayRemovalConsequenceCopy({
 		dependentCells: dependentCells.value,
 		referenceTransportId: referenceTransportId.value,
 		projectedSafeAt: projectedSafeAt.value,
-	})
-);
+	});
+	return {
+		consequence: localized(copy.consequence),
+		safeDate: copy.safeDate === null ? null : localized(copy.safeDate),
+	};
+});
 
 function confirmRelayRemoval(): void {
 	isRemovalDialogOpen.value = false;
@@ -137,22 +159,22 @@ function confirmRelayRemoval(): void {
 		<header class="mb-6">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ headline }}</h1>
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-				{{ independenceSubhead({ isRelayConfigured, referenceTransportId }) }}
+				{{ localized(independenceSubhead({ isRelayConfigured, referenceTransportId })) }}
 			</p>
 		</header>
 
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
-			error-title="Couldn’t load your independence figures"
-			error-message="These numbers could not be loaded. Your mail is unaffected — this page only reads."
+			:error-title="t('dashboard.admin.delivery.advanced.independence.errorTitle')"
+			:error-message="t('dashboard.admin.delivery.advanced.independence.errorMessage')"
 		>
 			<template #loading>
 				<div
 					class="space-y-5"
 					role="status"
 					aria-live="polite"
-					aria-label="Loading independence figures"
+					:aria-label="t('dashboard.admin.delivery.advanced.independence.loading')"
 				>
 					<div class="h-32 animate-pulse rounded-xl bg-bg-surface" />
 					<div class="h-44 animate-pulse rounded-xl bg-bg-surface" />
@@ -162,7 +184,11 @@ function confirmRelayRemoval(): void {
 			<div v-if="summary" class="space-y-5">
 				<UiCard>
 					<p class="text-sm text-text-secondary">
-						{{ isStandalone ? 'Messages you can still send today' : 'Sent from your own server' }}
+						{{
+							isStandalone
+								? t('dashboard.admin.delivery.advanced.independence.capacityLabel')
+								: t('dashboard.admin.delivery.advanced.independence.ownShareLabel')
+						}}
 					</p>
 					<p
 						class="mt-1 text-4xl font-semibold text-text-primary"
@@ -171,13 +197,13 @@ function confirmRelayRemoval(): void {
 						{{ headlineValue }}
 					</p>
 					<p class="mt-2 text-sm text-text-secondary" data-testid="independence-headline-note">
-						{{ isStandalone ? capacityCopy(summary) : volumeSentence(summary) }}
+						{{ localized(isStandalone ? capacityCopy(summary) : volumeSentence(summary)) }}
 					</p>
 				</UiCard>
 
 				<UiCard>
 					<h2 :id="chartHeadingId" class="text-base font-semibold text-text-primary">
-						Daily sending
+						{{ t('dashboard.admin.delivery.advanced.independence.dailySending') }}
 					</h2>
 					<DeliveryIndependenceTrendChart
 						class="mt-3"
@@ -188,17 +214,21 @@ function confirmRelayRemoval(): void {
 				</UiCard>
 
 				<UiCard>
-					<h2 class="text-base font-semibold text-text-primary">When you stop paying</h2>
+					<h2 class="text-base font-semibold text-text-primary">
+						{{ t('dashboard.admin.delivery.advanced.independence.whenYouStopPaying') }}
+					</h2>
 					<p class="mt-2 text-sm text-text-secondary" data-testid="independence-projection">
-						{{ projectionCopy(summary.projection) }}
+						{{ localized(projectionCopy(summary.projection)) }}
 					</p>
 					<p class="mt-2 text-sm text-text-secondary" data-testid="independence-spend">
-						{{ spendAvoidedCopy(summary) }}
+						{{ localized(spendAvoidedCopy(summary)) }}
 					</p>
 				</UiCard>
 
 				<UiCard v-if="!isStandalone">
-					<h2 class="text-base font-semibold text-text-primary">Disconnecting the relay</h2>
+					<h2 class="text-base font-semibold text-text-primary">
+						{{ t('dashboard.admin.delivery.advanced.independence.disconnectHeading') }}
+					</h2>
 					<p
 						v-if="isRemovalSafe"
 						class="mt-2 text-sm text-text-secondary"
@@ -213,8 +243,10 @@ function confirmRelayRemoval(): void {
 						<p class="mt-1 text-sm text-text-secondary" data-testid="relay-removal-safe-date">
 							{{
 								projectedSafeAt === null
-									? 'There is no projected safe date yet — the share is not advancing fast enough to give one.'
-									: `On the current pace it would be safe to disconnect around ${formatShortDate(projectedSafeAt)}.`
+									? t('dashboard.admin.delivery.advanced.independence.noSafeDate')
+									: t('dashboard.admin.delivery.advanced.independence.safeDate', {
+											date: formatShortDate(projectedSafeAt, locale),
+										})
 							}}
 						</p>
 					</template>
@@ -225,7 +257,7 @@ function confirmRelayRemoval(): void {
 						data-testid="relay-removal-open"
 						@click="isRemovalDialogOpen = true"
 					>
-						Disconnect the relay…
+						{{ t('dashboard.admin.delivery.advanced.independence.disconnectAction') }}
 					</UiButton>
 				</UiCard>
 			</div>
@@ -233,9 +265,9 @@ function confirmRelayRemoval(): void {
 
 		<DeliveryRampConfirmDialog
 			:open="isRemovalDialogOpen"
-			title="Disconnect the relay?"
+			:title="t('dashboard.admin.delivery.advanced.independence.dialog.title')"
 			:phrase="RELAY_REMOVAL_CONFIRMATION"
-			confirm-label="Take me to the relay settings"
+			:confirm-label="t('dashboard.admin.delivery.advanced.independence.dialog.confirm')"
 			@cancel="isRemovalDialogOpen = false"
 			@confirm="confirmRelayRemoval"
 		>

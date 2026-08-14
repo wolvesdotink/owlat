@@ -8,43 +8,44 @@ import type { Id } from '@owlat/api/dataModel';
  * create/send/stop/rename/delete operations.
  */
 export function useAssistant() {
+	const { t } = useI18n();
 	const activeId = ref<Id<'aiConversations'> | null>(null);
 
 	const { data: conversationsData, isLoading: conversationsLoading } = useConvexQuery(
 		api.assistant.conversations.listConversations,
-		{},
+		{}
 	);
 	const conversations = computed(() => conversationsData.value ?? []);
 
 	const { data: messagesData, isLoading: messagesLoading } = useConvexQuery(
 		api.assistant.conversations.listMessages,
-		() => (activeId.value ? { conversationId: activeId.value } : 'skip'),
+		() => (activeId.value ? { conversationId: activeId.value } : 'skip')
 	);
 	const messages = computed(() => messagesData.value ?? []);
 
 	const activeConversation = computed(
-		() => conversations.value.find((c) => c._id === activeId.value) ?? null,
+		() => conversations.value.find((c) => c._id === activeId.value) ?? null
 	);
 
 	/** True while the active conversation has an assistant turn still streaming. */
 	const streaming = computed(() =>
-		messages.value.some((m) => m.role === 'assistant' && m.status === 'streaming'),
+		messages.value.some((m) => m.role === 'assistant' && m.status === 'streaming')
 	);
 
 	const { run: createRun } = useBackendOperation(api.assistant.conversations.createConversation, {
-		label: 'New conversation',
+		label: () => t('shared.useAssistant.newConversation'),
 	});
 	const { run: sendRun } = useBackendOperation(api.assistant.conversations.sendMessage, {
-		label: 'Send message',
+		label: () => t('shared.useAssistant.sendMessage'),
 	});
 	const { run: stopRun } = useBackendOperation(api.assistant.conversations.stopGeneration, {
-		label: 'Stop generating',
+		label: () => t('shared.useAssistant.stopGeneration'),
 	});
 	const { run: renameRun } = useBackendOperation(api.assistant.conversations.renameConversation, {
-		label: 'Rename conversation',
+		label: () => t('shared.useAssistant.renameConversation'),
 	});
 	const { run: deleteRun } = useBackendOperation(api.assistant.conversations.deleteConversation, {
-		label: 'Delete conversation',
+		label: () => t('shared.useAssistant.deleteConversation'),
 	});
 
 	const selectConversation = (id: Id<'aiConversations'>) => {
@@ -69,7 +70,7 @@ export function useAssistant() {
 
 	const stop = async () => {
 		const streamingMsg = messages.value.find(
-			(m) => m.role === 'assistant' && m.status === 'streaming',
+			(m) => m.role === 'assistant' && m.status === 'streaming'
 		);
 		if (streamingMsg) await stopRun({ messageId: streamingMsg._id });
 	};
@@ -89,7 +90,7 @@ export function useAssistant() {
 		(list) => {
 			if (!activeId.value && list.length > 0) activeId.value = list[0]!._id;
 		},
-		{ immediate: true },
+		{ immediate: true }
 	);
 
 	return {

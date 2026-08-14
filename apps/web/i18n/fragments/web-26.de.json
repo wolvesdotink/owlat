@@ -1,0 +1,131 @@
+{
+	"components": {
+		"preferences": {
+			"preferencesAppearance": {
+				"title": "Erscheinungsbild",
+				"subtitle": "Wählen Sie, wie Owlat auf diesem Gerät aussieht.",
+				"accountAndData": "Konto & Daten",
+				"deviceSettings": "Geräteeinstellungen",
+				"light": {
+					"label": "Hell",
+					"description": "Hell und klar"
+				},
+				"dark": {
+					"label": "Dunkel",
+					"description": "Schonend für die Augen"
+				},
+				"system": {
+					"label": "System",
+					"description": "An dieses Gerät anpassen"
+				}
+			},
+			"preferencesBackLink": {
+				"label": "Zurück zu den Einstellungen"
+			},
+			"preferencesHeader": {
+				"title": "Einstellungen",
+				"subtitle": "Einstellungen, die nur Sie betreffen.",
+				"addAccount": "Konto hinzufügen"
+			},
+			"preferencesMailLinks": {
+				"ariaLabel": "E-Mail-Einstellungen",
+				"import": {
+					"title": "Ihre E-Mails importieren",
+					"description": "Gmail, Fastmail, Outlook oder ein beliebiger E-Mail-Anbieter + trainieren Sie Ihre KI"
+				},
+				"filters": {
+					"title": "Filter",
+					"description": "Eingehende E-Mails automatisch zuordnen"
+				},
+				"aliases": {
+					"title": "Aliase",
+					"description": "Alternative Adressen"
+				},
+				"forwarding": {
+					"title": "Weiterleitung",
+					"description": "Regeln für externe Weiterleitungen"
+				},
+				"vacation": {
+					"title": "Abwesenheit",
+					"description": "Automatische Antwort bei Abwesenheit"
+				},
+				"signatures": {
+					"title": "Signaturen",
+					"description": "Automatisch an neue Entwürfe anhängen"
+				},
+				"snippets": {
+					"title": "Textbausteine",
+					"description": "Vorgefertigte Antworten über \"/\""
+				},
+				"writingVoice": {
+					"title": "Schreibstil",
+					"description": "KI-Entwürfe klingen wie Sie"
+				},
+				"appPasswords": {
+					"title": "App-Passwörter",
+					"description": "Für Apple Mail / Thunderbird"
+				}
+			}
+		},
+		"query": {
+			"queryResult": {
+				"sources": "Quellen"
+			},
+			"quickQueryPanel": {
+				"askOperation": "Abfrage ausführen",
+				"placeholder": "Fragen Sie alles zu Ihrem Wissen und Ihren Dateien...",
+				"clear": "Frage löschen",
+				"searching": "Ihr Wissen und Ihre Dateien werden durchsucht...",
+				"emptyTitle": "Stellen Sie eine Frage zu Ihrem Wissen und Ihren Dateien",
+				"emptyHint": "Drücken Sie die Eingabetaste für eine zusammengefasste Antwort mit Quellenangaben",
+				"toggle": "Umschalten"
+			},
+			"sourceCitation": {
+				"fileTooltip": "Datei: {name}",
+				"knowledgeTooltip": "{entryType}: {title}",
+				"knowledgeFallback": "Wissen"
+			}
+		},
+		"settings": {
+			"aiKeyField": {
+				"keepPlaceholder": "Leer lassen, um den gespeicherten Schlüssel zu behalten",
+				"pastePlaceholder": "Fügen Sie Ihren API-Schlüssel ein",
+				"savedKey": "Gespeicherter Schlüssel: {preview}"
+			},
+			"aiModelPicker": {
+				"customPlaceholder": "Modell-ID eingeben"
+			},
+			"connectedWorkspaces": {
+				"empty": "Noch keine Workspaces verbunden.",
+				"add": "Workspace hinzufügen",
+				"switch": "Wechseln",
+				"disconnect": "Trennen",
+				"confirmTitle": "Workspace trennen?",
+				"confirmDescription": "„{label}“ trennen? Sie müssen die Verbindung erneut herstellen, um diesen Workspace wieder zu nutzen."
+			},
+			"featureFlagMetadata": {
+				"package": "Paket: {name}",
+				"requiredEnv": "Benötigt Umgebungsvariablen: {vars}",
+				"requestedAccess": "Fordert Zugriff an: {capabilities}",
+				"dockerProfile": "Docker-Profil: {profiles}"
+			},
+			"migrationModeCard": {
+				"title": "Kommen Sie von einer anderen Plattform?",
+				"subtitle": "Legt fest, wie neue Teammitglieder begrüßt werden.",
+				"loading": "Einstellung wird geladen…",
+				"body": "Dieses Team wechselt von einer anderen E-Mail-Plattform.",
+				"bodyDetail": "Neuen Nutzern wird bei der ersten Anmeldung ein E-Mail-Import angeboten.",
+				"adminsOnly": "Nur Inhaber und Administratoren können dies ändern.",
+				"on": "Ein",
+				"off": "Aus",
+				"updateOperation": "Migrationsmodus aktualisieren",
+				"enableImportOperation": "Import externer Postfächer aktivieren",
+				"toastOn": "Migrationsmodus ein — neuen Nutzern wird bei der ersten Anmeldung ein E-Mail-Import angeboten.",
+				"toastOff": "Migrationsmodus aus — neue Nutzer erhalten eine Willkommensseite für den Neustart.",
+				"confirmTitle": "E-Mail-Import ebenfalls aktivieren?",
+				"confirmDescription": "Der Migrationsmodus bietet neuen Nutzern einen E-Mail-Import an, der die Funktion „Externes Postfach verbinden“ benötigt. Wir aktivieren sie jetzt, damit der Import tatsächlich funktioniert.",
+				"confirmAction": "Beides aktivieren"
+			}
+		}
+	}
+}

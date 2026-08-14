@@ -17,6 +17,8 @@ const props = defineProps<{
 	activeMessageId?: string | null;
 }>();
 
+const { t } = useI18n();
+
 const mailboxIdRef = computed(() => props.mailboxId);
 const folderRef = computed(() => props.folderRole);
 const folderIdRef = computed(() => props.folderId);
@@ -80,12 +82,19 @@ const triageUndo = usePostboxTriageUndo();
 onMounted(() => window.addEventListener('keydown', triageUndo.onWindowKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', triageUndo.onWindowKeydown));
 
-// Folder name shown in the list header (custom folders carry no role).
-const currentFolderName = computed(() =>
-	props.folderId
-		? (customFolders.value.find((f) => f._id === props.folderId)?.name ?? 'Folder')
-		: props.folderRole
-);
+// Folder name shown in the list header (custom folders carry no role). A system
+// folder arrives as its role, which has a translated name; a custom/unknown role
+// keeps rendering the server-provided value verbatim.
+const NAMED_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive', 'snoozed'];
+const currentFolderName = computed(() => {
+	if (props.folderId) {
+		const custom = customFolders.value.find((f) => f._id === props.folderId)?.name;
+		return custom ?? t('components.postbox.postboxLayout.folderFallback');
+	}
+	return NAMED_FOLDER_ROLES.includes(props.folderRole)
+		? t(`components.postbox.postboxLayout.folderRoles.${props.folderRole}`)
+		: props.folderRole;
+});
 
 // Inbox view mode — exactly one of Flat / Conversations / Categories is
 // active. The saved (server-persisted) value drives the list; a pending
@@ -108,6 +117,14 @@ function selectViewMode(value: string) {
 	});
 }
 const activeListRenderer = computed(() => postboxListRenderer(viewMode.value, folderRef.value));
+// The mode registry stays a plain module-scope constant (non-UI code reads it
+// too); its segment labels are localized here, where they are rendered.
+const viewModeOptions = computed(() =>
+	POSTBOX_VIEW_MODE_OPTIONS.map(({ value }) => ({
+		value,
+		label: t(`components.postbox.postboxLayout.viewModes.${value}`),
+	}))
+);
 
 // Inbox landing mode — 'today' (the focused single-column PostboxTodayView;
 // the default) vs 'browse' (the three panes below). Inbox-only: every other
@@ -309,9 +326,9 @@ const advanceIds = computed(() =>
 						role="status"
 					>
 						<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
-						<span class="truncate"
-							>Offline — showing recent mail from this device. Actions are paused.</span
-						>
+						<span class="truncate">{{
+							t('components.postbox.postboxLayout.offlineBanner')
+						}}</span>
 					</div>
 					<header
 						class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2"
@@ -323,7 +340,7 @@ const advanceIds = computed(() =>
 							<button
 								type="button"
 								class="lg:hidden -ml-2 -my-2 w-11 h-11 flex items-center justify-center flex-shrink-0 rounded text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-								aria-label="Open folders"
+								:aria-label="t('components.postbox.postboxLayout.openFolders')"
 								@click="railOpen = true"
 							>
 								<Icon name="lucide:panel-left" class="w-4 h-4" />
@@ -340,7 +357,7 @@ const advanceIds = computed(() =>
 								<span
 									v-if="showingCached && !isOffline"
 									class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
-									>updating…</span
+									>{{ t('components.postbox.postboxLayout.updating') }}</span
 								>
 							</h2>
 						</div>
@@ -351,22 +368,22 @@ const advanceIds = computed(() =>
 								type="button"
 								class="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
 								aria-keyshortcuts="Escape b"
-								title="Back to Today (Esc)"
+								:title="t('components.postbox.postboxLayout.backToTodayTitle')"
 								@click="switchInboxMode('today')"
 							>
-								Today
+								{{ t('common.today') }}
 								<kbd
 									class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
 									aria-hidden="true"
-									>esc</kbd
+									>{{ t('components.postbox.postboxLayout.escKey') }}</kbd
 								>
 							</button>
 							<!-- Labeled view-mode control — exactly one mode active; persisted
 					     per user. Inbox-only: other folders stay flat. -->
 							<UiSegmentedControl
 								size="sm"
-								aria-label="Inbox view"
-								:options="POSTBOX_VIEW_MODE_OPTIONS"
+								:aria-label="t('components.postbox.postboxLayout.inboxView')"
+								:options="viewModeOptions"
 								:model-value="viewMode"
 								@update:model-value="selectViewMode"
 							/>
@@ -463,7 +480,9 @@ const advanceIds = computed(() =>
 						<div v-else class="h-full flex items-center justify-center">
 							<div class="text-center">
 								<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-								<p class="mt-4 text-text-secondary">Select a message</p>
+								<p class="mt-4 text-text-secondary">
+									{{ t('components.postbox.postboxLayout.selectMessage') }}
+								</p>
 							</div>
 						</div>
 					</Transition>

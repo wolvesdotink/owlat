@@ -5,7 +5,9 @@ import { languageOptions } from '~/data/languageOptions';
 import { emailSettingsSave } from '~/composables/emailSettingsSave';
 import { useEditorDirtyTracking } from '~/composables/useEmailEditorBridge';
 
-useHead({ title: 'Email Settings — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.send.emails.detail.settings.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -26,16 +28,16 @@ const {
 
 // Mutations
 const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
-	label: 'Save settings',
+	label: () => t('dashboard.send.emails.detail.settings.operations.save'),
 });
 const { run: changeTemplateType } = useBackendOperation(api.emailTemplates.emails.changeType, {
-	label: 'Change email type',
+	label: () => t('dashboard.send.emails.detail.settings.operations.changeType'),
 });
 // Changing the default language re-keys subject/preview/body — it must route
 // through `setDefaultLanguage`, not a plain field patch.
 const { run: promoteDefaultLanguage } = useBackendOperation(
 	api.emailTemplates.i18n.setDefaultLanguage,
-	{ label: 'Change default language' }
+	{ label: () => t('dashboard.send.emails.detail.settings.operations.changeDefaultLanguage') }
 );
 
 // Form state
@@ -80,7 +82,12 @@ const availableLanguages = computed(() => {
 // Get language label
 const getLanguageLabel = (code: string) => {
 	const lang = languageOptions.find((l) => l.value === code);
-	return lang ? `${lang.label} (${lang.nativeLabel})` : code;
+	return lang
+		? t('dashboard.send.emails.detail.settings.languageWithNative', {
+				label: t(lang.label),
+				native: lang.nativeLabel,
+			})
+		: code;
 };
 
 // Get language native label
@@ -205,7 +212,9 @@ const handleSave = async (): Promise<boolean> => {
 				return false;
 			case 'no-overlay':
 				showToast(
-					`Add a ${getLanguageNativeLabel(outcome.language)} translation before making it the default language.`,
+					t('dashboard.send.emails.detail.settings.toasts.missingOverlay', {
+						language: getLanguageNativeLabel(outcome.language),
+					}),
 					'error'
 				);
 				return false;
@@ -221,7 +230,7 @@ const handleSave = async (): Promise<boolean> => {
 				// plain patch, not another (now no-op) swap attempt.
 				persistedDefaultLanguage.value = form.defaultLanguage;
 				markClean();
-				showToast('Default language updated');
+				showToast(t('dashboard.send.emails.detail.settings.toasts.defaultLanguageUpdated'));
 				return true;
 			case 'saved':
 				if (form.type !== persistedType.value) {
@@ -231,7 +240,7 @@ const handleSave = async (): Promise<boolean> => {
 					persistedType.value = form.type;
 				}
 				markClean();
-				showToast('Settings saved successfully');
+				showToast(t('dashboard.send.emails.detail.settings.toasts.saved'));
 				return true;
 		}
 		return false;
@@ -256,27 +265,31 @@ const handleBack = () => {
 				<button
 					class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
 					@click="handleBack"
-					aria-label="Back"
+					:aria-label="t('common.back')"
 				>
 					<Icon name="lucide:arrow-left" class="w-5 h-5" />
 				</button>
 
 				<div class="flex items-center gap-2">
 					<Icon name="lucide:settings" class="w-5 h-5 text-text-tertiary" />
-					<span class="text-text-primary font-medium">Email Settings</span>
+					<span class="text-text-primary font-medium">{{
+						t('dashboard.send.emails.detail.settings.title')
+					}}</span>
 				</div>
 			</div>
 
 			<div class="flex items-center gap-3">
 				<span v-if="hasChanges" class="text-sm text-warning flex items-center gap-1.5">
 					<Icon name="lucide:alert-circle" class="w-4 h-4" />
-					Unsaved changes
+					{{ t('dashboard.send.emails.detail.settings.unsavedChanges') }}
 				</span>
 				<UiButton :loading="isSaving" :disabled="!hasChanges" @click="handleSave">
 					<template #iconLeft>
 						<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
 					</template>
-					{{ isSaving ? 'Saving...' : 'Save Changes' }}
+					{{
+						isSaving ? t('common.saving') : t('dashboard.send.emails.detail.settings.saveChanges')
+					}}
 				</UiButton>
 			</div>
 		</div>
@@ -284,14 +297,16 @@ const handleBack = () => {
 		<UiQueryBoundary
 			:loading="templateLoading"
 			:error="templateError"
-			error-title="Couldn't load this template"
+			:error-title="t('dashboard.send.emails.detail.settings.loadError')"
 			@retry="refetchTemplate"
 		>
 			<template #loading>
 				<div class="flex-1 flex items-center justify-center">
 					<div class="flex flex-col items-center gap-3">
 						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading template...</p>
+						<p class="text-text-secondary text-sm">
+							{{ t('dashboard.send.emails.detail.settings.loading') }}
+						</p>
 					</div>
 				</div>
 			</template>
@@ -300,11 +315,15 @@ const handleBack = () => {
 			<div v-if="!template" class="flex-1 flex items-center justify-center">
 				<div class="text-center">
 					<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
-					<h2 class="text-xl font-semibold text-text-primary mb-2">Template not found</h2>
+					<h2 class="text-xl font-semibold text-text-primary mb-2">
+						{{ t('dashboard.send.emails.detail.settings.notFound.title') }}
+					</h2>
 					<p class="text-text-secondary mb-6">
-						This email template doesn't exist or has been deleted.
+						{{ t('dashboard.send.emails.detail.settings.notFound.description') }}
 					</p>
-					<UiButton @click="router.push('/dashboard/send/marketing')">Back to Emails</UiButton>
+					<UiButton @click="router.push('/dashboard/send/marketing')">
+						{{ t('dashboard.send.emails.detail.settings.backToEmails') }}
+					</UiButton>
 				</div>
 			</div>
 
@@ -327,9 +346,11 @@ const handleBack = () => {
 									<Icon name="lucide:languages" class="w-5 h-5 text-brand" />
 								</div>
 								<div>
-									<h2 class="text-lg font-semibold text-text-primary">Translations</h2>
+									<h2 class="text-lg font-semibold text-text-primary">
+										{{ t('dashboard.send.emails.detail.settings.translations.title') }}
+									</h2>
 									<p class="text-sm text-text-secondary">
-										Add translated subject lines and preview text for different languages
+										{{ t('dashboard.send.emails.detail.settings.translations.description') }}
 									</p>
 								</div>
 							</div>
@@ -341,7 +362,7 @@ const handleBack = () => {
 										<template #iconLeft>
 											<Icon name="lucide:plus" class="w-4 h-4" />
 										</template>
-										Add Language
+										{{ t('dashboard.send.emails.detail.settings.translations.addLanguage') }}
 									</UiButton>
 								</template>
 
@@ -351,7 +372,12 @@ const handleBack = () => {
 									@click="addLanguage(lang.value)"
 								>
 									<Icon name="lucide:globe" class="w-4 h-4" />
-									{{ lang.label }} ({{ lang.nativeLabel }})
+									{{
+										t('dashboard.send.emails.detail.settings.languageWithNative', {
+											label: t(lang.label),
+											native: lang.nativeLabel,
+										})
+									}}
 								</UiDropdownMenuItem>
 							</UiDropdownMenu>
 						</div>
@@ -362,9 +388,11 @@ const handleBack = () => {
 							class="text-center py-8 border border-dashed border-border-subtle rounded-xl"
 						>
 							<Icon name="lucide:globe" class="w-8 h-8 text-text-tertiary mx-auto mb-3" />
-							<p class="text-text-secondary mb-1">No translations added yet</p>
+							<p class="text-text-secondary mb-1">
+								{{ t('dashboard.send.emails.detail.settings.translations.emptyTitle') }}
+							</p>
 							<p class="text-sm text-text-tertiary">
-								Add languages to provide translated subject lines and preview text
+								{{ t('dashboard.send.emails.detail.settings.translations.emptyDescription') }}
 							</p>
 						</div>
 
@@ -386,7 +414,7 @@ const handleBack = () => {
 									<span class="text-sm font-medium">{{ getLanguageNativeLabel(langCode) }}</span>
 									<button
 										class="p-0.5 rounded hover:bg-error/20 hover:text-error transition-colors"
-										title="Remove language"
+										:title="t('dashboard.send.emails.detail.settings.translations.removeLanguage')"
 										@click.stop="removeLanguage(langCode)"
 									>
 										<Icon name="lucide:trash-2" class="w-3 h-3" />
@@ -411,18 +439,30 @@ const handleBack = () => {
 									<div class="space-y-4">
 										<UiInput
 											v-model="selectedTranslation.subject"
-											label="Subject Line"
-											:placeholder="`Subject in ${getLanguageNativeLabel(selectedLanguage)}`"
-											help-text="Leave empty to use the default subject."
+											:label="t('dashboard.send.emails.detail.settings.translations.subjectLabel')"
+											:placeholder="
+												t('dashboard.send.emails.detail.settings.translations.subjectPlaceholder', {
+													language: getLanguageNativeLabel(selectedLanguage),
+												})
+											"
+											:help-text="
+												t('dashboard.send.emails.detail.settings.translations.subjectHelp')
+											"
 										/>
 
 										<UiTextarea
 											v-model="selectedTranslation.previewText"
-											label="Preview Text"
-											:placeholder="`Preview text in ${getLanguageNativeLabel(selectedLanguage)}`"
+											:label="t('dashboard.send.emails.detail.settings.translations.previewLabel')"
+											:placeholder="
+												t('dashboard.send.emails.detail.settings.translations.previewPlaceholder', {
+													language: getLanguageNativeLabel(selectedLanguage),
+												})
+											"
 											:rows="2"
 											:max-length="150"
-											help-text="Leave empty to use the default preview text."
+											:help-text="
+												t('dashboard.send.emails.detail.settings.translations.previewHelp')
+											"
 										/>
 									</div>
 								</div>
@@ -431,7 +471,9 @@ const handleBack = () => {
 									v-else
 									class="border border-dashed border-border-subtle rounded-xl p-8 text-center"
 								>
-									<p class="text-text-secondary">Select a language above to edit its translation</p>
+									<p class="text-text-secondary">
+										{{ t('dashboard.send.emails.detail.settings.translations.selectPrompt') }}
+									</p>
 								</div>
 							</Transition>
 						</div>
@@ -442,11 +484,11 @@ const handleBack = () => {
 						<div class="flex gap-3">
 							<Icon name="lucide:globe" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 							<div class="text-sm">
-								<p class="text-text-primary font-medium mb-1">How translations work</p>
+								<p class="text-text-primary font-medium mb-1">
+									{{ t('dashboard.send.emails.detail.settings.info.title') }}
+								</p>
 								<p class="text-text-secondary">
-									When sending an email, the system checks each recipient's language preference. If
-									a translation exists for their language, they'll receive the translated subject
-									and preview text. Otherwise, they'll receive the default language content.
+									{{ t('dashboard.send.emails.detail.settings.info.body') }}
 								</p>
 							</div>
 						</div>

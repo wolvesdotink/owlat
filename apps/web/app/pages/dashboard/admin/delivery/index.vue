@@ -5,7 +5,19 @@ import { deliveryVerdict, warmupSentence, deliveryStatTiles } from '~/utils/deli
 import { healthChipClass, levelTone } from '~/utils/healthTone';
 import { formatDate } from '~/utils/formatters';
 
-useHead({ title: 'Delivery health — Owlat' });
+const { t, locale } = useI18n();
+
+/**
+ * `utils/deliveryHub` is a module-scope definition set whose label/threshold copy
+ * carries i18n keys rather than sentences (the registry convention); a plain
+ * string is still accepted so a value with nothing to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+useHead({ title: () => t('dashboard.admin.delivery.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -65,7 +77,10 @@ const { data: suppressionCounts } = useOrganizationQuery(api.blockedEmails.getCo
 const isLoading = computed(() => teamLoading.value || overviewLoading.value);
 
 // --- Header warm-up sentence ---
-const warmup = computed(() => warmupSentence(sendingOverview.value?.warming ?? null));
+const warmup = computed(() => {
+	const sentence = warmupSentence(sendingOverview.value?.warming ?? null);
+	return sentence === null ? null : localized(sentence);
+});
 
 // --- Abuse status banner (preserved from the old sending-limits card) ---
 const abuseWarning = computed(() => {
@@ -74,19 +89,17 @@ const abuseWarning = computed(() => {
 	switch (status) {
 		case 'warned':
 			return {
-				message:
-					'Your account is flagged for elevated bounce or complaint rates. Improve list quality to avoid further restrictions.',
+				message: t('dashboard.admin.delivery.index.abuse.warned'),
 				severity: 'warning' as const,
 			};
 		case 'suspended':
 			return {
-				message:
-					'Sending is suspended because reputation thresholds were exceeded. Resolve the flagged issues to resume.',
+				message: t('dashboard.admin.delivery.index.abuse.suspended'),
 				severity: 'error' as const,
 			};
 		case 'banned':
 			return {
-				message: 'This account is permanently restricted from sending.',
+				message: t('dashboard.admin.delivery.index.abuse.banned'),
 				severity: 'error' as const,
 			};
 		default:
@@ -121,7 +134,11 @@ const statTiles = computed(() => {
 				remainingToday: overview.warming.remainingToday,
 			}
 		: null;
-	return deliveryStatTiles(reputation, budget, previousRates.value);
+	return deliveryStatTiles(reputation, budget, previousRates.value).map((tile) => ({
+		...tile,
+		label: localized(tile.label),
+		threshold: localized(tile.threshold),
+	}));
 });
 
 const tileValueTone: Record<'ok' | 'warn' | 'error', 'default' | 'warning' | 'error'> = {
@@ -135,25 +152,46 @@ const tileValueTone: Record<'ok' | 'warn' | 'error', 'default' | 'warning' | 'er
 // true 30-day window (it can't silently grow to the 90-day retention horizon).
 const trendData = computed<ChartDatum[]>(() =>
 	(snapshots.value ?? []).map((s) => ({
-		label: formatDate(s.periodStart, 'short'),
+		label: formatDate(s.periodStart, 'short', locale.value),
 		value: s.deliveryRate,
 	}))
 );
 const collectingHistory = computed(() => (snapshots.value?.length ?? 0) < 7);
 function formatRate(value: number): string {
-	return `${(value * 100).toFixed(1)}%`;
+	return new Intl.NumberFormat(locale.value, {
+		style: 'percent',
+		minimumFractionDigits: 1,
+		maximumFractionDigits: 1,
+	}).format(value);
 }
 
 // --- Suppressions summary line ---
 const suppressionParts = computed(() => {
 	const c = suppressionCounts.value;
 	if (!c || c.total === 0) return null;
+	const number = new Intl.NumberFormat(locale.value);
 	const parts: string[] = [];
-	if (c.bounced > 0) parts.push(`${c.bounced.toLocaleString()} bounced`);
-	if (c.complained > 0) parts.push(`${c.complained.toLocaleString()} complained`);
-	if (c.manual > 0) parts.push(`${c.manual.toLocaleString()} manual`);
-	if (c.unengaged > 0) parts.push(`${c.unengaged.toLocaleString()} unengaged`);
-	return { total: c.total, breakdown: parts.join(' · ') };
+	if (c.bounced > 0)
+		parts.push(
+			t('dashboard.admin.delivery.index.suppressions.bounced', { count: number.format(c.bounced) })
+		);
+	if (c.complained > 0)
+		parts.push(
+			t('dashboard.admin.delivery.index.suppressions.complained', {
+				count: number.format(c.complained),
+			})
+		);
+	if (c.manual > 0)
+		parts.push(
+			t('dashboard.admin.delivery.index.suppressions.manual', { count: number.format(c.manual) })
+		);
+	if (c.unengaged > 0)
+		parts.push(
+			t('dashboard.admin.delivery.index.suppressions.unengaged', {
+				count: number.format(c.unengaged),
+			})
+		);
+	return { total: number.format(c.total), breakdown: parts.join(' · ') };
 });
 
 // Verdict chip tone → semantic token classes, via the shared health tone map so
@@ -176,12 +214,14 @@ const sendingDetail = computed(() => {
 				<UiIconBox icon="lucide:shield-check" size="lg" variant="brand" rounded="xl" />
 				<div>
 					<div class="flex items-center gap-2.5">
-						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Delivery health</h1>
+						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+							{{ t('dashboard.admin.delivery.index.title') }}
+						</h1>
 						<span
 							class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
 							:class="verdictChipClass"
 						>
-							{{ verdict.label }}
+							{{ localized(verdict.label) }}
 						</span>
 					</div>
 					<!-- When the verdict isn't Healthy, surface the reason as a visible
@@ -191,35 +231,35 @@ const sendingDetail = computed(() => {
 					</p>
 					<p v-if="warmup" class="mt-1 text-sm text-text-secondary">{{ warmup }}</p>
 					<p v-else-if="level === 'ok'" class="mt-1 text-sm text-text-secondary">
-						Your sending reputation, delivery trend, and domains at a glance
+						{{ t('dashboard.admin.delivery.index.lede') }}
 					</p>
 				</div>
 			</div>
 			<UiDisclosure
 				v-model="advancedOpen"
 				controls="delivery-advanced-links"
-				label="Advanced tools"
+				:label="t('dashboard.admin.delivery.index.advanced.label')"
 			>
 				<div class="flex flex-wrap justify-end gap-3">
 					<NuxtLink
 						to="/dashboard/admin/delivery/advanced/independence"
 						class="text-sm text-brand hover:underline"
-						>Independence</NuxtLink
+						>{{ t('dashboard.admin.delivery.index.advanced.independence') }}</NuxtLink
 					>
 					<NuxtLink
 						to="/dashboard/admin/delivery/advanced/cells"
 						class="text-sm text-brand hover:underline"
-						>Cells</NuxtLink
+						>{{ t('dashboard.admin.delivery.index.advanced.cells') }}</NuxtLink
 					>
 					<NuxtLink
 						to="/dashboard/admin/delivery/advanced/controls"
 						class="text-sm text-brand hover:underline"
-						>Controls</NuxtLink
+						>{{ t('dashboard.admin.delivery.index.advanced.controls') }}</NuxtLink
 					>
 					<NuxtLink
 						to="/dashboard/admin/delivery/advanced/measurement"
 						class="text-sm text-brand hover:underline"
-						>Measurement</NuxtLink
+						>{{ t('dashboard.admin.delivery.index.advanced.measurement') }}</NuxtLink
 					>
 				</div>
 			</UiDisclosure>
@@ -244,8 +284,8 @@ const sendingDetail = computed(() => {
 
 		<UiErrorAlert
 			v-else-if="overviewError"
-			title="Couldn't load delivery health"
-			message="We hit an error loading your reputation data. Reload to try again."
+			:title="t('dashboard.admin.delivery.index.overviewError.title')"
+			:message="t('dashboard.admin.delivery.index.overviewError.message')"
 			class="my-8"
 		/>
 
@@ -301,9 +341,11 @@ const sendingDetail = computed(() => {
 				<div class="space-y-3">
 					<div class="flex items-center justify-between gap-3">
 						<div>
-							<h2 class="text-lg font-semibold text-text-primary">Delivery rate</h2>
+							<h2 class="text-lg font-semibold text-text-primary">
+								{{ t('dashboard.admin.delivery.index.trend.title') }}
+							</h2>
 							<p class="text-sm text-text-secondary">
-								Share of sent mail that was delivered, daily
+								{{ t('dashboard.admin.delivery.index.trend.subtitle') }}
 							</p>
 						</div>
 					</div>
@@ -313,8 +355,8 @@ const sendingDetail = computed(() => {
 					<UiQueryBoundary
 						:loading="snapshotsLoading"
 						:error="snapshotsError"
-						error-title="Couldn’t load your delivery-rate history"
-						error-message="This trend could not be read. It is not shown empty: an empty chart here means you have only just started sending, and that is not something to claim while the read is failing."
+						:error-title="t('dashboard.admin.delivery.index.trend.errorTitle')"
+						:error-message="t('dashboard.admin.delivery.index.trend.errorMessage')"
 						@retry="refetchSnapshots"
 					>
 						<template #loading>
@@ -322,16 +364,16 @@ const sendingDetail = computed(() => {
 								class="h-40 animate-pulse rounded-xl bg-bg-surface"
 								role="status"
 								aria-live="polite"
-								aria-label="Loading delivery-rate history"
+								:aria-label="t('dashboard.admin.delivery.index.trend.loading')"
 							/>
 						</template>
 						<UiTrendChart
 							:data="trendData"
 							:format-value="formatRate"
-							aria-label="30-day delivery rate trend"
+							:aria-label="t('dashboard.admin.delivery.index.trend.chartLabel')"
 						/>
 						<p v-if="collectingHistory" class="mt-3 text-xs text-text-tertiary">
-							Collecting history — full trends in a week.
+							{{ t('dashboard.admin.delivery.index.trend.collecting') }}
 						</p>
 					</UiQueryBoundary>
 				</div>
@@ -352,8 +394,8 @@ const sendingDetail = computed(() => {
 			<UiQueryBoundary
 				:loading="domainsLoading"
 				:error="domainsError"
-				error-title="Couldn’t load your sending domains"
-				error-message="This list could not be read. It is not shown empty: an empty list here means you have no sending domains set up, and that is not something to claim while the read is failing."
+				:error-title="t('dashboard.admin.delivery.index.domains.errorTitle')"
+				:error-message="t('dashboard.admin.delivery.index.domains.errorMessage')"
 				@retry="refetchDomains"
 			>
 				<template #loading>
@@ -361,7 +403,7 @@ const sendingDetail = computed(() => {
 						class="h-40 animate-pulse rounded-xl bg-bg-surface"
 						role="status"
 						aria-live="polite"
-						aria-label="Loading sending domains"
+						:aria-label="t('dashboard.admin.delivery.index.domains.loading')"
 					/>
 				</template>
 				<DeliveryDomainTable :rows="domainRows ?? []" />
@@ -375,15 +417,22 @@ const sendingDetail = computed(() => {
 			>
 				<div class="flex items-center gap-2 min-w-0">
 					<Icon name="lucide:shield-off" class="w-4 h-4 text-text-tertiary shrink-0" />
-					<p class="text-sm text-text-secondary truncate">
-						<span class="text-text-primary font-medium tabular-nums">{{
-							suppressionParts.total.toLocaleString()
-						}}</span>
-						suppressed · {{ suppressionParts.breakdown }}
-					</p>
+					<I18nT
+						keypath="dashboard.admin.delivery.index.suppressions.summary"
+						tag="p"
+						class="text-sm text-text-secondary truncate"
+						scope="global"
+					>
+						<template #total>
+							<span class="text-text-primary font-medium tabular-nums">{{
+								suppressionParts.total
+							}}</span>
+						</template>
+						<template #breakdown>{{ suppressionParts.breakdown }}</template>
+					</I18nT>
 				</div>
 				<span class="inline-flex items-center gap-0.5 text-sm text-brand font-medium shrink-0">
-					View
+					{{ t('dashboard.admin.delivery.index.suppressions.view') }}
 					<Icon
 						name="lucide:arrow-right"
 						class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-(--motion-fast)"
@@ -396,8 +445,8 @@ const sendingDetail = computed(() => {
 		<UiEmptyState
 			v-else
 			icon="lucide:shield-check"
-			title="No data available"
-			description="Delivery health will appear once your workspace's sending is configured."
+			:title="t('dashboard.admin.delivery.index.empty.title')"
+			:description="t('dashboard.admin.delivery.index.empty.description')"
 		/>
 	</div>
 </template>

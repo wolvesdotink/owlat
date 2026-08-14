@@ -37,6 +37,15 @@ export type DeliverabilityArmSummary = DeliverabilityDashboardCell['own'];
 export type DeliverabilityConfidence = DeliverabilityDashboardCell['confidence'];
 
 /**
+ * A sentence this module hands out: the catalog KEY that carries it, plus the
+ * numbers it interpolates. Every table here is module scope and evaluated at
+ * import time, so none of them can call `useI18n` — the screen that renders a
+ * value is the boundary that turns it into words (the registry convention). A
+ * plain string is a key with no parameters.
+ */
+export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+
+/**
  * The headline, D14 literally: with nothing to compare against, the feature is
  * "Warm-up autopilot" (how much can I send today, and what is holding it back),
  * not a degraded "Sending independence".
@@ -47,8 +56,10 @@ export type DeliverabilityConfidence = DeliverabilityDashboardCell['confidence']
  * relay list tells such a deployment the opposite of what its own cards say.
  * Naming the relay is a separate question, answered by `referenceTransportId`.
  */
-export function measurementHeadline(hasReferenceArm: boolean): string {
-	return hasReferenceArm ? 'Sending independence' : 'Warm-up autopilot';
+export function measurementHeadline(hasReferenceArm: boolean): LocalizedText {
+	return hasReferenceArm
+		? 'shared.deliverabilityMeasurement.headline.independence'
+		: 'shared.deliverabilityMeasurement.headline.warmup';
 }
 
 /**
@@ -67,15 +78,17 @@ export function measurementHeadline(hasReferenceArm: boolean): string {
 export function measurementSubhead(input: {
 	readonly hasReferenceArm: boolean;
 	readonly referenceTransportId: string | null;
-}): string {
-	if (!input.hasReferenceArm) {
-		return 'What your own server is sending, and how much of it is measurable. Read-only — nothing here changes your sending.';
+}): LocalizedText {
+	if (!input.hasReferenceArm) return 'shared.deliverabilityMeasurement.subhead.standalone';
+	// TWO SENTENCES, NOT ONE WITH A SUBJECT SLOT: the unnamed arm's phrase is copy
+	// of its own, and a translator has to be able to word it inside the sentence.
+	if (input.referenceTransportId === null) {
+		return 'shared.deliverabilityMeasurement.subhead.relays';
 	}
-	const against =
-		input.referenceTransportId === null
-			? 'the relays carrying the same traffic'
-			: transportIdLabel(input.referenceTransportId);
-	return `How your own server compares with ${against} on the same traffic. Read-only — nothing here changes your sending.`;
+	return {
+		key: 'shared.deliverabilityMeasurement.subhead.namedRelay',
+		params: { relay: transportIdLabel(input.referenceTransportId) },
+	};
 }
 
 /**
@@ -109,61 +122,73 @@ export function standaloneNote(input: {
 	readonly isRelayConfigured: boolean;
 	readonly referenceTransportId: string | null;
 	readonly hasPlottedRelayHistory: boolean;
-}): string {
-	if (!input.isRelayConfigured) {
-		return 'You are sending entirely from your own server. Everything below is measured against your own history. Connecting a relay you already pay for would let the same traffic be compared side by side and raise measurement confidence — it is optional, and nothing here is waiting on it.';
-	}
+}): LocalizedText {
+	if (!input.isRelayConfigured) return 'shared.deliverabilityMeasurement.standaloneNote.noRelay';
 	// A configured relay with no measured arm. `null` here is the OTHER null:
-	// more than one relay kind, so there is no single one to name.
-	const relay =
-		input.referenceTransportId === null
-			? { subject: 'the relays you have connected', pronoun: 'they' }
-			: { subject: transportIdLabel(input.referenceTransportId), pronoun: 'it' };
-	const plotted = input.hasPlottedRelayHistory
-		? ` The days ${relay.pronoun} did carry are still plotted on the cards below.`
-		: '';
-	return `Everything below is measured against your own history — ${relay.subject} carried none of this traffic recently, so the checks had nothing to compare against.${plotted}`;
+	// more than one relay kind, so there is no single one to name — and the
+	// subject, its pronoun and the closing promise are all one sentence per
+	// combination, because a subject and a pronoun slotted into a shared frame is
+	// a sentence no translator can put into another grammar.
+	if (input.referenceTransportId === null) {
+		return input.hasPlottedRelayHistory
+			? 'shared.deliverabilityMeasurement.standaloneNote.relaysPlotted'
+			: 'shared.deliverabilityMeasurement.standaloneNote.relays';
+	}
+	return {
+		key: input.hasPlottedRelayHistory
+			? 'shared.deliverabilityMeasurement.standaloneNote.namedRelayPlotted'
+			: 'shared.deliverabilityMeasurement.standaloneNote.namedRelay',
+		params: { relay: transportIdLabel(input.referenceTransportId) },
+	};
 }
 
 const STREAM_LABELS = {
-	campaign: 'Campaign',
-	automation: 'Automation',
-	transactional: 'Transactional',
+	campaign: 'shared.deliverabilityMeasurement.stream.campaign',
+	automation: 'shared.deliverabilityMeasurement.stream.automation',
+	transactional: 'shared.deliverabilityMeasurement.stream.transactional',
 } as const;
 
 const PROVIDER_LABELS = {
-	gmail: 'Gmail',
-	microsoft: 'Microsoft',
-	yahoo: 'Yahoo',
-	apple: 'Apple',
-	other: 'Everywhere else',
+	gmail: 'shared.deliverabilityMeasurement.provider.gmail',
+	microsoft: 'shared.deliverabilityMeasurement.provider.microsoft',
+	yahoo: 'shared.deliverabilityMeasurement.provider.yahoo',
+	apple: 'shared.deliverabilityMeasurement.provider.apple',
+	other: 'shared.deliverabilityMeasurement.provider.other',
 } as const;
 
-export function streamLabel(stream: DeliverabilityDashboardCell['cell']['stream']): string {
+export function streamLabel(stream: DeliverabilityDashboardCell['cell']['stream']): LocalizedText {
 	return STREAM_LABELS[stream];
 }
 
 export function providerLabel(
 	provider: DeliverabilityDashboardCell['cell']['destinationProvider']
-): string {
+): LocalizedText {
 	return PROVIDER_LABELS[provider];
 }
 
-export function cellLabel(cell: DeliverabilityDashboardCell['cell']): string {
-	return `${streamLabel(cell.stream)} → ${providerLabel(cell.destinationProvider)}`;
+/**
+ * THE CELL'S NAME AS ONE MESSAGE, not two names either side of an arrow.
+ *
+ * A cell's name is a catalog entry per (stream, provider) pair rather than a
+ * frame with two slots, because a slot could only be filled with the OTHER
+ * entries' keys — and a key interpolated into a sentence renders as itself. The
+ * pair is closed and exhaustive on both axes, so every combination has a name.
+ */
+export function cellLabel(cell: DeliverabilityDashboardCell['cell']): LocalizedText {
+	return `shared.deliverabilityMeasurement.cell.${cell.stream}.${cell.destinationProvider}`;
 }
 
 // ============ GATES ============
 
 const GATE_LABELS = {
-	hard_bounce: 'Hard bounces',
-	deferral: 'Deferrals',
-	complaint: 'Complaints',
-	engagement_ratio: 'Engagement',
-	seed_placement: 'Seed placement',
+	hard_bounce: 'shared.deliverabilityMeasurement.gate.hardBounce',
+	deferral: 'shared.deliverabilityMeasurement.gate.deferral',
+	complaint: 'shared.deliverabilityMeasurement.gate.complaint',
+	engagement_ratio: 'shared.deliverabilityMeasurement.gate.engagement',
+	seed_placement: 'shared.deliverabilityMeasurement.gate.seedPlacement',
 } as const;
 
-export function gateLabel(gate: DeliverabilityDashboardGate['gate']): string {
+export function gateLabel(gate: DeliverabilityDashboardGate['gate']): LocalizedText {
 	return GATE_LABELS[gate];
 }
 
@@ -181,17 +206,20 @@ export type GateStatus = DeliverabilityDashboardGate['status'];
  * ends up with alarming colour and calm words.
  */
 export const GATE_STATUS_PRESENTATION = {
-	pass: { tone: 'ok', label: 'Healthy' },
-	fail: { tone: 'attention', label: 'Needs attention' },
-	halt: { tone: 'stop', label: 'Stopped' },
-	insufficient_data: { tone: 'neutral', label: 'Not enough data yet' },
+	pass: { tone: 'ok', label: 'shared.deliverabilityMeasurement.gateStatus.pass' },
+	fail: { tone: 'attention', label: 'shared.deliverabilityMeasurement.gateStatus.fail' },
+	halt: { tone: 'stop', label: 'shared.deliverabilityMeasurement.gateStatus.halt' },
+	insufficient_data: {
+		tone: 'neutral',
+		label: 'shared.deliverabilityMeasurement.gateStatus.insufficientData',
+	},
 } as const satisfies Record<GateStatus, { tone: GateTone; label: string }>;
 
 export function gateTone(status: GateStatus): GateTone {
 	return GATE_STATUS_PRESENTATION[status].tone;
 }
 
-export function gateStatusLabel(status: GateStatus): string {
+export function gateStatusLabel(status: GateStatus): LocalizedText {
 	return GATE_STATUS_PRESENTATION[status].label;
 }
 
@@ -224,8 +252,18 @@ export function gateStatusLabel(status: GateStatus): string {
  * operator is being asked to trust by the send cadence. The mailbox count is a
  * different fact with its own copy (`add_seed_mailboxes`).
  */
-function sampleUnit(gate: DeliverabilityDashboardGate['gate']): string {
-	return gate === 'seed_placement' ? 'seed probes' : 'sends';
+function sampleUnit(gate: DeliverabilityDashboardGate['gate']): 'probes' | 'sends' {
+	return gate === 'seed_placement' ? 'probes' : 'sends';
+}
+
+/**
+ * The unit is a WORD INSIDE the sentence, so it picks the sentence rather than
+ * filling a slot in one: "80 of 400 sends" and "80 of 400 seed probes" decline
+ * differently once the sentence is not English, and a slot would have carried
+ * another catalog key into the middle of this one.
+ */
+function unitKey(base: string, unit: 'probes' | 'sends'): string {
+	return `${base}.${unit}`;
 }
 
 /**
@@ -262,15 +300,34 @@ function sampleUnit(gate: DeliverabilityDashboardGate['gate']): string {
  * Gmail Promotions probe a miss on the clean verdict and, symmetrically, has to
  * account for the `deleted` placement on the breach.
  */
-function seedPlacementExplanation(gate: DeliverabilityDashboardGate): string {
+const SEED_FALLBACK_KEYS = {
+	pass: 'shared.deliverabilityMeasurement.seed.fallback.pass',
+	fail: 'shared.deliverabilityMeasurement.seed.fallback.fail',
+	halt: 'shared.deliverabilityMeasurement.seed.fallback.halt',
+	insufficient_data: 'shared.deliverabilityMeasurement.seed.fallback.insufficientData',
+} as const satisfies Record<GateStatus, string>;
+
+function seedPlacementExplanation(gate: DeliverabilityDashboardGate): LocalizedText {
 	const probes = formatNumber(gate.measurement.ownSample);
 	switch (gate.reason) {
 		case 'within_threshold':
-			return `Effectively all of the ${probes} seed probes reached the inbox or a tab.`;
+			return {
+				key: 'shared.deliverabilityMeasurement.seed.withinThreshold',
+				params: { probes },
+			};
 		case 'reference_tolerance_breached':
-			return `This cell's seed probes reached the inbox or a tab less often than the comparison transport's did — ${probes} swept here, ${formatNumber(gate.measurement.referenceSample ?? 0)} there.`;
+			return {
+				key: 'shared.deliverabilityMeasurement.seed.referenceToleranceBreached',
+				params: {
+					probes,
+					referenceProbes: formatNumber(gate.measurement.referenceSample ?? 0),
+				},
+			};
 		case 'absolute_threshold_breached':
-			return `Some of the ${probes} seed probes did not reach the inbox or a tab — they were filtered to spam, deleted, or not found in any folder.`;
+			return {
+				key: 'shared.deliverabilityMeasurement.seed.absoluteThresholdBreached',
+				params: { probes },
+			};
 		default:
 			// NOT exhaustive, and safe BECAUSE it carries no placement figure: the
 			// seed gate decides exactly the three reasons above (`seedGate.ts` —
@@ -284,11 +341,14 @@ function seedPlacementExplanation(gate: DeliverabilityDashboardGate): string {
 			// in for the comparative one — it drops the second clause entirely. Copy
 			// written ahead of a variant that does not exist is the speculative seam
 			// `trailingBaselineGates.ts` cites plan D20 against.
-			return `${gateStatusLabel(gate.status)} — this check swept ${probes} seed probes.`;
+			//
+			// The status WORD is part of this sentence, so there is one sentence per
+			// status rather than a status key slotted into a shared frame.
+			return { key: SEED_FALLBACK_KEYS[gate.status], params: { probes } };
 	}
 }
 
-export function gateExplanation(gate: DeliverabilityDashboardGate): string {
+export function gateExplanation(gate: DeliverabilityDashboardGate): LocalizedText {
 	const { measurement } = gate;
 	const unit = sampleUnit(gate.gate);
 	if (gate.status === 'insufficient_data') {
@@ -298,37 +358,49 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 		const { reason } = gate;
 		switch (reason) {
 			case 'own_sample_below_floor':
-				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} ${unit} in the checks’ window.`;
+				return {
+					key: unitKey('shared.deliverabilityMeasurement.hold.ownSampleBelowFloor', unit),
+					params: {
+						sample: formatNumber(measurement.ownSample),
+						floor: formatNumber(measurement.minSample),
+					},
+				};
 			case 'reference_sample_below_floor':
 				// The unit is the GATE's, not the sentence's: the seed gate's second sweep is
 				// denominated in PROBES, and it reaches this reason whenever that sweep
 				// is thin.
-				return `Not enough data yet — ${formatNumber(measurement.referenceSample ?? 0)} of ${formatNumber(measurement.referenceMinSample ?? measurement.minSample)} ${unit} on the comparison transport in the checks’ window.`;
+				return {
+					key: unitKey('shared.deliverabilityMeasurement.hold.referenceSampleBelowFloor', unit),
+					params: {
+						sample: formatNumber(measurement.referenceSample ?? 0),
+						floor: formatNumber(measurement.referenceMinSample ?? measurement.minSample),
+					},
+				};
 			case 'baseline_sample_below_floor':
-				return `Not enough history yet — this cell has not sent enough over the past 30 days to be compared with its own past.`;
+				return 'shared.deliverabilityMeasurement.hold.baselineSampleBelowFloor';
 			case 'own_evidence_stale':
 			case 'reference_evidence_stale':
 			case 'baseline_evidence_stale':
-				return 'No recent sending in this cell, so there is nothing fresh to measure.';
+				return 'shared.deliverabilityMeasurement.hold.evidenceStale';
 			case 'own_rate_unmeasurable':
 			case 'reference_rate_unmeasurable':
 			case 'baseline_rate_unmeasurable':
-				return 'The recorded counters for the checks’ window could not be read as a rate, so this check is holding.';
+				return 'shared.deliverabilityMeasurement.hold.rateUnmeasurable';
 			case 'reference_not_a_denominator':
 			case 'baseline_not_a_denominator':
 				// NOT a fault, and the sentence must not read like one: the series this
 				// check compares against is a perfectly good number that a relative
 				// comparison cannot be built on — most often a clean window with nothing
 				// in the numerator at all.
-				return 'The window this check compares against is too clean to compare with — there is no relative verdict to give yet.';
+				return 'shared.deliverabilityMeasurement.hold.notADenominator';
 			case 'own_deferral_telemetry_absent':
 				// NOT "no deferrals" — that is the reading this hold exists to refuse.
 				// The window is ample and clean; what is missing is anything recording
 				// deferrals for this cell, and a zero from an instrument nobody switched
 				// on must not be rendered as a healthy one.
-				return 'No deferrals have been recorded for this cell, so there is nothing to measure yet — a rate of zero here would not mean receivers accepted everything.';
+				return 'shared.deliverabilityMeasurement.hold.deferralTelemetryAbsent';
 			case 'evidence_absent':
-				return 'Nothing has been measured for this cell yet.';
+				return 'shared.deliverabilityMeasurement.hold.evidenceAbsent';
 			default: {
 				// EXHAUSTIVE ON PURPOSE. A `default` that fell through to the "N of M
 				// sends this window" sentence would put a confident, wrong number under
@@ -356,27 +428,47 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	// a per-(cell, arm, day) counter, so a standalone cell whose window is at least
 	// 0.5% refusals renders this sentence.
 	if (gate.status === 'halt' && gate.reason === 'block_message_detected') {
-		return `${own ?? '—'} of the ${formatNumber(measurement.ownSample)} classified SMTP responses in the checks’ window were block messages, against a limit of ${threshold}.`;
+		return {
+			key: 'shared.deliverabilityMeasurement.verdict.blockMessages',
+			params: {
+				rate: own ?? '—',
+				sample: formatNumber(measurement.ownSample),
+				threshold,
+			},
+		};
 	}
-	const comparison =
-		reference === null
-			? ''
-			: ` Comparison transport: ${reference} over ${formatNumber(measurement.referenceSample ?? 0)} ${unit}.`;
-	return `${own ?? '—'} over ${formatNumber(measurement.ownSample)} ${unit}, against a limit of ${threshold}.${comparison}`;
+	// The comparison clause is a whole second sentence, so it picks the message
+	// rather than being pasted onto the end of one.
+	if (reference === null) {
+		return {
+			key: unitKey('shared.deliverabilityMeasurement.verdict.rate', unit),
+			params: { rate: own ?? '—', sample: formatNumber(measurement.ownSample), threshold },
+		};
+	}
+	return {
+		key: unitKey('shared.deliverabilityMeasurement.verdict.rateWithComparison', unit),
+		params: {
+			rate: own ?? '—',
+			sample: formatNumber(measurement.ownSample),
+			threshold,
+			referenceRate: reference,
+			referenceSample: formatNumber(measurement.referenceSample ?? 0),
+		},
+	};
 }
 
 // ============ CONFIDENCE (D14) ============
 
-export function confidenceLabel(level: DeliverabilityConfidence['level']): string {
+export function confidenceLabel(level: DeliverabilityConfidence['level']): LocalizedText {
 	switch (level) {
 		case 'none':
-			return 'Nothing sent yet';
+			return 'shared.deliverabilityMeasurement.confidence.none';
 		case 'low':
-			return 'Measurement confidence: low';
+			return 'shared.deliverabilityMeasurement.confidence.low';
 		case 'medium':
-			return 'Measurement confidence: medium';
+			return 'shared.deliverabilityMeasurement.confidence.medium';
 		case 'high':
-			return 'Measurement confidence: high';
+			return 'shared.deliverabilityMeasurement.confidence.high';
 	}
 }
 
@@ -387,14 +479,14 @@ export function confidenceLabel(level: DeliverabilityConfidence['level']): strin
  */
 export function improvementCopy(
 	improvement: DeliverabilityConfidence['improvements'][number]
-): string {
+): LocalizedText {
 	switch (improvement) {
 		case 'connect_reference_transport':
-			return 'Connect a relay you already pay for to compare the same traffic side by side.';
+			return 'shared.deliverabilityMeasurement.improvement.connectReferenceTransport';
 		case 'add_seed_mailboxes':
-			return 'Add seed mailboxes to spot a placement collapse the other signals cannot see.';
+			return 'shared.deliverabilityMeasurement.improvement.addSeedMailboxes';
 		case 'send_more_volume':
-			return 'Send more in this cell — the checks need a larger sample before they can decide.';
+			return 'shared.deliverabilityMeasurement.improvement.sendMoreVolume';
 	}
 }
 
@@ -402,7 +494,7 @@ export function improvementCopy(
 
 export interface ArmMetricRow {
 	readonly key: string;
-	readonly label: string;
+	readonly label: LocalizedText;
 	/** Absolute count, formatted. */
 	readonly ownCount: string;
 	readonly referenceCount: string | null;
@@ -413,7 +505,7 @@ export interface ArmMetricRow {
 
 interface MetricSpec {
 	readonly key: string;
-	readonly label: string;
+	readonly label: LocalizedText;
 	readonly count: (summary: DeliverabilityArmSummary) => number;
 	readonly rate?: (summary: DeliverabilityArmSummary) => number;
 }
@@ -424,26 +516,45 @@ interface MetricSpec {
  * summary. There is no arithmetic in this table.
  */
 const METRIC_SPECS: readonly MetricSpec[] = [
-	{ key: 'sent', label: 'Sent', count: (s) => s.sent },
-	{ key: 'delivered', label: 'Delivered', count: (s) => s.delivered, rate: (s) => s.deliveryRate },
+	{ key: 'sent', label: 'shared.deliverabilityMeasurement.metric.sent', count: (s) => s.sent },
+	{
+		key: 'delivered',
+		label: 'shared.deliverabilityMeasurement.metric.delivered',
+		count: (s) => s.delivered,
+		rate: (s) => s.deliveryRate,
+	},
 	{
 		key: 'hardBounced',
-		label: 'Hard bounces',
+		label: 'shared.deliverabilityMeasurement.metric.hardBounced',
 		count: (s) => s.hardBounced,
 		rate: (s) => s.hardBounceRate,
 	},
-	{ key: 'softBounced', label: 'Soft bounces', count: (s) => s.softBounced },
+	{
+		key: 'softBounced',
+		label: 'shared.deliverabilityMeasurement.metric.softBounced',
+		count: (s) => s.softBounced,
+	},
 	{
 		key: 'complained',
-		label: 'Complaints',
+		label: 'shared.deliverabilityMeasurement.metric.complained',
 		count: (s) => s.complained,
 		rate: (s) => s.complaintRate,
 	},
-	{ key: 'opened', label: 'Opens', count: (s) => s.opened, rate: (s) => s.openRate },
-	{ key: 'clicked', label: 'Clicks', count: (s) => s.clicked, rate: (s) => s.clickRate },
+	{
+		key: 'opened',
+		label: 'shared.deliverabilityMeasurement.metric.opened',
+		count: (s) => s.opened,
+		rate: (s) => s.openRate,
+	},
+	{
+		key: 'clicked',
+		label: 'shared.deliverabilityMeasurement.metric.clicked',
+		count: (s) => s.clicked,
+		rate: (s) => s.clickRate,
+	},
 	{
 		key: 'unsubscribed',
-		label: 'Unsubscribes',
+		label: 'shared.deliverabilityMeasurement.metric.unsubscribed',
 		count: (s) => s.unsubscribed,
 		rate: (s) => s.unsubscribeRate,
 	},

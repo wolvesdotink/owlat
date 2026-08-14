@@ -101,36 +101,65 @@ export function summarizeDualArmAlignment(
  * that has not answered — pending, with nothing for the operator to do.
  */
 export function dualArmAlignmentGate(summary: ReadinessDualArmSummary): ReadinessGate {
-	const named = summary.domains.length > 0 ? ` (${summary.domains.join(', ')})` : '';
-	const title = 'Dual-transport alignment';
+	// Module scope never calls `useI18n`: the gate carries catalog keys, and the
+	// readiness panel is the render boundary that words them. The domain list and
+	// the backend's own remedy/degradation sentences ride along as parameters.
+	const domains = summary.domains.length > 0 ? summary.domains.join(', ') : null;
+	const title = 'shared.dualArmAlignment.title';
 	if (summary.state === 'blocked') {
+		const remedy = summary.remedy === null || summary.remedy === '' ? null : summary.remedy;
 		return {
 			key: 'dual-arm-alignment',
 			title,
-			detail:
-				`The own server and your relay don't look identical to mailboxes yet${named}, so the gradual switchover is on hold. ${summary.remedy ?? ''}`.trim(),
+			detail: {
+				key:
+					domains !== null && remedy !== null
+						? 'shared.dualArmAlignment.blockedDomainsRemedy'
+						: domains !== null
+							? 'shared.dualArmAlignment.blockedDomains'
+							: remedy !== null
+								? 'shared.dualArmAlignment.blockedRemedy'
+								: 'shared.dualArmAlignment.blocked',
+				params: { domains, remedy },
+			},
 			status: 'attention',
 			tone: 'warning',
 			actionHref: DOMAINS_HREF,
-			actionLabel: 'Review records',
+			actionLabel: 'shared.dualArmAlignment.actionLabel',
 		};
 	}
 	if (summary.state === 'unknown') {
 		return {
 			key: 'dual-arm-alignment',
 			title,
-			detail: `We couldn't finish reading DNS for${named || ' your sending domains'} yet, so the switchover holds where it is. This re-checks itself — nothing for you to do.`,
+			detail: {
+				key:
+					domains !== null
+						? 'shared.dualArmAlignment.unknownDomains'
+						: 'shared.dualArmAlignment.unknown',
+				params: { domains },
+			},
 			status: 'pending',
 			tone: 'neutral',
 			actionHref: null,
 			actionLabel: null,
 		};
 	}
-	const degraded = summary.degradedReason === null ? '' : ` ${summary.degradedReason}`;
+	const reason = summary.degradedReason;
 	return {
 		key: 'dual-arm-alignment',
 		title,
-		detail: `Your own server and your relay look identical to mailboxes${named}, so the gradual switchover can measure them fairly.${degraded}`,
+		detail: {
+			key:
+				domains !== null && reason !== null
+					? 'shared.dualArmAlignment.alignedDomainsDegraded'
+					: domains !== null
+						? 'shared.dualArmAlignment.alignedDomains'
+						: reason !== null
+							? 'shared.dualArmAlignment.alignedDegraded'
+							: 'shared.dualArmAlignment.aligned',
+			params: { domains, reason },
+		},
 		status: 'ready',
 		tone: 'success',
 		actionHref: null,

@@ -10,6 +10,9 @@
  * (create, edit, schedule, and send campaigns from the curated sender list) but
  * cannot curate senders, manage contacts, or change settings. When the
  * permission map changes, this copy must change with it.
+ *
+ * Both tables are module scope, so neither calls `useI18n`: every copy field is
+ * a catalog KEY, and the team page resolves it with `t()` at render time.
  */
 
 import type { FunctionReturnType } from 'convex/server';
@@ -18,11 +21,12 @@ import type { OrganizationRole } from '~/composables/useOrganization';
 
 export interface RoleDefinition {
 	role: OrganizationRole;
+	/** Catalog key for the role name. */
 	label: string;
 	icon: string;
-	/** One-line summary shown as the primary description. */
+	/** One-line summary shown as the primary description. A catalog key. */
 	summary: string;
-	/** Second line — the concrete boundary of the role. */
+	/** Second line — the concrete boundary of the role. A catalog key. */
 	detail: string;
 	/** Design-token badge tone for the role chip (owner/admin share the brand
 	 * accent; editor is neutral). No hardcoded colors — token classes only. */
@@ -45,28 +49,26 @@ const NEUTRAL_BADGE = 'bg-bg-surface text-text-secondary border-border-subtle';
 export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
 	{
 		role: 'owner',
-		label: 'Owner',
+		label: 'shared.teamRoles.owner.label',
 		icon: 'lucide:crown',
-		summary: 'Full control of the workspace.',
-		detail: 'Everything an admin can do, plus transferring ownership and deleting the workspace.',
+		summary: 'shared.teamRoles.owner.summary',
+		detail: 'shared.teamRoles.owner.detail',
 		badgeToneClass: BRAND_BADGE,
 	},
 	{
 		role: 'admin',
-		label: 'Admin',
+		label: 'shared.teamRoles.admin.label',
 		icon: 'lucide:shield',
-		summary: 'Runs the workspace day to day.',
-		detail:
-			'Send campaigns, manage contacts and settings, and invite members. Cannot delete the workspace.',
+		summary: 'shared.teamRoles.admin.summary',
+		detail: 'shared.teamRoles.admin.detail',
 		badgeToneClass: BRAND_BADGE,
 	},
 	{
 		role: 'editor',
-		label: 'Editor',
+		label: 'shared.teamRoles.editor.label',
 		icon: 'lucide:user',
-		summary: 'Builds and sends campaigns.',
-		detail:
-			'Create, edit, schedule, and send campaigns from the curated sender list. View contacts, send test emails, and join team chat. Cannot curate senders, manage contacts, or change settings.',
+		summary: 'shared.teamRoles.editor.summary',
+		detail: 'shared.teamRoles.editor.detail',
 		badgeToneClass: NEUTRAL_BADGE,
 	},
 ];
@@ -89,12 +91,12 @@ export type MemberMailboxStatus = FunctionReturnType<
 >[string];
 
 export interface MailboxStatusMeta {
-	/** Human label for the Mailbox column (no enum strings in the UI). */
+	/** Catalog key for the Mailbox column label (no enum strings in the UI). */
 	label: string;
 	icon: string;
 	/** Design-token text tone class for the status. */
 	toneClass: string;
-	/** Longer explanation for the cell's title/aria. */
+	/** Catalog key for the longer explanation on the cell's title/aria. */
 	description: string;
 }
 
@@ -108,33 +110,32 @@ export function mailboxStatusMeta(
 ): MailboxStatusMeta {
 	if (status === 'hosted') {
 		return {
-			label: 'Hosted',
+			label: 'shared.teamRoles.mailbox.hosted.label',
 			icon: 'lucide:inbox',
 			toneClass: 'text-text-primary',
-			description: 'Has an Owlat-hosted mailbox on this workspace.',
+			description: 'shared.teamRoles.mailbox.hosted.description',
 		};
 	}
 	if (status === 'external') {
 		return {
-			label: 'External',
+			label: 'shared.teamRoles.mailbox.external.label',
 			icon: 'lucide:link',
 			toneClass: 'text-text-secondary',
-			description: 'Reads and sends through a connected external mailbox (IMAP/SMTP).',
+			description: 'shared.teamRoles.mailbox.external.description',
 		};
 	}
 	if (status === 'external-instance') {
 		return {
-			label: 'External, sends here',
+			label: 'shared.teamRoles.mailbox.externalInstance.label',
 			icon: 'lucide:send',
 			toneClass: 'text-text-secondary',
-			description:
-				'Reads from a connected external mailbox but sends outgoing mail through this workspace.',
+			description: 'shared.teamRoles.mailbox.externalInstance.description',
 		};
 	}
 	return {
-		label: 'No mailbox',
+		label: 'shared.teamRoles.mailbox.none.label',
 		icon: 'lucide:minus',
 		toneClass: 'text-text-tertiary',
-		description: 'No personal mailbox yet.',
+		description: 'shared.teamRoles.mailbox.none.description',
 	};
 }

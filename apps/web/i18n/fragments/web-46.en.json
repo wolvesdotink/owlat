@@ -1,0 +1,108 @@
+{
+	"shared": {
+		"useFormSettings": {
+			"operations": {
+				"createForm": "Create form endpoint",
+				"updateForm": "Update form endpoint",
+				"deleteForm": "Delete form endpoint"
+			},
+			"errors": {
+				"fieldNeedsKeyAndLabel": "Every field needs a key and a label",
+				"duplicateFieldKey": "Duplicate field key \"{key}\"",
+				"noFields": "Add at least one field",
+				"emailFieldRequired": "A form needs at least one email field",
+				"nameRequired": "Form name is required"
+			},
+			"toasts": {
+				"created": "Form endpoint created successfully",
+				"updated": "Form endpoint updated successfully",
+				"deleted": "Form endpoint deleted successfully",
+				"enabled": "Form \"{name}\" enabled",
+				"disabled": "Form \"{name}\" disabled",
+				"copyFailed": "Failed to copy to clipboard"
+			}
+		},
+		"useFormValidation": {
+			"rules": {
+				"required": "This field is required",
+				"email": "Please enter a valid email address",
+				"minLength": "Must be at least {min} characters",
+				"maxLength": "Must be no more than {max} characters",
+				"pattern": "Invalid format",
+				"domain": "Please enter a valid domain name",
+				"url": "Please enter a valid URL"
+			}
+		},
+		"useInviteLinks": {
+			"toasts": {
+				"copied": "Invite link copied",
+				"copyFailed": "Could not copy the link"
+			}
+		},
+		"useKeyboardShortcuts": {
+			"descriptions": {
+				"goToDashboard": "Go to Dashboard",
+				"goToContacts": "Go to Contacts",
+				"goToEmails": "Go to Emails",
+				"goToAutomations": "Go to Automations",
+				"goToCampaigns": "Go to Campaigns",
+				"goToTransactional": "Go to Transactional",
+				"goToSettings": "Go to Settings",
+				"newItem": "New item",
+				"save": "Save",
+				"closeCancel": "Close / Cancel"
+			}
+		},
+		"useKnowledgeGraph": {
+			"operations": {
+				"createEntry": "Create knowledge entry",
+				"updateEntry": "Update knowledge entry",
+				"deleteEntry": "Delete knowledge entry",
+				"addRelation": "Add knowledge relation",
+				"removeRelation": "Remove knowledge relation"
+			}
+		},
+		"useMediaLibrary": {
+			"operations": {
+				"getUploadUrl": "Get upload URL",
+				"saveAsset": "Save media asset",
+				"updateAsset": "Update media asset",
+				"deleteAssets": "Delete media assets"
+			},
+			"toasts": {
+				"uploadFailed": "{count} file(s) failed to upload"
+			}
+		},
+		"useModal": {
+			"genericError": "An error occurred"
+		},
+		"useOptimisticMutation": {
+			"undo": "Undo"
+		},
+		"useOrganization": {
+			"operations": {
+				"reserveMailbox": "Reserve invitation mailbox",
+				"cancelReservedMailbox": "Cancel reserved mailbox",
+				"cancelReservedInboxAccess": "Cancel reserved inbox access",
+				"resendInvitation": "Resend invitation"
+			},
+			"errors": {
+				"notCurrentOwner": "Only the current owner can transfer ownership",
+				"alreadyOwner": "You are already the owner",
+				"noActiveOrganization": "No active organization",
+				"organizationSyncTimeout": "Timed out waiting for active organization to update",
+				"membersLoadFailed": "Could not load team members",
+				"sendInvitationFailed": "Failed to send invitation",
+				"mailboxNotReserved": "Invite sent, but: the mailbox could not be reserved for this invitation",
+				"removeMemberFailed": "Failed to remove member",
+				"updateRoleFailed": "Failed to update role",
+				"transferOwnershipFailed": "Failed to transfer ownership",
+				"cancelInvitationFailed": "Failed to cancel invitation",
+				"resendInvitationFailed": "Failed to resend invitation",
+				"setActiveOrganizationFailed": "Failed to set active organization",
+				"updateOrganizationFailed": "Failed to update organization",
+				"getOrganizationFailed": "Failed to get organization"
+			}
+		}
+	}
+}

@@ -1,0 +1,87 @@
+{
+	"shared": {
+		"postbox": {
+			"usePostboxSelectionRewrite": {
+				"failed": "Could not rewrite the selection. Try again.",
+				"noSuggestion": "No rewrite was suggested. Try again."
+			},
+			"usePostboxSignatures": {
+				"createSignature": "Create signature",
+				"saveSignature": "Save signature",
+				"deleteSignature": "Delete signature"
+			},
+			"usePostboxSnippets": {
+				"createSnippet": "Create snippet",
+				"saveSnippet": "Save snippet",
+				"deleteSnippet": "Delete snippet"
+			},
+			"usePostboxThreadCategories": {
+				"sections": {
+					"person": "People",
+					"newsletter": "Newsletters",
+					"notification": "Notifications",
+					"receipt": "Receipts",
+					"other": "Everything else"
+				},
+				"options": {
+					"person": "Person",
+					"newsletter": "Newsletter",
+					"notification": "Notification",
+					"receipt": "Receipt",
+					"other": "Other"
+				},
+				"recategorizeThread": "Recategorize thread"
+			},
+			"usePostboxTriageUndo": {
+				"undo": "Undo"
+			}
+		},
+		"setupOutboundTls": {
+			"hints": {
+				"opportunistic": "Encrypt whenever the receiving server offers it, but still deliver if it doesn’t. Safest for reaching everyone.",
+				"require": "Refuse to deliver over an unencrypted connection. A receiver that can’t do TLS won’t get the mail.",
+				"requireVerified": "Require encryption and a valid certificate. Strongest, but can bounce mail to receivers with a misconfigured or self-signed certificate."
+			}
+		},
+		"setupWizardValidation": {
+			"admin": {
+				"emailInvalid": "Enter a valid email address.",
+				"passwordTooShort": "Use at least 12 characters."
+			},
+			"email": {
+				"providerRequired": "A delivery provider is required because campaigns, transactional, or automations are enabled. Pick your own MTA, Amazon SES, or an SMTP relay — or disable bulk sending.",
+				"resendKeyRequired": "Enter your Resend API key.",
+				"emailitKeyRequired": "Enter your Emailit API key.",
+				"mandrillKeyRequired": "Enter your Mailchimp Transactional (Mandrill) API key.",
+				"sesIncomplete": "Region, access key ID, and secret access key are all required for SES.",
+				"smtpIncomplete": "Server host, username, and password are all required for an SMTP relay.",
+				"smtpPortInvalid": "Port must be a whole number between 1 and 65535 (leave blank for 587).",
+				"fromEmailInvalid": "Enter a valid From address, or leave it blank."
+			}
+		},
+		"useAdaptiveDashboard": {
+			"saveLayout": "Save dashboard layout"
+		},
+		"useAddDomain": {
+			"domainAdded": "Domain added successfully. Configure your DNS records to verify."
+		},
+		"useAddDomainForm": {
+			"domainRequired": "Enter your domain",
+			"domainInvalid": "Enter a valid domain, like example.com",
+			"subdomainInvalid": "Use letters, digits and hyphens (e.g. mail or post)",
+			"returnPathInvalid": "Use a single label like bounce (letters, digits, hyphens)"
+		},
+		"useAiProviderForm": {
+			"saveOperation": "Save AI provider",
+			"testOperation": "Test AI connection",
+			"listModelsOperation": "Load available models",
+			"embeddingKeyRequired": "{provider} needs an API key.",
+			"thisEmbedder": "This embedder",
+			"saved": "AI provider saved",
+			"modelsLoadFailed": "Could not load models.",
+			"modelsUnsupported": "This provider does not support listing models.",
+			"modelsEmpty": "No models returned — keep using a custom id.",
+			"testFailed": "Connection test failed."
+		}
+	}
+}

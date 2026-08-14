@@ -40,27 +40,29 @@ const { data: guide } = useConvexQuery(api.domains.yahooCfl.getGuide, () =>
 	props.canManage ? { domainId: props.domainId } : 'skip'
 );
 
+const { t } = useI18n();
+
 const { run: submitEnrollment, isLoading: isSubmitting } = useBackendOperation(
 	api.domains.yahooCfl.submitEnrollment,
-	{ label: 'Record Yahoo CFL submission' }
+	{ label: () => t('components.domains.yahooCflPanel.operations.submit') }
 );
 const { run: confirmEnrollment, isLoading: isConfirming } = useBackendOperation(
 	api.domains.yahooCfl.confirmEnrollment,
-	{ label: 'Confirm Yahoo CFL enrollment' }
+	{ label: () => t('components.domains.yahooCflPanel.operations.confirm') }
 );
 const { run: resetEnrollment, isLoading: isResetting } = useBackendOperation(
 	api.domains.yahooCfl.resetEnrollment,
-	{ label: 'Reset Yahoo CFL enrollment' }
+	{ label: () => t('components.domains.yahooCflPanel.operations.reset') }
 );
 
 const isBusy = computed(() => isSubmitting.value || isConfirming.value || isResetting.value);
 
 /** Calm, factual state copy. None of these four is an error state. */
-const STATE_LABELS = {
-	not_started: 'Not enrolled',
-	awaiting_yahoo: 'Waiting for Yahoo',
-	enrolled: 'Enrolled',
-	lapsed: 'Worth re-checking',
+const STATE_LABEL_KEYS = {
+	not_started: 'components.domains.yahooCflPanel.states.notStarted',
+	awaiting_yahoo: 'components.domains.yahooCflPanel.states.awaitingYahoo',
+	enrolled: 'components.domains.yahooCflPanel.states.enrolled',
+	lapsed: 'components.domains.yahooCflPanel.states.lapsed',
 } as const;
 
 const STATE_CLASSES = {
@@ -71,7 +73,7 @@ const STATE_CLASSES = {
 } as const;
 
 const state = computed(() => guide.value?.state ?? null);
-const stateLabel = computed(() => (state.value ? STATE_LABELS[state.value] : ''));
+const stateLabel = computed(() => (state.value ? t(STATE_LABEL_KEYS[state.value]) : ''));
 const stateClass = computed(() => (state.value ? STATE_CLASSES[state.value] : ''));
 
 // Step affordance icons. `blocked` is "not your turn yet", not "something broke".
@@ -126,13 +128,16 @@ const silentDays = computed(() => {
  * unsubscribe-rate proxy. That is a real consequence of one click, so it is
  * named in full before the mutation fires.
  */
-const RESET_CONFIRMATION = [
-	'Clear this domain’s Yahoo enrollment record?',
-	'',
-	'• Our record is cleared — the submitted and enrolled dates are lost.',
-	'• Yahoo’s own enrollment is untouched. If it is still live, the next Yahoo complaint will not restore this record; re-submit the form step to record it again.',
-	'• Yahoo complaint measurement falls back to the unsubscribe-rate proxy — a sharp rise against this cell’s own recent history — with lower confidence.',
-].join('\n');
+const resetConfirmation = (): string => {
+	const prefix = 'components.domains.yahooCflPanel.resetConfirmation';
+	return [
+		t(`${prefix}.question`),
+		'',
+		t(`${prefix}.ourRecord`),
+		t(`${prefix}.yahooRecord`),
+		t(`${prefix}.fallback`),
+	].join('\n');
+};
 
 async function submit() {
 	await submitEnrollment({ domainId: props.domainId });
@@ -141,7 +146,7 @@ async function confirm() {
 	await confirmEnrollment({ domainId: props.domainId });
 }
 async function reset() {
-	if (!window.confirm(RESET_CONFIRMATION)) return;
+	if (!window.confirm(resetConfirmation())) return;
 	await resetEnrollment({ domainId: props.domainId });
 }
 </script>
@@ -154,7 +159,7 @@ async function reset() {
 	<div v-if="guide" class="mt-4 pt-4 border-t border-border-subtle" data-testid="yahoocfl-panel">
 		<div class="flex items-center justify-between gap-3">
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
-				Yahoo complaint feedback loop
+				{{ t('components.domains.yahooCflPanel.heading') }}
 			</p>
 			<span
 				class="text-xs px-2 py-0.5 rounded-full"
@@ -166,8 +171,7 @@ async function reset() {
 		</div>
 
 		<p class="mt-1 text-sm text-text-secondary">
-			Yahoo reports spam complaints to senders who enroll the DKIM domain they sign with. Enrolling
-			is optional — it measures Yahoo complaints directly instead of standing in for them.
+			{{ t('components.domains.yahooCflPanel.intro') }}
 		</p>
 
 		<!-- The four guided steps. Each states what to do AND how to tell it worked. -->
@@ -188,7 +192,10 @@ async function reset() {
 					<p class="text-sm font-medium text-text-primary">{{ step.title }}</p>
 					<p class="text-xs text-text-secondary mt-0.5">{{ step.action }}</p>
 					<p class="text-xs text-text-tertiary mt-0.5">
-						<span class="font-medium">How to tell it worked:</span> {{ step.verification }}
+						<span class="font-medium">
+							{{ t('components.domains.yahooCflPanel.howToTell') }}
+						</span>
+						{{ step.verification }}
 					</p>
 					<a
 						v-if="step.link"
@@ -198,7 +205,7 @@ async function reset() {
 						class="mt-1 inline-flex items-center gap-1 text-xs text-brand hover:underline"
 						:data-testid="`yahoocfl-link-${step.id}`"
 					>
-						Open Yahoo's enrollment form
+						{{ t('components.domains.yahooCflPanel.openForm') }}
 						<Icon name="lucide:external-link" class="w-3 h-3" />
 					</a>
 				</div>
@@ -216,7 +223,7 @@ async function reset() {
 				:aria-describedby="submitBlockedByDkim ? 'yahoocfl-submit-blocked' : undefined"
 				@click="submit"
 			>
-				{{ isSubmitting ? 'Saving…' : "I submitted Yahoo's form" }}
+				{{ isSubmitting ? t('common.saving') : t('components.domains.yahooCflPanel.submitButton') }}
 			</UiButton>
 			<!-- The reason a control is disabled must be VISIBLE: a `title` on a
 			     disabled button is neither focusable nor announced. -->
@@ -226,8 +233,7 @@ async function reset() {
 				class="text-xs text-text-secondary"
 				data-testid="yahoocfl-submit-blocked-reason"
 			>
-				Verify this domain and its DKIM record first — Yahoo will not accept an enrollment for a
-				domain it cannot see our signature on.
+				{{ t('components.domains.yahooCflPanel.submitBlocked') }}
 			</p>
 			<UiButton
 				v-if="canConfirm"
@@ -237,7 +243,9 @@ async function reset() {
 				:disabled="isBusy"
 				@click="confirm"
 			>
-				{{ isConfirming ? 'Saving…' : 'Yahoo accepted the domain' }}
+				{{
+					isConfirming ? t('common.saving') : t('components.domains.yahooCflPanel.confirmButton')
+				}}
 			</UiButton>
 			<UiButton
 				variant="secondary"
@@ -248,7 +256,7 @@ async function reset() {
 				:disabled="isBusy"
 				@click="reset"
 			>
-				{{ isResetting ? 'Saving…' : 'Start over' }}
+				{{ isResetting ? t('common.saving') : t('components.domains.yahooCflPanel.resetButton') }}
 			</UiButton>
 		</div>
 
@@ -259,7 +267,7 @@ async function reset() {
 			class="mt-3 text-xs text-text-tertiary"
 			data-testid="yahoocfl-silence"
 		>
-			No Yahoo complaint in the last {{ silentDays }} {{ silentDays === 1 ? 'day' : 'days' }}.
+			{{ t('components.domains.yahooCflPanel.silence', { count: silentDays }, silentDays ?? 0) }}
 		</p>
 
 		<!-- D14: say the quiet part. Which signal the yahoo cell actually runs on,

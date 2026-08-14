@@ -6,7 +6,9 @@ import { connectedAppCapabilityLabel } from '~/utils/connectedAppCapabilities';
 import ConnectedAppRegisterModal from '~/components/settings/connectedApps/ConnectedAppRegisterModal.vue';
 import ConnectedAppSecretReveal from '~/components/settings/connectedApps/ConnectedAppSecretReveal.vue';
 
-useHead({ title: 'Connected apps — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.team.connectedApps.index.pageTitle') });
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
 // Managing connected apps requires `organization:manage`. listByTeam is
@@ -38,29 +40,29 @@ const { showToast } = useToast();
 const registerError = ref<string | null>(null);
 const { run: registerApp, isLoading: isRegistering } = useBackendOperation(
 	api.connectedApps.actions.register,
-	{ label: 'Register connected app', type: 'action', inlineTarget: registerError }
+	{ label: () => t('dashboard.admin.team.connectedApps.index.operations.register'), type: 'action', inlineTarget: registerError }
 );
 const { run: rotateSecret, isLoading: isRotating } = useBackendOperation(
 	api.connectedApps.actions.rotateSecret,
-	{ label: 'Rotate connected-app secret', type: 'action' }
+	{ label: () => t('dashboard.admin.team.connectedApps.index.operations.rotateSecret'), type: 'action' }
 );
 const { run: testConnection } = useBackendOperation(api.connectedApps.actions.testConnection, {
-	label: 'Test connected-app connection',
+	label: () => t('dashboard.admin.team.connectedApps.index.operations.testConnection'),
 	type: 'action',
 });
 const { run: enableApp } = useBackendOperation(api.connectedApps.mutations.enable, {
-	label: 'Enable connected app',
+	label: () => t('dashboard.admin.team.connectedApps.index.operations.enable'),
 });
 const { run: disableApp } = useBackendOperation(api.connectedApps.mutations.disable, {
-	label: 'Disable connected app',
+	label: () => t('dashboard.admin.team.connectedApps.index.operations.disable'),
 });
 const { run: revokeApp, isLoading: isRevoking } = useBackendOperation(
 	api.connectedApps.mutations.revoke,
-	{ label: 'Revoke connected app' }
+	{ label: () => t('dashboard.admin.team.connectedApps.index.operations.revoke') }
 );
 const { run: removeApp, isLoading: isDeleting } = useBackendOperation(
 	api.connectedApps.mutations.remove,
-	{ label: 'Delete connected app' }
+	{ label: () => t('dashboard.admin.team.connectedApps.index.operations.delete') }
 );
 
 type ConnectedApp = NonNullable<typeof apps.value>[number];
@@ -70,8 +72,15 @@ function statusVariant(status: ConnectedApp['status']): 'success' | 'neutral' | 
 	if (status === 'disabled') return 'neutral';
 	return 'error';
 }
+// The status vocabulary is closed (schema/plugins.ts), so each value has its own
+// message rather than a title-cased echo of the stored literal.
+const STATUS_LABEL_KEYS: Record<ConnectedApp['status'], string> = {
+	enabled: 'common.enabled',
+	disabled: 'common.disabled',
+	revoked: 'dashboard.admin.team.connectedApps.index.status.revoked',
+};
 function statusLabel(status: ConnectedApp['status']): string {
-	return status.charAt(0).toUpperCase() + status.slice(1);
+	return t(STATUS_LABEL_KEYS[status]);
 }
 
 // ── Register + one-time secret reveal ──────────────────────────────────────
@@ -95,7 +104,7 @@ async function handleRegisterSubmit(payload: {
 	if (created === undefined) return; // failure already surfaced inline/toast
 	showRegister.value = false;
 	revealed.value = { secret: created.secret, appName: created.name, context: 'created' };
-	showToast(`Connected ${created.name}.`);
+	showToast(t('dashboard.admin.team.connectedApps.index.toasts.connected', { name: created.name }));
 }
 
 // ── Rotate secret (destructive to the old secret) ──────────────────────────
@@ -112,11 +121,11 @@ async function confirmRotate() {
 // ── Enable / disable (reversible) ──────────────────────────────────────────
 async function handleEnable(app: ConnectedApp) {
 	const res = await enableApp({ connectedAppId: app._id });
-	if (res !== undefined) showToast(`Enabled ${app.name}.`);
+	if (res !== undefined) showToast(t('dashboard.admin.team.connectedApps.index.toasts.enabled', { name: app.name }));
 }
 async function handleDisable(app: ConnectedApp) {
 	const res = await disableApp({ connectedAppId: app._id });
-	if (res !== undefined) showToast(`Disabled ${app.name}.`);
+	if (res !== undefined) showToast(t('dashboard.admin.team.connectedApps.index.toasts.disabled', { name: app.name }));
 }
 
 // ── Revoke / delete (destructive, confirmed) ───────────────────────────────
@@ -127,14 +136,14 @@ async function confirmRevoke() {
 	if (!target) return;
 	const res = await revokeApp({ connectedAppId: target._id });
 	revokeTarget.value = null;
-	if (res !== undefined) showToast(`Revoked ${target.name}.`);
+	if (res !== undefined) showToast(t('dashboard.admin.team.connectedApps.index.toasts.revoked', { name: target.name }));
 }
 async function confirmDelete() {
 	const target = deleteTarget.value;
 	if (!target) return;
 	const res = await removeApp({ connectedAppId: target._id });
 	deleteTarget.value = null;
-	if (res !== undefined) showToast(`Deleted ${target.name}.`);
+	if (res !== undefined) showToast(t('dashboard.admin.team.connectedApps.index.toasts.deleted', { name: target.name }));
 }
 
 // ── Connection test ────────────────────────────────────────────────────────
@@ -165,15 +174,16 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 	<div class="p-6 lg:p-8 max-w-4xl mx-auto">
 		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Connected apps</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.admin.team.connectedApps.index.title') }}
+				</h1>
 				<p class="mt-1 text-text-secondary max-w-2xl">
-					External apps that talk to Owlat through a scoped, plugin-bound secret and signed hooks. A
-					connected app can add work or caution — it can never approve, unblock, or send for you.
+					{{ t('dashboard.admin.team.connectedApps.index.intro') }}
 				</p>
 			</div>
 			<UiButton v-if="!showAdminGate" variant="primary" class="shrink-0" @click="openRegister">
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				Connect an app
+				{{ t('dashboard.admin.team.connectedApps.index.connect') }}
 			</UiButton>
 		</div>
 
@@ -183,10 +193,9 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 			class="flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">Admins only</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.connectedApps.index.adminGate.title') }}</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Connected apps can be managed by workspace owners and admins. Ask an admin if you need to
-				connect an external app.
+				{{ t('dashboard.admin.team.connectedApps.index.adminGate.description') }}
 			</p>
 		</UiCard>
 
@@ -195,12 +204,12 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 			<UiCard v-if="!apps || apps.length === 0">
 				<UiEmptyState
 					icon="lucide:plug"
-					title="No connected apps"
-					description="Connect an external app to extend Owlat with scoped access and signed hooks."
+					:title="t('dashboard.admin.team.connectedApps.index.empty.title')"
+					:description="t('dashboard.admin.team.connectedApps.index.empty.description')"
 				>
 					<UiButton variant="secondary" @click="openRegister">
 						<Icon name="lucide:plus" class="w-4 h-4" />
-						Connect an app
+						{{ t('dashboard.admin.team.connectedApps.index.connect') }}
 					</UiButton>
 				</UiEmptyState>
 			</UiCard>
@@ -255,7 +264,7 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 						>
 							<template v-if="testingId === app._id">
 								<Icon name="lucide:loader-2" class="w-4 h-4 shrink-0 mt-0.5 animate-spin" />
-								<span>Testing connection…</span>
+								<span>{{ t('dashboard.admin.team.connectedApps.index.testing') }}</span>
 							</template>
 							<template v-else-if="testResults[app._id]">
 								<Icon
@@ -276,7 +285,7 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 								@click="runTest(app)"
 							>
 								<Icon name="lucide:activity" class="w-4 h-4" />
-								Test connection
+								{{ t('dashboard.admin.team.connectedApps.index.testConnection') }}
 							</UiButton>
 							<UiButton
 								v-if="app.status === 'disabled'"
@@ -284,7 +293,7 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 								size="sm"
 								@click="handleEnable(app)"
 							>
-								Enable
+								{{ t('dashboard.admin.team.connectedApps.index.enable') }}
 							</UiButton>
 							<UiButton
 								v-else-if="app.status === 'enabled'"
@@ -292,7 +301,7 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 								size="sm"
 								@click="handleDisable(app)"
 							>
-								Disable
+								{{ t('dashboard.admin.team.connectedApps.index.disable') }}
 							</UiButton>
 							<UiButton
 								v-if="app.status !== 'revoked'"
@@ -300,7 +309,7 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 								size="sm"
 								@click="rotateTarget = app"
 							>
-								Rotate secret
+								{{ t('dashboard.admin.team.connectedApps.index.rotateSecret') }}
 							</UiButton>
 							<span class="flex-1"></span>
 							<UiButton
@@ -310,10 +319,10 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 								class="text-warning"
 								@click="revokeTarget = app"
 							>
-								Revoke
+								{{ t('dashboard.admin.team.connectedApps.index.revoke') }}
 							</UiButton>
 							<UiButton variant="ghost" size="sm" class="text-error" @click="deleteTarget = app">
-								Delete
+								{{ t('common.delete') }}
 							</UiButton>
 						</div>
 					</div>
@@ -344,10 +353,14 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 		<UiConfirmationDialog
 			:open="!!rotateTarget"
 			variant="warning"
-			:title="rotateTarget ? `Rotate the secret for ${rotateTarget.name}?` : 'Rotate secret?'"
-			description="A new shared secret is generated and shown once. The current secret stops working immediately — the connected app will fail until you update it with the new secret."
-			confirm-text="Rotate secret"
-			cancel-text="Cancel"
+			:title="
+				rotateTarget
+					? t('dashboard.admin.team.connectedApps.index.rotateDialog.title', { name: rotateTarget.name })
+					: t('dashboard.admin.team.connectedApps.index.rotateDialog.titleFallback')
+			"
+			:description="t('dashboard.admin.team.connectedApps.index.rotateDialog.description')"
+			:confirm-text="t('dashboard.admin.team.connectedApps.index.rotateSecret')"
+			:cancel-text="t('common.cancel')"
 			:is-loading="isRotating"
 			@update:open="(v: boolean) => !v && (rotateTarget = null)"
 			@confirm="confirmRotate"
@@ -357,10 +370,14 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 		<UiConfirmationDialog
 			:open="!!revokeTarget"
 			variant="warning"
-			:title="revokeTarget ? `Revoke ${revokeTarget.name}?` : 'Revoke app?'"
-			description="Revoking is permanent. The shared secret is invalidated, the app can no longer call Owlat, and it can never be re-enabled — you'd have to connect a new app. Its record is kept for audit until you delete it."
-			confirm-text="Revoke app"
-			cancel-text="Cancel"
+			:title="
+				revokeTarget
+					? t('dashboard.admin.team.connectedApps.index.revokeDialog.title', { name: revokeTarget.name })
+					: t('dashboard.admin.team.connectedApps.index.revokeDialog.titleFallback')
+			"
+			:description="t('dashboard.admin.team.connectedApps.index.revokeDialog.description')"
+			:confirm-text="t('dashboard.admin.team.connectedApps.index.revokeDialog.confirm')"
+			:cancel-text="t('common.cancel')"
 			:is-loading="isRevoking"
 			@update:open="(v: boolean) => !v && (revokeTarget = null)"
 			@confirm="confirmRevoke"
@@ -370,10 +387,14 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 		<UiConfirmationDialog
 			:open="!!deleteTarget"
 			variant="danger"
-			:title="deleteTarget ? `Delete ${deleteTarget.name}?` : 'Delete app?'"
-			description="This permanently removes the connected app and its record. This cannot be undone."
-			confirm-text="Delete app"
-			cancel-text="Cancel"
+			:title="
+				deleteTarget
+					? t('dashboard.admin.team.connectedApps.index.deleteDialog.title', { name: deleteTarget.name })
+					: t('dashboard.admin.team.connectedApps.index.deleteDialog.titleFallback')
+			"
+			:description="t('dashboard.admin.team.connectedApps.index.deleteDialog.description')"
+			:confirm-text="t('dashboard.admin.team.connectedApps.index.deleteDialog.confirm')"
+			:cancel-text="t('common.cancel')"
 			:is-loading="isDeleting"
 			@update:open="(v: boolean) => !v && (deleteTarget = null)"
 			@confirm="confirmDelete"

@@ -35,6 +35,8 @@ const MAX_IMPORT_ROWS = 1000;
  * already-built `blockedEmails.bulkAdd` mutation.
  */
 export function useBlocklistImport() {
+	const { t } = useI18n();
+
 	const isOpen = ref(false);
 	const step = ref<BlocklistImportStep>('upload');
 	const error = ref('');
@@ -105,7 +107,7 @@ export function useBlocklistImport() {
 
 	const ingestFile = async (file: File): Promise<void> => {
 		if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
-			error.value = 'Please select a .csv or .txt file';
+			error.value = t('shared.useBlocklistImport.errors.unsupportedFile');
 			return;
 		}
 
@@ -119,24 +121,27 @@ export function useBlocklistImport() {
 			data = await parseCsvFile(file);
 		} catch (parseError) {
 			const message = parseError instanceof Error ? parseError.message : String(parseError);
-			error.value = `File parsing error: ${message}`;
+			error.value = t('shared.useBlocklistImport.errors.parseFailed', { message });
 			return;
 		}
 
 		if (data.length === 0) {
-			error.value = 'The file is empty';
+			error.value = t('shared.useBlocklistImport.errors.emptyFile');
 			return;
 		}
 
 		if (data.length > MAX_IMPORT_ROWS) {
-			error.value = `Too many rows (${data.length}). Import at most ${MAX_IMPORT_ROWS} addresses at a time.`;
+			error.value = t('shared.useBlocklistImport.errors.tooManyRows', {
+				count: data.length,
+				max: MAX_IMPORT_ROWS,
+			});
 			return;
 		}
 
 		validation.value = buildValidation(data);
 
 		if (validation.value.valid.length === 0) {
-			error.value = 'No valid email addresses found in the file';
+			error.value = t('shared.useBlocklistImport.errors.noValidAddresses');
 			return;
 		}
 
@@ -176,9 +181,9 @@ export function useBlocklistImport() {
 	// imported address is a manual block (the operator is asserting "never send
 	// here"); the backend de-dupes against rows already present.
 	const startImport = async (
-		bulkAddFn: (emails: { email: string; reason: 'manual' }[]) => Promise<
-			BlocklistImportResults | undefined
-		>
+		bulkAddFn: (
+			emails: { email: string; reason: 'manual' }[]
+		) => Promise<BlocklistImportResults | undefined>
 	): Promise<BlocklistImportResults | undefined> => {
 		if (!validation.value || validation.value.valid.length === 0) return undefined;
 

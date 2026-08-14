@@ -1,0 +1,755 @@
+{
+	"dashboard": {
+		"audience": {
+			"contacts": {
+				"detail": {
+					"activity": {
+						"emptyBody": "Aktivitäten erscheinen hier, sobald Sie E-Mails an diesen Kontakt senden.",
+						"emptyTitle": "Noch keine Aktivität",
+						"loadMore": "Mehr laden",
+						"loading": "Aktivitäten werden geladen...",
+						"title": "Aktivitätsverlauf"
+					},
+					"backToCustomers": "Zurück zu den Kundinnen und Kunden",
+					"contactDetails": "Kontaktdetails",
+					"created": "Erstellt",
+					"customProperties": "Eigene Eigenschaften",
+					"deleteDialog": {
+						"body": "Möchten Sie {email} wirklich löschen? Der Kontakt wird sofort ausgeblendet und nach der Aufbewahrungsfrist von 30 Tagen endgültig gelöscht — zusammen mit seinen Themen-Mitgliedschaften und eigenen Eigenschaften.",
+						"subtitle": "Sofort ausgeblendet, nach 30 Tagen endgültig gelöscht.",
+						"title": "Kontakt löschen"
+					},
+					"deleting": "Wird gelöscht...",
+					"details": "Details",
+					"doiStatus": "Bestätigung: {status}",
+					"exportData": "Daten exportieren",
+					"exportDataTitle": "Die personenbezogenen Daten dieses Kontakts exportieren (DSGVO-Auskunftsersuchen)",
+					"exporting": "Wird exportiert…",
+					"fields": {
+						"email": "E-Mail-Adresse",
+						"emailPlaceholder": "email{'@'}beispiel.de",
+						"firstName": "Vorname",
+						"firstNamePlaceholder": "Vorname",
+						"language": "Bevorzugte Sprache",
+						"lastName": "Nachname",
+						"lastNamePlaceholder": "Nachname",
+						"timezone": "Zeitzone"
+					},
+					"lastUpdated": "Zuletzt aktualisiert",
+					"loading": "Kontakt wird geladen...",
+					"notFound": {
+						"action": "Zurück zu den Kontakten",
+						"body": "Dieser Kontakt wurde möglicherweise gelöscht oder Sie haben keinen Zugriff.",
+						"title": "Kontakt nicht gefunden"
+					},
+					"notSet": "Nicht gesetzt",
+					"operations": {
+						"addToTopic": "Zu Thema hinzufügen",
+						"removeFromTopic": "Aus Thema entfernen",
+						"removeSuppression": "Unterdrückung entfernen",
+						"saveNote": "Kundennotiz speichern"
+					},
+					"pageTitle": "Kontaktdetails — Owlat",
+					"resendDoi": "Bestätigung erneut senden",
+					"resendDoiTitle": "Die Double-Opt-in-Bestätigungsmail erneut an diesen offenen Kontakt senden",
+					"saveChanges": "Änderungen speichern",
+					"sending": "Wird gesendet…",
+					"source": "Quelle",
+					"tabs": {
+						"activity": "Aktivität",
+						"files": "Dateien",
+						"identities": "Identitäten",
+						"knowledge": "Wissen",
+						"profile": "Profil",
+						"relationships": "Beziehungen",
+						"timeline": "Verlauf"
+					},
+					"teamNote": {
+						"placeholder": "Fügen Sie eine hilfreiche Notiz zu dieser Kundin oder diesem Kunden hinzu…",
+						"save": "Notiz speichern",
+						"subtitle": "Gemeinsamer Kontext für künftige Gespräche.",
+						"title": "Teamnotiz"
+					},
+					"toasts": {
+						"addedToTopic": "Zu „{topic}“ hinzugefügt",
+						"doiFailed": "Bestätigung konnte nicht erneut gesendet werden",
+						"doiSent": "Bestätigungsmail gesendet",
+						"noteSaved": "Kundennotiz gespeichert",
+						"removedFromTopic": "Aus „{topic}“ entfernt",
+						"suppressionRemoved": "Unterdrückung entfernt"
+					},
+					"topicFallback": "Thema",
+					"topics": {
+						"addToTopic": "Zu Thema hinzufügen",
+						"allTopics": "Der Kontakt ist bereits in allen Themen",
+						"createOne": "Ein Thema erstellen",
+						"none": "In keinem Thema",
+						"noneCreated": "Noch keine Themen erstellt",
+						"remove": "Aus dem Thema entfernen",
+						"title": "Themen"
+					}
+				},
+				"index": {
+					"addContact": "Kontakt hinzufügen",
+					"addedOn": "Hinzugefügt {date}",
+					"allLoaded": "Alle Kontakte geladen",
+					"bulk": {
+						"addToTopic": "Zu Thema hinzufügen",
+						"deleteSelected": "Auswahl löschen",
+						"exportSelected": "Auswahl exportieren",
+						"noTopics": "Keine Themen verfügbar.",
+						"progress": {
+							"add": "Wird zum Thema hinzugefügt...",
+							"delete": "Wird gelöscht...",
+							"export": "Wird exportiert...",
+							"remove": "Wird aus dem Thema entfernt..."
+						},
+						"removeFromTopic": "Aus Thema entfernen"
+					},
+					"clearSearch": "Suche zurücksetzen",
+					"clearSelection": "Auswahl aufheben",
+					"contextMenu": {
+						"copyEmail": "E-Mail-Adresse kopieren",
+						"deselect": "Auswahl aufheben",
+						"open": "Kontakt öffnen",
+						"select": "Auswählen"
+					},
+					"createContact": "Kontakt erstellen",
+					"creating": "Wird erstellt...",
+					"deselectAll": "Auswahl aufheben",
+					"deselectContact": "Auswahl von {email} aufheben",
+					"empty": {
+						"descriptionManage": "Legen Sie los, indem Sie Ihre erste Kundin oder Ihren ersten Kunden hinzufügen oder eine CSV-Datei importieren.",
+						"descriptionReadOnly": "Es wurden noch keine Kundinnen und Kunden hinzugefügt.",
+						"title": "Noch keine Kontakte"
+					},
+					"export": "Exportieren",
+					"form": {
+						"emailPlaceholder": "email{'@'}beispiel.de",
+						"firstNamePlaceholder": "Max",
+						"languageLabel": "Bevorzugte Sprache",
+						"languagePlaceholder": "Sprache auswählen",
+						"lastNamePlaceholder": "Mustermann"
+					},
+					"import": "Importieren",
+					"importMenu": {
+						"csvDescription": "Aus einer Tabelle importieren",
+						"csvTitle": "CSV-Datei",
+						"integrationsDescription": "Mailchimp, Stripe",
+						"integrationsTitle": "Integrationen"
+					},
+					"loadMore": "Mehr laden",
+					"noResults": {
+						"description": "Keine Kontakte passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
+						"title": "Keine Ergebnisse gefunden"
+					},
+					"noTeam": {
+						"description": "Erstellen oder wählen Sie ein Team, um Ihre Kontakte zu verwalten.",
+						"title": "Kein Team ausgewählt"
+					},
+					"operations": {
+						"addContact": "Kontakt hinzufügen",
+						"importContacts": "Kontakte importieren",
+						"registerProperty": "Eigenschaft registrieren"
+					},
+					"pageTitle": "Kontakte — Owlat",
+					"searchPlaceholder": "Nach E-Mail oder Name suchen...",
+					"selectAll": "Alle auswählen",
+					"selectAllMatching": "Alle {count} auswählen",
+					"selectContact": "{email} auswählen",
+					"showing": {
+						"empty": "0 Kontakte",
+						"loaded": "{count} Kontakt geladen | {count} Kontakte geladen"
+					},
+					"subtitle": "Menschen, die Ihr Team kennt, und ihre letzten Aktivitäten",
+					"table": {
+						"created": "Erstellt",
+						"firstName": "Vorname",
+						"lastName": "Nachname"
+					},
+					"title": "Kundinnen und Kunden",
+					"toasts": {
+						"copyFailed": "Kopieren in die Zwischenablage nicht möglich",
+						"created": "Kontakt {email} wurde erstellt",
+						"emailCopied": "E-Mail-Adresse kopiert",
+						"imported": "{count} Kontakt erfolgreich verarbeitet | {count} Kontakte erfolgreich verarbeitet"
+					}
+				}
+			},
+			"index": {
+				"activity": {
+					"descriptions": {
+						"created": "wurde hinzugefügt",
+						"topicConfirmed": "hat das Abonnement bestätigt",
+						"topicSubscribed": "wurde zu einem Thema angemeldet",
+						"topicUnsubscribed": "wurde von einem Thema abgemeldet"
+					},
+					"emptyBody": "Aktivitäten erscheinen hier, sobald Kontakte Themen abonnieren oder abbestellen.",
+					"emptyTitle": "Keine aktuelle Aktivität",
+					"errorTitle": "Letzte Aktivität konnte nicht geladen werden",
+					"loading": "Aktivität wird geladen...",
+					"title": "Letzte Aktivität"
+				},
+				"addContact": "Kontakt hinzufügen",
+				"growth": {
+					"barValue": "{count} neue Abonnenten",
+					"chartLabel": "Neue Abonnenten pro Tag in den letzten 30 Tagen",
+					"errorTitle": "Abonnenten-Wachstum konnte nicht geladen werden",
+					"loading": "Diagramm wird geladen...",
+					"newCount": "+{count} neu",
+					"title": "Abonnenten-Wachstum (30 Tage)"
+				},
+				"pageTitle": "Zielgruppe — Owlat",
+				"quickActions": {
+					"addContact": {
+						"description": "Einen neuen Kontakt manuell hinzufügen",
+						"label": "Kontakt hinzufügen"
+					},
+					"createSegment": {
+						"description": "Ein dynamisches Zielgruppensegment erstellen",
+						"label": "Segment erstellen"
+					},
+					"createTopic": {
+						"description": "Ein neues Thema erstellen",
+						"label": "Thema erstellen"
+					}
+				},
+				"quickActionsHeading": "Schnellaktionen",
+				"recentContacts": {
+					"emptyBody": "Fügen Sie Ihren ersten Kontakt hinzu, um loszulegen.",
+					"emptyTitle": "Noch keine Kontakte",
+					"errorTitle": "Aktuelle Kontakte konnten nicht geladen werden",
+					"loading": "Kontakte werden geladen...",
+					"title": "Zuletzt hinzugefügt"
+				},
+				"stats": {
+					"segments": "Segmente",
+					"topics": "Themen",
+					"totalContacts": "Kontakte gesamt"
+				},
+				"subtitle": "Verwalten Sie Ihre Kontakte, Themen und Segmente.",
+				"title": "Zielgruppe",
+				"topTopics": {
+					"contactCount": "{count} Kontakte",
+					"createTopic": "Thema erstellen",
+					"emptyBody": "Erstellen Sie ein Thema, um Ihre Kontakte zu organisieren.",
+					"emptyTitle": "Noch keine Themen",
+					"errorTitle": "Top-Themen konnten nicht geladen werden",
+					"loading": "Themen werden geladen...",
+					"title": "Top-Themen"
+				}
+			},
+			"segments": {
+				"detail": {
+					"index": {
+						"breadcrumbs": {
+							"audience": "Zielgruppe",
+							"segments": "Segmente"
+						},
+						"clearSearch": "Suche zurücksetzen",
+						"createdOn": "Erstellt {date}",
+						"empty": {
+							"action": "Segment bearbeiten",
+							"body": "Derzeit passen keine Kontakte zu den Filtern dieses Segments. Passen Sie die Filter an oder fügen Sie weitere Kontakte hinzu.",
+							"title": "Keine Kontakte passen zu diesem Segment"
+						},
+						"export": {
+							"done": "{count} Kontakt exportiert | {count} Kontakte exportiert",
+							"failed": "Export fehlgeschlagen. Bitte versuchen Sie es erneut.",
+							"none": "Keine Kontakte zum Exportieren",
+							"truncated": "Die ersten {count} Kontakte wurden exportiert (das Segment ist größer; der Export wurde begrenzt)"
+						},
+						"exportCsv": "CSV exportieren",
+						"loading": "Segment wird geladen...",
+						"matchingContacts": "{count} passender Kontakt | {count} passende Kontakte",
+						"noResults": {
+							"body": "Keine Kontakte passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
+							"title": "Keine Ergebnisse gefunden"
+						},
+						"notFound": {
+							"action": "Zurück zu den Segmenten",
+							"body": "Dieses Segment wurde möglicherweise gelöscht oder existiert nicht.",
+							"title": "Segment nicht gefunden"
+						},
+						"pageTitle": "Segment — Owlat",
+						"pagination": {
+							"next": "Weiter",
+							"previous": "Zurück"
+						},
+						"searchPlaceholder": "Kontakte in diesem Segment durchsuchen...",
+						"showing": {
+							"empty": "0 Kontakte",
+							"label": "Angezeigt: {range}",
+							"range": "{start}-{end} von {total}"
+						},
+						"table": {
+							"added": "Hinzugefügt",
+							"firstName": "Vorname",
+							"lastName": "Nachname"
+						}
+					}
+				},
+				"index": {
+					"actions": {
+						"delete": "Segment löschen",
+						"edit": "Segment bearbeiten",
+						"viewContacts": "Kontakte ansehen"
+					},
+					"clearSearch": "Suche zurücksetzen",
+					"count": "{count} Segment | {count} Segmente",
+					"deleteDialog": {
+						"body": "Möchten Sie „{name}“ wirklich löschen?",
+						"note": "Diese Aktion kann nicht rückgängig gemacht werden. Kampagnen, die dieses Segment verwenden, müssen angepasst werden.",
+						"title": "Segment löschen"
+					},
+					"deleting": "Wird gelöscht...",
+					"empty": {
+						"description": "Erstellen Sie Ihr erstes Segment, um Kontakte nach Eigenschaften, Aktivität und mehr zu filtern.",
+						"title": "Noch keine Segmente"
+					},
+					"errorTitle": "Segmente konnten nicht geladen werden",
+					"modal": {
+						"addCondition": "Bedingung hinzufügen",
+						"conditions": "Bedingungen",
+						"createTitle": "Segment erstellen",
+						"descriptionPlaceholder": "Optionale Beschreibung für dieses Segment...",
+						"editTitle": "Segment bearbeiten",
+						"logicAnd": "Alle Bedingungen (UND)",
+						"logicOr": "Eine beliebige Bedingung (ODER)",
+						"matchLabel": "Kontakte einbeziehen, die erfüllen",
+						"matchingContacts": "Passende Kontakte",
+						"namePlaceholder": "z. B. Aktive Abonnenten",
+						"noConditions": "Noch keine Bedingungen hinzugefügt",
+						"noConditionsHint": "Klicken Sie auf „Bedingung hinzufügen“, um Kontakte zu filtern",
+						"removeCondition": "Bedingung entfernen",
+						"saveChanges": "Änderungen speichern"
+					},
+					"newSegment": "Neues Segment",
+					"noResults": {
+						"description": "Keine Segmente passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
+						"title": "Keine Ergebnisse gefunden"
+					},
+					"noWorkspace": {
+						"description": "Erstellen oder wählen Sie einen Workspace, um Ihre Segmente zu verwalten.",
+						"title": "Kein Workspace ausgewählt"
+					},
+					"pageTitle": "Segmente — Owlat",
+					"searchPlaceholder": "Segmente durchsuchen...",
+					"subtitle": "Erstellen und verwalten Sie Zielgruppensegmente für gezielte Kampagnen",
+					"table": {
+						"contacts": "Kontakte",
+						"created": "Erstellt",
+						"filters": "Filter"
+					},
+					"title": "Segmente"
+				}
+			},
+			"suppressions": {
+				"addSuppression": "Unterdrückung hinzufügen",
+				"adding": "Wird hinzugefügt...",
+				"backToAudience": "Zurück zur Zielgruppe",
+				"empty": {
+					"description": "Nichts ist unterdrückt. Adressen werden automatisch aufgenommen, wenn sie unzustellbar sind oder wenn jemand einen Versand als Spam markiert.",
+					"title": "Keine Unterdrückungen"
+				},
+				"errorTitle": "Unterdrückungen konnten nicht geladen werden",
+				"filters": {
+					"all": "Alle Gründe",
+					"bounced": "Unzustellbar",
+					"complained": "Beschwert",
+					"manual": "Manuell unterdrückt",
+					"unengaged": "Inaktiv"
+				},
+				"form": {
+					"emailLabel": "E-Mail-Adresse",
+					"emailPlaceholder": "email{'@'}beispiel.de",
+					"notesHelp": "Fügen Sie eine Notiz hinzu, damit Sie später wissen, warum diese Adresse unterdrückt wurde.",
+					"notesLabel": "Notizen (optional)",
+					"notesPlaceholder": "Warum wird diese Adresse unterdrückt?"
+				},
+				"import": "Importieren",
+				"info": {
+					"body": "Unterdrückte Adressen erhalten keine E-Mails mehr aus Ihren Kampagnen und Automationen. Eine Adresse wird automatisch aufgenommen, wenn sie unzustellbar ist (das Postfach existiert nicht) oder wenn jemand einen Versand als Spam markiert — damit Sie nie wieder dorthin senden. Sie können eine Adresse auch von Hand unterdrücken, um einen bestimmten Empfänger nicht mehr anzuschreiben.",
+					"title": "Was sind Unterdrückungen?"
+				},
+				"loading": "Unterdrückungen werden geladen...",
+				"noResults": {
+					"description": "Keine Unterdrückungen passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
+					"title": "Keine Ergebnisse gefunden"
+				},
+				"noWorkspace": {
+					"description": "Erstellen oder wählen Sie einen Workspace, um Ihre Unterdrückungen zu verwalten.",
+					"title": "Kein Workspace ausgewählt"
+				},
+				"operations": {
+					"add": "Zur Sperrliste hinzufügen",
+					"import": "Sperrliste importieren",
+					"remove": "Aus der Sperrliste entfernen"
+				},
+				"pageTitle": "Unterdrückungen — Owlat",
+				"removeDescription": "Wenn Sie die Unterdrückung für „{email}“ entfernen, erhält diese Adresse wieder Ihre E-Mails.",
+				"removeSuppression": "Unterdrückung entfernen",
+				"searchPlaceholder": "Nach E-Mail-Adresse suchen...",
+				"subtitle": "Adressen, die keine E-Mails mehr erhalten — damit eine Unzustellbarkeit oder Beschwerde kein zweites Mal passiert",
+				"table": {
+					"dateAdded": "Hinzugefügt am",
+					"email": "E-Mail-Adresse",
+					"notes": "Notizen",
+					"reason": "Grund"
+				},
+				"tiles": {
+					"bounced": "Unzustellbar",
+					"complained": "Beschwert",
+					"manual": "Manuell",
+					"total": "Unterdrückt gesamt",
+					"unengaged": "Inaktiv"
+				},
+				"title": "Unterdrückungen",
+				"toasts": {
+					"added": "Adresse unterdrückt",
+					"imported": "{count} Adresse importiert ({skipped} übersprungen) | {count} Adressen importiert ({skipped} übersprungen)",
+					"importedNoSkips": "{count} Adresse importiert | {count} Adressen importiert",
+					"importedNone": "Keine neuen Adressen hinzugefügt — alle waren bereits unterdrückt oder ungültig",
+					"removed": "Unterdrückung entfernt"
+				},
+				"validation": {
+					"emailRequired": "E-Mail-Adresse ist erforderlich"
+				}
+			},
+			"topics": {
+				"detail": {
+					"contacts": {
+						"detail": {
+							"backToTopic": "Zurück zu {topic}",
+							"breadcrumbs": {
+								"audience": "Zielgruppe",
+								"topics": "Themen"
+							},
+							"emailHistory": {
+								"campaign": "Kampagne",
+								"clicks": "Klicks",
+								"emptyBody": "E-Mails aus Kampagnen für dieses Thema erscheinen hier.",
+								"emptyTitle": "Noch keine E-Mails gesendet",
+								"opens": "Öffnungen",
+								"scope": "(aus diesem Thema)",
+								"sent": "Gesendet",
+								"title": "E-Mail-Verlauf"
+							},
+							"emailStatus": {
+								"bounced": "Unzustellbar",
+								"clicked": "Geklickt",
+								"complained": "Beschwert",
+								"delivered": "Zugestellt",
+								"opened": "Geöffnet",
+								"queued": "In Warteschlange",
+								"sent": "Gesendet"
+							},
+							"engagement": {
+								"clickRate": "Klickrate",
+								"lastEngagement": "Letzte Interaktion",
+								"none": "Noch keine Interaktion",
+								"openRate": "Öffnungsrate",
+								"received": "Erhaltene E-Mails",
+								"title": "Interaktion"
+							},
+							"loading": "Kontaktdetails werden geladen...",
+							"membership": {
+								"addedAt": "Zum Thema hinzugefügt",
+								"title": "Themen-Mitgliedschaft"
+							},
+							"notFound": {
+								"action": "Zurück zum Thema",
+								"body": "Dieser Kontakt wurde möglicherweise aus dem Thema entfernt oder existiert nicht.",
+								"title": "Kontakt in diesem Thema nicht gefunden"
+							},
+							"operations": {
+								"removeContact": "Aus Thema entfernen"
+							},
+							"pageTitle": "Kontaktdetails — Owlat",
+							"removeDialog": {
+								"description": "„{email}“ aus diesem Thema entfernen? Der Kontakt wird nicht gelöscht, sondern nur aus „{topic}“ entfernt."
+							},
+							"removeFromTopic": "Aus Thema entfernen",
+							"toasts": {
+								"removed": "Kontakt wurde aus dem Thema entfernt"
+							},
+							"viewFullProfile": "Vollständiges Profil ansehen",
+							"viewFullProfileLink": "Vollständiges Profil ansehen"
+						}
+					},
+					"index": {
+						"breadcrumbs": {
+							"audience": "Zielgruppe",
+							"topics": "Themen"
+						},
+						"clearSearch": "Suche zurücksetzen",
+						"contactCount": "{count} Kontakt | {count} Kontakte",
+						"contactFallback": "Kontakt",
+						"createdOn": "Erstellt {date}",
+						"doiRequired": "Double-Opt-in erforderlich",
+						"empty": {
+							"action": "Kontakte durchsuchen",
+							"body": "Fügen Sie diesem Thema Kontakte über die Kontaktdetailseite hinzu.",
+							"title": "Keine Kontakte in diesem Thema"
+						},
+						"loading": "Thema wird geladen...",
+						"noResults": {
+							"body": "Keine Kontakte passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
+							"title": "Keine Ergebnisse gefunden"
+						},
+						"notFound": {
+							"action": "Zurück zu den Themen",
+							"body": "Dieses Thema wurde möglicherweise gelöscht oder existiert nicht.",
+							"title": "Thema nicht gefunden"
+						},
+						"operations": {
+							"removeContact": "Aus Thema entfernen"
+						},
+						"pageTitle": "Abonnement-Thema — Owlat",
+						"pagination": {
+							"next": "Weiter",
+							"previous": "Zurück"
+						},
+						"removeDialog": {
+							"description": "„{email}“ aus diesem Thema entfernen? Der Kontakt wird nicht gelöscht, sondern nur aus „{topic}“ entfernt.",
+							"title": "Aus Thema entfernen"
+						},
+						"removeFromTopic": "Aus dem Thema entfernen",
+						"searchPlaceholder": "Kontakte in diesem Thema durchsuchen...",
+						"showing": {
+							"empty": "0 Kontakte",
+							"label": "Angezeigt: {range}",
+							"range": "{start}-{end} von {total}"
+						},
+						"table": {
+							"added": "Hinzugefügt",
+							"firstName": "Vorname",
+							"lastName": "Nachname"
+						},
+						"toasts": {
+							"removed": "„{email}“ wurde aus dem Thema entfernt"
+						}
+					}
+				},
+				"index": {
+					"actions": {
+						"delete": "Thema löschen",
+						"edit": "Thema bearbeiten"
+					},
+					"clearSearch": "Suche zurücksetzen",
+					"count": "{count} Thema | {count} Themen",
+					"createModal": {
+						"title": "Thema erstellen"
+					},
+					"creating": "Wird erstellt...",
+					"deleteModal": {
+						"body": "Möchten Sie „{name}“ wirklich löschen?",
+						"contactsKept": "Der {count} Kontakt in diesem Thema wird nicht gelöscht, sondern nur aus dem Thema entfernt. | Die {count} Kontakte in diesem Thema werden nicht gelöscht, sondern nur aus dem Thema entfernt.",
+						"irreversible": "Diese Aktion kann nicht rückgängig gemacht werden.",
+						"title": "Thema löschen"
+					},
+					"deleting": "Wird gelöscht...",
+					"editModal": {
+						"title": "Thema bearbeiten"
+					},
+					"empty": {
+						"description": "Erstellen Sie Ihr erstes Thema, um Kontakte für gezielte E-Mail-Kampagnen zu organisieren.",
+						"title": "Noch keine Themen"
+					},
+					"errorTitle": "Themen konnten nicht geladen werden",
+					"form": {
+						"descriptionPlaceholder": "Optionale Beschreibung für dieses Thema...",
+						"doiDescription": "Neue Abonnenten müssen ihre E-Mail-Adresse bestätigen, bevor sie diesem Thema hinzugefügt werden",
+						"doiLabel": "Double-Opt-in verlangen",
+						"namePlaceholder": "z. B. Newsletter-Abonnenten"
+					},
+					"newTopic": "Neues Thema",
+					"noResults": {
+						"description": "Keine Themen passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
+						"title": "Keine Ergebnisse gefunden"
+					},
+					"noWorkspace": {
+						"description": "Erstellen oder wählen Sie einen Workspace, um Ihre Themen zu verwalten.",
+						"title": "Kein Workspace ausgewählt"
+					},
+					"operations": {
+						"create": "Thema erstellen",
+						"delete": "Thema löschen",
+						"update": "Thema aktualisieren"
+					},
+					"pageTitle": "Abonnement-Themen — Owlat",
+					"saveChanges": "Änderungen speichern",
+					"searchPlaceholder": "Themen durchsuchen...",
+					"subtitle": "Was Kontakte abonnieren — gruppieren Sie sie für gezielte Kampagnen",
+					"table": {
+						"contacts": "Kontakte",
+						"created": "Erstellt"
+					},
+					"title": "Abonnement-Themen",
+					"toasts": {
+						"created": "Thema „{name}“ wurde erstellt",
+						"deleted": "Thema „{name}“ wurde gelöscht",
+						"updated": "Thema „{name}“ wurde aktualisiert"
+					},
+					"validation": {
+						"nameRequired": "Ein Themenname ist erforderlich"
+					}
+				}
+			}
+		},
+		"automations": {
+			"detail": {
+				"edit": {
+					"activate": "Aktivieren",
+					"activateDialog": {
+						"automation": "Automation",
+						"body": "Nach dem Aktivieren läuft diese Automation und wird für neue Kontakte ausgelöst, die den Auslöserkriterien entsprechen.",
+						"stepCount": "{count} Schritt | {count} Schritte",
+						"steps": "Schritte",
+						"title": "Automation aktivieren?"
+					},
+					"activateTitle": "Diese Automation aktivieren",
+					"activating": "Wird aktiviert...",
+					"addStep": "Schritt hinzufügen",
+					"cannotActivate": "Automation kann nicht aktiviert werden",
+					"configureCondition": "Bedingung konfigurieren",
+					"editWorkflow": "Workflow bearbeiten",
+					"empty": {
+						"addDelay": "Wartezeit-Schritt hinzufügen",
+						"addEmail": "E-Mail-Schritt hinzufügen",
+						"body": "Fügen Sie Schritte hinzu, um festzulegen, was beim Auslösen der Automation passiert.",
+						"title": "Noch keine Schritte"
+					},
+					"endOfAutomation": "Ende der Automation",
+					"notFound": {
+						"action": "Zurück zu den Automationen",
+						"body": "Die gesuchte Automation existiert nicht.",
+						"title": "Automation nicht gefunden"
+					},
+					"operations": {
+						"activate": "Automation aktivieren",
+						"pause": "Automation pausieren",
+						"resume": "Automation fortsetzen",
+						"saveDraft": "Automations-Entwurf speichern"
+					},
+					"pageTitle": "Automation bearbeiten — Owlat",
+					"pause": "Pausieren",
+					"resume": "Fortsetzen",
+					"saveDraft": "Entwurf speichern",
+					"status": {
+						"draft": "Entwurf",
+						"paused": "Pausiert"
+					},
+					"stepNumber": "Schritt {number}",
+					"steps": {
+						"buildWorkflow": "Workflow erstellen",
+						"chooseTrigger": "Auslöser wählen"
+					},
+					"toasts": {
+						"activated": "Automation aktiviert",
+						"draftSaved": "Entwurf gespeichert",
+						"paused": "Automation pausiert",
+						"resumed": "Automation fortgesetzt"
+					},
+					"trigger": "Auslöser",
+					"validation": {
+						"title": "Beheben Sie diese Punkte vor dem Aktivieren:"
+					}
+				}
+			},
+			"index": {
+				"actions": {
+					"activate": "Aktivieren",
+					"more": "Weitere Aktionen",
+					"pause": "Pausieren",
+					"viewDetails": "Details ansehen"
+				},
+				"clearSearch": "Suche zurücksetzen",
+				"deleteDialog": {
+					"activeWarning": "Aktive Automationen müssen vor dem Löschen pausiert werden.",
+					"body": "Möchten Sie {name} wirklich löschen?",
+					"note": "Diese Aktion kann nicht rückgängig gemacht werden. Die Automation und alle ihre Schritte werden endgültig gelöscht.",
+					"title": "Automation löschen"
+				},
+				"deleting": "Wird gelöscht...",
+				"empty": {
+					"action": "Automation erstellen",
+					"description": "Erstellen Sie Ihre erste Automation, um automatisch E-Mails zu senden, wenn sich ein Kontakt registriert, etwas abonniert oder ein Ereignis auslöst.",
+					"title": "Noch keine Automationen"
+				},
+				"errorTitle": "Automationen konnten nicht geladen werden",
+				"newAutomation": "Neue Automation",
+				"noResults": {
+					"description": "Keine Automationen passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
+					"title": "Keine Ergebnisse gefunden"
+				},
+				"noTeam": {
+					"description": "Erstellen oder wählen Sie ein Team, um Automationen anzulegen.",
+					"title": "Kein Team ausgewählt"
+				},
+				"operations": {
+					"delete": "Automation löschen",
+					"duplicate": "Automation duplizieren",
+					"pause": "Automation pausieren",
+					"resume": "Automation fortsetzen"
+				},
+				"pageTitle": "Automationen — Owlat",
+				"searchPlaceholder": "Automationen durchsuchen...",
+				"status": {
+					"draft": "Entwurf",
+					"paused": "Pausiert"
+				},
+				"subtitle": "Erstellen Sie automatisierte E-Mail-Workflows, die durch Ereignisse ausgelöst werden",
+				"table": {
+					"contactsInFlow": "Kontakte im Ablauf",
+					"created": "Erstellt",
+					"trigger": "Auslöser"
+				},
+				"title": "Automationen",
+				"toasts": {
+					"activated": "„{name}“ ist jetzt aktiv",
+					"deleted": "Automation wurde gelöscht",
+					"draftNotToggleable": "Bitte vervollständigen und aktivieren Sie diese Automation im Builder",
+					"duplicated": "Automation wurde dupliziert",
+					"paused": "„{name}“ wurde pausiert"
+				}
+			},
+			"new": {
+				"chooseTrigger": {
+					"subtitle": "Wählen Sie, welches Ereignis diesen Automations-Workflow startet.",
+					"title": "Einen Auslöser wählen"
+				},
+				"contactCreatedInfo": {
+					"body": "Dieser Auslöser wird automatisch ausgelöst, sobald ein neuer Kontakt zu Ihrer Zielgruppe hinzugefügt wird — egal auf welchem Weg (API, Import oder Formular).",
+					"title": "Sofort einsatzbereit"
+				},
+				"continue": "Weiter zum Workflow",
+				"creating": "Wird erstellt...",
+				"editTriggerTitle": "Auslöser bearbeiten",
+				"form": {
+					"descriptionPlaceholder": "Beschreiben Sie, was diese Automation tut...",
+					"nameHelp": "Ein Name, an dem Sie diese Automation im Dashboard erkennen.",
+					"nameLabel": "Name der Automation",
+					"namePlaceholder": "z. B. Willkommensserie, Reaktivierungs-Ablauf",
+					"optionalHint": "(optional)",
+					"triggerTypeLabel": "Auslösertyp"
+				},
+				"operations": {
+					"create": "Automation erstellen",
+					"updateTrigger": "Auslöser der Automation aktualisieren"
+				},
+				"pageTitle": "Automation erstellen — Owlat",
+				"steps": {
+					"buildWorkflow": "Workflow erstellen",
+					"chooseTrigger": "Auslöser wählen"
+				},
+				"subtitle": "Richten Sie einen automatisierten E-Mail-Workflow ein",
+				"title": "Automation erstellen",
+				"validation": {
+					"nameRequired": "Ein Name für die Automation ist erforderlich",
+					"triggerRequired": "Bitte wählen Sie einen Auslösertyp"
+				}
+			}
+		}
+	}
+}

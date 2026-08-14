@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** The real catalog behind the `useI18n` auto-import the composable calls. */
+const i18n = createTestI18n();
 
 /**
  * Regression: the interactive compose path (`addFiles`) must enforce the same
@@ -55,6 +59,9 @@ beforeEach(() => {
 	uploaderAddFiles.mockClear();
 	showToast.mockClear();
 	vi.stubGlobal('useToast', () => ({ showToast }));
+	// The composable resolves its copy through vue-i18n; install the real
+	// catalog behind the `useI18n` auto-import so toasts read as they ship.
+	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
 	vi.stubGlobal('usePostboxPendingAttachments', () => ({ take: () => null }));
 });

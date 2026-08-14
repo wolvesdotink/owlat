@@ -17,6 +17,8 @@ defineProps<{
 
 const choice = defineModel<string>('choice', { required: true });
 const custom = defineModel<string>('custom', { required: true });
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -27,7 +29,7 @@ const custom = defineModel<string>('custom', { required: true });
 			v-model="custom"
 			type="text"
 			class="mt-2"
-			placeholder="Enter a model id"
+			:placeholder="t('components.settings.aiModelPicker.customPlaceholder')"
 			:disabled="disabled"
 		/>
 		<p v-if="hint" class="mt-1.5 text-xs text-text-tertiary">{{ hint }}</p>

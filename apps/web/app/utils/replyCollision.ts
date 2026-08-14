@@ -13,24 +13,37 @@
  * error so callers show {@link replyCollisionToast} instead of a false success.
  */
 
-/** Fallback name when a teammate's profile can't be resolved to a display name. */
-export const GENERIC_TEAMMATE_NAME = 'A teammate';
+/**
+ * A message this module hands to a screen: an i18n key plus the values its
+ * sentence interpolates. Nothing here calls `useI18n` (it is a pure module), so
+ * the caller runs the pair through `t(key, params)`.
+ */
+export interface ReplyCollisionMessage {
+	readonly key: string;
+	readonly params?: Record<string, unknown>;
+}
+
+/**
+ * Fallback name when a teammate's profile can't be resolved to a display name —
+ * the i18n key of it, translated by the caller before it is interpolated.
+ */
+export const GENERIC_TEAMMATE_NAME = 'shared.replyCollision.genericTeammateName';
 
 /**
  * The inline reason under a held button. Plain language, no jargon: it says WHY
  * it's held and that it takes over on its own — no action required.
  * e.g. "held while Jordan is editing — takes over automatically if they leave".
  */
-export function sendHoldReason(name: string): string {
-	return `held while ${name} is editing — takes over automatically if they leave`;
+export function sendHoldReason(name: string): ReplyCollisionMessage {
+	return { key: 'shared.replyCollision.sendHoldReason', params: { name } };
 }
 
 /**
  * The toast when a send/approve is refused server-side because a teammate just
  * replied. e.g. "Jordan just sent a reply — review the thread".
  */
-export function replyCollisionToast(name: string): string {
-	return `${name} just sent a reply — review the thread`;
+export function replyCollisionToast(name: string): ReplyCollisionMessage {
+	return { key: 'shared.replyCollision.collisionToast', params: { name } };
 }
 
 /** The soft-error shape `approveDraft` returns when it refuses on a collision. */

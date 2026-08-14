@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
+import { createTestI18n } from '~/__tests__/i18n';
 import { useChannelInbox } from '../useChannelInbox';
+
+// The composable runs outside a component here, so `useI18n` is stubbed with the
+// real catalog's `t` — the copy asserted below stays what a user reads.
+const { t } = createTestI18n().global;
 
 // useChannelInbox subscribes to the global cross-channel `listRecent` query.
 // Stub useConvexQuery so we can assert which query it subscribes to and that the
@@ -45,6 +50,7 @@ beforeEach(() => {
 		},
 	}));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useI18n', () => ({ t }));
 });
 
 describe('useChannelInbox', () => {

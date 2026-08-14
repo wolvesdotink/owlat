@@ -1,0 +1,201 @@
+{
+	"components": {
+		"ui": {
+			"queryBoundary": {
+				"errorTitle": "Failed to load",
+				"errorMessage": "Something went wrong while loading this view.",
+				"loadingLabel": "Loading…",
+				"tryAgain": "Try again",
+				"emptyTitle": "Nothing to show",
+				"emptyDescription": "There's no data to display yet."
+			}
+		},
+		"visualizations": {
+			"visualizationCard": {
+				"togglePinOperation": "Toggle pin",
+				"removeOperation": "Remove visualization",
+				"refreshOperation": "Refresh visualization",
+				"liveDataBadge": "Live data",
+				"liveDataTooltip": "Built from your real account data",
+				"refreshTooltip": "Refresh with current account data",
+				"pinTooltip": "Pin to dashboard",
+				"unpinTooltip": "Unpin from dashboard",
+				"removeTooltip": "Remove visualization",
+				"confirmRemoveTitle": "Remove Visualization",
+				"confirmRemoveBody": "This will permanently delete this visualization. This action cannot be undone.",
+				"removing": "Removing..."
+			},
+			"visualizationPrompt": {
+				"createOperation": "Create visualization",
+				"title": "Create Visualization",
+				"intro": "Describe a chart in natural language and the AI agent will generate an interactive component. Leave the data source on {sampleData} for a layout mockup, or pick one of the live datasets below to chart your account's real numbers.",
+				"sampleDataName": "Illustrative sample data",
+				"promptPlaceholder": "e.g., A bar chart of email delivery status",
+				"dataSourceLabel": "Data source",
+				"sampleDataOption": "Illustrative sample data (no account data)",
+				"liveDataNote": "This chart will use your account's real numbers for the selected dataset.",
+				"pinToDashboard": "Pin to dashboard",
+				"generating": "Generating...",
+				"generate": "Generate",
+				"datasets": {
+					"emailDelivery30d": "Email delivery — last 30 days",
+					"agentHealth": "AI agent pipeline health",
+					"contactGrowth": "Contact growth — last 30 days",
+					"campaignPerformance": "Recent campaign performance"
+				}
+			}
+		},
+		"webhooks": {
+			"webhookDeliveryLogsModal": {
+				"copied": "Copied!",
+				"created": {
+					"title": "Webhook Created",
+					"copyNow": "Copy your webhook secret now",
+					"copyNowBody": "Use this secret to verify webhook signatures. Store it securely - you won't be able to see it again.",
+					"endpointUrl": "Endpoint URL",
+					"signingSecret": "Signing Secret"
+				},
+				"regenerate": {
+					"title": "Regenerate Secret",
+					"doneTitle": "New Secret Generated",
+					"confirm": "Regenerate secret for {name}?",
+					"confirmBody": "The current secret will be invalidated immediately. You'll need to update your webhook endpoint with the new secret.",
+					"copyNow": "Copy your new secret now",
+					"copyNowBody": "Store it securely - you won't be able to see it again.",
+					"newSigningSecret": "New Signing Secret",
+					"submit": "Regenerate",
+					"submitting": "Regenerating..."
+				},
+				"delete": {
+					"title": "Delete Webhook",
+					"confirm": "Are you sure you want to delete {name}?",
+					"confirmBody": "This action cannot be undone. The webhook will stop receiving notifications immediately.",
+					"submit": "Delete Webhook",
+					"submitting": "Deleting..."
+				}
+			},
+			"webhookDeliveryLogsPanel": {
+				"detailTitle": "Delivery Detail",
+				"listTitle": "Delivery Logs — {name}",
+				"backToLogs": "Back to logs",
+				"sending": "Sending...",
+				"sendTest": "Send Test",
+				"sendTestWebhook": "Send Test Webhook",
+				"attempt": "Attempt {attempt}/{max}",
+				"httpStatus": "HTTP Status",
+				"scheduledAt": "Scheduled At",
+				"attemptedAt": "Attempted At",
+				"completedAt": "Completed At",
+				"duration": "Duration",
+				"durationMs": "{value}ms",
+				"durationSeconds": "{value}s",
+				"requestPayload": "Request Payload",
+				"responseBody": "Response Body",
+				"emptyTitle": "No delivery logs yet",
+				"emptyDescription": "Send a test webhook to see delivery logs here.",
+				"stats": {
+					"total": "Total",
+					"success": "Success",
+					"failed": "Failed",
+					"successRate": "Success Rate"
+				},
+				"status": {
+					"pending": "pending",
+					"success": "success",
+					"failed": "failed",
+					"retrying": "retrying"
+				},
+				"events": {
+					"test": "Test",
+					"emailSent": "Email Sent",
+					"emailDelivered": "Email Delivered",
+					"emailOpened": "Email Opened",
+					"emailClicked": "Email Clicked",
+					"emailBounced": "Email Bounced",
+					"emailComplained": "Email Complained",
+					"contactCreated": "Contact Created",
+					"topicUnsubscribed": "Topic Unsubscribed"
+				}
+			},
+			"webhookFormModal": {
+				"namePlaceholder": "e.g., Email Events, CRM Integration",
+				"urlLabel": "Endpoint URL",
+				"urlPlaceholder": "https://your-server.com/webhooks",
+				"urlHelp": "We'll send POST requests to this URL when events occur.",
+				"eventsLabel": "Events",
+				"selectAll": "Select all",
+				"clear": "Clear"
+			}
+		},
+		"widget": {
+			"host": {
+				"failed": "This panel ran into a problem and was hidden to keep the rest of the page working.",
+				"tryAgain": "Try again",
+				"loading": "Loading {label}…"
+			}
+		}
+	},
+	"dashboard": {
+		"index": {
+			"pageTitle": "Dashboard — Owlat",
+			"welcome": "Welcome back",
+			"welcomeNamed": "Welcome back, {name}",
+			"subtitleAdmin": "Here's what needs attention across your organization.",
+			"subtitleMember": "Here's what's happening with your customers and sends.",
+			"customize": "Customize",
+			"cardsErrorFallback": "Couldn't load your dashboard cards. Please refresh to try again."
+		},
+		"visualizations": {
+			"pageTitle": "Visualizations — Owlat",
+			"title": "Visualizations",
+			"intro": "Generate interactive charts from natural language prompts. Use illustrative sample data for layout mockups, or pick a live dataset to chart your account's real numbers.",
+			"loading": "Loading visualizations...",
+			"errorTitle": "Couldn't load visualizations",
+			"errorMessage": "We hit an error loading your visualizations. Reload the page to try again.",
+			"emptyTitle": "No visualizations yet",
+			"emptyDescription": "Use the prompt above to generate your first visualization."
+		},
+		"admin": {
+			"backups": {
+				"pageTitle": "Backups — Owlat",
+				"title": "Backups",
+				"intro": "Keep a safe copy of your mail, contacts, and settings. Set backups up before you store real data.",
+				"honestyNote": "Owlat can't read your server's schedule from here, so this page tracks the plan {you} record. Run the commands shown on your server, then note here what you set up — that's how the app knows your data is protected.",
+				"honestyNoteYou": "you",
+				"loadErrorTitle": "Couldn't load backup status",
+				"currentStatus": "Current status",
+				"noPlanTitle": "No backup plan recorded yet",
+				"noPlanDescription": "Nothing here is protected until you schedule backups on your server. Follow the steps below, then record what you set up.",
+				"dailySchedule": "Daily schedule",
+				"scheduled": "Scheduled",
+				"notScheduled": "Not scheduled",
+				"protected": "Protected",
+				"atRisk": "At risk",
+				"lastLoggedBackup": "Last backup you logged",
+				"runSucceeded": "succeeded",
+				"runFailed": "failed",
+				"noRunsLogged": "No manual runs logged yet.",
+				"recordedBy": "Recorded by {name} on {date}.",
+				"dailyScheduleDescription": "Runs a backup every night. Enable it on your server, then flip this switch to record it.",
+				"scheduleSwitchLabel": "Daily backups scheduled",
+				"backUpNow": "Back up now",
+				"backUpNowDescription": "Run this on your server for an immediate backup, then log the result here.",
+				"logSuccess": "Log a successful backup",
+				"logFailure": "Log a failed run",
+				"restore": "Restore",
+				"restoreDescription": "Backups are written to {path} on your server. To restore one, run:",
+				"sealedMailTitle": "Sealed Mail and your instance secret",
+				"sealedMailBody": "Mail that arrives sealed is stored encrypted. The only things that can open it again are your instance secret ({secret}) and the recovery kits you download from Sealed Mail settings.",
+				"sealedMailWarning": "If you lose the instance secret and haven't kept any recovery kits, sealed mail you already received can no longer be opened, and a database backup alone will not bring it back. Keep the instance secret in your backups, and download a recovery kit for each address before you rely on Sealed Mail.",
+				"sealedMailLink": "Go to Sealed Mail settings",
+				"restoreWarning": "Restoring replaces current data with the snapshot — stop the stack and confirm the tarball before running it in production.",
+				"updateScheduleOperation": "Update backup schedule",
+				"logRunOperation": "Log backup run",
+				"toastScheduleEnabled": "Recorded: daily backups scheduled",
+				"toastScheduleDisabled": "Recorded: daily backups disabled",
+				"toastRunLogged": "Backup logged",
+				"toastFailedRunLogged": "Failed run logged"
+			}
+		}
+	}
+}

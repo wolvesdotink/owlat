@@ -4,11 +4,16 @@ export const topicSubscribedEditorModule: ContactActivityEditorModule<'topic_sub
 	literal: 'topic_subscribed',
 	displayConfig: {
 		icon: 'lucide:list-plus',
-		label: 'Subscribed to Topic',
+		label: 'shared.contactActivities.topicSubscribed.label',
 		color: 'text-brand',
 	},
 	formatDescription(metadata) {
-		if (metadata?.topicName) return `Subscribed to ${metadata.topicName}`;
-		return 'Subscribed to topic';
+		if (metadata?.topicName) {
+			return {
+				key: 'shared.contactActivities.topicSubscribed.descriptionWithTopic',
+				params: { topic: metadata.topicName },
+			};
+		}
+		return 'shared.contactActivities.topicSubscribed.description';
 	},
 };

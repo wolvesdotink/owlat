@@ -25,6 +25,8 @@ const emit = defineEmits<{
 	(e: 'confirm-until-reply', capTimestamp: number): void;
 }>();
 
+const { t } = useI18n();
+
 /** Fallback cap for "until they reply" — resurface after a week if no reply. */
 const UNTIL_REPLY_CAP_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -44,13 +46,14 @@ const PRESETS = computed<PresetTimeOption[]>(() => {
 	}));
 });
 
-const ACTIONS: PresetTimeAction[] = [
+// A computed (not a frozen const) so the labels follow a locale change.
+const ACTIONS = computed<PresetTimeAction[]>(() => [
 	{
 		id: 'until-reply',
-		label: 'Until they reply',
-		sub: 'Or in 1 week',
+		label: t('components.postbox.postboxSnoozeDialog.untilReply'),
+		sub: t('components.postbox.postboxSnoozeDialog.untilReplySub'),
 	},
-];
+]);
 
 function onAction(id: string) {
 	if (id === 'until-reply') {
@@ -62,10 +65,10 @@ function onAction(id: string) {
 <template>
 	<PostboxPresetTimeDialog
 		:open="open"
-		title="Snooze until"
+		:title="t('components.postbox.postboxSnoozeDialog.title')"
 		:presets="PRESETS"
 		:actions="ACTIONS"
-		confirm-label="Snooze"
+		:confirm-label="t('components.postbox.postboxSnoozeDialog.confirm')"
 		@update:open="emit('update:open', $event)"
 		@confirm="emit('confirm', $event)"
 		@action="onAction"

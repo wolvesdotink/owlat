@@ -22,7 +22,7 @@ type DomainStatus = DomainRow['status'];
 
 defineProps<{ rows: DomainRow[] }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const DOMAIN_SETUP_ROUTE = '/dashboard/admin/delivery/domains';
 
@@ -153,7 +153,7 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 						<p>
 							{{
 								t('components.delivery.domainTable.sentCount', {
-									count: formatNumber(row.sent30d),
+									count: formatNumber(row.sent30d, locale),
 								})
 							}}
 							<span class="block text-[11px]">{{
@@ -216,7 +216,7 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 							<p class="text-[11px] text-text-tertiary mt-0.5">
 								{{
 									t('components.delivery.domainTable.googleDataFor', {
-										date: formatDate(row.googlePostmaster.periodStart, 'short'),
+										date: formatDate(row.googlePostmaster.periodStart, 'short', locale),
 									})
 								}}
 							</p>

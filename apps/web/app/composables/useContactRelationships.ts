@@ -9,6 +9,8 @@ interface ContactSearchResult {
 }
 
 export function useContactRelationships(contactId: Ref<Id<'contacts'>>) {
+	const { t } = useI18n();
+
 	// Fetch relationships
 	const { data: relationships, isLoading: relationshipsLoading } = useConvexQuery(
 		api.contacts.relationships.listByContact,
@@ -40,14 +42,14 @@ export function useContactRelationships(contactId: Ref<Id<'contacts'>>) {
 
 	// Mutations
 	const { run: createRelationship } = useBackendOperation(api.contacts.relationships.create, {
-		label: 'Add relationship',
+		label: () => t('shared.useContactRelationships.addRelationshipOperation'),
 	});
 	const { run: removeRelationship } = useBackendOperation(api.contacts.relationships.remove, {
-		label: 'Remove relationship',
+		label: () => t('shared.useContactRelationships.removeRelationshipOperation'),
 	});
 	const { run: updateConfidence } = useBackendOperation(
 		api.contacts.relationships.updateConfidence,
-		{ label: 'Update relationship confidence' },
+		{ label: () => t('shared.useContactRelationships.updateConfidenceOperation') },
 	);
 
 	// Add form state
@@ -138,8 +140,11 @@ export function useContactRelationships(contactId: Ref<Id<'contacts'>>) {
 		return icons[relationship] || 'lucide:link';
 	};
 
+	// A message key, not copy — the relationships tab renders it through `t()`.
 	const getDirectionLabel = (direction: 'incoming' | 'outgoing') => {
-		return direction === 'outgoing' ? 'to' : 'from';
+		return direction === 'outgoing'
+			? 'shared.useContactRelationships.direction.to'
+			: 'shared.useContactRelationships.direction.from';
 	};
 
 	return {

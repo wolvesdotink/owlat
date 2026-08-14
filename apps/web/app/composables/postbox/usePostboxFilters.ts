@@ -50,19 +50,20 @@ export interface FilterAction {
 }
 
 export function usePostboxFilters(mailboxId: Ref<Id<'mailboxes'> | null>) {
+	const { t } = useI18n();
 	const { data, isLoading } = useConvexQuery(api.mail.filters.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
 	const filters = computed(() => data.value ?? []);
 
 	const createMutation = useBackendOperation(api.mail.filters.create, {
-		label: 'Create filter',
+		label: () => t('shared.postbox.usePostboxFilters.createFilter'),
 	});
 	const updateMutation = useBackendOperation(api.mail.filters.update, {
-		label: 'Update filter',
+		label: () => t('shared.postbox.usePostboxFilters.updateFilter'),
 	});
 	const removeMutation = useBackendOperation(api.mail.filters.remove, {
-		label: 'Delete filter',
+		label: () => t('shared.postbox.usePostboxFilters.deleteFilter'),
 	});
 
 	async function create(args: {

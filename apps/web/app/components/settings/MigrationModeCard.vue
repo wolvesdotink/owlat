@@ -18,6 +18,7 @@ const props = defineProps<{
 	canManage: boolean;
 }>();
 
+const { t } = useI18n();
 const { showToast } = useToast();
 
 const { data: settings, isLoading: isLoadingSettings } = useConvexQuery(
@@ -33,11 +34,11 @@ const mailExternalEnabled = computed<boolean>(() => liveFlags.value?.['mail.exte
 
 const { run: updateSettings, isLoading: isSavingSettings } = useBackendOperation(
 	api.workspaces.settings.update,
-	{ label: 'Update migration mode' }
+	{ label: () => t('components.settings.migrationModeCard.updateOperation') }
 );
 const { run: setFeatureFlag, isLoading: isSavingFlag } = useBackendOperation(
 	api.workspaces.featureFlags.setFeatureFlag,
-	{ label: 'Enable external mailbox import' }
+	{ label: () => t('components.settings.migrationModeCard.enableImportOperation') }
 );
 
 const isSaving = computed(() => isSavingSettings.value || isSavingFlag.value);
@@ -63,8 +64,8 @@ async function save(next: boolean) {
 	if (res === undefined) return; // failure already toasted by the operation module
 	showToast(
 		next
-			? 'Migration mode on — new users will be offered a mail import at first login.'
-			: 'Migration mode off — new users get a fresh-start welcome.'
+			? t('components.settings.migrationModeCard.toastOn')
+			: t('components.settings.migrationModeCard.toastOff')
 	);
 }
 
@@ -87,8 +88,12 @@ async function confirmAndEnable() {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:import" size="sm" variant="surface" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-medium text-text-primary">Coming from another platform?</h2>
-					<p class="text-sm text-text-secondary">Controls how new teammates are welcomed.</p>
+					<h2 class="text-lg font-medium text-text-primary">
+						{{ t('components.settings.migrationModeCard.title') }}
+					</h2>
+					<p class="text-sm text-text-secondary">
+						{{ t('components.settings.migrationModeCard.subtitle') }}
+					</p>
 				</div>
 			</div>
 		</template>
@@ -96,32 +101,40 @@ async function confirmAndEnable() {
 		<!-- Loading -->
 		<div v-if="isLoadingSettings" class="flex items-center gap-3 py-2">
 			<UiSpinner size="sm" />
-			<span class="text-sm text-text-secondary">Loading setting…</span>
+			<span class="text-sm text-text-secondary">
+				{{ t('components.settings.migrationModeCard.loading') }}
+			</span>
 		</div>
 
 		<div v-else class="flex items-start justify-between gap-4">
 			<div class="min-w-0">
-				<p class="text-sm text-text-primary">This team is moving from another email platform.</p>
+				<p class="text-sm text-text-primary">
+					{{ t('components.settings.migrationModeCard.body') }}
+				</p>
 				<p class="mt-1 text-sm text-text-secondary">
-					New users will be offered a mail import at first login.
+					{{ t('components.settings.migrationModeCard.bodyDetail') }}
 				</p>
 				<p v-if="!canManage" class="mt-2 text-xs text-text-tertiary">
-					Only owners and admins can change this.
+					{{ t('components.settings.migrationModeCard.adminsOnly') }}
 				</p>
 			</div>
 			<UiToggle
 				:model-value="isMigrationMode"
 				:disabled="!canManage || isSaving"
-				:label="isMigrationMode ? 'On' : 'Off'"
+				:label="
+					isMigrationMode
+						? t('components.settings.migrationModeCard.on')
+						: t('components.settings.migrationModeCard.off')
+				"
 				@update:model-value="onToggle"
 			/>
 		</div>
 
 		<UiConfirmationDialog
 			:open="confirmEnableImport"
-			title="Turn on mail import too?"
-			description="Migration mode offers new users a mail import, which needs the “Connect external mailbox” feature. We'll turn that on now so the import actually works."
-			confirm-text="Turn both on"
+			:title="t('components.settings.migrationModeCard.confirmTitle')"
+			:description="t('components.settings.migrationModeCard.confirmDescription')"
+			:confirm-text="t('components.settings.migrationModeCard.confirmAction')"
 			:is-loading="isSaving"
 			@update:open="(v: boolean) => !v && (confirmEnableImport = false)"
 			@confirm="confirmAndEnable"

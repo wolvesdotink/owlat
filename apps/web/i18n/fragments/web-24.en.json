@@ -1,0 +1,105 @@
+{
+	"components": {
+		"postbox": {
+			"postboxSenderControls": {
+				"accept": "Accept sender",
+				"acceptTitle": "Accept this first-time sender into the Reply Queue",
+				"removeVip": "Remove VIP",
+				"markVip": "Mark sender as VIP",
+				"vipOperation": "VIP",
+				"acceptOperation": "Accept sender"
+			},
+			"postboxSendingSettings": {
+				"heading": "Sending",
+				"loadError": "We couldn't load your sending settings just now. Please refresh to try again.",
+				"promptTitle": "Send from this Owlat instead",
+				"promptBody": "{domain} is verified here, so Owlat can send your outgoing mail directly — signed and aligned for {signedDomain}. Nothing about how you read mail changes, and you can switch back any time.",
+				"promptCta": "Switch to Owlat sending",
+				"legend": "Where outgoing mail is sent from",
+				"chooseIntro": "Choose where {address} sends its outgoing mail. This only affects sending — your inbox keeps syncing exactly as before.",
+				"externalTitle": "Your own mail server",
+				"externalBody": "Outgoing mail goes through the sending server of the mailbox you connected. This is how imported mail sends by default.",
+				"instanceTitle": "This Owlat instance",
+				"instanceBody": "Owlat sends your outgoing mail directly, signed for {domain}. Better deliverability once your domain is set up here.",
+				"domainNotVerified": "Not available yet — {domain} isn't a verified sending domain on this instance. Verify it under Settings → Domains first.",
+				"noTransport": "Not available yet — this instance has no outbound transport configured. Set one up under Delivery first.",
+				"changeOperation": "Change sending"
+			},
+			"postboxShortcutHelp": {
+				"title": "Keyboard shortcuts"
+			},
+			"postboxSnippetPicker": {
+				"listLabel": "Snippets",
+				"empty": "No matching snippets"
+			},
+			"postboxSnoozeDialog": {
+				"title": "Snooze until",
+				"confirm": "Snooze",
+				"untilReply": "Until they reply",
+				"untilReplySub": "Or in 1 week"
+			},
+			"postboxStaleReplyDialog": {
+				"title": "A teammate already replied",
+				"description": "Someone on your team replied to this thread after you opened it. Send your reply anyway?",
+				"descriptionNamed": "{name} replied to this thread after you opened it. Send your reply anyway?",
+				"confirm": "Send anyway",
+				"cancel": "Keep editing"
+			},
+			"postboxTeamMemberPicker": {
+				"label": "Members",
+				"help": "Choose who can read and send from this inbox. You can change this later.",
+				"loading": "Loading teammates…",
+				"empty": "No teammates to add yet — you can invite people and add them later."
+			},
+			"postboxTeamReplyBadge": {
+				"youPersonal": "You replied from your personal address · {when}",
+				"namedPersonal": "{name} replied from their personal address · {when}",
+				"teammatePersonal": "A teammate replied from their personal address · {when}",
+				"youLast": "You replied last · {when}",
+				"namedLast": "{name} replied last · {when}",
+				"teammateLast": "A teammate replied last · {when}"
+			},
+			"postboxThreadCategoryList": {
+				"allClear": "All clear",
+				"listLabel": "Categorized conversations",
+				"noSubject": "(no subject)",
+				"recategorize": "Recategorize as…",
+				"recategorizeHint": "Remembered for this sender — future mail from them lands here too.",
+				"loadMore": "Load more"
+			},
+			"postboxThreadGroupList": {
+				"allClear": "All clear",
+				"listLabel": "Conversations",
+				"rowLabel": "{subject}, {count} unread",
+				"noSubjectLabel": "No subject",
+				"noSubject": "(no subject)",
+				"loadMore": "Load more"
+			},
+			"postboxThreadHeader": {
+				"noSubject": "(no subject)"
+			},
+			"postboxThreadList": {
+				"archiveOperation": "Archive",
+				"trashOperation": "Move to trash",
+				"starOperation": "Star",
+				"markReadOperation": "Mark read",
+				"snoozeOperation": "Snooze",
+				"moveOperation": "Move message",
+				"cancelFollowUpOperation": "Cancel reply reminder",
+				"archivedUndo": "Archived",
+				"trashedUndo": "Moved to Trash",
+				"movedUndo": "Moved",
+				"emptyLabelTitle": "No messages with this label",
+				"emptyLabelHint": "Apply it from a message with the label shortcut (l).",
+				"emptyInboxTitle": "All clear",
+				"emptyInboxHint": "Press C to write a message, or ⌘K to search and jump anywhere.",
+				"emptyFolderTitle": "This folder is empty",
+				"emptyFolderHint": "Move messages here, or route them automatically with a filter.",
+				"emptyDefaultTitle": "No messages",
+				"listLabel": "Messages",
+				"setUpFilter": "Set up a filter",
+				"loadMore": "Load more"
+			}
+		}
+	}
+}

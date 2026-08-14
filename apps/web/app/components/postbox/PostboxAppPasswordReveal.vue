@@ -35,16 +35,16 @@ function close() {
 				</div>
 				<div class="flex-1">
 					<h2 class="text-lg font-semibold">
-						{{ t('components.postbox.appPasswordReveal.title') }}
+						{{ t('components.postbox.postboxAppPasswordReveal.title') }}
 					</h2>
 					<I18nT
-						keypath="components.postbox.appPasswordReveal.body"
+						keypath="components.postbox.postboxAppPasswordReveal.body"
 						tag="p"
 						scope="global"
 						class="text-sm text-text-secondary mt-0.5"
 					>
 						<template #client>
-							<strong>{{ label || t('components.postbox.appPasswordReveal.yourClient') }}</strong>
+							<strong>{{ label || t('components.postbox.postboxAppPasswordReveal.yourClient') }}</strong>
 						</template>
 					</I18nT>
 				</div>
@@ -62,7 +62,7 @@ function close() {
 					{{ copied ? t('common.copied') : t('common.copy') }}
 				</UiButton>
 				<UiButton type="button" @click="close">{{
-					t('components.postbox.appPasswordReveal.saved')
+					t('components.postbox.postboxAppPasswordReveal.saved')
 				}}</UiButton>
 			</div>
 		</div>

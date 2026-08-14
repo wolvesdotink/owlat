@@ -7,18 +7,23 @@ import {
 	strategyLabelFor,
 } from '../providerRouteOptions';
 import { routeProvidersForWrite, type TransportOption } from '../providerRouting';
+import { createTestI18n } from '~/__tests__/i18n';
 
 const OPTIONS: readonly TransportOption[] = [
 	{ kind: 'mta', label: 'Owlat MTA', isAvailable: true, isRegistered: true },
 	{ kind: 'ses', label: 'Amazon SES', isAvailable: true, isRegistered: true },
 ];
 
+// The option set is a pure registry, so its labels are message keys; the copy
+// an operator reads is asserted through the real catalog.
+const { t } = createTestI18n().global;
+
 describe('provider route strategy labels', () => {
 	it('labels every known strategy kind', () => {
-		expect(strategyLabelFor('single')).toBe('Single provider');
-		expect(strategyLabelFor('priority_failover')).toBe('Priority failover');
-		expect(strategyLabelFor('workload_split')).toBe('Workload split');
-		expect(strategyLabelFor('adaptive_mix')).toBe('Adaptive mix (managed)');
+		expect(t(strategyLabelFor('single'))).toBe('Single provider');
+		expect(t(strategyLabelFor('priority_failover'))).toBe('Priority failover');
+		expect(t(strategyLabelFor('workload_split'))).toBe('Workload split');
+		expect(t(strategyLabelFor('adaptive_mix'))).toBe('Adaptive mix (managed)');
 	});
 
 	it('falls back to the raw kind for a strategy this build does not know', () => {

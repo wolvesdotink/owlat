@@ -1,0 +1,167 @@
+{
+	"shared": {
+		"conditions": {
+			"contact_property": {
+				"label": "Contact Property",
+				"description": "Filter by contact field or custom property",
+				"fields": {
+					"email": "Email",
+					"firstName": "First Name",
+					"lastName": "Last Name",
+					"source": "Source"
+				},
+				"operators": {
+					"equals": "Equals",
+					"not_equals": "Does not equal",
+					"contains": "Contains",
+					"not_contains": "Does not contain",
+					"is_empty": "Is empty",
+					"not_empty": "Is not empty",
+					"gt": "Greater than",
+					"lt": "Less than",
+					"gte": "Greater than or equal",
+					"lte": "Less than or equal",
+					"is_true": "Is true",
+					"is_false": "Is false"
+				},
+				"validation": {
+					"fieldRequired": "Please select a property",
+					"valueRequired": "Please enter a value"
+				},
+				"descriptions": {
+					"empty": "Select a property",
+					"equals": "{field} equals \"{value}\"",
+					"not_equals": "{field} does not equal \"{value}\"",
+					"contains": "{field} contains \"{value}\"",
+					"not_contains": "{field} does not contain \"{value}\"",
+					"is_empty": "{field} is empty",
+					"not_empty": "{field} is set",
+					"gt": "{field} is greater than \"{value}\"",
+					"lt": "{field} is less than \"{value}\"",
+					"gte": "{field} is greater than or equal to \"{value}\"",
+					"lte": "{field} is less than or equal to \"{value}\"",
+					"is_true": "{field} is true",
+					"is_false": "{field} is false"
+				},
+				"builtInDescriptions": {
+					"email": {
+						"equals": "Email equals \"{value}\"",
+						"not_equals": "Email does not equal \"{value}\"",
+						"contains": "Email contains \"{value}\"",
+						"not_contains": "Email does not contain \"{value}\"",
+						"is_empty": "Email is empty",
+						"not_empty": "Email is set"
+					},
+					"firstName": {
+						"equals": "First Name equals \"{value}\"",
+						"not_equals": "First Name does not equal \"{value}\"",
+						"contains": "First Name contains \"{value}\"",
+						"not_contains": "First Name does not contain \"{value}\"",
+						"is_empty": "First Name is empty",
+						"not_empty": "First Name is set"
+					},
+					"lastName": {
+						"equals": "Last Name equals \"{value}\"",
+						"not_equals": "Last Name does not equal \"{value}\"",
+						"contains": "Last Name contains \"{value}\"",
+						"not_contains": "Last Name does not contain \"{value}\"",
+						"is_empty": "Last Name is empty",
+						"not_empty": "Last Name is set"
+					},
+					"source": {
+						"equals": "Source equals \"{value}\"",
+						"not_equals": "Source does not equal \"{value}\"",
+						"contains": "Source contains \"{value}\"",
+						"not_contains": "Source does not contain \"{value}\"",
+						"is_empty": "Source is empty",
+						"not_empty": "Source is set"
+					}
+				}
+			},
+			"email_activity": {
+				"label": "Email Activity",
+				"description": "Filter by opens, clicks, etc.",
+				"options": {
+					"opened_is_true": "Has opened an email",
+					"clicked_is_true": "Has clicked a link",
+					"opened_is_false": "Has not opened any email",
+					"clicked_is_false": "Has not clicked any link"
+				},
+				"validation": {
+					"activityRequired": "Please select an activity type"
+				},
+				"descriptions": {
+					"fallback": "Configure email activity"
+				}
+			},
+			"topic_membership": {
+				"label": "Topic Membership",
+				"description": "Filter by topic membership",
+				"operators": {
+					"equals": "Is in topic",
+					"not_equals": "Is not in topic"
+				},
+				"validation": {
+					"topicRequired": "Please select a topic"
+				},
+				"descriptions": {
+					"empty": "Select a topic",
+					"topic": "Is subscribed to {topic}",
+					"notTopic": "Is not subscribed to {topic}",
+					"anyTopic": "Is subscribed to topic",
+					"notAnyTopic": "Is not subscribed to topic"
+				}
+			}
+		},
+		"contactActivities": {
+			"created": {
+				"label": "Contact Created",
+				"description": "Contact created",
+				"descriptionWithSource": "Contact created via {source}"
+			},
+			"emailBounced": {
+				"label": "Email Bounced",
+				"description": "Email bounced",
+				"descriptionHard": "Hard bounce",
+				"descriptionWithError": "Email bounced: {error}",
+				"descriptionHardWithError": "Hard bounce: {error}"
+			},
+			"emailClicked": {
+				"label": "Link Clicked",
+				"description": "Clicked link in email",
+				"descriptionWithUrl": "Clicked {url}"
+			},
+			"emailComplained": {
+				"label": "Spam Complaint",
+				"description": "Marked email as spam"
+			},
+			"emailOpened": {
+				"label": "Email Opened",
+				"description": "Opened email",
+				"descriptionWithSubject": "Opened \"{subject}\""
+			},
+			"emailSent": {
+				"label": "Email Sent",
+				"description": "Email sent",
+				"descriptionTransactional": "Transactional email sent",
+				"descriptionWithSubject": "Sent \"{subject}\""
+			},
+			"inboundReceived": {
+				"label": "Inbound Received",
+				"description": "Replied to a thread",
+				"descriptionWithSubject": "Replied \"{subject}\""
+			},
+			"propertyUpdated": {
+				"label": "Property Updated",
+				"description": "Property updated",
+				"descriptionChanged": "Changed {property} from \"{oldValue}\" to \"{newValue}\"",
+				"descriptionSet": "Set {property} to \"{newValue}\""
+			},
+			"topicConfirmed": {
+				"label": "Topic Confirmed",
+				"description": "Confirmed topic subscription",
+				"descriptionWithTopic": "Confirmed subscription to {topic}"
+			}
+		}
+	}
+}

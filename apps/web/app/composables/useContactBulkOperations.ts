@@ -11,15 +11,16 @@ export function useContactBulkOperations(deps: {
 }) {
 	const convex = useConvex();
 	const { showToast } = useToast();
+	const { t, locale } = useI18n();
 
 	const { run: addContactsToList } = useBackendOperation(api.topics.bulk.addContacts, {
-		label: 'Add contacts to topic',
+		label: () => t('shared.useContactBulkOperations.addContactsOperation'),
 	});
 	const { run: removeContactsFromList } = useBackendOperation(api.topics.bulk.removeContacts, {
-		label: 'Remove contacts from topic',
+		label: () => t('shared.useContactBulkOperations.removeContactsOperation'),
 	});
 	const { run: bulkDeleteContacts } = useBackendOperation(api.contacts.contacts.bulkDelete, {
-		label: 'Delete contacts',
+		label: () => t('shared.useContactBulkOperations.deleteContactsOperation'),
 	});
 
 	// Shared batch runner: owns the in-progress / progress / type state and the
@@ -58,12 +59,14 @@ export function useContactBulkOperations(deps: {
 				// on only the first 10k of a larger matching set without the user
 				// knowing. Surface it so destructive ops aren't silently partial.
 				showToast(
-					`Selected the first ${ids.length.toLocaleString()} matching contacts. Refine your filter to act on the rest.`,
+					t('shared.useContactBulkOperations.selectionTruncated', {
+						count: new Intl.NumberFormat(locale.value).format(ids.length),
+					}),
 					'error',
 				);
 			}
 		} catch {
-			showToast('Failed to select all contacts. Please try again.', 'error');
+			showToast(t('shared.useContactBulkOperations.selectAllFailed'), 'error');
 		} finally {
 			isLoadingAllMatching.value = false;
 		}
@@ -76,7 +79,9 @@ export function useContactBulkOperations(deps: {
 		isBulkActionDropdownOpen.value = false;
 
 		const selectedContactIds = deps.bulkSelection.getSelectedArray();
-		const listName = deps.topics.value?.find((l) => l._id === listId)?.name || 'list';
+		const listName =
+			deps.topics.value?.find((l) => l._id === listId)?.name ||
+			t('shared.useContactBulkOperations.listFallback');
 
 		const { success } = await bulkOp.execute(
 			selectedContactIds,
@@ -90,7 +95,11 @@ export function useContactBulkOperations(deps: {
 		if (!success) return;
 
 		showToast(
-			`Added ${selectedContactIds.length} contact${selectedContactIds.length !== 1 ? 's' : ''} to "${listName}"`
+			t(
+				'shared.useContactBulkOperations.addedToList',
+				{ count: selectedContactIds.length, list: listName },
+				selectedContactIds.length
+			)
 		);
 		deps.bulkSelection.clearSelection();
 	};
@@ -102,7 +111,9 @@ export function useContactBulkOperations(deps: {
 		isBulkActionDropdownOpen.value = false;
 
 		const selectedContactIds = deps.bulkSelection.getSelectedArray();
-		const listName = deps.topics.value?.find((l) => l._id === listId)?.name || 'list';
+		const listName =
+			deps.topics.value?.find((l) => l._id === listId)?.name ||
+			t('shared.useContactBulkOperations.listFallback');
 
 		const { success } = await bulkOp.execute(
 			selectedContactIds,
@@ -116,7 +127,11 @@ export function useContactBulkOperations(deps: {
 		if (!success) return;
 
 		showToast(
-			`Removed ${selectedContactIds.length} contact${selectedContactIds.length !== 1 ? 's' : ''} from "${listName}"`
+			t(
+				'shared.useContactBulkOperations.removedFromList',
+				{ count: selectedContactIds.length, list: listName },
+				selectedContactIds.length
+			)
 		);
 		deps.bulkSelection.clearSelection();
 	};
@@ -150,10 +165,16 @@ export function useContactBulkOperations(deps: {
 
 		if (totalFailed > 0) {
 			showToast(
-				`Deleted ${totalDeleted} contact${totalDeleted !== 1 ? 's' : ''}. ${totalFailed} failed.`
+				t(
+					'shared.useContactBulkOperations.deletedWithFailures',
+					{ count: totalDeleted, failed: totalFailed },
+					totalDeleted
+				)
 			);
 		} else {
-			showToast(`Deleted ${totalDeleted} contact${totalDeleted !== 1 ? 's' : ''} successfully`);
+			showToast(
+				t('shared.useContactBulkOperations.deleted', { count: totalDeleted }, totalDeleted)
+			);
 		}
 
 		deps.bulkSelection.clearSelection();
@@ -183,7 +204,7 @@ export function useContactBulkOperations(deps: {
 						allContacts?.filter((c: { _id: string }) => selectedContactIds!.includes(c._id as Id<'contacts'>)) || [];
 
 					if (contactsToExport.length === 0) {
-						showToast('No contacts to export');
+						showToast(t('shared.useContactBulkOperations.noContactsToExport'));
 						return;
 					}
 
@@ -208,11 +229,15 @@ export function useContactBulkOperations(deps: {
 					downloadCsv(csv, filename);
 
 					showToast(
-						`Exported ${contactsToExport.length} contact${contactsToExport.length !== 1 ? 's' : ''} to ${filename}`
+						t(
+							'shared.useContactBulkOperations.exported',
+							{ count: contactsToExport.length, filename },
+							contactsToExport.length
+						)
 					);
 					deps.bulkSelection.clearSelection();
 				} catch {
-					showToast('Export failed. Please try again.', 'error');
+					showToast(t('shared.useContactBulkOperations.exportFailed'), 'error');
 				}
 			},
 			{ type: 'export' },

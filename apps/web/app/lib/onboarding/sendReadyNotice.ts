@@ -14,7 +14,7 @@
  */
 
 /** The onboarding step this notice unblocks. */
-export const SEND_READY_STEP_ID = 'firstSendDone' as const;
+export const SEND_READY_STEP_ID = "firstSendDone" as const;
 
 /**
  * Where the notice's action lands: the dashboard's Getting started card, with
@@ -40,7 +40,7 @@ export interface SendReadyNotice {
  */
 export function planSendReadyToast(
 	notices: readonly SendReadyNotice[] | undefined,
-	surfaced: ReadonlySet<string>
+	surfaced: ReadonlySet<string>,
 ): SendReadyNotice | null {
 	if (!notices || notices.length === 0) return null;
 	const fresh = notices.filter((notice) => !surfaced.has(notice.id));
@@ -48,7 +48,12 @@ export function planSendReadyToast(
 	return fresh.reduce((newest, notice) => (notice.createdAt > newest.createdAt ? notice : newest));
 }
 
-/** In-app toast copy — states the new capability, then the one thing left to do. */
+/**
+ * In-app toast copy — states the new capability, then the one thing left to do.
+ *
+ * Module scope, so it never calls `useI18n`: it hands back the MESSAGE KEY and
+ * the composable that shows the toast (`useSendReadyNotice`) resolves it.
+ */
 export function sendReadyToastMessage(): string {
-	return 'You can send now — finish your test send';
+	return "shared.onboarding.sendReadyNotice.toast";
 }

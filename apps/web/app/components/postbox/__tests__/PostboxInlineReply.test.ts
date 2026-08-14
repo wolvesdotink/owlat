@@ -3,6 +3,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, nextTick } from 'vue';
 
 import PostboxInlineReply from '../PostboxInlineReply.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { InlineComposeSpec } from '../../../composables/postbox/usePostboxComposerStack';
 
 /**
@@ -42,6 +43,8 @@ vi.stubGlobal('usePostboxComposerStack', () => ({
 	minimize: vi.fn(),
 }));
 vi.stubGlobal('usePostboxUndoSend', () => ({ arm: undoArm }));
+// The box renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+vi.stubGlobal('useI18n', i18nStubs.useI18n);
 
 const QUOTED = '<blockquote>On Tue, Alice wrote:<br>original body</blockquote>';
 
@@ -64,7 +67,11 @@ function mountInline(spec: InlineComposeSpec | null = null, showReplyAll = true)
 			showReplyAll,
 			spec,
 		},
-		global: { stubs: { Icon: true }, components: { PostboxComposer: ComposerStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: true },
+			components: { PostboxComposer: ComposerStub },
+		},
 	});
 	return wrapper;
 }

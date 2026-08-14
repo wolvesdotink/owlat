@@ -10,6 +10,14 @@
 import { describe, expect, it } from 'vitest';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared/sendProviderCatalog';
 import { capabilityDnsGuidance, transportDnsGuidance } from '../transportDnsGuidance';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * Both layers hand back catalog keys, so the paragraphs are asserted as the
+ * words the disclosure paints. A key the catalog does not carry renders as its
+ * own path, which is why the shape checks compare against the key itself.
+ */
+const { t } = createTestI18n().global;
 
 /** A provider that does not exist — the whole point of the exercise. */
 const sixth = (domainVerification: 'api' | 'none') =>
@@ -28,9 +36,10 @@ describe('the guidance every declared transport gets', () => {
 		(kind) => {
 			const guidance = transportDnsGuidance(kind);
 			expect(guidance).not.toBeNull();
-			expect(guidance!.label.length).toBeGreaterThan(0);
-			expect(guidance!.lead.length).toBeGreaterThan(0);
+			expect(t(guidance!.label).length).toBeGreaterThan(0);
+			expect(t(guidance!.lead)).not.toBe(guidance!.lead);
 			expect(guidance!.points.length).toBeGreaterThan(0);
+			for (const point of guidance!.points) expect(t(point)).not.toBe(point);
 		}
 	);
 
@@ -46,14 +55,14 @@ describe('a provider with no paragraph of its own', () => {
 		expect(guidance).not.toBeNull();
 		// Named from its catalog entry — no row anywhere in apps/web.
 		expect(guidance!.label).toBe('Postmark');
-		expect(guidance!.lead).toContain('identity API');
-		expect(guidance!.points.some((point) => point.includes('domain verification'))).toBe(true);
+		expect(t(guidance!.lead)).toContain('identity API');
+		expect(guidance!.points.some((point) => t(point).includes('domain verification'))).toBe(true);
 	});
 
 	it('is told to follow its own setup guide when it verifies nothing', () => {
 		const guidance = transportDnsGuidance('postmark', sixth('none'));
-		expect(guidance!.lead).toBe('Your provider handles SPF and DKIM for you.');
-		expect(guidance!.points.some((point) => point.includes('SPF include'))).toBe(true);
+		expect(t(guidance!.lead)).toBe('Your provider handles SPF and DKIM for you.');
+		expect(guidance!.points.some((point) => t(point).includes('SPF include'))).toBe(true);
 	});
 
 	it('never tells the OWN arm that "your provider" handles SPF for it', () => {
@@ -61,12 +70,12 @@ describe('a provider with no paragraph of its own', () => {
 		// reading: our own MTA also declares `none`, and the relay sentence would
 		// be actively wrong for the transport that IS you.
 		const own = capabilityDnsGuidance({ tier: 'own', domainVerification: 'none' });
-		expect(own.lead).toBe('Owlat manages the DNS for you.');
-		expect(own.points.some((point) => point.includes('managed records'))).toBe(true);
+		expect(t(own.lead)).toBe('Owlat manages the DNS for you.');
+		expect(own.points.some((point) => t(point).includes('managed records'))).toBe(true);
 	});
 
 	it('gives the own arm the same paragraph the mta entry used to spell out', () => {
 		const mta = transportDnsGuidance('mta');
-		expect(mta!.lead).toBe('Owlat manages the DNS for you.');
+		expect(t(mta!.lead)).toBe('Owlat manages the DNS for you.');
 	});
 });

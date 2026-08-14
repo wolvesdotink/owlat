@@ -38,15 +38,19 @@ export function usePostboxComposeAttachments(opts: {
 	/** Forward: clone the original message's attachments onto this draft. */
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
 }) {
+	const { t, locale } = useI18n();
 	const generateUploadUrl = useBackendOperation(api.storage.generateUploadUrl, {
-		label: 'Prepare upload',
+		label: () => t('shared.postbox.usePostboxComposeAttachments.prepareUploadOperation'),
 	});
 	const addAttachmentOp = useBackendOperation(api.mail.drafts.addAttachment, {
-		label: 'Attach file',
+		label: () => t('shared.postbox.usePostboxComposeAttachments.attachOperation'),
 	});
 	const removeAttachmentOp = useBackendOperation(api.mail.drafts.removeAttachment, {
-		label: 'Remove attachment',
+		label: () => t('shared.postbox.usePostboxComposeAttachments.removeOperation'),
 	});
+
+	/** Megabyte ceilings read out in the active locale's number format. */
+	const formatMb = (mb: number) => new Intl.NumberFormat(locale.value).format(mb);
 
 	const attachments = ref<ComposerAttachment[]>([]);
 	// Inline-image uploads still use their own path; count them so `isUploading`
@@ -120,18 +124,31 @@ export function usePostboxComposeAttachments(opts: {
 		const accepted: File[] = [];
 		for (const file of Array.from(files)) {
 			if (file.size > MAX_ATTACHMENT_BYTES) {
-				showToast(`${file.name} is too large (max ${MAX_ATTACHMENT_MB} MB).`, 'error');
+				showToast(
+					t('shared.postbox.usePostboxComposeAttachments.tooLarge', {
+						filename: file.name,
+						max: formatMb(MAX_ATTACHMENT_MB),
+					}),
+					'error',
+				);
 				continue;
 			}
 			if (currentCount >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
 				showToast(
-					`You can attach up to ${ATTACHMENT_COMPOSE_LIMITS.maxCount} files.`,
+					t('shared.postbox.usePostboxComposeAttachments.tooManyFiles', {
+						count: ATTACHMENT_COMPOSE_LIMITS.maxCount,
+					}),
 					'error',
 				);
 				break;
 			}
 			if (currentBytes + file.size > ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes) {
-				showToast(`Attachments exceed the ${MAX_TOTAL_MB} MB total limit.`, 'error');
+				showToast(
+					t('shared.postbox.usePostboxComposeAttachments.totalTooLarge', {
+						max: formatMb(MAX_TOTAL_MB),
+					}),
+					'error',
+				);
 				break;
 			}
 			accepted.push(file);
@@ -171,7 +188,13 @@ export function usePostboxComposeAttachments(opts: {
 
 		const scaled = await downscaleImageFile(file);
 		if (scaled.size > MAX_ATTACHMENT_BYTES) {
-			showToast(`${file.name} is too large (max ${MAX_ATTACHMENT_MB} MB).`, 'error');
+			showToast(
+				t('shared.postbox.usePostboxComposeAttachments.tooLarge', {
+					filename: file.name,
+					max: formatMb(MAX_ATTACHMENT_MB),
+				}),
+				'error',
+			);
 			return null;
 		}
 
@@ -186,7 +209,10 @@ export function usePostboxComposeAttachments(opts: {
 				body: scaled,
 			});
 			if (!res.ok) {
-				showToast(`Couldn't upload ${file.name}.`, 'error');
+				showToast(
+					t('shared.postbox.usePostboxComposeAttachments.uploadFailed', { filename: file.name }),
+					'error',
+				);
 				return null;
 			}
 			const { storageId } = (await res.json()) as { storageId: string };

@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { ConvexError } from 'convex/values';
 import { useBackendOperation } from '../useBackendOperation';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** The real catalog behind the `useI18n` auto-import the composable calls. */
+const i18n = createTestI18n();
 
 const fakeOp = 'api.test.create' as unknown as Parameters<typeof useBackendOperation>[0];
 
@@ -18,6 +22,7 @@ describe('useBackendOperation', () => {
 		showToast = vi.fn();
 		captureError = vi.fn();
 		navigate = vi.fn();
+		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useConvex', () => ({ mutation, action }));
 		vi.stubGlobal('useToast', () => ({ showToast }));
 		vi.stubGlobal('usePostHog', () => ({ captureError }));

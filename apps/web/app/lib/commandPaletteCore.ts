@@ -13,7 +13,8 @@
  * The factory owns everything structural (which provider, at which priority,
  * contributing which group key at which order/cap, gated on which query
  * condition); the component owns only the data and the item `run` closures it
- * injects. Kept free of Vue/Nuxt so the whole matrix is unit-testable.
+ * injects. Kept free of Vue/Nuxt so the whole matrix is unit-testable — which is
+ * also why every group heading here is an i18n KEY the palette translates.
  */
 import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalette';
 import type { CommandPaletteProvider } from './commandPaletteRegistry';
@@ -80,7 +81,7 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 				return [
 					{
 						key: 'recent',
-						heading: 'Recent searches',
+						heading: 'shared.commandPaletteCore.groups.recent',
 						order: -1,
 						cap: MAX_RECENT_SEARCHES,
 						items: recent.map((term) => ({
@@ -99,7 +100,7 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 			id: 'core:verbs',
 			priority: 20,
 			build: ({ query }): PaletteGroup[] => [
-				{ key: 'verbs', heading: 'Create', order: 5, items: filterItems(deps.verbItems(), query) },
+				{ key: 'verbs', heading: 'common.create', order: 5, items: filterItems(deps.verbItems(), query) },
 			],
 		},
 		{
@@ -109,7 +110,7 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 			build: ({ query }): PaletteGroup[] => [
 				{
 					key: 'context',
-					heading: 'Context',
+					heading: 'shared.commandPaletteCore.groups.context',
 					order: 6,
 					items: filterItems(deps.contextItems(), query),
 				},
@@ -125,21 +126,21 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 				return [
 					{
 						key: 'contacts',
-						heading: 'Contacts',
+						heading: 'shared.commandPaletteCore.groups.contacts',
 						order: 20,
 						cap: 5,
 						items: deps.buildResultItems(results.contacts),
 					},
 					{
 						key: 'campaigns',
-						heading: 'Campaigns',
+						heading: 'shared.commandPaletteCore.groups.campaigns',
 						order: 21,
 						cap: 5,
 						items: deps.buildResultItems(results.campaigns),
 					},
 					{
 						key: 'templates',
-						heading: 'Templates',
+						heading: 'shared.commandPaletteCore.groups.templates',
 						order: 22,
 						cap: 5,
 						items: deps.buildResultItems(results.emails),
@@ -154,7 +155,7 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 			build: ({ query }): PaletteGroup[] => [
 				{
 					key: 'navigation',
-					heading: 'Go to',
+					heading: 'shared.commandPaletteCore.groups.navigation',
 					order: 40,
 					cap: 8,
 					items: filterItems(deps.navItems(), query),

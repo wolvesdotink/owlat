@@ -56,6 +56,7 @@ export function deriveMigrationStep(
 }
 
 export function useMailMigration() {
+	const { t } = useI18n();
 	const { data: statusData } = useConvexQuery(api.mail.migration.getStatus, () => ({}));
 	const { data: accountData } = useConvexQuery(
 		api.mail.externalAccounts.getForCurrentUser,
@@ -70,9 +71,11 @@ export function useMailMigration() {
 		account.value?.configured ? account.value.status : null,
 	);
 
-	const startOp = useBackendOperation(api.mail.migration.start, { label: 'Start mailbox migration' });
+	const startOp = useBackendOperation(api.mail.migration.start, {
+		label: () => t('shared.postbox.useMailMigration.startOperation'),
+	});
 	const cancelOp = useBackendOperation(api.mail.migration.cancel, {
-		label: 'Cancel mailbox migration',
+		label: () => t('shared.postbox.useMailMigration.cancelOperation'),
 	});
 
 	const step = computed<MigrationStep>(() =>

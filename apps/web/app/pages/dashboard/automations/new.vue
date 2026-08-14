@@ -8,7 +8,9 @@ import {
 	type TriggerKind,
 } from '~/composables/automations/triggers';
 
-useHead({ title: 'Create Automation — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.automations.new.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -49,10 +51,10 @@ const isSaving = ref(false);
 
 // Mutations
 const { run: createAutomation } = useBackendOperation(api.automations.automations.create, {
-	label: 'Create automation',
+	label: () => t('dashboard.automations.new.operations.create'),
 });
 const { run: updateTrigger } = useBackendOperation(api.automations.automations.updateTrigger, {
-	label: 'Update automation trigger',
+	label: () => t('dashboard.automations.new.operations.updateTrigger'),
 });
 
 // Query for contact properties (for Contact Updated trigger)
@@ -109,11 +111,11 @@ const validateForm = (): boolean => {
 	errors.value = {};
 
 	if (!automationName.value.trim()) {
-		errors.value.name = 'Automation name is required';
+		errors.value.name = t('dashboard.automations.new.validation.nameRequired');
 	}
 
 	if (!selectedTriggerType.value) {
-		errors.value.trigger = 'Please select a trigger type';
+		errors.value.trigger = t('dashboard.automations.new.validation.triggerRequired');
 		return false;
 	}
 
@@ -239,15 +241,19 @@ const getIconColorClass = (color: string) => {
 					<button
 						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 						@click="handleCancel"
-						aria-label="Back"
+						:aria-label="t('common.back')"
 					>
 						<Icon name="lucide:arrow-left" class="w-5 h-5" />
 					</button>
 					<div>
 						<h1 class="text-lg font-semibold text-text-primary">
-							{{ isEditMode ? 'Edit Trigger' : 'Create Automation' }}
+							{{
+								isEditMode
+									? t('dashboard.automations.new.editTriggerTitle')
+									: t('dashboard.automations.new.title')
+							}}
 						</h1>
-						<p class="text-sm text-text-secondary">Set up an automated email workflow</p>
+						<p class="text-sm text-text-secondary">{{ t('dashboard.automations.new.subtitle') }}</p>
 					</div>
 				</div>
 			</div>
@@ -263,7 +269,9 @@ const getIconColorClass = (color: string) => {
 						>
 							1
 						</div>
-						<span class="text-sm font-medium text-text-primary">Choose Trigger</span>
+						<span class="text-sm font-medium text-text-primary">{{
+							t('dashboard.automations.new.steps.chooseTrigger')
+						}}</span>
 					</div>
 					<div class="flex-1 h-0.5 bg-border-subtle" />
 					<div class="flex items-center gap-2">
@@ -272,7 +280,9 @@ const getIconColorClass = (color: string) => {
 						>
 							2
 						</div>
-						<span class="text-sm font-medium text-text-tertiary">Build Workflow</span>
+						<span class="text-sm font-medium text-text-tertiary">{{
+							t('dashboard.automations.new.steps.buildWorkflow')
+						}}</span>
 					</div>
 				</div>
 			</div>
@@ -283,9 +293,11 @@ const getIconColorClass = (color: string) => {
 			<div class="card p-6">
 				<!-- Section Header -->
 				<div class="mb-6">
-					<h2 class="text-xl font-semibold text-text-primary">Choose a Trigger</h2>
+					<h2 class="text-xl font-semibold text-text-primary">
+						{{ t('dashboard.automations.new.chooseTrigger.title') }}
+					</h2>
 					<p class="text-text-secondary mt-1">
-						Select what event will start this automation workflow.
+						{{ t('dashboard.automations.new.chooseTrigger.subtitle') }}
 					</p>
 				</div>
 
@@ -295,20 +307,21 @@ const getIconColorClass = (color: string) => {
 						<div>
 							<label for="automationName" class="label flex items-center gap-2">
 								<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
-								Automation Name <span class="text-error">*</span>
+								{{ t('dashboard.automations.new.form.nameLabel') }}
+								<span class="text-error">*</span>
 							</label>
 							<input
 								id="automationName"
 								v-model="automationName"
 								type="text"
-								placeholder="e.g., Welcome Series, Re-engagement Flow"
+								:placeholder="t('dashboard.automations.new.form.namePlaceholder')"
 								:class="['input mt-1.5', errors.name ? 'input-error' : '']"
 							/>
 							<p v-if="errors.name" class="mt-1.5 text-sm text-error">
 								{{ errors.name }}
 							</p>
 							<p v-else class="mt-1.5 text-sm text-text-tertiary">
-								A name to identify this automation in your dashboard.
+								{{ t('dashboard.automations.new.form.nameHelp') }}
 							</p>
 						</div>
 
@@ -316,12 +329,15 @@ const getIconColorClass = (color: string) => {
 						<div>
 							<label for="automationDescription" class="label flex items-center gap-2">
 								<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
-								Description <span class="text-text-tertiary">(optional)</span>
+								{{ t('common.description') }}
+								<span class="text-text-tertiary">{{
+									t('dashboard.automations.new.form.optionalHint')
+								}}</span>
 							</label>
 							<textarea
 								id="automationDescription"
 								v-model="automationDescription"
-								placeholder="Describe what this automation does..."
+								:placeholder="t('dashboard.automations.new.form.descriptionPlaceholder')"
 								rows="2"
 								class="input mt-1.5 resize-none"
 							/>
@@ -331,7 +347,8 @@ const getIconColorClass = (color: string) => {
 						<div>
 							<label class="label flex items-center gap-2 mb-3">
 								<Icon name="lucide:zap" class="w-4 h-4 text-text-tertiary" />
-								Trigger Type <span class="text-error">*</span>
+								{{ t('dashboard.automations.new.form.triggerTypeLabel') }}
+								<span class="text-error">*</span>
 							</label>
 
 							<!-- Trigger Options Grid -->
@@ -358,7 +375,7 @@ const getIconColorClass = (color: string) => {
 									<!-- Content -->
 									<div class="flex-1 min-w-0">
 										<div class="flex items-center gap-2">
-											<span class="font-medium text-text-primary">{{ trigger.label }}</span>
+											<span class="font-medium text-text-primary">{{ t(trigger.label) }}</span>
 											<Icon
 												v-if="selectedTriggerType === trigger.id"
 												name="lucide:check"
@@ -366,7 +383,7 @@ const getIconColorClass = (color: string) => {
 											/>
 										</div>
 										<p class="text-sm text-text-secondary mt-1">
-											{{ trigger.description }}
+											{{ t(trigger.description) }}
 										</p>
 									</div>
 								</button>
@@ -404,10 +421,11 @@ const getIconColorClass = (color: string) => {
 							<div class="flex items-start gap-3">
 								<Icon name="lucide:check" class="w-5 h-5 text-brand mt-0.5" />
 								<div>
-									<p class="text-sm font-medium text-text-primary">Ready to use</p>
+									<p class="text-sm font-medium text-text-primary">
+										{{ t('dashboard.automations.new.contactCreatedInfo.title') }}
+									</p>
 									<p class="text-sm text-text-secondary mt-1">
-										This trigger will fire automatically whenever a new contact is added to your
-										audience via any method (API, import, or form submission).
+										{{ t('dashboard.automations.new.contactCreatedInfo.body') }}
 									</p>
 								</div>
 							</div>
@@ -416,7 +434,9 @@ const getIconColorClass = (color: string) => {
 
 					<!-- Actions -->
 					<div class="flex items-center justify-between mt-8 pt-6 border-t border-border-subtle">
-						<UiButton variant="secondary" type="button" @click="handleCancel">Cancel</UiButton>
+						<UiButton variant="secondary" type="button" @click="handleCancel">{{
+							t('common.cancel')
+						}}</UiButton>
 						<UiButton
 							type="submit"
 							class="gap-2"
@@ -428,7 +448,11 @@ const getIconColorClass = (color: string) => {
 							"
 						>
 							<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-							{{ isSaving ? 'Creating...' : 'Continue to Workflow' }}
+							{{
+								isSaving
+									? t('dashboard.automations.new.creating')
+									: t('dashboard.automations.new.continue')
+							}}
 							<Icon v-if="!isSaving" name="lucide:arrow-right" class="w-4 h-4" />
 						</UiButton>
 					</div>

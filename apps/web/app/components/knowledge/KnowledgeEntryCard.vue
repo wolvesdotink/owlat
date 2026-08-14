@@ -18,11 +18,11 @@ const { t, te, locale } = useI18n();
 // (`~/utils/knowledgeEntryTypes`) stays a plain constant, so an unknown value
 // still falls back to its raw label instead of a key path.
 const entryTypeLabel = (type: string) => {
-	const key = `components.knowledge.entryCard.entryTypes.${type}`;
+	const key = `components.knowledge.knowledgeEntryCard.entryTypes.${type}`;
 	return te(key) ? t(key) : typeLabel(type);
 };
 const sourceTypeLabel = (source: string) => {
-	const key = `components.knowledge.entryCard.sourceTypes.${source}`;
+	const key = `components.knowledge.knowledgeEntryCard.sourceTypes.${source}`;
 	return te(key) ? t(key) : sourceLabel(source);
 };
 
@@ -94,7 +94,7 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 							size="sm"
 							:value="confidence * 100"
 							:variant="confidenceVariant(confidence)"
-							:aria-label="t('components.knowledge.entryCard.confidence')"
+							:aria-label="t('components.knowledge.knowledgeEntryCard.confidence')"
 						/>
 						<span>{{ formatConfidence(confidence) }}</span>
 					</div>

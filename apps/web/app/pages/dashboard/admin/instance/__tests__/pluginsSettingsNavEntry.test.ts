@@ -21,12 +21,14 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 vi.mock('@owlat/email-builder', () => ({ UnsavedChangesDialog: { template: '<div />' } }));
 
 import SettingsIndexPage from '../index.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const overview = ref<{ plugins: unknown[]; orphaned: unknown[] }>({ plugins: [], orphaned: [] });
 
 beforeEach(() => {
 	overview.value = { plugins: [], orphaned: [] };
 
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useOrganizationContext', () => ({
@@ -73,6 +75,7 @@ const nuxtLinkStub = {
 function mountPage() {
 	return mount(SettingsIndexPage, {
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiQueryBoundary: passthroughStub,
 				UiCard: passthroughStub,

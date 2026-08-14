@@ -54,11 +54,18 @@ export interface RelayDomainIdentityRow {
 
 export type RelayDomainTone = 'success' | 'warning' | 'error' | 'neutral';
 
+/**
+ * A line this module hands to a screen: an i18n key, with the values the
+ * sentence interpolates when it has any. Nothing here calls `useI18n` — the
+ * component runs the value through `t(key, params)`.
+ */
+export type RelayDomainText = string | { key: string; params?: Record<string, unknown> };
+
 export interface RelayDomainDisplay {
 	readonly tone: RelayDomainTone;
 	readonly label: string;
 	/** One plain-language line: what this state means for sending. */
-	readonly summary: string;
+	readonly summary: RelayDomainText;
 	/** True when the proof is verified but too old for routing to rely on. */
 	readonly isProofStale: boolean;
 	/** True when a ceremony at the provider is still outstanding. */
@@ -86,10 +93,11 @@ export function isRelayProofFresh(row: RelayDomainIdentityRow, now: number): boo
  * The provider's NAME is interpolated rather than written into each branch —
  * the same move `SignedWebhookCard.vue` made for the feedback ceremony. What is
  * genuinely per-vendor (an ownership ceremony's steps) is the component's
- * per-kind copy map, not this.
+ * per-kind copy map, not this. The name reaches the sentence as the `relay`
+ * interpolation, so a translation is free to put it wherever its grammar wants.
  */
 export function relayDomainDisplay(row: RelayDomainIdentityRow, now: number): RelayDomainDisplay {
-	const label = row.kindLabel;
+	const relay = row.kindLabel;
 	// Ownership is only ever OUTSTANDING for a kind that reports one — `undefined`
 	// means this relay verifies from the records themselves and has no separate
 	// step an operator could go and complete.
@@ -98,16 +106,19 @@ export function relayDomainDisplay(row: RelayDomainIdentityRow, now: number): Re
 		case 'awaiting_primary_verification':
 			return {
 				tone: 'neutral',
-				label: 'Waiting on this domain',
-				summary: `Verify the primary owned-MTA domain first; ${label} relay provisioning starts afterward.`,
+				label: 'shared.relayDomainDisplay.awaitingPrimary.label',
+				summary: {
+					key: 'shared.relayDomainDisplay.awaitingPrimary.summary',
+					params: { relay },
+				},
 				isProofStale: false,
 				needsOwnership: false,
 			};
 		case 'provisioning':
 			return {
 				tone: 'neutral',
-				label: 'Provisioning',
-				summary: `Registration at ${label} is queued. Refresh shortly to see the DNS plan.`,
+				label: 'shared.relayDomainDisplay.provisioning.label',
+				summary: { key: 'shared.relayDomainDisplay.provisioning.summary', params: { relay } },
 				isProofStale: false,
 				needsOwnership: false,
 			};
@@ -115,16 +126,16 @@ export function relayDomainDisplay(row: RelayDomainIdentityRow, now: number): Re
 			if (!isRelayProofFresh(row, now)) {
 				return {
 					tone: 'warning',
-					label: 'Re-checking',
-					summary: `This domain verified, but the confirmation is older than Owlat will rely on. Sending through ${label} holds until the next check confirms it — nothing for you to do.`,
+					label: 'shared.relayDomainDisplay.reChecking.label',
+					summary: { key: 'shared.relayDomainDisplay.reChecking.summary', params: { relay } },
 					isProofStale: true,
 					needsOwnership: false,
 				};
 			}
 			return {
 				tone: 'success',
-				label: 'Verified',
-				summary: `${label} can sign and send as this domain. Nothing to publish.`,
+				label: 'shared.relayDomainDisplay.verified.label',
+				summary: { key: 'shared.relayDomainDisplay.verified.summary', params: { relay } },
 				isProofStale: false,
 				needsOwnership: false,
 			};
@@ -132,24 +143,24 @@ export function relayDomainDisplay(row: RelayDomainIdentityRow, now: number): Re
 		case 'pending':
 			return {
 				tone: 'warning',
-				label: 'Waiting on DNS',
-				summary: `Publish the records below. ${label} re-checks on its own schedule and this page follows.`,
+				label: 'shared.relayDomainDisplay.pending.label',
+				summary: { key: 'shared.relayDomainDisplay.pending.summary', params: { relay } },
 				isProofStale: false,
 				needsOwnership,
 			};
 		case 'unverified':
 			return {
 				tone: 'neutral',
-				label: 'Not published yet',
-				summary: `${label} has no record of this domain's DNS yet. Publish the records below to start.`,
+				label: 'shared.relayDomainDisplay.unverified.label',
+				summary: { key: 'shared.relayDomainDisplay.unverified.summary', params: { relay } },
 				isProofStale: false,
 				needsOwnership,
 			};
 		case 'failed':
 			return {
 				tone: 'error',
-				label: 'Cannot check',
-				summary: `${label} rejected the credential, so this domain cannot be confirmed. Your published DNS is untouched — fix the credential and the check resumes.`,
+				label: 'shared.relayDomainDisplay.failed.label',
+				summary: { key: 'shared.relayDomainDisplay.failed.summary', params: { relay } },
 				isProofStale: false,
 				needsOwnership,
 			};
@@ -163,11 +174,19 @@ export function relayDomainDisplay(row: RelayDomainIdentityRow, now: number): Re
  * verdicts contributes nothing here rather than a row of invented failures, and
  * ownership appears only for the kinds that have such a step
  * ({@link RelayDomainIdentityRow.isOwnershipVerified}).
+ *
+ * Each item is an i18n key the caller runs through `t()`.
  */
 export function relayDomainOutstanding(row: RelayDomainIdentityRow): string[] {
 	return [
-		...(row.spf === undefined || row.spf.isValid ? [] : ['SPF']),
-		...(row.dkim === undefined || row.dkim.isValid ? [] : ['DKIM']),
-		...(row.isOwnershipVerified === false ? ['domain ownership'] : []),
+		...(row.spf === undefined || row.spf.isValid
+			? []
+			: ['shared.relayDomainDisplay.outstanding.spf']),
+		...(row.dkim === undefined || row.dkim.isValid
+			? []
+			: ['shared.relayDomainDisplay.outstanding.dkim']),
+		...(row.isOwnershipVerified === false
+			? ['shared.relayDomainDisplay.outstanding.ownership']
+			: []),
 	];
 }

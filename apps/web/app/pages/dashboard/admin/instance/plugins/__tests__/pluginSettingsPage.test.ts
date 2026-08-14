@@ -41,6 +41,7 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	]),
 }));
 
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PluginSettingsPage from '../[id].vue';
 
 const overview = ref<unknown>(undefined);
@@ -50,6 +51,7 @@ const showToast = vi.fn();
 let operationCall = 0;
 
 beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast }));
@@ -97,6 +99,7 @@ const buttonStub = { template: '<button v-bind="$attrs"><slot/></button>' };
 function mountPage() {
 	return mount(PluginSettingsPage, {
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiQueryBoundary: passthroughStub,
 				UiCard: passthroughStub,

@@ -8,7 +8,9 @@
  * the `owlat://auth?ott=...&state=...` deep link. The desktop redeems it for a
  * cross-domain session (see useDesktopWorkspaces.completeConnection).
  */
-useHead({ title: 'Connect desktop app — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('desktop.connect.pageTitle') });
 definePageMeta({ layout: false });
 
 import { formatConnectionCode } from '~/lib/desktop/connectionCode';
@@ -49,13 +51,13 @@ async function generateAndReturn() {
 		// /api/auth/* is proxied to Convex by the instance's Nitro server; the
 		// session cookie authorizes the one-time-token generation.
 		const res = await fetch('/api/auth/one-time-token/generate', { credentials: 'include' });
-		if (!res.ok) throw new Error('Could not create a sign-in token.');
+		if (!res.ok) throw new Error(t('desktop.connect.errors.tokenRequestFailed'));
 		const data = (await res.json()) as { token?: string };
-		if (!data.token) throw new Error('No token returned by the server.');
+		if (!data.token) throw new Error(t('desktop.connect.errors.noToken'));
 		connectionCode.value = formatConnectionCode(state.value, data.token);
 		window.location.href = `${redirect.value}?ott=${encodeURIComponent(data.token)}&state=${encodeURIComponent(state.value)}`;
 	} catch (e) {
-		errorMessage.value = e instanceof Error ? e.message : 'Something went wrong.';
+		errorMessage.value = e instanceof Error ? e.message : t('desktop.connect.errors.generic');
 		handingBack.value = false;
 	}
 }
@@ -74,7 +76,7 @@ watch(
 async function handleSubmit() {
 	errorMessage.value = '';
 	if (!email.value || !password.value) {
-		errorMessage.value = 'Email and password are required.';
+		errorMessage.value = t('desktop.connect.errors.credentialsRequired');
 		return;
 	}
 	isLoading.value = true;
@@ -83,7 +85,7 @@ async function handleSubmit() {
 		await nextTick();
 		// The `user` watcher fires `generateAndReturn` once the session resolves.
 	} catch (e) {
-		errorMessage.value = e instanceof Error ? e.message : 'Sign-in failed.';
+		errorMessage.value = e instanceof Error ? e.message : t('desktop.connect.errors.signInFailed');
 	} finally {
 		isLoading.value = false;
 	}
@@ -95,21 +97,20 @@ async function handleSubmit() {
 		class="min-h-screen bg-bg-deep flex flex-col items-center justify-center px-4 text-text-primary"
 	>
 		<div class="card w-full max-w-sm p-8">
-			<h1 class="text-xl font-medium tracking-[-0.01em] mb-1">Connect the desktop app</h1>
+			<h1 class="text-xl font-medium tracking-[-0.01em] mb-1">{{ t('desktop.connect.title') }}</h1>
 			<p class="text-sm text-text-secondary mb-6">
-				Sign in to link this workspace to the Owlat desktop app.
+				{{ t('desktop.connect.subtitle') }}
 			</p>
 
 			<div v-if="!redirectValid" class="text-sm text-error">
-				Invalid or missing return link. Re-open this page from the desktop app.
+				{{ t('desktop.connect.invalidReturnLink') }}
 			</div>
 
 			<div v-else-if="handingBack || (user && !isPending)" class="text-sm text-text-secondary">
-				<p>Signing you in to the desktop app…</p>
+				<p>{{ t('desktop.connect.signingIn') }}</p>
 				<div v-if="connectionCode" class="mt-6 border-t border-border-subtle pt-4">
 					<p class="mb-2">
-						Desktop app didn't open? Paste this code into its connect screen (valid for a few
-						minutes):
+						{{ t('desktop.connect.fallbackCodeHint') }}
 					</p>
 					<div class="flex items-center gap-2">
 						<code
@@ -118,7 +119,7 @@ async function handleSubmit() {
 							{{ connectionCode }}
 						</code>
 						<UiButton variant="outline" size="sm" class="shrink-0" @click="copyCode">
-							{{ codeCopied ? 'Copied!' : 'Copy' }}
+							{{ codeCopied ? t('desktop.connect.copied') : t('common.copy') }}
 						</UiButton>
 					</div>
 				</div>
@@ -126,7 +127,7 @@ async function handleSubmit() {
 
 			<form v-else class="space-y-4" @submit.prevent="handleSubmit">
 				<div>
-					<label class="label mb-1 text-sm" for="email">Email</label>
+					<label class="label mb-1 text-sm" for="email">{{ t('common.email') }}</label>
 					<input
 						id="email"
 						v-model="email"
@@ -136,7 +137,9 @@ async function handleSubmit() {
 					/>
 				</div>
 				<div>
-					<label class="label mb-1 text-sm" for="password">Password</label>
+					<label class="label mb-1 text-sm" for="password">{{
+						t('desktop.connect.password')
+					}}</label>
 					<input
 						id="password"
 						v-model="password"
@@ -147,7 +150,7 @@ async function handleSubmit() {
 				</div>
 				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
 				<UiButton type="submit" :disabled="isLoading" full-width>
-					{{ isLoading ? 'Signing in…' : 'Sign in & connect' }}
+					{{ isLoading ? t('desktop.connect.signingInButton') : t('desktop.connect.submit') }}
 				</UiButton>
 			</form>
 		</div>

@@ -33,6 +33,7 @@ import {
 	risingSeries,
 } from '~/components/delivery/__tests__/rampFixtures';
 import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 describe('independence arithmetic', () => {
 	it('sums the window rather than averaging per-day shares', () => {
@@ -127,13 +128,16 @@ describe('independence arithmetic', () => {
 const useHead = vi.fn();
 
 /**
- * The title the page handed `useHead`. It is passed as a computed so the tab can
- * follow the D14 rename, so the assertion has to unwrap it.
+ * The title the page handed `useHead`. It is a GETTER — the extraction rule for
+ * anything captured once at setup — and it used to be a computed, so the
+ * assertion unwraps either shape rather than reading a bare string.
  */
 function headTitle(): string {
 	const call = useHead.mock.calls.at(-1)?.[0] as unknown;
 	const options = isRef(call) ? (call.value as { title?: unknown }) : (call as { title?: unknown });
-	return typeof options?.title === 'string' ? options.title : '';
+	const title = options?.title;
+	if (typeof title === 'function') return String((title as () => unknown)());
+	return typeof title === 'string' ? title : '';
 }
 const data: Ref<IndependenceSummary | undefined> = ref(undefined);
 const isLoading = ref(false);
@@ -144,6 +148,9 @@ beforeEach(() => {
 	isLoading.value = false;
 	error.value = null;
 	useHead.mockClear();
+	// The screen's copy flows through vue-i18n now; `useI18n` is a Nuxt
+	// auto-import, so it has to exist as a bare global for the page's setup.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', useHead);
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('navigateTo', vi.fn());
@@ -167,6 +174,7 @@ function mountPage() {
 				DeliveryIndependenceTrendChart: IndependenceTrendChart,
 				DeliveryRampConfirmDialog: RampConfirmDialog,
 			},
+			plugins: [createTestI18n()],
 		},
 	});
 }

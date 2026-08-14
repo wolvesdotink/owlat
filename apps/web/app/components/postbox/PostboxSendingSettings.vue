@@ -16,6 +16,8 @@
  */
 import { api } from '@owlat/api';
 
+const { t } = useI18n();
+
 // `mail.external` is OFF by default (the fresh-start posture). The backend query
 // asserts the flag and would throw for a flag-off instance, so skip the
 // subscription entirely when the flag is off — the whole section then self-hides.
@@ -32,7 +34,7 @@ const {
 
 const switchError = ref<string | null>(null);
 const setPreference = useBackendOperation(api.mail.sendingSwitch.setSendingPreference, {
-	label: 'Change sending',
+	label: () => t('components.postbox.postboxSendingSettings.changeOperation'),
 	inlineTarget: switchError,
 });
 
@@ -82,7 +84,9 @@ async function choose(preference: 'external' | 'instance') {
 <template>
 	<section v-if="showSection" class="card !p-0 mb-6" aria-labelledby="postbox-sending-heading">
 		<header class="px-5 py-3 border-b border-border-subtle">
-			<h2 id="postbox-sending-heading" class="font-semibold">Sending</h2>
+			<h2 id="postbox-sending-heading" class="font-semibold">
+				{{ t('components.postbox.postboxSendingSettings.heading') }}
+			</h2>
 		</header>
 
 		<!-- Loading -->
@@ -94,7 +98,7 @@ async function choose(preference: 'external' | 'instance') {
 		<div v-else-if="error" class="px-5 py-6 flex items-start gap-3" role="alert">
 			<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 			<p class="text-sm text-text-secondary">
-				We couldn't load your sending settings just now. Please refresh to try again.
+				{{ t('components.postbox.postboxSendingSettings.loadError') }}
 			</p>
 		</div>
 
@@ -107,11 +111,18 @@ async function choose(preference: 'external' | 'instance') {
 				<div class="flex items-start gap-3">
 					<Icon name="lucide:send" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 					<div class="min-w-0">
-						<p class="font-medium text-sm">Send from this Owlat instead</p>
+						<p class="font-medium text-sm">
+							{{ t('components.postbox.postboxSendingSettings.promptTitle') }}
+						</p>
 						<p class="text-xs text-text-secondary mt-1">
-							<code>{{ domain }}</code> is verified here, so Owlat can send your outgoing mail
-							directly — signed and aligned for <code>{{ domain }}</code
-							>. Nothing about how you read mail changes, and you can switch back any time.
+							<I18nT
+								keypath="components.postbox.postboxSendingSettings.promptBody"
+								tag="span"
+								scope="global"
+							>
+								<template #domain><code>{{ domain }}</code></template>
+								<template #signedDomain><code>{{ domain }}</code></template>
+							</I18nT>
 						</p>
 						<UiButton
 							size="sm"
@@ -119,7 +130,7 @@ async function choose(preference: 'external' | 'instance') {
 							:loading="setPreference.isLoading.value"
 							@click="choose('instance')"
 						>
-							Switch to Owlat sending
+							{{ t('components.postbox.postboxSendingSettings.promptCta') }}
 						</UiButton>
 					</div>
 				</div>
@@ -128,10 +139,17 @@ async function choose(preference: 'external' | 'instance') {
 			<!-- The reversible choice. Re-keyed on the preference (and a resync
 			     counter) so the native radios snap back after a refused switch. -->
 			<fieldset :key="`${currentPreference}-${resyncKey}`" class="px-5 py-4">
-				<legend class="sr-only">Where outgoing mail is sent from</legend>
+				<legend class="sr-only">
+					{{ t('components.postbox.postboxSendingSettings.legend') }}
+				</legend>
 				<p class="text-xs text-text-tertiary mb-3">
-					Choose where <code>{{ address }}</code> sends its outgoing mail. This only affects sending
-					— your inbox keeps syncing exactly as before.
+					<I18nT
+						keypath="components.postbox.postboxSendingSettings.chooseIntro"
+						tag="span"
+						scope="global"
+					>
+						<template #address><code>{{ address }}</code></template>
+					</I18nT>
 				</p>
 
 				<div class="space-y-2">
@@ -152,10 +170,11 @@ async function choose(preference: 'external' | 'instance') {
 							@change="choose('external')"
 						/>
 						<span class="min-w-0">
-							<span class="font-medium text-sm block">Your own mail server</span>
+							<span class="font-medium text-sm block">
+								{{ t('components.postbox.postboxSendingSettings.externalTitle') }}
+							</span>
 							<span class="text-xs text-text-tertiary block mt-0.5">
-								Outgoing mail goes through the sending server of the mailbox you connected. This is
-								how imported mail sends by default.
+								{{ t('components.postbox.postboxSendingSettings.externalBody') }}
 							</span>
 						</span>
 					</label>
@@ -179,19 +198,29 @@ async function choose(preference: 'external' | 'instance') {
 							@change="choose('instance')"
 						/>
 						<span class="min-w-0">
-							<span class="font-medium text-sm block">This Owlat instance</span>
+							<span class="font-medium text-sm block">
+								{{ t('components.postbox.postboxSendingSettings.instanceTitle') }}
+							</span>
 							<span class="text-xs text-text-tertiary block mt-0.5">
-								Owlat sends your outgoing mail directly, signed for
-								<code>{{ domain }}</code
-								>. Better deliverability once your domain is set up here.
+								<I18nT
+									keypath="components.postbox.postboxSendingSettings.instanceBody"
+									tag="span"
+									scope="global"
+								>
+									<template #domain><code>{{ domain }}</code></template>
+								</I18nT>
 							</span>
 							<span v-if="!domainVerified" class="text-xs text-warning block mt-1">
-								Not available yet — <code>{{ domain }}</code> isn't a verified sending domain on
-								this instance. Verify it under Settings → Domains first.
+								<I18nT
+									keypath="components.postbox.postboxSendingSettings.domainNotVerified"
+									tag="span"
+									scope="global"
+								>
+									<template #domain><code>{{ domain }}</code></template>
+								</I18nT>
 							</span>
 							<span v-else-if="!transportConfigured" class="text-xs text-warning block mt-1">
-								Not available yet — this instance has no outbound transport configured. Set one up
-								under Delivery first.
+								{{ t('components.postbox.postboxSendingSettings.noTransport') }}
 							</span>
 						</span>
 					</label>

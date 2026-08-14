@@ -5,7 +5,9 @@ import { escapeHtmlWithBreaks } from '@owlat/shared/html';
  * Dedicated compose route for the desktop compose window. Seeded from the route
  * query (mailto: → ?to=…&subject=…). Closes the window after send/discard.
  */
-useHead({ title: 'Compose — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('compose.pageTitle') });
 definePageMeta({
 	layout: 'compose',
 	middleware: 'auth',
@@ -56,7 +58,9 @@ async function closeWindow() {
 			@sent="closeWindow"
 			@discarded="closeWindow"
 		/>
-		<p v-else-if="isLoading" class="text-sm text-text-secondary">Loading mailbox…</p>
-		<p v-else class="text-sm text-text-secondary">No mailbox is configured for this workspace.</p>
+		<p v-else-if="isLoading" class="text-sm text-text-secondary">
+			{{ t('compose.loadingMailbox') }}
+		</p>
+		<p v-else class="text-sm text-text-secondary">{{ t('compose.noMailbox') }}</p>
 	</div>
 </template>

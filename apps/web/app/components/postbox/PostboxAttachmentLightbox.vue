@@ -157,8 +157,8 @@ onBeforeUnmount(() => {
 			aria-modal="true"
 			:aria-label="
 				current
-					? t('components.postbox.attachmentLightbox.previewOf', { filename: current.filename })
-					: t('components.postbox.attachmentLightbox.attachmentPreview')
+					? t('components.postbox.postboxAttachmentLightbox.previewOf', { filename: current.filename })
+					: t('components.postbox.postboxAttachmentLightbox.attachmentPreview')
 			"
 			tabindex="-1"
 			@keydown="onKeydown"
@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
 						<template v-if="attachments.length > 1">
 							·
 							{{
-								t('components.postbox.attachmentLightbox.position', {
+								t('components.postbox.postboxAttachmentLightbox.position', {
 									index: activeIndex + 1,
 									total: attachments.length,
 								})
@@ -183,8 +183,8 @@ onBeforeUnmount(() => {
 				<button
 					type="button"
 					class="p-2 rounded hover:bg-white/10 disabled:opacity-40"
-					:title="t('components.postbox.attachmentLightbox.openInNewTab')"
-					:aria-label="t('components.postbox.attachmentLightbox.openInNewTab')"
+					:title="t('components.postbox.postboxAttachmentLightbox.openInNewTab')"
+					:aria-label="t('components.postbox.postboxAttachmentLightbox.openInNewTab')"
 					:disabled="!objectUrl"
 					@click="openInNewTab"
 				>
@@ -195,10 +195,10 @@ onBeforeUnmount(() => {
 					type="button"
 					class="p-2 rounded hover:bg-white/10"
 					:title="
-						t('components.postbox.attachmentLightbox.download', { filename: current.filename })
+						t('components.postbox.postboxAttachmentLightbox.download', { filename: current.filename })
 					"
 					:aria-label="
-						t('components.postbox.attachmentLightbox.download', { filename: current.filename })
+						t('components.postbox.postboxAttachmentLightbox.download', { filename: current.filename })
 					"
 					@click="emit('download', current)"
 				>
@@ -207,8 +207,8 @@ onBeforeUnmount(() => {
 				<button
 					type="button"
 					class="p-2 rounded hover:bg-white/10"
-					:title="t('components.postbox.attachmentLightbox.closePreview')"
-					:aria-label="t('components.postbox.attachmentLightbox.closePreview')"
+					:title="t('components.postbox.postboxAttachmentLightbox.closePreview')"
+					:aria-label="t('components.postbox.postboxAttachmentLightbox.closePreview')"
 					@click="close()"
 				>
 					<Icon name="lucide:x" class="w-4 h-4" />
@@ -220,8 +220,8 @@ onBeforeUnmount(() => {
 					v-if="hasPrev"
 					type="button"
 					class="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
-					:title="t('components.postbox.attachmentLightbox.previous')"
-					:aria-label="t('components.postbox.attachmentLightbox.previous')"
+					:title="t('components.postbox.postboxAttachmentLightbox.previous')"
+					:aria-label="t('components.postbox.postboxAttachmentLightbox.previous')"
 					@click="goPrev"
 				>
 					<Icon name="lucide:chevron-left" class="w-5 h-5" />
@@ -229,10 +229,10 @@ onBeforeUnmount(() => {
 
 				<div v-if="isLoading" class="flex flex-col items-center gap-2 text-white/70">
 					<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin" />
-					<p class="text-sm">{{ t('components.postbox.attachmentLightbox.loading') }}</p>
+					<p class="text-sm">{{ t('components.postbox.postboxAttachmentLightbox.loading') }}</p>
 				</div>
 				<p v-else-if="loadFailed || !objectUrl" class="text-sm text-white/70">
-					{{ t('components.postbox.attachmentLightbox.previewUnavailable') }}
+					{{ t('components.postbox.postboxAttachmentLightbox.previewUnavailable') }}
 				</p>
 				<img
 					v-else-if="!isPdf"
@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
 					type="application/pdf"
 					class="w-full h-full rounded bg-white"
 					:aria-label="
-						t('components.postbox.attachmentLightbox.pdfPreviewOf', {
+						t('components.postbox.postboxAttachmentLightbox.pdfPreviewOf', {
 							filename: current?.filename ?? '',
 						})
 					"
@@ -255,14 +255,14 @@ onBeforeUnmount(() => {
 					     literal dark-on-white: text-text-primary would follow the app and go
 					     near-white on white in dark mode. -->
 					<I18nT
-						keypath="components.postbox.attachmentLightbox.pdfFallback"
+						keypath="components.postbox.postboxAttachmentLightbox.pdfFallback"
 						tag="p"
 						scope="global"
 						class="p-4 text-sm text-gray-900"
 					>
 						<template #link>
 							<button type="button" class="underline" @click="openInNewTab">
-								{{ t('components.postbox.attachmentLightbox.pdfFallbackLink') }}
+								{{ t('components.postbox.postboxAttachmentLightbox.pdfFallbackLink') }}
 							</button>
 						</template>
 					</I18nT>
@@ -272,8 +272,8 @@ onBeforeUnmount(() => {
 					v-if="hasNext"
 					type="button"
 					class="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
-					:title="t('components.postbox.attachmentLightbox.next')"
-					:aria-label="t('components.postbox.attachmentLightbox.next')"
+					:title="t('components.postbox.postboxAttachmentLightbox.next')"
+					:aria-label="t('components.postbox.postboxAttachmentLightbox.next')"
 					@click="goNext"
 				>
 					<Icon name="lucide:chevron-right" class="w-5 h-5" />

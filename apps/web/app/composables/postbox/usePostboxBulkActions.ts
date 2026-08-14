@@ -9,6 +9,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
+	const { t } = useI18n();
 	const stateKey = computed(
 		() => `postbox:bulk:${mailboxId.value ?? 'no-mailbox'}`
 	);
@@ -42,29 +43,32 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	// Successful triage actions register their inverse for the "Undo" toast
 	// (move each message back to its source folder; spam is un-verdicted too).
 	const triageUndo = usePostboxTriageUndo();
-	const undoLabel = (base: string, n: number) =>
-		n > 1 ? `${base} ${n} messages` : base;
+	type UndoAction = 'archived' | 'trashed' | 'moved' | 'spam';
+	const undoLabel = (action: UndoAction, n: number) =>
+		n > 1
+			? t(`shared.postbox.usePostboxBulkActions.undo.${action}Many`, { count: n })
+			: t(`shared.postbox.usePostboxBulkActions.undo.${action}`);
 
 	const setFlags = useBackendOperation(api.mail.messageActions.setFlags, {
-		label: 'Update messages',
+		label: () => t('shared.postbox.usePostboxBulkActions.setFlagsOperation'),
 	});
 	const archive = useBackendOperation(api.mail.messageActions.archive, {
-		label: 'Archive messages',
+		label: () => t('shared.postbox.usePostboxBulkActions.archiveOperation'),
 	});
 	const trash = useBackendOperation(api.mail.messageActions.trash, {
-		label: 'Move messages to trash',
+		label: () => t('shared.postbox.usePostboxBulkActions.trashOperation'),
 	});
 	const purge = useBackendOperation(api.mail.messageActions.purge, {
-		label: 'Delete messages',
+		label: () => t('shared.postbox.usePostboxBulkActions.purgeOperation'),
 	});
 	const move = useBackendOperation(api.mail.messageActions.move, {
-		label: 'Move messages',
+		label: () => t('shared.postbox.usePostboxBulkActions.moveOperation'),
 	});
 	const reportSpamOp = useBackendOperation(api.mail.messageActions.reportSpam, {
-		label: 'Report spam',
+		label: () => t('shared.postbox.usePostboxBulkActions.reportSpamOperation'),
 	});
 	const notSpamOp = useBackendOperation(api.mail.messageActions.notSpam, {
-		label: 'Not spam',
+		label: () => t('shared.postbox.usePostboxBulkActions.notSpamOperation'),
 	});
 
 	async function markRead(seen: boolean) {
@@ -83,7 +87,7 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (result === undefined) return;
 		if (result?.moved) {
 			triageUndo.registerMoveBack({
-				label: undoLabel('Archived', result.moved.length),
+				label: undoLabel('archived', result.moved.length),
 				moved: result.moved,
 				runMove: (a) => move.run(a),
 			});
@@ -97,7 +101,7 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (result === undefined) return;
 		if (result?.moved) {
 			triageUndo.registerMoveBack({
-				label: undoLabel('Moved to Trash', result.moved.length),
+				label: undoLabel('trashed', result.moved.length),
 				moved: result.moved,
 				runMove: (a) => move.run(a),
 			});
@@ -118,7 +122,7 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (result === undefined) return;
 		if (result.moved) {
 			triageUndo.registerMoveBack({
-				label: undoLabel('Moved', result.moved.length),
+				label: undoLabel('moved', result.moved.length),
 				moved: result.moved,
 				runMove: (a) => move.run(a),
 			});
@@ -135,7 +139,7 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 			// notSpam clears the verdict (and parks in Inbox); the follow-up
 			// move restores the true source folder when it wasn't the Inbox.
 			triageUndo.registerMoveBack({
-				label: undoLabel('Marked as spam', result.moved.length),
+				label: undoLabel('spam', result.moved.length),
 				moved: result.moved,
 				before: () => notSpamOp.run({ messageIds }),
 				runMove: (a) => move.run(a),

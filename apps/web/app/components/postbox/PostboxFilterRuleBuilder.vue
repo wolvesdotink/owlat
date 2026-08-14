@@ -118,7 +118,8 @@ function removeAction(idx: number) {
 	<div class="space-y-4">
 		<div>
 			<label for="local-name" class="text-sm font-medium block mb-1">{{ t('common.name') }}</label>
-			<input id="local-name"
+			<input
+				id="local-name"
 				v-model="local.name"
 				type="text"
 				class="input w-full"
@@ -182,8 +183,9 @@ function removeAction(idx: number) {
 					<button
 						type="button"
 						class="p-1 rounded hover:bg-error/10 text-error"
+						:aria-label="t('components.postbox.postboxFilterRuleBuilder.removeCondition')"
 						@click="removeCondition(Number(idx))"
-					 :aria-label="t('components.postbox.postboxFilterRuleBuilder.removeCondition')">
+					>
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 				</div>
@@ -264,8 +266,9 @@ function removeAction(idx: number) {
 					<button
 						type="button"
 						class="p-1 rounded hover:bg-error/10 text-error"
+						:aria-label="t('components.postbox.postboxFilterRuleBuilder.removeAction')"
 						@click="removeAction(Number(idx))"
-					 :aria-label="t('components.postbox.postboxFilterRuleBuilder.removeAction')">
+					>
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 				</div>

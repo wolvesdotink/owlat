@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'AI Agent Settings — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.agent.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -14,19 +16,19 @@ definePageMeta({
 // Agent on/off is the `ai.agent` feature flag — not a column on agentConfig.
 const { flags } = useFeatureFlag();
 const { run: setFeatureFlag } = useBackendOperation(api.workspaces.featureFlags.setFeatureFlag, {
-	label: 'Toggle agent',
+	label: () => t('dashboard.admin.instance.agent.toggleOperation'),
 });
 
 // Fetch current operational tuning (threshold, tone, signature, …)
 const { data: config, isLoading } = useConvexQuery(api.agentConfigMutations.getConfig, () => ({}));
 const { run: updateConfig } = useBackendOperation(api.agentConfigMutations.updateConfig, {
-	label: 'Save agent settings',
+	label: () => t('dashboard.admin.instance.agent.saveOperation'),
 });
 
 // Knowledge backfill status (live-reactive Convex query — no manual polling)
 const { data: backfillJob } = useConvexQuery(api.agent.knowledgeBackfill.getStatus, () => ({}));
 const { run: cancelBackfill } = useBackendOperation(api.agent.knowledgeBackfill.cancel, {
-	label: 'Cancel backfill',
+	label: () => t('dashboard.admin.instance.agent.cancelBackfillOperation'),
 });
 
 const backfillProgressPercent = computed(() => {
@@ -42,7 +44,7 @@ const handleCancelBackfill = async () => {
 	const result = await cancelBackfill({});
 	isCancellingBackfill.value = false;
 	if (result === undefined) return;
-	showToast('Backfill cancelled');
+	showToast(t('dashboard.admin.instance.agent.backfillCancelledToast'));
 };
 
 const backfillStatusLabel = computed(() => {
@@ -50,15 +52,15 @@ const backfillStatusLabel = computed(() => {
 	if (!job) return '';
 	switch (job.status) {
 		case 'pending':
-			return 'Queued';
+			return t('dashboard.admin.instance.agent.backfillStatus.pending');
 		case 'running':
-			return 'Scanning mail history';
+			return t('dashboard.admin.instance.agent.backfillStatus.running');
 		case 'completed':
-			return 'Complete';
+			return t('dashboard.admin.instance.agent.backfillStatus.completed');
 		case 'cancelled':
-			return 'Cancelled';
+			return t('dashboard.admin.instance.agent.backfillStatus.cancelled');
 		case 'failed':
-			return 'Failed';
+			return t('dashboard.admin.instance.agent.backfillStatus.failed');
 		default:
 			return job.status;
 	}
@@ -176,7 +178,7 @@ const handleSave = async () => {
 
 	isSaving.value = false;
 	isFormDirty.value = false;
-	showToast('Agent settings saved successfully');
+	showToast(t('dashboard.admin.instance.agent.savedToast'));
 };
 
 // Confidence threshold display
@@ -191,7 +193,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Settings
+			{{ t('dashboard.admin.instance.agent.backToSettings') }}
 		</NuxtLink>
 
 		<!-- Header -->
@@ -199,9 +201,11 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:bot" size="xl" variant="brand" rounded="full" />
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">AI Agent</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.instance.agent.title') }}
+					</h1>
 					<p class="text-text-secondary mt-1">
-						Configure how the AI agent processes inbound messages and generates drafts.
+						{{ t('dashboard.admin.instance.agent.subtitle') }}
 					</p>
 				</div>
 			</div>
@@ -209,7 +213,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 			<UiButton class="gap-2" :disabled="!isFormDirty || isSaving" @click="handleSave">
 				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:save" class="w-4 h-4" />
-				Save Changes
+				{{ t('dashboard.admin.instance.agent.saveChanges') }}
 			</UiButton>
 		</div>
 
@@ -217,7 +221,9 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading agent settings...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('dashboard.admin.instance.agent.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -225,34 +231,42 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 			<div class="space-y-6 max-w-3xl">
 				<!-- Enable/Disable Section -->
 				<div class="card">
-					<h2 class="text-lg font-medium text-text-primary mb-1">Agent Pipeline</h2>
+					<h2 class="text-lg font-medium text-text-primary mb-1">
+						{{ t('dashboard.admin.instance.agent.pipeline.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary mb-6">
-						Control whether the AI agent processes inbound messages.
+						{{ t('dashboard.admin.instance.agent.pipeline.description') }}
 					</p>
 
 					<div class="space-y-4">
 						<div class="flex items-center justify-between">
 							<div>
-								<p class="text-text-primary font-medium">Enable Agent Pipeline</p>
+								<p class="text-text-primary font-medium">
+									{{ t('dashboard.admin.instance.agent.pipeline.enableLabel') }}
+								</p>
 								<p class="text-sm text-text-tertiary">
-									When enabled, inbound messages are classified and drafted automatically.
+									{{ t('dashboard.admin.instance.agent.pipeline.enableHelp') }}
 								</p>
 							</div>
-							<UiSwitch v-model="form.enabled" label="Enable AI agent" />
+							<UiSwitch
+								v-model="form.enabled"
+								:label="t('dashboard.admin.instance.agent.pipeline.enableSwitch')"
+							/>
 						</div>
 
 						<div class="flex items-center justify-between">
 							<div>
-								<p class="text-text-primary font-medium">Auto-Reply</p>
+								<p class="text-text-primary font-medium">
+									{{ t('dashboard.admin.instance.agent.pipeline.autoReplyLabel') }}
+								</p>
 								<p class="text-sm text-text-tertiary">
-									Allow the agent to send replies without human approval when confidence is above
-									threshold.
+									{{ t('dashboard.admin.instance.agent.pipeline.autoReplyHelp') }}
 								</p>
 							</div>
 							<UiSwitch
 								v-model="form.autoReplyEnabled"
 								:disabled="!form.enabled"
-								label="Auto-reply"
+								:label="t('dashboard.admin.instance.agent.pipeline.autoReplySwitch')"
 							/>
 						</div>
 					</div>
@@ -262,9 +276,11 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 				<div v-if="backfillJob" class="card">
 					<div class="flex items-start justify-between gap-4 mb-1">
 						<div>
-							<h2 class="text-lg font-medium text-text-primary mb-1">Knowledge Backfill</h2>
+							<h2 class="text-lg font-medium text-text-primary mb-1">
+								{{ t('dashboard.admin.instance.agent.backfill.title') }}
+							</h2>
 							<p class="text-sm text-text-secondary">
-								One-time scan of your inbound mail history to seed the AI agent with context.
+								{{ t('dashboard.admin.instance.agent.backfill.description') }}
 							</p>
 						</div>
 						<span
@@ -285,33 +301,44 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 						<div>
 							<div class="flex items-center justify-between text-sm mb-1">
 								<span class="text-text-secondary">
-									{{ backfillJob.scannedCount }} / {{ backfillJob.totalCount }} messages
+									{{
+										t('dashboard.admin.instance.agent.backfill.progress', {
+											scanned: backfillJob.scannedCount,
+											total: backfillJob.totalCount,
+										})
+									}}
 								</span>
 								<span class="font-mono text-text-tertiary">{{ backfillProgressPercent }}%</span>
 							</div>
 							<UiProgressBar
 								size="sm"
 								:value="backfillProgressPercent"
-								aria-label="Knowledge backfill progress"
+								:aria-label="t('dashboard.admin.instance.agent.backfill.progressLabel')"
 							/>
 						</div>
 
 						<!-- Counters -->
 						<div class="grid grid-cols-3 gap-3 text-xs">
 							<div class="rounded-lg bg-bg-surface px-3 py-2">
-								<div class="text-text-tertiary">Extracted</div>
+								<div class="text-text-tertiary">
+									{{ t('dashboard.admin.instance.agent.backfill.extracted') }}
+								</div>
 								<div class="font-mono text-text-primary text-base">
 									{{ backfillJob.extractedCount }}
 								</div>
 							</div>
 							<div class="rounded-lg bg-bg-surface px-3 py-2">
-								<div class="text-text-tertiary">Skipped</div>
+								<div class="text-text-tertiary">
+									{{ t('dashboard.admin.instance.agent.backfill.skipped') }}
+								</div>
 								<div class="font-mono text-text-primary text-base">
 									{{ backfillJob.skippedCount }}
 								</div>
 							</div>
 							<div class="rounded-lg bg-bg-surface px-3 py-2">
-								<div class="text-text-tertiary">Errors</div>
+								<div class="text-text-tertiary">
+									{{ t('dashboard.admin.instance.agent.backfill.errors') }}
+								</div>
 								<div class="font-mono text-text-primary text-base">
 									{{ backfillJob.errorCount }}
 								</div>
@@ -332,7 +359,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 							>
 								<UiSpinner v-if="isCancellingBackfill" size="xs" tone="brand" />
 								<Icon v-else name="lucide:x" class="w-3.5 h-3.5" />
-								Cancel Backfill
+								{{ t('dashboard.admin.instance.agent.backfill.cancel') }}
 							</UiButton>
 						</div>
 
@@ -350,23 +377,26 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 
 				<!-- Confidence & Limits Section -->
 				<div class="card">
-					<h2 class="text-lg font-medium text-text-primary mb-1">Confidence & Limits</h2>
+					<h2 class="text-lg font-medium text-text-primary mb-1">
+						{{ t('dashboard.admin.instance.agent.limits.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary mb-6">
-						Set thresholds for auto-approval and rate limits.
+						{{ t('dashboard.admin.instance.agent.limits.description') }}
 					</p>
 
 					<div class="space-y-6">
 						<!-- Confidence Threshold -->
 						<div>
 							<div class="flex items-center justify-between mb-2">
-								<label class="text-text-primary font-medium">Confidence Threshold</label>
+								<label class="text-text-primary font-medium">
+									{{ t('dashboard.admin.instance.agent.limits.thresholdLabel') }}
+								</label>
 								<span class="text-sm font-mono text-brand bg-brand-subtle px-2 py-0.5 rounded">
 									{{ confidencePercent }}%
 								</span>
 							</div>
 							<p class="text-sm text-text-tertiary mb-3">
-								Minimum confidence score required for auto-approval. Drafts below this threshold go
-								to the review queue.
+								{{ t('dashboard.admin.instance.agent.limits.thresholdHelp') }}
 							</p>
 							<input
 								v-model.number="form.confidenceThreshold"
@@ -377,17 +407,18 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 								class="w-full h-2 bg-bg-surface rounded-lg appearance-none cursor-pointer accent-brand"
 							/>
 							<div class="flex justify-between text-xs text-text-tertiary mt-1">
-								<span>0% (all to review)</span>
-								<span>100% (never auto-approve)</span>
+								<span>{{ t('dashboard.admin.instance.agent.limits.thresholdMin') }}</span>
+								<span>{{ t('dashboard.admin.instance.agent.limits.thresholdMax') }}</span>
 							</div>
 						</div>
 
 						<!-- Daily Auto-Reply Limit -->
 						<div>
-							<label class="text-text-primary font-medium">Daily Auto-Reply Limit</label>
+							<label class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.agent.limits.dailyLabel') }}
+							</label>
 							<p class="text-sm text-text-tertiary mt-1 mb-3">
-								Maximum number of auto-approved replies per day. Excess messages go to the review
-								queue.
+								{{ t('dashboard.admin.instance.agent.limits.dailyHelp') }}
 							</p>
 							<input
 								v-model.number="form.maxDailyAutoReplies"
@@ -401,10 +432,11 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 
 						<!-- Coalescing Window -->
 						<div>
-							<label class="text-text-primary font-medium">Message Coalescing Window</label>
+							<label class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.agent.limits.coalesceLabel') }}
+							</label>
 							<p class="text-sm text-text-tertiary mt-1 mb-3">
-								Wait this many seconds for additional messages before processing a thread. Prevents
-								redundant processing of rapid message bursts.
+								{{ t('dashboard.admin.instance.agent.limits.coalesceHelp') }}
 							</p>
 							<div class="flex items-center gap-3">
 								<input
@@ -418,7 +450,9 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 										form.coalesceWindowMs = Number(($event.target as HTMLInputElement).value) * 1000
 									"
 								/>
-								<span class="text-text-secondary text-sm">seconds</span>
+								<span class="text-text-secondary text-sm">
+									{{ t('dashboard.admin.instance.agent.limits.seconds') }}
+								</span>
 							</div>
 						</div>
 					</div>
@@ -426,37 +460,43 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 
 				<!-- Tone & Signature Section -->
 				<div class="card">
-					<h2 class="text-lg font-medium text-text-primary mb-1">Tone & Signature</h2>
+					<h2 class="text-lg font-medium text-text-primary mb-1">
+						{{ t('dashboard.admin.instance.agent.tone.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary mb-6">
-						Define how the agent communicates on behalf of your workspace.
+						{{ t('dashboard.admin.instance.agent.tone.description') }}
 					</p>
 
 					<div class="space-y-6">
 						<!-- Tone Description -->
 						<div>
-							<label class="text-text-primary font-medium">Tone Description</label>
+							<label class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.agent.tone.toneLabel') }}
+							</label>
 							<p class="text-sm text-text-tertiary mt-1 mb-3">
-								Describe the communication style for agent-generated drafts.
+								{{ t('dashboard.admin.instance.agent.tone.toneHelp') }}
 							</p>
 							<textarea
 								v-model="form.toneDescription"
 								rows="4"
 								class="input w-full resize-y"
-								placeholder="e.g., Professional and friendly. Use the customer's first name. Keep responses concise but thorough."
+								:placeholder="t('dashboard.admin.instance.agent.tone.tonePlaceholder')"
 							/>
 						</div>
 
 						<!-- Signature Template -->
 						<div>
-							<label class="text-text-primary font-medium">Email Signature</label>
+							<label class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.agent.tone.signatureLabel') }}
+							</label>
 							<p class="text-sm text-text-tertiary mt-1 mb-3">
-								Signature appended to agent-generated email replies.
+								{{ t('dashboard.admin.instance.agent.tone.signatureHelp') }}
 							</p>
 							<textarea
 								v-model="form.signatureTemplate"
 								rows="4"
 								class="input w-full resize-y"
-								placeholder="e.g., Best regards,&#10;The Support Team&#10;support@yourcompany.com"
+								:placeholder="t('dashboard.admin.instance.agent.tone.signaturePlaceholder')"
 							/>
 						</div>
 					</div>
@@ -467,7 +507,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 					<UiButton class="gap-2" :disabled="!isFormDirty || isSaving" @click="handleSave">
 						<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 						<Icon v-else name="lucide:save" class="w-4 h-4" />
-						Save Changes
+						{{ t('dashboard.admin.instance.agent.saveChanges') }}
 					</UiButton>
 				</div>
 			</div>

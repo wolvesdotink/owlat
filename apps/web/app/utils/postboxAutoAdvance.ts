@@ -13,13 +13,17 @@ export type PostboxAutoAdvanceMode = 'next' | 'previous' | 'back-to-list';
 
 export const POSTBOX_AUTO_ADVANCE_DEFAULT: PostboxAutoAdvanceMode = 'next';
 
+/**
+ * The picker options. Module scope never calls `useI18n`, so `label` is the
+ * catalog key the settings screen renders through `t()`.
+ */
 export const POSTBOX_AUTO_ADVANCE_OPTIONS: Array<{
 	value: PostboxAutoAdvanceMode;
 	label: string;
 }> = [
-	{ value: 'next', label: 'Open the next conversation' },
-	{ value: 'previous', label: 'Open the previous conversation' },
-	{ value: 'back-to-list', label: 'Go back to the list' },
+	{ value: 'next', label: 'shared.postboxAutoAdvance.next' },
+	{ value: 'previous', label: 'shared.postboxAutoAdvance.previous' },
+	{ value: 'back-to-list', label: 'shared.postboxAutoAdvance.backToList' },
 ];
 
 /**

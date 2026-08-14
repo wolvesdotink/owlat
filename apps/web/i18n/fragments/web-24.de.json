@@ -1,0 +1,105 @@
+{
+	"components": {
+		"postbox": {
+			"postboxSenderControls": {
+				"accept": "Absender akzeptieren",
+				"acceptTitle": "Diesen erstmaligen Absender in die Antwort-Warteschlange aufnehmen",
+				"removeVip": "VIP entfernen",
+				"markVip": "Absender als VIP markieren",
+				"vipOperation": "VIP",
+				"acceptOperation": "Absender akzeptieren"
+			},
+			"postboxSendingSettings": {
+				"heading": "Versand",
+				"loadError": "Ihre Versandeinstellungen konnten gerade nicht geladen werden. Bitte aktualisieren Sie die Seite, um es erneut zu versuchen.",
+				"promptTitle": "Stattdessen über dieses Owlat senden",
+				"promptBody": "{domain} ist hier verifiziert, sodass Owlat Ihre ausgehende Post direkt versenden kann — signiert und ausgerichtet für {signedDomain}. An der Art, wie Sie Ihre Post lesen, ändert sich nichts, und Sie können jederzeit zurückwechseln.",
+				"promptCta": "Auf Owlat-Versand umstellen",
+				"legend": "Woher ausgehende Post versendet wird",
+				"chooseIntro": "Wählen Sie, worüber {address} seine ausgehende Post versendet. Das betrifft nur den Versand — Ihr Posteingang synchronisiert weiterhin genau wie bisher.",
+				"externalTitle": "Ihr eigener Mailserver",
+				"externalBody": "Ausgehende Post läuft über den Sendeserver des Postfachs, das Sie verbunden haben. So versendet importierte Post standardmäßig.",
+				"instanceTitle": "Diese Owlat-Instanz",
+				"instanceBody": "Owlat versendet Ihre ausgehende Post direkt, signiert für {domain}. Bessere Zustellbarkeit, sobald Ihre Domain hier eingerichtet ist.",
+				"domainNotVerified": "Noch nicht verfügbar — {domain} ist auf dieser Instanz keine verifizierte Versanddomain. Verifizieren Sie sie zuerst unter Einstellungen → Domains.",
+				"noTransport": "Noch nicht verfügbar — auf dieser Instanz ist kein ausgehender Transport konfiguriert. Richten Sie zuerst einen unter Zustellung ein.",
+				"changeOperation": "Versand ändern"
+			},
+			"postboxShortcutHelp": {
+				"title": "Tastenkürzel"
+			},
+			"postboxSnippetPicker": {
+				"listLabel": "Textbausteine",
+				"empty": "Keine passenden Textbausteine"
+			},
+			"postboxSnoozeDialog": {
+				"title": "Zurückstellen bis",
+				"confirm": "Zurückstellen",
+				"untilReply": "Bis eine Antwort kommt",
+				"untilReplySub": "Oder in 1 Woche"
+			},
+			"postboxStaleReplyDialog": {
+				"title": "Ein Teammitglied hat bereits geantwortet",
+				"description": "Jemand aus Ihrem Team hat auf diese Unterhaltung geantwortet, nachdem Sie sie geöffnet haben. Ihre Antwort trotzdem senden?",
+				"descriptionNamed": "{name} hat auf diese Unterhaltung geantwortet, nachdem Sie sie geöffnet haben. Ihre Antwort trotzdem senden?",
+				"confirm": "Trotzdem senden",
+				"cancel": "Weiter bearbeiten"
+			},
+			"postboxTeamMemberPicker": {
+				"label": "Mitglieder",
+				"help": "Wählen Sie, wer aus diesem Postfach lesen und senden darf. Sie können das später ändern.",
+				"loading": "Teammitglieder werden geladen…",
+				"empty": "Noch keine Teammitglieder zum Hinzufügen — Sie können Personen einladen und sie später hinzufügen."
+			},
+			"postboxTeamReplyBadge": {
+				"youPersonal": "Sie haben von Ihrer persönlichen Adresse geantwortet · {when}",
+				"namedPersonal": "{name} hat von der persönlichen Adresse geantwortet · {when}",
+				"teammatePersonal": "Ein Teammitglied hat von seiner persönlichen Adresse geantwortet · {when}",
+				"youLast": "Sie haben zuletzt geantwortet · {when}",
+				"namedLast": "{name} hat zuletzt geantwortet · {when}",
+				"teammateLast": "Ein Teammitglied hat zuletzt geantwortet · {when}"
+			},
+			"postboxThreadCategoryList": {
+				"allClear": "Alles erledigt",
+				"listLabel": "Kategorisierte Unterhaltungen",
+				"noSubject": "(kein Betreff)",
+				"recategorize": "Neu kategorisieren als…",
+				"recategorizeHint": "Für diesen Absender gemerkt — künftige Post von ihm landet ebenfalls hier.",
+				"loadMore": "Mehr laden"
+			},
+			"postboxThreadGroupList": {
+				"allClear": "Alles erledigt",
+				"listLabel": "Unterhaltungen",
+				"rowLabel": "{subject}, {count} ungelesen",
+				"noSubjectLabel": "Kein Betreff",
+				"noSubject": "(kein Betreff)",
+				"loadMore": "Mehr laden"
+			},
+			"postboxThreadHeader": {
+				"noSubject": "(kein Betreff)"
+			},
+			"postboxThreadList": {
+				"archiveOperation": "Archivieren",
+				"trashOperation": "In den Papierkorb verschieben",
+				"starOperation": "Markieren",
+				"markReadOperation": "Als gelesen markieren",
+				"snoozeOperation": "Zurückstellen",
+				"moveOperation": "Nachricht verschieben",
+				"cancelFollowUpOperation": "Antwort-Erinnerung abbrechen",
+				"archivedUndo": "Archiviert",
+				"trashedUndo": "In den Papierkorb verschoben",
+				"movedUndo": "Verschoben",
+				"emptyLabelTitle": "Keine Nachrichten mit diesem Label",
+				"emptyLabelHint": "Wenden Sie es aus einer Nachricht heraus mit dem Label-Kürzel (l) an.",
+				"emptyInboxTitle": "Alles erledigt",
+				"emptyInboxHint": "Drücken Sie C, um eine Nachricht zu schreiben, oder ⌘K, um zu suchen und überall hinzuspringen.",
+				"emptyFolderTitle": "Dieser Ordner ist leer",
+				"emptyFolderHint": "Verschieben Sie Nachrichten hierher oder leiten Sie sie automatisch mit einem Filter weiter.",
+				"emptyDefaultTitle": "Keine Nachrichten",
+				"listLabel": "Nachrichten",
+				"setUpFilter": "Filter einrichten",
+				"loadMore": "Mehr laden"
+			}
+		}
+	}
+}

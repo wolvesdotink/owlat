@@ -45,11 +45,15 @@ export function isMandrillProofFresh(
 	return age >= 0 && age <= identity.proofMaxAgeMs;
 }
 
-/** The outstanding DNS/ownership items, in the order an operator works them. */
+/**
+ * The outstanding DNS/ownership items, in the order an operator works them, as
+ * the catalog keys that name them — this module is module scope and never calls
+ * `useI18n`, so the migration screen words them through `t()`.
+ */
 export function mandrillOutstanding(identity: MandrillRelayIdentityInput): string[] {
 	return [
-		...(identity.spf?.isValid ? [] : ['SPF']),
-		...(identity.dkim?.isValid ? [] : ['DKIM']),
-		...(identity.verifiedAt === null ? ['domain ownership'] : []),
+		...(identity.spf?.isValid ? [] : ['shared.mandrillRelayStatus.outstanding.spf']),
+		...(identity.dkim?.isValid ? [] : ['shared.mandrillRelayStatus.outstanding.dkim']),
+		...(identity.verifiedAt === null ? ['shared.mandrillRelayStatus.outstanding.ownership'] : []),
 	];
 }

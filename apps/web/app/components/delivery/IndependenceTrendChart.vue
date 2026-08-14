@@ -25,7 +25,7 @@ const props = defineProps<{
 	labelledBy: string;
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 // A DOCUMENT-UNIQUE PATTERN ID. `url(#…)` resolves against the whole document,
 // so a hardcoded id means a second chart on the page silently paints with the
@@ -103,11 +103,11 @@ const referenceArea = computed(() =>
 
 const firstLabel = computed(() => {
 	const point = usable.value[0];
-	return point === undefined ? '' : formatShortDate(point.day);
+	return point === undefined ? '' : formatShortDate(point.day, locale.value);
 });
 const lastLabel = computed(() => {
 	const point = usable.value[usable.value.length - 1];
-	return point === undefined ? '' : formatShortDate(point.day);
+	return point === undefined ? '' : formatShortDate(point.day, locale.value);
 });
 
 const summary = computed(() => {
@@ -117,12 +117,12 @@ const summary = computed(() => {
 	return props.hasReference
 		? t('components.delivery.independenceTrendChart.summaryWithRelay', {
 				days: usable.value.length,
-				own: formatNumber(own),
-				reference: formatNumber(reference),
+				own: formatNumber(own, locale.value),
+				reference: formatNumber(reference, locale.value),
 			})
 		: t('components.delivery.independenceTrendChart.summary', {
 				days: usable.value.length,
-				own: formatNumber(own),
+				own: formatNumber(own, locale.value),
 			});
 });
 </script>
@@ -217,9 +217,9 @@ const summary = computed(() => {
 			</thead>
 			<tbody>
 				<tr v-for="point in usable" :key="point.day">
-					<th scope="row">{{ formatShortDate(point.day) }}</th>
-					<td>{{ formatNumber(point.own) }}</td>
-					<td v-if="hasReference">{{ formatNumber(point.reference) }}</td>
+					<th scope="row">{{ formatShortDate(point.day, locale) }}</th>
+					<td>{{ formatNumber(point.own, locale) }}</td>
+					<td v-if="hasReference">{{ formatNumber(point.reference, locale) }}</td>
 				</tr>
 			</tbody>
 		</table>

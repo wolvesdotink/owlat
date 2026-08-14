@@ -25,7 +25,12 @@ import type { api } from '@owlat/api';
 import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { parseDeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { formatNumber, formatPercentage, formatShortDate } from '~/utils/formatters';
-import { cellLabel, providerLabel, streamLabel } from '~/utils/deliverabilityMeasurement';
+import {
+	cellLabel,
+	providerLabel,
+	streamLabel,
+	type LocalizedText,
+} from '~/utils/deliverabilityMeasurement';
 import { transportIdLabel } from '~/utils/transportState';
 
 export type RampControls = FunctionReturnType<
@@ -50,7 +55,8 @@ export type RampCellTone = 'ok' | 'attention' | 'neutral';
 
 export interface RampCellStatus {
 	readonly key: string;
-	readonly label: string;
+	/** The catalog key carrying the status word — this module is module scope. */
+	readonly label: LocalizedText;
 	readonly tone: RampCellTone;
 }
 
@@ -65,35 +71,42 @@ export interface RampCellStatus {
  */
 export function rampCellStatus(cell: RampCellControl): RampCellStatus {
 	if (!cell.isRampManaged) {
-		return { key: 'unmanaged', label: 'Not on the ramp yet', tone: 'neutral' };
+		return { key: 'unmanaged', label: 'shared.deliverabilityRamp.status.unmanaged', tone: 'neutral' };
 	}
-	if (cell.graduatedAt !== null) return { key: 'graduated', label: 'Graduated', tone: 'ok' };
-	if (cell.isPaused) return { key: 'paused', label: 'Paused by you', tone: 'neutral' };
+	if (cell.graduatedAt !== null) {
+		return { key: 'graduated', label: 'shared.deliverabilityRamp.status.graduated', tone: 'ok' };
+	}
+	if (cell.isPaused) {
+		return { key: 'paused', label: 'shared.deliverabilityRamp.status.paused', tone: 'neutral' };
+	}
 	if (cell.pinnedShare !== null) {
 		return {
 			key: 'pinned',
-			label: `Pinned at ${formatPercentage(cell.pinnedShare, 0)}`,
+			label: {
+				key: 'shared.deliverabilityRamp.status.pinned',
+				params: { share: formatPercentage(cell.pinnedShare, 0) },
+			},
 			tone: 'neutral',
 		};
 	}
 	if (cell.lastDecision?.direction === 'decrease') {
-		return { key: 'retreating', label: 'Pulled back', tone: 'attention' };
+		return { key: 'retreating', label: 'shared.deliverabilityRamp.status.retreating', tone: 'attention' };
 	}
 	if (cell.lastDecision?.direction === 'increase') {
-		return { key: 'advancing', label: 'Advancing', tone: 'ok' };
+		return { key: 'advancing', label: 'shared.deliverabilityRamp.status.advancing', tone: 'ok' };
 	}
-	return { key: 'holding', label: 'Holding', tone: 'neutral' };
+	return { key: 'holding', label: 'shared.deliverabilityRamp.status.holding', tone: 'neutral' };
 }
 
 /**
  * WHAT IS HOLDING THIS CELL BACK — read off the last decision, never recomputed.
  * A cell with no decisions yet says so plainly instead of inventing a constraint.
  */
-export function bindingConstraint(cell: RampCellControl): string {
+export function bindingConstraint(cell: RampCellControl): LocalizedText {
 	if (cell.lastDecision === null) {
 		return cell.isRampManaged
-			? 'Waiting for the first evaluation.'
-			: 'Nothing — this cell is not being ramped yet.';
+			? 'shared.deliverabilityRamp.constraint.awaitingFirstEvaluation'
+			: 'shared.deliverabilityRamp.constraint.notRamped';
 	}
 	return rampReasonLabel(cell.lastDecision.reason);
 }
@@ -104,39 +117,39 @@ export function bindingConstraint(cell: RampCellControl): string {
  * rendering its snake_case code in the Cells grid's "Holding it back" column.
  */
 const REASON_LABELS = {
-	kill_switch: 'The global ramp pause',
-	clock_unusable: 'An unusable clock',
-	abuse_status: 'The account’s abuse status',
-	breaker: 'The MTA circuit breaker',
-	dnsbl: 'A critical blocklist listing',
-	frozen: 'A cooldown from an earlier retreat',
-	freeze_unreadable: 'An unreadable stored cooldown',
-	share_unreadable: 'An unreadable stored share',
-	holding: 'Not enough fresh evidence',
-	evidence_stale: 'Evidence too old to act on',
-	awaiting_corroboration: 'A seed tripwire waiting for corroboration',
-	capacity_unknown: 'An unusable capacity projection',
-	window_open: 'This window has already been counted',
-	building_confidence: 'Building a clean streak',
-	capacity_ceiling: 'Remaining warming capacity',
-	phase_ceiling: 'The phase ceiling',
+	kill_switch: 'shared.deliverabilityRamp.reason.killSwitch',
+	clock_unusable: 'shared.deliverabilityRamp.reason.clockUnusable',
+	abuse_status: 'shared.deliverabilityRamp.reason.abuseStatus',
+	breaker: 'shared.deliverabilityRamp.reason.breaker',
+	dnsbl: 'shared.deliverabilityRamp.reason.dnsbl',
+	frozen: 'shared.deliverabilityRamp.reason.frozen',
+	freeze_unreadable: 'shared.deliverabilityRamp.reason.freezeUnreadable',
+	share_unreadable: 'shared.deliverabilityRamp.reason.shareUnreadable',
+	holding: 'shared.deliverabilityRamp.reason.holding',
+	evidence_stale: 'shared.deliverabilityRamp.reason.evidenceStale',
+	awaiting_corroboration: 'shared.deliverabilityRamp.reason.awaitingCorroboration',
+	capacity_unknown: 'shared.deliverabilityRamp.reason.capacityUnknown',
+	window_open: 'shared.deliverabilityRamp.reason.windowOpen',
+	building_confidence: 'shared.deliverabilityRamp.reason.buildingConfidence',
+	capacity_ceiling: 'shared.deliverabilityRamp.reason.capacityCeiling',
+	phase_ceiling: 'shared.deliverabilityRamp.reason.phaseCeiling',
 	// P3-8's cap: the substitution table lowers the phase ceiling a rung while an
 	// integration is missing, which is a DIFFERENT fact from having reached the
 	// ceiling this cell was granted — the operator can act on one and not the other.
-	degradation_ceiling: 'A ceiling lowered by a missing integration',
-	healthy: 'Nothing — every gate is green',
-	graduated: 'Nothing — the cell is graduated and pinned',
-	operator_pause: 'Your pause on this cell',
-	operator_pin: 'Your pin on this cell',
-	operator_force_advance: 'A manual advance you made',
-	operator_phase_reset: 'A manual phase reset you made',
-	operator_enrollment: 'Putting this cell on the ramp',
-	operator_phase_promotion: 'A phase promotion you made',
-	hard_bounce: 'The hard-bounce gate',
-	deferral: 'The deferral gate',
-	complaint: 'The complaint gate',
-	engagement_ratio: 'The engagement gate',
-	seed_placement: 'The seed-placement tripwire',
+	degradation_ceiling: 'shared.deliverabilityRamp.reason.degradationCeiling',
+	healthy: 'shared.deliverabilityRamp.reason.healthy',
+	graduated: 'shared.deliverabilityRamp.reason.graduated',
+	operator_pause: 'shared.deliverabilityRamp.reason.operatorPause',
+	operator_pin: 'shared.deliverabilityRamp.reason.operatorPin',
+	operator_force_advance: 'shared.deliverabilityRamp.reason.operatorForceAdvance',
+	operator_phase_reset: 'shared.deliverabilityRamp.reason.operatorPhaseReset',
+	operator_enrollment: 'shared.deliverabilityRamp.reason.operatorEnrollment',
+	operator_phase_promotion: 'shared.deliverabilityRamp.reason.operatorPhasePromotion',
+	hard_bounce: 'shared.deliverabilityRamp.reason.hardBounce',
+	deferral: 'shared.deliverabilityRamp.reason.deferral',
+	complaint: 'shared.deliverabilityRamp.reason.complaint',
+	engagement_ratio: 'shared.deliverabilityRamp.reason.engagementRatio',
+	seed_placement: 'shared.deliverabilityRamp.reason.seedPlacement',
 } satisfies Record<RampDecisionReason, string>;
 
 /**
@@ -145,8 +158,10 @@ const REASON_LABELS = {
  * ninety days of history, so a reason retired in that window is still readable
  * on the timeline and renders as its code rather than as nothing at all.
  */
-export function rampReasonLabel(reason: RampDecisionReason | string): string {
+export function rampReasonLabel(reason: RampDecisionReason | string): LocalizedText {
 	const label = (REASON_LABELS as Record<string, string | undefined>)[reason];
+	// A retired code has no catalog entry, so it reads as its own words — which a
+	// render boundary passes straight through, since it resolves to itself.
 	return label ?? reason.replace(/_/g, ' ');
 }
 
@@ -159,9 +174,9 @@ export function shareLabel(share: number): string {
 /** The consequence of pulling the relay, in words. Facts in, sentences out. */
 export interface RelayRemovalConsequence {
 	/** What disconnecting does right now, in this deployment's own numbers. */
-	readonly consequence: string;
+	readonly consequence: LocalizedText;
 	/** The date waiting would make it free, or null when nothing projects one. */
-	readonly safeDate: string | null;
+	readonly safeDate: LocalizedText | null;
 }
 
 export interface RelayRemovalFacts {
@@ -197,30 +212,31 @@ export interface RelayRemovalFacts {
  * over a deployment the same screen has just called safe.
  */
 export function relayRemovalConsequenceCopy(facts: RelayRemovalFacts): RelayRemovalConsequence {
-	const relay =
-		facts.referenceTransportId === null
-			? 'the relay'
-			: transportIdLabel(facts.referenceTransportId);
-	const lostFallback = `the reputation ${relay} has built for your domain stops being available to fall back on`;
-	// The tail every arm that MOVES traffic shares; the safe arm ends differently
-	// because nothing moves and only the fallback is given up.
-	const moved = ` onto your own server immediately — not gradually — and ${lostFallback}.`;
+	// TWO FAMILIES OF SENTENCE, NOT A NAME SLOTTED INTO ONE. Where the relay has
+	// no name the words "the relay" are copy of their own, and every arm names it
+	// twice — so the unnamed family carries those words inside each sentence
+	// rather than passing another catalog key in as a parameter.
+	const relayId = facts.referenceTransportId;
+	const family =
+		relayId === null
+			? 'shared.deliverabilityRamp.relayRemoval.unnamed'
+			: 'shared.deliverabilityRamp.relayRemoval.named';
+	const params = relayId === null ? undefined : { relay: transportIdLabel(relayId) };
 	const cells = facts.dependentCells;
 	const count = cells?.length ?? 0;
-	const consequence =
-		cells === null
-			? `Which cells are still leaning on ${relay} could not be established, so this cannot be treated as safe. Disconnecting it moves whatever they still send${moved}`
-			: count === 0
-				? `Every cell has graduated, so nothing is still leaning on ${relay}. Disconnecting it now would not move any traffic onto your own server — only ${lostFallback}.`
-				: count === 1
-					? `1 cell has not graduated yet and still sends part of its mail through ${relay}. Disconnecting it moves all of that traffic${moved}`
-					: `${formatNumber(count)} cells have not graduated yet and still send part of their mail through ${relay}. Disconnecting it moves all of that traffic${moved}`;
+	const arm = cells === null ? 'unknown' : count === 0 ? 'none' : count === 1 ? 'one' : 'many';
 	return {
-		consequence,
+		consequence: {
+			key: `${family}.${arm}`,
+			params: arm === 'many' ? { ...params, count: formatNumber(count) } : params,
+		},
 		safeDate:
 			facts.projectedSafeAt === null
 				? null
-				: `On the current pace, waiting until about ${formatShortDate(facts.projectedSafeAt)} would avoid that entirely.`,
+				: {
+						key: 'shared.deliverabilityRamp.relayRemoval.safeDate',
+						params: { date: formatShortDate(facts.projectedSafeAt) },
+					},
 	};
 }
 
@@ -241,21 +257,16 @@ export type RampControlRefusal = NonNullable<
 >;
 
 const REFUSAL_SENTENCES = {
-	controller_paused:
-		'The ramp is globally paused, so this cell cannot be raised right now. Resume the ramp first.',
-	hard_stop_active:
-		'A safety hold is active on this cell — an abuse hold, an open circuit breaker, a critical blocklist listing or a cooldown from an earlier pull-back. Clear it and try again.',
-	cell_not_ramp_managed:
-		'This cell is not on the ramp yet. Put it on the ramp to let the controller decide its share.',
-	cell_already_ramp_managed:
-		'This cell is already on the ramp, so it keeps the streak and the phase it has earned. Use the phase reset to start it over.',
+	controller_paused: 'shared.deliverabilityRamp.refusal.controllerPaused',
+	hard_stop_active: 'shared.deliverabilityRamp.refusal.hardStopActive',
+	cell_not_ramp_managed: 'shared.deliverabilityRamp.refusal.cellNotRampManaged',
+	cell_already_ramp_managed: 'shared.deliverabilityRamp.refusal.cellAlreadyRampManaged',
 	phase_increase_requires_promotion:
-		'A phase ceiling only ever rises through a promotion, which checks the evidence for the next rung. Promote the cell instead of resetting it upward.',
-	promotion_evidence_outstanding:
-		'The evidence for the next phase is not in yet. The conditions still outstanding are listed with the cell, and the promotion works as soon as any one route is complete.',
+		'shared.deliverabilityRamp.refusal.phaseIncreaseRequiresPromotion',
+	promotion_evidence_outstanding: 'shared.deliverabilityRamp.refusal.promotionEvidenceOutstanding',
 } as const satisfies Record<RampControlRefusal, string>;
 
-export function rampRefusalSentence(refusal: RampControlRefusal): string {
+export function rampRefusalSentence(refusal: RampControlRefusal): LocalizedText {
 	return REFUSAL_SENTENCES[refusal];
 }
 
@@ -275,12 +286,13 @@ export type RampPromotionCondition = NonNullable<
 
 /** Each condition as the THING TO DO, not as the identifier it is stored under. */
 const PROMOTION_CONDITION_LABELS = {
-	google_compliance_pass: 'Google’s Compliance Status passing for this domain in the last 7 days',
-	snds_complaint_band_green: 'Microsoft SNDS reporting a green complaint band in the last 7 days',
-	dwell_multiple_served: 'longer spent at the current phase',
-	seed_probe_pass_recent: 'a recent passing seed-mailbox placement probe',
-	dnsbl_clean_streak: '14 consecutive blocklist-clean days across every sending IP',
-	deferral_under_threshold_all_cells: 'every cell’s deferral rate under its threshold',
+	google_compliance_pass: 'shared.deliverabilityRamp.promotionCondition.googleCompliancePass',
+	snds_complaint_band_green: 'shared.deliverabilityRamp.promotionCondition.sndsComplaintBandGreen',
+	dwell_multiple_served: 'shared.deliverabilityRamp.promotionCondition.dwellMultipleServed',
+	seed_probe_pass_recent: 'shared.deliverabilityRamp.promotionCondition.seedProbePassRecent',
+	dnsbl_clean_streak: 'shared.deliverabilityRamp.promotionCondition.dnsblCleanStreak',
+	deferral_under_threshold_all_cells:
+		'shared.deliverabilityRamp.promotionCondition.deferralUnderThresholdAllCells',
 } as const satisfies Record<RampPromotionCondition, string>;
 
 /**
@@ -292,7 +304,7 @@ const PROMOTION_CONDITION_LABELS = {
  * runtime. (`rampReasonLabel` keeps its fallback for the opposite reason: it
  * reads ninety days of stored history, where a retired code genuinely arrives.)
  */
-export function rampPromotionConditionLabel(condition: RampPromotionCondition): string {
+export function rampPromotionConditionLabel(condition: RampPromotionCondition): LocalizedText {
 	return PROMOTION_CONDITION_LABELS[condition];
 }
 
@@ -329,13 +341,17 @@ export function rampEnrolledSentence(
 	share: number,
 	path: RampEnrollmentPath,
 	isShareRouted: boolean
-): string {
+): LocalizedText {
+	const params = { share: shareLabel(share) };
 	if (path !== 'esp_relay') {
-		return `On the ramp at ${shareLabel(share)} of this cell. There is no relay to move traffic away from, so the whole cell sends from your own server and the warm-up pace is the dial that ramps.`;
+		return { key: 'shared.deliverabilityRamp.enrolled.pace', params };
 	}
-	return isShareRouted
-		? `On the ramp at ${shareLabel(share)} of this cell — your relay carries the rest, and the controller moves the share only on the evidence.`
-		: `On the ramp at ${shareLabel(share)} of this cell, and the controller moves it only on the evidence. No mail follows that share yet: this stream's route does not split by share, so every message keeps going where the route already sends it.`;
+	return {
+		key: isShareRouted
+			? 'shared.deliverabilityRamp.enrolled.relayRouted'
+			: 'shared.deliverabilityRamp.enrolled.relayUnrouted',
+		params,
+	};
 }
 
 /**
@@ -356,21 +372,25 @@ export function rampPromotionSentence(
 	applied: boolean,
 	phaseCeiling: number,
 	isRelayConfigured: boolean
-): string {
+): LocalizedText {
+	const params = { ceiling: shareLabel(phaseCeiling) };
 	if (!applied) {
-		return `This cell is already on the top phase rung (${shareLabel(phaseCeiling)}), so there is nothing left to promote.`;
+		return { key: 'shared.deliverabilityRamp.promotion.alreadyTopRung', params };
 	}
-	return isRelayConfigured
-		? `Promoted to the ${shareLabel(phaseCeiling)} phase. The share does not jump — it climbs toward the new ceiling on the ordinary checks.`
-		: `Promoted to the ${shareLabel(phaseCeiling)} phase. The share does not jump, and with no relay connected there is nothing holding it below the rung: the rung is recorded, and it bounds the share the day a second sender carries this cell again.`;
+	return {
+		key: isRelayConfigured
+			? 'shared.deliverabilityRamp.promotion.appliedWithRelay'
+			: 'shared.deliverabilityRamp.promotion.appliedStandalone',
+		params,
+	};
 }
 
 // ============ PRESETS ============
 
 export interface RampPresetOption {
 	readonly value: RampPreset;
-	readonly label: string;
-	readonly description: string;
+	readonly label: LocalizedText;
+	readonly description: LocalizedText;
 }
 
 /**
@@ -381,20 +401,18 @@ export interface RampPresetOption {
 export const RAMP_PRESET_OPTIONS: readonly RampPresetOption[] = [
 	{
 		value: 'conservative',
-		label: 'Conservative',
-		description:
-			'Half-size steps and two extra clean windows before each one. Slowest to finish, least likely to overshoot a provider’s tolerance.',
+		label: 'shared.deliverabilityRamp.preset.conservative.label',
+		description: 'shared.deliverabilityRamp.preset.conservative.description',
 	},
 	{
 		value: 'balanced',
-		label: 'Balanced',
-		description: 'The shipped pace: full-size steps after three consecutive clean windows.',
+		label: 'shared.deliverabilityRamp.preset.balanced.label',
+		description: 'shared.deliverabilityRamp.preset.balanced.description',
 	},
 	{
 		value: 'aggressive',
-		label: 'Aggressive',
-		description:
-			'Half again the step size on the same evidence. Reaches full share sooner and retreats from further up when a gate breaks.',
+		label: 'shared.deliverabilityRamp.preset.aggressive.label',
+		description: 'shared.deliverabilityRamp.preset.aggressive.description',
 	},
 ];
 
@@ -416,7 +434,7 @@ export { cellLabel as rampCellLabel, providerLabel, streamLabel };
  * unparseable key — a stream retired since the row was written — reads as
  * itself, because a ninety-day history has to stay readable.
  */
-export function rampCellKeyLabel(cellKey: string): string {
+export function rampCellKeyLabel(cellKey: string): LocalizedText {
 	const cell = parseDeliverabilityCellKey(cellKey);
 	return cell === null ? cellKey : cellLabel(cell);
 }

@@ -21,11 +21,13 @@ const props = defineProps<{
 	unsubscribe: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 }>();
 
+const { t } = useI18n();
+
 const stack = usePostboxComposerStack();
 const { showToast } = useToast();
 
 const oneClickOp = useBackendOperation(api.mail.unsubscribe.performOneClick, {
-	label: 'Unsubscribe',
+	label: () => t('components.postbox.postboxUnsubscribeChip.unsubscribe'),
 	type: 'action',
 });
 
@@ -46,20 +48,24 @@ async function onClick() {
 	if (t.oneClick && t.httpUrl) {
 		// Explicit confirm — the POST is a state-changing request to a third
 		// party and must never fire on render or by accident.
-		const host = targetHost.value ?? 'the sender';
-		if (!window.confirm(`Unsubscribe from this mailing list?\n\nOwlat will send the standard one-click unsubscribe request to ${host}.`)) {
+		const host =
+			targetHost.value ?? t('components.postbox.postboxUnsubscribeChip.theSender');
+		if (!window.confirm(t('components.postbox.postboxUnsubscribeChip.confirm', { host }))) {
 			return;
 		}
 		const result = await oneClickOp.run({ messageId: props.messageId as Id<'mailMessages'> });
 		if (result?.ok) {
 			unsubscribed.value = true;
-			showToast('Unsubscribe request sent');
+			showToast(t('components.postbox.postboxUnsubscribeChip.requestSent'));
 		} else {
 			// Fail-soft: fall back to opening the page so the user can finish
 			// manually. When the action *threw* (result === undefined),
 			// useBackendOperation already toasted the error — don't double up.
 			if (result) {
-				showToast('Unsubscribe request failed — opening the unsubscribe page instead', 'error');
+				showToast(
+					t('components.postbox.postboxUnsubscribeChip.requestFailed'),
+					'error'
+				);
 			}
 			window.open(t.httpUrl, '_blank', 'noopener,noreferrer');
 		}
@@ -91,15 +97,15 @@ async function onClick() {
 		class="inline-flex items-center gap-1 text-xs text-text-tertiary"
 	>
 		<Icon name="lucide:check" class="w-3 h-3" />
-		Unsubscribed
+		{{ t('components.postbox.postboxUnsubscribeChip.unsubscribed') }}
 	</span>
 	<button
 		v-else
 		type="button"
 		class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-text-tertiary border border-border-subtle hover:text-text-primary hover:bg-bg-elevated disabled:opacity-50"
 		:disabled="oneClickOp.isLoading.value"
-		title="Unsubscribe from this mailing list"
-		aria-label="Unsubscribe from this mailing list"
+		:title="t('components.postbox.postboxUnsubscribeChip.chipTitle')"
+		:aria-label="t('components.postbox.postboxUnsubscribeChip.chipTitle')"
 		@click="onClick"
 	>
 		<Icon
@@ -107,6 +113,6 @@ async function onClick() {
 			class="w-3 h-3"
 			:class="{ 'animate-spin': oneClickOp.isLoading.value }"
 		/>
-		Unsubscribe
+		{{ t('components.postbox.postboxUnsubscribeChip.unsubscribe') }}
 	</button>
 </template>

@@ -42,6 +42,7 @@ const commonTimezones = timezoneOptions;
 const commonLanguages = languageSelectOptions;
 
 interface DoiStatusBadge {
+	/** Message key — this map is module scope, so it holds keys, not copy. */
 	label: string;
 	color: string;
 	icon: string | null;
@@ -49,8 +50,16 @@ interface DoiStatusBadge {
 
 // Single source of truth for double-opt-in status presentation (label + colour + icon).
 const DOI_STATUS_BADGES: Record<string, DoiStatusBadge> = {
-	confirmed: { label: 'Confirmed', color: 'text-success', icon: 'lucide:check-circle' },
-	pending: { label: 'Pending', color: 'text-warning', icon: 'lucide:clock' },
+	confirmed: {
+		label: 'shared.useContactDetail.doiStatus.confirmed',
+		color: 'text-success',
+		icon: 'lucide:check-circle',
+	},
+	pending: {
+		label: 'shared.useContactDetail.doiStatus.pending',
+		color: 'text-warning',
+		icon: 'lucide:clock',
+	},
 };
 
 const DOI_STATUS_DEFAULT: DoiStatusBadge = { label: '', color: 'text-text-tertiary', icon: null };
@@ -63,6 +72,7 @@ const getDoiStatusBadge = (status: string | undefined): DoiStatusBadge =>
  */
 export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 	const router = useRouter();
+	const { t } = useI18n();
 
 	// DATA: Convex queries
 	const { data: contact, isLoading: contactLoading } = useConvexQuery(
@@ -90,22 +100,22 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 
 	// Mutations
 	const { run: updateContact } = useBackendOperation(api.contacts.contacts.update, {
-		label: 'Update contact',
+		label: () => t('shared.useContactDetail.updateContactOperation'),
 		inlineTarget: saveError,
 	});
 	const { run: setPropertyValues } = useBackendOperation(api.contacts.propertyValues.bulkSet, {
-		label: 'Update contact properties',
+		label: () => t('shared.useContactDetail.updatePropertiesOperation'),
 		inlineTarget: saveError,
 	});
 	const { run: removePropertyValue } = useBackendOperation(api.contacts.propertyValues.remove, {
-		label: 'Clear contact property',
+		label: () => t('shared.useContactDetail.clearPropertyOperation'),
 		inlineTarget: saveError,
 	});
 	const { run: deleteContact } = useBackendOperation(api.contacts.contacts.remove, {
-		label: 'Delete contact',
+		label: () => t('shared.useContactDetail.deleteContactOperation'),
 	});
 	const { run: resendConfirmation } = useBackendOperation(api.topics.topics.resendDoiConfirmation, {
-		label: 'Resend confirmation email',
+		label: () => t('shared.useContactDetail.resendConfirmationOperation'),
 	});
 
 	// Resend the double-opt-in confirmation email to a contact still in the
@@ -262,13 +272,13 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 
 	// COMPUTED: display helpers
 	const getTimezoneLabel = (tz: string | undefined) => {
-		if (!tz) return 'Not set';
-		const found = commonTimezones.find((t) => t.value === tz);
+		if (!tz) return t('shared.useContactDetail.notSet');
+		const found = commonTimezones.find((zone) => zone.value === tz);
 		return found ? found.label : tz;
 	};
 
 	const getLanguageLabel = (lang: string | undefined) => {
-		if (!lang) return 'Not set';
+		if (!lang) return t('shared.useContactDetail.notSet');
 		const found = commonLanguages.find((l) => l.value === lang);
 		return found ? found.label : lang;
 	};
@@ -279,8 +289,13 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 		return value?.value ?? null;
 	};
 
-	// DOI Status helpers — derived from the shared DOI_STATUS_BADGES map.
-	const getDoiStatusLabel = (status: string | undefined) => getDoiStatusBadge(status).label;
+	// DOI Status helpers — derived from the shared DOI_STATUS_BADGES map, whose
+	// labels are message keys (the map is module scope). An unknown status has no
+	// label at all, and stays the empty string the page treats as "no badge".
+	const getDoiStatusLabel = (status: string | undefined) => {
+		const key = getDoiStatusBadge(status).label;
+		return key ? t(key) : '';
+	};
 	const getDoiStatusColor = (status: string | undefined) => getDoiStatusBadge(status).color;
 	const getDoiStatusIcon = (status: string | undefined): string | null =>
 		getDoiStatusBadge(status).icon;

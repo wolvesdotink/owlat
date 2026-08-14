@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Cancel Deletion \u2014 Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('cancelDeletion.pageTitle') });
 
 // Get the cancellation token from the URL
 const route = useRoute();
@@ -16,7 +18,7 @@ const errorMessage = ref<string | null>('');
 // Cancel deletion mutation
 const { run: cancelDeletion } = useBackendOperation(
 	api.auth.accountManagement.cancelAccountDeletion,
-	{ label: 'Cancel account deletion', inlineTarget: errorMessage }
+	{ label: () => t('cancelDeletion.operationLabel'), inlineTarget: errorMessage }
 );
 
 // Process the cancellation
@@ -48,8 +50,10 @@ onMounted(async () => {
 				<div class="flex justify-center mb-4">
 					<UiSpinner size="xl" />
 				</div>
-				<h1 class="text-xl font-semibold text-text-primary mb-2">Cancelling Deletion...</h1>
-				<p class="text-text-secondary text-sm">Please wait while we process your request.</p>
+				<h1 class="text-xl font-semibold text-text-primary mb-2">
+					{{ t('cancelDeletion.loadingTitle') }}
+				</h1>
+				<p class="text-text-secondary text-sm">{{ t('cancelDeletion.loadingBody') }}</p>
 			</div>
 
 			<!-- Success State -->
@@ -59,12 +63,14 @@ onMounted(async () => {
 						<Icon name="lucide:check" class="w-8 h-8 text-success" />
 					</div>
 				</div>
-				<h1 class="text-xl font-semibold text-text-primary mb-2">Deletion Cancelled</h1>
+				<h1 class="text-xl font-semibold text-text-primary mb-2">
+					{{ t('cancelDeletion.successTitle') }}
+				</h1>
 				<p class="text-text-secondary text-sm mb-6">
-					Your account deletion has been cancelled. Your account and all data will be preserved.
+					{{ t('cancelDeletion.successBody') }}
 				</p>
 				<UiButton to="/dashboard" class="gap-2 inline-flex">
-					Go to Dashboard
+					{{ t('cancelDeletion.goToDashboard') }}
 					<Icon name="lucide:arrow-right" class="w-4 h-4" />
 				</UiButton>
 			</div>
@@ -76,17 +82,20 @@ onMounted(async () => {
 						<Icon name="lucide:alert-circle" class="w-8 h-8 text-error" />
 					</div>
 				</div>
-				<h1 class="text-xl font-semibold text-text-primary mb-2">Cancellation Failed</h1>
+				<h1 class="text-xl font-semibold text-text-primary mb-2">
+					{{ t('cancelDeletion.errorTitle') }}
+				</h1>
 				<p class="text-text-secondary text-sm mb-4">
-					{{ errorMessage || "We couldn't process your cancellation request." }}
+					{{ errorMessage || t('cancelDeletion.errorBody') }}
 				</p>
 				<p class="text-text-tertiary text-xs mb-6">
-					The link may have expired or the deletion may have already been cancelled. If you believe
-					this is an error, please contact support.
+					{{ t('cancelDeletion.errorHint') }}
 				</p>
 				<div class="flex gap-3 justify-center">
-					<UiButton variant="secondary" to="/auth/login"> Sign In </UiButton>
-					<UiButton variant="ghost" to="/"> Go Home </UiButton>
+					<UiButton variant="secondary" to="/auth/login">{{
+						t('cancelDeletion.signIn')
+					}}</UiButton>
+					<UiButton variant="ghost" to="/">{{ t('cancelDeletion.goHome') }}</UiButton>
 				</div>
 			</div>
 
@@ -97,14 +106,15 @@ onMounted(async () => {
 						<Icon name="lucide:x-circle" class="w-8 h-8 text-warning" />
 					</div>
 				</div>
-				<h1 class="text-xl font-semibold text-text-primary mb-2">Invalid Link</h1>
+				<h1 class="text-xl font-semibold text-text-primary mb-2">
+					{{ t('cancelDeletion.noTokenTitle') }}
+				</h1>
 				<p class="text-text-secondary text-sm mb-6">
-					This cancellation link is invalid or missing the required token. Please use the link from
-					your email or sign in to manage your account.
+					{{ t('cancelDeletion.noTokenBody') }}
 				</p>
 				<div class="flex gap-3 justify-center">
-					<UiButton to="/auth/login"> Sign In </UiButton>
-					<UiButton variant="ghost" to="/"> Go Home </UiButton>
+					<UiButton to="/auth/login">{{ t('cancelDeletion.signIn') }}</UiButton>
+					<UiButton variant="ghost" to="/">{{ t('cancelDeletion.goHome') }}</UiButton>
 				</div>
 			</div>
 		</div>

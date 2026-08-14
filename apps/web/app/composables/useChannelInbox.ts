@@ -29,6 +29,8 @@ import {
  * under the `inbox` feature gate.
  */
 export function useChannelInbox(limit = 50) {
+	const { t } = useI18n();
+
 	// null = all channels (the backend falls back to the by-created-at index).
 	const channelFilter = ref<UnifiedTimelineChannel | null>(null);
 
@@ -72,7 +74,7 @@ export function useChannelInbox(limit = 50) {
 	// Open queue everywhere. `run` toasts its own categorized failure and
 	// resolves to `undefined` (never throws) on failure.
 	const { run: updateThreadStatus } = useBackendOperation(api.inbox.mutations.updateThreadStatus, {
-		label: 'Resolve conversation',
+		label: () => t('shared.useChannelInbox.resolveThreadOperation'),
 	});
 
 	const { showToast } = useToast();
@@ -80,7 +82,7 @@ export function useChannelInbox(limit = 50) {
 	async function resolveThread(threadId: Id<'conversationThreads'>) {
 		const result = await updateThreadStatus({ threadId, status: 'resolved' });
 		if (result === undefined) return;
-		showToast('Marked as resolved');
+		showToast(t('shared.useChannelInbox.markedResolved'));
 	}
 
 	return {

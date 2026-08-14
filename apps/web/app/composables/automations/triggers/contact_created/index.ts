@@ -2,13 +2,13 @@ import type { TriggerEditorModule } from '../types';
 
 export const contactCreatedTriggerEditorModule: TriggerEditorModule<'contact_created'> = {
 	kind: 'contact_created',
-	label: 'Contact Created',
-	description: 'Trigger when a new contact is added to your audience',
+	label: 'shared.automations.triggers.contactCreated.label',
+	description: 'shared.automations.triggers.contactCreated.description',
 	icon: 'lucide:user-plus',
 	color: 'lime',
 	requiresConfig: false,
 	createDefault: () => null,
 	validateForSubmit: () => null,
-	getSummary: () => 'When a new contact is added',
+	getSummary: () => 'shared.automations.triggers.contactCreated.summary',
 	EditorComponent: null,
 };

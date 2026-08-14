@@ -1,0 +1,637 @@
+{
+	"dashboard": {
+		"admin": {
+			"delivery": {
+				"advanced": {
+					"measurement": {
+						"pageTitle": "Zustellungsmessung — Owlat",
+						"windowNote": "Berichtszeitraum: {reported} · Prüfungen entschieden über {decision}",
+						"errorTitle": "Zustellungsmessungen konnten nicht geladen werden",
+						"errorMessage": "Die Versandmessungen konnten nicht geladen werden. Ihre Mail ist davon nicht betroffen — diese Seite liest nur.",
+						"loadingLabel": "Zustellungsmessungen werden geladen"
+					}
+				}
+			},
+			"instance": {
+				"index": {
+					"pageTitle": "Instanzverwaltung — Owlat",
+					"changeModeOperation": "Betriebsmodus ändern",
+					"modeChangedToast": "Betriebsmodus auf {mode} geändert",
+					"backToAdministration": "Verwaltung",
+					"title": "Instanz",
+					"subtitle": "Konfiguration, die alle in diesem Workspace betrifft.",
+					"operatingMode": "Betriebsmodus",
+					"operatingModeHelp": "Wählen Sie eine grobe Produktform. Sie sehen jede Funktionsänderung in der Vorschau, bevor sie angewendet wird, und beim Abschalten einer Funktion bleiben deren Daten erhalten.",
+					"reviewTitle": "Änderungen am Betriebsmodus prüfen",
+					"enableCount": "Aktivieren ({count})",
+					"disableCount": "Deaktivieren ({count})",
+					"nothing": "Nichts",
+					"keepData": "Deaktivierte Funktionen behalten ihre vorhandenen Daten.",
+					"applyChanges": "Änderungen anwenden",
+					"groups": {
+						"general": {
+							"title": "Allgemein",
+							"description": "Workspace-Name, Zeitzone, Standardabsender und Kampagnenvorgaben."
+						},
+						"features": {
+							"title": "Funktionen",
+							"description": "Feingranulare Feature-Flags und Pakete für die erweiterte Konfiguration."
+						},
+						"emailTheme": {
+							"title": "E-Mail-Design",
+							"description": "Standardgestaltung für Nachrichten, die dieser Workspace versendet."
+						},
+						"properties": {
+							"title": "Kontakteigenschaften",
+							"description": "Benutzerdefinierte Felder, die das Kundenverzeichnis gemeinsam nutzt."
+						},
+						"forms": {
+							"title": "Formulare",
+							"description": "Anmelde-Endpunkte und eingebettete Kundenformulare."
+						},
+						"channels": {
+							"title": "Kanäle",
+							"description": "Nachrichtenkanäle, die in der gesamten Instanz verfügbar sind."
+						},
+						"aiProvider": {
+							"title": "KI-Anbieter",
+							"description": "Wählen Sie den gehosteten oder selbst betriebenen Modellanbieter und schalten Sie die KI ein."
+						},
+						"agent": {
+							"title": "KI-Agent",
+							"description": "Konfigurieren Sie den organisationsweiten Agenten und prüfen Sie seinen Zustand."
+						},
+						"agentHealth": {
+							"title": "Agentenzustand",
+							"description": "Live-Genauigkeit, Eskalationen und jüngste Agentenläufe."
+						},
+						"autonomy": {
+							"title": "Autonomie",
+							"description": "Wie viel der Agent eigenständig tun darf und der Schalter, der ihn stoppt."
+						},
+						"sealedMail": {
+							"title": "Sichere Mail",
+							"description": "Legen Sie die Organisationsrichtlinie für geschützte persönliche Nachrichten fest."
+						},
+						"plugins": {
+							"title": "Plugins",
+							"description": "Installierte Plugins konfigurieren oder Einstellungen entfernen, die alte Plugins hinterlassen haben."
+						}
+					}
+				},
+				"agentHealth": {
+					"pageTitle": "Agentenzustand — Owlat",
+					"backToSettings": "Zurück zu den Einstellungen",
+					"title": "Agentenzustand & Überwachung",
+					"subtitle": "Überwachen Sie die Leistung der KI-Agenten-Pipeline, die Zustände der Schutzschalter und die wichtigsten Kennzahlen.",
+					"loading": "Zustandskennzahlen werden geladen...",
+					"circuitBreakers": {
+						"title": "Schutzschalter",
+						"description": "Schutzschalter sichern die Pipeline, indem sie den Betrieb anhalten, sobald Fehlerschwellen überschritten werden."
+					},
+					"keyMetrics": {
+						"title": "Wichtigste Kennzahlen",
+						"description": "Aktuelle Momentaufnahme der Pipeline-Leistung des Agenten über die letzten 5 Minuten."
+					},
+					"metrics": {
+						"queueDepth": {
+							"label": "Warteschlangenlänge",
+							"description": "Nachrichten, die auf Verarbeitung warten"
+						},
+						"latency": {
+							"label": "Verarbeitungslatenz",
+							"description": "Durchschnittliche Zeit für die Verarbeitung einer Nachricht"
+						},
+						"errorRate": {
+							"label": "Fehlerrate",
+							"description": "Anteil fehlgeschlagener Agentenaktionen"
+						},
+						"autoApprove": {
+							"label": "Auto-Freigabe-Quote",
+							"description": "Automatisch freigegebene Aktionen im Verhältnis zur Gesamtzahl"
+						},
+						"llmCost": {
+							"label": "LLM-Kosten",
+							"description": "Geschätzte Kosten für den aktuellen Zeitraum"
+						},
+						"processing": {
+							"label": "In Verarbeitung",
+							"description": "Nachrichten, die gerade klassifiziert werden"
+						}
+					},
+					"history": {
+						"title": "Kennzahlenverlauf",
+						"description": "Trends der letzten 24 Stunden."
+					},
+					"charts": {
+						"latency": "Verarbeitungslatenz (ms)",
+						"errorRate": "Fehlerrate",
+						"queueDepth": "Warteschlangenlänge"
+					}
+				},
+				"agent": {
+					"pageTitle": "KI-Agent-Einstellungen — Owlat",
+					"toggleOperation": "Agent umschalten",
+					"saveOperation": "Agent-Einstellungen speichern",
+					"cancelBackfillOperation": "Nachverarbeitung abbrechen",
+					"backfillCancelledToast": "Nachverarbeitung abgebrochen",
+					"backfillStatus": {
+						"pending": "In Warteschlange",
+						"running": "Mail-Verlauf wird durchsucht",
+						"completed": "Abgeschlossen",
+						"cancelled": "Abgebrochen",
+						"failed": "Fehlgeschlagen"
+					},
+					"savedToast": "Agent-Einstellungen erfolgreich gespeichert",
+					"backToSettings": "Zurück zu den Einstellungen",
+					"title": "KI-Agent",
+					"subtitle": "Legen Sie fest, wie der KI-Agent eingehende Nachrichten verarbeitet und Entwürfe erstellt.",
+					"saveChanges": "Änderungen speichern",
+					"loading": "Agent-Einstellungen werden geladen...",
+					"pipeline": {
+						"title": "Agenten-Pipeline",
+						"description": "Steuern Sie, ob der KI-Agent eingehende Nachrichten verarbeitet.",
+						"enableLabel": "Agenten-Pipeline aktivieren",
+						"enableHelp": "Wenn aktiviert, werden eingehende Nachrichten automatisch klassifiziert und beantwortet.",
+						"enableSwitch": "KI-Agent aktivieren",
+						"autoReplyLabel": "Automatische Antwort",
+						"autoReplyHelp": "Erlauben Sie dem Agenten, Antworten ohne menschliche Freigabe zu senden, wenn die Konfidenz über dem Schwellenwert liegt.",
+						"autoReplySwitch": "Automatische Antwort"
+					},
+					"backfill": {
+						"title": "Wissens-Nachverarbeitung",
+						"description": "Einmaliger Durchlauf durch Ihren eingehenden Mail-Verlauf, um den KI-Agenten mit Kontext zu versorgen.",
+						"progress": "{scanned} / {total} Nachrichten",
+						"progressLabel": "Fortschritt der Wissens-Nachverarbeitung",
+						"extracted": "Extrahiert",
+						"skipped": "Übersprungen",
+						"errors": "Fehler",
+						"cancel": "Nachverarbeitung abbrechen"
+					},
+					"limits": {
+						"title": "Konfidenz & Limits",
+						"description": "Legen Sie Schwellenwerte für die automatische Freigabe und Ratenbegrenzungen fest.",
+						"thresholdLabel": "Konfidenzschwelle",
+						"thresholdHelp": "Mindestkonfidenz für die automatische Freigabe. Entwürfe unterhalb dieser Schwelle gehen in die Prüfwarteschlange.",
+						"thresholdMin": "0 % (alles zur Prüfung)",
+						"thresholdMax": "100 % (nie automatisch freigeben)",
+						"dailyLabel": "Tageslimit für automatische Antworten",
+						"dailyHelp": "Maximale Anzahl automatisch freigegebener Antworten pro Tag. Darüber hinausgehende Nachrichten gehen in die Prüfwarteschlange.",
+						"coalesceLabel": "Zeitfenster für Nachrichtenbündelung",
+						"coalesceHelp": "So viele Sekunden auf weitere Nachrichten warten, bevor ein Thread verarbeitet wird. Verhindert die mehrfache Verarbeitung schneller Nachrichtenfolgen.",
+						"seconds": "Sekunden"
+					},
+					"tone": {
+						"title": "Tonfall & Signatur",
+						"description": "Legen Sie fest, wie der Agent im Namen Ihres Workspace kommuniziert.",
+						"toneLabel": "Beschreibung des Tonfalls",
+						"toneHelp": "Beschreiben Sie den Kommunikationsstil für vom Agenten erstellte Entwürfe.",
+						"tonePlaceholder": "z. B. professionell und freundlich. Den Vornamen der Kundin oder des Kunden verwenden. Antworten knapp, aber gründlich halten.",
+						"signatureLabel": "E-Mail-Signatur",
+						"signatureHelp": "Signatur, die an vom Agenten erstellte E-Mail-Antworten angehängt wird.",
+						"signaturePlaceholder": "z. B. Mit freundlichen Grüßen,\nIhr Support-Team\nsupport{'@'}ihrefirma.de"
+					}
+				},
+				"aiProvider": {
+					"pageTitle": "KI-Anbieter — Owlat",
+					"backToSettings": "Zurück zu den Einstellungen",
+					"title": "KI-Anbieter",
+					"subtitle": "Wählen Sie das KI-Backend, das jede KI-Funktion nutzt. Entscheiden Sie sich für einen gehosteten Anbieter und fügen Sie einen Schlüssel ein, oder verweisen Sie auf ein Modell, das Sie selbst betreiben.",
+					"loading": "KI-Einstellungen werden geladen…",
+					"language": {
+						"title": "Sprachmodell",
+						"description": "Betreibt jede Textfunktion — Antwortentwürfe, den Assistenten, Zusammenfassungen, Übersetzungen und mehr.",
+						"providerLabel": "Anbieter",
+						"getKey": "Schlüssel anfordern",
+						"apiKeyLabel": "API-Schlüssel",
+						"apiKeyHelp": "Einmal über TLS übertragen, verschlüsselt gespeichert und nie wieder angezeigt.",
+						"baseUrlDisclosure": "Erweitert: eigene Basis-URL (Proxy / Gateway)",
+						"baseUrlLabel": "Basis-URL",
+						"baseUrlHelpHosted": "Anfragen über einen eigenen Endpunkt leiten. Leer lassen, um die Vorgabe des Anbieters zu verwenden.",
+						"baseUrlHelpLocal": "Die Adresse Ihres lokalen Servers (Ollama, vLLM, llama.cpp).",
+						"capableLabel": "Leistungsstarkes Modell",
+						"capableHint": "Für schwierige Aufgaben — Schlussfolgern, lange Entwürfe.",
+						"fastLabel": "Schnelles Modell",
+						"fastHint": "Für schnelle Aufgaben — Klassifizierung, kurze Antworten.",
+						"loadModels": "Verfügbare Modelle laden",
+						"loadedModels": "{count} Modelle von Ihrem Anbieter geladen.",
+						"saveFirstModels": "Zuerst speichern, dann die Live-Modellliste laden."
+					},
+					"embeddings": {
+						"title": "Embeddings",
+						"description": "Sie betreiben die semantische Suche und den Wissensgraphen. Sie laufen getrennt von Ihrem Sprachmodell, sodass die Suche mit jedem Anbieter oben funktioniert.",
+						"localTitle": "Lokal (mitgeliefert) — keine Einrichtung nötig",
+						"localBody": "Ein lokales Embedding-Modell wird mit Ihrer Installation ausgeliefert, sodass die Suche sofort funktioniert.",
+						"hostedDisclosure": "Erweitert: stattdessen einen gehosteten Embedder verwenden",
+						"providerLabel": "Embedding-Anbieter",
+						"modelLabel": "Embedding-Modell",
+						"dimensionsHint": "{dimensions}-dimensionale Vektoren.",
+						"apiKeyLabel": "Embedding-API-Schlüssel",
+						"apiKeyHelp": "Verschlüsselt gespeichert, wird nie wieder angezeigt.",
+						"reindexTitle": "Ein Wechsel der Embeddings erfordert eine Neuindizierung",
+						"reindexBody": "Neue und alte Vektoren sind nicht vergleichbar. Indizieren Sie Ihr Wissen nach dem Speichern neu, damit die Suche genau bleibt."
+					},
+					"testConnection": "Verbindung testen",
+					"connectionWorks": "Verbindung funktioniert",
+					"saveFirstTest": "Zuerst speichern, dann testen.",
+					"save": "KI-Anbieter speichern"
+				},
+				"autonomy": {
+					"pageTitle": "Autonomieregeln — Owlat",
+					"operations": {
+						"killSwitch": "Automatischen Versand stoppen",
+						"enableSender": "Automatischen Versand für Absender aktivieren",
+						"applySuggestion": "Stufenvorschlag anwenden",
+						"dismissDemotion": "Herabstufungshinweis schließen",
+						"saveWorkingHours": "Arbeitszeiten speichern"
+					},
+					"toasts": {
+						"ruleSaved": "Autonomieregel erfolgreich gespeichert",
+						"ruleDeleted": "Autonomieregel gelöscht",
+						"autoSendingStopped": "Automatischer Versand gestoppt — zurück auf reinen Entwurfsmodus",
+						"senderEnabled": "Automatischer Versand für {sender} aktiviert",
+						"suggestionApplied": "Stufenvorschlag angewendet",
+						"alertDismissed": "Hinweis geschlossen",
+						"workingHoursSaved": "Arbeitszeiten gespeichert"
+					},
+					"backToSettings": "Zurück zu den Einstellungen",
+					"title": "Gestufte Autonomie",
+					"subtitle": "Konfigurieren Sie Regeln je Kategorie, die festlegen, wann der KI-Agent Aktionen automatisch freigeben darf und wann eine menschliche Prüfung nötig ist. Die Schwellenwerte passen sich automatisch an das Feedback der Menschen an.",
+					"addRule": "Regel hinzufügen",
+					"loading": "Autonomieregeln werden geladen...",
+					"errorTitle": "Autonomieregeln konnten nicht geladen werden",
+					"errorMessage": "Beim Laden der Autonomieregeln ist ein Fehler aufgetreten. Laden Sie die Seite neu, um es erneut zu versuchen.",
+					"emptyTitle": "Keine Autonomieregeln konfiguriert",
+					"emptyBody": "Erstellen Sie Regeln, die steuern, wie der KI-Agent verschiedene Nachrichtenarten behandelt. Jede Kategorie kann eine eigene Konfidenzschwelle und eigene Tageslimits haben.",
+					"createFirstRule": "Erste Regel erstellen",
+					"howItWorks": {
+						"title": "So funktioniert es",
+						"step1": "Der Agent ordnet jede eingehende Nachricht einer Kategorie zu.",
+						"step2": "Liegt die Konfidenz über der Schwelle und ist das Tageslimit nicht erreicht, wird die Aktion automatisch freigegeben.",
+						"step3": "Andernfalls geht die Aktion zur menschlichen Freigabe in die Prüfwarteschlange.",
+						"step4": "Die Schwellenwerte passen sich wöchentlich anhand der Ablehnungsmuster an. Viele Ablehnungen verschärfen die Schwelle, wenige lockern sie."
+					}
+				},
+				"channels": {
+					"pageTitle": "Nachrichtenkanäle — Owlat",
+					"addChannel": "Kanal hinzufügen",
+					"addedToast": "Kanal hinzugefügt — konfigurieren Sie ihn unten",
+					"savedToast": "Kanalkonfiguration erfolgreich gespeichert",
+					"backToSettings": "Zurück zu den Einstellungen",
+					"title": "Nachrichtenkanäle",
+					"subtitle": "Verbinden und überwachen Sie die Nachrichtenintegrationen — SMS, WhatsApp und Webchat/Webhooks —, die Ihre Kontakte über E-Mail hinaus erreichen. Nach der Aktivierung senden Sie eine Nachricht an einen Kontakt aus dessen einheitlicher Chronik, und auch Antworten des KI-Agenten laufen darüber. E-Mail und Team-Chat sind eingebaut und benötigen hier keine Einrichtung; um den E-Mail-Versand zu konfigurieren, richten Sie Ihren {transportLink} und eine verifizierte {domainLink} ein.",
+					"subtitleTransportLink": "Zustellanbieter",
+					"subtitleDomainLink": "Absenderdomain",
+					"emptyTitle": "Keine Kanäle konfiguriert",
+					"emptyBodyAdmin": "Verwenden Sie oben {action}, um einen Kommunikationskanal für Ihren Workspace einzurichten.",
+					"emptyBodyMember": "Kommunikationskanäle erscheinen hier, sobald eine Inhaberin oder ein Administrator sie für Ihren Workspace eingerichtet hat.",
+					"overview": {
+						"title": "Kanalübersicht",
+						"total": "Kanäle insgesamt",
+						"healthy": "Gesund",
+						"degraded": "Beeinträchtigt",
+						"down": "Ausgefallen"
+					},
+					"howItWorks": {
+						"title": "So funktionieren Kanäle",
+						"step1": "Jeder Kanal ist ein externes Nachrichtenmedium (SMS, WhatsApp oder ein generischer Webhook).",
+						"step2": "Kanäle nutzen Adapter, um sich mit ihren Anbietern zu verbinden. Konfigurieren Sie unten die Zugangsdaten jedes Kanals.",
+						"step3": "Die Zustandsüberwachung läuft automatisch und meldet den Status jedes aktivierten Kanals.",
+						"step4": "Eingehende Nachrichten fließen bei jedem Kanal in die einheitliche Pipeline. Sobald ein Kanal aktiviert ist, senden Sie aus der einheitlichen Chronik eines Kontakts — SMS, WhatsApp und generische Nachrichten laufen über die jeweils konfigurierten Anbieter, ebenso wie Antworten des KI-Agenten."
+					}
+				},
+				"emailTheme": {
+					"pageTitle": "E-Mail-Design — Owlat",
+					"saveOperation": "E-Mail-Design speichern",
+					"fonts": {
+						"arial": "Arial",
+						"helvetica": "Helvetica",
+						"georgia": "Georgia",
+						"timesNewRoman": "Times New Roman",
+						"verdana": "Verdana",
+						"trebuchetMs": "Trebuchet MS",
+						"courierNew": "Courier New",
+						"systemDefault": "Systemstandard"
+					},
+					"errors": {
+						"primaryColor": "Bitte geben Sie eine gültige Hex-Farbe ein (z. B. #c4785a)",
+						"backgroundColor": "Bitte geben Sie eine gültige Hex-Farbe ein (z. B. #ffffff)"
+					},
+					"savedToast": "E-Mail-Design erfolgreich gespeichert",
+					"backToSettings": "Zurück zu den Einstellungen",
+					"title": "E-Mail-Design",
+					"subtitle": "Konfigurieren Sie die Standardgestaltung für Ihre E-Mail-Vorlagen",
+					"loading": "Design-Einstellungen werden geladen...",
+					"settingsTitle": "Design-Einstellungen",
+					"settingsSubtitle": "Legen Sie Farben und Schriften für Ihre E-Mails fest",
+					"primaryColor": "Primärfarbe",
+					"primaryColorHelp": "Wird für Schaltflächen und Handlungsaufforderungen in Ihren E-Mails verwendet.",
+					"backgroundColor": "Hintergrundfarbe",
+					"backgroundColorHelp": "Die Hintergrundfarbe Ihres E-Mail-Textkörpers.",
+					"fontFamily": "Schriftart",
+					"fontFamilyHelp": "Die Standardschrift für Textinhalte in Ihren E-Mails.",
+					"emailWidth": "E-Mail-Breite",
+					"px": "px",
+					"emailWidthHelp": "Maximale Breite Ihrer E-Mail auf dem Desktop (400–800 px). Standard sind 600 px.",
+					"resetToDefaults": "Auf Standardwerte zurücksetzen",
+					"unsaved": "Nicht gespeichert",
+					"savingTheme": "Wird gespeichert...",
+					"saveTheme": "Design speichern",
+					"previewSubtitle": "Sehen Sie, wie Ihr Design in E-Mails wirkt",
+					"preview": {
+						"heading": "Willkommen zu unserem Newsletter",
+						"body": "Danke für Ihre Anmeldung! Wir freuen uns, Sie an Bord zu haben. Freuen Sie sich auf Neuigkeiten, Tipps und exklusive Inhalte direkt in Ihrem Postfach.",
+						"button": "Jetzt loslegen",
+						"footer": "Sie erhalten diese E-Mail, weil Sie sich für unseren Newsletter angemeldet haben.",
+						"note": "Dies ist eine vereinfachte Vorschau. Tatsächliche E-Mails können je nach Darstellung im E-Mail-Programm abweichen."
+					}
+				},
+				"features": {
+					"pageTitle": "Funktionen — Owlat",
+					"toggleFlagOperation": "Feature-Flag umschalten",
+					"togglePackOperation": "Funktionspaket umschalten",
+					"configUnverified": "Die Plugin-Konfiguration konnte nicht überprüft werden.",
+					"categories": {
+						"sending": "Versand",
+						"receiving": "Empfang",
+						"ai": "KI",
+						"integrations": "Integrationen",
+						"security": "Sicherheit & Prüfung",
+						"deliverability": "Analyse & Zustellbarkeit",
+						"plugins": "Mitgelieferte Plugins"
+					},
+					"toasts": {
+						"configUnverified": "Die Plugin-Konfiguration konnte nicht überprüft werden. Wiederholen Sie zuerst die Statusprüfung.",
+						"configLoading": "Der Status der Plugin-Konfiguration wird noch geladen. Versuchen Sie es gleich erneut.",
+						"flagEnabled": "{label} aktiviert.",
+						"flagDisabled": "{label} deaktiviert.",
+						"alsoDisabled": "Ebenfalls deaktiviert: {flags}",
+						"inboundDns": "Mail empfangen? Legen Sie die MX-Einträge unter Einstellungen → Domains → Empfang an.",
+						"packEnabled": "{label} aktiviert.",
+						"packDisabled": "{label} deaktiviert.",
+						"alsoAffected": "Ebenfalls betroffen: {flags}"
+					},
+					"deliveryProviderRequirement": "Ein Zustellanbieter — setzen Sie EMAIL_PROVIDER auf einen registrierten Transport, konfigurieren Sie dessen Voraussetzungen und starten Sie dann neu",
+					"pluginStatus": {
+						"retryFirst": "Wiederholen Sie die fehlgeschlagene Prüfung der Plugin-Konfiguration vor dem Aktivieren",
+						"loading": "Der Status der Plugin-Konfiguration wird noch geladen"
+					},
+					"title": "Funktionen",
+					"subtitle": "Schalten Sie die Produktbereiche um, die diese Owlat-Instanz bereitstellt. Deaktivierte Funktionen verschwinden aus der Navigation, sperren ihre APIs und starten ihre Hintergrunddienste nicht.",
+					"packs": {
+						"title": "Funktionspakete",
+						"description": "Bündel zusammengehöriger Flags. Beim Umschalten eines Pakets werden alle darin enthaltenen Flags (und deren Abhängigkeiten) umgeschaltet.",
+						"partial": "Teilweise",
+						"flags": "Flags: {flags}"
+					},
+					"toggleAria": "{label} umschalten",
+					"inboundDnsHint": "Für den Mail-Empfang werden MX- und Eingangsport-DNS-Einträge benötigt. Legen Sie die Einträge unter {link} an, damit eingehende Mail diese Instanz erreicht.",
+					"inboundDnsLink": "Einstellungen → Domains → Empfang",
+					"needsConfig": "Konfiguration nötig",
+					"needsConfigTitle": "Aktiviert, aber nicht konfiguriert — es fehlt: {missing}",
+					"enableRequiredFirst": "Aktivieren Sie zuerst {flags}",
+					"cascade": {
+						"title": "{label} deaktivieren?",
+						"titleFallback": "Funktion deaktivieren?",
+						"description": "Wenn Sie dies deaktivieren, werden auch die unten aufgeführten abhängigen Funktionen abgeschaltet.",
+						"confirm": "Alle deaktivieren"
+					},
+					"approval": {
+						"title": "{label} genehmigen?",
+						"titleFallback": "Plugin-Zugriff genehmigen?",
+						"description": "Dieses mitgelieferte Plugin darf ausschließlich die unten aufgeführten Berechtigungen nutzen. Das Aktivieren hält Ihre ausdrückliche Genehmigung fest, das Deaktivieren widerruft jede Erteilung.",
+						"confirm": "Genehmigen & aktivieren"
+					},
+					"missingEnv": {
+						"title": "{label} benötigt eine Konfiguration",
+						"titleFallback": "Konfiguration erforderlich",
+						"body": "Diese Funktion benötigt die folgenden Umgebungsvariablen in {path}:",
+						"howTo": "Führen Sie {envCommand} auf dem Host aus und danach {restartCommand}.",
+						"gotIt": "Verstanden"
+					}
+				},
+				"forms": {
+					"pageTitle": "Formulare — Owlat",
+					"backToSettings": "Zurück zu den Einstellungen",
+					"title": "Formular-Endpunkte",
+					"subtitle": "Erstellen Sie einbettbare Anmeldeformulare für Ihre Website",
+					"newForm": "Neues Formular",
+					"loading": "Formulare werden geladen...",
+					"noWorkspaceTitle": "Kein Workspace ausgewählt",
+					"noWorkspaceBody": "Erstellen oder wählen Sie einen Workspace, um Formular-Endpunkte zu verwalten.",
+					"infoTitle": "Was sind Formular-Endpunkte?",
+					"infoBody": "Mit Formular-Endpunkten sammeln Sie E-Mail-Anmeldungen direkt auf Ihrer Website. Erstellen Sie ein Formular, konfigurieren Sie die Felder und betten Sie den HTML-Code auf einer beliebigen Seite ein. Eingänge werden automatisch als Kontakte und optional zu einem Thema hinzugefügt.",
+					"emptyTitle": "Noch keine Formular-Endpunkte",
+					"emptyBody": "Erstellen Sie Ihren ersten Formular-Endpunkt, um Anmeldungen von Ihrer Website zu sammeln.",
+					"createFirst": "Erstellen Sie Ihr erstes Formular",
+					"topicLine": "Thema: {topic}",
+					"submissionsCount": "{count} Eingänge",
+					"createdOn": "Erstellt am {date}",
+					"disableForm": "Formular deaktivieren",
+					"enableForm": "Formular aktivieren",
+					"editForm": "Formular bearbeiten",
+					"deleteForm": "Formular löschen",
+					"stats": {
+						"title": "Eingangsstatistik",
+						"total": "Gesamt",
+						"successful": "Erfolgreich",
+						"other": "Sonstige"
+					},
+					"endpointUrl": "URL des Formular-Endpunkts",
+					"copyUrl": "URL kopieren",
+					"embedCode": "Einbettungscode",
+					"copied": "Kopiert!",
+					"copyCode": "Code kopieren",
+					"tipLabel": "Tipp:",
+					"tip": "{label} Kopieren Sie dieses HTML und fügen Sie es in Ihre Website ein. Gestalten Sie das Formular per CSS passend zu Ihrem Design. Das Formular sendet die Daten direkt an Ihr Owlat-Konto.",
+					"fields": {
+						"name": "Formularname",
+						"namePlaceholder": "z. B. Newsletter-Anmeldung",
+						"topic": "Zu Thema hinzufügen",
+						"noTopic": "Keines (nur Kontakte)",
+						"topicHelp": "Neue Anmeldungen werden diesem Thema automatisch hinzugefügt.",
+						"redirect": "Weiterleitungs-URL (optional)",
+						"redirectHelp": "Nutzerinnen und Nutzer nach erfolgreicher Anmeldung hierhin weiterleiten. Leer lassen für eine JSON-Antwort.",
+						"honeypot": "Name des Honeypot-Felds (optional)",
+						"honeypotPlaceholder": "z. B. website_url",
+						"honeypotHelp": "Ein verstecktes Feld zur Spam-Abwehr. Bots füllen es aus, Menschen nicht.",
+						"doubleOptIn": "Double-Opt-in aktivieren",
+						"doubleOptInHelp": "Vor dem Abonnieren eine E-Mail-Bestätigung verlangen. Für die DSGVO-Konformität empfohlen."
+					},
+					"addModal": {
+						"title": "Formular-Endpunkt erstellen",
+						"creating": "Wird erstellt...",
+						"create": "Formular erstellen"
+					},
+					"editModal": {
+						"title": "Formular-Endpunkt bearbeiten",
+						"saving": "Wird gespeichert...",
+						"save": "Änderungen speichern"
+					},
+					"deleteModal": {
+						"title": "Formular-Endpunkt löschen",
+						"description": "Möchten Sie \"{name}\" wirklich löschen?",
+						"confirm": "Formular löschen",
+						"records": "Dabei werden auch {count} Eingangsdatensätze gelöscht.",
+						"irreversible": "Diese Aktion kann nicht rückgängig gemacht werden. Das Formular nimmt sofort keine Eingänge mehr an."
+					}
+				},
+				"general": {
+					"pageTitle": "Allgemeine Instanzeinstellungen — Owlat",
+					"saveOperation": "Einstellungen speichern",
+					"toggleArchivesOperation": "Kampagnenarchive umschalten",
+					"errors": {
+						"nameRequired": "Der Teamname ist erforderlich",
+						"emailInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein"
+					},
+					"savedToast": "Einstellungen erfolgreich gespeichert",
+					"title": "Allgemein",
+					"subtitle": "Workspace-weite Identität und Versandvorgaben",
+					"loading": "Einstellungen werden geladen...",
+					"noWorkspaceTitle": "Kein Workspace ausgewählt",
+					"noWorkspaceBody": "Erstellen oder wählen Sie einen Workspace, um Einstellungen zu verwalten.",
+					"cardTitle": "Allgemein",
+					"cardSubtitle": "Team-Einstellungen und Vorgaben",
+					"teamName": "Teamname",
+					"teamNamePlaceholder": "Mein Team",
+					"teamNameHelp": "Dieser Name erscheint in den E-Mails und im Dashboard Ihres Teams.",
+					"timezone": "Zeitzone",
+					"timezoneHelp": "Ersatzzeitzone für sendezeitoptimierte Kampagnen, wenn die Zeitzone einer Empfängerin oder eines Empfängers unbekannt ist.",
+					"timezones": {
+						"placeholder": "Zeitzone wählen...",
+						"americaNewYork": "Eastern Time (USA & Kanada)",
+						"americaChicago": "Central Time (USA & Kanada)",
+						"americaDenver": "Mountain Time (USA & Kanada)",
+						"americaLosAngeles": "Pacific Time (USA & Kanada)",
+						"americaAnchorage": "Alaska",
+						"pacificHonolulu": "Hawaii",
+						"americaPhoenix": "Arizona",
+						"americaToronto": "Eastern Time (Kanada)",
+						"americaVancouver": "Pacific Time (Kanada)",
+						"europeLondon": "London",
+						"europeParis": "Paris, Berlin, Amsterdam",
+						"europeBerlin": "Berlin, Frankfurt",
+						"europeAmsterdam": "Amsterdam",
+						"europeMadrid": "Madrid",
+						"europeRome": "Rom, Mailand",
+						"europeZurich": "Zürich, Genf",
+						"europeStockholm": "Stockholm",
+						"europeWarsaw": "Warschau",
+						"europeMoscow": "Moskau",
+						"asiaDubai": "Dubai",
+						"asiaKolkata": "Mumbai, Neu-Delhi",
+						"asiaSingapore": "Singapur",
+						"asiaHongKong": "Hongkong",
+						"asiaShanghai": "Shanghai, Peking",
+						"asiaTokyo": "Tokio",
+						"asiaSeoul": "Seoul",
+						"australiaSydney": "Sydney",
+						"australiaMelbourne": "Melbourne",
+						"australiaBrisbane": "Brisbane",
+						"australiaPerth": "Perth",
+						"pacificAuckland": "Auckland",
+						"utc": "UTC"
+					},
+					"senderSection": "Standard-Absenderangaben",
+					"senderSectionHelp": "Diese Werte sind die Vorgabe, von der aus die App System-Mails versendet (Bestätigungen, Passwort-Zurücksetzungen), und sie füllen neue Kampagnen vor.",
+					"manageSenders": "Adressen verwalten, von denen Kampagnen senden dürfen",
+					"fromName": "Standard-Absendername",
+					"fromNamePlaceholder": "z. B. Firmenname",
+					"fromNameHelp": "Der Absendername, den Empfängerinnen und Empfänger in ihrem Postfach sehen.",
+					"fromEmail": "Standard-Absenderadresse",
+					"fromEmailPlaceholder": "z. B. hallo{'@'}firma.de",
+					"fromEmailHelp": "Die E-Mail-Adresse, von der Ihre Kampagnen versendet werden.",
+					"setUpVerifiedDomain": "Eine verifizierte Domain einrichten",
+					"verifiedLabel": "Verifiziert:",
+					"archives": "Kampagnenarchive standardmäßig aktivieren",
+					"archivesHelp": "Neue Kampagnen enthalten einen Link \"Im Browser ansehen\" und eine öffentliche Archivseite.",
+					"unsavedChanges": "Sie haben ungespeicherte Änderungen",
+					"saving": "Wird gespeichert...",
+					"saveChanges": "Änderungen speichern",
+					"connectedWorkspaces": "Verbundene Workspaces",
+					"connectedWorkspacesHelp": "Wechseln Sie zwischen den Owlat-Workspaces, die Sie auf diesem Gerät verbunden haben, oder verbinden Sie einen weiteren."
+				},
+				"properties": {
+					"pageTitle": "Kontakteigenschaften — Owlat",
+					"operations": {
+						"create": "Eigenschaft erstellen",
+						"update": "Eigenschaft aktualisieren",
+						"remove": "Eigenschaft löschen"
+					},
+					"types": {
+						"string": {
+							"label": "Text",
+							"description": "Einzeiliger Text"
+						},
+						"number": {
+							"label": "Zahl",
+							"description": "Numerische Werte"
+						},
+						"boolean": {
+							"label": "Wahrheitswert",
+							"description": "Wahr oder falsch"
+						},
+						"date": {
+							"label": "Datum",
+							"description": "Datumswerte"
+						}
+					},
+					"errors": {
+						"labelRequired": "Die Bezeichnung ist erforderlich",
+						"keyRequired": "Der Schlüssel ist erforderlich",
+						"keyFormat": "Der Schlüssel darf nur Kleinbuchstaben, Zahlen und Unterstriche enthalten"
+					},
+					"toasts": {
+						"created": "Eigenschaft \"{label}\" erstellt",
+						"updated": "Eigenschaft aktualisiert",
+						"deleted": "Eigenschaft \"{label}\" gelöscht"
+					},
+					"backToSettings": "Zurück zu den Einstellungen",
+					"title": "Kontakteigenschaften",
+					"subtitle": "Erstellen und verwalten Sie benutzerdefinierte Felder für Ihre Kontakte",
+					"newProperty": "Neue Eigenschaft",
+					"errorTitle": "Eigenschaften konnten nicht geladen werden",
+					"loading": "Eigenschaften werden geladen...",
+					"noTeamTitle": "Kein Team ausgewählt",
+					"noTeamBody": "Erstellen oder wählen Sie ein Team, um Kontakteigenschaften zu verwalten.",
+					"cardTitle": "Eigenschaften",
+					"customFieldCount": "{count} benutzerdefiniertes Feld | {count} benutzerdefinierte Felder",
+					"emptyTitle": "Noch keine Eigenschaften",
+					"emptyBody": "Erstellen Sie benutzerdefinierte Eigenschaften, um weitere Informationen zu Ihren Kontakten zu speichern.",
+					"createFirst": "Erste Eigenschaft erstellen",
+					"typesTitle": "Eigenschaftstypen",
+					"createModal": {
+						"title": "Neue Eigenschaft",
+						"creating": "Wird erstellt...",
+						"create": "Eigenschaft erstellen"
+					},
+					"fields": {
+						"label": "Bezeichnung",
+						"labelPlaceholder": "z. B. Firmenname",
+						"labelHelp": "Anzeigename, der in Formularen und Kontaktdetails erscheint.",
+						"key": "Schlüssel",
+						"keyPlaceholder": "z. B. firmenname",
+						"keyHelp": "Wird in der API und in E-Mail-Vorlagen als {token} verwendet",
+						"keyFallback": "key",
+						"type": "Typ"
+					},
+					"editModal": {
+						"title": "Eigenschaft bearbeiten",
+						"immutable": "Schlüssel und Typ können nach der Erstellung nicht mehr geändert werden.",
+						"saving": "Wird gespeichert...",
+						"save": "Änderungen speichern"
+					},
+					"deleteModal": {
+						"title": "Eigenschaft löschen",
+						"question": "Möchten Sie die Eigenschaft {name} wirklich löschen?",
+						"checkingUsage": "Verwendung wird geprüft...",
+						"dataWarningTitle": "Daten werden gelöscht",
+						"dataWarningBody": "{count} Kontakt hat Werte für diese Eigenschaft. Alle Werte werden dauerhaft gelöscht. | {count} Kontakte haben Werte für diese Eigenschaft. Alle Werte werden dauerhaft gelöscht.",
+						"deleting": "Wird gelöscht...",
+						"confirm": "Eigenschaft löschen"
+					}
+				}
+			}
+		}
+	}
+}

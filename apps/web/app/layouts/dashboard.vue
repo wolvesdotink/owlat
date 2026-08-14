@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { logError } from '~/lib/runtimeLog';
-import type { NavigationSection } from '~/composables/useDashboardNavigation';
+import { logError } from "~/lib/runtimeLog";
+import type { NavigationSection } from "~/composables/useDashboardNavigation";
 
+const { t } = useI18n();
 const { user, signOut, isPending } = useAuth();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const route = useRoute();
@@ -45,9 +46,9 @@ const ENABLE_VIBRANCY = true;
 onMounted(async () => {
 	if (!ENABLE_VIBRANCY || !isDesktop.value || !(isMac.value || isWindows.value)) return;
 	try {
-		const { applyVibrancy } = await import('@owlat/desktop/src/window');
-		await applyVibrancy(isWindows.value ? 'mica' : 'sidebar');
-		document.documentElement.classList.add('vibrancy-on');
+		const { applyVibrancy } = await import("@owlat/desktop/src/window");
+		await applyVibrancy(isWindows.value ? "mica" : "sidebar");
+		document.documentElement.classList.add("vibrancy-on");
 	} catch {
 		// Unsupported (e.g. Windows 10) or Tauri unavailable — solid theme stays.
 	}
@@ -87,9 +88,9 @@ onMounted(() => {
 		if (isFullscreen) return;
 		try {
 			const { setTrafficLightsVisible, trafficLightsVisibleFor } =
-				await import('@owlat/desktop/src/window');
+				await import("@owlat/desktop/src/window");
 			await setTrafficLightsVisible(
-				trafficLightsVisibleFor(effectiveHidden.value, isPeeking.value)
+				trafficLightsVisibleFor(effectiveHidden.value, isPeeking.value),
 			);
 		} catch {
 			// Tauri unavailable — native buttons stay as-is.
@@ -101,7 +102,7 @@ onMounted(() => {
 	void (async () => {
 		try {
 			const { setTrafficLightsVisible, watchFullscreen } =
-				await import('@owlat/desktop/src/window');
+				await import("@owlat/desktop/src/window");
 			unlistenFullscreen = await watchFullscreen((fullscreen) => {
 				isFullscreen = fullscreen;
 				if (fullscreen) {
@@ -121,7 +122,7 @@ onMounted(() => {
 	onUnmounted(async () => {
 		unlistenFullscreen?.();
 		try {
-			const { setTrafficLightsVisible } = await import('@owlat/desktop/src/window');
+			const { setTrafficLightsVisible } = await import("@owlat/desktop/src/window");
 			await setTrafficLightsVisible(true);
 		} catch {
 			// Tauri unavailable — nothing to restore.
@@ -133,24 +134,24 @@ onMounted(() => {
 // the hidden/peek behavior stays desktop-only (mobile keeps its off-canvas
 // drawer). Mirrors Tailwind's `lg` = 1024px.
 onMounted(() => {
-	const mql = window.matchMedia('(min-width: 1024px)');
+	const mql = window.matchMedia("(min-width: 1024px)");
 	const sync = () => setDesktopViewport(mql.matches);
 	sync();
-	mql.addEventListener('change', sync);
-	onUnmounted(() => mql.removeEventListener('change', sync));
+	mql.addEventListener("change", sync);
+	onUnmounted(() => mql.removeEventListener("change", sync));
 });
 
 // Cmd/Ctrl-\ toggles the sidebar's hidden mode (desktop only; the composable
 // guards the breakpoint). Registered alongside the other global shortcuts.
 onMounted(() => {
 	const handleToggleHidden = (e: KeyboardEvent) => {
-		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+		if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
 			e.preventDefault();
 			toggleHidden();
 		}
 	};
-	document.addEventListener('keydown', handleToggleHidden);
-	onUnmounted(() => document.removeEventListener('keydown', handleToggleHidden));
+	document.addEventListener("keydown", handleToggleHidden);
+	onUnmounted(() => document.removeEventListener("keydown", handleToggleHidden));
 });
 
 // Peek overlay: open on left-edge hover, close 300ms after the pointer leaves
@@ -187,7 +188,7 @@ const onPeekFocusOut = (e: FocusEvent) => {
 };
 // Esc closes the peek without un-hiding the sidebar.
 const onPeekKeydown = (e: KeyboardEvent) => {
-	if (e.key === 'Escape' && isPeeking.value) {
+	if (e.key === "Escape" && isPeeking.value) {
 		e.stopPropagation();
 		closePeek();
 	}
@@ -208,33 +209,35 @@ const userDropdownRef = ref<HTMLElement | null>(null);
 const { showToggle, activeContext, sidebarSections, firstSharedKey, switchContext } =
 	useSidebarContext();
 
+// Frozen at setup, so `label` holds a MESSAGE KEY the template resolves rather
+// than a sentence captured in whatever locale was active at mount.
 const sidebarContexts = [
-	{ key: 'inbox', label: 'Inbox', icon: 'lucide:inbox' },
-	{ key: 'marketing', label: 'Marketing', icon: 'lucide:megaphone' },
+	{ key: "inbox", label: "shell.dashboard.contexts.inbox", icon: "lucide:inbox" },
+	{ key: "marketing", label: "shell.dashboard.contexts.marketing", icon: "lucide:megaphone" },
 ] as const;
 
 // Check if a route is active (exact or prefix match)
 const isActiveRoute = (href: string) => {
 	// For overview/index pages, use exact match
-	if (href === '/dashboard/audience' || href === '/dashboard/admin') {
+	if (href === "/dashboard/audience" || href === "/dashboard/admin") {
 		return route.path === href;
 	}
-	if (href === '/dashboard/send') {
+	if (href === "/dashboard/send") {
 		// "Templates & blocks" owns the Send overview + template/blocks/media
 		// surfaces, but NOT the transactional subtree (its own "Transactional" item).
 		return (
 			route.path === href ||
-			(route.path.startsWith(href + '/') && !route.path.startsWith('/dashboard/send/transactional'))
+			(route.path.startsWith(href + "/") && !route.path.startsWith("/dashboard/send/transactional"))
 		);
 	}
-	if (href === '/dashboard/admin/delivery') {
+	if (href === "/dashboard/admin/delivery") {
 		return route.path === href;
 	}
-	if (href === '/dashboard/knowledge') {
+	if (href === "/dashboard/knowledge") {
 		// Knowledge list + entry detail pages, but not the Graph subpage (its own item).
 		return (
 			route.path === href ||
-			(route.path.startsWith(href + '/') && !route.path.startsWith('/dashboard/knowledge/graph'))
+			(route.path.startsWith(href + "/") && !route.path.startsWith("/dashboard/knowledge/graph"))
 		);
 	}
 	return route.path.startsWith(href);
@@ -248,16 +251,16 @@ const isSectionActive = (section: NavigationSection) => {
 // Get the overview route for a section
 const getSectionOverviewRoute = (sectionKey: string) => {
 	const routes: Record<string, string> = {
-		inbox: '/dashboard/inbox',
-		chat: '/dashboard/chat',
-		assistant: '/dashboard/assistant',
-		send: '/dashboard/send',
-		knowledge: '/dashboard/knowledge',
-		audience: '/dashboard/audience',
-		administration: '/dashboard/admin',
-		preferences: '/dashboard/preferences',
+		inbox: "/dashboard/inbox",
+		chat: "/dashboard/chat",
+		assistant: "/dashboard/assistant",
+		send: "/dashboard/send",
+		knowledge: "/dashboard/knowledge",
+		audience: "/dashboard/audience",
+		administration: "/dashboard/admin",
+		preferences: "/dashboard/preferences",
 	};
-	return routes[sectionKey] || '/dashboard';
+	return routes[sectionKey] || "/dashboard";
 };
 
 // Handle section header click - navigate when collapsed, toggle when expanded
@@ -274,7 +277,7 @@ const handleSignOut = async () => {
 	try {
 		await signOut();
 	} catch (e) {
-		logError('Sign out failed:', e);
+		logError("Sign out failed:", e);
 	}
 };
 
@@ -283,7 +286,7 @@ watch(
 	() => route.path,
 	() => {
 		isSidebarOpen.value = false;
-	}
+	},
 );
 
 // Focus mode forces the rail off-screen; close any open peek so it can't be
@@ -301,20 +304,20 @@ const handleClickOutside = (event: MouseEvent) => {
 };
 
 onMounted(() => {
-	document.addEventListener('click', handleClickOutside);
+	document.addEventListener("click", handleClickOutside);
 });
 
 onUnmounted(() => {
-	document.removeEventListener('click', handleClickOutside);
+	document.removeEventListener("click", handleClickOutside);
 });
 
 // Get user initials for avatar
 const userInitials = computed(() => {
-	if (!user.value?.name) return '?';
+	if (!user.value?.name) return "?";
 	return user.value.name
-		.split(' ')
+		.split(" ")
 		.map((n) => n[0])
-		.join('')
+		.join("")
 		.toUpperCase()
 		.slice(0, 2);
 });
@@ -334,12 +337,18 @@ useDesktopNotifications();
 // step was blocked while the instance had no outbound transport.
 useSendReadyNotice();
 
+/** The Chat badge's tooltip — one unread mention reads differently from many. */
+const mentionsTitle = (count: number) =>
+	t(count === 1 ? "shell.dashboard.chatMentions.one" : "shell.dashboard.chatMentions.other", {
+		count,
+	});
+
 // Live unread chat mention count for the Chat section badge.
 // Only subscribe when the chat flag is on (the composable's query asserts the
 // flag server-side; we also gate the subscription here to keep the network
 // quiet when chat is disabled).
 const chatMentionCount = computed(() => 0);
-const chatMentions = isFeatureEnabled('chat') ? useChatMentions() : null;
+const chatMentions = isFeatureEnabled("chat") ? useChatMentions() : null;
 const liveChatMentionCount = computed(() => chatMentions?.count.value ?? chatMentionCount.value);
 
 // Live delivery-health roll-up for the Administration section's status dot. Stays
@@ -357,37 +366,37 @@ const {
 // is disabled (the backend mutation also asserts the flag).
 onMounted(() => {
 	const handleQuickQuery = (e: KeyboardEvent) => {
-		if (!isFeatureEnabled('ai.knowledge')) return;
+		if (!isFeatureEnabled("ai.knowledge")) return;
 		// With Shift held the key value is uppercase — compare case-insensitively.
-		if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'k') {
+		if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k") {
 			e.preventDefault();
 			isQuickQueryOpen.value = !isQuickQueryOpen.value;
 		}
 	};
-	document.addEventListener('keydown', handleQuickQuery);
+	document.addEventListener("keydown", handleQuickQuery);
 	// The command palette surfaces Quick Query as its "Ask knowledge…" action,
 	// which dispatches this event so the two share one open path.
 	const handleOpenKnowledgeQuery = () => {
-		if (!isFeatureEnabled('ai.knowledge')) return;
+		if (!isFeatureEnabled("ai.knowledge")) return;
 		isQuickQueryOpen.value = true;
 	};
-	window.addEventListener('owlat:open-knowledge-query', handleOpenKnowledgeQuery);
+	window.addEventListener("owlat:open-knowledge-query", handleOpenKnowledgeQuery);
 	onUnmounted(() => {
-		document.removeEventListener('keydown', handleQuickQuery);
-		window.removeEventListener('owlat:open-knowledge-query', handleOpenKnowledgeQuery);
+		document.removeEventListener("keydown", handleQuickQuery);
+		window.removeEventListener("owlat:open-knowledge-query", handleOpenKnowledgeQuery);
 	});
 });
 
 // Computed sidebar width class — a hidden sidebar peeks at its last width.
 const sidebarWidthClass = computed(() => {
-	return isCollapsed.value ? 'w-16' : 'w-64';
+	return isCollapsed.value ? "w-16" : "w-64";
 });
 
 // Content padding reserves the rail's gutter. When hidden the content goes
 // full-bleed (no reflow when the peek floats over it).
 const mainPaddingClass = computed(() => {
-	if (effectiveHidden.value) return '';
-	return isCollapsed.value ? 'lg:pl-16' : 'lg:pl-64';
+	if (effectiveHidden.value) return "";
+	return isCollapsed.value ? "lg:pl-16" : "lg:pl-64";
 });
 
 // Desktop transform for the aside. When hidden it slides off-screen; the peek
@@ -396,11 +405,11 @@ const mainPaddingClass = computed(() => {
 // handled by the global floor in base.css (durations collapse to ~0).
 const sidebarDesktopClass = computed(() => {
 	if (!effectiveHidden.value) {
-		return 'lg:translate-x-0 duration-(--motion-moderate)';
+		return "lg:translate-x-0 duration-(--motion-moderate)";
 	}
 	return isPeeking.value
-		? 'lg:translate-x-0 shadow-(--shadow-6) duration-(--motion-slow) ease-(--ease-spring-bounce)'
-		: 'lg:-translate-x-full duration-(--motion-slow-exit) ease-(--ease-exit)';
+		? "lg:translate-x-0 shadow-(--shadow-6) duration-(--motion-slow) ease-(--ease-spring-bounce)"
+		: "lg:-translate-x-full duration-(--motion-slow-exit) ease-(--ease-exit)";
 });
 </script>
 
@@ -411,7 +420,7 @@ const sidebarDesktopClass = computed(() => {
 			href="#main-content"
 			class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-(--z-overlay) focus:px-4 focus:py-2 focus:bg-bg-elevated focus:border focus:border-brand focus:rounded-lg focus:text-text-primary"
 		>
-			Skip to main content
+			{{ t("shell.dashboard.skipToContent") }}
 		</a>
 
 		<!-- Native window titlebar (desktop only; no-op on web). `show-search`:
@@ -480,7 +489,7 @@ const sidebarDesktopClass = computed(() => {
 						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 text-brand" />
 					</div>
 					<span v-if="!isCollapsed" class="text-lg font-semibold text-text-primary"> Owlat </span>
-					<UiBadge v-if="!isCollapsed" size="sm">Alpha</UiBadge>
+					<UiBadge v-if="!isCollapsed" size="sm">{{ t("shell.dashboard.alphaBadge") }}</UiBadge>
 				</NuxtLink>
 
 				<!-- Mobile close button -->
@@ -488,7 +497,7 @@ const sidebarDesktopClass = computed(() => {
 					v-if="!isCollapsed"
 					class="lg:hidden p-2 text-text-secondary hover:text-text-primary"
 					@click="isSidebarOpen = false"
-					aria-label="Close"
+					:aria-label="t('common.close')"
 				>
 					<Icon name="lucide:x" class="w-5 h-5" />
 				</button>
@@ -498,7 +507,12 @@ const sidebarDesktopClass = computed(() => {
 			     Marketing) so it stays focused on the current work. Emergent: only
 			     rendered while both contexts survived the feature flags. Switching
 			     navigates to the target context's last-visited route. -->
-			<div v-if="showToggle" class="px-2 pt-3" role="group" aria-label="Sidebar context">
+			<div
+				v-if="showToggle"
+				class="px-2 pt-3"
+				role="group"
+				:aria-label="t('shell.dashboard.sidebarContextGroup')"
+			>
 				<div :class="isCollapsed ? 'flex flex-col gap-1' : 'flex gap-1'">
 					<button
 						v-for="context in sidebarContexts"
@@ -512,7 +526,7 @@ const sidebarDesktopClass = computed(() => {
 								? 'bg-brand-subtle text-brand'
 								: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 						]"
-						:title="isCollapsed ? context.label : undefined"
+						:title="isCollapsed ? t(context.label) : undefined"
 						@click="switchContext(context.key)"
 					>
 						<Icon
@@ -522,7 +536,7 @@ const sidebarDesktopClass = computed(() => {
 								activeContext === context.key ? 'text-brand' : 'text-text-tertiary',
 							]"
 						/>
-						<span v-if="!isCollapsed">{{ context.label }}</span>
+						<span v-if="!isCollapsed">{{ t(context.label) }}</span>
 					</button>
 				</div>
 			</div>
@@ -540,7 +554,7 @@ const sidebarDesktopClass = computed(() => {
 								: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 							{ 'justify-center': isCollapsed },
 						]"
-						:title="isCollapsed ? 'Dashboard' : undefined"
+						:title="isCollapsed ? t('shell.dashboard.dashboardTooltip') : undefined"
 					>
 						<Icon
 							name="lucide:layout-dashboard"
@@ -549,7 +563,7 @@ const sidebarDesktopClass = computed(() => {
 								route.path === '/dashboard' ? 'text-brand' : 'text-text-tertiary',
 							]"
 						/>
-						<span v-if="!isCollapsed">Home</span>
+						<span v-if="!isCollapsed">{{ t("shell.dashboard.home") }}</span>
 					</NuxtLink>
 				</div>
 
@@ -575,7 +589,7 @@ const sidebarDesktopClass = computed(() => {
 									: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 								{ 'justify-center': isCollapsed },
 							]"
-							:title="isCollapsed ? section.name : undefined"
+							:title="isCollapsed ? t(section.name) : undefined"
 						>
 							<Icon
 								:name="section.icon"
@@ -584,21 +598,21 @@ const sidebarDesktopClass = computed(() => {
 									isActiveRoute(section.href) ? 'text-brand' : 'text-text-tertiary',
 								]"
 							/>
-							<span v-if="!isCollapsed" class="flex-1 text-left">{{ section.name }}</span>
+							<span v-if="!isCollapsed" class="flex-1 text-left">{{ t(section.name) }}</span>
 							<!-- Chat mention badge: inline expanded; corner overlay collapsed. -->
 							<span
 								v-if="section.key === 'chat' && liveChatMentionCount > 0 && !isCollapsed"
 								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
-								:title="`${liveChatMentionCount} unread mention${liveChatMentionCount === 1 ? '' : 's'}`"
+								:title="mentionsTitle(liveChatMentionCount)"
 							>
-								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
+								{{ liveChatMentionCount > 99 ? "99+" : liveChatMentionCount }}
 							</span>
 							<span
 								v-if="section.key === 'chat' && liveChatMentionCount > 0 && isCollapsed"
 								class="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-error text-text-inverse text-2xs leading-4 font-semibold text-center ring-2 ring-bg-elevated"
-								:title="`${liveChatMentionCount} unread mention${liveChatMentionCount === 1 ? '' : 's'}`"
+								:title="mentionsTitle(liveChatMentionCount)"
 							>
-								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
+								{{ liveChatMentionCount > 99 ? "99+" : liveChatMentionCount }}
 							</span>
 						</NuxtLink>
 
@@ -612,7 +626,7 @@ const sidebarDesktopClass = computed(() => {
 									: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 								{ 'justify-center': isCollapsed },
 							]"
-							:title="isCollapsed ? section.name : undefined"
+							:title="isCollapsed ? t(section.name) : undefined"
 							@click="handleSectionClick(section)"
 						>
 							<Icon
@@ -622,13 +636,13 @@ const sidebarDesktopClass = computed(() => {
 									isSectionActive(section) ? 'text-brand' : 'text-text-tertiary',
 								]"
 							/>
-							<span v-if="!isCollapsed" class="flex-1 text-left">{{ section.name }}</span>
+							<span v-if="!isCollapsed" class="flex-1 text-left">{{ t(section.name) }}</span>
 							<span
 								v-if="section.key === 'chat' && liveChatMentionCount > 0"
 								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
-								:title="`${liveChatMentionCount} unread mention${liveChatMentionCount === 1 ? '' : 's'}`"
+								:title="mentionsTitle(liveChatMentionCount)"
 							>
-								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
+								{{ liveChatMentionCount > 99 ? "99+" : liveChatMentionCount }}
 							</span>
 							<!-- Delivery health dot: worst-of reputation / domains / provider.
 							     Hidden while healthy. Expanded → inline; collapsed → corner overlay. -->
@@ -686,7 +700,7 @@ const sidebarDesktopClass = computed(() => {
 												isActiveRoute(item.href) ? 'text-brand' : 'text-text-tertiary',
 											]"
 										/>
-										{{ item.name }}
+										{{ t(item.name) }}
 									</NuxtLink>
 								</li>
 							</ul>
@@ -703,7 +717,9 @@ const sidebarDesktopClass = computed(() => {
 						'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 						{ 'justify-center': isCollapsed },
 					]"
-					:title="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+					:title="
+						isCollapsed ? t('shell.dashboard.expandSidebar') : t('shell.dashboard.collapseSidebar')
+					"
 					@click="toggleCollapsed"
 				>
 					<Icon
@@ -712,7 +728,7 @@ const sidebarDesktopClass = computed(() => {
 						class="w-5 h-5 text-text-tertiary"
 					/>
 					<Icon v-else name="lucide:panel-left" class="w-5 h-5 text-text-tertiary" />
-					<span v-if="!isCollapsed">Collapse</span>
+					<span v-if="!isCollapsed">{{ t("shell.dashboard.collapse") }}</span>
 				</button>
 			</div>
 
@@ -725,7 +741,7 @@ const sidebarDesktopClass = computed(() => {
 						{ 'justify-center': isCollapsed },
 					]"
 				>
-					<span v-if="!isCollapsed">Theme</span>
+					<span v-if="!isCollapsed">{{ t("shell.dashboard.theme") }}</span>
 				</UiThemeToggle>
 			</div>
 
@@ -736,23 +752,25 @@ const sidebarDesktopClass = computed(() => {
 						'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-bg-surface transition-colors',
 						{ 'justify-center': isCollapsed },
 					]"
-					:title="isCollapsed ? user?.name || 'User' : undefined"
+					:title="isCollapsed ? user?.name || t('shell.dashboard.userFallback') : undefined"
 					@click="isUserDropdownOpen = !isUserDropdownOpen"
 				>
 					<!-- Avatar -->
 					<div
 						class="w-8 h-8 rounded-full bg-brand-subtle flex items-center justify-center text-sm font-medium text-brand flex-shrink-0"
 					>
-						{{ isPending ? '...' : userInitials }}
+						{{ isPending ? "..." : userInitials }}
 					</div>
 
 					<!-- User info -->
 					<div v-if="!isCollapsed" class="flex-1 text-left min-w-0">
 						<p class="text-sm font-medium text-text-primary truncate">
-							{{ isPending ? 'Loading...' : user?.name || 'User' }}
+							{{
+								isPending ? t("common.loading") : user?.name || t("shell.dashboard.userFallback")
+							}}
 						</p>
 						<p class="text-xs text-text-tertiary truncate">
-							{{ isPending ? '' : user?.email || '' }}
+							{{ isPending ? "" : user?.email || "" }}
 						</p>
 					</div>
 
@@ -788,7 +806,7 @@ const sidebarDesktopClass = computed(() => {
 							@click="handleSignOut"
 						>
 							<Icon name="lucide:log-out" class="w-4 h-4" />
-							<span v-if="!isCollapsed">Sign out</span>
+							<span v-if="!isCollapsed">{{ t("shell.dashboard.signOut") }}</span>
 						</button>
 					</div>
 				</Transition>

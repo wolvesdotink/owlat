@@ -12,24 +12,27 @@
  * catch branch is intentionally different.
  */
 export function useAuthForm() {
+	const { t } = useI18n();
 	const isLoading = ref(false);
 	const errorMessage = ref('');
 
 	/**
 	 * Run a submit action with the shared loading/error lifecycle. The action
 	 * owns the success path (navigation or setting a success flag); a thrown
-	 * Error's message is surfaced, otherwise `fallbackMessage`.
+	 * Error's message is surfaced, otherwise `fallbackMessage` — which defaults
+	 * to the generic copy, resolved when the failure happens rather than frozen
+	 * as a default parameter value.
 	 */
-	const submit = async (
-		action: () => Promise<void>,
-		fallbackMessage = 'An unexpected error occurred. Please try again.',
-	): Promise<void> => {
+	const submit = async (action: () => Promise<void>, fallbackMessage?: string): Promise<void> => {
 		errorMessage.value = '';
 		isLoading.value = true;
 		try {
 			await action();
 		} catch (error) {
-			errorMessage.value = error instanceof Error ? error.message : fallbackMessage;
+			errorMessage.value =
+				error instanceof Error
+					? error.message
+					: (fallbackMessage ?? t('shared.useAuthForm.unexpectedError'));
 		} finally {
 			isLoading.value = false;
 		}

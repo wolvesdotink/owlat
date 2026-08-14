@@ -20,7 +20,7 @@ import {
 	type IndependenceProjection,
 } from '@owlat/shared/deliverabilityIndependence';
 import { formatNumber, formatShortDate } from '~/utils/formatters';
-import { measurementHeadline } from '~/utils/deliverabilityMeasurement';
+import { measurementHeadline, type LocalizedText } from '~/utils/deliverabilityMeasurement';
 import { transportIdLabel } from '~/utils/transportState';
 
 export type IndependenceSummary = FunctionReturnType<
@@ -57,7 +57,7 @@ export type IndependenceSummary = FunctionReturnType<
  * skips its confirmation phrase on. The summary now carries both readings off
  * one scan, and the id is left doing the one job it is honest at: naming.
  */
-export function independenceHeadline(isRelayConfigured: boolean): string {
+export function independenceHeadline(isRelayConfigured: boolean): LocalizedText {
 	return measurementHeadline(isRelayConfigured);
 }
 
@@ -76,20 +76,29 @@ export function independenceHeadline(isRelayConfigured: boolean): string {
 export function independenceSubhead(input: {
 	readonly isRelayConfigured: boolean;
 	readonly referenceTransportId: string | null;
-}): string {
+}): LocalizedText {
 	if (!input.isRelayConfigured) {
-		return 'How much your own server can send today, and what is holding that number back. There is no relay to move away from — this is the whole feature, not a reduced one.';
+		return 'shared.deliverabilityIndependenceCopy.subhead.standalone';
 	}
-	const relay =
-		input.referenceTransportId === null
-			? 'the relays you have connected'
-			: transportIdLabel(input.referenceTransportId);
-	return `How much of your mail your own server now carries instead of ${relay}.`;
+	// The unnamed reading is its own sentence rather than a phrase dropped into
+	// the named one: a slot filled with another catalog key would render as that
+	// key, and the plural subject declines differently once the sentence is not
+	// English.
+	if (input.referenceTransportId === null) {
+		return 'shared.deliverabilityIndependenceCopy.subhead.relays';
+	}
+	return {
+		key: 'shared.deliverabilityIndependenceCopy.subhead.namedRelay',
+		params: { relay: transportIdLabel(input.referenceTransportId) },
+	};
 }
 
 /** The month-to-date own-arm volume sentence — always available, always true. */
-export function volumeSentence(summary: IndependenceSummary): string {
-	return `${formatNumber(summary.monthToDateOwnSends)} messages sent from your own server this month.`;
+export function volumeSentence(summary: IndependenceSummary): LocalizedText {
+	return {
+		key: 'shared.deliverabilityIndependenceCopy.volume',
+		params: { count: formatNumber(summary.monthToDateOwnSends) },
+	};
 }
 
 /**
@@ -100,13 +109,15 @@ export function volumeSentence(summary: IndependenceSummary): string {
  * never take a screen down over a settings typo, so the fallback prints the code
  * beside the raw amount and remains readable.
  */
-function formatCurrencyFromMinorUnits(minorUnits: number, currency: string): string {
+function formatCurrencyFromMinorUnits(minorUnits: number, currency: string): string | null {
 	try {
 		const format = new Intl.NumberFormat('en-US', { style: 'currency', currency });
 		const digits = format.resolvedOptions().maximumFractionDigits ?? 2;
 		return format.format(minorUnits / 10 ** digits);
 	} catch {
-		return `${currency} ${formatNumber(minorUnits)} (minor units)`;
+		// `null`, not a sentence: the unformattable fallback names the currency and
+		// the unit in words, which is a message of its own rather than a number.
+		return null;
 	}
 }
 
@@ -115,9 +126,9 @@ function formatCurrencyFromMinorUnits(minorUnits: number, currency: string): str
  * quoted back at us as fact, so when nobody has recorded one the screen says
  * what it would take to show the figure rather than printing a confident guess.
  */
-export function spendAvoidedCopy(summary: IndependenceSummary): string {
+export function spendAvoidedCopy(summary: IndependenceSummary): LocalizedText {
 	if (summary.spendAvoidedMinorUnits === null || summary.spendAvoidedCurrency === null) {
-		return 'Add what your relay charges per thousand messages to see the spend this replaces.';
+		return 'shared.deliverabilityIndependenceCopy.spendAvoided.noPrice';
 	}
 	// MINOR UNITS ARE NOT ALWAYS HUNDREDTHS. JPY has no minor unit at all and
 	// KWD/BHD have three digits, so the exponent is read off the CURRENCY through
@@ -125,7 +136,17 @@ export function spendAvoidedCopy(summary: IndependenceSummary): string {
 	// yen figure by two orders of magnitude on the screen people screenshot.
 	const currency = summary.spendAvoidedCurrency;
 	const minor = summary.spendAvoidedMinorUnits;
-	return `${formatCurrencyFromMinorUnits(minor, currency)} of relay spend avoided this month.`;
+	const amount = formatCurrencyFromMinorUnits(minor, currency);
+	if (amount === null) {
+		return {
+			key: 'shared.deliverabilityIndependenceCopy.spendAvoided.minorUnits',
+			params: { currency, amount: formatNumber(minor) },
+		};
+	}
+	return {
+		key: 'shared.deliverabilityIndependenceCopy.spendAvoided.amount',
+		params: { amount },
+	};
 }
 
 /**
@@ -133,26 +154,41 @@ export function spendAvoidedCopy(summary: IndependenceSummary): string {
  * closed union, because the four non-answers mean genuinely different things and
  * a single "unknown" would tell a standalone deployment nothing at all.
  */
-export function projectionCopy(projection: IndependenceProjection): string {
+export function projectionCopy(projection: IndependenceProjection): LocalizedText {
 	switch (projection.kind) {
 		case 'projected':
-			return `On the current pace you stop paying a relay around ${formatShortDate(projection.at)} — about ${projection.dailyGainPp.toFixed(2)} points of share gained per day.`;
+			return {
+				key: 'shared.deliverabilityIndependenceCopy.projection.projected',
+				params: {
+					date: formatShortDate(projection.at),
+					pointsPerDay: projection.dailyGainPp.toFixed(2),
+				},
+			};
 		case 'already_independent':
-			return 'Your own server already carries this traffic. There is no relay bill left to end.';
+			return 'shared.deliverabilityIndependenceCopy.projection.alreadyIndependent';
 		case 'not_advancing':
-			return 'The share is not climbing at the moment, so there is no honest date to give. It will appear once the ramp starts advancing again.';
+			return 'shared.deliverabilityIndependenceCopy.projection.notAdvancing';
 		case 'beyond_horizon':
-			return 'At the current pace the finish line is more than two years out, which is too far to quote. A faster preset or more volume would bring it closer.';
+			return 'shared.deliverabilityIndependenceCopy.projection.beyondHorizon';
 		case 'insufficient_data':
-			return `Not enough history yet — ${formatNumber(projection.usableDays)} of ${formatNumber(INDEPENDENCE_PROJECTION_MIN_DAYS)} days with traffic. Keep sending and the date will appear.`;
+			return {
+				key: 'shared.deliverabilityIndependenceCopy.projection.insufficientData',
+				params: {
+					days: formatNumber(projection.usableDays),
+					required: formatNumber(INDEPENDENCE_PROJECTION_MIN_DAYS),
+				},
+			};
 	}
 }
 
 /** The standalone headline: what the deployment can send today. */
-export function capacityCopy(summary: IndependenceSummary): string {
+export function capacityCopy(summary: IndependenceSummary): LocalizedText {
 	const remaining = summary.capacity.remainingToday;
 	if (remaining === null) {
-		return 'No warming ceiling is being reported right now, so there is no daily number to show. Your sending is unaffected.';
+		return 'shared.deliverabilityIndependenceCopy.capacity.noCeiling';
 	}
-	return `${formatNumber(remaining)} more messages can go out from your own server today.`;
+	return {
+		key: 'shared.deliverabilityIndependenceCopy.capacity.remaining',
+		params: { count: formatNumber(remaining) },
+	};
 }

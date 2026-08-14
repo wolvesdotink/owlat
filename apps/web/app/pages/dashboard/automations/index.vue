@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Automations — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.automations.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -57,12 +59,12 @@ watch(searchQuery, (value) => {
 });
 
 // Status filter options
-const statusFilters: { value: AutomationStatus; label: string }[] = [
-	{ value: 'all', label: 'All' },
-	{ value: 'active', label: 'Active' },
-	{ value: 'paused', label: 'Paused' },
-	{ value: 'draft', label: 'Draft' },
-];
+const statusFilters = computed<{ value: AutomationStatus; label: string }[]>(() => [
+	{ value: 'all', label: t('common.all') },
+	{ value: 'active', label: t('common.active') },
+	{ value: 'paused', label: t('dashboard.automations.index.status.paused') },
+	{ value: 'draft', label: t('dashboard.automations.index.status.draft') },
+]);
 
 // Fetch automations with real-time updates (session-based, no organizationId needed).
 // Status filtering runs server-side through the Listing engine (ADR-0037).
@@ -98,16 +100,16 @@ const isLoading = computed(() => teamLoading.value || automationsLoading.value);
 
 // Mutations
 const { run: duplicateAutomation } = useBackendOperation(api.automations.automations.duplicate, {
-	label: 'Duplicate automation',
+	label: () => t('dashboard.automations.index.operations.duplicate'),
 });
 const { run: deleteAutomation } = useBackendOperation(api.automations.automations.remove, {
-	label: 'Delete automation',
+	label: () => t('dashboard.automations.index.operations.delete'),
 });
 const { run: pauseAutomation } = useBackendOperation(api.automations.automations.pause, {
-	label: 'Pause automation',
+	label: () => t('dashboard.automations.index.operations.pause'),
 });
 const { run: resumeAutomation } = useBackendOperation(api.automations.automations.resume, {
-	label: 'Resume automation',
+	label: () => t('dashboard.automations.index.operations.resume'),
 });
 
 // Status + trigger badges (shared with the automation detail page)
@@ -141,7 +143,7 @@ const handleToggleStatus = async (automation: {
 	if (toggleingId.value) return;
 	if (automation.status === 'draft') {
 		// Cannot toggle draft, must edit first
-		showNotification('Please complete and activate this automation from the builder', 'error');
+		showNotification(t('dashboard.automations.index.toasts.draftNotToggleable'), 'error');
 		return;
 	}
 
@@ -149,10 +151,12 @@ const handleToggleStatus = async (automation: {
 	try {
 		if (automation.status === 'active') {
 			if ((await pauseAutomation({ automationId: automation._id })) === undefined) return;
-			showNotification(`"${automation.name}" has been paused`);
+			showNotification(t('dashboard.automations.index.toasts.paused', { name: automation.name }));
 		} else {
 			if ((await resumeAutomation({ automationId: automation._id })) === undefined) return;
-			showNotification(`"${automation.name}" is now active`);
+			showNotification(
+				t('dashboard.automations.index.toasts.activated', { name: automation.name })
+			);
 		}
 		openDropdownId.value = null;
 	} finally {
@@ -164,7 +168,7 @@ const handleToggleStatus = async (automation: {
 const handleDuplicate = async (automationId: Id<'automations'>) => {
 	const result = await duplicateAutomation({ automationId });
 	if (result === undefined) return;
-	showNotification('Automation duplicated successfully');
+	showNotification(t('dashboard.automations.index.toasts.duplicated'));
 	openDropdownId.value = null;
 };
 
@@ -199,7 +203,7 @@ const handleDelete = async () => {
 	try {
 		const result = await deleteAutomation({ automationId: automationToDelete.value.id });
 		if (result === undefined) return;
-		showNotification('Automation deleted successfully');
+		showNotification(t('dashboard.automations.index.toasts.deleted'));
 		closeDeleteModal();
 	} finally {
 		isDeleting.value = false;
@@ -227,12 +231,14 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Automations</h1>
-				<p class="mt-1 text-text-secondary">Create automated email workflows triggered by events</p>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.automations.index.title') }}
+				</h1>
+				<p class="mt-1 text-text-secondary">{{ t('dashboard.automations.index.subtitle') }}</p>
 			</div>
 			<UiButton size="sm" @click="handleNewAutomation">
 				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-				New Automation
+				{{ t('dashboard.automations.index.newAutomation') }}
 			</UiButton>
 		</div>
 
@@ -264,7 +270,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 			<UiInput
 				v-model="searchQuery"
 				type="text"
-				placeholder="Search automations..."
+				:placeholder="t('dashboard.automations.index.searchPlaceholder')"
 				size="sm"
 				class="w-64"
 			>
@@ -279,7 +285,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 			<UiQueryBoundary
 				:loading="isLoading && automations.length === 0"
 				:error="automationsError"
-				error-title="Couldn't load automations"
+				:error-title="t('dashboard.automations.index.errorTitle')"
 			>
 				<!-- Loading State: content-shaped skeleton on first load only -->
 				<template #loading>
@@ -290,8 +296,8 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 				<UiEmptyState
 					v-if="!hasActiveOrganization"
 					icon="lucide:zap"
-					title="No team selected"
-					description="Create or select a team to start creating automations."
+					:title="t('dashboard.automations.index.noTeam.title')"
+					:description="t('dashboard.automations.index.noTeam.description')"
 				/>
 
 				<!-- Empty State (no automations) -->
@@ -302,13 +308,13 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 						!debouncedSearch
 					"
 					icon="lucide:zap"
-					title="No automations yet"
-					description="Create your first automation to send emails automatically when a contact signs up, subscribes, or triggers an event."
+					:title="t('dashboard.automations.index.empty.title')"
+					:description="t('dashboard.automations.index.empty.description')"
 				>
 					<template #action>
 						<UiButton @click="handleNewAutomation">
 							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-							Create Automation
+							{{ t('dashboard.automations.index.empty.action') }}
 						</UiButton>
 					</template>
 				</UiEmptyState>
@@ -321,8 +327,10 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 						debouncedSearch
 					"
 					icon="lucide:search"
-					title="No results found"
-					:description="`No automations match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+					:title="t('dashboard.automations.index.noResults.title')"
+					:description="
+						t('dashboard.automations.index.noResults.description', { query: debouncedSearch })
+					"
 				>
 					<template #action>
 						<UiButton
@@ -332,7 +340,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 								debouncedSearch = '';
 							"
 						>
-							Clear search
+							{{ t('dashboard.automations.index.clearSearch') }}
 						</UiButton>
 					</template>
 				</UiEmptyState>
@@ -343,21 +351,23 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Trigger
+										{{ t('common.name') }}
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Status
+										{{ t('dashboard.automations.index.table.trigger') }}
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Contacts in Flow
+										{{ t('common.status') }}
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Created
+										{{ t('dashboard.automations.index.table.contactsInFlow') }}
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										{{ t('dashboard.automations.index.table.created') }}
 									</th>
 									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										Actions
+										{{ t('common.actions') }}
 									</th>
 								</tr>
 							</thead>
@@ -394,7 +404,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 												class="w-4 h-4 text-text-tertiary"
 											/>
 											<span class="text-text-secondary text-sm">
-												{{ getTriggerDisplay(automation.triggerType).label }}
+												{{ t(getTriggerDisplay(automation.triggerType).label) }}
 											</span>
 										</div>
 									</td>
@@ -406,7 +416,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 											]"
 										>
 											<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
-											{{ getStatusBadge(automation.status).label }}
+											{{ t(getStatusBadge(automation.status).label) }}
 										</span>
 									</td>
 									<td class="px-6 py-4">
@@ -433,7 +443,11 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 														? 'text-warning hover:text-warning hover:bg-warning/10'
 														: 'text-success hover:text-success hover:bg-success/10',
 												]"
-												:title="automation.status === 'active' ? 'Pause' : 'Activate'"
+												:title="
+													automation.status === 'active'
+														? t('dashboard.automations.index.actions.pause')
+														: t('dashboard.automations.index.actions.activate')
+												"
 												:disabled="toggleingId === automation._id"
 												@click="handleToggleStatus(automation)"
 											>
@@ -452,7 +466,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 											<!-- Edit -->
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												title="Edit"
+												:title="t('common.edit')"
 												@click="handleEdit(automation._id)"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
@@ -462,7 +476,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 												<button
 													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 													@click="toggleDropdown(automation._id)"
-													aria-label="More actions"
+													:aria-label="t('dashboard.automations.index.actions.more')"
 												>
 													<Icon name="lucide:more-vertical" class="w-4 h-4" />
 												</button>
@@ -484,21 +498,21 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 															@click="handleViewDetails(automation._id)"
 														>
 															<Icon name="lucide:zap" class="w-4 h-4" />
-															View Details
+															{{ t('dashboard.automations.index.actions.viewDetails') }}
 														</button>
 														<button
 															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
 															@click="handleEdit(automation._id)"
 														>
 															<Icon name="lucide:pencil" class="w-4 h-4" />
-															Edit
+															{{ t('common.edit') }}
 														</button>
 														<button
 															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
 															@click="handleDuplicate(automation._id)"
 														>
 															<Icon name="lucide:copy" class="w-4 h-4" />
-															Duplicate
+															{{ t('common.duplicate') }}
 														</button>
 														<button
 															v-if="automation.status !== 'draft'"
@@ -512,7 +526,11 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 																"
 																class="w-4 h-4"
 															/>
-															{{ automation.status === 'active' ? 'Pause' : 'Activate' }}
+															{{
+																automation.status === 'active'
+																	? t('dashboard.automations.index.actions.pause')
+																	: t('dashboard.automations.index.actions.activate')
+															}}
 														</button>
 														<div
 															v-if="automation.status !== 'active'"
@@ -526,7 +544,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 															"
 														>
 															<Icon name="lucide:trash-2" class="w-4 h-4" />
-															Delete
+															{{ t('common.delete') }}
 														</button>
 													</div>
 												</Transition>
@@ -544,7 +562,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 		<!-- Delete Confirmation Modal -->
 		<UiModal
 			:open="isDeleteModalOpen"
-			title="Delete Automation"
+			:title="t('dashboard.automations.index.deleteDialog.title')"
 			size="md"
 			:closable="!isDeleting"
 			:persistent="isDeleting"
@@ -559,27 +577,32 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 					<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
 				</div>
 				<div>
-					<p class="text-text-primary">
-						Are you sure you want to delete
-						<span class="font-semibold">"{{ automationToDelete?.name }}"</span>?
-					</p>
+					<I18nT
+						keypath="dashboard.automations.index.deleteDialog.body"
+						tag="p"
+						class="text-text-primary"
+						scope="global"
+					>
+						<template #name>
+							<span class="font-semibold">"{{ automationToDelete?.name }}"</span>
+						</template>
+					</I18nT>
 					<p class="text-sm text-text-secondary mt-2">
-						This action cannot be undone. The automation and all its steps will be permanently
-						deleted.
+						{{ t('dashboard.automations.index.deleteDialog.note') }}
 					</p>
 					<p
 						v-if="automationToDelete?.status === 'active'"
 						class="text-sm text-warning mt-2 flex items-center gap-1.5"
 					>
 						<Icon name="lucide:alert-circle" class="w-4 h-4" />
-						Active automations must be paused before deletion.
+						{{ t('dashboard.automations.index.deleteDialog.activeWarning') }}
 					</p>
 				</div>
 			</div>
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
 					variant="danger"
@@ -588,7 +611,11 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 					@click="handleDelete"
 				>
 					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-					{{ isDeleting ? 'Deleting...' : 'Delete Automation' }}
+					{{
+						isDeleting
+							? t('dashboard.automations.index.deleting')
+							: t('dashboard.automations.index.deleteDialog.title')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>

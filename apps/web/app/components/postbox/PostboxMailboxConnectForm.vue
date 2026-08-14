@@ -61,6 +61,8 @@ const emit = defineEmits<{
 	(e: 'cancel'): void;
 }>();
 
+const { t } = useI18n();
+
 const form = reactive({
 	emailAddress: '',
 	imapHost: '',
@@ -142,34 +144,34 @@ onBeforeUnmount(() => {
 
 const testOp = useBackendOperation(api.mail.externalAccountsActions.testConnection, {
 	type: 'action',
-	label: 'Test mail connection',
+	label: () => t('components.postbox.postboxMailboxConnectForm.testOperation'),
 	inlineTarget: formError,
 });
 const connectOp = useBackendOperation(api.mail.externalAccountsActions.connect, {
 	type: 'action',
-	label: 'Connect mailbox',
+	label: () => t('components.postbox.postboxMailboxConnectForm.connectOperation'),
 	inlineTarget: formError,
 });
 const connectSharedOp = useBackendOperation(api.mail.externalAccountsActions.connectShared, {
 	type: 'action',
-	label: 'Connect team inbox',
+	label: () => t('components.postbox.postboxMailboxConnectForm.connectSharedOperation'),
 	inlineTarget: formError,
 });
 const connectSeedOp = useBackendOperation(api.mail.externalAccountsActions.connectSeed, {
 	type: 'action',
-	label: 'Connect test mailbox',
+	label: () => t('components.postbox.postboxMailboxConnectForm.connectSeedOperation'),
 	inlineTarget: formError,
 });
 const updateOp = useBackendOperation(api.mail.externalAccountsActions.updateCredentials, {
 	type: 'action',
-	label: 'Update mail credentials',
+	label: () => t('components.postbox.postboxMailboxConnectForm.updateOperation'),
 	inlineTarget: formError,
 });
 const updateSharedOp = useBackendOperation(
 	api.mail.externalAccountsActions.updateCredentialsShared,
 	{
 		type: 'action',
-		label: 'Update team inbox credentials',
+		label: () => t('components.postbox.postboxMailboxConnectForm.updateSharedOperation'),
 		inlineTarget: formError,
 	}
 );
@@ -226,7 +228,7 @@ async function handleSubmit() {
 		// `updateCredentials` below, which would rewrite the caller's own external
 		// account with this team inbox's servers/password (a silent wrong target).
 		if (!props.mailboxId) {
-			formError.value = 'Cannot reconnect this team inbox: its mailbox is missing.';
+			formError.value = t('components.postbox.postboxMailboxConnectForm.missingMailboxError');
 			return;
 		}
 		res = await updateSharedOp.run({ ...buildCredentialArgs(form), mailboxId: props.mailboxId });
@@ -255,13 +257,24 @@ const hasAuthError = computed(() => {
 
 const submitLabel = computed(() =>
 	props.mode === 'update'
-		? 'Save credentials'
+		? t('components.postbox.postboxMailboxConnectForm.saveCredentials')
 		: props.shared
-			? 'Connect team inbox'
+			? t('components.postbox.postboxMailboxConnectForm.connectShared')
 			: props.seedProvider
-				? 'Connect test mailbox'
-				: 'Connect & import'
+				? t('components.postbox.postboxMailboxConnectForm.connectSeed')
+				: t('components.postbox.postboxMailboxConnectForm.connect')
 );
+
+// The two connection-test lines read "<direction> mail <status>", where the
+// status is either a translated word or the server's raw error text.
+const imapStatus = computed(() => testStatus(testResult.value?.imap));
+const smtpStatus = computed(() => testStatus(testResult.value?.smtp));
+
+function testStatus(result?: { ok: boolean; error?: string }): string {
+	if (!result) return '';
+	if (result.ok) return t('components.postbox.postboxMailboxConnectForm.reachable');
+	return result.error ?? t('components.postbox.postboxMailboxConnectForm.failed');
+}
 </script>
 
 <template>
@@ -275,8 +288,10 @@ const submitLabel = computed(() =>
 		<UiInput
 			v-model="form.emailAddress"
 			type="email"
-			:label="`${provider.name} address`"
-			placeholder="you@example.com"
+			:label="
+				t('components.postbox.postboxMailboxConnectForm.addressLabel', { provider: provider.name })
+			"
+			:placeholder="t('components.postbox.postboxMailboxConnectForm.emailPlaceholder')"
 			autocomplete="email"
 			:disabled="mode === 'update'"
 			required
@@ -285,9 +300,13 @@ const submitLabel = computed(() =>
 		<UiInput
 			v-model="form.password"
 			type="password"
-			label="Password"
-			:placeholder="provider.appPassword ? 'Paste the app password' : 'App password recommended'"
-			help-text="Stored encrypted — only the sync worker can read it."
+			:label="t('components.postbox.postboxMailboxConnectForm.passwordLabel')"
+			:placeholder="
+				provider.appPassword
+					? t('components.postbox.postboxMailboxConnectForm.appPasswordPlaceholder')
+					: t('components.postbox.postboxMailboxConnectForm.passwordPlaceholder')
+			"
+			:help-text="t('components.postbox.postboxMailboxConnectForm.passwordHelp')"
 			autocomplete="off"
 			required
 		/>
@@ -298,24 +317,28 @@ const submitLabel = computed(() =>
 		<UiDisclosure
 			v-model="showAdvanced"
 			controls="mail-server-settings"
-			label="Advanced server settings"
+			:label="t('components.postbox.postboxMailboxConnectForm.advancedSettings')"
 		>
 			<div class="space-y-4">
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<label for="connect-imaphost" class="text-sm font-medium block mb-1">IMAP host</label>
+						<label for="connect-imaphost" class="text-sm font-medium block mb-1">{{
+							t('components.postbox.postboxMailboxConnectForm.imapHost')
+						}}</label>
 						<input
 							id="connect-imaphost"
 							v-model="form.imapHost"
 							type="text"
-							placeholder="imap.example.com"
+							:placeholder="t('components.postbox.postboxMailboxConnectForm.imapHostPlaceholder')"
 							class="input w-full"
 							@input="markServerFieldsTouched"
 						/>
 					</div>
 					<div class="flex gap-2">
 						<div class="flex-1">
-							<label for="connect-imapport" class="text-sm font-medium block mb-1">IMAP port</label>
+							<label for="connect-imapport" class="text-sm font-medium block mb-1">{{
+								t('components.postbox.postboxMailboxConnectForm.imapPort')
+							}}</label>
 							<input
 								id="connect-imapport"
 								v-model.number="form.imapPort"
@@ -330,25 +353,29 @@ const submitLabel = computed(() =>
 								type="checkbox"
 								@change="markServerFieldsTouched"
 							/>
-							SSL
+							{{ t('components.postbox.postboxMailboxConnectForm.ssl') }}
 						</label>
 					</div>
 				</div>
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<label for="connect-smtphost" class="text-sm font-medium block mb-1">SMTP host</label>
+						<label for="connect-smtphost" class="text-sm font-medium block mb-1">{{
+							t('components.postbox.postboxMailboxConnectForm.smtpHost')
+						}}</label>
 						<input
 							id="connect-smtphost"
 							v-model="form.smtpHost"
 							type="text"
-							placeholder="smtp.example.com"
+							:placeholder="t('components.postbox.postboxMailboxConnectForm.smtpHostPlaceholder')"
 							class="input w-full"
 							@input="markServerFieldsTouched"
 						/>
 					</div>
 					<div class="flex gap-2">
 						<div class="flex-1">
-							<label for="connect-smtpport" class="text-sm font-medium block mb-1">SMTP port</label>
+							<label for="connect-smtpport" class="text-sm font-medium block mb-1">{{
+								t('components.postbox.postboxMailboxConnectForm.smtpPort')
+							}}</label>
 							<input
 								id="connect-smtpport"
 								v-model.number="form.smtpPort"
@@ -363,17 +390,19 @@ const submitLabel = computed(() =>
 								type="checkbox"
 								@change="markServerFieldsTouched"
 							/>
-							SSL
+							{{ t('components.postbox.postboxMailboxConnectForm.ssl') }}
 						</label>
 					</div>
 				</div>
 				<div>
-					<label for="connect-username" class="text-sm font-medium block mb-1">Username</label>
+					<label for="connect-username" class="text-sm font-medium block mb-1">{{
+						t('components.postbox.postboxMailboxConnectForm.username')
+					}}</label>
 					<input
 						id="connect-username"
 						v-model="form.username"
 						type="text"
-						placeholder="Defaults to your email address"
+						:placeholder="t('components.postbox.postboxMailboxConnectForm.usernamePlaceholder')"
 						class="input w-full"
 					/>
 				</div>
@@ -383,11 +412,15 @@ const submitLabel = computed(() =>
 		<div v-if="testResult" class="text-sm space-y-1">
 			<p :class="testResult.imap.ok ? 'text-success' : 'text-error'">
 				<Icon :name="testResult.imap.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
-				Incoming mail {{ testResult.imap.ok ? 'reachable' : (testResult.imap.error ?? 'failed') }}
+				{{
+					t('components.postbox.postboxMailboxConnectForm.incomingMail', { status: imapStatus })
+				}}
 			</p>
 			<p :class="testResult.smtp.ok ? 'text-success' : 'text-error'">
 				<Icon :name="testResult.smtp.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
-				Outgoing mail {{ testResult.smtp.ok ? 'reachable' : (testResult.smtp.error ?? 'failed') }}
+				{{
+					t('components.postbox.postboxMailboxConnectForm.outgoingMail', { status: smtpStatus })
+				}}
 			</p>
 		</div>
 
@@ -402,10 +435,14 @@ const submitLabel = computed(() =>
 				variant="ghost"
 				:loading="testOp.isLoading.value"
 				:disabled="!canTest || busy"
-				:title="!form.password.trim() ? 'Enter the password to test the connection' : undefined"
+				:title="
+					!form.password.trim()
+						? t('components.postbox.postboxMailboxConnectForm.testNeedsPassword')
+						: undefined
+				"
 				@click="handleTest"
 			>
-				Test connection
+				{{ t('components.postbox.postboxMailboxConnectForm.testConnection') }}
 			</UiButton>
 			<UiButton
 				v-if="!hideCancel"
@@ -414,7 +451,7 @@ const submitLabel = computed(() =>
 				:disabled="busy"
 				@click="emit('cancel')"
 			>
-				{{ mode === 'update' ? 'Cancel' : 'Back' }}
+				{{ mode === 'update' ? t('common.cancel') : t('common.back') }}
 			</UiButton>
 		</div>
 	</form>

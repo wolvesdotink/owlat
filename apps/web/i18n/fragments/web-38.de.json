@@ -1,0 +1,395 @@
+{
+	"invite": {
+		"accept": {
+			"pageTitle": "Einladung annehmen — Owlat",
+			"claimMailboxOperation": "Postfach übernehmen",
+			"joinTeamInboxOperation": "Team-Postfach beitreten",
+			"loadingTitle": "Wird geladen...",
+			"loadingBody": "Bitte warten...",
+			"acceptingTitle": "Einladung wird angenommen...",
+			"acceptingBody": "Ihr Teamzugang wird eingerichtet...",
+			"loginRequiredTitle": "Sie sind eingeladen!",
+			"loginRequiredBody": "Melden Sie sich an oder erstellen Sie ein Konto, um diese Team-Einladung anzunehmen.",
+			"signInToAccept": "Zum Annehmen anmelden",
+			"createAccount": "Konto erstellen",
+			"successTitle": "Willkommen im Team!",
+			"successBody": "Sie sind {organization} erfolgreich beigetreten.",
+			"defaultOrganization": "dem Team",
+			"defaultWorkspace": "dem Workspace",
+			"mailboxReady": "Ihr Postfach unter {address} ist bereit.",
+			"mailboxReserved": "Ihr Postfach {address} ist reserviert — es wird automatisch aktiviert, sobald die Versanddomain Ihres Workspace verifiziert ist.",
+			"teamInboxAdded": "Das Team-Postfach {address} finden Sie in Ihrer Seitenleiste.",
+			"redirecting": "Sie werden weitergeleitet...",
+			"getStarted": "Loslegen",
+			"errorTitle": "Fehler bei der Einladung",
+			"goToDashboard": "Zum Dashboard",
+			"backToHome": "Zurück zur Startseite",
+			"errors": {
+				"missingId": "Ungültiger Einladungslink. Es wurde keine Einladungs-ID übergeben.",
+				"acceptFailed": "Die Einladung konnte nicht angenommen werden",
+				"unexpected": "Ein unerwarteter Fehler ist aufgetreten"
+			}
+		}
+	},
+	"cancelDeletion": {
+		"pageTitle": "Löschung abbrechen — Owlat",
+		"operationLabel": "Kontolöschung abbrechen",
+		"loadingTitle": "Löschung wird abgebrochen...",
+		"loadingBody": "Bitte warten Sie, während wir Ihre Anfrage verarbeiten.",
+		"successTitle": "Löschung abgebrochen",
+		"successBody": "Die Löschung Ihres Kontos wurde abgebrochen. Ihr Konto und alle Daten bleiben erhalten.",
+		"goToDashboard": "Zum Dashboard",
+		"errorTitle": "Abbruch fehlgeschlagen",
+		"errorBody": "Wir konnten Ihre Abbruchanfrage nicht verarbeiten.",
+		"errorHint": "Möglicherweise ist der Link abgelaufen oder die Löschung wurde bereits abgebrochen. Wenn Sie glauben, dass es sich um einen Fehler handelt, wenden Sie sich bitte an den Support.",
+		"signIn": "Anmelden",
+		"goHome": "Zur Startseite",
+		"noTokenTitle": "Ungültiger Link",
+		"noTokenBody": "Dieser Abbruchlink ist ungültig oder es fehlt das erforderliche Token. Bitte verwenden Sie den Link aus Ihrer E-Mail oder melden Sie sich an, um Ihr Konto zu verwalten."
+	},
+	"compose": {
+		"pageTitle": "Verfassen — Owlat",
+		"loadingMailbox": "Postfach wird geladen…",
+		"noMailbox": "Für diesen Workspace ist kein Postfach konfiguriert."
+	},
+	"home": {
+		"pageTitle": "Selbst gehostete E-Mail-Plattform — Owlat",
+		"nav": {
+			"label": "Hauptnavigation",
+			"logIn": "Anmelden",
+			"getStarted": "Loslegen"
+		},
+		"hero": {
+			"eyebrow": "Open Source · Selbst gehostet",
+			"title": "Versenden Sie bessere E-Mails.",
+			"titleAccent": "Besitzen Sie den gesamten Stack.",
+			"tagline": "Owlat ist eine quelloffene, selbst gehostete E-Mail-Plattform. Kampagnen, Automatisierungen, transaktionaler Versand, ein Team-Postfach und persönliche E-Mails — mit eigenem MTA und integrierten Werkzeugen für die Zustellbarkeit.",
+			"getStarted": "Loslegen",
+			"logIn": "Anmelden"
+		},
+		"capabilities": {
+			"campaigns": "Kampagnen",
+			"automations": "Automatisierungen",
+			"transactional": "Transaktional",
+			"teamInbox": "Team-Postfach",
+			"personalMail": "Persönliche E-Mails",
+			"ownMta": "Eigener MTA"
+		},
+		"footer": {
+			"copyright": "© {year} {company}. Alle Rechte vorbehalten.",
+			"terms": "Nutzungsbedingungen",
+			"imprint": "Impressum"
+		}
+	},
+	"imprint": {
+		"pageTitle": "Impressum — Owlat",
+		"signIn": "Anmelden",
+		"title": "Impressum",
+		"provider": {
+			"heading": "Angaben gemäß § 5 TMG"
+		},
+		"representative": {
+			"heading": "Vertreten durch",
+			"name": "{name} (Geschäftsführer)"
+		},
+		"contact": {
+			"heading": "Kontakt",
+			"phone": "Telefon: {phone}",
+			"emailLabel": "E-Mail:",
+			"noEmail": "nicht hinterlegt"
+		},
+		"responsible": {
+			"heading": "Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV"
+		},
+		"disputeResolution": {
+			"heading": "EU-Streitschlichtung",
+			"body": "Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung (OS) bereit: {link}. Unsere E-Mail-Adresse finden Sie oben im Impressum.",
+			"participation": "Wir sind nicht bereit oder verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen."
+		},
+		"footer": {
+			"copyright": "© {year} {company}. Alle Rechte vorbehalten."
+		}
+	},
+	"terms": {
+		"pageTitle": "Nutzungsbedingungen — Owlat",
+		"signIn": "Anmelden",
+		"title": "Nutzungsbedingungen",
+		"lastUpdated": "Zuletzt aktualisiert: 19. März 2026",
+		"service": {
+			"heading": "1. Leistungsbeschreibung & Zustimmung",
+			"acceptance": "Diese Nutzungsbedingungen („Bedingungen“) regeln Ihren Zugang zu und Ihre Nutzung der E-Mail-Marketing-Plattform Owlat („Dienst“), betrieben von der Wolves Software UG (haftungsbeschränkt) („Unternehmen“, „wir“, „uns“). Mit der Erstellung eines Kontos oder der Nutzung des Dienstes erklären Sie sich an diese Bedingungen gebunden. Wenn Sie nicht einverstanden sind, nutzen Sie den Dienst nicht.",
+			"scope": "Owlat stellt Werkzeuge bereit, um E-Mail-Kampagnen zu erstellen, zu verwalten und zu versenden, Empfängerlisten (Themen) zu verwalten und die Performance von E-Mails auszuwerten."
+		},
+		"account": {
+			"heading": "2. Registrierung & Kontosicherheit",
+			"credentials": "Um den Dienst zu nutzen, müssen Sie ein Konto mit zutreffenden und vollständigen Angaben erstellen. Sie sind für die Vertraulichkeit Ihrer Zugangsdaten und für sämtliche Aktivitäten unter Ihrem Konto verantwortlich. Sie müssen uns jede unbefugte Nutzung unverzüglich mitteilen.",
+			"age": "Sie müssen mindestens 18 Jahre alt sein oder das in Ihrer Rechtsordnung geltende Volljährigkeitsalter erreicht haben, um den Dienst zu nutzen. Mit der Registrierung versichern Sie, diese Voraussetzung zu erfüllen."
+		},
+		"billing": {
+			"heading": "3. Abonnements, Abrechnung & Erstattungen",
+			"fees": "Bestimmte Funktionen des Dienstes erfordern ein kostenpflichtiges Abonnement. Mit dem Abschluss eines Abonnements verpflichten Sie sich, die jeweils zum Kaufzeitpunkt genannten Entgelte zu zahlen. Abonnementgebühren werden im Voraus wiederkehrend (monatlich oder jährlich) abgerechnet und sind nicht erstattungsfähig, soweit das anwendbare Recht nichts anderes vorschreibt.",
+			"priceChanges": "Wir behalten uns vor, die Preise mit einer Frist von 30 Tagen zu ändern. Die weitere Nutzung nach einer Preisänderung gilt als Zustimmung zu den neuen Preisen."
+		},
+		"acceptableUse": {
+			"heading": "4. Zulässige Nutzung & Anti-Spam-Richtlinie",
+			"intro": "Sie verpflichten sich, bei der Nutzung des Dienstes alle anwendbaren Gesetze einzuhalten, insbesondere:",
+			"canSpamLaw": "CAN-SPAM Act (USA):",
+			"canSpam": "{law} Alle E-Mails müssen eine gültige Postanschrift, einen eindeutigen Abmeldemechanismus sowie zutreffende Kopfzeilen- und Betreffangaben enthalten.",
+			"gdprLaw": "DSGVO (EU):",
+			"gdpr": "{law} Sie müssen eine wirksame Einwilligung einholen, bevor Sie Marketing-E-Mails an Personen in der EU senden. Sie müssen die Betroffenenrechte einschließlich Auskunft, Berichtigung und Löschung wahren.",
+			"caslLaw": "CASL (Kanada):",
+			"casl": "{law} Sie müssen eine ausdrückliche oder konkludente Einwilligung einholen, bevor Sie kommerzielle elektronische Nachrichten an kanadische Empfänger senden.",
+			"otherLawsLabel": "Weitere Gesetze:",
+			"otherLaws": "{law} Sie sind für die Einhaltung aller weiteren anwendbaren Anti-Spam-, Datenschutz- und Datensicherheitsgesetze in den Rechtsordnungen verantwortlich, in denen sich Ihre Empfänger befinden.",
+			"monitoring": "Wir überwachen das Versandverhalten und behalten uns vor, Konten zu sperren oder zu kündigen, die hohe Bounce-Raten, Spam-Beschwerden oder andere Anzeichen für regelwidriges Versandverhalten aufweisen."
+		},
+		"prohibited": {
+			"heading": "5. Verbotene Nutzungen",
+			"intro": "Sie dürfen den Dienst nicht nutzen, um:",
+			"purchasedLists": "E-Mails an gekaufte, gemietete oder ausgelesene E-Mail-Listen zu senden",
+			"spam": "unerwünschte Massen-E-Mails (Spam) oder E-Mails an Empfänger ohne deren Einwilligung zu senden",
+			"malware": "Schadsoftware, Phishing-Versuche oder betrügerische Inhalte zu verbreiten",
+			"harmfulContent": "Inhalte zu versenden, die rechtswidrig, schädlich, bedrohend, beleidigend oder belästigend sind",
+			"impersonation": "sich als eine andere Person oder Organisation auszugeben",
+			"disruption": "den Dienst oder seine Infrastruktur zu beeinträchtigen oder zu stören",
+			"unauthorizedAccess": "unbefugt Zugang zu Teilen des Dienstes zu erlangen",
+			"unlawfulUse": "den Dienst für Zwecke zu nutzen, die gegen anwendbares Recht verstoßen",
+			"consequences": "Ein Verstoß gegen diese Verbote kann zur sofortigen Sperrung oder Kündigung des Kontos ohne Ankündigung und ohne Erstattung führen."
+		},
+		"userContent": {
+			"heading": "6. Nutzerinhalte & Datenhoheit",
+			"ownership": "Sie behalten alle Rechte an Inhalten, die Sie über den Dienst hochladen, erstellen oder versenden („Nutzerinhalte“). Mit der Nutzung des Dienstes räumen Sie uns ein beschränktes Recht ein, Ihre Nutzerinhalte ausschließlich zum Zweck der Erbringung des Dienstes zu verarbeiten, zu speichern und zu übertragen.",
+			"responsibility": "Sie sind allein für Ihre Nutzerinhalte verantwortlich, einschließlich der Sicherstellung, dass diese keine Rechte Dritter verletzen."
+		},
+		"intellectualProperty": {
+			"heading": "7. Geistiges Eigentum",
+			"body": "Der Dienst einschließlich seines Designs, seiner Funktionen und der zugrunde liegenden Technologie steht im Eigentum der Wolves Software UG. Diese Bedingungen räumen Ihnen kein Recht ein, unsere Marken, Logos oder Markenmerkmale ohne vorherige schriftliche Zustimmung zu nutzen."
+		},
+		"privacy": {
+			"heading": "8. Datenschutz & Datenverarbeitung",
+			"policy": "Für Ihre Nutzung des Dienstes gilt zusätzlich unsere Datenschutzerklärung. Mit der Nutzung des Dienstes bestätigen Sie, unsere Praktiken zur Datenverarbeitung gelesen und verstanden zu haben.",
+			"roles": "Wir verarbeiten personenbezogene Daten gemäß der Datenschutz-Grundverordnung (DSGVO) und weiteren anwendbaren Datenschutzgesetzen. Soweit Sie den Dienst nutzen, um personenbezogene Daten Ihrer Empfänger zu verarbeiten, sind Sie der Verantwortliche und wir der Auftragsverarbeiter."
+		},
+		"warranties": {
+			"heading": "9. Gewährleistungsausschluss",
+			"body": "DER DIENST WIRD „WIE BESEHEN“ UND „WIE VERFÜGBAR“ OHNE JEGLICHE AUSDRÜCKLICHE ODER STILLSCHWEIGENDE GEWÄHRLEISTUNG BEREITGESTELLT, INSBESONDERE OHNE STILLSCHWEIGENDE GEWÄHRLEISTUNG DER MARKTGÄNGIGKEIT, DER EIGNUNG FÜR EINEN BESTIMMTEN ZWECK UND DER NICHTVERLETZUNG VON RECHTEN. WIR GEWÄHRLEISTEN NICHT, DASS DER DIENST UNUNTERBROCHEN, FEHLERFREI ODER SICHER IST."
+		},
+		"liability": {
+			"heading": "10. Haftungsbeschränkung",
+			"body": "SOWEIT GESETZLICH ZULÄSSIG, HAFTET DIE WOLVES SOFTWARE UG NICHT FÜR MITTELBARE SCHÄDEN, BEILÄUFIG ENTSTANDENE SCHÄDEN, BESONDERE SCHÄDEN, FOLGESCHÄDEN ODER STRAFSCHADENSERSATZ, FÜR ENTGANGENEN GEWINN ODER UMSATZ, GLEICH OB UNMITTELBAR ODER MITTELBAR ENTSTANDEN, SOWIE FÜR DEN VERLUST VON DATEN, NUTZUNGSMÖGLICHKEITEN ODER GESCHÄFTSWERT. UNSERE GESAMTHAFTUNG ÜBERSTEIGT NICHT DIE BETRÄGE, DIE SIE UNS IN DEN ZWÖLF (12) MONATEN VOR DEM SCHADENSAUSLÖSENDEN EREIGNIS GEZAHLT HABEN."
+		},
+		"termination": {
+			"heading": "11. Kündigung",
+			"rights": "Sie können Ihr Konto jederzeit über die Einstellungen des Dienstes kündigen. Wir können Ihren Zugang jederzeit bei einem Verstoß gegen diese Bedingungen oder aus anderen Gründen nach unserem Ermessen mit angemessener Ankündigung sperren oder beenden; bei schwerwiegenden Verstößen, die sofortiges Handeln erfordern, entfällt die Ankündigung.",
+			"effects": "Mit der Beendigung endet Ihr Recht zur Nutzung des Dienstes unmittelbar. Wir können Ihre Daten für einen angemessenen Zeitraum aufbewahren, soweit dies gesetzlich vorgeschrieben ist oder berechtigten geschäftlichen Zwecken dient."
+		},
+		"governingLaw": {
+			"heading": "12. Anwendbares Recht & Gerichtsstand",
+			"body": "Diese Bedingungen unterliegen dem Recht der Bundesrepublik Deutschland und werden entsprechend ausgelegt. Ausschließlicher Gerichtsstand für alle Streitigkeiten aus oder im Zusammenhang mit diesen Bedingungen ist Berlin, Deutschland, soweit gesetzlich zulässig."
+		},
+		"amendments": {
+			"heading": "13. Änderungen & Anpassungen",
+			"body": "Wir behalten uns vor, diese Bedingungen jederzeit zu ändern. Über wesentliche Änderungen informieren wir Sie mindestens 30 Tage vor deren Inkrafttreten per E-Mail oder über den Dienst. Ihre fortgesetzte Nutzung des Dienstes nach Inkrafttreten der Änderungen gilt als Zustimmung zu den geänderten Bedingungen."
+		},
+		"contact": {
+			"heading": "14. Kontakt",
+			"intro": "Wenn Sie Fragen zu diesen Bedingungen haben, wenden Sie sich bitte an:",
+			"emailLabel": "E-Mail:",
+			"noEmail": "nicht hinterlegt"
+		},
+		"footer": {
+			"copyright": "© {year} {company}. Alle Rechte vorbehalten."
+		}
+	},
+	"setup": {
+		"index": {
+			"pageTitle": "Owlat — Ersteinrichtung",
+			"eyebrow": "Owlat-Einrichtung",
+			"title": "Willkommen bei {brand}.",
+			"intro": "Ein paar Entscheidungen und wir starten den Rest Ihrer Installation. Sie können später alles unter {location} ändern.",
+			"settingsFeatures": "Einstellungen → Funktionen",
+			"steps": {
+				"mode": {
+					"title": "Betriebsmodus",
+					"desc": "Wählen Sie einen Ausgangspunkt — nur IMAP, Marketing, komplette Suite…"
+				},
+				"features": {
+					"title": "Funktionen",
+					"desc": "Stellen Sie fein ein, welche Bereiche aktiv sind."
+				},
+				"email": {
+					"title": "E-Mail-Anbieter",
+					"desc": "Owlat-MTA, Resend, Amazon SES oder keiner."
+				},
+				"review": {
+					"title": "Administration & Überprüfung",
+					"desc": "Erstellen Sie Ihr Konto und starten Sie."
+				}
+			},
+			"start": "Los geht's",
+			"laterNote": "KI-Anbieter, Integrationen sowie Ihre Versanddomain + DKIM werden anschließend unter {settings} konfiguriert.",
+			"terminalNote": "Lieber das Terminal? {command}"
+		},
+		"mode": {
+			"pageTitle": "Owlat-Einrichtung — Betriebsmodus",
+			"eyebrow": "Owlat-Einrichtung",
+			"title": "Wie werden Sie {brand} betreiben?",
+			"intro": "Wählen Sie den passendsten Modus, um Ihre Funktionen vorauszufüllen — im nächsten Schritt können Sie alles fein einstellen. Die vollständige Matrix finden Sie unter {docsLink}.",
+			"docsLink": "Betriebsmodi",
+			"migrationLegend": "Wechseln Sie von einer anderen Plattform oder starten Sie neu mit Owlat?",
+			"freshTitle": "Neu starten",
+			"freshDesc": "Owlat ist unser Zuhause. Kein Import nötig.",
+			"migratingTitle": "Wechsel von einer anderen Plattform",
+			"migratingDesc": "Wir bieten neuen Nutzern beim ersten Login einen E-Mail-Import an.",
+			"needsDeliveryProvider": "benötigt einen Zustellanbieter",
+			"needsMta": "benötigt den integrierten MTA",
+			"noProviderNeeded": "kein Anbieter nötig",
+			"custom": "Benutzerdefiniert / später entscheiden"
+		},
+		"features": {
+			"pageTitle": "Owlat-Einrichtung — Funktionen",
+			"eyebrow": "Owlat-Einrichtung",
+			"title": "Wählen Sie, was Sie {accent}",
+			"titleAccent": "aktivieren möchten",
+			"intro": "Wenn Sie eine übergeordnete Funktion deaktivieren, werden ihre Unterfunktionen automatisch deaktiviert. Sie können all das später ändern.",
+			"providerRequiredTitle": "Im nächsten Schritt wird ein Zustellanbieter benötigt",
+			"providerRequiredMessage": "Kampagnen, transaktionaler Versand oder Automatisierungen sind aktiviert — im Schritt „E-Mail“ wird ein Zustellanbieter benötigt (MTA, Resend oder SES). Ein verbundenes externes Postfach zählt nicht dazu.",
+			"packsHeading": "Funktionspakete",
+			"packsIntro": "Wählen Sie ein Bündel. Das Umschalten eines Pakets ändert alle darin enthaltenen Schalter.",
+			"partial": "teilweise",
+			"requires": "erfordert: {features}",
+			"categories": {
+				"sending": "Versand",
+				"receiving": "Empfang",
+				"ai": "KI",
+				"integrations": "Integrationen",
+				"security": "Sicherheit & Prüfung",
+				"deliverability": "Analysen & Zustellbarkeit"
+			},
+			"next": "Weiter: E-Mail-Anbieter"
+		},
+		"email": {
+			"pageTitle": "Owlat-Einrichtung — E-Mail-Anbieter",
+			"eyebrow": "Owlat-Einrichtung",
+			"title": "Wie soll Owlat {accent} versenden?",
+			"titleAccent": "E-Mails",
+			"intro": "Drei ehrliche Wege zu versenden: Betreiben Sie Ihren eigenen Mailserver für volle Kontrolle, übergeben Sie die Zustellung an Amazon SES oder leiten Sie über einen SMTP-Anbieter weiter, den Sie ohnehin bezahlen.",
+			"providerRequiredTitle": "Ein Zustellanbieter ist erforderlich",
+			"providerRequiredMessage": "Sie haben Kampagnen, transaktionalen Versand oder Automatisierungen aktiviert — diese versenden über einen Zustellanbieter, daher ist einer erforderlich.",
+			"providerOptionalTitle": "Ein Zustellanbieter ist optional",
+			"providerOptionalMessage": "Es ist kein Massenversand aktiviert. Beachten Sie, dass System- und Authentifizierungs-E-Mails (Passwort zurücksetzen, Einladungen) dennoch einen Transportweg benötigen.",
+			"providerLegend": "Zustellanbieter",
+			"providers": {
+				"mta": {
+					"label": "Eigenen MTA betreiben",
+					"hint": "Volle Kontrolle, kein Dritter. Erfordert einen offenen Port 25 und eine saubere Versand-IP sowie Ihre Versanddomain + DKIM."
+				},
+				"ses": {
+					"label": "Amazon SES",
+					"hint": "Verwaltete Zustellbarkeit, günstig bei großen Mengen. Erfordert ein AWS-Konto."
+				},
+				"smtp": {
+					"label": "SMTP-Relay",
+					"hint": "Bringen Sie den Anbieter mit, den Sie ohnehin bezahlen — Mailgun, Postmark, SendGrid, Brevo oder einen beliebigen eigenen SMTP-Server."
+				},
+				"resend": {
+					"label": "Resend",
+					"hint": "Verwaltete API mit großzügigem Gratis-Kontingent. Hervorragende Entwicklererfahrung."
+				},
+				"mandrill": {
+					"label": "Mailchimp Transactional (Mandrill)",
+					"hint": "Sie kommen von Mailchimp? Behalten Sie Ihre bestehende Versandreputation und wechseln Sie dann in Ihrem eigenen Tempo auf Ihren eigenen MTA."
+				},
+				"emailit": {
+					"label": "Emailit",
+					"hint": "Verwaltete E-Mail-API mit signierten Zustellrückmeldungen und idempotentem Versand."
+				},
+				"none": {
+					"label": "Kein Zustellanbieter (nur Empfang / nur IMAP)",
+					"hint": "Externe Postfächer lesen; kein Marketing- und kein transaktionaler Versand. System- und Authentifizierungs-E-Mails benötigen dennoch einen Transportweg."
+				}
+			},
+			"resendKeyLabel": "Resend-API-Schlüssel",
+			"emailitKeyLabel": "Emailit-API-Schlüssel",
+			"mandrillKeyLabel": "Mailchimp-Transactional-API-Schlüssel",
+			"mandrillHint": "Mailchimp Transactional → Settings → API keys. Für Bounce- und Beschwerde-Rückmeldungen wird zusätzlich ein Webhook benötigt — unter Zustellung → Anbieter finden Sie nach der Einrichtung die URL und die zu aktivierenden Ereignisse.",
+			"sesRegionLabel": "Region",
+			"sesAccessKeyLabel": "Access-Key-ID",
+			"sesSecretKeyLabel": "Secret Access Key",
+			"smtpPresetLabel": "Anbieter-Vorlage",
+			"smtpPresetHint": "Füllt Server, Port und Verschlüsselung vor. Wählen Sie „Custom“ für jeden anderen SMTP-Server.",
+			"smtpHostLabel": "Server-Host",
+			"smtpHostHelp": "Das Relay übernimmt die Zustellung, daher wird die Authentifizierung (SPF/DKIM) auf Seiten des Relays eingerichtet, nicht bei Owlat.",
+			"smtpPortLabel": "Port",
+			"smtpSecureLabel": "Implizites TLS (Port 465). Für STARTTLS auf 587 deaktiviert lassen.",
+			"smtpUsernameLabel": "Benutzername",
+			"mtaIdentityHeading": "Identität der ausgehenden IPs",
+			"mtaIdentityIntro": "Das MTA-Profil ist aktiviert. Geben Sie vor dem Start die öffentlichen Quell-IPs und den Hostnamen an, auf den deren PTR-Einträge verweisen.",
+			"transactionalIpsLabel": "Transaktionale IPs",
+			"transactionalIpsHelp": "Kommagetrennte öffentliche IPv4-Adressen.",
+			"campaignIpsLabel": "Kampagnen-IPs",
+			"campaignIpsHelp": "Bei einer Installation mit nur einer IP darf eine transaktionale IP wiederholt werden.",
+			"ehloHostnameLabel": "Standard-EHLO-/PTR-Hostname",
+			"ehloHostnameHelp": "Setzen Sie den PTR jeder IP exakt auf ihren EHLO-Hostnamen und verweisen Sie diesen Hostnamen zurück auf die IP.",
+			"ehloOverridesLabel": "EHLO-Überschreibungen pro IP (optionales JSON)",
+			"ehloOverridesHelp": "Verwenden Sie dies, wenn verschiedene Quell-IPs unterschiedliche PTR-Hostnamen haben.",
+			"setupTokenLabel": "Einrichtungs-Token",
+			"setupTokenHelp": "Wird vom Befehl „owlat setup“ ausgegeben, wenn dieser den Einrichtungsmodus aktiviert hat. Erforderlich, um den Anbieter zu prüfen und zu starten.",
+			"fromIdentityHeading": "Absenderidentität {optional}",
+			"fromIdentityOptional": "(optional)",
+			"fromIdentityIntro": "Die Standard-Absenderadresse für System-E-Mails. Leer lassen, um sie später aus Ihrer Versanddomain abzuleiten.",
+			"fromAddressLabel": "Standard-Absenderadresse",
+			"fromAddressPlaceholder": "noreply{'@'}ihredomain.de",
+			"fromAddressHelp": "Wir verwenden sie für Passwort-Zurücksetzungen, Einladungen und Double-Opt-in.",
+			"fromNameLabel": "Absendername",
+			"validating": "Wird geprüft…",
+			"next": "Weiter: Administratorkonto",
+			"errors": {
+				"missingToken": "Geben Sie das von `owlat setup` ausgegebene Einrichtungs-Token ein, um den Anbieter zu prüfen, und versuchen Sie es erneut.",
+				"validationFailed": "Der Anbieter konnte nicht geprüft werden. Versuchen Sie es erneut."
+			}
+		},
+		"admin": {
+			"pageTitle": "Owlat-Einrichtung — Administratorkonto",
+			"eyebrow": "Owlat-Einrichtung",
+			"title": "{accent}-Konto",
+			"titleAccent": "Administrator",
+			"intro": "Der erste Nutzer. Nach dem Start können Sie Teammitglieder aus dem Dashboard einladen.",
+			"displayName": "Anzeigename",
+			"displayNamePlaceholder": "Alex Operator",
+			"passwordPlaceholder": "Mindestens 12 Zeichen",
+			"passwordHelp": "Mindestens 12 Zeichen.",
+			"next": "Weiter: Überprüfung"
+		},
+		"review": {
+			"pageTitle": "Owlat-Einrichtung — Überprüfung",
+			"eyebrow": "Owlat-Einrichtung",
+			"title": "Überprüfen & {accent}",
+			"titleAccent": "starten",
+			"intro": "Letzte Gelegenheit, etwas zu ändern. Nach dem Start können Sie Schalter auch unter Einstellungen → Funktionen umlegen.",
+			"activeFeatures": "Aktive Funktionen",
+			"noneEnabled": "Keine aktiviert",
+			"mailboxImport": "Postfach-Import",
+			"mailboxImportEnabled": "Aktiviert — neue Nutzer können beim ersten Login E-Mails von Ihrer alten Plattform importieren.",
+			"emailProvider": "E-Mail-Anbieter",
+			"fromIdentity": "Absenderidentität",
+			"adminAccount": "Administratorkonto",
+			"notSet": "(nicht gesetzt)",
+			"adminName": "({name})",
+			"generatedSecrets": "Generierte Geheimnisse",
+			"generatedSecretsNote": "{secrets} — werden beim Anwenden erstellt.",
+			"setupTokenLabel": "Einrichtungs-Token",
+			"setupTokenHelp": "Wird vom Befehl „owlat setup“ ausgegeben, wenn dieser den Einrichtungsmodus aktiviert hat. Zum Starten erforderlich — es weist Sie als die Person aus, die die Einrichtung gestartet hat.",
+			"missingProviderTitle": "Kein Zustellanbieter konfiguriert",
+			"missingProviderMessage": "Kampagnen, transaktionaler Versand oder Automatisierungen sind aktiviert, aber es ist kein Zustellanbieter konfiguriert. Gehen Sie zum Schritt „E-Mail“ zurück und wählen Sie MTA, Resend oder SES.",
+			"appliedTitle": "Einrichtung angewendet",
+			"appliedMessage": "Wird abgeschlossen — die App lädt Ihre Konfiguration, danach bringen wir Sie zur Anmeldung. Das dauert in der Regel einige Sekunden.",
+			"restartTimeout": "Bei einer verwalteten Installation schließt sich das von selbst ab. Wenn Sie einen manuellen {command}-Stack betreiben, starten Sie den Web-Container neu — wir fahren automatisch fort, sobald er wieder erreichbar ist.",
+			"continueToSignIn": "Weiter zur Anmeldung",
+			"applying": "Wird angewendet…",
+			"finishing": "Wird abgeschlossen…",
+			"launch": "Owlat starten",
+			"errorUnknown": "Die Einrichtung ist aus unbekanntem Grund fehlgeschlagen."
+		}
+	}
+}

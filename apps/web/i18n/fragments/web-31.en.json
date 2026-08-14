@@ -1,0 +1,699 @@
+{
+	"dashboard": {
+		"admin": {
+			"instance": {
+				"sealedMail": {
+					"pageTitle": "Sealed Mail — Owlat",
+					"updateOperation": "Update Sealed Mail settings",
+					"exportKitOperation": "Export recovery kit",
+					"importKitOperation": "Import recovery kit",
+					"reSealOperation": "Re-seal sealed mail",
+					"options": {
+						"auto": {
+							"title": "Seal automatically",
+							"description": "When everyone you are writing to can receive sealed mail, Owlat encrypts the message before it leaves. Recommended."
+						},
+						"ask": {
+							"title": "Keep available, but never automatic",
+							"description": "Owlat keeps discovering keys and shows when a message could be sealed, but never seals on its own — messages are sent normally. Switch to \"Seal automatically\" to turn on sealing."
+						},
+						"off": {
+							"title": "Never seal",
+							"description": "All Postbox mail is sent normally, even when a recipient could receive it sealed."
+						}
+					},
+					"toasts": {
+						"noKeyForAddress": "No sealed-mail key exists for that address yet.",
+						"kitDownloaded": "Recovery kit downloaded. Store it somewhere private and offline.",
+						"kitImported": "Recovery kit imported. Sealed mail for this address can be opened again.",
+						"kitMismatch": "That key doesn't match this address, so it wasn't imported.",
+						"reSealStarted": "Re-sealing started. Once it finishes you can remove the previous instance secret."
+					},
+					"backToSettings": "Back to Settings",
+					"title": "Sealed Mail",
+					"intro": "How Owlat encrypts personal mail between you and other Owlat workspaces.",
+					"noWorkspace": "Select a workspace to manage its sealing policy.",
+					"disabledNotice": "Sealed Mail is turned off for this workspace, so nothing is sealed yet. You can still choose the policy below — it takes effect once Sealed Mail is enabled in Features.",
+					"policyLegend": "Sealing policy",
+					"tls": {
+						"title": "Require TLS for incoming mail",
+						"description": "Reject senders that try to deliver without STARTTLS. They receive a permanent “550 5.7.10 Encryption needed” response, so the message is never accepted or stored.",
+						"plaintextWarning": "Plaintext inbound delivery is allowed. Only disable this for legacy mail servers that cannot use TLS."
+					},
+					"recoveryKit": {
+						"title": "Recovery kit",
+						"description": "A recovery kit is the private key that opens sealed mail for one address, plus plain-language instructions. Download one for each address and keep it somewhere private and offline. There is no master copy on the server, so a recovery kit is the only way to restore sealed mail if this instance is rebuilt.",
+						"downloadLabel": "Download a recovery kit",
+						"addressPlaceholder": "you{'@'}your-domain.com",
+						"downloadButton": "Download recovery kit",
+						"restoreLabel": "Restore from a recovery kit",
+						"restoreDescription": "Paste a previously downloaded recovery kit to restore access for its address.",
+						"importKeyPlaceholder": "Paste the ASCII-armored private key from your recovery kit",
+						"importButton": "Import recovery kit"
+					},
+					"reSeal": {
+						"title": "After changing the instance secret",
+						"description": "If you rotate this instance's secret, keep the previous one in place until you run this. Re-sealing re-encrypts every stored key under the new secret so the old one can be retired. Sealed mail keeps opening throughout.",
+						"button": "Re-seal sealed mail"
+					}
+				},
+				"plugins": {
+					"index": {
+						"pageTitle": "Plugins — Owlat",
+						"clearSettingsOperation": "Clear plugin settings",
+						"toasts": {
+							"cleared": "Cleared residual settings for {pluginId}."
+						},
+						"title": "Plugins",
+						"intro": "Configure each installed plugin. Enabling a plugin and approving the capabilities it requests happens under {featuresLink}; this page manages each plugin's own settings.",
+						"featuresLink": "Features",
+						"empty": {
+							"title": "No plugins installed",
+							"description": "Bundled plugins are added to this deployment's build. Once a plugin is installed it appears here to configure."
+						},
+						"packageVersion": "{packageName} · v{version}",
+						"capabilityCount": "{count} capability | {count} capabilities",
+						"configurableSettings": "· configurable settings",
+						"residual": {
+							"title": "Residual settings",
+							"description": "These plugins are no longer installed. Their stored settings can be cleared."
+						},
+						"clearSettings": "Clear settings",
+						"confirm": {
+							"title": "Clear settings for {pluginId}?",
+							"titleFallback": "Clear settings?",
+							"description": "This permanently removes the stored settings for this uninstalled plugin, including any saved secrets."
+						}
+					},
+					"detail": {
+						"pageTitle": "{pluginId} — Plugins — Owlat",
+						"saveOperation": "Save plugin settings",
+						"resetOperation": "Reset plugin settings",
+						"toasts": {
+							"fillRequired": "Fill in the required fields: {fields}",
+							"saved": "Plugin settings saved.",
+							"reset": "Plugin settings reset to defaults.",
+							"cleared": "Cleared residual settings for {pluginId}."
+						},
+						"allPlugins": "All plugins",
+						"orphaned": {
+							"title": "{pluginId} is no longer installed",
+							"description": "This plugin was removed from the build but left stored settings behind. Clear them to remove any saved values, including secrets.",
+							"clear": "Clear residual settings"
+						},
+						"notFound": {
+							"title": "Plugin not found",
+							"description": "No installed plugin matches this address.",
+							"back": "Back to plugins"
+						},
+						"packageVersion": "{packageName} · v{version}",
+						"disabledNotice": "This plugin is disabled. You can configure its settings now; enable it and approve its capabilities under {featuresLink}.",
+						"featuresLink": "Features",
+						"capabilities": {
+							"title": "Capabilities",
+							"description": "Host-mediated operations this plugin declared, and whether the operator has granted each.",
+							"granted": "Granted",
+							"notGranted": "Not granted",
+							"none": "This plugin requests no capabilities."
+						},
+						"settings": {
+							"title": "Settings",
+							"description": "Configuration this plugin exposes. Secrets are supplied by deployment environment variables, never stored by Owlat.",
+							"none": "This plugin has no configurable settings.",
+							"envVarsNotice": "This plugin needs an environment variable set in your deployment before it can run. Other settings can still be saved. | This plugin needs environment variables set in your deployment before it can run. Other settings can still be saved.",
+							"secretLabelSuffix": "— {label}",
+							"resetToDefaults": "Reset to defaults",
+							"save": "Save settings"
+						},
+						"resetConfirm": {
+							"title": "Reset plugin settings?",
+							"description": "This clears every stored value for this plugin, including saved secrets, and returns it to the schema defaults.",
+							"confirm": "Reset"
+						},
+						"orphanClearConfirm": {
+							"title": "Clear residual settings?",
+							"description": "This permanently removes the stored settings this uninstalled plugin left behind, including any saved secrets. This cannot be undone.",
+							"confirm": "Clear settings"
+						}
+					}
+				}
+			},
+			"team": {
+				"api": {
+					"docs": {
+						"pageTitle": "API Quickstart — Owlat",
+						"backToKeys": "Back to API Keys",
+						"title": "API Quickstart",
+						"intro": "Authenticate with a scoped API key from {settingsLink}.",
+						"introLink": "Settings → API Keys",
+						"baseUrlTitle": "Your API base URL",
+						"baseUrlMissing": "Not configured (NUXT_PUBLIC_CONVEX_SITE_URL)",
+						"createContact": "Create a contact",
+						"endpoints": {
+							"contacts": "List or create contacts",
+							"contact": "Read, update, or delete a contact",
+							"events": "Track custom events",
+							"transactional": "Send a transactional email (slug in body)",
+							"topics": "Manage topics and subscriptions",
+							"health": "Health probe"
+						},
+						"table": {
+							"method": "Method",
+							"endpoint": "Endpoint"
+						},
+						"fullReference": "Full API reference"
+					},
+					"index": {
+						"pageTitle": "API Keys — Owlat",
+						"operations": {
+							"create": "Create API key",
+							"revoke": "Revoke API key",
+							"delete": "Delete API key",
+							"rename": "Rename API key"
+						},
+						"scopes": {
+							"contactsRead": {
+								"label": "Contacts — read",
+								"description": "List and read contacts and their details."
+							},
+							"contactsWrite": {
+								"label": "Contacts — write",
+								"description": "Create, update, and delete contacts."
+							},
+							"eventsWrite": {
+								"label": "Events — write",
+								"description": "Ingest events that can trigger automations."
+							},
+							"transactionalSend": {
+								"label": "Transactional — send",
+								"description": "Send transactional emails."
+							},
+							"topicsWrite": {
+								"label": "Topics — write",
+								"description": "Add or remove contacts on topics."
+							}
+						},
+						"validation": {
+							"nameRequired": "Name is required",
+							"scopeRequired": "Select at least one scope — keys are scoped to least privilege."
+						},
+						"toasts": {
+							"created": "API key created successfully",
+							"copyFailed": "Failed to copy to clipboard",
+							"revoked": "API key revoked successfully",
+							"deleted": "API key deleted permanently"
+						},
+						"title": "API Keys",
+						"subtitle": "Manage API keys for authenticating your API requests",
+						"createKey": "Create API Key",
+						"secureNotice": {
+							"title": "Keep your API keys secure",
+							"body": "API keys grant full access to your account via the API. Never share your keys publicly or commit them to version control. Use environment variables to store your keys securely."
+						},
+						"rateLimit": {
+							"title": "Rate Limiting",
+							"rate": "10 requests/second",
+							"rateDescription": "Maximum API calls per second per API key",
+							"headersTitle": "Rate Limit Headers",
+							"headersDescription": "Track usage via response headers",
+							"headerColumn": "Header",
+							"limitHeader": "Maximum requests per second (10)",
+							"remainingHeader": "Requests remaining in current window",
+							"resetHeader": "Unix timestamp when the rate limit resets",
+							"retryAfterHeader": "Seconds to wait when rate limited (429 response)",
+							"exampleHeaders": "Example response headers:"
+						},
+						"docs": {
+							"title": "API Documentation",
+							"description": "View endpoint reference, request schemas, and code examples",
+							"view": "View Docs"
+						},
+						"adminGate": {
+							"title": "Admins only",
+							"description": "API keys can only be managed by workspace owners and admins. Ask an admin if you need API access."
+						},
+						"noWorkspace": {
+							"title": "No workspace selected",
+							"description": "Create or select a workspace to manage API keys."
+						},
+						"empty": {
+							"title": "No API keys yet",
+							"description": "Create an API key to start using the API for contacts, emails, and events."
+						},
+						"activeKeyCount": "{count} active key | {count} active keys",
+						"table": {
+							"key": "Key",
+							"lastUsed": "Last Used",
+							"created": "Created"
+						},
+						"form": {
+							"nameAriaLabel": "API key name",
+							"namePlaceholder": "e.g., Production, Development, CI/CD",
+							"nameHelp": "Give your API key a descriptive name to identify its purpose.",
+							"scopesLabel": "Scopes",
+							"scopesHelp": "Grant only the permissions this key needs. A compromised key can do nothing beyond its scopes.",
+							"creating": "Creating...",
+							"submit": "Create Key"
+						},
+						"status": {
+							"revoked": "Revoked"
+						},
+						"neverUsed": "Never used",
+						"actions": {
+							"rename": "Rename Key",
+							"revoke": "Revoke Key",
+							"delete": "Delete Key"
+						},
+						"created": {
+							"title": "API Key Created",
+							"copyNow": "Copy your API key now",
+							"copyNowBody": "This is the only time you'll see this key. Store it securely - you won't be able to see it again.",
+							"apiKeyLabel": "API Key",
+							"copied": "Copied!"
+						},
+						"revokeDialog": {
+							"title": "Revoke API Key",
+							"description": "Revoking \"{name}\" will immediately disable the key. Any API requests using this key will fail. You can delete the key later to remove it completely.",
+							"confirm": "Revoke Key"
+						},
+						"deleteDialog": {
+							"title": "Delete API Key",
+							"description": "Permanently delete \"{name}\"? This action cannot be undone. The key will be permanently removed from your account.",
+							"confirm": "Delete Key"
+						}
+					}
+				},
+				"connectedApps": {
+					"index": {
+						"pageTitle": "Connected apps — Owlat",
+						"operations": {
+							"register": "Register connected app",
+							"rotateSecret": "Rotate connected-app secret",
+							"testConnection": "Test connected-app connection",
+							"enable": "Enable connected app",
+							"disable": "Disable connected app",
+							"revoke": "Revoke connected app",
+							"delete": "Delete connected app"
+						},
+						"status": {
+							"revoked": "Revoked"
+						},
+						"toasts": {
+							"connected": "Connected {name}.",
+							"enabled": "Enabled {name}.",
+							"disabled": "Disabled {name}.",
+							"revoked": "Revoked {name}.",
+							"deleted": "Deleted {name}."
+						},
+						"title": "Connected apps",
+						"intro": "External apps that talk to Owlat through a scoped, plugin-bound secret and signed hooks. A connected app can add work or caution — it can never approve, unblock, or send for you.",
+						"connect": "Connect an app",
+						"adminGate": {
+							"title": "Admins only",
+							"description": "Connected apps can be managed by workspace owners and admins. Ask an admin if you need to connect an external app."
+						},
+						"empty": {
+							"title": "No connected apps",
+							"description": "Connect an external app to extend Owlat with scoped access and signed hooks."
+						},
+						"testing": "Testing connection…",
+						"testConnection": "Test connection",
+						"enable": "Enable",
+						"disable": "Disable",
+						"rotateSecret": "Rotate secret",
+						"revoke": "Revoke",
+						"rotateDialog": {
+							"title": "Rotate the secret for {name}?",
+							"titleFallback": "Rotate secret?",
+							"description": "A new shared secret is generated and shown once. The current secret stops working immediately — the connected app will fail until you update it with the new secret."
+						},
+						"revokeDialog": {
+							"title": "Revoke {name}?",
+							"titleFallback": "Revoke app?",
+							"description": "Revoking is permanent. The shared secret is invalidated, the app can no longer call Owlat, and it can never be re-enabled — you'd have to connect a new app. Its record is kept for audit until you delete it.",
+							"confirm": "Revoke app"
+						},
+						"deleteDialog": {
+							"title": "Delete {name}?",
+							"titleFallback": "Delete app?",
+							"description": "This permanently removes the connected app and its record. This cannot be undone.",
+							"confirm": "Delete app"
+						}
+					}
+				},
+				"audit": {
+					"pageTitle": "Audit Logs — Owlat",
+					"dateRange": {
+						"all": "All Time",
+						"today": "Last 24 Hours",
+						"week": "Last 7 Days",
+						"month": "Last 30 Days"
+					},
+					"backToSettings": "Back to Settings",
+					"title": "Audit Log",
+					"subtitle": "Track all team member actions and changes",
+					"adminGate": {
+						"title": "Admins only",
+						"description": "The audit log is available to workspace owners and admins only."
+					},
+					"errorTitle": "Couldn't load the audit log",
+					"noWorkspace": {
+						"title": "No workspace selected",
+						"description": "Create or select a workspace to view the audit log."
+					},
+					"stats": {
+						"totalActions": "Total Actions",
+						"campaigns": "Campaigns",
+						"contacts": "Contacts"
+					},
+					"searchPlaceholder": "Search by user, action, or details...",
+					"allActions": "All Actions",
+					"allUsers": "All Users",
+					"resetFilters": "Reset",
+					"empty": {
+						"title": "No activity recorded",
+						"description": "Team actions will appear here as they happen. Start by creating a campaign, adding contacts, or updating settings."
+					},
+					"noResults": {
+						"title": "No results found",
+						"description": "No audit logs match \"{query}\". Try a different search term or adjust filters."
+					}
+				},
+				"inboxes": {
+					"pageTitle": "Team inboxes — Owlat",
+					"operations": {
+						"publishKeys": "Publish encryption keys",
+						"rotateKey": "Rotate encryption key",
+						"revokeKey": "Revoke encryption key",
+						"deleteInbox": "Delete team inbox"
+					},
+					"toasts": {
+						"keysScheduled": "Encryption-key publication scheduled",
+						"rotationScheduled": "Key rotation scheduled for {address}",
+						"keyRevoked": "Encryption key revoked for {address}"
+					},
+					"backToSettings": "Back to Settings",
+					"title": "Team inboxes",
+					"intro": "Shared addresses your team reads and sends from together — like {supportAddress} or {salesAddress}.",
+					"publishKeys": "Publish keys",
+					"newInbox": "New team inbox",
+					"adminGate": {
+						"title": "Admins only",
+						"description": "Team inboxes can be managed by workspace owners and admins."
+					},
+					"noWorkspace": {
+						"title": "No workspace selected",
+						"description": "Create or select a workspace to manage team inboxes."
+					},
+					"loadError": "Could not load team inboxes. Please try again.",
+					"empty": {
+						"title": "No team inboxes yet",
+						"description": "Create a shared address like {supportAddress} so your whole team can read and reply from one place. You choose who's a member; everyone else can't see it.",
+						"action": "Create your first team inbox"
+					},
+					"badges": {
+						"suspended": "Suspended",
+						"needsAttention": "Needs attention",
+						"external": "External"
+					},
+					"reconnect": "Reconnect",
+					"openInboxTitle": "Make this the active mailbox in Postbox",
+					"openInbox": "Open inbox",
+					"manageMembers": "Manage members",
+					"rotateKeyTitle": "Rotate this inbox's Sealed Mail key",
+					"revokeKeyTitle": "Stop publishing this inbox's Sealed Mail key",
+					"deleteInboxTitle": "Delete this team inbox permanently",
+					"memberCount": "{count} member | {count} members",
+					"moreMembers": "(+{count} more)",
+					"ownedBy": "Owned by {owner}",
+					"createdOn": "Created {date}",
+					"pendingInvites": "{count} invitation pending: {invitees} | {count} invitations pending: {invitees}",
+					"reconnectBlocked": "This inbox's mail connection stopped working, but it's suspended — restore it first to reconnect the mailbox.",
+					"reconnectPanel": {
+						"title": "Reconnect this inbox",
+						"description": "Its mail connection stopped working. Re-enter the mailbox password (an app password if the provider requires one) to resume syncing. Your team and its mail are kept."
+					},
+					"revokeKeyDialog": {
+						"title": "Revoke encryption key?",
+						"description": "New Sealed Mail senders will stop encrypting to {address} until a new key is published.",
+						"thisInbox": "this inbox",
+						"confirm": "Revoke key"
+					},
+					"deleteDialog": {
+						"title": "Delete team inbox permanently?",
+						"description": "Delete \"{name}\"? Its synced mail, the member roster, and the stored mailbox connection are erased for everyone. This cannot be undone.",
+						"confirm": "Delete permanently"
+					}
+				},
+				"senders": {
+					"pageTitle": "Campaign senders — Owlat",
+					"operations": {
+						"updatePolicy": "Update campaign sender policy",
+						"updateSender": "Update campaign sender",
+						"setDefault": "Set default campaign sender",
+						"remove": "Remove campaign sender",
+						"add": "Add campaign sender"
+					},
+					"backToSettings": "Back to Settings",
+					"title": "Campaign senders",
+					"intro": "The from-addresses your team can choose when sending a campaign.",
+					"noWorkspace": {
+						"title": "No workspace selected",
+						"description": "Create or select a workspace to manage campaign senders."
+					},
+					"loadError": "Could not load campaign senders. Please try again.",
+					"approved": {
+						"title": "Approved senders",
+						"description": "Only enabled addresses can be picked as a campaign's from-address."
+					},
+					"addSender": "Add sender",
+					"empty": {
+						"title": "No senders yet",
+						"description": "Add an address on one of your verified sending domains so your team can send campaigns from it.",
+						"action": "Add your first sender"
+					},
+					"defaultTitle": "Default sender for new campaigns",
+					"makeDefault": "Make default",
+					"enableSender": "Enable {email}",
+					"removeSender": "Remove {email}",
+					"allowCustom": {
+						"title": "Allow custom from-addresses",
+						"description": "Anyone creating a campaign can type any address on a verified domain."
+					},
+					"appSenderHint": "Looking for the address the app itself sends from (verifications, password resets)? That's the {generalSettingsLink}.",
+					"appSenderHintLink": "default sender in General settings",
+					"addModal": {
+						"title": "Add campaign sender",
+						"emailLabel": "From email",
+						"emailPlaceholder": "e.g., hello{'@'}acme.com",
+						"setUpDomain": "Set up a verified domain →",
+						"displayNameLabel": "Display name",
+						"displayNamePlaceholder": "e.g., Acme Newsletter (optional)",
+						"displayNameHelp": "Shown to recipients as the sender name. Optional.",
+						"submitting": "Adding…"
+					},
+					"removeDialog": {
+						"title": "Remove campaign sender",
+						"description": "Remove \"{email}\"? Your team will no longer be able to send campaigns from it.",
+						"descriptionDefault": "Remove \"{email}\"? It's the default sender, so new campaigns will have no default until you pick another.",
+						"confirm": "Remove sender"
+					}
+				}
+			},
+			"system": {
+				"index": {
+					"pageTitle": "System & Updates — Owlat",
+					"toasts": {
+						"noClient": "Convex client not available.",
+						"checkComplete": "Update check complete.",
+						"checkFailed": "Check failed: {error}"
+					},
+					"unknownError": "Unknown error",
+					"duration": {
+						"seconds": "{seconds}s",
+						"minutes": "{minutes}m {seconds}s"
+					},
+					"backToSettings": "← Settings",
+					"title": "System & Updates",
+					"intro": "Current Owlat version, container health, and in-app update history.",
+					"containers": {
+						"title": "Container health",
+						"loading": "Loading container status…",
+						"service": "Service",
+						"state": "State",
+						"imageTag": "Image tag"
+					},
+					"updates": {
+						"title": "Available updates",
+						"availableCurrent": "available (current: v{version})",
+						"released": "Released {date}",
+						"upToDate": "You're on the latest version.",
+						"latestChecked": "Latest: v{version} · Last checked {date}",
+						"neverChecked": "Click \"Check now\" to poll GitHub for the latest release.",
+						"checkNow": "Check now",
+						"updateNow": "Update now",
+						"releaseNotes": "Release notes",
+						"lastCheckError": "Last check had an error: {error}"
+					},
+					"confirm": {
+						"title": "Confirm update to v{version}",
+						"body": "This will download the pinned compose template, pull new images, redeploy Convex functions, and recreate containers. The web app may restart mid-flight.",
+						"backupBody": "{backupWarning} Data volumes persist across normal updates, but a release with breaking schema changes may migrate or reset data — check the release notes first.",
+						"backupWarning": "Back up before updating.",
+						"submit": "Yes, update now"
+					},
+					"success": {
+						"title": "Update complete.",
+						"body": "Now running v{version}. Reloading this page…"
+					},
+					"failure": {
+						"title": "Update failed",
+						"recovery": "See the {recoveryLink} or run {doctorCommand} on the host.",
+						"recoveryLink": "recovery guide"
+					},
+					"history": {
+						"title": "Update history",
+						"empty": "No updates applied yet.",
+						"fromTo": "From → To",
+						"started": "Started",
+						"duration": "Duration"
+					}
+				}
+			},
+			"operator": {
+				"index": {
+					"pageTitle": "Operator Console — Owlat",
+					"tabs": {
+						"overview": "Overview",
+						"review": "Content Review",
+						"organizations": "Workspaces",
+						"admins": "Admins"
+					},
+					"operations": {
+						"approveCampaign": "Approve campaign",
+						"approveTransactional": "Approve transactional email",
+						"rejectContent": "Reject content",
+						"setStatus": "Set workspace status",
+						"addAdmin": "Add platform admin",
+						"removeAdmin": "Remove platform admin"
+					},
+					"fallbackNames": {
+						"campaign": "campaign",
+						"email": "email",
+						"content": "content"
+					},
+					"toasts": {
+						"approvedCampaign": "Approved \"{name}\". It is back in draft for sending.",
+						"approvedTransactional": "Approved \"{name}\". It is now published.",
+						"rejectionReasonRequired": "A rejection reason is required.",
+						"rejected": "Rejected \"{name}\". Returned to draft.",
+						"reasonRequired": "A reason is required.",
+						"statusSet": "Workspace status set to \"{status}\".",
+						"selectUser": "Select a user to grant platform-admin.",
+						"adminAdded": "Platform admin added.",
+						"adminRemoved": "Removed {email} from platform admins."
+					},
+					"statusOptions": {
+						"clean": "Clean — restore full sending",
+						"warned": "Warned — flag the operator",
+						"suspended": "Suspended — block all sending",
+						"banned": "Banned — permanent block"
+					},
+					"addAdminModal": {
+						"selectUser": "Select a user…",
+						"userOption": "{name} · {email}",
+						"title": "Add platform admin",
+						"userLabel": "User"
+					},
+					"roleOptions": {
+						"admin": "Admin",
+						"superadmin": "Superadmin"
+					},
+					"backToSettings": "Back to Settings",
+					"title": "Operator Console",
+					"intro": "Platform-admin controls: review held content, manage workspace sending status, and curate admins.",
+					"stats": {
+						"totalSent": "Total sent (30d)",
+						"bounceRate": "Bounce rate",
+						"complaintRate": "Complaint rate",
+						"abuseStatus": "Abuse status"
+					},
+					"abuse": {
+						"title": "Recent abuse signals",
+						"empty": "No flagged content or pending reviews.",
+						"pendingReview": "Pending review ({count})",
+						"flaggedScans": "Flagged content scans ({count})",
+						"scanEntry": "{resourceType} · score {score}"
+					},
+					"review": {
+						"title": "Held for review",
+						"emptyTitle": "Nothing waiting",
+						"emptyDescription": "Campaigns or transactional emails flagged 'suspicious' by the content scanner show up here for approval.",
+						"updated": "Updated {time}",
+						"approve": "Approve",
+						"reject": "Reject",
+						"recentlyReviewed": "Recently reviewed"
+					},
+					"sending": {
+						"title": "Sending status",
+						"blocked": "All sending is currently blocked.",
+						"warned": "Flagged — sending still allowed.",
+						"reason": "Reason: {reason}",
+						"unsuspend": "Un-suspend (restore sending)",
+						"suspend": "Suspend sending"
+					},
+					"flagged": {
+						"title": "Flagged workspaces",
+						"empty": "No workspaces are flagged for abuse.",
+						"risk": "risk: {level}",
+						"rates": "Bounce {bounce} · Complaint {complaint} · Sent {sent}"
+					},
+					"workspaces": {
+						"title": "Workspaces",
+						"sender": "Sender",
+						"risk": "Risk",
+						"contacts": "Contacts"
+					},
+					"admins": {
+						"title": "Platform admins",
+						"add": "Add admin",
+						"role": "Role",
+						"added": "Added",
+						"footnote": "Only superadmins can add or remove platform admins. You cannot remove yourself."
+					},
+					"rejectModal": {
+						"title": "Reject content",
+						"body": "Rejecting returns \"{name}\" to draft. The reason is recorded in the audit log.",
+						"reasonLabel": "Reason",
+						"reasonPlaceholder": "Why is this being rejected?"
+					},
+					"statusModal": {
+						"title": "Set sending status",
+						"reasonPlaceholder": "Reason for this change"
+					}
+				}
+			}
+		},
+		"assistant": {
+			"index": {
+				"pageTitle": "Assistant — Owlat",
+				"examplePrompts": {
+					"performance": "Summarize the performance of our most recent campaign.",
+					"engagedContacts": "What do we know about our most engaged contacts?",
+					"reEngagement": "Draft a friendly re-engagement email for inactive subscribers."
+				},
+				"newChat": "New chat",
+				"noConversations": "No conversations yet.",
+				"renameConversation": "Rename conversation",
+				"deleteConversation": "Delete conversation",
+				"welcomeTitle": "How can I help?",
+				"welcomeBody": "Ask about your contacts, campaigns, knowledge, and files — or have me draft an email or campaign copy. I can search your workspace to ground my answers.",
+				"deleteDialog": {
+					"title": "Delete chat",
+					"description": "\"{title}\" and all of its messages will be permanently deleted.",
+					"confirm": "Delete chat"
+				}
+			}
+		}
+	}
+}

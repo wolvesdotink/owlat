@@ -42,16 +42,29 @@ export interface StepActivationContext {
 	stepCount: number;
 }
 
+/**
+ * Registry-owned copy carries message KEYS, never sentences: these modules are
+ * module-scope definitions, so they cannot call `useI18n`. A message that
+ * interpolates values travels as its key plus those values; the component that
+ * renders it is what translates (`t(value)` / `t(value.key, value.params)`).
+ */
+export type StepMessage = string | { key: string; params?: Record<string, unknown> };
+
 export interface StepEditorModule<K extends StepKind> {
 	readonly kind: K;
+	/** A message key — see {@link StepMessage}. */
 	readonly label: string;
+	/** A message key — see {@link StepMessage}. */
 	readonly description: string;
 	readonly color: string;
 	readonly icon: string;
 	createDefault(): StepConfigOfKind<K>;
 	parseConfig(raw: unknown): StepConfigOfKind<K>;
-	validateForActivation(config: StepConfigOfKind<K>, ctx: StepActivationContext): string | null;
-	getDescription(config: StepConfigOfKind<K>, ctx: StepDisplayContext): string;
+	validateForActivation(
+		config: StepConfigOfKind<K>,
+		ctx: StepActivationContext
+	): StepMessage | null;
+	getDescription(config: StepConfigOfKind<K>, ctx: StepDisplayContext): StepMessage;
 	readonly EditorComponent: Component;
 }
 

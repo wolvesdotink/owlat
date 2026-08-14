@@ -1,0 +1,434 @@
+{
+	"shared": {
+		"transportWizard": {
+			"steps": {
+				"credentials": {
+					"title": "Zugangsdaten",
+					"description": "Geben Sie die Zugangsdaten des Anbieters ein. Sie werden auf dem Server versiegelt und nie wieder angezeigt."
+				},
+				"testSend": {
+					"title": "Live-Sendetest",
+					"description": "Senden Sie eine echte Nachricht über den soeben eingerichteten Transportweg."
+				},
+				"alignment": {
+					"title": "SPF-, DKIM- und DMARC-Ausrichtung",
+					"description": "Prüfen Sie das aktive DNS, damit beide Wege für den Empfänger bis auf die Infrastruktur identisch aussehen."
+				},
+				"returnPath": {
+					"title": "Return-Path-Fähigkeit",
+					"description": "Festhalten, ob dieser Anbieter unsere eigene Bounce-Adresse tragen kann."
+				}
+			},
+			"findingStatus": {
+				"pass": "Bestanden:",
+				"fail": "Änderung nötig:",
+				"unknown": "Nicht bekannt:",
+				"info": "Zur Information:"
+			},
+			"checks": {
+				"fromDomain": "Absenderdomain",
+				"spf": "SPF",
+				"dkim": "DKIM",
+				"dmarc": "DMARC"
+			},
+			"verdict": {
+				"aligned": "Beide Wege sind für den Empfänger bis auf die Sendeinfrastruktur nicht zu unterscheiden.",
+				"singleArm": "Es ist kein zweiter Transportweg eingerichtet, daher gibt es noch nichts auszurichten.",
+				"blocked": "Einige Prüfungen sind nicht bestanden. Jede unten nennt die nötige DNS-Änderung.",
+				"unknown": "Das DNS konnte nicht für jede Prüfung aufgelöst werden. Es ist noch nichts falsch — versuchen Sie es in Kürze erneut."
+			},
+			"returnPath": {
+				"label": "Return-Path",
+				"supported": "Dieser Anbieter trägt unsere eigene Bounce-Adresse, daher werden Bounces genau wie beim Weg über den eigenen MTA zugeordnet.",
+				"unsupported": "Dieser Anbieter schreibt die Bounce-Adresse um, daher ist die Bounce-Zuordnung auf diesem Weg gröber. Die Messsicherheit ist geringer; der Versand bleibt davon unberührt.",
+				"unknown": "Noch nicht festgestellt — die Prüfung klärt sich, sobald ein echter Bounce zurückkommt. Bis dahin wird dieser Weg konservativ gemessen. Es ist nichts blockiert.",
+				"settlesNote": "Dieser Punkt wird beobachtet statt abgefragt: Er klärt sich, sobald der erste Bounce über diesen Anbieter zurückkommt. Ein gerade verbundener Transportweg zeigt deshalb „noch nicht bekannt“. Nichts wartet darauf.",
+				"noReferenceNote": "Es ist noch kein zweiter Transportweg verbunden, daher gibt es hier nichts festzuhalten."
+			},
+			"entry": {
+				"title": "E-Mail-Anbieter verbinden",
+				"body": "Wenn Sie ohnehin für einen E-Mail-Dienstleister zahlen, können Sie darüber senden, während Ihr eigener Server aufwärmt — und beide vergleichen. Owlat sendet auch ohne einen solchen Dienst; das ändert nichts, solange Sie sich nicht dafür entscheiden.",
+				"actionLabel": "Anbieter verbinden",
+				"dismissLabel": "Jetzt nicht"
+			},
+			"skipNote": "Versand ausschließlich über Ihren eigenen Server. Ohne einen zweiten Weg zum Vergleich ist die Messsicherheit geringer."
+		},
+		"trustLabel": {
+			"labels": {
+				"ready": "Sendebereit",
+				"look": "Einen Blick wert",
+				"needsYou": "Braucht Sie"
+			},
+			"reasons": {
+				"price": "Nennt einen Preis oder eine Zahl, die ich nicht prüfen konnte",
+				"ungrounded": "Behauptet etwas, das ich nicht auf das Gespräch zurückführen konnte",
+				"commitment": "Gibt in Ihrem Namen eine Zusage",
+				"policy": "Verweist auf eine Richtlinie oder Bedingungen, die eine zweite Prüfung wert sind",
+				"date": "Nennt ein Datum oder eine Uhrzeit, die bestätigt werden sollten",
+				"tone": "Der Ton wirkt schroffer als in Ihren üblichen Antworten",
+				"incomplete": "Beantwortet möglicherweise nicht alles Gefragte",
+				"vague": "Ein Teil der Antwort ist vage und könnte missverstanden werden",
+				"recipient": "Prüfen Sie Namen und wen die Antwort anspricht",
+				"attachment": "Erwähnt einen Anhang oder Link, der fehlen könnte",
+				"generic": "Etwas anderes wirkte unstimmig — überfliegen Sie die Antwort vor dem Senden",
+				"unchecked": "Ich konnte meine üblichen Prüfungen für diesen Entwurf nicht ausführen — bitte lesen Sie ihn genau",
+				"lowConfidence": "Der Agent ist sich bei diesem Entwurf nicht sicher — bitte lesen Sie ihn, bevor er hinausgeht",
+				"quickRead": "Ein kurzes Gegenlesen lohnt sich, bevor das hinausgeht",
+				"nothingStoodOut": "Nichts ist aufgefallen — die Antwort wirkt vollständig und korrekt",
+				"escalation": "Der Agent hat das für Sie zurückgehalten, statt selbst zu antworten"
+			},
+			"detail": {
+				"confidence": "Agentensicherheit {percent} %",
+				"unavailable": "Agentensicherheit nicht verfügbar",
+				"noDraft": "Kein Entwurf des Agenten"
+			}
+		},
+		"welcomeFlow": {
+			"steps": {
+				"mailboxReady": {
+					"title": "Richten Sie Ihr Postfach ein",
+					"description": "Fügen Sie ein persönliches Postfach hinzu, damit Sie hier Mail senden und empfangen können.",
+					"cta": "Einrichten"
+				},
+				"aiConnected": {
+					"title": "Verbinden Sie Ihre KI",
+					"description": "Verweisen Sie Owlat auf einen KI-Anbieter, damit Entwürfe, Antworten und Suche verfügbar werden.",
+					"cta": "Verbinden"
+				},
+				"importDone": {
+					"title": "Bringen Sie Ihre E-Mails mit",
+					"description": "Importieren Sie Ihren bestehenden Posteingang, damit nichts zurückbleibt.",
+					"cta": "Importieren"
+				},
+				"knowledgeIndexed": {
+					"title": "Lassen Sie die KI Ihre Historie lernen",
+					"description": "Wir lesen Ihre importierte Mail, damit Entwürfe und Antworten nach Ihnen klingen."
+				},
+				"sendingSwitched": {
+					"title": "Versand auf diese Instanz umstellen",
+					"description": "Versenden Sie ausgehende Mail über Owlat, sobald Ihre Domain verifiziert ist.",
+					"cta": "Umstellen"
+				},
+				"firstSendDone": {
+					"title": "Senden Sie Ihre erste E-Mail",
+					"description": "Schreiben Sie eine Nachricht und senden Sie sie, um sicherzugehen, dass alles funktioniert.",
+					"cta": "Verfassen"
+				}
+			}
+		},
+		"breadcrumbRoutes": {
+			"sections": {
+				"dashboard": "Dashboard",
+				"send": "Senden",
+				"campaigns": "Kampagnen",
+				"audience": "Zielgruppe",
+				"administration": "Verwaltung",
+				"delivery": "Zustellung",
+				"preferences": "Einstellungen",
+				"automations": "Automationen"
+			},
+			"subsections": {
+				"instance": "Instanz",
+				"setup": "Einrichtung",
+				"teamAccess": "Team & Zugriff"
+			},
+			"pages": {
+				"templatesAndBlocks": "Vorlagen & Blöcke",
+				"marketing": "Marketing",
+				"transactional": "Transaktional",
+				"blocks": "Blöcke",
+				"media": "Medien",
+				"campaigns": "Kampagnen",
+				"newCampaign": "Neue Kampagne",
+				"overview": "Übersicht",
+				"contacts": "Kontakte",
+				"topics": "Themen",
+				"segments": "Segmente",
+				"suppressions": "Sperrlisten",
+				"backups": "Backups",
+				"operatorConsole": "Betreiberkonsole",
+				"systemAndUpdates": "System & Updates",
+				"instance": "Instanz",
+				"general": "Allgemein",
+				"features": "Funktionen",
+				"channels": "Kanäle",
+				"aiProvider": "KI-Anbieter",
+				"aiAgent": "KI-Agent",
+				"agentHealth": "Agentenzustand",
+				"autonomyRules": "Autonomieregeln",
+				"secureMail": "Sichere Mail",
+				"plugins": "Plugins",
+				"health": "Zustand",
+				"deliverability": "Zustellbarkeit",
+				"measurement": "Messung",
+				"independence": "Unabhängigkeit",
+				"cells": "Zellen",
+				"controls": "Steuerung",
+				"deliveryProvider": "Zustelldienst",
+				"sendingDomains": "Versanddomains",
+				"migrateFromMailchimp": "Von Mailchimp migrieren",
+				"providerRouting": "Anbieter-Routing",
+				"webhooks": "Webhooks",
+				"teamAccess": "Team & Zugriff",
+				"emailTheme": "E-Mail-Design",
+				"apiKeys": "API-Schlüssel",
+				"apiQuickstart": "API-Schnellstart",
+				"campaignSenders": "Kampagnenabsender",
+				"teamInboxes": "Team-Postfächer",
+				"connectedApps": "Verbundene Apps",
+				"forms": "Formulare",
+				"auditLog": "Audit-Protokoll",
+				"contactProperties": "Kontakteigenschaften",
+				"account": "Konto",
+				"filters": "Filter",
+				"signatures": "Signaturen",
+				"snippets": "Textbausteine",
+				"vacationAutoReply": "Abwesenheitsnotiz",
+				"forwarding": "Weiterleitung",
+				"aliases": "Aliase",
+				"appPasswords": "App-Passwörter",
+				"writingVoice": "Schreibstil",
+				"connectedMailboxes": "Verbundene Postfächer",
+				"addMailAccount": "Mailkonto hinzufügen"
+			}
+		},
+		"breadcrumbPatterns": {
+			"subsections": {
+				"marketing": "Marketing",
+				"transactional": "Transaktional",
+				"contacts": "Kontakte",
+				"topics": "Themen",
+				"segments": "Segmente",
+				"plugins": "Plugins"
+			},
+			"pages": {
+				"editTemplate": "Vorlage bearbeiten",
+				"editCampaign": "Kampagne bearbeiten",
+				"campaignReport": "Kampagnenbericht",
+				"editAutomation": "Automation bearbeiten",
+				"newAutomation": "Neue Automation",
+				"contactDetails": "Kontaktdetails",
+				"topicDetails": "Themendetails",
+				"contactInTopic": "Kontakt im Thema",
+				"segmentDetails": "Segmentdetails",
+				"pluginSettings": "Plugin-Einstellungen",
+				"teamInboxMembers": "Mitglieder des Team-Postfachs"
+			}
+		},
+		"campaignCapacityRefusal": {
+			"headline": {
+				"moreThan": "Versand über mehr als {days} Tage",
+				"atLeast": {
+					"one": "Versand über mindestens {days} Tag",
+					"other": "Versand über mindestens {days} Tage"
+				},
+				"over": {
+					"one": "Versand über {days} Tag",
+					"other": "Versand über {days} Tage"
+				}
+			},
+			"finish": {
+				"exact": "Alle sind bis {day} erreicht.",
+				"earliest": "Alle sind frühestens bis {day} erreicht."
+			}
+		},
+		"commandPaletteCore": {
+			"groups": {
+				"recent": "Letzte Suchen",
+				"context": "Kontext",
+				"contacts": "Kontakte",
+				"campaigns": "Kampagnen",
+				"templates": "Vorlagen",
+				"navigation": "Gehe zu"
+			}
+		},
+		"dashboardNavigation": {
+			"sections": {
+				"inbox": "Team-Postfach",
+				"postbox": "Mail",
+				"chat": "Chat",
+				"assistant": "Assistent",
+				"send": "Senden",
+				"audience": "Zielgruppe",
+				"knowledge": "Wissen",
+				"administration": "Verwaltung",
+				"preferences": "Einstellungen",
+				"customers": "Kundschaft"
+			},
+			"items": {
+				"inbox": {
+					"allThreads": "Alle Konversationen",
+					"allActivity": "Alle Aktivitäten",
+					"reviewQueue": "Prüf-Warteschlange",
+					"codeTasks": "Code-Aufgaben",
+					"quarantine": "Quarantäne"
+				},
+				"postbox": {
+					"inbox": "Posteingang",
+					"sent": "Gesendet",
+					"drafts": "Entwürfe",
+					"spam": "Spam",
+					"trash": "Papierkorb",
+					"preferences": "Einstellungen"
+				},
+				"chat": {
+					"messages": "Nachrichten"
+				},
+				"assistant": {
+					"chat": "Chat"
+				},
+				"send": {
+					"campaigns": "Kampagnen",
+					"automations": "Automationen",
+					"transactional": "Transaktional",
+					"templatesAndBlocks": "Vorlagen & Blöcke"
+				},
+				"audience": {
+					"overview": "Übersicht",
+					"contacts": "Kontakte",
+					"topics": "Themen",
+					"segments": "Segmente",
+					"suppressions": "Sperrlisten"
+				},
+				"knowledge": {
+					"explorer": "Explorer",
+					"graph": "Graph"
+				},
+				"administration": {
+					"overview": "Übersicht",
+					"delivery": "Zustellung",
+					"teamAccess": "Team & Zugriff",
+					"instance": "Instanz"
+				},
+				"preferences": {
+					"overview": "Übersicht",
+					"account": "Konto",
+					"filters": "Filter",
+					"signatures": "Signaturen",
+					"connectedMailboxes": "Verbundene Postfächer",
+					"desktop": "Desktop"
+				}
+			}
+		},
+		"desktop": {
+			"provisioning": {
+				"subdomainFields": {
+					"site": {
+						"label": "App",
+						"hint": "Die Web-App."
+					},
+					"convex": {
+						"label": "API (Convex)",
+						"hint": "Sync-Backend."
+					},
+					"convexSite": {
+						"label": "REST-API",
+						"hint": "HTTP-Aktionen (Anmeldung, Webhooks, Tracking)."
+					},
+					"mail": {
+						"label": "Mailserver (EHLO)",
+						"hint": "Ausgehende SMTP-Identität."
+					},
+					"bounce": {
+						"label": "Bounce-Domain",
+						"hint": "Return-Path / Bounces."
+					}
+				},
+				"errors": {
+					"labelRequired": "Geben Sie eine Subdomain-Bezeichnung ein.",
+					"labelCharset": "Verwenden Sie Kleinbuchstaben, Ziffern und Bindestriche (1–63 je Label, kein Bindestrich am Anfang oder Ende).",
+					"duplicateLabel": {
+						"site": "Identisch mit der Bezeichnung „App“ — jeder Hostname braucht eine eigene Bezeichnung.",
+						"convex": "Identisch mit der Bezeichnung „API (Convex)“ — jeder Hostname braucht eine eigene Bezeichnung.",
+						"convexSite": "Identisch mit der Bezeichnung „REST-API“ — jeder Hostname braucht eine eigene Bezeichnung.",
+						"mail": "Identisch mit der Bezeichnung „Mailserver (EHLO)“ — jeder Hostname braucht eine eigene Bezeichnung.",
+						"bounce": "Identisch mit der Bezeichnung „Bounce-Domain“ — jeder Hostname braucht eine eigene Bezeichnung."
+					}
+				},
+				"hostKey": {
+					"changed": {
+						"title": "Der Host-Schlüssel hat sich GEÄNDERT",
+						"body": "Dieser Server zeigt einen anderen Schlüssel als den, dem Sie zuvor vertraut haben. Das kann bedeuten, dass der Server neu aufgesetzt wurde — oder dass jemand die Verbindung abfängt. Fahren Sie nur fort, wenn Sie wissen, warum sich der Schlüssel geändert hat."
+					},
+					"verify": {
+						"title": "Host-Schlüssel prüfen",
+						"body": "Erste Verbindung — bestätigen Sie, dass dies dem Fingerabdruck Ihres Servers entspricht."
+					}
+				},
+				"timeline": {
+					"sshConnect": "Über SSH verbinden",
+					"hostKey": "Host-Schlüssel prüfen",
+					"authenticate": "Authentifizieren",
+					"systemCheck": "Server prüfen",
+					"installDocker": "Docker installieren",
+					"fetchOwlat": "Owlat holen",
+					"uploadConfig": "Konfiguration hochladen",
+					"preflight": "Voraussetzungen prüfen",
+					"config": "Konfiguration anwenden",
+					"composeUp": "Container starten",
+					"mtaIdentity": "Identität der ausgehenden IP prüfen",
+					"waitConvex": "Auf das Backend warten",
+					"adminKey": "Admin-Schlüssel erzeugen",
+					"deployFunctions": "Backend-Funktionen bereitstellen",
+					"envSet": "Laufzeit konfigurieren",
+					"waitRoutes": "Auf HTTP-Routen warten",
+					"bootstrapAdmin": "Administratorkonto erstellen",
+					"seedDemo": "Demodaten einspielen",
+					"finish": "Abschließen",
+					"fetchOwlatLocal": "Owlat hochladen (lokale Quelle)",
+					"buildImagesLocal": "Images auf diesem Rechner bauen",
+					"pushImages": "Images auf den Server hochladen",
+					"buildSetupImage": "Setup-Image bauen"
+				}
+			},
+			"provisioningForm": {
+				"password": {
+					"enter": "Passwort eingeben",
+					"tooShort": "Zu kurz ({length}/{min})",
+					"strong": "Stark",
+					"fair": "Ausreichend",
+					"ok": "OK"
+				},
+				"errors": {
+					"passwordTooShort": "Das Administratorpasswort muss mindestens {min} Zeichen lang sein.",
+					"passwordMismatch": "Die beiden Passwörter stimmen nicht überein."
+				},
+				"serverIpPlaceholder": "die öffentliche IP Ihres Servers",
+				"dnsNotes": {
+					"ptr": "Richten Sie für diese IP zusätzlich Reverse DNS (PTR) bei Ihrem Hoster ein.",
+					"spf": "SPF — Startwert; bestätigen Sie ihn unter Einstellungen → Domains.",
+					"dmarc": "DMARC — Startwert; nach der Beobachtung verschärfen."
+				}
+			},
+			"updater": {
+				"updateReady": {
+					"title": "Update bereit",
+					"body": "Owlat {version} wird beim nächsten Neustart angewendet."
+				},
+				"upToDate": {
+					"title": "Owlat ist aktuell",
+					"body": "Sie haben die neueste Version."
+				}
+			}
+		},
+		"inbox": {
+			"assignmentNoticeRules": {
+				"toast": {
+					"single": {
+						"withSubject": "Ihnen zugewiesen — {subject} · von {assignedByName}",
+						"noSubject": "Ihnen zugewiesen — Kein Betreff · von {assignedByName}"
+					},
+					"group": "{count} Konversationen wurden Ihnen zugewiesen"
+				},
+				"notification": {
+					"singleTitle": "Ihnen zugewiesen",
+					"groupTitle": "Neue Zuweisungen",
+					"body": {
+						"withSubject": "{subject} · von {assignedByName}",
+						"noSubject": "Kein Betreff · von {assignedByName}"
+					}
+				}
+			}
+		}
+	}
+}

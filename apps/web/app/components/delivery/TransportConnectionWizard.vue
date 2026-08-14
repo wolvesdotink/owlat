@@ -234,13 +234,13 @@ watch(
 					</div>
 				</div>
 				<UiButton v-if="!isOpen" ref="entryActionRef" variant="secondary" size="sm" @click="open">
-					{{ TRANSPORT_WIZARD_ENTRY.actionLabel }}
+					{{ t(TRANSPORT_WIZARD_ENTRY.actionLabel) }}
 				</UiButton>
 			</div>
 		</template>
 
 		<div v-if="!isOpen" class="px-6 py-5">
-			<p class="text-sm text-text-secondary">{{ skipImpact.note }}</p>
+			<p class="text-sm text-text-secondary">{{ t(skipImpact.note) }}</p>
 		</div>
 
 		<div v-else class="p-6 space-y-6">

@@ -3,7 +3,18 @@ import {
 	indexSuppressionProvenance,
 	suppressionProvenanceLine,
 	type SuppressionProvenanceEntry,
+	type SuppressionProvenanceText,
 } from '../suppressionProvenance';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The line is a catalog key plus its values — the provider is part of the KEY,
+ * because two of the names ("your SMTP relay", "your own mail server") are copy.
+ * These assertions render it, so what is pinned is the sentence on the row.
+ */
+const { t } = createTestI18n().global;
+const render = (line: SuppressionProvenanceText | null) =>
+	line === null ? null : t(line.key, line.params ?? {});
 
 function entry(over: Partial<SuppressionProvenanceEntry> = {}): SuppressionProvenanceEntry {
 	return {
@@ -35,21 +46,30 @@ describe('suppressionProvenanceLine', () => {
 		expect(suppressionProvenanceLine(undefined)).toBeNull();
 	});
 
+	it('names an operator-worded provider in its own language', () => {
+		expect(render(suppressionProvenanceLine(entry({ provider: 'smtp', evidence: null })))).toBe(
+			'Reported by your SMTP relay'
+		);
+		expect(
+			render(suppressionProvenanceLine(entry({ provider: 'mta', source: 'import', evidence: null })))
+		).toBe('Carried over from your own mail server');
+	});
+
 	it('names the provider and quotes its own reason code verbatim', () => {
-		expect(suppressionProvenanceLine(entry())).toBe(
+		expect(render(suppressionProvenanceLine(entry()))).toBe(
 			'Reported by Mailchimp Transactional · MANDRILL_REJECT_SPAM'
 		);
 	});
 
 	it('distinguishes an ongoing webhook from a one-off carry-over import', () => {
-		expect(suppressionProvenanceLine(entry({ source: 'import', evidence: null }))).toBe(
+		expect(render(suppressionProvenanceLine(entry({ source: 'import', evidence: null })))).toBe(
 			'Carried over from Mailchimp Transactional'
 		);
 	});
 
 	it('falls back to the raw kind for a provider it has no name for', () => {
 		expect(
-			suppressionProvenanceLine(entry({ provider: 'plugin.acme.relay', evidence: null }))
+			render(suppressionProvenanceLine(entry({ provider: 'plugin.acme.relay', evidence: null })))
 		).toBe('Reported by plugin.acme.relay');
 	});
 });

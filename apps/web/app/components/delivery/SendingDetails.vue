@@ -40,6 +40,24 @@ const lastSynced = computed(() =>
 	props.warming ? formatCompactRelativeTime(props.warming.syncedAt) : null
 );
 
+/**
+ * The blocklist verdict is a STORED ENUM, so the word beside "Blocklists" is a
+ * message rather than the value itself — the value is what the sweep wrote and
+ * what code compares, and printing it made this one line the only English on an
+ * otherwise translated card. A status the catalog does not know falls back to
+ * the same sentence a missing one gets.
+ */
+const DNSBL_STATUS_KEYS: Readonly<Record<string, string>> = {
+	unknown: 'components.delivery.sendingDetails.dnsblStatus.unknown',
+	clean: 'components.delivery.sendingDetails.dnsblStatus.clean',
+	degraded: 'components.delivery.sendingDetails.dnsblStatus.degraded',
+	critical: 'components.delivery.sendingDetails.dnsblStatus.critical',
+};
+function dnsblLabel(status: string | null | undefined): string {
+	const key = status === null || status === undefined ? undefined : DNSBL_STATUS_KEYS[status];
+	return key === undefined ? t('common.unknown') : t(key);
+}
+
 const DOCS_BASE = 'https://docs.owlat.app';
 </script>
 
@@ -117,8 +135,8 @@ const DOCS_BASE = 'https://docs.owlat.app';
 						<p class="text-xs text-text-tertiary">
 							{{ t('components.delivery.sendingDetails.blocklists') }}
 						</p>
-						<p class="text-text-primary mt-0.5 capitalize">
-							{{ ip.dnsbl || t('common.unknown') }}
+						<p class="text-text-primary mt-0.5">
+							{{ dnsblLabel(ip.dnsbl) }}
 							<span v-if="ip.dnsblDefinitions.length > 0">
 								·
 								{{ ip.dnsblDefinitions.map((list) => list.name).join(', ') }}

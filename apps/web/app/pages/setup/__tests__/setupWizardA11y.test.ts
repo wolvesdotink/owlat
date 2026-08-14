@@ -14,6 +14,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { auditA11y, installNuxtStubs } from '~/__tests__/a11y';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useSetupWizard } from '~/composables/useSetupWizard';
 import { useWizard } from '~/composables/useWizard';
 import SetupIndexPage from '../index.vue';
@@ -27,6 +28,7 @@ import SetupReviewPage from '../review.vue';
 beforeEach(() => {
 	localStorage.clear();
 	installNuxtStubs({
+		...i18nStubs,
 		useSetupWizard,
 		useWizard,
 		useRoute: () => ({ path: '/setup', fullPath: '/setup', query: {}, params: {}, meta: {} }),
@@ -61,6 +63,7 @@ const pages = [
 describe.each(pages)('setup wizard: $name step — accessibility', ({ component, loaded }) => {
 	it('has no axe violations', async () => {
 		const violations = await auditA11y(component, {
+			global: { plugins: [createTestI18n()] },
 			prepare: (wrapper) => expect(wrapper.text()).toContain(loaded),
 		});
 		expect(violations).toEqual([]);

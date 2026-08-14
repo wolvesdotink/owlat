@@ -35,7 +35,7 @@ const props = defineProps<{
 	error?: Error | null;
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const POSTMASTER_DOCS =
 	'https://docs.owlat.app/developer/external-reputation-feedback#google-postmaster-tools';
@@ -153,7 +153,7 @@ const failingDomains = computed(() =>
 						<p v-if="row.observedAt !== null" class="text-xs text-text-tertiary">
 							{{
 								t('components.delivery.postmasterComplianceCard.googleDataFor', {
-									date: formatDate(row.observedAt, 'short'),
+									date: formatDate(row.observedAt, 'short', locale),
 								})
 							}}
 						</p>

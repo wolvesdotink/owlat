@@ -1,0 +1,167 @@
+{
+	"shared": {
+		"conditions": {
+			"contact_property": {
+				"label": "Kontakteigenschaft",
+				"description": "Nach Kontaktfeld oder benutzerdefinierter Eigenschaft filtern",
+				"fields": {
+					"email": "E-Mail",
+					"firstName": "Vorname",
+					"lastName": "Nachname",
+					"source": "Quelle"
+				},
+				"operators": {
+					"equals": "Ist gleich",
+					"not_equals": "Ist ungleich",
+					"contains": "Enthält",
+					"not_contains": "Enthält nicht",
+					"is_empty": "Ist leer",
+					"not_empty": "Ist nicht leer",
+					"gt": "Größer als",
+					"lt": "Kleiner als",
+					"gte": "Größer oder gleich",
+					"lte": "Kleiner oder gleich",
+					"is_true": "Ist wahr",
+					"is_false": "Ist falsch"
+				},
+				"validation": {
+					"fieldRequired": "Bitte wählen Sie eine Eigenschaft aus",
+					"valueRequired": "Bitte geben Sie einen Wert ein"
+				},
+				"descriptions": {
+					"empty": "Eigenschaft auswählen",
+					"equals": "{field} ist gleich \"{value}\"",
+					"not_equals": "{field} ist ungleich \"{value}\"",
+					"contains": "{field} enthält \"{value}\"",
+					"not_contains": "{field} enthält nicht \"{value}\"",
+					"is_empty": "{field} ist leer",
+					"not_empty": "{field} ist gesetzt",
+					"gt": "{field} ist größer als \"{value}\"",
+					"lt": "{field} ist kleiner als \"{value}\"",
+					"gte": "{field} ist größer oder gleich \"{value}\"",
+					"lte": "{field} ist kleiner oder gleich \"{value}\"",
+					"is_true": "{field} ist wahr",
+					"is_false": "{field} ist falsch"
+				},
+				"builtInDescriptions": {
+					"email": {
+						"equals": "E-Mail ist gleich \"{value}\"",
+						"not_equals": "E-Mail ist ungleich \"{value}\"",
+						"contains": "E-Mail enthält \"{value}\"",
+						"not_contains": "E-Mail enthält nicht \"{value}\"",
+						"is_empty": "E-Mail ist leer",
+						"not_empty": "E-Mail ist gesetzt"
+					},
+					"firstName": {
+						"equals": "Vorname ist gleich \"{value}\"",
+						"not_equals": "Vorname ist ungleich \"{value}\"",
+						"contains": "Vorname enthält \"{value}\"",
+						"not_contains": "Vorname enthält nicht \"{value}\"",
+						"is_empty": "Vorname ist leer",
+						"not_empty": "Vorname ist gesetzt"
+					},
+					"lastName": {
+						"equals": "Nachname ist gleich \"{value}\"",
+						"not_equals": "Nachname ist ungleich \"{value}\"",
+						"contains": "Nachname enthält \"{value}\"",
+						"not_contains": "Nachname enthält nicht \"{value}\"",
+						"is_empty": "Nachname ist leer",
+						"not_empty": "Nachname ist gesetzt"
+					},
+					"source": {
+						"equals": "Quelle ist gleich \"{value}\"",
+						"not_equals": "Quelle ist ungleich \"{value}\"",
+						"contains": "Quelle enthält \"{value}\"",
+						"not_contains": "Quelle enthält nicht \"{value}\"",
+						"is_empty": "Quelle ist leer",
+						"not_empty": "Quelle ist gesetzt"
+					}
+				}
+			},
+			"email_activity": {
+				"label": "E-Mail-Aktivität",
+				"description": "Nach Öffnungen, Klicks usw. filtern",
+				"options": {
+					"opened_is_true": "Hat eine E-Mail geöffnet",
+					"clicked_is_true": "Hat einen Link geklickt",
+					"opened_is_false": "Hat keine E-Mail geöffnet",
+					"clicked_is_false": "Hat keinen Link geklickt"
+				},
+				"validation": {
+					"activityRequired": "Bitte wählen Sie einen Aktivitätstyp aus"
+				},
+				"descriptions": {
+					"fallback": "E-Mail-Aktivität konfigurieren"
+				}
+			},
+			"topic_membership": {
+				"label": "Themen-Mitgliedschaft",
+				"description": "Nach Themen-Mitgliedschaft filtern",
+				"operators": {
+					"equals": "Ist im Thema",
+					"not_equals": "Ist nicht im Thema"
+				},
+				"validation": {
+					"topicRequired": "Bitte wählen Sie ein Thema aus"
+				},
+				"descriptions": {
+					"empty": "Thema auswählen",
+					"topic": "Hat {topic} abonniert",
+					"notTopic": "Hat {topic} nicht abonniert",
+					"anyTopic": "Hat das Thema abonniert",
+					"notAnyTopic": "Hat das Thema nicht abonniert"
+				}
+			}
+		},
+		"contactActivities": {
+			"created": {
+				"label": "Kontakt erstellt",
+				"description": "Kontakt erstellt",
+				"descriptionWithSource": "Kontakt erstellt über {source}"
+			},
+			"emailBounced": {
+				"label": "E-Mail unzustellbar",
+				"description": "E-Mail unzustellbar",
+				"descriptionHard": "Dauerhaft unzustellbar",
+				"descriptionWithError": "E-Mail unzustellbar: {error}",
+				"descriptionHardWithError": "Dauerhaft unzustellbar: {error}"
+			},
+			"emailClicked": {
+				"label": "Link geklickt",
+				"description": "Link in E-Mail geklickt",
+				"descriptionWithUrl": "{url} geklickt"
+			},
+			"emailComplained": {
+				"label": "Spam-Beschwerde",
+				"description": "E-Mail als Spam markiert"
+			},
+			"emailOpened": {
+				"label": "E-Mail geöffnet",
+				"description": "E-Mail geöffnet",
+				"descriptionWithSubject": "„{subject}“ geöffnet"
+			},
+			"emailSent": {
+				"label": "E-Mail gesendet",
+				"description": "E-Mail gesendet",
+				"descriptionTransactional": "Transaktions-E-Mail gesendet",
+				"descriptionWithSubject": "„{subject}“ gesendet"
+			},
+			"inboundReceived": {
+				"label": "Antwort empfangen",
+				"description": "Auf einen Thread geantwortet",
+				"descriptionWithSubject": "Auf „{subject}“ geantwortet"
+			},
+			"propertyUpdated": {
+				"label": "Eigenschaft aktualisiert",
+				"description": "Eigenschaft aktualisiert",
+				"descriptionChanged": "{property} von „{oldValue}“ auf „{newValue}“ geändert",
+				"descriptionSet": "{property} auf „{newValue}“ gesetzt"
+			},
+			"topicConfirmed": {
+				"label": "Thema bestätigt",
+				"description": "Themen-Abo bestätigt",
+				"descriptionWithTopic": "Abo für {topic} bestätigt"
+			}
+		}
+	}
+}

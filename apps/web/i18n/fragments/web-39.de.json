@@ -1,0 +1,139 @@
+{
+	"setup": {
+		"team": {
+			"pageTitle": "Team-Setup — Owlat",
+			"brand": "Owlat",
+			"invitationRequired": "Einladung erforderlich",
+			"requestSentTitle": "Anfrage gesendet",
+			"requestSentBody": "Eine Administratorin oder ein Administrator wurde benachrichtigt. Sobald Ihnen Zugriff gewährt wird, erhalten Sie eine Einladung per E-Mail — Sie müssen nicht erneut nachfragen.",
+			"signOut": "Abmelden",
+			"inviteExplainer": "Sie benötigen eine Einladung, um dieser Instanz beizutreten. Bitten Sie eine Administratorin oder einen Administrator darum — hier können Sie sie direkt anfragen.",
+			"noteLabel": "Notiz hinzufügen (optional)",
+			"notePlaceholder": "z. B. Ich bin im Marketing-Team und brauche Zugriff, um Kampagnen zu versenden.",
+			"requestAccess": "Zugriff anfragen",
+			"requestAccessOperation": "Zugriff anfragen"
+		}
+	},
+	"shared": {
+		"automations": {
+			"steps": {
+				"email": {
+					"label": "E-Mail senden",
+					"description": "Eine E-Mail an den Kontakt senden",
+					"templateRequired": "Der E-Mail-Schritt benötigt eine Vorlage",
+					"selectTemplate": "E-Mail-Vorlage auswählen",
+					"unknownTemplate": "Unbekannte Vorlage",
+					"templateName": "{name}"
+				},
+				"delay": {
+					"label": "Warten/Verzögerung",
+					"description": "Vor dem nächsten Schritt warten",
+					"durationTooShort": "Die Wartedauer muss mindestens 1 betragen",
+					"configure": "Verzögerung konfigurieren",
+					"units": {
+						"minutes": {
+							"one": "Minute",
+							"other": "Minuten"
+						},
+						"hours": {
+							"one": "Stunde",
+							"other": "Stunden"
+						},
+						"days": {
+							"one": "Tag",
+							"other": "Tage"
+						},
+						"weeks": {
+							"one": "Woche",
+							"other": "Wochen"
+						}
+					},
+					"wait": {
+						"minutes": {
+							"one": "{count} Minute warten",
+							"other": "{count} Minuten warten"
+						},
+						"hours": {
+							"one": "{count} Stunde warten",
+							"other": "{count} Stunden warten"
+						},
+						"days": {
+							"one": "{count} Tag warten",
+							"other": "{count} Tage warten"
+						},
+						"weeks": {
+							"one": "{count} Woche warten",
+							"other": "{count} Wochen warten"
+						}
+					}
+				},
+				"condition": {
+					"label": "Bedingung",
+					"description": "Anhand von Kontaktkriterien verzweigen",
+					"branchTargetMissing": {
+						"trueBranch": "Der Zweig „wahr“ der Bedingung zeigt auf einen Schritt, den es nicht mehr gibt — wählen Sie ein gültiges Zweigziel",
+						"falseBranch": "Der Zweig „falsch“ der Bedingung zeigt auf einen Schritt, den es nicht mehr gibt — wählen Sie ein gültiges Zweigziel"
+					}
+				}
+			},
+			"triggers": {
+				"contactCreated": {
+					"label": "Kontakt erstellt",
+					"description": "Auslösen, wenn ein neuer Kontakt zu Ihrer Zielgruppe hinzugefügt wird",
+					"summary": "Wenn ein neuer Kontakt hinzugefügt wird"
+				},
+				"contactUpdated": {
+					"label": "Kontakt aktualisiert",
+					"description": "Auslösen, wenn sich eine Eigenschaft eines Kontakts ändert",
+					"propertyRequired": "Bitte wählen Sie eine Eigenschaft aus, die beobachtet werden soll",
+					"summaryAny": "Wenn sich eine Kontakteigenschaft ändert",
+					"summary": "Wenn sich {property} ändert"
+				},
+				"eventReceived": {
+					"label": "Ereignis empfangen",
+					"description": "Auslösen, wenn ein bestimmtes Ereignis aus Ihrer Anwendung empfangen wird",
+					"eventNameRequired": "Bitte geben Sie einen Ereignisnamen ein",
+					"summaryAny": "Wenn ein Ereignis empfangen wird",
+					"summary": "Ereignis: {name}"
+				},
+				"topicSubscribed": {
+					"label": "Thema abonniert",
+					"description": "Auslösen, wenn ein Kontakt ein Thema abonniert",
+					"topicRequired": "Bitte wählen Sie ein Thema aus",
+					"summaryAny": "Wenn ein Thema abonniert wird",
+					"summary": "Thema: {name}",
+					"summaryUnknown": "Thema: (unbekannt)"
+				}
+			}
+		},
+		"chat": {
+			"useChatActions": {
+				"createChannel": "Kanal erstellen",
+				"archiveChannel": "Kanal archivieren",
+				"unarchiveChannel": "Kanal aus dem Archiv holen",
+				"startDirectMessage": "Direktnachricht starten",
+				"addMember": "Mitglied hinzufügen",
+				"removeMember": "Mitglied entfernen",
+				"setMemberRole": "Mitgliedsrolle festlegen",
+				"linkChannelToInboxThread": "Kanal mit Posteingangs-Thread verknüpfen",
+				"unlinkChannel": "Kanalverknüpfung aufheben"
+			},
+			"useChatAttachments": {
+				"prepareUpload": "Anhang-Upload vorbereiten",
+				"registerAttachment": "Anhang registrieren"
+			},
+			"useChatMentions": {
+				"markMentionRead": "Erwähnung als gelesen markieren",
+				"assistantName": "Assistent"
+			},
+			"useChatRoom": {
+				"sendMessage": "Nachricht senden",
+				"editMessage": "Nachricht bearbeiten",
+				"deleteMessage": "Nachricht löschen",
+				"markRoomRead": "Raum als gelesen markieren",
+				"joinChannel": "Kanal beitreten",
+				"leaveRoom": "Raum verlassen"
+			}
+		}
+	}
+}

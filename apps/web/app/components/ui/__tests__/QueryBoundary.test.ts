@@ -15,10 +15,17 @@
  *
  * The Ui* globals and Icon are auto-imported app-wide, so they are stubbed here.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import QueryBoundary from '../QueryBoundary.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The boundary's own copy (heading, retry, empty state) renders through
+// vue-i18n; `useI18n` reaches the component as a Nuxt auto-import.
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
 
 const stubs = {
 	Icon: true,
@@ -44,7 +51,7 @@ describe('UiQueryBoundary', () => {
 		const wrapper = mount(QueryBoundary, {
 			props: { loading: false, error: new Error('boom'), empty: true },
 			slots,
-			global: { stubs },
+			global: { stubs, plugins: [createTestI18n()] },
 		});
 
 		// Error branch wins: retry control + alert are shown…
@@ -60,7 +67,7 @@ describe('UiQueryBoundary', () => {
 		const wrapper = mount(QueryBoundary, {
 			props: { loading: false, error: new Error('boom'), onRetry },
 			slots,
-			global: { stubs },
+			global: { stubs, plugins: [createTestI18n()] },
 		});
 
 		await wrapper.find('[data-testid="retry"]').trigger('click');
@@ -71,7 +78,7 @@ describe('UiQueryBoundary', () => {
 		const wrapper = mount(QueryBoundary, {
 			props: { loading: false, error: new Error('Convex query subscription timed out') },
 			slots,
-			global: { stubs },
+			global: { stubs, plugins: [createTestI18n()] },
 		});
 		expect(wrapper.find('[data-testid="error-alert"]').text()).toContain(
 			'Convex query subscription timed out'
@@ -82,7 +89,7 @@ describe('UiQueryBoundary', () => {
 		const wrapper = mount(QueryBoundary, {
 			props: { loading: false, error: null, empty: true },
 			slots,
-			global: { stubs },
+			global: { stubs, plugins: [createTestI18n()] },
 		});
 
 		expect(wrapper.find('[data-testid="empty-slot"]').exists()).toBe(true);
@@ -94,7 +101,7 @@ describe('UiQueryBoundary', () => {
 		const wrapper = mount(QueryBoundary, {
 			props: { loading: false, error: null, empty: false },
 			slots,
-			global: { stubs },
+			global: { stubs, plugins: [createTestI18n()] },
 		});
 
 		expect(wrapper.find('[data-testid="content"]').exists()).toBe(true);

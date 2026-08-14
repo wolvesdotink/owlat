@@ -7,8 +7,12 @@ import { nextTick } from 'vue';
 // test exercises the actual focus-trap/restore behavior.
 import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 import PostboxAttachmentLightbox from '../PostboxAttachmentLightbox.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 vi.stubGlobal('useModalFocus', useModalFocus);
+// Every visible string flows through vue-i18n now: mount with the real catalog
+// and expose `useI18n`, which is a Nuxt auto-import in the app.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -37,7 +41,7 @@ function mountLightbox(initialIndex = 0, loadPart?: (att: unknown) => Promise<Bl
 		attachTo: document.body,
 		// Teleport renders in place so wrapper queries reach the overlay; Icon
 		// is a Nuxt component, stubbed inert.
-		global: { stubs: { Teleport: true, Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { Teleport: true, Icon: true } },
 	});
 	return wrapper;
 }
@@ -125,7 +129,7 @@ describe('PostboxAttachmentLightbox', () => {
 					new Blob(['x'], { type: att.contentType }),
 			},
 			attachTo: document.body,
-			global: { stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 		});
 		await flush();
 		await nextTick();

@@ -45,11 +45,13 @@ const props = withDefaults(defineProps<Props>(), {
 	loading: false,
 	error: null,
 	empty: false,
-	errorTitle: 'Failed to load',
+	errorTitle: undefined,
 	errorMessage: undefined,
-	loadingLabel: 'Loading…',
+	loadingLabel: undefined,
 	hideRetry: false,
 });
+
+const { t } = useI18n();
 
 const emit = defineEmits<{
 	/** Fired when the user clicks retry. Unwired → falls back to a page reload. */
@@ -62,9 +64,14 @@ const emit = defineEmits<{
 const instance = getCurrentInstance();
 const hasRetryListener = computed(() => !!instance?.vnode.props?.['onRetry']);
 
+const displayTitle = computed(
+	() => props.errorTitle ?? t('components.ui.queryBoundary.errorTitle')
+);
+const displayLoadingLabel = computed(
+	() => props.loadingLabel ?? t('components.ui.queryBoundary.loadingLabel')
+);
 const displayMessage = computed(
-	() =>
-		props.errorMessage ?? props.error?.message ?? 'Something went wrong while loading this view.'
+	() => props.errorMessage ?? props.error?.message ?? t('components.ui.queryBoundary.errorMessage')
 );
 
 function handleRetry() {
@@ -81,11 +88,11 @@ function handleRetry() {
 	<slot v-if="error" name="error" :error="error" :retry="handleRetry">
 		<div class="flex flex-col items-center gap-4 py-12 px-6">
 			<div class="w-full max-w-md">
-				<UiErrorAlert :title="errorTitle" :message="displayMessage" variant="error" />
+				<UiErrorAlert :title="displayTitle" :message="displayMessage" variant="error" />
 			</div>
 			<UiButton v-if="!hideRetry" variant="secondary" size="sm" @click="handleRetry">
 				<template #iconLeft><Icon name="lucide:refresh-cw" class="w-4 h-4" /></template>
-				Try again
+				{{ t('components.ui.queryBoundary.tryAgain') }}
 			</UiButton>
 		</div>
 	</slot>
@@ -94,7 +101,7 @@ function handleRetry() {
 		<div class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ loadingLabel }}</p>
+				<p class="text-text-secondary text-sm">{{ displayLoadingLabel }}</p>
 			</div>
 		</div>
 	</slot>
@@ -102,8 +109,8 @@ function handleRetry() {
 	<slot v-else-if="empty" name="empty">
 		<UiEmptyState
 			icon="lucide:inbox"
-			title="Nothing to show"
-			description="There's no data to display yet."
+			:title="t('components.ui.queryBoundary.emptyTitle')"
+			:description="t('components.ui.queryBoundary.emptyDescription')"
 		/>
 	</slot>
 

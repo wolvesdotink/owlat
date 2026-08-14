@@ -6,7 +6,18 @@
  * verified (fail-closed). The verbatim misaligned string is asserted here.
  */
 import { describe, it, expect } from 'vitest';
-import { deriveSenderAuth, deriveSenderHeuristicLines, type SenderAuthInput } from '../senderAuth';
+import {
+	deriveSenderAuth,
+	deriveSenderHeuristicLines,
+	type SenderAuthInput,
+	type SenderAuthText,
+} from '../senderAuth';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** The derivation carries catalog keys, so the audit renders them in English. */
+const { t } = createTestI18n().global;
+const render = (text: SenderAuthText) =>
+	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
 
 describe('deriveSenderAuth', () => {
 	it('aligned pass → verified', () => {
@@ -52,7 +63,7 @@ describe('deriveSenderAuth', () => {
 		});
 		expect(result?.state).toBe('misaligned');
 		expect(result?.tone).toBe('danger');
-		expect(result?.detail).toBe(
+		expect(render(result!.detail)).toBe(
 			'Sent by sketchy.example, which is not authorized to send for acme.com.'
 		);
 	});
@@ -135,8 +146,8 @@ describe('deriveSenderAuth', () => {
 		});
 		expect(result?.state).toBe('forwarded');
 		expect(result?.tone).toBe('ok');
-		expect(result?.summary).toBe('Verified via forwarder');
-		expect(result?.detail).toBe(
+		expect(t(result!.summary)).toBe('Verified via forwarder');
+		expect(render(result!.detail)).toBe(
 			'A forwarding service you trust (lists.sourceforge.net) confirmed this message really was sent for author.example before passing it on. Its own checks broke in forwarding, which is normal for mailing lists.'
 		);
 	});
@@ -149,7 +160,7 @@ describe('deriveSenderAuth', () => {
 			dmarcOverride: 'arc',
 		});
 		expect(result?.state).toBe('forwarded');
-		expect(result?.detail).toBe(
+		expect(render(result!.detail)).toBe(
 			'A forwarding service you trust confirmed this message really was sent for author.example before passing it on. Its own checks broke in forwarding, which is normal for mailing lists.'
 		);
 	});
@@ -180,7 +191,7 @@ describe('deriveSenderHeuristicLines', () => {
 				isFromDomainSpoofed: true,
 				isReplyToMismatch: true,
 				isFirstTimeSender: true,
-			})
+			}).map(render)
 		).toEqual([
 			"This sender's domain looks like paypal.com, but is not it.",
 			"The sender's domain uses look-alike characters that imitate another domain.",
@@ -190,7 +201,7 @@ describe('deriveSenderHeuristicLines', () => {
 	});
 
 	it('names the resembled domain in the look-alike line', () => {
-		expect(deriveSenderHeuristicLines({ lookalikeOfContactDomain: 'stripe.com' })).toEqual([
+		expect(deriveSenderHeuristicLines({ lookalikeOfContactDomain: 'stripe.com' }).map(render)).toEqual([
 			"This sender's domain looks like stripe.com, but is not it.",
 		]);
 	});
@@ -200,7 +211,7 @@ describe('deriveSenderHeuristicLines', () => {
 	});
 
 	it('emits only the first-time line when that is all that fired', () => {
-		expect(deriveSenderHeuristicLines({ isFirstTimeSender: true })).toEqual([
+		expect(deriveSenderHeuristicLines({ isFirstTimeSender: true }).map(render)).toEqual([
 			"This is the first message you've received from this address.",
 		]);
 	});

@@ -1,0 +1,204 @@
+{
+	"components": {
+		"settings": {
+			"pluginConfigStatusNotice": {
+				"checking": "Checking plugin environment and capability approvals… Disabling remains available.",
+				"failed": "Plugin configuration check failed: {message} Disabling remains available."
+			},
+			"pluginSettingsField": {
+				"secretHintSet": "Supplied by the {envVar} environment variable, which is set.",
+				"secretHintUnset": "Set the {envVar} environment variable in your deployment.",
+				"secretSet": "Set in the environment",
+				"secretNotSet": "Not set",
+				"selectPlaceholder": "Select…"
+			},
+			"teamRoleMenu": {
+				"changeRole": "Change role",
+				"changeRoleFor": "Change role for {member} (currently {role})",
+				"assignRole": "Assign role"
+			},
+			"connectedApps": {
+				"connectedAppRegisterModal": {
+					"title": "Connect an app",
+					"noPluginsTitle": "No plugins to connect",
+					"noPluginsDescription": "Connected apps bind to a bundled plugin. Add a plugin to this deployment's build before connecting an external app.",
+					"detailsStepHeading": "Step 1 of 2: connection details",
+					"choosePluginError": "Choose the plugin this app connects to.",
+					"nameRequiredError": "Give the connected app a name.",
+					"endpointError": "Enter a valid HTTPS endpoint URL with no embedded credentials (e.g. https://hooks.example.com/owlat).",
+					"pluginLabel": "Plugin",
+					"pluginPlaceholder": "Select a plugin…",
+					"namePlaceholder": "e.g. Slack approvals",
+					"nameHint": "A label to recognize this connection later.",
+					"endpointLabel": "Hook endpoint",
+					"endpointPlaceholder": "https://hooks.example.com/owlat",
+					"endpointHint": "Owlat signs and delivers hooks to this HTTPS URL. It must be publicly reachable — internal and private addresses are rejected.",
+					"riskDisclosureLabel": "Connected app risk disclosure",
+					"riskTitle": "You're granting an external app access",
+					"riskBody": "This connects an outside service to your workspace. It will hold a shared secret and can call Owlat with the capabilities you grant below.",
+					"riskLimits": "A connected app can only ever {emphasis} — it can never approve, unblock, or send on your behalf, and it cannot remove Owlat's safety checks.",
+					"riskLimitsEmphasis": "add work or caution",
+					"capabilitiesLegend": "Capabilities to grant",
+					"capabilitiesHint": "Grant only what this app needs. Each is a capability the plugin declared; you can grant a subset, never more.",
+					"noCapabilities": "This plugin declares no capabilities to grant.",
+					"submit": "Register app"
+				},
+				"connectedAppSecretReveal": {
+					"headingCreated": "Connected app registered",
+					"headingRotated": "Secret rotated",
+					"copyFailed": "Failed to copy to clipboard",
+					"copyNow": "Copy this secret now",
+					"onlyTimeShown": "This is the only time it will be shown. Store it in the connected app's configuration — you won't be able to see it again.",
+					"previousSecretStopped": "The previous secret stopped working the moment this one was created.",
+					"appLabel": "App",
+					"secretLabel": "Shared secret",
+					"copied": "Copied!"
+				}
+			},
+			"team": {
+				"inviteModal": {
+					"title": "Invite Team Member",
+					"emailRequired": "Email is required",
+					"emailInvalid": "Please enter a valid email address",
+					"emailAlreadyInvited": "There is already a pending invite for this address. Resend or copy its link from the list below.",
+					"mailboxLocalpartRequired": "Local part is required for the mailbox",
+					"mailboxLocalpartInvalid": "Use letters, digits, dots, hyphens, or underscores",
+					"mailboxDomainRequired": "Pick a verified domain",
+					"invitationSent": "Invitation sent to {email}",
+					"invitationSentMailboxReserved": "Invitation sent to {email}. Mailbox {address} is reserved and activates when {domain} verifies.",
+					"invitationSentMailboxPending": "Invitation sent to {email}. Mailbox {address} will be created when they accept.",
+					"inviteFailed": "Failed to send invitation",
+					"emailLabel": "Email Address",
+					"emailPlaceholder": "colleague{'@'}company.com",
+					"roleLabel": "Role",
+					"reserveMailbox": "Reserve a personal mailbox for this user",
+					"reserveMailboxHint": "We reserve the address now and create the mailbox when they accept. On by default — uncheck to invite without one.",
+					"reserveMailboxNoDomain": "Add a sending domain to reserve mailboxes for new members — you can invite them now and their mailbox activates when the domain verifies.",
+					"addDomainLink": "Add a domain",
+					"reserveMailboxNoHostedMail": "Set up hosted mail — a sending domain and the Postbox — to reserve mailboxes for new members.",
+					"addressLabel": "Address",
+					"localpartPlaceholder": "marcel",
+					"selectDomain": "Select domain",
+					"domainVerifying": "{domain} (verifying…)",
+					"willBeCreatedAs": "Will be created as: {address}",
+					"reservedAwaitingDomain": "{address} is reserved now and activates automatically once {domain} verifies.",
+					"finishVerifyingLink": "Finish verifying",
+					"displayNameLabel": "Display name (optional)",
+					"displayNamePlaceholder": "Marcel Pfeifer",
+					"invitationReady": "Invitation ready",
+					"emailedInvitee": "We emailed {email} — you can also share the accept link directly.",
+					"shareAcceptLink": "Share the accept link below with {email} — email delivery isn't set up yet, so this is how they get in.",
+					"successMailboxReserved": "Mailbox {address} is reserved — it activates automatically once its sending domain verifies.",
+					"successMailboxPending": "Mailbox {address} will be created when they accept.",
+					"acceptLinkLabel": "Accept link",
+					"acceptLinkHint": "Works even if email delivery isn't set up yet.",
+					"inviteAnother": "Invite another",
+					"sending": "Sending...",
+					"sendInvitation": "Send Invitation"
+				}
+			}
+		},
+		"system": {
+			"llmSpendCard": {
+				"title": "LLM spend · last 7 days",
+				"calls": "· {count} calls",
+				"noUsage": "No LLM usage recorded in the last 7 days.",
+				"byProvider": "By provider",
+				"spendBudget": "Spend budget",
+				"ceilingReached": "Ceiling reached — auto-send paused",
+				"approachingCeiling": "Approaching ceiling",
+				"dailyRemaining": "Daily remaining",
+				"monthlyRemaining": "Monthly remaining",
+				"ofLimit": "of {amount}",
+				"advisoryPaused": "Advisory AI is paused; the remaining budget is reserved for autonomous replies."
+			},
+			"updateProgress": {
+				"heading": "Updating to v{version}",
+				"steps": {
+					"writeCompose": "Write pinned compose template",
+					"pull": "Pull new container images",
+					"up": "Recreate containers with new versions",
+					"convexDeploy": "Deploy backend functions"
+				},
+				"stepFailed": "Failed",
+				"timedOut": "Timed out waiting for new version to appear. Check `owlat logs web` on the host.",
+				"restartNotice": "The web app may restart during the update. This page will reconnect automatically."
+			},
+			"versionCard": {
+				"currentVersion": "Current version",
+				"devBuild": "Dev build",
+				"gitSha": "Git SHA",
+				"built": "Built"
+			}
+		},
+		"transactional": {
+			"recentSendsModal": {
+				"title": "Recent sends",
+				"titleNamed": "Recent sends — {name}",
+				"noSends": "No sends yet — trigger this email via the API to see deliveries here.",
+				"unknownRecipient": "Unknown recipient",
+				"hasMore": "Showing the 25 most recent sends.",
+				"status": {
+					"queued": "Queued",
+					"sent": "Sent",
+					"delivered": "Delivered",
+					"opened": "Opened",
+					"clicked": "Clicked",
+					"failed": "Failed",
+					"bounced": "Bounced",
+					"complained": "Complained"
+				}
+			}
+		},
+		"translation": {
+			"cell": {
+				"placeholder": "Click to translate",
+				"saveTitle": "Save (Cmd+Enter)",
+				"cancelTitle": "Cancel (Esc)",
+				"noContent": "No content",
+				"htmlBadge": "HTML",
+				"sourceBadge": "source"
+			},
+			"manager": {
+				"saveTranslationsOperation": "Save translations",
+				"saveTranslationOperation": "Save translation",
+				"addLanguageOperation": "Add language",
+				"removeLanguageOperation": "Remove language",
+				"heading": "{name} - Translations",
+				"emailFallbackName": "Email",
+				"unsavedChanges": "Unsaved changes",
+				"loadingEmail": "Loading email...",
+				"notFoundTitle": "Email not found",
+				"notFoundDescription": "This email doesn't exist or has been deleted.",
+				"goBack": "Go Back",
+				"emptyTitle": "No translatable content",
+				"emptyDescription": "Add text, buttons, or images with alt text to your email to enable translations.",
+				"fieldColumn": "Field",
+				"defaultBadge": "default",
+				"autoTranslateTitle": "Auto-translate with AI",
+				"removeLanguageTitle": "Remove language",
+				"addLanguage": "Add Language",
+				"languageOption": "{label} ({nativeLabel})",
+				"htmlBadge": "HTML",
+				"subjectLine": "Subject Line",
+				"previewText": "Preview Text",
+				"textBlock": "{prefix}Text Block {index}",
+				"buttonBlock": "{prefix}Button: \"{text}\"",
+				"imageBlock": "{prefix}Image {index} Alt Text",
+				"columnPrefix": "{prefix}Column {index}",
+				"containerPrefix": "{prefix}Container {index}",
+				"languageAdded": "Added {language} translation",
+				"languageRemoved": "Removed {language} translation",
+				"allTranslated": "All fields are already translated",
+				"autoTranslated": "Translated {count} fields to {language}",
+				"autoTranslateFailed": "Failed to auto-translate. Check API configuration.",
+				"infoTitle": "How translations work",
+				"infoBody": "Click any cell to edit the translation. Changes are saved automatically. Use the sparkle icon to auto-translate empty fields using AI. The default language content is read-only here - edit it in the main email editor.",
+				"removeConfirmTitle": "Remove translation?",
+				"removeConfirmDescription": "Remove the {language} translation? This cannot be undone.",
+				"removeConfirmFallback": "This cannot be undone.",
+				"removeConfirmAction": "Remove translation"
+			}
+		}
+	}
+}

@@ -68,6 +68,7 @@ export function isRewriteEligible(enabled: boolean, selectionText: string): bool
 export function usePostboxSelectionRewrite(
 	options: UsePostboxSelectionRewriteOptions
 ) {
+	const { t } = useI18n();
 	/** 'idle' | 'loading' (request in flight) | 'preview' (result ready). */
 	const status = ref<'idle' | 'loading' | 'preview'>('idle');
 	/** The original selection, shown alongside the rewrite in the preview. */
@@ -122,7 +123,7 @@ export function usePostboxSelectionRewrite(
 			activeController = null;
 			status.value = 'idle';
 			activeIntent.value = null;
-			options.onError?.('Could not rewrite the selection. Try again.');
+			options.onError?.(t('shared.postbox.usePostboxSelectionRewrite.failed'));
 			return;
 		}
 		// Reject stale/aborted responses: a newer request (or a reset) replaced us.
@@ -132,7 +133,7 @@ export function usePostboxSelectionRewrite(
 		if (!trimmed) {
 			status.value = 'idle';
 			activeIntent.value = null;
-			options.onError?.('No rewrite was suggested. Try again.');
+			options.onError?.(t('shared.postbox.usePostboxSelectionRewrite.noSuggestion'));
 			return;
 		}
 		rewritten.value = trimmed;

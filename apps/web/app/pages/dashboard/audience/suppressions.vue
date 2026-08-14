@@ -8,7 +8,9 @@ import {
 	suppressionProvenanceLine,
 } from '~/utils/suppressionProvenance';
 
-useHead({ title: 'Suppressions — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.audience.suppressions.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -45,13 +47,13 @@ const isLoading = computed(() => organizationLoading.value || blockedEmailsLoadi
 
 // Mutations
 const { run: addBlockedEmail } = useBackendOperation(api.blockedEmails.add, {
-	label: 'Add to blocklist',
+	label: () => t('dashboard.audience.suppressions.operations.add'),
 });
 const { run: removeBlockedEmail } = useBackendOperation(api.blockedEmails.remove, {
-	label: 'Remove from blocklist',
+	label: () => t('dashboard.audience.suppressions.operations.remove'),
 });
 const { run: bulkAddBlockedEmails } = useBackendOperation(api.blockedEmails.bulkAdd, {
-	label: 'Import blocklist',
+	label: () => t('dashboard.audience.suppressions.operations.import'),
 });
 
 // Bulk import from a CSV / text file → blockedEmails.bulkAdd
@@ -66,8 +68,10 @@ const handleImportBlocklist = async () => {
 	const { added, skipped } = result;
 	showNotification(
 		added > 0
-			? `Imported ${added} address${added === 1 ? '' : 'es'}${skipped > 0 ? ` (${skipped} skipped)` : ''}`
-			: 'No new addresses added — all were already suppressed or invalid'
+			? skipped > 0
+				? t('dashboard.audience.suppressions.toasts.imported', { count: added, skipped }, added)
+				: t('dashboard.audience.suppressions.toasts.importedNoSkips', { count: added }, added)
+			: t('dashboard.audience.suppressions.toasts.importedNone')
 	);
 };
 
@@ -107,12 +111,12 @@ const validateAddForm = (): boolean => {
 	addModal.clearErrors();
 
 	if (!addModal.form.email.trim()) {
-		addModal.errors.email = 'Email address is required';
+		addModal.errors.email = t('dashboard.audience.suppressions.validation.emailRequired');
 		return false;
 	}
 
 	if (!isValidEmail(addModal.form.email.trim())) {
-		addModal.errors.email = 'Please enter a valid email address';
+		addModal.errors.email = t('auth.validation.emailInvalid');
 		return false;
 	}
 
@@ -135,7 +139,7 @@ const handleAddBlockedEmail = async () => {
 
 	if (result === undefined) return;
 
-	showNotification('Address suppressed');
+	showNotification(t('dashboard.audience.suppressions.toasts.added'));
 	addModal.close();
 };
 
@@ -152,7 +156,7 @@ const handleDeleteBlockedEmail = async () => {
 
 	if (result === undefined) return;
 
-	showNotification('Suppression removed');
+	showNotification(t('dashboard.audience.suppressions.toasts.removed'));
 	emailToDelete.value = null;
 };
 
@@ -169,10 +173,18 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 	const c = countsData.value;
 	if (!c) return [];
 	return [
-		{ key: 'bounced', label: 'Bounced', count: c.bounced },
-		{ key: 'complained', label: 'Complained', count: c.complained },
-		{ key: 'manual', label: 'Manual', count: c.manual },
-		{ key: 'unengaged', label: 'Unengaged', count: c.unengaged },
+		{ key: 'bounced', label: t('dashboard.audience.suppressions.tiles.bounced'), count: c.bounced },
+		{
+			key: 'complained',
+			label: t('dashboard.audience.suppressions.tiles.complained'),
+			count: c.complained,
+		},
+		{ key: 'manual', label: t('dashboard.audience.suppressions.tiles.manual'), count: c.manual },
+		{
+			key: 'unengaged',
+			label: t('dashboard.audience.suppressions.tiles.unengaged'),
+			count: c.unengaged,
+		},
 	];
 });
 </script>
@@ -186,23 +198,25 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Audience
+				{{ t('dashboard.audience.suppressions.backToAudience') }}
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Suppressions</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.audience.suppressions.title') }}
+					</h1>
 					<p class="mt-1 text-text-secondary">
-						Addresses that no longer receive mail — so a bounce or complaint never happens twice
+						{{ t('dashboard.audience.suppressions.subtitle') }}
 					</p>
 				</div>
 				<div class="flex items-center gap-2">
 					<UiButton variant="secondary" class="gap-2" @click="blocklistImport.open()">
 						<Icon name="lucide:file-up" class="w-4 h-4" />
-						Import
+						{{ t('dashboard.audience.suppressions.import') }}
 					</UiButton>
 					<UiButton class="gap-2" @click="addModal.open()">
 						<Icon name="lucide:plus" class="w-4 h-4" />
-						Add suppression
+						{{ t('dashboard.audience.suppressions.addSuppression') }}
 					</UiButton>
 				</div>
 			</div>
@@ -211,15 +225,15 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 		<UiQueryBoundary
 			:loading="isLoading && !blockedEmailsData"
 			:error="blockedEmailsError"
-			error-title="Couldn't load suppressions"
-			loading-label="Loading suppressions..."
+			:error-title="t('dashboard.audience.suppressions.errorTitle')"
+			:loading-label="t('dashboard.audience.suppressions.loading')"
 		>
 			<!-- No Organization State -->
 			<div v-if="!hasActiveOrganization" class="card p-0 overflow-hidden">
 				<UiEmptyState
 					icon="lucide:ban"
-					title="No workspace selected"
-					description="Create or select a workspace to manage your suppressions."
+					:title="t('dashboard.audience.suppressions.noWorkspace.title')"
+					:description="t('dashboard.audience.suppressions.noWorkspace.description')"
 				/>
 			</div>
 
@@ -234,12 +248,11 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 					<div class="flex gap-4">
 						<UiIconBox icon="lucide:alert-triangle" size="sm" variant="warning" rounded="lg" />
 						<div>
-							<h3 class="font-medium text-text-primary mb-1">What are suppressions?</h3>
+							<h3 class="font-medium text-text-primary mb-1">
+								{{ t('dashboard.audience.suppressions.info.title') }}
+							</h3>
 							<p class="text-sm text-text-secondary">
-								Suppressed addresses stop receiving mail from your campaigns and automations. An
-								address is added automatically when it bounces (the mailbox doesn't exist) or when
-								someone marks a send as spam — so you never send to it again. You can also suppress
-								an address by hand to stop sending to a specific recipient.
+								{{ t('dashboard.audience.suppressions.info.body') }}
 							</p>
 						</div>
 					</div>
@@ -250,8 +263,12 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				<!-- Stats Cards -->
 				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-5 gap-4">
 					<div class="card p-4">
-						<p class="text-sm text-text-secondary">Total suppressed</p>
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">{{ countsData.total }}</p>
+						<p class="text-sm text-text-secondary">
+							{{ t('dashboard.audience.suppressions.tiles.total') }}
+						</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
+							{{ countsData.total }}
+						</p>
 					</div>
 					<div v-for="tile in reasonTiles" :key="tile.key" class="card p-4">
 						<div class="flex items-center gap-2">
@@ -262,7 +279,9 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 							/>
 							<p class="text-sm text-text-secondary">{{ tile.label }}</p>
 						</div>
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">{{ tile.count }}</p>
+						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
+							{{ tile.count }}
+						</p>
 					</div>
 				</div>
 
@@ -277,7 +296,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 						<input
 							v-model="searchQuery"
 							type="text"
-							placeholder="Search by email address..."
+							:placeholder="t('dashboard.audience.suppressions.searchPlaceholder')"
 							class="input pl-10"
 						/>
 					</div>
@@ -286,11 +305,19 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 					<div class="flex items-center gap-2">
 						<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
 						<select v-model="reasonFilter" class="input w-40">
-							<option value="all">All reasons</option>
-							<option value="bounced">Bounced</option>
-							<option value="complained">Complained</option>
-							<option value="manual">Manually suppressed</option>
-							<option value="unengaged">Unengaged</option>
+							<option value="all">{{ t('dashboard.audience.suppressions.filters.all') }}</option>
+							<option value="bounced">
+								{{ t('dashboard.audience.suppressions.filters.bounced') }}
+							</option>
+							<option value="complained">
+								{{ t('dashboard.audience.suppressions.filters.complained') }}
+							</option>
+							<option value="manual">
+								{{ t('dashboard.audience.suppressions.filters.manual') }}
+							</option>
+							<option value="unengaged">
+								{{ t('dashboard.audience.suppressions.filters.unengaged') }}
+							</option>
 						</select>
 					</div>
 				</div>
@@ -302,13 +329,13 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				>
 					<UiEmptyState
 						icon="lucide:ban"
-						title="No suppressions"
-						description="Nothing is suppressed. Addresses are added automatically when they bounce or when someone marks a send as spam."
+						:title="t('dashboard.audience.suppressions.empty.title')"
+						:description="t('dashboard.audience.suppressions.empty.description')"
 					>
 						<template #action>
 							<UiButton @click="addModal.open()">
 								<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-								Add suppression
+								{{ t('dashboard.audience.suppressions.addSuppression') }}
 							</UiButton>
 						</template>
 					</UiEmptyState>
@@ -321,8 +348,10 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				>
 					<UiEmptyState
 						icon="lucide:search"
-						title="No results found"
-						:description="`No suppressions match &quot;${searchQuery}&quot;. Try a different search term.`"
+						:title="t('dashboard.audience.suppressions.noResults.title')"
+						:description="
+							t('dashboard.audience.suppressions.noResults.description', { query: searchQuery })
+						"
 					/>
 				</div>
 
@@ -334,27 +363,27 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 								<th
 									class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
 								>
-									Email Address
+									{{ t('dashboard.audience.suppressions.table.email') }}
 								</th>
 								<th
 									class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
 								>
-									Reason
+									{{ t('dashboard.audience.suppressions.table.reason') }}
 								</th>
 								<th
 									class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3 hidden md:table-cell"
 								>
-									Notes
+									{{ t('dashboard.audience.suppressions.table.notes') }}
 								</th>
 								<th
 									class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3 hidden lg:table-cell"
 								>
-									Date Added
+									{{ t('dashboard.audience.suppressions.table.dateAdded') }}
 								</th>
 								<th
 									class="text-right text-xs font-medium text-text-tertiary uppercase tracking-wider px-6 py-3"
 								>
-									Actions
+									{{ t('common.actions') }}
 								</th>
 							</tr>
 						</thead>
@@ -384,7 +413,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 											presentation(blockedEmail.reason).badge,
 										]"
 									>
-										{{ presentation(blockedEmail.reason).label }}
+										{{ t(presentation(blockedEmail.reason).label) }}
 									</span>
 								</td>
 								<td class="px-6 py-4 hidden md:table-cell">
@@ -412,7 +441,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 									<UiButton
 										variant="ghost"
 										class="p-2 text-error hover:bg-error/10"
-										title="Remove suppression"
+										:title="t('dashboard.audience.suppressions.removeSuppression')"
 										@click="emailToDelete = blockedEmail"
 									>
 										<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -426,33 +455,38 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 		</UiQueryBoundary>
 
 		<!-- Add suppression Modal -->
-		<UiModal v-model:open="addModal.isOpen.value" title="Add suppression">
+		<UiModal
+			v-model:open="addModal.isOpen.value"
+			:title="t('dashboard.audience.suppressions.addSuppression')"
+		>
 			<form @submit.prevent="handleAddBlockedEmail">
 				<div class="space-y-4">
 					<!-- Email Input -->
 					<UiInput
 						v-model="addModal.form.email"
 						type="email"
-						label="Email Address"
+						:label="t('dashboard.audience.suppressions.form.emailLabel')"
 						:required="true"
-						placeholder="email@example.com"
+						:placeholder="t('dashboard.audience.suppressions.form.emailPlaceholder')"
 						:error="addModal.errors.email"
 						:disabled="addModal.isSubmitting.value"
 					/>
 
 					<!-- Notes Input -->
 					<div>
-						<label for="blocked-notes" class="label"> Notes (optional) </label>
+						<label for="blocked-notes" class="label">{{
+							t('dashboard.audience.suppressions.form.notesLabel')
+						}}</label>
 						<textarea
 							id="blocked-notes"
 							v-model="addModal.form.notes"
 							rows="3"
-							placeholder="Why suppress this address?"
+							:placeholder="t('dashboard.audience.suppressions.form.notesPlaceholder')"
 							class="input resize-none"
 							:disabled="addModal.isSubmitting.value"
 						/>
 						<p class="mt-1 text-xs text-text-tertiary">
-							Add a note to help you remember why this address was suppressed.
+							{{ t('dashboard.audience.suppressions.form.notesHelp') }}
 						</p>
 					</div>
 				</div>
@@ -464,13 +498,17 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 					:disabled="addModal.isSubmitting.value"
 					@click="addModal.close()"
 				>
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton :loading="addModal.isSubmitting.value" @click="handleAddBlockedEmail">
 					<template #iconLeft>
 						<Icon v-if="!addModal.isSubmitting.value" name="lucide:plus" class="w-4 h-4" />
 					</template>
-					{{ addModal.isSubmitting.value ? 'Adding...' : 'Add suppression' }}
+					{{
+						addModal.isSubmitting.value
+							? t('dashboard.audience.suppressions.adding')
+							: t('dashboard.audience.suppressions.addSuppression')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -479,9 +517,13 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 		<UiConfirmationDialog
 			:open="!!emailToDelete"
 			variant="danger"
-			title="Remove suppression"
-			:description="`Removing the suppression on &quot;${emailToDelete?.email ?? ''}&quot; lets them receive your mail again.`"
-			confirm-text="Remove suppression"
+			:title="t('dashboard.audience.suppressions.removeSuppression')"
+			:description="
+				t('dashboard.audience.suppressions.removeDescription', {
+					email: emailToDelete?.email ?? '',
+				})
+			"
+			:confirm-text="t('dashboard.audience.suppressions.removeSuppression')"
 			:is-loading="isDeleting"
 			@update:open="
 				(v: boolean) => {

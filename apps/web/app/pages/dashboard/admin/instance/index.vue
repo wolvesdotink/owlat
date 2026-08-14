@@ -9,7 +9,9 @@ import {
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import type { CoreFeatureFlagKey } from '@owlat/shared/featureFlags';
 
-useHead({ title: 'Instance administration — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.index.pageTitle') });
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
 const { flags, isEnabled } = useFeatureFlag();
@@ -26,7 +28,7 @@ const modesOpen = ref(false);
 const { showToast } = useToast();
 const { run: setAllFlags, isLoading: applyingMode } = useBackendOperation(
 	api.workspaces.featureFlags.setAllFeatureFlags,
-	{ label: 'Change operating mode' }
+	{ label: () => t('dashboard.admin.instance.index.changeModeOperation') }
 );
 
 const desiredFlags = computed(() =>
@@ -54,65 +56,69 @@ async function applyMode() {
 	if (!selectedMode.value || !desiredFlags.value) return;
 	const result = await setAllFlags({ flags: desiredFlags.value });
 	if (result === undefined) return;
-	showToast(`Operating mode changed to ${OPERATING_MODES[selectedMode.value].label}`);
+	showToast(
+		t('dashboard.admin.instance.index.modeChangedToast', {
+			mode: OPERATING_MODES[selectedMode.value].label,
+		})
+	);
 	selectedMode.value = null;
 	modesOpen.value = false;
 }
 
 const groups = computed(() => [
 	{
-		title: 'General',
-		description: 'Workspace name, timezone, default sender, and campaign defaults.',
+		title: t('dashboard.admin.instance.index.groups.general.title'),
+		description: t('dashboard.admin.instance.index.groups.general.description'),
 		href: '/dashboard/admin/instance/general',
 		icon: 'lucide:building-2',
 	},
 	{
-		title: 'Features',
-		description: 'Fine-grained feature flags and packs for advanced configuration.',
+		title: t('dashboard.admin.instance.index.groups.features.title'),
+		description: t('dashboard.admin.instance.index.groups.features.description'),
 		href: '/dashboard/admin/instance/features',
 		icon: 'lucide:toggle-right',
 	},
 	{
-		title: 'Email theme',
-		description: 'Default visual styling for messages sent by this workspace.',
+		title: t('dashboard.admin.instance.index.groups.emailTheme.title'),
+		description: t('dashboard.admin.instance.index.groups.emailTheme.description'),
 		href: '/dashboard/admin/instance/email-theme',
 		icon: 'lucide:palette',
 	},
 	{
-		title: 'Contact properties',
-		description: 'Custom fields shared by the customer directory.',
+		title: t('dashboard.admin.instance.index.groups.properties.title'),
+		description: t('dashboard.admin.instance.index.groups.properties.description'),
 		href: '/dashboard/admin/instance/properties',
 		icon: 'lucide:tags',
 	},
 	{
-		title: 'Forms',
-		description: 'Signup endpoints and embedded customer forms.',
+		title: t('dashboard.admin.instance.index.groups.forms.title'),
+		description: t('dashboard.admin.instance.index.groups.forms.description'),
 		href: '/dashboard/admin/instance/forms',
 		icon: 'lucide:file-text',
 	},
 	{
-		title: 'Channels',
-		description: 'Messaging channels available across the instance.',
+		title: t('dashboard.admin.instance.index.groups.channels.title'),
+		description: t('dashboard.admin.instance.index.groups.channels.description'),
 		href: '/dashboard/admin/instance/channels',
 		icon: 'lucide:radio',
 	},
 	{
-		title: 'AI provider',
-		description: 'Choose the hosted or self-run model provider and turn AI on.',
+		title: t('dashboard.admin.instance.index.groups.aiProvider.title'),
+		description: t('dashboard.admin.instance.index.groups.aiProvider.description'),
 		href: '/dashboard/admin/instance/ai-provider',
 		icon: 'lucide:sparkles',
 	},
 	...(isEnabled('ai.agent')
 		? [
 				{
-					title: 'AI agent',
-					description: 'Configure the organization-wide agent and inspect its health.',
+					title: t('dashboard.admin.instance.index.groups.agent.title'),
+					description: t('dashboard.admin.instance.index.groups.agent.description'),
 					href: '/dashboard/admin/instance/agent',
 					icon: 'lucide:bot',
 				},
 				{
-					title: 'Agent health',
-					description: 'Live accuracy, escalations, and recent agent runs.',
+					title: t('dashboard.admin.instance.index.groups.agentHealth.title'),
+					description: t('dashboard.admin.instance.index.groups.agentHealth.description'),
 					href: '/dashboard/admin/instance/agent-health',
 					icon: 'lucide:activity',
 				},
@@ -124,8 +130,8 @@ const groups = computed(() => [
 	...(isEnabled('ai.autonomy')
 		? [
 				{
-					title: 'Autonomy',
-					description: 'How much the agent may act on its own, and the switch that stops it.',
+					title: t('dashboard.admin.instance.index.groups.autonomy.title'),
+					description: t('dashboard.admin.instance.index.groups.autonomy.description'),
 					href: '/dashboard/admin/instance/autonomy',
 					icon: 'lucide:sliders-horizontal',
 				},
@@ -134,8 +140,8 @@ const groups = computed(() => [
 	...(isEnabled('sealedMail')
 		? [
 				{
-					title: 'Secure mail',
-					description: 'Set organization policy for protected personal messages.',
+					title: t('dashboard.admin.instance.index.groups.sealedMail.title'),
+					description: t('dashboard.admin.instance.index.groups.sealedMail.description'),
 					href: '/dashboard/admin/instance/sealed-mail',
 					icon: 'lucide:lock',
 				},
@@ -144,8 +150,8 @@ const groups = computed(() => [
 	...(hasPluginSettings.value
 		? [
 				{
-					title: 'Plugins',
-					description: 'Configure installed plugins or remove settings left by old ones.',
+					title: t('dashboard.admin.instance.index.groups.plugins.title'),
+					description: t('dashboard.admin.instance.index.groups.plugins.description'),
 					href: '/dashboard/admin/instance/plugins',
 					icon: 'lucide:puzzle',
 				},
@@ -158,22 +164,27 @@ const groups = computed(() => [
 	<div class="p-6 lg:p-8 max-w-6xl">
 		<header class="mb-8">
 			<NuxtLink to="/dashboard/admin" class="text-sm text-brand hover:underline">
-				← Administration
+				← {{ t('dashboard.admin.instance.index.backToAdministration') }}
 			</NuxtLink>
-			<h1 class="mt-3 text-3xl font-semibold text-text-primary">Instance</h1>
-			<p class="mt-2 text-text-secondary">Configuration that affects everyone in this workspace.</p>
+			<h1 class="mt-3 text-3xl font-semibold text-text-primary">
+				{{ t('dashboard.admin.instance.index.title') }}
+			</h1>
+			<p class="mt-2 text-text-secondary">
+				{{ t('dashboard.admin.instance.index.subtitle') }}
+			</p>
 		</header>
 
 		<UiCard class="mb-6">
-			<h2 class="text-lg font-semibold text-text-primary">Operating mode</h2>
+			<h2 class="text-lg font-semibold text-text-primary">
+				{{ t('dashboard.admin.instance.index.operatingMode') }}
+			</h2>
 			<p class="mt-1 mb-4 text-sm text-text-secondary max-w-2xl">
-				Choose a coarse product shape. You will preview every feature change before it is applied,
-				and turning a feature off keeps its data.
+				{{ t('dashboard.admin.instance.index.operatingModeHelp') }}
 			</p>
 			<UiDisclosure
 				v-model="modesOpen"
 				controls="operating-mode-options"
-				label="Change operating mode"
+				:label="t('dashboard.admin.instance.index.changeModeOperation')"
 			>
 				<div class="grid gap-3 md:grid-cols-2">
 					<button
@@ -208,7 +219,7 @@ const groups = computed(() => [
 
 		<UiModal
 			:open="selectedMode !== null"
-			title="Review operating-mode changes"
+			:title="t('dashboard.admin.instance.index.reviewTitle')"
 			size="md"
 			@update:open="
 				(open) => {
@@ -225,23 +236,37 @@ const groups = computed(() => [
 				</div>
 				<div class="grid gap-3 sm:grid-cols-2">
 					<div class="rounded-lg bg-success-subtle p-3">
-						<p class="text-sm font-medium text-success">Enable ({{ flagDiff.enabled.length }})</p>
+						<p class="text-sm font-medium text-success">
+							{{
+								t('dashboard.admin.instance.index.enableCount', { count: flagDiff.enabled.length })
+							}}
+						</p>
 						<p class="mt-1 text-xs text-text-secondary break-words">
-							{{ flagDiff.enabled.join(', ') || 'Nothing' }}
+							{{ flagDiff.enabled.join(', ') || t('dashboard.admin.instance.index.nothing') }}
 						</p>
 					</div>
 					<div class="rounded-lg bg-warning-subtle p-3">
-						<p class="text-sm font-medium text-warning">Disable ({{ flagDiff.disabled.length }})</p>
+						<p class="text-sm font-medium text-warning">
+							{{
+								t('dashboard.admin.instance.index.disableCount', {
+									count: flagDiff.disabled.length,
+								})
+							}}
+						</p>
 						<p class="mt-1 text-xs text-text-secondary break-words">
-							{{ flagDiff.disabled.join(', ') || 'Nothing' }}
+							{{ flagDiff.disabled.join(', ') || t('dashboard.admin.instance.index.nothing') }}
 						</p>
 					</div>
 				</div>
-				<p class="text-xs text-text-tertiary">Disabled features keep their existing data.</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('dashboard.admin.instance.index.keepData') }}
+				</p>
 			</div>
 			<template #footer>
-				<UiButton variant="ghost" @click="selectedMode = null">Cancel</UiButton>
-				<UiButton :loading="applyingMode" @click="applyMode">Apply changes</UiButton>
+				<UiButton variant="ghost" @click="selectedMode = null">{{ t('common.cancel') }}</UiButton>
+				<UiButton :loading="applyingMode" @click="applyMode">{{
+					t('dashboard.admin.instance.index.applyChanges')
+				}}</UiButton>
 			</template>
 		</UiModal>
 	</div>

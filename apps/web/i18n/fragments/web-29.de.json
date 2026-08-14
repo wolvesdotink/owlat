@@ -1,0 +1,545 @@
+{
+	"dashboard": {
+		"admin": {
+			"index": {
+				"pageTitle": "Administration — Owlat",
+				"eyebrow": "Administration",
+				"title": "Ihre Instanz auf einen Blick",
+				"lede": "Beginnen Sie hier mit den Bewertungen. Detaillierte Konfiguration und Betriebswerkzeuge liegen eine Ebene tiefer, wenn Sie sie brauchen.",
+				"deliveryVerdict": "Zustellungsbewertung",
+				"platform": "Plattform",
+				"platformAdminOnly": "Betriebswerkzeuge, Systemaktualisierungen und Backups liegen beim Plattformadministrator dieser Installation und werden hier nicht angezeigt.",
+				"learnMore": "Mehr erfahren →",
+				"verdict": {
+					"ok": "Der Versand ist gesund",
+					"warn": "Der Versand sollte überprüft werden",
+					"error": "Der Versand braucht Aufmerksamkeit"
+				},
+				"areas": {
+					"delivery": {
+						"title": "Zustellung",
+						"description": "Versandgesundheit, Domains, Transport, Routing und Webhooks."
+					},
+					"team": {
+						"title": "Team & Zugriff",
+						"description": "Mitglieder, gemeinsame Postfächer, freigegebene Absender, API-Schlüssel und verbundene Apps."
+					},
+					"instance": {
+						"title": "Instanz",
+						"description": "Workspace-Voreinstellungen, Betriebsmodus, Funktionen, KI, Kanäle und Plugins."
+					}
+				},
+				"platformAreas": {
+					"operator": {
+						"title": "Betreiberkonsole",
+						"description": "Zurückgehaltene Inhalte, Versandstatus von Workspaces und Plattformadministratoren prüfen."
+					},
+					"system": {
+						"title": "System & Aktualisierungen",
+						"description": "Stack-Version, Container-Zustand und In-App-Aktualisierungen."
+					},
+					"backups": {
+						"title": "Backups",
+						"description": "Tägliche Backups planen, eines sofort ausführen und den Wiederherstellungsbefehl finden."
+					}
+				}
+			},
+			"team": {
+				"pageTitle": "Teamverwaltung — Owlat",
+				"backToAdministration": "Zurück zur Administration",
+				"title": "Teammitglieder",
+				"lede": "Verwalten Sie, wer Zugriff auf Ihr Team hat",
+				"inviteMember": "Mitglied einladen",
+				"loading": "Teammitglieder werden geladen…",
+				"staleList": "Diese Liste ist möglicherweise nicht aktuell — {error}.",
+				"operations": {
+					"deleteWorkspace": "Workspace löschen"
+				},
+				"nav": {
+					"label": "Team- und Zugriffseinstellungen",
+					"inboxes": { "title": "Team-Postfächer", "description": "Gemeinsamer Mailzugriff" },
+					"senders": { "title": "Freigegebene Absender", "description": "Kampagnenidentitäten" },
+					"apiKeys": { "title": "API-Schlüssel", "description": "Programmatischer Zugriff" },
+					"audit": { "title": "Audit-Log", "description": "Workspace-Aktivität" },
+					"connectedApps": { "title": "Verbundene Apps", "description": "Externe Integrationen" }
+				},
+				"loadError": {
+					"title": "Ihr Team konnte nicht geladen werden",
+					"tryAgain": "Erneut versuchen"
+				},
+				"members": {
+					"title": "Mitglieder",
+					"count": "{count} Teammitglied | {count} Teammitglieder",
+					"searchLabel": "Mitglieder nach Name oder E-Mail-Adresse durchsuchen",
+					"searchPlaceholder": "Name oder E-Mail-Adresse suchen",
+					"noMatchesTitle": "Keine Treffer",
+					"noMatchesDescription": "Keine Mitglieder passen zu „{query}“.",
+					"clearSearch": "Suche zurücksetzen",
+					"emptyTitle": "Noch keine Teammitglieder",
+					"emptyDescription": "Laden Sie Kolleginnen und Kollegen ein, um gemeinsam an Kampagnen und geteilten Postfächern zu arbeiten.",
+					"inviteTeammate": "Teammitglied einladen",
+					"columns": {
+						"member": "Mitglied",
+						"role": "Rolle",
+						"mailbox": "Postfach",
+						"joined": "Beigetreten"
+					},
+					"noName": "Kein Name",
+					"mailboxChecking": "Postfachstatus wird geprüft…",
+					"mailboxLoading": "Postfachstatus wird geladen",
+					"rowActions": "Aktionen für {member}",
+					"transferOwnership": "Eigentümerschaft übertragen",
+					"removeFromTeam": "Aus dem Team entfernen",
+					"removeMemberLabel": "{member} entfernen"
+				},
+				"invites": {
+					"title": "Ausstehende Einladungen",
+					"count": "{count} ausstehende Einladung | {count} ausstehende Einladungen",
+					"expired": "Abgelaufen",
+					"expiresInDaysHours": "Läuft in {days} T {hours} Std ab",
+					"expiresInHours": "Läuft in {hours} Std ab",
+					"expiresSoon": "Läuft bald ab",
+					"copyLink": "Einladungslink kopieren",
+					"resend": "Einladungs-E-Mail erneut senden",
+					"revoke": "Einladung widerrufen"
+				},
+				"roles": {
+					"title": "Was jede Rolle darf"
+				},
+				"dangerZone": {
+					"title": "Workspace löschen",
+					"subtitle": "Diesen Workspace und alle seine Daten dauerhaft löschen",
+					"body": "Das Löschen des Workspace entfernt dauerhaft alle Teammitglieder, sämtliche Kontakte, Kampagnen, Automatisierungen, Postfächer und Auswertungen. Diese Aktion kann nicht rückgängig gemacht werden."
+				},
+				"removeModal": {
+					"title": "Teammitglied entfernen",
+					"body": "Möchten Sie {member} wirklich aus diesem Team entfernen? Die Person verliert den Zugriff auf alle Teamressourcen.",
+					"removing": "Wird entfernt...",
+					"confirm": "Mitglied entfernen"
+				},
+				"transferModal": {
+					"title": "Eigentümerschaft übertragen",
+					"subtitle": "Die Eigentümerrolle abgeben",
+					"body": "{member} wird der neue {ownerRole} mit voller Kontrolle über diesen Workspace, einschließlich Abrechnung, Einstellungen und der Möglichkeit, ihn zu löschen. Sie werden auf {adminRole} herabgestuft. Sie selbst können das nicht rückgängig machen — nur der neue Eigentümer kann die Rolle zurückübertragen.",
+					"ownerRole": "Eigentümer",
+					"adminRole": "Administrator",
+					"typeToConfirm": "Geben Sie zur Bestätigung {phrase} ein",
+					"transferring": "Wird übertragen...",
+					"confirm": "Eigentümerschaft übertragen"
+				},
+				"cancelInviteModal": {
+					"title": "Einladung zurückziehen",
+					"body": "Möchten Sie die Einladung an {email} wirklich zurückziehen? Die Person kann dem Team mit diesem Einladungslink dann nicht mehr beitreten.",
+					"keep": "Einladung behalten",
+					"cancelling": "Wird zurückgezogen...",
+					"confirm": "Einladung zurückziehen"
+				},
+				"deleteModal": {
+					"title": "Workspace löschen",
+					"subtitle": "Das kann nicht rückgängig gemacht werden",
+					"warningLabel": "Warnung:",
+					"warning": "{label} Dies löscht dauerhaft {workspace} und alle zugehörigen Daten — Teammitglieder, Kontakte, Kampagnen, Automatisierungen, Postfächer und Auswertungen. Sie werden sofort abgemeldet.",
+					"typeToConfirm": "Geben Sie zur Bestätigung {phrase} ein",
+					"deleting": "Wird gelöscht...",
+					"confirm": "Workspace löschen"
+				},
+				"toasts": {
+					"inviteCancelled": "Einladung zurückgezogen",
+					"cancelInviteFailed": "Die Einladung konnte nicht zurückgezogen werden",
+					"inviteResent": "Einladung erneut an {email} gesendet",
+					"inviteResendNoTransport": "Der E-Mail-Versand ist nicht eingerichtet — kopieren Sie stattdessen den Annahmelink für {email}.",
+					"resendInviteFailed": "Die Einladung konnte nicht erneut gesendet werden",
+					"roleUpdated": "Rolle erfolgreich aktualisiert",
+					"updateRoleFailed": "Die Rolle konnte nicht aktualisiert werden",
+					"memberRemoved": "Teammitglied entfernt",
+					"removeMemberFailed": "Das Mitglied konnte nicht entfernt werden",
+					"ownershipTransferred": "Eigentümerschaft erfolgreich übertragen",
+					"transferOwnershipFailed": "Die Eigentümerschaft konnte nicht übertragen werden",
+					"workspaceDeletionStarted": "Löschung des Workspace gestartet"
+				}
+			},
+			"delivery": {
+				"backToSetup": "Zustellungseinrichtung",
+				"index": {
+					"pageTitle": "Zustellungsgesundheit — Owlat",
+					"title": "Zustellungsgesundheit",
+					"lede": "Ihre Versandreputation, der Zustellungsverlauf und Ihre Domains auf einen Blick",
+					"advanced": {
+						"label": "Erweiterte Werkzeuge",
+						"independence": "Unabhängigkeit",
+						"cells": "Zellen",
+						"controls": "Steuerung",
+						"measurement": "Messung"
+					},
+					"abuse": {
+						"warned": "Ihr Konto ist wegen erhöhter Bounce- oder Beschwerderaten markiert. Verbessern Sie die Listenqualität, um weitere Einschränkungen zu vermeiden.",
+						"suspended": "Der Versand ist ausgesetzt, weil Reputationsgrenzwerte überschritten wurden. Beheben Sie die markierten Probleme, um fortzufahren.",
+						"banned": "Dieses Konto ist dauerhaft vom Versand ausgeschlossen."
+					},
+					"overviewError": {
+						"title": "Zustellungsgesundheit konnte nicht geladen werden",
+						"message": "Beim Laden Ihrer Reputationsdaten ist ein Fehler aufgetreten. Laden Sie die Seite neu, um es erneut zu versuchen."
+					},
+					"trend": {
+						"title": "Zustellrate",
+						"subtitle": "Anteil der versendeten Mails, die zugestellt wurden, pro Tag",
+						"errorTitle": "Ihr Zustellraten-Verlauf konnte nicht geladen werden",
+						"errorMessage": "Dieser Verlauf konnte nicht gelesen werden. Er wird nicht leer angezeigt: Ein leeres Diagramm hier würde bedeuten, dass Sie gerade erst mit dem Versand begonnen haben — und das lässt sich nicht behaupten, während der Lesevorgang fehlschlägt.",
+						"loading": "Zustellraten-Verlauf wird geladen",
+						"chartLabel": "Zustellraten-Verlauf der letzten 30 Tage",
+						"collecting": "Verlauf wird gesammelt — vollständige Trends in einer Woche."
+					},
+					"domains": {
+						"errorTitle": "Ihre Versanddomains konnten nicht geladen werden",
+						"errorMessage": "Diese Liste konnte nicht gelesen werden. Sie wird nicht leer angezeigt: Eine leere Liste hier würde bedeuten, dass Sie keine Versanddomains eingerichtet haben — und das lässt sich nicht behaupten, während der Lesevorgang fehlschlägt.",
+						"loading": "Versanddomains werden geladen"
+					},
+					"suppressions": {
+						"bounced": "{count} Bounces",
+						"complained": "{count} Beschwerden",
+						"manual": "{count} manuell",
+						"unengaged": "{count} inaktiv",
+						"summary": "{total} unterdrückt · {breakdown}",
+						"view": "Ansehen"
+					},
+					"empty": {
+						"title": "Keine Daten verfügbar",
+						"description": "Die Zustellungsgesundheit erscheint, sobald der Versand Ihres Workspace konfiguriert ist."
+					}
+				},
+				"deliverability": {
+					"pageTitle": "Zustellbarkeit — Owlat",
+					"title": "Zustellbarkeit",
+					"lede": "Sehen Sie, was gesund ist, beheben Sie als Nächstes das wichtigste Problem und prüfen Sie jede Änderung mit einer Live-Prüfung.",
+					"copyReport": "Einrichtungsbericht kopieren",
+					"reportCopied": "Bericht kopiert",
+					"errorTitle": "Zustellbarkeit konnte nicht geladen werden",
+					"errorMessage": "Die Live-Prüfungen konnten nicht geladen werden. Versuchen Sie es erneut, bevor Sie Ihre Einrichtung ändern.",
+					"loadingLabel": "Live-Zustellbarkeitsprüfungen werden geladen…",
+					"loadingChecks": "Zustellbarkeitsprüfungen werden geladen",
+					"latestCheck": "Letzte Live-Prüfung {age}",
+					"noCheckYet": "Es wurde noch keine Live-Prüfung abgeschlossen",
+					"counts": {
+						"verified": "Bestätigt",
+						"attention": "Aufmerksamkeit",
+						"checking": "Wird geprüft"
+					},
+					"empty": {
+						"title": "Keine Versandeinrichtung gefunden",
+						"description": "Konfigurieren Sie einen Zustellungsanbieter und eine Versanddomain und kehren Sie dann für die Live-Checkliste hierher zurück.",
+						"action": "Zustellungseinrichtung öffnen"
+					},
+					"operations": {
+						"acknowledge": "Zustellbarkeits-Rückschritt bestätigen",
+						"resolve": "Zustellbarkeits-Rückschritt schließen",
+						"verify": "Zustellbarkeitsprüfung durchführen",
+						"proof": "Zustellbarkeitsnachweis ausführen"
+					},
+					"toasts": {
+						"acknowledged": "Rückschritt bestätigt",
+						"resolved": "Rückschritt geschlossen",
+						"checkGone": "Diese Prüfung gehört nicht mehr zur aktiven Versandeinrichtung",
+						"itemVerified": "{title} ist bestätigt",
+						"pendingDns": "Wir prüfen weiter, während sich das DNS verbreitet",
+						"needsAttention": "Die Prüfung braucht weiterhin Aufmerksamkeit",
+						"proofPassed": "Durchgängiger Nachweis bestanden",
+						"proofSending": "Testnachricht gesendet — warte auf die Empfangsprüfung",
+						"proofFailed": "Der durchgängige Nachweis hat ein Problem gefunden",
+						"reportCopied": "Einrichtungsbericht kopiert",
+						"reportCopyFailed": "Der Bericht konnte nicht kopiert werden"
+					}
+				},
+				"domains": {
+					"pageTitle": "Versanddomains — Owlat",
+					"title": "Versanddomains",
+					"lede": "Konfigurieren Sie eigene Versanddomains für eine bessere E-Mail-Zustellbarkeit",
+					"addDomain": "Domain hinzufügen",
+					"addModalTitle": "Versanddomain hinzufügen",
+					"noTeam": {
+						"title": "Kein Team ausgewählt",
+						"description": "Erstellen oder wählen Sie ein Team, um Versanddomains zu verwalten."
+					},
+					"whyCustom": {
+						"title": "Warum eine eigene Domain hinzufügen?",
+						"body": "E-Mails von Ihrer eigenen Domain zu versenden verbessert die Zustellbarkeit und die Markenwiedererkennung. Konfigurieren Sie nach dem Hinzufügen einer Domain die DNS-Einträge bei Ihrem Domain-Anbieter, um den Besitz nachzuweisen."
+					},
+					"noDomain": {
+						"title": "Sie haben keine Domain zum Verifizieren?",
+						"body": "Verbinden Sie Ihr vorhandenes Postfach (Gmail, Fastmail, ein Firmenserver) über IMAP + SMTP, um persönliche Mail zu senden und zu empfangen, ohne eine Domain zu registrieren.",
+						"action": "Externes Postfach verbinden"
+					},
+					"empty": {
+						"title": "Keine Domains konfiguriert",
+						"description": "Fügen Sie eine eigene Versanddomain hinzu, um Ihre E-Mail-Zustellbarkeit und Markenwiedererkennung zu verbessern.",
+						"action": "Erste Domain hinzufügen"
+					},
+					"removeModal": {
+						"title": "Domain entfernen",
+						"description": "Möchten Sie {domain} wirklich entfernen? Sie können von dieser Domain dann keine E-Mails mehr versenden.",
+						"confirm": "Domain entfernen"
+					},
+					"dmarc": {
+						"none": {
+							"label": "Nur beobachten (p=none)",
+							"hint": "Berichte sammeln, bei Fehlschlägen nichts unternehmen."
+						},
+						"quarantine": {
+							"label": "Quarantäne (p=quarantine)",
+							"hint": "Fehlschlagende Mail in den Spam-Ordner leiten."
+						},
+						"reject": {
+							"label": "Ablehnen (p=reject)",
+							"hint": "Fehlschlagende Mail direkt ablehnen — volle Durchsetzung."
+						}
+					},
+					"operations": {
+						"add": "Domain hinzufügen",
+						"remove": "Domain entfernen",
+						"retryRegistration": "Domain-Registrierung erneut versuchen",
+						"updateDmarc": "DMARC-Richtlinie aktualisieren",
+						"verify": "Domain verifizieren",
+						"forceVerify": "Domain-Verifizierung erzwingen"
+					},
+					"toasts": {
+						"removed": "Domain erfolgreich entfernt",
+						"verified": "Domain erfolgreich verifiziert! Alle DNS-Einträge sind korrekt konfiguriert.",
+						"verificationIncomplete": "Verifizierung abgeschlossen. Einige DNS-Einträge brauchen Aufmerksamkeit – prüfen Sie die Details unten.",
+						"regenerating": "DNS-Einträge werden neu erzeugt...",
+						"dmarcMonitorOnly": "DMARC auf reines Beobachten gesetzt. Veröffentlichen Sie den aktualisierten _dmarc-Eintrag erneut und verifizieren Sie dann.",
+						"dmarcRaised": "DMARC-Richtlinie auf {policy} angehoben. Veröffentlichen Sie den aktualisierten _dmarc-Eintrag erneut und verifizieren Sie dann.",
+						"forceVerified": "Domain-Verifizierung erzwungen (Entwickler-Abkürzung)."
+					}
+				},
+				"migrate": {
+					"pageTitle": "Von Mailchimp migrieren — Owlat",
+					"title": "Von Mailchimp / Mandrill migrieren",
+					"lede": "Versenden Sie am ersten Tag weiterhin über Ihr bestehendes Mailchimp-Transactional-Konto — gleiche Reputation, gleiche Zustellbarkeit — während Owlat beide Absender mit identischer Instrumentierung misst und Verkehr erst dann auf die eigene MTA verlagert, wenn die Zahlen es rechtfertigen. Es gibt keinen Stichtag, und jeder Schritt hier ist umkehrbar.",
+					"connect": {
+						"present": "Mailchimp Transactional ist verbunden — Owlat sieht einen {envVar} in der Umgebung dieser Installation.",
+						"missing": "Erstellen Sie in Mailchimp Transactional einen API-Schlüssel (Settings → API keys), setzen Sie ihn als {envVar} in der Umgebung dieser Installation und starten Sie neu. Zugangsdaten liegen niemals in der Datenbank, daher kann Ihnen diese Seite immer nur sagen, ob der Schlüssel vorhanden ist — nie, wie er lautet.",
+						"transportLink": "Transporteinrichtung, mit dem einfügefertigen Umgebungsblock"
+					},
+					"domain": {
+						"none": "Es existiert noch keine Mailchimp-Transactional-Identität. Verifizieren Sie zuerst eine Versanddomain auf dem Domains-Bildschirm; wenn Sie Mandrill als Fallback-Relay aktivieren, wird die Identität automatisch bereitgestellt, und der stündliche Abgleich übernimmt das DNS von dort.",
+						"ready": "{domain}: verifiziert und bereit zum Weiterleiten",
+						"outstanding": "{domain}: offen — {outstanding}",
+						"domainsLink": "Versanddomains"
+					},
+					"watch": {
+						"cells": "Zellen — jeder Anteil und warum er sich bewegt hat",
+						"controls": "Ramp-Steuerung — eine Zelle pausieren, begrenzen oder hochstufen",
+						"independence": "Unabhängigkeit — wie viel Mail bereits Ihre eigene ist"
+					}
+				},
+				"providerRouting": {
+					"pageTitle": "Anbieter-Routing — Owlat",
+					"title": "Anbieter-Routing",
+					"lede": "Wählen Sie, welcher E-Mail-Anbieter welchen Nachrichtentyp versendet, mit Failover und gewichteter Lastverteilung über mehrere Anbieter",
+					"usingDefault": "Der Standardanbieter wird verwendet (EMAIL_PROVIDER)",
+					"resetToDefault": "Auf Standard zurücksetzen",
+					"configure": "Konfigurieren",
+					"noWorkspace": {
+						"title": "Kein Workspace ausgewählt",
+						"description": "Erstellen oder wählen Sie einen Workspace, um das Anbieter-Routing zu konfigurieren."
+					},
+					"howItWorks": {
+						"title": "So funktioniert das Routing",
+						"body": "Jeder Nachrichtentyp kann seine eigene Anbieterstrategie nutzen. Ist keine Route konfiguriert, fällt der Versand auf den Anbieter zurück, der über die Umgebungsvariable {envVar} gesetzt ist. Konfigurieren Sie eine Route, um Failover zu aktivieren oder den Verkehr auf mehrere Anbieter aufzuteilen."
+					},
+					"editModal": {
+						"title": "Route — {messageType}",
+						"strategy": "Strategie",
+						"managed": "Verwaltet",
+						"managedNote": "Die Strategie dieser Route wird vom Versandanteil-Controller verwaltet. Alles Übrige an dieser Route bleibt bearbeitbar, und beim Speichern bleibt die verwaltete Strategie erhalten.",
+						"providers": "Anbieter",
+						"failoverOrder": "Reihenfolge = Failover-Priorität",
+						"unavailable": "Nicht verfügbar",
+						"weightUnit": "Gew.",
+						"enableOne": "Aktivieren Sie mindestens einen Anbieter.",
+						"moveUp": "Nach oben verschieben",
+						"moveDown": "Nach unten verschieben",
+						"ipPool": "IP-Pool (optional)",
+						"ipPoolPlaceholder": "z. B. transactional",
+						"ipPoolHint": "Überschreibt den IP-Pool für den eingebauten MTA-Anbieter. Leer lassen, um den Standard des Anbieters zu verwenden.",
+						"saving": "Wird gespeichert...",
+						"save": "Route speichern"
+					},
+					"resetModal": {
+						"title": "Anbieter-Route zurücksetzen",
+						"description": "Dieser Nachrichtentyp fällt auf den Standardanbieter zurück, der über die Umgebungsvariable EMAIL_PROVIDER gesetzt ist.",
+						"confirm": "Auf Standard zurücksetzen"
+					},
+					"errors": {
+						"noProvider": "Aktivieren Sie vor dem Speichern mindestens einen Anbieter"
+					},
+					"operations": {
+						"save": "Anbieter-Route speichern",
+						"reset": "Anbieter-Route zurücksetzen"
+					},
+					"toasts": {
+						"saved": "Anbieter-Route gespeichert",
+						"reset": "Anbieter-Route auf den Standard zurückgesetzt"
+					}
+				},
+				"transport": {
+					"pageTitle": "Zustellungsanbieter — Owlat",
+					"title": "Zustellungsanbieter",
+					"lede": "Konfigurieren und prüfen Sie den E-Mail-Zustellungsanbieter, über den diese Instanz versendet",
+					"error": {
+						"title": "Zustellungsstatus konnte nicht geladen werden",
+						"message": "Die Zustellungskonfiguration ist nur für Eigentümer und Administratoren sichtbar. Wenn Sie Administrator sind, laden Sie die Seite neu und versuchen Sie es erneut."
+					},
+					"canSend": {
+						"yes": "Diese Instanz kann E-Mails versenden",
+						"no": "Diese Instanz kann keine E-Mails versenden",
+						"yesBody": "Ein Zustellungsanbieter ist konfiguriert und seine Zugangsdaten sind vorhanden. Senden Sie unten eine Test-E-Mail, um den gesamten Weg durchgängig zu bestätigen.",
+						"noBody": "Es ist kein nutzbarer Zustellungsanbieter konfiguriert. Bis das der Fall ist, schlagen Kampagnen und transaktionale Sendungen fehl. Setzen Sie {envVar} und die zugehörigen Zugangsdaten in Ihrer Umgebung."
+					},
+					"env": {
+						"addToEnv": "In Ihre {file} eintragen, dann die Instanz neu starten",
+						"copySnippet": ".env-Auszug kopieren",
+						"blankValues": "Die Werte bleiben leer — tragen Sie Ihre echten Zugangsdaten ein. Sie werden hier niemals angezeigt.",
+						"cliTitle": "Oder jede einzeln über die CLI setzen",
+						"copyCommand": "Befehl kopieren",
+						"cliHint": "Führen Sie {command} aus, um jede Variable aufzulisten, die Ihre aktuelle Konfiguration benötigt. Siehe den {guideLink}.",
+						"guideLink": "Leitfaden zu Umgebungsvariablen"
+					},
+					"config": {
+						"title": "Anbieterkonfiguration",
+						"subtitle": "Der aktive Anbieter und die Laufzeitvariablen, die er benötigt",
+						"activeProvider": "Aktiver Anbieter",
+						"activeProviderHint": "Aus der Umgebungsvariable EMAIL_PROVIDER",
+						"unknownProvider": "unbekannt: {provider}",
+						"notSet": "nicht gesetzt",
+						"requiredEnv": "Erforderliche Umgebungsvariablen",
+						"present": "vorhanden",
+						"missing": "fehlt",
+						"presenceOnly": "Es wird nur angezeigt, ob jede Variable vorhanden ist — geheime Werte verlassen das Backend nie.",
+						"selectProvider": "Wählen Sie einen Zustellungsanbieter (setzen Sie {envVar} auf {kinds}), um die erforderlichen Variablen zu sehen.",
+						"listSeparator": ", ",
+						"listLastSeparator": " oder "
+					},
+					"sns": {
+						"title": "SES-Bounce- & Beschwerde-Rückmeldungen",
+						"subtitle": "Lassen Sie SES Owlat mitteilen, wenn Mail zurückkommt oder als Spam markiert wird, damit diese Adressen automatisch unterdrückt werden",
+						"intro": "SES liefert diese Rückmeldungen über ein Amazon-SNS-Thema. Richten Sie ein HTTPS-Abonnement auf den Endpunkt unten — Owlat prüft die Signatur jeder Nachricht und bestätigt das Abonnement für Sie.",
+						"endpointTitle": "SNS-Abonnement-Endpunkt",
+						"copyEndpoint": "Endpunkt-URL kopieren",
+						"noSiteUrl": "Setzen Sie Ihre Site-URL, um den Endpunkt zu sehen, den SNS abonnieren soll.",
+						"step1": "Erstellen Sie in der SNS-Konsole ein Thema (z. B. {topic}) und fügen Sie ein {https}-Abonnement mit dem Endpunkt von oben hinzu.",
+						"step2": "Setzen Sie {envVar} auf die ARN dieses Themas. Owlat akzeptiert Rückmeldungen nur von genau diesem Thema, daher bleibt der Endpunkt geschlossen, bis die Variable gesetzt ist.",
+						"step3": "Erstellen Sie in der SES-Konsole ein {configurationSet} mit einem Ereignisziel, das {bounce}-, {complaint}- und {delivery}-Ereignisse an dieses Thema veröffentlicht.",
+						"step4": "Setzen Sie {envVar} auf den Namen des Sets, damit jede Sendung zugeordnet wird. Änderungen greifen bei der nächsten Sendung — kein Neustart nötig.",
+						"lastEvent": "Letztes Ereignis empfangen: {at}",
+						"noEvents": "Noch keine Rückmeldungen empfangen. Sobald das Abonnement bestätigt ist und eine Nachricht zurückkommt oder zugestellt wird, erscheint sie hier."
+					}
+				},
+				"webhooks": {
+					"pageTitle": "Webhooks — Owlat",
+					"title": "Webhooks",
+					"lede": "Erhalten Sie Benachrichtigungen in Echtzeit, wenn in Ihrem Konto Ereignisse auftreten",
+					"create": "Webhook erstellen",
+					"creating": "Wird erstellt...",
+					"editTitle": "Webhook bearbeiten",
+					"saveChanges": "Änderungen speichern",
+					"saving": "Wird gespeichert...",
+					"activeCount": "{count} aktiver Webhook | {count} aktive Webhooks",
+					"detailsFor": "Details zu {name}",
+					"disabled": "Deaktiviert",
+					"disable": "Deaktivieren",
+					"enable": "Aktivieren",
+					"sendTest": "Test senden",
+					"deliveryLogs": "Zustellprotokolle",
+					"regenerateSecret": "Secret neu erzeugen",
+					"subscribedEvents": "Abonnierte Ereignisse",
+					"created": "Erstellt",
+					"lastUpdated": "Zuletzt aktualisiert",
+					"secure": {
+						"title": "Sichere Webhook-Zustellung",
+						"body": "Alle Webhook-Payloads werden mit HMAC-SHA256 und Ihrem Webhook-Secret signiert. Prüfen Sie den {header}-Header, um die Echtheit sicherzustellen."
+					},
+					"noWorkspace": {
+						"title": "Kein Workspace ausgewählt",
+						"description": "Erstellen oder wählen Sie einen Workspace, um Webhooks zu verwalten."
+					},
+					"empty": {
+						"title": "Noch keine Webhooks",
+						"description": "Erstellen Sie einen Webhook, um bei Ereignissen benachrichtigt zu werden, etwa bei geöffneten E-Mails, Klicks und Bounces."
+					}
+				},
+				"advanced": {
+					"cells": {
+						"pageTitle": "Zustellungszellen — Owlat",
+						"title": "Zustellungszellen",
+						"lede": "Jeder Stream und jeder Postfachanbieter, den die Ramp verwaltet, was sie gerade tut und warum. Öffnen Sie eine Zelle für die Zahlen hinter jeder Prüfung.",
+						"errorTitle": "Die Zustellungszellen konnten nicht geladen werden",
+						"errorMessage": "Die Zellzustände konnten nicht geladen werden. Ihre Mail ist davon nicht betroffen — diese Seite liest nur.",
+						"loading": "Zustellungszellen werden geladen",
+						"gridHeading": "Stream × Postfachanbieter",
+						"evidenceHeading": "{cell} — die Belege",
+						"evidenceErrorTitle": "Die Belege dieser Zelle konnten nicht geladen werden",
+						"evidenceErrorMessage": "Die Prüfwerte konnten nicht gelesen werden. Das ist keine Zelle ohne Messungen — die Zahlen konnten nur nicht geladen werden.",
+						"evidenceLoading": "Belege für diese Zelle werden geladen",
+						"evidenceAbsent": "Für diese Zelle wurden noch keine Messungen erfasst. Es ist nichts falsch — die Prüfungen füllen sich, während Mail hinausgeht.",
+						"historyHeading": "Entscheidungsverlauf",
+						"historyErrorTitle": "Der Entscheidungsverlauf dieser Zelle konnte nicht geladen werden",
+						"historyErrorMessage": "Die Aufzeichnungen des Controllers für diese Zelle konnten nicht gelesen werden. Eine leere Zeitleiste würde besagen, dass er diese Zelle nie betrachtet hat — und das bedeutet ein fehlgeschlagener Lesevorgang nicht.",
+						"historyLoading": "Entscheidungsverlauf für diese Zelle wird geladen",
+						"controlsLink": "Diese Zelle pausieren, begrenzen oder zurücksetzen"
+					},
+					"controls": {
+						"pageTitle": "Zustellungssteuerung — Owlat",
+						"title": "Zustellungssteuerung",
+						"ledeIntro": "Was die Ramp von sich aus zurückgenommen hat und warum.",
+						"ledeActions": "Was jeder Stream trägt, steht ebenfalls hier — setzen Sie eine Zelle auf die Ramp, halten Sie eine Zelle, begrenzen Sie sie, treiben Sie sie an oder beginnen Sie von vorn, und wählen Sie, wie stark jeder Stream hochfährt.",
+						"ledeRecorded": "Alles hier wird protokolliert.",
+						"errorTitle": "Die Zustellungssteuerung konnte nicht geladen werden",
+						"errorMessage": "Die Steuerung konnte nicht geladen werden. Ihre Mail ist davon nicht betroffen — es hat sich nichts geändert.",
+						"loading": "Zustellungssteuerung wird geladen",
+						"globalPause": "Die gesamte Ramp ist pausiert. Jede Zelle ist dort festgehalten, wo sie steht; die Prüfungen laufen weiter, sodass Sie sehen können, was geschehen wäre.",
+						"pickCell": "Zelle auswählen",
+						"howHard": "Wie stark hochfahren",
+						"pullBacks": "Automatische Rücknahmen",
+						"pullBacksErrorTitle": "Die automatischen Rücknahmen konnten nicht geladen werden",
+						"pullBacksErrorMessage": "Diese Liste konnte nicht gelesen werden. Sie wird nicht leer angezeigt: Eine leere Liste hier würde bedeuten, dass der Controller nichts zurückgenommen hat — und das lässt sich nicht behaupten, während der Lesevorgang fehlschlägt.",
+						"pullBacksLoading": "Automatische Rücknahmen werden geladen",
+						"forceDialog": {
+							"title": "Diese Zelle gegen die Belege vorrücken?",
+							"confirm": "Vorrücken erzwingen",
+							"theCell": "die Zelle",
+							"consequence": "Damit rückt {cell} auf {share} vor, ohne dass eine Prüfung dem zustimmt. Ist das neue Volumen für diesen Anbieter zu viel, trifft der Schaden die Reputation Ihrer Versanddomain und braucht Wochen zur Behebung — die Zahl zurückzusetzen macht das nicht rückgängig.",
+							"streakReset": "Die saubere Serie beginnt wieder bei null, und die nächste Auswertung zieht zurück, wenn sie schlecht ausfällt."
+						},
+						"operations": {
+							"pause": "Ramp-Zelle pausieren",
+							"pin": "Ramp-Zelle begrenzen",
+							"forceAdvance": "Vorrücken der Ramp-Zelle erzwingen",
+							"resetPhase": "Ramp-Phase zurücksetzen",
+							"enroll": "Eine Zelle auf die Ramp setzen",
+							"promote": "Ramp-Phase hochstufen",
+							"setPreset": "Ramp-Tempo ändern"
+						}
+					},
+					"independence": {
+						"pageTitle": "{headline} — Owlat",
+						"errorTitle": "Ihre Unabhängigkeitszahlen konnten nicht geladen werden",
+						"errorMessage": "Diese Zahlen konnten nicht geladen werden. Ihre Mail ist davon nicht betroffen — diese Seite liest nur.",
+						"loading": "Unabhängigkeitszahlen werden geladen",
+						"capacityLabel": "Nachrichten, die Sie heute noch senden können",
+						"ownShareLabel": "Von Ihrem eigenen Server gesendet",
+						"dailySending": "Täglicher Versand",
+						"whenYouStopPaying": "Wann Sie aufhören zu zahlen",
+						"disconnectHeading": "Das Relay trennen",
+						"noSafeDate": "Es gibt noch kein voraussichtliches sicheres Datum — der Anteil steigt nicht schnell genug, um eines zu nennen.",
+						"safeDate": "Beim aktuellen Tempo wäre es etwa am {date} sicher, die Verbindung zu trennen.",
+						"disconnectAction": "Das Relay trennen…",
+						"dialog": {
+							"title": "Das Relay trennen?",
+							"confirm": "Zu den Relay-Einstellungen"
+						}
+					}
+				}
+			}
+		}
+	}
+}

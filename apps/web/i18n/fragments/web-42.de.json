@@ -1,0 +1,39 @@
+{
+	"shared": {
+		"postbox": {
+			"usePostboxComposerKeys": {
+				"send": "Senden (Strg+Enter)",
+				"sendMac": "Senden (⌘↵)",
+				"schedule": "Senden planen (Strg+Umschalt+Enter)",
+				"scheduleMac": "Senden planen (⌘⇧↵)"
+			},
+			"usePostboxComposerSealLock": {
+				"checking": "Es wird geprüft, ob diese Nachricht versiegelt werden kann…",
+				"keyChanged": "Prüfen und bestätigen Sie den geänderten Empfängerschlüssel, bevor Sie senden.",
+				"noRecipients": "Fügen Sie einen Empfänger hinzu, um zu sehen, ob diese Nachricht versiegelt werden kann."
+			},
+			"usePostboxContacts": {
+				"saveContact": "Kontakt speichern",
+				"removeContact": "Kontakt entfernen"
+			},
+			"usePostboxFilters": {
+				"createFilter": "Filter erstellen",
+				"updateFilter": "Filter aktualisieren",
+				"deleteFilter": "Filter löschen"
+			},
+			"usePostboxFolderActions": {
+				"createFolder": "Ordner erstellen",
+				"renameFolder": "Ordner umbenennen",
+				"deleteFolder": "Ordner löschen",
+				"updateFolder": "Ordner aktualisieren"
+			},
+			"usePostboxLabels": {
+				"createLabel": "Label erstellen",
+				"updateLabel": "Label aktualisieren",
+				"deleteLabel": "Label löschen",
+				"updateMessageLabels": "Nachrichtenlabels aktualisieren",
+				"updateThreadLabels": "Konversationslabels aktualisieren"
+			}
+		}
+	}
+}

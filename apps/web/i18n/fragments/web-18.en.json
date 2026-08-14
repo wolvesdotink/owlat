@@ -54,7 +54,7 @@
 					"action_item": "Action Item"
 				}
 			},
-			"entryCard": {
+			"knowledgeEntryCard": {
 				"confidence": "Confidence",
 				"entryTypes": {
 					"fact": "Fact",
@@ -73,7 +73,7 @@
 					"agent_extracted": "AI Extracted"
 				}
 			},
-			"entryForm": {
+			"knowledgeEntryForm": {
 				"type": "Type",
 				"title": "Title",
 				"titlePlaceholder": "Short, descriptive title",
@@ -150,7 +150,7 @@
 			}
 		},
 		"postbox": {
-			"aiStrip": {
+			"postboxAiStrip": {
 				"summarizeOperation": "Summarize thread",
 				"askOperation": "Ask about this thread",
 				"suggestOperation": "Suggest replies",
@@ -169,18 +169,18 @@
 				"suggestedReplies": "Suggested replies",
 				"noSuggestions": "No suggestions right now. Try again in a moment."
 			},
-			"appPasswordCallout": {
+			"postboxAppPasswordCallout": {
 				"heading": "{provider} needs an app password",
 				"headingAuthError": "{provider} needs an app password, not your account password",
 				"openPage": "Open {provider} app-password page"
 			},
-			"appPasswordReveal": {
+			"postboxAppPasswordReveal": {
 				"title": "Save this password now",
 				"body": "Owlat does not store the cleartext — once you close this dialog it is gone for good. Paste it into {client} and revoke this entry to rotate later.",
 				"yourClient": "your client",
 				"saved": "I've saved it"
 			},
-			"attachmentLightbox": {
+			"postboxAttachmentLightbox": {
 				"previewOf": "Preview of {filename}",
 				"attachmentPreview": "Attachment preview",
 				"position": "{index} of {total}",
@@ -195,7 +195,7 @@
 				"pdfFallback": "This browser can't embed PDFs — {link}.",
 				"pdfFallbackLink": "open it in a new tab instead"
 			},
-			"basicEditor": {
+			"postboxBasicEditor": {
 				"placeholder": "Write your message…"
 			}
 		}

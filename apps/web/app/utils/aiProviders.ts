@@ -17,6 +17,17 @@
  * (`__tests__/aiProviders.test.ts`) — no component mount needed.
  */
 
+/** Message-key root for this module; see `i18n/locales/en.json`. */
+const K = 'shared.aiProviders';
+
+/**
+ * Registry-owned copy carries message KEYS, never sentences: this module is a
+ * module-scope catalog, so it cannot call `useI18n`. A message that interpolates
+ * a value travels as its key plus those values; the component that renders it is
+ * what translates (`t(value)` / `t(value.key, value.params)`).
+ */
+export type AiProviderText = string | { key: string; params?: Record<string, unknown> };
+
 /** Language provider kinds — mirrors `LANGUAGE_PROVIDER_KINDS` in the backend. */
 export type LanguageProviderKind =
 	| 'openai'
@@ -29,16 +40,20 @@ export type LanguageProviderKind =
 /** Embedding provider kinds — mirrors `EMBEDDING_PROVIDER_KINDS` in the backend. */
 export type EmbeddingProviderKind = 'local' | 'openai' | 'google' | 'openaiCompatible';
 
-/** A `{ value, label }` option for `UiSelect`. */
+/**
+ * A `{ value, label }` option for `UiSelect`. `label` is a message key (or a
+ * `{ key, params }` pair) wherever it is copy, and a verbatim id — a model id —
+ * wherever it is data; the renderer runs it through `t(…)` either way.
+ */
 export interface SelectOption {
 	value: string;
-	label: string;
+	label: AiProviderText;
 }
 
 /** Presentational metadata for one language provider. */
 export interface LanguageProviderMeta {
 	kind: LanguageProviderKind;
-	/** Human label shown in the provider dropdown. */
+	/** Message key for the label shown in the provider dropdown. */
 	label: string;
 	/** True for locally-hosted backends (keyless, base-URL driven). */
 	isLocal: boolean;
@@ -61,13 +76,14 @@ export interface LanguageProviderMeta {
 	 * available models" action to populate the picker with the live catalog.
 	 */
 	supportsModelListing?: boolean;
-	/** One-line hint shown under the provider select. */
+	/** Message key for the one-line hint shown under the provider select. */
 	hint: string;
 }
 
 /** Presentational metadata for one embedding provider. */
 export interface EmbeddingProviderMeta {
 	kind: EmbeddingProviderKind;
+	/** Message key for the label shown in the embedding-provider dropdown. */
 	label: string;
 	isLocal: boolean;
 	/** Native embedding width — shown so an admin sees the re-index implication. */
@@ -84,25 +100,25 @@ export interface EmbeddingProviderMeta {
 export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 	{
 		kind: 'openai',
-		label: 'OpenAI',
+		label: `${K}.providers.openai.label`,
 		isLocal: false,
 		docsUrl: 'https://platform.openai.com/api-keys',
 		defaultModels: { fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' },
 		curatedModels: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'],
-		hint: 'Hosted GPT models. Paste an OpenAI API key.',
+		hint: `${K}.providers.openai.hint`,
 	},
 	{
 		kind: 'anthropic',
-		label: 'Anthropic (Claude)',
+		label: `${K}.providers.anthropic.label`,
 		isLocal: false,
 		docsUrl: 'https://console.anthropic.com/settings/keys',
 		defaultModels: { fast: 'claude-haiku-4-5', capable: 'claude-opus-4-8' },
 		curatedModels: ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
-		hint: 'Hosted Claude models. Paste an Anthropic API key. (Claude has no embeddings — keep embeddings local.)',
+		hint: `${K}.providers.anthropic.hint`,
 	},
 	{
 		kind: 'google',
-		label: 'Google (Gemini)',
+		label: `${K}.providers.google.label`,
 		isLocal: false,
 		docsUrl: 'https://aistudio.google.com/app/apikey',
 		defaultModels: { fast: 'gemini-3.1-flash-lite', capable: 'gemini-3.5-flash' },
@@ -112,22 +128,22 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 			'gemini-3.1-flash-lite',
 			'gemini-2.5-flash',
 		],
-		hint: 'Hosted Gemini models. Paste a Google AI Studio key.',
+		hint: `${K}.providers.google.hint`,
 	},
 	{
 		kind: 'azure',
-		label: 'Azure OpenAI',
+		label: `${K}.providers.azure.label`,
 		isLocal: false,
 		docsUrl: 'https://learn.microsoft.com/azure/ai-services/openai/',
 		requiresBaseUrl: true,
 		defaultBaseUrl: 'https://<resource>.openai.azure.com/openai',
 		defaultModels: { fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' },
 		curatedModels: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'],
-		hint: 'GPT models from your Azure OpenAI resource. Model ids are your deployment names — paste your key and resource base URL.',
+		hint: `${K}.providers.azure.hint`,
 	},
 	{
 		kind: 'openrouter',
-		label: 'OpenRouter',
+		label: `${K}.providers.openrouter.label`,
 		isLocal: false,
 		docsUrl: 'https://openrouter.ai/keys',
 		defaultModels: { fast: 'deepseek/deepseek-v4-flash', capable: 'anthropic/claude-sonnet-5' },
@@ -146,17 +162,17 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 			'moonshotai/kimi-k2.6',
 		],
 		supportsModelListing: true,
-		hint: 'One key, many upstream models. Use provider-prefixed ids like anthropic/claude-sonnet-5.',
+		hint: `${K}.providers.openrouter.hint`,
 	},
 	{
 		kind: 'openaiCompatible',
-		label: 'Local / self-hosted (OpenAI-compatible)',
+		label: `${K}.providers.openaiCompatible.label`,
 		isLocal: true,
 		defaultBaseUrl: 'http://localhost:11434/v1',
 		defaultModels: { fast: 'llama3.1', capable: 'llama3.1' },
 		curatedModels: ['llama3.1', 'llama3.3', 'qwen3', 'gemma3', 'mistral'],
 		supportsModelListing: true,
-		hint: 'Ollama, vLLM, or llama.cpp on your own hardware. No key — just a base URL.',
+		hint: `${K}.providers.openaiCompatible.hint`,
 	},
 ] as const;
 
@@ -168,7 +184,7 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 export const EMBEDDING_PROVIDERS: readonly EmbeddingProviderMeta[] = [
 	{
 		kind: 'local',
-		label: 'Local (bundled) — no setup needed',
+		label: `${K}.embedders.local.label`,
 		isLocal: true,
 		dimensions: 768,
 		defaultModel: 'nomic-embed-text',
@@ -176,7 +192,7 @@ export const EMBEDDING_PROVIDERS: readonly EmbeddingProviderMeta[] = [
 	},
 	{
 		kind: 'openai',
-		label: 'OpenAI (hosted)',
+		label: `${K}.embedders.openai.label`,
 		isLocal: false,
 		dimensions: 1536,
 		defaultModel: 'text-embedding-3-small',
@@ -184,7 +200,7 @@ export const EMBEDDING_PROVIDERS: readonly EmbeddingProviderMeta[] = [
 	},
 	{
 		kind: 'google',
-		label: 'Google (hosted)',
+		label: `${K}.embedders.google.label`,
 		isLocal: false,
 		dimensions: 768,
 		defaultModel: 'text-embedding-004',
@@ -192,7 +208,7 @@ export const EMBEDDING_PROVIDERS: readonly EmbeddingProviderMeta[] = [
 	},
 	{
 		kind: 'openaiCompatible',
-		label: 'Custom OpenAI-compatible server',
+		label: `${K}.embedders.openaiCompatible.label`,
 		isLocal: true,
 		dimensions: 768,
 		defaultModel: 'nomic-embed-text',
@@ -213,13 +229,17 @@ export function embeddingProviderMeta(kind: string): EmbeddingProviderMeta | und
 /**
  * Language provider `UiSelect` options. Typed to the kind union (not bare
  * `string`) so `UiSelect`'s generic infers `LanguageProviderKind` and the
- * bound `v-model` stays the union rather than widening to `string`.
+ * bound `v-model` stays the union rather than widening to `string`. Each label
+ * is a message key — the renderer translates it.
  */
 export function languageProviderOptions(): { value: LanguageProviderKind; label: string }[] {
 	return LANGUAGE_PROVIDERS.map((p) => ({ value: p.kind, label: p.label }));
 }
 
-/** Embedding provider `UiSelect` options, typed to the embedding kind union. */
+/**
+ * Embedding provider `UiSelect` options, typed to the embedding kind union.
+ * Each label is a message key — the renderer translates it.
+ */
 export function embeddingProviderOptions(): { value: EmbeddingProviderKind; label: string }[] {
 	return EMBEDDING_PROVIDERS.map((p) => ({ value: p.kind, label: p.label }));
 }
@@ -242,9 +262,12 @@ export const CUSTOM_MODEL_VALUE = '__custom__';
 export function modelOptions(curated: readonly string[], current: string): SelectOption[] {
 	const options: SelectOption[] = curated.map((m) => ({ value: m, label: m }));
 	if (current && current !== CUSTOM_MODEL_VALUE && !curated.includes(current)) {
-		options.push({ value: current, label: `${current} (current)` });
+		options.push({
+			value: current,
+			label: { key: `${K}.currentModel`, params: { model: current } },
+		});
 	}
-	options.push({ value: CUSTOM_MODEL_VALUE, label: 'Custom model id…' });
+	options.push({ value: CUSTOM_MODEL_VALUE, label: `${K}.customModel` });
 	return options;
 }
 
@@ -281,7 +304,9 @@ export function resolveModelId(choice: string, custom: string): string {
  * (the field is hidden). A hosted provider needs either a stored key or a
  * freshly-typed one — otherwise saving would persist a config that can't run. A
  * provider flagged `requiresBaseUrl` (Azure) additionally needs its resource
- * base URL. Returns a human error string, or `null` when the config is savable.
+ * base URL. Returns a message KEY the renderer translates, or `null` when the
+ * config is savable. The provider is named by the key itself rather than
+ * interpolated, so no translated label ever has to be nested into a sentence.
  */
 export function validateLanguageConfig(input: {
 	kind: string;
@@ -290,16 +315,21 @@ export function validateLanguageConfig(input: {
 	baseUrl?: string;
 }): string | null {
 	const meta = languageProviderMeta(input.kind);
-	const label = meta?.label ?? 'this provider';
+	const provider = meta?.kind ?? 'unknown';
 	if (meta?.requiresBaseUrl && !(input.baseUrl ?? '').trim()) {
-		return `${label} needs its resource base URL. Add it above to continue.`;
+		return `${K}.validation.baseUrlRequired.${provider}`;
 	}
 	if (!languageProviderRequiresKey(input.kind)) return null;
 	if (input.hasStoredKey || input.apiKey.trim().length > 0) return null;
-	return `${label} needs an API key. Paste one above to continue.`;
+	return `${K}.validation.apiKeyRequired.${provider}`;
 }
 
-/** The Test-connection UI state. `error` carries the human message to show. */
+/**
+ * The Test-connection UI state. `message` carries what the admin reads: the
+ * backend's own error text when it sent one, otherwise this module's fallback
+ * message KEY — the renderer runs it through `t(…)`, and text with nothing to
+ * translate reads as itself.
+ */
 export type TestConnectionState =
 	| { status: 'idle' }
 	| { status: 'testing' }
@@ -325,5 +355,5 @@ export function testConnectionReducer(
 	// Only accept a result while a test is in flight.
 	if (state.status !== 'testing') return state;
 	if (event.ok) return { status: 'ok' };
-	return { status: 'error', message: event.error?.trim() || 'Connection test failed.' };
+	return { status: 'error', message: event.error?.trim() || `${K}.testFailed` };
 }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { resolvePostboxFolderParam } from '~/utils/postboxFolderParam';
 
-useHead({ title: 'Mail — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.postbox.detail.detail.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -29,7 +31,7 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 			:active-message-id="messageId"
 		/>
 		<div v-else-if="!mailboxesLoading" class="flex-1 flex items-center justify-center p-12">
-			<p class="text-text-secondary">No mailbox configured</p>
+			<p class="text-text-secondary">{{ t('dashboard.postbox.detail.detail.noMailbox') }}</p>
 		</div>
 		<PostboxComposerStack />
 	</div>

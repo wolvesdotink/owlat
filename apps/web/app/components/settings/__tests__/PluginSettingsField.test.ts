@@ -7,17 +7,24 @@
  * only, names the environment variable, offers no input), and SSR-safety
  * (renders to a string with no window/document access).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { renderToString } from '@vue/server-renderer';
 import { createSSRApp, h } from 'vue';
 import type { PluginSettingsField as Field } from '@owlat/plugin-kit';
 import PluginSettingsField from '../PluginSettingsField.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// `useI18n` is an auto-import in the app; the real one resolves against the
+// instance `global.plugins` (and the SSR app below) installs.
+beforeEach(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
 
 function mountField(field: Field, props: Record<string, unknown> = {}) {
 	return mount(PluginSettingsField, {
 		props: { field, modelValue: props.modelValue ?? '', ...props },
-		global: { stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 	});
 }
 
@@ -195,6 +202,7 @@ describe('PluginSettingsField SSR', () => {
 		const app = createSSRApp({
 			render: () => h(PluginSettingsField, { field, modelValue: '', secretSet: true }),
 		});
+		app.use(createTestI18n());
 		const html = await renderToString(app);
 		expect(html).toContain('API key');
 		expect(html).toContain('PLUGIN_API_KEY');

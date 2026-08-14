@@ -1,0 +1,204 @@
+{
+	"components": {
+		"settings": {
+			"pluginConfigStatusNotice": {
+				"checking": "Plugin-Umgebung und Freigaben für Berechtigungen werden geprüft… Deaktivieren bleibt möglich.",
+				"failed": "Prüfung der Plugin-Konfiguration fehlgeschlagen: {message} Deaktivieren bleibt möglich."
+			},
+			"pluginSettingsField": {
+				"secretHintSet": "Wird über die Umgebungsvariable {envVar} bereitgestellt, die gesetzt ist.",
+				"secretHintUnset": "Setzen Sie die Umgebungsvariable {envVar} in Ihrem Deployment.",
+				"secretSet": "In der Umgebung gesetzt",
+				"secretNotSet": "Nicht gesetzt",
+				"selectPlaceholder": "Auswählen…"
+			},
+			"teamRoleMenu": {
+				"changeRole": "Rolle ändern",
+				"changeRoleFor": "Rolle für {member} ändern (aktuell {role})",
+				"assignRole": "Rolle zuweisen"
+			},
+			"connectedApps": {
+				"connectedAppRegisterModal": {
+					"title": "App verbinden",
+					"noPluginsTitle": "Keine Plugins zum Verbinden",
+					"noPluginsDescription": "Verbundene Apps binden sich an ein mitgeliefertes Plugin. Fügen Sie dem Build dieses Deployments ein Plugin hinzu, bevor Sie eine externe App verbinden.",
+					"detailsStepHeading": "Schritt 1 von 2: Verbindungsdetails",
+					"choosePluginError": "Wählen Sie das Plugin, mit dem sich diese App verbindet.",
+					"nameRequiredError": "Geben Sie der verbundenen App einen Namen.",
+					"endpointError": "Geben Sie eine gültige HTTPS-Endpunkt-URL ohne eingebettete Zugangsdaten ein (z. B. https://hooks.example.com/owlat).",
+					"pluginLabel": "Plugin",
+					"pluginPlaceholder": "Plugin auswählen…",
+					"namePlaceholder": "z. B. Slack-Freigaben",
+					"nameHint": "Eine Bezeichnung, an der Sie diese Verbindung später wiedererkennen.",
+					"endpointLabel": "Hook-Endpunkt",
+					"endpointPlaceholder": "https://hooks.example.com/owlat",
+					"endpointHint": "Owlat signiert Hooks und stellt sie an diese HTTPS-URL zu. Sie muss öffentlich erreichbar sein — interne und private Adressen werden abgelehnt.",
+					"riskDisclosureLabel": "Risikohinweis zu verbundenen Apps",
+					"riskTitle": "Sie gewähren einer externen App Zugriff",
+					"riskBody": "Damit verbinden Sie einen externen Dienst mit Ihrem Workspace. Er hält ein gemeinsames Geheimnis und kann Owlat mit den unten gewährten Berechtigungen aufrufen.",
+					"riskLimits": "Eine verbundene App kann immer nur {emphasis} — sie kann niemals in Ihrem Namen freigeben, entsperren oder senden, und sie kann die Sicherheitsprüfungen von Owlat nicht entfernen.",
+					"riskLimitsEmphasis": "Arbeit oder Vorsicht hinzufügen",
+					"capabilitiesLegend": "Zu gewährende Berechtigungen",
+					"capabilitiesHint": "Gewähren Sie nur, was diese App benötigt. Jede ist eine vom Plugin deklarierte Berechtigung; Sie können eine Teilmenge gewähren, niemals mehr.",
+					"noCapabilities": "Dieses Plugin deklariert keine Berechtigungen zum Gewähren.",
+					"submit": "App registrieren"
+				},
+				"connectedAppSecretReveal": {
+					"headingCreated": "Verbundene App registriert",
+					"headingRotated": "Geheimnis rotiert",
+					"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
+					"copyNow": "Kopieren Sie dieses Geheimnis jetzt",
+					"onlyTimeShown": "Dies ist das einzige Mal, dass es angezeigt wird. Hinterlegen Sie es in der Konfiguration der verbundenen App — Sie werden es nicht wieder sehen können.",
+					"previousSecretStopped": "Das vorherige Geheimnis hat in dem Moment aufgehört zu funktionieren, in dem dieses erstellt wurde.",
+					"appLabel": "App",
+					"secretLabel": "Gemeinsames Geheimnis",
+					"copied": "Kopiert!"
+				}
+			},
+			"team": {
+				"inviteModal": {
+					"title": "Teammitglied einladen",
+					"emailRequired": "E-Mail-Adresse ist erforderlich",
+					"emailInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
+					"emailAlreadyInvited": "Für diese Adresse liegt bereits eine offene Einladung vor. Senden Sie sie erneut oder kopieren Sie ihren Link aus der Liste unten.",
+					"mailboxLocalpartRequired": "Der lokale Teil ist für das Postfach erforderlich",
+					"mailboxLocalpartInvalid": "Verwenden Sie Buchstaben, Ziffern, Punkte, Bindestriche oder Unterstriche",
+					"mailboxDomainRequired": "Wählen Sie eine verifizierte Domain",
+					"invitationSent": "Einladung an {email} gesendet",
+					"invitationSentMailboxReserved": "Einladung an {email} gesendet. Das Postfach {address} ist reserviert und wird aktiviert, sobald {domain} verifiziert ist.",
+					"invitationSentMailboxPending": "Einladung an {email} gesendet. Das Postfach {address} wird erstellt, sobald die Einladung angenommen wird.",
+					"inviteFailed": "Einladung konnte nicht gesendet werden",
+					"emailLabel": "E-Mail-Adresse",
+					"emailPlaceholder": "kollege{'@'}firma.de",
+					"roleLabel": "Rolle",
+					"reserveMailbox": "Ein persönliches Postfach für diese Person reservieren",
+					"reserveMailboxHint": "Wir reservieren die Adresse jetzt und erstellen das Postfach, sobald die Einladung angenommen wird. Standardmäßig aktiviert — abwählen, um ohne Postfach einzuladen.",
+					"reserveMailboxNoDomain": "Fügen Sie eine Versanddomain hinzu, um Postfächer für neue Mitglieder zu reservieren — Sie können sie jetzt einladen, und ihr Postfach wird aktiviert, sobald die Domain verifiziert ist.",
+					"addDomainLink": "Domain hinzufügen",
+					"reserveMailboxNoHostedMail": "Richten Sie gehostete Mail ein — eine Versanddomain und das Postfach — um Postfächer für neue Mitglieder zu reservieren.",
+					"addressLabel": "Adresse",
+					"localpartPlaceholder": "marcel",
+					"selectDomain": "Domain auswählen",
+					"domainVerifying": "{domain} (wird verifiziert…)",
+					"willBeCreatedAs": "Wird erstellt als: {address}",
+					"reservedAwaitingDomain": "{address} ist jetzt reserviert und wird automatisch aktiviert, sobald {domain} verifiziert ist.",
+					"finishVerifyingLink": "Verifizierung abschließen",
+					"displayNameLabel": "Anzeigename (optional)",
+					"displayNamePlaceholder": "Marcel Pfeifer",
+					"invitationReady": "Einladung bereit",
+					"emailedInvitee": "Wir haben {email} eine E-Mail geschickt — Sie können den Annahme-Link auch direkt teilen.",
+					"shareAcceptLink": "Teilen Sie den Annahme-Link unten mit {email} — der E-Mail-Versand ist noch nicht eingerichtet, das ist also der Weg hinein.",
+					"successMailboxReserved": "Das Postfach {address} ist reserviert — es wird automatisch aktiviert, sobald seine Versanddomain verifiziert ist.",
+					"successMailboxPending": "Das Postfach {address} wird erstellt, sobald die Einladung angenommen wird.",
+					"acceptLinkLabel": "Annahme-Link",
+					"acceptLinkHint": "Funktioniert auch, wenn der E-Mail-Versand noch nicht eingerichtet ist.",
+					"inviteAnother": "Weitere einladen",
+					"sending": "Wird gesendet...",
+					"sendInvitation": "Einladung senden"
+				}
+			}
+		},
+		"system": {
+			"llmSpendCard": {
+				"title": "LLM-Ausgaben · letzte 7 Tage",
+				"calls": "· {count} Aufrufe",
+				"noUsage": "In den letzten 7 Tagen wurde keine LLM-Nutzung erfasst.",
+				"byProvider": "Nach Anbieter",
+				"spendBudget": "Ausgabenbudget",
+				"ceilingReached": "Obergrenze erreicht — automatischer Versand pausiert",
+				"approachingCeiling": "Obergrenze nähert sich",
+				"dailyRemaining": "Täglich verbleibend",
+				"monthlyRemaining": "Monatlich verbleibend",
+				"ofLimit": "von {amount}",
+				"advisoryPaused": "Beratende KI ist pausiert; das verbleibende Budget ist für autonome Antworten reserviert."
+			},
+			"updateProgress": {
+				"heading": "Update auf v{version} läuft",
+				"steps": {
+					"writeCompose": "Fixierte Compose-Vorlage schreiben",
+					"pull": "Neue Container-Images laden",
+					"up": "Container mit neuen Versionen neu erstellen",
+					"convexDeploy": "Backend-Funktionen bereitstellen"
+				},
+				"stepFailed": "Fehlgeschlagen",
+				"timedOut": "Zeitüberschreitung beim Warten auf die neue Version. Prüfen Sie `owlat logs web` auf dem Host.",
+				"restartNotice": "Die Web-App startet während des Updates möglicherweise neu. Diese Seite verbindet sich automatisch wieder."
+			},
+			"versionCard": {
+				"currentVersion": "Aktuelle Version",
+				"devBuild": "Dev-Build",
+				"gitSha": "Git-SHA",
+				"built": "Erstellt"
+			}
+		},
+		"transactional": {
+			"recentSendsModal": {
+				"title": "Letzte Sendungen",
+				"titleNamed": "Letzte Sendungen — {name}",
+				"noSends": "Noch keine Sendungen — lösen Sie diese E-Mail über die API aus, um Zustellungen hier zu sehen.",
+				"unknownRecipient": "Unbekannter Empfänger",
+				"hasMore": "Es werden die 25 neuesten Sendungen angezeigt.",
+				"status": {
+					"queued": "In Warteschlange",
+					"sent": "Gesendet",
+					"delivered": "Zugestellt",
+					"opened": "Geöffnet",
+					"clicked": "Geklickt",
+					"failed": "Fehlgeschlagen",
+					"bounced": "Unzustellbar",
+					"complained": "Beschwerde"
+				}
+			}
+		},
+		"translation": {
+			"cell": {
+				"placeholder": "Zum Übersetzen klicken",
+				"saveTitle": "Speichern (Cmd+Enter)",
+				"cancelTitle": "Abbrechen (Esc)",
+				"noContent": "Kein Inhalt",
+				"htmlBadge": "HTML",
+				"sourceBadge": "Quelle"
+			},
+			"manager": {
+				"saveTranslationsOperation": "Übersetzungen speichern",
+				"saveTranslationOperation": "Übersetzung speichern",
+				"addLanguageOperation": "Sprache hinzufügen",
+				"removeLanguageOperation": "Sprache entfernen",
+				"heading": "{name} - Übersetzungen",
+				"emailFallbackName": "E-Mail",
+				"unsavedChanges": "Nicht gespeicherte Änderungen",
+				"loadingEmail": "E-Mail wird geladen...",
+				"notFoundTitle": "E-Mail nicht gefunden",
+				"notFoundDescription": "Diese E-Mail existiert nicht oder wurde gelöscht.",
+				"goBack": "Zurück",
+				"emptyTitle": "Kein übersetzbarer Inhalt",
+				"emptyDescription": "Fügen Sie Ihrer E-Mail Text, Buttons oder Bilder mit Alt-Text hinzu, um Übersetzungen zu ermöglichen.",
+				"fieldColumn": "Feld",
+				"defaultBadge": "Standard",
+				"autoTranslateTitle": "Automatisch mit KI übersetzen",
+				"removeLanguageTitle": "Sprache entfernen",
+				"addLanguage": "Sprache hinzufügen",
+				"languageOption": "{label} ({nativeLabel})",
+				"htmlBadge": "HTML",
+				"subjectLine": "Betreffzeile",
+				"previewText": "Vorschautext",
+				"textBlock": "{prefix}Textblock {index}",
+				"buttonBlock": "{prefix}Button: \"{text}\"",
+				"imageBlock": "{prefix}Bild {index} Alt-Text",
+				"columnPrefix": "{prefix}Spalte {index}",
+				"containerPrefix": "{prefix}Container {index}",
+				"languageAdded": "Übersetzung {language} hinzugefügt",
+				"languageRemoved": "Übersetzung {language} entfernt",
+				"allTranslated": "Alle Felder sind bereits übersetzt",
+				"autoTranslated": "{count} Felder nach {language} übersetzt",
+				"autoTranslateFailed": "Automatische Übersetzung fehlgeschlagen. Prüfen Sie die API-Konfiguration.",
+				"infoTitle": "So funktionieren Übersetzungen",
+				"infoBody": "Klicken Sie auf eine beliebige Zelle, um die Übersetzung zu bearbeiten. Änderungen werden automatisch gespeichert. Nutzen Sie das Funkel-Symbol, um leere Felder mit KI automatisch zu übersetzen. Der Inhalt der Standardsprache ist hier schreibgeschützt - bearbeiten Sie ihn im Haupt-E-Mail-Editor.",
+				"removeConfirmTitle": "Übersetzung entfernen?",
+				"removeConfirmDescription": "Die Übersetzung {language} entfernen? Dies kann nicht rückgängig gemacht werden.",
+				"removeConfirmFallback": "Dies kann nicht rückgängig gemacht werden.",
+				"removeConfirmAction": "Übersetzung entfernen"
+			}
+		}
+	}
+}

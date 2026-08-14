@@ -210,14 +210,16 @@ export interface EmailEditorBridgeReturn {
 export function useEmailEditorBridge<S>(
 	opts: EmailEditorBridgeOptions<S>
 ): EmailEditorBridgeReturn {
+	const { t } = useI18n();
+
 	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
-		label: 'Get upload URL',
+		label: () => t('shared.useEmailEditorBridge.getUploadUrlOperation'),
 	});
 	const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
-		label: 'Save media asset',
+		label: () => t('shared.useEmailEditorBridge.saveMediaAssetOperation'),
 	});
 	const { run: createEmailBlock } = useBackendOperation(api.emailBlocks.blocks.create, {
-		label: 'Save block',
+		label: () => t('shared.useEmailEditorBridge.saveBlockOperation'),
 	});
 
 	// Universal canvas state.

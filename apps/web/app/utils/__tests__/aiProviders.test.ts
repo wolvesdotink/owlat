@@ -13,8 +13,19 @@ import {
 	resolveModelId,
 	testConnectionReducer,
 	validateLanguageConfig,
+	type AiProviderText,
 	type TestConnectionState,
 } from '../aiProviders';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The catalog is a module-scope table, so its copy travels as catalog keys
+ * rather than sentences. Rendering them through the real English catalog keeps
+ * these assertions on the copy an admin reads.
+ */
+const { t } = createTestI18n().global;
+const render = (text: AiProviderText) =>
+	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
 
 describe('provider catalog', () => {
 	it('exposes exactly the six language kinds and four embedding kinds', () => {
@@ -57,14 +68,22 @@ describe('provider catalog', () => {
 
 describe('select options', () => {
 	it('maps providers to value/label options', () => {
-		expect(languageProviderOptions()).toContainEqual({
-			value: 'anthropic',
-			label: 'Anthropic (Claude)',
-		});
-		expect(embeddingProviderOptions()[0]).toEqual({
-			value: 'local',
-			label: 'Local (bundled) — no setup needed',
-		});
+		const anthropic = languageProviderOptions().find((o) => o.value === 'anthropic');
+		expect(anthropic).toBeDefined();
+		expect(render(anthropic!.label)).toBe('Anthropic (Claude)');
+		const firstEmbedder = embeddingProviderOptions()[0];
+		expect(firstEmbedder?.value).toBe('local');
+		expect(render(firstEmbedder!.label)).toBe('Local (bundled) — no setup needed');
+	});
+
+	it('renders every provider label and hint through the catalog', () => {
+		for (const provider of LANGUAGE_PROVIDERS) {
+			expect(render(provider.label)).not.toContain('shared.aiProviders');
+			expect(render(provider.hint)).not.toContain('shared.aiProviders');
+		}
+		expect(render(languageProviderMeta('openai')!.hint)).toBe(
+			'Hosted GPT models. Paste an OpenAI API key.'
+		);
 	});
 });
 
@@ -83,16 +102,15 @@ describe('languageProviderRequiresKey — local hides the key field', () => {
 describe('modelOptions — model-picker option mapping', () => {
 	it('maps curated ids and always appends the custom sentinel last', () => {
 		const opts = modelOptions(['gpt-4o', 'gpt-4o-mini'], '');
-		expect(opts).toEqual([
-			{ value: 'gpt-4o', label: 'gpt-4o' },
-			{ value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-			{ value: CUSTOM_MODEL_VALUE, label: 'Custom model id…' },
-		]);
+		expect(opts.map((o) => o.value)).toEqual(['gpt-4o', 'gpt-4o-mini', CUSTOM_MODEL_VALUE]);
+		expect(opts.map((o) => render(o.label))).toEqual(['gpt-4o', 'gpt-4o-mini', 'Custom model id…']);
 	});
 
 	it('injects the current value when it is not among the curated ids', () => {
 		const opts = modelOptions(['gpt-4o'], 'ft:my-model');
-		expect(opts).toContainEqual({ value: 'ft:my-model', label: 'ft:my-model (current)' });
+		const current = opts.find((o) => o.value === 'ft:my-model');
+		expect(current).toBeDefined();
+		expect(render(current!.label)).toBe('ft:my-model (current)');
 		// current is inserted before the sentinel
 		expect(opts.at(-1)?.value).toBe(CUSTOM_MODEL_VALUE);
 	});
@@ -148,7 +166,8 @@ describe('validateLanguageConfig', () => {
 
 	it('rejects a hosted provider with neither a stored nor a typed key', () => {
 		const err = validateLanguageConfig({ kind: 'openai', hasStoredKey: false, apiKey: '   ' });
-		expect(err).toBe('OpenAI needs an API key. Paste one above to continue.');
+		expect(err).toBe('shared.aiProviders.validation.apiKeyRequired.openai');
+		expect(t(err!)).toBe('OpenAI needs an API key. Paste one above to continue.');
 	});
 
 	it('passes a hosted provider when a key is stored', () => {
@@ -170,7 +189,8 @@ describe('validateLanguageConfig', () => {
 			apiKey: '',
 			baseUrl: '  ',
 		});
-		expect(err).toBe('Azure OpenAI needs its resource base URL. Add it above to continue.');
+		expect(err).toBe('shared.aiProviders.validation.baseUrlRequired.azure');
+		expect(t(err!)).toBe('Azure OpenAI needs its resource base URL. Add it above to continue.');
 	});
 
 	it('passes Azure when both a key and a base URL are present', () => {
@@ -207,11 +227,10 @@ describe('testConnectionReducer — Test-connection state machine', () => {
 		).toEqual({ status: 'error', message: 'bad key' });
 	});
 
-	it('supplies a fallback message when the backend omits one', () => {
-		expect(testConnectionReducer({ status: 'testing' }, { type: 'result', ok: false })).toEqual({
-			status: 'error',
-			message: 'Connection test failed.',
-		});
+	it('supplies a fallback message key when the backend omits one', () => {
+		const next = testConnectionReducer({ status: 'testing' }, { type: 'result', ok: false });
+		expect(next).toEqual({ status: 'error', message: 'shared.aiProviders.testFailed' });
+		expect(t('shared.aiProviders.testFailed')).toBe('Connection test failed.');
 	});
 
 	it('ignores a stray result that arrives when not testing', () => {

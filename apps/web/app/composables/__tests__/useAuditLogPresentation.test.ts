@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { AUDIT_ACTION_LITERALS, HOSTED_PLUGIN_OPERATION_LITERALS } from '@owlat/api/auditActions';
 import {
 	buildActionTypeGroups,
@@ -7,11 +7,22 @@ import {
 	getActionColorClass,
 	getResourceIcon,
 	getResourceLabel,
-	getHostedPluginDetailText,
-	formatTimestamp,
 	getUserInitials,
+	useAuditLogPresentation,
 	type AuditLogEntry,
 } from '../useAuditLogPresentation';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The switches hand back message KEYS (module scope cannot call `useI18n`), so
+ * the label assertions translate them the way the audit page does; the row
+ * formatters come off the composable, which owns the translated closures.
+ */
+const i18n = createTestI18n();
+const { t } = i18n.global;
+vi.stubGlobal('useI18n', () => i18n.global);
+
+const { formatTimestamp, getHostedPluginDetailText } = useAuditLogPresentation();
 
 describe('useAuditLogPresentation action catalog parity', () => {
 	const groups = buildActionTypeGroups();
@@ -46,7 +57,7 @@ describe('useAuditLogPresentation action catalog parity', () => {
 
 	it('every grouped action resolves to a non-empty label / icon / colour', () => {
 		for (const action of grouped) {
-			expect(getActionLabel(action), `label for ${action}`).toBeTruthy();
+			expect(t(getActionLabel(action)), `label for ${action}`).toBeTruthy();
 			expect(getActionIcon(action), `icon for ${action}`).toMatch(/^lucide:/);
 			expect(getActionColorClass(action), `colour for ${action}`).toBeTruthy();
 		}
@@ -57,17 +68,24 @@ describe('useAuditLogPresentation action catalog parity', () => {
 			expect(group.actions.length, `group "${group.label}" is empty`).toBeGreaterThan(0);
 		}
 	});
+
+	it('every group label is a key the catalog carries', () => {
+		for (const group of groups) {
+			expect(t(group.label), `group label ${group.label} is missing`).not.toBe(group.label);
+		}
+	});
 });
 
 describe('useAuditLogPresentation presentation helpers', () => {
 	it('labels known verbs and humanises unknown ones', () => {
-		expect(getActionLabel('campaign.created')).toBe('Created');
-		expect(getActionLabel('team_member.role_changed')).toBe('Role Changed');
+		expect(t(getActionLabel('campaign.created'))).toBe('Created');
+		expect(t(getActionLabel('team_member.role_changed'))).toBe('Role Changed');
 		// dkim_rotated is the action that had drifted out of the local catalog;
-		// it now both appears in the dropdown and gets a humanised label.
-		expect(getActionLabel('sending_domain.dkim_rotated')).toBe('Dkim rotated');
+		// it now both appears in the dropdown and gets a humanised label. It has
+		// no catalog entry, so the humanised literal is what `t` renders.
+		expect(t(getActionLabel('sending_domain.dkim_rotated'))).toBe('Dkim rotated');
 		// dotless action falls back to the whole literal, humanised.
-		expect(getActionLabel('abuse_status_changed')).toBe('Abuse status changed');
+		expect(t(getActionLabel('abuse_status_changed'))).toBe('Abuse status changed');
 	});
 
 	it('falls back to a default icon/colour for unknown verbs', () => {
@@ -80,8 +98,8 @@ describe('useAuditLogPresentation presentation helpers', () => {
 	it('maps resources to icons and labels, falling back to the raw key', () => {
 		expect(getResourceIcon('campaign')).toBe('lucide:send');
 		expect(getResourceIcon('unknown_resource')).toBe('lucide:clipboard-list');
-		expect(getResourceLabel('api_key')).toBe('API Key');
-		expect(getResourceLabel('unknown_resource')).toBe('unknown_resource');
+		expect(t(getResourceLabel('api_key'))).toBe('API Key');
+		expect(t(getResourceLabel('unknown_resource'))).toBe('unknown_resource');
 	});
 
 	it('formats relative timestamps with the audit page wording', () => {

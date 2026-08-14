@@ -1,0 +1,545 @@
+{
+	"dashboard": {
+		"admin": {
+			"index": {
+				"pageTitle": "Administration — Owlat",
+				"eyebrow": "Administration",
+				"title": "Your instance at a glance",
+				"lede": "Start with the verdicts here. Detailed configuration and operator tools are one level deeper when you need them.",
+				"deliveryVerdict": "Delivery verdict",
+				"platform": "Platform",
+				"platformAdminOnly": "Operator tools, system updates, and backups are held by this deployment's platform admin and aren't shown here.",
+				"learnMore": "Learn more →",
+				"verdict": {
+					"ok": "Sending is healthy",
+					"warn": "Sending needs a review",
+					"error": "Sending needs attention"
+				},
+				"areas": {
+					"delivery": {
+						"title": "Delivery",
+						"description": "Sending health, domains, transport, routing, and webhooks."
+					},
+					"team": {
+						"title": "Team & access",
+						"description": "Members, shared inboxes, approved senders, API keys, and connected apps."
+					},
+					"instance": {
+						"title": "Instance",
+						"description": "Workspace defaults, operating mode, features, AI, channels, and plugins."
+					}
+				},
+				"platformAreas": {
+					"operator": {
+						"title": "Operator console",
+						"description": "Review held content, workspace sending status, and platform admins."
+					},
+					"system": {
+						"title": "System & updates",
+						"description": "Stack version, container health, and in-app updates."
+					},
+					"backups": {
+						"title": "Backups",
+						"description": "Schedule daily backups, run one now, and find the restore command."
+					}
+				}
+			},
+			"team": {
+				"pageTitle": "Team Management — Owlat",
+				"backToAdministration": "Back to Administration",
+				"title": "Team Members",
+				"lede": "Manage who has access to your team",
+				"inviteMember": "Invite Member",
+				"loading": "Loading team members…",
+				"staleList": "This list may be out of date — {error}.",
+				"operations": {
+					"deleteWorkspace": "Delete workspace"
+				},
+				"nav": {
+					"label": "Team and access settings",
+					"inboxes": { "title": "Team inboxes", "description": "Shared mail access" },
+					"senders": { "title": "Approved senders", "description": "Campaign identities" },
+					"apiKeys": { "title": "API keys", "description": "Programmatic access" },
+					"audit": { "title": "Audit log", "description": "Workspace activity" },
+					"connectedApps": { "title": "Connected apps", "description": "External integrations" }
+				},
+				"loadError": {
+					"title": "Couldn't load your team",
+					"tryAgain": "Try again"
+				},
+				"members": {
+					"title": "Members",
+					"count": "{count} team member | {count} team members",
+					"searchLabel": "Search members by name or email",
+					"searchPlaceholder": "Search name or email",
+					"noMatchesTitle": "No matches",
+					"noMatchesDescription": "No members match “{query}”.",
+					"clearSearch": "Clear search",
+					"emptyTitle": "No team members yet",
+					"emptyDescription": "Invite teammates to collaborate on campaigns and shared inboxes.",
+					"inviteTeammate": "Invite a teammate",
+					"columns": {
+						"member": "Member",
+						"role": "Role",
+						"mailbox": "Mailbox",
+						"joined": "Joined"
+					},
+					"noName": "No name",
+					"mailboxChecking": "Checking mailbox status…",
+					"mailboxLoading": "Loading mailbox status",
+					"rowActions": "Actions for {member}",
+					"transferOwnership": "Transfer ownership",
+					"removeFromTeam": "Remove from team",
+					"removeMemberLabel": "Remove {member}"
+				},
+				"invites": {
+					"title": "Pending Invites",
+					"count": "{count} pending invitation | {count} pending invitations",
+					"expired": "Expired",
+					"expiresInDaysHours": "Expires in {days}d {hours}h",
+					"expiresInHours": "Expires in {hours}h",
+					"expiresSoon": "Expires soon",
+					"copyLink": "Copy invite link",
+					"resend": "Resend invitation email",
+					"revoke": "Revoke invitation"
+				},
+				"roles": {
+					"title": "What each role can do"
+				},
+				"dangerZone": {
+					"title": "Delete Workspace",
+					"subtitle": "Permanently delete this workspace and all of its data",
+					"body": "Deleting the workspace permanently removes every team member, all contacts, campaigns, automations, mailboxes, and analytics. This action cannot be undone."
+				},
+				"removeModal": {
+					"title": "Remove Team Member",
+					"body": "Are you sure you want to remove {member} from this team? They will lose access to all team resources.",
+					"removing": "Removing...",
+					"confirm": "Remove Member"
+				},
+				"transferModal": {
+					"title": "Transfer Ownership",
+					"subtitle": "Hand off the owner role",
+					"body": "{member} will become the new {ownerRole} with full control of this workspace, including billing, settings, and the ability to delete it. You will be demoted to {adminRole}. This cannot be undone by you — only the new owner can transfer it back.",
+					"ownerRole": "Owner",
+					"adminRole": "Admin",
+					"typeToConfirm": "Type {phrase} to confirm",
+					"transferring": "Transferring...",
+					"confirm": "Transfer Ownership"
+				},
+				"cancelInviteModal": {
+					"title": "Cancel Invitation",
+					"body": "Are you sure you want to cancel the invitation to {email}? They will not be able to join the team with this invite link.",
+					"keep": "Keep Invite",
+					"cancelling": "Cancelling...",
+					"confirm": "Cancel Invitation"
+				},
+				"deleteModal": {
+					"title": "Delete Workspace",
+					"subtitle": "This cannot be undone",
+					"warningLabel": "Warning:",
+					"warning": "{label} This permanently deletes {workspace} and all of its data — team members, contacts, campaigns, automations, mailboxes, and analytics. You will be signed out immediately.",
+					"typeToConfirm": "Type {phrase} to confirm",
+					"deleting": "Deleting...",
+					"confirm": "Delete Workspace"
+				},
+				"toasts": {
+					"inviteCancelled": "Invitation cancelled",
+					"cancelInviteFailed": "Failed to cancel invitation",
+					"inviteResent": "Invitation re-sent to {email}",
+					"inviteResendNoTransport": "Email delivery isn't set up — copy the accept link for {email} instead.",
+					"resendInviteFailed": "Failed to resend invitation",
+					"roleUpdated": "Role updated successfully",
+					"updateRoleFailed": "Failed to update role",
+					"memberRemoved": "Team member removed",
+					"removeMemberFailed": "Failed to remove member",
+					"ownershipTransferred": "Ownership transferred successfully",
+					"transferOwnershipFailed": "Failed to transfer ownership",
+					"workspaceDeletionStarted": "Workspace deletion started"
+				}
+			},
+			"delivery": {
+				"backToSetup": "Delivery setup",
+				"index": {
+					"pageTitle": "Delivery health — Owlat",
+					"title": "Delivery health",
+					"lede": "Your sending reputation, delivery trend, and domains at a glance",
+					"advanced": {
+						"label": "Advanced tools",
+						"independence": "Independence",
+						"cells": "Cells",
+						"controls": "Controls",
+						"measurement": "Measurement"
+					},
+					"abuse": {
+						"warned": "Your account is flagged for elevated bounce or complaint rates. Improve list quality to avoid further restrictions.",
+						"suspended": "Sending is suspended because reputation thresholds were exceeded. Resolve the flagged issues to resume.",
+						"banned": "This account is permanently restricted from sending."
+					},
+					"overviewError": {
+						"title": "Couldn't load delivery health",
+						"message": "We hit an error loading your reputation data. Reload to try again."
+					},
+					"trend": {
+						"title": "Delivery rate",
+						"subtitle": "Share of sent mail that was delivered, daily",
+						"errorTitle": "Couldn’t load your delivery-rate history",
+						"errorMessage": "This trend could not be read. It is not shown empty: an empty chart here means you have only just started sending, and that is not something to claim while the read is failing.",
+						"loading": "Loading delivery-rate history",
+						"chartLabel": "30-day delivery rate trend",
+						"collecting": "Collecting history — full trends in a week."
+					},
+					"domains": {
+						"errorTitle": "Couldn’t load your sending domains",
+						"errorMessage": "This list could not be read. It is not shown empty: an empty list here means you have no sending domains set up, and that is not something to claim while the read is failing.",
+						"loading": "Loading sending domains"
+					},
+					"suppressions": {
+						"bounced": "{count} bounced",
+						"complained": "{count} complained",
+						"manual": "{count} manual",
+						"unengaged": "{count} unengaged",
+						"summary": "{total} suppressed · {breakdown}",
+						"view": "View"
+					},
+					"empty": {
+						"title": "No data available",
+						"description": "Delivery health will appear once your workspace's sending is configured."
+					}
+				},
+				"deliverability": {
+					"pageTitle": "Deliverability — Owlat",
+					"title": "Deliverability",
+					"lede": "See what is healthy, fix the most important issue next, and verify every change with a live check.",
+					"copyReport": "Copy setup report",
+					"reportCopied": "Report copied",
+					"errorTitle": "Couldn’t load deliverability",
+					"errorMessage": "The live checks could not be loaded. Try again before changing your setup.",
+					"loadingLabel": "Loading live deliverability checks…",
+					"loadingChecks": "Loading deliverability checks",
+					"latestCheck": "Latest live check {age}",
+					"noCheckYet": "No live check has completed yet",
+					"counts": {
+						"verified": "Verified",
+						"attention": "Attention",
+						"checking": "Checking"
+					},
+					"empty": {
+						"title": "No sending setup found",
+						"description": "Configure a delivery provider and a sending domain, then return here for the live checklist.",
+						"action": "Open delivery setup"
+					},
+					"operations": {
+						"acknowledge": "Acknowledge deliverability regression",
+						"resolve": "Resolve deliverability regression",
+						"verify": "Verify deliverability check",
+						"proof": "Run deliverability proof"
+					},
+					"toasts": {
+						"acknowledged": "Regression acknowledged",
+						"resolved": "Regression resolved",
+						"checkGone": "This check is no longer part of the active sending setup",
+						"itemVerified": "{title} is verified",
+						"pendingDns": "We’ll keep checking while DNS spreads",
+						"needsAttention": "The check still needs attention",
+						"proofPassed": "End-to-end proof passed",
+						"proofSending": "Probe sent — waiting for the receiving check",
+						"proofFailed": "The end-to-end proof found a problem",
+						"reportCopied": "Setup report copied",
+						"reportCopyFailed": "Could not copy the report"
+					}
+				},
+				"domains": {
+					"pageTitle": "Sending Domains — Owlat",
+					"title": "Sending Domains",
+					"lede": "Configure custom sending domains for better email deliverability",
+					"addDomain": "Add Domain",
+					"addModalTitle": "Add Sending Domain",
+					"noTeam": {
+						"title": "No team selected",
+						"description": "Create or select a team to manage sending domains."
+					},
+					"whyCustom": {
+						"title": "Why add a custom domain?",
+						"body": "Sending emails from your own domain improves deliverability and brand recognition. After adding a domain, configure the DNS records with your domain provider to verify ownership."
+					},
+					"noDomain": {
+						"title": "Don't have a domain to verify?",
+						"body": "Connect your existing mailbox (Gmail, Fastmail, a company server) over IMAP + SMTP to send and receive personal mail without registering a domain.",
+						"action": "Connect external mailbox"
+					},
+					"empty": {
+						"title": "No domains configured",
+						"description": "Add a custom sending domain to improve your email deliverability and brand recognition.",
+						"action": "Add Your First Domain"
+					},
+					"removeModal": {
+						"title": "Remove Domain",
+						"description": "Are you sure you want to remove {domain}? You will no longer be able to send emails from this domain.",
+						"confirm": "Remove Domain"
+					},
+					"dmarc": {
+						"none": {
+							"label": "Monitor only (p=none)",
+							"hint": "Collect reports, take no action on failures."
+						},
+						"quarantine": {
+							"label": "Quarantine (p=quarantine)",
+							"hint": "Send failing mail to spam."
+						},
+						"reject": {
+							"label": "Reject (p=reject)",
+							"hint": "Reject failing mail outright — full enforcement."
+						}
+					},
+					"operations": {
+						"add": "Add domain",
+						"remove": "Remove domain",
+						"retryRegistration": "Retry domain registration",
+						"updateDmarc": "Update DMARC policy",
+						"verify": "Verify domain",
+						"forceVerify": "Force-verify domain"
+					},
+					"toasts": {
+						"removed": "Domain removed successfully",
+						"verified": "Domain verified successfully! All DNS records are correctly configured.",
+						"verificationIncomplete": "Verification complete. Some DNS records need attention - check the details below.",
+						"regenerating": "Regenerating DNS records...",
+						"dmarcMonitorOnly": "DMARC set to monitor-only. Re-publish the updated _dmarc record, then verify.",
+						"dmarcRaised": "DMARC policy raised to {policy}. Re-publish the updated _dmarc record, then verify.",
+						"forceVerified": "Domain force-verified (dev shortcut)."
+					}
+				},
+				"migrate": {
+					"pageTitle": "Migrate from Mailchimp — Owlat",
+					"title": "Migrate from Mailchimp / Mandrill",
+					"lede": "Keep sending through your existing Mailchimp Transactional account on day one — same reputation, same deliverability — while Owlat measures both senders on identical instrumentation and moves traffic onto its own MTA only as the numbers earn it. There is no flag day, and every step here is reversible.",
+					"connect": {
+						"present": "Mailchimp Transactional is connected — Owlat can see a {envVar} in this deployment's environment.",
+						"missing": "Create an API key in Mailchimp Transactional (Settings → API keys), set it as {envVar} in this deployment's environment, and restart. Credentials never live in the database, so this page can only ever tell you whether the key is present — never what it is.",
+						"transportLink": "Transport setup, with the paste-ready environment block"
+					},
+					"domain": {
+						"none": "No Mailchimp Transactional identity exists yet. Verify a sending domain on the domains screen first; enabling Mandrill as the fallback relay provisions the identity automatically, and the hourly sweep picks up the DNS from there.",
+						"ready": "{domain}: verified and ready to relay",
+						"outstanding": "{domain}: outstanding — {outstanding}",
+						"domainsLink": "Sending domains"
+					},
+					"watch": {
+						"cells": "Cells — every share, and why it moved",
+						"controls": "Ramp controls — pause, pin or promote a cell",
+						"independence": "Independence — how much mail is already yours"
+					}
+				},
+				"providerRouting": {
+					"pageTitle": "Provider Routing — Owlat",
+					"title": "Provider Routing",
+					"lede": "Choose which email provider sends each message type, with failover and weighted workload-split across providers",
+					"usingDefault": "Using the default provider (EMAIL_PROVIDER)",
+					"resetToDefault": "Reset to default",
+					"configure": "Configure",
+					"noWorkspace": {
+						"title": "No workspace selected",
+						"description": "Create or select a workspace to configure provider routing."
+					},
+					"howItWorks": {
+						"title": "How routing works",
+						"body": "Each message type can use its own provider strategy. When no route is configured, sends fall back to the provider set by the {envVar} environment variable. Configure a route to enable failover or to split traffic across multiple providers."
+					},
+					"editModal": {
+						"title": "Route — {messageType}",
+						"strategy": "Strategy",
+						"managed": "Managed",
+						"managedNote": "The sending-share controller manages this route's strategy. Everything else on this route stays editable, and saving keeps the managed strategy.",
+						"providers": "Providers",
+						"failoverOrder": "Order = failover priority",
+						"unavailable": "Unavailable",
+						"weightUnit": "wt",
+						"enableOne": "Enable at least one provider.",
+						"moveUp": "Move up",
+						"moveDown": "Move down",
+						"ipPool": "IP pool (optional)",
+						"ipPoolPlaceholder": "e.g. transactional",
+						"ipPoolHint": "Overrides the IP pool for the built-in MTA provider. Leave blank to use the provider's default.",
+						"saving": "Saving...",
+						"save": "Save Route"
+					},
+					"resetModal": {
+						"title": "Reset Provider Route",
+						"description": "This message type will revert to the default provider set by the EMAIL_PROVIDER environment variable.",
+						"confirm": "Reset to Default"
+					},
+					"errors": {
+						"noProvider": "Enable at least one provider before saving"
+					},
+					"operations": {
+						"save": "Save provider route",
+						"reset": "Reset provider route"
+					},
+					"toasts": {
+						"saved": "Provider route saved",
+						"reset": "Provider route reset to the default"
+					}
+				},
+				"transport": {
+					"pageTitle": "Delivery provider — Owlat",
+					"title": "Delivery provider",
+					"lede": "Configure and validate the email delivery provider this instance sends through",
+					"error": {
+						"title": "Couldn't load delivery status",
+						"message": "Delivery configuration is only visible to owners and admins. If you are an admin, reload to try again."
+					},
+					"canSend": {
+						"yes": "This instance can send email",
+						"no": "This instance cannot send email",
+						"yesBody": "A delivery provider is configured and its credentials are present. Send a test email below to confirm the full path end-to-end.",
+						"noBody": "No usable delivery provider is configured. Until one is, campaigns and transactional sends will fail. Set {envVar} and its credentials in your environment."
+					},
+					"env": {
+						"addToEnv": "Add to your {file}, then restart the instance",
+						"copySnippet": "Copy .env snippet",
+						"blankValues": "Values are left blank — fill in your real credentials. They are never displayed here.",
+						"cliTitle": "Or set each one from the CLI",
+						"copyCommand": "Copy command",
+						"cliHint": "Run {command} to list every variable your current configuration needs. See the {guideLink}.",
+						"guideLink": "environment variables guide"
+					},
+					"config": {
+						"title": "Provider configuration",
+						"subtitle": "The active provider and the runtime variables it requires",
+						"activeProvider": "Active provider",
+						"activeProviderHint": "From the EMAIL_PROVIDER environment variable",
+						"unknownProvider": "unknown: {provider}",
+						"notSet": "not set",
+						"requiredEnv": "Required environment variables",
+						"present": "present",
+						"missing": "missing",
+						"presenceOnly": "Only the presence of each variable is shown — secret values never leave the backend.",
+						"selectProvider": "Select a delivery provider (set {envVar} to {kinds}) to see its required variables.",
+						"listSeparator": ", ",
+						"listLastSeparator": ", or "
+					},
+					"sns": {
+						"title": "SES bounce & complaint feedback",
+						"subtitle": "Let SES tell Owlat when mail bounces or is marked as spam, so those addresses are suppressed automatically",
+						"intro": "SES delivers this feedback through an Amazon SNS topic. Point an HTTPS subscription at the endpoint below — Owlat verifies each message’s signature and confirms the subscription for you.",
+						"endpointTitle": "SNS subscription endpoint",
+						"copyEndpoint": "Copy endpoint URL",
+						"noSiteUrl": "Set your site URL to see the endpoint SNS should subscribe to.",
+						"step1": "In the SNS console, create a topic (e.g. {topic}) and add an {https} subscription with the endpoint above.",
+						"step2": "Set {envVar} to that topic’s ARN. Owlat only accepts feedback from this exact topic, so the endpoint stays closed until it’s set.",
+						"step3": "In the SES console, create a {configurationSet} with an event destination publishing {bounce}, {complaint} and {delivery} events to that topic.",
+						"step4": "Set {envVar} to the set’s name so every send is attributed. Changes take effect on the next send — no restart needed.",
+						"lastEvent": "Last event received: {at}",
+						"noEvents": "No feedback received yet. Once the subscription is confirmed and a message bounces or is delivered, it appears here."
+					}
+				},
+				"webhooks": {
+					"pageTitle": "Webhooks — Owlat",
+					"title": "Webhooks",
+					"lede": "Receive real-time notifications when events happen in your account",
+					"create": "Create Webhook",
+					"creating": "Creating...",
+					"editTitle": "Edit Webhook",
+					"saveChanges": "Save Changes",
+					"saving": "Saving...",
+					"activeCount": "{count} active webhook | {count} active webhooks",
+					"detailsFor": "Details for {name}",
+					"disabled": "Disabled",
+					"disable": "Disable",
+					"enable": "Enable",
+					"sendTest": "Send Test",
+					"deliveryLogs": "Delivery Logs",
+					"regenerateSecret": "Regenerate Secret",
+					"subscribedEvents": "Subscribed Events",
+					"created": "Created",
+					"lastUpdated": "Last Updated",
+					"secure": {
+						"title": "Secure webhook delivery",
+						"body": "All webhook payloads are signed with HMAC-SHA256 using your webhook secret. Verify the {header} header to ensure authenticity."
+					},
+					"noWorkspace": {
+						"title": "No workspace selected",
+						"description": "Create or select a workspace to manage webhooks."
+					},
+					"empty": {
+						"title": "No webhooks yet",
+						"description": "Create a webhook to receive notifications when events occur, such as email opens, clicks, and bounces."
+					}
+				},
+				"advanced": {
+					"cells": {
+						"pageTitle": "Delivery cells — Owlat",
+						"title": "Delivery cells",
+						"lede": "Every stream and mailbox provider the ramp manages, what it is doing, and why. Open a cell for the numbers behind each check.",
+						"errorTitle": "Couldn’t load the delivery cells",
+						"errorMessage": "The cell states could not be loaded. Your mail is unaffected — this page only reads.",
+						"loading": "Loading delivery cells",
+						"gridHeading": "Stream × mailbox provider",
+						"evidenceHeading": "{cell} — the evidence",
+						"evidenceErrorTitle": "Couldn’t load this cell’s evidence",
+						"evidenceErrorMessage": "The gate readings could not be read. This is not a cell with nothing measured — the numbers simply did not load.",
+						"evidenceLoading": "Loading the evidence for this cell",
+						"evidenceAbsent": "No measurements have been recorded for this cell yet. Nothing is wrong — the checks fill in as mail goes out.",
+						"historyHeading": "Decision history",
+						"historyErrorTitle": "Couldn’t load this cell’s decision history",
+						"historyErrorMessage": "The controller’s record for this cell could not be read. An empty timeline would say it has never looked at this cell, which is not what a failed read means.",
+						"historyLoading": "Loading the decision history for this cell",
+						"controlsLink": "Pause, pin or reset this cell"
+					},
+					"controls": {
+						"pageTitle": "Delivery controls — Owlat",
+						"title": "Delivery controls",
+						"ledeIntro": "What the ramp pulled back on its own, and why.",
+						"ledeActions": "What each stream is carrying is here too — put a cell on the ramp, hold a cell, cap it, push it, or start it over, and choose how hard each stream ramps.",
+						"ledeRecorded": "Everything here is recorded.",
+						"errorTitle": "Couldn’t load the delivery controls",
+						"errorMessage": "The controls could not be loaded. Your mail is unaffected — nothing has changed.",
+						"loading": "Loading delivery controls",
+						"globalPause": "The whole ramp is paused. Every cell is pinned where it is; the checks keep running so you can see what would have happened.",
+						"pickCell": "Pick a cell",
+						"howHard": "How hard to ramp",
+						"pullBacks": "Automatic pull-backs",
+						"pullBacksErrorTitle": "Couldn’t load the automatic pull-backs",
+						"pullBacksErrorMessage": "This list could not be read. It is not shown empty: an empty list here means the controller has pulled nothing back, and that is not something to claim while the read is failing.",
+						"pullBacksLoading": "Loading automatic pull-backs",
+						"forceDialog": {
+							"title": "Force this cell past the evidence?",
+							"confirm": "Force-advance",
+							"theCell": "the cell",
+							"consequence": "This moves {cell} to {share} without any check agreeing to it. If the new volume is too much for that provider, the damage lands on your sending domain’s reputation and takes weeks to undo — putting the number back does not undo it.",
+							"streakReset": "The clean streak restarts at zero, and the next evaluation will retreat if it is bad."
+						},
+						"operations": {
+							"pause": "Pause ramp cell",
+							"pin": "Pin ramp cell",
+							"forceAdvance": "Force-advance ramp cell",
+							"resetPhase": "Reset ramp phase",
+							"enroll": "Put a cell on the ramp",
+							"promote": "Promote ramp phase",
+							"setPreset": "Change ramp pace"
+						}
+					},
+					"independence": {
+						"pageTitle": "{headline} — Owlat",
+						"errorTitle": "Couldn’t load your independence figures",
+						"errorMessage": "These numbers could not be loaded. Your mail is unaffected — this page only reads.",
+						"loading": "Loading independence figures",
+						"capacityLabel": "Messages you can still send today",
+						"ownShareLabel": "Sent from your own server",
+						"dailySending": "Daily sending",
+						"whenYouStopPaying": "When you stop paying",
+						"disconnectHeading": "Disconnecting the relay",
+						"noSafeDate": "There is no projected safe date yet — the share is not advancing fast enough to give one.",
+						"safeDate": "On the current pace it would be safe to disconnect around {date}.",
+						"disconnectAction": "Disconnect the relay…",
+						"dialog": {
+							"title": "Disconnect the relay?",
+							"confirm": "Take me to the relay settings"
+						}
+					}
+				}
+			}
+		}
+	}
+}

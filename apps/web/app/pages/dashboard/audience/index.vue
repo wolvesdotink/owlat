@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Audience — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.audience.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -56,19 +58,19 @@ const {
 // Stats for display
 const stats = computed(() => [
 	{
-		label: 'Total Contacts',
+		label: t('dashboard.audience.index.stats.totalContacts'),
 		value: audienceStats.value?.totalContacts ?? 0,
 		icon: 'lucide:users',
 		color: 'brand',
 	},
 	{
-		label: 'Topics',
+		label: t('dashboard.audience.index.stats.topics'),
 		value: audienceStats.value?.topicCount ?? 0,
 		icon: 'lucide:list-plus',
 		color: 'brand',
 	},
 	{
-		label: 'Segments',
+		label: t('dashboard.audience.index.stats.segments'),
 		value: audienceStats.value?.segmentCount ?? 0,
 		icon: 'lucide:filter',
 		color: 'lavender',
@@ -76,26 +78,26 @@ const stats = computed(() => [
 ]);
 
 // Quick actions
-const quickActions = [
+const quickActions = computed(() => [
 	{
-		label: 'Add Contact',
+		label: t('dashboard.audience.index.quickActions.addContact.label'),
 		href: '/dashboard/audience/contacts?action=add',
 		icon: 'lucide:user-plus',
-		description: 'Manually add a new contact',
+		description: t('dashboard.audience.index.quickActions.addContact.description'),
 	},
 	{
-		label: 'Create Topic',
+		label: t('dashboard.audience.index.quickActions.createTopic.label'),
 		href: '/dashboard/audience/topics?action=create',
 		icon: 'lucide:list-plus',
-		description: 'Create a new topic',
+		description: t('dashboard.audience.index.quickActions.createTopic.description'),
 	},
 	{
-		label: 'Create Segment',
+		label: t('dashboard.audience.index.quickActions.createSegment.label'),
 		href: '/dashboard/audience/segments?action=create',
 		icon: 'lucide:filter',
-		description: 'Build a dynamic audience segment',
+		description: t('dashboard.audience.index.quickActions.createSegment.description'),
 	},
-];
+]);
 
 // Per-day buckets for the growth chart (the query now returns
 // `{ days, truncated }`; `truncated` is true only for very large 30-day intakes).
@@ -135,13 +137,13 @@ function getActivityIcon(activityType: string) {
 function formatActivityDescription(activityType: string): string {
 	switch (activityType) {
 		case 'topic_subscribed':
-			return 'was subscribed to a topic';
+			return t('dashboard.audience.index.activity.descriptions.topicSubscribed');
 		case 'topic_unsubscribed':
-			return 'was unsubscribed from a topic';
+			return t('dashboard.audience.index.activity.descriptions.topicUnsubscribed');
 		case 'topic_confirmed':
-			return 'confirmed subscription';
+			return t('dashboard.audience.index.activity.descriptions.topicConfirmed');
 		case 'created':
-			return 'was added';
+			return t('dashboard.audience.index.activity.descriptions.created');
 		default:
 			return activityType;
 	}
@@ -151,11 +153,11 @@ function formatActivityDescription(activityType: string): string {
 function getContactName(
 	contact: { email?: string; firstName?: string; lastName?: string } | null
 ): string {
-	if (!contact) return 'Unknown';
+	if (!contact) return t('common.unknown');
 	if (contact.firstName || contact.lastName) {
 		return `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim();
 	}
-	return contact.email ?? 'Unknown';
+	return contact.email ?? t('common.unknown');
 }
 </script>
 
@@ -164,12 +166,14 @@ function getContactName(
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Audience</h1>
-				<p class="mt-1 text-text-secondary">Manage your contacts, topics, and segments.</p>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.audience.index.title') }}
+				</h1>
+				<p class="mt-1 text-text-secondary">{{ t('dashboard.audience.index.subtitle') }}</p>
 			</div>
 			<UiButton to="/dashboard/audience/contacts?action=add" class="gap-2">
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				Add Contact
+				{{ t('dashboard.audience.index.addContact') }}
 			</UiButton>
 		</div>
 
@@ -186,7 +190,7 @@ function getContactName(
 						<div class="flex items-center gap-2 mt-1">
 							<p v-if="statsLoading" class="text-3xl font-semibold text-text-tertiary">--</p>
 							<p v-else class="text-3xl font-semibold text-text-primary">
-								{{ stat.value.toLocaleString() }}
+								{{ stat.value.toLocaleString(locale) }}
 							</p>
 							<Icon
 								v-if="statsLoading"
@@ -215,7 +219,9 @@ function getContactName(
 
 		<!-- Quick Actions -->
 		<div class="mb-8">
-			<h2 class="text-lg font-semibold text-text-primary mb-4">Quick Actions</h2>
+			<h2 class="text-lg font-semibold text-text-primary mb-4">
+				{{ t('dashboard.audience.index.quickActionsHeading') }}
+			</h2>
 			<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
 				<NuxtLink
 					v-for="action in quickActions"
@@ -245,25 +251,32 @@ function getContactName(
 				<div class="flex items-center justify-between mb-4">
 					<h2 class="text-lg font-semibold text-text-primary flex items-center gap-2">
 						<Icon name="lucide:trending-up" class="w-5 h-5 text-brand" />
-						Subscriber Growth (30 days)
+						{{ t('dashboard.audience.index.growth.title') }}
 					</h2>
 					<span class="text-sm text-text-secondary">
-						+{{ totalNewSubscribers.toLocaleString() }} new
+						{{
+							t('dashboard.audience.index.growth.newCount', {
+								count: totalNewSubscribers.toLocaleString(locale),
+							})
+						}}
 					</span>
 				</div>
 				<div class="card">
 					<UiQueryBoundary
 						:loading="growthLoading"
 						:error="growthError"
-						error-title="Couldn't load subscriber growth"
-						loading-label="Loading chart..."
+						:error-title="t('dashboard.audience.index.growth.errorTitle')"
+						:loading-label="t('dashboard.audience.index.growth.loading')"
 					>
 						<UiBars
 							:data="growthBars"
 							:height="128"
 							:label-every="5"
-							:format-value="(v: number) => `${v.toLocaleString()} new subscribers`"
-							aria-label="New subscribers per day over the last 30 days"
+							:format-value="
+								(v: number) =>
+									t('dashboard.audience.index.growth.barValue', { count: v.toLocaleString(locale) })
+							"
+							:aria-label="t('dashboard.audience.index.growth.chartLabel')"
 						/>
 					</UiQueryBoundary>
 				</div>
@@ -274,13 +287,13 @@ function getContactName(
 				<div class="flex items-center justify-between mb-4">
 					<h2 class="text-lg font-semibold text-text-primary flex items-center gap-2">
 						<Icon name="lucide:list-plus" class="w-5 h-5 text-brand" />
-						Top Topics
+						{{ t('dashboard.audience.index.topTopics.title') }}
 					</h2>
 					<NuxtLink
 						to="/dashboard/audience/topics"
 						class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
 					>
-						View all
+						{{ t('common.viewAll') }}
 						<Icon name="lucide:arrow-right" class="w-3 h-3" />
 					</NuxtLink>
 				</div>
@@ -288,8 +301,8 @@ function getContactName(
 					<UiQueryBoundary
 						:loading="listsLoading"
 						:error="listsError"
-						error-title="Couldn't load top topics"
-						loading-label="Loading topics..."
+						:error-title="t('dashboard.audience.index.topTopics.errorTitle')"
+						:loading-label="t('dashboard.audience.index.topTopics.loading')"
 					>
 						<div
 							v-if="!topLists || topLists.length === 0"
@@ -302,13 +315,15 @@ function getContactName(
 								rounded="full"
 								class="mb-4"
 							/>
-							<p class="text-text-secondary font-medium">No topics yet</p>
+							<p class="text-text-secondary font-medium">
+								{{ t('dashboard.audience.index.topTopics.emptyTitle') }}
+							</p>
 							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-								Create a topic to organize your contacts.
+								{{ t('dashboard.audience.index.topTopics.emptyBody') }}
 							</p>
 							<UiButton to="/dashboard/audience/topics?action=create" class="mt-6 gap-2">
 								<Icon name="lucide:plus" class="w-4 h-4" />
-								Create Topic
+								{{ t('dashboard.audience.index.topTopics.createTopic') }}
 							</UiButton>
 						</div>
 
@@ -325,7 +340,11 @@ function getContactName(
 										{{ list.name }}
 									</p>
 									<p class="text-xs text-text-tertiary mt-0.5">
-										{{ list.contactCount.toLocaleString() }} contacts
+										{{
+											t('dashboard.audience.index.topTopics.contactCount', {
+												count: list.contactCount.toLocaleString(locale),
+											})
+										}}
 									</p>
 								</div>
 								<div class="text-right">
@@ -351,13 +370,13 @@ function getContactName(
 				<div class="flex items-center justify-between mb-4">
 					<h2 class="text-lg font-semibold text-text-primary flex items-center gap-2">
 						<Icon name="lucide:user-plus" class="w-5 h-5 text-brand" />
-						Recently Added
+						{{ t('dashboard.audience.index.recentContacts.title') }}
 					</h2>
 					<NuxtLink
 						to="/dashboard/audience/contacts"
 						class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
 					>
-						View all
+						{{ t('common.viewAll') }}
 						<Icon name="lucide:arrow-right" class="w-3 h-3" />
 					</NuxtLink>
 				</div>
@@ -365,8 +384,8 @@ function getContactName(
 					<UiQueryBoundary
 						:loading="contactsLoading"
 						:error="contactsError"
-						error-title="Couldn't load recent contacts"
-						loading-label="Loading contacts..."
+						:error-title="t('dashboard.audience.index.recentContacts.errorTitle')"
+						:loading-label="t('dashboard.audience.index.recentContacts.loading')"
 					>
 						<div
 							v-if="!recentContacts || recentContacts.length === 0"
@@ -379,13 +398,15 @@ function getContactName(
 								rounded="full"
 								class="mb-4"
 							/>
-							<p class="text-text-secondary font-medium">No contacts yet</p>
+							<p class="text-text-secondary font-medium">
+								{{ t('dashboard.audience.index.recentContacts.emptyTitle') }}
+							</p>
 							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-								Add your first contact to get started.
+								{{ t('dashboard.audience.index.recentContacts.emptyBody') }}
 							</p>
 							<UiButton to="/dashboard/audience/contacts?action=add" class="mt-6 gap-2">
 								<Icon name="lucide:plus" class="w-4 h-4" />
-								Add Contact
+								{{ t('dashboard.audience.index.addContact') }}
 							</UiButton>
 						</div>
 
@@ -423,15 +444,15 @@ function getContactName(
 				<div class="flex items-center justify-between mb-4">
 					<h2 class="text-lg font-semibold text-text-primary flex items-center gap-2">
 						<Icon name="lucide:activity" class="w-5 h-5 text-brand" />
-						Recent Activity
+						{{ t('dashboard.audience.index.activity.title') }}
 					</h2>
 				</div>
 				<div class="card">
 					<UiQueryBoundary
 						:loading="activityLoading"
 						:error="activityError"
-						error-title="Couldn't load recent activity"
-						loading-label="Loading activity..."
+						:error-title="t('dashboard.audience.index.activity.errorTitle')"
+						:loading-label="t('dashboard.audience.index.activity.loading')"
 					>
 						<div
 							v-if="!recentActivity || recentActivity.length === 0"
@@ -444,9 +465,11 @@ function getContactName(
 								rounded="full"
 								class="mb-4"
 							/>
-							<p class="text-text-secondary font-medium">No recent activity</p>
+							<p class="text-text-secondary font-medium">
+								{{ t('dashboard.audience.index.activity.emptyTitle') }}
+							</p>
 							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-								Activity will appear here as contacts subscribe to or unsubscribe from topics.
+								{{ t('dashboard.audience.index.activity.emptyBody') }}
 							</p>
 						</div>
 
@@ -473,7 +496,7 @@ function getContactName(
 										>
 											{{ getContactName(activity.contact) }}
 										</NuxtLink>
-										<span v-else class="font-medium">Unknown</span>
+										<span v-else class="font-medium">{{ t('common.unknown') }}</span>
 										<span class="text-text-secondary">
 											{{ formatActivityDescription(activity.activityType) }}
 										</span>

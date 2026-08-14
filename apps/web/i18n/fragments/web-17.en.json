@@ -65,6 +65,12 @@
 				"reply": "Reply",
 				"replyOn": "Reply on {channel}",
 				"replyPlaceholder": "Reply on {channel}…",
+				"status": {
+					"delivered": "delivered",
+					"failed": "failed",
+					"queued": "queued",
+					"read": "read"
+				},
 				"subtitle": "Every message on this thread across all channels.",
 				"title": "Cross-channel Timeline"
 			},

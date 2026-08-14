@@ -1,0 +1,165 @@
+{
+	"components": {
+		"postbox": {
+			"postboxFolderList": {
+				"roles": {
+					"inbox": "Posteingang",
+					"sent": "Gesendet",
+					"drafts": "Entwürfe",
+					"trash": "Papierkorb",
+					"spam": "Spam",
+					"archive": "Archiv"
+				},
+				"unreadAriaLabel": "{name}, {count} ungelesen"
+			},
+			"postboxFolderRail": {
+				"replyQueue": "Antwort-Warteschlange",
+				"replyQueueAriaLabel": "Antwort-Warteschlange, {count}",
+				"snoozed": "Zurückgestellt",
+				"contacts": "Kontakte",
+				"foldersHeading": "Ordner",
+				"newFolder": "Neuer Ordner",
+				"folderNamePlaceholder": "Ordnername",
+				"newFolderNameAriaLabel": "Name des neuen Ordners",
+				"folderNameAriaLabel": "Ordnername",
+				"renameFolder": "Ordner umbenennen",
+				"deleteFolder": "Ordner löschen",
+				"deleteFolderDescription": "Den Ordner „{name}“ löschen? Nachrichten darin werden verschoben, nicht gelöscht.",
+				"noCustomFolders": "Keine eigenen Ordner",
+				"labelsHeading": "Labels",
+				"manageLabels": "Labels verwalten",
+				"noLabels": "Noch keine Labels",
+				"expandSidebarTitle": "Seitenleiste ausklappen (Cmd+Shift+D)",
+				"collapseSidebarTitle": "Seitenleiste einklappen (Cmd+Shift+D)",
+				"expandSidebar": "Seitenleiste ausklappen",
+				"collapseSidebar": "Seitenleiste einklappen",
+				"collapse": "Einklappen"
+			},
+			"postboxFollowUpChip": {
+				"armOperation": "Antwort-Erinnerung setzen",
+				"cancelOperation": "Antwort-Erinnerung abbrechen",
+				"noReplyYet": "Noch keine Antwort",
+				"noReplyYetWaitingOn": "Noch keine Antwort — wartet auf {name}",
+				"dismissReminder": "Erinnerung ausblenden",
+				"armedTitle": "Sie werden erinnert, falls bis {date} niemand antwortet",
+				"armedChip": "Antwort-Erinnerung · {date}",
+				"cancelReminder": "Erinnerung abbrechen",
+				"remindMe": "Erinnern, falls keine Antwort kommt"
+			},
+			"postboxFollowUpDialog": {
+				"title": "Erinnern, falls bis dahin keine Antwort kommt",
+				"confirmLabel": "Erinnern",
+				"presets": {
+					"tomorrow": "Morgen",
+					"inThreeDays": "In 3 Tagen",
+					"nextWeek": "Nächste Woche",
+					"morning": "9:00 Uhr",
+					"mondayMorning": "Mo 9:00 Uhr"
+				}
+			},
+			"postboxInlineReply": {
+				"replyTo": "An {sender} antworten…",
+				"replyAll": "Allen antworten",
+				"forward": "Weiterleiten",
+				"dialogLabel": "Inline-Antwort"
+			},
+			"postboxInviteCard": {
+				"fallbackSummary": "Einladung",
+				"organizer": "Organisator: {name}",
+				"attendees": "· {count} Teilnehmende",
+				"accept": "Annehmen",
+				"maybe": "Vielleicht",
+				"decline": "Ablehnen",
+				"reply": {
+					"subjectAccepted": "Zugesagt: {summary}",
+					"subjectDeclined": "Abgesagt: {summary}",
+					"subjectTentative": "Unter Vorbehalt: {summary}",
+					"bodyAccepted": "Ich habe die Einladung angenommen: {summary}.",
+					"bodyDeclined": "Ich habe die Einladung abgelehnt: {summary}.",
+					"bodyTentative": "Ich habe die Einladung vorläufig angenommen: {summary}."
+				}
+			},
+			"postboxKeyChangeBanner": {
+				"acceptOperation": "Empfängerschlüssel akzeptieren",
+				"title": "Der Siegelschlüssel dieser Person hat sich geändert",
+				"body": "Der Schlüssel, mit dem Owlat Post an {address} siegelt, unterscheidet sich von dem, dem Sie zuvor vertraut haben. Bis Sie den neuen Schlüssel bestätigen, werden Nachrichten an diese Person normal statt gesiegelt versendet. Akzeptieren Sie ihn nur, wenn Sie diese Änderung erwartet haben.",
+				"previousKey": "Vorheriger Schlüssel",
+				"newKey": "Neuer Schlüssel",
+				"error": "Der neue Schlüssel konnte nicht akzeptiert werden. Möglicherweise hat ihn bereits jemand anderes akzeptiert — öffnen Sie diese Konversation erneut.",
+				"accepting": "Wird akzeptiert…",
+				"accept": "Neuen Schlüssel akzeptieren",
+				"adminOnly": "Bitten Sie eine Workspace-Administratorin oder einen Workspace-Administrator, diese Schlüsseländerung zu prüfen, bevor gesiegelte Post an diese Person wieder aufgenommen wird."
+			},
+			"postboxLabelManager": {
+				"title": "Labels verwalten",
+				"newNamePlaceholder": "Name des neuen Labels",
+				"setColor": "Farbe {color} festlegen",
+				"deleteLabel": "Label löschen",
+				"empty": "Noch keine Labels. Erstellen Sie oben eines."
+			},
+			"postboxLabelPickerDialog": {
+				"title": "Label hinzufügen",
+				"empty": "Noch keine Labels"
+			},
+			"postboxLayout": {
+				"offlineBanner": "Offline — es wird die zuletzt auf diesem Gerät gespeicherte Post angezeigt. Aktionen sind pausiert.",
+				"openFolders": "Ordner öffnen",
+				"folderFallback": "Ordner",
+				"folderRoles": {
+					"inbox": "Posteingang",
+					"sent": "Gesendet",
+					"drafts": "Entwürfe",
+					"trash": "Papierkorb",
+					"spam": "Spam",
+					"archive": "Archiv",
+					"snoozed": "Zurückgestellt"
+				},
+				"updating": "wird aktualisiert…",
+				"backToTodayTitle": "Zurück zu Heute (Esc)",
+				"escKey": "esc",
+				"inboxView": "Posteingangsansicht",
+				"viewModes": {
+					"flat": "Einfach",
+					"conversations": "Konversationen",
+					"categories": "Kategorien"
+				},
+				"selectMessage": "Wählen Sie eine Nachricht"
+			},
+			"postboxMailboxConnectForm": {
+				"testOperation": "Mailverbindung testen",
+				"connectOperation": "Postfach verbinden",
+				"connectSharedOperation": "Team-Postfach verbinden",
+				"connectSeedOperation": "Testpostfach verbinden",
+				"updateOperation": "Mail-Zugangsdaten aktualisieren",
+				"updateSharedOperation": "Zugangsdaten des Team-Postfachs aktualisieren",
+				"missingMailboxError": "Dieses Team-Postfach kann nicht neu verbunden werden: Sein Postfach fehlt.",
+				"addressLabel": "{provider}-Adresse",
+				"emailPlaceholder": "sie{'@'}beispiel.de",
+				"passwordLabel": "Passwort",
+				"appPasswordPlaceholder": "App-Passwort einfügen",
+				"passwordPlaceholder": "App-Passwort empfohlen",
+				"passwordHelp": "Verschlüsselt gespeichert — nur der Sync-Worker kann es lesen.",
+				"advancedSettings": "Erweiterte Servereinstellungen",
+				"imapHost": "IMAP-Host",
+				"imapHostPlaceholder": "imap.beispiel.de",
+				"imapPort": "IMAP-Port",
+				"smtpHost": "SMTP-Host",
+				"smtpHostPlaceholder": "smtp.beispiel.de",
+				"smtpPort": "SMTP-Port",
+				"ssl": "SSL",
+				"username": "Benutzername",
+				"usernamePlaceholder": "Standardmäßig Ihre E-Mail-Adresse",
+				"incomingMail": "Eingehende Mail {status}",
+				"outgoingMail": "Ausgehende Mail {status}",
+				"reachable": "erreichbar",
+				"failed": "fehlgeschlagen",
+				"saveCredentials": "Zugangsdaten speichern",
+				"connectShared": "Team-Postfach verbinden",
+				"connectSeed": "Testpostfach verbinden",
+				"connect": "Verbinden & importieren",
+				"testConnection": "Verbindung testen",
+				"testNeedsPassword": "Geben Sie das Passwort ein, um die Verbindung zu testen"
+			}
+		}
+	}
+}

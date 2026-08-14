@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { resolvePostboxFolderParam } from '~/utils/postboxFolderParam';
 
-useHead({ title: 'Mail — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.postbox.detail.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -38,8 +40,8 @@ const userId = computed(() => user.value?.id ?? null);
 		<!-- Error — a failed mailbox query must NOT look like "no mailbox yet" -->
 		<div v-else-if="mailboxError" class="flex-1 flex items-center justify-center p-12">
 			<UiErrorAlert
-				title="Couldn't load your mailbox"
-				message="We hit an error loading your mailbox. Reload the page to try again."
+				:title="t('dashboard.postbox.detail.index.loadErrorTitle')"
+				:message="t('dashboard.postbox.detail.index.loadErrorMessage')"
 				class="max-w-md"
 			/>
 		</div>

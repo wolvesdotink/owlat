@@ -6,10 +6,17 @@
  * when the dropdown sits on the `CUSTOM_MODEL_VALUE` sentinel, and typing there
  * flows back out through the `custom` model.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import AiModelPicker from '../AiModelPicker.vue';
+
+// The custom-model placeholder flows through vue-i18n now; `useI18n` is a Nuxt
+// auto-import, so it has to exist as a global for the component setup.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 import { CUSTOM_MODEL_VALUE } from '~/utils/aiProviders';
 
 // UiSelect/UiInput are Nuxt UI auto-imports; render them as lightweight stubs so
@@ -34,7 +41,10 @@ function mountPicker(props: Record<string, unknown> = {}) {
 			custom: '',
 			...props,
 		},
-		global: { stubs: { UiSelect: UiSelectStub, UiInput: UiInputStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { UiSelect: UiSelectStub, UiInput: UiInputStub },
+		},
 	});
 }
 

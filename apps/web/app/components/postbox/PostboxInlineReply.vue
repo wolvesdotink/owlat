@@ -130,7 +130,7 @@ defineExpose({
 			v-else
 			:key="spec.key"
 			role="dialog"
-			aria-label="Inline reply"
+			:aria-label="t('components.postbox.postboxInlineReply.dialogLabel')"
 			class="h-[380px] flex flex-col overflow-hidden rounded border border-border-subtle bg-bg-elevated shadow-sm"
 		>
 			<PostboxComposer

@@ -7,6 +7,11 @@
  * timeline-UI rendering metadata: icon, label, color, plus a per-literal
  * `formatDescription(metadata)` formatter.
  *
+ * These are module-scope definitions, so they never call `useI18n`: `label`
+ * holds a catalog KEY and `formatDescription` returns either a key or a
+ * `{ key, params }` pair. The component that renders a module resolves them
+ * (`t(label)`, `t(d.key, d.params)`) at render time, in the active locale.
+ *
  * The writer half lives at
  * `apps/api/convex/contactActivities/<literal>/index.ts`.
  */
@@ -18,14 +23,23 @@ export type { ContactActivityType, MetadataFor };
 
 export interface ContactActivityDisplayConfig {
 	readonly icon: string;
+	/** Catalog key for the timeline label — resolved with `t()` at render time. */
 	readonly label: string;
 	readonly color: string;
 }
 
+/**
+ * A description a module hands the timeline: a bare catalog key, or a key plus
+ * the values its message interpolates.
+ */
+export type ContactActivityDescription =
+	| string
+	| { readonly key: string; readonly params?: Record<string, string | number | undefined> };
+
 export interface ContactActivityEditorModule<L extends ContactActivityType> {
 	readonly literal: L;
 	readonly displayConfig: ContactActivityDisplayConfig;
-	formatDescription(metadata: MetadataFor<L> | undefined): string;
+	formatDescription(metadata: MetadataFor<L> | undefined): ContactActivityDescription;
 }
 
 export type ContactActivityEditorModuleMap = {

@@ -3,7 +3,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { buildContactsCsv, downloadCsv, type CsvContact } from '~/utils/contactsCsv';
 
-useHead({ title: 'Segment — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.audience.segments.detail.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -57,8 +59,14 @@ watch(
 	(s) => {
 		if (s) {
 			setDynamicBreadcrumbs([
-				{ label: 'Audience', href: '/dashboard/audience' },
-				{ label: 'Segments', href: '/dashboard/audience/segments' },
+				{
+					label: t('dashboard.audience.segments.detail.index.breadcrumbs.audience'),
+					href: '/dashboard/audience',
+				},
+				{
+					label: t('dashboard.audience.segments.detail.index.breadcrumbs.segments'),
+					href: '/dashboard/audience/segments',
+				},
 				{ label: s.name },
 			]);
 		}
@@ -196,10 +204,14 @@ const pageNumbers = computed(() => {
 });
 
 const showingRange = computed(() => {
-	if (totalCount.value === 0) return '0 contacts';
+	if (totalCount.value === 0) return t('dashboard.audience.segments.detail.index.showing.empty');
 	const start = (currentPage.value - 1) * pageSize + 1;
 	const end = Math.min(currentPage.value * pageSize, totalCount.value);
-	return `${start}-${end} of ${totalCount.value}`;
+	return t('dashboard.audience.segments.detail.index.showing.range', {
+		start,
+		end,
+		total: totalCount.value,
+	});
 });
 
 // Navigate to a contact's detail page.
@@ -227,7 +239,7 @@ const handleExport = async () => {
 		);
 
 		if (exportMembers.length === 0) {
-			showToast('No contacts to export');
+			showToast(t('dashboard.audience.segments.detail.index.export.none'));
 			return;
 		}
 
@@ -236,11 +248,17 @@ const handleExport = async () => {
 		downloadCsv(csv, `segment-${safeName}.csv`);
 		showToast(
 			truncated
-				? `Exported the first ${exportMembers.length} contacts (segment is larger; export was capped)`
-				: `Exported ${exportMembers.length} contact${exportMembers.length === 1 ? '' : 's'}`
+				? t('dashboard.audience.segments.detail.index.export.truncated', {
+						count: exportMembers.length,
+					})
+				: t(
+						'dashboard.audience.segments.detail.index.export.done',
+						{ count: exportMembers.length },
+						exportMembers.length
+					)
 		);
 	} catch {
-		showToast('Export failed. Please try again.', 'error');
+		showToast(t('dashboard.audience.segments.detail.index.export.failed'), 'error');
 	} finally {
 		isExporting.value = false;
 	}
@@ -253,7 +271,9 @@ const handleExport = async () => {
 		<div v-if="isLoading && !segment" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading segment...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('dashboard.audience.segments.detail.index.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -263,11 +283,15 @@ const handleExport = async () => {
 			class="flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:filter" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">Segment not found</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				This segment may have been deleted or doesn't exist.
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.audience.segments.detail.index.notFound.title') }}
 			</p>
-			<UiButton to="/dashboard/audience/segments" class="mt-6"> Back to Segments </UiButton>
+			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+				{{ t('dashboard.audience.segments.detail.index.notFound.body') }}
+			</p>
+			<UiButton to="/dashboard/audience/segments" class="mt-6">
+				{{ t('dashboard.audience.segments.detail.index.notFound.action') }}
+			</UiButton>
 		</div>
 
 		<!-- Main Content -->
@@ -297,11 +321,13 @@ const handleExport = async () => {
 							<div class="flex items-center flex-wrap gap-4 mt-3 text-sm text-text-tertiary">
 								<div class="flex items-center gap-1.5">
 									<Icon name="lucide:users" class="w-4 h-4" />
-									<span
-										>{{ segment.cachedCount ?? '—' }} matching contact{{
-											segment.cachedCount === 1 ? '' : 's'
-										}}</span
-									>
+									<span>{{
+										t(
+											'dashboard.audience.segments.detail.index.matchingContacts',
+											{ count: segment.cachedCount ?? '—' },
+											segment.cachedCount ?? 0
+										)
+									}}</span>
 								</div>
 								<div class="flex items-center gap-1.5">
 									<Icon name="lucide:sliders-horizontal" class="w-4 h-4" />
@@ -309,7 +335,11 @@ const handleExport = async () => {
 								</div>
 								<div class="flex items-center gap-1.5">
 									<Icon name="lucide:calendar" class="w-4 h-4" />
-									<span>Created {{ formatDate(segment.createdAt) }}</span>
+									<span>{{
+										t('dashboard.audience.segments.detail.index.createdOn', {
+											date: formatDate(segment.createdAt),
+										})
+									}}</span>
 								</div>
 							</div>
 						</div>
@@ -321,7 +351,7 @@ const handleExport = async () => {
 						@click="handleExport"
 					>
 						<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
-						Export CSV
+						{{ t('dashboard.audience.segments.detail.index.exportCsv') }}
 					</UiButton>
 				</div>
 			</div>
@@ -336,7 +366,7 @@ const handleExport = async () => {
 					<input
 						v-model="searchQuery"
 						type="text"
-						placeholder="Search contacts in this segment..."
+						:placeholder="t('dashboard.audience.segments.detail.index.searchPlaceholder')"
 						class="input pl-10"
 					/>
 				</div>
@@ -350,13 +380,14 @@ const handleExport = async () => {
 					class="flex flex-col items-center justify-center py-16 text-center px-6"
 				>
 					<UiIconBox icon="lucide:users" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">No contacts match this segment</p>
+					<p class="text-text-secondary font-medium">
+						{{ t('dashboard.audience.segments.detail.index.empty.title') }}
+					</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						No contacts currently match this segment's filters. Adjust the filters or add more
-						contacts.
+						{{ t('dashboard.audience.segments.detail.index.empty.body') }}
 					</p>
 					<UiButton variant="secondary" to="/dashboard/audience/segments" class="gap-2 mt-6">
-						Edit Segment
+						{{ t('dashboard.audience.segments.detail.index.empty.action') }}
 					</UiButton>
 				</div>
 
@@ -366,9 +397,15 @@ const handleExport = async () => {
 					class="flex flex-col items-center justify-center py-16 text-center px-6"
 				>
 					<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">No results found</p>
+					<p class="text-text-secondary font-medium">
+						{{ t('dashboard.audience.segments.detail.index.noResults.title') }}
+					</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						No contacts match "{{ debouncedSearch }}". Try a different search term.
+						{{
+							t('dashboard.audience.segments.detail.index.noResults.body', {
+								query: debouncedSearch,
+							})
+						}}
 					</p>
 					<UiButton
 						variant="secondary"
@@ -378,7 +415,7 @@ const handleExport = async () => {
 							debouncedSearch = '';
 						"
 					>
-						Clear search
+						{{ t('dashboard.audience.segments.detail.index.clearSearch') }}
 					</UiButton>
 				</div>
 
@@ -393,7 +430,7 @@ const handleExport = async () => {
 										@click="handleSort('email')"
 									>
 										<div class="flex items-center gap-1">
-											Email
+											{{ t('common.email') }}
 											<Icon
 												v-if="getSortIcon('email')"
 												:name="getSortIcon('email')!"
@@ -406,7 +443,7 @@ const handleExport = async () => {
 										@click="handleSort('firstName')"
 									>
 										<div class="flex items-center gap-1">
-											First Name
+											{{ t('dashboard.audience.segments.detail.index.table.firstName') }}
 											<Icon
 												v-if="getSortIcon('firstName')"
 												:name="getSortIcon('firstName')!"
@@ -419,7 +456,7 @@ const handleExport = async () => {
 										@click="handleSort('lastName')"
 									>
 										<div class="flex items-center gap-1">
-											Last Name
+											{{ t('dashboard.audience.segments.detail.index.table.lastName') }}
 											<Icon
 												v-if="getSortIcon('lastName')"
 												:name="getSortIcon('lastName')!"
@@ -432,7 +469,7 @@ const handleExport = async () => {
 										@click="handleSort('createdAt')"
 									>
 										<div class="flex items-center gap-1">
-											Added
+											{{ t('dashboard.audience.segments.detail.index.table.added') }}
 											<Icon
 												v-if="getSortIcon('createdAt')"
 												:name="getSortIcon('createdAt')!"
@@ -473,13 +510,17 @@ const handleExport = async () => {
 						v-if="totalPages > 1 || totalCount > 0"
 						class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-6 py-4 border-t border-border-subtle"
 					>
-						<p class="text-sm text-text-tertiary">Showing {{ showingRange }}</p>
+						<p class="text-sm text-text-tertiary">
+							{{
+								t('dashboard.audience.segments.detail.index.showing.label', { range: showingRange })
+							}}
+						</p>
 
 						<div class="flex items-center gap-1">
 							<button
 								class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors"
 								:disabled="!canGoPrev"
-								aria-label="Previous"
+								:aria-label="t('dashboard.audience.segments.detail.index.pagination.previous')"
 								@click="goToPage(currentPage - 1)"
 							>
 								<Icon name="lucide:chevron-left" class="w-4 h-4" />
@@ -504,7 +545,7 @@ const handleExport = async () => {
 							<button
 								class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors"
 								:disabled="!canGoNext"
-								aria-label="Next"
+								:aria-label="t('dashboard.audience.segments.detail.index.pagination.next')"
 								@click="goToPage(currentPage + 1)"
 							>
 								<Icon name="lucide:chevron-right" class="w-4 h-4" />

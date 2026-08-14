@@ -1,0 +1,307 @@
+{
+	"shared": {
+		"dualArmAlignment": {
+			"title": "Dual-transport alignment",
+			"actionLabel": "Review records",
+			"blockedDomainsRemedy": "The own server and your relay don't look identical to mailboxes yet ({domains}), so the gradual switchover is on hold. {remedy}",
+			"blockedDomains": "The own server and your relay don't look identical to mailboxes yet ({domains}), so the gradual switchover is on hold.",
+			"blockedRemedy": "The own server and your relay don't look identical to mailboxes yet, so the gradual switchover is on hold. {remedy}",
+			"blocked": "The own server and your relay don't look identical to mailboxes yet, so the gradual switchover is on hold.",
+			"unknownDomains": "We couldn't finish reading DNS for ({domains}) yet, so the switchover holds where it is. This re-checks itself — nothing for you to do.",
+			"unknown": "We couldn't finish reading DNS for your sending domains yet, so the switchover holds where it is. This re-checks itself — nothing for you to do.",
+			"alignedDomainsDegraded": "Your own server and your relay look identical to mailboxes ({domains}), so the gradual switchover can measure them fairly. {reason}",
+			"alignedDomains": "Your own server and your relay look identical to mailboxes ({domains}), so the gradual switchover can measure them fairly.",
+			"alignedDegraded": "Your own server and your relay look identical to mailboxes, so the gradual switchover can measure them fairly. {reason}",
+			"aligned": "Your own server and your relay look identical to mailboxes, so the gradual switchover can measure them fairly."
+		},
+		"gettingStarted": {
+			"readyToSend": {
+				"title": "Get ready to send",
+				"description": "Set up sending and verify your domain in one place — Delivery shows exactly what is left before mail can go out.",
+				"cta": "Open delivery"
+			},
+			"addedContacts": {
+				"title": "Add contacts",
+				"description": "Import or add your first contact.",
+				"cta": "Add contacts"
+			},
+			"createdEmail": {
+				"title": "Create an email",
+				"description": "Build an email template you can send.",
+				"cta": "Create email"
+			},
+			"sentCampaign": {
+				"title": "Send a campaign",
+				"description": "Send your first email campaign to your audience.",
+				"descriptionExhausted": "Send your first email campaign to your audience. Today's warm-up capacity is used up — schedule it and it goes out as capacity returns.",
+				"descriptionCapacity": "Send your first email campaign to your audience. About {capacity} contact can be reached today while your IPs warm up. | Send your first email campaign to your audience. About {capacity} contacts can be reached today while your IPs warm up.",
+				"cta": "New campaign"
+			},
+			"createdApiKey": {
+				"title": "Create an API key",
+				"description": "Send transactional email (receipts, password resets) programmatically via the API.",
+				"cta": "Create key"
+			},
+			"backups": {
+				"title": "Set up backups",
+				"description": "Nothing is backed up until you turn it on — do this before you store real data.",
+				"cta": "Set up backups"
+			},
+			"sendBlockedReason": "Waiting on sending setup",
+			"instanceSection": {
+				"title": "Get your instance ready",
+				"description": "A few steps to go live — set up sending, then your first campaign."
+			},
+			"personalSection": {
+				"title": "Finish setting up your account",
+				"description": "Pick up wherever you left off — nothing here is one-shot."
+			}
+		},
+		"inboxFilters": {
+			"open": {
+				"label": "Open",
+				"empty": "No open conversations. Inbox zero."
+			},
+			"mine": {
+				"label": "Mine",
+				"empty": "Nothing is assigned to you right now."
+			},
+			"unassigned": {
+				"label": "Unassigned",
+				"empty": "Every open thread has an owner."
+			},
+			"waiting": {
+				"label": "Waiting",
+				"empty": "No threads are waiting on a customer reply."
+			},
+			"snoozed": {
+				"label": "Snoozed",
+				"empty": "Nothing is snoozed. It will reappear here when it does."
+			},
+			"resolved": {
+				"label": "Resolved",
+				"empty": "No resolved conversations yet."
+			}
+		},
+		"postboxAutoAdvance": {
+			"next": "Open the next conversation",
+			"previous": "Open the previous conversation",
+			"backToList": "Go back to the list"
+		},
+		"operatorConsole": {
+			"auditAction": {
+				"contentApproved": "Approved content",
+				"contentRejected": "Rejected content",
+				"orgStatusChanged": "Changed org status",
+				"adminAdded": "Added admin",
+				"adminRemoved": "Removed admin",
+				"unknown": "Unknown action"
+			}
+		},
+		"mandrillRelayStatus": {
+			"outstanding": {
+				"spf": "SPF",
+				"dkim": "DKIM",
+				"ownership": "domain ownership"
+			}
+		},
+		"mandrillMigration": {
+			"transportIssue": {
+				"relay": "Mailchimp Transactional is not connected yet — set MANDRILL_API_KEY and restart the deployment.",
+				"own": "Owlat's own MTA is not configured, so there is nothing to migrate traffic onto."
+			},
+			"competingRelayWarning": "{relays} is still enabled alongside Mailchimp Transactional. The measurement plane compares one reference relay against your own MTA, so a second one degrades alignment confidence and the ramp holds at 0% — disable it on the provider-routing screen before applying the preset. | {relays} are still enabled alongside Mailchimp Transactional. The measurement plane compares one reference relay against your own MTA, so a second one degrades alignment confidence and the ramp holds at 0% — disable it on the provider-routing screen before applying the preset.",
+			"carried": {
+				"unsubscribed": "unsubscribed",
+				"bouncedHard": "hard bounces",
+				"bouncedSoft": "soft bounces",
+				"complained": "spam complaints",
+				"manual": "manually suppressed",
+				"alreadyBlocked": "already suppressed here",
+				"alreadyUnsubscribed": "already unsubscribed here",
+				"noContact": "no matching contact",
+				"skipped": "skipped"
+			},
+			"step": {
+				"connect": {
+					"title": "Connect Mailchimp Transactional",
+					"summary": "Owlat sends through your existing Mandrill account first, so day one carries your current reputation, not a cold one."
+				},
+				"history": {
+					"title": "Carry over contacts and suppressions",
+					"summary": "Import the audience, then the unsubscribes and hard bounces Mandrill and Mailchimp accumulated — mailing someone who opted out is how a migration fails on day one."
+				},
+				"domain": {
+					"title": "Verify the sending domain at Mandrill",
+					"summary": "Mandrill rejects mail from a domain it has not verified, so the reference arm cannot carry traffic — and the ramp has nothing to measure against — until this clears."
+				},
+				"preset": {
+					"title": "Apply the migration preset",
+					"summary": "All three message types move to the measured split: 100% Mandrill today, and the ramp controller grows your own MTA’s share cell by cell from there."
+				},
+				"watch": {
+					"title": "Watch the ramp",
+					"summary": "Every decision the controller makes is on the cells screen, in a sentence. Pause, pin or promote any cell at any time."
+				}
+			},
+			"blocked": {
+				"history": "Connect Mailchimp Transactional first — the reject-list import reads the same key.",
+				"presetKey": "Connect Mailchimp Transactional first.",
+				"presetDomain": "Finish Mandrill’s domain verification first — the preset would name a relay that cannot send.",
+				"watch": "Apply the preset first — there is no ramp to watch yet."
+			}
+		},
+		"mailAutodiscover": {
+			"appPassword": {
+				"gmail": "Turn on 2-Step Verification, then generate a 16-character app password and paste it here.",
+				"outlook": "Turn on two-step verification, create an app password and paste it here.",
+				"icloud": "Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.",
+				"yahoo": "Generate an app password under Account Security and paste it here.",
+				"fastmail": "Create an app password under Settings → Privacy & Security → App Passwords and paste it here."
+			},
+			"provider": {
+				"gmail": {
+					"name": "Gmail",
+					"hint": "Gmail or Google Workspace"
+				},
+				"outlook": {
+					"name": "Outlook",
+					"hint": "Outlook.com, Hotmail or Microsoft 365"
+				},
+				"fastmail": {
+					"name": "Fastmail",
+					"hint": "imap.fastmail.com"
+				},
+				"icloud": {
+					"name": "iCloud Mail",
+					"hint": "icloud.com, me.com or mac.com"
+				},
+				"yahoo": {
+					"name": "Yahoo Mail",
+					"hint": "imap.mail.yahoo.com"
+				},
+				"imap": {
+					"name": "Any IMAP mailbox",
+					"hint": "Your own server, or any other provider"
+				}
+			}
+		},
+		"outboundIpStatus": {
+			"label": {
+				"sourceAddress": "Source address unavailable",
+				"spf": "IPv6 SPF prerequisite",
+				"ipv4": "IPv4 prerequisite",
+				"identityAndBlocklist": "Identity + blocklist",
+				"blocklistUnavailable": "Blocklist check unavailable",
+				"blocklisted": "Blocklisted",
+				"identityQuarantined": "Identity quarantined",
+				"labOverride": "Lab override",
+				"unavailable": "Unavailable",
+				"notVerified": "Not verified",
+				"blocklistWarning": "Blocklist warning",
+				"needsAttention": "Needs attention",
+				"ready": "Ready"
+			},
+			"identity": {
+				"waiting": "Waiting for the first live reverse-DNS check.",
+				"genericPtr": "Forward DNS is valid, but this provider-default PTR can hurt sending reputation.",
+				"noPtr": "No PTR record exists for this sending IP.",
+				"notFqdn": "The PTR record is not a valid fully qualified hostname.",
+				"forwardMismatch": "The PTR hostname does not resolve back to this sending IP.",
+				"ehloMismatch": "The PTR hostname does not match the EHLO hostname announced by the MTA.",
+				"lookupError": "DNS could not be verified right now.",
+				"ready": "Forward-confirmed reverse DNS is ready."
+			},
+			"blocklist": {
+				"unavailable": "The latest DNS blocklist lookup failed, so the prior safety decision is preserved.",
+				"degraded": "A non-critical DNS blocklist currently lists this IP.",
+				"critical": "A critical DNS blocklist currently excludes this IP from delivery."
+			},
+			"combined": {
+				"waiting": {
+					"unavailable": "Waiting for the first live reverse-DNS check. The latest DNS blocklist lookup failed, so the prior safety decision is preserved.",
+					"degraded": "Waiting for the first live reverse-DNS check. A non-critical DNS blocklist currently lists this IP.",
+					"critical": "Waiting for the first live reverse-DNS check. A critical DNS blocklist currently excludes this IP from delivery."
+				},
+				"genericPtr": {
+					"unavailable": "Forward DNS is valid, but this provider-default PTR can hurt sending reputation. The latest DNS blocklist lookup failed, so the prior safety decision is preserved.",
+					"degraded": "Forward DNS is valid, but this provider-default PTR can hurt sending reputation. A non-critical DNS blocklist currently lists this IP.",
+					"critical": "Forward DNS is valid, but this provider-default PTR can hurt sending reputation. A critical DNS blocklist currently excludes this IP from delivery."
+				},
+				"noPtr": {
+					"unavailable": "No PTR record exists for this sending IP. The latest DNS blocklist lookup failed, so the prior safety decision is preserved.",
+					"degraded": "No PTR record exists for this sending IP. A non-critical DNS blocklist currently lists this IP.",
+					"critical": "No PTR record exists for this sending IP. A critical DNS blocklist currently excludes this IP from delivery."
+				},
+				"notFqdn": {
+					"unavailable": "The PTR record is not a valid fully qualified hostname. The latest DNS blocklist lookup failed, so the prior safety decision is preserved.",
+					"degraded": "The PTR record is not a valid fully qualified hostname. A non-critical DNS blocklist currently lists this IP.",
+					"critical": "The PTR record is not a valid fully qualified hostname. A critical DNS blocklist currently excludes this IP from delivery."
+				},
+				"forwardMismatch": {
+					"unavailable": "The PTR hostname does not resolve back to this sending IP. The latest DNS blocklist lookup failed, so the prior safety decision is preserved.",
+					"degraded": "The PTR hostname does not resolve back to this sending IP. A non-critical DNS blocklist currently lists this IP.",
+					"critical": "The PTR hostname does not resolve back to this sending IP. A critical DNS blocklist currently excludes this IP from delivery."
+				},
+				"ehloMismatch": {
+					"unavailable": "The PTR hostname does not match the EHLO hostname announced by the MTA. The latest DNS blocklist lookup failed, so the prior safety decision is preserved.",
+					"degraded": "The PTR hostname does not match the EHLO hostname announced by the MTA. A non-critical DNS blocklist currently lists this IP.",
+					"critical": "The PTR hostname does not match the EHLO hostname announced by the MTA. A critical DNS blocklist currently excludes this IP from delivery."
+				},
+				"lookupError": {
+					"unavailable": "DNS could not be verified right now. The latest DNS blocklist lookup failed, so the prior safety decision is preserved.",
+					"degraded": "DNS could not be verified right now. A non-critical DNS blocklist currently lists this IP.",
+					"critical": "DNS could not be verified right now. A critical DNS blocklist currently excludes this IP from delivery."
+				},
+				"ready": {
+					"unavailable": "Forward-confirmed reverse DNS is ready. The latest DNS blocklist lookup failed, so the prior safety decision is preserved.",
+					"degraded": "Forward-confirmed reverse DNS is ready. A non-critical DNS blocklist currently lists this IP.",
+					"critical": "Forward-confirmed reverse DNS is ready. A critical DNS blocklist currently excludes this IP from delivery."
+				}
+			},
+			"detail": {
+				"sourceAddress": "Outbound IPv6 stays quarantined because the MTA cannot bind and route this source address.",
+				"spf": "Outbound IPv6 stays quarantined until the return-path SPF record authorizes its exact ip6: address.",
+				"ipv4": "Outbound IPv6 stays quarantined until every configured IPv4 identity passes FCrDNS."
+			},
+			"remediation": {
+				"sourceAddress": "Assign and route the IPv6 address on the MTA host/container, then run readiness again.",
+				"spf": "Publish the generated ip6: mechanism on the return-path domain, then verify again.",
+				"ipv4": "Repair the IPv4 PTR, forward A record, and EHLO alignment before enabling IPv6.",
+				"blocklist": "Review the MTA blocklist details, resolve the listing cause, and request delisting.",
+				"hetzner": "In Hetzner Console, open Servers → your server → Networking → Primary IP → Edit reverse DNS.",
+				"digitalocean": "In the DigitalOcean control panel, rename the Droplet to the EHLO hostname; DigitalOcean uses that name for reverse DNS.",
+				"ovh": "In OVHcloud Manager, open Network → Public IP Addresses → the IP menu → Modify reverse DNS.",
+				"generic": "Open your VPS provider’s reverse-DNS/PTR settings for this public IP."
+			}
+		},
+		"postboxDailyBrief": {
+			"greeting": {
+				"morning": "Good morning",
+				"afternoon": "Good afternoon",
+				"evening": "Good evening"
+			},
+			"newMail": {
+				"allQuiet": "All quiet — nothing new since this morning.",
+				"leadQuiet": "Quiet day: ",
+				"leadBusy": "Busy morning: ",
+				"count": "{count} new",
+				"tail": " since this morning."
+			},
+			"agent": {
+				"lead": "Your agent ",
+				"drafted": "drafted ",
+				"draftedCount": "{count} reply | {count} replies",
+				"forReview": " for review",
+				"and": " and ",
+				"filed": "filed {count} low-priority email | filed {count} low-priority emails",
+				"overnight": " overnight."
+			},
+			"questions": {
+				"count": "{count} question | {count} questions",
+				"tailOne": " needs you — answering it unblocks the waiting replies.",
+				"tailOther": " need you — answering them unblocks the waiting replies."
+			}
+		}
+	}
+}

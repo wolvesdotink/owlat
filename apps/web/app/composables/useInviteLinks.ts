@@ -6,6 +6,7 @@
  * modal build and copy the same link and can never drift.
  */
 export function useInviteLinks() {
+	const { t } = useI18n();
 	const requestUrl = useRequestURL();
 	const { copy } = useCopyToClipboard();
 	const { showToast } = useToast();
@@ -17,7 +18,10 @@ export function useInviteLinks() {
 	// Copy an invite's accept link to the clipboard, toasting the outcome.
 	async function copyLinkText(url: string) {
 		const ok = await copy(url);
-		showToast(ok ? 'Invite link copied' : 'Could not copy the link', ok ? 'success' : 'error');
+		showToast(
+			ok ? t('shared.useInviteLinks.toasts.copied') : t('shared.useInviteLinks.toasts.copyFailed'),
+			ok ? 'success' : 'error'
+		);
 	}
 
 	return { buildAcceptUrl, copyLinkText };

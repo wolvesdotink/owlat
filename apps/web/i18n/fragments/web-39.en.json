@@ -1,0 +1,139 @@
+{
+	"setup": {
+		"team": {
+			"pageTitle": "Team Setup — Owlat",
+			"brand": "Owlat",
+			"invitationRequired": "Invitation required",
+			"requestSentTitle": "Request sent",
+			"requestSentBody": "An administrator has been notified. You'll get an invitation by email once they grant you access — no need to ask again.",
+			"signOut": "Sign out",
+			"inviteExplainer": "You need an invitation to join this instance. Ask an administrator to send you one — you can request it right here.",
+			"noteLabel": "Add a note (optional)",
+			"notePlaceholder": "e.g. I'm on the marketing team and need access to send campaigns.",
+			"requestAccess": "Request access",
+			"requestAccessOperation": "Request access"
+		}
+	},
+	"shared": {
+		"automations": {
+			"steps": {
+				"email": {
+					"label": "Send Email",
+					"description": "Send an email to the contact",
+					"templateRequired": "Email step requires a template",
+					"selectTemplate": "Select an email template",
+					"unknownTemplate": "Unknown Template",
+					"templateName": "{name}"
+				},
+				"delay": {
+					"label": "Wait/Delay",
+					"description": "Wait before the next step",
+					"durationTooShort": "Delay duration must be at least 1",
+					"configure": "Configure delay",
+					"units": {
+						"minutes": {
+							"one": "minute",
+							"other": "minutes"
+						},
+						"hours": {
+							"one": "hour",
+							"other": "hours"
+						},
+						"days": {
+							"one": "day",
+							"other": "days"
+						},
+						"weeks": {
+							"one": "week",
+							"other": "weeks"
+						}
+					},
+					"wait": {
+						"minutes": {
+							"one": "Wait {count} minute",
+							"other": "Wait {count} minutes"
+						},
+						"hours": {
+							"one": "Wait {count} hour",
+							"other": "Wait {count} hours"
+						},
+						"days": {
+							"one": "Wait {count} day",
+							"other": "Wait {count} days"
+						},
+						"weeks": {
+							"one": "Wait {count} week",
+							"other": "Wait {count} weeks"
+						}
+					}
+				},
+				"condition": {
+					"label": "Condition",
+					"description": "Branch based on contact criteria",
+					"branchTargetMissing": {
+						"trueBranch": "Condition \"true\" branch points at a step that no longer exists — pick a valid branch target",
+						"falseBranch": "Condition \"false\" branch points at a step that no longer exists — pick a valid branch target"
+					}
+				}
+			},
+			"triggers": {
+				"contactCreated": {
+					"label": "Contact Created",
+					"description": "Trigger when a new contact is added to your audience",
+					"summary": "When a new contact is added"
+				},
+				"contactUpdated": {
+					"label": "Contact Updated",
+					"description": "Trigger when a contact's property changes",
+					"propertyRequired": "Please select a property to watch",
+					"summaryAny": "When a contact property changes",
+					"summary": "When {property} changes"
+				},
+				"eventReceived": {
+					"label": "Event Received",
+					"description": "Trigger when a specific event is received from your app",
+					"eventNameRequired": "Please enter an event name",
+					"summaryAny": "When an event is received",
+					"summary": "Event: {name}"
+				},
+				"topicSubscribed": {
+					"label": "Subscribed to Topic",
+					"description": "Trigger when a contact subscribes to a topic",
+					"topicRequired": "Please select a topic",
+					"summaryAny": "When subscribed to a topic",
+					"summary": "Topic: {name}",
+					"summaryUnknown": "Topic: (unknown)"
+				}
+			}
+		},
+		"chat": {
+			"useChatActions": {
+				"createChannel": "Create channel",
+				"archiveChannel": "Archive channel",
+				"unarchiveChannel": "Unarchive channel",
+				"startDirectMessage": "Start direct message",
+				"addMember": "Add member",
+				"removeMember": "Remove member",
+				"setMemberRole": "Set member role",
+				"linkChannelToInboxThread": "Link channel to inbox thread",
+				"unlinkChannel": "Unlink channel"
+			},
+			"useChatAttachments": {
+				"prepareUpload": "Prepare attachment upload",
+				"registerAttachment": "Register attachment"
+			},
+			"useChatMentions": {
+				"markMentionRead": "Mark mention read",
+				"assistantName": "Assistant"
+			},
+			"useChatRoom": {
+				"sendMessage": "Send message",
+				"editMessage": "Edit message",
+				"deleteMessage": "Delete message",
+				"markRoomRead": "Mark room read",
+				"joinChannel": "Join channel",
+				"leaveRoom": "Leave room"
+			}
+		}
+	}
+}

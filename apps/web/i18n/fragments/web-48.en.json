@@ -1,0 +1,143 @@
+{
+	"shared": {
+		"aiProviders": {
+			"providers": {
+				"openai": {
+					"label": "OpenAI",
+					"hint": "Hosted GPT models. Paste an OpenAI API key."
+				},
+				"anthropic": {
+					"label": "Anthropic (Claude)",
+					"hint": "Hosted Claude models. Paste an Anthropic API key. (Claude has no embeddings — keep embeddings local.)"
+				},
+				"google": {
+					"label": "Google (Gemini)",
+					"hint": "Hosted Gemini models. Paste a Google AI Studio key."
+				},
+				"azure": {
+					"label": "Azure OpenAI",
+					"hint": "GPT models from your Azure OpenAI resource. Model ids are your deployment names — paste your key and resource base URL."
+				},
+				"openrouter": {
+					"label": "OpenRouter",
+					"hint": "One key, many upstream models. Use provider-prefixed ids like anthropic/claude-sonnet-5."
+				},
+				"openaiCompatible": {
+					"label": "Local / self-hosted (OpenAI-compatible)",
+					"hint": "Ollama, vLLM, or llama.cpp on your own hardware. No key — just a base URL."
+				}
+			},
+			"embedders": {
+				"local": {
+					"label": "Local (bundled) — no setup needed"
+				},
+				"openai": {
+					"label": "OpenAI (hosted)"
+				},
+				"google": {
+					"label": "Google (hosted)"
+				},
+				"openaiCompatible": {
+					"label": "Custom OpenAI-compatible server"
+				}
+			},
+			"customModel": "Custom model id…",
+			"currentModel": "{model} (current)",
+			"validation": {
+				"apiKeyRequired": {
+					"openai": "OpenAI needs an API key. Paste one above to continue.",
+					"anthropic": "Anthropic (Claude) needs an API key. Paste one above to continue.",
+					"google": "Google (Gemini) needs an API key. Paste one above to continue.",
+					"azure": "Azure OpenAI needs an API key. Paste one above to continue.",
+					"openrouter": "OpenRouter needs an API key. Paste one above to continue.",
+					"unknown": "this provider needs an API key. Paste one above to continue."
+				},
+				"baseUrlRequired": {
+					"azure": "Azure OpenAI needs its resource base URL. Add it above to continue.",
+					"unknown": "this provider needs its resource base URL. Add it above to continue."
+				}
+			},
+			"testFailed": "Connection test failed."
+		},
+		"campaignAttention": {
+			"ab_decision": {
+				"chip": "Winner pending",
+				"action": "Pick winner"
+			},
+			"needs_review": {
+				"chip": "Needs review",
+				"action": "Review"
+			},
+			"send_stopped": {
+				"chip": "Send stopped",
+				"action": "Resume"
+			},
+			"scheduled_today": {
+				"chip": "Going out today"
+			}
+		},
+		"campaignSenderPicker": {
+			"customAddress": "Custom address…"
+		},
+		"campaignSenderVerification": {
+			"enterAddress": "Enter an address on one of your verified sending domains.",
+			"checkFailed": "Couldn't check this domain — clear the field and try again.",
+			"checking": "Checking this domain…",
+			"domainMissing": "\"{domain}\" isn't set up for sending yet. Add and verify it before using it as a campaign sender.",
+			"domainUnverified": "\"{domain}\" isn't verified yet. Finish DNS verification before using it as a campaign sender.",
+			"domainVerified": "\"{domain}\" is verified — you can add this sender."
+		},
+		"useWebhookDeliveryLogs": {
+			"sendTestOperation": "Send test webhook",
+			"testSent": "Test webhook sent"
+		},
+		"useWebhookForm": {
+			"createOperation": "Create webhook",
+			"updateOperation": "Update webhook",
+			"created": "Webhook created successfully",
+			"updated": "Webhook updated successfully",
+			"copyFailed": "Failed to copy to clipboard",
+			"errors": {
+				"nameRequired": "Name is required",
+				"urlRequired": "URL is required",
+				"urlProtocol": "URL must use HTTP or HTTPS protocol",
+				"urlInvalid": "Invalid URL format",
+				"eventsRequired": "At least one event must be selected"
+			},
+			"events": {
+				"emailSent": {
+					"label": "Email Sent",
+					"description": "When an email is sent"
+				},
+				"emailDelivered": {
+					"label": "Email Delivered",
+					"description": "When an email is delivered"
+				},
+				"emailOpened": {
+					"label": "Email Opened",
+					"description": "When an email is opened"
+				},
+				"emailClicked": {
+					"label": "Email Clicked",
+					"description": "When a link in an email is clicked"
+				},
+				"emailBounced": {
+					"label": "Email Bounced",
+					"description": "When an email bounces"
+				},
+				"emailComplained": {
+					"label": "Email Complained",
+					"description": "When a spam complaint is received"
+				},
+				"contactCreated": {
+					"label": "Contact Created",
+					"description": "When a new contact is created"
+				},
+				"topicUnsubscribed": {
+					"label": "Topic Unsubscribed",
+					"description": "When a contact unsubscribes from a topic"
+				}
+			}
+		}
+	}
+}

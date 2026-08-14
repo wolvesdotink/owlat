@@ -16,6 +16,8 @@
 import { ref } from 'vue';
 import type { RewriteIntent } from '~/composables/postbox/usePostboxSelectionRewrite';
 
+const { t } = useI18n();
+
 defineProps<{
 	/** True while a rewrite request is in flight (disables the buttons). */
 	loading?: boolean;
@@ -40,11 +42,28 @@ function pickLanguage(language: string) {
 	emit('select', { intent: 'translate', targetLanguage: language });
 }
 
+/** Labels are message KEYS — the template resolves them so a locale switch repaints. */
 const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
-	{ intent: 'shorter', label: 'Shorter', icon: 'lucide:scissors' },
-	{ intent: 'friendlier', label: 'Friendlier', icon: 'lucide:smile' },
-	{ intent: 'formal', label: 'More formal', icon: 'lucide:briefcase' },
-	{ intent: 'grammar', label: 'Fix grammar', icon: 'lucide:spell-check' },
+	{
+		intent: 'shorter',
+		label: 'components.postbox.postboxRewriteActions.shorter',
+		icon: 'lucide:scissors',
+	},
+	{
+		intent: 'friendlier',
+		label: 'components.postbox.postboxRewriteActions.friendlier',
+		icon: 'lucide:smile',
+	},
+	{
+		intent: 'formal',
+		label: 'components.postbox.postboxRewriteActions.formal',
+		icon: 'lucide:briefcase',
+	},
+	{
+		intent: 'grammar',
+		label: 'components.postbox.postboxRewriteActions.grammar',
+		icon: 'lucide:spell-check',
+	},
 ];
 </script>
 
@@ -56,7 +75,7 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
 			type="button"
 			class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-text-secondary hover:bg-bg-surface disabled:opacity-50"
 			:disabled="loading"
-			:title="opt.label"
+			:title="t(opt.label)"
 			@click="pick(opt.intent)"
 		>
 			<Icon
@@ -65,14 +84,14 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
 				class="h-3.5 w-3.5 animate-spin"
 			/>
 			<Icon v-else :name="opt.icon" class="h-3.5 w-3.5" />
-			<span>{{ opt.label }}</span>
+			<span>{{ t(opt.label) }}</span>
 		</button>
 		<div class="relative">
 			<button
 				type="button"
 				class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-text-secondary hover:bg-bg-surface disabled:opacity-50"
 				:disabled="loading"
-				title="Translate…"
+				:title="t('components.postbox.postboxRewriteActions.translateTitle')"
 				@click="showTranslate = !showTranslate"
 			>
 				<Icon
@@ -81,7 +100,7 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
 					class="h-3.5 w-3.5 animate-spin"
 				/>
 				<Icon v-else name="lucide:languages" class="h-3.5 w-3.5" />
-				<span>Translate</span>
+				<span>{{ t('components.postbox.postboxRewriteActions.translate') }}</span>
 				<Icon name="lucide:chevron-down" class="h-3 w-3" />
 			</button>
 			<div

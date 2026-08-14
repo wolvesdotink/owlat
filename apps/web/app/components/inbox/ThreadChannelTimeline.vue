@@ -40,6 +40,23 @@ const { isSending, canSendOn, send } = useChannelOutbound();
 
 type TimelineMessage = (typeof timeline.value)[number];
 
+// The shared channel/direction vocabulary is a module-scope registry, so its
+// labels are i18n keys, not copy (see the localization guide).
+const channelName = (channel: string): string => t(channelLabel(channel));
+const directionName = (direction: string): string => t(directionLabel(direction));
+
+// Delivery status is a backend enum; only the non-default states reach the badge.
+const STATUS_KEYS: Record<string, string> = {
+	queued: 'components.inbox.threadChannelTimeline.status.queued',
+	delivered: 'components.inbox.threadChannelTimeline.status.delivered',
+	read: 'components.inbox.threadChannelTimeline.status.read',
+	failed: 'components.inbox.threadChannelTimeline.status.failed',
+};
+function statusLabel(status: string): string {
+	const key = STATUS_KEYS[status];
+	return key ? t(key) : status;
+}
+
 function canReplyTo(item: TimelineMessage): boolean {
 	if (item.channel === 'email') return false;
 	// A provider send is addressed to the contact, so a row with no contact
@@ -130,12 +147,12 @@ async function submitReply(item: TimelineMessage) {
 								]"
 							>
 								<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
-								{{ directionLabel(item.direction) }}
+								{{ directionName(item.direction) }}
 							</span>
 
 							<!-- Channel badge -->
 							<UiBadge variant="neutral" size="sm">
-								{{ channelLabel(item.channel) }}
+								{{ channelName(item.channel) }}
 							</UiBadge>
 
 							<!-- Status -->
@@ -150,7 +167,7 @@ async function submitReply(item: TimelineMessage) {
 								"
 								size="sm"
 							>
-								{{ item.status }}
+								{{ statusLabel(item.status) }}
 							</UiBadge>
 
 							<!-- Reply on this channel -->
@@ -160,7 +177,7 @@ async function submitReply(item: TimelineMessage) {
 								class="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 								:aria-label="
 									t('components.inbox.threadChannelTimeline.replyOn', {
-										channel: channelLabel(item.channel),
+										channel: channelName(item.channel),
 									})
 								"
 								@click="openReply(item)"
@@ -196,7 +213,7 @@ async function submitReply(item: TimelineMessage) {
 								size="sm"
 								:placeholder="
 									t('components.inbox.threadChannelTimeline.replyPlaceholder', {
-										channel: channelLabel(item.channel),
+										channel: channelName(item.channel),
 									})
 								"
 							/>

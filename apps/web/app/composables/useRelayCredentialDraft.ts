@@ -61,14 +61,18 @@ export type RelayProviderChoice = Exclude<ProviderChoice, OwnSendProviderKind | 
 
 export interface RelayProviderOption {
 	readonly value: RelayProviderChoice;
+	/** i18n message key (or the catalog's own label) — resolve with `t()`. */
 	readonly label: string;
+	/** i18n message key — resolve with `t()`; empty when the kind has no copy. */
 	readonly hint: string;
 	readonly icon: string;
 }
 
 /**
  * The picker's COPY — one sentence and one icon per transport, in the order the
- * shipped screens list them.
+ * shipped screens list them. `label` and `hint` are i18n MESSAGE KEYS, because
+ * this table is built at module scope, before any component sets up: the screens
+ * that render an option resolve them with `t(option.label)` / `t(option.hint)`.
  *
  * Deliberately not in the catalog, which states so itself: a descriptor carries
  * the label a form needs, and "hints, icons and per-vendor prose" stay where the
@@ -98,29 +102,33 @@ const TRANSPORT_PICKER_COPY: readonly {
 		// Every relay takes the catalog's label — none of the four incumbents
 		// needed an override, and a new provider cannot need one either, because
 		// the fallback is the entry's own label.
-		label: 'Run your own MTA',
-		hint: 'Full control, no third party. Needs port 25 open and a clean sending IP.',
+		label: 'shared.useRelayCredentialDraft.providers.mta.label',
+		hint: 'shared.useRelayCredentialDraft.providers.mta.hint',
 		icon: 'lucide:server',
 	},
 	{
 		kind: 'ses',
-		hint: 'Managed deliverability, cheap at scale. Needs an AWS account.',
+		hint: 'shared.useRelayCredentialDraft.providers.ses.hint',
 		icon: 'lucide:cloud',
 	},
 	{
 		kind: 'smtp',
-		hint: 'Mailgun, Postmark, SendGrid, Brevo, or any custom SMTP server.',
+		hint: 'shared.useRelayCredentialDraft.providers.smtp.hint',
 		icon: 'lucide:route',
 	},
-	{ kind: 'resend', hint: 'Managed API with a generous free tier.', icon: 'lucide:zap' },
+	{
+		kind: 'resend',
+		hint: 'shared.useRelayCredentialDraft.providers.resend.hint',
+		icon: 'lucide:zap',
+	},
 	{
 		kind: 'mandrill',
-		hint: 'Arriving from Mailchimp? Keep sending on the reputation you already have, then let the ramp move traffic onto your own MTA.',
+		hint: 'shared.useRelayCredentialDraft.providers.mandrill.hint',
 		icon: 'lucide:shuffle',
 	},
 	{
 		kind: 'emailit',
-		hint: 'Managed email API with signed delivery feedback and idempotent sends.',
+		hint: 'shared.useRelayCredentialDraft.providers.emailit.hint',
 		icon: 'lucide:send',
 	},
 ];
@@ -161,7 +169,9 @@ export const RELAY_PROVIDER_OPTIONS: readonly RelayProviderOption[] = pickerOrde
  */
 export const TRANSPORT_EDITOR_PROVIDER_OPTIONS: readonly {
 	readonly value: ProviderChoice;
+	/** i18n message key (or the catalog's own label) — resolve with `t()`. */
 	readonly label: string;
+	/** i18n message key — resolve with `t()`; empty when the kind has no copy. */
 	readonly hint: string;
 	readonly icon: string;
 }[] = [pickerOption(OWN_SEND_PROVIDER_KIND), ...RELAY_PROVIDER_OPTIONS];

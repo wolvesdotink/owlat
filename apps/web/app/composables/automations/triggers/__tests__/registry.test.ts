@@ -1,9 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import {
-	TRIGGER_EDITOR_MODULES,
-	triggerEditorModuleFor,
-	listTriggerEditorModules,
-} from '../index';
+import { TRIGGER_EDITOR_MODULES, triggerEditorModuleFor, listTriggerEditorModules } from '../index';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * Trigger modules cannot call `useI18n`, so every label, error and summary they
+ * hand back is a message KEY (or a key plus its interpolations) that the
+ * renderer translates. `resolves` asserts the catalog carries it: a key that
+ * resolves to itself is a trigger whose copy would paint as a raw path.
+ */
+const { t, te } = createTestI18n().global;
+const resolves = (key: string) => te(key) && t(key) !== key;
+/** What a renderer does with a registry message. */
+const render = (value: string | { key: string; params?: Record<string, unknown> }) =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+/** The display context every trigger takes, empty where the trigger ignores it. */
+const computedTopics = { value: [] } as never;
 
 describe('Trigger editor module registry', () => {
 	it('contains exactly the four canonical trigger kinds', () => {
@@ -29,12 +40,11 @@ describe('Trigger editor module registry', () => {
 	});
 
 	it('listTriggerEditorModules iterates the registry', () => {
-		expect(listTriggerEditorModules().map((m) => m.kind).sort()).toEqual([
-			'contact_created',
-			'contact_updated',
-			'event_received',
-			'topic_subscribed',
-		]);
+		expect(
+			listTriggerEditorModules()
+				.map((m) => m.kind)
+				.sort()
+		).toEqual(['contact_created', 'contact_updated', 'event_received', 'topic_subscribed']);
 	});
 
 	it('only contact_created has requiresConfig=false', () => {
@@ -62,6 +72,15 @@ describe('contactCreatedTriggerEditorModule', () => {
 	it('validateForSubmit always passes', () => {
 		expect(module.validateForSubmit(null)).toBeNull();
 	});
+
+	it('getSummary and the registry copy resolve in the catalog', () => {
+		expect(module.getSummary(null, { topics: computedTopics })).toBe(
+			'shared.automations.triggers.contactCreated.summary'
+		);
+		expect(resolves(module.label)).toBe(true);
+		expect(resolves(module.description)).toBe(true);
+		expect(resolves('shared.automations.triggers.contactCreated.summary')).toBe(true);
+	});
 });
 
 describe('contactUpdatedTriggerEditorModule', () => {
@@ -72,8 +91,30 @@ describe('contactUpdatedTriggerEditorModule', () => {
 	});
 
 	it('validateForSubmit flags missing propertyKey', () => {
-		expect(module.validateForSubmit({ propertyKey: '' })).toBe('Please select a property to watch');
+		expect(module.validateForSubmit({ propertyKey: '' })).toBe(
+			'shared.automations.triggers.contactUpdated.propertyRequired'
+		);
 		expect(module.validateForSubmit({ propertyKey: 'email' })).toBeNull();
+	});
+
+	it('getSummary carries the watched property as an interpolation', () => {
+		expect(module.getSummary({ propertyKey: '' }, { topics: computedTopics })).toBe(
+			'shared.automations.triggers.contactUpdated.summaryAny'
+		);
+		expect(module.getSummary({ propertyKey: 'plan' }, { topics: computedTopics })).toEqual({
+			key: 'shared.automations.triggers.contactUpdated.summary',
+			params: { property: 'plan' },
+		});
+		expect(render(module.getSummary({ propertyKey: 'plan' }, { topics: computedTopics }))).toBe(
+			'When plan changes'
+		);
+	});
+
+	it('every message it can hand back is in the catalog', () => {
+		expect(resolves(module.label)).toBe(true);
+		expect(resolves(module.description)).toBe(true);
+		expect(resolves('shared.automations.triggers.contactUpdated.propertyRequired')).toBe(true);
+		expect(resolves('shared.automations.triggers.contactUpdated.summaryAny')).toBe(true);
 	});
 });
 
@@ -85,9 +126,29 @@ describe('eventReceivedTriggerEditorModule', () => {
 	});
 
 	it('validateForSubmit flags empty and whitespace-only event names', () => {
-		expect(module.validateForSubmit({ eventName: '' })).toBe('Please enter an event name');
-		expect(module.validateForSubmit({ eventName: '   ' })).toBe('Please enter an event name');
+		expect(module.validateForSubmit({ eventName: '' })).toBe(
+			'shared.automations.triggers.eventReceived.eventNameRequired'
+		);
+		expect(module.validateForSubmit({ eventName: '   ' })).toBe(
+			'shared.automations.triggers.eventReceived.eventNameRequired'
+		);
 		expect(module.validateForSubmit({ eventName: 'user.signed_up' })).toBeNull();
+	});
+
+	it('getSummary carries the event name as an interpolation', () => {
+		expect(module.getSummary({ eventName: '' }, { topics: computedTopics })).toBe(
+			'shared.automations.triggers.eventReceived.summaryAny'
+		);
+		expect(
+			render(module.getSummary({ eventName: 'user.signed_up' }, { topics: computedTopics }))
+		).toBe('Event: user.signed_up');
+	});
+
+	it('every message it can hand back is in the catalog', () => {
+		expect(resolves(module.label)).toBe(true);
+		expect(resolves(module.description)).toBe(true);
+		expect(resolves('shared.automations.triggers.eventReceived.eventNameRequired')).toBe(true);
+		expect(resolves('shared.automations.triggers.eventReceived.summaryAny')).toBe(true);
 	});
 });
 
@@ -99,7 +160,28 @@ describe('topicSubscribedTriggerEditorModule', () => {
 	});
 
 	it('validateForSubmit flags missing topicId', () => {
-		expect(module.validateForSubmit({ topicId: '' })).toBe('Please select a topic');
+		expect(module.validateForSubmit({ topicId: '' })).toBe(
+			'shared.automations.triggers.topicSubscribed.topicRequired'
+		);
 		expect(module.validateForSubmit({ topicId: 't1' })).toBeNull();
+	});
+
+	it('getSummary names the subscribed topic, or says it is unknown', () => {
+		const topics = { value: [{ _id: 't1', name: 'Product news' }] } as never;
+		expect(module.getSummary({ topicId: '' }, { topics })).toBe(
+			'shared.automations.triggers.topicSubscribed.summaryAny'
+		);
+		expect(render(module.getSummary({ topicId: 't1' }, { topics }))).toBe('Topic: Product news');
+		expect(module.getSummary({ topicId: 'gone' }, { topics })).toBe(
+			'shared.automations.triggers.topicSubscribed.summaryUnknown'
+		);
+	});
+
+	it('every message it can hand back is in the catalog', () => {
+		expect(resolves(module.label)).toBe(true);
+		expect(resolves(module.description)).toBe(true);
+		expect(resolves('shared.automations.triggers.topicSubscribed.topicRequired')).toBe(true);
+		expect(resolves('shared.automations.triggers.topicSubscribed.summaryAny')).toBe(true);
+		expect(resolves('shared.automations.triggers.topicSubscribed.summaryUnknown')).toBe(true);
 	});
 });

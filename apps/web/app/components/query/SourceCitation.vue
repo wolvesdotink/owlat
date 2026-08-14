@@ -10,14 +10,19 @@ const props = defineProps<{
 	filename?: string;
 }>();
 
+const { t } = useI18n();
+
 const icon = computed(() =>
 	props.kind === 'file' ? 'lucide:file-text' : entryTypeIcon(props.entryType ?? ''),
 );
 
 const tooltip = computed(() =>
 	props.kind === 'file'
-		? `file: ${props.filename ?? props.title}`
-		: `${props.entryType ?? 'knowledge'}: ${props.title}`,
+		? t('components.query.sourceCitation.fileTooltip', { name: props.filename ?? props.title })
+		: t('components.query.sourceCitation.knowledgeTooltip', {
+				entryType: props.entryType ?? t('components.query.sourceCitation.knowledgeFallback'),
+				title: props.title,
+			}),
 );
 </script>
 

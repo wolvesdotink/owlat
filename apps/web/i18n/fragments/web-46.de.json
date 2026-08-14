@@ -1,0 +1,108 @@
+{
+	"shared": {
+		"useFormSettings": {
+			"operations": {
+				"createForm": "Formular-Endpunkt erstellen",
+				"updateForm": "Formular-Endpunkt aktualisieren",
+				"deleteForm": "Formular-Endpunkt löschen"
+			},
+			"errors": {
+				"fieldNeedsKeyAndLabel": "Jedes Feld braucht einen Schlüssel und eine Bezeichnung",
+				"duplicateFieldKey": "Doppelter Feldschlüssel „{key}“",
+				"noFields": "Fügen Sie mindestens ein Feld hinzu",
+				"emailFieldRequired": "Ein Formular braucht mindestens ein E-Mail-Feld",
+				"nameRequired": "Formularname ist erforderlich"
+			},
+			"toasts": {
+				"created": "Formular-Endpunkt erfolgreich erstellt",
+				"updated": "Formular-Endpunkt erfolgreich aktualisiert",
+				"deleted": "Formular-Endpunkt erfolgreich gelöscht",
+				"enabled": "Formular „{name}“ aktiviert",
+				"disabled": "Formular „{name}“ deaktiviert",
+				"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"
+			}
+		},
+		"useFormValidation": {
+			"rules": {
+				"required": "Dieses Feld ist erforderlich",
+				"email": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
+				"minLength": "Muss mindestens {min} Zeichen lang sein",
+				"maxLength": "Darf höchstens {max} Zeichen lang sein",
+				"pattern": "Ungültiges Format",
+				"domain": "Bitte geben Sie einen gültigen Domainnamen ein",
+				"url": "Bitte geben Sie eine gültige URL ein"
+			}
+		},
+		"useInviteLinks": {
+			"toasts": {
+				"copied": "Einladungslink kopiert",
+				"copyFailed": "Der Link konnte nicht kopiert werden"
+			}
+		},
+		"useKeyboardShortcuts": {
+			"descriptions": {
+				"goToDashboard": "Zum Dashboard",
+				"goToContacts": "Zu den Kontakten",
+				"goToEmails": "Zu den E-Mails",
+				"goToAutomations": "Zu den Automationen",
+				"goToCampaigns": "Zu den Kampagnen",
+				"goToTransactional": "Zu Transaktional",
+				"goToSettings": "Zu den Einstellungen",
+				"newItem": "Neues Element",
+				"save": "Speichern",
+				"closeCancel": "Schließen / Abbrechen"
+			}
+		},
+		"useKnowledgeGraph": {
+			"operations": {
+				"createEntry": "Wissenseintrag erstellen",
+				"updateEntry": "Wissenseintrag aktualisieren",
+				"deleteEntry": "Wissenseintrag löschen",
+				"addRelation": "Wissensbeziehung hinzufügen",
+				"removeRelation": "Wissensbeziehung entfernen"
+			}
+		},
+		"useMediaLibrary": {
+			"operations": {
+				"getUploadUrl": "Upload-URL abrufen",
+				"saveAsset": "Medien-Asset speichern",
+				"updateAsset": "Medien-Asset aktualisieren",
+				"deleteAssets": "Medien-Assets löschen"
+			},
+			"toasts": {
+				"uploadFailed": "{count} Datei(en) konnten nicht hochgeladen werden"
+			}
+		},
+		"useModal": {
+			"genericError": "Ein Fehler ist aufgetreten"
+		},
+		"useOptimisticMutation": {
+			"undo": "Rückgängig"
+		},
+		"useOrganization": {
+			"operations": {
+				"reserveMailbox": "Postfach für Einladung reservieren",
+				"cancelReservedMailbox": "Postfachreservierung aufheben",
+				"cancelReservedInboxAccess": "Reservierten Posteingangszugriff aufheben",
+				"resendInvitation": "Einladung erneut senden"
+			},
+			"errors": {
+				"notCurrentOwner": "Nur der aktuelle Eigentümer kann die Eigentümerschaft übertragen",
+				"alreadyOwner": "Sie sind bereits der Eigentümer",
+				"noActiveOrganization": "Keine aktive Organisation",
+				"organizationSyncTimeout": "Zeitüberschreitung beim Aktualisieren der aktiven Organisation",
+				"membersLoadFailed": "Die Teammitglieder konnten nicht geladen werden",
+				"sendInvitationFailed": "Die Einladung konnte nicht gesendet werden",
+				"mailboxNotReserved": "Einladung gesendet, aber: Das Postfach konnte für diese Einladung nicht reserviert werden",
+				"removeMemberFailed": "Das Mitglied konnte nicht entfernt werden",
+				"updateRoleFailed": "Die Rolle konnte nicht aktualisiert werden",
+				"transferOwnershipFailed": "Die Eigentümerschaft konnte nicht übertragen werden",
+				"cancelInvitationFailed": "Die Einladung konnte nicht zurückgezogen werden",
+				"resendInvitationFailed": "Die Einladung konnte nicht erneut gesendet werden",
+				"setActiveOrganizationFailed": "Die aktive Organisation konnte nicht festgelegt werden",
+				"updateOrganizationFailed": "Die Organisation konnte nicht aktualisiert werden",
+				"getOrganizationFailed": "Die Organisation konnte nicht geladen werden"
+			}
+		}
+	}
+}

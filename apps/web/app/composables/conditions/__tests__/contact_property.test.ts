@@ -6,7 +6,16 @@ import {
 	operatorsForField,
 	operatorNeedsValue,
 } from '../contact_property';
-import type { ConditionEditorContext } from '../types';
+import type { ConditionEditorContext, LocalizedText } from '../types';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The module is a module-scope singleton, so it carries catalog keys rather
+ * than sentences. Rendering them through the real English catalog keeps these
+ * assertions on the copy a person reads.
+ */
+const { t } = createTestI18n().global;
+const render = (text: LocalizedText) => t(text.key, text.params ?? {});
 
 const makeCtx = (
 	contactProperties: Doc<'contactProperties'>[] = []
@@ -49,23 +58,27 @@ describe('contactPropertyEditorModule', () => {
 	describe('validateForSubmit', () => {
 		it('flags missing field', () => {
 			expect(
-				contactPropertyEditorModule.validateForSubmit({
-					kind: 'contact_property',
-					field: '',
-					operator: 'equals',
-					value: 'x',
-				})
+				t(
+					contactPropertyEditorModule.validateForSubmit({
+						kind: 'contact_property',
+						field: '',
+						operator: 'equals',
+						value: 'x',
+					})!
+				)
 			).toBe('Please select a property');
 		});
 
 		it('flags missing value for value-requiring operators', () => {
 			expect(
-				contactPropertyEditorModule.validateForSubmit({
-					kind: 'contact_property',
-					field: 'company',
-					operator: 'equals',
-					value: '',
-				})
+				t(
+					contactPropertyEditorModule.validateForSubmit({
+						kind: 'contact_property',
+						field: 'company',
+						operator: 'equals',
+						value: '',
+					})!
+				)
 			).toBe('Please enter a value');
 		});
 
@@ -116,6 +129,12 @@ describe('contactPropertyEditorModule', () => {
 			const ops = operatorsForField('email', []);
 			expect(ops.map((o) => o.value)).toContain('contains');
 		});
+
+		it('labels every operator with a catalog key that renders', () => {
+			const ops = operatorsForField('lifetime_value', [numberProp]);
+			expect(ops.map((o) => t(o.label))).toContain('Greater than');
+			expect(ops.every((o) => t(o.label) !== o.label)).toBe(true);
+		});
 	});
 
 	describe('operatorNeedsValue', () => {
@@ -136,29 +155,46 @@ describe('contactPropertyEditorModule', () => {
 	describe('getDescription', () => {
 		it('returns "Select a property" when field is empty', () => {
 			expect(
-				contactPropertyEditorModule.getDescription(
-					{ kind: 'contact_property', field: '', operator: 'equals', value: '' },
-					makeCtx()
+				render(
+					contactPropertyEditorModule.getDescription(
+						{ kind: 'contact_property', field: '', operator: 'equals', value: '' },
+						makeCtx()
+					)
 				)
 			).toBe('Select a property');
 		});
 
 		it('uses property label from context when available', () => {
 			expect(
-				contactPropertyEditorModule.getDescription(
-					{ kind: 'contact_property', field: 'company', operator: 'equals', value: 'Acme' },
-					makeCtx([stringProp])
+				render(
+					contactPropertyEditorModule.getDescription(
+						{ kind: 'contact_property', field: 'company', operator: 'equals', value: 'Acme' },
+						makeCtx([stringProp])
+					)
 				)
 			).toBe('Company equals "Acme"');
 		});
 
 		it('omits value rendering for value-less operators', () => {
 			expect(
-				contactPropertyEditorModule.getDescription(
-					{ kind: 'contact_property', field: 'company', operator: 'is_empty', value: '' },
-					makeCtx([stringProp])
+				render(
+					contactPropertyEditorModule.getDescription(
+						{ kind: 'contact_property', field: 'company', operator: 'is_empty', value: '' },
+						makeCtx([stringProp])
+					)
 				)
 			).toBe('Company is empty');
+		});
+
+		it('translates the noun of a built-in field instead of interpolating it', () => {
+			const text = contactPropertyEditorModule.getDescription(
+				{ kind: 'contact_property', field: 'firstName', operator: 'equals', value: 'Ada' },
+				makeCtx()
+			);
+			expect(text.key).toBe(
+				'shared.conditions.contact_property.builtInDescriptions.firstName.equals'
+			);
+			expect(render(text)).toBe('First Name equals "Ada"');
 		});
 	});
 });

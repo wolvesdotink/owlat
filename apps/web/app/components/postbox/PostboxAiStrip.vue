@@ -48,7 +48,7 @@ const cacheQuery = useConvexQuery(api.mail.summaryCache.getThreadSummary, () => 
 	messageId: props.messageId as Id<'mailMessages'>,
 }));
 const summaryGenOp = useBackendOperation(api.mail.ai.getOrGenerateThreadSummary, {
-	label: () => t('components.postbox.aiStrip.summarizeOperation'),
+	label: () => t('components.postbox.postboxAiStrip.summarizeOperation'),
 	type: 'action',
 });
 
@@ -105,7 +105,7 @@ const question = ref('');
 const askHistory = ref<Turn[]>([]);
 const askErrored = ref(false);
 const askOp = useBackendOperation(api.mail.ai.askThread, {
-	label: () => t('components.postbox.aiStrip.askOperation'),
+	label: () => t('components.postbox.postboxAiStrip.askOperation'),
 	type: 'action',
 });
 const askBusy = computed(() => askOp.isLoading.value);
@@ -134,7 +134,7 @@ function clearAsk() {
 // --- Draft reply (formerly PostboxAiAssist suggest): reply suggestions.
 const suggestions = ref<string[]>([]);
 const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
-	label: () => t('components.postbox.aiStrip.suggestOperation'),
+	label: () => t('components.postbox.postboxAiStrip.suggestOperation'),
 	type: 'action',
 });
 const suggestBusy = computed(() => suggestOp.isLoading.value);
@@ -205,7 +205,7 @@ const visible = computed(
 					:class="{ truncate: !summaryExpanded }"
 				>
 					<span class="font-medium text-text-tertiary">{{
-						t('components.postbox.aiStrip.summaryLabel')
+						t('components.postbox.postboxAiStrip.summaryLabel')
 					}}</span>
 					<template v-if="!summaryExpanded"> {{ oneLine }}</template>
 				</p>
@@ -213,13 +213,13 @@ const visible = computed(
 					type="button"
 					class="shrink-0 text-xs text-text-tertiary hover:text-text-primary"
 					:aria-expanded="summaryExpanded"
-					:aria-label="t('components.postbox.aiStrip.toggleSummaryDetail')"
+					:aria-label="t('components.postbox.postboxAiStrip.toggleSummaryDetail')"
 					@click="summaryExpanded = !summaryExpanded"
 				>
 					{{
 						summaryExpanded
-							? t('components.postbox.aiStrip.less')
-							: t('components.postbox.aiStrip.more')
+							? t('components.postbox.postboxAiStrip.less')
+							: t('components.postbox.postboxAiStrip.more')
 					}}
 				</button>
 			</div>
@@ -241,13 +241,13 @@ const visible = computed(
 				size="sm"
 				class="gap-1.5 px-2.5 py-1 text-xs"
 				:aria-expanded="openSection === 'ask'"
-				:aria-label="t('components.postbox.aiStrip.askAbout')"
+				:aria-label="t('components.postbox.postboxAiStrip.askAbout')"
 				@click="toggleAsk"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:message-circle-question" class="w-3.5 h-3.5" />
 				</template>
-				{{ t('components.postbox.aiStrip.ask') }}
+				{{ t('components.postbox.postboxAiStrip.ask') }}
 			</UiButton>
 			<UiButton
 				variant="ghost"
@@ -255,7 +255,7 @@ const visible = computed(
 				class="gap-1.5 px-2.5 py-1 text-xs"
 				:aria-expanded="openSection === 'suggest'"
 				:disabled="suggestBusy"
-				:aria-label="t('components.postbox.aiStrip.draftAReply')"
+				:aria-label="t('components.postbox.postboxAiStrip.draftAReply')"
 				@click="toggleSuggest"
 			>
 				<template #iconLeft>
@@ -265,7 +265,7 @@ const visible = computed(
 						:class="{ 'animate-spin': suggestBusy }"
 					/>
 				</template>
-				{{ t('components.postbox.aiStrip.draftReply') }}
+				{{ t('components.postbox.postboxAiStrip.draftReply') }}
 			</UiButton>
 		</div>
 
@@ -283,10 +283,10 @@ const visible = computed(
 			<div aria-live="polite" :aria-busy="askBusy">
 				<p v-if="askBusy" class="flex items-center gap-1.5 text-xs text-text-tertiary">
 					<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
-					{{ t('components.postbox.aiStrip.thinking') }}
+					{{ t('components.postbox.postboxAiStrip.thinking') }}
 				</p>
 				<p v-else-if="askErrored" class="text-xs text-text-tertiary">
-					{{ t('components.postbox.aiStrip.askFailed') }}
+					{{ t('components.postbox.postboxAiStrip.askFailed') }}
 				</p>
 			</div>
 
@@ -298,8 +298,8 @@ const visible = computed(
 					v-model="question"
 					type="text"
 					class="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none"
-					:placeholder="t('components.postbox.aiStrip.askPlaceholder')"
-					:aria-label="t('components.postbox.aiStrip.askAbout')"
+					:placeholder="t('components.postbox.postboxAiStrip.askPlaceholder')"
+					:aria-label="t('components.postbox.postboxAiStrip.askAbout')"
 					:disabled="askBusy"
 					@keydown.enter.prevent="submitAsk"
 					@keydown.esc.prevent="clearAsk"
@@ -308,7 +308,7 @@ const visible = computed(
 					v-if="question.trim()"
 					type="button"
 					class="shrink-0 text-text-tertiary hover:text-text-primary disabled:opacity-50"
-					:aria-label="t('components.postbox.aiStrip.ask')"
+					:aria-label="t('components.postbox.postboxAiStrip.ask')"
 					:disabled="askBusy"
 					@click="submitAsk"
 				>
@@ -324,11 +324,11 @@ const visible = computed(
 			aria-live="polite"
 			:aria-busy="suggestBusy"
 		>
-			<span v-if="suggestBusy" class="sr-only">{{ t('components.postbox.aiStrip.working') }}</span>
+			<span v-if="suggestBusy" class="sr-only">{{ t('components.postbox.postboxAiStrip.working') }}</span>
 			<div
 				v-if="suggestions.length > 0"
 				role="group"
-				:aria-label="t('components.postbox.aiStrip.suggestedReplies')"
+				:aria-label="t('components.postbox.postboxAiStrip.suggestedReplies')"
 				class="flex flex-wrap gap-2"
 			>
 				<button
@@ -342,7 +342,7 @@ const visible = computed(
 				</button>
 			</div>
 			<p v-else-if="!suggestBusy" class="text-xs text-text-tertiary">
-				{{ t('components.postbox.aiStrip.noSuggestions') }}
+				{{ t('components.postbox.postboxAiStrip.noSuggestions') }}
 			</p>
 		</div>
 	</div>

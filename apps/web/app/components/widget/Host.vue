@@ -22,6 +22,8 @@ const props = defineProps<{
 	context?: Ctx;
 }>();
 
+const { t } = useI18n();
+
 const error = ref<Error | null>(null);
 // The labelled region wrapper. Activating "Try again" unmounts the button that
 // held focus, so focus must be moved somewhere sensible or it falls to <body>.
@@ -78,9 +80,11 @@ function retry() {
 			<div class="flex flex-col items-center gap-2">
 				<Icon name="lucide:alert-circle" class="w-6 h-6 text-error" />
 				<p class="text-sm text-text-secondary">
-					This panel ran into a problem and was hidden to keep the rest of the page working.
+					{{ t('components.widget.host.failed') }}
 				</p>
-				<UiButton variant="secondary" size="sm" @click="retry">Try again</UiButton>
+				<UiButton variant="secondary" size="sm" @click="retry">
+					{{ t('components.widget.host.tryAgain') }}
+				</UiButton>
 			</div>
 		</div>
 		<Suspense v-else :key="attempt">
@@ -88,7 +92,9 @@ function retry() {
 			<template #fallback>
 				<div class="p-4 flex items-center justify-center gap-2" aria-busy="true">
 					<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
-					<span class="sr-only">Loading {{ regionLabel }}…</span>
+					<span class="sr-only">{{
+						t('components.widget.host.loading', { label: regionLabel })
+					}}</span>
 				</div>
 			</template>
 		</Suspense>

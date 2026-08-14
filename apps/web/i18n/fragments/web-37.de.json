@@ -1,0 +1,550 @@
+{
+	"dashboard": {
+		"send": {
+			"emails": {
+				"detail": {
+					"edit": {
+						"pageTitle": "E-Mail bearbeiten — Owlat",
+						"operations": {
+							"save": "E-Mail speichern",
+							"publish": "E-Mail veröffentlichen",
+							"unpublish": "Veröffentlichung zurücknehmen"
+						},
+						"variables": {
+							"firstName": "Vorname",
+							"lastName": "Nachname"
+						},
+						"toasts": {
+							"unpublished": "E-Mail wurde in den Entwurf zurückgesetzt",
+							"saveBeforePublish": "Speichern Sie die E-Mail, bevor Sie sie veröffentlichen",
+							"published": "E-Mail veröffentlicht"
+						},
+						"loadError": "Diese Vorlage konnte nicht geladen werden",
+						"loading": "Vorlage wird geladen...",
+						"notFound": {
+							"title": "Vorlage nicht gefunden",
+							"description": "Diese E-Mail-Vorlage existiert nicht oder wurde gelöscht."
+						},
+						"backToEmails": "Zurück zu den E-Mails",
+						"builderError": "Im E-Mail-Editor ist ein unerwarteter Fehler aufgetreten. Bitte laden Sie die Seite neu — Ihre zuletzt gespeicherte Version ist sicher.",
+						"saveBeforePublishHint": "Speichern Sie Ihre Änderungen vor dem Veröffentlichen",
+						"publish": "Veröffentlichen",
+						"unpublish": "Zurückziehen",
+						"manageTranslations": "Übersetzungen verwalten",
+						"translations": "Übersetzungen"
+					},
+					"settings": {
+						"pageTitle": "E-Mail-Einstellungen — Owlat",
+						"operations": {
+							"save": "Einstellungen speichern",
+							"changeType": "E-Mail-Typ ändern",
+							"changeDefaultLanguage": "Standardsprache ändern"
+						},
+						"languageWithNative": "{label} ({native})",
+						"toasts": {
+							"missingOverlay": "Fügen Sie eine Übersetzung für {language} hinzu, bevor Sie diese Sprache zur Standardsprache machen.",
+							"defaultLanguageUpdated": "Standardsprache aktualisiert",
+							"saved": "Einstellungen erfolgreich gespeichert"
+						},
+						"title": "E-Mail-Einstellungen",
+						"unsavedChanges": "Nicht gespeicherte Änderungen",
+						"saveChanges": "Änderungen speichern",
+						"loadError": "Diese Vorlage konnte nicht geladen werden",
+						"loading": "Vorlage wird geladen...",
+						"notFound": {
+							"title": "Vorlage nicht gefunden",
+							"description": "Diese E-Mail-Vorlage existiert nicht oder wurde gelöscht."
+						},
+						"backToEmails": "Zurück zu den E-Mails",
+						"translations": {
+							"title": "Übersetzungen",
+							"description": "Fügen Sie übersetzte Betreffzeilen und Vorschautexte für weitere Sprachen hinzu",
+							"addLanguage": "Sprache hinzufügen",
+							"emptyTitle": "Noch keine Übersetzungen hinzugefügt",
+							"emptyDescription": "Fügen Sie Sprachen hinzu, um übersetzte Betreffzeilen und Vorschautexte bereitzustellen",
+							"removeLanguage": "Sprache entfernen",
+							"subjectLabel": "Betreffzeile",
+							"subjectPlaceholder": "Betreff auf {language}",
+							"subjectHelp": "Leer lassen, um den Standardbetreff zu verwenden.",
+							"previewLabel": "Vorschautext",
+							"previewPlaceholder": "Vorschautext auf {language}",
+							"previewHelp": "Leer lassen, um den Standard-Vorschautext zu verwenden.",
+							"selectPrompt": "Wählen Sie oben eine Sprache aus, um ihre Übersetzung zu bearbeiten"
+						},
+						"info": {
+							"title": "So funktionieren Übersetzungen",
+							"body": "Beim Versand einer E-Mail prüft das System die Sprachpräferenz jedes Empfängers. Existiert eine Übersetzung für seine Sprache, erhält er den übersetzten Betreff und Vorschautext. Andernfalls erhält er die Inhalte in der Standardsprache."
+						}
+					},
+					"translations": {
+						"pageTitle": "E-Mail-Übersetzungen — Owlat"
+					}
+				}
+			},
+			"marketing": {
+				"index": {
+					"pageTitle": "Marketing-E-Mails — Owlat",
+					"sort": {
+						"updatedDesc": "Zuletzt geändert",
+						"updatedAsc": "Am längsten nicht geändert",
+						"createdDesc": "Zuletzt erstellt",
+						"createdAsc": "Zuerst erstellt",
+						"nameAsc": "Name (A-Z)",
+						"nameDesc": "Name (Z-A)"
+					},
+					"operations": {
+						"duplicate": "Vorlage duplizieren",
+						"delete": "Vorlage löschen",
+						"create": "Vorlage erstellen"
+					},
+					"status": {
+						"published": "Veröffentlicht",
+						"draft": "Entwurf"
+					},
+					"toasts": {
+						"duplicated": "Vorlage erfolgreich dupliziert",
+						"deleted": "Vorlage erfolgreich gelöscht"
+					},
+					"title": "Marketing-Vorlagen",
+					"subtitle": "Erstellen und verwalten Sie Marketing-E-Mail-Vorlagen für Kampagnen und Newsletter",
+					"newTemplate": "Neue Marketing-Vorlage",
+					"templateCount": "{count} Marketing-Vorlage | {count} Marketing-Vorlagen",
+					"searchPlaceholder": "Vorlagen suchen...",
+					"sortLabel": "Vorlagen sortieren",
+					"gridView": "Kachelansicht",
+					"listView": "Listenansicht",
+					"loadError": "Vorlagen konnten nicht geladen werden",
+					"loadingTemplates": "Vorlagen werden geladen...",
+					"emptyNoTeam": {
+						"title": "Kein Team ausgewählt",
+						"description": "Erstellen oder wählen Sie ein Team, um E-Mail-Vorlagen anzulegen."
+					},
+					"empty": {
+						"title": "Noch keine Marketing-Vorlagen",
+						"description": "Erstellen Sie Ihre erste Marketing-Vorlage, um Kampagnen und Newsletter zu versenden.",
+						"action": "Marketing-Vorlage erstellen"
+					},
+					"noResults": {
+						"title": "Keine Ergebnisse gefunden",
+						"description": "Keine Vorlagen passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff."
+					},
+					"clearSearch": "Suche zurücksetzen",
+					"editAriaLabel": "{name} bearbeiten",
+					"noSubject": "Kein Betreff",
+					"updatedAt": "Aktualisiert {date}",
+					"rowActions": "Vorlagenaktionen",
+					"columns": {
+						"subject": "Betreff",
+						"updated": "Aktualisiert"
+					},
+					"creating": "Wird erstellt...",
+					"createAndEdit": "Erstellen & bearbeiten",
+					"delete": {
+						"title": "Vorlage löschen",
+						"confirm": "Möchten Sie {name} wirklich löschen?",
+						"description": "Diese Aktion kann nicht rückgängig gemacht werden. Die Vorlage wird endgültig gelöscht.",
+						"confirmButton": "Vorlage löschen",
+						"deleting": "Wird gelöscht..."
+					}
+				}
+			},
+			"transactional": {
+				"index": {
+					"pageTitle": "Transaktions-E-Mails — Owlat",
+					"title": "Transaktions-E-Mails",
+					"subtitle": "Per API ausgelöste E-Mails für Ihre Anwendung",
+					"newEmail": "Neue Transaktions-E-Mail",
+					"searchPlaceholder": "Nach Name oder Slug suchen...",
+					"sortLabel": "E-Mails sortieren",
+					"gridView": "Kachelansicht",
+					"listView": "Listenansicht",
+					"loadError": "Transaktions-E-Mails konnten nicht geladen werden",
+					"loadingEmails": "Transaktions-E-Mails werden geladen...",
+					"emptyNoWorkspace": {
+						"title": "Kein Workspace ausgewählt",
+						"description": "Erstellen oder wählen Sie einen Workspace, um Transaktions-E-Mails anzulegen."
+					},
+					"empty": {
+						"title": "Noch keine Transaktions-E-Mails",
+						"description": "Transaktions-E-Mails werden von Ihrer Anwendung über die API ausgelöst. Erstellen Sie Ihre erste, um loszulegen.",
+						"action": "Transaktions-E-Mail erstellen"
+					},
+					"noResults": {
+						"title": "Keine Ergebnisse gefunden",
+						"description": "Keine Transaktions-E-Mails passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff."
+					},
+					"clearSearch": "Suche zurücksetzen",
+					"editAriaLabel": "{name} bearbeiten",
+					"viewApiCode": "API-Code anzeigen",
+					"viewSends": "Sendungen anzeigen",
+					"noSubject": "Kein Betreff",
+					"sendCount": "{count} Sendungen",
+					"updatedAt": "Aktualisiert {date}",
+					"moreActions": "Weitere Aktionen",
+					"columns": {
+						"slug": "Slug",
+						"sends": "Sendungen",
+						"updated": "Aktualisiert"
+					},
+					"create": {
+						"title": "Transaktions-E-Mail erstellen",
+						"namePlaceholder": "z. B. Willkommens-E-Mail, Bestellbestätigung",
+						"slugLabel": "Slug",
+						"slugPlaceholder": "z. B. welcome-email, order-confirmation",
+						"slugHelp": "Dient zur Identifikation dieser E-Mail in API-Aufrufen. Verwenden Sie Kleinbuchstaben, Ziffern und Bindestriche.",
+						"defaultLanguage": "Standardsprache",
+						"creating": "Wird erstellt...",
+						"submit": "Erstellen & bearbeiten"
+					},
+					"delete": {
+						"title": "Transaktions-E-Mail löschen",
+						"confirm": "Möchten Sie {name} wirklich löschen?",
+						"description": "Diese Aktion kann nicht rückgängig gemacht werden. Alle API-Aufrufe, die auf diese E-Mail verweisen, schlagen danach fehl.",
+						"deleting": "Wird gelöscht..."
+					},
+					"apiUsage": {
+						"title": "API-Nutzung",
+						"subtitle": "„{name}“ über die API senden",
+						"copied": "Kopiert!",
+						"note": "{label} Ersetzen Sie {placeholder} durch Ihren tatsächlichen API-Schlüssel. API-Schlüssel können Sie unter {settings} erstellen.",
+						"noteLabel": "Hinweis:"
+					}
+				},
+				"detail": {
+					"edit": {
+						"pageTitle": "Transaktions-E-Mail bearbeiten — Owlat",
+						"operations": {
+							"save": "E-Mail speichern",
+							"publish": "E-Mail veröffentlichen",
+							"unpublish": "Veröffentlichung zurücknehmen",
+							"saveVariable": "Variable speichern"
+						},
+						"variableGroup": "Datenvariablen",
+						"toasts": {
+							"invalidVariableName": "Variablennamen müssen mit einem Buchstaben beginnen und dürfen Buchstaben, Ziffern oder Unterstriche enthalten.",
+							"duplicateVariable": "Diese Variable existiert bereits."
+						},
+						"loadError": "Diese E-Mail konnte nicht geladen werden",
+						"loading": "E-Mail wird geladen...",
+						"notFound": {
+							"title": "E-Mail nicht gefunden",
+							"description": "Diese Transaktions-E-Mail existiert nicht oder wurde gelöscht."
+						},
+						"backToEmails": "Zurück zu den E-Mails",
+						"status": {
+							"published": "Veröffentlicht",
+							"pendingReview": "Wartet auf Prüfung",
+							"draft": "Entwurf"
+						},
+						"statusHint": {
+							"published": "Diese E-Mail ist live und kann über die API versendet werden.",
+							"pendingReview": "Diese E-Mail wurde vom Inhaltsscanner markiert und kann erst versendet werden, wenn ein Administrator sie freigibt.",
+							"draft": "Diese E-Mail ist ein Entwurf. Veröffentlichen Sie sie, um sie über die API versendbar zu machen."
+						},
+						"manageTranslations": "Übersetzungen verwalten",
+						"translations": "Übersetzungen",
+						"pendingReviewButtonHint": "Vom Inhaltsscanner markiert — ein Administrator muss diese E-Mail freigeben, bevor sie versendet werden kann.",
+						"publishHint": {
+							"unpublish": "Diese E-Mail in den Entwurf zurücksetzen (stoppt neue Sendungen)",
+							"publish": "Diese E-Mail veröffentlichen, um sie über die API versendbar zu machen"
+						},
+						"publish": "Veröffentlichen",
+						"unpublish": "Zurückziehen",
+						"reviewBanner": {
+							"title": "Wartet auf Prüfung",
+							"body": "Diese E-Mail wurde von unserem Inhaltsscanner markiert und wartet auf die Prüfung durch einen Plattform-Administrator. Sie ist nicht veröffentlicht und die Versand-API weist Anfragen dafür ab, bis sie freigegeben wurde. Bearbeiten Sie den Inhalt und veröffentlichen Sie erneut, um die Prüfung zu wiederholen."
+						},
+						"unsubscribe": {
+							"title": "Abmeldelink anzeigen",
+							"description": "Hängt jeder Sendung dieser E-Mail eine Fußzeile mit „Einstellungen verwalten“ und „Abmelden“ an. Lassen Sie die Option aus für Belege, Passwort-Zurücksetzungen und andere E-Mails, von denen Empfänger sich nicht abmelden können."
+						}
+					},
+					"translations": {
+						"pageTitle": "Übersetzungen der Transaktions-E-Mail — Owlat"
+					},
+					"sends": {
+						"detail": {
+							"pageTitle": "Sendungsdetails — Owlat",
+							"loading": "Sendungsdetails werden geladen...",
+							"notFound": {
+								"title": "Sendung nicht gefunden",
+								"description": "Diese E-Mail-Sendung wurde möglicherweise gelöscht oder Sie haben keinen Zugriff darauf."
+							},
+							"backToList": "Zurück zu den Transaktions-E-Mails"
+						}
+					}
+				}
+			}
+		}
+	},
+	"desktop": {
+		"connect": {
+			"pageTitle": "Desktop-App verbinden — Owlat",
+			"errors": {
+				"tokenRequestFailed": "Es konnte kein Anmelde-Token erstellt werden.",
+				"noToken": "Der Server hat kein Token zurückgegeben.",
+				"generic": "Etwas ist schiefgelaufen.",
+				"credentialsRequired": "E-Mail-Adresse und Passwort sind erforderlich.",
+				"signInFailed": "Anmeldung fehlgeschlagen."
+			},
+			"title": "Desktop-App verbinden",
+			"subtitle": "Melden Sie sich an, um diesen Workspace mit der Owlat-Desktop-App zu verknüpfen.",
+			"invalidReturnLink": "Ungültiger oder fehlender Rücksprung-Link. Öffnen Sie diese Seite erneut aus der Desktop-App.",
+			"signingIn": "Sie werden in der Desktop-App angemeldet…",
+			"fallbackCodeHint": "Die Desktop-App hat sich nicht geöffnet? Fügen Sie diesen Code in ihrem Verbindungsbildschirm ein (einige Minuten gültig):",
+			"copied": "Kopiert!",
+			"password": "Passwort",
+			"signingInButton": "Anmeldung läuft…",
+			"submit": "Anmelden & verbinden"
+		},
+		"welcome": {
+			"pageTitle": "Willkommen — Owlat",
+			"errors": {
+				"urlRequired": "Geben Sie die URL Ihres Owlat-Servers ein.",
+				"connectFailed": "Verbindung zu diesem Server nicht möglich.",
+				"invalidCode": "Das sieht nicht nach einem Verbindungscode aus.",
+				"codeRedeemFailed": "Verbindung mit diesem Code nicht möglich — melden Sie sich erneut an."
+			},
+			"desktopOnly": "Der Workspace-Connector ist nur in der Desktop-App verfügbar.",
+			"heading": "Willkommen bei {brand}",
+			"tagline": "Ihr selbst gehostetes Zuhause für E-Mail, Kontakte und Marketing.",
+			"setup": {
+				"title": "Neuen Server einrichten",
+				"description": "Installieren Sie Owlat per SSH auf einem frischen Linux-Server."
+			},
+			"haveServer": "Sie haben bereits einen Server?",
+			"connectExisting": "Bestehenden Server verbinden →",
+			"connect": {
+				"title": "Mit Ihrem Owlat-Server verbinden",
+				"description": "Geben Sie die Adresse Ihrer Owlat-Instanz ein. Sie melden sich über Ihren Browser an.",
+				"urlPlaceholder": "https://ihre-instanz.owlat.app",
+				"opening": "Browser wird geöffnet…",
+				"submit": "Workspace verbinden",
+				"finishInBrowser": "Schließen Sie die Anmeldung in Ihrem Browser ab — diese App verbindet sich automatisch wieder.",
+				"pasteCodeLabel": "Nichts passiert? Fügen Sie den im Browser angezeigten Verbindungscode ein:",
+				"codePlaceholder": "z. B. 4f2c…:Jh…",
+				"redeeming": "Verbindung wird hergestellt…",
+				"redeemSubmit": "Mit Code verbinden",
+				"startOver": "Von vorn beginnen"
+			},
+			"workspaces": "Ihre Workspaces"
+		},
+		"settings": {
+			"pageTitle": "Einstellungen — Owlat",
+			"theme": {
+				"light": "Hell",
+				"dark": "Dunkel",
+				"system": "System"
+			},
+			"desktopOnly": "Diese Einstellungen sind nur in der Owlat-Desktop-App verfügbar.",
+			"subtitle": "Globale Einstellungen gelten für die Owlat-App auf diesem Gerät, über alle Workspaces hinweg.",
+			"globalHeading": "Global",
+			"appearance": {
+				"title": "Erscheinungsbild",
+				"description": "Design für die gesamte App auf diesem Gerät."
+			},
+			"autostart": {
+				"title": "Beim Anmelden starten",
+				"description": "Owlat automatisch starten, wenn Sie sich anmelden."
+			},
+			"startup": {
+				"title": "Beim Start öffnen",
+				"description": "Welchen Workspace Owlat beim Start öffnet.",
+				"lastActive": "Zuletzt aktiver Workspace"
+			},
+			"notifications": {
+				"title": "Desktop-Benachrichtigungen",
+				"description": "Native Benachrichtigungen für neue E-Mails und Aktivitäten anzeigen."
+			},
+			"unreadBadge": {
+				"title": "Ungelesen-Zähler",
+				"description": "Die Anzahl ungelesener Nachrichten auf dem App-Symbol anzeigen."
+			},
+			"updates": {
+				"title": "Updates",
+				"version": "Owlat {version}.",
+				"description": "Beim Start der App nach neuen Versionen suchen.",
+				"checkNow": "Jetzt nach Updates suchen",
+				"checking": "Wird geprüft — Sie erhalten eine Benachrichtigung mit dem Ergebnis."
+			},
+			"defaultApp": {
+				"title": "Standard-E-Mail-App",
+				"description": "Owlat öffnen, wenn Sie auf einen {mailto}-Link klicken. Ihr Betriebssystem steuert die Standard-E-Mail-App, daher ist dies ein einmaliger Schritt, den Sie dort vornehmen:",
+				"macos": "Öffnen Sie {path} und setzen Sie {setting} auf Owlat.",
+				"macosPath": "Mail > Einstellungen > Allgemein",
+				"macosSetting": "Standard-E-Mail-Programm",
+				"windows": "Öffnen Sie {path}, suchen Sie nach Owlat und legen Sie es als Handler für {scheme} fest.",
+				"windowsPath": "Einstellungen > Apps > Standard-Apps",
+				"linux": "Legen Sie Owlat als Ihren {handler}-Standard fest (zum Beispiel mit {command} oder über die Standardanwendungen Ihrer Desktop-Umgebung).",
+				"other": "Legen Sie Owlat in den Standard-App-Einstellungen Ihres Betriebssystems als {scheme}-Handler fest."
+			},
+			"workspaces": {
+				"heading": "Workspaces",
+				"empty": "Noch keine Workspaces verbunden. Workspace-Einstellungen — Mitglieder, Zustellung, API-Schlüssel und mehr — werden verfügbar, sobald Sie sich mit einem Owlat-Server verbinden.",
+				"connect": "Workspace verbinden",
+				"settings": "Workspace-Einstellungen",
+				"accent": "Akzent",
+				"accentOption": "Akzent {accent}",
+				"mute": "Benachrichtigungen stummschalten",
+				"removeDialog": {
+					"title": "Workspace entfernen?",
+					"description": "{workspace} von diesem Gerät entfernen? Sie werden hier abgemeldet; der Workspace selbst und Ihr Konto bleiben unberührt.",
+					"fallbackName": "Diesen Workspace",
+					"confirm": "Workspace entfernen"
+				}
+			}
+		},
+		"setup": {
+			"pageTitle": "Server einrichten — Owlat",
+			"errors": {
+				"hostRequired": "Geben Sie die Serveradresse ein.",
+				"usernameRequired": "Geben Sie den SSH-Benutzer ein.",
+				"passwordRequired": "Geben Sie das Passwort ein.",
+				"keyPathRequired": "Geben Sie den Pfad zu Ihrer privaten Schlüsseldatei ein.",
+				"privateKeyRequired": "Fügen Sie Ihren privaten Schlüssel ein.",
+				"domainRequired": "Remote-Server benötigen eine öffentliche Domain, damit Sie die App nach der Installation erreichen können. Legen Sie eine unter „Domain & DNS“ fest.",
+				"invalidHostLabels": "Korrigieren Sie die angepassten Hostnamen — jedes Label muss ein gültiges, eindeutiges DNS-Label sein.",
+				"adminEmailInvalid": "Geben Sie eine gültige Administrator-E-Mail-Adresse ein.",
+				"adminNameRequired": "Geben Sie einen Administratornamen ein.",
+				"adminPasswordInvalid": "Prüfen Sie das Administrator-Passwort."
+			},
+			"packs": {
+				"emailClient": "E-Mail-Client",
+				"marketing": "Marketing",
+				"ai": "KI"
+			},
+			"hostLabels": {
+				"inactiveHint": "Wird nur mit dem selbst gehosteten Mailserver verwendet."
+			},
+			"steps": {
+				"features": "Funktionen",
+				"providers": "Anbieter",
+				"domain": "Domain & DNS",
+				"admin": "Administrator"
+			},
+			"auth": {
+				"key": "Privater Schlüssel",
+				"password": "Passwort"
+			},
+			"desktopOnly": "Der Server-Installer ist nur in der Desktop-App verfügbar.",
+			"heading": "{accent} einrichten",
+			"headingAccent": "Neuen Server",
+			"subtitle": "Verbinden Sie sich per SSH mit einem frischen Linux-Server — Owlat installiert und konfiguriert sich selbst.",
+			"fields": {
+				"host": "Serveradresse",
+				"hostPlaceholder": "203.0.113.5 oder vps.example.com",
+				"port": "Port",
+				"sshUser": "SSH-Benutzer",
+				"authentication": "Authentifizierung",
+				"authMethod": "Authentifizierungsmethode",
+				"browse": "Durchsuchen…",
+				"pasteKeyInstead": "Schlüssel stattdessen einfügen",
+				"useKeyFileInstead": "Stattdessen eine Schlüsseldatei verwenden",
+				"passphrasePlaceholder": "Passphrase des Schlüssels (optional)",
+				"sshPasswordPlaceholder": "SSH-Passwort",
+				"installDir": "Installationsverzeichnis",
+				"branch": "Branch",
+				"localSource": "Lokaler Quellordner (Entwicklung)",
+				"localSourcePlaceholder": "/pfad/zu/ihrem/owlat-checkout (optional)",
+				"localSourceHint": "Lädt den Checkout dieses Rechners auf den Server hoch — zum Testen des Installers ohne veröffentlichtes Repository oder Registry."
+			},
+			"showAdvanced": "+ Erweiterte Optionen anzeigen",
+			"hideAdvanced": "− Erweiterte Optionen ausblenden",
+			"imageMode": {
+				"localTitle": "Images auf diesem Rechner bauen",
+				"localHint": "Docker muss hier laufen; die Images werden per SSH auf den Server übertragen. Funktioniert auch auf kleinen Servern.",
+				"serverTitle": "Images auf dem Server bauen",
+				"serverHint": "Kein lokales Docker nötig, aber der Web-Build benötigt ~4 GB RAM (oder Swap) auf dem Server."
+			},
+			"hostKey": {
+				"acknowledge": "Ich weiß, warum sich der Schlüssel dieses Servers geändert hat, und möchte trotzdem verbinden.",
+				"acceptChanged": "Geänderten Schlüssel akzeptieren & fortfahren",
+				"accept": "Akzeptieren & fortfahren"
+			},
+			"connecting": "Verbindung wird hergestellt…",
+			"authenticating": "Authentifizierung läuft…",
+			"connect": "Verbinden",
+			"stepsLabel": "Einrichtungsschritte",
+			"sections": {
+				"featurePacks": "Funktionspakete",
+				"emailSending": "E-Mail-Versand",
+				"ai": "KI (optional)",
+				"admin": "Administratorkonto"
+			},
+			"sending": {
+				"mta": "Owlat MTA (selbst gehostet)",
+				"resend": "Resend",
+				"ses": "Amazon SES",
+				"resendKeyPlaceholder": "Resend-API-Schlüssel (re_…)",
+				"sesRegionPlaceholder": "AWS-Region (us-east-1)",
+				"sesAccessKeyPlaceholder": "Access Key ID",
+				"sesSecretPlaceholder": "Secret Access Key",
+				"mtaHint": "Die Mail-Hostnamen ({outbound} für ausgehend, {returns} für Rückläufer) leiten sich aus der Domain ab, die Sie unten festlegen."
+			},
+			"ai": {
+				"openrouter": "OpenRouter",
+				"openai": "OpenAI",
+				"ollama": "Ollama (lokal)",
+				"keyPlaceholder": "API-Schlüssel"
+			},
+			"admin": {
+				"namePlaceholder": "Ihr Name",
+				"passwordPlaceholder": "Passwort (mind. 12 Zeichen)",
+				"hidePassword": "Passwort ausblenden",
+				"showPassword": "Passwort anzeigen",
+				"confirmPasswordPlaceholder": "Passwort bestätigen",
+				"seedDemo": "Demodaten anlegen (zum Ausprobieren)"
+			},
+			"domain": {
+				"label": "Domain (für den Fernzugriff)",
+				"labelRequired": "Domain (für einen Remote-Server erforderlich)",
+				"placeholder": "wolves.ink (optional)",
+				"placeholderRequired": "wolves.ink",
+				"hint": "Geben Sie eine Domain ein — Owlat leitet daraus alle Hostnamen ab (App, API, Mail).",
+				"hintRemote": "Ein Remote-Server benötigt eine Domain, damit Sie ihn nach der Installation aus dieser App öffnen können — sein eigener {localhost} ist von hier nicht erreichbar.",
+				"hintLocal": "Lassen Sie das Feld nur leer, wenn Sie auf diesem Rechner installieren.",
+				"noDomainWarning": "Ohne Domain ist diese Installation nur auf dem Server selbst erreichbar.",
+				"publicIpLabel": "Öffentliche IP des Servers (für die A-Records)",
+				"publicIpHint": "Sie haben sich über einen Hostnamen verbunden. Wir versuchen, die öffentliche IP des Servers über die SSH-Sitzung auszulesen und hier einzutragen; falls das Feld leer oder falsch ist, fügen Sie die IP aus dem Dashboard Ihres Anbieters ein, damit die A-Records eine echte, kopierbare Adresse zeigen."
+			},
+			"dns": {
+				"createTitle": "Anzulegende DNS-Einträge",
+				"enterDomain": "Geben Sie oben eine Domain ein, um die benötigten Einträge zu sehen.",
+				"enterDomainRemote": "Ein Remote-Server benötigt eine Domain, um aus dieser App erreichbar zu sein.",
+				"enterDomainLocal": "Lassen Sie das Feld für eine lokale Installation auf diesem Rechner leer (kein DNS erforderlich).",
+				"tlsHint": "TLS-Zertifikate werden automatisch ausgestellt, sobald diese Einträge auflösen — halten Sie die Ports 80/443 offen.",
+				"deliverabilityHint": "Damit ist die App online. Für zustellbare E-Mails vervollständigen Sie SPF, DKIM und DMARC nach der ersten Anmeldung unter {settings} — DKIM wird dort erzeugt.",
+				"settingsDomains": "Einstellungen → Domains",
+				"spfMergedNote": "SPF — mit dem bestehenden SPF-Eintrag dieses Hosts zusammengeführt, damit Ihr anderer Mailanbieter weiterhin funktioniert. SPF erlaubt höchstens 10 DNS-Abfragen — prüfen Sie, dass dieses Limit eingehalten wird. Bestätigen Sie es unter Einstellungen → Domains."
+			},
+			"provision": "Server bereitstellen",
+			"done": {
+				"readyTitle": "Ihr Server ist bereit",
+				"openWorkspace": "Workspace öffnen"
+			},
+			"finishing": {
+				"title": "Fast fertig — legen Sie Ihre DNS-Einträge an und öffnen Sie dann Ihren Workspace",
+				"body": "Owlat ist unter {url} installiert, aber die Adresse ist noch nicht erreichbar. Legen Sie die untenstehenden Einträge an; sobald sie auflösen und TLS ausgestellt ist, wird hieraus automatisch „Workspace öffnen“.",
+				"createRecords": "Diese DNS-Einträge anlegen",
+				"tlsHint": "TLS wird automatisch ausgestellt, sobald die Einträge auflösen (Ports 80/443 offen).",
+				"checking": "Wird geprüft…",
+				"checkAgain": "Erneut prüfen"
+			},
+			"loopback": {
+				"title": "Ihr Server läuft",
+				"body": "Er ist unter {url} installiert, aber diese Adresse funktioniert nur auf dem Server selbst — nicht aus dieser App. Führen Sie die Einrichtung mit einer öffentlichen Domain erneut aus, um ihn hier zu öffnen.",
+				"retry": "Domain festlegen & erneut versuchen"
+			},
+			"secrets": {
+				"removed": "Die Setup-Datei — die Ihr Administrator-Passwort und die API-Schlüssel der Anbieter im Klartext enthielt — wurde vom Server entfernt.",
+				"notRemoved": "Die Setup-Datei konnte nicht automatisch entfernt werden. Sie enthält Ihr Administrator-Passwort und die Anbieterschlüssel im Klartext — löschen Sie {file} aus dem Installationsverzeichnis."
+			},
+			"failure": {
+				"title": "Bereitstellung fehlgeschlagen",
+				"lastOutput": "Letzte Fehlerausgabe",
+				"hint": "Öffnen Sie oben das Serverprotokoll für alle Details, passen Sie dann Ihre Konfiguration an und versuchen Sie es erneut.",
+				"retry": "Anpassen & erneut versuchen"
+			}
+		}
+	}
+}

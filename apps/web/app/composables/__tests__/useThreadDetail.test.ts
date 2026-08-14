@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
 import { useThreadDetail } from '../useThreadDetail';
+
+// Called outside a component here, so `useI18n` is stubbed with the real
+// catalog's `t` (and its locale, which the timestamp formatter reads).
+const { t, locale } = createTestI18n().global;
 
 /**
  * Regression tests for the thread-detail "Save & Approve" button.
@@ -19,6 +24,7 @@ describe('useThreadDetail', () => {
 
 	beforeEach(() => {
 		runs = [];
+		vi.stubGlobal('useI18n', () => ({ t, locale }));
 		vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined), isLoading: ref(false) }));
 		vi.stubGlobal('useBackendOperation', () => {
 			const run = vi.fn().mockResolvedValue({ success: true });

@@ -14,11 +14,16 @@
  *   - "Review & send" emits the draft (opens the composer — never auto-sends)
  *     and "Dismiss" emits dismiss.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import PostboxReviewSlot from '../PostboxReviewSlot.vue';
 import type { ReplyQueueDraftSlot } from '~/utils/postboxReplyQueue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
 
 const iconStub = { props: ['name'], template: '<span />' };
 
@@ -36,7 +41,10 @@ function makeSlot(over: Partial<ReplyQueueDraftSlot> = {}): ReplyQueueDraftSlot 
 function mountSlot(slot: ReplyQueueDraftSlot) {
 	return mount(PostboxReviewSlot, {
 		props: { draftSlot: slot },
-		global: { stubs: { Icon: iconStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: iconStub },
+		},
 	});
 }
 

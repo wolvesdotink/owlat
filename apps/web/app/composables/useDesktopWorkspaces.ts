@@ -34,6 +34,22 @@ import {
 	writeSwitchFlag,
 } from '~/lib/desktop/workspaceSwitch';
 
+/**
+ * A failure the connect UI shows the user. The functions that throw it run at
+ * module scope (deep links, boot), where `useI18n` does not exist — so they
+ * carry a message KEY plus its values, and `useDesktopWorkspaces()` translates
+ * on the way out (see `localizeErrors`).
+ */
+class WorkspaceConnectionError extends Error {
+	constructor(
+		readonly messageKey: string,
+		readonly params: Record<string, unknown> = {}
+	) {
+		super(messageKey);
+		this.name = 'WorkspaceConnectionError';
+	}
+}
+
 // ---- module-level reactive state (shared across all callers) ----
 const workspaces = ref<WorkspaceConfig[]>([]);
 const activeId = ref<string | null>(null);
@@ -224,10 +240,14 @@ async function addWorkspace(siteUrlInput: string): Promise<void> {
 	const siteUrl = normalizeSiteUrl(siteUrlInput);
 
 	const res = await fetch(`${siteUrl}/api/instance-info`, { credentials: 'omit' });
-	if (!res.ok) throw new Error(`Could not reach an owlat instance at ${siteUrl}`);
+	if (!res.ok) {
+		throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.unreachable', {
+			siteUrl,
+		});
+	}
 	const info = (await res.json()) as InstanceInfo;
 	if (!info.convexUrl || !info.convexSiteUrl) {
-		throw new Error('That instance did not return a usable configuration.');
+		throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.unusableConfig');
 	}
 
 	const id = crypto.randomUUID();
@@ -248,7 +268,7 @@ async function addWorkspace(siteUrlInput: string): Promise<void> {
  */
 export async function completeConnection(params: { ott: string; state: string }): Promise<void> {
 	const entry = pending.get(params.state);
-	if (!entry) throw new Error('Unexpected sign-in response (state mismatch).');
+	if (!entry) throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.stateMismatch');
 	pending.delete(params.state);
 
 	const { id, info } = entry;
@@ -399,13 +419,30 @@ async function removeWorkspace(id: string): Promise<void> {
 }
 
 export function useDesktopWorkspaces() {
+	const { t } = useI18n();
 	const active = computed(() => workspaces.value.find((w) => w.id === activeId.value) ?? null);
+
+	/**
+	 * The connect flow renders `error.message` straight into the form, so the
+	 * key-carrying failures from the module-scope functions are translated here —
+	 * the one place in this module with a locale.
+	 */
+	async function localizeErrors<T>(run: () => Promise<T>): Promise<T> {
+		try {
+			return await run();
+		} catch (e) {
+			if (e instanceof WorkspaceConnectionError) throw new Error(t(e.messageKey, e.params));
+			throw e;
+		}
+	}
+
 	return {
 		workspaces: readonly(workspaces),
 		activeId: readonly(activeId),
 		active,
-		addWorkspace,
-		completeConnection,
+		addWorkspace: (siteUrlInput: string) => localizeErrors(() => addWorkspace(siteUrlInput)),
+		completeConnection: (params: { ott: string; state: string }) =>
+			localizeErrors(() => completeConnection(params)),
 		switchTo,
 		removeWorkspace,
 		setWorkspaceAccent,

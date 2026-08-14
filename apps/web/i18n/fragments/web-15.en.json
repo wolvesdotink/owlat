@@ -1,0 +1,271 @@
+{
+	"components": {
+		"desktop": {
+			"provisioningTimeline": {
+				"groups": {
+					"connect": "Connect",
+					"server": "Provision",
+					"finish": "Finish"
+				},
+				"progressLabel": "Server provisioning progress",
+				"serverLog": "Server log",
+				"waitingForOutput": "Waiting for output…"
+			},
+			"workspaceMenu": {
+				"switchWorkspace": "Switch workspace",
+				"menuLabel": "Workspaces",
+				"addWorkspace": "Add workspace"
+			}
+		},
+		"domains": {
+			"addDomainForm": {
+				"domainLabel": "Your domain",
+				"domainPlaceholder": "example.com",
+				"subdomainLabel": "Subdomain for sending",
+				"subdomainHint": "— recommended, keeps your apex reputation separate",
+				"subdomainPlaceholder": "mail",
+				"submitLabel": "Add Domain",
+				"adding": "Adding...",
+				"choose": "Choose:",
+				"useApex": "none (use apex)",
+				"trackingPreview": "Your tracking links will use {host}",
+				"trackingPreviewExample": "For example, your tracking links will use {host}",
+				"trackingExampleHost": "links.example.com",
+				"sendingPreview": "You'll send as {address}",
+				"sendingPreviewExample": "For example, you'll send as {address}",
+				"sendingExampleAddress": "you{'@'}mail.example.com",
+				"streamNote": "We recommend one name per kind of mail: {transactionalName} for transactional (receipts, password resets) and {bulkName} for campaigns and lifecycle mail. A subdomain does not inherit your root domain's reputation, so each one needs its own SPF record, its own DKIM key and its own warm-up — which is exactly what keeps a bad campaign away from your password resets. Add them one at a time here; once a domain is added, Owlat generates every record for the whole layout in one pass.",
+				"apexNote": "Sending from your apex {zone} shares its sending reputation with everything else that sends from it, and any SPF record it already publishes must be merged into one. When you verify, Owlat shows the single merged record to publish.",
+				"advanced": "Advanced",
+				"returnPathLabel": "Bounce (return-path) subdomain",
+				"returnPathOptional": "— optional",
+				"returnPathPlaceholder": "bounce",
+				"returnPathPreview": "Bounces will come from {host}",
+				"returnPathPreviewExample": "For example, bounces would come from {host}",
+				"freemailWarning": "You can't publish DNS records for {zone} — it's a shared mailbox provider you don't control. Use a domain you own, or {migrateLink} instead.",
+				"freemailMigrateLink": "connect an external mailbox",
+				"nsWarning": "We couldn't find any nameservers for {zone} — double-check the spelling. You can still add it if the domain is brand new and its DNS is still being set up."
+			},
+			"dnsPropagationNote": {
+				"noteLabel": "Note:",
+				"body": "{note} DNS changes can take up to 48 hours to propagate. After adding these records, click \"Verify Domain\" to check the configuration."
+			},
+			"dnsRecordPanel": {
+				"pendingValueDefault": "Value supplied once this subdomain is added — create the name first, then come back and copy the key.",
+				"rfc": {
+					"dkim": "RFC 6376 (DKIM)",
+					"dmarc": "RFC 7489 (DMARC)",
+					"tlsReporting": "RFC 8460 (TLS reporting)",
+					"mtaSts": "RFC 8461 (MTA-STS)"
+				},
+				"recordHeading": "{label} Record",
+				"standardPill": "Fixed by standard",
+				"standardPillTitle": "This name is set by {rfc} and can't be changed.",
+				"verified": "Verified",
+				"notVerified": "Not verified",
+				"hostName": "Host / Name",
+				"hostNotYetKnown": "Name not known yet — it is {name}, and the selector comes with the value below.",
+				"copyHost": "Copy host",
+				"fullName": "Full name",
+				"copyFullName": "Copy full name",
+				"providerHint": "Some providers want the full name — use whichever your DNS host expects.",
+				"outOfZoneNamed": "This record belongs to a different domain ({zone}), not {domain}. Add it in that domain's DNS zone using the full name shown above.",
+				"outOfZone": "This record belongs to a different domain, not {domain}. Add it in that domain's DNS zone using the full name shown above.",
+				"value": "Value",
+				"copyValue": "Copy value",
+				"found": "Found",
+				"copyFoundValue": "Copy found value",
+				"coexistenceWarning": "This domain already publishes an SPF record for another mail provider. Only one {record} record is allowed per host (RFC 7208 §3.2) — a second one breaks SPF for all your mail. Publish the merged record below instead of the value above. SPF allows at most 10 DNS lookups — double-check the merged record stays within that limit.",
+				"existingRecord": "Existing record",
+				"mergedRecord": "Merged record to publish",
+				"copyMergedValue": "Copy merged value"
+			},
+			"receivingDnsSection": {
+				"reverseDnsOperation": "Check receiving reverse DNS",
+				"heading": "Receiving (inbound mail)",
+				"notEnabled": {
+					"headline": "Receiving isn't turned on yet.",
+					"body": "{headline} This deployment isn't set up to accept mail for your domains. You can add the MX record below now so DNS is ready — but incoming mail won't be accepted until you turn on a receiving feature.",
+					"enableLink": "Turn on receiving in Settings → Features"
+				},
+				"intro": "To receive mail for {domain} through this Owlat instance, publish the MX record below in the DNS settings for {zone}. Inbound mail is delivered to this deployment's mail host ({mailHost}).",
+				"priorityLabel": "Priority / preference:",
+				"mtaSts": {
+					"heading": "Require encryption (MTA-STS)",
+					"intro": "You've turned on a mail-encryption policy for {domain}. Publish both records below in the DNS settings for {zone} so other mail servers can find it and require an encrypted, verified connection when they deliver to you.",
+					"verified": "MTA-STS is live — the DNS record and served policy match, so senders can require encrypted delivery to you.",
+					"notVerified": "MTA-STS isn't verified yet. Publish both records above (DNS can take a little while to propagate) — until then senders won't require encrypted delivery."
+				},
+				"firewall": {
+					"headline": "Inbound port + firewall:",
+					"body": "{headline} other mail servers connect to {mailHost} on TCP port {portCode} to deliver mail, so open inbound TCP {port} on your firewall / security group. Many cloud providers block port {port} by default — confirm your host allows inbound SMTP."
+				},
+				"reverseDns": {
+					"confirmed": "Reverse DNS confirmed: {ptr} matches your mail host — receiving MTAs (Gmail/Yahoo) will forward-confirm this host.",
+					"mismatch": "PTR record found ({ptr}) but it doesn't match {host}. Ask your host to set the reverse DNS (PTR) for this IP to the mail host so it forward-confirms.",
+					"missing": "No PTR record found for {host} — ask your host to set reverse DNS (PTR) for the mail host's IP, or Gmail/Yahoo may reject or spam-folder your mail."
+				}
+			},
+			"recordRow": {
+				"rowLabel": "DNS records for {domain}",
+				"status": {
+					"pending": "Pending",
+					"verified": "Verified",
+					"failed": "Failed",
+					"registering": "Registering"
+				},
+				"sendsAs": "Sends as {address}",
+				"bouncesVia": "bounces via {host}",
+				"hint": {
+					"registering": "setting up domain…",
+					"registrationFailed": "registration failed — click Retry to try again",
+					"verified": "verified {date}",
+					"lastChecked": "last checked {date}",
+					"added": "added {date}"
+				},
+				"forceVerify": "Force Verify",
+				"forceVerifyTitle": "Skip DNS verification and mark this domain as verified — dev/selfhost only",
+				"devBadge": "Dev",
+				"waitingForRegistration": "Waiting for registration...",
+				"verifyTitle": "Verify DNS records",
+				"registering": "Registering...",
+				"verifying": "Verifying...",
+				"verify": "Verify",
+				"removeDomain": "Remove domain",
+				"settingUp": "Setting up domain. DNS records will appear shortly...",
+				"registrationFailed": "Registration Failed",
+				"retryRegistration": "Retry Registration",
+				"intro": {
+					"headline": "What this domain does.",
+					"body": "{headline} Mail from your team is sent as {address}. The records below prove to receiving servers that Owlat is allowed to do that — nothing needs to be hosted at this name, and it won't affect your website at {zone}."
+				},
+				"configureHeading": "Configure these DNS records in the DNS settings for {zone} (your registrar or DNS host):",
+				"autoRecheckTitle": "We recheck your DNS automatically every 30 seconds while this panel is open.",
+				"checkingDns": "Checking DNS…",
+				"dmarcPolicyLabel": "DMARC enforcement policy",
+				"dmarcPolicyHelp": "Start at monitor-only, then raise to quarantine or reject once SPF + DKIM are aligned. Changing this updates the _dmarc record above — re-publish it and verify again.",
+				"mailFromHeading": "MAIL FROM Domain"
+			},
+			"returnPathEditor": {
+				"saveOperation": "Set return-path host",
+				"errors": {
+					"required": "Enter a bounce subdomain like bounce",
+					"invalidLabel": "Use a single label like bounce (letters, digits, hyphens)"
+				},
+				"heading": "Return-path host",
+				"currentHost": "Bounces are handled at {host}.",
+				"defaultHost": "the default return-path",
+				"cfblNote": "A per-domain host also enables RFC 9477 complaint feedback ({header}), letting participating mailbox providers report spam complaints straight back to Owlat. Optional either way.",
+				"syncError": "Couldn't update the bounce host on the mail server — edit and retry.",
+				"inputLabel": "Bounce subdomain",
+				"inputPlaceholder": "bounce",
+				"preview": "Bounces will come from {host}",
+				"previewExample": "For example, bounces would come from {host}",
+				"reverifyWarning": "Changing this re-verifies the domain — its status drops to pending until the new records are confirmed."
+			},
+			"streamSubdomainPlanPanel": {
+				"heading": "Recommended sending subdomains",
+				"intro": "Send each kind of mail from its own name so one bad campaign can never take your password resets with it.",
+				"roles": {
+					"transactional": "Transactional",
+					"bulk": "Marketing & lifecycle",
+					"bounce": "Bounces (return path)"
+				},
+				"arms": {
+					"own": "this server",
+					"relay": "relay"
+				},
+				"dkimLabel": "DKIM ({arm})",
+				"relayPendingExplanation": "Your relay signs with its OWN selector, so this record's name is not the one above: create {name} using the selector and DKIM value from your relay's dashboard. Adding the subdomain here never generates either.",
+				"alreadyAdded": "Already added",
+				"carries": "Carries: {streams}",
+				"warming": "{count} sending name(s) each start their own warm-up from day one.",
+				"bimiOffer": "Optional: show your logo on {host} (BIMI)",
+				"bimiRejected": "{inputs} must be a plain https:// URL with no spaces or semicolons, so no BIMI record was generated.",
+				"bimiNoLogo": "Set MTA_BIMI_LOGO_URL to the HTTPS address of your SVG logo and this record is generated for you."
+			},
+			"trackingDomainsSection": {
+				"operations": {
+					"add": "Add tracking domain",
+					"remove": "Remove tracking domain",
+					"verify": "Verify tracking domain"
+				},
+				"toasts": {
+					"added": "Tracking domain added. Add the CNAME record below, then verify.",
+					"removed": "Tracking domain removed",
+					"verifying": "Checking DNS for this tracking domain. It will show as verified once the CNAME resolves."
+				},
+				"title": "Tracking Domains",
+				"subtitle": "Serve open & click tracking from your own branded subdomain",
+				"addButton": "Add Tracking Domain",
+				"info": {
+					"title": "Why use a tracking domain?",
+					"body": "Links in your emails are rewritten through a tracking host so opens and clicks can be measured. Pointing that host at your own subdomain keeps links on-brand and isolates your sending reputation. Add a subdomain like {example}, create the CNAME record we show you, then verify.",
+					"exampleHost": "track.example.com"
+				},
+				"loading": "Loading tracking domains...",
+				"empty": {
+					"title": "No tracking domains configured",
+					"body": "Add a branded subdomain to serve open and click tracking from your own domain.",
+					"action": "Add Your First Tracking Domain"
+				},
+				"status": {
+					"verified": "Verified",
+					"pending": "Pending"
+				},
+				"verifiedAt": "Verified {date}",
+				"addCnameHint": "Add the CNAME record, then click Verify",
+				"verifyTitle": "Check DNS for this tracking domain",
+				"verifying": "Verifying...",
+				"verify": "Verify",
+				"removeTitle": "Remove tracking domain",
+				"cnameHeading": "Create this CNAME record in the DNS settings for {zone}:",
+				"recordLabel": "Tracking",
+				"note": {
+					"label": "Note:",
+					"body": "{note} DNS changes can take up to 48 hours to propagate. After adding the record, click \"Verify\" to check the configuration."
+				},
+				"addModalTitle": "Add Tracking Domain",
+				"form": {
+					"subdomainLabel": "Subdomain for tracking",
+					"subdomainHint": "— the branded host your links point at",
+					"subdomainPlaceholder": "track",
+					"submitLabel": "Add Tracking Domain"
+				},
+				"delete": {
+					"title": "Remove Tracking Domain",
+					"description": "Are you sure you want to remove {domain}? Tracking links will fall back to the platform domain.",
+					"confirm": "Remove Tracking Domain"
+				}
+			},
+			"yahooCflPanel": {
+				"operations": {
+					"submit": "Record Yahoo CFL submission",
+					"confirm": "Confirm Yahoo CFL enrollment",
+					"reset": "Reset Yahoo CFL enrollment"
+				},
+				"states": {
+					"notStarted": "Not enrolled",
+					"awaitingYahoo": "Waiting for Yahoo",
+					"enrolled": "Enrolled",
+					"lapsed": "Worth re-checking"
+				},
+				"heading": "Yahoo complaint feedback loop",
+				"intro": "Yahoo reports spam complaints to senders who enroll the DKIM domain they sign with. Enrolling is optional — it measures Yahoo complaints directly instead of standing in for them.",
+				"howToTell": "How to tell it worked:",
+				"openForm": "Open Yahoo's enrollment form",
+				"submitButton": "I submitted Yahoo's form",
+				"submitBlocked": "Verify this domain and its DKIM record first — Yahoo will not accept an enrollment for a domain it cannot see our signature on.",
+				"confirmButton": "Yahoo accepted the domain",
+				"resetButton": "Start over",
+				"resetConfirmation": {
+					"question": "Clear this domain’s Yahoo enrollment record?",
+					"ourRecord": "• Our record is cleared — the submitted and enrolled dates are lost.",
+					"yahooRecord": "• Yahoo’s own enrollment is untouched. If it is still live, the next Yahoo complaint will not restore this record; re-submit the form step to record it again.",
+					"fallback": "• Yahoo complaint measurement falls back to the unsubscribe-rate proxy — a sharp rise against this cell’s own recent history — with lower confidence."
+				},
+				"silence": "No Yahoo complaint in the last {count} day. | No Yahoo complaint in the last {count} days."
+			}
+		}
+	}
+}

@@ -14,10 +14,10 @@ const { t } = useI18n();
 
 const heading = computed(() =>
 	props.authError
-		? t('components.postbox.appPasswordCallout.headingAuthError', {
+		? t('components.postbox.postboxAppPasswordCallout.headingAuthError', {
 				provider: props.help.provider,
 			})
-		: t('components.postbox.appPasswordCallout.heading', { provider: props.help.provider }),
+		: t('components.postbox.postboxAppPasswordCallout.heading', { provider: props.help.provider }),
 );
 
 // `steps` comes from the module-scope provider registry, so it carries a message
@@ -38,7 +38,7 @@ const steps = computed(() => t(props.help.steps));
 			rel="noopener noreferrer"
 			class="text-info underline inline-flex items-center gap-1"
 		>
-			{{ t('components.postbox.appPasswordCallout.openPage', { provider: help.provider }) }}
+			{{ t('components.postbox.postboxAppPasswordCallout.openPage', { provider: help.provider }) }}
 			<Icon name="lucide:external-link" class="w-3 h-3" />
 		</a>
 	</div>

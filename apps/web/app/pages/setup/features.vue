@@ -13,7 +13,10 @@ import {
 import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
-useHead({ title: 'Owlat setup — Features' });
+
+const { t } = useI18n();
+
+useHead({ title: () => t('setup.features.pageTitle') });
 
 const router = useRouter();
 const { flags, resolved, goToStep } = useSetupWizard();
@@ -24,12 +27,12 @@ const sendingNeedsProvider = computed(() => needsDeliveryProvider(flags.value));
 
 function categoryLabel(cat: string): string {
 	const map: Record<string, string> = {
-		sending: 'Sending',
-		receiving: 'Receiving',
-		ai: 'AI',
-		integrations: 'Integrations',
-		security: 'Security & scanning',
-		deliverability: 'Analytics & deliverability',
+		sending: t('setup.features.categories.sending'),
+		receiving: t('setup.features.categories.receiving'),
+		ai: t('setup.features.categories.ai'),
+		integrations: t('setup.features.categories.integrations'),
+		security: t('setup.features.categories.security'),
+		deliverability: t('setup.features.categories.deliverability'),
 	};
 	return map[cat] ?? cat;
 }
@@ -63,7 +66,7 @@ function togglePack(packKey: FeaturePackKey) {
 		<div class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="lp-eyebrow">Owlat setup</span>
+				<span class="lp-eyebrow">{{ t('setup.features.eyebrow') }}</span>
 			</div>
 
 			<UiStepIndicator
@@ -75,27 +78,33 @@ function togglePack(packKey: FeaturePackKey) {
 			/>
 
 			<header class="mb-6">
-				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">
-					Pick what to <span class="lp-title-accent">enable</span>
-				</h1>
+				<I18nT
+					keypath="setup.features.title"
+					tag="h1"
+					scope="global"
+					class="text-3xl font-medium tracking-[-0.02em] mb-2"
+				>
+					<template #accent>
+						<span class="lp-title-accent">{{ t('setup.features.titleAccent') }}</span>
+					</template>
+				</I18nT>
 				<p class="text-text-secondary leading-relaxed">
-					Toggle a master feature off and its sub-features disable automatically. You can change all
-					of this later.
+					{{ t('setup.features.intro') }}
 				</p>
 			</header>
 
 			<div v-if="sendingNeedsProvider" class="mb-6">
 				<UiErrorAlert
 					variant="info"
-					title="A delivery provider is required next"
-					message="Campaigns, transactional, or automations are enabled — the Email step will require a delivery provider (MTA, Resend, or SES). A connected external mailbox is not one."
+					:title="t('setup.features.providerRequiredTitle')"
+					:message="t('setup.features.providerRequiredMessage')"
 				/>
 			</div>
 
 			<UiCard padding="lg" class="mb-6">
-				<h2 class="font-medium text-text-primary">Feature packs</h2>
+				<h2 class="font-medium text-text-primary">{{ t('setup.features.packsHeading') }}</h2>
 				<p class="text-sm text-text-tertiary mb-4">
-					Pick a bundle. Toggling a pack flips every flag it contains.
+					{{ t('setup.features.packsIntro') }}
 				</p>
 				<ul class="space-y-2">
 					<li
@@ -115,9 +124,9 @@ function togglePack(packKey: FeaturePackKey) {
 							<div class="flex-1">
 								<div class="flex items-baseline gap-2 font-medium text-text-primary">
 									{{ FEATURE_PACKS[packKey].label }}
-									<UiBadge v-if="packState[packKey] === 'partial'" variant="neutral"
-										>partial</UiBadge
-									>
+									<UiBadge v-if="packState[packKey] === 'partial'" variant="neutral">{{
+										t('setup.features.partial')
+									}}</UiBadge>
 								</div>
 								<p class="text-sm text-text-secondary mt-0.5">
 									{{ FEATURE_PACKS[packKey].description }}
@@ -150,9 +159,9 @@ function togglePack(packKey: FeaturePackKey) {
 							<div class="flex-1">
 								<div class="flex items-baseline gap-2 font-medium text-text-primary">
 									{{ def.label }}
-									<span v-if="def.requires?.length" class="text-xs font-normal text-text-tertiary"
-										>requires: {{ def.requires.join(', ') }}</span
-									>
+									<span v-if="def.requires?.length" class="text-xs font-normal text-text-tertiary">{{
+										t('setup.features.requires', { features: def.requires.join(', ') })
+									}}</span>
 								</div>
 								<p class="text-sm text-text-secondary mt-0.5">{{ def.description }}</p>
 							</div>
@@ -164,10 +173,10 @@ function togglePack(packKey: FeaturePackKey) {
 			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
 				<UiButton variant="ghost" @click="router.push('/setup/mode')">
 					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
-					Back
+					{{ t('common.back') }}
 				</UiButton>
 				<UiButton @click="router.push('/setup/email')">
-					Next: Email provider
+					{{ t('setup.features.next') }}
 					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
 				</UiButton>
 			</footer>

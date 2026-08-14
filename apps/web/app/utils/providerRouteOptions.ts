@@ -21,12 +21,15 @@ export function isControllerOwnedStrategy(strategy: string): boolean {
 	return (CONTROLLER_OWNED_STRATEGIES as readonly string[]).includes(strategy);
 }
 
-/** Label for any strategy, pickable or not. */
+/**
+ * Label for any strategy, pickable or not — an i18n key, because this module is
+ * a pure definition set; the screen rendering it runs the value through `t()`.
+ */
 export const PROVIDER_ROUTE_STRATEGY_LABELS: Record<ProviderRouteStrategy, string> = {
-	single: 'Single provider',
-	priority_failover: 'Priority failover',
-	workload_split: 'Workload split',
-	adaptive_mix: 'Adaptive mix (managed)',
+	single: 'shared.providerRouteOptions.strategies.single.label',
+	priority_failover: 'shared.providerRouteOptions.strategies.priorityFailover.label',
+	workload_split: 'shared.providerRouteOptions.strategies.workloadSplit.label',
+	adaptive_mix: 'shared.providerRouteOptions.strategies.adaptiveMix.label',
 };
 
 /**
@@ -54,20 +57,20 @@ export const PROVIDER_ROUTE_MESSAGE_TYPES: {
 }[] = [
 	{
 		value: 'transactional',
-		label: 'Transactional',
-		description: 'Account, confirmation, and other one-to-one emails',
+		label: 'shared.providerRouteOptions.messageTypes.transactional.label',
+		description: 'shared.providerRouteOptions.messageTypes.transactional.description',
 		icon: 'lucide:mail-check',
 	},
 	{
 		value: 'campaign',
-		label: 'Campaigns',
-		description: 'Broadcast newsletters and marketing campaigns',
+		label: 'shared.providerRouteOptions.messageTypes.campaign.label',
+		description: 'shared.providerRouteOptions.messageTypes.campaign.description',
 		icon: 'lucide:megaphone',
 	},
 	{
 		value: 'automation',
-		label: 'Automations',
-		description: 'Emails sent by automated journeys and triggers',
+		label: 'shared.providerRouteOptions.messageTypes.automation.label',
+		description: 'shared.providerRouteOptions.messageTypes.automation.description',
 		icon: 'lucide:workflow',
 	},
 ];
@@ -81,17 +84,16 @@ export const PROVIDER_ROUTE_STRATEGIES: {
 	{
 		value: 'single',
 		label: PROVIDER_ROUTE_STRATEGY_LABELS.single,
-		description: 'Always send through the first enabled provider.',
+		description: 'shared.providerRouteOptions.strategies.single.description',
 	},
 	{
 		value: 'priority_failover',
 		label: PROVIDER_ROUTE_STRATEGY_LABELS.priority_failover,
-		description:
-			'Try providers in order; fall over to the next on failure or when one is unhealthy.',
+		description: 'shared.providerRouteOptions.strategies.priorityFailover.description',
 	},
 	{
 		value: 'workload_split',
 		label: PROVIDER_ROUTE_STRATEGY_LABELS.workload_split,
-		description: 'Distribute traffic across providers by the weights you set.',
+		description: 'shared.providerRouteOptions.strategies.workloadSplit.description',
 	},
 ];

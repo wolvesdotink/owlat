@@ -48,7 +48,7 @@ describe('Postbox — stacked drill-in below lg', () => {
 	});
 
 	it('puts the folder rail behind a drawer handle', () => {
-		expect(postboxLayout).toContain('aria-label="Open folders"');
+		expect(postboxLayout).toContain("t('components.postbox.postboxLayout.openFolders')");
 		expect(postboxLayout).toContain('v-model:open="railOpen"');
 	});
 
@@ -79,7 +79,7 @@ describe('Mobile-only controls clear the 44px touch target', () => {
 	// thumb — an icon in `p-1` is a 24px target and misses about as often as it
 	// hits. 44px is the iOS HIG / WCAG 2.5.5 minimum.
 	it('sizes the folder-drawer handle to 44px square', () => {
-		expect(postboxLayout).toMatch(/w-11 h-11[\s\S]{0,300}?aria-label="Open folders"/);
+		expect(postboxLayout).toMatch(/w-11 h-11[\s\S]{0,300}?postboxLayout\.openFolders/);
 	});
 
 	it('sizes the reader back bar to 44px tall', () => {
@@ -128,7 +128,11 @@ describe('Data tables — card list below md', () => {
 	it('gives the contacts card list its own select-all', () => {
 		// The table's select-all lives in a `thead` that the card list has no room
 		// for, so bulk selection was desktop-only on the card list.
-		expect(contacts).toMatch(/Deselect all' : 'Select all'/);
+		// The page is extracted, so the toggle reads its two labels out of the
+		// message catalog rather than carrying the copy inline.
+		expect(contacts).toMatch(
+			/t\('dashboard\.audience\.contacts\.index\.deselectAll'\)[\s\S]{0,80}?t\('dashboard\.audience\.contacts\.index\.selectAll'\)/
+		);
 		expect(contacts).toMatch(/@click="toggleSelectAll"[\s\S]{0,900}?<ul class="divide-y/);
 	});
 });

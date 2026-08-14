@@ -5,18 +5,25 @@
  *     chrome; `floating` variant stays neutral so its container can supply chrome
  *   - buttons emit their typed command
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { EMPTY_ACTIVE_MARKS } from '@owlat/ui/composables/useRichText';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxEditorToolbar from '../PostboxEditorToolbar.vue';
 
 const iconStub = { props: ['name'], template: '<span />' };
 
+// The button tooltips flow through vue-i18n now; `useI18n` is a Nuxt
+// auto-import, so it has to exist as a global for the component's setup.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
 function mountToolbar(props: Record<string, unknown> = {}) {
 	return mount(PostboxEditorToolbar, {
 		props: { activeMarks: { ...EMPTY_ACTIVE_MARKS }, ...props },
-		global: { stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
 

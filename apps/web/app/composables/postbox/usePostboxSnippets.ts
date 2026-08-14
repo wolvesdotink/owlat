@@ -6,19 +6,20 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 export function usePostboxSnippets(mailboxId: Ref<Id<'mailboxes'> | null>) {
+	const { t } = useI18n();
 	const { data, isLoading } = useConvexQuery(api.mail.snippets.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
 	const snippets = computed(() => data.value ?? []);
 
 	const createMutation = useBackendOperation(api.mail.snippets.create, {
-		label: 'Create snippet',
+		label: () => t('shared.postbox.usePostboxSnippets.createSnippet'),
 	});
 	const updateMutation = useBackendOperation(api.mail.snippets.update, {
-		label: 'Save snippet',
+		label: () => t('shared.postbox.usePostboxSnippets.saveSnippet'),
 	});
 	const removeMutation = useBackendOperation(api.mail.snippets.remove, {
-		label: 'Delete snippet',
+		label: () => t('shared.postbox.usePostboxSnippets.deleteSnippet'),
 	});
 
 	async function create(name: string, shortcut: string, bodyHtml: string) {

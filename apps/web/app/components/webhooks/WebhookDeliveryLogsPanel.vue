@@ -53,6 +53,8 @@ const emit = defineEmits<{
 	sendTest: [];
 }>();
 
+const { t, te, locale } = useI18n();
+
 const STATUS_COLORS: Record<string, string> = {
 	success: 'bg-success/10 text-success',
 	failed: 'bg-error/10 text-error',
@@ -64,14 +66,42 @@ function statusColor(status: string) {
 	return STATUS_COLORS[status] ?? 'bg-bg-surface text-text-tertiary';
 }
 
-function formatDuration(ms: number | undefined) {
-	if (ms === undefined) return '-';
-	if (ms < 1000) return `${ms}ms`;
-	return `${(ms / 1000).toFixed(2)}s`;
+function statusLabel(status: string) {
+	const key = `components.webhooks.webhookDeliveryLogsPanel.status.${status}`;
+	return te(key) ? t(key) : status;
 }
 
+function formatDuration(ms: number | undefined) {
+	if (ms === undefined) return '-';
+	if (ms < 1000) return t('components.webhooks.webhookDeliveryLogsPanel.durationMs', { value: ms });
+	return t('components.webhooks.webhookDeliveryLogsPanel.durationSeconds', {
+		value: (ms / 1000).toFixed(2),
+	});
+}
+
+function formatWhen(timestamp: number) {
+	return formatDateTime(timestamp, locale.value);
+}
+
+// Message keys for the events a delivery log can carry (the webhook event
+// allowlist plus the synthetic `test` delivery). An event with no message —
+// a newer one the catalog has not caught up with — keeps the derived
+// "Email Sent" style label rather than rendering a raw key path.
+const EVENT_LABEL_KEYS: Record<string, string> = {
+	test: 'components.webhooks.webhookDeliveryLogsPanel.events.test',
+	'email.sent': 'components.webhooks.webhookDeliveryLogsPanel.events.emailSent',
+	'email.delivered': 'components.webhooks.webhookDeliveryLogsPanel.events.emailDelivered',
+	'email.opened': 'components.webhooks.webhookDeliveryLogsPanel.events.emailOpened',
+	'email.clicked': 'components.webhooks.webhookDeliveryLogsPanel.events.emailClicked',
+	'email.bounced': 'components.webhooks.webhookDeliveryLogsPanel.events.emailBounced',
+	'email.complained': 'components.webhooks.webhookDeliveryLogsPanel.events.emailComplained',
+	'contact.created': 'components.webhooks.webhookDeliveryLogsPanel.events.contactCreated',
+	'topic.unsubscribed': 'components.webhooks.webhookDeliveryLogsPanel.events.topicUnsubscribed',
+};
+
 function formatEventLabel(event: string) {
-	if (event === 'test') return 'Test';
+	const key = EVENT_LABEL_KEYS[event];
+	if (key) return t(key);
 	return event
 		.split('.')
 		.map((s) => capitalize(s))
@@ -93,7 +123,11 @@ function formatJson(value: unknown) {
 <template>
 	<UiModal
 		:open="isOpen"
-		:title="selectedLogId ? 'Delivery Detail' : `Delivery Logs — ${webhookName}`"
+		:title="
+			selectedLogId
+				? t('components.webhooks.webhookDeliveryLogsPanel.detailTitle')
+				: t('components.webhooks.webhookDeliveryLogsPanel.listTitle', { name: webhookName })
+		"
 		size="2xl"
 		@update:open="
 			(v) => {
@@ -112,7 +146,7 @@ function formatJson(value: unknown) {
 				@click="emit('clearSelectedLog')"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to logs
+				{{ t('components.webhooks.webhookDeliveryLogsPanel.backToLogs') }}
 			</button>
 			<span v-else />
 			<UiButton
@@ -124,7 +158,11 @@ function formatJson(value: unknown) {
 			>
 				<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				<Icon v-else name="lucide:send" class="w-4 h-4" />
-				{{ isSendingTest ? 'Sending...' : 'Send Test' }}
+				{{
+					isSendingTest
+						? t('components.webhooks.webhookDeliveryLogsPanel.sending')
+						: t('components.webhooks.webhookDeliveryLogsPanel.sendTest')
+				}}
 			</UiButton>
 		</div>
 
@@ -135,19 +173,27 @@ function formatJson(value: unknown) {
 		>
 			<div class="text-center">
 				<p class="text-lg font-semibold text-text-primary">{{ stats.total }}</p>
-				<p class="text-xs text-text-tertiary">Total</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.webhooks.webhookDeliveryLogsPanel.stats.total') }}
+				</p>
 			</div>
 			<div class="text-center">
 				<p class="text-lg font-semibold text-success">{{ stats.success }}</p>
-				<p class="text-xs text-text-tertiary">Success</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.webhooks.webhookDeliveryLogsPanel.stats.success') }}
+				</p>
 			</div>
 			<div class="text-center">
 				<p class="text-lg font-semibold text-error">{{ stats.failed }}</p>
-				<p class="text-xs text-text-tertiary">Failed</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.webhooks.webhookDeliveryLogsPanel.stats.failed') }}
+				</p>
 			</div>
 			<div class="text-center">
 				<p class="text-lg font-semibold text-text-primary">{{ stats.successRate }}%</p>
-				<p class="text-xs text-text-tertiary">Success Rate</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.webhooks.webhookDeliveryLogsPanel.stats.successRate') }}
+				</p>
 			</div>
 		</div>
 
@@ -168,10 +214,15 @@ function formatJson(value: unknown) {
 							statusColor(selectedLog.status),
 						]"
 					>
-						{{ selectedLog.status }}
+						{{ statusLabel(selectedLog.status) }}
 					</span>
 					<span class="text-sm text-text-secondary">
-						Attempt {{ selectedLog.attemptNumber }}/{{ selectedLog.maxAttempts }}
+						{{
+							t('components.webhooks.webhookDeliveryLogsPanel.attempt', {
+								attempt: selectedLog.attemptNumber,
+								max: selectedLog.maxAttempts,
+							})
+						}}
 					</span>
 					<span class="text-sm text-text-secondary">
 						{{ formatEventLabel(selectedLog.event) }}
@@ -180,39 +231,51 @@ function formatJson(value: unknown) {
 
 				<!-- HTTP status -->
 				<div v-if="selectedLog.httpStatusCode">
-					<p class="text-xs text-text-tertiary mb-1">HTTP Status</p>
+					<p class="text-xs text-text-tertiary mb-1">
+						{{ t('components.webhooks.webhookDeliveryLogsPanel.httpStatus') }}
+					</p>
 					<p class="text-sm text-text-primary font-mono">{{ selectedLog.httpStatusCode }}</p>
 				</div>
 
 				<!-- Error message -->
 				<div v-if="selectedLog.errorMessage">
-					<p class="text-xs text-text-tertiary mb-1">Error</p>
+					<p class="text-xs text-text-tertiary mb-1">{{ t('common.error') }}</p>
 					<p class="text-sm text-error font-mono break-all">{{ selectedLog.errorMessage }}</p>
 				</div>
 
 				<!-- Timing -->
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<p class="text-xs text-text-tertiary mb-1">Scheduled At</p>
-						<p class="text-sm text-text-secondary">{{ formatDateTime(selectedLog.scheduledAt) }}</p>
+						<p class="text-xs text-text-tertiary mb-1">
+							{{ t('components.webhooks.webhookDeliveryLogsPanel.scheduledAt') }}
+						</p>
+						<p class="text-sm text-text-secondary">{{ formatWhen(selectedLog.scheduledAt) }}</p>
 					</div>
 					<div v-if="selectedLog.attemptedAt">
-						<p class="text-xs text-text-tertiary mb-1">Attempted At</p>
-						<p class="text-sm text-text-secondary">{{ formatDateTime(selectedLog.attemptedAt) }}</p>
+						<p class="text-xs text-text-tertiary mb-1">
+							{{ t('components.webhooks.webhookDeliveryLogsPanel.attemptedAt') }}
+						</p>
+						<p class="text-sm text-text-secondary">{{ formatWhen(selectedLog.attemptedAt) }}</p>
 					</div>
 					<div v-if="selectedLog.completedAt">
-						<p class="text-xs text-text-tertiary mb-1">Completed At</p>
-						<p class="text-sm text-text-secondary">{{ formatDateTime(selectedLog.completedAt) }}</p>
+						<p class="text-xs text-text-tertiary mb-1">
+							{{ t('components.webhooks.webhookDeliveryLogsPanel.completedAt') }}
+						</p>
+						<p class="text-sm text-text-secondary">{{ formatWhen(selectedLog.completedAt) }}</p>
 					</div>
 					<div v-if="selectedLog.durationMs !== undefined">
-						<p class="text-xs text-text-tertiary mb-1">Duration</p>
+						<p class="text-xs text-text-tertiary mb-1">
+							{{ t('components.webhooks.webhookDeliveryLogsPanel.duration') }}
+						</p>
 						<p class="text-sm text-text-secondary">{{ formatDuration(selectedLog.durationMs) }}</p>
 					</div>
 				</div>
 
 				<!-- Request payload -->
 				<div>
-					<p class="text-xs text-text-tertiary mb-1">Request Payload</p>
+					<p class="text-xs text-text-tertiary mb-1">
+						{{ t('components.webhooks.webhookDeliveryLogsPanel.requestPayload') }}
+					</p>
 					<pre
 						class="text-xs font-mono bg-bg-deep border border-border-subtle rounded-lg p-3 overflow-x-auto text-text-secondary"
 						>{{ formatJson(selectedLog.payload) }}</pre>
@@ -220,7 +283,9 @@ function formatJson(value: unknown) {
 
 				<!-- Response body -->
 				<div v-if="selectedLog.responseBody">
-					<p class="text-xs text-text-tertiary mb-1">Response Body</p>
+					<p class="text-xs text-text-tertiary mb-1">
+						{{ t('components.webhooks.webhookDeliveryLogsPanel.responseBody') }}
+					</p>
 					<pre
 						class="text-xs font-mono bg-bg-deep border border-border-subtle rounded-lg p-3 overflow-x-auto text-text-secondary"
 						>{{ selectedLog.responseBody }}</pre>
@@ -241,7 +306,7 @@ function formatJson(value: unknown) {
 							statusColor(log.status),
 						]"
 					>
-						{{ log.status }}
+						{{ statusLabel(log.status) }}
 					</span>
 					<span class="text-sm text-text-primary min-w-0 truncate">
 						{{ formatEventLabel(log.event) }}
@@ -253,7 +318,7 @@ function formatJson(value: unknown) {
 						{{ formatDuration(log.durationMs) }}
 					</span>
 					<span class="text-xs text-text-tertiary shrink-0 ml-auto">
-						{{ formatDateTime(log.scheduledAt) }}
+						{{ formatWhen(log.scheduledAt) }}
 					</span>
 					<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary shrink-0" />
 				</div>
@@ -264,14 +329,20 @@ function formatJson(value: unknown) {
 				<div class="p-4 rounded-full bg-bg-surface mb-4">
 					<Icon name="lucide:scroll-text" class="w-8 h-8 text-text-tertiary" />
 				</div>
-				<p class="text-text-secondary font-medium">No delivery logs yet</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('components.webhooks.webhookDeliveryLogsPanel.emptyTitle') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1">
-					Send a test webhook to see delivery logs here.
+					{{ t('components.webhooks.webhookDeliveryLogsPanel.emptyDescription') }}
 				</p>
 				<UiButton class="gap-2 mt-4" :disabled="isSendingTest" @click="emit('sendTest')">
 					<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					<Icon v-else name="lucide:send" class="w-4 h-4" />
-					{{ isSendingTest ? 'Sending...' : 'Send Test Webhook' }}
+					{{
+						isSendingTest
+							? t('components.webhooks.webhookDeliveryLogsPanel.sending')
+							: t('components.webhooks.webhookDeliveryLogsPanel.sendTestWebhook')
+					}}
 				</UiButton>
 			</div>
 		</div>

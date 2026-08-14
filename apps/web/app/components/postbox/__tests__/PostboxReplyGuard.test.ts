@@ -10,12 +10,17 @@
  *   - a non-failed (or null) state never shows the interstitial;
  *   - cancel drops the pending reply without running it.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 
 import PostboxReplyGuard from '../PostboxReplyGuard.vue';
 import type { SenderAuthState } from '~/utils/senderAuth';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
 
 const iconStub = { props: ['name'], template: '<span />' };
 const modalStub = {
@@ -29,7 +34,10 @@ type GuardVm = {
 
 function mountGuard() {
 	const wrapper = mount(PostboxReplyGuard, {
-		global: { stubs: { Icon: iconStub, UiModal: modalStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: iconStub, UiModal: modalStub },
+		},
 	});
 	return { wrapper, vm: wrapper.vm as unknown as GuardVm };
 }

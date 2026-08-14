@@ -129,7 +129,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 				@click="addModal.open()"
 			>
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				Add Tracking Domain
+				{{ t('components.domains.trackingDomainsSection.addButton') }}
 			</UiButton>
 		</div>
 
@@ -138,14 +138,21 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 			<div class="flex gap-4">
 				<UiIconBox icon="lucide:link" size="sm" variant="brand" rounded="lg" />
 				<div>
-					<h3 class="font-medium text-text-primary mb-1">Why use a tracking domain?</h3>
-					<p class="text-sm text-text-secondary">
-						Links in your emails are rewritten through a tracking host so opens and clicks can be
-						measured. Pointing that host at your own subdomain keeps links on-brand and isolates
-						your sending reputation. Add a subdomain like
-						<code class="font-mono">track.example.com</code>, create the CNAME record we show you,
-						then verify.
-					</p>
+					<h3 class="font-medium text-text-primary mb-1">
+						{{ t('components.domains.trackingDomainsSection.info.title') }}
+					</h3>
+					<I18nT
+						keypath="components.domains.trackingDomainsSection.info.body"
+						tag="p"
+						scope="global"
+						class="text-sm text-text-secondary"
+					>
+						<template #example>
+							<code class="font-mono">
+								{{ t('components.domains.trackingDomainsSection.info.exampleHost') }}
+							</code>
+						</template>
+					</I18nT>
 				</div>
 			</div>
 		</div>
@@ -154,7 +161,9 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		<div v-if="isLoading && !trackingDomains" class="flex items-center justify-center py-12">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading tracking domains...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('components.domains.trackingDomainsSection.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -164,13 +173,15 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 			class="card flex flex-col items-center justify-center py-12 text-center px-6"
 		>
 			<UiIconBox icon="lucide:link" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No tracking domains configured</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('components.domains.trackingDomainsSection.empty.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Add a branded subdomain to serve open and click tracking from your own domain.
+				{{ t('components.domains.trackingDomainsSection.empty.body') }}
 			</p>
 			<UiButton variant="secondary" class="gap-2 mt-4" @click="addModal.open()">
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				Add Your First Tracking Domain
+				{{ t('components.domains.trackingDomainsSection.empty.action') }}
 			</UiButton>
 		</div>
 
@@ -199,14 +210,24 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 										:name="td.isVerified ? 'lucide:check-circle-2' : 'lucide:clock'"
 										class="w-3 h-3"
 									/>
-									{{ td.isVerified ? 'Verified' : 'Pending' }}
+									{{
+										td.isVerified
+											? t('components.domains.trackingDomainsSection.status.verified')
+											: t('components.domains.trackingDomainsSection.status.pending')
+									}}
 								</span>
 							</div>
 							<p class="text-sm text-text-tertiary mt-0.5">
 								<span v-if="td.isVerified && td.verifiedAt">
-									Verified {{ formatDateTime(td.verifiedAt) }}
+									{{
+										t('components.domains.trackingDomainsSection.verifiedAt', {
+											date: formatDateTime(td.verifiedAt),
+										})
+									}}
 								</span>
-								<span v-else> Add the CNAME record, then click Verify </span>
+								<span v-else>
+									{{ t('components.domains.trackingDomainsSection.addCnameHint') }}
+								</span>
 							</p>
 						</div>
 					</div>
@@ -215,7 +236,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 						<UiButton
 							variant="secondary"
 							class="gap-1.5 text-sm py-1.5 px-3"
-							title="Check DNS for this tracking domain"
+							:title="t('components.domains.trackingDomainsSection.verifyTitle')"
 							:disabled="verifyingId === td._id"
 							@click.stop="handleVerify(td._id)"
 						>
@@ -225,12 +246,16 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 								class="w-4 h-4 animate-spin"
 							/>
 							<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
-							{{ verifyingId === td._id ? 'Verifying...' : 'Verify' }}
+							{{
+								verifyingId === td._id
+									? t('components.domains.trackingDomainsSection.verifying')
+									: t('components.domains.trackingDomainsSection.verify')
+							}}
 						</UiButton>
 						<UiButton
 							variant="ghost"
 							class="p-2 text-error hover:bg-error/10"
-							title="Remove tracking domain"
+							:title="t('components.domains.trackingDomainsSection.removeTitle')"
 							@click.stop="deleteModal.open(td)"
 						>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -262,23 +287,35 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 				<Transition name="expand">
 					<div v-if="expandedId === td._id" class="border-t border-border-subtle">
 						<div class="px-6 py-4 bg-bg-surface/30">
-							<h4 class="text-sm font-medium text-text-primary mb-4">
-								Create this CNAME record in the DNS settings for
-								<strong>{{ zoneFor(td.domain) }}</strong
-								>:
-							</h4>
+							<I18nT
+								keypath="components.domains.trackingDomainsSection.cnameHeading"
+								tag="h4"
+								scope="global"
+								class="text-sm font-medium text-text-primary mb-4"
+							>
+								<template #zone>
+									<strong>{{ zoneFor(td.domain) }}</strong>
+								</template>
+							</I18nT>
 							<DomainsDNSRecordPanel
 								:record="{ type: 'CNAME', host: '@', value: td.cnameTarget }"
-								label="Tracking"
+								:label="t('components.domains.trackingDomainsSection.recordLabel')"
 								:domain="td.domain"
 								:verification="{ verified: td.isVerified }"
 							/>
 							<div class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle">
-								<p class="text-sm text-text-secondary">
-									<strong class="text-text-primary">Note:</strong> DNS changes can take up to 48
-									hours to propagate. After adding the record, click "Verify" to check the
-									configuration.
-								</p>
+								<I18nT
+									keypath="components.domains.trackingDomainsSection.note.body"
+									tag="p"
+									scope="global"
+									class="text-sm text-text-secondary"
+								>
+									<template #note>
+										<strong class="text-text-primary">
+											{{ t('components.domains.trackingDomainsSection.note.label') }}
+										</strong>
+									</template>
+								</I18nT>
 							</div>
 						</div>
 					</div>
@@ -290,18 +327,23 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		     uses (DomainsAddDomainForm), parameterized for tracking: track/links/
 		     click suggestions, a tracking-URL preview, no freemail block, and no
 		     sending-apex note. One component, no fork. -->
-		<UiModal v-model:open="addModal.isOpen.value" title="Add Tracking Domain">
+		<UiModal
+			v-model:open="addModal.isOpen.value"
+			:title="t('components.domains.trackingDomainsSection.addModalTitle')"
+		>
 			<DomainsAddDomainForm
 				context="tracking"
 				:loading="addModal.isLoading.value"
 				:suggestions="TRACKING_SUGGESTIONS"
 				default-subdomain="track"
-				subdomain-label="Subdomain for tracking"
-				subdomain-hint="— the branded host your links point at"
-				subdomain-placeholder="track"
+				:subdomain-label="t('components.domains.trackingDomainsSection.form.subdomainLabel')"
+				:subdomain-hint="t('components.domains.trackingDomainsSection.form.subdomainHint')"
+				:subdomain-placeholder="
+					t('components.domains.trackingDomainsSection.form.subdomainPlaceholder')
+				"
 				:block-freemail="false"
 				:show-apex-note="false"
-				submit-label="Add Tracking Domain"
+				:submit-label="t('components.domains.trackingDomainsSection.form.submitLabel')"
 				@submit="handleAdd"
 				@cancel="addModal.close()"
 			/>
@@ -310,9 +352,13 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		<!-- Delete confirmation -->
 		<UiConfirmationDialog
 			v-model:open="deleteModal.isOpen.value"
-			title="Remove Tracking Domain"
-			:description="`Are you sure you want to remove ${deleteModal.data.value?.domain}? Tracking links will fall back to the platform domain.`"
-			confirm-text="Remove Tracking Domain"
+			:title="t('components.domains.trackingDomainsSection.delete.title')"
+			:description="
+				t('components.domains.trackingDomainsSection.delete.description', {
+					domain: deleteModal.data.value?.domain ?? '',
+				})
+			"
+			:confirm-text="t('components.domains.trackingDomainsSection.delete.confirm')"
 			variant="danger"
 			:is-loading="deleteModal.isLoading.value"
 			@confirm="handleDelete"

@@ -48,7 +48,19 @@ import {
 	type RampPromotionCondition,
 } from '~/utils/deliverabilityRamp';
 
-useHead({ title: 'Delivery controls — Owlat' });
+const { t } = useI18n();
+
+/**
+ * `utils/deliverabilityRamp` is a module-scope definition set whose sentences
+ * carry i18n keys rather than sentences (the registry convention); a plain string
+ * is still accepted so a value with nothing to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+useHead({ title: () => t('dashboard.admin.delivery.advanced.controls.pageTitle') });
 
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
@@ -75,31 +87,31 @@ const noticesHeadingId = useId();
 
 const { run: setCellPause, isLoading: isPausing } = useBackendOperation(
 	api.delivery.rampControls.setCellPause,
-	{ label: 'Pause ramp cell' }
+	{ label: () => t('dashboard.admin.delivery.advanced.controls.operations.pause') }
 );
 const { run: pinCellShare, isLoading: isPinning } = useBackendOperation(
 	api.delivery.rampControls.pinCellShare,
-	{ label: 'Pin ramp cell' }
+	{ label: () => t('dashboard.admin.delivery.advanced.controls.operations.pin') }
 );
 const { run: forceAdvance, isLoading: isForcing } = useBackendOperation(
 	api.delivery.rampControls.forceAdvanceCellShare,
-	{ label: 'Force-advance ramp cell' }
+	{ label: () => t('dashboard.admin.delivery.advanced.controls.operations.forceAdvance') }
 );
 const { run: resetPhase, isLoading: isResetting } = useBackendOperation(
 	api.delivery.rampPhaseReset.resetCellPhase,
-	{ label: 'Reset ramp phase' }
+	{ label: () => t('dashboard.admin.delivery.advanced.controls.operations.resetPhase') }
 );
 const { run: enrollCell, isLoading: isEnrolling } = useBackendOperation(
 	api.delivery.rampEnrollment.enrollCell,
-	{ label: 'Put a cell on the ramp' }
+	{ label: () => t('dashboard.admin.delivery.advanced.controls.operations.enroll') }
 );
 const { run: promotePhase, isLoading: isPromoting } = useBackendOperation(
 	api.delivery.rampPhasePromotion.promoteCellPhase,
-	{ label: 'Promote ramp phase' }
+	{ label: () => t('dashboard.admin.delivery.advanced.controls.operations.promote') }
 );
 const { run: setStreamPreset, isLoading: isChangingPreset } = useBackendOperation(
 	api.delivery.rampControls.setStreamPreset,
-	{ label: 'Change ramp pace' }
+	{ label: () => t('dashboard.admin.delivery.advanced.controls.operations.setPreset') }
 );
 
 /**
@@ -214,7 +226,9 @@ async function enroll(): Promise<void> {
 		result.path !== undefined &&
 		result.isShareRouted !== undefined
 	) {
-		outcome.value = rampEnrolledSentence(result.share, result.path, result.isShareRouted);
+		outcome.value = localized(
+			rampEnrolledSentence(result.share, result.path, result.isShareRouted)
+		);
 	}
 }
 
@@ -227,7 +241,7 @@ async function promote(): Promise<void> {
 	// Absent view means absent relay: the cautious sentence claims less.
 	if (result?.refusal === undefined && result?.phaseCeiling !== undefined) {
 		const hasRelay = controls.value?.isRelayConfigured === true;
-		outcome.value = rampPromotionSentence(result.applied, result.phaseCeiling, hasRelay);
+		outcome.value = localized(rampPromotionSentence(result.applied, result.phaseCeiling, hasRelay));
 	}
 }
 
@@ -270,33 +284,34 @@ async function changePreset(
 <template>
 	<div class="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
 		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Delivery controls</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.delivery.advanced.controls.title') }}
+			</h1>
 			<!-- The action clause used to be conditional, as the header's half of an
 			     in-template admin gate. The `admin` route middleware means every
 			     reader of this page is an admin, so the lede promises the controls
 			     unconditionally — and cannot rewrite itself mid-paint. -->
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-				What the ramp pulled back on its own, and why.
+				{{ t('dashboard.admin.delivery.advanced.controls.ledeIntro') }}
 				<span data-testid="ramp-controls-lede-actions">
-					What each stream is carrying is here too — put a cell on the ramp, hold a cell, cap it,
-					push it, or start it over, and choose how hard each stream ramps.
+					{{ t('dashboard.admin.delivery.advanced.controls.ledeActions') }}
 				</span>
-				Everything here is recorded.
+				{{ t('dashboard.admin.delivery.advanced.controls.ledeRecorded') }}
 			</p>
 		</header>
 
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
-			error-title="Couldn’t load the delivery controls"
-			error-message="The controls could not be loaded. Your mail is unaffected — nothing has changed."
+			:error-title="t('dashboard.admin.delivery.advanced.controls.errorTitle')"
+			:error-message="t('dashboard.admin.delivery.advanced.controls.errorMessage')"
 		>
 			<template #loading>
 				<div
 					class="space-y-5"
 					role="status"
 					aria-live="polite"
-					aria-label="Loading delivery controls"
+					:aria-label="t('dashboard.admin.delivery.advanced.controls.loading')"
 				>
 					<div class="h-40 animate-pulse rounded-xl bg-bg-surface" />
 				</div>
@@ -305,13 +320,14 @@ async function changePreset(
 			<div v-if="controls" class="space-y-5">
 				<UiCard v-if="controls.isControllerPaused">
 					<p class="text-sm text-text-secondary" data-testid="ramp-global-pause">
-						The whole ramp is paused. Every cell is pinned where it is; the checks keep running so
-						you can see what would have happened.
+						{{ t('dashboard.admin.delivery.advanced.controls.globalPause') }}
 					</p>
 				</UiCard>
 
 				<UiCard>
-					<h2 class="text-base font-semibold text-text-primary">Pick a cell</h2>
+					<h2 class="text-base font-semibold text-text-primary">
+						{{ t('dashboard.admin.delivery.advanced.controls.pickCell') }}
+					</h2>
 					<div class="mt-3 flex flex-wrap gap-2">
 						<UiButton
 							v-for="cell in cells"
@@ -322,7 +338,7 @@ async function changePreset(
 							:data-testid="`ramp-select-${cell.cellKey}`"
 							@click="selectCell(cell.cellKey)"
 						>
-							{{ rampCellLabel(cell.cell) }} · {{ shareLabel(cell.ownShare) }}
+							{{ localized(rampCellLabel(cell.cell)) }} · {{ shareLabel(cell.ownShare) }}
 						</UiButton>
 					</div>
 				</UiCard>
@@ -358,7 +374,7 @@ async function changePreset(
 						data-testid="ramp-control-refusal"
 						role="status"
 					>
-						{{ rampRefusalSentence(refusal) }}
+						{{ localized(rampRefusalSentence(refusal)) }}
 					</p>
 					<!--
 						THE ANSWER WHEN THERE WAS NO REFUSAL, in the same slot and the same
@@ -384,13 +400,15 @@ async function changePreset(
 						data-testid="ramp-promotion-outstanding"
 					>
 						<li v-for="condition in outstanding" :key="condition">
-							{{ rampPromotionConditionLabel(condition) }}
+							{{ localized(rampPromotionConditionLabel(condition)) }}
 						</li>
 					</ul>
 				</UiCard>
 
 				<UiCard>
-					<h2 class="text-base font-semibold text-text-primary">How hard to ramp</h2>
+					<h2 class="text-base font-semibold text-text-primary">
+						{{ t('dashboard.admin.delivery.advanced.controls.howHard') }}
+					</h2>
 					<div class="mt-3 space-y-5">
 						<DeliveryRampPresetPicker
 							v-for="stream in streams"
@@ -407,13 +425,13 @@ async function changePreset(
 
 				<UiCard>
 					<h2 :id="noticesHeadingId" class="text-base font-semibold text-text-primary">
-						Automatic pull-backs
+						{{ t('dashboard.admin.delivery.advanced.controls.pullBacks') }}
 					</h2>
 					<UiQueryBoundary
 						:loading="noticesLoading"
 						:error="noticesError"
-						error-title="Couldn’t load the automatic pull-backs"
-						error-message="This list could not be read. It is not shown empty: an empty list here means the controller has pulled nothing back, and that is not something to claim while the read is failing."
+						:error-title="t('dashboard.admin.delivery.advanced.controls.pullBacksErrorTitle')"
+						:error-message="t('dashboard.admin.delivery.advanced.controls.pullBacksErrorMessage')"
 						@retry="refetchNotices"
 					>
 						<template #loading>
@@ -421,7 +439,7 @@ async function changePreset(
 								class="mt-3 h-16 animate-pulse rounded-lg bg-bg-surface"
 								role="status"
 								aria-live="polite"
-								aria-label="Loading automatic pull-backs"
+								:aria-label="t('dashboard.admin.delivery.advanced.controls.pullBacksLoading')"
 							/>
 						</template>
 						<DeliveryRampDecreaseNotices
@@ -436,22 +454,25 @@ async function changePreset(
 
 		<DeliveryRampConfirmDialog
 			:open="pendingForceShare !== null"
-			title="Force this cell past the evidence?"
+			:title="t('dashboard.admin.delivery.advanced.controls.forceDialog.title')"
 			:phrase="FORCE_ADVANCE_CONFIRMATION"
-			confirm-label="Force-advance"
+			:confirm-label="t('dashboard.admin.delivery.advanced.controls.forceDialog.confirm')"
 			@cancel="pendingForceShare = null"
 			@confirm="confirmForceAdvance"
 		>
 			<template #consequence>
 				<p data-testid="force-advance-consequence">
-					This moves
-					{{ selectedCell === null ? 'the cell' : rampCellLabel(selectedCell.cell) }} to
-					{{ pendingForceShare === null ? '' : shareLabel(pendingForceShare) }} without any check
-					agreeing to it. If the new volume is too much for that provider, the damage lands on your
-					sending domain’s reputation and takes weeks to undo — putting the number back does not
-					undo it.
+					{{
+						t('dashboard.admin.delivery.advanced.controls.forceDialog.consequence', {
+							cell:
+								selectedCell === null
+									? t('dashboard.admin.delivery.advanced.controls.forceDialog.theCell')
+									: localized(rampCellLabel(selectedCell.cell)),
+							share: pendingForceShare === null ? '' : shareLabel(pendingForceShare),
+						})
+					}}
 				</p>
-				<p>The clean streak restarts at zero, and the next evaluation will retreat if it is bad.</p>
+				<p>{{ t('dashboard.admin.delivery.advanced.controls.forceDialog.streakReset') }}</p>
 			</template>
 		</DeliveryRampConfirmDialog>
 	</div>

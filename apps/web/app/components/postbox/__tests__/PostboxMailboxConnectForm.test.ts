@@ -14,8 +14,12 @@ import { ref, onBeforeUnmount } from 'vue';
 // The shared test setup polyfills most Nuxt-auto-imported Vue APIs, but not
 // `onBeforeUnmount` (the form uses it to clear its autodiscover timer).
 vi.stubGlobal('onBeforeUnmount', onBeforeUnmount);
+// The form renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 
 import PostboxMailboxConnectForm from '../PostboxMailboxConnectForm.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+vi.stubGlobal('useI18n', i18nStubs.useI18n);
 import type { MailProvider } from '~/utils/mailAutodiscover';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -43,15 +47,20 @@ function runFor(label: string) {
 
 beforeEach(() => {
 	runs = new Map();
-	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts?: { label?: string }) => {
-		const label = opts?.label ?? 'unknown';
-		let run = runs.get(label);
-		if (!run) {
-			run = vi.fn(async () => ({ mailboxId: 'mbx-result' }));
-			runs.set(label, run);
+	vi.stubGlobal(
+		'useBackendOperation',
+		(_fn: unknown, opts?: { label?: string | (() => string) }) => {
+			// Operation labels are getters now (they read the active locale), so the
+			// discriminator has to resolve them exactly like the composable does.
+			const label = (typeof opts?.label === 'function' ? opts.label() : opts?.label) ?? 'unknown';
+			let run = runs.get(label);
+			if (!run) {
+				run = vi.fn(async () => ({ mailboxId: 'mbx-result' }));
+				runs.set(label, run);
+			}
+			return { run, isLoading: ref(false) };
 		}
-		return { run, isLoading: ref(false) };
-	});
+	);
 });
 
 // A guided provider WITH a preset: its server fields auto-fill at setup, so the
@@ -108,6 +117,7 @@ function mountForm(props: FormProps) {
 	return mount(PostboxMailboxConnectForm, {
 		props: { provider, ...props },
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiInput: UiInputStub,
 				UiButton: UiButtonStub,

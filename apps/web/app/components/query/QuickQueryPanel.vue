@@ -13,12 +13,14 @@ type QuerySource =
 	| { kind: 'knowledge'; id: string; title: string; entryType: string }
 	| { kind: 'file'; id: string; title: string; filename: string };
 
+const { t } = useI18n();
+
 const question = ref('');
 const inputRef = ref<HTMLInputElement | null>(null);
 const result = ref<{ answer: string; sources: QuerySource[] } | null>(null);
 
 const { run: askMutation, isLoading } = useBackendOperation(api.quickQuery.ask, {
-	label: 'Run query',
+	label: () => t('components.query.quickQueryPanel.askOperation'),
 	type: 'action',
 });
 
@@ -94,7 +96,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 						ref="inputRef"
 						v-model="question"
 						type="text"
-						placeholder="Ask anything about your knowledge and files..."
+						:placeholder="t('components.query.quickQueryPanel.placeholder')"
 						class="flex-1 bg-transparent text-text-primary placeholder-text-tertiary outline-none text-base"
 						@keydown.enter="handleSubmit"
 					/>
@@ -102,7 +104,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 						v-if="question"
 						class="p-1 text-text-tertiary hover:text-text-primary transition-colors"
 						@click="question = ''"
-						aria-label="Clear question"
+						:aria-label="t('components.query.quickQueryPanel.clear')"
 					>
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
@@ -118,7 +120,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 					<!-- Loading -->
 					<div v-if="isLoading" class="px-4 py-8 text-center text-text-tertiary">
 						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin mx-auto mb-2 text-brand" />
-						<p class="text-sm">Searching your knowledge and files...</p>
+						<p class="text-sm">{{ t('components.query.quickQueryPanel.searching') }}</p>
 					</div>
 
 					<!-- Result -->
@@ -129,8 +131,8 @@ const handleKeydown = (e: KeyboardEvent) => {
 					<!-- Empty state -->
 					<div v-else class="px-4 py-8 text-center text-text-tertiary">
 						<Icon name="lucide:message-circle-question" class="w-8 h-8 mx-auto mb-2 opacity-50" />
-						<p class="text-sm">Ask a question across your knowledge and files</p>
-						<p class="text-xs mt-1">Press Enter for a synthesized, cited answer</p>
+						<p class="text-sm">{{ t('components.query.quickQueryPanel.emptyTitle') }}</p>
+						<p class="text-xs mt-1">{{ t('components.query.quickQueryPanel.emptyHint') }}</p>
 					</div>
 				</div>
 
@@ -142,19 +144,19 @@ const handleKeydown = (e: KeyboardEvent) => {
 						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>↵</kbd
 						>
-						Search
+						{{ t('common.search') }}
 					</span>
 					<span class="flex items-center gap-1">
 						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>ESC</kbd
 						>
-						Close
+						{{ t('common.close') }}
 					</span>
 					<span class="ml-auto flex items-center gap-1">
 						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs">
 							<span class="text-xs">⌘</span>⇧K
 						</kbd>
-						Toggle
+						{{ t('components.query.quickQueryPanel.toggle') }}
 					</span>
 				</div>
 			</div>

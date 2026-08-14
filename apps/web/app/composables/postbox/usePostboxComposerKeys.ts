@@ -22,14 +22,19 @@ export function usePostboxComposerKeys(options: {
 	onSchedule: () => void;
 	onMinimize: () => void;
 }) {
+	const { t } = useI18n();
 	const isMac = computed(
 		() => import.meta.client && /Mac|iP(hone|ad|od)/.test(navigator.platform),
 	);
 	const sendShortcutHint = computed(() =>
-		isMac.value ? 'Send (⌘↵)' : 'Send (Ctrl+Enter)',
+		isMac.value
+			? t('shared.postbox.usePostboxComposerKeys.sendMac')
+			: t('shared.postbox.usePostboxComposerKeys.send'),
 	);
 	const scheduleShortcutHint = computed(() =>
-		isMac.value ? 'Schedule send (⌘⇧↵)' : 'Schedule send (Ctrl+Shift+Enter)',
+		isMac.value
+			? t('shared.postbox.usePostboxComposerKeys.scheduleMac')
+			: t('shared.postbox.usePostboxComposerKeys.schedule'),
 	);
 
 	/**

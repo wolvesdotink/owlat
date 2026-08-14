@@ -48,7 +48,7 @@ const props = defineProps<{
 	decisionWindowLabel: string;
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 /**
  * The measurement tables are module scope and never call `useI18n`: they hand
@@ -89,15 +89,15 @@ const trendPoints = computed(() => {
 	const peak = points.reduce((max, point) => Math.max(max, point.own.sent), 0);
 	return points.map((point) => ({
 		day: point.day,
-		label: formatShortDate(point.day),
+		label: formatShortDate(point.day, locale.value),
 		counts:
 			point.reference === null
 				? t('components.delivery.measurementCellCard.trendSent', {
-						count: formatNumber(point.own.sent),
+						count: formatNumber(point.own.sent, locale.value),
 					})
 				: t('components.delivery.measurementCellCard.trendSentWithReference', {
-						count: formatNumber(point.own.sent),
-						reference: formatNumber(point.reference.sent),
+						count: formatNumber(point.own.sent, locale.value),
+						reference: formatNumber(point.reference.sent, locale.value),
 					}),
 		widthPercent: peak > 0 ? Math.round((point.own.sent / peak) * 100) : 0,
 	}));

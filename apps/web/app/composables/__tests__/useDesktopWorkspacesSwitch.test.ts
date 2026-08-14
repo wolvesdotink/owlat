@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// `useDesktopWorkspaces` runs outside a component here, so `useI18n` is stubbed
+// with the real catalog's `t` (it translates the connect-flow failures).
+const { t } = createTestI18n().global;
 
 // The workspace switch deliberately KEEPS a full webview reload: the auth +
 // Convex singletons are built once at module load from the active workspace, so
@@ -73,6 +78,7 @@ describe('useDesktopWorkspaces.switchTo — re-seed handoff into the reloaded do
 		saveWorkspaceStore.mockClear();
 		writeSwitchFlag.mockClear();
 		applyWorkspaceAccent.mockClear();
+		vi.stubGlobal('useI18n', () => ({ t }));
 		assign = vi.fn();
 		// happy-dom's window.location.assign is a no-op; replace it so we can
 		// observe the navigation that triggers the re-seed.

@@ -4,11 +4,16 @@ export const inboundReceivedEditorModule: ContactActivityEditorModule<'inbound_r
 	literal: 'inbound_received',
 	displayConfig: {
 		icon: 'lucide:mail',
-		label: 'Inbound Received',
+		label: 'shared.contactActivities.inboundReceived.label',
 		color: 'text-brand',
 	},
 	formatDescription(metadata) {
-		if (metadata?.emailSubject) return `Replied "${metadata.emailSubject}"`;
-		return 'Replied to a thread';
+		if (metadata?.emailSubject) {
+			return {
+				key: 'shared.contactActivities.inboundReceived.descriptionWithSubject',
+				params: { subject: metadata.emailSubject },
+			};
+		}
+		return 'shared.contactActivities.inboundReceived.description';
 	},
 };

@@ -9,7 +9,19 @@ import {
 } from '~/utils/providerFeedbackPanel';
 import { transportKindLabel } from '~/utils/transportState';
 
-useHead({ title: 'Delivery provider — Owlat' });
+const { t, locale } = useI18n();
+
+/**
+ * `utils/transportState` is a module-scope definition set whose kind labels carry
+ * i18n keys rather than sentences (the registry convention); a plain string is
+ * still accepted so a value with nothing to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+useHead({ title: () => t('dashboard.admin.delivery.transport.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -55,7 +67,9 @@ const feedbackWebhookUrl = computed(() =>
 // spell the first provider's variable for every kind declaring the ceremony, so
 // the second one's operator set a variable the backend does not read and watched
 // a "missing" chip (fed by the backend's own list) that could never clear.
-const feedbackProviderLabel = computed(() => transportKindLabel(status.value?.provider ?? ''));
+const feedbackProviderLabel = computed(() =>
+	localized(transportKindLabel(status.value?.provider ?? ''))
+);
 const feedbackSigningKeyEnvVar = computed(
 	() => providerFeedbackSigningKeyEnvVar(status.value?.provider) ?? ''
 );
@@ -73,7 +87,10 @@ const { data: feedbackStatus } = useOrganizationQuery(
 const lastSesEventLabel = computed(() => {
 	const at = feedbackStatus.value?.lastEventAt;
 	if (!at) return null;
-	return new Date(at).toLocaleString();
+	return new Intl.DateTimeFormat(locale.value, {
+		dateStyle: 'medium',
+		timeStyle: 'medium',
+	}).format(new Date(at));
 });
 
 // Names of the required env vars the active provider is MISSING. Names only —
@@ -140,16 +157,16 @@ const {
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Delivery setup
+				{{ t('dashboard.admin.delivery.backToSetup') }}
 			</NuxtLink>
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:send" size="lg" variant="brand" rounded="xl" />
 				<div>
 					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						Delivery provider
+						{{ t('dashboard.admin.delivery.transport.title') }}
 					</h1>
 					<p class="mt-1 text-text-secondary">
-						Configure and validate the email delivery provider this instance sends through
+						{{ t('dashboard.admin.delivery.transport.lede') }}
 					</p>
 				</div>
 			</div>
@@ -162,8 +179,8 @@ const {
 
 		<UiErrorAlert
 			v-else-if="error"
-			title="Couldn't load delivery status"
-			message="Delivery configuration is only visible to owners and admins. If you are an admin, reload to try again."
+			:title="t('dashboard.admin.delivery.transport.error.title')"
+			:message="t('dashboard.admin.delivery.transport.error.message')"
 			class="my-8"
 		/>
 
@@ -187,18 +204,23 @@ const {
 					</div>
 					<div class="flex-1 min-w-0">
 						<h2 class="text-lg font-semibold" :class="canSend ? 'text-success' : 'text-error'">
-							{{ canSend ? 'This instance can send email' : 'This instance cannot send email' }}
+							{{
+								canSend
+									? t('dashboard.admin.delivery.transport.canSend.yes')
+									: t('dashboard.admin.delivery.transport.canSend.no')
+							}}
 						</h2>
 						<p class="text-sm text-text-secondary mt-1">
 							<template v-if="canSend">
-								A delivery provider is configured and its credentials are present. Send a test email
-								below to confirm the full path end-to-end.
+								{{ t('dashboard.admin.delivery.transport.canSend.yesBody') }}
 							</template>
-							<template v-else>
-								No usable delivery provider is configured. Until one is, campaigns and transactional
-								sends will fail. Set <code class="text-text-primary">EMAIL_PROVIDER</code> and its
-								credentials in your environment.
-							</template>
+							<I18nT
+								v-else
+								keypath="dashboard.admin.delivery.transport.canSend.noBody"
+								scope="global"
+							>
+								<template #envVar><code class="text-text-primary">EMAIL_PROVIDER</code></template>
+							</I18nT>
 						</p>
 
 						<!-- Actionable remedy: paste-ready .env skeleton + CLI command for the
@@ -207,14 +229,22 @@ const {
 							<!-- .env skeleton -->
 							<div>
 								<div class="flex items-center justify-between mb-2">
-									<p class="text-xs font-medium text-text-primary">
-										Add to your <code class="text-text-primary">.env</code>, then restart the
-										instance
-									</p>
+									<I18nT
+										keypath="dashboard.admin.delivery.transport.env.addToEnv"
+										tag="p"
+										class="text-xs font-medium text-text-primary"
+										scope="global"
+									>
+										<template #file><code class="text-text-primary">.env</code></template>
+									</I18nT>
 									<UiButton
 										variant="ghost"
 										size="sm"
-										:title="isCopied('env-snippet') ? 'Copied' : 'Copy .env snippet'"
+										:title="
+											isCopied('env-snippet')
+												? t('common.copied')
+												: t('dashboard.admin.delivery.transport.env.copySnippet')
+										"
 										@click="copy(envSnippet, 'env-snippet')"
 									>
 										<Icon
@@ -222,26 +252,31 @@ const {
 											class="w-3.5 h-3.5"
 											:class="isCopied('env-snippet') ? 'text-success' : ''"
 										/>
-										{{ isCopied('env-snippet') ? 'Copied' : 'Copy' }}
+										{{ isCopied('env-snippet') ? t('common.copied') : t('common.copy') }}
 									</UiButton>
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
 									>{{ envSnippet }}</pre>
 								<p class="text-xs text-text-tertiary mt-1.5">
-									Values are left blank — fill in your real credentials. They are never displayed
-									here.
+									{{ t('dashboard.admin.delivery.transport.env.blankValues') }}
 								</p>
 							</div>
 
 							<!-- CLI command -->
 							<div>
 								<div class="flex items-center justify-between mb-2">
-									<p class="text-xs font-medium text-text-primary">Or set each one from the CLI</p>
+									<p class="text-xs font-medium text-text-primary">
+										{{ t('dashboard.admin.delivery.transport.env.cliTitle') }}
+									</p>
 									<UiButton
 										variant="ghost"
 										size="sm"
-										:title="isCopied('env-cmd') ? 'Copied' : 'Copy command'"
+										:title="
+											isCopied('env-cmd')
+												? t('common.copied')
+												: t('dashboard.admin.delivery.transport.env.copyCommand')
+										"
 										@click="copy(envSetCommand, 'env-cmd')"
 									>
 										<Icon
@@ -249,23 +284,31 @@ const {
 											class="w-3.5 h-3.5"
 											:class="isCopied('env-cmd') ? 'text-success' : ''"
 										/>
-										{{ isCopied('env-cmd') ? 'Copied' : 'Copy' }}
+										{{ isCopied('env-cmd') ? t('common.copied') : t('common.copy') }}
 									</UiButton>
 								</div>
 								<pre
 									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
 									>{{ envSetCommand }}</pre>
-								<p class="text-xs text-text-tertiary mt-1.5">
-									Run <code class="text-text-primary">owlat-setup env --show</code> to list every
-									variable your current configuration needs. See the
-									<a
-										href="https://docs.owlat.app/developer/environment-variables"
-										target="_blank"
-										rel="noopener"
-										class="text-brand hover:text-brand-hover underline"
-										>environment variables guide</a
-									>.
-								</p>
+								<I18nT
+									keypath="dashboard.admin.delivery.transport.env.cliHint"
+									tag="p"
+									class="text-xs text-text-tertiary mt-1.5"
+									scope="global"
+								>
+									<template #command>
+										<code class="text-text-primary">owlat-setup env --show</code>
+									</template>
+									<template #guideLink>
+										<a
+											href="https://docs.owlat.app/developer/environment-variables"
+											target="_blank"
+											rel="noopener"
+											class="text-brand hover:text-brand-hover underline"
+											>{{ t('dashboard.admin.delivery.transport.env.guideLink') }}</a
+										>
+									</template>
+								</I18nT>
 							</div>
 						</div>
 					</div>
@@ -308,9 +351,11 @@ const {
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:server" size="sm" variant="surface" rounded="lg" />
 						<div>
-							<h2 class="text-lg font-semibold text-text-primary">Provider configuration</h2>
+							<h2 class="text-lg font-semibold text-text-primary">
+								{{ t('dashboard.admin.delivery.transport.config.title') }}
+							</h2>
 							<p class="text-sm text-text-secondary">
-								The active provider and the runtime variables it requires
+								{{ t('dashboard.admin.delivery.transport.config.subtitle') }}
 							</p>
 						</div>
 					</div>
@@ -320,22 +365,32 @@ const {
 					<!-- Active provider -->
 					<div class="flex items-center justify-between">
 						<div>
-							<p class="text-sm font-medium text-text-primary">Active provider</p>
+							<p class="text-sm font-medium text-text-primary">
+								{{ t('dashboard.admin.delivery.transport.config.activeProvider') }}
+							</p>
 							<p class="text-xs text-text-tertiary mt-0.5">
-								From the EMAIL_PROVIDER environment variable
+								{{ t('dashboard.admin.delivery.transport.config.activeProviderHint') }}
 							</p>
 						</div>
 						<UiBadge v-if="status.provider && status.isKnownProvider" variant="default" size="md">
 							{{ status.provider }}
 						</UiBadge>
 						<UiBadge v-else variant="error" size="md">
-							{{ status.provider ? `unknown: ${status.provider}` : 'not set' }}
+							{{
+								status.provider
+									? t('dashboard.admin.delivery.transport.config.unknownProvider', {
+											provider: status.provider,
+										})
+									: t('dashboard.admin.delivery.transport.config.notSet')
+							}}
 						</UiBadge>
 					</div>
 
 					<!-- Required env presence (booleans only — never the secret value) -->
 					<div v-if="status.requiredEnv.length > 0" class="border-t border-border-subtle pt-5">
-						<p class="text-sm font-medium text-text-primary mb-3">Required environment variables</p>
+						<p class="text-sm font-medium text-text-primary mb-3">
+							{{ t('dashboard.admin.delivery.transport.config.requiredEnv') }}
+						</p>
 						<ul class="space-y-2">
 							<li
 								v-for="entry in status.requiredEnv"
@@ -348,25 +403,39 @@ const {
 									:class="entry.isPresent ? 'text-success' : 'text-error'"
 								>
 									<Icon :name="entry.isPresent ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5" />
-									{{ entry.isPresent ? 'present' : 'missing' }}
+									{{
+										entry.isPresent
+											? t('dashboard.admin.delivery.transport.config.present')
+											: t('dashboard.admin.delivery.transport.config.missing')
+									}}
 								</span>
 							</li>
 						</ul>
 						<p class="text-xs text-text-tertiary mt-3">
-							Only the presence of each variable is shown — secret values never leave the backend.
+							{{ t('dashboard.admin.delivery.transport.config.presenceOnly') }}
 						</p>
 					</div>
 					<!-- The kinds this build carries, from the catalog: a provider added
 					     there is offered here without an edit (plan D1). -->
-					<p v-else class="text-sm text-text-tertiary border-t border-border-subtle pt-5">
-						Select a delivery provider (set <code class="text-text-primary">EMAIL_PROVIDER</code> to
-						<template v-for="(kind, index) in SEND_TRANSPORT_KINDS" :key="kind"
-							><span v-if="index > 0">{{
-								index === SEND_TRANSPORT_KINDS.length - 1 ? ', or ' : ', '
-							}}</span
-							><code class="text-text-primary">{{ kind }}</code></template
-						>) to see its required variables.
-					</p>
+					<I18nT
+						v-else
+						keypath="dashboard.admin.delivery.transport.config.selectProvider"
+						tag="p"
+						class="text-sm text-text-tertiary border-t border-border-subtle pt-5"
+						scope="global"
+					>
+						<template #envVar><code class="text-text-primary">EMAIL_PROVIDER</code></template>
+						<template #kinds>
+							<template v-for="(kind, index) in SEND_TRANSPORT_KINDS" :key="kind"
+								><span v-if="index > 0">{{
+									index === SEND_TRANSPORT_KINDS.length - 1
+										? t('dashboard.admin.delivery.transport.config.listLastSeparator')
+										: t('dashboard.admin.delivery.transport.config.listSeparator')
+								}}</span
+								><code class="text-text-primary">{{ kind }}</code></template
+							>
+						</template>
+					</I18nT>
 				</div>
 			</UiCard>
 
@@ -394,11 +463,10 @@ const {
 						<UiIconBox icon="lucide:radio" size="sm" variant="surface" rounded="lg" />
 						<div>
 							<h2 class="text-lg font-semibold text-text-primary">
-								SES bounce &amp; complaint feedback
+								{{ t('dashboard.admin.delivery.transport.sns.title') }}
 							</h2>
 							<p class="text-sm text-text-secondary">
-								Let SES tell Owlat when mail bounces or is marked as spam, so those addresses are
-								suppressed automatically
+								{{ t('dashboard.admin.delivery.transport.sns.subtitle') }}
 							</p>
 						</div>
 					</div>
@@ -406,19 +474,23 @@ const {
 
 				<div class="p-6 space-y-5">
 					<p class="text-sm text-text-secondary">
-						SES delivers this feedback through an Amazon SNS topic. Point an HTTPS subscription at
-						the endpoint below — Owlat verifies each message&rsquo;s signature and confirms the
-						subscription for you.
+						{{ t('dashboard.admin.delivery.transport.sns.intro') }}
 					</p>
 
 					<!-- Webhook endpoint -->
 					<div v-if="feedbackWebhookUrl">
 						<div class="flex items-center justify-between mb-2">
-							<p class="text-xs font-medium text-text-primary">SNS subscription endpoint</p>
+							<p class="text-xs font-medium text-text-primary">
+								{{ t('dashboard.admin.delivery.transport.sns.endpointTitle') }}
+							</p>
 							<UiButton
 								variant="ghost"
 								size="sm"
-								:title="isCopied('ses-url') ? 'Copied' : 'Copy endpoint URL'"
+								:title="
+									isCopied('ses-url')
+										? t('common.copied')
+										: t('dashboard.admin.delivery.transport.sns.copyEndpoint')
+								"
 								@click="copy(feedbackWebhookUrl, 'ses-url')"
 							>
 								<Icon
@@ -426,7 +498,7 @@ const {
 									class="w-3.5 h-3.5"
 									:class="isCopied('ses-url') ? 'text-success' : ''"
 								/>
-								{{ isCopied('ses-url') ? 'Copied' : 'Copy' }}
+								{{ isCopied('ses-url') ? t('common.copied') : t('common.copy') }}
 							</UiButton>
 						</div>
 						<pre
@@ -434,46 +506,47 @@ const {
 							>{{ feedbackWebhookUrl }}</pre>
 					</div>
 					<p v-else class="text-xs text-text-tertiary">
-						Set your site URL to see the endpoint SNS should subscribe to.
+						{{ t('dashboard.admin.delivery.transport.sns.noSiteUrl') }}
 					</p>
 
 					<!-- Setup steps -->
 					<ol class="space-y-2 text-sm text-text-secondary list-decimal pl-5">
-						<li>
-							In the SNS console, create a topic (e.g.
-							<code class="text-text-primary">owlat-ses-feedback</code>) and add an
-							<span class="text-text-primary">HTTPS</span> subscription with the endpoint above.
-						</li>
-						<li>
-							Set <code class="text-text-primary">SES_SNS_TOPIC_ARN</code> to that topic&rsquo;s
-							ARN. Owlat only accepts feedback from this exact topic, so the endpoint stays closed
-							until it&rsquo;s set.
-						</li>
-						<li>
-							In the SES console, create a
-							<span class="text-text-primary">Configuration Set</span> with an event destination
-							publishing <code class="text-text-primary">Bounce</code>,
-							<code class="text-text-primary">Complaint</code> and
-							<code class="text-text-primary">Delivery</code> events to that topic.
-						</li>
-						<li>
-							Set <code class="text-text-primary">SES_CONFIGURATION_SET</code> to the set&rsquo;s
-							name so every send is attributed. Changes take effect on the next send — no restart
-							needed.
-						</li>
+						<I18nT keypath="dashboard.admin.delivery.transport.sns.step1" tag="li" scope="global">
+							<template #topic><code class="text-text-primary">owlat-ses-feedback</code></template>
+							<template #https><span class="text-text-primary">HTTPS</span></template>
+						</I18nT>
+						<I18nT keypath="dashboard.admin.delivery.transport.sns.step2" tag="li" scope="global">
+							<template #envVar>
+								<code class="text-text-primary">SES_SNS_TOPIC_ARN</code>
+							</template>
+						</I18nT>
+						<I18nT keypath="dashboard.admin.delivery.transport.sns.step3" tag="li" scope="global">
+							<template #configurationSet>
+								<span class="text-text-primary">Configuration Set</span>
+							</template>
+							<template #bounce><code class="text-text-primary">Bounce</code></template>
+							<template #complaint><code class="text-text-primary">Complaint</code></template>
+							<template #delivery><code class="text-text-primary">Delivery</code></template>
+						</I18nT>
+						<I18nT keypath="dashboard.admin.delivery.transport.sns.step4" tag="li" scope="global">
+							<template #envVar>
+								<code class="text-text-primary">SES_CONFIGURATION_SET</code>
+							</template>
+						</I18nT>
 					</ol>
 
 					<!-- Live "last event received" line -->
 					<div class="flex items-center gap-2 text-xs">
 						<template v-if="lastSesEventLabel">
 							<Icon name="lucide:check-circle-2" class="w-3.5 h-3.5 text-success" />
-							<span class="text-success">Last event received: {{ lastSesEventLabel }}</span>
+							<span class="text-success">{{
+								t('dashboard.admin.delivery.transport.sns.lastEvent', { at: lastSesEventLabel })
+							}}</span>
 						</template>
 						<template v-else>
 							<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
 							<span class="text-text-tertiary">
-								No feedback received yet. Once the subscription is confirmed and a message bounces
-								or is delivered, it appears here.
+								{{ t('dashboard.admin.delivery.transport.sns.noEvents') }}
 							</span>
 						</template>
 					</div>

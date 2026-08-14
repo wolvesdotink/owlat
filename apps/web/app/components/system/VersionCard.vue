@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // Reads build-time version metadata injected into runtimeConfig.public.
 // Populated by CI via Dockerfile ARGs → ENV; local dev builds show "dev".
+const { t, locale } = useI18n();
+
 const config = useRuntimeConfig();
 
 const version = computed(() => (config.public.owlatVersion as string) || 'dev');
@@ -13,7 +15,7 @@ const formattedBuildDate = computed(() => {
 	try {
 		const d = new Date(raw);
 		if (isNaN(d.getTime())) return raw;
-		return d.toLocaleString(undefined, {
+		return d.toLocaleString(locale.value, {
 			year: 'numeric',
 			month: 'short',
 			day: 'numeric',
@@ -38,7 +40,7 @@ const isDevBuild = computed(() => version.value === 'dev' || version.value === '
 	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 		<div class="flex items-start justify-between gap-6 flex-wrap">
 			<div class="min-w-0">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">Current version</h3>
+				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">{{ t('components.system.versionCard.currentVersion') }}</h3>
 				<div class="flex items-baseline gap-3 flex-wrap">
 					<span class="font-display text-3xl font-semibold text-text-primary tracking-tight">
 						{{ version }}
@@ -47,16 +49,16 @@ const isDevBuild = computed(() => version.value === 'dev' || version.value === '
 						v-if="isDevBuild"
 						class="text-[0.6875rem] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-warning/10 text-warning"
 					>
-						Dev build
+						{{ t('components.system.versionCard.devBuild') }}
 					</span>
 				</div>
 			</div>
 
 			<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-[0.8125rem] min-w-[260px]">
-				<dt class="text-text-tertiary">Git SHA</dt>
+				<dt class="text-text-tertiary">{{ t('components.system.versionCard.gitSha') }}</dt>
 				<dd class="text-text-primary font-mono">{{ shortSha }}</dd>
 
-				<dt class="text-text-tertiary">Built</dt>
+				<dt class="text-text-tertiary">{{ t('components.system.versionCard.built') }}</dt>
 				<dd class="text-text-primary">{{ formattedBuildDate }}</dd>
 			</dl>
 		</div>
