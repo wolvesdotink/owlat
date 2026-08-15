@@ -31,9 +31,16 @@ export function createTestI18n() {
  */
 export const i18nStubs = { useI18n };
 
-/** A message key that leaked into the page instead of its translation. */
+/**
+ * A message key that leaked into the page instead of its translation.
+ *
+ * `sharedPkg` is the namespace the registries under `packages/shared` are
+ * mirrored into, and its segments carry underscores (`crm_only`), so the segment
+ * class allows them — a mode card that rendered `OPERATING_MODES[key].label`
+ * verbatim is exactly the failure this catches.
+ */
 const RAW_KEY_PATH =
-	/\b(?:common|auth|recipient|postbox|welcome|dashboard|components|shared|desktop|setup|invite|compose|imprint|terms|home|cancelDeletion|shell|ui)(?:\.[A-Za-z][A-Za-z0-9-]*){2,}\b/;
+	/\b(?:common|auth|recipient|postbox|welcome|dashboard|components|sharedPkg|shared|desktop|setup|invite|compose|imprint|terms|home|cancelDeletion|shell|ui)(?:\.[A-Za-z][A-Za-z0-9_-]*){2,}\b/;
 /** An interpolation the page never filled in — `{email}` in front of a stranger. */
 const UNFILLED_PLACEHOLDER = /\{\s*[A-Za-z][A-Za-z0-9_]*\s*\}/;
 

@@ -55,8 +55,15 @@ export type SmtpPreset = SmtpRelayPreset;
 
 /**
  * The wizard's steps. `label` is an i18n MESSAGE KEY, not a word: this list is
- * built at module scope, before any component sets up, so the step indicator
- * resolves it with `t(step.label)` where it renders.
+ * built at module scope, before any component sets up, so it cannot hold
+ * resolved copy.
+ *
+ * THE PAGES TRANSLATE. `UiStepIndicator` is a shared ui-layer component that
+ * renders whatever `label` it is handed as display text — it does not resolve
+ * keys, and its other callers already pass translated words. So each `/setup/*`
+ * page maps this list through its own `t()` (as a computed, so the labels follow
+ * a locale switch) before binding it to the indicator; handing it these keys raw
+ * paints the key paths on the first-run installer.
  */
 export const SETUP_STEPS = [
 	{ id: 'mode', label: 'shared.useSetupWizard.steps.mode', number: 1 },

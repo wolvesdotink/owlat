@@ -255,6 +255,12 @@ const hasAuthError = computed(() => {
 	);
 });
 
+// `MailProvider.name` is a CATALOG KEY, not display copy (see
+// `utils/mailAutodiscover`), so it has to be translated before it is
+// interpolated into the address label — interpolating it raw paints
+// `shared.mailAutodiscover.provider.gmail.name` on the visible field label.
+const providerName = computed(() => t(props.provider.name));
+
 const submitLabel = computed(() =>
 	props.mode === 'update'
 		? t('components.postbox.postboxMailboxConnectForm.saveCredentials')
@@ -289,7 +295,7 @@ function testStatus(result?: { ok: boolean; error?: string }): string {
 			v-model="form.emailAddress"
 			type="email"
 			:label="
-				t('components.postbox.postboxMailboxConnectForm.addressLabel', { provider: provider.name })
+				t('components.postbox.postboxMailboxConnectForm.addressLabel', { provider: providerName })
 			"
 			:placeholder="t('components.postbox.postboxMailboxConnectForm.emailPlaceholder')"
 			autocomplete="email"
@@ -412,15 +418,11 @@ function testStatus(result?: { ok: boolean; error?: string }): string {
 		<div v-if="testResult" class="text-sm space-y-1">
 			<p :class="testResult.imap.ok ? 'text-success' : 'text-error'">
 				<Icon :name="testResult.imap.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
-				{{
-					t('components.postbox.postboxMailboxConnectForm.incomingMail', { status: imapStatus })
-				}}
+				{{ t('components.postbox.postboxMailboxConnectForm.incomingMail', { status: imapStatus }) }}
 			</p>
 			<p :class="testResult.smtp.ok ? 'text-success' : 'text-error'">
 				<Icon :name="testResult.smtp.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
-				{{
-					t('components.postbox.postboxMailboxConnectForm.outgoingMail', { status: smtpStatus })
-				}}
+				{{ t('components.postbox.postboxMailboxConnectForm.outgoingMail', { status: smtpStatus }) }}
 			</p>
 		</div>
 

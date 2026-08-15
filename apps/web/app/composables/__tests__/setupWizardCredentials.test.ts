@@ -234,13 +234,19 @@ describe('credential descriptors — the shipped forms, pinned', () => {
 		const actual = credentialFieldsFor(kind).map((field) => ({
 			key: field.key,
 			kind: field.kind,
-			label: field.label,
+			// The descriptor carries a `sharedPkg.sendProviderCatalog.*` KEY, so the
+			// words are read through the catalog exactly as the form reads them —
+			// which is what keeps this table a pin on the SENTENCE an operator sees
+			// rather than on the key path that happens to address it.
+			label: t(field.label),
 			envVars: [...credentialFieldEnvVars(field)],
 			required: field.required === true,
 			// Undefined rather than omitted on both, so an ADDED description or
 			// placeholder fails here too — `toEqual` ignores an undefined-valued key
 			// on one side, but not a string where the table says nothing.
-			description: field.description,
+			description: field.description === undefined ? undefined : t(field.description),
+			// A placeholder is an EXAMPLE value (`re_...`, `us-east-1`), not copy, so
+			// it stays a literal in the descriptor and is compared as one.
 			placeholder: 'placeholder' in field ? field.placeholder : undefined,
 		}));
 		expect(actual).toEqual(EXPECTED_FIELDS[kind]);

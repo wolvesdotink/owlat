@@ -38,6 +38,7 @@ import {
 	secretEnvKeys,
 	requiredCredentialError,
 	type DraftCredentials,
+	type MissingCredentialMessage,
 	type TransportCredentialValues,
 } from '~/composables/setupWizardCredentials';
 import {
@@ -284,8 +285,13 @@ export interface RelayCredentialDraft {
 	readonly enteredSecrets: ComputedRef<string[]>;
 	/** True only for a kind whose catalog entry declares a pre-apply probe. */
 	readonly canValidateLive: ComputedRef<boolean>;
-	/** Missing required descriptor value, for every core or plugin transport. */
-	readonly requiredCredentialError: ComputedRef<string | undefined>;
+	/**
+	 * Missing required descriptor value, for every core or plugin transport — as
+	 * the message key plus the field name it interpolates, because this composable
+	 * is also created outside a component (its own suite does) and has no `t()`.
+	 * The screen that announces it resolves both halves.
+	 */
+	readonly requiredCredentialError: ComputedRef<MissingCredentialMessage | undefined>;
 	clearEnteredSecrets(): void;
 	/** The shipped live handshake, or null when this kind has none. */
 	validateLive(): Promise<ValidateTransportResponse | null>;

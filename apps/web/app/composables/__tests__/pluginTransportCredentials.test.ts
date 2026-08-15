@@ -10,6 +10,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import en from '~~/i18n/locales/en.json';
+import { createTestI18n } from '~/__tests__/i18n';
 
 const { PLUGIN_KIND, PLUGIN_TOKEN_ENV, pluginCatalog } = vi.hoisted(() => {
 	const kind = 'plugin.mock-esp.relay';
@@ -57,6 +58,9 @@ import { mount } from '@vue/test-utils';
 import TransportCredentialFields from '../../components/delivery/TransportCredentialFields.vue';
 import { wizardStubs } from '../../components/delivery/__tests__/wizardHarness';
 import { transportDnsGuidance } from '../../utils/transportDnsGuidance';
+
+/** The real catalog's `t`, for the keys the pure modules answer with. */
+const { t } = createTestI18n().global;
 
 function draft(): EmailStepDraft {
 	return {
@@ -111,13 +115,22 @@ describe('a bundled plugin transport reaches the credential UI', () => {
 	});
 
 	it('gates a missing required value and clears the error once supplied', () => {
-		expect(requiredCredentialError(PLUGIN_KIND, {})).toBe('Enter api token.');
+		// The gate is a pure module, so it answers with the sentence's key and the
+		// field it names — here the PLUGIN's own English label, which no shipped
+		// catalog can contain and which `t()` therefore hands back unchanged. The
+		// words are asserted the way the screen assembles them.
+		const missing = requiredCredentialError(PLUGIN_KIND, {});
+		expect(missing).toEqual({
+			key: 'shared.setupWizardCredentials.enterField',
+			field: 'API token',
+		});
+		expect(t(missing!.key, { field: t(missing!.field) })).toBe('Enter API token.');
 		expect(
 			requiredCredentialError(PLUGIN_KIND, { [PLUGIN_TOKEN_ENV]: 'tok-live' })
 		).toBeUndefined();
 
 		const relay = useRelayCredentialDraft(PLUGIN_KIND);
-		expect(relay.requiredCredentialError.value).toBe('Enter api token.');
+		expect(relay.requiredCredentialError.value).toEqual(missing);
 		relay.credentialValues[PLUGIN_TOKEN_ENV] = 'tok-live';
 		expect(relay.requiredCredentialError.value).toBeUndefined();
 	});

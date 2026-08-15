@@ -13,6 +13,7 @@
  * a page that never occurs.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { VueWrapper } from '@vue/test-utils';
 import { auditA11y, installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useSetupWizard } from '~/composables/useSetupWizard';
@@ -51,21 +52,69 @@ beforeEach(() => {
 });
 
 const pages = [
-	{ name: 'welcome', component: SetupIndexPage, loaded: 'Welcome to Owlat' },
-	{ name: 'mode', component: SetupModePage, loaded: 'How will you run Owlat?' },
-	{ name: 'features', component: SetupFeaturesPage, loaded: 'Pick what to enable' },
-	{ name: 'email delivery', component: SetupEmailPage, loaded: 'How should Owlat send mail?' },
-	{ name: 'admin account', component: SetupAdminPage, loaded: 'Admin account' },
-	{ name: 'team invites', component: SetupTeamPage, loaded: 'Invitation required' },
-	{ name: 'review', component: SetupReviewPage, loaded: 'Review & launch' },
+	{ name: 'welcome', component: SetupIndexPage, loaded: 'Welcome to Owlat', indicator: false },
+	{ name: 'mode', component: SetupModePage, loaded: 'How will you run Owlat?', indicator: true },
+	{
+		name: 'features',
+		component: SetupFeaturesPage,
+		loaded: 'Pick what to enable',
+		indicator: true,
+	},
+	{
+		name: 'email delivery',
+		component: SetupEmailPage,
+		loaded: 'How should Owlat send mail?',
+		indicator: true,
+	},
+	{ name: 'admin account', component: SetupAdminPage, loaded: 'Admin account', indicator: true },
+	{
+		name: 'team invites',
+		component: SetupTeamPage,
+		loaded: 'Invitation required',
+		indicator: false,
+	},
+	{ name: 'review', component: SetupReviewPage, loaded: 'Review & launch', indicator: true },
 ] as const;
 
-describe.each(pages)('setup wizard: $name step — accessibility', ({ component, loaded }) => {
-	it('has no axe violations', async () => {
-		const violations = await auditA11y(component, {
-			global: { plugins: [createTestI18n()] },
-			prepare: (wrapper) => expect(wrapper.text()).toContain(loaded),
+/** A step label that reached the screen as its message key instead of its word. */
+const RAW_STEP_KEY = /shared\.useSetupWizard\./;
+
+/** The `en` catalog's `shared.useSetupWizard.steps.*`, in wizard order. */
+const STEP_LABELS = ['Mode', 'Features', 'Email', 'Account', 'Review'];
+
+/**
+ * REGRESSION — the step indicator is handed DISPLAY TEXT, never message keys.
+ *
+ * `SETUP_WIZARD_STEPS` is built at module scope, so its `label`s are
+ * `shared.useSetupWizard.steps.*` keys, and each wizard page maps them through
+ * its own `t()` before binding them (`UiStepIndicator` is a shared ui-layer
+ * component that resolves nothing). A page that forgets paints those key paths
+ * across the top of the very first screen an operator ever sees — and, once a
+ * step is completed, names its back-link button that too, so the leak is read
+ * aloud as well as shown. Checked on the visible labels AND on the accessible
+ * names, because the two come from the same string by different routes.
+ */
+function expectStepIndicatorLocalized(wrapper: VueWrapper): void {
+	const nav = wrapper.get('nav');
+	for (const label of STEP_LABELS) expect(nav.text()).toContain(label);
+	expect(nav.text()).not.toMatch(RAW_STEP_KEY);
+	for (const el of nav.element.querySelectorAll('[aria-label]')) {
+		expect(el.getAttribute('aria-label') ?? '').not.toMatch(RAW_STEP_KEY);
+	}
+}
+
+describe.each(pages)(
+	'setup wizard: $name step — accessibility',
+	({ component, loaded, indicator }) => {
+		it('has no axe violations', async () => {
+			const violations = await auditA11y(component, {
+				global: { plugins: [createTestI18n()] },
+				prepare: (wrapper) => {
+					expect(wrapper.text()).toContain(loaded);
+					if (indicator) expectStepIndicatorLocalized(wrapper);
+				},
+			});
+			expect(violations).toEqual([]);
 		});
-		expect(violations).toEqual([]);
-	});
-});
+	}
+);

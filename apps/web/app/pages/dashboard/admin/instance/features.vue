@@ -21,12 +21,16 @@ import { bundledPluginComposition } from '~/plugins/plugin-composition.generated
 import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
 import PluginConfigStatusNotice from '~/components/settings/PluginConfigStatusNotice.vue';
 import FeatureFlagToggleDialogs from '~/components/settings/FeatureFlagToggleDialogs.vue';
+import { useFeatureCopy } from '~/composables/useFeatureCopy';
 
 const pluginFeatureFlagDefinitions =
 	getBundledPluginFeatureFlagDefinitions(bundledPluginComposition);
 const featureFlagRegistry = createFeatureFlagRegistry(pluginFeatureFlagDefinitions);
 
 const { t } = useI18n();
+// The shared registry keeps its English (the setup CLI prints it, and plugin
+// definitions are minted at runtime); these resolve it through the catalog.
+const { flagLabel, flagDescription, packLabel, packDescription } = useFeatureCopy();
 
 useHead({ title: () => t('dashboard.admin.instance.features.pageTitle') });
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
@@ -188,7 +192,8 @@ async function commitToggle(
 	pendingCascade.value = null;
 	pendingPluginApproval.value = null;
 	if (res === undefined) return; // failure already toasted by the operation module
-	const label = featureFlagRegistry[flag]?.label ?? flag;
+	const definition = featureFlagRegistry[flag];
+	const label = definition ? flagLabel(definition) : flag;
 	showToast(
 		value
 			? t('dashboard.admin.instance.features.toasts.flagEnabled', { label })
@@ -241,7 +246,7 @@ async function togglePack(packKey: FeaturePackKey) {
 	const nextValue = current !== 'on'; // off/partial → on; on → off
 	const res = await setFeaturePack({ pack: packKey, value: nextValue });
 	if (res === undefined) return; // failure already toasted
-	const label = FEATURE_PACKS[packKey].label;
+	const label = packLabel(packKey);
 	showToast(
 		nextValue
 			? t('dashboard.admin.instance.features.toasts.packEnabled', { label })
@@ -295,7 +300,7 @@ async function togglePack(packKey: FeaturePackKey) {
 						>
 							<div class="min-w-0">
 								<div class="flex items-center gap-2">
-									<p class="font-medium text-text-primary">{{ FEATURE_PACKS[packKey].label }}</p>
+									<p class="font-medium text-text-primary">{{ packLabel(packKey) }}</p>
 									<span
 										v-if="packState[packKey] === 'partial'"
 										class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning"
@@ -304,7 +309,7 @@ async function togglePack(packKey: FeaturePackKey) {
 									</span>
 								</div>
 								<p class="text-sm text-text-secondary mt-0.5">
-									{{ FEATURE_PACKS[packKey].description }}
+									{{ packDescription(packKey) }}
 								</p>
 								<p class="text-xs text-text-tertiary mt-1 font-mono">
 									{{
@@ -320,7 +325,7 @@ async function togglePack(packKey: FeaturePackKey) {
 								:aria-checked="packState[packKey] === 'on'"
 								:aria-label="
 									t('dashboard.admin.instance.features.toggleAria', {
-										label: FEATURE_PACKS[packKey].label,
+										label: packLabel(packKey),
 									})
 								"
 								class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
@@ -396,7 +401,7 @@ async function togglePack(packKey: FeaturePackKey) {
 						>
 							<div class="min-w-0">
 								<div class="flex items-center gap-2 flex-wrap">
-									<p class="font-medium text-text-primary">{{ def.label }}</p>
+									<p class="font-medium text-text-primary">{{ flagLabel(def) }}</p>
 									<code class="text-xs text-text-tertiary bg-bg-surface px-1.5 py-0.5 rounded">{{
 										def.key
 									}}</code>
@@ -413,7 +418,7 @@ async function togglePack(packKey: FeaturePackKey) {
 										{{ t('dashboard.admin.instance.features.needsConfig') }}
 									</span>
 								</div>
-								<p class="text-sm text-text-secondary mt-0.5">{{ def.description }}</p>
+								<p class="text-sm text-text-secondary mt-0.5">{{ flagDescription(def) }}</p>
 								<FeatureFlagMetadata :definition="def" />
 							</div>
 							<button
@@ -421,7 +426,7 @@ async function togglePack(packKey: FeaturePackKey) {
 								role="switch"
 								:aria-checked="resolved[def.key]"
 								:aria-label="
-									t('dashboard.admin.instance.features.toggleAria', { label: def.label })
+									t('dashboard.admin.instance.features.toggleAria', { label: flagLabel(def) })
 								"
 								:data-testid="`feature-switch-${def.key}`"
 								class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"

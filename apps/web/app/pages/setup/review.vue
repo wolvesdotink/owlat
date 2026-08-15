@@ -16,6 +16,13 @@ const { flags, env, admin, isMigrationMode, summary, setupToken, goToStep, compl
 	useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'review');
 
+// `SETUP_WIZARD_STEPS` carries message KEYS (it is built at module scope); the
+// indicator renders display text, so resolve them here — as a computed, so the
+// labels follow a locale switch instead of freezing at setup.
+const displaySteps = computed(() =>
+	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
+);
+
 // The privileged apply endpoint authenticates with the one-time setup token.
 const trimmedToken = computed(() => setupToken.value.trim());
 const canLaunch = computed(() => !summary.value.missingProvider && trimmedToken.value !== '');
@@ -132,7 +139,7 @@ onUnmounted(stopPolling);
 
 			<UiStepIndicator
 				class="mb-10"
-				:steps="SETUP_WIZARD_STEPS"
+				:steps="displaySteps"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
 				:on-step-click="goToStep"

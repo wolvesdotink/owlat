@@ -13,6 +13,13 @@ const router = useRouter();
 const { env, flags, requiresProvider, setupToken, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'email');
 
+// `SETUP_WIZARD_STEPS` carries message KEYS (it is built at module scope); the
+// indicator renders display text, so resolve them here — as a computed, so the
+// labels follow a locale switch instead of freezing at setup.
+const displaySteps = computed(() =>
+	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
+);
+
 // Field state, the SMTP relay presets, the transport choice cards and the
 // validated draft they add up to — see `useSetupEmailStepForm`.
 const {
@@ -142,7 +149,7 @@ async function next() {
 
 			<UiStepIndicator
 				class="mb-10"
-				:steps="SETUP_WIZARD_STEPS"
+				:steps="displaySteps"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
 				:on-step-click="goToStep"

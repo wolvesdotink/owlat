@@ -12,6 +12,13 @@ const router = useRouter();
 const { admin, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'admin');
 
+// `SETUP_WIZARD_STEPS` carries message KEYS (it is built at module scope); the
+// indicator renders display text, so resolve them here — as a computed, so the
+// labels follow a locale switch instead of freezing at setup.
+const displaySteps = computed(() =>
+	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
+);
+
 const submitted = ref(false);
 // Track touched fields so an error only shows after the user has left the field
 // (or after an advance attempt), not while they're still typing.
@@ -48,7 +55,7 @@ function next() {
 
 			<UiStepIndicator
 				class="mb-10"
-				:steps="SETUP_WIZARD_STEPS"
+				:steps="displaySteps"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
 				:on-step-click="goToStep"

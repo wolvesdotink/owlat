@@ -17,7 +17,7 @@ vi.stubGlobal('onBeforeUnmount', onBeforeUnmount);
 // The form renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 
 import PostboxMailboxConnectForm from '../PostboxMailboxConnectForm.vue';
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 vi.stubGlobal('useI18n', i18nStubs.useI18n);
 import type { MailProvider } from '~/utils/mailAutodiscover';
@@ -64,12 +64,14 @@ beforeEach(() => {
 });
 
 // A guided provider WITH a preset: its server fields auto-fill at setup, so the
-// form is submittable after only email + password are entered.
+// form is submittable after only email + password are entered. `name`/`hint` are
+// CATALOG KEYS exactly as the real provider registry stores them — the fixture
+// has to keep that shape or it would hide the raw-key label bug below.
 const provider: MailProvider = {
 	id: 'imap',
-	name: 'Test Mail',
+	name: 'shared.mailAutodiscover.provider.imap.name',
 	icon: 'lucide:server',
-	hint: 'test',
+	hint: 'shared.mailAutodiscover.provider.imap.hint',
 	preset: {
 		imapHost: 'imap.test.com',
 		imapPort: 993,
@@ -94,11 +96,13 @@ const account = {
 	status: 'auth_error',
 };
 
+// Renders the `label` prop, not just the control: a field label that paints a
+// message key is a user-visible defect, so it has to be in the audited markup.
 const UiInputStub = {
 	props: ['modelValue', 'type', 'label'],
 	emits: ['update:modelValue'],
 	template:
-		'<input :type="type" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+		'<label><span>{{ label }}</span><input :type="type" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>',
 };
 const UiButtonStub = { template: '<button type="submit"><slot /></button>' };
 const UiErrorAlertStub = { props: ['message'], template: '<div class="err">{{ message }}</div>' };
@@ -193,5 +197,18 @@ describe('PostboxMailboxConnectForm submit dispatch', () => {
 		expect(runFor(CONNECT)).toBeDefined();
 		expect(runFor(CONNECT)!).toHaveBeenCalledTimes(1);
 		expect(runFor(CONNECT_SHARED)).not.toHaveBeenCalled();
+	});
+});
+
+describe('PostboxMailboxConnectForm provider copy', () => {
+	it('translates the provider name into the address label instead of painting its key', () => {
+		// `MailProvider.name` is a catalog key. Interpolating it raw put
+		// "shared.mailAutodiscover.provider.imap.name address" on the field the user
+		// types their email into, on every mount site of this form.
+		const wrapper = mountForm({ mode: 'connect' });
+
+		expect(wrapper.text()).toContain('Any IMAP mailbox address');
+		expect(wrapper.text()).not.toContain('shared.mailAutodiscover');
+		expectFullyLocalized(wrapper);
 	});
 });

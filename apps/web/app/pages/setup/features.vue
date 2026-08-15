@@ -11,16 +11,27 @@ import {
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
 import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
+import { useFeatureCopy } from '~/composables/useFeatureCopy';
 
 definePageMeta({ layout: false });
 
 const { t } = useI18n();
+// The shared registry keeps its English (the setup CLI prints it); these resolve
+// each flag/pack through `sharedPkg.featureFlags.*`.
+const { flagLabel, flagDescription, packLabel, packDescription } = useFeatureCopy();
 
 useHead({ title: () => t('setup.features.pageTitle') });
 
 const router = useRouter();
 const { flags, resolved, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'features');
+
+// `SETUP_WIZARD_STEPS` carries message KEYS (it is built at module scope); the
+// indicator renders display text, so resolve them here — as a computed, so the
+// labels follow a locale switch instead of freezing at setup.
+const displaySteps = computed(() =>
+	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
+);
 
 const byCategory = computed(() => getFlagsByCategory());
 const sendingNeedsProvider = computed(() => needsDeliveryProvider(flags.value));
@@ -71,7 +82,7 @@ function togglePack(packKey: FeaturePackKey) {
 
 			<UiStepIndicator
 				class="mb-10"
-				:steps="SETUP_WIZARD_STEPS"
+				:steps="displaySteps"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
 				:on-step-click="goToStep"
@@ -123,13 +134,13 @@ function togglePack(packKey: FeaturePackKey) {
 							/>
 							<div class="flex-1">
 								<div class="flex items-baseline gap-2 font-medium text-text-primary">
-									{{ FEATURE_PACKS[packKey].label }}
+									{{ packLabel(packKey) }}
 									<UiBadge v-if="packState[packKey] === 'partial'" variant="neutral">{{
 										t('setup.features.partial')
 									}}</UiBadge>
 								</div>
 								<p class="text-sm text-text-secondary mt-0.5">
-									{{ FEATURE_PACKS[packKey].description }}
+									{{ packDescription(packKey) }}
 								</p>
 							</div>
 						</label>
@@ -158,12 +169,14 @@ function togglePack(packKey: FeaturePackKey) {
 							/>
 							<div class="flex-1">
 								<div class="flex items-baseline gap-2 font-medium text-text-primary">
-									{{ def.label }}
-									<span v-if="def.requires?.length" class="text-xs font-normal text-text-tertiary">{{
-										t('setup.features.requires', { features: def.requires.join(', ') })
-									}}</span>
+									{{ flagLabel(def) }}
+									<span
+										v-if="def.requires?.length"
+										class="text-xs font-normal text-text-tertiary"
+										>{{ t('setup.features.requires', { features: def.requires.join(', ') }) }}</span
+									>
 								</div>
-								<p class="text-sm text-text-secondary mt-0.5">{{ def.description }}</p>
+								<p class="text-sm text-text-secondary mt-0.5">{{ flagDescription(def) }}</p>
 							</div>
 						</label>
 					</li>

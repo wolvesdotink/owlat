@@ -17,6 +17,13 @@ const router = useRouter();
 const { flags, isMigrationMode, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'mode');
 
+// `SETUP_WIZARD_STEPS` carries message KEYS (it is built at module scope); the
+// indicator renders display text, so resolve them here — as a computed, so the
+// labels follow a locale switch instead of freezing at setup.
+const displaySteps = computed(() =>
+	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
+);
+
 // Pre-fill the flag set from a named mode, then continue to the fine-tune step.
 function pick(key: OperatingModeKey) {
 	flags.value = operatingModeFlags(key);
@@ -41,7 +48,7 @@ function custom() {
 
 			<UiStepIndicator
 				class="mb-10"
-				:steps="SETUP_WIZARD_STEPS"
+				:steps="displaySteps"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
 				:on-step-click="goToStep"
@@ -130,7 +137,7 @@ function custom() {
 						@click="pick(key)"
 					>
 						<div class="flex flex-wrap items-center gap-2">
-							<span class="font-medium text-text-primary">{{ OPERATING_MODES[key].label }}</span>
+							<span class="font-medium text-text-primary">{{ t(OPERATING_MODES[key].label) }}</span>
 							<UiBadge v-if="OPERATING_MODES[key].needsDeliveryProvider" variant="warning">{{
 								t('setup.mode.needsDeliveryProvider')
 							}}</UiBadge>
@@ -139,8 +146,8 @@ function custom() {
 							}}</UiBadge>
 							<UiBadge v-else variant="neutral">{{ t('setup.mode.noProviderNeeded') }}</UiBadge>
 						</div>
-						<p class="mt-1.5 text-sm text-text-secondary">{{ OPERATING_MODES[key].audience }}</p>
-						<p class="mt-1 text-sm text-text-tertiary">{{ OPERATING_MODES[key].description }}</p>
+						<p class="mt-1.5 text-sm text-text-secondary">{{ t(OPERATING_MODES[key].audience) }}</p>
+						<p class="mt-1 text-sm text-text-tertiary">{{ t(OPERATING_MODES[key].description) }}</p>
 					</button>
 				</li>
 			</ul>

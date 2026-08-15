@@ -1781,6 +1781,7 @@
 				"noRules": "Keine adaptiven Regeln. Standardmäßig werden die aktiven Karten oben angezeigt.",
 				"priority": "Priorität",
 				"removeCard": "Karte entfernen",
+				"removeRule": "Regel entfernen",
 				"removeRuleCard": "Karte aus Regel entfernen",
 				"roleLabel": "Rolle",
 				"roles": {
@@ -11566,6 +11567,9 @@
 				"requireVerified": "Verschlüsselung und ein gültiges Zertifikat verlangen. Am stärksten, kann aber Nachrichten an Empfänger mit falsch konfiguriertem oder selbstsigniertem Zertifikat zurückweisen."
 			}
 		},
+		"setupWizardCredentials": {
+			"enterField": "Geben Sie {field} ein."
+		},
 		"setupWizardValidation": {
 			"admin": {
 				"emailInvalid": "Geben Sie eine gültige E-Mail-Adresse ein.",
@@ -12566,6 +12570,471 @@
 					"description": "Versenden Sie ausgehende Mail über Owlat, sobald Ihre Domain verifiziert ist.",
 					"title": "Versand auf diese Instanz umstellen"
 				}
+			}
+		}
+	},
+	"sharedPkg": {
+		"adaptiveDashboard": {
+			"cards": {
+				"accuracy_trend": {
+					"description": "Automatische Freigabe vs. Ablehnung im Zeitverlauf",
+					"label": "Genauigkeitstrend"
+				},
+				"agent_health": {
+					"description": "Kennzahlen der KI-Agenten-Pipeline",
+					"label": "Agent-Zustand"
+				},
+				"campaign_performance": {
+					"description": "Aktuelle Kampagnen-Kennzahlen",
+					"label": "Kampagnen-Performance"
+				},
+				"channel_health": {
+					"description": "Status aller Kommunikationskanäle",
+					"label": "Kanal-Zustand"
+				},
+				"cost_by_step": {
+					"description": "Token-Kosten pro Schritt der Agenten-Pipeline",
+					"label": "LLM-Kosten nach Schritt"
+				},
+				"delivery_rates": {
+					"description": "Erfolgsraten der E-Mail-Zustellung",
+					"label": "Zustellraten"
+				},
+				"knowledge_graph": {
+					"description": "Aktuelle Wissenseinträge",
+					"label": "Wissen"
+				},
+				"pinned_visualizations": {
+					"description": "Angeheftete Datenvisualisierungen",
+					"label": "Visualisierungen"
+				},
+				"queue_depth": {
+					"description": "Verarbeitungs-Warteschlange für eingehende Nachrichten",
+					"label": "Warteschlange"
+				},
+				"recent_activity": {
+					"description": "Organisationsweites Audit-Log und Feed der Kontaktaktivitäten",
+					"label": "Letzte Aktivität"
+				},
+				"recent_contacts": {
+					"description": "Neu hinzugefügte oder aktive Kontakte",
+					"label": "Neueste Kontakte"
+				},
+				"upcoming_campaigns": {
+					"description": "Geplante Kampagnen",
+					"label": "Anstehende Kampagnen"
+				},
+				"verification_queue": {
+					"description": "Offene Agenten-Entwürfe, die geprüft werden müssen",
+					"label": "Prüf-Warteschlange"
+				}
+			}
+		},
+		"deliverabilityChecklist": {
+			"groups": {
+				"blocking": {
+					"description": "Diese Prüfungen können Mail stoppen oder zur Ablehnung führen.",
+					"label": "Blockiert die Zustellung"
+				},
+				"recommended": {
+					"description": "Sinnvolle Härtung, nachdem der blockierende Pfad verifiziert ist.",
+					"label": "Empfohlen"
+				},
+				"reputation": {
+					"description": "Diese Prüfungen beeinflussen, wie Empfänger künftige Mail behandeln.",
+					"label": "Schadet der Reputation"
+				}
+			},
+			"items": {
+				"deployment": {
+					"dnsbl": {
+						"impact": "Eine gelistete Adresse kann abgelehnt werden, bevor die Authentifizierung ausgewertet wird.",
+						"title": "Halten Sie die Absendeadresse von Blocklisten fern"
+					},
+					"ehlo_ptr": {
+						"impact": "Eine übereinstimmende SMTP-Begrüßung verhindert Identitätsfehler bei den Prüfungen der Empfänger.",
+						"title": "Stellen Sie den Server mit demselben Namen vor"
+					},
+					"fcrdns": {
+						"impact": "Die Vorwärtsbestätigung belegt, dass Servername und Absendeadresse zusammengehören.",
+						"title": "Lassen Sie den Servernamen auf seine Adresse zurückverweisen"
+					},
+					"ipv6_aaaa": {
+						"impact": "Der Vorwärtseintrag muss exakt auf die sendende IPv6-Adresse zurück auflösen.",
+						"title": "Lassen Sie den Servernamen auf IPv6 zeigen"
+					},
+					"ipv6_address": {
+						"impact": "IPv6 erweitert die Kapazität erst, wenn die bestehende IPv4-Identität gesund ist.",
+						"title": "Fügen Sie eine IPv6-Absendeadresse hinzu"
+					},
+					"ipv6_pool": {
+						"impact": "Der Pool bleibt gesperrt, bis jede Voraussetzung der IPv6-Identität verifiziert ist.",
+						"title": "Aktivieren Sie IPv6 für echte Mail"
+					},
+					"ipv6_ptr": {
+						"impact": "Empfänger erwarten von IPv6-Absendern dieselbe starke Identität wie von IPv4.",
+						"title": "Benennen Sie die IPv6-Adresse"
+					},
+					"ipv6_source": {
+						"impact": "Eine explizite Quellbindung stellt sicher, dass echte Mail die von Ihnen verifizierte Adresse verwendet.",
+						"title": "Binden Sie den Server an die IPv6-Adresse"
+					},
+					"ipv6_spf": {
+						"impact": "Ein exakter ip6-Mechanismus verhindert, dass die neue Adresse an SPF scheitert.",
+						"title": "Autorisieren Sie genau diesen IPv6-Absender"
+					},
+					"port25": {
+						"impact": "Solange der ausgehende Port 25 blockiert ist, kann die Direktzustellung diesen Server nicht verlassen.",
+						"title": "Lassen Sie den Server die Postfächer der Empfänger erreichen"
+					},
+					"ptr": {
+						"impact": "Ohne PTR-Eintrag können Gmail und andere Empfänger Ihre Mail verlangsamen oder ablehnen.",
+						"title": "Weisen Sie nach, dass die Adresse Ihres Servers Ihnen gehört"
+					},
+					"ptr_nongeneric": {
+						"impact": "Standard-Hostnamen des Anbieters sind ein starkes Signal für geringe Reputation.",
+						"title": "Geben Sie Ihrem Mailserver einen vertrauenswürdigen Namen"
+					},
+					"relay": {
+						"impact": "Ein verifiziertes Relay hält wichtige Mail während eines Vorfalls mit der IP-Reputation in Bewegung.",
+						"title": "Halten Sie einen sicheren Zustell-Fallback bereit"
+					},
+					"tls": {
+						"impact": "Gültiges TLS vermeidet Drosselung durch Empfänger und schützt Nachrichten während der Übertragung.",
+						"title": "Schützen Sie Mail auf dem Transportweg"
+					},
+					"warmup": {
+						"impact": "Eine kontrollierte Steigerung verhindert Drosselung durch plötzliches Volumen auf einer neuen Adresse.",
+						"title": "Bauen Sie die Sendehistorie schrittweise auf"
+					}
+				},
+				"domain": {
+					"dkim": {
+						"impact": "DKIM belegt, dass Nachrichten von Ihrer Domain signiert und nicht verändert wurden.",
+						"title": "Signieren Sie Ihre E-Mails, damit Gmail ihnen vertraut"
+					},
+					"dmarc": {
+						"impact": "DMARC-Ausrichtung ist für den Massenversand erforderlich und blockiert Domain-Missbrauch.",
+						"title": "Sagen Sie Empfängern, wie sie Ihre From-Adresse prüfen sollen"
+					},
+					"mta_sts": {
+						"impact": "Eine abrufbare Richtlinie weist kompatible Absender an, die verschlüsselte Zustellung nicht herabzustufen.",
+						"title": "Verlangen Sie vertrauenswürdiges TLS für eingehende Mail"
+					},
+					"postmaster": {
+						"impact": "Postmaster-Daten zeigen die Spam-Rate, die Gmail für diese Domain tatsächlich beobachtet.",
+						"title": "Verbinden Sie das Zustellfeedback von Gmail"
+					},
+					"return_path": {
+						"impact": "Ein ausgerichteter Return-Path macht SPF nutzbar und lässt Owlat Bounces sicher verarbeiten.",
+						"title": "Leiten Sie Bounces über Ihre Domain"
+					},
+					"spam_rate": {
+						"impact": "Eine steigende Beschwerderate schadet sowohl der Domain- als auch der IP-Reputation.",
+						"title": "Halten Sie Beschwerden unter den Grenzwerten der Empfänger"
+					},
+					"spf": {
+						"impact": "SPF autorisiert Owlat und weist unbefugte Absender ab, die Ihre Domain verwenden.",
+						"title": "Teilen Sie der Welt mit, wer für Ihre Domain senden darf"
+					},
+					"tls_rpt": {
+						"impact": "TLS-Berichte zeigen Verschlüsselungsfehler bei der Zustellung, bevor Nutzer fehlende Mail melden.",
+						"title": "Erhalten Sie Berichte über TLS-Probleme"
+					},
+					"tlsa": {
+						"impact": "DANE ergänzt dort, wo es unterstützt wird, eine DNSSEC-gestützte Zertifikatssicherheit.",
+						"title": "Verankern Sie Ihr Empfangszertifikat im DNS"
+					},
+					"tracking": {
+						"impact": "Eine verifizierte Tracking-Domain hält Nachrichtenlinks im Einklang mit Ihrer Marke.",
+						"title": "Verwenden Sie eigene Links für das Tracking"
+					},
+					"unsubscribe": {
+						"impact": "Die Ein-Klick-Abmeldung verhindert Beschwerden und ist für Marketing-Massenmail vorgeschrieben.",
+						"title": "Lassen Sie Abonnenten sich mit einem Klick abmelden"
+					}
+				}
+			}
+		},
+		"featureFlags": {
+			"flags": {
+				"ai": {
+					"agent": {
+						"description": "Eingehende Mail automatisch nach Absicht klassifizieren und Antwortvorschläge entwerfen.",
+						"label": "KI-Agent (klassifizieren + entwerfen)"
+					},
+					"assistant": {
+						"description": "KI-Assistent mit mehreren Gesprächsrunden, Streaming und Tool-Calling (eine eigene Chat-Oberfläche) sowie {'@'}assistant-Antworten im Team-Chat. Durchsucht Ihr Wissen, Ihre Dateien, Kontakte und Kampagnen und verfasst auf Wunsch Texte.",
+						"label": "KI-Assistent & Chat"
+					},
+					"autonomy": {
+						"description": "Der Agent versendet Antworten und führt Aktionen ohne menschliche Freigabe aus, wenn die Konfidenz hoch ist.",
+						"label": "Autonome Aktionen"
+					},
+					"description": "Hauptschalter für alle KI-gestützten Funktionen. Benötigt einen LLM-Anbieter.",
+					"knowledge": {
+						"analytics": {
+							"description": "Graph-Analysen (Zentralität, Cluster) per Cron berechnen und ein Wissensgraph-Dashboard bereitstellen.",
+							"label": "Wissensgraph-Analysen"
+						},
+						"autoLink": {
+							"description": "Typisierte Kanten zwischen Wissenseinträgen per LLM-Durchlauf ableiten und für bestehende Einträge nachtragen. Der deterministische, regelbasierte Linker läuft immer, wenn der Wissensgraph aktiv ist; dies ergänzt die vom LLM abgeleiteten Kanten.",
+							"label": "Wissen automatisch verknüpfen (LLM)"
+						},
+						"description": "Semantische Extraktion aus Konversationen, um Kontext für Agentenentwürfe aufzubauen.",
+						"graphRetrieval": {
+							"description": "Ergebnisse der semantischen Suche entlang der Wissensgraph-Kanten erweitern (erst Startpunkte, dann Ausweitung), bevor Agentenentwürfe fundiert werden. Notausschalter: Wenn aus, ist die Suche Byte-identisch mit dem flachen Pfad.",
+							"label": "Graphgestützte Suche"
+						},
+						"label": "Wissensgraph"
+					},
+					"label": "KI-Funktionen",
+					"visualizations": {
+						"description": "Diagramme und Dashboards aus natürlichsprachlichen Prompts erzeugen.",
+						"label": "KI-Dashboards"
+					}
+				},
+				"analytics": {
+					"posthog": {
+						"description": "Produktereignisse zur Funnel-Analyse an eine PostHog-Instanz weiterleiten.",
+						"label": "PostHog-Analysen"
+					}
+				},
+				"automations": {
+					"description": "Auslöserbasierte, mehrstufige Workflows (Willkommensserien, Drip-Kampagnen).",
+					"label": "Automatisierungen"
+				},
+				"billing": {
+					"stripe": {
+						"description": "Mandanten über Stripe abrechnen (nur gehostete Steuerungsebene).",
+						"label": "Stripe-Abrechnung"
+					}
+				},
+				"campaigns": {
+					"archive": {
+						"description": "Für jede Kampagne „Im Browser ansehen“-Links veröffentlichen.",
+						"label": "Öffentliche Archivlinks"
+					},
+					"description": "Broadcast-Kampagnen an Kontakte und Segmente planen und versenden.",
+					"label": "Marketing-Kampagnen"
+				},
+				"chat": {
+					"description": "Echtzeit-Chat-Oberfläche neben dem Posteingang.",
+					"label": "Chat"
+				},
+				"domains": {
+					"dkimRotation": {
+						"description": "DKIM-Schlüssel markieren, die zur Rotation anstehen, und einen vom Betreiber angestoßenen neuen Schlüssel automatisch aktivieren, sobald sein DNS-Eintrag veröffentlicht ist.",
+						"label": "Automatische DKIM-Rotation"
+					},
+					"verification": {
+						"description": "SPF-, DKIM- und DMARC-Einträge prüfen, bevor eine Domain senden darf.",
+						"label": "Domain-Verifizierung"
+					}
+				},
+				"forms": {
+					"description": "Anmelde- und Erfassungsformulare zum Einbetten auf externen Websites erzeugen.",
+					"label": "Einbettbare Formulare"
+				},
+				"imports": {
+					"mailchimp": {
+						"description": "Kontakte und Listen aus einem Mailchimp-Konto mit einem Klick importieren.",
+						"label": "Mailchimp-Import"
+					},
+					"mandrill": {
+						"description": "Die Ablehnungsliste eines Mandrill-Kontos (Bounces, Beschwerden, Abmeldungen) bei der Migration in die Sperrliste übernehmen.",
+						"label": "Mandrill-Sperrlisten-Import"
+					},
+					"stripe": {
+						"description": "Stripe-Kunden mit Umsatzeigenschaften in Owlat-Kontakte synchronisieren.",
+						"label": "Stripe-Kundensynchronisation"
+					}
+				},
+				"inbox": {
+					"codeTasks": {
+						"description": "Fehlerberichte in eingehender Mail erkennen und als Entwickleraufgaben anzeigen.",
+						"label": "Code-Aufgaben aus dem Posteingang extrahieren"
+					},
+					"description": "Eingehende Mail empfangen, Konversationen zu Threads bündeln und ein gemeinsames Postfach verwalten.",
+					"label": "E-Mail-Posteingang"
+				},
+				"mail": {
+					"external": {
+						"description": "Jede Person verbindet ihr eigenes bestehendes Gmail-, Fastmail- oder Firmenpostfach über IMAP+SMTP — persönliche Mail, ohne eine Versanddomain zu registrieren. Unabhängig von der gehosteten Postbox.",
+						"label": "Externes Postfach verbinden"
+					}
+				},
+				"multiTenancy": {
+					"description": "Isolation pro Organisation über mehrere VPS hinweg (nur gehostete Steuerungsebene).",
+					"label": "Mandantenfähigkeit"
+				},
+				"postbox": {
+					"aiDraft": {
+						"description": "Erzeugt einen Antwortentwurf (mit Konfidenz- und Qualitäts-Selbstprüfung) vorab in der Antwort-Warteschlange, sobald eine persönliche Nachricht eintrifft, die eine Antwort braucht — so kann die Person, der das Postfach gehört, prüfen und senden, statt mit einem leeren Editor zu beginnen. Nur mit menschlicher Prüfung — es wird nie automatisch versendet.",
+						"label": "Entwurf bei Eingang für persönliche Mail"
+					},
+					"description": "Postfächer pro Benutzer mit Webmail-Oberfläche, IMAP/SMTP für native Clients und MX-basierter Zustellung (Gmail-Äquivalent).",
+					"label": "Persönliche Mail (Postbox)"
+				},
+				"scan": {
+					"content": {
+						"description": "Offensichtlichen Spam, Phishing und Homoglyphen-Angriffe vor dem Versand blockieren.",
+						"label": "Inhaltsprüfung"
+					},
+					"files": {
+						"description": "E-Mail-Anhänge über einen lokalen ClamAV-Daemon auf Schadsoftware prüfen.",
+						"label": "Dateiprüfung (ClamAV)"
+					},
+					"urls": {
+						"description": "Ausgehende Links vor dem Versand gegen Google Safe Browsing prüfen.",
+						"label": "URL-Reputation"
+					}
+				},
+				"sealedMail": {
+					"description": "Persönliche Mail zwischen Owlat-Instanzen Ende-zu-Ende verschlüsseln, wenn alle Empfänger einen nutzbaren Schlüssel haben, und für verschlüsselte Nachrichten ein Abzeichen „Versiegelt“ anzeigen.",
+					"label": "Sealed Mail (Ende-zu-Ende-Verschlüsselung)"
+				},
+				"senderAuthBadges": {
+					"description": "Auf persönlicher Mail ein ehrliches Abzeichen „Absender verifiziert“ oder „nicht berechtigt, für diese Domain zu senden“ anzeigen — basierend auf dem Authentifizierungsergebnis der Nachricht selbst.",
+					"label": "Abzeichen für Absender-Authentizität"
+				},
+				"tier": {
+					"autoProvision": {
+						"description": "Automatisch eine VPS bereitstellen, wenn ein kostenpflichtiges Abonnement beginnt.",
+						"label": "Automatische Bereitstellung"
+					}
+				},
+				"transactional": {
+					"description": "Programmatische E-Mails (Belege, Passwort-Resets) über die API versenden.",
+					"label": "Transaktionale API"
+				},
+				"webhooks": {
+					"description": "Ereignis-Payloads (Kampagnenversand, Kontaktänderungen) an externe HTTP-Endpunkte zustellen.",
+					"label": "Ausgehende Webhooks"
+				}
+			},
+			"packs": {
+				"ai": {
+					"description": "KI-Agent, Autonomie, Wissensgraph (+ automatische Verknüpfung, Graphsuche, Analysen), Assistent und Dashboards.",
+					"label": "KI"
+				},
+				"emailClient": {
+					"description": "Posteingang, Chat und persönliche Mail (Postbox) als ein Bündel.",
+					"label": "E-Mail-Client"
+				},
+				"marketing": {
+					"description": "Kampagnen, Automatisierungen und die transaktionale API.",
+					"label": "Marketing"
+				}
+			}
+		},
+		"operatingModes": {
+			"crm_only": {
+				"audience": "Kontakte und Daten verwalten; kein E-Mail-Versand und kein Empfang.",
+				"description": "Kontakte, Segmente, Importe und Formulare ohne aus- oder eingehende Mail. Eine minimale Ausgangsbasis, aus der Sie wachsen können.",
+				"label": "Nur CRM"
+			},
+			"full": {
+				"audience": "Marketing, persönliche und Team-Mail sowie KI in einem.",
+				"description": "Alles: Kampagnen, Automatisierungen, transaktionaler Versand, gemeinsames Postfach, Chat, gehostete Postbox, externe Postfächer und die vollständige KI-Suite.",
+				"label": "Full Stack"
+			},
+			"hosted_mail": {
+				"audience": "Owlat als Ihren Mailserver betreiben (Gmail-Äquivalent).",
+				"description": "Postfächer pro Benutzer mit Webmail sowie IMAP/SMTP für native Clients und MX-basierter Zustellung über den integrierten MTA. Erfordert eine echte Domain mit MX, SPF und DKIM.",
+				"label": "Gehosteter Mailserver (Postbox)"
+			},
+			"imap_only": {
+				"audience": "Mail lesen, die bei Google, Fastmail oder auf einem Firmenserver liegt.",
+				"description": "Das eigene Postfach jeder Person über IMAP verbinden, um Mail zu lesen und zu durchsuchen, und 1:1 über deren eigenes SMTP antworten. Kein Owlat-Zustellanbieter, kein Marketing, keine transaktionale API.",
+				"label": "Nur IMAP (lesen + persönlich antworten)"
+			},
+			"marketing": {
+				"audience": "Kampagnen, Automatisierungen und Formulare für eine Kontaktliste betreiben.",
+				"description": "Broadcast-Kampagnen, Drip-Automatisierungen, Anmeldeformulare und die transaktionale API über einen Zustellanbieter mit einer verifizierten, authentifizierten Versanddomain.",
+				"label": "Marketing-Plattform"
+			},
+			"team_inbox": {
+				"audience": "Eingehende Mail als Team in einem gemeinsamen Postfach triagieren.",
+				"description": "Ein gemeinsames Postfach, das eingehende Konversationen zu Threads bündelt und Antworten über einen Zustellanbieter versendet. Benötigt eine eingehende Quelle (den integrierten MTA oder einen Kanal-Webhook).",
+				"label": "Team-Postfach (gemeinsam)"
+			},
+			"team_inbox_ai": {
+				"audience": "Gemeinsames Postfach mit KI-Klassifizierung und Antwortentwürfen.",
+				"description": "Das gemeinsame Postfach plus der KI-Agent (eingehende Mail klassifizieren, Antworten entwerfen). Erfordert zusätzlich zu einem Zustellanbieter und einer eingehenden Quelle einen LLM-Anbieter.",
+				"label": "Team-Postfach + KI-Agent"
+			},
+			"transactional": {
+				"audience": "Belege, Passwort-Resets und andere programmatische Mail versenden.",
+				"description": "Die transaktionale API bzw. das SDK über einen Zustellanbieter (Resend, SES oder den integrierten MTA) mit einer verifizierten Versanddomain. Keine Marketing-Kampagnen.",
+				"label": "Transaktionaler API-Dienst"
+			}
+		},
+		"sendProviderCatalog": {
+			"credentialFields": {
+				"emailit": {
+					"apiKey": {
+						"label": "Emailit-API-Schlüssel"
+					}
+				},
+				"mandrill": {
+					"apiKey": {
+						"description": "Mailchimp Transactional → Einstellungen → API-Schlüssel. Für Rückmeldungen (Bounces, Beschwerden, Ablehnungen) wird eine zweite Variable benötigt, MANDRILL_WEBHOOK_KEY, die Mandrill beim Anlegen des Webhooks ausstellt — die Webhook-Karte auf der Zustellungsseite nennt die URL und die zu aktivierenden Ereignisse.",
+						"label": "Mailchimp-Transactional-API-Schlüssel"
+					}
+				},
+				"mta": {
+					"outboundTlsMode": {
+						"label": "Verbindungssicherheit"
+					}
+				},
+				"resend": {
+					"apiKey": {
+						"label": "Resend-API-Schlüssel"
+					}
+				},
+				"ses": {
+					"accessKeyId": {
+						"label": "Access-Key-ID"
+					},
+					"region": {
+						"label": "Region"
+					},
+					"secretAccessKey": {
+						"label": "Secret Access Key"
+					}
+				},
+				"smtp": {
+					"password": {
+						"label": "Passwort"
+					},
+					"relay": {
+						"label": "Server-Host"
+					},
+					"username": {
+						"label": "Benutzername"
+					}
+				}
+			},
+			"outboundTlsModes": {
+				"opportunistic": "Opportunistisch (empfohlen)",
+				"require": "Immer verschlüsseln",
+				"requireVerified": "Immer verschlüsseln und verifizieren"
+			}
+		},
+		"snoozePresets": {
+			"label": {
+				"later_today": "Später heute",
+				"next_week": "Nächste Woche",
+				"this_evening": "Heute Abend",
+				"this_weekend": "Dieses Wochenende",
+				"tomorrow_am": "Morgen",
+				"until_im_back": "Bis ich zurück bin"
+			},
+			"sub": {
+				"time": "{time}",
+				"today": "Heute {time}",
+				"weekday": "{day} {time}"
 			}
 		}
 	},

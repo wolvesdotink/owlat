@@ -20,16 +20,15 @@ const DOCS_FILE = join(
 	'..',
 	'docs',
 	'content',
+	'en',
 	'3.developer',
-	'6.email-system.md',
+	'6.email-system.md'
 );
 
 /** The DMARC row of the "DNS Records Generated" table. */
 function dmarcDocRow(): string {
 	const content = readFileSync(DOCS_FILE, 'utf8');
-	const row = content
-		.split('\n')
-		.find((line) => /^\|\s*DMARC\s*\|/.test(line));
+	const row = content.split('\n').find((line) => /^\|\s*DMARC\s*\|/.test(line));
 	if (!row) throw new Error('DMARC row not found in email-system.md DNS records table');
 	return row;
 }

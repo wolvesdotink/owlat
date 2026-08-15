@@ -54,9 +54,12 @@ const headline = computed(() => message(capacityScheduleHeadline(props.plan)));
  * A finish date is only honest when the enumeration reached the end, and only
  * unqualified when the audience behind it was counted exactly — both decided in
  * `capacityFinishSentence` beside the headline they have to agree with.
+ *
+ * The date inside it is formatted in the ACTIVE locale (its zone stays UTC, so
+ * every operator still reads the same day).
  */
 const finishesOn = computed(() => {
-	const sentence = capacityFinishSentence(props.plan);
+	const sentence = capacityFinishSentence(props.plan, locale.value);
 	return sentence === null ? null : message(sentence);
 });
 
@@ -80,7 +83,7 @@ const previewSlices = computed(() => {
 			recipients,
 			label: isCapacityDayToday(dayStart, now)
 				? t('common.today')
-				: formatCapacityDay(dayStart, 'short'),
+				: formatCapacityDay(dayStart, 'short', locale.value),
 		};
 	});
 });

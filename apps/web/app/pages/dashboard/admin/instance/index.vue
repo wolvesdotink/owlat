@@ -58,7 +58,7 @@ async function applyMode() {
 	if (result === undefined) return;
 	showToast(
 		t('dashboard.admin.instance.index.modeChangedToast', {
-			mode: OPERATING_MODES[selectedMode.value].label,
+			mode: t(OPERATING_MODES[selectedMode.value].label),
 		})
 	);
 	selectedMode.value = null;
@@ -194,9 +194,9 @@ const groups = computed(() => [
 						class="text-left rounded-xl border border-border-subtle p-4 hover:border-brand hover:bg-brand-subtle transition-colors"
 						@click="chooseMode(key)"
 					>
-						<span class="font-medium text-text-primary">{{ OPERATING_MODES[key].label }}</span>
+						<span class="font-medium text-text-primary">{{ t(OPERATING_MODES[key].label) }}</span>
 						<span class="mt-1 block text-xs text-text-secondary">{{
-							OPERATING_MODES[key].audience
+							t(OPERATING_MODES[key].audience)
 						}}</span>
 					</button>
 				</div>
@@ -229,9 +229,9 @@ const groups = computed(() => [
 		>
 			<div v-if="selectedMode" class="space-y-4">
 				<div>
-					<p class="font-medium text-text-primary">{{ OPERATING_MODES[selectedMode].label }}</p>
+					<p class="font-medium text-text-primary">{{ t(OPERATING_MODES[selectedMode].label) }}</p>
 					<p class="mt-1 text-sm text-text-secondary">
-						{{ OPERATING_MODES[selectedMode].description }}
+						{{ t(OPERATING_MODES[selectedMode].description) }}
 					</p>
 				</div>
 				<div class="grid gap-3 sm:grid-cols-2">

@@ -9,6 +9,13 @@
  * seams plan's D1 risk row: "moving catalog data to packages/shared leaks
  * backend concerns into client bundles").
  *
+ * AND THE COPY IN IT IS MESSAGE KEYS. A `label`, a `description` and a select's
+ * option labels are `sharedPkg.sendProviderCatalog.*` catalog keys, because this
+ * is a module-scope declaration that cannot call `t()` and the one surface that
+ * prints them is the web form (the i18n registry convention). The exception is
+ * {@link SmtpRelayPresetConfig.label}: the setup CLI prints the preset table to
+ * a terminal, so those stay English sentences — see that type.
+ *
  * THE VOCABULARY, AND THE OPEN QUESTION P1.1 CLOSED. The plan asked whether
  * `credentialFields` should reuse the plugin platform's `settingsSchema` field
  * vocabulary exactly (`string | secret | number | boolean | select`,
@@ -92,14 +99,23 @@ import type { OutboundTlsMode } from './outboundTlsMode';
  *
  * EXPORTED because the wizard's selector derives from it. The label is a
  * descriptor's copy and has ONE home — `setupOutboundTls.ts` in `apps/web` maps
- * this list and adds only its own `hint` paragraph, so renaming a label here
- * renames it in the rendered form too. A second hand-written copy of the labels
- * would be exactly the duplication this catalog exists to collapse.
+ * this list and adds only its own `hint` key, so renaming a label here renames
+ * it in the rendered form too. A second hand-written copy of the labels would be
+ * exactly the duplication this catalog exists to collapse.
+ *
+ * Each label is a catalog KEY (see the module docblock); the wording lives in
+ * `apps/web/i18n/locales/*.json` beside the `hint` paragraph it is read with.
  */
 export const OUTBOUND_TLS_MODE_OPTIONS = [
-	{ value: 'opportunistic', label: 'Opportunistic (recommended)' },
-	{ value: 'require', label: 'Always encrypt' },
-	{ value: 'require-verified', label: 'Always encrypt and verify' },
+	{
+		value: 'opportunistic',
+		label: 'sharedPkg.sendProviderCatalog.outboundTlsModes.opportunistic',
+	},
+	{ value: 'require', label: 'sharedPkg.sendProviderCatalog.outboundTlsModes.require' },
+	{
+		value: 'require-verified',
+		label: 'sharedPkg.sendProviderCatalog.outboundTlsModes.requireVerified',
+	},
 ] as const satisfies readonly { readonly value: OutboundTlsMode; readonly label: string }[];
 
 /**
@@ -134,9 +150,17 @@ export type SendProviderCredentialFieldKind = (typeof SEND_PROVIDER_CREDENTIAL_F
 interface SendProviderCredentialFieldCommon {
 	/** Stable identifier within the provider's form. */
 	readonly key: string;
-	/** The form label, as the shipped surfaces already word it. */
+	/**
+	 * The form label, as the shipped surfaces already word it — a
+	 * `sharedPkg.sendProviderCatalog.*` message KEY for a core entry, and a
+	 * bundled plugin's own English label for a generated one. The renderer
+	 * resolves either with `t()`, which passes an unknown key through as text.
+	 */
 	readonly label: string;
-	/** One sentence of operator guidance; omitted when the label says it all. */
+	/**
+	 * One sentence of operator guidance; omitted when the label says it all. A
+	 * message key on the same terms as {@link SendProviderCredentialFieldCommon.label}.
+	 */
 	readonly description?: string;
 	/**
 	 * Must this field be filled for the transport to be usable?
@@ -191,6 +215,7 @@ export interface SendProviderBooleanField extends SendProviderCredentialFieldCom
 /** One option of a {@link SendProviderSelectField} / region select. */
 export interface SendProviderFieldOption {
 	readonly value: string;
+	/** A message key, on the same terms as a field's own label. */
 	readonly label: string;
 }
 
@@ -290,6 +315,14 @@ export type SendProviderCredentialField =
 export type SmtpRelayPreset = 'mailgun' | 'postmark' | 'sendgrid' | 'brevo' | 'custom';
 
 export interface SmtpRelayPresetConfig {
+	/**
+	 * A NAME, not copy — and so the one label in this module that is not a message
+	 * key. `apps/setup-cli` prints this table as a terminal prompt
+	 * (`setupSendingProvider.ts`), where there is no catalog to resolve a key
+	 * against, and the entries are vendor names that read the same in every
+	 * language; both web surfaces that offer the picker render them as spelled
+	 * (`useSetupEmailStepForm.ts` says so where it maps them).
+	 */
 	label: string;
 	/** Blank for `custom` ⇒ the operator fills it in. */
 	host: string;

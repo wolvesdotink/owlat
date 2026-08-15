@@ -144,9 +144,16 @@ const showErrors = computed(() => submitted.value);
  * per-vendor field names here — the wizard's credential step asks the same
  * question, and the two must not be able to answer it differently.
  */
-const credentialError = computed(() =>
-	showErrors.value ? (credentialErrorFor(errors.value) ?? requiredCredentialError.value) : undefined
-);
+const credentialError = computed(() => {
+	if (!showErrors.value) return undefined;
+	const ruleError = credentialErrorFor(errors.value);
+	if (ruleError !== undefined) return t(ruleError);
+	// The descriptor gate's sentence names the field it is about, and both halves
+	// are keys: the pure module cannot call `t()`, and only this screen knows the
+	// active locale.
+	const missing = requiredCredentialError.value;
+	return missing === undefined ? undefined : t(missing.key, { field: t(missing.field) });
+});
 
 /**
  * ONE OF THE WIZARD'S RULES IS NOT THIS SCREEN'S — decided in

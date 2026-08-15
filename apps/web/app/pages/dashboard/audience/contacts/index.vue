@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
-import { languageOptionsWithUnset, formatLanguageLabel } from '~/data/languageOptions';
+import { languageSelectOptions } from '~/data/languageOptions';
 import { isValidEmail } from '~/utils/validation';
 
 const { t } = useI18n();
@@ -195,6 +195,11 @@ const addModal = useFormModal({
 	lastName: '',
 	language: '',
 });
+
+// The language catalog is module scope, so it carries message keys: the
+// `{ value, label }` pairs the picker renders can only be built here, where a
+// translator is in hand. Computed, so the labels follow a locale switch.
+const languageChoices = computed(() => languageSelectOptions((key: string) => t(key)));
 
 const validateAddForm = (): boolean => {
 	addModal.clearErrors();
@@ -971,12 +976,7 @@ onUnmounted(() => {
 				<div class="mb-6">
 					<UiSelect
 						v-model="addModal.form.language"
-						:options="
-							languageOptionsWithUnset.map((l) => ({
-								value: l.value,
-								label: formatLanguageLabel(l),
-							}))
-						"
+						:options="languageChoices"
 						:label="t('dashboard.audience.contacts.index.form.languageLabel')"
 						:placeholder="t('dashboard.audience.contacts.index.form.languagePlaceholder')"
 						:disabled="addModal.isSubmitting.value"

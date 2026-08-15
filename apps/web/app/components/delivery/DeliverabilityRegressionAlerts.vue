@@ -6,6 +6,7 @@ import type {
 	DeliverabilityRegressionAlert,
 } from '~/utils/deliverabilityCenter';
 import { findDeliverabilityItem } from '~/utils/deliverabilityCenter';
+import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 
 const props = defineProps<{
 	alerts: DeliverabilityRegressionAlert[];
@@ -20,6 +21,12 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+/**
+ * The named check is shared-registry English (the alert's own message, stored
+ * and mailed, is English for the same reason), so the heading resolves the
+ * catalog copy from the check id. See `~/composables/useDeliverabilityChecklistCopy`.
+ */
+const { itemIdTitle } = useDeliverabilityChecklistCopy();
 
 const rows = computed(() =>
 	props.alerts.map((alert) => ({
@@ -61,7 +68,7 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 			>
 				<div>
 					<h3 :id="`deliverability-alert-${alert.id}`" class="font-medium text-text-primary">
-						{{ item?.title ?? alert.itemId }}
+						{{ itemIdTitle(alert.itemId, item?.title ?? alert.itemId) }}
 					</h3>
 					<p class="mt-1 text-sm leading-6 text-text-secondary">{{ alert.message }}</p>
 				</div>

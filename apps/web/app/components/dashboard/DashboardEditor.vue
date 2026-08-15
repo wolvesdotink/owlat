@@ -7,6 +7,7 @@ import {
 	normalizeRules,
 	toEditableRules,
 } from '~/composables/useDashboardRules';
+import { useDashboardCardCopy } from '~/composables/useDashboardCardCopy';
 // Explicit import (rather than the Nuxt auto-import) so the rules half resolves
 // wherever the editor is mounted without component resolution set up.
 import DashboardRulesEditor from './DashboardRulesEditor.vue';
@@ -35,6 +36,9 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+// The card names come from the backend catalog in English; the operator reads
+// them in their own language (see `useDashboardCardCopy`).
+const { cardLabel, cardDescription } = useDashboardCardCopy();
 
 const editableCards = ref<CardEntry[]>([]);
 const editableRules = ref<EditableRule[]>([]);
@@ -64,11 +68,13 @@ const availableToAdd = computed(() => {
 });
 
 function getCardLabel(type: string): string {
-	return props.availableCards.find((c) => c.type === type)?.label ?? type;
+	const card = props.availableCards.find((c) => c.type === type);
+	return card ? cardLabel(card) : type;
 }
 
 function getCardDescription(type: string): string {
-	return props.availableCards.find((c) => c.type === type)?.description ?? '';
+	const card = props.availableCards.find((c) => c.type === type);
+	return card ? cardDescription(card) : '';
 }
 
 function removeCard(index: number) {
@@ -233,8 +239,8 @@ const sizeOptions = computed<{ value: CardSize; label: string }[]>(() => [
 										<Icon name="lucide:plus" class="w-4 h-4" />
 									</div>
 									<div class="min-w-0 flex-1">
-										<p class="text-sm font-medium text-text-primary">{{ card.label }}</p>
-										<p class="text-xs text-text-tertiary truncate">{{ card.description }}</p>
+										<p class="text-sm font-medium text-text-primary">{{ cardLabel(card) }}</p>
+										<p class="text-xs text-text-tertiary truncate">{{ cardDescription(card) }}</p>
 									</div>
 								</button>
 							</div>

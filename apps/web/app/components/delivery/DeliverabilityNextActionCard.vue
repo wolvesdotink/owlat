@@ -8,6 +8,7 @@ import {
 	formatVerificationAge,
 	itemKey,
 } from '~/utils/deliverabilityCenter';
+import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 
 const props = defineProps<{
 	item: DeliverabilityChecklistItem | null;
@@ -29,6 +30,13 @@ type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 function localized(value: LocalizedText): string {
 	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 }
+
+/**
+ * The check's name and impact are shared-registry English (the diagnostic dump
+ * and the mailed regression alert print them), so the German comes from a key
+ * derived from the check id. See `~/composables/useDeliverabilityChecklistCopy`.
+ */
+const { itemTitle, itemImpact } = useDeliverabilityChecklistCopy();
 
 const { copy, isCopied } = useCopyToClipboard();
 const clock = ref(Date.now());
@@ -73,7 +81,7 @@ async function copyValue(value: string, key: string) {
 		<div class="space-y-5 p-5 sm:p-6">
 			<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 				<div class="min-w-0">
-					<h2 class="text-xl font-semibold text-text-primary">{{ item.title }}</h2>
+					<h2 class="text-xl font-semibold text-text-primary">{{ itemTitle(item) }}</h2>
 					<p class="mt-1 text-sm text-text-tertiary">
 						{{ item.protocol }}
 						<span v-if="item.scope.kind === 'domain'"> · {{ item.scope.domain }}</span>
@@ -126,7 +134,7 @@ async function copyValue(value: string, key: string) {
 					</p>
 				</template>
 				<template v-else>
-					<p class="text-sm leading-6 text-text-primary">{{ item.impact }}</p>
+					<p class="text-sm leading-6 text-text-primary">{{ itemImpact(item) }}</p>
 					<p v-if="item.failureReason" class="mt-2 text-sm font-medium text-error">
 						{{ item.failureReason }}
 					</p>

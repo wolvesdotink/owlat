@@ -71,6 +71,9 @@ describe('DeliverabilityRegressionAlerts', () => {
 		const wrapper = mountAlerts();
 
 		expectFullyLocalized(wrapper);
+		// The named check is `@owlat/shared` English (Convex stores and mails the
+		// alert with it), so the heading resolves the catalog copy from the id.
+		expect(wrapper.text()).not.toMatch(/sharedPkg\./);
 		expect(wrapper.text()).toContain('Deliverability regression detected');
 		expect(wrapper.text()).toContain('Sign your emails so Gmail trusts them');
 		expect(wrapper.text()).toContain('example.com');

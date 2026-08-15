@@ -84,10 +84,28 @@ export type CoreFeatureCategory =
 
 export type FeatureCategory = CoreFeatureCategory | 'plugins';
 
+/**
+ * COPY HERE IS ENGLISH, AND THE WEB UI TRANSLATES IT BY KEY.
+ *
+ * Unlike `operatingModes.ts` — whose copy is catalog keys, because only the web
+ * renders it — these definitions are read outside the browser too: the setup CLI
+ * prints `label` as a prompt and `description` as its hint (`owlat-setup setup`,
+ * `owlat-setup pack`), and `@owlat/plugin-host` MINTS definitions at runtime for
+ * every bundled plugin, whose words no shipped catalog can contain. So the field
+ * stays the English sentence and stays the fallback.
+ *
+ * The web mirrors each core flag/pack under `sharedPkg.featureFlags.*` and
+ * resolves it through `useFeatureCopy()` (`apps/web/app/composables/useFeatureCopy.ts`),
+ * which falls back to these strings for a plugin flag that has no catalog entry.
+ * `apps/web/app/__tests__/sharedRegistryCatalog.test.ts` pins the two copies of
+ * the English together, so editing a sentence here without the catalog fails.
+ */
 interface FeatureFlagDefinitionBase<Key extends FeatureFlagKey, Category extends FeatureCategory> {
 	readonly key: Key;
 	readonly category: Category;
+	/** English name; the web renders `sharedPkg.featureFlags.flags.<key>.label`. */
 	readonly label: string;
+	/** English description; the web renders `sharedPkg.featureFlags.flags.<key>.description`. */
 	readonly description: string;
 	readonly default: boolean;
 	/** Other flags that must be ON for this flag to be ON. */
@@ -817,7 +835,9 @@ export type FeaturePackKey = 'emailClient' | 'marketing' | 'ai';
 
 export interface FeaturePack {
 	key: FeaturePackKey;
+	/** English name; the web renders `sharedPkg.featureFlags.packs.<key>.label`. */
 	label: string;
+	/** English description; the web renders `sharedPkg.featureFlags.packs.<key>.description`. */
 	description: string;
 	flags: readonly CoreFeatureFlagKey[];
 }

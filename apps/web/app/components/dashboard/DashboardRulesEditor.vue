@@ -17,6 +17,7 @@ import {
 	ROLE_OPTIONS,
 	createEmptyRule,
 } from '~/composables/useDashboardRules';
+import { useDashboardCardCopy } from '~/composables/useDashboardCardCopy';
 
 interface AvailableCard {
 	type: string;
@@ -33,9 +34,13 @@ const props = defineProps<{
 const rules = defineModel<EditableRule[]>({ required: true });
 
 const { t } = useI18n();
+// Same render boundary as the editor above: the backend names cards in English,
+// the operator reads them in their own language.
+const { cardLabel } = useDashboardCardCopy();
 
 function getCardLabel(type: string): string {
-	return props.availableCards.find((c) => c.type === type)?.label ?? type;
+	const card = props.availableCards.find((c) => c.type === type);
+	return card ? cardLabel(card) : type;
 }
 
 // Card types that have a renderer and can be added to a rule.
@@ -145,7 +150,7 @@ const roleOptions = computed(() =>
 					</div>
 					<button
 						class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						aria-label="Remove rule"
+						:aria-label="t('components.dashboard.dashboardEditor.removeRule')"
 						@click="removeRule(ruleIndex)"
 					>
 						<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -272,7 +277,7 @@ const roleOptions = computed(() =>
 							@click="addRuleCard(rule, card.type)"
 						>
 							<Icon name="lucide:plus" class="w-3 h-3" />
-							{{ card.label }}
+							{{ cardLabel(card) }}
 						</button>
 					</div>
 				</div>

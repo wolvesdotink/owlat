@@ -1781,6 +1781,7 @@
 				"noRules": "No adaptive rules. The active cards above show by default.",
 				"priority": "Priority",
 				"removeCard": "Remove card",
+				"removeRule": "Remove rule",
 				"removeRuleCard": "Remove card from rule",
 				"roleLabel": "Role",
 				"roles": {
@@ -11566,6 +11567,9 @@
 				"requireVerified": "Require encryption and a valid certificate. Strongest, but can bounce mail to receivers with a misconfigured or self-signed certificate."
 			}
 		},
+		"setupWizardCredentials": {
+			"enterField": "Enter {field}."
+		},
 		"setupWizardValidation": {
 			"admin": {
 				"emailInvalid": "Enter a valid email address.",
@@ -12566,6 +12570,471 @@
 					"description": "Start sending outbound mail from Owlat once your domain is verified.",
 					"title": "Switch sending to this instance"
 				}
+			}
+		}
+	},
+	"sharedPkg": {
+		"adaptiveDashboard": {
+			"cards": {
+				"accuracy_trend": {
+					"description": "Auto-approve vs. rejection over time",
+					"label": "Accuracy Trend"
+				},
+				"agent_health": {
+					"description": "AI agent pipeline metrics",
+					"label": "Agent Health"
+				},
+				"campaign_performance": {
+					"description": "Recent campaign metrics",
+					"label": "Campaign Performance"
+				},
+				"channel_health": {
+					"description": "Status of all communication channels",
+					"label": "Channel Health"
+				},
+				"cost_by_step": {
+					"description": "Token cost per agent-pipeline step",
+					"label": "LLM Cost by Step"
+				},
+				"delivery_rates": {
+					"description": "Email delivery success rates",
+					"label": "Delivery Rates"
+				},
+				"knowledge_graph": {
+					"description": "Recent knowledge entries",
+					"label": "Knowledge"
+				},
+				"pinned_visualizations": {
+					"description": "Pinned data visualizations",
+					"label": "Visualizations"
+				},
+				"queue_depth": {
+					"description": "Inbound message processing queue",
+					"label": "Queue Depth"
+				},
+				"recent_activity": {
+					"description": "Org-wide audit log and contact activity feed",
+					"label": "Recent Activity"
+				},
+				"recent_contacts": {
+					"description": "Newly added or active contacts",
+					"label": "Recent Contacts"
+				},
+				"upcoming_campaigns": {
+					"description": "Scheduled campaigns",
+					"label": "Upcoming Campaigns"
+				},
+				"verification_queue": {
+					"description": "Pending agent drafts needing review",
+					"label": "Review Queue"
+				}
+			}
+		},
+		"deliverabilityChecklist": {
+			"groups": {
+				"blocking": {
+					"description": "These checks can stop or reject mail.",
+					"label": "Blocking delivery"
+				},
+				"recommended": {
+					"description": "Useful hardening after the blocking path is verified.",
+					"label": "Recommended"
+				},
+				"reputation": {
+					"description": "These checks affect how receivers treat future mail.",
+					"label": "Hurting reputation"
+				}
+			},
+			"items": {
+				"deployment": {
+					"dnsbl": {
+						"impact": "A listed address can be refused before authentication is evaluated.",
+						"title": "Keep the sending address off blocklists"
+					},
+					"ehlo_ptr": {
+						"impact": "A matching SMTP greeting prevents identity errors during receiver checks.",
+						"title": "Introduce the server with the same name"
+					},
+					"fcrdns": {
+						"impact": "Forward confirmation proves the server name and sending address belong together.",
+						"title": "Make the server name point back to its address"
+					},
+					"ipv6_aaaa": {
+						"impact": "The forward record must resolve exactly back to the sending IPv6 address.",
+						"title": "Point the server name to IPv6"
+					},
+					"ipv6_address": {
+						"impact": "IPv6 expands capacity only after the existing IPv4 identity is healthy.",
+						"title": "Add an IPv6 sending address"
+					},
+					"ipv6_pool": {
+						"impact": "The pool stays locked until every IPv6 identity prerequisite is verified.",
+						"title": "Enable IPv6 for real mail"
+					},
+					"ipv6_ptr": {
+						"impact": "Receivers expect IPv6 senders to have the same strong identity as IPv4.",
+						"title": "Name the IPv6 address"
+					},
+					"ipv6_source": {
+						"impact": "Explicit source binding ensures real mail uses the address you verified.",
+						"title": "Bind the server to the IPv6 address"
+					},
+					"ipv6_spf": {
+						"impact": "An exact ip6 mechanism prevents the new address from failing SPF.",
+						"title": "Authorize the exact IPv6 sender"
+					},
+					"port25": {
+						"impact": "Direct delivery cannot leave this server while outbound port 25 is blocked.",
+						"title": "Let the server reach recipient mailboxes"
+					},
+					"ptr": {
+						"impact": "Without a PTR record, Gmail and other receivers can slow down or refuse your mail.",
+						"title": "Prove you own your server's address"
+					},
+					"ptr_nongeneric": {
+						"impact": "Provider-default hostnames are a strong low-reputation signal.",
+						"title": "Give your mail server a trustworthy name"
+					},
+					"relay": {
+						"impact": "A verified relay keeps important mail moving during an IP reputation incident.",
+						"title": "Keep a safe delivery fallback"
+					},
+					"tls": {
+						"impact": "Valid TLS avoids receiver throttling and protects messages in transit.",
+						"title": "Protect mail while it travels"
+					},
+					"warmup": {
+						"impact": "A controlled ramp prevents sudden-volume throttling on a new address.",
+						"title": "Build sending history gradually"
+					}
+				},
+				"domain": {
+					"dkim": {
+						"impact": "DKIM proves messages were signed by your domain and were not changed.",
+						"title": "Sign your emails so Gmail trusts them"
+					},
+					"dmarc": {
+						"impact": "DMARC alignment is required for bulk sending and blocks domain impersonation.",
+						"title": "Tell receivers how to check your From address"
+					},
+					"mta_sts": {
+						"impact": "A fetchable policy tells compatible senders not to downgrade encrypted delivery.",
+						"title": "Require trusted TLS for incoming mail"
+					},
+					"postmaster": {
+						"impact": "Postmaster data shows the spam rate Gmail actually observes for this domain.",
+						"title": "Connect Gmail delivery feedback"
+					},
+					"return_path": {
+						"impact": "An aligned return path makes SPF useful and lets Owlat process bounces safely.",
+						"title": "Route bounces through your domain"
+					},
+					"spam_rate": {
+						"impact": "A rising complaint rate damages both domain and IP reputation.",
+						"title": "Keep complaints below receiver limits"
+					},
+					"spf": {
+						"impact": "SPF authorizes Owlat and rejects unauthorized senders using your domain.",
+						"title": "Tell the world who may send for your domain"
+					},
+					"tls_rpt": {
+						"impact": "TLS reports reveal delivery encryption failures before users report missing mail.",
+						"title": "Receive reports about TLS problems"
+					},
+					"tlsa": {
+						"impact": "DANE adds DNSSEC-backed certificate assurance where supported.",
+						"title": "Pin your receiving certificate in DNS"
+					},
+					"tracking": {
+						"impact": "A verified tracking domain keeps message links aligned with your brand.",
+						"title": "Use your own links for tracking"
+					},
+					"unsubscribe": {
+						"impact": "One-click unsubscribe prevents complaints and is required for bulk marketing mail.",
+						"title": "Let subscribers leave in one click"
+					}
+				}
+			}
+		},
+		"featureFlags": {
+			"flags": {
+				"ai": {
+					"agent": {
+						"description": "Auto-classify inbound mail by intent and draft suggested replies.",
+						"label": "AI agent (classify + draft)"
+					},
+					"assistant": {
+						"description": "Multi-turn, streaming, tool-calling AI assistant (a dedicated chat surface) plus {'@'}assistant replies inside team chat. Searches your knowledge, files, contacts, campaigns, and drafts copy on request.",
+						"label": "AI assistant & chat"
+					},
+					"autonomy": {
+						"description": "Let the agent send replies and take actions without human approval when confidence is high.",
+						"label": "Autonomous actions"
+					},
+					"description": "Master toggle for all AI-powered features. Requires an LLM provider.",
+					"knowledge": {
+						"analytics": {
+							"description": "Compute graph analytics (centrality, clusters) on a cron and surface a knowledge-graph dashboard.",
+							"label": "Knowledge graph analytics"
+						},
+						"autoLink": {
+							"description": "Infer typed edges between knowledge entries with an LLM pass and backfill existing entries. The deterministic rule-based linker runs whenever the knowledge graph is on; this adds the LLM-inferred edges.",
+							"label": "Auto-link knowledge (LLM)"
+						},
+						"description": "Semantic extraction from conversations to build context for agent drafts.",
+						"graphRetrieval": {
+							"description": "Expand semantic-search results along knowledge-graph edges (seed-then-expand) before grounding agent drafts. Kill switch: when off, retrieval is byte-identical to the flat path.",
+							"label": "Graph-augmented retrieval"
+						},
+						"label": "Knowledge graph"
+					},
+					"label": "AI features",
+					"visualizations": {
+						"description": "Generate charts and dashboards from natural-language prompts.",
+						"label": "AI dashboards"
+					}
+				},
+				"analytics": {
+					"posthog": {
+						"description": "Pipe product events to a PostHog instance for funnel analysis.",
+						"label": "PostHog analytics"
+					}
+				},
+				"automations": {
+					"description": "Trigger-based multi-step workflows (welcome series, drip campaigns).",
+					"label": "Automations"
+				},
+				"billing": {
+					"stripe": {
+						"description": "Charge tenants via Stripe (hosted control plane only).",
+						"label": "Stripe billing"
+					}
+				},
+				"campaigns": {
+					"archive": {
+						"description": "Publish \"View in browser\" links for every campaign.",
+						"label": "Public archive links"
+					},
+					"description": "Schedule and send broadcast campaigns to contacts and segments.",
+					"label": "Marketing campaigns"
+				},
+				"chat": {
+					"description": "Real-time chat surface alongside the inbox.",
+					"label": "Chat"
+				},
+				"domains": {
+					"dkimRotation": {
+						"description": "Flag DKIM keys due for rotation and auto-activate an operator-initiated new key once its DNS record is published.",
+						"label": "DKIM auto-rotation"
+					},
+					"verification": {
+						"description": "Verify SPF, DKIM, and DMARC records before allowing a domain to send.",
+						"label": "Domain verification"
+					}
+				},
+				"forms": {
+					"description": "Generate signup/capture forms to embed on external sites.",
+					"label": "Embeddable forms"
+				},
+				"imports": {
+					"mailchimp": {
+						"description": "One-click import of contacts and lists from a Mailchimp account.",
+						"label": "Mailchimp import"
+					},
+					"mandrill": {
+						"description": "Carry a Mandrill account's rejection blacklist (bounces, complaints, unsubscribes) into the suppression list when migrating.",
+						"label": "Mandrill suppression import"
+					},
+					"stripe": {
+						"description": "Sync Stripe customers into Owlat contacts with revenue properties.",
+						"label": "Stripe customer sync"
+					}
+				},
+				"inbox": {
+					"codeTasks": {
+						"description": "Detect bug reports in inbound mail and surface them as developer tasks.",
+						"label": "Extract code tasks from inbox"
+					},
+					"description": "Receive inbound mail, thread conversations, and manage a shared inbox.",
+					"label": "Email inbox"
+				},
+				"mail": {
+					"external": {
+						"description": "Let each user connect their own existing Gmail / Fastmail / company mailbox over IMAP+SMTP — personal mail without registering a sending domain. Independent of hosted Postbox.",
+						"label": "Connect external mailbox"
+					}
+				},
+				"multiTenancy": {
+					"description": "Per-org isolation across VPSes (hosted control plane only).",
+					"label": "Multi-tenancy"
+				},
+				"postbox": {
+					"aiDraft": {
+						"description": "Pre-generate a reply draft (with a confidence + quality self-check) into the Reply Queue the moment a personal-mail message that needs a reply lands, so the owner can review-and-send instead of starting from a blank composer. Human review only — never auto-sends.",
+						"label": "Draft-on-arrival for personal mail"
+					},
+					"description": "Per-user mailboxes with webmail UI, IMAP/SMTP for native clients, and MX-based delivery (Gmail-equivalent).",
+					"label": "Personal mail (Postbox)"
+				},
+				"scan": {
+					"content": {
+						"description": "Block obvious spam, phishing, and homoglyph attacks before sending.",
+						"label": "Content scanning"
+					},
+					"files": {
+						"description": "Scan email attachments for malware via a local ClamAV daemon.",
+						"label": "File scanning (ClamAV)"
+					},
+					"urls": {
+						"description": "Check outbound links against Google Safe Browsing before sending.",
+						"label": "URL reputation"
+					}
+				},
+				"sealedMail": {
+					"description": "Encrypt personal mail end-to-end between Owlat instances when every recipient has a usable key, and render a \"Sealed\" badge for encrypted messages.",
+					"label": "Sealed Mail (end-to-end encryption)"
+				},
+				"senderAuthBadges": {
+					"description": "Show an honest \"sender verified\" or \"not authorized to send for this domain\" badge on personal mail, based on the message's own authentication result.",
+					"label": "Sender authenticity badges"
+				},
+				"tier": {
+					"autoProvision": {
+						"description": "Automatically provision a VPS when a paid subscription starts.",
+						"label": "Auto-provisioning"
+					}
+				},
+				"transactional": {
+					"description": "Send programmatic emails (receipts, password resets) via the API.",
+					"label": "Transactional API"
+				},
+				"webhooks": {
+					"description": "Deliver event payloads (campaign sends, contact changes) to external HTTP endpoints.",
+					"label": "Outbound webhooks"
+				}
+			},
+			"packs": {
+				"ai": {
+					"description": "AI agent, autonomy, knowledge graph (+ auto-link, graph retrieval, analytics), assistant, and dashboards.",
+					"label": "AI"
+				},
+				"emailClient": {
+					"description": "Inbox, chat, and personal mail (Postbox) as one bundle.",
+					"label": "Email Client"
+				},
+				"marketing": {
+					"description": "Campaigns, automations, and the transactional API.",
+					"label": "Marketing"
+				}
+			}
+		},
+		"operatingModes": {
+			"crm_only": {
+				"audience": "Manage contacts and data; no email send or receive.",
+				"description": "Contacts, segments, imports, and forms with no outbound or inbound mail. A degenerate baseline you can grow from.",
+				"label": "CRM only"
+			},
+			"full": {
+				"audience": "Marketing, personal/team mail, and AI all together.",
+				"description": "Everything: campaigns, automations, transactional, shared inbox, chat, hosted Postbox, external mailboxes, and the full AI suite.",
+				"label": "Full stack"
+			},
+			"hosted_mail": {
+				"audience": "Run Owlat as your mail server (Gmail-equivalent).",
+				"description": "Per-user mailboxes with webmail + IMAP/SMTP for native clients and MX-based delivery through the built-in MTA. Requires a real domain with MX, SPF, and DKIM.",
+				"label": "Hosted mail server (Postbox)"
+			},
+			"imap_only": {
+				"audience": "Read mail that lives in Google / Fastmail / a company server.",
+				"description": "Connect each user's own mailbox over IMAP to read and search mail, and reply 1:1 through their own SMTP. No Owlat delivery provider, no marketing, no transactional API.",
+				"label": "IMAP-only (read + personal reply)"
+			},
+			"marketing": {
+				"audience": "Run campaigns, automations, and forms to a contact list.",
+				"description": "Broadcast campaigns, drip automations, signup forms, and the transactional API over a delivery provider with a verified, authenticated sending domain.",
+				"label": "Marketing platform"
+			},
+			"team_inbox": {
+				"audience": "Triage inbound mail as a team in a shared inbox.",
+				"description": "A shared inbox that threads inbound conversations and sends replies over a delivery provider. Needs an inbound source (the built-in MTA or a channel webhook).",
+				"label": "Team inbox (shared)"
+			},
+			"team_inbox_ai": {
+				"audience": "Shared inbox with AI classification and draft replies.",
+				"description": "The shared inbox plus the AI agent (classify inbound mail, draft replies). Requires an LLM provider in addition to a delivery provider and an inbound source.",
+				"label": "Team inbox + AI agent"
+			},
+			"transactional": {
+				"audience": "Send receipts, password resets, and other programmatic mail.",
+				"description": "The transactional API/SDK over a delivery provider (Resend, SES, or the built-in MTA) with a verified sending domain. No marketing campaigns.",
+				"label": "Transactional API service"
+			}
+		},
+		"sendProviderCatalog": {
+			"credentialFields": {
+				"emailit": {
+					"apiKey": {
+						"label": "Emailit API key"
+					}
+				},
+				"mandrill": {
+					"apiKey": {
+						"description": "Mailchimp Transactional → Settings → API keys. Feedback (bounces, complaints, rejects) needs a second variable, MANDRILL_WEBHOOK_KEY, which Mandrill issues when you create the webhook — the webhook card on the delivery page has the URL and the events to enable.",
+						"label": "Mailchimp Transactional API key"
+					}
+				},
+				"mta": {
+					"outboundTlsMode": {
+						"label": "Connection security"
+					}
+				},
+				"resend": {
+					"apiKey": {
+						"label": "Resend API key"
+					}
+				},
+				"ses": {
+					"accessKeyId": {
+						"label": "Access key ID"
+					},
+					"region": {
+						"label": "Region"
+					},
+					"secretAccessKey": {
+						"label": "Secret access key"
+					}
+				},
+				"smtp": {
+					"password": {
+						"label": "Password"
+					},
+					"relay": {
+						"label": "Server host"
+					},
+					"username": {
+						"label": "Username"
+					}
+				}
+			},
+			"outboundTlsModes": {
+				"opportunistic": "Opportunistic (recommended)",
+				"require": "Always encrypt",
+				"requireVerified": "Always encrypt and verify"
+			}
+		},
+		"snoozePresets": {
+			"label": {
+				"later_today": "Later today",
+				"next_week": "Next week",
+				"this_evening": "This evening",
+				"this_weekend": "This weekend",
+				"tomorrow_am": "Tomorrow",
+				"until_im_back": "Until I'm back"
+			},
+			"sub": {
+				"time": "{time}",
+				"today": "Today {time}",
+				"weekday": "{day} {time}"
 			}
 		}
 	},

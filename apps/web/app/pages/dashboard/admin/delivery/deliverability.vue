@@ -16,6 +16,7 @@ import {
 	formatVerificationAge,
 	itemKey,
 } from '~/utils/deliverabilityCenter';
+import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 
 const { t } = useI18n();
 
@@ -29,6 +30,13 @@ type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 function localized(value: LocalizedText): string {
 	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 }
+
+/**
+ * A check's name is shared-registry English (Convex stores and mails it with
+ * regression alerts), so the toast names it through the catalog copy derived
+ * from the check id. See `~/composables/useDeliverabilityChecklistCopy`.
+ */
+const { itemTitle } = useDeliverabilityChecklistCopy();
 
 useHead({ title: () => t('dashboard.admin.delivery.deliverability.pageTitle') });
 
@@ -122,7 +130,9 @@ async function verify(item: DeliverabilityChecklistItem) {
 		if (!result) return;
 		if (result.status === 'pass') {
 			showToast(
-				t('dashboard.admin.delivery.deliverability.toasts.itemVerified', { title: item.title }),
+				t('dashboard.admin.delivery.deliverability.toasts.itemVerified', {
+					title: itemTitle(item),
+				}),
 				'success'
 			);
 		} else if (result.status === 'pending-dns') {

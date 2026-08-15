@@ -274,6 +274,14 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 							item.scope.domainId === selectedNextItem.scope.domainId)
 			) ?? null)
 		: null;
+	// English, like every other sentence this read model returns: one payload
+	// feeds the browser, the copyable diagnostic report and non-browser callers.
+	// The web paints these headings from
+	// `sharedPkg.deliverabilityChecklist.groups.<severity>.*` — a key derived
+	// from `key`, resolved in `apps/web/app/composables/useDeliverabilityChecklistCopy.ts`
+	// with these words as the fallback — so a heading reworded here needs the
+	// catalog edit too (`apps/web/app/__tests__/sharedRegistryCatalog.test.ts`
+	// pins the two copies together).
 	const groups = [
 		{
 			key: 'blocking' as const,

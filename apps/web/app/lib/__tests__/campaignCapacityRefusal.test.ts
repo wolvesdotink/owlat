@@ -178,6 +178,16 @@ describe('capacity plan dates', () => {
 		expect(formatCapacityDay(Date.UTC(2026, 0, 6), 'short')).toBe('Tue, Jan 6');
 	});
 
+	/**
+	 * The ZONE is pinned; the LANGUAGE is not. Every caller sits inside a
+	 * component and hands over `useI18n().locale.value`, so a German page reads
+	 * German dates — of the same UTC day, which is the part that must not move.
+	 */
+	it('formats in the language it is given', () => {
+		expect(formatCapacityDay(Date.UTC(2026, 0, 9), 'long', 'de')).toBe('Freitag, 9. Januar');
+		expect(formatCapacityDay(Date.UTC(2026, 0, 9), 'short', 'de')).toBe('Fr., 9. Jan.');
+	});
+
 	it('calls a day "today" only when it is the current UTC day', () => {
 		expect(isCapacityDayToday(Date.UTC(2026, 0, 5), Date.UTC(2026, 0, 5, 12))).toBe(true);
 		expect(isCapacityDayToday(Date.UTC(2026, 0, 5), Date.UTC(2026, 0, 5))).toBe(true);
@@ -205,6 +215,12 @@ describe('capacity plan dates', () => {
 
 		it('makes no finish claim at all for a truncated enumeration', () => {
 			expect(capacityFinishSentence({ ...PLAN, truncated: true })).toBeNull();
+		});
+
+		it('names that day in the locale it is given', () => {
+			// Rendered through the English catalog on purpose: the sentence around
+			// the date is the panel's, the date inside it is the caller's locale.
+			expect(render(capacityFinishSentence(PLAN, 'de'))).toContain('Freitag, 9. Januar');
 		});
 	});
 });

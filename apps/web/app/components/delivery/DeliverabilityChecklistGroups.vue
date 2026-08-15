@@ -11,6 +11,7 @@ import {
 	formatVerificationAge,
 	itemKey,
 } from '~/utils/deliverabilityCenter';
+import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 
 defineProps<{
 	groups: DeliverabilityChecklistGroup[];
@@ -33,6 +34,14 @@ function localized(value: LocalizedText): string {
 	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 }
 
+/**
+ * The check taxonomy and the group headings are shared-module/read-model data
+ * whose English also leaves the browser (diagnostic dumps, mailed regression
+ * alerts), so the German comes from a key derived from the check id and the
+ * group's severity. See `~/composables/useDeliverabilityChecklistCopy`.
+ */
+const { itemTitle, itemImpact, groupLabel, groupDescription } = useDeliverabilityChecklistCopy();
+
 const { copy, isCopied } = useCopyToClipboard();
 
 const groupIcon = {
@@ -49,9 +58,9 @@ const groupIcon = {
 				<Icon :name="groupIcon[group.key]" class="mt-0.5 h-5 w-5 shrink-0 text-text-tertiary" />
 				<div>
 					<h2 :id="`${group.key}-heading`" class="font-semibold text-text-primary">
-						{{ group.label }}
+						{{ groupLabel(group) }}
 					</h2>
-					<p class="text-sm text-text-secondary">{{ group.description }}</p>
+					<p class="text-sm text-text-secondary">{{ groupDescription(group) }}</p>
 				</div>
 			</div>
 
@@ -74,7 +83,7 @@ const groupIcon = {
 							]"
 						/>
 						<div class="min-w-0 flex-1">
-							<p class="font-medium text-text-primary">{{ item.title }}</p>
+							<p class="font-medium text-text-primary">{{ itemTitle(item) }}</p>
 							<p class="mt-0.5 truncate text-xs text-text-tertiary">
 								{{ item.protocol }}
 								<span v-if="item.scope.kind === 'domain'"> · {{ item.scope.domain }}</span>
@@ -100,7 +109,7 @@ const groupIcon = {
 					</summary>
 
 					<div class="space-y-4 border-t border-border-subtle bg-bg-deep/30 px-4 py-4 sm:px-5">
-						<p class="text-sm leading-6 text-text-secondary">{{ item.impact }}</p>
+						<p class="text-sm leading-6 text-text-secondary">{{ itemImpact(item) }}</p>
 						<div
 							v-if="item.failureReason || item.nextStep || item.observed.length"
 							class="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm"

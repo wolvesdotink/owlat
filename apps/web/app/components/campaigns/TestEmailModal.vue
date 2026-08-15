@@ -19,9 +19,11 @@ const props = defineProps<Props>();
 
 const { t } = useI18n();
 
+// The catalog is module scope, so `label` is a message key: resolve it here,
+// where a translator is in hand, or the picker renders the raw key.
 const getLanguageLabel = (code: string): string => {
 	const opt = languageOptions.find((l) => l.value === code);
-	return opt ? formatLanguageLabel(opt) : code;
+	return opt ? formatLanguageLabel({ label: t(opt.label), nativeLabel: opt.nativeLabel }) : code;
 };
 
 const emit = defineEmits<{
@@ -127,7 +129,10 @@ const submitForm = () => {
 			</p>
 
 			<!-- Test Email Summary -->
-			<div v-if="subject || fromEmail" class="p-3 bg-bg-surface border border-border-subtle rounded-lg mb-4">
+			<div
+				v-if="subject || fromEmail"
+				class="p-3 bg-bg-surface border border-border-subtle rounded-lg mb-4"
+			>
 				<div class="text-sm">
 					<p class="text-text-secondary">
 						{{ t('components.campaigns.testEmailModal.subjectLabel') }}
@@ -197,7 +202,9 @@ const submitForm = () => {
 						t('common.cancel')
 					}}</UiButton>
 					<UiButton :loading="isSending" :disabled="isSending" @click="submitForm">
-						<template v-if="!isSending" #iconLeft><Icon name="lucide:send-horizonal" class="w-4 h-4" /></template>
+						<template v-if="!isSending" #iconLeft
+							><Icon name="lucide:send-horizonal" class="w-4 h-4"
+						/></template>
 						{{
 							isSending
 								? t('components.campaigns.testEmailModal.queueing')

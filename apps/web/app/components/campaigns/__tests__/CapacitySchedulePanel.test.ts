@@ -17,7 +17,8 @@ import { mount } from '@vue/test-utils';
 
 import CapacitySchedulePanel from '../CapacitySchedulePanel.vue';
 import type { CampaignCapacitySchedulePlan } from '~/lib/campaignCapacityRefusal';
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import de from '~~/i18n/locales/de.json';
 
 // The panel renders its copy through the real catalog, so `useI18n` has to
 // resolve exactly as it does in the app (an auto-import, hence a global).
@@ -53,11 +54,20 @@ function flat(value: string): string {
 function mountPanel(
 	plan: Partial<CampaignCapacitySchedulePlan> = {},
 	dismissible = false,
-	now = NOW_ON_DAY_ZERO
+	now = NOW_ON_DAY_ZERO,
+	locale: 'en' | 'de' = 'en'
 ) {
+	const i18n = createTestI18n();
+	// The shared helper ships `de` empty (its suites only mount the English
+	// copy); the language case below is about the translated panel, so it loads
+	// the real catalog instead of falling back to English.
+	if (locale === 'de') {
+		i18n.global.setLocaleMessage('de', de);
+		i18n.global.locale.value = 'de';
+	}
 	return mount(CapacitySchedulePanel, {
 		props: { plan: { ...BASE, ...plan }, dismissible, now },
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [i18n], stubs: { Icon: iconStub } },
 	});
 }
 
@@ -71,6 +81,21 @@ describe('CapacitySchedulePanel', () => {
 		expect(html).not.toContain('bg-error');
 		expect(flat(wrapper.text()).toLowerCase()).not.toContain('error');
 		expect(flat(wrapper.text()).toLowerCase()).not.toContain('failed');
+		expectFullyLocalized(wrapper);
+	});
+
+	/**
+	 * The ZONE is pinned to UTC (two operators must read the same finish day);
+	 * the LANGUAGE is not. Every date here goes through the plan's formatter with
+	 * `useI18n().locale.value`, so a German page never reads "Fri, Jan 9".
+	 */
+	it('prints its dates in the active language, still off the UTC anchor', () => {
+		const wrapper = mountPanel({}, false, NOW_ON_DAY_ZERO, 'de');
+		const text = flat(wrapper.text());
+		expect(text).toContain('Fr., 9. Jan.');
+		expect(text).toContain('Freitag, 9. Januar');
+		expect(text).not.toContain('Jan 9');
+		expectFullyLocalized(wrapper);
 	});
 
 	it('lists the per-day slices, dated off the plan in UTC', () => {

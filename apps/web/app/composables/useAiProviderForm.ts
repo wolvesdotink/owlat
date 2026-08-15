@@ -242,8 +242,14 @@ export function useAiProviderForm() {
 			!storedEmbeddingKeySet.value &&
 			!form.embeddingApiKey.trim()
 		) {
+			// `EmbeddingProviderMeta.label` is a MESSAGE KEY, not display copy (see
+			// `utils/aiProviders`), so it has to be translated before it lands in the
+			// inline error — otherwise the admin reads
+			// "shared.aiProviders.embedders.openai.label needs an API key."
 			embeddingError.value = t('shared.useAiProviderForm.embeddingKeyRequired', {
-				provider: embeddingMeta.value?.label ?? t('shared.useAiProviderForm.thisEmbedder'),
+				provider: embeddingMeta.value
+					? t(embeddingMeta.value.label)
+					: t('shared.useAiProviderForm.thisEmbedder'),
 			});
 			return;
 		}

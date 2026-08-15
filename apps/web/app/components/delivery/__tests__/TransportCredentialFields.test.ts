@@ -23,7 +23,8 @@ import {
 	type TransportCredentialValues,
 } from '~/composables/setupWizardCredentials';
 import type { SmtpPreset } from '~/composables/useSetupWizard';
-import { wizardStubs } from './wizardHarness';
+import { localized, wizardStubs } from './wizardHarness';
+import { expectFullyLocalized } from '~/__tests__/i18n';
 
 /**
  * PROVIDER N+1, INJECTED — the descriptor shapes the vocabulary allows and no
@@ -71,9 +72,17 @@ vi.mock('~/composables/setupWizardCredentials', async (importOriginal) => {
 
 const KINDS = CORE_SEND_PROVIDER_CATALOG_ENTRIES.map((entry) => entry.kind);
 
-/** The id the stubbed input/label pair share — the harness's own derivation. */
+/**
+ * The id the stubbed input/label pair share — the harness's own derivation, over
+ * the label the operator actually reads. A descriptor's `label` is a catalog KEY
+ * (`sharedPkg.sendProviderCatalog.*`), so it is resolved here exactly as the
+ * component resolves it: an id derived from the raw key would pass while the
+ * form rendered key paths at the operator.
+ */
 function fieldId(label: string): string {
-	return `field-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+	return `field-${localized(label)
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')}`;
 }
 
 function mountFields(
@@ -126,6 +135,13 @@ describe('TransportCredentialFields — one renderer, every kind', () => {
 		}
 	});
 
+	it.each(KINDS)('renders %s in words, never in catalog key paths', (kind) => {
+		// The descriptors' copy is `sharedPkg.sendProviderCatalog.*` keys, and this
+		// component is the only place they become words: a missed `t()` on one of
+		// the four controls it draws would paint the key path at the operator.
+		expectFullyLocalized(mountFields(kind).wrapper);
+	});
+
 	it('renders nothing at all for a transport this build does not carry', () => {
 		const { wrapper } = mountFields('postmark');
 		expect(wrapper.findAll('input')).toHaveLength(0);
@@ -151,7 +167,9 @@ describe('TransportCredentialFields — one renderer, every kind', () => {
 		expect(wrapper.findAll('code').map((node) => node.text())).toEqual(['MANDRILL_WEBHOOK_KEY']);
 		// And the sentence still reads as declared — no space introduced where the
 		// runs were joined.
-		expect(wrapper.find('p.text-xs').text()).toBe(credentialFieldsFor('mandrill')[0]!.description);
+		expect(wrapper.find('p.text-xs').text()).toBe(
+			localized(credentialFieldsFor('mandrill')[0]!.description!)
+		);
 	});
 });
 

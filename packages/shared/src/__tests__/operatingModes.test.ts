@@ -15,12 +15,27 @@ describe('operatingModes — registry shape', () => {
 		expect(OPERATING_MODE_KEYS).toEqual(Object.keys(OPERATING_MODES));
 	});
 
+	// The three copy fields are MESSAGE KEYS, not sentences: this registry is
+	// module-scope data with no `t()` to call, and every consumer of them is a web
+	// surface that translates. A sentence written back into one of these fields
+	// would ship untranslatable English straight onto the wizard card.
+	it('carries catalog keys for label, audience and description', () => {
+		for (const key of OPERATING_MODE_KEYS) {
+			const preset = OPERATING_MODES[key];
+			expect(preset.label).toBe(`sharedPkg.operatingModes.${key}.label`);
+			expect(preset.audience).toBe(`sharedPkg.operatingModes.${key}.audience`);
+			expect(preset.description).toBe(`sharedPkg.operatingModes.${key}.description`);
+		}
+	});
+
 	it('declared needsDeliveryProvider matches the resolved flag posture', () => {
 		// This is the load-bearing consistency check: a preset cannot claim it
 		// needs no provider while turning on a bulk sending flag (or vice-versa).
 		for (const key of OPERATING_MODE_KEYS) {
 			const computed = needsDeliveryProvider(operatingModeFlags(key));
-			expect(computed, `${key}.needsDeliveryProvider drift`).toBe(OPERATING_MODES[key].needsDeliveryProvider);
+			expect(computed, `${key}.needsDeliveryProvider drift`).toBe(
+				OPERATING_MODES[key].needsDeliveryProvider
+			);
 		}
 	});
 
@@ -73,7 +88,16 @@ describe('operatingModes — representative postures', () => {
 
 	it('full stack enables marketing + receiving + ai', () => {
 		const flags = operatingModeFlags('full');
-		const expectedOn = ['campaigns', 'transactional', 'automations', 'inbox', 'postbox', 'mail.external', 'ai', 'ai.agent'] as const;
+		const expectedOn = [
+			'campaigns',
+			'transactional',
+			'automations',
+			'inbox',
+			'postbox',
+			'mail.external',
+			'ai',
+			'ai.agent',
+		] as const;
 		for (const f of expectedOn) {
 			expect(flags[f], `full should enable ${f}`).toBe(true);
 		}

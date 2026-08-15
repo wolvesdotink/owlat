@@ -107,6 +107,17 @@ describe('sendReadinessNote — the capped answer', () => {
 		expect(text(later?.detail)).toBe('Your capacity grows to about 900 on Thu, Jan 8.');
 	});
 
+	it('names that later day in the locale it is given', () => {
+		// The sentence is the catalog's, the numbers and the date inside it are
+		// formatted here — so `SendReadinessNote.vue` hands the active locale down
+		// and a German page never reads "Thu, Jan 8".
+		const note = sendReadinessNote(capped({ growsTo: 900, growsAt: IN_THREE_DAYS }), {
+			now: NOW,
+			locale: 'de',
+		});
+		expect(text(note?.detail)).toContain('Do., 8. Jan.');
+	});
+
 	it('keeps the growth alongside the paced sentence', () => {
 		const note = sendReadinessNote(capped({ today: 500, growsTo: 900, growsAt: TOMORROW }), {
 			audienceSize: 2000,

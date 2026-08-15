@@ -86,7 +86,7 @@ function growth(
 	if (growsAt - dayZero === CAPACITY_DAY_MS) return { variant: 'tomorrow', params: { count } };
 	return {
 		variant: 'onDate',
-		params: { count, date: formatCapacityDay(growsAt, 'short') },
+		params: { count, date: formatCapacityDay(growsAt, 'short', locale) },
 	};
 }
 

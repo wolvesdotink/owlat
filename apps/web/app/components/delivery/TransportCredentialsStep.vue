@@ -78,10 +78,18 @@ const showErrors = computed(() => submitted.value);
  * The ONE credential error the selected kind can raise — from
  * `credentialErrorFor`, the same helper the in-app transport editor calls, so
  * neither screen can be left announcing a key the other has learned about.
+ *
+ * Both sources are message KEYS (the rules module and the descriptor gate are
+ * pure), so this is where they become words; the missing-credential sentence
+ * also interpolates the field's own label key.
  */
-const credentialFieldError = computed(() =>
-	showErrors.value ? (credentialErrorFor(errors.value) ?? requiredCredentialError.value) : undefined
-);
+const credentialFieldError = computed(() => {
+	if (!showErrors.value) return undefined;
+	const ruleError = credentialErrorFor(errors.value);
+	if (ruleError !== undefined) return t(ruleError);
+	const missing = requiredCredentialError.value;
+	return missing === undefined ? undefined : t(missing.key, { field: t(missing.field) });
+});
 const credentialError = ref('');
 const restartNotice = ref('');
 const validationResult = ref<ValidateTransportResponse | null>(null);

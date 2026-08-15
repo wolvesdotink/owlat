@@ -51,7 +51,8 @@ const previewText = defineModel<string>('previewText', { required: true });
 					languageOptions.map((language) => ({
 						value: language.value,
 						label: t('components.email.emailSubjectSettingsCard.languageOption', {
-							label: language.label,
+							// `label` is a message key (the catalog is module scope), not copy.
+							label: t(language.label),
 							nativeLabel: language.nativeLabel,
 						}),
 					}))
