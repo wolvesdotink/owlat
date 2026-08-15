@@ -15,6 +15,8 @@ const props = defineProps<DashboardCardProps>();
 
 const { isEnabled } = useFeatureFlag();
 
+const { t } = useI18n();
+
 // Resolve the card type against the widget registry with the current flag state.
 // - `ok`: render the card behind a per-widget isolation boundary.
 // - `disabled`: a flag-gated widget whose flag is off — omit it entirely.
@@ -42,7 +44,9 @@ const sizeClasses = computed(() => {
 		<UiCard v-else>
 			<div class="flex items-center gap-2 text-text-tertiary">
 				<Icon name="lucide:alert-circle" class="w-4 h-4" />
-				<span class="text-sm">Unknown card type: {{ card.type }}</span>
+				<span class="text-sm">{{
+					t('components.dashboard.dashboardCardRenderer.unknownCardType', { type: card.type })
+				}}</span>
 			</div>
 		</UiCard>
 	</div>

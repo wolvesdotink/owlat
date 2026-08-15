@@ -8,9 +8,9 @@ const repoRoot = resolve(here, '../../..');
 const readRepoFile = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
 
 const feedbackDoc = readRepoFile(
-	'apps/docs/content/3.developer/37.external-reputation-feedback.md'
+	'apps/docs/content/en/3.developer/37.external-reputation-feedback.md'
 );
-const delistingDoc = readRepoFile('apps/docs/content/3.developer/38.dnsbl-delisting.md');
+const delistingDoc = readRepoFile('apps/docs/content/en/3.developer/38.dnsbl-delisting.md');
 const mtaEnv = readRepoFile('apps/mta/.env.example');
 const postmasterCollector = readRepoFile('apps/mta/src/monitoring/postmaster.ts');
 const postmasterApi = readRepoFile('apps/mta/src/monitoring/googlePostmasterApi.ts');

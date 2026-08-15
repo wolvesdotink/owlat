@@ -6,7 +6,10 @@ import { sidebarConfig } from '../app/utils/sidebarConfig';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
-const doc = readFileSync(resolve(repoRoot, 'apps/docs/content/1.guide/52.secure-email.md'), 'utf8');
+const doc = readFileSync(
+	resolve(repoRoot, 'apps/docs/content/en/1.guide/52.secure-email.md'),
+	'utf8'
+);
 
 describe('secure email guide', () => {
 	it('is linked from the guide sidebar', () => {

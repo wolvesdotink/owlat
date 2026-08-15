@@ -1,22 +1,21 @@
 /**
  * Server provisioning core (desktop "set up a new server" flow).
  *
- * Pure, framework-free building blocks the wizard composable orchestrates:
- *  - the canonical, ordered timeline (desktop SSH steps + the server-side steps
- *    that arrive as `@@OWLAT_PROGRESS@@` NDJSON from the installer);
- *  - `applyStepEvent`, which folds a parsed progress event into the timeline.
+ * Pure, framework-free building blocks the wizard composable orchestrates: the
+ * SSH transport contract, the setup config the wizard produces, the apex-domain
+ * → hostname expansion, and the reachability / host-key guards.
  *
- * The command strings driven over SSH live in `provisioningCommands.ts`.
+ * The command strings driven over SSH live in `provisioningCommands.ts`, and the
+ * step timeline (plus `applyStepEvent`) in `provisioningTimeline.ts`.
  *
  * Keeping this here (no Vue, no Tauri) means the whole orchestration is unit
  * testable with a fake transport and scripted events — the SSH path itself can
  * only be exercised against a real server.
  */
-import { SetupStep, type ProgressStepEvent } from '@owlat/shared/setupProgress';
-import type { InstallSource } from './provisioningCommands';
 
 // Split to stay under the file-size cap; consumers keep importing from here.
 export * from './provisioningCommands';
+export * from './provisioningTimeline';
 
 // ---- transport (implemented by the native bridge, faked in tests) ----------
 
@@ -133,14 +132,35 @@ export const SUBDOMAIN_KEYS = Object.keys(SUBDOMAINS) as SubdomainKey[];
 /**
  * The five overridable labels with UI copy, in wizard order. Lives here (not in
  * the component) so the fields, their defaults and this metadata cannot drift
- * from the {@link SUBDOMAINS} map they describe.
+ * from the {@link SUBDOMAINS} map they describe. `label`/`hint` are i18n keys —
+ * module scope cannot call `useI18n`, so the form translates them.
  */
 export const SUBDOMAIN_FIELDS: ReadonlyArray<{ key: SubdomainKey; label: string; hint: string }> = [
-	{ key: 'site', label: 'App', hint: 'The web app.' },
-	{ key: 'convex', label: 'API (Convex)', hint: 'Sync backend.' },
-	{ key: 'convexSite', label: 'REST API', hint: 'HTTP actions (auth, webhooks, tracking).' },
-	{ key: 'mail', label: 'Mail server (EHLO)', hint: 'Outbound SMTP identity.' },
-	{ key: 'bounce', label: 'Bounce domain', hint: 'Return-Path / bounces.' },
+	{
+		key: 'site',
+		label: 'shared.desktop.provisioning.subdomainFields.site.label',
+		hint: 'shared.desktop.provisioning.subdomainFields.site.hint',
+	},
+	{
+		key: 'convex',
+		label: 'shared.desktop.provisioning.subdomainFields.convex.label',
+		hint: 'shared.desktop.provisioning.subdomainFields.convex.hint',
+	},
+	{
+		key: 'convexSite',
+		label: 'shared.desktop.provisioning.subdomainFields.convexSite.label',
+		hint: 'shared.desktop.provisioning.subdomainFields.convexSite.hint',
+	},
+	{
+		key: 'mail',
+		label: 'shared.desktop.provisioning.subdomainFields.mail.label',
+		hint: 'shared.desktop.provisioning.subdomainFields.mail.hint',
+	},
+	{
+		key: 'bounce',
+		label: 'shared.desktop.provisioning.subdomainFields.bounce.label',
+		hint: 'shared.desktop.provisioning.subdomainFields.bounce.hint',
+	},
 ] as const;
 
 /** A fresh copy of the default labels — for prefilling the override inputs. */
@@ -148,7 +168,7 @@ export function defaultSubdomainLabels(): SubdomainLabels {
 	return { ...SUBDOMAINS };
 }
 
-/** The human-facing field label for a subdomain key (for user-facing copy). */
+/** The i18n key of a subdomain field's label (for user-facing copy). */
 export function subdomainFieldLabel(key: SubdomainKey): string {
 	return SUBDOMAIN_FIELDS.find((f) => f.key === key)?.label ?? key;
 }
@@ -190,10 +210,10 @@ const DNS_LABEL_SEGMENT = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
  */
 export function validateSubdomainLabel(label: string): string | null {
 	const l = label.trim();
-	if (!l) return 'Enter a subdomain label.';
+	if (!l) return 'shared.desktop.provisioning.errors.labelRequired';
 	for (const segment of l.split('.')) {
 		if (!DNS_LABEL_SEGMENT.test(segment)) {
-			return 'Use lowercase letters, digits and hyphens (1–63 per label, no leading or trailing hyphen).';
+			return 'shared.desktop.provisioning.errors.labelCharset';
 		}
 	}
 	return null;
@@ -232,8 +252,10 @@ export function validateSubdomainLabels(
 		const value = labels[key].trim();
 		const prior = seen.get(value);
 		if (prior) {
-			errors[key] =
-				`Same as the "${subdomainFieldLabel(prior)}" label — each hostname needs a distinct label.`;
+			// One message PER prior field rather than one with the field name
+			// interpolated: the interpolated value would itself be a message key, and
+			// nothing at the render boundary can translate a parameter.
+			errors[key] = `shared.desktop.provisioning.errors.duplicateLabel.${prior}`;
 		} else {
 			seen.set(value, key);
 		}
@@ -331,7 +353,9 @@ export interface HostKeyPrompt {
 	/** A changed key demands an explicit extra confirmation beyond the single accept click. */
 	requiresExplicitConfirmation: boolean;
 	tone: 'warn' | 'danger';
+	/** i18n key. */
 	title: string;
+	/** i18n key. */
 	body: string;
 }
 
@@ -347,11 +371,8 @@ export function describeHostKey(status: ConnectInfo['knownHostStatus']): HostKey
 			isMismatch: true,
 			requiresExplicitConfirmation: true,
 			tone: 'danger',
-			title: 'Host key has CHANGED',
-			body:
-				'This server is presenting a different key than the one you trusted before. That can mean the ' +
-				'server was rebuilt — or that someone is intercepting the connection. Only continue if you ' +
-				'know why the key changed.',
+			title: 'shared.desktop.provisioning.hostKey.changed.title',
+			body: 'shared.desktop.provisioning.hostKey.changed.body',
 		};
 	}
 	return {
@@ -359,121 +380,7 @@ export function describeHostKey(status: ConnectInfo['knownHostStatus']): HostKey
 		isMismatch: false,
 		requiresExplicitConfirmation: false,
 		tone: 'warn',
-		title: 'Verify the host key',
-		body: "First time connecting — confirm this matches your server's fingerprint.",
+		title: 'shared.desktop.provisioning.hostKey.verify.title',
+		body: 'shared.desktop.provisioning.hostKey.verify.body',
 	};
-}
-
-// ---- the timeline ----------------------------------------------------------
-
-export type StepState = 'pending' | 'running' | 'ok' | 'warn' | 'failed' | 'skipped';
-export type StepGroup = 'connect' | 'server' | 'finish';
-
-export interface TimelineStep {
-	id: string;
-	title: string;
-	group: StepGroup;
-	state: StepState;
-	detail?: string;
-}
-
-interface TimelineSpec {
-	id: string;
-	title: string;
-	group: StepGroup;
-}
-
-/**
- * The full ordered roadmap, shown up-front so the user can see what's done,
- * what's running, and what's still to come. The `server` ids match
- * `SetupStep` so the installer's NDJSON drives them directly.
- */
-export const PROVISION_TIMELINE: readonly TimelineSpec[] = [
-	{ id: 'ssh-connect', title: 'Connect over SSH', group: 'connect' },
-	{ id: 'host-key', title: 'Verify host key', group: 'connect' },
-	{ id: 'authenticate', title: 'Authenticate', group: 'connect' },
-	{ id: 'system-check', title: 'Check the server', group: 'connect' },
-	{ id: 'install-docker', title: 'Install Docker', group: 'connect' },
-	{ id: 'fetch-owlat', title: 'Fetch Owlat', group: 'connect' },
-	{ id: 'upload-config', title: 'Upload configuration', group: 'connect' },
-	{ id: SetupStep.Preflight, title: 'Check prerequisites', group: 'server' },
-	{ id: SetupStep.Config, title: 'Apply configuration', group: 'server' },
-	{ id: SetupStep.ComposeUp, title: 'Start containers', group: 'server' },
-	{ id: SetupStep.MtaIdentity, title: 'Verify outbound IP identity', group: 'server' },
-	{ id: SetupStep.WaitConvex, title: 'Wait for the backend', group: 'server' },
-	{ id: SetupStep.AdminKey, title: 'Mint the admin key', group: 'server' },
-	{ id: SetupStep.DeployFunctions, title: 'Deploy backend functions', group: 'server' },
-	{ id: SetupStep.EnvSet, title: 'Configure the runtime', group: 'server' },
-	{ id: SetupStep.WaitRoutes, title: 'Wait for HTTP routes', group: 'server' },
-	{ id: SetupStep.BootstrapAdmin, title: 'Create the admin account', group: 'server' },
-	{ id: SetupStep.SeedDemo, title: 'Seed demo data', group: 'server' },
-	{ id: 'finish', title: 'Finish up', group: 'finish' },
-] as const;
-
-/**
- * A fresh timeline (all steps pending). In the local-source modes
- * `fetch-owlat` becomes an upload, and image steps appear before the config
- * upload: built on the server (`local-build`) or built here and streamed over
- * SSH (`local-push`).
- */
-export function createTimeline(source: InstallSource = 'git'): TimelineStep[] {
-	const steps = PROVISION_TIMELINE.map((s) => ({ ...s, state: 'pending' as StepState }));
-	if (source === 'git') return steps;
-	const fetch = steps.find((s) => s.id === 'fetch-owlat');
-	if (fetch) fetch.title = 'Upload Owlat (local source)';
-	const at = steps.findIndex((s) => s.id === 'upload-config');
-	const inserted: TimelineStep[] =
-		source === 'local-push'
-			? [
-					{
-						id: 'build-images-local',
-						title: 'Build images on this machine',
-						group: 'connect',
-						state: 'pending',
-					},
-					{
-						id: 'push-images',
-						title: 'Upload images to the server',
-						group: 'connect',
-						state: 'pending',
-					},
-				]
-			: [
-					{
-						id: 'build-setup-image',
-						title: 'Build the setup image',
-						group: 'connect',
-						state: 'pending',
-					},
-				];
-	steps.splice(at, 0, ...inserted);
-	return steps;
-}
-
-const STATE_BY_STATUS: Record<ProgressStepEvent['status'], StepState> = {
-	running: 'running',
-	ok: 'ok',
-	failed: 'failed',
-	skipped: 'skipped',
-};
-
-/** Fold a parsed server `step` event into the timeline (mutates the matching step). */
-export function applyStepEvent(steps: TimelineStep[], ev: ProgressStepEvent): void {
-	const step = steps.find((s) => s.id === ev.id);
-	if (!step) return;
-	step.state = ev.status === 'ok' && ev.warn ? 'warn' : STATE_BY_STATUS[ev.status];
-	if (ev.detail) step.detail = ev.detail;
-}
-
-/** Mark a desktop-driven (non-NDJSON) step. */
-export function setStepState(
-	steps: TimelineStep[],
-	id: string,
-	state: StepState,
-	detail?: string
-): void {
-	const step = steps.find((s) => s.id === id);
-	if (!step) return;
-	step.state = state;
-	if (detail !== undefined) step.detail = detail;
 }

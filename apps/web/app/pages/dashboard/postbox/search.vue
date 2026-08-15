@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Search — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.postbox.search.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -73,16 +75,25 @@ function removeChip(key: string) {
 						</div>
 					</header>
 					<div class="flex-1 overflow-auto">
-						<div v-if="!query.trim()" class="p-6 text-sm text-text-tertiary">
-							Try operators like <code>from:sara</code>, <code>has:attachment</code>,
-							<code>before:2024-01-01</code>, <code>label:work</code>, <code>is:unread</code>.
-						</div>
+						<I18nT
+							v-if="!query.trim()"
+							keypath="dashboard.postbox.search.operatorHint"
+							tag="div"
+							scope="global"
+							class="p-6 text-sm text-text-tertiary"
+						>
+							<template #from><code>from:sara</code></template>
+							<template #hasAttachment><code>has:attachment</code></template>
+							<template #before><code>before:2024-01-01</code></template>
+							<template #label><code>label:work</code></template>
+							<template #isUnread><code>is:unread</code></template>
+						</I18nT>
 						<PostboxThreadListSkeleton v-else-if="isLoading" :rows="6" />
 						<PostboxEmptyState
 							v-else-if="results.length === 0"
 							icon="lucide:search-x"
-							title="No results for this search"
-							hint="Try fewer or broader terms, or operators like from:, has:attachment, is:unread."
+							:title="t('dashboard.postbox.search.noResultsTitle')"
+							:hint="t('dashboard.postbox.search.noResultsHint')"
 						/>
 						<PostboxThreadList
 							v-else-if="mailboxId"
@@ -113,14 +124,16 @@ function removeChip(key: string) {
 							@click="activeMessageId = null"
 						>
 							<Icon name="lucide:arrow-left" class="w-4 h-4" />
-							Results
+							{{ t('dashboard.postbox.search.backToResults') }}
 						</button>
 					</div>
 					<PostboxThreadReader v-if="activeMessage" :message="activeMessage" />
 					<div v-else class="h-full flex items-center justify-center">
 						<div class="text-center">
 							<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-							<p class="mt-4 text-text-secondary">Select a result</p>
+							<p class="mt-4 text-text-secondary">
+								{{ t('dashboard.postbox.search.selectResult') }}
+							</p>
 						</div>
 					</div>
 				</section>

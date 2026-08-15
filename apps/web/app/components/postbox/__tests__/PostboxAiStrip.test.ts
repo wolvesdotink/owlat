@@ -13,6 +13,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 
 import PostboxAiStrip from '../PostboxAiStrip.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -35,17 +36,25 @@ const askLoading = ref(false);
 const suggestLoading = ref(false);
 
 beforeAll(() => {
+	// Every visible string flows through vue-i18n now: `useI18n` is a Nuxt
+	// auto-import in the app, and the operation labels are getters resolved
+	// against the real catalog.
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useConvexQuery', () => ({ data: cacheData, isLoading: cacheLoading }));
-	vi.stubGlobal('useBackendOperation', (_action: unknown, opts: { label?: string }) => {
-		switch (opts?.label) {
-			case 'Ask about this thread':
-				return { run: askRun, isLoading: askLoading };
-			case 'Suggest replies':
-				return { run: suggestRun, isLoading: suggestLoading };
-			default:
-				return { run: genRun, isLoading: genLoading };
+	vi.stubGlobal(
+		'useBackendOperation',
+		(_action: unknown, opts: { label?: string | (() => string) }) => {
+			const label = typeof opts?.label === 'function' ? opts.label() : opts?.label;
+			switch (label) {
+				case 'Ask about this thread':
+					return { run: askRun, isLoading: askLoading };
+				case 'Suggest replies':
+					return { run: suggestRun, isLoading: suggestLoading };
+				default:
+					return { run: genRun, isLoading: genLoading };
+			}
 		}
-	});
+	);
 });
 
 beforeEach(() => {
@@ -68,7 +77,10 @@ const mdStub = { props: ['source'], template: '<div class="md">{{ source }}</div
 function mountStrip(props: { messageId?: string; warrantsSummary?: boolean } = {}) {
 	return mount(PostboxAiStrip, {
 		props: { messageId: 'msg-1', warrantsSummary: false, ...props },
-		global: { stubs: { Icon: iconStub, AssistantMarkdown: mdStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: iconStub, AssistantMarkdown: mdStub },
+		},
 	});
 }
 

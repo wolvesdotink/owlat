@@ -19,7 +19,9 @@ export function createTestI18n() {
 		legacy: false,
 		locale: 'en',
 		fallbackLocale: 'en',
-		messages: { en },
+		// `de` present but empty: @nuxtjs/i18n augments createI18n to require every
+		// declared locale, and these suites only ever mount the English copy.
+		messages: { en, de: {} },
 	});
 }
 
@@ -29,21 +31,34 @@ export function createTestI18n() {
  */
 export const i18nStubs = { useI18n };
 
-/** A message key that leaked into the page instead of its translation. */
-const RAW_KEY_PATH = /\b(?:common|auth|recipient|postbox|welcome)(?:\.[A-Za-z][A-Za-z0-9-]*){2,}\b/;
+/**
+ * A message key that leaked into the page instead of its translation.
+ *
+ * `sharedPkg` is the namespace the registries under `packages/shared` are
+ * mirrored into, and its segments carry underscores (`crm_only`), so the segment
+ * class allows them — a mode card that rendered `OPERATING_MODES[key].label`
+ * verbatim is exactly the failure this catches.
+ */
+const RAW_KEY_PATH =
+	/\b(?:common|auth|recipient|postbox|welcome|dashboard|components|sharedPkg|shared|desktop|setup|invite|compose|imprint|terms|home|cancelDeletion|shell|ui)(?:\.[A-Za-z][A-Za-z0-9_-]*){2,}\b/;
 /** An interpolation the page never filled in — `{email}` in front of a stranger. */
 const UNFILLED_PLACEHOLDER = /\{\s*[A-Za-z][A-Za-z0-9_]*\s*\}/;
 
 /** Everything a person reads or hears: body copy, placeholders, accessible names. */
 function renderedStrings(wrapper: VueWrapper): string[] {
 	const strings = [wrapper.text()];
-	const carriers = wrapper.element.querySelectorAll('[placeholder], [aria-label], [title]');
-	for (const el of Array.from(carriers)) {
+	// `wrapper.element` is `ComponentPublicInstance['$el']`, i.e. `any`; naming the
+	// DOM type here is what keeps the elements below typed rather than `unknown`.
+	const root: Element = wrapper.element;
+	const carriers: NodeListOf<HTMLElement> = root.querySelectorAll(
+		'[placeholder], [aria-label], [title]'
+	);
+	carriers.forEach((el: HTMLElement) => {
 		for (const attr of ['placeholder', 'aria-label', 'title']) {
 			const value = el.getAttribute(attr);
 			if (value) strings.push(value);
 		}
-	}
+	});
 	return strings;
 }
 

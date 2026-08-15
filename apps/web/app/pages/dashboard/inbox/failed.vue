@@ -3,7 +3,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
 
-useHead({ title: 'Failed Messages — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.inbox.failed.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -20,7 +22,7 @@ const {
 
 // Manual re-enqueue
 const { run: retryFailedMessage } = useBackendOperation(api.inbox.mutations.retryFailedMessage, {
-	label: 'Retry message',
+	label: () => t('dashboard.inbox.failed.retryOperation'),
 });
 
 const actionInProgress = ref<string | null>(null);
@@ -33,7 +35,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 	try {
 		const result = await retryFailedMessage({ inboundMessageId: messageId });
 		if (result === undefined) return;
-		showToast('Message re-enqueued for processing');
+		showToast(t('dashboard.inbox.failed.retriedToast'));
 	} finally {
 		actionInProgress.value = null;
 	}
@@ -53,11 +55,10 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 			<div>
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3">
 					<Icon name="lucide:alert-triangle" class="w-7 h-7 text-error" />
-					Failed Messages
+					{{ t('dashboard.inbox.failed.title') }}
 				</h1>
 				<p class="text-text-secondary mt-1">
-					Inbound messages whose processing failed after the automatic retries were exhausted. Read
-					the error and re-enqueue once the cause is resolved.
+					{{ t('dashboard.inbox.failed.subtitle') }}
 				</p>
 			</div>
 		</div>
@@ -66,15 +67,15 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading failed messages...</p>
+				<p class="text-text-secondary text-sm">{{ t('dashboard.inbox.failed.loading') }}</p>
 			</div>
 		</div>
 
 		<!-- Error — a faulted query must NOT look like an empty (all-clear) list -->
 		<UiErrorAlert
 			v-else-if="error"
-			title="Couldn't load failed messages"
-			message="We hit an error loading failed messages. Reload the page to try again."
+			:title="t('dashboard.inbox.failed.errorTitle')"
+			:message="t('dashboard.inbox.failed.errorMessage')"
 			class="my-8"
 		/>
 
@@ -90,8 +91,8 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 				rounded="full"
 				class="mb-4"
 			/>
-			<p class="text-text-secondary font-medium">No failed messages</p>
-			<p class="text-sm text-text-tertiary mt-1">Every inbound message processed successfully.</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.inbox.failed.emptyTitle') }}</p>
+			<p class="text-sm text-text-tertiary mt-1">{{ t('dashboard.inbox.failed.emptyBody') }}</p>
 		</div>
 
 		<!-- Failed Messages -->
@@ -115,7 +116,9 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 
 				<!-- Failure reason -->
 				<div v-if="message.errorMessage" class="mb-4 p-3 bg-error-subtle rounded-lg">
-					<p class="text-xs text-error font-medium uppercase tracking-wider mb-2">Failure reason</p>
+					<p class="text-xs text-error font-medium uppercase tracking-wider mb-2">
+						{{ t('dashboard.inbox.failed.failureReason') }}
+					</p>
 					<p class="text-sm text-text-primary break-words">{{ message.errorMessage }}</p>
 				</div>
 
@@ -124,7 +127,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 					{{ message.subject }}
 				</p>
 				<p class="text-text-secondary text-sm line-clamp-3 mb-4">
-					{{ message.textBody || '(No text content)' }}
+					{{ message.textBody || t('dashboard.inbox.failed.noTextContent') }}
 				</p>
 
 				<!-- Actions -->
@@ -137,7 +140,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 						@click="onRetry(message._id)"
 					>
 						<Icon name="lucide:refresh-cw" class="w-3 h-3" />
-						Retry processing
+						{{ t('dashboard.inbox.failed.retryProcessing') }}
 					</UiButton>
 				</div>
 			</div>

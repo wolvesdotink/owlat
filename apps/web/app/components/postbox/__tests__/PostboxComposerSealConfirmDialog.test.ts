@@ -8,8 +8,9 @@
  * to override — willSeal, keyChanged, a draft with no recipients yet — render no
  * dialog at all, so there is no way to consent to something that was never asked.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxComposerSealConfirmDialog from '../PostboxComposerSealConfirmDialog.vue';
 import type { SealState } from '~/utils/sealComposer';
@@ -25,10 +26,19 @@ const confirmationDialogStub = {
 	</div>`,
 };
 
+// The prompt copy flows through vue-i18n now; `useI18n` is a Nuxt auto-import,
+// so it has to exist as a global for the component's setup.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
 function mountDialog(sealState: SealState | null, open = true) {
 	return mount(PostboxComposerSealConfirmDialog, {
 		props: { open, sealState },
-		global: { stubs: { UiConfirmationDialog: confirmationDialogStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { UiConfirmationDialog: confirmationDialogStub },
+		},
 	});
 }
 

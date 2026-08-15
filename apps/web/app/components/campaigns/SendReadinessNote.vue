@@ -24,10 +24,24 @@ const props = defineProps<{
 	now?: number;
 }>();
 
+const { t, locale } = useI18n();
+
+/**
+ * The copy is derived in `~/lib/sendReadiness`, which is module scope and so
+ * never calls `useI18n`: it hands back a catalog key (with its parameters when
+ * it has any), and this render boundary turns that into words. The numbers and
+ * dates inside those parameters are formatted here too, which is why the active
+ * locale travels down with them.
+ */
+type ReadinessMessage = string | { key: string; params?: Record<string, unknown> };
+const message = (value: ReadinessMessage): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 const note = computed(() =>
 	sendReadinessNote(props.readiness, {
 		audienceSize: props.audienceSize ?? null,
 		now: props.now ?? Date.now(),
+		locale: locale.value,
 	})
 );
 
@@ -61,8 +75,10 @@ const tone = computed(() => TONE[note.value?.tone ?? 'ready']);
 	>
 		<Icon :name="tone.name" class="w-5 h-5 shrink-0 mt-0.5" :class="tone.icon" />
 		<div class="min-w-0">
-			<p class="text-sm font-medium text-text-primary">{{ note.headline }}</p>
-			<p v-if="note.detail" class="text-sm text-text-secondary mt-0.5">{{ note.detail }}</p>
+			<p class="text-sm font-medium text-text-primary">{{ message(note.headline) }}</p>
+			<p v-if="note.detail" class="text-sm text-text-secondary mt-0.5">
+				{{ message(note.detail) }}
+			</p>
 		</div>
 	</div>
 </template>

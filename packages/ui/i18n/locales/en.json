@@ -1,0 +1,56 @@
+{
+	"ui": {
+		"actions": {
+			"cancel": "Cancel",
+			"confirm": "Confirm",
+			"retry": "Try again",
+			"pleaseWait": "Please wait..."
+		},
+		"alert": {
+			"error": "Error",
+			"warning": "Warning",
+			"info": "Info",
+			"success": "Success"
+		},
+		"chart": {
+			"empty": "No data yet",
+			"barsAriaLabel": "Bar chart",
+			"trendAriaLabel": "Trend chart"
+		},
+		"confirmationDialog": {
+			"title": "Are you sure?",
+			"description": "This action cannot be undone."
+		},
+		"disclosure": {
+			"label": "Advanced"
+		},
+		"errorBoundary": {
+			"message": "Something went wrong. Please try again."
+		},
+		"modal": {
+			"close": "Close dialog"
+		},
+		"progress": {
+			"loading": "Loading…"
+		},
+		"richText": {
+			"linkPrompt": "Link URL"
+		},
+		"select": {
+			"placeholder": "Select an option"
+		},
+		"stepIndicator": {
+			"label": "Progress",
+			"goBackTo": "Go back to {step}"
+		},
+		"themeToggle": {
+			"system": "System preference",
+			"light": "Light mode",
+			"dark": "Dark mode",
+			"ariaLabel": "Theme: {mode}. Click to change."
+		},
+		"toast": {
+			"dismiss": "Dismiss notification"
+		}
+	}
+}

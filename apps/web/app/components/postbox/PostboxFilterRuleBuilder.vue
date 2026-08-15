@@ -27,6 +27,8 @@ const emit = defineEmits<{
 	): void;
 }>();
 
+const { t } = useI18n();
+
 const mailboxIdRef = computed(() => props.mailboxId);
 const { folders } = usePostboxFolders(mailboxIdRef);
 const { labels } = usePostboxLabels(mailboxIdRef);
@@ -37,23 +39,33 @@ watch(local, (v) => emit('update:modelValue', JSON.parse(JSON.stringify(v))), {
 	deep: true,
 });
 
-const FIELD_OPTIONS = [
-	{ value: 'from', label: 'From' },
-	{ value: 'to', label: 'To' },
-	{ value: 'cc', label: 'Cc' },
-	{ value: 'subject', label: 'Subject' },
-	{ value: 'body', label: 'Body' },
-	{ value: 'header', label: 'Header' },
-	{ value: 'size', label: 'Size (bytes)' },
-	{ value: 'hasAttachment', label: 'Has attachment' },
-];
+// Option labels are computed, not frozen at setup, so a locale switch relabels
+// the selects in place.
+const FIELD_OPTIONS = computed(() => [
+	{ value: 'from', label: t('components.postbox.postboxFilterRuleBuilder.fields.from') },
+	{ value: 'to', label: t('components.postbox.postboxFilterRuleBuilder.fields.to') },
+	{ value: 'cc', label: t('components.postbox.postboxFilterRuleBuilder.fields.cc') },
+	{ value: 'subject', label: t('components.postbox.postboxFilterRuleBuilder.fields.subject') },
+	{ value: 'body', label: t('components.postbox.postboxFilterRuleBuilder.fields.body') },
+	{ value: 'header', label: t('components.postbox.postboxFilterRuleBuilder.fields.header') },
+	{ value: 'size', label: t('components.postbox.postboxFilterRuleBuilder.fields.size') },
+	{
+		value: 'hasAttachment',
+		label: t('components.postbox.postboxFilterRuleBuilder.fields.hasAttachment'),
+	},
+]);
 
-const STRING_OPS = [
-	{ value: 'contains', label: 'contains' },
-	{ value: 'notContains', label: "doesn't contain" },
-	{ value: 'equals', label: 'equals' },
-	{ value: 'matches', label: 'matches regex' },
-];
+const STRING_OPS = computed(() => [
+	{ value: 'contains', label: t('components.postbox.postboxFilterRuleBuilder.ops.contains') },
+	{
+		value: 'notContains',
+		label: t('components.postbox.postboxFilterRuleBuilder.ops.notContains'),
+	},
+	{ value: 'equals', label: t('components.postbox.postboxFilterRuleBuilder.ops.equals') },
+	{ value: 'matches', label: t('components.postbox.postboxFilterRuleBuilder.ops.matches') },
+]);
+// The comparison symbols read the same in every language, and the catalog guard
+// rejects `<`/`>` in a message, so they stay literals.
 const NUMBER_OPS = [
 	{ value: 'greaterThan', label: '>' },
 	{ value: 'lessThan', label: '<' },
@@ -61,8 +73,11 @@ const NUMBER_OPS = [
 
 function opsForField(field: string) {
 	if (field === 'size') return NUMBER_OPS;
-	if (field === 'hasAttachment') return [{ value: 'isTrue', label: 'is true' }];
-	return STRING_OPS;
+	if (field === 'hasAttachment')
+		return [
+			{ value: 'isTrue', label: t('components.postbox.postboxFilterRuleBuilder.ops.isTrue') },
+		];
+	return STRING_OPS.value;
 }
 
 // When the field's value type changes, coerce the operator into the valid set
@@ -102,24 +117,27 @@ function removeAction(idx: number) {
 <template>
 	<div class="space-y-4">
 		<div>
-			<label for="local-name" class="text-sm font-medium block mb-1">Name</label>
-			<input id="local-name"
+			<label for="local-name" class="text-sm font-medium block mb-1">{{ t('common.name') }}</label>
+			<input
+				id="local-name"
 				v-model="local.name"
 				type="text"
 				class="input w-full"
-				placeholder="Newsletter triage"
+				:placeholder="t('components.postbox.postboxFilterRuleBuilder.namePlaceholder')"
 			/>
 		</div>
 
 		<section>
 			<header class="flex items-center justify-between mb-2">
-				<h3 class="text-sm font-semibold">If all of these match…</h3>
+				<h3 class="text-sm font-semibold">
+					{{ t('components.postbox.postboxFilterRuleBuilder.conditionsHeading') }}
+				</h3>
 				<button
 					type="button"
 					class="text-sm text-brand hover:underline"
 					@click="addCondition"
 				>
-					+ Add condition
+					{{ t('components.postbox.postboxFilterRuleBuilder.addCondition') }}
 				</button>
 			</header>
 			<div class="space-y-2">
@@ -137,7 +155,7 @@ function removeAction(idx: number) {
 						v-if="cond.field === 'header'"
 						v-model="cond.headerName"
 						type="text"
-						placeholder="X-Header-Name"
+						:placeholder="t('components.postbox.postboxFilterRuleBuilder.headerNamePlaceholder')"
 						class="input w-40"
 					/>
 					<select v-model="cond.op" class="input w-32 flex-shrink-0">
@@ -150,39 +168,44 @@ function removeAction(idx: number) {
 						v-model.number="cond.valueNumber"
 						type="number"
 						class="input flex-1"
-						placeholder="100000"
+						:placeholder="t('components.postbox.postboxFilterRuleBuilder.sizePlaceholder')"
 					/>
 					<input
 						v-else-if="cond.field !== 'hasAttachment'"
 						v-model="cond.value"
 						type="text"
 						class="input flex-1"
-						placeholder="value"
+						:placeholder="t('components.postbox.postboxFilterRuleBuilder.valuePlaceholder')"
 					/>
-					<span v-else class="flex-1 text-text-tertiary text-sm">true</span>
+					<span v-else class="flex-1 text-text-tertiary text-sm">
+						{{ t('components.postbox.postboxFilterRuleBuilder.trueValue') }}
+					</span>
 					<button
 						type="button"
 						class="p-1 rounded hover:bg-error/10 text-error"
+						:aria-label="t('components.postbox.postboxFilterRuleBuilder.removeCondition')"
 						@click="removeCondition(Number(idx))"
-					 aria-label="Remove condition">
+					>
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 				</div>
 				<p v-if="local.conditions.length === 0" class="text-xs text-text-tertiary">
-					No conditions yet — at least one is required.
+					{{ t('components.postbox.postboxFilterRuleBuilder.noConditions') }}
 				</p>
 			</div>
 		</section>
 
 		<section>
 			<header class="flex items-center justify-between mb-2">
-				<h3 class="text-sm font-semibold">Then do…</h3>
+				<h3 class="text-sm font-semibold">
+					{{ t('components.postbox.postboxFilterRuleBuilder.actionsHeading') }}
+				</h3>
 				<button
 					type="button"
 					class="text-sm text-brand hover:underline"
 					@click="addAction"
 				>
-					+ Add action
+					{{ t('components.postbox.postboxFilterRuleBuilder.addAction') }}
 				</button>
 			</header>
 			<div class="space-y-2">
@@ -192,13 +215,27 @@ function removeAction(idx: number) {
 					class="flex items-center gap-2"
 				>
 					<select v-model="action.type" class="input w-44 flex-shrink-0">
-						<option value="moveToFolder">Move to folder</option>
-						<option value="addLabel">Add label</option>
-						<option value="markRead">Mark read</option>
-						<option value="markFlagged">Star</option>
-						<option value="forward">Forward to…</option>
-						<option value="delete">Move to Trash</option>
-						<option value="discard">Discard (silent drop)</option>
+						<option value="moveToFolder">
+							{{ t('components.postbox.postboxFilterRuleBuilder.actions.moveToFolder') }}
+						</option>
+						<option value="addLabel">
+							{{ t('components.postbox.postboxFilterRuleBuilder.actions.addLabel') }}
+						</option>
+						<option value="markRead">
+							{{ t('components.postbox.postboxFilterRuleBuilder.actions.markRead') }}
+						</option>
+						<option value="markFlagged">
+							{{ t('components.postbox.postboxFilterRuleBuilder.actions.markFlagged') }}
+						</option>
+						<option value="forward">
+							{{ t('components.postbox.postboxFilterRuleBuilder.actions.forward') }}
+						</option>
+						<option value="delete">
+							{{ t('components.postbox.postboxFilterRuleBuilder.actions.delete') }}
+						</option>
+						<option value="discard">
+							{{ t('components.postbox.postboxFilterRuleBuilder.actions.discard') }}
+						</option>
 					</select>
 					<select
 						v-if="action.type === 'moveToFolder'"
@@ -223,26 +260,27 @@ function removeAction(idx: number) {
 						v-model="action.forwardTo"
 						type="text"
 						class="input flex-1"
-						placeholder="archive@example.com"
+						:placeholder="t('components.postbox.postboxFilterRuleBuilder.forwardToPlaceholder')"
 					/>
 					<span v-else class="flex-1 text-xs text-text-tertiary" />
 					<button
 						type="button"
 						class="p-1 rounded hover:bg-error/10 text-error"
+						:aria-label="t('components.postbox.postboxFilterRuleBuilder.removeAction')"
 						@click="removeAction(Number(idx))"
-					 aria-label="Remove action">
+					>
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 				</div>
 				<p v-if="local.actions.length === 0" class="text-xs text-text-tertiary">
-					No actions yet — at least one is required.
+					{{ t('components.postbox.postboxFilterRuleBuilder.noActions') }}
 				</p>
 			</div>
 		</section>
 
 		<label class="flex items-center gap-2 text-sm">
 			<input v-model="local.stopProcessing" type="checkbox" />
-			Stop applying further filters once this one matches
+			{{ t('components.postbox.postboxFilterRuleBuilder.stopProcessing') }}
 		</label>
 	</div>
 </template>

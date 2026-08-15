@@ -45,11 +45,23 @@ export const DEFAULT_WORKING_HOURS: WorkingHours = {
 /** Evening wake hour for the "this evening" preset. */
 const EVENING_HOUR = 20;
 
+/**
+ * A sentence the RENDERER speaks. This module is module scope and shared with
+ * the backend, so it never calls `useI18n`: the copy it decides travels as an
+ * i18n message key plus the parameters that key interpolates, and the dialog
+ * turns it into words (see the UI-localization guide).
+ */
+export interface SnoozePresetText {
+	key: string;
+	params?: Record<string, string>;
+}
+
 export interface SnoozePreset {
 	key: SnoozePresetKey;
+	/** Message key for the row's label, e.g. `sharedPkg.snoozePresets.label.tomorrow_am`. */
 	label: string;
 	/** Short human sublabel, e.g. "6:00 PM" or "Mon 9:00 AM". */
-	sub: string;
+	sub: SnoozePresetText;
 	/** Absolute wake time, epoch-ms. */
 	at: number;
 	/** True when the thread content (or the optional LLM) points at this preset. */
@@ -97,13 +109,30 @@ function localHour(now: number, tzOffsetMinutes: number): number {
 	return localParts(now, tzOffsetMinutes).getUTCHours();
 }
 
-const WEEKDAY_LABEL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** Namespace the web catalog mirrors this module's copy into. */
+const NS = 'sharedPkg.snoozePresets';
 
-/** "6:00 PM" style label from a local hour. */
-function clockLabel(hour: number): string {
-	const period = hour < 12 ? 'AM' : 'PM';
-	const h12 = hour % 12 === 0 ? 12 : hour % 12;
-	return `${h12}:00 ${period}`;
+// The SUBLABELS are dates, so they are formatted rather than translated: the
+// zone is the user's (their wall clock is what a wake time means), and the
+// LANGUAGE is the caller's — `computeSnoozePresets` takes a `locale` so "6:00
+// PM"/"Mon" read as "18:00"/"Mo" on a German page. Formatting the instant in
+// UTC after shifting it by `tzOffsetMinutes` reads it back as the user's local
+// wall clock without needing an IANA zone name we do not have.
+
+/** "6:00 PM" (en-US) / "18:00" (de) for a wake instant, in the user's zone. */
+function clockLabel(at: number, tzOffsetMinutes: number, locale: string): string {
+	return new Intl.DateTimeFormat(locale, {
+		timeZone: 'UTC',
+		hour: 'numeric',
+		minute: '2-digit',
+	}).format(new Date(at + tzOffsetMinutes * 60_000));
+}
+
+/** "Mon" (en-US) / "Mo" (de) for a wake instant, in the user's zone. */
+function weekdayLabel(at: number, tzOffsetMinutes: number, locale: string): string {
+	return new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'short' }).format(
+		new Date(at + tzOffsetMinutes * 60_000)
+	);
 }
 
 /**
@@ -187,6 +216,12 @@ export interface ComputeSnoozePresetsOptions {
 	 * result of {@link detectSnoozeHint}, or `null`/omit for none.
 	 */
 	suggested?: SnoozePresetKey | null;
+	/**
+	 * BCP-47 tag the sublabel times/weekdays are formatted in. The labels
+	 * themselves are message keys the renderer translates; only these formatted
+	 * dates need the tag. Defaults to `en-US`.
+	 */
+	locale?: string;
 }
 
 /**
@@ -194,68 +229,89 @@ export interface ComputeSnoozePresetsOptions {
  * marking `suggested` when its key is present. Presets whose time has already
  * passed today (e.g. "later today" after work end) are omitted, matching the
  * dialog's long-standing behaviour.
+ *
+ * `label` and `sub.key` are MESSAGE KEYS, never sentences — the dialog is the
+ * only place that speaks (`sharedPkg.snoozePresets.*` in the web catalogs).
  */
 export function computeSnoozePresets(opts: ComputeSnoozePresetsOptions): SnoozePreset[] {
 	const { now, tzOffsetMinutes } = opts;
 	const wh = opts.workingHours ?? DEFAULT_WORKING_HOURS;
+	const locale = opts.locale ?? 'en-US';
 	const hour = localHour(now, tzOffsetMinutes);
 	const presets: SnoozePreset[] = [];
 
+	/** `{time}`-only sublabel for a wake instant. */
+	const timeSub = (at: number): SnoozePresetText => ({
+		key: `${NS}.sub.time`,
+		params: { time: clockLabel(at, tzOffsetMinutes, locale) },
+	});
+	/** `{day} {time}` sublabel — the wake day is not today's. */
+	const daySub = (at: number): SnoozePresetText => ({
+		key: `${NS}.sub.weekday`,
+		params: {
+			day: weekdayLabel(at, tzOffsetMinutes, locale),
+			time: clockLabel(at, tzOffsetMinutes, locale),
+		},
+	});
+
 	// Later today @ work-end — only while it's still ahead of us.
 	if (hour < wh.endHour) {
-		presets.push({
-			key: 'later_today',
-			label: 'Later today',
-			sub: clockLabel(wh.endHour),
-			at: atLocalHour(now, tzOffsetMinutes, wh.endHour, 0),
-		});
+		const at = atLocalHour(now, tzOffsetMinutes, wh.endHour, 0);
+		presets.push({ key: 'later_today', label: `${NS}.label.later_today`, sub: timeSub(at), at });
 	}
 
 	// This evening @ 8pm (roll to tomorrow if it's already past).
+	const eveningAt = atLocalHour(now, tzOffsetMinutes, EVENING_HOUR, hour >= EVENING_HOUR ? 1 : 0);
 	presets.push({
 		key: 'this_evening',
-		label: 'This evening',
-		sub: clockLabel(EVENING_HOUR),
-		at: atLocalHour(now, tzOffsetMinutes, EVENING_HOUR, hour >= EVENING_HOUR ? 1 : 0),
+		label: `${NS}.label.this_evening`,
+		sub: timeSub(eveningAt),
+		at: eveningAt,
 	});
 
 	// Tomorrow morning @ work-start.
+	const tomorrowAt = atLocalHour(now, tzOffsetMinutes, wh.startHour, 1);
 	presets.push({
 		key: 'tomorrow_am',
-		label: 'Tomorrow',
-		sub: clockLabel(wh.startHour),
-		at: atLocalHour(now, tzOffsetMinutes, wh.startHour, 1),
+		label: `${NS}.label.tomorrow_am`,
+		sub: timeSub(tomorrowAt),
+		at: tomorrowAt,
 	});
 
 	// This weekend — upcoming Saturday @ work-start.
 	const daysToSat = daysUntilDow(now, tzOffsetMinutes, 6);
+	const weekendAt = atLocalHour(now, tzOffsetMinutes, wh.startHour, daysToSat);
 	presets.push({
 		key: 'this_weekend',
-		label: 'This weekend',
-		sub: `${WEEKDAY_LABEL[6]} ${clockLabel(wh.startHour)}`,
-		at: atLocalHour(now, tzOffsetMinutes, wh.startHour, daysToSat),
+		label: `${NS}.label.this_weekend`,
+		sub: daySub(weekendAt),
+		at: weekendAt,
 	});
 
 	// Next week — upcoming Monday @ work-start.
 	const daysToMon = daysUntilDow(now, tzOffsetMinutes, 1);
+	const nextWeekAt = atLocalHour(now, tzOffsetMinutes, wh.startHour, daysToMon);
 	presets.push({
 		key: 'next_week',
-		label: 'Next week',
-		sub: `${WEEKDAY_LABEL[1]} ${clockLabel(wh.startHour)}`,
-		at: atLocalHour(now, tzOffsetMinutes, wh.startHour, daysToMon),
+		label: `${NS}.label.next_week`,
+		sub: daySub(nextWeekAt),
+		at: nextWeekAt,
 	});
 
 	// Until I'm back — the next time my working-hours window opens.
 	const backOffset = daysUntilBackAtWork(now, tzOffsetMinutes, wh);
-	const backDow = localDow(now + backOffset * 86_400_000, tzOffsetMinutes);
+	const backAt = atLocalHour(now, tzOffsetMinutes, wh.startHour, backOffset);
 	presets.push({
 		key: 'until_im_back',
-		label: "Until I'm back",
+		label: `${NS}.label.until_im_back`,
 		sub:
 			backOffset === 0
-				? `Today ${clockLabel(wh.startHour)}`
-				: `${WEEKDAY_LABEL[backDow]} ${clockLabel(wh.startHour)}`,
-		at: atLocalHour(now, tzOffsetMinutes, wh.startHour, backOffset),
+				? {
+						key: `${NS}.sub.today`,
+						params: { time: clockLabel(backAt, tzOffsetMinutes, locale) },
+					}
+				: daySub(backAt),
+		at: backAt,
 	});
 
 	if (opts.suggested) {

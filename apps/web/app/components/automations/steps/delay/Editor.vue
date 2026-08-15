@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { DelayStepConfig } from '~/composables/automations/steps';
-import { delayUnitLabel } from '~/composables/automations/steps/delay';
 
 type Unit = DelayStepConfig['unit'];
+
+const { t } = useI18n();
 
 const props = defineProps<{
 	modelValue: DelayStepConfig;
@@ -31,16 +32,24 @@ const applyPreset = (duration: number, unit: Unit) => {
 	emit('save');
 };
 
-const unitLabel = computed(() => delayUnitLabel(props.modelValue.duration, props.modelValue.unit));
+const durationPreview = computed(() =>
+	t(
+		`components.automations.steps.delay.editor.preview.${props.modelValue.unit}`,
+		{ count: props.modelValue.duration },
+		props.modelValue.duration
+	)
+);
 
-const presets: { duration: number; unit: Unit; label: string }[] = [
-	{ duration: 30, unit: 'minutes', label: '30 min' },
-	{ duration: 1, unit: 'hours', label: '1 hour' },
-	{ duration: 24, unit: 'hours', label: '24 hours' },
-	{ duration: 1, unit: 'days', label: '1 day' },
-	{ duration: 3, unit: 'days', label: '3 days' },
-	{ duration: 1, unit: 'weeks', label: '1 week' },
-	{ duration: 2, unit: 'weeks', label: '2 weeks' },
+const presetKey = (name: string) => `components.automations.steps.delay.editor.presets.${name}`;
+
+const presets: { duration: number; unit: Unit; labelKey: string }[] = [
+	{ duration: 30, unit: 'minutes', labelKey: presetKey('minutes30') },
+	{ duration: 1, unit: 'hours', labelKey: presetKey('hours1') },
+	{ duration: 24, unit: 'hours', labelKey: presetKey('hours24') },
+	{ duration: 1, unit: 'days', labelKey: presetKey('days1') },
+	{ duration: 3, unit: 'days', labelKey: presetKey('days3') },
+	{ duration: 1, unit: 'weeks', labelKey: presetKey('weeks1') },
+	{ duration: 2, unit: 'weeks', labelKey: presetKey('weeks2') },
 ];
 </script>
 
@@ -49,7 +58,7 @@ const presets: { duration: number; unit: Unit; label: string }[] = [
 		<div>
 			<label class="label flex items-center gap-2 mb-2">
 				<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
-				Delay Duration
+				{{ t('components.automations.steps.delay.editor.durationLabel') }}
 			</label>
 			<div class="flex gap-3">
 				<input
@@ -60,25 +69,33 @@ const presets: { duration: number; unit: Unit; label: string }[] = [
 					@change="updateDuration"
 				/>
 				<select :value="modelValue.unit" class="input flex-1" @change="updateUnit">
-					<option value="minutes">Minutes</option>
-					<option value="hours">Hours</option>
-					<option value="days">Days</option>
-					<option value="weeks">Weeks</option>
+					<option value="minutes">
+						{{ t('components.automations.steps.delay.editor.unitOptions.minutes') }}
+					</option>
+					<option value="hours">
+						{{ t('components.automations.steps.delay.editor.unitOptions.hours') }}
+					</option>
+					<option value="days">
+						{{ t('components.automations.steps.delay.editor.unitOptions.days') }}
+					</option>
+					<option value="weeks">
+						{{ t('components.automations.steps.delay.editor.unitOptions.weeks') }}
+					</option>
 				</select>
 			</div>
 			<p class="text-xs text-text-tertiary mt-1.5">
-				How long to wait before proceeding to the next step.
+				{{ t('components.automations.steps.delay.editor.durationHint') }}
 			</p>
 		</div>
 
 		<div>
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
-				Quick Presets
+				{{ t('components.automations.steps.delay.editor.presetsLabel') }}
 			</p>
 			<div class="flex flex-wrap gap-2">
 				<button
 					v-for="preset in presets"
-					:key="preset.label"
+					:key="preset.labelKey"
 					class="px-3 py-1.5 text-sm rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:class="
 						modelValue.duration === preset.duration && modelValue.unit === preset.unit
@@ -87,14 +104,14 @@ const presets: { duration: number; unit: Unit; label: string }[] = [
 					"
 					@click="applyPreset(preset.duration, preset.unit)"
 				>
-					{{ preset.label }}
+					{{ t(preset.labelKey) }}
 				</button>
 			</div>
 		</div>
 
 		<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-3">
-				Duration Preview
+				{{ t('components.automations.steps.delay.editor.previewLabel') }}
 			</p>
 			<div class="flex items-center justify-center">
 				<div
@@ -102,12 +119,12 @@ const presets: { duration: number; unit: Unit; label: string }[] = [
 				>
 					<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
 					<span class="text-base font-medium text-brand">
-						{{ modelValue.duration }} {{ unitLabel }}
+						{{ durationPreview }}
 					</span>
 				</div>
 			</div>
 			<p class="text-xs text-text-tertiary text-center mt-2">
-				This is how the delay will appear in the workflow
+				{{ t('components.automations.steps.delay.editor.previewHint') }}
 			</p>
 		</div>
 	</div>

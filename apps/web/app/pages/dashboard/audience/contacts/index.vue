@@ -2,10 +2,12 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
-import { languageOptionsWithUnset, formatLanguageLabel } from '~/data/languageOptions';
+import { languageSelectOptions } from '~/data/languageOptions';
 import { isValidEmail } from '~/utils/validation';
 
-useHead({ title: 'Contacts — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.audience.contacts.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -83,13 +85,13 @@ const { results: topics } = useTopicsList();
 
 // Mutations
 const { run: createContact } = useBackendOperation(api.contacts.contacts.create, {
-	label: 'Add contact',
+	label: () => t('dashboard.audience.contacts.index.operations.addContact'),
 });
 const { run: importContacts } = useBackendOperation(api.contacts.contacts.importBatch, {
-	label: 'Import contacts',
+	label: () => t('dashboard.audience.contacts.index.operations.importContacts'),
 });
 const { run: createProperty } = useBackendOperation(api.contacts.properties.create, {
-	label: 'Register property',
+	label: () => t('dashboard.audience.contacts.index.operations.registerProperty'),
 });
 
 // Computed values
@@ -106,8 +108,8 @@ const isAllPageSelected = computed(() => bulkSelection.isAllPageSelected(contact
 // Showing count text
 const showingText = computed(() => {
 	const count = contacts.value?.length ?? 0;
-	if (count === 0) return '0 contacts';
-	return `${count} contact${count !== 1 ? 's' : ''} loaded`;
+	if (count === 0) return t('dashboard.audience.contacts.index.showing.empty');
+	return t('dashboard.audience.contacts.index.showing.loaded', { count }, count);
 });
 
 // Handle load more
@@ -144,9 +146,9 @@ const contactName = (contact: { firstName?: string | null; lastName?: string | n
 async function copyEmail(email: string) {
 	try {
 		await navigator.clipboard.writeText(email);
-		showToast('Email address copied', 'success');
+		showToast(t('dashboard.audience.contacts.index.toasts.emailCopied'), 'success');
 	} catch {
-		showToast('Could not copy to clipboard', 'error');
+		showToast(t('dashboard.audience.contacts.index.toasts.copyFailed'), 'error');
 	}
 }
 
@@ -156,13 +158,13 @@ function contactContextItems(contact: { _id: Id<'contacts'>; email?: string }): 
 	const items: ContextMenuItem[] = [
 		{
 			id: 'open',
-			label: 'Open contact',
+			label: t('dashboard.audience.contacts.index.contextMenu.open'),
 			icon: 'lucide:arrow-right',
 			run: () => void router.push(`/dashboard/audience/contacts/${contact._id}`),
 		},
 		{
 			id: 'copy-email',
-			label: 'Copy email address',
+			label: t('dashboard.audience.contacts.index.contextMenu.copyEmail'),
 			icon: 'lucide:copy',
 			disabled: !email,
 			run: () => {
@@ -173,7 +175,9 @@ function contactContextItems(contact: { _id: Id<'contacts'>; email?: string }): 
 	if (canManageContacts.value) {
 		items.push({
 			id: 'select',
-			label: selected ? 'Deselect' : 'Select',
+			label: selected
+				? t('dashboard.audience.contacts.index.contextMenu.deselect')
+				: t('dashboard.audience.contacts.index.contextMenu.select'),
 			icon: selected ? 'lucide:square' : 'lucide:check-square',
 			separatorBefore: true,
 			run: () => toggleContactSelection(contact._id),
@@ -192,14 +196,19 @@ const addModal = useFormModal({
 	language: '',
 });
 
+// The language catalog is module scope, so it carries message keys: the
+// `{ value, label }` pairs the picker renders can only be built here, where a
+// translator is in hand. Computed, so the labels follow a locale switch.
+const languageChoices = computed(() => languageSelectOptions((key: string) => t(key)));
+
 const validateAddForm = (): boolean => {
 	addModal.clearErrors();
 	if (!addModal.form.email.trim()) {
-		addModal.errors.email = 'Email is required';
+		addModal.errors.email = t('auth.validation.emailRequired');
 		return false;
 	}
 	if (!isValidEmail(addModal.form.email.trim())) {
-		addModal.errors.email = 'Please enter a valid email address';
+		addModal.errors.email = t('auth.validation.emailInvalid');
 		return false;
 	}
 	return true;
@@ -218,7 +227,9 @@ const handleAddSubmit = async () => {
 	});
 	addModal.isSubmitting.value = false;
 	if (result === undefined) return;
-	showToast(`Contact ${addModal.form.email.trim()} created successfully`);
+	showToast(
+		t('dashboard.audience.contacts.index.toasts.created', { email: addModal.form.email.trim() })
+	);
 	addModal.close();
 };
 
@@ -255,7 +266,13 @@ const handleCsvImport = async () => {
 
 	if (results && (results.imported > 0 || results.updated > 0)) {
 		const totalProcessed = results.imported + results.updated;
-		showToast(`Successfully processed ${totalProcessed} contact${totalProcessed !== 1 ? 's' : ''}`);
+		showToast(
+			t(
+				'dashboard.audience.contacts.index.toasts.imported',
+				{ count: totalProcessed },
+				totalProcessed
+			)
+		);
 	}
 };
 
@@ -317,13 +334,17 @@ onUnmounted(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Customers</h1>
-				<p class="mt-1 text-text-secondary">People your team knows and their recent activity</p>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.audience.contacts.index.title') }}
+				</h1>
+				<p class="mt-1 text-text-secondary">
+					{{ t('dashboard.audience.contacts.index.subtitle') }}
+				</p>
 			</div>
 			<div v-if="canManageContacts" class="flex gap-2">
 				<UiButton variant="secondary" @click="isExportModalOpen = true">
 					<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
-					Export
+					{{ t('dashboard.audience.contacts.index.export') }}
 				</UiButton>
 				<!-- Import Dropdown -->
 				<div ref="importDropdownRef" class="relative">
@@ -333,7 +354,7 @@ onUnmounted(() => {
 						@click.stop="isImportDropdownOpen = !isImportDropdownOpen"
 					>
 						<Icon name="lucide:upload" class="w-4 h-4" />
-						Import
+						{{ t('dashboard.audience.contacts.index.import') }}
 						<Icon name="lucide:chevron-down" class="w-4 h-4" />
 					</UiButton>
 					<Transition
@@ -357,8 +378,12 @@ onUnmounted(() => {
 							>
 								<Icon name="lucide:file-spreadsheet" class="w-4 h-4 text-brand" />
 								<div>
-									<p class="font-medium">CSV File</p>
-									<p class="text-xs text-text-tertiary">Import from spreadsheet</p>
+									<p class="font-medium">
+										{{ t('dashboard.audience.contacts.index.importMenu.csvTitle') }}
+									</p>
+									<p class="text-xs text-text-tertiary">
+										{{ t('dashboard.audience.contacts.index.importMenu.csvDescription') }}
+									</p>
 								</div>
 							</button>
 							<div class="h-px bg-border-subtle my-1" />
@@ -371,8 +396,12 @@ onUnmounted(() => {
 							>
 								<Icon name="lucide:link-2" class="w-4 h-4 text-brand" />
 								<div>
-									<p class="font-medium">Integrations</p>
-									<p class="text-xs text-text-tertiary">Mailchimp, Stripe</p>
+									<p class="font-medium">
+										{{ t('dashboard.audience.contacts.index.importMenu.integrationsTitle') }}
+									</p>
+									<p class="text-xs text-text-tertiary">
+										{{ t('dashboard.audience.contacts.index.importMenu.integrationsDescription') }}
+									</p>
 								</div>
 							</button>
 						</div>
@@ -380,7 +409,7 @@ onUnmounted(() => {
 				</div>
 				<UiButton @click="addModal.open()">
 					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-					Add Contact
+					{{ t('dashboard.audience.contacts.index.addContact') }}
 				</UiButton>
 			</div>
 		</div>
@@ -388,7 +417,10 @@ onUnmounted(() => {
 		<!-- Search Bar and Bulk Actions -->
 		<div class="flex items-center gap-4 mb-6">
 			<div class="max-w-md flex-1">
-				<UiInput v-model="searchQuery" placeholder="Search by email or name...">
+				<UiInput
+					v-model="searchQuery"
+					:placeholder="t('dashboard.audience.contacts.index.searchPlaceholder')"
+				>
 					<template #iconLeft><Icon name="lucide:search" /></template>
 				</UiInput>
 			</div>
@@ -421,7 +453,7 @@ onUnmounted(() => {
 							name="lucide:loader-2"
 							class="w-3 h-3 animate-spin inline mr-1"
 						/>
-						Select all {{ totalCount }}
+						{{ t('dashboard.audience.contacts.index.selectAllMatching', { count: totalCount }) }}
 					</button>
 
 					<!-- Bulk Action Dropdown -->
@@ -434,7 +466,7 @@ onUnmounted(() => {
 							"
 						>
 							<template #iconLeft><Icon name="lucide:more-horizontal" class="w-4 h-4" /></template>
-							Actions
+							{{ t('common.actions') }}
 							<template #iconRight><Icon name="lucide:chevron-down" class="w-4 h-4" /></template>
 						</UiButton>
 
@@ -462,7 +494,7 @@ onUnmounted(() => {
 									>
 										<span class="flex items-center gap-2">
 											<Icon name="lucide:tag" class="w-4 h-4 text-brand" />
-											Add to Topic
+											{{ t('dashboard.audience.contacts.index.bulk.addToTopic') }}
 										</span>
 										<Icon name="lucide:chevron-right" class="w-4 h-4" />
 									</button>
@@ -490,7 +522,7 @@ onUnmounted(() => {
 												</button>
 											</template>
 											<div v-else class="px-3 py-2 text-sm text-text-tertiary">
-												No topics available.
+												{{ t('dashboard.audience.contacts.index.bulk.noTopics') }}
 											</div>
 										</div>
 									</Transition>
@@ -508,7 +540,7 @@ onUnmounted(() => {
 									>
 										<span class="flex items-center gap-2">
 											<Icon name="lucide:list-minus" class="w-4 h-4 text-text-secondary" />
-											Remove from Topic
+											{{ t('dashboard.audience.contacts.index.bulk.removeFromTopic') }}
 										</span>
 										<Icon name="lucide:chevron-right" class="w-4 h-4" />
 									</button>
@@ -536,7 +568,7 @@ onUnmounted(() => {
 												</button>
 											</template>
 											<div v-else class="px-3 py-2 text-sm text-text-tertiary">
-												No topics available.
+												{{ t('dashboard.audience.contacts.index.bulk.noTopics') }}
 											</div>
 										</div>
 									</Transition>
@@ -549,7 +581,7 @@ onUnmounted(() => {
 									@click="bulkOps.handleBulkExport"
 								>
 									<Icon name="lucide:download" class="w-4 h-4 text-text-secondary" />
-									Export Selected
+									{{ t('dashboard.audience.contacts.index.bulk.exportSelected') }}
 								</button>
 
 								<div class="h-px bg-border-subtle my-1" />
@@ -559,7 +591,7 @@ onUnmounted(() => {
 									@click="bulkOps.openBulkDeleteModal"
 								>
 									<Icon name="lucide:trash-2" class="w-4 h-4" />
-									Delete Selected
+									{{ t('dashboard.audience.contacts.index.bulk.deleteSelected') }}
 								</button>
 							</div>
 						</Transition>
@@ -568,7 +600,7 @@ onUnmounted(() => {
 					<button
 						class="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="bulkSelection.clearSelection()"
-						aria-label="Clear selection"
+						:aria-label="t('dashboard.audience.contacts.index.clearSelection')"
 					>
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
@@ -590,16 +622,18 @@ onUnmounted(() => {
 				>
 					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin text-brand" />
 					<span class="text-sm text-text-secondary">
-						<template v-if="bulkOps.bulkOperationType.value === 'add'">Adding to topic...</template>
-						<template v-else-if="bulkOps.bulkOperationType.value === 'remove'"
-							>Removing from topic...</template
-						>
-						<template v-else-if="bulkOps.bulkOperationType.value === 'delete'"
-							>Deleting...</template
-						>
-						<template v-else-if="bulkOps.bulkOperationType.value === 'export'"
-							>Exporting...</template
-						>
+						<template v-if="bulkOps.bulkOperationType.value === 'add'">{{
+							t('dashboard.audience.contacts.index.bulk.progress.add')
+						}}</template>
+						<template v-else-if="bulkOps.bulkOperationType.value === 'remove'">{{
+							t('dashboard.audience.contacts.index.bulk.progress.remove')
+						}}</template>
+						<template v-else-if="bulkOps.bulkOperationType.value === 'delete'">{{
+							t('dashboard.audience.contacts.index.bulk.progress.delete')
+						}}</template>
+						<template v-else-if="bulkOps.bulkOperationType.value === 'export'">{{
+							t('dashboard.audience.contacts.index.bulk.progress.export')
+						}}</template>
 					</span>
 					<div class="w-20 h-1.5 bg-bg-elevated rounded-full overflow-hidden">
 						<div
@@ -628,24 +662,24 @@ onUnmounted(() => {
 				<UiEmptyState
 					v-else-if="!hasActiveOrganization"
 					icon="lucide:users"
-					title="No team selected"
-					description="Create or select a team to start managing your contacts."
+					:title="t('dashboard.audience.contacts.index.noTeam.title')"
+					:description="t('dashboard.audience.contacts.index.noTeam.description')"
 				/>
 
 				<UiEmptyState
 					v-else-if="!isLoading && contacts.length === 0 && !debouncedSearch"
 					icon="lucide:users"
-					title="No contacts yet"
+					:title="t('dashboard.audience.contacts.index.empty.title')"
 					:description="
 						canManageContacts
-							? 'Get started by adding your first customer or importing a CSV file.'
-							: 'No customers have been added yet.'
+							? t('dashboard.audience.contacts.index.empty.descriptionManage')
+							: t('dashboard.audience.contacts.index.empty.descriptionReadOnly')
 					"
 				>
 					<template v-if="canManageContacts" #action>
 						<UiButton @click="addModal.open()">
 							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-							Add Contact
+							{{ t('dashboard.audience.contacts.index.addContact') }}
 						</UiButton>
 					</template>
 				</UiEmptyState>
@@ -653,11 +687,15 @@ onUnmounted(() => {
 				<UiEmptyState
 					v-else-if="!isLoading && contacts.length === 0 && debouncedSearch"
 					icon="lucide:search"
-					title="No results found"
-					:description="`No contacts match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+					:title="t('dashboard.audience.contacts.index.noResults.title')"
+					:description="
+						t('dashboard.audience.contacts.index.noResults.description', { query: debouncedSearch })
+					"
 				>
 					<template #action>
-						<UiButton variant="secondary" @click="searchQuery = ''">Clear search</UiButton>
+						<UiButton variant="secondary" @click="searchQuery = ''">{{
+							t('dashboard.audience.contacts.index.clearSearch')
+						}}</UiButton>
 					</template>
 				</UiEmptyState>
 
@@ -692,7 +730,11 @@ onUnmounted(() => {
 								/>
 							</span>
 							<span class="text-sm text-text-secondary">
-								{{ isAllPageSelected ? 'Deselect all' : 'Select all' }}
+								{{
+									isAllPageSelected
+										? t('dashboard.audience.contacts.index.deselectAll')
+										: t('dashboard.audience.contacts.index.selectAll')
+								}}
 							</span>
 						</button>
 						<ul class="divide-y divide-border-subtle">
@@ -710,7 +752,15 @@ onUnmounted(() => {
 											? 'bg-brand border-brand text-text-inverse'
 											: 'border-border-default',
 									]"
-									:aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`"
+									:aria-label="
+										bulkSelection.selectedIds.value.has(contact._id)
+											? t('dashboard.audience.contacts.index.deselectContact', {
+													email: contact.email,
+												})
+											: t('dashboard.audience.contacts.index.selectContact', {
+													email: contact.email,
+												})
+									"
 									@click="toggleContactSelection(contact._id)"
 								>
 									<Icon
@@ -734,7 +784,11 @@ onUnmounted(() => {
 										{{ contactName(contact) }}
 									</span>
 									<span class="block text-xs text-text-tertiary mt-0.5">
-										Added {{ formatDate(contact.createdAt) }}
+										{{
+											t('dashboard.audience.contacts.index.addedOn', {
+												date: formatDate(contact.createdAt),
+											})
+										}}
 									</span>
 								</button>
 								<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary shrink-0" />
@@ -765,12 +819,14 @@ onUnmounted(() => {
 											/>
 										</button>
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Email</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										First Name
+										{{ t('common.email') }}
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Last Name
+										{{ t('dashboard.audience.contacts.index.table.firstName') }}
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										{{ t('dashboard.audience.contacts.index.table.lastName') }}
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 										<button
@@ -778,7 +834,7 @@ onUnmounted(() => {
 											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 											@click="toggleSort('createdAt')"
 										>
-											Created
+											{{ t('dashboard.audience.contacts.index.table.created') }}
 											<Icon
 												v-if="getSortIcon('createdAt')"
 												:name="getSortIcon('createdAt')!"
@@ -811,7 +867,15 @@ onUnmounted(() => {
 														: 'border-border-default hover:border-border-strong',
 												]"
 												@click.stop="toggleContactSelection(contact._id)"
-												:aria-label="`${bulkSelection.selectedIds.value.has(contact._id) ? 'Deselect' : 'Select'} ${contact.email}`"
+												:aria-label="
+													bulkSelection.selectedIds.value.has(contact._id)
+														? t('dashboard.audience.contacts.index.deselectContact', {
+																email: contact.email,
+															})
+														: t('dashboard.audience.contacts.index.selectContact', {
+																email: contact.email,
+															})
+												"
 											>
 												<Icon
 													v-if="bulkSelection.selectedIds.value.has(contact._id)"
@@ -855,10 +919,14 @@ onUnmounted(() => {
 							<template v-if="!isLoadingMore" #iconLeft
 								><Icon name="lucide:chevron-down" class="w-4 h-4"
 							/></template>
-							{{ isLoadingMore ? 'Loading...' : 'Load More' }}
+							{{
+								isLoadingMore
+									? t('common.loading')
+									: t('dashboard.audience.contacts.index.loadMore')
+							}}
 						</UiButton>
 						<span v-else-if="paginationStatus === 'Exhausted'" class="text-sm text-text-tertiary">
-							All contacts loaded
+							{{ t('dashboard.audience.contacts.index.allLoaded') }}
 						</span>
 					</div>
 				</div>
@@ -866,7 +934,11 @@ onUnmounted(() => {
 		</div>
 
 		<!-- Add Contact Modal -->
-		<UiModal v-if="canManageContacts" v-model:open="addModal.isOpen.value" title="Add Contact">
+		<UiModal
+			v-if="canManageContacts"
+			v-model:open="addModal.isOpen.value"
+			:title="t('dashboard.audience.contacts.index.addContact')"
+		>
 			<form @submit.prevent="handleAddSubmit">
 				<div
 					v-if="addModal.errors.general"
@@ -878,9 +950,9 @@ onUnmounted(() => {
 					<UiInput
 						v-model="addModal.form.email"
 						type="email"
-						label="Email"
+						:label="t('common.email')"
 						:required="true"
-						placeholder="email@example.com"
+						:placeholder="t('dashboard.audience.contacts.index.form.emailPlaceholder')"
 						:error="addModal.errors.email"
 						:disabled="addModal.isSubmitting.value"
 					/>
@@ -888,30 +960,25 @@ onUnmounted(() => {
 				<div class="mb-4">
 					<UiInput
 						v-model="addModal.form.firstName"
-						label="First Name"
-						placeholder="John"
+						:label="t('dashboard.audience.contacts.index.table.firstName')"
+						:placeholder="t('dashboard.audience.contacts.index.form.firstNamePlaceholder')"
 						:disabled="addModal.isSubmitting.value"
 					/>
 				</div>
 				<div class="mb-4">
 					<UiInput
 						v-model="addModal.form.lastName"
-						label="Last Name"
-						placeholder="Doe"
+						:label="t('dashboard.audience.contacts.index.table.lastName')"
+						:placeholder="t('dashboard.audience.contacts.index.form.lastNamePlaceholder')"
 						:disabled="addModal.isSubmitting.value"
 					/>
 				</div>
 				<div class="mb-6">
 					<UiSelect
 						v-model="addModal.form.language"
-						:options="
-							languageOptionsWithUnset.map((l) => ({
-								value: l.value,
-								label: formatLanguageLabel(l),
-							}))
-						"
-						label="Preferred Language"
-						placeholder="Select a language"
+						:options="languageChoices"
+						:label="t('dashboard.audience.contacts.index.form.languageLabel')"
+						:placeholder="t('dashboard.audience.contacts.index.form.languagePlaceholder')"
 						:disabled="addModal.isSubmitting.value"
 					/>
 				</div>
@@ -921,10 +988,12 @@ onUnmounted(() => {
 					variant="secondary"
 					:disabled="addModal.isSubmitting.value"
 					@click="addModal.close()"
-					>Cancel</UiButton
+					>{{ t('common.cancel') }}</UiButton
 				>
 				<UiButton :loading="addModal.isSubmitting.value" @click="handleAddSubmit">{{
-					addModal.isSubmitting.value ? 'Creating...' : 'Create Contact'
+					addModal.isSubmitting.value
+						? t('dashboard.audience.contacts.index.creating')
+						: t('dashboard.audience.contacts.index.createContact')
 				}}</UiButton>
 			</template>
 		</UiModal>

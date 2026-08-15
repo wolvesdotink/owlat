@@ -16,6 +16,13 @@ import { FINDING_PRESENTATION, type WizardFinding } from '~/utils/transportWizar
 
 const props = defineProps<{ finding: WizardFinding }>();
 
+/**
+ * Registry values arrive as message keys (the wizard's copy lives in
+ * `~/utils/transportWizard`), while a live check's own detail is already prose —
+ * `t()` renders the first and passes the second through unchanged.
+ */
+const { t } = useI18n();
+
 const presentation = computed(() => FINDING_PRESENTATION[props.finding.status]);
 </script>
 
@@ -29,11 +36,11 @@ const presentation = computed(() => FINDING_PRESENTATION[props.finding.status]);
 		/>
 		<div class="min-w-0">
 			<p class="text-sm font-medium text-text-primary">
-				<span class="sr-only">{{ presentation.srLabel }}</span>
-				{{ finding.label }}
+				<span class="sr-only">{{ t(presentation.srLabel) }}</span>
+				{{ t(finding.label) }}
 			</p>
-			<p class="text-sm text-text-secondary">{{ finding.detail }}</p>
-			<p v-if="finding.remedy" class="text-sm text-text-primary mt-1">{{ finding.remedy }}</p>
+			<p class="text-sm text-text-secondary">{{ t(finding.detail) }}</p>
+			<p v-if="finding.remedy" class="text-sm text-text-primary mt-1">{{ t(finding.remedy) }}</p>
 		</div>
 	</div>
 </template>

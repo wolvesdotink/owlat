@@ -7,6 +7,8 @@ const props = defineProps<{
 	contactId: Id<'contacts'>;
 }>();
 
+const { t } = useI18n();
+
 const { data: entries, isLoading } = useConvexQuery(
 	api.knowledge.graph.getByContact,
 	() => ({ contactId: props.contactId, limit: 50 }),
@@ -25,9 +27,17 @@ const truncate = (text: string, max = 100): string => {
 <template>
 	<div class="card">
 		<div class="flex items-center justify-between mb-4">
-			<h2 class="text-lg font-medium text-text-primary">Knowledge</h2>
+			<h2 class="text-lg font-medium text-text-primary">
+				{{ t('components.contacts.contactKnowledgeTab.title') }}
+			</h2>
 			<span v-if="entries" class="text-xs text-text-tertiary">
-				{{ entries.length }} {{ entries.length === 1 ? 'entry' : 'entries' }}
+				{{
+					t(
+						'components.contacts.contactKnowledgeTab.count',
+						{ count: entries.length },
+						entries.length,
+					)
+				}}
 			</span>
 		</div>
 
@@ -35,7 +45,9 @@ const truncate = (text: string, max = 100): string => {
 		<div v-if="isLoading" class="flex items-center justify-center py-8">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner size="md" />
-				<p class="text-text-tertiary text-sm">Loading knowledge...</p>
+				<p class="text-text-tertiary text-sm">
+					{{ t('components.contacts.contactKnowledgeTab.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -45,9 +57,11 @@ const truncate = (text: string, max = 100): string => {
 			class="flex flex-col items-center justify-center py-8 text-center"
 		>
 			<UiIconBox icon="lucide:brain" size="lg" variant="surface" rounded="full" class="mb-3" />
-			<p class="text-text-secondary text-sm">No knowledge entries yet</p>
+			<p class="text-text-secondary text-sm">
+				{{ t('components.contacts.contactKnowledgeTab.emptyTitle') }}
+			</p>
 			<p class="text-text-tertiary text-sm mt-1">
-				Knowledge is automatically extracted from conversations with this contact.
+				{{ t('components.contacts.contactKnowledgeTab.emptyBody') }}
 			</p>
 		</div>
 
@@ -72,7 +86,11 @@ const truncate = (text: string, max = 100): string => {
 								{{ typeLabel(entry.entryType) }}
 							</UiBadge>
 							<span class="text-xs text-text-tertiary">
-								{{ Math.round(entry.confidence * 100) }}% confidence
+								{{
+									t('components.contacts.contactKnowledgeTab.confidence', {
+										percent: Math.round(entry.confidence * 100),
+									})
+								}}
 							</span>
 						</div>
 

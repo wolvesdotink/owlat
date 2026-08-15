@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
+const { t, locale } = useI18n();
+
 const { data: campaignsPage, isLoading } = useOrganizationQuery(
 	api.campaigns.campaigns.list,
 	{ status: 'scheduled', paginationOpts: { cursor: null, numItems: 5 } }
@@ -21,21 +23,29 @@ const campaigns = computed<Campaign[]>(() => {
 });
 
 function formatScheduledDate(timestamp?: number): string {
-	if (!timestamp) return 'Not scheduled';
+	if (!timestamp) return t('components.dashboard.cards.upcomingCampaignsCard.schedule.notScheduled');
 	const date = new Date(timestamp);
 	const now = new Date();
 	const diffMs = timestamp - now.getTime();
 	const diffHours = Math.floor(diffMs / 3600000);
 	const diffDays = Math.floor(diffHours / 24);
 
-	if (diffDays < 0) return 'Overdue';
+	if (diffDays < 0) return t('components.dashboard.cards.upcomingCampaignsCard.schedule.overdue');
 	if (diffDays === 0) {
-		if (diffHours <= 0) return 'Sending soon';
-		return `In ${diffHours}h`;
+		if (diffHours <= 0) {
+			return t('components.dashboard.cards.upcomingCampaignsCard.schedule.sendingSoon');
+		}
+		return t('components.dashboard.cards.upcomingCampaignsCard.schedule.inHours', {
+			hours: diffHours,
+		});
 	}
-	if (diffDays === 1) return 'Tomorrow';
-	if (diffDays < 7) return `In ${diffDays} days`;
-	return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+	if (diffDays === 1) return t('components.dashboard.cards.upcomingCampaignsCard.schedule.tomorrow');
+	if (diffDays < 7) {
+		return t('components.dashboard.cards.upcomingCampaignsCard.schedule.inDays', {
+			days: diffDays,
+		});
+	}
+	return new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric' }).format(date);
 }
 
 function getTimeUrgency(timestamp?: number): 'default' | 'warning' | 'error' | 'neutral' {
@@ -54,13 +64,15 @@ function getTimeUrgency(timestamp?: number): 'default' | 'warning' | 'error' | '
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
 					<UiIconBox icon="lucide:calendar-clock" size="sm" variant="brand" />
-					<h3 class="text-sm font-semibold text-text-primary">Upcoming Campaigns</h3>
+					<h3 class="text-sm font-semibold text-text-primary">
+						{{ t('components.dashboard.cards.upcomingCampaignsCard.title') }}
+					</h3>
 				</div>
 				<NuxtLink
 					to="/dashboard/campaigns"
 					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
 				>
-					All campaigns
+					{{ t('components.dashboard.cards.upcomingCampaignsCard.allCampaigns') }}
 				</NuxtLink>
 			</div>
 
@@ -70,7 +82,9 @@ function getTimeUrgency(timestamp?: number): 'default' | 'warning' | 'error' | '
 
 			<div v-else-if="campaigns.length === 0" class="py-4 text-center">
 				<Icon name="lucide:calendar" class="w-6 h-6 text-text-tertiary mx-auto mb-2" />
-				<p class="text-sm text-text-tertiary">No scheduled campaigns</p>
+				<p class="text-sm text-text-tertiary">
+					{{ t('components.dashboard.cards.upcomingCampaignsCard.empty') }}
+				</p>
 			</div>
 
 			<div v-else class="space-y-2">

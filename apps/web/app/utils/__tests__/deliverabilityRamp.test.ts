@@ -11,99 +11,112 @@
 import { describe, expect, it } from 'vitest';
 import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
 import { independenceSubhead } from '~/utils/deliverabilityIndependenceCopy';
+import type { LocalizedText } from '~/utils/deliverabilityMeasurement';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * Both helpers are module scope, so they hand back the catalog key plus the
+ * relay name they interpolate. The suite renders them through the real English
+ * catalog — the wording is the whole subject here.
+ */
+const { t } = createTestI18n().global;
+const localized = (value: LocalizedText): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 const REFERENCE = 'ses';
 
 describe('relayRemovalConsequenceCopy', () => {
 	it('agrees with itself about one cell — subject, verb and possessive', () => {
-		const { consequence } = relayRemovalConsequenceCopy({
+		const { consequence: sentence } = relayRemovalConsequenceCopy({
 			dependentCells: ['campaign:gmail'],
 			referenceTransportId: REFERENCE,
 			projectedSafeAt: null,
 		});
 
-		expect(consequence).toContain('1 cell has not graduated yet');
-		expect(consequence).toContain('still sends part of its mail through Amazon SES');
+		expect(localized(sentence)).toContain('1 cell has not graduated yet');
+		expect(localized(sentence)).toContain('still sends part of its mail through Amazon SES');
 		// The defect this pins: "1 cells have not graduated yet", shipped on two
 		// screens while the server's own refusal got it right.
-		expect(consequence).not.toContain('1 cells');
+		expect(localized(sentence)).not.toContain('1 cells');
 	});
 
 	it('pluralises past one', () => {
-		const { consequence } = relayRemovalConsequenceCopy({
+		const { consequence: sentence } = relayRemovalConsequenceCopy({
 			dependentCells: ['campaign:gmail', 'automation:yahoo'],
 			referenceTransportId: REFERENCE,
 			projectedSafeAt: null,
 		});
 
-		expect(consequence).toContain('2 cells have not graduated yet');
-		expect(consequence).toContain('still send part of their mail through Amazon SES');
+		expect(localized(sentence)).toContain('2 cells have not graduated yet');
+		expect(localized(sentence)).toContain('still send part of their mail through Amazon SES');
 	});
 
 	it('names the consequence itself, not the risk in general', () => {
-		const { consequence } = relayRemovalConsequenceCopy({
+		const { consequence: sentence } = relayRemovalConsequenceCopy({
 			dependentCells: ['campaign:gmail'],
 			referenceTransportId: REFERENCE,
 			projectedSafeAt: null,
 		});
 
-		expect(consequence).toContain('immediately — not gradually');
-		expect(consequence).toContain('stops being available to fall back on');
+		expect(localized(sentence)).toContain('immediately — not gradually');
+		expect(localized(sentence)).toContain('stops being available to fall back on');
 	});
 
 	it('says the situation could not be established rather than claiming zero cells', () => {
 		// A COUNT WE DO NOT HAVE IS NOT ZERO. This is the shape behind the
 		// endpoint's fail-closed refusal — nothing was read, so nothing may be
 		// asserted about which cells are safe.
-		const { consequence } = relayRemovalConsequenceCopy({
+		const { consequence: sentence } = relayRemovalConsequenceCopy({
 			dependentCells: null,
 			referenceTransportId: null,
 			projectedSafeAt: null,
 		});
 
-		expect(consequence).toContain('could not be established');
-		expect(consequence).not.toContain('0 cell');
-		expect(consequence).toContain('immediately — not gradually');
+		expect(localized(sentence)).toContain('could not be established');
+		expect(localized(sentence)).not.toContain('0 cell');
+		expect(localized(sentence)).toContain('immediately — not gradually');
 	});
 
 	it('says a read that found every cell graduated is safe, not unestablished', () => {
 		// AND ZERO IS NOT A COUNT WE DO NOT HAVE. An empty list is an ANSWER, and
 		// routing it through the unknown arm made the Independence dialog refuse to
 		// call safe a deployment the card above the button had just called safe.
-		const { consequence, safeDate } = relayRemovalConsequenceCopy({
+		const { consequence: sentence, safeDate } = relayRemovalConsequenceCopy({
 			dependentCells: [],
 			referenceTransportId: REFERENCE,
 			projectedSafeAt: null,
 		});
 
-		expect(consequence).toContain('Every cell has graduated');
-		expect(consequence).toContain('would not move any traffic');
-		expect(consequence).not.toContain('could not be established');
-		expect(consequence).not.toContain('cannot be treated as safe');
+		expect(localized(sentence)).toContain('Every cell has graduated');
+		expect(localized(sentence)).toContain('would not move any traffic');
+		expect(localized(sentence)).not.toContain('could not be established');
+		expect(localized(sentence)).not.toContain('cannot be treated as safe');
 		// The one thing disconnecting still costs a graduated deployment.
-		expect(consequence).toContain('stops being available to fall back on');
+		expect(localized(sentence)).toContain('stops being available to fall back on');
 		expect(safeDate).toBeNull();
 	});
 
 	it('calls an unnamed second arm the relay rather than printing null', () => {
-		const { consequence } = relayRemovalConsequenceCopy({
+		const { consequence: sentence } = relayRemovalConsequenceCopy({
 			dependentCells: null,
 			referenceTransportId: null,
 			projectedSafeAt: null,
 		});
 
-		expect(consequence).toContain('the relay');
-		expect(consequence).not.toContain('null');
+		expect(localized(sentence)).toContain('the relay');
+		expect(localized(sentence)).not.toContain('null');
 	});
 
 	it('offers the projected safe date only when the projection has one', () => {
 		const at = Date.UTC(2026, 7, 14);
 		expect(
-			relayRemovalConsequenceCopy({
-				dependentCells: ['campaign:gmail'],
-				referenceTransportId: REFERENCE,
-				projectedSafeAt: at,
-			}).safeDate
+			localized(
+				relayRemovalConsequenceCopy({
+					dependentCells: ['campaign:gmail'],
+					referenceTransportId: REFERENCE,
+					projectedSafeAt: at,
+				}).safeDate!
+			)
 		).toContain('waiting until about');
 		expect(
 			relayRemovalConsequenceCopy({
@@ -128,7 +141,7 @@ describe('relayRemovalConsequenceCopy', () => {
 describe('naming the reference transport', () => {
 	/** The relay sentence, for a deployment with exactly one relay to name. */
 	function subheadFor(referenceTransportId: string): string {
-		return independenceSubhead({ isRelayConfigured: true, referenceTransportId });
+		return localized(independenceSubhead({ isRelayConfigured: true, referenceTransportId }));
 	}
 
 	it('names the relay the way the transport card does', () => {
@@ -148,28 +161,32 @@ describe('naming the reference transport', () => {
 		// build does not know must still read as itself.
 		expect(subheadFor('postmark')).toContain('instead of postmark');
 		expect(
-			relayRemovalConsequenceCopy({
-				dependentCells: ['campaign:gmail'],
-				referenceTransportId: 'postmark',
-				projectedSafeAt: null,
-			}).consequence
+			localized(
+				relayRemovalConsequenceCopy({
+					dependentCells: ['campaign:gmail'],
+					referenceTransportId: 'postmark',
+					projectedSafeAt: null,
+				}).consequence
+			)
 		).toContain('through postmark');
 	});
 
 	it('names the relay in the removal consequence too', () => {
 		expect(
-			relayRemovalConsequenceCopy({
-				dependentCells: ['campaign:gmail'],
-				referenceTransportId: 'plugin.mail-pack.postmark',
-				projectedSafeAt: null,
-			}).consequence
+			localized(
+				relayRemovalConsequenceCopy({
+					dependentCells: ['campaign:gmail'],
+					referenceTransportId: 'plugin.mail-pack.postmark',
+					projectedSafeAt: null,
+				}).consequence
+			)
 		).toContain('through Postmark');
 	});
 
 	it('leaves the standalone sentence alone — there is no relay to name', () => {
-		expect(independenceSubhead({ isRelayConfigured: false, referenceTransportId: null })).toContain(
-			'There is no relay to move away from'
-		);
+		expect(
+			localized(independenceSubhead({ isRelayConfigured: false, referenceTransportId: null }))
+		).toContain('There is no relay to move away from');
 	});
 
 	/**
@@ -179,10 +196,9 @@ describe('naming the reference transport', () => {
 	 * standalone promise that there is nothing to move away from.
 	 */
 	it('speaks of the relays in the plural when no single one can be named', () => {
-		const subhead = independenceSubhead({
-			isRelayConfigured: true,
-			referenceTransportId: null,
-		});
+		const subhead = localized(
+			independenceSubhead({ isRelayConfigured: true, referenceTransportId: null })
+		);
 		expect(subhead).toContain('instead of the relays you have connected');
 		expect(subhead).not.toContain('There is no relay to move away from');
 	});

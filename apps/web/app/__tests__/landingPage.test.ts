@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import en from '~~/i18n/locales/en.json';
 
 /**
  * Guard for the in-app landing splash (`/`). It is declarative markup with no
@@ -26,23 +27,42 @@ const landingCss = readFileSync(
 	'utf8'
 );
 
+/**
+ * The copy itself moved into the message catalog, so it is asserted there and
+ * the page is asserted to still ASK for it: a keypath the page stopped
+ * rendering would leave the catalog perfect and the splash blank, and copy
+ * edited back to the old pitch would leave the page perfect and the positioning
+ * wrong. `home` is the catalog's landing-page namespace.
+ */
+const home = en.home;
+
 describe('landing page copy', () => {
 	it('titles the tab with the platform positioning, not the old marketing pitch', () => {
-		const title = source.match(/title:\s*'([^']+)'/)?.[1] ?? '';
+		// A getter, so the title follows a locale switch instead of freezing at mount.
+		expect(source).toContain("useHead({ title: () => t('home.pageTitle') });");
 		// `<Page> — Owlat` is the convention every other page in the app follows.
-		expect(title).toMatch(/ — Owlat$/);
-		expect(title.toLowerCase()).not.toContain('marketing');
+		expect(home.pageTitle).toMatch(/ — Owlat$/);
+		expect(home.pageTitle.toLowerCase()).not.toContain('marketing');
 	});
 
 	it('pitches the whole stack', () => {
-		expect(source).toContain('Send better email.');
-		expect(source).toContain('Own the whole stack.');
-		expect(source).toMatch(/open-source, self-hosted email platform/);
+		expect(source).toContain("t('home.hero.title')");
+		expect(source).toContain("t('home.hero.titleAccent')");
+		expect(source).toContain("t('home.hero.tagline')");
+		expect(home.hero.title).toBe('Send better email.');
+		expect(home.hero.titleAccent).toBe('Own the whole stack.');
+		expect(home.hero.tagline).toMatch(/open-source, self-hosted email platform/);
 	});
 
 	it('names the capability spread instead of campaigns alone', () => {
+		expect(source).toMatch(/v-for="\(capability, index\) in capabilities"/);
+		const named = Object.values(home.capabilities);
 		for (const capability of ['Automations', 'Transactional', 'Team inbox', 'Own MTA']) {
-			expect(source).toContain(capability);
+			expect(named).toContain(capability);
+		}
+		// Every capability the catalog names is one the page actually lists.
+		for (const key of Object.keys(home.capabilities)) {
+			expect(source).toContain(`t('home.capabilities.${key}')`);
 		}
 	});
 });

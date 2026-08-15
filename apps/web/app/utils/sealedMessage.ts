@@ -13,6 +13,10 @@
  * This is the web-side mirror of the Convex `InboundEncryptionInfo` union (single
  * source is `e2ee/inboundSeal.ts`); the boundary keeps its own copy per this
  * app's existing cross-package pattern (see `utils/senderAuth.ts`).
+ *
+ * The derivation is module scope, so it never calls `useI18n`: `summary` and
+ * `detail` are catalog KEYS, and the reader resolves them with `t()` at render
+ * time, in the active locale.
  */
 
 /** Web mirror of the Convex `InboundEncryptionInfo` union (`e2ee/inboundSeal.ts`). */
@@ -31,9 +35,9 @@ export type SealedBadgeState = 'verified' | 'unverified' | 'cantDecrypt';
 
 export interface SealedBadgeResult {
 	state: SealedBadgeState;
-	/** Short chip label. */
+	/** Short chip label — a catalog key, resolved with `t()` at render time. */
 	summary: string;
-	/** Expandable plain-language explanation. */
+	/** Expandable plain-language explanation — a catalog key. */
 	detail: string;
 	tone: 'ok' | 'warn';
 	icon: string;
@@ -57,9 +61,8 @@ export function deriveSealedBadge(
 	if (!info.isDecrypted) {
 		return {
 			state: 'cantDecrypt',
-			summary: "Encrypted — can't decrypt",
-			detail:
-				"This message was encrypted just for its recipient, and Owlat doesn't hold a key that can open it.",
+			summary: 'shared.sealedMessage.cantDecrypt.summary',
+			detail: 'shared.sealedMessage.cantDecrypt.detail',
 			tone: 'warn',
 			icon: 'lucide:lock',
 		};
@@ -72,9 +75,8 @@ export function deriveSealedBadge(
 	if (info.isSignatureValid && !!info.signerFingerprint) {
 		return {
 			state: 'verified',
-			summary: 'Sealed — sender verified',
-			detail:
-				'This message was encrypted end-to-end, and we confirmed it was really signed by the sender.',
+			summary: 'shared.sealedMessage.verified.summary',
+			detail: 'shared.sealedMessage.verified.detail',
 			tone: 'ok',
 			icon: 'lucide:lock',
 		};
@@ -85,8 +87,8 @@ export function deriveSealedBadge(
 	// for who signed it.
 	return {
 		state: 'unverified',
-		summary: 'Sealed — sender not verified',
-		detail: "This message was encrypted end-to-end, but we couldn't confirm who signed it.",
+		summary: 'shared.sealedMessage.unverified.summary',
+		detail: 'shared.sealedMessage.unverified.detail',
 		tone: 'warn',
 		icon: 'lucide:lock',
 	};

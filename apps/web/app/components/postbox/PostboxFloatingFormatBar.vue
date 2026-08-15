@@ -17,6 +17,8 @@
 import type { ActiveMarks } from '@owlat/ui/composables/useRichText';
 import type { RewriteIntent } from '~/composables/postbox/usePostboxSelectionRewrite';
 
+const { t } = useI18n();
+
 defineProps<{
 	/** Absolute-position style computed from the selection rect by the editor. */
 	barStyle: Record<string, string> | null;
@@ -49,7 +51,7 @@ const emit = defineEmits<{
 		class="postbox-floating-format-bar absolute z-30 flex items-center gap-0.5 rounded-lg border border-border-subtle bg-bg-elevated px-1 py-1 shadow-lg"
 		:style="barStyle"
 		role="toolbar"
-		aria-label="Format selection"
+		:aria-label="t('components.postbox.postboxFloatingFormatBar.toolbarLabel')"
 		data-testid="postbox-floating-format-bar"
 		@mousedown.prevent
 	>

@@ -23,12 +23,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const readRepoFile = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
 
-const vpsGuide = readRepoFile('apps/docs/content/1.guide/51.sending-from-a-vps.md');
-const deliverabilityGuide = readRepoFile('apps/docs/content/1.guide/21.deliverability.md');
+const vpsGuide = readRepoFile('apps/docs/content/en/1.guide/51.sending-from-a-vps.md');
+const deliverabilityGuide = readRepoFile('apps/docs/content/en/1.guide/21.deliverability.md');
 const infrastructure = readRepoFile(
-	'apps/docs/content/3.developer/19.deliverability-infrastructure.md'
+	'apps/docs/content/en/3.developer/19.deliverability-infrastructure.md'
 );
-const mtaSystem = readRepoFile('apps/docs/content/3.developer/10.mta-system.md');
+const mtaSystem = readRepoFile('apps/docs/content/en/3.developer/10.mta-system.md');
 
 interface MarkdownTable {
 	headers: string[];

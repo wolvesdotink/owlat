@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { ref, nextTick, defineComponent, type Ref } from 'vue';
 
 // Spy on sanitize-html so we can assert whether the sanitize path ran. Returns
@@ -35,6 +36,8 @@ vi.mock('@owlat/api', () => {
 const bodyData: Ref<unknown> = ref(undefined);
 
 beforeAll(() => {
+	// The body copy flows through vue-i18n now; `useI18n` is a Nuxt auto-import.
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useConvexQuery', () => ({ data: bodyData, error: ref(null) }));
 	vi.stubGlobal('splitQuotedText', splitQuotedText);
 	vi.stubGlobal('splitQuotedHtml', splitQuotedHtml);
@@ -55,6 +58,7 @@ beforeEach(() => {
 
 const iconStub = { props: ['name'], template: '<span />' };
 const globalMount = {
+	plugins: [createTestI18n()],
 	components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
 };
 

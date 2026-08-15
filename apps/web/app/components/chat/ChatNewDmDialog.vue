@@ -6,6 +6,7 @@ const emit = defineEmits<{
 	created: [roomId: Id<'chatRooms'>];
 }>();
 
+const { t } = useI18n();
 const { user } = useAuth();
 const memberQuery = ref('');
 const selectedMembers = ref<{ memberId: string; label: string }[]>([]);
@@ -31,7 +32,7 @@ const handleSubmit = async () => {
 		const id = await findOrCreateDm(selectedMembers.value.map((m) => m.memberId));
 		if (id) emit('created', id);
 	} catch (e) {
-		error.value = e instanceof Error ? e.message : 'Failed to start DM';
+		error.value = e instanceof Error ? e.message : t('components.chat.chatNewDmDialog.startFailed');
 	} finally {
 		isCreating.value = false;
 	}
@@ -39,13 +40,13 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-	<ChatDialogShell title="New direct message" @close="emit('close')">
+	<ChatDialogShell :title="t('components.chat.chatNewDmDialog.title')" @close="emit('close')">
 		<div class="px-5 py-4 space-y-3">
 			<ChatMemberPicker
 				v-model="selectedMembers"
 				v-model:query="memberQuery"
-				label="To"
-				placeholder="Search teammates by name or email…"
+				:label="t('components.chat.chatNewDmDialog.toLabel')"
+				:placeholder="t('components.chat.chatNewDmDialog.toPlaceholder')"
 			>
 				<template #candidates="{ addMember }">
 					<div
@@ -71,13 +72,13 @@ const handleSubmit = async () => {
 				</template>
 			</ChatMemberPicker>
 			<p class="text-xs text-text-tertiary">
-				Pick one teammate for a 1:1 DM, or multiple for a group chat.
+				{{ t('components.chat.chatNewDmDialog.hint') }}
 			</p>
 			<div v-if="error" class="text-sm text-error">{{ error }}</div>
 		</div>
 
 		<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
-			<UiButton variant="secondary" @click="emit('close')">Cancel</UiButton>
+			<UiButton variant="secondary" @click="emit('close')">{{ t('common.cancel') }}</UiButton>
 			<UiButton
 				class="gap-2"
 				:disabled="selectedMembers.length === 0 || isCreating"
@@ -85,7 +86,7 @@ const handleSubmit = async () => {
 			>
 				<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:send" class="w-4 h-4" />
-				Start chat
+				{{ t('components.chat.chatNewDmDialog.startChat') }}
 			</UiButton>
 		</div>
 	</ChatDialogShell>

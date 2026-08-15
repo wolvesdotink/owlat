@@ -1,7 +1,7 @@
 <template>
-	<nav v-if="headings.length" class="toc" aria-label="Table of contents">
+	<nav v-if="headings.length" class="toc" :aria-label="t('toc.label')">
 		<h4 class="text-2xs font-medium uppercase tracking-widest text-text-tertiary px-2">
-			On this page
+			{{ t('toc.title') }}
 		</h4>
 		<ul class="toc-list">
 			<li v-for="heading in headings" :key="heading.id">
@@ -25,6 +25,10 @@ interface Heading {
 	level: number;
 }
 
+const { t } = useI18n();
+
+// The heading text itself is scraped from the rendered page, so it is already
+// in the locale the content was served in — only the chrome needs translating.
 const headings = ref<Heading[]>([]);
 const activeId = ref('');
 

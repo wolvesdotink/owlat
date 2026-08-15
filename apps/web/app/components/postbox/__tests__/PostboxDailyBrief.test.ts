@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest';
 import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { ref } from 'vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxDailyBrief from '../PostboxDailyBrief.vue';
 
@@ -47,6 +48,9 @@ const mutationMock = vi.fn().mockResolvedValue(null);
 beforeAll(() => {
 	vi.stubGlobal('useConvexQuery', () => ({ data: briefRead, isLoading: ref(false) }));
 	vi.stubGlobal('useConvex', () => ({ mutation: mutationMock }));
+	// The greeting/dismiss copy flows through vue-i18n now; `useI18n` is a Nuxt
+	// auto-import, so it has to exist as a global for the component's setup.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
 beforeEach(() => {
@@ -61,6 +65,7 @@ function mountBrief() {
 	return mount(PostboxDailyBrief, {
 		props: { mailboxId: 'mbx-1' as never },
 		global: {
+			plugins: [createTestI18n()],
 			components: { Icon: iconStub, NuxtLink: nuxtLinkStub },
 			stubs: { transition: true },
 		},

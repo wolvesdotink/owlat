@@ -37,6 +37,16 @@ const props = withDefaults(
 	{ isAdmin: false, personalOnly: false }
 );
 
+const { t } = useI18n();
+
+/**
+ * A copy field owned by the shared getting-started model: either a bare message
+ * key or a key plus the values it interpolates.
+ */
+type LocalizedField = string | { key: string; params?: Record<string, unknown> };
+const localize = (value: LocalizedField): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 const config = useRuntimeConfig();
 const isSelfHost = config.public.deploymentMode === 'selfhost';
 
@@ -203,10 +213,10 @@ const progressPercentage = computed(() => {
 
 // One dismiss action covering whatever the card is currently showing.
 const { run: dismissInstance } = useBackendOperation(api.auth.onboarding.dismiss, {
-	label: 'Dismiss onboarding',
+	label: () => t('components.dashboard.gettingStarted.dismissInstanceOperation'),
 });
 const { run: dismissUser } = useBackendOperation(api.auth.userOnboarding.dismiss, {
-	label: 'Dismiss checklist',
+	label: () => t('components.dashboard.gettingStarted.dismissUserOperation'),
 });
 
 async function handleDismiss() {
@@ -228,22 +238,22 @@ async function handleDismiss() {
 		leave-from-class="opacity-100 translate-y-0"
 		leave-to-class="opacity-0 -translate-y-2"
 	>
-		<section v-if="model.visible" class="card mb-8" role="region" aria-label="Getting started">
+		<section v-if="model.visible" class="card mb-8" role="region" :aria-label="t('components.dashboard.gettingStarted.title')">
 			<!-- Header -->
 			<div class="mb-6 flex items-start justify-between">
 				<div class="flex items-center gap-3">
 					<UiIconBox icon="lucide:list-checks" variant="surface" />
 					<div>
-						<h2 class="text-lg font-semibold text-text-primary">Getting started</h2>
+						<h2 class="text-lg font-semibold text-text-primary">{{ t('components.dashboard.gettingStarted.title') }}</h2>
 						<p class="mt-0.5 text-sm text-text-secondary">
-							Everything left to do to get Owlat working for you — in one place.
+							{{ t('components.dashboard.gettingStarted.subtitle') }}
 						</p>
 					</div>
 				</div>
 				<button
 					class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-					title="Dismiss"
-					aria-label="Dismiss getting started"
+					:title="t('common.dismiss')"
+					:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
 					@click="handleDismiss"
 				>
 					<Icon name="lucide:x" class="h-4 w-4" />
@@ -253,15 +263,20 @@ async function handleDismiss() {
 			<!-- Progress -->
 			<div class="mb-6">
 				<div class="mb-2 flex items-center justify-between text-sm">
-					<span class="text-text-secondary">Progress</span>
+					<span class="text-text-secondary">{{ t('components.dashboard.gettingStarted.progress') }}</span>
 					<span class="font-medium text-text-primary">
-						{{ model.completedCount }} of {{ model.totalCount }} done
+						{{
+							t('components.dashboard.gettingStarted.progressCount', {
+								completed: model.completedCount,
+								total: model.totalCount,
+							})
+						}}
 					</span>
 				</div>
 				<UiProgressBar
 					size="sm"
 					:value="progressPercentage"
-					aria-label="Getting started progress"
+					:aria-label="t('components.dashboard.gettingStarted.progressLabel')"
 				/>
 			</div>
 
@@ -270,8 +285,12 @@ async function handleDismiss() {
 				<div v-for="section in model.sections" :key="section.id">
 					<!-- Section heading (only when both sections are present) -->
 					<div v-if="model.sections.length > 1" class="mb-3">
-						<h3 class="text-sm font-semibold text-text-primary">{{ section.title }}</h3>
-						<p class="mt-0.5 text-sm text-text-secondary">{{ section.description }}</p>
+						<h3 class="text-sm font-semibold text-text-primary">
+							{{ localize(section.title) }}
+						</h3>
+						<p class="mt-0.5 text-sm text-text-secondary">
+							{{ localize(section.description) }}
+						</p>
 					</div>
 
 					<div class="space-y-3">
@@ -313,30 +332,32 @@ async function handleDismiss() {
 									class="font-medium"
 									:class="step.completed ? 'text-text-secondary line-through' : 'text-text-primary'"
 								>
-									{{ step.title }}
+									{{ localize(step.title) }}
 								</p>
 								<p
 									class="mt-0.5 text-sm"
 									:class="step.completed ? 'text-text-tertiary' : 'text-text-secondary'"
 								>
-									{{ step.description }}
+									{{ localize(step.description) }}
 								</p>
 							</div>
 
 							<div class="flex-shrink-0">
-								<span v-if="step.completed" class="text-sm font-medium text-success">Done</span>
+								<span v-if="step.completed" class="text-sm font-medium text-success">{{
+									t('common.done')
+								}}</span>
 								<span
 									v-else-if="step.blocked"
 									class="flex items-center gap-1.5 text-sm text-text-tertiary"
 								>
 									<Icon name="lucide:clock" class="h-4 w-4" />
-									{{ step.blockedReason }}
+									{{ step.blockedReason ? localize(step.blockedReason) : '' }}
 								</span>
 								<span
 									v-else
 									class="flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
 								>
-									{{ step.cta }}
+									{{ localize(step.cta) }}
 									<Icon name="lucide:chevron-right" class="h-4 w-4" />
 								</span>
 							</div>
@@ -356,7 +377,7 @@ async function handleDismiss() {
 					class="text-sm text-text-tertiary transition-colors hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 					@click="handleDismiss"
 				>
-					I'll do this later
+					{{ t('components.dashboard.gettingStarted.later') }}
 				</button>
 			</div>
 		</section>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
+const { t, locale } = useI18n();
+
 const { data: overview, isLoading } = useOrganizationQuery(
 	api.analytics.reputationQueries.getSendingOverview
 );
@@ -19,13 +21,13 @@ const tierLabel = computed(() => {
 	const p = phase.value;
 	switch (p) {
 		case 'ramp':
-			return 'Warming Up';
+			return t('components.dashboard.cards.deliveryRates.phase.ramp');
 		case 'plateau':
-			return 'Ramping';
+			return t('components.dashboard.cards.deliveryRates.phase.plateau');
 		case 'graduated':
-			return 'Fully Warmed';
+			return t('components.dashboard.cards.deliveryRates.phase.graduated');
 		case null:
-			return 'No IP Warming';
+			return t('components.dashboard.cards.deliveryRates.phase.none');
 		default:
 			return p;
 	}
@@ -47,6 +49,11 @@ const tierVariant = computed<'neutral' | 'warning' | 'default' | 'success'>(() =
 const dailyLimit = computed(() => warming.value?.totalDailyCap ?? null);
 const remaining = computed(() => warming.value?.remainingToday ?? null);
 
+/** Grouped against the active locale; `null` keeps the blank the card showed. */
+function formatNumber(value: number | null): string {
+	return value === null ? '' : new Intl.NumberFormat(locale.value).format(value);
+}
+
 const usagePercent = computed(() => {
 	const cap = dailyLimit.value;
 	if (!cap || remaining.value === null) return 0;
@@ -61,13 +68,15 @@ const usagePercent = computed(() => {
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
 					<UiIconBox icon="lucide:gauge" size="sm" variant="success" />
-					<h3 class="text-sm font-semibold text-text-primary">Sending Capacity</h3>
+					<h3 class="text-sm font-semibold text-text-primary">
+						{{ t('components.dashboard.cards.deliveryRates.title') }}
+					</h3>
 				</div>
 				<NuxtLink
 					to="/dashboard/admin/delivery"
 					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
 				>
-					Details
+					{{ t('components.dashboard.cards.deliveryRates.details') }}
 				</NuxtLink>
 			</div>
 
@@ -76,7 +85,9 @@ const usagePercent = computed(() => {
 			</div>
 
 			<div v-else-if="!overview" class="py-4 text-center">
-				<p class="text-sm text-text-tertiary">No sending data available</p>
+				<p class="text-sm text-text-tertiary">
+					{{ t('components.dashboard.cards.deliveryRates.empty') }}
+				</p>
 			</div>
 
 			<div v-else>
@@ -86,28 +97,42 @@ const usagePercent = computed(() => {
 
 				<div v-if="dailyLimit !== null" class="mb-3">
 					<div class="flex items-center justify-between mb-1">
-						<span class="text-xs text-text-secondary">Daily Limit Usage</span>
+						<span class="text-xs text-text-secondary">{{
+							t('components.dashboard.cards.deliveryRates.dailyLimitUsage')
+						}}</span>
 						<span class="text-xs font-medium text-text-primary">{{ usagePercent }}%</span>
 					</div>
 					<UiProgressBar
 						size="sm"
 						:value="usagePercent"
 						:variant="usagePercent >= 90 ? 'error' : usagePercent >= 70 ? 'warning' : 'success'"
-						aria-label="Daily sending limit usage"
+						:aria-label="t('components.dashboard.cards.deliveryRates.usageBarLabel')"
 					/>
 					<div class="flex items-center justify-between mt-1">
 						<span class="text-xs text-text-tertiary">
-							{{ remaining?.toLocaleString() }} remaining
+							{{
+								t('components.dashboard.cards.deliveryRates.remaining', {
+									count: formatNumber(remaining),
+								})
+							}}
 						</span>
 						<span class="text-xs text-text-tertiary">
-							{{ dailyLimit.toLocaleString() }} limit
+							{{
+								t('components.dashboard.cards.deliveryRates.limit', {
+									count: formatNumber(dailyLimit),
+								})
+							}}
 						</span>
 					</div>
 				</div>
 
 				<div v-else class="rounded-lg bg-bg-surface px-3 py-2">
-					<p class="text-sm font-medium text-text-primary">Unlimited sending</p>
-					<p class="text-xs text-text-tertiary">No daily limit applied</p>
+					<p class="text-sm font-medium text-text-primary">
+						{{ t('components.dashboard.cards.deliveryRates.unlimitedTitle') }}
+					</p>
+					<p class="text-xs text-text-tertiary">
+						{{ t('components.dashboard.cards.deliveryRates.unlimitedBody') }}
+					</p>
 				</div>
 			</div>
 		</div>

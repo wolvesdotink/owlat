@@ -7,13 +7,18 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 export function usePostboxContacts(mailboxId: Ref<Id<'mailboxes'> | null>) {
+	const { t } = useI18n();
 	const { data, isLoading } = useConvexQuery(api.mail.contacts.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value, limit: 500 } : 'skip'
 	);
 	const contacts = computed(() => data.value ?? []);
 
-	const upsertOp = useBackendOperation(api.mail.contacts.upsert, { label: 'Save contact' });
-	const removeOp = useBackendOperation(api.mail.contacts.remove, { label: 'Remove contact' });
+	const upsertOp = useBackendOperation(api.mail.contacts.upsert, {
+		label: () => t('shared.postbox.usePostboxContacts.saveContact'),
+	});
+	const removeOp = useBackendOperation(api.mail.contacts.remove, {
+		label: () => t('shared.postbox.usePostboxContacts.removeContact'),
+	});
 
 	async function save(input: { email: string; displayName?: string; organization?: string }) {
 		if (!mailboxId.value) return undefined;

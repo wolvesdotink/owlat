@@ -9,7 +9,26 @@ import {
 	sendHoldReason,
 } from '~/utils/replyCollision';
 
-useHead({ title: 'Thread — Owlat' });
+const { t, te } = useI18n();
+
+useHead({ title: () => t('dashboard.inbox.detail.pageTitle') });
+
+/**
+ * Collision copy lives in utils/replyCollision as an i18n key + params (the
+ * registry convention for module-scope definitions); the string form is still
+ * accepted so a plain sentence renders as itself.
+ */
+type CollisionMessage = string | { key: string; params?: Record<string, unknown> };
+function collisionText(message: CollisionMessage): string {
+	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+}
+
+// Classification / processing labels are translated here; the backend enums stay
+// the source of truth, so an unrecognised value renders as stored.
+const classificationLabel = (group: string, value: string): string => {
+	const key = `dashboard.inbox.detail.${group}.${value}`;
+	return te(key) ? t(key) : value;
+};
 
 definePageMeta({
 	layout: 'dashboard',
@@ -98,7 +117,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onThreadKeydown));
 // lastReadAt) on open and whenever we navigate to another thread. Best-effort:
 // a failed mark just leaves the row bold until the next open.
 const { run: markThreadSeen } = useBackendOperation(api.inbox.reads.markThreadSeen, {
-	label: 'Mark thread seen',
+	label: () => t('dashboard.inbox.detail.markSeenOperation'),
 });
 const markSeen = () => {
 	void markThreadSeen({ threadId: threadId.value });
@@ -122,7 +141,7 @@ const presencePeople = computed(() =>
 		return {
 			userId: p.userId,
 			mode: p.mode,
-			name: m ? m.user.name || m.user.email : 'Someone',
+			name: m ? m.user.name || m.user.email : t('dashboard.inbox.detail.someone'),
 			image: m?.user.image ?? null,
 		};
 	})
@@ -139,7 +158,9 @@ const heldByReplierName = computed(() => {
 });
 const isHeld = computed(() => heldByReplierName.value !== null);
 const holdReason = computed(() =>
-	isHeld.value && heldByReplierName.value ? sendHoldReason(heldByReplierName.value) : undefined
+	isHeld.value && heldByReplierName.value
+		? collisionText(sendHoldReason(heldByReplierName.value))
+		: undefined
 );
 
 // Actions state
@@ -165,11 +186,11 @@ onBeforeUnmount(() => {
 
 const { run: answerClarification, isLoading: isAnsweringClarification } = useBackendOperation(
 	api.inbox.clarification.answerClarification,
-	{ label: 'Answer clarification' }
+	{ label: () => t('dashboard.inbox.detail.answerClarificationOperation') }
 );
 const { run: undoAutoSend, isLoading: isUndoingAutoSend } = useBackendOperation(
 	api.inbox.mutations.undoAutoSend,
-	{ label: 'Undo automatic send' }
+	{ label: () => t('dashboard.inbox.detail.undoAutoSendOperation') }
 );
 
 function setClarificationAnswer(messageId: string, questionId: string, value: string) {
@@ -196,13 +217,13 @@ async function submitClarification(message: NonNullable<typeof messages.value>[n
 			value: values[question.id]?.trim() ?? '',
 		})),
 	});
-	if (result) showToast('Answers saved — drafting resumed');
+	if (result) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
 }
 
 async function cancelAutoSend(messageId: Id<'inboundMessages'>) {
 	if (!isAdmin.value) return;
 	const result = await undoAutoSend({ inboundMessageId: messageId });
-	if (result?.cancelled) showToast('Automatic send cancelled and returned to review');
+	if (result?.cancelled) showToast(t('dashboard.inbox.detail.autoSendCancelledToast'));
 }
 
 const remainingAutoSendSeconds = (sendAt: number) =>
@@ -217,7 +238,7 @@ const { showToast } = useToast();
 const onSnoozeConfirm = async (timestamp: number) => {
 	showSnoozeDialog.value = false;
 	const result = await handleSnooze(timestamp);
-	if (result !== undefined) showToast('Thread snoozed');
+	if (result !== undefined) showToast(t('dashboard.inbox.detail.snoozedToast'));
 };
 // "Until they reply" maps to a capped snooze: an inbound reply already
 // resurfaces a snoozed thread (the thread module's inbound_activity reducer
@@ -225,11 +246,11 @@ const onSnoozeConfirm = async (timestamp: number) => {
 const onSnoozeUntilReply = async (capTimestamp: number) => {
 	showSnoozeDialog.value = false;
 	const result = await handleSnooze(capTimestamp);
-	if (result !== undefined) showToast('Snoozed until they reply');
+	if (result !== undefined) showToast(t('dashboard.inbox.detail.snoozedUntilReplyToast'));
 };
 const onUnsnooze = async () => {
 	const result = await handleUnsnooze();
-	if (result !== undefined) showToast('Thread unsnoozed');
+	if (result !== undefined) showToast(t('dashboard.inbox.detail.unsnoozedToast'));
 };
 
 const onApprove = async (messageId: Id<'inboundMessages'>) => {
@@ -240,10 +261,13 @@ const onApprove = async (messageId: Id<'inboundMessages'>) => {
 		if (result === undefined) return;
 		// Server refused because a teammate just replied — toast, don't claim success.
 		if (isReplyCollision(result)) {
-			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+			showToast(
+				collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+				'error'
+			);
 			return;
 		}
-		showToast('Draft approved and queued for sending');
+		showToast(t('dashboard.inbox.detail.draftApprovedToast'));
 	} finally {
 		isApproving.value = false;
 	}
@@ -262,7 +286,7 @@ const onReject = async () => {
 		const result = await handleReject(actionMessageId.value, rejectReason.value || undefined);
 		if (result !== undefined) {
 			showRejectModal.value = false;
-			showToast('Draft rejected');
+			showToast(t('dashboard.inbox.detail.draftRejectedToast'));
 		}
 	} finally {
 		isRejecting.value = false;
@@ -273,7 +297,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 	isRetrying.value = true;
 	try {
 		const result = await handleRetry(messageId);
-		if (result !== undefined) showToast('Message re-enqueued for processing');
+		if (result !== undefined) showToast(t('dashboard.inbox.detail.retriedToast'));
 	} finally {
 		isRetrying.value = false;
 	}
@@ -287,10 +311,13 @@ const onSaveEdit = async (messageId: Id<'inboundMessages'>) => {
 		if (result === undefined) return;
 		// Server refused because a teammate just replied — toast, don't claim success.
 		if (isReplyCollision(result)) {
-			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+			showToast(
+				collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+				'error'
+			);
 			return;
 		}
-		showToast('Draft saved, approved and queued for sending');
+		showToast(t('dashboard.inbox.detail.draftSavedToast'));
 	} finally {
 		isSavingEdit.value = false;
 	}
@@ -322,7 +349,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 	const result = await linkChannelToInboxThread(roomId, threadId.value);
 	showNewChannel.value = false;
 	if (result === undefined) {
-		showToast('Channel created, but linking failed', 'error');
+		showToast(t('dashboard.inbox.detail.channelLinkFailedToast'), 'error');
 		return;
 	}
 	router.push(`/dashboard/chat/${roomId}`);
@@ -337,14 +364,14 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Inbox
+			{{ t('dashboard.inbox.detail.backToInbox') }}
 		</NuxtLink>
 
 		<!-- Loading -->
 		<div v-if="threadLoading && !thread" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading thread...</p>
+				<p class="text-text-secondary text-sm">{{ t('dashboard.inbox.detail.loading') }}</p>
 			</div>
 		</div>
 
@@ -357,8 +384,10 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 				rounded="full"
 				class="mb-4"
 			/>
-			<p class="text-text-secondary font-medium">Thread not found</p>
-			<UiButton variant="secondary" to="/dashboard/inbox" class="mt-6">Back to Inbox</UiButton>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.inbox.detail.notFound') }}</p>
+			<UiButton variant="secondary" to="/dashboard/inbox" class="mt-6">
+				{{ t('dashboard.inbox.detail.backToInbox') }}
+			</UiButton>
 		</div>
 
 		<!-- Thread Content -->
@@ -367,7 +396,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
 				<div>
 					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ thread.subject || 'No subject' }}
+						{{ thread.subject || t('dashboard.inbox.detail.noSubject') }}
 					</h1>
 					<div class="flex items-center gap-3 mt-2">
 						<InboxStatusChip
@@ -380,7 +409,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							{{ contact.email }}
 						</span>
 						<span class="text-sm text-text-tertiary">
-							{{ thread.messageCount ?? 0 }} messages
+							{{ t('dashboard.inbox.detail.messageCount', { count: thread.messageCount ?? 0 }) }}
 						</span>
 					</div>
 					<!-- Who else is here — pulsing viewer ring + "is replying" banner -->
@@ -395,7 +424,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							:key="channel._id"
 							:to="`/dashboard/chat/${channel._id}`"
 							class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-brand hover:bg-brand-subtle/70 transition-colors"
-							:title="`Discuss in ${channel.name}`"
+							:title="t('dashboard.inbox.detail.discussInChannelTitle', { channel: channel.name })"
 						>
 							<Icon name="lucide:message-circle" class="w-3.5 h-3.5" />
 							#{{ channel.name }}
@@ -409,7 +438,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							<template #iconLeft>
 								<Icon name="lucide:message-circle-plus" class="w-3.5 h-3.5" />
 							</template>
-							Discuss in channel
+							{{ t('dashboard.inbox.detail.discussInChannel') }}
 						</UiButton>
 					</div>
 					<!-- Assignee picker — avatar popover (Me / members / Unassign). -->
@@ -427,7 +456,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								type="button"
 								class="gap-1.5"
 								:aria-label="
-									assignedMemberName ? `Assigned to ${assignedMemberName}` : 'Assign thread'
+									assignedMemberName
+										? t('dashboard.inbox.detail.assignedToAria', { name: assignedMemberName })
+										: t('dashboard.inbox.detail.assignThreadAria')
 								"
 							>
 								<UiAvatar
@@ -438,7 +469,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								/>
 								<Icon v-else name="lucide:user-plus" class="w-4 h-4" />
 								<span class="max-w-[10rem] truncate">
-									{{ assignedMemberName ?? 'Assign' }}
+									{{ assignedMemberName ?? t('dashboard.inbox.detail.assign') }}
 								</span>
 							</UiButton>
 						</template>
@@ -452,7 +483,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						@click="onUnsnooze"
 					>
 						<Icon name="lucide:alarm-clock-off" class="w-4 h-4" />
-						Unsnooze
+						{{ t('dashboard.inbox.detail.unsnooze') }}
 					</UiButton>
 					<UiButton
 						variant="secondary"
@@ -462,12 +493,12 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						@click="showSnoozeDialog = true"
 					>
 						<Icon name="lucide:alarm-clock" class="w-4 h-4" />
-						Snooze
+						{{ t('dashboard.inbox.detail.snooze') }}
 					</UiButton>
 					<select
 						:value="thread.status === 'closed' ? 'resolved' : thread.status"
 						class="input w-auto text-sm"
-						aria-label="Change thread status"
+						:aria-label="t('dashboard.inbox.detail.changeStatusAria')"
 						@change="
 							handleStatusChange(
 								($event.target as HTMLSelectElement).value as 'open' | 'waiting' | 'resolved'
@@ -475,7 +506,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						"
 					>
 						<option v-for="s in statusOptions" :key="s" :value="s">
-							{{ capitalize(s) }}
+							{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
 						</option>
 					</select>
 				</div>
@@ -527,31 +558,39 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						<div
 							class="text-text-secondary text-sm whitespace-pre-wrap border-t border-border-subtle pt-4"
 						>
-							{{ message.textBody || '(No text content)' }}
+							{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
 						</div>
 
 						<!-- Classification -->
 						<div v-if="message.classification" class="mt-4 p-3 bg-bg-surface rounded-lg">
 							<p class="text-xs text-text-tertiary mb-2 font-medium uppercase tracking-wider">
-								AI Classification
+								{{ t('dashboard.inbox.detail.aiClassification') }}
 							</p>
 							<div class="flex flex-wrap gap-2">
 								<span
 									class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-brand-subtle text-brand"
 								>
 									<Icon :name="getCategoryIcon(message.classification.category)" class="w-3 h-3" />
-									{{ message.classification.category }}
+									{{ classificationLabel('categories', message.classification.category) }}
 								</span>
 								<span class="text-xs px-2 py-1 rounded-full bg-bg-elevated text-text-secondary">
-									{{ message.classification.priority }} priority
+									{{
+										t('dashboard.inbox.detail.priorityChip', {
+											priority: classificationLabel('priorities', message.classification.priority),
+										})
+									}}
 								</span>
 								<span class="text-xs px-2 py-1 rounded-full bg-bg-elevated text-text-secondary">
-									{{ message.classification.sentiment }}
+									{{ classificationLabel('sentiments', message.classification.sentiment) }}
 								</span>
 								<span
 									class="text-xs px-2 py-1 rounded-full bg-bg-elevated text-text-secondary font-mono"
 								>
-									{{ Math.round((message.classification.confidence ?? 0) * 100) }}% confidence
+									{{
+										t('dashboard.inbox.detail.confidenceChip', {
+											percent: Math.round((message.classification.confidence ?? 0) * 100),
+										})
+									}}
 								</span>
 							</div>
 						</div>
@@ -562,12 +601,14 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							class="mt-4 p-3 bg-error-subtle rounded-lg"
 						>
 							<p class="text-xs text-error font-medium uppercase tracking-wider mb-2">
-								Processing failed
+								{{ t('dashboard.inbox.detail.processingFailed') }}
 							</p>
 							<p v-if="message.errorMessage" class="text-sm text-text-primary break-words mb-3">
 								{{ message.errorMessage }}
 							</p>
-							<p v-else class="text-sm text-text-secondary mb-3">No error detail was recorded.</p>
+							<p v-else class="text-sm text-text-secondary mb-3">
+								{{ t('dashboard.inbox.detail.noErrorDetail') }}
+							</p>
 							<UiButton
 								variant="secondary"
 								size="sm"
@@ -576,7 +617,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								@click="onRetry(message._id)"
 							>
 								<Icon name="lucide:refresh-cw" class="w-3 h-3" />
-								Retry processing
+								{{ t('dashboard.inbox.detail.retryProcessing') }}
 							</UiButton>
 						</div>
 
@@ -590,7 +631,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						>
 							<div class="mb-3 flex items-center gap-2">
 								<Icon name="lucide:message-circle-question" class="h-4 w-4 text-warning" />
-								<p class="text-sm font-medium text-text-primary">The agent needs your input</p>
+								<p class="text-sm font-medium text-text-primary">
+									{{ t('dashboard.inbox.detail.agentNeedsInput') }}
+								</p>
 							</div>
 							<div class="space-y-3">
 								<UiInput
@@ -598,7 +641,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 									:key="question.id"
 									:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
 									:label="question.text"
-									:placeholder="question.options?.join(' / ') || 'Type your answer'"
+									:placeholder="
+										question.options?.join(' / ') || t('dashboard.inbox.detail.answerPlaceholder')
+									"
 									@update:model-value="
 										setClarificationAnswer(message._id, question.id, String($event))
 									"
@@ -609,7 +654,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 									:disabled="!hasEveryClarificationAnswer(message)"
 									@click="submitClarification(message)"
 								>
-									Answer and resume draft
+									{{ t('dashboard.inbox.detail.answerAndResume') }}
 								</UiButton>
 							</div>
 						</div>
@@ -624,8 +669,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						>
 							<div class="flex items-center gap-2 text-sm text-text-primary">
 								<Icon name="lucide:send" class="h-4 w-4 text-brand" />
-								Sending automatically in
-								{{ remainingAutoSendSeconds(message.pendingAutoSend.sendAt) }}s
+								{{
+									t('dashboard.inbox.detail.sendingAutomatically', {
+										seconds: remainingAutoSendSeconds(message.pendingAutoSend.sendAt),
+									})
+								}}
 							</div>
 							<UiButton
 								variant="secondary"
@@ -633,7 +681,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								:loading="isUndoingAutoSend"
 								@click="cancelAutoSend(message._id)"
 							>
-								Undo
+								{{ t('dashboard.inbox.detail.undo') }}
 							</UiButton>
 						</div>
 
@@ -647,7 +695,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						>
 							<div class="flex items-center gap-2 mb-3">
 								<Icon name="lucide:bot" class="w-4 h-4 text-brand" />
-								<p class="text-sm font-medium text-brand">Agent Draft</p>
+								<p class="text-sm font-medium text-brand">
+									{{ t('dashboard.inbox.detail.agentDraft') }}
+								</p>
 							</div>
 
 							<!-- Editing mode: edit with a live before/after diff so the
@@ -659,7 +709,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										v-model="editedDraftSubject"
 										type="text"
 										class="input w-full text-sm"
-										placeholder="Subject (optional)"
+										:placeholder="t('dashboard.inbox.detail.subjectPlaceholder')"
 									/>
 									<InboxDraftDiffEditor
 										v-model="editedDraftResponse"
@@ -692,7 +742,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 									>
 										<UiSpinner v-if="isApproving" size="xs" tone="inverse" />
 										<Icon v-else name="lucide:check" class="w-3 h-3" />
-										Approve & Send
+										{{ t('dashboard.inbox.detail.approveAndSend') }}
 									</UiButton>
 									<UiButton
 										variant="secondary"
@@ -701,7 +751,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										@click="startEditDraft(message)"
 									>
 										<Icon name="lucide:pencil" class="w-3 h-3" />
-										Edit
+										{{ t('common.edit') }}
 									</UiButton>
 									<UiButton
 										variant="ghost"
@@ -710,7 +760,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										@click="openRejectModal(message._id)"
 									>
 										<Icon name="lucide:x" class="w-3 h-3" />
-										Reject
+										{{ t('dashboard.inbox.detail.reject') }}
 									</UiButton>
 								</div>
 								<!-- Soft-hold reason: a teammate is replying; releases on its own. -->
@@ -733,7 +783,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 
 					<!-- Empty messages -->
 					<div v-if="messages.length === 0" class="card text-center py-8">
-						<p class="text-text-tertiary">No messages in this thread yet.</p>
+						<p class="text-text-tertiary">{{ t('dashboard.inbox.detail.noMessages') }}</p>
 					</div>
 				</div>
 
@@ -741,7 +791,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 				<div class="space-y-6">
 					<!-- Contact Card -->
 					<div v-if="contact" class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">Contact</h2>
+						<h2 class="text-lg font-medium text-text-primary mb-4">
+							{{ t('dashboard.inbox.detail.contact') }}
+						</h2>
 						<div class="space-y-3">
 							<div class="flex items-center gap-3">
 								<UiIconBox icon="lucide:user" size="sm" variant="surface" rounded="full" />
@@ -760,17 +812,19 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								:to="`/dashboard/audience/contacts/${contact._id}`"
 								class="text-sm text-brand hover:underline"
 							>
-								View contact profile
+								{{ t('dashboard.inbox.detail.viewContactProfile') }}
 							</NuxtLink>
 						</div>
 					</div>
 
 					<!-- Thread Details -->
 					<div class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">Details</h2>
+						<h2 class="text-lg font-medium text-text-primary mb-4">
+							{{ t('dashboard.inbox.detail.details') }}
+						</h2>
 						<div class="space-y-3">
 							<div>
-								<p class="text-xs text-text-tertiary mb-1">Status</p>
+								<p class="text-xs text-text-tertiary mb-1">{{ t('common.status') }}</p>
 								<InboxStatusChip
 									:status="thread.status"
 									:latest-draft-status="thread.latestDraftStatus"
@@ -779,11 +833,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								/>
 							</div>
 							<div>
-								<p class="text-xs text-text-tertiary">Messages</p>
+								<p class="text-xs text-text-tertiary">{{ t('dashboard.inbox.detail.messages') }}</p>
 								<p class="text-text-primary">{{ thread.messageCount ?? 0 }}</p>
 							</div>
 							<div>
-								<p class="text-xs text-text-tertiary mb-1">Assigned To</p>
+								<p class="text-xs text-text-tertiary mb-1">
+									{{ t('dashboard.inbox.detail.assignedTo') }}
+								</p>
 								<InboxAssignPopover
 									:members="assignMembers"
 									:current-user-id="user?.id ?? null"
@@ -795,7 +851,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										<button
 											type="button"
 											class="w-full flex items-center gap-2 text-sm border border-border-subtle rounded-lg px-2 py-1.5 bg-bg-surface text-text-primary hover:bg-(--surface-1-hover) transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											aria-label="Assign thread to a teammate"
+											:aria-label="t('dashboard.inbox.detail.assignToTeammateAria')"
 										>
 											<UiAvatar
 												v-if="thread.assignedTo"
@@ -805,7 +861,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 											/>
 											<Icon v-else name="lucide:user-plus" class="w-4 h-4 text-text-tertiary" />
 											<span class="flex-1 truncate text-left">
-												{{ assignedMemberName ?? 'Unassigned' }}
+												{{ assignedMemberName ?? t('dashboard.inbox.detail.unassigned') }}
 											</span>
 											<Icon
 												name="lucide:chevron-down"
@@ -816,7 +872,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								</InboxAssignPopover>
 							</div>
 							<div v-if="thread.lastMessageAt">
-								<p class="text-xs text-text-tertiary">Last Message</p>
+								<p class="text-xs text-text-tertiary">
+									{{ t('dashboard.inbox.detail.lastMessage') }}
+								</p>
 								<p class="text-text-primary text-sm">{{ formatTimestamp(thread.lastMessageAt) }}</p>
 							</div>
 						</div>
@@ -831,28 +889,32 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 		<!-- Reject Modal -->
 		<UiModal
 			:open="showRejectModal"
-			title="Reject Draft"
+			:title="t('dashboard.inbox.detail.rejectDraft')"
 			:closable="!isRejecting"
 			:persistent="isRejecting"
 			@update:open="(v: boolean) => !v && (showRejectModal = false)"
 		>
 			<p class="text-sm text-text-secondary mb-4">
-				Optionally provide a reason. This feedback helps improve future drafts.
+				{{ t('dashboard.inbox.detail.rejectModalBody') }}
 			</p>
 			<textarea
 				v-model="rejectReason"
 				rows="3"
 				class="input w-full resize-y"
-				placeholder="Reason for rejection (optional)"
+				:placeholder="t('dashboard.inbox.detail.rejectReasonPlaceholder')"
 				:disabled="isRejecting"
 			/>
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isRejecting" @click="showRejectModal = false">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton variant="danger" :loading="isRejecting" @click="onReject">
-					{{ isRejecting ? 'Rejecting...' : 'Reject Draft' }}
+					{{
+						isRejecting
+							? t('dashboard.inbox.detail.rejecting')
+							: t('dashboard.inbox.detail.rejectDraft')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>

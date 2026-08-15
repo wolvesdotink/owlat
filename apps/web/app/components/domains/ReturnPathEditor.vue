@@ -32,9 +32,11 @@ const props = defineProps<{
 	canManage: boolean;
 }>();
 
+const { t } = useI18n();
+
 const { run: setReturnPathHost, isLoading: isSaving } = useBackendOperation(
 	api.domains.returnPath.setReturnPathHost,
-	{ label: 'Set return-path host' }
+	{ label: () => t('components.domains.returnPathEditor.saveOperation') }
 );
 
 const editing = ref(false);
@@ -48,9 +50,9 @@ const composedHost = computed(() =>
 
 const rule: ValidationRule = (value) => {
 	const raw = String(value ?? '').trim();
-	if (!raw) return 'Enter a bounce subdomain like bounce';
+	if (!raw) return t('components.domains.returnPathEditor.errors.required');
 	return (
-		isDnsLabel(raw.toLowerCase()) || 'Use a single label like bounce (letters, digits, hyphens)'
+		isDnsLabel(raw.toLowerCase()) || t('components.domains.returnPathEditor.errors.invalidLabel')
 	);
 };
 const validation = useFormValidation({ returnPath: [rule] });
@@ -103,7 +105,7 @@ async function save() {
 	<div class="pt-2" data-testid="returnpath-editor">
 		<div class="flex items-center justify-between gap-3">
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
-				Return-path host
+				{{ t('components.domains.returnPathEditor.heading') }}
 			</p>
 			<UiButton
 				variant="ghost"
@@ -114,28 +116,41 @@ async function save() {
 				@click="startEditing"
 			>
 				<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-				Edit
+				{{ t('common.edit') }}
 			</UiButton>
 		</div>
 
 		<!-- Collapsed: show the current host + a sync-error marker if reflecting it
 		     to the MTA failed. -->
 		<template v-if="!editing">
-			<p class="mt-1 text-sm text-text-secondary">
-				Bounces are handled at
-				<strong class="text-text-primary">{{ currentHost ?? 'the default return-path' }}</strong
-				>.
-			</p>
+			<I18nT
+				keypath="components.domains.returnPathEditor.currentHost"
+				tag="p"
+				scope="global"
+				class="mt-1 text-sm text-text-secondary"
+			>
+				<template #host>
+					<strong class="text-text-primary">
+						{{ currentHost ?? t('components.domains.returnPathEditor.defaultHost') }}
+					</strong>
+				</template>
+			</I18nT>
 			<!-- Informational only. The return-path host is optional and stays
 			     optional: this sentence exists because a per-domain host is also what
 			     enables RFC 9477 complaint feedback, which is otherwise invisible from
 			     the product. It is never a warning, a checklist item or a "setup
 			     incomplete" state. -->
-			<p class="mt-1 text-xs text-text-tertiary" data-testid="returnpath-cfbl-note">
-				A per-domain host also enables RFC 9477 complaint feedback (<code>CFBL-Address</code>),
-				letting participating mailbox providers report spam complaints straight back to Owlat.
-				Optional either way.
-			</p>
+			<I18nT
+				keypath="components.domains.returnPathEditor.cfblNote"
+				tag="p"
+				scope="global"
+				class="mt-1 text-xs text-text-tertiary"
+				data-testid="returnpath-cfbl-note"
+			>
+				<template #header>
+					<code>CFBL-Address</code>
+				</template>
+			</I18nT>
 			<!-- Terminal marker: D2 sets `returnPathHostSyncError` only AFTER its
 			     bounded retry budget is exhausted, so this is a give-up the user must
 			     act on — not an in-progress retry. No spinner. -->
@@ -145,19 +160,21 @@ async function save() {
 				data-testid="returnpath-sync-error"
 			>
 				<Icon name="lucide:alert-triangle" class="w-3 h-3 mt-0.5 shrink-0" />
-				<span>Couldn't update the bounce host on the mail server — edit and retry.</span>
+				<span>{{ t('components.domains.returnPathEditor.syncError') }}</span>
 			</p>
 		</template>
 
 		<!-- Editing: label input + live preview + the re-verify warning. -->
 		<div v-else class="mt-2">
-			<label :for="`returnpath-input-${domainId}`" class="sr-only">Bounce subdomain</label>
+			<label :for="`returnpath-input-${domainId}`" class="sr-only">
+				{{ t('components.domains.returnPathEditor.inputLabel') }}
+			</label>
 			<div class="flex items-center gap-2">
 				<input
 					:id="`returnpath-input-${domainId}`"
 					v-model="sub"
 					type="text"
-					placeholder="bounce"
+					:placeholder="t('components.domains.returnPathEditor.inputPlaceholder')"
 					autocapitalize="off"
 					autocorrect="off"
 					spellcheck="false"
@@ -176,7 +193,7 @@ async function save() {
 					@click="save"
 				>
 					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-					{{ isSaving ? 'Saving…' : 'Save' }}
+					{{ isSaving ? t('common.saving') : t('common.save') }}
 				</UiButton>
 				<UiButton
 					variant="secondary"
@@ -185,7 +202,7 @@ async function save() {
 					:disabled="isSaving"
 					@click="cancel"
 				>
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 			</div>
 
@@ -203,14 +220,26 @@ async function save() {
 				class="mt-1 text-xs text-text-secondary"
 				data-testid="returnpath-edit-preview"
 			>
-				<template v-if="normalizedSub">
-					Bounces will come from
-					<strong class="text-text-primary">{{ normalizedSub }}.{{ zone }}</strong>
-				</template>
-				<template v-else>
-					For example, bounces would come from
-					<span class="font-medium text-text-primary">bounce.{{ zone }}</span>
-				</template>
+				<I18nT
+					v-if="normalizedSub"
+					keypath="components.domains.returnPathEditor.preview"
+					tag="span"
+					scope="global"
+				>
+					<template #host>
+						<strong class="text-text-primary">{{ normalizedSub }}.{{ zone }}</strong>
+					</template>
+				</I18nT>
+				<I18nT
+					v-else
+					keypath="components.domains.returnPathEditor.previewExample"
+					tag="span"
+					scope="global"
+				>
+					<template #host>
+						<span class="font-medium text-text-primary">bounce.{{ zone }}</span>
+					</template>
+				</I18nT>
 			</p>
 
 			<p
@@ -218,10 +247,7 @@ async function save() {
 				data-testid="returnpath-reverify-warning"
 			>
 				<Icon name="lucide:alert-triangle" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
-				<span
-					>Changing this re-verifies the domain — its status drops to pending until the new records
-					are confirmed.</span
-				>
+				<span>{{ t('components.domains.returnPathEditor.reverifyWarning') }}</span>
 			</p>
 		</div>
 	</div>

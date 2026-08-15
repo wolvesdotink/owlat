@@ -42,7 +42,19 @@ import {
 } from '~/utils/deliverabilityMeasurement';
 import { decisionWindowLabel, reportedWindowLabel } from '~/utils/deliverabilityWindows';
 
-useHead({ title: 'Delivery measurement — Owlat' });
+const { t } = useI18n();
+
+/**
+ * The measurement copy tables are module scope and never call `useI18n`: they
+ * hand back catalog keys (with parameters where they have any), and this page is
+ * the render boundary that turns them into words — the same contract
+ * `MeasurementCellCard` renders its own tables through.
+ */
+type MeasurementMessage = string | { key: string; params?: Record<string, unknown> };
+const message = (value: MeasurementMessage): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
+useHead({ title: () => t('dashboard.admin.delivery.advanced.measurement.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -73,12 +85,14 @@ const isRelayConfigured = computed(() => dashboard.value?.isRelayConfigured ?? f
 const hasReferenceArm = computed(() =>
 	(dashboard.value?.cells ?? []).some((cell) => cell.reference !== null)
 );
-const headline = computed(() => measurementHeadline(hasReferenceArm.value));
+const headline = computed(() => message(measurementHeadline(hasReferenceArm.value)));
 const subhead = computed(() =>
-	measurementSubhead({
-		hasReferenceArm: hasReferenceArm.value,
-		referenceTransportId: referenceTransportId.value,
-	})
+	message(
+		measurementSubhead({
+			hasReferenceArm: hasReferenceArm.value,
+			referenceTransportId: referenceTransportId.value,
+		})
+	)
 );
 /**
  * MEASUREMENT, over the days the cards PLOT rather than the span the gates were
@@ -100,11 +114,13 @@ const hasPlottedRelayHistory = computed(() =>
  * connect the relay it already has.
  */
 const standaloneCopy = computed(() =>
-	standaloneNote({
-		isRelayConfigured: isRelayConfigured.value,
-		referenceTransportId: referenceTransportId.value,
-		hasPlottedRelayHistory: hasPlottedRelayHistory.value,
-	})
+	message(
+		standaloneNote({
+			isRelayConfigured: isRelayConfigured.value,
+			referenceTransportId: referenceTransportId.value,
+			hasPlottedRelayHistory: hasPlottedRelayHistory.value,
+		})
+	)
 );
 
 /**
@@ -140,11 +156,20 @@ const decisionLabel = computed(() => {
 			<div>
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ headline }}</h1>
 				<p class="mt-1 max-w-2xl text-sm text-text-secondary">{{ subhead }}</p>
-				<p v-if="windowLabel" class="mt-1 text-xs text-text-secondary">
-					Reported window: <span data-testid="measurement-window">{{ windowLabel }}</span> · checks
-					decided over
-					<span data-testid="measurement-decision-window">{{ decisionLabel }}</span>
-				</p>
+				<I18nT
+					v-if="windowLabel"
+					keypath="dashboard.admin.delivery.advanced.measurement.windowNote"
+					tag="p"
+					scope="global"
+					class="mt-1 text-xs text-text-secondary"
+				>
+					<template #reported>
+						<span data-testid="measurement-window">{{ windowLabel }}</span>
+					</template>
+					<template #decision>
+						<span data-testid="measurement-decision-window">{{ decisionLabel }}</span>
+					</template>
+				</I18nT>
 			</div>
 		</header>
 
@@ -156,8 +181,8 @@ const decisionLabel = computed(() => {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
-			error-title="Couldn’t load delivery measurements"
-			error-message="The sending measurements could not be loaded. Your mail is unaffected — this page only reads."
+			:error-title="t('dashboard.admin.delivery.advanced.measurement.errorTitle')"
+			:error-message="t('dashboard.admin.delivery.advanced.measurement.errorMessage')"
 		>
 			<template #loading>
 				<!--
@@ -168,7 +193,7 @@ const decisionLabel = computed(() => {
 					class="space-y-5"
 					role="status"
 					aria-live="polite"
-					aria-label="Loading delivery measurements"
+					:aria-label="t('dashboard.admin.delivery.advanced.measurement.loadingLabel')"
 				>
 					<div class="h-56 animate-pulse rounded-xl bg-bg-surface" />
 					<div class="h-56 animate-pulse rounded-xl bg-bg-surface" />

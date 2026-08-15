@@ -3,21 +3,24 @@ import { api } from '@owlat/api';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import { GENERIC_IMAP_PROVIDER, providerById, type MailProvider } from '~/utils/mailAutodiscover';
 
+const { t } = useI18n();
 const { data: status } = useOrganizationQuery(api.delivery.observabilityStatus.get);
 const acknowledgeRotation = useBackendOperation(
 	api.mail.externalAccountsSeed.acknowledgeSeedRotation,
-	{ label: 'Acknowledge credential rotation' }
+	{ label: () => t('components.delivery.deliveryMeasurementCoverageCard.acknowledgeOperation') }
 );
 const detailsOpen = ref(false);
 const showConnect = ref(false);
 const selectedProvider = ref<DestinationProviderKey | null>(null);
-const providerOptions: Array<{ key: DestinationProviderKey; label: string }> = [
+// Computed rather than a frozen array: four of the five labels are product names
+// and the fifth is a translated word, which a locale switch has to reach.
+const providerOptions = computed<Array<{ key: DestinationProviderKey; label: string }>>(() => [
 	{ key: 'gmail', label: 'Gmail' },
 	{ key: 'microsoft', label: 'Microsoft' },
 	{ key: 'yahoo', label: 'Yahoo' },
 	{ key: 'apple', label: 'Apple' },
-	{ key: 'other', label: 'Other' },
-];
+	{ key: 'other', label: t('components.delivery.deliveryMeasurementCoverageCard.providers.other') },
+]);
 const selectedMailProvider = computed<MailProvider>(() => {
 	switch (selectedProvider.value) {
 		case 'gmail':
@@ -34,9 +37,11 @@ const selectedMailProvider = computed<MailProvider>(() => {
 });
 const microsoftFeedback = computed(() => {
 	if (!status.value?.microsoftFeedback.configured)
-		return 'No feed configured; sending remains available.';
-	const count = status.value.microsoftFeedback.feedCount;
-	return count + ' feed' + (count === 1 ? '' : 's') + ' configured';
+		return t('components.delivery.deliveryMeasurementCoverageCard.noFeedConfigured');
+	return t(
+		'components.delivery.deliveryMeasurementCoverageCard.feedsConfigured',
+		status.value.microsoftFeedback.feedCount
+	);
 });
 
 function finishConnect() {
@@ -49,35 +54,61 @@ function finishConnect() {
 	<UiCard>
 		<div class="flex items-start justify-between gap-4">
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Measurement coverage</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.delivery.deliveryMeasurementCoverageCard.title') }}
+				</h2>
 				<p class="mt-1 text-sm text-text-secondary">
-					{{ status?.seedMailboxes.connected ?? 0 }} test mailboxes connected · Microsoft feedback
-					{{ status?.microsoftFeedback.configured ? 'connected' : 'not connected' }}
+					{{
+						t('components.delivery.deliveryMeasurementCoverageCard.summary', {
+							count: status?.seedMailboxes.connected ?? 0,
+							feedback: status?.microsoftFeedback.configured
+								? t('components.delivery.deliveryMeasurementCoverageCard.feedbackConnected')
+								: t('components.delivery.deliveryMeasurementCoverageCard.feedbackNotConnected'),
+						})
+					}}
 				</p>
 			</div>
 			<UiBadge :variant="status?.seedMailboxes.connected ? 'success' : 'neutral'">
-				{{ status?.seedMailboxes.connected ? 'Measured' : 'Optional' }}
+				{{
+					status?.seedMailboxes.connected
+						? t('components.delivery.deliveryMeasurementCoverageCard.measured')
+						: t('common.optional')
+				}}
 			</UiBadge>
 		</div>
-		<UiDisclosure v-model="detailsOpen" class="mt-4" label="Measurement details">
+		<UiDisclosure
+			v-model="detailsOpen"
+			class="mt-4"
+			:label="t('components.delivery.deliveryMeasurementCoverageCard.detailsLabel')"
+		>
 			<div class="grid gap-3 sm:grid-cols-2 text-sm">
 				<div class="rounded-lg bg-bg-surface p-3">
-					<p class="font-medium text-text-primary">Test mailboxes</p>
+					<p class="font-medium text-text-primary">
+						{{ t('components.delivery.deliveryMeasurementCoverageCard.testMailboxes') }}
+					</p>
 					<p class="mt-1 text-text-secondary">
-						{{ status?.seedMailboxes.connected ?? 0 }} connected;
-						{{ status?.seedMailboxes.rotationRemindersDue ?? 0 }} need credential rotation.
+						{{
+							t('components.delivery.deliveryMeasurementCoverageCard.mailboxCounts', {
+								connected: status?.seedMailboxes.connected ?? 0,
+								due: status?.seedMailboxes.rotationRemindersDue ?? 0,
+							})
+						}}
 					</p>
 				</div>
 				<div class="rounded-lg bg-bg-surface p-3">
-					<p class="font-medium text-text-primary">Microsoft sender feedback</p>
+					<p class="font-medium text-text-primary">
+						{{ t('components.delivery.deliveryMeasurementCoverageCard.microsoftFeedback') }}
+					</p>
 					<p class="mt-1 text-text-secondary">{{ microsoftFeedback }}</p>
 				</div>
 			</div>
 			<div class="mt-4 border-t border-border-subtle pt-4">
 				<div class="flex items-center justify-between gap-3">
-					<p class="text-sm font-medium text-text-primary">Test mailbox accounts</p>
+					<p class="text-sm font-medium text-text-primary">
+						{{ t('components.delivery.deliveryMeasurementCoverageCard.accountsTitle') }}
+					</p>
 					<UiButton v-if="!showConnect" size="sm" variant="secondary" @click="showConnect = true">
-						Add test mailbox
+						{{ t('components.delivery.deliveryMeasurementCoverageCard.addMailbox') }}
 					</UiButton>
 				</div>
 				<div v-if="status?.seedMailboxes.accounts.length" class="mt-3 space-y-2">
@@ -97,7 +128,7 @@ function finishConnect() {
 							:loading="acknowledgeRotation.isLoading.value"
 							@click="acknowledgeRotation.run({ accountId: account.accountId })"
 						>
-							Credentials rotated
+							{{ t('components.delivery.deliveryMeasurementCoverageCard.credentialsRotated') }}
 						</UiButton>
 					</div>
 				</div>

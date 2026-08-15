@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { SavedRule } from '~/composables/useDashboardRules';
 
-useHead({ title: 'Dashboard — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -36,6 +38,8 @@ const memberDefaultCards = [
 	{ type: 'upcoming_campaigns', size: 'small' as const },
 ];
 
+const firstName = computed(() => user.value?.name?.split(' ')[0] ?? '');
+
 const displayCards = computed(() => {
 	if (cards.value.length > 0) return cards.value;
 	return isAdmin.value ? adminDefaultCards : memberDefaultCards;
@@ -63,23 +67,22 @@ async function handleSave(
 		<div class="flex items-center justify-between mb-8">
 			<div>
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					Welcome back<template v-if="user?.name"
-						>, <span class="lp-title-accent">{{ user.name.split(' ')[0] }}</span></template
-					>
+					<I18nT v-if="firstName" keypath="dashboard.index.welcomeNamed" tag="span" scope="global">
+						<template #name
+							><span class="lp-title-accent">{{ firstName }}</span></template
+						>
+					</I18nT>
+					<template v-else>{{ t('dashboard.index.welcome') }}</template>
 				</h1>
 				<p class="mt-1 text-text-secondary">
-					{{
-						isAdmin
-							? "Here's what needs attention across your organization."
-							: "Here's what's happening with your customers and sends."
-					}}
+					{{ isAdmin ? t('dashboard.index.subtitleAdmin') : t('dashboard.index.subtitleMember') }}
 				</p>
 			</div>
 			<UiButton variant="outline" size="sm" @click="openEditor">
 				<template #iconLeft>
 					<Icon name="lucide:settings-2" class="w-4 h-4" />
 				</template>
-				Customize
+				{{ t('dashboard.index.customize') }}
 			</UiButton>
 		</div>
 
@@ -109,10 +112,7 @@ async function handleSave(
 		</div>
 
 		<!-- Adaptive Dashboard Grid -->
-		<UiErrorBoundary
-			v-else
-			fallback-message="Couldn't load your dashboard cards. Please refresh to try again."
-		>
+		<UiErrorBoundary v-else :fallback-message="t('dashboard.index.cardsErrorFallback')">
 			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 				<DashboardCardRenderer
 					v-for="(card, index) in displayCards"

@@ -18,7 +18,7 @@ import {
 	skippingWizardImpact,
 } from '~/utils/transportWizard';
 import { deriveDeliveryReadiness, type ReadinessInput } from '~/utils/deliveryReadiness';
-import { buttonByText, mountWizard } from './wizardHarness';
+import { buttonByText, localized, mountWizard } from './wizardHarness';
 
 /** Words that would turn an offer into a chore. None may appear on the card. */
 const NAG_VOCABULARY = [
@@ -50,7 +50,7 @@ describe('connecting a transport is optional (D2)', () => {
 	it('offers the flow rather than demanding it', () => {
 		expect(TRANSPORT_WIZARD_ENTRY.tone).toBe('offer');
 		expect(TRANSPORT_WIZARD_ENTRY.isOptional).toBe(true);
-		expect(TRANSPORT_WIZARD_ENTRY.dismissLabel).toBe('Not now');
+		expect(localized(TRANSPORT_WIZARD_ENTRY.dismissLabel)).toBe('Not now');
 	});
 
 	it('renders the collapsed entry point with no warning, error or nag vocabulary', () => {
@@ -82,14 +82,16 @@ describe('connecting a transport is optional (D2)', () => {
 		const row = returnPathFinding('unknown');
 		expect(row.status).toBe('info');
 		expect(row.remedy).toBeNull();
-		expect(row.detail).toContain('Nothing is blocked');
+		expect(localized(row.detail)).toContain('Nothing is blocked');
 	});
 
 	it('describes a relay that rewrites the bounce address as lower confidence only', () => {
 		const row = returnPathFinding('unsupported');
 		expect(row.status).toBe('info');
 		expect(row.remedy).toBeNull();
-		expect(row.detail).toContain('Measurement confidence is lower; sending is unaffected');
+		expect(localized(row.detail)).toContain(
+			'Measurement confidence is lower; sending is unaffected'
+		);
 	});
 });
 

@@ -63,6 +63,7 @@ export function isReviseEligible(aiEnabled: boolean, draft: string): boolean {
 }
 
 export function useDraftRevise(deps: DraftReviseDeps) {
+	const { t } = useI18n();
 	const status = ref<ReviseStatus>('idle');
 	const result = ref<string>('');
 	const injectionFlagged = ref(false);
@@ -106,7 +107,7 @@ export function useDraftRevise(deps: DraftReviseDeps) {
 			const res = await deps.runRevise(streamId, { ...input, instruction });
 			if (res.status === 'error') {
 				status.value = 'error';
-				deps.onError?.('Revise failed — your draft is unchanged.');
+				deps.onError?.(t('shared.postbox.useDraftRevise.failed'));
 				await cleanup();
 				return;
 			}
@@ -115,7 +116,7 @@ export function useDraftRevise(deps: DraftReviseDeps) {
 			status.value = 'done';
 		} catch {
 			status.value = 'error';
-			deps.onError?.('Revise failed — your draft is unchanged.');
+			deps.onError?.(t('shared.postbox.useDraftRevise.failed'));
 			await cleanup();
 		}
 	}

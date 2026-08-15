@@ -26,6 +26,8 @@ type Props = CreatedWebhookProps & RegenerateProps & DeleteProps;
 
 defineProps<Props>();
 
+const { t } = useI18n();
+
 const emit = defineEmits<{
 	closeCreatedWebhook: [];
 	copySecret: [];
@@ -51,7 +53,9 @@ const emit = defineEmits<{
 				<div class="p-2 rounded-lg bg-success/10">
 					<Icon name="lucide:webhook" class="w-5 h-5 text-success" />
 				</div>
-				<h2 class="text-lg font-semibold text-text-primary">Webhook Created</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.webhooks.webhookDeliveryLogsModal.created.title') }}
+				</h2>
 			</div>
 
 			<!-- Content -->
@@ -59,27 +63,32 @@ const emit = defineEmits<{
 				<div class="flex items-start gap-3">
 					<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
-						<p class="text-sm font-medium text-warning">Copy your webhook secret now</p>
+						<p class="text-sm font-medium text-warning">
+							{{ t('components.webhooks.webhookDeliveryLogsModal.created.copyNow') }}
+						</p>
 						<p class="text-sm text-warning/80 mt-1">
-							Use this secret to verify webhook signatures. Store it securely - you won't be able to
-							see it again.
+							{{ t('components.webhooks.webhookDeliveryLogsModal.created.copyNowBody') }}
 						</p>
 					</div>
 				</div>
 			</div>
 
 			<div class="mb-4">
-				<label class="label">Name</label>
+				<label class="label">{{ t('common.name') }}</label>
 				<p class="text-text-primary font-medium">{{ createdWebhook.name }}</p>
 			</div>
 
 			<div class="mb-4">
-				<label class="label">Endpoint URL</label>
+				<label class="label">
+					{{ t('components.webhooks.webhookDeliveryLogsModal.created.endpointUrl') }}
+				</label>
 				<p class="text-text-secondary text-sm break-all">{{ createdWebhook.url }}</p>
 			</div>
 
 			<div>
-				<label class="label">Signing Secret</label>
+				<label class="label">
+					{{ t('components.webhooks.webhookDeliveryLogsModal.created.signingSecret') }}
+				</label>
 				<div class="flex items-center gap-2">
 					<code
 						class="flex-1 px-4 py-3 rounded-lg bg-bg-deep text-text-primary text-sm font-mono break-all border border-border-subtle"
@@ -89,21 +98,29 @@ const emit = defineEmits<{
 					<UiButton variant="secondary" class="shrink-0 gap-2" @click="emit('copySecret')">
 						<Icon v-if="copiedSecret" name="lucide:check" class="w-4 h-4 text-success" />
 						<Icon v-else name="lucide:copy" class="w-4 h-4" />
-						{{ copiedSecret ? 'Copied!' : 'Copy' }}
+						{{
+							copiedSecret
+								? t('components.webhooks.webhookDeliveryLogsModal.copied')
+								: t('common.copy')
+						}}
 					</UiButton>
 				</div>
 			</div>
 		</template>
 
 		<template #footer>
-			<UiButton @click="emit('closeCreatedWebhook')">Done</UiButton>
+			<UiButton @click="emit('closeCreatedWebhook')">{{ t('common.done') }}</UiButton>
 		</template>
 	</UiModal>
 
 	<!-- Regenerate Secret Modal -->
 	<UiModal
 		:open="isRegenerateModalOpen"
-		:title="regeneratedSecret ? 'New Secret Generated' : 'Regenerate Secret'"
+		:title="
+			regeneratedSecret
+				? t('components.webhooks.webhookDeliveryLogsModal.regenerate.doneTitle')
+				: t('components.webhooks.webhookDeliveryLogsModal.regenerate.title')
+		"
 		size="md"
 		:closable="!isRegenerating"
 		:persistent="isRegenerating || !!regeneratedSecret"
@@ -119,13 +136,18 @@ const emit = defineEmits<{
 				<Icon name="lucide:refresh-cw" class="w-6 h-6 text-warning" />
 			</div>
 			<div>
-				<p class="text-text-primary">
-					Regenerate secret for
-					<span class="font-semibold">"{{ webhookToRegenerate?.name }}"</span>?
-				</p>
+				<I18nT
+					keypath="components.webhooks.webhookDeliveryLogsModal.regenerate.confirm"
+					tag="p"
+					scope="global"
+					class="text-text-primary"
+				>
+					<template #name>
+						<span class="font-semibold">"{{ webhookToRegenerate?.name }}"</span>
+					</template>
+				</I18nT>
 				<p class="text-sm text-text-secondary mt-2">
-					The current secret will be invalidated immediately. You'll need to update your webhook
-					endpoint with the new secret.
+					{{ t('components.webhooks.webhookDeliveryLogsModal.regenerate.confirmBody') }}
 				</p>
 			</div>
 		</div>
@@ -136,16 +158,20 @@ const emit = defineEmits<{
 				<div class="flex items-start gap-3">
 					<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
-						<p class="text-sm font-medium text-warning">Copy your new secret now</p>
+						<p class="text-sm font-medium text-warning">
+							{{ t('components.webhooks.webhookDeliveryLogsModal.regenerate.copyNow') }}
+						</p>
 						<p class="text-sm text-warning/80 mt-1">
-							Store it securely - you won't be able to see it again.
+							{{ t('components.webhooks.webhookDeliveryLogsModal.regenerate.copyNowBody') }}
 						</p>
 					</div>
 				</div>
 			</div>
 
 			<div>
-				<label class="label">New Signing Secret</label>
+				<label class="label">
+					{{ t('components.webhooks.webhookDeliveryLogsModal.regenerate.newSigningSecret') }}
+				</label>
 				<div class="flex items-center gap-2">
 					<code
 						class="flex-1 px-4 py-3 rounded-lg bg-bg-deep text-text-primary text-sm font-mono break-all border border-border-subtle"
@@ -159,7 +185,11 @@ const emit = defineEmits<{
 					>
 						<Icon v-if="copiedRegeneratedSecret" name="lucide:check" class="w-4 h-4 text-success" />
 						<Icon v-else name="lucide:copy" class="w-4 h-4" />
-						{{ copiedRegeneratedSecret ? 'Copied!' : 'Copy' }}
+						{{
+							copiedRegeneratedSecret
+								? t('components.webhooks.webhookDeliveryLogsModal.copied')
+								: t('common.copy')
+						}}
 					</UiButton>
 				</div>
 			</div>
@@ -172,7 +202,7 @@ const emit = defineEmits<{
 				:disabled="isRegenerating"
 				@click="emit('closeRegenerate')"
 			>
-				Cancel
+				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton
 				v-if="!regeneratedSecret"
@@ -181,16 +211,20 @@ const emit = defineEmits<{
 				@click="emit('regenerate')"
 			>
 				<Icon v-if="isRegenerating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-				{{ isRegenerating ? 'Regenerating...' : 'Regenerate' }}
+				{{
+					isRegenerating
+						? t('components.webhooks.webhookDeliveryLogsModal.regenerate.submitting')
+						: t('components.webhooks.webhookDeliveryLogsModal.regenerate.submit')
+				}}
 			</UiButton>
-			<UiButton v-else @click="emit('closeRegenerate')">Done</UiButton>
+			<UiButton v-else @click="emit('closeRegenerate')">{{ t('common.done') }}</UiButton>
 		</template>
 	</UiModal>
 
 	<!-- Delete Webhook Modal -->
 	<UiModal
 		:open="isDeleteModalOpen"
-		title="Delete Webhook"
+		:title="t('components.webhooks.webhookDeliveryLogsModal.delete.title')"
 		size="md"
 		:closable="!isDeleting"
 		:persistent="isDeleting"
@@ -205,19 +239,25 @@ const emit = defineEmits<{
 				<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
 			</div>
 			<div>
-				<p class="text-text-primary">
-					Are you sure you want to delete
-					<span class="font-semibold">"{{ webhookToDelete?.name }}"</span>?
-				</p>
+				<I18nT
+					keypath="components.webhooks.webhookDeliveryLogsModal.delete.confirm"
+					tag="p"
+					scope="global"
+					class="text-text-primary"
+				>
+					<template #name>
+						<span class="font-semibold">"{{ webhookToDelete?.name }}"</span>
+					</template>
+				</I18nT>
 				<p class="text-sm text-text-secondary mt-2">
-					This action cannot be undone. The webhook will stop receiving notifications immediately.
+					{{ t('components.webhooks.webhookDeliveryLogsModal.delete.confirmBody') }}
 				</p>
 			</div>
 		</div>
 
 		<template #footer>
 			<UiButton variant="secondary" :disabled="isDeleting" @click="emit('closeDelete')">
-				Cancel
+				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton
 				variant="danger"
@@ -226,7 +266,11 @@ const emit = defineEmits<{
 				@click="emit('confirmDelete')"
 			>
 				<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-				{{ isDeleting ? 'Deleting...' : 'Delete Webhook' }}
+				{{
+					isDeleting
+						? t('components.webhooks.webhookDeliveryLogsModal.delete.submitting')
+						: t('components.webhooks.webhookDeliveryLogsModal.delete.submit')
+				}}
 			</UiButton>
 		</template>
 	</UiModal>

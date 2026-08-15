@@ -9,11 +9,19 @@
  * back verbatim — the screen must not be able to describe a retreat differently
  * from the audit row that recorded it.
  */
-import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { config, mount } from '@vue/test-utils';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import RampDecreaseNotices from '../RampDecreaseNotices.vue';
 import RampDecisionTimeline from '../RampDecisionTimeline.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { adminNotice, decision, NOW } from './rampFixtures';
+
+// The copy on these components flows through vue-i18n now; `useI18n` is a Nuxt
+// auto-import, so it has to exist as a bare global for their setup.
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	config.global.plugins = [...(config.global.plugins ?? []), createTestI18n()];
+});
 
 function mountNotices(notices = [adminNotice()]) {
 	return mount(RampDecreaseNotices, { props: { notices, labelledBy: 'notices' } });

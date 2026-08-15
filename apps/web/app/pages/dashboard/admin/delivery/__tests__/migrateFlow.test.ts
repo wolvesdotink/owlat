@@ -13,6 +13,7 @@ import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 
@@ -86,6 +87,9 @@ async function mountPage(over: Partial<PageState> = {}) {
 		identities: [identity()],
 		...over,
 	};
+	// The page's copy flows through vue-i18n now; `useI18n` is a Nuxt
+	// auto-import, so it has to exist as a bare global for the page's setup.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	const answers = new Map<string, unknown>([
@@ -100,7 +104,7 @@ async function mountPage(over: Partial<PageState> = {}) {
 		refetch: vi.fn(),
 	}));
 	const component = (await import('../migrate.vue')).default;
-	return mount(component, { global: { stubs } });
+	return mount(component, { global: { stubs, plugins: [createTestI18n()] } });
 }
 
 function stepState(wrapper: Awaited<ReturnType<typeof mountPage>>, id: string): string | undefined {

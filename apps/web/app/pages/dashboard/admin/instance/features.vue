@@ -20,12 +20,19 @@ import { hasInboundFeature, INBOUND_FEATURE_FLAGS } from '~/utils/inboundDns';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
 import PluginConfigStatusNotice from '~/components/settings/PluginConfigStatusNotice.vue';
+import FeatureFlagToggleDialogs from '~/components/settings/FeatureFlagToggleDialogs.vue';
+import { useFeatureCopy } from '~/composables/useFeatureCopy';
 
 const pluginFeatureFlagDefinitions =
 	getBundledPluginFeatureFlagDefinitions(bundledPluginComposition);
 const featureFlagRegistry = createFeatureFlagRegistry(pluginFeatureFlagDefinitions);
 
-useHead({ title: 'Features — Owlat' });
+const { t } = useI18n();
+// The shared registry keeps its English (the setup CLI prints it, and plugin
+// definitions are minted at runtime); these resolve it through the catalog.
+const { flagLabel, flagDescription, packLabel, packDescription } = useFeatureCopy();
+
+useHead({ title: () => t('dashboard.admin.instance.features.pageTitle') });
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
 const {
@@ -50,11 +57,11 @@ const { showToast } = useToast();
 // add the success / cascade-info toasts here.
 const { run: setFeatureFlag, isLoading: isSavingFlag } = useBackendOperation(
 	api.workspaces.featureFlags.setFeatureFlag,
-	{ label: 'Toggle feature flag' }
+	{ label: () => t('dashboard.admin.instance.features.toggleFlagOperation') }
 );
 const { run: setFeaturePack, isLoading: isSavingPack } = useBackendOperation(
 	api.workspaces.featureFlags.setFeaturePack,
-	{ label: 'Toggle feature pack' }
+	{ label: () => t('dashboard.admin.instance.features.togglePackOperation') }
 );
 
 const byCategory = computed(() => getFlagsByCategory({ registry: featureFlagRegistry }));
@@ -67,7 +74,7 @@ const needsConfig = computed(() => flagsNeedingConfig(resolved.value, flagsConfi
 const configStatusErrorMessage = computed(() =>
 	configStatusError.value instanceof Error
 		? configStatusError.value.message
-		: 'Plugin configuration could not be verified.'
+		: t('dashboard.admin.instance.features.configUnverified')
 );
 
 const pendingCascade = ref<{
@@ -81,17 +88,20 @@ const pendingPluginApproval = ref<{
 	capabilities: readonly string[];
 } | null>(null);
 
+const CATEGORY_KEYS = [
+	'sending',
+	'receiving',
+	'ai',
+	'integrations',
+	'security',
+	'deliverability',
+	'plugins',
+] as const;
+
 function categoryLabel(cat: string): string {
-	const map: Record<string, string> = {
-		sending: 'Sending',
-		receiving: 'Receiving',
-		ai: 'AI',
-		integrations: 'Integrations',
-		security: 'Security & scanning',
-		deliverability: 'Analytics & deliverability',
-		plugins: 'Bundled plugins',
-	};
-	return map[cat] ?? cat;
+	return (CATEGORY_KEYS as readonly string[]).includes(cat)
+		? t(`dashboard.admin.instance.features.categories.${cat}`)
+		: cat;
 }
 
 async function onToggle(flag: FeatureFlagKey, value: boolean) {
@@ -106,11 +116,11 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 	if (!def) return;
 	if (value && isPluginFeatureFlagDefinition(def)) {
 		if (configStatusError.value) {
-			showToast('Could not verify plugin configuration. Retry the status check first.');
+			showToast(t('dashboard.admin.instance.features.toasts.configUnverified'));
 			return;
 		}
 		if (flagsConfigStatus.value == null) {
-			showToast('Plugin configuration status is still loading. Try again in a moment.');
+			showToast(t('dashboard.admin.instance.features.toasts.configLoading'));
 			return;
 		}
 		const missingPluginEnv = missingPluginEnvironmentVariables(def, flagsConfigStatus.value);
@@ -137,9 +147,7 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 	if (value && isSendingFlag && deliveryConfigured.value === false) {
 		missingEnv.value = {
 			flag,
-			vars: [
-				'A delivery provider — set EMAIL_PROVIDER to a registered transport, configure its requirements, then restart',
-			],
+			vars: [t('dashboard.admin.instance.features.deliveryProviderRequirement')],
 		};
 	}
 
@@ -167,8 +175,8 @@ function isPluginEnableBlocked(flag: FeatureFlagKey): boolean {
 function pluginStatusTitle(flag: FeatureFlagKey): string | undefined {
 	if (!isPluginEnableBlocked(flag)) return undefined;
 	return configStatusError.value
-		? 'Retry the failed plugin configuration check before enabling'
-		: 'Plugin configuration status is still loading';
+		? t('dashboard.admin.instance.features.pluginStatus.retryFirst')
+		: t('dashboard.admin.instance.features.pluginStatus.loading');
 }
 
 async function commitToggle(
@@ -184,15 +192,25 @@ async function commitToggle(
 	pendingCascade.value = null;
 	pendingPluginApproval.value = null;
 	if (res === undefined) return; // failure already toasted by the operation module
-	showToast(`${featureFlagRegistry[flag]?.label ?? flag} ${value ? 'enabled' : 'disabled'}.`);
+	const definition = featureFlagRegistry[flag];
+	const label = definition ? flagLabel(definition) : flag;
+	showToast(
+		value
+			? t('dashboard.admin.instance.features.toasts.flagEnabled', { label })
+			: t('dashboard.admin.instance.features.toasts.flagDisabled', { label })
+	);
 	if (res.cascaded.length > 0) {
-		showToast(`Also disabled: ${res.cascaded.join(', ')}`);
+		showToast(
+			t('dashboard.admin.instance.features.toasts.alsoDisabled', {
+				flags: res.cascaded.join(', '),
+			})
+		);
 	}
 	// Enabling an inbound surface needs MX/inbound-port DNS to actually receive
 	// mail — point the operator at the Domains → Receiving guidance, the inbound
 	// mirror of how a sending flag points at a delivery provider above.
 	if (value && (INBOUND_FEATURE_FLAGS as readonly string[]).includes(flag)) {
-		showToast('Receiving mail? Add the MX records under Settings → Domains → Receiving.');
+		showToast(t('dashboard.admin.instance.features.toasts.inboundDns'));
 	}
 }
 
@@ -228,9 +246,18 @@ async function togglePack(packKey: FeaturePackKey) {
 	const nextValue = current !== 'on'; // off/partial → on; on → off
 	const res = await setFeaturePack({ pack: packKey, value: nextValue });
 	if (res === undefined) return; // failure already toasted
-	showToast(`${FEATURE_PACKS[packKey].label} ${nextValue ? 'enabled' : 'disabled'}.`);
+	const label = packLabel(packKey);
+	showToast(
+		nextValue
+			? t('dashboard.admin.instance.features.toasts.packEnabled', { label })
+			: t('dashboard.admin.instance.features.toasts.packDisabled', { label })
+	);
 	if (res.cascaded.length > 0) {
-		showToast(`Also affected: ${res.cascaded.join(', ')}`);
+		showToast(
+			t('dashboard.admin.instance.features.toasts.alsoAffected', {
+				flags: res.cascaded.join(', '),
+			})
+		);
 	}
 }
 </script>
@@ -239,10 +266,11 @@ async function togglePack(packKey: FeaturePackKey) {
 	<div class="p-6 lg:p-8 max-w-4xl mx-auto">
 		<!-- Header -->
 		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Features</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.instance.features.title') }}
+			</h1>
 			<p class="mt-1 text-text-secondary max-w-2xl">
-				Toggle the product surfaces this Owlat instance exposes. Disabled features hide from the
-				navigation, gate their APIs, and don't start their background services.
+				{{ t('dashboard.admin.instance.features.subtitle') }}
 			</p>
 		</div>
 
@@ -254,10 +282,11 @@ async function togglePack(packKey: FeaturePackKey) {
 						<div class="flex items-center gap-3">
 							<UiIconBox icon="lucide:package" size="sm" variant="surface" rounded="lg" />
 							<div>
-								<h2 class="text-lg font-semibold text-text-primary">Feature packs</h2>
+								<h2 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.admin.instance.features.packs.title') }}
+								</h2>
 								<p class="text-sm text-text-secondary">
-									Bundles of related flags. Toggling a pack flips every flag inside it (and their
-									dependencies).
+									{{ t('dashboard.admin.instance.features.packs.description') }}
 								</p>
 							</div>
 						</div>
@@ -271,26 +300,34 @@ async function togglePack(packKey: FeaturePackKey) {
 						>
 							<div class="min-w-0">
 								<div class="flex items-center gap-2">
-									<p class="font-medium text-text-primary">{{ FEATURE_PACKS[packKey].label }}</p>
+									<p class="font-medium text-text-primary">{{ packLabel(packKey) }}</p>
 									<span
 										v-if="packState[packKey] === 'partial'"
 										class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning"
 									>
-										Partial
+										{{ t('dashboard.admin.instance.features.packs.partial') }}
 									</span>
 								</div>
 								<p class="text-sm text-text-secondary mt-0.5">
-									{{ FEATURE_PACKS[packKey].description }}
+									{{ packDescription(packKey) }}
 								</p>
 								<p class="text-xs text-text-tertiary mt-1 font-mono">
-									Flags: {{ FEATURE_PACKS[packKey].flags.join(', ') }}
+									{{
+										t('dashboard.admin.instance.features.packs.flags', {
+											flags: FEATURE_PACKS[packKey].flags.join(', '),
+										})
+									}}
 								</p>
 							</div>
 							<button
 								type="button"
 								role="switch"
 								:aria-checked="packState[packKey] === 'on'"
-								:aria-label="`Toggle ${FEATURE_PACKS[packKey].label}`"
+								:aria-label="
+									t('dashboard.admin.instance.features.toggleAria', {
+										label: packLabel(packKey),
+									})
+								"
 								class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
 								:class="
 									packState[packKey] === 'on'
@@ -340,15 +377,20 @@ async function togglePack(packKey: FeaturePackKey) {
 						class="px-6 py-3 bg-brand/5 border-b border-border-subtle flex items-start gap-3"
 					>
 						<Icon name="lucide:inbox" class="w-4 h-4 mt-0.5 text-brand shrink-0" />
-						<p class="text-sm text-text-secondary">
-							Receiving mail needs MX + inbound-port DNS. Add the records under
-							<NuxtLink
-								to="/dashboard/admin/delivery/domains"
-								class="text-brand hover:underline font-medium"
-								>Settings → Domains → Receiving</NuxtLink
-							>
-							so inbound mail reaches this instance.
-						</p>
+						<I18nT
+							keypath="dashboard.admin.instance.features.inboundDnsHint"
+							tag="p"
+							scope="global"
+							class="text-sm text-text-secondary"
+						>
+							<template #link>
+								<NuxtLink
+									to="/dashboard/admin/delivery/domains"
+									class="text-brand hover:underline font-medium"
+									>{{ t('dashboard.admin.instance.features.inboundDnsLink') }}</NuxtLink
+								>
+							</template>
+						</I18nT>
 					</div>
 
 					<div class="divide-y divide-border-subtle">
@@ -359,27 +401,33 @@ async function togglePack(packKey: FeaturePackKey) {
 						>
 							<div class="min-w-0">
 								<div class="flex items-center gap-2 flex-wrap">
-									<p class="font-medium text-text-primary">{{ def.label }}</p>
+									<p class="font-medium text-text-primary">{{ flagLabel(def) }}</p>
 									<code class="text-xs text-text-tertiary bg-bg-surface px-1.5 py-0.5 rounded">{{
 										def.key
 									}}</code>
 									<span
 										v-if="needsConfig.has(def.key)"
 										class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning"
-										:title="`Enabled but not configured — missing: ${(flagsConfigStatus?.[def.key] ?? []).join(', ')}`"
+										:title="
+											t('dashboard.admin.instance.features.needsConfigTitle', {
+												missing: (flagsConfigStatus?.[def.key] ?? []).join(', '),
+											})
+										"
 									>
 										<Icon name="lucide:alert-triangle" class="w-3 h-3" />
-										Needs config
+										{{ t('dashboard.admin.instance.features.needsConfig') }}
 									</span>
 								</div>
-								<p class="text-sm text-text-secondary mt-0.5">{{ def.description }}</p>
+								<p class="text-sm text-text-secondary mt-0.5">{{ flagDescription(def) }}</p>
 								<FeatureFlagMetadata :definition="def" />
 							</div>
 							<button
 								type="button"
 								role="switch"
 								:aria-checked="resolved[def.key]"
-								:aria-label="`Toggle ${def.label}`"
+								:aria-label="
+									t('dashboard.admin.instance.features.toggleAria', { label: flagLabel(def) })
+								"
 								:data-testid="`feature-switch-${def.key}`"
 								class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
 								:class="
@@ -392,7 +440,9 @@ async function togglePack(packKey: FeaturePackKey) {
 								"
 								:title="
 									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
-										? `Enable ${def.requires?.join(', ')} first`
+										? t('dashboard.admin.instance.features.enableRequiredFirst', {
+												flags: def.requires?.join(', '),
+											})
 										: pluginStatusTitle(def.key)
 								"
 								@click="onToggle(def.key, !resolved[def.key])"
@@ -409,91 +459,17 @@ async function togglePack(packKey: FeaturePackKey) {
 			</div>
 		</UiQueryBoundary>
 
-		<!-- Cascade confirmation -->
-		<UiConfirmationDialog
-			:open="!!pendingCascade"
-			variant="warning"
-			:title="
-				pendingCascade
-					? `Disable ${featureFlagRegistry[pendingCascade.flag]?.label ?? pendingCascade.flag}?`
-					: 'Disable feature?'
-			"
-			description="Disabling this will also turn off the dependent features listed below."
-			confirm-text="Disable all"
-			cancel-text="Cancel"
-			:is-loading="isSavingFlag"
-			@update:open="(v: boolean) => !v && (pendingCascade = null)"
-			@confirm="confirmCascade"
-		>
-			<ul v-if="pendingCascade" class="mt-4 text-left space-y-1.5">
-				<li
-					v-for="key in pendingCascade.cascaded"
-					:key="key"
-					class="text-sm text-text-secondary flex items-center gap-2"
-				>
-					<Icon name="lucide:corner-down-right" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
-					<code class="text-xs bg-bg-surface px-1.5 py-0.5 rounded">{{ key }}</code>
-					<span class="truncate">{{ featureFlagRegistry[key]?.label ?? key }}</span>
-				</li>
-			</ul>
-		</UiConfirmationDialog>
-
-		<!-- Bundled plugin capability approval -->
-		<UiConfirmationDialog
-			:open="!!pendingPluginApproval"
-			variant="warning"
-			:title="
-				pendingPluginApproval
-					? `Approve ${featureFlagRegistry[pendingPluginApproval.flag]?.label ?? pendingPluginApproval.flag}?`
-					: 'Approve plugin access?'
-			"
-			description="This bundled plugin can use only the capabilities listed below. Enabling it records your explicit approval; disabling it withdraws every grant."
-			confirm-text="Approve & enable"
-			cancel-text="Cancel"
-			:is-loading="isSavingFlag"
-			@update:open="(value: boolean) => !value && (pendingPluginApproval = null)"
-			@confirm="confirmPluginApproval"
-		>
-			<ul v-if="pendingPluginApproval" class="mt-4 text-left space-y-1.5">
-				<li
-					v-for="capability in pendingPluginApproval.capabilities"
-					:key="capability"
-					class="text-sm text-text-secondary flex items-center gap-2"
-				>
-					<Icon name="lucide:shield-check" class="w-3.5 h-3.5 text-warning shrink-0" />
-					<code class="text-xs bg-bg-surface px-1.5 py-0.5 rounded">{{ capability }}</code>
-				</li>
-			</ul>
-		</UiConfirmationDialog>
-
-		<!-- Missing env hint -->
-		<UiModal
-			:open="!!missingEnv"
-			:title="
-				missingEnv
-					? `${featureFlagRegistry[missingEnv.flag]?.label ?? missingEnv.flag} needs config`
-					: 'Configuration needed'
-			"
-			@update:open="(v: boolean) => !v && (missingEnv = null)"
-		>
-			<p class="text-text-secondary">
-				This feature requires the following environment variables set in
-				<code class="text-sm bg-bg-surface px-1.5 py-0.5 rounded">/opt/owlat/.env</code>:
-			</p>
-			<ul class="mt-3 space-y-1.5">
-				<li v-for="v in missingEnv?.vars ?? []" :key="v">
-					<code class="text-sm bg-bg-surface px-1.5 py-0.5 rounded">{{ v }}</code>
-				</li>
-			</ul>
-			<p class="mt-3 text-sm text-text-tertiary">
-				Run
-				<code class="bg-bg-surface px-1.5 py-0.5 rounded">owlat env &lt;KEY&gt; &lt;VALUE&gt;</code>
-				on the host, then <code class="bg-bg-surface px-1.5 py-0.5 rounded">owlat restart</code>.
-			</p>
-
-			<template #footer>
-				<UiButton @click="missingEnv = null">Got it</UiButton>
-			</template>
-		</UiModal>
+		<FeatureFlagToggleDialogs
+			:pending-cascade="pendingCascade"
+			:pending-plugin-approval="pendingPluginApproval"
+			:missing-env="missingEnv"
+			:registry="featureFlagRegistry"
+			:is-saving="isSavingFlag"
+			@close-cascade="pendingCascade = null"
+			@close-approval="pendingPluginApproval = null"
+			@close-missing-env="missingEnv = null"
+			@confirm-cascade="confirmCascade"
+			@confirm-approval="confirmPluginApproval"
+		/>
 	</div>
 </template>

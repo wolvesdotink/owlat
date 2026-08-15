@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { Toast, ToastType } from '../../composables/useToast';
+import { useUiI18n } from '../../composables/useUiI18n';
 
 /**
  * A single toast card. Extracted from {@link Toast.vue} so the same markup can
@@ -66,6 +67,8 @@ const STYLES: Record<ToastType, ToastStyle> = {
 	},
 };
 
+const { t } = useUiI18n();
+
 const style = computed(() => STYLES[props.toast.type]);
 </script>
 
@@ -110,7 +113,7 @@ const style = computed(() => STYLES[props.toast.type]);
 		<!-- Close button (optional - auto-dismisses but allows manual close) -->
 		<button
 			:class="['p-1 rounded-lg transition-colors flex-shrink-0', style.closeHover]"
-			aria-label="Dismiss notification"
+			:aria-label="t('ui.toast.dismiss')"
 			@click="emit('dismiss')"
 		>
 			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

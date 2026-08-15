@@ -25,6 +25,8 @@ const props = defineProps<{
 	labelledBy: string;
 }>();
 
+const { t, locale } = useI18n();
+
 // A DOCUMENT-UNIQUE PATTERN ID. `url(#…)` resolves against the whole document,
 // so a hardcoded id means a second chart on the page silently paints with the
 // first one's pattern.
@@ -101,20 +103,27 @@ const referenceArea = computed(() =>
 
 const firstLabel = computed(() => {
 	const point = usable.value[0];
-	return point === undefined ? '' : formatShortDate(point.day);
+	return point === undefined ? '' : formatShortDate(point.day, locale.value);
 });
 const lastLabel = computed(() => {
 	const point = usable.value[usable.value.length - 1];
-	return point === undefined ? '' : formatShortDate(point.day);
+	return point === undefined ? '' : formatShortDate(point.day, locale.value);
 });
 
 const summary = computed(() => {
-	if (usable.value.length === 0) return 'No sending recorded in this window yet.';
+	if (usable.value.length === 0) return t('components.delivery.independenceTrendChart.noSending');
 	const own = usable.value.reduce((total, point) => total + point.own, 0);
 	const reference = usable.value.reduce((total, point) => total + point.reference, 0);
 	return props.hasReference
-		? `Daily sending over ${usable.value.length} days: ${formatNumber(own)} messages from your own server and ${formatNumber(reference)} through the relay.`
-		: `Daily sending over ${usable.value.length} days: ${formatNumber(own)} messages from your own server.`;
+		? t('components.delivery.independenceTrendChart.summaryWithRelay', {
+				days: usable.value.length,
+				own: formatNumber(own, locale.value),
+				reference: formatNumber(reference, locale.value),
+			})
+		: t('components.delivery.independenceTrendChart.summary', {
+				days: usable.value.length,
+				own: formatNumber(own, locale.value),
+			});
 });
 </script>
 
@@ -124,8 +133,8 @@ const summary = computed(() => {
 			<p class="text-sm text-text-secondary" data-testid="independence-chart-empty">
 				{{
 					usable.length === 0
-						? 'Nothing has been sent yet, so there is no trend to draw. This fills in on its own as mail goes out.'
-						: 'One day of history so far — a trend needs at least two. This fills in on its own as mail goes out.'
+						? t('components.delivery.independenceTrendChart.emptyNothingSent')
+						: t('components.delivery.independenceTrendChart.emptyOneDay')
 				}}
 			</p>
 		</div>
@@ -177,14 +186,14 @@ const summary = computed(() => {
 			<span class="flex items-center gap-3">
 				<span class="flex items-center gap-1">
 					<span class="inline-block h-2 w-4 rounded-sm bg-brand" aria-hidden="true" />
-					Your server
+					{{ t('components.delivery.independenceTrendChart.ownServer') }}
 				</span>
 				<span v-if="hasReference" class="flex items-center gap-1">
 					<span
 						class="inline-block h-2 w-4 rounded-sm border border-dashed border-text-secondary"
 						aria-hidden="true"
 					/>
-					Relay
+					{{ t('components.delivery.independenceTrendChart.relay') }}
 				</span>
 			</span>
 			<span>{{ lastLabel }}</span>
@@ -199,16 +208,18 @@ const summary = computed(() => {
 			</caption>
 			<thead>
 				<tr>
-					<th scope="col">Day</th>
-					<th scope="col">Your server</th>
-					<th v-if="hasReference" scope="col">Relay</th>
+					<th scope="col">{{ t('components.delivery.independenceTrendChart.day') }}</th>
+					<th scope="col">{{ t('components.delivery.independenceTrendChart.ownServer') }}</th>
+					<th v-if="hasReference" scope="col">
+						{{ t('components.delivery.independenceTrendChart.relay') }}
+					</th>
 				</tr>
 			</thead>
 			<tbody>
 				<tr v-for="point in usable" :key="point.day">
-					<th scope="row">{{ formatShortDate(point.day) }}</th>
-					<td>{{ formatNumber(point.own) }}</td>
-					<td v-if="hasReference">{{ formatNumber(point.reference) }}</td>
+					<th scope="row">{{ formatShortDate(point.day, locale) }}</th>
+					<td>{{ formatNumber(point.own, locale) }}</td>
+					<td v-if="hasReference">{{ formatNumber(point.reference, locale) }}</td>
 				</tr>
 			</tbody>
 		</table>

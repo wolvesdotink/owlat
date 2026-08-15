@@ -2,7 +2,9 @@
 import type { Id } from '@owlat/api/dataModel';
 import { languageOptions, formatLanguageLabel } from '~/data/languageOptions';
 
-useHead({ title: 'Transactional Emails — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.send.transactional.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -73,15 +75,17 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					Transactional Emails
+					{{ t('dashboard.send.transactional.index.title') }}
 				</h1>
-				<p class="mt-1 text-text-secondary">API-triggered emails for your application</p>
+				<p class="mt-1 text-text-secondary">
+					{{ t('dashboard.send.transactional.index.subtitle') }}
+				</p>
 			</div>
 			<UiButton size="sm" @click="openCreateModal">
 				<template #iconLeft>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 				</template>
-				New Transactional Email
+				{{ t('dashboard.send.transactional.index.newEmail') }}
 			</UiButton>
 		</div>
 
@@ -100,7 +104,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 					]"
 					@click="selectedStatus = filter.value"
 				>
-					{{ filter.label }}
+					{{ t(filter.label) }}
 					<span v-if="statusCounts" class="text-xs text-text-tertiary">
 						({{ filter.value === 'all' ? statusCounts.total : statusCounts[filter.value] }})
 					</span>
@@ -114,7 +118,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 				<UiInput
 					v-model="searchQuery"
 					type="text"
-					placeholder="Search by name or slug..."
+					:placeholder="t('dashboard.send.transactional.index.searchPlaceholder')"
 					size="sm"
 					class="w-64"
 				>
@@ -131,13 +135,13 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						aria-haspopup="listbox"
 						:aria-expanded="isSortDropdownOpen"
 						aria-controls="transactional-sort-listbox"
-						aria-label="Sort emails"
+						:aria-label="t('dashboard.send.transactional.index.sortLabel')"
 						@click="isSortDropdownOpen = !isSortDropdownOpen"
 					>
 						<template #iconLeft>
 							<Icon name="lucide:arrow-up-down" class="w-4 h-4" />
 						</template>
-						<span class="hidden sm:inline">{{ currentSort.label }}</span>
+						<span class="hidden sm:inline">{{ t(currentSort.label) }}</span>
 						<template #iconRight>
 							<Icon name="lucide:chevron-down" class="w-4 h-4" />
 						</template>
@@ -154,7 +158,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 							v-if="isSortDropdownOpen"
 							id="transactional-sort-listbox"
 							role="listbox"
-							aria-label="Sort emails"
+							:aria-label="t('dashboard.send.transactional.index.sortLabel')"
 							class="absolute right-0 top-full mt-1 w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20 py-1"
 						>
 							<button
@@ -170,7 +174,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								]"
 								@click="selectSort(option)"
 							>
-								{{ option.label }}
+								{{ t(option.label) }}
 								<Icon
 									v-if="currentSort.value === option.value"
 									name="lucide:check"
@@ -191,7 +195,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								: 'text-text-tertiary hover:text-text-primary',
 						]"
 						@click="viewMode = 'grid'"
-						aria-label="Grid view"
+						:aria-label="t('dashboard.send.transactional.index.gridView')"
 					>
 						<Icon name="lucide:grid-3x3" class="w-4 h-4" />
 					</button>
@@ -203,7 +207,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								: 'text-text-tertiary hover:text-text-primary',
 						]"
 						@click="viewMode = 'list'"
-						aria-label="List view"
+						:aria-label="t('dashboard.send.transactional.index.listView')"
 					>
 						<Icon name="lucide:list" class="w-4 h-4" />
 					</button>
@@ -216,15 +220,15 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 			<UiQueryBoundary
 				:loading="isLoading && !transactionalEmails"
 				:error="emailsError"
-				error-title="Couldn't load transactional emails"
-				loading-label="Loading transactional emails..."
+				:error-title="t('dashboard.send.transactional.index.loadError')"
+				:loading-label="t('dashboard.send.transactional.index.loadingEmails')"
 			>
 				<!-- Empty State (no organization) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"
 					icon="lucide:send"
-					title="No workspace selected"
-					description="Create or select a workspace to start creating transactional emails."
+					:title="t('dashboard.send.transactional.index.emptyNoWorkspace.title')"
+					:description="t('dashboard.send.transactional.index.emptyNoWorkspace.description')"
 				/>
 
 				<!-- Empty State (no transactional emails) -->
@@ -235,15 +239,15 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						!debouncedSearch
 					"
 					icon="lucide:send"
-					title="No transactional emails yet"
-					description="Transactional emails are triggered by your application via API. Create your first one to get started."
+					:title="t('dashboard.send.transactional.index.empty.title')"
+					:description="t('dashboard.send.transactional.index.empty.description')"
 				>
 					<template #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft>
 								<Icon name="lucide:plus" class="w-4 h-4" />
 							</template>
-							Create Transactional Email
+							{{ t('dashboard.send.transactional.index.empty.action') }}
 						</UiButton>
 					</template>
 				</UiEmptyState>
@@ -256,8 +260,12 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						debouncedSearch
 					"
 					icon="lucide:search"
-					title="No results found"
-					:description="`No transactional emails match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+					:title="t('dashboard.send.transactional.index.noResults.title')"
+					:description="
+						t('dashboard.send.transactional.index.noResults.description', {
+							query: debouncedSearch,
+						})
+					"
 				>
 					<template #action>
 						<UiButton
@@ -267,7 +275,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								debouncedSearch = '';
 							"
 						>
-							Clear search
+							{{ t('dashboard.send.transactional.index.clearSearch') }}
 						</UiButton>
 					</template>
 				</UiEmptyState>
@@ -287,7 +295,9 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						class="group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						role="button"
 						tabindex="0"
-						:aria-label="`Edit ${email.name}`"
+						:aria-label="
+							t('dashboard.send.transactional.index.editAriaLabel', { name: email.name })
+						"
 						@click="handleEdit(email._id)"
 						@keydown.enter.self="handleEdit(email._id)"
 						@keydown.space.self.prevent="handleEdit(email._id)"
@@ -308,8 +318,8 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 							>
 								<button
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-									title="View API Code"
-									aria-label="View API Code"
+									:title="t('dashboard.send.transactional.index.viewApiCode')"
+									:aria-label="t('dashboard.send.transactional.index.viewApiCode')"
 									@click.stop="openCodeSnippetModal(email._id, email.name, email.slug)"
 								>
 									<Icon name="lucide:code" class="w-4 h-4" />
@@ -317,21 +327,21 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								<button
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleEdit(email._id)"
-									aria-label="Edit"
+									:aria-label="t('common.edit')"
 								>
 									<Icon name="lucide:pencil" class="w-4 h-4" />
 								</button>
 								<button
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleDuplicate(email._id)"
-									aria-label="Copy"
+									:aria-label="t('common.copy')"
 								>
 									<Icon name="lucide:copy" class="w-4 h-4" />
 								</button>
 								<button
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="openDeleteModal(email._id, email.name)"
-									aria-label="Delete"
+									:aria-label="t('common.delete')"
 								>
 									<Icon name="lucide:trash-2" class="w-4 h-4" />
 								</button>
@@ -344,7 +354,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								<div class="min-w-0 flex-1">
 									<h3 class="font-medium text-text-primary truncate">{{ email.name }}</h3>
 									<p class="text-sm text-text-tertiary truncate mt-0.5">
-										{{ email.subject || 'No subject' }}
+										{{ email.subject || t('dashboard.send.transactional.index.noSubject') }}
 									</p>
 								</div>
 								<!-- Dropdown Menu -->
@@ -358,19 +368,19 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 										icon="lucide:code"
 										@click="openCodeSnippetModal(email._id, email.name, email.slug)"
 									>
-										View API Code
+										{{ t('dashboard.send.transactional.index.viewApiCode') }}
 									</UiDropdownMenuItem>
 									<UiDropdownMenuItem
 										icon="lucide:send"
 										@click="openRecentSends(email._id, email.name)"
 									>
-										View sends
+										{{ t('dashboard.send.transactional.index.viewSends') }}
 									</UiDropdownMenuItem>
 									<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(email._id)">
-										Edit
+										{{ t('common.edit') }}
 									</UiDropdownMenuItem>
 									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(email._id)">
-										Duplicate
+										{{ t('common.duplicate') }}
 									</UiDropdownMenuItem>
 									<UiDropdownDivider />
 									<UiDropdownMenuItem
@@ -378,7 +388,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 										danger
 										@click="openDeleteModal(email._id, email.name)"
 									>
-										Delete
+										{{ t('common.delete') }}
 									</UiDropdownMenuItem>
 								</UiDropdownMenu>
 							</div>
@@ -392,15 +402,23 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									]"
 								>
 									<Icon :name="getStatusBadge(email.status).icon" class="w-3 h-3" />
-									{{ getStatusBadge(email.status).label }}
+									{{ t(getStatusBadge(email.status).label) }}
 								</span>
 								<span class="text-text-tertiary text-xs">
-									{{ sendCounts?.[email._id] ?? 0 }} sends
+									{{
+										t('dashboard.send.transactional.index.sendCount', {
+											count: sendCounts?.[email._id] ?? 0,
+										})
+									}}
 								</span>
 							</div>
 
 							<p class="text-xs text-text-tertiary mt-3">
-								Updated {{ formatDate(email.updatedAt) }}
+								{{
+									t('dashboard.send.transactional.index.updatedAt', {
+										date: formatDate(email.updatedAt),
+									})
+								}}
 							</p>
 						</div>
 					</UiCard>
@@ -412,17 +430,23 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Slug</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Status
+										{{ t('common.name') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Sends</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Updated
+										{{ t('dashboard.send.transactional.index.columns.slug') }}
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										{{ t('common.status') }}
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										{{ t('dashboard.send.transactional.index.columns.sends') }}
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										{{ t('dashboard.send.transactional.index.columns.updated') }}
 									</th>
 									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										Actions
+										{{ t('common.actions') }}
 									</th>
 								</tr>
 							</thead>
@@ -433,7 +457,9 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
 									role="button"
 									tabindex="0"
-									:aria-label="`Edit ${email.name}`"
+									:aria-label="
+										t('dashboard.send.transactional.index.editAriaLabel', { name: email.name })
+									"
 									@click="handleEdit(email._id)"
 									@keydown.enter.self="handleEdit(email._id)"
 									@keydown.space.self.prevent="handleEdit(email._id)"
@@ -442,7 +468,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 										<div class="flex flex-col">
 											<span class="text-text-primary font-medium">{{ email.name }}</span>
 											<span class="text-text-tertiary text-sm">{{
-												email.subject || 'No subject'
+												email.subject || t('dashboard.send.transactional.index.noSubject')
 											}}</span>
 										</div>
 									</td>
@@ -461,7 +487,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 											]"
 										>
 											<Icon :name="getStatusBadge(email.status).icon" class="w-3 h-3" />
-											{{ getStatusBadge(email.status).label }}
+											{{ t(getStatusBadge(email.status).label) }}
 										</span>
 									</td>
 									<td class="px-6 py-4">
@@ -478,16 +504,16 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 										<div class="flex items-center justify-end gap-1" @click.stop>
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												title="View API Code"
-												aria-label="View API Code"
+												:title="t('dashboard.send.transactional.index.viewApiCode')"
+												:aria-label="t('dashboard.send.transactional.index.viewApiCode')"
 												@click="openCodeSnippetModal(email._id, email.name, email.slug)"
 											>
 												<Icon name="lucide:code" class="w-4 h-4" />
 											</button>
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												title="Edit"
-												aria-label="Edit"
+												:title="t('common.edit')"
+												:aria-label="t('common.edit')"
 												@click="handleEdit(email._id)"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
@@ -496,7 +522,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 												<template #trigger>
 													<button
 														class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-														aria-label="More actions"
+														:aria-label="t('dashboard.send.transactional.index.moreActions')"
 													>
 														<Icon name="lucide:more-vertical" class="w-4 h-4" />
 													</button>
@@ -505,16 +531,16 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 													icon="lucide:code"
 													@click="openCodeSnippetModal(email._id, email.name, email.slug)"
 												>
-													View API Code
+													{{ t('dashboard.send.transactional.index.viewApiCode') }}
 												</UiDropdownMenuItem>
 												<UiDropdownMenuItem
 													icon="lucide:send"
 													@click="openRecentSends(email._id, email.name)"
 												>
-													View sends
+													{{ t('dashboard.send.transactional.index.viewSends') }}
 												</UiDropdownMenuItem>
 												<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(email._id)">
-													Duplicate
+													{{ t('common.duplicate') }}
 												</UiDropdownMenuItem>
 												<UiDropdownDivider />
 												<UiDropdownMenuItem
@@ -522,7 +548,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 													danger
 													@click="openDeleteModal(email._id, email.name)"
 												>
-													Delete
+													{{ t('common.delete') }}
 												</UiDropdownMenuItem>
 											</UiDropdownMenu>
 										</div>
@@ -538,7 +564,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 		<!-- Create Modal -->
 		<UiModal
 			v-model:open="isCreateModalOpen"
-			title="Create Transactional Email"
+			:title="t('dashboard.send.transactional.index.create.title')"
 			:persistent="isCreating"
 		>
 			<form @submit.prevent="handleCreate">
@@ -555,9 +581,9 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 				<UiInput
 					id="email-name"
 					v-model="createForm.name"
-					label="Name"
+					:label="t('common.name')"
 					required
-					placeholder="e.g., Welcome Email, Order Confirmation"
+					:placeholder="t('dashboard.send.transactional.index.create.namePlaceholder')"
 					:error="createFormErrors.name"
 					:disabled="isCreating"
 					class="mb-4"
@@ -567,13 +593,13 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 				<UiInput
 					id="email-slug"
 					v-model="createForm.slug"
-					label="Slug"
+					:label="t('dashboard.send.transactional.index.create.slugLabel')"
 					required
-					placeholder="e.g., welcome-email, order-confirmation"
+					:placeholder="t('dashboard.send.transactional.index.create.slugPlaceholder')"
 					:error="createFormErrors.slug"
 					:help-text="
 						!createFormErrors.slug
-							? 'Used to identify this email in API calls. Use lowercase letters, numbers, and hyphens.'
+							? t('dashboard.send.transactional.index.create.slugHelp')
 							: undefined
 					"
 					:disabled="isCreating"
@@ -586,8 +612,13 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 				     the Translation Manager anchor to the right source. -->
 				<UiSelect
 					v-model="createForm.defaultLanguage"
-					label="Default Language"
-					:options="languageOptions.map((l) => ({ value: l.value, label: formatLanguageLabel(l) }))"
+					:label="t('dashboard.send.transactional.index.create.defaultLanguage')"
+					:options="
+						languageOptions.map((l) => ({
+							value: l.value,
+							label: formatLanguageLabel({ label: t(l.label), nativeLabel: l.nativeLabel }),
+						}))
+					"
 					:disabled="isCreating"
 					class="mb-6"
 				/>
@@ -595,10 +626,14 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isCreating" @click="closeCreateModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton :loading="isCreating" @click="handleCreate">
-					{{ isCreating ? 'Creating...' : 'Create & Edit' }}
+					{{
+						isCreating
+							? t('dashboard.send.transactional.index.create.creating')
+							: t('dashboard.send.transactional.index.create.submit')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -606,7 +641,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 		<!-- Delete Confirmation Modal -->
 		<UiModal
 			v-model:open="isDeleteModalOpen"
-			title="Delete Transactional Email"
+			:title="t('dashboard.send.transactional.index.delete.title')"
 			:persistent="isDeleting"
 		>
 			<div class="flex items-start gap-4">
@@ -614,22 +649,32 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 					<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
 				</div>
 				<div>
-					<p class="text-text-primary">
-						Are you sure you want to delete
-						<span class="font-semibold">"{{ emailToDelete?.name }}"</span>?
-					</p>
+					<I18nT
+						keypath="dashboard.send.transactional.index.delete.confirm"
+						tag="p"
+						class="text-text-primary"
+						scope="global"
+					>
+						<template #name>
+							<span class="font-semibold">"{{ emailToDelete?.name }}"</span>
+						</template>
+					</I18nT>
 					<p class="text-sm text-text-secondary mt-2">
-						This action cannot be undone. Any API calls referencing this email will fail.
+						{{ t('dashboard.send.transactional.index.delete.description') }}
 					</p>
 				</div>
 			</div>
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
-					{{ isDeleting ? 'Deleting...' : 'Delete' }}
+					{{
+						isDeleting
+							? t('dashboard.send.transactional.index.delete.deleting')
+							: t('common.delete')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -654,15 +699,21 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						<!-- Header -->
 						<div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
 							<div>
-								<h2 class="text-lg font-semibold text-text-primary">API Usage</h2>
+								<h2 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.send.transactional.index.apiUsage.title') }}
+								</h2>
 								<p class="text-sm text-text-secondary mt-0.5">
-									Send "{{ selectedEmailForCode?.name }}" via API
+									{{
+										t('dashboard.send.transactional.index.apiUsage.subtitle', {
+											name: selectedEmailForCode?.name,
+										})
+									}}
 								</p>
 							</div>
 							<button
 								class="p-1 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="closeCodeSnippetModal"
-								aria-label="Close"
+								:aria-label="t('common.close')"
 							>
 								<Icon name="lucide:x" class="w-5 h-5" />
 							</button>
@@ -684,12 +735,17 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 											class="w-3.5 h-3.5 text-success"
 										/>
 										<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
-										{{ copiedSnippet === 'curl' ? 'Copied!' : 'Copy' }}
+										{{
+											copiedSnippet === 'curl'
+												? t('dashboard.send.transactional.index.apiUsage.copied')
+												: t('common.copy')
+										}}
 									</button>
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('curl') }}</pre>
+									>{{ getCodeSnippet('curl') }}</pre
+								>
 							</div>
 
 							<!-- JavaScript -->
@@ -706,12 +762,17 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 											class="w-3.5 h-3.5 text-success"
 										/>
 										<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
-										{{ copiedSnippet === 'javascript' ? 'Copied!' : 'Copy' }}
+										{{
+											copiedSnippet === 'javascript'
+												? t('dashboard.send.transactional.index.apiUsage.copied')
+												: t('common.copy')
+										}}
 									</button>
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('javascript') }}</pre>
+									>{{ getCodeSnippet('javascript') }}</pre
+								>
 							</div>
 
 							<!-- Python -->
@@ -728,30 +789,49 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 											class="w-3.5 h-3.5 text-success"
 										/>
 										<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
-										{{ copiedSnippet === 'python' ? 'Copied!' : 'Copy' }}
+										{{
+											copiedSnippet === 'python'
+												? t('dashboard.send.transactional.index.apiUsage.copied')
+												: t('common.copy')
+										}}
 									</button>
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('python') }}</pre>
+									>{{ getCodeSnippet('python') }}</pre
+								>
 							</div>
 
 							<div class="mt-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
-								<p class="text-sm text-warning">
-									<strong>Note:</strong> Replace
-									<code class="px-1 py-0.5 rounded bg-warning/20">YOUR_API_KEY</code> with your
-									actual API key. You can create API keys in
-									<NuxtLink to="/dashboard/admin" class="underline hover:no-underline"
-										>Settings</NuxtLink
-									>.
-								</p>
+								<I18nT
+									keypath="dashboard.send.transactional.index.apiUsage.note"
+									tag="p"
+									class="text-sm text-warning"
+									scope="global"
+								>
+									<template #label>
+										<strong>{{
+											t('dashboard.send.transactional.index.apiUsage.noteLabel')
+										}}</strong>
+									</template>
+									<template #placeholder>
+										<code class="px-1 py-0.5 rounded bg-warning/20">YOUR_API_KEY</code>
+									</template>
+									<template #settings>
+										<NuxtLink to="/dashboard/admin" class="underline hover:no-underline">{{
+											t('common.settings')
+										}}</NuxtLink>
+									</template>
+								</I18nT>
 							</div>
 						</div>
 
 						<!-- Footer -->
 						<div class="px-6 py-4 border-t border-border-subtle">
 							<div class="flex justify-end">
-								<UiButton variant="secondary" @click="closeCodeSnippetModal">Close</UiButton>
+								<UiButton variant="secondary" @click="closeCodeSnippetModal">
+									{{ t('common.close') }}
+								</UiButton>
 							</div>
 						</div>
 					</div>

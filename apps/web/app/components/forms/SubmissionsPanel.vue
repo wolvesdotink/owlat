@@ -8,10 +8,27 @@ import { formatDateTime } from '~/utils/formatters';
 // v-for). Auto-imports as <FormsSubmissionsPanel> (path-prefixed).
 const props = defineProps<{ formEndpointId: Id<'formEndpoints'> }>();
 
+const { t } = useI18n();
+
 const { data: submissions, isLoading } = useConvexQuery(
 	api.forms.endpoints.getSubmissions,
 	() => ({ formEndpointId: props.formEndpointId, limit: 50 }),
 );
+
+// Keyed by the schema's submission-status literals; anything outside that union
+// falls back to the raw value rather than painting a missing key path.
+const STATUS_LABEL_KEYS: Record<string, string> = {
+	success: 'components.forms.submissionsPanel.statuses.success',
+	pending_confirmation: 'components.forms.submissionsPanel.statuses.pending_confirmation',
+	duplicate: 'components.forms.submissionsPanel.statuses.duplicate',
+	spam: 'components.forms.submissionsPanel.statuses.spam',
+	invalid: 'components.forms.submissionsPanel.statuses.invalid',
+};
+
+function statusLabel(status: string): string {
+	const key = STATUS_LABEL_KEYS[status];
+	return key ? t(key) : status;
+}
 
 function statusClass(status: string): string {
 	switch (status) {
@@ -30,10 +47,12 @@ function statusClass(status: string): string {
 
 <template>
 	<div>
-		<h4 class="text-sm font-medium text-text-primary mb-3">Recent submissions</h4>
-		<div v-if="isLoading" class="text-text-tertiary text-sm py-4">Loading…</div>
+		<h4 class="text-sm font-medium text-text-primary mb-3">
+			{{ t('components.forms.submissionsPanel.title') }}
+		</h4>
+		<div v-if="isLoading" class="text-text-tertiary text-sm py-4">{{ t('common.loading') }}</div>
 		<div v-else-if="!submissions || submissions.length === 0" class="text-text-tertiary text-sm py-4">
-			No submissions yet.
+			{{ t('components.forms.submissionsPanel.empty') }}
 		</div>
 		<div v-else class="space-y-2 max-h-80 overflow-y-auto">
 			<div
@@ -43,7 +62,7 @@ function statusClass(status: string): string {
 			>
 				<div class="flex items-center justify-between mb-1.5">
 					<span :class="['px-2 py-0.5 rounded-full text-xs font-medium', statusClass(s.status)]">
-						{{ s.status }}
+						{{ statusLabel(s.status) }}
 					</span>
 					<span class="text-text-tertiary text-xs">{{ formatDateTime(s._creationTime) }}</span>
 				</div>
@@ -54,7 +73,11 @@ function statusClass(status: string): string {
 					</template>
 				</dl>
 				<p v-if="s.confirmationEmailSentAt" class="text-text-tertiary text-xs mt-1.5">
-					Confirmation email sent {{ formatRelativeTime(s.confirmationEmailSentAt) }}
+					{{
+						t('components.forms.submissionsPanel.confirmationSent', {
+							time: formatRelativeTime(s.confirmationEmailSentAt),
+						})
+					}}
 				</p>
 			</div>
 		</div>

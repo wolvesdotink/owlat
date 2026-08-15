@@ -14,6 +14,56 @@ const allowlisted = new Set([
 ]);
 const jargon = /\b(?:SPF|DKIM|DMARC|IMAP|SMTP)\b|\bMX records?\b/g;
 
+/**
+ * THE COPY MOVED; THE GATE FOLLOWS IT.
+ *
+ * Since the UI was localized, a member-visible template holds key paths, not
+ * sentences — the words a member actually reads live in the message catalog.
+ * A gate that kept reading only templates would scan surfaces that no longer
+ * carry any copy and pass forever, so every literal `t('…')`/`te('…')`/
+ * `keypath="…"` reference a surface makes is resolved against the `en` catalog
+ * and the resolved MESSAGE is what gets read for jargon. Dynamic keys
+ * (t(`x.${y}`)) are invisible to this, exactly as dynamic text always was.
+ *
+ * The catalog is optional on purpose: the self-test copies this script into a
+ * sandbox without one, and a missing catalog must mean "no messages to read",
+ * not a crash.
+ */
+const catalog = new Map<string, string>();
+try {
+	const parsed = JSON.parse(
+		await readFile(join(workspace, 'apps/web/i18n/locales/en.json'), 'utf8')
+	) as Record<string, unknown>;
+	const walk = (node: Record<string, unknown>, prefix: string) => {
+		for (const [key, value] of Object.entries(node)) {
+			const path = prefix === '' ? key : `${prefix}.${key}`;
+			if (typeof value === 'string') catalog.set(path, value);
+			else if (value !== null && typeof value === 'object')
+				walk(value as Record<string, unknown>, path);
+		}
+	};
+	walk(parsed, '');
+} catch {
+	// No catalog in this workspace — the template half still runs.
+}
+
+const KEY_REFERENCE = /(?:\bte?\(\s*|keypath=)['"]([A-Za-z][\w-]*(?:\.[\w-]+)+)['"]/g;
+
+/** The jargon a member reads via the catalog: each referenced message, resolved. */
+function messageHits(source: string): string[] {
+	const hits: string[] = [];
+	const seen = new Set<string>();
+	for (const match of source.matchAll(KEY_REFERENCE)) {
+		const key = match[1];
+		if (key === undefined || seen.has(key)) continue;
+		seen.add(key);
+		const message = catalog.get(key);
+		if (message !== undefined && jargon.test(message)) hits.push(`${key}: ${message.trim()}`);
+		jargon.lastIndex = 0;
+	}
+	return hits;
+}
+
 async function vueFiles(path: string): Promise<string[]> {
 	const entries = await readdir(path, { withFileTypes: true }).catch(() => []);
 	if (entries.length === 0) return path.endsWith('.vue') ? [path] : [];
@@ -115,7 +165,8 @@ for (const root of roots) {
 		// Roots may overlap (a directory and a file inside it); read each file once.
 		if (scanned.has(name)) continue;
 		scanned.add(name);
-		const hits = jargonHits(await readFile(file, 'utf8'));
+		const source = await readFile(file, 'utf8');
+		const hits = [...jargonHits(source), ...messageHits(source)];
 		if (allowlisted.has(name)) {
 			if (hits.length > 0) exercised.add(name);
 			continue;
@@ -135,7 +186,7 @@ const unused = [...allowlisted]
 	.filter((name) => !exercised.has(name))
 	.map((name) =>
 		scanned.has(name)
-			? `${name} (its member-visible template says none of it any more)`
+			? `${name} (neither its template nor the catalog messages it renders say any of it any more)`
 			: `${name} (no member-visible root reaches it)`
 	);
 

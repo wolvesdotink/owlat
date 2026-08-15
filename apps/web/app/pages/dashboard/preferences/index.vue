@@ -7,7 +7,9 @@ import { POSTBOX_REPLY_DEFAULT_OPTIONS } from '~/utils/postboxReplyDefault';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
 
-useHead({ title: 'Preferences — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.preferences.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -71,7 +73,7 @@ const renameTarget = ref<MailboxRow | null>(null);
 const renameValue = ref('');
 const renameError = ref<string | null>(null);
 const setDisplayName = useBackendOperation(api.mail.mailbox.setDisplayName, {
-	label: 'Rename mailbox',
+	label: () => t('dashboard.preferences.index.renameOperation'),
 	inlineTarget: renameError,
 });
 
@@ -94,7 +96,7 @@ async function handleRename() {
 // ── Delete (admin-only soft-delete) ────────────────────────────────────
 const deleteTarget = ref<MailboxRow | null>(null);
 const removeMailbox = useBackendOperation(api.mail.mailbox.remove, {
-	label: 'Delete mailbox',
+	label: () => t('dashboard.preferences.index.deleteOperation'),
 });
 
 async function handleDelete() {
@@ -113,20 +115,22 @@ async function handleDelete() {
 
 		<PreferencesAppearance />
 
+		<PreferencesLanguage />
+
 		<template v-if="hasMail">
 			<PreferencesMailLinks />
 
 			<section class="card !p-0 mb-6">
 				<header class="px-5 py-3 border-b border-border-subtle">
-					<h2 class="font-semibold">Reading</h2>
+					<h2 class="font-semibold">{{ t('dashboard.preferences.index.reading') }}</h2>
 				</header>
 				<div class="px-5 py-4 flex items-center justify-between gap-4">
 					<div class="min-w-0">
 						<label for="postbox-auto-advance" class="font-medium text-sm block">
-							After archiving, deleting or snoozing
+							{{ t('dashboard.preferences.index.autoAdvanceLabel') }}
 						</label>
 						<p class="text-xs text-text-tertiary mt-0.5">
-							What the reader shows once the open conversation is triaged away.
+							{{ t('dashboard.preferences.index.autoAdvanceHelp') }}
 						</p>
 					</div>
 					<select
@@ -141,7 +145,7 @@ async function handleDelete() {
 							:key="option.value"
 							:value="option.value"
 						>
-							{{ option.label }}
+							{{ t(option.label) }}
 						</option>
 					</select>
 				</div>
@@ -149,10 +153,11 @@ async function handleDelete() {
 					class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
 				>
 					<div class="min-w-0">
-						<label for="postbox-density" class="font-medium text-sm block"> Density </label>
+						<label for="postbox-density" class="font-medium text-sm block">
+							{{ t('dashboard.preferences.index.densityLabel') }}
+						</label>
 						<p class="text-xs text-text-tertiary mt-0.5">
-							How tightly the message list and reader are packed. Compact drops the snippet line for
-							single-line rows.
+							{{ t('dashboard.preferences.index.densityHelp') }}
 						</p>
 					</div>
 					<select
@@ -167,7 +172,7 @@ async function handleDelete() {
 							:key="option.value"
 							:value="option.value"
 						>
-							{{ option.label }}
+							{{ t(option.label) }}
 						</option>
 					</select>
 				</div>
@@ -176,12 +181,17 @@ async function handleDelete() {
 				>
 					<div class="min-w-0">
 						<label for="postbox-reply-default" class="font-medium text-sm block">
-							Default reply behavior
+							{{ t('dashboard.preferences.index.replyDefaultLabel') }}
 						</label>
-						<p class="text-xs text-text-tertiary mt-0.5">
-							What the Reply button and the <kbd>r</kbd> shortcut do. <kbd>a</kbd> always replies to
-							everyone; you can switch a reply to all while composing.
-						</p>
+						<I18nT
+							keypath="dashboard.preferences.index.replyDefaultHelp"
+							tag="p"
+							class="text-xs text-text-tertiary mt-0.5"
+							scope="global"
+						>
+							<template #replyKey><kbd>r</kbd></template>
+							<template #replyAllKey><kbd>a</kbd></template>
+						</I18nT>
 					</div>
 					<select
 						id="postbox-reply-default"
@@ -195,7 +205,7 @@ async function handleDelete() {
 							:key="option.value"
 							:value="option.value"
 						>
-							{{ option.label }}
+							{{ t(option.label) }}
 						</option>
 					</select>
 				</div>
@@ -205,10 +215,10 @@ async function handleDelete() {
 				>
 					<div class="min-w-0">
 						<label for="postbox-writing-suggestions" class="font-medium text-sm block">
-							Writing suggestions
+							{{ t('dashboard.preferences.index.writingSuggestionsLabel') }}
 						</label>
 						<p class="text-xs text-text-tertiary mt-0.5">
-							Show inline AI autocomplete as you write. Press Tab to accept.
+							{{ t('dashboard.preferences.index.writingSuggestionsHelp') }}
 						</p>
 					</div>
 					<input
@@ -226,11 +236,10 @@ async function handleDelete() {
 				>
 					<div class="min-w-0">
 						<label for="postbox-auto-summarize" class="font-medium text-sm block">
-							Auto-summarize long threads
+							{{ t('dashboard.preferences.index.autoSummarizeLabel') }}
 						</label>
 						<p class="text-xs text-text-tertiary mt-0.5">
-							Show a one-line AI summary at the top of long conversations. Click it to expand the
-							key points.
+							{{ t('dashboard.preferences.index.autoSummarizeHelp') }}
 						</p>
 					</div>
 					<input
@@ -247,10 +256,10 @@ async function handleDelete() {
 				>
 					<div class="min-w-0">
 						<label for="postbox-send-sound" class="font-medium text-sm block">
-							Play sound when sending
+							{{ t('dashboard.preferences.index.sendSoundLabel') }}
 						</label>
 						<p class="text-xs text-text-tertiary mt-0.5">
-							Play a short confirmation sound when a message is sent. Off by default.
+							{{ t('dashboard.preferences.index.sendSoundHelp') }}
 						</p>
 					</div>
 					<input
@@ -280,13 +289,13 @@ async function handleDelete() {
 
 			<section class="card !p-0">
 				<header class="px-5 py-3 border-b border-border-subtle">
-					<h2 class="font-semibold">Mailboxes</h2>
+					<h2 class="font-semibold">{{ t('dashboard.preferences.index.mailboxes') }}</h2>
 				</header>
 				<div v-if="isLoading" class="p-8 flex justify-center">
 					<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
 				</div>
 				<div v-else-if="mailboxes.length === 0" class="p-8 text-center text-text-secondary">
-					No mailboxes yet. Add your first account to start receiving mail.
+					{{ t('dashboard.preferences.index.noMailboxes') }}
 				</div>
 				<ul v-else class="divide-y divide-border-subtle">
 					<li
@@ -297,8 +306,12 @@ async function handleDelete() {
 						<div class="min-w-0">
 							<p class="font-medium truncate">{{ mb.address }}</p>
 							<p class="text-xs text-text-tertiary">
-								{{ mb.displayName ?? '(no display name)' }}
-								· {{ Math.round((mb.usedBytes ?? 0) / 1024 / 1024) }} MB used
+								{{
+									t('dashboard.preferences.index.mailboxMeta', {
+										displayName: mb.displayName ?? t('dashboard.preferences.index.noDisplayName'),
+										megabytes: Math.round((mb.usedBytes ?? 0) / 1024 / 1024),
+									})
+								}}
 							</p>
 						</div>
 						<div class="flex items-center gap-2 shrink-0">
@@ -309,19 +322,19 @@ async function handleDelete() {
 										? 'bg-success-subtle text-success'
 										: 'bg-bg-surface text-text-tertiary'
 								"
-								>{{ mb.status }}</span
+								>{{ t(`dashboard.preferences.index.mailboxStatus.${mb.status}`) }}</span
 							>
 							<NuxtLink
 								v-if="mb.scope === 'shared'"
 								:to="`/dashboard/preferences/members/${mb._id}`"
 								class="text-xs px-2 py-0.5 rounded bg-brand-subtle text-brand hover:underline"
-								>Team · manage</NuxtLink
+								>{{ t('dashboard.preferences.index.teamManage') }}</NuxtLink
 							>
 							<button
 								type="button"
 								class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-								title="Rename mailbox"
-								aria-label="Rename mailbox"
+								:title="t('dashboard.preferences.index.renameMailbox')"
+								:aria-label="t('dashboard.preferences.index.renameMailbox')"
 								@click="openRename(mb)"
 							>
 								<Icon name="lucide:pencil" class="w-4 h-4" />
@@ -330,8 +343,8 @@ async function handleDelete() {
 								v-if="isAdmin"
 								type="button"
 								class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
-								title="Delete mailbox"
-								aria-label="Delete mailbox"
+								:title="t('dashboard.preferences.index.deleteMailbox')"
+								:aria-label="t('dashboard.preferences.index.deleteMailbox')"
 								@click="deleteTarget = mb"
 							>
 								<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -344,7 +357,7 @@ async function handleDelete() {
 			<!-- Rename mailbox -->
 			<UiModal
 				:open="!!renameTarget"
-				title="Rename mailbox"
+				:title="t('dashboard.preferences.index.renameMailbox')"
 				size="sm"
 				:persistent="setDisplayName.isLoading.value"
 				:closable="!setDisplayName.isLoading.value"
@@ -355,22 +368,30 @@ async function handleDelete() {
 				"
 			>
 				<form class="space-y-3" @submit.prevent="handleRename">
-					<p class="text-sm text-text-secondary">
-						Display name for <code>{{ renameTarget?.address }}</code
-						>. The address itself can't be changed.
-					</p>
+					<I18nT
+						keypath="dashboard.preferences.index.renameIntro"
+						tag="p"
+						class="text-sm text-text-secondary"
+						scope="global"
+					>
+						<template #address
+							><code>{{ renameTarget?.address }}</code></template
+						>
+					</I18nT>
 					<div>
 						<label for="mb-display-name" class="text-sm font-medium block mb-1">
-							Display name
+							{{ t('dashboard.preferences.index.displayName') }}
 						</label>
 						<input
 							id="mb-display-name"
 							v-model="renameValue"
 							type="text"
-							placeholder="Marcel Pfeifer"
+							:placeholder="t('dashboard.preferences.index.displayNamePlaceholder')"
 							class="input w-full"
 						/>
-						<p class="text-xs text-text-tertiary mt-1">Leave blank to clear it.</p>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('dashboard.preferences.index.displayNameHelp') }}
+						</p>
 					</div>
 					<p v-if="renameError" class="text-sm text-error">{{ renameError }}</p>
 				</form>
@@ -380,10 +401,10 @@ async function handleDelete() {
 						:disabled="setDisplayName.isLoading.value"
 						@click="renameTarget = null"
 					>
-						Cancel
+						{{ t('common.cancel') }}
 					</UiButton>
 					<UiButton :loading="setDisplayName.isLoading.value" @click="handleRename">
-						Save
+						{{ t('common.save') }}
 					</UiButton>
 				</template>
 			</UiModal>
@@ -392,9 +413,13 @@ async function handleDelete() {
 			<UiConfirmationDialog
 				:open="!!deleteTarget"
 				variant="danger"
-				title="Delete mailbox"
-				:description="`Deleting &quot;${deleteTarget?.address ?? ''}&quot; stops it from receiving new mail. Existing messages stay on the server but the address is removed from routing.`"
-				confirm-text="Delete mailbox"
+				:title="t('dashboard.preferences.index.deleteMailbox')"
+				:description="
+					t('dashboard.preferences.index.deleteMailboxDescription', {
+						address: deleteTarget?.address ?? '',
+					})
+				"
+				:confirm-text="t('dashboard.preferences.index.deleteMailbox')"
 				:is-loading="removeMailbox.isLoading.value"
 				@update:open="
 					(v: boolean) => {

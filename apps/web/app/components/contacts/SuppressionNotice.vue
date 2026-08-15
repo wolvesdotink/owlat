@@ -23,17 +23,27 @@ const props = defineProps<{
 
 const emit = defineEmits<{ remove: [] }>();
 
+const { t } = useI18n();
+
+/**
+ * A presentation field owned by the shared suppression-reason table: either a
+ * bare message key or a key plus the values it interpolates.
+ */
+type LocalizedField = string | { key: string; params?: Record<string, unknown> };
+const localize = (value: LocalizedField): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 // Plain language, reason-specific — no jargon, explains WHY in one line. The
 // wording comes from the SAME table the suppression list renders from, so the
 // two surfaces cannot describe the same reason differently, and a new schema
 // literal is a compile error rather than a silent "manually suppressed".
 const presentation = computed(() => suppressionReasonPresentation(props.reason));
-const reasonPhrase = computed(() => presentation.value.phrase(props.dateLabel));
+const reasonPhrase = computed(() => localize(presentation.value.phrase(props.dateLabel)));
 // The headline is reason-specific too: an `unengaged` row is marketing-only, so
 // that address still gets transactional mail, DOI confirmations and 1:1 agent
 // replies. Presenting it as "not receiving mail" would read like a hard block
 // and invite a manual removal the operator does not need.
-const headline = computed(() => presentation.value.headline);
+const headline = computed(() => localize(presentation.value.headline));
 const detailOpen = ref(false);
 </script>
 
@@ -41,10 +51,21 @@ const detailOpen = ref(false);
 	<div class="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2 text-sm" role="status">
 		<div class="flex items-center gap-2.5">
 			<Icon name="lucide:mail-x" class="w-4 h-4 shrink-0 text-warning" />
-			<p class="font-medium text-text-primary">Unsubscribed</p>
-			<UiDisclosure v-model="detailOpen" controls="suppression-detail" label="Why?">
+			<p class="font-medium text-text-primary">
+				{{ t('components.contacts.suppressionNotice.title') }}
+			</p>
+			<UiDisclosure
+				v-model="detailOpen"
+				controls="suppression-detail"
+				:label="t('components.contacts.suppressionNotice.why')"
+			>
 				<p class="text-text-secondary">
-					<span class="font-medium text-text-primary">{{ headline }}</span> — {{ reasonPhrase }}.
+					<I18nT keypath="components.contacts.suppressionNotice.detail" tag="span" scope="global">
+						<template #headline>
+							<span class="font-medium text-text-primary">{{ headline }}</span>
+						</template>
+						<template #reason>{{ reasonPhrase }}</template>
+					</I18nT>
 					<button
 						v-if="canManage"
 						type="button"
@@ -52,7 +73,11 @@ const detailOpen = ref(false);
 						:disabled="removing"
 						@click="emit('remove')"
 					>
-						{{ removing ? 'Removing…' : 'Remove suppression?' }}
+						{{
+							removing
+								? t('components.contacts.suppressionNotice.removing')
+								: t('components.contacts.suppressionNotice.remove')
+						}}
 					</button>
 				</p>
 			</UiDisclosure>

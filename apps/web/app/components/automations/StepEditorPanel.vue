@@ -19,6 +19,8 @@ const emit = defineEmits<{
 	'update:currentConfig': [value: StepCurrentConfig];
 }>();
 
+const { t } = useI18n();
+
 const stepKind = computed<StepKind | null>(() => props.currentConfig?.kind ?? null);
 
 const module = computed(() => (stepKind.value ? stepEditorModuleFor(stepKind.value) : null));
@@ -36,11 +38,13 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 	<div class="w-96 border-l border-border-subtle bg-bg-elevated overflow-y-auto">
 		<div v-if="selectedStep && currentConfig && module" class="p-6">
 			<div class="flex items-center justify-between mb-6">
-				<h2 class="text-lg font-semibold text-text-primary">Step Settings</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.automations.stepEditorPanel.title') }}
+				</h2>
 				<button
 					class="p-1.5 text-text-tertiary hover:text-text-primary transition-colors"
 					@click="emit('close')"
-					aria-label="Close"
+					:aria-label="t('common.close')"
 				>
 					<Icon name="lucide:x" class="w-5 h-5" />
 				</button>
@@ -61,7 +65,7 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 				<UiButton full-width class="gap-2" :disabled="isSaving" @click="emit('save')">
 					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					<Icon v-else name="lucide:save" class="w-4 h-4" />
-					{{ isSaving ? 'Saving...' : 'Save Changes' }}
+					{{ isSaving ? t('common.saving') : t('components.automations.stepEditorPanel.save') }}
 				</UiButton>
 			</div>
 
@@ -73,7 +77,7 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 					@click="emit('delete', selectedStep._id)"
 				>
 					<Icon name="lucide:trash-2" class="w-4 h-4" />
-					Delete Step
+					{{ t('components.automations.stepEditorPanel.delete') }}
 				</UiButton>
 			</div>
 		</div>
@@ -82,8 +86,12 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 			<div class="w-16 h-16 mb-4 rounded-full bg-bg-surface flex items-center justify-center">
 				<Icon name="lucide:chevron-down" class="w-8 h-8 text-text-tertiary" />
 			</div>
-			<h3 class="text-lg font-semibold text-text-primary mb-2">Select a Step</h3>
-			<p class="text-text-secondary">Click on a step in the workflow to configure its settings.</p>
+			<h3 class="text-lg font-semibold text-text-primary mb-2">
+				{{ t('components.automations.stepEditorPanel.emptyTitle') }}
+			</h3>
+			<p class="text-text-secondary">
+				{{ t('components.automations.stepEditorPanel.emptyBody') }}
+			</p>
 		</div>
 	</div>
 </template>

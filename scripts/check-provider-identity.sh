@@ -170,8 +170,8 @@ ADAPTER_ROOTS=(lib/sendProviders domains/providers integrationImports/providers 
 # "vigilance, not a ratchet" failure D2 exists to prevent, made invisible by a
 # green gate. So the entry OPENINGS inside the same region are counted too, and
 # a disagreement between the two counts fails exactly like reading nothing.
-kinds_source="packages/shared/src/sendProviderCatalog.ts"
-catalog_block=$(sed -n "/^const CORE_SEND_PROVIDER_CATALOG = \[$/,/^\] as const satisfies/p" \
+kinds_source="packages/shared/src/sendProviderCatalogData.ts"
+catalog_block=$(sed -n "/^export const CORE_SEND_PROVIDER_CATALOG = \[$/,/^\] as const satisfies/p" \
 	"$kinds_source" 2>/dev/null)
 # A trailing `//` note on the declaration line is tolerated: house style comments
 # a new entry, and a gate that fails on a comment is a gate people route around.

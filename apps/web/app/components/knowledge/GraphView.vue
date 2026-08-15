@@ -10,6 +10,8 @@
  */
 import { ENTRY_TYPES, TYPE_CONFIG, type EntryType } from '~/utils/knowledgeEntryTypes';
 
+const { t, te } = useI18n();
+
 const {
 	analyticsEnabled,
 	stats,
@@ -30,9 +32,22 @@ const {
 	typeLabel,
 } = useKnowledgeGraphView();
 
+// The entry-type labels the view renders, translated here: the shared
+// presentation map (`~/utils/knowledgeEntryTypes`) stays a plain constant, so an
+// unknown type still falls back to its raw label instead of a key path.
+const entryTypeLabel = (type: string) => {
+	const key = `components.knowledge.graphView.entryTypes.${type}`;
+	return te(key) ? t(key) : typeLabel(type);
+};
+
 const typeFilters = computed(() => [
-	{ key: null as EntryType | null, label: 'All' },
-	...ENTRY_TYPES.map((t) => ({ key: t as EntryType | null, label: TYPE_CONFIG[t].label })),
+	{ key: null as EntryType | null, label: t('common.all') },
+	...ENTRY_TYPES.map((entryType) => ({
+		key: entryType as EntryType | null,
+		label: te(`components.knowledge.graphView.entryTypes.${entryType}`)
+			? t(`components.knowledge.graphView.entryTypes.${entryType}`)
+			: TYPE_CONFIG[entryType].label,
+	})),
 ]);
 </script>
 
@@ -44,11 +59,21 @@ const typeFilters = computed(() => [
 		>
 			<Icon name="lucide:bar-chart-3" class="w-7 h-7 text-text-tertiary" />
 		</div>
-		<h3 class="text-base font-medium text-text-primary">Graph analytics are off</h3>
-		<p class="text-sm text-text-secondary mt-1 max-w-sm">
-			Enable <span class="font-medium">Knowledge graph analytics</span> in Settings to view the
-			graph and its insights.
-		</p>
+		<h3 class="text-base font-medium text-text-primary">
+			{{ t('components.knowledge.graphView.analyticsOffTitle') }}
+		</h3>
+		<I18nT
+			keypath="components.knowledge.graphView.analyticsOffBody"
+			tag="p"
+			scope="global"
+			class="text-sm text-text-secondary mt-1 max-w-sm"
+		>
+			<template #setting>
+				<span class="font-medium">{{
+					t('components.knowledge.graphView.analyticsOffSetting')
+				}}</span>
+			</template>
+		</I18nT>
 	</div>
 
 	<div v-else class="space-y-5">
@@ -86,7 +111,7 @@ const typeFilters = computed(() => [
 					"
 					@click="depth = d"
 				>
-					{{ d }} hop{{ d === 1 ? '' : 's' }}
+					{{ t('components.knowledge.graphView.hops', { count: d }, d) }}
 				</button>
 			</div>
 		</div>
@@ -114,7 +139,7 @@ const typeFilters = computed(() => [
 						<svg width="22" height="8">
 							<line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" stroke-width="1.5" />
 						</svg>
-						Extracted
+						{{ t('components.knowledge.graphView.legendExtracted') }}
 					</span>
 					<span class="flex items-center gap-1.5">
 						<svg width="22" height="8">
@@ -128,7 +153,7 @@ const typeFilters = computed(() => [
 								stroke-dasharray="6 4"
 							/>
 						</svg>
-						Inferred
+						{{ t('components.knowledge.graphView.legendInferred') }}
 					</span>
 					<span class="flex items-center gap-1.5">
 						<svg width="22" height="8">
@@ -143,10 +168,11 @@ const typeFilters = computed(() => [
 								opacity="0.5"
 							/>
 						</svg>
-						Ambiguous
+						{{ t('components.knowledge.graphView.legendAmbiguous') }}
 					</span>
 					<span class="flex items-center gap-1.5 ml-auto">
-						<span class="inline-block w-3 h-3 rounded-full border border-brand" /> Hub
+						<span class="inline-block w-3 h-3 rounded-full border border-brand" />
+						{{ t('components.knowledge.graphView.legendHub') }}
 					</span>
 				</div>
 			</div>
@@ -176,14 +202,14 @@ const typeFilters = computed(() => [
 									{{ selectedEntry.title }}
 								</p>
 								<p class="text-2xs text-text-tertiary">
-									{{ typeLabel(selectedEntry.entryType) }}
+									{{ entryTypeLabel(selectedEntry.entryType) }}
 								</p>
 							</div>
 						</div>
 						<button
 							type="button"
 							class="rounded text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							aria-label="Close panel"
+							:aria-label="t('components.knowledge.graphView.closePanel')"
 							@click="clearSelection"
 						>
 							<Icon name="lucide:x" class="w-4 h-4" />
@@ -201,7 +227,7 @@ const typeFilters = computed(() => [
 							@click="focusNode(selectedEntry._id)"
 						>
 							<Icon name="lucide:crosshair" class="w-3.5 h-3.5" />
-							Center here
+							{{ t('components.knowledge.graphView.centerHere') }}
 						</UiButton>
 						<UiButton
 							variant="secondary"
@@ -210,7 +236,7 @@ const typeFilters = computed(() => [
 							class="gap-1.5 flex-1"
 						>
 							<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
-							Open
+							{{ t('common.open') }}
 						</UiButton>
 					</div>
 

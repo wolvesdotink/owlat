@@ -15,6 +15,8 @@
 
 import type { RewriteIntent } from '~/composables/postbox/usePostboxSelectionRewrite';
 
+const { t } = useI18n();
+
 defineProps<{
 	/** Absolute-position style computed from the selection rect by the parent. */
 	pillStyle: Record<string, string> | null;
@@ -37,7 +39,7 @@ const emit = defineEmits<{
 		class="postbox-rewrite-pill absolute z-30 flex items-center gap-0.5 rounded-lg border border-border-subtle bg-bg-elevated px-1 py-1 shadow-lg"
 		:style="pillStyle"
 		role="toolbar"
-		aria-label="Rewrite selection with AI"
+		:aria-label="t('components.postbox.postboxRewritePill.toolbarLabel')"
 		@mousedown.prevent
 	>
 		<PostboxRewriteActions

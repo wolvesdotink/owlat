@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pagesRoot = join(here, '../../pages');
@@ -27,8 +28,18 @@ function trailFor(route: string, viewerRole: typeof role.value = 'admin') {
 	return breadcrumbs.value;
 }
 
+/**
+ * The trail's labels are message KEYS where they come from the route registries
+ * (`lib/breadcrumbRoutes` / `lib/breadcrumbPatterns` are pure modules that
+ * cannot call `useI18n`), and a page-supplied dynamic crumb — a contact name, a
+ * campaign title — is not a key and passes through unchanged. `Breadcrumbs.vue`
+ * runs both through `t()`; so does this, or the words the sidebar is compared
+ * against would be key paths.
+ */
+const { t } = createTestI18n().global;
+
 function labelsFor(route: string, viewerRole: typeof role.value = 'admin') {
-	return trailFor(route, viewerRole).map((item) => item.label);
+	return trailFor(route, viewerRole).map((item) => t(item.label));
 }
 
 /** Every `.vue` page under `pages/dashboard/<area>`, as a concrete route path. */
@@ -138,12 +149,16 @@ describe('useBreadcrumbs', () => {
 
 		it('members see the sidebar label (Customers) and its landing page', () => {
 			const trail = trailFor('/dashboard/audience/topics', 'editor');
-			expect(trail[0]).toEqual({ label: 'Customers', href: '/dashboard/audience/contacts' });
+			expect(trail[0]).toEqual({
+				label: 'shared.dashboardNavigation.sections.customers',
+				href: '/dashboard/audience/contacts',
+			});
+			expect(t(trail[0]!.label)).toBe('Customers');
 		});
 
 		it('members on the customer list get a single, non-duplicated crumb', () => {
 			expect(trailFor('/dashboard/audience/contacts', 'editor')).toEqual([
-				{ label: 'Customers', href: undefined },
+				{ label: 'shared.dashboardNavigation.sections.customers', href: undefined },
 			]);
 		});
 

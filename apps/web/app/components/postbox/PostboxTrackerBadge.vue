@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { trackerPixelLabel, type TrackerDetection } from '@owlat/shared/postboxTrackers';
+import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 
 /**
  * Quiet shield badge for the reader header: shows that probable tracking
@@ -7,6 +7,8 @@ import { trackerPixelLabel, type TrackerDetection } from '@owlat/shared/postboxT
  * hosts. Purely informational — blocking/stripping happens in
  * PostboxMessageBody; this badge only surfaces what was found.
  */
+const { t } = useI18n();
+
 const props = defineProps<{
 	detection: TrackerDetection;
 }>();
@@ -14,7 +16,13 @@ const props = defineProps<{
 const open = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
 
-const label = computed(() => `${trackerPixelLabel(props.detection.pixelCount)} detected`);
+const label = computed(() =>
+	t(
+		'components.postbox.postboxTrackerBadge.detected',
+		{ count: props.detection.pixelCount },
+		props.detection.pixelCount
+	)
+);
 
 // Close on outside click (shared composable owns the listener lifecycle)
 // and on Escape.
@@ -54,12 +62,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 				{{ label }}
 			</p>
 			<p class="mt-1 text-xs text-text-secondary">
-				This message contains hidden images that would report when and where
-				you open it. They stay blocked even when you show images.
+				{{ t('components.postbox.postboxTrackerBadge.explanation') }}
 			</p>
 			<template v-if="detection.trackerHosts.length > 0">
 				<p class="mt-2 text-[11px] uppercase tracking-wide text-text-tertiary">
-					Tracker hosts
+					{{ t('components.postbox.postboxTrackerBadge.trackerHosts') }}
 				</p>
 				<ul class="mt-1 space-y-0.5">
 					<li

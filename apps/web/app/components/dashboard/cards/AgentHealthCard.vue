@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
+const { t } = useI18n();
+
 const { data: inboundStats, isLoading } = useOrganizationQuery(api.inbox.queries.getInboundStats);
 
 const pipelineStatus = computed(() => {
@@ -18,15 +20,35 @@ const pipelineStatus = computed(() => {
 const statusConfig = computed(() => {
 	switch (pipelineStatus.value) {
 		case 'healthy':
-			return { label: 'Healthy', variant: 'success' as const, icon: 'lucide:check-circle-2' };
+			return {
+				label: t('components.dashboard.cards.agentHealth.status.healthy'),
+				variant: 'success' as const,
+				icon: 'lucide:check-circle-2',
+			};
 		case 'warning':
-			return { label: 'Warning', variant: 'warning' as const, icon: 'lucide:alert-triangle' };
+			return {
+				label: t('components.dashboard.cards.agentHealth.status.warning'),
+				variant: 'warning' as const,
+				icon: 'lucide:alert-triangle',
+			};
 		case 'degraded':
-			return { label: 'Degraded', variant: 'error' as const, icon: 'lucide:alert-circle' };
+			return {
+				label: t('components.dashboard.cards.agentHealth.status.degraded'),
+				variant: 'error' as const,
+				icon: 'lucide:alert-circle',
+			};
 		case 'idle':
-			return { label: 'Idle', variant: 'neutral' as const, icon: 'lucide:pause-circle' };
+			return {
+				label: t('components.dashboard.cards.agentHealth.status.idle'),
+				variant: 'neutral' as const,
+				icon: 'lucide:pause-circle',
+			};
 		default:
-			return { label: 'Unknown', variant: 'neutral' as const, icon: 'lucide:help-circle' };
+			return {
+				label: t('common.unknown'),
+				variant: 'neutral' as const,
+				icon: 'lucide:help-circle',
+			};
 	}
 });
 
@@ -37,10 +59,26 @@ const metrics = computed(() => {
 	const quarantined = inboundStats.value.quarantined ?? 0;
 	const processing = inboundStats.value.processing ?? 0;
 	return [
-		{ label: 'Queue', value: processing, icon: 'lucide:layers' },
-		{ label: 'Failed', value: failed, icon: 'lucide:x-circle' },
-		{ label: 'Quarantined', value: quarantined, icon: 'lucide:shield-alert' },
-		{ label: 'Total', value: total, icon: 'lucide:activity' },
+		{
+			label: t('components.dashboard.cards.agentHealth.metrics.queue'),
+			value: processing,
+			icon: 'lucide:layers',
+		},
+		{
+			label: t('components.dashboard.cards.agentHealth.metrics.failed'),
+			value: failed,
+			icon: 'lucide:x-circle',
+		},
+		{
+			label: t('components.dashboard.cards.agentHealth.metrics.quarantined'),
+			value: quarantined,
+			icon: 'lucide:shield-alert',
+		},
+		{
+			label: t('components.dashboard.cards.agentHealth.metrics.total'),
+			value: total,
+			icon: 'lucide:activity',
+		},
 	];
 });
 </script>
@@ -51,7 +89,9 @@ const metrics = computed(() => {
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
 					<UiIconBox icon="lucide:bot" size="sm" variant="brand" />
-					<h3 class="text-sm font-semibold text-text-primary">Agent Health</h3>
+					<h3 class="text-sm font-semibold text-text-primary">
+						{{ t('components.dashboard.cards.agentHealth.title') }}
+					</h3>
 				</div>
 				<UiBadge :variant="statusConfig.variant" dot>
 					{{ statusConfig.label }}

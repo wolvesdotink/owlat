@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import { formatDateTime } from '~/utils/formatters';
 
-useHead({ title: 'Backups — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.backups.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -17,10 +19,10 @@ const { data: state, isLoading, error } = useConvexQuery(api.backups.getBackupSt
 
 const { run: setSchedule, isLoading: savingSchedule } = useBackendOperation(
 	api.backups.setScheduleEnabled,
-	{ label: 'Update backup schedule' }
+	{ label: () => t('dashboard.admin.backups.updateScheduleOperation') }
 );
 const { run: logRun, isLoading: loggingRun } = useBackendOperation(api.backups.logManualRun, {
-	label: 'Log backup run',
+	label: () => t('dashboard.admin.backups.logRunOperation'),
 });
 
 // The exact commands the operator runs on their server. These match the CLI
@@ -48,7 +50,9 @@ async function toggleSchedule(next: boolean) {
 	const res = await setSchedule({ enabled: next });
 	if (res) {
 		showToast(
-			next ? 'Recorded: daily backups scheduled' : 'Recorded: daily backups disabled',
+			next
+				? t('dashboard.admin.backups.toastScheduleEnabled')
+				: t('dashboard.admin.backups.toastScheduleDisabled'),
 			'success'
 		);
 	}
@@ -57,9 +61,21 @@ async function toggleSchedule(next: boolean) {
 async function recordRun(status: 'success' | 'failed') {
 	const res = await logRun({ status });
 	if (res) {
-		showToast(status === 'success' ? 'Backup logged' : 'Failed run logged', 'success');
+		showToast(
+			status === 'success'
+				? t('dashboard.admin.backups.toastRunLogged')
+				: t('dashboard.admin.backups.toastFailedRunLogged'),
+			'success'
+		);
 	}
 }
+
+const lastRunLabel = computed(() =>
+	state.value?.lastRunAt ? formatDateTime(state.value.lastRunAt, locale.value) : ''
+);
+const recordedAtLabel = computed(() =>
+	state.value?.updatedAt ? formatDateTime(state.value.updatedAt, locale.value) : ''
+);
 </script>
 
 <template>
@@ -70,12 +86,13 @@ async function recordRun(status: 'success' | 'failed') {
 				to="/dashboard/admin"
 				class="text-sm text-text-tertiary hover:text-brand transition-colors"
 			>
-				← Settings
+				← {{ t('common.settings') }}
 			</NuxtLink>
-			<h1 class="mt-2 text-2xl font-medium tracking-[-0.02em] text-text-primary">Backups</h1>
+			<h1 class="mt-2 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.backups.title') }}
+			</h1>
 			<p class="mt-1 text-text-secondary">
-				Keep a safe copy of your mail, contacts, and settings. Set backups up before you store real
-				data.
+				{{ t('dashboard.admin.backups.intro') }}
 			</p>
 		</div>
 
@@ -85,15 +102,20 @@ async function recordRun(status: 'success' | 'failed') {
 			class="flex items-start gap-3 rounded-xl border border-border-subtle bg-bg-surface p-4 text-sm text-text-secondary"
 		>
 			<Icon name="lucide:info" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
-			<p>
-				Owlat can't read your server's schedule from here, so this page tracks the plan
-				<span class="font-medium text-text-primary">you</span> record. Run the commands shown on
-				your server, then note here what you set up — that's how the app knows your data is
-				protected.
-			</p>
+			<I18nT keypath="dashboard.admin.backups.honestyNote" tag="p" scope="global">
+				<template #you>
+					<span class="font-medium text-text-primary">{{
+						t('dashboard.admin.backups.honestyNoteYou')
+					}}</span>
+				</template>
+			</I18nT>
 		</div>
 
-		<UiQueryBoundary :loading="isLoading" :error="error" error-title="Couldn't load backup status">
+		<UiQueryBoundary
+			:loading="isLoading"
+			:error="error"
+			:error-title="t('dashboard.admin.backups.loadErrorTitle')"
+		>
 			<template #loading>
 				<div class="space-y-4">
 					<UiSkeleton class="h-28 w-full" />
@@ -105,46 +127,70 @@ async function recordRun(status: 'success' | 'failed') {
 				<!-- Current recorded status -->
 				<section class="rounded-xl border border-border-default bg-bg-elevated p-6">
 					<h2 class="text-sm font-medium uppercase tracking-wider text-text-tertiary">
-						Current status
+						{{ t('dashboard.admin.backups.currentStatus') }}
 					</h2>
 
 					<div v-if="!state" class="mt-4">
 						<UiEmptyState
 							icon="lucide:shield-off"
-							title="No backup plan recorded yet"
-							description="Nothing here is protected until you schedule backups on your server. Follow the steps below, then record what you set up."
+							:title="t('dashboard.admin.backups.noPlanTitle')"
+							:description="t('dashboard.admin.backups.noPlanDescription')"
 						/>
 					</div>
 
 					<div v-else class="mt-4 space-y-4">
 						<div class="flex flex-wrap items-center justify-between gap-3">
 							<div>
-								<p class="text-sm text-text-secondary">Daily schedule</p>
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.admin.backups.dailySchedule') }}
+								</p>
 								<p class="text-lg font-semibold text-text-primary">
-									{{ isScheduleEnabled ? 'Scheduled' : 'Not scheduled' }}
+									{{
+										isScheduleEnabled
+											? t('dashboard.admin.backups.scheduled')
+											: t('dashboard.admin.backups.notScheduled')
+									}}
 								</p>
 							</div>
 							<UiBadge :variant="isScheduleEnabled ? 'success' : 'warning'">
-								{{ isScheduleEnabled ? 'Protected' : 'At risk' }}
+								{{
+									isScheduleEnabled
+										? t('dashboard.admin.backups.protected')
+										: t('dashboard.admin.backups.atRisk')
+								}}
 							</UiBadge>
 						</div>
 
 						<div class="border-t border-border-subtle pt-4">
-							<p class="text-sm text-text-secondary">Last backup you logged</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('dashboard.admin.backups.lastLoggedBackup') }}
+							</p>
 							<p v-if="state.lastRunAt" class="text-text-primary">
-								{{ formatDateTime(state.lastRunAt) }}
+								{{ lastRunLabel }}
 								<span
 									class="ml-2 text-sm font-medium"
 									:class="state.lastRunStatus === 'success' ? 'text-success' : 'text-error'"
 								>
-									· {{ state.lastRunStatus === 'success' ? 'succeeded' : 'failed' }}
+									·
+									{{
+										state.lastRunStatus === 'success'
+											? t('dashboard.admin.backups.runSucceeded')
+											: t('dashboard.admin.backups.runFailed')
+									}}
 								</span>
 							</p>
-							<p v-else class="text-text-tertiary">No manual runs logged yet.</p>
+							<p v-else class="text-text-tertiary">
+								{{ t('dashboard.admin.backups.noRunsLogged') }}
+							</p>
 						</div>
 
 						<p v-if="state.updatedBy" class="text-xs text-text-tertiary">
-							Recorded by {{ state.updatedBy }} on {{ formatDateTime(state.updatedAt) }}.
+							{{
+								t('dashboard.admin.backups.recordedBy', {
+									name: state.updatedBy,
+									date: recordedAtLabel,
+								})
+							}}
 						</p>
 					</div>
 				</section>
@@ -154,17 +200,16 @@ async function recordRun(status: 'success' | 'failed') {
 					<div class="flex flex-wrap items-start justify-between gap-4">
 						<div class="min-w-0">
 							<h2 class="text-sm font-medium uppercase tracking-wider text-text-tertiary">
-								Daily schedule
+								{{ t('dashboard.admin.backups.dailySchedule') }}
 							</h2>
 							<p class="mt-1 text-sm text-text-secondary">
-								Runs a backup every night. Enable it on your server, then flip this switch to record
-								it.
+								{{ t('dashboard.admin.backups.dailyScheduleDescription') }}
 							</p>
 						</div>
 						<UiSwitch
 							:model-value="isScheduleEnabled"
 							:disabled="savingSchedule"
-							label="Daily backups scheduled"
+							:label="t('dashboard.admin.backups.scheduleSwitchLabel')"
 							@update:model-value="toggleSchedule"
 						/>
 					</div>
@@ -178,10 +223,10 @@ async function recordRun(status: 'success' | 'failed') {
 				<section class="rounded-xl border border-border-default bg-bg-elevated p-6 space-y-4">
 					<div>
 						<h2 class="text-sm font-medium uppercase tracking-wider text-text-tertiary">
-							Back up now
+							{{ t('dashboard.admin.backups.backUpNow') }}
 						</h2>
 						<p class="mt-1 text-sm text-text-secondary">
-							Run this on your server for an immediate backup, then log the result here.
+							{{ t('dashboard.admin.backups.backUpNowDescription') }}
 						</p>
 					</div>
 
@@ -194,10 +239,10 @@ async function recordRun(status: 'success' | 'failed') {
 							:loading="loggingRun"
 							@click="recordRun('success')"
 						>
-							Log a successful backup
+							{{ t('dashboard.admin.backups.logSuccess') }}
 						</UiButton>
 						<UiButton variant="ghost" size="sm" :disabled="loggingRun" @click="recordRun('failed')">
-							Log a failed run
+							{{ t('dashboard.admin.backups.logFailure') }}
 						</UiButton>
 					</div>
 				</section>
@@ -205,12 +250,17 @@ async function recordRun(status: 'success' | 'failed') {
 				<!-- Restore -->
 				<section class="rounded-xl border border-border-default bg-bg-elevated p-6 space-y-4">
 					<div>
-						<h2 class="text-sm font-medium uppercase tracking-wider text-text-tertiary">Restore</h2>
-						<p class="mt-1 text-sm text-text-secondary">
-							Backups are written to
-							<code class="font-mono text-text-primary">./backups</code> on your server. To restore
-							one, run:
-						</p>
+						<h2 class="text-sm font-medium uppercase tracking-wider text-text-tertiary">
+							{{ t('dashboard.admin.backups.restore') }}
+						</h2>
+						<I18nT
+							keypath="dashboard.admin.backups.restoreDescription"
+							tag="p"
+							scope="global"
+							class="mt-1 text-sm text-text-secondary"
+						>
+							<template #path><code class="font-mono text-text-primary">./backups</code></template>
+						</I18nT>
 					</div>
 
 					<BackupCommandRow :command="CMD_RESTORE" />
@@ -222,25 +272,26 @@ async function recordRun(status: 'success' | 'failed') {
 							<Icon name="lucide:key-round" class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
 							<div class="space-y-2">
 								<p class="text-sm font-medium text-text-primary">
-									Sealed Mail and your instance secret
+									{{ t('dashboard.admin.backups.sealedMailTitle') }}
 								</p>
+								<I18nT
+									keypath="dashboard.admin.backups.sealedMailBody"
+									tag="p"
+									scope="global"
+									class="text-sm text-text-secondary"
+								>
+									<template #secret>
+										<code class="font-mono text-text-primary">INSTANCE_SECRET</code>
+									</template>
+								</I18nT>
 								<p class="text-sm text-text-secondary">
-									Mail that arrives sealed is stored encrypted. The only things that can open it
-									again are your instance secret (<code class="font-mono text-text-primary"
-										>INSTANCE_SECRET</code
-									>) and the recovery kits you download from Sealed Mail settings.
-								</p>
-								<p class="text-sm text-text-secondary">
-									If you lose the instance secret and haven't kept any recovery kits, sealed mail
-									you already received can no longer be opened, and a database backup alone will not
-									bring it back. Keep the instance secret in your backups, and download a recovery
-									kit for each address before you rely on Sealed Mail.
+									{{ t('dashboard.admin.backups.sealedMailWarning') }}
 								</p>
 								<NuxtLink
 									to="/dashboard/admin/instance/sealed-mail"
 									class="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
 								>
-									Go to Sealed Mail settings
+									{{ t('dashboard.admin.backups.sealedMailLink') }}
 									<Icon name="lucide:arrow-right" class="h-3.5 w-3.5" />
 								</NuxtLink>
 							</div>
@@ -248,8 +299,7 @@ async function recordRun(status: 'success' | 'failed') {
 					</div>
 
 					<p class="text-xs text-text-tertiary">
-						Restoring replaces current data with the snapshot — stop the stack and confirm the
-						tarball before running it in production.
+						{{ t('dashboard.admin.backups.restoreWarning') }}
 					</p>
 				</section>
 			</div>

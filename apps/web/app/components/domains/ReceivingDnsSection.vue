@@ -45,6 +45,8 @@ const props = defineProps<{
 	inboundEnabled: boolean;
 }>();
 
+const { t } = useI18n();
+
 const mxRecords = computed(() => buildInboundMxRecords(props.domain, props.mailHost));
 
 // The registrable zone the records actually go in — the DNS provider that
@@ -89,7 +91,7 @@ const { verification: mtaStsVerification, checked: mtaStsChecked } = useMtaStsVe
 // so the panel simply omits the status line rather than erroring.
 const { run: runReverseDnsCheck } = useBackendOperation(
 	api.domains.dnsVerification.checkReceivingReverseDns,
-	{ label: 'Check receiving reverse DNS', type: 'action' }
+	{ label: () => t('components.domains.receivingDnsSection.reverseDnsOperation'), type: 'action' }
 );
 
 type ReverseDnsVerdict = Awaited<ReturnType<typeof runReverseDnsCheck>>;
@@ -119,7 +121,7 @@ watch(
 <template>
 	<div v-if="mxRecords.length > 0" class="pt-2">
 		<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-			Receiving (inbound mail)
+			{{ t('components.domains.receivingDnsSection.heading') }}
 		</p>
 
 		<!-- Honest "not turned on yet" state — receiving is off, but we still show
@@ -129,35 +131,48 @@ watch(
 			data-testid="receiving-not-enabled"
 			class="mb-3 p-4 bg-bg-surface rounded-xl border border-border-subtle"
 		>
-			<p class="text-sm text-text-secondary">
-				<strong class="text-text-primary">Receiving isn't turned on yet.</strong>
-				This deployment isn't set up to accept mail for your domains. You can add the MX record
-				below now so DNS is ready — but incoming mail won't be accepted until you turn on a
-				receiving feature.
-			</p>
+			<I18nT
+				keypath="components.domains.receivingDnsSection.notEnabled.body"
+				tag="p"
+				scope="global"
+				class="text-sm text-text-secondary"
+			>
+				<template #headline>
+					<strong class="text-text-primary">
+						{{ t('components.domains.receivingDnsSection.notEnabled.headline') }}
+					</strong>
+				</template>
+			</I18nT>
 			<NuxtLink
 				to="/dashboard/admin/instance/features"
 				class="inline-flex items-center gap-1 text-sm text-brand hover:underline mt-2"
 			>
-				Turn on receiving in Settings → Features
+				{{ t('components.domains.receivingDnsSection.notEnabled.enableLink') }}
 				<Icon name="lucide:arrow-right" class="w-3.5 h-3.5" />
 			</NuxtLink>
 		</div>
 
-		<p class="text-sm text-text-secondary mb-3">
-			To receive mail for <strong class="text-text-primary">{{ domain }}</strong> through this Owlat
-			instance, publish the MX record below in the DNS settings for
-			<strong class="text-text-primary" data-testid="receiving-zone">{{ registrableZone }}</strong
-			>. Inbound mail is delivered to this deployment's mail host (<code
-				class="bg-bg-surface px-1.5 py-0.5 rounded text-xs"
-				>{{ mailHost }}</code
-			>).
-		</p>
+		<I18nT
+			keypath="components.domains.receivingDnsSection.intro"
+			tag="p"
+			scope="global"
+			class="text-sm text-text-secondary mb-3"
+		>
+			<template #domain>
+				<strong class="text-text-primary">{{ domain }}</strong>
+			</template>
+			<template #zone>
+				<strong class="text-text-primary" data-testid="receiving-zone">{{ registrableZone }}</strong>
+			</template>
+			<template #mailHost>
+				<code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">{{ mailHost }}</code>
+			</template>
+		</I18nT>
 
 		<div class="space-y-3">
 			<div v-for="(mx, i) in mxRecords" :key="`mx-${i}`">
 				<p class="text-xs text-text-tertiary mb-1">
-					Priority / preference:
+					{{ t('components.domains.receivingDnsSection.priorityLabel') }}
 					<code class="bg-bg-surface px-1.5 py-0.5 rounded">{{ mx.priority }}</code>
 				</p>
 				<DomainsDNSRecordPanel
@@ -173,15 +188,21 @@ watch(
 		     encrypted delivery to your mail server. -->
 		<div v-if="mtaStsRecords.length > 0" class="mt-5">
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-				Require encryption (MTA-STS)
+				{{ t('components.domains.receivingDnsSection.mtaSts.heading') }}
 			</p>
-			<p class="text-sm text-text-secondary mb-3">
-				You've turned on a mail-encryption policy for
-				<strong class="text-text-primary">{{ domain }}</strong
-				>. Publish both records below in the DNS settings for
-				<strong class="text-text-primary">{{ registrableZone }}</strong> so other mail servers can
-				find it and require an encrypted, verified connection when they deliver to you.
-			</p>
+			<I18nT
+				keypath="components.domains.receivingDnsSection.mtaSts.intro"
+				tag="p"
+				scope="global"
+				class="text-sm text-text-secondary mb-3"
+			>
+				<template #domain>
+					<strong class="text-text-primary">{{ domain }}</strong>
+				</template>
+				<template #zone>
+					<strong class="text-text-primary">{{ registrableZone }}</strong>
+				</template>
+			</I18nT>
 			<div class="space-y-3">
 				<DomainsDNSRecordPanel
 					v-for="(rec, i) in mtaStsRecords"
@@ -197,15 +218,13 @@ watch(
 				v-if="mtaStsChecked && mtaStsVerification && mtaStsVerification.verified"
 				class="text-sm text-success mt-3"
 			>
-				MTA-STS is live — the DNS record and served policy match, so senders can require encrypted
-				delivery to you.
+				{{ t('components.domains.receivingDnsSection.mtaSts.verified') }}
 			</p>
 			<p
 				v-else-if="mtaStsChecked && mtaStsVerification && !mtaStsVerification.verified"
 				class="text-sm text-warning mt-3"
 			>
-				MTA-STS isn't verified yet. Publish both records above (DNS can take a little while to
-				propagate) — until then senders won't require encrypted delivery.
+				{{ t('components.domains.receivingDnsSection.mtaSts.notVerified') }}
 			</p>
 		</div>
 
@@ -215,47 +234,63 @@ watch(
 			v-if="inboundEnabled"
 			class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle"
 		>
-			<p class="text-sm text-text-secondary">
-				<strong class="text-text-primary">Inbound port + firewall:</strong>
-				other mail servers connect to
-				<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ mailHost }}</code>
-				on TCP port
-				<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ inboundPort }}</code>
-				to deliver mail, so open inbound TCP {{ inboundPort }} on your firewall / security group.
-				Many cloud providers block port {{ inboundPort }} by default — confirm your host allows
-				inbound SMTP.
-			</p>
+			<I18nT
+				keypath="components.domains.receivingDnsSection.firewall.body"
+				tag="p"
+				scope="global"
+				class="text-sm text-text-secondary"
+			>
+				<template #headline>
+					<strong class="text-text-primary">
+						{{ t('components.domains.receivingDnsSection.firewall.headline') }}
+					</strong>
+				</template>
+				<template #mailHost>
+					<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ mailHost }}</code>
+				</template>
+				<template #portCode>
+					<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ inboundPort }}</code>
+				</template>
+				<template #port>{{ inboundPort }}</template>
+			</I18nT>
 
 			<!-- Live reverse-DNS (PTR) verdict — replaces the old static advice. -->
-			<p
+			<I18nT
 				v-if="reverseDnsChecked && reverseDns && reverseDns.matchesHost"
+				keypath="components.domains.receivingDnsSection.reverseDns.confirmed"
+				tag="p"
+				scope="global"
 				class="text-sm text-success mt-2"
 			>
-				Reverse DNS confirmed:
-				<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.ptrValue }}</code>
-				matches your mail host — receiving MTAs (Gmail/Yahoo) will forward-confirm this host.
-			</p>
-			<p
+				<template #ptr>
+					<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.ptrValue }}</code>
+				</template>
+			</I18nT>
+			<I18nT
 				v-else-if="reverseDnsChecked && reverseDns && reverseDns.hasPtr"
+				keypath="components.domains.receivingDnsSection.reverseDns.mismatch"
+				tag="p"
+				scope="global"
 				class="text-sm text-warning mt-2"
 			>
-				PTR record found (<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{
-					reverseDns.ptrValue
-				}}</code
-				>) but it doesn't match
-				<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.checkedHost }}</code
-				>. Ask your host to set the reverse DNS (PTR) for this IP to the mail host so it
-				forward-confirms.
-			</p>
-			<p
+				<template #ptr>
+					<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.ptrValue }}</code>
+				</template>
+				<template #host>
+					<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.checkedHost }}</code>
+				</template>
+			</I18nT>
+			<I18nT
 				v-else-if="reverseDnsChecked && reverseDns && !reverseDns.hasPtr"
+				keypath="components.domains.receivingDnsSection.reverseDns.missing"
+				tag="p"
+				scope="global"
 				class="text-sm text-warning mt-2"
 			>
-				No PTR record found for
-				<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.checkedHost }}</code>
-				— ask your host to set reverse DNS (PTR) for the mail host's IP, or Gmail/Yahoo may reject
-				or spam-folder your mail.
-			</p>
+				<template #host>
+					<code class="bg-bg-deep px-1.5 py-0.5 rounded text-xs">{{ reverseDns.checkedHost }}</code>
+				</template>
+			</I18nT>
 		</div>
 	</div>
 </template>

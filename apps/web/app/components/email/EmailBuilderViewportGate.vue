@@ -2,6 +2,7 @@
 // Shown on the builder routes below `md` (see useEmailBuilderViewport). The
 // canvas needs its block palette and inspector alongside it, so a phone gets an
 // honest explanation and a way out instead of an unusable editor.
+const { t } = useI18n();
 </script>
 
 <template>
@@ -14,10 +15,11 @@
 				rounded="full"
 				class="mb-4 mx-auto"
 			/>
-			<h2 class="text-xl font-semibold text-text-primary">The editor needs a bigger screen</h2>
+			<h2 class="text-xl font-semibold text-text-primary">
+				{{ t('components.email.emailBuilderViewportGate.title') }}
+			</h2>
 			<p class="text-text-secondary mt-2">
-				Drag-and-drop editing doesn't fit on a phone. Open this on a tablet or desktop to make
-				changes — everything you've saved is exactly as you left it.
+				{{ t('components.email.emailBuilderViewportGate.body') }}
 			</p>
 			<div class="mt-6 flex flex-col items-center gap-3">
 				<slot name="action" />

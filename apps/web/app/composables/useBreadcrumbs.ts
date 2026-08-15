@@ -21,19 +21,28 @@ const dynamicBreadcrumbState = ref<BreadcrumbItem[] | null>(null);
  * disagree with the sidebar the viewer is looking at.
  */
 const MEMBER_AUDIENCE_HREF = '/dashboard/audience/contacts';
+/**
+ * Both labels are message KEYS, not words: the trail is compared against the
+ * SIDEBAR's own key (`shared.dashboardNavigation.sections.customers`), and
+ * matching on the English sentence would silently stop remapping the moment the
+ * copy was extracted — leaving a member on a trail that says "Audience" beside a
+ * sidebar that says "Customers".
+ */
+const AUDIENCE_SECTION_KEY = 'shared.breadcrumbRoutes.sections.audience';
+const MEMBER_AUDIENCE_SECTION_KEY = 'shared.dashboardNavigation.sections.customers';
 
 function applyMemberAudienceLabel(config: RouteConfig, path: string): RouteConfig {
-	if (config.section !== 'Audience') return config;
+	if (config.section !== AUDIENCE_SECTION_KEY) return config;
 	// On the customer list itself the section crumb *is* the page.
 	if (path === MEMBER_AUDIENCE_HREF) {
-		return { section: 'Customers', sectionHref: MEMBER_AUDIENCE_HREF };
+		return { section: MEMBER_AUDIENCE_SECTION_KEY, sectionHref: MEMBER_AUDIENCE_HREF };
 	}
 	const { subsection, subsectionHref, ...rest } = config;
 	// A "Contacts" subsection would repeat the (renamed) section destination.
 	const keepSubsection = subsection !== undefined && subsectionHref !== MEMBER_AUDIENCE_HREF;
 	return {
 		...rest,
-		section: 'Customers',
+		section: MEMBER_AUDIENCE_SECTION_KEY,
 		sectionHref: MEMBER_AUDIENCE_HREF,
 		...(keepSubsection ? { subsection, subsectionHref } : {}),
 	};

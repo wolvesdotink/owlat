@@ -13,14 +13,38 @@
  * against a step that never rendered.
  */
 import { vi } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
+import { config, flushPromises, mount } from '@vue/test-utils';
 import type {
 	AlignmentArm,
 	ReferenceAlignmentArm,
 	ReferenceArmInput,
 } from '@owlat/shared/deliverabilityAlignment';
 import type { ReturnPathCapabilityValue } from '~/utils/transportWizard';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import TransportConnectionWizard from '../TransportConnectionWizard.vue';
+
+/**
+ * THE REAL MESSAGE CATALOG, FOR EVERY SUITE THAT MOUNTS THROUGH THIS HARNESS.
+ *
+ * The wizard, its credentials step and the transport editor all render their
+ * copy through vue-i18n, and `useI18n` is a Nuxt auto-import in the app. Both
+ * are installed once here rather than in each suite: these components are
+ * mounted from six files (one of them outside this directory), and a suite that
+ * forgot either would fail on a missing global rather than on the property it
+ * exists to check.
+ */
+const i18n = createTestI18n();
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+config.global.plugins = [...(config.global.plugins ?? []), i18n];
+
+/**
+ * The wizard's module-scope vocabulary (`utils/transportWizard`) is catalog
+ * KEYS, so a suite comparing one of them with the sentence the wizard paints has
+ * to resolve it the same way the component does — against the real English
+ * catalog, not a restated copy of the words.
+ */
+export const localized = (value: string | { key: string; params?: Record<string, unknown> }) =>
+	typeof value === 'string' ? i18n.global.t(value) : i18n.global.t(value.key, value.params ?? {});
 
 /**
  * A live-DNS fixture: TXT values per name, or an authoritative absence, or a

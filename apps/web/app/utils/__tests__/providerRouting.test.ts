@@ -8,11 +8,17 @@ import {
 	seedRouteProviders,
 	transportLabel,
 } from '../providerRouting';
+import { createTestI18n } from '~/__tests__/i18n';
 
 const catalog = [
 	{ kind: 'mta', label: 'Owlat MTA', isAvailable: true },
 	{ kind: 'plugin.mail-pack.postmark', label: 'Postmark', isAvailable: false },
 ] as const;
+
+// `fallbackRelayIssue` hands back the refusal's message key (it is a pure
+// module); the sentence an operator reads comes from the real catalog.
+const { t } = createTestI18n().global;
+const refusal = (issue: string | null) => (issue === null ? null : t(issue));
 
 describe('provider routing catalog presentation', () => {
 	it('uses backend labels and retains stale route kinds as unavailable', () => {
@@ -88,28 +94,30 @@ describe('deliverability-fallback relay eligibility (plan D6)', () => {
 	});
 
 	it('refuses the owned MTA with the backend’s own sentence', () => {
-		expect(fallbackRelayIssue(providers, 'mta')).toBe(
+		expect(refusal(fallbackRelayIssue(providers, 'mta'))).toBe(
 			'Deliverability fallback relay must be a configured non-MTA transport'
 		);
-		expect(fallbackRelayIssue(providers, '')).toBe(
+		expect(refusal(fallbackRelayIssue(providers, ''))).toBe(
 			'Deliverability fallback relay must be a configured non-MTA transport'
 		);
 	});
 
 	it('refuses a relay that is not enabled in this route', () => {
-		expect(fallbackRelayIssue(providers, 'ses')).toBe(
+		expect(refusal(fallbackRelayIssue(providers, 'ses'))).toBe(
 			'Deliverability fallback relay must be enabled in this route'
 		);
 	});
 
 	it('refuses a route with no owned MTA to fall back FROM', () => {
 		expect(
-			fallbackRelayIssue(
-				[
-					{ providerType: 'mta', isEnabled: false },
-					{ providerType: 'mandrill', isEnabled: true },
-				],
-				'mandrill'
+			refusal(
+				fallbackRelayIssue(
+					[
+						{ providerType: 'mta', isEnabled: false },
+						{ providerType: 'mandrill', isEnabled: true },
+					],
+					'mandrill'
+				)
 			)
 		).toBe('Deliverability fallback requires an enabled owned-MTA route');
 	});

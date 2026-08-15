@@ -13,8 +13,9 @@
  *
  * The recipient fields are stubbed — only the From <select> + chip are under test.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import type { Id } from '@owlat/api/dataModel';
 import type { SendAsIdentity } from '~/composables/postbox/usePostboxCompose';
@@ -41,8 +42,15 @@ function identity(over: Partial<SendAsIdentity> & Pick<SendAsIdentity, 'address'
 	};
 }
 
+// The envelope's field labels flow through vue-i18n now; `useI18n` is a Nuxt
+// auto-import, so it has to exist as a global for the component's setup.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
 const mountOpts = {
 	global: {
+		plugins: [createTestI18n()],
 		components: { CampaignsSenderAuthChip },
 		stubs: {
 			Icon: true,

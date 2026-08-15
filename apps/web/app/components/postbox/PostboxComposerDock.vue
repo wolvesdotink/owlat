@@ -12,6 +12,8 @@ defineProps<{
 	composers: ComposerSpec[];
 }>();
 
+const { t } = useI18n();
+
 const stack = usePostboxComposerStack();
 </script>
 
@@ -27,13 +29,18 @@ const stack = usePostboxComposerStack();
 				:key="composer.id"
 				type="button"
 				class="h-9 px-3 bg-bg-elevated border border-border-subtle rounded-t-md shadow-lg flex items-center gap-2 text-sm text-text-primary hover:bg-bg-surface transition-colors"
-				:title="`Reopen: ${composer.prefillSubject || 'Draft'}`"
+				:title="
+					t('components.postbox.postboxComposerDock.reopen', {
+						subject:
+							composer.prefillSubject || t('components.postbox.postboxComposerDock.draft'),
+					})
+				"
 				@click="stack.bringToFront(composer.id)"
 			>
 				<span class="w-1.5 h-1.5 rounded-full bg-accent shrink-0" aria-hidden="true" />
 				<Icon name="lucide:mail" class="w-4 h-4 text-text-secondary" />
 				<span class="truncate max-w-[160px]">
-					{{ composer.prefillSubject || 'Draft' }}
+					{{ composer.prefillSubject || t('components.postbox.postboxComposerDock.draft') }}
 				</span>
 			</button>
 		</TransitionGroup>

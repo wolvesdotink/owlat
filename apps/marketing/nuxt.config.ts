@@ -1,6 +1,11 @@
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 
+// Single-sourced so the canonical site URL, the schema.org identity and the
+// i18n `baseUrl` (which is what makes the hreflang alternates absolute) cannot
+// drift apart.
+const SITE_URL = 'https://owlat.app';
+
 export default defineNuxtConfig({
 	extends: ['../../packages/ui'],
 
@@ -11,7 +16,34 @@ export default defineNuxtConfig({
 		compatibilityVersion: 4,
 	},
 
-	modules: ['@nuxtjs/seo', '@nuxtjs/color-mode', '@nuxt/fonts'],
+	// @nuxtjs/i18n is registered first so the SEO modules (sitemap, robots,
+	// og-image) see the locale list while they set themselves up and emit
+	// per-locale entries.
+	modules: ['@nuxtjs/i18n', '@nuxtjs/seo', '@nuxtjs/color-mode', '@nuxt/fonts'],
+
+	i18n: {
+		defaultLocale: 'en',
+		// `prefix_except_default`: English keeps every URL it has today
+		// (https://owlat.app/, /waitlist) and German lives under /de/. Changing the
+		// English paths would drop the site's existing search ranking and break
+		// links printed in the README, the docs and the desktop app.
+		strategy: 'prefix_except_default',
+		// Message files live in i18n/locales/ (the module's `restructureDir`) and
+		// are loaded on demand — a visitor downloads one catalog, not both.
+		locales: [
+			{ code: 'en', language: 'en-US', name: 'English', file: 'en.json' },
+			{ code: 'de', language: 'de-DE', name: 'Deutsch', file: 'de.json' },
+		],
+		// Absolute base for the `hreflang` alternates and the canonical link that
+		// `useLocaleHead()` (app.vue) writes.
+		baseUrl: SITE_URL,
+		// Deliberately off: the language is chosen by the visitor through the
+		// header switcher, and search engines are pointed at the right variant by
+		// the hreflang alternates. Auto-redirecting on `Accept-Language` would
+		// bounce a German-configured browser away from a link that was explicitly
+		// shared as the English page.
+		detectBrowserLanguage: false,
+	},
 
 	fonts: {
 		// Variable wght axis required: the design system's weight-based emphasis
@@ -21,8 +53,10 @@ export default defineNuxtConfig({
 	},
 
 	site: {
-		url: 'https://owlat.app',
+		url: SITE_URL,
 		name: 'Owlat',
+		// Site-level fallback only. Every page sets a localized description through
+		// `useSeoMeta` (with getters), which wins over this one.
 		description:
 			'Campaigns, automations, transactional sends, and audience operations from one platform. Backed by Convex and powered by AWS SES.',
 		defaultLocale: 'en',
@@ -30,16 +64,11 @@ export default defineNuxtConfig({
 
 	app: {
 		head: {
-			htmlAttrs: { lang: 'en' },
+			// No `htmlAttrs.lang` here: `useLocaleHead()` in app.vue writes `lang`
+			// (and `dir`) from the active locale, so a pinned value would either be
+			// overwritten or, worse, label the German page as English.
 			viewport: 'width=device-width, initial-scale=1, viewport-fit=cover',
 			link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
-			meta: [
-				{
-					name: 'description',
-					content:
-						'Campaigns, automations, transactional sends, and audience operations from one platform. Backed by Convex and powered by AWS SES.',
-				},
-			],
 		},
 	},
 
@@ -54,8 +83,8 @@ export default defineNuxtConfig({
 		identity: {
 			type: 'Organization',
 			name: 'Owlat',
-			url: 'https://owlat.app',
-			logo: 'https://owlat.app/logo.svg',
+			url: SITE_URL,
+			logo: `${SITE_URL}/logo.svg`,
 		},
 	},
 

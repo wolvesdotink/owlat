@@ -19,6 +19,7 @@ import { ref, type Ref } from 'vue';
 import RampNarrativeCard from '../RampNarrativeCard.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import ErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { cellControl, controlsView, decision, DAY_MS, NOW } from './rampFixtures';
 import type { RampControls } from '~/utils/deliverabilityRamp';
 
@@ -27,6 +28,9 @@ const error: Ref<Error | null> = ref(null);
 const controls: Ref<RampControls | undefined> = ref(undefined);
 
 beforeEach(() => {
+	// The card's copy flows through vue-i18n now; `useI18n` is a Nuxt auto-import,
+	// so it has to exist as a bare global for the component's setup.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	isLoading.value = false;
 	error.value = null;
 	controls.value = controlsView();
@@ -46,6 +50,7 @@ const globalOptions = {
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 	},
 	components: { UiQueryBoundary: QueryBoundary, UiErrorAlert: ErrorAlert },
+	plugins: [createTestI18n()],
 };
 
 function mountCard() {

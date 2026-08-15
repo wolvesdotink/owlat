@@ -5,7 +5,12 @@ import CampaignSendPlanLine from '~/components/campaigns/CampaignSendPlanLine.vu
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
 import { selectPreviousComparable, computeStatDeltas, NO_DELTAS } from '~/utils/campaignReport';
 
-useHead({ title: 'Campaign Report — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.campaigns.detail.report.pageTitle') });
+
+const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
+const formatNumber = (value: number) => numberFormat.value.format(value);
 
 definePageMeta({
 	layout: 'dashboard',
@@ -17,10 +22,10 @@ const campaignId = useRouteId<'campaigns'>();
 
 // Mutations
 const { run: duplicateCampaign } = useBackendOperation(api.campaigns.campaigns.duplicate, {
-	label: 'Duplicate campaign',
+	label: () => t('dashboard.campaigns.detail.report.duplicateOperation'),
 });
 const { run: declareWinner } = useBackendOperation(api.campaigns.abTest.declareABTestWinner, {
-	label: 'Declare A/B test winner',
+	label: () => t('dashboard.campaigns.detail.report.declareWinnerOperation'),
 });
 
 const { showToast: showNotification } = useToast();
@@ -35,7 +40,7 @@ const handleDuplicate = async () => {
 		isDuplicating.value = false;
 		return;
 	}
-	showNotification('Campaign duplicated successfully');
+	showNotification(t('dashboard.campaigns.detail.report.toasts.duplicated'));
 	router.push(`/dashboard/campaigns/${newCampaignId}/edit`);
 };
 
@@ -98,7 +103,7 @@ const handleSelectWinner = async (winner: 'A' | 'B') => {
 	try {
 		const result = await declareWinner({ campaignId: campaignId.value, winner });
 		if (result === undefined) return;
-		showNotification(`Variant ${winner} declared as winner!`);
+		showNotification(t('dashboard.campaigns.detail.report.toasts.winnerDeclared', { variant: winner }));
 	} finally {
 		isSelectingWinner.value = false;
 	}
@@ -199,10 +204,20 @@ const heroTiles = computed(() => {
 	if (!stats.value) return [];
 	const s = stats.value;
 	return [
-		{ key: 'delivered', label: 'Delivered', value: s.delivered, delta: deltas.value.delivered },
-		{ key: 'opened', label: 'Opened', value: s.uniqueOpens, delta: deltas.value.opened },
-		{ key: 'clicked', label: 'Clicked', value: s.uniqueClicks, delta: deltas.value.clicked },
-		{ key: 'bounced', label: 'Bounced', value: s.bounced, delta: deltas.value.bounced },
+		{
+			key: 'delivered',
+			label: t('dashboard.campaigns.detail.report.tiles.delivered'),
+			value: s.delivered,
+			delta: deltas.value.delivered,
+		},
+		{ key: 'opened', label: t('dashboard.campaigns.detail.report.tiles.opened'), value: s.uniqueOpens, delta: deltas.value.opened },
+		{
+			key: 'clicked',
+			label: t('dashboard.campaigns.detail.report.tiles.clicked'),
+			value: s.uniqueClicks,
+			delta: deltas.value.clicked,
+		},
+		{ key: 'bounced', label: t('dashboard.campaigns.detail.report.tiles.bounced'), value: s.bounced, delta: deltas.value.bounced },
 	];
 });
 
@@ -241,8 +256,8 @@ const loadPrevClicked = () => {
 		<UiQueryBoundary
 			:loading="isLoading && !campaign"
 			:error="campaignError"
-			error-title="Couldn't load this report"
-			loading-label="Loading report..."
+			:error-title="t('dashboard.campaigns.detail.report.errorTitle')"
+			:loading-label="t('dashboard.campaigns.detail.report.loadingLabel')"
 			@retry="refetchCampaign"
 		>
 			<!-- Campaign Not Found -->
@@ -257,12 +272,12 @@ const loadPrevClicked = () => {
 					rounded="full"
 					class="mb-4"
 				/>
-				<p class="text-text-secondary font-medium">Campaign not found</p>
+				<p class="text-text-secondary font-medium">{{ t('dashboard.campaigns.detail.report.notFoundTitle') }}</p>
 				<p class="text-sm text-text-tertiary mt-1">
-					This campaign may have been deleted or you don't have access to it.
+					{{ t('dashboard.campaigns.detail.report.notFoundDescription') }}
 				</p>
 				<UiButton variant="secondary" to="/dashboard/campaigns" class="mt-6">
-					Back to Campaigns
+					{{ t('dashboard.campaigns.detail.report.backToCampaigns') }}
 				</UiButton>
 			</div>
 
@@ -275,7 +290,7 @@ const loadPrevClicked = () => {
 						class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors duration-(--motion-fast)"
 					>
 						<Icon name="lucide:arrow-left" class="w-4 h-4" />
-						Back to Campaigns
+						{{ t('dashboard.campaigns.detail.report.backToCampaigns') }}
 					</NuxtLink>
 					<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 						<div>
@@ -285,10 +300,12 @@ const loadPrevClicked = () => {
 							>
 								<span class="inline-flex items-center gap-1.5">
 									<Icon name="lucide:clock" class="w-4 h-4" />
-									Sent {{ formatDateTime(campaign.sentAt) }}
+									{{ t('dashboard.campaigns.detail.report.sentAt', { date: formatDateTime(campaign.sentAt) }) }}
 								</span>
 								<span class="text-text-tertiary">·</span>
-								<span class="tabular-nums">{{ sentCount.toLocaleString() }} recipients</span>
+								<span class="tabular-nums">
+									{{ t('dashboard.campaigns.detail.report.recipients', { count: formatNumber(sentCount) }) }}
+								</span>
 							</p>
 							<!--
 								THE MULTI-DAY SEND PLAN, present from the moment the send starts
@@ -305,13 +322,13 @@ const loadPrevClicked = () => {
 							>
 								<Icon v-if="isDuplicating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 								<Icon v-else name="lucide:copy" class="w-4 h-4" />
-								{{ isDuplicating ? 'Duplicating...' : 'Duplicate' }}
+								{{ isDuplicating ? t('dashboard.campaigns.detail.report.duplicating') : t('common.duplicate') }}
 							</UiButton>
 							<span
 								class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success"
 							>
 								<Icon name="lucide:check-circle-2" class="w-3 h-3" />
-								Sent
+								{{ t('dashboard.campaigns.detail.report.sentBadge') }}
 							</span>
 						</div>
 					</div>
@@ -323,7 +340,7 @@ const loadPrevClicked = () => {
 						<div class="flex items-center gap-3 min-w-0">
 							<UiIconBox icon="lucide:globe" size="sm" rounded="lg" />
 							<div class="min-w-0">
-								<p class="text-sm font-medium text-text-primary">Public Archive</p>
+								<p class="text-sm font-medium text-text-primary">{{ t('dashboard.campaigns.detail.report.archive.title') }}</p>
 								<p class="text-xs text-text-tertiary truncate sm:max-w-md">{{ archiveUrl }}</p>
 							</div>
 						</div>
@@ -333,7 +350,7 @@ const loadPrevClicked = () => {
 							@click="copyArchiveLink"
 						>
 							<Icon :name="archiveCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
-							{{ archiveCopied ? 'Copied' : 'Copy Link' }}
+							{{ archiveCopied ? t('common.copied') : t('dashboard.campaigns.detail.report.archive.copyLink') }}
 						</UiButton>
 					</div>
 				</div>
@@ -345,17 +362,20 @@ const loadPrevClicked = () => {
 							v-for="tile in heroTiles"
 							:key="tile.key"
 							:label="tile.label"
-							:value="tile.value.toLocaleString()"
+							:value="formatNumber(tile.value)"
 							:delta="tile.delta.text"
 							:delta-direction="tile.delta.direction"
 						/>
 					</div>
 					<p class="mt-4 text-xs text-text-tertiary">
 						<template v-if="previousComparable">
-							Change vs your previous {{ campaign.isABTest ? 'A/B ' : '' }}send ·
-							{{ previousComparable.name }}
+							{{
+								campaign.isABTest
+									? t('dashboard.campaigns.detail.report.comparison.changeVsPreviousAb', { name: previousComparable.name })
+									: t('dashboard.campaigns.detail.report.comparison.changeVsPrevious', { name: previousComparable.name })
+							}}
 						</template>
-						<template v-else> No comparable prior send to compare against yet. </template>
+						<template v-else>{{ t('dashboard.campaigns.detail.report.comparison.noComparable') }}</template>
 					</p>
 				</div>
 
@@ -372,7 +392,7 @@ const loadPrevClicked = () => {
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-8">
 					<div class="card p-4 sm:p-6">
 						<div class="flex items-baseline justify-between mb-4">
-							<h3 class="text-base font-medium text-text-primary">Open rate</h3>
+							<h3 class="text-base font-medium text-text-primary">{{ t('dashboard.campaigns.detail.report.openRate') }}</h3>
 							<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
 								>{{ openRate.toFixed(1) }}%</span
 							>
@@ -384,14 +404,18 @@ const loadPrevClicked = () => {
 							/>
 						</div>
 						<p class="text-sm text-text-tertiary mt-3 tabular-nums">
-							{{ (stats?.uniqueOpens ?? 0).toLocaleString() }} of
-							{{ (stats?.delivered ?? 0).toLocaleString() }} delivered opened
+							{{
+								t('dashboard.campaigns.detail.report.openedOfDelivered', {
+									opened: formatNumber(stats?.uniqueOpens ?? 0),
+									delivered: formatNumber(stats?.delivered ?? 0),
+								})
+							}}
 						</p>
 					</div>
 
 					<div class="card p-4 sm:p-6">
 						<div class="flex items-baseline justify-between mb-4">
-							<h3 class="text-base font-medium text-text-primary">Click rate</h3>
+							<h3 class="text-base font-medium text-text-primary">{{ t('dashboard.campaigns.detail.report.clickRate') }}</h3>
 							<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
 								>{{ clickRate.toFixed(1) }}%</span
 							>
@@ -403,8 +427,12 @@ const loadPrevClicked = () => {
 							/>
 						</div>
 						<p class="text-sm text-text-tertiary mt-3 tabular-nums">
-							{{ (stats?.uniqueClicks ?? 0).toLocaleString() }} of
-							{{ (stats?.delivered ?? 0).toLocaleString() }} delivered clicked a link
+							{{
+								t('dashboard.campaigns.detail.report.clickedOfDelivered', {
+									clicked: formatNumber(stats?.uniqueClicks ?? 0),
+									delivered: formatNumber(stats?.delivered ?? 0),
+								})
+							}}
 						</p>
 					</div>
 				</div>
@@ -412,8 +440,8 @@ const loadPrevClicked = () => {
 				<!-- Opens Timeline -->
 				<div class="card p-4 sm:p-6 mb-8">
 					<div class="flex items-baseline justify-between mb-6">
-						<h3 class="text-base font-medium text-text-primary">Opens over time</h3>
-						<span class="text-xs text-text-tertiary">First 48 hours</span>
+						<h3 class="text-base font-medium text-text-primary">{{ t('dashboard.campaigns.detail.report.timeline.title') }}</h3>
+						<span class="text-xs text-text-tertiary">{{ t('dashboard.campaigns.detail.report.timeline.window') }}</span>
 					</div>
 
 					<!-- Empty state -->
@@ -422,9 +450,9 @@ const loadPrevClicked = () => {
 						class="flex flex-col items-center justify-center py-12 text-center"
 					>
 						<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mb-3" />
-						<p class="text-text-secondary">No opens recorded yet</p>
+						<p class="text-text-secondary">{{ t('dashboard.campaigns.detail.report.timeline.emptyTitle') }}</p>
 						<p class="text-sm text-text-tertiary mt-1">
-							Opens will appear here as recipients view your email.
+							{{ t('dashboard.campaigns.detail.report.timeline.emptyDescription') }}
 						</p>
 					</div>
 
@@ -432,8 +460,8 @@ const loadPrevClicked = () => {
 						v-else
 						:data="timelineData"
 						label-peak
-						:format-value="(v: number) => v.toLocaleString()"
-						aria-label="Opens over the first 48 hours"
+						:format-value="(v: number) => formatNumber(v)"
+						:aria-label="t('dashboard.campaigns.detail.report.timeline.chartLabel')"
 					/>
 				</div>
 
@@ -442,8 +470,8 @@ const loadPrevClicked = () => {
 					<div class="flex items-center gap-3 mb-6">
 						<UiIconBox icon="lucide:flame" size="sm" variant="warning" rounded="lg" />
 						<div>
-							<h3 class="text-base font-medium text-text-primary">Link click heatmap</h3>
-							<p class="text-sm text-text-secondary">Visual representation of link engagement</p>
+							<h3 class="text-base font-medium text-text-primary">{{ t('dashboard.campaigns.detail.report.heatmap.title') }}</h3>
+							<p class="text-sm text-text-secondary">{{ t('dashboard.campaigns.detail.report.heatmap.subtitle') }}</p>
 						</div>
 					</div>
 
@@ -468,7 +496,7 @@ const loadPrevClicked = () => {
 							@click="selectedTab = 'opened'"
 						>
 							<Icon name="lucide:eye" class="w-4 h-4" />
-							Opened ({{ openedContacts?.total || 0 }})
+							{{ t('dashboard.campaigns.detail.report.tabs.opened', { count: openedContacts?.total || 0 }) }}
 						</button>
 						<button
 							:class="[
@@ -480,7 +508,7 @@ const loadPrevClicked = () => {
 							@click="selectedTab = 'clicked'"
 						>
 							<Icon name="lucide:mouse-pointer-click" class="w-4 h-4" />
-							Clicked ({{ clickedContacts?.total || 0 }})
+							{{ t('dashboard.campaigns.detail.report.tabs.clicked', { count: clickedContacts?.total || 0 }) }}
 						</button>
 					</div>
 
@@ -495,7 +523,7 @@ const loadPrevClicked = () => {
 							class="py-12 text-center"
 						>
 							<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-							<p class="text-text-secondary">No contacts have opened this email yet</p>
+							<p class="text-text-secondary">{{ t('dashboard.campaigns.detail.report.openedEmpty') }}</p>
 						</div>
 
 						<div v-else>
@@ -510,12 +538,12 @@ const loadPrevClicked = () => {
 										<div class="min-w-0">
 											<div class="text-text-primary font-medium truncate">
 												{{
-													send.contact?.firstName || send.contact?.email?.split('@')[0] || 'Unknown'
+													send.contact?.firstName || send.contact?.email?.split('@')[0] || t('common.unknown')
 												}}
 												{{ send.contact?.lastName || '' }}
 											</div>
 											<div class="text-sm text-text-tertiary truncate">
-												{{ send.contact?.email || 'No email' }}
+												{{ send.contact?.email || t('dashboard.campaigns.detail.report.noEmail') }}
 											</div>
 										</div>
 									</div>
@@ -528,13 +556,13 @@ const loadPrevClicked = () => {
 												v-if="send.openCount > 1"
 												class="text-xs text-text-tertiary tabular-nums"
 											>
-												{{ send.openCount }} opens
+												{{ t('dashboard.campaigns.detail.report.opensCount', { count: send.openCount }) }}
 											</div>
 										</div>
 										<NuxtLink
 											:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
 											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-											title="View send details"
+											:title="t('dashboard.campaigns.detail.report.viewSendDetails')"
 										>
 											<Icon name="lucide:chevron-right" class="w-4 h-4" />
 										</NuxtLink>
@@ -552,13 +580,16 @@ const loadPrevClicked = () => {
 									:disabled="openedOffset === 0"
 									@click="loadPrevOpened"
 								>
-									Previous
+									{{ t('dashboard.campaigns.detail.report.pagination.previous') }}
 								</UiButton>
 								<span class="text-sm text-text-tertiary tabular-nums">
-									{{ openedOffset + 1 }}-{{
-										Math.min(openedOffset + pageSize, openedContacts.total)
+									{{
+										t('dashboard.campaigns.detail.report.pagination.range', {
+											from: openedOffset + 1,
+											to: Math.min(openedOffset + pageSize, openedContacts.total),
+											total: openedContacts.total,
+										})
 									}}
-									of {{ openedContacts.total }}
 								</span>
 								<UiButton
 									variant="secondary"
@@ -566,7 +597,7 @@ const loadPrevClicked = () => {
 									:disabled="!openedContacts.hasMore"
 									@click="loadMoreOpened"
 								>
-									Next
+									{{ t('dashboard.campaigns.detail.report.pagination.next') }}
 								</UiButton>
 							</div>
 						</div>
@@ -586,7 +617,7 @@ const loadPrevClicked = () => {
 								name="lucide:mouse-pointer-click"
 								class="w-10 h-10 text-text-tertiary mx-auto mb-3"
 							/>
-							<p class="text-text-secondary">No contacts have clicked links in this email yet</p>
+							<p class="text-text-secondary">{{ t('dashboard.campaigns.detail.report.clickedEmpty') }}</p>
 						</div>
 
 						<div v-else>
@@ -604,12 +635,12 @@ const loadPrevClicked = () => {
 													{{
 														send.contact?.firstName ||
 														send.contact?.email?.split('@')[0] ||
-														'Unknown'
+														t('common.unknown')
 													}}
 													{{ send.contact?.lastName || '' }}
 												</div>
 												<div class="text-sm text-text-tertiary truncate">
-													{{ send.contact?.email || 'No email' }}
+													{{ send.contact?.email || t('dashboard.campaigns.detail.report.noEmail') }}
 												</div>
 											</div>
 										</div>
@@ -622,15 +653,15 @@ const loadPrevClicked = () => {
 													v-if="send.clickedLinks.length > 0"
 													class="text-xs text-text-tertiary tabular-nums"
 												>
-													{{ send.clickedLinks.length }} link{{
-														send.clickedLinks.length !== 1 ? 's' : ''
+													{{
+														t('dashboard.campaigns.detail.report.linksCount', { count: send.clickedLinks.length }, send.clickedLinks.length)
 													}}
 												</div>
 											</div>
 											<NuxtLink
 												:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-												title="View send details"
+												:title="t('dashboard.campaigns.detail.report.viewSendDetails')"
 											>
 												<Icon name="lucide:chevron-right" class="w-4 h-4" />
 											</NuxtLink>
@@ -646,7 +677,7 @@ const loadPrevClicked = () => {
 											<span class="truncate max-w-xs">{{ link.url }}</span>
 										</div>
 										<div v-if="send.clickedLinks.length > 3" class="text-xs text-text-tertiary">
-											+{{ send.clickedLinks.length - 3 }} more links
+											{{ t('dashboard.campaigns.detail.report.moreLinks', { count: send.clickedLinks.length - 3 }) }}
 										</div>
 									</div>
 								</div>
@@ -662,13 +693,16 @@ const loadPrevClicked = () => {
 									:disabled="clickedOffset === 0"
 									@click="loadPrevClicked"
 								>
-									Previous
+									{{ t('dashboard.campaigns.detail.report.pagination.previous') }}
 								</UiButton>
 								<span class="text-sm text-text-tertiary tabular-nums">
-									{{ clickedOffset + 1 }}-{{
-										Math.min(clickedOffset + pageSize, clickedContacts.total)
+									{{
+										t('dashboard.campaigns.detail.report.pagination.range', {
+											from: clickedOffset + 1,
+											to: Math.min(clickedOffset + pageSize, clickedContacts.total),
+											total: clickedContacts.total,
+										})
 									}}
-									of {{ clickedContacts.total }}
 								</span>
 								<UiButton
 									variant="secondary"
@@ -676,7 +710,7 @@ const loadPrevClicked = () => {
 									:disabled="!clickedContacts.hasMore"
 									@click="loadMoreClicked"
 								>
-									Next
+									{{ t('dashboard.campaigns.detail.report.pagination.next') }}
 								</UiButton>
 							</div>
 						</div>

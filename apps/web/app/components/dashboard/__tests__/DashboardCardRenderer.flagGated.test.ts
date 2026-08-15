@@ -7,7 +7,7 @@
  * This lives in its own file because it mocks the widget registry to a single
  * flag-gated kind; the sibling suite exercises the real dashboard registry.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 vi.mock('~/composables/widgets/dashboardWidgets', async () => {
@@ -24,6 +24,11 @@ vi.mock('~/composables/widgets/dashboardWidgets', async () => {
 });
 
 import DashboardCardRenderer from '../DashboardCardRenderer.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const stubs = {
 	WidgetHost: {
@@ -44,7 +49,7 @@ describe('DashboardCardRenderer — flag-gated widget', () => {
 	it('omits a flag-off widget entirely', () => {
 		const wrapper = mount(DashboardCardRenderer, {
 			props: { card: { type: 'flagged_widget', size: 'medium' } },
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		// Nothing renders: no host, no unknown-card affordance, no size-class wrapper.
 		expect(wrapper.find('[data-testid="host"]').exists()).toBe(false);
@@ -56,7 +61,7 @@ describe('DashboardCardRenderer — flag-gated widget', () => {
 		vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));
 		const wrapper = mount(DashboardCardRenderer, {
 			props: { card: { type: 'flagged_widget', size: 'medium' } },
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		const host = wrapper.find('[data-testid="host"]');
 		expect(host.exists()).toBe(true);

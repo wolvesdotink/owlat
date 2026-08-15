@@ -28,11 +28,12 @@ import {
  * Mounted once from the dashboard layout.
  */
 export function useSendReadyNotice() {
+	const { t } = useI18n();
 	const { showToast } = useToast();
 
 	const { data } = useOrganizationQuery(api.auth.sendReadyNotices.getState);
 	const { run: acknowledge } = useBackendOperation(api.auth.sendReadyNotices.acknowledge, {
-		label: 'Acknowledge sending-ready notice',
+		label: () => t('shared.useSendReadyNotice.acknowledgeOperation'),
 	});
 
 	// Ids covered by a toast this session. Guards the window between showing the
@@ -51,11 +52,13 @@ export function useSendReadyNotice() {
 			if (!notice) return;
 			for (const covered of pending) surfaced.add(covered.id);
 
-			showToast(sendReadyToastMessage(), 'success', {
+			// `sendReadyToastMessage()` is written where the notice is planned, at
+			// module scope, so it hands back a message KEY rather than a sentence.
+			showToast(t(sendReadyToastMessage()), 'success', {
 				// Sticky: this one never comes back, so it waits to be read.
 				durationMs: 0,
 				action: {
-					label: 'Finish setup',
+					label: t('shared.useSendReadyNotice.finishSetup'),
 					onAction: () => void navigateTo(SEND_READY_DEEP_LINK),
 				},
 				// Fires once, on the close button, the action button, or a clear —

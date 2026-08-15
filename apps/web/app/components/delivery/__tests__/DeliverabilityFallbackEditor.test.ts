@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { computed, watch } from 'vue';
 import DeliverabilityFallbackEditor from '../DeliverabilityFallbackEditor.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
+vi.stubGlobal('useI18n', i18nStubs.useI18n);
 vi.stubGlobal('computed', computed);
 vi.stubGlobal('watch', watch);
 
@@ -21,6 +23,7 @@ const DEFAULT_PROVIDERS: ProviderEntry[] = [
 
 function mountEditor(relay = 'resend', providers: ProviderEntry[] = DEFAULT_PROVIDERS) {
 	return mount(DeliverabilityFallbackEditor, {
+		global: { plugins: [createTestI18n()] },
 		props: {
 			messageType: 'campaign',
 			providers,

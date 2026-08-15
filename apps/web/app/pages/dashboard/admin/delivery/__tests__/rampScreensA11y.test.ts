@@ -39,6 +39,7 @@ import {
 	independenceSummary,
 } from '~/components/delivery/__tests__/rampFixtures';
 import { cellView } from '~/components/delivery/__tests__/measurementFixtures';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const isLoading = ref(false);
 const error: Ref<Error | null> = ref(null);
@@ -58,6 +59,9 @@ function stubQueries(answers: readonly (readonly [AnyQuery, unknown])[]): void {
 beforeEach(() => {
 	isLoading.value = false;
 	error.value = null;
+	// These screens' copy flows through vue-i18n now; `useI18n` is a Nuxt
+	// auto-import, so it has to exist as a bare global for their setups.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('navigateTo', vi.fn());
@@ -91,6 +95,7 @@ const globalOptions = {
 		DeliveryRampPresetPicker: RampPresetPicker,
 		DeliveryMeasurementGateList: MeasurementGateList,
 	},
+	plugins: [createTestI18n()],
 };
 
 /** Every focusable element must have an accessible name from somewhere. */
@@ -144,6 +149,7 @@ describe('independence screen accessibility', () => {
 	it('does not carry the arm split by colour alone', () => {
 		const wrapper = mount(IndependenceTrendChart, {
 			props: { points: independenceSummary().series, hasReference: true, labelledBy: 'x' },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.find('svg[role="img"]').attributes('aria-label')).toBeTruthy();
 		// The relay band is painted with a PATTERN, not merely a second colour, and
@@ -227,6 +233,7 @@ describe('controls screen accessibility', () => {
 	it('labels the pull-back list programmatically', () => {
 		const wrapper = mount(RampDecreaseNotices, {
 			props: { notices: [adminNotice()], labelledBy: 'notices-heading' },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.attributes('aria-labelledby')).toBe('notices-heading');
 		wrapper.unmount();

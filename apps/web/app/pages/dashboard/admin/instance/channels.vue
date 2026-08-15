@@ -4,6 +4,7 @@ import {
 	ADDABLE_CHANNEL_KINDS,
 	availableChannelKinds as computeAvailableChannelKinds,
 	type ChannelKind,
+	type LocalizedText,
 } from '~/utils/channelKinds';
 
 definePageMeta({
@@ -11,7 +12,18 @@ definePageMeta({
 	middleware: ['auth', 'admin'],
 });
 
-useHead({ title: 'Messaging channels — Owlat' });
+const { t } = useI18n();
+
+/**
+ * `ADDABLE_CHANNEL_KINDS` is a module-scope registry evaluated at import time,
+ * so it carries message KEYS (optionally with params) rather than sentences —
+ * resolving them is the consumer's job. A plain string still reads as a key.
+ */
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+useHead({ title: () => t('dashboard.admin.instance.channels.pageTitle') });
 
 const { data: channels, isLoading } = useOrganizationQuery(api.unifiedMessages.getChannelConfigs);
 
@@ -35,7 +47,7 @@ const addMenuOpen = ref(false);
 const addingChannel = ref(false);
 
 const { run: addChannelConfig } = useBackendOperation(api.unifiedMessages.updateChannelConfig, {
-	label: 'Add channel',
+	label: () => t('dashboard.admin.instance.channels.addChannel'),
 });
 
 async function addChannel(kind: ChannelKind) {
@@ -46,7 +58,7 @@ async function addChannel(kind: ChannelKind) {
 	const result = await addChannelConfig({ channel: kind, isEnabled: false });
 	addingChannel.value = false;
 	if (result === undefined) return;
-	displayToast('Channel added — configure it below');
+	displayToast(t('dashboard.admin.instance.channels.addedToast'));
 }
 
 // Computed stats for sidebar
@@ -68,7 +80,7 @@ const healthyCounts = computed(() => {
 const { showToast: displayToast } = useToast();
 
 const handleChannelSaved = () => {
-	displayToast('Channel configuration saved successfully');
+	displayToast(t('dashboard.admin.instance.channels.savedToast'));
 };
 
 const handleChannelError = (message: string) => {
@@ -84,7 +96,7 @@ const handleChannelError = (message: string) => {
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Settings
+			{{ t('dashboard.admin.instance.channels.backToSettings') }}
 		</NuxtLink>
 
 		<!-- Header -->
@@ -92,20 +104,26 @@ const handleChannelError = (message: string) => {
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:radio" size="xl" variant="brand" rounded="full" />
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Messaging channels</h1>
-					<p class="text-text-secondary mt-1 max-w-xl">
-						Connect and monitor the messaging integrations — SMS, WhatsApp, and webchat/webhooks —
-						that reach your contacts beyond email. Once enabled, send a message to a contact from
-						their Unified Timeline, and AI agent replies dispatch through them too. Email and team
-						chat are built in and need no setup here; to configure email sending, set up your
-						<NuxtLink to="/dashboard/admin/delivery/transport" class="text-brand hover:underline"
-							>delivery provider</NuxtLink
-						>
-						and a verified
-						<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline"
-							>sending domain</NuxtLink
-						>.
-					</p>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.instance.channels.title') }}
+					</h1>
+					<I18nT
+						keypath="dashboard.admin.instance.channels.subtitle"
+						tag="p"
+						scope="global"
+						class="text-text-secondary mt-1 max-w-xl"
+					>
+						<template #transportLink>
+							<NuxtLink to="/dashboard/admin/delivery/transport" class="text-brand hover:underline">{{
+								t('dashboard.admin.instance.channels.subtitleTransportLink')
+							}}</NuxtLink>
+						</template>
+						<template #domainLink>
+							<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">{{
+								t('dashboard.admin.instance.channels.subtitleDomainLink')
+							}}</NuxtLink>
+						</template>
+					</I18nT>
 				</div>
 			</div>
 
@@ -121,7 +139,7 @@ const handleChannelError = (message: string) => {
 						<template #iconLeft>
 							<Icon name="lucide:plus" class="w-4 h-4" />
 						</template>
-						Add channel
+						{{ t('dashboard.admin.instance.channels.addChannel') }}
 					</UiButton>
 				</template>
 				<UiDropdownMenuItem
@@ -130,7 +148,7 @@ const handleChannelError = (message: string) => {
 					:icon="option.icon"
 					@click="addChannel(option.kind)"
 				>
-					{{ option.label }}
+					{{ localized(option.label) }}
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
 		</div>
@@ -157,15 +175,24 @@ const handleChannelError = (message: string) => {
 					<UiCard v-if="!channels?.length">
 						<div class="py-8 text-center">
 							<UiIconBox icon="lucide:radio" size="lg" variant="surface" class="mx-auto mb-4" />
-							<h3 class="text-base font-medium text-text-primary mb-2">No channels configured</h3>
+							<h3 class="text-base font-medium text-text-primary mb-2">
+								{{ t('dashboard.admin.instance.channels.emptyTitle') }}
+							</h3>
 							<p class="text-sm text-text-tertiary mb-4 max-w-sm mx-auto">
-								<template v-if="canManageChannels">
-									Use <span class="font-medium text-text-secondary">Add channel</span>
-									above to configure a communication channel for your workspace.
-								</template>
+								<I18nT
+									v-if="canManageChannels"
+									keypath="dashboard.admin.instance.channels.emptyBodyAdmin"
+									tag="span"
+									scope="global"
+								>
+									<template #action>
+										<span class="font-medium text-text-secondary">{{
+											t('dashboard.admin.instance.channels.addChannel')
+										}}</span>
+									</template>
+								</I18nT>
 								<template v-else>
-									Communication channels will appear here once an owner or admin has configured them
-									for your workspace.
+									{{ t('dashboard.admin.instance.channels.emptyBodyMember') }}
 								</template>
 							</p>
 						</div>
@@ -178,22 +205,28 @@ const handleChannelError = (message: string) => {
 					<UiCard>
 						<div class="flex items-center gap-3 mb-4">
 							<UiIconBox icon="lucide:bar-chart-3" size="sm" variant="surface" />
-							<h3 class="text-base font-medium text-text-primary">Channel Overview</h3>
+							<h3 class="text-base font-medium text-text-primary">
+								{{ t('dashboard.admin.instance.channels.overview.title') }}
+							</h3>
 						</div>
 
 						<div class="space-y-3">
 							<div class="flex items-center justify-between py-2 border-b border-border-subtle">
-								<span class="text-sm text-text-secondary">Total channels</span>
+								<span class="text-sm text-text-secondary">{{
+									t('dashboard.admin.instance.channels.overview.total')
+								}}</span>
 								<span class="text-sm font-semibold text-text-primary">{{ totalChannels }}</span>
 							</div>
 							<div class="flex items-center justify-between py-2 border-b border-border-subtle">
-								<span class="text-sm text-text-secondary">Enabled</span>
+								<span class="text-sm text-text-secondary">{{ t('common.enabled') }}</span>
 								<span class="text-sm font-semibold text-text-primary">{{ enabledChannels }}</span>
 							</div>
 							<div class="flex items-center justify-between py-2 border-b border-border-subtle">
 								<div class="flex items-center gap-2">
 									<span class="w-2 h-2 rounded-full bg-success shrink-0" />
-									<span class="text-sm text-text-secondary">Healthy</span>
+									<span class="text-sm text-text-secondary">{{
+										t('dashboard.admin.instance.channels.overview.healthy')
+									}}</span>
 								</div>
 								<span class="text-sm font-semibold text-text-primary">{{
 									healthyCounts.healthy
@@ -202,7 +235,9 @@ const handleChannelError = (message: string) => {
 							<div class="flex items-center justify-between py-2 border-b border-border-subtle">
 								<div class="flex items-center gap-2">
 									<span class="w-2 h-2 rounded-full bg-warning shrink-0" />
-									<span class="text-sm text-text-secondary">Degraded</span>
+									<span class="text-sm text-text-secondary">{{
+										t('dashboard.admin.instance.channels.overview.degraded')
+									}}</span>
 								</div>
 								<span class="text-sm font-semibold text-text-primary">{{
 									healthyCounts.degraded
@@ -211,7 +246,9 @@ const handleChannelError = (message: string) => {
 							<div class="flex items-center justify-between py-2">
 								<div class="flex items-center gap-2">
 									<span class="w-2 h-2 rounded-full bg-error shrink-0" />
-									<span class="text-sm text-text-secondary">Down</span>
+									<span class="text-sm text-text-secondary">{{
+										t('dashboard.admin.instance.channels.overview.down')
+									}}</span>
 								</div>
 								<span class="text-sm font-semibold text-text-primary">{{
 									healthyCounts.down
@@ -224,7 +261,9 @@ const handleChannelError = (message: string) => {
 					<UiCard>
 						<div class="flex items-center gap-3 mb-4">
 							<UiIconBox icon="lucide:info" size="sm" variant="surface" />
-							<h3 class="text-base font-medium text-text-primary">How Channels Work</h3>
+							<h3 class="text-base font-medium text-text-primary">
+								{{ t('dashboard.admin.instance.channels.howItWorks.title') }}
+							</h3>
 						</div>
 						<div class="space-y-3 text-sm text-text-secondary">
 							<div class="flex gap-3">
@@ -232,40 +271,28 @@ const handleChannelError = (message: string) => {
 									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
 									>1</span
 								>
-								<p>
-									Each channel is an external messaging medium (SMS, WhatsApp, or a generic
-									webhook).
-								</p>
+								<p>{{ t('dashboard.admin.instance.channels.howItWorks.step1') }}</p>
 							</div>
 							<div class="flex gap-3">
 								<span
 									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
 									>2</span
 								>
-								<p>
-									Channels use adapters to connect to their providers. Configure each channel's
-									credentials below.
-								</p>
+								<p>{{ t('dashboard.admin.instance.channels.howItWorks.step2') }}</p>
 							</div>
 							<div class="flex gap-3">
 								<span
 									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
 									>3</span
 								>
-								<p>
-									Health monitoring runs automatically and reports status for each enabled channel.
-								</p>
+								<p>{{ t('dashboard.admin.instance.channels.howItWorks.step3') }}</p>
 							</div>
 							<div class="flex gap-3">
 								<span
 									class="shrink-0 w-5 h-5 rounded-full bg-brand-subtle text-brand text-xs font-semibold flex items-center justify-center"
 									>4</span
 								>
-								<p>
-									Inbound messages flow into the unified pipeline for every channel. Once a channel
-									is enabled, send outbound from a contact's Unified Timeline — SMS, WhatsApp, and
-									generic dispatch through their configured providers, alongside AI agent replies.
-								</p>
+								<p>{{ t('dashboard.admin.instance.channels.howItWorks.step4') }}</p>
 							</div>
 						</div>
 					</UiCard>

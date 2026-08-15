@@ -15,6 +15,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 
 import PostboxKeyChangeBanner from '../PostboxKeyChangeBanner.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -36,6 +37,8 @@ beforeAll(() => {
 		inlineError: ref(null),
 	}));
 	vi.stubGlobal('usePermissions', () => ({ isAdmin }));
+	// The banner renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
 beforeEach(() => {
@@ -54,7 +57,7 @@ function mountBanner() {
 			oldFingerprint: 'OLDFP0011223344',
 			newFingerprint: 'NEWFP5566778899',
 		},
-		global: { stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
 

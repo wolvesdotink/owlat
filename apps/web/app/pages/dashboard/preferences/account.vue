@@ -10,7 +10,9 @@ import {
 	openIncrementalJsonDownload,
 } from '~/utils/incrementalJsonDownload';
 
-useHead({ title: 'Account Settings — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.preferences.account.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -49,10 +51,14 @@ async function saveProfile() {
 	savingProfile.value = true;
 	try {
 		const res = await authClient.updateUser({ name });
-		if (res.error) showToast(res.error.message ?? 'Could not update profile', 'error');
-		else showToast('Profile updated');
+		if (res.error)
+			showToast(
+				res.error.message ?? t('dashboard.preferences.account.profileUpdateFailed'),
+				'error'
+			);
+		else showToast(t('dashboard.preferences.account.profileUpdated'));
 	} catch {
-		showToast('Could not update profile', 'error');
+		showToast(t('dashboard.preferences.account.profileUpdateFailed'), 'error');
 	} finally {
 		savingProfile.value = false;
 	}
@@ -77,11 +83,11 @@ const isEmailVerified = computed(() => user.value?.emailVerified === true);
 async function changeEmail() {
 	const email = newEmail.value.trim().toLowerCase();
 	if (!isValidEmail(email)) {
-		showToast('Enter a valid email address', 'error');
+		showToast(t('dashboard.preferences.account.emailInvalid'), 'error');
 		return;
 	}
 	if (email === (user.value?.email ?? '').toLowerCase()) {
-		showToast('That is already your login email', 'error');
+		showToast(t('dashboard.preferences.account.emailUnchanged'), 'error');
 		return;
 	}
 	savingEmail.value = true;
@@ -95,15 +101,15 @@ async function changeEmail() {
 			callbackURL: '/dashboard/preferences/account',
 		});
 		if (res.error) {
-			showToast(res.error.message ?? 'Could not change email', 'error');
+			showToast(res.error.message ?? t('dashboard.preferences.account.emailChangeFailed'), 'error');
 			return;
 		}
 		emailRequested.value = true;
 		confirmationSentTo.value = destination;
 		newEmail.value = '';
-		showToast('Check your inbox to confirm the change');
+		showToast(t('dashboard.preferences.account.emailChangeRequested'));
 	} catch {
-		showToast('Could not change email', 'error');
+		showToast(t('dashboard.preferences.account.emailChangeFailed'), 'error');
 	} finally {
 		savingEmail.value = false;
 	}
@@ -116,11 +122,11 @@ const confirmPassword = ref('');
 const savingPassword = ref(false);
 async function changePassword() {
 	if (newPassword.value.length < 10) {
-		showToast('New password must be at least 10 characters', 'error');
+		showToast(t('dashboard.preferences.account.passwordTooShort'), 'error');
 		return;
 	}
 	if (newPassword.value !== confirmPassword.value) {
-		showToast('New passwords do not match', 'error');
+		showToast(t('dashboard.preferences.account.passwordsDoNotMatch'), 'error');
 		return;
 	}
 	savingPassword.value = true;
@@ -130,15 +136,18 @@ async function changePassword() {
 			newPassword: newPassword.value,
 		});
 		if (res.error) {
-			showToast(res.error.message ?? 'Could not change password', 'error');
+			showToast(
+				res.error.message ?? t('dashboard.preferences.account.passwordChangeFailed'),
+				'error'
+			);
 			return;
 		}
-		showToast('Password changed');
+		showToast(t('dashboard.preferences.account.passwordChanged'));
 		currentPassword.value = '';
 		newPassword.value = '';
 		confirmPassword.value = '';
 	} catch {
-		showToast('Could not change password', 'error');
+		showToast(t('dashboard.preferences.account.passwordChangeFailed'), 'error');
 	} finally {
 		savingPassword.value = false;
 	}
@@ -173,13 +182,13 @@ const isCancelling = ref(false);
 const { run: requestDeletion } = useBackendOperation(
 	api.auth.accountManagement.requestAccountDeletion,
 	{
-		label: 'Request account deletion',
+		label: () => t('dashboard.preferences.account.requestDeletionOperation'),
 	}
 );
 const { run: cancelDeletion } = useBackendOperation(
 	api.auth.accountManagement.cancelAccountDeletion,
 	{
-		label: 'Cancel account deletion',
+		label: () => t('dashboard.preferences.account.cancelDeletionOperation'),
 	}
 );
 
@@ -196,10 +205,10 @@ const handleExportJson = async () => {
 		const sink = await openIncrementalJsonDownload(filename);
 		await writeAccountJsonExport(convex, userId.value, sink);
 
-		showNotification('Data exported successfully');
+		showNotification(t('dashboard.preferences.account.exportJsonSuccess'));
 	} catch (error) {
 		if (isSaveFilePickerCancellation(error)) return;
-		showNotification('Failed to export data', 'error');
+		showNotification(t('dashboard.preferences.account.exportJsonFailed'), 'error');
 	} finally {
 		isExportingJson.value = false;
 	}
@@ -250,9 +259,9 @@ const handleExportCsv = async () => {
 		document.body.removeChild(a);
 		URL.revokeObjectURL(url);
 
-		showNotification('Contacts exported successfully');
+		showNotification(t('dashboard.preferences.account.exportCsvSuccess'));
 	} catch (error) {
-		showNotification('Failed to export contacts', 'error');
+		showNotification(t('dashboard.preferences.account.exportCsvFailed'), 'error');
 	} finally {
 		isExportingCsv.value = false;
 	}
@@ -276,7 +285,7 @@ const handleDeleteAccount = async () => {
 	// The backend requestAccountDeletion mutation schedules the confirmation
 	// email (internal.accountDeletionEmail.sendAccountDeletionEmail) before it
 	// returns, so the copy below can promise it.
-	showNotification('Account deletion request submitted. Check your email for confirmation.');
+	showNotification(t('dashboard.preferences.account.deletionRequested'));
 	showDeleteModal.value = false;
 	deleteReason.value = '';
 	deleteConfirmText.value = '';
@@ -299,7 +308,7 @@ const handleCancelDeletion = async () => {
 
 	if (result === undefined) return;
 
-	showNotification('Account deletion cancelled successfully');
+	showNotification(t('dashboard.preferences.account.deletionCancelled'));
 };
 
 // Days remaining until deletion
@@ -316,97 +325,128 @@ const daysRemaining = computed(() => {
 		<!-- Header -->
 		<div class="mb-6">
 			<PreferencesBackLink />
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Account Management</h1>
-			<p class="mt-1 text-text-secondary">Manage your profile, password, data, and account</p>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.preferences.account.heading') }}
+			</h1>
+			<p class="mt-1 text-text-secondary">{{ t('dashboard.preferences.account.subheading') }}</p>
 		</div>
 
 		<!-- Loading State -->
 		<div v-if="deletionLoading && !pendingDeletion" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading...</p>
+				<p class="text-text-secondary text-sm">{{ t('common.loading') }}</p>
 			</div>
 		</div>
 
 		<div v-else class="space-y-8 max-w-4xl">
 			<!-- Profile -->
 			<div class="card">
-				<h2 class="text-lg font-semibold text-text-primary mb-1">Profile</h2>
+				<h2 class="text-lg font-semibold text-text-primary mb-1">
+					{{ t('dashboard.preferences.account.profileTitle') }}
+				</h2>
 				<p class="text-sm text-text-secondary mb-4">
-					Your display name, used as the sender identity.
+					{{ t('dashboard.preferences.account.profileDescription') }}
 				</p>
 				<div class="flex items-end gap-3 max-w-md">
 					<div class="flex-1">
-						<UiInput id="profile-name" v-model="nameDraft" label="Name" placeholder="Your name" />
+						<UiInput
+							id="profile-name"
+							v-model="nameDraft"
+							:label="t('common.name')"
+							:placeholder="t('dashboard.preferences.account.namePlaceholder')"
+						/>
 					</div>
-					<UiButton :loading="savingProfile" :disabled="!nameDraft.trim()" @click="saveProfile"
-						>Save</UiButton
-					>
+					<UiButton :loading="savingProfile" :disabled="!nameDraft.trim()" @click="saveProfile">{{
+						t('common.save')
+					}}</UiButton>
 				</div>
-				<p class="text-xs text-text-tertiary mt-3">
-					Signed in as <span class="font-medium text-text-secondary">{{ user?.email }}</span
-					>.
-				</p>
+				<I18nT
+					keypath="dashboard.preferences.account.signedInAs"
+					tag="p"
+					scope="global"
+					class="text-xs text-text-tertiary mt-3"
+				>
+					<template #email>
+						<span class="font-medium text-text-secondary">{{ user?.email }}</span>
+					</template>
+				</I18nT>
 			</div>
 
 			<!-- Change login email -->
 			<div class="card">
-				<h2 class="text-lg font-semibold text-text-primary mb-1">Login email</h2>
+				<h2 class="text-lg font-semibold text-text-primary mb-1">
+					{{ t('dashboard.preferences.account.loginEmailTitle') }}
+				</h2>
 				<p v-if="isEmailVerified" class="text-sm text-text-secondary mb-4">
-					Change the email address you use to sign in. We send an approval link to your current
-					address; once you follow it we send a final confirmation link to the new address. Your
-					login email only changes after that last link is followed.
+					{{ t('dashboard.preferences.account.loginEmailVerifiedDescription') }}
 				</p>
 				<p v-else class="text-sm text-text-secondary mb-4">
-					Change the email address you use to sign in. We send a confirmation link to the new
-					address — your login email only changes once you follow it.
+					{{ t('dashboard.preferences.account.loginEmailUnverifiedDescription') }}
 				</p>
 				<form class="space-y-3 max-w-md" @submit.prevent="changeEmail">
 					<UiInput
 						id="new-email"
 						v-model="newEmail"
 						type="email"
-						label="New email address"
-						placeholder="you@example.com"
+						:label="t('dashboard.preferences.account.newEmailLabel')"
+						:placeholder="t('auth.fields.emailPlaceholder')"
 						autocomplete="email"
 					/>
 					<UiButton type="submit" :loading="savingEmail" :disabled="!newEmail.trim()">
-						Send confirmation
+						{{ t('dashboard.preferences.account.sendConfirmation') }}
 					</UiButton>
 				</form>
-				<p v-if="emailRequested" class="text-xs text-success mt-3">
-					We sent a confirmation link to <span class="font-medium">{{ confirmationSentTo }}</span
-					>. Follow it to {{ isEmailVerified ? 'approve' : 'finish' }} changing your login email.
-				</p>
+				<I18nT
+					v-if="emailRequested"
+					:keypath="
+						isEmailVerified
+							? 'dashboard.preferences.account.confirmationSentApprove'
+							: 'dashboard.preferences.account.confirmationSentFinish'
+					"
+					tag="p"
+					scope="global"
+					class="text-xs text-success mt-3"
+				>
+					<template #email>
+						<span class="font-medium">{{ confirmationSentTo }}</span>
+					</template>
+				</I18nT>
 			</div>
 
 			<!-- Change Password -->
 			<div class="card">
-				<h2 class="text-lg font-semibold text-text-primary mb-1">Change password</h2>
-				<p class="text-sm text-text-secondary mb-4">Update your password without signing out.</p>
+				<h2 class="text-lg font-semibold text-text-primary mb-1">
+					{{ t('dashboard.preferences.account.changePasswordTitle') }}
+				</h2>
+				<p class="text-sm text-text-secondary mb-4">
+					{{ t('dashboard.preferences.account.changePasswordDescription') }}
+				</p>
 				<form class="space-y-3 max-w-md" @submit.prevent="changePassword">
 					<UiInput
 						id="cur-pw"
 						v-model="currentPassword"
 						type="password"
-						label="Current password"
+						:label="t('dashboard.preferences.account.currentPasswordLabel')"
 						autocomplete="current-password"
 					/>
 					<UiInput
 						id="new-pw"
 						v-model="newPassword"
 						type="password"
-						label="New password"
+						:label="t('dashboard.preferences.account.newPasswordLabel')"
 						autocomplete="new-password"
 					/>
 					<UiInput
 						id="confirm-pw"
 						v-model="confirmPassword"
 						type="password"
-						label="Confirm new password"
+						:label="t('dashboard.preferences.account.confirmPasswordLabel')"
 						autocomplete="new-password"
 					/>
-					<UiButton type="submit" :loading="savingPassword">Change password</UiButton>
+					<UiButton type="submit" :loading="savingPassword">
+						{{ t('dashboard.preferences.account.changePasswordSubmit') }}
+					</UiButton>
 				</form>
 			</div>
 
@@ -416,8 +456,12 @@ const daysRemaining = computed(() => {
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:alert-triangle" size="sm" variant="warning" rounded="lg" />
 						<div>
-							<h2 class="text-lg font-semibold text-warning">Account Deletion Pending</h2>
-							<p class="text-sm text-warning/80">Your account is scheduled for deletion</p>
+							<h2 class="text-lg font-semibold text-warning">
+								{{ t('dashboard.preferences.account.deletionPendingTitle') }}
+							</h2>
+							<p class="text-sm text-warning/80">
+								{{ t('dashboard.preferences.account.deletionPendingSubtitle') }}
+							</p>
 						</div>
 					</div>
 				</div>
@@ -426,27 +470,36 @@ const daysRemaining = computed(() => {
 					<div class="flex items-center gap-6 mb-6">
 						<div class="flex items-center gap-2 text-text-secondary">
 							<Icon name="lucide:calendar" class="w-4 h-4" />
-							<span class="text-sm">
-								Deletion date:
-								<strong class="text-text-primary">{{
-									formatDate(pendingDeletion.scheduledForDeletion, 'full')
-								}}</strong>
-							</span>
+							<I18nT
+								keypath="dashboard.preferences.account.deletionDate"
+								tag="span"
+								scope="global"
+								class="text-sm"
+							>
+								<template #date>
+									<strong class="text-text-primary">{{
+										formatDate(pendingDeletion.scheduledForDeletion, 'full')
+									}}</strong>
+								</template>
+							</I18nT>
 						</div>
 						<div class="px-3 py-1 rounded-full bg-warning/20 text-warning text-sm font-medium">
-							{{ daysRemaining }} days remaining
+							{{ t('dashboard.preferences.account.daysRemaining', { days: daysRemaining }) }}
 						</div>
 					</div>
 
 					<p class="text-text-secondary text-sm mb-6">
-						Your account and all associated data will be permanently deleted after the grace period.
-						You can cancel this deletion at any time before the scheduled date.
+						{{ t('dashboard.preferences.account.deletionPendingBody') }}
 					</p>
 
 					<UiButton class="gap-2" :disabled="isCancelling" @click="handleCancelDeletion">
 						<Icon v-if="isCancelling" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 						<Icon v-else name="lucide:x-circle" class="w-4 h-4" />
-						{{ isCancelling ? 'Cancelling...' : 'Cancel Account Deletion' }}
+						{{
+							isCancelling
+								? t('dashboard.preferences.account.cancellingDeletion')
+								: t('dashboard.preferences.account.cancelDeletionAction')
+						}}
 					</UiButton>
 				</div>
 			</div>
@@ -457,9 +510,11 @@ const daysRemaining = computed(() => {
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:download" size="sm" variant="surface" rounded="lg" />
 						<div>
-							<h2 class="text-lg font-semibold text-text-primary">Export Your Data</h2>
+							<h2 class="text-lg font-semibold text-text-primary">
+								{{ t('dashboard.preferences.account.exportTitle') }}
+							</h2>
 							<p class="text-sm text-text-secondary">
-								Download a copy of all your data in JSON or CSV format
+								{{ t('dashboard.preferences.account.exportSubtitle') }}
 							</p>
 						</div>
 					</div>
@@ -467,10 +522,7 @@ const daysRemaining = computed(() => {
 
 				<div class="p-6">
 					<p class="text-text-secondary text-sm mb-6">
-						You can export your data at any time. The export includes your profile information, your
-						personal mailbox and mail, drafts, connected external accounts, your chat messages, and
-						your team memberships. For teams where you are an owner or admin, it also includes
-						contacts, campaigns, automations, and other associated data.
+						{{ t('dashboard.preferences.account.exportBody') }}
 					</p>
 
 					<div class="grid gap-4 sm:grid-cols-2">
@@ -479,10 +531,11 @@ const daysRemaining = computed(() => {
 							<div class="flex items-start gap-4">
 								<UiIconBox icon="lucide:file-json" size="lg" variant="brand" rounded="lg" />
 								<div class="flex-1">
-									<h3 class="font-medium text-text-primary mb-1">Complete Data Export</h3>
+									<h3 class="font-medium text-text-primary mb-1">
+										{{ t('dashboard.preferences.account.exportJsonTitle') }}
+									</h3>
 									<p class="text-xs text-text-tertiary mb-3">
-										JSON format with all your data: your mailbox, mail, drafts, chat, connected
-										accounts, and memberships, plus team data where you are an owner or admin.
+										{{ t('dashboard.preferences.account.exportJsonDescription') }}
 									</p>
 									<UiButton
 										variant="secondary"
@@ -497,7 +550,11 @@ const daysRemaining = computed(() => {
 											class="w-4 h-4 animate-spin"
 										/>
 										<Icon v-else name="lucide:download" class="w-4 h-4" />
-										{{ isExportingJson ? 'Exporting...' : 'Export JSON' }}
+										{{
+											isExportingJson
+												? t('dashboard.preferences.account.exporting')
+												: t('dashboard.preferences.account.exportJsonAction')
+										}}
 									</UiButton>
 								</div>
 							</div>
@@ -508,9 +565,11 @@ const daysRemaining = computed(() => {
 							<div class="flex items-start gap-4">
 								<UiIconBox icon="lucide:file-spreadsheet" size="lg" variant="brand" rounded="lg" />
 								<div class="flex-1">
-									<h3 class="font-medium text-text-primary mb-1">Contacts Export</h3>
+									<h3 class="font-medium text-text-primary mb-1">
+										{{ t('dashboard.preferences.account.exportCsvTitle') }}
+									</h3>
 									<p class="text-xs text-text-tertiary mb-3">
-										CSV format for easy import into spreadsheets or other email tools.
+										{{ t('dashboard.preferences.account.exportCsvDescription') }}
 									</p>
 									<UiButton
 										variant="secondary"
@@ -525,7 +584,11 @@ const daysRemaining = computed(() => {
 											class="w-4 h-4 animate-spin"
 										/>
 										<Icon v-else name="lucide:download" class="w-4 h-4" />
-										{{ isExportingCsv ? 'Exporting...' : 'Export CSV' }}
+										{{
+											isExportingCsv
+												? t('dashboard.preferences.account.exporting')
+												: t('dashboard.preferences.account.exportCsvAction')
+										}}
 									</UiButton>
 								</div>
 							</div>
@@ -540,9 +603,11 @@ const daysRemaining = computed(() => {
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:trash-2" size="sm" variant="error" rounded="lg" />
 						<div>
-							<h2 class="text-lg font-semibold text-error">Delete Account</h2>
+							<h2 class="text-lg font-semibold text-error">
+								{{ t('dashboard.preferences.account.deleteAccountTitle') }}
+							</h2>
 							<p class="text-sm text-error/80">
-								Permanently delete your account and all associated data
+								{{ t('dashboard.preferences.account.deleteAccountSubtitle') }}
 							</p>
 						</div>
 					</div>
@@ -551,23 +616,24 @@ const daysRemaining = computed(() => {
 				<div class="p-6">
 					<div class="mb-6">
 						<p class="text-text-secondary text-sm mb-4">
-							Deleting your account will permanently remove all your data after a 30-day grace
-							period. During this period, you can cancel the deletion at any time.
+							{{ t('dashboard.preferences.account.deleteAccountBody') }}
 						</p>
 						<p class="text-text-secondary text-sm">
-							<strong class="text-text-primary">What will be deleted:</strong>
+							<strong class="text-text-primary">
+								{{ t('dashboard.preferences.account.whatWillBeDeleted') }}
+							</strong>
 						</p>
 						<!-- Owners trigger the org-deletion walker, so their team's data goes too. -->
 						<ul
 							v-if="isOwner"
 							class="list-disc list-inside text-sm text-text-tertiary mt-2 space-y-1"
 						>
-							<li>Your profile and account information</li>
-							<li>All teams you own and their data</li>
-							<li>Contacts, campaigns, and email templates</li>
-							<li>Automations and workflows</li>
-							<li>API keys and webhook configurations</li>
-							<li>Analytics and activity history</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.profile') }}</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.ownedTeams') }}</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.contacts') }}</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.automations') }}</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.apiKeys') }}</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.analytics') }}</li>
 						</ul>
 						<!--
 							Members are routed to member-erasure, which removes only their
@@ -575,14 +641,13 @@ const daysRemaining = computed(() => {
 							webhooks, analytics) belong to the team and are not deleted.
 						-->
 						<ul v-else class="list-disc list-inside text-sm text-text-tertiary mt-2 space-y-1">
-							<li>Your profile and account information</li>
-							<li>Your personal mailbox, mail, and drafts</li>
-							<li>Connected external email accounts and app passwords</li>
-							<li>Your chat messages and team memberships</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.profile') }}</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.personalMailbox') }}</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.externalAccounts') }}</li>
+							<li>{{ t('dashboard.preferences.account.deletedItems.chatMemberships') }}</li>
 						</ul>
 						<p v-if="!isOwner" class="text-xs text-text-tertiary mt-3">
-							Data owned by your teams — contacts, campaigns, API keys, webhooks, and analytics —
-							belongs to the team and is not removed by deleting your account.
+							{{ t('dashboard.preferences.account.memberDataNote') }}
 						</p>
 					</div>
 
@@ -591,7 +656,7 @@ const daysRemaining = computed(() => {
 						@click="showDeleteModal = true"
 					>
 						<Icon name="lucide:trash-2" class="w-4 h-4" />
-						Request Account Deletion
+						{{ t('dashboard.preferences.account.requestDeletionAction') }}
 					</UiButton>
 				</div>
 			</div>
@@ -613,35 +678,53 @@ const daysRemaining = computed(() => {
 			<div class="flex items-center gap-3 mb-6">
 				<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Delete Your Account</h2>
-					<p class="text-sm text-text-secondary">This action has a 30-day grace period</p>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('dashboard.preferences.account.deleteModalTitle') }}
+					</h2>
+					<p class="text-sm text-text-secondary">
+						{{ t('dashboard.preferences.account.deleteModalSubtitle') }}
+					</p>
 				</div>
 			</div>
 
 			<!-- Content -->
 			<div class="p-4 rounded-xl bg-error/5 border border-error/20 mb-6">
-				<p class="text-sm text-error">
-					<strong>Warning:</strong> After the 30-day grace period, your account and all associated
-					data will be permanently deleted. This action cannot be undone.
-				</p>
+				<I18nT
+					keypath="dashboard.preferences.account.deleteModalWarning"
+					tag="p"
+					scope="global"
+					class="text-sm text-error"
+				>
+					<template #warning>
+						<strong>{{ t('dashboard.preferences.account.warningLabel') }}</strong>
+					</template>
+				</I18nT>
 			</div>
 
 			<!-- Optional reason -->
 			<div class="mb-6">
-				<label class="label" for="delete-reason"> Reason for leaving (optional) </label>
+				<label class="label" for="delete-reason">
+					{{ t('dashboard.preferences.account.reasonLabel') }}
+				</label>
 				<textarea
 					id="delete-reason"
 					v-model="deleteReason"
 					class="input min-h-[100px] resize-none"
-					placeholder="Help us improve by sharing why you're leaving..."
+					:placeholder="t('dashboard.preferences.account.reasonPlaceholder')"
 				/>
 			</div>
 
 			<!-- Confirmation input -->
 			<div>
-				<label class="label" for="confirm-delete">
-					Type <strong class="text-error">DELETE</strong> to confirm
-				</label>
+				<I18nT
+					keypath="dashboard.preferences.account.confirmDeleteLabel"
+					tag="label"
+					scope="global"
+					class="label"
+					for="confirm-delete"
+				>
+					<template #word><strong class="text-error">DELETE</strong></template>
+				</I18nT>
 				<input
 					id="confirm-delete"
 					v-model="deleteConfirmText"
@@ -659,7 +742,7 @@ const daysRemaining = computed(() => {
 					:disabled="isDeleting"
 					@click="showDeleteModal = false"
 				>
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
 					variant="danger"
@@ -670,7 +753,11 @@ const daysRemaining = computed(() => {
 				>
 					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					<Icon v-else name="lucide:trash-2" class="w-4 h-4" />
-					{{ isDeleting ? 'Processing...' : 'Delete My Account' }}
+					{{
+						isDeleting
+							? t('dashboard.preferences.account.processing')
+							: t('dashboard.preferences.account.deleteMyAccount')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>

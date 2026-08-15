@@ -13,6 +13,14 @@ export type DeliverabilitySeverity = CanonicalDeliverabilitySeverity;
 
 export type DeliverabilitySetupValue = CanonicalDeliverabilitySetupValue;
 
+/**
+ * A translatable value produced by a module-scope table: the catalog KEY the
+ * deliverability screen resolves, plus the values it interpolates. The tables
+ * below are evaluated at import time and never call `useI18n`; a plain string is
+ * still accepted so a value with nothing to translate reads as itself.
+ */
+export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+
 export interface DeliverabilityInstructions {
 	provider?: string;
 	providerLabel?: string;
@@ -107,17 +115,17 @@ export interface DeliverabilityCounts {
 
 export const DELIVERABILITY_GRADE_PRESENTATION = {
 	ready: {
-		label: 'Ready',
+		label: 'shared.deliverabilityCenter.grade.ready',
 		icon: 'lucide:badge-check',
 		className: 'border-success/30 bg-success/10 text-success',
 	},
 	needs_attention: {
-		label: 'Needs attention',
+		label: 'shared.deliverabilityCenter.grade.needsAttention',
 		icon: 'lucide:circle-alert',
 		className: 'border-warning/30 bg-warning/10 text-warning',
 	},
 	at_risk: {
-		label: 'At risk',
+		label: 'shared.deliverabilityCenter.grade.atRisk',
 		icon: 'lucide:shield-alert',
 		className: 'border-error/30 bg-error/10 text-error',
 	},
@@ -128,22 +136,22 @@ export const DELIVERABILITY_GRADE_PRESENTATION = {
 
 export const DELIVERABILITY_STATUS_PRESENTATION = {
 	pass: {
-		label: 'Verified',
+		label: 'shared.deliverabilityCenter.status.pass',
 		icon: 'lucide:check-circle-2',
 		className: 'border-success/30 bg-success/10 text-success',
 	},
 	warn: {
-		label: 'Needs attention',
+		label: 'shared.deliverabilityCenter.status.warn',
 		icon: 'lucide:circle-alert',
 		className: 'border-warning/30 bg-warning/10 text-warning',
 	},
 	fail: {
-		label: 'Not working',
+		label: 'shared.deliverabilityCenter.status.fail',
 		icon: 'lucide:x-circle',
 		className: 'border-error/30 bg-error/10 text-error',
 	},
 	'pending-dns': {
-		label: 'Checking…',
+		label: 'shared.deliverabilityCenter.status.pendingDns',
 		icon: 'lucide:loader-2',
 		className: 'border-brand/30 bg-brand/10 text-brand',
 	},
@@ -202,15 +210,19 @@ export function checklistItemDomId(item: DeliverabilityChecklistItem): string {
 	return `deliverability-check:${itemKey(item.scope, item.id)}`;
 }
 
-export function formatVerificationAge(timestamp: number, now = Date.now()): string {
+export function formatVerificationAge(timestamp: number, now = Date.now()): LocalizedText {
 	const elapsedMs = Math.max(0, now - timestamp);
 	const minutes = Math.floor(elapsedMs / 60_000);
-	if (minutes < 1) return 'checked just now';
-	if (minutes < 60) return `checked ${minutes} min ago`;
+	if (minutes < 1) return 'shared.deliverabilityCenter.verificationAge.justNow';
+	if (minutes < 60) {
+		return { key: 'shared.deliverabilityCenter.verificationAge.minutes', params: { minutes } };
+	}
 	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `checked ${hours} h ago`;
+	if (hours < 24) {
+		return { key: 'shared.deliverabilityCenter.verificationAge.hours', params: { hours } };
+	}
 	const days = Math.floor(hours / 24);
-	return `checked ${days} d ago`;
+	return { key: 'shared.deliverabilityCenter.verificationAge.days', params: { days } };
 }
 
 export function formatRecheckCountdown(nextCheckAt: number, now = Date.now()): string {
@@ -220,11 +232,23 @@ export function formatRecheckCountdown(nextCheckAt: number, now = Date.now()): s
 	return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-export function buildDeliverabilityReport(center: DeliverabilityCenter): string {
+/**
+ * The clipboard report — a diagnostic dump, not screen copy: ISO timestamps and
+ * the stored status codes are printed verbatim, so its scaffolding stays in one
+ * language the way a log does. The two values it borrows from the screen (the
+ * grade and each item's status) are catalog keys now, so a caller that has a
+ * translator hands it in; without one the report prints the key, which is the
+ * loud failure rather than a silently mistranslated report.
+ */
+export function buildDeliverabilityReport(
+	center: DeliverabilityCenter,
+	translate: (value: LocalizedText) => string = (value) =>
+		typeof value === 'string' ? value : value.key
+): string {
 	const lines = [
 		'Owlat deliverability report',
 		`Generated: ${new Date().toISOString()}`,
-		`Overall: ${DELIVERABILITY_GRADE_PRESENTATION[center.grade].label}`,
+		`Overall: ${translate(DELIVERABILITY_GRADE_PRESENTATION[center.grade].label)}`,
 		`Summary: ${center.summary}`,
 		`Latest validator evidence: ${
 			center.checkedAt ? new Date(center.checkedAt).toISOString() : 'No validator evidence yet'
@@ -247,7 +271,7 @@ export function buildDeliverabilityReport(center: DeliverabilityCenter): string 
 		for (const item of group.items) {
 			const scope = item.scope.kind === 'domain' ? item.scope.domain : 'Deployment';
 			lines.push(
-				`- [${DELIVERABILITY_STATUS_PRESENTATION[item.status].label}] ${item.title} (${item.protocol}; ${scope})`
+				`- [${translate(DELIVERABILITY_STATUS_PRESENTATION[item.status].label)}] ${item.title} (${item.protocol}; ${scope})`
 			);
 			if (item.observed.length > 0) lines.push(`  Observed: ${item.observed.join(' · ')}`);
 			if (item.failureReason) lines.push(`  Reason: ${item.failureReason}`);

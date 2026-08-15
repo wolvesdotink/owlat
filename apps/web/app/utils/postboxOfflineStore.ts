@@ -100,7 +100,11 @@ export class PostboxOfflineStore {
 		return this.disabled;
 	}
 
-	/** Human-readable reason writes were disabled, if any. */
+	/**
+	 * Reason writes were disabled, if any — an i18n KEY (the registry
+	 * convention: a pure module never calls `useI18n`), which the surface that
+	 * shows it runs through `t()`.
+	 */
 	get reason(): string | null {
 		return this.disabledReason;
 	}
@@ -114,8 +118,8 @@ export class PostboxOfflineStore {
 		} catch (err) {
 			this.disabled = true;
 			this.disabledReason = isQuotaError(err)
-				? 'This device is out of storage for offline mail.'
-				: 'Local mail cache is unavailable on this device.';
+				? 'shared.postboxOfflineStore.outOfStorage'
+				: 'shared.postboxOfflineStore.unavailable';
 			return false;
 		}
 	}
@@ -234,7 +238,10 @@ export function createIndexedDbDriver(
 		get: <T>(key: string) => tx<T | undefined>('readonly', (s) => s.get(key)),
 		set: (key, value) => tx<void>('readwrite', (s) => s.put(value, key)),
 		delete: (key) => tx<void>('readwrite', (s) => s.delete(key)),
-		keys: () => tx<string[]>('readonly', (s) => s.getAllKeys() as IDBRequest).then((k) => (k as unknown as string[]) ?? []),
+		keys: () =>
+			tx<string[]>('readonly', (s) => s.getAllKeys() as IDBRequest).then(
+				(k) => (k as unknown as string[]) ?? []
+			),
 		clear: () => tx<void>('readwrite', (s) => s.clear()),
 	};
 }

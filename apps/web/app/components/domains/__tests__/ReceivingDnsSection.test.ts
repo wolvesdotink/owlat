@@ -39,6 +39,10 @@ beforeEach(() => {
 });
 
 import ReceivingDnsSection from '../ReceivingDnsSection.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The section renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -62,7 +66,7 @@ function mountSection(inboundEnabled: boolean) {
 			inboundPort: 25,
 			inboundEnabled,
 		},
-		global: { stubs },
+		global: { plugins: [createTestI18n()], stubs },
 	});
 }
 
@@ -111,7 +115,7 @@ describe('ReceivingDnsSection', () => {
 	it('renders nothing when there is no mail host to point at', () => {
 		const w = mount(ReceivingDnsSection, {
 			props: { domain: 'example.com', mailHost: null, inboundPort: 25, inboundEnabled: true },
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		expect(w.find('[data-testid="dns-record"]').exists()).toBe(false);
 	});

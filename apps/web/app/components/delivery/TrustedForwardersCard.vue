@@ -22,6 +22,7 @@ import {
  * jargon beyond naming the mechanism plainly.
  */
 
+const { t } = useI18n();
 const { canManageOrganization } = usePermissions();
 const { showToast } = useToast();
 
@@ -51,7 +52,7 @@ const dirty = computed(
 
 const { run: updateSettings, isLoading: isSaving } = useBackendOperation(
 	api.workspaces.settings.update,
-	{ label: 'Update trusted forwarders' }
+	{ label: () => t('components.delivery.trustedForwardersCard.operationLabel') }
 );
 
 function addDomain() {
@@ -84,8 +85,8 @@ async function save() {
 	if (res === undefined) return; // failure already toasted
 	showToast(
 		draft.value.length === 0
-			? 'Trusted forwarders cleared — forwarded mail is no longer rescued.'
-			: 'Trusted forwarders saved.'
+			? t('components.delivery.trustedForwardersCard.clearedToast')
+			: t('components.delivery.trustedForwardersCard.savedToast')
 	);
 }
 </script>
@@ -96,9 +97,11 @@ async function save() {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:forward" size="sm" variant="surface" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Trusted forwarders</h2>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('components.delivery.trustedForwardersCard.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary">
-						Keep mailing-list and forwarded mail out of Spam when the forwarder vouches for it
+						{{ t('components.delivery.trustedForwardersCard.subtitle') }}
 					</p>
 				</div>
 			</div>
@@ -107,15 +110,14 @@ async function save() {
 		<div class="p-6 space-y-4">
 			<div v-if="isLoading" class="flex items-center gap-3 py-2">
 				<UiSpinner size="sm" />
-				<span class="text-sm text-text-secondary">Loading forwarders…</span>
+				<span class="text-sm text-text-secondary">
+					{{ t('components.delivery.trustedForwardersCard.loading') }}
+				</span>
 			</div>
 
 			<template v-else>
 				<p class="text-sm text-text-secondary max-w-prose">
-					Mailing lists and forwarding services re-send messages from their own servers, which
-					normally makes them fail sender checks and land in Spam. A forwarder on this list is one
-					you trust to confirm a message really was sent by its original author — those messages
-					stay in your inbox and show a "verified via forwarder" note.
+					{{ t('components.delivery.trustedForwardersCard.explainer') }}
 				</p>
 
 				<!-- Current list -->
@@ -130,7 +132,9 @@ async function save() {
 							v-if="canManageOrganization"
 							type="button"
 							class="text-text-tertiary hover:text-error focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand rounded"
-							:aria-label="`Remove ${domain}`"
+							:aria-label="
+								t('components.delivery.trustedForwardersCard.removeDomain', { domain })
+							"
 							@click="removeDomain(domain)"
 						>
 							<Icon name="lucide:x" class="w-3.5 h-3.5" />
@@ -138,8 +142,7 @@ async function save() {
 					</li>
 				</ul>
 				<p v-else class="text-sm text-warning">
-					No forwarders are trusted, so forwarded mail is never rescued — it follows the normal
-					sender checks.
+					{{ t('components.delivery.trustedForwardersCard.emptyState') }}
 				</p>
 
 				<!-- Add -->
@@ -150,21 +153,27 @@ async function save() {
 				>
 					<UiInput
 						v-model="newDomain"
-						placeholder="lists.example.com"
-						aria-label="Add a trusted forwarder domain"
+						:placeholder="t('components.delivery.trustedForwardersCard.addPlaceholder')"
+						:aria-label="t('components.delivery.trustedForwardersCard.addLabel')"
 						class="max-w-xs"
 					/>
-					<UiButton type="submit" variant="secondary" :disabled="!newDomain.trim()">Add</UiButton>
+					<UiButton type="submit" variant="secondary" :disabled="!newDomain.trim()">
+						{{ t('common.add') }}
+					</UiButton>
 				</form>
 
 				<div v-if="canManageOrganization" class="flex items-center gap-2 pt-1">
-					<UiButton :disabled="!dirty || isSaving" :loading="isSaving" @click="save">Save</UiButton>
+					<UiButton :disabled="!dirty || isSaving" :loading="isSaving" @click="save">
+						{{ t('common.save') }}
+					</UiButton>
 					<UiButton variant="ghost" :disabled="isSaving" @click="resetToDefaults">
-						Reset to defaults
+						{{ t('components.delivery.trustedForwardersCard.resetToDefaults') }}
 					</UiButton>
 				</div>
 
-				<p v-else class="text-xs text-text-tertiary">Only owners and admins can change this.</p>
+				<p v-else class="text-xs text-text-tertiary">
+					{{ t('components.delivery.trustedForwardersCard.adminsOnly') }}
+				</p>
 			</template>
 		</div>
 	</UiCard>

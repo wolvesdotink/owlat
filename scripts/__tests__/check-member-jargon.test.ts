@@ -171,9 +171,55 @@ describe('the member-jargon gate, unused exemptions', () => {
 
 		expect(result.output).toContain('Unused member-jargon exemption');
 		expect(result.output).toContain(
-			`${PREFERENCES}/app-passwords.vue (its member-visible template says none of it any more)`
+			`${PREFERENCES}/app-passwords.vue (neither its template nor the catalog messages it renders say any of it any more)`
 		);
 		expect(result.output).not.toContain('Protocol jargon leaked');
+		expect(result.status).toBe(1);
+	});
+
+	it('keeps an exemption whose jargon moved into the message catalog', () => {
+		// The localized world: the template holds a key path, the catalog holds the
+		// words. The exemption is still pulling its weight — the member still reads
+		// "IMAP" — so the entry must not be reported as unused.
+		const result = run({
+			files: {
+				[`${PREFERENCES}/app-passwords.vue`]: page(
+					`<p>{{ t('dashboard.preferences.appPasswords.hint') }}</p>`
+				),
+				'apps/web/i18n/locales/en.json': JSON.stringify({
+					dashboard: {
+						preferences: { appPasswords: { hint: 'Use this as your IMAP password.' } },
+					},
+				}),
+			},
+			roots: [PREFERENCES],
+			allowlist: [`${PREFERENCES}/app-passwords.vue`],
+		});
+
+		expect(result.output).toBe('');
+		expect(result.status).toBe(0);
+	});
+
+	it('fails when an unlisted surface renders a catalog message that says jargon', () => {
+		// The violation half of the same move: copy that leaks jargon is a leak
+		// whether it sits in the template or behind a key the template renders.
+		const result = run({
+			files: {
+				[`${PREFERENCES}/aliases.vue`]: page(
+					`<p>{{ t('dashboard.preferences.aliases.hint') }}</p>`
+				),
+				'apps/web/i18n/locales/en.json': JSON.stringify({
+					dashboard: { preferences: { aliases: { hint: 'Set up SPF for this domain.' } } },
+				}),
+			},
+			roots: [PREFERENCES],
+			allowlist: [],
+		});
+
+		expect(result.output).toContain('Protocol jargon leaked');
+		expect(result.output).toContain(
+			'dashboard.preferences.aliases.hint: Set up SPF for this domain.'
+		);
 		expect(result.status).toBe(1);
 	});
 

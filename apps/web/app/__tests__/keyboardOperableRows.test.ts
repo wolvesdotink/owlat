@@ -88,7 +88,7 @@ describe('delivery expandable rows are keyboard-operable', () => {
 		expect(domainsRow).toContain(':id="' + '`' + 'domain-records-');
 		// The nested Remove control is named for screen readers, and nesting is
 		// real (@click.stop) — which is why the header keydown must be `.self`.
-		expect(domainsRow).toMatch(/aria-label="Remove domain"/);
+		expect(domainsRow).toMatch(/:aria-label="t\('components\.domains\.recordRow\.removeDomain'\)"/);
 		expect(domainsRow).toMatch(/@click\.stop=/);
 	});
 
@@ -112,9 +112,12 @@ describe('send template cards and rows are keyboard-operable', () => {
 		expectActivationContainer(pick(transactional, '@click="handleEdit(email._id)"', 'UiCard'));
 		expectActivationContainer(pick(transactional, '@click="handleEdit(email._id)"', 'tr'));
 		expect(transactional).toMatch(/@click\.stop=/);
-		// Icon-only controls that relied on `title` alone are now labelled.
-		expect(transactional).toMatch(/aria-label="View API Code"/);
-		expect(transactional).toMatch(/aria-label="Edit"/);
+		// Icon-only controls that relied on `title` alone are now labelled — the
+		// accessible names come from the message catalog, so pin the bindings.
+		expect(transactional).toMatch(
+			/:aria-label="t\('dashboard\.send\.transactional\.index\.viewApiCode'\)"/
+		);
+		expect(transactional).toMatch(/:aria-label="t\('common\.edit'\)"/);
 	});
 });
 

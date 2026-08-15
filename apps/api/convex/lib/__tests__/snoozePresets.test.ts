@@ -6,6 +6,11 @@
  *   - computeSnoozePresets resolves the standard presets to absolute times,
  *     omits "later today" once the workday has ended, badges the suggestion,
  *     and derives "until I'm back" from the working-hours window.
+ *
+ * The COPY is not this module's business: labels travel as i18n message keys and
+ * sublabels as a key plus its formatted parameters, so the only speaker is the
+ * web snooze dialog. This suite pins that (no English may creep back in) and the
+ * locale-following date formatting the sublabels do.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -58,6 +63,35 @@ describe('computeSnoozePresets', () => {
 		expect(byKey(presets, 'later_today')).toBeUndefined();
 		// Evening already passed today → rolls to tomorrow 20:00.
 		expect(byKey(presets, 'this_evening')?.at).toBe(Date.UTC(2026, 0, 8, 20));
+	});
+
+	it('names every preset with a message key, never a sentence', () => {
+		const presets = computeSnoozePresets({ now: WED_10_UTC, tzOffsetMinutes: 0 });
+		for (const preset of presets) {
+			expect(preset.label).toBe(`sharedPkg.snoozePresets.label.${preset.key}`);
+			expect(preset.sub.key.startsWith('sharedPkg.snoozePresets.sub.')).toBe(true);
+		}
+	});
+
+	it("formats the sublabel parameters in the caller's locale and the user's zone", () => {
+		const en = computeSnoozePresets({ now: WED_10_UTC, tzOffsetMinutes: 0 });
+		// Work end 18:00 on a 12-hour English clock, and the upcoming Saturday.
+		expect(byKey(en, 'later_today')?.sub.params?.['time']?.replace(/\s/g, ' ')).toBe('6:00 PM');
+		expect(byKey(en, 'this_weekend')?.sub.params?.['day']).toBe('Sat');
+
+		const de = computeSnoozePresets({ now: WED_10_UTC, tzOffsetMinutes: 0, locale: 'de' });
+		expect(byKey(de, 'later_today')?.sub.params?.['time']).toBe('18:00');
+		expect(byKey(de, 'this_weekend')?.sub.params?.['day']).toBe('Sa');
+	});
+
+	it('says "today" only when the workday has not yet started', () => {
+		const earlyWed = Date.UTC(2026, 0, 7, 6);
+		expect(
+			byKey(computeSnoozePresets({ now: earlyWed, tzOffsetMinutes: 0 }), 'until_im_back')?.sub.key
+		).toBe('sharedPkg.snoozePresets.sub.today');
+		expect(
+			byKey(computeSnoozePresets({ now: WED_10_UTC, tzOffsetMinutes: 0 }), 'until_im_back')?.sub.key
+		).toBe('sharedPkg.snoozePresets.sub.weekday');
 	});
 
 	it('badges only the suggested preset', () => {

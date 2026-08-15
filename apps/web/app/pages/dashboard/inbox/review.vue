@@ -2,7 +2,9 @@
 import ReviewBrowseList from '~/components/agent-tasks/ReviewBrowseList.vue';
 import ReviewFocusFlow from '~/components/agent-tasks/ReviewFocusFlow.vue';
 
-useHead({ title: 'Review Queue — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.inbox.review.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',

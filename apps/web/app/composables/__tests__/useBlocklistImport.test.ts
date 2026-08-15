@@ -8,6 +8,13 @@ vi.mock('papaparse', () => ({
 
 import Papa from 'papaparse';
 import { useBlocklistImport } from '../useBlocklistImport';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The composable resolves its copy through vue-i18n; install the real catalog
+ * behind the `useI18n` auto-import so the assertions read as the app ships.
+ */
+const i18n = createTestI18n();
 
 type PapaMock = {
 	mockImplementation: (
@@ -42,6 +49,7 @@ async function simulateFileSelect(
 describe('useBlocklistImport', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.stubGlobal('useI18n', () => i18n.global);
 	});
 
 	it('starts on the upload step with no validation/results', async () => {

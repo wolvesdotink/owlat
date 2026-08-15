@@ -8,7 +8,9 @@ import { provideConditionEditorContext } from '~/composables/conditions';
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
 import { triggerEditorModuleFor, type TriggerKind } from '~/composables/automations/triggers';
 
-useHead({ title: 'Edit Automation — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.automations.detail.edit.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -34,16 +36,16 @@ const { results: emailTemplates } = usePaginatedQuery(
 
 // Mutations for automation status management
 const { run: activateAutomation } = useBackendOperation(api.automations.automations.activate, {
-	label: 'Activate automation',
+	label: () => t('dashboard.automations.detail.edit.operations.activate'),
 });
 const { run: pauseAutomation } = useBackendOperation(api.automations.automations.pause, {
-	label: 'Pause automation',
+	label: () => t('dashboard.automations.detail.edit.operations.pause'),
 });
 const { run: resumeAutomation } = useBackendOperation(api.automations.automations.resume, {
-	label: 'Resume automation',
+	label: () => t('dashboard.automations.detail.edit.operations.resume'),
 });
 const { run: updateAutomation } = useBackendOperation(api.automations.automations.update, {
-	label: 'Save automation draft',
+	label: () => t('dashboard.automations.detail.edit.operations.saveDraft'),
 });
 
 // Fetch contact properties for condition step configuration
@@ -97,12 +99,21 @@ const getTriggerInfo = (triggerType: string) => {
 };
 
 const topicsRef = computed(() => topics.value ?? []);
+// The trigger registry hands back translatable text rather than a finished
+// sentence: a bare key for a constant summary, `{ key, params }` for a
+// parameterized one.
+type RegistrySummary = string | { key: string; params?: Record<string, unknown> };
+const renderRegistrySummary = (summary: RegistrySummary): string =>
+	typeof summary === 'string' ? t(summary) : t(summary.key, summary.params ?? {});
+
 const triggerSummary = computed(() => {
 	if (!automation.value?.triggerConfig) return '';
 	const module = triggerEditorModuleFor(automation.value.triggerType as TriggerKind);
-	return (module.getSummary as (c: unknown, ctx: { topics: typeof topicsRef }) => string)(
-		automation.value.triggerConfig,
-		{ topics: topicsRef }
+	return renderRegistrySummary(
+		(module.getSummary as (c: unknown, ctx: { topics: typeof topicsRef }) => RegistrySummary)(
+			automation.value.triggerConfig,
+			{ topics: topicsRef }
+		)
 	);
 });
 
@@ -144,14 +155,14 @@ const handleToggleStatus = async () => {
 	try {
 		if (automation.value.status === 'active') {
 			if ((await pauseAutomation({ automationId: automationId.value })) === undefined) return;
-			showToast('Automation paused');
+			showToast(t('dashboard.automations.detail.edit.toasts.paused'));
 		} else if (automation.value.status === 'paused') {
 			if ((await resumeAutomation({ automationId: automationId.value })) === undefined) return;
-			showToast('Automation resumed');
+			showToast(t('dashboard.automations.detail.edit.toasts.resumed'));
 		} else {
 			// Draft - activate
 			if ((await activateAutomation({ automationId: automationId.value })) === undefined) return;
-			showToast('Automation activated');
+			showToast(t('dashboard.automations.detail.edit.toasts.activated'));
 		}
 	} finally {
 		isActivating.value = false;
@@ -235,7 +246,7 @@ const handleSaveDraft = async () => {
 			description: automation.value.description,
 		});
 		if (result === undefined) return;
-		showToast('Draft saved');
+		showToast(t('dashboard.automations.detail.edit.toasts.draftSaved'));
 	} finally {
 		isSavingDraft.value = false;
 	}
@@ -244,7 +255,10 @@ const handleSaveDraft = async () => {
 // Show activate confirmation modal
 const handleShowActivateConfirm = () => {
 	if (!canActivate.value.valid) {
-		showToast(canActivate.value.reasons[0] || 'Cannot activate automation', 'error');
+		showToast(
+			canActivate.value.reasons[0] || t('dashboard.automations.detail.edit.cannotActivate'),
+			'error'
+		);
 		return;
 	}
 	showActivateConfirmModal.value = true;
@@ -274,7 +288,7 @@ const getIconColorClass = (color: string) => {
 
 // Computed description for the selected step (used by the step preview)
 const selectedStepConditionDescription = computed(() => {
-	if (!selectedStep.value) return 'Configure condition';
+	if (!selectedStep.value) return t('dashboard.automations.detail.edit.configureCondition');
 	return getStepDescription(selectedStep.value);
 });
 
@@ -298,13 +312,15 @@ onUnmounted(() => {
 						<button
 							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 							@click="handleBack"
-							aria-label="Back"
+							:aria-label="t('common.back')"
 						>
 							<Icon name="lucide:arrow-left" class="w-5 h-5" />
 						</button>
 						<div v-if="automation">
 							<h1 class="text-lg font-semibold text-text-primary">{{ automation.name }}</h1>
-							<p class="text-sm text-text-secondary">Edit workflow</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('dashboard.automations.detail.edit.editWorkflow') }}
+							</p>
 						</div>
 						<div v-else-if="isLoadingAutomation" class="animate-pulse">
 							<div class="h-5 w-40 bg-bg-surface rounded" />
@@ -337,10 +353,10 @@ onUnmounted(() => {
 							/>
 							{{
 								automation.status === 'active'
-									? 'Active'
+									? t('common.active')
 									: automation.status === 'paused'
-										? 'Paused'
-										: 'Draft'
+										? t('dashboard.automations.detail.edit.status.paused')
+										: t('dashboard.automations.detail.edit.status.draft')
 							}}
 						</span>
 
@@ -354,7 +370,7 @@ onUnmounted(() => {
 						>
 							<Icon v-if="isSavingDraft" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:save" class="w-4 h-4" />
-							Save Draft
+							{{ t('dashboard.automations.detail.edit.saveDraft') }}
 						</UiButton>
 
 						<!-- Activate/Pause Button -->
@@ -367,7 +383,7 @@ onUnmounted(() => {
 						>
 							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:pause" class="w-4 h-4" />
-							Pause
+							{{ t('dashboard.automations.detail.edit.pause') }}
 						</UiButton>
 						<UiButton
 							v-else-if="automation.status === 'paused'"
@@ -377,20 +393,22 @@ onUnmounted(() => {
 						>
 							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:play" class="w-4 h-4" />
-							Resume
+							{{ t('dashboard.automations.detail.edit.resume') }}
 						</UiButton>
 						<UiButton
 							v-else
 							class="gap-2"
 							:disabled="isActivating || !canActivate.valid"
 							:title="
-								!canActivate.valid ? canActivate.reasons.join(', ') : 'Activate this automation'
+								!canActivate.valid
+									? canActivate.reasons.join(', ')
+									: t('dashboard.automations.detail.edit.activateTitle')
 							"
 							@click="handleShowActivateConfirm"
 						>
 							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:play" class="w-4 h-4" />
-							Activate
+							{{ t('dashboard.automations.detail.edit.activate') }}
 						</UiButton>
 					</div>
 				</div>
@@ -407,7 +425,9 @@ onUnmounted(() => {
 						>
 							<Icon name="lucide:check" class="w-4 h-4" />
 						</div>
-						<span class="text-sm font-medium text-text-primary">Choose Trigger</span>
+						<span class="text-sm font-medium text-text-primary">{{
+							t('dashboard.automations.detail.edit.steps.chooseTrigger')
+						}}</span>
 					</div>
 					<div class="flex-1 h-0.5 bg-brand" />
 					<div class="flex items-center gap-2">
@@ -416,7 +436,9 @@ onUnmounted(() => {
 						>
 							2
 						</div>
-						<span class="text-sm font-medium text-text-primary">Build Workflow</span>
+						<span class="text-sm font-medium text-text-primary">{{
+							t('dashboard.automations.detail.edit.steps.buildWorkflow')
+						}}</span>
 					</div>
 				</div>
 			</div>
@@ -431,9 +453,15 @@ onUnmounted(() => {
 		<div v-else-if="!automation" class="flex-1 flex items-center justify-center">
 			<div class="text-center">
 				<Icon name="lucide:alert-circle" class="w-12 h-12 text-text-tertiary mx-auto mb-4" />
-				<h2 class="text-xl font-semibold text-text-primary mb-2">Automation not found</h2>
-				<p class="text-text-secondary mb-4">The automation you're looking for doesn't exist.</p>
-				<UiButton to="/dashboard/automations"> Back to Automations </UiButton>
+				<h2 class="text-xl font-semibold text-text-primary mb-2">
+					{{ t('dashboard.automations.detail.edit.notFound.title') }}
+				</h2>
+				<p class="text-text-secondary mb-4">
+					{{ t('dashboard.automations.detail.edit.notFound.body') }}
+				</p>
+				<UiButton to="/dashboard/automations">{{
+					t('dashboard.automations.detail.edit.notFound.action')
+				}}</UiButton>
 			</div>
 		</div>
 
@@ -457,12 +485,12 @@ onUnmounted(() => {
 								</div>
 								<div class="flex-1 min-w-0">
 									<div class="flex items-center gap-2">
-										<span class="text-xs font-medium text-text-tertiary uppercase tracking-wide"
-											>Trigger</span
-										>
+										<span class="text-xs font-medium text-text-tertiary uppercase tracking-wide">{{
+											t('dashboard.automations.detail.edit.trigger')
+										}}</span>
 									</div>
 									<p class="font-medium text-text-primary">
-										{{ getTriggerInfo(automation.triggerType).label }}
+										{{ t(getTriggerInfo(automation.triggerType).label) }}
 									</p>
 									<p v-if="automation.triggerConfig" class="text-sm text-text-secondary truncate">
 										{{ triggerSummary }}
@@ -472,7 +500,7 @@ onUnmounted(() => {
 									:to="`/dashboard/automations/new?edit=${automation._id}`"
 									class="text-sm text-brand hover:underline"
 								>
-									Edit
+									{{ t('common.edit') }}
 								</NuxtLink>
 							</div>
 						</div>
@@ -486,7 +514,7 @@ onUnmounted(() => {
 								<button
 									class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border-default text-text-tertiary hover:text-brand hover:border-brand transition-colors"
 									@click="addStepDropdownIndex = addStepDropdownIndex === -1 ? null : -1"
-									aria-label="Add"
+									:aria-label="t('common.add')"
 								>
 									<Icon name="lucide:plus" class="w-4 h-4" />
 								</button>
@@ -500,7 +528,7 @@ onUnmounted(() => {
 										<p
 											class="text-xs font-medium text-text-tertiary uppercase tracking-wide px-2 py-1"
 										>
-											Add Step
+											{{ t('dashboard.automations.detail.edit.addStep') }}
 										</p>
 										<button
 											v-for="type in stepTypes"
@@ -526,8 +554,8 @@ onUnmounted(() => {
 												/>
 											</div>
 											<div class="flex-1 min-w-0">
-												<p class="font-medium text-text-primary text-sm">{{ type.label }}</p>
-												<p class="text-xs text-text-secondary">{{ type.description }}</p>
+												<p class="font-medium text-text-primary text-sm">{{ t(type.label) }}</p>
+												<p class="text-xs text-text-secondary">{{ t(type.description) }}</p>
 											</div>
 										</button>
 									</div>
@@ -584,11 +612,13 @@ onUnmounted(() => {
 												<span
 													class="text-xs font-medium text-text-tertiary uppercase tracking-wide"
 												>
-													Step {{ index + 1 }}
+													{{
+														t('dashboard.automations.detail.edit.stepNumber', { number: index + 1 })
+													}}
 												</span>
 											</div>
 											<p class="font-medium text-text-primary">
-												{{ stepInfo(step.stepType).label }}
+												{{ t(stepInfo(step.stepType).label) }}
 											</p>
 											<!-- Description: plain text when no pill accent, pill chrome when defined. -->
 											<p
@@ -622,7 +652,7 @@ onUnmounted(() => {
 										<button
 											class="p-2 text-text-tertiary hover:text-error transition-colors"
 											@click.stop="handleDeleteStep(step._id)"
-											aria-label="Delete"
+											:aria-label="t('common.delete')"
 										>
 											<Icon name="lucide:trash-2" class="w-4 h-4" />
 										</button>
@@ -638,7 +668,7 @@ onUnmounted(() => {
 										<button
 											class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border-default text-text-tertiary hover:text-brand hover:border-brand transition-colors"
 											@click="addStepDropdownIndex = addStepDropdownIndex === index ? null : index"
-											aria-label="Add"
+											:aria-label="t('common.add')"
 										>
 											<Icon name="lucide:plus" class="w-4 h-4" />
 										</button>
@@ -652,7 +682,7 @@ onUnmounted(() => {
 												<p
 													class="text-xs font-medium text-text-tertiary uppercase tracking-wide px-2 py-1"
 												>
-													Add Step
+													{{ t('dashboard.automations.detail.edit.addStep') }}
 												</p>
 												<button
 													v-for="type in stepTypes"
@@ -678,8 +708,8 @@ onUnmounted(() => {
 														/>
 													</div>
 													<div class="flex-1 min-w-0">
-														<p class="font-medium text-text-primary text-sm">{{ type.label }}</p>
-														<p class="text-xs text-text-secondary">{{ type.description }}</p>
+														<p class="font-medium text-text-primary text-sm">{{ t(type.label) }}</p>
+														<p class="text-xs text-text-secondary">{{ t(type.description) }}</p>
 													</div>
 												</button>
 											</div>
@@ -699,18 +729,20 @@ onUnmounted(() => {
 						>
 							<Icon name="lucide:zap" class="w-8 h-8 text-text-tertiary" />
 						</div>
-						<h3 class="text-lg font-semibold text-text-primary mb-2">No steps yet</h3>
+						<h3 class="text-lg font-semibold text-text-primary mb-2">
+							{{ t('dashboard.automations.detail.edit.empty.title') }}
+						</h3>
 						<p class="text-text-secondary mb-4">
-							Add steps to define what happens when the automation is triggered.
+							{{ t('dashboard.automations.detail.edit.empty.body') }}
 						</p>
 						<div class="flex justify-center gap-3">
 							<UiButton class="gap-2" @click="handleAddStep('email')">
 								<Icon name="lucide:mail" class="w-4 h-4" />
-								Add Email Step
+								{{ t('dashboard.automations.detail.edit.empty.addEmail') }}
 							</UiButton>
 							<UiButton variant="secondary" class="gap-2" @click="handleAddStep('delay')">
 								<Icon name="lucide:clock" class="w-4 h-4" />
-								Add Delay Step
+								{{ t('dashboard.automations.detail.edit.empty.addDelay') }}
 							</UiButton>
 						</div>
 					</div>
@@ -720,7 +752,9 @@ onUnmounted(() => {
 						<div class="card p-4 bg-bg-surface border-dashed">
 							<div class="flex items-center justify-center gap-2 text-text-tertiary">
 								<Icon name="lucide:check" class="w-5 h-5" />
-								<span class="font-medium">End of Automation</span>
+								<span class="font-medium">{{
+									t('dashboard.automations.detail.edit.endOfAutomation')
+								}}</span>
 							</div>
 						</div>
 					</div>
@@ -733,7 +767,9 @@ onUnmounted(() => {
 						<div class="flex items-start gap-3">
 							<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 							<div class="flex-1 min-w-0">
-								<p class="font-medium text-warning mb-2">Fix these issues before activating:</p>
+								<p class="font-medium text-warning mb-2">
+									{{ t('dashboard.automations.detail.edit.validation.title') }}
+								</p>
 								<ul class="list-disc list-inside space-y-1">
 									<li
 										v-for="(reason, idx) in canActivate.reasons"
@@ -797,13 +833,12 @@ onUnmounted(() => {
 
 							<!-- Title -->
 							<h3 class="text-lg font-semibold text-text-primary text-center mb-2">
-								Activate Automation?
+								{{ t('dashboard.automations.detail.edit.activateDialog.title') }}
 							</h3>
 
 							<!-- Description -->
 							<p class="text-text-secondary text-center mb-6">
-								Once activated, this automation will start running and will trigger for new contacts
-								that match the trigger criteria.
+								{{ t('dashboard.automations.detail.edit.activateDialog.body') }}
 							</p>
 
 							<!-- Summary -->
@@ -813,21 +848,30 @@ onUnmounted(() => {
 							>
 								<div class="space-y-3">
 									<div class="flex items-center justify-between">
-										<span class="text-sm text-text-tertiary">Automation</span>
+										<span class="text-sm text-text-tertiary">{{
+											t('dashboard.automations.detail.edit.activateDialog.automation')
+										}}</span>
 										<span class="text-sm font-medium text-text-primary">{{ automation.name }}</span>
 									</div>
 									<div class="flex items-center justify-between">
-										<span class="text-sm text-text-tertiary">Trigger</span>
+										<span class="text-sm text-text-tertiary">{{
+											t('dashboard.automations.detail.edit.trigger')
+										}}</span>
 										<span class="text-sm font-medium text-text-primary">{{
-											getTriggerInfo(automation.triggerType).label
+											t(getTriggerInfo(automation.triggerType).label)
 										}}</span>
 									</div>
 									<div class="flex items-center justify-between">
-										<span class="text-sm text-text-tertiary">Steps</span>
-										<span class="text-sm font-medium text-text-primary"
-											>{{ mutableSteps.length }}
-											{{ mutableSteps.length === 1 ? 'step' : 'steps' }}</span
-										>
+										<span class="text-sm text-text-tertiary">{{
+											t('dashboard.automations.detail.edit.activateDialog.steps')
+										}}</span>
+										<span class="text-sm font-medium text-text-primary">{{
+											t(
+												'dashboard.automations.detail.edit.activateDialog.stepCount',
+												{ count: mutableSteps.length },
+												mutableSteps.length
+											)
+										}}</span>
 									</div>
 								</div>
 							</div>
@@ -839,7 +883,7 @@ onUnmounted(() => {
 									class="flex-1"
 									@click="showActivateConfirmModal = false"
 								>
-									Cancel
+									{{ t('common.cancel') }}
 								</UiButton>
 								<UiButton
 									class="flex-1 gap-2"
@@ -848,7 +892,11 @@ onUnmounted(() => {
 								>
 									<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 									<Icon v-else name="lucide:play" class="w-4 h-4" />
-									{{ isActivating ? 'Activating...' : 'Activate' }}
+									{{
+										isActivating
+											? t('dashboard.automations.detail.edit.activating')
+											: t('dashboard.automations.detail.edit.activate')
+									}}
 								</UiButton>
 							</div>
 						</div>

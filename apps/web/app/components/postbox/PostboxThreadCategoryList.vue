@@ -40,8 +40,12 @@ const emit = defineEmits<{
 	(e: 'recategorize', threadId: Id<'mailThreads'>, label: MailCategory): void;
 }>();
 
-function threadTo(t: { latestMessageId?: string }) {
-	return t.latestMessageId ? `/dashboard/postbox/${props.folderRole}/${t.latestMessageId}` : '';
+const { t } = useI18n();
+
+function threadTo(thread: { latestMessageId?: string }) {
+	return thread.latestMessageId
+		? `/dashboard/postbox/${props.folderRole}/${thread.latestMessageId}`
+		: '';
 }
 
 // Flatten the currently-visible rows (expanded sections only) into one list so
@@ -53,9 +57,9 @@ const visibleRef = computed(() => visibleThreads.value);
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	items: visibleRef,
 	resetKey: computed(() => props.folderRole),
-	rowDomId: (t) => `postbox-cat-thread-${t._id}`,
-	onActivate: (t) => {
-		const to = threadTo(t);
+	rowDomId: (thread) => `postbox-cat-thread-${thread._id}`,
+	onActivate: (thread) => {
+		const to = threadTo(thread);
 		if (to) void navigateTo(to);
 	},
 });
@@ -75,13 +79,13 @@ function pickCategory(label: MailCategory) {
 	<PostboxEmptyState
 		v-else-if="sections.length === 0"
 		icon="lucide:check-circle-2"
-		title="All clear"
+		:title="t('components.postbox.postboxThreadCategoryList.allClear')"
 	/>
 	<div v-else>
 		<ul
 			tabindex="0"
 			role="listbox"
-			aria-label="Categorized conversations"
+			:aria-label="t('components.postbox.postboxThreadCategoryList.listLabel')"
 			:aria-activedescendant="activeId"
 			class="outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
 			@keydown="onKeydown"
@@ -100,66 +104,69 @@ function pickCategory(label: MailCategory) {
 							class="w-3.5 h-3.5 flex-shrink-0"
 						/>
 						<Icon :name="section.icon" class="w-3.5 h-3.5 flex-shrink-0" />
-						<span class="flex-1 text-left">{{ section.label }}</span>
+						<span class="flex-1 text-left">{{ t(section.label) }}</span>
 						<span class="text-text-tertiary font-normal">{{ section.threads.length }}</span>
 					</button>
 				</li>
 				<template v-if="!collapsed[section.key]">
 					<li
-						v-for="t in section.threads"
-						:key="t._id"
+						v-for="thread in section.threads"
+						:key="thread._id"
 						class="group relative border-b border-border-subtle"
 						style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
 					>
 						<NuxtLink
-							:id="`postbox-cat-thread-${t._id}`"
+							:id="`postbox-cat-thread-${thread._id}`"
 							role="option"
-							:aria-selected="visibleThreads[focusedIndex]?._id === t._id"
-							:to="threadTo(t)"
+							:aria-selected="visibleThreads[focusedIndex]?._id === thread._id"
+							:to="threadTo(thread)"
 							class="pbx-row-link block px-4 py-3 hover:bg-bg-elevated"
-							:class="{ 'bg-bg-elevated': activeMessageId && activeMessageId === t.latestMessageId }"
+							:class="{ 'bg-bg-elevated': activeMessageId && activeMessageId === thread.latestMessageId }"
 						>
 							<div class="flex items-baseline justify-between gap-3">
 								<span
 									class="truncate text-sm"
-									:class="t.unreadCount > 0 ? 'font-semibold text-text-primary' : 'text-text-secondary'"
+									:class="thread.unreadCount > 0 ? 'font-semibold text-text-primary' : 'text-text-secondary'"
 								>
-									{{ t.latestFromAddress }}
-									<span v-if="t.messageCount > 1" class="text-text-tertiary font-normal"
-										>({{ t.messageCount }})</span
+									{{ thread.latestFromAddress }}
+									<span v-if="thread.messageCount > 1" class="text-text-tertiary font-normal"
+										>({{ thread.messageCount }})</span
 									>
 								</span>
 								<span class="text-xs text-text-tertiary flex-shrink-0">
-									{{ formatThreadTimestamp(t.lastMessageAt) }}
+									{{ formatThreadTimestamp(thread.lastMessageAt) }}
 								</span>
 							</div>
 							<div class="flex items-center gap-1.5 mt-0.5">
-								<Icon v-if="t.hasFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
+								<Icon v-if="thread.hasFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
 								<Icon
-									v-if="t.hasAttachments"
+									v-if="thread.hasAttachments"
 									name="lucide:paperclip"
 									class="w-3.5 h-3.5 text-text-tertiary"
 								/>
 								<p
 									class="truncate text-sm flex-1"
-									:class="t.unreadCount > 0 ? 'font-medium text-text-primary' : 'text-text-secondary'"
+									:class="thread.unreadCount > 0 ? 'font-medium text-text-primary' : 'text-text-secondary'"
 								>
-									{{ t.latestSubject || '(no subject)' }}
+									{{
+									thread.latestSubject ||
+									t('components.postbox.postboxThreadCategoryList.noSubject')
+								}}
 								</p>
 								<span
-									v-if="t.unreadCount > 0"
+									v-if="thread.unreadCount > 0"
 									class="text-xs bg-brand text-text-inverse rounded-full px-1.5 min-w-[1.25rem] text-center"
-								>{{ t.unreadCount }}</span>
+								>{{ thread.unreadCount }}</span>
 							</div>
-							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">{{ t.latestSnippet }}</p>
+							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">{{ thread.latestSnippet }}</p>
 						</NuxtLink>
 						<!-- Overflow: recategorize this sender's mail. -->
 						<button
 							type="button"
 							class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded bg-bg-surface/80 text-text-tertiary hover:text-text-primary"
-							title="Recategorize as…"
-							aria-label="Recategorize as…"
-							@click.prevent.stop="recategorizeTarget = t._id"
+							:title="t('components.postbox.postboxThreadCategoryList.recategorize')"
+							:aria-label="t('components.postbox.postboxThreadCategoryList.recategorize')"
+							@click.prevent.stop="recategorizeTarget = thread._id"
 						>
 							<Icon name="lucide:tag" class="w-3.5 h-3.5" />
 						</button>
@@ -169,14 +176,14 @@ function pickCategory(label: MailCategory) {
 		</ul>
 		<div v-if="!loading && hasMore" class="p-3 text-center">
 			<button type="button" class="text-sm text-brand hover:underline" @click="emit('load-more')">
-				Load more
+				{{ t('components.postbox.postboxThreadCategoryList.loadMore') }}
 			</button>
 		</div>
 	</div>
 
 	<UiModal
 		:open="recategorizeTarget !== null"
-		title="Recategorize as…"
+		:title="t('components.postbox.postboxThreadCategoryList.recategorize')"
 		size="sm"
 		@update:open="(v: boolean) => { if (!v) recategorizeTarget = null; }"
 	>
@@ -187,12 +194,12 @@ function pickCategory(label: MailCategory) {
 					class="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-bg-surface text-left text-sm"
 					@click="pickCategory(option.key)"
 				>
-					{{ option.label }}
+					{{ t(option.label) }}
 				</button>
 			</li>
 		</ul>
 		<p class="mt-3 text-xs text-text-tertiary">
-			Remembered for this sender — future mail from them lands here too.
+			{{ t('components.postbox.postboxThreadCategoryList.recategorizeHint') }}
 		</p>
 	</UiModal>
 </template>

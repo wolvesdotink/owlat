@@ -6,14 +6,28 @@ const props = defineProps<{
 	scopeKey: string;
 }>();
 
+const { t } = useI18n();
 const { copy, isCopied } = useCopyToClipboard();
 
-type SetupField = { label: string; value: string; key: string };
+/** `copyLabel` is the field's name as the copy button's accessible name words it. */
+type SetupField = { label: string; copyLabel: string; value: string; key: string };
 type SetupPresentation = {
 	setupValue: DeliverabilitySetupValue;
 	identifier: string;
 	fields: readonly SetupField[];
 };
+
+const KEY = 'components.delivery.deliverabilitySetupValues';
+
+/** A field's heading and the lower-case form its copy button says. */
+function field(name: string, key: string, value: string): SetupField {
+	return {
+		label: t(`${KEY}.fields.${name}`),
+		copyLabel: t(`${KEY}.copyLabels.${name}`),
+		value,
+		key,
+	};
+}
 
 function setupPresentation(setupValue: DeliverabilitySetupValue): SetupPresentation {
 	switch (setupValue.kind) {
@@ -22,10 +36,10 @@ function setupPresentation(setupValue: DeliverabilitySetupValue): SetupPresentat
 				setupValue,
 				identifier: setupValue.name,
 				fields: [
-					{ label: 'Name', value: setupValue.name, key: 'name' },
-					{ label: 'Type', value: setupValue.recordType, key: 'recordType' },
-					{ label: 'Value', value: setupValue.value, key: 'value' },
-					{ label: 'TTL', value: String(setupValue.ttl), key: 'ttl' },
+					field('name', 'name', setupValue.name),
+					field('type', 'recordType', setupValue.recordType),
+					field('value', 'value', setupValue.value),
+					field('ttl', 'ttl', String(setupValue.ttl)),
 				],
 			};
 		case 'spf_mechanisms':
@@ -33,8 +47,8 @@ function setupPresentation(setupValue: DeliverabilitySetupValue): SetupPresentat
 				setupValue,
 				identifier: setupValue.domain,
 				fields: [
-					{ label: 'Domain', value: setupValue.domain, key: 'domain' },
-					{ label: 'Mechanisms', value: setupValue.mechanisms.join(' '), key: 'mechanisms' },
+					field('domain', 'domain', setupValue.domain),
+					field('mechanisms', 'mechanisms', setupValue.mechanisms.join(' ')),
 				],
 			};
 		case 'smtp_setting':
@@ -42,8 +56,8 @@ function setupPresentation(setupValue: DeliverabilitySetupValue): SetupPresentat
 				setupValue,
 				identifier: 'EHLO hostname',
 				fields: [
-					{ label: 'Setting', value: 'EHLO hostname', key: 'setting' },
-					{ label: 'Value', value: setupValue.value, key: 'value' },
+					field('setting', 'setting', 'EHLO hostname'),
+					field('value', 'value', setupValue.value),
 				],
 			};
 	}
@@ -77,7 +91,12 @@ const presentedSetupValues = computed(() => props.setupValues.map(setupPresentat
 						<button
 							type="button"
 							class="inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs font-medium text-brand hover:bg-brand/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-							:aria-label="`Copy ${field.label.toLowerCase()} for ${presentation.identifier}`"
+							:aria-label="
+								t('components.delivery.deliverabilitySetupValues.copyAria', {
+									field: field.copyLabel,
+									identifier: presentation.identifier,
+								})
+							"
 							@click="copy(field.value, `${scopeKey}:${presentation.setupValue.id}:${field.key}`)"
 						>
 							<Icon
@@ -90,8 +109,8 @@ const presentedSetupValues = computed(() => props.setupValues.map(setupPresentat
 							/>
 							{{
 								isCopied(`${scopeKey}:${presentation.setupValue.id}:${field.key}`)
-									? 'Copied'
-									: 'Copy'
+									? t('common.copied')
+									: t('common.copy')
 							}}
 						</button>
 					</dd>

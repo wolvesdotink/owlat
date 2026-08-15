@@ -40,6 +40,7 @@ export function usePostboxComposerSealLock(
 ) {
 	const { isEnabled } = useFeatureFlag();
 	const { showToast } = useToast();
+	const { t } = useI18n();
 	const sealedMailEnabled = computed(() => isEnabled('sealedMail'));
 
 	const sealStateQuery = useConvexQuery(api.mail.drafts.getComposerSealState, () => {
@@ -94,12 +95,12 @@ export function usePostboxComposerSealLock(
 		if (!block) return false;
 		if (block === 'checking') {
 			await options.flush();
-			showToast('Checking whether this message can be sealed…');
+			showToast(t('shared.postbox.usePostboxComposerSealLock.checking'));
 		} else if (block === 'key_changed') {
-			showToast('Review and confirm the changed recipient key before sending.');
+			showToast(t('shared.postbox.usePostboxComposerSealLock.keyChanged'));
 		} else if (!requestUnsealed(opts)) {
 			// No prompt exists only when there is nothing to decide yet (no recipients).
-			showToast('Add a recipient to see whether this message can be sealed.');
+			showToast(t('shared.postbox.usePostboxComposerSealLock.noRecipients'));
 		}
 		return true;
 	}

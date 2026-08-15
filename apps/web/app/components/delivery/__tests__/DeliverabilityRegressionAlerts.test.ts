@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import type { Id } from '@owlat/api/dataModel';
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type {
 	DeliverabilityChecklistGroup,
 	DeliverabilityRegressionAlert,
 } from '~/utils/deliverabilityCenter';
 import DeliverabilityRegressionAlerts from '../DeliverabilityRegressionAlerts.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 const domainId = 'domain-a' as Id<'domains'>;
 const alertId = 'alert-a' as Id<'deliverabilityRegressionAlerts'>;
@@ -57,14 +58,22 @@ const stubs = {
 function mountAlerts(overrides: Partial<DeliverabilityRegressionAlert> = {}) {
 	return mount(DeliverabilityRegressionAlerts, {
 		props: { alerts: [{ ...alert, ...overrides }], groups },
-		global: { stubs },
+		global: { plugins: [createTestI18n()], stubs },
 	});
 }
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 describe('DeliverabilityRegressionAlerts', () => {
 	it('prominently names the failed check, domain, evidence time, and regression', () => {
 		const wrapper = mountAlerts();
 
+		expectFullyLocalized(wrapper);
+		// The named check is `@owlat/shared` English (Convex stores and mails the
+		// alert with it), so the heading resolves the catalog copy from the id.
+		expect(wrapper.text()).not.toMatch(/sharedPkg\./);
 		expect(wrapper.text()).toContain('Deliverability regression detected');
 		expect(wrapper.text()).toContain('Sign your emails so Gmail trusts them');
 		expect(wrapper.text()).toContain('example.com');

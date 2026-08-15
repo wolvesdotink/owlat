@@ -10,16 +10,26 @@ import {
 	deriveComposerLock,
 	deriveUnsealedPrompt,
 	sealSendBlock,
+	type SealLockText,
 	type SealSkipReason,
 	type SealState,
 } from '../sealComposer';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The derivation carries catalog keys, so the audit renders them against the
+ * real English catalog: what is pinned below is the sentence a sender reads.
+ */
+const { t } = createTestI18n().global;
+const render = (text: SealLockText) =>
+	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
 
 describe('deriveComposerLock', () => {
 	it('willSeal: verbatim promise copy, ok tone, no unsealed escape hatch', () => {
 		const lock = deriveComposerLock({ kind: 'willSeal' });
 		expect(lock.kind).toBe('willSeal');
-		expect(lock.summary).toBe('This message will be sealed');
-		expect(lock.detail).toBe(
+		expect(t(lock.summary)).toBe('This message will be sealed');
+		expect(render(lock.detail)).toBe(
 			'Everyone you are writing to can receive sealed mail, so Owlat will encrypt this message before it leaves your workspace.'
 		);
 		expect(lock.tone).toBe('ok');
@@ -29,8 +39,8 @@ describe('deriveComposerLock', () => {
 	it('keyChanged: verbatim copy names the rotated recipients, warn tone, no silent send', () => {
 		const lock = deriveComposerLock({ kind: 'keyChanged', addresses: ['bob@b.test'] });
 		expect(lock.kind).toBe('keyChanged');
-		expect(lock.summary).toBe("A recipient's key changed");
-		expect(lock.detail).toBe(
+		expect(t(lock.summary)).toBe("A recipient's key changed");
+		expect(render(lock.detail)).toBe(
 			'The sealing key for bob@b.test changed since you last sealed mail to them. Open your conversation with them to review and confirm the new key before Owlat will seal to it.'
 		);
 		expect(lock.tone).toBe('warn');
@@ -44,13 +54,13 @@ describe('deriveComposerLock', () => {
 			kind: 'keyChanged',
 			addresses: ['bob@b.test', 'carol@c.test'],
 		});
-		expect(lock.detail).toContain('bob@b.test and carol@c.test');
+		expect(render(lock.detail)).toContain('bob@b.test and carol@c.test');
 	});
 
 	it('cannotSeal: muted tone, and sending unsealed is an EXPLICIT act', () => {
 		const lock = deriveComposerLock({ kind: 'cannotSeal', reason: 'recipient_no_key' });
 		expect(lock.kind).toBe('cannotSeal');
-		expect(lock.summary).toBe("This message won't be sealed");
+		expect(t(lock.summary)).toBe("This message won't be sealed");
 		expect(lock.tone).toBe('muted');
 		expect(lock.allowSendUnsealed).toBe(true);
 	});
@@ -58,8 +68,8 @@ describe('deriveComposerLock', () => {
 	it('no state yet: says it is still checking instead of claiming nothing', () => {
 		const lock = deriveComposerLock(null);
 		expect(lock.kind).toBe('checking');
-		expect(lock.summary).toBe('Checking whether this message can be sealed');
-		expect(lock.detail).toBe(
+		expect(t(lock.summary)).toBe('Checking whether this message can be sealed');
+		expect(render(lock.detail)).toBe(
 			'Owlat is looking up whether everyone you are writing to can receive sealed mail. This updates as you change recipients.'
 		);
 		expect(lock.tone).toBe('muted');
@@ -92,9 +102,9 @@ describe('deriveComposerLock', () => {
 		'cannotSeal(%s) renders its verbatim reason copy and never over-claims',
 		(reason) => {
 			const lock = deriveComposerLock({ kind: 'cannotSeal', reason });
-			expect(lock.detail).toBe(REASON_COPY[reason]);
+			expect(render(lock.detail)).toBe(REASON_COPY[reason]);
 			// No cannotSeal state may ever read as a sealing promise.
-			expect(lock.summary).not.toContain('will be sealed');
+			expect(t(lock.summary)).not.toContain('will be sealed');
 		}
 	);
 
@@ -107,7 +117,7 @@ describe('deriveComposerLock', () => {
 			})),
 		];
 		for (const state of nonWillSeal) {
-			expect(deriveComposerLock(state).summary).not.toBe('This message will be sealed');
+			expect(t(deriveComposerLock(state).summary)).not.toBe('This message will be sealed');
 		}
 	});
 });
@@ -150,20 +160,20 @@ describe('deriveUnsealedPrompt', () => {
 		(reason) => {
 			const prompt = deriveUnsealedPrompt({ kind: 'cannotSeal', reason });
 			expect(prompt).not.toBeNull();
-			expect(prompt?.title).toBe('Send this message unsealed?');
-			expect(prompt?.description).toContain(
+			expect(t(prompt!.title)).toBe('Send this message unsealed?');
+			expect(t(prompt!.description)).toContain(
 				'Owlat will send it as ordinary email, which the mail servers it passes through can read.'
 			);
 			// The reason clause comes first, so the prompt opens with the why.
-			expect(prompt?.description.startsWith('Owlat will send it')).toBe(false);
-			expect(prompt?.confirmLabel).toBe('Send unsealed');
-			expect(prompt?.cancelLabel).toBe('Keep editing');
+			expect(t(prompt!.description).startsWith('Owlat will send it')).toBe(false);
+			expect(t(prompt!.confirmLabel)).toBe('Send unsealed');
+			expect(t(prompt!.cancelLabel)).toBe('Keep editing');
 		}
 	);
 
 	it('verbatim reason clauses', () => {
 		const describeReason = (reason: SealSkipReason) =>
-			deriveUnsealedPrompt({ kind: 'cannotSeal', reason })?.description.split(
+			t(deriveUnsealedPrompt({ kind: 'cannotSeal', reason })!.description).split(
 				' Owlat will send'
 			)[0];
 		expect(describeReason('policy_off')).toBe('Sealed mail is turned off for your workspace.');

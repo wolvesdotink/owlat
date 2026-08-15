@@ -50,6 +50,7 @@ export function useOptimisticMutation<M extends FunctionReference<'mutation' | '
 	isLoading: Readonly<Ref<boolean>>;
 	inlineError: Readonly<Ref<string | null>>;
 } {
+	const { t } = useI18n();
 	const backend = useBackendOperation(operation, opts);
 	const { showToast } = useToast();
 
@@ -58,7 +59,7 @@ export function useOptimisticMutation<M extends FunctionReference<'mutation' | '
 		showToast(undo.label, 'success', {
 			durationMs: undo.windowMs ?? DEFAULT_OPTIMISTIC_UNDO_WINDOW_MS,
 			action: {
-				label: 'Undo',
+				label: t('shared.useOptimisticMutation.undo'),
 				onAction: () => {
 					if (done) return;
 					done = true;

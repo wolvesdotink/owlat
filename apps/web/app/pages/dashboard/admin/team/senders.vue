@@ -4,7 +4,9 @@ import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '~/utils/validation';
 import { mapSenderVerification } from '~/utils/campaignSenderVerification';
 
-useHead({ title: 'Campaign senders — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.team.senders.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -44,7 +46,7 @@ watch(
 // write fails — the shared helper owns the categorized failure toast.
 const { run: saveAllowCustom, isLoading: savingSettings } = useOptimisticMutation(
 	api.workspaces.settings.update,
-	{ label: 'Update campaign sender policy' }
+	{ label: () => t('dashboard.admin.team.senders.operations.updatePolicy') }
 );
 
 async function onToggleAllowCustom(value: boolean) {
@@ -66,13 +68,13 @@ async function onToggleAllowCustom(value: boolean) {
 type SenderRow = NonNullable<typeof senders.value>[number];
 
 const { run: toggleSenderEnabled } = useOptimisticMutation(api.campaigns.senders.update, {
-	label: 'Update campaign sender',
+	label: () => t('dashboard.admin.team.senders.operations.updateSender'),
 });
 const { run: setDefaultSender } = useBackendOperation(api.campaigns.senders.setDefault, {
-	label: 'Set default campaign sender',
+	label: () => t('dashboard.admin.team.senders.operations.setDefault'),
 });
 const { run: removeSender } = useBackendOperation(api.campaigns.senders.remove, {
-	label: 'Remove campaign sender',
+	label: () => t('dashboard.admin.team.senders.operations.remove'),
 });
 
 // Local optimistic overrides for the per-sender enable switch, keyed by id, so
@@ -147,7 +149,7 @@ const addError = ref<string | null>(null);
 
 const { run: createSender, isLoading: creating } = useBackendOperation(
 	api.campaigns.senders.create,
-	{ label: 'Add campaign sender', inlineTarget: addError }
+	{ label: () => t('dashboard.admin.team.senders.operations.add'), inlineTarget: addError }
 );
 
 function openAdd() {
@@ -172,6 +174,15 @@ const verification = computed(() =>
 	mapSenderVerification(domainStatus.value, hasValidEmail.value, domainStatusError.value !== null)
 );
 
+// The verification hint comes from a shared presentation table, which carries
+// message KEYS (with params where the copy names the domain) rather than copy.
+const verificationMessage = computed(() => {
+	const message = verification.value.message as unknown as
+		| string
+		| { key: string; params?: Record<string, unknown> };
+	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+});
+
 async function onSubmitAdd() {
 	addError.value = null;
 	if (!verification.value.canAdd) return;
@@ -194,11 +205,13 @@ async function onSubmitAdd() {
 				class="inline-flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Settings
+				{{ t('dashboard.admin.team.senders.backToSettings') }}
 			</NuxtLink>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Campaign senders</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.team.senders.title') }}
+			</h1>
 			<p class="mt-1 text-text-secondary">
-				The from-addresses your team can choose when sending a campaign.
+				{{ t('dashboard.admin.team.senders.intro') }}
 			</p>
 		</div>
 
@@ -208,9 +221,9 @@ async function onSubmitAdd() {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:mail" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No workspace selected</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.senders.noWorkspace.title') }}</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select a workspace to manage campaign senders.
+				{{ t('dashboard.admin.team.senders.noWorkspace.description') }}
 			</p>
 		</div>
 
@@ -220,10 +233,7 @@ async function onSubmitAdd() {
 		</div>
 
 		<!-- Error -->
-		<UiErrorAlert
-			v-else-if="sendersError"
-			message="Could not load campaign senders. Please try again."
-		/>
+		<UiErrorAlert v-else-if="sendersError" :message="t('dashboard.admin.team.senders.loadError')" />
 
 		<template v-else>
 			<!-- Sender list -->
@@ -231,16 +241,18 @@ async function onSubmitAdd() {
 				<template #header>
 					<div class="flex items-center justify-between gap-3">
 						<div>
-							<h2 class="text-base font-semibold text-text-primary">Approved senders</h2>
+							<h2 class="text-base font-semibold text-text-primary">
+								{{ t('dashboard.admin.team.senders.approved.title') }}
+							</h2>
 							<p class="text-xs text-text-tertiary mt-0.5">
-								Only enabled addresses can be picked as a campaign's from-address.
+								{{ t('dashboard.admin.team.senders.approved.description') }}
 							</p>
 						</div>
 						<UiButton size="sm" @click="openAdd">
 							<template #iconLeft>
 								<Icon name="lucide:plus" class="w-4 h-4" />
 							</template>
-							Add sender
+							{{ t('dashboard.admin.team.senders.addSender') }}
 						</UiButton>
 					</div>
 				</template>
@@ -257,13 +269,12 @@ async function onSubmitAdd() {
 						rounded="full"
 						class="mb-3"
 					/>
-					<p class="text-text-secondary font-medium">No senders yet</p>
+					<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.senders.empty.title') }}</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						Add an address on one of your verified sending domains so your team can send campaigns
-						from it.
+						{{ t('dashboard.admin.team.senders.empty.description') }}
 					</p>
 					<UiButton size="sm" variant="secondary" class="mt-4" @click="openAdd">
-						Add your first sender
+						{{ t('dashboard.admin.team.senders.empty.action') }}
 					</UiButton>
 				</div>
 
@@ -282,10 +293,10 @@ async function onSubmitAdd() {
 								<span
 									v-if="sender.isDefault"
 									class="inline-flex items-center gap-1 text-xs text-brand"
-									title="Default sender for new campaigns"
+									:title="t('dashboard.admin.team.senders.defaultTitle')"
 								>
 									<Icon name="lucide:star" class="w-3.5 h-3.5 fill-current" />
-									Default
+									{{ t('common.default') }}
 								</span>
 							</div>
 							<p v-if="sender.displayName" class="text-xs text-text-tertiary truncate">
@@ -299,19 +310,19 @@ async function onSubmitAdd() {
 							class="text-xs text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded px-1.5 py-1"
 							@click="setDefaultSender({ id: sender._id })"
 						>
-							Make default
+							{{ t('dashboard.admin.team.senders.makeDefault') }}
 						</button>
 
 						<UiSwitch
 							:model-value="isSenderEnabled(sender)"
-							:label="`Enable ${sender.email}`"
+							:label="t('dashboard.admin.team.senders.enableSender', { email: sender.email })"
 							@update:model-value="(v) => onToggleEnabled(sender, v)"
 						/>
 
 						<button
 							type="button"
 							class="text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error rounded p-1"
-							:aria-label="`Remove ${sender.email}`"
+							:aria-label="t('dashboard.admin.team.senders.removeSender', { email: sender.email })"
 							@click="requestRemove(sender)"
 						>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -324,33 +335,35 @@ async function onSubmitAdd() {
 			<UiCard padding="none" overflow="hidden">
 				<div class="flex items-start justify-between gap-4 p-5">
 					<div>
-						<p class="text-sm font-medium text-text-primary">Allow custom from-addresses</p>
+						<p class="text-sm font-medium text-text-primary">
+							{{ t('dashboard.admin.team.senders.allowCustom.title') }}
+						</p>
 						<p class="text-xs text-text-tertiary mt-1 max-w-md">
-							Anyone creating a campaign can type any address on a verified domain.
+							{{ t('dashboard.admin.team.senders.allowCustom.description') }}
 						</p>
 					</div>
 					<UiSwitch
 						:model-value="allowCustom"
 						:disabled="savingSettings"
-						label="Allow custom from-addresses"
+						:label="t('dashboard.admin.team.senders.allowCustom.title')"
 						@update:model-value="onToggleAllowCustom"
 					/>
 				</div>
 			</UiCard>
 
-			<p class="text-xs text-text-tertiary">
-				Looking for the address the app itself sends from (verifications, password resets)? That's
-				the
-				<NuxtLink to="/dashboard/admin" class="text-brand hover:underline">
-					default sender in General settings</NuxtLink
-				>.
-			</p>
+			<I18nT keypath="dashboard.admin.team.senders.appSenderHint" tag="p" scope="global" class="text-xs text-text-tertiary">
+				<template #generalSettingsLink>
+					<NuxtLink to="/dashboard/admin" class="text-brand hover:underline">{{
+						t('dashboard.admin.team.senders.appSenderHintLink')
+					}}</NuxtLink>
+				</template>
+			</I18nT>
 		</template>
 
 		<!-- Add-sender modal -->
 		<UiModal
 			:open="isAddOpen"
-			title="Add campaign sender"
+			:title="t('dashboard.admin.team.senders.addModal.title')"
 			size="md"
 			:closable="!creating"
 			:persistent="creating"
@@ -367,8 +380,8 @@ async function onSubmitAdd() {
 					<UiInput
 						v-model="addForm.email"
 						type="email"
-						label="From email"
-						placeholder="e.g., hello@acme.com"
+						:label="t('dashboard.admin.team.senders.addModal.emailLabel')"
+						:placeholder="t('dashboard.admin.team.senders.addModal.emailPlaceholder')"
 						:disabled="creating"
 						required
 					/>
@@ -378,13 +391,13 @@ async function onSubmitAdd() {
 					>
 						<Icon name="lucide:alert-triangle" class="w-3.5 h-3.5 shrink-0 mt-px" />
 						<span>
-							{{ verification.message }}
+							{{ verificationMessage }}
 							<NuxtLink
 								v-if="verification.showDomainsLink"
 								to="/dashboard/admin/delivery/domains"
 								class="underline hover:text-warning/80 whitespace-nowrap"
 							>
-								Set up a verified domain →
+								{{ t('dashboard.admin.team.senders.addModal.setUpDomain') }}
 							</NuxtLink>
 						</span>
 					</p>
@@ -393,25 +406,25 @@ async function onSubmitAdd() {
 						class="mt-1.5 text-xs text-success flex items-center gap-1.5"
 					>
 						<Icon name="lucide:check-circle" class="w-3.5 h-3.5 shrink-0" />
-						{{ verification.message }}
+						{{ verificationMessage }}
 					</p>
 					<p v-else class="mt-1.5 text-xs text-text-tertiary">
-						{{ verification.message }}
+						{{ verificationMessage }}
 					</p>
 				</div>
 
 				<UiInput
 					v-model="addForm.displayName"
-					label="Display name"
-					placeholder="e.g., Acme Newsletter (optional)"
+					:label="t('dashboard.admin.team.senders.addModal.displayNameLabel')"
+					:placeholder="t('dashboard.admin.team.senders.addModal.displayNamePlaceholder')"
 					:disabled="creating"
-					help-text="Shown to recipients as the sender name. Optional."
+					:help-text="t('dashboard.admin.team.senders.addModal.displayNameHelp')"
 				/>
 			</form>
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="creating" @click="isAddOpen = false">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
 					type="submit"
@@ -419,7 +432,7 @@ async function onSubmitAdd() {
 					:loading="creating"
 					:disabled="creating || !verification.canAdd"
 				>
-					{{ creating ? 'Adding…' : 'Add sender' }}
+					{{ creating ? t('dashboard.admin.team.senders.addModal.submitting') : t('dashboard.admin.team.senders.addSender') }}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -428,13 +441,13 @@ async function onSubmitAdd() {
 		<UiConfirmationDialog
 			:open="senderPendingRemoval !== null"
 			variant="danger"
-			title="Remove campaign sender"
+			:title="t('dashboard.admin.team.senders.removeDialog.title')"
 			:description="
 				senderPendingRemoval?.isDefault
-					? `Remove &quot;${senderPendingRemoval?.email}&quot;? It's the default sender, so new campaigns will have no default until you pick another.`
-					: `Remove &quot;${senderPendingRemoval?.email}&quot;? Your team will no longer be able to send campaigns from it.`
+					? t('dashboard.admin.team.senders.removeDialog.descriptionDefault', { email: senderPendingRemoval?.email })
+					: t('dashboard.admin.team.senders.removeDialog.description', { email: senderPendingRemoval?.email })
 			"
-			confirm-text="Remove sender"
+			:confirm-text="t('dashboard.admin.team.senders.removeDialog.confirm')"
 			:is-loading="isRemoving"
 			@update:open="
 				(v) => {

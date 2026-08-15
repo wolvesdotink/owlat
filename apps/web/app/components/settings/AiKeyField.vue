@@ -18,6 +18,8 @@ defineProps<{
 }>();
 
 const model = defineModel<string>({ required: true });
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -27,7 +29,11 @@ const model = defineModel<string>({ required: true });
 			type="password"
 			:label="label"
 			autocomplete="off"
-			:placeholder="storedKeySet ? 'Leave blank to keep the saved key' : 'Paste your API key'"
+			:placeholder="
+				storedKeySet
+					? t('components.settings.aiKeyField.keepPlaceholder')
+					: t('components.settings.aiKeyField.pastePlaceholder')
+			"
 			:error="error ?? undefined"
 			:disabled="disabled"
 			:help-text="helpText"
@@ -37,7 +43,11 @@ const model = defineModel<string>({ required: true });
 			class="mt-1.5 text-xs text-text-tertiary flex items-center gap-1.5"
 		>
 			<Icon name="lucide:key-round" class="w-3.5 h-3.5" />
-			Saved key: <span class="font-mono">{{ keyPreview }}</span>
+			<I18nT keypath="components.settings.aiKeyField.savedKey" tag="span" scope="global">
+				<template #preview>
+					<span class="font-mono">{{ keyPreview }}</span>
+				</template>
+			</I18nT>
 		</p>
 	</div>
 </template>

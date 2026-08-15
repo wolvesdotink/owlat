@@ -14,6 +14,7 @@ import {
 
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
+const { t } = useI18n();
 const route = useRoute();
 const pluginId = computed(() => String(route.params['id']));
 
@@ -22,7 +23,7 @@ const manifest = computed(
 );
 const schema = computed(() => manifest.value?.settingsSchema ?? []);
 
-useHead(() => ({ title: `${pluginId.value} — Plugins — Owlat` }));
+useHead(() => ({ title: t('dashboard.admin.instance.plugins.detail.pageTitle', { pluginId: pluginId.value }) }));
 
 // Plugin settings require `organization:manage` (the overview is an adminQuery),
 // and the `admin` route middleware above is what enforces it here: it waits for
@@ -54,11 +55,11 @@ const baseline = computed(() => pluginSettingsBaseline(schema.value, serverState
 const { showToast } = useToast();
 const { run: setPluginSettings, isLoading: isSaving } = useBackendOperation(
 	api.plugins.settings.setPluginSettings,
-	{ label: 'Save plugin settings' }
+	{ label: () => t('dashboard.admin.instance.plugins.detail.saveOperation') }
 );
 const { run: resetPluginSettings, isLoading: isResetting } = useBackendOperation(
 	api.plugins.settings.resetPluginSettings,
-	{ label: 'Reset plugin settings' }
+	{ label: () => t('dashboard.admin.instance.plugins.detail.resetOperation') }
 );
 
 // Seed serverState + the editable form from a redacted state snapshot.
@@ -102,7 +103,7 @@ async function save() {
 		const labels = missing
 			.map((key) => schema.value.find((field) => field.key === key)?.label ?? key)
 			.join(', ');
-		showToast(`Fill in the required fields: ${labels}`);
+		showToast(t('dashboard.admin.instance.plugins.detail.toasts.fillRequired', { fields: labels }));
 		return;
 	}
 	const changes = pluginSettingsChanges(schema.value, form.value, baseline.value);
@@ -111,7 +112,7 @@ async function save() {
 	// Seed from the returned redacted state synchronously, not via a live-query
 	// round-trip, so edits typed before the refresh arrives are not clobbered.
 	seedForm(res);
-	showToast('Plugin settings saved.');
+	showToast(t('dashboard.admin.instance.plugins.detail.toasts.saved'));
 }
 
 // Both confirm paths run the same reset mutation but report different outcomes:
@@ -126,10 +127,10 @@ async function reset(successMessage: string) {
 	showToast(successMessage);
 }
 function confirmReset() {
-	return reset('Plugin settings reset to defaults.');
+	return reset(t('dashboard.admin.instance.plugins.detail.toasts.reset'));
 }
 function confirmOrphanClear() {
-	return reset(`Cleared residual settings for ${pluginId.value}.`);
+	return reset(t('dashboard.admin.instance.plugins.detail.toasts.cleared', { pluginId: pluginId.value }));
 }
 </script>
 
@@ -140,7 +141,7 @@ function confirmOrphanClear() {
 			class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-brand mb-4"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			All plugins
+			{{ t('dashboard.admin.instance.plugins.detail.allPlugins') }}
 		</NuxtLink>
 
 		<UiQueryBoundary :loading="isLoading && !overview" :error="error">
@@ -148,15 +149,15 @@ function confirmOrphanClear() {
 			<UiCard v-if="isOrphaned">
 				<UiEmptyState
 					icon="lucide:puzzle"
-					:title="`${pluginId} is no longer installed`"
-					description="This plugin was removed from the build but left stored settings behind. Clear them to remove any saved values, including secrets."
+					:title="t('dashboard.admin.instance.plugins.detail.orphaned.title', { pluginId })"
+					:description="t('dashboard.admin.instance.plugins.detail.orphaned.description')"
 				>
 					<UiButton
 						variant="secondary"
 						:loading="isResetting"
 						@click="showOrphanClearConfirm = true"
 					>
-						Clear residual settings
+						{{ t('dashboard.admin.instance.plugins.detail.orphaned.clear') }}
 					</UiButton>
 				</UiEmptyState>
 			</UiCard>
@@ -165,12 +166,12 @@ function confirmOrphanClear() {
 			<UiCard v-else-if="!manifest || !entry">
 				<UiEmptyState
 					icon="lucide:puzzle"
-					title="Plugin not found"
-					description="No installed plugin matches this address."
+					:title="t('dashboard.admin.instance.plugins.detail.notFound.title')"
+					:description="t('dashboard.admin.instance.plugins.detail.notFound.description')"
 				>
-					<UiButton variant="secondary" to="/dashboard/admin/instance/plugins"
-						>Back to plugins</UiButton
-					>
+					<UiButton variant="secondary" to="/dashboard/admin/instance/plugins">{{
+						t('dashboard.admin.instance.plugins.detail.notFound.back')
+					}}</UiButton>
 				</UiEmptyState>
 			</UiCard>
 
@@ -180,10 +181,17 @@ function confirmOrphanClear() {
 					<div class="flex items-center gap-2 flex-wrap">
 						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ entry.pluginId }}</h1>
 						<UiBadge :variant="entry.enabled ? 'success' : 'neutral'" dot>
-							{{ entry.enabled ? 'Enabled' : 'Disabled' }}
+							{{ entry.enabled ? t('common.enabled') : t('common.disabled') }}
 						</UiBadge>
 					</div>
-					<p class="mt-1 text-text-secondary">{{ entry.packageName }} · v{{ entry.version }}</p>
+					<p class="mt-1 text-text-secondary">
+						{{
+							t('dashboard.admin.instance.plugins.detail.packageVersion', {
+								packageName: entry.packageName,
+								version: entry.version,
+							})
+						}}
+					</p>
 				</div>
 
 				<!-- Disabled notice -->
@@ -192,13 +200,18 @@ function confirmOrphanClear() {
 					class="mb-6 flex items-start gap-3 rounded-lg bg-bg-surface border border-border-subtle p-4"
 				>
 					<Icon name="lucide:power-off" class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
-					<p class="text-sm text-text-secondary">
-						This plugin is disabled. You can configure its settings now; enable it and approve its
-						capabilities under
-						<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline"
-							>Features</NuxtLink
-						>.
-					</p>
+					<I18nT
+						keypath="dashboard.admin.instance.plugins.detail.disabledNotice"
+						tag="p"
+						scope="global"
+						class="text-sm text-text-secondary"
+					>
+						<template #featuresLink>
+							<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline">{{
+								t('dashboard.admin.instance.plugins.detail.featuresLink')
+							}}</NuxtLink>
+						</template>
+					</I18nT>
 				</div>
 
 				<div class="space-y-8">
@@ -208,10 +221,11 @@ function confirmOrphanClear() {
 							<div class="flex items-center gap-3">
 								<UiIconBox icon="lucide:shield-check" size="sm" variant="surface" rounded="lg" />
 								<div>
-									<h2 class="text-lg font-semibold text-text-primary">Capabilities</h2>
+									<h2 class="text-lg font-semibold text-text-primary">
+										{{ t('dashboard.admin.instance.plugins.detail.capabilities.title') }}
+									</h2>
 									<p class="text-sm text-text-secondary">
-										Host-mediated operations this plugin declared, and whether the operator has
-										granted each.
+										{{ t('dashboard.admin.instance.plugins.detail.capabilities.description') }}
 									</p>
 								</div>
 							</div>
@@ -224,12 +238,16 @@ function confirmOrphanClear() {
 							>
 								<code class="text-sm text-text-secondary">{{ capability.capability }}</code>
 								<UiBadge :variant="capability.granted ? 'success' : 'neutral'">
-									{{ capability.granted ? 'Granted' : 'Not granted' }}
+									{{
+										capability.granted
+											? t('dashboard.admin.instance.plugins.detail.capabilities.granted')
+											: t('dashboard.admin.instance.plugins.detail.capabilities.notGranted')
+									}}
 								</UiBadge>
 							</div>
 						</div>
 						<div v-else class="px-6 py-4 text-sm text-text-tertiary">
-							This plugin requests no capabilities.
+							{{ t('dashboard.admin.instance.plugins.detail.capabilities.none') }}
 						</div>
 					</UiCard>
 
@@ -244,17 +262,18 @@ function confirmOrphanClear() {
 									rounded="lg"
 								/>
 								<div>
-									<h2 class="text-lg font-semibold text-text-primary">Settings</h2>
+									<h2 class="text-lg font-semibold text-text-primary">
+										{{ t('dashboard.admin.instance.plugins.detail.settings.title') }}
+									</h2>
 									<p class="text-sm text-text-secondary">
-										Configuration this plugin exposes. Secrets are supplied by deployment
-										environment variables, never stored by Owlat.
+										{{ t('dashboard.admin.instance.plugins.detail.settings.description') }}
 									</p>
 								</div>
 							</div>
 						</template>
 
 						<div v-if="schema.length === 0" class="px-6 py-6 text-sm text-text-tertiary">
-							This plugin has no configurable settings.
+							{{ t('dashboard.admin.instance.plugins.detail.settings.none') }}
 						</div>
 
 						<form v-else class="p-6" @submit.prevent="save">
@@ -267,19 +286,13 @@ function confirmOrphanClear() {
 							>
 								<Icon name="lucide:key-round" class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
 								<div class="text-sm text-text-secondary">
-									<p>
-										This plugin needs
-										{{
-											unsetSecrets.length === 1
-												? 'an environment variable'
-												: 'environment variables'
-										}}
-										set in your deployment before it can run. Other settings can still be saved.
-									</p>
+									<p>{{ t('dashboard.admin.instance.plugins.detail.settings.envVarsNotice', unsetSecrets.length) }}</p>
 									<ul class="mt-1.5 space-y-0.5">
 										<li v-for="secret in unsetSecrets" :key="secret.key">
 											<code class="text-xs text-text-tertiary">{{ secret.envVar }}</code>
-											<span class="text-text-tertiary"> — {{ secret.label }}</span>
+											<span class="text-text-tertiary">
+												{{ t('dashboard.admin.instance.plugins.detail.settings.secretLabelSuffix', { label: secret.label }) }}</span
+											>
 										</li>
 									</ul>
 								</div>
@@ -306,10 +319,10 @@ function confirmOrphanClear() {
 									:disabled="isSaving || isResetting"
 									@click="showResetConfirm = true"
 								>
-									Reset to defaults
+									{{ t('dashboard.admin.instance.plugins.detail.settings.resetToDefaults') }}
 								</UiButton>
 								<UiButton type="submit" :loading="isSaving" :disabled="!isDirty || isResetting">
-									Save settings
+									{{ t('dashboard.admin.instance.plugins.detail.settings.save') }}
 								</UiButton>
 							</div>
 						</form>
@@ -321,10 +334,10 @@ function confirmOrphanClear() {
 		<UiConfirmationDialog
 			:open="showResetConfirm"
 			variant="warning"
-			title="Reset plugin settings?"
-			description="This clears every stored value for this plugin, including saved secrets, and returns it to the schema defaults."
-			confirm-text="Reset"
-			cancel-text="Cancel"
+			:title="t('dashboard.admin.instance.plugins.detail.resetConfirm.title')"
+			:description="t('dashboard.admin.instance.plugins.detail.resetConfirm.description')"
+			:confirm-text="t('dashboard.admin.instance.plugins.detail.resetConfirm.confirm')"
+			:cancel-text="t('common.cancel')"
 			:is-loading="isResetting"
 			@update:open="(v: boolean) => (showResetConfirm = v)"
 			@confirm="confirmReset"
@@ -333,10 +346,10 @@ function confirmOrphanClear() {
 		<UiConfirmationDialog
 			:open="showOrphanClearConfirm"
 			variant="warning"
-			title="Clear residual settings?"
-			description="This permanently removes the stored settings this uninstalled plugin left behind, including any saved secrets. This cannot be undone."
-			confirm-text="Clear settings"
-			cancel-text="Cancel"
+			:title="t('dashboard.admin.instance.plugins.detail.orphanClearConfirm.title')"
+			:description="t('dashboard.admin.instance.plugins.detail.orphanClearConfirm.description')"
+			:confirm-text="t('dashboard.admin.instance.plugins.detail.orphanClearConfirm.confirm')"
+			:cancel-text="t('common.cancel')"
 			:is-loading="isResetting"
 			@update:open="(v: boolean) => (showOrphanClearConfirm = v)"
 			@confirm="confirmOrphanClear"

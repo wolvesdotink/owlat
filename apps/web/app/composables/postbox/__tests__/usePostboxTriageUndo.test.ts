@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
 
 // --- Nuxt auto-import stubs (useState + the @owlat/ui useToast layer) ---
 
@@ -36,6 +37,11 @@ vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	return stateBuckets.get(key);
 });
 vi.stubGlobal('useToast', () => ({ showToast, removeToast }));
+
+// The undo action's own label is a translated string, so the real catalog sits
+// behind the `useI18n` auto-import and the toast carries the English a user reads.
+const i18n = createTestI18n();
+vi.stubGlobal('useI18n', () => i18n.global);
 
 import {
 	usePostboxTriageUndo,
@@ -148,11 +154,9 @@ describe('usePostboxTriageUndo', () => {
 	it('registerMoveBack runs before → grouped move-backs → after', async () => {
 		const undoState = usePostboxTriageUndo();
 		const calls: string[] = [];
-		const runMove = vi.fn(
-			async (a: { messageIds: unknown[]; targetFolderId: unknown }) => {
-				calls.push(`move:${String(a.targetFolderId)}:${a.messageIds.length}`);
-			}
-		);
+		const runMove = vi.fn(async (a: { messageIds: unknown[]; targetFolderId: unknown }) => {
+			calls.push(`move:${String(a.targetFolderId)}:${a.messageIds.length}`);
+		});
 
 		undoState.registerMoveBack({
 			label: 'Marked as spam',

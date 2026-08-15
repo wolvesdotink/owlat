@@ -2,6 +2,8 @@
 // Renders inside <DarkSection> — the .lp-dark wrapper re-points the shared
 // color tokens, so text-text-* / border-border-* utilities resolve to the
 // white scales here.
+const { t } = useI18n();
+
 const { target, isVisible } = useScrollReveal();
 const activeTab = ref<'sdk' | 'curl'>('sdk');
 const copied = ref(false);
@@ -62,18 +64,24 @@ async function copyCode() {
 		<div class="grid grid-cols-[5fr_7fr] gap-16 items-center max-lg:grid-cols-1 max-lg:gap-12">
 			<!-- Left: Copy -->
 			<div>
-				<span class="dev-el lp-eyebrow mb-4" style="--i: 0">Developers</span>
-				<h2 class="dev-el lp-title mb-4" style="--i: 1">
-					Ship with the SDK,<br class="max-md:hidden" />
-					or stay in the <span class="lp-title-accent">dashboard</span>
-				</h2>
+				<span class="dev-el lp-eyebrow mb-4" style="--i: 0">{{ t('developers.eyebrow') }}</span>
+				<I18nT
+					keypath="developers.title"
+					tag="h2"
+					class="dev-el lp-title mb-4"
+					style="--i: 1"
+					scope="global"
+				>
+					<template #break><br class="max-md:hidden" /></template>
+					<template #accent>
+						<span class="lp-title-accent">{{ t('developers.titleAccent') }}</span>
+					</template>
+				</I18nT>
 				<p
 					class="dev-el text-base text-text-secondary leading-relaxed max-w-[540px] mb-8"
 					style="--i: 2"
 				>
-					Send transactional emails, manage contacts, trigger automations, and track delivery with a
-					single API call. Use the TypeScript SDK for type-safe integrations or hit the REST API
-					directly from any language.
+					{{ t('developers.intro') }}
 				</p>
 
 				<div class="dev-el flex gap-5" style="--i: 3">
@@ -81,7 +89,7 @@ async function copyCode() {
 						href="https://docs.owlat.app/api/sdk"
 						class="group inline-flex items-center gap-1.5 text-caption font-medium text-brand hover:text-brand-hover transition-colors duration-(--motion-fast) no-underline"
 					>
-						<span>SDK Reference</span>
+						<span>{{ t('developers.sdkReference') }}</span>
 						<svg
 							class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
 							width="13"
@@ -102,7 +110,7 @@ async function copyCode() {
 						href="https://docs.owlat.app/api/"
 						class="group inline-flex items-center gap-1.5 text-caption font-medium text-brand hover:text-brand-hover transition-colors duration-(--motion-fast) no-underline"
 					>
-						<span>API Docs</span>
+						<span>{{ t('developers.apiDocs') }}</span>
 						<svg
 							class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
 							width="13"
@@ -149,7 +157,7 @@ async function copyCode() {
 							"
 							@click="activeTab = tab"
 						>
-							{{ tab === 'sdk' ? 'TypeScript SDK' : 'cURL' }}
+							{{ tab === 'sdk' ? t('developers.tabSdk') : t('developers.tabCurl') }}
 						</button>
 						<button
 							class="ml-auto flex items-center gap-1.5 px-2 py-1.5 rounded-md text-text-tertiary hover:text-text-secondary hover:bg-white/10 transition-colors duration-(--motion-fast) cursor-pointer border-none bg-transparent"
@@ -186,7 +194,7 @@ async function copyCode() {
 								<path d="M20 6 9 17l-5-5" />
 							</svg>
 							<span class="text-[0.6rem] font-medium font-mono">{{
-								copied ? 'Copied' : 'Copy'
+								copied ? t('developers.copied') : t('developers.copy')
 							}}</span>
 						</button>
 					</div>

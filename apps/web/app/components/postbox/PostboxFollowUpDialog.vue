@@ -23,14 +23,24 @@ function nextOccurrence(hour: number, dayOffset = 0): number {
 	return d.getTime();
 }
 
+const { t } = useI18n();
+
 const PRESETS = computed<PresetTimeOption[]>(() => {
 	const dow = new Date().getDay();
 	return [
-		{ label: 'Tomorrow', sub: '9:00 AM', when: () => nextOccurrence(9, 1) },
-		{ label: 'In 3 days', sub: '9:00 AM', when: () => nextOccurrence(9, 3) },
 		{
-			label: 'Next week',
-			sub: 'Mon 9:00 AM',
+			label: t('components.postbox.postboxFollowUpDialog.presets.tomorrow'),
+			sub: t('components.postbox.postboxFollowUpDialog.presets.morning'),
+			when: () => nextOccurrence(9, 1),
+		},
+		{
+			label: t('components.postbox.postboxFollowUpDialog.presets.inThreeDays'),
+			sub: t('components.postbox.postboxFollowUpDialog.presets.morning'),
+			when: () => nextOccurrence(9, 3),
+		},
+		{
+			label: t('components.postbox.postboxFollowUpDialog.presets.nextWeek'),
+			sub: t('components.postbox.postboxFollowUpDialog.presets.mondayMorning'),
 			when: () => nextOccurrence(9, (8 - dow) % 7 || 7),
 		},
 	];
@@ -40,9 +50,9 @@ const PRESETS = computed<PresetTimeOption[]>(() => {
 <template>
 	<PostboxPresetTimeDialog
 		:open="open"
-		title="Remind me if no reply by"
+		:title="t('components.postbox.postboxFollowUpDialog.title')"
 		:presets="PRESETS"
-		confirm-label="Remind me"
+		:confirm-label="t('components.postbox.postboxFollowUpDialog.confirmLabel')"
 		@update:open="emit('update:open', $event)"
 		@confirm="emit('confirm', $event)"
 	/>

@@ -1,7 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { PROGRESS_SENTINEL, SetupStep } from '@owlat/shared/setupProgress';
+import { createTestI18n } from '~/__tests__/i18n';
 import { useServerProvisioning, type ServerCredentials } from '../useServerProvisioning';
-import type { ProvisionTransport, ConnectInfo, ExecEvent, SetupConfigInput } from '~/lib/desktop/provisioning';
+import type {
+	ProvisionTransport,
+	ConnectInfo,
+	ExecEvent,
+	SetupConfigInput,
+} from '~/lib/desktop/provisioning';
+
+// The wizard is driven outside a component here, so `useI18n` is stubbed with
+// the real catalog's `t`: the timeline details and failure sentences asserted
+// below stay the English an operator reads.
+const { t: translate } = createTestI18n().global;
+vi.stubGlobal('useI18n', () => ({ t: translate }));
 
 // ---- a scriptable fake of the native SSH transport -------------------------
 
@@ -21,7 +33,12 @@ interface FakeOpts {
 class FakeTransport implements ProvisionTransport {
 	commands: string[] = [];
 	uploads: Array<{ localDir: string; remoteDir: string }> = [];
-	localCommands: Array<{ program: string; args: string[]; cwd: string; env: Record<string, string> }> = [];
+	localCommands: Array<{
+		program: string;
+		args: string[];
+		cwd: string;
+		env: Record<string, string>;
+	}> = [];
 	pushedImages: string[][] = [];
 	constructor(private opts: FakeOpts = {}) {}
 
@@ -82,7 +99,7 @@ class FakeTransport implements ProvisionTransport {
 		program: string,
 		args: string[],
 		cwd: string,
-		env: Record<string, string>,
+		env: Record<string, string>
 	): Promise<number> {
 		this.localCommands.push({ program, args, cwd, env });
 		return 0;
@@ -191,7 +208,10 @@ describe('useServerProvisioning — provisioning', () => {
 	it('drives the full timeline to done from the installer NDJSON', async () => {
 		const { p } = await provisioned({
 			dockerLine: 'docker=yes',
-			installerLines: happyInstallerLines({ siteUrl: 'http://1.2.3.4:3000', adminEmail: 'admin@acme.test' }),
+			installerLines: happyInstallerLines({
+				siteUrl: 'http://1.2.3.4:3000',
+				adminEmail: 'admin@acme.test',
+			}),
 		});
 		expect(p.stage.value).toBe('done');
 		expect(p.steps.find((s) => s.id === SetupStep.ComposeUp)?.state).toBe('ok');
@@ -226,13 +246,24 @@ describe('useServerProvisioning — provisioning', () => {
 			dockerLine: 'docker=yes',
 			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
 		});
-		expect(t.commands.some((c) => c.includes('OWLAT_PROGRESS=json') && c.includes('quickstart'))).toBe(true);
+		expect(
+			t.commands.some((c) => c.includes('OWLAT_PROGRESS=json') && c.includes('quickstart'))
+		).toBe(true);
 	});
 
 	it('fails when the installer exits non-zero without a done event', async () => {
 		const { p } = await provisioned({
 			dockerLine: 'docker=yes',
-			installerLines: [sentinel({ v: 1, event: 'step', id: SetupStep.ComposeUp, title: 'x', status: 'failed', ts: 1 })],
+			installerLines: [
+				sentinel({
+					v: 1,
+					event: 'step',
+					id: SetupStep.ComposeUp,
+					title: 'x',
+					status: 'failed',
+					ts: 1,
+				}),
+			],
 			installerExit: 1,
 		});
 		expect(p.stage.value).toBe('error');
@@ -250,7 +281,16 @@ describe('useServerProvisioning — provisioning', () => {
 	it('retry() resets the timeline back to configure while keeping the live session', async () => {
 		const { p } = await provisioned({
 			dockerLine: 'docker=yes',
-			installerLines: [sentinel({ v: 1, event: 'step', id: SetupStep.ComposeUp, title: 'x', status: 'failed', ts: 1 })],
+			installerLines: [
+				sentinel({
+					v: 1,
+					event: 'step',
+					id: SetupStep.ComposeUp,
+					title: 'x',
+					status: 'failed',
+					ts: 1,
+				}),
+			],
 			installerExit: 1,
 		});
 		expect(p.stage.value).toBe('error');
@@ -292,10 +332,14 @@ describe('useServerProvisioning — local source mode', () => {
 		const fetch = p.steps.find((s) => s.id === 'fetch-owlat');
 		expect(fetch?.state).toBe('ok');
 		expect(fetch?.detail).toBe('uploaded local working tree');
-		expect(fetch?.title).toBe('Upload Owlat (local source)');
+		// The timeline's step titles are message keys (the table is module scope),
+		// so the pin resolves one before comparing it to the words on screen.
+		expect(translate(fetch?.title ?? '')).toBe('Upload Owlat (local source)');
 
 		// the setup image is built on the server before the installer runs
-		const buildIdx = t.commands.findIndex((c) => c.includes('docker build -f apps/setup-cli/Dockerfile'));
+		const buildIdx = t.commands.findIndex((c) =>
+			c.includes('docker build -f apps/setup-cli/Dockerfile')
+		);
 		const installerIdx = t.commands.findIndex((c) => c.includes('quickstart'));
 		expect(buildIdx).toBeGreaterThan(-1);
 		expect(buildIdx).toBeLessThan(installerIdx);
@@ -324,7 +368,9 @@ describe('useServerProvisioning — local source mode', () => {
 		});
 		p.retry();
 		expect(p.steps.find((s) => s.id === 'build-setup-image')?.state).toBe('pending');
-		expect(p.steps.find((s) => s.id === 'fetch-owlat')?.title).toBe('Upload Owlat (local source)');
+		expect(translate(p.steps.find((s) => s.id === 'fetch-owlat')?.title ?? '')).toBe(
+			'Upload Owlat (local source)'
+		);
 	});
 });
 
@@ -394,7 +440,16 @@ describe('useServerProvisioning — log cap, failure tail, secrets cleanup', () 
 
 	it('pins the failing step stderr tail on failure', async () => {
 		const { p } = await run({
-			installerLines: [sentinel({ v: 1, event: 'step', id: SetupStep.ComposeUp, title: 'x', status: 'failed', ts: 1 })],
+			installerLines: [
+				sentinel({
+					v: 1,
+					event: 'step',
+					id: SetupStep.ComposeUp,
+					title: 'x',
+					status: 'failed',
+					ts: 1,
+				}),
+			],
 			installerStderr: ['compose: pulling', 'fatal: no space left on device'],
 			installerExit: 1,
 		});
@@ -407,7 +462,9 @@ describe('useServerProvisioning — log cap, failure tail, secrets cleanup', () 
 			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
 		});
 		expect(p.stage.value).toBe('done');
-		expect(t.commands.some((c) => c.startsWith('rm -f') && c.includes('.owlat-setup.json'))).toBe(true);
+		expect(t.commands.some((c) => c.startsWith('rm -f') && c.includes('.owlat-setup.json'))).toBe(
+			true
+		);
 		expect(p.secretsRemoved.value).toBe(true);
 	});
 

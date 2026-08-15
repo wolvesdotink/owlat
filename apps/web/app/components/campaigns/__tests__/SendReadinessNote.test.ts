@@ -13,6 +13,11 @@ import { mount } from '@vue/test-utils';
 
 import SendReadinessNote from '../SendReadinessNote.vue';
 import type { SendingReadiness } from '~/lib/sendReadiness';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The note resolves the copy `~/lib/sendReadiness` derives, so `useI18n` has to
+// resolve exactly as it does in the app (an auto-import, hence a global).
+Object.assign(globalThis, i18nStubs);
 
 const iconStub = { props: ['name'], template: '<span />' };
 
@@ -21,7 +26,7 @@ const NOW = Date.UTC(2026, 0, 5, 12, 0);
 function mountNote(readiness: SendingReadiness | null, audienceSize: number | null = null) {
 	return mount(SendReadinessNote, {
 		props: { readiness, audienceSize, now: NOW },
-		global: { stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
 

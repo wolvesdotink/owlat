@@ -4,6 +4,15 @@
  * This is the single source of truth for the left-nav: new content pages are
  * orphaned until they are added here. Groups are filtered by the first URL
  * segment (`section`) — see `sidebarGroupsForSection`.
+ *
+ * The `label` fields are the ENGLISH source strings and stay here rather than
+ * moving into `i18n/locales/en.json`: this file is what a contributor edits
+ * when they add a page, and a nav entry that renders a raw key path because
+ * the catalog was not touched in the same commit is worse than one that
+ * renders English. Translations are looked up by a key DERIVED from the entry
+ * ({@link sidebarGroupKey}, {@link sidebarItemKey}) and fall back to `label`,
+ * so the catalog can lag without breaking the nav — `localeCatalogs.test.ts`
+ * fails when it does.
  */
 
 export interface SidebarItem {
@@ -363,4 +372,31 @@ export const sidebarConfig: SidebarGroup[] = [
 /** Groups shown for a route, keyed by the first URL segment. */
 export function sidebarGroupsForSection(section: string): SidebarGroup[] {
 	return sidebarConfig.filter((group) => group.section === section);
+}
+
+/**
+ * A message-catalog key segment: lowercase, every run of non-alphanumerics
+ * collapsed to a single `-`.
+ *
+ * Dots are what makes this necessary — vue-i18n reads `a.b` as a nested lookup,
+ * so a raw URL path or label can never be a key on its own. Slashes and the
+ * `#` of an anchor link collapse the same way, which also rules out the other
+ * trap: keying items by their path *segments* would make `/api` a string and
+ * `/api/contacts` an object under the same `api` node.
+ */
+function keySegment(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '');
+}
+
+/** Catalog key for a sidebar group heading, e.g. `sidebar.groups.guide-campaigns`. */
+export function sidebarGroupKey(group: SidebarGroup): string {
+	return `sidebar.groups.${keySegment(group.section)}-${keySegment(group.label)}`;
+}
+
+/** Catalog key for a sidebar link, e.g. `sidebar.items.guide-quick-start`. */
+export function sidebarItemKey(item: SidebarItem): string {
+	return `sidebar.items.${keySegment(item.to)}`;
 }

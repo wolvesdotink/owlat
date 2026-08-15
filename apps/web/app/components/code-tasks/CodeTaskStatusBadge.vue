@@ -3,35 +3,37 @@ const props = defineProps<{
 	status: 'queued' | 'running' | 'testing' | 'review' | 'merged' | 'failed';
 }>();
 
+const { t } = useI18n();
+
 const statusConfig = computed((): { label: string; classes: string; pulse: boolean } => {
 	const configs: Record<string, { label: string; classes: string; pulse: boolean }> = {
 		queued: {
-			label: 'Queued',
+			label: t('components.codeTasks.codeTaskStatusBadge.queued'),
 			classes: 'bg-bg-surface text-text-secondary border border-border-subtle',
 			pulse: false,
 		},
 		running: {
-			label: 'Running',
+			label: t('components.codeTasks.codeTaskStatusBadge.running'),
 			classes: 'bg-brand-subtle text-brand',
 			pulse: true,
 		},
 		testing: {
-			label: 'Testing',
+			label: t('components.codeTasks.codeTaskStatusBadge.testing'),
 			classes: 'bg-warning-subtle text-warning',
 			pulse: false,
 		},
 		review: {
-			label: 'Review',
+			label: t('components.codeTasks.codeTaskStatusBadge.review'),
 			classes: 'bg-brand-subtle/60 text-brand',
 			pulse: false,
 		},
 		merged: {
-			label: 'Merged',
+			label: t('components.codeTasks.codeTaskStatusBadge.merged'),
 			classes: 'bg-success-subtle text-success',
 			pulse: false,
 		},
 		failed: {
-			label: 'Failed',
+			label: t('components.codeTasks.codeTaskStatusBadge.failed'),
 			classes: 'bg-error-subtle text-error',
 			pulse: false,
 		},

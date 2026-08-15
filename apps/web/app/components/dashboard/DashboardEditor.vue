@@ -3,14 +3,14 @@ import { RENDERABLE_CARD_TYPES } from '~/composables/widgets';
 import {
 	type CardSize,
 	type EditableRule,
-	type RuleRole,
 	type SavedRule,
-	DAY_OF_WEEK_LABELS,
-	ROLE_OPTIONS,
-	createEmptyRule,
 	normalizeRules,
 	toEditableRules,
 } from '~/composables/useDashboardRules';
+import { useDashboardCardCopy } from '~/composables/useDashboardCardCopy';
+// Explicit import (rather than the Nuxt auto-import) so the rules half resolves
+// wherever the editor is mounted without component resolution set up.
+import DashboardRulesEditor from './DashboardRulesEditor.vue';
 
 interface CardEntry {
 	type: string;
@@ -34,6 +34,11 @@ const emit = defineEmits<{
 	close: [];
 	save: [pinnedCards: CardEntry[], rules: SavedRule[]];
 }>();
+
+const { t } = useI18n();
+// The card names come from the backend catalog in English; the operator reads
+// them in their own language (see `useDashboardCardCopy`).
+const { cardLabel, cardDescription } = useDashboardCardCopy();
 
 const editableCards = ref<CardEntry[]>([]);
 const editableRules = ref<EditableRule[]>([]);
@@ -63,11 +68,13 @@ const availableToAdd = computed(() => {
 });
 
 function getCardLabel(type: string): string {
-	return props.availableCards.find((c) => c.type === type)?.label ?? type;
+	const card = props.availableCards.find((c) => c.type === type);
+	return card ? cardLabel(card) : type;
 }
 
 function getCardDescription(type: string): string {
-	return props.availableCards.find((c) => c.type === type)?.description ?? '';
+	const card = props.availableCards.find((c) => c.type === type);
+	return card ? cardDescription(card) : '';
 }
 
 function removeCard(index: number) {
@@ -91,45 +98,6 @@ function moveCard(fromIndex: number, direction: 'up' | 'down') {
 	editableCards.value = cards;
 }
 
-// ── Adaptive rules ────────────────────────────────────────────────────────
-
-// Card types that have a renderer and can be added to a rule.
-const renderableCardOptions = computed(() =>
-	props.availableCards.filter((c) => RENDERABLE_CARD_TYPES.has(c.type))
-);
-
-function addRule() {
-	editableRules.value.push(createEmptyRule());
-}
-
-function removeRule(index: number) {
-	editableRules.value.splice(index, 1);
-}
-
-function toggleRuleDay(rule: EditableRule, day: number) {
-	const idx = rule.dayOfWeek.indexOf(day);
-	if (idx === -1) rule.dayOfWeek.push(day);
-	else rule.dayOfWeek.splice(idx, 1);
-}
-
-function setRuleRole(rule: EditableRule, role: RuleRole | '') {
-	rule.role = role;
-}
-
-function ruleCardsToAdd(rule: EditableRule): AvailableCard[] {
-	const present = new Set(rule.cards.map((c) => c.type));
-	return renderableCardOptions.value.filter((c) => !present.has(c.type));
-}
-
-function addRuleCard(rule: EditableRule, type: string) {
-	if (rule.cards.some((c) => c.type === type)) return;
-	rule.cards.push({ type, size: 'small' });
-}
-
-function removeRuleCard(rule: EditableRule, index: number) {
-	rule.cards.splice(index, 1);
-}
-
 function handleSave() {
 	emit('save', [...editableCards.value], normalizeRules(editableRules.value));
 	emit('close');
@@ -139,14 +107,14 @@ function handleCancel() {
 	emit('close');
 }
 
-const sizeOptions: { value: CardSize; label: string }[] = [
-	{ value: 'small', label: 'S' },
-	{ value: 'medium', label: 'M' },
-	{ value: 'large', label: 'L' },
-];
-
-const dayOptions = DAY_OF_WEEK_LABELS;
-const roleOptions = ROLE_OPTIONS;
+// The three shorthand size letters are display-only: the stored value stays the
+// untranslated `CardSize` literal. Shared with the rules editor below so both
+// lists offer the same shorthands.
+const sizeOptions = computed<{ value: CardSize; label: string }[]>(() => [
+	{ value: 'small', label: t('components.dashboard.dashboardEditor.sizes.small') },
+	{ value: 'medium', label: t('components.dashboard.dashboardEditor.sizes.medium') },
+	{ value: 'large', label: t('components.dashboard.dashboardEditor.sizes.large') },
+]);
 </script>
 
 <template>
@@ -162,11 +130,13 @@ const roleOptions = ROLE_OPTIONS;
 				>
 					<!-- Header -->
 					<div class="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
-						<h2 class="text-lg font-semibold text-text-primary">Customize Dashboard</h2>
+						<h2 class="text-lg font-semibold text-text-primary">
+							{{ t('components.dashboard.dashboardEditor.title') }}
+						</h2>
 						<button
 							class="p-1.5 rounded-lg hover:bg-bg-surface-hover transition-colors text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="handleCancel"
-							aria-label="Close"
+							:aria-label="t('common.close')"
 						>
 							<Icon name="lucide:x" class="w-5 h-5" />
 						</button>
@@ -177,11 +147,13 @@ const roleOptions = ROLE_OPTIONS;
 						<!-- Current Cards -->
 						<div class="px-5 py-4">
 							<h3 class="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-3">
-								Active Cards
+								{{ t('components.dashboard.dashboardEditor.activeCards') }}
 							</h3>
 
 							<div v-if="editableCards.length === 0" class="py-6 text-center">
-								<p class="text-sm text-text-tertiary">No cards added yet. Add cards below.</p>
+								<p class="text-sm text-text-tertiary">
+									{{ t('components.dashboard.dashboardEditor.noCards') }}
+								</p>
 							</div>
 
 							<div v-else class="space-y-2">
@@ -196,7 +168,7 @@ const roleOptions = ROLE_OPTIONS;
 											:disabled="index === 0"
 											class="p-0.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover disabled:opacity-30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											@click="moveCard(index, 'up')"
-											aria-label="Move up"
+											:aria-label="t('components.dashboard.dashboardEditor.moveUp')"
 										>
 											<Icon name="lucide:chevron-up" class="w-3.5 h-3.5" />
 										</button>
@@ -204,7 +176,7 @@ const roleOptions = ROLE_OPTIONS;
 											:disabled="index === editableCards.length - 1"
 											class="p-0.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover disabled:opacity-30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 											@click="moveCard(index, 'down')"
-											aria-label="Move down"
+											:aria-label="t('components.dashboard.dashboardEditor.moveDown')"
 										>
 											<Icon name="lucide:chevron-down" class="w-3.5 h-3.5" />
 										</button>
@@ -241,7 +213,7 @@ const roleOptions = ROLE_OPTIONS;
 									<button
 										class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 										@click="removeCard(index)"
-										aria-label="Remove card"
+										:aria-label="t('components.dashboard.dashboardEditor.removeCard')"
 									>
 										<Icon name="lucide:x" class="w-4 h-4" />
 									</button>
@@ -252,7 +224,7 @@ const roleOptions = ROLE_OPTIONS;
 						<!-- Available Cards -->
 						<div v-if="availableToAdd.length > 0" class="px-5 py-4 border-t border-border-subtle">
 							<h3 class="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-3">
-								Add Cards
+								{{ t('components.dashboard.dashboardEditor.addCards') }}
 							</h3>
 							<div class="space-y-2">
 								<button
@@ -267,186 +239,27 @@ const roleOptions = ROLE_OPTIONS;
 										<Icon name="lucide:plus" class="w-4 h-4" />
 									</div>
 									<div class="min-w-0 flex-1">
-										<p class="text-sm font-medium text-text-primary">{{ card.label }}</p>
-										<p class="text-xs text-text-tertiary truncate">{{ card.description }}</p>
+										<p class="text-sm font-medium text-text-primary">{{ cardLabel(card) }}</p>
+										<p class="text-xs text-text-tertiary truncate">{{ cardDescription(card) }}</p>
 									</div>
 								</button>
 							</div>
 						</div>
 
 						<!-- Adaptive Rules -->
-						<div class="px-5 py-4 border-t border-border-subtle">
-							<div class="flex items-center justify-between mb-1">
-								<h3 class="text-sm font-semibold text-text-secondary uppercase tracking-wide">
-									Adaptive Rules
-								</h3>
-								<UiButton variant="ghost" size="sm" @click="addRule">
-									<template #iconLeft>
-										<Icon name="lucide:plus" class="w-3.5 h-3.5" />
-									</template>
-									Add rule
-								</UiButton>
-							</div>
-							<p class="text-xs text-text-tertiary mb-3">
-								Show a different set of cards by time of day, day of week, or role. Higher priority
-								wins when several rules match.
-							</p>
-
-							<div v-if="editableRules.length === 0" class="py-4 text-center">
-								<p class="text-sm text-text-tertiary">
-									No adaptive rules. The active cards above show by default.
-								</p>
-							</div>
-
-							<div v-else class="space-y-3">
-								<div
-									v-for="(rule, ruleIndex) in editableRules"
-									:key="`rule-${ruleIndex}`"
-									class="rounded-lg bg-surface-2 shadow-surface-1 p-3 space-y-3"
-								>
-									<!-- Rule header: priority + remove -->
-									<div class="flex items-center justify-between gap-2">
-										<div class="flex items-center gap-2">
-											<label class="text-xs font-medium text-text-secondary">Priority</label>
-											<input
-												v-model.number="rule.priority"
-												type="number"
-												class="input input-sm w-16"
-												aria-label="Rule priority"
-											/>
-										</div>
-										<button
-											class="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											aria-label="Remove rule"
-											@click="removeRule(ruleIndex)"
-										>
-											<Icon name="lucide:trash-2" class="w-4 h-4" />
-										</button>
-									</div>
-
-									<!-- Time range -->
-									<div>
-										<p class="text-xs font-medium text-text-secondary mb-1">Time range</p>
-										<div class="flex items-center gap-2">
-											<input
-												v-model="rule.timeStart"
-												type="time"
-												class="input input-sm flex-1"
-												aria-label="Start time"
-											/>
-											<span class="text-text-tertiary text-xs">to</span>
-											<input
-												v-model="rule.timeEnd"
-												type="time"
-												class="input input-sm flex-1"
-												aria-label="End time"
-											/>
-										</div>
-									</div>
-
-									<!-- Days of week -->
-									<div>
-										<p class="text-xs font-medium text-text-secondary mb-1">Days</p>
-										<div class="flex flex-wrap gap-1">
-											<button
-												v-for="day in dayOptions"
-												:key="day.value"
-												type="button"
-												class="px-2 py-1 text-xs font-medium rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:class="
-													rule.dayOfWeek.includes(day.value)
-														? 'bg-text-primary text-text-inverse'
-														: 'bg-bg-surface text-text-secondary hover:text-text-primary'
-												"
-												@click="toggleRuleDay(rule, day.value)"
-											>
-												{{ day.label }}
-											</button>
-										</div>
-									</div>
-
-									<!-- Role -->
-									<div>
-										<p class="text-xs font-medium text-text-secondary mb-1">Role</p>
-										<div class="flex flex-wrap gap-1">
-											<button
-												v-for="opt in roleOptions"
-												:key="opt.value || 'any'"
-												type="button"
-												class="px-2 py-1 text-xs font-medium rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:class="
-													rule.role === opt.value
-														? 'bg-text-primary text-text-inverse'
-														: 'bg-bg-surface text-text-secondary hover:text-text-primary'
-												"
-												@click="setRuleRole(rule, opt.value)"
-											>
-												{{ opt.label }}
-											</button>
-										</div>
-									</div>
-
-									<!-- Cards in this rule -->
-									<div>
-										<p class="text-xs font-medium text-text-secondary mb-1">Cards to show</p>
-										<div v-if="rule.cards.length === 0" class="text-xs text-text-tertiary mb-2">
-											Add at least one card — empty rules are skipped.
-										</div>
-										<div v-else class="space-y-1.5 mb-2">
-											<div
-												v-for="(card, cardIndex) in rule.cards"
-												:key="`${card.type}-${cardIndex}`"
-												class="flex items-center gap-2 rounded-md bg-surface-3 shadow-surface-1 px-2 py-1.5"
-											>
-												<p class="flex-1 min-w-0 text-xs font-medium text-text-primary truncate">
-													{{ getCardLabel(card.type) }}
-												</p>
-												<div class="flex items-center gap-0.5 shrink-0">
-													<button
-														v-for="opt in sizeOptions"
-														:key="opt.value"
-														class="px-1.5 py-0.5 text-2xs font-medium rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-														:class="
-															card.size === opt.value
-																? 'bg-text-primary text-text-inverse'
-																: 'bg-bg-elevated text-text-secondary hover:text-text-primary'
-														"
-														@click="card.size = opt.value"
-													>
-														{{ opt.label }}
-													</button>
-												</div>
-												<button
-													class="p-0.5 rounded text-text-tertiary hover:text-error transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-													aria-label="Remove card from rule"
-													@click="removeRuleCard(rule, cardIndex)"
-												>
-													<Icon name="lucide:x" class="w-3.5 h-3.5" />
-												</button>
-											</div>
-										</div>
-										<div v-if="ruleCardsToAdd(rule).length > 0" class="flex flex-wrap gap-1">
-											<button
-												v-for="card in ruleCardsToAdd(rule)"
-												:key="card.type"
-												type="button"
-												class="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-border-subtle text-text-secondary hover:border-brand hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												@click="addRuleCard(rule, card.type)"
-											>
-												<Icon name="lucide:plus" class="w-3 h-3" />
-												{{ card.label }}
-											</button>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
+						<DashboardRulesEditor
+							v-model="editableRules"
+							:available-cards="availableCards"
+							:size-options="sizeOptions"
+						/>
 					</div>
 
 					<!-- Footer -->
 					<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
-						<UiButton variant="ghost" @click="handleCancel"> Cancel </UiButton>
-						<UiButton @click="handleSave"> Save Layout </UiButton>
+						<UiButton variant="ghost" @click="handleCancel">{{ t('common.cancel') }}</UiButton>
+						<UiButton @click="handleSave">
+							{{ t('components.dashboard.dashboardEditor.saveLayout') }}
+						</UiButton>
 					</div>
 				</div>
 			</div>

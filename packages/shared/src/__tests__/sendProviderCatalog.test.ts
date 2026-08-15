@@ -93,11 +93,22 @@ const SEND_PATH_REQUIRED_ENV_BEFORE: Record<string, string[]> = {
  * the catalog descriptor, and asserting the export against itself would prove
  * attachment while leaving the operator-facing copy free to change with every
  * suite in the repo staying green.
+ *
+ * The labels are MESSAGE KEYS now — the words moved into the web message
+ * catalogs when the credential form was localized, and only a browser resolves
+ * them. So this pins the KEY each mode is addressed by (a rename here is a
+ * selector that renders a key path in every language), and the words themselves
+ * are pinned against `en.json` by
+ * `apps/web/app/components/delivery/__tests__/transportEditorOutboundTls.test.ts`,
+ * which mounts the form that reads them.
  */
 const OUTBOUND_TLS_OPTIONS_BEFORE = [
-	{ value: 'opportunistic', label: 'Opportunistic (recommended)' },
-	{ value: 'require', label: 'Always encrypt' },
-	{ value: 'require-verified', label: 'Always encrypt and verify' },
+	{ value: 'opportunistic', label: 'sharedPkg.sendProviderCatalog.outboundTlsModes.opportunistic' },
+	{ value: 'require', label: 'sharedPkg.sendProviderCatalog.outboundTlsModes.require' },
+	{
+		value: 'require-verified',
+		label: 'sharedPkg.sendProviderCatalog.outboundTlsModes.requireVerified',
+	},
 ];
 
 /** `PROVIDER_ENV_KEYS` as `setupSendingPresets.ts` declared it pre-move. */
@@ -381,9 +392,9 @@ describe('the entries themselves', () => {
 	it('keeps the selector’s labels at their pre-move copy, not just its values', () => {
 		// The values are pinned above against `OUTBOUND_TLS_MODES`; the LABELS are
 		// the half that moved out of `apps/web` into the descriptor, and they are
-		// what an operator actually reads. Without this literal the previous
-		// assertion compares the export to itself, so re-wording an option would be
-		// a green monorepo.
+		// how an operator's option is addressed in the message catalog. Without
+		// this literal the previous assertion compares the export to itself, so
+		// re-keying an option would be a green monorepo.
 		expect([...OUTBOUND_TLS_MODE_OPTIONS]).toEqual(OUTBOUND_TLS_OPTIONS_BEFORE);
 	});
 

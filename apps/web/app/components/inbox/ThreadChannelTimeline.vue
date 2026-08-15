@@ -17,13 +17,15 @@ const props = defineProps<{
 	threadId: Id<'conversationThreads'>;
 }>();
 
+const { t } = useI18n();
+
 // Per-thread cross-channel timeline. The inbound-message column above shows the
 // email-processing pipeline (drafts, classification); this surfaces the unified
 // `unifiedMessages` stream for the thread — every channel (email/sms/whatsapp/
 // chat/generic), in chronological order — via `unifiedMessages.getThreadTimeline`.
 const { data: messagesData, isLoading } = useConvexQuery(
 	api.unifiedMessages.getThreadTimeline,
-	() => ({ threadId: props.threadId, limit: 100 }),
+	() => ({ threadId: props.threadId, limit: 100 })
 );
 
 const timeline = computed(() => messagesData.value ?? []);
@@ -37,6 +39,23 @@ const timeline = computed(() => messagesData.value ?? []);
 const { isSending, canSendOn, send } = useChannelOutbound();
 
 type TimelineMessage = (typeof timeline.value)[number];
+
+// The shared channel/direction vocabulary is a module-scope registry, so its
+// labels are i18n keys, not copy (see the localization guide).
+const channelName = (channel: string): string => t(channelLabel(channel));
+const directionName = (direction: string): string => t(directionLabel(direction));
+
+// Delivery status is a backend enum; only the non-default states reach the badge.
+const STATUS_KEYS: Record<string, string> = {
+	queued: 'components.inbox.threadChannelTimeline.status.queued',
+	delivered: 'components.inbox.threadChannelTimeline.status.delivered',
+	read: 'components.inbox.threadChannelTimeline.status.read',
+	failed: 'components.inbox.threadChannelTimeline.status.failed',
+};
+function statusLabel(status: string): string {
+	const key = STATUS_KEYS[status];
+	return key ? t(key) : status;
+}
 
 function canReplyTo(item: TimelineMessage): boolean {
 	if (item.channel === 'email') return false;
@@ -73,9 +92,11 @@ async function submitReply(item: TimelineMessage) {
 <template>
 	<div class="card">
 		<div class="mb-4">
-			<h2 class="text-lg font-medium text-text-primary">Cross-channel Timeline</h2>
+			<h2 class="text-lg font-medium text-text-primary">
+				{{ t('components.inbox.threadChannelTimeline.title') }}
+			</h2>
 			<p class="text-text-tertiary text-sm mt-0.5">
-				Every message on this thread across all channels.
+				{{ t('components.inbox.threadChannelTimeline.subtitle') }}
 			</p>
 		</div>
 
@@ -86,16 +107,14 @@ async function submitReply(item: TimelineMessage) {
 
 		<!-- Empty -->
 		<div v-else-if="timeline.length === 0" class="text-center py-6">
-			<p class="text-text-tertiary text-sm">No cross-channel messages yet.</p>
+			<p class="text-text-tertiary text-sm">
+				{{ t('components.inbox.threadChannelTimeline.empty') }}
+			</p>
 		</div>
 
 		<!-- Timeline list -->
 		<div v-else class="space-y-1">
-			<div
-				v-for="(item, index) in timeline"
-				:key="item._id"
-				class="relative"
-			>
+			<div v-for="(item, index) in timeline" :key="item._id" class="relative">
 				<!-- Timeline connector -->
 				<div
 					v-if="index < timeline.length - 1"
@@ -105,8 +124,14 @@ async function submitReply(item: TimelineMessage) {
 				<!-- Timeline item -->
 				<div class="flex items-start gap-3 py-2.5">
 					<!-- Channel icon -->
-					<div class="flex-shrink-0 w-8 h-8 rounded-full bg-bg-surface flex items-center justify-center">
-						<Icon :name="channelIcon(item.channel)" class="w-4 h-4" :class="channelColor(item.channel)" />
+					<div
+						class="flex-shrink-0 w-8 h-8 rounded-full bg-bg-surface flex items-center justify-center"
+					>
+						<Icon
+							:name="channelIcon(item.channel)"
+							class="w-4 h-4"
+							:class="channelColor(item.channel)"
+						/>
 					</div>
 
 					<!-- Content -->
@@ -122,21 +147,27 @@ async function submitReply(item: TimelineMessage) {
 								]"
 							>
 								<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
-								{{ directionLabel(item.direction) }}
+								{{ directionName(item.direction) }}
 							</span>
 
 							<!-- Channel badge -->
 							<UiBadge variant="neutral" size="sm">
-								{{ channelLabel(item.channel) }}
+								{{ channelName(item.channel) }}
 							</UiBadge>
 
 							<!-- Status -->
 							<UiBadge
 								v-if="item.status && item.status !== 'received' && item.status !== 'sent'"
-								:variant="item.status === 'delivered' || item.status === 'read' ? 'success' : item.status === 'failed' ? 'error' : 'neutral'"
+								:variant="
+									item.status === 'delivered' || item.status === 'read'
+										? 'success'
+										: item.status === 'failed'
+											? 'error'
+											: 'neutral'
+								"
 								size="sm"
 							>
-								{{ item.status }}
+								{{ statusLabel(item.status) }}
 							</UiBadge>
 
 							<!-- Reply on this channel -->
@@ -144,11 +175,15 @@ async function submitReply(item: TimelineMessage) {
 								v-if="canReplyTo(item) && replyToId !== item._id"
 								type="button"
 								class="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-								:aria-label="`Reply on ${channelLabel(item.channel)}`"
+								:aria-label="
+									t('components.inbox.threadChannelTimeline.replyOn', {
+										channel: channelName(item.channel),
+									})
+								"
 								@click="openReply(item)"
 							>
 								<Icon name="lucide:reply" class="w-3.5 h-3.5" />
-								Reply
+								{{ t('components.inbox.threadChannelTimeline.reply') }}
 							</button>
 						</div>
 
@@ -176,11 +211,15 @@ async function submitReply(item: TimelineMessage) {
 								v-model="replyText"
 								:rows="2"
 								size="sm"
-								:placeholder="`Reply on ${channelLabel(item.channel)}…`"
+								:placeholder="
+									t('components.inbox.threadChannelTimeline.replyPlaceholder', {
+										channel: channelName(item.channel),
+									})
+								"
 							/>
 							<div class="flex items-center justify-end gap-2 mt-2">
 								<UiButton variant="secondary" size="sm" :disabled="isSending" @click="cancelReply">
-									Cancel
+									{{ t('common.cancel') }}
 								</UiButton>
 								<UiButton
 									size="sm"
@@ -191,7 +230,7 @@ async function submitReply(item: TimelineMessage) {
 									<template #iconLeft>
 										<Icon name="lucide:send" class="w-4 h-4" />
 									</template>
-									Send
+									{{ t('common.send') }}
 								</UiButton>
 							</div>
 						</div>

@@ -26,6 +26,12 @@ import {
 
 const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
+const { t } = useI18n();
+
+/** The brief copy is derived as message keys (parameterized ones as `{ key, params }`). */
+const localize = (value: string | { key: string; params?: Record<string, unknown> }): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 // Local clock: localDay keys the cache + dismissal; re-checked each minute so
 // the card rolls over at midnight (and the greeting with the hour) without a
 // reload — same pattern as the Today partition clock.
@@ -41,7 +47,7 @@ onUnmounted(() => {
 });
 
 const localDay = computed(() => localDayOf(now.value));
-const greeting = computed(() => briefGreeting(now.value.getHours()));
+const greeting = computed(() => localize(briefGreeting(now.value.getHours())));
 
 const { data } = useConvexQuery(api.mail.brief.getBriefCard, () => ({
 	mailboxId: props.mailboxId,
@@ -130,20 +136,20 @@ const isVisible = computed(
 		<section
 			v-if="isVisible"
 			data-postbox-brief-slot
-			aria-label="Daily brief"
+			:aria-label="t('components.postbox.postboxDailyBrief.regionLabel')"
 			class="group relative"
 		>
 			<button
 				type="button"
-				aria-label="Hide the brief until tomorrow"
-				title="Hide until tomorrow"
+				:aria-label="t('components.postbox.postboxDailyBrief.dismissLabel')"
+				:title="t('components.postbox.postboxDailyBrief.dismissTitle')"
 				class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded text-text-tertiary hover:text-text-primary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-brand/40 outline-none transition-opacity duration-(--motion-fast)"
 				@click="dismiss"
 			>
 				<Icon name="lucide:x" class="w-3.5 h-3.5" />
 			</button>
 			<h2 class="font-display text-xl text-text-primary">
-				{{ greeting }} — here's where things stand
+				{{ t('components.postbox.postboxDailyBrief.heading', { greeting }) }}
 			</h2>
 			<p class="mt-1.5 text-[13px] leading-relaxed text-text-secondary">
 				<template v-for="(sentence, si) in sentences" :key="si">
@@ -153,15 +159,15 @@ const isVisible = computed(
 							:href="seg.to"
 							class="font-semibold text-text-primary tabular-nums hover:text-brand hover:underline focus-visible:ring-1 focus-visible:ring-brand/40 rounded outline-none"
 							@click.prevent="scrollToAnchor(seg.to)"
-							>{{ seg.text }}</a
+							>{{ localize(seg.text) }}</a
 						>
 						<NuxtLink
 							v-else-if="seg.to"
 							:to="seg.to"
 							class="font-semibold text-text-primary tabular-nums hover:text-brand hover:underline focus-visible:ring-1 focus-visible:ring-brand/40 rounded outline-none"
-							>{{ seg.text }}</NuxtLink
+							>{{ localize(seg.text) }}</NuxtLink
 						>
-						<template v-else>{{ seg.text }}</template>
+						<template v-else>{{ localize(seg.text) }}</template>
 					</template>
 					{{ si < sentences.length - 1 ? ' ' : '' }}
 				</template>

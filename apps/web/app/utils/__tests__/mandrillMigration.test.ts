@@ -17,11 +17,20 @@ import {
 	migrationRoutePayloads,
 	migrationSteps,
 	migrationTransportIssue,
+	type MigrationMessage,
 	type MigrationRouteView,
 	type MigrationSuppressionCounts,
 	type MigrationTransportEntry,
 } from '../mandrillMigration';
 import type { MandrillRelayIdentityInput } from '../mandrillRelayStatus';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The flow is a pure derivation, so every sentence it hands back arrives as a
+// message key (the competing relays as its interpolation); the copy an operator
+// reads is resolved through the real catalog.
+const { t } = createTestI18n().global;
+const say = (value: MigrationMessage | null) =>
+	value === null ? null : typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const NOW = 1_800_000_000_000;
@@ -71,8 +80,10 @@ describe('step 1 — the key is a presence check, per kind', () => {
 
 	it('names the missing side, and the MTA is a side too', () => {
 		expect(migrationTransportIssue(catalog())).toBeNull();
-		expect(migrationTransportIssue(catalog({ mandrill: false }))).toContain('MANDRILL_API_KEY');
-		expect(migrationTransportIssue(catalog({ mta: false }))).toContain('nothing to migrate');
+		expect(say(migrationTransportIssue(catalog({ mandrill: false })))).toContain(
+			'MANDRILL_API_KEY'
+		);
+		expect(say(migrationTransportIssue(catalog({ mta: false })))).toContain('nothing to migrate');
 	});
 });
 
@@ -96,7 +107,7 @@ describe('step 3 — the domain checklist is stricter than the routing gate', ()
 			[identity({ spf: { isValid: false }, dkim: { isValid: false }, verifiedAt: null })],
 			NOW
 		);
-		expect(rows[0]?.outstanding).toEqual(['SPF', 'DKIM', 'domain ownership']);
+		expect(rows[0]?.outstanding.map((key) => t(key))).toEqual(['SPF', 'DKIM', 'domain ownership']);
 		expect(rows[0]?.isReady).toBe(false);
 	});
 
@@ -131,7 +142,7 @@ describe('D8 — exactly one reference relay', () => {
 			}),
 		];
 		expect(competingRelayKinds(routes)).toEqual(['resend', 'ses']);
-		const warning = competingRelayWarning(routes);
+		const warning = say(competingRelayWarning(routes));
 		expect(warning).toContain('resend, ses');
 		expect(warning).toContain('are still enabled');
 		expect(warning).toContain('holds at 0%');
@@ -179,7 +190,7 @@ describe('step 4 — the preset shape', () => {
 		expect(migrationPresetIssue(catalog())).toBeNull();
 		// An unconfigured relay is written as disabled, which is exactly the state
 		// `setRoute` refuses — and it refuses in these words.
-		expect(migrationPresetIssue(catalog({ mandrill: false }))).toContain('MANDRILL_API_KEY');
+		expect(say(migrationPresetIssue(catalog({ mandrill: false })))).toContain('MANDRILL_API_KEY');
 		const noMta = migrationRoutePayloads(catalog({ mta: false }))[0];
 		expect(noMta?.providers[0]).toEqual({ providerType: 'mta', isEnabled: false });
 	});
@@ -210,7 +221,9 @@ describe('the step ladder', () => {
 		const byId = new Map(steps.map((step) => [step.id, step]));
 		expect(byId.get('connect')?.state).toBe('current');
 		expect(byId.get('history')?.state).toBe('blocked');
-		expect(byId.get('history')?.blockedBy).toContain('Connect Mailchimp Transactional first');
+		expect(say(byId.get('history')?.blockedBy ?? null)).toContain(
+			'Connect Mailchimp Transactional first'
+		);
 		expect(byId.get('preset')?.state).toBe('blocked');
 		expect(byId.get('watch')?.state).toBe('blocked');
 	});
@@ -219,7 +232,7 @@ describe('the step ladder', () => {
 		const steps = migrationSteps({ ...nothingDone, isKeyConnected: true, isHistoryCarried: true });
 		const preset = steps.find((step) => step.id === 'preset');
 		expect(preset?.state).toBe('blocked');
-		expect(preset?.blockedBy).toContain('domain verification');
+		expect(say(preset?.blockedBy ?? null)).toContain('domain verification');
 	});
 
 	it('opens the preset once the key and the domain are in place', () => {
@@ -268,7 +281,9 @@ describe('what the carry-over carried', () => {
 	};
 
 	it('drops the zeroes and leads with unsubscribes', () => {
-		expect(carriedSuppressionCounts(counts)).toEqual([
+		expect(
+			carriedSuppressionCounts(counts).map((entry) => ({ ...entry, label: t(entry.label) }))
+		).toEqual([
 			{ label: 'unsubscribed', value: 400 },
 			{ label: 'hard bounces', value: 12 },
 			{ label: 'spam complaints', value: 3 },

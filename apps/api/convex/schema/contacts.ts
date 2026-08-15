@@ -183,7 +183,7 @@ export const contactTables = {
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` here indexes contact
 		// METADATA (name, email, company), not a sealed message body, so E8b at-rest
 		// body sealing does not apply to it — it is intentionally plaintext for search.
-		// See lib/atRestBodies.ts and apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
+		// See lib/atRestBodies.ts and apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_contacts', {
 			searchField: 'searchableText',
 			// deletedAt is a filterField so the search path can drop soft-deleted

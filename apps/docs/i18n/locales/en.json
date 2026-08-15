@@ -1,0 +1,313 @@
+{
+	"brand": {
+		"docs": "Owlat Docs"
+	},
+	"breadcrumb": {
+		"label": "Breadcrumb",
+		"root": "Docs"
+	},
+	"error": {
+		"pageNotFound": "Page not found",
+		"backHome": "Back to the docs home",
+		"readTheGuide": "Read the guide",
+		"notFound": {
+			"title": "This page does not exist.",
+			"body": "The link may be outdated, or the page has moved. The guide and the search box will get you back on track."
+		},
+		"generic": {
+			"title": "Something went wrong.",
+			"body": "The documentation could not be loaded. Try again, or head back to the docs home."
+		}
+	},
+	"footer": {
+		"editOnGitHub": "Edit this page on GitHub",
+		"copyright": "© {year} {company}. All rights reserved."
+	},
+	"home": {
+		"seo": {
+			"title": "Owlat Docs — Email Infrastructure for Product Teams",
+			"description": "Product guides, API reference, and developer docs for Owlat. Build, send, and optimize email with drag-and-drop templates, transactional APIs, and deliverability tooling.",
+			"ogDescription": "Email infrastructure for product teams"
+		},
+		"hero": {
+			"eyebrow": "Documentation",
+			"title": "Email infrastructure, {accent}",
+			"titleAccent": "end to end.",
+			"tagline": "Everything you need to build, send, and optimize email — from drag-and-drop templates to transactional APIs and deliverability tooling.",
+			"startGuide": "Start with the Guide",
+			"exploreApi": "Explore the API"
+		},
+		"sections": {
+			"guide": {
+				"label": "Guide",
+				"description": "Product workflows, setup, and day-to-day operations",
+				"count": "19 articles"
+			},
+			"api": {
+				"label": "API Reference",
+				"description": "Authenticated and public HTTP endpoint reference",
+				"count": "11 references"
+			},
+			"developer": {
+				"label": "Developer",
+				"description": "Architecture, backend patterns, and component system",
+				"count": "12 guides"
+			},
+			"sdks": {
+				"label": "SDKs",
+				"description": "Official TypeScript and Java SDKs for server-side integration",
+				"count": "2 references"
+			},
+			"examples": {
+				"label": "Examples",
+				"description": "Copy-pasteable integration patterns for common use cases",
+				"count": "6 examples"
+			}
+		},
+		"popular": {
+			"eyebrow": "Guides",
+			"title": "Popular {accent}",
+			"titleAccent": "guides."
+		},
+		"guides": {
+			"quickStart": {
+				"title": "Quick Start",
+				"description": "Get up and running in 5 minutes"
+			},
+			"emailEditor": {
+				"title": "Email Editor",
+				"description": "Build emails with the block-based editor"
+			},
+			"campaigns": {
+				"title": "Campaigns",
+				"description": "Send and track email campaigns"
+			},
+			"transactional": {
+				"title": "Transactional Setup",
+				"description": "Send transactional emails via API"
+			},
+			"contacts": {
+				"title": "Contacts",
+				"description": "Manage your audience and contacts"
+			},
+			"deliverability": {
+				"title": "Deliverability",
+				"description": "Optimize inbox placement and sender reputation"
+			}
+		},
+		"quickstart": {
+			"eyebrow": "Quickstart",
+			"title": "Send your first email in {accent}",
+			"titleAccent": "seconds."
+		},
+		"oss": {
+			"label": "Open {accent}",
+			"labelAccent": "source.",
+			"description": "Owlat is open source and community-driven. Explore the codebase, report issues, or contribute on GitHub.",
+			"cta": "View on GitHub"
+		}
+	},
+	"language": {
+		"label": "Language"
+	},
+	"nav": {
+		"primary": "Primary navigation",
+		"sidebar": "Documentation navigation",
+		"guide": "Guide",
+		"api": "API",
+		"developer": "Developer",
+		"vision": "Vision",
+		"toggleSidebar": "Toggle sidebar",
+		"closeSidebar": "Close sidebar"
+	},
+	"prevNext": {
+		"previous": "Previous",
+		"next": "Next"
+	},
+	"search": {
+		"trigger": "Search...",
+		"open": "Open search",
+		"placeholder": "Search documentation...",
+		"escapeKey": "ESC",
+		"noResults": "No results found for \"{query}\"",
+		"prompt": "Type to search the documentation",
+		"navigate": "Navigate",
+		"select": "Select",
+		"sectionFallback": "docs"
+	},
+	"sections": {
+		"guide": "Guide",
+		"api": "API Reference",
+		"developer": "Developer",
+		"decisions": "Decisions",
+		"examples": "Examples",
+		"vision": "Vision"
+	},
+	"seo": {
+		"pageTitle": "{title} | Owlat Docs"
+	},
+	"sidebar": {
+		"groups": {
+			"guide-getting-started": "Getting Started",
+			"guide-building-emails": "Building Emails",
+			"guide-your-audience": "Your Audience",
+			"guide-campaigns": "Campaigns",
+			"guide-transactional-automations": "Transactional & Automations",
+			"guide-personal-email-postbox": "Personal Email (Postbox)",
+			"guide-team-inbox": "Team Inbox",
+			"guide-knowledge-collaboration": "Knowledge & Collaboration",
+			"guide-operations": "Operations",
+			"api-overview": "Overview",
+			"api-core-endpoints": "Core Endpoints",
+			"api-delivery-public-endpoints": "Delivery & Public Endpoints",
+			"developer-architecture": "Architecture",
+			"developer-email-delivery": "Email & Delivery",
+			"developer-subsystem-internals": "Subsystem Internals",
+			"developer-plugin-platform": "Plugin Platform",
+			"developer-self-hosting": "Self-Hosting",
+			"developer-decisions": "Decisions",
+			"examples-examples": "Examples",
+			"vision-vision": "Vision"
+		},
+		"items": {
+			"guide": "Guide Overview",
+			"guide-getting-started": "Welcome to Owlat",
+			"guide-quick-start": "Quick Start",
+			"guide-operating-modes": "Operating Modes",
+			"guide-email-editor": "Email Editor",
+			"guide-email-templates": "Email Templates",
+			"guide-saved-blocks": "Saved Blocks",
+			"guide-media-library": "Media Library",
+			"guide-email-theme": "Email Theme",
+			"guide-translations": "Translations",
+			"guide-share-links": "Share Links",
+			"guide-contacts": "Contacts",
+			"guide-contact-properties": "Contact Properties",
+			"guide-audience-data": "Identities & Relationships",
+			"guide-importing-contacts": "Importing & Exporting",
+			"guide-topics": "Topics",
+			"guide-segments": "Segments",
+			"guide-forms": "Forms",
+			"guide-campaigns": "Campaigns & Reporting",
+			"guide-ab-testing": "A/B Testing",
+			"guide-create-campaign": "Create a Campaign",
+			"guide-send-campaign": "Send & Monitor a Campaign",
+			"guide-transactional": "Transactional Emails",
+			"guide-transactional-setup": "Transactional Setup",
+			"guide-automations": "Automations",
+			"guide-postbox": "Postbox",
+			"guide-reply-queue": "Reply Queue",
+			"guide-smart-inbox": "Smart Inbox",
+			"guide-calendar-availability": "Calendar Availability",
+			"guide-postbox-settings": "Postbox Settings",
+			"guide-secure-email": "Secure Email, Explained",
+			"guide-sealed-mail": "Sealed Mail",
+			"guide-sealed-mail-recovery-kit": "Sealed Mail Recovery Kit",
+			"guide-migrate-from-google": "Migrate from Google",
+			"guide-postbox-connect-an-external-mailbox": "Connect External Mailbox",
+			"guide-connect-your-ai": "Connect your AI",
+			"guide-team-inbox": "Team Inbox",
+			"guide-ai-agent": "AI Agent & Autonomy",
+			"guide-ai-agent-visualization-agent-adaptive-dashboards": "AI Dashboards",
+			"guide-code-tasks": "Code Tasks",
+			"guide-knowledge-graph": "Knowledge Graph",
+			"guide-files": "Files",
+			"guide-ai-assistant": "AI Assistant",
+			"guide-chat": "Team Chat",
+			"guide-channels": "Communication Channels",
+			"guide-desktop-app": "Desktop App",
+			"guide-deliverability": "Deliverability",
+			"guide-sending-from-a-vps": "Sending from a VPS",
+			"guide-security-scanning": "Security & Scanning",
+			"guide-api-keys-webhooks": "API Keys & Webhooks",
+			"guide-team-permissions": "Team & Permissions",
+			"guide-audit-logs": "Audit Logs",
+			"guide-feature-flags": "Feature Flags",
+			"guide-account": "Account & Data",
+			"guide-system-updates": "System & Updates",
+			"api": "API Overview",
+			"api-authentication": "Authentication",
+			"api-sdk": "TypeScript SDK",
+			"api-sdk-java": "Java SDK",
+			"api-contacts": "Contacts API",
+			"api-topics": "Topics API",
+			"api-events": "Events API",
+			"api-transactional": "Transactional API",
+			"api-forms": "Forms API",
+			"api-webhooks": "Webhooks",
+			"api-webhook-payloads": "Webhook Payloads",
+			"api-inbound-channels": "Inbound Channels",
+			"api-public-endpoints": "Public Endpoints",
+			"developer": "Overview",
+			"developer-architecture": "Architecture",
+			"developer-scopes": "Scopes",
+			"developer-convex": "Convex Backend",
+			"developer-authentication": "Authentication",
+			"developer-components": "Component Library",
+			"developer-ui-localization": "UI Localization",
+			"developer-environment-variables": "Environment Variables",
+			"developer-feature-flags": "Feature Flags",
+			"developer-email-system": "Email System",
+			"developer-email-renderer": "Email Renderer",
+			"developer-how-email-works": "How Email Works",
+			"developer-email-security": "Email Security",
+			"developer-sealed-mail-at-rest": "Sealed Mail at Rest",
+			"developer-transport-security": "Transport Security",
+			"developer-mta-system": "MTA System",
+			"developer-providers": "Providers",
+			"developer-deliverability-infrastructure": "Deliverability Infrastructure",
+			"developer-campaign-internals": "Campaign Internals",
+			"developer-audience-internals": "Audience Internals",
+			"developer-automation-internals": "Automation Internals",
+			"developer-postbox-architecture": "Postbox Architecture",
+			"developer-plugin-platform": "Plugin Platform",
+			"developer-plugin-authoring": "Building a Plugin",
+			"developer-plugin-contributions": "Contribution Reference",
+			"developer-plugin-capabilities": "Capabilities & Trust",
+			"developer-plugin-operations": "Installing & Operating",
+			"developer-plugin-cli": "Plugins CLI",
+			"developer-plugin-send-providers": "Authoring a Send Provider",
+			"developer-plugin-connected-apps": "Connected Apps",
+			"developer-plugin-sandboxed-jobs": "Sandboxed Jobs",
+			"developer-plugin-troubleshooting": "Troubleshooting",
+			"developer-self-hosting": "Self-Hosting",
+			"developer-self-hosting-desktop": "Desktop Installer",
+			"developer-self-hosting-config": "Configuration",
+			"developer-self-hosting-dns-email": "DNS & Email Setup",
+			"developer-self-hosting-production": "Production Deployment",
+			"developer-self-hosting-maintenance": "Maintenance & Updates",
+			"developer-setup-cli": "Setup CLI & Installer",
+			"developer-platform-operations": "Platform Operations",
+			"developer-decisions": "Overview",
+			"developer-decisions-001-custom-email-renderer": "ADR-001: Custom Email Renderer",
+			"developer-decisions-002-convex-backend": "ADR-002: Convex Backend",
+			"developer-decisions-003-notion-like-builder": "ADR-003: Notion-like Builder",
+			"developer-decisions-004-monorepo-bun-workspaces": "ADR-004: Monorepo & Bun",
+			"developer-decisions-005-custom-mta": "ADR-005: Custom MTA",
+			"developer-decisions-006-self-hosted-convex": "ADR-006: Self-Hosted Convex",
+			"developer-decisions-007-pluggable-llm": "ADR-007: Pluggable LLM",
+			"developer-decisions-008-process-architecture": "ADR-008: Process Architecture",
+			"developer-decisions-009-model-routing": "ADR-009: Model Routing",
+			"developer-decisions-010-listing-engine": "ADR-010: Listing Engine",
+			"examples": "Overview",
+			"examples-welcome-email": "Welcome Email",
+			"examples-billing-email": "Billing Email",
+			"examples-event-automation": "Event Automation",
+			"examples-contact-sync": "Contact Sync",
+			"examples-webhook-handler": "Webhook Handler",
+			"examples-multilingual-email": "Multilingual Email",
+			"vision": "The Future of Owlat",
+			"vision-roadmap": "Roadmap",
+			"vision-self-hosting": "Self-Hosting Architecture",
+			"vision-agent-pipeline": "Agent Pipeline",
+			"vision-knowledge-graph": "Knowledge Graph",
+			"vision-multi-channel": "Multi-Channel & CRM",
+			"vision-file-system": "Semantic File System",
+			"vision-desktop-app": "Desktop App & Advanced Agents"
+		}
+	},
+	"toc": {
+		"label": "Table of contents",
+		"title": "On this page"
+	}
+}

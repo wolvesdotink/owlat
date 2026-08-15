@@ -21,7 +21,11 @@ interface FormEndpointRef {
 	doubleOptIn?: boolean;
 }
 
-/** Default fields a brand-new form starts with — mirrors the backend default. */
+/**
+ * Default fields a brand-new form starts with — mirrors the backend default.
+ * The label is stored data (and printed into the embed snippet the customer
+ * pastes on their own site), not UI chrome, so it is deliberately not localized.
+ */
 const defaultFields = (): FormFieldDraft[] => [
 	{ key: 'email', label: 'Email', type: 'email', required: true },
 ];
@@ -37,6 +41,7 @@ interface FormToDelete {
  * Manages CRUD operations, modal state, embed code generation, and clipboard actions.
  */
 export function useFormSettings() {
+	const { t } = useI18n();
 	const { isLoading: organizationLoading } = useOrganizationContext();
 
 	// DATA: Convex queries
@@ -50,13 +55,13 @@ export function useFormSettings() {
 
 	// Mutations
 	const { run: createForm } = useBackendOperation(api.forms.endpoints.create, {
-		label: 'Create form endpoint',
+		label: () => t('shared.useFormSettings.operations.createForm'),
 	});
 	const { run: updateForm } = useBackendOperation(api.forms.endpoints.update, {
-		label: 'Update form endpoint',
+		label: () => t('shared.useFormSettings.operations.updateForm'),
 	});
 	const { run: removeForm } = useBackendOperation(api.forms.endpoints.remove, {
-		label: 'Delete form endpoint',
+		label: () => t('shared.useFormSettings.operations.deleteForm'),
 	});
 
 	// Convex site URL for embed code generation
@@ -99,22 +104,22 @@ export function useFormSettings() {
 			const key = field.key.trim();
 			const label = field.label.trim();
 			if (!key || !label) {
-				return { error: 'Every field needs a key and a label' };
+				return { error: t('shared.useFormSettings.errors.fieldNeedsKeyAndLabel') };
 			}
 			if (seen.has(key)) {
-				return { error: `Duplicate field key "${key}"` };
+				return { error: t('shared.useFormSettings.errors.duplicateFieldKey', { key }) };
 			}
 			seen.add(key);
 			cleaned.push({ key, label, type: field.type, required: field.required });
 		}
 		if (cleaned.length === 0) {
-			return { error: 'Add at least one field' };
+			return { error: t('shared.useFormSettings.errors.noFields') };
 		}
 		// A form whose submissions can never resolve an address is dead on
 		// arrival — forms/submission.ts rejects every POST with 'Email is
 		// required'. Keep the editor's own "email is required" copy honest.
 		if (!cleaned.some((f) => f.type === 'email')) {
-			return { error: 'A form needs at least one email field' };
+			return { error: t('shared.useFormSettings.errors.emailFieldRequired') };
 		}
 		return { fields: cleaned };
 	};
@@ -148,7 +153,7 @@ export function useFormSettings() {
 		addFormErrors.name = '';
 		addFormErrors.fields = '';
 		if (!addForm.name.trim()) {
-			addFormErrors.name = 'Form name is required';
+			addFormErrors.name = t('shared.useFormSettings.errors.nameRequired');
 			return false;
 		}
 		const result = normalizeFields(addForm.fields);
@@ -170,9 +175,7 @@ export function useFormSettings() {
 		isAdding.value = true;
 		const result = await createForm({
 			name: addForm.name.trim(),
-			topicId: addForm.topicId
-				? (addForm.topicId as Id<'topics'>)
-				: undefined,
+			topicId: addForm.topicId ? (addForm.topicId as Id<'topics'>) : undefined,
 			fields: normalized.fields,
 			redirectUrl: addForm.redirectUrl.trim() || undefined,
 			honeypotFieldName: addForm.honeypotFieldName.trim() || undefined,
@@ -180,7 +183,7 @@ export function useFormSettings() {
 		});
 		isAdding.value = false;
 		if (result === undefined) return;
-		showNotification('Form endpoint created successfully');
+		showNotification(t('shared.useFormSettings.toasts.created'));
 		isAddModalOpen.value = false;
 		resetAddForm();
 	};
@@ -220,7 +223,7 @@ export function useFormSettings() {
 		editFormErrors.name = '';
 		editFormErrors.fields = '';
 		if (!editForm.name.trim()) {
-			editFormErrors.name = 'Form name is required';
+			editFormErrors.name = t('shared.useFormSettings.errors.nameRequired');
 			return false;
 		}
 		const result = normalizeFields(editForm.fields);
@@ -244,9 +247,7 @@ export function useFormSettings() {
 		const result = await updateForm({
 			formEndpointId: formToEdit.value._id,
 			name: editForm.name.trim(),
-			topicId: editForm.topicId
-				? (editForm.topicId as Id<'topics'>)
-				: undefined,
+			topicId: editForm.topicId ? (editForm.topicId as Id<'topics'>) : undefined,
 			fields: normalized.fields,
 			redirectUrl: editForm.redirectUrl.trim() || undefined,
 			honeypotFieldName: editForm.honeypotFieldName.trim() || undefined,
@@ -254,7 +255,7 @@ export function useFormSettings() {
 		});
 		isSaving.value = false;
 		if (result === undefined) return;
-		showNotification('Form endpoint updated successfully');
+		showNotification(t('shared.useFormSettings.toasts.updated'));
 		formToEdit.value = null;
 	};
 
@@ -269,7 +270,11 @@ export function useFormSettings() {
 			isActive: !form.isActive,
 		});
 		if (result === undefined) return;
-		showNotification(`Form "${form.name}" ${form.isActive ? 'disabled' : 'enabled'}`);
+		showNotification(
+			form.isActive
+				? t('shared.useFormSettings.toasts.disabled', { name: form.name })
+				: t('shared.useFormSettings.toasts.enabled', { name: form.name })
+		);
 	};
 
 	// --- Delete form modal ---
@@ -285,7 +290,7 @@ export function useFormSettings() {
 		});
 		isDeleting.value = false;
 		if (result === undefined) return;
-		showNotification('Form endpoint deleted successfully');
+		showNotification(t('shared.useFormSettings.toasts.deleted'));
 		formToDelete.value = null;
 	};
 
@@ -339,15 +344,15 @@ ${fieldHtml}${honeypotHtml}
 	const copyToClipboard = async (text: string, codeType: string) => {
 		const ok = await copy(text, codeType);
 		if (!ok) {
-			showNotification('Failed to copy to clipboard', 'error');
+			showNotification(t('shared.useFormSettings.toasts.copyFailed'), 'error');
 		}
 	};
 
 	// --- Helpers ---
 	const getTopicName = (topicId?: Id<'topics'>) => {
-		if (!topicId || !topicsData.value) return 'None';
+		if (!topicId || !topicsData.value) return t('common.none');
 		const list = topicsData.value.find((l) => l._id === topicId);
-		return list?.name || 'Unknown';
+		return list?.name || t('common.unknown');
 	};
 
 	return {

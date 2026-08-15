@@ -8,15 +8,22 @@
  *     combined bar alongside the format buttons (not a second popover)
  *   - forwards an AI action selection as `ai-select`
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { EMPTY_ACTIVE_MARKS } from '@owlat/ui/composables/useRichText';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxFloatingFormatBar from '../PostboxFloatingFormatBar.vue';
 import PostboxEditorToolbar from '../PostboxEditorToolbar.vue';
 import PostboxRewriteActions from '../PostboxRewriteActions.vue';
 
 const iconStub = { props: ['name'], template: '<span />' };
+
+// The bar's accessible name and the toolbar tooltips flow through vue-i18n now;
+// `useI18n` is a Nuxt auto-import, so it has to exist as a global for setup.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 function mountBar(props: Record<string, unknown> = {}) {
 	return mount(PostboxFloatingFormatBar, {
@@ -26,6 +33,7 @@ function mountBar(props: Record<string, unknown> = {}) {
 			...props,
 		},
 		global: {
+			plugins: [createTestI18n()],
 			components: { PostboxEditorToolbar, PostboxRewriteActions },
 			stubs: { Icon: iconStub },
 		},

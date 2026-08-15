@@ -34,6 +34,8 @@ interface Props {
 
 defineProps<Props>();
 
+const { t } = useI18n();
+
 const isExpanded = ref(false);
 </script>
 
@@ -43,9 +45,9 @@ const isExpanded = ref(false);
 			<Icon name="lucide:mail" class="w-4 h-4 text-brand flex-shrink-0" />
 			<div class="flex-1 min-w-0">
 				<div class="flex items-center gap-2">
-					<span class="text-xs uppercase tracking-wider font-semibold text-brand"
-						>Linked email</span
-					>
+					<span class="text-xs uppercase tracking-wider font-semibold text-brand">{{
+						t('components.chat.chatLinkedEmailPanel.heading')
+					}}</span>
 					<InboxStatusChip
 						:status="data.thread.status"
 						:latest-draft-status="data.thread.latestDraftStatus"
@@ -57,8 +59,13 @@ const isExpanded = ref(false);
 					{{ data.thread.subject }}
 				</h3>
 				<p class="text-xs text-text-tertiary truncate">
-					{{ data.thread.contactIdentifier }} · {{ data.thread.messageCount }} message{{
-						data.thread.messageCount === 1 ? '' : 's'
+					{{ data.thread.contactIdentifier }} ·
+					{{
+						t(
+							'components.chat.chatLinkedEmailPanel.messageCount',
+							{ count: data.thread.messageCount },
+							data.thread.messageCount
+						)
 					}}
 				</p>
 			</div>
@@ -66,13 +73,17 @@ const isExpanded = ref(false);
 				class="text-xs text-text-secondary hover:text-text-primary px-2 py-1 rounded hover:bg-bg-surface transition-colors"
 				@click="isExpanded = !isExpanded"
 			>
-				{{ isExpanded ? 'Collapse' : 'Expand' }}
+				{{
+					isExpanded
+						? t('components.chat.chatLinkedEmailPanel.collapse')
+						: t('components.chat.chatLinkedEmailPanel.expand')
+				}}
 			</button>
 			<NuxtLink
 				:to="`/dashboard/inbox/${data.thread._id}`"
 				class="text-xs text-brand hover:underline px-2 py-1"
 			>
-				Open in Inbox
+				{{ t('components.chat.chatLinkedEmailPanel.openInInbox') }}
 			</NuxtLink>
 		</div>
 
@@ -81,7 +92,7 @@ const isExpanded = ref(false);
 			class="px-4 pb-3 space-y-2 max-h-72 overflow-y-auto border-t border-border-subtle"
 		>
 			<div v-if="data.recentMessages.length === 0" class="text-xs text-text-tertiary py-2">
-				No inbound messages yet.
+				{{ t('components.chat.chatLinkedEmailPanel.noMessages') }}
 			</div>
 			<div
 				v-for="message in data.recentMessages"

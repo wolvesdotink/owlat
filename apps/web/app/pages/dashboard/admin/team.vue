@@ -9,7 +9,9 @@ import { ROLE_DEFINITIONS, roleDefinition } from '~/utils/teamRoles';
 import { formatShortDate } from '~/utils/formatters';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 
-useHead({ title: 'Team Management — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.team.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -97,7 +99,7 @@ const showDeleteOrgModal = ref(false);
 const deleteOrgConfirmText = ref('');
 const isDeletingOrg = ref(false);
 const { run: removeOrganization } = useBackendOperation(api.workspaces.settings.remove, {
-	label: 'Delete workspace',
+	label: () => t('dashboard.admin.team.operations.deleteWorkspace'),
 });
 
 // Toast notification using global composable
@@ -112,10 +114,11 @@ const handleCancelInvite = async () => {
 	try {
 		await cancelInvite(inviteToCancel.value.id, inviteToCancel.value.email);
 
-		showToast('Invitation cancelled');
+		showToast(t('dashboard.admin.team.toasts.inviteCancelled'));
 		inviteToCancel.value = null;
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : 'Failed to cancel invitation';
+		const errorMessage =
+			error instanceof Error ? error.message : t('dashboard.admin.team.toasts.cancelInviteFailed');
 		showToast(errorMessage, 'error');
 	} finally {
 		isCancelling.value = false;
@@ -137,12 +140,13 @@ async function handleResend(inv: OrganizationInvitation) {
 		if (sent) {
 			showToast(
 				emailConfigured.value
-					? `Invitation re-sent to ${inv.email}`
-					: `Email delivery isn't set up — copy the accept link for ${inv.email} instead.`
+					? t('dashboard.admin.team.toasts.inviteResent', { email: inv.email })
+					: t('dashboard.admin.team.toasts.inviteResendNoTransport', { email: inv.email })
 			);
 		}
 	} catch (error) {
-		const msg = error instanceof Error ? error.message : 'Failed to resend invitation';
+		const msg =
+			error instanceof Error ? error.message : t('dashboard.admin.team.toasts.resendInviteFailed');
 		showToast(msg, 'error');
 	} finally {
 		resendingId.value = null;
@@ -154,9 +158,10 @@ const handleRoleChange = async (memberId: string, newRole: OrganizationRole) => 
 	try {
 		await updateRole(memberId, newRole);
 
-		showToast('Role updated successfully');
+		showToast(t('dashboard.admin.team.toasts.roleUpdated'));
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : 'Failed to update role';
+		const errorMessage =
+			error instanceof Error ? error.message : t('dashboard.admin.team.toasts.updateRoleFailed');
 		showToast(errorMessage, 'error');
 	}
 };
@@ -170,10 +175,11 @@ const handleRemoveMember = async () => {
 	try {
 		await remove(memberToRemove.value.id);
 
-		showToast('Team member removed');
+		showToast(t('dashboard.admin.team.toasts.memberRemoved'));
 		memberToRemove.value = null;
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : 'Failed to remove member';
+		const errorMessage =
+			error instanceof Error ? error.message : t('dashboard.admin.team.toasts.removeMemberFailed');
 		showToast(errorMessage, 'error');
 	} finally {
 		isRemoving.value = false;
@@ -196,11 +202,14 @@ const handleTransferOwnership = async () => {
 	try {
 		await transferOwnership(memberToPromote.value.id);
 
-		showToast('Ownership transferred successfully');
+		showToast(t('dashboard.admin.team.toasts.ownershipTransferred'));
 		memberToPromote.value = null;
 		transferConfirmText.value = '';
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : 'Failed to transfer ownership';
+		const errorMessage =
+			error instanceof Error
+				? error.message
+				: t('dashboard.admin.team.toasts.transferOwnershipFailed');
 		showToast(errorMessage, 'error');
 	} finally {
 		isTransferring.value = false;
@@ -220,7 +229,7 @@ const handleDeleteOrganization = async () => {
 		return;
 	}
 
-	showToast('Workspace deletion started');
+	showToast(t('dashboard.admin.team.toasts.workspaceDeletionStarted'));
 	showDeleteOrgModal.value = false;
 	deleteOrgConfirmText.value = '';
 
@@ -231,19 +240,29 @@ const handleDeleteOrganization = async () => {
 	}
 };
 
+/**
+ * `utils/teamRoles` is a module-scope definition set whose label/summary/detail
+ * carry i18n keys rather than sentences (the registry convention); a plain string
+ * is still accepted so a value with nothing to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
 // Format relative time for invite expiry
 const formatExpiryTime = (expiresAt: Date) => {
 	const now = Date.now();
 	const diff = new Date(expiresAt).getTime() - now;
 
-	if (diff < 0) return 'Expired';
+	if (diff < 0) return t('dashboard.admin.team.invites.expired');
 
 	const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 	const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
 
-	if (days > 0) return `Expires in ${days}d ${hours}h`;
-	if (hours > 0) return `Expires in ${hours}h`;
-	return 'Expires soon';
+	if (days > 0) return t('dashboard.admin.team.invites.expiresInDaysHours', { days, hours });
+	if (hours > 0) return t('dashboard.admin.team.invites.expiresInHours', { hours });
+	return t('dashboard.admin.team.invites.expiresSoon');
 };
 </script>
 
@@ -256,44 +275,62 @@ const formatExpiryTime = (expiresAt: Date) => {
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Administration
+				{{ t('dashboard.admin.team.backToAdministration') }}
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Team Members</h1>
-					<p class="mt-1 text-text-secondary">Manage who has access to your team</p>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.team.title') }}
+					</h1>
+					<p class="mt-1 text-text-secondary">{{ t('dashboard.admin.team.lede') }}</p>
 				</div>
 				<UiButton v-if="canManageMembers" @click="inviteModal?.open()">
 					<template #iconLeft>
 						<Icon name="lucide:user-plus" class="w-4 h-4" />
 					</template>
-					Invite Member
+					{{ t('dashboard.admin.team.inviteMember') }}
 				</UiButton>
 			</div>
 		</div>
 		<nav
 			class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-8"
-			aria-label="Team and access settings"
+			:aria-label="t('dashboard.admin.team.nav.label')"
 		>
 			<NuxtLink to="/dashboard/admin/team/inboxes" class="card !p-4 hover:bg-bg-surface">
 				<Icon name="lucide:mails" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">Team inboxes</p>
-				<p class="text-xs text-text-secondary">Shared mail access</p>
+				<p class="mt-2 font-medium text-text-primary">
+					{{ t('dashboard.admin.team.nav.inboxes.title') }}
+				</p>
+				<p class="text-xs text-text-secondary">
+					{{ t('dashboard.admin.team.nav.inboxes.description') }}
+				</p>
 			</NuxtLink>
 			<NuxtLink to="/dashboard/admin/team/senders" class="card !p-4 hover:bg-bg-surface">
 				<Icon name="lucide:at-sign" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">Approved senders</p>
-				<p class="text-xs text-text-secondary">Campaign identities</p>
+				<p class="mt-2 font-medium text-text-primary">
+					{{ t('dashboard.admin.team.nav.senders.title') }}
+				</p>
+				<p class="text-xs text-text-secondary">
+					{{ t('dashboard.admin.team.nav.senders.description') }}
+				</p>
 			</NuxtLink>
 			<NuxtLink to="/dashboard/admin/team/api" class="card !p-4 hover:bg-bg-surface">
 				<Icon name="lucide:key-round" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">API keys</p>
-				<p class="text-xs text-text-secondary">Programmatic access</p>
+				<p class="mt-2 font-medium text-text-primary">
+					{{ t('dashboard.admin.team.nav.apiKeys.title') }}
+				</p>
+				<p class="text-xs text-text-secondary">
+					{{ t('dashboard.admin.team.nav.apiKeys.description') }}
+				</p>
 			</NuxtLink>
 			<NuxtLink to="/dashboard/admin/team/audit" class="card !p-4 hover:bg-bg-surface">
 				<Icon name="lucide:clipboard-list" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">Audit log</p>
-				<p class="text-xs text-text-secondary">Workspace activity</p>
+				<p class="mt-2 font-medium text-text-primary">
+					{{ t('dashboard.admin.team.nav.audit.title') }}
+				</p>
+				<p class="text-xs text-text-secondary">
+					{{ t('dashboard.admin.team.nav.audit.description') }}
+				</p>
 			</NuxtLink>
 			<!-- Shown while plugins are bundled, and while records from a removed
 			     plugin remain, so external access stays revocable. -->
@@ -303,8 +340,12 @@ const formatExpiryTime = (expiresAt: Date) => {
 				class="card !p-4 hover:bg-bg-surface"
 			>
 				<Icon name="lucide:plug" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">Connected apps</p>
-				<p class="text-xs text-text-secondary">External integrations</p>
+				<p class="mt-2 font-medium text-text-primary">
+					{{ t('dashboard.admin.team.nav.connectedApps.title') }}
+				</p>
+				<p class="text-xs text-text-secondary">
+					{{ t('dashboard.admin.team.nav.connectedApps.description') }}
+				</p>
 			</NuxtLink>
 		</nav>
 
@@ -312,7 +353,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 		<div v-if="isLoading && members.length === 0" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading team members…</p>
+				<p class="text-text-secondary text-sm">{{ t('dashboard.admin.team.loading') }}</p>
 			</div>
 		</div>
 
@@ -320,7 +361,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 		<UiCard v-else-if="membersError && members.length === 0" padding="none" overflow="hidden">
 			<UiEmptyState
 				icon="lucide:alert-circle"
-				title="Couldn't load your team"
+				:title="t('dashboard.admin.team.loadError.title')"
 				:description="membersError"
 			>
 				<template #action>
@@ -328,7 +369,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 						<template #iconLeft>
 							<Icon v-if="!isLoadingMembers" name="lucide:refresh-cw" class="w-4 h-4" />
 						</template>
-						Try again
+						{{ t('dashboard.admin.team.loadError.tryAgain') }}
 					</UiButton>
 				</template>
 			</UiEmptyState>
@@ -348,7 +389,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 			>
 				<p class="flex items-center gap-2 text-sm text-text-secondary">
 					<Icon name="lucide:alert-triangle" class="w-4 h-4 shrink-0 text-warning" />
-					<span>This list may be out of date — {{ membersError }}.</span>
+					<span>{{ t('dashboard.admin.team.staleList', { error: membersError }) }}</span>
 				</p>
 				<UiButton
 					variant="ghost"
@@ -356,7 +397,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 					:loading="isLoadingMembers"
 					@click="fetchMembers({ force: true })"
 				>
-					Retry
+					{{ t('common.retry') }}
 				</UiButton>
 			</div>
 
@@ -367,23 +408,31 @@ const formatExpiryTime = (expiresAt: Date) => {
 						<div class="flex items-center gap-3">
 							<UiIconBox icon="lucide:users" size="sm" variant="surface" rounded="lg" />
 							<div>
-								<h2 class="text-lg font-semibold text-text-primary">Members</h2>
+								<h2 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.admin.team.members.title') }}
+								</h2>
 								<p class="text-sm text-text-secondary">
-									{{ members.length }} team member{{ members.length !== 1 ? 's' : '' }}
+									{{
+										t(
+											'dashboard.admin.team.members.count',
+											{ count: members.length },
+											members.length
+										)
+									}}
 								</p>
 							</div>
 						</div>
 						<!-- Search box above the table -->
 						<div class="sm:w-64">
-							<label for="team-member-search" class="sr-only"
-								>Search members by name or email</label
-							>
+							<label for="team-member-search" class="sr-only">{{
+								t('dashboard.admin.team.members.searchLabel')
+							}}</label>
 							<UiInput
 								id="team-member-search"
 								v-model="memberSearch"
 								type="text"
 								size="sm"
-								placeholder="Search name or email"
+								:placeholder="t('dashboard.admin.team.members.searchPlaceholder')"
 							>
 								<template #iconLeft>
 									<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary" />
@@ -397,12 +446,16 @@ const formatExpiryTime = (expiresAt: Date) => {
 				<UiEmptyState
 					v-if="filteredMembers.length === 0 && memberSearch.trim()"
 					icon="lucide:search-x"
-					title="No matches"
-					:description="`No members match “${memberSearch.trim()}”.`"
+					:title="t('dashboard.admin.team.members.noMatchesTitle')"
+					:description="
+						t('dashboard.admin.team.members.noMatchesDescription', {
+							query: memberSearch.trim(),
+						})
+					"
 				>
 					<template #action>
 						<UiButton variant="secondary" size="sm" @click="memberSearch = ''">
-							Clear search
+							{{ t('dashboard.admin.team.members.clearSearch') }}
 						</UiButton>
 					</template>
 				</UiEmptyState>
@@ -411,11 +464,13 @@ const formatExpiryTime = (expiresAt: Date) => {
 				<UiEmptyState
 					v-else-if="filteredMembers.length === 0"
 					icon="lucide:users"
-					title="No team members yet"
-					description="Invite teammates to collaborate on campaigns and shared inboxes."
+					:title="t('dashboard.admin.team.members.emptyTitle')"
+					:description="t('dashboard.admin.team.members.emptyDescription')"
 				>
 					<template v-if="canManageMembers" #action>
-						<UiButton size="sm" @click="inviteModal?.open()">Invite a teammate</UiButton>
+						<UiButton size="sm" @click="inviteModal?.open()">{{
+							t('dashboard.admin.team.members.inviteTeammate')
+						}}</UiButton>
 					</template>
 				</UiEmptyState>
 
@@ -426,12 +481,20 @@ const formatExpiryTime = (expiresAt: Date) => {
 							<tr
 								class="border-b border-border-subtle text-left text-xs font-medium text-text-tertiary"
 							>
-								<th scope="col" class="px-6 py-3 font-medium">Member</th>
-								<th scope="col" class="px-4 py-3 font-medium">Role</th>
-								<th scope="col" class="px-4 py-3 font-medium">Mailbox</th>
-								<th scope="col" class="px-4 py-3 font-medium">Joined</th>
+								<th scope="col" class="px-6 py-3 font-medium">
+									{{ t('dashboard.admin.team.members.columns.member') }}
+								</th>
+								<th scope="col" class="px-4 py-3 font-medium">
+									{{ t('dashboard.admin.team.members.columns.role') }}
+								</th>
+								<th scope="col" class="px-4 py-3 font-medium">
+									{{ t('dashboard.admin.team.members.columns.mailbox') }}
+								</th>
+								<th scope="col" class="px-4 py-3 font-medium">
+									{{ t('dashboard.admin.team.members.columns.joined') }}
+								</th>
 								<th scope="col" class="px-6 py-3">
-									<span class="sr-only">Actions</span>
+									<span class="sr-only">{{ t('common.actions') }}</span>
 								</th>
 							</tr>
 						</thead>
@@ -455,7 +518,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 										</div>
 										<div class="min-w-0">
 											<p class="truncate font-medium text-text-primary">
-												{{ member.user.name || 'No name' }}
+												{{ member.user.name || t('dashboard.admin.team.members.noName') }}
 											</p>
 											<p class="truncate text-sm text-text-secondary">{{ member.user.email }}</p>
 										</div>
@@ -476,7 +539,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 										:class="roleDefinition(member.role).badgeToneClass"
 									>
 										<Icon :name="roleDefinition(member.role).icon" class="w-3 h-3" />
-										{{ roleDefinition(member.role).label }}
+										{{ localized(roleDefinition(member.role).label) }}
 									</span>
 								</td>
 
@@ -485,29 +548,31 @@ const formatExpiryTime = (expiresAt: Date) => {
 									<span
 										v-if="isMailboxStatusPending"
 										class="inline-flex items-center gap-1.5 text-sm text-text-tertiary"
-										title="Checking mailbox status…"
+										:title="t('dashboard.admin.team.members.mailboxChecking')"
 									>
 										<Icon
 											name="lucide:loader-circle"
 											class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
 										/>
-										<span class="sr-only">Loading mailbox status</span>
+										<span class="sr-only">{{
+											t('dashboard.admin.team.members.mailboxLoading')
+										}}</span>
 										<span aria-hidden="true">—</span>
 									</span>
 									<span
 										v-else
 										class="inline-flex items-center gap-1.5 text-sm"
 										:class="mailboxMetaFor(member.userId).toneClass"
-										:title="mailboxMetaFor(member.userId).description"
+										:title="localized(mailboxMetaFor(member.userId).description)"
 									>
 										<Icon :name="mailboxMetaFor(member.userId).icon" class="w-3.5 h-3.5" />
-										{{ mailboxMetaFor(member.userId).label }}
+										{{ localized(mailboxMetaFor(member.userId).label) }}
 									</span>
 								</td>
 
 								<!-- Joined date -->
 								<td class="px-4 py-4 text-text-secondary whitespace-nowrap">
-									{{ formatShortDate(member.createdAt) }}
+									{{ formatShortDate(member.createdAt, locale) }}
 								</td>
 
 								<!-- Overflow menu: destructive + ownership actions -->
@@ -520,13 +585,17 @@ const formatExpiryTime = (expiresAt: Date) => {
 											<UiButton
 												variant="ghost"
 												size="sm"
-												:aria-label="`Actions for ${member.user.name || member.user.email}`"
+												:aria-label="
+													t('dashboard.admin.team.members.rowActions', {
+														member: member.user.name || member.user.email,
+													})
+												"
 											>
 												<Icon name="lucide:more-horizontal" class="w-4 h-4" />
 											</UiButton>
 										</template>
 										<UiDropdownMenuItem icon="lucide:crown" @click="memberToPromote = member">
-											Transfer ownership
+											{{ t('dashboard.admin.team.members.transferOwnership') }}
 										</UiDropdownMenuItem>
 										<UiDropdownDivider />
 										<UiDropdownMenuItem
@@ -534,7 +603,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 											danger
 											@click="openRemoveMemberModal(member)"
 										>
-											Remove from team
+											{{ t('dashboard.admin.team.members.removeFromTeam') }}
 										</UiDropdownMenuItem>
 									</UiDropdownMenu>
 
@@ -544,7 +613,11 @@ const formatExpiryTime = (expiresAt: Date) => {
 										variant="ghost"
 										size="sm"
 										class="text-error"
-										:aria-label="`Remove ${member.user.name || member.user.email}`"
+										:aria-label="
+											t('dashboard.admin.team.members.removeMemberLabel', {
+												member: member.user.name || member.user.email,
+											})
+										"
 										@click="memberToRemove = member"
 									>
 										<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -562,9 +635,17 @@ const formatExpiryTime = (expiresAt: Date) => {
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="lg" />
 						<div>
-							<h2 class="text-lg font-semibold text-text-primary">Pending Invites</h2>
+							<h2 class="text-lg font-semibold text-text-primary">
+								{{ t('dashboard.admin.team.invites.title') }}
+							</h2>
 							<p class="text-sm text-text-secondary">
-								{{ invitations.length }} pending invitation{{ invitations.length !== 1 ? 's' : '' }}
+								{{
+									t(
+										'dashboard.admin.team.invites.count',
+										{ count: invitations.length },
+										invitations.length
+									)
+								}}
 							</p>
 						</div>
 					</div>
@@ -594,7 +675,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 										]"
 									>
 										<Icon :name="roleDefinition(invite.role).icon" class="w-3 h-3" />
-										{{ roleDefinition(invite.role).label }}
+										{{ localized(roleDefinition(invite.role).label) }}
 									</span>
 								</div>
 								<div class="flex items-center gap-2 text-sm text-text-tertiary">
@@ -609,7 +690,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 							<UiButton
 								variant="ghost"
 								size="sm"
-								title="Copy invite link"
+								:title="t('dashboard.admin.team.invites.copyLink')"
 								@click="copyInviteLink(invite.id)"
 							>
 								<Icon name="lucide:link" class="w-4 h-4 text-text-secondary" />
@@ -617,7 +698,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 							<UiButton
 								variant="ghost"
 								size="sm"
-								title="Resend invitation email"
+								:title="t('dashboard.admin.team.invites.resend')"
 								:loading="resendingId === invite.id"
 								:disabled="resendingId === invite.id"
 								@click="handleResend(invite)"
@@ -631,7 +712,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 							<UiButton
 								variant="ghost"
 								size="sm"
-								title="Revoke invitation"
+								:title="t('dashboard.admin.team.invites.revoke')"
 								@click="inviteToCancel = invite"
 							>
 								<Icon name="lucide:x" class="w-4 h-4 text-text-secondary hover:text-error" />
@@ -644,7 +725,9 @@ const formatExpiryTime = (expiresAt: Date) => {
 			<!-- Role Permissions Info — single source of truth (ROLE_DEFINITIONS), the
 			     same copy surfaced in the inline role menu. -->
 			<UiCard>
-				<h3 class="text-sm font-medium text-text-primary mb-4">What each role can do</h3>
+				<h3 class="text-sm font-medium text-text-primary mb-4">
+					{{ t('dashboard.admin.team.roles.title') }}
+				</h3>
 				<div class="grid gap-4 sm:grid-cols-3">
 					<div v-for="def in ROLE_DEFINITIONS" :key="def.role" class="flex items-start gap-3">
 						<UiIconBox
@@ -654,9 +737,9 @@ const formatExpiryTime = (expiresAt: Date) => {
 							rounded="lg"
 						/>
 						<div>
-							<p class="font-medium text-text-primary text-sm">{{ def.label }}</p>
-							<p class="text-xs text-text-secondary mt-0.5">{{ def.summary }}</p>
-							<p class="text-xs text-text-tertiary mt-0.5">{{ def.detail }}</p>
+							<p class="font-medium text-text-primary text-sm">{{ localized(def.label) }}</p>
+							<p class="text-xs text-text-secondary mt-0.5">{{ localized(def.summary) }}</p>
+							<p class="text-xs text-text-tertiary mt-0.5">{{ localized(def.detail) }}</p>
 						</div>
 					</div>
 				</div>
@@ -668,9 +751,11 @@ const formatExpiryTime = (expiresAt: Date) => {
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:trash-2" size="sm" variant="error" rounded="lg" />
 						<div>
-							<h2 class="text-lg font-semibold text-error">Delete Workspace</h2>
+							<h2 class="text-lg font-semibold text-error">
+								{{ t('dashboard.admin.team.dangerZone.title') }}
+							</h2>
 							<p class="text-sm text-error/80">
-								Permanently delete this workspace and all of its data
+								{{ t('dashboard.admin.team.dangerZone.subtitle') }}
 							</p>
 						</div>
 					</div>
@@ -678,14 +763,13 @@ const formatExpiryTime = (expiresAt: Date) => {
 
 				<div class="p-6">
 					<p class="text-text-secondary text-sm mb-4">
-						Deleting the workspace permanently removes every team member, all contacts, campaigns,
-						automations, mailboxes, and analytics. This action cannot be undone.
+						{{ t('dashboard.admin.team.dangerZone.body') }}
 					</p>
 					<UiButton variant="danger" @click="showDeleteOrgModal = true">
 						<template #iconLeft>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
 						</template>
-						Delete Workspace
+						{{ t('dashboard.admin.team.dangerZone.title') }}
 					</UiButton>
 				</div>
 			</UiCard>
@@ -697,26 +781,35 @@ const formatExpiryTime = (expiresAt: Date) => {
 		<!-- Remove Member Confirmation Modal -->
 		<UiModal
 			:open="!!memberToRemove"
-			title="Remove Team Member"
+			:title="t('dashboard.admin.team.removeModal.title')"
 			@update:open="(v: boolean) => !v && (memberToRemove = null)"
 		>
-			<p class="text-text-secondary">
-				Are you sure you want to remove
-				<span v-if="memberToRemove" class="font-medium text-text-primary">
-					{{ memberToRemove.user.name || memberToRemove.user.email }}
-				</span>
-				from this team? They will lose access to all team resources.
-			</p>
+			<I18nT
+				keypath="dashboard.admin.team.removeModal.body"
+				tag="p"
+				class="text-text-secondary"
+				scope="global"
+			>
+				<template #member>
+					<span v-if="memberToRemove" class="font-medium text-text-primary">
+						{{ memberToRemove.user.name || memberToRemove.user.email }}
+					</span>
+				</template>
+			</I18nT>
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isRemoving" @click="memberToRemove = null">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton variant="danger" :loading="isRemoving" @click="handleRemoveMember">
 					<template #iconLeft>
 						<Icon v-if="!isRemoving" name="lucide:trash-2" class="w-4 h-4" />
 					</template>
-					{{ isRemoving ? 'Removing...' : 'Remove Member' }}
+					{{
+						isRemoving
+							? t('dashboard.admin.team.removeModal.removing')
+							: t('dashboard.admin.team.removeModal.confirm')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -739,26 +832,43 @@ const formatExpiryTime = (expiresAt: Date) => {
 			<div class="flex items-center gap-3 mb-6">
 				<UiIconBox icon="lucide:crown" size="sm" variant="brand" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Transfer Ownership</h2>
-					<p class="text-sm text-text-secondary">Hand off the owner role</p>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('dashboard.admin.team.transferModal.title') }}
+					</h2>
+					<p class="text-sm text-text-secondary">
+						{{ t('dashboard.admin.team.transferModal.subtitle') }}
+					</p>
 				</div>
 			</div>
 
 			<div class="p-4 rounded-xl bg-bg-surface border border-border-subtle mb-6">
-				<p class="text-sm text-text-secondary">
-					<span v-if="memberToPromote" class="font-medium text-text-primary">{{
-						memberToPromote.user.name || memberToPromote.user.email
-					}}</span>
-					will become the new <strong class="text-text-primary">Owner</strong> with full control of
-					this workspace, including billing, settings, and the ability to delete it. You will be
-					demoted to <strong>Admin</strong>. This cannot be undone by you — only the new owner can
-					transfer it back.
-				</p>
+				<I18nT
+					keypath="dashboard.admin.team.transferModal.body"
+					tag="p"
+					class="text-sm text-text-secondary"
+					scope="global"
+				>
+					<template #member>
+						<span v-if="memberToPromote" class="font-medium text-text-primary">{{
+							memberToPromote.user.name || memberToPromote.user.email
+						}}</span>
+					</template>
+					<template #ownerRole>
+						<strong class="text-text-primary">{{
+							t('dashboard.admin.team.transferModal.ownerRole')
+						}}</strong>
+					</template>
+					<template #adminRole>
+						<strong>{{ t('dashboard.admin.team.transferModal.adminRole') }}</strong>
+					</template>
+				</I18nT>
 			</div>
 
 			<div>
 				<label class="label" for="confirm-transfer-ownership">
-					Type <strong class="text-text-primary">TRANSFER</strong> to confirm
+					<I18nT keypath="dashboard.admin.team.transferModal.typeToConfirm" scope="global">
+						<template #phrase><strong class="text-text-primary">TRANSFER</strong></template>
+					</I18nT>
 				</label>
 				<input
 					id="confirm-transfer-ownership"
@@ -780,7 +890,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 						transferConfirmText = '';
 					"
 				>
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
 					:loading="isTransferring"
@@ -790,7 +900,11 @@ const formatExpiryTime = (expiresAt: Date) => {
 					<template #iconLeft>
 						<Icon v-if="!isTransferring" name="lucide:crown" class="w-4 h-4" />
 					</template>
-					{{ isTransferring ? 'Transferring...' : 'Transfer Ownership' }}
+					{{
+						isTransferring
+							? t('dashboard.admin.team.transferModal.transferring')
+							: t('dashboard.admin.team.transferModal.confirm')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -798,26 +912,35 @@ const formatExpiryTime = (expiresAt: Date) => {
 		<!-- Cancel Invite Confirmation Modal -->
 		<UiModal
 			:open="!!inviteToCancel"
-			title="Cancel Invitation"
+			:title="t('dashboard.admin.team.cancelInviteModal.title')"
 			@update:open="(v: boolean) => !v && (inviteToCancel = null)"
 		>
-			<p class="text-text-secondary">
-				Are you sure you want to cancel the invitation to
-				<span v-if="inviteToCancel" class="font-medium text-text-primary">{{
-					inviteToCancel.email
-				}}</span
-				>? They will not be able to join the team with this invite link.
-			</p>
+			<I18nT
+				keypath="dashboard.admin.team.cancelInviteModal.body"
+				tag="p"
+				class="text-text-secondary"
+				scope="global"
+			>
+				<template #email>
+					<span v-if="inviteToCancel" class="font-medium text-text-primary">{{
+						inviteToCancel.email
+					}}</span>
+				</template>
+			</I18nT>
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isCancelling" @click="inviteToCancel = null">
-					Keep Invite
+					{{ t('dashboard.admin.team.cancelInviteModal.keep') }}
 				</UiButton>
 				<UiButton variant="danger" :loading="isCancelling" @click="handleCancelInvite">
 					<template #iconLeft>
 						<Icon v-if="!isCancelling" name="lucide:x" class="w-4 h-4" />
 					</template>
-					{{ isCancelling ? 'Cancelling...' : 'Cancel Invitation' }}
+					{{
+						isCancelling
+							? t('dashboard.admin.team.cancelInviteModal.cancelling')
+							: t('dashboard.admin.team.cancelInviteModal.confirm')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -840,23 +963,36 @@ const formatExpiryTime = (expiresAt: Date) => {
 			<div class="flex items-center gap-3 mb-6">
 				<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Delete Workspace</h2>
-					<p class="text-sm text-text-secondary">This cannot be undone</p>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('dashboard.admin.team.deleteModal.title') }}
+					</h2>
+					<p class="text-sm text-text-secondary">
+						{{ t('dashboard.admin.team.deleteModal.subtitle') }}
+					</p>
 				</div>
 			</div>
 
 			<div class="p-4 rounded-xl bg-error/5 border border-error/20 mb-6">
-				<p class="text-sm text-error">
-					<strong>Warning:</strong> This permanently deletes
-					<span v-if="organization" class="font-medium">{{ organization.name }}</span>
-					and all of its data — team members, contacts, campaigns, automations, mailboxes, and
-					analytics. You will be signed out immediately.
-				</p>
+				<I18nT
+					keypath="dashboard.admin.team.deleteModal.warning"
+					tag="p"
+					class="text-sm text-error"
+					scope="global"
+				>
+					<template #label>
+						<strong>{{ t('dashboard.admin.team.deleteModal.warningLabel') }}</strong>
+					</template>
+					<template #workspace>
+						<span v-if="organization" class="font-medium">{{ organization.name }}</span>
+					</template>
+				</I18nT>
 			</div>
 
 			<div>
 				<label class="label" for="confirm-delete-org">
-					Type <strong class="text-error">DELETE</strong> to confirm
+					<I18nT keypath="dashboard.admin.team.deleteModal.typeToConfirm" scope="global">
+						<template #phrase><strong class="text-error">DELETE</strong></template>
+					</I18nT>
 				</label>
 				<input
 					id="confirm-delete-org"
@@ -878,7 +1014,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 						deleteOrgConfirmText = '';
 					"
 				>
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
 					variant="danger"
@@ -889,7 +1025,11 @@ const formatExpiryTime = (expiresAt: Date) => {
 					<template #iconLeft>
 						<Icon v-if="!isDeletingOrg" name="lucide:trash-2" class="w-4 h-4" />
 					</template>
-					{{ isDeletingOrg ? 'Deleting...' : 'Delete Workspace' }}
+					{{
+						isDeletingOrg
+							? t('dashboard.admin.team.deleteModal.deleting')
+							: t('dashboard.admin.team.deleteModal.confirm')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>

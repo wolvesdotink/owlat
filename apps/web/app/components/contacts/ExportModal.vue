@@ -16,6 +16,8 @@ const emit = defineEmits<{
 	close: [];
 }>();
 
+const { t } = useI18n();
+
 const convex = useConvex();
 const { showToast } = useToast();
 
@@ -51,7 +53,7 @@ const handleExport = async () => {
 		});
 
 		if (!contactsToExport || contactsToExport.length === 0) {
-			showToast('No contacts to export');
+			showToast(t('components.contacts.exportModal.noContacts'));
 			isOpen.value = false;
 			return;
 		}
@@ -75,11 +77,15 @@ const handleExport = async () => {
 		downloadCsv(csv, filename);
 
 		showToast(
-			`Exported ${contactsToExport.length} contact${contactsToExport.length !== 1 ? 's' : ''} to ${filename}`
+			t(
+				'components.contacts.exportModal.exported',
+				{ count: contactsToExport.length, filename },
+				contactsToExport.length
+			)
 		);
 		isOpen.value = false;
 	} catch (error) {
-		showToast('Export failed. Please try again.', 'error');
+		showToast(t('components.contacts.exportModal.failed'), 'error');
 	} finally {
 		isExporting.value = false;
 	}
@@ -105,20 +111,28 @@ const close = () => {
 				<Icon name="lucide:download" class="w-5 h-5 text-brand" />
 			</div>
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Export Contacts</h2>
-				<p class="text-sm text-text-tertiary">Download as CSV file</p>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.contacts.exportModal.title') }}
+				</h2>
+				<p class="text-sm text-text-tertiary">
+					{{ t('components.contacts.exportModal.subtitle') }}
+				</p>
 			</div>
 		</div>
 		<div class="mb-6">
-			<h4 class="text-sm font-medium text-text-primary mb-3">What to export</h4>
+			<h4 class="text-sm font-medium text-text-primary mb-3">
+				{{ t('components.contacts.exportModal.whatToExport') }}
+			</h4>
 			<div class="space-y-3">
 				<UiSelectableListItem
 					v-model="exportOption"
 					type="radio"
 					value="all"
 					name="exportOption"
-					label="All contacts"
-					:description="`Export all ${totalCount} contacts`"
+					:label="t('components.contacts.exportModal.allContacts')"
+					:description="
+						t('components.contacts.exportModal.allContactsDescription', { count: totalCount })
+					"
 					:disabled="isExporting"
 				/>
 				<UiSelectableListItem
@@ -127,26 +141,36 @@ const close = () => {
 					type="radio"
 					value="filtered"
 					name="exportOption"
-					label="Current search results"
-					:description="`Export contacts matching &quot;${searchQuery}&quot;`"
+					:label="t('components.contacts.exportModal.searchResults')"
+					:description="
+						t('components.contacts.exportModal.searchResultsDescription', { query: searchQuery })
+					"
 					:disabled="isExporting"
 				/>
 			</div>
 		</div>
 		<div class="p-4 rounded-lg bg-bg-surface">
-			<h4 class="text-sm font-medium text-text-primary mb-2">Export includes</h4>
+			<h4 class="text-sm font-medium text-text-primary mb-2">
+				{{ t('components.contacts.exportModal.includesTitle') }}
+			</h4>
 			<ul class="text-sm text-text-secondary space-y-1">
-				<li>Email, name, and subscription status</li>
-				<li>Source, created date, and timestamps</li>
-				<li>All custom contact properties</li>
+				<li>{{ t('components.contacts.exportModal.includes.identity') }}</li>
+				<li>{{ t('components.contacts.exportModal.includes.metadata') }}</li>
+				<li>{{ t('components.contacts.exportModal.includes.customProperties') }}</li>
 			</ul>
 		</div>
 
 		<template #footer>
-			<UiButton variant="secondary" :disabled="isExporting" @click="close">Cancel</UiButton>
+			<UiButton variant="secondary" :disabled="isExporting" @click="close">{{
+				t('common.cancel')
+			}}</UiButton>
 			<UiButton :loading="isExporting" @click="handleExport">
 				<template v-if="!isExporting" #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
-				{{ isExporting ? 'Exporting...' : 'Export to CSV' }}
+				{{
+					isExporting
+						? t('components.contacts.exportModal.exporting')
+						: t('components.contacts.exportModal.submit')
+				}}
 			</UiButton>
 		</template>
 	</UiModal>

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-useHead({ title: 'Transactional Email Translations — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.send.transactional.detail.translations.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',

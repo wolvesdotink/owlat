@@ -8,7 +8,9 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Contacts — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.postbox.contacts.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
@@ -74,18 +76,22 @@ async function submit() {
 async function removeContact(c: MailContact) {
 	const result = await remove(c._id);
 	if (result === undefined) return;
-	showToast(`Removed ${c.displayName || c.email}`, 'success', {
-		action: {
-			label: 'Undo',
-			onAction: () => {
-				void save({
-					email: c.email,
-					displayName: c.displayName,
-					organization: c.organization,
-				});
+	showToast(
+		t('dashboard.postbox.contacts.removedToast', { contact: c.displayName || c.email }),
+		'success',
+		{
+			action: {
+				label: t('dashboard.postbox.contacts.undo'),
+				onAction: () => {
+					void save({
+						email: c.email,
+						displayName: c.displayName,
+						organization: c.organization,
+					});
+				},
 			},
-		},
-	});
+		}
+	);
 }
 
 function composeTo(email: string) {
@@ -102,12 +108,14 @@ function initial(c: { displayName?: string; email: string }) {
 	<div class="p-6 max-w-3xl mx-auto">
 		<header class="flex items-center justify-between gap-4 mb-4">
 			<div>
-				<h1 class="text-xl font-semibold text-text-primary">Contacts</h1>
-				<p class="text-sm text-text-secondary">People you mail — used for address autocomplete</p>
+				<h1 class="text-xl font-semibold text-text-primary">
+					{{ t('dashboard.postbox.contacts.title') }}
+				</h1>
+				<p class="text-sm text-text-secondary">{{ t('dashboard.postbox.contacts.subtitle') }}</p>
 			</div>
 			<UiButton type="button" @click="openNew">
 				<template #iconLeft><Icon name="lucide:user-plus" class="w-4 h-4" /></template>
-				Add contact
+				{{ t('dashboard.postbox.contacts.addContact') }}
 			</UiButton>
 		</header>
 
@@ -116,7 +124,12 @@ function initial(c: { displayName?: string; email: string }) {
 				name="lucide:search"
 				class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
 			/>
-			<input v-model="search" type="text" placeholder="Search contacts" class="input w-full pl-9" />
+			<input
+				v-model="search"
+				type="text"
+				:placeholder="t('dashboard.postbox.contacts.searchPlaceholder')"
+				class="input w-full pl-9"
+			/>
 		</div>
 
 		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
@@ -126,7 +139,11 @@ function initial(c: { displayName?: string; email: string }) {
 			<div v-else-if="filtered.length === 0" class="text-center py-12">
 				<Icon name="lucide:users" class="w-10 h-10 mx-auto text-text-tertiary" />
 				<p class="text-sm text-text-secondary mt-3">
-					{{ search ? 'No matching contacts' : 'No contacts yet' }}
+					{{
+						search
+							? t('dashboard.postbox.contacts.noMatches')
+							: t('dashboard.postbox.contacts.empty')
+					}}
 				</p>
 			</div>
 			<ul
@@ -161,8 +178,8 @@ function initial(c: { displayName?: string; email: string }) {
 							variant="ghost"
 							size="sm"
 							type="button"
-							title="Compose"
-							aria-label="Compose to contact"
+							:title="t('dashboard.postbox.contacts.compose')"
+							:aria-label="t('dashboard.postbox.contacts.composeAria')"
 							@click="composeTo(c.email)"
 						>
 							<Icon name="lucide:pencil" class="w-4 h-4" />
@@ -171,8 +188,8 @@ function initial(c: { displayName?: string; email: string }) {
 							variant="ghost"
 							size="sm"
 							type="button"
-							title="Edit"
-							aria-label="Edit contact"
+							:title="t('common.edit')"
+							:aria-label="t('dashboard.postbox.contacts.editAria')"
 							@click="openEdit(c)"
 						>
 							<Icon name="lucide:edit-2" class="w-4 h-4" />
@@ -181,8 +198,8 @@ function initial(c: { displayName?: string; email: string }) {
 							variant="danger-ghost"
 							size="sm"
 							type="button"
-							title="Remove"
-							aria-label="Remove contact"
+							:title="t('common.remove')"
+							:aria-label="t('dashboard.postbox.contacts.removeAria')"
 							@click="removeContact(c)"
 						>
 							<Icon name="lucide:trash" class="w-4 h-4" />
@@ -194,7 +211,11 @@ function initial(c: { displayName?: string; email: string }) {
 
 		<UiModal
 			:open="editOpen"
-			:title="form.contactId ? 'Edit contact' : 'Add contact'"
+			:title="
+				form.contactId
+					? t('dashboard.postbox.contacts.editContact')
+					: t('dashboard.postbox.contacts.addContact')
+			"
 			size="sm"
 			@update:open="
 				(v) => {
@@ -204,45 +225,47 @@ function initial(c: { displayName?: string; email: string }) {
 		>
 			<form class="space-y-3" @submit.prevent="submit">
 				<div>
-					<label for="form-email" class="text-xs font-medium text-text-tertiary block mb-1"
-						>Email</label
-					>
+					<label for="form-email" class="text-xs font-medium text-text-tertiary block mb-1">
+						{{ t('common.email') }}
+					</label>
 					<input
 						id="form-email"
 						v-model="form.email"
 						type="email"
 						required
 						class="input w-full"
-						placeholder="name@example.com"
+						:placeholder="t('dashboard.postbox.contacts.emailPlaceholder')"
 					/>
 				</div>
 				<div>
-					<label for="form-displayname" class="text-xs font-medium text-text-tertiary block mb-1"
-						>Name</label
-					>
+					<label for="form-displayname" class="text-xs font-medium text-text-tertiary block mb-1">
+						{{ t('common.name') }}
+					</label>
 					<input
 						id="form-displayname"
 						v-model="form.displayName"
 						type="text"
 						class="input w-full"
-						placeholder="Full name"
+						:placeholder="t('dashboard.postbox.contacts.namePlaceholder')"
 					/>
 				</div>
 				<div>
-					<label for="form-organization" class="text-xs font-medium text-text-tertiary block mb-1"
-						>Organization</label
-					>
+					<label for="form-organization" class="text-xs font-medium text-text-tertiary block mb-1">
+						{{ t('dashboard.postbox.contacts.organization') }}
+					</label>
 					<input
 						id="form-organization"
 						v-model="form.organization"
 						type="text"
 						class="input w-full"
-						placeholder="Company"
+						:placeholder="t('dashboard.postbox.contacts.organizationPlaceholder')"
 					/>
 				</div>
 				<div class="flex justify-end gap-2 pt-1">
-					<UiButton variant="ghost" type="button" @click="editOpen = false">Cancel</UiButton>
-					<UiButton type="submit" :disabled="!canSave">Save</UiButton>
+					<UiButton variant="ghost" type="button" @click="editOpen = false">
+						{{ t('common.cancel') }}
+					</UiButton>
+					<UiButton type="submit" :disabled="!canSave">{{ t('common.save') }}</UiButton>
 				</div>
 			</form>
 		</UiModal>

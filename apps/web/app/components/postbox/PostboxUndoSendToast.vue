@@ -2,10 +2,12 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
+const { t } = useI18n();
+
 const { state, dismiss } = usePostboxUndoSend();
 const stack = usePostboxComposerStack();
 const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
-	label: 'Undo send',
+	label: () => t('components.postbox.postboxUndoSendToast.undoSendOperation'),
 });
 
 const now = ref(Date.now());
@@ -51,13 +53,15 @@ async function handleUndo() {
 		class="fixed bottom-4 left-4 bg-text-primary text-text-inverse rounded-md shadow-lg px-4 py-3 flex items-center gap-3 z-50"
 	>
 		<Icon name="lucide:send" class="w-4 h-4" />
-		<span class="text-sm">Sending… ({{ remainingSec }}s)</span>
+		<span class="text-sm">{{
+			t('components.postbox.postboxUndoSendToast.sending', { seconds: remainingSec })
+		}}</span>
 		<button
 			type="button"
 			class="text-sm font-semibold text-brand hover:underline"
 			@click="handleUndo"
 		>
-			Undo
+			{{ t('components.postbox.postboxUndoSendToast.undo') }}
 		</button>
 	</div>
 	</Transition>

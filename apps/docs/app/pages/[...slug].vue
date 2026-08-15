@@ -1,39 +1,52 @@
 <script setup lang="ts">
+const { t, te, locale } = useI18n();
 const route = useRoute();
-const slug = (route.params.slug as string[])?.join('/') || 'index';
 
-const { data: page } = await useAsyncData(`content-${slug}`, () =>
-	queryCollection('content').path(`/${slug}`).first(),
+// `route.params.slug` is already locale-free: `@nuxtjs/i18n` owns the `/de`
+// segment, so `/de/guide/topics` and `/guide/topics` both resolve to
+// `guide/topics` here and address the same content path in either collection.
+const slug = computed(() => (route.params.slug as string[])?.join('/') || 'index');
+const path = computed(() => `/${slug.value}`);
+
+// Untranslated German pages fall back to their English source rather than
+// 404ing — see `queryDocsPage`.
+const { data: page } = await useAsyncData(
+	() => `content-${locale.value}-${slug.value}`,
+	() => queryDocsPage(docsCollection(locale.value), path.value),
+	{ watch: [() => slug.value, locale] }
 );
 
 if (!page.value) {
-	throw createError({ statusCode: 404, message: 'Page not found' });
+	throw createError({ statusCode: 404, message: t('error.pageNotFound') });
 }
 
-const sectionMap: Record<string, string> = {
-	guide: 'Guide',
-	api: 'API Reference',
-	developer: 'Developer',
-};
-
-const pathSegments = slug.split('/');
-const section = sectionMap[pathSegments[0]!] || '';
-
-const pageTitle = page.value.title
-	? `${page.value.title} | Owlat Docs`
-	: 'Owlat Docs';
-
-useSeoMeta({
-	title: pageTitle,
-	ogTitle: pageTitle,
-	description: page.value.description || '',
-	ogDescription: page.value.description || '',
+const section = computed(() => {
+	const segment = slug.value.split('/')[0] ?? '';
+	const key = `sections.${segment}`;
+	return te(key) ? t(key) : '';
 });
 
+const pageTitle = computed(() =>
+	page.value?.title ? t('seo.pageTitle', { title: page.value.title }) : t('brand.docs')
+);
+
+// Getters, not values: a bare `t()` here would freeze the locale that happened
+// to be active when the page was set up.
+useSeoMeta({
+	title: () => pageTitle.value,
+	ogTitle: () => pageTitle.value,
+	description: () => page.value?.description || '',
+	ogDescription: () => page.value?.description || '',
+});
+
+// Plain values, not getters: og-image options are serialized into the image
+// URL, so a function would not survive the trip. The locale is fixed for a
+// given route — switching locale navigates to `/de/…` and renders this page
+// again — so there is nothing here to keep reactive.
 defineOgImage('Docs', {
-	title: page.value.title || 'Owlat Docs',
-	description: page.value.description || '',
-	section,
+	title: page.value?.title || t('brand.docs'),
+	description: page.value?.description || '',
+	section: section.value,
 });
 </script>
 

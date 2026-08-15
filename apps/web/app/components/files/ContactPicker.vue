@@ -9,6 +9,8 @@ import type { Id } from '@owlat/api/dataModel';
 // lookup; callers map to `contactIds` for `semanticFiles.create`/`update`.
 const selected = defineModel<PickerContact[]>({ default: () => [] });
 
+const { t } = useI18n();
+
 const { query: search, debouncedQuery } = useDebouncedSearch(300);
 
 const { results: candidatesRaw } = usePaginatedQuery(
@@ -46,7 +48,9 @@ const unpick = (contactId: Id<'contacts'>) => {
 				<button
 					type="button"
 					class="p-0.5 rounded-full text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-					:aria-label="`Remove ${contactPickerLabel(contact)}`"
+					:aria-label="
+						t('components.files.contactPicker.remove', { name: contactPickerLabel(contact) })
+					"
 					@click="unpick(contact._id)"
 				>
 					<Icon name="lucide:x" class="w-3 h-3" />
@@ -60,7 +64,7 @@ const unpick = (contactId: Id<'contacts'>) => {
 				v-model="search"
 				type="text"
 				class="input input-sm"
-				placeholder="Search contacts by name or email…"
+				:placeholder="t('components.files.contactPicker.searchPlaceholder')"
 				autocomplete="off"
 			/>
 			<ul
@@ -85,7 +89,7 @@ const unpick = (contactId: Id<'contacts'>) => {
 				v-else-if="search && candidates.length === 0"
 				class="text-xs text-text-tertiary mt-1"
 			>
-				No matching contacts.
+				{{ t('components.files.contactPicker.empty') }}
 			</p>
 		</div>
 	</div>

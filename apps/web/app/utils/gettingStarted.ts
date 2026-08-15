@@ -56,13 +56,21 @@ export type InstanceFlagId =
 	| 'createdApiKey'
 	| 'setupDomain';
 
+/**
+ * A piece of copy this module hands back, as the catalog key that carries it —
+ * plus the values to interpolate when it takes any. This module is module scope
+ * and never calls `useI18n`; `GettingStarted.vue` is the render boundary that
+ * words every step it is given.
+ */
+export type GettingStartedMessage = string | { key: string; params?: Record<string, unknown> };
+
 export interface GettingStartedStep {
 	id: string;
-	title: string;
-	description: string;
+	title: GettingStartedMessage;
+	description: GettingStartedMessage;
 	/** Where the CTA navigates to do / resume this step. */
 	href: string;
-	cta: string;
+	cta: GettingStartedMessage;
 	icon: string;
 	completed: boolean;
 	/**
@@ -72,13 +80,13 @@ export interface GettingStartedStep {
 	 */
 	blocked?: boolean;
 	/** What is being waited on, shown in place of the CTA. Set iff `blocked`. */
-	blockedReason?: string;
+	blockedReason?: GettingStartedMessage;
 }
 
 export interface GettingStartedSection {
 	id: 'instance' | 'personal';
-	title: string;
-	description: string;
+	title: GettingStartedMessage;
+	description: GettingStartedMessage;
 	steps: GettingStartedStep[];
 }
 
@@ -111,12 +119,11 @@ export interface GettingStartedModel {
  */
 export const READY_TO_SEND_STEP: Omit<GettingStartedStep, 'completed'> = {
 	id: 'readyToSend',
-	title: 'Get ready to send',
-	description:
-		'Set up sending and verify your domain in one place — Delivery shows exactly what is left before mail can go out.',
+	title: 'shared.gettingStarted.readyToSend.title',
+	description: 'shared.gettingStarted.readyToSend.description',
 	icon: 'lucide:send',
 	href: '/dashboard/admin/delivery',
-	cta: 'Open delivery',
+	cta: 'shared.gettingStarted.readyToSend.cta',
 };
 
 /**
@@ -131,36 +138,35 @@ interface InstanceStepMeta extends Omit<GettingStartedStep, 'completed' | 'id'> 
 export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 	{
 		id: 'addedContacts',
-		title: 'Add contacts',
-		description: 'Import or add your first contact.',
+		title: 'shared.gettingStarted.addedContacts.title',
+		description: 'shared.gettingStarted.addedContacts.description',
 		icon: 'lucide:users',
 		href: '/dashboard/audience/contacts',
-		cta: 'Add contacts',
+		cta: 'shared.gettingStarted.addedContacts.cta',
 	},
 	{
 		id: 'createdEmail',
-		title: 'Create an email',
-		description: 'Build an email template you can send.',
+		title: 'shared.gettingStarted.createdEmail.title',
+		description: 'shared.gettingStarted.createdEmail.description',
 		icon: 'lucide:file-text',
 		href: '/dashboard/send/marketing',
-		cta: 'Create email',
+		cta: 'shared.gettingStarted.createdEmail.cta',
 	},
 	{
 		id: 'sentCampaign',
-		title: 'Send a campaign',
-		description: 'Send your first email campaign to your audience.',
+		title: 'shared.gettingStarted.sentCampaign.title',
+		description: 'shared.gettingStarted.sentCampaign.description',
 		icon: 'lucide:megaphone',
 		href: '/dashboard/campaigns/new',
-		cta: 'New campaign',
+		cta: 'shared.gettingStarted.sentCampaign.cta',
 	},
 	{
 		id: 'createdApiKey',
-		title: 'Create an API key',
-		description:
-			'Send transactional email (receipts, password resets) programmatically via the API.',
+		title: 'shared.gettingStarted.createdApiKey.title',
+		description: 'shared.gettingStarted.createdApiKey.description',
 		icon: 'lucide:key',
 		href: '/dashboard/admin/team/api',
-		cta: 'Create key',
+		cta: 'shared.gettingStarted.createdApiKey.cta',
 	},
 ];
 
@@ -171,11 +177,11 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
  */
 export const BACKUPS_STEP: Omit<GettingStartedStep, 'completed'> = {
 	id: 'backupsScheduled',
-	title: 'Set up backups',
-	description: 'Nothing is backed up until you turn it on — do this before you store real data.',
+	title: 'shared.gettingStarted.backups.title',
+	description: 'shared.gettingStarted.backups.description',
 	icon: 'lucide:database-backup',
 	href: '/dashboard/admin/backups',
-	cta: 'Set up backups',
+	cta: 'shared.gettingStarted.backups.cta',
 };
 
 export interface GettingStartedInput {
@@ -222,7 +228,7 @@ export const SEND_BLOCKED_STEP_IDS: ReadonlySet<ChecklistStepId> = new Set([
 ]);
 
 /** What a send-blocked step shows in place of its CTA. */
-export const SEND_BLOCKED_REASON = 'Waiting on sending setup';
+export const SEND_BLOCKED_REASON = 'shared.gettingStarted.sendBlockedReason';
 
 /**
  * The "Send a campaign" description, with today's real sending headroom folded
@@ -244,14 +250,15 @@ export const SEND_BLOCKED_REASON = 'Waiting on sending setup';
  * capacity panel beside it. The NUMBER is single-sourced — both read
  * `campaigns/sendingReadiness.ts` — the sentence around it is not.
  */
-export function sentCampaignDescription(capacityToday: number | null): string {
-	const base = 'Send your first email campaign to your audience.';
-	if (capacityToday === null) return base;
-	if (capacityToday <= 0) {
-		return `${base} Today's warm-up capacity is used up — schedule it and it goes out as capacity returns.`;
-	}
-	const contacts = capacityToday === 1 ? 'contact' : 'contacts';
-	return `${base} About ${capacityToday.toLocaleString()} ${contacts} can be reached today while your IPs warm up.`;
+export function sentCampaignDescription(capacityToday: number | null): GettingStartedMessage {
+	if (capacityToday === null) return 'shared.gettingStarted.sentCampaign.description';
+	if (capacityToday <= 0) return 'shared.gettingStarted.sentCampaign.descriptionExhausted';
+	return {
+		key: 'shared.gettingStarted.sentCampaign.descriptionCapacity',
+		// Grouped here rather than in the message: this module is locale-free, and
+		// the number is the same one the send gate meters against.
+		params: { count: capacityToday, capacity: capacityToday.toLocaleString() },
+	};
 }
 
 const EMPTY_MODEL: GettingStartedModel = {
@@ -302,8 +309,8 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 		}
 		sections.push({
 			id: 'instance',
-			title: 'Get your instance ready',
-			description: 'A few steps to go live — set up sending, then your first campaign.',
+			title: 'shared.gettingStarted.instanceSection.title',
+			description: 'shared.gettingStarted.instanceSection.description',
 			steps,
 		});
 	}
@@ -332,8 +339,8 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 		});
 		sections.push({
 			id: 'personal',
-			title: 'Finish setting up your account',
-			description: 'Pick up wherever you left off — nothing here is one-shot.',
+			title: 'shared.gettingStarted.personalSection.title',
+			description: 'shared.gettingStarted.personalSection.description',
 			steps,
 		});
 	}

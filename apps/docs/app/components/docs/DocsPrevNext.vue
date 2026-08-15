@@ -5,10 +5,12 @@
 			<div>
 				<NuxtLink
 					v-if="prev"
-					:to="prev.path"
+					:to="localePath(prev.path)"
 					class="prev-next-card group flex flex-col gap-1.5 p-4 rounded-(--radius-card)"
 				>
-					<span class="text-xs uppercase tracking-widest text-text-tertiary"> Previous </span>
+					<span class="text-xs uppercase tracking-widest text-text-tertiary">
+						{{ t('prevNext.previous') }}
+					</span>
 					<span
 						class="text-sm text-text-secondary group-hover:text-text-primary transition-colors duration-(--motion-fast) flex items-center gap-1.5"
 					>
@@ -29,10 +31,12 @@
 			<div class="text-right">
 				<NuxtLink
 					v-if="next"
-					:to="next.path"
+					:to="localePath(next.path)"
 					class="prev-next-card group flex flex-col items-end gap-1.5 p-4 rounded-(--radius-card)"
 				>
-					<span class="text-xs uppercase tracking-widest text-text-tertiary"> Next </span>
+					<span class="text-xs uppercase tracking-widest text-text-tertiary">
+						{{ t('prevNext.next') }}
+					</span>
 					<span
 						class="text-sm text-text-secondary group-hover:text-text-primary transition-colors duration-(--motion-fast) flex items-center gap-1.5"
 					>
@@ -58,16 +62,19 @@ interface SurroundItem {
 	title: string;
 }
 
+const { t, locale } = useI18n();
+const localePath = useLocalePath();
 const route = useRoute();
 
+// Reading order comes from the English collection and the titles from the
+// active one — see `queryDocsSurroundings`. Untranslated neighbours keep their
+// English titles instead of dropping out of the sequence.
+const contentRoutePath = computed(() => contentPath(route.path, locale.value));
+
 const { data: surround } = await useAsyncData(
-	`surround-${route.path}`,
-	() =>
-		queryCollectionItemSurroundings('content', route.path, {
-			before: 1,
-			after: 1,
-		}),
-	{ watch: [() => route.path] }
+	() => `surround-${locale.value}-${contentRoutePath.value}`,
+	() => queryDocsSurroundings(docsCollection(locale.value), contentRoutePath.value),
+	{ watch: [contentRoutePath, locale] }
 );
 
 const prev = computed<SurroundItem | null>(() => {

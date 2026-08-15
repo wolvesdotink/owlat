@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import { rules } from '~/composables/useFormValidation';
 
-useHead({ title: 'Code Tasks — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.inbox.codeTasks.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -20,7 +22,7 @@ const {
 // permission-gated on `organization:manage`; this is the admin UI for filing a
 // task by hand instead of waiting for the inbox classifier to auto-create one.
 const { run: createTask } = useBackendOperation(api.codeWorkTasks.create, {
-	label: 'Create code task',
+	label: () => t('dashboard.inbox.codeTasks.createOperation'),
 });
 const { showToast } = useToast();
 
@@ -37,8 +39,11 @@ const createForm = reactive({
 
 const validation = useFormValidation({
 	description: [
-		rules.required('Describe the feature request or fix'),
-		rules.minLength(10, 'Add a little more detail (at least 10 characters)'),
+		// The messages resolve when the rule RUNS, not when the schema is built, so
+		// a locale switch between mount and submit still validates in the active one.
+		(value) => rules.required(t('dashboard.inbox.codeTasks.validation.descriptionRequired'))(value),
+		(value) =>
+			rules.minLength(10, t('dashboard.inbox.codeTasks.validation.descriptionTooShort'))(value),
 	],
 });
 
@@ -52,7 +57,7 @@ const handleCreate = async () => {
 	if (result === undefined) return; // run() already surfaced the failure
 
 	createModal.close();
-	showToast('Code task queued. The coding agent will pick it up shortly.');
+	showToast(t('dashboard.inbox.codeTasks.queuedToast'));
 };
 </script>
 
@@ -68,16 +73,17 @@ const handleCreate = async () => {
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
 				</NuxtLink>
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Code Tasks</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.inbox.codeTasks.title') }}
+					</h1>
 					<p class="text-text-secondary mt-1">
-						Code tasks: feature requests, bug fixes, and improvements tracked from request through
-						merge.
+						{{ t('dashboard.inbox.codeTasks.subtitle') }}
 					</p>
 				</div>
 			</div>
 			<UiButton class="gap-2 shrink-0" @click="createModal.open()">
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				New code task
+				{{ t('dashboard.inbox.codeTasks.newTask') }}
 			</UiButton>
 		</div>
 
@@ -85,15 +91,15 @@ const handleCreate = async () => {
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading code tasks...</p>
+				<p class="text-text-secondary text-sm">{{ t('dashboard.inbox.codeTasks.loading') }}</p>
 			</div>
 		</div>
 
 		<!-- Error -->
 		<UiErrorAlert
 			v-else-if="error"
-			title="Couldn't load code tasks"
-			message="We hit an error loading code tasks. Reload the page to try again."
+			:title="t('dashboard.inbox.codeTasks.errorTitle')"
+			:message="t('dashboard.inbox.codeTasks.errorMessage')"
 			class="my-8"
 		/>
 
@@ -103,14 +109,13 @@ const handleCreate = async () => {
 			class="flex flex-col items-center justify-center py-16 text-center"
 		>
 			<UiIconBox icon="lucide:code-2" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No code tasks yet</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.inbox.codeTasks.emptyTitle') }}</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Code tasks appear here when the AI agent files feature requests or fixes — or you can create
-				one by hand.
+				{{ t('dashboard.inbox.codeTasks.emptyBody') }}
 			</p>
 			<UiButton variant="secondary" class="gap-2 mt-4" @click="createModal.open()">
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				New code task
+				{{ t('dashboard.inbox.codeTasks.newTask') }}
 			</UiButton>
 		</div>
 
@@ -120,12 +125,12 @@ const handleCreate = async () => {
 		</div>
 
 		<!-- Create modal -->
-		<UiModal v-model:open="createModal.isOpen.value" title="New code task">
+		<UiModal v-model:open="createModal.isOpen.value" :title="t('dashboard.inbox.codeTasks.newTask')">
 			<form @submit.prevent="handleCreate">
 				<div class="space-y-4">
 					<div>
 						<label for="code-task-description" class="label">
-							Description <span class="text-error">*</span>
+							{{ t('common.description') }} <span class="text-error">*</span>
 						</label>
 						<textarea
 							id="code-task-description"
@@ -135,7 +140,7 @@ const handleCreate = async () => {
 								'input w-full resize-y',
 								validation.hasError('description') && 'input-error',
 							]"
-							placeholder='Describe the feature request or fix for the coding agent, e.g. "Add a CSV export button to the contacts list."'
+							:placeholder="t('dashboard.inbox.codeTasks.descriptionPlaceholder')"
 							:disabled="createModal.isLoading.value"
 							@blur="validation.touch('description')"
 						/>
@@ -143,7 +148,7 @@ const handleCreate = async () => {
 							{{ validation.getError('description', true) }}
 						</p>
 						<p v-else class="mt-1 text-xs text-text-tertiary">
-							The coding agent will turn this into a branch, write the code and open a pull request.
+							{{ t('dashboard.inbox.codeTasks.descriptionHint') }}
 						</p>
 					</div>
 				</div>
@@ -155,7 +160,7 @@ const handleCreate = async () => {
 						:disabled="createModal.isLoading.value"
 						@click="createModal.close()"
 					>
-						Cancel
+						{{ t('common.cancel') }}
 					</UiButton>
 					<UiButton type="submit" class="gap-2" :disabled="createModal.isLoading.value">
 						<Icon
@@ -164,7 +169,11 @@ const handleCreate = async () => {
 							class="w-4 h-4 animate-spin"
 						/>
 						<Icon v-else name="lucide:plus" class="w-4 h-4" />
-						{{ createModal.isLoading.value ? 'Creating...' : 'Create code task' }}
+						{{
+							createModal.isLoading.value
+								? t('dashboard.inbox.codeTasks.creating')
+								: t('dashboard.inbox.codeTasks.create')
+						}}
 					</UiButton>
 				</div>
 			</form>

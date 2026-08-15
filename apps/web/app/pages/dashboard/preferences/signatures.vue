@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Signatures — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.preferences.signatures.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -78,15 +80,16 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 
 		<header class="mb-6 flex items-center justify-between">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em]">Signatures</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em]">
+					{{ t('dashboard.preferences.signatures.title') }}
+				</h1>
 				<p class="text-text-secondary mt-1">
-					Default signature is appended to new drafts. Pick a different one per message via the
-					composer toolbar.
+					{{ t('dashboard.preferences.signatures.intro') }}
 				</p>
 			</div>
 			<UiButton v-if="mailboxId && !editor" type="button" @click="startCreate">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
-				New signature
+				{{ t('dashboard.preferences.signatures.newSignature') }}
 			</UiButton>
 		</header>
 
@@ -95,30 +98,35 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 				v-model="editor.name"
 				type="text"
 				class="input w-full"
-				placeholder="Signature name (e.g. Work)"
+				:placeholder="t('dashboard.preferences.signatures.namePlaceholder')"
 			/>
-			<PostboxBasicEditor v-model="editor.html" placeholder="— Marcel" />
+			<PostboxBasicEditor
+				v-model="editor.html"
+				:placeholder="t('dashboard.preferences.signatures.bodyPlaceholder')"
+			/>
 			<label class="flex items-center gap-2 text-sm">
 				<input v-model="editor.isDefault" type="checkbox" />
-				Use as the default signature for new drafts
+				{{ t('dashboard.preferences.signatures.useAsDefault') }}
 			</label>
 			<div class="flex items-center justify-end gap-2">
-				<UiButton variant="ghost" type="button" @click="editor = null">Cancel</UiButton>
+				<UiButton variant="ghost" type="button" @click="editor = null">
+					{{ t('common.cancel') }}
+				</UiButton>
 				<UiButton type="button" :disabled="!editor.name.trim()" @click="save">
-					{{ editor.id ? 'Save changes' : 'Create' }}
+					{{ editor.id ? t('dashboard.preferences.signatures.saveChanges') : t('common.create') }}
 				</UiButton>
 			</div>
 		</section>
 
 		<section v-if="mailboxId" class="card !p-0">
 			<header class="px-5 py-3 border-b border-border-subtle">
-				<h2 class="font-semibold">Your signatures</h2>
+				<h2 class="font-semibold">{{ t('dashboard.preferences.signatures.yourSignatures') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
 			</div>
 			<div v-else-if="signatures.length === 0" class="p-8 text-center text-text-secondary">
-				No signatures yet.
+				{{ t('dashboard.preferences.signatures.empty') }}
 			</div>
 			<ul v-else class="divide-y divide-border-subtle">
 				<li
@@ -132,7 +140,7 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 							<span
 								v-if="s.isDefault"
 								class="text-xs px-1.5 py-0.5 rounded bg-brand-subtle text-brand"
-								>Default</span
+								>{{ t('common.default') }}</span
 							>
 						</div>
 						<!-- rendered outside the reader iframe → sanitize the stored HTML -->
@@ -142,31 +150,33 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 						/>
 					</div>
 					<UiButton variant="ghost" v-if="!s.isDefault" type="button" @click="makeDefault(s._id)">
-						Make default
+						{{ t('dashboard.preferences.signatures.makeDefault') }}
 					</UiButton>
-					<UiButton variant="ghost" type="button" @click="startEdit(s)">Edit</UiButton>
+					<UiButton variant="ghost" type="button" @click="startEdit(s)">
+						{{ t('common.edit') }}
+					</UiButton>
 					<UiButton
 						variant="ghost"
 						type="button"
 						class="text-error"
 						@click="signatureToRemove = s._id"
 					>
-						Delete
+						{{ t('common.delete') }}
 					</UiButton>
 				</li>
 			</ul>
 		</section>
 
 		<div v-if="!mailboxId && !mailboxesLoading" class="card p-6 text-center text-text-secondary">
-			No mailbox configured.
+			{{ t('dashboard.preferences.signatures.noMailbox') }}
 		</div>
 
 		<UiConfirmationDialog
 			:open="!!signatureToRemove"
 			variant="danger"
-			title="Delete signature?"
-			description="This signature will be removed. This action cannot be undone."
-			confirm-text="Delete signature"
+			:title="t('dashboard.preferences.signatures.deleteTitle')"
+			:description="t('dashboard.preferences.signatures.deleteDescription')"
+			:confirm-text="t('dashboard.preferences.signatures.deleteConfirm')"
 			:is-loading="isRemovingSignature"
 			@update:open="(v: boolean) => !v && (signatureToRemove = null)"
 			@confirm="confirmRemove"

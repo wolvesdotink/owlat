@@ -12,6 +12,8 @@
 
 import type { usePostboxRewriteController } from '~/composables/postbox/usePostboxRewriteController';
 
+const { t } = useI18n();
+
 defineProps<{
 	controller: ReturnType<typeof usePostboxRewriteController>;
 }>();
@@ -41,14 +43,16 @@ defineProps<{
 		v-if="controller.showUndo.value"
 		class="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border-subtle bg-bg-elevated px-3 py-1.5 text-xs shadow-lg"
 	>
-		<span class="text-text-secondary">Rewritten</span>
+		<span class="text-text-secondary">{{
+			t('components.postbox.postboxRewriteLayer.rewritten')
+		}}</span>
 		<button
 			type="button"
 			class="font-medium text-brand hover:underline"
 			@mousedown.prevent
 			@click="controller.undo"
 		>
-			Undo
+			{{ t('components.postbox.postboxRewriteLayer.undo') }}
 		</button>
 	</div>
 </template>

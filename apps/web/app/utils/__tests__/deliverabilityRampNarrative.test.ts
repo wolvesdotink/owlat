@@ -13,10 +13,15 @@
 import { describe, expect, it } from 'vitest';
 import {
 	rampAdvancedScreens,
-	rampNextAction,
-	rampPhaseNarrative,
+	rampNextAction as rampNextActionFor,
+	rampPhaseNarrative as rampPhaseNarrativeFor,
 	recentRampDecisions,
+	type LocalizedText,
+	type RampNextAction,
+	type RampNarrativePhase,
 } from '~/utils/deliverabilityRampNarrative';
+import type { RampControls } from '~/utils/deliverabilityRamp';
+import { createTestI18n } from '~/__tests__/i18n';
 import {
 	cellControl,
 	controlsView,
@@ -25,6 +30,20 @@ import {
 	DAY_MS,
 } from '~/components/delivery/__tests__/rampFixtures';
 
+/**
+ * The narrative is module scope, so every sentence arrives as a catalog key —
+ * and the two that quote a cell's name take the resolver the card hands them.
+ * The suite renders through the real English catalog, because the copy is what
+ * these properties are about.
+ */
+const { t } = createTestI18n().global;
+const localized = (value: LocalizedText): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const rampPhaseNarrative = (controls: RampControls): RampNarrativePhase =>
+	rampPhaseNarrativeFor(controls, localized);
+const rampNextAction = (controls: RampControls): RampNextAction =>
+	rampNextActionFor(controls, localized);
+
 describe('ramp phase narrative', () => {
 	it('invites rather than warns when nothing is on the ramp', () => {
 		const phase = rampPhaseNarrative(
@@ -32,8 +51,8 @@ describe('ramp phase narrative', () => {
 		);
 		expect(phase.key).toBe('not_started');
 		expect(phase.progress).toBeNull();
-		expect(phase.detail).toContain('Nothing is wrong');
-		expect(phase.title.toLowerCase()).not.toContain('incomplete');
+		expect(localized(phase.detail)).toContain('Nothing is wrong');
+		expect(localized(phase.title).toLowerCase()).not.toContain('incomplete');
 	});
 
 	it('counts graduations out of the managed cells only', () => {
@@ -52,7 +71,7 @@ describe('ramp phase narrative', () => {
 		expect(phase.progress).toEqual(
 			expect.objectContaining({ graduated: 1, managed: 2, fraction: 0.5 })
 		);
-		expect(phase.progress?.label).toBe('1 of 2 cells on the ramp graduated so far');
+		expect(localized(phase.progress!.label)).toBe('1 of 2 cells on the ramp graduated so far');
 	});
 
 	it('names the leading cell, its ceiling and its clean streak', () => {
@@ -64,10 +83,10 @@ describe('ramp phase narrative', () => {
 				],
 			})
 		);
-		expect(phase.detail).toContain('Campaign → Gmail');
-		expect(phase.detail).toContain('25%');
-		expect(phase.detail).toContain('50%');
-		expect(phase.detail).toContain('2 clean windows');
+		expect(localized(phase.detail)).toContain('Campaign → Gmail');
+		expect(localized(phase.detail)).toContain('25%');
+		expect(localized(phase.detail)).toContain('50%');
+		expect(localized(phase.detail)).toContain('2 clean windows');
 	});
 
 	it('does not credit the ramp with a share it never moved on a pace-path cell', () => {
@@ -79,24 +98,24 @@ describe('ramp phase narrative', () => {
 				cells: [cellControl({ isShareRamped: false, ownShare: 1 })],
 			})
 		);
-		expect(phase.detail).toContain('warm-up pace');
-		expect(phase.detail).not.toContain('ceiling on its current phase');
+		expect(localized(phase.detail)).toContain('warm-up pace');
+		expect(localized(phase.detail)).not.toContain('ceiling on its current phase');
 	});
 
 	it('says a paused ramp is paused, and still counts what is on it', () => {
 		const phase = rampPhaseNarrative(controlsView({ isControllerPaused: true }));
 		expect(phase.key).toBe('paused');
-		expect(phase.detail).toContain('pinned where it is');
+		expect(localized(phase.detail)).toContain('pinned where it is');
 		expect(phase.progress?.managed).toBe(1);
 	});
 
 	it('mentions the relay still being paid for once every cell has graduated', () => {
 		const graduated = controlsView({ cells: [cellControl({ graduatedAt: NOW - DAY_MS })] });
 		expect(rampPhaseNarrative(graduated).key).toBe('graduated');
-		expect(rampPhaseNarrative(graduated).detail).toContain('still being paid for');
-		expect(rampPhaseNarrative({ ...graduated, isRelayConfigured: false }).detail).not.toContain(
-			'still being paid for'
-		);
+		expect(localized(rampPhaseNarrative(graduated).detail)).toContain('still being paid for');
+		expect(
+			localized(rampPhaseNarrative({ ...graduated, isRelayConfigured: false }).detail)
+		).not.toContain('still being paid for');
 	});
 });
 
@@ -118,7 +137,7 @@ describe('recent ramp decisions', () => {
 			})
 		);
 		expect(recent.map((entry) => entry.key)).toEqual(['campaign:microsoft', 'campaign:gmail']);
-		expect(recent[1]?.directionLabel).toBe('Held');
+		expect(localized(recent[1]!.directionLabel)).toBe('Held');
 	});
 
 	it('renders the controller’s own sentence and notice verbatim', () => {
@@ -142,8 +161,8 @@ describe('recent ramp decisions', () => {
 		expect(entry?.message).toBe('Reduced campaign mail to gmail (50% -> 25%).');
 		expect(entry?.notice).toBe(notice);
 		expect(entry?.move).toBe('50% → 25%');
-		expect(entry?.reason).toBe('The hard-bounce gate');
-		expect(entry?.directionLabel).toBe('Pulled back');
+		expect(localized(entry!.reason)).toBe('The hard-bounce gate');
+		expect(localized(entry!.directionLabel)).toBe('Pulled back');
 	});
 
 	it('skips cells the controller has never decided about', () => {
@@ -218,8 +237,8 @@ describe('the single next action', () => {
 			})
 		);
 		expect(action.key).toBe('read_pull_back');
-		expect(action.title).toContain('Campaign → Microsoft');
-		expect(action.detail).toBe('newest retreat, and what to do about it');
+		expect(localized(action.title)).toContain('Campaign → Microsoft');
+		expect(localized(action.detail)).toBe('newest retreat, and what to do about it');
 		expect(action.to).toBe('/dashboard/admin/delivery/advanced/cells');
 	});
 
@@ -237,17 +256,17 @@ describe('the single next action', () => {
 				],
 			})
 		);
-		expect(action.detail).toBe('Reduced campaign mail to gmail (50% -> 25%).');
+		expect(localized(action.detail)).toBe('Reduced campaign mail to gmail (50% -> 25%).');
 	});
 
 	it('names an operator hold as the operator’s own, not as a fault', () => {
 		const paused = rampNextAction(controlsView({ cells: [cellControl({ isPaused: true })] }));
 		expect(paused.key).toBe('release_hold');
-		expect(paused.detail).toContain('Nothing is wrong');
+		expect(localized(paused.detail)).toContain('Nothing is wrong');
 
 		const pinned = rampNextAction(controlsView({ cells: [cellControl({ pinnedShare: 0.25 })] }));
 		expect(pinned.key).toBe('release_hold');
-		expect(pinned.detail).toContain('25%');
+		expect(localized(pinned.detail)).toContain('25%');
 	});
 
 	it('points a fully graduated deployment at the relay it is still paying for', () => {
@@ -266,7 +285,7 @@ describe('the single next action', () => {
 			})
 		);
 		expect(action.key).toBe('watch_evidence');
-		expect(action.title).toBe('Nothing needs you right now');
+		expect(localized(action.title)).toBe('Nothing needs you right now');
 		expect(action.to).toBe('/dashboard/admin/delivery/advanced/measurement');
 	});
 
@@ -276,19 +295,19 @@ describe('the single next action', () => {
 				cells: [cellControl({ lastDecision: decision({ reason: 'building_confidence' }) })],
 			})
 		);
-		expect(action.detail).toContain('Building a clean streak.');
+		expect(localized(action.detail)).toContain('Building a clean streak.');
 	});
 });
 
 describe('the four doors into the detail', () => {
 	it('follows the D14 rename when there is no relay to become independent of', () => {
-		expect(rampAdvancedScreens(true).map((screen) => screen.label)).toEqual([
+		expect(rampAdvancedScreens(true).map((screen) => localized(screen.label))).toEqual([
 			'Cells',
 			'Controls',
 			'Measurement',
 			'Independence',
 		]);
-		expect(rampAdvancedScreens(false).at(-1)?.label).toBe('Warm-up autopilot');
+		expect(localized(rampAdvancedScreens(false).at(-1)!.label)).toBe('Warm-up autopilot');
 		expect(rampAdvancedScreens(false).at(-1)?.to).toBe(
 			'/dashboard/admin/delivery/advanced/independence'
 		);

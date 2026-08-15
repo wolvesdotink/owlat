@@ -4,17 +4,26 @@ import {
 	replyCollisionToast,
 	sendHoldReason,
 	GENERIC_TEAMMATE_NAME,
+	type ReplyCollisionMessage,
 } from '../replyCollision';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The copy helpers are pure, so they hand back a message key plus the name it
+// interpolates; the sentence a person reads comes from the real catalog.
+const { t } = createTestI18n().global;
+const message = (value: ReplyCollisionMessage) => t(value.key, value.params ?? {});
 
 describe('replyCollision copy', () => {
 	it('sendHoldReason names the teammate and promises auto-release', () => {
-		expect(sendHoldReason('Jordan')).toBe(
+		expect(message(sendHoldReason('Jordan'))).toBe(
 			'held while Jordan is editing — takes over automatically if they leave'
 		);
 	});
 
 	it('replyCollisionToast names the teammate and points at the thread', () => {
-		expect(replyCollisionToast('Jordan')).toBe('Jordan just sent a reply — review the thread');
+		expect(message(replyCollisionToast('Jordan'))).toBe(
+			'Jordan just sent a reply — review the thread'
+		);
 	});
 });
 
@@ -34,6 +43,6 @@ describe('isReplyCollision', () => {
 	});
 
 	it('exposes a human fallback name', () => {
-		expect(GENERIC_TEAMMATE_NAME).toBe('A teammate');
+		expect(t(GENERIC_TEAMMATE_NAME)).toBe('A teammate');
 	});
 });

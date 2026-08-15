@@ -10,7 +10,7 @@ import {
 const props = withDefaults(
 	defineProps<{
 		open: boolean;
-		/** Title override for the modal */
+		/** Title override for the modal. Defaults to the "Select Image" message. */
 		title?: string;
 		/** Accepted file types. Default: images only */
 		accept?: string;
@@ -18,7 +18,6 @@ const props = withDefaults(
 		allowAllFiles?: boolean;
 	}>(),
 	{
-		title: 'Select Image',
 		accept: 'image/jpeg,image/png,image/gif,image/webp,image/svg+xml',
 		allowAllFiles: false,
 	}
@@ -38,7 +37,12 @@ const emit = defineEmits<{
 	): void;
 }>();
 
+const { t } = useI18n();
+
 const resolvedAccept = computed(() => (props.allowAllFiles ? '*/*' : props.accept));
+// The default title is a message, so it is resolved here rather than frozen as
+// a prop default (which would keep the locale that was active at mount).
+const resolvedTitle = computed(() => props.title ?? t('components.mediaPickerModal.defaultTitle'));
 
 // Debounced so each keystroke doesn't re-subscribe the paginated query.
 const { searchQuery, debouncedSearch } = useDebouncedSearch(300);
@@ -82,10 +86,10 @@ watch(debouncedSearch, () => {
 
 // Upload
 const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
-	label: 'Get upload URL',
+	label: () => t('components.mediaPickerModal.getUploadUrlOperation'),
 });
 const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
-	label: 'Upload media',
+	label: () => t('components.mediaPickerModal.uploadMediaOperation'),
 });
 const isUploading = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -171,7 +175,7 @@ const getFileIcon = (mimeType: string) => {
 <template>
 	<UiModal
 		:open="open"
-		:title="title"
+		:title="resolvedTitle"
 		size="xl"
 		:z-index="10001"
 		@update:open="emit('update:open', $event)"
@@ -187,7 +191,7 @@ const getFileIcon = (mimeType: string) => {
 				"
 				@click="activeTab = 'library'"
 			>
-				Library
+				{{ t('components.mediaPickerModal.tabs.library') }}
 			</button>
 			<button
 				class="px-4 py-2 text-sm font-medium transition-colors"
@@ -198,7 +202,7 @@ const getFileIcon = (mimeType: string) => {
 				"
 				@click="activeTab = 'upload'"
 			>
-				Upload
+				{{ t('components.mediaPickerModal.tabs.upload') }}
 			</button>
 		</div>
 
@@ -206,7 +210,10 @@ const getFileIcon = (mimeType: string) => {
 		<div v-if="activeTab === 'library'">
 			<!-- Search -->
 			<div class="mb-4">
-				<UiInput v-model="searchQuery" placeholder="Search media..." />
+				<UiInput
+					v-model="searchQuery"
+					:placeholder="t('components.mediaPickerModal.searchPlaceholder')"
+				/>
 			</div>
 
 			<!-- Loading -->
@@ -216,7 +223,11 @@ const getFileIcon = (mimeType: string) => {
 
 			<!-- Empty -->
 			<div v-else-if="assets.length === 0" class="text-center py-12 text-text-secondary text-sm">
-				{{ searchQuery ? 'No media found.' : 'No media uploaded yet. Switch to Upload tab.' }}
+				{{
+					searchQuery
+						? t('components.mediaPickerModal.emptySearch')
+						: t('components.mediaPickerModal.empty')
+				}}
 			</div>
 
 			<!-- Grid -->
@@ -258,7 +269,9 @@ const getFileIcon = (mimeType: string) => {
 
 			<!-- Load more -->
 			<div v-if="status === 'CanLoadMore'" class="flex justify-center mt-4">
-				<UiButton variant="outline" size="sm" @click="loadMore(20)">Load more</UiButton>
+				<UiButton variant="outline" size="sm" @click="loadMore(20)">{{
+					t('components.mediaPickerModal.loadMore')
+				}}</UiButton>
 			</div>
 		</div>
 
@@ -273,10 +286,14 @@ const getFileIcon = (mimeType: string) => {
 			>
 				<Icon name="lucide:upload-cloud" class="w-10 h-10 text-text-tertiary" />
 				<p class="text-sm text-text-secondary">
-					Drag and drop {{ allowAllFiles ? 'a file' : 'an image' }}, or
+					{{
+						allowAllFiles
+							? t('components.mediaPickerModal.dropAnyFile')
+							: t('components.mediaPickerModal.dropImage')
+					}}
 				</p>
 				<UiButton variant="outline" size="sm" :loading="isUploading" @click="fileInputRef?.click()">
-					Browse files
+					{{ t('components.mediaPickerModal.browseFiles') }}
 				</UiButton>
 				<input
 					ref="fileInputRef"

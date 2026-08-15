@@ -9,18 +9,19 @@ import type { Condition } from './conditions';
  * form state, validation, create/edit/delete modals, and toast notifications.
  */
 export function useSegmentForm() {
+	const { t } = useI18n();
 	const { showToast } = useToast();
 
 	// ─── Mutations ─────────────────────────────────────────────────────
 
 	const { run: createSegment } = useBackendOperation(api.segments.create, {
-		label: 'Create segment',
+		label: () => t('shared.useSegmentForm.createSegment'),
 	});
 	const { run: updateSegment } = useBackendOperation(api.segments.update, {
-		label: 'Update segment',
+		label: () => t('shared.useSegmentForm.updateSegment'),
 	});
 	const { run: deleteSegment } = useBackendOperation(api.segments.remove, {
-		label: 'Delete segment',
+		label: () => t('shared.useSegmentForm.deleteSegment'),
 	});
 
 	// ─── Create/Edit Modal State ───────────────────────────────────────
@@ -69,7 +70,7 @@ export function useSegmentForm() {
 	const matchingCount = ref<number | null>(null);
 	const { run: estimateAudience, isLoading: countLoading } = useBackendOperation(
 		api.segments.countMatchingContacts,
-		{ label: 'Estimate audience size', type: 'action' }
+		{ label: () => t('shared.useSegmentForm.estimateAudience'), type: 'action' }
 	);
 	let countTimer: ReturnType<typeof setTimeout> | null = null;
 	// Monotonic token: the action resolves out of order (its duration varies with
@@ -149,12 +150,12 @@ export function useSegmentForm() {
 		resetErrors();
 
 		if (!segmentForm.name.trim()) {
-			segmentErrors.name = 'Segment name is required';
+			segmentErrors.name = t('shared.useSegmentForm.nameRequired');
 			return false;
 		}
 
 		if (segmentForm.filters.conditions.length === 0) {
-			segmentErrors.conditions = 'At least one condition is required';
+			segmentErrors.conditions = t('shared.useSegmentForm.conditionRequired');
 			return false;
 		}
 
@@ -166,7 +167,12 @@ export function useSegmentForm() {
 				condition as Condition
 			);
 			if (error) {
-				segmentErrors.conditions = `Condition ${i + 1}: ${error}`;
+				// The editor modules are module-scope singletons, so `validateForSubmit`
+				// hands back a message KEY; this is where it becomes a sentence.
+				segmentErrors.conditions = t('shared.useSegmentForm.conditionError', {
+					index: i + 1,
+					error: t(error),
+				});
 				return false;
 			}
 		}
@@ -190,7 +196,7 @@ export function useSegmentForm() {
 			});
 			isSaving.value = false;
 			if (result === undefined) return;
-			showToast(`Segment "${segmentForm.name.trim()}" updated successfully`);
+			showToast(t('shared.useSegmentForm.updated', { name: segmentForm.name.trim() }));
 		} else {
 			const result = await createSegment({
 				name: segmentForm.name.trim(),
@@ -199,7 +205,7 @@ export function useSegmentForm() {
 			});
 			isSaving.value = false;
 			if (result === undefined) return;
-			showToast(`Segment "${segmentForm.name.trim()}" created successfully`);
+			showToast(t('shared.useSegmentForm.created', { name: segmentForm.name.trim() }));
 		}
 
 		closeSegmentModal();
@@ -235,7 +241,7 @@ export function useSegmentForm() {
 		const result = await deleteSegment({ id: deleteTarget.value.id });
 		isDeleting.value = false;
 		if (result === undefined) return;
-		showToast(`Segment "${deleteTarget.value.name}" deleted successfully`);
+		showToast(t('shared.useSegmentForm.deleted', { name: deleteTarget.value.name }));
 		closeDeleteModal();
 	};
 

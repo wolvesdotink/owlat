@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Team Setup — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('setup.team.pageTitle') });
 
 definePageMeta({
 	middleware: 'auth',
@@ -32,7 +34,7 @@ const requested = ref(false);
 
 const { run: sendRequest, isLoading: sending } = useBackendOperation(
 	api.auth.accessRequest.request,
-	{ label: 'Request access' }
+	{ label: () => t('setup.team.requestAccessOperation') }
 );
 
 async function requestAccess() {
@@ -59,8 +61,8 @@ async function requestAccess() {
 		<!-- Invite-only: no organization yet, but the door isn't locked. -->
 		<template v-else-if="!organization">
 			<div class="relative mb-8 text-center">
-				<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-				<p class="text-text-secondary mt-2">Invitation required</p>
+				<h1 class="font-display text-4xl text-text-primary">{{ t('setup.team.brand') }}</h1>
+				<p class="text-text-secondary mt-2">{{ t('setup.team.invitationRequired') }}</p>
 			</div>
 
 			<UiCard class="relative w-full max-w-md">
@@ -68,13 +70,14 @@ async function requestAccess() {
 				<div v-if="requested" class="text-center space-y-4">
 					<Icon name="lucide:check-circle-2" class="w-12 h-12 text-brand mx-auto" />
 					<div class="space-y-1">
-						<p class="font-medium text-text-primary">Request sent</p>
+						<p class="font-medium text-text-primary">{{ t('setup.team.requestSentTitle') }}</p>
 						<p class="text-text-secondary">
-							An administrator has been notified. You'll get an invitation by email once they grant
-							you access — no need to ask again.
+							{{ t('setup.team.requestSentBody') }}
 						</p>
 					</div>
-					<UiButton variant="ghost" size="sm" @click="signOut()"> Sign out </UiButton>
+					<UiButton variant="ghost" size="sm" @click="signOut()">
+						{{ t('setup.team.signOut') }}
+					</UiButton>
 				</div>
 
 				<!-- Before asking: request access, or sign out. -->
@@ -82,8 +85,7 @@ async function requestAccess() {
 					<div class="text-center space-y-3">
 						<Icon name="lucide:mail" class="w-12 h-12 text-text-tertiary mx-auto" />
 						<p class="text-text-secondary">
-							You need an invitation to join this instance. Ask an administrator to send you one —
-							you can request it right here.
+							{{ t('setup.team.inviteExplainer') }}
 						</p>
 					</div>
 
@@ -91,15 +93,17 @@ async function requestAccess() {
 						v-model="note"
 						:rows="3"
 						:max-length="MAX_NOTE_LENGTH"
-						label="Add a note (optional)"
-						placeholder="e.g. I'm on the marketing team and need access to send campaigns."
+						:label="t('setup.team.noteLabel')"
+						:placeholder="t('setup.team.notePlaceholder')"
 					/>
 
 					<div class="flex flex-col gap-2">
 						<UiButton :loading="sending" class="w-full" @click="requestAccess">
-							Request access
+							{{ t('setup.team.requestAccess') }}
 						</UiButton>
-						<UiButton variant="ghost" size="sm" @click="signOut()"> Sign out </UiButton>
+						<UiButton variant="ghost" size="sm" @click="signOut()">
+							{{ t('setup.team.signOut') }}
+						</UiButton>
 					</div>
 				</div>
 			</UiCard>

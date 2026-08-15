@@ -3,7 +3,15 @@ import {
 	compareReplyQueueItems,
 	replyQueueHeadline,
 	formatReplyQueueDueHint,
+	type ReplyQueueText,
 } from '../postboxReplyQueue';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The headline and the due chip are pure derivations, so message copy reaches
+// them as keys; the sentence a person reads is resolved from the real catalog.
+const { t } = createTestI18n().global;
+const text = (value: ReplyQueueText | null) =>
+	value === null ? null : typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 const item = (urgency: 'high' | 'normal' | 'low', receivedAt: number) => ({
 	urgency,
@@ -73,28 +81,30 @@ describe('replyQueueHeadline', () => {
 	});
 
 	it('labels a missing subject', () => {
-		expect(replyQueueHeadline({ subject: '' })).toBe('(no subject)');
+		expect(text(replyQueueHeadline({ subject: '' }))).toBe('(no subject)');
 	});
 
 	it('inverts the framing for follow-up items using waitingOn', () => {
 		expect(
-			replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: 'Dana' })
+			text(replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: 'Dana' }))
 		).toBe("You're waiting on Dana");
 	});
 
 	it('falls back to fromAddress when a follow-up has no waitingOn', () => {
 		expect(
-			replyQueueHeadline({
-				kind: 'followup',
-				subject: 'Re: proposal',
-				fromAddress: 'dana@acme.test',
-			})
+			text(
+				replyQueueHeadline({
+					kind: 'followup',
+					subject: 'Re: proposal',
+					fromAddress: 'dana@acme.test',
+				})
+			)
 		).toBe("You're waiting on dana@acme.test");
 	});
 
 	it('falls back to a generic follow-up headline when waitingOn is blank and no fromAddress', () => {
 		expect(
-			replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: '   ' })
+			text(replyQueueHeadline({ kind: 'followup', subject: 'Re: proposal', waitingOn: '   ' }))
 		).toBe("You're waiting on a reply");
 	});
 });
@@ -103,7 +113,7 @@ describe('formatReplyQueueDueHint', () => {
 	it('formats an ISO date as a short due label (timezone-independent)', () => {
 		// Must be the stated calendar date in EVERY runner timezone — a
 		// west-of-UTC machine used to render "Due Jul 2" for a Jul 3 deadline.
-		expect(formatReplyQueueDueHint('2026-07-03')).toBe('Due Jul 3');
+		expect(text(formatReplyQueueDueHint('2026-07-03', 'en-US'))).toBe('Due Jul 3');
 	});
 
 	it('returns null for missing or unparseable hints', () => {

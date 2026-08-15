@@ -6,7 +6,15 @@
  *   - each attention bucket carries the right inline action label.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyCampaignAttention } from '../campaignAttention';
+import { CAMPAIGN_ATTENTION_DISPLAY, classifyCampaignAttention } from '../campaignAttention';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The reason → copy map is a module-scope table, so it carries catalog keys
+ * rather than sentences. Rendering them through the real English catalog keeps
+ * these assertions on the copy a person reads.
+ */
+const { t } = createTestI18n().global;
 
 // A fixed clock at midday so "today" boundaries are unambiguous.
 const NOW = new Date('2026-07-07T12:00:00').getTime();
@@ -34,7 +42,12 @@ describe('classifyCampaignAttention', () => {
 			abWinner: null,
 			now: NOW,
 		});
-		expect(r).toEqual({ needsAttention: true, reason: 'ab_decision', actionLabel: 'Pick winner' });
+		expect(r).toEqual({
+			needsAttention: true,
+			reason: 'ab_decision',
+			actionLabel: CAMPAIGN_ATTENTION_DISPLAY.ab_decision.actionLabel,
+		});
+		expect(t(r.actionLabel!)).toBe('Pick winner');
 	});
 
 	it('an A/B test with a declared winner no longer needs the decision', () => {
@@ -60,7 +73,12 @@ describe('classifyCampaignAttention', () => {
 
 	it('a pending_review campaign asks for Review', () => {
 		const r = classifyCampaignAttention({ status: 'pending_review', now: NOW });
-		expect(r).toEqual({ needsAttention: true, reason: 'needs_review', actionLabel: 'Review' });
+		expect(r).toEqual({
+			needsAttention: true,
+			reason: 'needs_review',
+			actionLabel: CAMPAIGN_ATTENTION_DISPLAY.needs_review.actionLabel,
+		});
+		expect(t(r.actionLabel!)).toBe('Review');
 	});
 
 	it('a draft with blocked content asks for Review', () => {
@@ -83,7 +101,12 @@ describe('classifyCampaignAttention', () => {
 
 	it('a cancelled send asks to Resume', () => {
 		const r = classifyCampaignAttention({ status: 'cancelled', now: NOW });
-		expect(r).toEqual({ needsAttention: true, reason: 'send_stopped', actionLabel: 'Resume' });
+		expect(r).toEqual({
+			needsAttention: true,
+			reason: 'send_stopped',
+			actionLabel: CAMPAIGN_ATTENTION_DISPLAY.send_stopped.actionLabel,
+		});
+		expect(t(r.actionLabel!)).toBe('Resume');
 	});
 
 	it('a campaign scheduled later today surfaces without an inline action', () => {
@@ -132,5 +155,18 @@ describe('classifyCampaignAttention', () => {
 			now: NOW,
 		});
 		expect(r.reason).toBe('needs_review');
+	});
+});
+
+describe('CAMPAIGN_ATTENTION_DISPLAY — chip copy', () => {
+	it('renders each reason chip through the catalog', () => {
+		expect(t(CAMPAIGN_ATTENTION_DISPLAY.ab_decision.chipLabel)).toBe('Winner pending');
+		expect(t(CAMPAIGN_ATTENTION_DISPLAY.needs_review.chipLabel)).toBe('Needs review');
+		expect(t(CAMPAIGN_ATTENTION_DISPLAY.send_stopped.chipLabel)).toBe('Send stopped');
+		expect(t(CAMPAIGN_ATTENTION_DISPLAY.scheduled_today.chipLabel)).toBe('Going out today');
+	});
+
+	it('leaves the view-only bucket without an inline action', () => {
+		expect(CAMPAIGN_ATTENTION_DISPLAY.scheduled_today.actionLabel).toBeNull();
 	});
 });

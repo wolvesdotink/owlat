@@ -10,7 +10,7 @@
  * composed exactly as ReviewFocusFlow / PostboxReplyFlow compose them, without
  * the heavy flow shells.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 
@@ -18,8 +18,15 @@ import TaskCardRenderer from '../TaskCardRenderer.vue';
 import { useTaskFlow } from '~/composables/useTaskFlow';
 import { createTaskCardRegistry } from '~/utils/taskCardRegistry';
 import type { TaskFlowKind, TaskFlowOrderKey } from '~/utils/taskFlow';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = { Icon: { template: '<i />' }, UiIconBox: { template: '<i />' } };
+
+// The fallback/loading cards the renderer can degrade to call `useI18n`, a Nuxt
+// auto-import (bare global).
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
 
 // A plugin card that reports completion — with and without an explicit outcome.
 const PluginCard = defineComponent({
@@ -69,7 +76,7 @@ function mountWired(source: Item[]) {
 			@skip="onSkip"
 		/>`,
 	});
-	return mount(Harness, { global: { stubs } });
+	return mount(Harness, { global: { stubs, plugins: [createTestI18n()] } });
 }
 
 describe('plugin-card complete wiring', () => {

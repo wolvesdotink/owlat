@@ -9,6 +9,8 @@ import { normalizeDashboardUrl, resolveConvexDashboardUrl } from '~/utils/convex
  * only the surface it lives in changed.
  */
 
+const { t } = useI18n();
+
 const config = useRuntimeConfig();
 
 // Convex dashboard URL. The dashboard is a separate service on port 6791 that,
@@ -73,29 +75,35 @@ function cancelEditingDashboard() {
 			>
 				<div class="flex items-center gap-2">
 					<Icon name="lucide:layout-dashboard" class="h-4 w-4 text-text-tertiary" />
-					<span class="text-sm font-medium text-text-primary">Open Convex dashboard</span>
+					<span class="text-sm font-medium text-text-primary">{{
+						t('components.dashboard.gettingStartedResources.convexTitle')
+					}}</span>
 				</div>
 				<span class="pl-6 text-xs text-text-tertiary">
-					Inspect your database, functions, and logs.
+					{{ t('components.dashboard.gettingStartedResources.convexDescription') }}
 				</span>
 				<span
 					class="mt-1 pl-6 text-xs font-medium text-brand transition-transform group-hover:translate-x-0.5"
 				>
-					Launch dashboard ↗
+					{{ t('components.dashboard.gettingStartedResources.convexCta') }}
 				</span>
 			</a>
 
 			<!-- Customize affordance: shown when the URL is only a derived guess. -->
 			<div v-if="!isEditingDashboard" class="mt-1 pl-6">
 				<p v-if="isDashboardGuess" class="text-xs text-text-tertiary">
-					Default guess — the dashboard is often on a separate host or an SSH tunnel.
+					{{ t('components.dashboard.gettingStartedResources.guessHint') }}
 				</p>
 				<button
 					type="button"
 					class="text-xs text-text-tertiary underline decoration-dotted transition-colors hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 					@click="startEditingDashboard"
 				>
-					{{ isDashboardGuess ? 'Customize if you are behind a proxy' : 'Customize dashboard URL' }}
+					{{
+						isDashboardGuess
+							? t('components.dashboard.gettingStartedResources.customizeBehindProxy')
+							: t('components.dashboard.gettingStartedResources.customizeUrl')
+					}}
 				</button>
 			</div>
 
@@ -104,15 +112,15 @@ function cancelEditingDashboard() {
 					v-model="dashboardDraft"
 					type="url"
 					inputmode="url"
-					placeholder="http://localhost:6791"
-					aria-label="Convex dashboard URL"
+					:placeholder="t('components.dashboard.gettingStartedResources.urlPlaceholder')"
+					:aria-label="t('components.dashboard.gettingStartedResources.urlLabel')"
 					class="input input-sm text-xs"
 					:class="{ 'input-error': dashboardDraftInvalid }"
 					@keydown.enter.prevent="saveDashboardUrl"
 					@keydown.esc.prevent="cancelEditingDashboard"
 				/>
 				<p v-if="dashboardDraftInvalid" class="text-xs text-error">
-					Enter a valid http(s) URL, or leave empty to reset.
+					{{ t('components.dashboard.gettingStartedResources.urlInvalid') }}
 				</p>
 				<div class="flex items-center gap-2">
 					<button
@@ -121,14 +129,14 @@ function cancelEditingDashboard() {
 						:disabled="dashboardDraftInvalid"
 						@click="saveDashboardUrl"
 					>
-						Save
+						{{ t('common.save') }}
 					</button>
 					<button
 						type="button"
 						class="text-xs text-text-tertiary hover:text-text-primary"
 						@click="cancelEditingDashboard"
 					>
-						Cancel
+						{{ t('common.cancel') }}
 					</button>
 				</div>
 			</div>
@@ -143,13 +151,17 @@ function cancelEditingDashboard() {
 		>
 			<div class="flex items-center gap-2">
 				<Icon name="lucide:book-open" class="h-4 w-4 text-text-tertiary" />
-				<span class="text-sm font-medium text-text-primary">Read the self-host docs</span>
+				<span class="text-sm font-medium text-text-primary">{{
+					t('components.dashboard.gettingStartedResources.docsTitle')
+				}}</span>
 			</div>
-			<span class="pl-6 text-xs text-text-tertiary">DNS, production config, maintenance.</span>
+			<span class="pl-6 text-xs text-text-tertiary">{{
+				t('components.dashboard.gettingStartedResources.docsDescription')
+			}}</span>
 			<span
 				class="mt-1 pl-6 text-xs font-medium text-brand transition-transform group-hover:translate-x-0.5"
 			>
-				Open docs ↗
+				{{ t('components.dashboard.gettingStartedResources.docsCta') }}
 			</span>
 		</a>
 	</div>

@@ -13,6 +13,7 @@
  *  - the REDACTION LIST: which values must never reach the screen or a log.
  */
 import { describe, expect, it, vi } from 'vitest';
+import { createTestI18n } from '~/__tests__/i18n';
 import {
 	CORE_SEND_PROVIDER_CATALOG_ENTRIES,
 	OWN_SEND_PROVIDER_KIND,
@@ -24,6 +25,11 @@ import {
 	useRelayCredentialDraft,
 } from '../useRelayCredentialDraft';
 import { hostPortFieldFor } from '../setupWizardCredentials';
+
+// The picker table is module scope, so its `label`/`hint` are message KEYS that
+// the screens resolve with `t()`. Resolving them here keeps the pins below on
+// the SENTENCES the operator reads rather than on the key paths behind them.
+const { t } = createTestI18n().global;
 
 describe('the transport picker', () => {
 	it('offers the relays in the order the shipped screens listed them', () => {
@@ -53,7 +59,7 @@ describe('the transport picker', () => {
 		// the one thing this pin has to be able to disagree with. The picker's
 		// own-arm option is an instruction rather than a name and is the ONE copy
 		// override left in the draft; every relay takes the entry's label.
-		expect(TRANSPORT_EDITOR_PROVIDER_OPTIONS.map((option) => option.label)).toEqual([
+		expect(TRANSPORT_EDITOR_PROVIDER_OPTIONS.map((option) => t(option.label))).toEqual([
 			'Run your own MTA',
 			'Amazon SES',
 			'SMTP relay',
@@ -65,7 +71,9 @@ describe('the transport picker', () => {
 
 	it('takes every RELAY’s label from the catalog, not from a second copy', () => {
 		for (const option of RELAY_PROVIDER_OPTIONS) {
-			expect(option.label).toBe(coreSendProviderCatalogEntry(option.value)?.label);
+			// A catalog label carries no message of its own, so `t()` hands it back
+			// unchanged — the rendered name is still the entry's.
+			expect(t(option.label)).toBe(coreSendProviderCatalogEntry(option.value)?.label);
 		}
 	});
 
@@ -87,7 +95,7 @@ describe('the transport picker', () => {
 		// The shipped relays plus the own arm DO have copy, and it is
 		// operator-facing: pinned as literals for the same reason the labels above
 		// are, since a hint read off the table agrees with any rewrite of it.
-		expect(TRANSPORT_EDITOR_PROVIDER_OPTIONS.map((option) => option.hint)).toEqual([
+		expect(TRANSPORT_EDITOR_PROVIDER_OPTIONS.map((option) => t(option.hint))).toEqual([
 			'Full control, no third party. Needs port 25 open and a clean sending IP.',
 			'Managed deliverability, cheap at scale. Needs an AWS account.',
 			'Mailgun, Postmark, SendGrid, Brevo, or any custom SMTP server.',

@@ -12,14 +12,22 @@
  *   - Enter in the free text emits `submit`;
  *   - the exposed `pickIndex` drives the 1–9 keyboard path.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import TaskOptions from '../TaskOptions.vue';
+
+// The placeholder copy flows through vue-i18n now; `useI18n` is a Nuxt
+// auto-import, so it has to exist as a global for the component's setup.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 function mountOptions(props: Record<string, unknown> = {}) {
 	return mount(TaskOptions, {
 		props: { options: ['Yes', 'No'], modelValue: '', ...props },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 
@@ -37,6 +45,13 @@ describe('TaskOptions', () => {
 		expect(chips[0]!.find('kbd').text()).toBe('1');
 		expect(chips[1]!.find('kbd').text()).toBe('2');
 		expect(wrapper.find(inputSel).exists()).toBe(true);
+		// With chips present the input is the secondary ("or type") affordance.
+		expect(wrapper.find(inputSel).attributes('placeholder')).toBe('Or type an answer…');
+	});
+
+	it('falls back to the free-text placeholder when there are no chips', () => {
+		const wrapper = mountOptions({ options: [] });
+		expect(wrapper.find(inputSel).attributes('placeholder')).toBe('Type your answer…');
 	});
 
 	it('single-select: picking a chip deselects the others; re-tap clears it', async () => {

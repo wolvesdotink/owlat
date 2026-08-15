@@ -26,7 +26,7 @@ const repoRoot = resolve(here, '../../..');
 // Not exported: a second suite that imported the path would be one `readFileSync`
 // away from a second parser beside it, which is the duplication this module exists
 // to remove. Callers ask for entries or kinds, never for the file.
-const CATALOG_PATH = 'packages/shared/src/sendProviderCatalog.ts';
+const CATALOG_PATH = 'packages/shared/src/sendProviderCatalogData.ts';
 
 /** One core catalog entry: its kind, and the source text that declares it. */
 export interface CoreCatalogEntry {

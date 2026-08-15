@@ -4,13 +4,14 @@
 // command), so every section renders through this one shape.
 const props = defineProps<{ command: string }>();
 
+const { t } = useI18n();
 const { showToast } = useToast();
 const { copy, isCopied } = useCopyToClipboard();
 
 async function copyCommand() {
 	const ok = await copy(props.command);
 	showToast(
-		ok ? 'Command copied' : 'Could not copy — select and copy manually',
+		ok ? t('components.backupCommandRow.copied') : t('components.backupCommandRow.copyFailed'),
 		ok ? 'success' : 'error'
 	);
 }
@@ -26,7 +27,7 @@ async function copyCommand() {
 			class="shrink-0 text-sm text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
 			@click="copyCommand"
 		>
-			{{ isCopied(command) ? 'Copied' : 'Copy' }}
+			{{ isCopied(command) ? t('common.copied') : t('common.copy') }}
 		</button>
 	</div>
 </template>

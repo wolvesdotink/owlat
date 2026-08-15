@@ -1,39 +1,41 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Administration — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.index.pageTitle') });
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
 const { level, reason } = useDeliveryHealth();
 const deliveryLabel = computed(() => {
-	if (level.value === 'error') return 'Sending needs attention';
-	if (level.value === 'warn') return 'Sending needs a review';
-	return 'Sending is healthy';
+	if (level.value === 'error') return t('dashboard.admin.index.verdict.error');
+	if (level.value === 'warn') return t('dashboard.admin.index.verdict.warn');
+	return t('dashboard.admin.index.verdict.ok');
 });
 const deliveryTone = computed(() =>
 	level.value === 'error' ? 'text-error' : level.value === 'warn' ? 'text-warning' : 'text-success'
 );
 
-const areas = [
+const areas = computed(() => [
 	{
-		title: 'Delivery',
-		description: 'Sending health, domains, transport, routing, and webhooks.',
+		title: t('dashboard.admin.index.areas.delivery.title'),
+		description: t('dashboard.admin.index.areas.delivery.description'),
 		href: '/dashboard/admin/delivery',
 		icon: 'lucide:truck',
 	},
 	{
-		title: 'Team & access',
-		description: 'Members, shared inboxes, approved senders, API keys, and connected apps.',
+		title: t('dashboard.admin.index.areas.team.title'),
+		description: t('dashboard.admin.index.areas.team.description'),
 		href: '/dashboard/admin/team',
 		icon: 'lucide:users-round',
 	},
 	{
-		title: 'Instance',
-		description: 'Workspace defaults, operating mode, features, AI, channels, and plugins.',
+		title: t('dashboard.admin.index.areas.instance.title'),
+		description: t('dashboard.admin.index.areas.instance.description'),
 		href: '/dashboard/admin/instance',
 		icon: 'lucide:server-cog',
 	},
-] as const;
+]);
 
 // Operator tooling and deployment maintenance are scoped to this deployment's
 // platform admin (each destination also carries the `platform-admin` route
@@ -44,36 +46,37 @@ const { data: isPlatformAdmin } = useConvexQuery(
 	() => ({})
 );
 
-const platformAreas = [
+const platformAreas = computed(() => [
 	{
-		title: 'Operator console',
-		description: 'Review held content, workspace sending status, and platform admins.',
+		title: t('dashboard.admin.index.platformAreas.operator.title'),
+		description: t('dashboard.admin.index.platformAreas.operator.description'),
 		href: '/dashboard/admin/operator',
 		icon: 'lucide:shield-alert',
 	},
 	{
-		title: 'System & updates',
-		description: 'Stack version, container health, and in-app updates.',
+		title: t('dashboard.admin.index.platformAreas.system.title'),
+		description: t('dashboard.admin.index.platformAreas.system.description'),
 		href: '/dashboard/admin/system',
 		icon: 'lucide:cpu',
 	},
 	{
-		title: 'Backups',
-		description: 'Schedule daily backups, run one now, and find the restore command.',
+		title: t('dashboard.admin.index.platformAreas.backups.title'),
+		description: t('dashboard.admin.index.platformAreas.backups.description'),
 		href: '/dashboard/admin/backups',
 		icon: 'lucide:database-backup',
 	},
-] as const;
+]);
 </script>
 
 <template>
 	<div class="p-6 lg:p-8 max-w-6xl">
 		<header class="mb-8">
-			<p class="text-sm font-medium text-brand mb-1">Administration</p>
-			<h1 class="text-3xl font-semibold text-text-primary">Your instance at a glance</h1>
+			<p class="text-sm font-medium text-brand mb-1">{{ t('dashboard.admin.index.eyebrow') }}</p>
+			<h1 class="text-3xl font-semibold text-text-primary">
+				{{ t('dashboard.admin.index.title') }}
+			</h1>
 			<p class="mt-2 text-text-secondary max-w-2xl">
-				Start with the verdicts here. Detailed configuration and operator tools are one level deeper
-				when you need them.
+				{{ t('dashboard.admin.index.lede') }}
 			</p>
 		</header>
 
@@ -85,7 +88,9 @@ const platformAreas = [
 				<div class="flex items-start gap-4">
 					<UiIconBox icon="lucide:activity" size="md" variant="surface" rounded="lg" />
 					<div>
-						<p class="text-sm text-text-tertiary">Delivery verdict</p>
+						<p class="text-sm text-text-tertiary">
+							{{ t('dashboard.admin.index.deliveryVerdict') }}
+						</p>
 						<h2 class="text-xl font-semibold" :class="deliveryTone">{{ deliveryLabel }}</h2>
 						<p v-if="reason" class="mt-1 text-sm text-text-secondary">{{ reason }}</p>
 					</div>
@@ -101,7 +106,7 @@ const platformAreas = [
 					<h2 class="mt-4 text-lg font-semibold text-text-primary">{{ area.title }}</h2>
 					<p class="mt-1 text-sm text-text-secondary">{{ area.description }}</p>
 					<span class="mt-5 inline-flex items-center gap-1 text-sm font-medium text-brand">
-						Open <Icon name="lucide:arrow-right" class="w-4 h-4" />
+						{{ t('common.open') }} <Icon name="lucide:arrow-right" class="w-4 h-4" />
 					</span>
 				</UiCard>
 			</NuxtLink>
@@ -109,7 +114,9 @@ const platformAreas = [
 
 		<!-- Platform: deployment-level tooling, platform admin only -->
 		<section v-if="isPlatformAdmin === true" class="mt-10">
-			<h2 class="mb-4 text-lg font-semibold text-text-primary">Platform</h2>
+			<h2 class="mb-4 text-lg font-semibold text-text-primary">
+				{{ t('dashboard.admin.index.platform') }}
+			</h2>
 			<div class="grid gap-4 md:grid-cols-3">
 				<NuxtLink v-for="area in platformAreas" :key="area.href" :to="area.href" class="group">
 					<UiCard hoverable class="h-full">
@@ -132,15 +139,14 @@ const platformAreas = [
 		>
 			<Icon name="lucide:shield" class="w-5 h-5 shrink-0 mt-0.5 text-text-tertiary" />
 			<p class="text-sm text-text-secondary">
-				Operator tools, system updates, and backups are held by this deployment's platform admin and
-				aren't shown here.
+				{{ t('dashboard.admin.index.platformAdminOnly') }}
 				<a
 					href="https://docs.owlat.app/developer/self-hosting-maintenance"
 					target="_blank"
 					rel="noopener"
 					class="text-brand hover:underline whitespace-nowrap"
 				>
-					Learn more →
+					{{ t('dashboard.admin.index.learnMore') }}
 				</a>
 			</p>
 		</div>

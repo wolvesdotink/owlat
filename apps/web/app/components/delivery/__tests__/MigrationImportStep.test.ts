@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick, ref, type Ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -75,8 +76,9 @@ async function mountStep(props: Record<string, unknown> = {}) {
 	vi.stubGlobal('useConvex', () => ({ mutation }));
 	vi.stubGlobal('useConvexQuery', () => ({ data: progress }));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	const component = (await import('../MigrationImportStep.vue')).default;
-	return mount(component, { props, global: { stubs } });
+	return mount(component, { props, global: { plugins: [createTestI18n()], stubs } });
 }
 
 beforeEach(() => {

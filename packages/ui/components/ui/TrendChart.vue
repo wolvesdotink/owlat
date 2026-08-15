@@ -13,12 +13,14 @@ import {
 	nearestPointIndex,
 	type ChartDatum,
 } from '../../utils/chart';
+import { useUiI18n } from '../../composables/useUiI18n';
 
 interface Props {
 	data: ChartDatum[];
 	color?: string;
 	showArea?: boolean;
 	formatValue?: (value: number) => string;
+	/** Accessible name for the plot. Defaults to the localized "Trend chart". */
 	ariaLabel?: string;
 	/** Direct-label the peak (max-value) point with its value — selective
 	 * direct labeling per the chart-kit rules. Hidden while the crosshair is
@@ -26,13 +28,19 @@ interface Props {
 	labelPeak?: boolean;
 }
 
+// `ariaLabel` has no default: prop defaults are evaluated outside the setup
+// context, where `useUiI18n()` cannot run. It is resolved below instead.
 const props = withDefaults(defineProps<Props>(), {
 	color: 'var(--color-brand)',
 	showArea: true,
 	formatValue: formatChartValue,
-	ariaLabel: 'Trend chart',
+	ariaLabel: undefined,
 	labelPeak: false,
 });
+
+const { t } = useUiI18n();
+
+const resolvedAriaLabel = computed(() => props.ariaLabel ?? t('ui.chart.trendAriaLabel'));
 
 const viewWidth = 320;
 const viewHeight = 120;
@@ -113,7 +121,7 @@ function onPointerLeave() {
 			v-if="!hasData"
 			class="flex items-center justify-center h-[120px] bg-bg-surface rounded-lg"
 		>
-			<p class="text-sm text-text-tertiary">No data yet</p>
+			<p class="text-sm text-text-tertiary">{{ t('ui.chart.empty') }}</p>
 		</div>
 		<div v-else class="relative">
 			<svg
@@ -122,7 +130,7 @@ function onPointerLeave() {
 				:style="{ height: `${viewHeight}px` }"
 				preserveAspectRatio="none"
 				role="img"
-				:aria-label="ariaLabel"
+				:aria-label="resolvedAriaLabel"
 			>
 				<!-- Recessive dashed grid + solid baseline -->
 				<line

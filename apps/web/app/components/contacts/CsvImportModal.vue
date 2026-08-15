@@ -10,20 +10,22 @@ const emit = defineEmits<{
 	import: [];
 }>();
 
+const { t } = useI18n();
+
 const stepDescription = computed(() => {
 	switch (props.csvImport.step.value) {
 		case 'upload':
-			return 'Upload a CSV file';
+			return t('components.contacts.csvImportModal.steps.upload');
 		case 'mapping':
-			return 'Map columns to fields';
+			return t('components.contacts.csvImportModal.steps.mapping');
 		case 'listMapping':
-			return 'Map list names';
+			return t('components.contacts.csvImportModal.steps.listMapping');
 		case 'preview':
-			return 'Review before import';
+			return t('components.contacts.csvImportModal.steps.preview');
 		case 'importing':
-			return 'Importing contacts...';
+			return t('components.contacts.csvImportModal.steps.importing');
 		case 'complete':
-			return 'Import complete';
+			return t('components.contacts.csvImportModal.steps.complete');
 		default:
 			return '';
 	}
@@ -51,7 +53,10 @@ const availableLists = computed(() => props.topics ?? []);
 
 // Find list name by ID for display
 const getListName = (listId: string): string => {
-	return availableLists.value.find((l) => l._id === listId)?.name ?? 'Unknown list';
+	return (
+		availableLists.value.find((l) => l._id === listId)?.name ??
+		t('components.contacts.csvImportModal.unknownList')
+	);
 };
 
 // Distinct custom-property keys mapped in this import (for the preview summary).
@@ -62,12 +67,16 @@ const topicAssignmentSummary = computed(() => {
 	const mode = props.csvImport.listAssignmentMode.value;
 	if (mode === 'global' && props.csvImport.selectedTopicId.value) {
 		const name = getListName(props.csvImport.selectedTopicId.value);
-		return `All contacts will be added to "${name}"`;
+		return t('components.contacts.csvImportModal.topicAssignment.global', { name });
 	}
 	if (mode === 'column') {
 		const mapped = props.csvImport.mappedListCount.value;
 		const skipped = props.csvImport.skippedListCount.value;
-		return `Contacts will be added to topics based on CSV mapping (${mapped} topic${mapped !== 1 ? 's' : ''} mapped, ${skipped} skipped)`;
+		return t(
+			'components.contacts.csvImportModal.topicAssignment.column',
+			{ mapped, skipped },
+			mapped,
+		);
 	}
 	return null;
 });
@@ -89,7 +98,9 @@ const topicAssignmentSummary = computed(() => {
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox icon="lucide:file-spreadsheet" size="sm" variant="surface" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Import Contacts</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.contacts.csvImportModal.title') }}
+				</h2>
 				<p class="text-sm text-text-tertiary">{{ stepDescription }}</p>
 			</div>
 		</div>
@@ -144,19 +155,23 @@ const topicAssignmentSummary = computed(() => {
 						</div>
 						<div>
 							<p class="text-text-primary font-medium">
-								Drop your CSV file here or click to browse
+								{{ t('components.contacts.csvImportModal.upload.dropzone') }}
 							</p>
-							<p class="text-sm text-text-tertiary mt-1">Supports .csv files with headers</p>
+							<p class="text-sm text-text-tertiary mt-1">
+								{{ t('components.contacts.csvImportModal.upload.supports') }}
+							</p>
 						</div>
 					</div>
 				</div>
 				<div class="mt-6 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-2">CSV Format Tips</h4>
+					<h4 class="text-sm font-medium text-text-primary mb-2">
+						{{ t('components.contacts.csvImportModal.upload.tipsTitle') }}
+					</h4>
 					<ul class="text-sm text-text-secondary space-y-1">
-						<li>First row should contain column headers</li>
-						<li>Must include an email column</li>
-						<li>Optional: first name, last name, language</li>
-						<li>Map any extra column to "Custom property" to import it</li>
+						<li>{{ t('components.contacts.csvImportModal.upload.tips.headers') }}</li>
+						<li>{{ t('components.contacts.csvImportModal.upload.tips.emailColumn') }}</li>
+						<li>{{ t('components.contacts.csvImportModal.upload.tips.optionalColumns') }}</li>
+						<li>{{ t('components.contacts.csvImportModal.upload.tips.customProperty') }}</li>
 					</ul>
 				</div>
 			</div>
@@ -164,14 +179,23 @@ const topicAssignmentSummary = computed(() => {
 			<!-- Step 2: Mapping -->
 			<div v-else-if="csvImport.step.value === 'mapping'">
 				<div class="mb-4">
-					<p class="text-sm text-text-secondary">
-						Found
-						<span class="text-text-primary font-medium">{{ csvImport.totalRowCount.value }}</span>
-						contacts in
-						<span class="text-text-primary font-medium">{{
-							csvImport.selectedFile.value?.name
-						}}</span>
-					</p>
+					<I18nT
+						keypath="components.contacts.csvImportModal.mapping.found"
+						tag="p"
+						class="text-sm text-text-secondary"
+						scope="global"
+					>
+						<template #count>
+							<span class="text-text-primary font-medium">{{
+								csvImport.totalRowCount.value
+							}}</span>
+						</template>
+						<template #filename>
+							<span class="text-text-primary font-medium">{{
+								csvImport.selectedFile.value?.name
+							}}</span>
+						</template>
+					</I18nT>
 				</div>
 				<div class="space-y-3 mb-6">
 					<div
@@ -182,7 +206,13 @@ const topicAssignmentSummary = computed(() => {
 						<div class="flex-1 min-w-0">
 							<p class="text-sm font-medium text-text-primary truncate">{{ header }}</p>
 							<p class="text-xs text-text-tertiary truncate">
-								e.g., {{ csvImport.parsedData.value[0]?.[index] || '(empty)' }}
+								{{
+									t('components.contacts.csvImportModal.mapping.sample', {
+										value:
+											csvImport.parsedData.value[0]?.[index] ||
+											t('components.contacts.csvImportModal.emptyCell'),
+									})
+								}}
 							</p>
 						</div>
 						<select
@@ -201,7 +231,7 @@ const topicAssignmentSummary = computed(() => {
 									field.value === 'topic' && csvImport.listAssignmentMode.value === 'global'
 								"
 							>
-								{{ field.label }}
+								{{ t(field.label) }}
 							</option>
 						</select>
 					</div>
@@ -209,7 +239,9 @@ const topicAssignmentSummary = computed(() => {
 
 				<!-- Handle Duplicates -->
 				<div class="p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-3">Handle Duplicates</h4>
+					<h4 class="text-sm font-medium text-text-primary mb-3">
+						{{ t('components.contacts.csvImportModal.mapping.handleDuplicates') }}
+					</h4>
 					<div class="flex gap-4">
 						<label class="flex items-center gap-2 cursor-pointer">
 							<input
@@ -218,7 +250,9 @@ const topicAssignmentSummary = computed(() => {
 								value="skip"
 								class="w-4 h-4 text-brand"
 							/>
-							<span class="text-sm text-text-secondary">Skip duplicates</span>
+							<span class="text-sm text-text-secondary">{{
+								t('components.contacts.csvImportModal.mapping.skipDuplicates')
+							}}</span>
 						</label>
 						<label class="flex items-center gap-2 cursor-pointer">
 							<input
@@ -227,14 +261,18 @@ const topicAssignmentSummary = computed(() => {
 								value="update"
 								class="w-4 h-4 text-brand"
 							/>
-							<span class="text-sm text-text-secondary">Update existing</span>
+							<span class="text-sm text-text-secondary">{{
+								t('components.contacts.csvImportModal.mapping.updateExisting')
+							}}</span>
 						</label>
 					</div>
 				</div>
 
 				<!-- Add to Topic -->
 				<div v-if="availableLists.length > 0" class="mt-4 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-3">Add to Topic</h4>
+					<h4 class="text-sm font-medium text-text-primary mb-3">
+						{{ t('components.contacts.csvImportModal.mapping.addToTopic') }}
+					</h4>
 					<select
 						:value="csvImport.selectedTopicId.value ?? ''"
 						class="input w-full"
@@ -243,18 +281,16 @@ const topicAssignmentSummary = computed(() => {
 							csvImport.selectGlobalTopic(($event.target as HTMLSelectElement).value || null)
 						"
 					>
-						<option value="">None</option>
+						<option value="">{{ t('common.none') }}</option>
 						<option v-for="list in availableLists" :key="list._id" :value="list._id">
 							{{ list.name }}
 						</option>
 					</select>
 					<p v-if="csvImport.isTopicMapped.value" class="text-xs text-text-tertiary mt-2">
-						Disabled because a column is mapped to "Topic". Remove that mapping to select a global
-						topic.
+						{{ t('components.contacts.csvImportModal.mapping.topicMappedHint') }}
 					</p>
 					<p v-else class="text-xs text-text-tertiary mt-2">
-						All imported contacts will be added to this topic. Or map a CSV column to "Topic" for
-						per-contact assignment.
+						{{ t('components.contacts.csvImportModal.mapping.globalTopicHint') }}
 					</p>
 				</div>
 			</div>
@@ -262,14 +298,19 @@ const topicAssignmentSummary = computed(() => {
 			<!-- Step 2.5: List Mapping -->
 			<div v-else-if="csvImport.step.value === 'listMapping'">
 				<div class="mb-4">
-					<p class="text-sm text-text-secondary">
-						We found
-						<span class="text-text-primary font-medium">{{
-							csvImport.detectedListNames.value.length
-						}}</span>
-						unique topic name{{ csvImport.detectedListNames.value.length !== 1 ? 's' : '' }} in your
-						CSV. Map each to an existing Owlat topic or skip it.
-					</p>
+					<I18nT
+						keypath="components.contacts.csvImportModal.listMapping.found"
+						tag="p"
+						class="text-sm text-text-secondary"
+						scope="global"
+						:plural="csvImport.detectedListNames.value.length"
+					>
+						<template #count>
+							<span class="text-text-primary font-medium">{{
+								csvImport.detectedListNames.value.length
+							}}</span>
+						</template>
+					</I18nT>
 				</div>
 				<div class="space-y-3">
 					<div
@@ -288,7 +329,9 @@ const topicAssignmentSummary = computed(() => {
 									($event.target as HTMLSelectElement).value || null
 							"
 						>
-							<option value="">— Skip</option>
+							<option value="">
+								{{ t('components.contacts.csvImportModal.listMapping.skip') }}
+							</option>
 							<option v-for="list in availableLists" :key="list._id" :value="list._id">
 								{{ list.name }}
 							</option>
@@ -300,7 +343,7 @@ const topicAssignmentSummary = computed(() => {
 					class="p-4 rounded-lg bg-warning-subtle border border-warning/20"
 				>
 					<p class="text-sm text-warning">
-						No topic names found in the mapped column. All cells were empty.
+						{{ t('components.contacts.csvImportModal.listMapping.noneFound') }}
 					</p>
 				</div>
 			</div>
@@ -311,7 +354,9 @@ const topicAssignmentSummary = computed(() => {
 				<div v-if="validationResult" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
 					<div class="p-3 rounded-lg bg-success/10 border border-success/20">
 						<p class="text-2xl font-medium tracking-[-0.02em] text-success">{{ validationResult.validCount }}</p>
-						<p class="text-xs text-success/80">Valid contacts</p>
+						<p class="text-xs text-success/80">
+							{{ t('components.contacts.csvImportModal.preview.validContacts') }}
+						</p>
 					</div>
 					<div
 						class="p-3 rounded-lg"
@@ -335,7 +380,7 @@ const topicAssignmentSummary = computed(() => {
 								validationResult.invalidEmails.length > 0 ? 'text-warning/80' : 'text-text-tertiary'
 							"
 						>
-							Invalid emails
+							{{ t('components.contacts.csvImportModal.preview.invalidEmails') }}
 						</p>
 					</div>
 					<div
@@ -362,7 +407,7 @@ const topicAssignmentSummary = computed(() => {
 									: 'text-text-tertiary'
 							"
 						>
-							Duplicates
+							{{ t('components.contacts.csvImportModal.preview.duplicates') }}
 						</p>
 					</div>
 					<div
@@ -387,7 +432,7 @@ const topicAssignmentSummary = computed(() => {
 								validationResult.missingEmails.length > 0 ? 'text-error/80' : 'text-text-tertiary'
 							"
 						>
-							Missing emails
+							{{ t('components.contacts.csvImportModal.preview.missingEmails') }}
 						</p>
 					</div>
 				</div>
@@ -399,17 +444,19 @@ const topicAssignmentSummary = computed(() => {
 				>
 					<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
 					<p class="text-sm text-error">
-						No valid contacts found. Please fix your CSV and re-upload.
+						{{ t('components.contacts.csvImportModal.preview.noValidContacts') }}
 					</p>
 				</div>
 
 				<!-- Preview Table -->
 				<div class="mb-4">
 					<p class="text-sm text-text-secondary mb-2">
-						Preview of first {{ Math.min(5, csvImport.totalRowCount.value) }} rows ({{
-							csvImport.totalRowCount.value
+						{{
+							t('components.contacts.csvImportModal.preview.rowsPreview', {
+								shown: Math.min(5, csvImport.totalRowCount.value),
+								total: csvImport.totalRowCount.value,
+							})
 						}}
-						total)
 					</p>
 				</div>
 				<div class="overflow-x-auto rounded-lg border border-border-subtle">
@@ -419,9 +466,15 @@ const topicAssignmentSummary = computed(() => {
 								<th class="text-left px-4 py-2 font-medium text-text-secondary w-8">
 									<Icon name="lucide:shield-check" class="w-4 h-4" />
 								</th>
-								<th class="text-left px-4 py-2 font-medium text-text-secondary">Email</th>
-								<th class="text-left px-4 py-2 font-medium text-text-secondary">First Name</th>
-								<th class="text-left px-4 py-2 font-medium text-text-secondary">Last Name</th>
+								<th class="text-left px-4 py-2 font-medium text-text-secondary">
+									{{ t('common.email') }}
+								</th>
+								<th class="text-left px-4 py-2 font-medium text-text-secondary">
+									{{ t('components.contacts.csvImportModal.preview.firstName') }}
+								</th>
+								<th class="text-left px-4 py-2 font-medium text-text-secondary">
+									{{ t('components.contacts.csvImportModal.preview.lastName') }}
+								</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -468,20 +521,35 @@ const topicAssignmentSummary = computed(() => {
 							class="w-4 h-4 transition-transform"
 							:class="{ 'rotate-90': showValidationDetails }"
 						/>
-						View issue details
+						{{ t('components.contacts.csvImportModal.preview.viewIssues') }}
 					</button>
 					<div v-if="showValidationDetails && validationResult" class="mt-2 space-y-3">
 						<div
 							v-if="validationResult.invalidEmails.length > 0"
 							class="p-3 rounded-lg bg-warning/5 border border-warning/20"
 						>
-							<h5 class="text-sm font-medium text-warning mb-1">Invalid Emails</h5>
+							<h5 class="text-sm font-medium text-warning mb-1">
+								{{ t('components.contacts.csvImportModal.preview.invalidEmailsTitle') }}
+							</h5>
 							<ul class="text-xs text-text-secondary space-y-0.5">
-								<li v-for="entry in validationResult.invalidEmails.slice(0, 10)" :key="entry.row">
-									Row {{ entry.row }}: <span class="text-text-primary">{{ entry.email }}</span>
-								</li>
+								<I18nT
+									v-for="entry in validationResult.invalidEmails.slice(0, 10)"
+									:key="entry.row"
+									keypath="components.contacts.csvImportModal.preview.rowEntry"
+									tag="li"
+									scope="global"
+								>
+									<template #row>{{ entry.row }}</template>
+									<template #value>
+										<span class="text-text-primary">{{ entry.email }}</span>
+									</template>
+								</I18nT>
 								<li v-if="validationResult.invalidEmails.length > 10" class="text-text-tertiary">
-									...and {{ validationResult.invalidEmails.length - 10 }} more
+									{{
+										t('components.contacts.csvImportModal.preview.andMore', {
+											count: validationResult.invalidEmails.length - 10,
+										})
+									}}
 								</li>
 							</ul>
 						</div>
@@ -489,13 +557,28 @@ const topicAssignmentSummary = computed(() => {
 							v-if="validationResult.duplicateEmails.length > 0"
 							class="p-3 rounded-lg bg-warning/5 border border-warning/20"
 						>
-							<h5 class="text-sm font-medium text-warning mb-1">Duplicate Emails</h5>
+							<h5 class="text-sm font-medium text-warning mb-1">
+								{{ t('components.contacts.csvImportModal.preview.duplicateEmailsTitle') }}
+							</h5>
 							<ul class="text-xs text-text-secondary space-y-0.5">
-								<li v-for="entry in validationResult.duplicateEmails.slice(0, 10)" :key="entry.row">
-									Row {{ entry.row }}: <span class="text-text-primary">{{ entry.email }}</span>
-								</li>
+								<I18nT
+									v-for="entry in validationResult.duplicateEmails.slice(0, 10)"
+									:key="entry.row"
+									keypath="components.contacts.csvImportModal.preview.rowEntry"
+									tag="li"
+									scope="global"
+								>
+									<template #row>{{ entry.row }}</template>
+									<template #value>
+										<span class="text-text-primary">{{ entry.email }}</span>
+									</template>
+								</I18nT>
 								<li v-if="validationResult.duplicateEmails.length > 10" class="text-text-tertiary">
-									...and {{ validationResult.duplicateEmails.length - 10 }} more
+									{{
+										t('components.contacts.csvImportModal.preview.andMore', {
+											count: validationResult.duplicateEmails.length - 10,
+										})
+									}}
 								</li>
 							</ul>
 						</div>
@@ -503,13 +586,30 @@ const topicAssignmentSummary = computed(() => {
 							v-if="validationResult.missingEmails.length > 0"
 							class="p-3 rounded-lg bg-error-subtle border border-error/20"
 						>
-							<h5 class="text-sm font-medium text-error mb-1">Missing Emails</h5>
+							<h5 class="text-sm font-medium text-error mb-1">
+								{{ t('components.contacts.csvImportModal.preview.missingEmailsTitle') }}
+							</h5>
 							<ul class="text-xs text-text-secondary space-y-0.5">
-								<li v-for="rowNum in validationResult.missingEmails.slice(0, 10)" :key="rowNum">
-									Row {{ rowNum }}: <span class="text-text-tertiary">(empty)</span>
-								</li>
+								<I18nT
+									v-for="rowNum in validationResult.missingEmails.slice(0, 10)"
+									:key="rowNum"
+									keypath="components.contacts.csvImportModal.preview.rowEntry"
+									tag="li"
+									scope="global"
+								>
+									<template #row>{{ rowNum }}</template>
+									<template #value>
+										<span class="text-text-tertiary">{{
+											t('components.contacts.csvImportModal.emptyCell')
+										}}</span>
+									</template>
+								</I18nT>
 								<li v-if="validationResult.missingEmails.length > 10" class="text-text-tertiary">
-									...and {{ validationResult.missingEmails.length - 10 }} more
+									{{
+										t('components.contacts.csvImportModal.preview.andMore', {
+											count: validationResult.missingEmails.length - 10,
+										})
+									}}
 								</li>
 							</ul>
 						</div>
@@ -518,15 +618,24 @@ const topicAssignmentSummary = computed(() => {
 
 				<!-- Import Summary -->
 				<div class="mt-4 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-2">Import Summary</h4>
+					<h4 class="text-sm font-medium text-text-primary mb-2">
+						{{ t('components.contacts.csvImportModal.preview.summaryTitle') }}
+					</h4>
 					<ul class="text-sm text-text-secondary space-y-1">
 						<li>
-							{{ csvImport.validContactCount.value }} of
-							{{ csvImport.totalRowCount.value }} contacts will be imported
+							{{
+								t('components.contacts.csvImportModal.preview.summaryCount', {
+									valid: csvImport.validContactCount.value,
+									total: csvImport.totalRowCount.value,
+								})
+							}}
 						</li>
 						<li>
-							Duplicates will be
-							{{ csvImport.handleDuplicates.value === 'skip' ? 'skipped' : 'updated' }}
+							{{
+								csvImport.handleDuplicates.value === 'skip'
+									? t('components.contacts.csvImportModal.preview.summaryDuplicatesSkipped')
+									: t('components.contacts.csvImportModal.preview.summaryDuplicatesUpdated')
+							}}
 						</li>
 						<li v-if="topicAssignmentSummary">
 							<Icon name="lucide:list" class="w-3.5 h-3.5 inline-block mr-1 text-brand" />
@@ -534,10 +643,13 @@ const topicAssignmentSummary = computed(() => {
 						</li>
 						<li v-if="mappedPropertyKeys.length > 0">
 							<Icon name="lucide:tag" class="w-3.5 h-3.5 inline-block mr-1 text-brand" />
-							{{ mappedPropertyKeys.length }} custom propert{{
-								mappedPropertyKeys.length !== 1 ? 'ies' : 'y'
+							{{
+								t(
+									'components.contacts.csvImportModal.preview.summaryProperties',
+									{ count: mappedPropertyKeys.length, keys: mappedPropertyKeys.join(', ') },
+									mappedPropertyKeys.length,
+								)
 							}}
-							will be imported: {{ mappedPropertyKeys.join(', ') }}
 						</li>
 					</ul>
 				</div>
@@ -553,14 +665,22 @@ const topicAssignmentSummary = computed(() => {
 						/>
 					</div>
 					<div class="text-center">
-						<p class="text-lg font-medium text-text-primary">Importing contacts...</p>
-						<p class="text-sm text-text-tertiary mt-1">{{ csvImport.progress.value }}% complete</p>
+						<p class="text-lg font-medium text-text-primary">
+							{{ t('components.contacts.csvImportModal.importing.title') }}
+						</p>
+						<p class="text-sm text-text-tertiary mt-1">
+							{{
+								t('components.contacts.csvImportModal.importing.percent', {
+									percent: csvImport.progress.value,
+								})
+							}}
+						</p>
 					</div>
 					<UiProgressBar
 						class="max-w-xs"
 						size="sm"
 						:value="csvImport.progress.value"
-						aria-label="CSV import progress"
+						:aria-label="t('components.contacts.csvImportModal.importing.progressLabel')"
 					/>
 				</div>
 			</div>
@@ -571,27 +691,29 @@ const topicAssignmentSummary = computed(() => {
 					<div class="p-3 rounded-full bg-success/10">
 						<Icon name="lucide:check" class="w-8 h-8 text-success" />
 					</div>
-					<p class="text-lg font-medium text-text-primary">Import Complete!</p>
+					<p class="text-lg font-medium text-text-primary">
+						{{ t('components.contacts.csvImportModal.complete.title') }}
+					</p>
 				</div>
 				<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
 					<UiStatCard
 						:value="csvImport.results.value?.imported || 0"
-						label="Imported"
+						:label="t('components.contacts.csvImportModal.complete.imported')"
 						variant="success"
 					/>
 					<UiStatCard
 						:value="csvImport.results.value?.updated || 0"
-						label="Updated"
+						:label="t('components.contacts.csvImportModal.complete.updated')"
 						variant="default"
 					/>
 					<UiStatCard
 						:value="csvImport.results.value?.skipped || 0"
-						label="Skipped"
+						:label="t('components.contacts.csvImportModal.complete.skipped')"
 						variant="secondary"
 					/>
 					<UiStatCard
 						:value="csvImport.results.value?.failed || 0"
-						label="Failed"
+						:label="t('components.contacts.csvImportModal.complete.failed')"
 						variant="error"
 					/>
 				</div>
@@ -601,10 +723,13 @@ const topicAssignmentSummary = computed(() => {
 				>
 					<Icon name="lucide:list" class="w-5 h-5 text-brand shrink-0" />
 					<p class="text-sm text-text-secondary">
-						{{ csvImport.results.value.addedToList }} contact{{
-							csvImport.results.value.addedToList !== 1 ? 's' : ''
+						{{
+							t(
+								'components.contacts.csvImportModal.complete.addedToTopics',
+								{ count: csvImport.results.value.addedToList },
+								csvImport.results.value.addedToList,
+							)
 						}}
-						added to topic{{ csvImport.results.value.addedToList !== 1 ? 's' : '' }}
 					</p>
 				</div>
 				<div
@@ -612,7 +737,11 @@ const topicAssignmentSummary = computed(() => {
 					class="p-4 rounded-lg bg-error-subtle border border-error/20"
 				>
 					<h4 class="text-sm font-medium text-error mb-2">
-						Errors (first {{ csvImport.results.value.errors.length }})
+						{{
+							t('components.contacts.csvImportModal.complete.errorsTitle', {
+								count: csvImport.results.value.errors.length,
+							})
+						}}
 					</h4>
 					<ul class="text-sm text-error/80 space-y-1">
 						<li v-for="(error, index) in csvImport.results.value.errors.slice(0, 5)" :key="index">
@@ -626,29 +755,39 @@ const topicAssignmentSummary = computed(() => {
 		<!-- Footer -->
 		<template #footer>
 			<template v-if="csvImport.step.value === 'upload'">
-				<UiButton variant="secondary" @click="csvImport.close()">Cancel</UiButton>
+				<UiButton variant="secondary" @click="csvImport.close()">{{ t('common.cancel') }}</UiButton>
 			</template>
 			<template v-else-if="csvImport.step.value === 'mapping'">
-				<UiButton variant="secondary" @click="csvImport.step.value = 'upload'">Back</UiButton>
-				<UiButton :disabled="!csvImport.isEmailMapped.value" @click="csvImport.goToPreview()"
-					>Continue</UiButton
-				>
+				<UiButton variant="secondary" @click="csvImport.step.value = 'upload'">{{
+					t('common.back')
+				}}</UiButton>
+				<UiButton :disabled="!csvImport.isEmailMapped.value" @click="csvImport.goToPreview()">{{
+					t('common.continue')
+				}}</UiButton>
 			</template>
 			<template v-else-if="csvImport.step.value === 'listMapping'">
-				<UiButton variant="secondary" @click="csvImport.goBackToMappingFromListMapping()"
-					>Back</UiButton
-				>
-				<UiButton @click="csvImport.goToPreviewFromListMapping()">Continue</UiButton>
+				<UiButton variant="secondary" @click="csvImport.goBackToMappingFromListMapping()">{{
+					t('common.back')
+				}}</UiButton>
+				<UiButton @click="csvImport.goToPreviewFromListMapping()">{{
+					t('common.continue')
+				}}</UiButton>
 			</template>
 			<template v-else-if="csvImport.step.value === 'preview'">
-				<UiButton variant="secondary" @click="csvImport.goBackToMapping()">Back</UiButton>
+				<UiButton variant="secondary" @click="csvImport.goBackToMapping()">{{
+					t('common.back')
+				}}</UiButton>
 				<UiButton :disabled="!csvImport.canImport.value" @click="emit('import')">
 					<template #iconLeft><Icon name="lucide:upload" class="w-4 h-4" /></template>
-					Import {{ csvImport.validContactCount.value }} Contacts
+					{{
+						t('components.contacts.csvImportModal.footer.import', {
+							count: csvImport.validContactCount.value,
+						})
+					}}
 				</UiButton>
 			</template>
 			<template v-else-if="csvImport.step.value === 'complete'">
-				<UiButton @click="csvImport.close()">Done</UiButton>
+				<UiButton @click="csvImport.close()">{{ t('common.done') }}</UiButton>
 			</template>
 		</template>
 	</UiModal>

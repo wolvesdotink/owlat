@@ -12,6 +12,8 @@ import type { Id } from '@owlat/api/dataModel';
  * backend grants org owners/admins effective `owner` on every team inbox, so
  * both consumers get the right controls from the same reactive query.
  */
+const { t } = useI18n();
+
 const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
 const {
@@ -37,21 +39,21 @@ const addableMembers = computed(() =>
 
 const error = ref<string | null>(null);
 const addMember = useBackendOperation(api.mail.mailboxMembers.addMember, {
-	label: 'Add member',
+	label: () => t('components.postbox.teamInboxMembersPanel.addMemberOperation'),
 	inlineTarget: error,
 });
 const removeMember = useBackendOperation(api.mail.mailboxMembers.removeMember, {
-	label: 'Remove member',
+	label: () => t('components.postbox.teamInboxMembersPanel.removeMember'),
 	inlineTarget: error,
 });
 const transferOwnership = useBackendOperation(api.mail.mailboxMembers.transferOwnership, {
-	label: 'Transfer ownership',
+	label: () => t('components.postbox.teamInboxMembersPanel.transferOwnershipOperation'),
 	inlineTarget: error,
 });
 const reserveInboxMembership = useBackendOperation(
 	api.mail.pendingInboxMembership.reserveInboxMembership,
 	{
-		label: 'Invite to team inbox',
+		label: () => t('components.postbox.teamInboxMembersPanel.inviteOperation'),
 		inlineTarget: error,
 	}
 );
@@ -60,7 +62,7 @@ const reserveInboxMembership = useBackendOperation(
 // later join.
 const cancelInboxMembership = useBackendOperation(
 	api.mail.pendingInboxMembership.cancelInboxMembershipsForEmail,
-	{ label: 'Undo team-inbox reservation' }
+	{ label: () => t('components.postbox.teamInboxMembersPanel.undoReservationOperation') }
 );
 
 const memberToAdd = ref('');
@@ -98,10 +100,13 @@ async function handleInvite() {
 			}
 			throw inviteErr;
 		}
-		inviteNotice.value = `Invitation sent to ${email}. They'll land in this inbox once they accept.`;
+		inviteNotice.value = t('components.postbox.teamInboxMembersPanel.inviteSent', { email });
 		inviteEmail.value = '';
 	} catch (err) {
-		error.value = err instanceof Error ? err.message : 'Could not send the invitation.';
+		error.value =
+			err instanceof Error
+				? err.message
+				: t('components.postbox.teamInboxMembersPanel.inviteFailed');
 	} finally {
 		inviting.value = false;
 	}
@@ -124,7 +129,8 @@ const transferTarget = ref<{ authUserId: string; label: string } | null>(null);
 function askTransfer(member: { authUserId: string; name: string | null; email: string | null }) {
 	transferTarget.value = {
 		authUserId: member.authUserId,
-		label: member.name || member.email || 'this member',
+		label:
+			member.name || member.email || t('components.postbox.teamInboxMembersPanel.thisMember'),
 	};
 }
 async function confirmTransfer() {
@@ -150,42 +156,52 @@ const busy = computed(
 
 		<!-- Add a member (owners and workspace admins only) -->
 		<section v-if="canManage" class="card p-5">
-			<h2 class="font-semibold mb-3">Add a member</h2>
+			<h2 class="font-semibold mb-3">
+				{{ t('components.postbox.teamInboxMembersPanel.addTitle') }}
+			</h2>
 			<div v-if="addableMembers.length === 0" class="text-sm text-text-secondary">
-				Everyone in your workspace is already a member.
+				{{ t('components.postbox.teamInboxMembersPanel.everyoneAdded') }}
 			</div>
 			<div v-else class="flex items-center gap-2">
 				<select v-model="memberToAdd" class="input flex-1" :disabled="busy">
-					<option value="">Select a teammate…</option>
+					<option value="">
+						{{ t('components.postbox.teamInboxMembersPanel.selectTeammate') }}
+					</option>
 					<option v-for="m in addableMembers" :key="m.userId" :value="m.userId">
-						{{ m.user.name || m.user.email }} ({{ m.user.email }})
+						{{
+							t('components.postbox.teamInboxMembersPanel.memberOption', {
+								name: m.user.name || m.user.email,
+								email: m.user.email,
+							})
+						}}
 					</option>
 				</select>
 				<UiButton :loading="addMember.isLoading.value" :disabled="!memberToAdd" @click="handleAdd">
-					Add
+					{{ t('common.add') }}
 				</UiButton>
 			</div>
 
 			<!-- Invite someone who isn't in the organization yet. Requires the
 			     org-admin permission that issuing an invite needs. -->
 			<div v-if="canManageMembers" class="mt-5 pt-5 border-t border-border-subtle">
-				<h3 class="text-sm font-medium mb-1">Not on the team yet?</h3>
+				<h3 class="text-sm font-medium mb-1">
+					{{ t('components.postbox.teamInboxMembersPanel.notOnTeam') }}
+				</h3>
 				<p class="text-xs text-text-tertiary mb-3">
-					Invite them by email. They'll get an invitation naming this inbox, and it'll be in their
-					sidebar the moment they accept.
+					{{ t('components.postbox.teamInboxMembersPanel.inviteHint') }}
 				</p>
 				<form class="flex items-center gap-2" @submit.prevent="handleInvite">
 					<input
 						v-model="inviteEmail"
 						type="email"
 						required
-						placeholder="name@company.com"
+						:placeholder="t('components.postbox.teamInboxMembersPanel.emailPlaceholder')"
 						class="input flex-1"
 						:disabled="inviting"
-						aria-label="Email address to invite"
+						:aria-label="t('components.postbox.teamInboxMembersPanel.emailLabel')"
 					/>
 					<UiButton type="submit" :loading="inviting" :disabled="!inviteEmail.trim()">
-						Send invite
+						{{ t('components.postbox.teamInboxMembersPanel.sendInvite') }}
 					</UiButton>
 				</form>
 				<p v-if="inviteNotice" class="mt-2 text-sm text-success">{{ inviteNotice }}</p>
@@ -195,16 +211,16 @@ const busy = computed(
 		<!-- Roster -->
 		<section class="card !p-0" :class="canManage ? 'mt-6' : ''">
 			<header class="px-5 py-3 border-b border-border-subtle">
-				<h2 class="font-semibold">Members</h2>
+				<h2 class="font-semibold">{{ t('components.postbox.teamInboxMembersPanel.members') }}</h2>
 			</header>
 			<div v-if="membersLoading && members.length === 0" class="p-8 flex justify-center">
 				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
 			</div>
 			<div v-else-if="membersError" class="p-6 text-sm text-error">
-				Couldn't load the member list. Please try again.
+				{{ t('components.postbox.teamInboxMembersPanel.loadError') }}
 			</div>
 			<div v-else-if="members.length === 0" class="p-8 text-center text-text-secondary">
-				No members yet.
+				{{ t('components.postbox.teamInboxMembersPanel.noMembers') }}
 			</div>
 			<ul v-else class="divide-y divide-border-subtle">
 				<li
@@ -216,8 +232,10 @@ const busy = computed(
 						<UiAvatar :name="m.name" :email="m.email" :image="m.image" deterministic-color />
 						<div class="min-w-0">
 							<p class="font-medium truncate">
-								{{ m.name || m.email || 'Member' }}
-								<span v-if="m.isYou" class="text-xs text-text-tertiary">(you)</span>
+								{{ m.name || m.email || t('components.postbox.teamInboxMembersPanel.member') }}
+								<span v-if="m.isYou" class="text-xs text-text-tertiary">{{
+									t('components.postbox.teamInboxMembersPanel.you')
+								}}</span>
 							</p>
 							<p v-if="m.email" class="text-xs text-text-tertiary truncate">{{ m.email }}</p>
 						</div>
@@ -230,24 +248,28 @@ const busy = computed(
 									? 'bg-brand-subtle text-brand'
 									: 'bg-bg-surface text-text-tertiary'
 							"
-							>{{ m.role === 'owner' ? 'Owner' : 'Member' }}</span
+							>{{
+								m.role === 'owner'
+									? t('components.postbox.teamInboxMembersPanel.owner')
+									: t('components.postbox.teamInboxMembersPanel.member')
+							}}</span
 						>
 						<UiButton
 							v-if="canManage && m.role !== 'owner'"
 							variant="ghost"
 							size="sm"
 							:disabled="busy"
-							title="Make this member the owner"
+							:title="t('components.postbox.teamInboxMembersPanel.makeOwnerTitle')"
 							@click="askTransfer(m)"
 						>
-							Make owner
+							{{ t('components.postbox.teamInboxMembersPanel.makeOwner') }}
 						</UiButton>
 						<button
 							v-if="canManage && m.role !== 'owner'"
 							type="button"
 							class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
-							title="Remove member"
-							aria-label="Remove member"
+							:title="t('components.postbox.teamInboxMembersPanel.removeMember')"
+							:aria-label="t('components.postbox.teamInboxMembersPanel.removeMember')"
 							:disabled="busy"
 							@click="handleRemove(m.authUserId)"
 						>
@@ -259,15 +281,20 @@ const busy = computed(
 		</section>
 
 		<p v-if="!canManage" class="text-xs text-text-tertiary mt-3">
-			Only inbox owners and workspace admins can change who's a member.
+			{{ t('components.postbox.teamInboxMembersPanel.readOnlyNote') }}
 		</p>
 
 		<!-- Confirm ownership transfer (irreversible for the current owner). -->
 		<UiConfirmationDialog
 			:open="!!transferTarget"
-			title="Transfer inbox ownership?"
-			:description="`${transferTarget?.label ?? 'This member'} will become the owner and the current owner will be demoted to a member. Only a workspace admin can transfer it back.`"
-			confirm-text="Make owner"
+			:title="t('components.postbox.teamInboxMembersPanel.transferTitle')"
+			:description="
+				t('components.postbox.teamInboxMembersPanel.transferDescription', {
+					member:
+						transferTarget?.label ?? t('components.postbox.teamInboxMembersPanel.thisMemberCap'),
+				})
+			"
+			:confirm-text="t('components.postbox.teamInboxMembersPanel.makeOwner')"
 			:is-loading="transferOwnership.isLoading.value"
 			@update:open="
 				(v: boolean) => {

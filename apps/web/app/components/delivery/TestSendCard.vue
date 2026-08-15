@@ -16,11 +16,14 @@ const props = defineProps<{
  */
 const emit = defineEmits<{ result: [{ success: boolean }] }>();
 
+const { t, locale } = useI18n();
 const { user } = useAuth();
 const { showToast } = useToast();
 
 const lastTestLabel = computed(() =>
-	props.lastTestSucceededAt ? new Date(props.lastTestSucceededAt).toLocaleString() : null
+	props.lastTestSucceededAt
+		? new Date(props.lastTestSucceededAt).toLocaleString(locale.value)
+		: null
 );
 
 const testEmail = ref('');
@@ -60,7 +63,7 @@ watch(
 );
 
 const { run: sendTest, isLoading: isSending } = useBackendOperation(api.delivery.status.sendTest, {
-	label: 'Send test email',
+	label: () => t('components.delivery.testSendCard.operationLabel'),
 	type: 'action',
 });
 
@@ -70,7 +73,7 @@ async function handleSendTest() {
 	testReceipt.value = null;
 	const to = testEmail.value.trim();
 	if (!isValidEmail(to)) {
-		testError.value = 'Enter a valid recipient email address.';
+		testError.value = t('components.delivery.testSendCard.invalidRecipient');
 		return;
 	}
 	const result = await sendTest({ to });
@@ -89,8 +92,8 @@ async function handleSendTest() {
 			attempts: result.attempts,
 		};
 	}
-	if (result.success) showToast(`Test email accepted for ${to}`);
-	else testError.value = result.error ?? 'Test send failed.';
+	if (result.success) showToast(t('components.delivery.testSendCard.acceptedToast', { email: to }));
+	else testError.value = result.error ?? t('components.delivery.testSendCard.sendFailed');
 	emit('result', { success: result.success });
 }
 </script>
@@ -101,9 +104,11 @@ async function handleSendTest() {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:mail-check" size="sm" variant="surface" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Send a test email</h2>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('components.delivery.testSendCard.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary">
-						Trace readiness through provider acceptance with a real message
+						{{ t('components.delivery.testSendCard.subtitle') }}
 					</p>
 				</div>
 			</div>
@@ -115,8 +120,8 @@ async function handleSendTest() {
 					<UiInput
 						v-model="testEmail"
 						type="email"
-						label="Recipient"
-						placeholder="you@example.com"
+						:label="t('components.delivery.testSendCard.recipientLabel')"
+						:placeholder="t('components.delivery.testSendCard.recipientPlaceholder')"
 						:error="testError"
 						:disabled="isSending"
 					/>
@@ -125,7 +130,11 @@ async function handleSendTest() {
 					<template #iconLeft>
 						<Icon v-if="!isSending" name="lucide:send" class="w-4 h-4" />
 					</template>
-					{{ isSending ? 'Sending…' : 'Send test email' }}
+					{{
+						isSending
+							? t('components.delivery.testSendCard.sending')
+							: t('components.delivery.testSendCard.sendButton')
+					}}
 				</UiButton>
 			</div>
 
@@ -150,21 +159,31 @@ async function handleSendTest() {
 				</div>
 			</div>
 
-			<p v-if="testReceipt" class="max-w-xl text-xs text-text-tertiary break-all">
-				{{ testReceipt.provider }} accepted message {{ testReceipt.providerMessageId }} in
-				{{ testReceipt.latencyMs }} ms after {{ testReceipt.attempts }}
-				{{ testReceipt.attempts === 1 ? 'attempt' : 'attempts' }}. Recipient delivery is
-				<em>not</em> confirmed by this acceptance; verify it in the recipient inbox or provider
-				feedback.
-			</p>
+			<I18nT
+				v-if="testReceipt"
+				keypath="components.delivery.testSendCard.receipt"
+				tag="p"
+				scope="global"
+				class="max-w-xl text-xs text-text-tertiary break-all"
+			>
+				<template #provider>{{ testReceipt.provider }}</template>
+				<template #messageId>{{ testReceipt.providerMessageId }}</template>
+				<template #latencyMs>{{ testReceipt.latencyMs }}</template>
+				<template #attempts>
+					{{ t('components.delivery.testSendCard.receiptAttempts', testReceipt.attempts) }}
+				</template>
+				<template #not>
+					<em>{{ t('components.delivery.testSendCard.receiptNot') }}</em>
+				</template>
+			</I18nT>
 
 			<p v-if="!canSend" class="text-xs text-warning flex items-center gap-1.5">
 				<Icon name="lucide:alert-circle" class="w-3.5 h-3.5" />
-				Configure a delivery provider before sending a test.
+				{{ t('components.delivery.testSendCard.needsProvider') }}
 			</p>
 			<p v-else-if="lastTestLabel" class="text-xs text-success flex items-center gap-1.5">
 				<Icon name="lucide:check" class="w-3.5 h-3.5" />
-				Last successful test: {{ lastTestLabel }}
+				{{ t('components.delivery.testSendCard.lastSuccess', { timestamp: lastTestLabel }) }}
 			</p>
 		</div>
 	</UiCard>

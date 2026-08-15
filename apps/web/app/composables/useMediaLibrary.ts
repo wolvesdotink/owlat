@@ -3,6 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
 
 export function useMediaLibrary() {
+	const { t } = useI18n();
 	const { showToast } = useToast();
 
 	// Filter state — search is debounced so each keystroke doesn't tear down and
@@ -34,7 +35,7 @@ export function useMediaLibrary() {
 	// grid is filled or the list is exhausted — capped so a rare match can't
 	// scan the whole table.
 	const hasActiveFilter = computed(
-		() => !!(debouncedSearch.value || selectedTag.value || selectedTypes.value.length),
+		() => !!(debouncedSearch.value || selectedTag.value || selectedTypes.value.length)
 	);
 	const MAX_AUTO_LOADS = 8;
 	let autoLoadCount = 0;
@@ -78,16 +79,16 @@ export function useMediaLibrary() {
 
 	// Mutations
 	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
-		label: 'Get upload URL',
+		label: () => t('shared.useMediaLibrary.operations.getUploadUrl'),
 	});
 	const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
-		label: 'Save media asset',
+		label: () => t('shared.useMediaLibrary.operations.saveAsset'),
 	});
 	const { run: updateMediaAsset } = useBackendOperation(api.mediaAssets.update, {
-		label: 'Update media asset',
+		label: () => t('shared.useMediaLibrary.operations.updateAsset'),
 	});
 	const { run: bulkDeleteAssets } = useBackendOperation(api.mediaAssets.bulkDelete, {
-		label: 'Delete media assets',
+		label: () => t('shared.useMediaLibrary.operations.deleteAssets'),
 	});
 
 	// Upload files
@@ -99,12 +100,14 @@ export function useMediaLibrary() {
 				files.map(async (file) => {
 					const upload = await uploadFileToStorage(file, () => generateUploadUrl({}));
 					if (!upload.ok) {
+						// Diagnostic only — `allSettled` below counts the rejections and
+						// the toast reports the count; these strings never reach the UI.
 						throw new Error(
 							upload.reason === 'no-url'
 								? 'Failed to get upload URL'
 								: upload.reason === 'upload-failed'
 									? 'Upload failed'
-									: 'Upload did not return a storage id',
+									: 'Upload did not return a storage id'
 						);
 					}
 					const storageId = upload.storageId;
@@ -123,7 +126,7 @@ export function useMediaLibrary() {
 			);
 			const failed = results.filter((r) => r.status === 'rejected').length;
 			if (failed > 0) {
-				showToast(`${failed} file(s) failed to upload`, 'error');
+				showToast(t('shared.useMediaLibrary.toasts.uploadFailed', { count: failed }), 'error');
 			}
 		} finally {
 			isUploading.value = false;

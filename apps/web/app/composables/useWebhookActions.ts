@@ -7,16 +7,22 @@ const REGENERATED_SECRET_KEY = 'webhook-regenerated-secret';
 /**
  * Composable for webhook toggle, regenerate secret, and delete operations.
  */
-export function useWebhookActions(showNotification: (message: string, type?: 'success' | 'error') => void) {
+export function useWebhookActions(
+	showNotification: (message: string, type?: 'success' | 'error') => void
+) {
+	const { t } = useI18n();
 	const { copy, isCopied, reset: resetCopied } = useCopyToClipboard();
 	const { run: toggleWebhookMutation } = useBackendOperation(api.webhooks.endpoints.toggle, {
-		label: 'Toggle webhook',
+		label: () => t('shared.useWebhookActions.toggleWebhook'),
 	});
-	const { run: regenerateSecretMutation } = useBackendOperation(api.webhooks.endpoints.regenerateSecret, {
-		label: 'Regenerate webhook secret',
-	});
+	const { run: regenerateSecretMutation } = useBackendOperation(
+		api.webhooks.endpoints.regenerateSecret,
+		{
+			label: () => t('shared.useWebhookActions.regenerateSecret'),
+		}
+	);
 	const { run: deleteWebhookMutation } = useBackendOperation(api.webhooks.endpoints.remove, {
-		label: 'Delete webhook',
+		label: () => t('shared.useWebhookActions.deleteWebhook'),
 	});
 
 	// --- Toggle ---
@@ -27,7 +33,11 @@ export function useWebhookActions(showNotification: (message: string, type?: 'su
 		const result = await toggleWebhookMutation({ webhookId });
 		togglingWebhookId.value = null;
 		if (result === undefined) return;
-		showNotification(result.isActive ? 'Webhook enabled' : 'Webhook disabled');
+		showNotification(
+			result.isActive
+				? t('shared.useWebhookActions.webhookEnabled')
+				: t('shared.useWebhookActions.webhookDisabled')
+		);
 	};
 
 	// --- Regenerate Secret ---
@@ -64,7 +74,7 @@ export function useWebhookActions(showNotification: (message: string, type?: 'su
 			return;
 		}
 		regeneratedSecret.value = result.secret ?? null;
-		showNotification('Webhook secret regenerated');
+		showNotification(t('shared.useWebhookActions.secretRegenerated'));
 	};
 
 	const copyRegeneratedSecret = async () => {
@@ -72,7 +82,7 @@ export function useWebhookActions(showNotification: (message: string, type?: 'su
 
 		const ok = await copy(regeneratedSecret.value, REGENERATED_SECRET_KEY);
 		if (!ok) {
-			showNotification('Failed to copy to clipboard', 'error');
+			showNotification(t('shared.useWebhookActions.copyFailed'), 'error');
 		}
 	};
 
@@ -98,7 +108,7 @@ export function useWebhookActions(showNotification: (message: string, type?: 'su
 		const result = await deleteWebhookMutation({ webhookId: webhookToDelete.value.id });
 		isDeleting.value = false;
 		if (result === undefined) return;
-		showNotification('Webhook deleted');
+		showNotification(t('shared.useWebhookActions.webhookDeleted'));
 		closeDeleteModal();
 	};
 

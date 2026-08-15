@@ -23,6 +23,7 @@ import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 
 import DnsRecordList from '../DnsRecordList.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { deriveHostnames } from '~/lib/desktop/provisioning';
 import { buildDnsRecords } from '~/lib/desktop/provisioningForm';
 
@@ -35,6 +36,8 @@ const copyMock = vi.fn((_text: string, key?: string) => {
 enableAutoUnmount(afterEach);
 
 beforeAll(() => {
+	// The table renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useCopyToClipboard', () => ({
 		copy: copyMock,
 		isCopied: (key: string) => copiedKey.value === key,
@@ -53,7 +56,7 @@ type Rec = { name: string; type: string; value: string; placeholder?: boolean; n
 function mountList(records: Rec[]) {
 	return mount(DnsRecordList, {
 		props: { records },
-		global: { components: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], components: { Icon: iconStub } },
 	});
 }
 

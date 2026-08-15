@@ -9,6 +9,8 @@
  */
 import { connectedAppCapabilityLabel } from '~/utils/connectedAppCapabilities';
 
+const { t } = useI18n();
+
 interface RegistrablePlugin {
 	readonly pluginId: string;
 	readonly capabilities: readonly string[];
@@ -99,16 +101,15 @@ function isValidHttpsUrl(value: string): boolean {
 function goToCapabilities() {
 	detailsError.value = null;
 	if (!pluginId.value) {
-		detailsError.value = 'Choose the plugin this app connects to.';
+		detailsError.value = t('components.settings.connectedApps.connectedAppRegisterModal.choosePluginError');
 		return;
 	}
 	if (!name.value.trim()) {
-		detailsError.value = 'Give the connected app a name.';
+		detailsError.value = t('components.settings.connectedApps.connectedAppRegisterModal.nameRequiredError');
 		return;
 	}
 	if (!isValidHttpsUrl(endpointUrl.value.trim())) {
-		detailsError.value =
-			'Enter a valid HTTPS endpoint URL with no embedded credentials (e.g. https://hooks.example.com/owlat).';
+		detailsError.value = t('components.settings.connectedApps.connectedAppRegisterModal.endpointError');
 		return;
 	}
 	step.value = 'capabilities';
@@ -145,7 +146,7 @@ const canSubmit = computed(
 <template>
 	<UiModal
 		:open="open"
-		title="Connect an app"
+		:title="t('components.settings.connectedApps.connectedAppRegisterModal.title')"
 		size="lg"
 		:closable="!isSubmitting"
 		:persistent="isSubmitting"
@@ -155,14 +156,14 @@ const canSubmit = computed(
 		<div v-if="plugins.length === 0" class="py-6">
 			<UiEmptyState
 				icon="lucide:puzzle"
-				title="No plugins to connect"
-				description="Connected apps bind to a bundled plugin. Add a plugin to this deployment's build before connecting an external app."
+				:title="t('components.settings.connectedApps.connectedAppRegisterModal.noPluginsTitle')"
+				:description="t('components.settings.connectedApps.connectedAppRegisterModal.noPluginsDescription')"
 			/>
 		</div>
 
 		<!-- Step 1 — details -->
 		<form v-else-if="step === 'details'" @submit.prevent="goToCapabilities">
-			<h3 ref="detailsHeading" tabindex="-1" class="sr-only">Step 1 of 2: connection details</h3>
+			<h3 ref="detailsHeading" tabindex="-1" class="sr-only">{{ t('components.settings.connectedApps.connectedAppRegisterModal.detailsStepHeading') }}</h3>
 			<div
 				v-if="detailsError"
 				role="alert"
@@ -174,7 +175,7 @@ const canSubmit = computed(
 
 			<div v-if="plugins.length > 1" class="mb-5">
 				<label for="connected-app-plugin" class="label">
-					Plugin <span class="text-error">*</span>
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.pluginLabel') }} <span class="text-error">*</span>
 				</label>
 				<select
 					id="connected-app-plugin"
@@ -182,7 +183,7 @@ const canSubmit = computed(
 					class="input"
 					:disabled="isSubmitting"
 				>
-					<option value="" disabled>Select a plugin…</option>
+					<option value="" disabled>{{ t('components.settings.connectedApps.connectedAppRegisterModal.pluginPlaceholder') }}</option>
 					<option v-for="plugin in plugins" :key="plugin.pluginId" :value="plugin.pluginId">
 						{{ plugin.pluginId }}
 					</option>
@@ -191,24 +192,24 @@ const canSubmit = computed(
 
 			<div class="mb-5">
 				<label for="connected-app-name" class="label">
-					Name <span class="text-error">*</span>
+					{{ t('common.name') }} <span class="text-error">*</span>
 				</label>
 				<input
 					id="connected-app-name"
 					v-model="name"
 					type="text"
 					class="input"
-					placeholder="e.g. Slack approvals"
+					:placeholder="t('components.settings.connectedApps.connectedAppRegisterModal.namePlaceholder')"
 					:disabled="isSubmitting"
 				/>
 				<p class="mt-1 text-xs text-text-tertiary">
-					A label to recognize this connection later.
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.nameHint') }}
 				</p>
 			</div>
 
 			<div>
 				<label for="connected-app-endpoint" class="label">
-					Hook endpoint <span class="text-error">*</span>
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.endpointLabel') }} <span class="text-error">*</span>
 				</label>
 				<input
 					id="connected-app-endpoint"
@@ -216,12 +217,11 @@ const canSubmit = computed(
 					type="url"
 					inputmode="url"
 					class="input"
-					placeholder="https://hooks.example.com/owlat"
+					:placeholder="t('components.settings.connectedApps.connectedAppRegisterModal.endpointPlaceholder')"
 					:disabled="isSubmitting"
 				/>
 				<p class="mt-1 text-xs text-text-tertiary">
-					Owlat signs and delivers hooks to this HTTPS URL. It must be publicly reachable — internal
-					and private addresses are rejected.
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.endpointHint') }}
 				</p>
 			</div>
 		</form>
@@ -233,20 +233,20 @@ const canSubmit = computed(
 				tabindex="-1"
 				class="mb-5 p-4 rounded-lg bg-warning/10 border border-warning/20 outline-none focus-visible:ring-2 focus-visible:ring-warning/50"
 				role="note"
-				aria-label="Connected app risk disclosure"
+				:aria-label="t('components.settings.connectedApps.connectedAppRegisterModal.riskDisclosureLabel')"
 			>
 				<div class="flex items-start gap-3">
 					<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div class="text-sm text-warning/90 space-y-1">
-						<p class="font-medium text-warning">You're granting an external app access</p>
+						<p class="font-medium text-warning">{{ t('components.settings.connectedApps.connectedAppRegisterModal.riskTitle') }}</p>
 						<p>
-							This connects an outside service to your workspace. It will hold a shared secret and
-							can call Owlat with the capabilities you grant below.
+							{{ t('components.settings.connectedApps.connectedAppRegisterModal.riskBody') }}
 						</p>
-						<p>
-							A connected app can only ever <strong>add work or caution</strong> — it can never
-							approve, unblock, or send on your behalf, and it cannot remove Owlat's safety checks.
-						</p>
+						<I18nT keypath="components.settings.connectedApps.connectedAppRegisterModal.riskLimits" tag="p" scope="global">
+							<template #emphasis>
+								<strong>{{ t('components.settings.connectedApps.connectedAppRegisterModal.riskLimitsEmphasis') }}</strong>
+							</template>
+						</I18nT>
 					</div>
 				</div>
 			</div>
@@ -262,14 +262,13 @@ const canSubmit = computed(
 
 			<fieldset :disabled="isSubmitting">
 				<legend class="label">
-					Capabilities to grant <span class="text-error">*</span>
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.capabilitiesLegend') }} <span class="text-error">*</span>
 				</legend>
 				<p class="mb-2 text-xs text-text-tertiary">
-					Grant only what this app needs. Each is a capability the plugin declared; you can grant a
-					subset, never more.
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.capabilitiesHint') }}
 				</p>
 				<div v-if="availableCapabilities.length === 0" class="text-sm text-text-tertiary py-2">
-					This plugin declares no capabilities to grant.
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.noCapabilities') }}
 				</div>
 				<div v-else class="space-y-2">
 					<label
@@ -299,20 +298,20 @@ const canSubmit = computed(
 
 		<template #footer>
 			<template v-if="plugins.length === 0">
-				<UiButton variant="secondary" @click="emit('close')">Close</UiButton>
+				<UiButton variant="secondary" @click="emit('close')">{{ t('common.close') }}</UiButton>
 			</template>
 			<template v-else-if="step === 'details'">
 				<UiButton variant="secondary" :disabled="isSubmitting" @click="emit('close')">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
-				<UiButton variant="primary" @click="goToCapabilities">Continue</UiButton>
+				<UiButton variant="primary" @click="goToCapabilities">{{ t('common.continue') }}</UiButton>
 			</template>
 			<template v-else>
 				<UiButton variant="secondary" :disabled="isSubmitting" @click="goBack">
-					Back
+					{{ t('common.back') }}
 				</UiButton>
 				<UiButton variant="primary" :loading="isSubmitting" :disabled="!canSubmit" @click="submit">
-					Register app
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.submit') }}
 				</UiButton>
 			</template>
 		</template>

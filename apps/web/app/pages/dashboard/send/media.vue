@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Media Library — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.send.media.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -33,12 +35,16 @@ const {
 // to owner/admin), so hide those affordances for non-admin members.
 const { isAdmin } = usePermissions();
 
-const typeFilterOptions = [
-	{ value: 'image/', label: 'Images', icon: 'lucide:image' },
-	{ value: 'application/pdf', label: 'PDF', icon: 'lucide:file-text' },
-	{ value: 'video/', label: 'Video', icon: 'lucide:film' },
-	{ value: 'audio/', label: 'Audio', icon: 'lucide:music' },
-];
+const typeFilterOptions = computed(() => [
+	{ value: 'image/', label: t('dashboard.send.media.types.images'), icon: 'lucide:image' },
+	{
+		value: 'application/pdf',
+		label: t('dashboard.send.media.types.pdf'),
+		icon: 'lucide:file-text',
+	},
+	{ value: 'video/', label: t('dashboard.send.media.types.video'), icon: 'lucide:film' },
+	{ value: 'audio/', label: t('dashboard.send.media.types.audio'), icon: 'lucide:music' },
+]);
 
 const toggleTypeFilter = (value: string) => {
 	const idx = selectedTypes.value.indexOf(value);
@@ -123,7 +129,7 @@ const { copy: copyToClipboard } = useCopyToClipboard();
 const copyUrl = async (url: string) => {
 	await copyToClipboard(url);
 	const { showToast } = useToast();
-	showToast('URL copied to clipboard');
+	showToast(t('dashboard.send.media.urlCopied'));
 };
 </script>
 
@@ -137,9 +143,16 @@ const copyUrl = async (url: string) => {
 		<!-- Header -->
 		<div class="flex items-center justify-between mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Media Library</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.send.media.title') }}
+				</h1>
 				<p v-if="stats" class="text-sm text-text-secondary mt-1">
-					{{ stats.totalCount }} files &middot; {{ formatCompactFileSize(stats.totalBytes) }} used
+					{{
+						t('dashboard.send.media.stats', {
+							count: stats.totalCount,
+							size: formatCompactFileSize(stats.totalBytes),
+						})
+					}}
 				</p>
 			</div>
 			<div v-if="isAdmin" class="flex items-center gap-2">
@@ -153,13 +166,13 @@ const copyUrl = async (url: string) => {
 					<template #iconLeft>
 						<Icon name="lucide:trash-2" class="w-4 h-4" />
 					</template>
-					Delete ({{ selectedAssets.size }})
+					{{ t('dashboard.send.media.deleteSelected', { count: selectedAssets.size }) }}
 				</UiButton>
 				<UiButton variant="primary" size="sm" :loading="isUploading" @click="fileInputRef?.click()">
 					<template #iconLeft>
 						<Icon name="lucide:upload" class="w-4 h-4" />
 					</template>
-					Upload
+					{{ t('common.upload') }}
 				</UiButton>
 				<input
 					ref="fileInputRef"
@@ -175,7 +188,7 @@ const copyUrl = async (url: string) => {
 		<!-- Filters -->
 		<div class="flex items-center gap-3 mb-6">
 			<div class="flex-1 max-w-sm">
-				<UiInput v-model="searchQuery" placeholder="Search media..." />
+				<UiInput v-model="searchQuery" :placeholder="t('dashboard.send.media.searchPlaceholder')" />
 			</div>
 			<div class="flex items-center gap-1.5">
 				<button
@@ -198,7 +211,7 @@ const copyUrl = async (url: string) => {
 				v-if="tags && tags.length > 0"
 				v-model="selectedTag"
 				:options="tagFilterOptions"
-				placeholder="All tags"
+				:placeholder="t('dashboard.send.media.allTags')"
 			/>
 		</div>
 
@@ -219,7 +232,9 @@ const copyUrl = async (url: string) => {
 					class="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-brand rounded-xl bg-bg-elevated"
 				>
 					<Icon name="lucide:upload-cloud" class="w-12 h-12 text-brand" />
-					<p class="text-lg font-medium text-text-primary">Drop files to upload</p>
+					<p class="text-lg font-medium text-text-primary">
+						{{ t('dashboard.send.media.dropToUpload') }}
+					</p>
 				</div>
 			</div>
 		</Transition>
@@ -232,11 +247,11 @@ const copyUrl = async (url: string) => {
 		<!-- Empty state -->
 		<UiEmptyState
 			v-else-if="assets.length === 0 && !searchQuery && !selectedTag && selectedTypes.length === 0"
-			title="No media yet"
+			:title="t('dashboard.send.media.emptyTitle')"
 			:description="
 				isAdmin
-					? 'Upload images to use across your email templates.'
-					: 'Media will appear here once an admin uploads it.'
+					? t('dashboard.send.media.emptyDescriptionAdmin')
+					: t('dashboard.send.media.emptyDescriptionMember')
 			"
 			icon="lucide:image"
 		>
@@ -244,13 +259,13 @@ const copyUrl = async (url: string) => {
 				<template #iconLeft>
 					<Icon name="lucide:upload" class="w-4 h-4" />
 				</template>
-				Upload your first image
+				{{ t('dashboard.send.media.uploadFirst') }}
 			</UiButton>
 		</UiEmptyState>
 
 		<!-- No results -->
 		<div v-else-if="assets.length === 0" class="text-center py-16 text-text-secondary">
-			No media found matching your search.
+			{{ t('dashboard.send.media.noResults') }}
 		</div>
 
 		<!-- Asset grid -->
@@ -310,13 +325,15 @@ const copyUrl = async (url: string) => {
 
 		<!-- Load more -->
 		<div v-if="status === 'CanLoadMore'" class="flex justify-center mt-8">
-			<UiButton variant="outline" size="sm" @click="loadMore(24)"> Load more </UiButton>
+			<UiButton variant="outline" size="sm" @click="loadMore(24)">
+				{{ t('dashboard.send.media.loadMore') }}
+			</UiButton>
 		</div>
 
 		<!-- Detail Modal -->
 		<UiModal
 			:open="!!detailAsset"
-			title="Asset Details"
+			:title="t('dashboard.send.media.detailTitle')"
 			size="lg"
 			@update:open="
 				(v: boolean) => {
@@ -359,23 +376,35 @@ const copyUrl = async (url: string) => {
 							<p v-if="usageCount !== null" class="text-xs text-text-secondary mt-1">
 								{{
 									usageCount === 0
-										? 'Not used in any email yet'
-										: `Used in ${usageCount} email${usageCount === 1 ? '' : 's'}`
+										? t('dashboard.send.media.usageNone')
+										: t('dashboard.send.media.usageCount', { count: usageCount }, usageCount)
 								}}
 							</p>
 						</div>
 
 						<template v-if="isAdmin">
-							<UiInput v-model="editAlt" label="Alt text" placeholder="Describe this image..." />
-							<UiInput v-model="editTags" label="Tags" placeholder="Comma-separated tags..." />
+							<UiInput
+								v-model="editAlt"
+								:label="t('dashboard.send.media.altText')"
+								:placeholder="t('dashboard.send.media.altPlaceholder')"
+							/>
+							<UiInput
+								v-model="editTags"
+								:label="t('dashboard.send.media.tags')"
+								:placeholder="t('dashboard.send.media.tagsPlaceholder')"
+							/>
 						</template>
 						<template v-else>
 							<div v-if="detailAsset.alt">
-								<p class="text-xs font-medium text-text-secondary mb-1">Alt text</p>
+								<p class="text-xs font-medium text-text-secondary mb-1">
+									{{ t('dashboard.send.media.altText') }}
+								</p>
 								<p class="text-sm text-text-primary">{{ detailAsset.alt }}</p>
 							</div>
 							<div v-if="detailAsset.tags && detailAsset.tags.length">
-								<p class="text-xs font-medium text-text-secondary mb-1">Tags</p>
+								<p class="text-xs font-medium text-text-secondary mb-1">
+									{{ t('dashboard.send.media.tags') }}
+								</p>
 								<p class="text-sm text-text-primary">{{ detailAsset.tags.join(', ') }}</p>
 							</div>
 						</template>
@@ -385,7 +414,7 @@ const copyUrl = async (url: string) => {
 								<template #iconLeft>
 									<Icon name="lucide:copy" class="w-3.5 h-3.5" />
 								</template>
-								Copy URL
+								{{ t('dashboard.send.media.copyUrl') }}
 							</UiButton>
 							<UiButton
 								v-if="isAdmin"
@@ -400,7 +429,7 @@ const copyUrl = async (url: string) => {
 								<template #iconLeft>
 									<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
 								</template>
-								Delete
+								{{ t('common.delete') }}
 							</UiButton>
 						</div>
 					</div>
@@ -409,18 +438,20 @@ const copyUrl = async (url: string) => {
 
 			<template #footer>
 				<UiButton variant="secondary" @click="detailAsset = null">{{
-					isAdmin ? 'Cancel' : 'Close'
+					isAdmin ? t('common.cancel') : t('common.close')
 				}}</UiButton>
-				<UiButton v-if="isAdmin" variant="primary" @click="saveDetail">Save</UiButton>
+				<UiButton v-if="isAdmin" variant="primary" @click="saveDetail">
+					{{ t('common.save') }}
+				</UiButton>
 			</template>
 		</UiModal>
 
 		<!-- Bulk delete confirmation -->
 		<UiConfirmationDialog
 			:open="showDeleteConfirm"
-			title="Delete selected media"
-			:description="`Are you sure you want to delete ${selectedAssets.size} selected asset(s)? This cannot be undone.`"
-			confirm-text="Delete"
+			:title="t('dashboard.send.media.deleteTitle')"
+			:description="t('dashboard.send.media.deleteDescription', { count: selectedAssets.size })"
+			:confirm-text="t('common.delete')"
 			variant="danger"
 			@confirm="handleBulkDelete"
 			@cancel="showDeleteConfirm = false"

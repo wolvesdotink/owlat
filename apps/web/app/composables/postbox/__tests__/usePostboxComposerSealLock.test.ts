@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, type Ref } from 'vue';
 
 import type { SealState } from '~/utils/sealComposer';
+import { createTestI18n } from '~/__tests__/i18n';
 import {
 	usePostboxComposerSealLock,
 	type SealGateSendOptions,
@@ -26,6 +27,10 @@ let sealStateData: Ref<SealState | undefined>;
 let flagOn: boolean;
 const toasts: string[] = [];
 
+// The gate is called outside a component, so `useI18n` is stubbed with the real
+// catalog's `t` — the toast assertions below stay the English a sender reads.
+const { t } = createTestI18n().global;
+
 beforeEach(() => {
 	sealStateData = ref<SealState | undefined>(undefined);
 	flagOn = true;
@@ -33,6 +38,7 @@ beforeEach(() => {
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => flagOn }));
 	vi.stubGlobal('useToast', () => ({ showToast: (message: string) => void toasts.push(message) }));
 	vi.stubGlobal('useConvexQuery', () => ({ data: sealStateData }));
+	vi.stubGlobal('useI18n', () => ({ t }));
 });
 
 function mountGate() {

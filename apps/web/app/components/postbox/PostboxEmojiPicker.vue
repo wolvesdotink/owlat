@@ -10,6 +10,8 @@
  */
 import type { PostboxEmoji } from '~/utils/postboxEmojiData';
 
+const { t } = useI18n();
+
 const props = defineProps<{
 	items: readonly PostboxEmoji[];
 	activeIndex: number;
@@ -38,7 +40,7 @@ watch(
 		class="postbox-emoji-picker absolute z-30 max-h-56 w-64 overflow-y-auto rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
 		:style="barStyle"
 		role="listbox"
-		aria-label="Emoji"
+		:aria-label="t('components.postbox.postboxEmojiPicker.listLabel')"
 		@mousedown.prevent
 	>
 		<button

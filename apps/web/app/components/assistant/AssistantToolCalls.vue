@@ -9,23 +9,29 @@ export interface AssistantToolCall {
 
 const props = defineProps<{ toolCalls: AssistantToolCall[] }>();
 
+const { t } = useI18n();
+
 const open = ref(false);
 
-const TOOL_LABELS: Record<string, string> = {
-	searchKnowledge: 'Searched knowledge',
-	searchFiles: 'Searched files',
-	searchEverything: 'Searched workspace',
-	getCampaignStats: 'Looked up campaign stats',
-	getEmailStats: 'Looked up email stats',
-	draftEmailReply: 'Drafted an email reply',
-	draftCampaignCopy: 'Drafted campaign copy',
+/** Tool name → message key; an unknown tool falls back to its raw name. */
+const TOOL_LABEL_KEYS: Record<string, string> = {
+	searchKnowledge: 'components.assistant.assistantToolCalls.tools.searchKnowledge',
+	searchFiles: 'components.assistant.assistantToolCalls.tools.searchFiles',
+	searchEverything: 'components.assistant.assistantToolCalls.tools.searchEverything',
+	getCampaignStats: 'components.assistant.assistantToolCalls.tools.getCampaignStats',
+	getEmailStats: 'components.assistant.assistantToolCalls.tools.getEmailStats',
+	draftEmailReply: 'components.assistant.assistantToolCalls.tools.draftEmailReply',
+	draftCampaignCopy: 'components.assistant.assistantToolCalls.tools.draftCampaignCopy',
 };
 
-const label = (name: string) => TOOL_LABELS[name] ?? name;
+const label = (name: string) => {
+	const key = TOOL_LABEL_KEYS[name];
+	return key === undefined ? name : t(key);
+};
 const summary = computed(() =>
 	props.toolCalls.length === 1
 		? label(props.toolCalls[0]!.toolName)
-		: `Used ${props.toolCalls.length} tools`,
+		: t('components.assistant.assistantToolCalls.summary', { count: props.toolCalls.length }),
 );
 </script>
 

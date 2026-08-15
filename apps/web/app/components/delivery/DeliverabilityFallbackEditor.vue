@@ -13,6 +13,8 @@ const props = defineProps<{
 	providerLabel: (providerType: string) => string;
 }>();
 
+const { t } = useI18n();
+
 const isEnabled = defineModel<boolean>("enabled", { required: true });
 const relay = defineModel<string>("relay", { required: true });
 const isWarmupOverflowEnabled = defineModel<boolean>("warmupOverflow", { required: true });
@@ -40,18 +42,19 @@ watch(
 				class="mt-1 rounded border-border-subtle text-brand focus:ring-brand"
 			/>
 			<span>
-				<span class="block text-sm font-medium text-text-primary"
-					>Automatic relay escape hatch</span
-				>
+				<span class="block text-sm font-medium text-text-primary">
+					{{ t('components.delivery.deliverabilityFallbackEditor.escapeHatchLabel') }}
+				</span>
 				<span class="block text-xs text-text-tertiary mt-0.5">
-					Move only an affected destination-provider slice off owned IPs. The sending domain must be
-					currently verified for the relay; credentials alone never count.
+					{{ t('components.delivery.deliverabilityFallbackEditor.escapeHatchHint') }}
 				</span>
 			</span>
 		</label>
 		<div v-if="isEnabled" class="space-y-3 pl-7">
 			<div>
-				<label for="fallback-relay" class="label">Verified relay</label>
+				<label for="fallback-relay" class="label">
+					{{ t('components.delivery.deliverabilityFallbackEditor.relayLabel') }}
+				</label>
 				<select id="fallback-relay" v-model="relay" class="input">
 					<option
 						v-for="provider in enabledRelays"
@@ -62,15 +65,10 @@ watch(
 					</option>
 				</select>
 				<p v-if="!enabledRelays.length" class="mt-1 text-xs text-warning">
-					Enable a relay above first — the escape hatch needs somewhere to move traffic to, and your
-					own MTA is what it moves traffic away from.
+					{{ t('components.delivery.deliverabilityFallbackEditor.noRelayEnabled') }}
 				</p>
 				<p class="mt-1 text-xs text-text-tertiary">
-					Any enabled relay can be the escape hatch. Saving starts identity provisioning for that
-					relay on every verified owned-MTA domain, but fallback cannot activate until each domain's
-					DNS and provider status are verified — credentials alone never count. Publish the single
-					merged apex SPF when one is shown; otherwise preserve the reviewed manual primary SPF.
-					Never add a second SPF record.
+					{{ t('components.delivery.deliverabilityFallbackEditor.relayHint') }}
 				</p>
 			</div>
 			<label v-if="messageType === 'campaign'" class="flex items-start gap-2 cursor-pointer">
@@ -80,8 +78,7 @@ watch(
 					class="mt-0.5 rounded border-border-subtle text-brand focus:ring-brand"
 				/>
 				<span class="text-sm text-text-secondary">
-					Send overflow above the owned-IP warming cap through this relay. Owned-IP counters and
-					caps remain unchanged.
+					{{ t('components.delivery.deliverabilityFallbackEditor.warmupOverflowLabel') }}
 				</span>
 			</label>
 		</div>

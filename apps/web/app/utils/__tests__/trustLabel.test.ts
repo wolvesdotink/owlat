@@ -17,13 +17,25 @@ import {
 	TRUST_UNCHECKED_REASON,
 	trustFlagReason,
 	trustLabel,
+	type TrustMessage,
 } from '../trustLabel';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The module is a module-scope vocabulary, so its copy arrives as catalog keys
+ * (with params where the sentence interpolates). Rendering them through the real
+ * catalog is exactly what the badge and its popover do, so the assertions below
+ * stay in the words a reviewer reads.
+ */
+const { t: translate } = createTestI18n().global;
+const render = (message: TrustMessage): string =>
+	typeof message === 'string' ? translate(message) : translate(message.key, message.params ?? {});
 
 describe('trustLabel level boundaries', () => {
 	it('maps a clean high score to Ready to send', () => {
 		const t = trustLabel(0.8, []);
 		expect(t.level).toBe('ready');
-		expect(t.label).toBe('Ready to send');
+		expect(render(t.label)).toBe('Ready to send');
 		expect(t.variant).toBe('success');
 		expect(t.reasons.length).toBeGreaterThan(0);
 	});
@@ -31,14 +43,14 @@ describe('trustLabel level boundaries', () => {
 	it('maps a mid score to Worth a look', () => {
 		expect(trustLabel(0.6, []).level).toBe('look');
 		expect(trustLabel(0.79, []).level).toBe('look');
-		expect(trustLabel(0.7, []).label).toBe('Worth a look');
+		expect(render(trustLabel(0.7, []).label)).toBe('Worth a look');
 		expect(trustLabel(0.7, []).variant).toBe('warning');
 	});
 
 	it('maps a low score to Needs you', () => {
 		const t = trustLabel(0.59, []);
 		expect(t.level).toBe('needs-you');
-		expect(t.label).toBe('Needs you');
+		expect(render(t.label)).toBe('Needs you');
 		expect(t.variant).toBe('error');
 		expect(t.reasons.length).toBeGreaterThan(0);
 	});
@@ -48,14 +60,14 @@ describe('trustLabel level boundaries', () => {
 			const t = trustLabel(c, []);
 			expect(t.level).toBe('needs-you');
 			expect(t.reasons[0]).toBe(TRUST_UNCHECKED_REASON);
-			expect(t.detail).toBe('Agent confidence unavailable');
+			expect(render(t.detail)).toBe('Agent confidence unavailable');
 		}
 	});
 
 	it('demotes a high score to Worth a look when a flag tripped', () => {
 		const t = trustLabel(0.9, ['tone is too harsh']);
 		expect(t.level).toBe('look');
-		expect(t.reasons).toContain('Tone reads harsher than your usual replies');
+		expect(t.reasons.map(render)).toContain('Tone reads harsher than your usual replies');
 	});
 });
 
@@ -81,13 +93,13 @@ describe('trustFlagReason copy table', () => {
 	];
 
 	it.each(CASES)('translates %j', (flag, reason) => {
-		expect(trustFlagReason(flag)).toBe(reason);
+		expect(render(trustFlagReason(flag))).toBe(reason);
 	});
 
 	it('covers every copy-table entry with at least one case above', () => {
 		const covered = new Set(CASES.map(([, reason]) => reason));
 		for (const entry of TRUST_FLAG_COPY) {
-			expect(covered.has(entry.reason)).toBe(true);
+			expect(covered.has(render(entry.reason))).toBe(true);
 		}
 	});
 
@@ -96,19 +108,19 @@ describe('trustFlagReason copy table', () => {
 		const t = trustLabel(0.9, [raw]);
 		expect(trustFlagReason(raw)).toBe(TRUST_GENERIC_REASON);
 		expect(t.reasons).toContain(TRUST_GENERIC_REASON);
-		expect(t.reasons.join(' ')).not.toContain(raw);
+		expect(t.reasons.map(render).join(' ')).not.toContain(raw);
 	});
 
 	it('dedupes flags translating to the same reason and skips blank flags', () => {
 		const t = trustLabel(0.5, ['tone too harsh', 'reads rude and curt', '   ']);
-		expect(t.reasons).toEqual(['Tone reads harsher than your usual replies']);
+		expect(t.reasons.map(render)).toEqual(['Tone reads harsher than your usual replies']);
 	});
 });
 
 describe('detail line', () => {
 	it('keeps the numeric confidence available as quiet detail', () => {
-		expect(trustLabel(0.62, []).detail).toBe('Agent confidence 62%');
-		expect(trustLabel(1, []).detail).toBe('Agent confidence 100%');
+		expect(render(trustLabel(0.62, []).detail)).toBe('Agent confidence 62%');
+		expect(render(trustLabel(1, []).detail)).toBe('Agent confidence 100%');
 	});
 });
 
@@ -116,9 +128,9 @@ describe('escalationTrustLabel', () => {
 	it('always Needs you, with a human reason and no numeric confidence', () => {
 		const t = escalationTrustLabel();
 		expect(t.level).toBe('needs-you');
-		expect(t.label).toBe('Needs you');
+		expect(render(t.label)).toBe('Needs you');
 		expect(t.variant).toBe('error');
 		expect(t.reasons.length).toBeGreaterThan(0);
-		expect(t.detail).toBe('No agent draft');
+		expect(render(t.detail)).toBe('No agent draft');
 	});
 });

@@ -46,6 +46,7 @@ const emit = defineEmits<{
 
 const router = useRouter();
 const { showToast } = useToast();
+const { t, locale } = useI18n();
 
 // Send options
 const sendOption = ref<SendOption>('now');
@@ -66,11 +67,11 @@ const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useC
 
 // Mutations
 const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
-	label: 'Send campaign now',
+	label: () => t('components.campaigns.steps.reviewStep.sendNowOperation'),
 	onError: claimCapacityRefusal,
 });
 const { run: scheduleCampaign } = useBackendOperation(api.campaigns.scheduling.schedule, {
-	label: 'Schedule campaign',
+	label: () => t('components.campaigns.steps.reviewStep.scheduleOperation'),
 	onError: claimCapacityRefusal,
 });
 
@@ -105,11 +106,15 @@ const sendBlockedReason = computed(() => {
 	if (!status) return null;
 
 	if (!status.exists) {
-		return `Sending is disabled because "${status.domain}" is not registered. Add and verify it in Settings > Domains.`;
+		return t('components.campaigns.steps.reviewStep.blocked.domainMissing', {
+			domain: status.domain,
+		});
 	}
 
 	if (!status.verified) {
-		return `Sending is disabled because "${status.domain}" is not verified. Complete DNS verification in Settings > Domains.`;
+		return t('components.campaigns.steps.reviewStep.blocked.domainUnverified', {
+			domain: status.domain,
+		});
 	}
 
 	return null;
@@ -126,7 +131,7 @@ const getMinScheduleDateTime = () => {
 const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 	if (!dateStr || !timeStr) return '';
 	const date = new Date(`${dateStr}T${timeStr}`);
-	return date.toLocaleString('en-US', {
+	return date.toLocaleString(locale.value, {
 		weekday: 'long',
 		year: 'numeric',
 		month: 'long',
@@ -141,18 +146,18 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 const validate = (): boolean => {
 	if (sendOption.value === 'later') {
 		if (!scheduledDate.value) {
-			setError('Please select a date for scheduling');
+			setError(t('components.campaigns.steps.reviewStep.errors.dateRequired'));
 			return false;
 		}
 
 		if (!scheduledTime.value) {
-			setError('Please select a time for scheduling');
+			setError(t('components.campaigns.steps.reviewStep.errors.timeRequired'));
 			return false;
 		}
 
 		const scheduledDateTime = new Date(`${scheduledDate.value}T${scheduledTime.value}`);
 		if (scheduledDateTime.getTime() <= Date.now()) {
-			setError('Scheduled time must be in the future');
+			setError(t('components.campaigns.steps.reviewStep.errors.timeInPast'));
 			return false;
 		}
 	}
@@ -176,7 +181,7 @@ const handleSendCampaign = async () => {
 
 		if (sendOption.value === 'now') {
 			if ((await sendCampaignNow({ campaignId: props.data.campaignId })) === undefined) return;
-			toastMessage = 'Campaign is now sending!';
+			toastMessage = t('components.campaigns.steps.reviewStep.toast.sending');
 		} else {
 			const scheduledDateTime = new Date(`${scheduledDate.value}T${scheduledTime.value}`);
 			const scheduledHour = scheduledDateTime.getHours();
@@ -192,8 +197,10 @@ const handleSendCampaign = async () => {
 			if (result === undefined) return;
 
 			toastMessage = useRecipientTimezone.value
-				? `Campaign scheduled for ${scheduledTime.value} in each recipient's timezone!`
-				: 'Campaign scheduled successfully!';
+				? t('components.campaigns.steps.reviewStep.toast.scheduledPerTimezone', {
+						time: scheduledTime.value,
+					})
+				: t('components.campaigns.steps.reviewStep.toast.scheduled');
 		}
 
 		showToast(toastMessage);
@@ -208,10 +215,27 @@ const handleSendCampaign = async () => {
 	}
 };
 
+/** How the winner is picked, and — for an automatic pick — by when. */
+const winnerByLine = computed(() => {
+	const prefix = 'components.campaigns.steps.reviewStep';
+	const criteria =
+		props.data.abWinnerCriteria === 'open_rate'
+			? t(`${prefix}.winnerCriteria.openRate`)
+			: props.data.abWinnerCriteria === 'click_rate'
+				? t(`${prefix}.winnerCriteria.clickRate`)
+				: t(`${prefix}.winnerCriteria.manual`);
+	return props.data.abWinnerCriteria === 'manual'
+		? t(`${prefix}.winnerBy`, { criteria })
+		: t(`${prefix}.winnerByAfterHours`, { criteria, hours: props.data.abTestDuration });
+});
+
 // Get variant B template name
 const variantBTemplateName = computed(() => {
 	if (!props.data.abVariantBTemplateId) return null;
-	return props.data.templates.find((t) => t._id === props.data.abVariantBTemplateId)?.name ?? null;
+	return (
+		props.data.templates.find((template) => template._id === props.data.abVariantBTemplateId)
+			?.name ?? null
+	);
 });
 </script>
 
@@ -220,8 +244,12 @@ const variantBTemplateName = computed(() => {
 		<!-- Campaign Summary Card -->
 		<div class="card p-6">
 			<div class="mb-6">
-				<h2 class="text-xl font-semibold text-text-primary">Review & Send</h2>
-				<p class="text-text-secondary mt-1">Review your campaign settings before sending.</p>
+				<h2 class="text-xl font-semibold text-text-primary">
+					{{ t('components.campaigns.steps.reviewStep.title') }}
+				</h2>
+				<p class="text-text-secondary mt-1">
+					{{ t('components.campaigns.steps.reviewStep.subtitle') }}
+				</p>
 			</div>
 
 			<!-- Error Alert -->
@@ -240,14 +268,16 @@ const variantBTemplateName = computed(() => {
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:file-text" size="sm" rounded="lg" />
 						<div>
-							<p class="text-sm text-text-secondary">Campaign Name</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('components.campaigns.steps.reviewStep.campaignName') }}
+							</p>
 							<p class="font-medium text-text-primary mt-0.5">{{ data.campaignName }}</p>
 						</div>
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'setup')"
-						aria-label="Edit"
+						:aria-label="t('common.edit')"
 					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
@@ -258,18 +288,20 @@ const variantBTemplateName = computed(() => {
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:user" size="sm" rounded="lg" />
 						<div>
-							<p class="text-sm text-text-secondary">From</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('components.campaigns.steps.reviewStep.from') }}
+							</p>
 							<p class="font-medium text-text-primary mt-0.5">{{ data.fromName }}</p>
 							<p class="text-sm text-text-secondary">{{ data.fromEmail }}</p>
 							<p v-if="data.replyTo" class="text-sm text-text-tertiary">
-								Reply-to: {{ data.replyTo }}
+								{{ t('components.campaigns.steps.reviewStep.replyTo', { email: data.replyTo }) }}
 							</p>
 						</div>
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'setup')"
-						aria-label="Edit"
+						:aria-label="t('common.edit')"
 					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
@@ -280,18 +312,26 @@ const variantBTemplateName = computed(() => {
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:users" size="sm" variant="success" rounded="lg" />
 						<div>
-							<p class="text-sm text-text-secondary">Audience</p>
-							<p class="font-medium text-text-primary mt-0.5">{{ data.audienceDisplayText }}</p>
-							<p class="text-sm text-text-secondary mt-1">
-								<span class="font-medium text-brand">{{ data.audienceCount ?? 0 }}</span>
-								estimated recipients
+							<p class="text-sm text-text-secondary">
+								{{ t('components.campaigns.steps.reviewStep.audience') }}
 							</p>
+							<p class="font-medium text-text-primary mt-0.5">{{ data.audienceDisplayText }}</p>
+							<I18nT
+								keypath="components.campaigns.steps.reviewStep.estimatedRecipients"
+								tag="p"
+								class="text-sm text-text-secondary mt-1"
+								scope="global"
+							>
+								<template #count>
+									<span class="font-medium text-brand">{{ data.audienceCount ?? 0 }}</span>
+								</template>
+							</I18nT>
 						</div>
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'setup')"
-						aria-label="Edit"
+						:aria-label="t('common.edit')"
 					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
@@ -302,21 +342,25 @@ const variantBTemplateName = computed(() => {
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:mail" size="sm" variant="warning" rounded="lg" />
 						<div class="flex-1 min-w-0">
-							<p class="text-sm text-text-secondary">Email Content</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('components.campaigns.steps.reviewStep.emailContent') }}
+							</p>
 							<p class="font-medium text-text-primary mt-0.5">{{ data.campaignSubject }}</p>
 							<div v-if="data.selectedTemplate" class="mt-2 flex items-center gap-2">
-								<span class="text-sm text-text-secondary">Template:</span>
+								<span class="text-sm text-text-secondary">{{
+									t('components.campaigns.steps.reviewStep.template')
+								}}</span>
 								<span class="text-sm text-text-primary">{{ data.selectedTemplate.name }}</span>
 							</div>
 							<p class="text-xs text-text-tertiary mt-2">
-								You can edit this email after the campaign is created.
+								{{ t('components.campaigns.steps.reviewStep.editLater') }}
 							</p>
 						</div>
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'content')"
-						aria-label="Edit"
+						:aria-label="t('common.edit')"
 					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
@@ -330,9 +374,15 @@ const variantBTemplateName = computed(() => {
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:split" size="sm" rounded="lg" />
 						<div class="flex-1 min-w-0">
-							<p class="text-sm text-text-secondary">A/B Testing</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('components.campaigns.steps.reviewStep.abTesting') }}
+							</p>
 							<p class="font-medium text-text-primary mt-0.5">
-								Testing {{ data.abTestType === 'subject' ? 'Subject Lines' : 'Email Templates' }}
+								{{
+									data.abTestType === 'subject'
+										? t('components.campaigns.steps.reviewStep.testingSubjects')
+										: t('components.campaigns.steps.reviewStep.testingTemplates')
+								}}
 							</p>
 							<div class="mt-2 space-y-1">
 								<div class="flex items-center gap-2 text-sm">
@@ -358,29 +408,21 @@ const variantBTemplateName = computed(() => {
 									}}</span>
 								</div>
 								<p class="text-sm text-text-tertiary mt-2">
-									{{ data.abSplitPercentage }}% each for test, winner sent to remaining
-									{{ Math.max(0, 100 - 2 * data.abSplitPercentage) }}%
-								</p>
-								<p class="text-sm text-text-tertiary">
-									Winner by:
 									{{
-										data.abWinnerCriteria === 'open_rate'
-											? 'Best Open Rate'
-											: data.abWinnerCriteria === 'click_rate'
-												? 'Best Click Rate'
-												: 'Manual Selection'
+										t('components.campaigns.steps.reviewStep.splitSummary', {
+											split: data.abSplitPercentage,
+											remaining: Math.max(0, 100 - 2 * data.abSplitPercentage),
+										})
 									}}
-									<template v-if="data.abWinnerCriteria !== 'manual'">
-										(after {{ data.abTestDuration }}h)</template
-									>
 								</p>
+								<p class="text-sm text-text-tertiary">{{ winnerByLine }}</p>
 							</div>
 						</div>
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="emit('editStep', 'setup')"
-						aria-label="Edit"
+						:aria-label="t('common.edit')"
 					>
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 					</button>
@@ -390,7 +432,9 @@ const variantBTemplateName = computed(() => {
 
 		<!-- Send Options Card -->
 		<div class="card p-6">
-			<h3 class="text-lg font-semibold text-text-primary mb-4">When to Send</h3>
+			<h3 class="text-lg font-semibold text-text-primary mb-4">
+				{{ t('components.campaigns.steps.reviewStep.whenToSend') }}
+			</h3>
 
 			<div
 				v-if="sendBlockedReason"
@@ -427,10 +471,10 @@ const variantBTemplateName = computed(() => {
 					<div class="flex-1">
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:send" class="w-5 h-5 text-brand" />
-							<span class="font-medium text-text-primary">Send Now</span>
+							<span class="font-medium text-text-primary">{{ t('components.campaigns.steps.reviewStep.sendNow') }}</span>
 						</div>
 						<p class="text-sm text-text-secondary mt-1">
-							Your campaign will start sending immediately to all recipients.
+							{{ t('components.campaigns.steps.reviewStep.sendNowDescription') }}
 						</p>
 					</div>
 				</label>
@@ -454,10 +498,12 @@ const variantBTemplateName = computed(() => {
 					<div class="flex-1">
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:clock" class="w-5 h-5 text-brand" />
-							<span class="font-medium text-text-primary">Schedule for Later</span>
+							<span class="font-medium text-text-primary">{{
+								t('components.campaigns.steps.reviewStep.scheduleLater')
+							}}</span>
 						</div>
 						<p class="text-sm text-text-secondary mt-1">
-							Choose a specific date and time to send your campaign.
+							{{ t('components.campaigns.steps.reviewStep.scheduleLaterDescription') }}
 						</p>
 
 						<!-- Date/Time Picker -->
@@ -466,7 +512,7 @@ const variantBTemplateName = computed(() => {
 								<div>
 									<label for="scheduleDate" class="label flex items-center gap-2">
 										<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
-										Date
+										{{ t('components.campaigns.steps.reviewStep.dateLabel') }}
 									</label>
 									<input
 										id="scheduleDate"
@@ -479,7 +525,7 @@ const variantBTemplateName = computed(() => {
 								<div>
 									<label for="scheduleTime" class="label flex items-center gap-2">
 										<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
-										Time
+										{{ t('components.campaigns.steps.reviewStep.timeLabel') }}
 									</label>
 									<input
 										id="scheduleTime"
@@ -503,14 +549,16 @@ const variantBTemplateName = computed(() => {
 									<div class="flex-1">
 										<div class="flex items-center gap-2">
 											<Icon name="lucide:globe" class="w-4 h-4 text-brand" />
-											<span class="font-medium text-text-primary text-sm"
-												>Send at recipient's local time</span
-											>
+											<span class="font-medium text-text-primary text-sm">{{
+												t('components.campaigns.steps.reviewStep.recipientTimezone')
+											}}</span>
 										</div>
 										<p class="text-xs text-text-secondary mt-1">
-											Emails will be sent at {{ scheduledTime || 'the scheduled time' }} in each
-											contact's timezone. Contacts without a timezone will receive the email at your
-											selected time.
+											{{
+												t('components.campaigns.steps.reviewStep.recipientTimezoneHint', {
+													time: scheduledTime || t('components.campaigns.steps.reviewStep.scheduledTimeFallback'),
+												})
+											}}
 										</p>
 									</div>
 								</label>
@@ -522,17 +570,16 @@ const variantBTemplateName = computed(() => {
 								class="p-3 bg-bg-elevated shadow-surface-1 rounded-lg"
 							>
 								<template v-if="useRecipientTimezone">
-									<p class="text-sm text-text-secondary">Your campaign will be sent at:</p>
+									<p class="text-sm text-text-secondary">{{ t('components.campaigns.steps.reviewStep.previewHeadingAt') }}</p>
 									<p class="font-medium text-text-primary mt-1">
-										{{ scheduledTime }} in each recipient's timezone
+										{{ t('components.campaigns.steps.reviewStep.previewPerTimezone', { time: scheduledTime }) }}
 									</p>
 									<p class="text-xs text-text-tertiary mt-2">
-										For example: {{ scheduledTime }} ET, {{ scheduledTime }} PT,
-										{{ scheduledTime }} GMT, etc.
+										{{ t('components.campaigns.steps.reviewStep.previewExample', { time: scheduledTime }) }}
 									</p>
 								</template>
 								<template v-else>
-									<p class="text-sm text-text-secondary">Your campaign will be sent:</p>
+									<p class="text-sm text-text-secondary">{{ t('components.campaigns.steps.reviewStep.previewHeading') }}</p>
 									<p class="font-medium text-text-primary mt-1">
 										{{ formatScheduleDate(scheduledDate, scheduledTime) }}
 									</p>
@@ -548,14 +595,16 @@ const variantBTemplateName = computed(() => {
 		<div class="card p-6">
 			<div class="flex items-center justify-between">
 				<div>
-					<h3 class="text-lg font-semibold text-text-primary">Send Test Email</h3>
+					<h3 class="text-lg font-semibold text-text-primary">
+						{{ t('components.campaigns.steps.reviewStep.testEmailTitle') }}
+					</h3>
 					<p class="text-sm text-text-secondary mt-1">
-						Preview how your email will look by sending a test to yourself.
+						{{ t('components.campaigns.steps.reviewStep.testEmailDescription') }}
 					</p>
 				</div>
 				<UiButton variant="secondary" @click="isTestEmailModalOpen = true">
 					<template #iconLeft><Icon name="lucide:send-horizonal" class="w-4 h-4" /></template>
-					Send Test
+					{{ t('components.campaigns.steps.reviewStep.sendTest') }}
 				</UiButton>
 			</div>
 		</div>
@@ -564,7 +613,7 @@ const variantBTemplateName = computed(() => {
 		<div class="flex items-center justify-between pt-2">
 			<UiButton variant="secondary" @click="emit('back')">
 				<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4" /></template>
-				Back
+				{{ t('common.back') }}
 			</UiButton>
 			<UiButton
 				:loading="isLoading"
@@ -579,11 +628,11 @@ const variantBTemplateName = computed(() => {
 				{{
 					isLoading
 						? sendOption === 'now'
-							? 'Sending...'
-							: 'Scheduling...'
+							? t('components.campaigns.steps.reviewStep.sending')
+							: t('components.campaigns.steps.reviewStep.scheduling')
 						: sendOption === 'now'
-							? 'Send Campaign'
-							: 'Schedule Campaign'
+							? t('components.campaigns.steps.reviewStep.sendCampaign')
+							: t('components.campaigns.steps.reviewStep.scheduleCampaign')
 				}}
 			</UiButton>
 		</div>

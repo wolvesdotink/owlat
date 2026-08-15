@@ -25,6 +25,10 @@ const props = defineProps<{
 	ready: boolean;
 }>();
 
+// `RESTART_PHASE_COPY` is a pure module-scope registry, so its `label`/`detail`
+// fields carry message keys rather than sentences; they are resolved here.
+const { t } = useI18n();
+
 const phase = computed<RestartPhase>(() =>
 	restartProgressPhase({ pollCount: props.pollCount, ready: props.ready })
 );
@@ -77,10 +81,10 @@ const steps = computed(() =>
 						class="block text-sm font-medium"
 						:class="step.status === 'pending' ? 'text-text-tertiary' : 'text-text-primary'"
 					>
-						{{ step.label }}
+						{{ t(step.label) }}
 					</span>
 					<span v-if="step.status === 'active'" class="block text-sm text-text-secondary">
-						{{ step.detail }}
+						{{ t(step.detail) }}
 					</span>
 				</span>
 			</li>

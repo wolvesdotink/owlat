@@ -19,6 +19,8 @@ interface Props {
 	isNew?: boolean;
 }
 
+const { t, locale } = useI18n();
+
 const props = withDefaults(defineProps<Props>(), {
 	isNew: false,
 });
@@ -30,22 +32,27 @@ const emit = defineEmits<{
 }>();
 
 const { run: upsertRule } = useBackendOperation(api.autonomy.upsertRule, {
-	label: 'Save autonomy rule',
+	label: () => t('components.autonomy.autonomyRuleEditor.saveOperation'),
 });
 const { run: deleteRule } = useBackendOperation(api.autonomy.deleteRule, {
-	label: 'Delete autonomy rule',
+	label: () => t('components.autonomy.autonomyRuleEditor.deleteOperation'),
 });
 
-const categories = [
-	{ value: 'support', label: 'Support' },
-	{ value: 'sales', label: 'Sales' },
-	{ value: 'billing', label: 'Billing' },
-	{ value: 'feature_request', label: 'Feature Request' },
-	{ value: 'complaint', label: 'Complaint' },
-	{ value: 'spam', label: 'Spam' },
-	{ value: 'internal', label: 'Internal' },
-	{ value: 'other', label: 'Other' },
-];
+const categories = computed(() =>
+	[
+		'support',
+		'sales',
+		'billing',
+		'feature_request',
+		'complaint',
+		'spam',
+		'internal',
+		'other',
+	].map((value) => ({
+		value,
+		label: t(`components.autonomy.autonomyRuleEditor.categories.${value}`),
+	}))
+);
 
 // Form state
 const form = reactive({
@@ -61,16 +68,22 @@ const showDeleteConfirm = ref(false);
 
 const categoryIcon = computed(() => resolveCategoryIcon(form.category));
 const categoryLabel = computed(() => {
-	const cat = categories.find((c) => c.value === form.category);
+	const cat = categories.value.find((c) => c.value === form.category);
 	return cat?.label ?? titleCaseEnum(form.category);
 });
 
-const thresholdPercent = computed(() => Math.round(form.autoApproveThreshold * 100));
+const thresholdPercent = computed(() =>
+	new Intl.NumberFormat(locale.value, { style: 'percent', maximumFractionDigits: 0 }).format(
+		form.autoApproveThreshold
+	)
+);
 
-const dailyCountDisplay = computed(() => {
-	const current = props.rule.currentDailyCount ?? 0;
-	return `${current} / ${form.maxDailyAutoActions}`;
-});
+const dailyCountDisplay = computed(() =>
+	t('components.autonomy.autonomyRuleEditor.todayCount', {
+		current: props.rule.currentDailyCount ?? 0,
+		max: form.maxDailyAutoActions,
+	})
+);
 
 const handleSave = async () => {
 	isSaving.value = true;
@@ -113,7 +126,9 @@ const handleCancel = () => {
 			<div v-if="isNew" class="flex items-center gap-3 flex-1">
 				<UiIconBox :icon="categoryIcon" size="sm" variant="surface" />
 				<select v-model="form.category" class="input flex-1 max-w-xs">
-					<option value="" disabled>Select category</option>
+					<option value="" disabled>
+						{{ t('components.autonomy.autonomyRuleEditor.categoryPlaceholder') }}
+					</option>
 					<option v-for="cat in categories" :key="cat.value" :value="cat.value">
 						{{ cat.label }}
 					</option>
@@ -126,7 +141,11 @@ const handleCancel = () => {
 				</div>
 			</div>
 			<div class="flex items-center gap-2">
-				<UiToggle v-model="form.enabled" :label="form.enabled ? 'Enabled' : 'Disabled'" size="sm" />
+				<UiToggle
+					v-model="form.enabled"
+					:label="form.enabled ? t('common.enabled') : t('common.disabled')"
+					size="sm"
+				/>
 			</div>
 		</div>
 
@@ -135,13 +154,15 @@ const handleCancel = () => {
 			<!-- Auto-Approve Threshold -->
 			<div>
 				<div class="flex items-center justify-between mb-2">
-					<label class="text-sm font-medium text-text-primary">Auto-Approve Threshold</label>
+					<label class="text-sm font-medium text-text-primary">
+						{{ t('components.autonomy.autonomyRuleEditor.thresholdLabel') }}
+					</label>
 					<span class="text-sm font-mono text-brand bg-brand-subtle px-2 py-0.5 rounded">
-						{{ thresholdPercent }}%
+						{{ thresholdPercent }}
 					</span>
 				</div>
 				<p class="text-xs text-text-tertiary mb-2">
-					Minimum confidence score required for the agent to auto-approve actions in this category.
+					{{ t('components.autonomy.autonomyRuleEditor.thresholdHint') }}
 				</p>
 				<input
 					v-model.number="form.autoApproveThreshold"
@@ -152,16 +173,18 @@ const handleCancel = () => {
 					class="w-full h-2 bg-bg-surface rounded-lg appearance-none cursor-pointer accent-brand"
 				/>
 				<div class="flex justify-between text-xs text-text-tertiary mt-1">
-					<span>0% (all auto)</span>
-					<span>100% (all manual)</span>
+					<span>{{ t('components.autonomy.autonomyRuleEditor.thresholdMin') }}</span>
+					<span>{{ t('components.autonomy.autonomyRuleEditor.thresholdMax') }}</span>
 				</div>
 			</div>
 
 			<!-- Max Daily Auto-Actions -->
 			<div>
-				<label class="text-sm font-medium text-text-primary">Max Daily Auto-Actions</label>
+				<label class="text-sm font-medium text-text-primary">
+					{{ t('components.autonomy.autonomyRuleEditor.maxDailyLabel') }}
+				</label>
 				<p class="text-xs text-text-tertiary mt-1 mb-2">
-					Maximum number of actions the agent can auto-approve per day for this category.
+					{{ t('components.autonomy.autonomyRuleEditor.maxDailyHint') }}
 				</p>
 				<div class="flex items-center gap-4">
 					<input
@@ -173,7 +196,7 @@ const handleCancel = () => {
 						placeholder="50"
 					/>
 					<span v-if="!isNew" class="text-xs text-text-tertiary">
-						Today: {{ dailyCountDisplay }}
+						{{ dailyCountDisplay }}
 					</span>
 				</div>
 			</div>
@@ -188,20 +211,24 @@ const handleCancel = () => {
 					:disabled="isDeleting"
 					@click="showDeleteConfirm = true"
 				>
-					Delete Rule
+					{{ t('components.autonomy.autonomyRuleEditor.deleteRule') }}
 				</button>
 				<button
 					v-else
 					class="text-sm text-text-secondary hover:text-text-primary transition-colors"
 					@click="handleCancel"
 				>
-					Cancel
+					{{ t('common.cancel') }}
 				</button>
 			</div>
 			<UiButton class="gap-2" :disabled="isSaving || (!form.category && isNew)" @click="handleSave">
 				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:save" class="w-4 h-4" />
-				{{ isNew ? 'Create Rule' : 'Save Changes' }}
+				{{
+					isNew
+						? t('components.autonomy.autonomyRuleEditor.createRule')
+						: t('components.autonomy.autonomyRuleEditor.saveChanges')
+				}}
 			</UiButton>
 		</div>
 
@@ -209,15 +236,25 @@ const handleCancel = () => {
 		<UiModal :open="showDeleteConfirm" size="sm" @update:open="showDeleteConfirm = $event">
 			<div class="flex items-center gap-3 mb-4">
 				<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" />
-				<h3 class="text-lg font-medium text-text-primary">Delete Rule</h3>
+				<h3 class="text-lg font-medium text-text-primary">
+					{{ t('components.autonomy.autonomyRuleEditor.deleteRule') }}
+				</h3>
 			</div>
 			<p class="text-sm text-text-secondary">
-				Are you sure you want to delete the autonomy rule for
-				<strong>{{ categoryLabel }}</strong
-				>? This action cannot be undone.
+				<I18nT
+					keypath="components.autonomy.autonomyRuleEditor.deleteConfirm"
+					tag="span"
+					scope="global"
+				>
+					<template #category>
+						<strong>{{ categoryLabel }}</strong>
+					</template>
+				</I18nT>
 			</p>
 			<template #footer>
-				<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
+				<UiButton variant="secondary" @click="showDeleteConfirm = false">
+					{{ t('common.cancel') }}
+				</UiButton>
 				<UiButton
 					variant="danger"
 					class="gap-2"
@@ -225,7 +262,7 @@ const handleCancel = () => {
 					@click="handleDelete"
 				>
 					<UiSpinner v-if="isDeleting" size="xs" tone="inverse" />
-					Delete
+					{{ t('common.delete') }}
 				</UiButton>
 			</template>
 		</UiModal>
