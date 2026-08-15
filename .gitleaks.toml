@@ -16,7 +16,7 @@ useDefault = true
 # private-key rules; this only silences the placeholder-curl false positives.
 disabledRules = ["curl-auth-header"]
 
-[allowlist]
+[[allowlists]]
 description = "Test fixtures, docs examples, and env/template placeholders (no real secrets)"
 paths = [
   '''(^|/)__tests__/''',
