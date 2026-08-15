@@ -31,3 +31,17 @@ paths = [
   # is reproducible offline (they protect nothing — see fixtures/sealed-mail/README.md).
   '''(^|/)fixtures/sealed-mail/''',
 ]
+
+# The UI message catalogs carry input-placeholder copy — example values a form
+# shows in an empty field ("abc123def456-us21", "sk_live_..."). Inside a .vue
+# template these never matched; as JSON `"xKeyPlaceholder": "value"` pairs the
+# generic-api-key rule reads them as assignments. Allowlisted ONLY where both
+# hold: the file is a locale catalog (including the historical i18n/fragments
+# batch files) AND the message key names itself a placeholder. A real secret
+# pasted into any other catalog line still fails the scan.
+[[allowlists]]
+description = "i18n catalog input-placeholder copy (example values, not secrets)"
+condition = "AND"
+paths = ['''(^|/)i18n/(locales|fragments)/[^/]+\.json$''']
+regexTarget = "line"
+regexes = ['''[A-Za-z]Placeholder"\s*:''']
