@@ -79,3 +79,41 @@ describe('operatingModes — representative postures', () => {
 		}
 	});
 });
+
+describe('operatingModes — draft-on-arrival on the no-domain mode', () => {
+	// postbox.aiDraft is requires:['ai'] + requiresAny:[['postbox','mail.external']]
+	// (decision D2): the no-domain imap_only posture must be able to carry it via
+	// its connected external mailbox, without dragging in the hosted Postbox stack.
+	it('imap_only + ai can carry postbox.aiDraft with postbox off', () => {
+		const flags = resolveFlags({
+			...operatingModeFlags('imap_only'),
+			ai: true,
+			'postbox.aiDraft': true,
+		});
+		expect(flags.postbox).toBe(false);
+		expect(flags['mail.external']).toBe(true);
+		expect(flags['postbox.aiDraft']).toBe(true);
+	});
+
+	it('crm_only cannot carry it — no mailbox source satisfies the any-of group', () => {
+		const flags = resolveFlags({
+			...operatingModeFlags('crm_only'),
+			ai: true,
+			'postbox.aiDraft': true,
+		});
+		expect(flags.postbox).toBe(false);
+		expect(flags['mail.external']).toBe(false);
+		expect(flags['postbox.aiDraft']).toBe(false);
+	});
+
+	it('hosted_mail + ai still carries it through the postbox arm', () => {
+		const flags = resolveFlags({
+			...operatingModeFlags('hosted_mail'),
+			ai: true,
+			'postbox.aiDraft': true,
+		});
+		expect(flags.postbox).toBe(true);
+		expect(flags['mail.external']).toBe(false);
+		expect(flags['postbox.aiDraft']).toBe(true);
+	});
+});

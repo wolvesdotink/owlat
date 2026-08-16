@@ -220,10 +220,15 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		description:
 			'Pre-generate a reply draft (with a confidence + quality self-check) into the Reply Queue the moment a personal-mail message that needs a reply lands, so the owner can review-and-send instead of starting from a blank composer. Human review only — never auto-sends.',
 		default: false,
-		// Needs personal Postbox to have a mailbox to draft for, and the AI master
-		// toggle for an LLM provider. resolveFlags forces this OFF whenever either
-		// dependency is off, so a disabled AI stack degrades to today's behaviour.
-		requires: ['postbox', 'ai'],
+		// Needs the AI master toggle for an LLM provider, plus *a* mailbox source
+		// to draft for — either hosted Postbox or a connected external mailbox
+		// (`mail.external` deliberately does not require `postbox`; see its
+		// comment below). The draft pipeline is source-agnostic, so any-of is the
+		// honest dependency. resolveFlags forces this OFF whenever `ai` is off or
+		// neither source is on, so a disabled AI stack degrades to today's
+		// behaviour.
+		requires: ['ai'],
+		requiresAny: [['postbox', 'mail.external']],
 	},
 	'mail.external': {
 		key: 'mail.external',

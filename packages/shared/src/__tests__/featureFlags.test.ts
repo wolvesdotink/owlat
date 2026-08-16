@@ -579,7 +579,7 @@ describe('featureFlags — plugin namespace', () => {
 });
 
 describe('featureFlags — requiresAny (any-of dependency groups)', () => {
-	// No core flag declares requiresAny yet (A2 re-declares postbox.aiDraft);
+	// Core usage lives on postbox.aiDraft (requires ai + one mailbox source);
 	// plugin definitions exercise the engine through the composed registry.
 	const anyOfFlag = {
 		key: 'plugin.any-of-probe',

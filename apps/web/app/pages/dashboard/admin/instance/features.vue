@@ -11,6 +11,7 @@ import {
 	createFeatureFlagRegistry,
 	isPluginFeatureFlagDefinition,
 	SENDING_FLAGS_REQUIRING_DELIVERY,
+	type FeatureFlagDefinition,
 	type FeatureFlagKey,
 	type FeatureFlagState,
 	type FeaturePackKey,
@@ -162,6 +163,27 @@ function isPluginEnableBlocked(flag: FeatureFlagKey): boolean {
 			configStatusError.value !== null ||
 			flagsConfigStatus.value == null)
 	);
+}
+
+/**
+ * Why a flag's toggle is dependency-blocked, or `undefined` when it isn't.
+ * All `requires` parents must be ON; each `requiresAny` group needs at least
+ * one ON member. Cascade-on never auto-enables a group member (there is no
+ * principled choice of which), so the toggle stays disabled with this hint.
+ */
+function dependencyHint(def: FeatureFlagDefinition): string | undefined {
+	if (def.requires?.some((dep) => !resolved.value[dep])) {
+		return `Enable ${def.requires.join(', ')} first`;
+	}
+	const unsatisfied = (def.requiresAny ?? []).filter(
+		(group) => !group.some((member) => resolved.value[member])
+	);
+	if (unsatisfied.length === 0) return undefined;
+	return unsatisfied
+		.map(
+			(group) => `Needs one of: ${group.map((k) => featureFlagRegistry[k]?.label ?? k).join(', ')}`
+		)
+		.join(' · ');
 }
 
 function pluginStatusTitle(flag: FeatureFlagKey): string | undefined {
@@ -388,13 +410,9 @@ async function togglePack(packKey: FeaturePackKey) {
 								:disabled="
 									isSavingFlag ||
 									isPluginEnableBlocked(def.key) ||
-									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
+									dependencyHint(def) !== undefined
 								"
-								:title="
-									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
-										? `Enable ${def.requires?.join(', ')} first`
-										: pluginStatusTitle(def.key)
-								"
+								:title="dependencyHint(def) ?? pluginStatusTitle(def.key)"
 								@click="onToggle(def.key, !resolved[def.key])"
 							>
 								<!-- palette-ok: fixed white thumb on a brand/surface track, as above. -->
