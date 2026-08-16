@@ -12,10 +12,16 @@
 
 interface ReviewApproveUndoState {
 	visible: boolean;
-	/** The message whose approve is still inside its undo window. */
+	/** The message whose approve is still inside its undo window. For a BULK
+	 * approve (piece C2) this is the first approved id — the armed handler
+	 * carries the full batch. */
 	inboundMessageId: string | null;
 	/** When the held send fires (ms epoch) — drives the countdown. */
 	sendAt: number;
+	/** Optional partial-result line for a bulk approve ("8 approved, 2 held —
+	 * Dana is replying"). Absent for a single approve, which keeps the
+	 * original "Approved" copy. */
+	label?: string;
 }
 
 // The armed surface's undo callback, kept BESIDE the reactive state rather than
@@ -31,16 +37,19 @@ export function useReviewApproveUndo() {
 		sendAt: 0,
 	}));
 
-	/** Arm the toast for a fresh approve; `onUndo` is the surface's true inverse. */
+	/** Arm the toast for a fresh approve; `onUndo` is the surface's true inverse
+	 * (for a bulk approve: undo-all across the batch's shared window). */
 	function arm(args: {
 		inboundMessageId: string;
 		sendAt: number;
+		label?: string;
 		onUndo: () => void | Promise<void>;
 	}) {
 		state.value = {
 			visible: true,
 			inboundMessageId: args.inboundMessageId,
 			sendAt: args.sendAt,
+			...(args.label !== undefined ? { label: args.label } : {}),
 		};
 		undoHandler = args.onUndo;
 	}

@@ -7,7 +7,6 @@
 
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getMutationContext } from '../lib/sessionOrganization';
@@ -17,46 +16,11 @@ import type { CancelAutoSendOutcome } from './processingLifecycle';
 import { resolveHumanApproveUndoDelayMs } from './processingLifecycle/effects';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
-import { getActiveReplierOtherThan } from './presence';
-
-/**
- * Feed a human verification-queue decision back into the graduated-autonomy
- * loop. The weekly `autonomy.adjustThresholds` cron consumes these rows to
- * tighten / loosen per-category auto-approve thresholds, and the agent-health
- * rollup uses them for the `rejection_spike` circuit breaker. Best-effort:
- * a message with no classification yet still records under `other` so the
- * signal isn't lost. Safe to call even when `ai.autonomy` is off — it only
- * appends a feedback row.
- */
-async function recordAutonomyFeedback(
-	ctx: MutationCtx,
-	message: Doc<'inboundMessages'>,
-	action: 'approved' | 'rejected' | 'edited',
-	userFeedback?: string
-): Promise<void> {
-	await ctx.runMutation(internal.autonomyFeedback.recordFeedback, {
-		category: message.classification?.category ?? 'other',
-		action,
-		agentConfidence: message.confidenceScore ?? message.classification?.confidence ?? 0,
-		userFeedback,
-		inboundMessageId: message._id,
-	});
-
-	// Reconcile any pending shadow ("would-have-sent") observation for this
-	// message against the human's decision, feeding the graduation scorecard.
-	// A no-op when the message was never observed in shadow mode. Best-effort:
-	// scorecard bookkeeping must never affect the human action, so any failure
-	// is swallowed — it runs in the same transaction and must not roll back the
-	// human approve/reject/edit.
-	try {
-		await ctx.runMutation(internal.agent.shadowScorecard.reconcileShadowDecision, {
-			inboundMessageId: message._id,
-			action,
-		});
-	} catch {
-		// swallowed: shadow scorecard bookkeeping is best-effort
-	}
-}
+import {
+	recordApprovalSignals,
+	recordAutonomyFeedback,
+	resolveReplyCollisionHold,
+} from './decisionFeedback';
 
 /**
  * Approve an agent-generated draft for sending.
@@ -74,22 +38,15 @@ export const approveDraft = adminMutation({
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 		if (!message.draftResponse) throwInvalidState('No draft to approve');
 
-		// Collision soft-hold (belt-and-braces): if ANOTHER teammate is actively
-		// replying to this thread at execution time, don't quietly double-answer.
-		// Return a soft error the UI turns into a toast ("… just sent a reply —
-		// review the thread") rather than sending. Advisory only: last-writer
-		// still wins if two callers race past the held button — this is not a
-		// lock/transaction system, just a guard against the common collision.
-		if (message.threadId) {
-			const otherReplier = await getActiveReplierOtherThan(ctx, message.threadId, userId);
-			if (otherReplier) {
-				const profile = await ctx.db
-					.query('userProfiles')
-					.withIndex('by_auth_user_id', (q) => q.eq('authUserId', otherReplier.userId))
-					.first();
-				const heldByName = profile?.name || profile?.email || 'A teammate';
-				return { success: false as const, reason: 'reply_in_progress' as const, heldByName };
-			}
+		// Collision soft-hold: return a soft error the UI turns into a toast
+		// ("… just sent a reply — review the thread") rather than sending.
+		const hold = await resolveReplyCollisionHold(ctx, message, userId);
+		if (hold) {
+			return {
+				success: false as const,
+				reason: 'reply_in_progress' as const,
+				heldByName: hold.heldByName,
+			};
 		}
 
 		// Resolve the human-approve undo window from the singleton agentConfig
@@ -111,25 +68,10 @@ export const approveDraft = adminMutation({
 			},
 		});
 
-		// Feed the approval into the graduated-autonomy learning loop.
-		await recordAutonomyFeedback(ctx, message, 'approved');
-
-		// A draft the agent produced from an OWNER-answered clarification, sent
-		// UNEDITED, is a strong positive outcome signal: the owner supplied the
-		// missing facts, the agent drafted, and the owner shipped it verbatim.
-		// Record it as an outcome-sourced positive so real-world outcomes — not
-		// just the shrinking human-reviewed subset — tune autonomy. Best-effort:
-		// a learning-loop failure must never fail the human approve.
-		if (message.pendingClarification?.answeredAt && !message.isDraftEdited) {
-			try {
-				await ctx.runMutation(internal.autonomyOutcome.recordOutcomeFeedback, {
-					inboundMessageId: message._id,
-					signal: 'clarification_unedited_send',
-				});
-			} catch {
-				// swallowed: outcome bookkeeping is best-effort
-			}
-		}
+		// Feed the approval into the graduated-autonomy learning loop (positive
+		// feedback row + the strong `clarification_unedited_send` outcome signal
+		// when an owner-answered clarification draft ships verbatim).
+		await recordApprovalSignals(ctx, message);
 
 		// Log audit
 		await recordAuditLog(ctx, {

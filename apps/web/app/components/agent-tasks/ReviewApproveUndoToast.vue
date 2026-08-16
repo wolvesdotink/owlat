@@ -49,7 +49,9 @@ async function handleUndo() {
 			class="fixed bottom-4 left-4 bg-text-primary text-text-inverse rounded-md shadow-lg px-4 py-3 flex items-center gap-3 z-50"
 		>
 			<Icon name="lucide:check" class="w-4 h-4" />
-			<span class="text-sm">Approved — sending in {{ remainingSec }}s</span>
+			<!-- A bulk approve arms a per-id partial-result label ("8 approved,
+			     2 held — Dana is replying"); a single approve keeps "Approved". -->
+			<span class="text-sm">{{ state.label ?? 'Approved' }} — sending in {{ remainingSec }}s</span>
 			<button
 				type="button"
 				class="text-sm font-semibold text-brand hover:underline"
