@@ -223,6 +223,15 @@ describe('featureFlags — registry sanity', () => {
 					`${def.key} cascadesOff unknown flag ${target}`
 				).toBe(true);
 			}
+			for (const group of def.requiresAny ?? []) {
+				expect(group.length, `${def.key} declares an empty requiresAny group`).toBeGreaterThan(0);
+				for (const member of group) {
+					expect(
+						Object.hasOwn(FEATURE_FLAGS, member),
+						`${def.key} requiresAny unknown flag ${member}`
+					).toBe(true);
+				}
+			}
 		}
 	});
 
@@ -346,6 +355,21 @@ describe('featureFlags — plugin namespace', () => {
 		['non-array capabilities', { ...pluginFlag, requiredCapabilities: 'mail:read' }],
 		['non-array requires', { ...pluginFlag, requires: 'ai' }],
 		['non-string requires', { ...pluginFlag, requires: ['ai', 1] }],
+		['non-array requiresAny', { ...pluginFlag, requiresAny: 'postbox' }],
+		['a non-array requiresAny group', { ...pluginFlag, requiresAny: ['postbox'] }],
+		['a non-string requiresAny member', { ...pluginFlag, requiresAny: [['postbox', 1]] }],
+		['an empty requiresAny group', { ...pluginFlag, requiresAny: [[]] }],
+		[
+			'an oversized requiresAny group list',
+			{ ...pluginFlag, requiresAny: Array.from({ length: 65 }, () => ['postbox']) },
+		],
+		[
+			'an oversized requiresAny group',
+			{
+				...pluginFlag,
+				requiresAny: [Array.from({ length: 65 }, (_, index) => `plugin.member-${index}`)],
+			},
+		],
 		['non-array cascadesOff', { ...pluginFlag, cascadesOff: false }],
 		['non-string cascadesOff', { ...pluginFlag, cascadesOff: [{}] }],
 		['non-array requiredEnvVars', { ...pluginFlag, requiredEnvVars: 'TOKEN' }],
@@ -363,6 +387,7 @@ describe('featureFlags — plugin namespace', () => {
 	it.each([
 		['required', 'label'],
 		['optional', 'requires'],
+		['any-of', 'requiresAny'],
 		['unknown', 'extra'],
 		['symbol', Symbol('extra')],
 	] as const)('rejects a %s own getter without invoking it', (_label, property) => {
@@ -550,6 +575,203 @@ describe('featureFlags — plugin namespace', () => {
 		expect(registry[pluginFlag.key]?.requiredCapabilities).toEqual(['send:gate']);
 		expect(Object.isFrozen(registry)).toBe(true);
 		expect(Object.isFrozen(registry[pluginFlag.key])).toBe(true);
+	});
+});
+
+describe('featureFlags — requiresAny (any-of dependency groups)', () => {
+	// No core flag declares requiresAny yet (A2 re-declares postbox.aiDraft);
+	// plugin definitions exercise the engine through the composed registry.
+	const anyOfFlag = {
+		key: 'plugin.any-of-probe',
+		category: 'plugins',
+		label: 'Any-of probe',
+		description: 'Exercises any-of dependency groups over core flags.',
+		default: false,
+		requires: ['ai'],
+		requiresAny: [['postbox', 'mail.external']],
+		requiredCapabilities: [],
+		pluginPackageName: '@example/any-of-probe',
+	} satisfies PluginFeatureFlagDefinition;
+	const KEY = anyOfFlag.key;
+	const registry = createFeatureFlagRegistry([anyOfFlag]);
+
+	it('forces the flag off when no group member is on, regardless of stored value', () => {
+		const stored: FeatureFlagState = {
+			ai: true,
+			postbox: false,
+			'mail.external': false,
+			[KEY]: true,
+		};
+		expect(resolveFlags(stored, { registry })[KEY]).toBe(false);
+	});
+
+	it('stays on with either group member (or both)', () => {
+		const base: FeatureFlagState = { ai: true, [KEY]: true };
+		expect(resolveFlags({ ...base, postbox: true }, { registry })[KEY]).toBe(true);
+		expect(resolveFlags({ ...base, 'mail.external': true }, { registry })[KEY]).toBe(true);
+		expect(resolveFlags({ ...base, postbox: true, 'mail.external': true }, { registry })[KEY]).toBe(
+			true
+		);
+	});
+
+	it('chains with requires: the AND dependency still gates a satisfied group', () => {
+		const stored: FeatureFlagState = { ai: false, postbox: true, [KEY]: true };
+		expect(resolveFlags(stored, { registry })[KEY]).toBe(false);
+	});
+
+	it('a stored-ON member that itself resolves off cannot satisfy the group', () => {
+		// sealedMail requires postbox + senderAuthBadges; with postbox off it is
+		// forced off in the same fixed point, so it must not carry the group.
+		const chained = {
+			...anyOfFlag,
+			key: 'plugin.any-of-chained' as PluginFeatureFlagKey,
+			requires: undefined,
+			requiresAny: [['sealedMail']],
+		} satisfies PluginFeatureFlagDefinition;
+		const chainedRegistry = createFeatureFlagRegistry([chained]);
+		const stored: FeatureFlagState = { sealedMail: true, postbox: false, [chained.key]: true };
+		expect(resolveFlags(stored, { registry: chainedRegistry })[chained.key]).toBe(false);
+
+		const satisfied: FeatureFlagState = { sealedMail: true, postbox: true, [chained.key]: true };
+		expect(resolveFlags(satisfied, { registry: chainedRegistry })[chained.key]).toBe(true);
+	});
+
+	it('converges within the 10-iteration fixed-point bound on an adversarially ordered chain', () => {
+		// Registered in reverse dependency order, each pass of the fixed point can
+		// only propagate the force-off one link — a 9-deep chain needs all the
+		// iterations the bound allows.
+		const CHAIN_DEPTH = 9;
+		const chainKey = (index: number) => `plugin.chain-${index}` as PluginFeatureFlagKey;
+		const definitions: PluginFeatureFlagDefinition[] = [];
+		for (let index = CHAIN_DEPTH; index >= 1; index--) {
+			definitions.push({
+				...anyOfFlag,
+				key: chainKey(index),
+				requires: undefined,
+				requiresAny: [[chainKey(index - 1)]],
+			});
+		}
+		definitions.push({
+			...anyOfFlag,
+			key: chainKey(0),
+			requires: undefined,
+			requiresAny: undefined,
+		});
+		const chainRegistry = createFeatureFlagRegistry(definitions);
+
+		const stored: FeatureFlagState = {};
+		for (let index = 0; index <= CHAIN_DEPTH; index++) stored[chainKey(index)] = true;
+		stored[chainKey(0)] = false;
+
+		const resolved = resolveFlags(stored, { registry: chainRegistry });
+		for (let index = 0; index <= CHAIN_DEPTH; index++) {
+			expect(resolved[chainKey(index)], `${chainKey(index)} should be forced off`).toBe(false);
+		}
+	});
+
+	it('applyToggle cascades off when the last ON member of a group turns off', () => {
+		const stored: FeatureFlagState = { ai: true, postbox: true, [KEY]: true };
+		const { next, cascaded } = applyToggle(stored, 'postbox', false, registry);
+		expect(next[KEY]).toBe(false);
+		expect(cascaded).toContain(KEY);
+	});
+
+	it('applyToggle does not cascade off while another member keeps the group satisfied', () => {
+		const stored: FeatureFlagState = {
+			ai: true,
+			postbox: true,
+			'mail.external': true,
+			[KEY]: true,
+		};
+		const { next, cascaded } = applyToggle(stored, 'postbox', false, registry);
+		expect(next[KEY]).toBe(true);
+		expect(cascaded).not.toContain(KEY);
+		expect(resolveFlags(next, { registry })[KEY]).toBe(true);
+	});
+
+	it('counts default-ON members when deciding whether the group is still satisfied', () => {
+		// forms and campaigns both default ON; only campaigns is stored. Turning
+		// campaigns off must not cascade — forms still satisfies the group at
+		// resolve time even though it has no stored override.
+		const defaultsFlag = {
+			...anyOfFlag,
+			key: 'plugin.any-of-defaults' as PluginFeatureFlagKey,
+			requires: undefined,
+			requiresAny: [['forms', 'campaigns']],
+		} satisfies PluginFeatureFlagDefinition;
+		const defaultsRegistry = createFeatureFlagRegistry([defaultsFlag]);
+		const stored: FeatureFlagState = { campaigns: true, [defaultsFlag.key]: true };
+		const { next, cascaded } = applyToggle(stored, 'campaigns', false, defaultsRegistry);
+		expect(next[defaultsFlag.key]).toBe(true);
+		expect(cascaded).not.toContain(defaultsFlag.key);
+		expect(resolveFlags(next, { registry: defaultsRegistry })[defaultsFlag.key]).toBe(true);
+	});
+
+	it('cascade-off recurses through dependents of the group-forced flag', () => {
+		const dependent = {
+			...anyOfFlag,
+			key: 'plugin.any-of-dependent' as PluginFeatureFlagKey,
+			requires: [KEY],
+			requiresAny: undefined,
+		} satisfies PluginFeatureFlagDefinition;
+		const chainRegistry = createFeatureFlagRegistry([anyOfFlag, dependent]);
+		const stored: FeatureFlagState = {
+			ai: true,
+			postbox: true,
+			[KEY]: true,
+			[dependent.key]: true,
+		};
+		const { next, cascaded } = applyToggle(stored, 'postbox', false, chainRegistry);
+		expect(next[KEY]).toBe(false);
+		expect(next[dependent.key]).toBe(false);
+		expect(cascaded).toContain(KEY);
+		expect(cascaded).toContain(dependent.key);
+	});
+
+	it('cascade-on does not auto-enable any group member', () => {
+		const { next, cascaded } = applyToggle({}, KEY, true, registry);
+		expect(next[KEY]).toBe(true);
+		// The AND dependency still cascades on…
+		expect(next.ai).toBe(true);
+		expect(cascaded).toEqual(['ai']);
+		// …but no any-of member is picked, and the resolver keeps the flag off
+		// until one is enabled explicitly.
+		expect(next.postbox).toBeUndefined();
+		expect(next['mail.external']).toBeUndefined();
+		expect(resolveFlags(next, { registry })[KEY]).toBe(false);
+	});
+
+	it('rejects dangling group members at registry creation', () => {
+		expect(() =>
+			createFeatureFlagRegistry([{ ...anyOfFlag, requiresAny: [['plugin.not-installed']] }])
+		).toThrow(`${KEY} requiresAny unknown feature flag plugin.not-installed`);
+	});
+
+	it('rejects an accessor-backed group without invoking its getter', () => {
+		let getterCalls = 0;
+		const groups = [['postbox']];
+		Object.defineProperty(groups, '0', {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				throw new Error('group getter ran');
+			},
+		});
+		const definition = { ...anyOfFlag, requiresAny: groups };
+		expect(isPluginFeatureFlagDefinition(definition)).toBe(false);
+		expect(() =>
+			createFeatureFlagRegistry([definition as unknown as PluginFeatureFlagDefinition])
+		).toThrowError(/^Invalid plugin feature flag definition$/);
+		expect(getterCalls).toBe(0);
+	});
+
+	it('snapshots and freezes requiresAny so later source mutation does not leak', () => {
+		const group: FeatureFlagKey[] = ['postbox', 'mail.external'];
+		const frozenRegistry = createFeatureFlagRegistry([{ ...anyOfFlag, requiresAny: [group] }]);
+		group.push('inbox');
+		expect(frozenRegistry[KEY]?.requiresAny).toEqual([['postbox', 'mail.external']]);
+		expect(Object.isFrozen(frozenRegistry[KEY]?.requiresAny)).toBe(true);
+		expect(Object.isFrozen(frozenRegistry[KEY]?.requiresAny?.[0])).toBe(true);
 	});
 });
 

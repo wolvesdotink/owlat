@@ -28,6 +28,7 @@ const DEFINITION_FIELDS = new Set<PropertyKey>([
 	'description',
 	'default',
 	...STRING_ARRAY_FIELDS,
+	'requiresAny',
 	'hostedOnly',
 	'pluginPackageName',
 ]);
@@ -84,6 +85,33 @@ export function snapshotPluginFeatureFlagDefinition(
 			return undefined;
 		}
 
+		// `requiresAny` is the one nested array field: array of any-of groups, each
+		// a non-empty dense array of registered-flag keys (registration is enforced
+		// by `createFeatureFlagRegistry`; this boundary guards the shape). Both the
+		// group count and each group's size share the definition-array ceiling.
+		const requiresAnyValue = captured['requiresAny'];
+		let requiresAny: readonly (readonly string[])[] | undefined;
+		if (requiresAnyValue !== undefined) {
+			const snapshot = snapshotDenseDataArray(
+				requiresAnyValue,
+				MAX_DEFINITION_ARRAY_ITEMS,
+				(group): ItemSnapshot<readonly string[]> => {
+					const groupSnapshot = snapshotDenseDataArray(
+						group,
+						MAX_DEFINITION_ARRAY_ITEMS,
+						(member): ItemSnapshot<string> =>
+							typeof member === 'string' ? { valid: true, value: member } : { valid: false }
+					);
+					if (groupSnapshot.kind !== 'valid' || groupSnapshot.value.length === 0) {
+						return { valid: false };
+					}
+					return { valid: true, value: groupSnapshot.value };
+				}
+			);
+			if (snapshot.kind !== 'valid') return undefined;
+			requiresAny = snapshot.value;
+		}
+
 		const arrays = Object.create(null) as Record<StringArrayField, readonly string[] | undefined>;
 		for (const field of STRING_ARRAY_FIELDS) {
 			const fieldValue = captured[field];
@@ -108,6 +136,7 @@ export function snapshotPluginFeatureFlagDefinition(
 			description,
 			default: defaultValue,
 			requires: arrays.requires as readonly FeatureFlagKey[] | undefined,
+			requiresAny: requiresAny as readonly (readonly FeatureFlagKey[])[] | undefined,
 			cascadesOff: arrays.cascadesOff as readonly FeatureFlagKey[] | undefined,
 			requiredEnvVars: arrays.requiredEnvVars,
 			dockerProfiles: arrays.dockerProfiles,
