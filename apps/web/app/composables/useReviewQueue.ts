@@ -32,6 +32,9 @@ export function useReviewQueue() {
 	const { run: editDraft } = useBackendOperation(api.inbox.mutations.editDraft, {
 		label: 'Save reply',
 	});
+	const { run: undoAutoSend } = useBackendOperation(api.inbox.mutations.undoAutoSend, {
+		label: 'Undo approval',
+	});
 
 	/**
 	 * A queue item "needs reply" when it has no agent draft to approve — i.e. a
@@ -80,6 +83,17 @@ export function useReviewQueue() {
 	};
 
 	/**
+	 * True inverse of an approve while its undo window is open: cancels the held
+	 * send server-side and routes the draft back to `draft_ready` (the same
+	 * `undoAutoSend` path autonomous sends use). Resolves `undefined` on a
+	 * categorized failure (already toasted); `cancelled: false` when the window
+	 * has closed — a clean no-op the caller should surface honestly.
+	 */
+	const undoApprove = async (messageId: Id<'inboundMessages'>) => {
+		return await undoAutoSend({ inboundMessageId: messageId });
+	};
+
+	/**
 	 * Compose a human reply for a draftless escalation and send it: persist the
 	 * text via `editDraft`, then approve+queue via `approveDraft`. Both runs go
 	 * through `useBackendOperation`, which toasts categorized failures and
@@ -111,6 +125,7 @@ export function useReviewQueue() {
 		onApprove,
 		approveOption,
 		onReject,
+		undoApprove,
 		composeAndSend,
 		editDraft,
 	};

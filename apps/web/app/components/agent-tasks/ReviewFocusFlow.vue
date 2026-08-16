@@ -30,8 +30,16 @@ import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trust
  */
 const emit = defineEmits<{ (e: 'exit'): void }>();
 
-const { reviewItems, isLoading, needsReply, onApprove, approveOption, onReject, composeAndSend } =
-	useReviewQueue();
+const {
+	reviewItems,
+	isLoading,
+	needsReply,
+	onApprove,
+	approveOption,
+	onReject,
+	undoApprove,
+	composeAndSend,
+} = useReviewQueue();
 
 type ReviewEntry = NonNullable<typeof reviewItems.value>[number];
 type FlowItem = ReviewEntry & { id: string };
@@ -146,6 +154,31 @@ function rowTrust(message: FlowItem['message']): TrustLabel {
 // Draftless-escalation compose box (keyed by message id).
 const composeBody = reactive<Record<string, string>>({});
 
+// Countdown-undo toast + true inverse for approvals inside their server-side
+// undo window (agentConfig.humanApproveUndoDelayMs, piece C1). The flow's
+// Cmd/Ctrl+Z (and the chrome Undo button) run the inverse, which actually
+// un-sends: undoAutoSend cancels the held send and routes the draft back to
+// `draft_ready` — the flow then re-shows the card from its cache.
+const {
+	state: approveUndoState,
+	arm: armApproveUndo,
+	dismiss: dismissApproveUndo,
+} = useReviewApproveUndo();
+
+async function undoApproveInverse(messageId: Id<'inboundMessages'>) {
+	// The flow undo owns this reversal now — drop a stale toast for the same card.
+	if (approveUndoState.value.inboundMessageId === messageId) dismissApproveUndo();
+	const result = await undoApprove(messageId);
+	if (result === undefined) return; // categorized failure — already toasted
+	if (result.cancelled) {
+		showToast('Approval undone — the draft is back in the queue');
+	} else if (result.reason === 'already_sent') {
+		showToast('Too late to undo — the reply is already on its way', 'warning');
+	}
+	// 'no_pending_send': the toast's Undo already cancelled it (this inverse ran
+	// as part of flow.undo) or the send fully completed — nothing left to say.
+}
+
 async function approve(row: FlowItem) {
 	if (busy.value || isHeld.value) return;
 	busy.value = true;
@@ -161,8 +194,22 @@ async function approve(row: FlowItem) {
 			showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
 			return;
 		}
-		showToast('Draft approved and queued for sending');
-		flow.complete(row.id, { outcome: 'approved' });
+		const undo = approveUndoWindow(result);
+		if (undo) {
+			// The toast's Undo defers to the flow undo so position/tally rewind
+			// together with the actual un-send (the registered inverse below).
+			armApproveUndo({
+				inboundMessageId: row.message._id,
+				sendAt: undo.sendAt,
+				onUndo: () => void flow.undo(),
+			});
+		} else {
+			showToast('Draft approved and queued for sending');
+		}
+		flow.complete(row.id, {
+			outcome: 'approved',
+			...(undo ? { inverse: () => undoApproveInverse(row.message._id) } : {}),
+		});
 	} finally {
 		busy.value = false;
 	}

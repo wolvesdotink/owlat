@@ -14,7 +14,7 @@ import { useReviewQueue } from '../useReviewQueue';
  */
 describe('useReviewQueue', () => {
 	// One mock run() per useBackendOperation call, in call order:
-	// 0 = approveDraft, 1 = rejectDraft, 2 = editDraft.
+	// 0 = approveDraft, 1 = rejectDraft, 2 = editDraft, 3 = undoAutoSend.
 	let runs: Array<ReturnType<typeof vi.fn>>;
 
 	beforeEach(() => {
@@ -29,6 +29,7 @@ describe('useReviewQueue', () => {
 
 	const approveRun = () => runs[0]!;
 	const editRun = () => runs[2]!;
+	const undoRun = () => runs[3]!;
 
 	describe('needsReply', () => {
 		it('flags a draftless escalation', () => {
@@ -138,6 +139,30 @@ describe('useReviewQueue', () => {
 			expect(result).toBeUndefined();
 			expect(editRun()).not.toHaveBeenCalled();
 			expect(approveRun()).not.toHaveBeenCalled();
+		});
+	});
+
+	// Piece C1: the undo window a human approve now opens server-side.
+	describe('undoApprove', () => {
+		const messageId = 'msg_1' as never;
+
+		it('calls undoAutoSend for the message and returns its outcome', async () => {
+			const { undoApprove } = useReviewQueue();
+			undoRun().mockResolvedValueOnce({ cancelled: true, reason: 'cancelled' });
+
+			const result = await undoApprove(messageId);
+
+			expect(undoRun()).toHaveBeenCalledWith({ inboundMessageId: messageId });
+			expect(result).toEqual({ cancelled: true, reason: 'cancelled' });
+		});
+
+		it('surfaces the clean no-op when the window has already closed', async () => {
+			const { undoApprove } = useReviewQueue();
+			undoRun().mockResolvedValueOnce({ cancelled: false, reason: 'already_sent' });
+
+			const result = await undoApprove(messageId);
+
+			expect(result).toEqual({ cancelled: false, reason: 'already_sent' });
 		});
 	});
 });

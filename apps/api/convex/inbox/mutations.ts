@@ -14,6 +14,7 @@ import { getMutationContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { transition as threadTransition } from './threads/module';
 import type { CancelAutoSendOutcome } from './processingLifecycle';
+import { resolveHumanApproveUndoDelayMs } from './processingLifecycle/effects';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
 import { getActiveReplierOtherThan } from './presence';
@@ -91,13 +92,22 @@ export const approveDraft = adminMutation({
 			}
 		}
 
+		// Resolve the human-approve undo window from the singleton agentConfig
+		// (default 15s, clamped 0–120s; 0 = the legacy immediate send) and thread
+		// it into the lifecycle, which schedules the delayed send with the same
+		// cancellable `pendingAutoSend` marker autonomous sends use.
+		const configs = await ctx.db.query('agentConfig').take(1);
+		const undoDelayMs = resolveHumanApproveUndoDelayMs(configs[0]?.humanApproveUndoDelayMs);
+
+		const approvedAt = Date.now();
 		await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
 			inboundMessageId: args.inboundMessageId,
 			input: {
 				to: 'approved',
-				at: Date.now(),
+				at: approvedAt,
 				source: 'human',
 				userId,
+				...(undoDelayMs > 0 ? { undoDelayMs } : {}),
 			},
 		});
 
@@ -129,7 +139,13 @@ export const approveDraft = adminMutation({
 			resourceId: args.inboundMessageId,
 		});
 
-		return { success: true as const };
+		// Hand the undo window back to the caller so the UI can arm its countdown
+		// toast ("Approved — Undo (14s)") without re-querying the marker. Absent
+		// when the window is 0 — the send already left, nothing to undo.
+		return {
+			success: true as const,
+			...(undoDelayMs > 0 ? { undo: { sendAt: approvedAt + undoDelayMs } } : {}),
+		};
 	},
 });
 
@@ -175,14 +191,16 @@ export const rejectDraft = adminMutation({
 });
 
 /**
- * Undo an in-flight autonomous auto-send during its delay / undo window.
+ * Undo an in-flight delayed send during its delay / undo window.
  *
- * Backs the "Sending in 0:59 — Undo" control on the review surface. The message
- * was auto-approved and its send scheduled behind `agentConfig.autoSendDelayMs`;
- * this aborts the scheduled send (if still pending) and routes the reply back to
- * the human review queue (`approved → draft_ready`) rather than dropping it —
- * the same fail-soft degrade as a landing thread reply. Idempotent: a message
- * whose send already fired (or was never delayed) returns `cancelled: false`.
+ * Backs the "Sending in 0:59 — Undo" control on the review surface for both
+ * origins of a pending delayed send: an AUTONOMOUS auto-approve (window from
+ * `agentConfig.autoSendDelayMs`) and a HUMAN approve (window from
+ * `agentConfig.humanApproveUndoDelayMs` — the countdown undo toast). Aborts the
+ * scheduled send (if still pending) and routes the reply back to the human
+ * review queue (`approved → draft_ready`) rather than dropping it — the same
+ * fail-soft degrade as a landing thread reply. Idempotent: a message whose send
+ * already fired (or was never delayed) returns `cancelled: false`.
  */
 export const undoAutoSend = adminMutation({
 	args: {

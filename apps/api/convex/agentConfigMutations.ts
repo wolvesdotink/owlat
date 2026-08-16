@@ -15,6 +15,7 @@ import { publicQuery, adminMutation } from './lib/authedFunctions';
 import { recordAuditLog } from './lib/auditLog';
 import { getStoredFlags } from './lib/featureFlags';
 import { requireAdminContext, isActiveOrgMember } from './lib/sessionOrganization';
+import { clampHumanApproveUndoDelayMs } from './inbox/processingLifecycle/effects';
 import { FEATURE_FLAG_REGISTRY } from './plugins/featureFlagRegistry';
 
 /** Clamp a minute-of-day into [0, 1439] so a bad client value can't wedge the window. */
@@ -67,6 +68,10 @@ export const updateConfig = adminMutation({
 		// the configured value; 0 restores the legacy immediate send. See
 		// inbox/processingLifecycle/effects.ts.
 		autoSendDelayMs: v.optional(v.number()),
+		// Undo window (ms) after a HUMAN Approve on the review surfaces. Clamped
+		// to 0–120000; 0 restores the legacy immediate human send. See
+		// inbox/processingLifecycle/effects.ts.
+		humanApproveUndoDelayMs: v.optional(v.number()),
 		// Timezone-aware working-hours window for autonomous auto-sends. When
 		// enabled, an auto-approved reply decided OUTSIDE the window is held for
 		// human review instead of sent. See lib/workingHours.ts.
@@ -97,6 +102,10 @@ export const updateConfig = adminMutation({
 			if (args.coalesceWindowMs !== undefined) patches.coalesceWindowMs = args.coalesceWindowMs;
 			if (args.autoSendDelayMs !== undefined)
 				patches.autoSendDelayMs = Math.max(0, args.autoSendDelayMs);
+			if (args.humanApproveUndoDelayMs !== undefined)
+				patches.humanApproveUndoDelayMs = clampHumanApproveUndoDelayMs(
+					args.humanApproveUndoDelayMs
+				);
 			if (args.isWorkingHoursEnabled !== undefined)
 				patches.isWorkingHoursEnabled = args.isWorkingHoursEnabled;
 			if (args.workingHoursTimezone !== undefined)
@@ -141,6 +150,10 @@ export const updateConfig = adminMutation({
 			coalesceWindowMs: args.coalesceWindowMs ?? 30000,
 			autoSendDelayMs:
 				args.autoSendDelayMs === undefined ? undefined : Math.max(0, args.autoSendDelayMs),
+			humanApproveUndoDelayMs:
+				args.humanApproveUndoDelayMs === undefined
+					? undefined
+					: clampHumanApproveUndoDelayMs(args.humanApproveUndoDelayMs),
 			isWorkingHoursEnabled: args.isWorkingHoursEnabled,
 			workingHoursTimezone: args.workingHoursTimezone,
 			workingHoursStart:

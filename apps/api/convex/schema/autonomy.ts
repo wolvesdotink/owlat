@@ -42,6 +42,15 @@ export const autonomyTables = {
 		// (60s). 0 preserves the legacy immediate-send behaviour. Human-reviewed
 		// approvals are unaffected. See inbox/processingLifecycle/effects.ts.
 		autoSendDelayMs: v.optional(v.number()),
+		// Undo window (ms) after a HUMAN Approve on the review surfaces. The
+		// approved reply is scheduled after this delay with the same cancellable
+		// `pendingAutoSend` marker the autonomous path uses, so the reviewer can
+		// pull it back ("Approved — Undo (14s)") through `undoAutoSend`. Clamped
+		// to 0–120000 at read/write; unset ⇒ DEFAULT_HUMAN_APPROVE_UNDO_DELAY_MS
+		// (15s). 0 restores the legacy immediate human send. Autonomous sends are
+		// governed by `autoSendDelayMs` above, not this. See
+		// inbox/processingLifecycle/effects.ts.
+		humanApproveUndoDelayMs: v.optional(v.number()),
 		// Abandoned-clarification window (ms). A message parked in
 		// `awaiting_clarification` for longer than this with no owner answer is
 		// resumed by the fallback cron as a flagged best-guess that is never

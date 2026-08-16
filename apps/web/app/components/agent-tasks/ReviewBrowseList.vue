@@ -28,6 +28,7 @@ const {
 	onApprove,
 	approveOption,
 	onReject,
+	undoApprove,
 	composeAndSend,
 	editDraft,
 } = useReviewQueue();
@@ -137,8 +138,28 @@ function handledReplyCollision(result: unknown): boolean {
 	return true;
 }
 
+// Countdown-undo toast for approvals inside their server-side undo window
+// (agentConfig.humanApproveUndoDelayMs, piece C1). Armed with this list's true
+// inverse: undoAutoSend routes the draft back to `draft_ready` and the row is
+// unhidden immediately rather than waiting on the live subscription round-trip.
+const { arm: armApproveUndo } = useReviewApproveUndo();
+
+async function undoApproveAndRestore(messageId: Id<'inboundMessages'>) {
+	const result = await undoApprove(messageId);
+	if (result === undefined) return; // categorized failure — already toasted
+	if (result.cancelled) {
+		unhideRow(messageId);
+		showToast('Approval undone — the draft is back in the queue');
+	} else {
+		// The window closed while the toast was up — the send already left.
+		showToast('Too late to undo — the reply is already on its way', 'warning');
+	}
+}
+
 // Shared optimistic row action: hide the row, run the mutation, restore it on a
 // no-op or soft collision (reject never collides), else confirm with successMsg.
+// An approve that returns an open undo window arms the countdown-undo toast
+// instead of the plain confirmation.
 async function runOptimistic(
 	messageId: Id<'inboundMessages'>,
 	send: () => Promise<unknown>,
@@ -152,7 +173,16 @@ async function runOptimistic(
 			unhideRow(messageId);
 			return;
 		}
-		showToast(successMsg);
+		const undo = approveUndoWindow(result);
+		if (undo) {
+			armApproveUndo({
+				inboundMessageId: messageId,
+				sendAt: undo.sendAt,
+				onUndo: () => undoApproveAndRestore(messageId),
+			});
+		} else {
+			showToast(successMsg);
+		}
 	} finally {
 		actionInProgress.value = null;
 	}

@@ -152,6 +152,71 @@ describe('useTaskFlow — completion, undo, summary', () => {
 		expect(flow.canUndo.value).toBe(false);
 	});
 
+	it('undo awaits an ASYNC inverse before resolving (the un-send mutation)', async () => {
+		// Piece C1: the review focus flow registers a true inverse that calls the
+		// `undoAutoSend` mutation. The undo must await it so callers observe the
+		// un-send having actually happened, not just the UI rewind.
+		const { flow } = setup([
+			{ id: 'a', kind: 'draft_review' },
+			{ id: 'b', kind: 'draft_review' },
+		]);
+		let settled = false;
+		flow.complete('a', {
+			outcome: 'approved',
+			inverse: async () => {
+				await Promise.resolve();
+				settled = true;
+			},
+		});
+		const did = await flow.undo();
+		expect(did).toBe(true);
+		expect(settled).toBe(true);
+		expect(flow.current.value?.id).toBe('a');
+	});
+
+	it('Cmd/Ctrl+Z (onWindowKeydown) runs the registered inverse and restores the card', async () => {
+		// The focus flow's keyboard undo path: complete with an inverse (the
+		// un-send), then a window-level Cmd+Z must fire that inverse — not merely
+		// rewind the cursor.
+		const { flow } = setup([
+			{ id: 'a', kind: 'draft_review' },
+			{ id: 'b', kind: 'draft_review' },
+		]);
+		let unSent = false;
+		flow.complete('a', { outcome: 'approved', inverse: () => void (unSent = true) });
+		expect(flow.current.value?.id).toBe('b');
+
+		flow.onWindowKeydown(
+			new KeyboardEvent('keydown', { key: 'z', metaKey: true, cancelable: true })
+		);
+		// undo() is fired async from the handler; let the microtask settle.
+		await nextTick();
+
+		expect(unSent).toBe(true);
+		expect(flow.current.value?.id).toBe('a');
+		expect(flow.summary.value).toBe('');
+	});
+
+	it('Cmd+Z stays inert while typing in an editable target', async () => {
+		const { flow } = setup([
+			{ id: 'a', kind: 'draft_review' },
+			{ id: 'b', kind: 'draft_review' },
+		]);
+		let unSent = false;
+		flow.complete('a', { outcome: 'approved', inverse: () => void (unSent = true) });
+
+		const textarea = document.createElement('textarea');
+		document.body.appendChild(textarea);
+		const event = new KeyboardEvent('keydown', { key: 'z', metaKey: true, cancelable: true });
+		Object.defineProperty(event, 'target', { value: textarea });
+		flow.onWindowKeydown(event);
+		await nextTick();
+
+		expect(unSent).toBe(false);
+		expect(flow.current.value?.id).toBe('b');
+		textarea.remove();
+	});
+
 	it('tallies distinct outcomes in first-seen order', () => {
 		const { flow } = setup([
 			{ id: 'a', kind: 'question' },

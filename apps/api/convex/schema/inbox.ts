@@ -205,15 +205,16 @@ export const inboxTables = {
 		agentDecision: v.optional(agentDecisionValidator),
 		// Human reviewer assignment
 		assignedTo: v.optional(v.string()),
-		// Cancellable pending-send marker for a delayed AUTONOMOUS auto-send.
-		// Set when an auto-approved message schedules its send after the
-		// configurable undo window (agentConfig.autoSendDelayMs) instead of
-		// firing immediately. `scheduledFnId` is the handle the cancel path
-		// (`cancelAutoSend`) passes to `ctx.scheduler.cancel` to abort an
-		// in-flight delayed send; `sendAt` powers the UI countdown
-		// ("Sending in 0:59 — Undo"). Cleared on any transition out of
-		// `approved`. Absent for human-reviewed approvals and for delay=0
-		// (legacy immediate send).
+		// Cancellable pending-send marker for a DELAYED approved send. Set when
+		// an approved message schedules its send after a configurable undo window
+		// instead of firing immediately — an AUTONOMOUS auto-approve
+		// (agentConfig.autoSendDelayMs) or a HUMAN approve
+		// (agentConfig.humanApproveUndoDelayMs). `scheduledFnId` is the handle
+		// the cancel path (`cancelAutoSend`) passes to `ctx.scheduler.cancel` to
+		// abort an in-flight delayed send; `sendAt` powers the UI countdown
+		// ("Sending in 0:59 — Undo" / "Approved — Undo (14s)"). Cleared on any
+		// transition out of `approved`. Absent for delay=0 (legacy immediate
+		// send).
 		pendingAutoSend: v.optional(
 			v.object({
 				scheduledFnId: v.id('_scheduled_functions'),
