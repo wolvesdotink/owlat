@@ -1,80 +1,24 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+	applyEnvUpdates,
 	errorMessage,
 	isRateLimited,
 	isValidIPv4,
-	safeCompare,
 	validateComposeTemplate,
 } from './security.js';
+import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { handleApplyProfiles } from './applyProfiles.js';
 
 const PORT = parseInt(process.env['PORT'] || '3200', 10);
-const INSTANCE_SECRET = process.env['INSTANCE_SECRET'];
-const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
 const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
 
 // ── Helpers ──
 
-function json(res: ServerResponse, status: number, body: unknown) {
-	res.writeHead(status, { 'Content-Type': 'application/json' });
-	res.end(JSON.stringify(body));
-}
-
 /** Rewrite a `.env` file's content line-by-line (preserves comments + ordering). */
 function rewriteEnvLines(content: string, transform: (line: string) => string): string {
 	return content.split('\n').map(transform).join('\n');
-}
-
-function readBody(req: IncomingMessage): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const chunks: Buffer[] = [];
-		req.on('data', (chunk: Buffer) => chunks.push(chunk));
-		req.on('end', () => resolve(Buffer.concat(chunks).toString()));
-		req.on('error', reject);
-	});
-}
-
-/**
- * Validate that the request has a valid instance secret.
- * Returns true if authorized, false otherwise (and sends 401 response).
- */
-function requireAuth(req: IncomingMessage, res: ServerResponse): boolean {
-	if (!INSTANCE_SECRET) {
-		json(res, 500, { error: 'INSTANCE_SECRET not configured' });
-		return false;
-	}
-
-	const provided = req.headers['x-instance-secret'];
-	if (typeof provided !== 'string' || !safeCompare(provided, INSTANCE_SECRET)) {
-		json(res, 401, { error: 'Unauthorized' });
-		return false;
-	}
-
-	return true;
-}
-
-function exec(cmd: string, cwd: string): { ok: boolean; stdout: string; stderr: string } {
-	try {
-		const stdout = execSync(cmd, {
-			cwd,
-			timeout: 300_000, // 5 minutes
-			encoding: 'utf-8',
-			stdio: ['pipe', 'pipe', 'pipe'],
-		});
-		return { ok: true, stdout: stdout || '', stderr: '' };
-	} catch (err) {
-		// Failure = non-zero exit (execSync throws), NOT a grep of stderr:
-		// docker writes progress to stderr on success, and real failures
-		// ('Error response from daemon') broke the old case-sensitive match.
-		const e = err as { stdout?: string | Buffer | null; stderr?: string | Buffer | null };
-		return {
-			ok: false,
-			stdout: e.stdout?.toString() || '',
-			stderr: e.stderr?.toString() || errorMessage(err),
-		};
-	}
 }
 
 // ── Endpoint handlers ──
@@ -208,37 +152,7 @@ function handleHealth(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	// Get running container info
-	const result = exec(
-		'docker compose ps --format json',
-		OWLAT_DIR,
-	);
-
-	// Parse container list and try to extract per-service version from image tag
-	let containers: Array<Record<string, unknown>> = [];
-	try {
-		// `docker compose ps --format json` emits one JSON object per line (not an array)
-		containers = result.stdout
-			.split('\n')
-			.map((line) => line.trim())
-			.filter((line) => line.length > 0)
-			.map((line) => {
-				const row = JSON.parse(line) as Record<string, unknown>;
-				// Extract version from image tag — e.g. "ghcr.io/wolvesdotink/web:0.2.1" → "0.2.1".
-				// Org-agnostic: splits on ":" and takes the tag, so any allowed registry works.
-				const image = typeof row['Image'] === 'string' ? row['Image'] : '';
-				const tag = image.split(':').pop() || '';
-				return {
-					service: row['Service'],
-					state: row['State'],
-					status: row['Status'],
-					image,
-					imageTag: tag,
-					health: row['Health'],
-				};
-			});
-	} catch {
-		// Fall back to raw stdout if parsing fails
-	}
+	const { containers, raw } = composePsServices();
 
 	json(res, 200, {
 		status: 'ok',
@@ -246,7 +160,7 @@ function handleHealth(req: IncomingMessage, res: ServerResponse) {
 		version: process.env['OWLAT_VERSION'] || 'dev',
 		gitSha: process.env['OWLAT_GIT_SHA'] || 'unknown',
 		buildDate: process.env['OWLAT_BUILD_DATE'] || 'unknown',
-		containers: containers.length > 0 ? containers : result.stdout,
+		containers: containers.length > 0 ? containers : raw,
 	});
 }
 
@@ -292,7 +206,11 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		// Step 2: Write persistent network config (survives reboots)
 		try {
 			mkdirSync(INTERFACES_DIR, { recursive: true });
-			writeFileSync(persistFile, `auto eth0\niface eth0 inet static\n    address ${ip}/32\n`, 'utf-8');
+			writeFileSync(
+				persistFile,
+				`auto eth0\niface eth0 inet static\n    address ${ip}/32\n`,
+				'utf-8'
+			);
 			steps.push({ step: 'persist-config', stdout: `Wrote ${persistFile}`, stderr: '' });
 		} catch (err) {
 			steps.push({ step: 'persist-config', stdout: '', stderr: errorMessage(err) });
@@ -347,7 +265,11 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 				return line;
 			});
 			writeFileSync(envFile, updated, 'utf-8');
-			steps.push({ step: 'update-env', stdout: `Removed ${ip} from IP_POOLS_CAMPAIGN`, stderr: '' });
+			steps.push({
+				step: 'update-env',
+				stdout: `Removed ${ip} from IP_POOLS_CAMPAIGN`,
+				stderr: '',
+			});
 		} catch (err) {
 			steps.push({ step: 'update-env', stdout: '', stderr: errorMessage(err) });
 		}
@@ -392,7 +314,13 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	// Require ALL fields — partial rotation is a footgun.
-	const fields = ['instanceSecret', 'convexAdminKey', 'mtaApiKey', 'mtaWebhookSecret', 'redisPassword'] as const;
+	const fields = [
+		'instanceSecret',
+		'convexAdminKey',
+		'mtaApiKey',
+		'mtaWebhookSecret',
+		'redisPassword',
+	] as const;
 	for (const f of fields) {
 		const val = body[f];
 		if (typeof val !== 'string' || val.length < 16 || val.length > 256) {
@@ -413,7 +341,9 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 500, { error: `Cannot read .env: ${errorMessage(err)}` });
 	}
 
-	// Map of env var → new value.
+	// Map of env var → new value. This five-key allowlist is a security property
+	// of the secret-rotation primitive — /apply-profiles has its own single-key
+	// list; neither may grow the other's.
 	const updates: Record<string, string> = {
 		INSTANCE_SECRET: body.instanceSecret!,
 		CONVEX_ADMIN_KEY: body.convexAdminKey!,
@@ -422,16 +352,15 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 		REDIS_PASSWORD: body.redisPassword!,
 	};
 
-	// Line-by-line rewrite — preserves comments + ordering.
-	const updated = rewriteEnvLines(envContent, (line) => {
-		for (const [key, value] of Object.entries(updates)) {
-			if (line.startsWith(`${key}=`)) return `${key}=${value}`;
-		}
-		return line;
-	});
+	// Hardened line-by-line rewrite — preserves comments + ordering; keys absent
+	// from .env stay absent (rotation never introduces new lines).
+	const rewrite = applyEnvUpdates(envContent, updates, Object.keys(updates));
+	if (!rewrite.ok) {
+		return json(res, 400, { error: rewrite.reason });
+	}
 
 	try {
-		writeFileSync(envFile, updated, 'utf-8');
+		writeFileSync(envFile, rewrite.content, 'utf-8');
 	} catch (err) {
 		return json(res, 500, { error: `Cannot write .env: ${errorMessage(err)}` });
 	}
@@ -461,6 +390,8 @@ export function buildRequestListener() {
 			await handleConfigureIp(req, res);
 		} else if (req.method === 'POST' && url.pathname === '/rotate-env') {
 			await handleRotateEnv(req, res);
+		} else if (req.method === 'POST' && url.pathname === '/apply-profiles') {
+			await handleApplyProfiles(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/health') {
 			handleHealth(req, res);
 		} else {

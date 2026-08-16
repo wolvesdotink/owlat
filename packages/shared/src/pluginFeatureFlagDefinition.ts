@@ -155,6 +155,15 @@ export function isPluginFeatureFlagDefinition(
 	return snapshotPluginFeatureFlagDefinition(value) !== undefined;
 }
 
+/**
+ * Whether a bare key has the registered plugin-flag shape. Lets flag-snapshot
+ * consumers without a plugin registry (the updater sidecar) accept plugin
+ * overrides for mirroring while still rejecting arbitrary keys.
+ */
+export function isPluginFeatureFlagKey(key: string): key is PluginFeatureFlagKey {
+	return PLUGIN_FLAG_KEY.test(key);
+}
+
 function captureDefinitionProperties(value: object): Readonly<Record<string, unknown>> | undefined {
 	const keys = Reflect.ownKeys(value);
 	if (keys.length > DEFINITION_FIELDS.size) return undefined;

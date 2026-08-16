@@ -23,6 +23,7 @@ import {
 } from './sendProviderCatalog';
 
 export { isPluginFeatureFlagDefinition };
+export { isPluginFeatureFlagKey } from './pluginFeatureFlagDefinition';
 
 export type CoreFeatureFlagKey =
 	// Sending

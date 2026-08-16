@@ -17,6 +17,10 @@ RUN bun install --frozen-lockfile --filter @owlat/updater
 
 COPY apps/updater/tsconfig.json apps/updater/
 COPY apps/updater/src apps/updater/src
+# @owlat/shared ships raw TS through its package exports; `bun build` bundles
+# the imported modules (featureFlags + composeOverride) into dist/index.js so
+# the runtime image still needs no node_modules.
+COPY packages/shared/src packages/shared/src
 RUN cd apps/updater && bun run build
 
 FROM node:26-alpine
@@ -27,7 +31,8 @@ RUN apk add --no-cache docker-cli docker-cli-compose
 
 WORKDIR /app
 
-# No node_modules: the updater has zero runtime dependencies.
+# No node_modules: the updater's only dependency (@owlat/shared) is bundled
+# into dist at build time.
 COPY --from=builder /build/apps/updater/dist ./dist
 COPY apps/updater/package.json ./
 
