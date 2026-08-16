@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import ProfileSyncBanner from '~/components/settings/ProfileSyncBanner.vue';
+import { useProfileSync } from '~/composables/useProfileSync';
 
 /**
  * Instance-level "moving from another platform" switch (Settings → Team).
@@ -30,6 +32,13 @@ const isMigrationMode = computed<boolean>(() => settings.value?.isMigrationMode 
 // getFeatureFlags returns the already-resolved flag map, so read the effective
 // value directly.
 const mailExternalEnabled = computed<boolean>(() => liveFlags.value?.['mail.external'] === true);
+const resolvedFlags = computed<Record<string, boolean>>(
+	() => (liveFlags.value ?? {}) as Record<string, boolean>
+);
+
+// Enabling `mail.external` here changes the docker-profile set (the mail-sync
+// worker), so this card shares the features page's out-of-sync banner (D4).
+const { trackFlagChange } = useProfileSync();
 
 const { run: updateSettings, isLoading: isSavingSettings } = useBackendOperation(
 	api.workspaces.settings.update,
@@ -71,11 +80,13 @@ async function save(next: boolean) {
 async function confirmAndEnable() {
 	// Enable the import capability first so migration mode never promises an
 	// import the instance cannot perform.
+	const before = (liveFlags.value ?? {}) as Record<string, boolean>;
 	const flagRes = await setFeatureFlag({ flag: 'mail.external', value: true });
 	if (flagRes === undefined) {
 		confirmEnableImport.value = false;
 		return;
 	}
+	trackFlagChange(before, flagRes.flags);
 	await save(true);
 	confirmEnableImport.value = false;
 }
@@ -116,6 +127,10 @@ async function confirmAndEnable() {
 				@update:model-value="onToggle"
 			/>
 		</div>
+
+		<!-- Enabling the import capability changes the docker-profile set, so
+		     the shared out-of-sync banner surfaces here too (D4). -->
+		<ProfileSyncBanner :flags="resolvedFlags" class="mt-4" />
 
 		<UiConfirmationDialog
 			:open="confirmEnableImport"
