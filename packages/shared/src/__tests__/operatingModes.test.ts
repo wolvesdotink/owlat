@@ -20,7 +20,9 @@ describe('operatingModes — registry shape', () => {
 		// needs no provider while turning on a bulk sending flag (or vice-versa).
 		for (const key of OPERATING_MODE_KEYS) {
 			const computed = needsDeliveryProvider(operatingModeFlags(key));
-			expect(computed, `${key}.needsDeliveryProvider drift`).toBe(OPERATING_MODES[key].needsDeliveryProvider);
+			expect(computed, `${key}.needsDeliveryProvider drift`).toBe(
+				OPERATING_MODES[key].needsDeliveryProvider
+			);
 		}
 	});
 
@@ -73,7 +75,16 @@ describe('operatingModes — representative postures', () => {
 
 	it('full stack enables marketing + receiving + ai', () => {
 		const flags = operatingModeFlags('full');
-		const expectedOn = ['campaigns', 'transactional', 'automations', 'inbox', 'postbox', 'mail.external', 'ai', 'ai.agent'] as const;
+		const expectedOn = [
+			'campaigns',
+			'transactional',
+			'automations',
+			'inbox',
+			'postbox',
+			'mail.external',
+			'ai',
+			'ai.agent',
+		] as const;
 		for (const f of expectedOn) {
 			expect(flags[f], `full should enable ${f}`).toBe(true);
 		}
