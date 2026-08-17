@@ -6,13 +6,20 @@
  *   - any field change triggers a 1.5s-debounced upsert via update()
  *   - send() flushes pending autosave first, then invokes mailDrafts.send
  *     (which schedules dispatch after undoSendDelayMs)
+ *   - offline (or a send that network-fails), send() instead queues the full
+ *     compose payload in the on-device outbox and returns a synthetic
+ *     {undoToken, sendAt} — the emit contract is unchanged, and the undo
+ *     toast un-queues via the token (adoption-gaps D8)
  */
 
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
+import type { OperationError } from '@owlat/shared/operationError';
+import type { OfflineComposePayload } from '~/utils/postboxOfflineStore';
 import { usePostboxComposeAttachments } from './usePostboxComposeAttachments';
+import { usePostboxOfflineOutbox } from './usePostboxOfflineOutbox';
 import { applySignatureToBody, wrapSignatureBlock } from './usePostboxSignatureBody';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
@@ -70,11 +77,27 @@ export function usePostboxCompose(seed: DraftSeed) {
 	// sent thread as a follow-up watch (mail/followUps.ts). null = off.
 	const followUpRemindAt = ref<number | null>(null);
 
+	// Offline outbox (D8): send() queues instead of failing while offline; the
+	// drain replays queued payloads on reconnect (usePostboxOfflineOutbox).
+	const offlineOutbox = usePostboxOfflineOutbox(() => String(seed.mailboxId));
+	// While send() is actively intercepting, a TRANSPORT failure is claimed
+	// (no error toast) and turned into an offline enqueue instead. Every other
+	// category, and every failure outside a send, keeps today's treatment.
+	let interceptingSend = false;
+	let sendNetworkFailed = false;
+	const claimSendNetworkFailure = (op: OperationError): boolean => {
+		if (!interceptingSend || op.category !== 'network') return false;
+		sendNetworkFailed = true;
+		return true;
+	};
+
 	const createDraft = useBackendOperation(api.mail.drafts.create, {
 		label: 'Create draft',
+		onError: claimSendNetworkFailure,
 	});
 	const updateDraft = useBackendOperation(api.mail.drafts.update, {
 		label: 'Save draft',
+		onError: claimSendNetworkFailure,
 	});
 	const setIdentityMutation = useBackendOperation(api.mail.drafts.setIdentity, {
 		label: 'Change sender',
@@ -84,6 +107,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 	});
 	const sendDraft = useBackendOperation(api.mail.drafts.send, {
 		label: 'Send email',
+		onError: claimSendNetworkFailure,
 	});
 	const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
 		label: 'Undo send',
@@ -363,35 +387,91 @@ export function usePostboxCompose(seed: DraftSeed) {
 		return plain.length > 0;
 	});
 
-	async function send(opts?: {
+	type SendOpts = {
 		undoSendDelayMs?: number;
 		scheduledSendAt?: number;
 		allowUnsealed?: boolean;
-	}) {
-		// Flush any pending autosave first
+	};
+
+	/**
+	 * Queue the CURRENT compose fields in the on-device outbox and return the
+	 * synthetic `{undoToken, sendAt}` — payload-complete, so the reconnect
+	 * drain can replay `create → update → send` even when this composition
+	 * never had a server draft row. Throws (like a failed send) when the
+	 * device cannot store it, so the caller never arms undo on a lost message.
+	 */
+	async function queueOfflineSend(opts?: SendOpts): Promise<{ undoToken: string; sendAt: number }> {
+		// Nothing to flush to a server we can't reach — the payload carries the
+		// live field values, which supersede whatever autosave last persisted.
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;
-			pendingSave = persist();
 		}
-		if (pendingSave) await pendingSave;
+		const payload: OfflineComposePayload = {
+			mailboxId: String(seed.mailboxId),
+			draftId: draftId.value ? String(draftId.value) : undefined,
+			inReplyToMessageId: seed.inReplyToMessageId ? String(seed.inReplyToMessageId) : undefined,
+			toAddresses: [...toAddresses.value],
+			ccAddresses: [...ccAddresses.value],
+			bccAddresses: [...bccAddresses.value],
+			subject: subject.value,
+			bodyHtml: bodyHtml.value,
+			bodyBlocks: composerMode.value === 'full' ? JSON.stringify(bodyBlocks.value) : undefined,
+			composerMode: composerMode.value,
+			fromAddress: fromAddress.value || undefined,
+			followUpRemindAt: followUpRemindAt.value,
+			attachments: attachments.value.map((a) => ({
+				storageId: String(a.storageId),
+				filename: a.filename,
+				contentType: a.contentType,
+				size: a.size,
+			})),
+			sendOptions: opts,
+		};
+		return offlineOutbox.queueSend(payload);
+	}
 
-		const id = await ensureDraft();
-		if (!id) throw new Error('No draft');
+	async function send(opts?: SendOpts) {
+		// D8: offline never touches the network — queue the payload on-device.
+		if (offlineOutbox.isOffline.value) return queueOfflineSend(opts);
 
-		const result = await sendDraft.run({
-			draftId: id,
-			undoSendDelayMs: opts?.undoSendDelayMs,
-			scheduledSendAt: opts?.scheduledSendAt,
-			allowUnsealed: opts?.allowUnsealed,
-		});
-		// `useBackendOperation.run` swallows categorized failures (it has already
-		// toasted them) and returns `undefined`. Surface that as a throw so the
-		// caller never arms undo / navigates away on a failed send.
-		if (result === undefined) {
-			throw new Error('Send failed');
+		interceptingSend = true;
+		sendNetworkFailed = false;
+		try {
+			// Flush any pending autosave first
+			if (saveTimer) {
+				clearTimeout(saveTimer);
+				saveTimer = null;
+				pendingSave = persist();
+			}
+			if (pendingSave) await pendingSave;
+
+			const id = await ensureDraft();
+			if (!id) {
+				// The draft row couldn't be created because the connection dropped
+				// mid-send — queue instead of losing the message.
+				if (sendNetworkFailed) return queueOfflineSend(opts);
+				throw new Error('No draft');
+			}
+
+			const result = await sendDraft.run({
+				draftId: id,
+				undoSendDelayMs: opts?.undoSendDelayMs,
+				scheduledSendAt: opts?.scheduledSendAt,
+				allowUnsealed: opts?.allowUnsealed,
+			});
+			// `useBackendOperation.run` swallows categorized failures (it has already
+			// toasted them) and returns `undefined`. Surface that as a throw so the
+			// caller never arms undo / navigates away on a failed send — unless the
+			// failure was the TRANSPORT, in which case the message queues offline.
+			if (result === undefined) {
+				if (sendNetworkFailed) return queueOfflineSend(opts);
+				throw new Error('Send failed');
+			}
+			return result as { undoToken: string; sendAt: number };
+		} finally {
+			interceptingSend = false;
 		}
-		return result as { undoToken: string; sendAt: number };
 	}
 
 	async function discard() {

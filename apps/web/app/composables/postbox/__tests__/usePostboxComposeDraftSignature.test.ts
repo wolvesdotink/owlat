@@ -81,6 +81,10 @@ beforeEach(() => {
 	});
 	// Autosave/create/etc. are irrelevant here — never resolve to anything.
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
+	// The offline-outbox chain (E2) pulls these at composable setup; inert here.
+	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useConvex', () => null);
 });
 
 const DEFAULT_SIGNATURE = {

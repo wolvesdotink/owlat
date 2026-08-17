@@ -62,6 +62,15 @@ const {
 	isLoading,
 });
 
+// Offline outbox (D8): mounting here registers the drain-on-reconnect watcher
+// for the active mailbox; the counts drive the offline banner ("n queued")
+// and the post-drain "couldn't send" banner with its retry affordance.
+const {
+	queuedCount: queuedSendCount,
+	failedCount: failedSendCount,
+	drain: retryQueuedSends,
+} = usePostboxOfflineOutbox(computed(() => String(props.mailboxId)));
+
 // Once the inbox list has settled (first paint done), idle-prefetch the
 // composer + reader chunks so pressing `c` or Enter never waits on a chunk
 // download. Idempotent + fail-soft; the Designer-mode EmailBuilder stays lazy.
@@ -302,7 +311,7 @@ const advanceIds = computed(() =>
 					:class="activeMessageId ? 'hidden lg:flex' : 'flex'"
 				>
 					<!-- Quiet offline banner: cached list + already-read bodies stay
-			     readable; server-backed actions degrade with clear affordances. -->
+			     readable; sends queue on this device and go out on reconnect. -->
 					<div
 						v-if="isOffline"
 						class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
@@ -310,8 +319,31 @@ const advanceIds = computed(() =>
 					>
 						<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
 						<span class="truncate"
-							>Offline — showing recent mail from this device. Actions are paused.</span
+							>Offline — reading from this device; sends will go out when you're back online{{
+								queuedSendCount > 0 ? ` (${queuedSendCount} queued)` : ''
+							}}.</span
 						>
+					</div>
+					<!-- Post-drain honesty: items the reconnect drain could NOT send stay
+			     queued on-device with their error — surface them, with a retry. -->
+					<div
+						v-else-if="failedSendCount > 0"
+						class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
+						role="status"
+					>
+						<Icon name="lucide:send" class="w-3.5 h-3.5 flex-shrink-0" />
+						<span class="truncate"
+							>{{ failedSendCount }} queued
+							{{ failedSendCount === 1 ? 'message' : 'messages' }} couldn't be sent — kept on this
+							device.</span
+						>
+						<button
+							type="button"
+							class="font-semibold underline hover:no-underline flex-shrink-0"
+							@click="() => void retryQueuedSends()"
+						>
+							Retry
+						</button>
 					</div>
 					<header
 						class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2"
