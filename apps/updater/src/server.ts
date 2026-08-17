@@ -10,6 +10,7 @@ import {
 } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
 import { handleApplyProfiles } from './applyProfiles.js';
+import { handleProfileState } from './profileState.js';
 
 const PORT = parseInt(process.env['PORT'] || '3200', 10);
 const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
@@ -392,6 +393,8 @@ export function buildRequestListener() {
 			await handleRotateEnv(req, res);
 		} else if (req.method === 'POST' && url.pathname === '/apply-profiles') {
 			await handleApplyProfiles(req, res);
+		} else if (req.method === 'GET' && url.pathname === '/profile-state') {
+			handleProfileState(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/health') {
 			handleHealth(req, res);
 		} else {

@@ -6,6 +6,14 @@
  * `.env`'s COMPOSE_PROFILES, the compose override and the CLI flag mirror via
  * the updater sidecar. This composable accumulates that drift and drives the
  * persistent "Services out of sync — Apply & restart" banner.
+ *
+ * Two sources feed the banner (plan FU4):
+ *   - the optimistic in-session accumulation from `trackFlagChange`, which is
+ *     instant and needs no round trip, and
+ *   - a one-shot server-side probe (`/api/system/profile-drift`) comparing the
+ *     host's APPLIED profiles against the current flags, so a reload — or a
+ *     different browser — still sees drift that was never applied.
+ * They union: whichever notices first wins, and a successful Apply clears both.
  */
 import { ref } from 'vue';
 import {
@@ -27,6 +35,14 @@ interface ApplyProfilesResponse {
 	services?: ProfileServiceResult[] | string;
 }
 
+interface ProfileDriftResponse {
+	reachable?: boolean;
+	drifted?: boolean;
+	missingProfiles?: string[];
+	staleProfiles?: string[];
+	error?: string;
+}
+
 // Module-scoped singletons (the app is ssr:false, so this is per-browser-tab
 // state) shared across surfaces — drift noticed on the features page stays
 // visible on the migration-mode card and vice versa until applied.
@@ -34,6 +50,9 @@ const pendingServices = ref<string[]>([]);
 const isApplying = ref(false);
 const serviceResults = ref<ProfileServiceResult[] | null>(null);
 const applyError = ref<string | null>(null);
+// Whether the server-side probe already ran for this page load. Both admin
+// surfaces mount the banner, so the flag is what keeps them to one request.
+const driftProbed = ref(false);
 
 export function useProfileSync() {
 	const { t } = useI18n();
@@ -59,9 +78,37 @@ export function useProfileSync() {
 			...beforeProfiles.filter((profile) => !afterSet.has(profile)),
 			...afterProfiles.filter((profile) => !beforeSet.has(profile)),
 		];
-		if (changed.length === 0) return;
-		pendingServices.value = [...new Set([...pendingServices.value, ...changed])].sort();
+		addPending(changed);
+	}
+
+	/** Merge freshly observed drift into the pending set (union, never shrink). */
+	function addPending(profiles: string[]) {
+		if (profiles.length === 0) return;
+		pendingServices.value = [...new Set([...pendingServices.value, ...profiles])].sort();
 		serviceResults.value = null;
+	}
+
+	/**
+	 * Rebuild the banner from the host's real state, once per page load. The
+	 * probe compares the applied COMPOSE_PROFILES against the current flags
+	 * server-side, so drift survives a reload; an unreachable updater arms the
+	 * CLI-fallback copy instead of silently pretending the stack is converged.
+	 */
+	async function hydrateFromProbe() {
+		if (driftProbed.value) return;
+		driftProbed.value = true;
+		try {
+			const resp = await $fetch<ProfileDriftResponse>('/api/system/profile-drift', { retry: 0 });
+			if (resp.reachable === false) {
+				applyError.value = resp.error || t('shared.useProfileSync.updaterUnreachable');
+				return;
+			}
+			if (!resp.drifted) return;
+			addPending([...(resp.missingProfiles ?? []), ...(resp.staleProfiles ?? [])]);
+		} catch (err) {
+			applyError.value =
+				err instanceof Error ? err.message : t('shared.useProfileSync.updaterUnreachable');
+		}
 	}
 
 	/**
@@ -84,6 +131,8 @@ export function useProfileSync() {
 				timeout: 5 * 60 * 1000,
 			});
 			serviceResults.value = Array.isArray(resp.services) ? resp.services : [];
+			// The apply converged the host, so BOTH sources are settled: the
+			// optimistic set and whatever the probe had contributed to it.
 			pendingServices.value = [];
 		} catch (err) {
 			applyError.value =
@@ -102,7 +151,9 @@ export function useProfileSync() {
 		isApplying,
 		serviceResults,
 		applyError,
+		driftProbed,
 		trackFlagChange,
+		hydrateFromProbe,
 		apply,
 		dismissResults,
 	};

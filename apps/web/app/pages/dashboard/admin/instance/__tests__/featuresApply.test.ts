@@ -40,6 +40,34 @@ const setFeaturePack = vi.fn();
 const updateSettings = vi.fn();
 const showToast = vi.fn();
 const fetchMock = vi.fn();
+
+// The banner talks to two routes: the one-shot drift probe on mount and the
+// apply proxy on click. One `$fetch` stub serves both, dispatching on URL.
+const PROBE_URL = '/api/system/profile-drift';
+const APPLY_URL = '/api/system/apply-profiles';
+const NO_DRIFT = {
+	reachable: true,
+	drifted: false,
+	missingProfiles: [],
+	staleProfiles: [],
+	services: [],
+};
+let probeBehavior: () => Promise<unknown>;
+let applyBehavior: () => Promise<unknown>;
+
+function stubProbe(response: unknown) {
+	probeBehavior = () => Promise.resolve(response);
+}
+function stubApply(response: unknown) {
+	applyBehavior = () => Promise.resolve(response);
+}
+function stubApplyFailure(error: Error) {
+	applyBehavior = () => Promise.reject(error);
+}
+function callsTo(url: string) {
+	return fetchMock.mock.calls.filter((call) => call[0] === url);
+}
+
 let queryCall = 0;
 let operationCall = 0;
 // Which component the useConvexQuery/useBackendOperation stubs serve: the
@@ -85,11 +113,16 @@ beforeEach(() => {
 	sync.isApplying.value = false;
 	sync.serviceResults.value = null;
 	sync.applyError.value = null;
+	sync.driftProbed.value = false;
 	liveFlags.value = {};
 	configStatus.value = {};
 	settings.value = { isMigrationMode: false };
 	showToast.mockReset();
-	fetchMock.mockReset();
+	stubProbe(NO_DRIFT);
+	stubApply({ success: true, profiles: [], services: [] });
+	fetchMock
+		.mockReset()
+		.mockImplementation((url: string) => (url === PROBE_URL ? probeBehavior() : applyBehavior()));
 	updateSettings.mockReset().mockResolvedValue({});
 	// Mirror the live Convex subscription: a committed toggle updates the
 	// stored map AND the reactive resolved-flags query.
@@ -201,7 +234,7 @@ describe('Features page — profile diff detection per flag', () => {
 
 describe('Features page — banner apply and resolve', () => {
 	it('applies the resolved snapshot and renders per-service results', async () => {
-		fetchMock.mockResolvedValue({
+		stubApply({
 			success: true,
 			profiles: ['external-mail'],
 			services: [{ service: 'mail-sync', state: 'running', health: 'healthy' }],
@@ -213,12 +246,12 @@ describe('Features page — banner apply and resolve', () => {
 		await wrapper.find(applyButton).trigger('click');
 		await flushPromises();
 
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-		const [url, opts] = fetchMock.mock.calls[0] as [
+		const applyCalls = callsTo(APPLY_URL);
+		expect(applyCalls).toHaveLength(1);
+		const [, opts] = applyCalls[0] as [
 			string,
 			{ method: string; body: { flags: Record<string, boolean> } },
 		];
-		expect(url).toBe('/api/system/apply-profiles');
 		expect(opts.method).toBe('POST');
 		expect(opts.body.flags['mail.external']).toBe(true);
 
@@ -235,7 +268,7 @@ describe('Features page — banner apply and resolve', () => {
 	});
 
 	it('keeps the banner with CLI fallback copy when the updater is unreachable', async () => {
-		fetchMock.mockRejectedValue(new Error('updater sidecar unreachable'));
+		stubApplyFailure(new Error('updater sidecar unreachable'));
 		const wrapper = mountFeatures();
 		await wrapper.find('[data-testid="feature-switch-mail.external"]').trigger('click');
 		await flushPromises();
@@ -252,7 +285,6 @@ describe('Features page — banner apply and resolve', () => {
 	});
 
 	it('a fresh profile-changing toggle invalidates stale apply results', async () => {
-		fetchMock.mockResolvedValue({ success: true, profiles: [], services: [] });
 		const wrapper = mountFeatures();
 		await wrapper.find('[data-testid="feature-switch-mail.external"]').trigger('click');
 		await flushPromises();
@@ -295,5 +327,125 @@ describe('MigrationModeCard — same banner logic', () => {
 		const page = mountFeatures();
 		expect(page.find(banner).exists()).toBe(true);
 		expect(page.find(services).text()).toBe('external-mail');
+	});
+});
+
+/**
+ * FU4 — the banner used to live only in this tab's memory, so a reload dropped
+ * it while the services were still drifted. On mount the surfaces now ask the
+ * server-side probe what the host actually has applied.
+ */
+describe('Durable drift — server-side probe on mount', () => {
+	it('rehydrates the banner after a reload with no in-session drift', async () => {
+		stubProbe({
+			reachable: true,
+			drifted: true,
+			missingProfiles: ['personal-mail'],
+			staleProfiles: ['external-mail'],
+			services: [],
+		});
+
+		const wrapper = mountFeatures();
+		await flushPromises();
+
+		expect(callsTo(PROBE_URL)).toHaveLength(1);
+		expect(wrapper.find(banner).exists()).toBe(true);
+		expect(wrapper.find(services).text()).toBe('external-mail, personal-mail');
+	});
+
+	it('stays quiet when the host is already converged', async () => {
+		const wrapper = mountFeatures();
+		await flushPromises();
+
+		expect(callsTo(PROBE_URL)).toHaveLength(1);
+		expect(wrapper.find(banner).exists()).toBe(false);
+	});
+
+	it('probes once per page load across both admin surfaces', async () => {
+		mountFeatures();
+		await flushPromises();
+		queryCall = 0;
+		operationCall = 0;
+		mountCard();
+		await flushPromises();
+
+		expect(callsTo(PROBE_URL)).toHaveLength(1);
+	});
+
+	it('unions probe drift with drift toggled in this session', async () => {
+		stubProbe({
+			reachable: true,
+			drifted: true,
+			missingProfiles: ['external-mail'],
+			staleProfiles: [],
+			services: [],
+		});
+
+		const wrapper = mountFeatures();
+		await flushPromises();
+		await wrapper.find('[data-testid="feature-switch-postbox"]').trigger('click');
+		await flushPromises();
+
+		expect(wrapper.find(services).text()).toBe('external-mail, mta, personal-mail');
+	});
+
+	it('applies the probe-hydrated drift and clears the banner', async () => {
+		stubProbe({
+			reachable: true,
+			drifted: true,
+			missingProfiles: ['personal-mail'],
+			staleProfiles: [],
+			services: [],
+		});
+		stubApply({
+			success: true,
+			profiles: ['personal-mail'],
+			services: [{ service: 'imap', state: 'running', health: 'healthy' }],
+		});
+
+		const wrapper = mountFeatures();
+		await flushPromises();
+		await wrapper.find(applyButton).trigger('click');
+		await flushPromises();
+
+		expect(callsTo(APPLY_URL)).toHaveLength(1);
+		expect(wrapper.find(banner).exists()).toBe(false);
+		expect(wrapper.find(results).exists()).toBe(true);
+	});
+
+	it('arms the CLI fallback when the probe reports the updater unreachable', async () => {
+		stubProbe({
+			reachable: false,
+			drifted: false,
+			missingProfiles: [],
+			staleProfiles: [],
+			services: [],
+			error: 'Updater profile-state returned 502',
+		});
+
+		const wrapper = mountFeatures();
+		await flushPromises();
+		// Nothing to show until drift is known — then the fallback copy is
+		// already in place, without a doomed Apply round trip first.
+		expect(wrapper.find(banner).exists()).toBe(false);
+
+		await wrapper.find('[data-testid="feature-switch-mail.external"]').trigger('click');
+		await flushPromises();
+
+		const fallbackEl = wrapper.find(fallback);
+		expect(fallbackEl.exists()).toBe(true);
+		expect(fallbackEl.text()).toContain('Updater profile-state returned 502');
+		expect(fallbackEl.text()).toContain('owlat restart');
+	});
+
+	it('degrades to the CLI fallback when the probe request itself fails', async () => {
+		probeBehavior = () => Promise.reject(new Error('Platform admin access required'));
+
+		const wrapper = mountFeatures();
+		await flushPromises();
+		await wrapper.find('[data-testid="feature-switch-mail.external"]').trigger('click');
+		await flushPromises();
+
+		expect(wrapper.find(fallback).text()).toContain('Platform admin access required');
 	});
 });

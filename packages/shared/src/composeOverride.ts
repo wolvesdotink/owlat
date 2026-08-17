@@ -91,3 +91,24 @@ export function parseDeliveryProviderFromEnv(envText: string): string | undefine
 	const match = envText.match(/^\s*EMAIL_PROVIDER\s*=\s*(.+?)\s*$/m);
 	return match?.[1]?.replace(/^["']|["']$/g, '');
 }
+
+/**
+ * Read the APPLIED compose profiles (COMPOSE_PROFILES) out of a `.env` file's
+ * text — the inverse of what the writer above converges. The drift probe
+ * compares this against the profiles the current flag state derives, so a
+ * reload can rebuild the "services out of sync" banner from the host's real
+ * state instead of per-tab memory.
+ *
+ * Names outside SAFE_PROFILE_NAME are dropped: the writer can only ever emit
+ * that shape, so anything else is a hand-edit this module has no mapping for
+ * (and must never be echoed back into a COMPOSE_PROFILES line or YAML).
+ */
+export function parseComposeProfilesFromEnv(envText: string): string[] {
+	const match = envText.match(/^\s*COMPOSE_PROFILES\s*=\s*(.*?)\s*$/m);
+	const raw = match?.[1]?.replace(/^["']|["']$/g, '') ?? '';
+	const names = raw
+		.split(',')
+		.map((name) => name.trim())
+		.filter((name) => SAFE_PROFILE_NAME.test(name));
+	return [...new Set(names)].sort();
+}

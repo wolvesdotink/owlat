@@ -13,10 +13,22 @@ const props = defineProps<{
 	flags: Record<string, boolean>;
 }>();
 
-const { pendingServices, isApplying, serviceResults, applyError, apply, dismissResults } =
-	useProfileSync();
+const {
+	pendingServices,
+	isApplying,
+	serviceResults,
+	applyError,
+	apply,
+	dismissResults,
+	hydrateFromProbe,
+} = useProfileSync();
 
 const { t } = useI18n();
+
+// Both admin surfaces mount this component unconditionally, so this is the
+// single place the durable drift probe needs to run (it de-duplicates itself,
+// so mounting both surfaces still issues one request per page load).
+onMounted(hydrateFromProbe);
 
 // Compose reports its own state words (`running`, `healthy`, …) — they stay as
 // the daemon spells them; only the "we were told nothing" case is our copy.
