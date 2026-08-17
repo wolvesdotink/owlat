@@ -191,6 +191,20 @@ async function undoApproveInverse(messageId: Id<'inboundMessages'>) {
 	// as part of flow.undo) or the send fully completed — nothing left to say.
 }
 
+/**
+ * The lost race: the draft was already approved or declined (double-click, or a
+ * teammate got there first), so the server refused the edge and scheduled
+ * NOTHING. Say so honestly and move the card out of the way with `skip` — it is
+ * gone from the queue, but it was not OUR approval, so it must not land in the
+ * end-state tally and there is no held send to register an inverse for.
+ */
+function handledAlreadyHandled(result: unknown, row: FlowItem): boolean {
+	if (!isApproveAlreadyHandled(result)) return false;
+	showToast(t('shared.reviewApprove.alreadyHandled'), 'info');
+	flow.skip(row.id);
+	return true;
+}
+
 async function approve(row: FlowItem) {
 	if (busy.value || isHeld.value) return;
 	busy.value = true;
@@ -209,6 +223,7 @@ async function approve(row: FlowItem) {
 			);
 			return;
 		}
+		if (handledAlreadyHandled(result, row)) return;
 		const undo = approveUndoWindow(result);
 		if (undo) {
 			// The toast's Undo targets THIS card's completion (flow.undoById, which
@@ -261,6 +276,7 @@ async function sendReply(row: FlowItem) {
 			);
 			return;
 		}
+		if (handledAlreadyHandled(result, row)) return;
 		delete composeBody[row.message._id];
 		showToast(t('components.agentTasks.reviewFocusFlow.toasts.replySent'));
 		flow.complete(row.id, { outcome: 'sent' });

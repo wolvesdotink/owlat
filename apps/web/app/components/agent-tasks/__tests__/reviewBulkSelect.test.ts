@@ -343,6 +343,26 @@ describe('useReviewBulkActions', () => {
 		expect(toasts).toEqual([['1 approved', 'success']]);
 	});
 
+	// Piece FU3: the bulk twin of the single-approve lost race — every id was
+	// already approved or declined elsewhere, so nothing was scheduled.
+	it('an all-lost-race batch keeps the rows hidden, arms no undo, and says so', async () => {
+		const { actions, hidden, restored, clearSelection } = await harness(['a', 'b']);
+		runs[0]!.mockResolvedValue({
+			outcomes: [
+				{ inboundMessageId: 'a', outcome: 'not_found' },
+				{ inboundMessageId: 'b', outcome: 'not_found' },
+			],
+		});
+
+		await actions.approveSelected();
+
+		expect(hidden).toEqual(['a', 'b']);
+		expect(restored).toEqual([]); // they really left the queue
+		expect(clearSelection).toHaveBeenCalled();
+		expect(arm).not.toHaveBeenCalled();
+		expect(toasts).toEqual([['0 approved, 2 no longer in the queue', 'warning']]);
+	});
+
 	it('a categorized failure restores every hidden row and keeps the selection', async () => {
 		const { actions, restored, clearSelection } = await harness(['a', 'b']);
 		runs[0]!.mockResolvedValue(undefined); // useBackendOperation already toasted

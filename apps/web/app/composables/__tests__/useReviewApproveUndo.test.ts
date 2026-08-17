@@ -13,7 +13,11 @@ vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	return stateBuckets.get(key);
 });
 
-import { approveUndoWindow, useReviewApproveUndo } from '../useReviewApproveUndo';
+import {
+	approveUndoWindow,
+	isApproveAlreadyHandled,
+	useReviewApproveUndo,
+} from '../useReviewApproveUndo';
 
 describe('useReviewApproveUndo', () => {
 	beforeEach(() => {
@@ -70,5 +74,25 @@ describe('approveUndoWindow', () => {
 		expect(approveUndoWindow(null)).toBeUndefined();
 		expect(approveUndoWindow({ undo: {} })).toBeUndefined();
 		expect(approveUndoWindow({ undo: { sendAt: 'soon' } })).toBeUndefined();
+	});
+});
+
+// Piece FU3: the lost race — approveDraft refused the lifecycle edge because
+// the draft was already approved or declined, and scheduled nothing.
+describe('isApproveAlreadyHandled', () => {
+	it('narrows the lost-race soft error', () => {
+		expect(isApproveAlreadyHandled({ success: false, reason: 'not_found' })).toBe(true);
+	});
+
+	it('leaves every other approve result alone', () => {
+		expect(isApproveAlreadyHandled({ success: true })).toBe(false);
+		expect(isApproveAlreadyHandled({ success: true, undo: { sendAt: 42 } })).toBe(false);
+		// The sibling soft error keeps its own toast — the row comes back.
+		expect(
+			isApproveAlreadyHandled({ success: false, reason: 'reply_in_progress', heldByName: 'Dana' })
+		).toBe(false);
+		expect(isApproveAlreadyHandled(undefined)).toBe(false);
+		expect(isApproveAlreadyHandled(null)).toBe(false);
+		expect(isApproveAlreadyHandled({ reason: 'not_found' })).toBe(false);
 	});
 });

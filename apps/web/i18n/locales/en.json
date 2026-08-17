@@ -11452,6 +11452,9 @@
 				"label": "Waiting for the app to come back"
 			}
 		},
+		"reviewApprove": {
+			"alreadyHandled": "Already handled — this draft was approved or declined by someone else"
+		},
 		"reviewBulkActions": {
 			"approveDrafts": "Approve drafts",
 			"rejectDrafts": "Reject drafts",

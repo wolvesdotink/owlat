@@ -82,3 +82,17 @@ export function approveUndoWindow(result: unknown): { sendAt: number } | undefin
 	const undo = (result as { undo?: { sendAt?: unknown } }).undo;
 	return undo && typeof undo.sendAt === 'number' ? { sendAt: undo.sendAt } : undefined;
 }
+
+/**
+ * The lost-race soft error `approveDraft` returns when the lifecycle edge was
+ * refused — a double-click, or a teammate approved/declined the draft first
+ * (`{ success: false, reason: 'not_found' }`, the bulk path's `not_found`
+ * outcome for a single id). Nothing was scheduled, so a caller that sees this
+ * must toast the honest "already handled" line, arm NO undo countdown, and
+ * treat the item as gone from the queue rather than as an approval of its own.
+ */
+export function isApproveAlreadyHandled(result: unknown): boolean {
+	if (typeof result !== 'object' || result === null) return false;
+	const soft = result as { success?: unknown; reason?: unknown };
+	return soft.success === false && soft.reason === 'not_found';
+}

@@ -93,6 +93,18 @@ describe('useReviewQueue', () => {
 			expect(approveRun()).not.toHaveBeenCalled();
 		});
 
+		// Piece FU3: the surfaces branch on the approve mutation's soft errors, so
+		// the queue must hand them back verbatim rather than flattening them into
+		// the "sent" shape (or into the `undefined` a categorized failure returns).
+		it('hands the lost-race soft error back to the caller unchanged', async () => {
+			const { composeAndSend } = useReviewQueue();
+			approveRun().mockResolvedValueOnce({ success: false, reason: 'not_found' });
+
+			const result = await composeAndSend(messageId, 'A reply');
+
+			expect(result).toEqual({ success: false, reason: 'not_found' });
+		});
+
 		it('does not approve when the edit fails (avoids the empty-draft error)', async () => {
 			const { composeAndSend } = useReviewQueue();
 			// useBackendOperation.run resolves to undefined on a categorized failure.

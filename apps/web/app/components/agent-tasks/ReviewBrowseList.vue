@@ -151,6 +151,16 @@ async function undoApproveAndRestore(messageId: Id<'inboundMessages'>) {
 	}
 }
 
+// The lost race: the draft was already approved or declined (double-click, or a
+// teammate got there first), so the server refused the edge and scheduled
+// NOTHING. The row truly left the queue — keep it hidden — but say so honestly
+// instead of claiming an approval, and arm no undo (there is nothing to undo).
+function handledAlreadyHandled(result: unknown): boolean {
+	if (!isApproveAlreadyHandled(result)) return false;
+	showToast(t('shared.reviewApprove.alreadyHandled'), 'info');
+	return true;
+}
+
 // Shared optimistic row action: hide the row, run the mutation, restore it on a
 // no-op or soft collision (reject never collides), else confirm with successMsg.
 // An approve that returns an open undo window arms the countdown-undo toast
@@ -168,6 +178,7 @@ async function runOptimistic(
 			unhideRow(messageId);
 			return;
 		}
+		if (handledAlreadyHandled(result)) return;
 		const undo = approveUndoWindow(result);
 		if (undo) {
 			armApproveUndo({
@@ -265,7 +276,9 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
 	try {
 		const result = await composeAndSend(messageId, body, composeSubject[messageId]);
-		if (result === undefined || handledReplyCollision(result)) return; // no-op or collision
+		// no-op, collision, or the same lost race the approve path reports
+		if (result === undefined || handledReplyCollision(result) || handledAlreadyHandled(result))
+			return;
 		delete composeBody[messageId];
 		delete composeSubject[messageId];
 		showToast(t('components.agentTasks.reviewBrowseList.toasts.replySent'));

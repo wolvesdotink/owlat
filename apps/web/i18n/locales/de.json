@@ -11452,6 +11452,9 @@
 				"label": "Warten, bis die App zurück ist"
 			}
 		},
+		"reviewApprove": {
+			"alreadyHandled": "Bereits erledigt — dieser Entwurf wurde von jemand anderem freigegeben oder abgelehnt"
+		},
 		"reviewBulkActions": {
 			"approveDrafts": "Entwürfe genehmigen",
 			"rejectDrafts": "Entwürfe ablehnen",
