@@ -3,13 +3,15 @@
  *
  * `approveDrafts` returns one outcome per id (`approved | no_draft |
  * reply_in_progress | not_found`) and never throws on a partially-failing
- * batch; every approved item shares ONE C1 undo window and its own audit +
- * autonomy-feedback rows; the companion `undoAutoSends` cancels per id; and
+ * batch; every approved item shares ONE C1 undo window and its own audit row
+ * (approve feedback records at send-fire time, G3); the companion
+ * `undoAutoSends` cancels per id; and
  * `rejectDrafts` rides along in the same batch shape. Covers:
  *   - a mixed batch (ok / no draft / collision / missing id) without throwing,
  *   - one shared undo window across the batch's approved items,
  *   - per-id undo through undoAutoSends (partial: one already fired),
- *   - audit + feedback rows per item, only for items that actually transitioned,
+ *   - audit rows per item at approve time; feedback only once sends fire,
+ *   - an undone bulk approve trains the learning loop not at all,
  *   - bulk reject's batch shape (rejected / not_found),
  *   - the 50-item cap and id dedupe.
  */
@@ -17,7 +19,7 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -250,7 +252,7 @@ describe('approveDrafts — per-id outcomes', () => {
 		});
 	});
 
-	it('records an audit row and an autonomy-feedback row PER approved item only', async () => {
+	it('records an audit row PER approved item; approve feedback defers to send-fire', async () => {
 		const t = convexTest(schema, modules);
 		await setAgentConfig(t, { humanApproveUndoDelayMs: 15_000 });
 		const a = await createDraftReadyMessage(t);
@@ -268,8 +270,40 @@ describe('approveDrafts — per-id outcomes', () => {
 			expect(audits.map((l) => l.resourceId).sort()).toEqual([a, b].sort());
 			expect(audits.every((l) => l.userId === 'reviewer-1')).toBe(true);
 
+			// G3: the trust signal fires only on real sends — the held approves
+			// have not fired yet, so no feedback rows exist at approve time.
+			const feedback = await ctx.db.query('autonomyFeedback').collect();
+			expect(feedback).toHaveLength(0);
+		});
+
+		// When the shared window elapses each item's send fires and records its
+		// own signal, exactly once per approved item.
+		for (const id of [a, b]) {
+			await t.mutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
+				inboundMessageId: id,
+			});
+		}
+		await t.run(async (ctx) => {
 			const feedback = await ctx.db.query('autonomyFeedback').collect();
 			expect(feedback.filter((f) => f.action === 'approved')).toHaveLength(2);
+		});
+	});
+
+	it('a bulk approve undone inside its shared window trains nothing', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { humanApproveUndoDelayMs: 30_000 });
+		const a = await createDraftReadyMessage(t);
+		const b = await createDraftReadyMessage(t);
+
+		await t.mutation(api.inbox.bulkMutations.approveDrafts, { inboundMessageIds: [a, b] });
+		const undone = await t.mutation(api.inbox.bulkMutations.undoAutoSends, {
+			inboundMessageIds: [a, b],
+		});
+		expect(undone.outcomes.every((o) => o.cancelled)).toBe(true);
+
+		await t.run(async (ctx) => {
+			// The cancelled sends never fired — zero feedback rows to retract.
+			expect(await ctx.db.query('autonomyFeedback').collect()).toHaveLength(0);
 		});
 	});
 

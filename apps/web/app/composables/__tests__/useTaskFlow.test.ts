@@ -217,6 +217,98 @@ describe('useTaskFlow — completion, undo, summary', () => {
 		textarea.remove();
 	});
 
+	it('undoById targets the RIGHT card: a later decision on another card stands', async () => {
+		// Regression: the focus flow's countdown toast is bound to the APPROVED
+		// card. Approve 'a' (toast up), reject 'b' within the window, click Undo —
+		// 'a''s inverse (the un-send) must run and 'b''s rejection must stand. A
+		// blanket undo() would pop 'b''s entry instead (UI-only rewind while 'a''s
+		// held send still fires).
+		const { flow } = setup([
+			{ id: 'a', kind: 'draft_review' },
+			{ id: 'b', kind: 'draft_review' },
+			{ id: 'c', kind: 'draft_review' },
+		]);
+		let aUnsent = false;
+		let bUndone = false;
+		flow.complete('a', { outcome: 'approved', inverse: () => void (aUnsent = true) });
+		flow.complete('b', { outcome: 'rejected', inverse: () => void (bUndone = true) });
+		expect(flow.current.value?.id).toBe('c');
+
+		const did = await flow.undoById('a');
+		expect(did).toBe(true);
+		expect(aUnsent).toBe(true);
+		expect(bUndone).toBe(false);
+		// 'b''s completion stands: the tally keeps its rejection, drops the approve.
+		expect(flow.summary.value).toBe('1 rejected');
+		// The current card is untouched; 'a' comes back around at the end.
+		expect(flow.current.value?.id).toBe('c');
+		flow.complete('c', { outcome: 'approved' });
+		expect(flow.current.value?.id).toBe('a');
+		expect(flow.isComplete.value).toBe(false);
+	});
+
+	it('undoById of the most recent completion behaves exactly like undo()', async () => {
+		const { flow } = setup([
+			{ id: 'a', kind: 'draft_review' },
+			{ id: 'b', kind: 'draft_review' },
+		]);
+		let aUnsent = false;
+		flow.complete('a', { outcome: 'approved', inverse: () => void (aUnsent = true) });
+		expect(flow.current.value?.id).toBe('b');
+
+		expect(await flow.undoById('a')).toBe(true);
+		expect(aUnsent).toBe(true);
+		expect(flow.current.value?.id).toBe('a');
+		expect(flow.position.value).toBe(1);
+		expect(flow.summary.value).toBe('');
+		expect(flow.canUndo.value).toBe(false);
+	});
+
+	it('undoById returns false for an id that was never completed', async () => {
+		const { flow } = setup([
+			{ id: 'a', kind: 'draft_review' },
+			{ id: 'b', kind: 'draft_review' },
+		]);
+		flow.complete('a', { outcome: 'approved' });
+		expect(await flow.undoById('zz')).toBe(false);
+		expect(await flow.undoById('b')).toBe(false); // current, not completed
+		expect(flow.summary.value).toBe('1 approved');
+	});
+
+	it('after a mid-stack undoById, Cmd/Ctrl+Z still undoes the remaining action correctly', async () => {
+		const { flow } = setup([
+			{ id: 'a', kind: 'draft_review' },
+			{ id: 'b', kind: 'draft_review' },
+			{ id: 'c', kind: 'draft_review' },
+		]);
+		flow.complete('a', { outcome: 'approved' });
+		flow.complete('b', { outcome: 'rejected' });
+		await flow.undoById('a'); // 'a' re-queued at the end
+		expect(flow.current.value?.id).toBe('c');
+
+		// The stack now holds only 'b'; a plain undo restores exactly it.
+		expect(await flow.undo()).toBe(true);
+		expect(flow.current.value?.id).toBe('b');
+		expect(flow.summary.value).toBe('');
+	});
+
+	it('undoById from the complete end state re-opens the flow on the restored card', async () => {
+		const { flow } = setup([
+			{ id: 'a', kind: 'draft_review' },
+			{ id: 'b', kind: 'draft_review' },
+		]);
+		let aUnsent = false;
+		flow.complete('a', { outcome: 'approved', inverse: () => void (aUnsent = true) });
+		flow.complete('b', { outcome: 'rejected' });
+		expect(flow.isComplete.value).toBe(true);
+
+		expect(await flow.undoById('a')).toBe(true);
+		expect(aUnsent).toBe(true);
+		expect(flow.isComplete.value).toBe(false);
+		expect(flow.current.value?.id).toBe('a');
+		expect(flow.summary.value).toBe('1 rejected');
+	});
+
 	it('tallies distinct outcomes in first-seen order', () => {
 		const { flow } = setup([
 			{ id: 'a', kind: 'question' },

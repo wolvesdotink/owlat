@@ -5,8 +5,9 @@
  * learning-loop and collision signals rather than drifting copies.
  */
 
+import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getActiveReplierOtherThan } from './presence';
 import { draftDiffersFromAgentOriginal } from './draftRevisions';
@@ -108,3 +109,38 @@ export async function recordApprovalSignals(
 		}
 	}
 }
+
+/**
+ * Record the human-approve learning signals at SEND-FIRE time — invoked by
+ * `agentPipeline.sendApprovedReply` once the approved reply has actually been
+ * dispatched (enqueued as a Send, or handed to the channel adapter). The G3
+ * acceptance criterion is that the trust signal fires only on REAL sends: an
+ * approve undone inside its C1 window (`cancelPendingAutoSend`) must train
+ * nothing, and an approve → undo → re-approve must record exactly once — so
+ * the recording lives at the moment the held send leaves, not at approve time.
+ * (For a delay-0 approve the send fires immediately, which collapses back to
+ * approve time.)
+ *
+ * Idempotent per message: `reconcileStuckApproved` re-fires
+ * `sendApprovedReply` after a lost completion, and the learning loop must not
+ * count that recovery as a second human approval.
+ */
+export const recordApprovalSignalsAtSend = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+	},
+	handler: async (ctx, args) => {
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message) return;
+
+		const existing = await ctx.db
+			.query('autonomyFeedback')
+			.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))
+			.collect(); // bounded: one message's feedback rows (a handful)
+		// A prior human 'approved' row means this send already trained the loop
+		// (`source: 'outcome'` rows are post-send outcome signals, not approvals).
+		if (existing.some((row) => row.action === 'approved' && row.source !== 'outcome')) return;
+
+		await recordApprovalSignals(ctx, message);
+	},
+});

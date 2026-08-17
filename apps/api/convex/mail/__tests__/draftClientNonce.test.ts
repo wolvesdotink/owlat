@@ -5,8 +5,9 @@
  * nonce so a replay after a lost response reuses the draft the first attempt
  * created instead of forking a duplicate (and, downstream, a duplicate send).
  * Covers: same-nonce reuse (`existing: true`), distinct nonces stay distinct,
- * the no-nonce path is unchanged, and a nonce hit in ANOTHER mailbox is never
- * reused (no cross-mailbox draft-id leak).
+ * the no-nonce path is unchanged, a nonce hit in ANOTHER mailbox is never
+ * reused (no cross-mailbox draft-id leak), and a foreign hit never SHADOWS the
+ * caller's own draft on a drain retry (no duplicate-draft fork).
  */
 
 import { convexTest } from 'convex-test';
@@ -105,5 +106,45 @@ describe('drafts.create clientNonce idempotency', () => {
 		// mailbox B — a fresh draft, never A's id.
 		expect(inB.draftId).not.toBe(inA.draftId);
 		expect(inB.existing).toBeUndefined();
+	});
+
+	it('a foreign-mailbox hit never shadows the caller’s own draft on a drain retry', async () => {
+		// Regression: `.first()` on the by_client_nonce index could surface the
+		// FOREIGN row (older creation time sorts first) and, after the mailbox
+		// filter dropped it, fall through to inserting a duplicate — so every
+		// subsequent retry forked yet another draft (double-send risk). The
+		// caller's own match must win regardless of index order.
+		const t = convexTest(schema, modules);
+		const mailboxA = await seedMailbox(t, { address: 'a@hinterland.camp' });
+		const mailboxB = await seedMailbox(t, { address: 'b@hinterland.camp' });
+
+		// Mailbox A claims the nonce FIRST, so its row is the index's `.first()`.
+		await t.mutation(api.mail.drafts.create, {
+			mailboxId: mailboxA,
+			clientNonce: 'contested-nonce',
+		});
+
+		// Mailbox B's initial attempt creates its own draft under the same nonce…
+		const attempt = await t.mutation(api.mail.drafts.create, {
+			mailboxId: mailboxB,
+			clientNonce: 'contested-nonce',
+		});
+		expect(attempt.existing).toBeUndefined();
+
+		// …and the drain RETRY (lost response) must find B's own draft, not
+		// insert a third one.
+		const retry = await t.mutation(api.mail.drafts.create, {
+			mailboxId: mailboxB,
+			clientNonce: 'contested-nonce',
+		});
+		expect(retry.draftId).toBe(attempt.draftId);
+		expect(retry.existing).toBe(true);
+
+		await t.run(async (ctx) => {
+			const rows = (await ctx.db.query('mailDrafts').collect()).filter(
+				(d) => d.clientNonce === 'contested-nonce'
+			);
+			expect(rows).toHaveLength(2); // one per mailbox — never a duplicate
+		});
 	});
 });

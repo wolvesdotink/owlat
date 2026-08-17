@@ -4,13 +4,15 @@
  * Saving a draft WITHOUT approving appends to `draftRevisions[]` — the agent's
  * original is seeded as immutable revision 0 on the first save — stamps
  * `draftSavedAt`, leaves the row in `draft_ready`, and records NO autonomy
- * feedback. The `'edited'` signal moves to approve time: exactly one row, iff
- * the sent text differs from the agent original. Covers:
+ * feedback. The `'edited'` signal moves to SEND-FIRE time (with the
+ * `'approved'` row — `decisionFeedback.recordApprovalSignalsAtSend`, invoked
+ * when the approved send actually leaves): exactly one row, iff the sent text
+ * differs from the agent original. Covers:
  *   - revision append order (seed + one entry per save, latest text wins),
  *   - the agent original staying immutable across saves,
  *   - save recording no autonomy feedback (only the audit row),
  *   - editDraft (the AiReviseBox apply path) sharing the same semantics,
- *   - approve-after-edits recording exactly one 'edited',
+ *   - approve-after-edits recording exactly one 'edited' at send fire,
  *   - approve of an untouched (or reverted) draft recording none,
  *   - a human-composed reply to a draftless escalation seeding no fake
  *     agent original and never counting as 'edited'.
@@ -19,7 +21,7 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -229,16 +231,26 @@ describe('saveDraftRevision — revision history', () => {
 });
 
 // ============================================================
-// The 'edited' signal fires at approve time, once, iff text differs
+// The 'edited' signal fires at send time, once, iff text differs
 // ============================================================
 
-describe("approve-time 'edited' signal", () => {
-	it('approve after edits records exactly one edited (plus the approved)', async () => {
+/** Approve, then fire the send-time recorder — the moment the held send
+ * actually leaves (`sendApprovedReply` invokes exactly this mutation). */
+async function approveAndFireSend(t: ReturnType<typeof convexTest>, id: Id<'inboundMessages'>) {
+	const result = await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: id });
+	expect(result.success).toBe(true);
+	await t.mutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
+		inboundMessageId: id,
+	});
+}
+
+describe("send-time 'edited' signal", () => {
+	it('approve after edits records exactly one edited (plus the approved) at send fire', async () => {
 		const t = convexTest(schema, modules);
 		await setAgentConfig(t, { humanApproveUndoDelayMs: 15_000 });
 		const id = await createDraftReadyMessage(t);
 
-		// Two saves — still only ONE 'edited' fires, at approve.
+		// Two saves — still only ONE 'edited' fires, when the send does.
 		await t.mutation(api.inbox.draftRevisions.saveDraftRevision, {
 			inboundMessageId: id,
 			draftResponse: 'First pass.',
@@ -247,14 +259,26 @@ describe("approve-time 'edited' signal", () => {
 			inboundMessageId: id,
 			draftResponse: 'Final human wording.',
 		});
-		const result = await t.mutation(api.inbox.mutations.approveDraft, {
-			inboundMessageId: id,
-		});
-		expect(result.success).toBe(true);
+		await approveAndFireSend(t, id);
 
 		const actions = await feedbackActions(t);
 		expect(actions.filter((a) => a === 'edited')).toHaveLength(1);
 		expect(actions.filter((a) => a === 'approved')).toHaveLength(1);
+	});
+
+	it('approve alone records nothing until the send fires (G3)', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { humanApproveUndoDelayMs: 15_000 });
+		const id = await createDraftReadyMessage(t);
+
+		await t.mutation(api.inbox.draftRevisions.saveDraftRevision, {
+			inboundMessageId: id,
+			draftResponse: 'Edited wording.',
+		});
+		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: id });
+
+		// The held send has not left yet — no signals, so an undo retracts nothing.
+		expect(await feedbackActions(t)).toEqual([]);
 	});
 
 	it('approve of an untouched draft records no edited', async () => {
@@ -262,7 +286,7 @@ describe("approve-time 'edited' signal", () => {
 		await setAgentConfig(t, { humanApproveUndoDelayMs: 15_000 });
 		const id = await createDraftReadyMessage(t);
 
-		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: id });
+		await approveAndFireSend(t, id);
 
 		const actions = await feedbackActions(t);
 		expect(actions).toEqual(['approved']);
@@ -281,7 +305,7 @@ describe("approve-time 'edited' signal", () => {
 			inboundMessageId: id,
 			draftResponse: AGENT_TEXT,
 		});
-		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: id });
+		await approveAndFireSend(t, id);
 
 		const actions = await feedbackActions(t);
 		expect(actions.filter((a) => a === 'edited')).toHaveLength(0);
@@ -303,7 +327,7 @@ describe("approve-time 'edited' signal", () => {
 		const msg = await getMessage(t, id);
 		expect(msg.draftRevisions?.map((r) => r.savedBy)).toEqual(['reviewer-1']);
 
-		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: id });
+		await approveAndFireSend(t, id);
 		const actions = await feedbackActions(t);
 		expect(actions.filter((a) => a === 'edited')).toHaveLength(0);
 	});

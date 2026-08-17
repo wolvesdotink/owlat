@@ -345,6 +345,139 @@ describe('undoAutoSend — human approve undo', () => {
 });
 
 // ============================================================
+// Learning-loop feedback fires at SEND time, not approve time (G3)
+// ============================================================
+
+describe('approval feedback records at send-fire time', () => {
+	async function feedbackRows(t: ReturnType<typeof convexTest>) {
+		return await t.run(
+			async (ctx) => await ctx.db.query('autonomyFeedback').collect() // bounded: test data
+		);
+	}
+
+	it('an approve inside its window records NO feedback, and an undo leaves zero rows', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { humanApproveUndoDelayMs: 30_000 });
+		const messageId = await createDraftReadyMessage(t);
+
+		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId });
+		// The held send has not fired — the trust signal must not have either.
+		expect(await feedbackRows(t)).toHaveLength(0);
+
+		const undone = await t.mutation(api.inbox.mutations.undoAutoSend, {
+			inboundMessageId: messageId,
+		});
+		expect(undone.cancelled).toBe(true);
+		// The undone approval trained nothing.
+		expect(await feedbackRows(t)).toHaveLength(0);
+	});
+
+	it('approve → undo → re-approve records exactly once, when the send actually fires', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { humanApproveUndoDelayMs: 30_000 });
+		const messageId = await createDraftReadyMessage(t);
+
+		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId });
+		await t.mutation(api.inbox.mutations.undoAutoSend, { inboundMessageId: messageId });
+		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId });
+		expect(await feedbackRows(t)).toHaveLength(0);
+
+		// The send fires at the window's deadline: sendApprovedReply invokes the
+		// send-time recorder once its dispatch succeeds.
+		await t.mutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
+			inboundMessageId: messageId,
+		});
+		const rows = await feedbackRows(t);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ action: 'approved', inboundMessageId: messageId });
+
+		// Idempotent per message: the stuck-approved reconcile may re-fire
+		// sendApprovedReply after a lost completion — no second approval signal.
+		await t.mutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
+			inboundMessageId: messageId,
+		});
+		expect(await feedbackRows(t)).toHaveLength(1);
+	});
+
+	it('the once-per-message guard ignores post-send outcome rows', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { humanApproveUndoDelayMs: 30_000 });
+		const messageId = await createDraftReadyMessage(t);
+
+		// A positive outcome signal (source: 'outcome') maps to action 'approved'
+		// but is NOT a human approval — it must not suppress the human signal.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('autonomyFeedback', {
+				category: 'other',
+				action: 'approved',
+				agentConfidence: 0,
+				inboundMessageId: messageId,
+				source: 'outcome',
+				outcomeSignal: 'clarification_unedited_send',
+				createdAt: Date.now(),
+			});
+		});
+
+		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId });
+		await t.mutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
+			inboundMessageId: messageId,
+		});
+
+		const rows = await feedbackRows(t);
+		expect(rows.filter((r) => r.action === 'approved' && r.source !== 'outcome')).toHaveLength(1);
+	});
+});
+
+// ============================================================
+// approveDraft — lost race returns an honest non-success
+// ============================================================
+
+describe('approveDraft — lost race (illegal edge)', () => {
+	it('a second approve (double-click) is a non-success with no undo window and no side effects', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { humanApproveUndoDelayMs: 20_000 });
+		const messageId = await createDraftReadyMessage(t);
+
+		const first = await t.mutation(api.inbox.mutations.approveDraft, {
+			inboundMessageId: messageId,
+		});
+		expect(first.success).toBe(true);
+
+		// The row already left `draft_ready` — the `approved → approved` edge is
+		// refused, and the mutation must not fabricate a success + undo toast.
+		const second = await t.mutation(api.inbox.mutations.approveDraft, {
+			inboundMessageId: messageId,
+		});
+		expect(second).toEqual({ success: false, reason: 'not_found' });
+
+		// No second scheduled send, no second audit row, still zero feedback.
+		expect((await sendJobsFor(t, messageId)).length).toBe(1);
+		await t.run(async (ctx) => {
+			const audits = (await ctx.db.query('auditLogs').collect()).filter(
+				(l) => l.action === 'inbound.draft_approved'
+			);
+			expect(audits).toHaveLength(1);
+			expect(await ctx.db.query('autonomyFeedback').collect()).toHaveLength(0);
+		});
+	});
+
+	it('approving a row a teammate already sent reads as gone (bulk vocabulary)', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { humanApproveUndoDelayMs: 20_000 });
+		const messageId = await createDraftReadyMessage(t, { processingStatus: 'sent' });
+
+		const result = await t.mutation(api.inbox.mutations.approveDraft, {
+			inboundMessageId: messageId,
+		});
+		expect(result).toEqual({ success: false, reason: 'not_found' });
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(messageId))?.processingStatus).toBe('sent');
+			expect(await ctx.db.query('auditLogs').collect()).toHaveLength(0);
+		});
+	});
+});
+
+// ============================================================
 // Autonomous path untouched
 // ============================================================
 

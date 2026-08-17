@@ -87,14 +87,18 @@ export const create = authedMutation({
 		const mailbox = owned.mailbox;
 
 		if (args.clientNonce !== undefined) {
-			const match = await ctx.db
+			// Nonces are client-chosen, so another mailbox may already hold this one.
+			// Collect ALL index matches and reuse only the caller's own (already
+			// access-checked) mailbox's draft: a `.first()` that happened to surface
+			// the foreign row would both shadow the caller's own match — forking a
+			// duplicate draft (and, downstream, a duplicate send) on every retry —
+			// and must never leak another mailbox's draft id back to the caller.
+			const matches = await ctx.db
 				.query('mailDrafts')
 				.withIndex('by_client_nonce', (q) => q.eq('clientNonce', args.clientNonce))
-				.first();
-			// Only reuse a match inside the SAME (already access-checked) mailbox —
-			// nonces are client-chosen, so a cross-mailbox hit must never leak
-			// another mailbox's draft id back to the caller.
-			if (match && match.mailboxId === args.mailboxId) {
+				.collect(); // bounded: drafts sharing one client nonce (typically 0–1)
+			const match = matches.find((m) => m.mailboxId === args.mailboxId);
+			if (match) {
 				return { draftId: match._id, existing: true };
 			}
 		}

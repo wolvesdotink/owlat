@@ -196,12 +196,16 @@ async function approve(row: FlowItem) {
 		}
 		const undo = approveUndoWindow(result);
 		if (undo) {
-			// The toast's Undo defers to the flow undo so position/tally rewind
-			// together with the actual un-send (the registered inverse below).
+			// The toast's Undo targets THIS card's completion (flow.undoById, which
+			// runs the registered inverse below and rewinds position/tally with it)
+			// — never a blanket flow.undo(), which pops the LAST action: rejecting
+			// another card while the toast is up would rewind THAT card while this
+			// one's held send still fires. Mirrors the browse list's per-message
+			// `undoApproveAndRestore(messageId)` binding.
 			armApproveUndo({
 				inboundMessageId: row.message._id,
 				sendAt: undo.sendAt,
-				onUndo: () => void flow.undo(),
+				onUndo: () => void flow.undoById(row.message._id),
 			});
 		} else {
 			showToast('Draft approved and queued for sending');

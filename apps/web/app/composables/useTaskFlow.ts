@@ -232,6 +232,51 @@ export function useTaskFlow<T>(source: Ref<readonly T[]>, options: UseTaskFlowOp
 		return true;
 	}
 
+	/** Move an already-passed card back into the pending tail so it comes around
+	 * again, keeping the cursor pointing at the same card it was on. Later undo
+	 * entries recorded positions in the pre-move indexing — shift them along. */
+	function requeue(id: string) {
+		const idx = orderedIds.value.indexOf(id);
+		if (idx === -1 || idx >= cursor.value) return; // still ahead — nothing to move
+		const next = orderedIds.value.filter((x) => x !== id);
+		next.push(id);
+		orderedIds.value = next;
+		cursor.value = cursor.value - 1;
+		undoStack.value = undoStack.value.map((e) =>
+			e.prevCursor > idx ? { ...e, prevCursor: e.prevCursor - 1 } : e
+		);
+	}
+
+	/**
+	 * Reverse a SPECIFIC card's completion — the countdown-undo toast's targeted
+	 * undo, so "approve A (toast up), act on B, click Undo" can never pop B's
+	 * entry instead of A's. For the most recent completion this is exactly
+	 * undo(); for an earlier one, later completions stand (their entries and the
+	 * cursor stay put) and the restored card is re-queued at the end of the flow
+	 * so it comes back around. Returns true when an undo actually happened.
+	 */
+	async function undoById(id: string): Promise<boolean> {
+		let index = -1;
+		for (let i = undoStack.value.length - 1; i >= 0; i--) {
+			if (undoStack.value[i]!.id === id) {
+				index = i;
+				break;
+			}
+		}
+		if (index === -1) return false;
+		if (index === undoStack.value.length - 1) return await undo();
+
+		const entry = undoStack.value[index]!;
+		undoStack.value = undoStack.value.filter((_, i) => i !== index);
+		const restored = new Set(completedIds.value);
+		restored.delete(entry.id);
+		completedIds.value = restored;
+		if (entry.outcome) bumpTally(entry.outcome, -1);
+		requeue(entry.id);
+		if (entry.inverse) await entry.inverse();
+		return true;
+	}
+
 	const canUndo = computed(() => undoStack.value.length > 0);
 
 	/** Leave the flow, preserving cursor/tallies so re-entry can resume. */
@@ -268,6 +313,7 @@ export function useTaskFlow<T>(source: Ref<readonly T[]>, options: UseTaskFlowOp
 		complete,
 		skip,
 		undo,
+		undoById,
 		onWindowKeydown,
 	};
 }

@@ -166,7 +166,8 @@ export const autonomyTables = {
 		createdAt: v.number(),
 	})
 		.index('by_category', ['category'])
-		.index('by_created_at', ['createdAt']),
+		.index('by_created_at', ['createdAt'])
+		.index('by_inbound_message', ['inboundMessageId']),
 
 	// Autonomy Suggestions - pending "graduation" nudges. Autonomy only ever
 	// widens (a lower auto-approve threshold = easier auto-send) by the user's

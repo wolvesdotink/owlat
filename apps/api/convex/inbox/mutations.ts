@@ -11,15 +11,11 @@ import { internal } from '../_generated/api';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { transition as threadTransition } from './threads/module';
-import type { CancelAutoSendOutcome } from './processingLifecycle';
+import type { CancelAutoSendOutcome, TransitionOutcome } from './processingLifecycle';
 import { resolveHumanApproveUndoDelayMs } from './processingLifecycle/effects';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
-import {
-	recordApprovalSignals,
-	recordAutonomyFeedback,
-	resolveReplyCollisionHold,
-} from './decisionFeedback';
+import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFeedback';
 import { appendDraftRevision } from './draftRevisions';
 
 /**
@@ -57,21 +53,32 @@ export const approveDraft = adminMutation({
 		const undoDelayMs = resolveHumanApproveUndoDelayMs(configs[0]?.humanApproveUndoDelayMs);
 
 		const approvedAt = Date.now();
-		await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-			inboundMessageId: args.inboundMessageId,
-			input: {
-				to: 'approved',
-				at: approvedAt,
-				source: 'human',
-				userId,
-				...(undoDelayMs > 0 ? { undoDelayMs } : {}),
-			},
-		});
+		const transitioned: TransitionOutcome = await ctx.runMutation(
+			internal.inbox.processingLifecycle.transition,
+			{
+				inboundMessageId: args.inboundMessageId,
+				input: {
+					to: 'approved',
+					at: approvedAt,
+					source: 'human',
+					userId,
+					...(undoDelayMs > 0 ? { undoDelayMs } : {}),
+				},
+			}
+		);
+		// Lost race — a double-click or a teammate approved/rejected first, so the
+		// edge was refused and nothing was scheduled. Skip the side effects and
+		// return the bulk twin's honest vocabulary (from the queue's perspective
+		// the row is gone) instead of fabricating a success + undo window.
+		if (!transitioned.ok) {
+			return { success: false as const, reason: 'not_found' as const };
+		}
 
-		// Feed the approval into the graduated-autonomy learning loop (positive
-		// feedback row + the strong `clarification_unedited_send` outcome signal
-		// when an owner-answered clarification draft ships verbatim).
-		await recordApprovalSignals(ctx, message);
+		// NO learning-loop feedback here: the graduated-autonomy signals for a
+		// human approve are recorded at SEND-FIRE time
+		// (`decisionFeedback.recordApprovalSignalsAtSend`, invoked by
+		// `sendApprovedReply`), so an approve undone inside its C1 window trains
+		// nothing and a re-approve records exactly once.
 
 		// Log audit
 		await recordAuditLog(ctx, {
@@ -172,8 +179,8 @@ export const undoAutoSend = adminMutation({
  * Revision-appending per D7: the agent original is preserved as revision 0 and
  * the edit becomes the working draft via `appendDraftRevision` — never an
  * in-place overwrite. Records NO autonomy feedback here; the `'edited'` signal
- * fires once at approve time iff the sent text differs from the agent original
- * (see `decisionFeedback.recordApprovalSignals`).
+ * fires once at send-fire time iff the sent text differs from the agent
+ * original (see `decisionFeedback.recordApprovalSignalsAtSend`).
  */
 export const editDraft = adminMutation({
 	args: {

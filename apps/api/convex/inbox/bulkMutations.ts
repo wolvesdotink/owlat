@@ -5,8 +5,10 @@
  * backing the review queue's multi-select: `approveDrafts` / `rejectDrafts`
  * return one outcome PER id and never throw on a partially-failing batch, so
  * "8 approved, 2 held — someone is replying" stays honest in the UI. Each item
- * still takes exactly ONE lifecycle transition, records its own autonomy
- * feedback and audit row, and every approve in a batch shares one undo window
+ * still takes exactly ONE lifecycle transition, records its own audit row
+ * (approve feedback records later, at send-fire time — see
+ * `decisionFeedback.recordApprovalSignalsAtSend`), and every approve in a
+ * batch shares one undo window
  * (`agentConfig.humanApproveUndoDelayMs`, piece C1) — cancelled per id through
  * the companion `undoAutoSends`.
  *
@@ -22,11 +24,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import type { CancelAutoSendOutcome, TransitionOutcome } from './processingLifecycle';
 import { resolveHumanApproveUndoDelayMs } from './processingLifecycle/effects';
 import { throwInvalidState } from '../_utils/errors';
-import {
-	recordApprovalSignals,
-	recordAutonomyFeedback,
-	resolveReplyCollisionHold,
-} from './decisionFeedback';
+import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFeedback';
 
 /**
  * Hard cap per batch. Matches the review queue's own page size (the
@@ -129,8 +127,11 @@ export const approveDrafts = adminMutation({
 				continue;
 			}
 
-			// The same learning-loop + audit tail as the single approve, per item.
-			await recordApprovalSignals(ctx, message);
+			// The same audit tail as the single approve, per item. NO learning-loop
+			// feedback here — like the single approve, the graduated-autonomy
+			// signals record at SEND-FIRE time
+			// (`decisionFeedback.recordApprovalSignalsAtSend`), so an approve
+			// undone inside the shared window trains nothing.
 			await recordAuditLog(ctx, {
 				userId: session.userId,
 				action: 'inbound.draft_approved',
