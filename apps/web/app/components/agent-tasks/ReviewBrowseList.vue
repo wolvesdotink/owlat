@@ -372,15 +372,30 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 									</NuxtLink>
 								</template>
 							</template>
-							<!-- One roll-up trust chip (human language; reasons + raw numbers in its popover) + category chip. -->
+							<!-- One roll-up trust chip (human language; reasons + raw numbers in its popover) + category chip + saved-edit chip (D7). -->
 							<template #trailing>
-								<div v-if="row.message.classification" class="flex items-center gap-2">
-									<InboxTrustChip
-										:trust="rowTrust(row.message)"
-										:extra-detail="rowTrustDetail(row.message)"
-									/>
-									<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
-										{{ row.message.classification.category }}
+								<div
+									v-if="row.message.classification || row.message.draftSavedAt"
+									class="flex items-center gap-2"
+								>
+									<template v-if="row.message.classification">
+										<InboxTrustChip
+											:trust="rowTrust(row.message)"
+											:extra-detail="rowTrustDetail(row.message)"
+										/>
+										<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
+											{{ row.message.classification.category }}
+										</span>
+									</template>
+									<!-- Save-without-approving leaves the row queued; the chip says so honestly. -->
+									<span
+										v-if="row.message.draftSavedAt"
+										class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-bg-elevated border border-border-subtle text-text-secondary"
+										:title="`Saved ${new Date(row.message.draftSavedAt).toLocaleString()}`"
+										data-testid="draft-saved-chip"
+									>
+										<Icon name="lucide:pencil-line" class="w-3 h-3" aria-hidden="true" />
+										Saved · edited by you
 									</span>
 								</div>
 							</template>

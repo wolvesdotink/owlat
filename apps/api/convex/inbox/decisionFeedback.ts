@@ -9,6 +9,7 @@ import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getActiveReplierOtherThan } from './presence';
+import { draftDiffersFromAgentOriginal } from './draftRevisions';
 
 /**
  * Feed a human verification-queue decision back into the graduated-autonomy
@@ -87,6 +88,14 @@ export async function recordApprovalSignals(
 	message: Doc<'inboundMessages'>
 ): Promise<void> {
 	await recordAutonomyFeedback(ctx, message, 'approved');
+
+	// The `'edited'` signal fires HERE, once per approve, iff the text being
+	// sent differs from the agent's original (revision 0) — not at save time
+	// (D7): saving progress is not a verdict, and an edit reverted back to the
+	// agent's exact text honestly counts as unedited.
+	if (draftDiffersFromAgentOriginal(message)) {
+		await recordAutonomyFeedback(ctx, message, 'edited');
+	}
 
 	if (message.pendingClarification?.answeredAt && !message.isDraftEdited) {
 		try {

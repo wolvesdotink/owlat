@@ -142,6 +142,33 @@ describe('useReviewQueue', () => {
 		});
 	});
 
+	// Piece D1': saved drafts ("Saved · edited by you") float to the top of the
+	// queue, most recently saved first; the rest keep the server's order.
+	describe('saved-first sort bump', () => {
+		it('bumps saved drafts above untouched ones, newest save first', () => {
+			const items = [
+				{ message: { _id: 'a' } },
+				{ message: { _id: 'b', draftSavedAt: 100 } },
+				{ message: { _id: 'c' } },
+				{ message: { _id: 'd', draftSavedAt: 200 } },
+			];
+			vi.stubGlobal('useConvexQuery', () => ({ data: ref(items), isLoading: ref(false) }));
+
+			const { reviewItems } = useReviewQueue();
+
+			expect(reviewItems.value?.map((it) => it.message._id)).toEqual(['d', 'b', 'a', 'c']);
+		});
+
+		it('leaves a queue with no saved drafts in the server order', () => {
+			const items = [{ message: { _id: 'a' } }, { message: { _id: 'b' } }];
+			vi.stubGlobal('useConvexQuery', () => ({ data: ref(items), isLoading: ref(false) }));
+
+			const { reviewItems } = useReviewQueue();
+
+			expect(reviewItems.value?.map((it) => it.message._id)).toEqual(['a', 'b']);
+		});
+	});
+
 	// Piece C1: the undo window a human approve now opens server-side.
 	describe('undoApprove', () => {
 		const messageId = 'msg_1' as never;

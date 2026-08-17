@@ -6,7 +6,13 @@ import DraftDiffEditor from '../DraftDiffEditor.vue';
  * The review-gate draft editor shows a live before/after diff of the original
  * agent draft vs the reviewer's edit, with Apply (commit) / Discard (revert).
  */
-function mountEditor(props: { original: string; modelValue: string; saving?: boolean }) {
+function mountEditor(props: {
+	original: string;
+	modelValue: string;
+	saving?: boolean;
+	held?: boolean;
+	showSave?: boolean;
+}) {
 	return mount(DraftDiffEditor, {
 		props,
 		// `<Icon>` is a Nuxt auto-import that is not registered in unit tests.
@@ -60,5 +66,31 @@ describe('InboxDraftDiffEditor', () => {
 		const wrapper = mountEditor({ original: 'Original', modelValue: 'Edited', saving: true });
 		expect(wrapper.get('[data-testid="draft-diff-apply"]').attributes('disabled')).toBeDefined();
 		expect(wrapper.get('[data-testid="draft-diff-discard"]').attributes('disabled')).toBeDefined();
+	});
+
+	// Piece D1': the inline Save (save-without-approving) beside Save & Approve.
+	describe('inline Save', () => {
+		it('is absent unless the surface opts in via showSave', () => {
+			const wrapper = mountEditor({ original: 'Original', modelValue: 'Edited' });
+			expect(wrapper.find('[data-testid="draft-diff-save"]').exists()).toBe(false);
+		});
+
+		it('emits save (and not apply) so the parent persists WITHOUT approving', async () => {
+			const wrapper = mountEditor({ original: 'Original', modelValue: 'Edited', showSave: true });
+			await wrapper.get('[data-testid="draft-diff-save"]').trigger('click');
+			expect(wrapper.emitted('save')).toHaveLength(1);
+			expect(wrapper.emitted('apply')).toBeUndefined();
+		});
+
+		it('stays enabled during a collision soft-hold — saving never sends', () => {
+			const wrapper = mountEditor({
+				original: 'Original',
+				modelValue: 'Edited',
+				held: true,
+				showSave: true,
+			});
+			expect(wrapper.get('[data-testid="draft-diff-apply"]').attributes('disabled')).toBeDefined();
+			expect(wrapper.get('[data-testid="draft-diff-save"]').attributes('disabled')).toBeUndefined();
+		});
 	});
 });

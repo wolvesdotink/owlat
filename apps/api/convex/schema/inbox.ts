@@ -235,10 +235,32 @@ export const inboxTables = {
 		// a best-guess reply always goes to human review. Never cleared by the
 		// pipeline; a human reviews and sends (or discards) the draft.
 		isAutoSendBlocked: v.optional(v.boolean()),
-		// Set once a human edits the agent draft on the review queue (editDraft).
+		// True while the working draft differs from the agent original (kept in
+		// sync by every revision-appending save — see inbox/draftRevisions.ts).
 		// Used to tell an UNEDITED owner-send of an answered-clarification draft
 		// (a strong positive autonomy outcome) apart from an edited-then-sent one.
 		isDraftEdited: v.optional(v.boolean()),
+		// Non-destructive draft revision history (D7, save-without-approving).
+		// Seeded on the FIRST human save with the agent's original as revision 0
+		// (`savedBy: 'agent'`), then one entry appended per save / revise-apply
+		// (`savedBy` = the saving user's id). Revision 0 is immutable — the
+		// review diff renders against it, and the approve-time `'edited'`
+		// autonomy signal compares the sent text to it. Absent until a human
+		// saves.
+		draftRevisions: v.optional(
+			v.array(
+				v.object({
+					text: v.string(),
+					subject: v.optional(v.string()),
+					savedAt: v.number(),
+					savedBy: v.string(),
+				})
+			)
+		),
+		// Stamped on every save-without-approving (and every revision-appending
+		// edit). Drives the review queue's "Saved · edited by you" chip and its
+		// saved-first sort bump. The row stays `draft_ready` — no status change.
+		draftSavedAt: v.optional(v.number()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Timestamps

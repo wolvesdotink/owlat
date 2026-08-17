@@ -6,7 +6,6 @@
  */
 
 import { v } from 'convex/values';
-import type { Doc } from '../_generated/dataModel';
 import { adminMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getMutationContext } from '../lib/sessionOrganization';
@@ -21,6 +20,7 @@ import {
 	recordAutonomyFeedback,
 	resolveReplyCollisionHold,
 } from './decisionFeedback';
+import { appendDraftRevision } from './draftRevisions';
 
 /**
  * Approve an agent-generated draft for sending.
@@ -167,7 +167,13 @@ export const undoAutoSend = adminMutation({
 });
 
 /**
- * Edit the draft text before approving
+ * Edit the draft text before approving.
+ *
+ * Revision-appending per D7: the agent original is preserved as revision 0 and
+ * the edit becomes the working draft via `appendDraftRevision` — never an
+ * in-place overwrite. Records NO autonomy feedback here; the `'edited'` signal
+ * fires once at approve time iff the sent text differs from the agent original
+ * (see `decisionFeedback.recordApprovalSignals`).
  */
 export const editDraft = adminMutation({
 	args: {
@@ -180,22 +186,11 @@ export const editDraft = adminMutation({
 
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 
-		const patches: Partial<Doc<'inboundMessages'>> = {
-			draftResponse: args.draftResponse,
-			// Mark the draft as human-edited so a later approve can tell an
-			// UNEDITED owner-send of an answered-clarification draft (a strong
-			// positive autonomy outcome) apart from an edited-then-sent one.
-			isDraftEdited: true,
-		};
-		if (args.draftSubject) {
-			patches.draftSubject = args.draftSubject;
-		}
-
-		await ctx.db.patch(args.inboundMessageId, patches);
-
-		// An edit signals the draft wasn't quite right — a mild negative
-		// signal for autonomy threshold tuning.
-		await recordAutonomyFeedback(ctx, message, 'edited');
+		await appendDraftRevision(ctx, message, {
+			text: args.draftResponse,
+			...(args.draftSubject ? { subject: args.draftSubject } : {}),
+			savedBy: userId,
+		});
 
 		await recordAuditLog(ctx, {
 			userId,

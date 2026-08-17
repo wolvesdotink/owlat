@@ -498,6 +498,7 @@ import type * as inbox_clarificationMemoryMatch from '../inbox/clarificationMemo
 import type * as inbox_clarificationSlots from '../inbox/clarificationSlots.js';
 import type * as inbox_clarificationValidators from '../inbox/clarificationValidators.js';
 import type * as inbox_decisionFeedback from '../inbox/decisionFeedback.js';
+import type * as inbox_draftRevisions from '../inbox/draftRevisions.js';
 import type * as inbox_messages from '../inbox/messages.js';
 import type * as inbox_mutations from '../inbox/mutations.js';
 import type * as inbox_presence from '../inbox/presence.js';
@@ -1483,6 +1484,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/clarificationSlots': typeof inbox_clarificationSlots;
 	'inbox/clarificationValidators': typeof inbox_clarificationValidators;
 	'inbox/decisionFeedback': typeof inbox_decisionFeedback;
+	'inbox/draftRevisions': typeof inbox_draftRevisions;
 	'inbox/messages': typeof inbox_messages;
 	'inbox/mutations': typeof inbox_mutations;
 	'inbox/presence': typeof inbox_presence;
