@@ -55,6 +55,59 @@ export function isEncryptedClass(c: SecureMessageClass): boolean {
 }
 
 /**
+ * Classify a RAW RFC 5322 message (headers + body) by feeding every MIME part
+ * `Content-Type` it carries plus the whole raw text through
+ * {@link classifySecureMessage}. This is the SERVER-SIDE twin of the reader's
+ * attachment-based classification: ingest gates (`isSignedPgpMime`,
+ * `isClearsigned`, and the sealed gate in `e2ee/inboundSeal.ts`) consume it so
+ * the server's structural detection can never fork from the client badge's.
+ */
+export function classifyRawSecureMessage(raw: string): SecureMessageClass {
+	const attachments = extractRawPartContentTypes(raw).map((contentType) => ({ contentType }));
+	// The whole raw message doubles as the "body" so inline-armored blocks
+	// (clearsigned text, armored ciphertext directly in the body) are detected.
+	return classifySecureMessage({ attachments, textBody: raw });
+}
+
+/**
+ * Whether a raw inbound message is PGP/MIME `multipart/signed` (RFC 3156 §5) —
+ * a detached-signature structure whose first part is the signed content. An
+ * ENCRYPTED message is NOT signed-plaintext (the signature, if any, lives
+ * inside the ciphertext and belongs to the sealed path).
+ */
+export function isSignedPgpMime(raw: string): boolean {
+	return classifyRawSecureMessage(raw) === 'pgp-signed';
+}
+
+/**
+ * Whether a raw inbound message carries an inline clearsigned body (RFC 4880
+ * §7) — the `BEGIN PGP SIGNED MESSAGE` armor directly in the text.
+ */
+export function isClearsigned(raw: string): boolean {
+	return classifyRawSecureMessage(raw) === 'pgp-clearsigned';
+}
+
+/**
+ * Pull the `Content-Type` header value of every MIME part in a raw message (the
+ * outer part plus any `Content-Type:` lines inside), lower-cased by the
+ * consumer. Enough for the structural checks — we only need to know whether an
+ * `application/pgp-encrypted` / `application/pgp-signature` part is present,
+ * not to fully parse the tree. Folded continuation lines are joined so a
+ * `protocol="..."` parameter on the next line still counts.
+ */
+function extractRawPartContentTypes(raw: string): string[] {
+	const types: string[] = [];
+	const normalized = raw.replace(/\r\n/g, '\n');
+	const re = /^content-type:[ \t]*([^\n]*(?:\n[ \t][^\n]*)*)/gim;
+	let match: RegExpExecArray | null;
+	while ((match = re.exec(normalized)) !== null) {
+		const value = (match[1] ?? '').replace(/\n[ \t]+/g, ' ').trim();
+		if (value) types.push(value);
+	}
+	return types;
+}
+
+/**
  * Pull the inline ("armored") PGP MESSAGE block out of an encrypted body
  * (RFC 4880 §6.2 ASCII armor). Returns the full armored block including its
  * `-----BEGIN/END PGP MESSAGE-----` framing, with CRLF normalized to LF, so an

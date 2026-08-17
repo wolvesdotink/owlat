@@ -16,6 +16,7 @@ import {
 } from '../lib/convexValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
+import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
 import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
 import { editAdjustmentValidator } from '../mail/editLearningValidators';
 
@@ -628,6 +629,16 @@ export const mailTables = {
 		// verified on receipt, not what WE sealed. Absent on plaintext mail and on
 		// rows written before this field existed.
 		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
+
+		// Inbound PGP signature verification (F1, D9): the honest verdict for a
+		// message that arrived SIGNED but not encrypted (RFC 3156 multipart/signed
+		// or an inline clearsigned body), verified server-side at ingest against
+		// the TOFU-pinned/WKD-discovered sender key. Deliberately a SIBLING of the
+		// sealed record above, never a third arm on it — signed plaintext makes no
+		// encryption claim. Absent on plaintext mail, on sealed mail (the sealed
+		// record owns its own signature claim), and on rows written before this
+		// field existed.
+		inboundSignatureInfo: v.optional(inboundSignatureInfoValidator),
 
 		createdAt: v.number(),
 		updatedAt: v.number(),

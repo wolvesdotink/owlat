@@ -455,6 +455,7 @@ import type * as domains_trackingDomains from '../domains/trackingDomains.js';
 import type * as domains_yahooCfl from '../domains/yahooCfl.js';
 import type * as e2ee_discovery from '../e2ee/discovery.js';
 import type * as e2ee_inboundSeal from '../e2ee/inboundSeal.js';
+import type * as e2ee_inboundSignature from '../e2ee/inboundSignature.js';
 import type * as e2ee_keys from '../e2ee/keys.js';
 import type * as e2ee_keysNode from '../e2ee/keysNode.js';
 import type * as e2ee_lifecycle from '../e2ee/lifecycle.js';
@@ -466,6 +467,7 @@ import type * as e2ee_recipientKeys from '../e2ee/recipientKeys.js';
 import type * as e2ee_recoveryKit from '../e2ee/recoveryKit.js';
 import type * as e2ee_seal from '../e2ee/seal.js';
 import type * as e2ee_sealing from '../e2ee/sealing.js';
+import type * as e2ee_verifyInboundSignature from '../e2ee/verifyInboundSignature.js';
 import type * as e2ee_wkd from '../e2ee/wkd.js';
 import type * as emailBlocks_blocks from '../emailBlocks/blocks.js';
 import type * as emailBlocks_module from '../emailBlocks/module.js';
@@ -961,6 +963,7 @@ import type * as webhooks_events_topicUnsubscribed_index from '../webhooks/event
 import type * as webhooks_fanout from '../webhooks/fanout.js';
 import type * as webhooks_githubHttp from '../webhooks/githubHttp.js';
 import type * as webhooks_inboundHttp from '../webhooks/inboundHttp.js';
+import type * as webhooks_inboundSignatureMirror from '../webhooks/inboundSignatureMirror.js';
 import type * as webhooks_payloads from '../webhooks/payloads.js';
 import type * as webhooks_pipeline from '../webhooks/pipeline.js';
 import type * as webhooks_pluginFeedbackDeliveries from '../webhooks/pluginFeedbackDeliveries.js';
@@ -1441,6 +1444,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/yahooCfl': typeof domains_yahooCfl;
 	'e2ee/discovery': typeof e2ee_discovery;
 	'e2ee/inboundSeal': typeof e2ee_inboundSeal;
+	'e2ee/inboundSignature': typeof e2ee_inboundSignature;
 	'e2ee/keys': typeof e2ee_keys;
 	'e2ee/keysNode': typeof e2ee_keysNode;
 	'e2ee/lifecycle': typeof e2ee_lifecycle;
@@ -1452,6 +1456,7 @@ declare const fullApi: ApiFromModules<{
 	'e2ee/recoveryKit': typeof e2ee_recoveryKit;
 	'e2ee/seal': typeof e2ee_seal;
 	'e2ee/sealing': typeof e2ee_sealing;
+	'e2ee/verifyInboundSignature': typeof e2ee_verifyInboundSignature;
 	'e2ee/wkd': typeof e2ee_wkd;
 	'emailBlocks/blocks': typeof emailBlocks_blocks;
 	'emailBlocks/module': typeof emailBlocks_module;
@@ -1947,6 +1952,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/fanout': typeof webhooks_fanout;
 	'webhooks/githubHttp': typeof webhooks_githubHttp;
 	'webhooks/inboundHttp': typeof webhooks_inboundHttp;
+	'webhooks/inboundSignatureMirror': typeof webhooks_inboundSignatureMirror;
 	'webhooks/payloads': typeof webhooks_payloads;
 	'webhooks/pipeline': typeof webhooks_pipeline;
 	'webhooks/pluginFeedbackDeliveries': typeof webhooks_pluginFeedbackDeliveries;

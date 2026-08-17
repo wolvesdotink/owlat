@@ -54,6 +54,7 @@
 		"@owlat/channels": "workspace:*",
 		"@owlat/email-renderer": "workspace:*",
 		"@owlat/email-scanner": "workspace:*",
+		"@owlat/mail-canon": "workspace:*",
 		"@owlat/mail-message": "workspace:*",
 		"@owlat/mta-protocol": "workspace:*",
 		"@owlat/plugin-host": "workspace:*",

@@ -139,6 +139,17 @@ export const inboxTables = {
 		isSignatureValid: v.optional(v.boolean()),
 		signerFingerprint: v.optional(v.string()),
 		signerInstance: v.optional(v.string()),
+		// F1 (D9): mirrored display fields of the inbound SIGNED-but-not-encrypted
+		// PGP verdict, the signed-plaintext sibling of the sealed mirror above.
+		// The full `inboundSignatureInfo` record lives on the mailMessages side;
+		// here only what the reader's badge needs. `isInboundSignatureValid` is
+		// present ONLY when the message was structurally PGP-signed AND the
+		// verifier ran (true iff the signature verified against the pinned/
+		// discovered sender key); `inboundSignerFingerprint` only when it
+		// verified. Distinct from the sealed fields above so the fail-closed
+		// sealed semantics stay untouched. Absent on plaintext mail and pre-F1 rows.
+		isInboundSignatureValid: v.optional(v.boolean()),
+		inboundSignerFingerprint: v.optional(v.string()),
 		// Relationships
 		threadId: v.optional(v.id('conversationThreads')),
 		contactId: v.optional(v.id('contacts')),

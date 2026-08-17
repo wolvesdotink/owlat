@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
 	classifySecureMessage,
+	classifyRawSecureMessage,
 	extractArmoredCiphertext,
 	extractClearsignedText,
+	isClearsigned,
 	isEncryptedClass,
+	isSignedPgpMime,
 } from '../secureMessage';
 
 describe('classifySecureMessage', () => {
@@ -128,9 +131,7 @@ describe('classifySecureMessage — real RFC fixtures', () => {
 		// pkcs7-mime content-type, so it is reported as smime-encrypted. This
 		// assertion DOCUMENTS that limitation rather than claiming correctness.
 		const cls = classifySecureMessage({
-			attachments: [
-				{ contentType: 'application/pkcs7-mime', filename: 'smime.p7m' },
-			],
+			attachments: [{ contentType: 'application/pkcs7-mime', filename: 'smime.p7m' }],
 		});
 		expect(cls).toBe('smime-encrypted');
 	});
@@ -151,6 +152,93 @@ describe('classifySecureMessage — real RFC fixtures', () => {
 			textBody: 'see below\n-----BEGIN PGP MESSAGE-----\nhQ..\n-----END PGP MESSAGE-----\n',
 		});
 		expect(cls).toBe('pgp-encrypted');
+	});
+});
+
+/**
+ * The F1 raw-message structural gates — server twins of the classifier above.
+ * Ingest (`mail/delivery.ts`) consumes these on the RAW RFC 5322 text, so they
+ * are locked against real wire shapes here where the classifier lives.
+ */
+describe('raw-message gates — isSignedPgpMime / isClearsigned', () => {
+	const signedRaw = [
+		'From: alice@sender.test',
+		'To: bob@example.com',
+		'Subject: signed',
+		'MIME-Version: 1.0',
+		'Content-Type: multipart/signed; micalg=pgp-sha256;',
+		'\tprotocol="application/pgp-signature"; boundary="sig-b"',
+		'',
+		'--sig-b',
+		'Content-Type: text/plain; charset=utf-8',
+		'',
+		'Signed content.',
+		'--sig-b',
+		'Content-Type: application/pgp-signature; name="signature.asc"',
+		'',
+		'-----BEGIN PGP SIGNATURE-----',
+		'',
+		'iQ..',
+		'-----END PGP SIGNATURE-----',
+		'--sig-b--',
+		'',
+	].join('\r\n');
+
+	const clearsignedRaw = [
+		'From: alice@sender.test',
+		'Subject: clearsigned',
+		'Content-Type: text/plain; charset=utf-8',
+		'',
+		'-----BEGIN PGP SIGNED MESSAGE-----',
+		'Hash: SHA256',
+		'',
+		'Hello',
+		'-----BEGIN PGP SIGNATURE-----',
+		'iQ..',
+		'-----END PGP SIGNATURE-----',
+		'',
+	].join('\r\n');
+
+	const encryptedRaw = [
+		'Content-Type: multipart/encrypted;',
+		'\tprotocol="application/pgp-encrypted"; boundary="enc-b"',
+		'',
+		'--enc-b',
+		'Content-Type: application/pgp-encrypted',
+		'',
+		'Version: 1',
+		'--enc-b',
+		'Content-Type: application/octet-stream',
+		'',
+		'-----BEGIN PGP MESSAGE-----',
+		'hQ..',
+		'-----END PGP MESSAGE-----',
+		'--enc-b--',
+		'',
+	].join('\r\n');
+
+	it('detects RFC 3156 multipart/signed (folded protocol parameter included)', () => {
+		expect(isSignedPgpMime(signedRaw)).toBe(true);
+		expect(isClearsigned(signedRaw)).toBe(false);
+		expect(classifyRawSecureMessage(signedRaw)).toBe('pgp-signed');
+	});
+
+	it('detects an inline clearsigned body', () => {
+		expect(isClearsigned(clearsignedRaw)).toBe(true);
+		expect(isSignedPgpMime(clearsignedRaw)).toBe(false);
+	});
+
+	it('an ENCRYPTED message is neither signed-plaintext nor clearsigned (sealed path wins)', () => {
+		expect(isSignedPgpMime(encryptedRaw)).toBe(false);
+		expect(isClearsigned(encryptedRaw)).toBe(false);
+		expect(isEncryptedClass(classifyRawSecureMessage(encryptedRaw))).toBe(true);
+	});
+
+	it('plaintext mail passes both gates untouched', () => {
+		const plain = 'From: x@y.z\r\nSubject: hi\r\n\r\nJust text.\r\n';
+		expect(isSignedPgpMime(plain)).toBe(false);
+		expect(isClearsigned(plain)).toBe(false);
+		expect(classifyRawSecureMessage(plain)).toBe('none');
 	});
 });
 
