@@ -52,7 +52,7 @@ bun run setup    # interactive: wizard + docker up + bootstrap admin + seed demo
 
 `bun run setup` walks through a small wizard and then asks one decision:
 
-- **Populated** *(default)* — creates an admin user and seeds realistic demo data (15 contacts across 3 topics, 3 email templates, a sent campaign with stats, an automation, one verified sending domain). Best for working on existing features. A local `dev` deployment (`OWLAT_DEV_MODE=true`) gets the fuller `/seed/demo` dataset on top — dummy teammate sign-ins, their Postbox mailboxes, and a live automation; any other install gets the same content through the removable sample-data path instead, because those sign-ins carry published password hashes (and there the automation is paused, so it can't mail anyone real).
+- **Populated** _(default)_ — creates an admin user and seeds realistic demo data (15 contacts across 3 topics, 3 email templates, a sent campaign with stats, an automation, one verified sending domain). Best for working on existing features. A local `dev` deployment (`OWLAT_DEV_MODE=true`) gets the fuller `/seed/demo` dataset on top — dummy teammate sign-ins, their Postbox mailboxes, and a live automation; any other install gets the same content through the removable sample-data path instead, because those sign-ins carry published password hashes (and there the automation is paused, so it can't mail anyone real).
 - **Blank** — brings up the stack with no admin, no data. Visit `http://localhost:3000` and the app redirects to `/auth/register` so you can exercise the real signup flow end-to-end. Use `bunx owlat-setup reset` to wipe back to blank between attempts.
 
 When working on the UI (`bun run dev`, which runs `nuxt dev`), the dashboard exposes a few admin shortcuts marked with a yellow **DEV** badge — currently a "Force Verify" button on the domains settings page that flips a domain to `verified` without running real DNS lookups. They're tree-shaken out of any `nuxt build` bundle (selfhost or hosted) via `import.meta.env.DEV`, and the backend additionally requires `OWLAT_DEV_MODE` to be set on the Convex deployment (`npx convex env set OWLAT_DEV_MODE true`). Production deployments leave it unset and the dev endpoints (`/seed/demo`, `/dev/reset`, Force Verify) fail-closed with a 403 — nothing in the install flow turns dev mode on, because demo content for a real install goes through `owlat sample-data install` instead.
@@ -61,12 +61,12 @@ The lower-level path (`bash scripts/setup.sh`) is still available for headless V
 
 ### Resource requirements
 
-|  | Minimum | Recommended |
-|---|---|---|
-| RAM | 4 GB | 8 GB |
-| Disk | 20 GB | 40 GB |
-| CPU | 2 vCPU | 4 vCPU |
-| Domain + DNS | Required | Required |
+|              | Minimum  | Recommended |
+| ------------ | -------- | ----------- |
+| RAM          | 4 GB     | 8 GB        |
+| Disk         | 20 GB    | 40 GB       |
+| CPU          | 2 vCPU   | 4 vCPU      |
+| Domain + DNS | Required | Required    |
 
 ## Features
 
@@ -74,52 +74,54 @@ Owlat is built as a set of independent feature areas. Each one can be turned on 
 
 ### Sending — outbound mail
 
-| Feature | Flag | Default | Description |
-|---|---|---|---|
-| Marketing campaigns | `campaigns` | on | Broadcast sends with segments, scheduling, A/B testing |
-| Public archive links | `campaigns.archive` | on | "View in browser" links for every campaign |
-| Transactional API | `transactional` | on | Programmatic sends (receipts, password resets) via the API |
-| Automations | `automations` | off | Trigger-based multi-step workflows (welcome series, drip) |
+| Feature              | Flag                | Default | Description                                                |
+| -------------------- | ------------------- | ------- | ---------------------------------------------------------- |
+| Marketing campaigns  | `campaigns`         | on      | Broadcast sends with segments, scheduling, A/B testing     |
+| Public archive links | `campaigns.archive` | on      | "View in browser" links for every campaign                 |
+| Transactional API    | `transactional`     | on      | Programmatic sends (receipts, password resets) via the API |
+| Automations          | `automations`       | off     | Trigger-based multi-step workflows (welcome series, drip)  |
 
 ### Receiving — inbound mail
 
-| Feature | Flag | Default | Description |
-|---|---|---|---|
-| Email inbox | `inbox` | off | Shared team inbox with threading and a triage queue |
-| Personal mail (Postbox) | `postbox` | off | Per-user mailboxes with webmail UI and native IMAP/SMTP |
-| Code task extraction | `inbox.codeTasks` | off | Detect bug reports in inbound mail and surface as tasks |
-| Chat | `chat` | off | Real-time chat surface alongside the inbox |
+| Feature                  | Flag              | Default | Description                                                                                                                                       |
+| ------------------------ | ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Email inbox              | `inbox`           | off     | Shared team inbox with threading and a triage queue — review drafts with bulk approve, an undo window on every send, and saved draft revisions    |
+| Personal mail (Postbox)  | `postbox`         | off     | Per-user mailboxes with webmail UI and native IMAP/SMTP; offline reading with queued offline sends; verified PGP signature badges on inbound mail |
+| Connect external mailbox | `mail.external`   | off     | Sync each user's own Gmail/Fastmail/company mailbox over IMAP+SMTP — personal mail without a sending domain                                       |
+| Code task extraction     | `inbox.codeTasks` | off     | Detect bug reports in inbound mail and surface as tasks                                                                                           |
+| Chat                     | `chat`            | off     | Real-time chat surface alongside the inbox                                                                                                        |
 
 ### AI
 
-| Feature | Flag | Default | Description |
-|---|---|---|---|
-| Master AI toggle | `ai` | off | Required by every AI feature. Needs an LLM provider configured |
-| AI agent | `ai.agent` | off | Auto-classify inbound mail and draft suggested replies |
-| Autonomous actions | `ai.autonomy` | off | Let the agent send approved replies without human review |
-| Knowledge graph | `ai.knowledge` | off | Semantic extraction from conversations for agent context |
-| AI dashboards | `ai.visualizations` | off | Generate charts from natural-language prompts |
+| Feature            | Flag                | Default | Description                                                                                                                                                                                          |
+| ------------------ | ------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Master AI toggle   | `ai`                | off     | Required by every AI feature. Needs an LLM provider configured                                                                                                                                       |
+| AI agent           | `ai.agent`          | off     | Auto-classify inbound mail and draft suggested replies                                                                                                                                               |
+| Draft-on-arrival   | `postbox.aiDraft`   | off     | Pre-generate a human-reviewed reply draft the moment personal mail needs one. Needs `ai` plus _one of_ `postbox` / `mail.external` — works for connected external mailboxes without a hosted Postbox |
+| Autonomous actions | `ai.autonomy`       | off     | Let the agent send approved replies without human review                                                                                                                                             |
+| Knowledge graph    | `ai.knowledge`      | off     | Semantic extraction from conversations for agent context                                                                                                                                             |
+| AI dashboards      | `ai.visualizations` | off     | Generate charts from natural-language prompts                                                                                                                                                        |
 
 ### Integrations
 
-| Feature | Flag | Default | Description |
-|---|---|---|---|
-| Outbound webhooks | `webhooks` | off | Deliver event payloads to external HTTP endpoints |
-| Embeddable forms | `forms` | on | Signup/capture forms for external sites |
-| Mailchimp import | `imports.mailchimp` | off | One-click contact and list import |
-| Stripe customer sync | `imports.stripe` | off | Sync Stripe customers into contacts (email, name, and their Stripe metadata as properties) |
-| Mandrill suppression import | `imports.mandrill` | off | Carry a Mandrill account's rejection blacklist (bounces, complaints, unsubscribes) into the suppression list when migrating |
+| Feature                     | Flag                | Default | Description                                                                                                                 |
+| --------------------------- | ------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Outbound webhooks           | `webhooks`          | off     | Deliver event payloads to external HTTP endpoints                                                                           |
+| Embeddable forms            | `forms`             | on      | Signup/capture forms for external sites                                                                                     |
+| Mailchimp import            | `imports.mailchimp` | off     | One-click contact and list import                                                                                           |
+| Stripe customer sync        | `imports.stripe`    | off     | Sync Stripe customers into contacts (email, name, and their Stripe metadata as properties)                                  |
+| Mandrill suppression import | `imports.mandrill`  | off     | Carry a Mandrill account's rejection blacklist (bounces, complaints, unsubscribes) into the suppression list when migrating |
 
 ### Security & deliverability
 
-| Feature | Flag | Default | Description |
-|---|---|---|---|
-| Content scanning | `scan.content` | on | Block obvious spam, phishing, and homoglyph attacks |
-| File scanning (ClamAV) | `scan.files` | on | Antivirus on attachments via ClamAV sidecar |
-| URL reputation | `scan.urls` | off | Google Safe Browsing checks on outbound links |
-| Domain verification | `domains.verification` | on | Validate SPF, DKIM, DMARC before allowing a domain to send |
-| DKIM auto-rotation | `domains.dkimRotation` | on | Flag keys due for rotation; auto-activate an operator-published new key after the DNS overlap |
-| PostHog analytics | `analytics.posthog` | off | Pipe product events to a PostHog instance |
+| Feature                | Flag                   | Default | Description                                                                                   |
+| ---------------------- | ---------------------- | ------- | --------------------------------------------------------------------------------------------- |
+| Content scanning       | `scan.content`         | on      | Block obvious spam, phishing, and homoglyph attacks                                           |
+| File scanning (ClamAV) | `scan.files`           | on      | Antivirus on attachments via ClamAV sidecar                                                   |
+| URL reputation         | `scan.urls`            | off     | Google Safe Browsing checks on outbound links                                                 |
+| Domain verification    | `domains.verification` | on      | Validate SPF, DKIM, DMARC before allowing a domain to send                                    |
+| DKIM auto-rotation     | `domains.dkimRotation` | on      | Flag keys due for rotation; auto-activate an operator-published new key after the DNS overlap |
+| PostHog analytics      | `analytics.posthog`    | off     | Pipe product events to a PostHog instance                                                     |
 
 ### Built-in across every install
 
@@ -169,13 +171,13 @@ owlat/
 
 Self-hosters run `docker compose up -d`, which brings up the base stack (`web`, `convex`, `redis`, `docker-socket-proxy`, `updater`). Everything else — including the `mta` mail server — is gated by Docker Compose profiles listed in `COMPOSE_PROFILES` (the default `.env.selfhost.example` ships `COMPOSE_PROFILES=mta`) and activated automatically when you enable the corresponding feature flag:
 
-| Flag | Profile | Service |
-|---|---|---|
-| `scan.files` | `clamav` | ClamAV antivirus daemon |
-| `inbox.codeTasks` | `inbox-codetasks` | AI code-task worker |
-| `ai` | `ai` | Ollama (optional local LLM) |
-| `postbox` | `personal-mail` | IMAP server |
-| `mail.external` | `external-mail` | External-mailbox sync worker |
+| Flag              | Profile           | Service                      |
+| ----------------- | ----------------- | ---------------------------- |
+| `scan.files`      | `clamav`          | ClamAV antivirus daemon      |
+| `inbox.codeTasks` | `inbox-codetasks` | AI code-task worker          |
+| `ai`              | `ai`              | Ollama (optional local LLM)  |
+| `postbox`         | `personal-mail`   | IMAP server                  |
+| `mail.external`   | `external-mail`   | External-mailbox sync worker |
 
 Automations, outbound webhooks, and the AI pipeline run inside the
 Convex backend itself — they need no extra service or profile.
@@ -240,13 +242,13 @@ Tests use **vitest** — `cd apps/api && npx vitest run`. Do **not** use `bun te
 
 `/api/v1/*` endpoints require an API key via `Authorization: Bearer <key>` (scoped keys — get one at **Settings → API Keys**):
 
-| Endpoint | Description |
-|---|---|
-| `GET/POST /api/v1/contacts`, `GET/PUT/DELETE /api/v1/contacts/:id` | Manage contacts |
-| `POST /api/v1/events` | Track custom events |
-| `POST /api/v1/transactional` | Send transactional emails (template slug in the body) |
-| `/api/v1/topics/*` | Manage topics + subscriptions |
-| `GET /api/v1/health` | Health probe |
+| Endpoint                                                           | Description                                           |
+| ------------------------------------------------------------------ | ----------------------------------------------------- |
+| `GET/POST /api/v1/contacts`, `GET/PUT/DELETE /api/v1/contacts/:id` | Manage contacts                                       |
+| `POST /api/v1/events`                                              | Track custom events                                   |
+| `POST /api/v1/transactional`                                       | Send transactional emails (template slug in the body) |
+| `/api/v1/topics/*`                                                 | Manage topics + subscriptions                         |
+| `GET /api/v1/health`                                               | Health probe                                          |
 
 Token-authenticated public endpoints (no API key — used by recipients):
 `POST /forms/:formId` (form submissions), `GET /archive/:token` (campaign

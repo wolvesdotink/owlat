@@ -1,12 +1,15 @@
 /**
  * PGP / S-MIME message structure detection (RFC 3156 / S-MIME) for Postbox.
  *
- * This is DETECTION + honest disclosure only — it deliberately makes no
- * cryptographic claim. Owlat does not (yet) verify signatures or decrypt
- * bodies, so the reader shows an accurate "encrypted" / "signed (not verified)"
- * badge rather than a misleading green check. Cryptographic verification +
- * decryption need a key-management/trust design (keyring, WKD, TOFU) and are a
- * deliberate follow-up; this slice lays the structural foundation.
+ * This module is DETECTION only — it deliberately makes no cryptographic
+ * claim. The cryptography lives elsewhere: PGP-signed (unencrypted) mail is
+ * verified server-side at ingest (`apps/api/convex/e2ee/verifyInboundSignature`,
+ * keyed through the WKD/TOFU pinning ladder) and the verdict persists as
+ * `inboundSignatureInfo`; sealed mail has its own decrypt+verify path. The
+ * reader badge is driven by those verdicts and only falls back to the
+ * structural class here — rendered as "signed · not verified", never as a
+ * green check — when no verdict was computed (e.g. S/MIME, which is still
+ * detection-only).
  */
 
 export type SecureMessageClass =
