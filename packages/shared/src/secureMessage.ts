@@ -169,7 +169,7 @@ function hasDetachedSignatureStructure(raw: string): boolean {
 	// the message's own header block, which can never hold a signature part.
 	let openedBy: string | null = null;
 	while (at < lines.length) {
-		const block = readHeaderBlock(lines, at);
+		const block = readHeaderBlock(lines, at, boundaries);
 		for (const value of contentTypeValues(block.headers)) {
 			if (openedBy !== null && signedBoundaries.has(openedBy) && isPgpSignaturePart(value)) {
 				return true;
@@ -181,14 +181,22 @@ function hasDetachedSignatureStructure(raw: string): boolean {
 		}
 
 		// Skip this part's body: the next header block starts after the next
-		// delimiter line of a boundary declared above.
+		// OPENING delimiter line of a boundary declared above.
 		at = block.end;
 		openedBy = null;
 		while (at < lines.length) {
-			const boundary = delimiterBoundary(lines[at] ?? '', boundaries);
+			const delimiter = mimeDelimiter(lines[at] ?? '', boundaries);
 			at++;
-			if (boundary !== null) {
-				openedBy = boundary;
+			// A CLOSE delimiter (`--b--`) ends its multipart, so what follows is the
+			// PARENT's epilogue, not a new part's headers. RFC 2046 §5.1.1 attaches
+			// the preceding CRLF to a delimiter, so the parent's own delimiter may
+			// sit on the very next line with no blank line between (`--alt--` then
+			// `--signed`); reading headers here would swallow that delimiter and the
+			// signature part's headers into a block attributed to the inner
+			// boundary, and a perfectly ordinary nested signed message would go
+			// undetected.
+			if (delimiter && !delimiter.isClose) {
+				openedBy = delimiter.boundary;
 				break;
 			}
 		}
@@ -201,13 +209,23 @@ function hasDetachedSignatureStructure(raw: string): boolean {
  * Read one MIME header block starting at `from`: the unfolded header lines up
  * to the blank line that ends them (RFC 5322 §2.2.3 continuation lines are
  * joined onto their header), plus the index of the first body line.
+ *
+ * A delimiter line also ends the block — headers never contain one, and a part
+ * that omits the blank line before the next boundary (malformed, but composers
+ * do it) must not have that boundary read as a header. The delimiter line is
+ * left for the caller's scan.
  */
-function readHeaderBlock(lines: string[], from: number): { headers: string[]; end: number } {
+function readHeaderBlock(
+	lines: string[],
+	from: number,
+	boundaries: Set<string>
+): { headers: string[]; end: number } {
 	const headers: string[] = [];
 	let at = from;
 	for (; at < lines.length; at++) {
 		const line = lines[at] ?? '';
 		if (line === '') return { headers, end: at + 1 };
+		if (mimeDelimiter(line, boundaries)) return { headers, end: at };
 		const last = headers.length - 1;
 		if (last >= 0 && /^[ \t]/.test(line)) headers[last] += ` ${line.trim()}`;
 		else headers.push(line);
@@ -254,17 +272,25 @@ function isPgpSignaturePart(value: string): boolean {
 }
 
 /**
- * The boundary a line delimits, when it is a delimiter line for one of the
- * `boundaries` declared so far — `--boundary` or the close-delimiter
- * `--boundary--`, at column 0, transport padding (WSP) aside (RFC 2046 §5.1.1).
+ * The delimiter a line is, when it delimits one of the `boundaries` declared so
+ * far — `--boundary` (opens the next part) or `--boundary--` (closes the
+ * multipart), at column 0, transport padding (WSP) aside (RFC 2046 §5.1.1).
  * Column 0 is what keeps a quoted (`> --b`) or indented copy out.
+ *
+ * A boundary that itself ends in `--` is matched as an OPENING delimiter first,
+ * so `--b--` for a boundary literally named `b--` is never mistaken for the
+ * close of a boundary named `b`.
  */
-function delimiterBoundary(line: string, boundaries: Set<string>): string | null {
+function mimeDelimiter(
+	line: string,
+	boundaries: Set<string>
+): { boundary: string; isClose: boolean } | null {
 	if (!line.startsWith('--')) return null;
 	const rest = line.slice(2).replace(/[ \t\r]+$/, '');
-	if (boundaries.has(rest)) return rest;
-	const closing = rest.endsWith('--') ? rest.slice(0, -2) : null;
-	return closing !== null && boundaries.has(closing) ? closing : null;
+	if (boundaries.has(rest)) return { boundary: rest, isClose: false };
+	if (!rest.endsWith('--')) return null;
+	const closing = rest.slice(0, -2);
+	return boundaries.has(closing) ? { boundary: closing, isClose: true } : null;
 }
 
 /**

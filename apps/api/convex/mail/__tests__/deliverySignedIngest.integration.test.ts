@@ -36,6 +36,7 @@ import {
 	composeClearsignedMessage,
 	composeSignedPgpMime,
 	detachedSign,
+	nestedAlternativeFirstPart,
 	signedFirstPart,
 	type SignaturePartEncoding,
 } from '../../e2ee/__tests__/signedMailTestHelpers';
@@ -218,6 +219,52 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 			expect(msg.textBodyInline).toBe(`Signed ${CANARY} content.`);
 		}
 	);
+
+	it('a NESTED multipart/alternative signed message verifies (adjacent close delimiter)', async () => {
+		// The common graphical-mailer shape: the signed content is itself a
+		// multipart, whose close delimiter sits directly above the enclosing
+		// multipart/signed delimiter with no blank line between (RFC 2046 §5.1.1
+		// gives the preceding CRLF to the delimiter). mail-canon extracts and
+		// verifies this fine, so the structural gate in front of it must not be
+		// the narrower of the two.
+		const t = convexTest(schema, modules);
+		await seedMailbox(t);
+		const sender = await generateTestKeypair(SENDER);
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: sender.publicKeyArmored,
+		});
+
+		const messageId = '<signed-ingest-0006@sender.test>';
+		const part = nestedAlternativeFirstPart(`Signed ${CANARY} content.`);
+		const raw = composeSignedPgpMime({
+			from: SENDER,
+			to: RECIPIENT,
+			subject: 'signed ingest',
+			part,
+			signatureArmored: await detachedSign(part, sender.privateKeyArmored),
+			messageId,
+			signatureEncoding: 'base64',
+		});
+		expect(raw).toContain('--owlat-f1-alt--\r\n--owlat-f1-signed\r\n');
+
+		const result = await ingest(t, raw, {
+			subject: 'signed ingest',
+			textBody: `Signed ${CANARY} content.`,
+			messageId,
+		});
+		expect('messageId' in result).toBe(true);
+		if (!('messageId' in result)) return;
+
+		const msg = await readRow(t, result.messageId);
+		expect(msg.inboundSignatureInfo).toEqual({
+			isSigned: true,
+			isSignatureValid: true,
+			signerFingerprint: sender.fingerprint,
+			keySource: 'pinned',
+		});
+	});
 
 	it('clearsigned mail delivers with a verified verdict (inline verify)', async () => {
 		const t = convexTest(schema, modules);

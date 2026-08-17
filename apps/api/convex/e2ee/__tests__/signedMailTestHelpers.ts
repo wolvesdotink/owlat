@@ -32,6 +32,30 @@ export async function detachedSign(part: string, privateKeyArmored: string): Pro
 }
 
 /**
+ * A `multipart/alternative` first part (text + HTML) — the everyday shape of
+ * signed mail from a graphical mailer. Its CLOSE delimiter is the last line, so
+ * {@link composeSignedPgpMime} puts the enclosing `multipart/signed` delimiter
+ * on the very next line: the RFC 2046 §5.1.1 adjacent form, where the CRLF
+ * preceding a delimiter belongs to the delimiter and no blank line separates
+ * the two.
+ */
+export function nestedAlternativeFirstPart(body: string, boundary = 'owlat-f1-alt'): string {
+	return [
+		`Content-Type: multipart/alternative; boundary="${boundary}"`,
+		'',
+		`--${boundary}`,
+		'Content-Type: text/plain; charset=utf-8',
+		'',
+		body,
+		`--${boundary}`,
+		'Content-Type: text/html; charset=utf-8',
+		'',
+		`<p>${body}</p>`,
+		`--${boundary}--`,
+	].join('\r\n');
+}
+
+/**
  * The `Content-Transfer-Encoding` the signature part is transmitted with. Armor
  * is 7-bit ASCII, so `7bit` is the common shape — but the part body is subject
  * to transfer encoding like any other, and mailers do ship `signature.asc`

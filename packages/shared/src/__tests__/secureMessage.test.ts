@@ -391,8 +391,39 @@ describe('raw detached-signature corroboration is structural', () => {
 		return text.split('\r\n').map((line) => line.replace(/=/g, '=3D'));
 	}
 
+	/** The canonical single-part signed payload. */
+	const FLAT_FIRST_PART = ['Content-Type: text/plain; charset=utf-8', '', 'Signed content.'];
+
+	/**
+	 * A `multipart/alternative` first part — the everyday shape of signed mail
+	 * from Thunderbird & co. In the ADJACENT form its close delimiter is the very
+	 * last line, so the enclosing `multipart/signed` delimiter follows on the next
+	 * line with NO blank line between: RFC 2046 §5.1.1 attaches the preceding CRLF
+	 * to the delimiter, so nothing is missing.
+	 */
+	function nestedFirstPart(adjacent: boolean): string[] {
+		return [
+			'Content-Type: multipart/alternative; boundary="alt-b"',
+			'',
+			'--alt-b',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Signed content.',
+			'--alt-b',
+			'Content-Type: text/html; charset=utf-8',
+			'',
+			'<p>Signed content.</p>',
+			'--alt-b--',
+			...(adjacent ? [] : ['']),
+		];
+	}
+
 	/** Compose an RFC 3156 message whose signature part carries `encoding`. */
-	function signedRaw(encoding: '7bit' | 'base64' | 'quoted-printable', boundary = 'sig-b'): string {
+	function signedRaw(
+		encoding: '7bit' | 'base64' | 'quoted-printable',
+		firstPart: string[] = FLAT_FIRST_PART,
+		boundary = 'sig-b'
+	): string {
 		const body =
 			encoding === 'base64'
 				? (Buffer.from(ARMOR, 'utf8')
@@ -410,9 +441,7 @@ describe('raw detached-signature corroboration is structural', () => {
 			`\tprotocol="application/pgp-signature"; boundary="${boundary}"`,
 			'',
 			`--${boundary}`,
-			'Content-Type: text/plain; charset=utf-8',
-			'',
-			'Signed content.',
+			...firstPart,
 			`--${boundary}`,
 			'Content-Type: application/pgp-signature; name="signature.asc"',
 			...(encoding === '7bit' ? [] : [`Content-Transfer-Encoding: ${encoding}`]),
@@ -435,6 +464,44 @@ describe('raw detached-signature corroboration is structural', () => {
 		const raw = signedRaw('quoted-printable');
 		expect(raw).toContain('=3DAbCd');
 		expect(isSignedPgpMime(raw)).toBe(true);
+	});
+
+	it.each([['7bit'], ['base64']] as Array<['7bit' | 'base64']>)(
+		'a nested multipart/alternative first part classifies (%s) — close delimiter ADJACENT',
+		(encoding) => {
+			// RFC 2046 §5.1.1 attaches the CRLF preceding a delimiter to it, so an
+			// inner entity that ends without a trailing CRLF puts `--alt-b--` and the
+			// parent's `--sig-b` on adjacent lines. Reading the close delimiter as
+			// the start of a header block swallowed both that parent delimiter and
+			// the signature part's real headers, and this everyday shape (any signed
+			// mail with an HTML alternative) went undetected.
+			const raw = signedRaw(encoding, nestedFirstPart(true));
+			expect(raw).toContain('--alt-b--\r\n--sig-b\r\n');
+			expect(classifyRawSecureMessage(raw)).toBe('pgp-signed');
+			expect(isSignedPgpMime(raw)).toBe(true);
+		}
+	);
+
+	it.each([['7bit'], ['base64']] as Array<['7bit' | 'base64']>)(
+		'a nested multipart/alternative first part classifies (%s) — blank line before the parent delimiter',
+		(encoding) => {
+			const raw = signedRaw(encoding, nestedFirstPart(false));
+			expect(raw).toContain('--alt-b--\r\n\r\n--sig-b\r\n');
+			expect(isSignedPgpMime(raw)).toBe(true);
+		}
+	);
+
+	it('the inner parts of a nested first part cannot corroborate on their own', () => {
+		// Same nesting, but the signature part is gone: the `application/pgp-
+		// signature` header would have to come from a block the SIGNED boundary
+		// opened, and multipart/alternative's parts are not that.
+		const raw = signedRaw('7bit', nestedFirstPart(true))
+			.replace(
+				'Content-Type: application/pgp-signature; name="signature.asc"',
+				'Content-Type: text/plain'
+			)
+			.replace('Content-Type: text/html; charset=utf-8', 'Content-Type: application/pgp-signature');
+		expect(isSignedPgpMime(raw)).toBe(false);
 	});
 
 	it('the 7bit/armored detached case still classifies exactly as before', () => {
