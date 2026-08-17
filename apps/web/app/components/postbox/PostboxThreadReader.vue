@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { SenderHeuristics } from '~/utils/senderAuth';
 import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
+import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 
 /**
  * The full message row the reader renders (the list-row shape plus body /
@@ -57,6 +58,12 @@ export type PostboxReaderMessage = {
 	// structural PGP/S-MIME badge (`secureClass`) takes over. Drives the reader's
 	// "Sealed — sender verified / not verified" / "can't decrypt" badge.
 	inboundEncryptionInfo?: InboundEncryptionInfo;
+	// F2 (D9): the honest inbound signature verdict for PGP-signed (unencrypted)
+	// mail, verified server-side at ingest (F1, `mailMessages.inboundSignatureInfo`).
+	// Absent for plaintext mail and pre-F1 rows, where the structural badge's
+	// "not verified" fallback takes over. Sealed record precedence is owned by
+	// the badge's drivers, not here.
+	inboundSignatureInfo?: InboundSignatureInfo;
 	flagSeen?: boolean;
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 };
@@ -956,10 +963,15 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 					</div>
 
 					<PostboxSecurityBadge
-						v-if="secureClass(msg) !== 'none' || (sealedMailEnabled && msg.inboundEncryptionInfo)"
+						v-if="
+							secureClass(msg) !== 'none' ||
+							(sealedMailEnabled && msg.inboundEncryptionInfo) ||
+							msg.inboundSignatureInfo
+						"
 						:klass="secureClass(msg)"
 						:message="msg"
 						:sealed="sealedMailEnabled ? msg.inboundEncryptionInfo : undefined"
+						:signature="msg.inboundSignatureInfo"
 					/>
 					<PostboxMessageBody
 						v-if="!hideRawBody(msg)"
