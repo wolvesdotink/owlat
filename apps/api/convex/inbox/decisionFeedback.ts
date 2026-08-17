@@ -133,6 +133,12 @@ export const recordApprovalSignalsAtSend = internalMutation({
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message) return;
 
+		// Provenance check on the message itself, not the caller's arg: the
+		// stuck-approved reconcile re-fires `sendApprovedReply` without
+		// `autonomous`, and a recovered AUTONOMOUS send must not train the loop
+		// as a human approval. Absent (pre-field messages) reads as human.
+		if (message.approvalSource === 'auto') return;
+
 		const existing = await ctx.db
 			.query('autonomyFeedback')
 			.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))

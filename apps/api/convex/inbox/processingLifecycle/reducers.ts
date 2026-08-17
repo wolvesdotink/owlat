@@ -278,7 +278,10 @@ function reduceApproved(
 			draftStatus: 'approved',
 		});
 	}
-	return { patch: {}, effects };
+	// Persist the approval's provenance: the send-time feedback recorder keys
+	// on it, and the reconcile cron re-fires `sendApprovedReply` without the
+	// `autonomous` arg — the message itself must carry the truth.
+	return { patch: { approvalSource: input.source }, effects };
 }
 
 function reduceThreadStatusOnly(

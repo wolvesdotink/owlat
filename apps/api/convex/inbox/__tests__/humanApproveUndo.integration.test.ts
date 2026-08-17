@@ -426,6 +426,42 @@ describe('approval feedback records at send-fire time', () => {
 		const rows = await feedbackRows(t);
 		expect(rows.filter((r) => r.action === 'approved' && r.source !== 'outcome')).toHaveLength(1);
 	});
+
+	it('a reconcile-recovered AUTONOMOUS send records no human approval signal', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await createDraftReadyMessage(t, { processingStatus: 'drafting' });
+
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'approved', at: Date.now(), source: 'auto' },
+		});
+		// The approved transition persists its provenance on the message.
+		const message = await t.run(async (ctx) => await ctx.db.get(messageId));
+		expect(message?.approvalSource).toBe('auto');
+
+		// reconcileStuckApproved re-fires sendApprovedReply WITHOUT the
+		// `autonomous` arg — the recorder must key on the message's provenance,
+		// not the arg, so the recovered autonomous send trains nothing.
+		await t.mutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
+			inboundMessageId: messageId,
+		});
+		expect(await feedbackRows(t)).toHaveLength(0);
+	});
+
+	it('a human approve persists approvalSource human and still records at send time', async () => {
+		const t = convexTest(schema, modules);
+		await setAgentConfig(t, { humanApproveUndoDelayMs: 30_000 });
+		const messageId = await createDraftReadyMessage(t);
+
+		await t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId });
+		const message = await t.run(async (ctx) => await ctx.db.get(messageId));
+		expect(message?.approvalSource).toBe('human');
+
+		await t.mutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
+			inboundMessageId: messageId,
+		});
+		expect(await feedbackRows(t)).toHaveLength(1);
+	});
 });
 
 // ============================================================

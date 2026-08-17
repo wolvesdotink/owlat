@@ -233,6 +233,15 @@ export const inboxTables = {
 				scheduledAt: v.number(),
 			})
 		),
+		// Provenance of the LAST `approved` transition: 'auto' (router
+		// auto-approve) or 'human' (reviewer approve). The send-time learning
+		// recorder consults this rather than trusting `sendApprovedReply`'s
+		// optional `autonomous` arg, because the stuck-approved reconcile
+		// re-fires that action without the arg — an autonomous send recovered by
+		// the cron must not train the loop as a human approval. Absent on
+		// messages approved before this field existed (read as human, matching
+		// the arg-absent semantics).
+		approvalSource: v.optional(v.union(v.literal('auto'), v.literal('human'))),
 		// Open clarification questions parked before drafting. Set when the
 		// clarify step routes the message to `awaiting_clarification`;
 		// answered via `inbox.answerClarification`, which folds each answer back in
