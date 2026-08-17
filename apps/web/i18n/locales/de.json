@@ -3489,7 +3489,6 @@
 			"postboxLayout": {
 				"backToTodayTitle": "Zurück zu Heute (Esc)",
 				"escKey": "esc",
-				"failedSendsBanner": "{count} Nachricht aus der Warteschlange konnte nicht gesendet werden — sie bleibt auf diesem Gerät. | {count} Nachrichten aus der Warteschlange konnten nicht gesendet werden — sie bleiben auf diesem Gerät.",
 				"folderFallback": "Ordner",
 				"folderRoles": {
 					"archive": "Archiv",
@@ -3501,10 +3500,7 @@
 					"trash": "Papierkorb"
 				},
 				"inboxView": "Posteingangsansicht",
-				"offlineBanner": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind.",
-				"offlineBannerQueued": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind ({count} in der Warteschlange).",
 				"openFolders": "Ordner öffnen",
-				"retryQueuedSends": "Erneut versuchen",
 				"selectMessage": "Wählen Sie eine Nachricht",
 				"updating": "wird aktualisiert…",
 				"viewModes": {
@@ -3651,6 +3647,12 @@
 					"hint": "Wenn an, wird Post von jemandem, mit dem Sie noch nie korrespondiert haben, aus der Antwort-Warteschlange herausgehalten, bis Sie den Absender akzeptieren — die Post landet trotzdem im Posteingang. Hält die Triage auf Personen fokussiert, die Sie kennen. Standardmäßig aus.",
 					"label": "Erstabsender prüfen"
 				}
+			},
+			"postboxOfflineBanners": {
+				"failedSendsBanner": "{count} Nachricht aus der Warteschlange konnte nicht gesendet werden — sie bleibt auf diesem Gerät. | {count} Nachrichten aus der Warteschlange konnten nicht gesendet werden — sie bleiben auf diesem Gerät.",
+				"offlineBanner": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind.",
+				"offlineBannerQueued": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind ({count} in der Warteschlange).",
+				"retryQueuedSends": "Erneut versuchen"
 			},
 			"postboxOfflineSettings": {
 				"clear": {

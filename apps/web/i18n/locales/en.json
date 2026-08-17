@@ -3489,7 +3489,6 @@
 			"postboxLayout": {
 				"backToTodayTitle": "Back to Today (Esc)",
 				"escKey": "esc",
-				"failedSendsBanner": "{count} queued message couldn't be sent — kept on this device. | {count} queued messages couldn't be sent — kept on this device.",
 				"folderFallback": "Folder",
 				"folderRoles": {
 					"archive": "Archive",
@@ -3501,10 +3500,7 @@
 					"trash": "Trash"
 				},
 				"inboxView": "Inbox view",
-				"offlineBanner": "Offline — reading from this device; sends will go out when you're back online.",
-				"offlineBannerQueued": "Offline — reading from this device; sends will go out when you're back online ({count} queued).",
 				"openFolders": "Open folders",
-				"retryQueuedSends": "Retry",
 				"selectMessage": "Select a message",
 				"updating": "updating…",
 				"viewModes": {
@@ -3651,6 +3647,12 @@
 					"hint": "When on, mail from someone you've never corresponded with is held out of the Reply Queue until you accept the sender — their mail still lands in the inbox. Keeps triage focused on people you know. Off by default.",
 					"label": "Screen first-time senders"
 				}
+			},
+			"postboxOfflineBanners": {
+				"failedSendsBanner": "{count} queued message couldn't be sent — kept on this device. | {count} queued messages couldn't be sent — kept on this device.",
+				"offlineBanner": "Offline — reading from this device; sends will go out when you're back online.",
+				"offlineBannerQueued": "Offline — reading from this device; sends will go out when you're back online ({count} queued).",
+				"retryQueuedSends": "Retry"
 			},
 			"postboxOfflineSettings": {
 				"clear": {

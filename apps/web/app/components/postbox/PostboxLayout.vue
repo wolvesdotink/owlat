@@ -1,14 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { PostboxViewMode } from '~/utils/postboxViewMode';
-import {
-	POSTBOX_VIEW_MODE_OPTIONS,
-	postboxListRenderer,
-	resolvePostboxViewMode,
-} from '~/utils/postboxViewMode';
-import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -105,79 +97,6 @@ const currentFolderName = computed(() => {
 		: props.folderRole;
 });
 
-// Inbox view mode — exactly one of Flat / Conversations / Categories is
-// active. The saved (server-persisted) value drives the list; a pending
-// optimistic override reflects a tap immediately while the mutation lands,
-// then hands back to the server value. Grouped renderers are inbox-only; the
-// flat list with its hover/keyboard triage serves all other folders.
-const pendingViewMode = ref<PostboxViewMode | null>(null);
-const viewMode = computed<PostboxViewMode>(() => pendingViewMode.value ?? savedViewMode.value);
-watch(savedViewMode, (saved) => {
-	if (pendingViewMode.value === saved) pendingViewMode.value = null;
-});
-function selectViewMode(value: string) {
-	const mode = resolvePostboxViewMode(value);
-	if (mode === viewMode.value) return;
-	pendingViewMode.value = mode;
-	// The list already switched optimistically; useBackendOperation surfaces a
-	// toast if the save fails, and the override snaps back to the saved mode.
-	void setViewMode(mode).then((saved) => {
-		if (!saved && pendingViewMode.value === mode) pendingViewMode.value = null;
-	});
-}
-const activeListRenderer = computed(() => postboxListRenderer(viewMode.value, folderRef.value));
-// The mode registry stays a plain module-scope constant (non-UI code reads it
-// too); its segment labels are localized here, where they are rendered.
-const viewModeOptions = computed(() =>
-	POSTBOX_VIEW_MODE_OPTIONS.map(({ value }) => ({
-		value,
-		label: t(`components.postbox.postboxLayout.viewModes.${value}`),
-	}))
-);
-
-// Inbox landing mode — 'today' (the focused single-column PostboxTodayView;
-// the default) vs 'browse' (the three panes below). Inbox-only: every other
-// folder keeps the three-pane UI regardless of mode. A deep-linked message
-// (/inbox/<id>) stays in Today mode too — the Today view opens it in its
-// centered reader overlay over the list; in browse mode the same route is
-// the unchanged three-pane reader. Same optimistic-override pattern as the
-// view mode above; the server remembers the last-used mode.
-const pendingInboxMode = ref<PostboxInboxMode | null>(null);
-const inboxMode = computed<PostboxInboxMode>(() => pendingInboxMode.value ?? savedInboxMode.value);
-watch(savedInboxMode, (saved) => {
-	if (pendingInboxMode.value === saved) pendingInboxMode.value = null;
-});
-function switchInboxMode(mode: PostboxInboxMode) {
-	if (mode === inboxMode.value) return;
-	pendingInboxMode.value = mode;
-	void setInboxMode(mode).then((saved) => {
-		if (!saved && pendingInboxMode.value === mode) pendingInboxMode.value = null;
-	});
-}
-const todayActive = computed(
-	() => folderRef.value === 'inbox' && !props.folderId && inboxMode.value === 'today'
-);
-
-// The Today overlay closed while the route still points at a deep-linked
-// message — settle the URL back on the plain inbox (replace: the overlay was
-// never its own history entry when opened from the list).
-function onTodayReaderClosed() {
-	if (props.activeMessageId) void navigateTo('/dashboard/postbox/inbox', { replace: true });
-}
-
-// The Today roll-up line's "view" opens the auto-filed mail where it lives:
-// browse mode with the Categories renderer. The Categories choice is a
-// TRANSIENT override (pendingViewMode) — it must not silently overwrite the
-// user's saved list preference.
-function viewAutoFiled() {
-	pendingViewMode.value = 'categories';
-	switchInboxMode('browse');
-}
-
-// Focus the rail's search box after a mode flip mounts it (the `/` shortcut
-// from Today mode; the rail consumes + clears the flag on mount).
-const searchAutofocus = useState('postbox:search-autofocus', () => false);
-
 // ── Below `lg` the three panes become a stacked drill-in (the shell's mobile
 // pattern): the folder rail is an off-canvas drawer, and the list and reader
 // swap based on whether a message is open. Purely class-driven so there is no
@@ -192,6 +111,36 @@ watch(
 	{ flush: 'post' }
 );
 
+// The two inbox mode switches — list renderer (Flat / Conversations /
+// Categories) and landing surface (Today / Browse) — with their optimistic
+// overrides and their window-level shortcuts (B, Esc, `/`). Extracted to a
+// composable to keep this layout under the file-size cap.
+const {
+	viewMode,
+	viewModeOptions,
+	selectViewMode,
+	activeListRenderer,
+	switchInboxMode,
+	todayActive,
+	viewAutoFiled,
+} = usePostboxInboxModes({
+	folderRole: folderRef,
+	folderId: folderIdRef,
+	activeMessageId: computed(() => props.activeMessageId),
+	railOpen,
+	savedViewMode,
+	setViewMode,
+	savedInboxMode,
+	setInboxMode,
+});
+
+// The Today overlay closed while the route still points at a deep-linked
+// message — settle the URL back on the plain inbox (replace: the overlay was
+// never its own history entry when opened from the list).
+function onTodayReaderClosed() {
+	if (props.activeMessageId) void navigateTo('/dashboard/postbox/inbox', { replace: true });
+}
+
 /**
  * Drill-in "back": from the reader to the folder's list route. Replace, don't
  * push — opening the message pushed the entry this button dismisses, so a push
@@ -203,40 +152,6 @@ function backToList() {
 		replace: true,
 	});
 }
-
-// Mode shortcuts (window-level, like the triage-undo chord above): B (and
-// Cmd/Ctrl-B) toggles Today ↔ Browse from the inbox list; Esc returns from
-// Browse to Today; `/` from Today jumps to Browse with the search focused
-// (search never renders inside the Today column). All inert in text inputs,
-// while a message is open, and while any dialog is up.
-function onModeKeydown(event: KeyboardEvent) {
-	// The mobile folder drawer owns Esc while it is open.
-	if (event.key === 'Escape' && railOpen.value) {
-		railOpen.value = false;
-		return;
-	}
-	if (folderRef.value !== 'inbox' || props.folderId || props.activeMessageId) return;
-	if (isEditableTarget(event.target)) return;
-	if (event.defaultPrevented) return;
-	if (document.querySelector('[role="dialog"]')) return;
-	if (event.key.toLowerCase() === 'b' && !event.altKey && !event.shiftKey) {
-		event.preventDefault();
-		switchInboxMode(inboxMode.value === 'today' ? 'browse' : 'today');
-		return;
-	}
-	if (event.metaKey || event.ctrlKey || event.altKey) return;
-	if (event.key === 'Escape' && inboxMode.value === 'browse') {
-		switchInboxMode('today');
-		return;
-	}
-	if (event.key === '/' && todayActive.value) {
-		event.preventDefault();
-		searchAutofocus.value = true;
-		switchInboxMode('browse');
-	}
-}
-onMounted(() => window.addEventListener('keydown', onModeKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onModeKeydown));
 
 const threadGroupsEnabled = computed(() => activeListRenderer.value === 'conversations');
 const {
@@ -327,45 +242,12 @@ const advanceIds = computed(() =>
 					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex-col bg-bg-surface"
 					:class="activeMessageId ? 'hidden lg:flex' : 'flex'"
 				>
-					<!-- Quiet offline banner: cached list + already-read bodies stay
-			     readable; sends queue on this device and go out on reconnect. -->
-					<div
-						v-if="isOffline"
-						class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
-						role="status"
-					>
-						<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
-						<span class="truncate">{{
-							queuedSendCount > 0
-								? t('components.postbox.postboxLayout.offlineBannerQueued', {
-										count: queuedSendCount,
-									})
-								: t('components.postbox.postboxLayout.offlineBanner')
-						}}</span>
-					</div>
-					<!-- Post-drain honesty: items the reconnect drain could NOT send stay
-			     queued on-device with their error — surface them, with a retry. -->
-					<div
-						v-else-if="failedSendCount > 0"
-						class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
-						role="status"
-					>
-						<Icon name="lucide:send" class="w-3.5 h-3.5 flex-shrink-0" />
-						<span class="truncate">{{
-							t(
-								'components.postbox.postboxLayout.failedSendsBanner',
-								{ count: failedSendCount },
-								failedSendCount
-							)
-						}}</span>
-						<button
-							type="button"
-							class="font-semibold underline hover:no-underline flex-shrink-0"
-							@click="() => void retryQueuedSends()"
-						>
-							{{ t('components.postbox.postboxLayout.retryQueuedSends') }}
-						</button>
-					</div>
+					<PostboxOfflineBanners
+						:is-offline="isOffline"
+						:queued-count="queuedSendCount"
+						:failed-count="failedSendCount"
+						@retry="() => void retryQueuedSends()"
+					/>
 					<header
 						class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2"
 					>

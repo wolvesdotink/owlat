@@ -19,8 +19,9 @@ import type { EditorBlock } from '@owlat/email-builder';
 import type { OperationError } from '@owlat/shared/operationError';
 import type { OfflineComposePayload } from '~/utils/postboxOfflineStore';
 import { usePostboxComposeAttachments } from './usePostboxComposeAttachments';
+import { usePostboxComposeHydration } from './usePostboxComposeHydration';
+import { usePostboxComposeSignatures } from './usePostboxComposeSignatures';
 import { usePostboxOfflineOutbox } from './usePostboxOfflineOutbox';
-import { applySignatureToBody, wrapSignatureBlock } from './usePostboxSignatureBody';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
@@ -139,67 +140,20 @@ export function usePostboxCompose(seed: DraftSeed) {
 
 	// Reopen an existing draft: hydrate the editor fields from the saved row.
 	if (seed.draftId) {
-		const hydrateQuery = useConvexQuery(api.mail.drafts.get, () => ({
-			draftId: seed.draftId as Id<'mailDrafts'>,
-		}));
-		let hydrated = false;
-		watch(
-			() => hydrateQuery.data.value,
-			(d) => {
-				if (hydrated || !d) return;
-				hydrated = true;
-				const draft = d as {
-					toAddresses?: string[];
-					ccAddresses?: string[];
-					bccAddresses?: string[];
-					subject?: string;
-					bodyHtml?: string;
-					bodyBlocks?: string;
-					fromAddress?: string;
-					composerMode?: ComposerMode;
-					state?: 'draft' | 'pending_send' | 'scheduled';
-					scheduledSendAt?: number;
-					followUpRemindAt?: number;
-					attachments?: Array<{
-						storageId: string;
-						filename: string;
-						contentType: string;
-						size: number;
-					}>;
-				};
-				draftState.value = draft.state ?? 'draft';
-				scheduledSendAt.value = draft.scheduledSendAt ?? null;
-				if (followUpRemindAt.value === null) {
-					followUpRemindAt.value = draft.followUpRemindAt ?? null;
-				}
-				// Fill only fields the user hasn't already touched: the composer is
-				// editable while drafts.get is in flight, so unconditional assignment
-				// would clobber (and then autosave away) edits typed in the gap.
-				if (toAddresses.value.length === 0) toAddresses.value = draft.toAddresses ?? [];
-				if (ccAddresses.value.length === 0) ccAddresses.value = draft.ccAddresses ?? [];
-				if (bccAddresses.value.length === 0) bccAddresses.value = draft.bccAddresses ?? [];
-				if (!subject.value) subject.value = draft.subject ?? '';
-				if (!bodyHtml.value) bodyHtml.value = draft.bodyHtml ?? '';
-				if (!fromAddress.value && draft.fromAddress) fromAddress.value = draft.fromAddress;
-				if (draft.composerMode) composerMode.value = draft.composerMode;
-				if (bodyBlocks.value.length === 0 && draft.bodyBlocks) {
-					try {
-						bodyBlocks.value = JSON.parse(draft.bodyBlocks) as EditorBlock[];
-					} catch {
-						// Leave empty on malformed JSON.
-					}
-				}
-				if (attachments.value.length === 0) {
-					attachments.value = (draft.attachments ?? []).map((a) => ({
-						storageId: a.storageId,
-						filename: a.filename,
-						contentType: a.contentType,
-						size: a.size,
-					}));
-				}
-			},
-			{ immediate: true }
-		);
+		usePostboxComposeHydration(seed.draftId, {
+			toAddresses,
+			ccAddresses,
+			bccAddresses,
+			subject,
+			bodyHtml,
+			bodyBlocks,
+			fromAddress,
+			composerMode,
+			draftState,
+			scheduledSendAt,
+			followUpRemindAt,
+			attachments,
+		});
 	}
 
 	// Send-as identities for this mailbox: the mailbox's own allowed-from set
@@ -220,55 +174,13 @@ export function usePostboxCompose(seed: DraftSeed) {
 		fromAddress.value = address.trim().toLowerCase();
 	}
 
-	// Signatures for this mailbox. The default is auto-prepended to a fresh
-	// draft; the composer toolbar lets the user pick a different one per
-	// message (applySignature swaps the marked block in-body).
-	interface ComposerSignature {
-		_id: Id<'mailSignatures'>;
-		name: string;
-		html: string;
-		isDefault: boolean;
-	}
-	const signaturesQuery = useConvexQuery(api.mail.signatures.list, () => ({
+	// Signature selection + the fresh-compose auto-prepend live in a sibling
+	// composable; it edits the same `bodyHtml` this composable autosaves.
+	const { signatures, activeSignatureId, applySignature } = usePostboxComposeSignatures({
 		mailboxId: seed.mailboxId,
-	}));
-	const signatures = computed<ComposerSignature[]>(
-		() => (signaturesQuery.data.value as ComposerSignature[] | undefined) ?? []
-	);
-	// Which signature is currently sitting in the body. `null` once the user has
-	// chosen "No signature" (or before anything is applied).
-	const activeSignatureId = ref<Id<'mailSignatures'> | null>(null);
-
-	/** Swap the in-body signature block to the chosen signature (or none). */
-	function applySignature(signatureId: Id<'mailSignatures'> | null) {
-		const sig = signatureId ? signatures.value.find((s) => s._id === signatureId) : null;
-		bodyHtml.value = applySignatureToBody(bodyHtml.value, sig?.html ?? '');
-		activeSignatureId.value = sig?._id ?? null;
-	}
-
-	// Auto-prepend the default signature to a fresh, empty draft.
-	// A reopened draft (seed.draftId) already carries its own signature in the
-	// saved body; auto-prepending here would race drafts.get hydration — if this
-	// watcher wins it writes the signature into the still-empty body, hydration's
-	// `if (!bodyHtml.value)` guard then skips loading the saved body, and autosave
-	// later persists the signature OVER the saved draft (silent data loss). So we
-	// only auto-prepend for a brand-new compose, never when reopening a draft.
-	let signaturePrepended = Boolean(seed.draftId);
-	watch(
-		() => signatures.value,
-		(sigs) => {
-			if (signaturePrepended) return;
-			if (sigs.length === 0) return;
-			signaturePrepended = true;
-			const def = sigs.find((s) => s.isDefault);
-			if (!def) return;
-			// Only prepend if the body is still empty / unedited.
-			if (bodyHtml.value.trim().length > 0) return;
-			bodyHtml.value = `${wrapSignatureBlock(def.html)}`;
-			activeSignatureId.value = def._id;
-		},
-		{ immediate: true }
-	);
+		bodyHtml,
+		isReopenedDraft: Boolean(seed.draftId),
+	});
 
 	async function ensureDraft(): Promise<Id<'mailDrafts'> | null> {
 		if (draftId.value) return draftId.value;
