@@ -7,10 +7,17 @@
  * on `storedKeySet`, and the masked `keyPreview` hint shows only once a key is
  * both stored and previewable.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import AiKeyField from '../AiKeyField.vue';
+
+// The placeholders and the saved-key hint flow through vue-i18n now; `useI18n`
+// is a Nuxt auto-import, so it has to exist as a global for the component setup.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 // UiInput is a Nuxt UI auto-import; stub it so the driving props reach the DOM.
 const UiInputStub = {
@@ -22,7 +29,7 @@ const UiInputStub = {
 function mountField(props: Record<string, unknown> = {}) {
 	return mount(AiKeyField, {
 		props: { label: 'API key', storedKeySet: false, modelValue: '', ...props },
-		global: { stubs: { UiInput: UiInputStub, Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { UiInput: UiInputStub, Icon: true } },
 	});
 }
 

@@ -10,6 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auditA11y, dashboardShellStubs, installNuxtStubs, queryResult } from '~/__tests__/a11y';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useCommandPaletteProviders } from '~/composables/useCommandPaletteProviders';
 import { useCommandPaletteRegistry } from '~/composables/useCommandPaletteRegistry';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
@@ -52,6 +53,7 @@ const searchResults: SearchResults = {
 
 beforeEach(() => {
 	installNuxtStubs({
+		...i18nStubs,
 		// The palette reads the same navigation the sidebar does, so it gets the
 		// same shell stubs: seeded with real sections its list renders real
 		// `role="option"` rows under real group headings, which is the wiring
@@ -112,6 +114,7 @@ function paletteOptions(): NodeListOf<Element> {
 describe('command palette — accessibility', () => {
 	it('has no axe violations listing its idle destinations', async () => {
 		const violations = await auditA11y(AppCommandPalette, {
+			global: { plugins: [createTestI18n()] },
 			prepare: async () => {
 				await openPalette();
 				// Without rows there is no listbox to audit — no `role="option"`,
@@ -129,6 +132,7 @@ describe('command palette — accessibility', () => {
 
 	it('has no axe violations showing results for a typed query', async () => {
 		const violations = await auditA11y(AppCommandPalette, {
+			global: { plugins: [createTestI18n()] },
 			// The results branch is different markup: object-search groups with
 			// subtitled rows, rendered only once the query passes the minimum.
 			prepare: async () => {
@@ -149,6 +153,7 @@ describe('command palette — accessibility', () => {
 describe('keyboard shortcuts help — accessibility', () => {
 	it('has no axe violations while open', async () => {
 		const violations = await auditA11y(KeyboardShortcutsHelp, {
+			global: { plugins: [createTestI18n()] },
 			// The dialog teleports to <body>, so the mount wrapper is empty by
 			// design and the rendered copy has to be read off the document.
 			prepare: () => expect(document.body.textContent).toContain('Go to Dashboard'),
@@ -160,6 +165,7 @@ describe('keyboard shortcuts help — accessibility', () => {
 describe('breadcrumbs — accessibility', () => {
 	it('has no axe violations for a nested trail', async () => {
 		const violations = await auditA11y(Breadcrumbs, {
+			global: { plugins: [createTestI18n()] },
 			prepare: (wrapper) => expect(wrapper.text()).toContain('Spring launch'),
 		});
 		expect(violations).toEqual([]);

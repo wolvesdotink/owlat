@@ -58,12 +58,24 @@ const {
 });
 const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');
 
+const { t, locale } = useI18n();
+
+/**
+ * The display vocabulary in `utils/relayDomainDisplay` carries i18n keys rather
+ * than sentences (the registry convention for module-scope definitions); a plain
+ * string is still accepted so a value with nothing to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
 /** One relay's irreducibly specific instructions. */
 interface RelayProviderCopy {
 	/**
 	 * How this provider's OWNERSHIP ceremony is completed when it issues no TXT
 	 * token — a console flow we cannot describe generically, because the menu
-	 * path is the actionable part.
+	 * path is the actionable part. An i18n key, resolved where it is rendered.
 	 */
 	readonly ownershipWithoutToken?: string;
 }
@@ -81,8 +93,7 @@ interface RelayProviderCopy {
  */
 const PROVIDER_COPY: Readonly<Record<string, RelayProviderCopy>> = {
 	mandrill: {
-		ownershipWithoutToken:
-			'this account verifies domains from its dashboard rather than with a TXT record. Open Mailchimp Transactional → Settings → Domains → Sending Domains and complete the verification for this domain.',
+		ownershipWithoutToken: 'components.delivery.relayDomainStatus.ownershipMandrill',
 	},
 };
 
@@ -90,14 +101,20 @@ const PROVIDER_COPY: Readonly<Record<string, RelayProviderCopy>> = {
 // data refresh, so a page left open across a proof expiry catches up with the
 // next sweep result rather than holding a stale "verified".
 const rows = computed(() =>
-	(relayDomains.value ?? []).map((row) => ({
-		row,
-		display: relayDomainDisplay(row, Date.now()),
-		outstanding: relayDomainOutstanding(row),
-		ownershipWithoutToken:
-			PROVIDER_COPY[row.kind]?.ownershipWithoutToken ??
-			`complete ${row.kindLabel}'s own domain verification for this domain in its console.`,
-	}))
+	(relayDomains.value ?? []).map((row) => {
+		const ownershipKey = PROVIDER_COPY[row.kind]?.ownershipWithoutToken;
+		return {
+			row,
+			display: relayDomainDisplay(row, Date.now()),
+			outstanding: relayDomainOutstanding(row),
+			ownershipWithoutToken:
+				ownershipKey === undefined
+					? t('components.delivery.relayDomainStatus.ownershipGeneric', {
+							provider: row.kindLabel,
+						})
+					: t(ownershipKey),
+		};
+	})
 );
 
 const TONE_CLASS: Record<RelayDomainTone, string> = {
@@ -108,7 +125,7 @@ const TONE_CLASS: Record<RelayDomainTone, string> = {
 };
 
 const { run: verifyRelayDomain } = useBackendOperation(api.domains.dnsVerification.verifyDomain, {
-	label: 'Verify relay domain',
+	label: () => t('components.delivery.relayDomainStatus.verifyOperation'),
 });
 const { showToast: showNotification } = useToast();
 const verifyingRelayDomainId = ref<string | null>(null);
@@ -117,11 +134,14 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 	verifyingRelayDomainId.value = domainId;
 	const result = await verifyRelayDomain({ domainId });
 	verifyingRelayDomainId.value = null;
-	if (result !== undefined) showNotification('Relay DNS verification refreshed');
+	if (result !== undefined)
+		showNotification(t('components.delivery.relayDomainStatus.verifyRefreshed'));
 }
 
 function formatDate(at: number | null | undefined): string {
-	return at === null || at === undefined ? 'not scheduled' : new Date(at).toLocaleString();
+	return at === null || at === undefined
+		? t('components.delivery.relayDomainStatus.notScheduled')
+		: new Date(at).toLocaleString(locale.value);
 }
 
 /**
@@ -147,12 +167,11 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 <template>
 	<div v-if="rows.length" class="card p-6 space-y-4" data-testid="relay-domain-status">
 		<div>
-			<h2 class="text-lg font-medium text-text-primary">Relay sending domains</h2>
+			<h2 class="text-lg font-medium text-text-primary">
+				{{ t('components.delivery.relayDomainStatus.title') }}
+			</h2>
 			<p class="mt-1 text-sm text-text-secondary">
-				Publish these records before automatic fallback can activate. A shown apex SPF value is
-				authoritatively merged with the owned-MTA policy. If no SPF row is shown, preserve your
-				existing SPF record and complete a reviewed additive merge; never replace it with a
-				relay-only value. Your primary DMARC record remains unchanged.
+				{{ t('components.delivery.relayDomainStatus.intro') }}
 			</p>
 		</div>
 		<div
@@ -167,7 +186,9 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 					<p class="text-xs text-text-tertiary" data-testid="relay-domain-provider">
 						{{ entry.row.kindLabel }}
 					</p>
-					<p class="mt-0.5 text-sm text-text-secondary">{{ entry.display.summary }}</p>
+					<p class="mt-0.5 text-sm text-text-secondary">
+						{{ localized(entry.display.summary) }}
+					</p>
 				</div>
 				<div class="flex shrink-0 items-center gap-3">
 					<span
@@ -175,7 +196,7 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 						:class="TONE_CLASS[entry.display.tone]"
 						data-testid="relay-domain-state"
 					>
-						{{ entry.display.label }}
+						{{ localized(entry.display.label) }}
 					</span>
 					<UiButton
 						variant="secondary"
@@ -183,13 +204,17 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 						:disabled="entry.row.records.length === 0"
 						@click="handleVerifyRelayDomain(entry.row.domainId)"
 					>
-						Verify DNS
+						{{ t('components.delivery.relayDomainStatus.verifyDns') }}
 					</UiButton>
 				</div>
 			</div>
 
 			<p v-if="entry.outstanding.length" class="text-xs text-text-tertiary">
-				Outstanding: {{ entry.outstanding.join(' · ') }}
+				{{
+					t('components.delivery.relayDomainStatus.outstanding', {
+						items: entry.outstanding.map((item) => localized(item)).join(' · '),
+					})
+				}}
 			</p>
 
 			<!-- The provider's own words, unedited: it is the authority on whether the
@@ -199,14 +224,18 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 				class="rounded bg-bg-surface p-3 text-xs text-text-secondary"
 				data-testid="relay-spf-error"
 			>
-				SPF: {{ entry.row.spf.error }}
+				{{
+					t('components.delivery.relayDomainStatus.spfError', { error: entry.row.spf.error })
+				}}
 			</p>
 			<p
 				v-if="entry.row.dkim?.error"
 				class="rounded bg-bg-surface p-3 text-xs text-text-secondary"
 				data-testid="relay-dkim-error"
 			>
-				DKIM: {{ entry.row.dkim.error }}
+				{{
+					t('components.delivery.relayDomainStatus.dkimError', { error: entry.row.dkim.error })
+				}}
 			</p>
 			<p
 				v-if="entry.row.lastError"
@@ -221,9 +250,11 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 				class="rounded bg-bg-surface p-3 text-xs text-text-secondary"
 				data-testid="relay-spf-not-applicable"
 			>
-				Apex SPF: not applicable to this relay's proof. Keep the reviewed manual primary SPF
-				policy; {{ entry.row.kindLabel }} is authenticated by its verified DKIM and its own
-				return-path records.
+				{{
+					t('components.delivery.relayDomainStatus.spfNotApplicable', {
+						provider: entry.row.kindLabel,
+					})
+				}}
 			</p>
 
 			<div
@@ -234,7 +265,14 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 			>
 				<p class="text-text-tertiary">
 					{{ record.label }}<span v-if="record.type"> · {{ record.type }}</span>
-					{{ record.host }}<span v-if="record.priority"> priority {{ record.priority }}</span>
+					{{ record.host
+					}}<span v-if="record.priority">
+						{{
+							t('components.delivery.relayDomainStatus.recordPriority', {
+								priority: record.priority,
+							})
+						}}
+					</span>
 				</p>
 				<code class="block mt-1 break-all text-text-primary">{{ record.value }}</code>
 			</div>
@@ -249,14 +287,21 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 			>
 				<template v-if="ownershipRecord(entry.row.records)">
 					<p class="text-text-tertiary">
-						Ownership · {{ ownershipRecord(entry.row.records)?.type }}
+						{{ t('components.delivery.relayDomainStatus.ownership') }} ·
+						{{ ownershipRecord(entry.row.records)?.type }}
 						{{ ownershipRecord(entry.row.records)?.host }}
 					</p>
 					<code class="block mt-1 break-all text-text-primary">
 						{{ ownershipRecord(entry.row.records)?.value }}
 					</code>
 				</template>
-				<p v-else class="text-text-secondary">Ownership: {{ entry.ownershipWithoutToken }}</p>
+				<p v-else class="text-text-secondary">
+					{{
+						t('components.delivery.relayDomainStatus.ownershipLine', {
+							instruction: entry.ownershipWithoutToken,
+						})
+					}}
+				</p>
 			</div>
 
 			<p
@@ -264,15 +309,21 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 				class="text-xs text-text-tertiary"
 				data-testid="relay-freshness"
 			>
-				Last confirmed {{ formatDate(entry.row.lastCheckedAt) }} · next automatic check
-				{{ formatDate(entry.row.nextCheckDueAt) }}
+				{{
+					t('components.delivery.relayDomainStatus.freshness', {
+						lastConfirmed: formatDate(entry.row.lastCheckedAt),
+						nextCheck: formatDate(entry.row.nextCheckDueAt),
+					})
+				}}
 			</p>
 		</div>
 		<div
 			v-if="canLoadMoreRelayDomains"
 			class="flex justify-center border-t border-border-subtle pt-4"
 		>
-			<UiButton variant="secondary" @click="loadMoreRelayDomains(100)">Load more domains</UiButton>
+			<UiButton variant="secondary" @click="loadMoreRelayDomains(100)">
+				{{ t('components.delivery.relayDomainStatus.loadMore') }}
+			</UiButton>
 		</div>
 	</div>
 </template>

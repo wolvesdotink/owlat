@@ -63,6 +63,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 	inlineError: Readonly<Ref<string | null>>;
 } {
 	const client = useConvex();
+	const { t } = useI18n();
 	const { showToast } = useToast();
 	const posthog = usePostHog();
 
@@ -76,7 +77,11 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		// the default surface nor the telemetry report applies.
 		if (opts.onError?.(op) === true) return;
 		const treatment = categoryTreatment(op.category);
-		const copy = operationCopy(op);
+		// `operationCopy` is module scope, so it hands back either a message KEY
+		// (copy this app owns) or the backend's own sentence, which must NOT go
+		// through `t()` — it is arbitrary text the compiler would read as syntax.
+		const copySource = operationCopy(op);
+		const copy = 'key' in copySource ? t(copySource.key) : copySource.text;
 
 		if (treatment.report) {
 			posthog.captureError(e, {
@@ -108,7 +113,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		inlineError.value = null;
 
 		if (!client) {
-			showToast('Something went wrong. Please try again.', 'error');
+			showToast(t('shared.useBackendOperation.genericError'), 'error');
 			return undefined;
 		}
 

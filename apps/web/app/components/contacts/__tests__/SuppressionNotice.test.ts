@@ -8,10 +8,17 @@
  *   - the action emits `remove` and disables while removing
  * Icon is a global auto-import, stubbed here.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import SuppressionNotice from '../SuppressionNotice.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The notice renders through vue-i18n, so it is mounted against the real `en`
+// catalog and asserted on the sentences an operator reads.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 type Reason = 'bounced' | 'complained' | 'manual' | 'unengaged';
 
@@ -28,7 +35,7 @@ function mountNotice(props: {
 			removing: false,
 			...props,
 		},
-		global: { stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 	});
 }
 

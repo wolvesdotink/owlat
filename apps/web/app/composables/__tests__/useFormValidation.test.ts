@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
+import { createTestI18n } from '~/__tests__/i18n';
 import { useFormValidation, rules } from '../useFormValidation';
+
+/**
+ * A rule's DEFAULT message is an i18n key (module scope can't call `t`), which
+ * the surface rendering the error resolves — passing the counts the `{min}` /
+ * `{max}` messages interpolate. `copy()` does exactly that here, so every
+ * assertion below still reads the English sentence a member is shown.
+ */
+const { t } = createTestI18n().global;
+const copy = (result: string | true, params?: Record<string, unknown>): string | true =>
+	typeof result === 'string' ? t(result, params ?? {}) : result;
 
 describe('useFormValidation', () => {
 	describe('validate', () => {
@@ -15,8 +26,8 @@ describe('useFormValidation', () => {
 			});
 
 			expect(validate({ name: '', email: 'bad' })).toBe(false);
-			expect(errors.value.name).toBe('This field is required');
-			expect(errors.value.email).toBe('Please enter a valid email address');
+			expect(copy(errors.value.name!)).toBe('This field is required');
+			expect(copy(errors.value.email!)).toBe('Please enter a valid email address');
 		});
 
 		it('returns true when all fields pass', () => {
@@ -46,10 +57,10 @@ describe('useFormValidation', () => {
 			});
 
 			expect(validate({ password: '' })).toBe(false);
-			expect(errors.value.password).toBe('This field is required');
+			expect(copy(errors.value.password!)).toBe('This field is required');
 
 			expect(validate({ password: 'abc' })).toBe(false);
-			expect(errors.value.password).toBe('Must be at least 8 characters');
+			expect(copy(errors.value.password!, { min: 8 })).toBe('Must be at least 8 characters');
 
 			expect(validate({ password: 'abcdefgh' })).toBe(true);
 		});
@@ -67,7 +78,7 @@ describe('useFormValidation', () => {
 			});
 
 			expect(validateField('name', '')).toBe(false);
-			expect(errors.value.name).toBe('This field is required');
+			expect(copy(errors.value.name!)).toBe('This field is required');
 		});
 
 		it('clears error for valid field', () => {
@@ -111,7 +122,7 @@ describe('useFormValidation', () => {
 
 			validateField('name', '');
 			touch('name');
-			expect(getError('name')).toBe('This field is required');
+			expect(copy(getError('name')!)).toBe('This field is required');
 		});
 
 		it('getError returns error when showAll is true regardless of touch', () => {
@@ -120,7 +131,7 @@ describe('useFormValidation', () => {
 			});
 
 			validateField('name', '');
-			expect(getError('name', true)).toBe('This field is required');
+			expect(copy(getError('name', true)!)).toBe('This field is required');
 		});
 	});
 
@@ -187,19 +198,19 @@ describe('rules', () => {
 		const rule = rules.required();
 
 		it('fails for null', () => {
-			expect(rule(null as unknown as string)).toBe('This field is required');
+			expect(copy(rule(null as unknown as string))).toBe('This field is required');
 		});
 
 		it('fails for undefined', () => {
-			expect(rule(undefined as unknown as string)).toBe('This field is required');
+			expect(copy(rule(undefined as unknown as string))).toBe('This field is required');
 		});
 
 		it('fails for empty string', () => {
-			expect(rule('')).toBe('This field is required');
+			expect(copy(rule(''))).toBe('This field is required');
 		});
 
 		it('fails for empty array', () => {
-			expect(rule([] as unknown as string)).toBe('This field is required');
+			expect(copy(rule([] as unknown as string))).toBe('This field is required');
 		});
 
 		it('passes for non-empty string', () => {
@@ -224,11 +235,11 @@ describe('rules', () => {
 		});
 
 		it('fails for invalid email', () => {
-			expect(rule('not-an-email')).toBe('Please enter a valid email address');
+			expect(copy(rule('not-an-email'))).toBe('Please enter a valid email address');
 		});
 
 		it('fails for missing domain', () => {
-			expect(rule('user@')).toBe('Please enter a valid email address');
+			expect(copy(rule('user@'))).toBe('Please enter a valid email address');
 		});
 	});
 
@@ -244,7 +255,7 @@ describe('rules', () => {
 		});
 
 		it('fails when too short', () => {
-			expect(rule('hi')).toBe('Must be at least 5 characters');
+			expect(copy(rule('hi'), { min: 5 })).toBe('Must be at least 5 characters');
 		});
 
 		it('uses custom message', () => {
@@ -265,7 +276,7 @@ describe('rules', () => {
 		});
 
 		it('fails when too long', () => {
-			expect(rule('too long string')).toBe('Must be no more than 5 characters');
+			expect(copy(rule('too long string'), { max: 5 })).toBe('Must be no more than 5 characters');
 		});
 
 		it('uses custom message', () => {
@@ -306,11 +317,11 @@ describe('rules', () => {
 		});
 
 		it('fails for domain starting with hyphen', () => {
-			expect(rule('-example.com')).toBe('Please enter a valid domain name');
+			expect(copy(rule('-example.com'))).toBe('Please enter a valid domain name');
 		});
 
 		it('fails for domain with spaces', () => {
-			expect(rule('exam ple.com')).toBe('Please enter a valid domain name');
+			expect(copy(rule('exam ple.com'))).toBe('Please enter a valid domain name');
 		});
 	});
 
@@ -326,7 +337,7 @@ describe('rules', () => {
 		});
 
 		it('fails for invalid URL', () => {
-			expect(rule('not-a-url')).toBe('Please enter a valid URL');
+			expect(copy(rule('not-a-url'))).toBe('Please enter a valid URL');
 		});
 	});
 });

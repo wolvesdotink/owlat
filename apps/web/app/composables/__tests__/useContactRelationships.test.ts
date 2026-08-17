@@ -3,6 +3,7 @@ import { ref, type Ref } from 'vue';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { createTestI18n } from '~/__tests__/i18n';
 
 // useContactRelationships leans on four project composables that Nuxt
 // auto-imports. Stub them as globals so the composable can run under vitest and
@@ -18,6 +19,9 @@ let lastListArgsFactory: (() => unknown) | null = null;
 // name (anyApi proxy refs aren't === comparable) so a test can assert exactly
 // which backend mutation a handler invokes.
 let runsByQuery: Map<string, ReturnType<typeof vi.fn>>;
+
+// Run outside a component, so `useI18n` is stubbed with the real catalog's `t`.
+const { t } = createTestI18n().global;
 
 beforeEach(() => {
 	candidatesRef.value = [];
@@ -37,8 +41,14 @@ beforeEach(() => {
 	}));
 	vi.stubGlobal('usePaginatedQuery', (_query: unknown, argsFactory: () => unknown) => {
 		lastListArgsFactory = argsFactory;
-		return { results: candidatesRef, status: ref('Exhausted'), loadMore: vi.fn(), isLoading: ref(false) };
+		return {
+			results: candidatesRef,
+			status: ref('Exhausted'),
+			loadMore: vi.fn(),
+			isLoading: ref(false),
+		};
 	});
+	vi.stubGlobal('useI18n', () => ({ t }));
 });
 
 async function load() {
@@ -62,7 +72,9 @@ describe('useContactRelationships — contact picker', () => {
 	it('formats the label as the full name, falling back to email', async () => {
 		const useContactRelationships = await load();
 		const { contactLabel } = useContactRelationships(ref(currentId) as Ref<Id<'contacts'>>);
-		expect(contactLabel({ _id: 'a', email: 'a@x.com', firstName: 'Jane', lastName: 'Doe' })).toBe('Jane Doe');
+		expect(contactLabel({ _id: 'a', email: 'a@x.com', firstName: 'Jane', lastName: 'Doe' })).toBe(
+			'Jane Doe'
+		);
 		expect(contactLabel({ _id: 'b', email: 'b@x.com' })).toBe('b@x.com');
 	});
 
@@ -70,7 +82,7 @@ describe('useContactRelationships — contact picker', () => {
 		const useContactRelationships = await load();
 		searchRef.value = 'jane';
 		const { addForm, selectTargetContact, targetSearch } = useContactRelationships(
-			ref(currentId) as Ref<Id<'contacts'>>,
+			ref(currentId) as Ref<Id<'contacts'>>
 		);
 		selectTargetContact({ _id: 'contact_other', email: 'other@example.com', firstName: 'Jane' });
 		expect(addForm.toContactId).toBe('contact_other');
@@ -81,7 +93,7 @@ describe('useContactRelationships — contact picker', () => {
 	it('clearing the target resets id and label', async () => {
 		const useContactRelationships = await load();
 		const { addForm, selectTargetContact, clearTargetContact } = useContactRelationships(
-			ref(currentId) as Ref<Id<'contacts'>>,
+			ref(currentId) as Ref<Id<'contacts'>>
 		);
 		selectTargetContact({ _id: 'contact_other', email: 'other@example.com' });
 		clearTargetContact();
@@ -105,7 +117,7 @@ describe('useContactRelationships — edit confidence', () => {
 	it('patches the existing relationship via updateConfidence', async () => {
 		const useContactRelationships = await load();
 		const { handleUpdateConfidence } = useContactRelationships(
-			ref(currentId) as Ref<Id<'contacts'>>,
+			ref(currentId) as Ref<Id<'contacts'>>
 		);
 		await handleUpdateConfidence(relId, 0.5);
 		const run = runsByQuery.get(getFunctionName(api.contacts.relationships.updateConfidence));
@@ -115,7 +127,7 @@ describe('useContactRelationships — edit confidence', () => {
 	it('clamps confidence into the [0, 1] range before patching', async () => {
 		const useContactRelationships = await load();
 		const { handleUpdateConfidence } = useContactRelationships(
-			ref(currentId) as Ref<Id<'contacts'>>,
+			ref(currentId) as Ref<Id<'contacts'>>
 		);
 		await handleUpdateConfidence(relId, 1.4);
 		await handleUpdateConfidence(relId, -0.3);

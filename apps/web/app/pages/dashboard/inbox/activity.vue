@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { ChannelHealthDot } from '~/utils/channelKinds';
 
-useHead({ title: 'All activity — Owlat' });
+const { t, te } = useI18n();
+
+useHead({ title: () => t('dashboard.inbox.activity.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -26,7 +29,6 @@ const {
 	channelColor,
 	channelHealth,
 	directionIcon,
-	directionLabel,
 	deliveryStatusMeta,
 	resolveThread,
 	formatTime,
@@ -38,8 +40,38 @@ const {
 const { role } = useOrganizationContext();
 const canManageChannels = computed(() => role.value === 'owner' || role.value === 'admin');
 
+// Channel / direction / delivery labels are translated here; the shared display
+// helpers (`~/composables/useUnifiedContactTimeline`) stay plain constants, so an
+// unknown value still falls back to its raw label instead of a key path.
+const channelName = (channel: string): string => {
+	const key = `dashboard.inbox.activity.channels.${channel}`;
+	return te(key) ? t(key) : channelLabel(channel);
+};
+const directionName = (direction: string): string =>
+	t(
+		direction === 'inbound'
+			? 'dashboard.inbox.activity.directions.inbound'
+			: 'dashboard.inbox.activity.directions.outbound'
+	);
+const deliveryStatusName = (meta: { label: string }, status: string): string => {
+	const key = `dashboard.inbox.activity.deliveryStatuses.${status}`;
+	return te(key) ? t(key) : meta.label;
+};
+/**
+ * The health dot's variant is the stable enum here; its `label` is the shared
+ * registry's message key (or a `{ key, params }` pair), which stands in when
+ * this page has no wording of its own for the variant.
+ */
+const healthName = (health: ChannelHealthDot): string => {
+	const key = `dashboard.inbox.activity.health.${health.variant}`;
+	if (te(key)) return t(key);
+	return typeof health.label === 'string'
+		? t(health.label)
+		: t(health.label.key, health.label.params ?? {});
+};
+
 const activeFilterLabel = computed(() =>
-	channelFilter.value ? channelLabel(channelFilter.value) : null
+	channelFilter.value ? channelName(channelFilter.value) : null
 );
 
 // Resolve in-flight guard so a double-click doesn't fire two mutations.
@@ -57,8 +89,10 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">All activity</h1>
-				<p class="text-text-secondary mt-1">Every message across email, SMS, WhatsApp and chat</p>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.inbox.activity.title') }}
+				</h1>
+				<p class="text-text-secondary mt-1">{{ t('dashboard.inbox.activity.subtitle') }}</p>
 			</div>
 		</div>
 
@@ -73,7 +107,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 				]"
 				@click="channelFilter = null"
 			>
-				All
+				{{ t('common.all') }}
 			</button>
 			<button
 				v-for="ch in channels"
@@ -87,12 +121,17 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 				@click="channelFilter = channelFilter === ch ? null : ch"
 			>
 				<Icon :name="channelIcon(ch)" class="w-3 h-3" />
-				{{ channelLabel(ch) }}
+				{{ channelName(ch) }}
 				<span
 					v-if="channelHealth(ch)"
 					class="w-1.5 h-1.5 rounded-full"
 					:class="channelHealth(ch)!.dotClass"
-					:title="`${channelLabel(ch)}: ${channelHealth(ch)!.label}`"
+					:title="
+						t('dashboard.inbox.activity.channelHealthTitle', {
+							channel: channelName(ch),
+							status: healthName(channelHealth(ch)!),
+						})
+					"
 				/>
 			</button>
 		</div>
@@ -100,8 +139,8 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 		<UiQueryBoundary
 			:loading="isLoading && !timeline.length"
 			:error="error"
-			error-title="Couldn't load activity"
-			loading-label="Loading messages..."
+			:error-title="t('dashboard.inbox.activity.errorTitle')"
+			:loading-label="t('dashboard.inbox.activity.loadingLabel')"
 		>
 			<!-- Empty — guided CTA (admin-only button, explanation for everyone) -->
 			<InboxActivityEmptyState
@@ -141,12 +180,12 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 									]"
 								>
 									<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
-									{{ directionLabel(item.direction) }}
+									{{ directionName(item.direction) }}
 								</span>
 
 								<!-- Channel chip -->
 								<UiBadge variant="neutral" size="sm">
-									{{ channelLabel(item.channel) }}
+									{{ channelName(item.channel) }}
 								</UiBadge>
 
 								<!-- Delivery state — one small mark, detail in its title (one-chip rule) -->
@@ -155,7 +194,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 									:name="deliveryStatusMeta(item.status)!.icon"
 									class="w-3.5 h-3.5"
 									:class="deliveryStatusMeta(item.status)!.class"
-									:title="deliveryStatusMeta(item.status)!.label"
+									:title="deliveryStatusName(deliveryStatusMeta(item.status)!, item.status ?? '')"
 								/>
 							</div>
 
@@ -188,8 +227,8 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 							size="sm"
 							:to="`/dashboard/inbox/${item.threadId}`"
 							class="!px-2"
-							title="Open conversation"
-							aria-label="Open conversation"
+							:title="t('dashboard.inbox.activity.openConversation')"
+							:aria-label="t('dashboard.inbox.activity.openConversation')"
 						>
 							<Icon name="lucide:arrow-up-right" class="w-4 h-4" />
 						</UiButton>
@@ -198,8 +237,8 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 							size="sm"
 							:to="`/dashboard/inbox/${item.threadId}`"
 							class="!px-2"
-							title="Assign to a teammate"
-							aria-label="Assign to a teammate"
+							:title="t('dashboard.inbox.activity.assignToTeammate')"
+							:aria-label="t('dashboard.inbox.activity.assignToTeammate')"
 						>
 							<Icon name="lucide:user-plus" class="w-4 h-4" />
 						</UiButton>
@@ -209,8 +248,8 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 							type="button"
 							class="!px-2"
 							:disabled="resolvingId === item.threadId"
-							title="Mark as resolved"
-							aria-label="Mark as resolved"
+							:title="t('dashboard.inbox.activity.markAsResolved')"
+							:aria-label="t('dashboard.inbox.activity.markAsResolved')"
 							@click="handleResolve(item.threadId)"
 						>
 							<Icon name="lucide:check-circle" class="w-4 h-4" />

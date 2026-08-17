@@ -6,6 +6,8 @@
  * step), Discard leaves the selection untouched. Nothing is ever auto-applied.
  */
 
+const { t } = useI18n();
+
 defineProps<{
 	/** Absolute-position style computed from the selection rect by the parent. */
 	cardStyle: Record<string, string> | null;
@@ -27,17 +29,17 @@ const emit = defineEmits<{
 		class="postbox-rewrite-preview absolute z-30 w-72 max-w-[90vw] rounded-lg border border-border-subtle bg-bg-elevated p-2.5 shadow-xl"
 		:style="cardStyle"
 		role="dialog"
-		aria-label="Rewrite preview"
+		:aria-label="t('components.postbox.postboxRewritePreview.dialogLabel')"
 		@mousedown.prevent
 	>
 		<p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-text-tertiary">
-			Original
+			{{ t('components.postbox.postboxRewritePreview.original') }}
 		</p>
 		<p class="mb-2 max-h-20 overflow-auto text-xs text-text-tertiary line-through decoration-1">
 			{{ original }}
 		</p>
 		<p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-brand">
-			Rewritten
+			{{ t('components.postbox.postboxRewritePreview.rewritten') }}
 		</p>
 		<p class="mb-2.5 max-h-32 overflow-auto text-sm text-text-primary">
 			{{ rewritten }}
@@ -48,7 +50,7 @@ const emit = defineEmits<{
 				class="rounded px-2 py-1 text-xs text-text-secondary hover:bg-bg-surface"
 				@click="emit('discard')"
 			>
-				Discard
+				{{ t('common.discard') }}
 			</button>
 			<button
 				type="button"
@@ -56,7 +58,7 @@ const emit = defineEmits<{
 				@click="emit('apply')"
 			>
 				<Icon name="lucide:check" class="h-3.5 w-3.5" />
-				Apply
+				{{ t('common.apply') }}
 			</button>
 		</div>
 	</div>

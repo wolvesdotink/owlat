@@ -9,6 +9,8 @@
  */
 const { state, dismiss, runUndo } = useReviewApproveUndo();
 
+const { t } = useI18n();
+
 const now = ref(Date.now());
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -51,14 +53,21 @@ async function handleUndo() {
 			<Icon name="lucide:check" class="w-4 h-4" />
 			<!-- A bulk approve arms a per-id partial-result label ("8 approved,
 			     2 held — Dana is replying"); a single approve keeps "Approved". -->
-			<span class="text-sm">{{ state.label ?? 'Approved' }} — sending in {{ remainingSec }}s</span>
+			<span class="text-sm">{{
+				t('components.agentTasks.reviewApproveUndoToast.sendingIn', {
+					what: state.label ?? t('components.agentTasks.reviewApproveUndoToast.approved'),
+					seconds: remainingSec,
+				})
+			}}</span>
 			<button
 				type="button"
 				class="text-sm font-semibold text-brand hover:underline"
 				:disabled="busy"
 				@click="handleUndo"
 			>
-				Undo ({{ remainingSec }}s)
+				{{
+					t('components.agentTasks.reviewApproveUndoToast.undo', { seconds: remainingSec })
+				}}
 			</button>
 		</div>
 	</Transition>

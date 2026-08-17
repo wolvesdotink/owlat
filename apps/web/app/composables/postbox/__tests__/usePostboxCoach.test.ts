@@ -5,6 +5,15 @@ import {
 	MIN_COACH_WORDS,
 	type CoachSuggestion,
 } from '../usePostboxCoach';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The composable resolves its copy through vue-i18n, so the suite installs the
+ * real catalog behind the `useI18n` auto-import and asserts the English text a
+ * user would actually see.
+ */
+const i18n = createTestI18n();
+vi.stubGlobal('useI18n', () => i18n.global);
 
 const WEAK: CoachSuggestion[] = [
 	{ category: 'tone', message: 'The tone reads as curt.' },
@@ -145,5 +154,6 @@ describe('usePostboxCoach lifecycle', () => {
 		expect(coach.isReady()).toBe(false);
 		expect(coach.suggestions.value).toEqual([]);
 		expect(onError).toHaveBeenCalledTimes(1);
+		expect(onError).toHaveBeenCalledWith('Could not coach this draft. Try again.');
 	});
 });

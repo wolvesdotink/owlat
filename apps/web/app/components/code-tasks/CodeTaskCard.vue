@@ -17,8 +17,10 @@ const props = defineProps<{
 	};
 }>();
 
+const { t, locale } = useI18n();
+
 const { run: cancelMutation } = useBackendOperation(api.codeWorkTasks.cancel, {
-	label: 'Cancel task',
+	label: () => t('components.codeTasks.codeTaskCard.cancelOperation'),
 });
 const isCancelling = ref(false);
 
@@ -30,9 +32,13 @@ const handleCancel = async () => {
 	isCancelling.value = false;
 };
 
-const formatCost = (cost: number) => {
-	return `$${cost.toFixed(4)}`;
-};
+const formatCost = (cost: number) =>
+	new Intl.NumberFormat(locale.value, {
+		style: 'currency',
+		currency: 'USD',
+		minimumFractionDigits: 4,
+		maximumFractionDigits: 4,
+	}).format(cost);
 </script>
 
 <template>
@@ -103,7 +109,7 @@ const formatCost = (cost: number) => {
 				@click="handleCancel"
 			>
 				<Icon name="lucide:x" class="w-3 h-3" />
-				{{ isCancelling ? 'Cancelling...' : 'Cancel' }}
+				{{ isCancelling ? t('components.codeTasks.codeTaskCard.cancelling') : t('common.cancel') }}
 			</UiButton>
 		</div>
 	</div>

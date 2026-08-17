@@ -13,12 +13,20 @@ import type { HealthTone } from '~/utils/healthTone';
  * (DMARC will fail). An `unknown` alignment (a relay whose identities aren't
  * declared) is surfaced as a soft caution but never blocks — we didn't verify a
  * failure, so we don't assert one.
+ *
+ * Module scope, so it never calls `useI18n`: `label` and this module's own
+ * `detail` copy are catalog KEYS the chip resolves with `t()` at render time.
+ * The one exception is a transport's `reason`, which arrives already worded from
+ * the alignment check and is passed through verbatim.
  */
 export interface SenderAuthDisplay {
 	tone: HealthTone;
-	/** Short chip label. */
+	/** Short chip label — a catalog key. */
 	label: string;
-	/** One plain-language line, or `null` when the identity is clean. */
+	/**
+	 * One plain-language line, or `null` when the identity is clean. A catalog
+	 * key, unless the alignment check supplied its own worded reason.
+	 */
 	detail: string | null;
 	/** Whether the picker should disable sending from this identity. */
 	blocked: boolean;
@@ -37,35 +45,30 @@ export function senderAuthDisplay(facts: SenderAuthFacts): SenderAuthDisplay {
 	if (!facts.verified) {
 		return {
 			tone: 'warning',
-			label: 'Domain not verified',
-			detail:
-				'This domain isn’t verified, so sending from it is turned off until you verify it in Settings → Domains.',
+			label: 'shared.senderAlignment.notVerified.label',
+			detail: 'shared.senderAlignment.notVerified.detail',
 			blocked: true,
 		};
 	}
 	if (facts.alignment === 'misaligned') {
 		return {
 			tone: 'error',
-			label: 'Sender not aligned',
-			detail:
-				facts.reason ??
-				'The way this transport signs and bounces mail doesn’t match this sending address, so mailboxes can treat it as spam.',
+			label: 'shared.senderAlignment.misaligned.label',
+			detail: facts.reason ?? 'shared.senderAlignment.misaligned.detail',
 			blocked: true,
 		};
 	}
 	if (facts.alignment === 'unknown') {
 		return {
 			tone: 'warning',
-			label: 'Alignment unconfirmed',
-			detail:
-				facts.reason ??
-				'We can’t confirm this transport signs mail as this address. You can still send, but check the transport’s DKIM setup.',
+			label: 'shared.senderAlignment.unknown.label',
+			detail: facts.reason ?? 'shared.senderAlignment.unknown.detail',
 			blocked: false,
 		};
 	}
 	return {
 		tone: 'success',
-		label: 'Sender verified',
+		label: 'shared.senderAlignment.verified.label',
 		detail: null,
 		blocked: false,
 	};

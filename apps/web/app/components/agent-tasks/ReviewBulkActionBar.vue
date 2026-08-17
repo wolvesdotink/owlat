@@ -19,6 +19,8 @@ defineProps<{
 const emit = defineEmits<{
 	(e: 'approve' | 'reject' | 'select-all' | 'clear'): void;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -34,14 +36,16 @@ const emit = defineEmits<{
 			v-if="count > 0"
 			class="sticky top-0 z-10 bg-bg-elevated border border-border-subtle rounded-lg px-3 py-2 mb-4 flex items-center gap-2 text-sm shadow-sm"
 		>
-			<span class="font-medium">{{ count }} selected</span>
+			<span class="font-medium">{{
+				t('components.agentTasks.reviewBulkActionBar.selected', { count })
+			}}</span>
 			<button
 				v-if="remaining > 0"
 				type="button"
 				class="text-brand hover:underline"
 				@click="emit('select-all')"
 			>
-				Select all
+				{{ t('components.agentTasks.reviewBulkActionBar.selectAll') }}
 			</button>
 			<span class="flex-1" />
 			<UiButton
@@ -54,7 +58,7 @@ const emit = defineEmits<{
 				<template #iconLeft>
 					<Icon name="lucide:check" class="w-4 h-4" />
 				</template>
-				Approve {{ count }}
+				{{ t('components.agentTasks.reviewBulkActionBar.approveCount', { count }) }}
 			</UiButton>
 			<UiButton
 				variant="danger-ghost"
@@ -66,13 +70,14 @@ const emit = defineEmits<{
 				<template #iconLeft>
 					<Icon name="lucide:x-circle" class="w-4 h-4" />
 				</template>
-				Reject {{ count }}
+				{{ t('components.agentTasks.reviewBulkActionBar.rejectCount', { count }) }}
 			</UiButton>
 			<span class="w-px h-4 bg-border-subtle mx-1" />
 			<button
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-				title="Clear selection"
+				:title="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')"
+				:aria-label="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')"
 				@click="emit('clear')"
 			>
 				<Icon name="lucide:x" class="w-4 h-4" />

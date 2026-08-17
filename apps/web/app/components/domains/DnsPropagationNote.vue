@@ -11,20 +11,27 @@
 
 /** Where "Learn more" points. Named so the test asserts one constant, not a literal. */
 const DNS_DOCS_URL = 'https://docs.owlat.app/developer/self-hosting-dns-email';
+
+const { t } = useI18n();
 </script>
 
 <template>
 	<div class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle">
 		<p class="text-sm text-text-secondary">
-			<strong class="text-text-primary">Note:</strong> DNS changes can take up to 48 hours to
-			propagate. After adding these records, click "Verify Domain" to check the configuration.
+			<I18nT keypath="components.domains.dnsPropagationNote.body" tag="span" scope="global">
+				<template #note>
+					<strong class="text-text-primary">
+						{{ t('components.domains.dnsPropagationNote.noteLabel') }}
+					</strong>
+				</template>
+			</I18nT>
 			<a
 				:href="DNS_DOCS_URL"
 				target="_blank"
 				rel="noopener noreferrer"
 				class="inline-flex items-center gap-1 text-brand hover:underline ml-1"
 			>
-				Learn more
+				{{ t('common.learnMore') }}
 				<Icon name="lucide:external-link" class="w-3 h-3" />
 			</a>
 		</p>

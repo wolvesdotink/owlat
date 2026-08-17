@@ -3,7 +3,20 @@ import { api } from '@owlat/api';
 import type { Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
 
-useHead({ title: 'Automation Details — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.automations.detail.index.pageTitle') });
+
+const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
+const formatNumber = (value: number) => numberFormat.value.format(value);
+
+/**
+ * Registry-owned copy (step modules, status/trigger badges) carries message
+ * KEYS, so every rendered registry value goes through here.
+ */
+type RegistryText = string | { key: string; params?: Record<string, unknown> };
+const registryText = (value: RegistryText): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 definePageMeta({
 	layout: 'dashboard',
@@ -58,21 +71,21 @@ const getRunStatusBadge = (status: 'running' | 'completed' | 'cancelled') => {
 			return {
 				color: 'bg-brand/10 text-brand',
 				icon: 'lucide:loader-2',
-				label: 'In Progress',
+				label: t('dashboard.automations.detail.index.runs.inProgress'),
 				animated: true,
 			};
 		case 'completed':
 			return {
 				color: 'bg-success/10 text-success',
 				icon: 'lucide:check-circle-2',
-				label: 'Completed',
+				label: t('dashboard.automations.detail.index.runs.completed'),
 				animated: false,
 			};
 		case 'cancelled':
 			return {
 				color: 'bg-error/10 text-error',
 				icon: 'lucide:x-circle',
-				label: 'Cancelled',
+				label: t('dashboard.automations.detail.index.runs.cancelled'),
 				animated: false,
 			};
 	}
@@ -94,14 +107,16 @@ const getStepLabel = (stepType: StepKind, config: string | Record<string, unknow
 	const module = stepEditorModuleFor(stepType);
 	try {
 		const raw = typeof config === 'string' ? JSON.parse(config) : config;
-		return (
-			module.getDescription as (
-				c: unknown,
-				ctx: { emailTemplates: Doc<'emailTemplates'>[] }
-			) => string
-		)(module.parseConfig(raw), { emailTemplates: stepEmailTemplates.value });
+		return registryText(
+			(
+				module.getDescription as (
+					c: unknown,
+					ctx: { emailTemplates: Doc<'emailTemplates'>[] }
+				) => RegistryText
+			)(module.parseConfig(raw), { emailTemplates: stepEmailTemplates.value })
+		);
 	} catch {
-		return module.label;
+		return registryText(module.label);
 	}
 };
 
@@ -146,28 +161,28 @@ const statsCards = computed(() => {
 	if (!stats.value) return [];
 	return [
 		{
-			label: 'Contacts Entered',
+			label: t('dashboard.automations.detail.index.stats.contactsEntered'),
 			value: stats.value.totalEntered,
 			icon: 'lucide:users',
 			color: 'text-brand',
 			bgColor: 'bg-brand/10',
 		},
 		{
-			label: 'Active',
+			label: t('common.active'),
 			value: stats.value.running,
 			icon: 'lucide:loader-2',
 			color: 'text-brand',
 			bgColor: 'bg-brand/10',
 		},
 		{
-			label: 'Completed',
+			label: t('dashboard.automations.detail.index.stats.completed'),
 			value: stats.value.completed,
 			icon: 'lucide:user-check',
 			color: 'text-success',
 			bgColor: 'bg-success/10',
 		},
 		{
-			label: 'Emails Sent',
+			label: t('dashboard.automations.detail.index.stats.emailsSent'),
 			value: stats.value.emailsSent,
 			icon: 'lucide:mail',
 			color: 'text-warning',
@@ -194,6 +209,14 @@ watch(selectedRunStatus, () => {
 	runsOffset.value = 0;
 });
 
+/** The contacts-list status filter. */
+const runStatusFilters = computed(() => [
+	{ value: 'all' as const, label: t('common.all') },
+	{ value: 'running' as const, label: t('dashboard.automations.detail.index.runs.inProgress') },
+	{ value: 'completed' as const, label: t('dashboard.automations.detail.index.runs.completed') },
+	{ value: 'cancelled' as const, label: t('dashboard.automations.detail.index.runs.cancelled') },
+]);
+
 // Navigate to edit
 const handleEdit = () => {
 	router.push(`/dashboard/automations/${automationId.value}/edit`);
@@ -206,7 +229,7 @@ const handleEdit = () => {
 		<div v-if="isLoading && !automation" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading automation...</p>
+				<p class="text-text-secondary text-sm">{{ t('dashboard.automations.detail.index.loading') }}</p>
 			</div>
 		</div>
 
@@ -216,12 +239,12 @@ const handleEdit = () => {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:zap" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">Automation not found</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.automations.detail.index.notFoundTitle') }}</p>
 			<p class="text-sm text-text-tertiary mt-1">
-				This automation may have been deleted or you don't have access to it.
+				{{ t('dashboard.automations.detail.index.notFoundDescription') }}
 			</p>
 			<UiButton variant="secondary" to="/dashboard/automations" class="mt-6">
-				Back to Automations
+				{{ t('dashboard.automations.detail.index.backToAutomations') }}
 			</UiButton>
 		</div>
 
@@ -234,7 +257,7 @@ const handleEdit = () => {
 					class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors"
 				>
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
-					Back to Automations
+					{{ t('dashboard.automations.detail.index.backToAutomations') }}
 				</NuxtLink>
 				<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 					<div>
@@ -249,7 +272,7 @@ const handleEdit = () => {
 								]"
 							>
 								<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
-								{{ getStatusBadge(automation.status).label }}
+								{{ t(getStatusBadge(automation.status).label) }}
 							</span>
 						</div>
 						<p v-if="automation.description" class="mt-1 text-text-secondary">
@@ -258,17 +281,17 @@ const handleEdit = () => {
 						<div class="mt-2 flex items-center gap-4 text-sm text-text-tertiary">
 							<div class="flex items-center gap-1.5">
 								<Icon :name="getTriggerDisplay(automation.triggerType).icon" class="w-4 h-4" />
-								{{ getTriggerDisplay(automation.triggerType).label }}
+								{{ t(getTriggerDisplay(automation.triggerType).label) }}
 							</div>
 							<div class="flex items-center gap-1.5">
 								<Icon name="lucide:clock" class="w-4 h-4" />
-								Created {{ formatDateTime(automation.createdAt) }}
+								{{ t('dashboard.automations.detail.index.createdAt', { date: formatDateTime(automation.createdAt) }) }}
 							</div>
 						</div>
 					</div>
 					<UiButton variant="secondary" class="gap-2" @click="handleEdit">
 						<Icon name="lucide:pencil" class="w-4 h-4" />
-						Edit Automation
+						{{ t('dashboard.automations.detail.index.editAutomation') }}
 					</UiButton>
 				</div>
 			</div>
@@ -283,7 +306,7 @@ const handleEdit = () => {
 						<span class="text-sm text-text-secondary">{{ stat.label }}</span>
 					</div>
 					<span class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ stat.value.toLocaleString() }}
+						{{ formatNumber(stat.value) }}
 					</span>
 				</div>
 			</div>
@@ -291,22 +314,27 @@ const handleEdit = () => {
 			<!-- Completion Rate Card -->
 			<div class="card p-6 mb-8">
 				<div class="flex items-center justify-between mb-4">
-					<h3 class="text-lg font-medium text-text-primary">Completion Rate</h3>
+					<h3 class="text-lg font-medium text-text-primary">{{ t('dashboard.automations.detail.index.completionRate') }}</h3>
 					<span class="text-3xl font-semibold text-brand">{{ stats?.completionRate || 0 }}%</span>
 				</div>
 				<UiProgressBar
 					size="sm"
 					:value="Math.min(stats?.completionRate || 0, 100)"
-					aria-label="Automation completion rate"
+					:aria-label="t('dashboard.automations.detail.index.completionRateLabel')"
 				/>
 				<p class="text-sm text-text-tertiary mt-3">
-					{{ stats?.completed || 0 }} of {{ stats?.totalEntered || 0 }} contacts completed all steps
+					{{
+						t('dashboard.automations.detail.index.completedOfEntered', {
+							completed: stats?.completed || 0,
+							total: stats?.totalEntered || 0,
+						})
+					}}
 				</p>
 			</div>
 
 			<!-- Funnel Visualization -->
 			<div class="card p-6 mb-8">
-				<h3 class="text-lg font-medium text-text-primary mb-6">Step Funnel</h3>
+				<h3 class="text-lg font-medium text-text-primary mb-6">{{ t('dashboard.automations.detail.index.funnel.title') }}</h3>
 
 				<!-- Empty state -->
 				<div
@@ -314,11 +342,13 @@ const handleEdit = () => {
 					class="flex flex-col items-center justify-center py-12 text-center"
 				>
 					<Icon name="lucide:zap" class="w-12 h-12 text-text-tertiary mb-3" />
-					<p class="text-text-secondary">No steps configured</p>
+					<p class="text-text-secondary">{{ t('dashboard.automations.detail.index.funnel.emptyTitle') }}</p>
 					<p class="text-sm text-text-tertiary mt-1">
-						Add steps to your automation to see funnel analytics
+						{{ t('dashboard.automations.detail.index.funnel.emptyDescription') }}
 					</p>
-					<UiButton variant="secondary" class="mt-4" @click="handleEdit">Configure Steps</UiButton>
+					<UiButton variant="secondary" class="mt-4" @click="handleEdit">
+						{{ t('dashboard.automations.detail.index.funnel.configureSteps') }}
+					</UiButton>
 				</div>
 
 				<!-- Funnel chart -->
@@ -326,7 +356,9 @@ const handleEdit = () => {
 					<!-- Trigger row -->
 					<div class="flex items-center gap-4">
 						<div class="w-24 shrink-0 text-right">
-							<span class="text-xs text-text-tertiary uppercase tracking-wider">Trigger</span>
+							<span class="text-xs text-text-tertiary uppercase tracking-wider">
+								{{ t('dashboard.automations.detail.index.funnel.trigger') }}
+							</span>
 						</div>
 						<div class="flex-1">
 							<div class="flex items-center gap-3">
@@ -342,7 +374,7 @@ const handleEdit = () => {
 										style="width: 100%"
 									>
 										<span class="text-sm font-medium text-text-primary">
-											{{ stats?.totalEntered || 0 }} entered
+											{{ t('dashboard.automations.detail.index.funnel.entered', { count: stats?.totalEntered || 0 }) }}
 										</span>
 									</div>
 								</div>
@@ -364,9 +396,9 @@ const handleEdit = () => {
 					<template v-for="(step, index) in stepAnalytics" :key="step.stepId">
 						<div class="flex items-center gap-4">
 							<div class="w-24 shrink-0 text-right">
-								<span class="text-xs text-text-tertiary uppercase tracking-wider"
-									>Step {{ index + 1 }}</span
-								>
+								<span class="text-xs text-text-tertiary uppercase tracking-wider">
+									{{ t('dashboard.automations.detail.index.funnel.step', { number: index + 1 }) }}
+								</span>
 							</div>
 							<div class="flex-1">
 								<div class="flex items-center gap-3">
@@ -385,8 +417,12 @@ const handleEdit = () => {
 											}"
 										>
 											<span class="text-sm font-medium text-text-primary truncate">
-												{{ getStepLabel(step.stepType, step.config) }} ·
-												{{ step.stats.completed }} completed
+												{{
+													t('dashboard.automations.detail.index.funnel.stepSummary', {
+														label: getStepLabel(step.stepType, step.config),
+														completed: step.stats.completed,
+													})
+												}}
 											</span>
 										</div>
 									</div>
@@ -398,15 +434,15 @@ const handleEdit = () => {
 								<div class="ml-11 mt-1 flex items-center gap-4 text-xs text-text-tertiary">
 									<span v-if="step.stats.pending > 0" class="flex items-center gap-1">
 										<Icon name="lucide:clock" class="w-3 h-3" />
-										{{ step.stats.pending }} pending
+										{{ t('dashboard.automations.detail.index.funnel.pending', { count: step.stats.pending }) }}
 									</span>
 									<span v-if="step.stats.executing > 0" class="flex items-center gap-1">
 										<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin" />
-										{{ step.stats.executing }} executing
+										{{ t('dashboard.automations.detail.index.funnel.executing', { count: step.stats.executing }) }}
 									</span>
 									<span v-if="step.stats.failed > 0" class="flex items-center gap-1 text-error">
 										<Icon name="lucide:x-circle" class="w-3 h-3" />
-										{{ step.stats.failed }} failed
+										{{ t('dashboard.automations.detail.index.funnel.failed', { count: step.stats.failed }) }}
 									</span>
 								</div>
 							</div>
@@ -427,16 +463,11 @@ const handleEdit = () => {
 			<!-- Contacts List -->
 			<div class="card p-0 overflow-hidden">
 				<div class="px-6 py-4 border-b border-border-subtle flex items-center justify-between">
-					<h3 class="text-lg font-medium text-text-primary">Contacts in Automation</h3>
+					<h3 class="text-lg font-medium text-text-primary">{{ t('dashboard.automations.detail.index.runs.title') }}</h3>
 					<!-- Status filter -->
 					<div class="flex items-center gap-1 p-1 bg-bg-surface rounded-lg">
 						<button
-							v-for="filter in [
-								{ value: 'all' as const, label: 'All' },
-								{ value: 'running' as const, label: 'In Progress' },
-								{ value: 'completed' as const, label: 'Completed' },
-								{ value: 'cancelled' as const, label: 'Cancelled' },
-							]"
+							v-for="filter in runStatusFilters"
 							:key="filter.value"
 							:class="[
 								'px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
@@ -459,9 +490,9 @@ const handleEdit = () => {
 				<!-- Empty state -->
 				<div v-else-if="!runs || runs.runs.length === 0" class="py-12 text-center">
 					<Icon name="lucide:users" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-					<p class="text-text-secondary">No contacts in this automation yet</p>
+					<p class="text-text-secondary">{{ t('dashboard.automations.detail.index.runs.emptyTitle') }}</p>
 					<p class="text-sm text-text-tertiary mt-1">
-						Contacts will appear here when the automation is triggered
+						{{ t('dashboard.automations.detail.index.runs.emptyDescription') }}
 					</p>
 				</div>
 
@@ -477,11 +508,11 @@ const handleEdit = () => {
 								<UiIconBox icon="lucide:users" size="lg" rounded="full" />
 								<div class="min-w-0">
 									<div class="text-text-primary font-medium truncate">
-										{{ run.contact?.firstName || run.contact?.email?.split('@')[0] || 'Unknown' }}
+										{{ run.contact?.firstName || run.contact?.email?.split('@')[0] || t('common.unknown') }}
 										{{ run.contact?.lastName || '' }}
 									</div>
 									<div class="text-sm text-text-tertiary truncate">
-										{{ run.contact?.email || 'No email' }}
+										{{ run.contact?.email || t('dashboard.automations.detail.index.runs.noEmail') }}
 									</div>
 								</div>
 							</div>
@@ -503,15 +534,19 @@ const handleEdit = () => {
 										{{ getRunStatusBadge(run.status).label }}
 									</span>
 									<div class="text-xs text-text-tertiary mt-1">
-										Step {{ run.currentStepIndex + 1 }} ·
-										{{ formatCompactRelativeTime(run.startedAt, { emptyLabel: '—' }) }}
+										{{
+											t('dashboard.automations.detail.index.runs.stepAndTime', {
+												number: run.currentStepIndex + 1,
+												time: formatCompactRelativeTime(run.startedAt, { emptyLabel: '—' }),
+											})
+										}}
 									</div>
 								</div>
 								<NuxtLink
 									v-if="run.contact"
 									:to="`/dashboard/audience/contacts/${run.contact._id}`"
 									class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-									title="View contact"
+									:title="t('dashboard.automations.detail.index.runs.viewContact')"
 								>
 									<Icon name="lucide:chevron-right" class="w-4 h-4" />
 								</NuxtLink>
@@ -529,20 +564,25 @@ const handleEdit = () => {
 							class="text-sm"
 							:disabled="runsOffset === 0"
 							@click="loadPrevRuns"
-						>
-							Previous
-						</UiButton>
+							>
+							{{ t('dashboard.automations.detail.index.runs.previous') }}
+							</UiButton>
 						<span class="text-sm text-text-tertiary">
-							{{ runsOffset + 1 }}–{{ runsOffset + (runs.runs?.length ?? 0) }}
+							{{
+								t('dashboard.automations.detail.index.runs.range', {
+									from: runsOffset + 1,
+									to: runsOffset + (runs.runs?.length ?? 0),
+								})
+							}}
 						</span>
 						<UiButton
 							variant="secondary"
 							class="text-sm"
 							:disabled="!runs.hasMore"
 							@click="loadMoreRuns"
-						>
-							Next
-						</UiButton>
+							>
+							{{ t('dashboard.automations.detail.index.runs.next') }}
+							</UiButton>
 					</div>
 				</div>
 			</div>

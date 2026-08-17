@@ -13,12 +13,14 @@ defineProps<{
 	labelIds: string[];
 	labels: Map<string, { _id: string; name: string; color?: string }>;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
 	<header class="pbx-reader-header mb-4">
 		<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-			{{ subject || '(no subject)' }}
+			{{ subject || t('components.postbox.postboxThreadHeader.noSubject') }}
 			<span
 				v-if="messageCount > 1"
 				class="ml-1 text-base font-normal text-text-tertiary align-middle"

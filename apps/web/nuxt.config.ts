@@ -53,13 +53,13 @@ export default defineNuxtConfig({
 			{ code: 'en', language: 'en-US', name: 'English', file: 'en.json' },
 			{ code: 'de', language: 'de-DE', name: 'Deutsch', file: 'de.json' },
 		],
-		// Browser-language detection stays OFF until the whole UI is extracted:
-		// today only the recipient-facing, auth and welcome surfaces have messages,
-		// so auto-switching a German visitor would hand them a half-translated app.
-		// Flip this to `{ useCookie: true, cookieKey: 'owlat-locale' }` once
-		// `i18n/locales/*.json` covers the dashboard. See apps/docs → Adding a UI
-		// language.
-		detectBrowserLanguage: false,
+		// The whole UI is extracted, so a first-time visitor can safely be served
+		// the locale their browser asks for. The cookie is what makes the choice
+		// stick: with `no_prefix` the URL carries no locale, so without it every
+		// reload would re-run detection and undo the picker
+		// (components/LanguagePicker.vue) for anyone whose browser disagrees with
+		// them. `owlat-locale` is read back by that picker's `setLocale`.
+		detectBrowserLanguage: { useCookie: true, cookieKey: 'owlat-locale' },
 	},
 
 	fonts: {
@@ -218,9 +218,12 @@ export default defineNuxtConfig({
 
 	app: {
 		head: {
-			// Declare the document language so assistive tech can determine it.
-			// With ssr:false the shipped <html> would otherwise carry no lang (WCAG 3.1.1).
-			htmlAttrs: { lang: 'en' },
+			// No `htmlAttrs.lang` here on purpose: a value set in nuxt.config wins
+			// over anything a component writes, so it would pin every page to `en`
+			// even after the visitor switches. `useLocaleHead()` in `app/app.vue`
+			// sets `lang` from the active locale instead — assistive tech still gets
+			// a declared document language (WCAG 3.1.1) on the ssr:false shell,
+			// and it is now the right one.
 			viewport: 'width=device-width, initial-scale=1, viewport-fit=cover',
 			link: [
 				{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },

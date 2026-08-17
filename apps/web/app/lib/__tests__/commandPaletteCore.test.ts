@@ -16,6 +16,14 @@ import {
 	type SearchResults,
 	buildCorePaletteProviders,
 } from '../commandPaletteCore';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * Group headings are catalog keys — the factory is module scope and never calls
+ * `useI18n`, so the palette component translates them. These assertions render
+ * through the real catalog and stay on the words a user reads.
+ */
+const { t } = createTestI18n().global;
 
 function paletteItem(id: string): PaletteItem {
 	return { id, label: id, icon: 'lucide:dot', run: () => {} };
@@ -79,7 +87,7 @@ describe('core:recent', () => {
 		const recent = groupByKey(groups, 'recent');
 		expect(recent?.order).toBe(-1);
 		expect(recent?.cap).toBe(5);
-		expect(recent?.heading).toBe('Recent searches');
+		expect(t(recent?.heading ?? '')).toBe('Recent searches');
 		expect(recent?.items.map((i) => i.id)).toEqual(['recent:acme', 'recent:globex']);
 		// Recent items keep the palette open (they refill the query).
 		expect(recent?.items.every((i) => i.keepOpen === true)).toBe(true);
@@ -98,12 +106,12 @@ describe('core:verbs and core:context', () => {
 	it('always contribute their group, at fixed order, filtered by the query', () => {
 		const verbs = groupByKey(build('core:verbs', ''), 'verbs');
 		expect(verbs?.order).toBe(5);
-		expect(verbs?.heading).toBe('Create');
+		expect(t(verbs?.heading ?? '')).toBe('Create');
 		expect(verbs?.cap).toBeUndefined();
 
 		const context = groupByKey(build('core:context', ''), 'context');
 		expect(context?.order).toBe(6);
-		expect(context?.heading).toBe('Context');
+		expect(t(context?.heading ?? '')).toBe('Context');
 
 		// The query filters items (a non-matching query empties the group).
 		const filtered = groupByKey(build('core:verbs', 'zzzz'), 'verbs');
@@ -138,7 +146,7 @@ describe('core:navigation', () => {
 		const nav = groupByKey(build('core:navigation', ''), 'navigation');
 		expect(nav?.order).toBe(40);
 		expect(nav?.cap).toBe(8);
-		expect(nav?.heading).toBe('Go to');
+		expect(t(nav?.heading ?? '')).toBe('Go to');
 		expect(nav?.items.map((i) => i.id)).toEqual(['nav:/dashboard/inbox']);
 	});
 });

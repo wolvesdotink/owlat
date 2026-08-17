@@ -19,6 +19,8 @@ const props = defineProps<{
 	ownEmail?: string;
 }>();
 
+const { t, locale } = useI18n();
+
 const stack = usePostboxComposerStack();
 const { stash } = usePostboxPendingAttachments();
 
@@ -46,13 +48,13 @@ function formatWhen(): string {
 	if (!e?.start?.date) return '';
 	const start = e.start.date;
 	let s = start.toLocaleString(
-		'en-US',
+		locale.value,
 		e.start.allDay
 			? { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
 			: { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
 	);
 	if (e.end?.date && !e.start.allDay) {
-		s += ` – ${e.end.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+		s += ` – ${e.end.date.toLocaleTimeString(locale.value, { hour: 'numeric', minute: '2-digit' })}`;
 	}
 	return s;
 }
@@ -70,19 +72,20 @@ function rsvp(status: Partstat) {
 		contentType: 'text/calendar; method=REPLY; charset=utf-8',
 		content: reply,
 	});
-	const prefix =
+	// One whole sentence per RSVP status — a translated verb dropped into a
+	// shared frame would not survive word order in other languages.
+	const suffix =
 		status === 'ACCEPTED' ? 'Accepted' : status === 'DECLINED' ? 'Declined' : 'Tentative';
-	const verb =
-		status === 'ACCEPTED'
-			? 'accepted'
-			: status === 'DECLINED'
-				? 'declined'
-				: 'tentatively accepted';
+	const summary = e.summary ?? t('components.postbox.postboxInviteCard.fallbackSummary');
 	stack.open({
 		mailboxId: props.mailboxId as Id<'mailboxes'>,
 		prefillTo: [e.organizer.email],
-		prefillSubject: `${prefix}: ${e.summary ?? 'Invitation'}`,
-		prefillBodyHtml: `<p>I have ${verb} the invitation: <strong>${escapeHtml(e.summary ?? '')}</strong>.</p>`,
+		prefillSubject: t(`components.postbox.postboxInviteCard.reply.subject${suffix}`, { summary }),
+		// The message carries no markup; the emphasis around the (escaped)
+		// summary is added here, where the HTML body is assembled.
+		prefillBodyHtml: `<p>${t(`components.postbox.postboxInviteCard.reply.body${suffix}`, {
+			summary: `<strong>${escapeHtml(e.summary ?? '')}</strong>`,
+		})}</p>`,
 		attachPendingKey: key,
 	});
 }
@@ -93,7 +96,9 @@ function rsvp(status: Partstat) {
 		<div class="flex items-start gap-3">
 			<Icon name="lucide:calendar" class="w-5 h-5 text-brand flex-shrink-0 mt-0.5" />
 			<div class="flex-1 min-w-0">
-				<p class="font-semibold text-text-primary">{{ event.summary || 'Invitation' }}</p>
+				<p class="font-semibold text-text-primary">
+					{{ event.summary || t('components.postbox.postboxInviteCard.fallbackSummary') }}
+				</p>
 				<p v-if="formatWhen()" class="text-sm text-text-secondary mt-0.5">{{ formatWhen() }}</p>
 				<p v-if="event.location" class="text-sm text-text-tertiary mt-0.5 flex items-center gap-1">
 					<Icon name="lucide:map-pin" class="w-3.5 h-3.5" />
@@ -103,20 +108,33 @@ function rsvp(status: Partstat) {
 					v-if="event.organizer?.name || event.organizer?.email"
 					class="text-xs text-text-tertiary mt-1"
 				>
-					Organizer: {{ event.organizer.name || event.organizer.email }}
-					<span v-if="event.attendees.length > 0"> · {{ event.attendees.length }} attendee(s)</span>
+					{{
+						t('components.postbox.postboxInviteCard.organizer', {
+							name: event.organizer.name || event.organizer.email,
+						})
+					}}
+					<span v-if="event.attendees.length > 0">
+						{{
+							t('components.postbox.postboxInviteCard.attendees', {
+								count: event.attendees.length,
+							})
+						}}</span
+					>
 				</p>
 			</div>
 		</div>
 		<div v-if="canRsvp" class="flex items-center gap-2 mt-3">
 			<UiButton variant="ghost" type="button" class="text-success" @click="rsvp('ACCEPTED')">
-				<Icon name="lucide:check" class="w-4 h-4 mr-1" /> Accept
+				<Icon name="lucide:check" class="w-4 h-4 mr-1" />
+				{{ t('components.postbox.postboxInviteCard.accept') }}
 			</UiButton>
 			<UiButton variant="ghost" type="button" class="text-warning" @click="rsvp('TENTATIVE')">
-				<Icon name="lucide:help-circle" class="w-4 h-4 mr-1" /> Maybe
+				<Icon name="lucide:help-circle" class="w-4 h-4 mr-1" />
+				{{ t('components.postbox.postboxInviteCard.maybe') }}
 			</UiButton>
 			<UiButton variant="ghost" type="button" class="text-error" @click="rsvp('DECLINED')">
-				<Icon name="lucide:x" class="w-4 h-4 mr-1" /> Decline
+				<Icon name="lucide:x" class="w-4 h-4 mr-1" />
+				{{ t('components.postbox.postboxInviteCard.decline') }}
 			</UiButton>
 		</div>
 	</div>

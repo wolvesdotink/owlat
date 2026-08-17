@@ -23,6 +23,7 @@ import {
 	paginatedResult,
 	queryResult,
 } from '~/__tests__/a11y';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useBulkOperation } from '~/composables/useBulkOperation';
 import { useBulkSelection } from '~/composables/useBulkSelection';
 import { useCampaignStatusBadge } from '~/composables/useCampaignStatusBadge';
@@ -60,6 +61,8 @@ vi.mock('~/composables/useOrganization', () => ({
 
 beforeEach(() => {
 	installNuxtStubs({
+		// Extracted surfaces render through vue-i18n; `useI18n` is an auto-import.
+		...i18nStubs,
 		useRoute: () => ({
 			path: '/dashboard',
 			fullPath: '/dashboard',
@@ -135,6 +138,9 @@ describe('dashboard shell layout — accessibility', () => {
 	it('has no axe violations, landmarks and skip link included', async () => {
 		const violations = await auditA11y(DashboardLayout, {
 			slots: { default: '<h1>Page under the shell</h1>' },
+			// The shell renders its chrome — skip link, rail labels, sign out —
+			// through vue-i18n.
+			global: { plugins: [createTestI18n()] },
 			// The shell is the one mount that owns a whole document: <main>, the
 			// skip link and the landmark structure are all its markup, so it is
 			// audited at page scope with the document-scope rules back on.
@@ -176,6 +182,8 @@ const pages: readonly AuditedPage[] = [
 describe.each(pages)('$name — accessibility', ({ component, loaded, ownsH1 }) => {
 	it('has no axe violations on an empty instance', async () => {
 		const violations = await auditA11y(component, {
+			// Extracted pages render their chrome through vue-i18n.
+			global: { plugins: [createTestI18n()] },
 			// A page that threw or rendered nothing would pass an empty audit.
 			prepare: (wrapper) => {
 				expect(wrapper.text()).toContain(loaded);
@@ -190,6 +198,7 @@ describe('getting-started checklist — accessibility', () => {
 	it('has no axe violations for an admin on a fresh instance', async () => {
 		const violations = await auditA11y(GettingStarted, {
 			props: { userId: 'user1', isAdmin: true },
+			global: { plugins: [createTestI18n()] },
 			prepare: (wrapper) => expect(wrapper.text()).toContain('Getting started'),
 		});
 		expect(violations).toEqual([]);

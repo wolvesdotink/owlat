@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { watch } from 'vue';
 
+const { t } = useI18n();
+
 const { target, isVisible } = useScrollReveal();
 
 // A/B test count-up percentages
@@ -25,13 +27,21 @@ watch(isVisible, (v) => {
 		<div class="max-w-[1200px] mx-auto">
 			<!-- Section header -->
 			<div class="mb-16 max-md:mb-12">
-				<span class="bento-el lp-eyebrow mb-4" style="--i: 0">Platform</span>
-				<h2 class="bento-el lp-title mb-4" style="--i: 1">
-					Everything you need<br class="max-md:hidden" />
-					to ship <span class="lp-title-accent">email</span>
-				</h2>
+				<span class="bento-el lp-eyebrow mb-4" style="--i: 0">{{ t('features.eyebrow') }}</span>
+				<I18nT
+					keypath="features.title"
+					tag="h2"
+					class="bento-el lp-title mb-4"
+					style="--i: 1"
+					scope="global"
+				>
+					<template #break><br class="max-md:hidden" /></template>
+					<template #accent>
+						<span class="lp-title-accent">{{ t('features.titleAccent') }}</span>
+					</template>
+				</I18nT>
 				<p class="bento-el text-base text-text-secondary max-w-[540px]" style="--i: 2">
-					From builder to inbox, every tool in one platform.
+					{{ t('features.intro') }}
 				</p>
 			</div>
 
@@ -55,12 +65,8 @@ watch(isVisible, (v) => {
 							<path d="M9 21V9" />
 						</svg>
 					</div>
-					<h3 class="card-title">Block-based email editor</h3>
-					<p class="card-desc">
-						17 drag-and-drop block types with inline text editing. Build with text, images, buttons,
-						columns, tables, carousels, and more. Save blocks to your library, manage translations
-						per language, and preview across devices in real time.
-					</p>
+					<h3 class="card-title">{{ t('features.editor.title') }}</h3>
+					<p class="card-desc">{{ t('features.editor.desc') }}</p>
 				</div>
 
 				<!-- Audience Engine -->
@@ -82,11 +88,8 @@ watch(isVisible, (v) => {
 							<path d="M16 3.13a4 4 0 0 1 0 7.75" />
 						</svg>
 					</div>
-					<h3 class="card-title">Audience engine</h3>
-					<p class="card-desc">
-						Store contacts with custom properties, organize into topics with double opt-in, build
-						dynamic segments with filters, import via CSV, and capture leads with embeddable forms.
-					</p>
+					<h3 class="card-title">{{ t('features.audience.title') }}</h3>
+					<p class="card-desc">{{ t('features.audience.desc') }}</p>
 				</div>
 
 				<!-- Campaigns + A/B Testing -->
@@ -112,11 +115,8 @@ watch(isVisible, (v) => {
 								<path d="M17 5v12" />
 							</svg>
 						</div>
-						<h3 class="card-title">Campaigns + A/B testing</h3>
-						<p class="card-desc">
-							Schedule sends for optimal timing, test subject lines and content variants side by
-							side, then track opens, clicks, and engagement as results come in.
-						</p>
+						<h3 class="card-title">{{ t('features.campaigns.title') }}</h3>
+						<p class="card-desc">{{ t('features.campaigns.desc') }}</p>
 					</div>
 					<!-- Visual: A/B test bars (count-up) -->
 					<div class="mt-6" aria-hidden="true">
@@ -159,11 +159,8 @@ watch(isVisible, (v) => {
 							<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
 						</svg>
 					</div>
-					<h3 class="card-title">Automations</h3>
-					<p class="card-desc">
-						Build trigger-based flows for onboarding, re-engagement, and lifecycle messaging. Add
-						delays, conditions, and branching logic — no code required.
-					</p>
+					<h3 class="card-title">{{ t('features.automations.title') }}</h3>
+					<p class="card-desc">{{ t('features.automations.desc') }}</p>
 				</div>
 
 				<!-- Transactional Delivery -->
@@ -184,12 +181,8 @@ watch(isVisible, (v) => {
 							<path d="m14 4-4 16" />
 						</svg>
 					</div>
-					<h3 class="card-title">Transactional delivery</h3>
-					<p class="card-desc">
-						Send password resets, order confirmations, and receipts via API. Reference templates by
-						slug or ID, inject dynamic data variables, and fall back to the default language
-						automatically.
-					</p>
+					<h3 class="card-title">{{ t('features.transactional.title') }}</h3>
+					<p class="card-desc">{{ t('features.transactional.desc') }}</p>
 				</div>
 
 				<!-- Deliverability (full width) -->
@@ -213,12 +206,8 @@ watch(isVisible, (v) => {
 									<path d="m9 12 2 2 4-4" />
 								</svg>
 							</div>
-							<h3 class="card-title">Deliverability</h3>
-							<p class="card-desc mb-0">
-								Verify your sending domain with guided DNS setup for SPF, DKIM, and DMARC. Manage
-								blocklists, automatically include one-click unsubscribe headers, and stream delivery
-								events via webhooks for full visibility.
-							</p>
+							<h3 class="card-title">{{ t('features.deliverability.title') }}</h3>
+							<p class="card-desc mb-0">{{ t('features.deliverability.desc') }}</p>
 						</div>
 						<!-- Visual: DNS verification chips -->
 						<div class="flex items-center gap-2.5 shrink-0" aria-hidden="true">

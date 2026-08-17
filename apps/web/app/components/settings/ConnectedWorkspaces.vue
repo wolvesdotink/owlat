@@ -10,6 +10,7 @@
  */
 import type { WorkspaceConfig } from '~/lib/desktop/workspaceTypes';
 
+const { t } = useI18n();
 const { workspaces, activeId, switchTo, removeWorkspace } = useDesktopWorkspaces();
 
 const pendingRemove = ref<WorkspaceConfig | null>(null);
@@ -42,12 +43,14 @@ function addWorkspace(): void {
 			v-if="!workspaces.length"
 			class="flex flex-col items-start gap-3 p-4"
 		>
-			<p class="text-sm text-text-secondary">No workspaces connected yet.</p>
+			<p class="text-sm text-text-secondary">
+				{{ t('components.settings.connectedWorkspaces.empty') }}
+			</p>
 			<UiButton variant="primary" size="sm" @click="addWorkspace">
 				<template #iconLeft>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 				</template>
-				Add workspace
+				{{ t('components.settings.connectedWorkspaces.add') }}
 			</UiButton>
 		</div>
 
@@ -73,13 +76,13 @@ function addWorkspace(): void {
 					<span class="block text-xs text-text-tertiary truncate">{{ ws.siteUrl }}</span>
 				</div>
 
-				<UiBadge v-if="ws.id === activeId" variant="success">Active</UiBadge>
+				<UiBadge v-if="ws.id === activeId" variant="success">{{ t('common.active') }}</UiBadge>
 				<UiButton v-else variant="secondary" size="sm" @click="switchTo(ws.id)">
-					Switch
+					{{ t('components.settings.connectedWorkspaces.switch') }}
 				</UiButton>
 
 				<UiButton variant="danger-ghost" size="sm" @click="askRemove(ws)">
-					Disconnect
+					{{ t('components.settings.connectedWorkspaces.disconnect') }}
 				</UiButton>
 			</div>
 
@@ -88,7 +91,7 @@ function addWorkspace(): void {
 					<template #iconLeft>
 						<Icon name="lucide:plus" class="w-4 h-4" />
 					</template>
-					Add workspace
+					{{ t('components.settings.connectedWorkspaces.add') }}
 				</UiButton>
 			</div>
 		</template>
@@ -96,13 +99,13 @@ function addWorkspace(): void {
 		<UiConfirmationDialog
 			:open="!!pendingRemove"
 			variant="danger"
-			title="Disconnect workspace?"
+			:title="t('components.settings.connectedWorkspaces.confirmTitle')"
 			:description="
 				pendingRemove
-					? `Disconnect “${pendingRemove.label}”? You'll need to reconnect to use this workspace again.`
+					? t('components.settings.connectedWorkspaces.confirmDescription', { label: pendingRemove.label })
 					: ''
 			"
-			confirm-text="Disconnect"
+			:confirm-text="t('components.settings.connectedWorkspaces.disconnect')"
 			:is-loading="isRemoving"
 			@update:open="(v: boolean) => !v && (pendingRemove = null)"
 			@confirm="confirmRemove"

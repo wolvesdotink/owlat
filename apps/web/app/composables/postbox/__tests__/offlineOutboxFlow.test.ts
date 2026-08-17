@@ -17,6 +17,12 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, nextTick } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The composables under test are stood up OUTSIDE a component setup here, so
+// the `useI18n` auto-import resolves straight to a catalog-backed composer —
+// the real English an offline sender reads, not a `t: (key) => key` stub.
+const i18n = createTestI18n();
 
 // ── @owlat/api markers ───────────────────────────────────────────────────
 vi.mock('@owlat/api', () => ({
@@ -212,6 +218,7 @@ beforeEach(async () => {
 	toasts.length = 0;
 	localStorage.clear();
 
+	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
 	vi.stubGlobal('useToast', () => ({
 		showToast: (msg: string) => {
@@ -305,7 +312,7 @@ describe('offline send', () => {
 		fakeOutbox.failEnqueue = true;
 
 		await expect(composer.send()).rejects.toThrow('Send failed');
-		expect(toasts).toContain('This device is out of storage.');
+		expect(toasts).toContain(i18n.global.t('shared.postbox.offlineOutbox.outOfStorage'));
 		expect(fakeOutbox.list('mbx-1')).toHaveLength(0);
 	});
 

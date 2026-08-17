@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
 import { useReviewQueue } from '../useReviewQueue';
+
+// The queue is stood up outside a component here, so `useI18n` is stubbed with
+// the real catalog's `t` — the operation labels stay the English an admin reads.
+const { t } = createTestI18n().global;
 
 /**
  * Regression tests for the Review Queue draftless-escalation fix.
@@ -19,6 +24,7 @@ describe('useReviewQueue', () => {
 
 	beforeEach(() => {
 		runs = [];
+		vi.stubGlobal('useI18n', () => ({ t }));
 		vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined), isLoading: ref(false) }));
 		vi.stubGlobal('useBackendOperation', () => {
 			const run = vi.fn().mockResolvedValue({ success: true });

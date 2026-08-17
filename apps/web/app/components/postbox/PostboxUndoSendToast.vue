@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
+const { t } = useI18n();
+
 const { state, dismiss } = usePostboxUndoSend();
 const stack = usePostboxComposerStack();
 // Offline-queued sends arm this toast with a synthetic `outbox:` token
@@ -9,7 +11,7 @@ const stack = usePostboxComposerStack();
 // the server to cancel.
 const offlineOutbox = usePostboxOfflineOutbox();
 const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
-	label: 'Undo send',
+	label: () => t('components.postbox.postboxUndoSendToast.undoSendOperation'),
 });
 
 const now = ref(Date.now());
@@ -75,23 +77,23 @@ async function handleUndo() {
 
 <template>
 	<Transition name="pbx-toast">
-		<div
-			v-if="state.visible && remainingSec > 0"
-			class="fixed bottom-4 left-4 bg-text-primary text-text-inverse rounded-md shadow-lg px-4 py-3 flex items-center gap-3 z-50"
+	<div
+		v-if="state.visible && remainingSec > 0"
+		class="fixed bottom-4 left-4 bg-text-primary text-text-inverse rounded-md shadow-lg px-4 py-3 flex items-center gap-3 z-50"
+	>
+		<Icon name="lucide:send" class="w-4 h-4" />
+		<span class="text-sm">{{
+			isQueued
+				? t('components.postbox.postboxUndoSendToast.queued', { seconds: remainingSec })
+				: t('components.postbox.postboxUndoSendToast.sending', { seconds: remainingSec })
+		}}</span>
+		<button
+			type="button"
+			class="text-sm font-semibold text-brand hover:underline"
+			@click="handleUndo"
 		>
-			<Icon name="lucide:send" class="w-4 h-4" />
-			<span class="text-sm">{{
-				isQueued
-					? `Queued — sends when you're back online (${remainingSec}s)`
-					: `Sending… (${remainingSec}s)`
-			}}</span>
-			<button
-				type="button"
-				class="text-sm font-semibold text-brand hover:underline"
-				@click="handleUndo"
-			>
-				Undo
-			</button>
-		</div>
+			{{ t('components.postbox.postboxUndoSendToast.undo') }}
+		</button>
+	</div>
 	</Transition>
 </template>

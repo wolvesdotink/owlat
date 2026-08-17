@@ -15,6 +15,8 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { ref, computed, nextTick, reactive } from 'vue';
 
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
 import PostboxTodayView from '../PostboxTodayView.vue';
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
 
@@ -33,9 +35,12 @@ const feed = {
 	hasMore: ref(false),
 	loadMore: vi.fn(),
 };
+// `items` is hoisted out of the object literal so `count` can read it without
+// referencing `queue` inside its own initializer (which types as `any`).
+const queueItems = ref<ReplyQueueItem[]>([]);
 const queue = {
-	items: ref<ReplyQueueItem[]>([]),
-	count: computed(() => queue.items.value.length),
+	items: queueItems,
+	count: computed(() => queueItems.value.length),
 	isLoading: ref(false),
 };
 const threads = ref<{ threads: Array<Record<string, unknown>> } | undefined>({ threads: [] });
@@ -54,6 +59,10 @@ beforeAll(() => {
 	vi.stubGlobal('useConvexQuery', () => ({ data: threads, isLoading: ref(false) }));
 	vi.stubGlobal('useRoute', () => routeState);
 	vi.stubGlobal('useRouter', () => ({ replace: routerReplace }));
+	// Section headings, the For-you strips and the past-mail affordance render
+	// through vue-i18n now; `useI18n` is a Nuxt auto-import, so it has to be a
+	// global here.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
 /** A complete ReplyQueueItem so rendering the For-you strip never trips on a
@@ -126,6 +135,7 @@ function mountView(extraProps: Record<string, unknown> = {}) {
 	const wrapper = mount(PostboxTodayView, {
 		props: { mailboxId: 'mbx-1' as never, ...extraProps },
 		global: {
+			plugins: [createTestI18n()],
 			components: {
 				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,

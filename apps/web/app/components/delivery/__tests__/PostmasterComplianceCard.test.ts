@@ -1,9 +1,14 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
 import PostmasterComplianceCard from '../PostmasterComplianceCard.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -42,7 +47,10 @@ function domainStatus(
 }
 
 function mountCard(props: CardProps) {
-	return mount(PostmasterComplianceCard, { props, global: { stubs } });
+	return mount(PostmasterComplianceCard, {
+		props,
+		global: { plugins: [createTestI18n()], stubs },
+	});
 }
 
 const failingCard = {

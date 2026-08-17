@@ -8,10 +8,7 @@ import {
 } from './conditions';
 
 // ─── Re-exports ────────────────────────────────────────────────────────────
-export type {
-	Condition,
-	ConditionKind,
-} from './conditions';
+export type { Condition, ConditionKind } from './conditions';
 
 export type FilterLogic = 'AND' | 'OR';
 export type FilterCondition = Condition;
@@ -30,6 +27,8 @@ export interface SegmentFilters {
  * API, and owns the condition CRUD operations on a SegmentFilters object.
  */
 export function useSegmentFilters(ctx: ConditionEditorContextInput) {
+	const { t } = useI18n();
+
 	provideConditionEditorContext(ctx);
 
 	const moduleList = Object.values(CONDITION_EDITOR_MODULES);
@@ -40,17 +39,21 @@ export function useSegmentFilters(ctx: ConditionEditorContextInput) {
 			try {
 				parsed = JSON.parse(filters);
 			} catch {
-				return 'Invalid filters';
+				return t('shared.useSegmentFilters.invalidFilters');
 			}
 		} else {
 			parsed = filters;
 		}
 		if (!parsed.conditions || parsed.conditions.length === 0) {
-			return 'All contacts';
+			return t('shared.useSegmentFilters.allContacts');
 		}
 		const count = parsed.conditions.length;
-		const logic = parsed.logic === 'AND' ? 'all' : 'any';
-		return `${count} condition${count !== 1 ? 's' : ''} (${logic})`;
+		const logic = t(
+			parsed.logic === 'AND'
+				? 'shared.useSegmentFilters.logicAll'
+				: 'shared.useSegmentFilters.logicAny'
+		);
+		return t('shared.useSegmentFilters.conditionSummary', { count, logic }, count);
 	};
 
 	const editorCtx = {

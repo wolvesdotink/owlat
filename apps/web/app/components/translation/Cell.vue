@@ -7,12 +7,19 @@ interface Props {
 	isSaving?: boolean;
 }
 
+const { t } = useI18n();
+
 const props = withDefaults(defineProps<Props>(), {
-	placeholder: 'Click to translate',
+	placeholder: '',
 	isHtml: false,
 	isDefault: false,
 	isSaving: false,
 });
+
+// A caller may name the cell itself; otherwise the shared invitation to edit.
+const placeholderText = computed(
+	() => props.placeholder || t('components.translation.cell.placeholder')
+);
 
 const emit = defineEmits<{
 	save: [value: string];
@@ -82,7 +89,7 @@ watch(editValue, () => {
 				ref="textareaRef"
 				v-model="editValue"
 				class="w-full min-h-[80px] p-2 text-sm bg-bg-base border border-brand rounded-lg text-text-primary resize-none focus:outline-none focus:ring-1 focus:ring-brand"
-				:placeholder="placeholder"
+				:placeholder="placeholderText"
 				@keydown="handleKeydown"
 				@input="autoResize"
 			/>
@@ -90,7 +97,7 @@ watch(editValue, () => {
 				<button
 					type="button"
 					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success transition-colors"
-					title="Save (Cmd+Enter)"
+					:title="t('components.translation.cell.saveTitle')"
 					@click="saveEdit"
 				>
 					<Icon name="lucide:check" class="w-4 h-4" />
@@ -98,7 +105,7 @@ watch(editValue, () => {
 				<button
 					type="button"
 					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-error transition-colors"
-					title="Cancel (Esc)"
+					:title="t('components.translation.cell.cancelTitle')"
 					@click="cancelEdit"
 				>
 					<Icon name="lucide:x" class="w-4 h-4" />
@@ -121,7 +128,7 @@ watch(editValue, () => {
 		>
 			<!-- Empty state -->
 			<span v-if="isEmpty" class="text-text-tertiary italic">
-				{{ isDefault ? 'No content' : placeholder }}
+				{{ isDefault ? t('components.translation.cell.noContent') : placeholderText }}
 			</span>
 
 			<!-- Value display -->
@@ -134,7 +141,7 @@ watch(editValue, () => {
 				v-if="isHtml && !isEmpty"
 				class="absolute top-1 right-1 text-xs text-text-tertiary bg-bg-surface px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
 			>
-				HTML
+				{{ t('components.translation.cell.htmlBadge') }}
 			</span>
 
 			<!-- Default language indicator -->
@@ -142,7 +149,7 @@ watch(editValue, () => {
 				v-if="isDefault"
 				class="absolute top-1 right-1 text-xs text-brand bg-brand/10 px-1.5 py-0.5 rounded"
 			>
-				source
+				{{ t('components.translation.cell.sourceBadge') }}
 			</span>
 
 			<!-- Saving indicator -->

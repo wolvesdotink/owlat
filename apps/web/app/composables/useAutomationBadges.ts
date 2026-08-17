@@ -17,13 +17,20 @@ export type AutomationTriggerType =
 	| 'event_received'
 	| 'topic_subscribed';
 
+/**
+ * Badge copy travels as a message KEY: these maps are module-scope definitions,
+ * so they cannot call `useI18n`. The screens that render a badge translate it
+ * (`t(badge.label)`).
+ */
 interface AutomationStatusBadge {
 	color: string;
 	icon: string;
+	/** A message key. */
 	label: string;
 }
 
 interface AutomationTriggerBadge {
+	/** A message key. */
 	label: string;
 	icon: string;
 	color: string;
@@ -31,32 +38,44 @@ interface AutomationTriggerBadge {
 }
 
 const STATUS_BADGES: Record<AutomationStatus, AutomationStatusBadge> = {
-	draft: { color: 'bg-text-tertiary/10 text-text-tertiary', icon: 'lucide:pencil', label: 'Draft' },
-	active: { color: 'bg-success/10 text-success', icon: 'lucide:play', label: 'Active' },
-	paused: { color: 'bg-warning/10 text-warning', icon: 'lucide:pause', label: 'Paused' },
+	draft: {
+		color: 'bg-text-tertiary/10 text-text-tertiary',
+		icon: 'lucide:pencil',
+		label: 'shared.useAutomationBadges.status.draft',
+	},
+	active: {
+		color: 'bg-success/10 text-success',
+		icon: 'lucide:play',
+		label: 'shared.useAutomationBadges.status.active',
+	},
+	paused: {
+		color: 'bg-warning/10 text-warning',
+		icon: 'lucide:pause',
+		label: 'shared.useAutomationBadges.status.paused',
+	},
 };
 
 const TRIGGER_BADGES: Record<AutomationTriggerType, AutomationTriggerBadge> = {
 	contact_created: {
-		label: 'Contact Created',
+		label: 'shared.useAutomationBadges.triggers.contactCreated',
 		icon: 'lucide:user-plus',
 		color: 'text-brand',
 		bgColor: 'bg-brand/10',
 	},
 	contact_updated: {
-		label: 'Contact Updated',
+		label: 'shared.useAutomationBadges.triggers.contactUpdated',
 		icon: 'lucide:user-cog',
 		color: 'text-brand',
 		bgColor: 'bg-brand/10',
 	},
 	event_received: {
-		label: 'Event Received',
+		label: 'shared.useAutomationBadges.triggers.eventReceived',
 		icon: 'lucide:radio',
 		color: 'text-warning',
 		bgColor: 'bg-warning/10',
 	},
 	topic_subscribed: {
-		label: 'Subscribed to Topic',
+		label: 'shared.useAutomationBadges.triggers.topicSubscribed',
 		icon: 'lucide:list-plus',
 		color: 'text-success',
 		bgColor: 'bg-success/10',

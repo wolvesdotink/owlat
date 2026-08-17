@@ -5,6 +5,8 @@ const props = defineProps<{
 	contactId: Id<'contacts'>;
 }>();
 
+const { t } = useI18n();
+
 const contactIdRef = computed(() => props.contactId);
 
 const {
@@ -30,38 +32,46 @@ const emit = defineEmits<{
 const onAdd = async () => {
 	try {
 		await handleAddIdentity();
-		emit('toast', 'Identity added');
+		emit('toast', t('components.contacts.identitiesTab.toasts.added'));
 	} catch {
-		emit('toast', 'Failed to add identity');
+		emit('toast', t('components.contacts.identitiesTab.toasts.addFailed'));
 	}
 };
 
 const onRemove = async (id: Id<'contactIdentities'>) => {
 	try {
 		await handleRemoveIdentity(id);
-		emit('toast', 'Identity removed');
+		emit('toast', t('components.contacts.identitiesTab.toasts.removed'));
 	} catch {
-		emit('toast', 'Failed to remove identity');
+		emit('toast', t('components.contacts.identitiesTab.toasts.removeFailed'));
 	}
 };
 
 const onVerify = async (id: Id<'contactIdentities'>) => {
 	try {
 		await handleVerifyIdentity(id);
-		emit('toast', 'Identity verified');
+		emit('toast', t('components.contacts.identitiesTab.toasts.verified'));
 	} catch {
-		emit('toast', 'Failed to verify identity');
+		emit('toast', t('components.contacts.identitiesTab.toasts.verifyFailed'));
 	}
 };
 
 const onMerge = async (sourceId: Id<'contacts'>) => {
 	try {
 		await handleMergeContacts(sourceId);
-		emit('toast', 'Contacts merged');
+		emit('toast', t('components.contacts.identitiesTab.toasts.merged'));
 	} catch {
-		emit('toast', 'Failed to merge contacts');
+		emit('toast', t('components.contacts.identitiesTab.toasts.mergeFailed'));
 	}
 };
+
+const identifierPlaceholder = computed(() => {
+	if (addForm.channel === 'email')
+		return t('components.contacts.identitiesTab.identifierPlaceholder.email');
+	if (addForm.channel === 'phone')
+		return t('components.contacts.identitiesTab.identifierPlaceholder.phone');
+	return t('components.contacts.identitiesTab.identifierPlaceholder.other');
+});
 </script>
 
 <template>
@@ -69,10 +79,12 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 		<!-- Identities Card -->
 		<div class="card">
 			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-lg font-medium text-text-primary">Channel Identities</h2>
+				<h2 class="text-lg font-medium text-text-primary">
+					{{ t('components.contacts.identitiesTab.title') }}
+				</h2>
 				<UiButton variant="secondary" size="sm" class="gap-1" @click="showAddForm = !showAddForm">
 					<Icon :name="showAddForm ? 'lucide:x' : 'lucide:plus'" class="w-3 h-3" />
-					{{ showAddForm ? 'Cancel' : 'Add Identity' }}
+					{{ showAddForm ? t('common.cancel') : t('components.contacts.identitiesTab.addIdentity') }}
 				</UiButton>
 			</div>
 
@@ -80,27 +92,25 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 			<div v-if="showAddForm" class="mb-6 p-4 bg-bg-surface rounded-lg space-y-3">
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 					<div>
-						<label for="addform-channel" class="label">Channel</label>
+						<label for="addform-channel" class="label">{{
+							t('components.contacts.identitiesTab.channel')
+						}}</label>
 						<select id="addform-channel" v-model="addForm.channel" class="input w-full">
 							<option v-for="ch in channelOptions" :key="ch.value" :value="ch.value">
-								{{ ch.label }}
+								{{ t(ch.label) }}
 							</option>
 						</select>
 					</div>
 					<div>
-						<label for="addform-identifier" class="label">Identifier</label>
+						<label for="addform-identifier" class="label">{{
+							t('components.contacts.identitiesTab.identifier')
+						}}</label>
 						<input
 							id="addform-identifier"
 							v-model="addForm.identifier"
 							type="text"
 							class="input w-full"
-							:placeholder="
-								addForm.channel === 'email'
-									? 'email@example.com'
-									: addForm.channel === 'phone'
-										? '+1234567890'
-										: 'Handle or ID'
-							"
+							:placeholder="identifierPlaceholder"
 						/>
 					</div>
 				</div>
@@ -111,10 +121,10 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 							type="checkbox"
 							class="rounded border-border-subtle"
 						/>
-						Set as primary
+						{{ t('components.contacts.identitiesTab.setPrimary') }}
 					</label>
 					<UiButton size="sm" :disabled="!addForm.identifier.trim() || isAdding" @click="onAdd">
-						{{ isAdding ? 'Adding...' : 'Add' }}
+						{{ isAdding ? t('components.contacts.identitiesTab.adding') : t('common.add') }}
 					</UiButton>
 				</div>
 			</div>
@@ -126,7 +136,9 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 
 			<!-- Empty -->
 			<div v-else-if="!identities || identities.length === 0" class="py-6 text-center">
-				<p class="text-text-tertiary text-sm">No identities linked yet.</p>
+				<p class="text-text-tertiary text-sm">
+					{{ t('components.contacts.identitiesTab.empty') }}
+				</p>
 			</div>
 
 			<!-- Identity List -->
@@ -146,30 +158,30 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 								v-if="identity.isPrimary"
 								class="text-xs px-1.5 py-0.5 rounded bg-brand-subtle text-brand"
 							>
-								Primary
+								{{ t('components.contacts.identitiesTab.primary') }}
 							</span>
 							<span
 								v-if="identity.verifiedAt"
 								class="text-xs text-success flex items-center gap-0.5"
 							>
 								<Icon name="lucide:check-circle" class="w-3 h-3" />
-								Verified
+								{{ t('components.contacts.identitiesTab.verified') }}
 							</span>
 						</div>
-						<p class="text-xs text-text-tertiary">{{ getChannelLabel(identity.channel) }}</p>
+						<p class="text-xs text-text-tertiary">{{ t(getChannelLabel(identity.channel)) }}</p>
 					</div>
 					<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 						<button
 							v-if="!identity.verifiedAt"
 							class="p-1.5 rounded text-text-tertiary hover:text-success hover:bg-success-subtle transition-colors"
-							title="Mark as verified"
+							:title="t('components.contacts.identitiesTab.markVerified')"
 							@click="onVerify(identity._id)"
 						>
 							<Icon name="lucide:check-circle" class="w-4 h-4" />
 						</button>
 						<button
 							class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-							title="Remove identity"
+							:title="t('components.contacts.identitiesTab.removeIdentity')"
 							@click="onRemove(identity._id)"
 						>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -183,10 +195,12 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 		<div v-if="mergeSuggestions && mergeSuggestions.length > 0" class="card border-warning/20">
 			<div class="flex items-center gap-2 mb-4">
 				<Icon name="lucide:git-merge" class="w-5 h-5 text-warning" />
-				<h2 class="text-lg font-medium text-text-primary">Merge Suggestions</h2>
+				<h2 class="text-lg font-medium text-text-primary">
+					{{ t('components.contacts.identitiesTab.mergeSuggestions') }}
+				</h2>
 			</div>
 			<p class="text-sm text-text-secondary mb-4">
-				These contacts share identifiers and may be the same person.
+				{{ t('components.contacts.identitiesTab.mergeSuggestionsIntro') }}
 			</p>
 			<div class="space-y-3">
 				<div
@@ -199,9 +213,12 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 							{{ suggestion.contact.email }}
 						</p>
 						<p class="text-xs text-text-tertiary">
-							Matching:
 							{{
-								suggestion.matchedIdentities.map((i) => `${i.channel}: ${i.identifier}`).join(', ')
+								t('components.contacts.identitiesTab.matching', {
+									identifiers: suggestion.matchedIdentities
+										.map((i) => `${i.channel}: ${i.identifier}`)
+										.join(', '),
+								})
 							}}
 						</p>
 					</div>
@@ -212,7 +229,7 @@ const onMerge = async (sourceId: Id<'contacts'>) => {
 						@click="onMerge(suggestion.contact._id)"
 					>
 						<Icon name="lucide:git-merge" class="w-3 h-3" />
-						Merge
+						{{ t('components.contacts.identitiesTab.merge') }}
 					</UiButton>
 				</div>
 			</div>

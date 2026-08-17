@@ -35,8 +35,10 @@ export function useAutomationStepConfig(
 	automation: Ref<AutomationWithSteps | null | undefined>,
 	showToast: (message: string, type?: 'success' | 'error') => void
 ) {
+	const { t } = useI18n();
+
 	const { run: updateStepMutation } = useBackendOperation(api.automations.steps.updateStep, {
-		label: 'Update automation step',
+		label: () => t('shared.useAutomationStepConfig.updateStepOperation'),
 	});
 
 	const isSaving = ref(false);
@@ -98,7 +100,7 @@ export function useAutomationStepConfig(
 			// The step is now persisted; adopt it as the clean baseline so the
 			// dirty guard clears without waiting for the automation query to reload.
 			persistedConfigJson.value = JSON.stringify(currentConfig.value.config);
-			if (!options?.silent) showToast('Step updated');
+			if (!options?.silent) showToast(t('shared.useAutomationStepConfig.stepUpdated'));
 		} finally {
 			isSaving.value = false;
 		}

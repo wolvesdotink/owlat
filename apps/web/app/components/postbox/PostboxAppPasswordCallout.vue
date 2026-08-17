@@ -10,11 +10,19 @@ const props = defineProps<{
 	authError?: boolean;
 }>();
 
+const { t } = useI18n();
+
 const heading = computed(() =>
 	props.authError
-		? `${props.help.provider} needs an app password, not your account password`
-		: `${props.help.provider} needs an app password`,
+		? t('components.postbox.postboxAppPasswordCallout.headingAuthError', {
+				provider: props.help.provider,
+			})
+		: t('components.postbox.postboxAppPasswordCallout.heading', { provider: props.help.provider }),
 );
+
+// `steps` comes from the module-scope provider registry, so it carries a message
+// key rather than a sentence.
+const steps = computed(() => t(props.help.steps));
 </script>
 
 <template>
@@ -23,14 +31,14 @@ const heading = computed(() =>
 			<Icon name="lucide:key-round" class="w-3.5 h-3.5 text-info" />
 			{{ heading }}
 		</p>
-		<p class="text-text-secondary">{{ help.steps }}</p>
+		<p class="text-text-secondary">{{ steps }}</p>
 		<a
 			:href="help.url"
 			target="_blank"
 			rel="noopener noreferrer"
 			class="text-info underline inline-flex items-center gap-1"
 		>
-			Open {{ help.provider }} app-password page
+			{{ t('components.postbox.postboxAppPasswordCallout.openPage', { provider: help.provider }) }}
 			<Icon name="lucide:external-link" class="w-3 h-3" />
 		</a>
 	</div>

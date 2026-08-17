@@ -5,7 +5,10 @@
  * carried byte-identical copies of this markup before. Body goes in the
  * default slot; Escape and overlay-click both close.
  */
+const { t } = useI18n();
+
 defineProps<{
+	/** Already-translated heading — every caller passes it through `t()`. */
 	title: string;
 	/** Panel width: 'md' for forms, 'lg' for scrollable browsers. */
 	size?: 'md' | 'lg';
@@ -39,7 +42,7 @@ useModalFocus(panelRef, () => true, () => emit('close'));
 					<button
 						class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
 						@click="emit('close')"
-					 aria-label="Close">
+					 :aria-label="t('common.close')">
 						<Icon name="lucide:x" class="w-4 h-4" />
 					</button>
 				</div>

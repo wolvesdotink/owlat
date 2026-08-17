@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { EntryType } from '~/utils/knowledgeEntryTypes';
 
-useHead({ title: 'Knowledge Graph — Owlat' });
+const { t, te } = useI18n();
+
+useHead({ title: () => t('dashboard.knowledge.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -24,7 +27,7 @@ const policyTitle = ref('');
 const policyContent = ref('');
 const { data: policies } = useConvexQuery(api.knowledge.graph.listPolicies, () => ({ limit: 10 }));
 const createPolicy = useBackendOperation(api.knowledge.graph.createPolicyEntry, {
-	label: 'Create canonical answer',
+	label: () => t('dashboard.knowledge.index.createPolicyOperation'),
 });
 
 async function handleCreatePolicy() {
@@ -37,12 +40,20 @@ async function handleCreatePolicy() {
 	policyContent.value = '';
 }
 
+// Entry-type labels are translated here; the shared presentation map
+// (`~/utils/knowledgeEntryTypes`) stays a plain constant, so an unknown type
+// still falls back to its raw label instead of a key path.
+const entryTypeLabel = (type: EntryType): string => {
+	const key = `dashboard.knowledge.index.entryTypes.${type}`;
+	return te(key) ? t(key) : TYPE_CONFIG[type].label;
+};
+
 const tabs = computed(() => [
-	{ key: null as string | null, label: 'All', icon: 'lucide:layers' },
-	...ENTRY_TYPES.map((t) => ({
-		key: t as string | null,
-		label: TYPE_CONFIG[t].label,
-		icon: TYPE_CONFIG[t].icon,
+	{ key: null as string | null, label: t('common.all'), icon: 'lucide:layers' },
+	...ENTRY_TYPES.map((entryType) => ({
+		key: entryType as string | null,
+		label: entryTypeLabel(entryType),
+		icon: TYPE_CONFIG[entryType].icon,
 	})),
 ]);
 
@@ -71,15 +82,17 @@ const handleCancelled = () => {
 					<Icon name="lucide:brain" class="w-6 h-6 text-brand" />
 				</div>
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Knowledge Graph</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.knowledge.index.title') }}
+					</h1>
 					<p class="text-sm text-text-secondary mt-0.5">
-						Browse, search, and manage extracted knowledge from your conversations and files.
+						{{ t('dashboard.knowledge.index.subtitle') }}
 					</p>
 				</div>
 			</div>
 			<UiButton class="gap-2 flex-shrink-0" @click="showCreateForm = true">
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				Create Entry
+				{{ t('dashboard.knowledge.index.createEntry') }}
 			</UiButton>
 		</div>
 
@@ -92,7 +105,7 @@ const handleCancelled = () => {
 			<input
 				v-model="searchQuery"
 				type="text"
-				placeholder="Search knowledge entries..."
+				:placeholder="t('dashboard.knowledge.index.searchPlaceholder')"
 				class="input w-full pl-10"
 			/>
 		</div>
@@ -137,18 +150,22 @@ const handleCancelled = () => {
 						/>
 					</div>
 					<h3 class="text-base font-medium text-text-primary">
-						{{ searchQuery ? 'No results found' : 'No entries yet' }}
+						{{
+							searchQuery
+								? t('dashboard.knowledge.index.noResultsTitle')
+								: t('dashboard.knowledge.index.emptyTitle')
+						}}
 					</h3>
 					<p class="text-sm text-text-secondary mt-1 max-w-sm">
 						{{
 							searchQuery
-								? `No knowledge entries match "${searchQuery}". Try a different search term.`
-								: 'Knowledge entries are extracted from conversations and files, or you can create them manually.'
+								? t('dashboard.knowledge.index.noResultsBody', { query: searchQuery })
+								: t('dashboard.knowledge.index.emptyBody')
 						}}
 					</p>
 					<UiButton v-if="!searchQuery" class="mt-4 gap-2" @click="showCreateForm = true">
 						<Icon name="lucide:plus" class="w-4 h-4" />
-						Create First Entry
+						{{ t('dashboard.knowledge.index.createFirstEntry') }}
 					</UiButton>
 				</div>
 
@@ -174,25 +191,29 @@ const handleCancelled = () => {
 				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
 					<h3 class="flex items-center gap-2 text-sm font-semibold text-text-primary">
 						<Icon name="lucide:badge-check" class="h-4 w-4 text-brand" />
-						Canonical answers
+						{{ t('dashboard.knowledge.index.canonicalAnswers') }}
 					</h3>
 					<p class="mt-2 text-sm text-text-secondary">
-						Authoritative answers outrank automatically extracted facts when the agent drafts.
+						{{ t('dashboard.knowledge.index.canonicalAnswersBody') }}
 					</p>
 					<div class="mt-4 space-y-2">
 						<UiInput
 							v-model="policyTitle"
-							label="Question"
-							placeholder="What is our return policy?"
+							:label="t('dashboard.knowledge.index.questionLabel')"
+							:placeholder="t('dashboard.knowledge.index.questionPlaceholder')"
 						/>
-						<UiTextarea v-model="policyContent" label="Answer" :rows="3" />
+						<UiTextarea
+							v-model="policyContent"
+							:label="t('dashboard.knowledge.index.answerLabel')"
+							:rows="3"
+						/>
 						<UiButton
 							size="sm"
 							:loading="createPolicy.isLoading.value"
 							:disabled="!policyTitle.trim() || !policyContent.trim()"
 							@click="handleCreatePolicy"
 						>
-							Add canonical answer
+							{{ t('dashboard.knowledge.index.addCanonicalAnswer') }}
 						</UiButton>
 					</div>
 					<ul v-if="policies?.length" class="mt-4 space-y-2 border-t border-border-subtle pt-4">
@@ -211,7 +232,7 @@ const handleCancelled = () => {
 				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
 					<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
 						<Icon name="lucide:info" class="w-4 h-4 text-text-tertiary" />
-						How it works
+						{{ t('dashboard.knowledge.index.howItWorks') }}
 					</h3>
 					<div class="space-y-3 text-sm text-text-secondary">
 						<div class="flex items-start gap-2.5">
@@ -220,9 +241,7 @@ const handleCancelled = () => {
 							>
 								1
 							</div>
-							<p>
-								Knowledge is automatically extracted from emails, chats, and files by the AI agent.
-							</p>
+							<p>{{ t('dashboard.knowledge.index.howItWorksStep1') }}</p>
 						</div>
 						<div class="flex items-start gap-2.5">
 							<div
@@ -230,10 +249,7 @@ const handleCancelled = () => {
 							>
 								2
 							</div>
-							<p>
-								Each entry has a confidence score that decays over time, with recent use slowing the
-								decay.
-							</p>
+							<p>{{ t('dashboard.knowledge.index.howItWorksStep2') }}</p>
 						</div>
 						<div class="flex items-start gap-2.5">
 							<div
@@ -241,32 +257,31 @@ const handleCancelled = () => {
 							>
 								3
 							</div>
-							<p>
-								Entries are linked to contacts and related to each other, forming a navigable
-								knowledge graph.
-							</p>
+							<p>{{ t('dashboard.knowledge.index.howItWorksStep3') }}</p>
 						</div>
 					</div>
 				</div>
 
 				<!-- Entry Types Legend -->
 				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
-					<h3 class="text-sm font-semibold text-text-primary mb-3">Entry Types</h3>
+					<h3 class="text-sm font-semibold text-text-primary mb-3">
+						{{ t('dashboard.knowledge.index.entryTypesTitle') }}
+					</h3>
 					<div class="space-y-2">
-						<div v-for="t in ENTRY_TYPES" :key="t" class="flex items-center gap-2.5">
+						<div v-for="entryType in ENTRY_TYPES" :key="entryType" class="flex items-center gap-2.5">
 							<div
 								class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
 								:class="{
-									'bg-brand-subtle text-brand': typeVariant(t) === 'default',
-									'bg-warning/10 text-warning': typeVariant(t) === 'warning',
-									'bg-bg-surface text-text-secondary': typeVariant(t) === 'neutral',
-									'bg-success-subtle text-success': typeVariant(t) === 'success',
-									'bg-error/10 text-error': typeVariant(t) === 'error',
+									'bg-brand-subtle text-brand': typeVariant(entryType) === 'default',
+									'bg-warning/10 text-warning': typeVariant(entryType) === 'warning',
+									'bg-bg-surface text-text-secondary': typeVariant(entryType) === 'neutral',
+									'bg-success-subtle text-success': typeVariant(entryType) === 'success',
+									'bg-error/10 text-error': typeVariant(entryType) === 'error',
 								}"
 							>
-								<Icon :name="typeIcon(t)" class="w-3.5 h-3.5" />
+								<Icon :name="typeIcon(entryType)" class="w-3.5 h-3.5" />
 							</div>
-							<span class="text-sm text-text-secondary">{{ TYPE_CONFIG[t].label }}</span>
+							<span class="text-sm text-text-secondary">{{ entryTypeLabel(entryType) }}</span>
 						</div>
 					</div>
 				</div>
@@ -303,11 +318,13 @@ const handleCancelled = () => {
 							<div
 								class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10"
 							>
-								<h3 class="text-base font-semibold text-text-primary">Create Knowledge Entry</h3>
+								<h3 class="text-base font-semibold text-text-primary">
+									{{ t('dashboard.knowledge.index.createModalTitle') }}
+								</h3>
 								<button
 									class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click="handleCancelled"
-									aria-label="Close"
+									:aria-label="t('common.close')"
 								>
 									<Icon name="lucide:x" class="w-4 h-4" />
 								</button>

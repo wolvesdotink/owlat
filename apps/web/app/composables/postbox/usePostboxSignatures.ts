@@ -6,6 +6,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 export function usePostboxSignatures(mailboxId: Ref<Id<'mailboxes'> | null>) {
+	const { t } = useI18n();
 	const { data, isLoading } = useConvexQuery(api.mail.signatures.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
@@ -17,13 +18,13 @@ export function usePostboxSignatures(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const defaultSignature = computed(() => defaultQuery.data.value ?? null);
 
 	const createMutation = useBackendOperation(api.mail.signatures.create, {
-		label: 'Create signature',
+		label: () => t('shared.postbox.usePostboxSignatures.createSignature'),
 	});
 	const updateMutation = useBackendOperation(api.mail.signatures.update, {
-		label: 'Save signature',
+		label: () => t('shared.postbox.usePostboxSignatures.saveSignature'),
 	});
 	const removeMutation = useBackendOperation(api.mail.signatures.remove, {
-		label: 'Delete signature',
+		label: () => t('shared.postbox.usePostboxSignatures.deleteSignature'),
 	});
 
 	async function create(name: string, html: string, isDefault?: boolean) {

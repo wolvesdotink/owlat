@@ -13,6 +13,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, ref } from 'vue';
 
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import ContactsPage from '../contacts.vue';
 
 type Contact = {
@@ -31,6 +32,8 @@ const navigate = vi.fn();
 
 beforeAll(() => {
 	Object.assign(globalThis, {
+		// `useI18n` is a Nuxt auto-import in the SFC — a bare global here.
+		useI18n: i18nStubs.useI18n,
 		useHead: () => {},
 		definePageMeta: () => {},
 		navigateTo: navigate,
@@ -68,6 +71,7 @@ let wrapper: VueWrapper | null = null;
 function mountPage() {
 	wrapper = mount(ContactsPage, {
 		global: {
+			plugins: [createTestI18n()],
 			components: {
 				Icon: iconStub,
 				UiModal: modalStub,

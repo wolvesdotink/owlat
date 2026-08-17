@@ -21,7 +21,7 @@
 						class="flex items-center justify-between h-[60px] px-4 border-b border-border-subtle"
 					>
 						<NuxtLink
-							to="/"
+							:to="localePath('/')"
 							class="flex items-center gap-2 text-text-primary"
 							@click="emit('update:open', false)"
 						>
@@ -41,11 +41,11 @@
 									stroke-linecap="round"
 								/>
 							</svg>
-							<span class="text-md font-semibold tracking-tight">Owlat Docs</span>
+							<span class="text-md font-semibold tracking-tight">{{ t('brand.docs') }}</span>
 						</NuxtLink>
 						<button
 							class="flex items-center justify-center w-8 h-8 rounded-full text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
-							aria-label="Close sidebar"
+							:aria-label="t('nav.closeSidebar')"
 							@click="emit('update:open', false)"
 						>
 							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -64,12 +64,18 @@
 						<NuxtLink
 							v-for="link in mobileNavLinks"
 							:key="link.to"
-							:to="link.to"
+							:to="localePath(link.to)"
 							class="block px-2 py-2 text-sm rounded-lg transition-colors duration-(--motion-fast) text-text-secondary hover:text-text-primary hover:bg-bg-surface"
 							@click="emit('update:open', false)"
 						>
-							{{ link.label }}
+							{{ t(link.labelKey) }}
 						</NuxtLink>
+					</div>
+
+					<!-- Language switcher -->
+					<div class="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
+						<span class="text-sm text-text-secondary">{{ t('language.label') }}</span>
+						<DocsLanguageSwitcher />
 					</div>
 
 					<!-- Sidebar navigation -->
@@ -91,10 +97,13 @@ const emit = defineEmits<{
 	'update:open': [value: boolean];
 }>();
 
+const { t } = useI18n();
+const localePath = useLocalePath();
+
 const mobileNavLinks = [
-	{ label: 'Guide', to: '/guide/getting-started' },
-	{ label: 'API', to: '/api' },
-	{ label: 'Developer', to: '/developer' },
+	{ labelKey: 'nav.guide', to: '/guide/getting-started' },
+	{ labelKey: 'nav.api', to: '/api' },
+	{ labelKey: 'nav.developer', to: '/developer' },
 ];
 
 // Close sidebar on route change

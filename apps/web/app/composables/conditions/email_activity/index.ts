@@ -1,19 +1,23 @@
 import { defineAsyncComponent } from 'vue';
-import type { ConditionEditorModule, ConditionOfKind } from '../types';
+import type { ConditionEditorModule, ConditionOfKind, LocalizedText } from '../types';
 
 type EmailActivityCondition = ConditionOfKind<'email_activity'>;
 
 interface ActivityOption {
 	field: EmailActivityCondition['field'];
 	operator: EmailActivityCondition['operator'];
+	/** i18n message key — resolve with `t()` at render time. */
 	label: string;
 }
 
+/** Message-key root for this module; see `i18n/locales/en.json`. */
+const K = 'shared.conditions.email_activity';
+
 export const ACTIVITY_OPTIONS: ActivityOption[] = [
-	{ field: 'opened', operator: 'is_true', label: 'Has opened an email' },
-	{ field: 'clicked', operator: 'is_true', label: 'Has clicked a link' },
-	{ field: 'opened', operator: 'is_false', label: 'Has not opened any email' },
-	{ field: 'clicked', operator: 'is_false', label: 'Has not clicked any link' },
+	{ field: 'opened', operator: 'is_true', label: `${K}.options.opened_is_true` },
+	{ field: 'clicked', operator: 'is_true', label: `${K}.options.clicked_is_true` },
+	{ field: 'opened', operator: 'is_false', label: `${K}.options.opened_is_false` },
+	{ field: 'clicked', operator: 'is_false', label: `${K}.options.clicked_is_false` },
 ];
 
 export function activityKey(c: EmailActivityCondition): string {
@@ -22,8 +26,8 @@ export function activityKey(c: EmailActivityCondition): string {
 
 export const emailActivityEditorModule: ConditionEditorModule<'email_activity'> = {
 	kind: 'email_activity',
-	label: 'Email Activity',
-	description: 'Filter by opens, clicks, etc.',
+	label: `${K}.label`,
+	description: `${K}.description`,
 	createDefault: () => ({
 		kind: 'email_activity',
 		field: 'opened',
@@ -31,15 +35,15 @@ export const emailActivityEditorModule: ConditionEditorModule<'email_activity'> 
 	}),
 	validateForSubmit(condition) {
 		if (condition.field !== 'opened' && condition.field !== 'clicked') {
-			return 'Please select an activity type';
+			return `${K}.validation.activityRequired`;
 		}
 		return null;
 	},
-	getDescription(condition) {
+	getDescription(condition): LocalizedText {
 		const match = ACTIVITY_OPTIONS.find(
 			(o) => o.field === condition.field && o.operator === condition.operator
 		);
-		return match?.label ?? 'Configure email activity';
+		return { key: match?.label ?? `${K}.descriptions.fallback` };
 	},
 	EditorComponent: defineAsyncComponent(
 		() => import('../../../components/conditions/email_activity/Editor.vue')

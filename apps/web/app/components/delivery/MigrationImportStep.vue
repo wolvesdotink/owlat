@@ -39,6 +39,17 @@ const emit = defineEmits<{ (event: 'carried', value: boolean): void }>();
 
 type Phase = 'idle' | 'contacts' | 'suppressions' | 'done' | 'failed';
 
+const { t, locale } = useI18n();
+
+/** Counts read against the active locale, not the one the browser happens to be in. */
+const count = (value: number): string => new Intl.NumberFormat(locale.value).format(value);
+
+/**
+ * The suppression table is module scope and never calls `useI18n`: every bucket
+ * name it hands back is a bare catalog key (`MigrationCarriedCount.label`), and
+ * this step is the render boundary that turns them into words.
+ */
+
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const isMailchimpEnabled = computed(() => isFeatureEnabled('imports.mailchimp'));
 const isMandrillEnabled = computed(() => isFeatureEnabled('imports.mandrill'));
@@ -74,10 +85,13 @@ const canStart = computed(() => {
 });
 
 const runLabel = computed(() => {
-	if (phase.value === 'contacts') return 'Importing contacts…';
-	if (phase.value === 'suppressions') return 'Importing suppressions…';
-	if (phase.value === 'done' || phase.value === 'failed') return 'Run the carry-over again';
-	return 'Start the carry-over';
+	if (phase.value === 'contacts')
+		return t('components.delivery.migrationImportStep.importingContacts');
+	if (phase.value === 'suppressions')
+		return t('components.delivery.migrationImportStep.importingSuppressions');
+	if (phase.value === 'done' || phase.value === 'failed')
+		return t('components.delivery.migrationImportStep.runAgain');
+	return t('components.delivery.migrationImportStep.start');
 });
 
 async function startMandrillSuppressions(): Promise<void> {
@@ -124,7 +138,10 @@ async function start(): Promise<void> {
 		await startMandrillSuppressions();
 	} catch (error) {
 		phase.value = 'failed';
-		failure.value = error instanceof Error ? error.message : 'The import could not be started.';
+		failure.value =
+			error instanceof Error
+				? error.message
+				: t('components.delivery.migrationImportStep.startFailed');
 		showToast(failure.value, 'error');
 	}
 }
@@ -153,7 +170,7 @@ watch(
 		if (run.status === 'running') return;
 		if (run.status === 'failed') {
 			phase.value = 'failed';
-			failure.value = run.errors?.[0] ?? 'The import failed.';
+			failure.value = run.errors?.[0] ?? t('components.delivery.migrationImportStep.importFailed');
 			emit('carried', false);
 			return;
 		}
@@ -168,7 +185,9 @@ watch(
 			void startMandrillSuppressions().catch((error: unknown) => {
 				phase.value = 'failed';
 				failure.value =
-					error instanceof Error ? error.message : 'The suppression import could not be started.';
+					error instanceof Error
+						? error.message
+						: t('components.delivery.migrationImportStep.suppressionStartFailed');
 			});
 			return;
 		}
@@ -184,7 +203,7 @@ const progressText = computed(() => {
 	const run = progress.value;
 	if (!run || run._id !== trackedId.value) return '';
 	const total = run.imported + run.updated + run.skipped + run.failed;
-	return `${total.toLocaleString()} processed`;
+	return t('components.delivery.migrationImportStep.processed', { count: count(total) });
 });
 </script>
 
@@ -194,41 +213,49 @@ const progressText = computed(() => {
 			{{ blockedReason }}
 		</p>
 
-		<p
+		<I18nT
 			v-if="!isMailchimpEnabled && !isMandrillEnabled"
+			keypath="components.delivery.migrationImportStep.flagsOff"
+			tag="p"
 			class="text-sm text-warning"
 			data-testid="migration-import-flags-off"
+			scope="global"
 		>
-			Both integration imports are switched off for this workspace. Turn on
-			<strong>Mailchimp import</strong> and <strong>Mandrill suppression import</strong> under
-			<NuxtLink to="/dashboard/admin/instance/features" class="underline"
-				>Settings → Features</NuxtLink
-			>
-			to carry your history across.
-		</p>
+			<template #mailchimpFlag>
+				<strong>{{ t('components.delivery.migrationImportStep.mailchimpFlag') }}</strong>
+			</template>
+			<template #mandrillFlag>
+				<strong>{{ t('components.delivery.migrationImportStep.mandrillFlag') }}</strong>
+			</template>
+			<template #settingsLink>
+				<NuxtLink to="/dashboard/admin/instance/features" class="underline">{{
+					t('components.delivery.migrationImportStep.settingsLink')
+				}}</NuxtLink>
+			</template>
+		</I18nT>
 
 		<div v-if="isMailchimpEnabled" class="grid gap-3 sm:grid-cols-2">
 			<div>
 				<label for="migration-mailchimp-key" class="block text-sm text-text-secondary mb-1">
-					Mailchimp Marketing API key
+					{{ t('components.delivery.migrationImportStep.apiKeyLabel') }}
 				</label>
 				<UiInput
 					id="migration-mailchimp-key"
 					v-model="apiKey"
 					type="password"
-					placeholder="abc123…-us21"
+					:placeholder="t('components.delivery.migrationImportStep.apiKeyPlaceholder')"
 					:disabled="isRunning"
 					data-testid="migration-mailchimp-key"
 				/>
 			</div>
 			<div>
 				<label for="migration-mailchimp-list" class="block text-sm text-text-secondary mb-1">
-					Audience (list) ID
+					{{ t('components.delivery.migrationImportStep.listIdLabel') }}
 				</label>
 				<UiInput
 					id="migration-mailchimp-list"
 					v-model="listId"
-					placeholder="a1b2c3d4e5"
+					:placeholder="t('components.delivery.migrationImportStep.listIdPlaceholder')"
 					:disabled="isRunning"
 					data-testid="migration-mailchimp-list"
 				/>
@@ -236,9 +263,7 @@ const progressText = computed(() => {
 		</div>
 
 		<p class="text-sm text-text-tertiary">
-			Contacts and their Mailchimp unsubscribes import first; Mandrill's reject list follows on its
-			own. Only one import runs at a time, so the second starts when the first finishes. Running
-			this again later is safe — every address is matched on its email, so nothing is duplicated.
+			{{ t('components.delivery.migrationImportStep.explainer') }}
 		</p>
 
 		<div class="flex items-center gap-3">
@@ -251,7 +276,7 @@ const progressText = computed(() => {
 				data-testid="migration-import-cancel"
 				@click="cancel"
 			>
-				Cancel
+				{{ t('common.cancel') }}
 			</UiButton>
 			<span
 				v-if="isRunning"
@@ -271,30 +296,41 @@ const progressText = computed(() => {
 			class="text-sm text-text-secondary"
 			data-testid="migration-import-contacts"
 		>
-			Contacts: {{ contactsSummary.imported.toLocaleString() }} imported,
-			{{ contactsSummary.updated.toLocaleString() }} updated,
-			{{ contactsSummary.skipped.toLocaleString() }} skipped.
+			{{
+				t('components.delivery.migrationImportStep.contactsSummary', {
+					imported: count(contactsSummary.imported),
+					updated: count(contactsSummary.updated),
+					skipped: count(contactsSummary.skipped),
+				})
+			}}
 		</div>
 
 		<div v-if="carried" class="text-sm" data-testid="migration-import-carried">
 			<template v-if="carried.length">
-				<span class="text-text-secondary">Carried over:</span>
+				<span class="text-text-secondary">{{
+					t('components.delivery.migrationImportStep.carriedOver')
+				}}</span>
 				<span
 					v-for="entry in carried"
 					:key="entry.label"
 					class="ml-2 text-text-primary"
 					data-testid="migration-carried-count"
 				>
-					{{ entry.value.toLocaleString() }} {{ entry.label }}
+					{{
+						t('components.delivery.migrationImportStep.carriedEntry', {
+							count: count(entry.value),
+							label: t(entry.label),
+						})
+					}}
 				</span>
 			</template>
 			<span v-else class="text-text-secondary">
-				Nothing new to carry — the suppression list here already matches.
+				{{ t('components.delivery.migrationImportStep.nothingToCarry') }}
 			</span>
 		</div>
 
 		<p v-if="phase === 'done'" class="text-sm text-success" data-testid="migration-import-done">
-			History carried over.
+			{{ t('components.delivery.migrationImportStep.done') }}
 		</p>
 	</div>
 </template>

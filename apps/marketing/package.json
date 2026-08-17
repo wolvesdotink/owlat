@@ -18,6 +18,7 @@
 	},
 	"dependencies": {
 		"@nuxtjs/color-mode": "catalog:vue",
+		"@nuxtjs/i18n": "^10.6.0",
 		"@nuxtjs/seo": "^5.3.10",
 		"@tailwindcss/vite": "catalog:vue",
 		"@takumi-rs/core": "^2.7.1",

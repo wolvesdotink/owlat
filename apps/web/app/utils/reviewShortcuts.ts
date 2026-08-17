@@ -61,17 +61,24 @@ export function resolveReviewSelectShortcut(key: string): ReviewSelectShortcutAc
 	}
 }
 
-/** Data source for the inline keyboard hint on the Review Queue page. */
+/**
+ * Data source for the inline keyboard hint on the Review Queue page. `label`
+ * is an i18n key — this module is pure, so the page runs it through `t()`.
+ *
+ * `x` is listed under Select rather than Reject: with a selection model active
+ * the multi-select layer claims it first (see `resolveReviewSelectShortcut`),
+ * so `#` is the reject key the hint can promise on every surface.
+ */
 export const REVIEW_SHORTCUT_GROUPS: ReadonlyArray<{ keys: readonly string[]; label: string }> = [
-	{ keys: ['j', '↓'], label: 'Next' },
-	{ keys: ['k', '↑'], label: 'Previous' },
-	{ keys: ['Enter'], label: 'Open thread' },
-	{ keys: ['1–9'], label: 'Pick option' },
-	{ keys: ['a'], label: 'Approve & send' },
-	{ keys: ['e'], label: 'Edit' },
-	{ keys: ['s'], label: 'Skip' },
-	{ keys: ['#'], label: 'Reject' },
-	{ keys: ['Space', 'x'], label: 'Select' },
-	{ keys: ['Shift', 'j/k'], label: 'Extend selection' },
-	{ keys: ['*'], label: 'Select all' },
+	{ keys: ['j', '↓'], label: 'shared.reviewShortcuts.labels.next' },
+	{ keys: ['k', '↑'], label: 'shared.reviewShortcuts.labels.previous' },
+	{ keys: ['Enter'], label: 'shared.reviewShortcuts.labels.openThread' },
+	{ keys: ['1–9'], label: 'shared.reviewShortcuts.labels.pickOption' },
+	{ keys: ['a'], label: 'shared.reviewShortcuts.labels.approveAndSend' },
+	{ keys: ['e'], label: 'shared.reviewShortcuts.labels.edit' },
+	{ keys: ['s'], label: 'shared.reviewShortcuts.labels.skip' },
+	{ keys: ['#'], label: 'shared.reviewShortcuts.labels.reject' },
+	{ keys: ['Space', 'x'], label: 'shared.reviewShortcuts.labels.select' },
+	{ keys: ['Shift', 'j/k'], label: 'shared.reviewShortcuts.labels.extendSelection' },
+	{ keys: ['*'], label: 'shared.reviewShortcuts.labels.selectAll' },
 ];

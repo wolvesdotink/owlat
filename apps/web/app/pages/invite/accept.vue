@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import { acceptInvitation, getSession } from '~/lib/auth-client';
 
-useHead({ title: 'Accept Invitation \u2014 Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('invite.accept.pageTitle') });
 
 definePageMeta({
 	// No layout - standalone page
@@ -27,18 +29,18 @@ const claimedInboxAddresses = ref<string[]>([]);
 
 const { run: claimPendingMailbox } = useBackendOperation(
 	api.mail.pendingMailbox.claimForInvitation,
-	{ label: 'Claim mailbox' }
+	{ label: () => t('invite.accept.claimMailboxOperation') }
 );
 const { run: claimInboxMemberships } = useBackendOperation(
 	api.mail.pendingInboxMembership.claimInboxMemberships,
-	{ label: 'Join team inbox' }
+	{ label: () => t('invite.accept.joinTeamInboxOperation') }
 );
 
 // Check authentication and handle invitation on mount
 onMounted(async () => {
 	if (!invitationId.value) {
 		status.value = 'error';
-		errorMessage.value = 'Invalid invitation link. No invitation ID provided.';
+		errorMessage.value = t('invite.accept.errors.missingId');
 		return;
 	}
 
@@ -65,13 +67,13 @@ async function handleAcceptInvitation() {
 
 		if (result.error) {
 			status.value = 'error';
-			errorMessage.value = result.error.message || 'Failed to accept invitation';
+			errorMessage.value = result.error.message || t('invite.accept.errors.acceptFailed');
 			return;
 		}
 
 		// Success! The result contains member and invitation info
 		// We'll use a generic message since we don't have the org name directly
-		organizationName.value = 'the team';
+		organizationName.value = t('invite.accept.defaultOrganization');
 
 		// Best-effort: claim any reserved mailbox the admin set up at invite time. A
 		// failure should not block onboarding — the operation module surfaces any
@@ -103,7 +105,8 @@ async function handleAcceptInvitation() {
 		}, 2000);
 	} catch (err) {
 		status.value = 'error';
-		errorMessage.value = err instanceof Error ? err.message : 'An unexpected error occurred';
+		errorMessage.value =
+			err instanceof Error ? err.message : t('invite.accept.errors.unexpected');
 	}
 }
 
@@ -133,10 +136,18 @@ function redirectToRegister() {
 						<Icon name="lucide:loader-2" class="w-8 h-8 text-brand animate-spin" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
-						{{ status === 'loading' ? 'Loading...' : 'Accepting Invitation...' }}
+						{{
+							status === 'loading'
+								? t('invite.accept.loadingTitle')
+								: t('invite.accept.acceptingTitle')
+						}}
 					</h1>
 					<p class="text-text-secondary">
-						{{ status === 'loading' ? 'Please wait...' : 'Setting up your team access...' }}
+						{{
+							status === 'loading'
+								? t('invite.accept.loadingBody')
+								: t('invite.accept.acceptingBody')
+						}}
 					</p>
 				</template>
 
@@ -147,14 +158,18 @@ function redirectToRegister() {
 					>
 						<Icon name="lucide:users" class="w-8 h-8 text-brand" />
 					</div>
-					<h1 class="text-xl font-semibold text-text-primary mb-2">You're Invited!</h1>
+					<h1 class="text-xl font-semibold text-text-primary mb-2">
+						{{ t('invite.accept.loginRequiredTitle') }}
+					</h1>
 					<p class="text-text-secondary mb-6">
-						Sign in or create an account to accept this team invitation.
+						{{ t('invite.accept.loginRequiredBody') }}
 					</p>
 					<div class="flex flex-col gap-3">
-						<UiButton full-width @click="redirectToLogin"> Sign In to Accept </UiButton>
+						<UiButton full-width @click="redirectToLogin">
+							{{ t('invite.accept.signInToAccept') }}
+						</UiButton>
 						<UiButton variant="secondary" full-width @click="redirectToRegister">
-							Create Account
+							{{ t('invite.accept.createAccount') }}
 						</UiButton>
 					</div>
 				</template>
@@ -166,27 +181,52 @@ function redirectToRegister() {
 					>
 						<Icon name="lucide:check" class="w-8 h-8 text-success" />
 					</div>
-					<h1 class="text-xl font-semibold text-text-primary mb-2">Welcome to the Team!</h1>
+					<h1 class="text-xl font-semibold text-text-primary mb-2">
+						{{ t('invite.accept.successTitle') }}
+					</h1>
 					<p class="text-text-secondary mb-2">
-						You've successfully joined {{ organizationName || 'the workspace' }}.
+						{{
+							t('invite.accept.successBody', {
+								organization: organizationName || t('invite.accept.defaultWorkspace'),
+							})
+						}}
 					</p>
-					<p v-if="claimedMailboxAddress" class="text-text-secondary mb-2">
-						Your mailbox at
-						<code class="text-text-primary">{{ claimedMailboxAddress }}</code>
-						is ready.
-					</p>
-					<p v-else-if="reservedAwaitingAddress" class="text-text-secondary mb-2">
-						Your mailbox
-						<code class="text-text-primary">{{ reservedAwaitingAddress }}</code>
-						is reserved — it activates automatically once your workspace's sending domain verifies.
-					</p>
-					<p v-for="addr in claimedInboxAddresses" :key="addr" class="text-text-secondary mb-2">
-						The team inbox
-						<code class="text-text-primary">{{ addr }}</code>
-						is in your sidebar.
-					</p>
-					<p class="text-text-tertiary text-sm mb-6">Taking you in...</p>
-					<UiButton full-width to="/welcome"> Get started </UiButton>
+					<I18nT
+						v-if="claimedMailboxAddress"
+						keypath="invite.accept.mailboxReady"
+						tag="p"
+						scope="global"
+						class="text-text-secondary mb-2"
+					>
+						<template #address>
+							<code class="text-text-primary">{{ claimedMailboxAddress }}</code>
+						</template>
+					</I18nT>
+					<I18nT
+						v-else-if="reservedAwaitingAddress"
+						keypath="invite.accept.mailboxReserved"
+						tag="p"
+						scope="global"
+						class="text-text-secondary mb-2"
+					>
+						<template #address>
+							<code class="text-text-primary">{{ reservedAwaitingAddress }}</code>
+						</template>
+					</I18nT>
+					<I18nT
+						v-for="addr in claimedInboxAddresses"
+						:key="addr"
+						keypath="invite.accept.teamInboxAdded"
+						tag="p"
+						scope="global"
+						class="text-text-secondary mb-2"
+					>
+						<template #address>
+							<code class="text-text-primary">{{ addr }}</code>
+						</template>
+					</I18nT>
+					<p class="text-text-tertiary text-sm mb-6">{{ t('invite.accept.redirecting') }}</p>
+					<UiButton full-width to="/welcome">{{ t('invite.accept.getStarted') }}</UiButton>
 				</template>
 
 				<!-- Error State -->
@@ -196,13 +236,17 @@ function redirectToRegister() {
 					>
 						<Icon name="lucide:alert-circle" class="w-8 h-8 text-error" />
 					</div>
-					<h1 class="text-xl font-semibold text-text-primary mb-2">Invitation Error</h1>
+					<h1 class="text-xl font-semibold text-text-primary mb-2">
+						{{ t('invite.accept.errorTitle') }}
+					</h1>
 					<p class="text-text-secondary mb-6">
 						{{ errorMessage }}
 					</p>
 					<div class="flex flex-col gap-3">
-						<UiButton full-width to="/dashboard"> Go to Dashboard </UiButton>
-						<UiButton variant="secondary" full-width to="/"> Back to Home </UiButton>
+						<UiButton full-width to="/dashboard">{{ t('invite.accept.goToDashboard') }}</UiButton>
+						<UiButton variant="secondary" full-width to="/">{{
+							t('invite.accept.backToHome')
+						}}</UiButton>
 					</div>
 				</template>
 			</div>

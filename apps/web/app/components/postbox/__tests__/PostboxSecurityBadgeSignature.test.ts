@@ -13,12 +13,19 @@
  * sealed record silences the signature chip entirely; an unusable verdict
  * (verifier error) falls back to the structural "· not verified".
  */
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import PostboxSecurityBadge from '../PostboxSecurityBadge.vue';
 import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The driver hands back catalog keys; mounting with the REAL catalog keeps the
+// asserted chip character-for-character the one the reader sees.
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
 
 const iconStub = { props: ['name'], template: '<span />' };
 
@@ -35,7 +42,10 @@ function mountBadge(opts: {
 			sealed: opts.sealed,
 			signature: opts.signature,
 		},
-		global: { stubs: { Icon: iconStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: iconStub },
+		},
 	});
 }
 

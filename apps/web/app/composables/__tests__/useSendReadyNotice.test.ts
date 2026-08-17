@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref, type EffectScope } from 'vue';
 import type { ToastOptions } from '@owlat/ui/composables/useToast';
+import { createTestI18n } from '~/__tests__/i18n';
 import { SEND_READY_DEEP_LINK } from '~/lib/onboarding/sendReadyNotice';
 import { useSendReadyNotice } from '../useSendReadyNotice';
 
@@ -19,6 +20,10 @@ interface NoticeState {
 	isReady: boolean;
 	notices: Array<{ id: string; createdAt: number }>;
 }
+
+// Mounted in a bare effect scope rather than a component, so `useI18n` is
+// stubbed with the real catalog's `t` and the toast copy stays what a member reads.
+const { t } = createTestI18n().global;
 
 const state = ref<NoticeState | undefined>(undefined);
 const acknowledge = vi.fn();
@@ -52,6 +57,7 @@ beforeEach(() => {
 	acknowledge.mockReset();
 	showToast.mockReset();
 	navigate.mockReset();
+	vi.stubGlobal('useI18n', () => ({ t }));
 	vi.stubGlobal('useOrganizationQuery', () => ({
 		data: state,
 		isLoading: ref(false),

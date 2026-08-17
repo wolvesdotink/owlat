@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { createTestI18n } from '~/__tests__/i18n';
 
 /**
  * Markup guard for the desktop setup wizard polish (audit item p3-desktop-polish).
@@ -15,10 +16,14 @@ import { dirname, resolve } from 'node:path';
  *  - Deliverability copy: an MTA install must tell the user the shown A/MX
  *    records are not enough — SPF/DKIM/DMARC are finished in Settings → Domains.
  *  - The "real server IP" affordance (a public-IP prompt) is present.
+ *
+ * The copy now lives in the message catalog rather than the template, so the
+ * two content guards assert the rendered English message, not the `.vue` source.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
 const setupVue = readFileSync(resolve(here, '../setup.vue'), 'utf8');
+const { t } = createTestI18n().global;
 
 describe('desktop setup wizard — accessibility', () => {
 	it('every sr-only custom control is a focus-visible peer (no bare sr-only)', () => {
@@ -35,19 +40,21 @@ describe('desktop setup wizard — accessibility', () => {
 	});
 
 	it('the password reveal toggle has a focus-visible ring', () => {
-		expect(setupVue).toMatch(/aria-label="[^"]*password/);
+		expect(setupVue).toMatch(/:aria-label="revealPassword \?/);
+		expect(t('desktop.setup.admin.hidePassword')).toContain('password');
+		expect(t('desktop.setup.admin.showPassword')).toContain('password');
 		expect(setupVue).toContain('focus-visible:ring-brand');
 	});
 });
 
 describe('desktop setup wizard — deliverability + real IP copy', () => {
 	it('warns that A/MX alone are not deliverable and points to Settings → Domains', () => {
-		expect(setupVue).toContain('SPF, DKIM and DMARC');
-		expect(setupVue).toContain('Settings → Domains');
+		expect(t('desktop.setup.dns.deliverabilityHint')).toContain('SPF, DKIM and DMARC');
+		expect(t('desktop.setup.dns.settingsDomains')).toBe('Settings → Domains');
 	});
 
 	it('prompts for the server public IP when connected by hostname', () => {
-		expect(setupVue).toContain("Server's public IP");
+		expect(t('desktop.setup.domain.publicIpLabel')).toContain("Server's public IP");
 		expect(setupVue).toContain('v-model="publicIp"');
 	});
 });

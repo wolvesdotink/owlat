@@ -5,15 +5,24 @@
  * (so the queue advances) and, when a destination exists, openable — the queue
  * item is surfaced, never silently dropped.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import TaskCardFallback from '../TaskCardFallback.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = { Icon: { template: '<i />' }, UiIconBox: { template: '<i />' } };
 
+// `useI18n` is a Nuxt auto-import in the SFC — a bare global here.
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
+
 function mountFallback(props: Record<string, unknown>) {
-	return mount(TaskCardFallback, { props: { kind: 'plugin.ghost', ...props }, global: { stubs } });
+	return mount(TaskCardFallback, {
+		props: { kind: 'plugin.ghost', ...props },
+		global: { stubs, plugins: [createTestI18n()] },
+	});
 }
 
 const skipSel = '[data-testid="task-fallback-skip"]';

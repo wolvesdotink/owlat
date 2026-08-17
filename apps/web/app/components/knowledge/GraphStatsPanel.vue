@@ -20,20 +20,32 @@ type Snapshot = NonNullable<FunctionReturnType<typeof api.knowledge.graphAnalyti
 const props = defineProps<{ stats: Snapshot | null }>();
 const emit = defineEmits<{ godNodeClick: [entryId: string] }>();
 
+const { t, te, locale } = useI18n();
+
+// The relation types the panel can render, translated here: the shared
+// presentation map (`~/utils/knowledgeEntryTypes`) stays a plain constant, so an
+// unknown type still falls back to its raw label instead of a key path.
+const relationTypeLabel = (type: string) => {
+	const key = `components.knowledge.graphStatsPanel.relationTypes.${type}`;
+	return te(key) ? t(key) : relationLabel(type);
+};
+
 const bars = computed(() => confidenceBucketBars(props.stats?.confidenceBuckets ?? []));
-const pct = (v: number) => `${Math.round(v * 100)}%`;
+const percentFormatter = computed(
+	() => new Intl.NumberFormat(locale.value, { style: 'percent', maximumFractionDigits: 0 })
+);
+const pct = (v: number) => percentFormatter.value.format(v);
 const computedAtLabel = computed(() =>
-	props.stats ? new Date(props.stats.computedAt).toLocaleString() : ''
+	props.stats ? new Date(props.stats.computedAt).toLocaleString(locale.value) : ''
 );
 const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes ?? [1])));
 </script>
 
 <template>
 	<div v-if="!stats" class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-		<h3 class="text-sm font-semibold text-text-primary mb-1.5">Graph insights</h3>
+		<h3 class="text-sm font-semibold text-text-primary mb-1.5">{{ t('components.knowledge.graphStatsPanel.title') }}</h3>
 		<p class="text-sm text-text-tertiary">
-			No analytics snapshot yet. Insights are computed on a daily cron once the knowledge graph has
-			connected entries.
+			{{ t('components.knowledge.graphStatsPanel.emptyBody') }}
 		</p>
 	</div>
 
@@ -41,36 +53,44 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 		<!-- Summary -->
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<div class="flex items-center justify-between mb-3">
-				<h3 class="text-sm font-semibold text-text-primary">Graph insights</h3>
+				<h3 class="text-sm font-semibold text-text-primary">
+					{{ t('components.knowledge.graphStatsPanel.title') }}
+				</h3>
 				<span
 					v-if="stats.isTruncated"
 					class="text-2xs uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-warning/10 text-warning"
-					title="The graph is large; figures are approximate (scan was capped)."
+					:title="t('components.knowledge.graphStatsPanel.approximateHint')"
 				>
-					Approximate
+					{{ t('components.knowledge.graphStatsPanel.approximate') }}
 				</span>
 			</div>
 			<div class="grid grid-cols-2 gap-3">
 				<div>
 					<p class="text-2xl font-bold text-text-primary">{{ stats.nodeCount }}</p>
-					<p class="text-xs text-text-tertiary">Entries</p>
+					<p class="text-xs text-text-tertiary">
+						{{ t('components.knowledge.graphStatsPanel.entries') }}
+					</p>
 				</div>
 				<div>
 					<p class="text-2xl font-bold text-text-primary">{{ stats.edgeCount }}</p>
-					<p class="text-xs text-text-tertiary">Relations</p>
+					<p class="text-xs text-text-tertiary">
+						{{ t('components.knowledge.graphStatsPanel.relations') }}
+					</p>
 				</div>
 			</div>
-			<p class="text-2xs text-text-tertiary mt-3">Computed {{ computedAtLabel }}</p>
+			<p class="text-2xs text-text-tertiary mt-3">
+				{{ t('components.knowledge.graphStatsPanel.computedAt', { timestamp: computedAtLabel }) }}
+			</p>
 		</div>
 
 		<!-- God nodes -->
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
 				<Icon name="lucide:zap" class="w-4 h-4 text-brand" />
-				Hubs (god nodes)
+				{{ t('components.knowledge.graphStatsPanel.hubs') }}
 			</h3>
 			<div v-if="stats.godNodes.length === 0" class="text-sm text-text-tertiary">
-				No hubs yet — relations are sparse.
+				{{ t('components.knowledge.graphStatsPanel.noHubs') }}
 			</div>
 			<ul v-else class="space-y-1.5">
 				<li
@@ -95,14 +115,19 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 					</button>
 					<span
 						class="text-2xs font-medium px-1.5 py-0.5 rounded-full bg-brand-subtle text-brand flex-shrink-0"
-						:title="`${g.inDegree} in / ${g.outDegree} out`"
+						:title="
+							t('components.knowledge.graphStatsPanel.degreeHint', {
+								incoming: g.inDegree,
+								outgoing: g.outDegree,
+							})
+						"
 					>
 						{{ g.degree }}
 					</span>
 					<NuxtLink
 						:to="`/dashboard/knowledge/${g.entryId}`"
 						class="text-text-tertiary hover:text-brand transition-colors flex-shrink-0"
-						:aria-label="`Open ${g.title}`"
+						:aria-label="t('components.knowledge.graphStatsPanel.openEntry', { title: g.title })"
 					>
 						<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
 					</NuxtLink>
@@ -112,13 +137,20 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 
 		<!-- Confidence histogram -->
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-			<h3 class="text-sm font-semibold text-text-primary mb-3">Confidence distribution</h3>
+			<h3 class="text-sm font-semibold text-text-primary mb-3">
+				{{ t('components.knowledge.graphStatsPanel.confidenceTitle') }}
+			</h3>
 			<div class="flex items-end gap-1 h-24">
 				<div
 					v-for="bar in bars"
 					:key="bar.index"
 					class="flex-1 flex flex-col justify-end h-full"
-					:title="`${bar.rangeLabel}: ${bar.count}`"
+					:title="
+						t('components.knowledge.graphStatsPanel.bucketHint', {
+							range: bar.rangeLabel,
+							count: bar.count,
+						})
+					"
 				>
 					<div
 						class="w-full rounded-t bg-brand/70 min-h-[2px]"
@@ -127,14 +159,28 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 				</div>
 			</div>
 			<div class="flex justify-between text-2xs text-text-tertiary mt-1.5">
-				<span>0%</span>
-				<span>100%</span>
+				<span>{{ pct(0) }}</span>
+				<span>{{ pct(1) }}</span>
 			</div>
 			<div class="flex items-center justify-between text-xs text-text-secondary mt-3">
-				<span>Mean {{ pct(stats.confidenceMean) }}</span>
-				<span>Median {{ pct(stats.confidenceMedian) }}</span>
+				<span>
+					{{
+						t('components.knowledge.graphStatsPanel.mean', { value: pct(stats.confidenceMean) })
+					}}
+				</span>
+				<span>
+					{{
+						t('components.knowledge.graphStatsPanel.median', {
+							value: pct(stats.confidenceMedian),
+						})
+					}}
+				</span>
 				<span :class="stats.belowReviewThreshold > 0 ? 'text-warning' : 'text-text-tertiary'">
-					{{ stats.belowReviewThreshold }} low-confidence
+					{{
+						t('components.knowledge.graphStatsPanel.lowConfidence', {
+							count: stats.belowReviewThreshold,
+						})
+					}}
 				</span>
 			</div>
 		</div>
@@ -143,10 +189,18 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-1 flex items-center gap-2">
 				<Icon name="lucide:boxes" class="w-4 h-4 text-text-tertiary" />
-				Communities
-				<span class="text-text-tertiary font-normal">(~{{ stats.communityCount }})</span>
+				{{ t('components.knowledge.graphStatsPanel.communities') }}
+				<span class="text-text-tertiary font-normal">
+					{{
+						t('components.knowledge.graphStatsPanel.communityCount', {
+							count: stats.communityCount,
+						})
+					}}
+				</span>
 			</h3>
-			<p class="text-xs text-text-tertiary mb-3">Approximate clusters (label propagation).</p>
+			<p class="text-xs text-text-tertiary mb-3">
+				{{ t('components.knowledge.graphStatsPanel.communitiesHint') }}
+			</p>
 			<div class="flex flex-wrap gap-1.5">
 				<span
 					v-for="(size, i) in stats.communitySizes.slice(0, 12)"
@@ -163,10 +217,10 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
 				<Icon name="lucide:sparkles" class="w-4 h-4 text-brand" />
-				Surprising connections
+				{{ t('components.knowledge.graphStatsPanel.surprising') }}
 			</h3>
 			<div v-if="stats.surprisingConnections.length === 0" class="text-sm text-text-tertiary">
-				None surfaced.
+				{{ t('components.knowledge.graphStatsPanel.surprisingEmpty') }}
 			</div>
 			<ul v-else class="space-y-2">
 				<li
@@ -181,7 +235,7 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 						{{ c.fromTitle }}
 					</NuxtLink>
 					<span class="text-2xs uppercase tracking-wide text-text-tertiary flex-shrink-0">
-						{{ relationLabel(c.relationType) }}
+						{{ relationTypeLabel(c.relationType) }}
 					</span>
 					<NuxtLink
 						:to="`/dashboard/knowledge/${c.toEntryId}`"
@@ -196,10 +250,13 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 				class="text-2xs text-text-tertiary mt-3 flex items-center gap-1.5"
 			>
 				<Icon name="lucide:shield" class="w-3.5 h-3.5 flex-shrink-0" />
-				{{ stats.crossContactLinkCount }} cross-contact connection{{
-					stats.crossContactLinkCount === 1 ? '' : 's'
+				{{
+					t(
+						'components.knowledge.graphStatsPanel.hiddenCrossContact',
+						{ count: stats.crossContactLinkCount },
+						stats.crossContactLinkCount
+					)
 				}}
-				hidden to protect contact isolation.
 			</p>
 		</div>
 	</div>

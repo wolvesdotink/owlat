@@ -32,11 +32,13 @@ const emit = defineEmits<{
 	(e: 'update:attachments', value: StoredAttachment[]): void;
 }>();
 
+const { t } = useI18n();
+
 const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
-	label: 'Get upload URL',
+	label: () => t('components.attachmentPanel.getUploadUrlOperation'),
 });
 const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
-	label: 'Save attachment',
+	label: () => t('components.attachmentPanel.saveAttachmentOperation'),
 });
 const { showToast } = useToast();
 
@@ -99,7 +101,7 @@ async function handleFileUpload(files: FileList | File[]) {
 	// Validate limits
 	const remainingSlots = MAX_ATTACHMENTS - props.attachments.length;
 	if (remainingSlots <= 0) {
-		showToast(`Maximum ${MAX_ATTACHMENTS} attachments allowed`, 'error');
+		showToast(t('components.attachmentPanel.maxAttachments', { count: MAX_ATTACHMENTS }), 'error');
 		return;
 	}
 
@@ -113,7 +115,9 @@ async function handleFileUpload(files: FileList | File[]) {
 		for (const file of filesToUpload) {
 			if (currentTotal + file.size > MAX_TOTAL_SIZE) {
 				showToast(
-					`Total size would exceed ${formatCompactFileSize(MAX_TOTAL_SIZE)} limit`,
+					t('components.attachmentPanel.totalSizeExceeded', {
+						limit: formatCompactFileSize(MAX_TOTAL_SIZE),
+					}),
 					'error'
 				);
 				break;
@@ -125,7 +129,8 @@ async function handleFileUpload(files: FileList | File[]) {
 				file.type || 'application/octet-stream'
 			);
 			if (!upload.ok) {
-				if (upload.reason === 'upload-failed') showToast(`Failed to upload ${file.name}`, 'error');
+				if (upload.reason === 'upload-failed')
+					showToast(t('components.attachmentPanel.uploadFailed', { filename: file.name }), 'error');
 				break;
 			}
 			const storageId = upload.storageId;
@@ -148,7 +153,7 @@ async function handleFileUpload(files: FileList | File[]) {
 				}
 			);
 			if (!registered.ok && registered.reason === 'url-unavailable') {
-				showToast('Failed to get file URL', 'error');
+				showToast(t('components.attachmentPanel.fileUrlFailed'), 'error');
 			}
 			if (!registered.ok) break;
 
@@ -182,12 +187,17 @@ function handleMediaPickerSelect(
 
 	const fileSize = result.fileSize ?? 0;
 	if (totalSize.value + fileSize > MAX_TOTAL_SIZE) {
-		showToast(`Total size would exceed ${formatCompactFileSize(MAX_TOTAL_SIZE)} limit`, 'error');
+		showToast(
+			t('components.attachmentPanel.totalSizeExceeded', {
+				limit: formatCompactFileSize(MAX_TOTAL_SIZE),
+			}),
+			'error'
+		);
 		return;
 	}
 
 	if (props.attachments.length >= MAX_ATTACHMENTS) {
-		showToast(`Maximum ${MAX_ATTACHMENTS} attachments allowed`, 'error');
+		showToast(t('components.attachmentPanel.maxAttachments', { count: MAX_ATTACHMENTS }), 'error');
 		return;
 	}
 
@@ -258,7 +268,7 @@ function handleFileInput(event: Event) {
 					</div>
 					<button
 						class="shrink-0 p-1 rounded-md text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error/10 transition-all"
-						title="Remove attachment"
+						:title="t('components.attachmentPanel.removeAttachment')"
 						@click.stop="removeAttachment(att.id)"
 					>
 						<Icon name="lucide:x" class="w-3.5 h-3.5" />
@@ -272,7 +282,7 @@ function handleFileInput(event: Event) {
 						size="sm"
 						:value="sizePercent"
 						:variant="sizePercent > 80 ? 'warning' : 'brand'"
-						aria-label="Total attachment size used"
+						:aria-label="t('components.attachmentPanel.sizeUsedLabel')"
 					/>
 					<span class="text-[10px] text-text-tertiary shrink-0">
 						{{ formatCompactFileSize(totalSize) }} / {{ formatCompactFileSize(MAX_TOTAL_SIZE) }}
@@ -293,8 +303,8 @@ function handleFileInput(event: Event) {
 					<span class="text-sm text-text-secondary">
 						{{
 							attachments.length > 0
-								? 'Drop more files or click to add'
-								: 'Drop files here to attach, or click to browse'
+								? t('components.attachmentPanel.dropMore')
+								: t('components.attachmentPanel.dropFiles')
 						}}
 					</span>
 				</template>
@@ -303,14 +313,18 @@ function handleFileInput(event: Event) {
 					class="text-sm text-text-secondary hover:text-brand transition-colors"
 					@click.stop="showMediaPicker = true"
 				>
-					Media library
+					{{ t('components.attachmentPanel.mediaLibrary') }}
 				</button>
 			</div>
 
 			<!-- Limit reached -->
 			<div v-if="!canAddMore && attachments.length > 0" class="px-4 pb-3 pt-1 text-center">
 				<span class="text-[11px] text-text-tertiary">
-					{{ attachments.length >= MAX_ATTACHMENTS ? 'Max files reached' : 'Size limit reached' }}
+					{{
+						attachments.length >= MAX_ATTACHMENTS
+							? t('components.attachmentPanel.maxFilesReached')
+							: t('components.attachmentPanel.sizeLimitReached')
+					}}
 				</span>
 			</div>
 		</div>
@@ -320,7 +334,7 @@ function handleFileInput(event: Event) {
 		<!-- Media Picker Modal -->
 		<MediaPickerModal
 			:open="showMediaPicker"
-			title="Select Attachment"
+			:title="t('components.attachmentPanel.mediaPickerTitle')"
 			:allow-all-files="true"
 			@update:open="showMediaPicker = $event"
 			@select="handleMediaPickerSelect"

@@ -180,7 +180,11 @@ export class PostboxOfflineStore {
 		return this.disabled;
 	}
 
-	/** Human-readable reason writes were disabled, if any. */
+	/**
+	 * Reason writes were disabled, if any — an i18n KEY (the registry
+	 * convention: a pure module never calls `useI18n`), which the surface that
+	 * shows it runs through `t()`.
+	 */
 	get reason(): string | null {
 		return this.disabledReason;
 	}
@@ -194,8 +198,8 @@ export class PostboxOfflineStore {
 		} catch (err) {
 			this.disabled = true;
 			this.disabledReason = isQuotaError(err)
-				? 'This device is out of storage for offline mail.'
-				: 'Local mail cache is unavailable on this device.';
+				? 'shared.postboxOfflineStore.outOfStorage'
+				: 'shared.postboxOfflineStore.unavailable';
 			return false;
 		}
 	}
@@ -221,6 +225,9 @@ export class PostboxOfflineStore {
 		try {
 			await this.driver.set(key, value);
 		} catch (err) {
+			// Diagnostic English: this module is pure and has no vue-i18n. The
+			// sentence the sender reads is chosen from `isQuotaExceeded` at the
+			// render boundary (usePostboxOfflineOutbox), not from `message`.
 			throw new OfflineWriteError(
 				isQuotaError(err)
 					? 'This device is out of storage — the message could not be queued.'

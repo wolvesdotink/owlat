@@ -6,6 +6,8 @@ const emit = defineEmits<{
 	created: [roomId: Id<'chatRooms'>];
 }>();
 
+const { t } = useI18n();
+
 const name = ref('');
 const description = ref('');
 const visibility = ref<'public' | 'private'>('public');
@@ -35,7 +37,8 @@ const handleSubmit = async () => {
 		});
 		if (id) emit('created', id);
 	} catch (e) {
-		error.value = e instanceof Error ? e.message : 'Failed to create channel';
+		error.value =
+			e instanceof Error ? e.message : t('components.chat.chatNewChannelDialog.createFailed');
 	} finally {
 		isCreating.value = false;
 	}
@@ -43,33 +46,40 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-	<ChatDialogShell title="New channel" @close="emit('close')">
+	<ChatDialogShell :title="t('components.chat.chatNewChannelDialog.title')" @close="emit('close')">
 		<div class="px-5 py-4 space-y-4">
 			<div>
-				<label for="name" class="block text-sm font-medium text-text-secondary mb-1.5">Name</label>
+				<label for="name" class="block text-sm font-medium text-text-secondary mb-1.5">
+					{{ t('common.name') }}
+				</label>
 				<input
 					id="name"
 					v-model="name"
 					type="text"
-					placeholder="e.g. general"
+					:placeholder="t('components.chat.chatNewChannelDialog.namePlaceholder')"
 					class="input w-full"
 					@keydown.enter.prevent="handleSubmit"
 				/>
 			</div>
 			<div>
 				<label for="description" class="block text-sm font-medium text-text-secondary mb-1.5">
-					Description <span class="text-text-tertiary font-normal">(optional)</span>
+					{{ t('common.description') }}
+					<span class="text-text-tertiary font-normal">
+						{{ t('components.chat.chatNewChannelDialog.optionalHint') }}
+					</span>
 				</label>
 				<input
 					id="description"
 					v-model="description"
 					type="text"
-					placeholder="What is this channel about?"
+					:placeholder="t('components.chat.chatNewChannelDialog.descriptionPlaceholder')"
 					class="input w-full"
 				/>
 			</div>
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-1.5">Visibility</label>
+				<label class="block text-sm font-medium text-text-secondary mb-1.5">
+					{{ t('components.chat.chatNewChannelDialog.visibility') }}
+				</label>
 				<div class="flex gap-2">
 					<UiButton
 						variant="outline"
@@ -81,7 +91,7 @@ const handleSubmit = async () => {
 						<template #iconLeft>
 							<Icon name="lucide:hash" class="w-4 h-4" />
 						</template>
-						Public
+						{{ t('components.chat.chatNewChannelDialog.public') }}
 					</UiButton>
 					<UiButton
 						variant="outline"
@@ -93,7 +103,7 @@ const handleSubmit = async () => {
 						<template #iconLeft>
 							<Icon name="lucide:lock" class="w-4 h-4" />
 						</template>
-						Private
+						{{ t('components.chat.chatNewChannelDialog.private') }}
 					</UiButton>
 				</div>
 			</div>
@@ -101,9 +111,9 @@ const handleSubmit = async () => {
 			<ChatMemberPicker
 				v-model="selectedMembers"
 				v-model:query="memberQuery"
-				label="Initial members"
-				label-hint="(optional)"
-				placeholder="Search by name or email…"
+				:label="t('components.chat.chatNewChannelDialog.initialMembers')"
+				:label-hint="t('components.chat.chatNewChannelDialog.optionalHint')"
+				:placeholder="t('components.chat.chatNewChannelDialog.membersPlaceholder')"
 			>
 				<template #candidates="{ addMember }">
 					<div
@@ -126,11 +136,11 @@ const handleSubmit = async () => {
 		</div>
 
 		<div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-border-subtle">
-			<UiButton variant="secondary" @click="emit('close')">Cancel</UiButton>
+			<UiButton variant="secondary" @click="emit('close')">{{ t('common.cancel') }}</UiButton>
 			<UiButton class="gap-2" :disabled="!name.trim() || isCreating" @click="handleSubmit">
 				<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:plus" class="w-4 h-4" />
-				Create
+				{{ t('common.create') }}
 			</UiButton>
 		</div>
 	</ChatDialogShell>

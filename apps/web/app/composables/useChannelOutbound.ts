@@ -37,6 +37,7 @@ export interface ChannelSendTarget {
 }
 
 export function useChannelOutbound() {
+	const { t } = useI18n();
 	const { role } = useOrganizationContext();
 	const isAdmin = computed(() => role.value === 'owner' || role.value === 'admin');
 
@@ -55,11 +56,11 @@ export function useChannelOutbound() {
 	const { showToast } = useToast();
 	const { run: sendChannelMessage, isLoading: isSendingChannel } = useBackendOperation(
 		api.channels.outbound.sendChannelMessage,
-		{ label: 'Send channel message', type: 'action' }
+		{ label: () => t('shared.useChannelOutbound.sendChannelMessageOperation'), type: 'action' }
 	);
 	const { run: sendChatMessage, isLoading: isSendingChat } = useBackendOperation(
 		api.unifiedMessages.sendChatMessage,
-		{ label: 'Send chat message', type: 'mutation' }
+		{ label: () => t('shared.useChannelOutbound.sendChatMessageOperation'), type: 'mutation' }
 	);
 
 	const isSending = computed(() => isSendingChannel.value || isSendingChat.value);
@@ -101,7 +102,7 @@ export function useChannelOutbound() {
 			});
 		}
 		if (result === undefined) return false; // useBackendOperation surfaced the error
-		showToast('Message sent', 'success');
+		showToast(t('shared.useChannelOutbound.messageSent'), 'success');
 		return true;
 	}
 

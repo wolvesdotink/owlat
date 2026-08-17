@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The summary builders are pure, so they hand back key+params clauses; this is
+// the same render boundary `useReviewBulkActions` applies, against the real
+// catalog — so the assertions below stay the sentences a reviewer is toasted.
+const i18n = createTestI18n();
+const { t } = i18n.global;
+const line = (clauses: Array<{ key: string; params?: Record<string, unknown> }>): string =>
+	clauses.map((clause) => t(clause.key, clause.params ?? {})).join(', ');
 
 /**
  * Multi-select + bulk approve on the Review Queue browse list (adoption-gaps
@@ -174,33 +183,37 @@ describe('partial-result toast copy', () => {
 
 	it('summarizes a mixed approve batch per id', () => {
 		expect(
-			summarizeBulkApprove([
-				o('approved'),
-				o('approved'),
-				o('reply_in_progress', 'Dana'),
-				o('reply_in_progress', 'Dana'),
-				o('no_draft'),
-				o('not_found'),
-			])
+			line(
+				summarizeBulkApprove([
+					o('approved'),
+					o('approved'),
+					o('reply_in_progress', 'Dana'),
+					o('reply_in_progress', 'Dana'),
+					o('no_draft'),
+					o('not_found'),
+				])
+			)
 		).toBe('2 approved, 2 held — Dana is replying, 1 had no draft, 1 no longer in the queue');
 	});
 
 	it('keeps the held clause collective when several teammates hold', () => {
 		expect(
-			summarizeBulkApprove([
-				o('approved'),
-				o('reply_in_progress', 'Dana'),
-				o('reply_in_progress', 'Kim'),
-			])
+			line(
+				summarizeBulkApprove([
+					o('approved'),
+					o('reply_in_progress', 'Dana'),
+					o('reply_in_progress', 'Kim'),
+				])
+			)
 		).toBe('1 approved, 2 held — teammates are replying');
 	});
 
 	it('a clean batch is just the count', () => {
-		expect(summarizeBulkApprove([o('approved'), o('approved')])).toBe('2 approved');
+		expect(line(summarizeBulkApprove([o('approved'), o('approved')]))).toBe('2 approved');
 	});
 
 	it('summarizes bulk reject in the same shape', () => {
-		expect(summarizeBulkReject([o('rejected'), o('rejected'), o('not_found')] as never)).toBe(
+		expect(line(summarizeBulkReject([o('rejected'), o('rejected'), o('not_found')] as never))).toBe(
 			'2 rejected, 1 no longer in the queue'
 		);
 	});
@@ -210,15 +223,19 @@ describe('partial-result toast copy', () => {
 			inboundMessageId: `m${i}`,
 			cancelled,
 		});
-		expect(summarizeBulkUndo([u(true), u(true)])).toEqual({
+		const undoLine = (outcomes: Array<{ inboundMessageId: string; cancelled: boolean }>) => {
+			const summary = summarizeBulkUndo(outcomes);
+			return { ...summary, text: t(summary.text.key, summary.text.params ?? {}) };
+		};
+		expect(undoLine([u(true), u(true)])).toMatchObject({
 			text: 'Approvals undone — 2 drafts are back in the queue',
 			allCancelled: true,
 		});
-		expect(summarizeBulkUndo([u(true), u(false)])).toEqual({
+		expect(undoLine([u(true), u(false)])).toMatchObject({
 			text: '1 approval undone — 1 already sent',
 			allCancelled: false,
 		});
-		expect(summarizeBulkUndo([u(false)])).toEqual({
+		expect(undoLine([u(false)])).toMatchObject({
 			text: 'Too late to undo — the reply is already on its way',
 			allCancelled: false,
 		});
@@ -237,6 +254,7 @@ describe('useReviewBulkActions', () => {
 		runs = [];
 		arm = vi.fn();
 		toasts = [];
+		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useBackendOperation', () => {
 			const run = vi.fn();
 			runs.push(run);

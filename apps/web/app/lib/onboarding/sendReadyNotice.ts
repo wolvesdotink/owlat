@@ -48,7 +48,12 @@ export function planSendReadyToast(
 	return fresh.reduce((newest, notice) => (notice.createdAt > newest.createdAt ? notice : newest));
 }
 
-/** In-app toast copy — states the new capability, then the one thing left to do. */
+/**
+ * In-app toast copy — states the new capability, then the one thing left to do.
+ *
+ * Module scope, so it never calls `useI18n`: it hands back the MESSAGE KEY and
+ * the composable that shows the toast (`useSendReadyNotice`) resolves it.
+ */
 export function sendReadyToastMessage(): string {
-	return 'You can send now — finish your test send';
+	return 'shared.onboarding.sendReadyNotice.toast';
 }

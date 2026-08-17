@@ -38,13 +38,27 @@ const props = withDefaults(defineProps<AddDomainFormProps>(), {
 	// and lifecycle on `news.`.
 	suggestions: () => ['mail', 'news', 'post', 'send'],
 	defaultSubdomain: 'mail',
-	subdomainLabel: 'Subdomain for sending',
-	subdomainHint: '— recommended, keeps your apex reputation separate',
-	subdomainPlaceholder: 'mail',
 	blockFreemail: true,
 	showApexNote: true,
-	submitLabel: 'Add Domain',
 });
+
+const { t } = useI18n();
+
+// The four copy props have no static default any more: a `withDefaults` default
+// is hoisted out of `setup()`, so it cannot read `t`. They fall back here
+// instead, which is also what keeps the default copy following the active locale.
+const subdomainLabelText = computed(
+	() => props.subdomainLabel ?? t('components.domains.addDomainForm.subdomainLabel')
+);
+const subdomainHintText = computed(
+	() => props.subdomainHint ?? t('components.domains.addDomainForm.subdomainHint')
+);
+const subdomainPlaceholderText = computed(
+	() => props.subdomainPlaceholder ?? t('components.domains.addDomainForm.subdomainPlaceholder')
+);
+const submitLabelText = computed(
+	() => props.submitLabel ?? t('components.domains.addDomainForm.submitLabel')
+);
 
 const emit = defineEmits<{
 	/**
@@ -94,7 +108,9 @@ const {
 	handleReturnPathBlur,
 	chooseSubdomain,
 	onSubmit,
-} = useAddDomainForm(props, (payload) => emit('submit', payload));
+	// The composable only reads the behavioural props (all of which still carry a
+	// static default); the copy props it never touches are resolved above.
+} = useAddDomainForm(props as Required<AddDomainFormProps>, (payload) => emit('submit', payload));
 </script>
 
 <template>
@@ -103,13 +119,14 @@ const {
 			<!-- Your domain (registrable zone) -->
 			<div>
 				<label :for="domainInputId" class="label">
-					Your domain <span class="text-error">*</span>
+					{{ t('components.domains.addDomainForm.domainLabel') }}
+					<span class="text-error">*</span>
 				</label>
 				<input
 					:id="domainInputId"
 					v-model="domain"
 					type="text"
-					placeholder="example.com"
+					:placeholder="t('components.domains.addDomainForm.domainPlaceholder')"
 					autocapitalize="off"
 					autocorrect="off"
 					spellcheck="false"
@@ -133,16 +150,16 @@ const {
 			<!-- Sending subdomain (free-form, with suggestions) -->
 			<div>
 				<label :for="subInputId" class="label">
-					{{ subdomainLabel }}
-					<span v-if="subdomainHint" class="font-normal text-text-tertiary">
-						{{ subdomainHint }}</span
+					{{ subdomainLabelText }}
+					<span v-if="subdomainHintText" class="font-normal text-text-tertiary">
+						{{ subdomainHintText }}</span
 					>
 				</label>
 				<input
 					:id="subInputId"
 					v-model="sub"
 					type="text"
-					:placeholder="subdomainPlaceholder"
+					:placeholder="subdomainPlaceholderText"
 					autocapitalize="off"
 					autocorrect="off"
 					spellcheck="false"
@@ -154,7 +171,9 @@ const {
 					@blur="handleSubBlur"
 				/>
 				<div class="mt-2 flex flex-wrap items-center gap-2">
-					<span class="text-xs text-text-tertiary">Choose:</span>
+					<span class="text-xs text-text-tertiary">
+						{{ t('components.domains.addDomainForm.choose') }}
+					</span>
 					<button
 						v-for="suggestion in suggestions"
 						:key="suggestion"
@@ -183,7 +202,7 @@ const {
 						:disabled="loading"
 						@click="chooseSubdomain('')"
 					>
-						none (use apex)
+						{{ t('components.domains.addDomainForm.useApex') }}
 					</button>
 				</div>
 				<p v-if="subError" :id="subErrorId" class="mt-1 text-xs text-error" data-testid="sub-error">
@@ -204,24 +223,52 @@ const {
 				<!-- Sending: the address you'll send as. Tracking: the branded host your
 				     links will point at. Both compose from the same two fields via A1. -->
 				<template v-if="context === 'tracking'">
-					<template v-if="combinedDomain">
-						Your tracking links will use
-						<strong class="text-text-primary">{{ combinedDomain }}</strong>
-					</template>
-					<template v-else>
-						For example, your tracking links will use
-						<span class="font-medium text-text-primary">links.example.com</span>
-					</template>
+					<I18nT
+						v-if="combinedDomain"
+						keypath="components.domains.addDomainForm.trackingPreview"
+						tag="span"
+						scope="global"
+					>
+						<template #host>
+							<strong class="text-text-primary">{{ combinedDomain }}</strong>
+						</template>
+					</I18nT>
+					<I18nT
+						v-else
+						keypath="components.domains.addDomainForm.trackingPreviewExample"
+						tag="span"
+						scope="global"
+					>
+						<template #host>
+							<span class="font-medium text-text-primary">
+								{{ t('components.domains.addDomainForm.trackingExampleHost') }}
+							</span>
+						</template>
+					</I18nT>
 				</template>
 				<template v-else>
-					<template v-if="combinedDomain">
-						You'll send as
-						<strong class="text-text-primary">you@{{ combinedDomain }}</strong>
-					</template>
-					<template v-else>
-						For example, you'll send as
-						<span class="font-medium text-text-primary">you@mail.example.com</span>
-					</template>
+					<I18nT
+						v-if="combinedDomain"
+						keypath="components.domains.addDomainForm.sendingPreview"
+						tag="span"
+						scope="global"
+					>
+						<template #address>
+							<strong class="text-text-primary">you@{{ combinedDomain }}</strong>
+						</template>
+					</I18nT>
+					<I18nT
+						v-else
+						keypath="components.domains.addDomainForm.sendingPreviewExample"
+						tag="span"
+						scope="global"
+					>
+						<template #address>
+							<span class="font-medium text-text-primary">
+								{{ t('components.domains.addDomainForm.sendingExampleAddress') }}
+							</span>
+						</template>
+					</I18nT>
 				</template>
 			</p>
 
@@ -237,15 +284,18 @@ const {
 			>
 				<p class="flex items-start gap-2 text-xs text-text-secondary">
 					<Icon name="lucide:info" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
-					<span>
-						We recommend one name per kind of mail:
-						<strong class="text-text-primary">mail.</strong> for transactional (receipts, password
-						resets) and <strong class="text-text-primary">news.</strong> for campaigns and lifecycle
-						mail. A subdomain does not inherit your root domain's reputation, so each one needs its
-						own SPF record, its own DKIM key and its own warm-up — which is exactly what keeps a bad
-						campaign away from your password resets. Add them one at a time here; once a domain is
-						added, Owlat generates every record for the whole layout in one pass.
-					</span>
+					<I18nT
+						keypath="components.domains.addDomainForm.streamNote"
+						tag="span"
+						scope="global"
+					>
+						<template #transactionalName>
+							<strong class="text-text-primary">mail.</strong>
+						</template>
+						<template #bulkName>
+							<strong class="text-text-primary">news.</strong>
+						</template>
+					</I18nT>
 				</p>
 			</div>
 
@@ -260,13 +310,11 @@ const {
 			>
 				<p class="flex items-start gap-2 text-xs text-text-secondary">
 					<Icon name="lucide:info" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
-					<span>
-						Sending from your apex
-						<strong class="text-text-primary">{{ registrableZone }}</strong> shares its sending
-						reputation with everything else that sends from it, and any SPF record it already
-						publishes must be merged into one. When you verify, Owlat shows the single merged record
-						to publish.
-					</span>
+					<I18nT keypath="components.domains.addDomainForm.apexNote" tag="span" scope="global">
+						<template #zone>
+							<strong class="text-text-primary">{{ registrableZone }}</strong>
+						</template>
+					</I18nT>
 				</p>
 			</div>
 
@@ -288,7 +336,7 @@ const {
 						class="h-3.5 w-3.5 transition-transform"
 						:class="advancedOpen ? 'rotate-90' : ''"
 					/>
-					Advanced
+					{{ t('components.domains.addDomainForm.advanced') }}
 				</button>
 
 				<div
@@ -298,14 +346,16 @@ const {
 					data-testid="advanced-section"
 				>
 					<label :for="returnPathInputId" class="label">
-						Bounce (return-path) subdomain
-						<span class="font-normal text-text-tertiary">— optional</span>
+						{{ t('components.domains.addDomainForm.returnPathLabel') }}
+						<span class="font-normal text-text-tertiary">
+							{{ t('components.domains.addDomainForm.returnPathOptional') }}
+						</span>
 					</label>
 					<input
 						:id="returnPathInputId"
 						v-model="returnPathSub"
 						type="text"
-						placeholder="bounce"
+						:placeholder="t('components.domains.addDomainForm.returnPathPlaceholder')"
 						autocapitalize="off"
 						autocorrect="off"
 						spellcheck="false"
@@ -332,16 +382,28 @@ const {
 						class="mt-1 text-xs text-text-secondary"
 						data-testid="returnpath-preview"
 					>
-						<template v-if="normalizedReturnPathSub">
-							Bounces will come from
-							<strong class="text-text-primary"
-								>{{ normalizedReturnPathSub }}.{{ returnPathZone }}</strong
-							>
-						</template>
-						<template v-else>
-							For example, bounces would come from
-							<span class="font-medium text-text-primary">bounce.{{ returnPathZone }}</span>
-						</template>
+						<I18nT
+							v-if="normalizedReturnPathSub"
+							keypath="components.domains.addDomainForm.returnPathPreview"
+							tag="span"
+							scope="global"
+						>
+							<template #host>
+								<strong class="text-text-primary"
+									>{{ normalizedReturnPathSub }}.{{ returnPathZone }}</strong
+								>
+							</template>
+						</I18nT>
+						<I18nT
+							v-else
+							keypath="components.domains.addDomainForm.returnPathPreviewExample"
+							tag="span"
+							scope="global"
+						>
+							<template #host>
+								<span class="font-medium text-text-primary">bounce.{{ returnPathZone }}</span>
+							</template>
+						</I18nT>
 					</p>
 				</div>
 			</div>
@@ -353,15 +415,21 @@ const {
 				data-testid="freemail-warning"
 			>
 				<Icon name="lucide:shield-alert" class="w-4 h-4 text-error shrink-0 mt-0.5" />
-				<p class="text-xs text-text-secondary">
-					You can't publish DNS records for
-					<strong class="text-text-primary">{{ registrableZone ?? combinedDomain }}</strong>
-					— it's a shared mailbox provider you don't control. Use a domain you own, or
-					<NuxtLink to="/dashboard/postbox/migrate" class="text-brand hover:underline font-medium"
-						>connect an external mailbox</NuxtLink
-					>
-					instead.
-				</p>
+				<I18nT
+					keypath="components.domains.addDomainForm.freemailWarning"
+					tag="p"
+					scope="global"
+					class="text-xs text-text-secondary"
+				>
+					<template #zone>
+						<strong class="text-text-primary">{{ registrableZone ?? combinedDomain }}</strong>
+					</template>
+					<template #migrateLink>
+						<NuxtLink to="/dashboard/postbox/migrate" class="text-brand hover:underline font-medium">
+							{{ t('components.domains.addDomainForm.freemailMigrateLink') }}
+						</NuxtLink>
+					</template>
+				</I18nT>
 			</div>
 
 			<!-- Advisory: the domain doesn't resolve (likely a typo). Submit still allowed. -->
@@ -371,23 +439,27 @@ const {
 				data-testid="ns-warning"
 			>
 				<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning shrink-0 mt-0.5" />
-				<p class="text-xs text-text-secondary">
-					We couldn't find any nameservers for
-					<strong class="text-text-primary">{{ registrableZone }}</strong>
-					— double-check the spelling. You can still add it if the domain is brand new and its DNS
-					is still being set up.
-				</p>
+				<I18nT
+					keypath="components.domains.addDomainForm.nsWarning"
+					tag="p"
+					scope="global"
+					class="text-xs text-text-secondary"
+				>
+					<template #zone>
+						<strong class="text-text-primary">{{ registrableZone }}</strong>
+					</template>
+				</I18nT>
 			</div>
 		</div>
 
 		<div class="flex justify-end gap-3 mt-6">
 			<UiButton variant="secondary" type="button" :disabled="loading" @click="emit('cancel')">
-				Cancel
+				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="submit" class="gap-2" :disabled="loading || isFreemail">
 				<Icon v-if="loading" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				<Icon v-else name="lucide:plus" class="w-4 h-4" />
-				{{ loading ? 'Adding...' : submitLabel }}
+				{{ loading ? t('components.domains.addDomainForm.adding') : submitLabelText }}
 			</UiButton>
 		</div>
 	</form>

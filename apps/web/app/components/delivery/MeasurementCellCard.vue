@@ -48,7 +48,18 @@ const props = defineProps<{
 	decisionWindowLabel: string;
 }>();
 
-const title = computed(() => cellLabel(props.cell.cell));
+const { t, locale } = useI18n();
+
+/**
+ * The measurement tables are module scope and never call `useI18n`: they hand
+ * back catalog keys (with parameters where they have any), and this card is the
+ * render boundary that turns them into words.
+ */
+type MeasurementMessage = string | { key: string; params?: Record<string, unknown> };
+const message = (value: MeasurementMessage): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
+const title = computed(() => message(cellLabel(props.cell.cell)));
 const headingId = computed(() => `measurement-cell-${props.cell.cellKey.replace(':', '-')}`);
 const isStandalone = computed(() => props.cell.reference === null);
 const isEmpty = computed(() => isZeroVolume(props.cell));
@@ -59,7 +70,9 @@ const rows = computed(() => armMetricRows(props.cell.own, props.cell.reference))
 // catalog's display label is not carried by the dashboard query — the transport
 // card, which does read the catalog, may word that one relay differently.
 const referenceColumnLabel = computed(() =>
-	props.referenceTransportId === null ? 'Comparison' : transportIdLabel(props.referenceTransportId)
+	props.referenceTransportId === null
+		? t('components.delivery.measurementCellCard.comparison')
+		: message(transportIdLabel(props.referenceTransportId))
 );
 
 /**
@@ -76,9 +89,16 @@ const trendPoints = computed(() => {
 	const peak = points.reduce((max, point) => Math.max(max, point.own.sent), 0);
 	return points.map((point) => ({
 		day: point.day,
-		label: formatShortDate(point.day),
-		sent: formatNumber(point.own.sent),
-		referenceSent: point.reference === null ? null : formatNumber(point.reference.sent),
+		label: formatShortDate(point.day, locale.value),
+		counts:
+			point.reference === null
+				? t('components.delivery.measurementCellCard.trendSent', {
+						count: formatNumber(point.own.sent, locale.value),
+					})
+				: t('components.delivery.measurementCellCard.trendSentWithReference', {
+						count: formatNumber(point.own.sent, locale.value),
+						reference: formatNumber(point.reference.sent, locale.value),
+					}),
 		widthPercent: peak > 0 ? Math.round((point.own.sent / peak) * 100) : 0,
 	}));
 });
@@ -105,41 +125,47 @@ const hasQuietRelayHistory = computed(
 			<header class="flex flex-wrap items-start justify-between gap-3">
 				<div>
 					<h3 :id="headingId" class="text-base font-semibold text-text-primary">{{ title }}</h3>
-					<p class="mt-1 text-sm text-text-secondary">
-						Your own server carries
-						<span data-testid="measurement-own-share">{{ ownShareLabel(cell) }}</span>
-						of this traffic.
-					</p>
+					<I18nT
+						keypath="components.delivery.measurementCellCard.ownShare"
+						tag="p"
+						class="mt-1 text-sm text-text-secondary"
+						scope="global"
+					>
+						<template #share>
+							<span data-testid="measurement-own-share">{{ ownShareLabel(cell) }}</span>
+						</template>
+					</I18nT>
 				</div>
 				<span
 					class="rounded-full border border-border-subtle px-3 py-1 text-xs text-text-secondary"
 					data-testid="measurement-confidence"
 					:data-level="cell.confidence.level"
 				>
-					{{ confidenceLabel(cell.confidence.level) }}
+					{{ message(confidenceLabel(cell.confidence.level)) }}
 				</span>
 			</header>
 
 			<!-- Zero volume: nothing sent, nothing wrong. -->
 			<p v-if="isEmpty" data-testid="measurement-empty" class="text-sm text-text-secondary">
-				Nothing has been sent in this cell during the reported window. There is nothing to measure
-				yet, and that is fine.
+				{{ t('components.delivery.measurementCellCard.empty') }}
 			</p>
 
 			<template v-else>
 				<div class="overflow-x-auto">
 					<table class="w-full text-sm" data-testid="measurement-arm-table">
 						<caption class="sr-only">
-							Sending outcomes for
 							{{
-								title
+								t('components.delivery.measurementCellCard.tableCaption', { cell: title })
 							}}
-							over the reported window
 						</caption>
 						<thead>
 							<tr class="text-left text-xs uppercase tracking-wide text-text-secondary">
-								<th scope="col" class="py-2 pr-4 font-medium">Metric</th>
-								<th scope="col" class="py-2 pr-4 font-medium">Your server</th>
+								<th scope="col" class="py-2 pr-4 font-medium">
+									{{ t('components.delivery.measurementCellCard.metric') }}
+								</th>
+								<th scope="col" class="py-2 pr-4 font-medium">
+									{{ t('components.delivery.measurementCellCard.ownServer') }}
+								</th>
 								<th v-if="!isStandalone" scope="col" class="py-2 font-medium">
 									{{ referenceColumnLabel }}
 								</th>
@@ -153,7 +179,7 @@ const hasQuietRelayHistory = computed(
 								:data-testid="`measurement-metric-${row.key}`"
 							>
 								<th scope="row" class="py-2 pr-4 text-left font-normal text-text-secondary">
-									{{ row.label }}
+									{{ message(row.label) }}
 								</th>
 								<td class="py-2 pr-4 text-text-primary" data-testid="measurement-own-value">
 									{{ row.ownCount }}
@@ -182,15 +208,15 @@ const hasQuietRelayHistory = computed(
 				/>
 
 				<div v-if="trendPoints.length > 0">
-					<h4 class="text-sm font-semibold text-text-primary">Trend</h4>
+					<h4 class="text-sm font-semibold text-text-primary">
+						{{ t('components.delivery.measurementCellCard.trend') }}
+					</h4>
 					<p
 						v-if="hasQuietRelayHistory"
 						data-testid="measurement-quiet-relay"
 						class="mt-1 text-sm text-text-secondary"
 					>
-						Your relay carried this cell earlier in the reported window but not recently, so the checks had
-						nothing to compare against and the comparison column is gone. The days it did carry are
-						still plotted below.
+						{{ t('components.delivery.measurementCellCard.quietRelay') }}
 					</p>
 					<ul class="mt-2 space-y-1" data-testid="measurement-trend">
 						<li v-for="point in trendPoints" :key="point.day" class="flex items-center gap-3">
@@ -202,9 +228,7 @@ const hasQuietRelayHistory = computed(
 								/>
 							</span>
 							<span class="w-28 shrink-0 text-right text-xs text-text-secondary">
-								{{ point.sent }} sent<template v-if="point.referenceSent !== null">
-									/ {{ point.referenceSent }}</template
-								>
+								{{ point.counts }}
 							</span>
 						</li>
 					</ul>
@@ -217,14 +241,16 @@ const hasQuietRelayHistory = computed(
 				class="rounded-lg border border-border-subtle p-3"
 				data-testid="measurement-improvements"
 			>
-				<p class="text-sm font-medium text-text-primary">Improve this measurement</p>
+				<p class="text-sm font-medium text-text-primary">
+					{{ t('components.delivery.measurementCellCard.improveTitle') }}
+				</p>
 				<ul class="mt-1 space-y-1 text-sm text-text-secondary">
 					<li
 						v-for="improvement in cell.confidence.improvements"
 						:key="improvement"
 						:data-testid="`measurement-improvement-${improvement}`"
 					>
-						{{ improvementCopy(improvement) }}
+						{{ message(improvementCopy(improvement)) }}
 					</li>
 				</ul>
 			</div>

@@ -24,6 +24,8 @@ interface Props {
 
 const props = defineProps<Props>();
 
+const { t } = useI18n();
+
 const { removeMember, setMemberRole, addMember } = useChatActions();
 const { candidates } = useChatMentionSearch(() => addQuery.value, { includeAssistant: false });
 
@@ -69,14 +71,14 @@ const confirmRemove = async () => {
 	<div class="flex flex-col h-full">
 		<div class="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
 			<span class="text-sm font-semibold text-text-primary">
-				Members ({{ members.length }})
+				{{ t('components.chat.chatMemberList.heading', { count: members.length }) }}
 			</span>
 			<button
 				v-if="canManage"
 				class="text-xs text-brand hover:underline"
 				@click="showAdd = !showAdd"
 			>
-				{{ showAdd ? 'Cancel' : 'Add' }}
+				{{ showAdd ? t('common.cancel') : t('common.add') }}
 			</button>
 		</div>
 
@@ -85,7 +87,7 @@ const confirmRemove = async () => {
 			<input
 				v-model="addQuery"
 				type="text"
-				placeholder="Search org members…"
+				:placeholder="t('components.chat.chatMemberList.searchPlaceholder')"
 				class="w-full input text-sm"
 			/>
 			<div v-if="addCandidates.length > 0" class="mt-2 max-h-40 overflow-y-auto space-y-1">
@@ -114,10 +116,12 @@ const confirmRemove = async () => {
 				<div class="flex-1 min-w-0">
 					<div class="text-sm text-text-primary truncate">
 						{{ member.name ?? member.email ?? member.memberId }}
-						<span v-if="member.memberId === currentUserId" class="text-xs text-text-tertiary">(you)</span>
+						<span v-if="member.memberId === currentUserId" class="text-xs text-text-tertiary">{{
+							t('components.chat.chatMemberList.you')
+						}}</span>
 					</div>
 					<div v-if="member.role === 'admin'" class="text-[10px] text-text-tertiary uppercase tracking-wider">
-						Admin
+						{{ t('components.chat.chatMemberList.admin') }}
 					</div>
 				</div>
 				<div
@@ -127,7 +131,7 @@ const confirmRemove = async () => {
 					<button
 						v-if="member.role === 'member'"
 						class="text-xs text-text-tertiary hover:text-brand"
-						title="Promote to admin"
+						:title="t('components.chat.chatMemberList.promote')"
 						@click="handlePromote(member.memberId)"
 					>
 						<Icon name="lucide:shield" class="w-3.5 h-3.5" />
@@ -135,14 +139,14 @@ const confirmRemove = async () => {
 					<button
 						v-else
 						class="text-xs text-text-tertiary hover:text-text-primary"
-						title="Demote to member"
+						:title="t('components.chat.chatMemberList.demote')"
 						@click="handleDemote(member.memberId)"
 					>
 						<Icon name="lucide:shield-off" class="w-3.5 h-3.5" />
 					</button>
 					<button
 						class="text-xs text-text-tertiary hover:text-error"
-						title="Remove"
+						:title="t('common.remove')"
 						@click="memberToRemove = member"
 					>
 						<Icon name="lucide:user-minus" class="w-3.5 h-3.5" />
@@ -154,9 +158,16 @@ const confirmRemove = async () => {
 		<UiConfirmationDialog
 			:open="!!memberToRemove"
 			variant="danger"
-			title="Remove member?"
-			:description="`Remove ${memberToRemove?.name ?? memberToRemove?.email ?? 'this member'} from the channel? They will lose access to it.`"
-			confirm-text="Remove member"
+			:title="t('components.chat.chatMemberList.removeDialog.title')"
+			:description="
+				t('components.chat.chatMemberList.removeDialog.description', {
+					name:
+						memberToRemove?.name ??
+						memberToRemove?.email ??
+						t('components.chat.chatMemberList.removeDialog.thisMember'),
+				})
+			"
+			:confirm-text="t('components.chat.chatMemberList.removeDialog.confirm')"
 			:is-loading="isRemoving"
 			@update:open="(v: boolean) => !v && (memberToRemove = null)"
 			@confirm="confirmRemove"

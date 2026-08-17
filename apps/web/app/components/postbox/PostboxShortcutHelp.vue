@@ -8,6 +8,8 @@
  * modal focus handling. Mounted by PostboxLayout and the search screen.
  */
 
+const { t } = useI18n();
+
 const open = useState('postbox:shortcut-help', () => false);
 
 function onGlobalKey(event: KeyboardEvent) {
@@ -22,11 +24,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 </script>
 
 <template>
-	<UiModal :open="open" title="Keyboard shortcuts" size="lg" @update:open="open = $event">
+	<UiModal
+		:open="open"
+		:title="t('components.postbox.postboxShortcutHelp.title')"
+		size="lg"
+		@update:open="open = $event"
+	>
 		<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
 			<section v-for="group in POSTBOX_SHORTCUT_GROUPS" :key="group.title">
 				<h3 class="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-2">
-					{{ group.title }}
+					{{ t(group.title) }}
 				</h3>
 				<ul class="space-y-1.5">
 					<li
@@ -34,7 +41,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 						:key="shortcut.label"
 						class="flex items-center justify-between gap-4 text-sm"
 					>
-						<span class="text-text-secondary">{{ shortcut.label }}</span>
+						<span class="text-text-secondary">{{ t(shortcut.label) }}</span>
 						<span class="flex items-center gap-1 flex-shrink-0">
 							<kbd
 								v-for="k in shortcut.keys"

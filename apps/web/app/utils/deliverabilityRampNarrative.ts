@@ -29,15 +29,31 @@ import {
 	type RampCellDecision,
 	type RampControls,
 } from '~/utils/deliverabilityRamp';
+import type { LocalizedText } from '~/utils/deliverabilityMeasurement';
+
+export type { LocalizedText };
+
+/**
+ * HOW A SENTENCE THAT NAMES A CELL GETS ITS NAME.
+ *
+ * Every value this module hands out is a catalog key — but two of its sentences
+ * quote another catalog entry INSIDE themselves: the cell's name, and the
+ * controller's own binding-constraint label. A key interpolated into a message
+ * renders as the key, so those two take the caller's resolver, which is the same
+ * `localized` the card already uses on everything else here.
+ *
+ * The default exists so a caller with nothing to translate with still gets a
+ * value rather than a crash; it renders the key, which is a visible defect
+ * rather than a silent mistranslation.
+ */
+export type NarrativeTranslator = (value: LocalizedText) => string;
+
+const KEY_ONLY: NarrativeTranslator = (value) => (typeof value === 'string' ? value : value.key);
 
 const CELLS_HREF = '/dashboard/admin/delivery/advanced/cells';
 const CONTROLS_HREF = '/dashboard/admin/delivery/advanced/controls';
 const MEASUREMENT_HREF = '/dashboard/admin/delivery/advanced/measurement';
 const INDEPENDENCE_HREF = '/dashboard/admin/delivery/advanced/independence';
-
-function cellCount(count: number): string {
-	return count === 1 ? '1 cell' : `${count} cells`;
-}
 
 function managedCells(controls: RampControls): readonly RampCellControl[] {
 	return controls.cells.filter((cell) => cell.isRampManaged);
@@ -69,13 +85,13 @@ export interface RampNarrativeProgress {
 	readonly managed: number;
 	/** 0–1, for the meter. The LABEL is what a screen reader is given. */
 	readonly fraction: number;
-	readonly label: string;
+	readonly label: LocalizedText;
 }
 
 export interface RampNarrativePhase {
 	readonly key: RampNarrativePhaseKey;
-	readonly title: string;
-	readonly detail: string;
+	readonly title: LocalizedText;
+	readonly detail: LocalizedText;
 	/** Absent when there is nothing on the ramp to be a fraction of. */
 	readonly progress: RampNarrativeProgress | null;
 }
@@ -90,14 +106,16 @@ export interface RampNarrativePhase {
  * made — and would leave the operator waiting for a share to climb that is
  * already at its ceiling.
  */
-export function rampPhaseNarrative(controls: RampControls): RampNarrativePhase {
+export function rampPhaseNarrative(
+	controls: RampControls,
+	translate: NarrativeTranslator = KEY_ONLY
+): RampNarrativePhase {
 	const managed = managedCells(controls);
 	if (managed.length === 0) {
 		return {
 			key: 'not_started',
-			title: 'No cell is on the ramp yet',
-			detail:
-				'Nothing is wrong: putting a cell on the ramp is a choice, and until you make it your mail keeps going out exactly the way it does today. Once a cell is on it, the controller moves that cell’s share only when the checks agree.',
+			title: 'shared.deliverabilityRampNarrative.phase.notStarted.title',
+			detail: 'shared.deliverabilityRampNarrative.phase.notStarted.detail',
 			progress: null,
 		};
 	}
@@ -107,15 +125,20 @@ export function rampPhaseNarrative(controls: RampControls): RampNarrativePhase {
 		graduated: graduated.length,
 		managed: managed.length,
 		fraction: graduated.length / managed.length,
-		label: `${graduated.length} of ${cellCount(managed.length)} on the ramp graduated so far`,
+		label: {
+			key:
+				managed.length === 1
+					? 'shared.deliverabilityRampNarrative.progress.one'
+					: 'shared.deliverabilityRampNarrative.progress.many',
+			params: { graduated: graduated.length, managed: managed.length },
+		},
 	};
 
 	if (controls.isControllerPaused) {
 		return {
 			key: 'paused',
-			title: 'The ramp is paused',
-			detail:
-				'Every cell is pinned where it is, and nothing will move until you resume it. The checks keep running while it is held, so you can see what would have happened.',
+			title: 'shared.deliverabilityRampNarrative.phase.paused.title',
+			detail: 'shared.deliverabilityRampNarrative.phase.paused.detail',
 			progress,
 		};
 	}
@@ -123,10 +146,10 @@ export function rampPhaseNarrative(controls: RampControls): RampNarrativePhase {
 	if (graduated.length === managed.length) {
 		return {
 			key: 'graduated',
-			title: 'Every cell on the ramp has graduated',
+			title: 'shared.deliverabilityRampNarrative.phase.graduated.title',
 			detail: controls.isRelayConfigured
-				? 'Each of them carries its full share from your own server, and the controller is holding them there. The relay is still connected and still being paid for.'
-				: 'Each of them carries its full share from your own server, and the controller is holding them there.',
+				? 'shared.deliverabilityRampNarrative.phase.graduated.detailWithRelay'
+				: 'shared.deliverabilityRampNarrative.phase.graduated.detail',
 			progress,
 		};
 	}
@@ -134,40 +157,44 @@ export function rampPhaseNarrative(controls: RampControls): RampNarrativePhase {
 	const leader = leadingCell(managed.filter((cell) => cell.graduatedAt === null));
 	return {
 		key: 'warming',
-		title: 'Warming up',
-		detail: leader === null ? warmingWithoutLeader() : warmingDetail(leader),
+		title: 'shared.deliverabilityRampNarrative.phase.warming.title',
+		detail:
+			leader === null
+				? 'shared.deliverabilityRampNarrative.phase.warming.noLeader'
+				: warmingDetail(leader, translate),
 		progress,
 	};
 }
 
-function warmingWithoutLeader(): string {
-	return 'The controller is moving each cell’s share on the evidence, one clean window at a time.';
-}
-
-function warmingDetail(leader: RampCellControl): string {
-	const name = rampCellLabel(leader.cell);
-	if (!leader.isShareRamped) {
-		return `${name} is the one to watch: with no second sender on it, the whole cell already leaves from your own server and the warm-up pace — not the share — is the dial the controller moves. ${streakSentence(leader)}`;
-	}
-	const ceiling =
-		leader.phaseCeiling === null
-			? ''
-			: `, against a ${shareLabel(leader.phaseCeiling)} ceiling on its current phase`;
-	return `${name} is the furthest along: ${shareLabel(leader.ownShare)} of that mail leaves from your own server${ceiling}. ${streakSentence(leader)}`;
-}
-
 /**
- * HOW CLOSE THE NEXT STEP IS, in the controller's own currency. The clean streak
- * is the thing an operator watching a share sit still is actually waiting on,
- * and a cell that has just retreated is at zero — which is the honest answer
- * rather than a silence.
+ * THE LEADER'S SENTENCE, ONE MESSAGE PER SHAPE.
+ *
+ * The ceiling clause and the streak sentence are part of the sentence rather
+ * than fragments pasted onto it: a clause bolted on in code is a sentence no
+ * translator can reorder, and the streak is the one number an operator watching
+ * a share sit still is actually waiting on — a cell that has just retreated is at
+ * zero, which is the honest answer rather than a silence.
  */
-function streakSentence(cell: RampCellControl): string {
-	if (cell.cleanStreak <= 0) {
-		return 'It has no clean streak yet — the count restarts at zero after every retreat and after every manual move.';
+function warmingDetail(leader: RampCellControl, translate: NarrativeTranslator): LocalizedText {
+	const streak =
+		leader.cleanStreak <= 0 ? 'streakNone' : leader.cleanStreak === 1 ? 'streakOne' : 'streakMany';
+	const name = translate(rampCellLabel(leader.cell));
+	if (!leader.isShareRamped) {
+		return {
+			key: `shared.deliverabilityRampNarrative.phase.warming.unramped.${streak}`,
+			params: { name, streak: leader.cleanStreak },
+		};
 	}
-	const windows = cell.cleanStreak === 1 ? '1 clean window' : `${cell.cleanStreak} clean windows`;
-	return `${windows} in a row so far.`;
+	const family = leader.phaseCeiling === null ? 'ramped' : 'rampedCeiling';
+	return {
+		key: `shared.deliverabilityRampNarrative.phase.warming.${family}.${streak}`,
+		params: {
+			name,
+			share: shareLabel(leader.ownShare),
+			ceiling: leader.phaseCeiling === null ? '' : shareLabel(leader.phaseCeiling),
+			streak: leader.cleanStreak,
+		},
+	};
 }
 
 // ============ WHAT THE CONTROLLER DECIDED ============
@@ -175,7 +202,7 @@ function streakSentence(cell: RampCellControl): string {
 export interface RampNarrativeDecision {
 	readonly key: string;
 	readonly at: number;
-	readonly cellLabel: string;
+	readonly cellLabel: LocalizedText;
 	readonly direction: RampCellDecision['direction'];
 	/**
 	 * The direction IN WORDS. A timeline that carried it as an arrow colour alone
@@ -183,9 +210,9 @@ export interface RampNarrativeDecision {
 	 * matters most — it is the one an operator mistakes for the controller having
 	 * stopped looking.
 	 */
-	readonly directionLabel: string;
+	readonly directionLabel: LocalizedText;
 	readonly move: string;
-	readonly reason: string;
+	readonly reason: LocalizedText;
 	/** The controller's sentence, verbatim. */
 	readonly message: string;
 	/** The retreat notice, verbatim, when the decision carried one. */
@@ -193,9 +220,9 @@ export interface RampNarrativeDecision {
 }
 
 const DIRECTION_LABELS = {
-	increase: 'Raised',
-	decrease: 'Pulled back',
-	hold: 'Held',
+	increase: 'shared.deliverabilityRampNarrative.direction.increase',
+	decrease: 'shared.deliverabilityRampNarrative.direction.decrease',
+	hold: 'shared.deliverabilityRampNarrative.direction.hold',
 } as const satisfies Record<RampCellDecision['direction'], string>;
 
 /**
@@ -242,9 +269,9 @@ export type RampNextActionKey =
 
 export interface RampNextAction {
 	readonly key: RampNextActionKey;
-	readonly title: string;
-	readonly detail: string;
-	readonly ctaLabel: string;
+	readonly title: LocalizedText;
+	readonly detail: LocalizedText;
+	readonly ctaLabel: LocalizedText;
 	readonly to: string;
 }
 
@@ -263,16 +290,18 @@ export interface RampNextAction {
  * next action is to look at the evidence it is working from — so the card always
  * ends in something worth clicking rather than an empty slot or an invented task.
  */
-export function rampNextAction(controls: RampControls): RampNextAction {
+export function rampNextAction(
+	controls: RampControls,
+	translate: NarrativeTranslator = KEY_ONLY
+): RampNextAction {
 	const managed = managedCells(controls);
 
 	if (managed.length === 0) {
 		return {
 			key: 'enroll_cell',
-			title: 'Put your first cell on the ramp',
-			detail:
-				'Pick one stream and one mailbox provider — campaign mail to Gmail is the usual first choice — and the controller starts moving that slice on the evidence alone. Nothing else about your sending changes.',
-			ctaLabel: 'Choose a cell',
+			title: 'shared.deliverabilityRampNarrative.action.enrollCell.title',
+			detail: 'shared.deliverabilityRampNarrative.action.enrollCell.detail',
+			ctaLabel: 'shared.deliverabilityRampNarrative.action.enrollCell.cta',
 			to: CONTROLS_HREF,
 		};
 	}
@@ -280,10 +309,9 @@ export function rampNextAction(controls: RampControls): RampNextAction {
 	if (controls.isControllerPaused) {
 		return {
 			key: 'resume_controller',
-			title: 'Resume the ramp',
-			detail:
-				'The whole ramp is paused, so no share will move — up or down — however good or bad the evidence gets. Resume it when you are ready for the controller to act again.',
-			ctaLabel: 'Open the ramp controls',
+			title: 'shared.deliverabilityRampNarrative.action.resumeController.title',
+			detail: 'shared.deliverabilityRampNarrative.action.resumeController.detail',
+			ctaLabel: 'shared.deliverabilityRampNarrative.action.resumeController.cta',
 			to: CONTROLS_HREF,
 		};
 	}
@@ -292,11 +320,15 @@ export function rampNextAction(controls: RampControls): RampNextAction {
 	if (retreating !== null) {
 		return {
 			key: 'read_pull_back',
-			title: `The controller pulled ${rampCellLabel(retreating.cell.cell)} back`,
+			title: {
+				key: 'shared.deliverabilityRampNarrative.action.readPullBack.title',
+				params: { cell: translate(rampCellLabel(retreating.cell.cell)) },
+			},
 			// The controller's own notice where it wrote one, its decision sentence
-			// otherwise. Both name the gate that broke; neither is re-worded here.
+			// otherwise. Both name the gate that broke; neither is re-worded here —
+			// and neither is translated here either: they are the server's words.
 			detail: retreating.decision.adminNotice ?? retreating.decision.message,
-			ctaLabel: 'See the evidence behind it',
+			ctaLabel: 'shared.deliverabilityRampNarrative.action.readPullBack.cta',
 			to: CELLS_HREF,
 		};
 	}
@@ -305,11 +337,17 @@ export function rampNextAction(controls: RampControls): RampNextAction {
 	if (held !== undefined) {
 		return {
 			key: 'release_hold',
-			title: `You are holding ${rampCellLabel(held.cell)}`,
+			title: {
+				key: 'shared.deliverabilityRampNarrative.action.releaseHold.title',
+				params: { cell: translate(rampCellLabel(held.cell)) },
+			},
 			detail: held.isPaused
-				? 'You paused this cell, so the controller will not move its share in either direction. Nothing is wrong with it — release the pause when you want the ramp to carry on.'
-				: `You pinned this cell at ${shareLabel(held.pinnedShare ?? 0)}, so the controller will not raise or lower it. Release the pin when you want the ramp to carry on.`,
-			ctaLabel: 'Open the ramp controls',
+				? 'shared.deliverabilityRampNarrative.action.releaseHold.detailPaused'
+				: {
+						key: 'shared.deliverabilityRampNarrative.action.releaseHold.detailPinned',
+						params: { share: shareLabel(held.pinnedShare ?? 0) },
+					},
+			ctaLabel: 'shared.deliverabilityRampNarrative.action.releaseHold.cta',
 			to: CONTROLS_HREF,
 		};
 	}
@@ -317,10 +355,9 @@ export function rampNextAction(controls: RampControls): RampNextAction {
 	if (managed.every((cell) => cell.graduatedAt !== null) && controls.isRelayConfigured) {
 		return {
 			key: 'disconnect_relay',
-			title: 'Consider disconnecting the relay',
-			detail:
-				'Every cell on the ramp has graduated, so your own server is already carrying their mail. The relay is still connected — the independence screen prices what it is still costing you and names anything still leaning on it.',
-			ctaLabel: 'See what the relay still costs',
+			title: 'shared.deliverabilityRampNarrative.action.disconnectRelay.title',
+			detail: 'shared.deliverabilityRampNarrative.action.disconnectRelay.detail',
+			ctaLabel: 'shared.deliverabilityRampNarrative.action.disconnectRelay.cta',
 			to: INDEPENDENCE_HREF,
 		};
 	}
@@ -328,15 +365,21 @@ export function rampNextAction(controls: RampControls): RampNextAction {
 	const leader = leadingCell(managed.filter((cell) => cell.graduatedAt === null));
 	return {
 		key: 'watch_evidence',
-		title: 'Nothing needs you right now',
+		title: 'shared.deliverabilityRampNarrative.action.watchEvidence.title',
 		detail:
 			leader === null
-				? 'The controller is advancing on the evidence. The measurement screen is where the numbers behind each check live.'
-				: // The constraint is the controller's own label; the trailing stop is
-					// trimmed rather than assumed, because some of those labels carry one
-					// ("Waiting for the first evaluation.") and most do not.
-					`The controller is advancing on the evidence. What ${rampCellLabel(leader.cell)} is waiting on: ${bindingConstraint(leader).replace(/\.$/, '')}.`,
-		ctaLabel: 'See the numbers it is watching',
+				? 'shared.deliverabilityRampNarrative.action.watchEvidence.detail'
+				: {
+						key: 'shared.deliverabilityRampNarrative.action.watchEvidence.detailLeader',
+						params: {
+							cell: translate(rampCellLabel(leader.cell)),
+							// The constraint is the controller's own label; the trailing stop
+							// is trimmed rather than assumed, because some of those labels
+							// carry one ("Waiting for the first evaluation.") and most do not.
+							constraint: translate(bindingConstraint(leader)).replace(/\.$/, ''),
+						},
+					},
+		ctaLabel: 'shared.deliverabilityRampNarrative.action.watchEvidence.cta',
 		to: MEASUREMENT_HREF,
 	};
 }
@@ -363,8 +406,8 @@ function leadingRetreat(
 
 export interface RampAdvancedScreen {
 	readonly to: string;
-	readonly label: string;
-	readonly description: string;
+	readonly label: LocalizedText;
+	readonly description: LocalizedText;
 	readonly icon: string;
 }
 
@@ -380,35 +423,33 @@ export function rampAdvancedScreens(isRelayConfigured: boolean): readonly RampAd
 	return [
 		{
 			to: CELLS_HREF,
-			label: 'Cells',
-			description: 'Every stream and mailbox provider, with the evidence behind each verdict.',
+			label: 'shared.deliverabilityRampNarrative.screens.cells.label',
+			description: 'shared.deliverabilityRampNarrative.screens.cells.description',
 			icon: 'lucide:grid-3x3',
 		},
 		{
 			to: CONTROLS_HREF,
-			label: 'Controls',
-			description: 'Put a cell on the ramp, hold it, cap it, or change how hard a stream ramps.',
+			label: 'shared.deliverabilityRampNarrative.screens.controls.label',
+			description: 'shared.deliverabilityRampNarrative.screens.controls.description',
 			icon: 'lucide:sliders-horizontal',
 		},
 		{
 			to: MEASUREMENT_HREF,
-			label: 'Measurement',
-			description: 'Gate by gate, the numbers every verdict on this card was reached on.',
+			label: 'shared.deliverabilityRampNarrative.screens.measurement.label',
+			description: 'shared.deliverabilityRampNarrative.screens.measurement.description',
 			icon: 'lucide:activity',
 		},
 		isRelayConfigured
 			? {
 					to: INDEPENDENCE_HREF,
-					label: 'Independence',
-					description:
-						'How much of your mail your own server now carries, and when the relay stops costing you.',
+					label: 'shared.deliverabilityRampNarrative.screens.independence.label',
+					description: 'shared.deliverabilityRampNarrative.screens.independence.description',
 					icon: 'lucide:trending-up',
 				}
 			: {
 					to: INDEPENDENCE_HREF,
-					label: 'Warm-up autopilot',
-					description:
-						'How much your own server can send today, and what is holding that number back.',
+					label: 'shared.deliverabilityRampNarrative.screens.warmupAutopilot.label',
+					description: 'shared.deliverabilityRampNarrative.screens.warmupAutopilot.description',
 					icon: 'lucide:trending-up',
 				},
 	];

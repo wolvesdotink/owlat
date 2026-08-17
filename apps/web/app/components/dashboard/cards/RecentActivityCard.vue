@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
+const { t } = useI18n();
+
 const { data: activity, isLoading } = useOrganizationQuery(
 	api.analytics.dashboard.getRecentActivity,
 	{ limit: 8 }
@@ -41,7 +43,9 @@ function getIcon(item: ActivityItem): string {
 		<div class="p-5">
 			<div class="flex items-center gap-2.5 mb-4">
 				<UiIconBox icon="lucide:activity" size="sm" variant="brand" />
-				<h3 class="text-sm font-semibold text-text-primary">Recent Activity</h3>
+				<h3 class="text-sm font-semibold text-text-primary">
+					{{ t('components.dashboard.cards.recentActivityCard.title') }}
+				</h3>
 			</div>
 
 			<div v-if="isLoading" class="flex items-center justify-center py-6">
@@ -49,7 +53,9 @@ function getIcon(item: ActivityItem): string {
 			</div>
 
 			<div v-else-if="activityList.length === 0" class="py-4 text-center">
-				<p class="text-sm text-text-tertiary">No recent activity yet</p>
+				<p class="text-sm text-text-tertiary">
+					{{ t('components.dashboard.cards.recentActivityCard.empty') }}
+				</p>
 			</div>
 
 			<div v-else class="space-y-1">

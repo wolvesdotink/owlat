@@ -4,21 +4,35 @@
  * so the updater never ran. No-op outside Tauri.
  */
 
-/** Check for an update; notify on install (or, when asked, on already-current). */
+/**
+ * Check for an update; notify on install (or, when asked, on already-current).
+ *
+ * The notification is written by the OS, not by a component, so the translator
+ * comes off the Nuxt app (`$i18n`) rather than `useI18n()` — this runs from a
+ * plugin and from a `window` event listener, neither of which is a setup scope.
+ */
 export async function runUpdateCheck(opts?: { announce?: boolean }): Promise<void> {
 	try {
 		const { checkForUpdates } = await import('@owlat/desktop/src/updater');
 		const { sendDesktopNotification } = await import('@owlat/desktop/src/notifications');
 		const res = await checkForUpdates();
+		// Resolved AFTER the check, so a missing Nuxt context can only cost the
+		// notification — never the update itself.
+		const { t } = useNuxtApp().$i18n;
 		if (res.updated) {
 			await sendDesktopNotification(
-				'Update ready',
-				`Owlat ${res.version ?? ''} will be applied the next time you restart.`
+				t('shared.desktop.updater.updateReady.title'),
+				// The version is blank when the updater could not name one, so the
+				// sentence is collapsed rather than left with a double space in it.
+				t('shared.desktop.updater.updateReady.body', { version: res.version ?? '' })
 					.replace(/\s+/g, ' ')
 					.trim()
 			);
 		} else if (opts?.announce) {
-			await sendDesktopNotification('Owlat is up to date', 'You have the latest version.');
+			await sendDesktopNotification(
+				t('shared.desktop.updater.upToDate.title'),
+				t('shared.desktop.updater.upToDate.body')
+			);
 		}
 	} catch {
 		// Not running under Tauri.

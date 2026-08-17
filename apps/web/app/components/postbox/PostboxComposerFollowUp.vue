@@ -20,6 +20,8 @@ defineProps<{
 	disabled?: boolean;
 }>();
 
+const { t } = useI18n();
+
 function toggle() {
 	if (remindAt.value) {
 		remindAt.value = null;
@@ -30,8 +32,10 @@ function toggle() {
 
 const title = computed(() =>
 	remindAt.value
-		? `Reminder if no reply by ${formatDateTime(remindAt.value)} — click to remove`
-		: 'Remind me if no reply'
+		? t('components.postbox.postboxComposerFollowUp.armedTitle', {
+				datetime: formatDateTime(remindAt.value),
+			})
+		: t('components.postbox.postboxComposerFollowUp.title')
 );
 </script>
 

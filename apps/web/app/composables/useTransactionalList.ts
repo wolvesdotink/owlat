@@ -6,6 +6,7 @@ import type { Id } from '@owlat/api/dataModel';
 export type StatusFilter = 'all' | 'draft' | 'published' | 'pending_review';
 
 export type SortOption = {
+	/** i18n message key — the list is module scope, so a page resolves it with `t()`. */
 	label: string;
 	value: string;
 	sortBy: 'updatedAt' | 'createdAt' | 'name';
@@ -13,19 +14,50 @@ export type SortOption = {
 };
 
 export const SORT_OPTIONS: SortOption[] = [
-	{ label: 'Last modified', value: 'updatedAt-desc', sortBy: 'updatedAt', sortOrder: 'desc' },
-	{ label: 'Oldest modified', value: 'updatedAt-asc', sortBy: 'updatedAt', sortOrder: 'asc' },
-	{ label: 'Newest created', value: 'createdAt-desc', sortBy: 'createdAt', sortOrder: 'desc' },
-	{ label: 'Oldest created', value: 'createdAt-asc', sortBy: 'createdAt', sortOrder: 'asc' },
-	{ label: 'Name (A-Z)', value: 'name-asc', sortBy: 'name', sortOrder: 'asc' },
-	{ label: 'Name (Z-A)', value: 'name-desc', sortBy: 'name', sortOrder: 'desc' },
+	{
+		label: 'shared.useTransactionalList.sort.lastModified',
+		value: 'updatedAt-desc',
+		sortBy: 'updatedAt',
+		sortOrder: 'desc',
+	},
+	{
+		label: 'shared.useTransactionalList.sort.oldestModified',
+		value: 'updatedAt-asc',
+		sortBy: 'updatedAt',
+		sortOrder: 'asc',
+	},
+	{
+		label: 'shared.useTransactionalList.sort.newestCreated',
+		value: 'createdAt-desc',
+		sortBy: 'createdAt',
+		sortOrder: 'desc',
+	},
+	{
+		label: 'shared.useTransactionalList.sort.oldestCreated',
+		value: 'createdAt-asc',
+		sortBy: 'createdAt',
+		sortOrder: 'asc',
+	},
+	{
+		label: 'shared.useTransactionalList.sort.nameAsc',
+		value: 'name-asc',
+		sortBy: 'name',
+		sortOrder: 'asc',
+	},
+	{
+		label: 'shared.useTransactionalList.sort.nameDesc',
+		value: 'name-desc',
+		sortBy: 'name',
+		sortOrder: 'desc',
+	},
 ];
 
+/** `label` is an i18n message key — resolve with `t()` where the filter renders. */
 export const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
-	{ value: 'all', label: 'All' },
-	{ value: 'draft', label: 'Draft' },
-	{ value: 'published', label: 'Published' },
-	{ value: 'pending_review', label: 'Pending Review' },
+	{ value: 'all', label: 'common.all' },
+	{ value: 'draft', label: 'shared.useTransactionalList.status.draft' },
+	{ value: 'published', label: 'shared.useTransactionalList.status.published' },
+	{ value: 'pending_review', label: 'shared.useTransactionalList.status.pendingReview' },
 ];
 
 /**
@@ -35,6 +67,7 @@ export const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 type SnippetLanguage = 'curl' | 'javascript' | 'python';
 
 export function useTransactionalList() {
+	const { t } = useI18n();
 	const router = useRouter();
 	const { copy, copiedKey, reset: resetCopiedSnippet } = useCopyToClipboard();
 
@@ -96,13 +129,13 @@ export function useTransactionalList() {
 	// --- MUTATIONS ---
 
 	const { run: duplicateEmail } = useBackendOperation(api.transactional.emails.duplicate, {
-		label: 'Duplicate transactional email',
+		label: () => t('shared.useTransactionalList.duplicateOperation'),
 	});
 	const { run: deleteEmail } = useBackendOperation(api.transactional.emails.remove, {
-		label: 'Delete transactional email',
+		label: () => t('shared.useTransactionalList.deleteOperation'),
 	});
 	const { run: createEmail } = useBackendOperation(api.transactional.emails.create, {
-		label: 'Create transactional email',
+		label: () => t('shared.useTransactionalList.createOperation'),
 		inlineTarget: createError,
 	});
 
@@ -112,12 +145,14 @@ export function useTransactionalList() {
 
 	// --- UTILITIES ---
 
+	// `label` is a message key, like the filter table above: the badge is read by
+	// pages that already resolve it with `t()`.
 	const getStatusBadge = (status: 'draft' | 'published' | 'pending_review') => {
 		if (status === 'published') {
 			return {
 				color: 'bg-success/10 text-success',
 				icon: 'lucide:check-circle',
-				label: 'Published',
+				label: 'shared.useTransactionalList.status.published',
 			};
 		}
 
@@ -125,14 +160,14 @@ export function useTransactionalList() {
 			return {
 				color: 'bg-warning/10 text-warning',
 				icon: 'lucide:clock-3',
-				label: 'Pending Review',
+				label: 'shared.useTransactionalList.status.pendingReview',
 			};
 		}
 
 		return {
 			color: 'bg-text-tertiary/10 text-text-tertiary',
 			icon: 'lucide:file-text',
-			label: 'Draft',
+			label: 'shared.useTransactionalList.status.draft',
 		};
 	};
 
@@ -141,7 +176,7 @@ export function useTransactionalList() {
 	const handleDuplicate = async (emailId: Id<'transactionalEmails'>) => {
 		const result = await duplicateEmail({ id: emailId });
 		if (result === undefined) return;
-		showNotification('Transactional email duplicated successfully');
+		showNotification(t('shared.useTransactionalList.duplicated'));
 	};
 
 	// --- DELETE MODAL ---
@@ -167,7 +202,7 @@ export function useTransactionalList() {
 		const result = await deleteEmail({ id: emailToDelete.value.id });
 		isDeleting.value = false;
 		if (result === undefined) return;
-		showNotification('Transactional email deleted successfully');
+		showNotification(t('shared.useTransactionalList.deleted'));
 		closeDeleteModal();
 	};
 
@@ -218,15 +253,14 @@ export function useTransactionalList() {
 
 		let hasErrors = false;
 		if (!createForm.name.trim()) {
-			createFormErrors.name = 'Name is required';
+			createFormErrors.name = t('shared.useTransactionalList.nameRequired');
 			hasErrors = true;
 		}
 		if (!createForm.slug.trim()) {
-			createFormErrors.slug = 'Slug is required';
+			createFormErrors.slug = t('shared.useTransactionalList.slugRequired');
 			hasErrors = true;
 		} else if (!validateSlug(createForm.slug)) {
-			createFormErrors.slug =
-				"Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email')";
+			createFormErrors.slug = t('shared.useTransactionalList.slugInvalid');
 			hasErrors = true;
 		}
 

@@ -13,6 +13,10 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{ (e: 'focus'): void }>();
+
+// The header was lifted out of ReviewBrowseList, so it keeps that surface's
+// catalog namespace rather than minting a second copy of the same sentences.
+const { t } = useI18n();
 </script>
 
 <template>
@@ -25,9 +29,11 @@ const emit = defineEmits<{ (e: 'focus'): void }>();
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 			</NuxtLink>
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Review Queue</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('components.agentTasks.reviewBrowseList.title') }}
+				</h1>
 				<p class="text-text-secondary mt-1">
-					Agent-generated drafts and escalations waiting for your action.
+					{{ t('components.agentTasks.reviewBrowseList.subtitle') }}
 				</p>
 			</div>
 			<!-- Focus: switch to the one-task-at-a-time card-stack flow. -->
@@ -38,7 +44,7 @@ const emit = defineEmits<{ (e: 'focus'): void }>();
 				@click="emit('focus')"
 			>
 				<Icon name="lucide:target" class="w-4 h-4" />
-				Focus
+				{{ t('components.agentTasks.reviewBrowseList.focus') }}
 			</button>
 		</div>
 
@@ -58,7 +64,7 @@ const emit = defineEmits<{ (e: 'focus'): void }>();
 					class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
 					>{{ k }}</kbd
 				>
-				<span>{{ hint.label }}</span>
+				<span>{{ t(hint.label) }}</span>
 			</span>
 		</div>
 	</div>

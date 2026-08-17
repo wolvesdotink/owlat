@@ -18,7 +18,20 @@ import {
 	type ProviderRouteStrategy as Strategy,
 } from '~/utils/providerRouteOptions';
 
-useHead({ title: 'Provider Routing — Owlat' });
+const { t } = useI18n();
+
+/**
+ * `utils/providerRouteOptions`, `utils/providerRouting` and `utils/ipPool` are
+ * module-scope definition sets whose labels and refusal sentences carry i18n keys
+ * rather than sentences (the registry convention); a plain string is still
+ * accepted so a value with nothing to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+useHead({ title: () => t('dashboard.admin.delivery.providerRouting.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -88,16 +101,18 @@ const transportOptions = computed(() =>
 	)
 );
 const providerLabel = (providerType: string): string =>
-	transportLabel(transportOptions.value, providerType);
+	localized(transportLabel(transportOptions.value, providerType));
+const strategyLabelFor = (strategy: string): string =>
+	localized(strategyLabel(strategy as Strategy));
 const providerAvailable = (providerType: string): boolean =>
 	isTransportAvailable(transportOptions.value, providerType);
 
 // ── Mutations ───────────────────────────────────────────────────────
 const { run: setRoute } = useBackendOperation(api.providerRoutes.setRoute, {
-	label: 'Save provider route',
+	label: () => t('dashboard.admin.delivery.providerRouting.operations.save'),
 });
 const { run: removeRoute } = useBackendOperation(api.providerRoutes.removeRoute, {
-	label: 'Reset provider route',
+	label: () => t('dashboard.admin.delivery.providerRouting.operations.reset'),
 });
 const { showToast: showNotification } = useToast();
 
@@ -114,9 +129,16 @@ const isSaving = ref(false);
 const editMessageTypeMeta = computed(() =>
 	MESSAGE_TYPES.find((m) => m.value === editMessageType.value)
 );
+const editStrategyDescription = computed(() => {
+	const entry = STRATEGIES.find((s) => s.value === editStrategy.value);
+	return entry ? localized(entry.description) : '';
+});
 
 // Non-blocking warning when the typed IP pool isn't one the MTA understands.
-const ipPoolWarning = computed(() => unknownIpPoolWarning(editIpPool.value, ipPools.value));
+const ipPoolWarning = computed(() => {
+	const warning = unknownIpPoolWarning(editIpPool.value, ipPools.value);
+	return warning === null || warning === undefined ? null : localized(warning);
+});
 
 function startEdit(messageType: MessageType) {
 	editMessageType.value = messageType;
@@ -141,16 +163,6 @@ function startEdit(messageType: MessageType) {
 	editOpen.value = true;
 }
 
-function moveProvider(index: number, direction: -1 | 1) {
-	const target = index + direction;
-	if (target < 0 || target >= editProviders.value.length) return;
-	const next = [...editProviders.value];
-	const [moved] = next.splice(index, 1);
-	if (!moved) return;
-	next.splice(target, 0, moved);
-	editProviders.value = next;
-}
-
 // A controller-owned strategy is displayed, never picked — and it is written
 // back unchanged, so an unrelated edit cannot downgrade the route.
 const isEditStrategyManaged = computed(() => isControllerOwnedStrategy(editStrategy.value));
@@ -162,7 +174,7 @@ async function handleSave() {
 
 	const enabled = editProviders.value.filter((p) => p.isEnabled);
 	if (enabled.length === 0) {
-		showNotification('Enable at least one provider before saving', 'error');
+		showNotification(t('dashboard.admin.delivery.providerRouting.errors.noProvider'), 'error');
 		return;
 	}
 	// The backend's own rule and the backend's own sentence (D6), so the screen
@@ -170,7 +182,7 @@ async function handleSave() {
 	if (editFallbackEnabled.value) {
 		const issue = fallbackRelayIssue(editProviders.value, editFallbackRelay.value);
 		if (issue !== null) {
-			showNotification(issue, 'error');
+			showNotification(localized(issue), 'error');
 			return;
 		}
 	}
@@ -199,7 +211,7 @@ async function handleSave() {
 
 	if (result === undefined) return;
 
-	showNotification('Provider route saved');
+	showNotification(t('dashboard.admin.delivery.providerRouting.toasts.saved'));
 	editOpen.value = false;
 }
 
@@ -213,7 +225,7 @@ async function handleReset() {
 	const result = await removeRoute({ messageType: resetMessageType.value });
 	isResetting.value = false;
 	if (result === undefined) return;
-	showNotification('Provider route reset to the default');
+	showNotification(t('dashboard.admin.delivery.providerRouting.toasts.reset'));
 	resetMessageType.value = null;
 }
 </script>
@@ -227,15 +239,16 @@ async function handleReset() {
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Delivery setup
+				{{ t('dashboard.admin.delivery.backToSetup') }}
 			</NuxtLink>
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:route" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Provider Routing</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.delivery.providerRouting.title') }}
+					</h1>
 					<p class="mt-1 text-text-secondary">
-						Choose which email provider sends each message type, with failover and weighted
-						workload-split across providers
+						{{ t('dashboard.admin.delivery.providerRouting.lede') }}
 					</p>
 				</div>
 			</div>
@@ -252,9 +265,11 @@ async function handleReset() {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:route" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No workspace selected</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.admin.delivery.providerRouting.noWorkspace.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select a workspace to configure provider routing.
+				{{ t('dashboard.admin.delivery.providerRouting.noWorkspace.description') }}
 			</p>
 		</div>
 
@@ -265,16 +280,21 @@ async function handleReset() {
 				<div class="flex gap-4">
 					<UiIconBox icon="lucide:info" size="sm" variant="brand" rounded="lg" />
 					<div>
-						<h3 class="font-medium text-text-primary mb-1">How routing works</h3>
-						<p class="text-sm text-text-secondary">
-							Each message type can use its own provider strategy. When no route is configured,
-							sends fall back to the provider set by the
-							<code class="px-1 py-0.5 rounded bg-bg-surface text-text-primary text-xs"
-								>EMAIL_PROVIDER</code
-							>
-							environment variable. Configure a route to enable failover or to split traffic across
-							multiple providers.
-						</p>
+						<h3 class="font-medium text-text-primary mb-1">
+							{{ t('dashboard.admin.delivery.providerRouting.howItWorks.title') }}
+						</h3>
+						<I18nT
+							keypath="dashboard.admin.delivery.providerRouting.howItWorks.body"
+							tag="p"
+							class="text-sm text-text-secondary"
+							scope="global"
+						>
+							<template #envVar>
+								<code class="px-1 py-0.5 rounded bg-bg-surface text-text-primary text-xs"
+									>EMAIL_PROVIDER</code
+								>
+							</template>
+						</I18nT>
 					</div>
 				</div>
 			</div>
@@ -292,21 +312,23 @@ async function handleReset() {
 								<Icon :name="type.icon" class="w-6 h-6 text-text-secondary" />
 							</div>
 							<div>
-								<h3 class="text-lg font-medium text-text-primary">{{ type.label }}</h3>
-								<p class="text-sm text-text-secondary mt-0.5">{{ type.description }}</p>
+								<h3 class="text-lg font-medium text-text-primary">{{ localized(type.label) }}</h3>
+								<p class="text-sm text-text-secondary mt-0.5">
+									{{ localized(type.description) }}
+								</p>
 
 								<!-- Configured route summary -->
 								<DeliveryProviderRouteSummary
 									v-if="routeByType.get(type.value)"
 									:route="routeByType.get(type.value)!"
-									:strategy-label="strategyLabel"
+									:strategy-label="strategyLabelFor"
 									:provider-label="providerLabel"
 								/>
 
 								<!-- Default fallback summary -->
 								<p v-else class="mt-3 text-xs text-text-tertiary inline-flex items-center gap-1.5">
 									<Icon name="lucide:server" class="w-3.5 h-3.5" />
-									Using the default provider (EMAIL_PROVIDER)
+									{{ t('dashboard.admin.delivery.providerRouting.usingDefault') }}
 								</p>
 							</div>
 						</div>
@@ -316,14 +338,18 @@ async function handleReset() {
 								variant="ghost"
 								v-if="routeByType.get(type.value)"
 								class="p-2 text-error hover:bg-error/10"
-								title="Reset to default"
+								:title="t('dashboard.admin.delivery.providerRouting.resetToDefault')"
 								@click="resetMessageType = type.value"
 							>
 								<Icon name="lucide:rotate-ccw" class="w-4 h-4" />
 							</UiButton>
 							<UiButton variant="secondary" class="gap-2" @click="startEdit(type.value)">
 								<Icon name="lucide:settings-2" class="w-4 h-4" />
-								{{ routeByType.get(type.value) ? 'Edit' : 'Configure' }}
+								{{
+									routeByType.get(type.value)
+										? t('common.edit')
+										: t('dashboard.admin.delivery.providerRouting.configure')
+								}}
 							</UiButton>
 						</div>
 					</div>
@@ -332,113 +358,64 @@ async function handleReset() {
 		</div>
 
 		<!-- Edit Modal -->
-		<UiModal v-model:open="editOpen" :title="`Route — ${editMessageTypeMeta?.label ?? ''}`">
+		<UiModal
+			v-model:open="editOpen"
+			:title="
+				t('dashboard.admin.delivery.providerRouting.editModal.title', {
+					messageType: editMessageTypeMeta ? localized(editMessageTypeMeta.label) : '',
+				})
+			"
+		>
 			<div class="space-y-5">
 				<!-- Strategy -->
 				<div>
 					<template v-if="isEditStrategyManaged">
-						<span class="label">Strategy</span>
+						<span class="label">{{
+							t('dashboard.admin.delivery.providerRouting.editModal.strategy')
+						}}</span>
 						<p class="input flex items-center gap-2">
-							<span>{{ strategyLabel(editStrategy) }}</span>
-							<span class="rounded-full border px-2 py-0.5 text-xs font-medium">Managed</span>
+							<span>{{ strategyLabelFor(editStrategy) }}</span>
+							<span class="rounded-full border px-2 py-0.5 text-xs font-medium">{{
+								t('dashboard.admin.delivery.providerRouting.editModal.managed')
+							}}</span>
 						</p>
 						<p class="mt-1 text-xs text-text-tertiary">
-							The sending-share controller manages this route's strategy. Everything else on this
-							route stays editable, and saving keeps the managed strategy.
+							{{ t('dashboard.admin.delivery.providerRouting.editModal.managedNote') }}
 						</p>
 					</template>
 					<template v-else>
-						<label for="route-strategy" class="label">Strategy</label>
+						<label for="route-strategy" class="label">{{
+							t('dashboard.admin.delivery.providerRouting.editModal.strategy')
+						}}</label>
 						<select id="route-strategy" v-model="editStrategy" class="input">
 							<option v-for="strategy in STRATEGIES" :key="strategy.value" :value="strategy.value">
-								{{ strategy.label }}
+								{{ localized(strategy.label) }}
 							</option>
 						</select>
 						<p class="mt-1 text-xs text-text-tertiary">
-							{{ STRATEGIES.find((s) => s.value === editStrategy)?.description }}
+							{{ editStrategyDescription }}
 						</p>
 					</template>
 				</div>
 
 				<!-- Providers -->
-				<div>
-					<div class="flex items-center justify-between mb-2">
-						<span class="label mb-0">Providers</span>
-						<span class="text-xs text-text-tertiary">
-							{{ editStrategy === 'priority_failover' ? 'Order = failover priority' : '' }}
-						</span>
-					</div>
-					<div class="space-y-2">
-						<div
-							v-for="(provider, index) in editProviders"
-							:key="provider.providerType"
-							class="flex items-center gap-3 p-3 rounded-lg border border-border-subtle bg-bg-surface/40"
-						>
-							<!-- Reorder -->
-							<div class="flex flex-col">
-								<button
-									type="button"
-									class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
-									:disabled="index === 0"
-									title="Move up"
-									@click="moveProvider(index, -1)"
-								>
-									<Icon name="lucide:chevron-up" class="w-4 h-4" />
-								</button>
-								<button
-									type="button"
-									class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
-									:disabled="index === editProviders.length - 1"
-									title="Move down"
-									@click="moveProvider(index, 1)"
-								>
-									<Icon name="lucide:chevron-down" class="w-4 h-4" />
-								</button>
-							</div>
-
-							<!-- Enabled toggle + name -->
-							<label class="flex items-center gap-2 flex-1 cursor-pointer">
-								<input
-									v-model="provider.isEnabled"
-									type="checkbox"
-									class="rounded border-border-subtle text-brand focus:ring-brand"
-									:disabled="!providerAvailable(provider.providerType)"
-								/>
-								<span class="text-sm font-medium text-text-primary">
-									{{ providerLabel(provider.providerType) }}
-								</span>
-								<span v-if="!providerAvailable(provider.providerType)" class="text-xs text-warning">
-									Unavailable
-								</span>
-							</label>
-
-							<!-- Weight (workload_split only) -->
-							<div v-if="editStrategy === 'workload_split'" class="flex items-center gap-1.5">
-								<input
-									v-model.number="provider.weight"
-									type="number"
-									min="0"
-									max="100"
-									class="input w-20 text-sm"
-									:disabled="!provider.isEnabled"
-								/>
-								<span class="text-xs text-text-tertiary">wt</span>
-							</div>
-						</div>
-					</div>
-					<p v-if="enabledProviderCount === 0" class="mt-2 text-xs text-error">
-						Enable at least one provider.
-					</p>
-				</div>
+				<DeliveryProviderRouteProviderList
+					v-model="editProviders"
+					:strategy="editStrategy"
+					:provider-label="providerLabel"
+					:provider-available="providerAvailable"
+				/>
 
 				<!-- IP pool -->
 				<div>
-					<label for="route-ip-pool" class="label">IP pool (optional)</label>
+					<label for="route-ip-pool" class="label">{{
+						t('dashboard.admin.delivery.providerRouting.editModal.ipPool')
+					}}</label>
 					<input
 						id="route-ip-pool"
 						v-model="editIpPool"
 						type="text"
-						placeholder="e.g. transactional"
+						:placeholder="t('dashboard.admin.delivery.providerRouting.editModal.ipPoolPlaceholder')"
 						class="input"
 						list="route-ip-pool-options"
 						autocomplete="off"
@@ -451,8 +428,7 @@ async function handleReset() {
 						<span>{{ ipPoolWarning }}</span>
 					</p>
 					<p class="mt-1 text-xs text-text-tertiary">
-						Overrides the IP pool for the built-in MTA provider. Leave blank to use the provider's
-						default.
+						{{ t('dashboard.admin.delivery.providerRouting.editModal.ipPoolHint') }}
 					</p>
 				</div>
 
@@ -468,10 +444,14 @@ async function handleReset() {
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isSaving" @click="editOpen = false">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton :loading="isSaving" :disabled="enabledProviderCount === 0" @click="handleSave">
-					{{ isSaving ? 'Saving...' : 'Save Route' }}
+					{{
+						isSaving
+							? t('dashboard.admin.delivery.providerRouting.editModal.saving')
+							: t('dashboard.admin.delivery.providerRouting.editModal.save')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -480,9 +460,9 @@ async function handleReset() {
 		<UiConfirmationDialog
 			:open="!!resetMessageType"
 			variant="danger"
-			title="Reset Provider Route"
-			description="This message type will revert to the default provider set by the EMAIL_PROVIDER environment variable."
-			confirm-text="Reset to Default"
+			:title="t('dashboard.admin.delivery.providerRouting.resetModal.title')"
+			:description="t('dashboard.admin.delivery.providerRouting.resetModal.description')"
+			:confirm-text="t('dashboard.admin.delivery.providerRouting.resetModal.confirm')"
 			:is-loading="isResetting"
 			@update:open="
 				(v: boolean) => {

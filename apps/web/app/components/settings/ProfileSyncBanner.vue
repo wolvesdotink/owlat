@@ -16,8 +16,12 @@ const props = defineProps<{
 const { pendingServices, isApplying, serviceResults, applyError, apply, dismissResults } =
 	useProfileSync();
 
+const { t } = useI18n();
+
+// Compose reports its own state words (`running`, `healthy`, …) — they stay as
+// the daemon spells them; only the "we were told nothing" case is our copy.
 function serviceStateLabel(result: ProfileServiceResult): string {
-	return result.health || result.state || result.status || 'unknown';
+	return result.health || result.state || result.status || t('common.unknown');
 }
 </script>
 
@@ -30,33 +34,56 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 		<div class="flex items-start gap-3">
 			<Icon name="lucide:refresh-cw" class="w-4 h-4 mt-1 text-warning shrink-0" />
 			<div class="min-w-0 flex-1">
-				<p class="font-medium text-text-primary">Services out of sync — Apply &amp; restart</p>
-				<p class="mt-0.5 text-sm text-text-secondary">
-					Your flag changes affect
-					<span data-testid="profile-sync-services" class="font-mono">{{
-						pendingServices.join(', ')
-					}}</span
-					>. The running services keep their old state until you apply. Applying may briefly restart
-					the listed services.
+				<p class="font-medium text-text-primary">
+					{{ t('components.settings.profileSyncBanner.title') }}
 				</p>
+				<I18nT
+					keypath="components.settings.profileSyncBanner.pendingBody"
+					tag="p"
+					scope="global"
+					class="mt-0.5 text-sm text-text-secondary"
+				>
+					<template #services>
+						<span data-testid="profile-sync-services" class="font-mono">{{
+							pendingServices.join(', ')
+						}}</span>
+					</template>
+				</I18nT>
 				<div
 					v-if="applyError"
 					data-testid="profile-sync-fallback"
 					class="mt-3 rounded-lg bg-bg-surface px-3 py-2.5 text-sm text-text-secondary"
 				>
-					<p>Could not reach the updater: {{ applyError }}</p>
-					<p class="mt-1.5">
-						Fallback: on the host, run
-						<code class="bg-bg-base px-1.5 py-0.5 rounded"
-							>owlat feature &lt;flag&gt; on&nbsp;|&nbsp;off</code
-						>
-						for each change, then
-						<code class="bg-bg-base px-1.5 py-0.5 rounded">owlat restart</code>.
+					<p>
+						{{
+							t('components.settings.profileSyncBanner.updaterUnreachable', {
+								error: applyError,
+							})
+						}}
 					</p>
+					<I18nT
+						keypath="components.settings.profileSyncBanner.fallback"
+						tag="p"
+						scope="global"
+						class="mt-1.5"
+					>
+						<template #featureCommand>
+							<code class="bg-bg-base px-1.5 py-0.5 rounded"
+								>owlat feature &lt;flag&gt; on&nbsp;|&nbsp;off</code
+							>
+						</template>
+						<template #restartCommand>
+							<code class="bg-bg-base px-1.5 py-0.5 rounded">owlat restart</code>
+						</template>
+					</I18nT>
 				</div>
 			</div>
 			<UiButton data-testid="profile-sync-apply" :loading="isApplying" @click="apply(props.flags)">
-				{{ isApplying ? 'Applying…' : 'Apply & restart' }}
+				{{
+					isApplying
+						? t('components.settings.profileSyncBanner.applying')
+						: t('components.settings.profileSyncBanner.apply')
+				}}
 			</UiButton>
 		</div>
 	</div>
@@ -69,7 +96,9 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 		<div class="flex items-start gap-3">
 			<Icon name="lucide:check-circle-2" class="w-4 h-4 mt-1 text-success shrink-0" />
 			<div class="min-w-0 flex-1">
-				<p class="font-medium text-text-primary">Services applied</p>
+				<p class="font-medium text-text-primary">
+					{{ t('components.settings.profileSyncBanner.appliedTitle') }}
+				</p>
 				<ul v-if="serviceResults.length > 0" class="mt-2 space-y-1">
 					<li
 						v-for="result in serviceResults"
@@ -82,7 +111,7 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 					</li>
 				</ul>
 				<p v-else class="mt-1 text-sm text-text-secondary">
-					The updater converged the services for your flag state.
+					{{ t('components.settings.profileSyncBanner.convergedBody') }}
 				</p>
 			</div>
 			<button
@@ -91,7 +120,7 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 				class="text-sm text-text-tertiary hover:text-text-primary"
 				@click="dismissResults"
 			>
-				Dismiss
+				{{ t('common.dismiss') }}
 			</button>
 		</div>
 	</div>

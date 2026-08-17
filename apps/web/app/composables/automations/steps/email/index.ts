@@ -3,8 +3,8 @@ import type { EmailStepConfig, StepDisplayContext, StepEditorModule } from '../t
 
 export const emailStepEditorModule: StepEditorModule<'email'> = {
 	kind: 'email',
-	label: 'Send Email',
-	description: 'Send an email to the contact',
+	label: 'shared.automations.steps.email.label',
+	description: 'shared.automations.steps.email.description',
 	color: 'lime',
 	icon: 'lucide:mail',
 	createDefault: () => ({ emailTemplateId: '', subjectOverride: undefined }),
@@ -16,13 +16,16 @@ export const emailStepEditorModule: StepEditorModule<'email'> = {
 		};
 	},
 	validateForActivation(config) {
-		if (!config.emailTemplateId) return 'Email step requires a template';
+		if (!config.emailTemplateId) return 'shared.automations.steps.email.templateRequired';
 		return null;
 	},
 	getDescription(config, ctx: StepDisplayContext) {
-		if (!config.emailTemplateId) return 'Select an email template';
+		if (!config.emailTemplateId) return 'shared.automations.steps.email.selectTemplate';
 		const template = ctx.emailTemplates.find((t) => t._id === config.emailTemplateId);
-		return template?.name ?? 'Unknown Template';
+		if (!template) return 'shared.automations.steps.email.unknownTemplate';
+		// The template name is member-authored data, so it travels as an
+		// interpolation rather than as a key of its own.
+		return { key: 'shared.automations.steps.email.templateName', params: { name: template.name } };
 	},
 	EditorComponent: defineAsyncComponent(
 		() => import('../../../../components/automations/steps/email/Editor.vue')

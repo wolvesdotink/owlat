@@ -12,6 +12,7 @@ import type { PaletteItem } from '~/lib/commandPalette';
  * stay in the component — they are entangled with its input state.
  */
 export function useCommandPaletteProviders() {
+	const { t } = useI18n();
 	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 	const { isDesktop } = useDesktopContext();
 	const { navigationSections } = useDashboardNavigation();
@@ -22,7 +23,7 @@ export function useCommandPaletteProviders() {
 		if (isFeatureEnabled('campaigns')) {
 			verbs.push({
 				id: 'verb:new-campaign',
-				label: 'New campaign',
+				label: t('shared.useCommandPaletteProviders.newCampaign'),
 				icon: 'lucide:megaphone',
 				run: () => void navigateTo('/dashboard/campaigns/new'),
 			});
@@ -30,22 +31,22 @@ export function useCommandPaletteProviders() {
 		if (isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')) {
 			verbs.push({
 				id: 'verb:compose',
-				label: 'Compose message',
+				label: t('shared.useCommandPaletteProviders.compose'),
 				icon: 'lucide:pencil',
 				run: () => void navigateTo('/dashboard/postbox/inbox'),
 			});
 		}
 		verbs.push({
 			id: 'verb:new-contact',
-			label: 'New contact',
+			label: t('shared.useCommandPaletteProviders.newContact'),
 			icon: 'lucide:user-plus',
 			run: () => void navigateTo('/dashboard/audience/contacts'),
 		});
 		if (isFeatureEnabled('ai.knowledge')) {
 			verbs.push({
 				id: 'verb:ask-knowledge',
-				label: 'Ask knowledge…',
-				subtitle: 'Search your knowledge base',
+				label: t('shared.useCommandPaletteProviders.askKnowledge'),
+				subtitle: t('shared.useCommandPaletteProviders.askKnowledgeSubtitle'),
 				icon: 'lucide:sparkles',
 				run: () => window.dispatchEvent(new Event('owlat:open-knowledge-query')),
 			});
@@ -53,7 +54,7 @@ export function useCommandPaletteProviders() {
 		if (isDesktop.value) {
 			verbs.push({
 				id: 'verb:check-updates',
-				label: 'Check for updates',
+				label: t('shared.useCommandPaletteProviders.checkUpdates'),
 				icon: 'lucide:download-cloud',
 				run: () => window.dispatchEvent(new Event('owlat:check-updates')),
 			});
@@ -67,20 +68,25 @@ export function useCommandPaletteProviders() {
 		return [
 			{
 				id: `context:${other}`,
-				label: other === 'inbox' ? 'Switch to Inbox' : 'Switch to Marketing',
-				subtitle: 'Sidebar context',
+				label:
+					other === 'inbox'
+						? t('shared.useCommandPaletteProviders.switchToInbox')
+						: t('shared.useCommandPaletteProviders.switchToMarketing'),
+				subtitle: t('shared.useCommandPaletteProviders.sidebarContext'),
 				icon: other === 'inbox' ? 'lucide:inbox' : 'lucide:megaphone',
 				run: () => void switchContext(other),
 			},
 		];
 	});
 
+	// Section/item names come from the navigation registry, so they are message
+	// keys resolved here rather than literal copy.
 	const navItems = computed<PaletteItem[]>(() =>
 		navigationSections.value.flatMap((section) =>
 			section.items.map((item) => ({
 				id: `nav:${item.href}`,
-				label: item.name,
-				subtitle: section.name,
+				label: t(item.name),
+				subtitle: t(section.name),
 				icon: item.icon,
 				run: () => void navigateTo(item.href),
 			}))

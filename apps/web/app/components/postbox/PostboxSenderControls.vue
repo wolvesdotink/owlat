@@ -19,6 +19,8 @@ const props = defineProps<{
 	fromAddress: string;
 }>();
 
+const { t } = useI18n();
+
 const email = computed(() => extractEmailAddress(props.fromAddress));
 
 const { data } = useConvexQuery(api.mail.contacts.senderState, () => ({
@@ -37,9 +39,11 @@ const canAccept = computed(
 		data.value?.isScreenerAccepted !== true
 );
 
-const setVipOp = useBackendOperation(api.mail.contacts.setVip, { label: 'VIP' });
+const setVipOp = useBackendOperation(api.mail.contacts.setVip, {
+	label: () => t('components.postbox.postboxSenderControls.vipOperation'),
+});
 const acceptOp = useBackendOperation(api.mail.contacts.acceptSender, {
-	label: 'Accept sender',
+	label: () => t('components.postbox.postboxSenderControls.acceptOperation'),
 });
 
 function toggleVip() {
@@ -64,20 +68,28 @@ function acceptSender() {
 			v-if="canAccept"
 			type="button"
 			class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-brand/10 text-brand hover:bg-brand/20 disabled:opacity-50"
-			title="Accept this first-time sender into the Reply Queue"
-			aria-label="Accept sender"
+			:title="t('components.postbox.postboxSenderControls.acceptTitle')"
+			:aria-label="t('components.postbox.postboxSenderControls.accept')"
 			:disabled="acceptOp.isLoading.value"
 			@click.stop.prevent="acceptSender"
 		>
 			<Icon name="lucide:user-check" class="w-3.5 h-3.5" />
-			Accept sender
+			{{ t('components.postbox.postboxSenderControls.accept') }}
 		</button>
 		<button
 			type="button"
 			class="text-text-tertiary hover:text-warning disabled:opacity-50"
 			:class="{ 'text-warning': isVip }"
-			:title="isVip ? 'Remove VIP' : 'Mark sender as VIP'"
-			:aria-label="isVip ? 'Remove VIP' : 'Mark sender as VIP'"
+			:title="
+				isVip
+					? t('components.postbox.postboxSenderControls.removeVip')
+					: t('components.postbox.postboxSenderControls.markVip')
+			"
+			:aria-label="
+				isVip
+					? t('components.postbox.postboxSenderControls.removeVip')
+					: t('components.postbox.postboxSenderControls.markVip')
+			"
 			:aria-pressed="isVip"
 			:disabled="setVipOp.isLoading.value"
 			@click.stop.prevent="toggleVip"

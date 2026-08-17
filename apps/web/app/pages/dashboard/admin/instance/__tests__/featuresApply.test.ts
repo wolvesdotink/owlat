@@ -12,6 +12,7 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 import FeaturesPage from '../features.vue';
 import MigrationModeCard from '~/components/settings/MigrationModeCard.vue';
 import { useProfileSync } from '~/composables/useProfileSync';
+import { createTestI18n } from '~/__tests__/i18n';
 
 /**
  * Plan D4 — apply is explicit, not automatic. Toggling a flag persists it in
@@ -21,6 +22,15 @@ import { useProfileSync } from '~/composables/useProfileSync';
  * the resolved snapshot to the updater and renders per-service results, and an
  * unreachable updater degrades to the CLI fallback instructions.
  */
+
+// ONE catalog-backed instance for the whole file: it is installed into every
+// mount AND answers the `useI18n` auto-import. `beforeEach` resets the
+// module-scoped drift state by calling `useProfileSync()` outside any component
+// setup, where vue-i18n's own setup-only `useI18n` would throw — so the global
+// resolves straight to this instance's composer, with the real messages behind
+// it rather than a `t: (key) => key` stub (see ~/__tests__/i18n).
+const i18n = createTestI18n();
+Object.assign(globalThis, { useI18n: () => i18n.global });
 
 const liveFlags = ref<Record<string, boolean>>({});
 const configStatus = ref<Record<string, string[]> | undefined>({});
@@ -124,12 +134,15 @@ const stubs = {
 
 function mountFeatures() {
 	harness = 'features';
-	return mount(FeaturesPage, { global: { stubs } });
+	return mount(FeaturesPage, { global: { plugins: [i18n], stubs } });
 }
 
 function mountCard() {
 	harness = 'card';
-	return mount(MigrationModeCard, { props: { canManage: true }, global: { stubs } });
+	return mount(MigrationModeCard, {
+		props: { canManage: true },
+		global: { plugins: [i18n], stubs },
+	});
 }
 
 const banner = '[data-testid="profile-sync-banner"]';

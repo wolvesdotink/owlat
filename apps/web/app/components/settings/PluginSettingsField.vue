@@ -13,6 +13,8 @@ import { computed, useId } from 'vue';
 import type { PluginSettingsField } from '@owlat/plugin-kit';
 import type { PluginSettingsFormValue } from '~/utils/pluginSettings';
 
+const { t } = useI18n();
+
 const props = withDefaults(
 	defineProps<{
 		field: PluginSettingsField;
@@ -44,8 +46,12 @@ const booleanValue = computed(() => props.modelValue === true);
 const secretHint = computed(() =>
 	props.field.kind === 'secret'
 		? props.secretSet
-			? `Supplied by the ${props.field.envVar} environment variable, which is set.`
-			: `Set the ${props.field.envVar} environment variable in your deployment.`
+			? t('components.settings.pluginSettingsField.secretHintSet', {
+					envVar: props.field.envVar,
+				})
+			: t('components.settings.pluginSettingsField.secretHintUnset', {
+					envVar: props.field.envVar,
+				})
 		: ''
 );
 
@@ -134,7 +140,11 @@ const inputClass =
 					:class="secretSet ? 'bg-success' : 'bg-border-subtle'"
 					aria-hidden="true"
 				/>
-				<span>{{ secretSet ? 'Set in the environment' : 'Not set' }}</span>
+				<span>{{
+					secretSet
+						? t('components.settings.pluginSettingsField.secretSet')
+						: t('components.settings.pluginSettingsField.secretNotSet')
+				}}</span>
 				<code class="ml-auto text-xs text-text-tertiary">{{ field.envVar }}</code>
 			</p>
 			<p :id="hintId" class="text-xs text-text-tertiary mt-1">{{ secretHint }}</p>
@@ -192,7 +202,9 @@ const inputClass =
 			>
 				<!-- Unset select (no stored value or default): an honest, non-selectable
 				     placeholder rather than the first option masquerading as configured. -->
-				<option v-if="stringValue === ''" value="" disabled>Select…</option>
+				<option v-if="stringValue === ''" value="" disabled>
+					{{ t('components.settings.pluginSettingsField.selectPlaceholder') }}
+				</option>
 				<option v-for="option in field.options" :key="option.value" :value="option.value">
 					{{ option.label }}
 				</option>

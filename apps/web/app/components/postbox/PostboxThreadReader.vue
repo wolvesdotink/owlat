@@ -104,6 +104,8 @@ const emit = defineEmits<{
 	advance: [messageId: string | null];
 }>();
 
+const { t } = useI18n();
+
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
 // The mailbox's own addresses (canonical + active aliases) — excluded from the
@@ -265,7 +267,7 @@ function showSchedulingChip(msg: {
 // unread thread is opened, clear its unread flags. Guarded so the reactive
 // re-fetch that follows (flagSeen flips → query re-runs) doesn't re-fire.
 const markThreadReadOp = useBackendOperation(api.mail.messageActions.markThreadRead, {
-	label: 'Mark read',
+	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
 });
 const markedThreads = new Set<string>();
 watch(
@@ -352,15 +354,27 @@ const readerMovableFolders = computed(() =>
 	readerFolders.value.filter((f) => f.role !== 'sent' && f.role !== 'drafts')
 );
 
-const archiveOp = useBackendOperation(api.mail.messageActions.archive, { label: 'Archive' });
-const trashOp = useBackendOperation(api.mail.messageActions.trash, { label: 'Move to trash' });
-const setStarOp = useBackendOperation(api.mail.messageActions.setStar, { label: 'Star' });
-const markReadOp = useBackendOperation(api.mail.messageActions.markRead, { label: 'Mark read' });
-const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
-const snoozeUntilReplyOp = useBackendOperation(api.mail.snooze.snoozeUntilReply, {
-	label: 'Snooze until reply',
+const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
+	label: () => t('common.archive'),
 });
-const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
+const trashOp = useBackendOperation(api.mail.messageActions.trash, {
+	label: () => t('components.postbox.postboxThreadReader.moveToTrashOperation'),
+});
+const setStarOp = useBackendOperation(api.mail.messageActions.setStar, {
+	label: () => t('components.postbox.postboxThreadReader.star'),
+});
+const markReadOp = useBackendOperation(api.mail.messageActions.markRead, {
+	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
+});
+const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
+	label: () => t('components.postbox.postboxThreadReader.snoozeOperation'),
+});
+const snoozeUntilReplyOp = useBackendOperation(api.mail.snooze.snoozeUntilReply, {
+	label: () => t('components.postbox.postboxThreadReader.snoozeUntilReplyOperation'),
+});
+const moveOp = useBackendOperation(api.mail.messageActions.move, {
+	label: () => t('components.postbox.postboxThreadReader.moveOperation'),
+});
 
 // Successful triage registers its inverse for the "Undo — Cmd+Z" toast
 // (the move-family mutations return each message's source folder).
@@ -463,7 +477,11 @@ function senderAuthState(msg: PostboxReaderMessage): SenderAuthState | null {
 }
 
 function senderAuthSummary(msg: PostboxReaderMessage): string {
-	return deriveSenderAuth(senderAuthInput(msg))?.summary ?? 'Sender could not be verified';
+	// `summary` is a message key owned by utils/senderAuth (registry convention).
+	const summary = deriveSenderAuth(senderAuthInput(msg))?.summary;
+	return summary
+		? t(summary)
+		: t('components.postbox.postboxThreadReader.senderCouldNotBeVerified');
 }
 
 // Reply guard: intercept reply / reply-all on a message that FAILED sender
@@ -564,7 +582,7 @@ async function applyLabelToOpenMessage(labelId: Id<'mailLabels'>) {
 async function moveOpenMessageTo(targetFolderId: Id<'mailFolders'>) {
 	moveDialogOpen.value = false;
 	const result = await moveOp.run({ messageIds: [messageId.value], targetFolderId });
-	registerTriageUndo('Moved', result);
+	registerTriageUndo(t('components.postbox.postboxThreadReader.undoMoved'), result);
 }
 
 /**
@@ -577,14 +595,14 @@ function runReaderAction(action: string) {
 		case 'archive':
 			void runAndAdvance(async () => {
 				const result = await archiveOp.run({ messageIds: [messageId.value] });
-				registerTriageUndo('Archived', result);
+				registerTriageUndo(t('components.postbox.postboxThreadReader.undoArchived'), result);
 				return result;
 			});
 			break;
 		case 'trash':
 			void runAndAdvance(async () => {
 				const result = await trashOp.run({ messageIds: [messageId.value] });
-				registerTriageUndo('Moved to Trash', result);
+				registerTriageUndo(t('components.postbox.postboxThreadReader.undoTrashed'), result);
 				return result;
 			});
 			break;
@@ -663,13 +681,13 @@ onBeforeUnmount(() => {
 });
 
 const reportSpamOp = useBackendOperation(api.mail.messageActions.reportSpam, {
-	label: 'Report spam',
+	label: () => t('components.postbox.postboxThreadReader.reportSpam'),
 });
 const notSpamOp = useBackendOperation(api.mail.messageActions.notSpam, {
-	label: 'Not spam',
+	label: () => t('components.postbox.postboxThreadReader.notSpamOperation'),
 });
 const blockSenderOp = useBackendOperation(api.mail.messageActions.blockSender, {
-	label: 'Block sender',
+	label: () => t('components.postbox.postboxThreadReader.blockSender'),
 });
 
 function reportSpamMessage(msgId: string) {
@@ -678,7 +696,9 @@ function reportSpamMessage(msgId: string) {
 		const result = await reportSpamOp.run({ messageIds });
 		// Undo = notSpam (clears the verdict, parks in Inbox) + move back to
 		// the true source folder when it wasn't the Inbox.
-		registerTriageUndo('Marked as spam', result, () => notSpamOp.run({ messageIds }));
+		registerTriageUndo(t('components.postbox.postboxThreadReader.undoSpam'), result, () =>
+			notSpamOp.run({ messageIds })
+		);
 		return result;
 	};
 	// Only the OPEN message's spam report ejects the reader; reporting an
@@ -894,13 +914,13 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 										class="text-text-tertiary hover:text-text-primary"
 										:title="
 											isForcedLight(msg._id)
-												? 'Render this message in dark mode'
-												: 'Render this message on a light background'
+												? t('components.postbox.postboxThreadReader.renderDark')
+												: t('components.postbox.postboxThreadReader.renderLight')
 										"
 										:aria-label="
 											isForcedLight(msg._id)
-												? 'Render this message in dark mode'
-												: 'Render this message on a light background'
+												? t('components.postbox.postboxThreadReader.renderDark')
+												: t('components.postbox.postboxThreadReader.renderLight')
 										"
 										:aria-pressed="isForcedLight(msg._id)"
 										@click="toggleForcedLight(msg._id)"
@@ -921,9 +941,17 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								</div>
 							</div>
 							<p class="text-text-secondary text-xs mt-0.5">
-								to {{ msg.toAddresses.join(', ') }}
+								{{
+									t('components.postbox.postboxThreadReader.toLine', {
+										recipients: msg.toAddresses.join(', '),
+									})
+								}}
 								<span v-if="msg.ccAddresses.length > 0">
-									· cc {{ msg.ccAddresses.join(', ') }}
+									{{
+										t('components.postbox.postboxThreadReader.ccLine', {
+											recipients: msg.ccAddresses.join(', '),
+										})
+									}}
 								</span>
 							</p>
 							<PostboxUnsubscribeChip
@@ -958,7 +986,9 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						class="my-3 px-3 py-2 rounded bg-warning/10 text-warning text-xs flex items-center gap-2"
 					>
 						<Icon name="lucide:shield-alert" class="w-4 h-4" />
-						<span v-if="msg.spamVerdict === 'spam'">Marked as spam</span>
+						<span v-if="msg.spamVerdict === 'spam'">{{
+							t('components.postbox.postboxThreadReader.markedAsSpam')
+						}}</span>
 						<span v-else>{{ senderAuthSummary(msg) }}</span>
 					</div>
 
@@ -1005,8 +1035,16 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									v-if="isPreviewable(att.contentType)"
 									type="button"
 									class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
-									:title="`Preview ${att.filename}`"
-									:aria-label="`Preview ${att.filename}`"
+									:title="
+										t('components.postbox.postboxThreadReader.previewAttachment', {
+											filename: att.filename,
+										})
+									"
+									:aria-label="
+										t('components.postbox.postboxThreadReader.previewAttachment', {
+											filename: att.filename,
+										})
+									"
 									@click="openAttachmentPreview(msg._id, att, msg.attachments)"
 								>
 									<Icon name="lucide:eye" class="w-4 h-4" />
@@ -1014,8 +1052,16 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								<button
 									type="button"
 									class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50"
-									:title="`Download ${att.filename}`"
-									:aria-label="`Download ${att.filename}`"
+									:title="
+										t('components.postbox.postboxThreadReader.downloadAttachment', {
+											filename: att.filename,
+										})
+									"
+									:aria-label="
+										t('components.postbox.postboxThreadReader.downloadAttachment', {
+											filename: att.filename,
+										})
+									"
 									:disabled="
 										downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`
 									"
@@ -1046,8 +1092,16 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 							variant="ghost"
 							type="button"
 							:class="isMessageStarred(msg) ? 'text-warning' : 'text-text-tertiary'"
-							:title="isMessageStarred(msg) ? 'Unstar' : 'Star'"
-							:aria-label="isMessageStarred(msg) ? 'Unstar' : 'Star'"
+							:title="
+								isMessageStarred(msg)
+									? t('components.postbox.postboxThreadReader.unstar')
+									: t('components.postbox.postboxThreadReader.star')
+							"
+							:aria-label="
+								isMessageStarred(msg)
+									? t('components.postbox.postboxThreadReader.unstar')
+									: t('components.postbox.postboxThreadReader.star')
+							"
 							:aria-pressed="isMessageStarred(msg)"
 							@click="toggleMessageStar(msg)"
 						>
@@ -1059,7 +1113,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						</UiButton>
 						<UiButton variant="ghost" type="button" @click="guardedReply(msg)">
 							<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
-							Reply
+							{{ t('components.postbox.postboxThreadReader.reply') }}
 						</UiButton>
 						<UiButton
 							variant="ghost"
@@ -1069,7 +1123,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 							@click="guardedReplyAll(msg)"
 						>
 							<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
-							Reply all
+							{{ t('components.postbox.postboxThreadReader.replyAll') }}
 						</UiButton>
 						<UiButton
 							variant="ghost"
@@ -1078,10 +1132,12 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 							@click="openForward(msg)"
 						>
 							<Icon name="lucide:forward" class="w-4 h-4 mr-1.5" />
-							Forward
+							{{ t('components.postbox.postboxThreadReader.forward') }}
 						</UiButton>
 						<span class="flex-1" />
-						<PostboxOverflowMenu label="More message actions">
+						<PostboxOverflowMenu
+							:label="t('components.postbox.postboxThreadReader.moreActions')"
+						>
 							<template #default="{ close }">
 								<button
 									v-if="hasOtherRecipients(msg)"
@@ -1094,7 +1150,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									"
 								>
 									<Icon name="lucide:reply-all" class="w-4 h-4 text-text-tertiary" />
-									Reply all
+									{{ t('components.postbox.postboxThreadReader.replyAll') }}
 								</button>
 								<button
 									type="button"
@@ -1106,7 +1162,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									"
 								>
 									<Icon name="lucide:forward" class="w-4 h-4 text-text-tertiary" />
-									Forward
+									{{ t('components.postbox.postboxThreadReader.forward') }}
 								</button>
 								<button
 									type="button"
@@ -1118,7 +1174,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									"
 								>
 									<Icon name="lucide:shield-alert" class="w-4 h-4 text-text-tertiary" />
-									Report spam
+									{{ t('components.postbox.postboxThreadReader.reportSpam') }}
 								</button>
 								<button
 									type="button"
@@ -1130,7 +1186,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									"
 								>
 									<Icon name="lucide:ban" class="w-4 h-4 text-text-tertiary" />
-									Block sender
+									{{ t('components.postbox.postboxThreadReader.blockSender') }}
 								</button>
 							</template>
 						</PostboxOverflowMenu>

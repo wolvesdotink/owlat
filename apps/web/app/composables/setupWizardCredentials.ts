@@ -66,14 +66,34 @@ export function credentialFieldsFor(
 	return composedSendProviderCatalogEntry(kind ?? undefined)?.credentialFields ?? [];
 }
 
+/**
+ * The missing-credential sentence, as the two keys it is made of.
+ *
+ * A MESSAGE PLUS A FIELD NAME, never a built string: this module is pure (no
+ * component, no `useI18n`), and the sentence interpolates a value, so both
+ * halves travel as keys and the screen that announces the error resolves them —
+ * `t(message.key, { field: t(message.field) })`. Concatenating it here worked
+ * only in English: word order differs per language, and the old
+ * `field.label.toLowerCase()` also silently lower-cased a German noun.
+ */
+export interface MissingCredentialMessage {
+	/** The catalog key for the sentence, whose one placeholder is `{field}`. */
+	readonly key: string;
+	/**
+	 * The missing field's LABEL key — or, for a bundled plugin's generated
+	 * descriptor, its own English label, which `t()` passes through unchanged.
+	 */
+	readonly field: string;
+}
+
 /** The first missing required credential, phrased for a generic form. */
 export function requiredCredentialError(
 	kind: string | null | undefined,
 	values: TransportCredentialValues
-): string | undefined {
+): MissingCredentialMessage | undefined {
 	for (const field of credentialFieldsFor(kind)) {
 		if (field.required === true && (values[field.envVar] ?? '').trim() === '') {
-			return `Enter ${field.label.toLowerCase()}.`;
+			return { key: 'shared.setupWizardCredentials.enterField', field: field.label };
 		}
 	}
 	return undefined;

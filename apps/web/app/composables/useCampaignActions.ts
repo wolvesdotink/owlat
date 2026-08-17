@@ -39,6 +39,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		onSaved,
 	} = options;
 	const router = useRouter();
+	const { t } = useI18n();
 	const { showToast } = useToast();
 
 	/**
@@ -50,11 +51,11 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 	// Mutations
 	const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
-		label: 'Send campaign now',
+		label: () => t('shared.useCampaignActions.operations.sendNow'),
 		onError: claimCapacityRefusal,
 	});
 	const { run: scheduleCampaign } = useBackendOperation(api.campaigns.scheduling.schedule, {
-		label: 'Schedule campaign',
+		label: () => t('shared.useCampaignActions.operations.schedule'),
 		onError: claimCapacityRefusal,
 	});
 	// No `onError` claim here, deliberately: `campaigns.scheduling.reschedule`
@@ -62,19 +63,19 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	// capacity and the handler could only ever return false. Whether rescheduling
 	// should also run the capacity gate is a separate decision.
 	const { run: rescheduleCampaign } = useBackendOperation(api.campaigns.scheduling.reschedule, {
-		label: 'Reschedule campaign',
+		label: () => t('shared.useCampaignActions.operations.reschedule'),
 	});
 	const { run: unscheduleCampaign } = useBackendOperation(api.campaigns.scheduling.unschedule, {
-		label: 'Unschedule campaign',
+		label: () => t('shared.useCampaignActions.operations.unschedule'),
 	});
 	const { run: cancelCampaign } = useBackendOperation(api.campaigns.scheduling.cancel, {
-		label: 'Cancel campaign',
+		label: () => t('shared.useCampaignActions.operations.cancel'),
 	});
 	const { run: enableABTest } = useBackendOperation(api.campaigns.abTest.enableABTest, {
-		label: 'Enable A/B test',
+		label: () => t('shared.useCampaignActions.operations.enableABTest'),
 	});
 	const { run: disableABTest } = useBackendOperation(api.campaigns.abTest.disableABTest, {
-		label: 'Disable A/B test',
+		label: () => t('shared.useCampaignActions.operations.disableABTest'),
 	});
 
 	// State
@@ -140,7 +141,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 				}
 			}
 
-			showToast('Campaign saved successfully!');
+			showToast(t('shared.useCampaignActions.toasts.saved'));
 			onSaved?.();
 			return true;
 		} finally {
@@ -168,7 +169,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 			if ((await sendCampaignNow({ campaignId: campaignId.value })) === undefined) return;
 
-			showToast('Campaign is now sending!');
+			showToast(t('shared.useCampaignActions.toasts.sending'));
 
 			onSaved?.();
 			setTimeout(() => {
@@ -233,8 +234,10 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 			showToast(
 				useRecipientTimezone.value
-					? `Campaign scheduled for ${scheduledTime.value} in each recipient's timezone!`
-					: 'Campaign scheduled successfully!'
+					? t('shared.useCampaignActions.toasts.scheduledRecipientTimezone', {
+							time: scheduledTime.value,
+						})
+					: t('shared.useCampaignActions.toasts.scheduled')
 			);
 
 			onSaved?.();
@@ -250,7 +253,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		if (!validateForm() || !campaignId.value) return;
 
 		if (!scheduledDate.value || !scheduledTime.value) {
-			saveError.value = 'Please select a date and time for scheduling';
+			saveError.value = t('shared.useCampaignActions.errors.scheduleDateTimeRequired');
 			return;
 		}
 
@@ -259,7 +262,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		// by the time the operator presses the button.
 		const startsAt = parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now());
 		if (startsAt === null) {
-			saveError.value = 'Scheduled time must be in the future';
+			saveError.value = t('shared.useCampaignActions.errors.scheduleInFuture');
 			return;
 		}
 
@@ -276,7 +279,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		try {
 			const result = await unscheduleCampaign({ campaignId: campaignId.value });
 			if (result === undefined) return;
-			showToast('Campaign unscheduled. You can now edit it.');
+			showToast(t('shared.useCampaignActions.toasts.unscheduled'));
 		} finally {
 			isSaving.value = false;
 		}
@@ -292,7 +295,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		try {
 			if ((await cancelCampaign({ campaignId: campaignId.value })) === undefined) return;
 
-			showToast('Campaign cancelled.');
+			showToast(t('shared.useCampaignActions.toasts.cancelled'));
 
 			onSaved?.();
 			setTimeout(() => {

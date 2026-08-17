@@ -21,6 +21,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import en from '~~/i18n/locales/en.json';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(
 	resolve(here, '../../../../../components/delivery/RelayDomainStatus.vue'),
@@ -41,15 +43,20 @@ describe('the relay-identity panel on the delivery pages', () => {
 		expect(source).toContain('api.domains.dnsVerification.verifyDomain');
 		expect(source).toMatch(/verifyRelayDomain\(\{ domainId \}\)/);
 		expect(source).toContain('usePaginatedQuery');
-		expect(source).toContain('Load more domains');
+		// The affordance is a catalog lookup since the extraction; the words are
+		// asserted where they now live.
+		expect(source).toContain("t('components.delivery.relayDomainStatus.loadMore')");
+		expect(en.components.delivery.relayDomainStatus.loadMore).toBe('Load more domains');
 		expect(source).not.toContain('Showing the first 512 owned-MTA domains');
 	});
 
 	it('states the merged-SPF and unchanged-DMARC requirements without claiming instant readiness', () => {
-		expect(source).toContain('preserve your');
-		expect(source).toContain('never replace it with a');
-		expect(source).not.toContain('replaces the existing SPF record');
-		expect(source).toContain('Your primary DMARC record remains unchanged');
+		expect(source).toContain("t('components.delivery.relayDomainStatus.intro')");
+		const intro = en.components.delivery.relayDomainStatus.intro;
+		expect(intro).toContain('preserve your');
+		expect(intro).toContain('never replace it with a');
+		expect(intro).not.toContain('replaces the existing SPF record');
+		expect(intro).toContain('Your primary DMARC record remains unchanged');
 	});
 
 	it('asks no question about WHICH provider it is rendering', () => {

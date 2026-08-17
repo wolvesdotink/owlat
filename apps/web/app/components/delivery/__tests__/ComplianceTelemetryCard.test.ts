@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ComplianceTelemetryCard from '../ComplianceTelemetryCard.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
 	UiCard: { template: '<div><slot /></div>' },
@@ -42,11 +43,12 @@ function telemetryFixture() {
 }
 
 function mountCard(telemetry: ReturnType<typeof telemetryFixture> | null, isLoading = false) {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useOrganizationQuery', () => ({
 		data: ref(telemetry),
 		isLoading: ref(isLoading),
 	}));
-	return mount(ComplianceTelemetryCard, { global: { stubs } });
+	return mount(ComplianceTelemetryCard, { global: { plugins: [createTestI18n()], stubs } });
 }
 
 beforeEach(() => {
@@ -62,6 +64,7 @@ describe('ComplianceTelemetryCard', () => {
 
 	it('renders honest no-data states', () => {
 		const wrapper = mountCard(telemetryFixture());
+		expectFullyLocalized(wrapper);
 		expect(wrapper.find('[data-testid="spam-rate"]').text()).toContain('No data');
 		expect(wrapper.find('[data-testid="gmail-proximity"]').text()).toContain(
 			'No MTA-observed Gmail traffic'

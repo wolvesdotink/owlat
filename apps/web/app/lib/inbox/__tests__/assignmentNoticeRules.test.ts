@@ -5,7 +5,17 @@ import {
 	planAssignmentNotices,
 	ASSIGNMENT_COALESCE_WINDOW_MS,
 	type AssignmentNotice,
+	type AssignmentMessage,
 } from '../assignmentNoticeRules';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The rules decide the line; the toast and the OS notification speak it. Module
+ * scope cannot call `useI18n`, so the copy travels as a catalog key plus its
+ * parameters — rendered here exactly as the caller renders it.
+ */
+const { t } = createTestI18n().global;
+const render = (message: AssignmentMessage): string => t(message.key, message.params ?? {});
 
 function notice(over: Partial<AssignmentNotice> & { id: string }): AssignmentNotice {
 	return {
@@ -63,11 +73,17 @@ describe('planAssignmentNotices', () => {
 describe('assignment copy', () => {
 	it('names the subject and assigner in the single toast', () => {
 		expect(
-			assignmentToastMessage(notice({ id: 'a', subject: 'Refund?', assignedByName: 'Bo' }))
+			render(assignmentToastMessage(notice({ id: 'a', subject: 'Refund?', assignedByName: 'Bo' })))
 		).toBe('Assigned to you — Refund? · from Bo');
 	});
 
+	it('says "No subject" as translated words, not as a spliced-in literal', () => {
+		expect(
+			render(assignmentToastMessage(notice({ id: 'a', subject: '', assignedByName: 'Bo' })))
+		).toBe('Assigned to you — No subject · from Bo');
+	});
+
 	it('counts conversations in the grouped toast', () => {
-		expect(assignmentGroupToastMessage(4)).toBe('4 conversations assigned to you');
+		expect(render(assignmentGroupToastMessage(4))).toBe('4 conversations assigned to you');
 	});
 });

@@ -29,8 +29,10 @@ type SendPlanProgress = NonNullable<
 
 const props = defineProps<{ progress: SendPlanProgress | null | undefined }>();
 
+const { t, locale } = useI18n();
+
 /** The neighbouring recipient count's idiom, so the two lines format alike. */
-const formatCount = (value: number) => value.toLocaleString();
+const formatCount = (value: number) => value.toLocaleString(locale.value);
 
 /**
  * "over N days", or "over more than N days" when the plan is longer than we are
@@ -40,24 +42,42 @@ const headline = computed(() => {
 	const progress = props.progress;
 	if (!progress) return null;
 	return progress.isTruncated
-		? `Sending over more than ${progress.totalDays} days`
-		: `Sending over ${progress.totalDays} days`;
+		? t('components.campaigns.campaignSendPlanLine.headlineTruncated', {
+				days: progress.totalDays,
+			})
+		: t('components.campaigns.campaignSendPlanLine.headline', { days: progress.totalDays });
 });
 
 const detail = computed(() => {
 	const progress = props.progress;
 	if (!progress) return null;
-	const parts = [`day ${progress.day} of ${progress.totalDays}`];
+	const parts = [
+		t('components.campaigns.campaignSendPlanLine.dayOf', {
+			day: progress.day,
+			totalDays: progress.totalDays,
+		}),
+	];
 	// The denominator is only quoted when there is one, and it is quoted as the
 	// FLOOR it is when the audience count stopped early: a walk whose audience we
 	// could only bound says so rather than rounding a bound into a promise.
 	if (progress.total > 0) {
 		const total = progress.isTotalLowerBound
-			? `at least ${formatCount(progress.total)}`
+			? t('components.campaigns.campaignSendPlanLine.atLeast', {
+					total: formatCount(progress.total),
+				})
 			: formatCount(progress.total);
-		parts.push(`${formatCount(progress.enqueued)} of ${total}`);
+		parts.push(
+			t('components.campaigns.campaignSendPlanLine.enqueuedOfTotal', {
+				enqueued: formatCount(progress.enqueued),
+				total,
+			})
+		);
 	} else if (progress.enqueued > 0) {
-		parts.push(`${formatCount(progress.enqueued)} sent`);
+		parts.push(
+			t('components.campaigns.campaignSendPlanLine.enqueuedSent', {
+				enqueued: formatCount(progress.enqueued),
+			})
+		);
 	}
 	return parts.join(' · ');
 });

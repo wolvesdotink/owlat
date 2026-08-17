@@ -38,6 +38,8 @@ const emit = defineEmits<{
 	download: [att: LightboxAttachment];
 }>();
 
+const { t } = useI18n();
+
 const containerRef = ref<HTMLElement | null>(null);
 const activeIndex = ref(
 	Math.min(Math.max(props.initialIndex, 0), Math.max(props.attachments.length - 1, 0))
@@ -153,7 +155,11 @@ onBeforeUnmount(() => {
 			class="fixed inset-0 z-(--z-overlay) flex flex-col bg-scrim/85"
 			role="dialog"
 			aria-modal="true"
-			:aria-label="current ? `Preview of ${current.filename}` : 'Attachment preview'"
+			:aria-label="
+				current
+					? t('components.postbox.postboxAttachmentLightbox.previewOf', { filename: current.filename })
+					: t('components.postbox.postboxAttachmentLightbox.attachmentPreview')
+			"
 			tabindex="-1"
 			@keydown="onKeydown"
 			@click.self="close()"
@@ -164,15 +170,21 @@ onBeforeUnmount(() => {
 					<p class="text-xs text-white/60">
 						<template v-if="current">{{ formatCompactFileSize(current.size) }}</template>
 						<template v-if="attachments.length > 1">
-							· {{ activeIndex + 1 }} of {{ attachments.length }}
+							·
+							{{
+								t('components.postbox.postboxAttachmentLightbox.position', {
+									index: activeIndex + 1,
+									total: attachments.length,
+								})
+							}}
 						</template>
 					</p>
 				</div>
 				<button
 					type="button"
 					class="p-2 rounded hover:bg-white/10 disabled:opacity-40"
-					title="Open in new tab"
-					aria-label="Open in new tab"
+					:title="t('components.postbox.postboxAttachmentLightbox.openInNewTab')"
+					:aria-label="t('components.postbox.postboxAttachmentLightbox.openInNewTab')"
 					:disabled="!objectUrl"
 					@click="openInNewTab"
 				>
@@ -182,8 +194,12 @@ onBeforeUnmount(() => {
 					v-if="current"
 					type="button"
 					class="p-2 rounded hover:bg-white/10"
-					:title="`Download ${current.filename}`"
-					:aria-label="`Download ${current.filename}`"
+					:title="
+						t('components.postbox.postboxAttachmentLightbox.download', { filename: current.filename })
+					"
+					:aria-label="
+						t('components.postbox.postboxAttachmentLightbox.download', { filename: current.filename })
+					"
 					@click="emit('download', current)"
 				>
 					<Icon name="lucide:download" class="w-4 h-4" />
@@ -191,8 +207,8 @@ onBeforeUnmount(() => {
 				<button
 					type="button"
 					class="p-2 rounded hover:bg-white/10"
-					title="Close preview"
-					aria-label="Close preview"
+					:title="t('components.postbox.postboxAttachmentLightbox.closePreview')"
+					:aria-label="t('components.postbox.postboxAttachmentLightbox.closePreview')"
 					@click="close()"
 				>
 					<Icon name="lucide:x" class="w-4 h-4" />
@@ -204,8 +220,8 @@ onBeforeUnmount(() => {
 					v-if="hasPrev"
 					type="button"
 					class="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
-					title="Previous attachment"
-					aria-label="Previous attachment"
+					:title="t('components.postbox.postboxAttachmentLightbox.previous')"
+					:aria-label="t('components.postbox.postboxAttachmentLightbox.previous')"
 					@click="goPrev"
 				>
 					<Icon name="lucide:chevron-left" class="w-5 h-5" />
@@ -213,10 +229,10 @@ onBeforeUnmount(() => {
 
 				<div v-if="isLoading" class="flex flex-col items-center gap-2 text-white/70">
 					<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin" />
-					<p class="text-sm">Loading preview…</p>
+					<p class="text-sm">{{ t('components.postbox.postboxAttachmentLightbox.loading') }}</p>
 				</div>
 				<p v-else-if="loadFailed || !objectUrl" class="text-sm text-white/70">
-					Preview unavailable — use Download instead.
+					{{ t('components.postbox.postboxAttachmentLightbox.previewUnavailable') }}
 				</p>
 				<img
 					v-else-if="!isPdf"
@@ -229,24 +245,35 @@ onBeforeUnmount(() => {
 					:data="objectUrl"
 					type="application/pdf"
 					class="w-full h-full rounded bg-white"
-					:aria-label="`PDF preview of ${current?.filename}`"
+					:aria-label="
+						t('components.postbox.postboxAttachmentLightbox.pdfPreviewOf', {
+							filename: current?.filename ?? '',
+						})
+					"
 				>
 					<!-- The fallback paints inside the white <object> above, so its text is
 					     literal dark-on-white: text-text-primary would follow the app and go
 					     near-white on white in dark mode. -->
-					<p class="p-4 text-sm text-gray-900">
-						This browser can't embed PDFs —
-						<button type="button" class="underline" @click="openInNewTab">open in a new tab</button>
-						instead.
-					</p>
+					<I18nT
+						keypath="components.postbox.postboxAttachmentLightbox.pdfFallback"
+						tag="p"
+						scope="global"
+						class="p-4 text-sm text-gray-900"
+					>
+						<template #link>
+							<button type="button" class="underline" @click="openInNewTab">
+								{{ t('components.postbox.postboxAttachmentLightbox.pdfFallbackLink') }}
+							</button>
+						</template>
+					</I18nT>
 				</object>
 
 				<button
 					v-if="hasNext"
 					type="button"
 					class="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
-					title="Next attachment"
-					aria-label="Next attachment"
+					:title="t('components.postbox.postboxAttachmentLightbox.next')"
+					:aria-label="t('components.postbox.postboxAttachmentLightbox.next')"
 					@click="goNext"
 				>
 					<Icon name="lucide:chevron-right" class="w-5 h-5" />

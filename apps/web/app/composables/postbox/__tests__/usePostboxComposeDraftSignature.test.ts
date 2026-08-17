@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, nextTick, type Ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** The real catalog behind the `useI18n` auto-import the composable calls. */
+const i18n = createTestI18n();
 
 /**
  * Regression: reopening a saved draft must not have its body overwritten by the
@@ -80,6 +84,9 @@ beforeEach(() => {
 		return { data: ref(undefined) };
 	});
 	// Autosave/create/etc. are irrelevant here — never resolve to anything.
+	// The composable resolves its copy through vue-i18n; install the real
+	// catalog behind the `useI18n` auto-import so toasts read as they ship.
+	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
 	// The offline-outbox chain (E2) pulls these at composable setup; inert here.
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));

@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.." # apps/api
 
 ENV_TS="convex/lib/env.ts"
-DOC="../docs/content/3.developer/8.environment-variables.md"
+DOC="../docs/content/en/3.developer/8.environment-variables.md"
 
 if [ ! -f "$DOC" ]; then
 	echo "check-env-docs: doc not found at $DOC" >&2

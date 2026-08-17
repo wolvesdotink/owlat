@@ -12,9 +12,27 @@ const props = defineProps<{
 
 const { typeVariant, typeIcon, typeLabel, sourceIcon, sourceLabel, confidenceBgColor, formatConfidence, truncate, confidenceVariant } = useKnowledgeGraph();
 
+const { t, te, locale } = useI18n();
+
+// Entry-type / source labels are translated here: the shared presentation map
+// (`~/utils/knowledgeEntryTypes`) stays a plain constant, so an unknown value
+// still falls back to its raw label instead of a key path.
+const entryTypeLabel = (type: string) => {
+	const key = `components.knowledge.knowledgeEntryCard.entryTypes.${type}`;
+	return te(key) ? t(key) : typeLabel(type);
+};
+const sourceTypeLabel = (source: string) => {
+	const key = `components.knowledge.knowledgeEntryCard.sourceTypes.${source}`;
+	return te(key) ? t(key) : sourceLabel(source);
+};
+
 const formattedDate = computed(() => {
 	const date = new Date(props.createdAt);
-	return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+	return new Intl.DateTimeFormat(locale.value, {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+	}).format(date);
 });
 
 const displayTags = computed(() => (props.tags ?? []).slice(0, 3));
@@ -59,7 +77,7 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 							'bg-error/10 text-error': typeVariant(entryType) === 'error',
 						}"
 					>
-						{{ typeLabel(entryType) }}
+						{{ entryTypeLabel(entryType) }}
 					</span>
 				</div>
 
@@ -76,7 +94,7 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 							size="sm"
 							:value="confidence * 100"
 							:variant="confidenceVariant(confidence)"
-							aria-label="Confidence"
+							:aria-label="t('components.knowledge.knowledgeEntryCard.confidence')"
 						/>
 						<span>{{ formatConfidence(confidence) }}</span>
 					</div>
@@ -84,7 +102,7 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 					<!-- Source -->
 					<div class="flex items-center gap-1">
 						<Icon :name="sourceIcon(sourceType)" class="w-3 h-3" />
-						<span>{{ sourceLabel(sourceType) }}</span>
+						<span>{{ sourceTypeLabel(sourceType) }}</span>
 					</div>
 
 					<!-- Tags -->

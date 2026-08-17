@@ -19,6 +19,8 @@ const emit = defineEmits<{
 	save: [];
 }>();
 
+const { t } = useI18n();
+
 const module = computed(() => conditionEditorModuleFor(props.modelValue.kind));
 
 const updateKind = (event: Event) => {
@@ -41,14 +43,16 @@ const onUpdate = (next: ConditionOfKind<ConditionKind>) => {
 <template>
 	<template v-if="variant === 'row'">
 		<div>
-			<label class="text-xs text-text-tertiary mb-1 block">Filter by</label>
+			<label class="text-xs text-text-tertiary mb-1 block">
+				{{ t('components.conditions.conditionEditor.filterBy') }}
+			</label>
 			<select :value="modelValue.kind" class="input" @change="updateKind">
 				<option
 					v-for="m in Object.values(CONDITION_EDITOR_MODULES)"
 					:key="m.kind"
 					:value="m.kind"
 				>
-					{{ m.label }}
+					{{ t(m.label) }}
 				</option>
 			</select>
 		</div>
@@ -66,7 +70,7 @@ const onUpdate = (next: ConditionOfKind<ConditionKind>) => {
 			<div>
 				<label class="label flex items-center gap-2 mb-2">
 					<Icon name="lucide:git-branch" class="w-4 h-4 text-warning" />
-					Condition Type
+					{{ t('components.conditions.conditionEditor.conditionType') }}
 				</label>
 				<select :value="modelValue.kind" class="input" @change="updateKind">
 					<option
@@ -74,11 +78,11 @@ const onUpdate = (next: ConditionOfKind<ConditionKind>) => {
 						:key="m.kind"
 						:value="m.kind"
 					>
-						{{ m.label }}
+						{{ t(m.label) }}
 					</option>
 				</select>
 				<p class="text-xs text-text-tertiary mt-1.5">
-					Choose what to evaluate for this condition.
+					{{ t('components.conditions.conditionEditor.conditionTypeHint') }}
 				</p>
 			</div>
 			<component

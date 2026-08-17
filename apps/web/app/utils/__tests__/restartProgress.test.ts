@@ -5,6 +5,11 @@ import {
 	RESTART_STEP_ORDER,
 	RESTART_PHASE_COPY,
 } from '../restartProgress';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The phase copy is a pure registry of message keys; the words a person reads
+// come from the real catalog.
+const { t } = createTestI18n().global;
 
 describe('restartProgressPhase', () => {
 	it('starts in "applying" for the first probes', () => {
@@ -36,9 +41,12 @@ describe('restartProgressPhase', () => {
 	it('has human copy for every rendered phase (the terminal "done" renders none)', () => {
 		const phases = ['applying', 'restarting', 'waiting', 'timeout'] as const;
 		for (const p of phases) {
-			expect(RESTART_PHASE_COPY[p].label.length).toBeGreaterThan(0);
-			expect(RESTART_PHASE_COPY[p].detail.length).toBeGreaterThan(0);
+			// A key with no message would translate to the key path itself.
+			expect(t(RESTART_PHASE_COPY[p].label)).not.toBe(RESTART_PHASE_COPY[p].label);
+			expect(t(RESTART_PHASE_COPY[p].detail)).not.toBe(RESTART_PHASE_COPY[p].detail);
 		}
+		expect(t(RESTART_PHASE_COPY.applying.label)).toBe('Applying your configuration');
+		expect(t(RESTART_PHASE_COPY.timeout.detail)).toBe('Still waiting for the app to come back.');
 	});
 });
 

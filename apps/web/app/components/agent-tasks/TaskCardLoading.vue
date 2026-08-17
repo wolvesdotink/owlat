@@ -5,10 +5,15 @@
  * is compiled at build time and works under Nuxt's runtime-only Vue in SSR and
  * production. Explicitly imported by TaskCardRenderer.
  */
+const { t } = useI18n();
 </script>
 
 <template>
-	<div class="p-8 text-center" role="status" aria-label="Loading task">
+	<div
+		class="p-8 text-center"
+		role="status"
+		:aria-label="t('components.agentTasks.taskCardLoading.label')"
+	>
 		<UiSpinner class="mx-auto" />
 	</div>
 </template>

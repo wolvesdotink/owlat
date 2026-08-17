@@ -20,6 +20,8 @@ interface Props {
 	incidents?: DemotionIncident[] | null;
 	pendingId?: string | null;
 }
+const { t } = useI18n();
+
 const props = withDefaults(defineProps<Props>(), { incidents: () => [], pendingId: null });
 
 const emit = defineEmits<{ acknowledge: [payload: { ruleId: string }] }>();
@@ -33,11 +35,10 @@ const hasIncidents = computed(() => (props.incidents ?? []).length > 0);
 			<UiIconBox icon="lucide:shield-alert" size="sm" variant="error" />
 			<div>
 				<h3 class="text-base font-medium text-text-primary">
-					Auto-send paused after a bad outcome
+					{{ t('components.autonomy.autonomyDemotionAlerts.title') }}
 				</h3>
 				<p class="text-xs text-text-tertiary">
-					These senders were reverted to draft-only after a confirmed bad auto-send. Review before
-					re-enabling.
+					{{ t('components.autonomy.autonomyDemotionAlerts.body') }}
 				</p>
 			</div>
 		</div>
@@ -51,11 +52,24 @@ const hasIncidents = computed(() => (props.incidents ?? []).length > 0);
 			>
 				<div class="min-w-0">
 					<p class="text-sm text-text-primary">
-						<strong class="break-all">{{ incident.sender ?? incident.category }}</strong>
-						<span class="text-text-tertiary"> ({{ incident.category }})</span>
+						<I18nT
+							keypath="components.autonomy.autonomyDemotionAlerts.incident"
+							tag="span"
+							scope="global"
+						>
+							<template #sender>
+								<strong class="break-all">{{ incident.sender ?? incident.category }}</strong>
+							</template>
+							<template #category>
+								<span class="text-text-tertiary">{{ incident.category }}</span>
+							</template>
+						</I18nT>
 					</p>
 					<p class="text-xs text-text-tertiary mt-0.5">
-						{{ incident.autoDemotedReason ?? 'Auto-demoted to draft-only after a bad outcome.' }}
+						{{
+							incident.autoDemotedReason ??
+							t('components.autonomy.autonomyDemotionAlerts.defaultReason')
+						}}
 					</p>
 				</div>
 				<UiButton
@@ -65,7 +79,7 @@ const hasIncidents = computed(() => (props.incidents ?? []).length > 0);
 					:disabled="pendingId === incident._id"
 					@click="emit('acknowledge', { ruleId: incident._id })"
 				>
-					Dismiss
+					{{ t('common.dismiss') }}
 				</UiButton>
 			</li>
 		</ul>

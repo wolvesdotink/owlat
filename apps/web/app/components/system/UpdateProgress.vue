@@ -28,6 +28,8 @@ interface UpdaterHealth {
 	containers?: UpdaterContainer[] | string;
 }
 
+const { t } = useI18n();
+
 const props = defineProps<{
 	targetVersion: string;
 	steps?: Step[];
@@ -41,12 +43,19 @@ const emit = defineEmits<{
 // Canonical step list in execution order. Mapped to icons; updater sidecar
 // returns these keys verbatim in its /update response.
 const stepOrder = ['write-compose', 'pull', 'up', 'convex-deploy'];
-const stepLabels: Record<string, string> = {
-	'write-compose': 'Write pinned compose template',
-	'pull': 'Pull new container images',
-	'up': 'Recreate containers with new versions',
-	'convex-deploy': 'Deploy backend functions',
+const stepLabelKeys: Record<string, string> = {
+	'write-compose': 'components.system.updateProgress.steps.writeCompose',
+	'pull': 'components.system.updateProgress.steps.pull',
+	'up': 'components.system.updateProgress.steps.up',
+	'convex-deploy': 'components.system.updateProgress.steps.convexDeploy',
 };
+
+// An unknown step keeps the old behaviour — its raw key — rather than painting a
+// missing message path into the update log.
+function stepLabel(step: string): string {
+	const key = stepLabelKeys[step];
+	return key ? t(key) : step;
+}
 
 // Current step status (pending / running / success / failed)
 type StepStatus = 'pending' | 'running' | 'success' | 'failed';
@@ -80,7 +89,7 @@ async function pollHealth() {
 	elapsed.value += POLL_INTERVAL_MS;
 	if (elapsed.value >= TIMEOUT_MS) {
 		polling.value = false;
-		emit('failed', 'Timed out waiting for new version to appear. Check `owlat logs web` on the host.');
+		emit('failed', t('components.system.updateProgress.timedOut'));
 		return;
 	}
 
@@ -153,7 +162,7 @@ const totalElapsedDisplay = computed(() => {
 	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 		<div class="flex items-center justify-between mb-4">
 			<h3 class="text-base font-semibold text-text-primary">
-				Updating to v{{ targetVersion }}
+				{{ t('components.system.updateProgress.heading', { version: targetVersion }) }}
 			</h3>
 			<span class="text-[0.75rem] text-text-tertiary font-mono">{{ totalElapsedDisplay }}</span>
 		</div>
@@ -172,13 +181,13 @@ const totalElapsedDisplay = computed(() => {
 				<div class="flex-1 min-w-0">
 					<p class="text-[0.875rem] text-text-primary">
 						<span class="text-text-tertiary mr-2">{{ idx + 1 }}.</span>
-						{{ stepLabels[step] ?? step }}
+						{{ stepLabel(step) }}
 					</p>
 					<p
 						v-if="stepStatus[step] === 'failed'"
 						class="text-[0.75rem] text-error mt-1"
 					>
-						{{ props.steps?.find((s) => s.step === step)?.stderr ?? 'Failed' }}
+						{{ props.steps?.find((s) => s.step === step)?.stderr ?? t('components.system.updateProgress.stepFailed') }}
 					</p>
 				</div>
 			</li>
@@ -188,7 +197,7 @@ const totalElapsedDisplay = computed(() => {
 			v-if="polling"
 			class="mt-4 pt-4 border-t border-border-subtle text-[0.75rem] text-text-tertiary"
 		>
-			The web app may restart during the update. This page will reconnect automatically.
+			{{ t('components.system.updateProgress.restartNotice') }}
 		</p>
 	</div>
 </template>

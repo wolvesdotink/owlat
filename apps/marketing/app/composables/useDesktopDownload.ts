@@ -1,4 +1,5 @@
-import { ref, onMounted, type Ref } from 'vue';
+import { computed, ref, onMounted, type ComputedRef, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 export type DesktopPlatform = 'macos' | 'windows' | 'linux';
 
@@ -63,22 +64,27 @@ async function resolveAssetUrl(platform: DesktopPlatform): Promise<string | null
 
 export function useDesktopDownload(): {
 	platform: Ref<DesktopPlatform | null>;
-	platformLabel: Ref<string | null>;
-	downloadAriaLabel: Ref<string>;
+	platformLabel: ComputedRef<string | null>;
+	downloadAriaLabel: ComputedRef<string>;
 	onDownloadClick: (e: MouseEvent) => void;
 } {
+	const { t } = useI18n();
 	const platform = ref<DesktopPlatform | null>(null);
-	const platformLabel = ref<string | null>(null);
-	const downloadAriaLabel = ref('Download the Owlat desktop app (releases page)');
+
+	// Derived, not assigned at mount: the label has to re-render when the
+	// visitor switches language, and the platform name itself (macOS/Windows/
+	// Linux) is a product name that stays untranslated in every locale.
+	const platformLabel = computed(() => (platform.value ? PLATFORM_LABELS[platform.value] : null));
+	const downloadAriaLabel = computed(() =>
+		platformLabel.value
+			? t('download.ariaFor', { platform: platformLabel.value })
+			: t('download.aria')
+	);
 
 	// SSG-safe: navigator only after mount, on the client.
 	onMounted(() => {
 		if (!import.meta.client) return;
 		platform.value = detectPlatform();
-		if (platform.value) {
-			platformLabel.value = PLATFORM_LABELS[platform.value];
-			downloadAriaLabel.value = `Download the Owlat desktop app for ${platformLabel.value}`;
-		}
 	});
 
 	let resolved: Promise<string | null> | null = null;

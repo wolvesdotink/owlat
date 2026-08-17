@@ -7,13 +7,14 @@
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { POSTBOX_NOTIFY_ABOUT_OPTIONS } from '~/utils/postboxNotify';
 
-// This surface is not localized yet (see docs 3.developer/23.ui-localization),
-// so its scope labels sit inline with the rest of its hardcoded English copy
-// rather than in the message catalog.
-const NOTIFY_ABOUT_LABELS: Record<PostboxNotifyAbout, string> = {
-	everything: 'Everything',
-	'people-important': 'People & important only',
-	nothing: 'Nothing',
+const { t } = useI18n();
+
+// The scope options are a frozen module-level list; their labels are message
+// KEYS resolved at render time, so switching locale relabels the select.
+const NOTIFY_ABOUT_LABEL_KEYS: Record<PostboxNotifyAbout, string> = {
+	everything: 'components.postbox.postboxNotificationSettings.notifyAbout.everything',
+	'people-important': 'components.postbox.postboxNotificationSettings.notifyAbout.peopleImportant',
+	nothing: 'components.postbox.postboxNotificationSettings.notifyAbout.nothing',
 };
 
 const {
@@ -43,16 +44,17 @@ function onSenderScreenerChange(event: Event) {
 <template>
 	<section class="card !p-0 mb-6">
 		<header class="px-5 py-3 border-b border-border-subtle">
-			<h2 class="font-semibold">Notifications</h2>
+			<h2 class="font-semibold">
+				{{ t('components.postbox.postboxNotificationSettings.heading') }}
+			</h2>
 		</header>
 		<div class="px-5 py-4 flex items-center justify-between gap-4">
 			<div class="min-w-0">
 				<label for="postbox-notify-about" class="font-medium text-sm block">
-					Notify me about
+					{{ t('components.postbox.postboxNotificationSettings.notifyAbout.label') }}
 				</label>
 				<p class="text-xs text-text-tertiary mt-0.5">
-					Which new mail pops a desktop notification. "People &amp; important only" uses smart
-					categories to stay quiet about newsletters and automated mail.
+					{{ t('components.postbox.postboxNotificationSettings.notifyAbout.hint') }}
 				</p>
 			</div>
 			<select
@@ -63,18 +65,17 @@ function onSenderScreenerChange(event: Event) {
 				@change="onNotifyAboutChange"
 			>
 				<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt" :value="opt">
-					{{ NOTIFY_ABOUT_LABELS[opt] }}
+					{{ t(NOTIFY_ABOUT_LABEL_KEYS[opt]) }}
 				</option>
 			</select>
 		</div>
 		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
 				<label for="postbox-badge-nonpeople" class="font-medium text-sm block">
-					Count all mail in the badge
+					{{ t('components.postbox.postboxNotificationSettings.badgeAll.label') }}
 				</label>
 				<p class="text-xs text-text-tertiary mt-0.5">
-					When off, the dock/taskbar unread badge counts only people &amp; important mail — keeping
-					the number focused even when notifications are quiet. On by default.
+					{{ t('components.postbox.postboxNotificationSettings.badgeAll.hint') }}
 				</p>
 			</div>
 			<input
@@ -89,12 +90,10 @@ function onSenderScreenerChange(event: Event) {
 		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
 				<label for="postbox-sender-screener" class="font-medium text-sm block">
-					Screen first-time senders
+					{{ t('components.postbox.postboxNotificationSettings.screener.label') }}
 				</label>
 				<p class="text-xs text-text-tertiary mt-0.5">
-					When on, mail from someone you've never corresponded with is held out of the Reply Queue
-					until you accept the sender — their mail still lands in the inbox. Keeps triage focused on
-					people you know. Off by default.
+					{{ t('components.postbox.postboxNotificationSettings.screener.hint') }}
 				</p>
 			</div>
 			<input

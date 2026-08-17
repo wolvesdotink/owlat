@@ -12,6 +12,11 @@ type ShortcutHandler = () => void;
 interface ShortcutConfig {
 	key: string;
 	handler: ShortcutHandler;
+	/**
+	 * i18n KEY for the human description (registry convention). The registry is
+	 * module-scope state that outlives any component, so it stores the key and
+	 * the surface listing the shortcuts renders it with `t()`.
+	 */
 	description?: string;
 	/** If true, only triggers when no input/textarea is focused */
 	ignoreInputs?: boolean;
@@ -174,7 +179,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 'g+d',
 			handler: () => router.push('/dashboard'),
-			description: 'Go to Dashboard',
+			description: 'shared.useKeyboardShortcuts.descriptions.goToDashboard',
 			ignoreInputs: true,
 		});
 
@@ -182,7 +187,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 'g+c',
 			handler: () => router.push('/dashboard/audience/contacts'),
-			description: 'Go to Contacts',
+			description: 'shared.useKeyboardShortcuts.descriptions.goToContacts',
 			ignoreInputs: true,
 		});
 
@@ -190,7 +195,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 'g+e',
 			handler: () => router.push('/dashboard/send'),
-			description: 'Go to Emails',
+			description: 'shared.useKeyboardShortcuts.descriptions.goToEmails',
 			ignoreInputs: true,
 		});
 
@@ -198,7 +203,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 'g+a',
 			handler: () => router.push('/dashboard/automations'),
-			description: 'Go to Automations',
+			description: 'shared.useKeyboardShortcuts.descriptions.goToAutomations',
 			ignoreInputs: true,
 		});
 
@@ -206,7 +211,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 'g+m',
 			handler: () => router.push('/dashboard/campaigns'),
-			description: 'Go to Campaigns',
+			description: 'shared.useKeyboardShortcuts.descriptions.goToCampaigns',
 			ignoreInputs: true,
 		});
 
@@ -214,7 +219,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 'g+t',
 			handler: () => router.push('/dashboard/send/transactional'),
-			description: 'Go to Transactional',
+			description: 'shared.useKeyboardShortcuts.descriptions.goToTransactional',
 			ignoreInputs: true,
 		});
 
@@ -222,7 +227,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 'g+s',
 			handler: () => router.push('/dashboard/admin'),
-			description: 'Go to Settings',
+			description: 'shared.useKeyboardShortcuts.descriptions.goToSettings',
 			ignoreInputs: true,
 		});
 	}
@@ -242,7 +247,9 @@ export function useKeyboardShortcuts() {
 	}
 
 	/**
-	 * Get all registered shortcuts for display
+	 * Get all registered shortcuts for display. `description` is an i18n key —
+	 * the caller renders it with `t()` (it falls back to the raw key chord when a
+	 * shortcut was registered without one).
 	 */
 	function getRegisteredShortcuts() {
 		return Array.from(shortcuts.value.entries()).map(([key, config]) => ({
@@ -259,7 +266,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 'n',
 			handler,
-			description: 'New item',
+			description: 'shared.useKeyboardShortcuts.descriptions.newItem',
 			ignoreInputs: true,
 		});
 	}
@@ -272,7 +279,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 's',
 			handler,
-			description: 'Save',
+			description: 'shared.useKeyboardShortcuts.descriptions.save',
 			ignoreInputs: true,
 		});
 	}
@@ -284,7 +291,7 @@ export function useKeyboardShortcuts() {
 		registerShortcut({
 			key: 'escape',
 			handler,
-			description: 'Close / Cancel',
+			description: 'shared.useKeyboardShortcuts.descriptions.closeCancel',
 		});
 	}
 

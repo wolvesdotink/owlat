@@ -15,6 +15,8 @@ import {
 	type MapNode,
 } from '~/utils/systemMapData';
 
+const { t } = useI18n();
+
 const root = ref<HTMLElement | null>(null);
 const currentBeat = ref(0);
 const animated = ref(false);
@@ -152,21 +154,19 @@ onUnmounted(() => {
 	<div id="system" ref="root" class="px-12 max-md:px-6 py-20 max-md:py-14">
 		<!-- Section header -->
 		<div class="text-center flex flex-col items-center">
-			<span class="lp-eyebrow mb-4">System</span>
-			<h2 class="lp-title mb-4">How mail <span class="lp-title-accent">moves</span></h2>
+			<span class="lp-eyebrow mb-4">{{ t('systemMap.eyebrow') }}</span>
+			<I18nT keypath="systemMap.title" tag="h2" class="lp-title mb-4" scope="global">
+				<template #accent>
+					<span class="lp-title-accent">{{ t('systemMap.titleAccent') }}</span>
+				</template>
+			</I18nT>
 			<p class="text-base text-text-secondary leading-relaxed max-w-[540px]">
-				From queue to inbox — and back. Delivery signals feed the ramp controller, so your sending
-				reputation grows instead of guessing.
+				{{ t('systemMap.intro') }}
 			</p>
 		</div>
 
 		<!-- Accessible description of the flow -->
-		<p class="sr-only">
-			Diagram of Owlat's mail flow: campaigns, automations and API sends queue on the built-in Owlat
-			MTA; messages pass an authentication gate applying DKIM, SPF and DMARC, then reach recipient
-			inboxes. Bounce, engagement and placement signals flow back into a ramp controller, which
-			adjusts the MTA's sending share and pacing — a continuous deliverability feedback loop.
-		</p>
+		<p class="sr-only">{{ t('systemMap.srDescription') }}</p>
 
 		<!-- Diagram (decorative; described above) -->
 		<svg
@@ -201,10 +201,10 @@ onUnmounted(() => {
 			<g v-for="node in MAP_NODES" :key="node.id" class="map-node" :data-state="nodeState(node)">
 				<rect :x="node.x" :y="node.y" :width="node.w" :height="node.h" rx="12" />
 				<text :x="node.x + node.w / 2" :y="node.y + node.h / 2 - 4" class="map-label">
-					{{ node.label }}
+					{{ t(node.labelKey) }}
 				</text>
 				<text :x="node.x + node.w / 2" :y="node.y + node.h / 2 + 14" class="map-sub">
-					{{ node.sub }}
+					{{ t(node.subKey) }}
 				</text>
 			</g>
 		</svg>
@@ -213,11 +213,11 @@ onUnmounted(() => {
 		<div
 			class="mt-10 grid grid-cols-5 gap-2.5 max-lg:grid-cols-2 max-md:grid-cols-1"
 			role="group"
-			aria-label="Mail flow steps"
+			:aria-label="t('systemMap.stepsLabel')"
 		>
 			<button
 				v-for="(beat, i) in MAP_BEATS"
-				:key="beat.label"
+				:key="beat.id"
 				type="button"
 				class="map-chip"
 				:data-active="i === currentBeat"
@@ -226,10 +226,10 @@ onUnmounted(() => {
 			>
 				<span class="flex items-center gap-2">
 					<span class="font-mono text-2xs text-text-tertiary tabular-nums">0{{ i + 1 }}</span>
-					<span class="text-caption font-medium text-text-primary">{{ beat.label }}</span>
+					<span class="text-caption font-medium text-text-primary">{{ t(beat.labelKey) }}</span>
 				</span>
 				<span class="block text-2xs text-text-tertiary leading-[1.5] mt-1">
-					{{ beat.caption }}
+					{{ t(beat.captionKey) }}
 				</span>
 			</button>
 		</div>

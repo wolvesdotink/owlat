@@ -38,14 +38,6 @@ export const EMPTY_TRACKER_DETECTION: TrackerDetection = Object.freeze({
 	trackerHosts: Object.freeze([]),
 });
 
-/**
- * Single source for the "1 tracking pixel" / "N tracking pixels" copy used by
- * the blocked-images banner, the kept-blocked banner, and the reader badge.
- */
-export function trackerPixelLabel(pixelCount: number): string {
-	return pixelCount === 1 ? '1 tracking pixel' : `${pixelCount} tracking pixels`;
-}
-
 const IMG_TAG_RE = /<img\b[^>]*>/gi;
 
 /** Extract an attribute value from a single tag string (quoted or bare). */

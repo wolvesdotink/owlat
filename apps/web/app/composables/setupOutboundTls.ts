@@ -25,19 +25,20 @@ export type { OutboundTlsMode };
  * The one sentence of guidance per mode — the copy this surface owns, keyed by
  * the shared value so a mode with no hint is a compile error rather than a blank
  * caption.
+ *
+ * This is a module-scope declaration, so each entry holds the message KEY (the
+ * i18n registry convention) and the screen that prints the caption resolves it
+ * with `t()`.
  */
 const OUTBOUND_TLS_MODE_HINTS: Record<OutboundTlsMode, string> = {
-	opportunistic:
-		'Encrypt whenever the receiving server offers it, but still deliver if it doesn’t. Safest for reaching everyone.',
-	require:
-		'Refuse to deliver over an unencrypted connection. A receiver that can’t do TLS won’t get the mail.',
-	'require-verified':
-		'Require encryption and a valid certificate. Strongest, but can bounce mail to receivers with a misconfigured or self-signed certificate.',
+	opportunistic: 'shared.setupOutboundTls.hints.opportunistic',
+	require: 'shared.setupOutboundTls.hints.require',
+	'require-verified': 'shared.setupOutboundTls.hints.requireVerified',
 };
 
 /**
  * Human-facing option list for the outbound-TLS selector — the catalog's
- * descriptor, in its order, with this surface's hint attached.
+ * descriptor, in its order, with this surface's hint key attached.
  */
 export const OUTBOUND_TLS_MODE_OPTIONS: {
 	value: OutboundTlsMode;

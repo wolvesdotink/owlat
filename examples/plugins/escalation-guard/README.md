@@ -31,7 +31,7 @@ them, so they have no effect on a running deployment today. They are here so the
 reference exercises the whole contract surface, and so the day a call site lands
 there is a worked implementation to check it against. See the "Declared,
 catalogued and authorized" table in the
-[Contribution Reference](../../../apps/docs/content/3.developer/42.plugin-contributions.md).
+[Contribution Reference](../../../apps/docs/content/en/3.developer/42.plugin-contributions.md).
 
 | Contribution           | Module                  | Effect once dispatched                                          |
 | ---------------------- | ----------------------- | --------------------------------------------------------------- |

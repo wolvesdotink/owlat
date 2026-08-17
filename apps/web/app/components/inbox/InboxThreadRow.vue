@@ -65,6 +65,8 @@ const emit = defineEmits<{
 	open: [];
 }>();
 
+const { t } = useI18n();
+
 const rowMembers = computed(() => props.members ?? []);
 
 // Keep the (opacity-only) hover cluster visible while the teleported picker is
@@ -79,8 +81,8 @@ const timestamp = computed(() => props.thread.lastMessageAt ?? props.thread._cre
 const showChannelChip = computed(() => !!props.thread.channel && props.thread.channel !== 'email');
 const channelLabel = computed(() => {
 	const c = props.thread.channel ?? '';
-	if (c === 'sms') return 'SMS';
-	if (c === 'whatsapp') return 'WhatsApp';
+	if (c === 'sms') return t('components.inbox.inboxThreadRow.channel.sms');
+	if (c === 'whatsapp') return t('components.inbox.inboxThreadRow.channel.whatsapp');
 	return capitalize(c);
 });
 
@@ -113,17 +115,23 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 				<!-- Unread dot — weight-based emphasis lives on the identifier; the dot
 				     is a small brand indicator, the one sanctioned accent use. -->
 				<span class="mt-1.5 w-2 flex-shrink-0" aria-hidden="true">
-					<span v-if="thread.unread" class="block w-2 h-2 rounded-full bg-brand" title="Unread" />
+					<span
+						v-if="thread.unread"
+						class="block w-2 h-2 rounded-full bg-brand"
+						:title="t('components.inbox.inboxThreadRow.unread')"
+					/>
 				</span>
 
 				<PostboxRowCore :unread="thread.unread">
-					<template #identifier>{{ thread.subject || 'No subject' }}</template>
+					<template #identifier>
+						{{ thread.subject || t('components.inbox.inboxThreadRow.noSubject') }}
+					</template>
 					<template #meta>{{ formatCompactRelativeTime(timestamp) }}</template>
 
 					<!-- Detail row: sender + the single status chip + optional channel chip. -->
 					<div class="flex items-center gap-2 mt-0.5 min-w-0">
 						<span class="truncate text-sm text-text-secondary">
-							{{ thread.contactIdentifier || 'Unknown sender' }}
+							{{ thread.contactIdentifier || t('components.inbox.inboxThreadRow.unknownSender') }}
 						</span>
 						<InboxStatusChip
 							class="flex-shrink-0"
@@ -151,7 +159,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 				<span
 					v-if="thread.assignee"
 					class="flex-shrink-0 mt-0.5"
-					:title="`Assigned to ${assigneeName}`"
+					:title="t('components.inbox.inboxThreadRow.assignedTo', { name: assigneeName })"
 				>
 					<span :class="thread.assigneePresent ? 'ui-presence-ring' : ''">
 						<UiAvatar
@@ -191,8 +199,8 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 					<button
 						type="button"
 						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-brand"
-						title="Assign"
-						aria-label="Assign thread"
+						:title="t('components.inbox.inboxThreadRow.assign')"
+						:aria-label="t('components.inbox.inboxThreadRow.assignThread')"
 					>
 						<Icon name="lucide:user-plus" class="w-4 h-4" />
 					</button>
@@ -201,8 +209,8 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 			<button
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success"
-				title="Resolve"
-				aria-label="Resolve"
+				:title="t('components.inbox.inboxThreadRow.resolve')"
+				:aria-label="t('components.inbox.inboxThreadRow.resolve')"
 				@click="rowAction($event, 'resolve')"
 			>
 				<Icon name="lucide:check-circle" class="w-4 h-4" />
@@ -210,8 +218,8 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 			<button
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-				title="Snooze"
-				aria-label="Snooze"
+				:title="t('components.inbox.inboxThreadRow.snooze')"
+				:aria-label="t('components.inbox.inboxThreadRow.snooze')"
 				@click="rowAction($event, 'snooze')"
 			>
 				<Icon name="lucide:clock" class="w-4 h-4" />
@@ -219,8 +227,8 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 			<NuxtLink
 				:to="`/dashboard/inbox/${thread._id}`"
 				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary inline-flex"
-				title="Open"
-				aria-label="Open thread"
+				:title="t('common.open')"
+				:aria-label="t('components.inbox.inboxThreadRow.openThread')"
 				@click.stop
 			>
 				<Icon name="lucide:arrow-right" class="w-4 h-4" />

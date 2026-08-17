@@ -1,4 +1,6 @@
 <script setup lang="ts" generic="T extends string | number">
+import { useUiI18n } from '../../composables/useUiI18n';
+
 type SelectSize = 'sm' | 'md';
 
 interface SelectOption<V = T> {
@@ -9,6 +11,7 @@ interface SelectOption<V = T> {
 interface Props {
 	options: SelectOption<T>[];
 	modelValue?: T | null;
+	/** Defaults to the localized "Select an option". */
 	placeholder?: string;
 	disabled?: boolean;
 	error?: string;
@@ -18,13 +21,17 @@ interface Props {
 	size?: SelectSize;
 }
 
+// `placeholder` has no default: prop defaults are evaluated outside the setup
+// context, where `useUiI18n()` cannot run. It is resolved below instead.
 const props = withDefaults(defineProps<Props>(), {
 	modelValue: null,
-	placeholder: 'Select an option',
+	placeholder: undefined,
 	disabled: false,
 	required: false,
 	size: 'md',
 });
+
+const { t } = useUiI18n();
 
 const emit = defineEmits<{
 	'update:modelValue': [value: T | null];
@@ -42,9 +49,9 @@ const selectedOption = computed(() => {
 	return props.options.find((opt) => opt.value === props.modelValue) || null;
 });
 
-const displayText = computed(() => {
-	return selectedOption.value?.label || props.placeholder;
-});
+const displayText = computed(
+	() => selectedOption.value?.label || props.placeholder || t('ui.select.placeholder')
+);
 
 const triggerClasses = computed(() => {
 	const classes = [

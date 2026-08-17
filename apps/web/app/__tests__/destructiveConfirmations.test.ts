@@ -158,6 +158,8 @@ describe('pages wire the gate in (source guard)', () => {
 	it('postbox contact removal routes through a handler with an undo toast', () => {
 		const source = readPage('dashboard/postbox/contacts.vue');
 		expect(source).toContain('@click="removeContact(c)"');
-		expect(source).toMatch(/showToast\([\s\S]*label: 'Undo'/);
+		// The undo affordance is a catalog lookup since the extraction; the copy
+		// behind `…contacts.undo` is guarded by localeCatalogs.test.ts.
+		expect(source).toMatch(/showToast\([\s\S]*label: t\('dashboard\.postbox\.contacts\.undo'\)/);
 	});
 });

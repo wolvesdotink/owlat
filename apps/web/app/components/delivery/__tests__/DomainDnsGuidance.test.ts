@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { DELIVERY_PROVIDER_KINDS } from '@owlat/shared/featureFlags';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -17,8 +18,9 @@ async function mountGuidance(provider: string | null) {
 	vi.stubGlobal('computed', computed);
 	vi.stubGlobal('ref', ref);
 	vi.stubGlobal('useOrganizationQuery', () => ({ data: { value: { provider } } }));
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	const component = (await import('../DomainDnsGuidance.vue')).default;
-	const wrapper = mount(component, { global: { stubs } });
+	const wrapper = mount(component, { global: { plugins: [createTestI18n()], stubs } });
 	// The body is behind a disclosure; open it so the points are asserted.
 	const toggle = wrapper.find('button');
 	if (toggle.exists()) await toggle.trigger('click');

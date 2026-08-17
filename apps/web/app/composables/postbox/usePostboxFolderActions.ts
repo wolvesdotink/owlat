@@ -10,17 +10,18 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 export function usePostboxFolderActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
+	const { t } = useI18n();
 	const { run: createMutation } = useBackendOperation(api.mail.folders.create, {
-		label: 'Create folder',
+		label: () => t('shared.postbox.usePostboxFolderActions.createFolder'),
 	});
 	const { run: renameMutation } = useBackendOperation(api.mail.folders.rename, {
-		label: 'Rename folder',
+		label: () => t('shared.postbox.usePostboxFolderActions.renameFolder'),
 	});
 	const { run: removeMutation } = useBackendOperation(api.mail.folders.remove, {
-		label: 'Delete folder',
+		label: () => t('shared.postbox.usePostboxFolderActions.deleteFolder'),
 	});
 	const { run: subscribeMutation } = useBackendOperation(api.mail.folders.setSubscribed, {
-		label: 'Update folder',
+		label: () => t('shared.postbox.usePostboxFolderActions.updateFolder'),
 	});
 
 	async function create(name: string): Promise<boolean> {

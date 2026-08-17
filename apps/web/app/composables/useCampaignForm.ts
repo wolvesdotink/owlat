@@ -24,6 +24,7 @@ export interface CampaignFormErrors {
  * test-email sending to the CampaignsTestEmailModal component.
  */
 export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest) {
+	const { t, locale } = useI18n();
 	const { isPending: authPending, isAuthenticated } = useAuth();
 
 	// ─── Data Fetching ──────────────────────────────────────────────────
@@ -92,13 +93,13 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 	// ─── Mutations (for save) ───────────────────────────────────────────
 
 	const { run: updateBasics } = useBackendOperation(api.campaigns.campaigns.updateBasics, {
-		label: 'Update campaign basics',
+		label: () => t('shared.useCampaignForm.operations.updateBasics'),
 	});
 	const { run: updateAudience } = useBackendOperation(api.campaigns.campaigns.updateAudience, {
-		label: 'Update campaign audience',
+		label: () => t('shared.useCampaignForm.operations.updateAudience'),
 	});
 	const { run: updateContent } = useBackendOperation(api.campaigns.campaigns.updateContent, {
-		label: 'Update campaign content',
+		label: () => t('shared.useCampaignForm.operations.updateContent'),
 	});
 
 	// ─── Validation ─────────────────────────────────────────────────────
@@ -107,29 +108,29 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		errors.value = {};
 
 		if (!campaignName.value.trim()) {
-			errors.value.campaignName = 'Campaign name is required';
+			errors.value.campaignName = t('shared.useCampaignForm.errors.campaignNameRequired');
 		}
 
 		if (!fromEmail.value.trim()) {
-			errors.value.fromEmail = 'From email is required';
+			errors.value.fromEmail = t('shared.useCampaignForm.errors.fromEmailRequired');
 		} else if (!emailRegex.test(fromEmail.value.trim())) {
-			errors.value.fromEmail = 'Please enter a valid email address';
+			errors.value.fromEmail = t('shared.useCampaignForm.errors.fromEmailInvalid');
 		}
 
 		if (audienceType.value === 'topic' && !selectedTopicId.value) {
-			errors.value.audience = 'Please select a topic';
+			errors.value.audience = t('shared.useCampaignForm.errors.topicRequired');
 		}
 
 		if (audienceType.value === 'segment' && !selectedSegmentId.value) {
-			errors.value.audience = 'Please select a segment';
+			errors.value.audience = t('shared.useCampaignForm.errors.segmentRequired');
 		}
 
 		if (!selectedTemplateId.value) {
-			errors.value.content = 'Please select an email template';
+			errors.value.content = t('shared.useCampaignForm.errors.templateRequired');
 		}
 
 		if (!campaignSubject.value.trim()) {
-			errors.value.subject = 'Subject line is required';
+			errors.value.subject = t('shared.useCampaignForm.errors.subjectRequired');
 		}
 
 		return Object.keys(errors.value).length === 0;
@@ -152,7 +153,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		if (basicsResult === undefined) return false;
 
 		if (!audience.value) {
-			errors.value.audience = 'Please configure the campaign audience';
+			errors.value.audience = t('shared.useCampaignForm.errors.audienceRequired');
 			return false;
 		}
 		const audienceResult = await updateAudience({
@@ -185,15 +186,19 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 			const list = topics.value?.find(
 				(l: { _id: string; name: string }) => l._id === selectedTopicId.value
 			);
-			return list ? `Topic: ${list.name}` : 'Topic';
+			return list
+				? t('shared.useCampaignForm.audience.topic', { name: list.name })
+				: t('shared.useCampaignForm.audience.topicFallback');
 		}
 		if (audienceType.value === 'segment' && selectedSegmentId.value) {
 			const segment = segments.value?.find(
 				(s: { _id: string }) => s._id === selectedSegmentId.value
 			);
-			return segment ? `Segment: ${segment.name}` : 'Segment';
+			return segment
+				? t('shared.useCampaignForm.audience.segment', { name: segment.name })
+				: t('shared.useCampaignForm.audience.segmentFallback');
 		}
-		return 'Not configured';
+		return t('shared.useCampaignForm.audience.notConfigured');
 	});
 
 	const templateLanguages = computed(() => {
@@ -311,7 +316,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 	const formatDate = (dateStr: string, timeStr: string): string => {
 		if (!dateStr || !timeStr) return '';
 		const date = new Date(`${dateStr}T${timeStr}`);
-		return date.toLocaleString('en-US', {
+		return new Intl.DateTimeFormat(locale.value, {
 			weekday: 'long',
 			year: 'numeric',
 			month: 'long',
@@ -319,7 +324,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 			hour: 'numeric',
 			minute: '2-digit',
 			hour12: true,
-		});
+		}).format(date);
 	};
 
 	const getMinScheduleDate = () => {
@@ -328,31 +333,35 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		return now.toISOString().slice(0, 10);
 	};
 
-	const getLanguageLabel = (code: string): string => {
-		const labels: Record<string, string> = {
-			en: 'English',
-			de: 'German',
-			fr: 'French',
-			es: 'Spanish',
-			it: 'Italian',
-			pt: 'Portuguese',
-			nl: 'Dutch',
-			pl: 'Polish',
-			ru: 'Russian',
-			ja: 'Japanese',
-			ko: 'Korean',
-			zh: 'Chinese',
-			ar: 'Arabic',
-			hi: 'Hindi',
-			tr: 'Turkish',
-			sv: 'Swedish',
-			da: 'Danish',
-			no: 'Norwegian',
-			fi: 'Finnish',
-			cs: 'Czech',
-		};
-		return labels[code] ?? code.toUpperCase();
-	};
+	// The language codes the template picker offers. A code outside the catalog
+	// keeps its uppercased self, exactly as before.
+	const LANGUAGE_CODES = [
+		'en',
+		'de',
+		'fr',
+		'es',
+		'it',
+		'pt',
+		'nl',
+		'pl',
+		'ru',
+		'ja',
+		'ko',
+		'zh',
+		'ar',
+		'hi',
+		'tr',
+		'sv',
+		'da',
+		'no',
+		'fi',
+		'cs',
+	];
+
+	const getLanguageLabel = (code: string): string =>
+		LANGUAGE_CODES.includes(code)
+			? t(`shared.useCampaignForm.languages.${code}`)
+			: code.toUpperCase();
 
 	return {
 		// Data

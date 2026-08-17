@@ -16,10 +16,17 @@ const emit = defineEmits<{
 	(e: 'update:open', value: boolean): void;
 	(e: 'pick', labelId: Id<'mailLabels'>): void;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
-	<UiModal :open="open" title="Add label" size="sm" @update:open="emit('update:open', $event)">
+	<UiModal
+		:open="open"
+		:title="t('components.postbox.postboxLabelPickerDialog.title')"
+		size="sm"
+		@update:open="emit('update:open', $event)"
+	>
 		<ul class="space-y-1">
 			<li v-for="label in labels" :key="label._id">
 				<button
@@ -35,6 +42,8 @@ const emit = defineEmits<{
 				</button>
 			</li>
 		</ul>
-		<p v-if="labels.length === 0" class="text-sm text-text-tertiary">No labels yet</p>
+		<p v-if="labels.length === 0" class="text-sm text-text-tertiary">
+			{{ t('components.postbox.postboxLabelPickerDialog.empty') }}
+		</p>
 	</UiModal>
 </template>

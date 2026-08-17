@@ -22,14 +22,30 @@ export const DEFAULT_INBOX_FILTER: InboxFilter = 'open';
 export type InboxSort = 'needs-attention' | 'newest';
 export const DEFAULT_INBOX_SORT: InboxSort = 'needs-attention';
 
-/** Human label + empty-state copy for each pill. */
+/**
+ * Label + empty-state copy for each pill, as the catalog keys that carry them —
+ * this table is module scope and never calls `useI18n`, so the pill row and the
+ * inbox page are the render boundaries that word it.
+ */
 export const INBOX_FILTER_META: Record<InboxFilter, { label: string; empty: string }> = {
-	open: { label: 'Open', empty: 'No open conversations. Inbox zero.' },
-	mine: { label: 'Mine', empty: 'Nothing is assigned to you right now.' },
-	unassigned: { label: 'Unassigned', empty: 'Every open thread has an owner.' },
-	waiting: { label: 'Waiting', empty: 'No threads are waiting on a customer reply.' },
-	snoozed: { label: 'Snoozed', empty: 'Nothing is snoozed. It will reappear here when it does.' },
-	resolved: { label: 'Resolved', empty: 'No resolved conversations yet.' },
+	open: { label: 'shared.inboxFilters.open.label', empty: 'shared.inboxFilters.open.empty' },
+	mine: { label: 'shared.inboxFilters.mine.label', empty: 'shared.inboxFilters.mine.empty' },
+	unassigned: {
+		label: 'shared.inboxFilters.unassigned.label',
+		empty: 'shared.inboxFilters.unassigned.empty',
+	},
+	waiting: {
+		label: 'shared.inboxFilters.waiting.label',
+		empty: 'shared.inboxFilters.waiting.empty',
+	},
+	snoozed: {
+		label: 'shared.inboxFilters.snoozed.label',
+		empty: 'shared.inboxFilters.snoozed.empty',
+	},
+	resolved: {
+		label: 'shared.inboxFilters.resolved.label',
+		empty: 'shared.inboxFilters.resolved.empty',
+	},
 };
 
 function isInboxFilter(value: unknown): value is InboxFilter {

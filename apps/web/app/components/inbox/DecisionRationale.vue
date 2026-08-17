@@ -31,13 +31,19 @@ const props = defineProps<{
 	groundingSources?: GroundingSource[] | null;
 }>();
 
+const { t } = useI18n();
+
 const decision = computed(() => props.decision ?? null);
 const sources = computed(() => props.groundingSources ?? []);
 const hasSources = computed(() => sources.value.length > 0);
 const hasAnything = computed(() => decision.value !== null || hasSources.value);
 
 const isAutoSend = computed(() => decision.value?.decision === 'auto_approve');
-const headline = computed(() => (isAutoSend.value ? 'Sent because' : 'Held because'));
+const headline = computed(() =>
+	isAutoSend.value
+		? t('components.inbox.decisionRationale.sentBecause')
+		: t('components.inbox.decisionRationale.heldBecause')
+);
 </script>
 
 <template>
@@ -49,7 +55,7 @@ const headline = computed(() => (isAutoSend.value ? 'Sent because' : 'Held becau
 				:class="['w-3.5 h-3.5 mt-px shrink-0', isAutoSend ? 'text-success' : 'text-warning']"
 			/>
 			<p class="text-text-secondary">
-				<span class="font-medium text-text-primary">{{ headline }}:</span>
+				<span class="font-medium text-text-primary">{{ headline }}</span>
 				{{ decision.reason }}
 			</p>
 		</div>
@@ -58,7 +64,9 @@ const headline = computed(() => (isAutoSend.value ? 'Sent because' : 'Held becau
 		<div v-if="hasSources" class="flex items-start gap-1.5">
 			<Icon name="lucide:link" class="w-3.5 h-3.5 mt-px shrink-0 text-text-tertiary" />
 			<div class="min-w-0">
-				<span class="font-medium text-text-primary">Grounded in:</span>
+				<span class="font-medium text-text-primary">
+					{{ t('components.inbox.decisionRationale.groundedIn') }}
+				</span>
 				<ul class="mt-1 space-y-0.5">
 					<li
 						v-for="src in sources"

@@ -85,6 +85,11 @@ function toPlainPayload(payload: OfflineComposePayload): OfflineComposePayload {
 	return JSON.parse(JSON.stringify(payload)) as OfflineComposePayload;
 }
 
+/**
+ * Diagnostic marker stored on a failed item's `lastError`. Never rendered — the
+ * banner reports the COUNT of stuck items, not each item's reason — so this
+ * stays an English developer string rather than a catalog key.
+ */
 function errorMessage(err: unknown): string {
 	if (err instanceof Error && err.message) return err.message;
 	return 'Send failed';
@@ -98,6 +103,7 @@ function errorMessage(err: unknown): string {
 export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | undefined>) {
 	const { isOnline, isOffline } = usePostboxOfflineCache(mailboxId);
 	const { showToast } = useToast();
+	const { t } = useI18n();
 	// The Convex client for the drain replays. Deliberately NOT
 	// useBackendOperation: per-item failures are bookkept on the item
 	// (`lastError`) and surfaced in the banner — a toast per failed queued
@@ -158,10 +164,14 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 		try {
 			item = await s.enqueueOutbox(ns, toPlainPayload(payload));
 		} catch (err) {
+			// The store's own Error messages are diagnostic; the sentence the
+			// sender reads is picked here, from the same condition the store used.
 			showToast(
-				err instanceof OfflineWriteError
-					? err.message
-					: 'Offline storage is unavailable on this device — the message could not be queued.',
+				t(
+					err instanceof OfflineWriteError && err.isQuotaExceeded
+						? 'shared.postbox.offlineOutbox.outOfStorage'
+						: 'shared.postbox.offlineOutbox.storageUnavailable'
+				),
 				'error'
 			);
 			throw new Error('Send failed');

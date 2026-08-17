@@ -6,7 +6,9 @@
  * Now it only shows what the docs site cannot: THIS instance's base URL and
  * ready-to-paste snippets against it.
  */
-useHead({ title: 'API Quickstart — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.team.api.docs.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -29,22 +31,26 @@ const curlExample = computed(() =>
 	].join('\n')
 );
 
-const endpoints = [
-	{ method: 'GET/POST', path: '/api/v1/contacts', description: 'List or create contacts' },
+const endpoints = computed(() => [
+	{
+		method: 'GET/POST',
+		path: '/api/v1/contacts',
+		description: t('dashboard.admin.team.api.docs.endpoints.contacts'),
+	},
 	{
 		method: 'GET/PUT/DELETE',
 		path: '/api/v1/contacts/:id',
-		description: 'Read, update, or delete a contact',
+		description: t('dashboard.admin.team.api.docs.endpoints.contact'),
 	},
-	{ method: 'POST', path: '/api/v1/events', description: 'Track custom events' },
+	{ method: 'POST', path: '/api/v1/events', description: t('dashboard.admin.team.api.docs.endpoints.events') },
 	{
 		method: 'POST',
 		path: '/api/v1/transactional',
-		description: 'Send a transactional email (slug in body)',
+		description: t('dashboard.admin.team.api.docs.endpoints.transactional'),
 	},
-	{ method: '*', path: '/api/v1/topics/…', description: 'Manage topics and subscriptions' },
-	{ method: 'GET', path: '/api/v1/health', description: 'Health probe' },
-];
+	{ method: '*', path: '/api/v1/topics/…', description: t('dashboard.admin.team.api.docs.endpoints.topics') },
+	{ method: 'GET', path: '/api/v1/health', description: t('dashboard.admin.team.api.docs.endpoints.health') },
+]);
 </script>
 
 <template>
@@ -55,22 +61,27 @@ const endpoints = [
 				class="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-3.5 h-3.5" />
-				Back to API Keys
+				{{ t('dashboard.admin.team.api.docs.backToKeys') }}
 			</NuxtLink>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">API Quickstart</h1>
-			<p class="text-text-secondary mt-1">
-				Authenticate with a scoped API key from
-				<NuxtLink to="/dashboard/admin/team/api" class="link">Settings → API Keys</NuxtLink>.
-			</p>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.team.api.docs.title') }}
+			</h1>
+			<I18nT keypath="dashboard.admin.team.api.docs.intro" tag="p" scope="global" class="text-text-secondary mt-1">
+				<template #settingsLink>
+					<NuxtLink to="/dashboard/admin/team/api" class="link">{{
+						t('dashboard.admin.team.api.docs.introLink')
+					}}</NuxtLink>
+				</template>
+			</I18nT>
 		</div>
 
 		<UiCard class="mb-6">
-			<h2 class="text-sm font-medium text-text-secondary mb-2">Your API base URL</h2>
+			<h2 class="text-sm font-medium text-text-secondary mb-2">{{ t('dashboard.admin.team.api.docs.baseUrlTitle') }}</h2>
 			<div class="flex items-center gap-2">
 				<code
 					class="flex-1 px-3 py-2 bg-bg-surface border border-border-subtle rounded-lg text-sm text-text-primary overflow-x-auto"
 				>
-					{{ apiBaseUrl || 'Not configured (NUXT_PUBLIC_CONVEX_SITE_URL)' }}
+					{{ apiBaseUrl || t('dashboard.admin.team.api.docs.baseUrlMissing') }}
 				</code>
 				<UiButton
 					v-if="apiBaseUrl"
@@ -85,7 +96,7 @@ const endpoints = [
 
 		<UiCard class="mb-6">
 			<div class="flex items-center justify-between mb-2">
-				<h2 class="text-sm font-medium text-text-secondary">Create a contact</h2>
+				<h2 class="text-sm font-medium text-text-secondary">{{ t('dashboard.admin.team.api.docs.createContact') }}</h2>
 				<UiButton variant="ghost" size="sm" @click="copy(curlExample, 'curl')">
 					<Icon :name="copiedKey === 'curl' ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4" />
 				</UiButton>
@@ -99,9 +110,11 @@ const endpoints = [
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-border-subtle text-left">
-						<th class="px-4 py-3 font-medium text-text-secondary">Method</th>
-						<th class="px-4 py-3 font-medium text-text-secondary">Endpoint</th>
-						<th class="px-4 py-3 font-medium text-text-secondary">Description</th>
+						<th class="px-4 py-3 font-medium text-text-secondary">{{ t('dashboard.admin.team.api.docs.table.method') }}</th>
+						<th class="px-4 py-3 font-medium text-text-secondary">
+							{{ t('dashboard.admin.team.api.docs.table.endpoint') }}
+						</th>
+						<th class="px-4 py-3 font-medium text-text-secondary">{{ t('common.description') }}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -129,7 +142,7 @@ const endpoints = [
 			class="gap-2"
 		>
 			<Icon name="lucide:book-open" class="w-4 h-4" />
-			Full API reference
+			{{ t('dashboard.admin.team.api.docs.fullReference') }}
 			<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
 		</UiButton>
 	</div>

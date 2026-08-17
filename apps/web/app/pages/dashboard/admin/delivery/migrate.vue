@@ -35,7 +35,20 @@ import {
 	type MigrationStepState,
 } from '~/utils/mandrillMigration';
 
-useHead({ title: 'Migrate from Mailchimp — Owlat' });
+const { t } = useI18n();
+
+/**
+ * `utils/mandrillMigration` is a module-scope definition set whose step
+ * title/summary/blocked copy carries i18n keys rather than sentences (the
+ * registry convention); a plain string is still accepted so a value with nothing
+ * to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+useHead({ title: () => t('dashboard.admin.delivery.migrate.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -80,7 +93,8 @@ function stepByIdState(id: string): MigrationStepState {
 }
 
 function blockedReason(id: string): string | null {
-	return steps.value.find((step) => step.id === id)?.blockedBy ?? null;
+	const blockedBy = steps.value.find((step) => step.id === id)?.blockedBy;
+	return blockedBy === undefined || blockedBy === null ? null : localized(blockedBy);
 }
 
 const STATE_ICON: Readonly<Record<MigrationStepState, string>> = {
@@ -106,14 +120,13 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Delivery setup
+				{{ t('dashboard.admin.delivery.backToSetup') }}
 			</NuxtLink>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Migrate from Mailchimp / Mandrill</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.delivery.migrate.title') }}
+			</h1>
 			<p class="mt-2 max-w-3xl text-sm text-text-secondary">
-				Keep sending through your existing Mailchimp Transactional account on day one — same
-				reputation, same deliverability — while Owlat measures both senders on identical
-				instrumentation and moves traffic onto its own MTA only as the numbers earn it. There is no
-				flag day, and every step here is reversible.
+				{{ t('dashboard.admin.delivery.migrate.lede') }}
 			</p>
 		</div>
 
@@ -133,8 +146,10 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 					/>
 					<div class="min-w-0 flex-1 space-y-3">
 						<div>
-							<h2 class="text-base font-semibold text-text-primary">{{ step.title }}</h2>
-							<p class="mt-1 text-sm text-text-secondary">{{ step.summary }}</p>
+							<h2 class="text-base font-semibold text-text-primary">
+								{{ localized(step.title) }}
+							</h2>
+							<p class="mt-1 text-sm text-text-secondary">{{ localized(step.summary) }}</p>
 						</div>
 
 						<!-- 1 · Connect ------------------------------------------------ -->
@@ -144,22 +159,25 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 								class="text-sm text-success"
 								data-testid="migration-key-present"
 							>
-								Mailchimp Transactional is connected — Owlat can see a
-								<code>MANDRILL_API_KEY</code> in this deployment's environment.
+								<I18nT keypath="dashboard.admin.delivery.migrate.connect.present" scope="global">
+									<template #envVar><code>MANDRILL_API_KEY</code></template>
+								</I18nT>
 							</p>
 							<div v-else class="space-y-2" data-testid="migration-key-missing">
-								<p class="text-sm text-text-secondary">
-									Create an API key in Mailchimp Transactional (Settings → API keys), set it as
-									<code>MANDRILL_API_KEY</code> in this deployment's environment, and restart.
-									Credentials never live in the database, so this page can only ever tell you
-									whether the key is present — never what it is.
-								</p>
+								<I18nT
+									keypath="dashboard.admin.delivery.migrate.connect.missing"
+									tag="p"
+									class="text-sm text-text-secondary"
+									scope="global"
+								>
+									<template #envVar><code>MANDRILL_API_KEY</code></template>
+								</I18nT>
 								<NuxtLink
 									to="/dashboard/admin/delivery/transport"
 									class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"
 								>
 									<Icon name="lucide:external-link" class="h-4 w-4" />
-									Transport setup, with the paste-ready environment block
+									{{ t('dashboard.admin.delivery.migrate.connect.transportLink') }}
 								</NuxtLink>
 							</div>
 						</template>
@@ -179,9 +197,7 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 								class="text-sm text-text-secondary"
 								data-testid="migration-domain-none"
 							>
-								No Mailchimp Transactional identity exists yet. Verify a sending domain on the
-								domains screen first; enabling Mandrill as the fallback relay provisions the
-								identity automatically, and the hourly sweep picks up the DNS from there.
+								{{ t('dashboard.admin.delivery.migrate.domain.none') }}
 							</p>
 							<ul v-else class="space-y-1 text-sm" data-testid="migration-domain-checklist">
 								<li
@@ -190,11 +206,15 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 									:data-testid="`migration-domain-${row.domain}`"
 								>
 									<span :class="row.isReady ? 'text-success' : 'text-warning'">
-										{{ row.domain }}:
 										{{
 											row.isReady
-												? 'verified and ready to relay'
-												: `outstanding — ${row.outstanding.join(', ')}`
+												? t('dashboard.admin.delivery.migrate.domain.ready', {
+														domain: row.domain,
+													})
+												: t('dashboard.admin.delivery.migrate.domain.outstanding', {
+														domain: row.domain,
+														outstanding: row.outstanding.map(localized).join(', '),
+													})
 										}}
 									</span>
 								</li>
@@ -205,7 +225,7 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 								class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"
 							>
 								<Icon name="lucide:globe" class="h-4 w-4" />
-								Sending domains
+								{{ t('dashboard.admin.delivery.migrate.domain.domainsLink') }}
 							</NuxtLink>
 						</template>
 
@@ -223,7 +243,7 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 						<!-- 5 · Watch -------------------------------------------------- -->
 						<template v-else-if="step.id === 'watch'">
 							<p v-if="step.blockedBy" class="text-sm text-text-secondary">
-								{{ step.blockedBy }}
+								{{ localized(step.blockedBy) }}
 							</p>
 							<div v-else class="flex flex-wrap gap-4">
 								<NuxtLink
@@ -232,21 +252,21 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 									data-testid="migration-cells-link"
 								>
 									<Icon name="lucide:grid-3x3" class="h-4 w-4" />
-									Cells — every share, and why it moved
+									{{ t('dashboard.admin.delivery.migrate.watch.cells') }}
 								</NuxtLink>
 								<NuxtLink
 									to="/dashboard/admin/delivery/advanced/controls"
 									class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"
 								>
 									<Icon name="lucide:sliders-horizontal" class="h-4 w-4" />
-									Ramp controls — pause, pin or promote a cell
+									{{ t('dashboard.admin.delivery.migrate.watch.controls') }}
 								</NuxtLink>
 								<NuxtLink
 									to="/dashboard/admin/delivery/advanced/independence"
 									class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"
 								>
 									<Icon name="lucide:trending-up" class="h-4 w-4" />
-									Independence — how much mail is already yours
+									{{ t('dashboard.admin.delivery.migrate.watch.independence') }}
 								</NuxtLink>
 							</div>
 						</template>

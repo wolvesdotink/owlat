@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DeliverabilityChecklistItem } from '~/utils/deliverabilityCenter';
 import DeliverabilityNextActionCard from '../DeliverabilityNextActionCard.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 const copy = vi.fn(async () => true);
 const isCopied = vi.fn(() => false);
@@ -27,7 +28,7 @@ function item(status: DeliverabilityChecklistItem['status']): DeliverabilityChec
 		title: "Prove you own your server's address",
 		protocol: 'Reverse DNS (PTR)',
 		severity: 'blocking',
-		impact: 'Until this is set, Gmail can slow down or refuse your mail.',
+		impact: 'Without a PTR record, Gmail and other receivers can slow down or refuse your mail.',
 		docsHref: '/guide/sending-from-a-vps',
 		dependencies: [],
 		dnsBacked: true,
@@ -62,19 +63,21 @@ function item(status: DeliverabilityChecklistItem['status']): DeliverabilityChec
 function mountCard(check: DeliverabilityChecklistItem) {
 	return mount(DeliverabilityNextActionCard, {
 		props: { item: check },
-		global: { stubs },
+		global: { plugins: [createTestI18n()], stubs },
 	});
 }
 
 beforeEach(() => {
 	copy.mockClear();
 	isCopied.mockClear();
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useCopyToClipboard', () => ({ copy, isCopied }));
 });
 
 describe('DeliverabilityNextActionCard', () => {
 	it('renders DNS propagation as waiting, never as a failure', () => {
 		const wrapper = mountCard(item('pending-dns'));
+		expectFullyLocalized(wrapper);
 		expect(wrapper.text()).toContain('Checking for your change');
 		expect(wrapper.text()).toContain('DNS can take up to an hour');
 		expect(wrapper.text()).toContain('You can safely leave this page');
@@ -134,6 +137,23 @@ describe('DeliverabilityNextActionCard', () => {
 			.find((candidate) => candidate.attributes('aria-label') === 'Copy value for 203.0.113.7')!
 			.trigger('click');
 		expect(copy).toHaveBeenCalledWith('mail.example.com', 'domain:domain-a:domain.spf:ptr:value');
+	});
+
+	/**
+	 * The check's name and rationale stay English in `@owlat/shared` (a stored
+	 * and mailed regression alert and the copied diagnostic dump print them), so
+	 * the card renders the catalog copy derived from the check id rather than the
+	 * key path a bare `t()` would have painted at the operator.
+	 */
+	it('names the check from the catalog, never from a key path', () => {
+		const wrapper = mountCard(item('fail'));
+
+		expectFullyLocalized(wrapper);
+		expect(wrapper.text()).not.toMatch(/sharedPkg\./);
+		expect(wrapper.text()).toContain("Prove you own your server's address");
+		expect(wrapper.text()).toContain(
+			'Without a PTR record, Gmail and other receivers can slow down or refuse your mail.'
+		);
 	});
 
 	it('does not claim to have detected a provider for generic guidance', () => {

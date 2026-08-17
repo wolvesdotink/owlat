@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
+const { t } = useI18n();
+
 const props = defineProps<{
 	emailId: Id<'transactionalEmails'> | null;
 	emailName?: string;
@@ -14,6 +16,26 @@ const { data, isLoading } = useConvexQuery(api.transactional.sends.listByTransac
 );
 
 const sends = computed(() => data.value?.sends ?? []);
+
+/**
+ * Translated pill text. A status outside the map keeps the old behaviour — the
+ * raw value, capitalized by CSS — rather than painting a missing message path.
+ */
+const STATUS_LABEL_KEYS: Record<string, string> = {
+	queued: 'components.transactional.recentSendsModal.status.queued',
+	sent: 'components.transactional.recentSendsModal.status.sent',
+	delivered: 'components.transactional.recentSendsModal.status.delivered',
+	opened: 'components.transactional.recentSendsModal.status.opened',
+	clicked: 'components.transactional.recentSendsModal.status.clicked',
+	failed: 'components.transactional.recentSendsModal.status.failed',
+	bounced: 'components.transactional.recentSendsModal.status.bounced',
+	complained: 'components.transactional.recentSendsModal.status.complained',
+};
+
+function statusLabel(status: string): string {
+	const key = STATUS_LABEL_KEYS[status];
+	return key ? t(key) : status;
+}
 
 const statusStyles: Record<string, string> = {
 	queued: 'bg-bg-surface text-text-secondary',
@@ -28,13 +50,16 @@ const statusStyles: Record<string, string> = {
 </script>
 
 <template>
-	<UiModal v-model:open="isOpen" :title="`Recent sends${emailName ? ` — ${emailName}` : ''}`">
+	<UiModal
+		v-model:open="isOpen"
+		:title="emailName ? t('components.transactional.recentSendsModal.titleNamed', { name: emailName }) : t('components.transactional.recentSendsModal.title')"
+	>
 		<div v-if="isLoading" class="py-10 flex justify-center">
 			<UiSpinner size="md" />
 		</div>
 
 		<p v-else-if="sends.length === 0" class="py-10 text-center text-sm text-text-tertiary">
-			No sends yet — trigger this email via the API to see deliveries here.
+			{{ t('components.transactional.recentSendsModal.noSends') }}
 		</p>
 
 		<ul v-else class="divide-y divide-border-subtle -mx-2">
@@ -46,7 +71,7 @@ const statusStyles: Record<string, string> = {
 				>
 					<div class="min-w-0">
 						<p class="text-sm text-text-primary truncate">
-							{{ send.contact?.email ?? send.email ?? 'Unknown recipient' }}
+							{{ send.contact?.email ?? send.email ?? t('components.transactional.recentSendsModal.unknownRecipient') }}
 						</p>
 						<p class="text-xs text-text-tertiary mt-0.5">
 							{{ formatDateTime(send.sentAt ?? send.queuedAt ?? send._creationTime) }}
@@ -58,14 +83,14 @@ const statusStyles: Record<string, string> = {
 							statusStyles[send.status] ?? 'bg-bg-surface text-text-secondary',
 						]"
 					>
-						{{ send.status }}
+						{{ statusLabel(send.status) }}
 					</span>
 				</NuxtLink>
 			</li>
 		</ul>
 
 		<p v-if="data?.hasMore" class="mt-3 text-xs text-text-tertiary text-center">
-			Showing the 25 most recent sends.
+			{{ t('components.transactional.recentSendsModal.hasMore') }}
 		</p>
 	</UiModal>
 </template>

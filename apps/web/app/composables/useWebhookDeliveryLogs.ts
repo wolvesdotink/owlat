@@ -5,6 +5,8 @@ import type { Id } from '@owlat/api/dataModel';
 export function useWebhookDeliveryLogs(
 	showNotification: (message: string, type?: 'success' | 'error') => void
 ) {
+	const { t } = useI18n();
+
 	// Modal state
 	const isLogsModalOpen = ref(false);
 	const logsWebhookId = ref<Id<'webhooks'> | null>(null);
@@ -16,7 +18,7 @@ export function useWebhookDeliveryLogs(
 	// Send test state
 	const isSendingTest = ref(false);
 	const { run: sendTestMutation } = useBackendOperation(api.webhooks.endpoints.sendTestWebhook, {
-		label: 'Send test webhook',
+		label: () => t('shared.useWebhookDeliveryLogs.sendTestOperation'),
 	});
 
 	// Queries — skip when no webhookId
@@ -25,14 +27,12 @@ export function useWebhookDeliveryLogs(
 		() => (logsWebhookId.value ? { webhookId: logsWebhookId.value } : 'skip')
 	);
 
-	const { data: stats } = useConvexQuery(
-		api.webhooks.endpoints.getDeliveryStats,
-		() => (logsWebhookId.value ? { webhookId: logsWebhookId.value } : 'skip')
+	const { data: stats } = useConvexQuery(api.webhooks.endpoints.getDeliveryStats, () =>
+		logsWebhookId.value ? { webhookId: logsWebhookId.value } : 'skip'
 	);
 
-	const { data: selectedLog } = useConvexQuery(
-		api.webhooks.endpoints.getDeliveryLog,
-		() => (selectedLogId.value ? { logId: selectedLogId.value } : 'skip')
+	const { data: selectedLog } = useConvexQuery(api.webhooks.endpoints.getDeliveryLog, () =>
+		selectedLogId.value ? { logId: selectedLogId.value } : 'skip'
 	);
 
 	const openLogsModal = (webhookId: Id<'webhooks'>, webhookName: string) => {
@@ -62,7 +62,7 @@ export function useWebhookDeliveryLogs(
 		const result = await sendTestMutation({ webhookId });
 		isSendingTest.value = false;
 		if (result === undefined) return;
-		showNotification('Test webhook sent');
+		showNotification(t('shared.useWebhookDeliveryLogs.testSent'));
 	};
 
 	return {

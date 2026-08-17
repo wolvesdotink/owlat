@@ -3,11 +3,19 @@
 		"target": "ES2022",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
-		"lib": ["ES2022"],
+		"lib": [
+			"ES2022"
+		],
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
-		"types": ["node", "vitest/globals"]
+		"types": [
+			"node",
+			"vitest/globals"
+		],
+		"resolveJsonModule": true
 	},
-	"include": ["**/*.ts"]
+	"include": [
+		"**/*.ts"
+	]
 }

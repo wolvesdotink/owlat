@@ -12,26 +12,35 @@ import {
 	localDayStartOf,
 	BRIEF_LINK_TARGETS,
 	type BriefSentence,
+	type BriefText,
 } from '../postboxDailyBrief';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The template is a pure derivation, so each chunk arrives as a message key (a
+// count as its interpolation); the sentence a reader gets is resolved through
+// the real catalog.
+const { t } = createTestI18n().global;
+const say = (value: BriefText) =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 function flat(sentences: BriefSentence[]): string {
-	return sentences.map((s) => s.map((seg) => seg.text).join('')).join(' ');
+	return sentences.map((s) => s.map((seg) => say(seg.text)).join('')).join(' ');
 }
 
 function links(sentences: BriefSentence[]): Array<{ text: string; to: string }> {
 	return sentences.flatMap((s) =>
-		s.filter((seg) => seg.to !== undefined).map((seg) => ({ text: seg.text, to: seg.to! }))
+		s.filter((seg) => seg.to !== undefined).map((seg) => ({ text: say(seg.text), to: seg.to! }))
 	);
 }
 
 describe('briefGreeting', () => {
 	it('is time-of-day aware', () => {
-		expect(briefGreeting(6)).toBe('Good morning');
-		expect(briefGreeting(11)).toBe('Good morning');
-		expect(briefGreeting(12)).toBe('Good afternoon');
-		expect(briefGreeting(17)).toBe('Good afternoon');
-		expect(briefGreeting(18)).toBe('Good evening');
-		expect(briefGreeting(23)).toBe('Good evening');
+		expect(t(briefGreeting(6))).toBe('Good morning');
+		expect(t(briefGreeting(11))).toBe('Good morning');
+		expect(t(briefGreeting(12))).toBe('Good afternoon');
+		expect(t(briefGreeting(17))).toBe('Good afternoon');
+		expect(t(briefGreeting(18))).toBe('Good evening');
+		expect(t(briefGreeting(23))).toBe('Good evening');
 	});
 });
 

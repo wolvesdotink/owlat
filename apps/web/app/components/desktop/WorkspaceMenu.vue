@@ -16,6 +16,8 @@
  * The trigger deliberately omits `data-tauri-drag-region` so clicks open the
  * menu instead of starting a window drag.
  */
+const { t } = useI18n();
+
 const { workspaces, activeId, active, switchTo } = useDesktopWorkspaces();
 const { badgeFor } = useWorkspaceBadges();
 
@@ -123,7 +125,7 @@ onUnmounted(() => {
 			:class="{ 'bg-bg-surface-hover': open }"
 			aria-haspopup="menu"
 			:aria-expanded="open"
-			aria-label="Switch workspace"
+			:aria-label="t('components.desktop.workspaceMenu.switchWorkspace')"
 			@click="toggle"
 		>
 			<!-- palette-ok: the hairline rides on the workspace's own accent colour (an
@@ -152,7 +154,7 @@ onUnmounted(() => {
 				v-if="open"
 				ref="menuRef"
 				role="menu"
-				aria-label="Workspaces"
+				:aria-label="t('components.desktop.workspaceMenu.menuLabel')"
 				class="absolute top-full left-0 mt-1 z-(--z-menu) min-w-56 max-w-72 rounded-lg border border-border-subtle bg-bg-elevated p-1 shadow-lg"
 			>
 				<button
@@ -191,7 +193,7 @@ onUnmounted(() => {
 					@click="closeMenu({ restoreFocus: false })"
 				>
 					<Icon name="lucide:plus" class="w-3.5 h-3.5 shrink-0" />
-					Add workspace
+					{{ t('components.desktop.workspaceMenu.addWorkspace') }}
 				</NuxtLink>
 			</div>
 		</Transition>

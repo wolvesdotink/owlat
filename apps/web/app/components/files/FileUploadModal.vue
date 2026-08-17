@@ -15,6 +15,8 @@ const emit = defineEmits<{
 	(e: 'uploaded', fileId: Id<'semanticFiles'>): void;
 }>();
 
+const { t } = useI18n();
+
 const isNewVersion = computed(() => Boolean(props.previousVersionId));
 
 const { upload, isUploading } = useSemanticFiles();
@@ -49,7 +51,9 @@ const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useDropZone(
 const { isDesktop, pickNativeFiles } = useNativeFilePicker();
 const browse = async () => {
 	if (isDesktop.value) {
-		onFilesPicked(await pickNativeFiles({ title: 'Choose a file' }));
+		onFilesPicked(
+			await pickNativeFiles({ title: t('components.files.fileUploadModal.nativePickerTitle') }),
+		);
 		return;
 	}
 	fileInputRef.value?.click();
@@ -124,7 +128,11 @@ watch(
 <template>
 	<UiModal
 		:open="open"
-		:title="isNewVersion ? 'Upload New Version' : 'Upload File'"
+		:title="
+			isNewVersion
+				? t('components.files.fileUploadModal.titleNewVersion')
+				: t('components.files.fileUploadModal.title')
+		"
 		size="lg"
 		@update:open="
 			(v) => {
@@ -139,7 +147,7 @@ watch(
 		>
 			<Icon name="lucide:history" class="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />
 			<p class="text-xs leading-relaxed">
-				This file will be added as a new version. The previous version stays in the version history.
+				{{ t('components.files.fileUploadModal.newVersionHint') }}
 			</p>
 		</div>
 
@@ -159,9 +167,11 @@ watch(
 			@click="browse"
 		>
 			<Icon name="lucide:upload-cloud" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-			<p class="text-sm font-medium text-text-primary">Drop a file here or click to browse</p>
+			<p class="text-sm font-medium text-text-primary">
+				{{ t('components.files.fileUploadModal.dropzone') }}
+			</p>
 			<p class="text-xs text-text-tertiary mt-1">
-				Any file type up to {{ MAX_LIBRARY_FILE_MB }} MB
+				{{ t('components.files.fileUploadModal.dropzoneHint', { size: MAX_LIBRARY_FILE_MB }) }}
 			</p>
 		</div>
 
@@ -180,7 +190,7 @@ watch(
 			<button
 				class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				@click="removeSelectedFile"
-				aria-label="Remove file"
+				:aria-label="t('components.files.fileUploadModal.removeFile')"
 			>
 				<Icon name="lucide:x" class="w-4 h-4" />
 			</button>
@@ -191,28 +201,28 @@ watch(
 		<!-- Form fields -->
 		<div class="mt-5 space-y-4">
 			<div>
-				<label for="title" class="block text-sm font-medium text-text-primary mb-1.5"
-					>Title (optional)</label
-				>
+				<label for="title" class="block text-sm font-medium text-text-primary mb-1.5">{{
+					t('components.files.fileUploadModal.titleLabel')
+				}}</label>
 				<input
 					id="title"
 					v-model="title"
 					type="text"
 					class="input input-sm"
-					placeholder="Give this file a descriptive title..."
+					:placeholder="t('components.files.fileUploadModal.titlePlaceholder')"
 				/>
 			</div>
 
 			<div>
-				<label for="tagsinput" class="block text-sm font-medium text-text-primary mb-1.5"
-					>Tags (optional)</label
-				>
+				<label for="tagsinput" class="block text-sm font-medium text-text-primary mb-1.5">{{
+					t('components.files.fileUploadModal.tagsLabel')
+				}}</label>
 				<input
 					id="tagsinput"
 					v-model="tagsInput"
 					type="text"
 					class="input input-sm"
-					placeholder="invoice, report, Q1 (comma-separated)"
+					:placeholder="t('components.files.fileUploadModal.tagsPlaceholder')"
 				/>
 				<div v-if="parsedTags.length > 0" class="flex flex-wrap gap-1.5 mt-2">
 					<span
@@ -226,44 +236,54 @@ watch(
 			</div>
 
 			<div>
-				<label for="sourcetype" class="block text-sm font-medium text-text-primary mb-1.5"
-					>Source</label
-				>
+				<label for="sourcetype" class="block text-sm font-medium text-text-primary mb-1.5">{{
+					t('components.files.fileUploadModal.sourceLabel')
+				}}</label>
 				<select
 					id="sourcetype"
 					v-model="sourceType"
 					class="input input-sm"
 				>
-					<option value="upload">Manual Upload</option>
-					<option value="email_attachment">Email Attachment</option>
-					<option value="agent_generated">AI Generated</option>
+					<option value="upload">
+						{{ t('components.files.fileUploadModal.sources.upload') }}
+					</option>
+					<option value="email_attachment">
+						{{ t('components.files.fileUploadModal.sources.email_attachment') }}
+					</option>
+					<option value="agent_generated">
+						{{ t('components.files.fileUploadModal.sources.agent_generated') }}
+					</option>
 				</select>
 			</div>
 
 			<div>
-				<label class="block text-sm font-medium text-text-primary mb-1.5"
-					>Linked contacts (optional)</label
-				>
+				<label class="block text-sm font-medium text-text-primary mb-1.5">{{
+					t('components.files.fileUploadModal.contactsLabel')
+				}}</label>
 				<FilesContactPicker v-model="selectedContacts" />
 			</div>
 
 			<div>
-				<label class="block text-sm font-medium text-text-primary mb-1.5"
-					>Linked conversation (optional)</label
-				>
+				<label class="block text-sm font-medium text-text-primary mb-1.5">{{
+					t('components.files.fileUploadModal.threadLabel')
+				}}</label>
 				<FilesThreadPicker v-model="selectedThread" />
 			</div>
 		</div>
 
 		<template #footer>
-			<UiButton variant="secondary" @click="close">Cancel</UiButton>
+			<UiButton variant="secondary" @click="close">{{ t('common.cancel') }}</UiButton>
 			<UiButton :disabled="!selectedFile || isUploading" @click="handleSubmit">
 				<template v-if="isUploading">
 					<UiSpinner size="xs" tone="inverse" class="mr-2" />
-					Uploading...
+					{{ t('components.files.fileUploadModal.uploading') }}
 				</template>
 				<template v-else>
-					{{ isNewVersion ? 'Upload Version' : 'Upload' }}
+					{{
+						isNewVersion
+							? t('components.files.fileUploadModal.submitNewVersion')
+							: t('common.upload')
+					}}
 				</template>
 			</UiButton>
 		</template>

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Templates & blocks — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.send.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -39,60 +41,60 @@ const {
 // Stats for display
 const stats = computed(() => [
 	{
-		label: 'Total Templates',
+		label: t('dashboard.send.index.stats.totalTemplates'),
 		value: templateCounts.value?.['total'] ?? 0,
 		icon: 'lucide:mail',
 	},
 	{
-		label: 'Marketing',
+		label: t('dashboard.send.index.stats.marketing'),
 		value: templateCounts.value?.['marketing'] ?? 0,
 		icon: 'lucide:megaphone',
 	},
 	{
-		label: 'Transactional',
+		label: t('dashboard.send.index.stats.transactional'),
 		value: templateCounts.value?.['transactional'] ?? 0,
 		icon: 'lucide:file-code',
 	},
 	{
-		label: 'Saved Blocks',
+		label: t('dashboard.send.index.stats.savedBlocks'),
 		value: blocksStats.value?.total ?? 0,
 		icon: 'lucide:layout-grid',
 	},
 ]);
 
 // Quick actions
-const quickActions = [
+const quickActions = computed(() => [
 	{
-		label: 'Marketing Emails',
+		label: t('dashboard.send.index.quickActions.marketing.label'),
 		href: '/dashboard/send/marketing',
 		icon: 'lucide:megaphone',
-		description: 'Create a newsletter or promotional email',
+		description: t('dashboard.send.index.quickActions.marketing.description'),
 	},
 	{
-		label: 'Transactional Emails',
+		label: t('dashboard.send.index.quickActions.transactional.label'),
 		href: '/dashboard/send/transactional',
 		icon: 'lucide:file-code',
-		description: 'Create an API-triggered email',
+		description: t('dashboard.send.index.quickActions.transactional.description'),
 	},
 	{
-		label: 'Browse Blocks',
+		label: t('dashboard.send.index.quickActions.blocks.label'),
 		href: '/dashboard/send/blocks',
 		icon: 'lucide:layout-grid',
-		description: 'View and manage saved blocks',
+		description: t('dashboard.send.index.quickActions.blocks.description'),
 	},
 	{
-		label: 'Media',
+		label: t('dashboard.send.index.quickActions.media.label'),
 		href: '/dashboard/send/media',
 		icon: 'lucide:image',
-		description: 'Upload and manage images',
+		description: t('dashboard.send.index.quickActions.media.description'),
 	},
 	{
-		label: 'Files',
+		label: t('dashboard.send.index.quickActions.files.label'),
 		href: '/dashboard/files',
 		icon: 'lucide:file-search',
-		description: 'Browse uploaded files',
+		description: t('dashboard.send.index.quickActions.files.description'),
 	},
-];
+]);
 
 // Get type badge color
 function getTypeBadgeClass(type: string): string {
@@ -104,14 +106,16 @@ function getTypeBadgeClass(type: string): string {
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Templates &amp; blocks</h1>
-			<p class="mt-1 text-text-secondary">Manage your email templates and reusable blocks.</p>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.send.index.title') }}
+			</h1>
+			<p class="mt-1 text-text-secondary">{{ t('dashboard.send.index.subtitle') }}</p>
 		</div>
 
 		<!-- Stats Cards -->
 		<UiErrorAlert
 			v-if="countsError || templatesError || blocksStatsError || blocksError"
-			message="Some mail data couldn't be loaded. Reload the page to try again."
+			:message="t('dashboard.send.index.loadError')"
 			class="mb-8"
 		/>
 		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -147,7 +151,9 @@ function getTypeBadgeClass(type: string): string {
 
 		<!-- Quick Actions -->
 		<div class="mb-8">
-			<h2 class="text-lg font-semibold text-text-primary mb-4">Quick Actions</h2>
+			<h2 class="text-lg font-semibold text-text-primary mb-4">
+				{{ t('dashboard.send.index.quickActionsHeading') }}
+			</h2>
 			<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
 				<NuxtLink
 					v-for="action in quickActions"
@@ -176,12 +182,14 @@ function getTypeBadgeClass(type: string): string {
 			<!-- Recently Edited Templates -->
 			<div>
 				<div class="flex items-center justify-between mb-4">
-					<h2 class="text-lg font-semibold text-text-primary">Recently Edited</h2>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('dashboard.send.index.recentlyEdited') }}
+					</h2>
 					<NuxtLink
 						to="/dashboard/send/marketing"
 						class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
 					>
-						View all
+						{{ t('common.viewAll') }}
 						<Icon name="lucide:arrow-right" class="w-3 h-3" />
 					</NuxtLink>
 				</div>
@@ -203,13 +211,15 @@ function getTypeBadgeClass(type: string): string {
 							rounded="full"
 							class="mb-4"
 						/>
-						<p class="text-text-secondary font-medium">No templates yet</p>
+						<p class="text-text-secondary font-medium">
+							{{ t('dashboard.send.index.noTemplatesTitle') }}
+						</p>
 						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-							Create your first email template to get started.
+							{{ t('dashboard.send.index.noTemplatesDescription') }}
 						</p>
 						<UiButton to="/dashboard/send/marketing" class="mt-6 gap-2">
 							<Icon name="lucide:plus" class="w-4 h-4" />
-							Create Template
+							{{ t('dashboard.send.index.createTemplate') }}
 						</UiButton>
 					</div>
 
@@ -230,7 +240,7 @@ function getTypeBadgeClass(type: string): string {
 									<span
 										:class="['text-xs px-1.5 py-0.5 rounded', getTypeBadgeClass(template.type)]"
 									>
-										{{ template.type }}
+										{{ t(`dashboard.send.index.templateTypes.${template.type}`) }}
 									</span>
 									<span class="text-xs text-text-tertiary flex items-center gap-1">
 										<Icon name="lucide:clock" class="w-3 h-3" />
@@ -246,12 +256,14 @@ function getTypeBadgeClass(type: string): string {
 			<!-- Saved Blocks -->
 			<div>
 				<div class="flex items-center justify-between mb-4">
-					<h2 class="text-lg font-semibold text-text-primary">Saved Blocks</h2>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('dashboard.send.index.savedBlocks') }}
+					</h2>
 					<NuxtLink
 						to="/dashboard/send/blocks"
 						class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
 					>
-						View all
+						{{ t('common.viewAll') }}
 						<Icon name="lucide:arrow-right" class="w-3 h-3" />
 					</NuxtLink>
 				</div>
@@ -273,9 +285,11 @@ function getTypeBadgeClass(type: string): string {
 							rounded="full"
 							class="mb-4"
 						/>
-						<p class="text-text-secondary font-medium">No blocks saved</p>
+						<p class="text-text-secondary font-medium">
+							{{ t('dashboard.send.index.noBlocksTitle') }}
+						</p>
 						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-							Save reusable blocks from your email editor to use across templates.
+							{{ t('dashboard.send.index.noBlocksDescription') }}
 						</p>
 					</div>
 
@@ -296,10 +310,10 @@ function getTypeBadgeClass(type: string): string {
 										v-if="block.blockCount && block.blockCount > 1"
 										class="text-xs px-1.5 py-0.5 rounded bg-brand/10 text-brand"
 									>
-										{{ block.blockCount }} blocks
+										{{ t('dashboard.send.index.blockCount', { count: block.blockCount }) }}
 									</span>
 									<span class="text-xs text-text-tertiary">
-										Used {{ block.usageCount }} times
+										{{ t('dashboard.send.index.usedTimes', { count: block.usageCount }) }}
 									</span>
 								</div>
 							</div>

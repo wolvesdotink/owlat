@@ -40,8 +40,8 @@ describe('planSendReadyToast', () => {
 });
 
 describe('notice copy and deep link', () => {
-	it('states the new capability and the one thing left to do', () => {
-		expect(sendReadyToastMessage()).toBe('You can send now — finish your test send');
+	it('hands back the message key the toast resolves', () => {
+		expect(sendReadyToastMessage()).toBe('shared.onboarding.sendReadyNotice.toast');
 	});
 
 	it('deep-links to the blocked step, not just the dashboard', () => {

@@ -54,7 +54,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 
 const page = readFileSync(
-	resolve(repoRoot, 'apps/docs/content/3.developer/2.architecture.md'),
+	resolve(repoRoot, 'apps/docs/content/en/3.developer/2.architecture.md'),
 	'utf8'
 );
 

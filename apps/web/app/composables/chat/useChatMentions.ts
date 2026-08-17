@@ -6,21 +6,19 @@ import type { Id } from '@owlat/api/dataModel';
  * "Mentions" inbox panel.
  */
 export function useChatMentions(withList: () => boolean = () => false) {
-	const { data: countData } = useConvexQuery(
-		api.chat.mentions.countMyUnreadMentions,
-		() => ({}),
-	);
+	const { t } = useI18n();
+
+	const { data: countData } = useConvexQuery(api.chat.mentions.countMyUnreadMentions, () => ({}));
 	// The nav badge only needs the count; the 50-row list is opened lazily by an
 	// actual mentions panel (withList()), not by every dashboard render.
 	const { data: mentionsData, isLoading: mentionsLoading } = useConvexQuery(
 		api.chat.mentions.listMyUnreadMentions,
-		() => (withList() ? { limit: 50 } : 'skip'),
+		() => (withList() ? { limit: 50 } : 'skip')
 	);
 
-	const { run: markReadMutation } = useBackendOperation(
-		api.chat.mentions.markMentionRead,
-		{ label: 'Mark mention read' },
-	);
+	const { run: markReadMutation } = useBackendOperation(api.chat.mentions.markMentionRead, {
+		label: () => t('shared.chat.useChatMentions.markMentionRead'),
+	});
 
 	const count = computed(() => countData.value ?? 0);
 	const mentions = computed(() => mentionsData.value ?? []);
@@ -43,19 +41,17 @@ export function useChatMentions(withList: () => boolean = () => false) {
  */
 export function useChatMentionSearch(
 	queryRef: () => string | null,
-	options: { includeAssistant?: boolean } = {},
+	options: { includeAssistant?: boolean } = {}
 ) {
 	const includeAssistant = options.includeAssistant ?? true;
+	const { t } = useI18n();
 	const { isEnabled } = useFeatureFlag();
-	const { data, isLoading } = useConvexQuery(
-		api.chat.mentions.searchOrgMembersForMention,
-		() => {
-			// null → no active @-mention; skip rather than holding a live member
-			// subscription. '' is a real search (the default member list).
-			const q = queryRef();
-			return q === null ? 'skip' : { query: q };
-		},
-	);
+	const { data, isLoading } = useConvexQuery(api.chat.mentions.searchOrgMembersForMention, () => {
+		// null → no active @-mention; skip rather than holding a live member
+		// subscription. '' is a real search (the default member list).
+		const q = queryRef();
+		return q === null ? 'skip' : { query: q };
+	});
 	const candidates = computed(() => {
 		const base = data.value ?? [];
 		const q = queryRef();
@@ -65,7 +61,13 @@ export function useChatMentionSearch(
 			const ql = q.toLowerCase();
 			if (ql === '' || 'assistant'.startsWith(ql)) {
 				return [
-					{ memberId: 'system:assistant', name: 'Assistant', email: null, image: null, handle: 'assistant' },
+					{
+						memberId: 'system:assistant',
+						name: t('shared.chat.useChatMentions.assistantName'),
+						email: null,
+						image: null,
+						handle: 'assistant',
+					},
 					...base,
 				];
 			}

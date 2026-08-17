@@ -10,18 +10,25 @@
  * pending state says so instead of staying blank, and that the flag gate renders
  * nothing.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxComposerSealLock from '../PostboxComposerSealLock.vue';
 import type { SealState } from '~/utils/sealComposer';
 
 const iconStub = { props: ['name'], template: '<span />' };
 
+// The lock's own control and the derived lock copy flow through vue-i18n now;
+// `useI18n` is a Nuxt auto-import, so it has to exist as a global for setup.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
 function mountLock(sealState: SealState | null, enabled = true, pending = false) {
 	return mount(PostboxComposerSealLock, {
 		props: { enabled, sealState, pending },
-		global: { stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
 

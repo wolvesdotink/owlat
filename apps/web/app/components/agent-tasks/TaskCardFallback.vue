@@ -31,12 +31,23 @@ const props = withDefaults(
 
 const emit = defineEmits<{ (e: 'skip'): void; (e: 'open'): void }>();
 
+const { t } = useI18n();
+
 /** Hard length clamp for the untrusted kind string shown as a mono tag. */
 const MAX_KIND_TAG_LENGTH = 80;
 const kindTag = computed(() =>
 	props.kind.length > MAX_KIND_TAG_LENGTH
 		? `${props.kind.slice(0, MAX_KIND_TAG_LENGTH)}…`
 		: props.kind
+);
+
+/**
+ * The registry hands the disabled kind's label over as an i18n key (built-in
+ * kinds) or as untrusted plugin-manifest text; `t()` renders the former and
+ * falls through to the literal for the latter.
+ */
+const kindLabel = computed(() =>
+	props.label ? t(props.label) : t('components.agentTasks.taskCardFallback.disabled.defaultLabel')
 );
 
 /**
@@ -47,19 +58,25 @@ const copy = computed(() =>
 	props.reason === 'disabled'
 		? {
 				icon: 'lucide:eye-off',
-				title: `${props.label || 'This task type'} is turned off`,
-				body: 'Re-enable its feature to review it in the flow, or skip it for now.',
+				title: t('components.agentTasks.taskCardFallback.disabled.title', {
+					label: kindLabel.value,
+				}),
+				body: t('components.agentTasks.taskCardFallback.disabled.body'),
 			}
 		: {
 				icon: 'lucide:help-circle',
-				title: "This task can't be shown here",
-				body: 'It may belong to a plugin that is no longer installed. Skip it to move on.',
+				title: t('components.agentTasks.taskCardFallback.unknown.title'),
+				body: t('components.agentTasks.taskCardFallback.unknown.body'),
 			}
 );
 </script>
 
 <template>
-	<TaskCardShell :spine="false" role="group" aria-label="Unavailable task">
+	<TaskCardShell
+		:spine="false"
+		role="group"
+		:aria-label="t('components.agentTasks.taskCardFallback.cardLabel')"
+	>
 		<div class="flex items-start gap-3">
 			<UiIconBox :icon="copy.icon" size="md" variant="surface" rounded="lg" class="flex-shrink-0" />
 			<div class="min-w-0">
@@ -85,7 +102,7 @@ const copy = computed(() =>
 				class="text-sm"
 				@click="emit('skip')"
 			>
-				Skip
+				{{ t('common.skip') }}
 				<kbd
 					class="ml-1.5 text-[10px] px-1 py-px rounded border border-border-subtle text-text-tertiary"
 					>s</kbd
@@ -99,7 +116,7 @@ const copy = computed(() =>
 				@click="emit('open')"
 			>
 				<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
-				Open
+				{{ t('common.open') }}
 			</button>
 		</div>
 	</TaskCardShell>

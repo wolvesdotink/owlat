@@ -35,6 +35,8 @@ const props = defineProps<{
 	error?: Error | null;
 }>();
 
+const { t, locale } = useI18n();
+
 const POSTMASTER_DOCS =
 	'https://docs.owlat.app/developer/external-reputation-feedback#google-postmaster-tools';
 
@@ -78,9 +80,11 @@ const failingDomains = computed(() =>
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:mail-check" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Gmail compliance</h2>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('components.delivery.postmasterComplianceCard.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary">
-						What Google Postmaster Tools reports about your sending domains
+						{{ t('components.delivery.postmasterComplianceCard.subtitle') }}
 					</p>
 				</div>
 			</div>
@@ -97,10 +101,11 @@ const failingDomains = computed(() =>
 				data-testid="postmaster-unavailable"
 				class="rounded-lg border border-border-subtle p-4"
 			>
-				<p class="text-sm text-text-primary">Couldn’t load Gmail compliance</p>
+				<p class="text-sm text-text-primary">
+					{{ t('components.delivery.postmasterComplianceCard.unavailableTitle') }}
+				</p>
 				<p class="mt-1 text-sm text-text-secondary">
-					Google’s view of your sending could not be read just now, so this card is showing nothing
-					rather than guessing. Your mail is unaffected — this card only reads.
+					{{ t('components.delivery.postmasterComplianceCard.unavailableBody') }}
 				</p>
 			</div>
 
@@ -110,11 +115,11 @@ const failingDomains = computed(() =>
 				data-testid="postmaster-not-connected"
 				class="rounded-lg border border-border-subtle p-4"
 			>
-				<p class="text-sm text-text-primary">Not connected</p>
+				<p class="text-sm text-text-primary">
+					{{ t('components.delivery.postmasterComplianceCard.notConnectedTitle') }}
+				</p>
 				<p class="mt-1 text-sm text-text-secondary">
-					Sending works exactly the same without this. Connecting a free Google Postmaster account
-					adds Gmail's own view of your spam rate and authentication, which raises measurement
-					confidence.
+					{{ t('components.delivery.postmasterComplianceCard.notConnectedBody') }}
 				</p>
 				<a
 					:href="POSTMASTER_DOCS"
@@ -122,7 +127,7 @@ const failingDomains = computed(() =>
 					rel="noopener"
 					class="mt-2 inline-block text-sm text-brand hover:underline"
 				>
-					How to connect
+					{{ t('components.delivery.postmasterComplianceCard.howToConnect') }}
 				</a>
 			</div>
 
@@ -132,8 +137,7 @@ const failingDomains = computed(() =>
 				class="rounded-lg border border-success/40 bg-success/5 p-4"
 			>
 				<p class="text-sm text-text-primary">
-					Google reports no failing checks for
-					{{ reportedDomains.length === 1 ? 'your sending domain' : 'your sending domains' }}.
+					{{ t('components.delivery.postmasterComplianceCard.allClear', reportedDomains.length) }}
 				</p>
 			</div>
 
@@ -147,7 +151,11 @@ const failingDomains = computed(() =>
 					<div class="flex items-baseline justify-between gap-3">
 						<p class="text-sm font-medium text-text-primary">{{ row.domain }}</p>
 						<p v-if="row.observedAt !== null" class="text-xs text-text-tertiary">
-							Google data for {{ formatDate(row.observedAt, 'short') }}
+							{{
+								t('components.delivery.postmasterComplianceCard.googleDataFor', {
+									date: formatDate(row.observedAt, 'short', locale),
+								})
+							}}
 						</p>
 					</div>
 					<article

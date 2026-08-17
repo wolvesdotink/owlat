@@ -1,5 +1,7 @@
 <script setup lang="ts">
-useHead({ title: 'Forms — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.forms.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -50,16 +52,20 @@ const { hasActiveOrganization } = useOrganizationContext();
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Settings
+				{{ t('dashboard.admin.instance.forms.backToSettings') }}
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Form Endpoints</h1>
-					<p class="mt-1 text-text-secondary">Create embeddable signup forms for your website</p>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.instance.forms.title') }}
+					</h1>
+					<p class="mt-1 text-text-secondary">
+						{{ t('dashboard.admin.instance.forms.subtitle') }}
+					</p>
 				</div>
 				<UiButton class="gap-2" @click="isAddModalOpen = true">
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					New Form
+					{{ t('dashboard.admin.instance.forms.newForm') }}
 				</UiButton>
 			</div>
 		</div>
@@ -68,7 +74,9 @@ const { hasActiveOrganization } = useOrganizationContext();
 		<div v-if="isLoading && !formsData" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading forms...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('dashboard.admin.instance.forms.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -78,9 +86,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:file-text" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No workspace selected</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.admin.instance.forms.noWorkspaceTitle') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select a workspace to manage form endpoints.
+				{{ t('dashboard.admin.instance.forms.noWorkspaceBody') }}
 			</p>
 		</div>
 
@@ -91,11 +101,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 				<div class="flex gap-4">
 					<UiIconBox icon="lucide:code" size="sm" variant="brand" rounded="lg" />
 					<div>
-						<h3 class="font-medium text-text-primary mb-1">What are form endpoints?</h3>
+						<h3 class="font-medium text-text-primary mb-1">
+							{{ t('dashboard.admin.instance.forms.infoTitle') }}
+						</h3>
 						<p class="text-sm text-text-secondary">
-							Form endpoints let you collect email signups directly from your website. Create a
-							form, configure the fields, and embed the HTML code on any webpage. Submissions are
-							automatically added as contacts and optionally to a topic.
+							{{ t('dashboard.admin.instance.forms.infoBody') }}
 						</p>
 					</div>
 				</div>
@@ -113,13 +123,15 @@ const { hasActiveOrganization } = useOrganizationContext();
 					rounded="full"
 					class="mb-4"
 				/>
-				<p class="text-text-secondary font-medium">No form endpoints yet</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('dashboard.admin.instance.forms.emptyTitle') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Create your first form endpoint to start collecting signups from your website.
+					{{ t('dashboard.admin.instance.forms.emptyBody') }}
 				</p>
 				<UiButton class="gap-2 mt-4" @click="isAddModalOpen = true">
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					Create Your First Form
+					{{ t('dashboard.admin.instance.forms.createFirst') }}
 				</UiButton>
 			</div>
 
@@ -148,15 +160,27 @@ const { hasActiveOrganization } = useOrganizationContext();
 											:name="form.isActive ? 'lucide:check-circle-2' : 'lucide:x-circle'"
 											class="w-3 h-3"
 										/>
-										{{ form.isActive ? 'Active' : 'Inactive' }}
+										{{ form.isActive ? t('common.active') : t('common.inactive') }}
 									</span>
 								</div>
 								<div class="flex items-center gap-4 mt-1 text-sm text-text-tertiary">
-									<span>Topic: {{ getTopicName(form.topicId) }}</span>
+									<span>{{
+										t('dashboard.admin.instance.forms.topicLine', {
+											topic: getTopicName(form.topicId),
+										})
+									}}</span>
 									<span class="text-border-default">&bull;</span>
-									<span>{{ form.totalSubmissions }} submissions</span>
+									<span>{{
+										t('dashboard.admin.instance.forms.submissionsCount', {
+											count: form.totalSubmissions,
+										})
+									}}</span>
 									<span class="text-border-default">&bull;</span>
-									<span>Created {{ formatDate(form.createdAt) }}</span>
+									<span>{{
+										t('dashboard.admin.instance.forms.createdOn', {
+											date: formatDate(form.createdAt),
+										})
+									}}</span>
 								</div>
 							</div>
 						</div>
@@ -166,7 +190,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 							<UiButton
 								variant="ghost"
 								class="p-2"
-								:title="form.isActive ? 'Disable form' : 'Enable form'"
+								:title="
+									form.isActive
+										? t('dashboard.admin.instance.forms.disableForm')
+										: t('dashboard.admin.instance.forms.enableForm')
+								"
 								@click.stop="handleToggleActive(form)"
 							>
 								<Icon
@@ -178,7 +206,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 							<UiButton
 								variant="ghost"
 								class="p-2"
-								title="Edit form"
+								:title="t('dashboard.admin.instance.forms.editForm')"
 								@click.stop="openEditModal(form as Parameters<typeof openEditModal>[0])"
 							>
 								<Icon name="lucide:settings-2" class="w-4 h-4" />
@@ -187,7 +215,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 							<UiButton
 								variant="ghost"
 								class="p-2 text-error hover:bg-error/10"
-								title="Delete form"
+								:title="t('dashboard.admin.instance.forms.deleteForm')"
 								@click.stop="
 									formToDelete = {
 										_id: form._id,
@@ -228,12 +256,16 @@ const { hasActiveOrganization } = useOrganizationContext();
 							<div class="px-6 py-4 bg-bg-surface/30 space-y-6">
 								<!-- Stats Section -->
 								<div>
-									<h4 class="text-sm font-medium text-text-primary mb-3">Submission Statistics</h4>
+									<h4 class="text-sm font-medium text-text-primary mb-3">
+										{{ t('dashboard.admin.instance.forms.stats.title') }}
+									</h4>
 									<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
 										<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
 											<div class="flex items-center gap-2 mb-1">
 												<Icon name="lucide:inbox" class="w-4 h-4 text-text-tertiary" />
-												<span class="text-xs text-text-tertiary">Total</span>
+												<span class="text-xs text-text-tertiary">{{
+													t('dashboard.admin.instance.forms.stats.total')
+												}}</span>
 											</div>
 											<p class="text-xl font-semibold text-text-primary">
 												{{ form.totalSubmissions }}
@@ -242,7 +274,9 @@ const { hasActiveOrganization } = useOrganizationContext();
 										<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
 											<div class="flex items-center gap-2 mb-1">
 												<Icon name="lucide:check-circle-2" class="w-4 h-4 text-success" />
-												<span class="text-xs text-text-tertiary">Successful</span>
+												<span class="text-xs text-text-tertiary">{{
+													t('dashboard.admin.instance.forms.stats.successful')
+												}}</span>
 											</div>
 											<p class="text-xl font-semibold text-success">
 												{{ form.successfulSubmissions }}
@@ -251,7 +285,9 @@ const { hasActiveOrganization } = useOrganizationContext();
 										<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
 											<div class="flex items-center gap-2 mb-1">
 												<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning" />
-												<span class="text-xs text-text-tertiary">Other</span>
+												<span class="text-xs text-text-tertiary">{{
+													t('dashboard.admin.instance.forms.stats.other')
+												}}</span>
 											</div>
 											<!-- Everything not successful: pending double-opt-in, spam, invalid,
 												and duplicates. The backend denormalizes only total + successful,
@@ -268,7 +304,9 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 								<!-- Endpoint URL -->
 								<div>
-									<h4 class="text-sm font-medium text-text-primary mb-2">Form Endpoint URL</h4>
+									<h4 class="text-sm font-medium text-text-primary mb-2">
+										{{ t('dashboard.admin.instance.forms.endpointUrl') }}
+									</h4>
 									<div class="flex items-center gap-2">
 										<code
 											class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
@@ -278,7 +316,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 										<UiButton
 											variant="ghost"
 											class="p-2"
-											title="Copy URL"
+											:title="t('dashboard.admin.instance.forms.copyUrl')"
 											@click="copyToClipboard(getFormUrl(form._id), `url-${form._id}`)"
 										>
 											<Icon
@@ -294,7 +332,9 @@ const { hasActiveOrganization } = useOrganizationContext();
 								<!-- Embed Code -->
 								<div>
 									<div class="flex items-center justify-between mb-2">
-										<h4 class="text-sm font-medium text-text-primary">Embed Code</h4>
+										<h4 class="text-sm font-medium text-text-primary">
+											{{ t('dashboard.admin.instance.forms.embedCode') }}
+										</h4>
 										<UiButton
 											variant="ghost"
 											class="gap-1.5 text-sm py-1.5 px-3"
@@ -306,7 +346,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 												class="w-4 h-4 text-success"
 											/>
 											<Icon v-else name="lucide:copy" class="w-4 h-4" />
-											{{ copiedCode === `embed-${form._id}` ? 'Copied!' : 'Copy Code' }}
+											{{
+												copiedCode === `embed-${form._id}`
+													? t('dashboard.admin.instance.forms.copied')
+													: t('dashboard.admin.instance.forms.copyCode')
+											}}
 										</UiButton>
 									</div>
 									<pre
@@ -317,16 +361,20 @@ const { hasActiveOrganization } = useOrganizationContext();
 								<!-- Help Text -->
 								<div class="p-4 bg-bg-surface rounded-xl border border-border-subtle">
 									<p class="text-sm text-text-secondary">
-										<strong class="text-text-primary">Tip:</strong> Copy this HTML and paste it into
-										your website. Style the form with CSS to match your design. The form will submit
-										data directly to your Owlat account.
+										<I18nT keypath="dashboard.admin.instance.forms.tip" tag="span" scope="global">
+											<template #label>
+												<strong class="text-text-primary">{{
+													t('dashboard.admin.instance.forms.tipLabel')
+												}}</strong>
+											</template>
+										</I18nT>
 										<a
 											href="https://docs.owlat.app/developer/forms"
 											target="_blank"
 											rel="noopener"
 											class="inline-flex items-center gap-1 text-brand hover:underline ml-1"
 										>
-											Learn more
+											{{ t('common.learnMore') }}
 											<Icon name="lucide:external-link" class="w-3 h-3" />
 										</a>
 									</p>
@@ -341,7 +389,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 		<!-- Add Form Modal -->
 		<UiModal
 			:open="isAddModalOpen"
-			title="Create Form Endpoint"
+			:title="t('dashboard.admin.instance.forms.addModal.title')"
 			size="md"
 			@update:open="
 				(v) => {
@@ -354,13 +402,14 @@ const { hasActiveOrganization } = useOrganizationContext();
 					<!-- Name Input -->
 					<div>
 						<label for="form-name" class="label">
-							Form Name <span class="text-error">*</span>
+							{{ t('dashboard.admin.instance.forms.fields.name') }}
+							<span class="text-error">*</span>
 						</label>
 						<input
 							id="form-name"
 							v-model="addForm.name"
 							type="text"
-							placeholder="e.g., Newsletter Signup"
+							:placeholder="t('dashboard.admin.instance.forms.fields.namePlaceholder')"
 							:class="['input', addFormErrors.name && 'input-error']"
 							:disabled="isAdding"
 						/>
@@ -371,15 +420,17 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 					<!-- Topic Select -->
 					<div>
-						<label for="form-topic" class="label"> Add to Topic </label>
+						<label for="form-topic" class="label">
+							{{ t('dashboard.admin.instance.forms.fields.topic') }}
+						</label>
 						<select id="form-topic" v-model="addForm.topicId" class="input" :disabled="isAdding">
-							<option value="">None (contacts only)</option>
+							<option value="">{{ t('dashboard.admin.instance.forms.fields.noTopic') }}</option>
 							<option v-for="list in topicsData" :key="list._id" :value="list._id">
 								{{ list.name }}
 							</option>
 						</select>
 						<p class="mt-1 text-xs text-text-tertiary">
-							New signups will be added to this topic automatically.
+							{{ t('dashboard.admin.instance.forms.fields.topicHelp') }}
 						</p>
 					</div>
 
@@ -394,7 +445,9 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 					<!-- Redirect URL -->
 					<div>
-						<label for="form-redirect" class="label"> Redirect URL (optional) </label>
+						<label for="form-redirect" class="label">
+							{{ t('dashboard.admin.instance.forms.fields.redirect') }}
+						</label>
 						<input
 							id="form-redirect"
 							v-model="addForm.redirectUrl"
@@ -404,23 +457,25 @@ const { hasActiveOrganization } = useOrganizationContext();
 							:disabled="isAdding"
 						/>
 						<p class="mt-1 text-xs text-text-tertiary">
-							Redirect users here after successful signup. Leave empty for JSON response.
+							{{ t('dashboard.admin.instance.forms.fields.redirectHelp') }}
 						</p>
 					</div>
 
 					<!-- Honeypot Field -->
 					<div>
-						<label for="form-honeypot" class="label"> Honeypot Field Name (optional) </label>
+						<label for="form-honeypot" class="label">
+							{{ t('dashboard.admin.instance.forms.fields.honeypot') }}
+						</label>
 						<input
 							id="form-honeypot"
 							v-model="addForm.honeypotFieldName"
 							type="text"
-							placeholder="e.g., website_url"
+							:placeholder="t('dashboard.admin.instance.forms.fields.honeypotPlaceholder')"
 							class="input"
 							:disabled="isAdding"
 						/>
 						<p class="mt-1 text-xs text-text-tertiary">
-							A hidden field for spam prevention. Bots fill it in, humans don't.
+							{{ t('dashboard.admin.instance.forms.fields.honeypotHelp') }}
 						</p>
 					</div>
 
@@ -438,10 +493,10 @@ const { hasActiveOrganization } = useOrganizationContext();
 								for="form-double-optin"
 								class="text-sm font-medium text-text-primary cursor-pointer"
 							>
-								Enable Double Opt-In
+								{{ t('dashboard.admin.instance.forms.fields.doubleOptIn') }}
 							</label>
 							<p class="mt-0.5 text-xs text-text-tertiary">
-								Require email confirmation before subscribing. Recommended for GDPR compliance.
+								{{ t('dashboard.admin.instance.forms.fields.doubleOptInHelp') }}
 							</p>
 						</div>
 					</div>
@@ -458,12 +513,16 @@ const { hasActiveOrganization } = useOrganizationContext();
 						resetAddForm();
 					"
 				>
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="submit" form="add-form" class="gap-2" :disabled="isAdding">
 					<Icon v-if="isAdding" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					<Icon v-else name="lucide:plus" class="w-4 h-4" />
-					{{ isAdding ? 'Creating...' : 'Create Form' }}
+					{{
+						isAdding
+							? t('dashboard.admin.instance.forms.addModal.creating')
+							: t('dashboard.admin.instance.forms.addModal.create')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -471,7 +530,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 		<!-- Edit Form Modal -->
 		<UiModal
 			:open="!!formToEdit"
-			title="Edit Form Endpoint"
+			:title="t('dashboard.admin.instance.forms.editModal.title')"
 			size="md"
 			@update:open="
 				(v) => {
@@ -484,13 +543,14 @@ const { hasActiveOrganization } = useOrganizationContext();
 					<!-- Name Input -->
 					<div>
 						<label for="edit-form-name" class="label">
-							Form Name <span class="text-error">*</span>
+							{{ t('dashboard.admin.instance.forms.fields.name') }}
+							<span class="text-error">*</span>
 						</label>
 						<input
 							id="edit-form-name"
 							v-model="editForm.name"
 							type="text"
-							placeholder="e.g., Newsletter Signup"
+							:placeholder="t('dashboard.admin.instance.forms.fields.namePlaceholder')"
 							:class="['input', editFormErrors.name && 'input-error']"
 							:disabled="isSaving"
 						/>
@@ -501,14 +561,16 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 					<!-- Topic Select -->
 					<div>
-						<label for="edit-form-topic" class="label"> Add to Topic </label>
+						<label for="edit-form-topic" class="label">
+							{{ t('dashboard.admin.instance.forms.fields.topic') }}
+						</label>
 						<select
 							id="edit-form-topic"
 							v-model="editForm.topicId"
 							class="input"
 							:disabled="isSaving"
 						>
-							<option value="">None (contacts only)</option>
+							<option value="">{{ t('dashboard.admin.instance.forms.fields.noTopic') }}</option>
 							<option v-for="list in topicsData" :key="list._id" :value="list._id">
 								{{ list.name }}
 							</option>
@@ -526,7 +588,9 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 					<!-- Redirect URL -->
 					<div>
-						<label for="edit-form-redirect" class="label"> Redirect URL (optional) </label>
+						<label for="edit-form-redirect" class="label">
+							{{ t('dashboard.admin.instance.forms.fields.redirect') }}
+						</label>
 						<input
 							id="edit-form-redirect"
 							v-model="editForm.redirectUrl"
@@ -539,12 +603,14 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 					<!-- Honeypot Field -->
 					<div>
-						<label for="edit-form-honeypot" class="label"> Honeypot Field Name (optional) </label>
+						<label for="edit-form-honeypot" class="label">
+							{{ t('dashboard.admin.instance.forms.fields.honeypot') }}
+						</label>
 						<input
 							id="edit-form-honeypot"
 							v-model="editForm.honeypotFieldName"
 							type="text"
-							placeholder="e.g., website_url"
+							:placeholder="t('dashboard.admin.instance.forms.fields.honeypotPlaceholder')"
 							class="input"
 							:disabled="isSaving"
 						/>
@@ -564,10 +630,10 @@ const { hasActiveOrganization } = useOrganizationContext();
 								for="edit-form-double-optin"
 								class="text-sm font-medium text-text-primary cursor-pointer"
 							>
-								Enable Double Opt-In
+								{{ t('dashboard.admin.instance.forms.fields.doubleOptIn') }}
 							</label>
 							<p class="mt-0.5 text-xs text-text-tertiary">
-								Require email confirmation before subscribing. Recommended for GDPR compliance.
+								{{ t('dashboard.admin.instance.forms.fields.doubleOptInHelp') }}
 							</p>
 						</div>
 					</div>
@@ -576,12 +642,16 @@ const { hasActiveOrganization } = useOrganizationContext();
 
 			<template #footer>
 				<UiButton variant="secondary" type="button" :disabled="isSaving" @click="formToEdit = null">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="submit" form="edit-form" class="gap-2" :disabled="isSaving">
 					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					<Icon v-else name="lucide:check" class="w-4 h-4" />
-					{{ isSaving ? 'Saving...' : 'Save Changes' }}
+					{{
+						isSaving
+							? t('dashboard.admin.instance.forms.editModal.saving')
+							: t('dashboard.admin.instance.forms.editModal.save')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -590,9 +660,13 @@ const { hasActiveOrganization } = useOrganizationContext();
 		<UiConfirmationDialog
 			:open="!!formToDelete"
 			variant="danger"
-			title="Delete Form Endpoint"
-			:description="`Are you sure you want to delete &quot;${formToDelete?.name ?? ''}&quot;?`"
-			confirm-text="Delete Form"
+			:title="t('dashboard.admin.instance.forms.deleteModal.title')"
+			:description="
+				t('dashboard.admin.instance.forms.deleteModal.description', {
+					name: formToDelete?.name ?? '',
+				})
+			"
+			:confirm-text="t('dashboard.admin.instance.forms.deleteModal.confirm')"
 			:is-loading="isDeleting"
 			@update:open="
 				(v: boolean) => {
@@ -602,10 +676,14 @@ const { hasActiveOrganization } = useOrganizationContext();
 			@confirm="handleDeleteForm"
 		>
 			<p v-if="formToDelete && formToDelete.totalSubmissions > 0" class="mt-2 text-sm text-warning">
-				This will also delete {{ formToDelete.totalSubmissions }} submission record(s).
+				{{
+					t('dashboard.admin.instance.forms.deleteModal.records', {
+						count: formToDelete.totalSubmissions,
+					})
+				}}
 			</p>
 			<p class="mt-2 text-sm text-text-tertiary">
-				This action cannot be undone. The form will stop accepting submissions immediately.
+				{{ t('dashboard.admin.instance.forms.deleteModal.irreversible') }}
 			</p>
 		</UiConfirmationDialog>
 	</div>

@@ -8,19 +8,26 @@
  *     <YourComponent />
  *   </UiErrorBoundary>
  */
+import { useUiI18n } from '../../composables/useUiI18n';
 
+// `fallbackMessage` has no default: prop defaults are evaluated outside the
+// setup context, where `useUiI18n()` cannot run. It is resolved below instead.
 const props = withDefaults(
 	defineProps<{
-		/** Custom fallback message */
+		/** Custom fallback message. Defaults to the localized copy. */
 		fallbackMessage?: string;
 		/** Whether to show a retry button */
 		showRetry?: boolean;
 	}>(),
 	{
-		fallbackMessage: 'Something went wrong. Please try again.',
+		fallbackMessage: undefined,
 		showRetry: true,
 	}
 );
+
+const { t } = useUiI18n();
+
+const message = computed(() => props.fallbackMessage ?? t('ui.errorBoundary.message'));
 
 const error = ref<Error | null>(null);
 const errorInfo = ref<string>('');
@@ -45,13 +52,13 @@ function handleRetry() {
 	<div v-else class="p-6 border border-error/20 bg-error/5 rounded-lg text-center">
 		<div class="flex flex-col items-center gap-3">
 			<Icon name="lucide:alert-circle" class="w-8 h-8 text-error" />
-			<p class="text-sm text-text-secondary">{{ fallbackMessage }}</p>
+			<p class="text-sm text-text-secondary">{{ message }}</p>
 			<button
 				v-if="showRetry"
 				class="px-4 py-1.5 text-sm font-medium bg-bg-elevated border border-border-default rounded-md hover:bg-bg-base transition-colors"
 				@click="handleRetry"
 			>
-				Try again
+				{{ t('ui.actions.retry') }}
 			</button>
 		</div>
 	</div>

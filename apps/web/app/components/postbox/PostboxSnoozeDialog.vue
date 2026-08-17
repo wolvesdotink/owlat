@@ -15,7 +15,7 @@ const props = withDefaults(
 		 */
 		hintText?: string;
 	}>(),
-	{ hintText: '' },
+	{ hintText: '' }
 );
 
 const emit = defineEmits<{
@@ -25,6 +25,8 @@ const emit = defineEmits<{
 	(e: 'confirm-until-reply', capTimestamp: number): void;
 }>();
 
+const { t, locale } = useI18n();
+
 /** Fallback cap for "until they reply" — resurface after a week if no reply. */
 const UNTIL_REPLY_CAP_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -32,25 +34,34 @@ const UNTIL_REPLY_CAP_MS = 7 * 24 * 60 * 60 * 1000;
 // the dialog and the backend agree on every wake timestamp. The content hint is
 // deterministic; an LLM upgrade (if wired) would just supply a different
 // `suggested` key here and still degrade to this on any failure.
+//
+// `@owlat/shared/snoozePresets` is module scope and shared with the backend, so
+// it never speaks: it hands back the catalog KEY for each label (and the key
+// plus parameters for each sublabel), and this render boundary is what turns
+// those into words — in the active locale, which the wake times and weekdays it
+// formats follow too.
 const PRESETS = computed<PresetTimeOption[]>(() => {
 	const now = Date.now();
 	const tzOffsetMinutes = -new Date().getTimezoneOffset();
 	const suggested: SnoozePresetKey | null = detectSnoozeHint(props.hintText);
-	return computeSnoozePresets({ now, tzOffsetMinutes, suggested }).map((p) => ({
-		label: p.label,
-		sub: p.sub,
-		when: () => p.at,
-		...(p.suggested ? { suggested: true } : {}),
-	}));
+	return computeSnoozePresets({ now, tzOffsetMinutes, suggested, locale: locale.value }).map(
+		(p) => ({
+			label: t(p.label),
+			sub: t(p.sub.key, p.sub.params ?? {}),
+			when: () => p.at,
+			...(p.suggested ? { suggested: true } : {}),
+		})
+	);
 });
 
-const ACTIONS: PresetTimeAction[] = [
+// A computed (not a frozen const) so the labels follow a locale change.
+const ACTIONS = computed<PresetTimeAction[]>(() => [
 	{
 		id: 'until-reply',
-		label: 'Until they reply',
-		sub: 'Or in 1 week',
+		label: t('components.postbox.postboxSnoozeDialog.untilReply'),
+		sub: t('components.postbox.postboxSnoozeDialog.untilReplySub'),
 	},
-];
+]);
 
 function onAction(id: string) {
 	if (id === 'until-reply') {
@@ -62,10 +73,10 @@ function onAction(id: string) {
 <template>
 	<PostboxPresetTimeDialog
 		:open="open"
-		title="Snooze until"
+		:title="t('components.postbox.postboxSnoozeDialog.title')"
 		:presets="PRESETS"
 		:actions="ACTIONS"
-		confirm-label="Snooze"
+		:confirm-label="t('components.postbox.postboxSnoozeDialog.confirm')"
 		@update:open="emit('update:open', $event)"
 		@confirm="emit('confirm', $event)"
 		@action="onAction"

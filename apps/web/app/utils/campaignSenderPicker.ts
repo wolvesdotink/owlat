@@ -12,6 +12,9 @@
  */
 import { isValidEmail } from './validation';
 
+/** Message-key root for this module; see `i18n/locales/en.json`. */
+const K = 'shared.campaignSenderPicker';
+
 /** Sentinel select value for the "Custom address…" option. */
 export const CUSTOM_SENDER_VALUE = '__custom__';
 
@@ -25,6 +28,12 @@ export interface PickerSender {
 
 export interface SenderOption {
 	value: string;
+	/**
+	 * What the row reads: a curated sender's own "Name <address>" (data), or the
+	 * message KEY of the custom-address escape hatch — this module is framework-free
+	 * and cannot translate. The renderer runs every label through `t(…)`, and a
+	 * label with nothing to translate reads as itself.
+	 */
 	label: string;
 }
 
@@ -47,7 +56,7 @@ export function buildSenderOptions(
 		label: formatSenderLabel(sender),
 	}));
 	if (isCustomAllowed) {
-		options.push({ value: CUSTOM_SENDER_VALUE, label: 'Custom address…' });
+		options.push({ value: CUSTOM_SENDER_VALUE, label: `${K}.customAddress` });
 	}
 	return options;
 }

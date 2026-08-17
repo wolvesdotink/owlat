@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Subscription topic — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.audience.topics.detail.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -42,12 +44,18 @@ const isLoading = computed(
 // Update breadcrumbs when topic data is loaded
 watch(
 	topic,
-	(t) => {
-		if (t) {
+	(topicDoc) => {
+		if (topicDoc) {
 			setDynamicBreadcrumbs([
-				{ label: 'Audience', href: '/dashboard/audience' },
-				{ label: 'Topics', href: '/dashboard/audience/topics' },
-				{ label: t.name },
+				{
+					label: t('dashboard.audience.topics.detail.index.breadcrumbs.audience'),
+					href: '/dashboard/audience',
+				},
+				{
+					label: t('dashboard.audience.topics.detail.index.breadcrumbs.topics'),
+					href: '/dashboard/audience/topics',
+				},
+				{ label: topicDoc.name },
 			]);
 		}
 	},
@@ -202,10 +210,14 @@ const pageNumbers = computed(() => {
 
 // Showing range text
 const showingRange = computed(() => {
-	if (totalCount.value === 0) return '0 contacts';
+	if (totalCount.value === 0) return t('dashboard.audience.topics.detail.index.showing.empty');
 	const start = (currentPage.value - 1) * pageSize + 1;
 	const end = Math.min(currentPage.value * pageSize, totalCount.value);
-	return `${start}-${end} of ${totalCount.value}`;
+	return t('dashboard.audience.topics.detail.index.showing.range', {
+		start,
+		end,
+		total: totalCount.value,
+	});
 });
 
 // ============================================
@@ -220,7 +232,7 @@ const isRemoving = ref(false);
 
 // Remove contact mutation
 const { run: removeContact } = useBackendOperation(api.topics.topics.removeContact, {
-	label: 'Remove from topic',
+	label: () => t('dashboard.audience.topics.detail.index.operations.removeContact'),
 });
 
 // Open remove modal
@@ -250,7 +262,12 @@ const handleRemove = async () => {
 	});
 	isRemoving.value = false;
 	if (result === undefined) return;
-	showToast(`Removed "${removeTarget.value.email ?? 'contact'}" from the topic`);
+	showToast(
+		t('dashboard.audience.topics.detail.index.toasts.removed', {
+			email:
+				removeTarget.value.email ?? t('dashboard.audience.topics.detail.index.contactFallback'),
+		})
+	);
 	closeRemoveModal();
 };
 
@@ -271,7 +288,9 @@ const viewContact = (contactId: Id<'contacts'>) => {
 		<div v-if="isLoading && !topic" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading topic...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('dashboard.audience.topics.detail.index.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -281,11 +300,15 @@ const viewContact = (contactId: Id<'contacts'>) => {
 			class="flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:list" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">Topic not found</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				This topic may have been deleted or doesn't exist.
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.audience.topics.detail.index.notFound.title') }}
 			</p>
-			<UiButton to="/dashboard/audience/topics" class="mt-6"> Back to Topics </UiButton>
+			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+				{{ t('dashboard.audience.topics.detail.index.notFound.body') }}
+			</p>
+			<UiButton to="/dashboard/audience/topics" class="mt-6">
+				{{ t('dashboard.audience.topics.detail.index.notFound.action') }}
+			</UiButton>
 		</div>
 
 		<!-- Main Content -->
@@ -316,20 +339,28 @@ const viewContact = (contactId: Id<'contacts'>) => {
 							<div class="flex items-center flex-wrap gap-4 mt-3 text-sm text-text-tertiary">
 								<div class="flex items-center gap-1.5">
 									<Icon name="lucide:users" class="w-4 h-4" />
-									<span
-										>{{ topic.contactCount }} contact{{ topic.contactCount !== 1 ? 's' : '' }}</span
-									>
+									<span>{{
+										t(
+											'dashboard.audience.topics.detail.index.contactCount',
+											{ count: topic.contactCount },
+											topic.contactCount
+										)
+									}}</span>
 								</div>
 								<div class="flex items-center gap-1.5">
 									<Icon name="lucide:calendar" class="w-4 h-4" />
-									<span>Created {{ formatDate(topic.createdAt) }}</span>
+									<span>{{
+										t('dashboard.audience.topics.detail.index.createdOn', {
+											date: formatDate(topic.createdAt),
+										})
+									}}</span>
 								</div>
 								<div
 									v-if="topic.requireDoubleOptIn"
 									class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-brand/10 text-brand"
 								>
 									<Icon name="lucide:shield" class="w-3.5 h-3.5" />
-									<span>Double Opt-In Required</span>
+									<span>{{ t('dashboard.audience.topics.detail.index.doiRequired') }}</span>
 								</div>
 							</div>
 						</div>
@@ -347,7 +378,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 					<input
 						v-model="searchQuery"
 						type="text"
-						placeholder="Search contacts in this topic..."
+						:placeholder="t('dashboard.audience.topics.detail.index.searchPlaceholder')"
 						class="input pl-10"
 					/>
 				</div>
@@ -361,12 +392,14 @@ const viewContact = (contactId: Id<'contacts'>) => {
 					class="flex flex-col items-center justify-center py-16 text-center px-6"
 				>
 					<UiIconBox icon="lucide:users" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">No contacts in this topic</p>
+					<p class="text-text-secondary font-medium">
+						{{ t('dashboard.audience.topics.detail.index.empty.title') }}
+					</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						Add contacts to this topic from the contact detail page.
+						{{ t('dashboard.audience.topics.detail.index.empty.body') }}
 					</p>
 					<UiButton to="/dashboard/audience/contacts" class="gap-2 mt-6">
-						Browse Contacts
+						{{ t('dashboard.audience.topics.detail.index.empty.action') }}
 					</UiButton>
 				</div>
 
@@ -376,9 +409,13 @@ const viewContact = (contactId: Id<'contacts'>) => {
 					class="flex flex-col items-center justify-center py-16 text-center px-6"
 				>
 					<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">No results found</p>
+					<p class="text-text-secondary font-medium">
+						{{ t('dashboard.audience.topics.detail.index.noResults.title') }}
+					</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						No contacts match "{{ debouncedSearch }}". Try a different search term.
+						{{
+							t('dashboard.audience.topics.detail.index.noResults.body', { query: debouncedSearch })
+						}}
 					</p>
 					<UiButton
 						variant="secondary"
@@ -388,7 +425,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 							debouncedSearch = '';
 						"
 					>
-						Clear search
+						{{ t('dashboard.audience.topics.detail.index.clearSearch') }}
 					</UiButton>
 				</div>
 
@@ -403,7 +440,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 										@click="handleSort('email')"
 									>
 										<div class="flex items-center gap-1">
-											Email
+											{{ t('common.email') }}
 											<Icon
 												v-if="getSortIcon('email')"
 												:name="getSortIcon('email')!"
@@ -416,7 +453,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 										@click="handleSort('firstName')"
 									>
 										<div class="flex items-center gap-1">
-											First Name
+											{{ t('dashboard.audience.topics.detail.index.table.firstName') }}
 											<Icon
 												v-if="getSortIcon('firstName')"
 												:name="getSortIcon('firstName')!"
@@ -429,7 +466,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 										@click="handleSort('lastName')"
 									>
 										<div class="flex items-center gap-1">
-											Last Name
+											{{ t('dashboard.audience.topics.detail.index.table.lastName') }}
 											<Icon
 												v-if="getSortIcon('lastName')"
 												:name="getSortIcon('lastName')!"
@@ -442,7 +479,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 										@click="handleSort('addedAt')"
 									>
 										<div class="flex items-center gap-1">
-											Added
+											{{ t('dashboard.audience.topics.detail.index.table.added') }}
 											<Icon
 												v-if="getSortIcon('addedAt')"
 												:name="getSortIcon('addedAt')!"
@@ -451,7 +488,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 										</div>
 									</th>
 									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										Actions
+										{{ t('common.actions') }}
 									</th>
 								</tr>
 							</thead>
@@ -480,7 +517,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 										<div class="flex items-center justify-end gap-1">
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-												title="Remove from topic"
+												:title="t('dashboard.audience.topics.detail.index.removeFromTopic')"
 												@click.stop="openRemoveModal(contact)"
 											>
 												<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -497,14 +534,18 @@ const viewContact = (contactId: Id<'contacts'>) => {
 						v-if="totalPages > 1 || totalCount > 0"
 						class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-6 py-4 border-t border-border-subtle"
 					>
-						<p class="text-sm text-text-tertiary">Showing {{ showingRange }}</p>
+						<p class="text-sm text-text-tertiary">
+							{{
+								t('dashboard.audience.topics.detail.index.showing.label', { range: showingRange })
+							}}
+						</p>
 
 						<div class="flex items-center gap-1">
 							<button
 								class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors"
 								:disabled="!canGoPrev"
 								@click="goToPage(currentPage - 1)"
-								aria-label="Previous"
+								:aria-label="t('dashboard.audience.topics.detail.index.pagination.previous')"
 							>
 								<Icon name="lucide:chevron-left" class="w-4 h-4" />
 							</button>
@@ -529,7 +570,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 								class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors"
 								:disabled="!canGoNext"
 								@click="goToPage(currentPage + 1)"
-								aria-label="Next"
+								:aria-label="t('dashboard.audience.topics.detail.index.pagination.next')"
 							>
 								<Icon name="lucide:chevron-right" class="w-4 h-4" />
 							</button>
@@ -543,9 +584,14 @@ const viewContact = (contactId: Id<'contacts'>) => {
 		<UiConfirmationDialog
 			:open="isRemoveModalOpen"
 			variant="danger"
-			title="Remove from Topic"
-			:description="`Remove &quot;${removeTarget?.email ?? ''}&quot; from this topic? The contact will not be deleted, only removed from &quot;${topic?.name ?? ''}&quot;.`"
-			confirm-text="Remove"
+			:title="t('dashboard.audience.topics.detail.index.removeDialog.title')"
+			:description="
+				t('dashboard.audience.topics.detail.index.removeDialog.description', {
+					email: removeTarget?.email ?? '',
+					topic: topic?.name ?? '',
+				})
+			"
+			:confirm-text="t('common.remove')"
 			:is-loading="isRemoving"
 			@update:open="
 				(v: boolean) => {

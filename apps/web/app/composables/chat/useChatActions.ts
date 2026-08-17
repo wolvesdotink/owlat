@@ -6,42 +6,36 @@ import type { Id } from '@owlat/api/dataModel';
  * channels, start DMs, browse public channels, link/unlink an inbox thread.
  */
 export function useChatActions() {
-	const { run: createChannelMutation } = useBackendOperation(
-		api.chat.rooms.createChannel,
-		{ label: 'Create channel' },
-	);
-	const { run: archiveChannelMutation } = useBackendOperation(
-		api.chat.rooms.archiveChannel,
-		{ label: 'Archive channel' },
-	);
-	const { run: unarchiveChannelMutation } = useBackendOperation(
-		api.chat.rooms.unarchiveChannel,
-		{ label: 'Unarchive channel' },
-	);
-	const { run: findOrCreateDmMutation } = useBackendOperation(
-		api.chat.dms.findOrCreateDm,
-		{ label: 'Start direct message' },
-	);
-	const { run: addMemberMutation } = useBackendOperation(
-		api.chat.members.addMember,
-		{ label: 'Add member' },
-	);
-	const { run: removeMemberMutation } = useBackendOperation(
-		api.chat.members.removeMember,
-		{ label: 'Remove member' },
-	);
-	const { run: setMemberRoleMutation } = useBackendOperation(
-		api.chat.members.setMemberRole,
-		{ label: 'Set member role' },
-	);
+	const { t } = useI18n();
+
+	const { run: createChannelMutation } = useBackendOperation(api.chat.rooms.createChannel, {
+		label: () => t('shared.chat.useChatActions.createChannel'),
+	});
+	const { run: archiveChannelMutation } = useBackendOperation(api.chat.rooms.archiveChannel, {
+		label: () => t('shared.chat.useChatActions.archiveChannel'),
+	});
+	const { run: unarchiveChannelMutation } = useBackendOperation(api.chat.rooms.unarchiveChannel, {
+		label: () => t('shared.chat.useChatActions.unarchiveChannel'),
+	});
+	const { run: findOrCreateDmMutation } = useBackendOperation(api.chat.dms.findOrCreateDm, {
+		label: () => t('shared.chat.useChatActions.startDirectMessage'),
+	});
+	const { run: addMemberMutation } = useBackendOperation(api.chat.members.addMember, {
+		label: () => t('shared.chat.useChatActions.addMember'),
+	});
+	const { run: removeMemberMutation } = useBackendOperation(api.chat.members.removeMember, {
+		label: () => t('shared.chat.useChatActions.removeMember'),
+	});
+	const { run: setMemberRoleMutation } = useBackendOperation(api.chat.members.setMemberRole, {
+		label: () => t('shared.chat.useChatActions.setMemberRole'),
+	});
 	const { run: linkChannelMutation } = useBackendOperation(
 		api.chat.emailLink.linkChannelToInboxThread,
-		{ label: 'Link channel to inbox thread' },
+		{ label: () => t('shared.chat.useChatActions.linkChannelToInboxThread') }
 	);
-	const { run: unlinkChannelMutation } = useBackendOperation(
-		api.chat.emailLink.unlinkChannel,
-		{ label: 'Unlink channel' },
-	);
+	const { run: unlinkChannelMutation } = useBackendOperation(api.chat.emailLink.unlinkChannel, {
+		label: () => t('shared.chat.useChatActions.unlinkChannel'),
+	});
 
 	const createChannel = async (input: {
 		name: string;
@@ -66,7 +60,7 @@ export function useChatActions() {
 	const addMember = async (
 		roomId: Id<'chatRooms'>,
 		memberId: string,
-		role?: 'admin' | 'member',
+		role?: 'admin' | 'member'
 	) => {
 		await addMemberMutation({ roomId, memberId, role });
 	};
@@ -78,7 +72,7 @@ export function useChatActions() {
 	const setMemberRole = async (
 		roomId: Id<'chatRooms'>,
 		memberId: string,
-		role: 'admin' | 'member',
+		role: 'admin' | 'member'
 	) => {
 		await setMemberRoleMutation({ roomId, memberId, role });
 	};
@@ -88,7 +82,7 @@ export function useChatActions() {
 	// these never fires.
 	const linkChannelToInboxThread = async (
 		roomId: Id<'chatRooms'>,
-		inboxThreadId: Id<'conversationThreads'>,
+		inboxThreadId: Id<'conversationThreads'>
 	) => {
 		return await linkChannelMutation({ roomId, inboxThreadId });
 	};
@@ -111,10 +105,7 @@ export function useChatActions() {
 }
 
 export function useChatPublicChannels() {
-	const { data, isLoading } = useConvexQuery(
-		api.chat.rooms.listPublicChannels,
-		() => ({}),
-	);
+	const { data, isLoading } = useConvexQuery(api.chat.rooms.listPublicChannels, () => ({}));
 	const channels = computed(() => data.value ?? []);
 	return { channels, isLoading };
 }

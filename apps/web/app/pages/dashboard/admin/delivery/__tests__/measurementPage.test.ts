@@ -19,6 +19,7 @@ import type { DeliverabilityDashboard } from '~/utils/deliverabilityMeasurement'
 import MeasurementCellCard from '~/components/delivery/MeasurementCellCard.vue';
 import MeasurementGateList from '~/components/delivery/MeasurementGateList.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const WINDOW_END = Date.UTC(2026, 6, 16);
 const WINDOW_START = WINDOW_END - 7 * 24 * 60 * 60 * 1000;
@@ -46,6 +47,7 @@ const isLoading = ref(false);
 const error: Ref<Error | null> = ref(null);
 
 beforeEach(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	data.value = dashboard();
 	isLoading.value = false;
 	error.value = null;
@@ -59,6 +61,7 @@ const passthroughCard = { template: '<div><slot /></div>' };
 function mountPage() {
 	return mount(MeasurementPage, {
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiIconBox: true,
 				Icon: true,

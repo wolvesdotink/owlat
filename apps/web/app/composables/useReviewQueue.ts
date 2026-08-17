@@ -19,6 +19,7 @@ import type { Id } from '@owlat/api/dataModel';
  * with no new backend surface.
  */
 export function useReviewQueue() {
+	const { t } = useI18n();
 	const { data: rawReviewItems, isLoading } = useConvexQuery(
 		api.inbox.queries.getReviewQueue,
 		() => ({ limit: 50 })
@@ -38,16 +39,16 @@ export function useReviewQueue() {
 	});
 
 	const { run: approveDraft } = useBackendOperation(api.inbox.mutations.approveDraft, {
-		label: 'Approve draft',
+		label: () => t('shared.useReviewQueue.approveDraft'),
 	});
 	const { run: rejectDraft } = useBackendOperation(api.inbox.mutations.rejectDraft, {
-		label: 'Reject draft',
+		label: () => t('shared.useReviewQueue.rejectDraft'),
 	});
 	const { run: editDraft } = useBackendOperation(api.inbox.mutations.editDraft, {
-		label: 'Save reply',
+		label: () => t('shared.useReviewQueue.saveReply'),
 	});
 	const { run: undoAutoSend } = useBackendOperation(api.inbox.mutations.undoAutoSend, {
-		label: 'Undo approval',
+		label: () => t('shared.useReviewQueue.undoApproval'),
 	});
 
 	/**

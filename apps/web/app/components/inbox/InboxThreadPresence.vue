@@ -25,6 +25,8 @@ const props = defineProps<{
 	people: PresencePerson[];
 }>();
 
+const { t } = useI18n();
+
 const MAX_AVATARS = 4;
 const shownPeople = computed(() => props.people.slice(0, MAX_AVATARS));
 const overflow = computed(() => Math.max(0, props.people.length - MAX_AVATARS));
@@ -36,11 +38,35 @@ const replyingLabel = computed(() => {
 	const names = repliers.value.map((p) => p.name);
 	if (names.length === 0) return '';
 	if (names.length === 1) return names[0]!;
-	if (names.length === 2) return `${names[0]} and ${names[1]}`;
-	return `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 === 1 ? '' : 's'}`;
+	if (names.length === 2)
+		return t('components.inbox.inboxThreadPresence.namesTwo', {
+			first: names[0]!,
+			second: names[1]!,
+		});
+	const others = names.length - 2;
+	return t(
+		others === 1
+			? 'components.inbox.inboxThreadPresence.namesManyOne'
+			: 'components.inbox.inboxThreadPresence.namesMany',
+		{ first: names[0]!, second: names[1]!, count: others }
+	);
 });
 
-const replyingVerb = computed(() => (repliers.value.length === 1 ? 'is replying' : 'are replying'));
+/** Singular/plural of the "… is replying to this thread right now." banner. */
+const replyingBannerKey = computed(() =>
+	repliers.value.length === 1
+		? 'components.inbox.inboxThreadPresence.replyingBannerOne'
+		: 'components.inbox.inboxThreadPresence.replyingBannerMany'
+);
+
+function presenceTitle(person: PresencePerson): string {
+	return t(
+		person.mode === 'replying'
+			? 'components.inbox.inboxThreadPresence.titleReplying'
+			: 'components.inbox.inboxThreadPresence.titleViewing',
+		{ name: person.name }
+	);
+}
 </script>
 
 <template>
@@ -52,20 +78,24 @@ const replyingVerb = computed(() => (repliers.value.length === 1 ? 'is replying'
 					v-for="person in shownPeople"
 					:key="person.userId"
 					class="ui-presence-ring"
-					:title="`${person.name} is ${person.mode === 'replying' ? 'replying' : 'viewing'}`"
+					:title="presenceTitle(person)"
 				>
 					<UiAvatar :name="person.name" :image="person.image" size="sm" deterministic-color />
 				</span>
 				<span
 					v-if="overflow > 0"
 					class="w-6 h-6 rounded-full border border-border-subtle bg-bg-surface text-text-tertiary text-[0.625rem] font-medium flex items-center justify-center"
-					:title="`${overflow} more here`"
+					:title="t('components.inbox.inboxThreadPresence.moreHere', { count: overflow })"
 				>
 					+{{ overflow }}
 				</span>
 			</div>
 			<span class="text-xs text-text-tertiary">
-				{{ people.length === 1 ? '1 person here' : `${people.length} people here` }}
+				{{
+					people.length === 1
+						? t('components.inbox.inboxThreadPresence.oneHere')
+						: t('components.inbox.inboxThreadPresence.manyHere', { count: people.length })
+				}}
 			</span>
 		</div>
 
@@ -75,10 +105,11 @@ const replyingVerb = computed(() => (repliers.value.length === 1 ? 'is replying'
 			class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-text-secondary presence-banner"
 		>
 			<Icon name="lucide:pencil-line" class="w-3.5 h-3.5 text-warning shrink-0" />
-			<span>
-				<span class="font-medium text-text-primary">{{ replyingLabel }}</span>
-				{{ replyingVerb }} to this thread right now.
-			</span>
+			<I18nT :keypath="replyingBannerKey" tag="span" scope="global">
+				<template #names>
+					<span class="font-medium text-text-primary">{{ replyingLabel }}</span>
+				</template>
+			</I18nT>
 		</div>
 	</div>
 </template>

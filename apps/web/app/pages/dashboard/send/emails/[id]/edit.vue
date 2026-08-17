@@ -8,7 +8,9 @@ import {
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
 
-useHead({ title: 'Edit Email — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.send.emails.detail.edit.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -31,15 +33,15 @@ const {
 
 // Mutations
 const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
-	label: 'Save email',
+	label: () => t('dashboard.send.emails.detail.edit.operations.save'),
 });
 const { run: publishTemplate, isLoading: isPublishing } = useBackendOperation(
 	api.emailTemplates.emails.publish,
-	{ label: 'Publish email' }
+	{ label: () => t('dashboard.send.emails.detail.edit.operations.publish') }
 );
 const { run: unpublishTemplate, isLoading: isUnpublishing } = useBackendOperation(
 	api.emailTemplates.emails.unpublish,
-	{ label: 'Unpublish email' }
+	{ label: () => t('dashboard.send.emails.detail.edit.operations.unpublish') }
 );
 const { showToast } = useToast();
 const isPublished = computed(() => template.value?.status === 'published');
@@ -54,11 +56,19 @@ const { data: contactProperties } = useOrganizationQuery(
 );
 
 // Built-in contact variables (always available)
-const builtInVariables: Variable[] = [
-	{ key: 'email', label: 'Email', isBuiltIn: true },
-	{ key: 'firstName', label: 'First Name', isBuiltIn: true },
-	{ key: 'lastName', label: 'Last Name', isBuiltIn: true },
-];
+const builtInVariables = computed<Variable[]>(() => [
+	{ key: 'email', label: t('common.email'), isBuiltIn: true },
+	{
+		key: 'firstName',
+		label: t('dashboard.send.emails.detail.edit.variables.firstName'),
+		isBuiltIn: true,
+	},
+	{
+		key: 'lastName',
+		label: t('dashboard.send.emails.detail.edit.variables.lastName'),
+		isBuiltIn: true,
+	},
+]);
 
 // Combine built-in and custom contact properties
 const variables = computed<Variable[]>(() => {
@@ -70,7 +80,7 @@ const variables = computed<Variable[]>(() => {
 			isBuiltIn: false,
 		}));
 
-	return [...builtInVariables, ...customVars];
+	return [...builtInVariables.value, ...customVars];
 });
 
 // The author's manual text/plain body ('' = ship the generated one). Edited in
@@ -175,12 +185,12 @@ const handleTranslations = () => {
 async function handlePublicationToggle() {
 	if (isPublished.value) {
 		const result = await unpublishTemplate({ templateId: templateId.value });
-		if (result) showToast('Email returned to draft');
+		if (result) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
 		return;
 	}
 	const htmlContent = template.value?.htmlContent;
 	if (!htmlContent) {
-		showToast('Save the email before publishing it', 'error');
+		showToast(t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish'), 'error');
 		return;
 	}
 	const result = await publishTemplate({
@@ -188,7 +198,7 @@ async function handlePublicationToggle() {
 		htmlContent,
 		htmlTranslations: template.value?.htmlTranslations,
 	});
-	if (result) showToast('Email published');
+	if (result) showToast(t('dashboard.send.emails.detail.edit.toasts.published'));
 }
 </script>
 
@@ -203,14 +213,16 @@ async function handlePublicationToggle() {
 		<UiQueryBoundary
 			:loading="templateLoading"
 			:error="templateError"
-			error-title="Couldn't load this template"
+			:error-title="t('dashboard.send.emails.detail.edit.loadError')"
 			@retry="refetchTemplate"
 		>
 			<template #loading>
 				<div class="h-full flex items-center justify-center bg-bg-deep">
 					<div class="flex flex-col items-center gap-3">
 						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading template...</p>
+						<p class="text-text-secondary text-sm">
+							{{ t('dashboard.send.emails.detail.edit.loading') }}
+						</p>
 					</div>
 				</div>
 			</template>
@@ -219,25 +231,31 @@ async function handlePublicationToggle() {
 			<div v-if="!template" class="h-full flex items-center justify-center bg-bg-deep">
 				<div class="text-center">
 					<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
-					<h2 class="text-xl font-semibold text-text-primary mb-2">Template not found</h2>
+					<h2 class="text-xl font-semibold text-text-primary mb-2">
+						{{ t('dashboard.send.emails.detail.edit.notFound.title') }}
+					</h2>
 					<p class="text-text-secondary mb-6">
-						This email template doesn't exist or has been deleted.
+						{{ t('dashboard.send.emails.detail.edit.notFound.description') }}
 					</p>
-					<UiButton @click="handleBack">Back to Emails</UiButton>
+					<UiButton @click="handleBack">{{
+						t('dashboard.send.emails.detail.edit.backToEmails')
+					}}</UiButton>
 				</div>
 			</div>
 
 			<!-- Too narrow for the canvas — an honest gate beats a broken editor. -->
 			<EmailBuilderViewportGate v-else-if="!builderFits">
 				<template #action>
-					<UiButton variant="secondary" @click="handleBack">Back to Emails</UiButton>
+					<UiButton variant="secondary" @click="handleBack">
+						{{ t('dashboard.send.emails.detail.edit.backToEmails') }}
+					</UiButton>
 				</template>
 			</EmailBuilderViewportGate>
 
 			<!-- Email Builder -->
 			<UiErrorBoundary
 				v-else
-				fallback-message="The email editor hit an unexpected error. Please refresh — your last saved version is safe."
+				:fallback-message="t('dashboard.send.emails.detail.edit.builderError')"
 			>
 				<EmailBuilder
 					ref="builderRef"
@@ -267,13 +285,21 @@ async function handlePublicationToggle() {
 							size="sm"
 							:loading="isChangingPublication"
 							:disabled="hasChanges || (!isPublished && !template?.htmlContent)"
-							:title="hasChanges ? 'Save your changes before publishing' : undefined"
+							:title="
+								hasChanges
+									? t('dashboard.send.emails.detail.edit.saveBeforePublishHint')
+									: undefined
+							"
 							@click="handlePublicationToggle"
 						>
 							<template #iconLeft>
 								<Icon :name="isPublished ? 'lucide:undo-2' : 'lucide:send'" class="w-4 h-4" />
 							</template>
-							{{ isPublished ? 'Unpublish' : 'Publish' }}
+							{{
+								isPublished
+									? t('dashboard.send.emails.detail.edit.unpublish')
+									: t('dashboard.send.emails.detail.edit.publish')
+							}}
 						</UiButton>
 						<EmailTemplateHistoryPanel
 							:template-id="templateId"
@@ -284,13 +310,13 @@ async function handlePublicationToggle() {
 						<UiButton
 							variant="outline"
 							size="sm"
-							title="Manage translations"
+							:title="t('dashboard.send.emails.detail.edit.manageTranslations')"
 							@click="handleTranslations"
 						>
 							<template #iconLeft>
 								<Icon name="lucide:languages" class="w-4 h-4" />
 							</template>
-							Translations
+							{{ t('dashboard.send.emails.detail.edit.translations') }}
 						</UiButton>
 					</template>
 				</EmailBuilder>

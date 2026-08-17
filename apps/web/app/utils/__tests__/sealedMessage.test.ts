@@ -7,6 +7,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import { deriveSealedBadge, type InboundEncryptionInfo } from '../sealedMessage';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** The badge carries catalog keys, so the audit renders them in English. */
+const { t } = createTestI18n().global;
 
 const VERIFIED: InboundEncryptionInfo = {
 	isSealed: true,
@@ -25,8 +29,8 @@ describe('deriveSealedBadge', () => {
 	it('verified: verbatim summary + detail ONLY when signatureValid AND a signer fingerprint', () => {
 		const badge = deriveSealedBadge(VERIFIED);
 		expect(badge?.state).toBe('verified');
-		expect(badge?.summary).toBe('Sealed — sender verified');
-		expect(badge?.detail).toBe(
+		expect(t(badge!.summary)).toBe('Sealed — sender verified');
+		expect(t(badge!.detail)).toBe(
 			'This message was encrypted end-to-end, and we confirmed it was really signed by the sender.'
 		);
 		expect(badge?.tone).toBe('ok');
@@ -41,7 +45,7 @@ describe('deriveSealedBadge', () => {
 			// no signerFingerprint → no pin match → cannot claim verified
 		});
 		expect(badge?.state).toBe('unverified');
-		expect(badge?.summary).toBe('Sealed — sender not verified');
+		expect(t(badge!.summary)).toBe('Sealed — sender not verified');
 	});
 
 	it('HONESTY: a present fingerprint with signatureValid=false is NOT verified', () => {
@@ -53,7 +57,7 @@ describe('deriveSealedBadge', () => {
 			signerFingerprint: 'AABBCCDD00112233',
 		});
 		expect(badge?.state).toBe('unverified');
-		expect(badge?.summary).toBe('Sealed — sender not verified');
+		expect(t(badge!.summary)).toBe('Sealed — sender not verified');
 	});
 
 	it('unverified: verbatim copy', () => {
@@ -63,7 +67,7 @@ describe('deriveSealedBadge', () => {
 			cipherSuite: 'pgp-mime',
 			isSignatureValid: false,
 		});
-		expect(badge?.detail).toBe(
+		expect(t(badge!.detail)).toBe(
 			"This message was encrypted end-to-end, but we couldn't confirm who signed it."
 		);
 		expect(badge?.tone).toBe('warn');
@@ -72,8 +76,8 @@ describe('deriveSealedBadge', () => {
 	it("can't decrypt: verbatim copy, warn tone", () => {
 		const badge = deriveSealedBadge({ isSealed: true, isDecrypted: false });
 		expect(badge?.state).toBe('cantDecrypt');
-		expect(badge?.summary).toBe("Encrypted — can't decrypt");
-		expect(badge?.detail).toBe(
+		expect(t(badge!.summary)).toBe("Encrypted — can't decrypt");
+		expect(t(badge!.detail)).toBe(
 			"This message was encrypted just for its recipient, and Owlat doesn't hold a key that can open it."
 		);
 		expect(badge?.tone).toBe('warn');
@@ -93,7 +97,7 @@ describe('deriveSealedBadge', () => {
 			},
 		];
 		for (const info of nonVerified) {
-			expect(deriveSealedBadge(info)?.summary).not.toBe('Sealed — sender verified');
+			expect(t(deriveSealedBadge(info)!.summary)).not.toBe('Sealed — sender verified');
 		}
 	});
 });

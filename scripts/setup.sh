@@ -1264,7 +1264,7 @@ write_selfhost_env() {
       info "Quiesce legacy bounce/FBL intake, drain in-flight handlers, then set:"
       info "FBL_DEDUP_PROTOCOL=owned-v2"
       info "FBL_DEDUP_CUTOVER_ACK=quiesced-v1-intake"
-      info "See apps/docs/content/3.developer/10.mta-system.md before re-running setup."
+      info "See apps/docs/content/en/3.developer/10.mta-system.md before re-running setup."
       return 1
     fi
   fi

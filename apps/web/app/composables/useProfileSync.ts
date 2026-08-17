@@ -36,6 +36,8 @@ const serviceResults = ref<ProfileServiceResult[] | null>(null);
 const applyError = ref<string | null>(null);
 
 export function useProfileSync() {
+	const { t } = useI18n();
+
 	/**
 	 * Record a committed flag change. A non-empty symmetric difference between
 	 * the derived profile sets means services must start or stop; those names
@@ -84,7 +86,8 @@ export function useProfileSync() {
 			serviceResults.value = Array.isArray(resp.services) ? resp.services : [];
 			pendingServices.value = [];
 		} catch (err) {
-			applyError.value = err instanceof Error ? err.message : 'Could not reach the updater';
+			applyError.value =
+				err instanceof Error ? err.message : t('shared.useProfileSync.updaterUnreachable');
 		} finally {
 			isApplying.value = false;
 		}

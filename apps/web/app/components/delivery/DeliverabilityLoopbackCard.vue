@@ -17,6 +17,8 @@ const emit = defineEmits<{
 	start: [domainId: Id<'domains'>];
 }>();
 
+const { t } = useI18n();
+
 const selectedDomainId = ref<Id<'domains'> | ''>('');
 const selectedDomain = computed(() =>
 	props.domains.find((domain) => domain.id === selectedDomainId.value)
@@ -36,14 +38,22 @@ const resultItems = computed(() => {
 	const result = latest.value;
 	if (!result) return [];
 	return [
-		{ key: 'spf', label: 'Sender authorization (SPF)', value: result.spf },
+		{
+			key: 'spf',
+			label: t('components.delivery.deliverabilityLoopbackCard.mechanisms.spf'),
+			value: result.spf,
+		},
 		{
 			key: 'dkim',
-			label: 'Email signature (DKIM)',
+			label: t('components.delivery.deliverabilityLoopbackCard.mechanisms.dkim'),
 			value: result.dkim,
 			detail: result.dkimSelector,
 		},
-		{ key: 'dmarc', label: 'Domain alignment (DMARC)', value: result.dmarc },
+		{
+			key: 'dmarc',
+			label: t('components.delivery.deliverabilityLoopbackCard.mechanisms.dmarc'),
+			value: result.dmarc,
+		},
 	].filter((item) => item.value);
 });
 const isInFlight = computed(
@@ -52,15 +62,15 @@ const isInFlight = computed(
 const latestStatusLabel = computed(() => {
 	switch (latest.value?.status) {
 		case 'sending':
-			return 'Sending probe';
+			return t('components.delivery.deliverabilityLoopbackCard.status.sending');
 		case 'awaiting_inbound':
-			return 'Waiting for receipt';
+			return t('components.delivery.deliverabilityLoopbackCard.status.awaitingInbound');
 		case 'passed':
-			return 'Proof passed';
+			return t('components.delivery.deliverabilityLoopbackCard.status.passed');
 		case 'failed':
-			return 'Proof failed';
+			return t('components.delivery.deliverabilityLoopbackCard.status.failed');
 		case 'timed_out':
-			return 'Probe timed out';
+			return t('components.delivery.deliverabilityLoopbackCard.status.timedOut');
 		default:
 			return '';
 	}
@@ -89,9 +99,11 @@ function start() {
 				<div class="flex items-start gap-3">
 					<UiIconBox icon="lucide:send-horizontal" size="sm" variant="surface" rounded="lg" />
 					<div>
-						<h2 class="text-lg font-semibold text-text-primary">Prove the full sending path</h2>
+						<h2 class="text-lg font-semibold text-text-primary">
+							{{ t('components.delivery.deliverabilityLoopbackCard.title') }}
+						</h2>
 						<p class="text-sm text-text-secondary">
-							Send a real probe and check what the receiving server sees
+							{{ t('components.delivery.deliverabilityLoopbackCard.subtitle') }}
 						</p>
 					</div>
 				</div>
@@ -123,12 +135,13 @@ function start() {
 
 		<div class="space-y-5 p-5 sm:p-6">
 			<p class="max-w-3xl text-sm leading-6 text-text-secondary">
-				This sends through the real outbound route to Owlat’s probe mailbox. It reports
-				authorization, signature, alignment, TLS, and the server address observed on arrival.
+				{{ t('components.delivery.deliverabilityLoopbackCard.intro') }}
 			</p>
 
 			<label class="block min-w-0 sm:max-w-sm">
-				<span class="mb-1.5 block text-sm font-medium text-text-primary">Sending domain</span>
+				<span class="mb-1.5 block text-sm font-medium text-text-primary">
+					{{ t('components.delivery.deliverabilityLoopbackCard.sendingDomain') }}
+				</span>
 				<select
 					v-model="selectedDomainId"
 					class="input w-full"
@@ -146,11 +159,13 @@ function start() {
 			>
 				<Icon name="lucide:lock-keyhole" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 				<div>
-					<p class="text-sm font-medium text-text-primary">Finish required checks first</p>
+					<p class="text-sm font-medium text-text-primary">
+						{{ t('components.delivery.deliverabilityLoopbackCard.lockedTitle') }}
+					</p>
 					<p class="mt-1 text-sm text-text-secondary">
 						{{
 							selectedDomain.blockedReason ??
-							'The loopback proof unlocks after the server identity and required domain checks pass.'
+							t('components.delivery.deliverabilityLoopbackCard.lockedDefaultReason')
 						}}
 					</p>
 				</div>
@@ -171,7 +186,11 @@ function start() {
 					<template #iconLeft>
 						<Icon v-if="!isStarting && !isInFlight" name="lucide:send" class="h-4 w-4" />
 					</template>
-					{{ isInFlight ? 'Running proof…' : 'Run end-to-end proof' }}
+					{{
+						isInFlight
+							? t('components.delivery.deliverabilityLoopbackCard.running')
+							: t('components.delivery.deliverabilityLoopbackCard.run')
+					}}
 				</UiButton>
 			</div>
 
@@ -182,11 +201,15 @@ function start() {
 				<h3 class="font-semibold text-text-primary">
 					{{
 						latest.status === 'passed'
-							? 'Your email passed the receiving checks'
-							: 'The probe found a problem'
+							? t('components.delivery.deliverabilityLoopbackCard.resultPassedTitle')
+							: t('components.delivery.deliverabilityLoopbackCard.resultFailedTitle')
 					}}
 				</h3>
-				<p class="mt-1 text-xs text-text-tertiary">Result for {{ latest.domain }}</p>
+				<p class="mt-1 text-xs text-text-tertiary">
+					{{
+						t('components.delivery.deliverabilityLoopbackCard.resultFor', { domain: latest.domain })
+					}}
+				</p>
 				<p v-if="latest.detail" class="mt-1 text-sm text-text-secondary">{{ latest.detail }}</p>
 
 				<div class="mt-4 grid gap-3 sm:grid-cols-3">
@@ -204,10 +227,10 @@ function start() {
 						<p class="mt-0.5 text-xs text-text-secondary">
 							{{
 								result.value === 'pass'
-									? 'Passed'
+									? t('components.delivery.deliverabilityLoopbackCard.mechanismStatus.pass')
 									: result.value === 'fail'
-										? 'Failed'
-										: 'Not checked'
+										? t('components.delivery.deliverabilityLoopbackCard.mechanismStatus.fail')
+										: t('components.delivery.deliverabilityLoopbackCard.mechanismStatus.unknown')
 							}}
 							<span v-if="result.detail"> · {{ result.detail }}</span>
 						</p>
@@ -216,11 +239,15 @@ function start() {
 
 				<dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
 					<div v-if="latest.tlsVersion">
-						<dt class="text-text-tertiary">Encrypted connection</dt>
+						<dt class="text-text-tertiary">
+							{{ t('components.delivery.deliverabilityLoopbackCard.tlsVersion') }}
+						</dt>
 						<dd class="font-medium text-text-primary">{{ latest.tlsVersion }}</dd>
 					</div>
 					<div v-if="latest.sendingIp">
-						<dt class="text-text-tertiary">Sending address observed</dt>
+						<dt class="text-text-tertiary">
+							{{ t('components.delivery.deliverabilityLoopbackCard.sendingIp') }}
+						</dt>
 						<dd class="break-all font-mono text-xs text-text-primary">
 							{{ latest.sendingIp }}
 							<span v-if="latest.ptr"> / {{ latest.ptr }}</span>

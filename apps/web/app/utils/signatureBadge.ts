@@ -23,6 +23,10 @@
  * This is the web-side mirror of the Convex `InboundSignatureInfo` record
  * (single source is `e2ee/inboundSignature.ts`); the boundary keeps its own
  * copy per this app's existing cross-package pattern (see `utils/senderAuth.ts`).
+ *
+ * The derivation is module scope, so it never calls `useI18n`: `summary`,
+ * `tooltip` and `keySource` are catalog KEYS (the `sealedMessage.ts`
+ * convention), and the reader resolves them with `t()` at render time.
  */
 
 import { formatFingerprint, shortFingerprint } from '~/utils/fingerprints';
@@ -45,23 +49,29 @@ export type SignatureBadgeState = 'verified' | 'invalid' | 'keyNotFound' | 'keyC
 
 export interface SignatureBadgeResult {
 	state: SignatureBadgeState;
-	/** Short chip label. */
+	/** Short chip label — a catalog key, resolved with `t()` at render time. */
 	summary: string;
-	/** Hover tooltip — carries the fingerprint and the key source when known. */
+	/**
+	 * Hover tooltip — a catalog key. The two states that name where the key came
+	 * from interpolate `{source}` (from {@link SignatureBadgeResult.keySource})
+	 * and `{fingerprint}`; the reader fills both in.
+	 */
 	tooltip: string;
 	tone: 'ok' | 'warn' | 'danger' | 'muted';
 	icon: string;
+	/** Catalog key naming the key's origin — present when the tooltip needs it. */
+	keySource?: string;
 	/** Full formatted fingerprint (grouped by 4) — present only when verified. */
 	fingerprint?: string;
 	/** Short fingerprint tail for the inline chip — present only when verified. */
 	fingerprintShort?: string;
 }
 
-/** Plain-language origin of the verification key, for the tooltip. */
+/** Plain-language origin of the verification key, for the tooltip — catalog keys. */
 const KEY_SOURCE_LABELS: Record<Exclude<InboundSignatureKeySource, 'not_found'>, string> = {
-	pinned: 'the trusted key on file for this sender',
-	wkd: "the sender's key directory (WKD)",
-	manifest: "the sender's instance manifest",
+	pinned: 'shared.signatureBadge.keySources.pinned',
+	wkd: 'shared.signatureBadge.keySources.wkd',
+	manifest: 'shared.signatureBadge.keySources.manifest',
 };
 
 /**
@@ -95,10 +105,11 @@ export function deriveSignatureBadge(
 		const full = formatFingerprint(info.signerFingerprint) ?? '';
 		return {
 			state: 'verified',
-			summary: 'Signed · verified',
-			tooltip: `OpenPGP: the signature verified against ${KEY_SOURCE_LABELS[info.keySource]}. Signing key: ${full}.`,
+			summary: 'shared.signatureBadge.verified.summary',
+			tooltip: 'shared.signatureBadge.verified.tooltip',
 			tone: 'ok',
 			icon: 'lucide:pen-tool',
+			keySource: KEY_SOURCE_LABELS[info.keySource],
 			fingerprint: full,
 			fingerprintShort: shortFingerprint(info.signerFingerprint) ?? undefined,
 		};
@@ -110,9 +121,8 @@ export function deriveSignatureBadge(
 	if (info.failure === 'key_changed') {
 		return {
 			state: 'keyChanged',
-			summary: 'Signed · sender key changed',
-			tooltip:
-				"OpenPGP: this sender's signing key is different from the key previously trusted for this address. The signature was not checked — review the key change before trusting this message.",
+			summary: 'shared.signatureBadge.keyChanged.summary',
+			tooltip: 'shared.signatureBadge.keyChanged.tooltip',
 			tone: 'danger',
 			icon: 'lucide:pen-tool',
 		};
@@ -127,9 +137,8 @@ export function deriveSignatureBadge(
 	if (info.keySource === 'not_found') {
 		return {
 			state: 'keyNotFound',
-			summary: 'Signed · sender key not found',
-			tooltip:
-				"OpenPGP: the message is signed, but no public key for the sender could be found, so the signature couldn't be checked.",
+			summary: 'shared.signatureBadge.keyNotFound.summary',
+			tooltip: 'shared.signatureBadge.keyNotFound.tooltip',
 			tone: 'muted',
 			icon: 'lucide:pen-tool',
 		};
@@ -139,9 +148,10 @@ export function deriveSignatureBadge(
 	// body, a wrong key, or an unparseable signature part.
 	return {
 		state: 'invalid',
-		summary: 'Signed · signature invalid',
-		tooltip: `OpenPGP: the signature does not verify against ${KEY_SOURCE_LABELS[info.keySource]}. The message may have been altered in transit.`,
+		summary: 'shared.signatureBadge.invalid.summary',
+		tooltip: 'shared.signatureBadge.invalid.tooltip',
 		tone: 'warn',
 		icon: 'lucide:pen-tool',
+		keySource: KEY_SOURCE_LABELS[info.keySource],
 	};
 }

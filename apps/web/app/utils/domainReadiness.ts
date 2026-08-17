@@ -41,6 +41,12 @@ export type ReadinessDnsRecords =
 	| null
 	| undefined;
 
+/**
+ * A translatable value produced by a module-scope helper: the message KEY the
+ * rendering component resolves, plus the parameters it interpolates.
+ */
+export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+
 /** One chip in the readiness strip. */
 export type DomainReadinessChip = { label: string; verified: boolean };
 
@@ -111,19 +117,31 @@ export function summarizeDomainReadiness(
 /**
  * Plain-language tail for the readiness line — kept beside the helper so the
  * copy and the counts never drift.
+ *
+ * A module-scope helper never calls `useI18n`, so it hands back the message KEY
+ * and the record names it interpolates (the registry convention); the row that
+ * renders the line resolves them. The record names themselves are the protocol
+ * acronyms (SPF, DKIM, DMARC, MAIL FROM) and read the same in every language,
+ * which is why they travel as parameters rather than as keys of their own — and
+ * the list grammar stays in the catalog, where a translator can reorder it.
  */
-export function domainReadinessMessage(summary: DomainReadinessSummary): string {
-	if (summary.total === 0) return 'No DNS records to verify yet';
-	if (summary.allVerified) return 'All records verified';
+export function domainReadinessMessage(summary: DomainReadinessSummary): LocalizedText {
+	if (summary.total === 0) return 'shared.domainReadiness.noRecords';
+	if (summary.allVerified) return 'shared.domainReadiness.allVerified';
 
 	const { missingLabels } = summary;
-	const list =
-		missingLabels.length === 1
-			? `the ${missingLabels[0]} record`
-			: `the ${missingLabels.slice(0, -1).join(', ')} and ${missingLabels[missingLabels.length - 1]} records`;
-
 	// "Almost ready" when only one category is left; otherwise a neutral prompt.
-	return missingLabels.length === 1
-		? `Almost ready — just add ${list}`
-		: `Add ${list} to finish setup`;
+	if (missingLabels.length === 1) {
+		return {
+			key: 'shared.domainReadiness.almostReady',
+			params: { record: missingLabels[0] },
+		};
+	}
+	return {
+		key: 'shared.domainReadiness.addRecords',
+		params: {
+			leading: missingLabels.slice(0, -1).join(', '),
+			last: missingLabels[missingLabels.length - 1],
+		},
+	};
 }

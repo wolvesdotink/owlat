@@ -80,20 +80,26 @@ export function formatRate(rate: number | undefined): string {
 	return formatPercentage(rate, 2, true);
 }
 
-/** Human label for a platform-admin audit action. */
+/**
+ * The catalog key that words a platform-admin audit action. This module is
+ * mapping-only and never calls `useI18n`; the console renders the key through
+ * `t()`. An action with no copy of its own falls back to the raw action name,
+ * exactly as it did before — an unrecognised identifier is still better than a
+ * blank cell.
+ */
 export function auditActionLabel(action: string | undefined): string {
 	switch (action) {
 		case 'platform_admin.content_approved':
-			return 'Approved content';
+			return 'shared.operatorConsole.auditAction.contentApproved';
 		case 'platform_admin.content_rejected':
-			return 'Rejected content';
+			return 'shared.operatorConsole.auditAction.contentRejected';
 		case 'platform_admin.org_status_changed':
-			return 'Changed org status';
+			return 'shared.operatorConsole.auditAction.orgStatusChanged';
 		case 'platform_admin.admin_added':
-			return 'Added admin';
+			return 'shared.operatorConsole.auditAction.adminAdded';
 		case 'platform_admin.admin_removed':
-			return 'Removed admin';
+			return 'shared.operatorConsole.auditAction.adminRemoved';
 		default:
-			return action ?? 'Unknown action';
+			return action ?? 'shared.operatorConsole.auditAction.unknown';
 	}
 }

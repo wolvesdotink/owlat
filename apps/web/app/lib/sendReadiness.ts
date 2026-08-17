@@ -36,11 +36,19 @@ export type SendingReadiness =
  */
 export type SendReadinessTone = 'ready' | 'paced' | 'waiting';
 
+/**
+ * One line of the note, as a catalog KEY (with its parameters when it has any).
+ * This module is imported at module scope by surfaces that render it, so it
+ * never calls `useI18n`; `components/campaigns/SendReadinessNote.vue` turns
+ * these into words.
+ */
+export type ReadinessMessage = string | { key: string; params?: Record<string, unknown> };
+
 export interface SendReadinessNote {
 	tone: SendReadinessTone;
-	headline: string;
+	headline: ReadinessMessage;
 	/** The second line, or `null` when the headline says all there is. */
-	detail: string | null;
+	detail: ReadinessMessage | null;
 }
 
 /**
@@ -51,27 +59,41 @@ export interface SendReadinessNote {
  * honest render for that is nothing at all.
  */
 const UNCAPPED_DETAIL: Readonly<Record<string, string>> = {
-	warmup_overflow_absorbs:
-		'Volume over your own daily IP cap goes out through your verified relay, so the whole audience can send in one go.',
-	not_own_mta:
-		'Campaigns go out through your configured sending provider, which is not subject to IP warm-up caps.',
+	warmup_overflow_absorbs: 'shared.sendReadiness.uncapped.warmupOverflowAbsorbs',
+	not_own_mta: 'shared.sendReadiness.uncapped.notOwnMta',
 };
 
-/** "tomorrow" when `at` starts the next UTC day after `now`, else its date. */
-function whenLabel(at: number, now: number): string {
-	const dayZero = Math.floor(now / CAPACITY_DAY_MS) * CAPACITY_DAY_MS;
-	if (at - dayZero === CAPACITY_DAY_MS) return 'tomorrow';
-	return `on ${formatCapacityDay(at, 'short')}`;
-}
+/**
+ * The projected growth, split into the two sentences the catalog carries —
+ * "tomorrow" when `growsAt` starts the next UTC day after `now`, else the day by
+ * name. `null` when no growth is projected.
+ *
+ * The variant travels with the parameters because the paced detail says the same
+ * thing in ONE sentence pair, and gluing two translated halves together is not a
+ * sentence any translator can move the words around in.
+ */
+type Growth = { variant: 'tomorrow' | 'onDate'; params: Record<string, unknown> };
 
-/** "Your daily cap grows to about N …", or `null` when no growth is projected. */
-function growthSentence(
+function growth(
 	readiness: Extract<SendingReadiness, { capped: true }>,
-	now: number
-): string | null {
+	now: number,
+	locale?: string
+): Growth | null {
 	const { growsTo, growsAt } = readiness;
 	if (growsTo === null || growsAt === null) return null;
-	return `Your capacity grows to about ${growsTo.toLocaleString()} ${whenLabel(growsAt, now)}.`;
+	const count = growsTo.toLocaleString(locale);
+	const dayZero = Math.floor(now / CAPACITY_DAY_MS) * CAPACITY_DAY_MS;
+	if (growsAt - dayZero === CAPACITY_DAY_MS) return { variant: 'tomorrow', params: { count } };
+	return {
+		variant: 'onDate',
+		params: { count, date: formatCapacityDay(growsAt, 'short', locale) },
+	};
+}
+
+/** The growth on its own line. */
+function growthMessage(value: Growth | null): ReadinessMessage | null {
+	if (!value) return null;
+	return { key: `shared.sendReadiness.growth.${value.variant}`, params: value.params };
 }
 
 /**
@@ -85,29 +107,33 @@ function growthSentence(
  */
 export function sendReadinessNote(
 	readiness: SendingReadiness | null | undefined,
-	options: { audienceSize?: number | null; now: number }
+	options: { audienceSize?: number | null; now: number; locale?: string }
 ): SendReadinessNote | null {
 	if (!readiness) return null;
 
 	if (!readiness.capped) {
 		const detail = UNCAPPED_DETAIL[readiness.reason];
 		if (!detail) return null;
-		return { tone: 'ready', headline: 'No warm-up limit applies to this send', detail };
+		return { tone: 'ready', headline: 'shared.sendReadiness.uncapped.headline', detail };
 	}
 
-	const growth = growthSentence(readiness, options.now);
+	const projected = growth(readiness, options.now, options.locale);
 
 	if (readiness.today <= 0) {
 		return {
 			tone: 'waiting',
-			headline: "Today's sending capacity is used up",
-			detail:
-				growth ??
-				'Capacity returns as your warm-up schedule advances — schedule the campaign and it goes out then.',
+			headline: 'shared.sendReadiness.spent.headline',
+			detail: growthMessage(projected) ?? 'shared.sendReadiness.spent.detail',
 		};
 	}
 
-	const headline = `You can send to about ${readiness.today.toLocaleString()} ${readiness.today === 1 ? 'contact' : 'contacts'} today`;
+	const headline: ReadinessMessage = {
+		key:
+			readiness.today === 1
+				? 'shared.sendReadiness.capacity.one'
+				: 'shared.sendReadiness.capacity.other',
+		params: { count: readiness.today.toLocaleString(options.locale) },
+	};
 	// A NON-POSITIVE SIZE IS AN UNKNOWN ONE, never an audience of zero. The
 	// count is still loading on both surfaces that pass one (the wizard hands
 	// over `... ?? 0` while its count query resolves), and an empty segment has
@@ -117,14 +143,14 @@ export function sendReadinessNote(
 	const audienceSize = size > 0 ? size : null;
 	// No audience yet (or a surface that never has one): the capacity figure and
 	// the growth are the whole, honest answer.
-	if (audienceSize === null) return { tone: 'ready', headline, detail: growth };
+	if (audienceSize === null) return { tone: 'ready', headline, detail: growthMessage(projected) };
 
-	const audience = audienceSize.toLocaleString();
+	const audience = audienceSize.toLocaleString(options.locale);
 	if (audienceSize <= readiness.today) {
 		return {
 			tone: 'ready',
 			headline,
-			detail: `Your audience of ${audience} fits in today's capacity.`,
+			detail: { key: 'shared.sendReadiness.audienceFits', params: { audience } },
 		};
 	}
 	return {
@@ -132,7 +158,17 @@ export function sendReadinessNote(
 		headline,
 		// Capacity is a SCHEDULE, not a failure: the send is not blocked, it is
 		// spread. The exact day count comes from the capacity plan panel beside
-		// this note, which is the only surface that has measured it.
-		detail: `Your audience of ${audience} is larger, so the rest is paced over the following days.${growth ? ` ${growth}` : ''}`,
+		// this note, which is the only surface that has measured it. The growth is
+		// part of the same message rather than a second sentence appended to it,
+		// so a translation can order the two as its language wants.
+		detail: projected
+			? {
+					key:
+						projected.variant === 'tomorrow'
+							? 'shared.sendReadiness.paced.detailGrowsTomorrow'
+							: 'shared.sendReadiness.paced.detailGrowsOnDate',
+					params: { audience, ...projected.params },
+				}
+			: { key: 'shared.sendReadiness.paced.detail', params: { audience } },
 	};
 }

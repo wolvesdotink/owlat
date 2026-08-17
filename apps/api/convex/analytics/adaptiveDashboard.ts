@@ -15,6 +15,20 @@ import type { OrganizationRole } from '../lib/sessionOrganization';
 // Default Card Definitions
 // ============================================================
 
+/**
+ * COPY HERE IS ENGLISH, AND THE WEB UI TRANSLATES IT BY KEY.
+ *
+ * `getAvailableCards` is a read model, so `label`/`description` stay the English
+ * sentence for every caller of the query — and they stay the fallback for a card
+ * type no shipped catalog can know (a bundled-plugin card minted into the web
+ * widget registry at runtime).
+ *
+ * The web mirrors each type under `sharedPkg.adaptiveDashboard.cards.<type>.*`
+ * and resolves it through `useDashboardCardCopy()`
+ * (`apps/web/app/composables/useDashboardCardCopy.ts`), so a name reworded here
+ * needs the catalog edit too — `apps/web/app/__tests__/sharedRegistryCatalog.test.ts`
+ * pins the two copies of the English together.
+ */
 const DEFAULT_CARDS = [
 	{
 		type: 'verification_queue',

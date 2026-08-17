@@ -38,6 +38,8 @@ import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
  * ("armored") encrypted message, whose ciphertext lives in the body rather than
  * a downloadable PGP/MIME part, would strand the user with no way to recover it.
  */
+const { t } = useI18n();
+
 const props = defineProps<{
 	klass: SecureMessageClass;
 	message: { _id?: string; textBodyInline?: string };
@@ -79,6 +81,18 @@ const signatureTone = computed(() =>
 		: SIGNATURE_TONE_CLASSES.muted
 );
 
+// The driver is pure, so it hands back catalog keys; this is the render
+// boundary. The two tooltips that name where the key came from interpolate the
+// key-source phrase (itself a key) and the formatted fingerprint.
+const signatureTooltip = computed(() => {
+	const badge = signatureBadge.value;
+	if (!badge) return undefined;
+	return t(badge.tooltip, {
+		...(badge.keySource ? { source: t(badge.keySource) } : {}),
+		...(badge.fingerprint ? { fingerprint: badge.fingerprint } : {}),
+	});
+});
+
 const clearsignedText = computed(() =>
 	props.klass === 'pgp-clearsigned' && props.message.textBodyInline
 		? extractClearsignedText(props.message.textBodyInline)
@@ -90,14 +104,14 @@ const meta = computed(() => {
 		case 'pgp-encrypted':
 			return {
 				icon: 'lucide:lock',
-				label: 'End-to-end encrypted',
+				label: t('components.postbox.postboxSecurityBadge.encrypted'),
 				encrypted: true,
 				technology: 'OpenPGP',
 			};
 		case 'smime-encrypted':
 			return {
 				icon: 'lucide:lock',
-				label: 'End-to-end encrypted',
+				label: t('components.postbox.postboxSecurityBadge.encrypted'),
 				encrypted: true,
 				technology: 'S/MIME',
 			};
@@ -105,14 +119,14 @@ const meta = computed(() => {
 		case 'pgp-clearsigned':
 			return {
 				icon: 'lucide:pen-tool',
-				label: 'Digitally signed',
+				label: t('components.postbox.postboxSecurityBadge.signed'),
 				encrypted: false,
 				technology: 'OpenPGP',
 			};
 		case 'smime-signed':
 			return {
 				icon: 'lucide:pen-tool',
-				label: 'Digitally signed',
+				label: t('components.postbox.postboxSecurityBadge.signed'),
 				encrypted: false,
 				technology: 'S/MIME',
 			};
@@ -123,8 +137,12 @@ const meta = computed(() => {
 
 const tooltip = computed(() =>
 	meta.value?.encrypted
-		? `${meta.value.technology}: Owlat can't decrypt this message — the encrypted content is shown as-is.`
-		: `${meta.value?.technology}: a cryptographic signature is present but is not verified by Owlat.`
+		? t('components.postbox.postboxSecurityBadge.encryptedTooltip', {
+				technology: meta.value.technology,
+			})
+		: t('components.postbox.postboxSecurityBadge.signedTooltip', {
+				technology: meta.value?.technology ?? '',
+			})
 );
 
 // Recovery model: the inline ("armored") ciphertext block, if the encrypted
@@ -216,10 +234,11 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 				:class="sealedTone.chip"
 			>
 				<Icon :name="sealedBadge.icon" class="w-3.5 h-3.5" :class="sealedTone.icon" />
-				<span data-testid="sealed-badge-summary">{{ sealedBadge.summary }}</span>
+				<!-- `deriveSealedBadge` hands back message KEYS (registry convention). -->
+				<span data-testid="sealed-badge-summary">{{ t(sealedBadge.summary) }}</span>
 			</div>
 			<p class="mt-1.5 text-xs text-text-secondary max-w-prose" data-testid="sealed-badge-detail">
-				{{ sealedBadge.detail }}
+				{{ t(sealedBadge.detail) }}
 			</p>
 		</div>
 
@@ -229,10 +248,10 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 			<div
 				class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border"
 				:class="signatureTone.chip"
-				:title="signatureBadge.tooltip"
+				:title="signatureTooltip"
 			>
 				<Icon :name="signatureBadge.icon" class="w-3.5 h-3.5" :class="signatureTone.icon" />
-				<span data-testid="signature-badge-summary">{{ signatureBadge.summary }}</span>
+				<span data-testid="signature-badge-summary">{{ t(signatureBadge.summary) }}</span>
 				<span
 					v-if="signatureBadge.fingerprintShort"
 					class="text-text-tertiary font-mono"
@@ -254,8 +273,12 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 				:class="meta.encrypted ? 'text-brand' : 'text-text-tertiary'"
 			/>
 			{{ meta.label }}
-			<span v-if="meta.encrypted" class="text-text-tertiary">· can't decrypt</span>
-			<span v-else class="text-text-tertiary">· not verified</span>
+			<span v-if="meta.encrypted" class="text-text-tertiary">{{
+				t('components.postbox.postboxSecurityBadge.cantDecryptSuffix')
+			}}</span>
+			<span v-else class="text-text-tertiary">{{
+				t('components.postbox.postboxSecurityBadge.notVerifiedSuffix')
+			}}</span>
 		</div>
 
 		<!-- Clearsigned: show the readable cleartext (signature is not verified). -->
@@ -277,7 +300,11 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 					:name="copied ? 'lucide:check' : 'lucide:copy'"
 					class="w-3.5 h-3.5 text-text-tertiary"
 				/>
-				{{ copied ? 'Copied' : 'Copy encrypted message' }}
+				{{
+					copied
+						? t('common.copied')
+						: t('components.postbox.postboxSecurityBadge.copyCiphertext')
+				}}
 			</button>
 			<button
 				type="button"
@@ -291,7 +318,7 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 					class="w-3.5 h-3.5 text-text-tertiary"
 					:class="{ 'animate-spin': downloadingEml }"
 				/>
-				Download raw .eml
+				{{ t('components.postbox.postboxSecurityBadge.downloadEml') }}
 			</button>
 		</div>
 	</div>

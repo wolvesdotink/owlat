@@ -6,12 +6,19 @@
  */
 const props = defineProps<{
 	state: 'on' | 'off' | 'partial';
-	/** Human label — rendered as `Toggle <label>` for assistive tech. */
+	/**
+	 * Human label, already localized by the caller (the registry's English is
+	 * resolved through `useFeatureCopy`) — announced as "Toggle <label>".
+	 */
 	label: string;
 	disabled?: boolean;
 }>();
 
 defineEmits<{ toggle: [] }>();
+
+// The features page is this switch's only surface, so it borrows that page's
+// accessible-name phrasing rather than minting a second copy of it.
+const { t } = useI18n();
 </script>
 
 <template>
@@ -19,7 +26,7 @@ defineEmits<{ toggle: [] }>();
 		type="button"
 		role="switch"
 		:aria-checked="props.state === 'on'"
-		:aria-label="`Toggle ${props.label}`"
+		:aria-label="t('dashboard.admin.instance.features.toggleAria', { label: props.label })"
 		class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
 		:class="
 			props.state === 'on'

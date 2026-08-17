@@ -12,6 +12,8 @@ const props = defineProps<{
 	collapsed: boolean;
 }>();
 
+const { t } = useI18n();
+
 const { sections, switchToMailbox } = usePostboxMailbox();
 
 const personal = computed(() => sections.value.personal);
@@ -24,15 +26,31 @@ const showPersonal = computed(() => personal.value.length > 1 || team.value.leng
 const showTeam = computed(() => team.value.length > 0);
 
 // One descriptor per rendered section so the personal and team blocks share a
-// single template (icon + heading + a title prefix are the only differences).
-// Inferred (not annotated) so each item keeps its branded `mailboxId` for
-// `switchTo`.
+// single template (icon + heading + the collapsed title's message are the only
+// differences). Inferred (not annotated) so each item keeps its branded
+// `mailboxId` for `switchTo`.
 const sectionDescriptors = computed(() => [
 	...(showPersonal.value
-		? [{ key: 'personal', heading: 'Mailboxes', icon: 'lucide:mail', titlePrefix: '', items: personal.value }]
+		? [
+				{
+					key: 'personal',
+					heading: t('components.postbox.postboxMailboxSwitcher.personal.heading'),
+					icon: 'lucide:mail',
+					titleKey: 'components.postbox.postboxMailboxSwitcher.personal.title',
+					items: personal.value,
+				},
+			]
 		: []),
 	...(showTeam.value
-		? [{ key: 'team', heading: 'Team', icon: 'lucide:users', titlePrefix: 'Team inbox: ', items: team.value }]
+		? [
+				{
+					key: 'team',
+					heading: t('components.postbox.postboxMailboxSwitcher.team.heading'),
+					icon: 'lucide:users',
+					titleKey: 'components.postbox.postboxMailboxSwitcher.team.title',
+					items: team.value,
+				},
+			]
 		: []),
 ]);
 
@@ -65,8 +83,8 @@ function switchTo(id: Id<'mailboxes'>) {
 						: 'flex items-center gap-2 px-2.5 py-1.5 w-full min-w-0',
 					{ 'bg-bg-surface text-brand': mb.mailboxId === mailboxId },
 				]"
-				:title="collapsed ? `${section.titlePrefix}${mb.label}` : undefined"
-				:aria-label="collapsed ? `${section.titlePrefix}${mb.label}` : undefined"
+				:title="collapsed ? t(section.titleKey, { label: mb.label }) : undefined"
+				:aria-label="collapsed ? t(section.titleKey, { label: mb.label }) : undefined"
 				:aria-current="mb.mailboxId === mailboxId ? 'true' : undefined"
 				@click="switchTo(mb.mailboxId)"
 			>

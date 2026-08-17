@@ -8,7 +8,9 @@
  * the <KnowledgeGraphView> also gates its own render and skips every Convex read
  * until the flag resolves on, so this is defence-in-depth, not the only gate.
  */
-useHead({ title: 'Knowledge Graph Explorer — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.knowledge.graph.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -28,15 +30,15 @@ definePageMeta({
 					<Icon name="lucide:share-2" class="w-6 h-6 text-brand" />
 				</div>
 				<div>
-					<h1 class="text-xl font-bold text-text-primary">Graph Explorer</h1>
+					<h1 class="text-xl font-bold text-text-primary">{{ t('dashboard.knowledge.graph.title') }}</h1>
 					<p class="text-sm text-text-secondary mt-0.5">
-						Explore the knowledge graph — hubs, communities, and how entries connect.
+						{{ t('dashboard.knowledge.graph.subtitle') }}
 					</p>
 				</div>
 			</div>
 			<UiButton variant="secondary" to="/dashboard/knowledge" class="gap-2 flex-shrink-0">
 				<Icon name="lucide:list" class="w-4 h-4" />
-				List view
+				{{ t('dashboard.knowledge.graph.listView') }}
 			</UiButton>
 		</div>
 

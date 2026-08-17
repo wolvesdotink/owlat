@@ -10,13 +10,19 @@
  * NuxtLink + the Ui* globals are stubbed (global auto-imports); the CTA is
  * matched by its test id so a stubbed NuxtLink still asserts presence/href.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import ActivityEmptyState from '../ActivityEmptyState.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const mountOpts = {
 	global: {
+		plugins: [createTestI18n()],
 		stubs: {
 			Icon: true,
 			UiIconBox: true,
@@ -32,6 +38,7 @@ describe('ActivityEmptyState', () => {
 		expect(cta.exists()).toBe(true);
 		expect(cta.attributes('href')).toBe('/dashboard/admin/instance/channels');
 		expect(wrapper.text()).toContain('once a channel is connected');
+		expectFullyLocalized(wrapper);
 	});
 
 	it('hides the CTA for non-admins but keeps the explanation', () => {

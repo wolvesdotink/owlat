@@ -52,6 +52,7 @@ interface DraftSeed {
 }
 
 export function usePostboxCompose(seed: DraftSeed) {
+	const { t } = useI18n();
 	const draftId = ref<Id<'mailDrafts'> | null>(seed.draftId ?? null);
 	const ensuring = ref(false);
 	const isSaving = ref(false);
@@ -92,28 +93,28 @@ export function usePostboxCompose(seed: DraftSeed) {
 	};
 
 	const createDraft = useBackendOperation(api.mail.drafts.create, {
-		label: 'Create draft',
+		label: () => t('shared.postbox.usePostboxCompose.createOperation'),
 		onError: claimSendNetworkFailure,
 	});
 	const updateDraft = useBackendOperation(api.mail.drafts.update, {
-		label: 'Save draft',
+		label: () => t('shared.postbox.usePostboxCompose.saveOperation'),
 		onError: claimSendNetworkFailure,
 	});
 	const setIdentityMutation = useBackendOperation(api.mail.drafts.setIdentity, {
-		label: 'Change sender',
+		label: () => t('shared.postbox.usePostboxCompose.setIdentityOperation'),
 	});
 	const discardDraft = useBackendOperation(api.mail.drafts.discard, {
-		label: 'Discard draft',
+		label: () => t('shared.postbox.usePostboxCompose.discardOperation'),
 	});
 	const sendDraft = useBackendOperation(api.mail.drafts.send, {
-		label: 'Send email',
+		label: () => t('shared.postbox.usePostboxCompose.sendOperation'),
 		onError: claimSendNetworkFailure,
 	});
 	const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
-		label: 'Undo send',
+		label: () => t('shared.postbox.usePostboxCompose.undoSendOperation'),
 	});
 	const cancelScheduled = useBackendOperation(api.mail.drafts.cancelScheduledSend, {
-		label: 'Cancel scheduled send',
+		label: () => t('shared.postbox.usePostboxCompose.cancelScheduledOperation'),
 	});
 	// Attachment upload/remove + pending-handoff + forward-clone live in a
 	// sibling composable; it drives the same draft via ensureDraft/draftId.

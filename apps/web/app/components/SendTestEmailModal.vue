@@ -21,6 +21,7 @@ const emit = defineEmits<{
 	'update:open': [value: boolean];
 }>();
 
+const { t } = useI18n();
 const { showToast } = useToast();
 const convex = useConvex();
 
@@ -88,7 +89,7 @@ const handleSend = async () => {
 
 	const validEmails = testEmails.value.filter((e) => isValidEmail(e)).map((e) => e.trim());
 	if (validEmails.length === 0) {
-		showToast('Please enter at least one valid email address', 'error');
+		showToast(t('components.sendTestEmailModal.noValidEmail'), 'error');
 		return;
 	}
 
@@ -131,7 +132,8 @@ const handleSend = async () => {
 			close();
 		}, 1500);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Failed to queue test email';
+		const message =
+			error instanceof Error ? error.message : t('components.sendTestEmailModal.queueFailed');
 		sendResult.value = {
 			success: false,
 			message,
@@ -188,8 +190,12 @@ watch(
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox icon="lucide:send" size="sm" variant="brand" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Queue Test Email</h2>
-				<p class="text-sm text-text-secondary">Preview how your email will look</p>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.sendTestEmailModal.title') }}
+				</h2>
+				<p class="text-sm text-text-secondary">
+					{{ t('components.sendTestEmailModal.subtitle') }}
+				</p>
 			</div>
 		</div>
 
@@ -199,10 +205,11 @@ watch(
 			<div v-if="noVerifiedDomain" class="flex items-start gap-3 p-4 bg-warning-subtle rounded-lg">
 				<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
 				<div>
-					<p class="font-medium text-warning">No verified domain</p>
+					<p class="font-medium text-warning">
+						{{ t('components.sendTestEmailModal.noVerifiedDomainTitle') }}
+					</p>
 					<p class="text-sm text-text-secondary mt-1">
-						You need to verify a domain before sending test emails. Go to Settings &gt; Domains to
-						add and verify your domain.
+						{{ t('components.sendTestEmailModal.noVerifiedDomainBody') }}
 					</p>
 				</div>
 			</div>
@@ -211,17 +218,25 @@ watch(
 			<div v-if="fromEmail" class="flex items-center gap-3 p-3 bg-bg-surface rounded-lg">
 				<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
 				<div class="text-sm">
-					<span class="text-text-secondary">From: </span>
-					<span class="text-text-primary">
-						{{ fromName ? `${fromName} <${fromEmail}>` : fromEmail }}
-					</span>
+					<I18nT
+						keypath="components.sendTestEmailModal.from"
+						tag="span"
+						scope="global"
+						class="text-text-secondary"
+					>
+						<template #sender>
+							<span class="text-text-primary">
+								{{ fromName ? `${fromName} <${fromEmail}>` : fromEmail }}
+							</span>
+						</template>
+					</I18nT>
 				</div>
 			</div>
 
 			<!-- Test emails -->
 			<div class="space-y-3">
 				<label class="block text-sm font-medium text-text-primary">
-					Send to (max 5 addresses)
+					{{ t('components.sendTestEmailModal.sendToLabel') }}
 				</label>
 				<div class="space-y-2">
 					<div v-for="(_, index) in testEmails" :key="index" class="flex items-center gap-2">
@@ -229,7 +244,7 @@ watch(
 							<input
 								v-model="testEmails[index]"
 								type="email"
-								placeholder="email@example.com"
+								:placeholder="t('components.sendTestEmailModal.emailPlaceholder')"
 								class="input pl-10"
 								:class="{
 									'input-error': testEmails[index] && !isValidEmail(testEmails[index]),
@@ -255,24 +270,28 @@ watch(
 					@click="addEmailField"
 				>
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					Add another email
+					{{ t('components.sendTestEmailModal.addAnother') }}
 				</button>
 			</div>
 
 			<!-- Sample data for personalization -->
 			<div v-if="variables.length > 0" class="space-y-3">
 				<label class="block text-sm font-medium text-text-primary">
-					Sample data for variables
+					{{ t('components.sendTestEmailModal.sampleDataLabel') }}
 				</label>
 				<p class="text-xs text-text-secondary">
-					These values will replace <span v-pre>{{...}}</span> variables in the preview
+					<I18nT keypath="components.sendTestEmailModal.sampleDataHelp" tag="span" scope="global">
+						<template #variables
+							><span v-pre>{{...}}</span></template
+						>
+					</I18nT>
 				</p>
 				<div class="grid grid-cols-2 gap-3">
 					<div class="relative">
 						<input
 							v-model="sampleData['firstName']"
 							type="text"
-							placeholder="First Name"
+							:placeholder="t('components.sendTestEmailModal.firstNamePlaceholder')"
 							class="input input-sm pl-10"
 						/>
 						<Icon
@@ -284,7 +303,7 @@ watch(
 						<input
 							v-model="sampleData['lastName']"
 							type="text"
-							placeholder="Last Name"
+							:placeholder="t('components.sendTestEmailModal.lastNamePlaceholder')"
 							class="input input-sm"
 						/>
 					</div>
@@ -293,9 +312,11 @@ watch(
 
 			<!-- Custom data variables -->
 			<div v-if="dataVariableSchema.length > 0" class="space-y-3">
-				<label class="block text-sm font-medium text-text-primary"> Data variables </label>
+				<label class="block text-sm font-medium text-text-primary">
+					{{ t('components.sendTestEmailModal.dataVariablesLabel') }}
+				</label>
 				<p class="text-xs text-text-secondary">
-					Fill in sample values for your custom data variables
+					{{ t('components.sendTestEmailModal.dataVariablesHelp') }}
 				</p>
 				<div class="grid grid-cols-2 gap-3">
 					<div v-for="variable in dataVariableSchema" :key="variable.key" class="relative">
@@ -334,13 +355,17 @@ watch(
 		</div>
 
 		<template #footer>
-			<UiButton variant="ghost" @click="close"> Cancel </UiButton>
+			<UiButton variant="ghost" @click="close">{{ t('common.cancel') }}</UiButton>
 			<UiButton :disabled="!canSend || isSending" @click="handleSend">
 				<template #iconLeft>
 					<UiSpinner v-if="isSending" size="xs" tone="inverse" />
 					<Icon v-else name="lucide:send" class="w-4 h-4" />
 				</template>
-				<span>{{ isSending ? 'Queueing...' : 'Queue Test' }}</span>
+				<span>{{
+					isSending
+						? t('components.sendTestEmailModal.queueing')
+						: t('components.sendTestEmailModal.queueTest')
+				}}</span>
 			</UiButton>
 		</template>
 	</UiModal>

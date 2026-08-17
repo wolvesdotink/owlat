@@ -8,6 +8,8 @@
  * "Clear local cache" action. No mailbox id is threaded here: the toggle is
  * device-global and Clear wipes every mailbox's cache on this device.
  */
+const { t } = useI18n();
+
 const { isDesktop } = useDesktopContext();
 
 const {
@@ -37,22 +39,23 @@ async function onClearOfflineCache() {
 	<!-- On this device: offline read cache (device-local, never synced). -->
 	<section class="card !p-0 mb-6">
 		<header class="px-5 py-3 border-b border-border-subtle">
-			<h2 class="font-semibold">On this device</h2>
+			<h2 class="font-semibold">{{ t('components.postbox.postboxOfflineSettings.heading') }}</h2>
 		</header>
 		<div class="px-5 py-4 flex items-center justify-between gap-4">
 			<div class="min-w-0">
 				<label for="postbox-offline-cache" class="font-medium text-sm block">
-					Store recent mail on this device
+					{{ t('components.postbox.postboxOfflineSettings.store.label') }}
 				</label>
 				<p class="text-xs text-text-tertiary mt-0.5">
-					Keeps your inbox list and recently-read messages readable instantly and
-					without a connection. Only sanitized mail is stored, unencrypted, in this
-					browser's local database — leave it off on shared computers.
-					{{ isDesktop ? 'On by default in the desktop app.' : 'Off by default in the browser.' }}
+					{{ t('components.postbox.postboxOfflineSettings.store.hint') }}
+					{{
+						isDesktop
+							? t('components.postbox.postboxOfflineSettings.store.defaultDesktop')
+							: t('components.postbox.postboxOfflineSettings.store.defaultBrowser')
+					}}
 				</p>
 				<p v-if="offlineWritesDisabled" class="text-xs text-warning mt-1">
-					Local storage is full or unavailable — new mail isn't being cached on this
-					device. Clearing the cache may help.
+					{{ t('components.postbox.postboxOfflineSettings.writesDisabled') }}
 				</p>
 			</div>
 			<input
@@ -63,22 +66,17 @@ async function onClearOfflineCache() {
 				@change="onOfflineCacheChange"
 			/>
 		</div>
-		<div
-			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-		>
+		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
-				<p class="font-medium text-sm">Clear local cache</p>
+				<p class="font-medium text-sm">
+					{{ t('components.postbox.postboxOfflineSettings.clear.label') }}
+				</p>
 				<p class="text-xs text-text-tertiary mt-0.5">
-					Wipe every thread row and message body cached on this device.
+					{{ t('components.postbox.postboxOfflineSettings.clear.hint') }}
 				</p>
 			</div>
-			<UiButton
-				variant="secondary"
-				size="sm"
-				:loading="clearingCache"
-				@click="onClearOfflineCache"
-			>
-				Clear
+			<UiButton variant="secondary" size="sm" :loading="clearingCache" @click="onClearOfflineCache">
+				{{ t('components.postbox.postboxOfflineSettings.clear.action') }}
 			</UiButton>
 		</div>
 	</section>

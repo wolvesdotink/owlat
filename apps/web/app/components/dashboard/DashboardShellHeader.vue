@@ -1,6 +1,8 @@
 <script setup lang="ts">
 defineProps<{ isDesktop: boolean }>();
 const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -22,7 +24,7 @@ const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
 			<div class="flex items-center">
 				<button
 					class="p-2 rounded-lg text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-					aria-label="Open navigation menu"
+					:aria-label="t('components.dashboard.dashboardShellHeader.openNavigation')"
 					@click="emit('openNavigation')"
 				>
 					<Icon name="lucide:menu" class="w-6 h-6" />
@@ -38,7 +40,7 @@ const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
 
 			<button
 				class="p-2 rounded-lg text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-				aria-label="Search"
+				:aria-label="t('common.search')"
 				@click="emit('openSearch')"
 			>
 				<Icon name="lucide:search" class="w-5 h-5" />

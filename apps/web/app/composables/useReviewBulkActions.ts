@@ -17,6 +17,7 @@ import {
 	summarizeBulkUndo,
 	type BulkApproveOutcome,
 	type BulkRejectOutcome,
+	type BulkSummaryClause,
 } from '~/utils/reviewBulkSummary';
 
 export function useReviewBulkActions(opts: {
@@ -27,18 +28,27 @@ export function useReviewBulkActions(opts: {
 	hideRow: (id: string) => void;
 	unhideRow: (id: string) => void;
 }) {
+	const { t } = useI18n();
+
 	const approveOp = useBackendOperation(api.inbox.bulkMutations.approveDrafts, {
-		label: 'Approve drafts',
+		label: () => t('shared.reviewBulkActions.approveDrafts'),
 	});
 	const rejectOp = useBackendOperation(api.inbox.bulkMutations.rejectDrafts, {
-		label: 'Reject drafts',
+		label: () => t('shared.reviewBulkActions.rejectDrafts'),
 	});
 	const undoOp = useBackendOperation(api.inbox.bulkMutations.undoAutoSends, {
-		label: 'Undo approvals',
+		label: () => t('shared.reviewBulkActions.undoApprovals'),
 	});
 
 	const { arm: armApproveUndo } = useReviewApproveUndo();
 	const { showToast } = useToast();
+
+	/**
+	 * The summary builders hand back key+params clauses (they are pure); this is
+	 * the render boundary that turns them into the one line the toast shows.
+	 */
+	const summaryLine = (clauses: BulkSummaryClause[]): string =>
+		clauses.map((clause) => t(clause.key, clause.params ?? {})).join(', ');
 
 	const isBusy = ref(false);
 
@@ -53,7 +63,10 @@ export function useReviewBulkActions(opts: {
 			if (outcome.cancelled) opts.unhideRow(outcome.inboundMessageId);
 		}
 		const summary = summarizeBulkUndo(result.outcomes);
-		showToast(summary.text, summary.allCancelled ? 'success' : 'warning');
+		showToast(
+			t(summary.text.key, summary.text.params ?? {}),
+			summary.allCancelled ? 'success' : 'warning'
+		);
 	}
 
 	async function approveSelected() {
@@ -81,7 +94,7 @@ export function useReviewBulkActions(opts: {
 			}
 			opts.clearSelection();
 
-			const summary = summarizeBulkApprove(outcomes);
+			const summary = summaryLine(summarizeBulkApprove(outcomes));
 			if (result.undo && approvedIds.length > 0) {
 				armApproveUndo({
 					inboundMessageId: approvedIds[0]!,
@@ -113,7 +126,7 @@ export function useReviewBulkActions(opts: {
 			// Both outcomes remove the row from the queue's perspective — nothing
 			// to restore; the summary still names the rows that were already gone.
 			opts.clearSelection();
-			showToast(summarizeBulkReject(result.outcomes as BulkRejectOutcome[]));
+			showToast(summaryLine(summarizeBulkReject(result.outcomes as BulkRejectOutcome[])));
 		} finally {
 			isBusy.value = false;
 		}

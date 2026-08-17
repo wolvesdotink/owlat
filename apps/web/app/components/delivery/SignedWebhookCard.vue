@@ -48,7 +48,17 @@ const props = defineProps<{
 
 const { copy, isCopied } = useCopyToClipboard();
 
-/** One provider's irreducibly specific instructions. */
+const { t, locale } = useI18n();
+
+/**
+ * One provider's irreducibly specific instructions.
+ *
+ * Every field below is an i18n KEY rather than a sentence — the table is
+ * module-scope data, so it may not call `t` itself; the markup that renders a
+ * value resolves it. The event NAMES are not copy: they are the literal strings
+ * the provider's console shows, and translating them would name a checkbox that
+ * does not exist.
+ */
 interface ProviderWebhookCopy {
 	/** The events Owlat consumes, when the console asks the operator to pick. */
 	readonly events?: readonly { readonly name: string; readonly why: string }[];
@@ -70,38 +80,43 @@ interface ProviderWebhookCopy {
  * against each other. A provider's own open counts would make the reference arm
  * look different for a reason that has nothing to do with deliverability.
  */
+const MANDRILL_EVENT_COPY = 'components.delivery.signedWebhookCard.mandrill.events';
+
 const PROVIDER_COPY: Readonly<Record<string, ProviderWebhookCopy>> = {
 	mandrill: {
 		events: [
-			{ name: 'send', why: 'confirms Mandrill accepted the message' },
-			{ name: 'deferral', why: 'a receiver asked Mandrill to try later' },
-			{ name: 'hard_bounce', why: 'suppresses the address and feeds the bounce gate' },
-			{ name: 'soft_bounce', why: 'counts toward the arm’s deferral picture' },
-			{ name: 'spam', why: 'suppresses the address and feeds the complaint gate' },
-			{ name: 'unsub', why: 'records the unsubscribe against this arm' },
-			{ name: 'reject', why: 'mirrors Mandrill’s own blacklist into your suppression list' },
+			{ name: 'send', why: `${MANDRILL_EVENT_COPY}.send` },
+			{ name: 'deferral', why: `${MANDRILL_EVENT_COPY}.deferral` },
+			{ name: 'hard_bounce', why: `${MANDRILL_EVENT_COPY}.hardBounce` },
+			{ name: 'soft_bounce', why: `${MANDRILL_EVENT_COPY}.softBounce` },
+			{ name: 'spam', why: `${MANDRILL_EVENT_COPY}.spam` },
+			{ name: 'unsub', why: `${MANDRILL_EVENT_COPY}.unsub` },
+			{ name: 'reject', why: `${MANDRILL_EVENT_COPY}.reject` },
 		],
-		urlNote:
-			'Mandrill checks the URL before saving the webhook, and signs every later delivery over this exact string — a redirect or a trailing-slash difference fails the signature.',
-		keyIssuance: 'Mandrill shows this key once, after the webhook is created',
+		urlNote: 'components.delivery.signedWebhookCard.mandrill.urlNote',
+		keyIssuance: 'components.delivery.signedWebhookCard.mandrill.keyIssuance',
 	},
 };
 
 const providerCopy = computed<ProviderWebhookCopy>(() => PROVIDER_COPY[props.providerKind] ?? {});
 
 const hasUrl = computed(() => props.webhookUrl !== '');
-const urlNote = computed(
-	() =>
-		providerCopy.value.urlNote ??
-		`${props.providerLabel} signs every delivery over this exact string — a redirect or a trailing-slash difference fails the signature.`
-);
-const keyIssuance = computed(
-	() =>
-		providerCopy.value.keyIssuance ??
-		`${props.providerLabel} issues this key when the webhook is created`
-);
+const urlNote = computed(() => {
+	const key = providerCopy.value.urlNote;
+	return key === undefined
+		? t('components.delivery.signedWebhookCard.urlNoteGeneric', { provider: props.providerLabel })
+		: t(key);
+});
+const keyIssuance = computed(() => {
+	const key = providerCopy.value.keyIssuance;
+	return key === undefined
+		? t('components.delivery.signedWebhookCard.keyIssuanceGeneric', {
+				provider: props.providerLabel,
+			})
+		: t(key);
+});
 const lastEventLabel = computed(() =>
-	props.lastEventAt === null ? null : new Date(props.lastEventAt).toLocaleString()
+	props.lastEventAt === null ? null : new Date(props.lastEventAt).toLocaleString(locale.value)
 );
 </script>
 
@@ -112,11 +127,10 @@ const lastEventLabel = computed(() =>
 				<UiIconBox icon="lucide:radio" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary" data-testid="signed-webhook-title">
-						{{ providerLabel }} feedback webhook
+						{{ t('components.delivery.signedWebhookCard.title', { provider: providerLabel }) }}
 					</h2>
 					<p class="text-sm text-text-secondary">
-						Let {{ providerLabel }} tell Owlat when mail bounces, is marked as spam, or is rejected —
-						so those addresses are suppressed and the ramp can see this arm's real behaviour
+						{{ t('components.delivery.signedWebhookCard.subtitle', { provider: providerLabel }) }}
 					</p>
 				</div>
 			</div>
@@ -126,11 +140,17 @@ const lastEventLabel = computed(() =>
 			<!-- Endpoint -->
 			<div v-if="hasUrl">
 				<div class="flex items-center justify-between mb-2">
-					<p class="text-xs font-medium text-text-primary">Webhook URL</p>
+					<p class="text-xs font-medium text-text-primary">
+						{{ t('components.delivery.signedWebhookCard.webhookUrl') }}
+					</p>
 					<UiButton
 						variant="ghost"
 						size="sm"
-						:title="isCopied('signed-webhook-url') ? 'Copied' : 'Copy webhook URL'"
+						:title="
+							isCopied('signed-webhook-url')
+								? t('common.copied')
+								: t('components.delivery.signedWebhookCard.copyWebhookUrl')
+						"
 						@click="copy(webhookUrl, 'signed-webhook-url')"
 					>
 						<Icon
@@ -138,7 +158,7 @@ const lastEventLabel = computed(() =>
 							class="w-3.5 h-3.5"
 							:class="isCopied('signed-webhook-url') ? 'text-success' : ''"
 						/>
-						{{ isCopied('signed-webhook-url') ? 'Copied' : 'Copy' }}
+						{{ isCopied('signed-webhook-url') ? t('common.copied') : t('common.copy') }}
 					</UiButton>
 				</div>
 				<pre
@@ -147,18 +167,22 @@ const lastEventLabel = computed(() =>
 					>{{ webhookUrl }}</pre
 				>
 				<p class="text-xs text-text-tertiary mt-1.5" data-testid="signed-webhook-url-note">
-					Create a webhook in your {{ providerLabel }} console pointing at this URL.
+					{{
+						t('components.delivery.signedWebhookCard.createWebhook', { provider: providerLabel })
+					}}
 					{{ urlNote }}
 				</p>
 			</div>
 			<p v-else class="text-xs text-text-tertiary" data-testid="signed-webhook-no-url">
-				Set your site URL to see the endpoint {{ providerLabel }} should post to.
+				{{ t('components.delivery.signedWebhookCard.noUrl', { provider: providerLabel }) }}
 			</p>
 
 			<!-- Events -->
 			<div>
 				<template v-if="providerCopy.events">
-					<p class="text-sm font-medium text-text-primary mb-2">Enable exactly these events</p>
+					<p class="text-sm font-medium text-text-primary mb-2">
+						{{ t('components.delivery.signedWebhookCard.enableEvents') }}
+					</p>
 					<ul class="space-y-1.5" data-testid="signed-webhook-events">
 						<li
 							v-for="event in providerCopy.events"
@@ -167,21 +191,23 @@ const lastEventLabel = computed(() =>
 						>
 							<Icon name="lucide:check" class="w-3.5 h-3.5 text-success mt-0.5 shrink-0" />
 							<span
-								><code class="text-text-primary">{{ event.name }}</code> — {{ event.why }}</span
+								><code class="text-text-primary">{{ event.name }}</code> — {{ t(event.why) }}</span
 							>
 						</li>
 					</ul>
 				</template>
 				<p v-else class="text-sm text-text-secondary" data-testid="signed-webhook-events-generic">
-					Enable the delivery, bounce, complaint, unsubscribe and rejection events
-					{{ providerLabel }} offers. Owlat records the ones it understands — suppressing the
-					addresses behind bounces and complaints — and ignores the rest.
+					{{ t('components.delivery.signedWebhookCard.eventsGeneric', { provider: providerLabel }) }}
 				</p>
 				<p class="text-xs text-text-tertiary mt-3" data-testid="signed-webhook-tracking-events-off">
-					Leave <code class="text-text-primary">open</code> and
-					<code class="text-text-primary">click</code> tracking switched OFF. Owlat tracks opens and
-					clicks first-party, identically on every transport, so the engagement gate compares the two
-					arms on the same instrument.
+					<I18nT
+						keypath="components.delivery.signedWebhookCard.trackingEventsOff"
+						tag="span"
+						scope="global"
+					>
+						<template #open><code class="text-text-primary">open</code></template>
+						<template #click><code class="text-text-primary">click</code></template>
+					</I18nT>
 				</p>
 			</div>
 
@@ -193,8 +219,9 @@ const lastEventLabel = computed(() =>
 							<code>{{ signingKeyEnvVar }}</code>
 						</p>
 						<p class="text-xs text-text-tertiary mt-0.5" data-testid="signed-webhook-key-note">
-							{{ keyIssuance }} — copy it into your environment and restart. Until it is set, Owlat
-							rejects every posted batch rather than trusting an unsigned one.
+							{{
+								t('components.delivery.signedWebhookCard.keyNote', { issuance: keyIssuance })
+							}}
 						</p>
 					</div>
 					<span
@@ -206,7 +233,11 @@ const lastEventLabel = computed(() =>
 							:name="isWebhookKeyPresent ? 'lucide:check' : 'lucide:alert-triangle'"
 							class="w-3.5 h-3.5"
 						/>
-						{{ isWebhookKeyPresent ? 'present' : 'missing' }}
+						{{
+							isWebhookKeyPresent
+								? t('components.delivery.signedWebhookCard.keyPresent')
+								: t('components.delivery.signedWebhookCard.keyMissing')
+						}}
 					</span>
 				</div>
 			</div>
@@ -215,13 +246,14 @@ const lastEventLabel = computed(() =>
 			<div class="flex items-center gap-2 text-xs" data-testid="signed-webhook-last-event">
 				<template v-if="lastEventLabel">
 					<Icon name="lucide:check-circle-2" class="w-3.5 h-3.5 text-success" />
-					<span class="text-success">Last event received: {{ lastEventLabel }}</span>
+					<span class="text-success">
+						{{ t('components.delivery.signedWebhookCard.lastEvent', { at: lastEventLabel }) }}
+					</span>
 				</template>
 				<template v-else>
 					<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
 					<span class="text-text-tertiary">
-						No feedback received yet. Once the webhook is saved and a message bounces, is marked as
-						spam, or is rejected, it appears here.
+						{{ t('components.delivery.signedWebhookCard.noFeedback') }}
 					</span>
 				</template>
 			</div>

@@ -36,7 +36,19 @@ import {
 	stderrTail,
 	SERVER_IP_PLACEHOLDER,
 	MIN_ADMIN_PASSWORD_LENGTH,
+	type ProvisioningMessage,
 } from '../provisioningForm';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * Step titles, strength labels, validation errors and DNS notes are catalog keys
+ * — these modules are module scope and never call `useI18n`, so the wizard
+ * translates them. Rendering through the real catalog keeps the assertions on
+ * the words the operator reads.
+ */
+const { t } = createTestI18n().global;
+const render = (message: ProvisioningMessage): string =>
+	typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
 
 describe('timeline', () => {
 	it('starts every step pending and includes all server steps', () => {
@@ -57,7 +69,9 @@ describe('timeline', () => {
 
 	it('local-build mode retitles the fetch step and inserts the build step before upload-config', () => {
 		const steps = createTimeline('local-build');
-		expect(steps.find((s) => s.id === 'fetch-owlat')?.title).toBe('Upload Owlat (local source)');
+		expect(t(steps.find((s) => s.id === 'fetch-owlat')?.title ?? '')).toBe(
+			'Upload Owlat (local source)'
+		);
 		const build = steps.findIndex((s) => s.id === 'build-setup-image');
 		expect(build).toBeGreaterThan(steps.findIndex((s) => s.id === 'fetch-owlat'));
 		expect(build).toBe(steps.findIndex((s) => s.id === 'upload-config') - 1);
@@ -319,7 +333,7 @@ describe('assessPassword — live length/strength read-out', () => {
 		const a = assessPassword('aB3$xY'); // 6 chars, all 4 classes
 		expect(a.meetsMinLength).toBe(false);
 		expect(a.strength).toBe('weak');
-		expect(a.label).toContain(`/${MIN_ADMIN_PASSWORD_LENGTH}`);
+		expect(render(a.label)).toContain(`/${MIN_ADMIN_PASSWORD_LENGTH}`);
 	});
 
 	it('a long, varied password reads strong', () => {
@@ -341,13 +355,13 @@ describe('validateAdminPassword — confirm + length gate', () => {
 	it('rejects a too-short password before checking the match', () => {
 		const r = validateAdminPassword('short', 'short');
 		expect(r.ok).toBe(false);
-		expect(r.error).toMatch(/at least 12/);
+		expect(render(r.error ?? '')).toMatch(/at least 12/);
 	});
 
 	it('rejects a length-ok password whose confirmation differs', () => {
 		const r = validateAdminPassword('a-very-long-password', 'a-very-long-passw0rd');
 		expect(r.ok).toBe(false);
-		expect(r.error).toMatch(/do not match/);
+		expect(render(r.error ?? '')).toMatch(/do not match/);
 	});
 
 	it('accepts a long password that matches its confirmation', () => {
@@ -437,7 +451,7 @@ describe('server-IP resolution + DNS records', () => {
 		expect(rows.some((r) => r.name === `_dmarc.${hosts.bounce}`)).toBe(true);
 		expect(rows.some((r) => r.type === 'MX' && r.value === hosts.mail)).toBe(true);
 		// PTR guidance rides along the mail A record as a note, not a fake record.
-		expect(rows.find((r) => r.name === hosts.mail && r.type === 'A')?.note).toMatch(/PTR/);
+		expect(t(rows.find((r) => r.name === hosts.mail && r.type === 'A')?.note ?? '')).toMatch(/PTR/);
 	});
 
 	it('omits the mail records entirely for a non-MTA provider', () => {
@@ -471,7 +485,7 @@ describe('describeHostKey — TOFU vs changed-key (MITM)', () => {
 		expect(m.isMismatch).toBe(true);
 		expect(m.requiresExplicitConfirmation).toBe(true);
 		expect(m.tone).toBe('danger');
-		expect(m.title).toMatch(/CHANGED/);
+		expect(t(m.title)).toMatch(/CHANGED/);
 	});
 
 	it('a brand-new key is plain trust-on-first-use: a single accept, no extra opt-in', () => {

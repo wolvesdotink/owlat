@@ -34,6 +34,8 @@ const emit = defineEmits<{
 	(e: 'apply-reply-all'): void;
 }>();
 
+const { t } = useI18n();
+
 const toAddresses = defineModel<string[]>('toAddresses', { required: true });
 const ccAddresses = defineModel<string[]>('ccAddresses', { required: true });
 const bccAddresses = defineModel<string[]>('bccAddresses', { required: true });
@@ -145,12 +147,14 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 <template>
 	<div class="flex flex-col gap-1 p-3 border-b border-border-subtle text-sm">
 		<div v-if="showFromDropdown" class="flex items-baseline gap-2">
-			<label class="text-text-tertiary w-12">From</label>
+			<label class="text-text-tertiary w-12">{{
+				t('components.postbox.postboxComposerEnvelope.from')
+			}}</label>
 			<select
 				:value="fromAddress || firstIdentityAddress"
 				class="flex-1 bg-transparent outline-none font-medium border-0"
 				data-testid="postbox-from-select"
-				aria-label="Send as"
+				:aria-label="t('components.postbox.postboxComposerEnvelope.sendAs')"
 				@change="onFromChange"
 			>
 				<!-- When personal send-as identities are present, group them under
@@ -200,7 +204,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			<PostboxRecipientField
 				v-model="toAddresses"
 				:mailbox-id="mailboxId"
-				label="To"
+				:label="t('components.postbox.postboxComposerEnvelope.to')"
 				field="to"
 				:own-domains="ownDomains"
 				@move="moveRecipient($event, 'to')"
@@ -212,7 +216,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 					class="text-text-tertiary hover:text-text-primary"
 					@click="showCc = true"
 				>
-					Cc
+					{{ t('components.postbox.postboxComposerEnvelope.cc') }}
 				</button>
 				<button
 					v-if="!showBcc"
@@ -220,7 +224,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 					class="text-text-tertiary hover:text-text-primary"
 					@click="showBcc = true"
 				>
-					Bcc
+					{{ t('components.postbox.postboxComposerEnvelope.bcc') }}
 				</button>
 			</div>
 		</div>
@@ -231,26 +235,30 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 		>
 			<template v-if="!convertedToReplyAll">
 				<Icon name="lucide:reply" class="w-3 h-3" />
-				<span>Replying to sender only</span>
+				<span>{{ t('components.postbox.postboxComposerEnvelope.replyingSenderOnly') }}</span>
 				<button
 					type="button"
 					class="text-brand hover:underline"
-					:title="`Also include ${replyAllExtraNames}`"
+					:title="
+						t('components.postbox.postboxComposerEnvelope.alsoInclude', {
+							names: replyAllExtraNames,
+						})
+					"
 					@click="switchToReplyAll"
 				>
-					switch to all
+					{{ t('components.postbox.postboxComposerEnvelope.switchToAll') }}
 				</button>
 			</template>
 			<template v-else>
 				<Icon name="lucide:reply-all" class="w-3 h-3" />
-				<span>Replying to everyone</span>
+				<span>{{ t('components.postbox.postboxComposerEnvelope.replyingEveryone') }}</span>
 			</template>
 		</div>
 		<PostboxRecipientField
 			v-if="showCc"
 			v-model="ccAddresses"
 			:mailbox-id="mailboxId"
-			label="Cc"
+			:label="t('components.postbox.postboxComposerEnvelope.cc')"
 			field="cc"
 			:own-domains="ownDomains"
 			@move="moveRecipient($event, 'cc')"
@@ -259,13 +267,15 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			v-if="showBcc"
 			v-model="bccAddresses"
 			:mailbox-id="mailboxId"
-			label="Bcc"
+			:label="t('components.postbox.postboxComposerEnvelope.bcc')"
 			field="bcc"
 			:own-domains="ownDomains"
 			@move="moveRecipient($event, 'bcc')"
 		/>
 		<div class="flex items-baseline gap-2">
-			<label for="subject" class="text-text-tertiary w-12">Subject</label>
+			<label for="subject" class="text-text-tertiary w-12">{{
+				t('components.postbox.postboxComposerEnvelope.subject')
+			}}</label>
 			<input
 				id="subject"
 				v-model="subject"

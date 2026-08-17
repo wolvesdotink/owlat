@@ -19,7 +19,6 @@ const {
 	channelLabel,
 	channelColor,
 	directionIcon,
-	directionLabel,
 	formatTime,
 	truncate,
 } = useUnifiedContactTimeline(contactIdRef);
@@ -31,12 +30,34 @@ const {
 // thread). Sending, gating and the toast belong to the composable.
 const { isAdmin, enabledProviderChannels, isSending, send: sendOnChannel } = useChannelOutbound();
 
+const { t, te } = useI18n();
+
+// The channel set is closed in the shared config, but timeline rows carry
+// whatever was stored — an unknown value falls back to the shared display label.
+function channelName(channel: string): string {
+	const key = `components.contacts.unifiedTimelineTab.channels.${channel}`;
+	return te(key) ? t(key) : channelLabel(channel);
+}
+
+function directionName(direction: string): string {
+	return t(
+		direction === 'inbound'
+			? 'components.contacts.unifiedTimelineTab.directions.inbound'
+			: 'components.contacts.unifiedTimelineTab.directions.outbound'
+	);
+}
+
+function statusName(status: string): string {
+	const key = `components.contacts.unifiedTimelineTab.statuses.${status}`;
+	return te(key) ? t(key) : status;
+}
+
 const sendableChannels = computed<Array<{ value: SendableChannel; label: string }>>(() => {
 	const list: Array<{ value: SendableChannel; label: string }> = enabledProviderChannels.value.map(
-		(channel) => ({ value: channel, label: channelLabel(channel) }),
+		(channel) => ({ value: channel, label: channelName(channel) }),
 	);
 	if (latestThreadId.value !== null) {
-		list.push({ value: 'chat', label: channelLabel('chat') });
+		list.push({ value: 'chat', label: channelName('chat') });
 	}
 	return list;
 });
@@ -71,9 +92,9 @@ async function send() {
 	<div class="card">
 		<div class="flex items-center justify-between mb-4">
 			<div>
-				<h2 class="text-lg font-medium text-text-primary">Unified Timeline</h2>
+				<h2 class="text-lg font-medium text-text-primary">{{ t('components.contacts.unifiedTimelineTab.title') }}</h2>
 				<p class="text-text-tertiary text-sm mt-0.5">
-					Every message across all channels, newest first.
+					{{ t('components.contacts.unifiedTimelineTab.subtitle') }}
 				</p>
 			</div>
 		</div>
@@ -89,7 +110,7 @@ async function send() {
 				]"
 				@click="channelFilter = null"
 			>
-				All
+				{{ t('common.all') }}
 			</button>
 			<button
 				v-for="ch in channels"
@@ -103,7 +124,7 @@ async function send() {
 				@click="channelFilter = channelFilter === ch ? null : ch"
 			>
 				<Icon :name="channelIcon(ch)" class="w-3 h-3" />
-				{{ channelLabel(ch) }}
+				{{ channelName(ch) }}
 			</button>
 		</div>
 
@@ -114,7 +135,7 @@ async function send() {
 		>
 			<div class="flex items-center gap-2 mb-2">
 				<Icon name="lucide:send" class="w-4 h-4 text-text-tertiary" />
-				<p class="text-sm font-medium text-text-primary">Send a message</p>
+				<p class="text-sm font-medium text-text-primary">{{ t('components.contacts.unifiedTimelineTab.sendTitle') }}</p>
 			</div>
 			<div class="flex flex-col sm:flex-row gap-2">
 				<div class="sm:w-44 shrink-0">
@@ -122,14 +143,14 @@ async function send() {
 						v-model="composeChannel"
 						:options="sendableChannels"
 						size="sm"
-						placeholder="Channel"
+						:placeholder="t('components.contacts.unifiedTimelineTab.channelPlaceholder')"
 					/>
 				</div>
 				<UiTextarea
 					v-model="composeText"
 					:rows="2"
 					size="sm"
-					placeholder="Type a message to send on this channel…"
+					:placeholder="t('components.contacts.unifiedTimelineTab.messagePlaceholder')"
 					class="flex-1"
 				/>
 			</div>
@@ -138,7 +159,7 @@ async function send() {
 					<template #iconLeft>
 						<Icon name="lucide:send" class="w-4 h-4" />
 					</template>
-					Send
+					{{ t('common.send') }}
 				</UiButton>
 			</div>
 		</div>
@@ -147,7 +168,7 @@ async function send() {
 		<div v-if="isLoading && !filteredTimeline.length" class="flex items-center justify-center py-8">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner size="md" />
-				<p class="text-text-tertiary text-sm">Loading timeline...</p>
+				<p class="text-text-tertiary text-sm">{{ t('components.contacts.unifiedTimelineTab.loading') }}</p>
 			</div>
 		</div>
 
@@ -158,10 +179,16 @@ async function send() {
 		>
 			<UiIconBox icon="lucide:message-square" size="lg" variant="surface" rounded="full" class="mb-3" />
 			<p class="text-text-secondary text-sm">
-				{{ channelFilter ? `No ${channelLabel(channelFilter)} messages` : 'No messages yet' }}
+				{{
+					channelFilter
+						? t('components.contacts.unifiedTimelineTab.emptyForChannel', {
+								channel: channelName(channelFilter),
+							})
+						: t('components.contacts.unifiedTimelineTab.empty')
+				}}
 			</p>
 			<p class="text-text-tertiary text-sm mt-1">
-				Cross-channel messages will appear here as they are sent and received.
+				{{ t('components.contacts.unifiedTimelineTab.emptyHint') }}
 			</p>
 		</div>
 
@@ -200,12 +227,12 @@ async function send() {
 								]"
 							>
 								<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
-								{{ directionLabel(item.direction) }}
+								{{ directionName(item.direction) }}
 							</span>
 
 							<!-- Channel badge -->
 							<UiBadge variant="neutral" size="sm">
-								{{ channelLabel(item.channel) }}
+								{{ channelName(item.channel) }}
 							</UiBadge>
 
 							<!-- Status -->
@@ -214,7 +241,7 @@ async function send() {
 								:variant="item.status === 'delivered' || item.status === 'read' ? 'success' : item.status === 'failed' ? 'error' : 'neutral'"
 								size="sm"
 							>
-								{{ item.status }}
+								{{ statusName(item.status) }}
 							</UiBadge>
 						</div>
 

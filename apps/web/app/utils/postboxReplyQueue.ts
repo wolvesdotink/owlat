@@ -6,6 +6,14 @@
 
 export type ReplyQueueUrgency = 'high' | 'normal' | 'low';
 
+/**
+ * A string a screen renders: either a piece of the message itself (a subject,
+ * an AI ask summary — text that is already in the sender's own words) or an
+ * i18n key, optionally with its interpolations. This module is pure, so it
+ * never calls `useI18n`; callers run the value through `t()`.
+ */
+export type ReplyQueueText = string | { key: string; params?: Record<string, unknown> };
+
 /** A single clarification question shown on a "Needs your input" card. */
 export interface ReplyQueueClarificationQuestion {
 	id: string;
@@ -142,29 +150,43 @@ export function compareReplyQueueItems(
 export function replyQueueHeadline(
 	item: Pick<ReplyQueueItem, 'askSummary' | 'subject' | 'kind' | 'waitingOn'> &
 		Partial<Pick<ReplyQueueItem, 'fromAddress'>>
-): string {
+): ReplyQueueText {
 	// Follow-up items invert the framing: WE are waiting on THEM.
 	if (item.kind === 'followup') {
 		const who = item.waitingOn?.trim() || item.fromAddress?.trim();
-		return who ? `You're waiting on ${who}` : "You're waiting on a reply";
+		return who
+			? { key: 'shared.postboxReplyQueue.waitingOn', params: { who } }
+			: 'shared.postboxReplyQueue.waitingOnReply';
 	}
 	const ask = item.askSummary?.trim();
 	if (ask) return ask;
-	return item.subject.trim() || '(no subject)';
+	return item.subject.trim() || 'shared.postboxReplyQueue.noSubject';
 }
 
 /**
  * Human label for the LLM's ISO due hint ("Due Jul 3"), or null when the
  * hint is absent/unparseable — the card simply omits the chip then.
+ *
+ * `locale` is the active UI locale (`useI18n().locale.value`), so the date
+ * reads in the language the rest of the chip is written in; omitting it falls
+ * back to the runtime's own locale.
  */
-export function formatReplyQueueDueHint(dueHint: string | undefined): string | null {
+export function formatReplyQueueDueHint(
+	dueHint: string | undefined,
+	locale?: string
+): ReplyQueueText | null {
 	if (!dueHint) return null;
 	const parsed = new Date(dueHint);
 	if (Number.isNaN(parsed.getTime())) return null;
 	// The hint is a calendar date ("YYYY-MM-DD"), which new Date() parses as
 	// UTC midnight — format in UTC too, or every west-of-UTC user would see
 	// the deadline one day early.
-	return `Due ${parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
+	const date = new Intl.DateTimeFormat(locale, {
+		month: 'short',
+		day: 'numeric',
+		timeZone: 'UTC',
+	}).format(parsed);
+	return { key: 'shared.postboxReplyQueue.dueHint', params: { date } };
 }
 
 /**

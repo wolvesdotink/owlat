@@ -40,6 +40,10 @@ import {
 import { buildProviderEnv, buildSetupSummary, type EmailStepDraft } from '../useSetupWizard';
 import { getDefaultFlags } from '@owlat/shared/featureFlags';
 import { credentialErrorFor, validateEmailStep } from '../setupWizardValidation';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** The real catalog's `t`, for the module-scope names the review step resolves. */
+const { t } = createTestI18n().global;
 
 interface ExpectedField {
 	key: string;
@@ -230,13 +234,19 @@ describe('credential descriptors — the shipped forms, pinned', () => {
 		const actual = credentialFieldsFor(kind).map((field) => ({
 			key: field.key,
 			kind: field.kind,
-			label: field.label,
+			// The descriptor carries a `sharedPkg.sendProviderCatalog.*` KEY, so the
+			// words are read through the catalog exactly as the form reads them —
+			// which is what keeps this table a pin on the SENTENCE an operator sees
+			// rather than on the key path that happens to address it.
+			label: t(field.label),
 			envVars: [...credentialFieldEnvVars(field)],
 			required: field.required === true,
 			// Undefined rather than omitted on both, so an ADDED description or
 			// placeholder fails here too — `toEqual` ignores an undefined-valued key
 			// on one side, but not a string where the table says nothing.
-			description: field.description,
+			description: field.description === undefined ? undefined : t(field.description),
+			// A placeholder is an EXAMPLE value (`re_...`, `us-east-1`), not copy, so
+			// it stays a literal in the descriptor and is compared as one.
 			placeholder: 'placeholder' in field ? field.placeholder : undefined,
 		}));
 		expect(actual).toEqual(EXPECTED_FIELDS[kind]);
@@ -454,19 +464,21 @@ describe('the review step names every choice as it always has', () => {
 		).providerLabel;
 
 	it('keeps the own arm’s qualifier, which no catalog entry carries', () => {
-		expect(labelFor('mta')).toBe('Owlat MTA (self-hosted)');
+		// `buildSetupSummary` runs at module scope, so the two names this step words
+		// itself are message keys; the review step resolves them with `t()`.
+		expect(t(labelFor('mta'))).toBe('Owlat MTA (self-hosted)');
 	});
 
 	it('takes every relay’s name from the catalog', () => {
 		for (const entry of CORE_SEND_PROVIDER_CATALOG_ENTRIES) {
 			if (entry.tier === 'own') continue;
-			expect(labelFor(entry.kind)).toBe(entry.label);
+			expect(t(labelFor(entry.kind))).toBe(entry.label);
 		}
 	});
 
 	it('has its own word for no transport at all', () => {
-		expect(labelFor(undefined)).toBe('None (receive-only)');
-		expect(labelFor('not-a-transport')).toBe('None (receive-only)');
+		expect(t(labelFor(undefined))).toBe('None (receive-only)');
+		expect(t(labelFor('not-a-transport'))).toBe('None (receive-only)');
 	});
 });
 

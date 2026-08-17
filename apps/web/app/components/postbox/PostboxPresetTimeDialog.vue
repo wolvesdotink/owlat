@@ -40,6 +40,8 @@ const emit = defineEmits<{
 	(e: 'action', id: string): void;
 }>();
 
+const { t } = useI18n();
+
 const customDate = ref('');
 
 function close() {
@@ -88,7 +90,7 @@ function pickCustom() {
 						<span
 							v-if="preset.suggested"
 							class="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-border-subtle text-brand"
-							>Suggested</span
+							>{{ t('components.postbox.postboxPresetTimeDialog.suggested') }}</span
 						>
 					</span>
 					<span class="text-text-tertiary">{{ preset.sub }}</span>
@@ -106,7 +108,9 @@ function pickCustom() {
 			</li>
 		</ul>
 		<div class="border-t border-border-subtle pt-3">
-			<label class="text-xs font-medium text-text-tertiary block mb-1">Custom</label>
+			<label class="text-xs font-medium text-text-tertiary block mb-1">
+				{{ t('components.postbox.postboxPresetTimeDialog.custom') }}
+			</label>
 			<div class="flex items-center gap-2">
 				<input v-model="customDate" type="datetime-local" class="input flex-1" />
 				<UiButton type="button" :disabled="!customDate" @click="pickCustom">

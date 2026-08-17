@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
+const { t } = useI18n();
+
 const { data: contacts, isLoading } = useOrganizationQuery(api.contacts.analytics.getRecent, {
 	limit: 5,
 });
@@ -21,7 +23,7 @@ const contactList = computed<Contact[]>(() => {
 function getDisplayName(contact: Contact): string {
 	const parts = [contact.firstName, contact.lastName].filter(Boolean);
 	if (parts.length > 0) return parts.join(' ');
-	return contact.email ?? 'Unknown';
+	return contact.email ?? t('common.unknown');
 }
 
 function getInitials(contact: Contact): string {
@@ -35,13 +37,15 @@ function getInitials(contact: Contact): string {
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
 					<UiIconBox icon="lucide:users" size="sm" variant="brand" />
-					<h3 class="text-sm font-semibold text-text-primary">Recent Contacts</h3>
+					<h3 class="text-sm font-semibold text-text-primary">
+						{{ t('components.dashboard.cards.recentContactsCard.title') }}
+					</h3>
 				</div>
 				<NuxtLink
 					to="/dashboard/audience/contacts"
 					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
 				>
-					View all
+					{{ t('common.viewAll') }}
 				</NuxtLink>
 			</div>
 
@@ -50,7 +54,9 @@ function getInitials(contact: Contact): string {
 			</div>
 
 			<div v-else-if="contactList.length === 0" class="py-4 text-center">
-				<p class="text-sm text-text-tertiary">No contacts yet</p>
+				<p class="text-sm text-text-tertiary">
+					{{ t('components.dashboard.cards.recentContactsCard.empty') }}
+				</p>
 			</div>
 
 			<div v-else class="space-y-1">

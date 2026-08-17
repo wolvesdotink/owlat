@@ -5,6 +5,8 @@ const emit = defineEmits<{
 	send: [text: string, attachmentIds?: Id<'mediaAssets'>[]];
 }>();
 
+const { t } = useI18n();
+
 const text = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -175,7 +177,9 @@ const handleSend = async () => {
 				<button
 					class="text-text-tertiary hover:text-error"
 					@click="removeAttachment(attachment.id)"
-				 :aria-label="`Remove attachment ${attachment.filename}`">
+				 :aria-label="
+						t('components.chat.chatInput.removeAttachment', { filename: attachment.filename })
+					">
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
 			</div>
@@ -185,7 +189,7 @@ const handleSend = async () => {
 			<button
 				class="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 				:disabled="isUploading"
-				title="Attach file"
+				:title="t('components.chat.chatInput.attachFile')"
 				@click="fileInputRef?.click()"
 			>
 				<Icon v-if="!isUploading" name="lucide:paperclip" class="w-4 h-4" />
@@ -202,7 +206,7 @@ const handleSend = async () => {
 			<textarea
 				ref="textareaRef"
 				v-model="text"
-				placeholder="Type a message… use @ to mention"
+				:placeholder="t('components.chat.chatInput.placeholder')"
 				rows="1"
 				class="flex-1 resize-none bg-bg-surface border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 				@keydown="handleKeydown"
@@ -219,13 +223,13 @@ const handleSend = async () => {
 						: 'bg-bg-surface text-text-tertiary border border-border-subtle cursor-not-allowed'
 				"
 				@click="handleSend"
-			 aria-label="Send">
+			 :aria-label="t('common.send')">
 				<Icon name="lucide:send" class="w-4 h-4" />
 			</button>
 		</div>
 
 		<p class="text-[11px] text-text-tertiary mt-1.5 px-1">
-			Enter to send · Shift+Enter for newline · @ to mention · paste or attach files
+			{{ t('components.chat.chatInput.hint') }}
 		</p>
 	</div>
 </template>

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Vacation auto-reply — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.preferences.vacation.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -19,17 +21,17 @@ const error = ref<string | null>(null);
 const saving = ref(false);
 
 const upsertMutation = useBackendOperation(api.mail.vacation.upsert, {
-	label: 'Save auto-reply',
+	label: () => t('dashboard.preferences.vacation.saveOperation'),
 	inlineTarget: error,
 });
 const removeMutation = useBackendOperation(api.mail.vacation.remove, {
-	label: 'Turn off auto-reply',
+	label: () => t('dashboard.preferences.vacation.turnOffOperation'),
 });
 
 const draft = reactive({
 	enabled: false,
-	subject: 'Out of office',
-	bodyText: "I'm away from email and will respond when I return.",
+	subject: t('dashboard.preferences.vacation.defaultSubject'),
+	bodyText: t('dashboard.preferences.vacation.defaultBody'),
 	startAt: '',
 	endAt: '',
 	replyIntervalDays: 7,
@@ -80,26 +82,31 @@ async function confirmDisable() {
 		<PreferencesBackLink />
 
 		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em]">Vacation auto-reply</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em]">
+				{{ t('dashboard.preferences.vacation.title') }}
+			</h1>
 			<p class="text-text-secondary mt-1">
-				Reply once per sender per N days while you're away. Mailing-list and auto-submitted mail is
-				silently skipped (RFC 3834).
+				{{ t('dashboard.preferences.vacation.intro') }}
 			</p>
 		</header>
 
 		<section v-if="mailboxId" class="card p-5 space-y-4">
 			<label class="flex items-center gap-2">
 				<input v-model="draft.enabled" type="checkbox" />
-				<span class="font-medium">Auto-reply enabled</span>
+				<span class="font-medium">{{ t('dashboard.preferences.vacation.enabledLabel') }}</span>
 			</label>
 
 			<div>
-				<label for="draft-subject" class="text-sm font-medium block mb-1">Subject</label>
+				<label for="draft-subject" class="text-sm font-medium block mb-1">
+					{{ t('dashboard.preferences.vacation.subject') }}
+				</label>
 				<input id="draft-subject" v-model="draft.subject" type="text" class="input w-full" />
 			</div>
 
 			<div>
-				<label for="draft-bodytext" class="text-sm font-medium block mb-1">Message</label>
+				<label for="draft-bodytext" class="text-sm font-medium block mb-1">
+					{{ t('dashboard.preferences.vacation.message') }}
+				</label>
 				<textarea
 					id="draft-bodytext"
 					v-model="draft.bodyText"
@@ -110,7 +117,9 @@ async function confirmDisable() {
 
 			<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
 				<div>
-					<label for="draft-startat" class="text-sm font-medium block mb-1">Start (optional)</label>
+					<label for="draft-startat" class="text-sm font-medium block mb-1">
+						{{ t('dashboard.preferences.vacation.start') }}
+					</label>
 					<input
 						id="draft-startat"
 						v-model="draft.startAt"
@@ -119,7 +128,9 @@ async function confirmDisable() {
 					/>
 				</div>
 				<div>
-					<label for="draft-endat" class="text-sm font-medium block mb-1">End (optional)</label>
+					<label for="draft-endat" class="text-sm font-medium block mb-1">
+						{{ t('dashboard.preferences.vacation.end') }}
+					</label>
 					<input
 						id="draft-endat"
 						v-model="draft.endAt"
@@ -128,9 +139,9 @@ async function confirmDisable() {
 					/>
 				</div>
 				<div>
-					<label for="draft-replyintervaldays" class="text-sm font-medium block mb-1"
-						>Reply once per N days</label
-					>
+					<label for="draft-replyintervaldays" class="text-sm font-medium block mb-1">
+						{{ t('dashboard.preferences.vacation.replyInterval') }}
+					</label>
 					<input
 						id="draft-replyintervaldays"
 						v-model.number="draft.replyIntervalDays"
@@ -152,25 +163,25 @@ async function confirmDisable() {
 					class="text-error"
 					@click="showDisableConfirm = true"
 				>
-					Turn off
+					{{ t('dashboard.preferences.vacation.turnOff') }}
 				</UiButton>
 				<UiButton type="button" :disabled="saving" @click="save">
 					<Icon v-if="saving" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin" />
-					{{ saving ? 'Saving…' : 'Save' }}
+					{{ saving ? t('common.saving') : t('common.save') }}
 				</UiButton>
 			</div>
 		</section>
 
 		<div v-if="!mailboxId && !mailboxesLoading" class="card p-6 text-center text-text-secondary">
-			No mailbox configured.
+			{{ t('dashboard.preferences.vacation.noMailbox') }}
 		</div>
 
 		<UiConfirmationDialog
 			:open="showDisableConfirm"
 			variant="warning"
-			title="Turn off auto-reply?"
-			description="The vacation auto-responder will stop replying to incoming mail."
-			confirm-text="Turn off"
+			:title="t('dashboard.preferences.vacation.turnOffTitle')"
+			:description="t('dashboard.preferences.vacation.turnOffDescription')"
+			:confirm-text="t('dashboard.preferences.vacation.turnOff')"
 			:is-loading="removeMutation.isLoading.value"
 			@update:open="(v: boolean) => !v && (showDisableConfirm = false)"
 			@confirm="confirmDisable"

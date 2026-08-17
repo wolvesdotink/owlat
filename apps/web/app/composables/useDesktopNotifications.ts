@@ -10,7 +10,6 @@ import {
 } from '~/lib/inbox/assignmentNoticeRules';
 import {
 	badgeCount,
-	groupBody,
 	newlyArrived,
 	planNotifications,
 	shouldNotify,
@@ -43,6 +42,15 @@ export function useDesktopNotifications() {
 	const convex = requireConvex();
 	const { notifyAbout, badgeNonPeople } = usePostboxSettings();
 	const { showToast } = useToast();
+	const { t } = useI18n();
+
+	/**
+	 * Copy produced by the pure notice rules: a message key, optionally with the
+	 * values it interpolates. Resolved here — the rules modules are Vue-free.
+	 */
+	type NoticeText = string | { key: string; params?: Record<string, unknown> };
+	const localize = (text: NoticeText): string =>
+		typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
 
 	// Device-scoped gates from /desktop/settings: a global master switch, an
 	// unread-badge toggle, and a per-workspace mute — all layered on top of the
@@ -106,14 +114,14 @@ export function useDesktopNotifications() {
 			if (n.kind === 'single') {
 				await notif.sendActionableNotification(
 					n.message.fromName || n.message.fromAddress,
-					n.message.subject || '(no subject)',
+					n.message.subject || t('shared.useDesktopNotifications.noSubject'),
 					n.message.messageId,
 					'inbox'
 				);
 			} else {
 				await notif.sendActionableNotification(
-					'New mail',
-					groupBody(n.count, n.sender),
+					t('shared.useDesktopNotifications.newMail'),
+					t('shared.useDesktopNotifications.groupBody', { count: n.count, sender: n.sender }),
 					n.sample.messageId,
 					'inbox'
 				);
@@ -190,10 +198,8 @@ export function useDesktopNotifications() {
 				) {
 					const delta = reviewQueue - previousReviewQueue.value;
 					await sendDesktopNotification(
-						'Drafts ready for review',
-						delta === 1
-							? '1 new draft is ready for your review'
-							: `${delta} new drafts are ready for your review`
+						t('shared.useDesktopNotifications.draftsReady.title'),
+						t('shared.useDesktopNotifications.draftsReady.body', { count: delta }, delta)
 					);
 				}
 			} catch {
@@ -243,31 +249,31 @@ export function useDesktopNotifications() {
 			for (const plan of plans) {
 				if (plan.kind === 'single') {
 					const threadId = plan.notice.threadId;
-					showToast(assignmentToastMessage(plan.notice), 'success', {
+					showToast(localize(assignmentToastMessage(plan.notice)), 'success', {
 						action: {
-							label: 'Open',
+							label: t('common.open'),
 							onAction: () => void navigateTo(`/dashboard/inbox/${threadId}`),
 						},
 					});
 					if (notif) {
 						const parts = assignmentNotificationParts(plan.notice);
 						try {
-							await notif.sendDesktopNotification(parts.title, parts.body);
+							await notif.sendDesktopNotification(localize(parts.title), localize(parts.body));
 						} catch {
 							// Tauri modules unavailable.
 						}
 					}
 				} else {
-					showToast(assignmentGroupToastMessage(plan.count), 'success', {
+					showToast(localize(assignmentGroupToastMessage(plan.count)), 'success', {
 						action: {
-							label: 'Open',
+							label: t('common.open'),
 							onAction: () => void navigateTo('/dashboard/inbox?filter=mine'),
 						},
 					});
 					if (notif) {
 						const parts = assignmentGroupNotificationParts(plan.count);
 						try {
-							await notif.sendDesktopNotification(parts.title, parts.body);
+							await notif.sendDesktopNotification(localize(parts.title), localize(parts.body));
 						} catch {
 							// Tauri modules unavailable.
 						}

@@ -21,6 +21,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: 'apply', text: string): void }>();
 
+const { t } = useI18n();
 const { showToast } = useToast();
 const open = ref(false);
 const instruction = ref('');
@@ -76,7 +77,7 @@ async function discard() {
 			@click="toggle"
 		>
 			<Icon name="lucide:wand-2" class="w-3 h-3" />
-			Revise…
+			{{ t('components.ai.reviseBox.toggle') }}
 		</UiButton>
 
 		<div v-if="open" class="ai-revise__panel mt-2 flex flex-col gap-2">
@@ -86,7 +87,7 @@ async function discard() {
 					v-model="instruction"
 					type="text"
 					class="input input-sm flex-1"
-					placeholder="e.g. redo but decline politely"
+					:placeholder="t('components.ai.reviseBox.instructionPlaceholder')"
 					:disabled="revise.isStreaming.value"
 					@keydown.enter.prevent="submit"
 				/>
@@ -96,7 +97,11 @@ async function discard() {
 					:disabled="revise.isStreaming.value || instruction.trim().length === 0"
 					@click="submit"
 				>
-					{{ revise.isStreaming.value ? 'Revising…' : 'Revise' }}
+					{{
+						revise.isStreaming.value
+							? t('components.ai.reviseBox.submitting')
+							: t('components.ai.reviseBox.submit')
+					}}
 				</UiButton>
 			</div>
 
@@ -110,13 +115,14 @@ async function discard() {
 			</div>
 
 			<p v-if="revise.injectionFlagged.value" class="text-xs text-warning">
-				This revision contains text that looks like an embedded instruction — review it before
-				sending.
+				{{ t('components.ai.reviseBox.injectionWarning') }}
 			</p>
 
 			<div v-if="revise.hasResult.value" class="flex items-center gap-2">
-				<UiButton size="sm" type="button" @click="apply">Apply</UiButton>
-				<UiButton variant="ghost" size="sm" type="button" @click="discard">Discard</UiButton>
+				<UiButton size="sm" type="button" @click="apply">{{ t('common.apply') }}</UiButton>
+				<UiButton variant="ghost" size="sm" type="button" @click="discard">{{
+					t('common.discard')
+				}}</UiButton>
 			</div>
 		</div>
 	</div>

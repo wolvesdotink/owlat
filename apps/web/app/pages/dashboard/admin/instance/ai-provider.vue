@@ -1,5 +1,7 @@
 <script setup lang="ts">
-useHead({ title: 'AI Provider — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.aiProvider.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -16,8 +18,8 @@ const {
 	isSaving,
 	isTesting,
 	isLoadingModels,
-	providerOptions,
-	embeddingOptions,
+	providerOptions: providerOptionKeys,
+	embeddingOptions: embeddingOptionKeys,
 	form,
 	languageError,
 	embeddingError,
@@ -45,6 +47,16 @@ const {
 	handleTest,
 	handleLoadModels,
 } = useAiProviderForm();
+
+// The registry hands option labels over as message keys (aiProviders.ts:
+// "the renderer translates it") — resolve them here so the provider selects
+// paint words, not key paths.
+const providerOptions = computed(() =>
+	providerOptionKeys.map((option) => ({ ...option, label: t(option.label) }))
+);
+const embeddingOptions = computed(() =>
+	embeddingOptionKeys.map((option) => ({ ...option, label: t(option.label) }))
+);
 </script>
 
 <template>
@@ -54,16 +66,17 @@ const {
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Settings
+			{{ t('dashboard.admin.instance.aiProvider.backToSettings') }}
 		</NuxtLink>
 
 		<div class="flex items-center gap-4 mb-8">
 			<UiIconBox icon="lucide:sparkles" size="xl" variant="brand" rounded="full" />
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">AI Provider</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.admin.instance.aiProvider.title') }}
+				</h1>
 				<p class="text-text-secondary mt-1">
-					Choose the AI backend every AI feature uses. Pick a hosted provider and paste a key, or
-					point at a model you host yourself.
+					{{ t('dashboard.admin.instance.aiProvider.subtitle') }}
 				</p>
 			</div>
 		</div>
@@ -73,29 +86,32 @@ const {
 				<div class="flex items-center justify-center py-16">
 					<div class="flex flex-col items-center gap-3">
 						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading AI settings…</p>
+						<p class="text-text-secondary text-sm">
+							{{ t('dashboard.admin.instance.aiProvider.loading') }}
+						</p>
 					</div>
 				</div>
 			</template>
 
 			<form class="space-y-6 max-w-3xl" @submit.prevent="handleSave">
 				<UiCard>
-					<h2 class="text-lg font-medium text-text-primary mb-1">Language model</h2>
+					<h2 class="text-lg font-medium text-text-primary mb-1">
+						{{ t('dashboard.admin.instance.aiProvider.language.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary mb-6">
-						Powers every text feature — drafting replies, the assistant, summaries, translation, and
-						more.
+						{{ t('dashboard.admin.instance.aiProvider.language.description') }}
 					</p>
 
 					<div class="space-y-6">
 						<div>
 							<UiSelect
 								v-model="form.languageProviderKind"
-								label="Provider"
+								:label="t('dashboard.admin.instance.aiProvider.language.providerLabel')"
 								:options="providerOptions"
 								:disabled="isSaving"
 							/>
 							<p v-if="languageMeta" class="mt-1.5 text-xs text-text-tertiary">
-								{{ languageMeta.hint }}
+								{{ t(languageMeta.hint) }}
 								<a
 									v-if="languageMeta.docsUrl"
 									:href="languageMeta.docsUrl"
@@ -103,7 +119,7 @@ const {
 									rel="noopener"
 									class="text-brand hover:underline whitespace-nowrap"
 								>
-									Get a key →
+									{{ t('dashboard.admin.instance.aiProvider.language.getKey') }} →
 								</a>
 							</p>
 						</div>
@@ -111,31 +127,31 @@ const {
 						<SettingsAiKeyField
 							v-if="requiresKey"
 							v-model="form.apiKey"
-							label="API key"
+							:label="t('dashboard.admin.instance.aiProvider.language.apiKeyLabel')"
 							:stored-key-set="storedLanguageKeySet"
 							:key-preview="keyPreview"
 							:error="languageError"
 							:disabled="isSaving"
-							help-text="Sent once over TLS, encrypted at rest, and never shown again."
+							:help-text="t('dashboard.admin.instance.aiProvider.language.apiKeyHelp')"
 						/>
 
 						<div v-if="requiresKey">
 							<UiDisclosure
 								v-model="showLanguageBaseUrl"
-								label="Advanced: custom base URL (proxy / gateway)"
+								:label="t('dashboard.admin.instance.aiProvider.language.baseUrlDisclosure')"
 								controls="ai-language-base-url"
 								:disabled="isSaving"
 							>
 								<UiInput
 									v-model="form.languageBaseUrl"
 									type="text"
-									label="Base URL"
+									:label="t('dashboard.admin.instance.aiProvider.language.baseUrlLabel')"
 									:placeholder="languageMeta?.defaultBaseUrl ?? 'https://…'"
 									:disabled="isSaving"
 									:help-text="
 										requiresKey
-											? 'Route requests through a custom endpoint. Leave blank to use the provider default.'
-											: 'The address of your local server (Ollama, vLLM, llama.cpp).'
+											? t('dashboard.admin.instance.aiProvider.language.baseUrlHelpHosted')
+											: t('dashboard.admin.instance.aiProvider.language.baseUrlHelpLocal')
 									"
 								/>
 							</UiDisclosure>
@@ -145,18 +161,18 @@ const {
 							<SettingsAiModelPicker
 								v-model:choice="form.modelCapableChoice"
 								v-model:custom="form.modelCapableCustom"
-								label="Capable model"
+								:label="t('dashboard.admin.instance.aiProvider.language.capableLabel')"
 								:options="capableModelOptions"
 								:disabled="isSaving"
-								hint="Used for hard tasks — reasoning, long drafts."
+								:hint="t('dashboard.admin.instance.aiProvider.language.capableHint')"
 							/>
 							<SettingsAiModelPicker
 								v-model:choice="form.modelFastChoice"
 								v-model:custom="form.modelFastCustom"
-								label="Fast model"
+								:label="t('dashboard.admin.instance.aiProvider.language.fastLabel')"
 								:options="fastModelOptions"
 								:disabled="isSaving"
-								hint="Used for quick tasks — classification, short replies."
+								:hint="t('dashboard.admin.instance.aiProvider.language.fastHint')"
 							/>
 						</div>
 
@@ -172,24 +188,29 @@ const {
 								<template #iconLeft>
 									<Icon v-if="!isLoadingModels" name="lucide:list-restart" class="w-4 h-4" />
 								</template>
-								Load available models
+								{{ t('dashboard.admin.instance.aiProvider.language.loadModels') }}
 							</UiButton>
 							<p v-if="liveModelsError" class="text-xs text-error">{{ liveModelsError }}</p>
 							<p v-else-if="liveModels.length" class="text-xs text-success">
-								Loaded {{ liveModels.length }} models from your provider.
+								{{
+									t('dashboard.admin.instance.aiProvider.language.loadedModels', {
+										count: liveModels.length,
+									})
+								}}
 							</p>
 							<p v-else-if="isDirty || !config?.configured" class="text-xs text-text-tertiary">
-								Save first, then load the live model list.
+								{{ t('dashboard.admin.instance.aiProvider.language.saveFirstModels') }}
 							</p>
 						</div>
 					</div>
 				</UiCard>
 
 				<UiCard>
-					<h2 class="text-lg font-medium text-text-primary mb-1">Embeddings</h2>
+					<h2 class="text-lg font-medium text-text-primary mb-1">
+						{{ t('dashboard.admin.instance.aiProvider.embeddings.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary mb-4">
-						Power semantic search and the knowledge graph. These run separately from your language
-						model, so retrieval works with any provider above.
+						{{ t('dashboard.admin.instance.aiProvider.embeddings.description') }}
 					</p>
 
 					<div
@@ -198,9 +219,11 @@ const {
 					>
 						<Icon name="lucide:check-circle-2" class="w-5 h-5 text-success shrink-0 mt-0.5" />
 						<div class="text-sm">
-							<p class="text-text-primary font-medium">Local (bundled) — no setup needed</p>
+							<p class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.aiProvider.embeddings.localTitle') }}
+							</p>
 							<p class="text-text-secondary mt-0.5">
-								A local embedding model ships with your deployment, so search works out of the box.
+								{{ t('dashboard.admin.instance.aiProvider.embeddings.localBody') }}
 							</p>
 						</div>
 					</div>
@@ -208,14 +231,14 @@ const {
 					<div class="mt-4">
 						<UiDisclosure
 							v-model="showHostedEmbedder"
-							label="Advanced: use a hosted embedder instead"
+							:label="t('dashboard.admin.instance.aiProvider.embeddings.hostedDisclosure')"
 							controls="ai-hosted-embedder"
 							:disabled="isSaving"
 						>
 							<div class="space-y-6">
 								<UiSelect
 									v-model="form.embeddingProviderKind"
-									label="Embedding provider"
+									:label="t('dashboard.admin.instance.aiProvider.embeddings.providerLabel')"
 									:options="embeddingOptions"
 									:disabled="isSaving"
 								/>
@@ -223,23 +246,27 @@ const {
 								<SettingsAiModelPicker
 									v-model:choice="form.embeddingModelChoice"
 									v-model:custom="form.embeddingModelCustom"
-									label="Embedding model"
+									:label="t('dashboard.admin.instance.aiProvider.embeddings.modelLabel')"
 									:options="embeddingModelOptions"
 									:disabled="isSaving"
 									:hint="
-										embeddingMeta ? `${embeddingMeta.dimensions}-dimensional vectors.` : undefined
+										embeddingMeta
+											? t('dashboard.admin.instance.aiProvider.embeddings.dimensionsHint', {
+													dimensions: embeddingMeta.dimensions,
+												})
+											: undefined
 									"
 								/>
 
 								<SettingsAiKeyField
 									v-if="embeddingRequiresKey"
 									v-model="form.embeddingApiKey"
-									label="Embedding API key"
+									:label="t('dashboard.admin.instance.aiProvider.embeddings.apiKeyLabel')"
 									:stored-key-set="storedEmbeddingKeySet"
 									:key-preview="embeddingKeyPreview"
 									:error="embeddingError"
 									:disabled="isSaving"
-									help-text="Encrypted at rest, never shown again."
+									:help-text="t('dashboard.admin.instance.aiProvider.embeddings.apiKeyHelp')"
 								/>
 							</div>
 						</UiDisclosure>
@@ -251,10 +278,11 @@ const {
 					>
 						<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 						<div>
-							<p class="text-text-primary font-medium">Changing embeddings needs a re-index</p>
+							<p class="text-text-primary font-medium">
+								{{ t('dashboard.admin.instance.aiProvider.embeddings.reindexTitle') }}
+							</p>
 							<p class="text-text-secondary mt-0.5">
-								New and old vectors aren't comparable. After saving, re-index your knowledge so
-								search stays accurate.
+								{{ t('dashboard.admin.instance.aiProvider.embeddings.reindexBody') }}
 							</p>
 						</div>
 					</div>
@@ -272,7 +300,7 @@ const {
 							<template #iconLeft>
 								<Icon v-if="!isTesting" name="lucide:plug-zap" class="w-4 h-4" />
 							</template>
-							Test connection
+							{{ t('dashboard.admin.instance.aiProvider.testConnection') }}
 						</UiButton>
 
 						<p
@@ -280,7 +308,7 @@ const {
 							class="text-sm text-success flex items-center gap-1.5"
 						>
 							<Icon name="lucide:check" class="w-4 h-4" />
-							Connection works
+							{{ t('dashboard.admin.instance.aiProvider.connectionWorks') }}
 						</p>
 						<p
 							v-else-if="testState.status === 'error'"
@@ -290,7 +318,7 @@ const {
 							{{ testState.message }}
 						</p>
 						<p v-else-if="isDirty || !config?.configured" class="text-xs text-text-tertiary">
-							Save first, then test.
+							{{ t('dashboard.admin.instance.aiProvider.saveFirstTest') }}
 						</p>
 					</div>
 
@@ -302,7 +330,7 @@ const {
 						<template #iconLeft>
 							<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
 						</template>
-						{{ isSaving ? 'Saving…' : 'Save AI provider' }}
+						{{ isSaving ? t('common.saving') : t('dashboard.admin.instance.aiProvider.save') }}
 					</UiButton>
 				</div>
 			</form>

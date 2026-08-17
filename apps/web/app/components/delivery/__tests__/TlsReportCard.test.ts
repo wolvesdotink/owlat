@@ -8,10 +8,16 @@
  *     organization, and a plain-language failure breakdown whose copy is asserted
  *     VERBATIM (the honesty audit: the card may only say what the report said).
  */
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import TlsReportCard from '../TlsReportCard.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { TlsReportSummary } from '~/utils/tlsReportView';
+
+// The card renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 function mountCard(props: {
 	summary?: TlsReportSummary | null;
@@ -24,6 +30,7 @@ function mountCard(props: {
 			isLoading: props.isLoading ?? false,
 			error: props.error,
 		},
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

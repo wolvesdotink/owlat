@@ -7,6 +7,14 @@ import {
 	derivePluginNavigation,
 	type PluginNavigationContributions,
 } from '../dashboardNavigation';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * Core destination names are catalog keys (module scope never calls `useI18n`);
+ * a plugin-contributed name is the manifest's own words and passes through `t()`
+ * untouched. The sidebar renders both through this one boundary.
+ */
+const { t } = createTestI18n().global;
 describe('buildNavigationSections — role-aware information architecture', () => {
 	const allFlags = { isFeatureEnabled: () => true, isDesktop: false };
 
@@ -43,10 +51,9 @@ describe('buildNavigationSections — role-aware information architecture', () =
 			'audience',
 			'preferences',
 		]);
-		expect(sections.find((section) => section.key === 'audience')).toMatchObject({
-			name: 'Customers',
-			href: '/dashboard/audience/contacts',
-		});
+		const audienceSection = sections.find((section) => section.key === 'audience');
+		expect(t(audienceSection?.name ?? '')).toBe('Customers');
+		expect(audienceSection).toMatchObject({ href: '/dashboard/audience/contacts' });
 		expect(hrefs).not.toContain('/dashboard/admin');
 		expect(hrefs.some((href) => href.startsWith('/dashboard/admin/'))).toBe(false);
 		expect(hrefs).not.toContain('/dashboard/automations');
@@ -170,7 +177,7 @@ describe('buildNavigationSections — plugin contributions', () => {
 		);
 		const audience = sections.find((s) => s.key === 'audience');
 		const contacts = audience?.items.find((i) => i.href === '/dashboard/audience/contacts');
-		expect(contacts?.name).toBe('Contacts');
+		expect(t(contacts?.name ?? '')).toBe('Contacts');
 		expect(audience?.items.filter((i) => i.href === '/dashboard/audience/contacts')).toHaveLength(
 			1
 		);

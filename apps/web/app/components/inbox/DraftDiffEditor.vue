@@ -22,7 +22,7 @@ const props = withDefaults(
 		modelValue: string;
 		/** Disable Apply while the edit is being persisted. */
 		saving?: boolean;
-		/** Label for the primary commit button. */
+		/** Label for the primary commit button (already translated by the caller). */
 		applyLabel?: string;
 		/**
 		 * Soft-hold: a teammate is actively replying to this thread, so Apply
@@ -42,11 +42,18 @@ const props = withDefaults(
 	}>(),
 	{
 		saving: false,
-		applyLabel: 'Save & Approve',
+		applyLabel: undefined,
 		held: false,
 		heldReason: undefined,
 		showSave: false,
 	}
+);
+
+const { t } = useI18n();
+
+/** The caller's label wins; otherwise the localized default. */
+const applyText = computed(
+	() => props.applyLabel ?? t('components.inbox.draftDiffEditor.saveAndApprove')
 );
 
 const emit = defineEmits<{
@@ -81,7 +88,7 @@ function onDiscard() {
 			:value="modelValue"
 			rows="8"
 			class="input w-full text-sm resize-y"
-			aria-label="Edit draft response"
+			:aria-label="t('components.inbox.draftDiffEditor.textareaLabel')"
 			@input="onInput"
 		/>
 
@@ -92,7 +99,7 @@ function onDiscard() {
 			data-testid="draft-diff"
 		>
 			<p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-text-tertiary">
-				Original draft
+				{{ t('components.inbox.draftDiffEditor.originalDraft') }}
 			</p>
 			<p
 				class="mb-3 max-h-32 overflow-auto whitespace-pre-wrap text-xs text-text-tertiary line-through decoration-1"
@@ -100,7 +107,9 @@ function onDiscard() {
 			>
 				{{ original }}
 			</p>
-			<p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-brand">Your edit</p>
+			<p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-brand">
+				{{ t('components.inbox.draftDiffEditor.yourEdit') }}
+			</p>
 			<p
 				class="max-h-40 overflow-auto whitespace-pre-wrap text-sm text-text-primary"
 				data-testid="draft-diff-edited"
@@ -120,7 +129,7 @@ function onDiscard() {
 				@click="emit('apply')"
 			>
 				<Icon name="lucide:save" class="w-3 h-3" />
-				{{ applyLabel }}
+				{{ applyText }}
 			</UiButton>
 			<!-- Save WITHOUT approving: appends a draft revision, row stays queued.
 			     Not blocked by the collision soft-hold — saving never sends. -->
@@ -135,7 +144,7 @@ function onDiscard() {
 				@click="emit('save')"
 			>
 				<Icon name="lucide:pencil-line" class="w-3 h-3" />
-				Save
+				{{ t('common.save') }}
 			</UiButton>
 			<UiButton
 				variant="ghost"
@@ -145,7 +154,7 @@ function onDiscard() {
 				data-testid="draft-diff-discard"
 				@click="onDiscard"
 			>
-				Discard
+				{{ t('common.discard') }}
 			</UiButton>
 		</div>
 

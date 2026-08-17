@@ -25,6 +25,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ 'update:modelValue': [InboxFilter] }>();
 
+const { t } = useI18n();
+
 /** Render a capped count: a slice at the ceiling reads "99+". */
 function displayCount(filter: InboxFilter): string | null {
 	const counts = props.counts;
@@ -36,7 +38,11 @@ function displayCount(filter: InboxFilter): string | null {
 </script>
 
 <template>
-	<div role="group" aria-label="Filter threads" class="flex flex-wrap items-center gap-2">
+	<div
+		role="group"
+		:aria-label="t('components.inbox.inboxFilterPills.groupLabel')"
+		class="flex flex-wrap items-center gap-2"
+	>
 		<button
 			v-for="f in INBOX_FILTERS"
 			:key="f"
@@ -50,7 +56,8 @@ function displayCount(filter: InboxFilter): string | null {
 			"
 			@click="emit('update:modelValue', f)"
 		>
-			<span>{{ INBOX_FILTER_META[f].label }}</span>
+			<!-- The filter registry holds i18n keys, not copy (see the localization guide). -->
+			<span>{{ t(INBOX_FILTER_META[f].label) }}</span>
 			<span
 				v-if="displayCount(f) !== null"
 				class="tabular-nums text-xs"

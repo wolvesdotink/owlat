@@ -2,15 +2,28 @@
 const mobileOpen = ref(false);
 const activeSection = ref('');
 
+const { t, locale, locales } = useI18n();
+const localePath = useLocalePath();
+const switchLocalePath = useSwitchLocalePath();
+
 const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload();
 
 const navLinks = [
-	{ label: 'Features', href: '#features' },
-	{ label: 'Developers', href: '#developers' },
-	{ label: 'Pricing', href: '#pricing' },
-	{ label: 'Docs', href: 'https://docs.owlat.app' },
-	{ label: 'GitHub', href: 'https://github.com/wolvesdotink/owlat' },
+	{ key: 'nav.features', href: '#features' },
+	{ key: 'nav.developers', href: '#developers' },
+	{ key: 'nav.pricing', href: '#pricing' },
+	{ key: 'nav.docs', href: 'https://docs.owlat.app' },
+	{ key: 'nav.github', href: 'https://github.com/wolvesdotink/owlat' },
 ];
+
+/* The switcher is driven by the module's own locale list, so adding a locale in
+ * nuxt.config is the only step needed to make it appear here. `name` is the
+ * endonym ("Deutsch"), which is what a visitor who cannot read the current
+ * language recognises; the pill itself shows the short code to stay inside the
+ * floating nav's width budget. */
+const languages = computed(() =>
+	locales.value.map((entry) => (typeof entry === 'string' ? { code: entry, name: entry } : entry))
+);
 
 onMounted(() => {
 	const sections = ['features', 'developers', 'pricing'];
@@ -42,7 +55,11 @@ onMounted(() => {
 				class="nav-pill flex items-center gap-1 rounded-full pl-4 pr-1.5 py-1.5 max-lg:justify-between"
 			>
 				<!-- Logo -->
-				<a href="/" class="flex items-center gap-2 no-underline pr-1">
+				<a
+					:href="localePath('/')"
+					:aria-label="t('nav.home')"
+					class="flex items-center gap-2 no-underline pr-1"
+				>
 					<OwlLogo size="22px" />
 					<span class="text-md font-semibold tracking-tight text-text-primary">Owlat</span>
 				</a>
@@ -51,7 +68,7 @@ onMounted(() => {
 				<nav class="hidden lg:flex items-center px-2">
 					<a
 						v-for="link in navLinks"
-						:key="link.label"
+						:key="link.key"
 						:href="link.href"
 						class="px-3 py-1.5 text-caption font-medium rounded-full transition-colors duration-(--motion-fast) no-underline"
 						:class="
@@ -60,33 +77,54 @@ onMounted(() => {
 								: 'text-text-secondary hover:text-text-primary'
 						"
 					>
-						{{ link.label }}
+						{{ t(link.key) }}
 					</a>
 				</nav>
 
 				<!-- Desktop CTAs -->
 				<div class="hidden lg:flex items-center gap-2">
+					<div
+						class="flex items-center gap-0.5 rounded-full border border-border-subtle p-0.5"
+						role="group"
+						:aria-label="t('language.label')"
+					>
+						<a
+							v-for="lang in languages"
+							:key="lang.code"
+							:href="switchLocalePath(lang.code)"
+							:aria-label="t('language.switchTo', { language: lang.name })"
+							:aria-current="lang.code === locale ? 'true' : undefined"
+							class="px-2 py-1 rounded-full font-mono text-2xs font-medium uppercase transition-colors duration-(--motion-fast) no-underline"
+							:class="
+								lang.code === locale
+									? 'bg-bg-soft text-text-primary'
+									: 'text-text-tertiary hover:text-text-primary'
+							"
+						>
+							{{ lang.code }}
+						</a>
+					</div>
 					<a
 						href="https://app.owlat.app/login"
 						class="px-3 py-1.5 text-caption font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
 					>
-						Sign in
+						{{ t('nav.signIn') }}
 					</a>
 					<a
 						href="https://github.com/wolvesdotink/owlat/releases"
 						class="btn btn-primary px-4 py-2 text-caption no-underline"
 						:aria-label="downloadAriaLabel"
-						title="All platforms on the releases page"
+						:title="t('download.allPlatformsTitle')"
 						@click="onDownloadClick"
 					>
-						Download
+						{{ t('download.label') }}
 					</a>
 				</div>
 
 				<!-- Mobile hamburger -->
 				<button
 					class="lg:hidden flex items-center justify-center w-9 h-9 rounded-full text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) bg-transparent border-none cursor-pointer"
-					:aria-label="mobileOpen ? 'Close menu' : 'Open menu'"
+					:aria-label="mobileOpen ? t('nav.closeMenu') : t('nav.openMenu')"
 					:aria-expanded="mobileOpen"
 					@click="mobileOpen = !mobileOpen"
 				>
@@ -127,20 +165,41 @@ onMounted(() => {
 					<nav class="flex flex-col">
 						<a
 							v-for="link in navLinks"
-							:key="link.label"
+							:key="link.key"
 							:href="link.href"
 							class="px-3.5 py-2.5 text-md font-medium text-text-secondary hover:text-text-primary rounded-xl transition-colors duration-(--motion-fast) no-underline"
 							@click="mobileOpen = false"
 						>
-							{{ link.label }}
+							{{ t(link.key) }}
 						</a>
 					</nav>
 					<div class="flex flex-col gap-2 pt-3 mt-2 border-t border-border-subtle">
+						<div
+							class="flex items-center justify-center gap-2 py-1"
+							role="group"
+							:aria-label="t('language.label')"
+						>
+							<a
+								v-for="lang in languages"
+								:key="lang.code"
+								:href="switchLocalePath(lang.code)"
+								:aria-label="t('language.switchTo', { language: lang.name })"
+								:aria-current="lang.code === locale ? 'true' : undefined"
+								class="px-3 py-1.5 rounded-full text-caption font-medium transition-colors duration-(--motion-fast) no-underline"
+								:class="
+									lang.code === locale
+										? 'bg-bg-soft text-text-primary'
+										: 'text-text-tertiary hover:text-text-primary'
+								"
+							>
+								{{ lang.name }}
+							</a>
+						</div>
 						<a
 							href="https://app.owlat.app/login"
 							class="text-caption font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline text-center py-2"
 						>
-							Sign in
+							{{ t('nav.signIn') }}
 						</a>
 						<a
 							href="https://github.com/wolvesdotink/owlat/releases"
@@ -148,7 +207,11 @@ onMounted(() => {
 							:aria-label="downloadAriaLabel"
 							@click="onDownloadClick"
 						>
-							{{ platformLabel ? `Download for ${platformLabel}` : 'Download' }}
+							{{
+								platformLabel
+									? t('download.labelFor', { platform: platformLabel })
+									: t('download.label')
+							}}
 						</a>
 						<a
 							href="https://github.com/wolvesdotink/owlat/releases"
@@ -156,7 +219,7 @@ onMounted(() => {
 							rel="noopener noreferrer"
 							class="text-2xs font-medium text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline text-center py-1"
 						>
-							All platforms
+							{{ t('download.allPlatforms') }}
 						</a>
 					</div>
 				</div>

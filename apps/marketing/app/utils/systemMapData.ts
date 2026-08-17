@@ -1,6 +1,10 @@
 /* Layout + timeline data for SystemMapSection's animated architecture map.
  * Split out so the SVG component stays under the file-size cap.
  *
+ * Geometry and timing only — the copy lives in i18n/locales/*.json under
+ * `systemMap.*` and is referenced here by full message key, so a translator
+ * never has to touch this file and the catalog guard test can see the keys.
+ *
  * Every label is grounded in shipped features: campaigns/automations/
  * transactional API (README feature table), the built-in outbound MTA
  * (README architecture), DKIM/SPF/DMARC verification (README), and the
@@ -9,8 +13,10 @@
 
 export type MapNode = {
 	id: string;
-	label: string;
-	sub: string;
+	/** Message key for the node's title. */
+	labelKey: string;
+	/** Message key for the node's caption. */
+	subKey: string;
 	x: number;
 	y: number;
 	w: number;
@@ -32,8 +38,11 @@ export type MapEdge = {
 };
 
 export type MapBeat = {
-	label: string;
-	caption: string;
+	id: string;
+	/** Message key for the chip's title. */
+	labelKey: string;
+	/** Message key for the chip's one-line explanation. */
+	captionKey: string;
 };
 
 export const VIEW_W = 960;
@@ -44,8 +53,8 @@ export const BEAT_MS = 2000;
 export const MAP_NODES: MapNode[] = [
 	{
 		id: 'campaigns',
-		label: 'Campaigns',
-		sub: 'Scheduled sends',
+		labelKey: 'systemMap.nodes.campaigns.label',
+		subKey: 'systemMap.nodes.campaigns.sub',
 		x: 40,
 		y: 48,
 		w: 150,
@@ -54,19 +63,28 @@ export const MAP_NODES: MapNode[] = [
 	},
 	{
 		id: 'automations',
-		label: 'Automations',
-		sub: 'Trigger flows',
+		labelKey: 'systemMap.nodes.automations.label',
+		subKey: 'systemMap.nodes.automations.sub',
 		x: 40,
 		y: 126,
 		w: 150,
 		h: 50,
 		beat: 0,
 	},
-	{ id: 'api', label: 'API', sub: 'Transactional', x: 40, y: 204, w: 150, h: 50, beat: 0 },
+	{
+		id: 'api',
+		labelKey: 'systemMap.nodes.api.label',
+		subKey: 'systemMap.nodes.api.sub',
+		x: 40,
+		y: 204,
+		w: 150,
+		h: 50,
+		beat: 0,
+	},
 	{
 		id: 'mta',
-		label: 'Owlat MTA',
-		sub: 'SMTP engine',
+		labelKey: 'systemMap.nodes.mta.label',
+		subKey: 'systemMap.nodes.mta.sub',
 		x: 330,
 		y: 112,
 		w: 170,
@@ -76,19 +94,28 @@ export const MAP_NODES: MapNode[] = [
 	},
 	{
 		id: 'auth',
-		label: 'Authentication',
-		sub: 'DKIM · SPF · DMARC',
+		labelKey: 'systemMap.nodes.auth.label',
+		subKey: 'systemMap.nodes.auth.sub',
 		x: 590,
 		y: 117,
 		w: 170,
 		h: 68,
 		beat: 1,
 	},
-	{ id: 'inbox', label: 'Inbox', sub: 'Recipients', x: 830, y: 123, w: 92, h: 56, beat: 2 },
+	{
+		id: 'inbox',
+		labelKey: 'systemMap.nodes.inbox.label',
+		subKey: 'systemMap.nodes.inbox.sub',
+		x: 830,
+		y: 123,
+		w: 92,
+		h: 56,
+		beat: 2,
+	},
 	{
 		id: 'signals',
-		label: 'Signals',
-		sub: 'Bounce · Engagement · Placement',
+		labelKey: 'systemMap.nodes.signals.label',
+		subKey: 'systemMap.nodes.signals.sub',
 		x: 600,
 		y: 330,
 		w: 200,
@@ -97,8 +124,8 @@ export const MAP_NODES: MapNode[] = [
 	},
 	{
 		id: 'ramp',
-		label: 'Ramp controller',
-		sub: 'Reputation & pacing',
+		labelKey: 'systemMap.nodes.ramp.label',
+		subKey: 'systemMap.nodes.ramp.sub',
 		x: 290,
 		y: 330,
 		w: 190,
@@ -119,9 +146,29 @@ export const MAP_EDGES: MapEdge[] = [
 ];
 
 export const MAP_BEATS: MapBeat[] = [
-	{ label: 'Send', caption: 'Campaigns, automations and API sends queue on the MTA' },
-	{ label: 'Authenticate', caption: 'Every message is signed and aligned: DKIM, SPF, DMARC' },
-	{ label: 'Deliver', caption: 'The built-in MTA hands off to recipient inboxes over SMTP' },
-	{ label: 'Measure', caption: 'Bounces, engagement and placement stream back as signals' },
-	{ label: 'Adapt', caption: 'The ramp controller adjusts sending share and pacing' },
+	{
+		id: 'send',
+		labelKey: 'systemMap.beats.send.label',
+		captionKey: 'systemMap.beats.send.caption',
+	},
+	{
+		id: 'authenticate',
+		labelKey: 'systemMap.beats.authenticate.label',
+		captionKey: 'systemMap.beats.authenticate.caption',
+	},
+	{
+		id: 'deliver',
+		labelKey: 'systemMap.beats.deliver.label',
+		captionKey: 'systemMap.beats.deliver.caption',
+	},
+	{
+		id: 'measure',
+		labelKey: 'systemMap.beats.measure.label',
+		captionKey: 'systemMap.beats.measure.caption',
+	},
+	{
+		id: 'adapt',
+		labelKey: 'systemMap.beats.adapt.label',
+		captionKey: 'systemMap.beats.adapt.caption',
+	},
 ];

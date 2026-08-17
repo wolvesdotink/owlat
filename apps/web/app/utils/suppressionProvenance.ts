@@ -43,14 +43,22 @@ export function indexSuppressionProvenance(
 	return byId;
 }
 
-/** Human name for a send-provider kind, for the provenance line only. */
-const PROVIDER_NAME: Record<string, string> = {
-	mandrill: 'Mailchimp Transactional',
-	ses: 'Amazon SES',
-	resend: 'Resend',
-	smtp: 'your SMTP relay',
-	mta: 'your own mail server',
-};
+/**
+ * THE PROVIDER IS PART OF THE KEY, not a parameter.
+ *
+ * Two of these names are copy rather than trademarks — "your SMTP relay", "your
+ * own mail server" — and a translated noun cannot be handed to `t()` as an
+ * interpolation, so the sentence is picked per provider instead. A provider with
+ * no name of its own falls through to the `other` messages, which DO take the
+ * raw kind as a parameter: that value is configuration, not copy.
+ */
+const NAMED_PROVIDERS = ['mandrill', 'ses', 'resend', 'smtp', 'mta'] as const;
+
+/** A translatable sentence: a catalog key plus the values its message fills in. */
+export interface SuppressionProvenanceText {
+	readonly key: string;
+	readonly params?: Record<string, string>;
+}
 
 /**
  * The provenance sentence, or null when nothing is known — in which case the row
@@ -59,14 +67,22 @@ const PROVIDER_NAME: Record<string, string> = {
  *
  * `evidence` is the provider's own reason code and is shown VERBATIM: it is the
  * only part that answers "why", and paraphrasing a third party's taxonomy into
- * ours would invent a claim we cannot stand behind.
+ * ours would invent a claim we cannot stand behind. It travels as a parameter of
+ * the message, so the separator stays the translation's business.
  */
 export function suppressionProvenanceLine(
 	entry: SuppressionProvenanceEntry | undefined
-): string | null {
+): SuppressionProvenanceText | null {
 	if (entry === undefined) return null;
-	const provider = PROVIDER_NAME[entry.provider] ?? entry.provider;
-	const how =
-		entry.source === 'import' ? `Carried over from ${provider}` : `Reported by ${provider}`;
-	return entry.evidence === null ? how : `${how} · ${entry.evidence}`;
+	const named = (NAMED_PROVIDERS as readonly string[]).includes(entry.provider);
+	const provider = named ? entry.provider : 'other';
+	const how = entry.source === 'import' ? 'carriedOver' : 'reported';
+	const suffix = entry.evidence === null ? '' : 'WithEvidence';
+	return {
+		key: `shared.suppressionProvenance.${provider}.${how}${suffix}`,
+		params: {
+			...(named ? {} : { provider: entry.provider }),
+			...(entry.evidence === null ? {} : { evidence: entry.evidence }),
+		},
+	};
 }

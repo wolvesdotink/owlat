@@ -13,7 +13,12 @@ import { ref } from 'vue';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 
+import { createTestI18n } from '~/__tests__/i18n';
 import { useChannelOutbound, isProviderChannel } from '../useChannelOutbound';
+
+// Called outside a component here, so `useI18n` is stubbed with the real
+// catalog's `t` — the toast assertion below stays the English a sender reads.
+const { t } = createTestI18n().global;
 
 const SEND_CHANNEL = getFunctionName(api.channels.outbound.sendChannelMessage);
 const SEND_CHAT = getFunctionName(api.unifiedMessages.sendChatMessage);
@@ -56,6 +61,7 @@ beforeEach(() => {
 	vi.stubGlobal('useToast', () => ({
 		showToast: (message: string, kind: string) => void toasts.push([message, kind]),
 	}));
+	vi.stubGlobal('useI18n', () => ({ t }));
 });
 
 describe('isProviderChannel', () => {

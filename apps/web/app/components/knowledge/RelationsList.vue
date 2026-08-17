@@ -30,6 +30,20 @@ const emit = defineEmits<{
 }>();
 
 const { typeVariant, typeLabel } = useKnowledgeGraph();
+
+const { t, te } = useI18n();
+
+// Relation / entry-type labels are translated here: the shared presentation map
+// (`~/utils/knowledgeEntryTypes`) stays a plain constant, so a value the catalog
+// doesn't know still falls back to its raw label instead of a key path.
+const relationTypeLabel = (type: string) => {
+	const key = `components.knowledge.relationsList.relationTypes.${type}`;
+	return te(key) ? t(key) : relationLabel(type);
+};
+const entryTypeLabel = (type: string) => {
+	const key = `components.knowledge.relationsList.entryTypes.${type}`;
+	return te(key) ? t(key) : typeLabel(type);
+};
 </script>
 
 <template>
@@ -38,12 +52,14 @@ const { typeVariant, typeLabel } = useKnowledgeGraph();
 		<div>
 			<h4 class="text-sm font-medium text-text-secondary mb-3 flex items-center gap-2">
 				<Icon name="lucide:arrow-right" class="w-4 h-4" />
-				Outgoing Relations
-				<span class="text-text-tertiary font-normal">({{ outgoingRelations.length }})</span>
+				{{ t('components.knowledge.relationsList.outgoing') }}
+				<span class="text-text-tertiary font-normal">{{
+					t('components.knowledge.relationsList.count', { count: outgoingRelations.length })
+				}}</span>
 			</h4>
 
 			<div v-if="outgoingRelations.length === 0" class="text-sm text-text-tertiary py-3 pl-6">
-				No outgoing relations.
+				{{ t('components.knowledge.relationsList.noOutgoing') }}
 			</div>
 
 			<div v-else class="space-y-2">
@@ -58,7 +74,7 @@ const { typeVariant, typeLabel } = useKnowledgeGraph();
 						class="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
 						:class="relationBadgeClass(rel.relationType)"
 					>
-						{{ relationLabel(rel.relationType) }}
+						{{ relationTypeLabel(rel.relationType) }}
 					</span>
 
 					<NuxtLink
@@ -79,7 +95,7 @@ const { typeVariant, typeLabel } = useKnowledgeGraph();
 							'bg-error/10 text-error': typeVariant(entryMap?.[rel.toEntryId]?.entryType ?? '') === 'error',
 						}"
 					>
-						{{ typeLabel(entryMap?.[rel.toEntryId]?.entryType ?? '') }}
+						{{ entryTypeLabel(entryMap?.[rel.toEntryId]?.entryType ?? '') }}
 					</span>
 
 					<button
@@ -87,7 +103,7 @@ const { typeVariant, typeLabel } = useKnowledgeGraph();
 						type="button"
 						class="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
 						:class="entryMap?.[rel.toEntryId]?.entryType ? '' : 'ml-auto'"
-						aria-label="Remove relation"
+						:aria-label="t('components.knowledge.relationsList.removeRelation')"
 						@click="emit('remove', rel._id)"
 					>
 						<Icon name="lucide:x" class="w-3.5 h-3.5" />
@@ -100,12 +116,14 @@ const { typeVariant, typeLabel } = useKnowledgeGraph();
 		<div>
 			<h4 class="text-sm font-medium text-text-secondary mb-3 flex items-center gap-2">
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Incoming Relations
-				<span class="text-text-tertiary font-normal">({{ incomingRelations.length }})</span>
+				{{ t('components.knowledge.relationsList.incoming') }}
+				<span class="text-text-tertiary font-normal">{{
+					t('components.knowledge.relationsList.count', { count: incomingRelations.length })
+				}}</span>
 			</h4>
 
 			<div v-if="incomingRelations.length === 0" class="text-sm text-text-tertiary py-3 pl-6">
-				No incoming relations.
+				{{ t('components.knowledge.relationsList.noIncoming') }}
 			</div>
 
 			<div v-else class="space-y-2">
@@ -120,7 +138,7 @@ const { typeVariant, typeLabel } = useKnowledgeGraph();
 						class="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
 						:class="relationBadgeClass(rel.relationType)"
 					>
-						{{ relationLabel(rel.relationType) }}
+						{{ relationTypeLabel(rel.relationType) }}
 					</span>
 
 					<NuxtLink
@@ -141,7 +159,7 @@ const { typeVariant, typeLabel } = useKnowledgeGraph();
 							'bg-error/10 text-error': typeVariant(entryMap?.[rel.fromEntryId]?.entryType ?? '') === 'error',
 						}"
 					>
-						{{ typeLabel(entryMap?.[rel.fromEntryId]?.entryType ?? '') }}
+						{{ entryTypeLabel(entryMap?.[rel.fromEntryId]?.entryType ?? '') }}
 					</span>
 
 					<button
@@ -149,7 +167,7 @@ const { typeVariant, typeLabel } = useKnowledgeGraph();
 						type="button"
 						class="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
 						:class="entryMap?.[rel.fromEntryId]?.entryType ? '' : 'ml-auto'"
-						aria-label="Remove relation"
+						:aria-label="t('components.knowledge.relationsList.removeRelation')"
 						@click="emit('remove', rel._id)"
 					>
 						<Icon name="lucide:x" class="w-3.5 h-3.5" />

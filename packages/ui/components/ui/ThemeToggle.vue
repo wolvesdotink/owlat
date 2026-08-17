@@ -7,9 +7,11 @@
  *
  * Uses inline SVGs so the component works in apps that don't have @nuxt/icon.
  */
+import { useUiI18n } from '../../composables/useUiI18n';
 
 type ThemeMode = 'system' | 'light' | 'dark';
 
+const { t } = useUiI18n();
 const colorMode = useColorMode();
 
 const current = computed<ThemeMode>(() => {
@@ -21,13 +23,15 @@ const current = computed<ThemeMode>(() => {
 const label = computed(() => {
 	switch (current.value) {
 		case 'light':
-			return 'Light mode';
+			return t('ui.themeToggle.light');
 		case 'dark':
-			return 'Dark mode';
+			return t('ui.themeToggle.dark');
 		default:
-			return 'System preference';
+			return t('ui.themeToggle.system');
 	}
 });
+
+const ariaLabel = computed(() => t('ui.themeToggle.ariaLabel', { mode: label.value }));
 
 function cycle() {
 	const order: ThemeMode[] = ['system', 'light', 'dark'];
@@ -39,7 +43,7 @@ function cycle() {
 <template>
 	<button
 		:title="label"
-		:aria-label="`Theme: ${label}. Click to change.`"
+		:aria-label="ariaLabel"
 		@click="cycle"
 	>
 		<!-- lucide:monitor (System) -->

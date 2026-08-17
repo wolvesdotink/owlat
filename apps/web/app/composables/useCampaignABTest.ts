@@ -24,6 +24,8 @@ export interface ABTestConfig {
  * - Initialization from saved campaign data
  */
 export function useCampaignABTest() {
+	const { t } = useI18n();
+
 	// A/B Test state
 	const abTestEnabled = ref(false);
 	const abTestType = ref<ABTestType>('subject');
@@ -82,13 +84,13 @@ export function useCampaignABTest() {
 		if (!abTestEnabled.value) return null;
 
 		if (abTestType.value === 'subject' && !abVariantBSubject.value.trim()) {
-			return 'Variant B subject line is required';
+			return t('shared.useCampaignABTest.errors.variantBSubjectRequired');
 		}
 		if (abTestType.value === 'content' && !abVariantBTemplateId.value) {
-			return 'Variant B email template is required';
+			return t('shared.useCampaignABTest.errors.variantBTemplateRequired');
 		}
 		if (abSplitPercentage.value < 10 || abSplitPercentage.value > 50) {
-			return 'Split percentage must be between 10% and 50%';
+			return t('shared.useCampaignABTest.errors.splitPercentageRange');
 		}
 		return null;
 	};
