@@ -51,6 +51,8 @@ async function handleUndo() {
 	if (isQueuedSendToken(undoToken)) {
 		// Offline queue: undo = un-queue. Reopen the composer seeded from the
 		// queued payload so the message lands back in the editor, nothing lost.
+		// A null item means undo lost the race with the drain (the item is
+		// claimed or already sent) — the composable said so; just dismiss.
 		const item = await offlineOutbox.undoQueuedSend(undoToken);
 		dismiss();
 		if (item && mailboxId) {
@@ -62,6 +64,10 @@ async function handleUndo() {
 				prefillBcc: item.payload.bccAddresses,
 				prefillSubject: item.payload.subject,
 				prefillBodyHtml: item.payload.bodyHtml,
+				// The draft row is unreachable while offline, so the committed
+				// attachment refs ride in from the payload — without them a
+				// re-send would drop the files silently.
+				prefillAttachments: item.payload.attachments,
 			});
 		}
 		return;

@@ -19,12 +19,19 @@
  * `'draft'` (the send went through), the item resolves without re-sending.
  * Failed items are kept with `lastError` (never silently dropped) and
  * surfaced via {@link usePostboxOfflineOutbox.failedCount}.
+ *
+ * Undo vs drain — the two sides race whenever the connection returns while the
+ * "Queued" toast is still up. The drain CLAIMS an item (a `claimedAt` stamp,
+ * written before its first network call) and undo refuses a claimed item, so
+ * exactly one of the two wins: either the message is un-queued and never sent,
+ * or it is sent and no composer is handed back to send it a second time.
  */
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	getPostboxOfflineStore,
+	isOutboxClaimLive,
 	OfflineWriteError,
 	type OfflineComposePayload,
 	type OfflineOutboxItem,
@@ -190,7 +197,11 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 	/**
 	 * Un-queue a send by its synthetic undo token (the offline undo action).
 	 * Returns the removed item so the caller can reopen the composer seeded
-	 * from its payload, or `null` when it is gone (already drained/removed).
+	 * from its payload, or `null` when undo came too late — the item is gone
+	 * (already drained) or CLAIMED by an in-flight drain. Refusing a claimed
+	 * item is what keeps a reconnect landing inside the undo window from
+	 * sending the message and handing the user a composer to send it again.
+	 * Both refusals say so out loud rather than dismissing into silence.
 	 */
 	async function undoQueuedSend(undoToken: string): Promise<OfflineOutboxItem | null> {
 		const s = store();
@@ -198,7 +209,12 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 		if (!s || !parsed) return null;
 		const items = await s.listOutbox(parsed.ns);
 		const item = items.find((i) => i.id === parsed.itemId) ?? null;
-		if (item) await s.removeOutbox(parsed.ns, parsed.itemId);
+		if (!item || isOutboxClaimLive(item)) {
+			showToast(t('shared.postbox.offlineOutbox.alreadySent'), 'info');
+			await refreshCounts(parsed.ns);
+			return null;
+		}
+		await s.removeOutbox(parsed.ns, parsed.itemId);
 		await refreshCounts(parsed.ns);
 		return item;
 	}
@@ -278,11 +294,27 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 		for (const item of items) {
 			// Went offline again mid-drain: stop, the rest stays queued.
 			if (!isOnline.value) break;
+			let claimed: OfflineOutboxItem | null;
 			try {
-				await replayItem(ns, item);
+				// Claim BEFORE any network call: from here on undo refuses this
+				// item, so it cannot be un-queued into a composer while the very
+				// same message is being sent.
+				claimed = await s.claimOutbox(ns, item.id);
+			} catch (err) {
+				// The claim could not be written. Replaying unclaimed would reopen
+				// exactly the race the claim exists to close — leave it queued.
+				await s.markOutboxAttempt(ns, item.id, errorMessage(err)).catch(() => {});
+				continue;
+			}
+			// Undone (or claimed elsewhere) between the list read and here.
+			if (!claimed) continue;
+			try {
+				await replayItem(ns, claimed);
 				await s.removeOutbox(ns, item.id);
 			} catch (err) {
 				// Keep the item, with the honest reason — never silently drop it.
+				// markOutboxAttempt also drops the claim, so a failed item is
+				// undoable again.
 				await s.markOutboxAttempt(ns, item.id, errorMessage(err)).catch(() => {});
 			}
 		}

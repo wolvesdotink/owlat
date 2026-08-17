@@ -119,6 +119,7 @@ onBeforeUnmount(() => {
 					:prefill-bcc="composer.prefillBcc"
 					:prefill-subject="composer.prefillSubject"
 					:prefill-body-html="composer.prefillBodyHtml"
+					:prefill-attachments="composer.prefillAttachments"
 					:forward-attachments-from-message-id="composer.forwardAttachmentsFromMessageId"
 					:attach-pending-key="composer.attachPendingKey"
 					:reply-all-recipients="composer.replyAllRecipients"

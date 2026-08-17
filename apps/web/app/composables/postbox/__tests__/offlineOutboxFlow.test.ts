@@ -4,11 +4,14 @@
  *
  *   - an offline send enqueues the FULL payload and returns a synthetic
  *     {undoToken, sendAt} (composer emit contract unchanged, no network),
- *   - undo while offline un-queues the item,
+ *   - undo while offline un-queues the item, attachment refs included, so the
+ *     reopened composer can re-queue it with nothing dropped,
  *   - the reconnect drain replays create → update → send per item, in queue
  *     order, threading the outbox item id as the draft clientNonce,
  *   - a partial drain keeps failed items (with lastError) visible,
- *   - rapid reconnect flaps never double-send (single-flight drain),
+ *   - rapid reconnect flaps never double-send (single-flight drain), and
+ *     neither does an undo racing a reconnect: the drain CLAIMS an item before
+ *     the first network call and undo refuses a claimed item,
  *   - and the ONLINE path is byte-identical to today (same mutations, same
  *     args, outbox untouched).
  *
@@ -69,20 +72,29 @@ interface FakeItem {
 		mailboxId: string;
 		subject: string;
 		toAddresses: string[];
+		attachments: Array<{
+			storageId: string;
+			filename: string;
+			contentType: string;
+			size: number;
+		}>;
 	};
 	queuedAt: number;
 	attempts: number;
 	lastError?: string;
+	claimedAt?: number;
 }
 
 const fakeOutbox = {
 	items: new Map<string, FakeItem[]>(), // ns -> ordered items
 	nextId: 0,
 	failEnqueue: false,
+	failClaim: false,
 	reset() {
 		this.items.clear();
 		this.nextId = 0;
 		this.failEnqueue = false;
+		this.failClaim = false;
 	},
 	list(ns: string): FakeItem[] {
 		return this.items.get(ns) ?? [];
@@ -93,53 +105,73 @@ class FakeOfflineWriteError extends Error {
 	isQuotaExceeded = true;
 }
 
-vi.mock('~/utils/postboxOfflineStore', () => ({
-	OfflineWriteError: FakeOfflineWriteError,
-	getPostboxOfflineStore: () => ({
-		async enqueueOutbox(ns: string, payload: FakeItem['payload']): Promise<FakeItem> {
-			if (fakeOutbox.failEnqueue) {
-				throw new FakeOfflineWriteError('This device is out of storage.');
-			}
-			const item: FakeItem = {
-				id: `item-${++fakeOutbox.nextId}`,
-				payload,
-				// Monotonic so list order is deterministic under fast enqueues.
-				queuedAt: fakeOutbox.nextId,
-				attempts: 0,
-			};
-			fakeOutbox.items.set(ns, [...fakeOutbox.list(ns), item]);
-			return item;
-		},
-		async listOutbox(ns: string): Promise<FakeItem[]> {
-			return [...fakeOutbox.list(ns)];
-		},
-		async removeOutbox(ns: string, id: string): Promise<void> {
-			fakeOutbox.items.set(
-				ns,
-				fakeOutbox.list(ns).filter((i) => i.id !== id)
-			);
-		},
-		async markOutboxAttempt(ns: string, id: string, lastError?: string): Promise<FakeItem | null> {
-			const item = fakeOutbox.list(ns).find((i) => i.id === id);
-			if (!item) return null;
-			item.attempts += 1;
-			if (lastError === undefined) delete item.lastError;
-			else item.lastError = lastError;
-			return item;
-		},
-		// Cache-side API (unused here, present so the cache composable loads).
-		async saveThreads() {},
-		async loadThreads() {
-			return [];
-		},
-		async saveBody() {},
-		async loadBody() {
-			return null;
-		},
-		async clear() {},
-		writesDisabled: false,
-	}),
-}));
+// The claim helpers (`isOutboxClaimLive`, the TTL) are the REAL ones — the undo
+// path and this fake store must agree on what "claimed" means, and a divergent
+// re-implementation here would test nothing.
+vi.mock('~/utils/postboxOfflineStore', async (importActual) => {
+	const actual = await importActual<typeof import('~/utils/postboxOfflineStore')>();
+	return {
+		...actual,
+		OfflineWriteError: FakeOfflineWriteError,
+		getPostboxOfflineStore: () => ({
+			async enqueueOutbox(ns: string, payload: FakeItem['payload']): Promise<FakeItem> {
+				if (fakeOutbox.failEnqueue) {
+					throw new FakeOfflineWriteError('This device is out of storage.');
+				}
+				const item: FakeItem = {
+					id: `item-${++fakeOutbox.nextId}`,
+					payload,
+					// Monotonic so list order is deterministic under fast enqueues.
+					queuedAt: fakeOutbox.nextId,
+					attempts: 0,
+				};
+				fakeOutbox.items.set(ns, [...fakeOutbox.list(ns), item]);
+				return item;
+			},
+			async listOutbox(ns: string): Promise<FakeItem[]> {
+				return [...fakeOutbox.list(ns)];
+			},
+			async removeOutbox(ns: string, id: string): Promise<void> {
+				fakeOutbox.items.set(
+					ns,
+					fakeOutbox.list(ns).filter((i) => i.id !== id)
+				);
+			},
+			async claimOutbox(ns: string, id: string): Promise<FakeItem | null> {
+				if (fakeOutbox.failClaim) throw new FakeOfflineWriteError('claim write failed');
+				const item = fakeOutbox.list(ns).find((i) => i.id === id);
+				if (!item || actual.isOutboxClaimLive(item)) return null;
+				item.claimedAt = Date.now();
+				return item;
+			},
+			async markOutboxAttempt(
+				ns: string,
+				id: string,
+				lastError?: string
+			): Promise<FakeItem | null> {
+				const item = fakeOutbox.list(ns).find((i) => i.id === id);
+				if (!item) return null;
+				item.attempts += 1;
+				// The attempt is over — hand the claim back (real store contract).
+				delete item.claimedAt;
+				if (lastError === undefined) delete item.lastError;
+				else item.lastError = lastError;
+				return item;
+			},
+			// Cache-side API (unused here, present so the cache composable loads).
+			async saveThreads() {},
+			async loadThreads() {
+				return [];
+			},
+			async saveBody() {},
+			async loadBody() {
+				return null;
+			},
+			async clear() {},
+			writesDisabled: false,
+		}),
+	};
+});
 
 // ── Scripted Convex backend behind both client seams ─────────────────────
 interface BackendCall {
@@ -347,9 +379,152 @@ describe('offline undo', () => {
 		expect(backend.calls).toHaveLength(0);
 	});
 
-	it('is a clean no-op when the item is already gone', async () => {
+	it('says so instead of pretending, when the item is already gone', async () => {
 		const outbox = await makeOutbox();
 		expect(await outbox.undoQueuedSend('outbox:mbx-1:item-99')).toBeNull();
+		expect(toasts).toContain(i18n.global.t('shared.postbox.offlineOutbox.alreadySent'));
+	});
+
+	it('carries the attachment refs back into the composer, and into a re-send', async () => {
+		const { usePostboxCompose } = await import('../usePostboxCompose');
+		const attachment = {
+			storageId: 'st-1',
+			filename: 'invoice.pdf',
+			contentType: 'application/pdf',
+			size: 4096,
+		};
+
+		// Attachment refs only exist once committed to a server draft, so the
+		// realistic shape is a draft that went offline before its send.
+		const composer = usePostboxCompose({
+			mailboxId: 'mbx-1' as never,
+			draftId: 'draft-7' as never,
+		});
+		composer.toAddresses.value = ['rcpt@example.com'];
+		composer.subject.value = 'With the invoice';
+		composer.attachments.value = [attachment];
+		goOffline();
+		const { undoToken } = await composer.send();
+		expect(fakeOutbox.list('mbx-1')[0]!.payload.attachments).toEqual([attachment]);
+
+		const outbox = await makeOutbox();
+		const item = await outbox.undoQueuedSend(undoToken);
+
+		// Exactly the seed PostboxUndoSendToast hands stack.open().
+		const reopened = usePostboxCompose({
+			mailboxId: 'mbx-1' as never,
+			draftId: item!.payload.draftId as never,
+			prefillTo: item!.payload.toAddresses,
+			prefillSubject: item!.payload.subject,
+			prefillAttachments: item!.payload.attachments,
+		});
+		expect(reopened.attachments.value).toEqual([attachment]);
+
+		// The round trip is lossless: re-queuing keeps the files attached, so
+		// the drain sends the message the user actually composed.
+		await reopened.send();
+		expect(fakeOutbox.list('mbx-1')[0]!.payload.attachments).toEqual([attachment]);
+	});
+});
+
+describe('undo racing the drain', () => {
+	/**
+	 * The reconnect lands while the "Queued — sends when you're back online"
+	 * toast is still up. Without a claim, undo reads the item, un-queues it and
+	 * reopens the composer while the drain is already sending it — the user then
+	 * sends the same message a second time.
+	 */
+	it('refuses undo once the drain has claimed the item — no double-send', async () => {
+		const composer = await makeComposer({ subject: 'Reconnect beat the click' });
+		goOffline();
+		const { undoToken } = await composer.send();
+
+		let releaseSend!: () => void;
+		backend.sendGate = new Promise<void>((resolve) => {
+			releaseSend = resolve;
+		});
+
+		const outbox = await makeOutbox();
+		goOnline();
+		const draining = outbox.drain();
+		// Park the drain inside drafts.send — claimed, on the wire, not done.
+		await vi.waitUntil(() => backend.callsFor('drafts.send').length === 1);
+
+		// The Undo click lands in that window.
+		expect(await outbox.undoQueuedSend(undoToken)).toBeNull();
+		expect(toasts).toContain(i18n.global.t('shared.postbox.offlineOutbox.alreadySent'));
+
+		releaseSend();
+		backend.sendGate = null;
+		await draining;
+
+		// Sent exactly once, and no composer was handed back to send it again.
+		expect(backend.callsFor('drafts.send')).toHaveLength(1);
+		expect(fakeOutbox.list('mbx-1')).toHaveLength(0);
+	});
+
+	it('still un-queues an item the drain has not claimed yet', async () => {
+		const composer = await makeComposer({ subject: 'First' });
+		goOffline();
+		await composer.send();
+		composer.subject.value = 'Second';
+		const { undoToken: secondToken } = await composer.send();
+
+		let releaseSend!: () => void;
+		backend.sendGate = new Promise<void>((resolve) => {
+			releaseSend = resolve;
+		});
+
+		const outbox = await makeOutbox();
+		goOnline();
+		const draining = outbox.drain();
+		await vi.waitUntil(() => backend.callsFor('drafts.send').length === 1);
+
+		// 'Second' is still unclaimed — undo wins, and the drain must notice.
+		const removed = await outbox.undoQueuedSend(secondToken);
+		expect(removed?.payload.subject).toBe('Second');
+
+		releaseSend();
+		backend.sendGate = null;
+		await draining;
+
+		expect(backend.callsFor('drafts.update').map((c) => c.args['subject'])).toEqual(['First']);
+		expect(backend.callsFor('drafts.send')).toHaveLength(1);
+		expect(fakeOutbox.list('mbx-1')).toHaveLength(0);
+	});
+
+	it('hands the claim back when the attempt fails, so undo works again', async () => {
+		const composer = await makeComposer({ subject: 'Poisoned' });
+		goOffline();
+		const { undoToken } = await composer.send();
+		backend.failUpdateForSubjects.add('Poisoned');
+
+		const outbox = await makeOutbox();
+		goOnline();
+		await outbox.drain();
+		expect(fakeOutbox.list('mbx-1')[0]!.lastError).toBe('scan rejected this message');
+
+		const removed = await outbox.undoQueuedSend(undoToken);
+		expect(removed?.payload.subject).toBe('Poisoned');
+		expect(fakeOutbox.list('mbx-1')).toHaveLength(0);
+	});
+
+	it('never sends an item it could not claim', async () => {
+		const composer = await makeComposer({ subject: 'Unclaimable' });
+		goOffline();
+		await composer.send();
+		fakeOutbox.failClaim = true;
+
+		const outbox = await makeOutbox();
+		goOnline();
+		await outbox.drain();
+
+		// Nothing on the wire, and the item is kept with the honest reason.
+		expect(backend.calls).toHaveLength(0);
+		const [item] = fakeOutbox.list('mbx-1');
+		expect(item?.attempts).toBe(1);
+		expect(item?.lastError).toBe('claim write failed');
+		expect(outbox.failedCount.value).toBe(1);
 	});
 });
 

@@ -11081,6 +11081,7 @@
 		},
 		"postbox": {
 			"offlineOutbox": {
+				"alreadySent": "Zu spät zum Rückgängigmachen — diese Nachricht ist bereits unterwegs.",
 				"outOfStorage": "Der Speicher dieses Geräts ist voll — die Nachricht konnte nicht in die Warteschlange gestellt werden.",
 				"storageUnavailable": "Der Offline-Speicher ist auf diesem Gerät nicht verfügbar — die Nachricht konnte nicht in die Warteschlange gestellt werden."
 			},

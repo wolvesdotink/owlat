@@ -118,6 +118,25 @@ export interface OfflineOutboxItem {
 	queuedAt: number;
 	attempts: number;
 	lastError?: string;
+	/**
+	 * When the drain took ownership of this item for a send attempt (see
+	 * {@link PostboxOfflineStore.claimOutbox}). While the claim is live the item
+	 * is on its way to the wire and must not be un-queued;
+	 * {@link PostboxOfflineStore.markOutboxAttempt} clears it again on failure.
+	 */
+	claimedAt?: number;
+}
+
+/**
+ * How long a claim stamp is honoured. A tab killed mid-send would otherwise
+ * leave its item claimed forever — undrainable AND un-undoable — so an old
+ * stamp expires. Comfortably longer than a create → update → send round trip.
+ */
+export const OUTBOX_CLAIM_TTL_MS = 60_000;
+
+/** True while `item` is claimed by a send attempt that has not yet expired. */
+export function isOutboxClaimLive(item: OfflineOutboxItem, now: number = Date.now()): boolean {
+	return item.claimedAt !== undefined && now - item.claimedAt < OUTBOX_CLAIM_TTL_MS;
 }
 
 /**
@@ -319,9 +338,29 @@ export class PostboxOfflineStore {
 	}
 
 	/**
-	 * Record a delivery attempt on a queued item: increments `attempts` and
-	 * sets `lastError` (or clears it when omitted). Returns the updated item,
-	 * or `null` when the item no longer exists (already sent or removed).
+	 * Take ownership of a queued item for a send attempt, stamping `claimedAt`.
+	 * Returns the claimed item, or `null` when it is gone (undone or drained) or
+	 * held by a live claim — in both cases the caller must NOT send it. The
+	 * drain claims BEFORE its first network call, so an undo landing in the send
+	 * window loses the race instead of un-queueing a message already on the wire.
+	 *
+	 * Not a cross-tab mutex: the read-modify-write spans two IndexedDB
+	 * transactions. It orders undo against the (single-flight, per-tab) drain,
+	 * which is where the double-send was reachable.
+	 */
+	async claimOutbox(ns: string, id: string): Promise<OfflineOutboxItem | null> {
+		const existing = await this.driver.get<OfflineOutboxItem>(outboxKey(ns, id));
+		if (existing === undefined || isOutboxClaimLive(existing)) return null;
+		const claimed: OfflineOutboxItem = { ...existing, claimedAt: Date.now() };
+		await this.mustSet(outboxKey(ns, id), claimed);
+		return claimed;
+	}
+
+	/**
+	 * Record a delivery attempt on a queued item: increments `attempts`, sets
+	 * `lastError` (or clears it when omitted), and releases any claim — the
+	 * attempt is over, so the item is undoable (and re-drainable) again. Returns
+	 * the updated item, or `null` when it no longer exists (sent or removed).
 	 */
 	async markOutboxAttempt(
 		ns: string,
@@ -331,6 +370,7 @@ export class PostboxOfflineStore {
 		const existing = await this.driver.get<OfflineOutboxItem>(outboxKey(ns, id));
 		if (existing === undefined) return null;
 		const next: OfflineOutboxItem = { ...existing, attempts: existing.attempts + 1 };
+		delete next.claimedAt;
 		if (lastError === undefined) delete next.lastError;
 		else next.lastError = lastError;
 		await this.mustSet(outboxKey(ns, id), next);

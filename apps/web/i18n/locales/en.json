@@ -11081,6 +11081,7 @@
 		},
 		"postbox": {
 			"offlineOutbox": {
+				"alreadySent": "Too late to undo — that message is already on its way.",
 				"outOfStorage": "This device is out of storage — the message could not be queued.",
 				"storageUnavailable": "Offline storage is unavailable on this device — the message could not be queued."
 			},

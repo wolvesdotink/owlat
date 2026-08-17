@@ -3,9 +3,12 @@ import {
 	PostboxOfflineStore,
 	OfflineWriteError,
 	upgradeOfflineDb,
+	isOutboxClaimLive,
 	DB_VERSION,
+	OUTBOX_CLAIM_TTL_MS,
 	type OfflineComposePayload,
 	type OfflineKvDriver,
+	type OfflineOutboxItem,
 } from '../postboxOfflineStore';
 
 /**
@@ -140,6 +143,43 @@ describe('offline outbox', () => {
 
 		// A missing id (already sent / removed) is a null, not a throw.
 		expect(await store.markOutboxAttempt(MBX, 'gone')).toBeNull();
+	});
+
+	it('claimOutbox gives exactly one owner, and a failed attempt hands it back', async () => {
+		const store = new PostboxOfflineStore(memoryDriver());
+		const item = await store.enqueueOutbox(MBX, payload());
+
+		const claimed = await store.claimOutbox(MBX, item.id);
+		expect(claimed?.claimedAt).toEqual(expect.any(Number));
+		expect(isOutboxClaimLive(claimed!)).toBe(true);
+		// The claim is persisted, so undo reads it too — and nobody else gets it.
+		expect(isOutboxClaimLive((await store.listOutbox(MBX))[0]!)).toBe(true);
+		expect(await store.claimOutbox(MBX, item.id)).toBeNull();
+
+		// The attempt failed: the claim is released with the error, so the item
+		// can be drained again — and undone in the meantime.
+		const failed = await store.markOutboxAttempt(MBX, item.id, 'network unreachable');
+		expect(failed?.claimedAt).toBeUndefined();
+		expect(isOutboxClaimLive(failed!)).toBe(false);
+		expect(await store.claimOutbox(MBX, item.id)).not.toBeNull();
+
+		// A missing id (already sent / undone) is a null, not a throw.
+		expect(await store.claimOutbox(MBX, 'gone')).toBeNull();
+	});
+
+	it('a stale claim expires so a tab that died mid-send cannot strand mail', async () => {
+		const map = new Map<string, unknown>();
+		const store = new PostboxOfflineStore(memoryDriver(map));
+		const item = await store.enqueueOutbox(MBX, payload());
+		await store.claimOutbox(MBX, item.id);
+
+		// Age the stamp past the TTL, as an abandoned claim would age on its own.
+		const [key, stored] = [...map.entries()][0] as [string, OfflineOutboxItem];
+		map.set(key, { ...stored, claimedAt: Date.now() - OUTBOX_CLAIM_TTL_MS - 1 });
+
+		expect(isOutboxClaimLive(map.get(key) as OfflineOutboxItem)).toBe(false);
+		const reclaimed = await store.claimOutbox(MBX, item.id);
+		expect(reclaimed?.id).toBe(item.id);
 	});
 
 	it('quota failure throws OfflineWriteError instead of swallowing', async () => {

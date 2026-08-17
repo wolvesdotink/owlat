@@ -18,7 +18,10 @@ import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { OperationError } from '@owlat/shared/operationError';
 import type { OfflineComposePayload } from '~/utils/postboxOfflineStore';
-import { usePostboxComposeAttachments } from './usePostboxComposeAttachments';
+import {
+	usePostboxComposeAttachments,
+	type ComposerAttachment,
+} from './usePostboxComposeAttachments';
 import { usePostboxComposeHydration } from './usePostboxComposeHydration';
 import { usePostboxComposeSignatures } from './usePostboxComposeSignatures';
 import { usePostboxOfflineOutbox } from './usePostboxOfflineOutbox';
@@ -47,6 +50,8 @@ interface DraftSeed {
 	prefillBcc?: string[];
 	prefillSubject?: string;
 	prefillBodyHtml?: string;
+	/** Attachment refs already committed to `draftId` (see ComposerSpec). */
+	prefillAttachments?: ComposerAttachment[];
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
 	attachPendingKey?: string;
 	initialMode?: ComposerMode;
@@ -137,6 +142,14 @@ export function usePostboxCompose(seed: DraftSeed) {
 		attachPendingKey: seed.attachPendingKey,
 		forwardAttachmentsFromMessageId: seed.forwardAttachmentsFromMessageId,
 	});
+
+	// Reopening an offline-queued send (undo un-queued it) carries the payload's
+	// committed attachment refs: while offline the draft row is unreachable, so
+	// hydration cannot restore them and a re-send would re-queue a payload with
+	// its attachments silently dropped. A ref only exists once it was committed
+	// to a server draft, so such a seed always carries that `draftId` too — the
+	// re-send reuses the row the files already live on.
+	if (seed.prefillAttachments?.length) attachments.value = [...seed.prefillAttachments];
 
 	// Reopen an existing draft: hydrate the editor fields from the saved row.
 	if (seed.draftId) {
