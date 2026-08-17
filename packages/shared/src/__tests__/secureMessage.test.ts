@@ -368,6 +368,171 @@ describe('structural gates reject quoted / merely-mentioned armor', () => {
 	});
 });
 
+/**
+ * The detached-signature corroboration is STRUCTURAL, not armor-based: the
+ * scraped `application/pgp-signature` content-type counts only from a genuine
+ * MIME header position inside a `multipart/signed` entity. Requiring a literal
+ * armor line instead (the first cut at the anti-spoof gate) silently excluded
+ * real RFC 3156 mail whose signature part is transfer-encoded — no armor line
+ * exists in its raw text at all — so ingest never verified those messages and
+ * the reader was stuck on the neutral "signed · not verified" badge.
+ */
+describe('raw detached-signature corroboration is structural', () => {
+	const ARMOR = [
+		'-----BEGIN PGP SIGNATURE-----',
+		'',
+		'iQEcBAEBCgAGBQJhZm9vAAoJEExampleSignatureBytes0123456789abcdef',
+		'=AbCd',
+		'-----END PGP SIGNATURE-----',
+	].join('\r\n');
+
+	/** RFC 2045 §6.7 as a conforming encoder emits it for 7-bit ASCII armor. */
+	function quotedPrintable(text: string): string[] {
+		return text.split('\r\n').map((line) => line.replace(/=/g, '=3D'));
+	}
+
+	/** Compose an RFC 3156 message whose signature part carries `encoding`. */
+	function signedRaw(encoding: '7bit' | 'base64' | 'quoted-printable', boundary = 'sig-b'): string {
+		const body =
+			encoding === 'base64'
+				? (Buffer.from(ARMOR, 'utf8')
+						.toString('base64')
+						.match(/.{1,76}/g) ?? [])
+				: encoding === 'quoted-printable'
+					? quotedPrintable(ARMOR)
+					: ARMOR.split('\r\n');
+		return [
+			'From: alice@sender.test',
+			'To: bob@example.com',
+			'Subject: signed',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/signed; micalg=pgp-sha256;',
+			`\tprotocol="application/pgp-signature"; boundary="${boundary}"`,
+			'',
+			`--${boundary}`,
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Signed content.',
+			`--${boundary}`,
+			'Content-Type: application/pgp-signature; name="signature.asc"',
+			...(encoding === '7bit' ? [] : [`Content-Transfer-Encoding: ${encoding}`]),
+			'',
+			...body,
+			`--${boundary}--`,
+			'',
+		].join('\r\n');
+	}
+
+	it('a base64-encoded signature part classifies — no armor line survives encoding', () => {
+		const raw = signedRaw('base64');
+		// The premise: the armor is genuinely absent from the raw text.
+		expect(raw).not.toContain('-----BEGIN PGP SIGNATURE-----');
+		expect(classifyRawSecureMessage(raw)).toBe('pgp-signed');
+		expect(isSignedPgpMime(raw)).toBe(true);
+	});
+
+	it('a quoted-printable signature part classifies (its checksum line is escaped)', () => {
+		const raw = signedRaw('quoted-printable');
+		expect(raw).toContain('=3DAbCd');
+		expect(isSignedPgpMime(raw)).toBe(true);
+	});
+
+	it('the 7bit/armored detached case still classifies exactly as before', () => {
+		expect(isSignedPgpMime(signedRaw('7bit'))).toBe(true);
+	});
+
+	it('the same part header in BODY position does not corroborate', () => {
+		// Structurally a multipart/signed, but the "signature part" header lines sit
+		// in the first part's BODY — no boundary delimiter opens them.
+		const raw = [
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/signed; protocol="application/pgp-signature";',
+			'\tboundary="sig-b"',
+			'',
+			'--sig-b',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'A second part would say:',
+			'Content-Type: application/pgp-signature; name="signature.asc"',
+			'',
+			'--sig-b--',
+			'',
+		].join('\r\n');
+		expect(classifyRawSecureMessage(raw)).toBe('none');
+	});
+
+	it('a plaintext body pasting a whole signed message inline does not corroborate', () => {
+		// Every line of a real multipart/signed message, unquoted, in the body of a
+		// text/plain one: the pasted `Content-Type` lines are body text here, and
+		// the pasted boundary was never declared by a header of THIS message.
+		const raw = [
+			'From: bob@example.com',
+			'Subject: what does this mean?',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'My mailer produced this and I cannot read it:',
+			'',
+			...signedRaw('7bit').split('\r\n'),
+		].join('\r\n');
+		expect(classifyRawSecureMessage(raw)).toBe('none');
+		expect(isSignedPgpMime(raw)).toBe(false);
+	});
+
+	it('a quoted signed message does not corroborate (reply quoting)', () => {
+		const raw = [
+			'From: bob@example.com',
+			'Subject: Re: signed',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'On Monday, alice wrote:',
+			...quoted(signedRaw('7bit').replace(/\r\n/g, '\n')).split('\n'),
+		].join('\r\n');
+		expect(classifyRawSecureMessage(raw)).toBe('none');
+	});
+
+	it('an undeclared boundary opens nothing — the delimiter must match a header', () => {
+		const raw = [
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'--sig-b',
+			'Content-Type: application/pgp-signature; name="signature.asc"',
+			'',
+			...ARMOR.split('\r\n'),
+			'--sig-b--',
+			'',
+		].join('\r\n');
+		expect(isSignedPgpMime(raw)).toBe(false);
+	});
+
+	it('a multipart/signed carrying a DIFFERENT protocol does not corroborate the PGP part', () => {
+		const raw = signedRaw('7bit').replace(
+			'protocol="application/pgp-signature"',
+			'protocol="application/pkcs7-signature"'
+		);
+		// The PGP gate stays shut; the S/MIME protocol the outer header names is
+		// what the message is then classified by (the PGP checks run first, so a
+		// corroborated pgp-signature part would have won).
+		expect(isSignedPgpMime(raw)).toBe(false);
+		expect(classifyRawSecureMessage(raw)).toBe('smime-signed');
+	});
+
+	it('an omitted protocol parameter is tolerated (the part header is the evidence)', () => {
+		// RFC 3156 §5 requires the parameter, but mailers omit it; mail-canon can
+		// still extract and verify such a message, so the gate must not skip it.
+		const raw = signedRaw('base64').replace('protocol="application/pgp-signature"; ', '');
+		expect(isSignedPgpMime(raw)).toBe(true);
+	});
+
+	it('the client attachment classifier is untouched by the raw corroboration', () => {
+		expect(
+			classifySecureMessage({
+				attachments: [{ contentType: 'application/pgp-signature', filename: 'signature.asc' }],
+				textBody: 'Signed content.',
+			})
+		).toBe('pgp-signed');
+	});
+});
+
 describe('extractArmoredCiphertext', () => {
 	const ARMORED = [
 		'-----BEGIN PGP MESSAGE-----',

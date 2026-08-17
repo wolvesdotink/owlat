@@ -32,6 +32,7 @@ const PGP_MESSAGE_FOOTER = '-----END PGP MESSAGE-----';
 const PGP_SIGNED_HEADER = '-----BEGIN PGP SIGNED MESSAGE-----';
 const PGP_SIGNATURE_HEADER = '-----BEGIN PGP SIGNATURE-----';
 const PGP_SIGNATURE_FOOTER = '-----END PGP SIGNATURE-----';
+const PGP_SIGNATURE_TYPE = 'application/pgp-signature';
 
 /**
  * Index of the first `marker` that OPENS a line of its own (RFC 4880 §6.2 puts
@@ -78,7 +79,7 @@ export function classifySecureMessage(input: SecureMessageInput): SecureMessageC
 
 	// RFC 3156 (PGP/MIME) parts.
 	if (has('application/pgp-encrypted')) return 'pgp-encrypted';
-	if (has('application/pgp-signature')) return 'pgp-signed';
+	if (has(PGP_SIGNATURE_TYPE)) return 'pgp-signed';
 	// S/MIME (PKCS#7) parts.
 	if (has('pkcs7-signature') || has('x-pkcs7-signature')) return 'smime-signed';
 	if (has('pkcs7-mime') || has('x-pkcs7-mime')) return 'smime-encrypted';
@@ -120,14 +121,150 @@ export function classifyRawSecureMessage(raw: string): SecureMessageClass {
  * MIME part header. The scrape cannot tell a part header from a body line that
  * merely READS like one (a quoted spec excerpt, a bug report), and the reader's
  * attachment list — the client twin's input — can never hold such a line. So a
- * detached-signature part only counts when the ASCII-armored signature RFC 3156
- * §5 requires it to carry is actually present, unquoted, at a line start;
- * otherwise a plaintext body naming the content type would classify as signed
- * and earn the warn-tone "signature invalid" badge.
+ * detached-signature part only counts when the RFC 3156 §5 STRUCTURE that must
+ * carry it is really there ({@link hasDetachedSignatureStructure}); otherwise a
+ * plaintext body naming the content type would classify as signed and earn the
+ * warn-tone "signature invalid" badge.
+ *
+ * The corroboration is structural rather than armor-based on purpose: the armor
+ * of a detached signature part is subject to `Content-Transfer-Encoding` like
+ * any other part body, so real signed mail that ships its `signature.asc`
+ * base64- or quoted-printable-encoded carries NO literal armor line at all —
+ * demanding one skipped those messages at the ingest gate and left them stuck
+ * on the neutral "signed · not verified" badge.
  */
 function isCorroboratedRawPartType(contentType: string, raw: string): boolean {
-	if (!contentType.toLowerCase().includes('application/pgp-signature')) return true;
-	return hasArmorLine(raw, PGP_SIGNATURE_HEADER);
+	if (!contentType.toLowerCase().includes(PGP_SIGNATURE_TYPE)) return true;
+	return hasDetachedSignatureStructure(raw);
+}
+
+/**
+ * Whether `raw` carries a real RFC 3156 §5 detached-signature structure: a
+ * `multipart/signed` content-type sitting in a genuine MIME header POSITION,
+ * and an `application/pgp-signature` part header inside the header block that
+ * this very multipart's boundary delimiter opens.
+ *
+ * Header position is what makes this anti-spoof. A header block is either the
+ * message's own (line 0) or the one a boundary delimiter of an
+ * ALREADY-DECLARED boundary opens (RFC 2046 §5.1.1: `--boundary` at column 0,
+ * transport padding aside) — part BODIES are skipped wholesale. So neither a
+ * body that names the content type, nor one quoting (`> `) a signed message's
+ * source, nor even one pasting a whole raw `multipart/signed` message inline
+ * can reach a header position: the pasted structure's own `Content-Type` lines
+ * are body text of the message that carries them.
+ *
+ * Deliberately cheap and line-anchored — `@owlat/shared` stays dependency-free,
+ * so this never grows into a MIME parser. The byte-exact parse that
+ * verification needs lives in `@owlat/mail-canon`'s rfc3156 module, behind this
+ * gate.
+ */
+function hasDetachedSignatureStructure(raw: string): boolean {
+	const lines = raw.replace(/\r\n/g, '\n').split('\n');
+	// Boundaries may only be honoured once DECLARED by a header we already read.
+	const boundaries = new Set<string>();
+	const signedBoundaries = new Set<string>();
+
+	let at = 0;
+	// The boundary whose delimiter opened the block about to be read; null for
+	// the message's own header block, which can never hold a signature part.
+	let openedBy: string | null = null;
+	while (at < lines.length) {
+		const block = readHeaderBlock(lines, at);
+		for (const value of contentTypeValues(block.headers)) {
+			if (openedBy !== null && signedBoundaries.has(openedBy) && isPgpSignaturePart(value)) {
+				return true;
+			}
+			const boundary = mimeParameter(value, 'boundary');
+			if (!boundary) continue;
+			boundaries.add(boundary);
+			if (isPgpSignedMultipart(value)) signedBoundaries.add(boundary);
+		}
+
+		// Skip this part's body: the next header block starts after the next
+		// delimiter line of a boundary declared above.
+		at = block.end;
+		openedBy = null;
+		while (at < lines.length) {
+			const boundary = delimiterBoundary(lines[at] ?? '', boundaries);
+			at++;
+			if (boundary !== null) {
+				openedBy = boundary;
+				break;
+			}
+		}
+		if (openedBy === null) return false;
+	}
+	return false;
+}
+
+/**
+ * Read one MIME header block starting at `from`: the unfolded header lines up
+ * to the blank line that ends them (RFC 5322 §2.2.3 continuation lines are
+ * joined onto their header), plus the index of the first body line.
+ */
+function readHeaderBlock(lines: string[], from: number): { headers: string[]; end: number } {
+	const headers: string[] = [];
+	let at = from;
+	for (; at < lines.length; at++) {
+		const line = lines[at] ?? '';
+		if (line === '') return { headers, end: at + 1 };
+		const last = headers.length - 1;
+		if (last >= 0 && /^[ \t]/.test(line)) headers[last] += ` ${line.trim()}`;
+		else headers.push(line);
+	}
+	return { headers, end: at };
+}
+
+/** The `Content-Type` values among a block's (already unfolded) header lines. */
+function contentTypeValues(headers: string[]): string[] {
+	const values: string[] = [];
+	for (const header of headers) {
+		const colon = header.indexOf(':');
+		if (colon < 0) continue;
+		if (header.slice(0, colon).trim().toLowerCase() !== 'content-type') continue;
+		const value = header.slice(colon + 1).trim();
+		if (value) values.push(value);
+	}
+	return values;
+}
+
+/** A (possibly quoted) MIME parameter value off a `Content-Type` value. */
+function mimeParameter(value: string, name: string): string | undefined {
+	const match = new RegExp(`;\\s*${name}\\s*=\\s*(?:"([^"]*)"|([^;\\s]+))`, 'i').exec(value);
+	if (!match) return undefined;
+	return (match[1] ?? match[2] ?? '').trim() || undefined;
+}
+
+/**
+ * Whether a `Content-Type` value opens a PGP `multipart/signed` entity. RFC
+ * 3156 §5 REQUIRES `protocol="application/pgp-signature"`; a missing parameter
+ * is tolerated (mailers do omit it, and the part's own content-type is the real
+ * evidence) but one naming a DIFFERENT protocol — S/MIME's pkcs7-signature —
+ * is not.
+ */
+function isPgpSignedMultipart(value: string): boolean {
+	if (!/^multipart\/signed\b/i.test(value)) return false;
+	const protocol = mimeParameter(value, 'protocol');
+	return protocol === undefined || protocol.toLowerCase() === PGP_SIGNATURE_TYPE;
+}
+
+/** Whether a `Content-Type` value declares the detached-signature part itself. */
+function isPgpSignaturePart(value: string): boolean {
+	return new RegExp(`^${PGP_SIGNATURE_TYPE}\\b`, 'i').test(value);
+}
+
+/**
+ * The boundary a line delimits, when it is a delimiter line for one of the
+ * `boundaries` declared so far — `--boundary` or the close-delimiter
+ * `--boundary--`, at column 0, transport padding (WSP) aside (RFC 2046 §5.1.1).
+ * Column 0 is what keeps a quoted (`> --b`) or indented copy out.
+ */
+function delimiterBoundary(line: string, boundaries: Set<string>): string | null {
+	if (!line.startsWith('--')) return null;
+	const rest = line.slice(2).replace(/[ \t\r]+$/, '');
+	if (boundaries.has(rest)) return rest;
+	const closing = rest.endsWith('--') ? rest.slice(0, -2) : null;
+	return closing !== null && boundaries.has(closing) ? closing : null;
 }
 
 /**

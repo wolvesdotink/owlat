@@ -32,8 +32,38 @@ export async function detachedSign(part: string, privateKeyArmored: string): Pro
 }
 
 /**
+ * The `Content-Transfer-Encoding` the signature part is transmitted with. Armor
+ * is 7-bit ASCII, so `7bit` is the common shape — but the part body is subject
+ * to transfer encoding like any other, and mailers do ship `signature.asc`
+ * base64- or quoted-printable-encoded. Under `base64` no literal armor line
+ * survives in the raw text at all, which is exactly the shape the raw
+ * structural gate has to keep recognising.
+ */
+export type SignaturePartEncoding = '7bit' | 'base64' | 'quoted-printable';
+
+/** Encode an armor block as the signature part's body lines for `encoding`. */
+function signaturePartBody(armor: string, encoding: SignaturePartEncoding): string[] {
+	const crlfArmor = armor.trim().replace(/\r?\n/g, '\r\n');
+	if (encoding === 'base64') {
+		return (
+			Buffer.from(crlfArmor, 'utf8')
+				.toString('base64')
+				.match(/.{1,76}/g) ?? []
+		);
+	}
+	if (encoding === 'quoted-printable') {
+		// RFC 2045 §6.7: armor is printable ASCII well under the 76-column limit,
+		// so only `=` (the checksum line, base64 padding) needs escaping.
+		return crlfArmor.split('\r\n').map((line) => line.replace(/=/g, '=3D'));
+	}
+	return crlfArmor.split('\r\n');
+}
+
+/**
  * Compose a full RFC 3156 `multipart/signed` message around an exact
- * (already-signed) first part. CRLF throughout, per the wire format.
+ * (already-signed) first part. CRLF throughout, per the wire format. The first
+ * part is emitted byte-for-byte — only the SIGNATURE part is ever re-encoded,
+ * so the detached signature stays valid for every `signatureEncoding`.
  */
 export function composeSignedPgpMime(args: {
 	from: string;
@@ -43,8 +73,10 @@ export function composeSignedPgpMime(args: {
 	signatureArmored: string;
 	messageId: string;
 	boundary?: string;
+	signatureEncoding?: SignaturePartEncoding;
 }): string {
 	const boundary = args.boundary ?? 'owlat-f1-signed';
+	const encoding = args.signatureEncoding ?? '7bit';
 	return [
 		`Message-ID: ${args.messageId}`,
 		'Date: Sun, 16 Aug 2026 09:00:00 +0000',
@@ -59,8 +91,9 @@ export function composeSignedPgpMime(args: {
 		args.part,
 		`--${boundary}`,
 		'Content-Type: application/pgp-signature; name="signature.asc"',
+		...(encoding === '7bit' ? [] : [`Content-Transfer-Encoding: ${encoding}`]),
 		'',
-		...args.signatureArmored.trim().split('\n'),
+		...signaturePartBody(args.signatureArmored, encoding),
 		`--${boundary}--`,
 		'',
 	].join('\r\n');

@@ -37,6 +37,7 @@ import {
 	composeSignedPgpMime,
 	detachedSign,
 	signedFirstPart,
+	type SignaturePartEncoding,
 } from '../../e2ee/__tests__/signedMailTestHelpers';
 import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { openMailMessageInlineBody } from '../../lib/messageBody';
@@ -112,7 +113,10 @@ async function readRow(t: T, messageId: Id<'mailMessages'>) {
 	});
 }
 
-async function composeDetachedSigned(privateKeyArmored: string): Promise<string> {
+async function composeDetachedSigned(
+	privateKeyArmored: string,
+	opts: { signatureEncoding?: SignaturePartEncoding; messageId?: string } = {}
+): Promise<string> {
 	const part = signedFirstPart(`Signed ${CANARY} content.`);
 	return composeSignedPgpMime({
 		from: SENDER,
@@ -120,7 +124,8 @@ async function composeDetachedSigned(privateKeyArmored: string): Promise<string>
 		subject: 'signed ingest',
 		part,
 		signatureArmored: await detachedSign(part, privateKeyArmored),
-		messageId: '<signed-ingest-0001@sender.test>',
+		messageId: opts.messageId ?? '<signed-ingest-0001@sender.test>',
+		...(opts.signatureEncoding ? { signatureEncoding: opts.signatureEncoding } : {}),
 	});
 }
 
@@ -166,6 +171,53 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 		});
 		expect(msg.inboundEncryptionInfo).toBeUndefined();
 	});
+
+	it.each([
+		['base64', '<signed-ingest-0004@sender.test>'],
+		['quoted-printable', '<signed-ingest-0005@sender.test>'],
+	] as Array<[SignaturePartEncoding, string]>)(
+		'a %s-encoded signature part verifies end-to-end (no literal armor line)',
+		async (signatureEncoding, messageId) => {
+			// The raw structural gate used to demand a literal, unquoted
+			// `-----BEGIN PGP SIGNATURE-----` line to corroborate the scraped
+			// content-type. A transfer-encoded signature part has none, so ingest
+			// skipped verification entirely and these messages — genuinely signed,
+			// genuinely verifiable — were stuck on "signed · not verified".
+			const t = convexTest(schema, modules);
+			await seedMailbox(t);
+			const sender = await generateTestKeypair(SENDER);
+			await seedPinnedSender(t, {
+				address: SENDER,
+				domain: 'sender.test',
+				pinnedPublicKeyArmored: sender.publicKeyArmored,
+			});
+
+			const raw = await composeDetachedSigned(sender.privateKeyArmored, {
+				signatureEncoding,
+				messageId,
+			});
+			if (signatureEncoding === 'base64') {
+				expect(raw).not.toContain('-----BEGIN PGP SIGNATURE-----');
+			}
+
+			const result = await ingest(t, raw, {
+				subject: 'signed ingest',
+				textBody: `Signed ${CANARY} content.`,
+				messageId,
+			});
+			expect('messageId' in result).toBe(true);
+			if (!('messageId' in result)) return;
+
+			const msg = await readRow(t, result.messageId);
+			expect(msg.inboundSignatureInfo).toEqual({
+				isSigned: true,
+				isSignatureValid: true,
+				signerFingerprint: sender.fingerprint,
+				keySource: 'pinned',
+			});
+			expect(msg.textBodyInline).toBe(`Signed ${CANARY} content.`);
+		}
+	);
 
 	it('clearsigned mail delivers with a verified verdict (inline verify)', async () => {
 		const t = convexTest(schema, modules);
