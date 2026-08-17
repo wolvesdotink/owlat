@@ -30,12 +30,13 @@ import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { extractRfc3156SignedPart } from '@owlat/mail-canon';
-import { isClearsigned, isSignedPgpMime } from '@owlat/shared/secureMessage';
+import {
+	extractClearsignedBlock,
+	isClearsigned,
+	isSignedPgpMime,
+} from '@owlat/shared/secureMessage';
 import { shouldRefetch } from './discovery';
 import { inboundSignatureInfoValidator, type InboundSignatureInfo } from './inboundSignature';
-
-const CLEARSIGN_HEADER = '-----BEGIN PGP SIGNED MESSAGE-----';
-const CLEARSIGN_FOOTER = '-----END PGP SIGNATURE-----';
 
 /** The outcome of one low-level verify attempt. Bytes + a key in, structured out. */
 export interface VerifyAttempt {
@@ -101,7 +102,7 @@ export async function verifyClearsignedBody(
 	raw: string,
 	publicKeyArmored: string
 ): Promise<VerifyAttempt> {
-	const block = extractClearsignArmor(raw);
+	const block = extractClearsignedBlock(raw);
 	if (!block) return { verified: false, malformed: true };
 	let cleartext: Awaited<ReturnType<typeof openpgp.readCleartextMessage>>;
 	try {
@@ -130,16 +131,6 @@ export async function verifyClearsignedBody(
 	} catch {
 		return { verified: false };
 	}
-}
-
-/** The full clearsign armor block (LF-normalized) from a raw body, or null. */
-function extractClearsignArmor(raw: string): string | null {
-	const text = raw.replace(/\r\n/g, '\n');
-	const start = text.indexOf(CLEARSIGN_HEADER);
-	if (start < 0) return null;
-	const footerAt = text.indexOf(CLEARSIGN_FOOTER, start);
-	if (footerAt < 0) return null;
-	return text.slice(start, footerAt + CLEARSIGN_FOOTER.length);
 }
 
 /** How the sender's verification key resolved through the TOFU ladder. */

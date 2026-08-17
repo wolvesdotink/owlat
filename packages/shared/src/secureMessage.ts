@@ -31,6 +31,45 @@ const PGP_MESSAGE_HEADER = '-----BEGIN PGP MESSAGE-----';
 const PGP_MESSAGE_FOOTER = '-----END PGP MESSAGE-----';
 const PGP_SIGNED_HEADER = '-----BEGIN PGP SIGNED MESSAGE-----';
 const PGP_SIGNATURE_HEADER = '-----BEGIN PGP SIGNATURE-----';
+const PGP_SIGNATURE_FOOTER = '-----END PGP SIGNATURE-----';
+
+/**
+ * Index of the first `marker` that OPENS a line of its own (RFC 4880 §6.2 puts
+ * armor at column 0), searching from `fromIndex`; -1 when there is none.
+ *
+ * Anything before the marker on its line — overwhelmingly a reply quote prefix
+ * (`>`, `>>`, `  > `) — means the armor belongs to a QUOTED message, not to this
+ * one. A body that merely contains armor is not a signed body: reading a quoted
+ * block as this message's own made a plaintext reply to signed mail verify the
+ * quoted armor, fail, and render the warn-tone "signature invalid" badge.
+ */
+function indexOfArmorLine(body: string, marker: string, fromIndex = 0): number {
+	for (let at = body.indexOf(marker, fromIndex); at >= 0; at = body.indexOf(marker, at + 1)) {
+		// CRLF bodies are covered too: the '\r' sits before the '\n', not after.
+		if (at === 0 || body[at - 1] === '\n') return at;
+	}
+	return -1;
+}
+
+/** Whether an armor block of `marker` opens a line of its own somewhere in `body`. */
+function hasArmorLine(body: string, marker: string): boolean {
+	return indexOfArmorLine(body, marker) >= 0;
+}
+
+/**
+ * Whether `body` carries a structurally COMPLETE inline clearsigned block
+ * (RFC 4880 §7): the signed-message armor opening a line, then the signature
+ * armor's BEGIN and END after it, each likewise unquoted at a line start. All
+ * three are required — a lone header is a mention (or a truncated quote), and
+ * only a block with its signature can be verified at all.
+ */
+function hasClearsignedBlock(body: string): boolean {
+	const start = indexOfArmorLine(body, PGP_SIGNED_HEADER);
+	if (start < 0) return false;
+	const sigAt = indexOfArmorLine(body, PGP_SIGNATURE_HEADER, start + PGP_SIGNED_HEADER.length);
+	if (sigAt < 0) return false;
+	return indexOfArmorLine(body, PGP_SIGNATURE_FOOTER, sigAt + PGP_SIGNATURE_HEADER.length) >= 0;
+}
 
 /** Classify a message's PGP/S-MIME structure. */
 export function classifySecureMessage(input: SecureMessageInput): SecureMessageClass {
@@ -44,10 +83,12 @@ export function classifySecureMessage(input: SecureMessageInput): SecureMessageC
 	if (has('pkcs7-signature') || has('x-pkcs7-signature')) return 'smime-signed';
 	if (has('pkcs7-mime') || has('x-pkcs7-mime')) return 'smime-encrypted';
 
-	// Inline ("armored") PGP in the body, not MIME-wrapped.
+	// Inline ("armored") PGP in the body, not MIME-wrapped. Both gates demand
+	// armor at an unquoted line start, so quoting a secure message in a reply
+	// never makes the reply itself count as one.
 	const body = input.textBody ?? '';
-	if (body.includes(PGP_SIGNED_HEADER)) return 'pgp-clearsigned';
-	if (body.includes(PGP_MESSAGE_HEADER)) return 'pgp-encrypted';
+	if (hasClearsignedBlock(body)) return 'pgp-clearsigned';
+	if (hasArmorLine(body, PGP_MESSAGE_HEADER)) return 'pgp-encrypted';
 
 	return 'none';
 }
@@ -66,10 +107,27 @@ export function isEncryptedClass(c: SecureMessageClass): boolean {
  * the server's structural detection can never fork from the client badge's.
  */
 export function classifyRawSecureMessage(raw: string): SecureMessageClass {
-	const attachments = extractRawPartContentTypes(raw).map((contentType) => ({ contentType }));
+	const attachments = extractRawPartContentTypes(raw)
+		.filter((contentType) => isCorroboratedRawPartType(contentType, raw))
+		.map((contentType) => ({ contentType }));
 	// The whole raw message doubles as the "body" so inline-armored blocks
 	// (clearsigned text, armored ciphertext directly in the body) are detected.
 	return classifySecureMessage({ attachments, textBody: raw });
+}
+
+/**
+ * Whether a `Content-Type` scraped off the raw text is trustworthy as a real
+ * MIME part header. The scrape cannot tell a part header from a body line that
+ * merely READS like one (a quoted spec excerpt, a bug report), and the reader's
+ * attachment list — the client twin's input — can never hold such a line. So a
+ * detached-signature part only counts when the ASCII-armored signature RFC 3156
+ * §5 requires it to carry is actually present, unquoted, at a line start;
+ * otherwise a plaintext body naming the content type would classify as signed
+ * and earn the warn-tone "signature invalid" badge.
+ */
+function isCorroboratedRawPartType(contentType: string, raw: string): boolean {
+	if (!contentType.toLowerCase().includes('application/pgp-signature')) return true;
+	return hasArmorLine(raw, PGP_SIGNATURE_HEADER);
 }
 
 /**
@@ -137,12 +195,16 @@ export function extractArmoredCiphertext(rawBody: string): string | null {
  * Pull the human-readable cleartext out of an inline PGP SIGNED MESSAGE block,
  * undoing dash-escaping (RFC 4880 §7.1). Returns null when the body isn't a
  * clearsigned block. The signature itself is NOT verified.
+ *
+ * Anchored on the same unquoted-line-start scan as the classifier, so a body
+ * that quotes a signed message ABOVE its own armor yields this message's block,
+ * not the quoted one.
  */
 export function extractClearsignedText(rawBody: string): string | null {
 	const body = rawBody.replace(/\r\n/g, '\n'); // tolerate CRLF input
-	const start = body.indexOf(PGP_SIGNED_HEADER);
+	const start = indexOfArmorLine(body, PGP_SIGNED_HEADER);
 	if (start < 0) return null;
-	const sigAt = body.indexOf(PGP_SIGNATURE_HEADER, start);
+	const sigAt = indexOfArmorLine(body, PGP_SIGNATURE_HEADER, start);
 	const headerEnd = body.indexOf('\n', start);
 	if (headerEnd < 0) return null;
 
@@ -158,4 +220,21 @@ export function extractClearsignedText(rawBody: string): string | null {
 		.map((line) => (line.startsWith('- ') ? line.slice(2) : line))
 		.join('\n')
 		.replace(/\s+$/, '');
+}
+
+/**
+ * The COMPLETE inline clearsign armor block (header through `END PGP
+ * SIGNATURE`), CRLF-normalized to LF so an OpenPGP implementation can read it,
+ * or null when the body carries none. The verifier consumes this; it shares the
+ * classifier's unquoted-line-start anchoring so the block handed to
+ * verification is always the same one {@link isClearsigned} gated on — never a
+ * quoted block from a reply.
+ */
+export function extractClearsignedBlock(rawBody: string): string | null {
+	const body = rawBody.replace(/\r\n/g, '\n');
+	const start = indexOfArmorLine(body, PGP_SIGNED_HEADER);
+	if (start < 0) return null;
+	const footerAt = indexOfArmorLine(body, PGP_SIGNATURE_FOOTER, start);
+	if (footerAt < 0) return null;
+	return body.slice(start, footerAt + PGP_SIGNATURE_FOOTER.length);
 }

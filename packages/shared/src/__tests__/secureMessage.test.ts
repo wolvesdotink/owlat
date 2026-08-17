@@ -3,11 +3,32 @@ import {
 	classifySecureMessage,
 	classifyRawSecureMessage,
 	extractArmoredCiphertext,
+	extractClearsignedBlock,
 	extractClearsignedText,
 	isClearsigned,
 	isEncryptedClass,
 	isSignedPgpMime,
 } from '../secureMessage';
+
+/** A real, structurally complete inline clearsigned body (RFC 4880 §7). */
+const CLEARSIGNED_BODY = [
+	'-----BEGIN PGP SIGNED MESSAGE-----',
+	'Hash: SHA256',
+	'',
+	'Hello there',
+	'-----BEGIN PGP SIGNATURE-----',
+	'',
+	'iQEcBAEBCgAGBQJ...',
+	'-----END PGP SIGNATURE-----',
+].join('\n');
+
+/** The same body as a reply would quote it back — every line prefixed. */
+function quoted(body: string, prefix = '> '): string {
+	return body
+		.split('\n')
+		.map((line) => `${prefix}${line}`)
+		.join('\n');
+}
 
 describe('classifySecureMessage', () => {
 	it('detects PGP/MIME signed + encrypted from part content types', () => {
@@ -32,9 +53,7 @@ describe('classifySecureMessage', () => {
 		expect(classifySecureMessage({ textBody: 'x\n-----BEGIN PGP MESSAGE-----\n...' })).toBe(
 			'pgp-encrypted'
 		);
-		expect(
-			classifySecureMessage({ textBody: '-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nhi' })
-		).toBe('pgp-clearsigned');
+		expect(classifySecureMessage({ textBody: CLEARSIGNED_BODY })).toBe('pgp-clearsigned');
 	});
 
 	it('returns none for ordinary mail', () => {
@@ -239,6 +258,113 @@ describe('raw-message gates — isSignedPgpMime / isClearsigned', () => {
 		expect(isSignedPgpMime(plain)).toBe(false);
 		expect(isClearsigned(plain)).toBe(false);
 		expect(classifyRawSecureMessage(plain)).toBe('none');
+	});
+});
+
+/**
+ * FU1: innocent mail must never reach the warn-tone "signature invalid" badge.
+ * Merely CONTAINING armor (a reply quoting a signed message) or naming a
+ * content type used to classify as signed; the sender's key would then resolve,
+ * verification of the quoted armor would fail, and mail nobody signed rendered
+ * as "Signed · signature invalid". The structural gates therefore require armor
+ * at an UNQUOTED line start plus the full clearsign structure — and the client
+ * classifier and the raw server twin are asserted side by side here so they
+ * cannot drift.
+ */
+describe('structural gates reject quoted / merely-mentioned armor', () => {
+	const REPLY_HEADERS = ['From: bob@example.com', 'Subject: Re: signed', '', ''].join('\r\n');
+
+	it('a plaintext reply quoting a clearsigned message is not signed', () => {
+		const body = `Thanks, got it.\n\nOn Monday, alice wrote:\n${quoted(CLEARSIGNED_BODY)}\n`;
+		expect(classifySecureMessage({ textBody: body })).toBe('none');
+		expect(classifyRawSecureMessage(REPLY_HEADERS + body)).toBe('none');
+		expect(isClearsigned(REPLY_HEADERS + body)).toBe(false);
+	});
+
+	it.each([
+		['double quote', '>> '],
+		['tight quote', '>'],
+		['indented quote', '  > '],
+		['tab-indented quote', '\t> '],
+		['plain indent', '  '],
+	])('%s prefixes keep the armor out of the clearsign gate', (_label, prefix) => {
+		const body = `see below\n${quoted(CLEARSIGNED_BODY, prefix)}\n`;
+		expect(classifySecureMessage({ textBody: body })).toBe('none');
+		expect(isClearsigned(body)).toBe(false);
+	});
+
+	it('a quoted encrypted block does not make the reply encrypted', () => {
+		const body = `no idea what this is:\n${quoted('-----BEGIN PGP MESSAGE-----\nhQ..\n-----END PGP MESSAGE-----')}\n`;
+		expect(classifySecureMessage({ textBody: body })).toBe('none');
+		expect(isEncryptedClass(classifyRawSecureMessage(REPLY_HEADERS + body))).toBe(false);
+	});
+
+	it('CRLF quoting is rejected too (the wire form of the same reply)', () => {
+		const raw = (REPLY_HEADERS + quoted(CLEARSIGNED_BODY) + '\n').replace(/\n/g, '\r\n');
+		expect(isClearsigned(raw)).toBe(false);
+		expect(classifyRawSecureMessage(raw)).toBe('none');
+	});
+
+	it('a clearsign header with no signature block is a mention, not a signature', () => {
+		const body = '-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nhi';
+		expect(classifySecureMessage({ textBody: body })).toBe('none');
+		expect(isClearsigned(body)).toBe(false);
+	});
+
+	it('a body that merely names the pgp-signature content type is not signed', () => {
+		const raw = [
+			'From: alice@sender.test',
+			'Subject: how does PGP/MIME work?',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'The second part is labelled',
+			'Content-Type: application/pgp-signature',
+			'and carries the armor. Right?',
+			'',
+		].join('\r\n');
+		expect(isSignedPgpMime(raw)).toBe(false);
+		expect(classifyRawSecureMessage(raw)).toBe('none');
+	});
+
+	it('a quoted detached-signature part does not corroborate a signed classification', () => {
+		const raw = [
+			'From: bob@example.com',
+			'Subject: Re: signed',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Here is what your mailer sent:',
+			'Content-Type: application/pgp-signature; name="signature.asc"',
+			'> -----BEGIN PGP SIGNATURE-----',
+			'> iQ..',
+			'> -----END PGP SIGNATURE-----',
+			'',
+		].join('\r\n');
+		expect(isSignedPgpMime(raw)).toBe(false);
+		expect(classifyRawSecureMessage(raw)).toBe('none');
+	});
+
+	it('real clearsigned mail still classifies — armor on the first line', () => {
+		expect(classifySecureMessage({ textBody: CLEARSIGNED_BODY })).toBe('pgp-clearsigned');
+		expect(isClearsigned(CLEARSIGNED_BODY)).toBe(true);
+	});
+
+	it('real clearsigned mail still classifies — armor after a preamble line', () => {
+		const body = `Signed as always.\n\n${CLEARSIGNED_BODY}\n`;
+		expect(classifySecureMessage({ textBody: body })).toBe('pgp-clearsigned');
+		expect(isClearsigned(body)).toBe(true);
+	});
+
+	it('a clearsigned reply that also quotes one is signed, and its OWN block is extracted', () => {
+		const body = `${CLEARSIGNED_BODY}\n\nOn Monday, alice wrote:\n${quoted(CLEARSIGNED_BODY.replace('Hello there', 'Quoted original'))}\n`;
+		expect(classifySecureMessage({ textBody: body })).toBe('pgp-clearsigned');
+		expect(extractClearsignedText(body)).toBe('Hello there');
+		expect(extractClearsignedBlock(body)).toBe(CLEARSIGNED_BODY);
+	});
+
+	it('the quoted-armor reply yields no clearsign block to verify', () => {
+		const body = `nothing signed here\n${quoted(CLEARSIGNED_BODY)}\n`;
+		expect(extractClearsignedBlock(body)).toBeNull();
+		expect(extractClearsignedText(body)).toBeNull();
 	});
 });
 

@@ -8,6 +8,7 @@
  *   - a detached-signed (RFC 3156) message DELIVERS with an honest verified
  *     `inboundSignatureInfo` (fingerprint + keySource), bodies untouched;
  *   - a clearsigned message delivers with the same verified record;
+ *   - a plaintext reply merely QUOTING one gets NO record at all (FU1);
  *   - a TAMPERED signed message still delivers — verdict invalid, delivery
  *     NEVER blocked (D10);
  *   - an unknown-sender signed message delivers with the honest `not_found`
@@ -198,6 +199,50 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 			signerFingerprint: sender.fingerprint,
 			keySource: 'pinned',
 		});
+	});
+
+	it('a plaintext reply QUOTING a clearsigned message gets NO signature record', async () => {
+		// FU1: the sender's key RESOLVES here (pinned), so before the structural
+		// gates were line-anchored this innocent reply verified the quoted armor,
+		// failed, and rendered "Signed · signature invalid" for unsigned mail.
+		const t = convexTest(schema, modules);
+		await seedMailbox(t);
+		const sender = await generateTestKeypair(SENDER);
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: sender.publicKeyArmored,
+		});
+
+		const quotedArmor = (await clearsign(`Clear ${CANARY} text.`, sender.privateKeyArmored))
+			.trim()
+			.split('\n')
+			.map((line) => `> ${line}`);
+		const textBody = ['Thanks, received.', '', 'On Sunday, alice wrote:', ...quotedArmor].join(
+			'\n'
+		);
+		const raw = [
+			'Message-ID: <quoted-ingest-0001@sender.test>',
+			`From: ${SENDER}`,
+			`To: ${RECIPIENT}`,
+			'Subject: Re: clearsigned ingest',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			...textBody.split('\n'),
+			'',
+		].join('\r\n');
+		const result = await ingest(t, raw, {
+			subject: 'Re: clearsigned ingest',
+			textBody,
+			messageId: '<quoted-ingest-0001@sender.test>',
+		});
+		expect('messageId' in result).toBe(true);
+		if (!('messageId' in result)) return;
+
+		const msg = await readRow(t, result.messageId);
+		expect(msg.textBodyInline).toBe(textBody);
+		expect(msg.inboundSignatureInfo).toBeUndefined();
+		expect(msg.inboundEncryptionInfo).toBeUndefined();
 	});
 
 	it('a TAMPERED signed message still DELIVERS — verdict invalid, never blocked', async () => {
