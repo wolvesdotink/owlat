@@ -291,7 +291,11 @@ services:
     volumes:
       - clamav-data:/var/lib/clamav
     healthcheck:
-      test: ["CMD", "clamdcheck"]
+      # ClamAV 1.5 renamed the healthcheck helper to clamdcheck.sh (the bare
+      # `clamdcheck` alias is gone from clamav/clamav:stable as of 1.5.4);
+      # older images only have the bare name. Probe both so the floating
+      # `stable` tag can move in either direction without going unhealthy.
+      test: ["CMD-SHELL", "clamdcheck.sh || clamdcheck"]
       interval: 60s
       timeout: 10s
       retries: 5
