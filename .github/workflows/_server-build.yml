@@ -362,11 +362,17 @@ jobs:
           EOF
           cat > e2e-lib.sh <<'EOF'
           # Wait until a compose service's docker healthcheck reports healthy.
+          # $1 is one compose file, or several space-separated ones (each is
+          # passed as its own -f, in order — the seeded leg overlays the
+          # previous release's compose with a healthcheck fix).
           wait_healthy() {
-            local compose_file="$1" svc="$2" timeout="$3"
+            local compose_files="$1" svc="$2" timeout="$3"
             local start=$SECONDS cid status
+            local -a files compose_args=()
+            read -ra files <<< "$compose_files"
+            for f in "${files[@]}"; do compose_args+=(-f "$f"); done
             while true; do
-              cid=$(docker compose -f "$compose_file" ps -q "$svc" 2>/dev/null | head -1)
+              cid=$(docker compose "${compose_args[@]}" ps -q "$svc" 2>/dev/null | head -1)
               if [ -n "$cid" ]; then
                 status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo unknown)
               else
@@ -436,15 +442,31 @@ jobs:
           source ./e2e-lib.sh
           curl -fsSL -o prev-compose.yml \
             "https://github.com/${{ github.repository }}/releases/download/${PREV_TAG}/docker-compose-${PREV_VERSION}.yml"
+          # A published compose asset is immutable, but the image tag it pins
+          # ClamAV to (`stable`) is not: clamav/clamav:stable moved to 1.5.4,
+          # which renamed the healthcheck helper `clamdcheck` → `clamdcheck.sh`.
+          # Every release published before that fix (see docker-compose.yml)
+          # therefore has a healthcheck that can never pass, and the seed below
+          # would hang until timeout. Overlay just the clamav healthcheck with
+          # the dual-name probe — compose replaces healthcheck.test wholesale,
+          # and nothing else about the previous release is touched. Only the
+          # seeding phase uses this; the release under test boots unmodified.
+          cat > prev-clamav-override.yml <<'YAML'
+          services:
+            clamav:
+              healthcheck:
+                test: ["CMD-SHELL", "clamdcheck.sh || clamdcheck"]
+          YAML
+          PREV_COMPOSE_FILES="prev-compose.yml prev-clamav-override.yml"
           # Redis + ClamAV are the services whose entrypoints care about volume
           # ownership left behind by an earlier run — boot them from the
           # previous release until healthy (ClamAV healthy = signature DB
           # downloaded and owned), then stop, PRESERVING the volumes.
-          docker compose -f prev-compose.yml pull redis clamav
-          docker compose -f prev-compose.yml up -d redis clamav
-          wait_healthy prev-compose.yml redis 120
-          wait_healthy prev-compose.yml clamav 900
-          docker compose -f prev-compose.yml down
+          docker compose -f prev-compose.yml -f prev-clamav-override.yml pull redis clamav
+          docker compose -f prev-compose.yml -f prev-clamav-override.yml up -d redis clamav
+          wait_healthy "$PREV_COMPOSE_FILES" redis 120
+          wait_healthy "$PREV_COMPOSE_FILES" clamav 900
+          docker compose -f prev-compose.yml -f prev-clamav-override.yml down
 
       - name: Download and verify release compose
         if: matrix.volumes == 'fresh' || steps.prev.outputs.tag != ''

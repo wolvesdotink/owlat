@@ -131,7 +131,7 @@ export async function main() {
 
 	// ── 6. Create GroupMQ queue and worker ──
 	const queue = createEmailQueue(redis);
-	const worker = createEmailWorker(queue, redis, config);
+	const { worker, stopHeartbeat } = createEmailWorker(queue, redis, config);
 
 	// Recover routing/lifecycle callbacks automatically after a Convex outage.
 	// The sweep is bounded and leader-gated; exhausted entries remain available
@@ -364,6 +364,8 @@ export async function main() {
 		clearInterval(tlsRptInterval);
 		clearInterval(dkimRotationInterval);
 		clearInterval(webhookDlqInterval);
+		// Stop claiming liveness the moment we start draining.
+		stopHeartbeat();
 
 		// Close HTTP server
 		if (typeof server.close === 'function') {
