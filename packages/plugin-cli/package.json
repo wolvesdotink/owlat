@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/plugin-cli",
-	"version": "0.4.3",
+	"version": "0.4.4",
 	"private": true,
 	"description": "The owlat plugins CLI: create/add/remove/dev/codegen over the checked-in plugins.config.ts and the deterministic PP-03 codegen",
 	"license": "Apache-2.0",
