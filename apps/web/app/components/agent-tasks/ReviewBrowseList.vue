@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import ReviewBrowseCard from '~/components/agent-tasks/ReviewBrowseCard.vue';
+import ReviewBulkActionBar from '~/components/agent-tasks/ReviewBulkActionBar.vue';
+import ReviewQueueHeader from '~/components/agent-tasks/ReviewQueueHeader.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import {
 	GENERIC_TEAMMATE_NAME,
@@ -8,14 +10,14 @@ import {
 	replyCollisionToast,
 } from '~/utils/replyCollision';
 import type { ReviewRow } from '~/utils/reviewRow';
-import { REVIEW_SHORTCUT_GROUPS } from '~/utils/reviewShortcuts';
 
 /**
  * The Review Queue's keyboard-first browse view: a listbox of shared agent task
  * cards (trust chips, revise box, draft options, coach panel — each card's
- * anatomy lives in ReviewBrowseCard). Split out of review.vue so the page just
- * switches between this and the Focus card-stack flow (ReviewFocusFlow). Emits
- * `focus` when the reviewer opens the focused one-task-at-a-time flow instead.
+ * anatomy lives in ReviewBrowseCard) with multi-select bulk approve/reject
+ * (piece C2). Split out of review.vue so the page just switches between this
+ * and the Focus card-stack flow (ReviewFocusFlow). Emits `focus` when the
+ * reviewer opens the focused one-task-at-a-time flow instead.
  */
 const emit = defineEmits<{ (e: 'focus'): void }>();
 
@@ -38,6 +40,7 @@ const {
 	onApprove,
 	approveOption,
 	onReject,
+	undoApprove,
 	composeAndSend,
 	editDraft,
 } = useReviewQueue();
@@ -108,6 +111,17 @@ const rows = computed<ReviewRow[]>(() =>
 // subscription confirms it; a failed action restores the row (usePostboxOptimisticHide).
 const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOptimisticHide(rows);
 
+// Multi-select + bulk approve/reject (piece C2): a selection Set in the
+// Postbox bulk idiom, the sticky action bar above the listbox, and batch
+// mutations whose per-id outcomes drive one shared partial-result undo toast.
+const bulk = useReviewBulkSelect(visibleRows);
+const bulkActions = useReviewBulkActions({
+	ids: bulk.ids,
+	clearSelection: bulk.clear,
+	hideRow,
+	unhideRow,
+});
+
 // Server refused because a teammate just replied — toast the collision and
 // report it handled so callers stop before claiming a false success.
 function handledReplyCollision(result: unknown): boolean {
@@ -119,8 +133,38 @@ function handledReplyCollision(result: unknown): boolean {
 	return true;
 }
 
+// Countdown-undo toast for approvals inside their server-side undo window
+// (agentConfig.humanApproveUndoDelayMs, piece C1). Armed with this list's true
+// inverse: undoAutoSend routes the draft back to `draft_ready` and the row is
+// unhidden immediately rather than waiting on the live subscription round-trip.
+const { arm: armApproveUndo } = useReviewApproveUndo();
+
+async function undoApproveAndRestore(messageId: Id<'inboundMessages'>) {
+	const result = await undoApprove(messageId);
+	if (result === undefined) return; // categorized failure — already toasted
+	if (result.cancelled) {
+		unhideRow(messageId);
+		showToast(t('shared.reviewBulkSummary.undoneOne'));
+	} else {
+		// The window closed while the toast was up — the send already left.
+		showToast(t('shared.reviewBulkSummary.tooLateOne'), 'warning');
+	}
+}
+
+// The lost race: the draft was already approved or declined (double-click, or a
+// teammate got there first), so the server refused the edge and scheduled
+// NOTHING. The row truly left the queue — keep it hidden — but say so honestly
+// instead of claiming an approval, and arm no undo (there is nothing to undo).
+function handledAlreadyHandled(result: unknown): boolean {
+	if (!isApproveAlreadyHandled(result)) return false;
+	showToast(t('shared.reviewApprove.alreadyHandled'), 'info');
+	return true;
+}
+
 // Shared optimistic row action: hide the row, run the mutation, restore it on a
 // no-op or soft collision (reject never collides), else confirm with successMsg.
+// An approve that returns an open undo window arms the countdown-undo toast
+// instead of the plain confirmation.
 async function runOptimistic(
 	messageId: Id<'inboundMessages'>,
 	send: () => Promise<unknown>,
@@ -134,7 +178,17 @@ async function runOptimistic(
 			unhideRow(messageId);
 			return;
 		}
-		showToast(successMsg);
+		if (handledAlreadyHandled(result)) return;
+		const undo = approveUndoWindow(result);
+		if (undo) {
+			armApproveUndo({
+				inboundMessageId: messageId,
+				sendAt: undo.sendAt,
+				onUndo: () => undoApproveAndRestore(messageId),
+			});
+		} else {
+			showToast(successMsg);
+		}
 	} finally {
 		actionInProgress.value = null;
 	}
@@ -166,9 +220,10 @@ const onRejectClick = (messageId: Id<'inboundMessages'>) =>
 	);
 
 // Keyboard-first triage: j/k move, Enter opens the thread, a approves (through
-// the SAME undo-guarded send the button calls), e edits, x/# rejects. Built by
-// reusing the Postbox house composables; keys stay inert while the inline
-// compose input/textarea is focused.
+// the SAME undo-guarded send the button calls), e edits, # rejects — plus the
+// C2 selection layer (Space/x select, Shift+J/K extend, * select-all-visible).
+// Built by reusing the Postbox house composables; keys stay inert while the
+// inline compose input/textarea is focused.
 function openThread(row: ReviewRow) {
 	if (row.thread) void navigateTo(`/dashboard/inbox/${row.thread._id}`);
 }
@@ -201,6 +256,12 @@ const {
 			selectedOption[row.message._id] = index;
 		}
 	},
+	// Space/x toggle, Shift+J/K range-extend, * select-all — the bulk model.
+	selection: {
+		toggle: (row) => bulk.toggle(row._id),
+		selectMany: (rowsToSelect) => bulk.selectMany(rowsToSelect.map((r) => r._id)),
+		selectAllVisible: () => bulk.selectAllVisible(),
+	},
 });
 
 // Focus the listbox on mount so j/k work without a click (keyboard-first).
@@ -215,7 +276,9 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
 	try {
 		const result = await composeAndSend(messageId, body, composeSubject[messageId]);
-		if (result === undefined || handledReplyCollision(result)) return; // no-op or collision
+		// no-op, collision, or the same lost race the approve path reports
+		if (result === undefined || handledReplyCollision(result) || handledAlreadyHandled(result))
+			return;
 		delete composeBody[messageId];
 		delete composeSubject[messageId];
 		showToast(t('components.agentTasks.reviewBrowseList.toasts.replySent'));
@@ -227,53 +290,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex items-center gap-4 mb-8">
-			<NuxtLink
-				to="/dashboard/inbox"
-				class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			</NuxtLink>
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('components.agentTasks.reviewBrowseList.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">
-					{{ t('components.agentTasks.reviewBrowseList.subtitle') }}
-				</p>
-			</div>
-			<!-- Focus: switch to the one-task-at-a-time card-stack flow. -->
-			<button
-				v-if="!isLoading && visibleRows.length > 0"
-				type="button"
-				class="ml-auto inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-brand text-text-inverse hover:bg-brand/90 transition-colors duration-(--motion-fast)"
-				@click="emit('focus')"
-			>
-				<Icon name="lucide:target" class="w-4 h-4" />
-				{{ t('components.agentTasks.reviewBrowseList.focus') }}
-			</button>
-		</div>
-
-		<!-- Keyboard hint: this queue is keyboard-first (j/k/Enter/a/e/x). -->
-		<div
-			v-if="visibleRows.length > 0"
-			class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 text-xs text-text-tertiary"
-		>
-			<span
-				v-for="hint in REVIEW_SHORTCUT_GROUPS"
-				:key="hint.label"
-				class="inline-flex items-center gap-1"
-			>
-				<kbd
-					v-for="k in hint.keys"
-					:key="k"
-					class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
-					>{{ k }}</kbd
-				>
-				<span>{{ t(hint.label) }}</span>
-			</span>
-		</div>
+		<ReviewQueueHeader :has-rows="!isLoading && visibleRows.length > 0" @focus="emit('focus')" />
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
@@ -305,47 +322,63 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			</p>
 		</div>
 
-		<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/1-9/a/e/s/x) of shared agent task cards. -->
-		<ul
-			v-else
-			ref="listboxEl"
-			tabindex="0"
-			role="listbox"
-			:aria-label="t('components.agentTasks.reviewBrowseList.listLabel')"
-			:aria-activedescendant="activeRowId"
-			class="space-y-4 outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset rounded-lg"
-			@keydown="onQueueKeydown"
-		>
-			<TaskCardShell
-				v-for="(row, i) in visibleRows"
-				:id="`review-row-${row._id}`"
-				:key="row._id"
-				as="li"
-				role="option"
-				:aria-selected="focusedIndex === i"
-				:focused="focusedIndex === i"
+		<template v-else>
+			<!-- Sticky bulk bar: appears with the first selected card. -->
+			<ReviewBulkActionBar
+				:count="bulk.count.value"
+				:remaining="visibleRows.length - bulk.count.value"
+				:busy="bulkActions.isBusy.value"
+				@approve="bulkActions.approveSelected()"
+				@reject="bulkActions.rejectSelected()"
+				@select-all="bulk.selectAllVisible()"
+				@clear="bulk.clear()"
+			/>
+
+			<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/1-9/a/e/s/#, Space/x/J/K/* select) of shared agent task cards. -->
+			<ul
+				ref="listboxEl"
+				tabindex="0"
+				role="listbox"
+				:aria-label="t('components.agentTasks.reviewBrowseList.listLabel')"
+				aria-multiselectable="true"
+				:aria-activedescendant="activeRowId"
+				class="space-y-4 outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset rounded-lg"
+				@keydown="onQueueKeydown"
 			>
-				<ReviewBrowseCard
-					v-model:selected-option="selectedOption[row.message._id]"
-					v-model:compose-subject="composeSubject[row.message._id]"
-					v-model:compose-body="composeBody[row.message._id]"
-					:row="row"
-					:needs-reply="needsReply(row.message)"
-					:ai-enabled="aiEnabled"
-					:busy="actionInProgress === row.message._id"
-					@revise-apply="(text: string) => onReviseApply(row.message._id, text)"
-					@attach="(candidate) => onAttachSuggested(row.thread?._id, candidate)"
-					@approve="
-						onApproveOptionClick(
-							row.message._id,
-							row.message.draftOptions,
-							row.message.draftResponse
-						)
-					"
-					@reject="onRejectClick(row.message._id)"
-					@compose-send="onComposeSend(row.message._id)"
-				/>
-			</TaskCardShell>
-		</ul>
+				<TaskCardShell
+					v-for="(row, i) in visibleRows"
+					:id="`review-row-${row._id}`"
+					:key="row._id"
+					as="li"
+					role="option"
+					:aria-selected="bulk.isSelected(row._id)"
+					:focused="focusedIndex === i"
+					:class="bulk.isSelected(row._id) ? 'ring-1 ring-brand/50' : ''"
+				>
+					<ReviewBrowseCard
+						v-model:selected-option="selectedOption[row.message._id]"
+						v-model:compose-subject="composeSubject[row.message._id]"
+						v-model:compose-body="composeBody[row.message._id]"
+						:row="row"
+						:needs-reply="needsReply(row.message)"
+						:ai-enabled="aiEnabled"
+						:busy="actionInProgress === row.message._id"
+						:selected="bulk.isSelected(row._id)"
+						@toggle-select="bulk.toggle(row._id)"
+						@revise-apply="(text: string) => onReviseApply(row.message._id, text)"
+						@attach="(candidate) => onAttachSuggested(row.thread?._id, candidate)"
+						@approve="
+							onApproveOptionClick(
+								row.message._id,
+								row.message.draftOptions,
+								row.message.draftResponse
+							)
+						"
+						@reject="onRejectClick(row.message._id)"
+						@compose-send="onComposeSend(row.message._id)"
+					/>
+				</TaskCardShell>
+			</ul>
+		</template>
 	</div>
 </template>

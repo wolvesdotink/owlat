@@ -2,12 +2,17 @@
 import { extractClearsignedText, type SecureMessageClass } from '@owlat/shared/secureMessage';
 import { computeSecureMessageRecovery } from '~/composables/postbox/useSecureMessageRecovery';
 import { deriveSealedBadge, type InboundEncryptionInfo } from '~/utils/sealedMessage';
+import {
+	deriveSignatureBadge,
+	type InboundSignatureInfo,
+	type SignatureBadgeResult,
+} from '~/utils/signatureBadge';
 import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
 
 /**
  * Honest PGP/S-MIME disclosure for the reader.
  *
- * Two drivers, in priority order:
+ * Three drivers, in priority order (D9's badge precedence):
  *   1. `sealed` (Sealed Mail E5, flag `sealedMail`) — the honest inbound sealing
  *      record from decrypt-on-ingest (`mailMessages.inboundEncryptionInfo`). When
  *      present it wins: a decrypted-and-verified message reads "Sealed — sender
@@ -15,8 +20,16 @@ import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
  *      and an undecryptable one "Encrypted — can't decrypt". Every string is
  *      derived by `deriveSealedBadge`, whose honesty audit is a unit test —
  *      "verified" is unreachable without a valid signature against the pinned key.
- *   2. `klass` (structural PGP/S-MIME detection) — the pre-Sealed-Mail fallback
- *      for messages we never opened: states the structure plainly ("Signed — not
+ *   2. `signature` (F2, D9) — the honest inbound signature verdict for
+ *      PGP-signed-but-unencrypted mail, verified server-side at ingest (F1,
+ *      `mailMessages.inboundSignatureInfo`). Renders the verdict-driven states
+ *      "Signed · verified" / "Signed · signature invalid" / "Signed · sender key
+ *      not found" / "Signed · sender key changed", with the fingerprint and key
+ *      source in the tooltip. Every string is derived by `deriveSignatureBadge`,
+ *      whose honesty audit is a unit test; a verdict the verifier could not
+ *      produce yields null and falls through to the structural driver.
+ *   3. `klass` (structural PGP/S-MIME detection) — the fallback for messages we
+ *      never verified: states the structure plainly ("Digitally signed · not
  *      verified" / "Encrypted") rather than implying a cryptographic guarantee.
  *
  * For an encrypted body the reader hides the (unreadable) content, so this badge
@@ -36,10 +49,49 @@ const props = defineProps<{
 	 * external-PGP) mail, where the `klass` driver takes over.
 	 */
 	sealed?: InboundEncryptionInfo;
+	/**
+	 * F2 (D9): the inbound signature verdict for PGP-signed (unencrypted) mail,
+	 * persisted at ingest by F1. Present only when the message was structurally
+	 * signed and the server verifier ran; absent for plaintext mail and pre-F1
+	 * rows, where the structural `klass` driver takes over.
+	 */
+	signature?: InboundSignatureInfo;
 }>();
 
 // Sealed-Mail badge (priority driver). Null for a message with no sealing record.
 const sealedBadge = computed(() => deriveSealedBadge(props.sealed));
+
+// Signature-verdict badge (second driver, F2). `deriveSignatureBadge` owns the
+// D9 precedence: a present sealed record silences it, and an unusable verdict
+// yields null so the structural chip's honest "not verified" renders instead.
+const signatureBadge = computed(() => deriveSignatureBadge(props.signature, props.sealed));
+
+// Chip/icon tone classes for the signature verdict (FF tokens only). Verified
+// stays quiet (like the auth badge's ok state); warn/danger get louder.
+const SIGNATURE_TONE_CLASSES: Record<SignatureBadgeResult['tone'], { chip: string; icon: string }> =
+	{
+		ok: { chip: 'border-border-subtle text-text-secondary', icon: 'text-success' },
+		warn: { chip: 'border-warning/40 text-warning', icon: 'text-warning' },
+		danger: { chip: 'border-error/40 text-error', icon: 'text-error' },
+		muted: { chip: 'border-border-subtle text-text-secondary', icon: 'text-text-tertiary' },
+	};
+const signatureTone = computed(() =>
+	signatureBadge.value
+		? SIGNATURE_TONE_CLASSES[signatureBadge.value.tone]
+		: SIGNATURE_TONE_CLASSES.muted
+);
+
+// The driver is pure, so it hands back catalog keys; this is the render
+// boundary. The two tooltips that name where the key came from interpolate the
+// key-source phrase (itself a key) and the formatted fingerprint.
+const signatureTooltip = computed(() => {
+	const badge = signatureBadge.value;
+	if (!badge) return undefined;
+	return t(badge.tooltip, {
+		...(badge.keySource ? { source: t(badge.keySource) } : {}),
+		...(badge.fingerprint ? { fingerprint: badge.fingerprint } : {}),
+	});
+});
 
 const clearsignedText = computed(() =>
 	props.klass === 'pgp-clearsigned' && props.message.textBodyInline
@@ -174,7 +226,7 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 </script>
 
 <template>
-	<div v-if="sealedBadge || meta" class="mt-2">
+	<div v-if="sealedBadge || signatureBadge || meta" class="mt-2">
 		<!-- Sealed-Mail chip (priority driver): the honest inbound sealing record. -->
 		<div v-if="sealedBadge" data-testid="sealed-badge">
 			<div
@@ -190,7 +242,26 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 			</p>
 		</div>
 
-		<!-- Structural PGP/S-MIME chip (fallback): only when no sealing record drives it. -->
+		<!-- Signature-verdict chip (F2, second driver): PGP-signed unencrypted mail
+		     with a server-side verdict. Tooltip carries fingerprint + key source. -->
+		<div v-else-if="signatureBadge" data-testid="signature-badge">
+			<div
+				class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border"
+				:class="signatureTone.chip"
+				:title="signatureTooltip"
+			>
+				<Icon :name="signatureBadge.icon" class="w-3.5 h-3.5" :class="signatureTone.icon" />
+				<span data-testid="signature-badge-summary">{{ t(signatureBadge.summary) }}</span>
+				<span
+					v-if="signatureBadge.fingerprintShort"
+					class="text-text-tertiary font-mono"
+					data-testid="signature-badge-fingerprint"
+					>{{ signatureBadge.fingerprintShort }}</span
+				>
+			</div>
+		</div>
+
+		<!-- Structural PGP/S-MIME chip (fallback): only when no verdict record drives it. -->
 		<div
 			v-else-if="meta"
 			class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border border-border-subtle text-text-secondary"

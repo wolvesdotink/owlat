@@ -88,6 +88,10 @@ beforeEach(() => {
 	// catalog behind the `useI18n` auto-import so toasts read as they ship.
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
+	// The offline-outbox chain (E2) pulls these at composable setup; inert here.
+	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useConvex', () => null);
 });
 
 const DEFAULT_SIGNATURE = {

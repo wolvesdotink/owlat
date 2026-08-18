@@ -9,9 +9,10 @@ import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trust
  * ONE Review Queue card: the shared task-card anatomy (who/when + trust chip,
  * the ask, then either an inline compose box for a draftless escalation or the
  * agent's draft with its approve/reject actions). Split out of
- * ReviewBrowseList.vue, which keeps the listbox, its keyboard model and the
- * optimistic-hide wiring — every action here is emitted, never sent from the
- * card, so both the buttons and the j/k/a/e/x keys go through the same handlers.
+ * ReviewBrowseList.vue, which keeps the listbox, its keyboard model, the bulk
+ * selection and the optimistic-hide wiring — every action here is emitted,
+ * never sent from the card, so both the buttons and the j/k/a/e/# keys go
+ * through the same handlers.
  */
 const props = defineProps<{
 	row: ReviewRow;
@@ -20,9 +21,13 @@ const props = defineProps<{
 	aiEnabled: boolean;
 	/** An action for this row is in flight. */
 	busy: boolean;
+	/** Part of the bulk selection (piece C2) — checkbox state and ring. */
+	selected: boolean;
 }>();
 
 const emit = defineEmits<{
+	/** The reviewer put this card in (or took it out of) the bulk selection. */
+	toggleSelect: [];
 	/** A freeform whole-draft revision to persist onto the card's draft. */
 	reviseApply: [text: string];
 	attach: [candidate: { fileId: string; filename: string }];
@@ -76,26 +81,57 @@ const why = computed<string | undefined>(() => {
 </script>
 
 <template>
-	<TaskContext :who="row.message.from" icon="lucide:mail">
-		<template #meta>
-			{{ formatCompactRelativeTime(row.message._creationTime) }}
-			<template v-if="row.thread">
-				&middot;
-				<NuxtLink :to="`/dashboard/inbox/${row.thread._id}`" class="text-brand hover:underline">
-					{{ t('components.agentTasks.reviewBrowseList.viewThread') }}
-				</NuxtLink>
+	<!-- Selection checkbox beside the card header (the Space/x target). -->
+	<div class="flex items-start gap-3">
+		<input
+			type="checkbox"
+			class="mt-1 h-4 w-4 shrink-0 accent-brand"
+			:checked="selected"
+			:aria-label="
+				t('components.agentTasks.reviewBrowseList.selectMessage', { sender: row.message.from })
+			"
+			@change="emit('toggleSelect')"
+		/>
+		<TaskContext class="flex-1 min-w-0" :who="row.message.from" icon="lucide:mail">
+			<template #meta>
+				{{ formatCompactRelativeTime(row.message._creationTime) }}
+				<template v-if="row.thread">
+					&middot;
+					<NuxtLink :to="`/dashboard/inbox/${row.thread._id}`" class="text-brand hover:underline">
+						{{ t('components.agentTasks.reviewBrowseList.viewThread') }}
+					</NuxtLink>
+				</template>
 			</template>
-		</template>
-		<!-- One roll-up trust chip (human language; reasons + raw numbers in its popover) + category chip. -->
-		<template #trailing>
-			<div v-if="row.message.classification" class="flex items-center gap-2">
-				<InboxTrustChip :trust="trust" :extra-detail="trustDetail" />
-				<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
-					{{ row.message.classification.category }}
-				</span>
-			</div>
-		</template>
-	</TaskContext>
+			<!-- One roll-up trust chip (human language; reasons + raw numbers in its popover) + category chip + saved-edit chip (D7). -->
+			<template #trailing>
+				<div
+					v-if="row.message.classification || row.message.draftSavedAt"
+					class="flex items-center gap-2"
+				>
+					<template v-if="row.message.classification">
+						<InboxTrustChip :trust="trust" :extra-detail="trustDetail" />
+						<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
+							{{ row.message.classification.category }}
+						</span>
+					</template>
+					<!-- Save-without-approving leaves the row queued; the chip says so honestly. -->
+					<span
+						v-if="row.message.draftSavedAt"
+						class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-bg-elevated border border-border-subtle text-text-secondary"
+						:title="
+							t('components.agentTasks.reviewBrowseList.savedAt', {
+								when: new Date(row.message.draftSavedAt).toLocaleString(),
+							})
+						"
+						data-testid="draft-saved-chip"
+					>
+						<Icon name="lucide:pencil-line" class="w-3 h-3" aria-hidden="true" />
+						{{ t('components.agentTasks.reviewBrowseList.savedEditedByYou') }}
+					</span>
+				</div>
+			</template>
+		</TaskContext>
+	</div>
 
 	<!-- The ask: subject + excerpt, with the muted one-line WHY the agent held/escalated it. -->
 	<TaskAsk

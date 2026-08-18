@@ -6,56 +6,17 @@
  */
 
 import { v } from 'convex/values';
-import type { Doc } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { transition as threadTransition } from './threads/module';
-import type { CancelAutoSendOutcome } from './processingLifecycle';
+import type { CancelAutoSendOutcome, TransitionOutcome } from './processingLifecycle';
+import { resolveHumanApproveUndoDelayMs } from './processingLifecycle/effects';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { extractEmail } from '../lib/emailAddress';
-import { getActiveReplierOtherThan } from './presence';
-
-/**
- * Feed a human verification-queue decision back into the graduated-autonomy
- * loop. The weekly `autonomy.adjustThresholds` cron consumes these rows to
- * tighten / loosen per-category auto-approve thresholds, and the agent-health
- * rollup uses them for the `rejection_spike` circuit breaker. Best-effort:
- * a message with no classification yet still records under `other` so the
- * signal isn't lost. Safe to call even when `ai.autonomy` is off — it only
- * appends a feedback row.
- */
-async function recordAutonomyFeedback(
-	ctx: MutationCtx,
-	message: Doc<'inboundMessages'>,
-	action: 'approved' | 'rejected' | 'edited',
-	userFeedback?: string
-): Promise<void> {
-	await ctx.runMutation(internal.autonomyFeedback.recordFeedback, {
-		category: message.classification?.category ?? 'other',
-		action,
-		agentConfidence: message.confidenceScore ?? message.classification?.confidence ?? 0,
-		userFeedback,
-		inboundMessageId: message._id,
-	});
-
-	// Reconcile any pending shadow ("would-have-sent") observation for this
-	// message against the human's decision, feeding the graduation scorecard.
-	// A no-op when the message was never observed in shadow mode. Best-effort:
-	// scorecard bookkeeping must never affect the human action, so any failure
-	// is swallowed — it runs in the same transaction and must not roll back the
-	// human approve/reject/edit.
-	try {
-		await ctx.runMutation(internal.agent.shadowScorecard.reconcileShadowDecision, {
-			inboundMessageId: message._id,
-			action,
-		});
-	} catch {
-		// swallowed: shadow scorecard bookkeeping is best-effort
-	}
-}
+import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFeedback';
+import { appendDraftRevision } from './draftRevisions';
 
 /**
  * Approve an agent-generated draft for sending.
@@ -73,53 +34,51 @@ export const approveDraft = adminMutation({
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 		if (!message.draftResponse) throwInvalidState('No draft to approve');
 
-		// Collision soft-hold (belt-and-braces): if ANOTHER teammate is actively
-		// replying to this thread at execution time, don't quietly double-answer.
-		// Return a soft error the UI turns into a toast ("… just sent a reply —
-		// review the thread") rather than sending. Advisory only: last-writer
-		// still wins if two callers race past the held button — this is not a
-		// lock/transaction system, just a guard against the common collision.
-		if (message.threadId) {
-			const otherReplier = await getActiveReplierOtherThan(ctx, message.threadId, userId);
-			if (otherReplier) {
-				const profile = await ctx.db
-					.query('userProfiles')
-					.withIndex('by_auth_user_id', (q) => q.eq('authUserId', otherReplier.userId))
-					.first();
-				const heldByName = profile?.name || profile?.email || 'A teammate';
-				return { success: false as const, reason: 'reply_in_progress' as const, heldByName };
-			}
+		// Collision soft-hold: return a soft error the UI turns into a toast
+		// ("… just sent a reply — review the thread") rather than sending.
+		const hold = await resolveReplyCollisionHold(ctx, message, userId);
+		if (hold) {
+			return {
+				success: false as const,
+				reason: 'reply_in_progress' as const,
+				heldByName: hold.heldByName,
+			};
 		}
 
-		await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-			inboundMessageId: args.inboundMessageId,
-			input: {
-				to: 'approved',
-				at: Date.now(),
-				source: 'human',
-				userId,
-			},
-		});
+		// Resolve the human-approve undo window from the singleton agentConfig
+		// (default 15s, clamped 0–120s; 0 = the legacy immediate send) and thread
+		// it into the lifecycle, which schedules the delayed send with the same
+		// cancellable `pendingAutoSend` marker autonomous sends use.
+		const configs = await ctx.db.query('agentConfig').take(1);
+		const undoDelayMs = resolveHumanApproveUndoDelayMs(configs[0]?.humanApproveUndoDelayMs);
 
-		// Feed the approval into the graduated-autonomy learning loop.
-		await recordAutonomyFeedback(ctx, message, 'approved');
-
-		// A draft the agent produced from an OWNER-answered clarification, sent
-		// UNEDITED, is a strong positive outcome signal: the owner supplied the
-		// missing facts, the agent drafted, and the owner shipped it verbatim.
-		// Record it as an outcome-sourced positive so real-world outcomes — not
-		// just the shrinking human-reviewed subset — tune autonomy. Best-effort:
-		// a learning-loop failure must never fail the human approve.
-		if (message.pendingClarification?.answeredAt && !message.isDraftEdited) {
-			try {
-				await ctx.runMutation(internal.autonomyOutcome.recordOutcomeFeedback, {
-					inboundMessageId: message._id,
-					signal: 'clarification_unedited_send',
-				});
-			} catch {
-				// swallowed: outcome bookkeeping is best-effort
+		const approvedAt = Date.now();
+		const transitioned: TransitionOutcome = await ctx.runMutation(
+			internal.inbox.processingLifecycle.transition,
+			{
+				inboundMessageId: args.inboundMessageId,
+				input: {
+					to: 'approved',
+					at: approvedAt,
+					source: 'human',
+					userId,
+					...(undoDelayMs > 0 ? { undoDelayMs } : {}),
+				},
 			}
+		);
+		// Lost race — a double-click or a teammate approved/rejected first, so the
+		// edge was refused and nothing was scheduled. Skip the side effects and
+		// return the bulk twin's honest vocabulary (from the queue's perspective
+		// the row is gone) instead of fabricating a success + undo window.
+		if (!transitioned.ok) {
+			return { success: false as const, reason: 'not_found' as const };
 		}
+
+		// NO learning-loop feedback here: the graduated-autonomy signals for a
+		// human approve are recorded at SEND-FIRE time
+		// (`decisionFeedback.recordApprovalSignalsAtSend`, invoked by
+		// `sendApprovedReply`), so an approve undone inside its C1 window trains
+		// nothing and a re-approve records exactly once.
 
 		// Log audit
 		await recordAuditLog(ctx, {
@@ -129,7 +88,13 @@ export const approveDraft = adminMutation({
 			resourceId: args.inboundMessageId,
 		});
 
-		return { success: true as const };
+		// Hand the undo window back to the caller so the UI can arm its countdown
+		// toast ("Approved — Undo (14s)") without re-querying the marker. Absent
+		// when the window is 0 — the send already left, nothing to undo.
+		return {
+			success: true as const,
+			...(undoDelayMs > 0 ? { undo: { sendAt: approvedAt + undoDelayMs } } : {}),
+		};
 	},
 });
 
@@ -175,14 +140,16 @@ export const rejectDraft = adminMutation({
 });
 
 /**
- * Undo an in-flight autonomous auto-send during its delay / undo window.
+ * Undo an in-flight delayed send during its delay / undo window.
  *
- * Backs the "Sending in 0:59 — Undo" control on the review surface. The message
- * was auto-approved and its send scheduled behind `agentConfig.autoSendDelayMs`;
- * this aborts the scheduled send (if still pending) and routes the reply back to
- * the human review queue (`approved → draft_ready`) rather than dropping it —
- * the same fail-soft degrade as a landing thread reply. Idempotent: a message
- * whose send already fired (or was never delayed) returns `cancelled: false`.
+ * Backs the "Sending in 0:59 — Undo" control on the review surface for both
+ * origins of a pending delayed send: an AUTONOMOUS auto-approve (window from
+ * `agentConfig.autoSendDelayMs`) and a HUMAN approve (window from
+ * `agentConfig.humanApproveUndoDelayMs` — the countdown undo toast). Aborts the
+ * scheduled send (if still pending) and routes the reply back to the human
+ * review queue (`approved → draft_ready`) rather than dropping it — the same
+ * fail-soft degrade as a landing thread reply. Idempotent: a message whose send
+ * already fired (or was never delayed) returns `cancelled: false`.
  */
 export const undoAutoSend = adminMutation({
 	args: {
@@ -207,7 +174,13 @@ export const undoAutoSend = adminMutation({
 });
 
 /**
- * Edit the draft text before approving
+ * Edit the draft text before approving.
+ *
+ * Revision-appending per D7: the agent original is preserved as revision 0 and
+ * the edit becomes the working draft via `appendDraftRevision` — never an
+ * in-place overwrite. Records NO autonomy feedback here; the `'edited'` signal
+ * fires once at send-fire time iff the sent text differs from the agent
+ * original (see `decisionFeedback.recordApprovalSignalsAtSend`).
  */
 export const editDraft = adminMutation({
 	args: {
@@ -220,22 +193,11 @@ export const editDraft = adminMutation({
 
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 
-		const patches: Partial<Doc<'inboundMessages'>> = {
-			draftResponse: args.draftResponse,
-			// Mark the draft as human-edited so a later approve can tell an
-			// UNEDITED owner-send of an answered-clarification draft (a strong
-			// positive autonomy outcome) apart from an edited-then-sent one.
-			isDraftEdited: true,
-		};
-		if (args.draftSubject) {
-			patches.draftSubject = args.draftSubject;
-		}
-
-		await ctx.db.patch(args.inboundMessageId, patches);
-
-		// An edit signals the draft wasn't quite right — a mild negative
-		// signal for autonomy threshold tuning.
-		await recordAutonomyFeedback(ctx, message, 'edited');
+		await appendDraftRevision(ctx, message, {
+			text: args.draftResponse,
+			...(args.draftSubject ? { subject: args.draftSubject } : {}),
+			savedBy: userId,
+		});
 
 		await recordAuditLog(ctx, {
 			userId,

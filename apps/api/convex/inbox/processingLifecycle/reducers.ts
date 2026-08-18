@@ -38,11 +38,7 @@ export const LEGAL_EDGES: Record<ProcessingStatus, ReadonlySet<ProcessingStatus>
 	// `* → archived` star-source branch in dispatch() already permits it; this
 	// entry keeps the declared contract in sync with runtime behavior.
 	received: new Set<ProcessingStatus>(['security_check', 'archived']),
-	security_check: new Set<ProcessingStatus>([
-		'classifying',
-		'quarantined',
-		'archived',
-	]),
+	security_check: new Set<ProcessingStatus>(['classifying', 'quarantined', 'archived']),
 	quarantined: new Set<ProcessingStatus>(['received', 'archived']),
 	classifying: new Set<ProcessingStatus>([
 		'drafting',
@@ -69,11 +65,7 @@ export const LEGAL_EDGES: Record<ProcessingStatus, ReadonlySet<ProcessingStatus>
 	failed: new Set<ProcessingStatus>(['received']),
 };
 
-export const TERMINAL: ReadonlySet<ProcessingStatus> = new Set([
-	'sent',
-	'rejected',
-	'archived',
-]);
+export const TERMINAL: ReadonlySet<ProcessingStatus> = new Set(['sent', 'rejected', 'archived']);
 
 // `to: 'failed'` can come from any non-terminal source; checked separately.
 export function canFail(from: ProcessingStatus): boolean {
@@ -95,7 +87,7 @@ export function canFail(from: ProcessingStatus): boolean {
 function completeAction(
 	actionId: Id<'agentActions'>,
 	output: string | undefined,
-	metrics: { durationMs?: number; modelUsed?: string; tokenUsage?: TokenUsage } = {},
+	metrics: { durationMs?: number; modelUsed?: string; tokenUsage?: TokenUsage } = {}
 ): Effect {
 	return {
 		kind: 'complete_action',
@@ -107,7 +99,10 @@ function completeAction(
 	};
 }
 
-function reduceClassifying(_message: Doc<'inboundMessages'>, input: InputFor<'classifying'>): TransitionParts {
+function reduceClassifying(
+	_message: Doc<'inboundMessages'>,
+	input: InputFor<'classifying'>
+): TransitionParts {
 	const patch: Record<string, unknown> = {};
 	const effects: Effect[] = [];
 	if (input.completedActionId) {
@@ -116,7 +111,7 @@ function reduceClassifying(_message: Doc<'inboundMessages'>, input: InputFor<'cl
 				durationMs: input.durationMs,
 				modelUsed: input.modelUsed,
 				tokenUsage: input.tokenUsage,
-			}),
+			})
 		);
 	}
 	if (input.securityFlags) patch['securityFlags'] = input.securityFlags;
@@ -124,7 +119,10 @@ function reduceClassifying(_message: Doc<'inboundMessages'>, input: InputFor<'cl
 	return { patch, effects };
 }
 
-function reduceDrafting(message: Doc<'inboundMessages'>, input: InputFor<'drafting'>): TransitionParts {
+function reduceDrafting(
+	message: Doc<'inboundMessages'>,
+	input: InputFor<'drafting'>
+): TransitionParts {
 	const patch: Record<string, unknown> = {};
 	const effects: Effect[] = [];
 	if (input.completedActionId) {
@@ -133,7 +131,7 @@ function reduceDrafting(message: Doc<'inboundMessages'>, input: InputFor<'drafti
 				durationMs: input.durationMs,
 				modelUsed: input.modelUsed,
 				tokenUsage: input.tokenUsage,
-			}),
+			})
 		);
 	}
 	if (input.classification) {
@@ -153,7 +151,10 @@ function reduceDrafting(message: Doc<'inboundMessages'>, input: InputFor<'drafti
 	return { patch, effects };
 }
 
-function reduceDraftReady(message: Doc<'inboundMessages'>, input: InputFor<'draft_ready'>): TransitionParts {
+function reduceDraftReady(
+	message: Doc<'inboundMessages'>,
+	input: InputFor<'draft_ready'>
+): TransitionParts {
 	const patch: Record<string, unknown> = {};
 	const effects: Effect[] = [];
 	if (input.completedActionId) {
@@ -162,7 +163,7 @@ function reduceDraftReady(message: Doc<'inboundMessages'>, input: InputFor<'draf
 				durationMs: input.durationMs,
 				modelUsed: input.modelUsed,
 				tokenUsage: input.tokenUsage,
-			}),
+			})
 		);
 	}
 	if (input.classification) patch['classification'] = input.classification;
@@ -180,14 +181,18 @@ function reduceDraftReady(message: Doc<'inboundMessages'>, input: InputFor<'draf
 		}
 	}
 	if (message.threadId) {
-		effects.push({ kind: 'set_thread_draft_status', threadId: message.threadId, draftStatus: 'pending' });
+		effects.push({
+			kind: 'set_thread_draft_status',
+			threadId: message.threadId,
+			draftStatus: 'pending',
+		});
 	}
 	return { patch, effects };
 }
 
 function reduceAwaitingClarification(
 	_message: Doc<'inboundMessages'>,
-	input: InputFor<'awaiting_clarification'>,
+	input: InputFor<'awaiting_clarification'>
 ): TransitionParts {
 	const patch: Record<string, unknown> = {};
 	const effects: Effect[] = [];
@@ -197,7 +202,7 @@ function reduceAwaitingClarification(
 				durationMs: input.durationMs,
 				modelUsed: input.modelUsed,
 				tokenUsage: input.tokenUsage,
-			}),
+			})
 		);
 	}
 	// Persist the open questions + classification (so the resume path can
@@ -212,25 +217,38 @@ function reduceAwaitingClarification(
 	return { patch, effects };
 }
 
-function reduceQuarantined(_message: Doc<'inboundMessages'>, input: InputFor<'quarantined'>): TransitionParts {
+function reduceQuarantined(
+	_message: Doc<'inboundMessages'>,
+	input: InputFor<'quarantined'>
+): TransitionParts {
 	const effects: Effect[] = [];
 	if (input.completedActionId) {
-		effects.push(completeAction(input.completedActionId, input.output, { durationMs: input.durationMs }));
+		effects.push(
+			completeAction(input.completedActionId, input.output, { durationMs: input.durationMs })
+		);
 	}
 	return { patch: { securityFlags: input.securityFlags }, effects };
 }
 
-function reduceArchived(_message: Doc<'inboundMessages'>, input: InputFor<'archived'>): TransitionParts {
+function reduceArchived(
+	_message: Doc<'inboundMessages'>,
+	input: InputFor<'archived'>
+): TransitionParts {
 	const patch: Record<string, unknown> = {};
 	const effects: Effect[] = [];
 	if (input.completedActionId) {
-		effects.push(completeAction(input.completedActionId, input.output, { durationMs: input.durationMs }));
+		effects.push(
+			completeAction(input.completedActionId, input.output, { durationMs: input.durationMs })
+		);
 	}
 	if (input.securityFlags) patch['securityFlags'] = input.securityFlags;
 	return { patch, effects };
 }
 
-function reduceApproved(message: Doc<'inboundMessages'>, input: InputFor<'approved'>): TransitionParts {
+function reduceApproved(
+	message: Doc<'inboundMessages'>,
+	input: InputFor<'approved'>
+): TransitionParts {
 	const effects: Effect[] = [];
 	if (input.completedActionId) {
 		effects.push(completeAction(input.completedActionId, input.output));
@@ -243,19 +261,32 @@ function reduceApproved(message: Doc<'inboundMessages'>, input: InputFor<'approv
 		kind: 'schedule_send_approved',
 		inboundMessageId: message._id,
 		autonomous: input.source === 'auto',
+		// The human-approve undo window rides along per call (approveDraft
+		// resolves it from agentConfig); the autonomous window stays resolved
+		// inside the effect runner, so the auto path is untouched by this field.
+		...(input.source === 'human' && input.undoDelayMs !== undefined
+			? { delayMs: input.undoDelayMs }
+			: {}),
 	});
 	if (input.source === 'auto') {
 		effects.push({ kind: 'increment_auto_reply_count' });
 	}
 	if (message.threadId) {
-		effects.push({ kind: 'set_thread_draft_status', threadId: message.threadId, draftStatus: 'approved' });
+		effects.push({
+			kind: 'set_thread_draft_status',
+			threadId: message.threadId,
+			draftStatus: 'approved',
+		});
 	}
-	return { patch: {}, effects };
+	// Persist the approval's provenance: the send-time feedback recorder keys
+	// on it, and the reconcile cron re-fires `sendApprovedReply` without the
+	// `autonomous` arg — the message itself must carry the truth.
+	return { patch: { approvalSource: input.source }, effects };
 }
 
 function reduceThreadStatusOnly(
 	message: Doc<'inboundMessages'>,
-	draftStatus: 'sent' | 'rejected',
+	draftStatus: 'sent' | 'rejected'
 ): TransitionParts {
 	const effects: Effect[] = [];
 	if (message.threadId) {
@@ -264,7 +295,10 @@ function reduceThreadStatusOnly(
 	return { patch: {}, effects };
 }
 
-function reduceReceived(message: Doc<'inboundMessages'>, input: InputFor<'received'>): TransitionParts {
+function reduceReceived(
+	message: Doc<'inboundMessages'>,
+	input: InputFor<'received'>
+): TransitionParts {
 	// Reset path: clear the failure / quarantine fields so the next pipeline pass
 	// starts clean, and re-kick the Agent walker from `security_scan`. The
 	// schedule_pipeline_start effect closes the latent bug (ADR-0014 drift bug
@@ -282,11 +316,18 @@ function reduceReceived(message: Doc<'inboundMessages'>, input: InputFor<'receiv
 	return { patch, effects };
 }
 
-function reduceFailed(_message: Doc<'inboundMessages'>, input: InputFor<'failed'>): TransitionParts {
+function reduceFailed(
+	_message: Doc<'inboundMessages'>,
+	input: InputFor<'failed'>
+): TransitionParts {
 	const patch: Record<string, unknown> = { errorMessage: input.errorMessage };
 	const effects: Effect[] = [];
 	if (input.failingActionId) {
-		effects.push({ kind: 'fail_action', actionId: input.failingActionId, errorMessage: input.errorMessage });
+		effects.push({
+			kind: 'fail_action',
+			actionId: input.failingActionId,
+			errorMessage: input.errorMessage,
+		});
 	}
 	return { patch, effects };
 }

@@ -33,12 +33,19 @@ const props = withDefaults(
 		held?: boolean;
 		/** Plain-language reason shown under the row while `held`. */
 		heldReason?: string;
+		/**
+		 * Offer the inline "Save" (save-without-approving) beside the primary
+		 * commit button. Saving is not a send, so it stays enabled during a
+		 * collision soft-hold.
+		 */
+		showSave?: boolean;
 	}>(),
 	{
 		saving: false,
 		applyLabel: undefined,
 		held: false,
 		heldReason: undefined,
+		showSave: false,
 	}
 );
 
@@ -52,6 +59,12 @@ const applyText = computed(
 const emit = defineEmits<{
 	(e: 'update:modelValue', value: string): void;
 	(e: 'apply'): void;
+	/**
+	 * Save WITHOUT approving (piece D1'): persist the edit as a draft revision
+	 * and stay in `draft_ready`. Rendered only when {@link showSave} is set, so
+	 * surfaces without a save path keep the two-button layout.
+	 */
+	(e: 'save'): void;
 	(e: 'discard'): void;
 }>();
 
@@ -117,6 +130,21 @@ function onDiscard() {
 			>
 				<Icon name="lucide:save" class="w-3 h-3" />
 				{{ applyText }}
+			</UiButton>
+			<!-- Save WITHOUT approving: appends a draft revision, row stays queued.
+			     Not blocked by the collision soft-hold — saving never sends. -->
+			<UiButton
+				v-if="showSave"
+				variant="secondary"
+				size="sm"
+				type="button"
+				class="gap-1"
+				:disabled="saving"
+				data-testid="draft-diff-save"
+				@click="emit('save')"
+			>
+				<Icon name="lucide:pencil-line" class="w-3 h-3" />
+				{{ t('common.save') }}
 			</UiButton>
 			<UiButton
 				variant="ghost"

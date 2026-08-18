@@ -889,6 +889,9 @@ export const create = internalMutation({
 		toAddresses: v.array(v.string()),
 		subject: v.string(),
 		at: v.number(),
+		// Offline-outbox idempotency key (the queued item's id) — see
+		// `drafts.create`, which dedupes on it before calling here.
+		clientNonce: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'mailDrafts'>> => {
 		return await ctx.db.insert('mailDrafts', {
@@ -904,6 +907,7 @@ export const create = internalMutation({
 			bodyHtml: '',
 			bodyText: undefined,
 			attachments: [],
+			clientNonce: args.clientNonce,
 			state: 'draft',
 			lastEditedAt: args.at,
 			createdAt: args.at,

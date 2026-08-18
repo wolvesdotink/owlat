@@ -204,6 +204,11 @@
 				"undo": "Undo",
 				"undoTitle": "Undo last (⌘Z)"
 			},
+			"reviewApproveUndoToast": {
+				"approved": "Approved",
+				"sendingIn": "{what} — sending in {seconds}s",
+				"undo": "Undo ({seconds}s)"
+			},
 			"reviewBrowseList": {
 				"agentDraft": "Agent Draft",
 				"approveAndSend": "Approve & Send",
@@ -222,6 +227,9 @@
 				"openThread": "Open thread",
 				"reject": "Reject",
 				"replyPlaceholder": "Type your reply…",
+				"savedAt": "Saved {when}",
+				"savedEditedByYou": "Saved · edited by you",
+				"selectMessage": "Select message from {sender}",
 				"sendReply": "Send Reply",
 				"subjectPlaceholder": "Subject (optional)",
 				"subtitle": "Agent-generated drafts and escalations waiting for your action.",
@@ -233,6 +241,12 @@
 					"suggestedAttachment": "Suggested attachment: {filename} — open the reply to attach and send"
 				},
 				"viewThread": "View thread"
+			},
+			"reviewBulkActionBar": {
+				"approveCount": "Approve {count}",
+				"rejectCount": "Reject {count}",
+				"selectAll": "Select all",
+				"selected": "{count} selected"
 			},
 			"reviewFocusFlow": {
 				"approveAndSend": "Approve & Send",
@@ -3486,7 +3500,6 @@
 					"trash": "Trash"
 				},
 				"inboxView": "Inbox view",
-				"offlineBanner": "Offline — showing recent mail from this device. Actions are paused.",
 				"openFolders": "Open folders",
 				"selectMessage": "Select a message",
 				"updating": "updating…",
@@ -3634,6 +3647,12 @@
 					"hint": "When on, mail from someone you've never corresponded with is held out of the Reply Queue until you accept the sender — their mail still lands in the inbox. Keeps triage focused on people you know. Off by default.",
 					"label": "Screen first-time senders"
 				}
+			},
+			"postboxOfflineBanners": {
+				"failedSendsBanner": "{count} queued message couldn't be sent — kept on this device. | {count} queued messages couldn't be sent — kept on this device.",
+				"offlineBanner": "Offline — reading from this device; sends will go out when you're back online.",
+				"offlineBannerQueued": "Offline — reading from this device; sends will go out when you're back online ({count} queued).",
+				"retryQueuedSends": "Retry"
 			},
 			"postboxOfflineSettings": {
 				"clear": {
@@ -3958,6 +3977,7 @@
 				"trackerHosts": "Tracker hosts"
 			},
 			"postboxUndoSendToast": {
+				"queued": "Queued — sends when you're back online ({seconds}s)",
 				"sending": "Sending… ({seconds}s)",
 				"undo": "Undo",
 				"undoSendOperation": "Undo send"
@@ -4228,6 +4248,16 @@
 				"secretNotSet": "Not set",
 				"secretSet": "Set in the environment",
 				"selectPlaceholder": "Select…"
+			},
+			"profileSyncBanner": {
+				"appliedTitle": "Services applied",
+				"apply": "Apply & restart",
+				"applying": "Applying…",
+				"convergedBody": "The updater converged the services for your flag state.",
+				"fallback": "Fallback: on the host, run {featureCommand} for each change, then {restartCommand}.",
+				"pendingBody": "Your flag changes affect {services}. The running services keep their old state until you apply. Applying may briefly restart the listed services.",
+				"title": "Services out of sync — Apply & restart",
+				"updaterUnreachable": "Could not reach the updater: {error}"
 			},
 			"team": {
 				"inviteModal": {
@@ -5318,6 +5348,7 @@
 					},
 					"needsConfig": "Needs config",
 					"needsConfigTitle": "Enabled but not configured — missing: {missing}",
+					"needsOneOf": "Needs one of: {flags}",
 					"packs": {
 						"description": "Bundles of related flags. Toggling a pack flips every flag inside it (and their dependencies).",
 						"flags": "Flags: {flags}",
@@ -7749,6 +7780,9 @@
 					"waiting": "Waiting"
 				},
 				"subjectPlaceholder": "Subject (optional)",
+				"toasts": {
+					"draftSavedNotApproved": "Draft saved — not approved yet"
+				},
 				"unassigned": "Unassigned",
 				"undo": "Undo",
 				"undoAutoSendOperation": "Undo automatic send",
@@ -11046,6 +11080,11 @@
 			}
 		},
 		"postbox": {
+			"offlineOutbox": {
+				"alreadySent": "Too late to undo — that message is already on its way.",
+				"outOfStorage": "This device is out of storage — the message could not be queued.",
+				"storageUnavailable": "Offline storage is unavailable on this device — the message could not be queued."
+			},
 			"useDraftRevise": {
 				"failed": "Revise failed — your draft is unchanged."
 			},
@@ -11413,15 +11452,40 @@
 				"label": "Waiting for the app to come back"
 			}
 		},
+		"reviewApprove": {
+			"alreadyHandled": "Already handled — this draft was approved or declined by someone else"
+		},
+		"reviewBulkActions": {
+			"approveDrafts": "Approve drafts",
+			"rejectDrafts": "Reject drafts",
+			"undoApprovals": "Undo approvals"
+		},
+		"reviewBulkSummary": {
+			"approved": "{count} approved",
+			"gone": "{count} no longer in the queue",
+			"heldByMany": "{count} held — teammates are replying",
+			"heldByOne": "{count} held — {name} is replying",
+			"noDraft": "{count} had no draft",
+			"rejected": "{count} rejected",
+			"tooLateMany": "Too late to undo — the replies are already on their way",
+			"tooLateOne": "Too late to undo — the reply is already on its way",
+			"undoneMany": "Approvals undone — {count} drafts are back in the queue",
+			"undoneOne": "Approval undone — the draft is back in the queue",
+			"undonePartialMany": "{cancelled} approvals undone — {missed} already sent",
+			"undonePartialOne": "{cancelled} approval undone — {missed} already sent"
+		},
 		"reviewShortcuts": {
 			"labels": {
 				"approveAndSend": "Approve & send",
 				"edit": "Edit",
+				"extendSelection": "Extend selection",
 				"next": "Next",
 				"openThread": "Open thread",
 				"pickOption": "Pick option",
 				"previous": "Previous",
 				"reject": "Reject",
+				"select": "Select",
+				"selectAll": "Select all",
 				"skip": "Skip"
 			}
 		},
@@ -11584,6 +11648,29 @@
 				"sesIncomplete": "Region, access key ID, and secret access key are all required for SES.",
 				"smtpIncomplete": "Server host, username, and password are all required for an SMTP relay.",
 				"smtpPortInvalid": "Port must be a whole number between 1 and 65535 (leave blank for 587)."
+			}
+		},
+		"signatureBadge": {
+			"invalid": {
+				"summary": "Signed · signature invalid",
+				"tooltip": "OpenPGP: the signature does not verify against {source}. The message may have been altered in transit."
+			},
+			"keyChanged": {
+				"summary": "Signed · sender key changed",
+				"tooltip": "OpenPGP: this sender's signing key is different from the key previously trusted for this address. The signature was not checked — review the key change before trusting this message."
+			},
+			"keyNotFound": {
+				"summary": "Signed · sender key not found",
+				"tooltip": "OpenPGP: the message is signed, but no public key for the sender could be found, so the signature couldn't be checked."
+			},
+			"keySources": {
+				"manifest": "the sender's instance manifest",
+				"pinned": "the trusted key on file for this sender",
+				"wkd": "the sender's key directory (WKD)"
+			},
+			"verified": {
+				"summary": "Signed · verified",
+				"tooltip": "OpenPGP: the signature verified against {source}. Signing key: {fingerprint}."
 			}
 		},
 		"suppressionProvenance": {
@@ -12347,6 +12434,9 @@
 				"reserveMailbox": "Reserve invitation mailbox"
 			}
 		},
+		"useProfileSync": {
+			"updaterUnreachable": "Could not reach the updater"
+		},
 		"useRelayCredentialDraft": {
 			"providers": {
 				"emailit": {
@@ -12373,7 +12463,8 @@
 		"useReviewQueue": {
 			"approveDraft": "Approve draft",
 			"rejectDraft": "Reject draft",
-			"saveReply": "Save reply"
+			"saveReply": "Save reply",
+			"undoApproval": "Undo approval"
 		},
 		"useSegmentFilters": {
 			"allContacts": "All contacts",
@@ -12450,6 +12541,7 @@
 			"rejectDraft": "Reject draft",
 			"retryMessage": "Retry message",
 			"saveDraft": "Save draft",
+			"saveDraftRevision": "Save draft",
 			"snoozeThread": "Snooze thread",
 			"unsnoozeThread": "Unsnooze thread",
 			"updateThreadStatus": "Update thread status"

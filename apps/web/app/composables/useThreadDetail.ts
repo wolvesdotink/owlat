@@ -45,6 +45,12 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const { run: unsnoozeThread } = useBackendOperation(api.inbox.snooze.unsnoozeThread, {
 		label: () => t('shared.useThreadDetail.unsnoozeThread'),
 	});
+	// Declared AFTER the operations above: the unit tests map mocked runs by
+	// declaration order.
+	const { run: saveDraftRevision } = useBackendOperation(
+		api.inbox.draftRevisions.saveDraftRevision,
+		{ label: () => t('shared.useThreadDetail.saveDraftRevision') }
+	);
 
 	// Actions
 	// Return the run result so callers can show a success toast only on a real
@@ -96,6 +102,22 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 
 		isEditingDraft.value = false;
 		return approved;
+	};
+
+	// Inline "Save" (piece D1'): persist the working edit as a draft revision
+	// WITHOUT approving — the message stays in `draft_ready`, the agent original
+	// is preserved as revision 0, and no autonomy feedback is recorded. Editing
+	// mode closes on success; the saved text becomes the visible working draft.
+	const saveDraftOnly = async (messageId: Id<'inboundMessages'>) => {
+		const saved = await saveDraftRevision({
+			inboundMessageId: messageId,
+			draftResponse: editedDraftResponse.value,
+			draftSubject: editedDraftSubject.value || undefined,
+		});
+		if (saved === undefined) return undefined;
+
+		isEditingDraft.value = false;
+		return saved;
 	};
 
 	const handleAssign = async (assignedTo?: string) => {
@@ -172,6 +194,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		startEditDraft,
 		cancelEditDraft,
 		saveEditedDraft,
+		saveDraftOnly,
 		handleAssign,
 		handleStatusChange,
 		handleSnooze,

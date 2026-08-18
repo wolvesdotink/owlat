@@ -38,11 +38,38 @@ import { canFail, LEGAL_EDGES, reduce, TERMINAL } from './reducers';
  */
 export const DEFAULT_AUTO_SEND_DELAY_MS = 60_000;
 
+/**
+ * Default undo window for HUMAN approvals on the review surfaces
+ * (`agentConfig.humanApproveUndoDelayMs` unset). Shorter than the autonomous
+ * window above: a human just read the draft, so the window only needs to cover
+ * an immediate "wait, no" — while every extra second is felt reply latency on
+ * every send. `0` restores the legacy immediate human send.
+ */
+export const DEFAULT_HUMAN_APPROVE_UNDO_DELAY_MS = 15_000;
+
+/** Ceiling for the human-approve undo window — 2 minutes of held replies is
+ * already a lot of felt latency; anything larger is a misconfiguration. */
+export const MAX_HUMAN_APPROVE_UNDO_DELAY_MS = 120_000;
+
+/** Clamp a configured human-approve undo window into [0, 120000]. */
+export function clampHumanApproveUndoDelayMs(value: number): number {
+	if (!Number.isFinite(value)) return DEFAULT_HUMAN_APPROVE_UNDO_DELAY_MS;
+	return Math.min(MAX_HUMAN_APPROVE_UNDO_DELAY_MS, Math.max(0, Math.round(value)));
+}
+
+/** Resolve `agentConfig.humanApproveUndoDelayMs` (absent ⇒ 15s default) into
+ * the effective clamped window a human approve should honor. */
+export function resolveHumanApproveUndoDelayMs(configured: number | undefined): number {
+	return configured === undefined
+		? DEFAULT_HUMAN_APPROVE_UNDO_DELAY_MS
+		: clampHumanApproveUndoDelayMs(configured);
+}
+
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
 export async function applyEffects(
 	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
+	effects: ReadonlyArray<Effect>
 ): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
@@ -98,15 +125,37 @@ export async function applyEffects(
 				break;
 			}
 			case 'schedule_send_approved': {
-				// Human-reviewed approvals send immediately — a human already
-				// signed off, there is nothing to undo. Only the AUTONOMOUS path
-				// gets the configurable send-delay / undo window.
+				// Human-reviewed approvals honor the per-call undo window the
+				// approve mutation resolved from `agentConfig.humanApproveUndoDelayMs`,
+				// reusing the same cancellable `pendingAutoSend` marker (and thus the
+				// same `undoAutoSend` → `approved → draft_ready` fail-soft path) as
+				// autonomous sends. Callers that pass no delay keep the legacy
+				// immediate send.
 				if (!effect.autonomous) {
-					await ctx.scheduler.runAfter(
-						0,
+					const delayMs = Math.max(0, effect.delayMs ?? 0);
+					if (delayMs === 0) {
+						// Immediate send — the window is off (delay 0 / not threaded),
+						// so a human sign-off ships now and there is nothing to undo.
+						await ctx.scheduler.runAfter(0, internal.agent.agentPipeline.sendApprovedReply, {
+							inboundMessageId: effect.inboundMessageId,
+							autonomous: false,
+						});
+						break;
+					}
+
+					const now = Date.now();
+					const scheduledFnId = await ctx.scheduler.runAfter(
+						delayMs,
 						internal.agent.agentPipeline.sendApprovedReply,
-						{ inboundMessageId: effect.inboundMessageId, autonomous: false },
+						{ inboundMessageId: effect.inboundMessageId, autonomous: false }
 					);
+					await ctx.db.patch(effect.inboundMessageId, {
+						pendingAutoSend: {
+							scheduledFnId,
+							sendAt: now + delayMs,
+							scheduledAt: now,
+						},
+					});
 					break;
 				}
 
@@ -114,16 +163,13 @@ export async function applyEffects(
 				// the default when unconfigured. Clamp to >= 0.
 				const configs = await ctx.db.query('agentConfig').take(1);
 				const configuredDelay = configs[0]?.autoSendDelayMs;
-				const delayMs = Math.max(
-					0,
-					configuredDelay ?? DEFAULT_AUTO_SEND_DELAY_MS,
-				);
+				const delayMs = Math.max(0, configuredDelay ?? DEFAULT_AUTO_SEND_DELAY_MS);
 
 				const now = Date.now();
 				const scheduledFnId = await ctx.scheduler.runAfter(
 					delayMs,
 					internal.agent.agentPipeline.sendApprovedReply,
-					{ inboundMessageId: effect.inboundMessageId, autonomous: true },
+					{ inboundMessageId: effect.inboundMessageId, autonomous: true }
 				);
 
 				// delay=0 is the legacy immediate path — no undo window, so no
@@ -140,11 +186,9 @@ export async function applyEffects(
 				break;
 			}
 			case 'schedule_pipeline_start': {
-				await ctx.scheduler.runAfter(
-					0,
-					internal.agent.walker.start,
-					{ inboundMessageId: effect.inboundMessageId },
-				);
+				await ctx.scheduler.runAfter(0, internal.agent.walker.start, {
+					inboundMessageId: effect.inboundMessageId,
+				});
 				break;
 			}
 			case 'schedule_knowledge_extraction': {
@@ -152,22 +196,18 @@ export async function applyEffects(
 				// classified. Best-effort and idempotent: extractFromMessage
 				// no-ops on short bodies and the extractor swallows its own
 				// errors so a failed extraction can't fail the transition.
-				await ctx.scheduler.runAfter(
-					0,
-					internal.knowledge.extraction.extractFromMessage,
-					{ inboundMessageId: effect.inboundMessageId },
-				);
+				await ctx.scheduler.runAfter(0, internal.knowledge.extraction.extractFromMessage, {
+					inboundMessageId: effect.inboundMessageId,
+				});
 				break;
 			}
 			case 'schedule_code_task': {
 				// Turn a classified feature request into a code-work task.
 				// Gated on the inbox.codeTasks flag inside createFromInbound;
 				// idempotent on inboundMessageId.
-				await ctx.scheduler.runAfter(
-					0,
-					internal.codeWorkTasks.createFromInbound,
-					{ inboundMessageId: effect.inboundMessageId },
-				);
+				await ctx.scheduler.runAfter(0, internal.codeWorkTasks.createFromInbound, {
+					inboundMessageId: effect.inboundMessageId,
+				});
 				break;
 			}
 			case 'increment_auto_reply_count': {
@@ -194,7 +234,7 @@ export async function applyEffects(
 export async function dispatch(
 	ctx: MutationCtx,
 	message: Doc<'inboundMessages'>,
-	input: TransitionInput,
+	input: TransitionInput
 ): Promise<TransitionOutcome> {
 	const from = message.processingStatus as ProcessingStatus;
 

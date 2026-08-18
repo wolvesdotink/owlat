@@ -52,6 +52,7 @@ const {
 	startEditDraft,
 	cancelEditDraft,
 	saveEditedDraft,
+	saveDraftOnly,
 	handleStatusChange,
 	handleSnooze,
 	handleUnsnooze,
@@ -321,6 +322,28 @@ const onSaveEdit = async (messageId: Id<'inboundMessages'>) => {
 	} finally {
 		isSavingEdit.value = false;
 	}
+};
+
+// Inline Save (piece D1'): persist the edit as a draft revision WITHOUT
+// approving. The message stays in the review queue ("Saved · edited by you");
+// no collision hold applies because nothing is sent.
+const onSaveOnly = async (messageId: Id<'inboundMessages'>) => {
+	isSavingEdit.value = true;
+	try {
+		const result = await saveDraftOnly(messageId);
+		if (result === undefined) return;
+		showToast(t('dashboard.inbox.detail.toasts.draftSavedNotApproved'));
+	} finally {
+		isSavingEdit.value = false;
+	}
+};
+
+// The diff's "before" side is the AGENT's original draft (revision 0), not the
+// latest saved text — otherwise the first save would destroy the agent-vs-human
+// diff. Falls back to the working draft for messages never saved.
+const agentOriginalDraft = (message: NonNullable<typeof messages.value>[number]) => {
+	const original = message.draftRevisions?.[0];
+	return original?.savedBy === 'agent' ? original.text : (message.draftResponse ?? '');
 };
 
 // `closed` is merged into `resolved` in the UI — the picker no longer offers it
@@ -713,11 +736,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 									/>
 									<InboxDraftDiffEditor
 										v-model="editedDraftResponse"
-										:original="message.draftResponse ?? ''"
+										:original="agentOriginalDraft(message)"
 										:saving="isSavingEdit"
 										:held="isHeld"
 										:held-reason="holdReason"
+										show-save
 										@apply="onSaveEdit(message._id)"
+										@save="onSaveOnly(message._id)"
 										@discard="cancelEditDraft"
 									/>
 								</div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
+import type { ComposerAttachment } from '~/composables/postbox/usePostboxComposeAttachments';
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
@@ -19,6 +20,8 @@ const props = defineProps<{
 	prefillBcc?: string[];
 	prefillSubject?: string;
 	prefillBodyHtml?: string;
+	/** Attachment refs already committed to `draftId` (see ComposerSpec). */
+	prefillAttachments?: ComposerAttachment[];
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
 	attachPendingKey?: string;
 	initialMode?: ComposerMode;
@@ -91,6 +94,7 @@ const {
 	prefillBcc: props.prefillBcc,
 	prefillSubject: props.prefillSubject,
 	prefillBodyHtml: props.prefillBodyHtml,
+	prefillAttachments: props.prefillAttachments,
 	forwardAttachmentsFromMessageId: props.forwardAttachmentsFromMessageId,
 	attachPendingKey: props.attachPendingKey,
 	initialMode: props.initialMode,

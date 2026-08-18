@@ -20,9 +20,23 @@ import type { Id } from '@owlat/api/dataModel';
  */
 export function useReviewQueue() {
 	const { t } = useI18n();
-	const { data: reviewItems, isLoading } = useConvexQuery(api.inbox.queries.getReviewQueue, () => ({
-		limit: 50,
-	}));
+	const { data: rawReviewItems, isLoading } = useConvexQuery(
+		api.inbox.queries.getReviewQueue,
+		() => ({ limit: 50 })
+	);
+
+	// Saved-first sort bump (piece D1'): drafts the reviewer already saved work
+	// into ("Saved · edited by you") float to the top, most recently saved
+	// first; the untouched remainder keeps the server's newest-first order.
+	const reviewItems = computed(() => {
+		const items = rawReviewItems.value;
+		if (!items) return items;
+		const saved = items
+			.filter((it) => it.message.draftSavedAt !== undefined)
+			.sort((a, b) => (b.message.draftSavedAt ?? 0) - (a.message.draftSavedAt ?? 0));
+		if (saved.length === 0) return items;
+		return [...saved, ...items.filter((it) => it.message.draftSavedAt === undefined)];
+	});
 
 	const { run: approveDraft } = useBackendOperation(api.inbox.mutations.approveDraft, {
 		label: () => t('shared.useReviewQueue.approveDraft'),
@@ -32,6 +46,9 @@ export function useReviewQueue() {
 	});
 	const { run: editDraft } = useBackendOperation(api.inbox.mutations.editDraft, {
 		label: () => t('shared.useReviewQueue.saveReply'),
+	});
+	const { run: undoAutoSend } = useBackendOperation(api.inbox.mutations.undoAutoSend, {
+		label: () => t('shared.useReviewQueue.undoApproval'),
 	});
 
 	/**
@@ -81,6 +98,17 @@ export function useReviewQueue() {
 	};
 
 	/**
+	 * True inverse of an approve while its undo window is open: cancels the held
+	 * send server-side and routes the draft back to `draft_ready` (the same
+	 * `undoAutoSend` path autonomous sends use). Resolves `undefined` on a
+	 * categorized failure (already toasted); `cancelled: false` when the window
+	 * has closed — a clean no-op the caller should surface honestly.
+	 */
+	const undoApprove = async (messageId: Id<'inboundMessages'>) => {
+		return await undoAutoSend({ inboundMessageId: messageId });
+	};
+
+	/**
 	 * Compose a human reply for a draftless escalation and send it: persist the
 	 * text via `editDraft`, then approve+queue via `approveDraft`. Both runs go
 	 * through `useBackendOperation`, which toasts categorized failures and
@@ -112,6 +140,7 @@ export function useReviewQueue() {
 		onApprove,
 		approveOption,
 		onReject,
+		undoApprove,
 		composeAndSend,
 		editDraft,
 	};

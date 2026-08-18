@@ -101,4 +101,40 @@ describe('useThreadDetail', () => {
 			expect(detail.isEditingDraft.value).toBe(true);
 		});
 	});
+
+	// Piece D1': inline Save persists a draft revision WITHOUT approving.
+	describe('saveDraftOnly', () => {
+		// saveDraftRevision is declared last in the composable (index 8).
+		const saveRevisionRun = () => runs[8]!;
+
+		it('saves via saveDraftRevision and never touches approveDraft', async () => {
+			const detail = useThreadDetail(threadId);
+			detail.editedDraftResponse.value = 'Work in progress';
+			detail.editedDraftSubject.value = 'Re: later';
+			detail.isEditingDraft.value = true;
+
+			const result = await detail.saveDraftOnly(messageId);
+
+			expect(saveRevisionRun()).toHaveBeenCalledWith({
+				inboundMessageId: messageId,
+				draftResponse: 'Work in progress',
+				draftSubject: 'Re: later',
+			});
+			expect(approveRun()).not.toHaveBeenCalled();
+			expect(result).toEqual({ success: true });
+			expect(detail.isEditingDraft.value).toBe(false);
+		});
+
+		it('stays in edit mode when the save fails so the text is not lost', async () => {
+			const detail = useThreadDetail(threadId);
+			detail.editedDraftResponse.value = 'Work in progress';
+			detail.isEditingDraft.value = true;
+			saveRevisionRun().mockResolvedValueOnce(undefined);
+
+			const result = await detail.saveDraftOnly(messageId);
+
+			expect(result).toBeUndefined();
+			expect(detail.isEditingDraft.value).toBe(true);
+		});
+	});
 });

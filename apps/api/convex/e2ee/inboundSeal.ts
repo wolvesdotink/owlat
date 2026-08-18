@@ -20,7 +20,7 @@
  */
 
 import { v } from 'convex/values';
-import { classifySecureMessage, isEncryptedClass } from '@owlat/shared/secureMessage';
+import { classifyRawSecureMessage, isEncryptedClass } from '@owlat/shared/secureMessage';
 import { extractFirstPartByType } from '@owlat/shared/mailMime';
 
 /**
@@ -83,32 +83,12 @@ export const inboundEncryptionInfoValidator = v.union(
  */
 export function isSealedPgpMime(raw: string): boolean {
 	// The multipart/encrypted protocol part is the authoritative PGP/MIME marker;
-	// classifySecureMessage reads it off the part content-types. Feed the whole
-	// raw message as the "body" too so an inline-armored ciphertext (the PGP
-	// MESSAGE block sitting directly in the body) is still detected.
-	const attachments = extractPartContentTypes(raw).map((contentType) => ({ contentType }));
-	return isEncryptedClass(classifySecureMessage({ attachments, textBody: raw }));
-}
-
-/**
- * Pull the `Content-Type` header value of every MIME part in a raw message (the
- * outer part plus any `Content-Type:` lines inside), lower-cased. Enough for the
- * structural PGP/MIME check — we only need to know whether an
- * `application/pgp-encrypted` part is present, not to fully parse the tree.
- */
-function extractPartContentTypes(raw: string): string[] {
-	const types: string[] = [];
-	const normalized = raw.replace(/\r\n/g, '\n');
-	// Match every `Content-Type:` header line (outer + each part), joining a single
-	// folded continuation so `protocol="application/pgp-encrypted"` on the next
-	// line still counts.
-	const re = /^content-type:[ \t]*([^\n]*(?:\n[ \t][^\n]*)*)/gim;
-	let match: RegExpExecArray | null;
-	while ((match = re.exec(normalized)) !== null) {
-		const value = (match[1] ?? '').replace(/\n[ \t]+/g, ' ').trim();
-		if (value) types.push(value);
-	}
-	return types;
+	// the shared raw classifier reads it off the part content-types and feeds the
+	// whole raw message as the "body" too, so an inline-armored ciphertext (the
+	// PGP MESSAGE block sitting directly in the body) is still detected. Shared
+	// with the F1 signed-mail gates (`isSignedPgpMime` / `isClearsigned`) so the
+	// server's structural detection can never fork from the reader's.
+	return isEncryptedClass(classifyRawSecureMessage(raw));
 }
 
 /** The real headers + bodies recovered from a decrypted inner MIME message. */

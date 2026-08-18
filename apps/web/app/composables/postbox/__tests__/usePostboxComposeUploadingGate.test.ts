@@ -85,6 +85,10 @@ beforeEach(() => {
 		if (fn === 'drafts.create') return { run: vi.fn(async () => ({ draftId: 'draft-new' })) };
 		return { run: vi.fn(async () => undefined) };
 	});
+	// The offline-outbox chain (E2) pulls these at composable setup; inert here.
+	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useConvex', () => null);
 });
 
 async function loadComposable() {

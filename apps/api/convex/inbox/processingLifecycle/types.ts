@@ -153,6 +153,12 @@ export type TransitionInput =
 			userId?: string;
 			completedActionId?: Id<'agentActions'>;
 			output?: string;
+			// Undo window (ms) for a HUMAN approve — threaded per call like
+			// mail/drafts.ts `undoSendDelayMs`. Only meaningful with
+			// `source: 'human'`; the autonomous window comes from
+			// `agentConfig.autoSendDelayMs` inside the effect runner. Absent/0 ⇒
+			// the legacy immediate send.
+			undoDelayMs?: number;
 	  }
 	| { to: 'sent'; at: number }
 	| {
@@ -273,6 +279,7 @@ export const transitionInputValidator = v.union(
 		userId: v.optional(v.string()),
 		completedActionId: v.optional(v.id('agentActions')),
 		output: v.optional(v.string()),
+		undoDelayMs: v.optional(v.number()),
 	}),
 	v.object({ to: v.literal('sent'), at: v.number() }),
 	v.object({
@@ -328,6 +335,11 @@ export type Effect =
 			// The send path runs the deterministic pre-send reference monitor only
 			// on this path; human-reviewed sends are unchanged.
 			autonomous: boolean;
+			// Human-approve undo window (ms), honored only for `autonomous: false`
+			// — a positive value delays the send and persists the cancellable
+			// `pendingAutoSend` marker. The autonomous window is resolved from
+			// `agentConfig.autoSendDelayMs` in the effect runner instead.
+			delayMs?: number;
 	  }
 	| {
 			kind: 'schedule_pipeline_start';

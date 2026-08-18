@@ -1049,6 +1049,70 @@ describe('agentPipeline.sendApprovedReply', () => {
 		});
 	});
 
+	// ── Human-approve learning signals record at SEND-FIRE time (G3) ──────────
+	//
+	// The graduated-autonomy feedback for a human approve is recorded by THIS
+	// action once the reply is actually dispatched — not by approveDraft — so an
+	// approve undone inside its C1 window trains nothing. The unit-level
+	// approve/undo/re-approve sequencing lives in
+	// humanApproveUndo.integration.test.ts; these two pin the wiring through the
+	// real send path.
+
+	it('records the approved (human) feedback once the reply is really enqueued', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+
+		let messageId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'Jane Customer <jane@customer.test>',
+					processingStatus: 'draft_ready',
+					draftResponse: 'Your order is on the way.',
+					draftSubject: 'Re: Help with my order',
+				})
+			);
+		});
+
+		await approveAndDrain(t, messageId);
+
+		expect(enqueueActionMock).toHaveBeenCalledTimes(1);
+		await t.run(async (ctx) => {
+			const feedback = await ctx.db.query('autonomyFeedback').collect();
+			expect(feedback).toHaveLength(1);
+			expect(feedback[0]).toMatchObject({
+				action: 'approved',
+				inboundMessageId: messageId,
+			});
+			expect(feedback[0]!.source).not.toBe('outcome');
+		});
+	});
+
+	it('a send that fails preflight trains nothing — the trust signal is real sends only', async () => {
+		const t = convexTest(schema, modules);
+		// No instanceSettings seeded → the send fails before dispatch.
+
+		let messageId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					from: 'Bob <bob@customer.test>',
+					processingStatus: 'draft_ready',
+					draftResponse: 'Thanks for reaching out.',
+				})
+			);
+		});
+
+		await approveAndDrain(t, messageId);
+
+		expect(enqueueActionMock).not.toHaveBeenCalled();
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('autonomyFeedback').collect()).toHaveLength(0);
+		});
+	});
+
 	it('can also be driven directly via the internal action', async () => {
 		const t = convexTest(schema, modules);
 		await seedSettings(t);

@@ -8,6 +8,10 @@
  * forming a build cycle (`mail-message → mail-auth → shared → mail-message`).
  * The module imports nothing but `node:` builtins, so it stays Convex-`'use
  * node'` safe by construction — there is no second copy of these rules anywhere.
+ *
+ * Also home to the byte-exact RFC 3156 `multipart/signed` first-part
+ * extraction (`rfc3156.ts`) — same byte-preservation doctrine, same
+ * dependency-free constraint, consumed by the inbound signature verifier.
  */
 export {
 	canonicalizeBody,
@@ -18,3 +22,5 @@ export {
 	stripSignatureValue,
 } from './canon.js';
 export type { Canonicalization } from './canon.js';
+export { extractRfc3156SignedPart } from './rfc3156.js';
+export type { Rfc3156SignedParts } from './rfc3156.js';

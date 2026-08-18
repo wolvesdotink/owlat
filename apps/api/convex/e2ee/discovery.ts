@@ -262,10 +262,18 @@ export type DiscoveryFetch =
  * of the DB; SSRF rejections and network errors fail SOFT to `notFound` so a
  * hostile peer can't wedge a send — the guard is still exercised (and asserted)
  * at {@link guardedFetchBytes}. Never throws.
+ *
+ * `skipManifest` (F1, D9) goes WKD-FIRST for a sender we have no reason to
+ * believe is an Owlat instance: the inbound signature verifier resolves keys
+ * for arbitrary PGP senders, where `/.well-known/owlat.json` buys nothing (it
+ * only supplies the instance fingerprint + rotation feed) and would cost an
+ * extra guarded fetch per first-contact sender. The sealed send path keeps the
+ * manifest step unchanged.
  */
 export async function discoverKeyForAddress(
 	address: string,
-	deps: DiscoveryDeps = defaultDeps
+	deps: DiscoveryDeps = defaultDeps,
+	opts: { skipManifest?: boolean } = {}
 ): Promise<DiscoveryFetch> {
 	let domain: string;
 	let localPart: string;
@@ -278,17 +286,19 @@ export async function discoverKeyForAddress(
 	// 1. Manifest (best-effort): instance identity + rotation feed.
 	let instanceFingerprint: string | undefined;
 	let rotationStatements: RotationStatement[] | undefined;
-	try {
-		const manifestBytes = await guardedFetchBytes(buildManifestUrl(domain), deps);
-		if (manifestBytes) {
-			const manifest = await verifyFetchedManifest(manifestBytes);
-			if (manifest) {
-				instanceFingerprint = manifest.instance.fingerprint.toUpperCase();
-				rotationStatements = manifest.keyRotations;
+	if (!opts.skipManifest) {
+		try {
+			const manifestBytes = await guardedFetchBytes(buildManifestUrl(domain), deps);
+			if (manifestBytes) {
+				const manifest = await verifyFetchedManifest(manifestBytes);
+				if (manifest) {
+					instanceFingerprint = manifest.instance.fingerprint.toUpperCase();
+					rotationStatements = manifest.keyRotations;
+				}
 			}
+		} catch {
+			// SSRF/network on the manifest — degrade to WKD-only.
 		}
-	} catch {
-		// SSRF/network on the manifest — degrade to WKD-only.
 	}
 
 	// 2. WKD (authoritative for the address key).
@@ -344,7 +354,7 @@ type DiscoveryOutcome = {
  */
 async function runRecipientKeyDiscovery(
 	ctx: ActionCtx,
-	args: { address: string; force?: boolean }
+	args: { address: string; force?: boolean; skipManifest?: boolean }
 ): Promise<DiscoveryOutcome> {
 	if (!(await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
 		return { outcome: 'disabled' };
@@ -359,7 +369,9 @@ async function runRecipientKeyDiscovery(
 		return { outcome: cached?.outcome ?? 'notFound', cached: true };
 	}
 
-	const fetched = await discoverKeyForAddress(address, defaultDeps);
+	const fetched = await discoverKeyForAddress(address, defaultDeps, {
+		skipManifest: args.skipManifest ?? false,
+	});
 	const domain = address.slice(address.lastIndexOf('@') + 1);
 
 	// A discovery MISS never drops an existing pin — preserve prior trust, re-check sooner.
@@ -429,7 +441,12 @@ async function runRecipientKeyDiscovery(
  * discovery + TOFU pin decision. Thin wrapper over {@link runRecipientKeyDiscovery}.
  */
 export const discoverRecipientKey = internalAction({
-	args: { address: v.string(), force: v.optional(v.boolean()) },
+	args: {
+		address: v.string(),
+		force: v.optional(v.boolean()),
+		// F1 (D9): WKD-first for arbitrary inbound senders — see discoverKeyForAddress.
+		skipManifest: v.optional(v.boolean()),
+	},
 	handler: (ctx, args) => runRecipientKeyDiscovery(ctx, args),
 });
 

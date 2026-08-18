@@ -42,8 +42,16 @@ function collisionText(message: CollisionMessage): string {
 	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
 }
 
-const { reviewItems, isLoading, needsReply, onApprove, approveOption, onReject, composeAndSend } =
-	useReviewQueue();
+const {
+	reviewItems,
+	isLoading,
+	needsReply,
+	onApprove,
+	approveOption,
+	onReject,
+	undoApprove,
+	composeAndSend,
+} = useReviewQueue();
 
 type ReviewEntry = NonNullable<typeof reviewItems.value>[number];
 type FlowItem = ReviewEntry & { id: string };
@@ -158,6 +166,45 @@ function rowTrust(message: FlowItem['message']): TrustLabel {
 // Draftless-escalation compose box (keyed by message id).
 const composeBody = reactive<Record<string, string>>({});
 
+// Countdown-undo toast + true inverse for approvals inside their server-side
+// undo window (agentConfig.humanApproveUndoDelayMs, piece C1). The flow's
+// Cmd/Ctrl+Z (and the chrome Undo button) run the inverse, which actually
+// un-sends: undoAutoSend cancels the held send and routes the draft back to
+// `draft_ready` — the flow then re-shows the card from its cache.
+const {
+	state: approveUndoState,
+	arm: armApproveUndo,
+	dismiss: dismissApproveUndo,
+} = useReviewApproveUndo();
+
+async function undoApproveInverse(messageId: Id<'inboundMessages'>) {
+	// The flow undo owns this reversal now — drop a stale toast for the same card.
+	if (approveUndoState.value.inboundMessageId === messageId) dismissApproveUndo();
+	const result = await undoApprove(messageId);
+	if (result === undefined) return; // categorized failure — already toasted
+	if (result.cancelled) {
+		showToast(t('shared.reviewBulkSummary.undoneOne'));
+	} else if (result.reason === 'already_sent') {
+		showToast(t('shared.reviewBulkSummary.tooLateOne'), 'warning');
+	}
+	// 'no_pending_send': the toast's Undo already cancelled it (this inverse ran
+	// as part of flow.undo) or the send fully completed — nothing left to say.
+}
+
+/**
+ * The lost race: the draft was already approved or declined (double-click, or a
+ * teammate got there first), so the server refused the edge and scheduled
+ * NOTHING. Say so honestly and move the card out of the way with `skip` — it is
+ * gone from the queue, but it was not OUR approval, so it must not land in the
+ * end-state tally and there is no held send to register an inverse for.
+ */
+function handledAlreadyHandled(result: unknown, row: FlowItem): boolean {
+	if (!isApproveAlreadyHandled(result)) return false;
+	showToast(t('shared.reviewApprove.alreadyHandled'), 'info');
+	flow.skip(row.id);
+	return true;
+}
+
 async function approve(row: FlowItem) {
 	if (busy.value || isHeld.value) return;
 	busy.value = true;
@@ -176,8 +223,27 @@ async function approve(row: FlowItem) {
 			);
 			return;
 		}
-		showToast(t('components.agentTasks.reviewFocusFlow.toasts.draftApproved'));
-		flow.complete(row.id, { outcome: 'approved' });
+		if (handledAlreadyHandled(result, row)) return;
+		const undo = approveUndoWindow(result);
+		if (undo) {
+			// The toast's Undo targets THIS card's completion (flow.undoById, which
+			// runs the registered inverse below and rewinds position/tally with it)
+			// — never a blanket flow.undo(), which pops the LAST action: rejecting
+			// another card while the toast is up would rewind THAT card while this
+			// one's held send still fires. Mirrors the browse list's per-message
+			// `undoApproveAndRestore(messageId)` binding.
+			armApproveUndo({
+				inboundMessageId: row.message._id,
+				sendAt: undo.sendAt,
+				onUndo: () => void flow.undoById(row.message._id),
+			});
+		} else {
+			showToast(t('components.agentTasks.reviewFocusFlow.toasts.draftApproved'));
+		}
+		flow.complete(row.id, {
+			outcome: 'approved',
+			...(undo ? { inverse: () => undoApproveInverse(row.message._id) } : {}),
+		});
 	} finally {
 		busy.value = false;
 	}
@@ -210,6 +276,7 @@ async function sendReply(row: FlowItem) {
 			);
 			return;
 		}
+		if (handledAlreadyHandled(result, row)) return;
 		delete composeBody[row.message._id];
 		showToast(t('components.agentTasks.reviewFocusFlow.toasts.replySent'));
 		flow.complete(row.id, { outcome: 'sent' });

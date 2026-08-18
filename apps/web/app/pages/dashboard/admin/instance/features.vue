@@ -11,6 +11,7 @@ import {
 	createFeatureFlagRegistry,
 	isPluginFeatureFlagDefinition,
 	SENDING_FLAGS_REQUIRING_DELIVERY,
+	type FeatureFlagDefinition,
 	type FeatureFlagKey,
 	type FeatureFlagState,
 	type FeaturePackKey,
@@ -19,8 +20,11 @@ import { flagsNeedingConfig, missingPluginEnvironmentVariables } from '~/utils/f
 import { hasInboundFeature, INBOUND_FEATURE_FLAGS } from '~/utils/inboundDns';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
+import FeatureToggleSwitch from '~/components/settings/FeatureToggleSwitch.vue';
 import PluginConfigStatusNotice from '~/components/settings/PluginConfigStatusNotice.vue';
+import ProfileSyncBanner from '~/components/settings/ProfileSyncBanner.vue';
 import FeatureFlagToggleDialogs from '~/components/settings/FeatureFlagToggleDialogs.vue';
+import { useProfileSync } from '~/composables/useProfileSync';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
 
 const pluginFeatureFlagDefinitions =
@@ -30,7 +34,7 @@ const featureFlagRegistry = createFeatureFlagRegistry(pluginFeatureFlagDefinitio
 const { t } = useI18n();
 // The shared registry keeps its English (the setup CLI prints it, and plugin
 // definitions are minted at runtime); these resolve it through the catalog.
-const { flagLabel, flagDescription, packLabel, packDescription } = useFeatureCopy();
+const { flagLabel, flagKeyLabel, flagDescription, packLabel, packDescription } = useFeatureCopy();
 
 useHead({ title: () => t('dashboard.admin.instance.features.pageTitle') });
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
@@ -65,6 +69,10 @@ const { run: setFeaturePack, isLoading: isSavingPack } = useBackendOperation(
 );
 
 const byCategory = computed(() => getFlagsByCategory({ registry: featureFlagRegistry }));
+
+// Toggles only persist flags in Convex; when they change the derived
+// docker-profile set, the out-of-sync banner offers the explicit Apply (D4).
+const { trackFlagChange } = useProfileSync();
 
 const stored = computed<FeatureFlagState>(() => (liveFlags.value ?? {}) as FeatureFlagState);
 const resolved = computed(() => resolveFlags(stored.value, { registry: featureFlagRegistry }));
@@ -172,6 +180,31 @@ function isPluginEnableBlocked(flag: FeatureFlagKey): boolean {
 	);
 }
 
+/**
+ * Why a flag's toggle is dependency-blocked, or `undefined` when it isn't.
+ * All `requires` parents must be ON; each `requiresAny` group needs at least
+ * one ON member. Cascade-on never auto-enables a group member (there is no
+ * principled choice of which), so the toggle stays disabled with this hint.
+ */
+function dependencyHint(def: FeatureFlagDefinition): string | undefined {
+	if (def.requires?.some((dep) => !resolved.value[dep])) {
+		return t('dashboard.admin.instance.features.enableRequiredFirst', {
+			flags: def.requires.join(', '),
+		});
+	}
+	const unsatisfied = (def.requiresAny ?? []).filter(
+		(group) => !group.some((member) => resolved.value[member])
+	);
+	if (unsatisfied.length === 0) return undefined;
+	return unsatisfied
+		.map((group) =>
+			t('dashboard.admin.instance.features.needsOneOf', {
+				flags: group.map((k) => flagKeyLabel(k, featureFlagRegistry[k])).join(', '),
+			})
+		)
+		.join(' · ');
+}
+
 function pluginStatusTitle(flag: FeatureFlagKey): string | undefined {
 	if (!isPluginEnableBlocked(flag)) return undefined;
 	return configStatusError.value
@@ -184,6 +217,7 @@ async function commitToggle(
 	value: boolean,
 	approvedCapabilities?: readonly string[]
 ) {
+	const before = stored.value;
 	const res = await setFeatureFlag({
 		flag,
 		value,
@@ -192,6 +226,7 @@ async function commitToggle(
 	pendingCascade.value = null;
 	pendingPluginApproval.value = null;
 	if (res === undefined) return; // failure already toasted by the operation module
+	trackFlagChange(before, res.flags, featureFlagRegistry);
 	const definition = featureFlagRegistry[flag];
 	const label = definition ? flagLabel(definition) : flag;
 	showToast(
@@ -244,8 +279,10 @@ const packState = computed(() => {
 async function togglePack(packKey: FeaturePackKey) {
 	const current = packState.value[packKey];
 	const nextValue = current !== 'on'; // off/partial → on; on → off
+	const before = stored.value;
 	const res = await setFeaturePack({ pack: packKey, value: nextValue });
 	if (res === undefined) return; // failure already toasted
+	trackFlagChange(before, res.flags, featureFlagRegistry);
 	const label = packLabel(packKey);
 	showToast(
 		nextValue
@@ -273,6 +310,10 @@ async function togglePack(packKey: FeaturePackKey) {
 				{{ t('dashboard.admin.instance.features.subtitle') }}
 			</p>
 		</div>
+
+		<!-- Persistent apply banner: toggles that change the docker-profile set
+		     leave services out of sync until an explicit Apply (D4). -->
+		<ProfileSyncBanner :flags="resolved" class="mb-6" />
 
 		<UiQueryBoundary :loading="isLoading && !liveFlags" :error="flagsError">
 			<div class="space-y-8">
@@ -319,38 +360,12 @@ async function togglePack(packKey: FeaturePackKey) {
 									}}
 								</p>
 							</div>
-							<button
-								type="button"
-								role="switch"
-								:aria-checked="packState[packKey] === 'on'"
-								:aria-label="
-									t('dashboard.admin.instance.features.toggleAria', {
-										label: packLabel(packKey),
-									})
-								"
-								class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
-								:class="
-									packState[packKey] === 'on'
-										? 'bg-brand border-brand'
-										: packState[packKey] === 'partial'
-											? 'bg-warning/60 border-warning/60'
-											: 'bg-bg-surface border-border-subtle'
-								"
+							<FeatureToggleSwitch
+								:state="packState[packKey]"
+								:label="packLabel(packKey)"
 								:disabled="isSavingPack"
-								@click="togglePack(packKey)"
-							>
-								<!-- palette-ok: fixed white thumb on a brand/warning/surface track (the puck packages/ui Switch.vue draws; this tri-state toggle stays bespoke). -->
-								<span
-									class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform"
-									:class="
-										packState[packKey] === 'on'
-											? 'translate-x-[22px]'
-											: packState[packKey] === 'partial'
-												? 'translate-x-[11px]'
-												: 'translate-x-0.5'
-									"
-								/>
-							</button>
+								@toggle="togglePack(packKey)"
+							/>
 						</div>
 					</div>
 				</UiCard>
@@ -421,38 +436,18 @@ async function togglePack(packKey: FeaturePackKey) {
 								<p class="text-sm text-text-secondary mt-0.5">{{ flagDescription(def) }}</p>
 								<FeatureFlagMetadata :definition="def" />
 							</div>
-							<button
-								type="button"
-								role="switch"
-								:aria-checked="resolved[def.key]"
-								:aria-label="
-									t('dashboard.admin.instance.features.toggleAria', { label: flagLabel(def) })
-								"
+							<FeatureToggleSwitch
+								:state="resolved[def.key] ? 'on' : 'off'"
+								:label="flagLabel(def)"
 								:data-testid="`feature-switch-${def.key}`"
-								class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
-								:class="
-									resolved[def.key] ? 'bg-brand border-brand' : 'bg-bg-surface border-border-subtle'
-								"
 								:disabled="
 									isSavingFlag ||
 									isPluginEnableBlocked(def.key) ||
-									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
+									dependencyHint(def) !== undefined
 								"
-								:title="
-									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
-										? t('dashboard.admin.instance.features.enableRequiredFirst', {
-												flags: def.requires?.join(', '),
-											})
-										: pluginStatusTitle(def.key)
-								"
-								@click="onToggle(def.key, !resolved[def.key])"
-							>
-								<!-- palette-ok: fixed white thumb on a brand/surface track, as above. -->
-								<span
-									class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform"
-									:class="resolved[def.key] ? 'translate-x-[22px]' : 'translate-x-0.5'"
-								/>
-							</button>
+								:title="dependencyHint(def) ?? pluginStatusTitle(def.key)"
+								@toggle="onToggle(def.key, !resolved[def.key])"
+							/>
 						</div>
 					</div>
 				</UiCard>

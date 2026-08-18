@@ -204,6 +204,11 @@
 				"undo": "Rückgängig",
 				"undoTitle": "Letzte Aktion rückgängig machen (⌘Z)"
 			},
+			"reviewApproveUndoToast": {
+				"approved": "Genehmigt",
+				"sendingIn": "{what} — wird in {seconds} s gesendet",
+				"undo": "Rückgängig ({seconds} s)"
+			},
 			"reviewBrowseList": {
 				"agentDraft": "Agenten-Entwurf",
 				"approveAndSend": "Freigeben & senden",
@@ -222,6 +227,9 @@
 				"openThread": "Konversation öffnen",
 				"reject": "Ablehnen",
 				"replyPlaceholder": "Schreiben Sie Ihre Antwort…",
+				"savedAt": "Gespeichert am {when}",
+				"savedEditedByYou": "Gespeichert · von Ihnen bearbeitet",
+				"selectMessage": "Nachricht von {sender} auswählen",
 				"sendReply": "Antwort senden",
 				"subjectPlaceholder": "Betreff (optional)",
 				"subtitle": "Vom Agenten erstellte Entwürfe und Eskalationen, die auf Ihre Aktion warten.",
@@ -233,6 +241,12 @@
 					"suggestedAttachment": "Vorgeschlagener Anhang: {filename} — öffnen Sie die Antwort, um ihn anzuhängen und zu senden"
 				},
 				"viewThread": "Konversation ansehen"
+			},
+			"reviewBulkActionBar": {
+				"approveCount": "{count} genehmigen",
+				"rejectCount": "{count} ablehnen",
+				"selectAll": "Alle auswählen",
+				"selected": "{count} ausgewählt"
 			},
 			"reviewFocusFlow": {
 				"approveAndSend": "Freigeben & senden",
@@ -3486,7 +3500,6 @@
 					"trash": "Papierkorb"
 				},
 				"inboxView": "Posteingangsansicht",
-				"offlineBanner": "Offline — es wird die zuletzt auf diesem Gerät gespeicherte Post angezeigt. Aktionen sind pausiert.",
 				"openFolders": "Ordner öffnen",
 				"selectMessage": "Wählen Sie eine Nachricht",
 				"updating": "wird aktualisiert…",
@@ -3634,6 +3647,12 @@
 					"hint": "Wenn an, wird Post von jemandem, mit dem Sie noch nie korrespondiert haben, aus der Antwort-Warteschlange herausgehalten, bis Sie den Absender akzeptieren — die Post landet trotzdem im Posteingang. Hält die Triage auf Personen fokussiert, die Sie kennen. Standardmäßig aus.",
 					"label": "Erstabsender prüfen"
 				}
+			},
+			"postboxOfflineBanners": {
+				"failedSendsBanner": "{count} Nachricht aus der Warteschlange konnte nicht gesendet werden — sie bleibt auf diesem Gerät. | {count} Nachrichten aus der Warteschlange konnten nicht gesendet werden — sie bleiben auf diesem Gerät.",
+				"offlineBanner": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind.",
+				"offlineBannerQueued": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind ({count} in der Warteschlange).",
+				"retryQueuedSends": "Erneut versuchen"
 			},
 			"postboxOfflineSettings": {
 				"clear": {
@@ -3958,6 +3977,7 @@
 				"trackerHosts": "Tracker-Hosts"
 			},
 			"postboxUndoSendToast": {
+				"queued": "In Warteschlange — wird gesendet, sobald Sie wieder online sind ({seconds} s)",
 				"sending": "Wird gesendet… ({seconds} s)",
 				"undo": "Rückgängig",
 				"undoSendOperation": "Senden rückgängig machen"
@@ -4228,6 +4248,16 @@
 				"secretNotSet": "Nicht gesetzt",
 				"secretSet": "In der Umgebung gesetzt",
 				"selectPlaceholder": "Auswählen…"
+			},
+			"profileSyncBanner": {
+				"appliedTitle": "Dienste angewendet",
+				"apply": "Anwenden & neu starten",
+				"applying": "Wird angewendet…",
+				"convergedBody": "Der Updater hat die Dienste an Ihren Flag-Stand angeglichen.",
+				"fallback": "Ausweichweg: Führen Sie auf dem Host für jede Änderung {featureCommand} aus und danach {restartCommand}.",
+				"pendingBody": "Ihre Flag-Änderungen betreffen {services}. Die laufenden Dienste behalten ihren bisherigen Stand, bis Sie die Änderungen anwenden. Beim Anwenden werden die genannten Dienste kurz neu gestartet.",
+				"title": "Dienste nicht synchron — anwenden & neu starten",
+				"updaterUnreachable": "Der Updater war nicht erreichbar: {error}"
 			},
 			"team": {
 				"inviteModal": {
@@ -5318,6 +5348,7 @@
 					},
 					"needsConfig": "Konfiguration nötig",
 					"needsConfigTitle": "Aktiviert, aber nicht konfiguriert — es fehlt: {missing}",
+					"needsOneOf": "Benötigt eines von: {flags}",
 					"packs": {
 						"description": "Bündel zusammengehöriger Flags. Beim Umschalten eines Pakets werden alle darin enthaltenen Flags (und deren Abhängigkeiten) umgeschaltet.",
 						"flags": "Flags: {flags}",
@@ -7749,6 +7780,9 @@
 					"waiting": "Wartend"
 				},
 				"subjectPlaceholder": "Betreff (optional)",
+				"toasts": {
+					"draftSavedNotApproved": "Entwurf gespeichert — noch nicht genehmigt"
+				},
 				"unassigned": "Nicht zugewiesen",
 				"undo": "Rückgängig",
 				"undoAutoSendOperation": "Automatischen Versand rückgängig machen",
@@ -11046,6 +11080,11 @@
 			}
 		},
 		"postbox": {
+			"offlineOutbox": {
+				"alreadySent": "Zu spät zum Rückgängigmachen — diese Nachricht ist bereits unterwegs.",
+				"outOfStorage": "Der Speicher dieses Geräts ist voll — die Nachricht konnte nicht in die Warteschlange gestellt werden.",
+				"storageUnavailable": "Der Offline-Speicher ist auf diesem Gerät nicht verfügbar — die Nachricht konnte nicht in die Warteschlange gestellt werden."
+			},
 			"useDraftRevise": {
 				"failed": "Überarbeitung fehlgeschlagen — Ihr Entwurf bleibt unverändert."
 			},
@@ -11413,15 +11452,40 @@
 				"label": "Warten, bis die App zurück ist"
 			}
 		},
+		"reviewApprove": {
+			"alreadyHandled": "Bereits erledigt — dieser Entwurf wurde von jemand anderem freigegeben oder abgelehnt"
+		},
+		"reviewBulkActions": {
+			"approveDrafts": "Entwürfe genehmigen",
+			"rejectDrafts": "Entwürfe ablehnen",
+			"undoApprovals": "Genehmigungen rückgängig machen"
+		},
+		"reviewBulkSummary": {
+			"approved": "{count} genehmigt",
+			"gone": "{count} nicht mehr in der Warteschlange",
+			"heldByMany": "{count} zurückgehalten — Teammitglieder antworten bereits",
+			"heldByOne": "{count} zurückgehalten — {name} antwortet bereits",
+			"noDraft": "{count} ohne Entwurf",
+			"rejected": "{count} abgelehnt",
+			"tooLateMany": "Zu spät — die Antworten sind bereits unterwegs",
+			"tooLateOne": "Zu spät — die Antwort ist bereits unterwegs",
+			"undoneMany": "Genehmigungen rückgängig gemacht — {count} Entwürfe sind zurück in der Warteschlange",
+			"undoneOne": "Genehmigung rückgängig gemacht — der Entwurf ist zurück in der Warteschlange",
+			"undonePartialMany": "{cancelled} Genehmigungen rückgängig gemacht — {missed} bereits gesendet",
+			"undonePartialOne": "{cancelled} Genehmigung rückgängig gemacht — {missed} bereits gesendet"
+		},
 		"reviewShortcuts": {
 			"labels": {
 				"approveAndSend": "Freigeben & senden",
 				"edit": "Bearbeiten",
+				"extendSelection": "Auswahl erweitern",
 				"next": "Weiter",
 				"openThread": "Unterhaltung öffnen",
 				"pickOption": "Option wählen",
 				"previous": "Zurück",
 				"reject": "Ablehnen",
+				"select": "Auswählen",
+				"selectAll": "Alle auswählen",
 				"skip": "Überspringen"
 			}
 		},
@@ -11584,6 +11648,29 @@
 				"sesIncomplete": "Region, Zugriffsschlüssel-ID und geheimer Zugriffsschlüssel sind für SES alle erforderlich.",
 				"smtpIncomplete": "Server-Host, Benutzername und Passwort sind für ein SMTP-Relay alle erforderlich.",
 				"smtpPortInvalid": "Der Port muss eine ganze Zahl zwischen 1 und 65535 sein (für 587 leer lassen)."
+			}
+		},
+		"signatureBadge": {
+			"invalid": {
+				"summary": "Signiert · Signatur ungültig",
+				"tooltip": "OpenPGP: Die Signatur lässt sich nicht gegen {source} verifizieren. Die Nachricht wurde möglicherweise auf dem Transportweg verändert."
+			},
+			"keyChanged": {
+				"summary": "Signiert · Absenderschlüssel geändert",
+				"tooltip": "OpenPGP: Der Signaturschlüssel dieses Absenders unterscheidet sich von dem Schlüssel, dem für diese Adresse bisher vertraut wurde. Die Signatur wurde nicht geprüft — prüfen Sie den Schlüsselwechsel, bevor Sie dieser Nachricht vertrauen."
+			},
+			"keyNotFound": {
+				"summary": "Signiert · Absenderschlüssel nicht gefunden",
+				"tooltip": "OpenPGP: Die Nachricht ist signiert, es konnte jedoch kein öffentlicher Schlüssel des Absenders gefunden werden, sodass die Signatur nicht geprüft werden konnte."
+			},
+			"keySources": {
+				"manifest": "das Instanz-Manifest des Absenders",
+				"pinned": "den für diesen Absender hinterlegten vertrauenswürdigen Schlüssel",
+				"wkd": "das Schlüsselverzeichnis des Absenders (WKD)"
+			},
+			"verified": {
+				"summary": "Signiert · verifiziert",
+				"tooltip": "OpenPGP: Die Signatur wurde gegen {source} verifiziert. Signaturschlüssel: {fingerprint}."
 			}
 		},
 		"suppressionProvenance": {
@@ -12347,6 +12434,9 @@
 				"reserveMailbox": "Postfach für Einladung reservieren"
 			}
 		},
+		"useProfileSync": {
+			"updaterUnreachable": "Der Updater war nicht erreichbar"
+		},
 		"useRelayCredentialDraft": {
 			"providers": {
 				"emailit": {
@@ -12373,7 +12463,8 @@
 		"useReviewQueue": {
 			"approveDraft": "Entwurf freigeben",
 			"rejectDraft": "Entwurf ablehnen",
-			"saveReply": "Antwort speichern"
+			"saveReply": "Antwort speichern",
+			"undoApproval": "Genehmigung rückgängig machen"
 		},
 		"useSegmentFilters": {
 			"allContacts": "Alle Kontakte",
@@ -12450,6 +12541,7 @@
 			"rejectDraft": "Entwurf ablehnen",
 			"retryMessage": "Nachricht erneut versuchen",
 			"saveDraft": "Entwurf speichern",
+			"saveDraftRevision": "Entwurf speichern",
 			"snoozeThread": "Konversation zurückstellen",
 			"unsnoozeThread": "Zurückstellung aufheben",
 			"updateThreadStatus": "Konversationsstatus aktualisieren"

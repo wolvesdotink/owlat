@@ -33,6 +33,9 @@ vi.mock('../lib/sessionOrganization', async () => {
 			activeOrganizationId: 'org-a',
 			role: sess.user.role,
 		})),
+		// The D7 apply path persists through `inbox.mutations.editDraft`
+		// (adminMutation), whose floor resolves via requireAdminContext.
+		requireAdminContext: vi.fn(async () => sess.user),
 	};
 });
 
@@ -164,6 +167,67 @@ describe('reviseDraft — streaming', () => {
 		const buffer = await t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
 		expect(buffer?.status).toBe('error');
 		expect(buffer?.errorMessage).toContain('model exploded');
+	});
+
+	it('applying the revised text persists as a draft REVISION — agent original preserved, no feedback (D7)', async () => {
+		const t = makeT();
+		await enableFeatures(t, ['ai']);
+
+		vi.mocked(runLlmStream).mockImplementation(async () => ({
+			text: 'Thank you, but we must decline.',
+			tokenUsage: undefined,
+			modelUsed: 'test-model',
+			finishReason: 'stop',
+			aborted: false,
+		}));
+
+		// The review-queue message whose agent draft the reviewer revises.
+		const agentDraft = 'Sure, happy to help.';
+		const messageId = await t.run(async (ctx) =>
+			ctx.db.insert('inboundMessages', {
+				messageId: 'msg-revise-apply',
+				from: 'sender@example.com',
+				to: 'support@owlat.app',
+				subject: 'Can you help?',
+				textBody: 'Please confirm you can help.',
+				processingStatus: 'draft_ready',
+				draftResponse: agentDraft,
+				receivedAt: Date.now(),
+			})
+		);
+
+		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
+			surface: 'review',
+		});
+		const res = await t.action(api.mail.reviseDraft.reviseDraft, {
+			streamId,
+			instruction: 'Redo but decline politely.',
+			currentDraft: agentDraft,
+			surface: 'review',
+		});
+		expect(res.status).toBe('complete');
+
+		// The AiReviseBox apply persists through editDraft — revision-appending,
+		// never an in-place overwrite (D7): the agent original survives as
+		// revision 0 and NO autonomy feedback fires at save time (the 'edited'
+		// signal is approve-time-only).
+		await t.mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: res.text,
+		});
+
+		await t.run(async (ctx) => {
+			const msg = (await ctx.db.get(messageId))!;
+			expect(msg.draftRevisions?.map((r) => r.text)).toEqual([
+				agentDraft,
+				'Thank you, but we must decline.',
+			]);
+			expect(msg.draftRevisions?.[0]?.savedBy).toBe('agent');
+			expect(msg.draftResponse).toBe('Thank you, but we must decline.');
+			expect(msg.draftSavedAt).toBeDefined();
+			expect(msg.processingStatus).toBe('draft_ready');
+			expect(await ctx.db.query('autonomyFeedback').collect()).toEqual([]);
+		});
 	});
 
 	it('rejects streaming into a buffer the caller does not own', async () => {

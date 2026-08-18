@@ -127,6 +127,7 @@ function mountPage() {
 
 const policySwitch = '[data-testid="feature-switch-plugin.policy-pack"]';
 const zeroCapabilitySwitch = '[data-testid="feature-switch-plugin.zero-cap"]';
+const aiDraftSwitch = '[data-testid="feature-switch-postbox.aiDraft"]';
 
 /**
  * TWO SOURCES OF COPY ON ONE PAGE. Core flags and packs come from the catalog
@@ -231,5 +232,39 @@ describe('Settings Features — plugin approval behavior', () => {
 		await flushPromises();
 
 		expect(setFeatureFlag).toHaveBeenCalledWith({ flag: 'plugin.policy-pack', value: false });
+	});
+});
+
+// postbox.aiDraft declares requires:['ai'] + requiresAny:[['postbox','mail.external']]
+// (decision D2); the page renders the "Needs one of" hint generically from the
+// registry, so any future any-of flag gets the same treatment for free.
+describe('Settings Features — any-of dependency hint (requiresAny)', () => {
+	it('disables the toggle with a "Needs one of" hint when no group member is on', () => {
+		liveFlags.value = { ai: true };
+		const wrapper = mountPage();
+		const flagSwitch = wrapper.find(aiDraftSwitch);
+		expect(flagSwitch.attributes('disabled')).toBeDefined();
+		expect(flagSwitch.attributes('title')).toBe(
+			'Needs one of: Personal mail (Postbox), Connect external mailbox'
+		);
+	});
+
+	it('prefers the hard requires hint when a parent is also missing', () => {
+		liveFlags.value = {};
+		const wrapper = mountPage();
+		const flagSwitch = wrapper.find(aiDraftSwitch);
+		expect(flagSwitch.attributes('disabled')).toBeDefined();
+		expect(flagSwitch.attributes('title')).toBe('Enable ai first');
+	});
+
+	it('enables through the external arm alone (postbox stays off)', async () => {
+		liveFlags.value = { ai: true, 'mail.external': true };
+		const wrapper = mountPage();
+		const flagSwitch = wrapper.find(aiDraftSwitch);
+		expect(flagSwitch.attributes('disabled')).toBeUndefined();
+		expect(flagSwitch.attributes('title')).toBeUndefined();
+		await flagSwitch.trigger('click');
+		await flushPromises();
+		expect(setFeatureFlag).toHaveBeenCalledWith({ flag: 'postbox.aiDraft', value: true });
 	});
 });

@@ -23,6 +23,7 @@ import {
 } from './sendProviderCatalog';
 
 export { isPluginFeatureFlagDefinition };
+export { isPluginFeatureFlagKey } from './pluginFeatureFlagDefinition';
 
 export type CoreFeatureFlagKey =
 	// Sending
@@ -110,6 +111,14 @@ interface FeatureFlagDefinitionBase<Key extends FeatureFlagKey, Category extends
 	readonly default: boolean;
 	/** Other flags that must be ON for this flag to be ON. */
 	readonly requires?: readonly FeatureFlagKey[];
+	/**
+	 * Any-of dependency groups: each inner group is satisfied when at least one
+	 * member resolves ON. A flag with an unsatisfied group is forced OFF, exactly
+	 * like a missing `requires` dependency. Turning a flag ON never auto-enables
+	 * group members (there is no principled choice of which); UIs should disable
+	 * the toggle with a "needs one of: …" hint instead.
+	 */
+	readonly requiresAny?: readonly (readonly FeatureFlagKey[])[];
 	/** When this flag turns OFF, these flags are also turned OFF. */
 	readonly cascadesOff?: readonly FeatureFlagKey[];
 	/** Env vars required when this flag is ON (collected by setup CLI/UI). */
@@ -230,10 +239,15 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		description:
 			'Pre-generate a reply draft (with a confidence + quality self-check) into the Reply Queue the moment a personal-mail message that needs a reply lands, so the owner can review-and-send instead of starting from a blank composer. Human review only — never auto-sends.',
 		default: false,
-		// Needs personal Postbox to have a mailbox to draft for, and the AI master
-		// toggle for an LLM provider. resolveFlags forces this OFF whenever either
-		// dependency is off, so a disabled AI stack degrades to today's behaviour.
-		requires: ['postbox', 'ai'],
+		// Needs the AI master toggle for an LLM provider, plus *a* mailbox source
+		// to draft for — either hosted Postbox or a connected external mailbox
+		// (`mail.external` deliberately does not require `postbox`; see its
+		// comment below). The draft pipeline is source-agnostic, so any-of is the
+		// honest dependency. resolveFlags forces this OFF whenever `ai` is off or
+		// neither source is on, so a disabled AI stack degrades to today's
+		// behaviour.
+		requires: ['ai'],
+		requiresAny: [['postbox', 'mail.external']],
 	},
 	'mail.external': {
 		key: 'mail.external',
@@ -526,6 +540,18 @@ export function createFeatureFlagRegistry(
 				throw new TypeError(`${definition.key} cascades to unknown feature flag ${cascadeTarget}`);
 			}
 		}
+		for (const group of definition.requiresAny ?? []) {
+			// An empty group can never be satisfied — the flag would be permanently
+			// forced off, which is a declaration bug, not a state.
+			if (group.length === 0) {
+				throw new TypeError(`${definition.key} declares an empty requiresAny group`);
+			}
+			for (const member of group) {
+				if (!hasFeatureFlagDefinition(registry, member)) {
+					throw new TypeError(`${definition.key} requiresAny unknown feature flag ${member}`);
+				}
+			}
+		}
 	}
 
 	return Object.freeze(registry);
@@ -579,8 +605,9 @@ export function getDefaultFlags(opts: FeatureFlagResolutionOptions = {}): Featur
 
 /**
  * Resolve effective flag state by merging stored state with defaults and applying
- * `requires` rules. A flag is OFF if any of its dependencies are OFF, regardless
- * of its own stored value.
+ * `requires` / `requiresAny` rules. A flag is OFF if any of its dependencies are
+ * OFF, or any of its any-of groups has no ON member, regardless of its own
+ * stored value.
  */
 export function resolveFlags(
 	stored: FeatureFlagState,
@@ -604,6 +631,14 @@ export function resolveFlags(
 			if (!merged[def.key]) continue;
 			for (const dep of def.requires ?? []) {
 				if (!merged[dep]) {
+					merged[def.key] = false;
+					changed = true;
+					break;
+				}
+			}
+			if (!merged[def.key]) continue;
+			for (const group of def.requiresAny ?? []) {
+				if (!group.some((member) => merged[member])) {
 					merged[def.key] = false;
 					changed = true;
 					break;
@@ -646,11 +681,24 @@ export function applyToggle(
 
 	if (!value) {
 		// Cascade off: any flag whose `requires` includes this flag must also be off.
-		// Plus any explicit `cascadesOff` list.
+		// Plus any explicit `cascadesOff` list, plus any flag for which this was the
+		// last ON member of a `requiresAny` group. Group satisfaction is checked
+		// against the resolved view so defaults and dependency chains count — a
+		// member that is stored ON but itself forced off cannot carry a group.
 		const def = definition;
 		const queue = new Set<FeatureFlagKey>(def.cascadesOff ?? []);
+		const resolved = resolveFlags(next, { registry });
 		for (const other of Object.values(registry)) {
-			if (other.requires?.includes(flag)) queue.add(other.key);
+			if (other.requires?.includes(flag)) {
+				queue.add(other.key);
+				continue;
+			}
+			for (const group of other.requiresAny ?? []) {
+				if (group.includes(flag) && !group.some((member) => resolved[member])) {
+					queue.add(other.key);
+					break;
+				}
+			}
 		}
 		for (const key of queue) {
 			if (next[key]) {
@@ -663,7 +711,10 @@ export function applyToggle(
 			}
 		}
 	} else {
-		// Cascade on: any required flag must also be on.
+		// Cascade on: any required flag must also be on. `requiresAny` members are
+		// deliberately NOT auto-enabled — there is no principled pick among group
+		// members, so the UI disables the toggle with a "needs one of: …" hint and
+		// resolveFlags keeps the flag off until a member is on.
 		const def = definition;
 		for (const dep of def.requires ?? []) {
 			if (!next[dep]) {

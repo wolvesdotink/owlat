@@ -281,6 +281,10 @@
 			"types": "./src/composeVerify.ts",
 			"import": "./src/composeVerify.ts"
 		},
+		"./composeOverride": {
+			"types": "./src/composeOverride.ts",
+			"import": "./src/composeOverride.ts"
+		},
 		"./dnsZone": {
 			"types": "./src/dnsZone.ts",
 			"import": "./src/dnsZone.ts"
@@ -303,7 +307,8 @@
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",
-		"vitest": "catalog:"
+		"vitest": "catalog:",
+		"yaml": "^2.6.1"
 	},
 	"peerDependencies": {
 		"sanitize-html": "^2.17.6"

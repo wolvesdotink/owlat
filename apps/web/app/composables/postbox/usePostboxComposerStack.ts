@@ -5,6 +5,7 @@
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import type { ComposerAttachment } from './usePostboxComposeAttachments';
 
 export interface ComposerSpec {
 	id: string;
@@ -16,6 +17,13 @@ export interface ComposerSpec {
 	prefillBcc?: string[];
 	prefillSubject?: string;
 	prefillBodyHtml?: string;
+	/**
+	 * Attachment refs already committed to `draftId`, shown immediately instead
+	 * of waiting for the draft row. Used when undo un-queues an offline send:
+	 * the draft is unreachable while offline, so the refs come from the queued
+	 * payload (usePostboxOfflineOutbox).
+	 */
+	prefillAttachments?: ComposerAttachment[];
 	/** Clone this message's attachments onto the new draft (Forward). */
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
 	/** Attach a transient generated file (key into usePostboxPendingAttachments). */
