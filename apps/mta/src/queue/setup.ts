@@ -11,6 +11,7 @@ import type { EmailJob } from '../types.js';
 import { handleEmailJob } from './handler.js';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
+import { recordWorkerHeartbeat, WORKER_HEARTBEAT_INTERVAL_MS } from '../routes/health.js';
 
 export const QUEUE_NAMESPACE = 'owlat-mta';
 
@@ -29,13 +30,38 @@ export function createEmailQueue(redis: Redis): Queue<EmailJob> {
 }
 
 /**
+ * Start the worker liveness heartbeat.
+ *
+ * Writes one beat immediately and refreshes it every
+ * WORKER_HEARTBEAT_INTERVAL_MS for as long as the worker lives. This is
+ * deliberately independent of job processing: an install with zero traffic
+ * still has a live worker, and /health (plus anything polling it) must say so.
+ * The timer is unref'd so it never keeps the process alive on its own.
+ *
+ * @returns a stop function that clears the timer (call it during shutdown).
+ */
+export function startWorkerHeartbeat(redis: Redis, serverId: string): () => void {
+	const beat = () => {
+		recordWorkerHeartbeat(redis, serverId).catch((err) => {
+			logger.warn({ err }, 'Worker heartbeat write failed');
+		});
+	};
+
+	beat();
+	const timer = setInterval(beat, WORKER_HEARTBEAT_INTERVAL_MS);
+	timer.unref?.();
+
+	return () => clearInterval(timer);
+}
+
+/**
  * Create and start the email worker
  */
 export function createEmailWorker(
 	queue: Queue<EmailJob>,
 	redis: Redis,
 	config: MtaConfig
-): Worker<EmailJob> {
+): { worker: Worker<EmailJob>; stopHeartbeat: () => void } {
 	const worker = new Worker<EmailJob>({
 		queue,
 		concurrency: config.workerConcurrency,
@@ -65,6 +91,10 @@ export function createEmailWorker(
 		logger.warn({ jobId, groupId }, 'Job stalled');
 	});
 
+	// Heartbeat from creation, not from the first job: a fresh install that has
+	// never sent anything must still report worker.alive on /health.
+	const stopHeartbeat = startWorkerHeartbeat(redis, config.serverId);
+
 	logger.info({ concurrency: config.workerConcurrency }, 'Email worker created');
-	return worker;
+	return { worker, stopHeartbeat };
 }
