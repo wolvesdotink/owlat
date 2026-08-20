@@ -1,0 +1,198 @@
+{
+	"description": "Complaints and trap hits from four unrelated observers: the >=3-observer rule for flagged is met.",
+	"subject": {
+		"domain": "abusive.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-b",
+			"index": 29,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "smtp.observer-c.example",
+				"subject": {
+					"domain": "abusive.example"
+				},
+				"window": {
+					"from": "2026-07-11T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 60000,
+					"spfPass": 36000,
+					"dkimPass": 36000,
+					"dmarcPass": 36000,
+					"tlsInbound": 60000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 29,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "abusive.example"
+				},
+				"window": {
+					"from": "2026-07-11T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 70000,
+					"spfPass": 42000,
+					"dkimPass": 42000,
+					"dmarcPass": 42000,
+					"tlsInbound": 70000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 30,
+			"loggedAt": "2026-08-17T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "abusive.example"
+				},
+				"window": {
+					"from": "2026-07-11T00:00:00Z",
+					"to": "2026-08-17T00:00:00Z"
+				},
+				"body": {
+					"messages": 90000,
+					"spfPass": 54000,
+					"dkimPass": 63000,
+					"dmarcPass": 54000,
+					"tlsInbound": 90000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 2
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 31,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "abusive.example"
+				},
+				"window": {
+					"from": "2026-07-31T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"reports": 900,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 32,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "abusive.example"
+				},
+				"window": {
+					"from": "2026-07-31T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"reports": 700,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 30,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "smtp.observer-c.example",
+				"subject": {
+					"domain": "abusive.example"
+				},
+				"window": {
+					"from": "2026-08-02T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"reports": 640,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 31,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "trap-hit",
+				"observer": "gw.observer-d.example",
+				"subject": {
+					"domain": "abusive.example"
+				},
+				"window": {
+					"from": "2026-08-05T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"hits": 80
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 32,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "trap-hit",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "abusive.example"
+				},
+				"window": {
+					"from": "2026-08-05T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"hits": 40
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

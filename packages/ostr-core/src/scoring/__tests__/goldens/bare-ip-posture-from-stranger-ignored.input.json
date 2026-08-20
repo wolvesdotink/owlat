@@ -1,0 +1,30 @@
+{
+	"description": "A stranger publishes posture about an IP it does not control. Posture is a self-declaration and reaches an IP only through the domain that declared it, so the IP stays unknown.",
+	"subject": {
+		"ip": "198.51.100.9"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 20,
+			"loggedAt": "2026-08-10T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "posture",
+				"observer": "random-stranger.example",
+				"subject": {
+					"ip": "198.51.100.9"
+				},
+				"body": {
+					"dmarcPolicy": "reject",
+					"dnssec": true,
+					"mtaSts": true,
+					"tlsRpt": true,
+					"declaredIps": ["198.51.100.9"]
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

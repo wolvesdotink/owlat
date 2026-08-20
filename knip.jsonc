@@ -29,13 +29,7 @@
 		"apps/web": {
 			// `i18n/` is loaded by @nuxtjs/i18n by convention (i18n.config.ts and the
 			// locale catalogs it lists), so nothing in the source graph imports it.
-			"entry": [
-				"app/**/*.{vue,ts}",
-				"server/**/*.ts",
-				"e2e/**/*.ts",
-				"scripts/**",
-				"i18n/**/*.ts",
-			],
+			"entry": ["app/**/*.{vue,ts}", "server/**/*.ts", "e2e/**/*.ts", "scripts/**", "i18n/**/*.ts"],
 			"playwright": { "config": ["e2e/playwright.config.ts"] },
 		},
 		"apps/docs": {
@@ -44,12 +38,7 @@
 			// environment-sensitive, and without this entry they are mis-reported
 			// as unused files in CI. `i18n/` is loaded by @nuxtjs/i18n by
 			// convention, same as in apps/web.
-			"entry": [
-				"content.config.ts",
-				"app/**/*.{vue,ts}",
-				"__tests__/**/*.ts",
-				"i18n/**/*.ts",
-			],
+			"entry": ["content.config.ts", "app/**/*.{vue,ts}", "__tests__/**/*.ts", "i18n/**/*.ts"],
 		},
 		"apps/marketing": {
 			// `i18n/` is loaded by @nuxtjs/i18n by convention, same as in apps/web.
@@ -61,6 +50,7 @@
 		"apps/imap": { "entry": ["src/**/*.ts"] },
 		"apps/mail-sync": { "entry": ["src/**/*.ts"] },
 		"apps/mta": { "entry": ["src/**/*.ts"] },
+		"apps/ostr-registry": { "entry": ["src/**/*.ts"] },
 		"apps/updater": { "entry": ["src/**/*.ts"] },
 		"apps/setup-cli": {
 			"entry": ["src/**/*.ts", "scripts/**"],
@@ -135,6 +125,19 @@
 			],
 		},
 		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		// OSTR core publishes the root barrel plus one subpath per module
+		// (attestation / merkle / scoring), mirroring its exports map.
+		"packages/ostr-core": {
+			"entry": [
+				"src/index.ts",
+				"src/attestation/index.ts",
+				"src/merkle/index.ts",
+				"src/scoring/index.ts",
+				"src/**/__tests__/**/*.ts",
+			],
+		},
+		"packages/ostr-client": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		"packages/ostr-observer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-previewer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
