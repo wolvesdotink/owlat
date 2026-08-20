@@ -7,6 +7,7 @@
 export * from './types.js';
 export * from './crypto.js';
 export * from './jcs.js';
+export * from './distribution.js';
 export * from './attestation/index.js';
 export * from './merkle/index.js';
 export * from './scoring/index.js';

@@ -54,7 +54,7 @@ function parseGroupRun(text: string, allowIpv4: boolean): number[] | null {
  * text is not an IPv6 address in ANY spelling. Canonicality is decided by
  * re-rendering, not here.
  */
-function parseIpv6Groups(value: string): number[] | null {
+export function parseIpv6Groups(value: string): number[] | null {
 	const halves = value.split('::');
 	if (halves.length > 2) return null;
 	if (halves.length === 1) {
