@@ -129,14 +129,15 @@ function clearAllChips() {
 						</PostboxEmptyState>
 						<template v-else-if="mailboxId">
 							<!-- Honest count line: the result set is real, not a silent cap.
-						     "Load more" walks deeper via the backend's keyset cursor. -->
+						     With more pages available the count is open-ended ("N+") rather
+						     than a false precise total. -->
 							<p class="px-4 pt-3 pb-1 text-xs text-text-tertiary" role="status">
-								{{
+								<template v-if="hasMore">{{
+									t('dashboard.postbox.search.resultCountMore', { count: results.length }, results.length)
+								}}</template>
+								<template v-else>{{
 									t('dashboard.postbox.search.resultCount', { count: results.length }, results.length)
-								}}
-								<template v-if="hasMore">
-									{{ t('dashboard.postbox.search.moreBelow') }}</template
-								>
+								}}</template>
 							</p>
 							<PostboxThreadList
 								:mailbox-id="mailboxId"

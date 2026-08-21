@@ -280,65 +280,19 @@ const advanceIds = computed(() =>
 						:cached-at="cachedAt"
 						@retry="() => void retryQueuedSends()"
 					/>
-					<header
-						class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2"
-					>
-						<div class="flex items-center gap-2 min-w-0">
-							<!-- Drawer handle for the folder rail (mobile only). 44px square for
-							     the thumb; the negative margins keep it from growing the header
-							     past the height the 16px icon alone would give it. -->
-							<button
-								type="button"
-								class="lg:hidden -ml-2 -my-2 w-11 h-11 flex items-center justify-center flex-shrink-0 rounded text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-								:aria-label="t('components.postbox.postboxLayout.openFolders')"
-								@click="railOpen = true"
-							>
-								<Icon name="lucide:panel-left" class="w-4 h-4" />
-							</button>
-							<h2
-								class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2 min-w-0"
-							>
-								<span class="truncate">{{ currentFolderName }}</span>
-								<!-- Cold start from the device cache: a quiet "updating…" hint
-					     while the live query catches up. Live rows replace in place. -->
-								<!-- Suppressed while offline: the live query never settles, so a
-					     permanent "updating…" would read as stuck — the offline banner
-					     already communicates the state. -->
-								<span
-									v-if="showingCached && !isOffline"
-									class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
-									>{{ t('components.postbox.postboxLayout.updating') }}</span
-								>
-							</h2>
-						</div>
-						<div v-if="folderRole === 'inbox'" class="flex items-center gap-2">
-							<!-- Back to the focused Today landing view (Esc / B do the same). -->
-							<button
-								v-if="!activeMessageId && !folderId"
-								type="button"
-								class="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-								aria-keyshortcuts="Escape b"
-								:title="t('components.postbox.postboxLayout.backToTodayTitle')"
-								@click="switchInboxMode('today')"
-							>
-								{{ t('common.today') }}
-								<kbd
-									class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
-									aria-hidden="true"
-									>{{ t('components.postbox.postboxLayout.escKey') }}</kbd
-								>
-							</button>
-							<!-- Labeled view-mode control — exactly one mode active; persisted
-					     per user. Inbox-only: other folders stay flat. -->
-							<UiSegmentedControl
-								size="sm"
-								:aria-label="t('components.postbox.postboxLayout.inboxView')"
-								:options="viewModeOptions"
-								:model-value="viewMode"
-								@update:model-value="selectViewMode"
-							/>
-						</div>
-					</header>
+					<PostboxListHeader
+						:folder-name="currentFolderName"
+						:folder-role="folderRole"
+						:folder-id="folderId"
+						:active-message-id="activeMessageId"
+						:showing-cached="showingCached"
+						:is-offline="isOffline"
+						:view-mode="viewMode"
+						:view-mode-options="viewModeOptions"
+						@open-rail="railOpen = true"
+						@switch-today="switchInboxMode('today')"
+						@select-view-mode="selectViewMode"
+					/>
 					<template v-if="folderRole === 'drafts'">
 						<div class="flex-1 overflow-auto">
 							<PostboxDraftList :mailbox-id="mailboxId" />
@@ -392,19 +346,19 @@ const advanceIds = computed(() =>
 										:has-more="threadGroupsHasMore"
 										@load-more="loadMoreThreadGroups"
 									/>
-								<PostboxThreadList
-									v-else
-									ref="threadListRef"
-									:mailbox-id="mailboxId"
-									:messages="listMessages"
-									:loading="isLoading && !showingCached"
-									:folder-role="folderRole"
-									:active-message-id="activeMessageId"
-									:has-more="hasMore"
-									:filter-active="filterHidesRows"
-									@load-more="loadMore"
-									@clear-filter="setTriageFilter('all')"
-								/>
+									<PostboxThreadList
+										v-else
+										ref="threadListRef"
+										:mailbox-id="mailboxId"
+										:messages="listMessages"
+										:loading="isLoading && !showingCached"
+										:folder-role="folderRole"
+										:active-message-id="activeMessageId"
+										:has-more="hasMore"
+										:filter-active="filterHidesRows"
+										@load-more="loadMore"
+										@clear-filter="setTriageFilter('all')"
+									/>
 								</div>
 							</Transition>
 						</div>
