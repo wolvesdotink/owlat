@@ -75,9 +75,13 @@ jobs:
 
             **Images:** `web`, `mta`, `updater`, `convex-deploy`, `imap`, `mail-sync`, `code-worker`, `setup` — all `ghcr.io/${{ github.repository_owner }}/<name>:${{ needs.resolve.outputs.version }}`
 
+  # `verify` is listed explicitly even though `create-release` already needs it:
+  # the build/sign/publish edge is the one that must never lose the gate, and a
+  # transitive-only dependency would vanish silently if the draft-Release step
+  # were ever dropped or reordered. Keep it redundant — it is the actual gate.
   server:
     name: Server images
-    needs: [resolve, create-release]
+    needs: [resolve, verify, create-release]
     uses: ./.github/workflows/_server-build.yml
     with:
       version: ${{ needs.resolve.outputs.version }}

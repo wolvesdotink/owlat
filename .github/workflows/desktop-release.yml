@@ -74,9 +74,13 @@ jobs:
             assets below (macOS `.dmg`, Windows `.msi`/`.exe`, Linux
             `.AppImage`/`.deb`). Existing installs auto-update to this version.
 
+  # `verify` is listed explicitly even though `create-release` already needs it:
+  # the build/sign/publish edge is the one that must never lose the gate, and a
+  # transitive-only dependency would vanish silently if the draft-Release step
+  # were ever dropped or reordered. Keep it redundant — it is the actual gate.
   desktop:
     name: Desktop apps
-    needs: [resolve, create-release]
+    needs: [resolve, verify, create-release]
     uses: ./.github/workflows/_desktop-build.yml
     with:
       tag: ${{ github.ref_name }}
