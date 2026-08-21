@@ -1041,6 +1041,26 @@ configure_selfhost_core() {
   # CONVEX_ADMIN_KEY will be set after boot
   set_selfhost_var "CONVEX_ADMIN_KEY" ""
 
+  # Redis auth. docker-compose.yml fails closed on an unset REDIS_PASSWORD
+  # rather than falling back to a known literal, and compose interpolates the
+  # WHOLE file before profile filtering — so without this even `docker compose
+  # down|logs|ps` aborts, i.e. the operator's own recovery commands. Reuse the
+  # value an earlier install wrote instead of minting a new one: this wizard
+  # rewrites .env from scratch, and silently rotating a running deployment's
+  # Redis password is not its call (the shared `ensureSecrets` is idempotent
+  # here too).
+  local redis_password=""
+  if [[ -s ".env" ]]; then
+    redis_password=$(grep -E '^REDIS_PASSWORD=' .env | tail -1 | cut -d= -f2- || true)
+  fi
+  if [[ -n "$redis_password" ]]; then
+    set_selfhost_var "REDIS_PASSWORD" "$redis_password"
+    info "Reusing existing REDIS_PASSWORD"
+  else
+    set_selfhost_var "REDIS_PASSWORD" "$(generate_secret)"
+    success "Generated REDIS_PASSWORD"
+  fi
+
   echo ""
 
   # Public URLs
@@ -1314,6 +1334,12 @@ write_selfhost_env() {
     echo "FBL_DEDUP_PROTOCOL=${fbl_dedup_protocol}"
     echo "FBL_DEDUP_CUTOVER_ACK=${fbl_dedup_cutover_ack}"
     echo "MTA_LOG_LEVEL=${SELFHOST_VARS[MTA_LOG_LEVEL]:-info}"
+    echo ""
+    echo "# ── Redis (internal-only; password is defense-in-depth) ─────────────────────"
+    echo "# REQUIRED: compose fails closed without it — even 'docker compose down' aborts."
+    # Never emit an empty value: an unset REDIS_PASSWORD wedges every compose
+    # subcommand, so mint one here even if a future caller skips the core step.
+    echo "REDIS_PASSWORD=${SELFHOST_VARS[REDIS_PASSWORD]:-$(generate_secret)}"
     echo ""
     echo "# ── Port Overrides (optional) ────────────────────────────────────────────────"
     echo "# CONVEX_PORT=3210"
@@ -1975,13 +2001,17 @@ doctor() {
     doctor_check pass ".env file present"
 
     local missing=()
-    for var in INSTANCE_SECRET MTA_API_KEY MTA_WEBHOOK_SECRET MTA_SECRET BOUNCE_VERP_KEY; do
+    # REDIS_PASSWORD is in here because compose interpolates it in three places
+    # with `:?`: an install predating the fail-closed default cannot run ANY
+    # `docker compose` subcommand, and the raw error names the variable without
+    # saying which of the wizard's outputs should have written it.
+    for var in INSTANCE_SECRET MTA_API_KEY MTA_WEBHOOK_SECRET MTA_SECRET BOUNCE_VERP_KEY REDIS_PASSWORD; do
       if ! grep -qE "^${var}=.+" .env 2>/dev/null; then
         missing+=("$var")
       fi
     done
     if [[ ${#missing[@]} -eq 0 ]]; then
-      doctor_check pass "Required secrets set" "INSTANCE_SECRET, MTA_API_KEY, MTA_WEBHOOK_SECRET, MTA_SECRET, BOUNCE_VERP_KEY"
+      doctor_check pass "Required secrets set" "INSTANCE_SECRET, MTA_API_KEY, MTA_WEBHOOK_SECRET, MTA_SECRET, BOUNCE_VERP_KEY, REDIS_PASSWORD"
     else
       doctor_check fail "Missing secrets" "${missing[*]}" "regenerate with: openssl rand -hex 32"
     fi
