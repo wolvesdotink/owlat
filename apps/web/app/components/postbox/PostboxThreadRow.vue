@@ -138,17 +138,87 @@ function snoozedTitle(until: number): string {
 		when: new Date(until).toLocaleString(locale.value),
 	});
 }
+
+// ── Touch entry point: long-press opens the SAME context menu ──
+// On touch devices the hover-reveal actions stay visible at rest
+// (postbox-density.css), but the triage verbs' second entry point — the
+// right-click menu — never fires. Per the mailbox plan this is wiring, not
+// new UI: a ~500ms hold re-dispatches the row's own `contextmenu` event at
+// the touch point, so UiContextMenu's existing open-at-position path (with
+// its focus trap, Esc handling and action source) runs unchanged.
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_SLOP_PX = 8;
+let pressTimer: ReturnType<typeof setTimeout> | null = null;
+let pressOrigin: { x: number; y: number } | null = null;
+/** Set when the long-press fired, so the finger-lift click doesn't navigate. */
+let suppressNextClick = false;
+
+function cancelLongPress() {
+	if (pressTimer !== null) {
+		clearTimeout(pressTimer);
+		pressTimer = null;
+	}
+	pressOrigin = null;
+}
+
+function onRowPointerdown(event: PointerEvent) {
+	// Mice already own right-click; multi-touch secondary points are ignored;
+	// taps on the row's own buttons (checkbox, quick actions) handle themselves.
+	if (event.pointerType === 'mouse' || !event.isPrimary) return;
+	if ((event.target as HTMLElement | null)?.closest('button')) return;
+	cancelLongPress();
+	pressOrigin = { x: event.clientX, y: event.clientY };
+	const row = event.currentTarget as HTMLElement;
+	pressTimer = setTimeout(() => {
+		pressTimer = null;
+		suppressNextClick = true;
+		row.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: pressOrigin?.x ?? 0,
+				clientY: pressOrigin?.y ?? 0,
+			})
+		);
+	}, LONG_PRESS_MS);
+}
+
+/** A drag past the slop is a scroll, not a hold — stand down. */
+function onRowPointermove(event: PointerEvent) {
+	if (!pressOrigin || pressTimer === null) return;
+	if (
+		Math.abs(event.clientX - pressOrigin.x) > LONG_PRESS_SLOP_PX ||
+		Math.abs(event.clientY - pressOrigin.y) > LONG_PRESS_SLOP_PX
+	) {
+		cancelLongPress();
+	}
+}
+
+/** Swallow the click that follows a fired long-press (it would open the row). */
+function onCapturedClick(event: MouseEvent) {
+	if (!suppressNextClick) return;
+	suppressNextClick = false;
+	event.preventDefault();
+	event.stopPropagation();
+}
+
+onUnmounted(cancelLongPress);
 </script>
 
 <template>
 	<UiContextMenu :items="contextItems">
 		<template #default="{ onContextmenu, onKeydown }">
 			<li
-				class="group relative"
+				class="group relative pbx-row-li"
 				:class="{ 'pbx-virtual-row': virtualize }"
 				style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
 				@contextmenu="onContextmenu"
 				@keydown="onKeydown"
+				@pointerdown="onRowPointerdown"
+				@pointermove="onRowPointermove"
+				@pointerup="cancelLongPress"
+				@pointercancel="cancelLongPress"
+				@click.capture="onCapturedClick"
 			>
 		<component
 			:is="selectable ? 'div' : (resolveComponent('NuxtLink') as 'div')"

@@ -83,4 +83,11 @@
 		padding-top: 0.65rem;
 		padding-bottom: 0.65rem;
 	}
+
+	/* The long-press context menu is the touch route to the triage verbs —
+	   stop iOS's press-and-hold text-selection callout from fighting it. */
+	.postbox-thread-list .pbx-row-li {
+		user-select: none;
+		-webkit-touch-callout: none;
+	}
 }
