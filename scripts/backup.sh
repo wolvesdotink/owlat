@@ -182,6 +182,9 @@ EOF
 # ── Archive ───────────────────────────────────────────────────────────────────
 info "Creating archive…"
 tar -czf "${BACKUP_DIR}/${NAME}.tar.gz" -C "$STAGING" .
+# The archive embeds the full .env (every deployment secret). Backups get
+# copied offsite more often than almost anything else — keep it owner-only.
+chmod 600 "${BACKUP_DIR}/${NAME}.tar.gz"
 SIZE=$(du -h "${BACKUP_DIR}/${NAME}.tar.gz" | cut -f1)
 
 # ── Checksum ──────────────────────────────────────────────────────────────────

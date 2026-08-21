@@ -153,7 +153,7 @@ services:
     environment:
       PORT: 3100
       BOUNCE_PORT: 25
-      REDIS_URL: redis://:${REDIS_PASSWORD:-owlat-internal}@redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}@redis:6379
       MTA_API_KEY: ${MTA_API_KEY}
       # Seals DKIM private keys + relay credentials at rest (>= 32 bytes). Minted
       # by setup (ensureSecrets) alongside MTA_API_KEY. The MTA asserts its
@@ -229,9 +229,9 @@ services:
     user: "999:1000"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-owlat-internal}
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-owlat-internal}", "--no-auth-warning", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
