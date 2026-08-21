@@ -50,9 +50,13 @@ interface GithubPullRequestPayload {
 }
 
 export const handleGithubWebhook = httpAction(async (ctx, request) => {
-	// Spend the ingestion bucket BEFORE reading the body, keyed `github:<ip>`
-	// like every other webhook source — an unauthenticated flood must not turn
-	// this route into a free body-read + HMAC oracle.
+	// Spend the ingestion bucket BEFORE reading the body — an unauthenticated
+	// flood must not turn this route into a free body-read + HMAC oracle. Note
+	// that without RATE_LIMIT_TRUSTED_PROXY (the default) getClientIp returns
+	// 'unknown', so this is one shared bucket for the whole route, not per-IP:
+	// a flooder can exhaust it and stall real GitHub deliveries until the window
+	// rolls. Same trade-off as every other webhook source; set the proxy mode to
+	// get per-IP isolation.
 	const ip = getClientIp(request);
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
 		internal.publicRateLimit.checkPublicRateLimit,
