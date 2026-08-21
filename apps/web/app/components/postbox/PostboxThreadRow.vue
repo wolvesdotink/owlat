@@ -156,7 +156,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			<div class="flex items-start gap-2">
 				<button
 					type="button"
-					class="mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+					class="pbx-row-checkbox mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
 					:class="
 						selected
 							? 'bg-brand border-brand text-white'

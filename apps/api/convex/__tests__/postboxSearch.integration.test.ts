@@ -126,7 +126,9 @@ describe('mail.mailbox.search', () => {
 			text: 'meeting',
 			from: 'sara',
 		});
-		expect(results.map((m) => m.subject)).toEqual(['project meeting']);
+		expect(results.messages.map((m) => m.subject)).toEqual(['project meeting']);
+		expect(results.hasMore).toBe(false);
+		expect(results.nextCursor).toBeNull();
 	});
 
 	it('matches a partial from-token with no free text', async () => {
@@ -137,7 +139,7 @@ describe('mail.mailbox.search', () => {
 			text: '',
 			from: 'sara',
 		});
-		expect(results.map((m) => m.subject)).toEqual(['project meeting']);
+		expect(results.messages.map((m) => m.subject)).toEqual(['project meeting']);
 	});
 
 	it('excludes a non-matching from-token', async () => {
@@ -148,6 +150,80 @@ describe('mail.mailbox.search', () => {
 			text: 'meeting',
 			from: 'bob',
 		});
-		expect(results).toEqual([]);
+		expect(results.messages).toEqual([]);
+	});
+
+	it('paginates: the cursor continues where the first page stopped', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+		// Seed two more matches so the first page (limit 1) can't hold them all.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const inboxId = (
+				await ctx.db
+					.query('mailFolders')
+					.withIndex('by_mailbox_and_role', (q) =>
+						q.eq('mailboxId', mailboxId).eq('role', 'inbox')
+					)
+					.first()
+				)!._id;
+			const threadId = (
+				await ctx.db.query('mailThreads').withIndex('by_mailbox_and_last_message', (q) =>
+					q.eq('mailboxId', mailboxId)
+				).first()
+			)!._id;
+			for (const [i, subject] of ['second meeting', 'third meeting'].entries()) {
+				const storageId = await ctx.storage.store(new Blob([subject]));
+				await ctx.db.insert('mailMessages', {
+					mailboxId,
+					folderId: inboxId,
+					uid: i + 2,
+					modseq: i + 2,
+					rfc822MessageId: `<m${i + 2}@acme.com>`,
+					threadId,
+					fromAddress: 'sara@acme.com',
+					toAddresses: ['me@example.com'],
+					ccAddresses: [],
+					bccAddresses: [],
+					subject,
+					normalizedSubject: subject,
+					snippet: `${subject} notes`,
+					rawStorageId: storageId,
+					rawSize: 7,
+					attachments: [],
+					hasAttachments: false,
+					flagSeen: false,
+					flagFlagged: false,
+					flagAnswered: false,
+					flagDraft: false,
+					flagDeleted: false,
+					customFlags: [],
+					labelIds: [],
+					receivedAt: now + (i + 1) * 1000,
+					internalDate: now,
+					createdAt: now,
+					updatedAt: now,
+				});
+			}
+		});
+
+		const page1 = await t.query(api.mail.mailbox.search, {
+			mailboxId,
+			text: 'meeting',
+			limit: 1,
+		});
+		expect(page1.messages).toHaveLength(1);
+		expect(page1.hasMore).toBe(true);
+		expect(page1.nextCursor).not.toBeNull();
+
+		const page2 = await t.query(api.mail.mailbox.search, {
+			mailboxId,
+			text: 'meeting',
+			limit: 1,
+			cursor: page1.nextCursor!,
+		});
+		expect(page2.messages).toHaveLength(1);
+		// No overlap and no repeat between pages.
+		expect(page2.messages[0]!._id).not.toBe(page1.messages[0]!._id);
 	});
 });

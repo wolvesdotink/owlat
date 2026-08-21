@@ -26,9 +26,15 @@ const {
 	loadMoreThreads,
 } = useInbox();
 
+// ── Access gate ──
+// The backend returns empty lists to non-admins by design; without this check
+// that reads as "the queue is clear" when it actually means "no access". Once
+// the role has resolved to a non-admin member, render the honest explainer
+// (with exits) instead of a fake-zero inbox.
+const { isAdmin, showAdminGate, role } = usePermissions();
+
 // ── Row triage mutations (shared with the thread detail view) ──
 const { user } = useAuth();
-const { isAdmin } = usePermissions();
 const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
 	label: 'Assign thread',
 });
@@ -184,79 +190,101 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 			</div>
 		</div>
 
-		<!-- Filter pills (live counts) + needs-attention sort chip -->
-		<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-			<InboxFilterPills v-model="filter" :counts="filterCounts" />
-
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
-				:title="
-					sort === 'needs-attention'
-						? 'Sorted by needs-attention — switch to newest first'
-						: 'Sorted newest first — switch to needs-attention'
-				"
-				@click="toggleSort"
-			>
-				<Icon
-					:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
-					class="w-3.5 h-3.5"
-				/>
-				<span>{{ sort === 'needs-attention' ? 'Sorted by needs-attention' : 'Newest first' }}</span>
-			</button>
+		<!-- Access explainer: a non-admin on this route sees WHY it's empty and
+		     where to go instead — never a fake "no conversations" zero. -->
+		<div v-if="showAdminGate" class="flex flex-col items-center justify-center py-20 text-center">
+			<UiIconBox icon="lucide:lock" size="xl" variant="warning" rounded="full" class="mb-4" />
+			<h2 class="text-lg font-medium text-text-primary">Team Inbox is limited to admins</h2>
+			<p class="text-text-secondary mt-1.5 max-w-md">
+				Your role (<span class="capitalize">{{ role ?? 'member' }}</span
+				>) doesn't include the shared customer inbox. Your own mail lives in Postbox.
+			</p>
+			<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+				<UiButton to="/dashboard/postbox/inbox" class="gap-2">
+					<Icon name="lucide:inbox" class="w-4 h-4" />
+					Open my Postbox
+				</UiButton>
+			</div>
+			<p class="text-xs text-text-tertiary mt-4">
+				Need access? Ask an organization admin to change your role in Settings → Team.
+			</p>
 		</div>
 
-		<!-- Loading — Postbox list skeleton geometry -->
-		<UiQueryBoundary
-			:loading="threadsLoading && threads.length === 0"
-			:error="threadsError"
-			error-title="Couldn't load the inbox"
-		>
-			<template #loading>
-				<PostboxThreadListSkeleton :rows="8" />
-			</template>
+		<template v-else>
+			<!-- Filter pills (live counts) + needs-attention sort chip -->
+			<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+				<InboxFilterPills v-model="filter" :counts="filterCounts" />
 
-			<!-- Empty state — copy per active pill -->
-			<div
-				v-if="visibleThreads.length === 0"
-				class="flex flex-col items-center justify-center py-16 text-center"
-			>
-				<UiIconBox icon="lucide:inbox" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">{{ emptyMessage }}</p>
-			</div>
-
-			<!-- Thread List — Postbox row DNA: single column, weight-based unread,
-		     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
-			<div v-else>
-				<ul
-					role="listbox"
-					tabindex="0"
-					aria-label="Team inbox threads"
-					:aria-activedescendant="activeId"
-					class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
-					@keydown="onKeydown"
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
+					:title="
+						sort === 'needs-attention'
+							? 'Sorted by needs-attention — switch to newest first'
+							: 'Sorted newest first — switch to needs-attention'
+					"
+					@click="toggleSort"
 				>
-					<InboxThreadRow
-						v-for="(thread, index) in visibleThreads"
-						:key="thread._id"
-						:thread="thread"
-						:focused="index === focusedIndex"
-						:format-compact-relative-time="formatCompactRelativeTime"
-						:members="assignMembers"
-						:current-user-id="user?.id ?? null"
-						:can-manage="isAdmin"
-						@assign="assignTo(thread, $event)"
-						@resolve="resolveThread(thread)"
-						@snooze="openSnooze(thread)"
+					<Icon
+						:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
+						class="w-3.5 h-3.5"
 					/>
-				</ul>
-
-				<!-- Load More -->
-				<div v-if="hasMoreThreads" class="pt-4 text-center">
-					<UiButton variant="secondary" size="sm" @click="loadMoreThreads">Load More</UiButton>
-				</div>
+					<span>{{ sort === 'needs-attention' ? 'Sorted by needs-attention' : 'Newest first' }}</span>
+				</button>
 			</div>
-		</UiQueryBoundary>
+
+			<!-- Loading — Postbox list skeleton geometry -->
+			<UiQueryBoundary
+				:loading="threadsLoading && threads.length === 0"
+				:error="threadsError"
+				error-title="Couldn't load the inbox"
+			>
+				<template #loading>
+					<PostboxThreadListSkeleton :rows="8" />
+				</template>
+
+				<!-- Empty state — copy per active pill -->
+				<div
+					v-if="visibleThreads.length === 0"
+					class="flex flex-col items-center justify-center py-16 text-center"
+				>
+					<UiIconBox icon="lucide:inbox" size="xl" variant="surface" rounded="full" class="mb-4" />
+					<p class="text-text-secondary font-medium">{{ emptyMessage }}</p>
+				</div>
+
+				<!-- Thread List — Postbox row DNA: single column, weight-based unread,
+			     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
+				<div v-else>
+					<ul
+						role="listbox"
+						tabindex="0"
+						aria-label="Team inbox threads"
+						:aria-activedescendant="activeId"
+						class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+						@keydown="onKeydown"
+					>
+						<InboxThreadRow
+							v-for="(thread, index) in visibleThreads"
+							:key="thread._id"
+							:thread="thread"
+							:focused="index === focusedIndex"
+							:format-compact-relative-time="formatCompactRelativeTime"
+							:members="assignMembers"
+							:current-user-id="user?.id ?? null"
+							:can-manage="isAdmin"
+							@assign="assignTo(thread, $event)"
+							@resolve="resolveThread(thread)"
+							@snooze="openSnooze(thread)"
+						/>
+					</ul>
+
+					<!-- Load More -->
+					<div v-if="hasMoreThreads" class="pt-4 text-center">
+						<UiButton variant="secondary" size="sm" @click="loadMoreThreads">Load More</UiButton>
+					</div>
+				</div>
+			</UiQueryBoundary>
+		</template>
 
 		<PostboxSnoozeDialog
 			v-if="isAdmin"

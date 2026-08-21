@@ -35,8 +35,14 @@ const DB_VERSION = 1;
 // The namespace is the mailboxId; callers thread it through from the signed-in
 // mailbox. Without a namespace nothing is read or written.
 const threadsKey = (ns: string, folderRole: string) => `threads:${ns}:${folderRole}`;
+const threadsMetaKey = (ns: string, folderRole: string) => `threads-meta:${ns}:${folderRole}`;
 const bodyKey = (ns: string, messageId: string) => `body:${ns}:${messageId}`;
 const bodyIndexKey = (ns: string) => `body-index:${ns}`;
+
+/** When a folder's rows were last persisted — powers the dated offline banner. */
+export interface OfflineThreadsMeta {
+	savedAt: number;
+}
 
 /** Minimal async key/value contract the store is built on. */
 export interface OfflineKvDriver {
@@ -137,11 +143,19 @@ export class PostboxOfflineStore {
 	 * start never reads these rows.
 	 */
 	async saveThreads<T>(ns: string, folderRole: string, rows: readonly T[]): Promise<void> {
-		await this.safeSet(threadsKey(ns, folderRole), rows.slice(0, OFFLINE_THREADS_CAP));
+		const ok = await this.safeSet(threadsKey(ns, folderRole), rows.slice(0, OFFLINE_THREADS_CAP));
+		// Stamp freshness only when the rows themselves landed; a failed write
+		// must leave the previous meta (and its older savedAt) standing.
+		if (ok) await this.safeSet(threadsMetaKey(ns, folderRole), { savedAt: Date.now() });
 	}
 
 	async loadThreads<T>(ns: string, folderRole: string): Promise<T[]> {
 		return this.safeGet<T[]>(threadsKey(ns, folderRole), []);
+	}
+
+	/** When {@link loadThreads}' rows were last persisted; null if never. */
+	async loadThreadsMeta(ns: string, folderRole: string): Promise<OfflineThreadsMeta | null> {
+		return this.safeGet<OfflineThreadsMeta | null>(threadsMetaKey(ns, folderRole), null);
 	}
 
 	/**

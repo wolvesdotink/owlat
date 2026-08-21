@@ -134,6 +134,12 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | und
 		return store.loadThreads<T>(ns, folderRole);
 	}
 
+	async function loadThreadsMeta(folderRole: string) {
+		const ns = namespace.value;
+		if (!enabled.value || !store || !ns) return null;
+		return store.loadThreadsMeta(ns, folderRole);
+	}
+
 	async function persistBody(messageId: string, srcdoc: string): Promise<void> {
 		const ns = namespace.value;
 		if (!canPersist.value || !store || !ns) return;
@@ -164,6 +170,7 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | und
 		canPersist,
 		persistThreads,
 		loadThreads,
+		loadThreadsMeta,
 		persistBody,
 		loadBody,
 		clearCache,

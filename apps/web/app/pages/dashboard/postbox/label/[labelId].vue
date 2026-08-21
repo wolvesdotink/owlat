@@ -13,20 +13,36 @@ const labelId = useRouteId<'mailLabels'>('labelId');
 const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
-// Fetch all messages and filter by label client-side. P7 will replace this
-// with a server-side query/index. For P3 the volume is small enough to keep
-// the implementation lean.
+// Server-side label view: `listByLabel` scans the mailbox's newest messages
+// server-side and returns only rows carrying this label. Replaces the P3
+// stopgap that fetched up to 500 recent mailbox messages to the browser and
+// filtered labelIds client-side. The view's reach is the backend's bounded
+// scan window, so "Load more" grows the returned slice rather than paging a
+// cursor.
+const resetKey = computed(() => `${String(mailboxId.value ?? '')}:${String(labelId.value)}`);
+const { limit, loadMore } = useGrowableLimit(resetKey, { page: 100, max: 500 });
+
 const {
-	data: allMessages,
+	data: labelData,
 	isLoading,
 	error,
-} = useConvexQuery(api.mail.mailbox.listMessages, () =>
-	mailboxId.value ? { mailboxId: mailboxId.value, limit: 500 } : 'skip'
+} = useConvexQuery(
+	api.mail.mailbox.listByLabel,
+	() =>
+		mailboxId.value
+			? { mailboxId: mailboxId.value, labelId: labelId.value, limit: limit.value }
+			: 'skip',
+	{ keepPreviousData: true }
 );
+const labelMessages = computed(() => labelData.value?.messages ?? []);
+const hasMore = computed(() => (labelData.value?.hasMore ?? false) && limit.value < 500);
 
-const labelMessages = computed(() =>
-	(allMessages.value?.messages ?? []).filter((m) => (m.labelIds ?? []).includes(labelId.value))
+// The label's own row (name + color for the header) — labels are few, so the
+// list query is the cheap way to resolve one without a dedicated by-id read.
+const { data: labels } = useConvexQuery(api.mail.labels.list, () =>
+	mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 );
+const label = computed(() => (labels.value ?? []).find((l) => l._id === labelId.value));
 </script>
 
 <template>
@@ -34,8 +50,14 @@ const labelMessages = computed(() =>
 		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
 			<div class="flex w-full">
 				<aside class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
-					<header class="border-b border-border-subtle px-4 py-3">
-						<h2 class="text-sm font-semibold text-text-primary">Label view</h2>
+					<header class="border-b border-border-subtle px-4 py-3 flex items-center gap-2">
+						<span
+							class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+							:style="{ backgroundColor: label?.color || '#6b7280' }"
+						/>
+						<h2 class="text-sm font-semibold text-text-primary truncate">
+							{{ label?.name ?? 'Label view' }}
+						</h2>
 					</header>
 					<PostboxQuickActionsBar :mailbox-id="mailboxId!" />
 					<UiErrorAlert
@@ -50,6 +72,8 @@ const labelMessages = computed(() =>
 							:loading="isLoading"
 							folder-role="inbox"
 							empty-context="label"
+							:has-more="hasMore"
+							@load-more="loadMore"
 						/>
 					</div>
 				</aside>

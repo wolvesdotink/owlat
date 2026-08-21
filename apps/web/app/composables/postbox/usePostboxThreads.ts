@@ -1,7 +1,11 @@
 /**
  * Paginated thread/message list per folder.
  *
- * P1 simplification: returns mailMessages directly. P3 will add a proper
+ * Keyset-paginated via usePostboxCursorFeed: the first page stays a live
+ * subscription (new mail floats in), "Load more" appends one cursor-keyed page
+ * at a time instead of re-subscribing with a growable limit.
+ *
+ * P1 simplification note: returns mailMessages directly. P3 will add a proper
  * thread aggregate query backed by mailThreads.
  */
 
@@ -15,29 +19,24 @@ export function usePostboxThreads(args: {
 	folderId?: Ref<Id<'mailFolders'> | undefined>;
 }) {
 	const resetKey = computed(() => args.folderId?.value ?? args.folderRole.value);
-	const { limit, loadMore, atMax } = useGrowableLimit(resetKey);
 
-	const { data, isLoading, isRefetching } = useConvexQuery(
+	const { rows, isLoading, isRefetching, hasMore, loadMore } = usePostboxCursorFeed(
 		api.mail.mailbox.listMessages,
 		() => {
 			if (!args.mailboxId.value) return 'skip';
 			const folderId = args.folderId?.value;
 			return folderId
-				? { mailboxId: args.mailboxId.value, folderId, limit: limit.value }
-				: { mailboxId: args.mailboxId.value, folderRole: args.folderRole.value, limit: limit.value };
+				? { mailboxId: args.mailboxId.value, folderId, limit: 50 }
+				: { mailboxId: args.mailboxId.value, folderRole: args.folderRole.value, limit: 50 };
 		},
+		resetKey,
 		// Keep the prior folder's rows visible while the next folder loads, so
 		// switching folders never flashes a blank full-pane spinner.
 		{ keepPreviousData: true }
 	);
 
-	const messages = computed(() => data.value?.messages ?? []);
-	// The server returns a real hasMore (folder-scoped take(limit+1)); stop at
-	// the server cap.
-	const hasMore = computed(() => (data.value?.hasMore ?? false) && !atMax.value);
-
 	return {
-		messages,
+		messages: rows,
 		isLoading,
 		isRefetching,
 		hasMore,

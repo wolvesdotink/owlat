@@ -112,18 +112,26 @@ export function usePostboxSearch(
 ) {
 	const parsed = computed(() => parseSearchQuery(query.value));
 
-	const { data, isLoading } = useConvexQuery(api.mail.mailbox.search, () => {
-		if (!mailboxId.value) return 'skip';
-		const trimmed = query.value.trim();
-		if (!trimmed) return 'skip';
-		return {
-			mailboxId: mailboxId.value,
-			...parsed.value,
-		};
-	});
+	// Keyset-paginated: "Load more" walks past the first page via the backend's
+	// opaque cursor instead of silently stopping at the old 200-row cap. Any
+	// change to the parsed query restarts from a fresh first page.
+	const { rows, isLoading, hasMore, loadMore } = usePostboxCursorFeed(
+		api.mail.mailbox.search,
+		() => {
+			if (!mailboxId.value) return 'skip';
+			const trimmed = query.value.trim();
+			if (!trimmed) return 'skip';
+			return {
+				mailboxId: mailboxId.value,
+				...parsed.value,
+				limit: 50,
+			};
+		},
+		computed(() => JSON.stringify(parsed.value)),
+		{ keepPreviousData: true }
+	);
 
-	const results = computed(() => data.value ?? []);
-	return { parsed, results, isLoading };
+	return { parsed, results: rows, isLoading, hasMore, loadMore };
 }
 
 /** Build human-readable filter chips from a parsed query. */

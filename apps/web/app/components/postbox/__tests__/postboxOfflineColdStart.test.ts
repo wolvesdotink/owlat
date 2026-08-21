@@ -20,13 +20,16 @@ const cachedRows: Row[] = [
 
 const isOffline = ref(false);
 const persistThreads = vi.fn(async () => {});
+const loadThreadsMeta = vi.fn(async () => ({ savedAt: 1_700_000_000_000 }));
 
 beforeEach(() => {
 	persistThreads.mockClear();
+	loadThreadsMeta.mockClear();
 	isOffline.value = false;
 	// usePostboxOfflineThreads reaches for the cache composable via auto-import.
 	vi.stubGlobal('usePostboxOfflineCache', () => ({
 		loadThreads: vi.fn(async () => cachedRows),
+		loadThreadsMeta,
 		persistThreads,
 		isOffline,
 	}));

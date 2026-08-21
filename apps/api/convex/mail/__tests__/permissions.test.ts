@@ -209,7 +209,7 @@ describe('mailbox read handlers route through loadReadableMailbox', () => {
 		const id = await seedMailbox(t, { userId: 'user-A' });
 		setSession('user-B', 'editor');
 		const result = await t.query(api.mail.mailbox.listMessages, { mailboxId: id });
-		expect(result).toEqual({ messages: [], hasMore: false });
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
 	});
 
 	it('mailbox.listMessages returns the empty sentinel on a suspended mailbox to its owner', async () => {
@@ -217,7 +217,7 @@ describe('mailbox read handlers route through loadReadableMailbox', () => {
 		const id = await seedMailbox(t, { userId: 'user-A', status: 'suspended' });
 		setSession('user-A', 'editor');
 		const result = await t.query(api.mail.mailbox.listMessages, { mailboxId: id });
-		expect(result).toEqual({ messages: [], hasMore: false });
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
 	});
 
 	it('mailbox.listFolders lists folders for the owner but is empty for a non-owner', async () => {

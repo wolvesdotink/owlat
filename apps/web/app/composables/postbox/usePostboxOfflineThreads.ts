@@ -6,13 +6,18 @@
  * the folder IMMEDIATELY, marks them stale (the header shows a subtle
  * "updating…" shimmer), and hands back to the live rows the instant they arrive
  * — replace-in-place, live always wins. It also persists the newest rows back to
- * the cache whenever a fresh live result settles.
+ * the cache whenever a fresh live result settles, and exposes WHEN the cache
+ * was written so the offline banner can date itself ("cached at 14:32").
  *
- * Only the inbox is cached in v1 (the spec's "newest ~200 inbox thread rows").
- * For every other folder this is a transparent pass-through of the live rows.
+ * Cached folders: inbox + snoozed (the two surfaces people open on flaky
+ * connections — snoozed mail is exactly what you check without network).
+ * Every other folder is a transparent pass-through of the live rows.
  */
 
 import { reconcileThreadRows } from '~/utils/postboxOfflineStore';
+
+/** Folders whose rows participate in the offline cache. */
+const CACHEABLE_FOLDERS = new Set(['inbox', 'snoozed']);
 
 export function usePostboxOfflineThreads<T extends { _id: string }>(args: {
 	/** Active mailbox id — namespaces the cache so mailbox A's rows never reach B. */
@@ -25,20 +30,24 @@ export function usePostboxOfflineThreads<T extends { _id: string }>(args: {
 }) {
 	const cache = usePostboxOfflineCache(args.mailboxId);
 
-	/** Only the inbox participates in the offline cache in v1. */
-	const cacheable = computed(() => args.folderRole.value === 'inbox');
+	const cacheable = computed(() => CACHEABLE_FOLDERS.has(args.folderRole.value));
 
 	const cachedRows = ref<T[]>([]) as Ref<T[]>;
 	const loadedFolder = ref<string | null>(null);
+	/** When the served cache snapshot was persisted (ms); null if not from cache. */
+	const cachedAt = ref<number | null>(null);
 
 	/** (Re)load cached rows when the folder changes to a cacheable one. */
 	async function refreshCached(folder: string) {
 		if (!cacheable.value) {
 			cachedRows.value = [];
+			cachedAt.value = null;
 			loadedFolder.value = folder;
 			return;
 		}
 		cachedRows.value = await cache.loadThreads<T>(folder);
+		const meta = await cache.loadThreadsMeta(folder);
+		cachedAt.value = meta?.savedAt ?? null;
 		loadedFolder.value = folder;
 	}
 
@@ -69,9 +78,13 @@ export function usePostboxOfflineThreads<T extends { _id: string }>(args: {
 		() => (args.isLoading.value ? null : args.liveRows.value),
 		(live) => {
 			if (live == null || !cacheable.value) return;
-			void cache.persistThreads(args.folderRole.value, live);
+			void cache.persistThreads(args.folderRole.value, live).then(() => {
+				void cache.loadThreadsMeta(args.folderRole.value).then((meta) => {
+					cachedAt.value = meta?.savedAt ?? cachedAt.value;
+				});
+			});
 		}
 	);
 
-	return { rows, showingCached, isOffline: cache.isOffline };
+	return { rows, showingCached, isOffline: cache.isOffline, cachedAt: readonly(cachedAt) };
 }

@@ -26,11 +26,17 @@ const props = defineProps<{
 	// renders with folder-role "inbox" for row links but must not claim
 	// "All clear" when the label simply has no messages).
 	emptyContext?: 'label';
+	// True when a triage filter chip (Unread/Starred/Attachments) is hiding
+	// rows that exist — the empty state then offers "Show all" instead of the
+	// folder's usual copy, so a filtered-to-zero list never reads as
+	// "nothing here".
+	filterActive?: boolean;
 }>();
 
 const emit = defineEmits<{
 	(e: 'load-more'): void;
 	(e: 'select', messageId: string): void;
+	(e: 'clear-filter'): void;
 }>();
 
 const mailboxIdRef = computed(() => props.mailboxId);
@@ -183,10 +189,19 @@ async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
 	}
 }
 
-// Context-aware empty state: inbox-zero gets a quiet "All clear" moment;
+// Context-aware empty state: a filter that hides every row gets a caught-up
+// moment with a one-tap "Show all"; inbox-zero gets a quiet "All clear";
 // empty custom folders (no role) and label views get a one-line hint with a
 // relevant action; other system folders keep a neutral "No messages".
 const emptyState = computed(() => {
+	if (props.filterActive) {
+		return {
+			icon: 'lucide:check-circle-2',
+			title: "You're all caught up",
+			hint: undefined as string | undefined,
+			showFilterAction: false,
+		};
+	}
 	if (props.emptyContext === 'label') {
 		return {
 			icon: 'lucide:tag',
@@ -365,8 +380,9 @@ onMounted(async () => {
 
 <template>
 	<!-- Scroll container owns the folder's scroll position (windowing +
-	     infinite-scroll + restore all key off it). -->
-	<div ref="scrollEl" class="h-full overflow-auto scroll-fade" @scroll="onListScroll">
+	     infinite-scroll + restore all key off it). `.postbox-thread-list`
+	     scopes the touch-device CSS (postbox-density.css) to this list only. -->
+	<div ref="scrollEl" class="postbox-thread-list h-full overflow-auto scroll-fade" @scroll="onListScroll">
 		<!-- Skeleton only on FIRST load (no rows yet): live-query refreshes keep
 	     `keepPreviousData` rows visible, so they never flash the skeleton. -->
 		<PostboxThreadListSkeleton v-if="loading && visibleMessages.length === 0" />
@@ -376,7 +392,16 @@ onMounted(async () => {
 			:title="emptyState.title"
 			:hint="emptyState.hint"
 		>
-			<template v-if="emptyState.showFilterAction" #action>
+			<template v-if="filterActive" #action>
+				<button
+					type="button"
+					class="inline-block mt-2 text-xs text-brand hover:underline"
+					@click="emit('clear-filter')"
+				>
+					Show all messages
+				</button>
+			</template>
+			<template v-else-if="emptyState.showFilterAction" #action>
 				<NuxtLink
 					to="/dashboard/preferences/filters"
 					class="inline-block mt-2 text-xs text-brand hover:underline"
