@@ -155,7 +155,9 @@
 		"yes": "Yes",
 		"yesterday": "Yesterday",
 		"roles": {
-			"member": "member"
+			"member": "member",
+			"admin": "admin",
+			"owner": "owner"
 		}
 	},
 	"components": {
@@ -3901,6 +3903,8 @@
 				"emptyLabelTitle": "No messages with this label",
 				"listLabel": "Messages",
 				"loadMore": "Load more",
+				"capNote": "Showing the newest messages in this view.",
+				"loadingMore": "Loading more…",
 				"markReadOperation": "Mark read",
 				"moveOperation": "Move message",
 				"movedUndo": "Moved",
@@ -8046,10 +8050,10 @@
 					"pageTitle": "Mail — Owlat"
 				}
 			},
-				"label": {
-					"detail": {
-						"capNote": "This label has more messages than this view lists — showing the newest {count}. | This label has more messages than this view lists — showing the newest {count}.",
-						"heading": "Label view",
+			"label": {
+				"detail": {
+					"capNote": "This label has more messages than this view lists — showing the newest {count}. | This label has more messages than this view lists — showing the newest {count}.",
+					"heading": "Label view",
 					"loadError": "Couldn't load messages for this label. Reload to try again.",
 					"pageTitle": "Mail — Owlat",
 					"selectMessage": "Select a message"
@@ -8143,6 +8147,8 @@
 				"backToResults": "Results",
 				"noResultsHint": "Try fewer or broader terms, or operators like from:, has:attachment, is:unread.",
 				"noResultsTitle": "No results for this search",
+				"keepSearching": "Keep searching",
+				"pageEmptyWithMore": "No matches on this page. There are more messages to search.",
 				"operatorHint": "Try operators like {from}, {hasAttachment}, {before}, {label}, {isUnread}.",
 				"pageTitle": "Search — Owlat",
 				"selectResult": "Select a result",

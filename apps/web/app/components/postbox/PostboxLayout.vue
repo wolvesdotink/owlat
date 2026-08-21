@@ -35,11 +35,17 @@ const {
 	setInboxMode,
 } = usePostboxSettings();
 
-const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
-	mailboxId: mailboxIdRef,
-	folderRole: folderRef,
-	folderId: folderIdRef,
-});
+const { messages, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } =
+	usePostboxThreads({
+		mailboxId: mailboxIdRef,
+		folderRole: folderRef,
+		folderId: folderIdRef,
+	});
+
+// The virtual Snoozed folder is take()-bounded server-side: more matches can
+// exist with no cursor to reach them. Say so plainly instead of offering a
+// Load more that cannot advance — the same posture the label view takes.
+const listCapped = computed(() => hasMore.value && !canLoadMore.value);
 
 // Triage filter chips (All / Unread / Starred / Attachments) — client-side
 // over the fetched window, persisted per mailbox+folder. Flat list only; the
@@ -63,6 +69,7 @@ const {
 	folderRole: folderRef,
 	liveRows: messages,
 	isLoading,
+	isRefetching,
 });
 
 const {
@@ -354,7 +361,9 @@ const advanceIds = computed(() =>
 										:loading="isLoading && !showingCached"
 										:folder-role="folderRole"
 										:active-message-id="activeMessageId"
-										:has-more="hasMore"
+										:has-more="canLoadMore"
+										:loading-more="isLoadingMore"
+										:capped="listCapped"
 										:filter-active="filterHidesRows"
 										@load-more="loadMore"
 										@clear-filter="setTriageFilter('all')"

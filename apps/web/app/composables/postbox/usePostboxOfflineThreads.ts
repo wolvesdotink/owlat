@@ -33,6 +33,13 @@ export function usePostboxOfflineThreads<T extends { _id: string }>(args: {
 	liveRows: Ref<readonly T[]>;
 	/** True while the live query has not yet produced a result. */
 	isLoading: Ref<boolean>;
+	/**
+	 * True while the query is re-subscribing with `keepPreviousData` — the rows
+	 * on hand are the PREVIOUS folder's. Distinct from `isLoading` (which is
+	 * false in that window) and load-bearing for persistence: writing those rows
+	 * under the incoming folder's key would poison its cache.
+	 */
+	isRefetching?: Ref<boolean>;
 }) {
 	const cache = usePostboxOfflineCache(args.mailboxId);
 
@@ -45,9 +52,12 @@ export function usePostboxOfflineThreads<T extends { _id: string }>(args: {
 
 	/** (Re)load cached rows when the folder changes to a cacheable one. */
 	async function refreshCached(folder: string) {
+		// Drop the outgoing folder's snapshot before the await: `rows` serves
+		// `cachedRows` while pending, so leaving them in place would render the
+		// previous folder's cached mail under the new folder's header.
+		cachedRows.value = [];
+		cachedAt.value = null;
 		if (!cacheable.value) {
-			cachedRows.value = [];
-			cachedAt.value = null;
 			loadedFolder.value = folder;
 			return;
 		}
@@ -67,21 +77,28 @@ export function usePostboxOfflineThreads<T extends { _id: string }>(args: {
 		{ immediate: true }
 	);
 
+	/**
+	 * No live result for THIS folder yet: either the first load (`isLoading`) or
+	 * a re-subscribe still showing the previous folder's rows (`isRefetching`).
+	 * Both are windows where the cache, not `liveRows`, is the honest source.
+	 */
+	const pending = computed(() => args.isLoading.value || (args.isRefetching?.value ?? false));
+
 	/** Rows to display: live once it has arrived, cached while still pending. */
 	const rows = computed<T[]>(() => {
-		if (!args.isLoading.value) return reconcileThreadRows<T>([], args.liveRows.value);
+		if (!pending.value) return reconcileThreadRows<T>([], args.liveRows.value);
 		if (cacheable.value && cachedRows.value.length > 0) return cachedRows.value;
 		return [...args.liveRows.value];
 	});
 
 	/** True when the list is showing cached rows pending the live refresh. */
 	const showingCached = computed(
-		() => args.isLoading.value && cacheable.value && cachedRows.value.length > 0
+		() => pending.value && cacheable.value && cachedRows.value.length > 0
 	);
 
 	/** Persist the newest live rows back to the cache once a result settles. */
 	watch(
-		() => (args.isLoading.value ? null : args.liveRows.value),
+		() => (pending.value ? null : args.liveRows.value),
 		(live) => {
 			if (live == null || !cacheable.value) return;
 			void cache.persistThreads(args.folderRole.value, live).then(() => {

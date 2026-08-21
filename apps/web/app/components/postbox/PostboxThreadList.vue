@@ -16,7 +16,14 @@ const props = defineProps<{
 	loading: boolean;
 	folderRole: string;
 	activeMessageId?: string | null;
+	/** A further page exists AND there is a cursor to walk to it. */
 	hasMore?: boolean;
+	/** A "Load more" page is in flight (distinct from the first-load skeleton). */
+	loadingMore?: boolean;
+	// True when more rows exist but the view has no cursor to reach them (the
+	// take()-bounded Snoozed folder). Renders an honest cap note instead of a
+	// Load more that cannot advance.
+	capped?: boolean;
 	// When set, clicking a row (or pressing Enter) emits `select` for in-place
 	// preview instead of navigating to the folder/message route. Used by the
 	// search results screen, which previews hits in its own right-hand pane
@@ -44,19 +51,6 @@ const { t } = useI18n();
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 
-const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
-	label: () => t('components.postbox.postboxThreadList.archiveOperation'),
-});
-const trashOp = useBackendOperation(api.mail.messageActions.trash, {
-	label: () => t('components.postbox.postboxThreadList.trashOperation'),
-});
-const setStarOp = useBackendOperation(api.mail.messageActions.setStar, {
-	label: () => t('components.postbox.postboxThreadList.starOperation'),
-});
-const markReadOp = useBackendOperation(api.mail.messageActions.markRead, {
-	label: () => t('components.postbox.postboxThreadList.markReadOperation'),
-});
-
 // Optimistic row removal — hide on archive/trash, restore on failure (see
 // usePostboxOptimisticHide).
 const messagesRef = computed(() => props.messages);
@@ -71,49 +65,11 @@ const {
 const visibleIds = computed(() => visibleMessages.value.map((m) => m._id));
 defineExpose({ visibleIds });
 
-// Successful triage registers its inverse for the "Undo — Cmd+Z" toast;
-// undoing also un-hides the optimistically hidden row.
-const triageUndo = usePostboxTriageUndo();
-
-async function archiveMsg(id: Id<'mailMessages'>) {
-	hideRow(id);
-	// archive/trash return { ok, moved } — restore the row if the mutation failed.
-	const result = await archiveOp.run({ messageIds: [id] });
-	if (!result) {
-		unhideRow(id);
-		return;
-	}
-	if (result.moved.length > 0) {
-		triageUndo.registerMoveBack({
-			label: t('components.postbox.postboxThreadList.archivedUndo'),
-			moved: result.moved,
-			runMove: (a) => moveOp.run(a),
-			after: () => unhideRow(id),
-		});
-	}
-}
-async function trashMsg(id: Id<'mailMessages'>) {
-	hideRow(id);
-	const result = await trashOp.run({ messageIds: [id] });
-	if (!result) {
-		unhideRow(id);
-		return;
-	}
-	if (result.moved.length > 0) {
-		triageUndo.registerMoveBack({
-			label: t('components.postbox.postboxThreadList.trashedUndo'),
-			moved: result.moved,
-			runMove: (a) => moveOp.run(a),
-			after: () => unhideRow(id),
-		});
-	}
-}
-function toggleStar(id: Id<'mailMessages'>, starred: boolean) {
-	void setStarOp.run({ messageId: id, starred });
-}
-function toggleRead(id: Id<'mailMessages'>, seen: boolean) {
-	void markReadOp.run({ messageId: id, seen });
-}
+// The triage verbs themselves (one action source for the hover buttons, the
+// context menu, the long-press menu and the single-key shortcuts), including
+// the optimistic hide/restore and the "Undo — Cmd+Z" registration.
+const { archiveMsg, trashMsg, moveMsg, snoozeMsg, toggleStar, toggleRead, cancelFollowUp } =
+	usePostboxRowTriage({ hide: hideRow, unhide: unhideRow });
 
 // Pending compose intent for r/a/f from the list: opening the composer needs the
 // reader's quoting/recipient logic, so we open the message first and let
@@ -150,29 +106,10 @@ const movableFolders = computed(() =>
 	})
 );
 
-const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
-	label: () => t('components.postbox.postboxThreadList.snoozeOperation'),
-});
-const moveOp = useBackendOperation(api.mail.messageActions.move, {
-	label: () => t('components.postbox.postboxThreadList.moveOperation'),
-});
-
-// Follow-up chip on a watched row: cancel the armed watch / dismiss the due
-// "No reply yet" indicator. Ownership-checked server-side.
-const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
-	label: () => t('components.postbox.postboxThreadList.cancelFollowUpOperation'),
-});
-function cancelFollowUp(msg: { threadId?: string }) {
-	if (!msg.threadId) return;
-	void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
-}
-
 async function snoozeFocused(until: number) {
 	const id = snoozeTargetId.value;
 	snoozeTargetId.value = null;
-	if (!id) return;
-	hideRow(id);
-	if ((await snoozeOp.run({ messageId: id, until })) === undefined) unhideRow(id);
+	if (id) await snoozeMsg(id, until);
 }
 
 async function applyLabelToFocused(labelId: Id<'mailLabels'>) {
@@ -186,21 +123,7 @@ async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
 	const id = moveTargetId.value;
 	moveOpen.value = false;
 	moveTargetId.value = null;
-	if (!id) return;
-	hideRow(id);
-	const result = await moveOp.run({ messageIds: [id], targetFolderId });
-	if (result === undefined) {
-		unhideRow(id);
-		return;
-	}
-	if (result.moved.length > 0) {
-		triageUndo.registerMoveBack({
-			label: t('components.postbox.postboxThreadList.movedUndo'),
-			moved: result.moved,
-			runMove: (a) => moveOp.run(a),
-			after: () => unhideRow(id),
-		});
-	}
+	if (id) await moveMsg(id, targetFolderId);
 }
 
 // Context-aware empty state: a filter that hides every row gets a caught-up
@@ -376,6 +299,7 @@ function onListScroll(event: Event) {
 	if (
 		props.hasMore &&
 		!props.loading &&
+		!props.loadingMore &&
 		emittedForCount !== itemCount.value &&
 		el.scrollHeight - el.scrollTop - el.clientHeight < AUTOLOAD_MARGIN_PX
 	) {
@@ -401,7 +325,11 @@ onMounted(async () => {
 	<!-- Scroll container owns the folder's scroll position (windowing +
 	     infinite-scroll + restore all key off it). `.postbox-thread-list`
 	     scopes the touch-device CSS (postbox-density.css) to this list only. -->
-	<div ref="scrollEl" class="postbox-thread-list h-full overflow-auto scroll-fade" @scroll="onListScroll">
+	<div
+		ref="scrollEl"
+		class="postbox-thread-list h-full overflow-auto scroll-fade"
+		@scroll="onListScroll"
+	>
 		<!-- Skeleton only on FIRST load (no rows yet): live-query refreshes keep
 	     `keepPreviousData` rows visible, so they never flash the skeleton. -->
 		<PostboxThreadListSkeleton v-if="loading && visibleMessages.length === 0" />
@@ -471,11 +399,21 @@ onMounted(async () => {
 		</ul>
 		<!-- Fallback trigger: infinite scroll auto-grows the page, but the button
 	     stays so a user can still advance if the auto-load stalls or errors. -->
-		<div v-if="!loading && hasMore" class="p-3 text-center">
+		<div v-if="loadingMore" class="p-3 text-center text-sm text-text-tertiary" role="status">
+			{{ t('components.postbox.postboxThreadList.loadingMore') }}
+		</div>
+		<div v-else-if="!loading && hasMore" class="p-3 text-center">
 			<button type="button" class="text-sm text-brand hover:underline" @click="emit('load-more')">
 				{{ t('components.postbox.postboxThreadList.loadMore') }}
 			</button>
 		</div>
+		<p
+			v-else-if="capped && visibleMessages.length > 0"
+			class="px-4 py-3 text-center text-xs text-text-tertiary"
+			role="status"
+		>
+			{{ t('components.postbox.postboxThreadList.capNote') }}
+		</p>
 	</div>
 	<!-- Keyboard-flow pickers for the focused row (h / l / v). -->
 	<PostboxSnoozeDialog

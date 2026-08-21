@@ -11,22 +11,41 @@
  *     landed tail page is stored as a segment keyed by the cursor that opened
  *     it, so growing the tail never re-reads earlier pages.
  *
- * Rendered rows are the flattened, deduped union of all segments (first-page
- * wins ties, so a row the first page has grown to include shows its freshest
- * copy). Deeper-page segments update through their own subscription while it
- * is the active tail; older ones are stable snapshots — the same tradeoff the
- * Team Inbox list makes, with the visible top of the list always live.
+ * Rendered rows are the flattened, deduped union of the live first page and all
+ * tail segments (first page wins ties, so a row the first page has grown to
+ * include shows its freshest copy). Deeper-page segments update through their
+ * own subscription while it is the active tail; older ones are stable snapshots
+ * — the same tradeoff the Team Inbox list makes, with the visible top of the
+ * list always live.
  *
- * A change of `resetKey` (folder switch, new search query) drops back to a
- * fresh first page synchronously, before the queries re-subscribe.
+ * The first page is read straight off its subscription rather than copied into
+ * a segment, so `keepPreviousData` keeps working across a reset: a folder
+ * switch drops the accumulated tail and keeps the previous rows on screen until
+ * the new first page lands, instead of blanking the list.
+ *
+ * Two reset levels:
+ *   - `resetKey` (folder switch, new search query) invalidates every minted
+ *     cursor: the tail is dropped, the retained first page stays visible.
+ *   - `hardResetKey` (mailbox switch) additionally SUPPRESSES the retained
+ *     page, because those rows belong to another account and must never render
+ *     under the new one. The list is empty until fresh data arrives.
  */
 
 import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
 import type { ArgsOrFactory } from '~/composables/useConvexQuery';
 
-/** The structural slice of a cursor-paginated page this composable needs. */
+/**
+ * The structural slice of a cursor-paginated page this composable needs.
+ *
+ * `hasMore` is authoritative and `nextCursor` is not: a take()-bounded view
+ * (the virtual Snoozed folder, `listByLabel`) reports `hasMore: true` with
+ * `nextCursor: null` to mean "more matches exist, but this view has no cursor
+ * to walk". Deriving "more exists" from the cursor alone silently caps those
+ * views at one page.
+ */
 interface FeedPage {
 	messages: Array<{ _id: string }>;
+	hasMore?: boolean;
 	nextCursor: string | null;
 }
 
@@ -34,7 +53,7 @@ export function usePostboxCursorFeed<Query extends FunctionReference<'query'>>(
 	query: Query,
 	args: ArgsOrFactory<FunctionArgs<Query>>,
 	resetKey: Ref<unknown>,
-	options?: { keepPreviousData?: boolean }
+	options?: { keepPreviousData?: boolean; hardResetKey?: Ref<unknown> }
 ) {
 	const resolveBaseArgs = (): FunctionArgs<Query> | 'skip' =>
 		typeof args === 'function' ? (args as () => FunctionArgs<Query> | 'skip')() : args;
@@ -76,80 +95,106 @@ export function usePostboxCursorFeed<Query extends FunctionReference<'query'>>(
 	const feedFirst = computed(() => firstData.value as unknown as FeedPage | undefined);
 	const feedTail = computed(() => tailData.value as unknown as FeedPage | undefined);
 
-	const segments = ref(new Map<string, SegmentRows>()) as Ref<Map<string, SegmentRows>>;
+	/** Loaded tail pages, keyed by the cursor that opened each (insertion-ordered). */
+	const tailSegments = ref(new Map<string, SegmentRows>()) as Ref<Map<string, SegmentRows>>;
 
-	watch(
-		feedFirst,
-		(page) => {
-			if (!page) return;
-			const next = new Map(segments.value);
-			next.set('', [...page.messages]);
-			segments.value = next;
-		},
-		{ immediate: true }
-	);
-	watch(
-		feedTail,
-		(page) => {
-			if (!page || !tailKey.value) return;
-			const next = new Map(segments.value);
-			next.set(tailKey.value, [...page.messages]);
-			segments.value = next;
-		},
-		{ immediate: true }
+	/**
+	 * Set by a hard reset, cleared by the next first-page delivery: while set,
+	 * the retained page belongs to the PREVIOUS mailbox and must not render.
+	 */
+	const suppressRetained = ref(false);
+
+	watch(feedTail, (page) => {
+		if (!page || !tailKey.value) return;
+		const next = new Map(tailSegments.value);
+		next.set(tailKey.value, [...page.messages]);
+		tailSegments.value = next;
+	});
+	watch(feedFirst, () => {
+		suppressRetained.value = false;
+	});
+
+	/** The live first page's rows, or none while a hard reset is pending. */
+	const firstRows = computed<SegmentRows>(() =>
+		suppressRetained.value ? [] : (feedFirst.value?.messages ?? [])
 	);
 
 	const accumulated = computed(() => {
 		const out: Array<{ _id: string }> = [];
 		const seen = new Set<string>();
-		for (const rows of segments.value.values()) {
+		const push = (rows: SegmentRows) => {
 			for (const row of rows) {
 				if (!seen.has(row._id)) {
 					seen.add(row._id);
 					out.push(row);
 				}
 			}
-		}
+		};
+		push(firstRows.value);
+		for (const rows of tailSegments.value.values()) push(rows);
 		return out;
 	});
 
-	// A resetKey change invalidates every minted cursor — restart from a fresh
-	// first page synchronously, before the queries re-subscribe.
+	// A resetKey change invalidates every minted cursor — drop the tail
+	// synchronously, before the queries re-subscribe. The first page is left
+	// alone so `keepPreviousData` can keep the previous rows on screen.
 	watch(
 		resetKey,
 		() => {
 			tailCursor.value = null;
 			tailKey.value = null;
-			segments.value = new Map();
+			tailSegments.value = new Map();
 		},
 		{ flush: 'sync' }
 	);
 
+	// A hard reset (mailbox switch) does the same AND hides the retained page.
+	if (options?.hardResetKey) {
+		watch(
+			options.hardResetKey,
+			() => {
+				tailCursor.value = null;
+				tailKey.value = null;
+				tailSegments.value = new Map();
+				suppressRetained.value = true;
+			},
+			{ flush: 'sync' }
+		);
+	}
+
+	/** The page that owns the frontier: the deepest loaded one. */
+	const frontier = computed<FeedPage | undefined>(() =>
+		tailCursor.value ? feedTail.value : feedFirst.value
+	);
+
+	/** More rows exist beyond what is rendered (cursor-walkable or not). */
+	const hasMore = computed(() => {
+		const page = frontier.value;
+		if (!page) return false;
+		return page.hasMore ?? page.nextCursor !== null;
+	});
+
+	/** More rows exist AND there is a cursor to reach them. */
+	const canLoadMore = computed(() => hasMore.value && frontier.value?.nextCursor != null);
+
 	function loadMore() {
-		const next = tailCursor.value
-			? // Extending an existing tail: continue from its latest page.
-				(feedTail.value?.nextCursor ?? null)
-			: // First extension: continue from the live first page.
-				(feedFirst.value?.nextCursor ?? null);
+		const next = frontier.value?.nextCursor ?? null;
 		if (!next) return;
 		tailKey.value = next;
 		tailCursor.value = next;
 	}
 
-	const hasMore = computed(() => {
-		if (!tailCursor.value) return !!feedFirst.value?.nextCursor;
-		return !!feedTail.value?.nextCursor;
-	});
-
 	type Rows = FunctionReturnType<Query>['messages'];
 	return {
 		rows: computed(() => accumulated.value as Rows),
-		isLoading: computed(() =>
-			tailCursor.value ? tailLoading.value || isLoading.value : isLoading.value
-		),
+		/** True only while the FIRST page is pending — never during a Load more. */
+		isLoading,
+		/** True while a "Load more" page is in flight. */
+		isLoadingMore: computed(() => (tailCursor.value ? tailLoading.value : false)),
 		isRefetching,
 		error: computed(() => error.value ?? tailError.value),
 		hasMore,
+		canLoadMore,
 		loadMore,
 	};
 }

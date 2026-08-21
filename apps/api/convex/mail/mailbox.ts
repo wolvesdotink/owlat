@@ -652,13 +652,16 @@ export const listByLabel = publicQuery({
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
 			.order('desc')
 			.take(LABEL_SCAN_WINDOW);
-		const matching = scanned.filter((m) => m.labelIds.includes(args.labelId));
+		// Snoozed rows are hidden from this view, so they must be dropped BEFORE
+		// the slice: filtering afterwards lets them eat result slots (ask for
+		// `limit`, get fewer with matches still in the window) and makes `hasMore`
+		// count rows the caller will never see, overstating the cap note.
+		const matching = scanned.filter(
+			(m) => m.labelIds.includes(args.labelId) && !isMessageSnoozed(m, now)
+		);
 
 		return {
-			messages: await attachThreadFollowUps(
-				ctx,
-				matching.slice(0, limit).filter((m) => !isMessageSnoozed(m, now))
-			),
+			messages: await attachThreadFollowUps(ctx, matching.slice(0, limit)),
 			hasMore: matching.length > limit,
 			nextCursor: null,
 		};

@@ -166,6 +166,11 @@ function onRowPointerdown(event: PointerEvent) {
 	// taps on the row's own buttons (checkbox, quick actions) handle themselves.
 	if (event.pointerType === 'mouse' || !event.isPrimary) return;
 	if ((event.target as HTMLElement | null)?.closest('button')) return;
+	// A new press starts clean: the previous long-press's click may have been
+	// swallowed by the menu's backdrop (dismiss by tapping outside, or Esc)
+	// rather than reaching this row, which would otherwise leave the flag set
+	// and eat the next legitimate tap.
+	suppressNextClick = false;
 	cancelLongPress();
 	pressOrigin = { x: event.clientX, y: event.clientY };
 	const row = event.currentTarget as HTMLElement;
@@ -211,7 +216,10 @@ onUnmounted(cancelLongPress);
 			<li
 				class="group relative pbx-row-li"
 				:class="{ 'pbx-virtual-row': virtualize }"
-				style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
+				style="
+					content-visibility: auto;
+					contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px);
+				"
 				@contextmenu="onContextmenu"
 				@keydown="onKeydown"
 				@pointerdown="onRowPointerdown"
@@ -220,145 +228,145 @@ onUnmounted(cancelLongPress);
 				@pointercancel="cancelLongPress"
 				@click.capture="onCapturedClick"
 			>
-		<component
-			:is="selectable ? 'div' : (resolveComponent('NuxtLink') as 'div')"
-			:id="rowId"
-			role="option"
-			:tabindex="selectable ? -1 : undefined"
-			:aria-selected="focused"
-			:to="selectable ? undefined : `/dashboard/postbox/${folderRole}/${msg._id}`"
-			class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-(--surface-1-hover)"
-			:class="{
-				'bg-(--surface-1-selected)': active,
-				'bg-brand/5': selected,
-				'ring-1 ring-inset ring-brand/50': focused,
-				'cursor-pointer': selectable,
-			}"
-			@click="selectable ? emit('select') : undefined"
-		>
-			<div class="flex items-start gap-2">
-				<button
-					type="button"
-					class="pbx-row-checkbox mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
-					:class="
-						selected
-							? 'bg-brand border-brand text-text-inverse'
-							: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100'
-					"
-					:aria-label="
-						selected
-							? t('components.postbox.postboxThreadRow.deselect')
-							: t('components.postbox.postboxThreadRow.select')
-					"
-					@click="onCheckboxClick($event)"
+				<component
+					:is="selectable ? 'div' : (resolveComponent('NuxtLink') as 'div')"
+					:id="rowId"
+					role="option"
+					:tabindex="selectable ? -1 : undefined"
+					:aria-selected="focused"
+					:to="selectable ? undefined : `/dashboard/postbox/${folderRole}/${msg._id}`"
+					class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-(--surface-1-hover)"
+					:class="{
+						'bg-(--surface-1-selected)': active,
+						'bg-brand/5': selected,
+						'ring-1 ring-inset ring-brand/50': focused,
+						'cursor-pointer': selectable,
+					}"
+					@click="selectable ? emit('select') : undefined"
 				>
-					<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
-				</button>
-				<UiAvatar
-					:name="msg.fromName"
-					:email="msg.fromAddress"
-					deterministic-color
-					size="sm"
-					class="flex-shrink-0"
-					aria-hidden="true"
-				/>
-				<PostboxRowCore :unread="!msg.flagSeen">
-					<template #identifier>{{ msg.fromName || msg.fromAddress }}</template>
-					<template #meta>{{ formatThreadTimestamp(msg.receivedAt) }}</template>
-					<div class="flex items-center gap-1.5 mt-0.5">
-						<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
-						<Icon
-							v-if="msg.snoozedUntil"
-							name="lucide:clock"
-							class="w-3.5 h-3.5 text-brand"
-							:title="snoozedTitle(msg.snoozedUntil)"
-						/>
-						<Icon
-							v-if="msg.hasAttachments"
-							name="lucide:paperclip"
-							class="w-3.5 h-3.5 text-text-tertiary"
-						/>
-						<PostboxThreadRowFollowUp
-							v-if="msg.followUp?.watched"
-							:follow-up="msg.followUp"
-							@cancel="
-								(e: MouseEvent) => {
-									e.stopPropagation();
-									e.preventDefault();
-									emit('cancel-follow-up');
-								}
+					<div class="flex items-start gap-2">
+						<button
+							type="button"
+							class="pbx-row-checkbox mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+							:class="
+								selected
+									? 'bg-brand border-brand text-text-inverse'
+									: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100'
 							"
-						/>
-						<p
-							class="truncate text-sm flex-1"
-							:class="msg.flagSeen ? 'text-text-secondary' : 'font-medium text-text-primary'"
+							:aria-label="
+								selected
+									? t('components.postbox.postboxThreadRow.deselect')
+									: t('components.postbox.postboxThreadRow.select')
+							"
+							@click="onCheckboxClick($event)"
 						>
-							{{ msg.subject || t('components.postbox.postboxThreadRow.noSubject') }}
-						</p>
+							<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
+						</button>
+						<UiAvatar
+							:name="msg.fromName"
+							:email="msg.fromAddress"
+							deterministic-color
+							size="sm"
+							class="flex-shrink-0"
+							aria-hidden="true"
+						/>
+						<PostboxRowCore :unread="!msg.flagSeen">
+							<template #identifier>{{ msg.fromName || msg.fromAddress }}</template>
+							<template #meta>{{ formatThreadTimestamp(msg.receivedAt) }}</template>
+							<div class="flex items-center gap-1.5 mt-0.5">
+								<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
+								<Icon
+									v-if="msg.snoozedUntil"
+									name="lucide:clock"
+									class="w-3.5 h-3.5 text-brand"
+									:title="snoozedTitle(msg.snoozedUntil)"
+								/>
+								<Icon
+									v-if="msg.hasAttachments"
+									name="lucide:paperclip"
+									class="w-3.5 h-3.5 text-text-tertiary"
+								/>
+								<PostboxThreadRowFollowUp
+									v-if="msg.followUp?.watched"
+									:follow-up="msg.followUp"
+									@cancel="
+										(e: MouseEvent) => {
+											e.stopPropagation();
+											e.preventDefault();
+											emit('cancel-follow-up');
+										}
+									"
+								/>
+								<p
+									class="truncate text-sm flex-1"
+									:class="msg.flagSeen ? 'text-text-secondary' : 'font-medium text-text-primary'"
+								>
+									{{ msg.subject || t('components.postbox.postboxThreadRow.noSubject') }}
+								</p>
+							</div>
+							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
+								{{ msg.snippet }}
+							</p>
+						</PostboxRowCore>
 					</div>
-					<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
-						{{ msg.snippet }}
-					</p>
-				</PostboxRowCore>
-			</div>
-		</component>
-		<!-- Hover quick-actions (single-message triage without a round-trip
+				</component>
+				<!-- Hover quick-actions (single-message triage without a round-trip
 		     through the bulk selection). -->
-		<div
-			class="ui-hover-reveal absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
-		>
-			<button
-				type="button"
-				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-warning"
-				:title="
-					msg.flagFlagged
-						? t('components.postbox.postboxThreadRow.unstar')
-						: t('components.postbox.postboxThreadRow.star')
-				"
-				:aria-label="
-					msg.flagFlagged
-						? t('components.postbox.postboxThreadRow.unstar')
-						: t('components.postbox.postboxThreadRow.star')
-				"
-				@click="rowAction($event, 'toggle-star')"
-			>
-				<Icon name="lucide:star" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-				:title="
-					msg.flagSeen
-						? t('components.postbox.postboxThreadRow.markUnread')
-						: t('components.postbox.postboxThreadRow.markRead')
-				"
-				:aria-label="
-					msg.flagSeen
-						? t('components.postbox.postboxThreadRow.markUnread')
-						: t('components.postbox.postboxThreadRow.markRead')
-				"
-				@click="rowAction($event, 'toggle-read')"
-			>
-				<Icon :name="msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open'" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-				:title="t('common.archive')"
-				:aria-label="t('common.archive')"
-				@click="rowAction($event, 'archive')"
-			>
-				<Icon name="lucide:archive" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error"
-				:title="t('common.delete')"
-				:aria-label="t('common.delete')"
-				@click="rowAction($event, 'trash')"
-			>
-				<Icon name="lucide:trash" class="w-4 h-4" />
-			</button>
+				<div
+					class="ui-hover-reveal absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
+				>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-warning"
+						:title="
+							msg.flagFlagged
+								? t('components.postbox.postboxThreadRow.unstar')
+								: t('components.postbox.postboxThreadRow.star')
+						"
+						:aria-label="
+							msg.flagFlagged
+								? t('components.postbox.postboxThreadRow.unstar')
+								: t('components.postbox.postboxThreadRow.star')
+						"
+						@click="rowAction($event, 'toggle-star')"
+					>
+						<Icon name="lucide:star" class="w-4 h-4" />
+					</button>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+						:title="
+							msg.flagSeen
+								? t('components.postbox.postboxThreadRow.markUnread')
+								: t('components.postbox.postboxThreadRow.markRead')
+						"
+						:aria-label="
+							msg.flagSeen
+								? t('components.postbox.postboxThreadRow.markUnread')
+								: t('components.postbox.postboxThreadRow.markRead')
+						"
+						@click="rowAction($event, 'toggle-read')"
+					>
+						<Icon :name="msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open'" class="w-4 h-4" />
+					</button>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+						:title="t('common.archive')"
+						:aria-label="t('common.archive')"
+						@click="rowAction($event, 'archive')"
+					>
+						<Icon name="lucide:archive" class="w-4 h-4" />
+					</button>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error"
+						:title="t('common.delete')"
+						:aria-label="t('common.delete')"
+						@click="rowAction($event, 'trash')"
+					>
+						<Icon name="lucide:trash" class="w-4 h-4" />
+					</button>
 				</div>
 			</li>
 		</template>

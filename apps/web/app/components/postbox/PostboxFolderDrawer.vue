@@ -47,6 +47,15 @@ const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
 		"
 		:inert="isOffCanvas ? true : undefined"
 	>
-		<PostboxFolderRail :mailbox-id="mailboxId" :folder-role="folderRole" :folder-id="folderId" />
+		<!-- Below lg the rail IS the drawer: it was opened deliberately and there
+		     is no adjacent content to make room for, so the saved collapsed
+		     preference (a desktop space tradeoff) must not turn it into an icon
+		     strip. At lg+ the drawer is a static column and the preference wins. -->
+		<PostboxFolderRail
+			:mailbox-id="mailboxId"
+			:folder-role="folderRole"
+			:folder-id="folderId"
+			:force-expanded="!isDesktopViewport"
+		/>
 	</div>
 </template>

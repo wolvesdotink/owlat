@@ -21,7 +21,16 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
 // Keyset-paginated results: "Load more" walks past the first page via the
 // backend's opaque cursor instead of silently stopping at a cap.
-const { parsed, results, isLoading, hasMore, loadMore } = usePostboxSearch(mailboxId, query);
+const { parsed, results, isLoading, isLoadingMore, hasMore, canLoadMore, loadMore } =
+	usePostboxSearch(mailboxId, query);
+
+// The backend post-filters a page after the indexed read, so a page can come
+// back with zero surviving hits while later pages still hold matches (pinned by
+// postboxSearch.integration.test.ts). That is NOT "no results" — it needs the
+// cursor to keep walking, so it gets its own state rather than the guided
+// dead-end empty state.
+const exhausted = computed(() => results.value.length === 0 && !hasMore.value);
+const pageEmptyWithMore = computed(() => results.value.length === 0 && hasMore.value);
 const chips = computed(() => describeChips(parsed.value));
 
 // In-place preview: clicking a result selects it here rather than navigating
@@ -96,10 +105,30 @@ function clearAllChips() {
 							<template #isUnread><code>is:unread</code></template>
 						</I18nT>
 						<PostboxThreadListSkeleton v-else-if="isLoading && results.length === 0" :rows="6" />
+						<!-- Page filtered to zero with matches still ahead: keep the cursor
+					     reachable instead of claiming the search found nothing. -->
+						<div
+							v-else-if="pageEmptyWithMore"
+							class="p-6 text-center text-sm text-text-tertiary"
+							role="status"
+						>
+							<p>{{ t('dashboard.postbox.search.pageEmptyWithMore') }}</p>
+							<p v-if="isLoadingMore" class="mt-3 text-xs">
+								{{ t('components.postbox.postboxThreadList.loadingMore') }}
+							</p>
+							<button
+								v-else-if="canLoadMore"
+								type="button"
+								class="mt-3 text-sm text-brand hover:underline"
+								@click="loadMore"
+							>
+								{{ t('dashboard.postbox.search.keepSearching') }}
+							</button>
+						</div>
 						<!-- Guided empty state: a zero-hit search offers one-click escapes —
 					     drop an operator or clear them all — instead of a dead end. -->
 						<PostboxEmptyState
-							v-else-if="results.length === 0"
+							v-else-if="exhausted"
 							icon="lucide:search-x"
 							:title="t('dashboard.postbox.search.noResultsTitle')"
 							:hint="t('dashboard.postbox.search.noResultsHint')"
@@ -133,10 +162,18 @@ function clearAllChips() {
 						     than a false precise total. -->
 							<p class="px-4 pt-3 pb-1 text-xs text-text-tertiary" role="status">
 								<template v-if="hasMore">{{
-									t('dashboard.postbox.search.resultCountMore', { count: results.length }, results.length)
+									t(
+										'dashboard.postbox.search.resultCountMore',
+										{ count: results.length },
+										results.length
+									)
 								}}</template>
 								<template v-else>{{
-									t('dashboard.postbox.search.resultCount', { count: results.length }, results.length)
+									t(
+										'dashboard.postbox.search.resultCount',
+										{ count: results.length },
+										results.length
+									)
 								}}</template>
 							</p>
 							<PostboxThreadList
@@ -146,7 +183,8 @@ function clearAllChips() {
 								folder-role="inbox"
 								selectable
 								:active-message-id="activeMessageId"
-								:has-more="hasMore"
+								:has-more="canLoadMore"
+								:loading-more="isLoadingMore"
 								@select="activeMessageId = $event"
 								@load-more="loadMore"
 							/>

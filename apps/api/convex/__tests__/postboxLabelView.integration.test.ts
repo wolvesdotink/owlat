@@ -195,6 +195,33 @@ describe('mail.mailbox.listByLabel', () => {
 		expect(result.messages.map((m) => m.subject)).toEqual(['message 3', 'message 1']);
 	});
 
+	it('snoozed rows do not eat result slots or inflate hasMore', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, labelA } = await seed(t);
+		await t.run(async (ctx) => {
+			const scanned = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
+				.order('desc')
+				.take(50);
+			const target = scanned.find((m) => m.subject === 'message 5')!;
+			await ctx.db.patch(target._id, { snoozedUntil: Date.now() + 60_000 });
+		});
+
+		// Three rows carry label A; the newest is snoozed. Asking for 2 must
+		// return the two VISIBLE rows — slicing before the snooze filter handed
+		// back a short page (one row) with matches still inside the window.
+		const page = await t.query(api.mail.mailbox.listByLabel, {
+			mailboxId,
+			labelId: labelA,
+			limit: 2,
+		});
+		expect(page.messages.map((m) => m.subject)).toEqual(['message 3', 'message 1']);
+		// Two visible matches, two returned: nothing is being withheld, so the
+		// cap note must not claim otherwise (the pre-filter count said it was).
+		expect(page.hasMore).toBe(false);
+	});
+
 	it('rows older than the scan window are out of reach — the documented edge', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, labelA } = await seed(t);

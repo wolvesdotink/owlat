@@ -25,7 +25,8 @@ type Row = { _id: string; subject: string };
  * carry a cursor ('skip' ⇒ the not-yet-active tail).
  */
 let emitFirst: ((rows: Row[], nextCursor: string | null) => void) | null = null;
-let emitTail: ((rows: Row[], nextCursor: string | null) => void) | null = null;
+let emitTail: ((rows: Row[], nextCursor: string | null, hasMore?: boolean) => void) | null = null;
+let firstLoading: Ref<boolean> | null = null;
 
 function stubConvexQuery() {
 	vi.stubGlobal('useConvexQuery', (_query: unknown, argsFactory: () => unknown) => {
@@ -33,23 +34,30 @@ function stubConvexQuery() {
 		const isLoading = ref(true);
 		const resolved = argsFactory();
 		const isTail = resolved === 'skip' || ((resolved as { cursor?: string })['cursor'] ?? null);
-		const emit = (rows: Row[], nextCursor: string | null) => {
-			data.value = { messages: rows, hasMore: nextCursor !== null, nextCursor };
+		// `hasMore` is deliberately settable apart from `nextCursor`: take()-bounded
+		// views (Snoozed, listByLabel) report more-exists with no cursor to walk.
+		const emit = (rows: Row[], nextCursor: string | null, hasMore?: boolean) => {
+			data.value = { messages: rows, hasMore: hasMore ?? nextCursor !== null, nextCursor };
 			isLoading.value = false;
 		};
-		if (isTail) emitTail = emit;
-		else emitFirst = emit;
+		if (isTail) {
+			emitTail = emit;
+		} else {
+			emitFirst = emit;
+			firstLoading = isLoading;
+		}
 		return { data, isLoading, isRefetching: ref(false), error: ref(null), refetch: () => {} };
 	});
 }
 
-function mountFeed(resetKey: Ref<string>) {
+function mountFeed(resetKey: Ref<string>, hardResetKey?: Ref<string>) {
 	let feed: ReturnType<typeof usePostboxCursorFeed> | null = null;
 	const Comp = defineComponent({
 		setup() {
 			// Auto-imports resolve to the stubbed globals above.
 			feed = usePostboxCursorFeed({} as never, () => ({ limit: 2 }) as never, resetKey, {
 				keepPreviousData: true,
+				hardResetKey,
 			});
 			return () =>
 				h(
@@ -130,11 +138,83 @@ describe('usePostboxCursorFeed', () => {
 		resetKey.value = 'sent';
 		await nextTick();
 		await nextTick();
-		// Accumulated segments dropped synchronously; the scripted subscription
-		// then delivers the new view's first page.
+		// The accumulated TAIL is dropped synchronously (its cursors are void),
+		// but the retained first page stays on screen — that is what
+		// keepPreviousData buys, and blanking here is what made every folder
+		// switch flash the folder's empty state.
+		expect(wrapper.findAll('li').map((li) => li.text())).toEqual(['A']);
+
+		// The scripted subscription then delivers the new view's first page.
 		emitFirst!([{ _id: 's', subject: 'Sent mail' }], null);
 		await nextTick();
 		expect(wrapper.findAll('li').map((li) => li.text())).toEqual(['Sent mail']);
+	});
+
+	it('hardResetKey suppresses the retained page (mailbox switch)', async () => {
+		stubConvexQuery();
+		const resetKey = ref('inbox');
+		const hardResetKey = ref('mailbox-a');
+		const { wrapper, feed } = mountFeed(resetKey, hardResetKey);
+
+		emitFirst!([{ _id: 'a', subject: 'A' }], 'cursor-1');
+		await nextTick();
+		feed.loadMore();
+		emitTail!([{ _id: 'b', subject: 'B' }], null);
+		await nextTick();
+		expect(wrapper.findAll('li')).toHaveLength(2);
+
+		// Rows belonging to mailbox A must not render under mailbox B, not even
+		// for the frame between the switch and the new page landing.
+		hardResetKey.value = 'mailbox-b';
+		await nextTick();
+		await nextTick();
+		expect(wrapper.findAll('li')).toHaveLength(0);
+
+		emitFirst!([{ _id: 'z', subject: 'B mail' }], null);
+		await nextTick();
+		expect(wrapper.findAll('li').map((li) => li.text())).toEqual(['B mail']);
+	});
+
+	it('honours hasMore on a take()-bounded page with no cursor', async () => {
+		stubConvexQuery();
+		const resetKey = ref('snoozed');
+		const { feed } = mountFeed(resetKey);
+
+		// The virtual Snoozed folder: more matches exist, but the view is
+		// take()-bounded and mints no cursor. Reading "more exists" off the
+		// cursor alone silently capped this folder at one page.
+		emitFirst!([{ _id: 'a', subject: 'A' }], null, true);
+		await nextTick();
+		expect(feed.hasMore.value).toBe(true);
+		expect(feed.canLoadMore.value).toBe(false);
+
+		// ...and loadMore is inert, so the UI must render a cap note, not a button.
+		feed.loadMore();
+		await nextTick();
+		expect(feed.hasMore.value).toBe(true);
+	});
+
+	it('keeps isLoading false while a Load more page is in flight', async () => {
+		stubConvexQuery();
+		const resetKey = ref('inbox');
+		const { feed } = mountFeed(resetKey);
+
+		emitFirst!([{ _id: 'a', subject: 'A' }], 'cursor-1');
+		await nextTick();
+		expect(feed.isLoading.value).toBe(false);
+
+		// isLoading means "the FIRST page is pending" — the offline bridge swaps
+		// the live list back to its cached snapshot whenever it is true, so a
+		// tail fetch must not raise it.
+		feed.loadMore();
+		await nextTick();
+		expect(feed.isLoading.value).toBe(false);
+		expect(feed.isLoadingMore.value).toBe(true);
+
+		emitTail!([{ _id: 'b', subject: 'B' }], null);
+		await nextTick();
+		expect(feed.isLoadingMore.value).toBe(false);
+		expect(firstLoading!.value).toBe(false);
 	});
 
 	it('reports hasMore from the active frontier', async () => {

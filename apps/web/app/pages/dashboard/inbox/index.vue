@@ -22,6 +22,16 @@ definePageMeta({
 // (with exits) instead of a fake-zero inbox.
 const { isAdmin, showAdminGate, role } = usePermissions();
 
+// The role name is interpolated into user-facing copy, so it goes through the
+// catalog rather than shipping the raw wire value into a translated sentence.
+// An unknown role falls back to its own identifier over an inaccurate "member".
+const displayRole = computed(() => {
+	const current = role.value;
+	if (!current) return t('common.roles.member');
+	const key = `common.roles.${current}`;
+	return te(key) ? t(key) : current;
+});
+
 const {
 	filter,
 	sort,
@@ -203,18 +213,13 @@ const emptyMessage = computed(() => {
 
 		<!-- Access explainer: a non-admin on this route sees WHY it's empty and
 		     where to go instead — never a fake "no conversations" zero. -->
-		<div
-			v-if="showAdminGate"
-			class="flex flex-col items-center justify-center py-20 text-center"
-		>
+		<div v-if="showAdminGate" class="flex flex-col items-center justify-center py-20 text-center">
 			<UiIconBox icon="lucide:lock" size="xl" variant="warning" rounded="full" class="mb-4" />
 			<h2 class="text-lg font-medium text-text-primary">
 				{{ t('dashboard.inbox.index.accessTitle') }}
 			</h2>
 			<p class="text-text-secondary mt-1.5 max-w-md">
-				{{
-					t('dashboard.inbox.index.accessBody', { role: role ?? t('common.role.member') })
-				}}
+				{{ t('dashboard.inbox.index.accessBody', { role: displayRole }) }}
 			</p>
 			<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
 				<UiButton to="/dashboard/postbox/inbox" class="gap-2">
@@ -230,30 +235,30 @@ const emptyMessage = computed(() => {
 		<template v-else>
 			<!-- Filter pills (live counts) + needs-attention sort chip -->
 			<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-			<InboxFilterPills v-model="filter" :counts="filterCounts" />
+				<InboxFilterPills v-model="filter" :counts="filterCounts" />
 
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
-				:title="
-					sort === 'needs-attention'
-						? t('dashboard.inbox.index.sortToggleToNewest')
-						: t('dashboard.inbox.index.sortToggleToNeedsAttention')
-				"
-				@click="toggleSort"
-			>
-				<Icon
-					:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
-					class="w-3.5 h-3.5"
-				/>
-				<span>
-					{{
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
+					:title="
 						sort === 'needs-attention'
-							? t('dashboard.inbox.index.sortedByNeedsAttention')
-							: t('dashboard.inbox.index.sortedNewestFirst')
-					}}
-				</span>
-			</button>
+							? t('dashboard.inbox.index.sortToggleToNewest')
+							: t('dashboard.inbox.index.sortToggleToNeedsAttention')
+					"
+					@click="toggleSort"
+				>
+					<Icon
+						:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
+						class="w-3.5 h-3.5"
+					/>
+					<span>
+						{{
+							sort === 'needs-attention'
+								? t('dashboard.inbox.index.sortedByNeedsAttention')
+								: t('dashboard.inbox.index.sortedNewestFirst')
+						}}
+					</span>
+				</button>
 			</div>
 
 			<!-- Loading — Postbox list skeleton geometry -->

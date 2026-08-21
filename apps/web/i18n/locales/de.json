@@ -155,7 +155,9 @@
 		"yes": "Ja",
 		"yesterday": "Gestern",
 		"roles": {
-			"member": "Mitglied"
+			"member": "Mitglied",
+			"admin": "Administrator",
+			"owner": "Inhaber"
 		}
 	},
 	"components": {
@@ -3901,6 +3903,8 @@
 				"emptyLabelTitle": "Keine Nachrichten mit diesem Label",
 				"listLabel": "Nachrichten",
 				"loadMore": "Mehr laden",
+				"capNote": "Es werden die neuesten Nachrichten dieser Ansicht angezeigt.",
+				"loadingMore": "Weitere werden geladen…",
 				"markReadOperation": "Als gelesen markieren",
 				"moveOperation": "Nachricht verschieben",
 				"movedUndo": "Verschoben",
@@ -8143,6 +8147,8 @@
 				"backToResults": "Ergebnisse",
 				"noResultsHint": "Versuchen Sie weniger oder allgemeinere Begriffe oder Operatoren wie from:, has:attachment, is:unread.",
 				"noResultsTitle": "Keine Ergebnisse für diese Suche",
+				"keepSearching": "Weiter suchen",
+				"pageEmptyWithMore": "Keine Treffer auf dieser Seite. Es gibt weitere Nachrichten zu durchsuchen.",
 				"operatorHint": "Verwenden Sie Operatoren wie {from}, {hasAttachment}, {before}, {label}, {isUnread}.",
 				"pageTitle": "Suche — Owlat",
 				"selectResult": "Wählen Sie ein Ergebnis",

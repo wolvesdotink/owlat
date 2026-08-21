@@ -36,16 +36,21 @@ beforeEach(() => {
 });
 
 /** A minimal list component that renders whatever rows the bridge yields. */
-function mountList(liveRows: Ref<Row[]>, isLoading: Ref<boolean>) {
+function mountList(
+	liveRows: Ref<Row[]>,
+	isLoading: Ref<boolean>,
+	extra?: { isRefetching?: Ref<boolean>; folderRole?: Ref<string> }
+) {
 	const Comp = defineComponent({
 		setup() {
-			const folderRole = ref('inbox');
+			const folderRole = extra?.folderRole ?? ref('inbox');
 			const mailboxId = ref('mbx1');
 			const { rows, showingCached } = usePostboxOfflineThreads<Row>({
 				mailboxId,
 				folderRole,
 				liveRows,
 				isLoading,
+				isRefetching: extra?.isRefetching,
 			});
 			return () =>
 				h('div', [
@@ -92,5 +97,37 @@ describe('Postbox offline cold start', () => {
 		expect(wrapper.find('.shimmer').text()).toBe('');
 		// The fresh live result is persisted back to the device cache.
 		expect(persistThreads).toHaveBeenCalledWith('inbox', [{ _id: 'L1', subject: 'Live only' }]);
+	});
+
+	it('does not persist the re-subscribe window over the incoming folder cache', async () => {
+		// A folder switch drops the feed's accumulated rows synchronously while
+		// `keepPreviousData` keeps isLoading FALSE and flips isRefetching instead.
+		// Persisting in that window wrote `[]` — with a fresh savedAt — over the
+		// incoming folder's cache, so the next cold start showed nothing and
+		// dated itself as current.
+		const liveRows = ref<Row[]>([{ _id: 'L1', subject: 'Live only' }]);
+		const isLoading = ref(false);
+		const isRefetching = ref(false);
+		const folderRole = ref('sent');
+		const wrapper = mountList(liveRows, isLoading, { isRefetching, folderRole });
+		await nextTick();
+		await nextTick();
+		persistThreads.mockClear();
+
+		// Switch to a cacheable folder: rows blank out, isRefetching goes true.
+		folderRole.value = 'inbox';
+		liveRows.value = [];
+		isRefetching.value = true;
+		await nextTick();
+		await nextTick();
+		expect(persistThreads).not.toHaveBeenCalled();
+		// ...and the cached snapshot is served rather than a blank list.
+		expect(wrapper.findAll('li').map((li) => li.text())).toEqual(['Cached one', 'Cached two']);
+
+		// The real result lands: now it persists.
+		liveRows.value = [{ _id: 'L2', subject: 'Inbox row' }];
+		isRefetching.value = false;
+		await nextTick();
+		expect(persistThreads).toHaveBeenCalledWith('inbox', [{ _id: 'L2', subject: 'Inbox row' }]);
 	});
 });

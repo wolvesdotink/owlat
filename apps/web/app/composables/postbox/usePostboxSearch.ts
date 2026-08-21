@@ -112,7 +112,7 @@ export function usePostboxSearch(mailboxId: Ref<Id<'mailboxes'> | null>, query: 
 	// Keyset-paginated: "Load more" walks past the first page via the backend's
 	// opaque cursor instead of silently stopping at the old 200-row cap. Any
 	// change to the parsed query restarts from a fresh first page.
-	const { rows, isLoading, hasMore, loadMore } = usePostboxCursorFeed(
+	const { rows, isLoading, isLoadingMore, hasMore, canLoadMore, loadMore } = usePostboxCursorFeed(
 		api.mail.mailbox.search,
 		() => {
 			if (!mailboxId.value) return 'skip';
@@ -128,7 +128,7 @@ export function usePostboxSearch(mailboxId: Ref<Id<'mailboxes'> | null>, query: 
 		{ keepPreviousData: true }
 	);
 
-	return { parsed, results: rows, isLoading, hasMore, loadMore };
+	return { parsed, results: rows, isLoading, isLoadingMore, hasMore, canLoadMore, loadMore };
 }
 
 /** Build human-readable filter chips from a parsed query. */
