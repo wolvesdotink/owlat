@@ -22,6 +22,10 @@ const KNOWN_PLACEHOLDER_SECRETS = new Set([
 	'changeme',
 	'replace-me',
 	'replace-with-openssl-rand-base64-32',
+	// The historical non-interactive install default. It is public (repo, tests,
+	// old release artifacts), so an admin account still authenticating with it
+	// is effectively unauthenticated. Bootstrap refuses it outright.
+	'devpassword12345',
 ]);
 
 /** Reject documentation placeholders wherever setup or runtime consumes secrets. */

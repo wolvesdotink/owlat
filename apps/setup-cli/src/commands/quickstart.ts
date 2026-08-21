@@ -16,16 +16,7 @@
  * Non-interactive: --assume-yes + --mode + --email/--password/--no-seed for CI.
  */
 
-import {
-	intro,
-	outro,
-	select,
-	isCancel,
-	log,
-	confirm,
-	text,
-	password as passwordPrompt,
-} from '@clack/prompts';
+import { intro, outro, select, isCancel, log, confirm, text } from '@clack/prompts';
 import pc from 'picocolors';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -47,7 +38,7 @@ import { parseSetupConfig, type SetupConfig } from '../lib/setupConfig';
 import { buildCaddyfile } from '../lib/caddyfile';
 import { isValidEmail } from '../lib/validators';
 import { runSetup } from './setup';
-import { bootstrap } from './bootstrap-org';
+import { bootstrap, resolveAdminPassword } from './bootstrap-org';
 import { runSeed } from './seed';
 import type { CliOptions } from '../lib/cliOptions';
 import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
@@ -396,7 +387,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			const password =
 				config?.admin.password ??
 				flags.password ??
-				(opts.assumeYes ? 'devpassword12345' : await promptPassword());
+				(await resolveAdminPassword(Boolean(opts.assumeYes)));
 			if (!password) {
 				reporter.fail('No admin password provided');
 				reporter.done(false);
@@ -764,17 +755,6 @@ async function promptEmail(): Promise<string | undefined> {
 
 async function promptText(message: string): Promise<string | undefined> {
 	const result = await text({ message });
-	if (isCancel(result)) return undefined;
-	return result;
-}
-
-async function promptPassword(): Promise<string | undefined> {
-	const result = await passwordPrompt({
-		message: 'Admin password (min 12 chars)',
-		validate: (v) =>
-			(v ?? '').length < 12 ? 'Password must be at least 12 characters' : undefined,
-		mask: '•',
-	});
 	if (isCancel(result)) return undefined;
 	return result;
 }
