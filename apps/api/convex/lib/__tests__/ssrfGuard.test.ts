@@ -71,6 +71,19 @@ describe('isDisallowedIpAddress', () => {
 		expect(isDisallowedIpAddress('::ffff:127.0.0.1')).toBe(true);
 		expect(isDisallowedIpAddress('2606:4700:4700::1111')).toBe(false); // public
 	});
+
+	it('flags hex-form IPv4-mapped IPv6 (the dotted-quad bypass)', () => {
+		// ::ffff:7f00:1 is 127.0.0.1 written as hextets — the hex suffix used to
+		// fall through the mapped-IPv4 branch unclassified.
+		expect(isDisallowedIpAddress('::ffff:7f00:1')).toBe(true);
+		expect(isDisallowedIpAddress('::ffff:a00:1')).toBe(true); // 10.0.0.1
+		expect(isDisallowedIpAddress('::ffff:c0a8:101')).toBe(true); // 192.168.1.1
+		expect(isDisallowedIpAddress('::ffff:A9FE:FEFE')).toBe(true); // 169.254.254.254
+		// Public addresses in hex-mapped form stay allowed.
+		expect(isDisallowedIpAddress('::ffff:808:808')).toBe(false); // 8.8.8.8
+		// Malformed hex suffixes fail closed rather than classify as public.
+		expect(isDisallowedIpAddress('::ffff:zzzz:1')).toBe(true);
+	});
 });
 
 describe('fetchGuarded typed refusals', () => {

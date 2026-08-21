@@ -40,7 +40,21 @@ export function isDisallowedIpAddress(ip: string): boolean {
 	if (normalized.startsWith('ff')) return true;
 	if (normalized.startsWith('::ffff:')) {
 		const mapped = normalized.slice('::ffff:'.length);
-		return isDisallowedIpAddress(mapped);
+		// Dotted-quad form (::ffff:127.0.0.1) recurses directly.
+		if (mapped.includes('.')) return isDisallowedIpAddress(mapped);
+		// Hex form (::ffff:7f00:1 == 127.0.0.1) would otherwise fall through as
+		// "public". Expand the two hextets into their four IPv4 bytes and
+		// classify those.
+		const groups = mapped.split(':');
+		if (groups.length !== 2 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) {
+			// Not a well-formed hex-mapped suffix — treat as disallowed rather
+			// than risk classifying an unparseable address as public.
+			return true;
+		}
+		const hi = parseInt(groups[0]!, 16);
+		const lo = parseInt(groups[1]!, 16);
+		const dotted = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+		return isDisallowedIpAddress(dotted);
 	}
 	return false;
 }
