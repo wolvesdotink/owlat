@@ -170,6 +170,7 @@ Owlat backup
 Taken:        $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 Project name: ${PROJECT}
 Consistency:  $([[ "$HOT" == "1" ]] && echo "HOT (convex/redis not paused — snapshot may be torn)" || echo "convex/redis paused during volume copy")
+Permissions:  archive is owner-only (chmod 600) — it embeds the full .env
 Includes:
 ${captured_list}  env                      — .env file
 $([[ -f "$STAGING/docker-compose.override.yml" ]] && echo "  docker-compose.override.yml — feature-profile selection")
