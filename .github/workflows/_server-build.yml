@@ -39,22 +39,42 @@ jobs:
       git_sha: ${{ steps.meta.outputs.git_sha }}
       build_date: ${{ steps.meta.outputs.build_date }}
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
+      # Gate every downstream job on a strict-semver version BEFORE anything
+      # builds or signs. `inputs.version` is interpolated into several later
+      # run blocks (compose generation, sha256sum); this check — the same one
+      # the desktop core applies before stamping Cargo.toml — ensures a crafted
+      # tag cannot carry shell metacharacters into those scripts.
+      - id: validate-version
+        name: Validate release version is strict semver
+        env:
+          # Passed via env (never interpolated into the script body) so a crafted
+          # tag cannot break out of quotes.
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release version '$VERSION' is not strict semver (expected X.Y.Z or X.Y.Z-prerelease)." >&2
+            exit 1
+          fi
+
       - id: meta
         name: Compute build metadata
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           GIT_SHA=$(git rev-parse --short HEAD)
           BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "git_sha=${GIT_SHA}" >> "$GITHUB_OUTPUT"
           echo "build_date=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
-          echo "Resolved: VERSION=${{ inputs.version }} GIT_SHA=${GIT_SHA} BUILD_DATE=${BUILD_DATE}"
+          echo "Resolved: VERSION=${VERSION} GIT_SHA=${GIT_SHA} BUILD_DATE=${BUILD_DATE}"
 
   # ── Build + push each image in parallel ──────────────────────────────────────
   build-and-push:
@@ -92,19 +112,19 @@ jobs:
             dockerfile: apps/setup-cli/Dockerfile
             context: .
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -112,7 +132,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
           tags: |
@@ -122,7 +142,7 @@ jobs:
 
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -143,7 +163,7 @@ jobs:
       # GitHub OIDC. Verification (`cosign verify --certificate-identity-regexp`)
       # then proves the image came from this repo's release workflow.
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Sign published image digest (cosign keyless)
         env:
@@ -160,7 +180,7 @@ jobs:
       # Publish an SLSA provenance attestation pinned to the image digest.
       # Consumers verify with `gh attestation verify --repo wolvesdotink/owlat`.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -178,7 +198,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
           egress-policy: audit
 
@@ -210,11 +230,11 @@ jobs:
     needs: [resolve, build-and-push]
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -251,7 +271,7 @@ jobs:
       # Attest the compose file itself so consumers can verify it via
       # `gh attestation verify docker-compose-<v>.yml --repo wolvesdotink/owlat`.
       - name: Attest compose artifact provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: |
             docker-compose-${{ inputs.version }}.yml
