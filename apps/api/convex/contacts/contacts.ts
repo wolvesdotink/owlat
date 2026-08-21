@@ -8,7 +8,7 @@ import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { listResources, countFacet } from '../lib/listing';
-import { contactListing } from './listing';
+import { contactListing, redactContactCapabilityFields } from './listing';
 import { contactCreateSourceValidator } from './resolution';
 import { reconcileContactCount } from '../lib/contactCountHelpers';
 import { softDeleteContact, permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
@@ -28,7 +28,7 @@ export const get = authedQuery({
 		if (!contact || contact.deletedAt !== undefined) {
 			return null;
 		}
-		return contact;
+		return redactContactCapabilityFields(contact);
 	},
 });
 

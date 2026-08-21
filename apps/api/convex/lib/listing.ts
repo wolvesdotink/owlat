@@ -110,6 +110,14 @@ export interface ListingDescriptor<
 	 * rather than `unknown`.
 	 */
 	enrich?: (db: DatabaseReader, row: Doc<T>) => Promise<E>;
+	/**
+	 * Per-row redaction applied to every page row BEFORE enrichment. Capability
+	 * fields (tokens that authorize an action on the row) must never leave the
+	 * backend on a listing read; an entity that stores any declares them here so
+	 * the engine enforces the strip on both the search and browse paths instead
+	 * of trusting each caller to remember.
+	 */
+	redact?: (row: Doc<T>) => Doc<T>;
 	facets?: Record<string, Facet<T>>;
 }
 
@@ -152,7 +160,7 @@ interface AnyBuilder {
 
 function activeFilters(
 	filterFields: readonly string[] | undefined,
-	filters: Record<string, FilterValue> | undefined,
+	filters: Record<string, FilterValue> | undefined
 ): Array<{ field: string; value: FilterValue }> {
 	if (!filters) return [];
 	const out: Array<{ field: string; value: FilterValue }> = [];
@@ -167,7 +175,7 @@ async function searchPage<T extends TableNames, E extends Record<string, unknown
 	db: DatabaseReader,
 	descriptor: ListingDescriptor<T, E>,
 	search: string,
-	args: ListResourcesArgs,
+	args: ListResourcesArgs
 ): Promise<PaginationResult<Doc<T>>> {
 	const cfg = descriptor.search!;
 	const query = db.query(descriptor.table as never) as unknown as AnyQuery;
@@ -189,7 +197,7 @@ async function searchPage<T extends TableNames, E extends Record<string, unknown
 async function browsePage<T extends TableNames, E extends Record<string, unknown>>(
 	db: DatabaseReader,
 	descriptor: ListingDescriptor<T, E>,
-	args: ListResourcesArgs,
+	args: ListResourcesArgs
 ): Promise<PaginationResult<Doc<T>>> {
 	// An explicit `order` arg flips the direction of the chosen browse index;
 	// otherwise the descriptor's default order stands.
@@ -242,12 +250,13 @@ async function browsePage<T extends TableNames, E extends Record<string, unknown
 async function enrichPage<T extends TableNames, E extends Record<string, unknown>>(
 	db: DatabaseReader,
 	descriptor: ListingDescriptor<T, E>,
-	page: Doc<T>[],
+	page: Doc<T>[]
 ): Promise<EnrichedDoc<T, E>[]> {
-	if (!descriptor.enrich) return page as EnrichedDoc<T, E>[];
+	const base = descriptor.redact ? page.map(descriptor.redact) : page;
+	if (!descriptor.enrich) return base as EnrichedDoc<T, E>[];
 	const enrich = descriptor.enrich;
 	return Promise.all(
-		page.map(async (row) => ({ ...row, ...(await enrich(db, row)) }) as EnrichedDoc<T, E>),
+		base.map(async (row) => ({ ...row, ...(await enrich(db, row)) }) as EnrichedDoc<T, E>)
 	);
 }
 
@@ -263,7 +272,7 @@ async function enrichPage<T extends TableNames, E extends Record<string, unknown
 export async function listResources<T extends TableNames, E extends Record<string, unknown>>(
 	db: DatabaseReader,
 	descriptor: ListingDescriptor<T, E>,
-	args: ListResourcesArgs,
+	args: ListResourcesArgs
 ): Promise<PaginationResult<EnrichedDoc<T, E>>> {
 	const search = args.search?.trim();
 	const result =
@@ -285,7 +294,7 @@ export type GroupedCount = Record<string, number> & { total: number };
 export async function countFacet<T extends TableNames, E extends Record<string, unknown>>(
 	db: DatabaseReader,
 	descriptor: ListingDescriptor<T, E>,
-	facetName: string,
+	facetName: string
 ): Promise<number | GroupedCount> {
 	const facet = descriptor.facets?.[facetName];
 	if (!facet) {
@@ -313,7 +322,7 @@ export async function countFacet<T extends TableNames, E extends Record<string, 
 			db,
 			descriptor.table,
 			facet.index,
-			(q) => (q as unknown as AnyBuilder).eq(facet.field, bucket) as never,
+			(q) => (q as unknown as AnyBuilder).eq(facet.field, bucket) as never
 		);
 		counts[bucket] = c;
 		counts.total += c;

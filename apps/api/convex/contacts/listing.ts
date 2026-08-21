@@ -1,6 +1,23 @@
 import type { ListingDescriptor } from '../lib/listing';
 
 /**
+ * Capability fields live on the Contact row but must never leave the backend on
+ * a member-readable query: `doiConfirmationToken` confirms double-opt-in for
+ * the contact, so anyone holding it can fabricate consent evidence via the
+ * public confirm endpoints. GDPR export and form-submission reads already
+ * strip them; this redactor is the same contract applied to every listing row.
+ */
+export function redactContactCapabilityFields<
+	T extends {
+		doiConfirmationToken?: string;
+		doiTokenExpiresAt?: number;
+	},
+>(contact: T): Omit<T, 'doiConfirmationToken' | 'doiTokenExpiresAt'> {
+	const { doiConfirmationToken: _token, doiTokenExpiresAt: _expiresAt, ...publicContact } = contact;
+	return publicContact;
+}
+
+/**
  * Contact listing descriptor (ADR-0037). The cleanest case: the
  * `search_contacts` index already exists, so search is genuinely multi-page via
  * a real Convex cursor (the `'search'` sentinel dies), soft-delete rides the
@@ -17,6 +34,7 @@ export const contactListing: ListingDescriptor<'contacts'> = {
 	browse: { index: 'by_deleted_at_and_created_at', order: 'desc' },
 	sortKeys: ['createdAt'],
 	softDelete: true,
+	redact: redactContactCapabilityFields,
 	facets: {
 		total: { kind: 'cachedCounter', table: 'instanceSettings', field: 'contactCount' },
 	},
