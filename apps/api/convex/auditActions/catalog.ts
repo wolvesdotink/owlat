@@ -259,6 +259,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('inbound.draft_approved'),
 	action('inbound.draft_rejected'),
 	action('inbound.draft_edited'),
+	action('inbound.draft_saved'),
 	action('inbound.reply_sent'),
 	action('inbound.auto_send_cancelled'),
 	action('inbound.clarification_answered'),

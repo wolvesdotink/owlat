@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
 import { useThreadDetail } from '../useThreadDetail';
+
+// Called outside a component here, so `useI18n` is stubbed with the real
+// catalog's `t` (and its locale, which the timestamp formatter reads).
+const { t, locale } = createTestI18n().global;
 
 /**
  * Regression tests for the thread-detail "Save & Approve" button.
@@ -19,6 +24,7 @@ describe('useThreadDetail', () => {
 
 	beforeEach(() => {
 		runs = [];
+		vi.stubGlobal('useI18n', () => ({ t, locale }));
 		vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined), isLoading: ref(false) }));
 		vi.stubGlobal('useBackendOperation', () => {
 			const run = vi.fn().mockResolvedValue({ success: true });
@@ -92,6 +98,42 @@ describe('useThreadDetail', () => {
 
 			expect(result).toBeUndefined();
 			expect(editRun()).toHaveBeenCalledOnce();
+			expect(detail.isEditingDraft.value).toBe(true);
+		});
+	});
+
+	// Piece D1': inline Save persists a draft revision WITHOUT approving.
+	describe('saveDraftOnly', () => {
+		// saveDraftRevision is declared last in the composable (index 8).
+		const saveRevisionRun = () => runs[8]!;
+
+		it('saves via saveDraftRevision and never touches approveDraft', async () => {
+			const detail = useThreadDetail(threadId);
+			detail.editedDraftResponse.value = 'Work in progress';
+			detail.editedDraftSubject.value = 'Re: later';
+			detail.isEditingDraft.value = true;
+
+			const result = await detail.saveDraftOnly(messageId);
+
+			expect(saveRevisionRun()).toHaveBeenCalledWith({
+				inboundMessageId: messageId,
+				draftResponse: 'Work in progress',
+				draftSubject: 'Re: later',
+			});
+			expect(approveRun()).not.toHaveBeenCalled();
+			expect(result).toEqual({ success: true });
+			expect(detail.isEditingDraft.value).toBe(false);
+		});
+
+		it('stays in edit mode when the save fails so the text is not lost', async () => {
+			const detail = useThreadDetail(threadId);
+			detail.editedDraftResponse.value = 'Work in progress';
+			detail.isEditingDraft.value = true;
+			saveRevisionRun().mockResolvedValueOnce(undefined);
+
+			const result = await detail.saveDraftOnly(messageId);
+
+			expect(result).toBeUndefined();
 			expect(detail.isEditingDraft.value).toBe(true);
 		});
 	});

@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Contact Details — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.audience.contacts.detail.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -38,9 +40,9 @@ async function handleResendDoi() {
 	const result = await resendDoiConfirmation();
 	if (result === undefined) return;
 	if (result.success) {
-		showToast('Confirmation email sent');
+		showToast(t('dashboard.audience.contacts.detail.toasts.doiSent'));
 	} else {
-		showToast('Could not resend confirmation', 'error');
+		showToast(t('dashboard.audience.contacts.detail.toasts.doiFailed'), 'error');
 	}
 }
 
@@ -80,17 +82,20 @@ const activeTab = ref('profile');
 const tabOptions = computed(() =>
 	isAdmin.value
 		? [
-				{ value: 'profile', label: 'Profile' },
-				{ value: 'activity', label: 'Activity' },
-				{ value: 'timeline', label: 'Timeline' },
-				{ value: 'knowledge', label: 'Knowledge' },
-				{ value: 'files', label: 'Files' },
-				{ value: 'identities', label: 'Identities' },
-				{ value: 'relationships', label: 'Relationships' },
+				{ value: 'profile', label: t('dashboard.audience.contacts.detail.tabs.profile') },
+				{ value: 'activity', label: t('dashboard.audience.contacts.detail.tabs.activity') },
+				{ value: 'timeline', label: t('dashboard.audience.contacts.detail.tabs.timeline') },
+				{ value: 'knowledge', label: t('dashboard.audience.contacts.detail.tabs.knowledge') },
+				{ value: 'files', label: t('dashboard.audience.contacts.detail.tabs.files') },
+				{ value: 'identities', label: t('dashboard.audience.contacts.detail.tabs.identities') },
+				{
+					value: 'relationships',
+					label: t('dashboard.audience.contacts.detail.tabs.relationships'),
+				},
 			]
 		: [
-				{ value: 'profile', label: 'Profile' },
-				{ value: 'timeline', label: 'Activity' },
+				{ value: 'profile', label: t('dashboard.audience.contacts.detail.tabs.profile') },
+				{ value: 'timeline', label: t('dashboard.audience.contacts.detail.tabs.activity') },
 			]
 );
 
@@ -122,11 +127,11 @@ watch(
 );
 const { run: updateNotes, isLoading: isSavingNotes } = useBackendOperation(
 	api.contacts.contacts.updateNotes,
-	{ label: 'Save customer note' }
+	{ label: () => t('dashboard.audience.contacts.detail.operations.saveNote') }
 );
 async function saveNotes() {
 	const result = await updateNotes({ contactId: contactId.value, notes: notesDraft.value });
-	if (result !== undefined) showToast('Customer note saved');
+	if (result !== undefined) showToast(t('dashboard.audience.contacts.detail.toasts.noteSaved'));
 }
 
 // Topics
@@ -137,10 +142,10 @@ const { data: contactTopics } = useConvexQuery(api.topics.topics.getTopicsForCon
 const { results: allTopics } = useTopicsList();
 
 const { run: addToTopic } = useBackendOperation(api.topics.topics.addContact, {
-	label: 'Add to topic',
+	label: () => t('dashboard.audience.contacts.detail.operations.addToTopic'),
 });
 const { run: removeFromTopic } = useBackendOperation(api.topics.topics.removeContact, {
-	label: 'Remove from topic',
+	label: () => t('dashboard.audience.contacts.detail.operations.removeFromTopic'),
 });
 
 // Add to Topic Dropdown State
@@ -162,8 +167,10 @@ const handleAddToTopic = async (topicId: Id<'topics'>) => {
 	});
 	isAddingToTopic.value = false;
 	if (result === undefined) return;
-	const topicName = allTopics.value?.find((t) => t._id === topicId)?.name || 'topic';
-	showToast(`Added to "${topicName}"`);
+	const topicName =
+		allTopics.value?.find((topic) => topic._id === topicId)?.name ||
+		t('dashboard.audience.contacts.detail.topicFallback');
+	showToast(t('dashboard.audience.contacts.detail.toasts.addedToTopic', { topic: topicName }));
 	isAddToTopicDropdownOpen.value = false;
 };
 
@@ -173,8 +180,10 @@ const handleRemoveFromTopic = async (topicId: Id<'topics'>) => {
 		contactId: contactId.value,
 	});
 	if (result === undefined) return;
-	const topicName = contactTopics.value?.find((t) => t._id === topicId)?.name || 'topic';
-	showToast(`Removed from "${topicName}"`);
+	const topicName =
+		contactTopics.value?.find((topic) => topic._id === topicId)?.name ||
+		t('dashboard.audience.contacts.detail.topicFallback');
+	showToast(t('dashboard.audience.contacts.detail.toasts.removedFromTopic', { topic: topicName }));
 };
 
 // Close dropdown when clicking outside
@@ -196,13 +205,13 @@ const { data: suppression } = useConvexQuery(api.blockedEmails.getByEmail, () =>
 );
 const { run: removeSuppression, isLoading: isRemovingSuppression } = useBackendOperation(
 	api.blockedEmails.remove,
-	{ label: 'Remove suppression' }
+	{ label: () => t('dashboard.audience.contacts.detail.operations.removeSuppression') }
 );
 async function handleRemoveSuppression() {
 	if (!suppression.value) return;
 	const result = await removeSuppression({ blockedEmailId: suppression.value._id });
 	if (result === undefined) return;
-	showToast('Suppression removed');
+	showToast(t('dashboard.audience.contacts.detail.toasts.suppressionRemoved'));
 }
 </script>
 
@@ -214,14 +223,16 @@ async function handleRemoveSuppression() {
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Customers
+			{{ t('dashboard.audience.contacts.detail.backToCustomers') }}
 		</NuxtLink>
 
 		<!-- Loading State -->
 		<div v-if="contactLoading && !contact" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading contact...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('dashboard.audience.contacts.detail.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -237,12 +248,14 @@ async function handleRemoveSuppression() {
 				rounded="full"
 				class="mb-4"
 			/>
-			<p class="text-text-secondary font-medium">Contact not found</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.audience.contacts.detail.notFound.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1">
-				This contact may have been deleted or you don't have access.
+				{{ t('dashboard.audience.contacts.detail.notFound.body') }}
 			</p>
 			<UiButton variant="secondary" to="/dashboard/audience/contacts" class="mt-6">
-				Back to Contacts
+				{{ t('dashboard.audience.contacts.detail.notFound.action') }}
 			</UiButton>
 		</div>
 
@@ -283,7 +296,11 @@ async function handleRemoveSuppression() {
 								:name="getDoiStatusIcon(contact.doiStatus)!"
 								class="w-4 h-4"
 							/>
-							<span>{{ getDoiStatusLabel(contact.doiStatus) }} confirmation</span>
+							<span>{{
+								t('dashboard.audience.contacts.detail.doiStatus', {
+									status: getDoiStatusLabel(contact.doiStatus),
+								})
+							}}</span>
 						</div>
 					</div>
 				</div>
@@ -291,12 +308,12 @@ async function handleRemoveSuppression() {
 				<div class="flex items-center gap-2">
 					<template v-if="isEditing">
 						<UiButton variant="ghost" :disabled="isSaving" @click="cancelEditing">
-							Cancel
+							{{ t('common.cancel') }}
 						</UiButton>
 						<UiButton class="gap-2" :disabled="isSaving" @click="saveChanges">
 							<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
 							<Icon v-else name="lucide:save" class="w-4 h-4" />
-							Save Changes
+							{{ t('dashboard.audience.contacts.detail.saveChanges') }}
 						</UiButton>
 					</template>
 					<template v-else-if="canManageContacts">
@@ -305,32 +322,40 @@ async function handleRemoveSuppression() {
 							v-if="contact.doiStatus === 'pending'"
 							class="gap-2"
 							:disabled="isResendingDoi"
-							title="Re-send the double-opt-in confirmation email to this pending contact"
+							:title="t('dashboard.audience.contacts.detail.resendDoiTitle')"
 							@click="handleResendDoi"
 						>
 							<Icon v-if="isResendingDoi" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 							<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
-							{{ isResendingDoi ? 'Sending…' : 'Resend confirmation' }}
+							{{
+								isResendingDoi
+									? t('dashboard.audience.contacts.detail.sending')
+									: t('dashboard.audience.contacts.detail.resendDoi')
+							}}
 						</UiButton>
 						<UiButton variant="secondary" class="gap-2" @click="startEditing">
 							<Icon name="lucide:pencil" class="w-4 h-4" />
-							Edit
+							{{ t('common.edit') }}
 						</UiButton>
 						<UiButton
 							variant="secondary"
 							class="gap-2"
 							:disabled="exportRequested"
-							title="Export this contact's personal data (GDPR access request)"
+							:title="t('dashboard.audience.contacts.detail.exportDataTitle')"
 							@click="handleExportData"
 						>
 							<Icon name="lucide:download" class="w-4 h-4" />
-							{{ exportRequested ? 'Exporting…' : 'Export data' }}
+							{{
+								exportRequested
+									? t('dashboard.audience.contacts.detail.exporting')
+									: t('dashboard.audience.contacts.detail.exportData')
+							}}
 						</UiButton>
 						<UiButton
 							variant="ghost"
 							class="text-error hover:bg-error-subtle"
 							@click="showDeleteConfirm = true"
-							aria-label="Delete"
+							:aria-label="t('common.delete')"
 						>
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
 						</UiButton>
@@ -356,19 +381,23 @@ async function handleRemoveSuppression() {
 				<div class="lg:col-span-2 space-y-6">
 					<!-- Contact Details Card -->
 					<div v-if="isAdmin || activeTab === 'profile'" class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">Contact Details</h2>
+						<h2 class="text-lg font-medium text-text-primary mb-4">
+							{{ t('dashboard.audience.contacts.detail.contactDetails') }}
+						</h2>
 
 						<div class="space-y-4">
 							<!-- Email -->
 							<div>
-								<label class="label">Email Address</label>
+								<label class="label">{{
+									t('dashboard.audience.contacts.detail.fields.email')
+								}}</label>
 								<div v-if="isEditing" class="flex items-center gap-3">
 									<Icon name="lucide:mail" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 									<input
 										v-model="editForm.email"
 										type="email"
 										class="input"
-										placeholder="email@example.com"
+										:placeholder="t('dashboard.audience.contacts.detail.fields.emailPlaceholder')"
 									/>
 								</div>
 								<div v-else class="flex items-center gap-3 py-2">
@@ -379,47 +408,57 @@ async function handleRemoveSuppression() {
 
 							<!-- First Name -->
 							<div>
-								<label class="label">First Name</label>
+								<label class="label">{{
+									t('dashboard.audience.contacts.detail.fields.firstName')
+								}}</label>
 								<div v-if="isEditing" class="flex items-center gap-3">
 									<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 									<input
 										v-model="editForm.firstName"
 										type="text"
 										class="input"
-										placeholder="First name"
+										:placeholder="
+											t('dashboard.audience.contacts.detail.fields.firstNamePlaceholder')
+										"
 									/>
 								</div>
 								<div v-else class="flex items-center gap-3 py-2">
 									<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 									<span :class="contact.firstName ? 'text-text-primary' : 'text-text-tertiary'">
-										{{ contact.firstName || 'Not set' }}
+										{{ contact.firstName || t('dashboard.audience.contacts.detail.notSet') }}
 									</span>
 								</div>
 							</div>
 
 							<!-- Last Name -->
 							<div>
-								<label class="label">Last Name</label>
+								<label class="label">{{
+									t('dashboard.audience.contacts.detail.fields.lastName')
+								}}</label>
 								<div v-if="isEditing" class="flex items-center gap-3">
 									<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 									<input
 										v-model="editForm.lastName"
 										type="text"
 										class="input"
-										placeholder="Last name"
+										:placeholder="
+											t('dashboard.audience.contacts.detail.fields.lastNamePlaceholder')
+										"
 									/>
 								</div>
 								<div v-else class="flex items-center gap-3 py-2">
 									<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 									<span :class="contact.lastName ? 'text-text-primary' : 'text-text-tertiary'">
-										{{ contact.lastName || 'Not set' }}
+										{{ contact.lastName || t('dashboard.audience.contacts.detail.notSet') }}
 									</span>
 								</div>
 							</div>
 
 							<!-- Timezone -->
 							<div>
-								<label class="label">Timezone</label>
+								<label class="label">{{
+									t('dashboard.audience.contacts.detail.fields.timezone')
+								}}</label>
 								<div v-if="isEditing" class="flex items-center gap-3">
 									<Icon name="lucide:globe" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 									<select v-model="editForm.timezone" class="input">
@@ -438,7 +477,9 @@ async function handleRemoveSuppression() {
 
 							<!-- Language -->
 							<div>
-								<label class="label">Preferred Language</label>
+								<label class="label">{{
+									t('dashboard.audience.contacts.detail.fields.language')
+								}}</label>
 								<div v-if="isEditing" class="flex items-center gap-3">
 									<Icon name="lucide:languages" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 									<select v-model="editForm.language" class="input">
@@ -459,7 +500,9 @@ async function handleRemoveSuppression() {
 
 					<!-- Custom Properties Card -->
 					<div v-if="isAdmin && properties && properties.length > 0" class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">Custom Properties</h2>
+						<h2 class="text-lg font-medium text-text-primary mb-4">
+							{{ t('dashboard.audience.contacts.detail.customProperties') }}
+						</h2>
 
 						<!-- Edit mode: one input per property -->
 						<div v-if="isEditing" class="space-y-4">
@@ -470,9 +513,9 @@ async function handleRemoveSuppression() {
 									v-model="propertyForm[property._id]"
 									class="input"
 								>
-									<option value="">Not set</option>
-									<option value="true">Yes</option>
-									<option value="false">No</option>
+									<option value="">{{ t('dashboard.audience.contacts.detail.notSet') }}</option>
+									<option value="true">{{ t('common.yes') }}</option>
+									<option value="false">{{ t('common.no') }}</option>
 								</select>
 								<input
 									v-else
@@ -503,7 +546,9 @@ async function handleRemoveSuppression() {
 										getPropertyValue(property._id) ? 'text-text-primary' : 'text-text-tertiary'
 									"
 								>
-									{{ getPropertyValue(property._id) || 'Not set' }}
+									{{
+										getPropertyValue(property._id) || t('dashboard.audience.contacts.detail.notSet')
+									}}
 								</span>
 							</div>
 						</div>
@@ -512,21 +557,29 @@ async function handleRemoveSuppression() {
 					<div v-if="(isAdmin || activeTab === 'profile') && canAnnotateContacts" class="card">
 						<div class="flex items-start justify-between gap-4 mb-3">
 							<div>
-								<h2 class="text-lg font-medium text-text-primary">Team note</h2>
-								<p class="text-sm text-text-secondary">Shared context for future conversations.</p>
+								<h2 class="text-lg font-medium text-text-primary">
+									{{ t('dashboard.audience.contacts.detail.teamNote.title') }}
+								</h2>
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.audience.contacts.detail.teamNote.subtitle') }}
+								</p>
 							</div>
-							<UiButton size="sm" :loading="isSavingNotes" @click="saveNotes">Save note</UiButton>
+							<UiButton size="sm" :loading="isSavingNotes" @click="saveNotes">{{
+								t('dashboard.audience.contacts.detail.teamNote.save')
+							}}</UiButton>
 						</div>
 						<UiTextarea
 							v-model="notesDraft"
 							:rows="4"
-							placeholder="Add a helpful note about this customer…"
+							:placeholder="t('dashboard.audience.contacts.detail.teamNote.placeholder')"
 						/>
 					</div>
 
 					<!-- Activity Tab -->
 					<div v-if="isAdmin && activeTab === 'activity'" class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">Activity Timeline</h2>
+						<h2 class="text-lg font-medium text-text-primary mb-4">
+							{{ t('dashboard.audience.contacts.detail.activity.title') }}
+						</h2>
 
 						<!-- Loading State -->
 						<div
@@ -535,7 +588,9 @@ async function handleRemoveSuppression() {
 						>
 							<div class="flex flex-col items-center gap-3">
 								<UiSpinner size="md" />
-								<p class="text-text-tertiary text-sm">Loading activities...</p>
+								<p class="text-text-tertiary text-sm">
+									{{ t('dashboard.audience.contacts.detail.activity.loading') }}
+								</p>
 							</div>
 						</div>
 
@@ -551,9 +606,11 @@ async function handleRemoveSuppression() {
 								rounded="full"
 								class="mb-3"
 							/>
-							<p class="text-text-secondary text-sm">No activity yet</p>
+							<p class="text-text-secondary text-sm">
+								{{ t('dashboard.audience.contacts.detail.activity.emptyTitle') }}
+							</p>
 							<p class="text-text-tertiary text-sm mt-1">
-								Activity will appear here when you send emails to this contact.
+								{{ t('dashboard.audience.contacts.detail.activity.emptyBody') }}
 							</p>
 						</div>
 
@@ -611,7 +668,11 @@ async function handleRemoveSuppression() {
 										name="lucide:loader-2"
 										class="w-4 h-4 animate-spin mr-2"
 									/>
-									{{ isLoadingMoreActivities ? 'Loading...' : 'Load More' }}
+									{{
+										isLoadingMoreActivities
+											? t('common.loading')
+											: t('dashboard.audience.contacts.detail.activity.loadMore')
+									}}
 								</UiButton>
 							</div>
 						</div>
@@ -654,16 +715,24 @@ async function handleRemoveSuppression() {
 
 					<!-- Metadata Card -->
 					<div v-if="isAdmin" class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">Details</h2>
+						<h2 class="text-lg font-medium text-text-primary mb-4">
+							{{ t('dashboard.audience.contacts.detail.details') }}
+						</h2>
 
 						<div class="space-y-4">
 							<div>
-								<p class="text-sm text-text-tertiary">Source</p>
-								<p class="text-text-primary capitalize">{{ contact.source || 'Unknown' }}</p>
+								<p class="text-sm text-text-tertiary">
+									{{ t('dashboard.audience.contacts.detail.source') }}
+								</p>
+								<p class="text-text-primary capitalize">
+									{{ contact.source || t('common.unknown') }}
+								</p>
 							</div>
 
 							<div>
-								<p class="text-sm text-text-tertiary">Created</p>
+								<p class="text-sm text-text-tertiary">
+									{{ t('dashboard.audience.contacts.detail.created') }}
+								</p>
 								<div class="flex items-center gap-2 text-text-primary">
 									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
 									{{ formatDateTime(contact.createdAt) }}
@@ -671,7 +740,9 @@ async function handleRemoveSuppression() {
 							</div>
 
 							<div>
-								<p class="text-sm text-text-tertiary">Last Updated</p>
+								<p class="text-sm text-text-tertiary">
+									{{ t('dashboard.audience.contacts.detail.lastUpdated') }}
+								</p>
 								<div class="flex items-center gap-2 text-text-primary">
 									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
 									{{ formatDateTime(contact.updatedAt) }}
@@ -683,7 +754,9 @@ async function handleRemoveSuppression() {
 					<!-- Topics Card -->
 					<div v-if="isAdmin" class="card">
 						<div class="flex items-center justify-between mb-4">
-							<h2 class="text-lg font-medium text-text-primary">Topics</h2>
+							<h2 class="text-lg font-medium text-text-primary">
+								{{ t('dashboard.audience.contacts.detail.topics.title') }}
+							</h2>
 
 							<!-- Add to Topic Dropdown -->
 							<div ref="addToTopicDropdownRef" class="relative">
@@ -700,7 +773,7 @@ async function handleRemoveSuppression() {
 										class="w-3 h-3 animate-spin"
 									/>
 									<Icon v-else name="lucide:plus" class="w-3 h-3" />
-									Add to Topic
+									{{ t('dashboard.audience.contacts.detail.topics.addToTopic') }}
 									<Icon name="lucide:chevron-down" class="w-3 h-3" />
 								</UiButton>
 
@@ -749,7 +822,7 @@ async function handleRemoveSuppression() {
 										class="absolute right-0 mt-2 w-56 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-10 p-3"
 									>
 										<p class="text-sm text-text-tertiary text-center">
-											Contact is already in all topics
+											{{ t('dashboard.audience.contacts.detail.topics.allTopics') }}
 										</p>
 									</div>
 								</Transition>
@@ -773,7 +846,7 @@ async function handleRemoveSuppression() {
 								</div>
 								<button
 									class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-all"
-									title="Remove from topic"
+									:title="t('dashboard.audience.contacts.detail.topics.remove')"
 									@click="handleRemoveFromTopic(list._id)"
 								>
 									<Icon name="lucide:x" class="w-3 h-3" />
@@ -781,13 +854,17 @@ async function handleRemoveSuppression() {
 							</div>
 						</div>
 						<div v-else-if="allTopics && allTopics.length === 0" class="text-center py-4">
-							<p class="text-text-tertiary text-sm">No topics created yet</p>
+							<p class="text-text-tertiary text-sm">
+								{{ t('dashboard.audience.contacts.detail.topics.noneCreated') }}
+							</p>
 							<NuxtLink to="/dashboard/audience/topics" class="text-brand text-sm hover:underline">
-								Create a topic
+								{{ t('dashboard.audience.contacts.detail.topics.createOne') }}
 							</NuxtLink>
 						</div>
 						<div v-else class="text-center py-4">
-							<p class="text-text-tertiary text-sm">Not in any topics</p>
+							<p class="text-text-tertiary text-sm">
+								{{ t('dashboard.audience.contacts.detail.topics.none') }}
+							</p>
 						</div>
 					</div>
 				</div>
@@ -809,7 +886,7 @@ async function handleRemoveSuppression() {
 					class="fixed inset-0 z-50 flex items-center justify-center p-4"
 				>
 					<!-- Backdrop -->
-					<div class="absolute inset-0 bg-black/60" @click="showDeleteConfirm = false" />
+					<div class="absolute inset-0 bg-scrim/60" @click="showDeleteConfirm = false" />
 
 					<!-- Modal -->
 					<div
@@ -820,19 +897,25 @@ async function handleRemoveSuppression() {
 								<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
 							</div>
 							<div>
-								<h3 class="text-lg font-semibold text-text-primary">Delete Contact</h3>
+								<h3 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.audience.contacts.detail.deleteDialog.title') }}
+								</h3>
 								<p class="text-sm text-text-secondary">
-									Hidden now, permanently erased after 30 days.
+									{{ t('dashboard.audience.contacts.detail.deleteDialog.subtitle') }}
 								</p>
 							</div>
 						</div>
 
-						<p class="text-text-secondary mb-6">
-							Are you sure you want to delete
-							<span class="font-medium text-text-primary">{{ contact?.email }}</span
-							>? The contact is hidden immediately and permanently erased — along with its topic
-							memberships and custom properties — after the 30-day retention period.
-						</p>
+						<I18nT
+							keypath="dashboard.audience.contacts.detail.deleteDialog.body"
+							tag="p"
+							class="text-text-secondary mb-6"
+							scope="global"
+						>
+							<template #email>
+								<span class="font-medium text-text-primary">{{ contact?.email }}</span>
+							</template>
+						</I18nT>
 
 						<div class="flex items-center justify-end gap-3">
 							<UiButton
@@ -840,16 +923,15 @@ async function handleRemoveSuppression() {
 								:disabled="isDeleting"
 								@click="showDeleteConfirm = false"
 							>
-								Cancel
+								{{ t('common.cancel') }}
 							</UiButton>
-							<UiButton
-								variant="danger"
-								class="bg-error text-white hover:bg-error/90"
-								:disabled="isDeleting"
-								@click="confirmDelete"
-							>
+							<UiButton variant="danger" :disabled="isDeleting" @click="confirmDelete">
 								<UiSpinner v-if="isDeleting" class="mr-2" size="xs" tone="inverse" />
-								{{ isDeleting ? 'Deleting...' : 'Delete Contact' }}
+								{{
+									isDeleting
+										? t('dashboard.audience.contacts.detail.deleting')
+										: t('dashboard.audience.contacts.detail.deleteDialog.title')
+								}}
 							</UiButton>
 						</div>
 					</div>

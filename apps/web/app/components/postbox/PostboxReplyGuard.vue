@@ -16,6 +16,8 @@
  */
 import type { SenderAuthState } from '~/utils/senderAuth';
 
+const { t } = useI18n();
+
 const open = ref(false);
 const confirmed = ref<Set<string>>(new Set());
 let pending: (() => void) | null = null;
@@ -52,7 +54,7 @@ defineExpose({ guard });
 <template>
 	<UiModal
 		:open="open"
-		title="This sender couldn't be verified"
+		:title="t('components.postbox.postboxReplyGuard.title')"
 		size="sm"
 		@update:open="
 			(v: boolean) => {
@@ -63,16 +65,15 @@ defineExpose({ guard });
 		<div class="flex items-start gap-3">
 			<Icon name="lucide:shield-x" class="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
 			<p class="text-sm text-text-secondary">
-				This message failed its sender authentication checks, so it may not really be from who it
-				claims. If you reply, your response goes to whoever actually sent it. Reply anyway?
+				{{ t('components.postbox.postboxReplyGuard.body') }}
 			</p>
 		</div>
 		<div class="mt-4 flex justify-end gap-2">
 			<UiButton variant="ghost" type="button" data-testid="reply-guard-cancel" @click="cancel">
-				Cancel
+				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="button" data-testid="reply-guard-confirm" @click="proceed">
-				Reply anyway
+				{{ t('components.postbox.postboxReplyGuard.replyAnyway') }}
 			</UiButton>
 		</div>
 	</UiModal>

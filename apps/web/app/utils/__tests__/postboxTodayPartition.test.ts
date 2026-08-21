@@ -11,7 +11,14 @@ import {
 	formatAutoFiledLine,
 	startOfLocalDay,
 	startOfPreviousLocalDay,
+	type AutoFiledLine,
 } from '../postboxTodayPartition';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The roll-up line is a pure derivation, so it hands back the message key and
+// its count; the sentence a reader sees comes from the real catalog.
+const { t } = createTestI18n().global;
+const line = (value: AutoFiledLine | null) => (value === null ? null : t(value.key, value.params));
 
 // A fixed LOCAL wall-clock "now": 2026-07-06 09:30 in whatever timezone the
 // test runs in — the util's contract is local midnights, so the fixtures are
@@ -122,17 +129,17 @@ describe('formatAutoFiledLine', () => {
 	});
 
 	it('uses the singular for a single message', () => {
-		expect(formatAutoFiledLine({ notification: 1 })).toBe('1 notification auto-filed');
+		expect(line(formatAutoFiledLine({ notification: 1 }))).toBe('1 notification auto-filed');
 	});
 
 	it('joins two categories with an ampersand', () => {
-		expect(formatAutoFiledLine({ newsletter: 10, receipt: 2 })).toBe(
+		expect(line(formatAutoFiledLine({ newsletter: 10, receipt: 2 }))).toBe(
 			'12 newsletters & receipts auto-filed'
 		);
 	});
 
 	it('joins three categories with commas and a final ampersand', () => {
-		expect(formatAutoFiledLine({ newsletter: 3, notification: 2, receipt: 1 })).toBe(
+		expect(line(formatAutoFiledLine({ newsletter: 3, notification: 2, receipt: 1 }))).toBe(
 			'6 newsletters, notifications & receipts auto-filed'
 		);
 	});

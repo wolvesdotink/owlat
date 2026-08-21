@@ -10,6 +10,8 @@ const emit = defineEmits<{
 	(e: 'update:open', value: boolean): void;
 }>();
 
+const { t } = useI18n();
+
 const mailboxIdRef = computed(() => props.mailboxId);
 const { labels, create, rename, setColor, remove } = usePostboxLabels(mailboxIdRef);
 
@@ -46,7 +48,7 @@ function close() {
 <template>
 	<UiModal
 		:open="open"
-		title="Manage labels"
+		:title="t('components.postbox.postboxLabelManager.title')"
 		size="md"
 		@update:open="
 			(v) => {
@@ -67,8 +69,13 @@ function close() {
 					@click="newColor = color"
 				/>
 			</div>
-			<input v-model="newName" type="text" placeholder="New label name" class="input flex-1" />
-			<UiButton type="submit" :disabled="!newName.trim()">Add</UiButton>
+			<input
+				v-model="newName"
+				type="text"
+				:placeholder="t('components.postbox.postboxLabelManager.newNamePlaceholder')"
+				class="input flex-1"
+			/>
+			<UiButton type="submit" :disabled="!newName.trim()">{{ t('common.add') }}</UiButton>
 		</form>
 
 		<ul v-if="labels.length > 0" class="space-y-2 max-h-80 overflow-auto">
@@ -101,14 +108,14 @@ function close() {
 						class="w-3.5 h-3.5 rounded-full border"
 						:class="label.color === color ? 'border-text-primary' : 'border-transparent'"
 						:style="{ backgroundColor: color }"
-						:title="`Set color ${color}`"
+						:title="t('components.postbox.postboxLabelManager.setColor', { color })"
 						@click="setColor(label._id, color)"
 					/>
 				</div>
 				<button
 					type="button"
 					class="p-1 rounded hover:bg-error/10 text-error"
-					title="Delete label"
+					:title="t('components.postbox.postboxLabelManager.deleteLabel')"
 					@click="remove(label._id)"
 				>
 					<Icon name="lucide:trash" class="w-4 h-4" />
@@ -116,7 +123,7 @@ function close() {
 			</li>
 		</ul>
 		<div v-else class="text-sm text-text-secondary py-6 text-center">
-			No labels yet. Create one above.
+			{{ t('components.postbox.postboxLabelManager.empty') }}
 		</div>
 	</UiModal>
 </template>

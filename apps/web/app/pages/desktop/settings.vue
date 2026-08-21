@@ -10,7 +10,9 @@
  * device-local prefs (accent, mute) and link into the Convex-backed
  * /dashboard/admin hub for everything server-side.
  */
-useHead({ title: 'Settings — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('desktop.settings.pageTitle') });
 definePageMeta({ layout: false });
 
 import type { ThemeOption } from '~/composables/useAppTheme';
@@ -29,9 +31,9 @@ const { workspaces, activeId, switchTo, removeWorkspace, setWorkspaceAccent } =
 const { themePreference, setTheme } = useAppTheme();
 
 const themeOptions: { value: ThemeOption; label: string; icon: string }[] = [
-	{ value: 'light', label: 'Light', icon: 'lucide:sun' },
-	{ value: 'dark', label: 'Dark', icon: 'lucide:moon' },
-	{ value: 'system', label: 'System', icon: 'lucide:monitor' },
+	{ value: 'light', label: 'desktop.settings.theme.light', icon: 'lucide:sun' },
+	{ value: 'dark', label: 'desktop.settings.theme.dark', icon: 'lucide:moon' },
+	{ value: 'system', label: 'desktop.settings.theme.system', icon: 'lucide:monitor' },
 ];
 
 // Back target mirrors how the user got here: into the app when a workspace is
@@ -111,11 +113,8 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 		<DesktopTitlebar />
 
 		<div class="mx-auto w-full max-w-2xl px-6 py-10">
-			<div
-				v-if="!isDesktop"
-				class="card p-8 text-sm text-text-secondary"
-			>
-				These settings are only available in the Owlat desktop app.
+			<div v-if="!isDesktop" class="card p-8 text-sm text-text-secondary">
+				{{ t('desktop.settings.desktopOnly') }}
 			</div>
 
 			<template v-else>
@@ -123,24 +122,26 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 					:to="backTarget"
 					class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
 				>
-					<Icon name="lucide:arrow-left" class="size-3.5" /> Back
+					<Icon name="lucide:arrow-left" class="size-3.5" /> {{ t('common.back') }}
 				</NuxtLink>
 
-				<h1 class="text-2xl font-medium tracking-[-0.02em] mb-1">Settings</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] mb-1">{{ t('common.settings') }}</h1>
 				<p class="text-sm text-text-secondary mb-8">
-					Global settings apply to the Owlat app on this device, across every workspace.
+					{{ t('desktop.settings.subtitle') }}
 				</p>
 
 				<!-- ============ GLOBAL ============ -->
-				<h2 class="text-xs font-medium uppercase tracking-wide text-text-secondary mb-2">Global</h2>
-				<div
-					class="card p-0 divide-y divide-border-subtle mb-8 overflow-hidden"
-				>
+				<h2 class="text-xs font-medium uppercase tracking-wide text-text-secondary mb-2">
+					{{ t('desktop.settings.globalHeading') }}
+				</h2>
+				<div class="card p-0 divide-y divide-border-subtle mb-8 overflow-hidden">
 					<!-- Appearance -->
 					<div class="p-4">
-						<span class="block text-sm font-medium">Appearance</span>
+						<span class="block text-sm font-medium">{{
+							t('desktop.settings.appearance.title')
+						}}</span>
 						<span class="block text-xs text-text-secondary mb-3">
-							Theme for the whole app on this device.
+							{{ t('desktop.settings.appearance.description') }}
 						</span>
 						<div class="flex gap-2">
 							<button
@@ -157,7 +158,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 								@click="setTheme(option.value)"
 							>
 								<Icon :name="option.icon" class="size-4" />
-								{{ option.label }}
+								{{ t(option.label) }}
 							</button>
 						</div>
 					</div>
@@ -165,9 +166,11 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 					<!-- Launch at login -->
 					<label class="flex items-center justify-between p-4">
 						<span>
-							<span class="block text-sm font-medium">Launch at login</span>
+							<span class="block text-sm font-medium">{{
+								t('desktop.settings.autostart.title')
+							}}</span>
 							<span class="block text-xs text-text-secondary">
-								Start Owlat automatically when you log in.
+								{{ t('desktop.settings.autostart.description') }}
 							</span>
 						</span>
 						<input
@@ -182,9 +185,11 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 					<!-- Startup workspace -->
 					<label class="flex items-center justify-between gap-4 p-4">
 						<span>
-							<span class="block text-sm font-medium">Open at startup</span>
+							<span class="block text-sm font-medium">{{
+								t('desktop.settings.startup.title')
+							}}</span>
 							<span class="block text-xs text-text-secondary">
-								Which workspace Owlat opens when it launches.
+								{{ t('desktop.settings.startup.description') }}
 							</span>
 						</span>
 						<select
@@ -193,7 +198,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 							class="input input-sm max-w-[14rem] text-sm"
 							@change="onStartupWorkspaceChange"
 						>
-							<option value="">Last active workspace</option>
+							<option value="">{{ t('desktop.settings.startup.lastActive') }}</option>
 							<option v-for="ws in workspaces" :key="ws.id" :value="ws.id">
 								{{ ws.label }}
 							</option>
@@ -203,9 +208,11 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 					<!-- Notifications -->
 					<label class="flex items-center justify-between p-4">
 						<span>
-							<span class="block text-sm font-medium">Desktop notifications</span>
+							<span class="block text-sm font-medium">{{
+								t('desktop.settings.notifications.title')
+							}}</span>
 							<span class="block text-xs text-text-secondary">
-								Show native notifications for new mail and activity.
+								{{ t('desktop.settings.notifications.description') }}
 							</span>
 						</span>
 						<input
@@ -218,9 +225,11 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 					</label>
 					<label class="flex items-center justify-between p-4">
 						<span>
-							<span class="block text-sm font-medium">Unread badge</span>
+							<span class="block text-sm font-medium">{{
+								t('desktop.settings.unreadBadge.title')
+							}}</span>
 							<span class="block text-xs text-text-secondary">
-								Show the unread count on the app icon.
+								{{ t('desktop.settings.unreadBadge.description') }}
 							</span>
 						</span>
 						<input
@@ -236,10 +245,14 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 					<div class="p-4">
 						<div class="flex items-center justify-between">
 							<span>
-								<span class="block text-sm font-medium">Updates</span>
+								<span class="block text-sm font-medium">{{
+									t('desktop.settings.updates.title')
+								}}</span>
 								<span class="block text-xs text-text-secondary">
-									{{ appVersion ? `Owlat ${appVersion}.` : '' }}
-									Check for new versions when the app starts.
+									{{
+										appVersion ? t('desktop.settings.updates.version', { version: appVersion }) : ''
+									}}
+									{{ t('desktop.settings.updates.description') }}
 								</span>
 							</span>
 							<input
@@ -251,66 +264,85 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 							/>
 						</div>
 						<UiButton variant="outline" size="sm" class="mt-3" @click="checkForUpdatesNow">
-							Check for updates now
+							{{ t('desktop.settings.updates.checkNow') }}
 						</UiButton>
 						<p v-if="updateCheckRequested" class="mt-2 text-xs text-text-secondary">
-							Checking — you'll get a notification with the result.
+							{{ t('desktop.settings.updates.checking') }}
 						</p>
 					</div>
 
 					<!-- Default email app -->
 					<div class="p-4">
-						<span class="block text-sm font-medium">Default email app</span>
-						<span class="block text-xs text-text-secondary mb-2">
-							Make Owlat open when you click a <code>mailto:</code> link. Your operating system
-							controls the default mail app, so this is a one-time step you take there:
-						</span>
+						<span class="block text-sm font-medium">{{
+							t('desktop.settings.defaultApp.title')
+						}}</span>
+						<I18nT
+							keypath="desktop.settings.defaultApp.description"
+							tag="span"
+							class="block text-xs text-text-secondary mb-2"
+							scope="global"
+						>
+							<template #mailto><code>mailto:</code></template>
+						</I18nT>
 						<ul class="list-disc pl-5 text-xs text-text-secondary space-y-1">
-							<li v-if="defaultAppOs === 'macos'">
-								Open <strong>Mail &gt; Settings &gt; General</strong> and set
-								<strong>Default email reader</strong> to Owlat.
-							</li>
-							<li v-else-if="defaultAppOs === 'windows'">
-								Open <strong>Settings &gt; Apps &gt; Default apps</strong>, search for Owlat, and
-								set it as the handler for <code>mailto</code>.
-							</li>
-							<li v-else-if="defaultAppOs === 'linux'">
-								Set Owlat as your <code>x-scheme-handler/mailto</code> default (for example with
-								<code>xdg-mime default owlat.desktop x-scheme-handler/mailto</code>, or via your
-								desktop environment's default-applications settings).
-							</li>
-							<li v-else>
-								Set Owlat as the <code>mailto:</code> handler in your operating system's
-								default-apps settings.
-							</li>
+							<I18nT
+								v-if="defaultAppOs === 'macos'"
+								keypath="desktop.settings.defaultApp.macos"
+								tag="li"
+								scope="global"
+							>
+								<template #path
+									><strong>{{ t('desktop.settings.defaultApp.macosPath') }}</strong></template
+								>
+								<template #setting
+									><strong>{{ t('desktop.settings.defaultApp.macosSetting') }}</strong></template
+								>
+							</I18nT>
+							<I18nT
+								v-else-if="defaultAppOs === 'windows'"
+								keypath="desktop.settings.defaultApp.windows"
+								tag="li"
+								scope="global"
+							>
+								<template #path
+									><strong>{{ t('desktop.settings.defaultApp.windowsPath') }}</strong></template
+								>
+								<template #scheme><code>mailto</code></template>
+							</I18nT>
+							<I18nT
+								v-else-if="defaultAppOs === 'linux'"
+								keypath="desktop.settings.defaultApp.linux"
+								tag="li"
+								scope="global"
+							>
+								<template #handler><code>x-scheme-handler/mailto</code></template>
+								<template #command
+									><code>xdg-mime default owlat.desktop x-scheme-handler/mailto</code></template
+								>
+							</I18nT>
+							<I18nT v-else keypath="desktop.settings.defaultApp.other" tag="li" scope="global">
+								<template #scheme><code>mailto:</code></template>
+							</I18nT>
 						</ul>
 					</div>
 				</div>
 
 				<!-- ============ WORKSPACES ============ -->
 				<h2 class="text-xs font-medium uppercase tracking-wide text-text-secondary mb-2">
-					Workspaces
+					{{ t('desktop.settings.workspaces.heading') }}
 				</h2>
 
-				<div
-					v-if="workspaces.length === 0"
-					class="card text-center"
-				>
+				<div v-if="workspaces.length === 0" class="card text-center">
 					<p class="text-sm text-text-secondary mb-4">
-						No workspaces connected yet. Workspace settings — members, delivery, API keys and more —
-						become available once you connect to an Owlat server.
+						{{ t('desktop.settings.workspaces.empty') }}
 					</p>
 					<UiButton to="/desktop/welcome" size="sm">
-						Connect a workspace
+						{{ t('desktop.settings.workspaces.connect') }}
 					</UiButton>
 				</div>
 
 				<ul v-else class="space-y-3">
-					<li
-						v-for="ws in workspaces"
-						:key="ws.id"
-						class="card p-4"
-					>
+					<li v-for="ws in workspaces" :key="ws.id" class="card p-4">
 						<div class="flex items-start justify-between gap-4">
 							<div class="min-w-0">
 								<div class="flex items-center gap-2">
@@ -323,7 +355,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 										v-if="ws.id === activeId"
 										class="rounded-full bg-brand-subtle px-2 py-0.5 text-2xs font-medium uppercase tracking-wide text-brand"
 									>
-										Active
+										{{ t('common.active') }}
 									</span>
 								</div>
 								<span class="mt-0.5 block truncate text-xs text-text-secondary">
@@ -336,14 +368,14 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 									class="text-xs text-brand hover:text-brand-hover"
 									@click="openWorkspaceSettings(ws.id)"
 								>
-									Workspace settings
+									{{ t('desktop.settings.workspaces.settings') }}
 								</button>
 								<button
 									type="button"
 									class="text-xs text-text-secondary hover:text-error"
 									@click="workspaceToRemove = { id: ws.id, label: ws.label }"
 								>
-									Remove
+									{{ t('common.remove') }}
 								</button>
 							</div>
 						</div>
@@ -351,7 +383,9 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 						<div class="mt-3 flex items-center justify-between border-t border-border-subtle pt-3">
 							<!-- Identity accent -->
 							<div class="flex items-center gap-1.5">
-								<span class="mr-1 text-xs text-text-secondary">Accent</span>
+								<span class="mr-1 text-xs text-text-secondary">{{
+									t('desktop.settings.workspaces.accent')
+								}}</span>
 								<button
 									v-for="option in WORKSPACE_ACCENT_OPTIONS"
 									:key="option.value"
@@ -361,8 +395,10 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 										ws.accentColor === option.value ? 'border-text-primary' : 'border-transparent'
 									"
 									:style="{ backgroundColor: option.value }"
-									:title="option.label"
-									:aria-label="`${option.label} accent`"
+									:title="t(option.label)"
+									:aria-label="
+										t('desktop.settings.workspaces.accentOption', { accent: t(option.label) })
+									"
 									:aria-pressed="ws.accentColor === option.value"
 									@click="setWorkspaceAccent(ws.id, option.value)"
 								/>
@@ -370,7 +406,7 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 
 							<!-- Device-local mute -->
 							<label class="flex items-center gap-2 text-xs text-text-secondary">
-								Mute notifications
+								{{ t('desktop.settings.workspaces.mute') }}
 								<input
 									type="checkbox"
 									:checked="workspaceLocal(ws.id).muteNotifications"
@@ -386,9 +422,15 @@ const defaultAppOs = computed<'macos' | 'windows' | 'linux' | 'other'>(() => {
 				<UiConfirmationDialog
 					:open="!!workspaceToRemove"
 					variant="danger"
-					title="Remove workspace?"
-					:description="`Remove ${workspaceToRemove?.label ?? 'this workspace'} from this device? You'll be signed out here; the workspace itself and your account are untouched.`"
-					confirm-text="Remove workspace"
+					:title="t('desktop.settings.workspaces.removeDialog.title')"
+					:description="
+						t('desktop.settings.workspaces.removeDialog.description', {
+							workspace:
+								workspaceToRemove?.label ??
+								t('desktop.settings.workspaces.removeDialog.fallbackName'),
+						})
+					"
+					:confirm-text="t('desktop.settings.workspaces.removeDialog.confirm')"
 					:is-loading="isRemoving"
 					@update:open="(v: boolean) => !v && (workspaceToRemove = null)"
 					@confirm="confirmRemoveWorkspace"

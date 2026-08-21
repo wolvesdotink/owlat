@@ -11,6 +11,11 @@ import { describe, expect, it } from 'vitest';
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import SetupAudiencePicker from '../SetupAudiencePicker.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The picker renders its copy through the real catalog, so `useI18n` has to
+// resolve exactly as it does in the app (an auto-import, hence a global).
+Object.assign(globalThis, i18nStubs);
 
 /**
  * Derived from the query, exactly as the component derives it — never
@@ -33,7 +38,7 @@ function renderCount(audienceCount: RecipientCount | null): string {
 			selectedTopicId: null,
 			selectedSegmentId: null,
 		},
-		global: { stubs },
+		global: { plugins: [createTestI18n()], stubs },
 	});
 	return wrapper.find('[data-testid="audience-eligible-count"]').text();
 }

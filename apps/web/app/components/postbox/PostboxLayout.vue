@@ -1,14 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { PostboxViewMode } from '~/utils/postboxViewMode';
-import {
-	POSTBOX_VIEW_MODE_OPTIONS,
-	postboxListRenderer,
-	resolvePostboxViewMode,
-} from '~/utils/postboxViewMode';
-import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -16,6 +8,8 @@ const props = defineProps<{
 	folderId?: Id<'mailFolders'>;
 	activeMessageId?: string | null;
 }>();
+
+const { t } = useI18n();
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const folderRef = computed(() => props.folderRole);
@@ -62,6 +56,15 @@ const {
 	isLoading,
 });
 
+// Offline outbox (D8): mounting here registers the drain-on-reconnect watcher
+// for the active mailbox; the counts drive the offline banner ("n queued")
+// and the post-drain "couldn't send" banner with its retry affordance.
+const {
+	queuedCount: queuedSendCount,
+	failedCount: failedSendCount,
+	drain: retryQueuedSends,
+} = usePostboxOfflineOutbox(computed(() => String(props.mailboxId)));
+
 // Once the inbox list has settled (first paint done), idle-prefetch the
 // composer + reader chunks so pressing `c` or Enter never waits on a chunk
 // download. Idempotent + fail-soft; the Designer-mode EmailBuilder stays lazy.
@@ -80,57 +83,56 @@ const triageUndo = usePostboxTriageUndo();
 onMounted(() => window.addEventListener('keydown', triageUndo.onWindowKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', triageUndo.onWindowKeydown));
 
-// Folder name shown in the list header (custom folders carry no role).
-const currentFolderName = computed(() =>
-	props.folderId
-		? (customFolders.value.find((f) => f._id === props.folderId)?.name ?? 'Folder')
-		: props.folderRole
+// Folder name shown in the list header (custom folders carry no role). A system
+// folder arrives as its role, which has a translated name; a custom/unknown role
+// keeps rendering the server-provided value verbatim.
+const NAMED_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive', 'snoozed'];
+const currentFolderName = computed(() => {
+	if (props.folderId) {
+		const custom = customFolders.value.find((f) => f._id === props.folderId)?.name;
+		return custom ?? t('components.postbox.postboxLayout.folderFallback');
+	}
+	return NAMED_FOLDER_ROLES.includes(props.folderRole)
+		? t(`components.postbox.postboxLayout.folderRoles.${props.folderRole}`)
+		: props.folderRole;
+});
+
+// ── Below `lg` the three panes become a stacked drill-in (the shell's mobile
+// pattern): the folder rail is an off-canvas drawer, and the list and reader
+// swap based on whether a message is open. Purely class-driven so there is no
+// breakpoint state to keep in sync — `railOpen` is the drawer's own state.
+const railOpen = ref(false);
+// Any navigation (folder link, message row) dismisses the drawer.
+watch(
+	[folderRef, folderIdRef, () => props.activeMessageId],
+	() => {
+		railOpen.value = false;
+	},
+	{ flush: 'post' }
 );
 
-// Inbox view mode — exactly one of Flat / Conversations / Categories is
-// active. The saved (server-persisted) value drives the list; a pending
-// optimistic override reflects a tap immediately while the mutation lands,
-// then hands back to the server value. Grouped renderers are inbox-only; the
-// flat list with its hover/keyboard triage serves all other folders.
-const pendingViewMode = ref<PostboxViewMode | null>(null);
-const viewMode = computed<PostboxViewMode>(() => pendingViewMode.value ?? savedViewMode.value);
-watch(savedViewMode, (saved) => {
-	if (pendingViewMode.value === saved) pendingViewMode.value = null;
+// The two inbox mode switches — list renderer (Flat / Conversations /
+// Categories) and landing surface (Today / Browse) — with their optimistic
+// overrides and their window-level shortcuts (B, Esc, `/`). Extracted to a
+// composable to keep this layout under the file-size cap.
+const {
+	viewMode,
+	viewModeOptions,
+	selectViewMode,
+	activeListRenderer,
+	switchInboxMode,
+	todayActive,
+	viewAutoFiled,
+} = usePostboxInboxModes({
+	folderRole: folderRef,
+	folderId: folderIdRef,
+	activeMessageId: computed(() => props.activeMessageId),
+	railOpen,
+	savedViewMode,
+	setViewMode,
+	savedInboxMode,
+	setInboxMode,
 });
-function selectViewMode(value: string) {
-	const mode = resolvePostboxViewMode(value);
-	if (mode === viewMode.value) return;
-	pendingViewMode.value = mode;
-	// The list already switched optimistically; useBackendOperation surfaces a
-	// toast if the save fails, and the override snaps back to the saved mode.
-	void setViewMode(mode).then((saved) => {
-		if (!saved && pendingViewMode.value === mode) pendingViewMode.value = null;
-	});
-}
-const activeListRenderer = computed(() => postboxListRenderer(viewMode.value, folderRef.value));
-
-// Inbox landing mode — 'today' (the focused single-column PostboxTodayView;
-// the default) vs 'browse' (the three panes below). Inbox-only: every other
-// folder keeps the three-pane UI regardless of mode. A deep-linked message
-// (/inbox/<id>) stays in Today mode too — the Today view opens it in its
-// centered reader overlay over the list; in browse mode the same route is
-// the unchanged three-pane reader. Same optimistic-override pattern as the
-// view mode above; the server remembers the last-used mode.
-const pendingInboxMode = ref<PostboxInboxMode | null>(null);
-const inboxMode = computed<PostboxInboxMode>(() => pendingInboxMode.value ?? savedInboxMode.value);
-watch(savedInboxMode, (saved) => {
-	if (pendingInboxMode.value === saved) pendingInboxMode.value = null;
-});
-function switchInboxMode(mode: PostboxInboxMode) {
-	if (mode === inboxMode.value) return;
-	pendingInboxMode.value = mode;
-	void setInboxMode(mode).then((saved) => {
-		if (!saved && pendingInboxMode.value === mode) pendingInboxMode.value = null;
-	});
-}
-const todayActive = computed(
-	() => folderRef.value === 'inbox' && !props.folderId && inboxMode.value === 'today'
-);
 
 // The Today overlay closed while the route still points at a deep-linked
 // message — settle the URL back on the plain inbox (replace: the overlay was
@@ -139,47 +141,17 @@ function onTodayReaderClosed() {
 	if (props.activeMessageId) void navigateTo('/dashboard/postbox/inbox', { replace: true });
 }
 
-// The Today roll-up line's "view" opens the auto-filed mail where it lives:
-// browse mode with the Categories renderer. The Categories choice is a
-// TRANSIENT override (pendingViewMode) — it must not silently overwrite the
-// user's saved list preference.
-function viewAutoFiled() {
-	pendingViewMode.value = 'categories';
-	switchInboxMode('browse');
+/**
+ * Drill-in "back": from the reader to the folder's list route. Replace, don't
+ * push — opening the message pushed the entry this button dismisses, so a push
+ * here would leave the system Back gesture reopening the reader the user just
+ * closed, and grow the history stack by two entries per open/close cycle.
+ */
+function backToList() {
+	void navigateTo(`/dashboard/postbox/${String(props.folderId ?? props.folderRole)}`, {
+		replace: true,
+	});
 }
-
-// Focus the rail's search box after a mode flip mounts it (the `/` shortcut
-// from Today mode; the rail consumes + clears the flag on mount).
-const searchAutofocus = useState('postbox:search-autofocus', () => false);
-
-// Mode shortcuts (window-level, like the triage-undo chord above): B (and
-// Cmd/Ctrl-B) toggles Today ↔ Browse from the inbox list; Esc returns from
-// Browse to Today; `/` from Today jumps to Browse with the search focused
-// (search never renders inside the Today column). All inert in text inputs,
-// while a message is open, and while any dialog is up.
-function onModeKeydown(event: KeyboardEvent) {
-	if (folderRef.value !== 'inbox' || props.folderId || props.activeMessageId) return;
-	if (isEditableTarget(event.target)) return;
-	if (event.defaultPrevented) return;
-	if (document.querySelector('[role="dialog"]')) return;
-	if (event.key.toLowerCase() === 'b' && !event.altKey && !event.shiftKey) {
-		event.preventDefault();
-		switchInboxMode(inboxMode.value === 'today' ? 'browse' : 'today');
-		return;
-	}
-	if (event.metaKey || event.ctrlKey || event.altKey) return;
-	if (event.key === 'Escape' && inboxMode.value === 'browse') {
-		switchInboxMode('today');
-		return;
-	}
-	if (event.key === '/' && todayActive.value) {
-		event.preventDefault();
-		searchAutofocus.value = true;
-		switchInboxMode('browse');
-	}
-}
-onMounted(() => window.addEventListener('keydown', onModeKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onModeKeydown));
 
 const threadGroupsEnabled = computed(() => activeListRenderer.value === 'conversations');
 const {
@@ -235,15 +207,6 @@ const advanceIds = computed(() =>
 			// to leave `messages` anyway, so the order is at worst one row stale.
 			(threadListRef.value?.visibleIds ?? messages.value.map((m) => m._id))
 );
-
-// Reply Queue inbox "waiting on your reply" strip. The strip is dismissible for
-// the session (in-memory state, resets on reload) and only renders while the
-// queue is non-empty. (The rail's own badge subscribes separately/deduped.)
-const { count: replyQueueCount } = usePostboxReplyQueue(mailboxIdRef);
-const replyQueueStripDismissed = useState('postbox:reply-queue-strip-dismissed', () => false);
-const showReplyQueueStrip = computed(
-	() => folderRef.value === 'inbox' && replyQueueCount.value > 0 && !replyQueueStripDismissed.value
-);
 </script>
 
 <template>
@@ -263,41 +226,59 @@ const showReplyQueueStrip = computed(
 			/>
 			<div v-else class="flex w-full min-w-0">
 				<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
-		     folder CRUD, labels, Reply Queue/Snoozed/Contacts, Cmd+Shift+D). -->
-				<PostboxFolderRail
+		     folder CRUD, labels, Reply Queue/Snoozed/Contacts, Cmd+Shift+D).
+		     Below lg the drawer wrapper takes it off-canvas so the list gets the
+		     full width. -->
+				<PostboxFolderDrawer
+					v-model:open="railOpen"
 					:mailbox-id="mailboxId"
 					:folder-role="folderRole"
 					:folder-id="folderId"
 				/>
 
-				<!-- Pane 2: thread/message list -->
-				<section class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
-					<!-- Quiet offline banner: cached list + already-read bodies stay
-			     readable; server-backed actions degrade with clear affordances. -->
-					<div
-						v-if="isOffline"
-						class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
-						role="status"
+				<!-- Pane 2: thread/message list — the whole width below lg, and hidden
+			     entirely once a message is open (the reader takes over). -->
+				<section
+					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex-col bg-bg-surface"
+					:class="activeMessageId ? 'hidden lg:flex' : 'flex'"
+				>
+					<PostboxOfflineBanners
+						:is-offline="isOffline"
+						:queued-count="queuedSendCount"
+						:failed-count="failedSendCount"
+						@retry="() => void retryQueuedSends()"
+					/>
+					<header
+						class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2"
 					>
-						<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
-						<span class="truncate"
-							>Offline — showing recent mail from this device. Actions are paused.</span
-						>
-					</div>
-					<header class="border-b border-border-subtle px-4 py-3 flex items-center justify-between">
-						<h2 class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2">
-							{{ currentFolderName }}
-							<!-- Cold start from the device cache: a quiet "updating…" hint
+						<div class="flex items-center gap-2 min-w-0">
+							<!-- Drawer handle for the folder rail (mobile only). 44px square for
+							     the thumb; the negative margins keep it from growing the header
+							     past the height the 16px icon alone would give it. -->
+							<button
+								type="button"
+								class="lg:hidden -ml-2 -my-2 w-11 h-11 flex items-center justify-center flex-shrink-0 rounded text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+								:aria-label="t('components.postbox.postboxLayout.openFolders')"
+								@click="railOpen = true"
+							>
+								<Icon name="lucide:panel-left" class="w-4 h-4" />
+							</button>
+							<h2
+								class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2 min-w-0"
+							>
+								<span class="truncate">{{ currentFolderName }}</span>
+								<!-- Cold start from the device cache: a quiet "updating…" hint
 					     while the live query catches up. Live rows replace in place. -->
-							<!-- Suppressed while offline: the live query never settles, so a
+								<!-- Suppressed while offline: the live query never settles, so a
 					     permanent "updating…" would read as stuck — the offline banner
 					     already communicates the state. -->
-							<span
-								v-if="showingCached && !isOffline"
-								class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
-								>updating…</span
-							>
-						</h2>
+								<span
+									v-if="showingCached && !isOffline"
+									class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
+									>{{ t('components.postbox.postboxLayout.updating') }}</span
+								>
+							</h2>
+						</div>
 						<div v-if="folderRole === 'inbox'" class="flex items-center gap-2">
 							<!-- Back to the focused Today landing view (Esc / B do the same). -->
 							<button
@@ -305,22 +286,22 @@ const showReplyQueueStrip = computed(
 								type="button"
 								class="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
 								aria-keyshortcuts="Escape b"
-								title="Back to Today (Esc)"
+								:title="t('components.postbox.postboxLayout.backToTodayTitle')"
 								@click="switchInboxMode('today')"
 							>
-								Today
+								{{ t('common.today') }}
 								<kbd
 									class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
 									aria-hidden="true"
-									>esc</kbd
+									>{{ t('components.postbox.postboxLayout.escKey') }}</kbd
 								>
 							</button>
 							<!-- Labeled view-mode control — exactly one mode active; persisted
 					     per user. Inbox-only: other folders stay flat. -->
 							<UiSegmentedControl
 								size="sm"
-								aria-label="Inbox view"
-								:options="POSTBOX_VIEW_MODE_OPTIONS"
+								:aria-label="t('components.postbox.postboxLayout.inboxView')"
+								:options="viewModeOptions"
 								:model-value="viewMode"
 								@update:model-value="selectViewMode"
 							/>
@@ -334,31 +315,7 @@ const showReplyQueueStrip = computed(
 					<template v-else>
 						<!-- Compact "waiting on your reply" strip — inbox only, non-empty
 				     queue only, dismissible for the session. -->
-						<div
-							v-if="showReplyQueueStrip"
-							class="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-brand/5 text-sm"
-						>
-							<Icon name="lucide:reply" class="w-4 h-4 text-brand flex-shrink-0" />
-							<span class="flex-1 truncate text-text-secondary">
-								{{ replyQueueCount }} {{ replyQueueCount === 1 ? 'email is' : 'emails are' }}
-								waiting on your reply
-							</span>
-							<NuxtLink
-								to="/dashboard/postbox/reply-queue"
-								class="text-brand hover:underline flex-shrink-0"
-							>
-								Open queue
-							</NuxtLink>
-							<button
-								type="button"
-								class="p-0.5 rounded text-text-tertiary hover:text-text-primary flex-shrink-0"
-								title="Dismiss for this session"
-								aria-label="Dismiss reply queue reminder"
-								@click="replyQueueStripDismissed = true"
-							>
-								<Icon name="lucide:x" class="w-3.5 h-3.5" />
-							</button>
-						</div>
+						<PostboxReplyQueueStrip :mailbox-id="mailboxId" :folder-role="folderRole" />
 						<PostboxQuickActionsBar
 							v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
 							:mailbox-id="mailboxId"
@@ -411,8 +368,25 @@ const showReplyQueueStrip = computed(
 					</template>
 				</section>
 
-				<!-- Pane 3: reader -->
-				<section class="flex-1 overflow-auto bg-bg-base">
+				<!-- Pane 3: reader — below lg it replaces the list rather than sitting
+			     beside it, so the empty "Select a message" pane never shows there. -->
+				<section
+					class="flex-1 min-w-0 overflow-auto bg-bg-base"
+					:class="activeMessageId ? 'block' : 'hidden lg:block'"
+				>
+					<!-- Drill-in back navigation (mobile only; on lg the list is still
+				     on screen beside the reader). py-3 puts the full-width bar past
+				     the 44px touch target — it is the only way out of the reader. -->
+					<button
+						v-if="activeMessageId"
+						type="button"
+						class="lg:hidden sticky top-0 z-10 w-full flex items-center gap-1.5 border-b border-border-subtle bg-bg-base px-3 py-3 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+						@click="backToList"
+					>
+						<Icon name="lucide:arrow-left" class="w-4 h-4" />
+						<span class="capitalize truncate">{{ currentFolderName }}</span>
+					</button>
+
 					<Transition name="pbx-reader" mode="out-in">
 						<PostboxThreadReader
 							v-if="activeMessage"
@@ -424,7 +398,9 @@ const showReplyQueueStrip = computed(
 						<div v-else class="h-full flex items-center justify-center">
 							<div class="text-center">
 								<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-								<p class="mt-4 text-text-secondary">Select a message</p>
+								<p class="mt-4 text-text-secondary">
+									{{ t('components.postbox.postboxLayout.selectMessage') }}
+								</p>
 							</div>
 						</div>
 					</Transition>

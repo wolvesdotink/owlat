@@ -9,13 +9,23 @@
  * MOUNTED, NOT READ AS SOURCE. A binding constraint inside an HTML comment, or a
  * prop with no runtime effect, passes a substring check and fails a user.
  */
-import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { config, mount } from '@vue/test-utils';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import RampCellsGrid from '../RampCellsGrid.vue';
 import RampDecisionTimeline from '../RampDecisionTimeline.vue';
 import MeasurementGateList from '../MeasurementGateList.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { cellControl, DAY_MS, decision, NOW } from './rampFixtures';
 import { cellView, holdingGate } from './measurementFixtures';
+
+// The copy on these components flows through vue-i18n now; `useI18n` is a Nuxt
+// auto-import, so it has to exist as a bare global for their setup.
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	config.global.plugins = [...(config.global.plugins ?? []), createTestI18n()];
+});
+
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 function mountGrid(cells = [cellControl()]) {
 	return mount(RampCellsGrid, {
@@ -93,6 +103,7 @@ describe('cells drill-down', () => {
 				requiresCorroboration: cell.requiresCorroboration,
 				decisionWindowLabel: 'the last 24 hours',
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.findAll('li').length).toBe(cell.gates.length);
 		wrapper.unmount();
@@ -107,6 +118,7 @@ describe('cells drill-down', () => {
 				requiresCorroboration: false,
 				decisionWindowLabel: 'the last 24 hours',
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.text()).toContain('124');
 		expect(wrapper.text()).toContain('400');

@@ -12,11 +12,12 @@ defineProps<{
 	currentVersionId?: string;
 }>();
 
+const { t } = useI18n();
 </script>
 
 <template>
 	<div v-if="versions.length === 0" class="text-sm text-text-tertiary py-4">
-		No previous versions.
+		{{ t('components.files.versionHistory.empty') }}
 	</div>
 	<div v-else class="relative">
 		<!-- Timeline line -->
@@ -32,7 +33,7 @@ defineProps<{
 				<div
 					class="relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
 					:class="version._id === currentVersionId
-						? 'bg-brand text-white'
+						? 'bg-brand text-text-inverse'
 						: 'bg-bg-surface border border-border-subtle text-text-tertiary'"
 				>
 					<span class="text-xs font-semibold">{{ version.version ?? versions.length - index }}</span>
@@ -48,7 +49,7 @@ defineProps<{
 							v-if="version._id === currentVersionId"
 							class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-brand-subtle text-brand"
 						>
-							Current
+							{{ t('components.files.versionHistory.current') }}
 						</span>
 					</div>
 					<div class="flex items-center gap-2 mt-0.5">
@@ -68,7 +69,7 @@ defineProps<{
 					target="_blank"
 					rel="noopener noreferrer"
 					class="flex-shrink-0 p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-					title="Download this version"
+					:title="t('components.files.versionHistory.download')"
 					@click.stop
 				>
 					<Icon name="lucide:download" class="w-4 h-4" />

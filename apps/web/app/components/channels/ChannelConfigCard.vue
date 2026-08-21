@@ -10,7 +10,12 @@ interface ChannelConfig {
 	channel: ChannelKind;
 	isEnabled: boolean;
 	displayName?: string;
-	config?: string;
+	/**
+	 * Credential field names already stored — never the values. The encrypted
+	 * envelope itself stays in the backend (`getChannelConfigs` strips it); this
+	 * is all the config form needs to mark a credential as stored.
+	 */
+	configuredFields?: string[];
 	healthStatus?: ChannelHealthStatus;
 	lastHealthCheckAt?: number;
 	lastSuccessfulSend?: number;
@@ -18,6 +23,8 @@ interface ChannelConfig {
 	createdAt: number;
 	updatedAt: number;
 }
+
+const { t } = useI18n();
 
 const props = defineProps<{
 	channelConfig: ChannelConfig;
@@ -29,7 +36,7 @@ const emit = defineEmits<{
 }>();
 
 const { run: updateChannelConfig } = useBackendOperation(api.unifiedMessages.updateChannelConfig, {
-	label: 'Toggle channel',
+	label: () => t('components.channels.channelConfigCard.operations.toggleChannel'),
 });
 
 // Expand/collapse state
@@ -37,43 +44,43 @@ const isExpanded = ref(false);
 const isConfiguring = ref(false);
 const isTogglingEnabled = ref(false);
 
-// Channel metadata
+// Channel metadata. `label`/`description` hold MESSAGE KEYS, not copy — the
+// record is built once, so translating here would freeze the mount locale.
 const channelMeta: Record<string, { icon: string; label: string; description: string }> = {
 	email: {
 		icon: 'lucide:mail',
-		label: 'Email',
-		description: 'Send and receive emails via the built-in MTA.',
+		label: 'components.channels.channelConfigCard.channels.email.label',
+		description: 'components.channels.channelConfigCard.channels.email.description',
 	},
 	sms: {
 		icon: 'lucide:smartphone',
-		label: 'SMS',
-		description: 'Send text messages via Twilio or compatible providers.',
+		label: 'components.channels.channelConfigCard.channels.sms.label',
+		description: 'components.channels.channelConfigCard.channels.sms.description',
 	},
 	whatsapp: {
 		icon: 'lucide:message-circle',
-		label: 'WhatsApp',
-		description: 'Send messages via the WhatsApp Business API.',
+		label: 'components.channels.channelConfigCard.channels.whatsapp.label',
+		description: 'components.channels.channelConfigCard.channels.whatsapp.description',
 	},
 	generic: {
 		icon: 'lucide:webhook',
-		label: 'Generic webhook',
-		description: 'Receive inbound messages from any HTTP endpoint via a shared secret.',
+		label: 'components.channels.channelConfigCard.channels.generic.label',
+		description: 'components.channels.channelConfigCard.channels.generic.description',
 	},
 	chat: {
 		icon: 'lucide:message-square',
-		label: 'Chat',
-		description: 'Native in-app chat powered by the built-in messaging system.',
+		label: 'components.channels.channelConfigCard.channels.chat.label',
+		description: 'components.channels.channelConfigCard.channels.chat.description',
 	},
 };
 
-const meta = computed(
-	() =>
-		channelMeta[props.channelConfig.channel] ?? {
-			icon: 'lucide:radio',
-			label: props.channelConfig.channel,
-			description: '',
-		}
+const meta = computed(() => channelMeta[props.channelConfig.channel] ?? null);
+// An unknown channel keeps falling back to its raw backend name and no blurb.
+const metaIcon = computed(() => meta.value?.icon ?? 'lucide:radio');
+const metaLabel = computed(() =>
+	meta.value ? t(meta.value.label) : props.channelConfig.channel
 );
+const metaDescription = computed(() => (meta.value ? t(meta.value.description) : ''));
 
 // Health status helpers
 function getHealthDotClass(config: ChannelConfig): string {
@@ -90,16 +97,16 @@ function getHealthDotClass(config: ChannelConfig): string {
 }
 
 function getHealthLabel(config: ChannelConfig): string {
-	if (!config.isEnabled) return 'Disabled';
+	if (!config.isEnabled) return t('common.disabled');
 	switch (config.healthStatus) {
 		case 'degraded':
-			return 'Degraded';
+			return t('components.channels.channelConfigCard.health.degraded');
 		case 'down':
-			return 'Down';
+			return t('components.channels.channelConfigCard.health.down');
 		case 'healthy':
-			return 'Healthy';
+			return t('components.channels.channelConfigCard.health.healthy');
 		default:
-			return 'Unknown';
+			return t('common.unknown');
 	}
 }
 
@@ -151,20 +158,20 @@ function handleConfigCancelled() {
 					]"
 				>
 					<Icon
-						:name="meta.icon"
+						:name="metaIcon"
 						:class="['w-5 h-5', channelConfig.isEnabled ? 'text-brand' : 'text-text-tertiary']"
 					/>
 				</div>
 				<div class="min-w-0">
 					<div class="flex items-center gap-2.5">
 						<h3 class="text-base font-medium text-text-primary">
-							{{ channelConfig.displayName || meta.label }}
+							{{ channelConfig.displayName || metaLabel }}
 						</h3>
 						<UiBadge :variant="getHealthBadgeVariant(channelConfig)" dot>
 							{{ getHealthLabel(channelConfig) }}
 						</UiBadge>
 					</div>
-					<p class="text-sm text-text-tertiary mt-0.5">{{ meta.description }}</p>
+					<p class="text-sm text-text-tertiary mt-0.5">{{ metaDescription }}</p>
 				</div>
 			</div>
 
@@ -173,7 +180,11 @@ function handleConfigCancelled() {
 				<UiSwitch
 					:model-value="channelConfig.isEnabled"
 					:disabled="isTogglingEnabled"
-					:label="`Enable ${channelConfig.channel} channel`"
+					:label="
+						t('components.channels.channelConfigCard.toggleLabel', {
+							channel: channelConfig.channel,
+						})
+					"
 					@update:model-value="toggleEnabled"
 				/>
 			</div>
@@ -186,19 +197,25 @@ function handleConfigCancelled() {
 		>
 			<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
 				<div>
-					<p class="text-xs text-text-tertiary">Last Checked</p>
+					<p class="text-xs text-text-tertiary">
+						{{ t('components.channels.channelConfigCard.lastChecked') }}
+					</p>
 					<p class="text-sm text-text-secondary mt-0.5">
 						{{ formatCompactRelativeTime(channelConfig.lastHealthCheckAt) }}
 					</p>
 				</div>
 				<div>
-					<p class="text-xs text-text-tertiary">Last Successful Send</p>
+					<p class="text-xs text-text-tertiary">
+						{{ t('components.channels.channelConfigCard.lastSuccessfulSend') }}
+					</p>
 					<p class="text-sm text-text-secondary mt-0.5">
 						{{ formatCompactRelativeTime(channelConfig.lastSuccessfulSend) }}
 					</p>
 				</div>
 				<div v-if="channelConfig.lastError" class="col-span-2">
-					<p class="text-xs text-text-tertiary">Last Error</p>
+					<p class="text-xs text-text-tertiary">
+						{{ t('components.channels.channelConfigCard.lastError') }}
+					</p>
 					<p class="text-sm text-error mt-0.5 truncate" :title="channelConfig.lastError">
 						{{ channelConfig.lastError }}
 					</p>
@@ -209,14 +226,18 @@ function handleConfigCancelled() {
 		<!-- Expand/Collapse Button -->
 		<div class="mt-4 pt-4 border-t border-border-subtle flex items-center justify-between">
 			<div class="text-xs text-text-tertiary">
-				Updated {{ formatCompactRelativeTime(channelConfig.updatedAt) }}
+				{{
+					t('components.channels.channelConfigCard.updated', {
+						time: formatCompactRelativeTime(channelConfig.updatedAt),
+					})
+				}}
 			</div>
 			<button
 				class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
 				@click="isConfiguring = !isConfiguring"
 			>
 				<Icon name="lucide:settings" class="w-4 h-4" />
-				{{ isConfiguring ? 'Close' : 'Configure' }}
+				{{ isConfiguring ? t('common.close') : t('components.channels.channelConfigCard.configure') }}
 				<Icon
 					name="lucide:chevron-down"
 					:class="['w-4 h-4 transition-transform', isConfiguring ? 'rotate-180' : '']"
@@ -229,7 +250,7 @@ function handleConfigCancelled() {
 			<div v-if="isConfiguring" class="mt-4 pt-4 border-t border-border-subtle">
 				<ChannelsChannelConfigForm
 					:channel="channelConfig.channel"
-					:current-config="channelConfig.config ?? null"
+					:stored-fields="channelConfig.configuredFields ?? []"
 					:display-name="channelConfig.displayName ?? ''"
 					@saved="handleConfigSaved"
 					@cancelled="handleConfigCancelled"

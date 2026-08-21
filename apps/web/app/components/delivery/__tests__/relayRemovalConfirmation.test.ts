@@ -19,6 +19,7 @@ import IndependencePage from '~/pages/dashboard/admin/delivery/advanced/independ
 import IndependenceTrendChart from '../IndependenceTrendChart.vue';
 import RampConfirmDialog from '../RampConfirmDialog.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { DAY_MS, NOW, independenceSummary } from './rampFixtures';
 import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
 
@@ -58,6 +59,7 @@ describe('relay removal safety', () => {
 const data: Ref<IndependenceSummary | undefined> = ref(undefined);
 
 beforeEach(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	data.value = independenceSummary();
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
@@ -75,6 +77,7 @@ const passthroughCard = { template: '<div><slot /></div>' };
 function mountPage() {
 	return mount(IndependencePage, {
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiIconBox: true,
 				Icon: true,

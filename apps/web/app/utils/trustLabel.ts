@@ -23,14 +23,22 @@
 export type TrustLevel = 'ready' | 'look' | 'needs-you';
 export type TrustVariant = 'success' | 'warning' | 'error';
 
+/**
+ * A message the renderer translates. This vocabulary is a module-scope registry,
+ * so it never calls `useI18n`: every human-facing field carries an i18n KEY, and
+ * a parameterized one carries `{ key, params }` (see the localization guide).
+ */
+export type TrustMessage = string | { key: string; params?: Record<string, unknown> };
+
 export interface TrustLabel {
 	level: TrustLevel;
-	label: 'Ready to send' | 'Worth a look' | 'Needs you';
+	/** i18n key — "Ready to send" / "Worth a look" / "Needs you". */
+	label: string;
 	variant: TrustVariant;
 	/** Plain-language reasons a reviewer should know — never raw flag strings. */
-	reasons: string[];
+	reasons: TrustMessage[];
 	/** Quiet power-user detail for the popover footer, e.g. "Agent confidence 62%". */
-	detail: string;
+	detail: TrustMessage;
 }
 
 /** At or above this self-check score (with no flags) the draft reads "Ready to send". */
@@ -50,55 +58,54 @@ export const TRUST_LOOK_MIN = 0.6;
 export const TRUST_FLAG_COPY: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
 	{
 		pattern: /price|pricing|cost|quote|discount|fee\b|fees\b|amount|figure|\$|€|£/i,
-		reason: "Mentions a price or number I couldn't verify",
+		reason: 'shared.trustLabel.reasons.price',
 	},
 	{
 		pattern:
 			/invent|made.?up|fabricat|hallucinat|ungrounded|not grounded|no source|unverifi|unsupported|not (in|from) the (context|thread|email|conversation)|could ?n[o']?t verify/i,
-		reason: "States something I couldn't trace back to the conversation",
+		reason: 'shared.trustLabel.reasons.ungrounded',
 	},
 	{
 		pattern: /commit|promis|guarantee|agree(s|d)? to|obligat|on your behalf/i,
-		reason: 'Makes a commitment on your behalf',
+		reason: 'shared.trustLabel.reasons.commitment',
 	},
 	{
 		pattern: /polic(y|ies)|terms|legal|refund|warranty|contract/i,
-		reason: 'References a policy or terms worth double-checking',
+		reason: 'shared.trustLabel.reasons.policy',
 	},
 	{
 		pattern: /date|deadline|schedul|appointment|time(line|frame)?\b/i,
-		reason: 'Mentions a date or time worth confirming',
+		reason: 'shared.trustLabel.reasons.date',
 	},
 	{
 		pattern:
 			/tone|rude|curt|harsh|abrupt|blunt|cold|aggressive|dismissive|impolite|unfriendly|too (formal|informal|casual)/i,
-		reason: 'Tone reads harsher than your usual replies',
+		reason: 'shared.trustLabel.reasons.tone',
 	},
 	{
 		pattern:
 			/incomplete|not complete|missing|missed|does ?n[o']?t (answer|address|respond)|unanswered|ignores|skipped|left out|partial/i,
-		reason: 'May not answer everything they asked',
+		reason: 'shared.trustLabel.reasons.incomplete',
 	},
 	{
 		pattern: /ambigu|vague|unclear|confusing|misread|open to interpretation|non.?committal/i,
-		reason: 'Part of the reply is vague and could be misread',
+		reason: 'shared.trustLabel.reasons.vague',
 	},
 	{
 		pattern: /\bname\b|greeting|recipient|wrong person|salutation|addressee/i,
-		reason: 'Double-check names and who the reply addresses',
+		reason: 'shared.trustLabel.reasons.recipient',
 	},
 	{
 		pattern: /attach|\blink\b|\burl\b|\bfile\b/i,
-		reason: 'Mentions an attachment or link that may be missing',
+		reason: 'shared.trustLabel.reasons.attachment',
 	},
 ];
 
 /** Fallback for a flag the copy table doesn't recognize — never the raw string. */
-export const TRUST_GENERIC_REASON = 'Something else looked off — worth a skim before you send';
+export const TRUST_GENERIC_REASON = 'shared.trustLabel.reasons.generic';
 
 /** Shown when the self-check itself failed (previously the "Unverified" badge). */
-export const TRUST_UNCHECKED_REASON =
-	"I couldn't run my usual checks on this draft, so please read it closely";
+export const TRUST_UNCHECKED_REASON = 'shared.trustLabel.reasons.unchecked';
 
 /** Translate ONE self-check flag into plain language (generic on no match). */
 export function trustFlagReason(flag: string): string {
@@ -109,12 +116,12 @@ export function trustFlagReason(flag: string): string {
 }
 
 const LABELS: Record<TrustLevel, { label: TrustLabel['label']; variant: TrustVariant }> = {
-	ready: { label: 'Ready to send', variant: 'success' },
-	look: { label: 'Worth a look', variant: 'warning' },
-	'needs-you': { label: 'Needs you', variant: 'error' },
+	ready: { label: 'shared.trustLabel.labels.ready', variant: 'success' },
+	look: { label: 'shared.trustLabel.labels.look', variant: 'warning' },
+	'needs-you': { label: 'shared.trustLabel.labels.needsYou', variant: 'error' },
 };
 
-function build(level: TrustLevel, reasons: string[], detail: string): TrustLabel {
+function build(level: TrustLevel, reasons: TrustMessage[], detail: TrustMessage): TrustLabel {
 	const { label, variant } = LABELS[level];
 	return { level, label, variant, reasons, detail };
 }
@@ -141,28 +148,33 @@ export function trustLabel(
 	];
 
 	if (confidence === null || confidence === undefined) {
-		return build('needs-you', [TRUST_UNCHECKED_REASON, ...reasons], 'Agent confidence unavailable');
+		return build(
+			'needs-you',
+			[TRUST_UNCHECKED_REASON, ...reasons],
+			'shared.trustLabel.detail.unavailable'
+		);
 	}
 
-	const detail = `Agent confidence ${Math.round(confidence * 100)}%`;
+	const detail: TrustMessage = {
+		key: 'shared.trustLabel.detail.confidence',
+		params: { percent: Math.round(confidence * 100) },
+	};
 
 	if (confidence < TRUST_LOOK_MIN) {
 		return build(
 			'needs-you',
-			reasons.length > 0
-				? reasons
-				: ['The agent is not confident in this draft — please read it before it goes out'],
+			reasons.length > 0 ? reasons : ['shared.trustLabel.reasons.lowConfidence'],
 			detail
 		);
 	}
 	if (confidence < TRUST_READY_MIN || reasons.length > 0) {
 		return build(
 			'look',
-			reasons.length > 0 ? reasons : ['A quick read is worth it before this goes out'],
+			reasons.length > 0 ? reasons : ['shared.trustLabel.reasons.quickRead'],
 			detail
 		);
 	}
-	return build('ready', ['Nothing stood out — the reply looks complete and accurate'], detail);
+	return build('ready', ['shared.trustLabel.reasons.nothingStoodOut'], detail);
 }
 
 /**
@@ -174,7 +186,7 @@ export function trustLabel(
 export function escalationTrustLabel(): TrustLabel {
 	return build(
 		'needs-you',
-		['The agent held this for you instead of answering on its own'],
-		'No agent draft'
+		['shared.trustLabel.reasons.escalation'],
+		'shared.trustLabel.detail.noDraft'
 	);
 }

@@ -4,10 +4,22 @@ import {
 	BACKUPS_STEP,
 	INSTANCE_STEPS,
 	READY_TO_SEND_STEP,
+	SEND_BLOCKED_REASON,
+	SEND_BLOCKED_STEP_IDS,
+	sentCampaignDescription,
 	type GettingStartedInput,
+	type GettingStartedMessage,
 	type InstanceFlagId,
 } from '../gettingStarted';
 import { CHECKLIST_STEPS, visibleChecklistSteps, type ChecklistStepId } from '../welcomeFlow';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The model is a pure derivation, so every step's words arrive as a message key
+// (the sending headroom as its interpolation); the copy a member reads is
+// resolved through the real catalog.
+const { t } = createTestI18n().global;
+const say = (value: GettingStartedMessage) =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 const NO_FLAGS: Record<InstanceFlagId, boolean> = {
 	sendPathReady: false,
@@ -30,8 +42,16 @@ function input(overrides: Partial<GettingStartedInput> = {}): GettingStartedInpu
 		showBackupsStep: false,
 		userDismissed: false,
 		personalCompleted: new Set<ChecklistStepId>(),
+		// Default to a sendable instance; the blocked-step cases opt out explicitly.
+		sendPathReady: true,
+		// Default to "no cap to quote"; the readiness cases supply one.
+		sendCapacityToday: null,
 		...overrides,
 	};
+}
+
+function personalStep(model: ReturnType<typeof buildGettingStarted>, id: ChecklistStepId) {
+	return model.sections.find((s) => s.id === 'personal')?.steps.find((step) => step.id === id);
 }
 
 function sectionIds(model: ReturnType<typeof buildGettingStarted>): string[] {
@@ -216,5 +236,93 @@ describe('no step present in the old three surfaces is lost', () => {
 				'sendingSwitched',
 			].sort()
 		);
+	});
+});
+
+describe('the send steps block and unblock with the instance transport', () => {
+	it('marks the first-send step blocked while the instance cannot send', () => {
+		const model = buildGettingStarted(input({ sendPathReady: false }));
+		const step = personalStep(model, 'firstSendDone');
+		expect(step?.blocked).toBe(true);
+		expect(step?.blockedReason).toBe(SEND_BLOCKED_REASON);
+		// Blocked is not done: the step still counts as outstanding work.
+		expect(step?.completed).toBe(false);
+		expect(model.completedCount).toBe(0);
+	});
+
+	it('blocks the migration sending switch too, and nothing else', () => {
+		const model = buildGettingStarted(input({ mode: 'migration', sendPathReady: false }));
+		const blocked = model.sections
+			.flatMap((s) => s.steps)
+			.filter((step) => step.blocked)
+			.map((step) => step.id);
+		expect(blocked.sort()).toEqual([...SEND_BLOCKED_STEP_IDS].sort());
+	});
+
+	it('unblocks every send step the moment the transport is ready', () => {
+		const model = buildGettingStarted(input({ mode: 'migration', sendPathReady: true }));
+		expect(model.sections.flatMap((s) => s.steps).some((step) => step.blocked)).toBe(false);
+		expect(personalStep(model, 'firstSendDone')?.blockedReason).toBeUndefined();
+	});
+
+	it('never blocks a step the member already completed', () => {
+		const model = buildGettingStarted(
+			input({
+				sendPathReady: false,
+				personalCompleted: new Set<ChecklistStepId>(['firstSendDone']),
+			})
+		);
+		const step = personalStep(model, 'firstSendDone');
+		expect(step?.completed).toBe(true);
+		expect(step?.blocked).toBeUndefined();
+	});
+});
+
+describe("the send-a-campaign step carries today's sending headroom", () => {
+	function campaignStep(model: ReturnType<typeof buildGettingStarted>) {
+		return model.sections
+			.find((s) => s.id === 'instance')
+			?.steps.find((step) => step.id === 'sentCampaign');
+	}
+
+	it('quotes the measured capacity so the ramp is met before a campaign is built', () => {
+		const model = buildGettingStarted(input({ role: 'admin', sendCapacityToday: 1200 }));
+		const description = campaignStep(model)?.description;
+		expect(description === undefined ? '' : say(description)).toContain(
+			'About 1,200 contacts can be reached today'
+		);
+	});
+
+	it('says the day is spent rather than quoting "about 0 contacts"', () => {
+		const model = buildGettingStarted(input({ role: 'admin', sendCapacityToday: 0 }));
+		const message = campaignStep(model)?.description;
+		const description = message === undefined ? '' : say(message);
+		expect(description).toContain('used up');
+		expect(description).not.toContain('About 0');
+		// Never a dead end: scheduling is still the thing to do.
+		expect(description).toContain('schedule');
+	});
+
+	it('invents nothing when capacity is unmeasured or uncapped', () => {
+		const model = buildGettingStarted(input({ role: 'admin', sendCapacityToday: null }));
+		const description = campaignStep(model)?.description;
+		expect(description === undefined ? '' : say(description)).toBe(
+			'Send your first email campaign to your audience.'
+		);
+	});
+
+	it('leaves every other instance step untouched', () => {
+		const model = buildGettingStarted(input({ role: 'admin', sendCapacityToday: 500 }));
+		const others = model.sections
+			.find((s) => s.id === 'instance')
+			?.steps.filter((step) => step.id !== 'sentCampaign');
+		expect(others?.some((step) => say(step.description).includes('500'))).toBe(false);
+	});
+
+	it('is pure: the same input always yields the same sentence', () => {
+		expect(say(sentCampaignDescription(null))).toBe(
+			'Send your first email campaign to your audience.'
+		);
+		expect(say(sentCampaignDescription(1))).toContain('About 1 contact can be reached today');
 	});
 });

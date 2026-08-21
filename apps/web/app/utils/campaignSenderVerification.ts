@@ -13,6 +13,9 @@
  * Pure and framework-free so it is unit-tested directly.
  */
 
+/** Message-key root for this module; see `i18n/locales/en.json`. */
+const K = 'shared.campaignSenderVerification';
+
 /**
  * Structural subset of the backend's `EmailDomainVerificationStatus`
  * (`convex/domains/domains.ts`) — only the fields this advisory reads. Declared
@@ -27,9 +30,17 @@ export interface SenderDomainStatus {
 
 export type SenderVerificationTone = 'neutral' | 'success' | 'warning';
 
+/**
+ * Advisory copy carries message KEYS, never sentences: this module is
+ * framework-free, so it cannot call `useI18n`. Copy that names the domain
+ * travels as its key plus that value, and the modal that renders it translates
+ * (`t(value)` / `t(value.key, value.params)`).
+ */
+export type SenderVerificationMessage = string | { key: string; params?: Record<string, unknown> };
+
 export interface SenderVerification {
 	tone: SenderVerificationTone;
-	message: string;
+	message: SenderVerificationMessage;
 	/** Whether the address may be added — false blocks the modal's submit. */
 	canAdd: boolean;
 	/** True when the copy should offer a link to Settings → Domains. */
@@ -54,7 +65,7 @@ export function mapSenderVerification(
 	if (!hasValidEmail) {
 		return {
 			tone: 'neutral',
-			message: 'Enter an address on one of your verified sending domains.',
+			message: `${K}.enterAddress`,
 			canAdd: false,
 			showDomainsLink: false,
 		};
@@ -62,7 +73,7 @@ export function mapSenderVerification(
 	if (checkFailed) {
 		return {
 			tone: 'warning',
-			message: "Couldn't check this domain — clear the field and try again.",
+			message: `${K}.checkFailed`,
 			canAdd: false,
 			showDomainsLink: false,
 		};
@@ -70,7 +81,7 @@ export function mapSenderVerification(
 	if (!status) {
 		return {
 			tone: 'neutral',
-			message: 'Checking this domain…',
+			message: `${K}.checking`,
 			canAdd: false,
 			showDomainsLink: false,
 		};
@@ -78,7 +89,7 @@ export function mapSenderVerification(
 	if (!status.exists) {
 		return {
 			tone: 'warning',
-			message: `"${status.domain}" isn't set up for sending yet. Add and verify it before using it as a campaign sender.`,
+			message: { key: `${K}.domainMissing`, params: { domain: status.domain } },
 			canAdd: false,
 			showDomainsLink: true,
 		};
@@ -86,14 +97,14 @@ export function mapSenderVerification(
 	if (!status.verified) {
 		return {
 			tone: 'warning',
-			message: `"${status.domain}" isn't verified yet. Finish DNS verification before using it as a campaign sender.`,
+			message: { key: `${K}.domainUnverified`, params: { domain: status.domain } },
 			canAdd: false,
 			showDomainsLink: true,
 		};
 	}
 	return {
 		tone: 'success',
-		message: `"${status.domain}" is verified — you can add this sender.`,
+		message: { key: `${K}.domainVerified`, params: { domain: status.domain } },
 		canAdd: true,
 		showDomainsLink: false,
 	};

@@ -27,9 +27,18 @@ function handleSelect(type: BlockType, afterBlockId: string) {
 </script>
 
 <template>
+	<!--
+		Pointer-only affordance: it trails the block it belongs to (inside that
+		block's list item, so it is never a stray child of the canvas list), is
+		invisible until hover, and every insertion it offers is also reachable
+		from the keyboard (quick-insert sidebar, slash menu, Enter after the
+		selected block). Exposing it would put an unnamed, invisible tab stop
+		between every pair of blocks, so it stays out of the accessibility tree.
+	-->
 	<div
 		v-if="!isDragging"
 		class="relative h-2 group/insert"
+		aria-hidden="true"
 		@mouseenter="isHovered = true"
 		@mouseleave="isHovered = false"
 	>
@@ -53,6 +62,8 @@ function handleSelect(type: BlockType, afterBlockId: string) {
 					: 'border-brand/40 text-brand/60 hover:bg-brand hover:text-white hover:border-brand',
 			]"
 			type="button"
+			tabindex="-1"
+			title="Insert block here"
 			@click.stop="showPicker = !showPicker"
 		>
 			<Plus :size="12" :stroke-width="2.5" />

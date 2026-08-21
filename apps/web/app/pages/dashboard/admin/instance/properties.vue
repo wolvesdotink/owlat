@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Contact Properties — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.properties.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -23,13 +25,13 @@ const isLoading = computed(() => teamLoading.value || propertiesLoading.value);
 
 // Mutations
 const { run: createProperty } = useBackendOperation(api.contacts.properties.create, {
-	label: 'Create property',
+	label: () => t('dashboard.admin.instance.properties.operations.create'),
 });
 const { run: updateProperty } = useBackendOperation(api.contacts.properties.update, {
-	label: 'Update property',
+	label: () => t('dashboard.admin.instance.properties.operations.update'),
 });
 const { run: removeProperty } = useBackendOperation(api.contacts.properties.remove, {
-	label: 'Delete property',
+	label: () => t('dashboard.admin.instance.properties.operations.remove'),
 });
 
 // Convex client for one-time queries
@@ -82,17 +84,42 @@ const openDropdown = ref<Id<'contactProperties'> | null>(null);
 // Toast notification using global composable
 const { showToast } = useToast();
 
-// Property types with icons and labels
+/**
+ * Property types with icons and labels. `label` / `description` hold MESSAGE
+ * KEYS, not words: the table is module scope (it types `createForm.type`), so it
+ * never calls `useI18n` — the template below is the render boundary that turns
+ * each key into words.
+ */
 const propertyTypes = [
-	{ value: 'string', label: 'Text', icon: 'lucide:type', description: 'Single line text' },
-	{ value: 'number', label: 'Number', icon: 'lucide:hash', description: 'Numeric values' },
-	{ value: 'boolean', label: 'Boolean', icon: 'lucide:toggle-left', description: 'True or false' },
-	{ value: 'date', label: 'Date', icon: 'lucide:calendar', description: 'Date values' },
+	{
+		value: 'string',
+		label: 'dashboard.admin.instance.properties.types.string.label',
+		icon: 'lucide:type',
+		description: 'dashboard.admin.instance.properties.types.string.description',
+	},
+	{
+		value: 'number',
+		label: 'dashboard.admin.instance.properties.types.number.label',
+		icon: 'lucide:hash',
+		description: 'dashboard.admin.instance.properties.types.number.description',
+	},
+	{
+		value: 'boolean',
+		label: 'dashboard.admin.instance.properties.types.boolean.label',
+		icon: 'lucide:toggle-left',
+		description: 'dashboard.admin.instance.properties.types.boolean.description',
+	},
+	{
+		value: 'date',
+		label: 'dashboard.admin.instance.properties.types.date.label',
+		icon: 'lucide:calendar',
+		description: 'dashboard.admin.instance.properties.types.date.description',
+	},
 ] as const;
 
 // Get type info
 const getTypeInfo = (type: string) => {
-	return propertyTypes.find((t) => t.value === type) || propertyTypes[0];
+	return propertyTypes.find((entry) => entry.value === type) || propertyTypes[0];
 };
 
 // Generate key from label
@@ -120,15 +147,15 @@ const validateCreateForm = (): boolean => {
 	let isValid = true;
 
 	if (!createForm.label.trim()) {
-		createFormErrors.label = 'Label is required';
+		createFormErrors.label = t('dashboard.admin.instance.properties.errors.labelRequired');
 		isValid = false;
 	}
 
 	if (!createForm.key.trim()) {
-		createFormErrors.key = 'Key is required';
+		createFormErrors.key = t('dashboard.admin.instance.properties.errors.keyRequired');
 		isValid = false;
 	} else if (!/^[a-z0-9_]+$/.test(createForm.key)) {
-		createFormErrors.key = 'Key must contain only lowercase letters, numbers, and underscores';
+		createFormErrors.key = t('dashboard.admin.instance.properties.errors.keyFormat');
 		isValid = false;
 	}
 
@@ -140,7 +167,7 @@ const validateEditForm = (): boolean => {
 	editFormErrors.label = '';
 
 	if (!editForm.label.trim()) {
-		editFormErrors.label = 'Label is required';
+		editFormErrors.label = t('dashboard.admin.instance.properties.errors.labelRequired');
 		return false;
 	}
 
@@ -163,7 +190,9 @@ const handleCreate = async () => {
 
 	if (result === undefined) return;
 
-	showToast(`Property "${createForm.label}" created`);
+	showToast(
+		t('dashboard.admin.instance.properties.toasts.created', { label: createForm.label })
+	);
 	closeCreateModal();
 };
 
@@ -182,7 +211,7 @@ const handleEdit = async () => {
 
 	if (result === undefined) return;
 
-	showToast('Property updated');
+	showToast(t('dashboard.admin.instance.properties.toasts.updated'));
 	isEditModalOpen.value = false;
 	editingProperty.value = null;
 };
@@ -239,7 +268,11 @@ const handleDelete = async () => {
 
 	if (result === undefined) return;
 
-	showToast(`Property "${propertyToDelete.value.label}" deleted`);
+	showToast(
+		t('dashboard.admin.instance.properties.toasts.deleted', {
+			label: propertyToDelete.value.label,
+		})
+	);
 	propertyToDelete.value = null;
 };
 
@@ -258,18 +291,22 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Settings
+				{{ t('dashboard.admin.instance.properties.backToSettings') }}
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Contact Properties</h1>
-					<p class="mt-1 text-text-secondary">Create and manage custom fields for your contacts</p>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.instance.properties.title') }}
+					</h1>
+					<p class="mt-1 text-text-secondary">
+						{{ t('dashboard.admin.instance.properties.subtitle') }}
+					</p>
 				</div>
 				<UiButton @click="openCreateModal()">
 					<template #iconLeft>
 						<Icon name="lucide:plus" class="w-4 h-4" />
 					</template>
-					New Property
+					{{ t('dashboard.admin.instance.properties.newProperty') }}
 				</UiButton>
 			</div>
 		</div>
@@ -277,15 +314,15 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 		<UiQueryBoundary
 			:loading="isLoading && !propertiesData"
 			:error="propertiesError"
-			error-title="Couldn't load properties"
-			loading-label="Loading properties..."
+			:error-title="t('dashboard.admin.instance.properties.errorTitle')"
+			:loading-label="t('dashboard.admin.instance.properties.loading')"
 		>
 			<!-- No Team State -->
 			<UiCard v-if="!hasActiveOrganization">
 				<UiEmptyState
 					icon="lucide:tags"
-					title="No team selected"
-					description="Create or select a team to manage contact properties."
+					:title="t('dashboard.admin.instance.properties.noTeamTitle')"
+					:description="t('dashboard.admin.instance.properties.noTeamBody')"
 				/>
 			</UiCard>
 
@@ -297,10 +334,16 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 						<div class="flex items-center gap-3">
 							<UiIconBox icon="lucide:tags" size="sm" variant="surface" rounded="lg" />
 							<div>
-								<h2 class="text-lg font-semibold text-text-primary">Properties</h2>
+								<h2 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.admin.instance.properties.cardTitle') }}
+								</h2>
 								<p class="text-sm text-text-secondary">
-									{{ propertiesData?.length || 0 }} custom field{{
-										(propertiesData?.length || 0) !== 1 ? 's' : ''
+									{{
+										t(
+											'dashboard.admin.instance.properties.customFieldCount',
+											{ count: propertiesData?.length || 0 },
+											propertiesData?.length || 0
+										)
 									}}
 								</p>
 							</div>
@@ -311,8 +354,8 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 					<UiEmptyState
 						v-if="!propertiesData || propertiesData.length === 0"
 						icon="lucide:tags"
-						title="No properties yet"
-						description="Create custom properties to store additional information about your contacts."
+						:title="t('dashboard.admin.instance.properties.emptyTitle')"
+						:description="t('dashboard.admin.instance.properties.emptyBody')"
 						class="py-12"
 					>
 						<template #action>
@@ -320,7 +363,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 								<template #iconLeft>
 									<Icon name="lucide:plus" class="w-4 h-4" />
 								</template>
-								Create First Property
+								{{ t('dashboard.admin.instance.properties.createFirst') }}
 							</UiButton>
 						</template>
 					</UiEmptyState>
@@ -348,7 +391,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 										<span
 											class="px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary border border-border-subtle"
 										>
-											{{ getTypeInfo(property.type).label }}
+											{{ t(getTypeInfo(property.type).label) }}
 										</span>
 									</div>
 									<p class="text-sm text-text-tertiary font-mono">{{ property.key }}</p>
@@ -376,14 +419,14 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 											@click="openEditModal(property)"
 										>
 											<Icon name="lucide:pencil" class="w-4 h-4 text-text-tertiary" />
-											Edit
+											{{ t('common.edit') }}
 										</button>
 										<button
 											class="w-full px-4 py-2 text-left text-sm text-error hover:bg-bg-surface flex items-center gap-2"
 											@click="openDeleteModal(property)"
 										>
 											<Icon name="lucide:trash-2" class="w-4 h-4" />
-											Delete
+											{{ t('common.delete') }}
 										</button>
 									</div>
 								</Transition>
@@ -394,15 +437,17 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 
 				<!-- Info Card -->
 				<UiCard>
-					<h3 class="text-sm font-medium text-text-primary mb-4">Property Types</h3>
+					<h3 class="text-sm font-medium text-text-primary mb-4">
+						{{ t('dashboard.admin.instance.properties.typesTitle') }}
+					</h3>
 					<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 						<div v-for="type in propertyTypes" :key="type.value" class="flex items-start gap-3">
 							<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
 								<Icon :name="type.icon" class="w-4 h-4 text-text-secondary" />
 							</div>
 							<div>
-								<p class="font-medium text-text-primary text-sm">{{ type.label }}</p>
-								<p class="text-xs text-text-secondary mt-0.5">{{ type.description }}</p>
+								<p class="font-medium text-text-primary text-sm">{{ t(type.label) }}</p>
+								<p class="text-xs text-text-secondary mt-0.5">{{ t(type.description) }}</p>
 							</div>
 						</div>
 					</div>
@@ -411,20 +456,23 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 		</UiQueryBoundary>
 
 		<!-- Create Property Modal -->
-		<UiModal v-model:open="isCreateModalOpen" title="New Property">
+		<UiModal
+			v-model:open="isCreateModalOpen"
+			:title="t('dashboard.admin.instance.properties.createModal.title')"
+		>
 			<form @submit.prevent="handleCreate">
 				<div class="space-y-4">
 					<!-- Label -->
 					<UiInput
 						v-model="createForm.label"
-						label="Label"
-						placeholder="e.g., Company Name"
+						:label="t('dashboard.admin.instance.properties.fields.label')"
+						:placeholder="t('dashboard.admin.instance.properties.fields.labelPlaceholder')"
 						:error="createFormErrors.label"
 						:disabled="isCreating"
 						:required="true"
 						:help-text="
 							!createFormErrors.label
-								? 'Display name shown in forms and contact details.'
+								? t('dashboard.admin.instance.properties.fields.labelHelp')
 								: undefined
 						"
 					/>
@@ -433,23 +481,34 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 					<div>
 						<UiInput
 							v-model="createForm.key"
-							label="Key"
-							placeholder="e.g., company_name"
+							:label="t('dashboard.admin.instance.properties.fields.key')"
+							:placeholder="t('dashboard.admin.instance.properties.fields.keyPlaceholder')"
 							:error="createFormErrors.key"
 							:disabled="isCreating"
 							:required="true"
 						/>
-						<p v-if="!createFormErrors.key" class="mt-1 text-xs text-text-tertiary">
-							Used in API and email templates as
-							<code class="px-1 py-0.5 rounded bg-bg-surface text-text-primary"
-								>&#123;&#123;{{ createForm.key || 'key' }}&#125;&#125;</code
-							>
-						</p>
+						<I18nT
+							v-if="!createFormErrors.key"
+							keypath="dashboard.admin.instance.properties.fields.keyHelp"
+							tag="p"
+							scope="global"
+							class="mt-1 text-xs text-text-tertiary"
+						>
+							<template #token>
+								<code class="px-1 py-0.5 rounded bg-bg-surface text-text-primary"
+									>&#123;&#123;{{
+										createForm.key || t('dashboard.admin.instance.properties.fields.keyFallback')
+									}}&#125;&#125;</code
+								>
+							</template>
+						</I18nT>
 					</div>
 
 					<!-- Type -->
 					<div>
-						<label class="label">Type</label>
+						<label class="label">{{
+							t('dashboard.admin.instance.properties.fields.type')
+						}}</label>
 						<div class="grid grid-cols-2 gap-3">
 							<button
 								v-for="type in propertyTypes"
@@ -466,9 +525,9 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 							>
 								<div class="flex items-center gap-2 mb-1">
 									<Icon :name="type.icon" class="w-4 h-4 text-text-secondary" />
-									<span class="font-medium text-text-primary text-sm">{{ type.label }}</span>
+									<span class="font-medium text-text-primary text-sm">{{ t(type.label) }}</span>
 								</div>
-								<p class="text-xs text-text-secondary">{{ type.description }}</p>
+								<p class="text-xs text-text-secondary">{{ t(type.description) }}</p>
 							</button>
 						</div>
 					</div>
@@ -477,19 +536,26 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isCreating" @click="closeCreateModal()">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton :loading="isCreating" @click="handleCreate">
 					<template #iconLeft>
 						<Icon v-if="!isCreating" name="lucide:plus" class="w-4 h-4" />
 					</template>
-					{{ isCreating ? 'Creating...' : 'Create Property' }}
+					{{
+						isCreating
+							? t('dashboard.admin.instance.properties.createModal.creating')
+							: t('dashboard.admin.instance.properties.createModal.create')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
 
 		<!-- Edit Property Modal -->
-		<UiModal v-model:open="isEditModalOpen" title="Edit Property">
+		<UiModal
+			v-model:open="isEditModalOpen"
+			:title="t('dashboard.admin.instance.properties.editModal.title')"
+		>
 			<div class="space-y-4">
 				<!-- Property Info (Read-only) -->
 				<div
@@ -504,20 +570,22 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 							/>
 						</div>
 						<div>
-							<p class="text-sm text-text-tertiary">Key</p>
+							<p class="text-sm text-text-tertiary">
+								{{ t('dashboard.admin.instance.properties.fields.key') }}
+							</p>
 							<p class="font-mono text-text-primary">{{ editingProperty.key }}</p>
 						</div>
 					</div>
 					<p class="mt-3 text-xs text-text-tertiary">
-						Key and type cannot be changed after creation.
+						{{ t('dashboard.admin.instance.properties.editModal.immutable') }}
 					</p>
 				</div>
 
 				<!-- Label -->
 				<UiInput
 					v-model="editForm.label"
-					label="Label"
-					placeholder="e.g., Company Name"
+					:label="t('dashboard.admin.instance.properties.fields.label')"
+					:placeholder="t('dashboard.admin.instance.properties.fields.labelPlaceholder')"
 					:error="editFormErrors.label"
 					:disabled="isEditing"
 					:required="true"
@@ -526,13 +594,17 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isEditing" @click="isEditModalOpen = false">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton :loading="isEditing" @click="handleEdit">
 					<template #iconLeft>
 						<Icon v-if="!isEditing" name="lucide:check" class="w-4 h-4" />
 					</template>
-					{{ isEditing ? 'Saving...' : 'Save Changes' }}
+					{{
+						isEditing
+							? t('dashboard.admin.instance.properties.editModal.saving')
+							: t('dashboard.admin.instance.properties.editModal.save')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -540,15 +612,21 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 		<!-- Delete Property Modal -->
 		<UiModal
 			:open="!!propertyToDelete"
-			title="Delete Property"
+			:title="t('dashboard.admin.instance.properties.deleteModal.title')"
 			@update:open="(v: boolean) => !v && (propertyToDelete = null)"
 		>
-			<p class="text-text-secondary">
-				Are you sure you want to delete the property
-				<span v-if="propertyToDelete" class="font-medium text-text-primary"
-					>"{{ propertyToDelete.label }}"</span
-				>?
-			</p>
+			<I18nT
+				keypath="dashboard.admin.instance.properties.deleteModal.question"
+				tag="p"
+				scope="global"
+				class="text-text-secondary"
+			>
+				<template #name>
+					<span v-if="propertyToDelete" class="font-medium text-text-primary"
+						>"{{ propertyToDelete.label }}"</span
+					>
+				</template>
+			</I18nT>
 
 			<!-- Warning about data -->
 			<div
@@ -556,7 +634,9 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 				class="mt-4 p-4 rounded-xl bg-bg-surface border border-border-subtle flex items-center gap-3"
 			>
 				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin text-text-tertiary" />
-				<span class="text-sm text-text-tertiary">Checking usage...</span>
+				<span class="text-sm text-text-tertiary">
+					{{ t('dashboard.admin.instance.properties.deleteModal.checkingUsage') }}
+				</span>
 			</div>
 			<div
 				v-else-if="deletePropertyUsageCount > 0"
@@ -565,12 +645,17 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 				<div class="flex items-start gap-3">
 					<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning mt-0.5 flex-shrink-0" />
 					<div>
-						<p class="font-medium text-warning">Data will be deleted</p>
+						<p class="font-medium text-warning">
+							{{ t('dashboard.admin.instance.properties.deleteModal.dataWarningTitle') }}
+						</p>
 						<p class="text-sm text-warning/80 mt-1">
-							{{ deletePropertyUsageCount }} contact{{
-								deletePropertyUsageCount !== 1 ? 's have' : ' has'
+							{{
+								t(
+									'dashboard.admin.instance.properties.deleteModal.dataWarningBody',
+									{ count: deletePropertyUsageCount },
+									deletePropertyUsageCount
+								)
 							}}
-							values for this property. All values will be permanently deleted.
 						</p>
 					</div>
 				</div>
@@ -578,7 +663,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isDeleting" @click="propertyToDelete = null">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
 					variant="danger"
@@ -589,7 +674,11 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 					<template #iconLeft>
 						<Icon v-if="!isDeleting" name="lucide:trash-2" class="w-4 h-4" />
 					</template>
-					{{ isDeleting ? 'Deleting...' : 'Delete Property' }}
+					{{
+						isDeleting
+							? t('dashboard.admin.instance.properties.deleteModal.deleting')
+							: t('dashboard.admin.instance.properties.deleteModal.confirm')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>

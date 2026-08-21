@@ -63,6 +63,7 @@ import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import type { ConvexHttpClient } from 'convex/browser';
 import { requireOrgAdmin } from '~~/server/utils/requireOrgAdmin';
+import { localizeEn } from '~~/server/utils/localizedText';
 import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
 import {
 	COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS,
@@ -170,11 +171,13 @@ async function unconfirmedRelayRemoval(
 		// No cell list and no transport id — the copy says the situation could not
 		// be established rather than inventing a count of zero.
 		return askForRelayRemovalPhrase(
-			relayRemovalConsequenceCopy({
-				dependentCells: null,
-				referenceTransportId: null,
-				projectedSafeAt: null,
-			}).consequence
+			localizeEn(
+				relayRemovalConsequenceCopy({
+					dependentCells: null,
+					referenceTransportId: null,
+					projectedSafeAt: null,
+				}).consequence
+			)
 		);
 	}
 	// `getIndependenceSummary` answers `{kind:'safe'}` for every deployment with NO
@@ -194,7 +197,13 @@ async function unconfirmedRelayRemoval(
 		referenceTransportId: summary.referenceTransportId,
 		projectedSafeAt: summary.relayRemoval.projectedSafeAt,
 	});
-	return askForRelayRemovalPhrase(safeDate === null ? consequence : `${consequence} ${safeDate}`);
+	// Both halves are catalog keys; this route has no vue-i18n, so it renders
+	// them itself (`server/utils/localizedText.ts`) rather than concatenating the
+	// objects into `[object Object]`.
+	const sentence = localizeEn(consequence);
+	return askForRelayRemovalPhrase(
+		safeDate === null ? sentence : `${sentence} ${localizeEn(safeDate)}`
+	);
 }
 
 export default defineEventHandler(async (event): Promise<ApplyResult> => {

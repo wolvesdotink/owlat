@@ -4,6 +4,7 @@ import { trackOpen, trackClick } from './delivery/trackingHttp';
 import { handleCors, healthCheck } from './auth/apiAuth';
 import { seedAdmin } from './seedAdmin';
 import { seedDemoHttp } from './seedDemo';
+import { registerSampleDataRoutes } from './sampleData/manageHttp';
 import { resetHttp } from './devShortcuts/reset';
 import {
 	createContact,
@@ -461,6 +462,8 @@ http.route({
 	method: 'POST',
 	handler: seedDemoHttp,
 });
+
+registerSampleDataRoutes(http); // POST /sample-data/{install,remove,status} — see sampleData/manageHttp.ts
 
 // POST /dev/reset - Wipe instance back to blank slate (dev/selfhost only)
 http.route({

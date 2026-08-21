@@ -1,15 +1,22 @@
 <script setup lang="ts">
+const { t } = useI18n();
+
+// Getters, not values: the head is captured once at setup, so a bare `t()` here
+// would freeze whichever locale happened to be active when the page mounted.
 useSeoMeta({
-	title: 'Owlat — Email Infrastructure for Product Teams',
-	ogTitle: 'Owlat — Email Infrastructure for Product Teams',
-	description:
-		'Campaigns, automations, transactional sends, and audience operations from one platform. Backed by Convex and powered by AWS SES.',
-	ogDescription:
-		'Open-source email infrastructure for product teams. Send campaigns, automate flows, and manage audiences — all from one platform.',
+	title: () => t('seo.home.title'),
+	ogTitle: () => t('seo.home.title'),
+	description: () => t('seo.home.description'),
+	ogDescription: () => t('seo.home.ogDescription'),
 	twitterCard: 'summary_large_image',
 });
 
-defineOgImage('Marketing', {});
+// The OG image is rendered outside the app's i18n context, so the localized
+// copy is handed to it as props (one image per locale route).
+defineOgImage('Marketing', {
+	tagline: t('ogImage.tagline'),
+	label: t('ogImage.label'),
+});
 
 useSchemaOrg([
 	{
@@ -17,8 +24,7 @@ useSchemaOrg([
 		name: 'Owlat',
 		applicationCategory: 'BusinessApplication',
 		operatingSystem: 'Web',
-		description:
-			'Email infrastructure for product teams. Campaigns, automations, transactional sends, and audience operations from one platform.',
+		description: t('seo.home.schemaDescription'),
 	},
 ]);
 </script>

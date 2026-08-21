@@ -14,13 +14,21 @@
 import { describe, it, expect } from 'vitest';
 
 import { senderAuthDisplay } from '../senderAlignment';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The chip copy arrives as catalog keys, so the assertions render them; a
+ * transport's own worded reason passes straight through, which `t()` leaves
+ * alone because it is not a key the catalog carries.
+ */
+const { t } = createTestI18n().global;
 
 describe('senderAuthDisplay — block decision (honesty gate)', () => {
 	it('does NOT block a verified, aligned identity', () => {
 		const display = senderAuthDisplay({ verified: true, alignment: 'aligned' });
 		expect(display.blocked).toBe(false);
 		expect(display.tone).toBe('success');
-		expect(display.label).toBe('Sender verified');
+		expect(t(display.label)).toBe('Sender verified');
 		expect(display.detail).toBeNull();
 	});
 
@@ -28,14 +36,14 @@ describe('senderAuthDisplay — block decision (honesty gate)', () => {
 		const display = senderAuthDisplay({ verified: true, alignment: 'unknown' });
 		expect(display.blocked).toBe(false);
 		expect(display.tone).toBe('warning');
-		expect(display.label).toBe('Alignment unconfirmed');
+		expect(t(display.label)).toBe('Alignment unconfirmed');
 	});
 
 	it('blocks a misaligned transport (DMARC will fail)', () => {
 		const display = senderAuthDisplay({ verified: true, alignment: 'misaligned' });
 		expect(display.blocked).toBe(true);
 		expect(display.tone).toBe('error');
-		expect(display.label).toBe('Sender not aligned');
+		expect(t(display.label)).toBe('Sender not aligned');
 	});
 
 	it('blocks an unverified domain regardless of alignment', () => {
@@ -43,13 +51,13 @@ describe('senderAuthDisplay — block decision (honesty gate)', () => {
 			const display = senderAuthDisplay({ verified: false, alignment });
 			expect(display.blocked).toBe(true);
 			expect(display.tone).toBe('warning');
-			expect(display.label).toBe('Domain not verified');
+			expect(t(display.label)).toBe('Domain not verified');
 		}
 	});
 
 	it('passes the alignment reason through verbatim when one is supplied', () => {
 		const reason = 'This transport signs and bounces mail as “sendgrid.net”.';
 		const display = senderAuthDisplay({ verified: true, alignment: 'misaligned', reason });
-		expect(display.detail).toBe(reason);
+		expect(t(display.detail!)).toBe(reason);
 	});
 });

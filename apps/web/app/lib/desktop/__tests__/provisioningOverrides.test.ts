@@ -12,6 +12,14 @@ import {
 	type SubdomainLabels,
 } from '../provisioning';
 import { buildDnsRecords } from '../provisioningForm';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * Field labels and validation errors are catalog keys — module scope never calls
+ * `useI18n`, so the override form translates them. These assertions read the
+ * rendered words, exactly as the form paints them.
+ */
+const { t } = createTestI18n().global;
 
 /** The default labels with the given fields overridden. */
 function withOverrides(overrides: Partial<SubdomainLabels>): SubdomainLabels {
@@ -177,15 +185,15 @@ describe('self-host wizard hostname overrides', () => {
 			expect(result.ok).toBe(false);
 			// The collision is reported on the later field (site comes before convex,
 			// so convex is the one flagged) — the first occurrence stays clean.
-			expect(result.errors.convex).toMatch(/distinct/i);
+			expect(t(result.errors.convex ?? '')).toMatch(/distinct/i);
 			expect(result.errors.site).toBeUndefined();
 		});
 
 		it('a malformed label is reported as malformed, not masked by a later duplicate check', () => {
 			const result = validateSubdomainLabels(withOverrides({ site: 'BAD', convex: 'BAD' }));
 			// Both are off-charset; each gets the charset error, not a duplicate error.
-			expect(result.errors.site).toMatch(/lowercase/i);
-			expect(result.errors.convex).toMatch(/lowercase/i);
+			expect(t(result.errors.site ?? '')).toMatch(/lowercase/i);
+			expect(t(result.errors.convex ?? '')).toMatch(/lowercase/i);
 		});
 
 		it('distinct labels validate cleanly', () => {
@@ -204,8 +212,8 @@ describe('self-host wizard hostname overrides', () => {
 		it('the collision message names the human field label, not the internal key', () => {
 			const result = validateSubdomainLabels(withOverrides({ site: 'api' })); // collides with convex
 			// It points at the earlier "App" (site) label — never the raw key.
-			expect(result.errors.convex).toContain(`"${subdomainFieldLabel('site')}"`);
-			expect(result.errors.convex).not.toContain('site');
+			expect(t(result.errors.convex ?? '')).toContain(`"${t(subdomainFieldLabel('site'))}"`);
+			expect(t(result.errors.convex ?? '')).not.toContain('site');
 		});
 	});
 

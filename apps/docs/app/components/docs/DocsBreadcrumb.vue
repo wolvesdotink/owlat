@@ -1,5 +1,5 @@
 <template>
-	<nav v-if="crumbs.length > 1" class="max-w-3xl mx-auto mb-6" aria-label="Breadcrumb">
+	<nav v-if="crumbs.length > 1" class="max-w-3xl mx-auto mb-6" :aria-label="t('breadcrumb.label')">
 		<ol class="flex items-center gap-1.5 text-sm">
 			<li v-for="(crumb, index) in crumbs" :key="crumb.path">
 				<div class="flex items-center gap-1.5">
@@ -22,7 +22,7 @@
 					<!-- Link or current -->
 					<NuxtLink
 						v-if="index < crumbs.length - 1"
-						:to="crumb.path"
+						:to="localePath(crumb.path)"
 						class="text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast)"
 					>
 						{{ crumb.label }}
@@ -42,25 +42,40 @@ interface Crumb {
 	path: string;
 }
 
+const { t, te, locale } = useI18n();
+const localePath = useLocalePath();
 const route = useRoute();
 
 const crumbs = computed<Crumb[]>(() => {
-	const segments = route.path.split('/').filter(Boolean);
+	// Locale-free segments: on `/de/guide/topics` the `/de` is routing, not a
+	// crumb, and `localePath` puts it back on every link below.
+	const segments = contentPath(route.path, locale.value).split('/').filter(Boolean);
 	if (segments.length === 0) return [];
 
-	const items: Crumb[] = [{ label: 'Docs', path: '/' }];
+	const items: Crumb[] = [{ label: t('breadcrumb.root'), path: '/' }];
 
 	let currentPath = '';
 	for (const segment of segments) {
 		currentPath += `/${segment}`;
 		items.push({
-			label: formatSegment(segment),
+			label: segmentLabel(segment),
 			path: currentPath,
 		});
 	}
 
 	return items;
 });
+
+/**
+ * A crumb's text: the translated section name where the catalog has one, else
+ * the slug title-cased. The de-slugified fallback is English-shaped, but it is
+ * derived from the URL — which is English in every locale — so it is the same
+ * string a German reader sees in their address bar.
+ */
+function segmentLabel(segment: string): string {
+	const key = `sections.${segment}`;
+	return te(key) ? t(key) : formatSegment(segment);
+}
 
 function formatSegment(segment: string): string {
 	return segment.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());

@@ -14,7 +14,16 @@ import {
 	relayDomainDisplay,
 	relayDomainOutstanding,
 	type RelayDomainIdentityRow,
+	type RelayDomainText,
 } from '../relayDomainDisplay';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The vocabulary is a pure derivation, so labels and summaries arrive as
+// message keys (a summary with the relay's name as its interpolation); the copy
+// an operator reads is resolved through the real catalog.
+const { t } = createTestI18n().global;
+const say = (value: RelayDomainText) =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 7, 5, 12);
@@ -37,7 +46,7 @@ function row(over: Partial<RelayDomainIdentityRow> = {}): RelayDomainIdentityRow
 describe('relayDomainDisplay', () => {
 	it('reads verified only while the proof is inside the kind’s own bound', () => {
 		const display = relayDomainDisplay(row(), NOW);
-		expect(display.label).toBe('Verified');
+		expect(say(display.label)).toBe('Verified');
 		expect(display.tone).toBe('success');
 		expect(display.isProofStale).toBe(false);
 	});
@@ -46,14 +55,14 @@ describe('relayDomainDisplay', () => {
 		// Routing stops trusting a proof this old, so a screen still saying
 		// "verified" would name the relay usable at the moment it stopped being.
 		const stale = relayDomainDisplay(row({ lastCheckedAt: NOW - WEEK - 1 }), NOW);
-		expect(stale.label).toBe('Re-checking');
+		expect(say(stale.label)).toBe('Re-checking');
 		expect(stale.tone).toBe('warning');
 		expect(stale.isProofStale).toBe(true);
-		expect(stale.summary).toContain('older than Owlat will rely on');
+		expect(say(stale.summary)).toContain('older than Owlat will rely on');
 	});
 
 	it('treats exactly the bound as still fresh', () => {
-		expect(relayDomainDisplay(row({ lastCheckedAt: NOW - WEEK }), NOW).label).toBe('Verified');
+		expect(say(relayDomainDisplay(row({ lastCheckedAt: NOW - WEEK }), NOW).label)).toBe('Verified');
 	});
 
 	it('never ages out a kind that reports no freshness bound', () => {
@@ -61,7 +70,7 @@ describe('relayDomainDisplay', () => {
 		// for a proof routing is happy with is a false alarm on an operator's
 		// screen, for a relay that never told us how long its evidence lasts.
 		const unbounded = row({ proofMaxAgeMs: undefined, lastCheckedAt: NOW - 10 * WEEK });
-		expect(relayDomainDisplay(unbounded, NOW).label).toBe('Verified');
+		expect(say(relayDomainDisplay(unbounded, NOW).label)).toBe('Verified');
 		expect(isRelayProofFresh(unbounded, NOW)).toBe(true);
 	});
 
@@ -70,32 +79,34 @@ describe('relayDomainDisplay', () => {
 			row({ kind: 'plugin.mail-pack.postmark', kindLabel: 'Postmark' }),
 			NOW
 		);
-		expect(plugin.summary).toContain('Postmark');
-		expect(plugin.summary).not.toContain('Mandrill');
+		expect(say(plugin.summary)).toContain('Postmark');
+		expect(say(plugin.summary)).not.toContain('Mandrill');
 	});
 
 	it('distinguishes "nothing published yet" from "waiting on DNS"', () => {
 		expect(
-			relayDomainDisplay(row({ status: 'unverified', isOwnershipVerified: false }), NOW).label
+			say(relayDomainDisplay(row({ status: 'unverified', isOwnershipVerified: false }), NOW).label)
 		).toBe('Not published yet');
 		expect(
-			relayDomainDisplay(row({ status: 'pending', isOwnershipVerified: false }), NOW).label
+			say(relayDomainDisplay(row({ status: 'pending', isOwnershipVerified: false }), NOW).label)
 		).toBe('Waiting on DNS');
 	});
 
 	it('separates the two states no provider reports: provisioning and the primary domain', () => {
 		// Both are facts about the DOMAIN, synthesised by the query — a relay with
 		// no row for a domain cannot distinguish them, and neither reads as an error.
-		expect(relayDomainDisplay(row({ status: 'provisioning' }), NOW).label).toBe('Provisioning');
-		expect(relayDomainDisplay(row({ status: 'awaiting_primary_verification' }), NOW).label).toBe(
-			'Waiting on this domain'
+		expect(say(relayDomainDisplay(row({ status: 'provisioning' }), NOW).label)).toBe(
+			'Provisioning'
 		);
+		expect(
+			say(relayDomainDisplay(row({ status: 'awaiting_primary_verification' }), NOW).label)
+		).toBe('Waiting on this domain');
 	});
 
 	it('names a rejected credential as a key problem, not a DNS problem', () => {
 		const display = relayDomainDisplay(row({ status: 'failed', isOwnershipVerified: false }), NOW);
 		expect(display.tone).toBe('error');
-		expect(display.summary).toContain('Your published DNS is untouched');
+		expect(say(display.summary)).toContain('Your published DNS is untouched');
 	});
 
 	it('flags outstanding ownership on every unverified state of a kind that has one', () => {
@@ -140,14 +151,14 @@ describe('relayDomainOutstanding', () => {
 					dkim: { isValid: false },
 					isOwnershipVerified: false,
 				})
-			)
+			).map((item) => t(item))
 		).toEqual(['SPF', 'DKIM', 'domain ownership']);
 	});
 
 	it('keeps ownership outstanding even when both records are valid', () => {
-		expect(relayDomainOutstanding(row({ isOwnershipVerified: false }))).toEqual([
-			'domain ownership',
-		]);
+		expect(
+			relayDomainOutstanding(row({ isOwnershipVerified: false })).map((item) => t(item))
+		).toEqual(['domain ownership']);
 	});
 
 	it('is empty for a fully verified domain', () => {

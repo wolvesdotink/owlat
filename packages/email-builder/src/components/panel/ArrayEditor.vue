@@ -87,6 +87,7 @@ function handleReorder(newItems: unknown[]) {
 					<template v-if="isStringArray">
 						<input
 							type="text"
+							:aria-label="`Item ${index + 1}`"
 							class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 							:value="item as string"
 							@input="(e) => updateItem(index, (e.target as HTMLInputElement).value)"
@@ -100,6 +101,7 @@ function handleReorder(newItems: unknown[]) {
 								v-for="(cell, cellIndex) in (item as string[])"
 								:key="cellIndex"
 								type="text"
+								:aria-label="`Row ${index + 1}, cell ${cellIndex + 1}`"
 								class="min-w-0 flex-1 py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="cell"
 								@input="(e) => updateCell(index, cellIndex, (e.target as HTMLInputElement).value)"
@@ -119,6 +121,7 @@ function handleReorder(newItems: unknown[]) {
 							<input
 								v-if="subField.type === 'text' || subField.type === 'url'"
 								:type="subField.type === 'url' ? 'url' : 'text'"
+								:aria-label="`${subField.label}, item ${index + 1}`"
 								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="(item as Record<string, unknown>)[subField.key] ?? ''"
 								:placeholder="subField.placeholder"
@@ -130,6 +133,9 @@ function handleReorder(newItems: unknown[]) {
 								class="relative w-7 h-4 rounded-lg border-none cursor-pointer p-0 transition-[background] duration-(--motion-moderate)"
 								:class="(item as Record<string, unknown>)[subField.key] ? 'bg-brand' : 'bg-border-default'"
 								type="button"
+								role="switch"
+								:aria-label="subField.label"
+								:aria-checked="!!(item as Record<string, unknown>)[subField.key]"
 								@click="updateItemField(index, subField.key, !(item as Record<string, unknown>)[subField.key])"
 							>
 								<span
@@ -140,6 +146,7 @@ function handleReorder(newItems: unknown[]) {
 							<!-- Select sub-field -->
 							<select
 								v-else-if="subField.type === 'select'"
+								:aria-label="subField.label"
 								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="(item as Record<string, unknown>)[subField.key] ?? ''"
 								@change="(e) => updateItemField(index, subField.key, (e.target as HTMLSelectElement).value)"
@@ -159,6 +166,7 @@ function handleReorder(newItems: unknown[]) {
 				<IconButton
 					:icon="Trash2"
 					title="Remove"
+					:aria-label="`Remove item ${index + 1}`"
 					size="sm"
 					variant="destructive"
 					class="shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)"

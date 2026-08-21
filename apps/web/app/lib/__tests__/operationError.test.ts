@@ -5,8 +5,15 @@ import {
 	normalizeToOperationError,
 	categoryTreatment,
 	operationCopy,
+	resolveOperationCopy,
 	isTransportFailure,
 } from '../operationError';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** The real catalog, so the copy assertions stay assertions about English. */
+const { t } = createTestI18n().global;
+const copyFor = (op: Parameters<typeof operationCopy>[0]) =>
+	resolveOperationCopy(operationCopy(op), (key) => t(key));
 
 describe('normalizeToOperationError', () => {
 	it('preserves the category, message, and data of a ConvexError Operation error', () => {
@@ -15,7 +22,7 @@ describe('normalizeToOperationError', () => {
 				category: 'invalid_input',
 				message: 'Bad email',
 				data: { field: 'email' },
-			}),
+			})
 		);
 		expect(op).toEqual({
 			category: 'invalid_input',
@@ -26,7 +33,7 @@ describe('normalizeToOperationError', () => {
 
 	it('preserves a categorized ConvexError without data', () => {
 		const op = normalizeToOperationError(
-			new ConvexError({ category: 'forbidden', message: 'No access' }),
+			new ConvexError({ category: 'forbidden', message: 'No access' })
 		);
 		expect(op.category).toBe('forbidden');
 		expect(op.message).toBe('No access');
@@ -62,7 +69,7 @@ describe('normalizeToOperationError', () => {
 describe('isTransportFailure', () => {
 	it('is false for a categorized backend error', () => {
 		expect(isTransportFailure(new ConvexError({ category: 'not_found', message: 'x' }))).toBe(
-			false,
+			false
 		);
 	});
 
@@ -95,27 +102,38 @@ describe('categoryTreatment', () => {
 });
 
 describe('operationCopy', () => {
-	it('shows the backend message for categories with user-facing detail', () => {
-		expect(operationCopy({ category: 'invalid_state', message: 'Template is published' })).toBe(
-			'Template is published',
+	it('hands back the backend message as text, never as a key to translate', () => {
+		// Backend messages carry names and addresses; running one through the
+		// message compiler would read its punctuation as syntax.
+		expect(operationCopy({ category: 'invalid_state', message: 'Template is published' })).toEqual({
+			text: 'Template is published',
+		});
+		expect(copyFor({ category: 'invalid_state', message: 'Template is published' })).toBe(
+			'Template is published'
 		);
 	});
 
 	it('shows generic copy for internal (hides the raw message)', () => {
-		expect(operationCopy({ category: 'internal', message: 'TypeError: x is not a function' })).toBe(
-			'Something went wrong. Please try again.',
+		expect(copyFor({ category: 'internal', message: 'TypeError: x is not a function' })).toBe(
+			'Something went wrong. Please try again.'
 		);
 	});
 
 	it('shows generic copy for network', () => {
-		expect(operationCopy({ category: 'network', message: 'Failed to fetch' })).toContain(
-			'Connection problem',
+		expect(copyFor({ category: 'network', message: 'Failed to fetch' })).toContain(
+			'Connection problem'
 		);
 	});
 
 	it('falls back to generic copy when the backend message is empty', () => {
-		expect(operationCopy({ category: 'forbidden', message: '' })).toBe(
-			'Something went wrong. Please try again.',
+		expect(copyFor({ category: 'forbidden', message: '' })).toBe(
+			'Something went wrong. Please try again.'
+		);
+	});
+
+	it('shows generic copy for an expired session', () => {
+		expect(copyFor({ category: 'unauthenticated', message: 'No identity' })).toContain(
+			'session has expired'
 		);
 	});
 });

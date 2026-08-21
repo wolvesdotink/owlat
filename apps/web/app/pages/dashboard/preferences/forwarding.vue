@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Forwarding — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.preferences.forwarding.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -24,14 +26,14 @@ const error = ref<string | null>(null);
 const submitting = ref(false);
 
 const createMutation = useBackendOperation(api.mail.forwarding.create, {
-	label: 'Add forwarding rule',
+	label: () => t('dashboard.preferences.forwarding.createOperation'),
 	inlineTarget: error,
 });
 const updateMutation = useBackendOperation(api.mail.forwarding.update, {
-	label: 'Update forwarding rule',
+	label: () => t('dashboard.preferences.forwarding.updateOperation'),
 });
 const removeMutation = useBackendOperation(api.mail.forwarding.remove, {
-	label: 'Remove forwarding rule',
+	label: () => t('dashboard.preferences.forwarding.removeOperation'),
 });
 
 async function handleCreate() {
@@ -68,10 +70,11 @@ async function confirmRemove() {
 		<PreferencesBackLink />
 
 		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em]">Forwarding</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em]">
+				{{ t('dashboard.preferences.forwarding.title') }}
+			</h1>
 			<p class="text-text-secondary mt-1">
-				Auto-forward inbound mail to an external address. Mailing-list and auto-submitted mail is
-				skipped to prevent loops.
+				{{ t('dashboard.preferences.forwarding.intro') }}
 			</p>
 		</header>
 
@@ -81,32 +84,36 @@ async function confirmRemove() {
 			@submit.prevent="handleCreate"
 		>
 			<div class="flex-1">
-				<label for="newaddress" class="text-sm font-medium block mb-1">Forward to</label>
+				<label for="newaddress" class="text-sm font-medium block mb-1">
+					{{ t('dashboard.preferences.forwarding.forwardTo') }}
+				</label>
 				<input
 					id="newaddress"
 					v-model="newAddress"
 					type="text"
 					class="input w-full"
-					placeholder="archive@example.com"
+					:placeholder="t('dashboard.preferences.forwarding.addressPlaceholder')"
 				/>
 			</div>
 			<label class="flex items-center gap-1.5 text-sm pb-2">
 				<input v-model="keepLocal" type="checkbox" />
-				Keep local copy
+				{{ t('dashboard.preferences.forwarding.keepLocalCopy') }}
 			</label>
-			<UiButton type="submit" :disabled="!newAddress.trim() || submitting"> Add </UiButton>
+			<UiButton type="submit" :disabled="!newAddress.trim() || submitting">
+				{{ t('common.add') }}
+			</UiButton>
 		</form>
 		<p v-if="error" class="text-sm text-error mb-4">{{ error }}</p>
 
 		<section v-if="mailboxId" class="card !p-0">
 			<header class="px-5 py-3 border-b border-border-subtle">
-				<h2 class="font-semibold">Active rules</h2>
+				<h2 class="font-semibold">{{ t('dashboard.preferences.forwarding.activeRules') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
 			</div>
 			<div v-else-if="rules.length === 0" class="p-8 text-center text-text-secondary">
-				No forwarding rules yet.
+				{{ t('dashboard.preferences.forwarding.empty') }}
 			</div>
 			<ul v-else class="divide-y divide-border-subtle">
 				<li
@@ -117,7 +124,11 @@ async function confirmRemove() {
 					<div class="flex-1 min-w-0">
 						<p class="font-mono text-sm">→ {{ rule.forwardTo }}</p>
 						<p class="text-xs text-text-tertiary">
-							{{ rule.keepLocalCopy ? 'Keep local copy' : 'Forward only (no inbox copy)' }}
+							{{
+								rule.keepLocalCopy
+									? t('dashboard.preferences.forwarding.keepLocalCopy')
+									: t('dashboard.preferences.forwarding.forwardOnly')
+							}}
 						</p>
 					</div>
 					<label class="flex items-center gap-1.5 text-sm">
@@ -126,7 +137,7 @@ async function confirmRemove() {
 							:checked="rule.isEnabled"
 							@change="handleToggle(rule._id, ($event.target as HTMLInputElement).checked)"
 						/>
-						Enabled
+						{{ t('common.enabled') }}
 					</label>
 					<UiButton
 						variant="ghost"
@@ -134,22 +145,22 @@ async function confirmRemove() {
 						class="text-error"
 						@click="ruleToRemove = rule._id"
 					>
-						Remove
+						{{ t('common.remove') }}
 					</UiButton>
 				</li>
 			</ul>
 		</section>
 
 		<div v-if="!mailboxId && !mailboxesLoading" class="card p-6 text-center text-text-secondary">
-			No mailbox configured.
+			{{ t('dashboard.preferences.forwarding.noMailbox') }}
 		</div>
 
 		<UiConfirmationDialog
 			:open="!!ruleToRemove"
 			variant="danger"
-			title="Remove forwarding rule?"
-			description="Inbound mail will no longer be forwarded to this address."
-			confirm-text="Remove rule"
+			:title="t('dashboard.preferences.forwarding.removeTitle')"
+			:description="t('dashboard.preferences.forwarding.removeDescription')"
+			:confirm-text="t('dashboard.preferences.forwarding.removeConfirm')"
 			:is-loading="removeMutation.isLoading.value"
 			@update:open="(v: boolean) => !v && (ruleToRemove = null)"
 			@confirm="confirmRemove"

@@ -35,7 +35,7 @@
 							ref="inputEl"
 							v-model="search"
 							type="text"
-							placeholder="Search documentation..."
+							:placeholder="t('search.placeholder')"
 							class="flex-1 bg-transparent text-text-primary placeholder-text-tertiary outline-none text-sm"
 							@keydown.down.prevent="moveSelection(1)"
 							@keydown.up.prevent="moveSelection(-1)"
@@ -44,7 +44,7 @@
 						<kbd
 							class="hidden sm:inline-flex items-center h-5 px-2 rounded-full border border-border-subtle bg-bg-soft text-2xs font-mono text-text-tertiary"
 						>
-							ESC
+							{{ t('search.escapeKey') }}
 						</kbd>
 					</div>
 
@@ -63,7 +63,7 @@
 							v-else-if="search.length > 0 && flatResults.length === 0"
 							class="px-4 py-8 text-center text-text-tertiary text-sm"
 						>
-							No results found for "{{ search }}"
+							{{ t('search.noResults', { query: search }) }}
 						</div>
 
 						<!-- Results list -->
@@ -109,7 +109,7 @@
 										</div>
 									</div>
 									<span class="text-[11px] text-text-tertiary capitalize shrink-0">
-										{{ getSectionLabel(result.path) }}
+										{{ sectionLabel(result.path) }}
 									</span>
 								</button>
 							</div>
@@ -117,7 +117,7 @@
 
 						<!-- Empty input state -->
 						<div v-else class="px-4 py-8 text-center text-text-tertiary text-sm">
-							Type to search the documentation
+							{{ t('search.prompt') }}
 						</div>
 					</div>
 
@@ -135,14 +135,14 @@
 									class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-border-subtle bg-bg-soft font-mono"
 									>&darr;</kbd
 								>
-								Navigate
+								{{ t('search.navigate') }}
 							</span>
 							<span class="flex items-center gap-1">
 								<kbd
 									class="inline-flex items-center justify-center h-4 px-1.5 rounded-full border border-border-subtle bg-bg-soft font-mono"
 									>&crarr;</kbd
 								>
-								Select
+								{{ t('search.select') }}
 							</span>
 						</div>
 					</div>
@@ -167,19 +167,20 @@ const emit = defineEmits<{
 	'update:open': [value: boolean];
 }>();
 
+const { t, te, locale } = useI18n();
+const localePath = useLocalePath();
 const router = useRouter();
 const search = ref('');
 const selectedIndex = ref(0);
 const inputEl = ref<HTMLInputElement | null>(null);
 
+// The index is the active locale's collection, topped up with the English
+// pages that have no translation yet — an untranslated page stays findable
+// instead of disappearing from German search.
 const { data: results, status } = await useAsyncData(
-	'search',
-	() =>
-		queryCollection('content')
-			.where('title', 'LIKE', `%${search.value}%`)
-			.select('path', 'title', 'description')
-			.all(),
-	{ watch: [search], default: () => [] }
+	() => `search-${locale.value}`,
+	() => queryDocsSearch(docsCollection(locale.value), search.value),
+	{ watch: [search, locale], default: () => [] }
 );
 
 const flatResults = computed<SearchResult[]>(() => {
@@ -187,9 +188,12 @@ const flatResults = computed<SearchResult[]>(() => {
 	return results.value as unknown as SearchResult[];
 });
 
-function getSectionLabel(path: string): string {
+/** The section chip on a result row: a translated section name, else the segment. */
+function sectionLabel(path: string): string {
 	const segment = path.split('/')[1];
-	return segment || 'docs';
+	if (!segment) return t('search.sectionFallback');
+	const key = `sections.${segment}`;
+	return te(key) ? t(key) : segment;
 }
 
 function moveSelection(delta: number) {
@@ -207,7 +211,9 @@ function selectCurrent() {
 
 function navigateTo(path: string) {
 	emit('update:open', false);
-	router.push(path);
+	// Content paths are locale-free; the reader has to land on the localized
+	// route (`/de/guide/…`) or the switch back out of German is silent.
+	router.push(localePath(path));
 }
 
 // Focus input on open

@@ -11,13 +11,22 @@
  *     state, and surfaces the MTA sync-error marker when present.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, capitalize, type Ref } from 'vue';
+import { ref, capitalize, getCurrentInstance, type Ref } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 
 import AddDomainForm from '../AddDomainForm.vue';
 import ReturnPathEditor from '../ReturnPathEditor.vue';
 import RecordRow from '../RecordRow.vue';
 import { useAddDomain, type AddDomainFlowDeps } from '~/composables/useAddDomain';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// These surfaces render their copy through vue-i18n; `useI18n` is a Nuxt
+// auto-import. `useAddDomain` is exercised directly below (no component, so no
+// setup context), so the stub falls back to a standalone catalog there.
+const standaloneI18n = createTestI18n();
+Object.assign(globalThis, {
+	useI18n: () => (getCurrentInstance() ? i18nStubs.useI18n() : standaloneI18n.global),
+});
 
 const formStubs = {
 	Icon: { template: '<i />' },
@@ -25,7 +34,7 @@ const formStubs = {
 };
 
 function mountForm() {
-	return mount(AddDomainForm, { global: { stubs: formStubs } });
+	return mount(AddDomainForm, { global: { plugins: [createTestI18n()], stubs: formStubs } });
 }
 
 describe('AddDomainForm — Advanced return-path disclosure', () => {
@@ -120,7 +129,7 @@ function mountEditor(props: Record<string, unknown> = {}) {
 			canManage: true,
 			...props,
 		},
-		global: { stubs: { Icon: { template: '<i />' } } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: { template: '<i />' } } },
 	});
 }
 
@@ -282,7 +291,7 @@ function mountRow(domainName: string) {
 			inboundPort: 25,
 			inboundEnabled: false,
 		} as never,
-		global: { stubs: rowStubs, mocks: { capitalize } },
+		global: { plugins: [createTestI18n()], stubs: rowStubs, mocks: { capitalize } },
 	});
 }
 

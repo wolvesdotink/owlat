@@ -29,7 +29,17 @@ import {
 } from '~/lib/desktop/provisioningForm';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 
-useHead({ title: 'Set up a server — Owlat' });
+const { t } = useI18n();
+
+/**
+ * Registry-supplied copy (host-key prompts, password assessment) arrives as a
+ * message key, optionally with interpolation params — render either shape.
+ */
+type MessageRef = string | { key: string; params?: Record<string, unknown> };
+const tk = (message: MessageRef | null | undefined): string =>
+	!message ? '' : typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+
+useHead({ title: () => t('desktop.setup.pageTitle') });
 definePageMeta({ layout: false });
 
 const { isDesktop } = useDesktopContext();
@@ -134,13 +144,13 @@ async function browseKeyFile() {
 
 async function onConnect() {
 	connectError.value = '';
-	if (!host.value.trim()) return (connectError.value = 'Enter the server address.');
-	if (!username.value.trim()) return (connectError.value = 'Enter the SSH user.');
-	if (authMethod.value === 'password' && !password.value) return (connectError.value = 'Enter the password.');
+	if (!host.value.trim()) return (connectError.value = t('desktop.setup.errors.hostRequired'));
+	if (!username.value.trim()) return (connectError.value = t('desktop.setup.errors.usernameRequired'));
+	if (authMethod.value === 'password' && !password.value) return (connectError.value = t('desktop.setup.errors.passwordRequired'));
 	if (authMethod.value === 'key' && keySource.value === 'file' && !keyPath.value.trim())
-		return (connectError.value = 'Enter the path to your private key file.');
+		return (connectError.value = t('desktop.setup.errors.keyPathRequired'));
 	if (authMethod.value === 'key' && keySource.value === 'paste' && !privateKey.value.trim())
-		return (connectError.value = 'Paste your private key.');
+		return (connectError.value = t('desktop.setup.errors.privateKeyRequired'));
 
 	const auth =
 		authMethod.value === 'key'
@@ -167,9 +177,9 @@ async function onConnect() {
 // ---- config form ----
 const packs = reactive({ emailClient: true, marketing: true, ai: false });
 const packOptions = [
-	{ key: 'emailClient', label: 'Email client' },
-	{ key: 'marketing', label: 'Marketing' },
-	{ key: 'ai', label: 'AI' },
+	{ key: 'emailClient', label: 'desktop.setup.packs.emailClient' },
+	{ key: 'marketing', label: 'desktop.setup.packs.marketing' },
+	{ key: 'ai', label: 'desktop.setup.packs.ai' },
 ] as const;
 const sendingProvider = ref<'mta' | 'resend' | 'ses'>('mta');
 const resendKey = ref('');
@@ -223,7 +233,7 @@ const hostLabels = ref<SubdomainLabels>(defaultSubdomainLabels());
 // mail/bounce are inert without the self-hosted MTA (nothing consumes those
 // hostnames), so they are disabled — not validated or gated — for other
 // providers, and only the live labels are checked for distinctness.
-const HOST_LABEL_INACTIVE_HINT = 'Only used with the self-hosted mail server.';
+const HOST_LABEL_INACTIVE_HINT = 'desktop.setup.hostLabels.inactiveHint';
 const disabledLabelKeys = computed<SubdomainKey[]>(() =>
 	sendingProvider.value === 'mta' ? [] : ['mail', 'bounce'],
 );
@@ -271,17 +281,17 @@ function buildConfig(): SetupConfigInput {
 
 // ---- configure wizard steps ----
 const configSteps = [
-	{ id: 'features', label: 'Features', icon: 'lucide:blocks' },
-	{ id: 'providers', label: 'Providers', icon: 'lucide:plug' },
-	{ id: 'domain', label: 'Domain & DNS', icon: 'lucide:globe' },
-	{ id: 'admin', label: 'Admin', icon: 'lucide:user-cog' },
+	{ id: 'features', label: 'desktop.setup.steps.features', icon: 'lucide:blocks' },
+	{ id: 'providers', label: 'desktop.setup.steps.providers', icon: 'lucide:plug' },
+	{ id: 'domain', label: 'desktop.setup.steps.domain', icon: 'lucide:globe' },
+	{ id: 'admin', label: 'desktop.setup.steps.admin', icon: 'lucide:user-cog' },
 ] as const;
 type ConfigStep = (typeof configSteps)[number]['id'];
-const stepOptions = configSteps.map((s) => ({ value: s.id, label: s.label }));
-const AUTH_OPTIONS = [
-	{ value: 'key', label: 'Private key' },
-	{ value: 'password', label: 'Password' },
-];
+const stepOptions = computed(() => configSteps.map((s) => ({ value: s.id, label: t(s.label) })));
+const authOptions = computed(() => [
+	{ value: 'key', label: t('desktop.setup.auth.key') },
+	{ value: 'password', label: t('desktop.setup.auth.password') },
+]);
 const configStep = ref<ConfigStep>('features');
 const stepIndex = computed(() => configSteps.findIndex((s) => s.id === configStep.value));
 const isLastStep = computed(() => stepIndex.value === configSteps.length - 1);
@@ -303,14 +313,14 @@ async function onProvision() {
 	// localhost URL the app can never open. Block before provisioning.
 	if (isRemoteTarget.value && !hasDomain.value) {
 		configStep.value = 'domain';
-		configError.value = 'Remote servers need a public domain so you can reach the app after install. Add one under Domain & DNS.';
+		configError.value = t('desktop.setup.errors.domainRequired');
 		return;
 	}
 	// Customised hostname labels must be DNS-safe and mutually distinct, or the
 	// derived hostnames/DNS records would collide or be invalid.
 	if (!labelValidation.value.ok) {
 		configStep.value = 'domain';
-		configError.value = 'Fix the customised hostnames — each label must be a valid, distinct DNS label.';
+		configError.value = t('desktop.setup.errors.invalidHostLabels');
 		return;
 	}
 	// Admin fields live on the last step; jump there if they fail validation.
@@ -318,10 +328,10 @@ async function onProvision() {
 		configStep.value = 'admin';
 		configError.value = msg;
 	};
-	if (!/^.+@.+\..+$/.test(adminEmail.value)) return fail('Enter a valid admin email.');
-	if (!adminName.value.trim()) return fail('Enter an admin name.');
+	if (!/^.+@.+\..+$/.test(adminEmail.value)) return fail(t('desktop.setup.errors.adminEmailInvalid'));
+	if (!adminName.value.trim()) return fail(t('desktop.setup.errors.adminNameRequired'));
 	const pw = validateAdminPassword(adminPassword.value, adminPasswordConfirm.value);
-	if (!pw.ok) return fail(pw.error ?? 'Check the admin password.');
+	if (!pw.ok) return fail(tk(pw.error) || t('desktop.setup.errors.adminPasswordInvalid'));
 	await provision(buildConfig());
 }
 
@@ -362,7 +372,7 @@ const isStarterSpf = (r: DnsRecordRow) => r.type === 'TXT' && r.value.startsWith
  */
 const spfLookupKey = computed(() => {
 	const row = dnsRecords.value.find(isStarterSpf);
-	return row ? `${row.name} ${row.value}` : '';
+	return row ? `${row.name}\u0000${row.value}` : '';
 });
 
 /**
@@ -409,7 +419,7 @@ const displayDnsRecords = computed<DnsRecordRow[]>(() => {
 			? {
 					...r,
 					value: suggestion.merged,
-					note: 'SPF — merged with the existing SPF record at this host so your other mail provider keeps working. SPF allows at most 10 DNS lookups — double-check it stays within that limit. Confirm in Settings → Domains.',
+					note: 'desktop.setup.dns.spfMergedNote',
 				}
 			: r,
 	);
@@ -462,20 +472,20 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 		<DesktopTitlebar />
 		<div class="mx-auto max-w-xl px-4 py-10">
 			<div v-if="!isDesktop" class="card p-8 text-sm text-text-secondary">
-				The server installer is only available in the desktop app.
+				{{ t('desktop.setup.desktopOnly') }}
 			</div>
 
 			<template v-else>
 				<header class="mb-6">
 					<NuxtLink to="/desktop/welcome" class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary">
-						<Icon name="lucide:arrow-left" class="size-3.5" /> Back
+						<Icon name="lucide:arrow-left" class="size-3.5" /> {{ t('common.back') }}
 					</NuxtLink>
-					<h1 class="text-3xl font-medium tracking-[-0.02em] text-text-primary">
-						Set up a <span class="font-display italic">new server</span>
-					</h1>
-					<p class="mt-2 text-md leading-[1.65] text-text-secondary">
-						Connect to a fresh Linux server over SSH and Owlat will install and configure itself.
-					</p>
+					<I18nT keypath="desktop.setup.heading" tag="h1" class="text-3xl font-medium tracking-[-0.02em] text-text-primary" scope="global">
+							<template #accent><span class="font-display italic">{{ t('desktop.setup.headingAccent') }}</span></template>
+						</I18nT>
+						<p class="mt-2 text-md leading-[1.65] text-text-secondary">
+							{{ t('desktop.setup.subtitle') }}
+						</p>
 				</header>
 
 				<!-- ============ CONNECT ============ -->
@@ -483,26 +493,26 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 					<form class="space-y-4" @submit.prevent="onConnect">
 						<div class="grid grid-cols-[1fr_5rem] gap-3">
 							<div>
-								<label class="mb-1 block text-xs font-medium text-text-secondary">Server address</label>
-								<input v-model="host" :class="inputClass" placeholder="203.0.113.5 or vps.example.com" :disabled="busy" />
+								<label class="mb-1 block text-xs font-medium text-text-secondary">{{ t('desktop.setup.fields.host') }}</label>
+									<input v-model="host" :class="inputClass" :placeholder="t('desktop.setup.fields.hostPlaceholder')" :disabled="busy" />
 							</div>
 							<div>
-								<label :class="labelClass">Port</label>
+								<label :class="labelClass">{{ t('desktop.setup.fields.port') }}</label>
 								<input v-model="port" :class="inputClass" inputmode="numeric" :disabled="busy" />
 							</div>
 						</div>
 
 						<div>
-							<label :class="labelClass">SSH user</label>
+							<label :class="labelClass">{{ t('desktop.setup.fields.sshUser') }}</label>
 							<input v-model="username" :class="inputClass" :disabled="busy" />
 						</div>
 
 						<div>
-							<label :class="labelClass">Authentication</label>
-							<div class="mb-2 inline-block" role="group" aria-label="Authentication method">
+							<label :class="labelClass">{{ t('desktop.setup.fields.authentication') }}</label>
+							<div class="mb-2 inline-block" role="group" :aria-label="t('desktop.setup.fields.authMethod')">
 								<UiSegmentedControl
 									size="sm"
-									:options="AUTH_OPTIONS"
+									:options="authOptions"
 									:model-value="authMethod"
 									@update:model-value="authMethod = $event as 'key' | 'password'"
 								/>
@@ -517,8 +527,8 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 										:disabled="busy"
 									/>
 									<UiButton variant="outline" size="sm" class="shrink-0" :disabled="busy" @click="browseKeyFile">
-										Browse…
-									</UiButton>
+											{{ t('desktop.setup.fields.browse') }}
+										</UiButton>
 								</div>
 								<textarea
 									v-else
@@ -533,13 +543,13 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									:disabled="busy"
 									@click="keySource = keySource === 'file' ? 'paste' : 'file'"
 								>
-									{{ keySource === 'file' ? 'Paste the key instead' : 'Use a key file instead' }}
+									{{ keySource === 'file' ? t('desktop.setup.fields.pasteKeyInstead') : t('desktop.setup.fields.useKeyFileInstead') }}
 								</button>
 								<input
 									v-model="passphrase"
 									type="password"
 									:class="[inputClass, 'mt-2']"
-									placeholder="Key passphrase (optional)"
+									:placeholder="t('desktop.setup.fields.passphrasePlaceholder')"
 									:disabled="busy"
 								/>
 							</template>
@@ -548,37 +558,36 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								v-model="password"
 								type="password"
 								:class="inputClass"
-								placeholder="SSH password"
+								:placeholder="t('desktop.setup.fields.sshPasswordPlaceholder')"
 								:disabled="busy"
 							/>
 						</div>
 
 						<button type="button" class="text-xs text-text-secondary hover:text-text-primary" @click="showAdvanced = !showAdvanced">
-							{{ showAdvanced ? '− Hide' : '+ Show' }} advanced
+							{{ showAdvanced ? t('desktop.setup.hideAdvanced') : t('desktop.setup.showAdvanced') }}
 						</button>
 						<div v-if="showAdvanced" class="space-y-3">
 							<div class="grid grid-cols-2 gap-3">
 								<div>
-									<label :class="labelClass">Install directory</label>
+									<label :class="labelClass">{{ t('desktop.setup.fields.installDir') }}</label>
 									<input v-model="installDir" :class="inputClass" :disabled="busy" />
 								</div>
 								<div>
-									<label :class="labelClass">Branch</label>
+									<label :class="labelClass">{{ t('desktop.setup.fields.branch') }}</label>
 									<input v-model="branch" :class="inputClass" :disabled="busy || !!localSource.trim()" />
 								</div>
 							</div>
 							<div v-if="isDev">
-								<label :class="labelClass">Local source folder (development)</label>
+								<label :class="labelClass">{{ t('desktop.setup.fields.localSource') }}</label>
 								<input
 									v-model="localSource"
 									:class="inputClass"
-									placeholder="/path/to/your/owlat checkout (optional)"
+									:placeholder="t('desktop.setup.fields.localSourcePlaceholder')"
 									:disabled="busy"
 								/>
 								<p class="mt-1.5 text-xs text-text-secondary">
-									Uploads this machine's checkout to the server — for testing the installer without a
-									published repo or registry.
-								</p>
+										{{ t('desktop.setup.fields.localSourceHint') }}
+									</p>
 								<div v-if="localSource.trim()" class="mt-3 space-y-1.5">
 									<label class="flex cursor-pointer items-start gap-2.5 text-sm">
 										<input v-model="imageMode" type="radio" value="local" class="peer sr-only" />
@@ -589,11 +598,11 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 											<span v-if="imageMode === 'local'" class="size-2 rounded-full bg-brand" />
 										</span>
 										<span>
-											Build images on this machine
-											<span class="block text-xs text-text-secondary">
-												Needs Docker running here; images stream to the server over SSH. Works on small servers.
+												{{ t('desktop.setup.imageMode.localTitle') }}
+												<span class="block text-xs text-text-secondary">
+													{{ t('desktop.setup.imageMode.localHint') }}
+												</span>
 											</span>
-										</span>
 									</label>
 									<label class="flex cursor-pointer items-start gap-2.5 text-sm">
 										<input v-model="imageMode" type="radio" value="server" class="peer sr-only" />
@@ -604,11 +613,11 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 											<span v-if="imageMode === 'server'" class="size-2 rounded-full bg-brand" />
 										</span>
 										<span>
-											Build images on the server
-											<span class="block text-xs text-text-secondary">
-												No local Docker needed, but the web build wants ~4&nbsp;GB RAM (or swap) on the server.
+												{{ t('desktop.setup.imageMode.serverTitle') }}
+												<span class="block text-xs text-text-secondary">
+													{{ t('desktop.setup.imageMode.serverHint') }}
+												</span>
 											</span>
-										</span>
 									</label>
 								</div>
 							</div>
@@ -622,9 +631,9 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						>
 							<p class="text-sm font-medium" :class="hostKeyPrompt.tone === 'danger' ? 'text-error' : 'text-warning'">
 								<Icon name="lucide:shield-alert" class="mb-0.5 mr-1 inline size-4" />
-								{{ hostKeyPrompt.title }}
+								{{ tk(hostKeyPrompt.title) }}
 							</p>
-							<p class="mt-1 text-xs text-text-secondary">{{ hostKeyPrompt.body }}</p>
+							<p class="mt-1 text-xs text-text-secondary">{{ tk(hostKeyPrompt.body) }}</p>
 							<code class="mt-2 block break-all rounded bg-bg-deep px-2 py-1 font-mono text-xs text-text-primary">{{ connectInfo?.fingerprint }}</code>
 
 							<!-- A CHANGED key (possible interception) demands an explicit opt-in. -->
@@ -633,7 +642,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								class="mt-3 flex cursor-pointer items-start gap-2 text-xs text-error"
 							>
 								<input v-model="mismatchAcknowledged" type="checkbox" class="mt-0.5" :disabled="busy" />
-								<span>I know why this server's key changed and want to connect anyway.</span>
+								<span>{{ t('desktop.setup.hostKey.acknowledge') }}</span>
 							</label>
 
 							<UiButton
@@ -643,7 +652,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								:disabled="busy || (hostKeyPrompt.requiresExplicitConfirmation && !mismatchAcknowledged)"
 								@click="acceptHostKey(hostKeyPrompt.isMismatch)"
 							>
-								{{ hostKeyPrompt.isMismatch ? 'Accept changed key & continue' : 'Accept & continue' }}
+								{{ hostKeyPrompt.isMismatch ? t('desktop.setup.hostKey.acceptChanged') : t('desktop.setup.hostKey.accept') }}
 							</UiButton>
 						</div>
 
@@ -651,9 +660,9 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						<p v-if="error" class="text-sm text-error">{{ error }}</p>
 
 						<UiButton v-if="stage !== 'hostkey'" type="submit" :disabled="busy" full-width>
-							<span v-if="stage === 'connecting'">Connecting…</span>
-							<span v-else-if="stage === 'authenticating'">Authenticating…</span>
-							<span v-else>Connect</span>
+							<span v-if="stage === 'connecting'">{{ t('desktop.setup.connecting') }}</span>
+								<span v-else-if="stage === 'authenticating'">{{ t('desktop.setup.authenticating') }}</span>
+								<span v-else>{{ t('desktop.setup.connect') }}</span>
 						</UiButton>
 					</form>
 				</section>
@@ -661,7 +670,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 				<!-- ============ CONFIGURE ============ -->
 				<section v-else-if="stage === 'configure'" class="card">
 					<!-- step menu -->
-					<nav class="mb-5" aria-label="Setup steps">
+					<nav class="mb-5" :aria-label="t('desktop.setup.stepsLabel')">
 						<UiSegmentedControl
 							:options="stepOptions"
 							:model-value="configStep"
@@ -669,14 +678,14 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						>
 							<template v-for="st in configSteps" :key="st.id" #[`option-${st.id}`]>
 								<Icon :name="st.icon" class="size-3.5 shrink-0" />
-								<span class="hidden sm:inline">{{ st.label }}</span>
+								<span class="hidden sm:inline">{{ t(st.label) }}</span>
 							</template>
 						</UiSegmentedControl>
 					</nav>
 
 					<form @submit.prevent="onProvision">
 						<div v-show="configStep === 'features'">
-							<label :class="sectionClass">Feature packs</label>
+							<label :class="sectionClass">{{ t('desktop.setup.sections.featurePacks') }}</label>
 							<div class="space-y-1.5">
 								<label
 									v-for="opt in packOptions"
@@ -690,41 +699,41 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									>
 										<Icon v-if="packs[opt.key]" name="lucide:check" class="size-3 text-text-inverse" />
 									</span>
-									<span>{{ opt.label }}</span>
+									<span>{{ t(opt.label) }}</span>
 								</label>
 							</div>
 						</div>
 
 						<div v-show="configStep === 'providers'">
-							<label :class="sectionClass">Email sending</label>
+							<label :class="sectionClass">{{ t('desktop.setup.sections.emailSending') }}</label>
 							<div class="relative">
 								<select v-model="sendingProvider" :class="[inputClass, 'appearance-none pr-8']">
-									<option value="mta">Owlat MTA (self-hosted)</option>
-									<option value="resend">Resend</option>
-									<option value="ses">Amazon SES</option>
+									<option value="mta">{{ t('desktop.setup.sending.mta') }}</option>
+										<option value="resend">{{ t('desktop.setup.sending.resend') }}</option>
+										<option value="ses">{{ t('desktop.setup.sending.ses') }}</option>
 								</select>
 								<Icon name="lucide:chevron-down" class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
 							</div>
-							<input v-if="sendingProvider === 'resend'" v-model="resendKey" :class="[inputClass, 'mt-2']" placeholder="Resend API key (re_…)" />
+							<input v-if="sendingProvider === 'resend'" v-model="resendKey" :class="[inputClass, 'mt-2']" :placeholder="t('desktop.setup.sending.resendKeyPlaceholder')" />
 							<div v-if="sendingProvider === 'ses'" class="mt-2 space-y-2">
-								<input v-model="sesRegion" :class="inputClass" placeholder="AWS region (us-east-1)" />
-								<input v-model="sesAccessKey" :class="inputClass" placeholder="Access key ID" />
-								<input v-model="sesSecret" type="password" :class="inputClass" placeholder="Secret access key" />
+								<input v-model="sesRegion" :class="inputClass" :placeholder="t('desktop.setup.sending.sesRegionPlaceholder')" />
+								<input v-model="sesAccessKey" :class="inputClass" :placeholder="t('desktop.setup.sending.sesAccessKeyPlaceholder')" />
+								<input v-model="sesSecret" type="password" :class="inputClass" :placeholder="t('desktop.setup.sending.sesSecretPlaceholder')" />
 							</div>
-							<p v-if="sendingProvider === 'mta'" :class="hintClass">
-								Mail hostnames (<span class="font-mono">mail.</span> for outbound, <span class="font-mono">bounce.</span>
-								for returns) come from the domain you set below.
-							</p>
+							<I18nT v-if="sendingProvider === 'mta'" keypath="desktop.setup.sending.mtaHint" tag="p" :class="hintClass" scope="global">
+									<template #outbound><span class="font-mono">mail.</span></template>
+									<template #returns><span class="font-mono">bounce.</span></template>
+								</I18nT>
 						</div>
 
 						<div v-show="configStep === 'providers'" class="mt-5">
-							<label :class="sectionClass">AI (optional)</label>
+							<label :class="sectionClass">{{ t('desktop.setup.sections.ai') }}</label>
 							<div class="relative">
 								<select v-model="aiProvider" :class="[inputClass, 'appearance-none pr-8']">
-									<option value="none">None</option>
-									<option value="openrouter">OpenRouter</option>
-									<option value="openai">OpenAI</option>
-									<option value="ollama">Ollama (local)</option>
+									<option value="none">{{ t('common.none') }}</option>
+										<option value="openrouter">{{ t('desktop.setup.ai.openrouter') }}</option>
+										<option value="openai">{{ t('desktop.setup.ai.openai') }}</option>
+										<option value="ollama">{{ t('desktop.setup.ai.ollama') }}</option>
 								</select>
 								<Icon name="lucide:chevron-down" class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
 							</div>
@@ -732,27 +741,27 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								v-if="aiProvider === 'openrouter' || aiProvider === 'openai'"
 								v-model="aiKey"
 								:class="[inputClass, 'mt-2']"
-								placeholder="API key"
+								:placeholder="t('desktop.setup.ai.keyPlaceholder')"
 							/>
 						</div>
 
 						<div v-show="configStep === 'admin'">
-							<label :class="sectionClass">Admin account</label>
+							<label :class="sectionClass">{{ t('desktop.setup.sections.admin') }}</label>
 							<div class="space-y-2">
 								<input v-model="adminEmail" :class="inputClass" placeholder="admin@example.com" />
-								<input v-model="adminName" :class="inputClass" placeholder="Your name" />
+								<input v-model="adminName" :class="inputClass" :placeholder="t('desktop.setup.admin.namePlaceholder')" />
 								<div class="relative">
 									<input
 										v-model="adminPassword"
 										:type="revealPassword ? 'text' : 'password'"
 										:class="[inputClass, 'pr-10']"
 										autocomplete="new-password"
-										placeholder="Password (min 12 chars)"
+										:placeholder="t('desktop.setup.admin.passwordPlaceholder')"
 									/>
 									<button
 										type="button"
 										class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-										:aria-label="revealPassword ? 'Hide password' : 'Show password'"
+										:aria-label="revealPassword ? t('desktop.setup.admin.hidePassword') : t('desktop.setup.admin.showPassword')"
 										:aria-pressed="revealPassword"
 										@click="revealPassword = !revealPassword"
 									>
@@ -764,7 +773,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									:type="revealPassword ? 'text' : 'password'"
 									:class="inputClass"
 									autocomplete="new-password"
-									placeholder="Confirm password"
+									:placeholder="t('desktop.setup.admin.confirmPasswordPlaceholder')"
 								/>
 								<!-- Live length + strength meter (validates before submit). -->
 								<div v-if="adminPassword" class="flex items-center gap-2">
@@ -785,40 +794,37 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<span
 										class="w-20 shrink-0 text-right text-xs"
 										:class="passwordAssessment.meetsMinLength ? 'text-text-secondary' : 'text-error'"
-									>{{ passwordAssessment.label }}</span>
+									>{{ tk(passwordAssessment.label) }}</span>
 								</div>
-								<p v-if="adminPasswordError" class="text-xs text-error">{{ adminPasswordError }}</p>
+								<p v-if="adminPasswordError" class="text-xs text-error">{{ tk(adminPasswordError) }}</p>
 							</div>
 						</div>
 
 						<div v-show="configStep === 'domain'">
-							<label :class="sectionClass">Domain{{ isRemoteTarget ? ' (required for a remote server)' : ' (for remote access)' }}</label>
-							<input v-model="domain" :class="inputClass" :placeholder="isRemoteTarget ? 'wolves.ink' : 'wolves.ink (optional)'" />
+							<label :class="sectionClass">{{ isRemoteTarget ? t('desktop.setup.domain.labelRequired') : t('desktop.setup.domain.label') }}</label>
+							<input v-model="domain" :class="inputClass" :placeholder="isRemoteTarget ? t('desktop.setup.domain.placeholderRequired') : t('desktop.setup.domain.placeholder')" />
 							<p class="mt-1.5 text-xs text-text-secondary">
-								Enter one domain — Owlat derives every hostname from it (app, API, mail).
-								<template v-if="isRemoteTarget">
-									A remote server needs a domain so you can open it from this app after install — its
-									own <span class="font-mono">localhost</span> is not reachable from here.
-								</template>
+								{{ t('desktop.setup.domain.hint') }}
+								<I18nT v-if="isRemoteTarget" keypath="desktop.setup.domain.hintRemote" scope="global">
+									<template #localhost><span class="font-mono">localhost</span></template>
+								</I18nT>
 								<template v-else>
-									Leave blank only when installing on this machine.
+									{{ t('desktop.setup.domain.hintLocal') }}
 								</template>
 							</p>
 							<p v-if="isRemoteTarget && !hasDomain" class="mt-1.5 text-xs text-warning">
 								<Icon name="lucide:triangle-alert" class="mb-0.5 mr-1 inline size-3.5" />
-								Without a domain this install is only reachable on the server itself.
+								{{ t('desktop.setup.domain.noDomainWarning') }}
 							</p>
 
 							<!-- Connected by hostname → the SSH address is not an IP. The wizard
 							     auto-detects the public IP over the SSH session; this field lets
 							     the operator override it if detection failed or was wrong. -->
 							<div v-if="hasDomain && !hostIsIp" class="mt-3">
-								<label :class="labelClass">Server's public IP (for the A records)</label>
+								<label :class="labelClass">{{ t('desktop.setup.domain.publicIpLabel') }}</label>
 								<input v-model="publicIp" :class="[inputClass, 'font-mono text-xs']" placeholder="203.0.113.5" inputmode="decimal" />
 								<p class="mt-1 text-xs text-text-secondary">
-									You connected by hostname. We try to read the server's public IP over the SSH session and
-									fill it in here; if that's blank or wrong, paste it from your host's dashboard so the A
-									records show a real, copyable address.
+									{{ t('desktop.setup.domain.publicIpHint') }}
 								</p>
 							</div>
 
@@ -829,27 +835,28 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 										:domain="domain"
 										:errors="labelValidation.errors"
 										:disabled-keys="disabledLabelKeys"
-										:disabled-hint="HOST_LABEL_INACTIVE_HINT"
+										:disabled-hint="t(HOST_LABEL_INACTIVE_HINT)"
 									/>
 								</div>
 
 								<div class="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-deep p-3">
 									<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-										DNS records to create
+										{{ t('desktop.setup.dns.createTitle') }}
 									</p>
 									<DesktopDnsRecordList v-if="dnsRecords.length" :records="displayDnsRecords" />
 									<p v-else class="text-xs text-text-secondary">
-										Enter a domain above to see the records you need.
-										<template v-if="isRemoteTarget"> A remote server needs one to be reachable from this app.</template>
-										<template v-else> Leave it blank for a local install on this machine (no DNS required).</template>
+										{{ t('desktop.setup.dns.enterDomain') }}
+										<template v-if="isRemoteTarget"> {{ t('desktop.setup.dns.enterDomainRemote') }}</template>
+										<template v-else> {{ t('desktop.setup.dns.enterDomainLocal') }}</template>
 									</p>
 									<p v-if="dnsRecords.length" class="mt-2 text-xs text-text-secondary">
-										TLS certificates are issued automatically once these resolve — keep ports 80/443 open.
+										{{ t('desktop.setup.dns.tlsHint') }}
 									</p>
 									<p v-if="sendingProvider === 'mta' && dnsRecords.length" class="mt-1.5 text-xs text-warning">
 										<Icon name="lucide:info" class="mb-0.5 mr-1 inline size-3.5" />
-										These get the app online. For deliverable email, finish SPF, DKIM and DMARC in
-										<span class="font-medium">Settings → Domains</span> after first sign-in — DKIM is generated there.
+										<I18nT keypath="desktop.setup.dns.deliverabilityHint" scope="global">
+											<template #settings><span class="font-medium">{{ t('desktop.setup.dns.settingsDomains') }}</span></template>
+										</I18nT>
 									</p>
 								</div>
 							</div>
@@ -863,20 +870,20 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							>
 								<Icon v-if="seedDemo" name="lucide:check" class="size-3 text-text-inverse" />
 							</span>
-							<span>Seed demo data (for evaluating)</span>
+							<span>{{ t('desktop.setup.admin.seedDemo') }}</span>
 						</label>
 
 						<p v-if="configError" class="mt-4 text-sm text-error">{{ configError }}</p>
 						<div class="mt-5 flex items-center gap-3 border-t border-border-subtle pt-4">
 							<UiButton v-if="stepIndex > 0" variant="outline" size="sm" @click="prevStep">
-								Back
-							</UiButton>
-							<UiButton v-if="!isLastStep" size="sm" class="ml-auto" @click="nextStep">
-								Next
-							</UiButton>
-							<UiButton v-else type="submit" size="sm" class="ml-auto">
-								Provision server
-							</UiButton>
+									{{ t('common.back') }}
+								</UiButton>
+								<UiButton v-if="!isLastStep" size="sm" class="ml-auto" @click="nextStep">
+									{{ t('common.next') }}
+								</UiButton>
+								<UiButton v-else type="submit" size="sm" class="ml-auto">
+									{{ t('desktop.setup.provision') }}
+								</UiButton>
 						</div>
 					</form>
 				</section>
@@ -888,81 +895,76 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 					<!-- READY: the public URL is up and reachable -->
 					<div v-if="stage === 'done' && canOpenWorkspace" class="mt-6 rounded-xl border border-success/30 bg-success/5 p-4">
 						<p class="flex items-center gap-2 text-sm font-medium text-success">
-							<Icon name="lucide:party-popper" class="size-4" /> Your server is ready
+							<Icon name="lucide:party-popper" class="size-4" /> {{ t('desktop.setup.done.readyTitle') }}
 						</p>
 						<p v-if="siteUrl" class="mt-1 text-xs text-text-secondary">{{ siteUrl }}</p>
 						<UiButton class="mt-3" full-width @click="connectWorkspace">
-							Open workspace
-						</UiButton>
+								{{ t('desktop.setup.done.openWorkspace') }}
+							</UiButton>
 					</div>
 
 					<!-- FINISHING UP: installed, but the public URL isn't answering yet (DNS/TLS) -->
 					<div v-else-if="stage === 'done' && !siteIsLoopback" class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4">
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
 							<Icon name="lucide:loader-circle" class="size-4" :class="{ 'animate-spin': checkingReach }" />
-							Finishing up — add your DNS records, then open your workspace
-						</p>
-						<p class="mt-1 text-xs text-text-secondary">
-							Owlat is installed at <span class="font-mono">{{ siteUrl }}</span>, but the address can't be
-							reached yet. Create the records below; once they resolve and TLS is issued, this turns into
-							"Open workspace" automatically.
-						</p>
+							{{ t('desktop.setup.finishing.title') }}
+							</p>
+						<I18nT keypath="desktop.setup.finishing.body" tag="p" class="mt-1 text-xs text-text-secondary" scope="global">
+								<template #url><span class="font-mono">{{ siteUrl }}</span></template>
+							</I18nT>
 						<div v-if="dnsRecords.length" class="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-deep p-3">
 							<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-								Create these DNS records
-							</p>
+									{{ t('desktop.setup.finishing.createRecords') }}
+								</p>
 							<DesktopDnsRecordList :records="displayDnsRecords" />
 							<p class="mt-2 text-xs text-text-secondary">
-								TLS is issued automatically once they resolve (ports 80/443 open).
-							</p>
+									{{ t('desktop.setup.finishing.tlsHint') }}
+								</p>
 						</div>
 						<UiButton variant="outline" size="sm" class="mt-3" :disabled="checkingReach" @click="recheckReachable">
 							<template #iconLeft>
 								<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin': checkingReach }" />
 							</template>
-							{{ checkingReach ? 'Checking…' : 'Check again' }}
+							{{ checkingReach ? t('desktop.setup.finishing.checking') : t('desktop.setup.finishing.checkAgain') }}
 						</UiButton>
 					</div>
 
 					<!-- LOOPBACK: the URL only works on the server itself -->
 					<div v-else-if="stage === 'done'" class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4">
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
-							<Icon name="lucide:circle-check" class="size-4" /> Your server is running
+							<Icon name="lucide:circle-check" class="size-4" /> {{ t('desktop.setup.loopback.title') }}
 						</p>
-						<p class="mt-1 text-xs text-text-secondary">
-							It's installed at <span class="font-mono">{{ siteUrl }}</span>, but that address only works on
-							the server itself — not from this app. Re-run setup with a public domain to open it here.
-						</p>
+						<I18nT keypath="desktop.setup.loopback.body" tag="p" class="mt-1 text-xs text-text-secondary" scope="global">
+								<template #url><span class="font-mono">{{ siteUrl }}</span></template>
+							</I18nT>
 						<UiButton variant="outline" size="sm" class="mt-3" @click="retry">
-							Set a domain &amp; retry
-						</UiButton>
+								{{ t('desktop.setup.loopback.retry') }}
+							</UiButton>
 					</div>
 
 					<!-- After any successful install: note the fate of the secrets-bearing config. -->
 					<div v-if="stage === 'done'" class="mt-3 flex items-start gap-2 text-xs text-text-secondary">
 						<Icon :name="secretsRemoved ? 'lucide:shield-check' : 'lucide:shield-alert'" class="mt-0.5 size-3.5 shrink-0" :class="secretsRemoved ? 'text-success' : 'text-warning'" />
 						<span v-if="secretsRemoved">
-							The setup file — which held your admin password and provider API keys in plaintext — was
-							removed from the server.
+							{{ t('desktop.setup.secrets.removed') }}
 						</span>
-						<span v-else class="text-warning">
-							Couldn't auto-remove the setup file. It holds your admin password and provider keys in
-							plaintext — delete <span class="font-mono">.owlat-setup.json</span> from the install directory.
-						</span>
+						<I18nT v-else keypath="desktop.setup.secrets.notRemoved" tag="span" class="text-warning" scope="global">
+							<template #file><span class="font-mono">.owlat-setup.json</span></template>
+						</I18nT>
 					</div>
 
 					<div v-else-if="stage === 'error'" class="mt-6 rounded-xl border border-error/40 bg-error/5 p-4">
-						<p class="text-sm font-medium text-error">Provisioning failed</p>
+						<p class="text-sm font-medium text-error">{{ t('desktop.setup.failure.title') }}</p>
 						<p class="mt-1 text-xs text-text-secondary">{{ error }}</p>
 						<!-- The failing step's stderr tail, pinned so the root cause stays readable. -->
 						<div v-if="failureTail.length" class="mt-2">
-							<p class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">Last error output</p>
+							<p class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">{{ t('desktop.setup.failure.lastOutput') }}</p>
 							<pre class="max-h-40 overflow-auto rounded bg-bg-deep p-2 font-mono text-[11px] leading-snug text-error">{{ failureTail.join('\n') }}</pre>
 						</div>
-						<p class="mt-2 text-xs text-text-secondary">Open the server log above for the full details, then adjust your configuration and try again.</p>
+						<p class="mt-2 text-xs text-text-secondary">{{ t('desktop.setup.failure.hint') }}</p>
 						<UiButton variant="outline" size="sm" class="mt-3" @click="retry">
-							Adjust &amp; retry
-						</UiButton>
+								{{ t('desktop.setup.failure.retry') }}
+							</UiButton>
 					</div>
 				</section>
 			</template>

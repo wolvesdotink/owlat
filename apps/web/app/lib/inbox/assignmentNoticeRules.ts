@@ -68,34 +68,64 @@ export function planAssignmentNotices(
 	return plans;
 }
 
+/**
+ * A line the caller translates. This module is module scope and never calls
+ * `useI18n`, so its copy travels as an i18n key plus the parameters that key
+ * interpolates (see the UI-localization guide).
+ */
+export type AssignmentMessage = { key: string; params?: Record<string, unknown> };
+
+/** The interpolation params a single-notice message needs. */
+function noticeParams(notice: AssignmentNotice): Record<string, unknown> {
+	return {
+		subject: notice.subject,
+		assignedByName: notice.assignedByName,
+	};
+}
+
+/**
+ * The message key for one assignment — a separate key when the mail carries no
+ * subject at all, so the missing-subject wording is translated rather than
+ * spliced into the sentence.
+ */
+function noticeKey(notice: AssignmentNotice, base: string): string {
+	return notice.subject ? `${base}.withSubject` : `${base}.noSubject`;
+}
+
 /** In-app toast copy for a single assignment. */
-export function assignmentToastMessage(notice: AssignmentNotice): string {
-	return `Assigned to you — ${notice.subject || 'No subject'} · from ${notice.assignedByName}`;
+export function assignmentToastMessage(notice: AssignmentNotice): AssignmentMessage {
+	return {
+		key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.toast.single'),
+		params: noticeParams(notice),
+	};
 }
 
 /** In-app toast copy for a coalesced burst. */
-export function assignmentGroupToastMessage(count: number): string {
-	return `${count} conversations assigned to you`;
+export function assignmentGroupToastMessage(count: number): AssignmentMessage {
+	return { key: 'shared.inbox.assignmentNoticeRules.toast.group', params: { count } };
 }
 
 /** Desktop notification title + body for a single assignment. */
 export function assignmentNotificationParts(notice: AssignmentNotice): {
-	title: string;
-	body: string;
+	title: AssignmentMessage;
+	body: AssignmentMessage;
 } {
 	return {
-		title: 'Assigned to you',
-		body: `${notice.subject || 'No subject'} · from ${notice.assignedByName}`,
+		title: { key: 'shared.inbox.assignmentNoticeRules.notification.singleTitle' },
+		body: {
+			key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.notification.body'),
+			params: noticeParams(notice),
+		},
 	};
 }
 
 /** Desktop notification title + body for a coalesced burst. */
 export function assignmentGroupNotificationParts(count: number): {
-	title: string;
-	body: string;
+	title: AssignmentMessage;
+	body: AssignmentMessage;
 } {
 	return {
-		title: 'New assignments',
+		title: { key: 'shared.inbox.assignmentNoticeRules.notification.groupTitle' },
 		body: assignmentGroupToastMessage(count),
 	};
 }

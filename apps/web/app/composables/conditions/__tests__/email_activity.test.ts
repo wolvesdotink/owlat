@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import { emailActivityEditorModule, ACTIVITY_OPTIONS } from '../email_activity';
 import type { ConditionEditorContext } from '../types';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** The module carries catalog keys, so assertions render them in English. */
+const { t } = createTestI18n().global;
 
 const emptyCtx: ConditionEditorContext = {
 	contactProperties: computed(() => []),
@@ -34,11 +38,13 @@ describe('emailActivityEditorModule', () => {
 
 		it('flags an unknown field as missing activity type', () => {
 			expect(
-				emailActivityEditorModule.validateForSubmit({
-					kind: 'email_activity',
-					field: 'bounced' as never,
-					operator: 'is_true',
-				})
+				t(
+					emailActivityEditorModule.validateForSubmit({
+						kind: 'email_activity',
+						field: 'bounced' as never,
+						operator: 'is_true',
+					})!
+				)
 			).toBe('Please select an activity type');
 		});
 	});
@@ -50,16 +56,27 @@ describe('emailActivityEditorModule', () => {
 					emailActivityEditorModule.getDescription(
 						{ kind: 'email_activity', field: option.field, operator: option.operator },
 						emptyCtx
-					)
+					).key
 				).toBe(option.label);
 			}
 		});
 
+		it('renders the English copy of every option', () => {
+			expect(ACTIVITY_OPTIONS.map((option) => t(option.label))).toEqual([
+				'Has opened an email',
+				'Has clicked a link',
+				'Has not opened any email',
+				'Has not clicked any link',
+			]);
+		});
+
 		it('falls back when no matching option is found', () => {
 			expect(
-				emailActivityEditorModule.getDescription(
-					{ kind: 'email_activity', field: 'unknown' as never, operator: 'is_true' },
-					emptyCtx
+				t(
+					emailActivityEditorModule.getDescription(
+						{ kind: 'email_activity', field: 'unknown' as never, operator: 'is_true' },
+						emptyCtx
+					).key
 				)
 			).toBe('Configure email activity');
 		});

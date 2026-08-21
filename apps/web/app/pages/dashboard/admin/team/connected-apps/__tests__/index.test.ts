@@ -26,6 +26,7 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	]),
 }));
 
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import ConnectedAppsPage from '../index.vue';
 
 interface AppRow {
@@ -72,6 +73,7 @@ beforeEach(() => {
 	runByLabel = {};
 	showToast.mockReset();
 
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('usePermissions', () => ({
@@ -84,8 +86,11 @@ beforeEach(() => {
 		isCopied: () => false,
 		reset: vi.fn(),
 	}));
-	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: string }) => {
-		const run = runByLabel[opts.label] ?? (runByLabel[opts.label] = vi.fn());
+	// Operation labels are localized, so they arrive as getters (`() => t(...)`)
+	// and are resolved here to the English copy the assertions key on.
+	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: string | (() => string) }) => {
+		const label = typeof opts.label === 'function' ? opts.label() : opts.label;
+		const run = runByLabel[label] ?? (runByLabel[label] = vi.fn());
 		return { run, isLoading: ref(false), inlineError: ref(null) };
 	});
 	vi.stubGlobal('useConvexQuery', (_fn: unknown, args: (() => unknown) | undefined) => {
@@ -120,6 +125,7 @@ const revealStub = {
 function mountPage() {
 	return mount(ConnectedAppsPage, {
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiQueryBoundary: passthroughStub,
 				UiCard: passthroughStub,

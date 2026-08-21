@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxRecipientField from '../PostboxRecipientField.vue';
 
@@ -24,6 +25,9 @@ vi.mock('@owlat/api', () => {
 });
 
 beforeAll(() => {
+	// The chip tooltips/labels flow through vue-i18n now; `useI18n` is a Nuxt
+	// auto-import, so it has to exist as a global for the component's setup.
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	// No suggestions — we're exercising chip/keyboard logic, not autocomplete.
 	vi.stubGlobal('useConvexQuery', () => ({ data: ref([]) }));
 });
@@ -40,6 +44,7 @@ function mountField(props: Record<string, unknown> = {}) {
 			...props,
 		},
 		global: {
+			plugins: [createTestI18n()],
 			stubs: { Icon: iconStub, UiAvatar: avatarStub },
 		},
 	});

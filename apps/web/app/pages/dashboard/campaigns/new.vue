@@ -3,7 +3,9 @@ import type { Id } from '@owlat/api/dataModel';
 import type { Audience } from '@owlat/shared';
 import { api } from '@owlat/api';
 
-useHead({ title: 'Create Campaign — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.campaigns.new.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -23,11 +25,15 @@ type EmailTemplateSummary = {
 	subject: string;
 };
 
+// The step list carries message KEYS; the rendered copy is derived below so it
+// follows a locale switch instead of freezing at setup.
 const steps = [
-	{ id: 'setup' as Step, label: 'Setup', number: 1 },
-	{ id: 'content' as Step, label: 'Content', number: 2 },
-	{ id: 'review' as Step, label: 'Review', number: 3 },
+	{ id: 'setup' as Step, label: 'dashboard.campaigns.new.steps.setup', number: 1 },
+	{ id: 'content' as Step, label: 'dashboard.campaigns.new.steps.content', number: 2 },
+	{ id: 'review' as Step, label: 'dashboard.campaigns.new.steps.review', number: 3 },
 ];
+
+const displaySteps = computed(() => steps.map((step) => ({ ...step, label: t(step.label) })));
 
 const { currentStep, getStepStatus, isConnectorHighlighted, goToStep, goToNext, goToPrevious } =
 	useWizard(steps);
@@ -117,15 +123,19 @@ const reviewData = computed(() => {
 	const c = campaignDetails.value;
 	const cfg = c?.abTestConfig;
 
-	let audienceDisplayText = 'Not configured';
+	let audienceDisplayText = t('dashboard.campaigns.new.audience.notConfigured');
 	if (setup?.audience?.kind === 'topic' && setup.selectedTopicName) {
-		audienceDisplayText = `Topic: ${setup.selectedTopicName}`;
+		audienceDisplayText = t('dashboard.campaigns.new.audience.topic', {
+			name: setup.selectedTopicName,
+		});
 	} else if (setup?.audience?.kind === 'segment' && setup.selectedSegment) {
-		audienceDisplayText = `Segment: ${setup.selectedSegment.name}`;
+		audienceDisplayText = t('dashboard.campaigns.new.audience.segment', {
+			name: setup.selectedSegment.name,
+		});
 	} else if (c?.topic) {
-		audienceDisplayText = `Topic: ${c.topic.name}`;
+		audienceDisplayText = t('dashboard.campaigns.new.audience.topic', { name: c.topic.name });
 	} else if (c?.segment) {
-		audienceDisplayText = `Segment: ${c.segment.name}`;
+		audienceDisplayText = t('dashboard.campaigns.new.audience.segment', { name: c.segment.name });
 	}
 
 	return {
@@ -161,14 +171,18 @@ const reviewData = computed(() => {
 				<div class="flex items-center gap-4">
 					<button
 						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-						aria-label="Back"
+						:aria-label="t('common.back')"
 						@click="handleCancel"
 					>
 						<Icon name="lucide:arrow-left" class="w-5 h-5" />
 					</button>
 					<div>
-						<h1 class="text-lg font-semibold text-text-primary">Create Campaign</h1>
-						<p class="text-sm text-text-secondary">Set up your email campaign</p>
+						<h1 class="text-lg font-semibold text-text-primary">
+							{{ t('dashboard.campaigns.new.title') }}
+						</h1>
+						<p class="text-sm text-text-secondary">
+							{{ t('dashboard.campaigns.new.subtitle') }}
+						</p>
 					</div>
 				</div>
 			</div>
@@ -178,7 +192,7 @@ const reviewData = computed(() => {
 		<div class="bg-bg-elevated border-b border-border-subtle">
 			<div class="max-w-4xl mx-auto px-6 py-4">
 				<UiStepIndicator
-					:steps="steps"
+					:steps="displaySteps"
 					:get-step-status="
 						getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'
 					"

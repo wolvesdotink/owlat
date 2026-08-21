@@ -2,24 +2,33 @@
 /**
  * PostboxComposerSealLock — the composer's honest seal-lock (Sealed Mail E5).
  *
- * Covers the three seal states with VERBATIM copy (the honesty audit), that a
- * cannotSeal draft exposes an EXPLICIT "Send unsealed" control which emits
- * send-unsealed (never a silent plaintext send), that keyChanged offers NO
- * unsealed escape hatch (its copy points at the thread's key-change banner), and
- * that the flag gate renders nothing.
+ * Covers the seal states with VERBATIM copy (the honesty audit), that a
+ * cannotSeal draft exposes an explicit "Send unsealed…" control which only
+ * REQUESTS the decision (the parent's proceed-or-cancel dialog takes it, so the
+ * lock can never send plaintext by itself), that keyChanged offers NO unsealed
+ * escape hatch (its copy points at the thread's key-change banner), that a
+ * pending state says so instead of staying blank, and that the flag gate renders
+ * nothing.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxComposerSealLock from '../PostboxComposerSealLock.vue';
 import type { SealState } from '~/utils/sealComposer';
 
 const iconStub = { props: ['name'], template: '<span />' };
 
-function mountLock(sealState: SealState | null, enabled = true) {
+// The lock's own control and the derived lock copy flow through vue-i18n now;
+// `useI18n` is a Nuxt auto-import, so it has to exist as a global for setup.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
+function mountLock(sealState: SealState | null, enabled = true, pending = false) {
 	return mount(PostboxComposerSealLock, {
-		props: { enabled, sealState },
-		global: { stubs: { Icon: iconStub } },
+		props: { enabled, sealState, pending },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
 
@@ -49,7 +58,7 @@ describe('PostboxComposerSealLock', () => {
 		expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(false);
 	});
 
-	it('cannotSeal: verbatim summary and an EXPLICIT send-unsealed act', async () => {
+	it('cannotSeal: verbatim summary and an EXPLICIT request for the unsealed decision', async () => {
 		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'recipient_no_key' });
 		expect(wrapper.find('[data-testid="seal-lock-summary"]').text()).toBe(
 			"This message won't be sealed"
@@ -59,16 +68,36 @@ describe('PostboxComposerSealLock', () => {
 		);
 		const btn = wrapper.find('[data-testid="seal-lock-send-unsealed"]');
 		expect(btn.exists()).toBe(true);
+		// The ellipsis is the promise that a decision follows, not an immediate send.
+		expect(btn.text()).toBe('Send unsealed…');
 		await btn.trigger('click');
-		expect(wrapper.emitted('send-unsealed')).toHaveLength(1);
+		expect(wrapper.emitted('request-unsealed')).toHaveLength(1);
 	});
 
-	it('flag off renders nothing', () => {
-		const wrapper = mountLock({ kind: 'willSeal' }, false);
-		expect(wrapper.find('[data-testid="seal-lock"]').exists()).toBe(false);
+	it('cannotSeal(no_recipients): explains, but offers no decision there is nothing to decide', () => {
+		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'no_recipients' });
+		expect(wrapper.find('[data-testid="seal-lock-detail"]').text()).toBe(
+			'Add a recipient to see whether this message can be sealed.'
+		);
+		expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(false);
 	});
 
-	it('no seal state renders nothing', () => {
+	it('pending: says the seal state is still being checked, with no decision offered', () => {
+		const wrapper = mountLock(null, true, true);
+		expect(wrapper.find('[data-testid="seal-lock-summary"]').text()).toBe(
+			'Checking whether this message can be sealed'
+		);
+		expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(false);
+	});
+
+	it('flag off renders nothing, even while pending', () => {
+		expect(mountLock({ kind: 'willSeal' }, false).find('[data-testid="seal-lock"]').exists()).toBe(
+			false
+		);
+		expect(mountLock(null, false, true).find('[data-testid="seal-lock"]').exists()).toBe(false);
+	});
+
+	it('no seal state and nothing in flight renders nothing', () => {
 		const wrapper = mountLock(null);
 		expect(wrapper.find('[data-testid="seal-lock"]').exists()).toBe(false);
 	});

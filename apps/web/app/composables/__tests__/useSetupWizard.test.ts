@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import en from '~~/i18n/locales/en.json';
 import {
 	SETUP_STEPS,
 	buildProviderEnv,
@@ -214,7 +215,11 @@ describe('email step navigation gate', () => {
 		const draft = emailDraft({
 			mtaIdentity: { ...emailDraft().mtaIdentity!, ehloHostnames: 'not json' },
 		});
-		expect(validateEmailStep(draft).mtaIdentity).toContain('JSON object');
+		// The validator returns a catalog key (the wizard renders it through `t`),
+		// so the wording is asserted where it now lives.
+		const message = validateEmailStep(draft).mtaIdentity;
+		expect(message).toBe('shared.setupMtaIdentity.invalidEhloHostnames');
+		expect(en.shared.setupMtaIdentity.invalidEhloHostnames).toContain('JSON object');
 	});
 });
 

@@ -23,8 +23,14 @@ const emit = defineEmits<{
 	'select-winner': [winner: 'A' | 'B'];
 }>();
 
+const { t, locale } = useI18n();
+
 const testTypeLabel = computed(() =>
-	props.stats.config?.testType === 'content' ? 'Email content' : 'Subject lines'
+	t(
+		props.stats.config?.testType === 'content'
+			? 'components.dashboard.campaignAbComparison.testType.content'
+			: 'components.dashboard.campaignAbComparison.testType.subject'
+	)
 );
 
 const showManualPicker = computed(
@@ -37,11 +43,11 @@ const showManualPicker = computed(
 const criteriaLabel = computed(() => {
 	switch (props.stats.config?.winnerCriteria) {
 		case 'open_rate':
-			return 'best open rate';
+			return t('components.dashboard.campaignAbComparison.criteria.openRate');
 		case 'click_rate':
-			return 'best click rate';
+			return t('components.dashboard.campaignAbComparison.criteria.clickRate');
 		default:
-			return 'manual selection';
+			return t('components.dashboard.campaignAbComparison.criteria.manual');
 	}
 });
 
@@ -55,11 +61,14 @@ const winnerDifference = computed(() => {
 	const criteria = config?.winnerCriteria ?? 'open_rate';
 	if (criteria === 'click_rate') {
 		return {
-			metric: 'click rate',
+			metric: t('components.dashboard.campaignAbComparison.metric.clickRate'),
 			diff: (winnerStats.clickRate - loserStats.clickRate).toFixed(1),
 		};
 	}
-	return { metric: 'open rate', diff: (winnerStats.openRate - loserStats.openRate).toFixed(1) };
+	return {
+		metric: t('components.dashboard.campaignAbComparison.metric.openRate'),
+		diff: (winnerStats.openRate - loserStats.openRate).toFixed(1),
+	};
 });
 
 const variants = computed(() => [
@@ -74,8 +83,10 @@ const variants = computed(() => [
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:split" size="sm" rounded="lg" />
 				<div>
-					<h3 class="text-base font-medium text-text-primary">A/B test</h3>
-					<p class="text-sm text-text-secondary">Testing {{ testTypeLabel }}</p>
+					<h3 class="text-base font-medium text-text-primary">{{ t('components.dashboard.campaignAbComparison.title') }}</h3>
+					<p class="text-sm text-text-secondary">
+						{{ t('components.dashboard.campaignAbComparison.testing', { testType: testTypeLabel }) }}
+					</p>
 				</div>
 			</div>
 			<!-- One roll-up status chip per the FF one-chip rule. -->
@@ -85,7 +96,7 @@ const variants = computed(() => [
 				data-testid="ab-winner-chip"
 			>
 				<Icon name="lucide:trophy" class="w-3.5 h-3.5" />
-				Variant {{ stats.winner }} won
+				{{ t('components.dashboard.campaignAbComparison.winnerChip', { variant: stats.winner }) }}
 			</span>
 			<span
 				v-else-if="stats.status === 'testing'"
@@ -93,7 +104,7 @@ const variants = computed(() => [
 				data-testid="ab-testing-chip"
 			>
 				<Icon name="lucide:clock" class="w-3.5 h-3.5" />
-				Testing in progress
+				{{ t('components.dashboard.campaignAbComparison.testingInProgress') }}
 			</span>
 		</div>
 
@@ -120,7 +131,11 @@ const variants = computed(() => [
 								'text-text-primary',
 								stats.winner === variant.key ? 'font-semibold' : 'font-medium',
 							]"
-							>Variant {{ variant.key }}</span
+							>{{
+							t('components.dashboard.campaignAbComparison.variantLabel', {
+								variant: variant.key,
+							})
+						}}</span
 						>
 						<Icon
 							v-if="stats.winner === variant.key"
@@ -129,12 +144,16 @@ const variants = computed(() => [
 						/>
 					</div>
 					<span class="text-sm text-text-tertiary tabular-nums">
-						{{ variant.stats.sent.toLocaleString() }} sent
+						{{
+						t('components.dashboard.campaignAbComparison.sentCount', {
+							count: variant.stats.sent.toLocaleString(locale),
+						})
+					}}
 					</span>
 				</div>
 				<div class="space-y-3">
 					<div class="flex justify-between items-center">
-						<span class="text-sm text-text-secondary">Open rate</span>
+						<span class="text-sm text-text-secondary">{{ t('components.dashboard.campaignAbComparison.openRate') }}</span>
 						<span class="text-sm font-medium text-text-primary tabular-nums"
 							>{{ variant.stats.openRate.toFixed(1) }}%</span
 						>
@@ -146,7 +165,7 @@ const variants = computed(() => [
 						/>
 					</div>
 					<div class="flex justify-between items-center">
-						<span class="text-sm text-text-secondary">Click rate</span>
+						<span class="text-sm text-text-secondary">{{ t('components.dashboard.campaignAbComparison.clickRate') }}</span>
 						<span class="text-sm font-medium text-text-primary tabular-nums"
 							>{{ variant.stats.clickRate.toFixed(1) }}%</span
 						>
@@ -164,7 +183,7 @@ const variants = computed(() => [
 		<!-- Manual winner selection (manual criteria, still testing) -->
 		<div v-if="showManualPicker" class="border-t border-border-subtle pt-4">
 			<p class="text-sm text-text-secondary mb-3">
-				Pick the winning variant to send to the rest of the audience.
+				{{ t('components.dashboard.campaignAbComparison.pickPrompt') }}
 			</p>
 			<div class="flex gap-3">
 				<UiButton
@@ -178,7 +197,7 @@ const variants = computed(() => [
 				>
 					<Icon v-if="isSelectingWinner" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 					<Icon v-else name="lucide:trophy" class="w-4 h-4" />
-					Pick variant {{ variant.key }}
+					{{ t('components.dashboard.campaignAbComparison.pickVariant', { variant: variant.key }) }}
 				</UiButton>
 			</div>
 		</div>
@@ -190,16 +209,25 @@ const variants = computed(() => [
 			data-testid="ab-winner-summary"
 		>
 			<Icon name="lucide:check-circle-2" class="w-4 h-4 text-success shrink-0" />
-			<span>
-				Variant {{ stats.winner }} won with
-				<span class="font-medium text-text-primary tabular-nums"
-					>+{{ winnerDifference.diff }} pts</span
-				>
-				higher {{ winnerDifference.metric
-				}}<template v-if="stats.winnerSelectedAt">
-					· picked by {{ criteriaLabel }} {{ formatDateTime(stats.winnerSelectedAt) }}</template
-				>.
-			</span>
+			<I18nT
+				:keypath="
+					stats.winnerSelectedAt
+						? 'components.dashboard.campaignAbComparison.winnerSummaryPicked'
+						: 'components.dashboard.campaignAbComparison.winnerSummary'
+				"
+				tag="span"
+				scope="global"
+			>
+				<template #variant>{{ stats.winner }}</template>
+				<template #difference>
+					<span class="font-medium text-text-primary tabular-nums">{{
+						t('components.dashboard.campaignAbComparison.points', { points: winnerDifference.diff })
+					}}</span>
+				</template>
+				<template #metric>{{ winnerDifference.metric }}</template>
+				<template #criteria>{{ criteriaLabel }}</template>
+				<template #date>{{ formatDateTime(stats.winnerSelectedAt ?? 0) }}</template>
+			</I18nT>
 		</div>
 	</div>
 </template>

@@ -52,6 +52,7 @@ apps/api/convex/delivery/lastMileRouting.ts:mta  # decision.kind, beside a candi
 
 apps/setup-cli/src/commands/quickstart.ts:mta  # composeProfilesUnion.includes('mta') — the profile the default self-host ships
 apps/web/server/api/setup/apply.post.ts:mta  # profiles.includes('mta') gates the outbound-IP preflight
+apps/web/app/composables/useSetupEmailStepForm.ts:mta  # getActiveProfiles(…).includes('mta') reads a docker compose profile — the line the email.vue allowlist entry foretold, moved here with the setup form extraction
 
 
 # ── the contact-import source registry ────────────────────────────────────────

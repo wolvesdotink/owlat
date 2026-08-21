@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'File Details — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.files.detail.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -31,10 +33,10 @@ const { data: versions } = useConvexQuery(api.semanticFiles.getVersionHistory, (
 
 // Mutations
 const { run: updateFile } = useBackendOperation(api.semanticFiles.update, {
-	label: 'Update file',
+	label: () => t('dashboard.files.detail.updateOperation'),
 });
 const { run: removeFile } = useBackendOperation(api.semanticFiles.remove, {
-	label: 'Delete file',
+	label: () => t('dashboard.files.detail.deleteOperation'),
 });
 
 // Edit state
@@ -44,6 +46,8 @@ const isEditingTitle = ref(false);
 const editTitleInput = ref('');
 const isEditingContacts = ref(false);
 const editContacts = ref<PickerContact[]>([]);
+const isEditingThread = ref(false);
+const editThread = ref<PickerThread | null>(null);
 
 // Hydrate the file's linked contact ids into full rows so the editable picker
 // can render labels/chips (the file row carries only ids).
@@ -82,12 +86,12 @@ const saveTags = async () => {
 	if (!file.value) return;
 	const tags = editTagsInput.value
 		.split(',')
-		.map((t: string) => t.trim())
+		.map((tag: string) => tag.trim())
 		.filter(Boolean);
 	const result = await updateFile({ fileId: fileId.value, tags });
 	if (result === undefined) return;
 	isEditingTags.value = false;
-	showToast('Tags updated');
+	showToast(t('dashboard.files.detail.toasts.tagsUpdated'));
 };
 
 const cancelEditTags = () => {
@@ -107,7 +111,7 @@ const saveTitle = async () => {
 	});
 	if (result === undefined) return;
 	isEditingTitle.value = false;
-	showToast('Title updated');
+	showToast(t('dashboard.files.detail.toasts.titleUpdated'));
 };
 
 const cancelEditTitle = () => {
@@ -125,11 +129,40 @@ const saveContacts = async () => {
 	const result = await updateFile({ fileId: fileId.value, contactIds });
 	if (result === undefined) return;
 	isEditingContacts.value = false;
-	showToast('Linked contacts updated');
+	showToast(t('dashboard.files.detail.toasts.contactsUpdated'));
 };
 
 const cancelEditContacts = () => {
 	isEditingContacts.value = false;
+};
+
+// The linked conversation, as the picker's row shape. `get` returns the
+// thread's subject alongside the file, so no extra thread fetch is needed.
+const linkedThread = computed<PickerThread | null>(() =>
+	file.value?.threadId
+		? { _id: file.value.threadId, subject: file.value.threadSubject ?? '' }
+		: null,
+);
+
+const startEditThread = () => {
+	editThread.value = linkedThread.value;
+	isEditingThread.value = true;
+};
+
+const saveThread = async () => {
+	if (!file.value) return;
+	// `null` clears the link; the mutation treats an omitted arg as "unchanged".
+	const result = await updateFile({
+		fileId: fileId.value,
+		threadId: editThread.value?._id ?? null,
+	});
+	if (result === undefined) return;
+	isEditingThread.value = false;
+	showToast(t('dashboard.files.detail.toasts.threadUpdated'));
+};
+
+const cancelEditThread = () => {
+	isEditingThread.value = false;
 };
 
 const handleDelete = async () => {
@@ -137,7 +170,7 @@ const handleDelete = async () => {
 	try {
 		const result = await removeFile({ fileId: fileId.value });
 		if (result === undefined) return;
-		showToast('File deleted');
+		showToast(t('dashboard.files.detail.toasts.fileDeleted'));
 		router.push('/dashboard/files');
 	} finally {
 		isDeleting.value = false;
@@ -163,11 +196,11 @@ const sourceLabel = computed(() => {
 	if (!file.value) return '';
 	switch (file.value.sourceType) {
 		case 'upload':
-			return 'Manual Upload';
+			return t('dashboard.files.detail.source.upload');
 		case 'email_attachment':
-			return 'Email Attachment';
+			return t('dashboard.files.detail.source.emailAttachment');
 		case 'agent_generated':
-			return 'AI Generated';
+			return t('dashboard.files.detail.source.aiGenerated');
 		default:
 			return file.value.sourceType;
 	}
@@ -182,23 +215,25 @@ const sourceLabel = computed(() => {
 			class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Files
+			{{ t('dashboard.files.detail.backToFiles') }}
 		</NuxtLink>
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading file...</p>
+				<p class="text-text-secondary text-sm">{{ t('dashboard.files.detail.loading') }}</p>
 			</div>
 		</div>
 
 		<!-- Not found -->
 		<div v-else-if="!file" class="flex flex-col items-center justify-center py-16 text-center">
 			<UiIconBox icon="lucide:file-x" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">File not found</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.files.detail.notFound') }}
+			</p>
 			<NuxtLink to="/dashboard/files" class="text-sm text-brand hover:underline mt-2">
-				Return to Files
+				{{ t('dashboard.files.detail.returnToFiles') }}
 			</NuxtLink>
 		</div>
 
@@ -219,21 +254,21 @@ const sourceLabel = computed(() => {
 								v-model="editTitleInput"
 								type="text"
 								class="input input-sm text-lg font-semibold"
-								placeholder="File title..."
+								:placeholder="t('dashboard.files.detail.titlePlaceholder')"
 								@keyup.enter="saveTitle"
 								@keyup.escape="cancelEditTitle"
 							/>
 							<button
 								class="p-1 rounded text-brand hover:bg-brand-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="saveTitle"
-								aria-label="Save title"
+								:aria-label="t('dashboard.files.detail.saveTitle')"
 							>
 								<Icon name="lucide:check" class="w-4 h-4" />
 							</button>
 							<button
 								class="p-1 rounded text-text-tertiary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="cancelEditTitle"
-								aria-label="Cancel editing title"
+								:aria-label="t('dashboard.files.detail.cancelEditingTitle')"
 							>
 								<Icon name="lucide:x" class="w-4 h-4" />
 							</button>
@@ -264,15 +299,15 @@ const sourceLabel = computed(() => {
 						rel="noopener noreferrer"
 					>
 						<Icon name="lucide:download" class="w-4 h-4 mr-2" />
-						Download
+						{{ t('common.download') }}
 					</UiButton>
 					<UiButton variant="secondary" v-if="isAdmin" @click="showVersionUpload = true">
 						<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
-						New Version
+						{{ t('dashboard.files.detail.newVersion') }}
 					</UiButton>
 					<UiButton v-if="isAdmin" variant="danger-outline" @click="showDeleteConfirm = true">
 						<Icon name="lucide:trash-2" class="w-4 h-4 mr-2" />
-						Delete
+						{{ t('common.delete') }}
 					</UiButton>
 				</div>
 			</div>
@@ -288,7 +323,9 @@ const sourceLabel = computed(() => {
 						>
 							<div class="flex items-center gap-2">
 								<Icon name="lucide:sparkles" class="w-4 h-4 text-brand" />
-								<span class="text-sm font-medium text-text-primary">AI Summary</span>
+								<span class="text-sm font-medium text-text-primary">{{
+									t('dashboard.files.detail.aiSummary')
+								}}</span>
 							</div>
 							<Icon
 								name="lucide:chevron-down"
@@ -314,7 +351,9 @@ const sourceLabel = computed(() => {
 						>
 							<div class="flex items-center gap-2">
 								<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
-								<span class="text-sm font-medium text-text-primary">Extracted Text</span>
+								<span class="text-sm font-medium text-text-primary">{{
+									t('dashboard.files.detail.extractedText')
+								}}</span>
 							</div>
 							<Icon
 								name="lucide:chevron-down"
@@ -337,7 +376,9 @@ const sourceLabel = computed(() => {
 						>
 							<div class="flex items-center gap-2">
 								<Icon name="lucide:history" class="w-4 h-4 text-text-tertiary" />
-								<span class="text-sm font-medium text-text-primary">Version History</span>
+								<span class="text-sm font-medium text-text-primary">{{
+									t('dashboard.files.detail.versionHistory')
+								}}</span>
 								<span v-if="versions" class="text-xs text-text-tertiary"
 									>({{ versions.length }})</span
 								>
@@ -358,25 +399,35 @@ const sourceLabel = computed(() => {
 				<div class="space-y-6">
 					<!-- File info -->
 					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5 space-y-4">
-						<h3 class="text-sm font-semibold text-text-primary">Details</h3>
+						<h3 class="text-sm font-semibold text-text-primary">
+							{{ t('dashboard.files.detail.details') }}
+						</h3>
 
 						<div class="space-y-3">
 							<div>
-								<p class="text-xs text-text-tertiary mb-0.5">MIME Type</p>
+								<p class="text-xs text-text-tertiary mb-0.5">
+									{{ t('dashboard.files.detail.mimeType') }}
+								</p>
 								<p class="text-sm text-text-secondary">{{ file.mimeType }}</p>
 							</div>
 							<div>
-								<p class="text-xs text-text-tertiary mb-0.5">File Size</p>
+								<p class="text-xs text-text-tertiary mb-0.5">
+									{{ t('dashboard.files.detail.fileSize') }}
+								</p>
 								<p class="text-sm text-text-secondary">
 									{{ formatCompactFileSize(file.fileSize) }}
 								</p>
 							</div>
 							<div>
-								<p class="text-xs text-text-tertiary mb-0.5">Created</p>
+								<p class="text-xs text-text-tertiary mb-0.5">
+									{{ t('dashboard.files.detail.created') }}
+								</p>
 								<p class="text-sm text-text-secondary">{{ formatDateTime(file.createdAt) }}</p>
 							</div>
 							<div>
-								<p class="text-xs text-text-tertiary mb-0.5">Source</p>
+								<p class="text-xs text-text-tertiary mb-0.5">
+									{{ t('dashboard.files.detail.sourceLabel') }}
+								</p>
 								<span
 									class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-full"
 									:class="{
@@ -398,27 +449,20 @@ const sourceLabel = computed(() => {
 									{{ sourceLabel }}
 								</span>
 							</div>
-							<div v-if="file.threadId">
-								<p class="text-xs text-text-tertiary mb-0.5">Linked Thread</p>
-								<NuxtLink
-									:to="`/dashboard/inbox/${file.threadId}`"
-									class="text-sm text-brand hover:underline"
-								>
-									View conversation
-								</NuxtLink>
-							</div>
 						</div>
 					</div>
 
 					<!-- Tags -->
 					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5">
 						<div class="flex items-center justify-between mb-3">
-							<h3 class="text-sm font-semibold text-text-primary">Tags</h3>
+							<h3 class="text-sm font-semibold text-text-primary">
+								{{ t('dashboard.files.detail.tags') }}
+							</h3>
 							<button
 								v-if="!isEditingTags && isAdmin"
 								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="startEditTags"
-								aria-label="Edit"
+								:aria-label="t('common.edit')"
 							>
 								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
 							</button>
@@ -429,18 +473,18 @@ const sourceLabel = computed(() => {
 								v-model="editTagsInput"
 								type="text"
 								class="input input-sm"
-								placeholder="tag1, tag2, tag3..."
+								:placeholder="t('dashboard.files.detail.tagsPlaceholder')"
 								@keyup.enter="saveTags"
 							/>
 							<div class="flex items-center gap-2">
 								<button class="text-xs text-brand font-medium hover:underline" @click="saveTags">
-									Save
+									{{ t('common.save') }}
 								</button>
 								<button
 									class="text-xs text-text-tertiary hover:text-text-primary"
 									@click="cancelEditTags"
 								>
-									Cancel
+									{{ t('common.cancel') }}
 								</button>
 							</div>
 						</div>
@@ -455,11 +499,15 @@ const sourceLabel = computed(() => {
 									{{ tag }}
 								</span>
 							</div>
-							<p v-else class="text-sm text-text-tertiary">No tags</p>
+							<p v-else class="text-sm text-text-tertiary">
+								{{ t('dashboard.files.detail.noTags') }}
+							</p>
 
 							<!-- Auto tags -->
 							<div v-if="file.autoTags && file.autoTags.length > 0" class="mt-3">
-								<p class="text-xs text-text-tertiary mb-1.5">Auto-detected</p>
+								<p class="text-xs text-text-tertiary mb-1.5">
+									{{ t('dashboard.files.detail.autoDetected') }}
+								</p>
 								<div class="flex flex-wrap gap-1.5">
 									<span
 										v-for="tag in file.autoTags"
@@ -477,11 +525,13 @@ const sourceLabel = computed(() => {
 					<!-- Linked contacts -->
 					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5">
 						<div class="flex items-center justify-between mb-3">
-							<h3 class="text-sm font-semibold text-text-primary">Linked Contacts</h3>
+							<h3 class="text-sm font-semibold text-text-primary">
+								{{ t('dashboard.files.detail.linkedContacts') }}
+							</h3>
 							<button
 								v-if="!isEditingContacts && isAdmin"
 								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-								aria-label="Edit linked contacts"
+								:aria-label="t('dashboard.files.detail.editLinkedContacts')"
 								@click="startEditContacts"
 							>
 								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
@@ -496,13 +546,13 @@ const sourceLabel = computed(() => {
 									class="text-xs text-brand font-medium hover:underline"
 									@click="saveContacts"
 								>
-									Save
+									{{ t('common.save') }}
 								</button>
 								<button
 									class="text-xs text-text-tertiary hover:text-text-primary"
 									@click="cancelEditContacts"
 								>
-									Cancel
+									{{ t('common.cancel') }}
 								</button>
 							</div>
 						</div>
@@ -522,7 +572,59 @@ const sourceLabel = computed(() => {
 									}}</span>
 								</NuxtLink>
 							</div>
-							<p v-else class="text-sm text-text-tertiary">No linked contacts</p>
+							<p v-else class="text-sm text-text-tertiary">
+								{{ t('dashboard.files.detail.noLinkedContacts') }}
+							</p>
+						</div>
+					</div>
+
+					<!-- Linked conversation -->
+					<div class="bg-bg-elevated border border-border-subtle rounded-lg p-5">
+						<div class="flex items-center justify-between mb-3">
+							<h3 class="text-sm font-semibold text-text-primary">
+								{{ t('dashboard.files.detail.linkedConversation') }}
+							</h3>
+							<button
+								v-if="!isEditingThread && isAdmin"
+								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								:aria-label="t('dashboard.files.detail.editLinkedConversation')"
+								@click="startEditThread"
+							>
+								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+							</button>
+						</div>
+
+						<!-- Edit: single-select thread picker -->
+						<div v-if="isEditingThread" class="space-y-3">
+							<FilesThreadPicker v-model="editThread" />
+							<div class="flex items-center gap-2">
+								<button class="text-xs text-brand font-medium hover:underline" @click="saveThread">
+									{{ t('common.save') }}
+								</button>
+								<button
+									class="text-xs text-text-tertiary hover:text-text-primary"
+									@click="cancelEditThread"
+								>
+									{{ t('common.cancel') }}
+								</button>
+							</div>
+						</div>
+
+						<!-- Read: the linked thread as a link into the team inbox -->
+						<div v-else>
+							<NuxtLink
+								v-if="linkedThread"
+								:to="`/dashboard/inbox/${linkedThread._id}`"
+								class="flex items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-bg-surface transition-colors"
+							>
+								<Icon name="lucide:message-square" class="w-4 h-4 text-text-tertiary" />
+								<span class="text-sm text-brand hover:underline truncate">
+									{{ threadPickerLabel(linkedThread) }}
+								</span>
+							</NuxtLink>
+							<p v-else class="text-sm text-text-tertiary">
+								{{ t('dashboard.files.detail.noLinkedConversation') }}
+							</p>
 						</div>
 					</div>
 				</div>
@@ -551,19 +653,22 @@ const sourceLabel = computed(() => {
 					v-if="showDeleteConfirm"
 					class="fixed inset-0 z-50 flex items-center justify-center p-4"
 				>
-					<div class="absolute inset-0 bg-black/60" @click="showDeleteConfirm = false" />
+					<div class="absolute inset-0 bg-scrim/60" @click="showDeleteConfirm = false" />
 					<div
 						class="relative card w-full max-w-sm"
 					>
-						<h3 class="text-lg font-semibold text-text-primary mb-2">Delete File</h3>
+						<h3 class="text-lg font-semibold text-text-primary mb-2">
+							{{ t('dashboard.files.detail.deleteDialog.title') }}
+						</h3>
 						<p class="text-sm text-text-secondary mb-6">
-							This will permanently delete this file and all its version history. This action cannot
-							be undone.
+							{{ t('dashboard.files.detail.deleteDialog.description') }}
 						</p>
 						<div class="flex items-center justify-end gap-3">
-							<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
+							<UiButton variant="secondary" @click="showDeleteConfirm = false">
+								{{ t('common.cancel') }}
+							</UiButton>
 							<UiButton variant="danger" :disabled="isDeleting" @click="handleDelete">
-								{{ isDeleting ? 'Deleting...' : 'Delete' }}
+								{{ isDeleting ? t('dashboard.files.detail.deleting') : t('common.delete') }}
 							</UiButton>
 						</div>
 					</div>

@@ -2,7 +2,16 @@ import type { BlockType } from '@owlat/shared';
 
 export interface TemplatePreset {
 	id: string;
+	/**
+	 * MESSAGE KEY for the card's title. This catalog is module scope, so it
+	 * carries keys, not copy — `TemplateLibraryModal` resolves them with `t()`.
+	 *
+	 * Only the two lines the PICKER shows are keys. `subject`, the block
+	 * `content` and `previewHtml` are the seed EMAIL the operator then edits in
+	 * their own language, not interface chrome, and message values carry no HTML.
+	 */
 	name: string;
+	/** MESSAGE KEY for the card's second line. */
 	description: string;
 	icon: string;
 	subject: string;
@@ -13,8 +22,8 @@ export interface TemplatePreset {
 export const marketingTemplatePresets: TemplatePreset[] = [
 	{
 		id: 'blank',
-		name: 'Start from Blank',
-		description: 'Start with an empty canvas',
+		name: 'shared.data.marketingTemplatePresets.blank.name',
+		description: 'shared.data.marketingTemplatePresets.blank.description',
 		icon: 'lucide:align-left',
 		subject: '',
 		content: [],
@@ -24,8 +33,8 @@ export const marketingTemplatePresets: TemplatePreset[] = [
 	},
 	{
 		id: 'welcome',
-		name: 'Welcome Email',
-		description: 'Perfect for welcoming new subscribers',
+		name: 'shared.data.marketingTemplatePresets.welcome.name',
+		description: 'shared.data.marketingTemplatePresets.welcome.description',
 		icon: 'lucide:sparkles',
 		subject: 'Welcome to {{company}}!',
 		content: [
@@ -130,8 +139,8 @@ export const marketingTemplatePresets: TemplatePreset[] = [
 	},
 	{
 		id: 'newsletter',
-		name: 'Newsletter',
-		description: 'Share updates and news with your audience',
+		name: 'shared.data.marketingTemplatePresets.newsletter.name',
+		description: 'shared.data.marketingTemplatePresets.newsletter.description',
 		icon: 'lucide:newspaper',
 		subject: 'Your Weekly Update',
 		content: [
@@ -273,8 +282,8 @@ export const marketingTemplatePresets: TemplatePreset[] = [
 	},
 	{
 		id: 'announcement',
-		name: 'Announcement',
-		description: 'Make important announcements stand out',
+		name: 'shared.data.marketingTemplatePresets.announcement.name',
+		description: 'shared.data.marketingTemplatePresets.announcement.description',
 		icon: 'lucide:megaphone',
 		subject: 'Big News: {{announcement_title}}',
 		content: [
@@ -375,8 +384,8 @@ export const marketingTemplatePresets: TemplatePreset[] = [
 	},
 	{
 		id: 'product-update',
-		name: 'Product Update',
-		description: 'Showcase new features and improvements',
+		name: 'shared.data.marketingTemplatePresets.productUpdate.name',
+		description: 'shared.data.marketingTemplatePresets.productUpdate.description',
 		icon: 'lucide:package',
 		subject: 'New in {{product_name}}: {{feature_name}}',
 		content: [
@@ -526,8 +535,8 @@ export const marketingTemplatePresets: TemplatePreset[] = [
 	},
 	{
 		id: 'plain-text',
-		name: 'Plain Text',
-		description: 'Simple text-only email for personal touch',
+		name: 'shared.data.marketingTemplatePresets.plainText.name',
+		description: 'shared.data.marketingTemplatePresets.plainText.description',
 		icon: 'lucide:align-left',
 		subject: 'A quick note from {{sender_name}}',
 		content: [

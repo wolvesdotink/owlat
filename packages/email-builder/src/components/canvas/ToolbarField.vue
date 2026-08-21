@@ -36,7 +36,7 @@ function handleSelectChange(event: Event) {
 </script>
 
 <template>
-	<div class="flex items-center gap-0.5">
+	<div class="flex items-center gap-0.5" role="group" :aria-label="field.label">
 		<!-- Alignment buttons -->
 		<template v-if="field.type === 'align'">
 			<button
@@ -45,9 +45,12 @@ function handleSelectChange(event: Event) {
 				class="flex items-center justify-center w-[26px] h-[26px] border-none bg-transparent rounded text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-black/[0.08]"
 				:class="{ 'bg-black/[0.12] text-brand': value === opt }"
 				:title="opt"
+				:aria-label="`${field.label}: ${opt}`"
+				:aria-pressed="value === opt"
+				type="button"
 				@click.stop="emit('update', field.key, opt)"
 			>
-				<component :is="alignIcons[opt]" :size="14" />
+				<component :is="alignIcons[opt]" :size="14" aria-hidden="true" />
 			</button>
 		</template>
 
@@ -56,6 +59,7 @@ function handleSelectChange(event: Event) {
 			<label class="text-[11px] text-text-tertiary mr-1 whitespace-nowrap">{{ field.label }}</label>
 			<input
 				type="number"
+				:aria-label="field.label"
 				class="w-12 h-[26px] text-xs border border-border-default rounded px-1 text-center bg-transparent text-inherit focus:outline-none focus:border-brand"
 				:value="value"
 				:min="field.min"
@@ -70,6 +74,7 @@ function handleSelectChange(event: Event) {
 		<!-- Select -->
 		<template v-else-if="field.type === 'select'">
 			<select
+				:aria-label="field.label"
 				class="h-[26px] text-xs border border-border-default rounded px-1 bg-transparent text-inherit cursor-pointer focus:outline-none focus:border-brand"
 				:value="String(value)"
 				@change="handleSelectChange"

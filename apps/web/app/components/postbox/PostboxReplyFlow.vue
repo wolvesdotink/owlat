@@ -18,6 +18,7 @@ import {
 	formatReplyQueueDueHint,
 	replyQueueSection,
 	type ReplyQueueItem,
+	type ReplyQueueText,
 } from '~/utils/postboxReplyQueue';
 
 /**
@@ -29,6 +30,28 @@ import {
  * Open — but shown one task at a time instead of as a two-section listbox.
  */
 const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
+
+const { t, locale } = useI18n();
+
+/**
+ * The queue helpers are pure, so copy reaches us as an i18n key (optionally
+ * with params) while message-derived text (a subject, an AI ask summary)
+ * arrives as itself — resolve both here, the rendering layer.
+ */
+function replyQueueText(value: ReplyQueueText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+/** The card headline for a row, resolved for display. */
+function headline(item: ReplyQueueItem): string {
+	return replyQueueText(replyQueueHeadline(item));
+}
+
+/** The "Due Jul 3" chip, or undefined when the row states no deadline. */
+function dueLabel(dueHint: string | undefined): string | undefined {
+	const due = formatReplyQueueDueHint(dueHint, locale.value);
+	return due === null ? undefined : replyQueueText(due);
+}
 
 const mailboxIdRef = computed(() => props.mailboxId as Id<'mailboxes'> | null);
 const { items, isLoading } = usePostboxReplyQueue(mailboxIdRef);
@@ -53,9 +76,7 @@ const currentKind = computed<TaskFlowKind | null>(() =>
 	current.value ? orderKey(current.value).kind : null
 );
 const estimateLabel = computed(() => formatTaskFlowEstimate(flow.remainingSeconds.value));
-const peekLabel = computed(() =>
-	flow.nextItem.value ? replyQueueHeadline(flow.nextItem.value) : ''
-);
+const peekLabel = computed(() => (flow.nextItem.value ? headline(flow.nextItem.value) : ''));
 
 // Enter the flow once the live queue has loaded with at least one item.
 const started = ref(false);
@@ -107,19 +128,27 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiEnabled = computed(() => isFeatureEnabled('ai'));
 const stack = usePostboxComposerStack();
 
-const clearOp = useBackendOperation(api.mail.needsReply.clear, { label: 'Mark done' });
-const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
-	label: 'Dismiss reminder',
+const clearOp = useBackendOperation(api.mail.needsReply.clear, {
+	label: () => t('components.postbox.postboxReplyFlow.operations.markDone'),
 });
-const archiveOp = useBackendOperation(api.mail.messageActions.archive, { label: 'Archive' });
-const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move' });
-const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
+const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
+	label: () => t('components.postbox.postboxReplyFlow.operations.dismissReminder'),
+});
+const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
+	label: () => t('components.postbox.postboxReplyFlow.operations.archive'),
+});
+const moveOp = useBackendOperation(api.mail.messageActions.move, {
+	label: () => t('components.postbox.postboxReplyFlow.operations.move'),
+});
+const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
+	label: () => t('components.postbox.postboxReplyFlow.operations.snooze'),
+});
 const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
-	label: 'Draft reply',
+	label: () => t('components.postbox.postboxReplyFlow.operations.draftReply'),
 	type: 'action',
 });
 const answerOp = useBackendOperation(api.mail.needsReplyClarify.answerClarification, {
-	label: 'Answer',
+	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
 });
 
 const busy = ref(false);
@@ -225,7 +254,17 @@ function openRow(row: FlowItem) {
 	void navigateTo(`/dashboard/postbox/inbox/${row.messageId}`);
 }
 
-const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priority' };
+/** Urgency chip copy — message KEYS, resolved at render time. */
+const URGENCY_LABEL_KEYS: Record<string, string> = {
+	high: 'components.postbox.postboxReplyFlow.urgency.high',
+	low: 'components.postbox.postboxReplyFlow.urgency.low',
+};
+
+/** The chip's label, or '' for an urgency with no copy of its own. */
+function urgencyLabel(urgency: string): string {
+	const key = URGENCY_LABEL_KEYS[urgency];
+	return key ? t(key) : '';
+}
 </script>
 
 <template>
@@ -237,8 +276,8 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 	<PostboxEmptyState
 		v-else-if="!flow.active.value && source.length === 0"
 		icon="lucide:check-circle-2"
-		title="All caught up"
-		hint="Nothing is waiting on your reply."
+		:title="t('components.postbox.postboxReplyFlow.empty.title')"
+		:hint="t('components.postbox.postboxReplyFlow.empty.hint')"
 	/>
 
 	<AgentTaskFlow
@@ -278,7 +317,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 					:who="current.fromName || current.fromAddress"
 					:name="current.fromName"
 					:email="current.fromAddress"
-					:due="formatReplyQueueDueHint(current.dueHint) ?? undefined"
+					:due="dueLabel(current.dueHint)"
 					:meta="formatCompactRelativeTime(current.receivedAt)"
 				>
 					<template #chips>
@@ -287,7 +326,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 							class="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full bg-brand/10 text-brand"
 						>
 							<Icon name="lucide:alarm-clock" class="w-3 h-3" />
-							Follow-up
+							{{ t('components.postbox.postboxReplyFlow.followUp') }}
 						</span>
 						<span
 							v-else-if="current.urgency !== 'normal'"
@@ -297,12 +336,12 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 									? 'bg-error/10 text-error'
 									: 'bg-bg-elevated text-text-tertiary'
 							"
-							>{{ URGENCY_LABEL[current.urgency] }}</span
+							>{{ urgencyLabel(current.urgency) }}</span
 						>
 					</template>
 				</TaskContext>
 
-				<TaskAsk class="mt-3 mb-4" :ask="replyQueueHeadline(current)" :detail="current.snippet" />
+				<TaskAsk class="mt-3 mb-4" :ask="headline(current)" :detail="current.snippet" />
 
 				<!-- Draft-on-arrival review slot (human review only). -->
 				<PostboxReviewSlot
@@ -315,14 +354,18 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 
 				<TaskActions
 					v-if="current.kind !== 'followup'"
-					:primary-label="aiEnabled ? 'Draft reply' : 'Reply'"
+					:primary-label="
+						aiEnabled
+							? t('components.postbox.postboxReplyFlow.draftReply')
+							: t('components.postbox.postboxReplyFlow.reply')
+					"
 					primary-icon="lucide:reply"
 					:primary-disabled="busy"
 					:primary-loading="busy"
-					skip-label="Done"
+					:skip-label="t('common.done')"
 					:hints="[
-						{ keys: ['Enter'], label: 'Reply' },
-						{ keys: ['e'], label: 'Archive' },
+						{ keys: ['Enter'], label: t('components.postbox.postboxReplyFlow.reply') },
+						{ keys: ['e'], label: t('common.archive') },
 					]"
 					@primary="draftReply(current!)"
 					@skip="markDone(current!)"
@@ -333,7 +376,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 						@click="openSnooze(current!)"
 					>
 						<Icon name="lucide:clock" class="w-3.5 h-3.5" />
-						Snooze
+						{{ t('components.postbox.postboxReplyFlow.snooze') }}
 					</button>
 					<button
 						type="button"
@@ -341,7 +384,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 						@click="archiveRow(current!)"
 					>
 						<Icon name="lucide:archive" class="w-3.5 h-3.5" />
-						Archive
+						{{ t('common.archive') }}
 					</button>
 					<button
 						type="button"
@@ -349,14 +392,14 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 						@click="openRow(current!)"
 					>
 						<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
-						Open
+						{{ t('common.open') }}
 					</button>
 				</TaskActions>
 
 				<!-- Follow-up: we're waiting on THEM — Done dismisses the reminder. -->
 				<TaskActions
 					v-else
-					primary-label="Done"
+					:primary-label="t('common.done')"
 					primary-icon="lucide:check"
 					:primary-disabled="busy"
 					@primary="markDone(current!)"
@@ -367,7 +410,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 						@click="openRow(current!)"
 					>
 						<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
-						Open
+						{{ t('common.open') }}
 					</button>
 				</TaskActions>
 			</TaskCardShell>
@@ -397,17 +440,23 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 					rounded="full"
 					class="mb-4"
 				/>
-				<h2 class="font-display text-xl text-text-primary">All caught up</h2>
+				<h2 class="font-display text-xl text-text-primary">
+					{{ t('components.postbox.postboxReplyFlow.done.title') }}
+				</h2>
 				<p v-if="flow.summary.value" class="mt-1.5 text-sm text-text-secondary">
-					{{ flow.summary.value }} this session.
+					{{
+						t('components.postbox.postboxReplyFlow.done.summary', { summary: flow.summary.value })
+					}}
 				</p>
-				<p class="mt-1 text-xs text-text-tertiary">New replies will appear here as they arrive.</p>
+				<p class="mt-1 text-xs text-text-tertiary">
+					{{ t('components.postbox.postboxReplyFlow.done.body') }}
+				</p>
 				<div class="mt-6 flex items-center justify-center gap-2">
 					<UiButton variant="secondary" to="/dashboard/postbox" class="text-sm">
-						Back to Today
+						{{ t('components.postbox.postboxReplyFlow.done.backToToday') }}
 					</UiButton>
 					<UiButton variant="secondary" to="/dashboard/postbox/inbox" class="text-sm">
-						Back to inbox
+						{{ t('components.postbox.postboxReplyFlow.done.backToInbox') }}
 					</UiButton>
 				</div>
 			</div>

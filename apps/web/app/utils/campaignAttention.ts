@@ -17,9 +17,16 @@
  *
  * Copy is human: "Pick winner", "Review", "Resume" — no enum strings, no AI
  * jargon. Pure and clock-injectable so the ordering logic is unit-testable.
+ *
+ * Being a module-scope table it cannot call `useI18n`, so the copy travels as
+ * message KEYS (the registry convention) and the row that renders them
+ * translates with `t(…)`.
  */
 
 import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
+
+/** Message-key root for this module; see `i18n/locales/en.json`. */
+const K = 'shared.campaignAttention';
 
 export type CampaignAttentionReason =
 	| 'ab_decision'
@@ -42,17 +49,17 @@ export interface CampaignAttentionInput {
 export interface CampaignAttention {
 	needsAttention: boolean;
 	reason: CampaignAttentionReason | null;
-	/** One inline primary-action label, or null when the row is view-only. */
+	/** Message key for the inline primary action, or null when the row is view-only. */
 	actionLabel: string | null;
 }
 
 /** How one attention reason presents in the UI. */
 export interface CampaignAttentionDisplay {
-	/** Roll-up chip label shown on the row (the state). */
+	/** Message key for the roll-up chip shown on the row (the state). */
 	chipLabel: string;
 	/** Status-dot utility class for the chip. */
 	dot: string;
-	/** Inline primary-action label (the verb), or null when the row is view-only. */
+	/** Message key for the inline primary action (the verb), or null when view-only. */
 	actionLabel: string | null;
 }
 
@@ -63,10 +70,26 @@ export interface CampaignAttentionDisplay {
  */
 export const CAMPAIGN_ATTENTION_DISPLAY: Record<CampaignAttentionReason, CampaignAttentionDisplay> =
 	{
-		ab_decision: { chipLabel: 'Winner pending', dot: 'bg-brand', actionLabel: 'Pick winner' },
-		needs_review: { chipLabel: 'Needs review', dot: 'bg-warning', actionLabel: 'Review' },
-		send_stopped: { chipLabel: 'Send stopped', dot: 'bg-error', actionLabel: 'Resume' },
-		scheduled_today: { chipLabel: 'Going out today', dot: 'bg-brand', actionLabel: null },
+		ab_decision: {
+			chipLabel: `${K}.ab_decision.chip`,
+			dot: 'bg-brand',
+			actionLabel: `${K}.ab_decision.action`,
+		},
+		needs_review: {
+			chipLabel: `${K}.needs_review.chip`,
+			dot: 'bg-warning',
+			actionLabel: `${K}.needs_review.action`,
+		},
+		send_stopped: {
+			chipLabel: `${K}.send_stopped.chip`,
+			dot: 'bg-error',
+			actionLabel: `${K}.send_stopped.action`,
+		},
+		scheduled_today: {
+			chipLabel: `${K}.scheduled_today.chip`,
+			dot: 'bg-brand',
+			actionLabel: null,
+		},
 	};
 
 const NOT_NEEDED: CampaignAttention = {

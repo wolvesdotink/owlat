@@ -13,7 +13,7 @@ that call today**: the wire protocol is specified, but no Convex runtime adapter
 or pipeline stage is shipped, so this reference runs against the protocol (and
 its own suites), not against live traffic. See the
 deferral note on
-[Connected Apps](../../../apps/docs/content/3.developer/46.plugin-connected-apps.md).
+[Connected Apps](../../../apps/docs/content/en/3.developer/46.plugin-connected-apps.md).
 On a call, the app:
 
 1. the **first** time it sees a draft, opens an approval request, posts the

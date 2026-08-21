@@ -53,12 +53,24 @@ export type SmtpPreset = SmtpRelayPreset;
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 
+/**
+ * The wizard's steps. `label` is an i18n MESSAGE KEY, not a word: this list is
+ * built at module scope, before any component sets up, so it cannot hold
+ * resolved copy.
+ *
+ * THE PAGES TRANSLATE. `UiStepIndicator` is a shared ui-layer component that
+ * renders whatever `label` it is handed as display text — it does not resolve
+ * keys, and its other callers already pass translated words. So each `/setup/*`
+ * page maps this list through its own `t()` (as a computed, so the labels follow
+ * a locale switch) before binding it to the indicator; handing it these keys raw
+ * paints the key paths on the first-run installer.
+ */
 export const SETUP_STEPS = [
-	{ id: 'mode', label: 'Mode', number: 1 },
-	{ id: 'features', label: 'Features', number: 2 },
-	{ id: 'email', label: 'Email', number: 3 },
-	{ id: 'admin', label: 'Account', number: 4 },
-	{ id: 'review', label: 'Review', number: 5 },
+	{ id: 'mode', label: 'shared.useSetupWizard.steps.mode', number: 1 },
+	{ id: 'features', label: 'shared.useSetupWizard.steps.features', number: 2 },
+	{ id: 'email', label: 'shared.useSetupWizard.steps.email', number: 3 },
+	{ id: 'admin', label: 'shared.useSetupWizard.steps.admin', number: 4 },
+	{ id: 'review', label: 'shared.useSetupWizard.steps.review', number: 5 },
 ] as const;
 
 export type SetupStepId = (typeof SETUP_STEPS)[number]['id'];
@@ -205,6 +217,7 @@ export function buildProviderEnv(
 export interface SetupSummary {
 	activeFeatures: FeatureFlagKey[];
 	provider: ProviderChoice;
+	/** i18n message key (or the catalog's own label) — resolve with `t()`. */
 	providerLabel: string;
 	fromIdentity: string | null;
 	adminEmail: string;
@@ -217,6 +230,10 @@ export interface SetupSummary {
  * The operator's name for each choice on the REVIEW step — the catalog's label
  * for every kind it declares, plus this surface's own words for the two answers
  * no catalog entry carries.
+ *
+ * Both survivors are i18n MESSAGE KEYS — this runs at module scope, so the
+ * review step resolves whatever it gets with `t()` (a catalog label, which no
+ * message defines, resolves to itself).
  *
  * DERIVED (D1): the hand-written table this replaced restated `entry.label` for
  * all four relays, so a provider had to be remembered here as well as declared.
@@ -236,9 +253,9 @@ export interface SetupSummary {
  * is a deliberate wording decision for the plan owner, not something a rendering
  * refactor gets to do silently (recorded in `scripts/provider-identity-allowlist.txt`).
  */
-const RECEIVE_ONLY_LABEL = 'None (receive-only)';
+const RECEIVE_ONLY_LABEL = 'shared.useSetupWizard.provider.receiveOnly';
 
-const OWN_ARM_REVIEW_LABEL = 'Owlat MTA (self-hosted)';
+const OWN_ARM_REVIEW_LABEL = 'shared.useSetupWizard.provider.ownArm';
 
 function providerLabel(provider: ProviderChoice): string {
 	if (isOwnSendProviderKind(provider)) return OWN_ARM_REVIEW_LABEL;

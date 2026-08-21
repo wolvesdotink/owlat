@@ -1,3 +1,19 @@
+<script setup lang="ts">
+/* Rendered by nuxt-og-image outside the app's i18n context, so the localized
+ * copy arrives as props from the page that calls `defineOgImage` (English
+ * defaults keep a direct/preview render honest). */
+withDefaults(
+	defineProps<{
+		tagline?: string;
+		label?: string;
+	}>(),
+	{
+		tagline: 'Email Infrastructure for Product Teams',
+		label: 'Open Source',
+	}
+);
+</script>
+
 <template>
 	<div
 		:style="{
@@ -64,7 +80,7 @@
 				lineHeight: 1.4,
 			}"
 		>
-			Email Infrastructure for Product Teams
+			{{ tagline }}
 		</div>
 
 		<!-- Bottom label -->
@@ -100,7 +116,7 @@
 					textTransform: 'uppercase',
 				}"
 			>
-				Open Source
+				{{ label }}
 			</div>
 		</div>
 	</div>

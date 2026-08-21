@@ -252,6 +252,15 @@ export const dispatch = internalMutation({
 			template.htmlTranslations
 		);
 
+		// The pre-generated text/plain body belongs to the DEFAULT language only —
+		// translations carry no translated text body, and pairing the default
+		// language's text with translated html would send two languages in one
+		// message. Absent → the composer strips the untracked html instead.
+		const plainTextToSend =
+			resolvedLanguage === (template.defaultLanguage ?? 'en')
+				? template.plainTextContent
+				: undefined;
+
 		// 8. Provider route resolution. Reads the route config + health
 		//    snapshots in-transaction via the shared `resolveSendRoute` seam.
 		const resolvedRoute = await resolveSendRouteFromDb(ctx, 'transactional', {
@@ -354,6 +363,7 @@ export const dispatch = internalMutation({
 					template: {
 						subject: subjectToSend,
 						htmlContent: htmlContentToSend,
+						...(plainTextToSend ? { plainTextContent: plainTextToSend } : {}),
 					},
 					dataVariables: args.dataVariables,
 					attachmentRefs: mergedAttachments,

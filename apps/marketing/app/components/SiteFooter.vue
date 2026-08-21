@@ -1,20 +1,29 @@
 <script setup lang="ts">
+const { t, locale, locales } = useI18n();
+const switchLocalePath = useSwitchLocalePath();
+
 const footerLinks = {
 	product: [
-		{ label: 'Features', href: '#features' },
-		{ label: 'Pricing', href: '#pricing' },
-		{ label: 'Changelog', href: 'https://docs.owlat.app/changelog' },
+		{ key: 'footer.links.features', href: '#features' },
+		{ key: 'footer.links.pricing', href: '#pricing' },
+		{ key: 'footer.links.changelog', href: 'https://docs.owlat.app/changelog' },
 	],
 	developers: [
-		{ label: 'Documentation', href: 'https://docs.owlat.app' },
-		{ label: 'API Reference', href: 'https://docs.owlat.app/api/' },
-		{ label: 'SDK', href: 'https://docs.owlat.app/api/sdk' },
+		{ key: 'footer.links.documentation', href: 'https://docs.owlat.app' },
+		{ key: 'footer.links.apiReference', href: 'https://docs.owlat.app/api/' },
+		{ key: 'footer.links.sdk', href: 'https://docs.owlat.app/api/sdk' },
 	],
 	company: [
-		{ label: 'Contact', href: 'mailto:hello@owlat.app' },
-		{ label: 'Built by Wolves', href: 'https://wolves.ink' },
+		{ key: 'footer.links.contact', href: 'mailto:hello@owlat.app' },
+		{ key: 'footer.links.builtBy', href: 'https://wolves.ink' },
 	],
 };
+
+// Same list the header switcher renders, so the two can never disagree about
+// which languages the site ships.
+const languages = computed(() =>
+	locales.value.map((entry) => (typeof entry === 'string' ? { code: entry, name: entry } : entry))
+);
 </script>
 
 <template>
@@ -30,8 +39,7 @@ const footerLinks = {
 						<span class="text-md font-semibold tracking-tight text-text-primary">Owlat</span>
 					</div>
 					<p class="text-caption text-text-tertiary leading-[1.7] max-w-[240px]">
-						Email infrastructure for product teams. Campaigns, automations, and transactional sends
-						from one platform.
+						{{ t('footer.tagline') }}
 					</p>
 				</div>
 
@@ -40,15 +48,15 @@ const footerLinks = {
 					<h4
 						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
 					>
-						Product
+						{{ t('footer.product') }}
 					</h4>
 					<ul class="space-y-3">
-						<li v-for="link in footerLinks.product" :key="link.label">
+						<li v-for="link in footerLinks.product" :key="link.key">
 							<a
 								:href="link.href"
 								class="text-caption text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
 							>
-								{{ link.label }}
+								{{ t(link.key) }}
 							</a>
 						</li>
 					</ul>
@@ -59,15 +67,15 @@ const footerLinks = {
 					<h4
 						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
 					>
-						Developers
+						{{ t('footer.developers') }}
 					</h4>
 					<ul class="space-y-3">
-						<li v-for="link in footerLinks.developers" :key="link.label">
+						<li v-for="link in footerLinks.developers" :key="link.key">
 							<a
 								:href="link.href"
 								class="text-caption text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
 							>
-								{{ link.label }}
+								{{ t(link.key) }}
 							</a>
 						</li>
 					</ul>
@@ -78,15 +86,15 @@ const footerLinks = {
 					<h4
 						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
 					>
-						Company
+						{{ t('footer.company') }}
 					</h4>
 					<ul class="space-y-3">
-						<li v-for="link in footerLinks.company" :key="link.label">
+						<li v-for="link in footerLinks.company" :key="link.key">
 							<a
 								:href="link.href"
 								class="text-caption text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
 							>
-								{{ link.label }}
+								{{ t(link.key) }}
 							</a>
 						</li>
 					</ul>
@@ -97,17 +105,42 @@ const footerLinks = {
 			<div
 				class="flex items-center justify-between pt-10 mt-12 border-t border-border-subtle max-sm:flex-col max-sm:gap-4"
 			>
-				<p class="text-caption text-text-tertiary">
-					&copy; {{ new Date().getFullYear() }}
-					<a
-						href="https://wolves.ink"
-						class="text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
-						>Wolves</a
-					>. All rights reserved.
-				</p>
-				<p class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-tertiary">
-					Open source · Apache 2.0
-				</p>
+				<I18nT
+					keypath="footer.copyright"
+					tag="p"
+					class="text-caption text-text-tertiary"
+					scope="global"
+				>
+					<template #year>{{ new Date().getFullYear() }}</template>
+					<template #wolves>
+						<a
+							href="https://wolves.ink"
+							class="text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
+							>Wolves</a
+						>
+					</template>
+				</I18nT>
+				<div class="flex items-center gap-4 max-sm:flex-col max-sm:gap-2">
+					<nav class="flex items-center gap-2" :aria-label="t('language.label')">
+						<a
+							v-for="lang in languages"
+							:key="lang.code"
+							:href="switchLocalePath(lang.code)"
+							:aria-current="lang.code === locale ? 'true' : undefined"
+							class="text-caption transition-colors duration-(--motion-fast) no-underline"
+							:class="
+								lang.code === locale
+									? 'text-text-primary'
+									: 'text-text-tertiary hover:text-text-primary'
+							"
+						>
+							{{ lang.name }}
+						</a>
+					</nav>
+					<p class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-tertiary">
+						{{ t('footer.license') }}
+					</p>
+				</div>
 			</div>
 		</div>
 	</footer>

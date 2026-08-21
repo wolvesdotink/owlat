@@ -10,18 +10,26 @@
  *   - flag off (`enabled=false`) renders nothing;
  *   - a legacy row (no verdicts) renders nothing even with the flag on.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import PostboxAuthBadge from '../PostboxAuthBadge.vue';
 import type { SenderAuthInput, SenderHeuristics } from '~/utils/senderAuth';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The badge resolves the derivation's message keys with `t()` at render time;
+// `useI18n` is a Nuxt auto-import in the app. A value the catalog does not know
+// renders verbatim, so the copy assertions below hold either way.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const iconStub = { props: ['name'], template: '<span />' };
 
 function mountBadge(auth: SenderAuthInput, enabled = true, heuristics?: SenderHeuristics) {
 	return mount(PostboxAuthBadge, {
 		props: { enabled, auth, heuristics },
-		global: { stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
 

@@ -6,6 +6,8 @@
  * explicit "Done": the operator must acknowledge they have copied it. The
  * backend never stores or re-serves the plaintext.
  */
+const { t } = useI18n();
+
 const props = defineProps<{
 	open: boolean;
 	secret: string | null;
@@ -22,7 +24,7 @@ const COPY_KEY = 'connected-app-secret';
 const copied = computed(() => isCopied(COPY_KEY));
 
 const heading = computed(() =>
-	props.context === 'created' ? 'Connected app registered' : 'Secret rotated'
+	props.context === 'created' ? t('components.settings.connectedApps.connectedAppSecretReveal.headingCreated') : t('components.settings.connectedApps.connectedAppSecretReveal.headingRotated')
 );
 
 // Reset the copied indicator whenever a fresh secret is shown so a prior "Copied!"
@@ -35,7 +37,7 @@ watch(
 async function copySecret() {
 	if (!props.secret) return;
 	const ok = await copy(props.secret, COPY_KEY);
-	if (!ok) showToast('Failed to copy to clipboard', 'error');
+	if (!ok) showToast(t('components.settings.connectedApps.connectedAppSecretReveal.copyFailed'), 'error');
 }
 
 function done() {
@@ -61,12 +63,11 @@ function done() {
 				<div class="flex items-start gap-3">
 					<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
-						<p class="text-sm font-medium text-warning">Copy this secret now</p>
+						<p class="text-sm font-medium text-warning">{{ t('components.settings.connectedApps.connectedAppSecretReveal.copyNow') }}</p>
 						<p class="text-sm text-warning/80 mt-1">
-							This is the only time it will be shown. Store it in the connected app's
-							configuration — you won't be able to see it again.
+							{{ t('components.settings.connectedApps.connectedAppSecretReveal.onlyTimeShown') }}
 							<template v-if="context === 'rotated'">
-								The previous secret stopped working the moment this one was created.
+								{{ t('components.settings.connectedApps.connectedAppSecretReveal.previousSecretStopped') }}
 							</template>
 						</p>
 					</div>
@@ -74,12 +75,12 @@ function done() {
 			</div>
 
 			<div v-if="appName" class="mb-4">
-				<label class="label">App</label>
+				<label class="label">{{ t('components.settings.connectedApps.connectedAppSecretReveal.appLabel') }}</label>
 				<p class="text-text-primary font-medium">{{ appName }}</p>
 			</div>
 
 			<div>
-				<label id="connected-app-secret-label" class="label">Shared secret</label>
+				<label id="connected-app-secret-label" class="label">{{ t('components.settings.connectedApps.connectedAppSecretReveal.secretLabel') }}</label>
 				<div class="flex items-center gap-2">
 					<code
 						aria-labelledby="connected-app-secret-label"
@@ -93,14 +94,14 @@ function done() {
 							class="w-4 h-4"
 							:class="copied ? 'text-success' : ''"
 						/>
-						{{ copied ? 'Copied!' : 'Copy' }}
+						{{ copied ? t('components.settings.connectedApps.connectedAppSecretReveal.copied') : t('common.copy') }}
 					</UiButton>
 				</div>
 			</div>
 		</template>
 
 		<template #footer>
-			<UiButton variant="primary" @click="done">Done</UiButton>
+			<UiButton variant="primary" @click="done">{{ t('common.done') }}</UiButton>
 		</template>
 	</UiModal>
 </template>

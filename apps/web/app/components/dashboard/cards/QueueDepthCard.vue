@@ -1,15 +1,37 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
+const { t } = useI18n();
+
 const { data: stats, isLoading } = useOrganizationQuery(api.inbox.queries.getInboundStats);
 
 const queueItems = computed(() => {
 	if (!stats.value) return [];
 	return [
-		{ label: 'Received', count: stats.value.received ?? 0, color: 'bg-brand' },
-		{ label: 'Processing', count: stats.value.processing ?? 0, color: 'bg-warning' },
-		{ label: 'Draft Ready', count: stats.value.draftReady ?? 0, color: 'bg-success' },
-		{ label: 'Approved', count: stats.value.approved ?? 0, color: 'bg-brand/60' },
+		{
+			id: 'received',
+			label: t('components.dashboard.cards.queueDepthCard.stages.received'),
+			count: stats.value.received ?? 0,
+			color: 'bg-brand',
+		},
+		{
+			id: 'processing',
+			label: t('components.dashboard.cards.queueDepthCard.stages.processing'),
+			count: stats.value.processing ?? 0,
+			color: 'bg-warning',
+		},
+		{
+			id: 'draftReady',
+			label: t('components.dashboard.cards.queueDepthCard.stages.draftReady'),
+			count: stats.value.draftReady ?? 0,
+			color: 'bg-success',
+		},
+		{
+			id: 'approved',
+			label: t('components.dashboard.cards.queueDepthCard.stages.approved'),
+			count: stats.value.approved ?? 0,
+			color: 'bg-brand/60',
+		},
 	];
 });
 
@@ -28,7 +50,9 @@ const maxCount = computed(() => {
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
 					<UiIconBox icon="lucide:layers" size="sm" variant="brand" />
-					<h3 class="text-sm font-semibold text-text-primary">Queue Depth</h3>
+					<h3 class="text-sm font-semibold text-text-primary">
+						{{ t('components.dashboard.cards.queueDepthCard.title') }}
+					</h3>
 				</div>
 			</div>
 
@@ -39,11 +63,13 @@ const maxCount = computed(() => {
 			<div v-else>
 				<div class="flex items-baseline gap-2 mb-4">
 					<span class="text-3xl font-bold text-text-primary">{{ totalInQueue }}</span>
-					<span class="text-sm text-text-secondary">messages in pipeline</span>
+					<span class="text-sm text-text-secondary">
+						{{ t('components.dashboard.cards.queueDepthCard.messagesInPipeline') }}
+					</span>
 				</div>
 
 				<div class="space-y-2.5">
-					<div v-for="item in queueItems" :key="item.label">
+					<div v-for="item in queueItems" :key="item.id">
 						<div class="flex items-center justify-between mb-1">
 							<span class="text-xs text-text-secondary">{{ item.label }}</span>
 							<span class="text-xs font-medium text-text-primary">{{ item.count }}</span>

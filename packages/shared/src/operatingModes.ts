@@ -26,11 +26,23 @@ export type OperatingModeKey =
 	| 'team_inbox_ai'
 	| 'full';
 
+/**
+ * COPY HERE IS MESSAGE KEYS, NOT SENTENCES.
+ *
+ * This registry is built at module scope and has no component instance, so it
+ * cannot call `t()`. Every consumer of `label`/`audience`/`description` is a web
+ * surface (the setup wizard's mode step and Settings → Instance), so the three
+ * carry `sharedPkg.operatingModes.<key>.*` catalog keys and whoever renders them
+ * turns them into words. Unlike `featureFlags.ts` — whose labels the setup CLI
+ * prints to a terminal — no backend reads these, so nothing needs the English.
+ */
 export interface OperatingModePreset {
 	key: OperatingModeKey;
+	/** Catalog key for the mode's name. */
 	label: string;
-	/** Short audience line for the wizard card ("for teams that…"). */
+	/** Catalog key for the short audience line on the wizard card ("for teams that…"). */
 	audience: string;
+	/** Catalog key for the mode's full description. */
 	description: string;
 	/**
 	 * Flag overrides applied on top of `getDefaultFlags()`. Only the flags this
@@ -54,73 +66,108 @@ export interface OperatingModePreset {
 export const OPERATING_MODES: Record<OperatingModeKey, OperatingModePreset> = {
 	crm_only: {
 		key: 'crm_only',
-		label: 'CRM only',
-		audience: 'Manage contacts and data; no email send or receive.',
-		description: 'Contacts, segments, imports, and forms with no outbound or inbound mail. A degenerate baseline you can grow from.',
-		flags: { campaigns: false, 'campaigns.archive': false, transactional: false, automations: false },
+		label: 'sharedPkg.operatingModes.crm_only.label',
+		audience: 'sharedPkg.operatingModes.crm_only.audience',
+		description: 'sharedPkg.operatingModes.crm_only.description',
+		flags: {
+			campaigns: false,
+			'campaigns.archive': false,
+			transactional: false,
+			automations: false,
+		},
 		needsDeliveryProvider: false,
 		needsMta: false,
 	},
 	imap_only: {
 		key: 'imap_only',
-		label: 'IMAP-only (read + personal reply)',
-		audience: 'Read mail that lives in Google / Fastmail / a company server.',
-		description:
-			'Connect each user\'s own mailbox over IMAP to read and search mail, and reply 1:1 through their own SMTP. No Owlat delivery provider, no marketing, no transactional API.',
-		flags: { campaigns: false, 'campaigns.archive': false, transactional: false, automations: false, 'mail.external': true },
+		label: 'sharedPkg.operatingModes.imap_only.label',
+		audience: 'sharedPkg.operatingModes.imap_only.audience',
+		description: 'sharedPkg.operatingModes.imap_only.description',
+		flags: {
+			campaigns: false,
+			'campaigns.archive': false,
+			transactional: false,
+			automations: false,
+			'mail.external': true,
+		},
 		needsDeliveryProvider: false,
 		needsMta: false,
 	},
 	transactional: {
 		key: 'transactional',
-		label: 'Transactional API service',
-		audience: 'Send receipts, password resets, and other programmatic mail.',
-		description: 'The transactional API/SDK over a delivery provider (Resend, SES, or the built-in MTA) with a verified sending domain. No marketing campaigns.',
-		flags: { campaigns: false, 'campaigns.archive': false, automations: false, transactional: true },
+		label: 'sharedPkg.operatingModes.transactional.label',
+		audience: 'sharedPkg.operatingModes.transactional.audience',
+		description: 'sharedPkg.operatingModes.transactional.description',
+		flags: {
+			campaigns: false,
+			'campaigns.archive': false,
+			automations: false,
+			transactional: true,
+		},
 		needsDeliveryProvider: true,
 		needsMta: false,
 	},
 	marketing: {
 		key: 'marketing',
-		label: 'Marketing platform',
-		audience: 'Run campaigns, automations, and forms to a contact list.',
-		description: 'Broadcast campaigns, drip automations, signup forms, and the transactional API over a delivery provider with a verified, authenticated sending domain.',
+		label: 'sharedPkg.operatingModes.marketing.label',
+		audience: 'sharedPkg.operatingModes.marketing.audience',
+		description: 'sharedPkg.operatingModes.marketing.description',
 		flags: { campaigns: true, 'campaigns.archive': true, transactional: true, automations: true },
 		needsDeliveryProvider: true,
 		needsMta: false,
 	},
 	hosted_mail: {
 		key: 'hosted_mail',
-		label: 'Hosted mail server (Postbox)',
-		audience: 'Run Owlat as your mail server (Gmail-equivalent).',
-		description: 'Per-user mailboxes with webmail + IMAP/SMTP for native clients and MX-based delivery through the built-in MTA. Requires a real domain with MX, SPF, and DKIM.',
-		flags: { postbox: true, campaigns: false, 'campaigns.archive': false, transactional: false, automations: false },
+		label: 'sharedPkg.operatingModes.hosted_mail.label',
+		audience: 'sharedPkg.operatingModes.hosted_mail.audience',
+		description: 'sharedPkg.operatingModes.hosted_mail.description',
+		flags: {
+			postbox: true,
+			campaigns: false,
+			'campaigns.archive': false,
+			transactional: false,
+			automations: false,
+		},
 		needsDeliveryProvider: false,
 		needsMta: true,
 	},
 	team_inbox: {
 		key: 'team_inbox',
-		label: 'Team inbox (shared)',
-		audience: 'Triage inbound mail as a team in a shared inbox.',
-		description: 'A shared inbox that threads inbound conversations and sends replies over a delivery provider. Needs an inbound source (the built-in MTA or a channel webhook).',
-		flags: { inbox: true, campaigns: false, 'campaigns.archive': false, automations: false, transactional: true },
+		label: 'sharedPkg.operatingModes.team_inbox.label',
+		audience: 'sharedPkg.operatingModes.team_inbox.audience',
+		description: 'sharedPkg.operatingModes.team_inbox.description',
+		flags: {
+			inbox: true,
+			campaigns: false,
+			'campaigns.archive': false,
+			automations: false,
+			transactional: true,
+		},
 		needsDeliveryProvider: true,
 		needsMta: true,
 	},
 	team_inbox_ai: {
 		key: 'team_inbox_ai',
-		label: 'Team inbox + AI agent',
-		audience: 'Shared inbox with AI classification and draft replies.',
-		description: 'The shared inbox plus the AI agent (classify inbound mail, draft replies). Requires an LLM provider in addition to a delivery provider and an inbound source.',
-		flags: { inbox: true, ai: true, 'ai.agent': true, campaigns: false, 'campaigns.archive': false, automations: false, transactional: true },
+		label: 'sharedPkg.operatingModes.team_inbox_ai.label',
+		audience: 'sharedPkg.operatingModes.team_inbox_ai.audience',
+		description: 'sharedPkg.operatingModes.team_inbox_ai.description',
+		flags: {
+			inbox: true,
+			ai: true,
+			'ai.agent': true,
+			campaigns: false,
+			'campaigns.archive': false,
+			automations: false,
+			transactional: true,
+		},
 		needsDeliveryProvider: true,
 		needsMta: true,
 	},
 	full: {
 		key: 'full',
-		label: 'Full stack',
-		audience: 'Marketing, personal/team mail, and AI all together.',
-		description: 'Everything: campaigns, automations, transactional, shared inbox, chat, hosted Postbox, external mailboxes, and the full AI suite.',
+		label: 'sharedPkg.operatingModes.full.label',
+		audience: 'sharedPkg.operatingModes.full.audience',
+		description: 'sharedPkg.operatingModes.full.description',
 		flags: {
 			campaigns: true,
 			'campaigns.archive': true,
@@ -147,7 +194,10 @@ export const OPERATING_MODE_KEYS = Object.keys(OPERATING_MODES) as OperatingMode
  * (defaults overlaid with the preset's managed flags, then run through the
  * `resolveFlags` cascade so e.g. `campaigns.archive` drops when `campaigns` is off).
  */
-export function operatingModeFlags(key: OperatingModeKey, opts: { hosted?: boolean } = {}): FeatureFlagState {
+export function operatingModeFlags(
+	key: OperatingModeKey,
+	opts: { hosted?: boolean } = {}
+): FeatureFlagState {
 	const preset = OPERATING_MODES[key];
 	return resolveFlags({ ...getDefaultFlags(opts), ...preset.flags }, opts);
 }

@@ -13,6 +13,10 @@ beforeAll(() => {
 });
 
 import DNSRecordPanel from '../DNSRecordPanel.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The panel renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const baseRecord = { type: 'TXT', host: '@', value: 'v=spf1 include:_spf.owlat.test ~all' };
 
@@ -28,7 +32,7 @@ function mountPanel(
 			verification,
 		},
 		// <Icon> is a Nuxt component; render it as an inert stub.
-		global: { stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 	});
 }
 
@@ -130,7 +134,7 @@ describe('DNSRecordPanel MX priority (F2 finding 2)', () => {
 		}));
 		const w = mount(DNSRecordPanel, {
 			props: { record: mxRecord, label: 'MAIL FROM', domain: 'example.com' },
-			global: { stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 		});
 		w.find('button[title="Copy value"]').trigger('click');
 		expect(copy).toHaveBeenCalledWith('10 mail.example.com', 'MAIL FROM-value');

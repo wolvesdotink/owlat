@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'API Keys — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.team.api.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -33,17 +35,17 @@ const createFormError = ref<string | null>('');
 
 // Mutations
 const { run: createKey } = useBackendOperation(api.auth.apiKeys.create, {
-	label: 'Create API key',
+	label: () => t('dashboard.admin.team.api.index.operations.create'),
 	inlineTarget: createFormError,
 });
 const { run: revokeKey } = useBackendOperation(api.auth.apiKeys.revoke, {
-	label: 'Revoke API key',
+	label: () => t('dashboard.admin.team.api.index.operations.revoke'),
 });
 const { run: deleteKey } = useBackendOperation(api.auth.apiKeys.remove, {
-	label: 'Delete API key',
+	label: () => t('dashboard.admin.team.api.index.operations.delete'),
 });
 const { run: renameKey } = useBackendOperation(api.auth.apiKeys.updateName, {
-	label: 'Rename API key',
+	label: () => t('dashboard.admin.team.api.index.operations.rename'),
 });
 
 // Inline rename of an API key's label (the secret never changes).
@@ -74,33 +76,35 @@ const { showToast: showNotification } = useToast();
 // Mirrors the canonical vocabulary in apps/api/convex/auth/apiScopes.ts; the
 // backend validates against it, so a drift here can only under-offer, never
 // grant an unknown scope.
-const AVAILABLE_SCOPES: ReadonlyArray<{ value: string; label: string; description: string }> = [
+const AVAILABLE_SCOPES = computed<
+	ReadonlyArray<{ value: string; label: string; description: string }>
+>(() => [
 	{
 		value: 'contacts:read',
-		label: 'Contacts — read',
-		description: 'List and read contacts and their details.',
+		label: t('dashboard.admin.team.api.index.scopes.contactsRead.label'),
+		description: t('dashboard.admin.team.api.index.scopes.contactsRead.description'),
 	},
 	{
 		value: 'contacts:write',
-		label: 'Contacts — write',
-		description: 'Create, update, and delete contacts.',
+		label: t('dashboard.admin.team.api.index.scopes.contactsWrite.label'),
+		description: t('dashboard.admin.team.api.index.scopes.contactsWrite.description'),
 	},
 	{
 		value: 'events:write',
-		label: 'Events — write',
-		description: 'Ingest events that can trigger automations.',
+		label: t('dashboard.admin.team.api.index.scopes.eventsWrite.label'),
+		description: t('dashboard.admin.team.api.index.scopes.eventsWrite.description'),
 	},
 	{
 		value: 'transactional:send',
-		label: 'Transactional — send',
-		description: 'Send transactional emails.',
+		label: t('dashboard.admin.team.api.index.scopes.transactionalSend.label'),
+		description: t('dashboard.admin.team.api.index.scopes.transactionalSend.description'),
 	},
 	{
 		value: 'topics:write',
-		label: 'Topics — write',
-		description: 'Add or remove contacts on topics.',
+		label: t('dashboard.admin.team.api.index.scopes.topicsWrite.label'),
+		description: t('dashboard.admin.team.api.index.scopes.topicsWrite.description'),
 	},
-];
+]);
 
 const isCreateModalOpen = ref(false);
 const createForm = reactive({
@@ -137,12 +141,12 @@ const handleCreate = async () => {
 	createFormError.value = '';
 
 	if (!createForm.name.trim()) {
-		createFormError.value = 'Name is required';
+		createFormError.value = t('dashboard.admin.team.api.index.validation.nameRequired');
 		return;
 	}
 
 	if (createForm.scopes.length === 0) {
-		createFormError.value = 'Select at least one scope — keys are scoped to least privilege.';
+		createFormError.value = t('dashboard.admin.team.api.index.validation.scopeRequired');
 		return;
 	}
 
@@ -168,7 +172,7 @@ const handleCreate = async () => {
 	showCreatedKey.value = true;
 	resetCopiedKey();
 
-	showNotification('API key created successfully');
+	showNotification(t('dashboard.admin.team.api.index.toasts.created'));
 };
 
 const closeCreatedKeyModal = () => {
@@ -182,7 +186,7 @@ const copyApiKey = async () => {
 
 	const ok = await copy(createdKey.value.apiKey, CREATED_API_KEY_COPY_KEY);
 	if (!ok) {
-		showNotification('Failed to copy to clipboard', 'error');
+		showNotification(t('dashboard.admin.team.api.index.toasts.copyFailed'), 'error');
 	}
 };
 
@@ -208,7 +212,7 @@ const handleRevoke = async () => {
 	const result = await revokeKey({ keyId: keyToRevoke.value.id });
 	isRevoking.value = false;
 	if (result === undefined) return;
-	showNotification('API key revoked successfully');
+	showNotification(t('dashboard.admin.team.api.index.toasts.revoked'));
 	closeRevokeModal();
 };
 
@@ -234,7 +238,7 @@ const handleDelete = async () => {
 	const result = await deleteKey({ keyId: keyToDelete.value.id });
 	isDeleting.value = false;
 	if (result === undefined) return;
-	showNotification('API key deleted permanently');
+	showNotification(t('dashboard.admin.team.api.index.toasts.deleted'));
 	closeDeleteModal();
 };
 
@@ -250,12 +254,14 @@ const activeKeysCount = computed(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">API Keys</h1>
-				<p class="mt-1 text-text-secondary">Manage API keys for authenticating your API requests</p>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.admin.team.api.index.title') }}
+				</h1>
+				<p class="mt-1 text-text-secondary">{{ t('dashboard.admin.team.api.index.subtitle') }}</p>
 			</div>
 			<UiButton v-if="canManage" class="gap-2" @click="openCreateModal">
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				Create API Key
+				{{ t('dashboard.admin.team.api.index.createKey') }}
 			</UiButton>
 		</div>
 
@@ -264,11 +270,9 @@ const activeKeysCount = computed(() => {
 			<div class="flex items-start gap-3">
 				<Icon name="lucide:shield" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 				<div>
-					<p class="text-sm text-text-primary font-medium">Keep your API keys secure</p>
+					<p class="text-sm text-text-primary font-medium">{{ t('dashboard.admin.team.api.index.secureNotice.title') }}</p>
 					<p class="text-sm text-text-secondary mt-1">
-						API keys grant full access to your account via the API. Never share your keys publicly
-						or commit them to version control. Use environment variables to store your keys
-						securely.
+						{{ t('dashboard.admin.team.api.index.secureNotice.body') }}
 					</p>
 				</div>
 			</div>
@@ -279,7 +283,7 @@ const activeKeysCount = computed(() => {
 			<div class="px-6 py-4 border-b border-border-subtle bg-bg-surface/50">
 				<div class="flex items-center gap-3">
 					<Icon name="lucide:gauge" class="w-5 h-5 text-brand" />
-					<h2 class="text-sm font-semibold text-text-primary">Rate Limiting</h2>
+					<h2 class="text-sm font-semibold text-text-primary">{{ t('dashboard.admin.team.api.index.rateLimit.title') }}</h2>
 				</div>
 			</div>
 			<div class="p-6">
@@ -288,9 +292,9 @@ const activeKeysCount = computed(() => {
 					<div class="flex items-start gap-4">
 						<UiIconBox icon="lucide:gauge" size="sm" variant="brand" rounded="lg" />
 						<div>
-							<p class="text-sm font-medium text-text-primary">10 requests/second</p>
+							<p class="text-sm font-medium text-text-primary">{{ t('dashboard.admin.team.api.index.rateLimit.rate') }}</p>
 							<p class="text-sm text-text-secondary mt-0.5">
-								Maximum API calls per second per API key
+								{{ t('dashboard.admin.team.api.index.rateLimit.rateDescription') }}
 							</p>
 						</div>
 					</div>
@@ -299,8 +303,12 @@ const activeKeysCount = computed(() => {
 					<div class="flex items-start gap-4">
 						<UiIconBox icon="lucide:info" size="sm" variant="brand" rounded="lg" />
 						<div>
-							<p class="text-sm font-medium text-text-primary">Rate Limit Headers</p>
-							<p class="text-sm text-text-secondary mt-0.5">Track usage via response headers</p>
+							<p class="text-sm font-medium text-text-primary">
+								{{ t('dashboard.admin.team.api.index.rateLimit.headersTitle') }}
+							</p>
+							<p class="text-sm text-text-secondary mt-0.5">
+								{{ t('dashboard.admin.team.api.index.rateLimit.headersDescription') }}
+							</p>
 						</div>
 					</div>
 				</div>
@@ -310,8 +318,12 @@ const activeKeysCount = computed(() => {
 					<table class="w-full text-sm">
 						<thead>
 							<tr class="bg-bg-surface">
-								<th class="text-left px-4 py-2 text-text-secondary font-medium">Header</th>
-								<th class="text-left px-4 py-2 text-text-secondary font-medium">Description</th>
+								<th class="text-left px-4 py-2 text-text-secondary font-medium">
+									{{ t('dashboard.admin.team.api.index.rateLimit.headerColumn') }}
+								</th>
+								<th class="text-left px-4 py-2 text-text-secondary font-medium">
+									{{ t('common.description') }}
+								</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -322,7 +334,7 @@ const activeKeysCount = computed(() => {
 										>X-RateLimit-Limit</code
 									>
 								</td>
-								<td class="px-4 py-2 text-text-secondary">Maximum requests per second (10)</td>
+								<td class="px-4 py-2 text-text-secondary">{{ t('dashboard.admin.team.api.index.rateLimit.limitHeader') }}</td>
 							</tr>
 							<tr class="border-t border-border-subtle">
 								<td class="px-4 py-2">
@@ -331,7 +343,9 @@ const activeKeysCount = computed(() => {
 										>X-RateLimit-Remaining</code
 									>
 								</td>
-								<td class="px-4 py-2 text-text-secondary">Requests remaining in current window</td>
+								<td class="px-4 py-2 text-text-secondary">
+									{{ t('dashboard.admin.team.api.index.rateLimit.remainingHeader') }}
+								</td>
 							</tr>
 							<tr class="border-t border-border-subtle">
 								<td class="px-4 py-2">
@@ -341,7 +355,7 @@ const activeKeysCount = computed(() => {
 									>
 								</td>
 								<td class="px-4 py-2 text-text-secondary">
-									Unix timestamp when the rate limit resets
+									{{ t('dashboard.admin.team.api.index.rateLimit.resetHeader') }}
 								</td>
 							</tr>
 							<tr class="border-t border-border-subtle">
@@ -351,7 +365,7 @@ const activeKeysCount = computed(() => {
 									>
 								</td>
 								<td class="px-4 py-2 text-text-secondary">
-									Seconds to wait when rate limited (429 response)
+									{{ t('dashboard.admin.team.api.index.rateLimit.retryAfterHeader') }}
 								</td>
 							</tr>
 						</tbody>
@@ -360,7 +374,7 @@ const activeKeysCount = computed(() => {
 
 				<!-- Usage Example -->
 				<div class="mt-4 p-4 rounded-lg bg-bg-deep border border-border-subtle">
-					<p class="text-xs text-text-tertiary mb-2">Example response headers:</p>
+					<p class="text-xs text-text-tertiary mb-2">{{ t('dashboard.admin.team.api.index.rateLimit.exampleHeaders') }}</p>
 					<code class="text-xs font-mono text-text-secondary block leading-relaxed">
 						X-RateLimit-Limit: 10<br />
 						X-RateLimit-Remaining: 7<br />
@@ -375,14 +389,14 @@ const activeKeysCount = computed(() => {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:book" size="sm" variant="surface" rounded="lg" />
 				<div>
-					<p class="text-sm text-text-primary font-medium">API Documentation</p>
+					<p class="text-sm text-text-primary font-medium">{{ t('dashboard.admin.team.api.index.docs.title') }}</p>
 					<p class="text-sm text-text-tertiary">
-						View endpoint reference, request schemas, and code examples
+						{{ t('dashboard.admin.team.api.index.docs.description') }}
 					</p>
 				</div>
 			</div>
 			<UiButton variant="secondary" to="/dashboard/admin/team/api/docs" class="gap-2">
-				View Docs
+				{{ t('dashboard.admin.team.api.index.docs.view') }}
 				<Icon name="lucide:external-link" class="w-4 h-4" />
 			</UiButton>
 		</div>
@@ -395,10 +409,9 @@ const activeKeysCount = computed(() => {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">Admins only</p>
+				<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.api.index.adminGate.title') }}</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					API keys can only be managed by workspace owners and admins. Ask an admin if you need API
-					access.
+					{{ t('dashboard.admin.team.api.index.adminGate.description') }}
 				</p>
 			</div>
 
@@ -413,9 +426,9 @@ const activeKeysCount = computed(() => {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:key" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No workspace selected</p>
+				<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.api.index.noWorkspace.title') }}</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Create or select a workspace to manage API keys.
+					{{ t('dashboard.admin.team.api.index.noWorkspace.description') }}
 				</p>
 			</div>
 
@@ -425,13 +438,13 @@ const activeKeysCount = computed(() => {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:key" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No API keys yet</p>
+				<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.api.index.empty.title') }}</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Create an API key to start using the API for contacts, emails, and events.
+					{{ t('dashboard.admin.team.api.index.empty.description') }}
 				</p>
 				<UiButton class="gap-2 mt-6" @click="openCreateModal">
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					Create API Key
+					{{ t('dashboard.admin.team.api.index.createKey') }}
 				</UiButton>
 			</div>
 
@@ -439,22 +452,30 @@ const activeKeysCount = computed(() => {
 			<div v-else class="card p-0 overflow-hidden">
 				<div class="px-6 py-4 border-b border-border-subtle">
 					<h2 class="text-sm font-medium text-text-primary">
-						{{ activeKeysCount }} active {{ activeKeysCount === 1 ? 'key' : 'keys' }}
+						{{ t('dashboard.admin.team.api.index.activeKeyCount', activeKeysCount) }}
 					</h2>
 				</div>
 				<div class="overflow-x-auto">
 					<table class="w-full">
 						<thead>
 							<tr class="border-b border-border-subtle">
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Key</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Status</th>
 								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-									Last Used
+									{{ t('common.name') }}
 								</th>
-								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Created</th>
+								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									{{ t('dashboard.admin.team.api.index.table.key') }}
+								</th>
+								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									{{ t('common.status') }}
+								</th>
+								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									{{ t('dashboard.admin.team.api.index.table.lastUsed') }}
+								</th>
+								<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									{{ t('dashboard.admin.team.api.index.table.created') }}
+								</th>
 								<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-									Actions
+									{{ t('common.actions') }}
 								</th>
 							</tr>
 						</thead>
@@ -472,20 +493,20 @@ const activeKeysCount = computed(() => {
 										<input
 											v-model="renameDraft"
 											class="input input-sm"
-											aria-label="API key name"
+											:aria-label="t('dashboard.admin.team.api.index.form.nameAriaLabel')"
 											@keyup.enter="saveRename"
 											@keyup.esc="renamingId = null"
 										/>
 										<button
 											class="p-1 text-success hover:bg-success/10 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											title="Save"
+											:title="t('common.save')"
 											@click="saveRename"
 										>
 											<Icon name="lucide:check" class="w-4 h-4" />
 										</button>
 										<button
 											class="p-1 text-text-tertiary hover:bg-bg-surface-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											title="Cancel"
+											:title="t('common.cancel')"
 											@click="renamingId = null"
 										>
 											<Icon name="lucide:x" class="w-4 h-4" />
@@ -506,14 +527,14 @@ const activeKeysCount = computed(() => {
 										class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-success/10 text-success"
 									>
 										<Icon name="lucide:check" class="w-3 h-3" />
-										Active
+										{{ t('common.active') }}
 									</span>
 									<span
 										v-else
 										class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-error/10 text-error"
 									>
 										<Icon name="lucide:x" class="w-3 h-3" />
-										Revoked
+										{{ t('dashboard.admin.team.api.index.status.revoked') }}
 									</span>
 								</td>
 								<td class="px-6 py-4">
@@ -525,7 +546,7 @@ const activeKeysCount = computed(() => {
 										<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
 										{{ formatCompactRelativeTime(key.lastUsedAt) }}
 									</span>
-									<span v-else class="text-text-tertiary text-sm">Never used</span>
+									<span v-else class="text-text-tertiary text-sm">{{ t('dashboard.admin.team.api.index.neverUsed') }}</span>
 								</td>
 								<td class="px-6 py-4">
 									<span class="text-text-tertiary text-sm">{{ formatDate(key.createdAt) }}</span>
@@ -535,7 +556,7 @@ const activeKeysCount = computed(() => {
 										<button
 											v-if="canManage && renamingId !== key._id"
 											class="p-2 rounded-lg text-text-tertiary hover:text-brand hover:bg-brand/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											title="Rename Key"
+											:title="t('dashboard.admin.team.api.index.actions.rename')"
 											@click="startRename(key._id, key.name)"
 										>
 											<Icon name="lucide:pencil" class="w-4 h-4" />
@@ -543,14 +564,14 @@ const activeKeysCount = computed(() => {
 										<button
 											v-if="key.isActive"
 											class="p-2 rounded-lg text-text-tertiary hover:text-warning hover:bg-warning/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											title="Revoke Key"
+											:title="t('dashboard.admin.team.api.index.actions.revoke')"
 											@click="openRevokeModal(key._id, key.name)"
 										>
 											<Icon name="lucide:eye-off" class="w-4 h-4" />
 										</button>
 										<button
 											class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											title="Delete Key"
+											:title="t('dashboard.admin.team.api.index.actions.delete')"
 											@click="openDeleteModal(key._id, key.name)"
 										>
 											<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -567,7 +588,7 @@ const activeKeysCount = computed(() => {
 		<!-- Create API Key Modal -->
 		<UiModal
 			:open="isCreateModalOpen"
-			title="Create API Key"
+			:title="t('dashboard.admin.team.api.index.createKey')"
 			size="md"
 			:closable="!isCreating"
 			:persistent="isCreating"
@@ -590,26 +611,27 @@ const activeKeysCount = computed(() => {
 
 				<!-- Name Field -->
 				<div class="mb-6">
-					<label for="key-name" class="label"> Name <span class="text-error">*</span> </label>
+					<label for="key-name" class="label">
+						{{ t('common.name') }} <span class="text-error">*</span>
+					</label>
 					<input
 						id="key-name"
 						v-model="createForm.name"
 						type="text"
-						placeholder="e.g., Production, Development, CI/CD"
+						:placeholder="t('dashboard.admin.team.api.index.form.namePlaceholder')"
 						class="input"
 						:disabled="isCreating"
 					/>
 					<p class="mt-1 text-xs text-text-tertiary">
-						Give your API key a descriptive name to identify its purpose.
+						{{ t('dashboard.admin.team.api.index.form.nameHelp') }}
 					</p>
 				</div>
 
 				<!-- Scopes Field -->
 				<div>
-					<span class="label">Scopes <span class="text-error">*</span></span>
+					<span class="label">{{ t('dashboard.admin.team.api.index.form.scopesLabel') }} <span class="text-error">*</span></span>
 					<p class="mb-2 text-xs text-text-tertiary">
-						Grant only the permissions this key needs. A compromised key can do nothing beyond its
-						scopes.
+						{{ t('dashboard.admin.team.api.index.form.scopesHelp') }}
 					</p>
 					<div class="space-y-2">
 						<label
@@ -641,11 +663,11 @@ const activeKeysCount = computed(() => {
 					:disabled="isCreating"
 					@click="closeCreateModal"
 				>
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="button" class="gap-2" :disabled="isCreating" @click="handleCreate">
 					<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-					{{ isCreating ? 'Creating...' : 'Create Key' }}
+					{{ isCreating ? t('dashboard.admin.team.api.index.form.creating') : t('dashboard.admin.team.api.index.form.submit') }}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -666,7 +688,7 @@ const activeKeysCount = computed(() => {
 				<!-- Header -->
 				<div class="flex items-center gap-3 mb-6">
 					<UiIconBox icon="lucide:key" size="sm" variant="success" rounded="lg" />
-					<h2 class="text-lg font-semibold text-text-primary">API Key Created</h2>
+					<h2 class="text-lg font-semibold text-text-primary">{{ t('dashboard.admin.team.api.index.created.title') }}</h2>
 				</div>
 
 				<!-- Content -->
@@ -674,22 +696,21 @@ const activeKeysCount = computed(() => {
 					<div class="flex items-start gap-3">
 						<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 						<div>
-							<p class="text-sm font-medium text-warning">Copy your API key now</p>
+							<p class="text-sm font-medium text-warning">{{ t('dashboard.admin.team.api.index.created.copyNow') }}</p>
 							<p class="text-sm text-warning/80 mt-1">
-								This is the only time you'll see this key. Store it securely - you won't be able to
-								see it again.
+								{{ t('dashboard.admin.team.api.index.created.copyNowBody') }}
 							</p>
 						</div>
 					</div>
 				</div>
 
 				<div class="mb-4">
-					<label class="label">Name</label>
+					<label class="label">{{ t('common.name') }}</label>
 					<p class="text-text-primary font-medium">{{ createdKey.name }}</p>
 				</div>
 
 				<div>
-					<label class="label">API Key</label>
+					<label class="label">{{ t('dashboard.admin.team.api.index.created.apiKeyLabel') }}</label>
 					<div class="flex items-center gap-2">
 						<code
 							class="flex-1 px-4 py-3 rounded-lg bg-bg-deep text-text-primary text-sm font-mono break-all border border-border-subtle"
@@ -699,14 +720,14 @@ const activeKeysCount = computed(() => {
 						<UiButton variant="secondary" class="shrink-0 gap-2" @click="copyApiKey">
 							<Icon v-if="copiedKey" name="lucide:check" class="w-4 h-4 text-success" />
 							<Icon v-else name="lucide:copy" class="w-4 h-4" />
-							{{ copiedKey ? 'Copied!' : 'Copy' }}
+							{{ copiedKey ? t('dashboard.admin.team.api.index.created.copied') : t('common.copy') }}
 						</UiButton>
 					</div>
 				</div>
 			</template>
 
 			<template #footer>
-				<UiButton @click="closeCreatedKeyModal">Done</UiButton>
+				<UiButton @click="closeCreatedKeyModal">{{ t('common.done') }}</UiButton>
 			</template>
 		</UiModal>
 
@@ -714,9 +735,9 @@ const activeKeysCount = computed(() => {
 		<UiConfirmationDialog
 			:open="isRevokeModalOpen"
 			variant="warning"
-			title="Revoke API Key"
-			:description="`Revoking &quot;${keyToRevoke?.name ?? ''}&quot; will immediately disable the key. Any API requests using this key will fail. You can delete the key later to remove it completely.`"
-			confirm-text="Revoke Key"
+			:title="t('dashboard.admin.team.api.index.revokeDialog.title')"
+			:description="t('dashboard.admin.team.api.index.revokeDialog.description', { name: keyToRevoke?.name ?? '' })"
+			:confirm-text="t('dashboard.admin.team.api.index.revokeDialog.confirm')"
 			:is-loading="isRevoking"
 			@update:open="
 				(v) => {
@@ -730,9 +751,9 @@ const activeKeysCount = computed(() => {
 		<UiConfirmationDialog
 			:open="isDeleteModalOpen"
 			variant="danger"
-			title="Delete API Key"
-			:description="`Permanently delete &quot;${keyToDelete?.name ?? ''}&quot;? This action cannot be undone. The key will be permanently removed from your account.`"
-			confirm-text="Delete Key"
+			:title="t('dashboard.admin.team.api.index.deleteDialog.title')"
+			:description="t('dashboard.admin.team.api.index.deleteDialog.description', { name: keyToDelete?.name ?? '' })"
+			:confirm-text="t('dashboard.admin.team.api.index.deleteDialog.confirm')"
 			:is-loading="isDeleting"
 			@update:open="
 				(v) => {

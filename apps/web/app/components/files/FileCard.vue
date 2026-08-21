@@ -13,6 +13,7 @@ const props = defineProps<{
 	createdAt: number;
 }>();
 
+const { t } = useI18n();
 const router = useRouter();
 
 const navigate = () => {
@@ -38,11 +39,11 @@ const mimeIcon = computed(() => {
 const sourceLabel = computed(() => {
 	switch (props.sourceType) {
 		case 'upload':
-			return 'Upload';
+			return t('components.files.fileCard.sources.upload');
 		case 'email_attachment':
-			return 'Email';
+			return t('components.files.fileCard.sources.email_attachment');
 		case 'agent_generated':
-			return 'AI';
+			return t('components.files.fileCard.sources.agent_generated');
 		default:
 			return props.sourceType;
 	}

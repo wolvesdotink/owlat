@@ -12,6 +12,7 @@ import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
 import { assertEditableForPublishableChange } from './lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
+import { captureTemplateVersion } from './versions';
 
 // Query to get a single email template by ID
 export const get = authedQuery({
@@ -31,6 +32,14 @@ export const update = authedMutation({
 		previewText: v.optional(v.string()),
 		content: v.optional(v.string()),
 		htmlContent: v.optional(v.string()),
+		// text/plain alternative shipped with the html. `plainTextContent` is the
+		// effective body (override when the author wrote one, else the body the
+		// renderer generated from `content`); `plainTextOverride` records the
+		// author's own text so the editor can tell the two apart. An EMPTY
+		// `plainTextOverride` is the editor's "revert to generated" signal and
+		// clears the column.
+		plainTextContent: v.optional(v.string()),
+		plainTextOverride: v.optional(v.string()),
 		// Multi-language support fields
 		defaultLanguage: v.optional(v.string()),
 		supportedLanguages: v.optional(v.array(v.string())),
@@ -59,6 +68,8 @@ export const update = authedMutation({
 			previewText?: string;
 			content?: string;
 			htmlContent?: string;
+			plainTextContent?: string;
+			plainTextOverride?: string;
 			defaultLanguage?: string;
 			supportedLanguages?: string[];
 			translations?: string;
@@ -86,6 +97,19 @@ export const update = authedMutation({
 
 		if (args.htmlContent !== undefined) {
 			updates.htmlContent = args.htmlContent;
+		}
+
+		if (args.plainTextContent !== undefined) {
+			updates.plainTextContent = args.plainTextContent;
+		}
+
+		if (args.plainTextOverride !== undefined) {
+			// Patching a field to `undefined` REMOVES it, which is what "the author
+			// cleared the override editor" has to mean — otherwise an empty string
+			// would keep winning over the generated body forever.
+			updates.plainTextOverride = args.plainTextOverride.trim()
+				? args.plainTextOverride
+				: undefined;
 		}
 
 		if (args.defaultLanguage !== undefined) {
@@ -120,6 +144,16 @@ export const update = authedMutation({
 		}
 
 		await ctx.db.patch(args.templateId, updates);
+
+		// Persisted version history (the editor's undo stack dies with the tab).
+		// Snapshot the POST-patch row, in this transaction, so a rolled-back save
+		// leaves no version claiming content that was never stored. Identical
+		// consecutive saves dedupe inside `captureTemplateVersion`.
+		await captureTemplateVersion(ctx, {
+			template: { ...template, ...updates },
+			trigger: 'save',
+			userId: session.userId,
+		});
 
 		// Audit the content/metadata edit — the documented email_template.updated
 		// action was never emitted from this handler.
@@ -168,6 +202,18 @@ export const publish = authedMutation({
 				throwNotFound('Email template');
 			}
 			throwInvalidState(`Cannot publish template: ${outcome.reason}`);
+		}
+
+		// Record what was published, even when the content is byte-identical to
+		// the last save — "this is the version that went live" is the event the
+		// history exists to answer.
+		const published = await ctx.db.get(args.templateId);
+		if (published) {
+			await captureTemplateVersion(ctx, {
+				template: published,
+				trigger: 'publish',
+				userId: session.userId,
+			});
 		}
 
 		return args.templateId;

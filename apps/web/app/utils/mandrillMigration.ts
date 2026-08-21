@@ -35,6 +35,14 @@ import {
 	type MandrillRelayIdentityInput,
 } from '~/utils/mandrillRelayStatus';
 
+/**
+ * A piece of copy this module hands back, as the catalog key that carries it —
+ * plus the values to interpolate when it takes any. The flow is module scope and
+ * never calls `useI18n`; the migration screen and its steps are the render
+ * boundaries that word what they are given.
+ */
+export type MigrationMessage = string | { key: string; params?: Record<string, unknown> };
+
 /** The relay this flow migrates from. */
 export const MIGRATION_RELAY_KIND = 'mandrill';
 
@@ -79,15 +87,21 @@ export function isTransportConfigured(
 	return (catalog ?? []).some((entry) => entry.kind === kind && entry.isAvailable);
 }
 
-/** The refusal the preset would earn from a missing transport, or null. */
+/**
+ * The refusal the preset would earn from a missing transport, or null.
+ *
+ * Worded from the catalog: this module is module scope and never calls
+ * `useI18n`, so it hands back the KEY (or a `{ key, params }` pair) and the step
+ * that renders it turns it into a sentence.
+ */
 export function migrationTransportIssue(
 	catalog: readonly MigrationTransportEntry[] | null | undefined
-): string | null {
+): MigrationMessage | null {
 	if (!isTransportConfigured(catalog, MIGRATION_RELAY_KIND)) {
-		return 'Mailchimp Transactional is not connected yet — set MANDRILL_API_KEY and restart the deployment.';
+		return 'shared.mandrillMigration.transportIssue.relay';
 	}
 	if (!isTransportConfigured(catalog, MIGRATION_OWN_KIND)) {
-		return "Owlat's own MTA is not configured, so there is nothing to migrate traffic onto.";
+		return 'shared.mandrillMigration.transportIssue.own';
 	}
 	return null;
 }
@@ -165,10 +179,13 @@ export function competingRelayKinds(
 /** The D8 warning, or null when Mandrill is already the only relay. */
 export function competingRelayWarning(
 	routes: readonly MigrationRouteView[] | null | undefined
-): string | null {
+): MigrationMessage | null {
 	const kinds = competingRelayKinds(routes);
 	if (kinds.length === 0) return null;
-	return `${kinds.join(', ')} ${kinds.length === 1 ? 'is' : 'are'} still enabled alongside Mailchimp Transactional. The measurement plane compares one reference relay against your own MTA, so a second one degrades alignment confidence and the ramp holds at 0% — disable it on the provider-routing screen before applying the preset.`;
+	return {
+		key: 'shared.mandrillMigration.competingRelayWarning',
+		params: { relays: kinds.join(', '), count: kinds.length },
+	};
 }
 
 // ── Step 4: the preset ─────────────────────────────────────────────
@@ -230,7 +247,7 @@ export function migrationRoutePayloads(
  */
 export function migrationPresetIssue(
 	catalog: readonly MigrationTransportEntry[] | null | undefined
-): string | null {
+): MigrationMessage | null {
 	const transport = migrationTransportIssue(catalog);
 	if (transport !== null) return transport;
 	return fallbackRelayIssue(migrationRouteProviders(catalog), MIGRATION_RELAY_KIND);
@@ -251,20 +268,21 @@ export interface MigrationSuppressionCounts {
 }
 
 export interface MigrationCarriedCount {
+	/** Catalog key naming this bucket. */
 	readonly label: string;
 	readonly value: number;
 }
 
 const CARRIED_LABELS: readonly (readonly [keyof MigrationSuppressionCounts, string])[] = [
-	['unsubscribed', 'unsubscribed'],
-	['bouncedHard', 'hard bounces'],
-	['bouncedSoft', 'soft bounces'],
-	['complained', 'spam complaints'],
-	['manual', 'manually suppressed'],
-	['alreadyBlocked', 'already suppressed here'],
-	['alreadyUnsubscribed', 'already unsubscribed here'],
-	['noContact', 'no matching contact'],
-	['skipped', 'skipped'],
+	['unsubscribed', 'shared.mandrillMigration.carried.unsubscribed'],
+	['bouncedHard', 'shared.mandrillMigration.carried.bouncedHard'],
+	['bouncedSoft', 'shared.mandrillMigration.carried.bouncedSoft'],
+	['complained', 'shared.mandrillMigration.carried.complained'],
+	['manual', 'shared.mandrillMigration.carried.manual'],
+	['alreadyBlocked', 'shared.mandrillMigration.carried.alreadyBlocked'],
+	['alreadyUnsubscribed', 'shared.mandrillMigration.carried.alreadyUnsubscribed'],
+	['noContact', 'shared.mandrillMigration.carried.noContact'],
+	['skipped', 'shared.mandrillMigration.carried.skipped'],
 ];
 
 /**
@@ -295,38 +313,35 @@ export interface MigrationProgressInput {
 
 export interface MigrationFlowStep {
 	readonly id: MigrationStepId;
+	/** Catalog key for the step heading. */
 	readonly title: string;
+	/** Catalog key for the step's one-paragraph explanation. */
 	readonly summary: string;
 	readonly state: MigrationStepState;
-	/** Why this step cannot be run yet, or null. */
-	readonly blockedBy: string | null;
+	/** Catalog key for why this step cannot be run yet, or null. */
+	readonly blockedBy: MigrationMessage | null;
 }
 
 const STEP_COPY: Readonly<Record<MigrationStepId, { title: string; summary: string }>> = {
 	connect: {
-		title: 'Connect Mailchimp Transactional',
-		summary:
-			'Owlat sends through your existing Mandrill account first, so day one carries your current reputation, not a cold one.',
+		title: 'shared.mandrillMigration.step.connect.title',
+		summary: 'shared.mandrillMigration.step.connect.summary',
 	},
 	history: {
-		title: 'Carry over contacts and suppressions',
-		summary:
-			'Import the audience, then the unsubscribes and hard bounces Mandrill and Mailchimp accumulated — mailing someone who opted out is how a migration fails on day one.',
+		title: 'shared.mandrillMigration.step.history.title',
+		summary: 'shared.mandrillMigration.step.history.summary',
 	},
 	domain: {
-		title: 'Verify the sending domain at Mandrill',
-		summary:
-			'Mandrill rejects mail from a domain it has not verified, so the reference arm cannot carry traffic — and the ramp has nothing to measure against — until this clears.',
+		title: 'shared.mandrillMigration.step.domain.title',
+		summary: 'shared.mandrillMigration.step.domain.summary',
 	},
 	preset: {
-		title: 'Apply the migration preset',
-		summary:
-			'All three message types move to the measured split: 100% Mandrill today, and the ramp controller grows your own MTA’s share cell by cell from there.',
+		title: 'shared.mandrillMigration.step.preset.title',
+		summary: 'shared.mandrillMigration.step.preset.summary',
 	},
 	watch: {
-		title: 'Watch the ramp',
-		summary:
-			'Every decision the controller makes is on the cells screen, in a sentence. Pause, pin or promote any cell at any time.',
+		title: 'shared.mandrillMigration.step.watch.title',
+		summary: 'shared.mandrillMigration.step.watch.summary',
 	},
 };
 
@@ -344,20 +359,16 @@ export function migrationSteps(progress: MigrationProgressInput): readonly Migra
 		preset: progress.isPresetApplied,
 		watch: progress.isPresetApplied,
 	};
-	const blockedBy: Readonly<Record<MigrationStepId, string | null>> = {
+	const blockedBy: Readonly<Record<MigrationStepId, MigrationMessage | null>> = {
 		connect: null,
-		history: progress.isKeyConnected
-			? null
-			: 'Connect Mailchimp Transactional first — the reject-list import reads the same key.',
+		history: progress.isKeyConnected ? null : 'shared.mandrillMigration.blocked.history',
 		domain: null,
 		preset: !progress.isKeyConnected
-			? 'Connect Mailchimp Transactional first.'
+			? 'shared.mandrillMigration.blocked.presetKey'
 			: !progress.isDomainReady
-				? 'Finish Mandrill’s domain verification first — the preset would name a relay that cannot send.'
+				? 'shared.mandrillMigration.blocked.presetDomain'
 				: null,
-		watch: progress.isPresetApplied
-			? null
-			: 'Apply the preset first — there is no ramp to watch yet.',
+		watch: progress.isPresetApplied ? null : 'shared.mandrillMigration.blocked.watch',
 	};
 
 	let currentAssigned = false;

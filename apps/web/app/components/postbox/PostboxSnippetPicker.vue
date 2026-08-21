@@ -19,6 +19,8 @@ const emit = defineEmits<{
 	(e: 'select', item: EditorSnippet): void;
 	(e: 'hover', index: number): void;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -27,13 +29,13 @@ const emit = defineEmits<{
 		class="postbox-snippet-picker absolute z-20 min-w-[220px] max-w-[320px] rounded-md border border-border-subtle bg-bg-elevated shadow-lg overflow-hidden"
 		:style="style"
 		role="listbox"
-		aria-label="Snippets"
+		:aria-label="t('components.postbox.postboxSnippetPicker.listLabel')"
 	>
 		<div
 			v-if="items.length === 0"
 			class="px-3 py-2 text-xs text-text-tertiary"
 		>
-			No matching snippets
+			{{ t('components.postbox.postboxSnippetPicker.empty') }}
 		</div>
 		<button
 			v-for="(item, i) in items"

@@ -3,7 +3,12 @@ import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { isValidEmail } from '~/utils/validation';
 
-useHead({ title: 'Edit Campaign — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.campaigns.detail.edit.pageTitle') });
+
+const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
+const formatNumber = (value: number) => numberFormat.value.format(value);
 
 definePageMeta({
 	layout: 'dashboard',
@@ -78,6 +83,12 @@ const {
 	getMinScheduleDate,
 	getLanguageLabel,
 } = useCampaignForm(campaignId, abTest);
+
+/** The scheduled send moment, formatted against the active locale. */
+const scheduledAtDisplay = computed(() => {
+	const at = campaignData.value?.scheduledAt;
+	return at ? new Date(at).toLocaleString(locale.value) : '';
+});
 
 // Guard the "Edit Email" link. It opens the linked email editor in a NEW tab,
 // so the SPA route guard never fires — intercept the click and, when the
@@ -181,6 +192,21 @@ const { data: capacityPreviewRaw } = useOrganizationQuery(
 	}
 );
 
+// TODAY'S HEADROOM, beside the send buttons. The capacity plan above answers
+// "how long will this take"; this answers the question the operator asks first —
+// how much can go out right now, and when does that grow. Same paced projection
+// as the gate, so the two lines cannot disagree. `fromEmail` is passed whenever
+// it is valid (it decides whether warm-up overflow absorbs the tail); without
+// one the backend answers conservatively rather than skipping, so the line is
+// still there while the address is being typed.
+const { data: sendingReadiness } = useOrganizationQuery(
+	api.campaigns.sendingReadiness.getSendingReadiness,
+	() => {
+		const from = fromEmail.value.trim();
+		return isValidEmail(from) ? { fromEmail: from } : {};
+	}
+);
+
 /**
  * The schedule to render: the one pre-flight actually refused with, else the
  * preview. The refusal wins — it is the authoritative answer for the send the
@@ -203,16 +229,16 @@ const shownCapacityPlan = computed(() => {
 						<button
 							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="handleBack"
-							aria-label="Back"
+							:aria-label="t('common.back')"
 						>
 							<Icon name="lucide:arrow-left" class="w-5 h-5" />
 						</button>
 						<div>
 							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-								{{ isScheduled ? 'Edit Scheduled Campaign' : 'Edit Campaign' }}
+								{{ isScheduled ? t('dashboard.campaigns.detail.edit.titleScheduled') : t('dashboard.campaigns.detail.edit.title') }}
 							</h1>
 							<p class="text-sm text-text-secondary">
-								{{ campaignData?.name || 'Loading...' }}
+								{{ campaignData?.name || t('dashboard.campaigns.detail.edit.loadingName') }}
 							</p>
 						</div>
 					</div>
@@ -223,21 +249,21 @@ const shownCapacityPlan = computed(() => {
 							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-brand/10 text-brand"
 						>
 							<Icon name="lucide:clock" class="w-4 h-4" />
-							Scheduled
+							{{ t('dashboard.campaigns.detail.edit.badges.scheduled') }}
 						</span>
 						<span
 							v-else-if="isDraft"
 							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-text-tertiary/10 text-text-tertiary"
 						>
 							<Icon name="lucide:pencil" class="w-4 h-4" />
-							Draft
+							{{ t('dashboard.campaigns.detail.edit.badges.draft') }}
 						</span>
 						<span
 							v-else-if="campaignData.status === 'pending_review'"
 							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-warning/10 text-warning"
 						>
 							<Icon name="lucide:shield-alert" class="w-4 h-4" />
-							Under Review
+							{{ t('dashboard.campaigns.detail.edit.badges.underReview') }}
 						</span>
 					</div>
 				</div>
@@ -247,8 +273,8 @@ const shownCapacityPlan = computed(() => {
 		<UiQueryBoundary
 			:loading="campaignLoading"
 			:error="campaignError"
-			error-title="Couldn't load this campaign"
-			loading-label="Loading campaign..."
+			:error-title="t('dashboard.campaigns.detail.edit.errorTitle')"
+			:loading-label="t('dashboard.campaigns.detail.edit.loadingLabel')"
 		>
 			<!-- Not Found State -->
 			<div v-if="!campaignData" class="max-w-4xl mx-auto px-6 py-16 text-center">
@@ -259,11 +285,13 @@ const shownCapacityPlan = computed(() => {
 					rounded="full"
 					class="mb-4 mx-auto"
 				/>
-				<p class="text-text-primary font-medium">Campaign not found</p>
+				<p class="text-text-primary font-medium">{{ t('dashboard.campaigns.detail.edit.notFoundTitle') }}</p>
 				<p class="text-sm text-text-secondary mt-1">
-					The campaign you're looking for doesn't exist or you don't have access to it.
+					{{ t('dashboard.campaigns.detail.edit.notFoundDescription') }}
 				</p>
-				<UiButton variant="secondary" class="mt-6" @click="handleBack">Back to Campaigns</UiButton>
+				<UiButton variant="secondary" class="mt-6" @click="handleBack">
+					{{ t('dashboard.campaigns.detail.edit.backToCampaigns') }}
+				</UiButton>
 			</div>
 
 			<!-- Cannot Edit State -->
@@ -278,11 +306,13 @@ const shownCapacityPlan = computed(() => {
 					rounded="full"
 					class="mb-4 mx-auto"
 				/>
-				<p class="text-text-primary font-medium">Cannot edit this campaign</p>
+				<p class="text-text-primary font-medium">{{ t('dashboard.campaigns.detail.edit.cannotEditTitle') }}</p>
 				<p class="text-sm text-text-secondary mt-1">
-					This campaign is {{ campaignData.status }} and cannot be edited.
+					{{ t('dashboard.campaigns.detail.edit.cannotEditDescription', { status: campaignData.status }) }}
 				</p>
-				<UiButton variant="secondary" class="mt-6" @click="handleBack">Back to Campaigns</UiButton>
+				<UiButton variant="secondary" class="mt-6" @click="handleBack">
+					{{ t('dashboard.campaigns.detail.edit.backToCampaigns') }}
+				</UiButton>
 			</div>
 
 			<!-- Pending Review State -->
@@ -292,10 +322,9 @@ const shownCapacityPlan = computed(() => {
 				>
 					<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
-						<p class="text-sm font-medium text-text-primary">Campaign Under Review</p>
+						<p class="text-sm font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.underReview.title') }}</p>
 						<p class="text-sm text-text-secondary mt-1">
-							This campaign has been flagged by our content scanner and is pending review by a
-							platform administrator. You will be able to send it once it has been approved.
+							{{ t('dashboard.campaigns.detail.edit.underReview.description') }}
 						</p>
 					</div>
 				</div>
@@ -305,13 +334,15 @@ const shownCapacityPlan = computed(() => {
 				>
 					<Icon name="lucide:alert-triangle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
 					<div>
-						<p class="text-sm font-medium text-text-primary">Content Issues Detected</p>
+						<p class="text-sm font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.underReview.issuesTitle') }}</p>
 						<p class="text-sm text-text-secondary mt-1">
 							{{ campaignData.contentBlockReason }}
 						</p>
 					</div>
 				</div>
-				<UiButton variant="secondary" @click="handleBack">Back to Campaigns</UiButton>
+				<UiButton variant="secondary" @click="handleBack">
+					{{ t('dashboard.campaigns.detail.edit.backToCampaigns') }}
+				</UiButton>
 			</div>
 
 			<!-- Edit Form -->
@@ -324,10 +355,9 @@ const shownCapacityPlan = computed(() => {
 					>
 						<Icon name="lucide:shield-alert" class="w-5 h-5 text-error shrink-0 mt-0.5" />
 						<div>
-							<p class="text-sm font-medium text-text-primary">Content Blocked</p>
+							<p class="text-sm font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.contentBlocked.title') }}</p>
 							<p class="text-sm text-text-secondary mt-1">
-								Your previous send attempt was blocked by our content scanner. Please update your
-								content and try again.
+								{{ t('dashboard.campaigns.detail.edit.contentBlocked.description') }}
 							</p>
 							<p class="text-xs text-text-tertiary mt-1">
 								{{ campaignData.contentBlockReason }}
@@ -341,7 +371,7 @@ const shownCapacityPlan = computed(() => {
 					>
 						<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
 						<div>
-							<p class="text-sm font-medium text-error">Error</p>
+							<p class="text-sm font-medium text-error">{{ t('common.error') }}</p>
 							<p class="text-sm text-error/80">{{ saveError }}</p>
 						</div>
 					</div>
@@ -354,30 +384,33 @@ const shownCapacityPlan = computed(() => {
 						<div class="flex items-start gap-3">
 							<Icon name="lucide:clock" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 							<div class="flex-1">
-								<p class="text-sm font-medium text-brand">Campaign Scheduled</p>
-								<p class="text-sm text-brand/80 mt-1">
-									This campaign is scheduled to send on
-									<span class="font-medium">{{
-										new Date(campaignData.scheduledAt).toLocaleString()
-									}}</span
-									>. You can reschedule it, send it now, or cancel it.
-								</p>
+								<p class="text-sm font-medium text-brand">{{ t('dashboard.campaigns.detail.edit.scheduledNotice.title') }}</p>
+								<I18nT
+									keypath="dashboard.campaigns.detail.edit.scheduledNotice.description"
+									tag="p"
+									class="text-sm text-brand/80 mt-1"
+									scope="global"
+								>
+									<template #date>
+										<span class="font-medium">{{ scheduledAtDisplay }}</span>
+									</template>
+								</I18nT>
 								<div class="flex gap-2 mt-3">
 									<button
 										class="text-sm text-brand hover:text-brand/80 font-medium"
 										:disabled="isSaving"
 										@click="handleUnschedule"
-									>
-										Unschedule to Edit
-									</button>
+										>
+										{{ t('dashboard.campaigns.detail.edit.scheduledNotice.unschedule') }}
+										</button>
 									<span class="text-brand/40">|</span>
 									<button
 										class="text-sm text-error hover:text-error/80 font-medium"
 										:disabled="isSaving"
 										@click="handleCancel"
-									>
-										Cancel Campaign
-									</button>
+										>
+										{{ t('dashboard.campaigns.detail.edit.scheduledNotice.cancelCampaign') }}
+										</button>
 								</div>
 							</div>
 						</div>
@@ -385,20 +418,20 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Campaign Details Card -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">Campaign Details</h2>
+						<h2 class="text-lg font-semibold text-text-primary mb-6">{{ t('dashboard.campaigns.detail.edit.details.title') }}</h2>
 
 						<div class="space-y-6">
 							<!-- Campaign Name -->
 							<div>
 								<label for="campaignName" class="label flex items-center gap-2">
 									<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
-									Campaign Name <span class="text-error">*</span>
+									{{ t('dashboard.campaigns.detail.edit.details.campaignName') }} <span class="text-error">*</span>
 								</label>
 								<input
 									id="campaignName"
 									v-model="campaignName"
 									type="text"
-									placeholder="e.g., Summer Newsletter 2026"
+									:placeholder="t('dashboard.campaigns.detail.edit.details.campaignNamePlaceholder')"
 									:class="['input mt-1.5', errors.campaignName ? 'input-error' : '']"
 									:disabled="isScheduled"
 								/>
@@ -412,13 +445,13 @@ const shownCapacityPlan = computed(() => {
 								<div>
 									<label for="fromName" class="label flex items-center gap-2">
 										<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
-										From Name
+										{{ t('dashboard.campaigns.detail.edit.details.fromName') }}
 									</label>
 									<input
 										id="fromName"
 										v-model="fromName"
 										type="text"
-										placeholder="e.g., John from Acme Inc"
+										:placeholder="t('dashboard.campaigns.detail.edit.details.fromNamePlaceholder')"
 										class="input mt-1.5"
 										:disabled="isScheduled"
 									/>
@@ -428,13 +461,13 @@ const shownCapacityPlan = computed(() => {
 								<div>
 									<label for="fromEmail" class="label flex items-center gap-2">
 										<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-										From Email <span class="text-error">*</span>
+										{{ t('dashboard.campaigns.detail.edit.details.fromEmail') }} <span class="text-error">*</span>
 									</label>
 									<input
 										id="fromEmail"
 										v-model="fromEmail"
 										type="email"
-										placeholder="e.g., hello@acme.com"
+										:placeholder="t('dashboard.campaigns.detail.edit.details.fromEmailPlaceholder')"
 										:class="['input mt-1.5', errors.fromEmail ? 'input-error' : '']"
 										:disabled="isScheduled"
 									/>
@@ -448,13 +481,14 @@ const shownCapacityPlan = computed(() => {
 							<div>
 								<label for="replyTo" class="label flex items-center gap-2">
 									<Icon name="lucide:reply" class="w-4 h-4 text-text-tertiary" />
-									Reply-to Email <span class="text-text-tertiary">(optional)</span>
+									{{ t('dashboard.campaigns.detail.edit.details.replyTo') }}
+									<span class="text-text-tertiary">{{ t('dashboard.campaigns.detail.edit.details.optionalSuffix') }}</span>
 								</label>
 								<input
 									id="replyTo"
 									v-model="replyTo"
 									type="email"
-									placeholder="e.g., support@acme.com"
+									:placeholder="t('dashboard.campaigns.detail.edit.details.replyToPlaceholder')"
 									class="input mt-1.5"
 									:disabled="isScheduled"
 								/>
@@ -464,7 +498,7 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Audience Card -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">Audience</h2>
+						<h2 class="text-lg font-semibold text-text-primary mb-6">{{ t('dashboard.campaigns.detail.edit.audience.title') }}</h2>
 
 						<div class="space-y-4">
 							<!-- Topic -->
@@ -488,10 +522,10 @@ const shownCapacityPlan = computed(() => {
 								<div class="flex-1">
 									<div class="flex items-center gap-2">
 										<Icon name="lucide:list-checks" class="w-5 h-5 text-brand" />
-										<span class="font-medium text-text-primary">Specific Topic</span>
+										<span class="font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.audience.topicTitle') }}</span>
 									</div>
 									<p class="text-sm text-text-secondary mt-1">
-										Send to contacts subscribed to a specific topic.
+										{{ t('dashboard.campaigns.detail.edit.audience.topicDescription') }}
 									</p>
 
 									<div v-if="audienceType === 'topic'" class="mt-4">
@@ -501,9 +535,9 @@ const shownCapacityPlan = computed(() => {
 											:disabled="isScheduled"
 											@click.stop
 										>
-											<option :value="null" disabled>Select a topic...</option>
+											<option :value="null" disabled>{{ t('dashboard.campaigns.detail.edit.audience.selectTopic') }}</option>
 											<option v-for="list in topics" :key="list._id" :value="list._id">
-												{{ list.name }} ({{ list.contactCount }} contacts)
+												{{ t('dashboard.campaigns.detail.edit.audience.topicOption', { name: list.name, count: list.contactCount }) }}
 											</option>
 										</select>
 										<p v-if="errors.audience" class="mt-1.5 text-sm text-error">
@@ -534,10 +568,10 @@ const shownCapacityPlan = computed(() => {
 								<div class="flex-1">
 									<div class="flex items-center gap-2">
 										<Icon name="lucide:filter" class="w-5 h-5 text-warning" />
-										<span class="font-medium text-text-primary">Saved Segment</span>
+										<span class="font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.audience.segmentTitle') }}</span>
 									</div>
 									<p class="text-sm text-text-secondary mt-1">
-										Target contacts matching specific criteria.
+										{{ t('dashboard.campaigns.detail.edit.audience.segmentDescription') }}
 									</p>
 
 									<div v-if="audienceType === 'segment'" class="mt-4">
@@ -547,7 +581,7 @@ const shownCapacityPlan = computed(() => {
 											:disabled="isScheduled"
 											@click.stop
 										>
-											<option :value="null" disabled>Select a segment...</option>
+											<option :value="null" disabled>{{ t('dashboard.campaigns.detail.edit.audience.selectSegment') }}</option>
 											<option v-for="segment in segments" :key="segment._id" :value="segment._id">
 												{{ segment.name }}
 											</option>
@@ -571,9 +605,9 @@ const shownCapacityPlan = computed(() => {
 									}}</span>
 								</div>
 								<p v-if="audienceType === 'topic'" class="mt-1 text-sm text-text-tertiary">
-									eligible recipients for this topic
+									{{ t('dashboard.campaigns.detail.edit.audience.eligibleForTopic') }}
 								</p>
-								<p v-else class="mt-1 text-sm text-text-tertiary">eligible recipients</p>
+								<p v-else class="mt-1 text-sm text-text-tertiary">{{ t('dashboard.campaigns.detail.edit.audience.eligible') }}</p>
 
 								<!-- Warning if there are non-opted-in contacts (only for topic) -->
 								<div
@@ -591,13 +625,15 @@ const shownCapacityPlan = computed(() => {
 										/>
 										<div class="text-sm">
 											<p class="text-warning font-medium">
-												Some subscribers won't receive this campaign
+												{{ t('dashboard.campaigns.detail.edit.audience.ineligibleTitle') }}
 											</p>
 											<p class="text-warning/80 mt-0.5">
-												{{ audienceCount.total - audienceCount.eligible }} of
-												{{ audienceCount.total }} contacts in this topic are not eligible (no email
-												address, unsubscribed/suppressed, or double opt-in not completed) and will
-												be excluded.
+												{{
+													t('dashboard.campaigns.detail.edit.audience.ineligibleDescription', {
+														excluded: audienceCount.total - audienceCount.eligible,
+														total: audienceCount.total,
+													})
+												}}
 											</p>
 										</div>
 									</div>
@@ -608,12 +644,14 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Email Content Card -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">Email Content</h2>
+						<h2 class="text-lg font-semibold text-text-primary mb-6">{{ t('dashboard.campaigns.detail.edit.content.title') }}</h2>
 
 						<div class="space-y-6">
 							<!-- Selected Template -->
 							<div>
-								<label class="label">Email Template <span class="text-error">*</span></label>
+								<label class="label">
+									{{ t('dashboard.campaigns.detail.edit.content.template') }} <span class="text-error">*</span>
+								</label>
 								<div
 									v-if="selectedTemplate"
 									class="mt-2 p-4 bg-bg-surface shadow-surface-1 rounded-lg"
@@ -630,7 +668,7 @@ const shownCapacityPlan = computed(() => {
 													{{ selectedTemplate.name }}
 												</p>
 												<p class="text-sm text-text-secondary truncate">
-													{{ selectedTemplate.subject || 'No subject' }}
+													{{ selectedTemplate.subject || t('dashboard.campaigns.detail.edit.content.noSubject') }}
 												</p>
 											</div>
 										</div>
@@ -646,23 +684,22 @@ const shownCapacityPlan = computed(() => {
 											"
 										>
 											<Icon name="lucide:eye" class="w-4 h-4" />
-											Edit Email
+											{{ t('dashboard.campaigns.detail.edit.content.editEmail') }}
 										</NuxtLink>
 									</div>
 								</div>
 								<div
 									v-else
 									class="mt-2 p-4 bg-bg-surface shadow-surface-1 rounded-lg text-text-tertiary"
-								>
-									No template selected
-								</div>
+									>
+									{{ t('dashboard.campaigns.detail.edit.content.noTemplate') }}
+									</div>
 								<p v-if="errors.content" class="mt-1.5 text-sm text-error">
 									{{ errors.content }}
 								</p>
 
 								<p class="mt-3 text-sm text-text-tertiary">
-									This campaign is linked to one marketing email. Edit the linked email in the
-									builder.
+									{{ t('dashboard.campaigns.detail.edit.content.linkedEmailNote') }}
 								</p>
 							</div>
 
@@ -670,13 +707,13 @@ const shownCapacityPlan = computed(() => {
 							<div>
 								<label for="subject" class="label flex items-center gap-2">
 									<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-									Email Subject <span class="text-error">*</span>
+									{{ t('dashboard.campaigns.detail.edit.content.subject') }} <span class="text-error">*</span>
 								</label>
 								<input
 									id="subject"
 									v-model="campaignSubject"
 									type="text"
-									placeholder="e.g., Your weekly newsletter is here!"
+									:placeholder="t('dashboard.campaigns.detail.edit.content.subjectPlaceholder')"
 									:class="['input mt-1.5', errors.subject ? 'input-error' : '']"
 									:disabled="isScheduled"
 								/>
@@ -707,27 +744,30 @@ const shownCapacityPlan = computed(() => {
 					<div class="card p-6">
 						<div class="flex items-center justify-between">
 							<div>
-								<h3 class="text-lg font-semibold text-text-primary">Public Archive</h3>
+								<h3 class="text-lg font-semibold text-text-primary">{{ t('dashboard.campaigns.detail.edit.archive.title') }}</h3>
 								<p class="text-sm text-text-secondary mt-1">
-									Add a "View in browser" link at the top of sent emails and create a public archive
-									page.
+									{{ t('dashboard.campaigns.detail.edit.archive.description') }}
 								</p>
 							</div>
-							<UiSwitch v-model="archiveEnabled" :disabled="isScheduled" label="Public archive" />
+							<UiSwitch
+								v-model="archiveEnabled"
+								:disabled="isScheduled"
+								:label="t('dashboard.campaigns.detail.edit.archive.switchLabel')"
+							/>
 						</div>
 					</div>
 
 					<!-- Schedule Card -->
 					<div class="card p-6">
 						<h2 class="text-lg font-semibold text-text-primary mb-6">
-							{{ isScheduled ? 'Reschedule Campaign' : 'Schedule Campaign' }}
+							{{ isScheduled ? t('dashboard.campaigns.detail.edit.schedule.retitle') : t('dashboard.campaigns.detail.edit.schedule.title') }}
 						</h2>
 
 						<div class="grid grid-cols-2 gap-4">
 							<div>
 								<label for="scheduleDate" class="label flex items-center gap-2">
 									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
-									Date
+									{{ t('dashboard.campaigns.detail.edit.schedule.date') }}
 								</label>
 								<input
 									id="scheduleDate"
@@ -740,7 +780,7 @@ const shownCapacityPlan = computed(() => {
 							<div>
 								<label for="scheduleTime" class="label flex items-center gap-2">
 									<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
-									Time
+									{{ t('dashboard.campaigns.detail.edit.schedule.time') }}
 								</label>
 								<input id="scheduleTime" v-model="scheduledTime" type="time" class="input mt-1.5" />
 							</div>
@@ -759,14 +799,16 @@ const shownCapacityPlan = computed(() => {
 								<div class="flex-1">
 									<div class="flex items-center gap-2">
 										<Icon name="lucide:globe" class="w-4 h-4 text-brand" />
-										<span class="font-medium text-text-primary text-sm"
-											>Send at recipient's local time</span
-										>
+										<span class="font-medium text-text-primary text-sm">
+											{{ t('dashboard.campaigns.detail.edit.schedule.recipientTimezone') }}
+										</span>
 									</div>
 									<p class="text-xs text-text-secondary mt-1">
-										Emails will be sent at {{ scheduledTime || 'the scheduled time' }} in each
-										contact's timezone. Contacts without a timezone will receive the email at your
-										selected time.
+										{{
+											t('dashboard.campaigns.detail.edit.schedule.recipientTimezoneHint', {
+												time: scheduledTime || t('dashboard.campaigns.detail.edit.schedule.theScheduledTime'),
+											})
+										}}
 									</p>
 								</div>
 							</label>
@@ -777,17 +819,16 @@ const shownCapacityPlan = computed(() => {
 							class="mt-4 p-3 bg-bg-surface shadow-surface-1 rounded-lg"
 						>
 							<template v-if="useRecipientTimezone">
-								<p class="text-sm text-text-secondary">Campaign will be sent at:</p>
+								<p class="text-sm text-text-secondary">{{ t('dashboard.campaigns.detail.edit.schedule.willBeSentAt') }}</p>
 								<p class="font-medium text-text-primary mt-1">
-									{{ scheduledTime }} in each recipient's timezone
+									{{ t('dashboard.campaigns.detail.edit.schedule.inRecipientTimezone', { time: scheduledTime }) }}
 								</p>
 								<p class="text-xs text-text-tertiary mt-2">
-									For example: {{ scheduledTime }} ET, {{ scheduledTime }} PT,
-									{{ scheduledTime }} GMT, etc.
+									{{ t('dashboard.campaigns.detail.edit.schedule.timezoneExamples', { time: scheduledTime }) }}
 								</p>
 							</template>
 							<template v-else>
-								<p class="text-sm text-text-secondary">Campaign will be sent:</p>
+								<p class="text-sm text-text-secondary">{{ t('dashboard.campaigns.detail.edit.schedule.willBeSent') }}</p>
 								<p class="font-medium text-text-primary mt-1">
 									{{ formatDate(scheduledDate, scheduledTime) }}
 								</p>
@@ -799,12 +840,12 @@ const shownCapacityPlan = computed(() => {
 					<div class="card p-6">
 						<div class="flex items-center justify-between">
 							<div>
-								<h3 class="text-lg font-semibold text-text-primary">Send Test Email</h3>
-								<p class="text-sm text-text-secondary mt-1">Preview how your email will look.</p>
+								<h3 class="text-lg font-semibold text-text-primary">{{ t('dashboard.campaigns.detail.edit.test.title') }}</h3>
+								<p class="text-sm text-text-secondary mt-1">{{ t('dashboard.campaigns.detail.edit.test.description') }}</p>
 							</div>
 							<UiButton variant="secondary" class="gap-2" @click="isTestEmailModalOpen = true">
 								<Icon name="lucide:send-horizonal" class="w-4 h-4" />
-								Send Test
+								{{ t('dashboard.campaigns.detail.edit.test.button') }}
 							</UiButton>
 						</div>
 					</div>
@@ -814,9 +855,9 @@ const shownCapacityPlan = computed(() => {
 						<div class="flex items-center gap-3 mb-4">
 							<UiIconBox icon="lucide:flame" size="lg" variant="brand" rounded="xl" />
 							<div>
-								<h2 class="text-lg font-semibold text-text-primary">IP Warmup Status</h2>
+								<h2 class="text-lg font-semibold text-text-primary">{{ t('dashboard.campaigns.detail.edit.warmup.title') }}</h2>
 								<p class="text-sm text-text-secondary">
-									Your sending capacity based on IP reputation warming
+									{{ t('dashboard.campaigns.detail.edit.warmup.subtitle') }}
 								</p>
 							</div>
 						</div>
@@ -828,9 +869,9 @@ const shownCapacityPlan = computed(() => {
 						>
 							<Icon name="lucide:check-circle" class="w-5 h-5 text-success shrink-0" />
 							<div>
-								<p class="text-sm font-medium text-success">Fully Warmed</p>
+								<p class="text-sm font-medium text-success">{{ t('dashboard.campaigns.detail.edit.warmup.graduatedTitle') }}</p>
 								<p class="text-sm text-text-secondary">
-									Your IPs are fully warmed. Campaigns will send at full speed.
+									{{ t('dashboard.campaigns.detail.edit.warmup.graduatedDescription') }}
 								</p>
 							</div>
 						</div>
@@ -840,9 +881,13 @@ const shownCapacityPlan = computed(() => {
 							<!-- Progress -->
 							<div>
 								<div class="flex items-center justify-between mb-2">
-									<p class="text-sm text-text-secondary">Warmup progress</p>
+									<p class="text-sm text-text-secondary">{{ t('dashboard.campaigns.detail.edit.warmup.progress') }}</p>
 									<p class="text-sm font-medium text-text-primary">
-										Day {{ warmingOverview.warming.ips?.[0]?.currentDay ?? 1 }} of ~30
+										{{
+											t('dashboard.campaigns.detail.edit.warmup.dayOf', {
+												day: warmingOverview.warming.ips?.[0]?.currentDay ?? 1,
+											})
+										}}
 									</p>
 								</div>
 								<div class="w-full h-2.5 bg-bg-surface rounded-full overflow-hidden">
@@ -857,15 +902,19 @@ const shownCapacityPlan = computed(() => {
 
 							<!-- Today's Capacity -->
 							<div class="flex items-center justify-between p-3 bg-bg-surface rounded-lg">
-								<p class="text-sm text-text-secondary">Today's remaining capacity</p>
+								<p class="text-sm text-text-secondary">{{ t('dashboard.campaigns.detail.edit.warmup.remainingCapacity') }}</p>
 								<p class="text-sm font-medium text-text-primary">
 									{{
-										Math.max(
-											0,
-											warmingOverview.warming.totalDailyCap - warmingOverview.warming.totalSentToday
-										).toLocaleString()
+										t('dashboard.campaigns.detail.edit.warmup.remainingOfCap', {
+											remaining: formatNumber(
+												Math.max(
+													0,
+													warmingOverview.warming.totalDailyCap - warmingOverview.warming.totalSentToday
+												)
+											),
+											cap: formatNumber(warmingOverview.warming.totalDailyCap),
+										})
 									}}
-									of {{ warmingOverview.warming.totalDailyCap.toLocaleString() }} emails
 								</p>
 							</div>
 
@@ -887,23 +936,35 @@ const shownCapacityPlan = computed(() => {
 								<Icon name="lucide:clock" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 								<div>
 									<p class="text-sm font-medium text-text-primary">
-										Estimated send time: ~{{ sendEstimate.days }} day{{
-											sendEstimate.days === 1 ? '' : 's'
-										}}
+										{{ t('dashboard.campaigns.detail.edit.warmup.estimatedDays', { days: sendEstimate.days }, sendEstimate.days) }}
 									</p>
 									<p class="text-sm text-text-secondary mt-0.5">
-										This campaign has
-										{{ (audienceCount.eligible ?? 0).toLocaleString() }} recipients.
-										{{ sendEstimate.message }}
+										{{
+											t('dashboard.campaigns.detail.edit.warmup.estimateDetail', {
+												count: formatNumber(audienceCount.eligible ?? 0),
+												message: sendEstimate.message,
+											})
+										}}
 									</p>
 								</div>
 							</div>
 						</div>
 					</div>
 
+					<!-- Sending readiness, immediately above the send/schedule buttons: the
+					     ramp cap belongs where the decision is made, not in a pre-flight
+					     refusal after it (deliverability plan D14). Renders nothing when
+					     capacity is unmeasured or uncapped-and-unremarkable. -->
+					<CampaignsSendReadinessNote
+						:readiness="sendingReadiness"
+						:audience-size="audienceCount?.eligible ?? null"
+					/>
+
 					<!-- Actions -->
 					<div class="flex items-center justify-between pt-4">
-						<UiButton variant="secondary" type="button" @click="handleBack">Cancel</UiButton>
+						<UiButton variant="secondary" type="button" @click="handleBack">
+							{{ t('common.cancel') }}
+						</UiButton>
 						<div class="flex items-center gap-3">
 							<!-- Save button for draft campaigns -->
 							<UiButton
@@ -914,7 +975,7 @@ const shownCapacityPlan = computed(() => {
 								@click="handleSave"
 							>
 								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-								Save Draft
+								{{ t('dashboard.campaigns.detail.edit.actions.saveDraft') }}
 							</UiButton>
 
 							<!-- Schedule button -->
@@ -926,14 +987,14 @@ const shownCapacityPlan = computed(() => {
 							>
 								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 								<Icon v-else name="lucide:clock" class="w-4 h-4" />
-								{{ isScheduled ? 'Reschedule' : 'Schedule' }}
+								{{ isScheduled ? t('dashboard.campaigns.detail.edit.actions.reschedule') : t('dashboard.campaigns.detail.edit.actions.schedule') }}
 							</UiButton>
 
 							<!-- Send Now button -->
 							<UiButton class="gap-2" :disabled="isSaving" @click="showSendConfirm = true">
 								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 								<Icon v-else name="lucide:send" class="w-4 h-4" />
-								Send Now
+								{{ t('dashboard.campaigns.detail.edit.actions.sendNow') }}
 							</UiButton>
 						</div>
 					</div>
@@ -945,9 +1006,11 @@ const shownCapacityPlan = computed(() => {
 		<UiConfirmationDialog
 			v-model:open="showSendConfirm"
 			variant="warning"
-			title="Send campaign now?"
-			:description="`This sends to ${(audienceCount?.eligible ?? 0).toLocaleString()} recipient(s) immediately and can't be undone.`"
-			confirm-text="Send Now"
+			:title="t('dashboard.campaigns.detail.edit.sendConfirm.title')"
+			:description="
+				t('dashboard.campaigns.detail.edit.sendConfirm.description', { count: formatNumber(audienceCount?.eligible ?? 0) })
+			"
+			:confirm-text="t('dashboard.campaigns.detail.edit.actions.sendNow')"
 			:is-loading="isSaving"
 			@confirm="handleConfirmSend"
 		/>

@@ -53,6 +53,8 @@ export function useAddDomainForm(
 	props: Required<AddDomainFormProps>,
 	emitSubmit: (payload: AddDomainSubmitPayload) => void
 ) {
+	const { t } = useI18n();
+
 	// Field state. `sub` defaults to the recommended subdomain (keeps apex
 	// reputation separate for sending); clearing it is the first-class "use the
 	// apex" choice.
@@ -95,7 +97,7 @@ export function useAddDomainForm(
 	const domainRule: ValidationRule = (value) => {
 		const raw = String(value ?? '').trim();
 		if (!raw) return true; // `required` owns the empty case
-		return trySplitZone(raw) !== null || 'Enter a valid domain, like example.com';
+		return trySplitZone(raw) !== null || t('shared.useAddDomainForm.domainInvalid');
 	};
 
 	// Subdomain is optional (empty = apex). When present, every label must be a
@@ -107,20 +109,21 @@ export function useAddDomainForm(
 			.toLowerCase()
 			.split('.')
 			.every((label) => isDnsLabel(label));
-		return ok || 'Use letters, digits and hyphens (e.g. mail or post)';
+		return ok || t('shared.useAddDomainForm.subdomainInvalid');
 	};
 
 	// Return-path subdomain: optional; a single hostname label when present.
 	const returnPathRule: ValidationRule = (value) => {
 		const raw = String(value ?? '').trim();
 		if (!raw) return true;
-		return (
-			isDnsLabel(raw.toLowerCase()) || 'Use a single label like bounce (letters, digits, hyphens)'
-		);
+		return isDnsLabel(raw.toLowerCase()) || t('shared.useAddDomainForm.returnPathInvalid');
 	};
 
 	const validation = useFormValidation({
-		domain: [rules.required('Enter your domain'), domainRule],
+		domain: [
+			(value) => rules.required(t('shared.useAddDomainForm.domainRequired'))(value),
+			domainRule,
+		],
 		sub: [subRule],
 		returnPath: [returnPathRule],
 	});

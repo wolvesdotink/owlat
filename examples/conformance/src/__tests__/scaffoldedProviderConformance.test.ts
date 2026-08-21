@@ -497,7 +497,7 @@ describe('none of it required an edit', () => {
 	it('is the identity the authoring guide tells an author to scaffold', async () => {
 		const { readRepositoryFile } = await import('../repository');
 		const guide = await readRepositoryFile(
-			'apps/docs/content/3.developer/49.plugin-send-providers.md'
+			'apps/docs/content/en/3.developer/49.plugin-send-providers.md'
 		);
 		const command = /owlat plugins create ([\w-]+) --name (\S+) --template (\S+)/.exec(guide);
 		expect(command, 'the guide no longer prints a create invocation').not.toBeNull();

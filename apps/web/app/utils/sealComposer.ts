@@ -7,9 +7,17 @@
  * The honesty audit is a test, not a vibe: every string this can render maps 1:1
  * to a `sealState` the backend actually computed. `willSeal` is the ONLY state
  * that promises encryption; every other state explains, in plain language, why
- * the message would go out unsealed — and for `cannotSeal` sending unsealed is an
- * EXPLICIT act (the composer surfaces a distinct "Send unsealed" control, never a
- * silent plaintext send).
+ * the message would go out unsealed — and for `cannotSeal` sending unsealed is a
+ * DECISION: the sender is asked to proceed or cancel (`deriveUnsealedPrompt`)
+ * before a single plaintext message leaves, never a silent downgrade.
+ *
+ * These derivations are module scope, so they never call `useI18n`: every copy
+ * field they hand back is a catalog KEY (or a `{ key, params }` pair where the
+ * message interpolates something), and the composer resolves it with `t()` at
+ * render time, in the active locale.
+ *
+ * The lock is also shown while the state is still being computed (`checking`), so
+ * the compose surface never sits silent about sealing right up until Send.
  *
  * This is the web-side mirror of the Convex `SealState` union (single source is
  * `mail/sealPolicy.ts`); the boundary keeps its own copy per this app's existing
@@ -52,71 +60,110 @@ export function sealSendBlock(
 /** The three visual tones the lock renders in (shared with the sealed badge). */
 export type SealLockTone = SealTone;
 
+/**
+ * The lock's discriminator: the three backend seal states plus `checking`, the
+ * pre-answer state the composer renders while the per-draft query is in flight.
+ */
+export type ComposerLockKind = SealState['kind'] | 'checking';
+
+/**
+ * A translatable sentence this module hands to whoever renders it: a bare
+ * catalog key, or a key plus the values its message interpolates.
+ */
+export type SealLockText = string | { key: string; params?: Record<string, string | number> };
+
 export interface ComposerLockResult {
 	/** Discriminator carried through to the component for styling + branching. */
-	kind: SealState['kind'];
-	/** Short lock label. */
+	kind: ComposerLockKind;
+	/** Short lock label — a catalog key, resolved with `t()` at render time. */
 	summary: string;
-	/** Plain-language explanation. */
-	detail: string;
+	/** Plain-language explanation — a catalog key or a `{ key, params }` pair. */
+	detail: SealLockText;
 	tone: SealLockTone;
 	icon: string;
 	/**
-	 * True ONLY for `cannotSeal`: sending in plaintext must be an explicit act, so
-	 * the composer shows a distinct "Send unsealed" control rather than sealing
-	 * silently or blocking. `willSeal` seals automatically; `keyChanged` defers to
-	 * the key-change banner's re-accept before it can seal.
+	 * True ONLY for a `cannotSeal` state the sender can actually act on: sending in
+	 * plaintext is a decision, so the composer offers a distinct control that opens
+	 * the proceed-or-cancel prompt rather than sealing silently or dead-ending.
+	 * `willSeal` seals automatically; `keyChanged` defers to the key-change
+	 * banner's re-accept; `no_recipients` has nothing to decide yet.
 	 */
 	allowSendUnsealed: boolean;
 }
 
 /**
- * Human-readable list join: "a", "a and b", "a, b and c". Plain language — no
- * Oxford comma, no crypto jargon.
+ * The rotated recipients, as the key-change sentence names them: nobody, one
+ * address, or a comma list plus a final conjunction. The conjunction is part of
+ * the MESSAGE rather than of a string built here, because word order and the
+ * word itself are the translation's business — so the list count picks the key
+ * and the addresses travel as parameters.
  */
-function joinAddresses(addresses: string[]): string {
-	if (addresses.length === 0) return 'a recipient';
-	if (addresses.length === 1) return addresses[0] as string;
-	const head = addresses.slice(0, -1).join(', ');
-	return `${head} and ${addresses[addresses.length - 1]}`;
+function keyChangedDetail(addresses: string[]): SealLockText {
+	if (addresses.length === 0) return 'shared.sealComposer.keyChanged.detailAnyRecipient';
+	if (addresses.length === 1) {
+		return {
+			key: 'shared.sealComposer.keyChanged.detailOne',
+			params: { address: addresses[0] as string },
+		};
+	}
+	return {
+		key: 'shared.sealComposer.keyChanged.detailMany',
+		params: {
+			head: addresses.slice(0, -1).join(', '),
+			last: addresses[addresses.length - 1] as string,
+		},
+	};
 }
 
 /**
- * Plain-language reason copy for a `cannotSeal` state. Every branch is asserted
- * verbatim in the honesty test. The fallback keeps the union total without ever
- * over-claiming — it still says the message goes out unsealed.
+ * Plain-language reason copy for a `cannotSeal` state, as a catalog key. Every
+ * branch is asserted verbatim in the honesty test. The union is total, so no
+ * branch can silently over-claim — each one still says the message goes out
+ * unsealed.
  */
 function cannotSealDetail(reason: SealSkipReason): string {
 	switch (reason) {
 		case 'policy_off':
-			return 'Sealed mail is turned off for your workspace, so this message will be sent normally.';
+			return 'shared.sealComposer.cannotSeal.policyOff';
 		case 'recipient_no_key':
-			return "Some of your recipients can't receive sealed mail yet, so this message will be sent normally.";
+			return 'shared.sealComposer.cannotSeal.recipientNoKey';
 		case 'no_recipients':
-			return 'Add a recipient to see whether this message can be sealed.';
+			return 'shared.sealComposer.cannotSeal.noRecipients';
 		case 'no_signing_key':
-			return "This address doesn't have a sealing key yet, so this message will be sent normally.";
+			return 'shared.sealComposer.cannotSeal.noSigningKey';
 		case 'policy_ask':
-			return 'Sealed mail is available for these recipients, but your workspace is set to ask before sealing, so this message will be sent normally.';
+			return 'shared.sealComposer.cannotSeal.policyAsk';
 		case 'flag_off':
-			return 'Sealed mail is not available yet, so this message will be sent normally.';
+			return 'shared.sealComposer.cannotSeal.flagOff';
 		case 'key_changed':
-			return "A recipient's key changed and needs review, so this message will be sent normally until you confirm it.";
+			return 'shared.sealComposer.cannotSeal.keyChanged';
 	}
 }
 
 /**
  * Derive the composer lock indicator from a draft's seal state. Pure — no I/O —
  * so the honesty audit can enumerate every reachable string against its state.
+ * `null` is the not-yet-answered state (the per-draft query is still in flight):
+ * it renders as `checking` rather than as nothing, because an absent lock reads
+ * as "nothing to say about sealing" — which is a claim of its own.
  */
-export function deriveComposerLock(state: SealState): ComposerLockResult {
+export function deriveComposerLock(state: SealState | null): ComposerLockResult {
+	if (!state) {
+		return {
+			kind: 'checking',
+			summary: 'shared.sealComposer.checking.summary',
+			detail: 'shared.sealComposer.checking.detail',
+			tone: 'muted',
+			icon: 'lucide:loader-2',
+			allowSendUnsealed: false,
+		};
+	}
 	switch (state.kind) {
 		case 'willSeal':
 			return {
 				kind: 'willSeal',
-				summary: 'This message will be sealed',
-				detail:
-					'Everyone you are writing to can receive sealed mail, so Owlat will encrypt this message before it leaves your workspace.',
+				summary: 'shared.sealComposer.willSeal.summary',
+				detail: 'shared.sealComposer.willSeal.detail',
 				tone: 'ok',
 				icon: 'lucide:lock',
 				allowSendUnsealed: false,
@@ -124,8 +171,8 @@ export function deriveComposerLock(state: SealState): ComposerLockResult {
 		case 'keyChanged':
 			return {
 				kind: 'keyChanged',
-				summary: "A recipient's key changed",
-				detail: `The sealing key for ${joinAddresses(state.addresses)} changed since you last sealed mail to them. Open your conversation with them to review and confirm the new key before Owlat will seal to it.`,
+				summary: 'shared.sealComposer.keyChanged.summary',
+				detail: keyChangedDetail(state.addresses),
 				tone: 'warn',
 				icon: 'lucide:key-round',
 				allowSendUnsealed: false,
@@ -133,11 +180,70 @@ export function deriveComposerLock(state: SealState): ComposerLockResult {
 		case 'cannotSeal':
 			return {
 				kind: 'cannotSeal',
-				summary: "This message won't be sealed",
+				summary: 'shared.sealComposer.cannotSeal.summary',
 				detail: cannotSealDetail(state.reason),
 				tone: 'muted',
 				icon: 'lucide:lock-open',
-				allowSendUnsealed: true,
+				// Nothing to decide until there is someone to send to.
+				allowSendUnsealed: state.reason !== 'no_recipients',
 			};
 	}
+}
+
+/**
+ * The proceed-or-cancel prompt shown before a message goes out unsealed. Copy
+ * only — the caller owns the dialog.
+ */
+export interface UnsealedSendPrompt {
+	/** Catalog key — resolved with `t()` at render time. */
+	title: string;
+	/**
+	 * Why it won't be sealed, then what sending anyway means — ONE catalog key per
+	 * reason. The two halves are one message rather than two joined here: a
+	 * sentence split around a value is untranslatable.
+	 */
+	description: string;
+	confirmLabel: string;
+	cancelLabel: string;
+}
+
+/**
+ * The per-reason prompt message. Each one states why this draft can't be sealed
+ * AND what sending anyway costs, so the decision is never presented without its
+ * consequence.
+ */
+function unsealedPromptDescription(reason: SealSkipReason): string {
+	switch (reason) {
+		case 'policy_off':
+			return 'shared.sealComposer.unsealedPrompt.policyOff';
+		case 'recipient_no_key':
+			return 'shared.sealComposer.unsealedPrompt.recipientNoKey';
+		case 'no_recipients':
+			return 'shared.sealComposer.unsealedPrompt.noRecipients';
+		case 'no_signing_key':
+			return 'shared.sealComposer.unsealedPrompt.noSigningKey';
+		case 'policy_ask':
+			return 'shared.sealComposer.unsealedPrompt.policyAsk';
+		case 'flag_off':
+			return 'shared.sealComposer.unsealedPrompt.flagOff';
+		case 'key_changed':
+			return 'shared.sealComposer.unsealedPrompt.keyChanged';
+	}
+}
+
+/**
+ * Derive the unsealed-send confirmation prompt for a seal state, or `null` when
+ * plaintext is not the sender's to choose: `willSeal` needs no decision,
+ * `keyChanged` must be resolved on the thread first (never bypassable), and
+ * `no_recipients` has no send to confirm. Mirrors `allowSendUnsealed` exactly, so
+ * a lock that offers the control always has a prompt behind it.
+ */
+export function deriveUnsealedPrompt(state: SealState | null): UnsealedSendPrompt | null {
+	if (!state || state.kind !== 'cannotSeal' || state.reason === 'no_recipients') return null;
+	return {
+		title: 'shared.sealComposer.unsealedPrompt.title',
+		description: unsealedPromptDescription(state.reason),
+		confirmLabel: 'shared.sealComposer.unsealedPrompt.confirm',
+		cancelLabel: 'shared.sealComposer.unsealedPrompt.cancel',
+	};
 }

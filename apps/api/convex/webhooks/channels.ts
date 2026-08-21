@@ -15,8 +15,10 @@
  * runs in the outer shell before `runInboundPipeline`.
  *
  * Security guarantees (fail-closed): every adapter rejects with 503 when
- * its required secret env var is unset. Never accept an unsigned request
- * "for now."
+ * it has no secret to verify against. The secret is the credential stored
+ * on the channel's own `channelConfigs` row, falling back to the
+ * deployment env var (`webhooks/channelSecrets.ts`). Never accept an
+ * unsigned request "for now."
  */
 
 import { httpAction } from '../_generated/server';
@@ -24,7 +26,6 @@ import { runInboundPipeline } from './pipeline';
 import { twilioAdapter } from './adapters/twilio';
 import { genericAdapter } from './adapters/generic';
 import { metaAdapter, handleMetaChallenge } from './adapters/meta';
-import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
 
 /**
  * Twilio SMS webhook handler
@@ -40,19 +41,7 @@ export const handleSmsWebhook = httpAction((ctx, request) =>
  * GET  /webhooks/whatsapp — Meta verification challenge (out-of-band)
  */
 export const handleWhatsAppWebhook = httpAction(async (ctx, request) => {
-	if (request.method === 'GET') {
-		// The challenge compare is constant-time, but without a bucket an
-		// unauthenticated caller could brute-force META_VERIFY_TOKEN online.
-		// Spend the same per-source ingestion bucket the POST path uses, keyed
-		// `meta:<ip>` so a challenge flood cannot starve real WhatsApp events.
-		const ip = getClientIp(request);
-		const { ok: rateOk, retryAfter } = await ctx.runMutation(
-			internal.publicRateLimit.checkPublicRateLimit,
-			{ limitType: 'webhookIngestion', key: `meta:${ip}` }
-		);
-		if (!rateOk) return rateLimitedResponse(retryAfter);
-		return handleMetaChallenge(request);
-	}
+	if (request.method === 'GET') return await handleMetaChallenge(request, ctx);
 	return runInboundPipeline(ctx, request, metaAdapter);
 });
 

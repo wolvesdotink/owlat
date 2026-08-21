@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
+const { t } = useI18n();
+
 const { data: memory, isLoading: memoryLoading } = useConvexQuery(
 	api.inbox.clarificationMemory.listClarificationMemory,
 	() => ({})
@@ -12,14 +14,14 @@ const { data: strategyCatalog } = useConvexQuery(
 );
 const { run: revokeMemory } = useBackendOperation(
 	api.inbox.clarificationMemory.revokeClarificationMemory,
-	{ label: 'Forget learned answer' }
+	{ label: () => t('components.autonomy.autonomyLearningControls.forgetOperation') }
 );
 const { run: promoteMemory } = useBackendOperation(
 	api.inbox.clarificationMemory.promoteClarificationMemory,
-	{ label: 'Use learned answer for everyone' }
+	{ label: () => t('components.autonomy.autonomyLearningControls.promoteOperation') }
 );
 const { run: setStrategy } = useBackendOperation(api.plugins.draftStrategySelections.setSelection, {
-	label: 'Set draft strategy',
+	label: () => t('components.autonomy.autonomyLearningControls.setStrategyOperation'),
 });
 const { showToast } = useToast();
 const memoryPendingId = ref<string | null>(null);
@@ -38,7 +40,8 @@ const categories = [
 async function forgetAnswer(id: Id<'clarificationMemory'>) {
 	memoryPendingId.value = id;
 	try {
-		if (await revokeMemory({ id })) showToast('Learned answer forgotten');
+		if (await revokeMemory({ id }))
+			showToast(t('components.autonomy.autonomyLearningControls.forgottenToast'));
 	} finally {
 		memoryPendingId.value = null;
 	}
@@ -46,7 +49,8 @@ async function forgetAnswer(id: Id<'clarificationMemory'>) {
 async function useForEveryone(id: Id<'clarificationMemory'>) {
 	memoryPendingId.value = id;
 	try {
-		if (await promoteMemory({ id })) showToast('Learned answer now applies to every sender');
+		if (await promoteMemory({ id }))
+			showToast(t('components.autonomy.autonomyLearningControls.promotedToast'));
 	} finally {
 		memoryPendingId.value = null;
 	}
@@ -66,7 +70,10 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 			scope: { type: 'classification', id: category },
 			strategyKind: String(strategyKind),
 		});
-		if (result !== undefined) showToast('Draft strategy updated for ' + category);
+		if (result !== undefined)
+			showToast(
+				t('components.autonomy.autonomyLearningControls.strategyUpdatedToast', { category })
+			);
 	} finally {
 		strategyPendingCategory.value = null;
 	}
@@ -78,10 +85,11 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 		<div class="mb-5 flex items-start gap-3">
 			<UiIconBox icon="lucide:route" size="sm" variant="surface" />
 			<div>
-				<h2 class="font-medium text-text-primary">Draft strategies</h2>
+				<h2 class="font-medium text-text-primary">
+					{{ t('components.autonomy.autonomyLearningControls.strategiesTitle') }}
+				</h2>
 				<p class="mt-1 text-sm text-text-secondary">
-					Choose a bundled drafting strategy for each message category. Default uses Owlat's
-					built-in drafter.
+					{{ t('components.autonomy.autonomyLearningControls.strategiesBody') }}
 				</p>
 			</div>
 		</div>
@@ -90,7 +98,7 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 				v-for="category in categories"
 				:key="category"
 				:model-value="selectedStrategy(category)"
-				:label="category.replace('_', ' ')"
+				:label="t(`components.autonomy.autonomyLearningControls.categories.${category}`)"
 				:disabled="strategyPendingCategory === category"
 				:options="
 					strategyCatalog.strategies.map((strategy) => ({
@@ -107,16 +115,17 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 		<div class="mb-5 flex items-start gap-3">
 			<UiIconBox icon="lucide:brain" size="sm" variant="surface" />
 			<div>
-				<h2 class="font-medium text-text-primary">Learned answers</h2>
+				<h2 class="font-medium text-text-primary">
+					{{ t('components.autonomy.autonomyLearningControls.memoryTitle') }}
+				</h2>
 				<p class="mt-1 text-sm text-text-secondary">
-					Answers you gave when the agent needed a missing fact. Forget stale answers or carefully
-					widen a contact-specific answer to every sender.
+					{{ t('components.autonomy.autonomyLearningControls.memoryBody') }}
 				</p>
 			</div>
 		</div>
 		<div v-if="memoryLoading" class="py-6 text-center"><UiSpinner /></div>
 		<p v-else-if="!memory?.items.length" class="py-6 text-center text-sm text-text-tertiary">
-			No learned answers yet.
+			{{ t('components.autonomy.autonomyLearningControls.memoryEmpty') }}
 		</p>
 		<div v-else class="divide-y divide-border-subtle">
 			<div
@@ -128,8 +137,20 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 					<p class="text-sm font-medium text-text-primary">{{ item.questionText }}</p>
 					<p class="mt-1 text-sm text-text-secondary">{{ item.answerValue }}</p>
 					<p class="mt-1 text-xs text-text-tertiary">
-						{{ item.scope === 'org_general' ? 'All senders' : item.contactName || 'One contact' }}
-						· answered {{ item.answerCount }} time{{ item.answerCount === 1 ? '' : 's' }}
+						{{
+							t(
+								'components.autonomy.autonomyLearningControls.answeredTimes',
+								{
+									scope:
+										item.scope === 'org_general'
+											? t('components.autonomy.autonomyLearningControls.scopeAllSenders')
+											: item.contactName ||
+												t('components.autonomy.autonomyLearningControls.scopeOneContact'),
+									count: item.answerCount,
+								},
+								item.answerCount
+							)
+						}}
 					</p>
 				</div>
 				<div class="flex shrink-0 items-center gap-2">
@@ -140,7 +161,7 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 						:disabled="memoryPendingId === item.id"
 						@click="useForEveryone(item.id)"
 					>
-						Use for everyone
+						{{ t('components.autonomy.autonomyLearningControls.useForEveryone') }}
 					</UiButton>
 					<UiButton
 						variant="ghost"
@@ -149,7 +170,7 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 						:disabled="memoryPendingId === item.id"
 						@click="forgetAnswer(item.id)"
 					>
-						Forget
+						{{ t('components.autonomy.autonomyLearningControls.forget') }}
 					</UiButton>
 				</div>
 			</div>

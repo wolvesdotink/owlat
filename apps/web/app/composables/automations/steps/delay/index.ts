@@ -3,20 +3,21 @@ import type { DelayStepConfig, StepEditorModule } from '../types';
 
 type Unit = DelayStepConfig['unit'];
 
+/**
+ * The message key for a unit word, singular or plural. Registry modules cannot
+ * call `useI18n`, and the renderer resolves a key with `t(key)` rather than
+ * `t(key, count)`, so each unit carries its own `one`/`other` key.
+ */
 function unitLabel(duration: number, unit: Unit): string {
-	const isOne = duration === 1;
-	if (unit === 'minutes') return isOne ? 'minute' : 'minutes';
-	if (unit === 'hours') return isOne ? 'hour' : 'hours';
-	if (unit === 'days') return isOne ? 'day' : 'days';
-	return isOne ? 'week' : 'weeks';
+	return `shared.automations.steps.delay.units.${unit}.${duration === 1 ? 'one' : 'other'}`;
 }
 
 export { unitLabel as delayUnitLabel };
 
 export const delayStepEditorModule: StepEditorModule<'delay'> = {
 	kind: 'delay',
-	label: 'Wait/Delay',
-	description: 'Wait before the next step',
+	label: 'shared.automations.steps.delay.label',
+	description: 'shared.automations.steps.delay.description',
 	color: 'lavender',
 	icon: 'lucide:clock',
 	createDefault: () => ({ duration: 1, unit: 'days' }),
@@ -27,12 +28,17 @@ export const delayStepEditorModule: StepEditorModule<'delay'> = {
 		return { duration, unit };
 	},
 	validateForActivation(config) {
-		if (!config.duration || config.duration < 1) return 'Delay duration must be at least 1';
+		if (!config.duration || config.duration < 1)
+			return 'shared.automations.steps.delay.durationTooShort';
 		return null;
 	},
 	getDescription(config) {
-		if (!config.duration || !config.unit) return 'Configure delay';
-		return `Wait ${config.duration} ${unitLabel(config.duration, config.unit)}`;
+		if (!config.duration || !config.unit) return 'shared.automations.steps.delay.configure';
+		const plural = config.duration === 1 ? 'one' : 'other';
+		return {
+			key: `shared.automations.steps.delay.wait.${config.unit}.${plural}`,
+			params: { count: config.duration },
+		};
 	},
 	EditorComponent: defineAsyncComponent(
 		() => import('../../../../components/automations/steps/delay/Editor.vue')

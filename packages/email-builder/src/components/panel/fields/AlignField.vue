@@ -31,6 +31,7 @@ const groupOptions = computed(() =>
 
 <template>
 	<ButtonGroup
+		label="Alignment"
 		:options="groupOptions"
 		:value="value"
 		@update="(val) => emit('update', val)"

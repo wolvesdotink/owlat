@@ -37,6 +37,16 @@ const props = withDefaults(
 	{ isAdmin: false, personalOnly: false }
 );
 
+const { t } = useI18n();
+
+/**
+ * A copy field owned by the shared getting-started model: either a bare message
+ * key or a key plus the values it interpolates.
+ */
+type LocalizedField = string | { key: string; params?: Record<string, unknown> };
+const localize = (value: LocalizedField): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 const config = useRuntimeConfig();
 const isSelfHost = config.public.deploymentMode === 'selfhost';
 
@@ -84,6 +94,37 @@ const showBackupsStep = computed(
 		isSelfHost && isPlatformAdmin.value === true && backupState.value?.isScheduleEnabled !== true
 );
 
+// Member-safe "can this instance send at all?" — the same signal as the admin
+// `sendPathReady` flag, readable by every member. Without it the personal send
+// steps would sit open forever with no explanation while the instance has no
+// outbound transport; with it they render as blocked and unblock themselves the
+// moment sending works (the same edge that notifies the waiting member — see
+// `auth/sendReadyNotices.ts`).
+const { data: sendReadyState } = useOrganizationQuery(api.auth.sendReadyNotices.getState);
+// UNRESOLVED IS "NOT BLOCKED", NOT "NOT READY". An unanswered `getState` is
+// UNKNOWN, and rendering it as "cannot send" would flash the personal send steps
+// as blocked (a non-clickable waiting row) on an instance that can in fact send.
+// The gate is HERE rather than in the card's own loading flag: this query is
+// org-scoped, so it stays skipped for as long as there is no active organization
+// to answer it — and a card-level gate would then hide the whole checklist
+// indefinitely rather than for a paint. The steps settle into their blocked
+// state the moment the query says the instance cannot send.
+const sendPathReady = computed(() => sendReadyState.value?.isReady ?? true);
+
+// How much can actually go out today under the IP warm-up cap. Admins only —
+// only they see the "Send a campaign" go-live step this qualifies, and there is
+// no reason to subscribe every member to a projection they will not be shown.
+// No From address exists at this point, so the backend answers conservatively;
+// an uncapped or unmeasurable deployment answers `null` and the step keeps its
+// plain description.
+const { data: sendingReadiness } = useOrganizationQuery(
+	api.campaigns.sendingReadiness.getSendingReadiness,
+	() => (isInstanceViewer.value ? {} : undefined)
+);
+const sendCapacityToday = computed(() =>
+	sendingReadiness.value?.capped === true ? sendingReadiness.value.today : null
+);
+
 const mode = computed<OnboardingMode>(() =>
 	settings.value?.isMigrationMode ? 'migration' : 'fresh'
 );
@@ -113,6 +154,9 @@ const instanceFlags = computed<Record<InstanceFlagId, boolean>>(() => ({
 	setupDomain: instanceProgress.value?.setupDomain ?? false,
 }));
 
+// Every gate the card's CONTENTS depend on. Each of these decides whether a step
+// exists or is ticked, so the card stays hidden until they answer; the
+// send-readiness read is deliberately not among them (see `sendPathReady`).
 const isLoading = computed(
 	() =>
 		isLoadingOnboarding.value ||
@@ -133,7 +177,33 @@ const model = computed(() =>
 		showBackupsStep: showBackupsStep.value,
 		userDismissed: (onboarding.value?.dismissedAt ?? null) !== null,
 		personalCompleted: personalCompleted.value,
+		sendPathReady: sendPathReady.value,
+		sendCapacityToday: sendCapacityToday.value,
 	})
+);
+
+// Deep link from the "you can send now" notice: `/dashboard?step=firstSendDone`
+// names the step the member was blocked on, so the card scrolls to it and
+// highlights it instead of dropping them at the top of a long checklist.
+const route = useRoute();
+const focusedStepId = computed(() =>
+	typeof route.query['step'] === 'string' ? route.query['step'] : null
+);
+
+function stepDomId(stepId: string): string {
+	return `getting-started-step-${stepId}`;
+}
+
+// The card only renders once its queries resolve — usually after this mounts —
+// so scroll when it becomes visible rather than on mount.
+watch(
+	[() => model.value.visible, focusedStepId],
+	async ([visible, stepId]) => {
+		if (!import.meta.client || !visible || !stepId) return;
+		await nextTick();
+		document.getElementById(stepDomId(stepId))?.scrollIntoView({ block: 'center' });
+	},
+	{ immediate: true }
 );
 
 const progressPercentage = computed(() => {
@@ -143,10 +213,10 @@ const progressPercentage = computed(() => {
 
 // One dismiss action covering whatever the card is currently showing.
 const { run: dismissInstance } = useBackendOperation(api.auth.onboarding.dismiss, {
-	label: 'Dismiss onboarding',
+	label: () => t('components.dashboard.gettingStarted.dismissInstanceOperation'),
 });
 const { run: dismissUser } = useBackendOperation(api.auth.userOnboarding.dismiss, {
-	label: 'Dismiss checklist',
+	label: () => t('components.dashboard.gettingStarted.dismissUserOperation'),
 });
 
 async function handleDismiss() {
@@ -168,22 +238,22 @@ async function handleDismiss() {
 		leave-from-class="opacity-100 translate-y-0"
 		leave-to-class="opacity-0 -translate-y-2"
 	>
-		<section v-if="model.visible" class="card mb-8" role="region" aria-label="Getting started">
+		<section v-if="model.visible" class="card mb-8" role="region" :aria-label="t('components.dashboard.gettingStarted.title')">
 			<!-- Header -->
 			<div class="mb-6 flex items-start justify-between">
 				<div class="flex items-center gap-3">
 					<UiIconBox icon="lucide:list-checks" variant="surface" />
 					<div>
-						<h2 class="text-lg font-semibold text-text-primary">Getting started</h2>
+						<h2 class="text-lg font-semibold text-text-primary">{{ t('components.dashboard.gettingStarted.title') }}</h2>
 						<p class="mt-0.5 text-sm text-text-secondary">
-							Everything left to do to get Owlat working for you — in one place.
+							{{ t('components.dashboard.gettingStarted.subtitle') }}
 						</p>
 					</div>
 				</div>
 				<button
 					class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-					title="Dismiss"
-					aria-label="Dismiss getting started"
+					:title="t('common.dismiss')"
+					:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
 					@click="handleDismiss"
 				>
 					<Icon name="lucide:x" class="h-4 w-4" />
@@ -193,15 +263,20 @@ async function handleDismiss() {
 			<!-- Progress -->
 			<div class="mb-6">
 				<div class="mb-2 flex items-center justify-between text-sm">
-					<span class="text-text-secondary">Progress</span>
+					<span class="text-text-secondary">{{ t('components.dashboard.gettingStarted.progress') }}</span>
 					<span class="font-medium text-text-primary">
-						{{ model.completedCount }} of {{ model.totalCount }} done
+						{{
+							t('components.dashboard.gettingStarted.progressCount', {
+								completed: model.completedCount,
+								total: model.totalCount,
+							})
+						}}
 					</span>
 				</div>
 				<UiProgressBar
 					size="sm"
 					:value="progressPercentage"
-					aria-label="Getting started progress"
+					:aria-label="t('components.dashboard.gettingStarted.progressLabel')"
 				/>
 			</div>
 
@@ -210,20 +285,32 @@ async function handleDismiss() {
 				<div v-for="section in model.sections" :key="section.id">
 					<!-- Section heading (only when both sections are present) -->
 					<div v-if="model.sections.length > 1" class="mb-3">
-						<h3 class="text-sm font-semibold text-text-primary">{{ section.title }}</h3>
-						<p class="mt-0.5 text-sm text-text-secondary">{{ section.description }}</p>
+						<h3 class="text-sm font-semibold text-text-primary">
+							{{ localize(section.title) }}
+						</h3>
+						<p class="mt-0.5 text-sm text-text-secondary">
+							{{ localize(section.description) }}
+						</p>
 					</div>
 
 					<div class="space-y-3">
-						<NuxtLink
+						<!-- A blocked step is NOT a link: there is nothing for the member to do
+						     there yet, so it renders as a plain waiting row instead of a CTA
+						     into a dead end. -->
+						<component
+							:is="step.blocked ? 'div' : (resolveComponent('NuxtLink') as 'div')"
 							v-for="step in section.steps"
+							:id="stepDomId(step.id)"
 							:key="step.id"
-							:to="step.href"
+							:to="step.blocked ? undefined : step.href"
 							class="group flex items-center gap-4 rounded-xl border p-4 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 							:class="[
 								step.completed
 									? 'border-success/20 bg-success/5'
-									: 'border-border-subtle bg-bg-surface/50 hover:border-brand hover:bg-bg-surface',
+									: step.blocked
+										? 'border-border-subtle bg-bg-surface/30'
+										: 'border-border-subtle bg-bg-surface/50 hover:border-brand hover:bg-bg-surface',
+								focusedStepId === step.id ? 'ring-2 ring-brand ring-offset-2 ring-offset-bg-base' : '',
 							]"
 						>
 							<div
@@ -231,7 +318,9 @@ async function handleDismiss() {
 								:class="[
 									step.completed
 										? 'bg-success text-text-inverse'
-										: 'bg-bg-elevated text-text-secondary group-hover:bg-brand group-hover:text-text-inverse',
+										: step.blocked
+											? 'bg-bg-elevated text-text-tertiary'
+											: 'bg-bg-elevated text-text-secondary group-hover:bg-brand group-hover:text-text-inverse',
 								]"
 							>
 								<Icon v-if="step.completed" name="lucide:check" class="h-5 w-5" />
@@ -243,27 +332,36 @@ async function handleDismiss() {
 									class="font-medium"
 									:class="step.completed ? 'text-text-secondary line-through' : 'text-text-primary'"
 								>
-									{{ step.title }}
+									{{ localize(step.title) }}
 								</p>
 								<p
 									class="mt-0.5 text-sm"
 									:class="step.completed ? 'text-text-tertiary' : 'text-text-secondary'"
 								>
-									{{ step.description }}
+									{{ localize(step.description) }}
 								</p>
 							</div>
 
 							<div class="flex-shrink-0">
-								<span v-if="step.completed" class="text-sm font-medium text-success">Done</span>
+								<span v-if="step.completed" class="text-sm font-medium text-success">{{
+									t('common.done')
+								}}</span>
+								<span
+									v-else-if="step.blocked"
+									class="flex items-center gap-1.5 text-sm text-text-tertiary"
+								>
+									<Icon name="lucide:clock" class="h-4 w-4" />
+									{{ step.blockedReason ? localize(step.blockedReason) : '' }}
+								</span>
 								<span
 									v-else
 									class="flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
 								>
-									{{ step.cta }}
+									{{ localize(step.cta) }}
 									<Icon name="lucide:chevron-right" class="h-4 w-4" />
 								</span>
 							</div>
-						</NuxtLink>
+						</component>
 					</div>
 
 					<!-- Self-host resource links live under the instance steps. -->
@@ -279,7 +377,7 @@ async function handleDismiss() {
 					class="text-sm text-text-tertiary transition-colors hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 					@click="handleDismiss"
 				>
-					I'll do this later
+					{{ t('components.dashboard.gettingStarted.later') }}
 				</button>
 			</div>
 		</section>

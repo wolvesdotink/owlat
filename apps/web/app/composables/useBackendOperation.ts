@@ -4,8 +4,16 @@ import type { OperationError } from '@owlat/shared/operationError';
 import { normalizeToOperationError, categoryTreatment, operationCopy } from '~/lib/operationError';
 
 export interface BackendOperationOptions {
-	/** Short human label for the operation — used in telemetry on genuine faults. */
-	label: string;
+	/**
+	 * Short human label for the operation — used in telemetry on genuine faults.
+	 *
+	 * Pass a GETTER on a localized surface. A plain `t('…')` is evaluated once,
+	 * while the composable is set up, so it would freeze the label at whatever
+	 * locale was active then and keep reporting that one after a locale change;
+	 * a getter is called at report time and always matches the UI the member was
+	 * looking at when the operation failed.
+	 */
+	label: string | (() => string);
 	/** `'mutation'` (default) or `'action'`. The udf type isn't on the reference at runtime. */
 	type?: 'mutation' | 'action';
 	/**
@@ -55,6 +63,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 	inlineError: Readonly<Ref<string | null>>;
 } {
 	const client = useConvex();
+	const { t } = useI18n();
 	const { showToast } = useToast();
 	const posthog = usePostHog();
 
@@ -68,12 +77,16 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		// the default surface nor the telemetry report applies.
 		if (opts.onError?.(op) === true) return;
 		const treatment = categoryTreatment(op.category);
-		const copy = operationCopy(op);
+		// `operationCopy` is module scope, so it hands back either a message KEY
+		// (copy this app owns) or the backend's own sentence, which must NOT go
+		// through `t()` — it is arbitrary text the compiler would read as syntax.
+		const copySource = operationCopy(op);
+		const copy = 'key' in copySource ? t(copySource.key) : copySource.text;
 
 		if (treatment.report) {
 			posthog.captureError(e, {
 				$exception_source: 'backend_operation',
-				operation_label: opts.label,
+				operation_label: typeof opts.label === 'function' ? opts.label() : opts.label,
 				error_category: op.category,
 			});
 		}
@@ -100,7 +113,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		inlineError.value = null;
 
 		if (!client) {
-			showToast('Something went wrong. Please try again.', 'error');
+			showToast(t('shared.useBackendOperation.genericError'), 'error');
 			return undefined;
 		}
 

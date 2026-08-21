@@ -1,14 +1,15 @@
 /**
  * Pure model for the dashboard sidebar and settings navigation.
  *
- * The core destinations are declared here once, in their canonical order, each
- * carrying its own feature-flag gate. `buildNavigationSections` registers the
- * core entries first through the host merge (`mergeHostedNavigation`) and then
- * appends plugin contributions — sidebar `navItems` targeting an existing core
- * section and workspace `settingsPanels` — deterministically after every core
- * entry. Core membership, order and gating are therefore identical to the old
- * hand-rolled builder (pinned by `__tests__/dashboardNavigation.test.ts`);
- * plugins can add destinations but never reorder or shadow core ones.
+ * The core destinations are declared in their canonical order — each carrying
+ * its own feature-flag gate — in the sibling `dashboardNavigationCore.ts`.
+ * `buildNavigationSections` registers those core entries first through the host
+ * merge (`mergeHostedNavigation`) and then appends plugin contributions —
+ * sidebar `navItems` targeting an existing core section and workspace
+ * `settingsPanels` — deterministically after every core entry. Core membership,
+ * order and gating are therefore identical to the old hand-rolled builder
+ * (pinned by `__tests__/dashboardNavigation.test.ts`); plugins can add
+ * destinations but never reorder or shadow core ones.
  *
  * Kept as pure functions (no Vue, no Nuxt, no Convex) so the whole matrix of
  * flag combinations and plugin cases is unit-testable without mounting
@@ -22,16 +23,22 @@ import {
 } from '@owlat/plugin-host';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { SectionKey } from '~/composables/useSidebarState';
-import type { OrganizationRole } from '~/composables/useOrganization';
+import {
+	CORE_SECTIONS,
+	always,
+	editorOnly,
+	minRole,
+	type CoreSection,
+	type NavigationEnvironment,
+	type NavigationItem,
+} from './dashboardNavigationCore';
 
-export interface NavigationItem {
-	name: string;
-	href: string;
-	icon: string;
-}
+export { minRole };
+export type { NavigationEnvironment, NavigationItem };
 
 export interface NavigationSection {
 	key: SectionKey;
+	/** i18n key (see {@link NavigationItem}). */
 	name: string;
 	icon: string;
 	/**
@@ -44,235 +51,6 @@ export interface NavigationSection {
 	href?: string;
 	items: NavigationItem[];
 }
-
-/** The environment the pure builder reads: role, resolved flags, and desktop context. */
-export interface NavigationEnvironment {
-	isFeatureEnabled(flag: FeatureFlagKey): boolean;
-	isDesktop: boolean;
-	role: OrganizationRole | null;
-}
-
-type Gate = (env: NavigationEnvironment) => boolean;
-
-const always: Gate = () => true;
-const flag =
-	(key: FeatureFlagKey): Gate =>
-	(env) =>
-		env.isFeatureEnabled(key);
-const anyFlag =
-	(...keys: readonly FeatureFlagKey[]): Gate =>
-	(env) =>
-		keys.some((key) => env.isFeatureEnabled(key));
-const desktopOnly: Gate = (env) => env.isDesktop;
-const ROLE_RANK: Record<OrganizationRole, number> = { editor: 0, admin: 1, owner: 2 };
-export const minRole =
-	(minimum: OrganizationRole): Gate =>
-	(env) =>
-		env.role !== null && ROLE_RANK[env.role] >= ROLE_RANK[minimum];
-const adminOnly = minRole('admin');
-const editorOnly: Gate = (env) => env.role === 'editor';
-
-interface CoreItem extends NavigationItem {
-	readonly gate?: Gate;
-}
-
-interface CoreSection {
-	readonly key: SectionKey;
-	readonly name: string;
-	readonly icon: string;
-	readonly href?: string;
-	readonly gate?: Gate;
-	readonly items: readonly CoreItem[];
-}
-
-/**
- * The canonical core navigation, registered first and in this exact order.
- * Every conditional destination keeps the same gate it had in the previous
- * hand-rolled builder, so no membership or ordering changes.
- */
-const CORE_SECTIONS: readonly CoreSection[] = [
-	{
-		key: 'inbox',
-		name: 'Team Inbox',
-		icon: 'lucide:inbox',
-		gate: flag('inbox'),
-		items: [
-			{ name: 'All Threads', href: '/dashboard/inbox', icon: 'lucide:message-square' },
-			{ name: 'All activity', href: '/dashboard/inbox/activity', icon: 'lucide:activity' },
-			{
-				name: 'Review Queue',
-				href: '/dashboard/inbox/review',
-				icon: 'lucide:check-circle',
-				gate: adminOnly,
-			},
-			{
-				name: 'Code Tasks',
-				href: '/dashboard/inbox/code-tasks',
-				icon: 'lucide:code',
-				gate: (env) => adminOnly(env) && flag('inbox.codeTasks')(env),
-			},
-			{
-				name: 'Quarantine',
-				href: '/dashboard/inbox/quarantine',
-				icon: 'lucide:shield-alert',
-				gate: adminOnly,
-			},
-		],
-	},
-	{
-		key: 'postbox',
-		name: 'Mail',
-		icon: 'lucide:mailbox',
-		href: '/dashboard/postbox',
-		gate: anyFlag('postbox', 'mail.external'),
-		// Every postbox page renders its own folder rail, so the sidebar shows one
-		// flat link; these items are palette-only.
-		items: [
-			{ name: 'Inbox', href: '/dashboard/postbox/inbox', icon: 'lucide:inbox' },
-			{ name: 'Sent', href: '/dashboard/postbox/sent', icon: 'lucide:send' },
-			{ name: 'Drafts', href: '/dashboard/postbox/drafts', icon: 'lucide:file-edit' },
-			{ name: 'Spam', href: '/dashboard/postbox/spam', icon: 'lucide:shield-alert' },
-			{ name: 'Trash', href: '/dashboard/postbox/trash', icon: 'lucide:trash' },
-			{ name: 'Preferences', href: '/dashboard/preferences', icon: 'lucide:settings' },
-		],
-	},
-	{
-		key: 'chat',
-		name: 'Chat',
-		icon: 'lucide:message-circle',
-		href: '/dashboard/chat',
-		gate: (env) => adminOnly(env) && flag('chat')(env),
-		items: [{ name: 'Messages', href: '/dashboard/chat', icon: 'lucide:message-circle' }],
-	},
-	{
-		key: 'assistant',
-		name: 'Assistant',
-		icon: 'lucide:sparkles',
-		href: '/dashboard/assistant',
-		gate: (env) => adminOnly(env) && flag('ai.assistant')(env),
-		items: [{ name: 'Chat', href: '/dashboard/assistant', icon: 'lucide:sparkles' }],
-	},
-	{
-		// Unified "Send" section: everything you send from, in one place.
-		key: 'send',
-		name: 'Send',
-		icon: 'lucide:send',
-		items: [
-			{
-				name: 'Campaigns',
-				href: '/dashboard/campaigns',
-				icon: 'lucide:megaphone',
-				gate: flag('campaigns'),
-			},
-			{
-				name: 'Automations',
-				href: '/dashboard/automations',
-				icon: 'lucide:zap',
-				gate: (env) => adminOnly(env) && flag('automations')(env),
-			},
-			{
-				name: 'Transactional',
-				href: '/dashboard/send/transactional',
-				icon: 'lucide:file-code',
-				gate: (env) => adminOnly(env) && flag('transactional')(env),
-			},
-			{
-				name: 'Templates & blocks',
-				href: '/dashboard/send',
-				icon: 'lucide:layout-grid',
-				gate: adminOnly,
-			},
-		],
-	},
-	{
-		key: 'audience',
-		name: 'Audience',
-		icon: 'lucide:users',
-		href: undefined,
-		items: [
-			{
-				name: 'Overview',
-				href: '/dashboard/audience',
-				icon: 'lucide:layout-dashboard',
-				gate: adminOnly,
-			},
-			{ name: 'Contacts', href: '/dashboard/audience/contacts', icon: 'lucide:users' },
-			{
-				name: 'Topics',
-				href: '/dashboard/audience/topics',
-				icon: 'lucide:list-filter',
-				gate: adminOnly,
-			},
-			{
-				name: 'Segments',
-				href: '/dashboard/audience/segments',
-				icon: 'lucide:user-plus',
-				gate: adminOnly,
-			},
-			{ name: 'Suppressions', href: '/dashboard/audience/suppressions', icon: 'lucide:ban' },
-		],
-	},
-	{
-		key: 'knowledge',
-		name: 'Knowledge',
-		icon: 'lucide:brain',
-		gate: (env) => adminOnly(env) && flag('ai.knowledge')(env),
-		items: [
-			{ name: 'Explorer', href: '/dashboard/knowledge', icon: 'lucide:brain' },
-			{
-				name: 'Graph',
-				href: '/dashboard/knowledge/graph',
-				icon: 'lucide:share-2',
-				gate: flag('ai.knowledge.analytics'),
-			},
-		],
-	},
-	{
-		key: 'administration',
-		name: 'Administration',
-		icon: 'lucide:shield-check',
-		gate: adminOnly,
-		items: [
-			{
-				name: 'Overview',
-				href: '/dashboard/admin',
-				icon: 'lucide:gauge',
-			},
-			{ name: 'Delivery', href: '/dashboard/admin/delivery', icon: 'lucide:truck' },
-			{ name: 'Team & access', href: '/dashboard/admin/team', icon: 'lucide:users-round' },
-			{ name: 'Instance', href: '/dashboard/admin/instance', icon: 'lucide:server-cog' },
-		],
-	},
-	{
-		key: 'preferences',
-		name: 'Preferences',
-		icon: 'lucide:settings',
-		href: '/dashboard/preferences',
-		items: [
-			{ name: 'Overview', href: '/dashboard/preferences', icon: 'lucide:settings' },
-			{ name: 'Account', href: '/dashboard/preferences/account', icon: 'lucide:user-cog' },
-			{
-				name: 'Filters',
-				href: '/dashboard/preferences/filters',
-				icon: 'lucide:list-filter',
-				gate: anyFlag('postbox', 'mail.external'),
-			},
-			{
-				name: 'Signatures',
-				href: '/dashboard/preferences/signatures',
-				icon: 'lucide:signature',
-				gate: anyFlag('postbox', 'mail.external'),
-			},
-			{
-				name: 'Connected mailboxes',
-				href: '/dashboard/preferences/external-account',
-				icon: 'lucide:mail-plus',
-				gate: anyFlag('postbox', 'mail.external'),
-			},
-			{ name: 'Desktop', href: '/desktop/settings', icon: 'lucide:monitor', gate: desktopOnly },
-		],
-	},
-];
 
 /** Which core section a plugin nav item may attach to. */
 const CORE_SECTION_KEYS = new Set<string>(CORE_SECTIONS.map((section) => section.key));
@@ -421,7 +199,7 @@ export function buildNavigationSections(
 			const isMemberAudience = section.key === 'audience' && editorOnly(env);
 			return {
 				key: section.key,
-				name: isMemberAudience ? 'Customers' : section.name,
+				name: isMemberAudience ? 'shared.dashboardNavigation.sections.customers' : section.name,
 				icon: section.icon,
 				...(isMemberAudience
 					? { href: '/dashboard/audience/contacts' }

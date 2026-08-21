@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatDate } from '~/utils/formatters';
 
 const props = defineProps<{
 	id: Id<'visualizations'>;
@@ -21,15 +22,19 @@ const emit = defineEmits<{
 	refreshed: [];
 }>();
 
+const { t, locale } = useI18n();
+
 const { run: togglePin } = useBackendOperation(api.visualizationAgent.togglePin, {
-	label: 'Toggle pin',
+	label: () => t('components.visualizations.visualizationCard.togglePinOperation'),
 });
 const { run: remove } = useBackendOperation(api.visualizationAgent.remove, {
-	label: 'Remove visualization',
+	label: () => t('components.visualizations.visualizationCard.removeOperation'),
 });
 const { run: regenerate } = useBackendOperation(api.visualizationAgent.regenerate, {
-	label: 'Refresh visualization',
+	label: () => t('components.visualizations.visualizationCard.refreshOperation'),
 });
+
+const createdAtLabel = computed(() => formatDate(props.createdAt, 'medium', locale.value));
 
 const isLiveData = computed(() => !!props.dataQuery);
 
@@ -74,14 +79,14 @@ const handleRemove = async () => {
 					{{ description }}
 				</p>
 				<div class="flex items-center gap-2 mt-1">
-					<p class="text-xs text-text-tertiary">{{ formatDate(createdAt) }}</p>
+					<p class="text-xs text-text-tertiary">{{ createdAtLabel }}</p>
 					<span
 						v-if="isLiveData"
 						class="inline-flex items-center gap-1 text-xs text-brand bg-brand-subtle rounded px-1.5 py-0.5"
-						title="Built from your real account data"
+						:title="t('components.visualizations.visualizationCard.liveDataTooltip')"
 					>
 						<Icon name="lucide:activity" class="w-3 h-3" />
-						Live data
+						{{ t('components.visualizations.visualizationCard.liveDataBadge') }}
 					</span>
 				</div>
 			</div>
@@ -89,7 +94,7 @@ const handleRemove = async () => {
 				<button
 					v-if="isLiveData"
 					class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors disabled:opacity-50"
-					title="Refresh with current account data"
+					:title="t('components.visualizations.visualizationCard.refreshTooltip')"
 					:disabled="isRefreshing"
 					@click="handleRefresh"
 				>
@@ -106,7 +111,11 @@ const handleRemove = async () => {
 							? 'text-brand bg-brand-subtle hover:bg-brand-subtle/80'
 							: 'text-text-tertiary hover:text-text-primary hover:bg-bg-surface'
 					"
-					:title="pinned ? 'Unpin from dashboard' : 'Pin to dashboard'"
+					:title="
+						pinned
+							? t('components.visualizations.visualizationCard.unpinTooltip')
+							: t('components.visualizations.visualizationCard.pinTooltip')
+					"
 					:disabled="isTogglingPin"
 					@click="handleTogglePin"
 				>
@@ -114,7 +123,7 @@ const handleRemove = async () => {
 				</button>
 				<button
 					class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-					title="Remove visualization"
+					:title="t('components.visualizations.visualizationCard.removeTooltip')"
 					@click="showConfirmRemove = true"
 				>
 					<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -139,23 +148,26 @@ const handleRemove = async () => {
 					v-if="showConfirmRemove"
 					class="fixed inset-0 z-50 flex items-center justify-center p-4"
 				>
-					<div class="absolute inset-0 bg-black/60" @click="showConfirmRemove = false" />
+					<div class="absolute inset-0 bg-scrim/60" @click="showConfirmRemove = false" />
 					<div
 						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
 					>
-						<h3 class="text-lg font-semibold text-text-primary mb-2">Remove Visualization</h3>
+						<h3 class="text-lg font-semibold text-text-primary mb-2">
+							{{ t('components.visualizations.visualizationCard.confirmRemoveTitle') }}
+						</h3>
 						<p class="text-sm text-text-secondary mb-6">
-							This will permanently delete this visualization. This action cannot be undone.
+							{{ t('components.visualizations.visualizationCard.confirmRemoveBody') }}
 						</p>
 						<div class="flex items-center justify-end gap-3">
-							<UiButton variant="secondary" @click="showConfirmRemove = false">Cancel</UiButton>
-							<UiButton
-								variant="danger"
-								class="bg-error text-white hover:bg-error/90"
-								:disabled="isRemoving"
-								@click="handleRemove"
-							>
-								{{ isRemoving ? 'Removing...' : 'Remove' }}
+							<UiButton variant="secondary" @click="showConfirmRemove = false">
+								{{ t('common.cancel') }}
+							</UiButton>
+							<UiButton variant="danger" :disabled="isRemoving" @click="handleRemove">
+								{{
+									isRemoving
+										? t('components.visualizations.visualizationCard.removing')
+										: t('common.remove')
+								}}
 							</UiButton>
 						</div>
 					</div>

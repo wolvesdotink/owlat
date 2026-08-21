@@ -19,7 +19,13 @@
 import { isMultiRelayDetail } from '@owlat/shared/deliverabilityAlignment';
 import type { ReferenceArmInput } from '@owlat/shared/deliverabilityAlignment';
 
-/** The shape a screen renders: a title, the backend's sentence, one remedy. */
+/**
+ * The shape a screen renders: a title, the backend's sentence, one remedy.
+ *
+ * `title` and `remedy` are i18n KEYS — this module is pure, so the component
+ * showing the notice runs them through `t()`. `detail` is not: it is the
+ * backend's own sentence, rendered as it arrived.
+ */
 export interface ReferenceRelayNotice {
 	/** `multi_relay` is D8's rule; `undescribed` is one relay we cannot see. */
 	readonly kind: 'multi_relay' | 'undescribed';
@@ -43,17 +49,15 @@ export function referenceRelayNotice(
 	if (isMultiRelayDetail(reference.detail)) {
 		return {
 			kind: 'multi_relay',
-			title: 'More than one relay is configured',
+			title: 'shared.referenceRelay.multiRelay.title',
 			detail: reference.detail,
-			remedy:
-				'Keep exactly one relay enabled while you migrate. Until then the share stays where it is: with two reference arms there is no single comparison to judge your own server against, so no cell can be cleared to grow.',
+			remedy: 'shared.referenceRelay.multiRelay.remedy',
 		};
 	}
 	return {
 		kind: 'undescribed',
-		title: 'The relay’s signing identity isn’t verified yet',
+		title: 'shared.referenceRelay.undescribed.title',
 		detail: reference.detail,
-		remedy:
-			'Verify this sending domain with the relay (or turn the relay off to run on your own server alone). The share holds until the two arms can be compared.',
+		remedy: 'shared.referenceRelay.undescribed.remedy',
 	};
 }

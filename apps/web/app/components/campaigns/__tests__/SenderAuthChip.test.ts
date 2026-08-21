@@ -14,6 +14,11 @@ import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import SenderAuthChip from '../SenderAuthChip.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The chip resolves the copy `~/utils/senderAlignment` derives, so `useI18n`
+// has to resolve exactly as it does in the app (an auto-import, hence a global).
+Object.assign(globalThis, i18nStubs);
 
 const iconStub = { props: ['name'], template: '<span />' };
 
@@ -24,7 +29,7 @@ function mountChip(props: {
 }) {
 	return mount(SenderAuthChip, {
 		props,
-		global: { stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
 

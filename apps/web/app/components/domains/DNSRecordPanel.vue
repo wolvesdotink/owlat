@@ -74,10 +74,11 @@ interface Props {
 
 const props = defineProps<Props>();
 
-const DEFAULT_PENDING_EXPLANATION =
-	'Value supplied once this subdomain is added — create the name first, then come back and copy the key.';
+const { t } = useI18n();
 
-const pendingCopy = computed<string>(() => props.pendingExplanation ?? DEFAULT_PENDING_EXPLANATION);
+const pendingCopy = computed<string>(
+	() => props.pendingExplanation ?? t('components.domains.dnsRecordPanel.pendingValueDefault')
+);
 
 const { copy, isCopied } = useCopyToClipboard();
 
@@ -154,17 +155,18 @@ const hostDisplay = computed<HostDisplay>(() => {
 const standardMandate = computed<{ rfc: string } | null>(() => {
 	const name = recordFqdn.value.toLowerCase();
 	const labelSet = new Set(name.split('.'));
-	if (labelSet.has('_domainkey')) return { rfc: 'RFC 6376 (DKIM)' };
-	if (labelSet.has('_dmarc')) return { rfc: 'RFC 7489 (DMARC)' };
-	if (name.includes('_smtp._tls')) return { rfc: 'RFC 8460 (TLS reporting)' };
-	if (labelSet.has('_mta-sts')) return { rfc: 'RFC 8461 (MTA-STS)' };
+	const rfcs = 'components.domains.dnsRecordPanel.rfc';
+	if (labelSet.has('_domainkey')) return { rfc: t(`${rfcs}.dkim`) };
+	if (labelSet.has('_dmarc')) return { rfc: t(`${rfcs}.dmarc`) };
+	if (name.includes('_smtp._tls')) return { rfc: t(`${rfcs}.tlsReporting`) };
+	if (labelSet.has('_mta-sts')) return { rfc: t(`${rfcs}.mtaSts`) };
 	// RFC 8461 also mandates the `mta-sts` policy CNAME. Match the record's OWN
 	// leftmost host label (not the composed FQDN) and require the CNAME type, so a
 	// sending domain that merely begins with an `mta-sts.` label can't pill its
 	// apex SPF/MX records.
 	const ownLeftLabel = props.record.host.toLowerCase().split('.')[0];
 	if (props.record.type === 'CNAME' && ownLeftLabel === 'mta-sts') {
-		return { rfc: 'RFC 8461 (MTA-STS)' };
+		return { rfc: t(`${rfcs}.mtaSts`) };
 	}
 	return null;
 });
@@ -218,15 +220,19 @@ const diagnostic = computed(() => {
 				<span class="px-2 py-0.5 bg-brand/20 text-brand text-xs font-medium rounded">
 					{{ record.type }}
 				</span>
-				<span class="text-sm font-medium text-text-primary">{{ label }} Record</span>
+				<span class="text-sm font-medium text-text-primary">
+					{{ t('components.domains.dnsRecordPanel.recordHeading', { label }) }}
+				</span>
 				<span
 					v-if="standardMandate"
 					class="inline-flex items-center gap-1 px-2 py-0.5 bg-bg-deep text-text-tertiary text-xs font-medium rounded"
-					:title="`This name is set by ${standardMandate.rfc} and can't be changed.`"
+					:title="
+						t('components.domains.dnsRecordPanel.standardPillTitle', { rfc: standardMandate.rfc })
+					"
 					data-testid="dns-standard-pill"
 				>
 					<Icon name="lucide:lock" class="w-3 h-3" />
-					Fixed by standard
+					{{ t('components.domains.dnsRecordPanel.standardPill') }}
 				</span>
 			</div>
 			<div
@@ -240,7 +246,11 @@ const diagnostic = computed(() => {
 					:name="verification.verified ? 'lucide:check-circle-2' : 'lucide:x-circle'"
 					class="w-3 h-3"
 				/>
-				{{ verification.verified ? 'Verified' : 'Not verified' }}
+				{{
+					verification.verified
+						? t('components.domains.dnsRecordPanel.verified')
+						: t('components.domains.dnsRecordPanel.notVerified')
+				}}
 			</div>
 		</div>
 
@@ -249,20 +259,25 @@ const diagnostic = computed(() => {
 			     registrable zone (§3.3); the full name is offered as a secondary
 			     copy for providers that want the FQDN. -->
 			<div>
-				<p class="text-xs text-text-tertiary mb-1">Host / Name</p>
+				<p class="text-xs text-text-tertiary mb-1">
+					{{ t('components.domains.dnsRecordPanel.hostName') }}
+				</p>
 				<!-- The name is not knowable yet: the only string we hold is the
 				     `_domainkey` PARENT, and nothing queries a record published
 				     there. Say what the real name will look like; offer no copy
 				     button for a name that cannot work. -->
-				<p
+				<I18nT
 					v-if="hostNotYetKnown"
+					keypath="components.domains.dnsRecordPanel.hostNotYetKnown"
+					tag="p"
+					scope="global"
 					class="rounded-lg border border-border-subtle bg-bg-deep px-3 py-2 text-xs text-text-tertiary"
 					data-testid="dns-host-pending"
 				>
-					Name not known yet — it is
-					<span class="font-mono">&lt;selector&gt;.{{ hostDisplay.primary }}</span
-					>, and the selector comes with the value below.
-				</p>
+					<template #name>
+						<span class="font-mono">&lt;selector&gt;.{{ hostDisplay.primary }}</span>
+					</template>
+				</I18nT>
 				<div v-else class="flex items-center gap-2">
 					<code
 						class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
@@ -270,7 +285,12 @@ const diagnostic = computed(() => {
 					>
 						{{ hostDisplay.primary }}
 					</code>
-					<UiButton variant="ghost" class="p-2" title="Copy host" @click="handleCopyHost">
+					<UiButton
+						variant="ghost"
+						class="p-2"
+						:title="t('components.domains.dnsRecordPanel.copyHost')"
+						@click="handleCopyHost"
+					>
 						<Icon
 							v-if="isCopied(`${label}-host`)"
 							name="lucide:check"
@@ -286,7 +306,9 @@ const diagnostic = computed(() => {
 					class="mt-2"
 					data-testid="dns-host-fqdn-row"
 				>
-					<p class="text-xs text-text-tertiary mb-1">Full name</p>
+					<p class="text-xs text-text-tertiary mb-1">
+						{{ t('components.domains.dnsRecordPanel.fullName') }}
+					</p>
 					<div class="flex items-center gap-2">
 						<code
 							class="flex-1 bg-bg-deep/60 px-3 py-1.5 rounded-lg text-xs text-text-tertiary font-mono break-all"
@@ -294,7 +316,12 @@ const diagnostic = computed(() => {
 						>
 							{{ hostDisplay.fqdn }}
 						</code>
-						<UiButton variant="ghost" class="p-1.5" title="Copy full name" @click="handleCopyFqdn">
+						<UiButton
+							variant="ghost"
+							class="p-1.5"
+							:title="t('components.domains.dnsRecordPanel.copyFullName')"
+							@click="handleCopyFqdn"
+						>
 							<Icon
 								v-if="isCopied(`${label}-fqdn`)"
 								name="lucide:check"
@@ -304,28 +331,38 @@ const diagnostic = computed(() => {
 						</UiButton>
 					</div>
 					<p class="text-xs text-text-tertiary mt-1" data-testid="dns-provider-hint">
-						Some providers want the full name — use whichever your DNS host expects.
+						{{ t('components.domains.dnsRecordPanel.providerHint') }}
 					</p>
 				</div>
 
 				<!-- Out-of-zone: this record's name lives in a different DNS zone (a
 				     shared return-path domain), so there is no zone-relative form to
 				     paste here — show the absolute name and say where it belongs. -->
-				<p
-					v-if="hostDisplay.outOfZone && !hostNotYetKnown"
-					class="text-xs text-text-tertiary mt-1"
-					data-testid="dns-out-of-zone"
-				>
-					This record belongs to a different domain<template v-if="hostDisplay.otherZone">
-						(<span class="font-mono">{{ hostDisplay.otherZone }}</span
-						>)</template
-					>, not {{ domain }}. Add it in that domain's DNS zone using the full name shown above.
-				</p>
+				<template v-if="hostDisplay.outOfZone && !hostNotYetKnown">
+					<I18nT
+						v-if="hostDisplay.otherZone"
+						keypath="components.domains.dnsRecordPanel.outOfZoneNamed"
+						tag="p"
+						scope="global"
+						class="text-xs text-text-tertiary mt-1"
+						data-testid="dns-out-of-zone"
+					>
+						<template #zone>
+							<span class="font-mono">{{ hostDisplay.otherZone }}</span>
+						</template>
+						<template #domain>{{ domain }}</template>
+					</I18nT>
+					<p v-else class="text-xs text-text-tertiary mt-1" data-testid="dns-out-of-zone">
+						{{ t('components.domains.dnsRecordPanel.outOfZone', { domain }) }}
+					</p>
+				</template>
 			</div>
 
 			<!-- Value -->
 			<div>
-				<p class="text-xs text-text-tertiary mb-1">Value</p>
+				<p class="text-xs text-text-tertiary mb-1">
+					{{ t('components.domains.dnsRecordPanel.value') }}
+				</p>
 				<!-- No value yet: say so. Never render an empty DKIM p= as something
 				     copyable — that is a published revocation, not a placeholder. -->
 				<p
@@ -342,7 +379,12 @@ const diagnostic = computed(() => {
 					>
 						{{ valueDisplay }}
 					</code>
-					<UiButton variant="ghost" class="p-2" title="Copy value" @click="handleCopyValue">
+					<UiButton
+						variant="ghost"
+						class="p-2"
+						:title="t('components.domains.dnsRecordPanel.copyValue')"
+						@click="handleCopyValue"
+					>
 						<Icon
 							v-if="isCopied(`${label}-value`)"
 							name="lucide:check"
@@ -367,7 +409,9 @@ const diagnostic = computed(() => {
 					<span data-testid="dns-diagnostic-error">{{ diagnostic.error }}</span>
 				</p>
 				<div v-if="diagnostic.foundValue" class="mt-2">
-					<p class="text-xs text-text-tertiary mb-1">Found</p>
+					<p class="text-xs text-text-tertiary mb-1">
+						{{ t('components.domains.dnsRecordPanel.found') }}
+					</p>
 					<div class="flex items-center gap-2">
 						<code
 							class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-xs text-text-tertiary font-mono break-all line-clamp-2"
@@ -376,7 +420,12 @@ const diagnostic = computed(() => {
 						>
 							{{ diagnostic.foundValue }}
 						</code>
-						<UiButton variant="ghost" class="p-2" title="Copy found value" @click="handleCopyFound">
+						<UiButton
+							variant="ghost"
+							class="p-2"
+							:title="t('components.domains.dnsRecordPanel.copyFoundValue')"
+							@click="handleCopyFound"
+						>
 							<Icon
 								v-if="isCopied(`${label}-found`)"
 								name="lucide:check"
@@ -394,16 +443,20 @@ const diagnostic = computed(() => {
 			<div v-if="coexistence" class="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
 				<p class="flex items-start gap-2 text-xs font-medium text-warning">
 					<Icon name="lucide:alert-triangle" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
-					<span>
-						This domain already publishes an SPF record for another mail provider. Only one
-						<code class="font-mono">v=spf1</code> record is allowed per host (RFC 7208 §3.2) — a
-						second one breaks SPF for all your mail. Publish the merged record below instead of the
-						value above. SPF allows at most 10 DNS lookups — double-check the merged record stays
-						within that limit.
-					</span>
+					<I18nT
+						keypath="components.domains.dnsRecordPanel.coexistenceWarning"
+						tag="span"
+						scope="global"
+					>
+						<template #record>
+							<code class="font-mono">v=spf1</code>
+						</template>
+					</I18nT>
 				</p>
 				<div class="mt-2">
-					<p class="text-xs text-text-tertiary mb-1">Existing record</p>
+					<p class="text-xs text-text-tertiary mb-1">
+						{{ t('components.domains.dnsRecordPanel.existingRecord') }}
+					</p>
 					<code
 						class="block bg-bg-deep px-3 py-2 rounded-lg text-xs text-text-tertiary font-mono break-all"
 					>
@@ -411,7 +464,9 @@ const diagnostic = computed(() => {
 					</code>
 				</div>
 				<div class="mt-2">
-					<p class="text-xs text-text-tertiary mb-1">Merged record to publish</p>
+					<p class="text-xs text-text-tertiary mb-1">
+						{{ t('components.domains.dnsRecordPanel.mergedRecord') }}
+					</p>
 					<div class="flex items-center gap-2">
 						<code
 							class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
@@ -421,7 +476,7 @@ const diagnostic = computed(() => {
 						<UiButton
 							variant="ghost"
 							class="p-2"
-							title="Copy merged value"
+							:title="t('components.domains.dnsRecordPanel.copyMergedValue')"
 							@click="handleCopyMerged"
 						>
 							<Icon

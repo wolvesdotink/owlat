@@ -3,7 +3,9 @@ import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import type { Condition } from '~/composables/conditions';
 
-useHead({ title: 'Segments — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.audience.segments.index.pageTitle') });
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 
 // ─── Organization & Data ───────────────────────────────────────────────
@@ -142,20 +144,25 @@ onMounted(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Segments</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.audience.segments.index.title') }}
+				</h1>
 				<p class="mt-1 text-text-secondary">
-					Create and manage audience segments for targeted campaigns
+					{{ t('dashboard.audience.segments.index.subtitle') }}
 				</p>
 			</div>
 			<UiButton @click="openCreateModal">
 				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-				New Segment
+				{{ t('dashboard.audience.segments.index.newSegment') }}
 			</UiButton>
 		</div>
 
 		<!-- Search Bar -->
 		<div class="mb-6 max-w-md">
-			<UiInput v-model="searchQuery" placeholder="Search segments...">
+			<UiInput
+				v-model="searchQuery"
+				:placeholder="t('dashboard.audience.segments.index.searchPlaceholder')"
+			>
 				<template #iconLeft><Icon name="lucide:search" /></template>
 			</UiInput>
 		</div>
@@ -165,7 +172,7 @@ onMounted(() => {
 			<UiQueryBoundary
 				:loading="isLoading && segments.length === 0"
 				:error="segmentsError"
-				error-title="Couldn't load segments"
+				:error-title="t('dashboard.audience.segments.index.errorTitle')"
 			>
 				<!-- Loading State: content-shaped skeleton on first load only -->
 				<template #loading>
@@ -176,21 +183,21 @@ onMounted(() => {
 				<UiEmptyState
 					v-if="!hasActiveOrganization"
 					icon="lucide:filter"
-					title="No workspace selected"
-					description="Create or select a workspace to start managing your segments."
+					:title="t('dashboard.audience.segments.index.noWorkspace.title')"
+					:description="t('dashboard.audience.segments.index.noWorkspace.description')"
 				/>
 
 				<!-- Empty State (no segments) -->
 				<UiEmptyState
 					v-else-if="!isLoading && filteredSegments.length === 0 && !searchQuery"
 					icon="lucide:filter"
-					title="No segments yet"
-					description="Create your first segment to filter contacts based on properties, activity, and more."
+					:title="t('dashboard.audience.segments.index.empty.title')"
+					:description="t('dashboard.audience.segments.index.empty.description')"
 				>
 					<template #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-							New Segment
+							{{ t('dashboard.audience.segments.index.newSegment') }}
 						</UiButton>
 					</template>
 				</UiEmptyState>
@@ -199,11 +206,15 @@ onMounted(() => {
 				<UiEmptyState
 					v-else-if="!isLoading && filteredSegments.length === 0 && searchQuery"
 					icon="lucide:search"
-					title="No results found"
-					:description="`No segments match &quot;${searchQuery}&quot;. Try a different search term.`"
+					:title="t('dashboard.audience.segments.index.noResults.title')"
+					:description="
+						t('dashboard.audience.segments.index.noResults.description', { query: searchQuery })
+					"
 				>
 					<template #action>
-						<UiButton variant="secondary" @click="searchQuery = ''">Clear search</UiButton>
+						<UiButton variant="secondary" @click="searchQuery = ''">{{
+							t('dashboard.audience.segments.index.clearSearch')
+						}}</UiButton>
 					</template>
 				</UiEmptyState>
 
@@ -219,7 +230,7 @@ onMounted(() => {
 											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 											@click="toggleSort('name')"
 										>
-											Name
+											{{ t('common.name') }}
 											<Icon
 												v-if="getSortIcon('name')"
 												:name="getSortIcon('name')!"
@@ -228,7 +239,7 @@ onMounted(() => {
 										</button>
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Filters
+										{{ t('dashboard.audience.segments.index.table.filters') }}
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 										<button
@@ -236,7 +247,7 @@ onMounted(() => {
 											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 											@click="toggleSort('cachedCount')"
 										>
-											Contacts
+											{{ t('dashboard.audience.segments.index.table.contacts') }}
 											<Icon
 												v-if="getSortIcon('cachedCount')"
 												:name="getSortIcon('cachedCount')!"
@@ -250,7 +261,7 @@ onMounted(() => {
 											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 											@click="toggleSort('createdAt')"
 										>
-											Created
+											{{ t('dashboard.audience.segments.index.table.created') }}
 											<Icon
 												v-if="getSortIcon('createdAt')"
 												:name="getSortIcon('createdAt')!"
@@ -259,7 +270,7 @@ onMounted(() => {
 										</button>
 									</th>
 									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										Actions
+										{{ t('common.actions') }}
 									</th>
 								</tr>
 							</thead>
@@ -307,20 +318,20 @@ onMounted(() => {
 											<NuxtLink
 												:to="`/dashboard/audience/segments/${segment._id}`"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												title="View contacts"
+												:title="t('dashboard.audience.segments.index.actions.viewContacts')"
 											>
 												<Icon name="lucide:users" class="w-4 h-4" />
 											</NuxtLink>
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												title="Edit segment"
+												:title="t('dashboard.audience.segments.index.actions.edit')"
 												@click="openEditModal(segment)"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												title="Delete segment"
+												:title="t('dashboard.audience.segments.index.actions.delete')"
 												@click="openDeleteModal(segment)"
 											>
 												<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -335,7 +346,13 @@ onMounted(() => {
 					<!-- Segment count footer -->
 					<div class="px-6 py-4 border-t border-border-subtle">
 						<p class="text-sm text-text-tertiary">
-							{{ filteredSegments.length }} segment{{ filteredSegments.length !== 1 ? 's' : '' }}
+							{{
+								t(
+									'dashboard.audience.segments.index.count',
+									{ count: filteredSegments.length },
+									filteredSegments.length
+								)
+							}}
 						</p>
 					</div>
 				</div>
@@ -345,7 +362,11 @@ onMounted(() => {
 		<!-- Create/Edit Segment Modal -->
 		<UiModal
 			:open="isSegmentModalOpen"
-			:title="isEditMode ? 'Edit Segment' : 'Create Segment'"
+			:title="
+				isEditMode
+					? t('dashboard.audience.segments.index.modal.editTitle')
+					: t('dashboard.audience.segments.index.modal.createTitle')
+			"
 			size="2xl"
 			:closable="!isSaving"
 			:persistent="isSaving"
@@ -367,12 +388,14 @@ onMounted(() => {
 
 				<!-- Name Field -->
 				<div class="mb-4">
-					<label for="segment-name" class="label"> Name <span class="text-error">*</span> </label>
+					<label for="segment-name" class="label">
+						{{ t('common.name') }} <span class="text-error">*</span>
+					</label>
 					<input
 						id="segment-name"
 						v-model="segmentForm.name"
 						type="text"
-						placeholder="e.g., Active Subscribers"
+						:placeholder="t('dashboard.audience.segments.index.modal.namePlaceholder')"
 						:class="['input', segmentErrors.name ? 'input-error' : '']"
 						:disabled="isSaving"
 					/>
@@ -383,12 +406,12 @@ onMounted(() => {
 
 				<!-- Description Field -->
 				<div class="mb-6">
-					<label for="segment-description" class="label">Description</label>
+					<label for="segment-description" class="label">{{ t('common.description') }}</label>
 					<textarea
 						id="segment-description"
 						v-model="segmentForm.description"
 						rows="2"
-						placeholder="Optional description for this segment..."
+						:placeholder="t('dashboard.audience.segments.index.modal.descriptionPlaceholder')"
 						class="input resize-none"
 						:disabled="isSaving"
 					/>
@@ -396,7 +419,7 @@ onMounted(() => {
 
 				<!-- Filter Logic -->
 				<div class="mb-4">
-					<label class="label">Match contacts that meet</label>
+					<label class="label">{{ t('dashboard.audience.segments.index.modal.matchLabel') }}</label>
 					<div class="flex gap-2">
 						<button
 							type="button"
@@ -408,7 +431,7 @@ onMounted(() => {
 							]"
 							@click="segmentForm.filters.logic = 'AND'"
 						>
-							All conditions (AND)
+							{{ t('dashboard.audience.segments.index.modal.logicAnd') }}
 						</button>
 						<button
 							type="button"
@@ -420,7 +443,7 @@ onMounted(() => {
 							]"
 							@click="segmentForm.filters.logic = 'OR'"
 						>
-							Any condition (OR)
+							{{ t('dashboard.audience.segments.index.modal.logicOr') }}
 						</button>
 					</div>
 				</div>
@@ -428,7 +451,9 @@ onMounted(() => {
 				<!-- Conditions -->
 				<div class="mb-6">
 					<div class="flex items-center justify-between mb-3">
-						<label class="label mb-0">Conditions</label>
+						<label class="label mb-0">{{
+							t('dashboard.audience.segments.index.modal.conditions')
+						}}</label>
 						<UiButton
 							variant="secondary"
 							size="sm"
@@ -437,7 +462,7 @@ onMounted(() => {
 							@click="addCondition"
 						>
 							<Icon name="lucide:plus" class="w-3 h-3" />
-							Add Condition
+							{{ t('dashboard.audience.segments.index.modal.addCondition') }}
 						</UiButton>
 					</div>
 
@@ -455,9 +480,11 @@ onMounted(() => {
 						class="p-8 border-2 border-dashed border-border-subtle rounded-xl text-center"
 					>
 						<Icon name="lucide:filter" class="w-8 h-8 text-text-tertiary mx-auto mb-2" />
-						<p class="text-text-secondary text-sm">No conditions added yet</p>
+						<p class="text-text-secondary text-sm">
+							{{ t('dashboard.audience.segments.index.modal.noConditions') }}
+						</p>
 						<p class="text-text-tertiary text-xs mt-1">
-							Click "Add Condition" to start filtering contacts
+							{{ t('dashboard.audience.segments.index.modal.noConditionsHint') }}
 						</p>
 					</div>
 
@@ -489,7 +516,7 @@ onMounted(() => {
 								<button
 									type="button"
 									class="shrink-0 p-1.5 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-									title="Remove condition"
+									:title="t('dashboard.audience.segments.index.modal.removeCondition')"
 									@click="removeCondition(index)"
 								>
 									<Icon name="lucide:x" class="w-4 h-4" />
@@ -506,13 +533,15 @@ onMounted(() => {
 							<Icon name="lucide:users" class="w-5 h-5 text-brand" />
 						</div>
 						<div>
-							<p class="text-sm text-text-secondary">Matching contacts</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('dashboard.audience.segments.index.modal.matchingContacts') }}
+							</p>
 							<p class="text-xl font-semibold text-text-primary">
 								<template v-if="countLoading">
 									<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin inline" />
 								</template>
 								<template v-else>
-									{{ matchingCount?.toLocaleString() ?? 0 }}
+									{{ matchingCount?.toLocaleString(locale) ?? 0 }}
 								</template>
 							</p>
 						</div>
@@ -523,38 +552,55 @@ onMounted(() => {
 			<!-- Footer Actions -->
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isSaving" @click="closeSegmentModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="submit" form="segment-form" :loading="isSaving">
-					{{ isSaving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Create Segment' }}
+					{{
+						isSaving
+							? t('common.saving')
+							: isEditMode
+								? t('dashboard.audience.segments.index.modal.saveChanges')
+								: t('dashboard.audience.segments.index.modal.createTitle')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
 
 		<!-- Delete Confirmation Modal -->
-		<UiModal v-model:open="isDeleteModalOpen" title="Delete Segment">
+		<UiModal
+			v-model:open="isDeleteModalOpen"
+			:title="t('dashboard.audience.segments.index.deleteDialog.title')"
+		>
 			<div class="flex items-start gap-4">
 				<div class="p-3 rounded-full bg-error-subtle flex items-center justify-center">
 					<Icon name="lucide:alert-triangle" class="w-6 h-6 text-error" />
 				</div>
 				<div>
 					<p class="text-text-primary font-medium">
-						Are you sure you want to delete "{{ deleteTarget?.name }}"?
+						{{
+							t('dashboard.audience.segments.index.deleteDialog.body', {
+								name: deleteTarget?.name ?? '',
+							})
+						}}
 					</p>
 					<p class="text-sm text-text-secondary mt-1">
-						This action cannot be undone. Any campaigns using this segment will need to be updated.
+						{{ t('dashboard.audience.segments.index.deleteDialog.note') }}
 					</p>
 				</div>
 			</div>
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
 					<template v-if="!isDeleting" #iconLeft
 						><Icon name="lucide:trash-2" class="w-4 h-4"
 					/></template>
-					{{ isDeleting ? 'Deleting...' : 'Delete Segment' }}
+					{{
+						isDeleting
+							? t('dashboard.audience.segments.index.deleting')
+							: t('dashboard.audience.segments.index.deleteDialog.title')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>

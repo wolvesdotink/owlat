@@ -9,7 +9,11 @@ import {
 
 /**
  * Email template + send tables — media assets, marketing/transactional templates,
- * reusable blocks, share links, and per-recipient transactional sends.
+ * reusable blocks, version snapshots, share links, and per-recipient
+ * transactional sends.
+ *
+ * Cascade: deleting an `emailTemplates` row deletes its `emailTemplateVersions`
+ * rows (`emailTemplates/lifecycle.ts:remove`, the single delete site).
  *
  * Spread into `defineSchema()` from schema.ts via `...templateTables`.
  */
@@ -44,6 +48,15 @@ export const templateTables = {
 		previewText: v.optional(v.string()), // Preview text shown in inbox
 		content: v.string(), // JSON string for editor state
 		htmlContent: v.optional(v.string()), // Rendered HTML for sending
+		// text/plain alternative shipped beside `htmlContent` (RFC 2046 §5.1.4).
+		// Pre-generated from `content` at save time by the same renderer that
+		// produces `htmlContent`, so the send path never re-walks the blocks.
+		plainTextContent: v.optional(v.string()),
+		// The author's hand-written text/plain body. When set it IS
+		// `plainTextContent`; when absent the generated body is used. Kept as its
+		// own column so the editor can tell "overridden" from "generated" and
+		// offer a revert.
+		plainTextOverride: v.optional(v.string()),
 		type: emailTemplateTypeValidator,
 		status: v.union(v.literal('draft'), v.literal('published')),
 		publishedAt: v.optional(v.number()),
@@ -98,6 +111,36 @@ export const templateTables = {
 			filterFields: ['type', 'status'],
 		}),
 
+	// Email Template Versions - persisted snapshot history for one template.
+	// The editor's undo stack is session-scoped (packages/email-builder
+	// `useHistory`); these rows survive the tab. Written only by
+	// `emailTemplates/versions.ts`, capped at VERSION_HISTORY_LIMIT per
+	// template (oldest evicted), and cascade-deleted with the template by
+	// `emailTemplates/lifecycle.ts:remove`.
+	emailTemplateVersions: defineTable({
+		templateId: v.id('emailTemplates'),
+		// What produced the snapshot: an editor save, a publish, or a campaign
+		// send firing against this template.
+		trigger: v.union(v.literal('save'), v.literal('publish'), v.literal('send')),
+		// SNAPSHOT — the template's editor state at capture time. Never updated;
+		// rewriting one would falsify the record of what was published/sent.
+		content: v.string(), // JSON string for editor state (EditorBlock[])
+		name: v.string(),
+		subject: v.string(),
+		previewText: v.optional(v.string()),
+		// Schema version for `content` (EditorBlock[]), copied from the template.
+		contentBlockVersion: v.optional(v.number()),
+		// UTF-8 byte length of `content`, so the history panel can show a size
+		// without shipping every snapshot body to the client.
+		contentBytes: v.number(),
+		// Fingerprint of name+subject+content; a capture whose fingerprint AND
+		// trigger match the previous snapshot is skipped instead of stored twice.
+		contentHash: v.string(),
+		// BetterAuth user id, or a `system:*` sentinel for scheduler-fired sends.
+		createdBy: v.string(),
+		createdAt: v.number(),
+	}).index('by_template_and_created_at', ['templateId', 'createdAt']),
+
 	// Email Blocks - reusable content blocks for email templates
 	emailBlocks: defineTable({
 		name: v.string(),
@@ -138,6 +181,9 @@ export const templateTables = {
 		subject: v.string(),
 		content: v.string(), // JSON string for editor state
 		htmlContent: v.optional(v.string()), // Rendered HTML for sending
+		// text/plain alternative + author override, exactly as on `emailTemplates`.
+		plainTextContent: v.optional(v.string()),
+		plainTextOverride: v.optional(v.string()),
 		// JSON schema defining expected data variables
 		// Example: { "orderNumber": "string", "totalAmount": "number" }
 		dataVariablesSchema: v.optional(dataVariablesSchemaValidator),

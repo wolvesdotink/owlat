@@ -6,6 +6,10 @@
  * only changes the transport can meet. They are pure functions over the draft
  * types, so a step's gate is unit-testable without mounting Nuxt or a browser.
  *
+ * Because they are pure — no component, no `useI18n` — every message they report
+ * is a message KEY (the i18n registry convention); the screen that announces the
+ * error resolves it with `t()`.
+ *
  * Split out of `useSetupWizard` the same way `setupOutboundTls` was, and for the
  * same reason: that file holds the shared reactive state, the review summary and
  * the apply body, and the rules kept growing beside them until the pair sat over
@@ -36,10 +40,12 @@ export interface AdminErrors {
 export function validateAdmin(admin: AdminDraft): AdminErrors {
 	const errors: AdminErrors = {};
 	if (!isSetupEmailValid(admin.email)) {
-		errors.email = 'Enter a valid email address.';
+		errors.email = 'shared.setupWizardValidation.admin.emailInvalid';
 	}
 	if (admin.password.length < MIN_PASSWORD_LENGTH) {
-		errors.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+		// The catalog message spells the same minimum out (the rules are pure, so a
+		// message here is a KEY a screen resolves — it cannot interpolate a value).
+		errors.password = 'shared.setupWizardValidation.admin.passwordTooShort';
 	}
 	return errors;
 }
@@ -72,30 +78,29 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 	const errors: EmailStepErrors = {};
 
 	if (draft.provider === 'none' && draft.requiresProvider) {
-		errors.provider =
-			'A delivery provider is required because campaigns, transactional, or automations are enabled. Pick your own MTA, Amazon SES, or an SMTP relay — or disable bulk sending.';
+		errors.provider = 'shared.setupWizardValidation.email.providerRequired';
 	}
 	if (draft.provider === 'resend' && draft.resendKey.trim() === '') {
-		errors.resendKey = 'Enter your Resend API key.';
+		errors.resendKey = 'shared.setupWizardValidation.email.resendKeyRequired';
 	}
 	if (draft.provider === 'emailit' && (draft.emailitKey ?? '').trim() === '') {
-		errors.emailitKey = 'Enter your Emailit API key.';
+		errors.emailitKey = 'shared.setupWizardValidation.email.emailitKeyRequired';
 	}
 	if (draft.provider === 'mandrill' && draft.mandrillKey.trim() === '') {
-		errors.mandrillKey = 'Enter your Mailchimp Transactional (Mandrill) API key.';
+		errors.mandrillKey = 'shared.setupWizardValidation.email.mandrillKeyRequired';
 	}
 	if (draft.provider === 'ses') {
 		const { region, accessKeyId, secretAccessKey } = draft.ses;
 		if (!region.trim() || !accessKeyId.trim() || !secretAccessKey.trim()) {
-			errors.ses = 'Region, access key ID, and secret access key are all required for SES.';
+			errors.ses = 'shared.setupWizardValidation.email.sesIncomplete';
 		}
 	}
 	if (draft.provider === 'smtp') {
 		const { host, port, username, password } = draft.smtp;
 		if (!host.trim() || !username.trim() || !password.trim()) {
-			errors.smtp = 'Server host, username, and password are all required for an SMTP relay.';
+			errors.smtp = 'shared.setupWizardValidation.email.smtpIncomplete';
 		} else if (!isValidSmtpPort(port)) {
-			errors.smtp = 'Port must be a whole number between 1 and 65535 (leave blank for 587).';
+			errors.smtp = 'shared.setupWizardValidation.email.smtpPortInvalid';
 		}
 	}
 	if (draft.provider === 'mta' || draft.mtaProfileEnabled) {
@@ -104,7 +109,7 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 	}
 	// From-identity is optional, but if supplied it must be a real address.
 	if (draft.fromEmail.trim() !== '' && !isSetupEmailValid(draft.fromEmail)) {
-		errors.fromEmail = 'Enter a valid From address, or leave it blank.';
+		errors.fromEmail = 'shared.setupWizardValidation.email.fromEmailInvalid';
 	}
 
 	return errors;

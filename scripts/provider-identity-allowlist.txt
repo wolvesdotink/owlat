@@ -317,7 +317,6 @@ apps/web/app/pages/desktop/setup.vue:resend  # …and a credential block per kin
 apps/web/app/pages/desktop/setup.vue:ses
 apps/web/app/pages/setup/email.vue:emailit  # the hosted wizard's copy of the same per-kind fields
 apps/web/app/pages/setup/email.vue:mandrill
-apps/web/app/pages/setup/email.vue:mta  # NOT a kind question: getActiveProfiles(…).includes('mta') reads a docker compose profile, so this ONE line MOVES to the collisions list when the five beside it go
 apps/web/app/pages/setup/email.vue:resend
 apps/web/app/pages/setup/email.vue:ses
 apps/web/app/pages/setup/email.vue:smtp

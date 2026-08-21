@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
 import { diffPropertyValues, useContactDetail } from '../useContactDetail';
+
+// The composable runs outside a component here, so `useI18n` is stubbed with the
+// real catalog's `t`: the operation labels it routes on stay the English ones.
+const { t } = createTestI18n().global;
 
 describe('useContactDetail.diffPropertyValues', () => {
 	it('sets a property that gained a value', () => {
@@ -22,7 +27,11 @@ describe('useContactDetail.diffPropertyValues', () => {
 	});
 
 	it('skips unchanged properties', () => {
-		const result = diffPropertyValues(['p1', 'p2'], { p1: 'Acme', p2: 'gold' }, { p1: 'Acme', p2: 'gold' });
+		const result = diffPropertyValues(
+			['p1', 'p2'],
+			{ p1: 'Acme', p2: 'gold' },
+			{ p1: 'Acme', p2: 'gold' }
+		);
 		expect(result.toSet).toEqual([]);
 		expect(result.toRemove).toEqual([]);
 	});
@@ -48,7 +57,7 @@ describe('useContactDetail.diffPropertyValues', () => {
 		const result = diffPropertyValues(
 			['p1', 'p2', 'p3', 'p4'],
 			{ p1: 'new', p2: '', p3: 'same', p4: 'changed' },
-			{ p1: '', p2: 'old', p3: 'same', p4: 'before' },
+			{ p1: '', p2: 'old', p3: 'same', p4: 'before' }
 		);
 		expect(result.toSet).toEqual([
 			{ propertyId: 'p1', value: 'new' },
@@ -127,11 +136,12 @@ describe('useContactDetail.saveChanges (custom property clears)', () => {
 			return { data: ref(storedValues), isLoading: ref(false) };
 		});
 		vi.stubGlobal('useOrganizationQuery', () => ({ data: ref(propertyDefs) }));
-		vi.stubGlobal('useBackendOperation', (_fn: unknown, options: { label: string }) => ({
-			run: (args: unknown) => runByLabel[options.label]!(args),
+		vi.stubGlobal('useBackendOperation', (_fn: unknown, options: { label: () => string }) => ({
+			run: (args: unknown) => runByLabel[options.label()]!(args),
 			isLoading: ref(false),
 			inlineError: ref(null),
 		}));
+		vi.stubGlobal('useI18n', () => ({ t }));
 	});
 
 	const make = () => useContactDetail(ref('c1') as never);
@@ -175,6 +185,65 @@ describe('useContactDetail.saveChanges (custom property clears)', () => {
 });
 
 /**
+ * The language/timezone catalogs live at module scope in `~/data/languageOptions`,
+ * so they carry message keys — `languageSelectOptions` is a factory taking a
+ * translator. The composable must resolve both where `t` is in hand; a raw key
+ * leaking into a `<select>` option would be the regression this guards.
+ */
+describe('useContactDetail picker catalogs', () => {
+	const setup = () => {
+		vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
+		let convexQueryCall = 0;
+		vi.stubGlobal('useConvexQuery', () => {
+			convexQueryCall += 1;
+			if (convexQueryCall === 1) {
+				return { data: ref({ _id: 'c1', email: 'a@b.com' }), isLoading: ref(false) };
+			}
+			return { data: ref([]), isLoading: ref(false) };
+		});
+		vi.stubGlobal('useOrganizationQuery', () => ({ data: ref([]) }));
+		vi.stubGlobal('useI18n', () => ({ t }));
+		vi.stubGlobal('useBackendOperation', () => ({
+			run: () => Promise.resolve({ _id: 'c1' }),
+			isLoading: ref(false),
+			inlineError: ref(null),
+		}));
+		return useContactDetail(ref('c1') as never);
+	};
+
+	it('exposes translated timezone options, not message keys', () => {
+		const { commonTimezones } = setup();
+		expect(commonTimezones.value[0]).toEqual({
+			value: '',
+			label: 'Not set (use campaign default)',
+		});
+		expect(commonTimezones.value).toContainEqual({
+			value: 'Europe/Berlin',
+			label: 'Berlin (CET)',
+		});
+		for (const zone of commonTimezones.value) {
+			expect(zone.label).not.toContain('shared.data.languageOptions');
+		}
+	});
+
+	it('exposes translated language options with endonyms', () => {
+		const { commonLanguages } = setup();
+		expect(commonLanguages.value[0]).toEqual({ value: '', label: 'Not set (use email default)' });
+		expect(commonLanguages.value).toContainEqual({ value: 'en', label: 'English' });
+		expect(commonLanguages.value).toContainEqual({ value: 'de', label: 'German (Deutsch)' });
+	});
+
+	it('resolves display labels for a stored timezone and language', () => {
+		const detail = setup();
+		expect(detail.getTimezoneLabel('Europe/London')).toBe('London (GMT/BST)');
+		expect(detail.getLanguageLabel('fr')).toBe('French (Français)');
+		// Unknown values fall back to the raw code; unset reads as "Not set".
+		expect(detail.getTimezoneLabel('Mars/Olympus')).toBe('Mars/Olympus');
+		expect(detail.getLanguageLabel(undefined)).toBe('Not set');
+	});
+});
+
+/**
  * resendDoiConfirmation wires the orphaned `topics.resendDoiConfirmation`
  * mutation onto the contact detail page. It only fires for a contact in the
  * `pending` DOI state and forwards the contactId; the confirmation-link host
@@ -199,9 +268,10 @@ describe('useContactDetail.resendDoiConfirmation', () => {
 			return { data: ref([]), isLoading: ref(false) };
 		});
 		vi.stubGlobal('useOrganizationQuery', () => ({ data: ref([]) }));
-		vi.stubGlobal('useBackendOperation', (_fn: unknown, options: { label: string }) => ({
+		vi.stubGlobal('useI18n', () => ({ t }));
+		vi.stubGlobal('useBackendOperation', (_fn: unknown, options: { label: () => string }) => ({
 			run: (args: unknown) => {
-				if (options.label === 'Resend confirmation email') {
+				if (options.label() === 'Resend confirmation email') {
 					resendCalls.push(args);
 					return Promise.resolve({ success: true });
 				}

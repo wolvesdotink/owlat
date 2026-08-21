@@ -4,12 +4,17 @@
  * c3b). Verifies the block renders correctly per test state: in-progress, a
  * manual test awaiting a pick, and a decided winner.
  */
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
 
 import CampaignAbComparison from '../CampaignAbComparison.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 type AbStats = NonNullable<FunctionReturnType<typeof api.campaigns.abTest.getABTestStats>>;
 
@@ -30,7 +35,7 @@ const variant = (openRate: number, clickRate: number) => ({
 function mountBlock(stats: AbStats, isSelectingWinner = false) {
 	return mount(CampaignAbComparison, {
 		props: { stats, isSelectingWinner },
-		global: { stubs },
+		global: { plugins: [createTestI18n()], stubs },
 	});
 }
 

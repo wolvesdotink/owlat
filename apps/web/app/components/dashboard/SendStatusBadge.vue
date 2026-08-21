@@ -15,6 +15,8 @@ const props = withDefaults(defineProps<Props>(), {
 	fallback: 'queued',
 });
 
+const { t } = useI18n();
+
 const STATUS_CONFIG: Record<string, { icon: string; color: string; bg: string }> = {
 	queued: { icon: 'lucide:clock', color: 'text-text-secondary', bg: 'bg-bg-surface' },
 	sent: { icon: 'lucide:send', color: 'text-brand', bg: 'bg-brand/10' },
@@ -28,6 +30,25 @@ const STATUS_CONFIG: Record<string, { icon: string; color: string; bg: string }>
 const config = computed(
 	() => STATUS_CONFIG[props.status] ?? STATUS_CONFIG[props.fallback] ?? STATUS_CONFIG['queued']!
 );
+
+/**
+ * Translated pill text. A status outside the map keeps the old behaviour — the
+ * raw value, capitalized — rather than painting a missing key at a recipient.
+ */
+const STATUS_LABEL_KEYS: Record<string, string> = {
+	queued: 'components.dashboard.sendStatusBadge.status.queued',
+	sent: 'components.dashboard.sendStatusBadge.status.sent',
+	delivered: 'components.dashboard.sendStatusBadge.status.delivered',
+	opened: 'components.dashboard.sendStatusBadge.status.opened',
+	clicked: 'components.dashboard.sendStatusBadge.status.clicked',
+	bounced: 'components.dashboard.sendStatusBadge.status.bounced',
+	complained: 'components.dashboard.sendStatusBadge.status.complained',
+};
+
+const label = computed(() => {
+	const key = STATUS_LABEL_KEYS[props.status];
+	return key ? t(key) : capitalize(props.status);
+});
 </script>
 
 <template>
@@ -39,6 +60,6 @@ const config = computed(
 		]"
 	>
 		<Icon :name="config.icon" class="w-3 h-3" />
-		{{ capitalize(status) }}
+		{{ label }}
 	</span>
 </template>

@@ -9,7 +9,9 @@ import { api } from '@owlat/api';
  * `admin` route middleware below redirects a non-admin to /dashboard before this
  * page renders, so the page itself never has to say "owners and admins only".
  */
-useHead({ title: 'Sealed Mail — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.sealedMail.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -43,30 +45,27 @@ watch(
 const { run: saveSettings, isLoading: saving } = useBackendOperation(
 	api.workspaces.settings.update,
 	{
-		label: 'Update Sealed Mail settings',
+		label: () => t('dashboard.admin.instance.sealedMail.updateOperation'),
 	}
 );
 
-const OPTIONS: Array<{ value: SealPolicy; title: string; description: string }> = [
+const OPTIONS = computed<Array<{ value: SealPolicy; title: string; description: string }>>(() => [
 	{
 		value: 'auto',
-		title: 'Seal automatically',
-		description:
-			'When everyone you are writing to can receive sealed mail, Owlat encrypts the message before it leaves. Recommended.',
+		title: t('dashboard.admin.instance.sealedMail.options.auto.title'),
+		description: t('dashboard.admin.instance.sealedMail.options.auto.description'),
 	},
 	{
 		value: 'ask',
-		title: 'Keep available, but never automatic',
-		description:
-			'Owlat keeps discovering keys and shows when a message could be sealed, but never seals on its own — messages are sent normally. Switch to "Seal automatically" to turn on sealing.',
+		title: t('dashboard.admin.instance.sealedMail.options.ask.title'),
+		description: t('dashboard.admin.instance.sealedMail.options.ask.description'),
 	},
 	{
 		value: 'off',
-		title: 'Never seal',
-		description:
-			'All Postbox mail is sent normally, even when a recipient could receive it sealed.',
+		title: t('dashboard.admin.instance.sealedMail.options.off.title'),
+		description: t('dashboard.admin.instance.sealedMail.options.off.description'),
 	},
-];
+]);
 
 async function choose(value: SealPolicy) {
 	if (value === policy.value) return;
@@ -93,11 +92,11 @@ const importKey = ref('');
 
 const { run: exportKit, isLoading: exporting } = useBackendOperation(
 	api.e2ee.lifecycleNode.exportRecoveryKit,
-	{ label: 'Export recovery kit', type: 'action' }
+	{ label: () => t('dashboard.admin.instance.sealedMail.exportKitOperation'), type: 'action' }
 );
 const { run: importKit, isLoading: importing } = useBackendOperation(
 	api.e2ee.lifecycleNode.importRecoveryKit,
-	{ label: 'Import recovery kit', type: 'action' }
+	{ label: () => t('dashboard.admin.instance.sealedMail.importKitOperation'), type: 'action' }
 );
 
 async function downloadKit() {
@@ -106,7 +105,7 @@ async function downloadKit() {
 	const kit = await exportKit({ address });
 	if (kit === undefined) return; // operation error already surfaced
 	if (kit === null) {
-		showToast('No sealed-mail key exists for that address yet.', 'error');
+		showToast(t('dashboard.admin.instance.sealedMail.toasts.noKeyForAddress'), 'error');
 		return;
 	}
 	// Bundle the instructions and the private key into one downloadable file.
@@ -122,7 +121,7 @@ async function downloadKit() {
 	anchor.click();
 	document.body.removeChild(anchor);
 	URL.revokeObjectURL(url);
-	showToast('Recovery kit downloaded. Store it somewhere private and offline.', 'success');
+	showToast(t('dashboard.admin.instance.sealedMail.toasts.kitDownloaded'), 'success');
 }
 
 async function restoreKit() {
@@ -132,13 +131,10 @@ async function restoreKit() {
 	const result = await importKit({ address, privateKeyArmored });
 	if (result === undefined) return;
 	if (result.imported) {
-		showToast(
-			'Recovery kit imported. Sealed mail for this address can be opened again.',
-			'success'
-		);
+		showToast(t('dashboard.admin.instance.sealedMail.toasts.kitImported'), 'success');
 		importKey.value = '';
 	} else {
-		showToast("That key doesn't match this address, so it wasn't imported.", 'error');
+		showToast(t('dashboard.admin.instance.sealedMail.toasts.kitMismatch'), 'error');
 	}
 }
 
@@ -147,16 +143,13 @@ async function restoreKit() {
 // this re-encrypts every stored key under the new secret so the old secret can be
 // retired. The reachable operator trigger the self-host docs point at. Admin only.
 const { run: reSeal, isLoading: reSealing } = useBackendOperation(api.e2ee.lifecycle.reSealVault, {
-	label: 'Re-seal sealed mail',
+	label: () => t('dashboard.admin.instance.sealedMail.reSealOperation'),
 });
 
 async function runReSeal() {
 	const result = await reSeal({});
 	if (result === undefined) return;
-	showToast(
-		'Re-sealing started. Once it finishes you can remove the previous instance secret.',
-		'success'
-	);
+	showToast(t('dashboard.admin.instance.sealedMail.toasts.reSealStarted'), 'success');
 }
 </script>
 
@@ -168,16 +161,18 @@ async function runReSeal() {
 				class="inline-flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Settings
+				{{ t('dashboard.admin.instance.sealedMail.backToSettings') }}
 			</NuxtLink>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Sealed Mail</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.instance.sealedMail.title') }}
+			</h1>
 			<p class="mt-1 text-text-secondary">
-				How Owlat encrypts personal mail between you and other Owlat workspaces.
+				{{ t('dashboard.admin.instance.sealedMail.intro') }}
 			</p>
 		</div>
 
 		<div v-if="!hasActiveOrganization" class="card text-text-secondary">
-			Select a workspace to manage its sealing policy.
+			{{ t('dashboard.admin.instance.sealedMail.noWorkspace') }}
 		</div>
 		<template v-else>
 			<div
@@ -186,13 +181,12 @@ async function runReSeal() {
 			>
 				<Icon name="lucide:info" class="w-4 h-4 text-text-tertiary flex-shrink-0 mt-0.5" />
 				<p class="text-sm text-text-secondary">
-					Sealed Mail is turned off for this workspace, so nothing is sealed yet. You can still
-					choose the policy below — it takes effect once Sealed Mail is enabled in Features.
+					{{ t('dashboard.admin.instance.sealedMail.disabledNotice') }}
 				</p>
 			</div>
 
 			<fieldset class="space-y-2.5">
-				<legend class="sr-only">Sealing policy</legend>
+				<legend class="sr-only">{{ t('dashboard.admin.instance.sealedMail.policyLegend') }}</legend>
 				<label
 					v-for="opt in OPTIONS"
 					:key="opt.value"
@@ -223,20 +217,18 @@ async function runReSeal() {
 			<section class="space-y-4 card p-5">
 				<div class="flex items-start justify-between gap-4">
 					<div class="min-w-0">
-						<h2 class="text-base font-semibold text-text-primary">Require TLS for incoming mail</h2>
+						<h2 class="text-base font-semibold text-text-primary">{{ t('dashboard.admin.instance.sealedMail.tls.title') }}</h2>
 						<p class="mt-1 text-sm text-text-secondary">
-							Reject senders that try to deliver without STARTTLS. They receive a permanent “550
-							5.7.10 Encryption needed” response, so the message is never accepted or stored.
+							{{ t('dashboard.admin.instance.sealedMail.tls.description') }}
 						</p>
 						<p v-if="!isInboundTlsRequired" class="mt-2 text-xs text-warning">
-							Plaintext inbound delivery is allowed. Only disable this for legacy mail servers that
-							cannot use TLS.
+							{{ t('dashboard.admin.instance.sealedMail.tls.plaintextWarning') }}
 						</p>
 					</div>
 					<UiToggle
 						:model-value="isInboundTlsRequired"
 						:disabled="saving"
-						:label="isInboundTlsRequired ? 'Required' : 'Optional'"
+						:label="isInboundTlsRequired ? t('common.required') : t('common.optional')"
 						data-testid="inbound-tls-required"
 						@update:model-value="setInboundTlsRequired"
 					/>
@@ -247,18 +239,17 @@ async function runReSeal() {
 			     sealed mail can be restored later; import one to restore access. -->
 			<section class="space-y-4 card p-5">
 				<div>
-					<h2 class="text-base font-semibold text-text-primary">Recovery kit</h2>
+					<h2 class="text-base font-semibold text-text-primary">
+						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.title') }}
+					</h2>
 					<p class="mt-1 text-sm text-text-secondary">
-						A recovery kit is the private key that opens sealed mail for one address, plus
-						plain-language instructions. Download one for each address and keep it somewhere private
-						and offline. There is no master copy on the server, so a recovery kit is the only way to
-						restore sealed mail if this instance is rebuilt.
+						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.description') }}
 					</p>
 				</div>
 
 				<div class="space-y-2">
 					<label for="kit-address" class="block text-sm font-medium text-text-primary">
-						Download a recovery kit
+						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.downloadLabel') }}
 					</label>
 					<div class="flex flex-wrap items-center gap-2">
 						<input
@@ -267,7 +258,7 @@ async function runReSeal() {
 							type="email"
 							inputmode="email"
 							autocomplete="off"
-							placeholder="you@your-domain.com"
+							:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.addressPlaceholder')"
 							data-testid="recovery-kit-address"
 							class="input input-sm min-w-0 flex-1"
 						/>
@@ -278,17 +269,17 @@ async function runReSeal() {
 							:disabled="!kitAddress.trim()"
 							@click="downloadKit"
 						>
-							Download recovery kit
+							{{ t('dashboard.admin.instance.sealedMail.recoveryKit.downloadButton') }}
 						</UiButton>
 					</div>
 				</div>
 
 				<div class="space-y-2 border-t border-border-subtle pt-4">
 					<label for="kit-import-address" class="block text-sm font-medium text-text-primary">
-						Restore from a recovery kit
+						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.restoreLabel') }}
 					</label>
 					<p class="text-xs text-text-secondary">
-						Paste a previously downloaded recovery kit to restore access for its address.
+						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.restoreDescription') }}
 					</p>
 					<input
 						id="kit-import-address"
@@ -296,7 +287,7 @@ async function runReSeal() {
 						type="email"
 						inputmode="email"
 						autocomplete="off"
-						placeholder="you@your-domain.com"
+						:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.addressPlaceholder')"
 						data-testid="recovery-kit-import-address"
 						class="input input-sm"
 					/>
@@ -305,7 +296,7 @@ async function runReSeal() {
 						v-model="importKey"
 						rows="4"
 						spellcheck="false"
-						placeholder="Paste the ASCII-armored private key from your recovery kit"
+						:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.importKeyPlaceholder')"
 						data-testid="recovery-kit-import-key"
 						class="input input-sm font-mono text-xs"
 					/>
@@ -317,7 +308,7 @@ async function runReSeal() {
 							:disabled="!importAddress.trim() || !importKey.trim()"
 							@click="restoreKit"
 						>
-							Import recovery kit
+							{{ t('dashboard.admin.instance.sealedMail.recoveryKit.importButton') }}
 						</UiButton>
 					</div>
 				</div>
@@ -328,12 +319,10 @@ async function runReSeal() {
 			<section class="space-y-4 card p-5">
 				<div>
 					<h2 class="text-base font-semibold text-text-primary">
-						After changing the instance secret
+						{{ t('dashboard.admin.instance.sealedMail.reSeal.title') }}
 					</h2>
 					<p class="mt-1 text-sm text-text-secondary">
-						If you rotate this instance's secret, keep the previous one in place until you run this.
-						Re-sealing re-encrypts every stored key under the new secret so the old one can be
-						retired. Sealed mail keeps opening throughout.
+						{{ t('dashboard.admin.instance.sealedMail.reSeal.description') }}
 					</p>
 				</div>
 				<div class="flex justify-end">
@@ -344,7 +333,7 @@ async function runReSeal() {
 						data-testid="reseal-vault"
 						@click="runReSeal"
 					>
-						Re-seal sealed mail
+						{{ t('dashboard.admin.instance.sealedMail.reSeal.button') }}
 					</UiButton>
 				</div>
 			</section>

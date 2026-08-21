@@ -37,7 +37,30 @@ export default defineNuxtConfig({
 		},
 	},
 
-	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon'],
+	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon', '@nuxtjs/i18n'],
+
+	i18n: {
+		defaultLocale: 'en',
+		// `no_prefix`: the locale never appears in the URL. Every path in this app
+		// is either a dashboard route or a token link printed inside an already-sent
+		// email (/unsubscribe?token=…), so a locale segment would break live links
+		// and would have to be mirrored in every `routeRules` redirect above.
+		strategy: 'no_prefix',
+		// Message files live in i18n/locales/ (the module's `restructureDir`) and are
+		// loaded on demand — the default locale's bundle is the only one a visitor
+		// ever downloads.
+		locales: [
+			{ code: 'en', language: 'en-US', name: 'English', file: 'en.json' },
+			{ code: 'de', language: 'de-DE', name: 'Deutsch', file: 'de.json' },
+		],
+		// The whole UI is extracted, so a first-time visitor can safely be served
+		// the locale their browser asks for. The cookie is what makes the choice
+		// stick: with `no_prefix` the URL carries no locale, so without it every
+		// reload would re-run detection and undo the picker
+		// (components/LanguagePicker.vue) for anyone whose browser disagrees with
+		// them. `owlat-locale` is read back by that picker's `setLocale`.
+		detectBrowserLanguage: { useCookie: true, cookieKey: 'owlat-locale' },
+	},
 
 	fonts: {
 		// Variable wght axis required: the design system's weight-based emphasis
@@ -214,11 +237,45 @@ export default defineNuxtConfig({
 
 	app: {
 		head: {
-			// Declare the document language so assistive tech can determine it.
-			// With ssr:false the shipped <html> would otherwise carry no lang (WCAG 3.1.1).
-			htmlAttrs: { lang: 'en' },
+			// No `htmlAttrs.lang` here on purpose: a value set in nuxt.config wins
+			// over anything a component writes, so it would pin every page to `en`
+			// even after the visitor switches. `useLocaleHead()` in `app/app.vue`
+			// sets `lang` from the active locale instead — assistive tech still gets
+			// a declared document language (WCAG 3.1.1) on the ssr:false shell,
+			// and it is now the right one.
 			viewport: 'width=device-width, initial-scale=1, viewport-fit=cover',
-			link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+			link: [
+				{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+				// iOS ignores the manifest's icons for "Add to Home Screen" and uses
+				// this one (full-bleed: iOS applies its own corner mask).
+				{ rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
+				{ rel: 'manifest', href: '/manifest.webmanifest' },
+			],
+			meta: [
+				{ name: 'application-name', content: 'Owlat' },
+				// Installability / standalone chrome. `apple-mobile-web-app-capable` is
+				// the legacy alias iOS still requires alongside the standard name.
+				{ name: 'mobile-web-app-capable', content: 'yes' },
+				{ name: 'apple-mobile-web-app-capable', content: 'yes' },
+				{ name: 'apple-mobile-web-app-title', content: 'Owlat' },
+				{ name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
+				// Browser/OS chrome tint per scheme, mirroring --surface-1 in
+				// packages/ui/assets/css/{light,dark}.css. `key` is required: unhead
+				// dedupes meta by `name` alone, so without it the second theme-color
+				// would replace the first instead of sitting beside it.
+				{
+					key: 'theme-color-light',
+					name: 'theme-color',
+					content: '#fafafa',
+					media: '(prefers-color-scheme: light)',
+				},
+				{
+					key: 'theme-color-dark',
+					name: 'theme-color',
+					content: '#171717',
+					media: '(prefers-color-scheme: dark)',
+				},
+			],
 		},
 		// Subtle FF-spring page/layout transitions so client-side navigations read
 		// as continuous motion, never a hard cut to a blank pane. `out-in` keeps a

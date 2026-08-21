@@ -6,10 +6,15 @@ import {
 	type ReadinessDualArmRow,
 	type ReadinessDualArmSummary,
 } from '~/utils/dualArmAlignment';
-import type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus } from '~/utils/readinessGate';
+import type {
+	LocalizedText,
+	ReadinessGate,
+	ReadinessGateKey,
+	ReadinessGateStatus,
+} from '~/utils/readinessGate';
 
 export type { ReadinessDualArmRow, ReadinessDualArmSummary };
-export type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
+export type { LocalizedText, ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
 
 /**
  * The single source of truth for "can this instance actually send mail, and if
@@ -39,9 +44,9 @@ export interface DeliveryReadiness {
 	level: ReadinessLevel;
 	tone: HealthTone;
 	/** Headline verdict, e.g. "Ready to send". */
-	headline: string;
+	headline: LocalizedText;
 	/** One sentence naming the single next thing to do (or an all-clear line). */
-	summary: string;
+	summary: LocalizedText;
 	gates: ReadinessGate[];
 }
 
@@ -190,8 +195,8 @@ function transportGate(input: ReadinessInput): ReadinessGate {
 	if (input.transportConfigured) {
 		return {
 			key: 'transport',
-			title: 'Sending transport',
-			detail: 'A delivery transport is configured, so mail has a way out.',
+			title: 'shared.deliveryReadiness.gates.transport.title',
+			detail: 'shared.deliveryReadiness.gates.transport.configured',
 			status: 'ready',
 			tone: 'success',
 			actionHref: null,
@@ -200,12 +205,12 @@ function transportGate(input: ReadinessInput): ReadinessGate {
 	}
 	return {
 		key: 'transport',
-		title: 'Sending transport',
-		detail: 'No transport is configured yet, so nothing can be sent.',
+		title: 'shared.deliveryReadiness.gates.transport.title',
+		detail: 'shared.deliveryReadiness.gates.transport.missing',
 		status: 'attention',
 		tone: 'error',
 		actionHref: CONFIG_HREF,
-		actionLabel: 'Set up sending',
+		actionLabel: 'shared.deliveryReadiness.gates.transport.action',
 	};
 }
 
@@ -214,8 +219,8 @@ function domainGate(input: ReadinessInput): ReadinessGate {
 	if (input.domainVerified) {
 		return {
 			key: 'domain',
-			title: 'Sending domain',
-			detail: 'Your sending domain is verified, so mail comes from your own address.',
+			title: 'shared.deliveryReadiness.gates.domain.title',
+			detail: 'shared.deliveryReadiness.gates.domain.verified',
 			status: 'ready',
 			tone: 'success',
 			actionHref: null,
@@ -225,22 +230,22 @@ function domainGate(input: ReadinessInput): ReadinessGate {
 	if (input.hasDomains) {
 		return {
 			key: 'domain',
-			title: 'Sending domain',
-			detail: 'Your domain is added but not verified yet — DNS changes can take a little while.',
+			title: 'shared.deliveryReadiness.gates.domain.title',
+			detail: 'shared.deliveryReadiness.gates.domain.unverified',
 			status: 'pending',
 			tone: 'warning',
 			actionHref: DOMAINS_HREF,
-			actionLabel: 'Check verification',
+			actionLabel: 'shared.deliveryReadiness.gates.domain.actionCheck',
 		};
 	}
 	return {
 		key: 'domain',
-		title: 'Sending domain',
-		detail: 'Add a sending domain so mail comes from your own address, not a shared one.',
+		title: 'shared.deliveryReadiness.gates.domain.title',
+		detail: 'shared.deliveryReadiness.gates.domain.missing',
 		status: 'attention',
 		tone: 'warning',
 		actionHref: DOMAINS_HREF,
-		actionLabel: 'Add a domain',
+		actionLabel: 'shared.deliveryReadiness.gates.domain.actionAdd',
 	};
 }
 
@@ -251,8 +256,8 @@ function authenticationGate(input: ReadinessInput): ReadinessGate {
 	if (!input.hasDomains) {
 		return {
 			key: 'authentication',
-			title: 'Email authentication',
-			detail: 'SPF, DKIM and DMARC are checked once you add a sending domain.',
+			title: 'shared.deliveryReadiness.gates.authentication.title',
+			detail: 'shared.deliveryReadiness.gates.authentication.awaitingDomain',
 			status: 'pending',
 			tone: 'neutral',
 			actionHref: null,
@@ -262,23 +267,28 @@ function authenticationGate(input: ReadinessInput): ReadinessGate {
 	if (input.authComplete) {
 		return {
 			key: 'authentication',
-			title: 'Email authentication',
-			detail: 'SPF, DKIM and DMARC are all in place — inboxes can trust your mail.',
+			title: 'shared.deliveryReadiness.gates.authentication.title',
+			detail: 'shared.deliveryReadiness.gates.authentication.complete',
 			status: 'ready',
 			tone: 'success',
 			actionHref: null,
 			actionLabel: null,
 		};
 	}
+	// The record names are the protocol acronyms, identical in every language, so
+	// they travel as a parameter rather than as keys of their own.
 	const missing = input.authMissing.length > 0 ? input.authMissing.join(', ') : 'SPF, DKIM, DMARC';
 	return {
 		key: 'authentication',
-		title: 'Email authentication',
-		detail: `Add ${missing} so mailboxes trust your mail and it lands in the inbox.`,
+		title: 'shared.deliveryReadiness.gates.authentication.title',
+		detail: {
+			key: 'shared.deliveryReadiness.gates.authentication.missing',
+			params: { records: missing },
+		},
 		status: 'attention',
 		tone: 'warning',
 		actionHref: DOMAINS_HREF,
-		actionLabel: 'Set up records',
+		actionLabel: 'shared.deliveryReadiness.gates.authentication.action',
 	};
 }
 
@@ -291,18 +301,24 @@ function authenticationGate(input: ReadinessInput): ReadinessGate {
  */
 function alignmentGate(input: ReadinessInput): ReadinessGate {
 	const domains = input.misalignedDomains ?? [];
-	const named = domains.length > 0 ? ` (${domains.join(', ')})` : '';
-	const detail =
+	// `alignmentReason` is the backend's own per-transport sentence, already in
+	// words — it rides through as itself, the way every server-authored line does.
+	const detail: LocalizedText =
 		input.alignmentReason ??
-		`This transport signs mail as a different domain than the one you send from${named}, so mailboxes can treat it as spam.`;
+		(domains.length > 0
+			? {
+					key: 'shared.deliveryReadiness.gates.alignment.misalignedDomains',
+					params: { domains: domains.join(', ') },
+				}
+			: 'shared.deliveryReadiness.gates.alignment.misaligned');
 	return {
 		key: 'alignment',
-		title: 'Sender alignment',
+		title: 'shared.deliveryReadiness.gates.alignment.title',
 		detail,
 		status: 'attention',
 		tone: 'warning',
 		actionHref: CONFIG_HREF,
-		actionLabel: 'Review transport',
+		actionLabel: 'shared.deliveryReadiness.gates.alignment.action',
 	};
 }
 
@@ -315,13 +331,12 @@ function alignmentGate(input: ReadinessInput): ReadinessGate {
 function mtaStsGate(): ReadinessGate {
 	return {
 		key: 'mta-sts',
-		title: 'Inbound TLS policy (MTA-STS)',
-		detail:
-			'MTA-STS is set to enforce, but its DNS record isn’t in place yet — publish it so senders can require encrypted delivery.',
+		title: 'shared.deliveryReadiness.gates.mtaSts.title',
+		detail: 'shared.deliveryReadiness.gates.mtaSts.detail',
 		status: 'attention',
 		tone: 'warning',
 		actionHref: DOMAINS_HREF,
-		actionLabel: 'Publish record',
+		actionLabel: 'shared.deliveryReadiness.gates.mtaSts.action',
 	};
 }
 
@@ -331,10 +346,10 @@ const LEVEL_TONE: Record<ReadinessLevel, HealthTone> = {
 	blocked: 'error',
 };
 
-const LEVEL_HEADLINE: Record<ReadinessLevel, string> = {
-	ready: 'Ready to send',
-	incomplete: 'Ready to send — finish setup',
-	blocked: 'Not ready to send',
+const LEVEL_HEADLINE: Record<ReadinessLevel, LocalizedText> = {
+	ready: 'shared.deliveryReadiness.headline.ready',
+	incomplete: 'shared.deliveryReadiness.headline.incomplete',
+	blocked: 'shared.deliveryReadiness.headline.blocked',
 };
 
 /**
@@ -385,9 +400,9 @@ export function deriveDeliveryReadiness(input: ReadinessInput): DeliveryReadines
 	// The summary names the single most important next step: the first gate that
 	// isn't ready (transport → domain → authentication), or an all-clear line.
 	const nextGate = gates.find((gate) => gate.status !== 'ready');
-	const summary =
+	const summary: LocalizedText =
 		level === 'ready'
-			? 'Everything checks out — this instance can send.'
+			? 'shared.deliveryReadiness.summary.ready'
 			: (nextGate?.detail ?? LEVEL_HEADLINE[level]);
 
 	return {

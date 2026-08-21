@@ -17,6 +17,7 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxClarificationCard from '../PostboxClarificationCard.vue';
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
@@ -24,6 +25,9 @@ import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
 beforeAll(() => {
 	// The vitest setup polyfills ref/computed; this component also uses reactive.
 	vi.stubGlobal('reactive', reactive);
+	// The card's copy flows through vue-i18n now; `useI18n` is a Nuxt auto-import,
+	// so it has to exist as a global for the component's setup.
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
@@ -63,7 +67,10 @@ function makeItem(over: Partial<ReplyQueueItem['clarification']> = {}): ReplyQue
 function mountCard(item: ReplyQueueItem) {
 	return mount(PostboxClarificationCard, {
 		props: { item },
-		global: { stubs: { Icon: iconStub, UiAvatar: avatarStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: iconStub, UiAvatar: avatarStub },
+		},
 	});
 }
 

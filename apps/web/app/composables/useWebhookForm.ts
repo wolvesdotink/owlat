@@ -5,37 +5,62 @@ import { useWebhookActions } from './useWebhookActions';
 
 const CREATED_SECRET_KEY = 'webhook-created-secret';
 
-// Available webhook events
+/** Message-key root for this module; see `i18n/locales/en.json`. */
+const K = 'shared.useWebhookForm';
+
+/**
+ * Available webhook events. A module-scope definition set cannot call `useI18n`,
+ * so `label`/`description` carry message KEYS (the registry convention) and the
+ * component that renders them translates with `t(...)`.
+ */
 export const WEBHOOK_EVENTS = [
-	{ value: 'email.sent', label: 'Email Sent', description: 'When an email is sent' },
-	{ value: 'email.delivered', label: 'Email Delivered', description: 'When an email is delivered' },
-	{ value: 'email.opened', label: 'Email Opened', description: 'When an email is opened' },
+	{
+		value: 'email.sent',
+		label: `${K}.events.emailSent.label`,
+		description: `${K}.events.emailSent.description`,
+	},
+	{
+		value: 'email.delivered',
+		label: `${K}.events.emailDelivered.label`,
+		description: `${K}.events.emailDelivered.description`,
+	},
+	{
+		value: 'email.opened',
+		label: `${K}.events.emailOpened.label`,
+		description: `${K}.events.emailOpened.description`,
+	},
 	{
 		value: 'email.clicked',
-		label: 'Email Clicked',
-		description: 'When a link in an email is clicked',
+		label: `${K}.events.emailClicked.label`,
+		description: `${K}.events.emailClicked.description`,
 	},
-	{ value: 'email.bounced', label: 'Email Bounced', description: 'When an email bounces' },
+	{
+		value: 'email.bounced',
+		label: `${K}.events.emailBounced.label`,
+		description: `${K}.events.emailBounced.description`,
+	},
 	{
 		value: 'email.complained',
-		label: 'Email Complained',
-		description: 'When a spam complaint is received',
+		label: `${K}.events.emailComplained.label`,
+		description: `${K}.events.emailComplained.description`,
 	},
 	{
 		value: 'contact.created',
-		label: 'Contact Created',
-		description: 'When a new contact is created',
+		label: `${K}.events.contactCreated.label`,
+		description: `${K}.events.contactCreated.description`,
 	},
 	{
 		value: 'topic.unsubscribed',
-		label: 'Topic Unsubscribed',
-		description: 'When a contact unsubscribes from a topic',
+		label: `${K}.events.topicUnsubscribed.label`,
+		description: `${K}.events.topicUnsubscribed.description`,
 	},
 ] as const;
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]['value'];
 
 export function useWebhookForm() {
+	const { t } = useI18n();
+
 	// Form-level error refs are bound as inline targets so `invalid_input` /
 	// `already_exists` failures surface on the form instead of a toast.
 	const createFormError = ref<string | null>('');
@@ -43,11 +68,11 @@ export function useWebhookForm() {
 
 	// Mutations (create + edit)
 	const { run: createWebhook } = useBackendOperation(api.webhooks.endpoints.create, {
-		label: 'Create webhook',
+		label: () => t(`${K}.createOperation`),
 		inlineTarget: createFormError,
 	});
 	const { run: updateWebhook } = useBackendOperation(api.webhooks.endpoints.update, {
-		label: 'Update webhook',
+		label: () => t(`${K}.updateOperation`),
 		inlineTarget: editFormError,
 	});
 
@@ -106,28 +131,28 @@ export function useWebhookForm() {
 		createFormError.value = '';
 
 		if (!createForm.name.trim()) {
-			createFormError.value = 'Name is required';
+			createFormError.value = t(`${K}.errors.nameRequired`);
 			return;
 		}
 
 		if (!createForm.url.trim()) {
-			createFormError.value = 'URL is required';
+			createFormError.value = t(`${K}.errors.urlRequired`);
 			return;
 		}
 
 		try {
 			const parsedUrl = new URL(createForm.url);
 			if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-				createFormError.value = 'URL must use HTTP or HTTPS protocol';
+				createFormError.value = t(`${K}.errors.urlProtocol`);
 				return;
 			}
 		} catch {
-			createFormError.value = 'Invalid URL format';
+			createFormError.value = t(`${K}.errors.urlInvalid`);
 			return;
 		}
 
 		if (createForm.events.length === 0) {
-			createFormError.value = 'At least one event must be selected';
+			createFormError.value = t(`${K}.errors.eventsRequired`);
 			return;
 		}
 
@@ -152,7 +177,7 @@ export function useWebhookForm() {
 		showCreatedWebhook.value = true;
 		resetCopied();
 
-		showNotification('Webhook created successfully');
+		showNotification(t(`${K}.created`));
 	};
 
 	const closeCreatedWebhookModal = () => {
@@ -166,7 +191,7 @@ export function useWebhookForm() {
 
 		const ok = await copy(createdWebhook.value.secret, CREATED_SECRET_KEY);
 		if (!ok) {
-			showNotification('Failed to copy to clipboard', 'error');
+			showNotification(t(`${K}.copyFailed`), 'error');
 		}
 	};
 
@@ -212,28 +237,28 @@ export function useWebhookForm() {
 		editFormError.value = '';
 
 		if (!editForm.name.trim()) {
-			editFormError.value = 'Name is required';
+			editFormError.value = t(`${K}.errors.nameRequired`);
 			return;
 		}
 
 		if (!editForm.url.trim()) {
-			editFormError.value = 'URL is required';
+			editFormError.value = t(`${K}.errors.urlRequired`);
 			return;
 		}
 
 		try {
 			const parsedUrl = new URL(editForm.url);
 			if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-				editFormError.value = 'URL must use HTTP or HTTPS protocol';
+				editFormError.value = t(`${K}.errors.urlProtocol`);
 				return;
 			}
 		} catch {
-			editFormError.value = 'Invalid URL format';
+			editFormError.value = t(`${K}.errors.urlInvalid`);
 			return;
 		}
 
 		if (editForm.events.length === 0) {
-			editFormError.value = 'At least one event must be selected';
+			editFormError.value = t(`${K}.errors.eventsRequired`);
 			return;
 		}
 
@@ -250,7 +275,7 @@ export function useWebhookForm() {
 		if (result === undefined) return;
 
 		closeEditModal();
-		showNotification('Webhook updated successfully');
+		showNotification(t(`${K}.updated`));
 	};
 
 	// ─── Actions (delegated) ────────────────────────────────────────────
@@ -259,6 +284,11 @@ export function useWebhookForm() {
 
 	// ─── Utilities ──────────────────────────────────────────────────────
 
+	/**
+	 * The message KEY for an event's label, or the raw event id when no definition
+	 * owns it — the caller renders both through `t(…)` (an id with nothing to
+	 * translate reads as itself).
+	 */
 	const getEventLabel = (event: string) => {
 		const found = WEBHOOK_EVENTS.find((e) => e.value === event);
 		return found?.label || event;

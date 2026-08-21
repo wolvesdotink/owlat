@@ -4,6 +4,7 @@ import type { Id, Doc } from '@owlat/api/dataModel';
 import type { TriggerConfig } from '../../../api/convex/lib/automationConfigTypes';
 import { useAutomationStepConfig } from './useAutomationStepConfig';
 import { listStepEditorModules, stepEditorModuleFor, type StepKind } from './automations/steps';
+import type { StepMessage } from './automations/steps/types';
 import { useAutomationPluginPalette } from './automations/pluginPalette';
 
 interface AutomationWithSteps {
@@ -22,17 +23,24 @@ export function useAutomationSteps(
 	automation: Ref<AutomationWithSteps | null | undefined>,
 	emailTemplates: Ref<Doc<'emailTemplates'>[] | null | undefined>
 ) {
+	const { t } = useI18n();
+
 	const { run: addStepMutation } = useBackendOperation(api.automations.steps.addStep, {
-		label: 'Add automation step',
+		label: () => t('shared.useAutomationSteps.addStepOperation'),
 	});
 	const { run: removeStepMutation } = useBackendOperation(api.automations.steps.removeStep, {
-		label: 'Delete automation step',
+		label: () => t('shared.useAutomationSteps.deleteStepOperation'),
 	});
 	const { run: reorderStepsMutation } = useBackendOperation(api.automations.steps.reorderSteps, {
-		label: 'Reorder automation steps',
+		label: () => t('shared.useAutomationSteps.reorderStepsOperation'),
 	});
 
 	const { showToast } = useToast();
+
+	// A step editor module hands back message KEYS (it is module scope and cannot
+	// translate); the builder is what renders them, so it resolves them here.
+	const translateStepMessage = (message: StepMessage): string =>
+		typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
 
 	const isAddStepDropdownOpen = ref(false);
 	const addStepDropdownIndex = ref<number | null>(null);
@@ -84,12 +92,14 @@ export function useAutomationSteps(
 		if (kind === 'email' && step.emailTemplate) {
 			return step.emailTemplate.name;
 		}
-		return (
-			module.getDescription as (
-				c: unknown,
-				ctx: { emailTemplates: Doc<'emailTemplates'>[] }
-			) => string
-		)(config, { emailTemplates: emailTemplates.value ?? [] });
+		return translateStepMessage(
+			(
+				module.getDescription as (
+					c: unknown,
+					ctx: { emailTemplates: Doc<'emailTemplates'>[] }
+				) => StepMessage
+			)(config, { emailTemplates: emailTemplates.value ?? [] })
+		);
 	};
 
 	const handleAddStep = async (stepType: StepKind, insertAtIndex?: number) => {
@@ -113,7 +123,7 @@ export function useAutomationSteps(
 			selectedStepId.value = stepId;
 		}
 
-		showToast(`${module.label} step added`);
+		showToast(t('shared.useAutomationSteps.stepAdded', { step: t(module.label) }));
 	};
 
 	const handleDeleteStep = async (stepId: Id<'automationSteps'>) => {
@@ -122,7 +132,7 @@ export function useAutomationSteps(
 		if (selectedStepId.value === stepId) {
 			selectedStepId.value = null;
 		}
-		showToast('Step deleted');
+		showToast(t('shared.useAutomationSteps.stepDeleted'));
 	};
 
 	// VueDraggable binds `:model-value` one-way, so the dragged order lives only
@@ -155,22 +165,27 @@ export function useAutomationSteps(
 	// ─── Validation (per-step delegated to editor modules) ──────────────
 
 	const canActivate = computed(() => {
-		if (!automation.value) return { valid: false, reasons: ['Automation not loaded'] };
+		if (!automation.value) {
+			return {
+				valid: false,
+				reasons: [t('shared.useAutomationSteps.validation.automationNotLoaded')],
+			};
+		}
 
 		const reasons: string[] = [];
 
 		if (!mutableSteps.value.length) {
-			reasons.push('Add at least one step to the workflow');
+			reasons.push(t('shared.useAutomationSteps.validation.addStep'));
 		}
 
 		if (automation.value.triggerType === 'contact_updated' && !automation.value.triggerConfig) {
-			reasons.push('Contact Updated trigger requires a property to watch');
+			reasons.push(t('shared.useAutomationSteps.validation.contactUpdatedTrigger'));
 		}
 		if (automation.value.triggerType === 'event_received' && !automation.value.triggerConfig) {
-			reasons.push('Event Received trigger requires an event name');
+			reasons.push(t('shared.useAutomationSteps.validation.eventReceivedTrigger'));
 		}
 		if (automation.value.triggerType === 'topic_subscribed' && !automation.value.triggerConfig) {
-			reasons.push('Topic Subscribed trigger requires a topic selection');
+			reasons.push(t('shared.useAutomationSteps.validation.topicSubscribedTrigger'));
 		}
 
 		for (let i = 0; i < mutableSteps.value.length; i++) {
@@ -180,10 +195,18 @@ export function useAutomationSteps(
 			const module = stepEditorModuleFor(kind);
 			const config = module.parseConfig(stepConfig.parseStepConfig(step));
 			const error = (
-				module.validateForActivation as (c: unknown, ctx: { stepCount: number }) => string | null
+				module.validateForActivation as (
+					c: unknown,
+					ctx: { stepCount: number }
+				) => StepMessage | null
 			)(config, { stepCount: mutableSteps.value.length });
 			if (error) {
-				reasons.push(`Step ${i + 1}: ${error}`);
+				reasons.push(
+					t('shared.useAutomationSteps.validation.stepReason', {
+						index: i + 1,
+						reason: translateStepMessage(error),
+					})
+				);
 			}
 		}
 

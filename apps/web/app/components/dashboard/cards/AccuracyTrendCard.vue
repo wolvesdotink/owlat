@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
+const { t } = useI18n();
+
 const { data: trend, isLoading } = useOrganizationQuery(api.agentHealth.getAccuracyTrend);
 
 interface TrendPoint {
@@ -31,13 +33,15 @@ function formatPct(ratio: number): string {
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
 					<UiIconBox icon="lucide:trending-up" size="sm" variant="brand" />
-					<h3 class="text-sm font-semibold text-text-primary">Accuracy Trend</h3>
+					<h3 class="text-sm font-semibold text-text-primary">
+						{{ t('components.dashboard.cards.accuracyTrend.title') }}
+					</h3>
 				</div>
 				<NuxtLink
 					to="/dashboard/admin/instance/agent-health"
 					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
 				>
-					Details
+					{{ t('components.dashboard.cards.accuracyTrend.details') }}
 				</NuxtLink>
 			</div>
 
@@ -45,24 +49,30 @@ function formatPct(ratio: number): string {
 				<Icon
 					name="lucide:loader-2"
 					class="w-5 h-5 animate-spin text-text-tertiary"
-					aria-label="Loading"
+					:aria-label="t('components.dashboard.cards.accuracyTrend.loading')"
 				/>
 			</div>
 
 			<div v-else-if="series.length === 0" class="py-4 text-center">
-				<p class="text-sm text-text-tertiary">No accuracy data recorded yet</p>
+				<p class="text-sm text-text-tertiary">
+					{{ t('components.dashboard.cards.accuracyTrend.empty') }}
+				</p>
 			</div>
 
 			<div v-else>
 				<dl v-if="latest" class="grid grid-cols-2 gap-2 mb-4">
 					<div class="rounded-lg bg-bg-surface px-3 py-2">
-						<dt class="text-xs text-text-tertiary">Auto-approve</dt>
+						<dt class="text-xs text-text-tertiary">
+							{{ t('components.dashboard.cards.accuracyTrend.autoApprove') }}
+						</dt>
 						<dd class="text-lg font-semibold text-success">
 							{{ formatPct(latest.autoApproveRatio) }}
 						</dd>
 					</div>
 					<div class="rounded-lg bg-bg-surface px-3 py-2">
-						<dt class="text-xs text-text-tertiary">Rejection</dt>
+						<dt class="text-xs text-text-tertiary">
+							{{ t('components.dashboard.cards.accuracyTrend.rejection') }}
+						</dt>
 						<dd class="text-lg font-semibold text-error">{{ formatPct(latest.rejectionRate) }}</dd>
 					</div>
 				</dl>
@@ -70,12 +80,12 @@ function formatPct(ratio: number): string {
 				<div class="space-y-3">
 					<AgentMetricChart
 						:data="autoApproveData"
-						label="Auto-approve ratio"
+						:label="t('components.dashboard.cards.accuracyTrend.autoApproveRatio')"
 						color="var(--color-success)"
 					/>
 					<AgentMetricChart
 						:data="rejectionData"
-						label="Rejection rate"
+						:label="t('components.dashboard.cards.accuracyTrend.rejectionRate')"
 						color="var(--color-error)"
 					/>
 				</div>

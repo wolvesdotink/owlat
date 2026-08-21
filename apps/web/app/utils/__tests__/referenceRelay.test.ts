@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { MULTI_RELAY_DETAIL_PREFIX } from '@owlat/shared/deliverabilityAlignment';
 import { referenceRelayNotice } from '../referenceRelay';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// Title and remedy are message keys (the module is pure); the backend's
+// `detail` sentence is not translated and is asserted as it arrives.
+const { t } = createTestI18n().global;
 
 const ARM = {
 	label: 'Mandrill relay',
@@ -30,9 +35,10 @@ describe('referenceRelayNotice', () => {
 		const notice = referenceRelayNotice({ reference: { kind: 'unknown', detail } });
 		expect(notice?.kind).toBe('multi_relay');
 		expect(notice?.detail).toBe(detail);
-		expect(notice?.remedy).toContain('Keep exactly one relay enabled');
+		expect(t(notice!.title)).toBe('More than one relay is configured');
+		expect(t(notice!.remedy)).toContain('Keep exactly one relay enabled');
 		// The wrong remedy for this branch would be "verify the relay".
-		expect(notice?.remedy).not.toContain('Verify this sending domain');
+		expect(t(notice!.remedy)).not.toContain('Verify this sending domain');
 	});
 
 	it('classifies an undescribed single relay as a verification problem instead', () => {
@@ -41,6 +47,7 @@ describe('referenceRelayNotice', () => {
 		const notice = referenceRelayNotice({ reference: { kind: 'unknown', detail } });
 		expect(notice?.kind).toBe('undescribed');
 		expect(notice?.detail).toBe(detail);
-		expect(notice?.remedy).toContain('Verify this sending domain');
+		expect(t(notice!.title)).toBe('The relay’s signing identity isn’t verified yet');
+		expect(t(notice!.remedy)).toContain('Verify this sending domain');
 	});
 });

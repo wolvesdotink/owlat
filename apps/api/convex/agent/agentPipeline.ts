@@ -179,6 +179,29 @@ export const sendApprovedReply = internalAction({
 			});
 		};
 
+		// Send-fire is the moment a HUMAN approve becomes a real send: record the
+		// graduated-autonomy learning signals HERE, not at approve time, so an
+		// approve undone inside its C1 window trains nothing and a re-approve
+		// records exactly once (the mutation is idempotent per message — the
+		// stuck-approved reconcile may legitimately re-fire this action).
+		// Best-effort: learning-loop bookkeeping must never fail — or duplicate —
+		// an already-dispatched send. Autonomous sends never record it; their
+		// feedback comes from real-world outcome signals (agent/outcomeFeedback).
+		const recordHumanApprovalFeedback = async (): Promise<void> => {
+			if (args.autonomous) return;
+			try {
+				await ctx.runMutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
+					inboundMessageId: args.inboundMessageId,
+				});
+			} catch (err) {
+				logError(
+					`[Agent Pipeline] approval feedback recording failed: ${
+						err instanceof Error ? err.message : String(err)
+					}`
+				);
+			}
+		};
+
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});
@@ -215,6 +238,7 @@ export const sendApprovedReply = internalAction({
 			logInfo(
 				`[Agent Pipeline] Dispatched approved ${message.to} reply (inbound=${args.inboundMessageId})`
 			);
+			await recordHumanApprovalFeedback();
 			return;
 		}
 
@@ -313,7 +337,10 @@ export const sendApprovedReply = internalAction({
 			logInfo(`[Agent Pipeline] Enqueued approved reply to ${recipient} (sendId=${sendId})`);
 		} catch (err) {
 			await fail(err instanceof Error ? err.message : String(err));
+			return;
 		}
+
+		await recordHumanApprovalFeedback();
 	},
 });
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref, nextTick } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
 
 // --- Nuxt auto-import stubs (useState + the @owlat/ui useToast layer) that
 // usePostboxTriageUndo reaches for; mirrors usePostboxTriageUndo's own test. ---
@@ -37,6 +38,10 @@ vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	return stateBuckets.get(key);
 });
 vi.stubGlobal('useToast', () => ({ showToast, removeToast }));
+// The undo toast's action label is translated, so the real catalog sits behind
+// the `useI18n` auto-import (mirrors usePostboxTriageUndo's own test).
+const i18n = createTestI18n();
+vi.stubGlobal('useI18n', () => i18n.global);
 
 import { useInboxTriage } from '../useInboxTriage';
 import { usePostboxTriageUndo } from '../postbox/usePostboxTriageUndo';

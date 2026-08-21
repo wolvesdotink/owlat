@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
+const { t, locale } = useI18n();
+
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	address: string;
@@ -12,16 +14,16 @@ const { data, isLoading } = useConvexQuery(api.mail.voiceProfile.get, () => ({
 }));
 
 const setEnabled = useBackendOperation(api.mail.voiceProfile.setEnabled, {
-	label: 'Update writing-voice personalization',
+	label: () => t('components.postbox.postboxVoiceProfileCard.updateOperation'),
 });
 const refreshNow = useBackendOperation(api.mail.voiceProfile.requestRefresh, {
-	label: 'Refresh writing voice',
+	label: () => t('components.postbox.postboxVoiceProfileCard.refreshOperation'),
 });
 const saveInstructions = useBackendOperation(api.mail.voiceProfile.setStandingInstructions, {
-	label: 'Save writing instructions',
+	label: () => t('components.postbox.postboxVoiceProfileCard.saveInstructionsOperation'),
 });
 const removeAdjustment = useBackendOperation(api.mail.voiceProfile.removeDerivedAdjustment, {
-	label: 'Remove learned writing rule',
+	label: () => t('components.postbox.postboxVoiceProfileCard.removeAdjustmentOperation'),
 });
 const instructionDraft = ref('');
 
@@ -39,7 +41,7 @@ const isRefreshing = computed(() => data.value?.status === 'refreshing');
 
 const lastComputedLabel = computed(() => {
 	const ts = data.value?.lastComputedAt;
-	return ts ? new Date(ts).toLocaleString() : null;
+	return ts ? new Date(ts).toLocaleString(locale.value) : null;
 });
 
 async function onToggle(event: Event) {
@@ -68,7 +70,9 @@ async function onRemoveAdjustment(kind: string) {
 		<header class="px-5 py-3 border-b border-border-subtle flex items-center justify-between gap-3">
 			<div class="min-w-0">
 				<h2 class="font-semibold truncate">{{ address }}</h2>
-				<p class="text-xs text-text-tertiary">Learned from your sent mail</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.postbox.postboxVoiceProfileCard.learnedFrom') }}
+				</p>
 			</div>
 			<label class="flex items-center gap-2 shrink-0 cursor-pointer">
 				<input
@@ -77,7 +81,9 @@ async function onRemoveAdjustment(kind: string) {
 					:disabled="setEnabled.isLoading.value"
 					@change="onToggle"
 				/>
-				<span class="text-sm font-medium">Personalize AI drafts</span>
+				<span class="text-sm font-medium">
+					{{ t('components.postbox.postboxVoiceProfileCard.personalize') }}
+				</span>
 			</label>
 		</header>
 
@@ -87,20 +93,20 @@ async function onRemoveAdjustment(kind: string) {
 
 		<div v-else class="px-5 py-4 space-y-3">
 			<p v-if="!enabled" class="text-sm text-text-secondary">
-				Turn this on to let AI reply suggestions match your greeting, sign-off and tone.
+				{{ t('components.postbox.postboxVoiceProfileCard.disabledHint') }}
 			</p>
 
 			<template v-else>
 				<div>
 					<label class="text-xs font-medium text-text-tertiary" :for="`voice-rules-${mailboxId}`">
-						Your writing rules
+						{{ t('components.postbox.postboxVoiceProfileCard.rulesLabel') }}
 					</label>
 					<textarea
 						:id="`voice-rules-${mailboxId}`"
 						v-model="instructionDraft"
 						rows="3"
 						class="input mt-1 w-full resize-y text-sm"
-						placeholder="One instruction per line, for example: Never use exclamation marks"
+						:placeholder="t('components.postbox.postboxVoiceProfileCard.rulesPlaceholder')"
 					/>
 					<div class="mt-2 flex justify-end">
 						<UiButton
@@ -109,53 +115,81 @@ async function onRemoveAdjustment(kind: string) {
 							:loading="saveInstructions.isLoading.value"
 							@click="onSaveInstructions"
 						>
-							Save rules
+							{{ t('components.postbox.postboxVoiceProfileCard.saveRules') }}
 						</UiButton>
 					</div>
 				</div>
 
 				<div v-if="isRefreshing" class="flex items-center gap-2 text-sm text-text-secondary">
 					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-					Learning your writing voice…
+					{{ t('components.postbox.postboxVoiceProfileCard.learning') }}
 				</div>
 
 				<dl v-if="profile" class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
 					<div v-if="profile.greetings.length" class="col-span-2">
-						<dt class="text-text-tertiary text-xs">Greetings</dt>
+						<dt class="text-text-tertiary text-xs">
+							{{ t('components.postbox.postboxVoiceProfileCard.greetings') }}
+						</dt>
 						<dd>{{ profile.greetings.join(', ') }}</dd>
 					</div>
 					<div v-if="profile.signOffs.length" class="col-span-2">
-						<dt class="text-text-tertiary text-xs">Sign-offs</dt>
+						<dt class="text-text-tertiary text-xs">
+							{{ t('components.postbox.postboxVoiceProfileCard.signOffs') }}
+						</dt>
 						<dd>{{ profile.signOffs.join(', ') }}</dd>
 					</div>
 					<div>
-						<dt class="text-text-tertiary text-xs">Formality</dt>
-						<dd>{{ profile.formality }}/5</dd>
+						<dt class="text-text-tertiary text-xs">
+							{{ t('components.postbox.postboxVoiceProfileCard.formality') }}
+						</dt>
+						<dd>
+							{{
+								t('components.postbox.postboxVoiceProfileCard.outOfFive', {
+									value: profile.formality,
+								})
+							}}
+						</dd>
 					</div>
 					<div>
-						<dt class="text-text-tertiary text-xs">Brevity</dt>
-						<dd>{{ profile.brevity }}/5</dd>
+						<dt class="text-text-tertiary text-xs">
+							{{ t('components.postbox.postboxVoiceProfileCard.brevity') }}
+						</dt>
+						<dd>
+							{{
+								t('components.postbox.postboxVoiceProfileCard.outOfFive', {
+									value: profile.brevity,
+								})
+							}}
+						</dd>
 					</div>
 					<div v-if="profile.languages.length">
-						<dt class="text-text-tertiary text-xs">Language</dt>
+						<dt class="text-text-tertiary text-xs">
+							{{ t('components.postbox.postboxVoiceProfileCard.language') }}
+						</dt>
 						<dd>{{ profile.languages.join(', ') }}</dd>
 					</div>
 					<div>
-						<dt class="text-text-tertiary text-xs">Emoji</dt>
-						<dd>{{ profile.isEmojiUser ? 'Yes' : 'No' }}</dd>
+						<dt class="text-text-tertiary text-xs">
+							{{ t('components.postbox.postboxVoiceProfileCard.emoji') }}
+						</dt>
+						<dd>{{ profile.isEmojiUser ? t('common.yes') : t('common.no') }}</dd>
 					</div>
 					<div v-if="profile.examplePhrasings.length" class="col-span-2">
-						<dt class="text-text-tertiary text-xs">Example phrasings</dt>
+						<dt class="text-text-tertiary text-xs">
+							{{ t('components.postbox.postboxVoiceProfileCard.examplePhrasings') }}
+						</dt>
 						<dd class="italic text-text-secondary">{{ profile.examplePhrasings.join(' · ') }}</dd>
 					</div>
 				</dl>
 
 				<p v-else-if="!isRefreshing" class="text-sm text-text-secondary">
-					No voice learned yet. Refresh to analyze your recent sent mail.
+					{{ t('components.postbox.postboxVoiceProfileCard.noVoiceYet') }}
 				</p>
 
 				<div v-if="data?.derivedAdjustments.length" class="space-y-2">
-					<p class="text-xs font-medium text-text-tertiary">Learned writing rules</p>
+					<p class="text-xs font-medium text-text-tertiary">
+						{{ t('components.postbox.postboxVoiceProfileCard.learnedRules') }}
+					</p>
 					<div
 						v-for="adjustment in data.derivedAdjustments"
 						:key="adjustment.kind"
@@ -169,15 +203,21 @@ async function onRemoveAdjustment(kind: string) {
 							:loading="removeAdjustment.isLoading.value"
 							@click="onRemoveAdjustment(adjustment.kind)"
 						>
-							Remove
+							{{ t('common.remove') }}
 						</UiButton>
 					</div>
 				</div>
 
 				<div class="flex items-center justify-between gap-3 pt-1">
 					<p class="text-xs text-text-tertiary">
-						<template v-if="lastComputedLabel">Updated {{ lastComputedLabel }}</template>
-						<template v-else>Not yet computed</template>
+						<template v-if="lastComputedLabel">{{
+							t('components.postbox.postboxVoiceProfileCard.updated', {
+								when: lastComputedLabel,
+							})
+						}}</template>
+						<template v-else>{{
+							t('components.postbox.postboxVoiceProfileCard.notComputed')
+						}}</template>
 					</p>
 					<UiButton
 						size="sm"
@@ -186,7 +226,7 @@ async function onRemoveAdjustment(kind: string) {
 						:disabled="isRefreshing"
 						@click="onRefresh"
 					>
-						Refresh now
+						{{ t('components.postbox.postboxVoiceProfileCard.refreshNow') }}
 					</UiButton>
 				</div>
 			</template>

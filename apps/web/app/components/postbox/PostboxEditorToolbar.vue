@@ -13,6 +13,8 @@
 import { computed } from 'vue';
 import type { ActiveMarks } from '@owlat/ui/composables/useRichText';
 
+const { t } = useI18n();
+
 const props = withDefaults(
 	defineProps<{
 		activeMarks: ActiveMarks;
@@ -49,7 +51,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.bold }"
-			title="Bold (⌘B)"
+			:title="t('components.postbox.postboxEditorToolbar.bold')"
 			@mousedown.prevent
 			@click="emit('bold')"
 		>
@@ -59,7 +61,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.italic }"
-			title="Italic (⌘I)"
+			:title="t('components.postbox.postboxEditorToolbar.italic')"
 			@mousedown.prevent
 			@click="emit('italic')"
 		>
@@ -69,7 +71,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.underline }"
-			title="Underline (⌘U)"
+			:title="t('components.postbox.postboxEditorToolbar.underline')"
 			@mousedown.prevent
 			@click="emit('underline')"
 		>
@@ -80,7 +82,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.h1 }"
-			title="Heading 1"
+			:title="t('components.postbox.postboxEditorToolbar.heading1')"
 			@mousedown.prevent
 			@click="emit('heading', 1)"
 		>
@@ -90,7 +92,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.h2 }"
-			title="Heading 2"
+			:title="t('components.postbox.postboxEditorToolbar.heading2')"
 			@mousedown.prevent
 			@click="emit('heading', 2)"
 		>
@@ -101,7 +103,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.ul }"
-			title="Bullet list"
+			:title="t('components.postbox.postboxEditorToolbar.bulletList')"
 			@mousedown.prevent
 			@click="emit('list', false)"
 		>
@@ -111,7 +113,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.ol }"
-			title="Ordered list"
+			:title="t('components.postbox.postboxEditorToolbar.orderedList')"
 			@mousedown.prevent
 			@click="emit('list', true)"
 		>
@@ -121,7 +123,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.quote }"
-			title="Blockquote"
+			:title="t('components.postbox.postboxEditorToolbar.blockquote')"
 			@mousedown.prevent
 			@click="emit('blockquote')"
 		>
@@ -132,7 +134,7 @@ const emit = defineEmits<{
 			type="button"
 			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
 			:class="{ 'bg-bg-elevated text-brand': activeMarks.link }"
-			title="Link (⌘K)"
+			:title="t('components.postbox.postboxEditorToolbar.link')"
 			@mousedown.prevent
 			@click="emit('link')"
 		>

@@ -6,6 +6,8 @@ const props = defineProps<{
 	contactId: Id<'contacts'>;
 }>();
 
+const { t } = useI18n();
+
 const { data: files, isLoading } = useConvexQuery(
 	api.semanticFiles.listByContact,
 	() => ({ contactId: props.contactId, limit: 50 }),
@@ -27,11 +29,12 @@ const mimeIcon = (mimeType: string): string => {
 
 const sourceLabel = (sourceType: string): string => {
 	const map: Record<string, string> = {
-		upload: 'Uploaded',
-		email_attachment: 'Email Attachment',
-		agent_generated: 'AI Generated',
+		upload: 'components.contacts.contactFilesTab.sources.upload',
+		email_attachment: 'components.contacts.contactFilesTab.sources.emailAttachment',
+		agent_generated: 'components.contacts.contactFilesTab.sources.agentGenerated',
 	};
-	return map[sourceType] || sourceType;
+	const key = map[sourceType];
+	return key ? t(key) : sourceType;
 };
 
 const sourceIcon = (sourceType: string): string => {
@@ -47,9 +50,17 @@ const sourceIcon = (sourceType: string): string => {
 <template>
 	<div class="card">
 		<div class="flex items-center justify-between mb-4">
-			<h2 class="text-lg font-medium text-text-primary">Files</h2>
+			<h2 class="text-lg font-medium text-text-primary">
+				{{ t('components.contacts.contactFilesTab.title') }}
+			</h2>
 			<span v-if="files" class="text-xs text-text-tertiary">
-				{{ files.length }} {{ files.length === 1 ? 'file' : 'files' }}
+				{{
+					t(
+						'components.contacts.contactFilesTab.count',
+						{ count: files.length },
+						files.length,
+					)
+				}}
 			</span>
 		</div>
 
@@ -57,7 +68,9 @@ const sourceIcon = (sourceType: string): string => {
 		<div v-if="isLoading" class="flex items-center justify-center py-8">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner size="md" />
-				<p class="text-text-tertiary text-sm">Loading files...</p>
+				<p class="text-text-tertiary text-sm">
+					{{ t('components.contacts.contactFilesTab.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -67,9 +80,11 @@ const sourceIcon = (sourceType: string): string => {
 			class="flex flex-col items-center justify-center py-8 text-center"
 		>
 			<UiIconBox icon="lucide:file-search" size="lg" variant="surface" rounded="full" class="mb-3" />
-			<p class="text-text-secondary text-sm">No files linked to this contact</p>
+			<p class="text-text-secondary text-sm">
+				{{ t('components.contacts.contactFilesTab.emptyTitle') }}
+			</p>
 			<p class="text-text-tertiary text-sm mt-1">
-				Files from email attachments and uploads will appear here.
+				{{ t('components.contacts.contactFilesTab.emptyBody') }}
 			</p>
 		</div>
 

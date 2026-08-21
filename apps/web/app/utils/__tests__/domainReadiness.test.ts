@@ -2,7 +2,18 @@ import { describe, it, expect } from 'vitest';
 import {
 	summarizeDomainReadiness,
 	domainReadinessMessage,
+	type LocalizedText,
 } from '../domainReadiness';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * `domainReadinessMessage` is a module-scope helper, so it hands back the
+ * catalog key plus the record names it interpolates. Rendering that through the
+ * real English catalog keeps these assertions on the sentence people read.
+ */
+const { t } = createTestI18n().global;
+const localized = (value: LocalizedText): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 describe('summarizeDomainReadiness', () => {
 	it('reports all-verified when every present record verifies', () => {
@@ -24,7 +35,7 @@ describe('summarizeDomainReadiness', () => {
 		expect(summary.verified).toBe(4);
 		expect(summary.allVerified).toBe(true);
 		expect(summary.missingLabels).toEqual([]);
-		expect(domainReadinessMessage(summary)).toBe('All records verified');
+		expect(localized(domainReadinessMessage(summary))).toBe('All records verified');
 	});
 
 	it('flags a single missing record as "almost ready"', () => {
@@ -44,7 +55,7 @@ describe('summarizeDomainReadiness', () => {
 		expect(summary.verified).toBe(2);
 		expect(summary.allVerified).toBe(false);
 		expect(summary.missingLabels).toEqual(['DMARC']);
-		expect(domainReadinessMessage(summary)).toBe(
+		expect(localized(domainReadinessMessage(summary))).toBe(
 			'Almost ready — just add the DMARC record'
 		);
 	});
@@ -81,7 +92,7 @@ describe('summarizeDomainReadiness', () => {
 		expect(summary.total).toBe(0);
 		expect(summary.allVerified).toBe(false);
 		expect(summary.chips).toEqual([]);
-		expect(domainReadinessMessage(summary)).toBe('No DNS records to verify yet');
+		expect(localized(domainReadinessMessage(summary))).toBe('No DNS records to verify yet');
 	});
 
 	it('lists multiple missing records in the tail', () => {
@@ -90,7 +101,7 @@ describe('summarizeDomainReadiness', () => {
 			{ spf: { value: 's' }, dmarc: { value: 'd' } }
 		);
 		expect(summary.missingLabels).toEqual(['SPF', 'DMARC']);
-		expect(domainReadinessMessage(summary)).toBe(
+		expect(localized(domainReadinessMessage(summary))).toBe(
 			'Add the SPF and DMARC records to finish setup'
 		);
 	});

@@ -15,6 +15,12 @@ import type { HealthTone } from '~/utils/healthTone';
  * Terracotta (brand) is deliberately never a health tone here — health uses the
  * same success/warning/error/neutral vocabulary as the rest of the delivery
  * surface (see `healthTone.ts`).
+ *
+ * Module scope, so nothing here calls `useI18n`. Every string this module OWNS
+ * is a catalog KEY (or a `{ key, params }` pair where the message names a
+ * transport); a name that comes from the catalog, the backend or an unknown
+ * `EMAIL_PROVIDER` value is passed through as itself. The card resolves both
+ * through the same boundary, which leaves a non-key untouched.
  */
 
 /** Rolling health snapshot for the active provider (from `providerHealth`). */
@@ -53,8 +59,8 @@ export interface TransportSummaryInput {
  * the catalog, and a new kind simply gets its label.
  */
 const TRANSPORT_LABEL_OVERRIDE: Partial<Record<DeliveryProviderKind, string>> = {
-	mta: 'Owlat mail server',
-	mandrill: 'Mailchimp Transactional',
+	mta: 'shared.transportState.labels.mta',
+	mandrill: 'shared.transportState.labels.mandrill',
 };
 
 /**
@@ -109,12 +115,11 @@ export function transportIdLabel(kind: string): string {
  * build failure in a file its bundle has no business touching.
  */
 const TRANSPORT_DESCRIPTION: Partial<Record<DeliveryProviderKind, string>> = {
-	mta: 'Owlat’s built-in mail server sends your mail directly and manages IP warm-up.',
-	ses: 'Mail goes out through your Amazon SES account.',
-	resend: 'Mail goes out through your Resend account.',
-	smtp: 'Mail is handed to your SMTP relay, which delivers it on your behalf.',
-	mandrill:
-		'Mail goes out through your Mailchimp Transactional (Mandrill) account, so you keep the reputation you arrived with.',
+	mta: 'shared.transportState.descriptions.mta',
+	ses: 'shared.transportState.descriptions.ses',
+	resend: 'shared.transportState.descriptions.resend',
+	smtp: 'shared.transportState.descriptions.smtp',
+	mandrill: 'shared.transportState.descriptions.mandrill',
 };
 
 /**
@@ -122,23 +127,30 @@ const TRANSPORT_DESCRIPTION: Partial<Record<DeliveryProviderKind, string>> = {
  * unrecognized-but-labelled transport already got, because it answers the same
  * question with the same confidence.
  */
-function genericTransportDescription(label: string): string {
-	return `Mail goes out through ${label}. Check that transport’s authentication setup before sending.`;
+function genericTransportDescription(label: string): TransportText {
+	return { key: 'shared.transportState.descriptions.generic', params: { transport: label } };
 }
 
 export type ConfiguredTone = 'success' | 'error';
 
+/**
+ * A translatable field this module hands to whoever renders it: a bare catalog
+ * key (or a verbatim provider name, which resolves to itself), or a key plus the
+ * values its message interpolates.
+ */
+export type TransportText = string | { key: string; params?: Record<string, string> };
+
 export interface TransportDisplay {
 	/** Human transport name, or a "nothing selected" label. */
-	label: string;
+	label: TransportText;
 	/** One-line plain-language description of how it sends. */
-	description: string;
+	description: TransportText;
 	/** Whether a usable transport is configured (`canSend`). */
 	isConfigured: boolean;
-	/** Tone + label for the configured chip. */
+	/** Tone + label (a catalog key) for the configured chip. */
 	configuredTone: ConfiguredTone;
 	configuredLabel: string;
-	/** Health chip tone + label (neutral before the first send). */
+	/** Health chip tone + label key (neutral before the first send). */
 	healthTone: HealthTone;
 	healthLabel: string;
 }
@@ -148,14 +160,14 @@ function healthDisplay(health: TransportHealthInput | null): {
 	tone: HealthTone;
 	label: string;
 } {
-	if (!health) return { tone: 'neutral', label: 'No sends yet' };
+	if (!health) return { tone: 'neutral', label: 'shared.transportState.health.noSends' };
 	switch (health.status) {
 		case 'healthy':
-			return { tone: 'success', label: 'Sending normally' };
+			return { tone: 'success', label: 'shared.transportState.health.healthy' };
 		case 'degraded':
-			return { tone: 'warning', label: 'Some sends are failing' };
+			return { tone: 'warning', label: 'shared.transportState.health.degraded' };
 		case 'down':
-			return { tone: 'error', label: 'Sends are failing' };
+			return { tone: 'error', label: 'shared.transportState.health.down' };
 	}
 }
 
@@ -168,20 +180,20 @@ export function deriveTransportDisplay(summary: TransportSummaryInput): Transpor
 	const kind = summary.provider ?? undefined;
 	const known = isDeliveryProviderKind(kind);
 
-	const label = summary.providerLabel
+	const label: TransportText = summary.providerLabel
 		? summary.providerLabel
 		: known
 			? transportKindLabel(kind)
 			: kind
-				? `Unrecognized transport (${kind})`
-				: 'No transport selected';
-	const description = known
+				? { key: 'shared.transportState.unrecognized', params: { kind } }
+				: 'shared.transportState.noTransport';
+	const description: TransportText = known
 		? (TRANSPORT_DESCRIPTION[kind] ?? genericTransportDescription(transportKindLabel(kind)))
 		: kind && summary.providerLabel
 			? genericTransportDescription(summary.providerLabel)
 			: kind
-				? 'The EMAIL_PROVIDER value isn’t one Owlat can send through. Choose a supported transport.'
-				: 'Pick how this instance sends mail to start delivering campaigns and replies.';
+				? 'shared.transportState.unsupportedProvider'
+				: 'shared.transportState.pickTransport';
 
 	const health = healthDisplay(summary.health);
 
@@ -190,7 +202,9 @@ export function deriveTransportDisplay(summary: TransportSummaryInput): Transpor
 		description,
 		isConfigured: summary.canSend,
 		configuredTone: summary.canSend ? 'success' : 'error',
-		configuredLabel: summary.canSend ? 'Ready to send' : 'Not ready',
+		configuredLabel: summary.canSend
+			? 'shared.transportState.configured.ready'
+			: 'shared.transportState.configured.notReady',
 		healthTone: health.tone,
 		healthLabel: health.label,
 	};

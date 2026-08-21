@@ -50,6 +50,14 @@
  * The rule is the field set's, not the provider's, so a new kind gets whichever
  * answer its own form shape earns.
  *
+ * THE DESCRIPTOR'S COPY IS KEYS, AND THIS IS WHERE IT BECOMES WORDS. A core
+ * entry's `label`, `description` and option labels are
+ * `sharedPkg.sendProviderCatalog.*` messages (the catalog is a module-scope
+ * declaration and cannot call `t()`), so every one of them is resolved here —
+ * the one render boundary both credential surfaces share. A bundled plugin's
+ * generated descriptor carries its own English label instead, which `t()` hands
+ * back unchanged, so a plugin needs no catalog entry to be readable.
+ *
  * The per-field `description` a descriptor may carry is rendered under its
  * control: it is the operator guidance the ENTRY declares (Mandrill's "feedback
  * needs a second variable" note), so it travels with the provider rather than
@@ -103,6 +111,8 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{ 'update:preset': [SmtpPreset] }>();
+
+const { t } = useI18n();
 
 const fields = computed(() => credentialFieldsFor(props.kind));
 
@@ -182,6 +192,11 @@ function declaredOptions(field: SendProviderCredentialField): readonly SendProvi
 	return [];
 }
 
+/** Those options as a picker reads them: the same values, the labels in words. */
+function optionsFor(field: SendProviderCredentialField): SendProviderFieldOption[] {
+	return declaredOptions(field).map((option) => ({ value: option.value, label: t(option.label) }));
+}
+
 /** The descriptor's declared default, for the kinds whose default is text. */
 function defaultValue(field: SendProviderCredentialField): string {
 	return 'default' in field && typeof field.default === 'string' ? field.default : '';
@@ -191,13 +206,16 @@ function defaultValue(field: SendProviderCredentialField): string {
 const ENV_VAR_IN_PROSE = /[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+/g;
 
 /**
- * A descriptor's guidance sentence, split into plain runs and env-variable
- * names, so the latter can be typeset as code (see the docblock). Shape-matched
- * rather than matched against the entry's own variable lists: the note may name
- * a variable the entry declares nowhere near this field, and an acronym like
- * DMARC or SPF has no underscore, so it stays prose.
+ * A descriptor's guidance sentence — resolved from its message key, then split
+ * into plain runs and env-variable names so the latter can be typeset as code
+ * (see the docblock). Shape-matched rather than matched against the entry's own
+ * variable lists: the note may name a variable the entry declares nowhere near
+ * this field, and an acronym like DMARC or SPF has no underscore, so it stays
+ * prose. Splitting the TRANSLATED sentence is the point — the variable name is
+ * the one token in it that is the same in every language.
  */
-function descriptionParts(text: string): { text: string; code: boolean }[] {
+function descriptionParts(field: SendProviderCredentialField): { text: string; code: boolean }[] {
+	const text = field.description === undefined ? '' : t(field.description);
 	const parts: { text: string; code: boolean }[] = [];
 	let cursor = 0;
 	for (const match of text.matchAll(ENV_VAR_IN_PROSE)) {
@@ -224,13 +242,13 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 				<UiSelect
 					v-if="presetOptions.length > 0"
 					:model-value="preset"
-					label="Provider preset"
+					:label="t('components.delivery.transportCredentialFields.providerPreset')"
 					:options="presetOptions"
 					@update:model-value="emit('update:preset', $event as SmtpPreset)"
 				/>
 				<UiInput
 					:model-value="textValue(field.envVar)"
-					:label="field.label"
+					:label="t(field.label)"
 					:placeholder="field.placeholder"
 					autocomplete="off"
 					:disabled="isPresetLocked(field)"
@@ -247,7 +265,7 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 				>
 					<UiInput
 						:model-value="textValue(field.portEnvVar)"
-						label="Port"
+						:label="t('components.delivery.transportCredentialFields.port')"
 						:placeholder="field.portDefault"
 						autocomplete="off"
 						@update:model-value="set(field.portEnvVar, $event)"
@@ -263,7 +281,11 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 							@change="onCheckbox(field.secureEnvVar, $event)"
 						/>
 						<span class="text-sm text-text-secondary">
-							Implicit TLS (port 465). Leave off for STARTTLS on {{ field.portDefault }}.
+							{{
+								t('components.delivery.transportCredentialFields.implicitTls', {
+									port: field.portDefault,
+								})
+							}}
 						</span>
 					</label>
 				</div>
@@ -274,8 +296,8 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 			<UiSelect
 				v-else-if="field.kind === 'select' || declaredOptions(field).length > 0"
 				:model-value="textValue(field.envVar) || defaultValue(field)"
-				:label="field.label"
-				:options="[...declaredOptions(field)]"
+				:label="t(field.label)"
+				:options="optionsFor(field)"
 				:error="errorFor(field)"
 				@update:model-value="set(field.envVar, $event)"
 			/>
@@ -288,14 +310,14 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 					:checked="checked(field.envVar, field.default ?? false)"
 					@change="onCheckbox(field.envVar, $event)"
 				/>
-				<span class="text-sm text-text-secondary">{{ field.label }}</span>
+				<span class="text-sm text-text-secondary">{{ t(field.label) }}</span>
 			</label>
 
 			<!-- Everything else is a single-line control; only `secret` is masked. -->
 			<UiInput
 				v-else
 				:model-value="textValue(field.envVar)"
-				:label="field.label"
+				:label="t(field.label)"
 				:type="field.kind === 'secret' ? 'password' : 'text'"
 				:placeholder="'placeholder' in field ? field.placeholder : undefined"
 				autocomplete="off"
@@ -309,7 +331,7 @@ function isPresetLocked(field: SendProviderHostPortField): boolean {
 			     the newline-bearing text nodes between these elements, so the sentence
 			     reads exactly as declared. -->
 			<p v-if="field.description" class="text-xs text-text-tertiary">
-				<template v-for="(part, index) in descriptionParts(field.description)" :key="index">
+				<template v-for="(part, index) in descriptionParts(field)" :key="index">
 					<code v-if="part.code" class="text-text-primary">{{ part.text }}</code>
 					<template v-else>{{ part.text }}</template>
 				</template>

@@ -8,6 +8,7 @@ import type { Id } from '@owlat/api/dataModel';
 export type AppPasswordScope = 'imap' | 'smtp';
 
 export function usePostboxAppPasswords(mailboxId: Ref<Id<'mailboxes'> | null>) {
+	const { t } = useI18n();
 	const { data, isLoading } = useConvexQuery(api.mail.appPasswords.list, () =>
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
@@ -15,13 +16,13 @@ export function usePostboxAppPasswords(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const passwords = computed(() => data.value ?? []);
 
 	const generateMutation = useBackendOperation(api.mail.appPasswords.generate, {
-		label: 'Generate app password',
+		label: () => t('shared.postbox.usePostboxAppPasswords.generateOperation'),
 	});
 	const revokeMutation = useBackendOperation(api.mail.appPasswords.revoke, {
-		label: 'Revoke app password',
+		label: () => t('shared.postbox.usePostboxAppPasswords.revokeOperation'),
 	});
 	const revokeAllMutation = useBackendOperation(api.mail.appPasswords.revokeAll, {
-		label: 'Revoke all app passwords',
+		label: () => t('shared.postbox.usePostboxAppPasswords.revokeAllOperation'),
 	});
 
 	async function generate(label: string, scopes?: AppPasswordScope[]) {

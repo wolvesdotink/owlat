@@ -1,6 +1,10 @@
 import type { Id } from '@owlat/api/dataModel';
 import { describe, expect, it, vi } from 'vitest';
-import type { DeliverabilityCenter, DeliverabilityChecklistItem } from '../deliverabilityCenter';
+import type {
+	DeliverabilityCenter,
+	DeliverabilityChecklistItem,
+	LocalizedText,
+} from '../deliverabilityCenter';
 import {
 	buildDeliverabilityReport,
 	checklistItemDomId,
@@ -10,6 +14,17 @@ import {
 	formatVerificationAge,
 	itemKey,
 } from '../deliverabilityCenter';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The presentation tables and the age helper are module scope, so they carry
+ * catalog keys plus the numbers they interpolate — and the clipboard report
+ * takes the resolver a screen would hand it. Rendering through the real English
+ * catalog keeps these assertions on the words a person reads.
+ */
+const { t } = createTestI18n().global;
+const localized = (value: LocalizedText): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 function domainItem(
 	domainId: Id<'domains'>,
@@ -67,9 +82,9 @@ describe('Deliverability Center view model', () => {
 
 	it('formats honest check ages and a live DNS countdown', () => {
 		const now = Date.UTC(2026, 6, 26, 12);
-		expect(formatVerificationAge(now - 30_000, now)).toBe('checked just now');
-		expect(formatVerificationAge(now - 2 * 60_000, now)).toBe('checked 2 min ago');
-		expect(formatVerificationAge(now - 3 * 3_600_000, now)).toBe('checked 3 h ago');
+		expect(localized(formatVerificationAge(now - 30_000, now))).toBe('checked just now');
+		expect(localized(formatVerificationAge(now - 2 * 60_000, now))).toBe('checked 2 min ago');
+		expect(localized(formatVerificationAge(now - 3 * 3_600_000, now))).toBe('checked 3 h ago');
 		expect(formatRecheckCountdown(now + 4 * 60_000 + 32_000, now)).toBe('4:32');
 	});
 
@@ -109,7 +124,7 @@ describe('Deliverability Center view model', () => {
 			},
 		};
 
-		const report = buildDeliverabilityReport(center);
+		const report = buildDeliverabilityReport(center, localized);
 		expect(report).toContain('[Verified] Tell the world who may send for your domain');
 		expect(report).toContain('Observed: v=spf1 -all');
 		expect(report).toContain('DKIM: pass (owlat1)');
@@ -130,7 +145,7 @@ describe('Deliverability Center view model', () => {
 			loopback: { domains: [] },
 		};
 
-		const report = buildDeliverabilityReport(center);
+		const report = buildDeliverabilityReport(center, localized);
 		expect(report).toContain('Latest validator evidence: No validator evidence yet');
 		expect(report).not.toContain('1970-01-01');
 	});
@@ -165,7 +180,7 @@ describe('Deliverability Center view model', () => {
 			pending: 0,
 			total: 1,
 		});
-		expect(buildDeliverabilityReport(center)).toContain('Overall: Ready');
+		expect(buildDeliverabilityReport(center, localized)).toContain('Overall: Ready');
 		expect(center.nextItem?.id).toBe('domain.mta_sts');
 	});
 });

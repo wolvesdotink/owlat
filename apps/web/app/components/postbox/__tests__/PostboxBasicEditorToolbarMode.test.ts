@@ -14,9 +14,13 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { onBeforeMount, onBeforeUnmount } from 'vue';
 import { mount } from '@vue/test-utils';
 
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
 // Stub the two Nuxt lifecycle auto-imports the editor uses that the shared setup
-// file does not polyfill.
+// file does not polyfill, plus `useI18n` — also an auto-import — now that the
+// placeholder copy flows through vue-i18n.
 beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('onBeforeMount', onBeforeMount);
 	vi.stubGlobal('onBeforeUnmount', onBeforeUnmount);
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
@@ -41,6 +45,7 @@ function mountEditor(props: Record<string, unknown> = {}) {
 	return mount(PostboxBasicEditor, {
 		props: { modelValue: '<p>hi</p>', ...props },
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				PostboxEditorToolbar: persistentStub,
 				PostboxFloatingFormatBar: floatingStub,

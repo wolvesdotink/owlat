@@ -25,6 +25,8 @@
 import { isEditableTarget, resolvePostboxShortcut } from '~/utils/postboxShortcuts';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 
+const { t } = useI18n();
+
 const props = defineProps<{
 	/** The open row (full list-row shape — handed straight to the reader). */
 	message: PostboxReaderMessage;
@@ -137,7 +139,9 @@ onUnmounted(() => {
 			ref="paneEl"
 			role="dialog"
 			aria-modal="true"
-			:aria-label="message.subject || 'Conversation'"
+			:aria-label="
+				message.subject || t('components.postbox.postboxTodayReaderOverlay.conversation')
+			"
 			tabindex="-1"
 			class="relative mx-auto w-full max-w-2xl rounded-xl border border-border-subtle bg-bg-elevated shadow-(--shadow-6) outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 		>

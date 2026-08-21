@@ -21,7 +21,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 
 const dnsDoc = readFileSync(
-	resolve(repoRoot, 'apps/docs/content/3.developer/32.self-hosting-dns-email.md'),
+	resolve(repoRoot, 'apps/docs/content/en/3.developer/32.self-hosting-dns-email.md'),
 	'utf8'
 );
 const mtaProvider = readFileSync(

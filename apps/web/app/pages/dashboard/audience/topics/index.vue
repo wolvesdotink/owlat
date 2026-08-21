@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Subscription topics — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.audience.topics.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -95,7 +97,7 @@ const {
 
 // Create topic mutation (uses session-based organization context)
 const { run: createTopic } = useBackendOperation(api.topics.topics.create, {
-	label: 'Create topic',
+	label: () => t('dashboard.audience.topics.index.operations.create'),
 });
 
 // Validate create form
@@ -103,7 +105,7 @@ const validateCreateForm = (): boolean => {
 	clearCreateErrors();
 
 	if (!createForm.name.trim()) {
-		createErrors.name = 'Topic name is required';
+		createErrors.name = t('dashboard.audience.topics.index.validation.nameRequired');
 		return false;
 	}
 
@@ -127,7 +129,7 @@ const handleCreate = async () => {
 	isCreating.value = false;
 	if (result === undefined) return;
 
-	showToast(`Topic "${createForm.name.trim()}" created successfully`);
+	showToast(t('dashboard.audience.topics.index.toasts.created', { name: createForm.name.trim() }));
 	closeCreateModal();
 };
 
@@ -151,7 +153,7 @@ const {
 
 // Update topic mutation
 const { run: updateTopic } = useBackendOperation(api.topics.topics.update, {
-	label: 'Update topic',
+	label: () => t('dashboard.audience.topics.index.operations.update'),
 });
 
 // Open edit modal with topic data
@@ -176,7 +178,7 @@ const validateEditForm = (): boolean => {
 	clearEditErrors();
 
 	if (!editForm.name.trim()) {
-		editErrors.name = 'Topic name is required';
+		editErrors.name = t('dashboard.audience.topics.index.validation.nameRequired');
 		return false;
 	}
 
@@ -198,7 +200,7 @@ const handleEdit = async () => {
 	isEditing.value = false;
 	if (result === undefined) return;
 
-	showToast(`Topic "${editForm.name.trim()}" updated successfully`);
+	showToast(t('dashboard.audience.topics.index.toasts.updated', { name: editForm.name.trim() }));
 	closeEditModal();
 };
 
@@ -215,7 +217,7 @@ const isDeleting = ref(false);
 
 // Delete topic mutation
 const { run: deleteTopic } = useBackendOperation(api.topics.topics.remove, {
-	label: 'Delete topic',
+	label: () => t('dashboard.audience.topics.index.operations.delete'),
 });
 
 // Open delete modal
@@ -243,7 +245,7 @@ const handleDelete = async () => {
 	const result = await deleteTopic({ topicId: deleteTarget.value.id });
 	isDeleting.value = false;
 	if (result === undefined) return;
-	showToast(`Topic "${deleteTarget.value.name}" deleted successfully`);
+	showToast(t('dashboard.audience.topics.index.toasts.deleted', { name: deleteTarget.value.name }));
 	closeDeleteModal();
 };
 
@@ -271,20 +273,25 @@ onMounted(() => {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Subscription topics</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.audience.topics.index.title') }}
+				</h1>
 				<p class="mt-1 text-text-secondary">
-					What contacts subscribe to — group them for targeted campaigns
+					{{ t('dashboard.audience.topics.index.subtitle') }}
 				</p>
 			</div>
 			<UiButton @click="openCreateModal">
 				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-				New Topic
+				{{ t('dashboard.audience.topics.index.newTopic') }}
 			</UiButton>
 		</div>
 
 		<!-- Search Bar -->
 		<div class="mb-6 max-w-md">
-			<UiInput v-model="searchQuery" placeholder="Search topics...">
+			<UiInput
+				v-model="searchQuery"
+				:placeholder="t('dashboard.audience.topics.index.searchPlaceholder')"
+			>
 				<template #iconLeft><Icon name="lucide:search" /></template>
 			</UiInput>
 		</div>
@@ -294,7 +301,7 @@ onMounted(() => {
 			<UiQueryBoundary
 				:loading="isLoading && topics.length === 0"
 				:error="topicsError"
-				error-title="Couldn't load topics"
+				:error-title="t('dashboard.audience.topics.index.errorTitle')"
 			>
 				<!-- Loading State: content-shaped skeleton on first load only -->
 				<template #loading>
@@ -305,21 +312,21 @@ onMounted(() => {
 				<UiEmptyState
 					v-if="!hasActiveOrganization"
 					icon="lucide:list"
-					title="No workspace selected"
-					description="Create or select a workspace to start managing your topics."
+					:title="t('dashboard.audience.topics.index.noWorkspace.title')"
+					:description="t('dashboard.audience.topics.index.noWorkspace.description')"
 				/>
 
 				<!-- Empty State (no lists) -->
 				<UiEmptyState
 					v-else-if="!isLoading && filteredTopics.length === 0 && !searchQuery"
 					icon="lucide:list"
-					title="No topics yet"
-					description="Create your first topic to organize contacts for targeted email campaigns."
+					:title="t('dashboard.audience.topics.index.empty.title')"
+					:description="t('dashboard.audience.topics.index.empty.description')"
 				>
 					<template #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-							New Topic
+							{{ t('dashboard.audience.topics.index.newTopic') }}
 						</UiButton>
 					</template>
 				</UiEmptyState>
@@ -328,11 +335,15 @@ onMounted(() => {
 				<UiEmptyState
 					v-else-if="!isLoading && filteredTopics.length === 0 && searchQuery"
 					icon="lucide:search"
-					title="No results found"
-					:description="`No topics match &quot;${searchQuery}&quot;. Try a different search term.`"
+					:title="t('dashboard.audience.topics.index.noResults.title')"
+					:description="
+						t('dashboard.audience.topics.index.noResults.description', { query: searchQuery })
+					"
 				>
 					<template #action>
-						<UiButton variant="secondary" @click="searchQuery = ''"> Clear search </UiButton>
+						<UiButton variant="secondary" @click="searchQuery = ''">
+							{{ t('dashboard.audience.topics.index.clearSearch') }}
+						</UiButton>
 					</template>
 				</UiEmptyState>
 
@@ -348,7 +359,7 @@ onMounted(() => {
 											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 											@click="toggleSort('name')"
 										>
-											Name
+											{{ t('common.name') }}
 											<Icon
 												v-if="getSortIcon('name')"
 												:name="getSortIcon('name')!"
@@ -357,7 +368,7 @@ onMounted(() => {
 										</button>
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Description
+										{{ t('common.description') }}
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
 										<button
@@ -365,7 +376,7 @@ onMounted(() => {
 											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 											@click="toggleSort('contactCount')"
 										>
-											Contacts
+											{{ t('dashboard.audience.topics.index.table.contacts') }}
 											<Icon
 												v-if="getSortIcon('contactCount')"
 												:name="getSortIcon('contactCount')!"
@@ -379,7 +390,7 @@ onMounted(() => {
 											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 											@click="toggleSort('createdAt')"
 										>
-											Created
+											{{ t('dashboard.audience.topics.index.table.created') }}
 											<Icon
 												v-if="getSortIcon('createdAt')"
 												:name="getSortIcon('createdAt')!"
@@ -388,7 +399,7 @@ onMounted(() => {
 										</button>
 									</th>
 									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										Actions
+										{{ t('common.actions') }}
 									</th>
 								</tr>
 							</thead>
@@ -423,14 +434,14 @@ onMounted(() => {
 										<div class="flex items-center justify-end gap-1">
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-												title="Edit topic"
+												:title="t('dashboard.audience.topics.index.actions.edit')"
 												@click.stop="openEditModal(topic)"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-												title="Delete topic"
+												:title="t('dashboard.audience.topics.index.actions.delete')"
 												@click.stop="openDeleteModal(topic)"
 											>
 												<Icon name="lucide:trash-2" class="w-4 h-4" />
@@ -445,7 +456,13 @@ onMounted(() => {
 					<!-- Count footer -->
 					<div class="px-6 py-4 border-t border-border-subtle">
 						<p class="text-sm text-text-tertiary">
-							{{ filteredTopics.length }} topic{{ filteredTopics.length !== 1 ? 's' : '' }}
+							{{
+								t(
+									'dashboard.audience.topics.index.count',
+									{ count: filteredTopics.length },
+									filteredTopics.length
+								)
+							}}
 						</p>
 					</div>
 				</div>
@@ -453,7 +470,10 @@ onMounted(() => {
 		</UiCard>
 
 		<!-- Create List Modal -->
-		<UiModal v-model:open="isCreateModalOpen" title="Create Topic">
+		<UiModal
+			v-model:open="isCreateModalOpen"
+			:title="t('dashboard.audience.topics.index.createModal.title')"
+		>
 			<form @submit.prevent="handleCreate">
 				<!-- General Error -->
 				<div
@@ -467,9 +487,9 @@ onMounted(() => {
 				<div class="mb-4">
 					<UiInput
 						v-model="createForm.name"
-						label="Name"
+						:label="t('common.name')"
 						:required="true"
-						placeholder="e.g., Newsletter Subscribers"
+						:placeholder="t('dashboard.audience.topics.index.form.namePlaceholder')"
 						:error="createErrors.name"
 						:disabled="isCreating"
 					/>
@@ -479,9 +499,9 @@ onMounted(() => {
 				<div class="mb-4">
 					<UiTextarea
 						v-model="createForm.description"
-						label="Description"
+						:label="t('common.description')"
 						:rows="3"
-						placeholder="Optional description for this topic..."
+						:placeholder="t('dashboard.audience.topics.index.form.descriptionPlaceholder')"
 						:disabled="isCreating"
 					/>
 				</div>
@@ -490,8 +510,8 @@ onMounted(() => {
 				<div class="mb-6">
 					<UiCheckbox
 						v-model="createForm.requireDoubleOptIn"
-						label="Require double opt-in"
-						description="New subscribers must confirm their email before being added to this topic"
+						:label="t('dashboard.audience.topics.index.form.doiLabel')"
+						:description="t('dashboard.audience.topics.index.form.doiDescription')"
 						:disabled="isCreating"
 					/>
 				</div>
@@ -499,16 +519,23 @@ onMounted(() => {
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isCreating" @click="closeCreateModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton :loading="isCreating" @click="handleCreate">
-					{{ isCreating ? 'Creating...' : 'Create Topic' }}
+					{{
+						isCreating
+							? t('dashboard.audience.topics.index.creating')
+							: t('dashboard.audience.topics.index.createModal.title')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
 
 		<!-- Edit List Modal -->
-		<UiModal v-model:open="isEditModalOpen" title="Edit Topic">
+		<UiModal
+			v-model:open="isEditModalOpen"
+			:title="t('dashboard.audience.topics.index.editModal.title')"
+		>
 			<form @submit.prevent="handleEdit">
 				<!-- General Error -->
 				<div
@@ -522,9 +549,9 @@ onMounted(() => {
 				<div class="mb-4">
 					<UiInput
 						v-model="editForm.name"
-						label="Name"
+						:label="t('common.name')"
 						:required="true"
-						placeholder="e.g., Newsletter Subscribers"
+						:placeholder="t('dashboard.audience.topics.index.form.namePlaceholder')"
 						:error="editErrors.name"
 						:disabled="isEditing"
 					/>
@@ -534,9 +561,9 @@ onMounted(() => {
 				<div class="mb-4">
 					<UiTextarea
 						v-model="editForm.description"
-						label="Description"
+						:label="t('common.description')"
 						:rows="3"
-						placeholder="Optional description for this topic..."
+						:placeholder="t('dashboard.audience.topics.index.form.descriptionPlaceholder')"
 						:disabled="isEditing"
 					/>
 				</div>
@@ -545,8 +572,8 @@ onMounted(() => {
 				<div class="mb-6">
 					<UiCheckbox
 						v-model="editForm.requireDoubleOptIn"
-						label="Require double opt-in"
-						description="New subscribers must confirm their email before being added to this topic"
+						:label="t('dashboard.audience.topics.index.form.doiLabel')"
+						:description="t('dashboard.audience.topics.index.form.doiDescription')"
 						:disabled="isEditing"
 					/>
 				</div>
@@ -554,31 +581,41 @@ onMounted(() => {
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isEditing" @click="closeEditModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton :loading="isEditing" @click="handleEdit">
-					{{ isEditing ? 'Saving...' : 'Save Changes' }}
+					{{ isEditing ? t('common.saving') : t('dashboard.audience.topics.index.saveChanges') }}
 				</UiButton>
 			</template>
 		</UiModal>
 
 		<!-- Delete Confirmation Modal -->
-		<UiModal v-model:open="isDeleteModalOpen" title="Delete Topic">
+		<UiModal
+			v-model:open="isDeleteModalOpen"
+			:title="t('dashboard.audience.topics.index.deleteModal.title')"
+		>
 			<div class="flex items-start gap-4 mb-6">
 				<div class="p-3 rounded-full bg-error-subtle flex items-center justify-center">
 					<Icon name="lucide:alert-triangle" class="w-6 h-6 text-error" />
 				</div>
 				<div>
 					<p class="text-text-primary font-medium">
-						Are you sure you want to delete "{{ deleteTarget?.name }}"?
+						{{
+							t('dashboard.audience.topics.index.deleteModal.body', {
+								name: deleteTarget?.name ?? '',
+							})
+						}}
 					</p>
 					<p class="text-sm text-text-secondary mt-1">
-						This action cannot be undone.
+						{{ t('dashboard.audience.topics.index.deleteModal.irreversible') }}
 						<template v-if="deleteTarget && deleteTarget.contactCount > 0">
-							The {{ deleteTarget.contactCount }} contact{{
-								deleteTarget.contactCount !== 1 ? 's' : ''
+							{{
+								t(
+									'dashboard.audience.topics.index.deleteModal.contactsKept',
+									{ count: deleteTarget.contactCount },
+									deleteTarget.contactCount
+								)
 							}}
-							in this topic will not be deleted, only removed from the topic.
 						</template>
 					</p>
 				</div>
@@ -586,13 +623,17 @@ onMounted(() => {
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
 					<template v-if="!isDeleting" #iconLeft
 						><Icon name="lucide:trash-2" class="w-4 h-4"
 					/></template>
-					{{ isDeleting ? 'Deleting...' : 'Delete Topic' }}
+					{{
+						isDeleting
+							? t('dashboard.audience.topics.index.deleting')
+							: t('dashboard.audience.topics.index.deleteModal.title')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>

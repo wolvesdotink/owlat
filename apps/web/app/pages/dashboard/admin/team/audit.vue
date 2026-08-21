@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { AuditLogEntry } from '~/composables/useAuditLogPresentation';
 
-useHead({ title: 'Audit Logs — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.team.audit.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -116,8 +118,8 @@ const filteredLogs = computed((): AuditLogEntry[] => {
 		const details = log.details ?? {};
 		const userName = log.userProfile?.name?.toLowerCase() ?? '';
 		const userEmail = log.userProfile?.email?.toLowerCase() ?? '';
-		const actionLabel = getActionLabel(log.action).toLowerCase();
-		const resourceLabel = getResourceLabel(log.resource).toLowerCase();
+		const actionLabel = t(getActionLabel(log.action)).toLowerCase();
+		const resourceLabel = t(getResourceLabel(log.resource)).toLowerCase();
 		const detailsStr = JSON.stringify(details).toLowerCase();
 
 		return (
@@ -146,12 +148,12 @@ const { resourceTypes, actionTypeGroups, getResourceLabel, getActionLabel } =
 	useAuditLogPresentation();
 
 // Date range options
-const dateRangeOptions = [
-	{ value: 'all', label: 'All Time' },
-	{ value: 'today', label: 'Last 24 Hours' },
-	{ value: 'week', label: 'Last 7 Days' },
-	{ value: 'month', label: 'Last 30 Days' },
-];
+const dateRangeOptions = computed(() => [
+	{ value: 'all', label: t('dashboard.admin.team.audit.dateRange.all') },
+	{ value: 'today', label: t('dashboard.admin.team.audit.dateRange.today') },
+	{ value: 'week', label: t('dashboard.admin.team.audit.dateRange.week') },
+	{ value: 'month', label: t('dashboard.admin.team.audit.dateRange.month') },
+]);
 </script>
 
 <template>
@@ -163,12 +165,14 @@ const dateRangeOptions = [
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Settings
+				{{ t('dashboard.admin.team.audit.backToSettings') }}
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Audit Log</h1>
-					<p class="mt-1 text-text-secondary">Track all team member actions and changes</p>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.team.audit.title') }}
+					</h1>
+					<p class="mt-1 text-text-secondary">{{ t('dashboard.admin.team.audit.subtitle') }}</p>
 				</div>
 			</div>
 		</div>
@@ -179,9 +183,9 @@ const dateRangeOptions = [
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">Admins only</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.audit.adminGate.title') }}</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				The audit log is available to workspace owners and admins only.
+				{{ t('dashboard.admin.team.audit.adminGate.description') }}
 			</p>
 		</div>
 
@@ -189,7 +193,7 @@ const dateRangeOptions = [
 			v-else
 			:loading="isLoading && accumulatedLogs.length === 0"
 			:error="auditLogsError"
-			error-title="Couldn't load the audit log"
+			:error-title="t('dashboard.admin.team.audit.errorTitle')"
 		>
 			<!-- First-load skeleton (shaped like the audit-log table). Gated on the
 			     accumulated rows, not the raw page: a Load More briefly resets
@@ -215,9 +219,9 @@ const dateRangeOptions = [
 					rounded="full"
 					class="mb-4"
 				/>
-				<p class="text-text-secondary font-medium">No workspace selected</p>
+				<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.audit.noWorkspace.title') }}</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Create or select a workspace to view the audit log.
+					{{ t('dashboard.admin.team.audit.noWorkspace.description') }}
 				</p>
 			</div>
 
@@ -226,13 +230,13 @@ const dateRangeOptions = [
 				<!-- Stats Cards -->
 				<div v-if="statsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
 					<div class="card p-4">
-						<p class="text-sm text-text-secondary">Total Actions</p>
+						<p class="text-sm text-text-secondary">{{ t('dashboard.admin.team.audit.stats.totalActions') }}</p>
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">{{ statsData.total }}</p>
 					</div>
 					<div class="card p-4">
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:send" class="w-4 h-4 text-brand" />
-							<p class="text-sm text-text-secondary">Campaigns</p>
+							<p class="text-sm text-text-secondary">{{ t('dashboard.admin.team.audit.stats.campaigns') }}</p>
 						</div>
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
 							{{ statsData.byResource['campaign'] ?? 0 }}
@@ -241,7 +245,7 @@ const dateRangeOptions = [
 					<div class="card p-4">
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:users" class="w-4 h-4 text-brand" />
-							<p class="text-sm text-text-secondary">Contacts</p>
+							<p class="text-sm text-text-secondary">{{ t('dashboard.admin.team.audit.stats.contacts') }}</p>
 						</div>
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
 							{{ statsData.byResource['contact'] ?? 0 }}
@@ -250,7 +254,7 @@ const dateRangeOptions = [
 					<div class="card p-4">
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:settings" class="w-4 h-4 text-warning" />
-							<p class="text-sm text-text-secondary">Settings</p>
+							<p class="text-sm text-text-secondary">{{ t('common.settings') }}</p>
 						</div>
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
 							{{ statsData.byResource['settings'] ?? 0 }}
@@ -270,7 +274,7 @@ const dateRangeOptions = [
 							<input
 								v-model="searchQuery"
 								type="text"
-								placeholder="Search by user, action, or details..."
+								:placeholder="t('dashboard.admin.team.audit.searchPlaceholder')"
 								class="input pl-10"
 							/>
 						</div>
@@ -284,7 +288,7 @@ const dateRangeOptions = [
 									:key="resource.value"
 									:value="resource.value"
 								>
-									{{ resource.label }}
+									{{ t(resource.label) }}
 								</option>
 							</select>
 						</div>
@@ -293,14 +297,18 @@ const dateRangeOptions = [
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:activity" class="w-4 h-4 text-text-tertiary" />
 							<select v-model="selectedAction" class="input w-44">
-								<option value="">All Actions</option>
-								<optgroup v-for="group in actionTypeGroups" :key="group.label" :label="group.label">
+								<option value="">{{ t('dashboard.admin.team.audit.allActions') }}</option>
+								<optgroup
+									v-for="group in actionTypeGroups"
+									:key="group.label"
+									:label="t(group.label)"
+								>
 									<option
 										v-for="actionValue in group.actions"
 										:key="actionValue"
 										:value="actionValue"
 									>
-										{{ getActionLabel(actionValue) }}
+										{{ t(getActionLabel(actionValue)) }}
 									</option>
 								</optgroup>
 							</select>
@@ -313,7 +321,7 @@ const dateRangeOptions = [
 						>
 							<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
 							<select v-model="selectedUserId" class="input w-40">
-								<option value="">All Users</option>
+								<option value="">{{ t('dashboard.admin.team.audit.allUsers') }}</option>
 								<option v-for="user in activeUsersData" :key="user._id" :value="user.authUserId">
 									{{ user.name ?? user.email }}
 								</option>
@@ -348,7 +356,7 @@ const dateRangeOptions = [
 							@click="resetFilters"
 						>
 							<Icon name="lucide:refresh-cw" class="w-4 h-4" />
-							Reset
+							{{ t('dashboard.admin.team.audit.resetFilters') }}
 						</UiButton>
 					</div>
 				</div>
@@ -365,10 +373,9 @@ const dateRangeOptions = [
 						rounded="full"
 						class="mb-4"
 					/>
-					<p class="text-text-secondary font-medium">No activity recorded</p>
+					<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.audit.empty.title') }}</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						Team actions will appear here as they happen. Start by creating a campaign, adding
-						contacts, or updating settings.
+						{{ t('dashboard.admin.team.audit.empty.description') }}
 					</p>
 				</div>
 
@@ -378,9 +385,9 @@ const dateRangeOptions = [
 					class="card flex flex-col items-center justify-center py-16 text-center px-6"
 				>
 					<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">No results found</p>
+					<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.audit.noResults.title') }}</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						No audit logs match "{{ searchQuery }}". Try a different search term or adjust filters.
+						{{ t('dashboard.admin.team.audit.noResults.description', { query: searchQuery }) }}
 					</p>
 				</div>
 

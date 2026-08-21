@@ -1,5 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useAuthForm } from '../useAuthForm';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The composable resolves its copy through vue-i18n; install the real catalog
+ * behind the `useI18n` auto-import so the assertions read as the app ships.
+ */
+const i18n = createTestI18n();
+vi.stubGlobal('useI18n', () => i18n.global);
 
 describe('useAuthForm', () => {
 	it('starts not loading with no error', () => {

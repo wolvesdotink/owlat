@@ -18,6 +18,12 @@ interface Emits {
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
+const { t } = useI18n();
+
+// The preset catalog is a module-scope registry: its `name`/`description` are
+// message keys, resolved here at render time.
+const presetText = (value: string) => t(value);
+
 // Modal step state
 const step = ref<'library' | 'customize'>('library');
 const selectedPreset = ref<string | null>(null);
@@ -57,7 +63,7 @@ const selectPreset = (presetId: string) => {
 	selectedPreset.value = presetId;
 	const preset = getPresetById(presetId);
 	if (preset) {
-		templateName.value = preset.name === 'Start from Blank' ? '' : preset.name;
+		templateName.value = preset.id === 'blank' ? '' : presetText(preset.name);
 	}
 	step.value = 'customize';
 };
@@ -81,7 +87,7 @@ const handleCreate = async (
 	}) => Promise<Id<'emailTemplates'> | undefined>
 ) => {
 	if (!templateName.value.trim()) {
-		error.value = 'Template name is required';
+		error.value = t('components.mail.templateLibraryModal.nameRequired');
 		return;
 	}
 
@@ -107,13 +113,14 @@ const handleCreate = async (
 		}
 
 		if (!templateId) {
-			throw new Error('Failed to create template');
+			throw new Error(t('components.mail.templateLibraryModal.createFailed'));
 		}
 
 		emit('create', templateId);
 		close();
 	} catch (err) {
-		error.value = err instanceof Error ? err.message : 'Failed to create template';
+		error.value =
+			err instanceof Error ? err.message : t('components.mail.templateLibraryModal.createFailed');
 	} finally {
 		isCreating.value = false;
 	}
@@ -133,7 +140,11 @@ defineExpose({
 <template>
 	<UiModal
 		:open="open"
-		:title="step === 'library' ? 'Choose a Template' : 'Customize Your Template'"
+		:title="
+			step === 'library'
+				? t('components.mail.templateLibraryModal.libraryTitle')
+				: t('components.mail.templateLibraryModal.customizeTitle')
+		"
 		size="4xl"
 		:closable="!isCreating"
 		:persistent="isCreating"
@@ -146,7 +157,7 @@ defineExpose({
 			@click="goBackToLibrary"
 		>
 			<Icon name="lucide:arrow-left" class="w-5 h-5" />
-			<span class="text-sm">Back to templates</span>
+			<span class="text-sm">{{ t('components.mail.templateLibraryModal.backToTemplates') }}</span>
 		</button>
 
 		<!-- Content -->
@@ -154,7 +165,7 @@ defineExpose({
 			<!-- Step 1: Template Library -->
 			<div v-if="step === 'library'" class="p-6">
 							<p class="text-text-secondary mb-6">
-								Start with a template to speed up your workflow, or begin from scratch.
+								{{ t('components.mail.templateLibraryModal.intro') }}
 							</p>
 
 							<div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -174,7 +185,11 @@ defineExpose({
 										]"
 										@click="selectPreset(preset.id)"
 									>
-										<!-- Preview Thumbnail -->
+										<!-- Preview Thumbnail.
+										     palette-ok: preset markup ships its own fixed light
+										     palette, so the paper behind it is literally white in
+										     both app themes; only the empty-canvas tile follows
+										     the surface tokens. -->
 										<div
 											:class="[
 												'aspect-[4/3] overflow-hidden',
@@ -186,7 +201,9 @@ defineExpose({
 												class="w-full h-full flex flex-col items-center justify-center text-text-tertiary"
 											>
 												<Icon name="lucide:plus" class="w-8 h-8 mb-2" />
-												<span class="text-sm">Empty Canvas</span>
+												<span class="text-sm">{{
+													t('components.mail.templateLibraryModal.emptyCanvas')
+												}}</span>
 											</div>
 											<div
 												v-else
@@ -201,11 +218,11 @@ defineExpose({
 											<div class="flex items-center gap-2">
 												<Icon :name="preset.icon" class="w-4 h-4 text-brand shrink-0" />
 												<h3 class="font-medium text-text-primary text-sm truncate">
-													{{ preset.name }}
+													{{ presetText(preset.name) }}
 												</h3>
 											</div>
 											<p class="text-xs text-text-tertiary mt-1 truncate">
-												{{ preset.description }}
+												{{ presetText(preset.description) }}
 											</p>
 										</div>
 									</button>
@@ -215,7 +232,7 @@ defineExpose({
 										v-if="preset.id !== 'blank'"
 										class="absolute top-2 right-2 p-2 rounded-lg bg-bg-deep/80 text-text-primary opacity-0 group-hover:opacity-100 transition-opacity hover:bg-bg-deep"
 										@click.stop="previewPreset = previewPreset === preset.id ? null : preset.id"
-									 aria-label="Preview">
+									 :aria-label="t('common.preview')">
 										<Icon name="lucide:eye" class="w-4 h-4" />
 									</button>
 								</div>
@@ -228,7 +245,8 @@ defineExpose({
 							<div
 								class="lg:w-1/2 p-6 bg-bg-surface border-b lg:border-b-0 lg:border-r border-border-subtle"
 							>
-								<h3 class="text-sm font-medium text-text-secondary mb-3">Preview</h3>
+								<h3 class="text-sm font-medium text-text-secondary mb-3">{{ t('common.preview') }}</h3>
+								<!-- palette-ok: email paper — white in both themes (see thumbnail note above). -->
 								<div class="bg-white rounded-lg shadow-sm overflow-hidden">
 									<div
 										v-if="selectedPresetData"
@@ -236,7 +254,7 @@ defineExpose({
 										v-html="selectedPresetData.previewHtml"
 									/>
 									<div v-else class="p-8 text-center text-text-tertiary">
-										<p class="text-sm">Empty template</p>
+										<p class="text-sm">{{ t('components.mail.templateLibraryModal.emptyTemplate') }}</p>
 									</div>
 								</div>
 							</div>
@@ -261,7 +279,7 @@ defineExpose({
 										<div class="flex items-center gap-2">
 											<Icon :name="selectedPresetData.icon" class="w-4 h-4 text-brand" />
 											<span class="text-sm font-medium text-text-primary">
-												{{ selectedPresetData.name }}
+												{{ presetText(selectedPresetData.name) }}
 											</span>
 										</div>
 									</div>
@@ -270,9 +288,9 @@ defineExpose({
 									<UiInput
 										id="template-name"
 										v-model="templateName"
-										label="Template Name"
+										:label="t('components.mail.templateLibraryModal.nameLabel')"
 										required
-										placeholder="e.g., Weekly Newsletter"
+										:placeholder="t('components.mail.templateLibraryModal.namePlaceholder')"
 										:disabled="isCreating"
 										class="mb-6"
 									/>
@@ -280,7 +298,7 @@ defineExpose({
 									<!-- Actions -->
 									<div class="flex justify-end gap-3">
 										<UiButton variant="secondary" :disabled="isCreating" @click="goBackToLibrary">
-											Back
+											{{ t('common.back') }}
 										</UiButton>
 										<slot name="submit-button" :is-creating="isCreating" />
 									</div>

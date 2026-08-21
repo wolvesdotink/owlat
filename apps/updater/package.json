@@ -1,13 +1,13 @@
 {
 	"name": "@owlat/updater",
-	"version": "0.4.3",
+	"version": "0.4.4",
 	"private": true,
-	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"scripts": {
 		"dev": "tsx watch src/index.ts",
-		"build": "tsc",
+		"build": "bun build src/index.ts --target=node --outdir=dist",
 		"typecheck": "tsc --noEmit",
 		"start": "node dist/index.js",
 		"lint": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src",
@@ -16,7 +16,9 @@
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage --passWithNoTests"
 	},
-	"dependencies": {},
+	"dependencies": {
+		"@owlat/shared": "workspace:*"
+	},
 	"devDependencies": {
 		"@types/node": "^26.0.1",
 		"tsx": "^4.19.0",

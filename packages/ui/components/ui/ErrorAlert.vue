@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useUiI18n } from '../../composables/useUiI18n';
+
 type AlertVariant = 'error' | 'warning' | 'info' | 'success';
 
 interface Props {
@@ -37,14 +39,18 @@ const variantConfig: Record<AlertVariant, { icon: string; containerClass: string
 
 const config = computed(() => variantConfig[props.variant]);
 
-const defaultTitles: Record<AlertVariant, string> = {
-	error: 'Error',
-	warning: 'Warning',
-	info: 'Info',
-	success: 'Success',
+const { t } = useUiI18n();
+
+// One key per variant (not a built `ui.alert.${variant}` path) so the catalog
+// keys stay greppable and the parity test can see every one of them.
+const defaultTitleKeys: Record<AlertVariant, string> = {
+	error: 'ui.alert.error',
+	warning: 'ui.alert.warning',
+	info: 'ui.alert.info',
+	success: 'ui.alert.success',
 };
 
-const displayTitle = computed(() => props.title ?? defaultTitles[props.variant]);
+const displayTitle = computed(() => props.title ?? t(defaultTitleKeys[props.variant]));
 </script>
 
 <template>

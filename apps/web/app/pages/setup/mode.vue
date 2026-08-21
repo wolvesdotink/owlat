@@ -8,11 +8,21 @@ import {
 import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
-useHead({ title: 'Owlat setup — Operating mode' });
+
+const { t } = useI18n();
+
+useHead({ title: () => t('setup.mode.pageTitle') });
 
 const router = useRouter();
 const { flags, isMigrationMode, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'mode');
+
+// `SETUP_WIZARD_STEPS` carries message KEYS (it is built at module scope); the
+// indicator renders display text, so resolve them here — as a computed, so the
+// labels follow a locale switch instead of freezing at setup.
+const displaySteps = computed(() =>
+	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
+);
 
 // Pre-fill the flag set from a named mode, then continue to the fine-tune step.
 function pick(key: OperatingModeKey) {
@@ -33,40 +43,49 @@ function custom() {
 		<div class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="lp-eyebrow">Owlat setup</span>
+				<span class="lp-eyebrow">{{ t('setup.mode.eyebrow') }}</span>
 			</div>
 
 			<UiStepIndicator
 				class="mb-10"
-				:steps="SETUP_WIZARD_STEPS"
+				:steps="displaySteps"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
 				:on-step-click="goToStep"
 			/>
 
 			<header class="mb-6">
-				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">
-					How will you run <span class="lp-title-accent">Owlat</span>?
-				</h1>
-				<p class="text-text-secondary leading-relaxed">
-					Pick the closest mode to pre-fill your features — you can fine-tune everything on the next
-					step. See
-					<a
-						href="https://docs.owlat.app/guide/operating-modes"
-						target="_blank"
-						rel="noopener"
-						class="link"
-						>Operating Modes</a
-					>
-					for the full matrix.
-				</p>
+				<I18nT
+					keypath="setup.mode.title"
+					tag="h1"
+					scope="global"
+					class="text-3xl font-medium tracking-[-0.02em] mb-2"
+				>
+					<template #brand><span class="lp-title-accent">Owlat</span></template>
+				</I18nT>
+				<I18nT
+					keypath="setup.mode.intro"
+					tag="p"
+					scope="global"
+					class="text-text-secondary leading-relaxed"
+				>
+					<template #docsLink>
+						<a
+							href="https://docs.owlat.app/guide/operating-modes"
+							target="_blank"
+							rel="noopener"
+							class="link"
+							>{{ t('setup.mode.docsLink') }}</a
+						>
+					</template>
+				</I18nT>
 			</header>
 
 			<!-- Fresh start vs. migration. Default: fresh (Owlat is its own platform).
 			     When "moving" is chosen, first-login onboarding offers a mail import. -->
 			<fieldset class="card mb-8 p-5">
 				<legend class="px-2 text-sm font-medium text-text-primary">
-					Are you moving from another platform, or starting fresh on Owlat?
+					{{ t('setup.mode.migrationLegend') }}
 				</legend>
 				<div class="mt-2 grid gap-3 sm:grid-cols-2">
 					<button
@@ -82,11 +101,11 @@ function custom() {
 					>
 						<span class="flex items-center gap-2 font-medium text-text-primary">
 							<Icon name="lucide:sparkles" class="h-4 w-4" />
-							Starting fresh
+							{{ t('setup.mode.freshTitle') }}
 						</span>
-						<span class="mt-1 block text-sm text-text-secondary"
-							>Owlat is our home. No import needed.</span
-						>
+						<span class="mt-1 block text-sm text-text-secondary">{{
+							t('setup.mode.freshDesc')
+						}}</span>
 					</button>
 					<button
 						type="button"
@@ -101,11 +120,11 @@ function custom() {
 					>
 						<span class="flex items-center gap-2 font-medium text-text-primary">
 							<Icon name="lucide:import" class="h-4 w-4" />
-							Moving from another platform
+							{{ t('setup.mode.migratingTitle') }}
 						</span>
-						<span class="mt-1 block text-sm text-text-secondary"
-							>We'll offer new users a mail import at first login.</span
-						>
+						<span class="mt-1 block text-sm text-text-secondary">{{
+							t('setup.mode.migratingDesc')
+						}}</span>
 					</button>
 				</div>
 			</fieldset>
@@ -118,17 +137,17 @@ function custom() {
 						@click="pick(key)"
 					>
 						<div class="flex flex-wrap items-center gap-2">
-							<span class="font-medium text-text-primary">{{ OPERATING_MODES[key].label }}</span>
-							<UiBadge v-if="OPERATING_MODES[key].needsDeliveryProvider" variant="warning"
-								>needs a delivery provider</UiBadge
-							>
-							<UiBadge v-else-if="OPERATING_MODES[key].needsMta" variant="neutral"
-								>needs the built-in MTA</UiBadge
-							>
-							<UiBadge v-else variant="neutral">no provider needed</UiBadge>
+							<span class="font-medium text-text-primary">{{ t(OPERATING_MODES[key].label) }}</span>
+							<UiBadge v-if="OPERATING_MODES[key].needsDeliveryProvider" variant="warning">{{
+								t('setup.mode.needsDeliveryProvider')
+							}}</UiBadge>
+							<UiBadge v-else-if="OPERATING_MODES[key].needsMta" variant="neutral">{{
+								t('setup.mode.needsMta')
+							}}</UiBadge>
+							<UiBadge v-else variant="neutral">{{ t('setup.mode.noProviderNeeded') }}</UiBadge>
 						</div>
-						<p class="mt-1.5 text-sm text-text-secondary">{{ OPERATING_MODES[key].audience }}</p>
-						<p class="mt-1 text-sm text-text-tertiary">{{ OPERATING_MODES[key].description }}</p>
+						<p class="mt-1.5 text-sm text-text-secondary">{{ t(OPERATING_MODES[key].audience) }}</p>
+						<p class="mt-1 text-sm text-text-tertiary">{{ t(OPERATING_MODES[key].description) }}</p>
 					</button>
 				</li>
 			</ul>
@@ -136,10 +155,10 @@ function custom() {
 			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
 				<UiButton variant="ghost" @click="router.push('/setup')">
 					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
-					Back
+					{{ t('common.back') }}
 				</UiButton>
 				<UiButton variant="secondary" @click="custom">
-					Custom / decide later
+					{{ t('setup.mode.custom') }}
 					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
 				</UiButton>
 			</footer>

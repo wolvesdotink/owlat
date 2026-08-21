@@ -5,6 +5,7 @@
  * zero layout shift). Optional sparse x-axis labels via labelEvery.
  */
 import { computeBarHeightPercent, type ChartDatum } from '../../utils/chart';
+import { useUiI18n } from '../../composables/useUiI18n';
 
 interface Props {
 	data: ChartDatum[];
@@ -14,16 +15,23 @@ interface Props {
 	/** Show every Nth x label (last is always shown). 0 hides labels. */
 	labelEvery?: number;
 	formatValue?: (value: number) => string;
+	/** Accessible name for the plot. Defaults to the localized "Bar chart". */
 	ariaLabel?: string;
 }
 
+// `ariaLabel` has no default: prop defaults are evaluated outside the setup
+// context, where `useUiI18n()` cannot run. It is resolved below instead.
 const props = withDefaults(defineProps<Props>(), {
 	color: 'var(--color-brand)',
 	height: 128,
 	labelEvery: 0,
 	formatValue: (value: number) => value.toLocaleString(),
-	ariaLabel: 'Bar chart',
+	ariaLabel: undefined,
 });
+
+const { t } = useUiI18n();
+
+const resolvedAriaLabel = computed(() => props.ariaLabel ?? t('ui.chart.barsAriaLabel'));
 
 const maxValue = computed(() => Math.max(...props.data.map((d) => d.value), 0));
 
@@ -37,9 +45,9 @@ const showLabelAt = (index: number) =>
 		class="flex items-center justify-center bg-bg-surface rounded-lg"
 		:style="{ height: `${height}px` }"
 	>
-		<p class="text-sm text-text-tertiary">No data yet</p>
+		<p class="text-sm text-text-tertiary">{{ t('ui.chart.empty') }}</p>
 	</div>
-	<div v-else role="group" :aria-label="ariaLabel">
+	<div v-else role="group" :aria-label="resolvedAriaLabel">
 		<div class="flex items-end gap-0.5" :style="{ height: `${height}px` }">
 			<div
 				v-for="(bar, index) in data"

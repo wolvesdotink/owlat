@@ -9,11 +9,18 @@
  *     no stray attribute (so existing context-free cards render unchanged);
  *   - the rendered widget is an accessible, labelled region.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, h, markRaw, onErrorCaptured, type Component } from 'vue';
 import WidgetHost from '../Host.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { WidgetModule } from '~/composables/widgets/types';
+
+// The host's own copy (the isolation fallback, the busy announcement) renders
+// through vue-i18n; `useI18n` reaches the component as a Nuxt auto-import.
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
 
 /** Build a module from a raw component loader (mirrors the `() => import()` shape). */
 function moduleForLoader(
@@ -28,7 +35,7 @@ function moduleFor(component: Component, extra: Partial<WidgetModule> = {}): Wid
 	return moduleForLoader(() => Promise.resolve(component), extra);
 }
 
-const mountOpts = { global: { stubs: { Icon: true } } };
+const mountOpts = { global: { stubs: { Icon: true }, plugins: [createTestI18n()] } };
 
 afterEach(() => {
 	vi.restoreAllMocks();

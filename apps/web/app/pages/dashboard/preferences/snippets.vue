@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Snippets — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.preferences.snippets.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -78,16 +80,22 @@ async function confirmRemove() {
 
 		<header class="mb-6 flex items-center justify-between">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em]">Snippets</h1>
-				<p class="text-text-secondary mt-1">
-					Canned responses you can drop into a message. In the composer, type
-					<code>/</code> at the start of a line to pick one. Use
-					<code v-text="firstNamePlaceholder" /> to greet the recipient by name.
-				</p>
+				<h1 class="text-2xl font-medium tracking-[-0.02em]">
+					{{ t('dashboard.preferences.snippets.title') }}
+				</h1>
+				<I18nT
+					keypath="dashboard.preferences.snippets.intro"
+					tag="p"
+					class="text-text-secondary mt-1"
+					scope="global"
+				>
+					<template #slashKey><code>/</code></template>
+					<template #firstNameToken><code v-text="firstNamePlaceholder" /></template>
+				</I18nT>
 			</div>
 			<UiButton v-if="mailboxId && !editor" type="button" @click="startCreate">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
-				New snippet
+				{{ t('dashboard.preferences.snippets.newSnippet') }}
 			</UiButton>
 		</header>
 
@@ -97,31 +105,40 @@ async function confirmRemove() {
 					v-model="editor.name"
 					type="text"
 					class="input flex-1"
-					placeholder="Snippet name (e.g. Thanks)"
+					:placeholder="t('dashboard.preferences.snippets.namePlaceholder')"
 				/>
-				<input v-model="editor.shortcut" type="text" class="input w-40" placeholder="shortcut" />
+				<input
+					v-model="editor.shortcut"
+					type="text"
+					class="input w-40"
+					:placeholder="t('dashboard.preferences.snippets.shortcutPlaceholder')"
+				/>
 			</div>
 			<PostboxBasicEditor
 				v-model="editor.bodyHtml"
-				placeholder="Hi {{firstName}}, thanks for reaching out…"
+				:placeholder="
+					t('dashboard.preferences.snippets.bodyPlaceholder', { firstName: firstNamePlaceholder })
+				"
 			/>
 			<div class="flex items-center justify-end gap-2">
-				<UiButton variant="ghost" type="button" @click="editor = null">Cancel</UiButton>
+				<UiButton variant="ghost" type="button" @click="editor = null">
+					{{ t('common.cancel') }}
+				</UiButton>
 				<UiButton type="button" :disabled="!editor.name.trim()" @click="save">
-					{{ editor.id ? 'Save changes' : 'Create' }}
+					{{ editor.id ? t('dashboard.preferences.snippets.saveChanges') : t('common.create') }}
 				</UiButton>
 			</div>
 		</section>
 
 		<section v-if="mailboxId" class="card !p-0">
 			<header class="px-5 py-3 border-b border-border-subtle">
-				<h2 class="font-semibold">Your snippets</h2>
+				<h2 class="font-semibold">{{ t('dashboard.preferences.snippets.yourSnippets') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
 			</div>
 			<div v-else-if="snippets.length === 0" class="p-8 text-center text-text-secondary">
-				No snippets yet.
+				{{ t('dashboard.preferences.snippets.empty') }}
 			</div>
 			<ul v-else class="divide-y divide-border-subtle">
 				<li
@@ -144,29 +161,31 @@ async function confirmRemove() {
 							v-html="sanitizePostboxHtml(s.bodyHtml)"
 						/>
 					</div>
-					<UiButton variant="ghost" type="button" @click="startEdit(s)">Edit</UiButton>
+					<UiButton variant="ghost" type="button" @click="startEdit(s)">
+						{{ t('common.edit') }}
+					</UiButton>
 					<UiButton
 						variant="ghost"
 						type="button"
 						class="text-error"
 						@click="snippetToRemove = s._id"
 					>
-						Delete
+						{{ t('common.delete') }}
 					</UiButton>
 				</li>
 			</ul>
 		</section>
 
 		<div v-if="!mailboxId && !mailboxesLoading" class="card p-6 text-center text-text-secondary">
-			No mailbox configured.
+			{{ t('dashboard.preferences.snippets.noMailbox') }}
 		</div>
 
 		<UiConfirmationDialog
 			:open="!!snippetToRemove"
 			variant="danger"
-			title="Delete snippet?"
-			description="This snippet will be removed. This action cannot be undone."
-			confirm-text="Delete snippet"
+			:title="t('dashboard.preferences.snippets.deleteTitle')"
+			:description="t('dashboard.preferences.snippets.deleteDescription')"
+			:confirm-text="t('dashboard.preferences.snippets.deleteConfirm')"
 			:is-loading="isRemoving"
 			@update:open="(v: boolean) => !v && (snippetToRemove = null)"
 			@confirm="confirmRemove"

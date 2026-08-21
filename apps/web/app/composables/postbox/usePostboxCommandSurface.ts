@@ -40,6 +40,7 @@ export const matchPostboxRoute = routePrefixMatcher('/dashboard/postbox');
  * mirrors how the sidebar nav was pulled into `useDashboardNavigation`.
  */
 export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
+	const { t } = useI18n();
 	const composerStack = usePostboxComposerStack();
 	const { isDesktop: isDesktopSurface } = useDesktopContext();
 	// Accessible mailboxes → palette "switch mailbox" entries (personal when
@@ -55,53 +56,53 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 		const groups: PaletteGroup[] = [
 			{
 				key: 'postbox-actions',
-				heading: 'Mailbox',
+				heading: t('shared.postbox.usePostboxCommandSurface.groups.mailbox'),
 				order: 0,
 				cap: 12,
 				items: [
 					{
 						id: 'postbox:compose',
-						label: 'Compose new message',
+						label: t('shared.postbox.usePostboxCommandSurface.items.compose'),
 						hint: 'c',
 						icon: 'lucide:pencil',
 						run: () => composerStack.open({ mailboxId: mailboxId.value }),
 					},
 					{
 						id: 'postbox:reply-all',
-						label: 'Reply all',
+						label: t('shared.postbox.usePostboxCommandSurface.items.replyAll'),
 						hint: 'a',
 						icon: 'lucide:reply-all',
 						run: () => dispatchReaderAction('replyAll'),
 					},
 					{
 						id: 'postbox:forward',
-						label: 'Forward',
+						label: t('shared.postbox.usePostboxCommandSurface.items.forward'),
 						hint: 'f',
 						icon: 'lucide:forward',
 						run: () => dispatchReaderAction('forward'),
 					},
 					{
 						id: 'postbox:report-spam',
-						label: 'Report spam',
+						label: t('shared.postbox.usePostboxCommandSurface.items.reportSpam'),
 						icon: 'lucide:shield-alert',
 						run: () => dispatchReaderAction('reportSpam'),
 					},
 					{
 						id: 'postbox:block-sender',
-						label: 'Block sender',
+						label: t('shared.postbox.usePostboxCommandSurface.items.blockSender'),
 						icon: 'lucide:ban',
 						run: () => dispatchReaderAction('blockSender'),
 					},
 					{
 						id: 'postbox:move',
-						label: 'Move conversation…',
+						label: t('shared.postbox.usePostboxCommandSurface.items.move'),
 						hint: 'v',
 						icon: 'lucide:folder-input',
 						run: () => dispatchReaderAction('move'),
 					},
 					{
 						id: 'postbox:print',
-						label: 'Print conversation',
+						label: t('shared.postbox.usePostboxCommandSurface.items.print'),
 						icon: 'lucide:printer',
 						run: () => dispatchReaderAction('print'),
 					},
@@ -109,31 +110,31 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 			},
 			{
 				key: 'postbox-folders',
-				heading: 'Postbox',
+				heading: t('shared.postbox.usePostboxCommandSurface.groups.postbox'),
 				order: 12,
 				items: [
 					{
 						id: 'postbox:archive',
-						label: 'Archive',
+						label: t('shared.postbox.usePostboxCommandSurface.items.archive'),
 						icon: 'lucide:archive',
 						run: () => void navigateTo('/dashboard/postbox/archive'),
 					},
 					{
 						id: 'postbox:snoozed',
-						label: 'Snoozed',
+						label: t('shared.postbox.usePostboxCommandSurface.items.snoozed'),
 						icon: 'lucide:clock',
 						run: () => void navigateTo('/dashboard/postbox/snoozed'),
 					},
 					{
 						id: 'postbox:search',
-						label: 'Search mail',
+						label: t('shared.postbox.usePostboxCommandSurface.items.search'),
 						hint: '/',
 						icon: 'lucide:search',
 						run: () => void navigateTo('/dashboard/postbox/search'),
 					},
 					{
 						id: 'postbox:contacts',
-						label: 'Contacts',
+						label: t('shared.postbox.usePostboxCommandSurface.items.contacts'),
 						icon: 'lucide:users',
 						run: () => void navigateTo('/dashboard/postbox/contacts'),
 					},
@@ -143,21 +144,25 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 
 		// "Switch mailbox" — personal mailboxes (only when there's a real choice)
 		// plus every shared team inbox. Both blocks share one descriptor list (icon
-		// + label suffix are the only differences). Empty for a lone personal
+		// + message key are the only differences). Empty for a lone personal
 		// mailbox, so the palette is unchanged for single-mailbox users.
 		const { personal, team } = sections.value;
 		const switchGroups = [
 			{
 				items: personal.length > 1 || team.length > 0 ? personal : [],
 				icon: 'lucide:mail',
-				suffix: '',
+				labelKey: 'shared.postbox.usePostboxCommandSurface.items.switchToMailbox',
 			},
-			{ items: team, icon: 'lucide:users', suffix: ' (team inbox)' },
+			{
+				items: team,
+				icon: 'lucide:users',
+				labelKey: 'shared.postbox.usePostboxCommandSurface.items.switchToTeamInbox',
+			},
 		];
 		const switchItems = switchGroups.flatMap((group) =>
 			group.items.map((mb) => ({
 				id: `postbox:switch-${mb.mailboxId}`,
-				label: `Go to ${mb.label}${group.suffix}`,
+				label: t(group.labelKey, { mailbox: mb.label }),
 				icon: group.icon,
 				run: () => switchToMailbox(mb.mailboxId),
 			}))
@@ -165,7 +170,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 		if (switchItems.length > 0) {
 			groups.push({
 				key: 'postbox-switch-mailbox',
-				heading: 'Switch mailbox',
+				heading: t('shared.postbox.usePostboxCommandSurface.groups.switchMailbox'),
 				order: 24,
 				items: switchItems,
 			});
@@ -174,7 +179,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 		if (isDesktopSurface.value) {
 			groups[0]?.items.push({
 				id: 'postbox:check-updates',
-				label: 'Check for updates',
+				label: t('shared.postbox.usePostboxCommandSurface.items.checkUpdates'),
 				icon: 'lucide:download-cloud',
 				run: () => window.dispatchEvent(new Event('owlat:check-updates')),
 			});

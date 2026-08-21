@@ -25,6 +25,10 @@ beforeAll(() => {
 });
 
 import DNSRecordPanel from '../DNSRecordPanel.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The panel renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 function mountPanel(
 	record: { type: string; host: string; value: string; hostIsFqdn?: boolean },
@@ -33,7 +37,7 @@ function mountPanel(
 ) {
 	return mount(DNSRecordPanel, {
 		props: { record, label, domain },
-		global: { stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 	});
 }
 

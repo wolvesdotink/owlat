@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import type { Id } from '@owlat/api/dataModel';
+import { resolvePostboxFolderParam } from '~/utils/postboxFolderParam';
 
-useHead({ title: 'Mail — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.postbox.detail.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -11,14 +13,8 @@ definePageMeta({
 
 const route = useRoute();
 // The [folder] param is a system role (inbox/sent/…) or, for a custom folder, a
-// mailFolders id. Discriminate so the layout queries by role vs by folder id.
-const KNOWN_ROLES = new Set(['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive', 'snoozed']);
-const folderParam = computed(() => String(route.params['folder'] ?? 'inbox'));
-const isCustomFolder = computed(() => !KNOWN_ROLES.has(folderParam.value));
-const folderRole = computed(() => (isCustomFolder.value ? '' : folderParam.value));
-const customFolderId = computed(() =>
-	isCustomFolder.value ? (folderParam.value as Id<'mailFolders'>) : undefined
-);
+// mailFolders id — the layout queries by role vs by folder id accordingly.
+const folder = computed(() => resolvePostboxFolderParam(route.params['folder']));
 const {
 	mailboxes,
 	currentMailbox,
@@ -38,14 +34,14 @@ const userId = computed(() => user.value?.id ?? null);
 		<PostboxLayout
 			v-if="mailboxId"
 			:mailbox-id="mailboxId"
-			:folder-role="folderRole"
-			:folder-id="customFolderId"
+			:folder-role="folder.folderRole"
+			:folder-id="folder.folderId"
 		/>
 		<!-- Error — a failed mailbox query must NOT look like "no mailbox yet" -->
 		<div v-else-if="mailboxError" class="flex-1 flex items-center justify-center p-12">
 			<UiErrorAlert
-				title="Couldn't load your mailbox"
-				message="We hit an error loading your mailbox. Reload the page to try again."
+				:title="t('dashboard.postbox.detail.index.loadErrorTitle')"
+				:message="t('dashboard.postbox.detail.index.loadErrorMessage')"
 				class="max-w-md"
 			/>
 		</div>

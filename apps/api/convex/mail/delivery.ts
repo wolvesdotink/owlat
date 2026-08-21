@@ -43,6 +43,8 @@ import {
 	usableRestoredBodies,
 	type InboundEncryptionInfo,
 } from '../e2ee/inboundSeal';
+import { inboundSignatureInfoValidator, type InboundSignatureInfo } from '../e2ee/inboundSignature';
+import { isClearsigned, isSignedPgpMime } from '@owlat/shared/secureMessage';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
@@ -258,13 +260,42 @@ export const ingestFromWebhook = internalAction({
 		// open action — it would only return `{ sealed: false }` anyway. Mirrors the
 		// cheap `extractArmoredCiphertext` pre-gate the AI-inbox path already uses
 		// before its decrypt action.
-		const opened = isSealedPgpMime(rawBytes.toString('utf8'))
+		const rawText = rawBytes.toString('utf8');
+		const opened = isSealedPgpMime(rawText)
 			? await ctx.runAction(internal.e2ee.open.openInboundForMailbox, {
 					rawBytesBase64: args.rawBytesBase64,
 					recipientAddress: args.recipientAddress,
 					from: args.from,
 				})
 			: ({ isSealed: false } as const);
+
+		// Inbound PGP signature verification (F1, D9): a message that arrived
+		// SIGNED but not encrypted (RFC 3156 multipart/signed or an inline
+		// clearsigned body) gets its signature verified server-side and the honest
+		// verdict persisted beside the row. Same cheap structural pre-gate pattern
+		// as the sealed check above, so plaintext mail (the common case) never
+		// spawns the `'use node'` verify action. Fail-open by construction: the
+		// action never throws, and even if it did the message still delivers with
+		// an honest `verification_error` verdict — signature verification adds
+		// data, never blocks delivery (D10).
+		let inboundSignatureInfo: InboundSignatureInfo | undefined;
+		if (!opened.isSealed && (isSignedPgpMime(rawText) || isClearsigned(rawText))) {
+			try {
+				const verdict = await ctx.runAction(internal.e2ee.verifyInboundSignature.forInbound, {
+					rawBytesBase64: args.rawBytesBase64,
+					from: args.from,
+				});
+				if (verdict.isSigned) inboundSignatureInfo = verdict.info;
+			} catch (err) {
+				logError('[Mail Webhook] inbound signature verification failed', err);
+				inboundSignatureInfo = {
+					isSigned: true,
+					isSignatureValid: false,
+					keySource: 'not_found',
+					failure: 'verification_error',
+				};
+			}
+		}
 		let effectiveSubject = args.subject;
 		let effectiveText = args.textBody;
 		let effectiveHtml = args.htmlBody;
@@ -346,6 +377,7 @@ export const ingestFromWebhook = internalAction({
 				envelopeFromDomain: args.envelopeFromDomain,
 				dkimSigningDomain: args.dkimSigningDomain,
 				inboundEncryptionInfo,
+				inboundSignatureInfo,
 			}
 		);
 
@@ -517,6 +549,10 @@ export async function insertDeliveredMessage(
 		 * that arrived sealed. The body columns above hold the RESTORED plaintext when
 		 * `decrypted:true`; the raw `.eml` stays the sealed original either way. */
 		inboundEncryptionInfo?: InboundEncryptionInfo;
+		/** Inbound signature verdict (F1, D9): present only for a message that arrived
+		 * PGP-SIGNED but not encrypted. Honest — every failure state is recorded, and
+		 * its presence never changes routing or delivery. */
+		inboundSignatureInfo?: InboundSignatureInfo;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
 		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
@@ -637,6 +673,7 @@ export async function insertDeliveredMessage(
 		dkimSigningDomain: params.dkimSigningDomain,
 		senderHeuristics: params.senderHeuristics,
 		inboundEncryptionInfo: params.inboundEncryptionInfo,
+		inboundSignatureInfo: params.inboundSignatureInfo,
 		unsubscribe: params.unsubscribe,
 		createdAt: now,
 		updatedAt: now,
@@ -753,6 +790,9 @@ export const deliverToMailbox = internalMutation({
 		// arrived sealed; the body args above already hold the RESTORED plaintext
 		// when it decrypted. Absent ⇒ a plaintext message (unchanged fast path).
 		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
+		// Inbound signature verdict (F1, D9), computed by the ingest action for a
+		// SIGNED-but-not-encrypted message. Data only — never affects routing.
+		inboundSignatureInfo: v.optional(inboundSignatureInfoValidator),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const recipient = extractEmail(args.recipientAddress);
@@ -948,6 +988,7 @@ export const deliverToMailbox = internalMutation({
 			dkimSigningDomain: args.dkimSigningDomain,
 			senderHeuristics,
 			inboundEncryptionInfo: args.inboundEncryptionInfo,
+			inboundSignatureInfo: args.inboundSignatureInfo,
 			unsubscribe: args.unsubscribe,
 			countUsedBytes: true,
 		});

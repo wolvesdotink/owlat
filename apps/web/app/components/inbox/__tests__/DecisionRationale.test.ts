@@ -11,19 +11,32 @@
  * `computed` is polyfilled by the web vitest setup (Nuxt auto-imports); <Icon>
  * is stubbed since it is a global auto-import.
  */
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import DecisionRationale from '../DecisionRationale.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
-const mountOpts = { global: { stubs: { Icon: true } } };
+// Every visible string flows through vue-i18n now: mount with the real catalog
+// and expose `useI18n`, which is a Nuxt auto-import in the app.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
+const mountOpts = {
+	global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+};
 
 describe('DecisionRationale', () => {
 	it('renders the held-because reason and the grounded-in list when present', () => {
 		const wrapper = mount(DecisionRationale, {
 			...mountOpts,
 			props: {
-				decision: { decision: 'human_review', reason: 'Draft quality 0.2 < threshold 0.8. Routing to human review.', confidence: 0.9 },
+				decision: {
+					decision: 'human_review',
+					reason: 'Draft quality 0.2 < threshold 0.8. Routing to human review.',
+					confidence: 0.9,
+				},
 				groundingSources: [
 					{ type: 'thread', id: 'm1', title: 'Order 123' },
 					{ type: 'knowledge', id: 'k1', title: 'Shipping policy' },
@@ -45,7 +58,11 @@ describe('DecisionRationale', () => {
 		const wrapper = mount(DecisionRationale, {
 			...mountOpts,
 			props: {
-				decision: { decision: 'auto_approve', reason: 'Draft quality 0.92 >= threshold 0.8. Auto-approving.', confidence: 0.95 },
+				decision: {
+					decision: 'auto_approve',
+					reason: 'Draft quality 0.92 >= threshold 0.8. Auto-approving.',
+					confidence: 0.95,
+				},
 				groundingSources: [],
 			},
 		});
@@ -66,7 +83,11 @@ describe('DecisionRationale', () => {
 		const wrapper = mount(DecisionRationale, {
 			...mountOpts,
 			props: {
-				decision: { decision: 'human_review', reason: 'Auto-reply is disabled. Routing to human review.', confidence: 0.5 },
+				decision: {
+					decision: 'human_review',
+					reason: 'Auto-reply is disabled. Routing to human review.',
+					confidence: 0.5,
+				},
 			},
 		});
 		expect(wrapper.text()).toContain('Held because');

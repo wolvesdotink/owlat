@@ -65,6 +65,18 @@ crons.interval(
 	internal.automations.stepWalker.processPendingDelays
 );
 
+// Sample "can this instance send at all?" and, on the no-transport → transport
+// edge, notify every member still waiting on their onboarding first send
+// (auth/sendReadyNotices.ts). A cron rather than a hook on the transport
+// mutations because readiness is also driven by environment configuration,
+// which no mutation observes.
+crons.interval(
+	'sync send-path readiness',
+	{ minutes: 5 },
+	internal.auth.sendReadyNotices.syncSendPathReadiness,
+	{}
+);
+
 // Process account deletions daily
 // Handles accounts past their 30-day grace period
 crons.interval(

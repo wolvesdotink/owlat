@@ -1,5 +1,5 @@
 import { type EditorBlock, type EmailTheme, type VariableType } from '@owlat/email-builder';
-import { renderEmailHtml } from '@owlat/email-renderer';
+import { renderEmailHtml, resolvePlainText } from '@owlat/email-renderer';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -39,6 +39,15 @@ export function useEmailHtmlRendering() {
 			variableType: options.variableType,
 			minify: options.minify,
 		});
+	};
+
+	/**
+	 * The text/plain body persisted beside the html: the author's manual
+	 * override when they wrote one, else the body generated from the blocks.
+	 * Variable tokens are left intact — the send path personalizes per recipient.
+	 */
+	const renderBlocksToPlainText = (blocks: EditorBlock[], override: string | undefined): string => {
+		return resolvePlainText(blocks, override);
 	};
 
 	const renderContentToHtml = (content: string, options: RenderOptions): string => {
@@ -91,9 +100,7 @@ export function useEmailHtmlRendering() {
 		);
 
 		return Object.fromEntries(
-			entries.filter(
-				(entry): entry is readonly [string, RenderedTranslation] => entry !== null
-			)
+			entries.filter((entry): entry is readonly [string, RenderedTranslation] => entry !== null)
 		);
 	};
 
@@ -113,6 +120,7 @@ export function useEmailHtmlRendering() {
 
 	return {
 		renderBlocksToHtml,
+		renderBlocksToPlainText,
 		renderContentToHtml,
 		loadLanguageContentForEmail,
 		buildHtmlTranslations,

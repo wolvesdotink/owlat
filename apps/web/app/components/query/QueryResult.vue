@@ -7,6 +7,8 @@ defineProps<{
 	answer: string;
 	sources: QuerySource[];
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -19,7 +21,7 @@ defineProps<{
 		<!-- Sources -->
 		<div v-if="sources.length > 0" class="pt-3 border-t border-border-subtle">
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-				Sources
+				{{ t('components.query.queryResult.sources') }}
 			</p>
 			<div class="flex flex-wrap gap-2">
 				<QuerySourceCitation

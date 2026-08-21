@@ -21,12 +21,14 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 vi.mock('@owlat/email-builder', () => ({ UnsavedChangesDialog: { template: '<div />' } }));
 
 import SettingsIndexPage from '../index.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 const overview = ref<{ plugins: unknown[]; orphaned: unknown[] }>({ plugins: [], orphaned: [] });
 
 beforeEach(() => {
 	overview.value = { plugins: [], orphaned: [] };
 
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useOrganizationContext', () => ({
@@ -73,6 +75,7 @@ const nuxtLinkStub = {
 function mountPage() {
 	return mount(SettingsIndexPage, {
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiQueryBoundary: passthroughStub,
 				UiCard: passthroughStub,
@@ -92,6 +95,23 @@ function mountPage() {
 }
 
 const PLUGINS_HREF = 'a[href="/dashboard/admin/instance/plugins"]';
+
+/**
+ * The mode picker paints `@owlat/shared`'s `OPERATING_MODES`, whose copy is
+ * `sharedPkg.operatingModes.*` KEYS — a card that bound them straight would show
+ * an admin the key path where the mode's name belongs.
+ */
+describe('Settings index — operating mode copy', () => {
+	it('renders each preset name and audience line as words', () => {
+		const wrapper = mountPage();
+		const text = wrapper.text();
+
+		expect(text).toContain('CRM only');
+		expect(text).toContain('Hosted mail server (Postbox)');
+		expect(text).toContain('Run Owlat as your mail server (Gmail-equivalent).');
+		expectFullyLocalized(wrapper);
+	});
+});
 
 describe('Settings index — Plugins nav entry', () => {
 	it('hides the entry when no plugins are bundled and nothing is orphaned', () => {

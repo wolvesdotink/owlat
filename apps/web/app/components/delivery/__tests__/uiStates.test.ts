@@ -36,6 +36,18 @@ import MeasurementGateList from '../MeasurementGateList.vue';
 import { improvementCopy, confidenceLabel } from '~/utils/deliverabilityMeasurement';
 import { holdingGate } from './measurementFixtures';
 import { adminNotice, cellControl, controlsView, NOW } from './rampFixtures';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+
+/**
+ * The measurement vocabulary is module scope, so it arrives as catalog keys; the
+ * tone these cases pin lives in the copy, so they read it through the real
+ * English catalog rather than restating it.
+ */
+const { t } = createTestI18n().global;
+const localized = (value: string | { key: string; params?: Record<string, unknown> }): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 const ALARM = /text-error|bg-error|setup incomplete|action required|something went wrong/i;
 
@@ -47,6 +59,7 @@ describe('calm states', () => {
 				selectedCellKey: null,
 				labelledBy: 'grid',
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		const state = wrapper.find('[data-testid="ramp-cell-state"]');
 		expect(state.attributes('data-state')).toBe('unmanaged');
@@ -67,6 +80,7 @@ describe('calm states', () => {
 	it('offers the way ONTO the ramp on a cell the ramp does not manage', () => {
 		const wrapper = mount(RampCellControls, {
 			props: { cell: cellControl({ isRampManaged: false }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
 		});
 		const note = wrapper.find('[data-testid="ramp-controls-unmanaged"]').text();
 		expect(note).toContain('not on the ramp yet');
@@ -89,6 +103,7 @@ describe('calm states', () => {
 	it('offers only the rungs at or below the cell’s ceiling as a reset', () => {
 		const wrapper = mount(RampCellControls, {
 			props: { cell: cellControl({ phaseCeiling: 0.5 }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.find('[data-testid="ramp-control-phase-0.25"]').attributes('disabled')).toBe(
 			undefined
@@ -117,6 +132,7 @@ describe('calm states', () => {
 	it('reads a rung that is not on the ladder the way the server does', () => {
 		const below = mount(RampCellControls, {
 			props: { cell: cellControl({ phaseCeiling: 0.1 }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
 		});
 		// The screen that owns the move has to be able to make it.
 		expect(below.find('[data-testid="ramp-control-phase-0.25"]').attributes('disabled')).toBe(
@@ -129,6 +145,7 @@ describe('calm states', () => {
 
 		const above = mount(RampCellControls, {
 			props: { cell: cellControl({ phaseCeiling: 1.2 }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(
 			above.find('[data-testid="ramp-control-promote-phase"]').attributes('disabled')
@@ -156,6 +173,7 @@ describe('calm states', () => {
 				cell: cellControl({ phaseCeiling: 0.25, ownShare: 1, isShareRamped: false }),
 				hasRelayConfigured: false,
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		const note = standalone.find('[data-testid="ramp-reset-note"]').text();
 		expect(note).toContain('share stays where it is');
@@ -165,6 +183,7 @@ describe('calm states', () => {
 
 		const withRelay = mount(RampCellControls, {
 			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(withRelay.find('[data-testid="ramp-reset-note"]').text()).toContain(
 			'brings the share back'
@@ -187,6 +206,7 @@ describe('calm states', () => {
 				cell: cellControl({ ownShare: 1, isShareRamped: false }),
 				hasRelayConfigured: false,
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		const pause = standalone.find('[data-testid="ramp-pause-note"]').text();
 		expect(pause).toContain('the warm-up pace is, and a pause is the only control that holds it');
@@ -204,6 +224,7 @@ describe('calm states', () => {
 
 		const withRelay = mount(RampCellControls, {
 			props: { cell: cellControl({ ownShare: 1, isShareRamped: true }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(withRelay.find('[data-testid="ramp-pause-note"]').text()).toContain(
 			'the share is the dial that climbs'
@@ -239,6 +260,7 @@ describe('calm states', () => {
 				cell: cellControl({ ownShare: 1, isShareRamped: false }),
 				hasRelayConfigured: true,
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		const pause = wrapper.find('[data-testid="ramp-pause-note"]').text();
 		const pin = wrapper.find('[data-testid="ramp-pin-note"]').text();
@@ -282,6 +304,7 @@ describe('calm states', () => {
 				cell: cellControl({ phaseCeiling: 0.25, ownShare: 1, isShareRamped: false }),
 				hasRelayConfigured: false,
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		const note = standalone.find('[data-testid="ramp-promote-note"]').text();
 		expect(note).toContain('raises the ceiling one rung');
@@ -301,6 +324,7 @@ describe('calm states', () => {
 				cell: cellControl({ phaseCeiling: 0.25, ownShare: 1, isShareRamped: true }),
 				hasRelayConfigured: false,
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		const carriedNote = carriedNotConfigured.find('[data-testid="ramp-promote-note"]').text();
 		expect(carriedNote).toMatch(/which arm/i);
@@ -308,6 +332,7 @@ describe('calm states', () => {
 		carriedNotConfigured.unmount();
 		const withRelay = mount(RampCellControls, {
 			props: { cell: cellControl({ phaseCeiling: 0.25, ownShare: 1 }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(withRelay.find('[data-testid="ramp-promote-note"]').text()).toMatch(
 			/re-shuffles which arm every recipient/i
@@ -323,6 +348,7 @@ describe('calm states', () => {
 	it('offers no promotion on a cell already at the top rung', () => {
 		const wrapper = mount(RampCellControls, {
 			props: { cell: cellControl({ phaseCeiling: 1 }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(
 			wrapper.find('[data-testid="ramp-control-promote-phase"]').attributes('disabled')
@@ -341,6 +367,7 @@ describe('calm states', () => {
 				requiresCorroboration: false,
 				decisionWindowLabel: 'the last 24 hours',
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.text()).toContain('Not enough data yet');
 		expect(wrapper.html()).not.toMatch(ALARM);
@@ -348,22 +375,23 @@ describe('calm states', () => {
 	});
 
 	it('names what would improve a low-confidence measurement as an invitation', () => {
-		expect(confidenceLabel('low')).toBe('Measurement confidence: low');
-		expect(improvementCopy('connect_reference_transport')).toContain('Connect a relay');
-		expect(improvementCopy('add_seed_mailboxes')).toContain('Add seed mailboxes');
-		expect(improvementCopy('send_more_volume')).toContain('Send more');
+		expect(localized(confidenceLabel('low'))).toBe('Measurement confidence: low');
+		expect(localized(improvementCopy('connect_reference_transport'))).toContain('Connect a relay');
+		expect(localized(improvementCopy('add_seed_mailboxes'))).toContain('Add seed mailboxes');
+		expect(localized(improvementCopy('send_more_volume'))).toContain('Send more');
 		for (const improvement of [
 			'connect_reference_transport',
 			'add_seed_mailboxes',
 			'send_more_volume',
 		] as const) {
-			expect(improvementCopy(improvement)).not.toMatch(/must|required|incomplete/i);
+			expect(localized(improvementCopy(improvement))).not.toMatch(/must|required|incomplete/i);
 		}
 	});
 
 	it('draws no chart, and no alarm, with nothing or one day of history', () => {
 		const empty = mount(IndependenceTrendChart, {
 			props: { points: [], hasReference: false, labelledBy: 'chart' },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(empty.find('[data-testid="independence-chart-empty"]').text()).toContain(
 			'Nothing has been sent yet'
@@ -377,6 +405,7 @@ describe('calm states', () => {
 				hasReference: false,
 				labelledBy: 'chart',
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(single.find('[data-testid="independence-chart-empty"]').text()).toContain(
 			'One day of history'
@@ -392,6 +421,7 @@ describe('calm states', () => {
 		}));
 		const wrapper = mount(IndependenceTrendChart, {
 			props: { points, hasReference: false, labelledBy: 'chart' },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.find('[data-testid="own-band"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="reference-band"]').exists()).toBe(false);
@@ -400,11 +430,17 @@ describe('calm states', () => {
 	});
 
 	it('treats "nothing has happened yet" as normal in both history surfaces', () => {
-		const notices = mount(RampDecreaseNotices, { props: { notices: [], labelledBy: 'n' } });
+		const notices = mount(RampDecreaseNotices, {
+			props: { notices: [], labelledBy: 'n' },
+			global: { plugins: [createTestI18n()] },
+		});
 		expect(notices.html()).not.toMatch(ALARM);
 		notices.unmount();
 
-		const timeline = mount(RampDecisionTimeline, { props: { decisions: [], labelledBy: 'h' } });
+		const timeline = mount(RampDecisionTimeline, {
+			props: { decisions: [], labelledBy: 'h' },
+			global: { plugins: [createTestI18n()] },
+		});
 		expect(timeline.html()).not.toMatch(ALARM);
 		timeline.unmount();
 	});
@@ -420,6 +456,7 @@ describe('the retreat history', () => {
 	it('names the cell the way every other surface does', () => {
 		const wrapper = mount(RampDecreaseNotices, {
 			props: { notices: [adminNotice({ cellKey: 'campaign:gmail' })], labelledBy: 'n' },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.find('[data-testid="ramp-notice-cell"]').text()).toBe('Campaign → Gmail');
 		wrapper.unmount();
@@ -430,6 +467,7 @@ describe('the retreat history', () => {
 		// retired must stay readable rather than render as nothing.
 		const wrapper = mount(RampDecreaseNotices, {
 			props: { notices: [adminNotice({ cellKey: 'newsletter:gmail' })], labelledBy: 'n' },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.find('[data-testid="ramp-notice-cell"]').text()).toBe('newsletter:gmail');
 		wrapper.unmount();
@@ -447,6 +485,7 @@ describe('the retreat history', () => {
 describe('control refusals', () => {
 	const passthroughCard = { template: '<div><slot /></div>' };
 	const globalOptions = {
+		plugins: [createTestI18n()],
 		stubs: {
 			UiIconBox: true,
 			Icon: true,
@@ -737,6 +776,7 @@ describe('control refusals', () => {
 		]);
 		const wrapper = mount(ControlsPage, {
 			global: {
+				plugins: [createTestI18n()],
 				stubs: {
 					UiIconBox: true,
 					Icon: true,
@@ -814,6 +854,7 @@ describe('standalone preset trade-off', () => {
 				defaultPreset: 'conservative',
 				hasReferenceArm: false,
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		const note = wrapper.find('[data-testid="ramp-preset-standalone-note-aggressive"]');
 		expect(note.exists()).toBe(true);
@@ -839,6 +880,7 @@ describe('standalone preset trade-off', () => {
 				defaultPreset: 'balanced',
 				hasReferenceArm: true,
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		const aggressive = wrapper.find<HTMLInputElement>(
 			'[data-testid="ramp-preset-option-aggressive"]'
@@ -868,7 +910,7 @@ describe('standalone preset trade-off', () => {
 			template: `<RampPresetPicker stream="campaign" :preset="null" default-preset="balanced"
 				:has-reference-arm="true" :busy="busy" @change="onChange" />`,
 		});
-		return { wrapper: mount(Parent), busy };
+		return { wrapper: mount(Parent, { global: { plugins: [createTestI18n()] } }), busy };
 	}
 
 	it('keeps the clicked pace visible while the write is in flight', async () => {
@@ -911,6 +953,7 @@ describe('standalone preset trade-off', () => {
 				defaultPreset: 'balanced',
 				hasReferenceArm: true,
 			},
+			global: { plugins: [createTestI18n()] },
 		});
 		await wrapper.find('[data-testid="ramp-preset-option-aggressive"]').setValue();
 		await wrapper.setProps({ preset: 'aggressive' });
@@ -928,6 +971,7 @@ describe('standalone preset trade-off', () => {
 	it('says nothing extra when a relay is connected', () => {
 		const wrapper = mount(RampPresetPicker, {
 			props: { stream: 'campaign', preset: null, defaultPreset: 'balanced', hasReferenceArm: true },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.find('[data-testid="ramp-preset-standalone-note-aggressive"]').exists()).toBe(
 			false

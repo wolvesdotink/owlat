@@ -7,7 +7,9 @@
  * Two steps: a branded welcome with the core choice (connect an existing
  * server vs. provision a new one), then the workspace connector form.
  */
-useHead({ title: 'Welcome — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('desktop.welcome.pageTitle') });
 definePageMeta({ layout: false });
 
 import { parseConnectionCode } from '~/lib/desktop/connectionCode';
@@ -33,7 +35,7 @@ const isRedeeming = ref(false);
 async function handleAdd() {
 	errorMessage.value = '';
 	if (!siteUrl.value.trim()) {
-		errorMessage.value = 'Enter your owlat server URL.';
+		errorMessage.value = t('desktop.welcome.errors.urlRequired');
 		return;
 	}
 	isConnecting.value = true;
@@ -43,7 +45,7 @@ async function handleAdd() {
 		await addWorkspace(siteUrl.value);
 		browserOpened.value = true;
 	} catch (e) {
-		errorMessage.value = e instanceof Error ? e.message : 'Could not connect to that server.';
+		errorMessage.value = e instanceof Error ? e.message : t('desktop.welcome.errors.connectFailed');
 	} finally {
 		isConnecting.value = false;
 	}
@@ -53,7 +55,7 @@ async function handlePastedCode() {
 	errorMessage.value = '';
 	const parsed = parseConnectionCode(pastedCode.value);
 	if (!parsed) {
-		errorMessage.value = 'That does not look like a connection code.';
+		errorMessage.value = t('desktop.welcome.errors.invalidCode');
 		return;
 	}
 	isRedeeming.value = true;
@@ -62,7 +64,7 @@ async function handlePastedCode() {
 		await completeConnection(parsed);
 	} catch (e) {
 		errorMessage.value =
-			e instanceof Error ? e.message : 'Could not connect with that code — try signing in again.';
+			e instanceof Error ? e.message : t('desktop.welcome.errors.codeRedeemFailed');
 		isRedeeming.value = false;
 	}
 }
@@ -82,19 +84,23 @@ function startOver() {
 		<!-- Native window titlebar (this page renders inside the Tauri webview). -->
 		<DesktopTitlebar />
 
-		<div
-			v-if="!isDesktop"
-			class="card w-full max-w-md p-8 text-sm text-text-secondary"
-		>
-			The workspace connector is only available in the desktop app.
+		<div v-if="!isDesktop" class="card w-full max-w-md p-8 text-sm text-text-secondary">
+			{{ t('desktop.welcome.desktopOnly') }}
 		</div>
 
 		<!-- ============ STEP 1: WELCOME ============ -->
 		<div v-else-if="view === 'welcome'" class="w-full max-w-md text-center">
 			<img src="/owlat.svg" alt="" class="mx-auto mb-6 size-14" />
-			<h1 class="font-display text-4xl mb-2">Welcome to <span class="italic">Owlat</span></h1>
+			<I18nT
+				keypath="desktop.welcome.heading"
+				tag="h1"
+				class="font-display text-4xl mb-2"
+				scope="global"
+			>
+				<template #brand><span class="italic">Owlat</span></template>
+			</I18nT>
 			<p class="text-md text-text-secondary mb-10">
-				Your self-hosted home for email, contacts and marketing.
+				{{ t('desktop.welcome.tagline') }}
 			</p>
 
 			<NuxtLink
@@ -107,10 +113,10 @@ function startOver() {
 					<Icon name="lucide:server" class="size-5" />
 				</span>
 				<span class="min-w-0 flex-1">
-					<span class="block text-sm font-semibold">Set up a new server</span>
-					<span class="mt-0.5 block text-xs text-text-secondary"
-						>Install Owlat on a fresh Linux server over SSH.</span
-					>
+					<span class="block text-sm font-semibold">{{ t('desktop.welcome.setup.title') }}</span>
+					<span class="mt-0.5 block text-xs text-text-secondary">{{
+						t('desktop.welcome.setup.description')
+					}}</span>
 				</span>
 				<Icon
 					name="lucide:arrow-right"
@@ -119,13 +125,9 @@ function startOver() {
 			</NuxtLink>
 
 			<p class="mt-5 text-xs text-text-secondary">
-				Already have a server?
-				<button
-					type="button"
-					class="link font-medium"
-					@click="view = 'connect'"
-				>
-					Connect an existing server →
+				{{ t('desktop.welcome.haveServer') }}
+				<button type="button" class="link font-medium" @click="view = 'connect'">
+					{{ t('desktop.welcome.connectExisting') }}
 				</button>
 			</p>
 		</div>
@@ -137,12 +139,14 @@ function startOver() {
 				class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
 				@click="view = 'welcome'"
 			>
-				<Icon name="lucide:arrow-left" class="size-3.5" /> Back
+				<Icon name="lucide:arrow-left" class="size-3.5" /> {{ t('common.back') }}
 			</button>
 
-			<h1 class="text-xl font-medium tracking-[-0.01em] mb-1">Connect to your Owlat server</h1>
+			<h1 class="text-xl font-medium tracking-[-0.01em] mb-1">
+				{{ t('desktop.welcome.connect.title') }}
+			</h1>
 			<p class="text-sm text-text-secondary mb-6">
-				Enter the address of your Owlat instance. You'll sign in through your browser.
+				{{ t('desktop.welcome.connect.description') }}
 			</p>
 
 			<form v-if="!browserOpened" class="space-y-3" @submit.prevent="handleAdd">
@@ -150,25 +154,29 @@ function startOver() {
 					v-model="siteUrl"
 					type="text"
 					inputmode="url"
-					placeholder="https://your-instance.owlat.app"
+					:placeholder="t('desktop.welcome.connect.urlPlaceholder')"
 					class="input input-sm text-sm"
 				/>
 				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
 				<UiButton type="submit" :disabled="isConnecting" full-width>
-					{{ isConnecting ? 'Opening browser…' : 'Connect workspace' }}
+					{{
+						isConnecting
+							? t('desktop.welcome.connect.opening')
+							: t('desktop.welcome.connect.submit')
+					}}
 				</UiButton>
 			</form>
 
 			<div v-else class="space-y-4">
 				<p class="text-sm text-text-secondary">
-					Finish signing in in your browser — this app reconnects automatically.
+					{{ t('desktop.welcome.connect.finishInBrowser') }}
 				</p>
 				<form
 					class="space-y-3 border-t border-border-subtle pt-4"
 					@submit.prevent="handlePastedCode"
 				>
 					<label class="block text-sm" for="connection-code">
-						Nothing happening? Paste the connection code shown in the browser:
+						{{ t('desktop.welcome.connect.pasteCodeLabel') }}
 					</label>
 					<input
 						id="connection-code"
@@ -176,12 +184,16 @@ function startOver() {
 						type="text"
 						autocomplete="off"
 						spellcheck="false"
-						placeholder="e.g. 4f2c…:Jh…"
+						:placeholder="t('desktop.welcome.connect.codePlaceholder')"
 						class="input input-sm font-mono text-sm"
 					/>
 					<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
 					<UiButton type="submit" :disabled="isRedeeming || !pastedCode.trim()" full-width>
-						{{ isRedeeming ? 'Connecting…' : 'Connect with code' }}
+						{{
+							isRedeeming
+								? t('desktop.welcome.connect.redeeming')
+								: t('desktop.welcome.connect.redeemSubmit')
+						}}
 					</UiButton>
 				</form>
 				<button
@@ -189,13 +201,13 @@ function startOver() {
 					class="text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
 					@click="startOver"
 				>
-					Start over
+					{{ t('desktop.welcome.connect.startOver') }}
 				</button>
 			</div>
 
 			<div v-if="workspaces.length" class="mt-8">
 				<h2 class="text-xs font-medium uppercase tracking-wide text-text-secondary mb-2">
-					Your workspaces
+					{{ t('desktop.welcome.workspaces') }}
 				</h2>
 				<ul class="space-y-1.5">
 					<li
@@ -215,7 +227,7 @@ function startOver() {
 							class="ml-3 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-error"
 							@click="removeWorkspace(ws.id)"
 						>
-							Remove
+							{{ t('common.remove') }}
 						</button>
 					</li>
 				</ul>

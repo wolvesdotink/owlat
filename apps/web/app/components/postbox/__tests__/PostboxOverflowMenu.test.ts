@@ -10,12 +10,16 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxOverflowMenu from '../PostboxOverflowMenu.vue';
 
 // Capture the outside-click handler so a test can invoke it directly.
 let clickOutsideHandler: ((e: MouseEvent) => void) | null = null;
 beforeAll(() => {
+	// The default trigger label flows through vue-i18n now; `useI18n` is a Nuxt
+	// auto-import, so it has to exist as a global for the component's setup.
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useClickOutside', (_targets: unknown, handler: (e: MouseEvent) => void) => {
 		clickOutsideHandler = handler;
 	});
@@ -32,7 +36,7 @@ function mountMenu() {
 				<button role="menuitem">Forward</button>
 			</template>`,
 		},
-		global: { stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
 

@@ -9,13 +9,15 @@ import type { Id } from '@owlat/api/dataModel';
  * to `chat.messages.sendMessage` via `attachmentIds`.
  */
 export function useChatAttachments() {
+	const { t } = useI18n();
+
 	const { run: generateUploadUrlMutation } = useBackendOperation(
 		api.chat.attachments.generateUploadUrl,
-		{ label: 'Prepare attachment upload' },
+		{ label: () => t('shared.chat.useChatAttachments.prepareUpload') }
 	);
 	const { run: registerAttachmentMutation } = useBackendOperation(
 		api.chat.attachments.registerAttachment,
-		{ label: 'Register attachment' },
+		{ label: () => t('shared.chat.useChatAttachments.registerAttachment') }
 	);
 
 	const isUploading = ref(false);
@@ -30,7 +32,7 @@ export function useChatAttachments() {
 				const upload = await uploadFileToStorage(
 					file,
 					() => generateUploadUrlMutation({}),
-					file.type || 'application/octet-stream',
+					file.type || 'application/octet-stream'
 				);
 				if (!upload.ok) return null;
 				storageId = upload.storageId;
@@ -73,14 +75,11 @@ export function useChatAttachments() {
  * attachments).
  */
 export function useChatAttachmentDetails(messageIdRef: () => Id<'chatMessages'> | null) {
-	const { data, isLoading } = useConvexQuery(
-		api.chat.attachments.getAttachmentDetails,
-		() => {
-			const messageId = messageIdRef();
-			if (!messageId) return 'skip';
-			return { messageId };
-		},
-	);
+	const { data, isLoading } = useConvexQuery(api.chat.attachments.getAttachmentDetails, () => {
+		const messageId = messageIdRef();
+		if (!messageId) return 'skip';
+		return { messageId };
+	});
 	const attachments = computed(() => data.value ?? []);
 	return { attachments, isLoading };
 }

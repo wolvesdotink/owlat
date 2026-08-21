@@ -28,6 +28,20 @@ const emit = defineEmits<{
 
 const { createEntry, updateEntry, ENTRY_TYPES, TYPE_CONFIG, SOURCE_CONFIG } = useKnowledgeGraph();
 
+const { t, te } = useI18n();
+
+// Option labels are translated here: the shared presentation map
+// (`~/utils/knowledgeEntryTypes`) stays a plain constant, so a type the catalog
+// doesn't know still falls back to its raw label instead of a key path.
+const entryTypeLabel = (type: string) => {
+	const key = `components.knowledge.knowledgeEntryForm.entryTypes.${type}`;
+	return te(key) ? t(key) : (TYPE_CONFIG[type as EntryType]?.label ?? type);
+};
+const sourceTypeLabel = (source: string) => {
+	const key = `components.knowledge.knowledgeEntryForm.sourceTypes.${source}`;
+	return te(key) ? t(key) : (SOURCE_CONFIG[source]?.label ?? source);
+};
+
 // Seed the "expires in N days" input from the stored absolute timestamp so the
 // edit form round-trips an existing expiry instead of silently clearing it.
 const initialExpiresInDays = (() => {
@@ -101,39 +115,39 @@ const handleCancel = () => {
 	<form class="space-y-5" @submit.prevent="handleSubmit">
 		<!-- Entry Type -->
 		<div>
-			<label for="form-entrytype" class="block text-sm font-medium text-text-secondary mb-1.5"
-				>Type</label
-			>
+			<label for="form-entrytype" class="block text-sm font-medium text-text-secondary mb-1.5">{{
+				t('components.knowledge.knowledgeEntryForm.type')
+			}}</label>
 			<select id="form-entrytype" v-model="form.entryType" class="input w-full">
-				<option v-for="t in ENTRY_TYPES" :key="t" :value="t">
-					{{ TYPE_CONFIG[t].label }}
+				<option v-for="entryType in ENTRY_TYPES" :key="entryType" :value="entryType">
+					{{ entryTypeLabel(entryType) }}
 				</option>
 			</select>
 		</div>
 
 		<!-- Title -->
 		<div>
-			<label for="form-title" class="block text-sm font-medium text-text-secondary mb-1.5"
-				>Title</label
-			>
+			<label for="form-title" class="block text-sm font-medium text-text-secondary mb-1.5">{{
+				t('components.knowledge.knowledgeEntryForm.title')
+			}}</label>
 			<input
 				id="form-title"
 				v-model="form.title"
 				type="text"
-				placeholder="Short, descriptive title"
+				:placeholder="t('components.knowledge.knowledgeEntryForm.titlePlaceholder')"
 				class="input w-full"
 			/>
 		</div>
 
 		<!-- Content -->
 		<div>
-			<label for="form-content" class="block text-sm font-medium text-text-secondary mb-1.5"
-				>Content</label
-			>
+			<label for="form-content" class="block text-sm font-medium text-text-secondary mb-1.5">{{
+				t('components.knowledge.knowledgeEntryForm.content')
+			}}</label>
 			<textarea
 				id="form-content"
 				v-model="form.content"
-				placeholder="Detailed knowledge entry content..."
+				:placeholder="t('components.knowledge.knowledgeEntryForm.contentPlaceholder')"
 				rows="4"
 				class="input w-full resize-none"
 			/>
@@ -141,12 +155,12 @@ const handleCancel = () => {
 
 		<!-- Source Type -->
 		<div>
-			<label for="form-sourcetype" class="block text-sm font-medium text-text-secondary mb-1.5"
-				>Source</label
-			>
+			<label for="form-sourcetype" class="block text-sm font-medium text-text-secondary mb-1.5">{{
+				t('components.knowledge.knowledgeEntryForm.source')
+			}}</label>
 			<select id="form-sourcetype" v-model="form.sourceType" class="input w-full">
 				<option v-for="(config, key) in SOURCE_CONFIG" :key="key" :value="key">
-					{{ config.label }}
+					{{ sourceTypeLabel(String(key)) }}
 				</option>
 			</select>
 		</div>
@@ -154,10 +168,12 @@ const handleCancel = () => {
 		<!-- Confidence -->
 		<div>
 			<label for="form-confidence" class="block text-sm font-medium text-text-secondary mb-1.5">
-				Confidence
-				<span class="font-normal text-text-tertiary"
-					>({{ Math.round(form.confidence * 100) }}%)</span
-				>
+				{{ t('components.knowledge.knowledgeEntryForm.confidence') }}
+				<span class="font-normal text-text-tertiary">{{
+					t('components.knowledge.knowledgeEntryForm.confidenceValue', {
+						value: Math.round(form.confidence * 100),
+					})
+				}}</span>
 			</label>
 			<input
 				id="form-confidence"
@@ -169,22 +185,24 @@ const handleCancel = () => {
 				class="w-full accent-brand"
 			/>
 			<div class="flex justify-between text-xs text-text-tertiary mt-1">
-				<span>Low</span>
-				<span>High</span>
+				<span>{{ t('components.knowledge.knowledgeEntryForm.confidenceLow') }}</span>
+				<span>{{ t('components.knowledge.knowledgeEntryForm.confidenceHigh') }}</span>
 			</div>
 		</div>
 
 		<!-- Tags -->
 		<div>
 			<label for="form-tagsinput" class="block text-sm font-medium text-text-secondary mb-1.5">
-				Tags
-				<span class="text-text-tertiary font-normal">(comma-separated)</span>
+				{{ t('components.knowledge.knowledgeEntryForm.tags') }}
+				<span class="text-text-tertiary font-normal">{{
+					t('components.knowledge.knowledgeEntryForm.tagsHint')
+				}}</span>
 			</label>
 			<input
 				id="form-tagsinput"
 				v-model="form.tagsInput"
 				type="text"
-				placeholder="e.g. important, customer, q1-2026"
+				:placeholder="t('components.knowledge.knowledgeEntryForm.tagsPlaceholder')"
 				class="input w-full"
 			/>
 			<div v-if="parsedTags.length > 0" class="flex flex-wrap gap-1 mt-2">
@@ -201,26 +219,34 @@ const handleCancel = () => {
 		<!-- Expiration -->
 		<div>
 			<label for="form-expiresindays" class="block text-sm font-medium text-text-secondary mb-1.5">
-				Expires in
-				<span class="text-text-tertiary font-normal">(optional, days from now)</span>
+				{{ t('components.knowledge.knowledgeEntryForm.expiresIn') }}
+				<span class="text-text-tertiary font-normal">{{
+					t('components.knowledge.knowledgeEntryForm.expiresInHint')
+				}}</span>
 			</label>
 			<input
 				id="form-expiresindays"
 				v-model="form.expiresInDays"
 				type="number"
 				min="1"
-				placeholder="e.g. 30"
+				:placeholder="t('components.knowledge.knowledgeEntryForm.expiresInPlaceholder')"
 				class="input w-full"
 			/>
 		</div>
 
 		<!-- Actions -->
 		<div class="flex items-center justify-end gap-3 pt-2">
-			<UiButton variant="secondary" type="button" @click="handleCancel">Cancel</UiButton>
+			<UiButton variant="secondary" type="button" @click="handleCancel">{{
+				t('common.cancel')
+			}}</UiButton>
 			<UiButton type="submit" class="gap-2" :disabled="!canSubmit || isSubmitting">
 				<UiSpinner v-if="isSubmitting" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:plus" class="w-4 h-4" />
-				{{ isEdit ? 'Update Entry' : 'Create Entry' }}
+				{{
+					isEdit
+						? t('components.knowledge.knowledgeEntryForm.submitUpdate')
+						: t('components.knowledge.knowledgeEntryForm.submitCreate')
+				}}
 			</UiButton>
 		</div>
 	</form>

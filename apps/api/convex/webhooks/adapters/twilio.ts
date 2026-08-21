@@ -16,14 +16,13 @@
  * https://www.twilio.com/docs/usage/security#validating-requests
  */
 
-import { getOptional } from '../../lib/env';
 import {
 	constantTimeEqual,
 	hmacSha1Base64,
-	missingSecretResult,
 	parseFormParams,
 	urlAndSortedParamsSigningBase,
 } from '../security';
+import { missingChannelSecretResult, resolveChannelInboundSecret } from '../channelSecrets';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 
@@ -61,10 +60,18 @@ const TWIML_SUCCESS_BODY = '<?xml version="1.0" encoding="UTF-8"?><Response></Re
 export const twilioAdapter: InboundAdapter = {
 	source: 'twilio',
 
-	async verifySignature(request, rawBody) {
-		const authToken = getOptional('TWILIO_AUTH_TOKEN');
+	async verifySignature(request, rawBody, ctx) {
+		// Twilio signs with the SAME account auth token the outbound adapter
+		// sends with, so the SMS card's existing "Auth Token" field is the
+		// inbound key too — nothing extra to configure.
+		const authToken = await resolveChannelInboundSecret(
+			'sms',
+			'signature',
+			'TWILIO_AUTH_TOKEN',
+			ctx
+		);
 		if (!authToken) {
-			return missingSecretResult('TWILIO_AUTH_TOKEN');
+			return missingChannelSecretResult('TWILIO_AUTH_TOKEN', 'SMS channel Auth Token');
 		}
 
 		const signature = request.headers.get('x-twilio-signature');

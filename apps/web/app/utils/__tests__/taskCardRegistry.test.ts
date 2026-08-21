@@ -8,6 +8,10 @@ import {
 	isPluginTaskFlowKind,
 	taskCardRegistry,
 } from '../taskCardRegistry';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** Built-in labels are catalog keys, so the copy assertions render them. */
+const { t } = createTestI18n().global;
 
 const noop = async () => ({ default: {} });
 
@@ -41,6 +45,13 @@ describe('built-in membership and metadata', () => {
 		expect(isPluginTaskFlowKind('plugin.A.b')).toBe(false);
 		expect(isPluginTaskFlowKind('plugin.a b')).toBe(false);
 		expect(isPluginTaskFlowKind('reply')).toBe(false);
+	});
+
+	it('labels the built-in kinds from the catalog, not from hardcoded copy', () => {
+		// A built-in label is Owlat's own copy, so it is a message key; a key the
+		// catalog does not carry would render as its own path.
+		const labels = taskCardRegistry.list().map((d) => t(d.label));
+		expect(labels).toEqual(['Question', 'Draft review', 'Reply']);
 	});
 
 	it('exposes a ready-to-use app-wide singleton seeded with the built-ins', () => {

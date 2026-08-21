@@ -17,10 +17,17 @@ const emit = defineEmits<{
 	(e: 'update:open', value: boolean): void;
 	(e: 'pick', folderId: Id<'mailFolders'>): void;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
-	<UiModal :open="open" title="Move to folder" size="sm" @update:open="emit('update:open', $event)">
+	<UiModal
+		:open="open"
+		:title="t('components.postbox.postboxMovePickerDialog.title')"
+		size="sm"
+		@update:open="emit('update:open', $event)"
+	>
 		<ul class="space-y-1">
 			<li v-for="folder in folders" :key="folder._id">
 				<button
@@ -33,6 +40,8 @@ const emit = defineEmits<{
 				</button>
 			</li>
 		</ul>
-		<p v-if="folders.length === 0" class="text-sm text-text-tertiary">No other folders</p>
+		<p v-if="folders.length === 0" class="text-sm text-text-tertiary">
+			{{ t('components.postbox.postboxMovePickerDialog.noOtherFolders') }}
+		</p>
 	</UiModal>
 </template>

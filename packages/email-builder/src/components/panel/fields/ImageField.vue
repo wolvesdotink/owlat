@@ -69,6 +69,7 @@ async function handleFileSelect(event: Event) {
 		<div class="flex gap-1">
 			<input
 				type="text"
+				aria-label="Image URL"
 				class="flex-1 py-2 px-2.5 text-[13px] border border-border-subtle rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring"
 				:value="value"
 				placeholder="Image URL"
@@ -79,6 +80,7 @@ async function handleFileSelect(event: Event) {
 				class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-all duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
 				type="button"
 				title="Browse or upload images"
+				aria-label="Browse or upload images"
 				@click="handleBrowse"
 			>
 				<ImageUp :size="14" />
@@ -87,6 +89,8 @@ async function handleFileSelect(event: Event) {
 				v-else
 				class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-all duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
 				type="button"
+				:title="isUploading ? 'Uploading image…' : 'Upload an image'"
+				:aria-label="isUploading ? 'Uploading image…' : 'Upload an image'"
 				:disabled="isUploading"
 				@click="openFilePicker"
 			>
@@ -95,6 +99,8 @@ async function handleFileSelect(event: Event) {
 			<input
 				ref="fileInputRef"
 				type="file"
+				aria-hidden="true"
+				tabindex="-1"
 				class="hidden"
 				accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
 				@change="handleFileSelect"
@@ -104,6 +110,7 @@ async function handleFileSelect(event: Event) {
 		<!-- Upload error -->
 		<div
 			v-if="uploadError"
+			role="alert"
 			class="flex items-center gap-1.5 p-2 border border-red-300 rounded-lg bg-red-50 text-red-700 text-xs"
 		>
 			<span>{{ uploadError }}</span>

@@ -30,18 +30,16 @@ const modules = import.meta.glob('../**/*.*s');
 describe('unifiedMessages.resolveOutboundThread', () => {
 	it('throws when the channel is not enabled', async () => {
 		const t = convexTest(schema, modules);
-		const contactId = await t.run((ctx) =>
-			ctx.db.insert('contacts', createTestContact()),
-		);
+		const contactId = await t.run((ctx) => ctx.db.insert('contacts', createTestContact()));
 		await t.run((ctx) =>
-			ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'sms', isEnabled: false })),
+			ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'sms', isEnabled: false }))
 		);
 
 		await expect(
 			t.mutation(internal.unifiedMessages.resolveOutboundThread, {
 				contactId,
 				channel: 'sms',
-			}),
+			})
 		).rejects.toThrow(/not enabled/i);
 	});
 
@@ -50,63 +48,75 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 		const contactId = await t.run(async (ctx) => {
 			const id = await ctx.db.insert(
 				'contacts',
-				createTestContact({ deletedAt: Date.now(), deletedBy: 'system' }),
+				createTestContact({ deletedAt: Date.now(), deletedBy: 'system' })
 			);
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId: id,
-				channel: 'phone',
-				identifier: '+15551234567',
-			}));
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId: id,
+					channel: 'phone',
+					identifier: '+15551234567',
+				})
+			);
 			return id;
 		});
 		await t.run((ctx) =>
-			ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'sms', isEnabled: true })),
+			ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'sms', isEnabled: true }))
 		);
 
 		await expect(
 			t.mutation(internal.unifiedMessages.resolveOutboundThread, {
 				contactId,
 				channel: 'sms',
-			}),
+			})
 		).rejects.toThrow(/Contact not found/i);
 	});
 
 	it('throws when an sms contact has no phone/sms address', async () => {
 		const t = convexTest(schema, modules);
 		const contactId = await t.run((ctx) =>
-			ctx.db.insert('contacts', createTestContact({ email: 'x@example.com' })),
+			ctx.db.insert('contacts', createTestContact({ email: 'x@example.com' }))
 		);
 		await t.run((ctx) =>
-			ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'sms', isEnabled: true })),
+			ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'sms', isEnabled: true }))
 		);
 
 		await expect(
 			t.mutation(internal.unifiedMessages.resolveOutboundThread, {
 				contactId,
 				channel: 'sms',
-			}),
+			})
 		).rejects.toThrow(/no sms address/i);
 	});
 
-	it('continues the contact\'s most recent thread for the channel', async () => {
+	it("continues the contact's most recent thread for the channel", async () => {
 		const t = convexTest(schema, modules);
 		let contactId!: Id<'contacts'>;
 		let existingThreadId!: Id<'conversationThreads'>;
 
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'sms', isEnabled: true }));
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'phone',
-				identifier: '+15551234567',
-			}));
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'sms', isEnabled: true })
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'phone',
+					identifier: '+15551234567',
+				})
+			);
 			existingThreadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId: existingThreadId,
-				channel: 'sms',
-				contactId,
-			}));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId: existingThreadId,
+					channel: 'sms',
+					contactId,
+				})
+			);
 		});
 
 		const threadId = await t.mutation(internal.unifiedMessages.resolveOutboundThread, {
@@ -116,13 +126,103 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 		expect(threadId).toBe(existingThreadId);
 	});
 
+	it('answers on the pinned thread rather than the most recent one', async () => {
+		// The Team Inbox replies from inside a thread; a newer thread on the same
+		// channel must not steal the reply.
+		const t = convexTest(schema, modules);
+		let contactId!: Id<'contacts'>;
+		let olderThreadId!: Id<'conversationThreads'>;
+
+		await t.run(async (ctx) => {
+			contactId = await ctx.db.insert('contacts', createTestContact());
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'sms', isEnabled: true })
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'phone',
+					identifier: '+15551234567',
+				})
+			);
+			olderThreadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
+			const newerThreadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId: olderThreadId,
+					channel: 'sms',
+					contactId,
+				})
+			);
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId: newerThreadId,
+					channel: 'sms',
+					contactId,
+				})
+			);
+		});
+
+		const threadId = await t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+			contactId,
+			channel: 'sms',
+			threadId: olderThreadId,
+		});
+		expect(threadId).toBe(olderThreadId);
+	});
+
+	it('rejects a pinned thread belonging to another contact', async () => {
+		const t = convexTest(schema, modules);
+		let contactId!: Id<'contacts'>;
+		let foreignThreadId!: Id<'conversationThreads'>;
+
+		await t.run(async (ctx) => {
+			contactId = await ctx.db.insert('contacts', createTestContact());
+			const otherContactId = await ctx.db.insert('contacts', createTestContact());
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'sms', isEnabled: true })
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'phone',
+					identifier: '+15551234567',
+				})
+			);
+			foreignThreadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId: otherContactId })
+			);
+		});
+
+		await expect(
+			t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+				contactId,
+				channel: 'sms',
+				threadId: foreignThreadId,
+			})
+		).rejects.toThrow(/does not belong to this contact/i);
+	});
+
 	it('opens a fresh thread when the contact has no prior thread on the channel', async () => {
 		const t = convexTest(schema, modules);
 		let contactId!: Id<'contacts'>;
 
 		await t.run(async (ctx) => {
-			contactId = await ctx.db.insert('contacts', createTestContact({ firstName: 'Ada', lastName: 'Lovelace' }));
-			await ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'generic', isEnabled: true }));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ firstName: 'Ada', lastName: 'Lovelace' })
+			);
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'generic', isEnabled: true })
+			);
 		});
 
 		const threadId = await t.mutation(internal.unifiedMessages.resolveOutboundThread, {
@@ -143,7 +243,10 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'generic', isEnabled: true }));
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'generic', isEnabled: true })
+			);
 			await ctx.db.insert('instanceSettings', { createdAt: Date.now(), openThreads: 0 });
 		});
 
@@ -165,18 +268,30 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('channelConfigs', createTestChannelConfig({ channel: 'sms', isEnabled: true }));
-			await ctx.db.insert('contactIdentities', createTestContactIdentity({
-				contactId,
-				channel: 'phone',
-				identifier: '+15551234567',
-			}));
-			const existingThreadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
-			await ctx.db.insert('unifiedMessages', createTestUnifiedMessage({
-				threadId: existingThreadId,
-				channel: 'sms',
-				contactId,
-			}));
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'sms', isEnabled: true })
+			);
+			await ctx.db.insert(
+				'contactIdentities',
+				createTestContactIdentity({
+					contactId,
+					channel: 'phone',
+					identifier: '+15551234567',
+				})
+			);
+			const existingThreadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId })
+			);
+			await ctx.db.insert(
+				'unifiedMessages',
+				createTestUnifiedMessage({
+					threadId: existingThreadId,
+					channel: 'sms',
+					contactId,
+				})
+			);
 			// Seed the counter to a non-zero value reflecting the existing open
 			// thread; continuing it must not re-bump.
 			await ctx.db.insert('instanceSettings', { createdAt: Date.now(), openThreads: 1 });
@@ -214,7 +329,7 @@ describe('unifiedMessages.recordOutbound', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 			configId = await ctx.db.insert(
 				'channelConfigs',
-				createTestChannelConfig({ channel: 'sms', isEnabled: true }),
+				createTestChannelConfig({ channel: 'sms', isEnabled: true })
 			);
 			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
 		});
@@ -243,7 +358,7 @@ describe('unifiedMessages.recordOutbound', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 			configId = await ctx.db.insert(
 				'channelConfigs',
-				createTestChannelConfig({ channel: 'sms', isEnabled: true }),
+				createTestChannelConfig({ channel: 'sms', isEnabled: true })
 			);
 			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
 		});

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Email Theme — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.emailTheme.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -20,7 +22,7 @@ const isLoading = computed(() => organizationLoading.value || organizationSettin
 
 // Mutations
 const { run: updateOrganizationSettings } = useBackendOperation(api.workspaces.settings.update, {
-	label: 'Save email theme',
+	label: () => t('dashboard.admin.instance.emailTheme.saveOperation'),
 });
 
 // Default theme values
@@ -31,17 +33,33 @@ const defaultTheme = {
 	baseWidth: 600,
 };
 
-// Font options
-const fontOptions = [
-	{ value: 'Arial, sans-serif', label: 'Arial' },
-	{ value: "'Helvetica Neue', Helvetica, sans-serif", label: 'Helvetica' },
-	{ value: 'Georgia, serif', label: 'Georgia' },
-	{ value: "'Times New Roman', serif", label: 'Times New Roman' },
-	{ value: 'Verdana, sans-serif', label: 'Verdana' },
-	{ value: "'Trebuchet MS', sans-serif", label: 'Trebuchet MS' },
-	{ value: "'Courier New', monospace", label: 'Courier New' },
-	{ value: 'system-ui, sans-serif', label: 'System Default' },
-];
+// Font options — a computed rather than a frozen array so the labels follow the
+// active locale instead of the one that happened to be active at setup.
+const fontOptions = computed(() => [
+	{ value: 'Arial, sans-serif', label: t('dashboard.admin.instance.emailTheme.fonts.arial') },
+	{
+		value: "'Helvetica Neue', Helvetica, sans-serif",
+		label: t('dashboard.admin.instance.emailTheme.fonts.helvetica'),
+	},
+	{ value: 'Georgia, serif', label: t('dashboard.admin.instance.emailTheme.fonts.georgia') },
+	{
+		value: "'Times New Roman', serif",
+		label: t('dashboard.admin.instance.emailTheme.fonts.timesNewRoman'),
+	},
+	{ value: 'Verdana, sans-serif', label: t('dashboard.admin.instance.emailTheme.fonts.verdana') },
+	{
+		value: "'Trebuchet MS', sans-serif",
+		label: t('dashboard.admin.instance.emailTheme.fonts.trebuchetMs'),
+	},
+	{
+		value: "'Courier New', monospace",
+		label: t('dashboard.admin.instance.emailTheme.fonts.courierNew'),
+	},
+	{
+		value: 'system-ui, sans-serif',
+		label: t('dashboard.admin.instance.emailTheme.fonts.systemDefault'),
+	},
+]);
 
 // Form state
 const form = reactive({
@@ -110,12 +128,12 @@ const validateForm = (): boolean => {
 	let isValid = true;
 
 	if (!isValidHexColor(form.primaryColor)) {
-		formErrors.primaryColor = 'Please enter a valid hex color (e.g., #c4785a)';
+		formErrors.primaryColor = t('dashboard.admin.instance.emailTheme.errors.primaryColor');
 		isValid = false;
 	}
 
 	if (!isValidHexColor(form.backgroundColor)) {
-		formErrors.backgroundColor = 'Please enter a valid hex color (e.g., #ffffff)';
+		formErrors.backgroundColor = t('dashboard.admin.instance.emailTheme.errors.backgroundColor');
 		isValid = false;
 	}
 
@@ -142,7 +160,7 @@ const handleSave = async () => {
 
 	if (result === undefined) return;
 
-	showNotification('Email theme saved successfully');
+	showNotification(t('dashboard.admin.instance.emailTheme.savedToast'));
 	isFormDirty.value = false;
 };
 
@@ -184,17 +202,23 @@ const buttonTextColor = computed(() => {
 				class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Settings
+				{{ t('dashboard.admin.instance.emailTheme.backToSettings') }}
 			</NuxtLink>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Email Theme</h1>
-			<p class="mt-1 text-text-secondary">Configure default styling for your email templates</p>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.instance.emailTheme.title') }}
+			</h1>
+			<p class="mt-1 text-text-secondary">
+				{{ t('dashboard.admin.instance.emailTheme.subtitle') }}
+			</p>
 		</div>
 
 		<!-- Loading State -->
 		<div v-if="isLoading && !organizationSettings" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading theme settings...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('dashboard.admin.instance.emailTheme.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -206,8 +230,12 @@ const buttonTextColor = computed(() => {
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:palette" size="sm" variant="surface" rounded="lg" />
 						<div>
-							<h2 class="text-lg font-semibold text-text-primary">Theme Settings</h2>
-							<p class="text-sm text-text-secondary">Set colors and fonts for your emails</p>
+							<h2 class="text-lg font-semibold text-text-primary">
+								{{ t('dashboard.admin.instance.emailTheme.settingsTitle') }}
+							</h2>
+							<p class="text-sm text-text-secondary">
+								{{ t('dashboard.admin.instance.emailTheme.settingsSubtitle') }}
+							</p>
 						</div>
 					</div>
 				</div>
@@ -218,7 +246,7 @@ const buttonTextColor = computed(() => {
 						<div>
 							<label for="primary-color" class="label flex items-center gap-2">
 								<Icon name="lucide:palette" class="w-4 h-4 text-text-tertiary" />
-								Primary Color
+								{{ t('dashboard.admin.instance.emailTheme.primaryColor') }}
 							</label>
 							<div class="flex items-center gap-3">
 								<input
@@ -241,7 +269,7 @@ const buttonTextColor = computed(() => {
 								{{ formErrors.primaryColor }}
 							</p>
 							<p v-else class="mt-1 text-xs text-text-tertiary">
-								Used for buttons and call-to-action elements in your emails.
+								{{ t('dashboard.admin.instance.emailTheme.primaryColorHelp') }}
 							</p>
 						</div>
 
@@ -249,7 +277,7 @@ const buttonTextColor = computed(() => {
 						<div>
 							<label for="background-color" class="label flex items-center gap-2">
 								<Icon name="lucide:palette" class="w-4 h-4 text-text-tertiary" />
-								Background Color
+								{{ t('dashboard.admin.instance.emailTheme.backgroundColor') }}
 							</label>
 							<div class="flex items-center gap-3">
 								<input
@@ -272,7 +300,7 @@ const buttonTextColor = computed(() => {
 								{{ formErrors.backgroundColor }}
 							</p>
 							<p v-else class="mt-1 text-xs text-text-tertiary">
-								The background color of your email body.
+								{{ t('dashboard.admin.instance.emailTheme.backgroundColorHelp') }}
 							</p>
 						</div>
 
@@ -280,7 +308,7 @@ const buttonTextColor = computed(() => {
 						<div>
 							<label for="font-family" class="label flex items-center gap-2">
 								<Icon name="lucide:type" class="w-4 h-4 text-text-tertiary" />
-								Font Family
+								{{ t('dashboard.admin.instance.emailTheme.fontFamily') }}
 							</label>
 							<select id="font-family" v-model="form.fontFamily" class="input" :disabled="isSaving">
 								<option v-for="font in fontOptions" :key="font.value" :value="font.value">
@@ -288,7 +316,7 @@ const buttonTextColor = computed(() => {
 								</option>
 							</select>
 							<p class="mt-1 text-xs text-text-tertiary">
-								The default font for text content in your emails.
+								{{ t('dashboard.admin.instance.emailTheme.fontFamilyHelp') }}
 							</p>
 						</div>
 
@@ -296,7 +324,7 @@ const buttonTextColor = computed(() => {
 						<div>
 							<label for="base-width" class="label flex items-center gap-2">
 								<Icon name="lucide:move-horizontal" class="w-4 h-4 text-text-tertiary" />
-								Email Width
+								{{ t('dashboard.admin.instance.emailTheme.emailWidth') }}
 							</label>
 							<div class="flex items-center gap-3">
 								<input
@@ -319,11 +347,13 @@ const buttonTextColor = computed(() => {
 										class="input w-20 text-center"
 										:disabled="isSaving"
 									/>
-									<span class="text-sm text-text-tertiary">px</span>
+									<span class="text-sm text-text-tertiary">
+										{{ t('dashboard.admin.instance.emailTheme.px') }}
+									</span>
 								</div>
 							</div>
 							<p class="mt-1 text-xs text-text-tertiary">
-								Maximum width of your email on desktop (400–800px). Default is 600px.
+								{{ t('dashboard.admin.instance.emailTheme.emailWidthHelp') }}
 							</p>
 						</div>
 					</div>
@@ -338,19 +368,23 @@ const buttonTextColor = computed(() => {
 							@click="handleReset"
 						>
 							<Icon name="lucide:refresh-cw" class="w-4 h-4" />
-							Reset to Defaults
+							{{ t('dashboard.admin.instance.emailTheme.resetToDefaults') }}
 						</UiButton>
 
 						<div class="flex items-center gap-3">
 							<p v-if="isFormDirty" class="text-sm text-warning flex items-center gap-2">
 								<Icon name="lucide:alert-circle" class="w-4 h-4" />
-								Unsaved
+								{{ t('dashboard.admin.instance.emailTheme.unsaved') }}
 							</p>
 
 							<UiButton type="submit" class="gap-2" :disabled="isSaving || !isFormDirty">
 								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 								<Icon v-else name="lucide:check" class="w-4 h-4" />
-								{{ isSaving ? 'Saving...' : 'Save Theme' }}
+								{{
+									isSaving
+										? t('dashboard.admin.instance.emailTheme.savingTheme')
+										: t('dashboard.admin.instance.emailTheme.saveTheme')
+								}}
 							</UiButton>
 						</div>
 					</div>
@@ -360,8 +394,10 @@ const buttonTextColor = computed(() => {
 			<!-- Theme Preview -->
 			<div class="card p-0 overflow-hidden">
 				<div class="px-6 py-4 border-b border-border-subtle">
-					<h2 class="text-lg font-semibold text-text-primary">Preview</h2>
-					<p class="text-sm text-text-secondary">See how your theme looks in emails</p>
+					<h2 class="text-lg font-semibold text-text-primary">{{ t('common.preview') }}</h2>
+					<p class="text-sm text-text-secondary">
+						{{ t('dashboard.admin.instance.emailTheme.previewSubtitle') }}
+					</p>
 				</div>
 
 				<div class="p-6">
@@ -380,7 +416,7 @@ const buttonTextColor = computed(() => {
 									color: previewTextColor,
 								}"
 							>
-								Welcome to Our Newsletter
+								{{ t('dashboard.admin.instance.emailTheme.preview.heading') }}
 							</h1>
 
 							<!-- Body Text -->
@@ -391,8 +427,7 @@ const buttonTextColor = computed(() => {
 									color: previewTextColor,
 								}"
 							>
-								Thank you for subscribing! We're excited to have you on board. Stay tuned for
-								updates, tips, and exclusive content delivered straight to your inbox.
+								{{ t('dashboard.admin.instance.emailTheme.preview.body') }}
 							</p>
 
 							<!-- Button Preview -->
@@ -404,7 +439,7 @@ const buttonTextColor = computed(() => {
 									fontFamily: form.fontFamily,
 								}"
 							>
-								Get Started
+								{{ t('dashboard.admin.instance.emailTheme.preview.button') }}
 							</button>
 
 							<!-- Footer Text -->
@@ -415,14 +450,14 @@ const buttonTextColor = computed(() => {
 									color: previewTextColor,
 								}"
 							>
-								You're receiving this email because you signed up for our newsletter.
+								{{ t('dashboard.admin.instance.emailTheme.preview.footer') }}
 							</p>
 						</div>
 					</div>
 
 					<!-- Preview Note -->
 					<p class="mt-4 text-xs text-text-tertiary text-center">
-						This is a simplified preview. Actual emails may vary based on email client rendering.
+						{{ t('dashboard.admin.instance.emailTheme.preview.note') }}
 					</p>
 				</div>
 			</div>

@@ -155,6 +155,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 
 	// Campaign + template parents
 	'campaigns',
+	// Version snapshots before the templates they belong to.
+	'emailTemplateVersions',
 	'emailTemplates',
 	'transactionalEmails',
 	'emailBlocks',
@@ -319,6 +321,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	automationSteps: makeSweepStep('automationSteps'),
 	automations: makeSweepStep('automations'),
 	campaigns: makeSweepStep('campaigns'),
+	emailTemplateVersions: makeSweepStep('emailTemplateVersions'),
 	emailTemplates: makeSweepStep('emailTemplates'),
 	transactionalEmails: makeSweepStep('transactionalEmails'),
 	emailBlocks: makeSweepStep('emailBlocks'),

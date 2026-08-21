@@ -27,18 +27,33 @@
 		// auto-imported by convention) and server/ + e2e specs as entry, so
 		// convention-loaded modules are never reported as unused.
 		"apps/web": {
-			"entry": ["app/**/*.{vue,ts}", "server/**/*.ts", "e2e/**/*.ts", "scripts/**"],
+			// `i18n/` is loaded by @nuxtjs/i18n by convention (i18n.config.ts and the
+			// locale catalogs it lists), so nothing in the source graph imports it.
+			"entry": [
+				"app/**/*.{vue,ts}",
+				"server/**/*.ts",
+				"e2e/**/*.ts",
+				"scripts/**",
+				"i18n/**/*.ts",
+			],
 			"playwright": { "config": ["e2e/playwright.config.ts"] },
 		},
 		"apps/docs": {
 			// __tests__ lives at the app root (not under app/), so declare it
 			// explicitly — knip 6's vitest-plugin discovery of these specs is
 			// environment-sensitive, and without this entry they are mis-reported
-			// as unused files in CI.
-			"entry": ["content.config.ts", "app/**/*.{vue,ts}", "__tests__/**/*.ts"],
+			// as unused files in CI. `i18n/` is loaded by @nuxtjs/i18n by
+			// convention, same as in apps/web.
+			"entry": [
+				"content.config.ts",
+				"app/**/*.{vue,ts}",
+				"__tests__/**/*.ts",
+				"i18n/**/*.ts",
+			],
 		},
 		"apps/marketing": {
-			"entry": ["app/**/*.{vue,ts}"],
+			// `i18n/` is loaded by @nuxtjs/i18n by convention, same as in apps/web.
+			"entry": ["app/**/*.{vue,ts}", "i18n/**/*.ts"],
 		},
 
 		// ---- Node/TS service apps ---------------------------------------

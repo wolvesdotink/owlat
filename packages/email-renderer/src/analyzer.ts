@@ -490,7 +490,11 @@ export const getEmailHealthScore = (
 
 	// --- 2. Accessibility score ---
 	const a11yResult = validateBlocks(blocks, { accessibilityAudit: true, level: 'soft' });
-	const a11yIssues = a11yResult.issues.filter((i) => i.code.startsWith('A11Y_'));
+	// IMAGE_NO_ALT predates the A11Y_ code prefix but is an accessibility defect,
+	// so it counts here too — and clears once the image is marked decorative.
+	const a11yIssues = a11yResult.issues.filter(
+		(i) => i.code.startsWith('A11Y_') || i.code === 'IMAGE_NO_ALT'
+	);
 	const a11yErrors = a11yIssues.filter((i) => i.severity === 'error').length;
 	const a11yWarnings = a11yIssues.filter((i) => i.severity === 'warning').length;
 	const accessibility = Math.max(0, 100 - a11yErrors * 20 - a11yWarnings * 10);

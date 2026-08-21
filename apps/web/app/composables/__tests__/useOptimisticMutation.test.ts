@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { ConvexError } from 'convex/values';
+import { createTestI18n } from '~/__tests__/i18n';
 import { useOptimisticMutation } from '../useOptimisticMutation';
+
+// The "Undo" action label comes from the catalog via the `useI18n` auto-import.
+const i18n = createTestI18n();
 import { useBackendOperation } from '../useBackendOperation';
 
 const fakeOp = 'api.test.update' as unknown as Parameters<typeof useOptimisticMutation>[0];
@@ -15,6 +19,7 @@ describe('useOptimisticMutation', () => {
 		mutation = vi.fn();
 		showToast = vi.fn(() => 'toast-id');
 		captureError = vi.fn();
+		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useConvex', () => ({ mutation, action: vi.fn() }));
 		vi.stubGlobal('useToast', () => ({ showToast }));
 		vi.stubGlobal('usePostHog', () => ({ captureError }));

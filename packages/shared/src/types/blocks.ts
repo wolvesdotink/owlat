@@ -199,6 +199,12 @@ export interface ImageBlockContent
 	alt: string;
 	width: number;
 	align: 'left' | 'center' | 'right';
+	/**
+	 * Marks the image as purely decorative: the empty `alt` is intentional, so
+	 * the renderer emits `role="presentation"` and the accessibility audit stops
+	 * reporting the missing alt text.
+	 */
+	decorative?: boolean;
 	/** Durable blob identity paired with src. */
 	storageId?: string;
 	/** Durable media-library provenance authorizing storageId. */

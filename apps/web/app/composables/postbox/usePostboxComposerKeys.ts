@@ -22,14 +22,17 @@ export function usePostboxComposerKeys(options: {
 	onSchedule: () => void;
 	onMinimize: () => void;
 }) {
-	const isMac = computed(
-		() => import.meta.client && /Mac|iP(hone|ad|od)/.test(navigator.platform),
-	);
+	const { t } = useI18n();
+	const isMac = computed(() => import.meta.client && /Mac|iP(hone|ad|od)/.test(navigator.platform));
 	const sendShortcutHint = computed(() =>
-		isMac.value ? 'Send (⌘↵)' : 'Send (Ctrl+Enter)',
+		isMac.value
+			? t('shared.postbox.usePostboxComposerKeys.sendMac')
+			: t('shared.postbox.usePostboxComposerKeys.send')
 	);
 	const scheduleShortcutHint = computed(() =>
-		isMac.value ? 'Schedule send (⌘⇧↵)' : 'Schedule send (Ctrl+Shift+Enter)',
+		isMac.value
+			? t('shared.postbox.usePostboxComposerKeys.scheduleMac')
+			: t('shared.postbox.usePostboxComposerKeys.schedule')
 	);
 
 	/**
@@ -48,10 +51,7 @@ export function usePostboxComposerKeys(options: {
 	function onComposerKeydown(event: KeyboardEvent) {
 		if (event.isComposing) return;
 		const action = resolveComposerKeyAction(event, {
-			canSend:
-				options.canSend.value &&
-				!options.sending.value &&
-				!options.isScheduled.value,
+			canSend: options.canSend.value && !options.sending.value && !options.isScheduled.value,
 			overlayOpen: hasOpenInnerOverlay(event),
 		});
 		if (!action) return;

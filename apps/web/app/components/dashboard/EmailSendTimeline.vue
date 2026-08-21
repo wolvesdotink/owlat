@@ -43,8 +43,10 @@ const statusConfig: Record<string, { icon: string; color: string }> = {
 	complained: { icon: 'lucide:alert-triangle', color: 'bg-error/10 text-error' },
 };
 
+const { t, locale } = useI18n();
+
 const formatTimestamp = (ts: number) => {
-	return new Intl.DateTimeFormat('en-US', {
+	return new Intl.DateTimeFormat(locale.value, {
 		month: 'short',
 		day: 'numeric',
 		year: 'numeric',
@@ -58,16 +60,30 @@ const formatDelta = (fromTs: number, toTs: number): string => {
 	const diff = toTs - fromTs;
 	if (diff < 0) return '';
 	const seconds = Math.floor(diff / 1000);
-	if (seconds < 60) return `${seconds}s`;
+	if (seconds < 60) return t('components.dashboard.emailSendTimeline.duration.seconds', { seconds });
 	const minutes = Math.floor(seconds / 60);
 	const remainSec = seconds % 60;
-	if (minutes < 60) return remainSec > 0 ? `${minutes}m ${remainSec}s` : `${minutes}m`;
+	if (minutes < 60)
+		return remainSec > 0
+			? t('components.dashboard.emailSendTimeline.duration.minutesSeconds', {
+					minutes,
+					seconds: remainSec,
+				})
+			: t('components.dashboard.emailSendTimeline.duration.minutes', { minutes });
 	const hours = Math.floor(minutes / 60);
 	const remainMin = minutes % 60;
-	if (hours < 24) return remainMin > 0 ? `${hours}h ${remainMin}m` : `${hours}h`;
+	if (hours < 24)
+		return remainMin > 0
+			? t('components.dashboard.emailSendTimeline.duration.hoursMinutes', {
+					hours,
+					minutes: remainMin,
+				})
+			: t('components.dashboard.emailSendTimeline.duration.hours', { hours });
 	const days = Math.floor(hours / 24);
 	const remainHours = hours % 24;
-	return remainHours > 0 ? `${days}d ${remainHours}h` : `${days}d`;
+	return remainHours > 0
+		? t('components.dashboard.emailSendTimeline.duration.daysHours', { days, hours: remainHours })
+		: t('components.dashboard.emailSendTimeline.duration.days', { days });
 };
 
 // Status progression order — bounced/complained branch off
@@ -104,17 +120,23 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 		if (reached && ts && prevTimestamp) {
 			const d = formatDelta(prevTimestamp, ts);
 			if (d)
-				delta = `${d} after ${progressionOrder[i - 1] === 'queued' ? 'Queued' : events[events.length - 1]?.label || ''}`;
+				delta = t('components.dashboard.emailSendTimeline.afterEvent', {
+					duration: d,
+					event:
+						progressionOrder[i - 1] === 'queued'
+							? t('components.dashboard.emailSendTimeline.events.queued')
+							: (events[events.length - 1]?.label ?? ''),
+				});
 		}
 
 		let extra: string | undefined;
 		if (key === 'opened' && reached && props.openCount && props.openCount > 1) {
-			extra = `${props.openCount} opens total`;
+			extra = t('components.dashboard.emailSendTimeline.opensTotal', { count: props.openCount });
 		}
 
 		events.push({
 			key,
-			label: capitalize(key),
+			label: t(`components.dashboard.emailSendTimeline.events.${key}`),
 			icon: cfg.icon,
 			colorClasses: cfg.color,
 			timestamp: ts,
@@ -136,11 +158,17 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 			let delta: string | undefined;
 			if (prevTimestamp) {
 				const d = formatDelta(prevTimestamp, ts);
-				if (d) delta = `${d} after ${events[events.length - 1]?.label || 'previous'}`;
+				if (d)
+					delta = t('components.dashboard.emailSendTimeline.afterEvent', {
+						duration: d,
+						event:
+						events[events.length - 1]?.label ||
+						t('components.dashboard.emailSendTimeline.previousEvent'),
+					});
 			}
 			events.push({
 				key: errKey,
-				label: capitalize(errKey),
+				label: t(`components.dashboard.emailSendTimeline.events.${errKey}`),
 				icon: cfg.icon,
 				colorClasses: cfg.color,
 				timestamp: ts,
@@ -167,7 +195,7 @@ const copyMessageId = async () => {
 	<div class="space-y-6">
 		<!-- Timeline -->
 		<div class="card p-6">
-			<h3 class="text-lg font-medium text-text-primary mb-6">Event Timeline</h3>
+			<h3 class="text-lg font-medium text-text-primary mb-6">{{ t('components.dashboard.emailSendTimeline.title') }}</h3>
 
 			<div class="space-y-1">
 				<div v-for="(event, index) in timelineEvents" :key="event.key" class="relative">
@@ -212,7 +240,7 @@ const copyMessageId = async () => {
 								{{ formatTimestamp(event.timestamp) }}
 							</p>
 							<p v-else-if="!event.reached" class="text-text-tertiary text-xs mt-0.5">
-								Not yet reached
+								{{ t('components.dashboard.emailSendTimeline.notReached') }}
 							</p>
 							<p v-if="event.extra" class="text-text-tertiary text-xs mt-0.5">
 								{{ event.extra }}
@@ -225,7 +253,7 @@ const copyMessageId = async () => {
 
 		<!-- Clicked Links -->
 		<div v-if="clickedLinks && clickedLinks.length > 0" class="card p-6">
-			<h3 class="text-lg font-medium text-text-primary mb-4">Clicked Links</h3>
+			<h3 class="text-lg font-medium text-text-primary mb-4">{{ t('components.dashboard.emailSendTimeline.clickedLinks') }}</h3>
 			<div class="space-y-3">
 				<div
 					v-for="(link, index) in clickedLinks"
@@ -257,11 +285,11 @@ const copyMessageId = async () => {
 		<div v-if="errorMessage || errorCode" class="card p-6 bg-error-subtle border-error/20">
 			<div class="flex items-center gap-3 mb-3">
 				<Icon name="lucide:alert-triangle" class="w-5 h-5 text-error" />
-				<h3 class="text-lg font-medium text-error">Error Details</h3>
+				<h3 class="text-lg font-medium text-error">{{ t('components.dashboard.emailSendTimeline.errorDetails') }}</h3>
 			</div>
 			<div class="space-y-2 text-sm">
 				<p v-if="errorCode" class="text-text-secondary">
-					<span class="font-medium">Code:</span> {{ errorCode }}
+					<span class="font-medium">{{ t('components.dashboard.emailSendTimeline.errorCode') }}</span> {{ errorCode }}
 				</p>
 				<p v-if="errorMessage" class="text-text-primary">
 					{{ errorMessage }}
@@ -275,13 +303,13 @@ const copyMessageId = async () => {
 				<div class="flex items-center gap-3 min-w-0">
 					<Icon name="lucide:hash" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 					<div class="min-w-0">
-						<p class="text-xs text-text-tertiary">Provider Message ID</p>
+						<p class="text-xs text-text-tertiary">{{ t('components.dashboard.emailSendTimeline.providerMessageId') }}</p>
 						<p class="text-sm text-text-secondary font-mono truncate">{{ providerMessageId }}</p>
 					</div>
 				</div>
 				<UiButton variant="secondary" class="text-xs gap-1.5 flex-shrink-0" @click="copyMessageId">
 					<Icon :name="messageIdCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
-					{{ messageIdCopied ? 'Copied' : 'Copy' }}
+					{{ messageIdCopied ? t('common.copied') : t('common.copy') }}
 				</UiButton>
 			</div>
 		</div>
@@ -294,7 +322,7 @@ const copyMessageId = async () => {
 			>
 				<div class="flex items-center gap-3">
 					<Icon name="lucide:braces" class="w-5 h-5 text-text-tertiary" />
-					<h3 class="text-lg font-medium text-text-primary">Data Variables</h3>
+					<h3 class="text-lg font-medium text-text-primary">{{ t('components.dashboard.emailSendTimeline.dataVariables') }}</h3>
 				</div>
 				<Icon
 					name="lucide:chevron-down"

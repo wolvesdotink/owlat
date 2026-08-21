@@ -53,17 +53,19 @@ export interface ValidationResult {
 	totalRows: number;
 }
 
+/** `label` is a message key — the import modal renders each through `t()`. */
 export const mappableFields: { value: MappableField; label: string }[] = [
-	{ value: 'email', label: 'Email (required)' },
-	{ value: 'firstName', label: 'First Name' },
-	{ value: 'lastName', label: 'Last Name' },
-	{ value: 'language', label: 'Language' },
-	{ value: 'topic', label: 'Topic' },
-	{ value: 'property', label: 'Custom property' },
-	{ value: 'ignore', label: '— Ignore this column' },
+	{ value: 'email', label: 'shared.useCsvImport.fields.email' },
+	{ value: 'firstName', label: 'shared.useCsvImport.fields.firstName' },
+	{ value: 'lastName', label: 'shared.useCsvImport.fields.lastName' },
+	{ value: 'language', label: 'shared.useCsvImport.fields.language' },
+	{ value: 'topic', label: 'shared.useCsvImport.fields.topic' },
+	{ value: 'property', label: 'shared.useCsvImport.fields.property' },
+	{ value: 'ignore', label: 'shared.useCsvImport.fields.ignore' },
 ];
 
 export function useCsvImport() {
+	const { t } = useI18n();
 	const isOpen = ref(false);
 	const step = ref<ImportStep>('upload');
 	const error = ref('');
@@ -191,12 +193,12 @@ export function useCsvImport() {
 			data = await parseCsvFile(file);
 		} catch (parseError) {
 			const message = parseError instanceof Error ? parseError.message : String(parseError);
-			error.value = `CSV parsing error: ${message}`;
+			error.value = t('shared.useCsvImport.errors.parseFailed', { message });
 			return;
 		}
 
 		if (data.length < 2) {
-			error.value = 'CSV file must have at least a header row and one data row';
+			error.value = t('shared.useCsvImport.errors.tooFewRows');
 			return;
 		}
 
@@ -222,7 +224,7 @@ export function useCsvImport() {
 	// Handle file selection
 	const handleFileSelect = (event: Event) => {
 		const input = event.target as HTMLInputElement;
-		acceptCsvFile(input.files?.[0], 'Please select a CSV file');
+		acceptCsvFile(input.files?.[0], t('shared.useCsvImport.errors.selectCsv'));
 	};
 
 	// Trigger file selection: the native OS picker (filtered to `.csv`) on
@@ -231,9 +233,9 @@ export function useCsvImport() {
 	const triggerFileInput = () => {
 		if (isDesktop.value) {
 			void pickNativeFiles({
-				title: 'Choose a CSV file',
+				title: t('shared.useCsvImport.pickerTitle'),
 				filters: [{ name: 'CSV', extensions: ['csv'] }],
-			}).then((files) => acceptCsvFile(files[0], 'Please select a CSV file'));
+			}).then((files) => acceptCsvFile(files[0], t('shared.useCsvImport.errors.selectCsv')));
 			return;
 		}
 		fileInputRef.value?.click();
@@ -244,10 +246,13 @@ export function useCsvImport() {
 	// flag so callers/templates keep their current binding. On desktop, OS-level
 	// drops are accepted too, scoped to the drop element via `dropRootRef`.
 	const dropRootRef = ref<HTMLElement | null>(null);
-	const dropZone = useDropZone((files) => acceptCsvFile(files[0], 'Please drop a CSV file'), {
-		osFileDrop: true,
-		rootRef: dropRootRef,
-	});
+	const dropZone = useDropZone(
+		(files) => acceptCsvFile(files[0], t('shared.useCsvImport.errors.dropCsv')),
+		{
+			osFileDrop: true,
+			rootRef: dropRootRef,
+		}
+	);
 	const isDragging = dropZone.isDragOver;
 	const handleDragOver = dropZone.handleDragOver;
 	const handleDragLeave = dropZone.handleDragLeave;
@@ -336,7 +341,7 @@ export function useCsvImport() {
 	// Navigate to preview (or listMapping if topic column is mapped)
 	const goToPreview = () => {
 		if (!isEmailMapped.value) {
-			error.value = 'You must map a column to Email (required)';
+			error.value = t('shared.useCsvImport.errors.emailColumnRequired');
 			return;
 		}
 		error.value = '';
@@ -526,7 +531,7 @@ export function useCsvImport() {
 		const contacts = getContactsFromParsedData();
 
 		if (contacts.length === 0) {
-			error.value = 'No valid contacts found in CSV';
+			error.value = t('shared.useCsvImport.errors.noValidContacts');
 			step.value = 'mapping';
 			return;
 		}
@@ -596,7 +601,8 @@ export function useCsvImport() {
 
 			return aggregatedResults;
 		} catch (err) {
-			error.value = err instanceof Error ? err.message : 'Import failed';
+			error.value =
+				err instanceof Error ? err.message : t('shared.useCsvImport.errors.importFailed');
 			step.value = 'mapping';
 			throw err;
 		}

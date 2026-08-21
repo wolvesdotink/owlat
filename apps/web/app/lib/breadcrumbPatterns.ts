@@ -2,6 +2,10 @@
  * Pattern-matched breadcrumb configs for dynamic dashboard routes
  * (detail/edit pages with ids in the path). Exact paths live in
  * `breadcrumbRoutes.ts`; `useBreadcrumbs` tries those first, then these.
+ *
+ * Every label is an i18n KEY (the crumb renderer translates it). The SECTION
+ * keys are the ones `breadcrumbRoutes.ts` already defines, so a section reads
+ * the same word whichever table matched the path.
  */
 import type { RouteConfig } from '~/lib/breadcrumbRoutes';
 
@@ -15,122 +19,122 @@ export const patternConfigs: PatternConfig[] = [
 	{
 		pattern: /^\/dashboard\/send\/emails\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'Send',
+			section: 'shared.breadcrumbRoutes.sections.send',
 			sectionHref: '/dashboard/send',
-			subsection: 'Marketing',
+			subsection: 'shared.breadcrumbPatterns.subsections.marketing',
 			subsectionHref: '/dashboard/send/marketing',
-			page: 'Edit Template',
+			page: 'shared.breadcrumbPatterns.pages.editTemplate',
 		}),
 	},
 	// Transactional template edit
 	{
 		pattern: /^\/dashboard\/send\/transactional\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'Send',
+			section: 'shared.breadcrumbRoutes.sections.send',
 			sectionHref: '/dashboard/send',
-			subsection: 'Transactional',
+			subsection: 'shared.breadcrumbPatterns.subsections.transactional',
 			subsectionHref: '/dashboard/send/transactional',
-			page: 'Edit Template',
+			page: 'shared.breadcrumbPatterns.pages.editTemplate',
 		}),
 	},
 	// Campaign edit
 	{
 		pattern: /^\/dashboard\/campaigns\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'Campaigns',
+			section: 'shared.breadcrumbRoutes.sections.campaigns',
 			sectionHref: '/dashboard/campaigns',
-			page: 'Edit Campaign',
+			page: 'shared.breadcrumbPatterns.pages.editCampaign',
 		}),
 	},
 	// Campaign report
 	{
 		pattern: /^\/dashboard\/campaigns\/([^/]+)\/report$/,
 		getConfig: () => ({
-			section: 'Campaigns',
+			section: 'shared.breadcrumbRoutes.sections.campaigns',
 			sectionHref: '/dashboard/campaigns',
-			page: 'Campaign Report',
+			page: 'shared.breadcrumbPatterns.pages.campaignReport',
 		}),
 	},
 	// Automation edit
 	{
 		pattern: /^\/dashboard\/automations\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'Automations',
+			section: 'shared.breadcrumbRoutes.sections.automations',
 			sectionHref: '/dashboard/automations',
-			page: 'Edit Automation',
+			page: 'shared.breadcrumbPatterns.pages.editAutomation',
 		}),
 	},
 	// Automation new
 	{
 		pattern: /^\/dashboard\/automations\/new$/,
 		getConfig: () => ({
-			section: 'Automations',
+			section: 'shared.breadcrumbRoutes.sections.automations',
 			sectionHref: '/dashboard/automations',
-			page: 'New Automation',
+			page: 'shared.breadcrumbPatterns.pages.newAutomation',
 		}),
 	},
 	// Contact detail
 	{
 		pattern: /^\/dashboard\/audience\/contacts\/([^/]+)$/,
 		getConfig: () => ({
-			section: 'Audience',
+			section: 'shared.breadcrumbRoutes.sections.audience',
 			sectionHref: '/dashboard/audience',
-			subsection: 'Contacts',
+			subsection: 'shared.breadcrumbPatterns.subsections.contacts',
 			subsectionHref: '/dashboard/audience/contacts',
-			page: 'Contact Details',
+			page: 'shared.breadcrumbPatterns.pages.contactDetails',
 		}),
 	},
 	// Topic detail
 	{
 		pattern: /^\/dashboard\/audience\/topics\/([^/]+)$/,
 		getConfig: () => ({
-			section: 'Audience',
+			section: 'shared.breadcrumbRoutes.sections.audience',
 			sectionHref: '/dashboard/audience',
-			subsection: 'Topics',
+			subsection: 'shared.breadcrumbPatterns.subsections.topics',
 			subsectionHref: '/dashboard/audience/topics',
-			page: 'Topic Details',
+			page: 'shared.breadcrumbPatterns.pages.topicDetails',
 		}),
 	},
 	// Contact in topic detail
 	{
 		pattern: /^\/dashboard\/audience\/topics\/([^/]+)\/contacts\/([^/]+)$/,
 		getConfig: () => ({
-			section: 'Audience',
+			section: 'shared.breadcrumbRoutes.sections.audience',
 			sectionHref: '/dashboard/audience',
-			subsection: 'Topics',
+			subsection: 'shared.breadcrumbPatterns.subsections.topics',
 			subsectionHref: '/dashboard/audience/topics',
-			page: 'Contact in Topic',
+			page: 'shared.breadcrumbPatterns.pages.contactInTopic',
 		}),
 	},
 	// Segment detail
 	{
 		pattern: /^\/dashboard\/audience\/segments\/([^/]+)$/,
 		getConfig: () => ({
-			section: 'Audience',
+			section: 'shared.breadcrumbRoutes.sections.audience',
 			sectionHref: '/dashboard/audience',
-			subsection: 'Segments',
+			subsection: 'shared.breadcrumbPatterns.subsections.segments',
 			subsectionHref: '/dashboard/audience/segments',
-			page: 'Segment Details',
+			page: 'shared.breadcrumbPatterns.pages.segmentDetails',
 		}),
 	},
 	// Per-plugin settings panel
 	{
 		pattern: /^\/dashboard\/admin\/instance\/plugins\/([^/]+)$/,
 		getConfig: () => ({
-			section: 'Administration',
+			section: 'shared.breadcrumbRoutes.sections.administration',
 			sectionHref: '/dashboard/admin',
-			subsection: 'Plugins',
+			subsection: 'shared.breadcrumbPatterns.subsections.plugins',
 			subsectionHref: '/dashboard/admin/instance/plugins',
-			page: 'Plugin settings',
+			page: 'shared.breadcrumbPatterns.pages.pluginSettings',
 		}),
 	},
 	// Team inbox members
 	{
 		pattern: /^\/dashboard\/preferences\/members\/([^/]+)$/,
 		getConfig: () => ({
-			section: 'Preferences',
+			section: 'shared.breadcrumbRoutes.sections.preferences',
 			sectionHref: '/dashboard/preferences',
-			page: 'Team inbox members',
+			page: 'shared.breadcrumbPatterns.pages.teamInboxMembers',
 		}),
 	},
 ];

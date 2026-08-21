@@ -14,11 +14,16 @@
  * disagree about the same traffic.
  */
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import MeasurementCellCard from '../MeasurementCellCard.vue';
 import MeasurementGateList from '../MeasurementGateList.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { armSummary, cellView, failingGate, holdingGate, passingGate } from './measurementFixtures';
 import type { DeliverabilityDashboardCell } from '~/utils/deliverabilityMeasurement';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const stubs = {
 	UiCard: { template: '<div><slot /></div>' },
@@ -29,6 +34,7 @@ function mountCard(cell: DeliverabilityDashboardCell, referenceTransportId: stri
 	return mount(MeasurementCellCard, {
 		props: { cell, referenceTransportId, decisionWindowLabel: 'the last 24 hours' },
 		global: {
+			plugins: [createTestI18n()],
 			stubs,
 			components: { DeliveryMeasurementGateList: MeasurementGateList },
 		},

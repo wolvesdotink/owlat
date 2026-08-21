@@ -14,13 +14,16 @@ const props = defineProps<{
 	progress: number;
 }>();
 
+const { t } = useI18n();
+
 const showLogs = ref(false);
 const logEl = ref<HTMLElement | null>(null);
 
-const GROUP_LABELS: Record<string, string> = {
-	connect: 'Connect',
-	server: 'Provision',
-	finish: 'Finish',
+/** Group → message key; an unknown group falls back to its raw name. */
+const GROUP_LABEL_KEYS: Record<string, string> = {
+	connect: 'components.desktop.provisioningTimeline.groups.connect',
+	server: 'components.desktop.provisioningTimeline.groups.server',
+	finish: 'components.desktop.provisioningTimeline.groups.finish',
 };
 
 // Inject a header row whenever the group changes.
@@ -31,7 +34,8 @@ const rows = computed<Row[]>(() => {
 	for (const step of props.steps) {
 		if (step.group !== group) {
 			group = step.group;
-			out.push({ kind: 'header', label: GROUP_LABELS[group] ?? group });
+			const labelKey = GROUP_LABEL_KEYS[group];
+			out.push({ kind: 'header', label: labelKey ? t(labelKey) : group });
 		}
 		out.push({ kind: 'step', step });
 	}
@@ -69,7 +73,11 @@ watch(
 <template>
 	<div class="space-y-4">
 		<!-- progress bar -->
-		<UiProgressBar size="sm" :value="progress" aria-label="Server provisioning progress" />
+		<UiProgressBar
+			size="sm"
+			:value="progress"
+			:aria-label="t('components.desktop.provisioningTimeline.progressLabel')"
+		/>
 
 		<ol class="space-y-0.5">
 			<template v-for="(row, i) in rows" :key="i">
@@ -99,7 +107,7 @@ watch(
 									: 'text-text-primary'
 						"
 					>
-						{{ row.step.title }}
+						{{ t(row.step.title) }}
 					</span>
 					<span
 						v-if="row.step.detail"
@@ -124,7 +132,7 @@ watch(
 						:name="showLogs ? 'lucide:chevron-down' : 'lucide:chevron-right'"
 						class="size-3.5"
 					/>
-					Server log
+					{{ t('components.desktop.provisioningTimeline.serverLog') }}
 					<span class="text-text-secondary/60">({{ logs.length }})</span>
 				</span>
 			</button>
@@ -141,7 +149,9 @@ watch(
 					ref="logEl"
 					class="max-h-64 overflow-auto border-t border-border-default bg-bg-deep px-3 py-2 font-mono text-[11px] leading-relaxed"
 				>
-					<p v-if="!logs.length" class="text-text-secondary/60">Waiting for output…</p>
+					<p v-if="!logs.length" class="text-text-secondary/60">
+						{{ t('components.desktop.provisioningTimeline.waitingForOutput') }}
+					</p>
 					<p
 						v-for="(l, i) in logs"
 						:key="i"

@@ -21,6 +21,8 @@ defineProps<{
 	strategyLabel: (strategy: string) => string;
 	providerLabel: (providerType: string) => string;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -44,10 +46,15 @@ defineProps<{
 				</span>
 			</span>
 		</div>
-		<p v-if="route.ipPool" class="text-xs text-text-tertiary">IP pool: {{ route.ipPool }}</p>
+		<p v-if="route.ipPool" class="text-xs text-text-tertiary">
+			{{ t('components.delivery.providerRouteSummary.ipPool', { pool: route.ipPool }) }}
+		</p>
 		<p v-if="route.deliverabilityFallback?.isEnabled" class="text-xs text-text-tertiary">
-			Automatic relay fallback:
-			{{ providerLabel(route.deliverabilityFallback.relayProviderType) }}
+			{{
+				t('components.delivery.providerRouteSummary.relayFallback', {
+					provider: providerLabel(route.deliverabilityFallback.relayProviderType),
+				})
+			}}
 		</p>
 	</div>
 </template>

@@ -17,7 +17,13 @@ export const envelopeInputValidator = v.union(
 		replyTo: v.optional(v.string()),
 		providerType: v.optional(v.string()),
 		ipPool: v.optional(v.string()),
-		template: v.object({ subject: v.string(), htmlContent: v.string() }),
+		template: v.object({
+			subject: v.string(),
+			htmlContent: v.string(),
+			// Pre-generated (or author-overridden) text/plain body from the
+			// template row; `composeForSend` ships it as the text alternative.
+			plainTextContent: v.optional(v.string()),
+		}),
 		contactInfo: v.object({
 			contactId: v.optional(v.id('contacts')),
 			email: v.string(),
@@ -59,7 +65,13 @@ export const envelopeInputValidator = v.union(
 		providerType: v.optional(v.string()),
 		ipPool: v.optional(v.string()),
 		sendId: v.optional(v.id('transactionalSends')),
-		template: v.object({ subject: v.string(), htmlContent: v.string() }),
+		template: v.object({
+			subject: v.string(),
+			htmlContent: v.string(),
+			// Pre-generated (or author-overridden) text/plain body from the
+			// template row; `composeForSend` ships it as the text alternative.
+			plainTextContent: v.optional(v.string()),
+		}),
 		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
 		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
 		headers: v.optional(v.record(v.string(), v.string())),

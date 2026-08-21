@@ -13,13 +13,14 @@
  */
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import { useClickOutside } from '~/composables/useClickOutside';
 import PostboxOverflowMenu from '../PostboxOverflowMenu.vue';
 
 // The component auto-imports the composable; give it the real one.
 beforeAll(() => {
-	Object.assign(globalThis, { useClickOutside });
+	Object.assign(globalThis, { useClickOutside, useI18n: i18nStubs.useI18n });
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
@@ -40,7 +41,7 @@ function mountMenu(): VueWrapper {
 				<button role="menuitem" class="stay">Forward</button>
 			</template>`,
 		},
-		global: { stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 	return wrapper;
 }

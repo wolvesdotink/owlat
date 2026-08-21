@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { useChannelOutbound } from '~/composables/useChannelOutbound';
+import type { SendableChannel } from '~/composables/useChannelOutbound';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -18,38 +19,45 @@ const {
 	channelLabel,
 	channelColor,
 	directionIcon,
-	directionLabel,
 	formatTime,
 	truncate,
 } = useUnifiedContactTimeline(contactIdRef);
 
-// Manual outbound compose. The non-email channels (sms/whatsapp/generic) have a
-// fully-built provider dispatch (channels/outbound.ts) that, until now, only the
-// AI agent reply path triggered — so an admin who configured SMS/WhatsApp/generic
-// creds had no way to send through them. This composer is that user-initiated
-// path: it calls `channels.outbound.sendChannelMessage`, which resolves/opens the
-// thread and schedules the same fail-safe dispatch.
-//
-// Native `chat` is different: it has no provider/credentials and writes straight
-// into Convex via `unifiedMessages.sendChatMessage` (keyed to a conversation
-// thread). It's offered whenever the contact already has a thread to reply on —
-// no channel config required. Both paths are admin-only (the backend re-checks
-// `organization:manage`).
-const OUTBOUND_CHANNELS = ['sms', 'whatsapp', 'generic'] as const;
-type SendableChannel = (typeof OUTBOUND_CHANNELS)[number] | 'chat';
+// Manual outbound compose, over the shared send path (`useChannelOutbound`) the
+// Team Inbox's per-message reply also uses. This surface's own job is only the
+// target picker: every provider channel the admin has enabled, plus native chat
+// once the contact has a thread to post on (chat needs no credentials, just a
+// thread). Sending, gating and the toast belong to the composable.
+const { isAdmin, enabledProviderChannels, isSending, send: sendOnChannel } = useChannelOutbound();
 
-const { role } = useOrganizationContext();
-const isAdmin = computed(() => role.value === 'owner' || role.value === 'admin');
+const { t, te } = useI18n();
 
-const { data: channelConfigs } = useConvexQuery(api.unifiedMessages.getChannelConfigs, () => ({}));
+// The channel set is closed in the shared config, but timeline rows carry
+// whatever was stored — an unknown value falls back to the shared display label.
+function channelName(channel: string): string {
+	const key = `components.contacts.unifiedTimelineTab.channels.${channel}`;
+	return te(key) ? t(key) : channelLabel(channel);
+}
 
-// Provider channels the admin has enabled, plus native chat once a thread exists.
-const sendableChannels = computed(() => {
-	const list = (channelConfigs.value ?? [])
-		.filter((c) => c.isEnabled && (OUTBOUND_CHANNELS as readonly string[]).includes(c.channel))
-		.map((c) => ({ value: c.channel as SendableChannel, label: channelLabel(c.channel) }));
+function directionName(direction: string): string {
+	return t(
+		direction === 'inbound'
+			? 'components.contacts.unifiedTimelineTab.directions.inbound'
+			: 'components.contacts.unifiedTimelineTab.directions.outbound'
+	);
+}
+
+function statusName(status: string): string {
+	const key = `components.contacts.unifiedTimelineTab.statuses.${status}`;
+	return te(key) ? t(key) : status;
+}
+
+const sendableChannels = computed<Array<{ value: SendableChannel; label: string }>>(() => {
+	const list: Array<{ value: SendableChannel; label: string }> = enabledProviderChannels.value.map(
+		(channel) => ({ value: channel, label: channelName(channel) }),
+	);
 	if (latestThreadId.value !== null) {
-		list.push({ value: 'chat', label: channelLabel('chat') });
+		list.push({ value: 'chat', label: channelName('chat') });
 	}
 	return list;
 });
@@ -62,44 +70,21 @@ watch(sendableChannels, (list) => {
 	if (!composeChannel.value && list.length) composeChannel.value = list[0]!.value;
 });
 
-const { showToast } = useToast();
-const { run: sendChannelMessage, isLoading: isSendingChannel } = useBackendOperation(
-	api.channels.outbound.sendChannelMessage,
-	{ label: 'Send channel message', type: 'action' },
-);
-const { run: sendChatMessage, isLoading: isSendingChat } = useBackendOperation(
-	api.unifiedMessages.sendChatMessage,
-	{ label: 'Send chat message', type: 'mutation' },
-);
-
-const isSending = computed(() => isSendingChannel.value || isSendingChat.value);
-
 const canSend = computed(
 	() => isAdmin.value && composeChannel.value !== null && composeText.value.trim().length > 0 && !isSending.value,
 );
 
 async function send() {
 	if (!canSend.value || composeChannel.value === null) return;
-	const text = composeText.value.trim();
-	let result: unknown;
-	if (composeChannel.value === 'chat') {
-		// Native chat posts directly onto the contact's most recent thread.
-		if (latestThreadId.value === null) return;
-		result = await sendChatMessage({
-			threadId: latestThreadId.value,
-			text,
-			contactId: props.contactId,
-		});
-	} else {
-		result = await sendChannelMessage({
-			contactId: props.contactId,
-			channel: composeChannel.value,
-			text,
-		});
-	}
-	if (result === undefined) return; // useBackendOperation already surfaced the error
-	composeText.value = '';
-	showToast('Message sent', 'success');
+	// Chat posts onto the contact's most recent thread; a provider channel lets
+	// the backend resolve (or open) the thread for that channel.
+	const sent = await sendOnChannel({
+		channel: composeChannel.value,
+		text: composeText.value,
+		contactId: props.contactId,
+		...(composeChannel.value === 'chat' ? { threadId: latestThreadId.value } : {}),
+	});
+	if (sent) composeText.value = '';
 }
 </script>
 
@@ -107,9 +92,9 @@ async function send() {
 	<div class="card">
 		<div class="flex items-center justify-between mb-4">
 			<div>
-				<h2 class="text-lg font-medium text-text-primary">Unified Timeline</h2>
+				<h2 class="text-lg font-medium text-text-primary">{{ t('components.contacts.unifiedTimelineTab.title') }}</h2>
 				<p class="text-text-tertiary text-sm mt-0.5">
-					Every message across all channels, newest first.
+					{{ t('components.contacts.unifiedTimelineTab.subtitle') }}
 				</p>
 			</div>
 		</div>
@@ -125,7 +110,7 @@ async function send() {
 				]"
 				@click="channelFilter = null"
 			>
-				All
+				{{ t('common.all') }}
 			</button>
 			<button
 				v-for="ch in channels"
@@ -139,7 +124,7 @@ async function send() {
 				@click="channelFilter = channelFilter === ch ? null : ch"
 			>
 				<Icon :name="channelIcon(ch)" class="w-3 h-3" />
-				{{ channelLabel(ch) }}
+				{{ channelName(ch) }}
 			</button>
 		</div>
 
@@ -150,7 +135,7 @@ async function send() {
 		>
 			<div class="flex items-center gap-2 mb-2">
 				<Icon name="lucide:send" class="w-4 h-4 text-text-tertiary" />
-				<p class="text-sm font-medium text-text-primary">Send a message</p>
+				<p class="text-sm font-medium text-text-primary">{{ t('components.contacts.unifiedTimelineTab.sendTitle') }}</p>
 			</div>
 			<div class="flex flex-col sm:flex-row gap-2">
 				<div class="sm:w-44 shrink-0">
@@ -158,14 +143,14 @@ async function send() {
 						v-model="composeChannel"
 						:options="sendableChannels"
 						size="sm"
-						placeholder="Channel"
+						:placeholder="t('components.contacts.unifiedTimelineTab.channelPlaceholder')"
 					/>
 				</div>
 				<UiTextarea
 					v-model="composeText"
 					:rows="2"
 					size="sm"
-					placeholder="Type a message to send on this channel…"
+					:placeholder="t('components.contacts.unifiedTimelineTab.messagePlaceholder')"
 					class="flex-1"
 				/>
 			</div>
@@ -174,7 +159,7 @@ async function send() {
 					<template #iconLeft>
 						<Icon name="lucide:send" class="w-4 h-4" />
 					</template>
-					Send
+					{{ t('common.send') }}
 				</UiButton>
 			</div>
 		</div>
@@ -183,7 +168,7 @@ async function send() {
 		<div v-if="isLoading && !filteredTimeline.length" class="flex items-center justify-center py-8">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner size="md" />
-				<p class="text-text-tertiary text-sm">Loading timeline...</p>
+				<p class="text-text-tertiary text-sm">{{ t('components.contacts.unifiedTimelineTab.loading') }}</p>
 			</div>
 		</div>
 
@@ -194,10 +179,16 @@ async function send() {
 		>
 			<UiIconBox icon="lucide:message-square" size="lg" variant="surface" rounded="full" class="mb-3" />
 			<p class="text-text-secondary text-sm">
-				{{ channelFilter ? `No ${channelLabel(channelFilter)} messages` : 'No messages yet' }}
+				{{
+					channelFilter
+						? t('components.contacts.unifiedTimelineTab.emptyForChannel', {
+								channel: channelName(channelFilter),
+							})
+						: t('components.contacts.unifiedTimelineTab.empty')
+				}}
 			</p>
 			<p class="text-text-tertiary text-sm mt-1">
-				Cross-channel messages will appear here as they are sent and received.
+				{{ t('components.contacts.unifiedTimelineTab.emptyHint') }}
 			</p>
 		</div>
 
@@ -236,12 +227,12 @@ async function send() {
 								]"
 							>
 								<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
-								{{ directionLabel(item.direction) }}
+								{{ directionName(item.direction) }}
 							</span>
 
 							<!-- Channel badge -->
 							<UiBadge variant="neutral" size="sm">
-								{{ channelLabel(item.channel) }}
+								{{ channelName(item.channel) }}
 							</UiBadge>
 
 							<!-- Status -->
@@ -250,7 +241,7 @@ async function send() {
 								:variant="item.status === 'delivered' || item.status === 'read' ? 'success' : item.status === 'failed' ? 'error' : 'neutral'"
 								size="sm"
 							>
-								{{ item.status }}
+								{{ statusName(item.status) }}
 							</UiBadge>
 						</div>
 

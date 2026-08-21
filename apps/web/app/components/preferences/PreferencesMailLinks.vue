@@ -1,9 +1,13 @@
 <script setup lang="ts">
+const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
 </script>
 
 <template>
-	<nav class="grid grid-cols-2 gap-3 mb-6" aria-label="Mail preferences">
+	<nav
+		class="grid grid-cols-2 gap-3 mb-6"
+		:aria-label="t('components.preferences.preferencesMailLinks.ariaLabel')"
+	>
 		<NuxtLink
 			v-if="isEnabled('mail.external')"
 			to="/dashboard/postbox/migrate"
@@ -11,9 +15,11 @@ const { isEnabled } = useFeatureFlag();
 		>
 			<Icon name="lucide:mail" class="w-5 h-5 text-brand" />
 			<div>
-				<p class="font-medium text-sm">Import your mail</p>
+				<p class="font-medium text-sm">
+					{{ t('components.preferences.preferencesMailLinks.import.title') }}
+				</p>
 				<p class="text-xs text-text-tertiary">
-					Gmail, Fastmail, Outlook or any mail provider + teach your AI
+					{{ t('components.preferences.preferencesMailLinks.import.description') }}
 				</p>
 			</div>
 		</NuxtLink>
@@ -23,8 +29,12 @@ const { isEnabled } = useFeatureFlag();
 		>
 			<Icon name="lucide:filter" class="w-5 h-5 text-text-secondary" />
 			<div>
-				<p class="font-medium text-sm">Filters</p>
-				<p class="text-xs text-text-tertiary">Auto-route inbound mail</p>
+				<p class="font-medium text-sm">
+					{{ t('components.preferences.preferencesMailLinks.filters.title') }}
+				</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.preferences.preferencesMailLinks.filters.description') }}
+				</p>
 			</div>
 		</NuxtLink>
 		<NuxtLink
@@ -33,8 +43,12 @@ const { isEnabled } = useFeatureFlag();
 		>
 			<Icon name="lucide:at-sign" class="w-5 h-5 text-text-secondary" />
 			<div>
-				<p class="font-medium text-sm">Aliases</p>
-				<p class="text-xs text-text-tertiary">Alternate addresses</p>
+				<p class="font-medium text-sm">
+					{{ t('components.preferences.preferencesMailLinks.aliases.title') }}
+				</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.preferences.preferencesMailLinks.aliases.description') }}
+				</p>
 			</div>
 		</NuxtLink>
 		<NuxtLink
@@ -43,8 +57,12 @@ const { isEnabled } = useFeatureFlag();
 		>
 			<Icon name="lucide:forward" class="w-5 h-5 text-text-secondary" />
 			<div>
-				<p class="font-medium text-sm">Forwarding</p>
-				<p class="text-xs text-text-tertiary">External forwarding rules</p>
+				<p class="font-medium text-sm">
+					{{ t('components.preferences.preferencesMailLinks.forwarding.title') }}
+				</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.preferences.preferencesMailLinks.forwarding.description') }}
+				</p>
 			</div>
 		</NuxtLink>
 		<NuxtLink
@@ -53,8 +71,12 @@ const { isEnabled } = useFeatureFlag();
 		>
 			<Icon name="lucide:plane" class="w-5 h-5 text-text-secondary" />
 			<div>
-				<p class="font-medium text-sm">Vacation</p>
-				<p class="text-xs text-text-tertiary">Auto-reply while away</p>
+				<p class="font-medium text-sm">
+					{{ t('components.preferences.preferencesMailLinks.vacation.title') }}
+				</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.preferences.preferencesMailLinks.vacation.description') }}
+				</p>
 			</div>
 		</NuxtLink>
 		<NuxtLink
@@ -63,8 +85,12 @@ const { isEnabled } = useFeatureFlag();
 		>
 			<Icon name="lucide:signature" class="w-5 h-5 text-text-secondary" />
 			<div>
-				<p class="font-medium text-sm">Signatures</p>
-				<p class="text-xs text-text-tertiary">Auto-append to new drafts</p>
+				<p class="font-medium text-sm">
+					{{ t('components.preferences.preferencesMailLinks.signatures.title') }}
+				</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.preferences.preferencesMailLinks.signatures.description') }}
+				</p>
 			</div>
 		</NuxtLink>
 		<NuxtLink
@@ -73,8 +99,12 @@ const { isEnabled } = useFeatureFlag();
 		>
 			<Icon name="lucide:text-quote" class="w-5 h-5 text-text-secondary" />
 			<div>
-				<p class="font-medium text-sm">Snippets</p>
-				<p class="text-xs text-text-tertiary">Canned responses via "/"</p>
+				<p class="font-medium text-sm">
+					{{ t('components.preferences.preferencesMailLinks.snippets.title') }}
+				</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.preferences.preferencesMailLinks.snippets.description') }}
+				</p>
 			</div>
 		</NuxtLink>
 		<NuxtLink
@@ -84,8 +114,12 @@ const { isEnabled } = useFeatureFlag();
 		>
 			<Icon name="lucide:wand-sparkles" class="w-5 h-5 text-text-secondary" />
 			<div>
-				<p class="font-medium text-sm">Writing voice</p>
-				<p class="text-xs text-text-tertiary">Make AI drafts sound like you</p>
+				<p class="font-medium text-sm">
+					{{ t('components.preferences.preferencesMailLinks.writingVoice.title') }}
+				</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.preferences.preferencesMailLinks.writingVoice.description') }}
+				</p>
 			</div>
 		</NuxtLink>
 		<NuxtLink
@@ -94,8 +128,12 @@ const { isEnabled } = useFeatureFlag();
 		>
 			<Icon name="lucide:key-round" class="w-5 h-5 text-text-secondary" />
 			<div>
-				<p class="font-medium text-sm">App passwords</p>
-				<p class="text-xs text-text-tertiary">For Apple Mail / Thunderbird</p>
+				<p class="font-medium text-sm">
+					{{ t('components.preferences.preferencesMailLinks.appPasswords.title') }}
+				</p>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.preferences.preferencesMailLinks.appPasswords.description') }}
+				</p>
 			</div>
 		</NuxtLink>
 	</nav>

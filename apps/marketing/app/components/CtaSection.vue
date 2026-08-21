@@ -1,17 +1,21 @@
 <script setup lang="ts">
 // Final CTA — renders inside <DarkSection>, where btn-primary resolves to a
 // white pill and the text scales flip to white.
+const { t } = useI18n();
+
 const { target, isVisible } = useScrollReveal();
 
 const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload();
 
 // Grounded in README: "Open-source (Apache 2.0) · Free to self-host ·
 // no per-contact pricing · 10 minutes from empty VPS to working install."
+// The alpha caveat lives on the hero caption, where a visitor first meets the
+// download CTA, rather than being repeated here.
 const trustItems = [
-	'Apache 2.0',
-	'Free to self-host',
-	'No per-contact pricing',
-	'10-minute install',
+	'cta.trust.license',
+	'cta.trust.free',
+	'cta.trust.pricing',
+	'cta.trust.install',
 ];
 </script>
 
@@ -22,15 +26,17 @@ const trustItems = [
 		:class="{ visible: isVisible }"
 	>
 		<div class="max-w-[640px] mx-auto">
-			<h2 class="cta-el lp-title mb-5" style="--i: 0">
-				Start sending <span class="lp-title-accent">better</span> email
-			</h2>
+			<I18nT keypath="cta.title" tag="h2" class="cta-el lp-title mb-5" style="--i: 0" scope="global">
+				<template #accent>
+					<span class="lp-title-accent">{{ t('cta.titleAccent') }}</span>
+				</template>
+			</I18nT>
 
 			<p
 				class="cta-el text-base text-text-secondary leading-relaxed max-w-[440px] mx-auto mb-10"
 				style="--i: 1"
 			>
-				Every feature is included from the start — no feature gates, no plan upgrades.
+				{{ t('cta.intro') }}
 			</p>
 
 			<div class="cta-el flex items-center justify-center gap-3 flex-wrap" style="--i: 2">
@@ -40,7 +46,9 @@ const trustItems = [
 					:aria-label="downloadAriaLabel"
 					@click="onDownloadClick"
 				>
-					<span>{{ platformLabel ? `Download for ${platformLabel}` : 'Download the app' }}</span>
+					<span>{{
+						platformLabel ? t('download.labelFor', { platform: platformLabel }) : t('download.app')
+					}}</span>
 					<svg
 						class="transition-transform duration-(--motion-fast) group-hover:translate-y-[2px]"
 						width="15"
@@ -64,7 +72,7 @@ const trustItems = [
 					rel="noopener noreferrer"
 					class="btn btn-hairline group px-6 no-underline"
 				>
-					<span>View on GitHub</span>
+					<span>{{ t('cta.github') }}</span>
 					<svg
 						class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
 						width="15"
@@ -89,7 +97,7 @@ const trustItems = [
 				style="--i: 3"
 			>
 				<template v-for="(item, i) in trustItems" :key="item">
-					<span>{{ item }}</span>
+					<span>{{ t(item) }}</span>
 					<span v-if="i < trustItems.length - 1" aria-hidden="true" class="text-text-disabled"
 						>·</span
 					>

@@ -9,13 +9,20 @@
  *     NOTHING when there is nothing to graduate.
  *
  * Global UI auto-imports (UiCard/UiIconBox/UiToggle/Icon) are stubbed; `ref`/
- * `computed` are polyfilled by the web vitest setup.
+ * `computed` are polyfilled by the web vitest setup. Both components render
+ * their copy through vue-i18n, so they are mounted against the REAL catalog —
+ * the sentences asserted below are the ones a person actually reads.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import AutonomyKillSwitch from '../AutonomyKillSwitch.vue';
 import AutonomyGraduationNudge from '../AutonomyGraduationNudge.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const stubs = {
 	Icon: true,
@@ -23,12 +30,14 @@ const stubs = {
 	UiIconBox: true,
 	UiToggle: true,
 };
-const mountOpts = { global: { stubs } };
+/** A fresh i18n instance per mount — locale state must not leak between them. */
+const mountOpts = () => ({ global: { plugins: [createTestI18n()], stubs } });
 
 describe('AutonomyKillSwitch', () => {
 	it('renders the stop control and emits confirm only after confirmation', async () => {
-		const wrapper = mount(AutonomyKillSwitch, mountOpts);
+		const wrapper = mount(AutonomyKillSwitch, mountOpts());
 		expect(wrapper.text()).toContain('Stop auto-sending');
+		expectFullyLocalized(wrapper);
 
 		// No confirm emitted from just opening.
 		await wrapper.get('[data-testid="kill-switch-open"]').trigger('click');
@@ -40,7 +49,7 @@ describe('AutonomyKillSwitch', () => {
 	});
 
 	it('disables the confirm control while busy', () => {
-		const wrapper = mount(AutonomyKillSwitch, { ...mountOpts, props: { busy: true } });
+		const wrapper = mount(AutonomyKillSwitch, { ...mountOpts(), props: { busy: true } });
 		// The open button is disabled while a kill switch is in flight.
 		expect(wrapper.get('[data-testid="kill-switch-open"]').attributes('disabled')).toBeDefined();
 	});
@@ -49,7 +58,7 @@ describe('AutonomyKillSwitch', () => {
 describe('AutonomyGraduationNudge', () => {
 	it('renders a graduated offer and emits accept-offer with the slice key', async () => {
 		const wrapper = mount(AutonomyGraduationNudge, {
-			...mountOpts,
+			...mountOpts(),
 			props: {
 				offers: [
 					{
@@ -68,6 +77,8 @@ describe('AutonomyGraduationNudge', () => {
 		expect(wrapper.find('[data-testid="graduation-nudge"]').exists()).toBe(true);
 		expect(wrapper.text()).toContain('vip@acme.com');
 		expect(wrapper.text()).toContain('enable auto-send');
+		expect(wrapper.text()).toContain('Match rate 100%');
+		expectFullyLocalized(wrapper);
 
 		await wrapper.get('[data-testid="graduation-offer"] button').trigger('click');
 		const events = wrapper.emitted('accept-offer');
@@ -77,7 +88,7 @@ describe('AutonomyGraduationNudge', () => {
 
 	it('renders NOTHING when there is nothing to graduate', () => {
 		const wrapper = mount(AutonomyGraduationNudge, {
-			...mountOpts,
+			...mountOpts(),
 			props: {
 				// An unearned slice (offerGraduation:false) is not shown.
 				offers: [

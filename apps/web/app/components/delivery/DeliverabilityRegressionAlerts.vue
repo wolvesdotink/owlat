@@ -6,6 +6,7 @@ import type {
 	DeliverabilityRegressionAlert,
 } from '~/utils/deliverabilityCenter';
 import { findDeliverabilityItem } from '~/utils/deliverabilityCenter';
+import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 
 const props = defineProps<{
 	alerts: DeliverabilityRegressionAlert[];
@@ -18,6 +19,14 @@ const emit = defineEmits<{
 	acknowledge: [alert: DeliverabilityRegressionAlert];
 	resolve: [alert: DeliverabilityRegressionAlert];
 }>();
+
+const { t } = useI18n();
+/**
+ * The named check is shared-registry English (the alert's own message, stored
+ * and mailed, is English for the same reason), so the heading resolves the
+ * catalog copy from the check id. See `~/composables/useDeliverabilityChecklistCopy`.
+ */
+const { itemIdTitle } = useDeliverabilityChecklistCopy();
 
 const rows = computed(() =>
 	props.alerts.map((alert) => ({
@@ -42,10 +51,10 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 			<UiIconBox icon="lucide:siren" size="sm" variant="error" rounded="lg" />
 			<div>
 				<h2 id="deliverability-alerts-heading" class="font-semibold text-text-primary">
-					Deliverability regression{{ rows.length === 1 ? '' : 's' }} detected
+					{{ t('components.delivery.deliverabilityRegressionAlerts.heading', rows.length) }}
 				</h2>
 				<p class="mt-0.5 text-sm text-text-secondary">
-					A check that previously passed is failing again. Review it before your next send.
+					{{ t('components.delivery.deliverabilityRegressionAlerts.subheading') }}
 				</p>
 			</div>
 		</header>
@@ -59,18 +68,18 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 			>
 				<div>
 					<h3 :id="`deliverability-alert-${alert.id}`" class="font-medium text-text-primary">
-						{{ item?.title ?? alert.itemId }}
+						{{ itemIdTitle(alert.itemId, item?.title ?? alert.itemId) }}
 					</h3>
 					<p class="mt-1 text-sm leading-6 text-text-secondary">{{ alert.message }}</p>
 				</div>
 
 				<dl class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-text-tertiary">
 					<div v-if="alert.domain" class="flex gap-1">
-						<dt>Domain:</dt>
+						<dt>{{ t('components.delivery.deliverabilityRegressionAlerts.domain') }}</dt>
 						<dd class="font-medium text-text-secondary">{{ alert.domain }}</dd>
 					</div>
 					<div class="flex gap-1">
-						<dt>Detected:</dt>
+						<dt>{{ t('components.delivery.deliverabilityRegressionAlerts.detected') }}</dt>
 						<dd>
 							<time :datetime="new Date(alert.observedAt).toISOString()">
 								{{ formatDateTime(alert.observedAt) }}
@@ -78,8 +87,8 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 						</dd>
 					</div>
 					<div v-if="alert.acknowledgedAt" class="flex gap-1">
-						<dt>Status:</dt>
-						<dd>Acknowledged</dd>
+						<dt>{{ t('components.delivery.deliverabilityRegressionAlerts.statusLabel') }}</dt>
+						<dd>{{ t('components.delivery.deliverabilityRegressionAlerts.acknowledged') }}</dd>
 					</div>
 				</dl>
 
@@ -88,7 +97,7 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 						<template #iconLeft>
 							<Icon name="lucide:arrow-down-to-line" class="h-3.5 w-3.5" />
 						</template>
-						Open check
+						{{ t('components.delivery.deliverabilityRegressionAlerts.openCheck') }}
 					</UiButton>
 					<UiButton
 						v-if="!alert.acknowledgedAt"
@@ -98,7 +107,7 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 						:disabled="!!activeOperation"
 						@click="emit('acknowledge', alert)"
 					>
-						Acknowledge
+						{{ t('components.delivery.deliverabilityRegressionAlerts.acknowledge') }}
 					</UiButton>
 					<UiButton
 						size="sm"
@@ -107,7 +116,7 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 						:disabled="!!activeOperation"
 						@click="emit('resolve', alert)"
 					>
-						Resolve alert
+						{{ t('components.delivery.deliverabilityRegressionAlerts.resolve') }}
 					</UiButton>
 				</div>
 			</article>

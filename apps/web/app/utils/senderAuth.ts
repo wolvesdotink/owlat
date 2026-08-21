@@ -25,6 +25,13 @@
  *   - null (NO badge)   No verdicts at all (a legacy row, or a message from an
  *                       older MTA that never computed them). We fail closed:
  *                       absence is never rendered as "verified".
+ *
+ * Module scope, so nothing here calls `useI18n`: every string it hands back is a
+ * catalog KEY, or a `{ key, params }` pair where the message names a domain. The
+ * badge resolves them with `t()` at render time, in the active locale. A sender
+ * whose From domain is unknown gets its OWN message rather than a translated
+ * noun spliced into a parameter — a phrase handed to `t()` as an interpolation
+ * would never be translated.
  */
 
 export type SenderAuthState =
@@ -56,12 +63,18 @@ export interface SenderAuthInput {
 	arcSealer?: string;
 }
 
+/**
+ * A translatable sentence this module hands to whoever renders it: a bare
+ * catalog key, or a key plus the values its message interpolates.
+ */
+export type SenderAuthText = string | { key: string; params?: Record<string, string> };
+
 export interface SenderAuthResult {
 	state: SenderAuthState;
-	/** Short chip label. */
+	/** Short chip label — a catalog key. */
 	summary: string;
-	/** Expandable plain-language explanation. */
-	detail: string;
+	/** Expandable plain-language explanation — a key or a `{ key, params }` pair. */
+	detail: SenderAuthText;
 	tone: 'ok' | 'warn' | 'danger';
 	icon: string;
 }
@@ -109,7 +122,10 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 	// Fail closed: no verdicts recorded at all => no claim, no badge.
 	if (!spf && !dkim && !dmarc) return null;
 
-	const fromDomain = norm(input.fromDomain) || 'this sender';
+	// EMPTY IS ITS OWN BRANCH, not a fallback noun: "this sender" is copy, and a
+	// copy string passed as an interpolation parameter would ship untranslated.
+	const fromDomain = norm(input.fromDomain);
+	const named = fromDomain !== '';
 
 	const spfPass = spf === 'pass';
 	const dkimPass = dkim === 'pass';
@@ -140,10 +156,20 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 		const sealer = norm(input.arcSealer);
 		return {
 			state: 'forwarded',
-			summary: 'Verified via forwarder',
+			summary: 'shared.senderAuth.forwarded.summary',
 			detail: sealer
-				? `A forwarding service you trust (${sealer}) confirmed this message really was sent for ${fromDomain} before passing it on. Its own checks broke in forwarding, which is normal for mailing lists.`
-				: `A forwarding service you trust confirmed this message really was sent for ${fromDomain} before passing it on. Its own checks broke in forwarding, which is normal for mailing lists.`,
+				? {
+						key: named
+							? 'shared.senderAuth.forwarded.namedSealer'
+							: 'shared.senderAuth.forwarded.namedSealerUnknownSender',
+						params: { sealer, domain: fromDomain },
+					}
+				: {
+						key: named
+							? 'shared.senderAuth.forwarded.anySealer'
+							: 'shared.senderAuth.forwarded.anySealerUnknownSender',
+						params: { domain: fromDomain },
+					},
 			tone: 'ok',
 			icon: 'lucide:shield-check',
 		};
@@ -154,10 +180,17 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 		const strict = norm(input.dmarcPolicy) === 'reject' || norm(input.dmarcPolicy) === 'quarantine';
 		return {
 			state: 'failed',
-			summary: 'Failed sender check',
-			detail: strict
-				? `This message says it's from ${fromDomain}, but it failed that domain's authentication checks — and ${fromDomain} asks that such messages be rejected. Treat it as suspicious.`
-				: `This message says it's from ${fromDomain}, but it failed that domain's authentication checks. Treat it as suspicious.`,
+			summary: 'shared.senderAuth.failed.summary',
+			detail: {
+				key: strict
+					? named
+						? 'shared.senderAuth.failed.strict'
+						: 'shared.senderAuth.failed.strictUnknownSender'
+					: named
+						? 'shared.senderAuth.failed.detail'
+						: 'shared.senderAuth.failed.detailUnknownSender',
+				params: { domain: fromDomain },
+			},
 			tone: 'danger',
 			icon: 'lucide:shield-x',
 		};
@@ -167,8 +200,13 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 	if (dmarc === 'pass' || anyAligned) {
 		return {
 			state: 'verified',
-			summary: 'Verified sender',
-			detail: `We confirmed this message really was sent for ${fromDomain}.`,
+			summary: 'shared.senderAuth.verified.summary',
+			detail: {
+				key: named
+					? 'shared.senderAuth.verified.detail'
+					: 'shared.senderAuth.verified.detailUnknownSender',
+				params: { domain: fromDomain },
+			},
 			tone: 'ok',
 			icon: 'lucide:shield-check',
 		};
@@ -181,8 +219,13 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 		const actualDomain = (spfMisaligned ? spfDomain : '') || dkimDomain;
 		return {
 			state: 'misaligned',
-			summary: 'Sender not authorized',
-			detail: `Sent by ${actualDomain}, which is not authorized to send for ${fromDomain}.`,
+			summary: 'shared.senderAuth.misaligned.summary',
+			detail: {
+				key: named
+					? 'shared.senderAuth.misaligned.detail'
+					: 'shared.senderAuth.misaligned.detailUnknownSender',
+				params: { sender: actualDomain, domain: fromDomain },
+			},
 			tone: 'danger',
 			icon: 'lucide:shield-alert',
 		};
@@ -191,8 +234,13 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 	// 5. Verdicts exist but nothing passed we can tie to the sender.
 	return {
 		state: 'unauthenticated',
-		summary: 'Unverified sender',
-		detail: `We couldn't confirm this message really came from ${fromDomain}.`,
+		summary: 'shared.senderAuth.unauthenticated.summary',
+		detail: {
+			key: named
+				? 'shared.senderAuth.unauthenticated.detail'
+				: 'shared.senderAuth.unauthenticated.detailUnknownSender',
+			params: { domain: fromDomain },
+		},
 		tone: 'warn',
 		icon: 'lucide:shield-question',
 	};
@@ -219,23 +267,26 @@ export interface SenderHeuristics {
  * that actually fired — the honesty audit again: we only say what was observed.
  * Order runs strongest-signal first (a named look-alike, then a look-alike
  * character set, then a reply-to redirect) and ends with the softest context
- * signal (first contact). Returns [] when nothing fired.
+ * signal (first contact). Returns [] when nothing fired. Each line is a catalog
+ * key (or a `{ key, params }` pair) the badge resolves at render time.
  */
-export function deriveSenderHeuristicLines(heuristics: SenderHeuristics | undefined): string[] {
+export function deriveSenderHeuristicLines(
+	heuristics: SenderHeuristics | undefined
+): SenderAuthText[] {
 	if (!heuristics) return [];
-	const lines: string[] = [];
+	const lines: SenderAuthText[] = [];
 	const lookalike = heuristics.lookalikeOfContactDomain?.trim();
 	if (lookalike) {
-		lines.push(`This sender's domain looks like ${lookalike}, but is not it.`);
+		lines.push({ key: 'shared.senderAuth.heuristics.lookalike', params: { domain: lookalike } });
 	}
 	if (heuristics.isFromDomainSpoofed) {
-		lines.push("The sender's domain uses look-alike characters that imitate another domain.");
+		lines.push('shared.senderAuth.heuristics.spoofedCharacters');
 	}
 	if (heuristics.isReplyToMismatch) {
-		lines.push('Replies would go to a different domain than this message claims to be from.');
+		lines.push('shared.senderAuth.heuristics.replyToMismatch');
 	}
 	if (heuristics.isFirstTimeSender) {
-		lines.push("This is the first message you've received from this address.");
+		lines.push('shared.senderAuth.heuristics.firstTimeSender');
 	}
 	return lines;
 }

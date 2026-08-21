@@ -12,6 +12,7 @@
 
 import type { Ref } from 'vue';
 import { createMarkdownShortcuts, type MarkdownShortcutDeps } from './richTextShortcuts';
+import { useUiI18n } from './useUiI18n';
 import {
 	findAncestor,
 	getNearestBlock,
@@ -81,6 +82,9 @@ export interface UseRichTextOptions {
  */
 export function useRichText(options: UseRichTextOptions) {
 	const { editorRef, onChange, promptForLink } = options;
+	// Resolved here (setup time) rather than inside the async link handler:
+	// `useI18n()` may only be called synchronously from a setup context.
+	const { t } = useUiI18n();
 	const patternShortcuts = options.patternShortcuts === true;
 
 	function notify() {
@@ -210,7 +214,7 @@ export function useRichText(options: UseRichTextOptions) {
 
 		const fallbackPrompt = (current: string | null): string | null => {
 			if (typeof window === 'undefined') return null;
-			return window.prompt('Link URL', current ?? 'https://');
+			return window.prompt(t('ui.richText.linkPrompt'), current ?? 'https://');
 		};
 		const resolver = promptForLink ?? fallbackPrompt;
 		const url = await resolver(previousHref);

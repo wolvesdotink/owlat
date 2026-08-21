@@ -96,8 +96,8 @@ function sandbox(options: {
 			(kinds ?? []).map((k) => `\t{\n\t\tkind: '${k}',\n${fields}\t},\n`).join('');
 		write(
 			root,
-			'packages/shared/src/sendProviderCatalog.ts',
-			`const CORE_SEND_PROVIDER_CATALOG = [\n${entries}] as const satisfies readonly CoreSendProviderCatalogEntry[];\n`
+			'packages/shared/src/sendProviderCatalogData.ts',
+			`export const CORE_SEND_PROVIDER_CATALOG = [\n${entries}] as const satisfies readonly CoreSendProviderCatalogEntry[];\n`
 		);
 	}
 

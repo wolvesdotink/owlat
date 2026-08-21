@@ -33,13 +33,18 @@ const props = withDefaults(
 		icon?: string;
 	}>(),
 	{
-		label: 'More actions',
 		align: 'right',
 		direction: 'down',
 		triggerClass: '',
 		icon: 'lucide:more-horizontal',
 	}
 );
+
+const { t } = useI18n();
+
+// The default accessible name lives in the catalog, so it is resolved here
+// rather than frozen into the prop default at compile time.
+const menuLabel = computed(() => props.label ?? t('components.postbox.postboxOverflowMenu.label'));
 
 const open = ref(false);
 // The trigger is a component (<UiButton>), so this ref holds its instance, not
@@ -66,8 +71,8 @@ useClickOutside([triggerEl, menuEl], close);
 			type="button"
 			class="text-text-tertiary"
 			:class="props.triggerClass"
-			:title="props.label"
-			:aria-label="props.label"
+			:title="menuLabel"
+			:aria-label="menuLabel"
 			aria-haspopup="menu"
 			:aria-expanded="open"
 			@click="toggle"
@@ -78,7 +83,7 @@ useClickOutside([triggerEl, menuEl], close);
 			v-if="open"
 			ref="menuEl"
 			role="menu"
-			:aria-label="props.label"
+			:aria-label="menuLabel"
 			class="absolute min-w-44 bg-bg-elevated border border-border-subtle rounded shadow-lg z-20 py-1"
 			:class="[
 				props.align === 'right' ? 'right-0' : 'left-0',

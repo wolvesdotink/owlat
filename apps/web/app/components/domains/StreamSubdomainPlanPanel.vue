@@ -33,6 +33,8 @@ const props = defineProps<{
 	canManage: boolean;
 }>();
 
+const { t, locale } = useI18n();
+
 // Admin-gated on the backend, so a member who cannot manage domains must not
 // subscribe at all (matches YahooCflPanel / MtaStsModeCard).
 const { data: plan } = useConvexQuery(
@@ -49,10 +51,10 @@ type PlanRecord = ReadyPlan['records'][number];
 // The backend keeps its unions on the wire, so both maps are TOTAL: a role or a
 // record purpose the backend can emit and this screen cannot label is a type
 // error here rather than a raw enum leaking into the UI at runtime.
-const ROLE_LABELS: Record<ProposalRow['role'], string> = {
-	transactional: 'Transactional',
-	bulk: 'Marketing & lifecycle',
-	bounce: 'Bounces (return path)',
+const ROLE_LABEL_KEYS: Record<ProposalRow['role'], string> = {
+	transactional: 'components.domains.streamSubdomainPlanPanel.roles.transactional',
+	bulk: 'components.domains.streamSubdomainPlanPanel.roles.bulk',
+	bounce: 'components.domains.streamSubdomainPlanPanel.roles.bounce',
 };
 
 const RECORD_LABELS: Record<PlanRecord['purpose'], string> = {
@@ -76,7 +78,9 @@ const RECORD_LABELS: Record<PlanRecord['purpose'], string> = {
  * selector from the same dashboard as the value.
  */
 const relayPendingExplanation = (subdomain: string): string =>
-	`Your relay signs with its OWN selector, so this record's name is not the one above: create <selector>._domainkey.${subdomain} using the selector and DKIM value from your relay's dashboard. Adding the subdomain here never generates either.`;
+	t('components.domains.streamSubdomainPlanPanel.relayPendingExplanation', {
+		name: `<selector>._domainkey.${subdomain}`,
+	});
 
 /**
  * Flatten the generated rows into what DNSRecordPanel renders.
@@ -101,7 +105,13 @@ const recordPanels = computed(() =>
 			key: `${record.host}-${record.purpose}-${index}`,
 			label:
 				record.purpose === 'dkim'
-					? `DKIM (${record.arm === 'own' ? 'this server' : 'relay'})`
+					? t('components.domains.streamSubdomainPlanPanel.dkimLabel', {
+							arm: t(
+								record.arm === 'own'
+									? 'components.domains.streamSubdomainPlanPanel.arms.own'
+									: 'components.domains.streamSubdomainPlanPanel.arms.relay'
+							),
+						})
 					: RECORD_LABELS[record.purpose],
 			record: {
 				type: record.type,
@@ -130,7 +140,11 @@ const REJECTED_INPUT_LABELS: Record<RejectedInput, string> = {
 
 /** Name the value to fix rather than silently rendering nothing. */
 const rejectedInputCopy = (keys: readonly RejectedInput[]): string =>
-	`${keys.map((key) => REJECTED_INPUT_LABELS[key]).join(' and ')} must be a plain https:// URL with no spaces or semicolons, so no BIMI record was generated.`;
+	t('components.domains.streamSubdomainPlanPanel.bimiRejected', {
+		inputs: new Intl.ListFormat(locale.value, { type: 'conjunction' }).format(
+			keys.map((key) => REJECTED_INPUT_LABELS[key])
+		),
+	});
 
 /** Offers only — an ineligible domain shows nothing about BIMI at all. */
 const bimiOffers = computed(() =>
@@ -144,10 +158,11 @@ const bimiOffers = computed(() =>
 		class="mt-4 pt-4 border-t border-border-subtle"
 		data-testid="stream-subdomain-plan"
 	>
-		<h4 class="text-sm font-medium text-text-primary">Recommended sending subdomains</h4>
+		<h4 class="text-sm font-medium text-text-primary">
+			{{ t('components.domains.streamSubdomainPlanPanel.heading') }}
+		</h4>
 		<p class="mt-1 text-xs text-text-secondary">
-			Send each kind of mail from its own name so one bad campaign can never take your password
-			resets with it.
+			{{ t('components.domains.streamSubdomainPlanPanel.intro') }}
 		</p>
 
 		<!-- The proposal — shown by default, not behind a toggle. -->
@@ -159,17 +174,21 @@ const bimiOffers = computed(() =>
 			>
 				<div class="flex flex-wrap items-baseline gap-2">
 					<code class="font-mono text-sm text-text-primary">{{ entry.host }}</code>
-					<span class="text-xs text-text-tertiary">{{ ROLE_LABELS[entry.role] }}</span>
+					<span class="text-xs text-text-tertiary">{{ t(ROLE_LABEL_KEYS[entry.role]) }}</span>
 					<!-- Work already done is shown as done, never re-proposed. -->
 					<span
 						v-if="entry.alreadyRegistered"
 						class="text-xs text-text-tertiary"
 						data-testid="stream-subdomain-registered"
-						>Already added</span
+						>{{ t('components.domains.streamSubdomainPlanPanel.alreadyAdded') }}</span
 					>
 				</div>
 				<p v-if="entry.streams.length > 0" class="mt-1 text-xs text-text-secondary">
-					Carries: {{ entry.streams.join(', ') }}
+					{{
+						t('components.domains.streamSubdomainPlanPanel.carries', {
+							streams: entry.streams.join(', '),
+						})
+					}}
 				</p>
 			</li>
 		</ul>
@@ -194,7 +213,11 @@ const bimiOffers = computed(() =>
 			class="mt-3 text-xs text-text-tertiary"
 			data-testid="stream-subdomain-warming"
 		>
-			{{ ready.warmingPlans.length }} sending name(s) each start their own warm-up from day one.
+			{{
+				t('components.domains.streamSubdomainPlanPanel.warming', {
+					count: ready.warmingPlans.length,
+				})
+			}}
 		</p>
 
 		<!-- ONE PASS: every record for every subdomain, generated together. -->
@@ -218,7 +241,9 @@ const bimiOffers = computed(() =>
 			data-testid="stream-subdomain-bimi"
 		>
 			<p class="text-xs font-medium text-text-primary">
-				Optional: show your logo on {{ entry.host }} (BIMI)
+				{{
+					t('components.domains.streamSubdomainPlanPanel.bimiOffer', { host: entry.host })
+				}}
 			</p>
 			<p class="mt-1 text-xs text-text-secondary">{{ entry.offer.vmcNote }}</p>
 			<!-- The record itself, once a logo URL is configured. -->
@@ -244,8 +269,7 @@ const bimiOffers = computed(() =>
 				{{ rejectedInputCopy(entry.offer.rejectedInputs) }}
 			</p>
 			<p v-else class="mt-2 text-xs text-text-tertiary" data-testid="stream-subdomain-bimi-no-logo">
-				Set MTA_BIMI_LOGO_URL to the HTTPS address of your SVG logo and this record is generated for
-				you.
+				{{ t('components.domains.streamSubdomainPlanPanel.bimiNoLogo') }}
 			</p>
 		</div>
 	</section>

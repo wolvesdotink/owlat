@@ -7,6 +7,8 @@ const emit = defineEmits<{
 	confirm: [];
 }>();
 
+const { t } = useI18n();
+
 const isOpen = defineModel<boolean>('open', { default: false });
 
 const close = () => {
@@ -25,8 +27,12 @@ const handleConfirm = () => {
 				<Icon name="lucide:trash-2" class="w-5 h-5 text-error" />
 			</div>
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Delete Contacts</h2>
-				<p class="text-sm text-text-tertiary">This action cannot be undone</p>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.contacts.bulkDeleteModal.title') }}
+				</h2>
+				<p class="text-sm text-text-tertiary">
+					{{ t('components.contacts.bulkDeleteModal.subtitle') }}
+				</p>
 			</div>
 		</div>
 		<div class="p-4 rounded-lg bg-error-subtle border border-error/20 mb-4">
@@ -34,24 +40,23 @@ const handleConfirm = () => {
 				<Icon name="lucide:alert-circle" class="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
 				<div>
 					<p class="text-sm text-error font-medium">
-						You are about to delete {{ count }} contact{{ count !== 1 ? 's' : '' }}
+						{{ t('components.contacts.bulkDeleteModal.warning', { count }, count) }}
 					</p>
 					<p class="text-sm text-error/80 mt-1">
-						This will also remove them from all topics and delete their custom
-						property values.
+						{{ t('components.contacts.bulkDeleteModal.warningDetail') }}
 					</p>
 				</div>
 			</div>
 		</div>
 		<p class="text-sm text-text-secondary">
-			Are you sure you want to proceed? This action is permanent and cannot be reversed.
+			{{ t('components.contacts.bulkDeleteModal.confirmQuestion') }}
 		</p>
 
 		<template #footer>
-			<UiButton variant="secondary" @click="close">Cancel</UiButton>
+			<UiButton variant="secondary" @click="close">{{ t('common.cancel') }}</UiButton>
 			<UiButton variant="danger" @click="handleConfirm">
 				<template #iconLeft><Icon name="lucide:trash-2" class="w-4 h-4" /></template>
-				Delete {{ count }} Contact{{ count !== 1 ? 's' : '' }}
+				{{ t('components.contacts.bulkDeleteModal.confirm', { count }, count) }}
 			</UiButton>
 		</template>
 	</UiModal>

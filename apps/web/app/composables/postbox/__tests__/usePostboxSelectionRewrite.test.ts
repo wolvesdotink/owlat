@@ -6,6 +6,15 @@ import {
 	MIN_REWRITE_WORDS,
 	type SelectionRewriteInput,
 } from '../usePostboxSelectionRewrite';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The composable resolves its fail-soft copy through vue-i18n, so the suite
+ * installs the real catalog behind the `useI18n` auto-import and asserts the
+ * English text a user would actually see.
+ */
+const i18n = createTestI18n();
+vi.stubGlobal('useI18n', () => i18n.global);
 
 const INPUT: SelectionRewriteInput = {
 	selection: 'please advise on the matter',

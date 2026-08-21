@@ -14,6 +14,12 @@
  *     catalog states that it deliberately does not carry copy like this, so it
  *     lives here — optional, so a kind with none still renders.
  *
+ * Both layers are module scope, so neither calls `useI18n`: `lead` and every
+ * `point` is a catalog KEY, and the disclosure resolves them with `t()` at
+ * render time. `label` is the transport's NAME — a key for the two kinds this
+ * surface words itself, the catalog's own label otherwise — and goes through the
+ * same boundary, which leaves a name that is not a key untouched.
+ *
  * Pure and DOM-free so both layers are unit-testable without mounting anything;
  * `DomainDnsGuidance.vue` is the disclosure that renders the result. The
  * capability layer is exported for the same reason: it is the branch no shipped
@@ -32,7 +38,9 @@ import { composedSendProviderCatalogEntry } from '~/utils/composedSendProviderCa
 export interface TransportDnsGuidance {
 	/** The transport's name, as the delivery surface words it. */
 	label: string;
+	/** Catalog key for the opening line. */
 	lead: string;
+	/** Catalog keys, one per bullet. */
 	points: string[];
 }
 
@@ -59,28 +67,28 @@ export function capabilityDnsGuidance(
 ): Guidance {
 	if (entry.tier === 'own') {
 		return {
-			lead: 'Owlat manages the DNS for you.',
+			lead: 'shared.transportDnsGuidance.own.lead',
 			points: [
-				'The SPF, DKIM, and DMARC records shown for each domain below are the managed records — add them exactly as displayed, then verify.',
-				'Once verified, Owlat signs your mail as your domain automatically.',
+				'shared.transportDnsGuidance.own.records',
+				'shared.transportDnsGuidance.own.signing',
 			],
 		};
 	}
 	if (domainVerificationOf(entry) === 'api') {
 		return {
-			lead: 'Your provider verifies this domain through its own identity API.',
+			lead: 'shared.transportDnsGuidance.api.lead',
 			points: [
-				'Publish the SPF and DKIM records your provider shows for this domain, exactly as displayed.',
-				'Then complete the provider’s own domain verification. Until that clears, it can reject mail from this domain no matter how good the DNS is.',
-				'Keep a DMARC record on the domain so receivers can check that SPF or DKIM aligns; your existing policy stays authoritative.',
+				'shared.transportDnsGuidance.api.records',
+				'shared.transportDnsGuidance.api.verification',
+				'shared.transportDnsGuidance.api.dmarc',
 			],
 		};
 	}
 	return {
-		lead: 'Your provider handles SPF and DKIM for you.',
+		lead: 'shared.transportDnsGuidance.none.lead',
 		points: [
-			'Follow your provider’s setup guide to add their SPF include and DKIM records for this domain.',
-			'Then confirm two things: your domain’s SPF authorizes the provider, and mail from it carries a DKIM signature that validates for your domain.',
+			'shared.transportDnsGuidance.none.setupGuide',
+			'shared.transportDnsGuidance.none.confirm',
 		],
 	};
 }
@@ -96,24 +104,21 @@ export function capabilityDnsGuidance(
  */
 const GUIDANCE: Partial<Record<DeliveryProviderKind, Guidance>> = {
 	ses: {
-		lead: 'SES signs your mail with its own DKIM identity tokens.',
-		points: [
-			'In the SES console, open Verified identities → your domain → and add the three DKIM CNAME records SES generates for the identity.',
-			'Keep an SPF record that authorizes SES (include amazonses.com) and a DMARC record so receivers can check alignment.',
-		],
+		lead: 'shared.transportDnsGuidance.ses.lead',
+		points: ['shared.transportDnsGuidance.ses.dkim', 'shared.transportDnsGuidance.ses.spf'],
 	},
 	smtp: {
-		lead: 'Your relay provider handles SPF and DKIM for you.',
+		lead: 'shared.transportDnsGuidance.smtp.lead',
 		points: [
-			'Follow your provider’s setup guide to add their SPF include and DKIM records for this domain.',
-			'Then confirm two things: your domain’s SPF authorizes the relay, and mail from the relay carries a DKIM signature that validates for your domain.',
+			'shared.transportDnsGuidance.smtp.setupGuide',
+			'shared.transportDnsGuidance.smtp.confirm',
 		],
 	},
 	resend: {
-		lead: 'Resend signs your mail once your domain is verified there.',
+		lead: 'shared.transportDnsGuidance.resend.lead',
 		points: [
-			'In the Resend dashboard, add the SPF and DKIM records it shows for this domain.',
-			'A DMARC record on top lets receivers check that SPF or DKIM aligns with your domain.',
+			'shared.transportDnsGuidance.resend.records',
+			'shared.transportDnsGuidance.resend.dmarc',
 		],
 	},
 	// Three items, not two — and the third is the one that surprises people. A
@@ -123,11 +128,11 @@ const GUIDANCE: Partial<Record<DeliveryProviderKind, Guidance>> = {
 	// panel, which is why this entry points at them instead of restating a DKIM
 	// key that would immediately be a second copy.
 	mandrill: {
-		lead: 'Mailchimp Transactional signs with one shared key, so your records are the same every time.',
+		lead: 'shared.transportDnsGuidance.mandrill.lead',
 		points: [
-			'Publish the two records shown under “Mailchimp Transactional sending domains” below: the SPF include that authorizes Mandrill’s IPs, and the DKIM TXT at mandrill._domainkey. They are derived from your domain name, so they are exactly what Owlat registered.',
-			'Then complete Mandrill’s own domain verification — the TXT token shown beside the records, or the confirmation flow in Settings → Domains → Sending Domains. Until that clears, Mandrill rejects mail from this domain no matter how good the DNS is.',
-			'Keep a DMARC record on the domain so receivers can check that SPF or DKIM aligns; your existing policy stays authoritative.',
+			'shared.transportDnsGuidance.mandrill.records',
+			'shared.transportDnsGuidance.mandrill.verification',
+			'shared.transportDnsGuidance.mandrill.dmarc',
 		],
 	},
 };

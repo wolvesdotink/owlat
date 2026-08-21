@@ -15,20 +15,14 @@ import {
 	createTimeline,
 	createTauriTransport,
 	systemCheckCommand,
-	dockerPlatform,
 	installDockerCommand,
 	fetchOwlatCommand,
-	prepareInstallDirCommand,
-	buildSetupImageCommand,
-	localBuildInvocation,
-	localSetupImageInvocation,
 	installerCommand,
 	installSource,
 	setupConfigPath,
 	canOpenWorkspaceUrl,
 	isLoopbackUrl,
 	DEFAULT_REMOTE,
-	DEV_IMAGES,
 	type ProvisionTransport,
 	type ConnectInfo,
 	type ExecEvent,
@@ -44,6 +38,7 @@ import {
 	parsePublicIp,
 	resolveServerIp,
 } from '~/lib/desktop/provisioningForm';
+import { installLocalSource } from '~/composables/serverProvisioningLocalSource';
 
 export type ProvisionStage =
 	| 'idle'
@@ -77,6 +72,8 @@ const MAX_LOG_LINES = 5000;
 const FAILURE_TAIL_LINES = 40;
 
 export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
+	const { t } = useI18n();
+
 	const stage = ref<ProvisionStage>('idle');
 	const steps = reactive<TimelineStep[]>(createTimeline());
 	const logs = ref<LogLine[]>([]);
@@ -139,21 +136,21 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		steps.splice(0, steps.length, ...createTimeline(installSource(remote)));
 		setStepState(steps, 'ssh-connect', 'running');
 		try {
-			const t = await getTransport();
-			const info = await t.connect(input.host, input.port);
+			const ssh = await getTransport();
+			const info = await ssh.connect(input.host, input.port);
 			connectInfo.value = info;
 			setStepState(steps, 'ssh-connect', 'ok', `${input.host}:${input.port}`);
 
 			if (info.knownHostStatus === 'match') {
 				// Already trusted — skip the prompt and authenticate straight away.
-				setStepState(steps, 'host-key', 'ok', 'known host');
+				setStepState(steps, 'host-key', 'ok', t('shared.useServerProvisioning.knownHost'));
 				await authenticate();
 			} else {
 				stage.value = 'hostkey';
 				setStepState(steps, 'host-key', 'running', info.fingerprint);
 			}
 		} catch (e) {
-			fail(messageOf(e));
+			fail(messageOf(e, t('shared.useServerProvisioning.unknownError')));
 		} finally {
 			busy.value = false;
 		}
@@ -168,12 +165,12 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		if (busy.value || !connectInfo.value) return;
 		busy.value = true;
 		try {
-			const t = await getTransport();
-			await t.acceptHostKey(connectInfo.value.sessionId, acceptChanged);
-			setStepState(steps, 'host-key', 'ok', 'accepted');
+			const ssh = await getTransport();
+			await ssh.acceptHostKey(connectInfo.value.sessionId, acceptChanged);
+			setStepState(steps, 'host-key', 'ok', t('shared.useServerProvisioning.hostKeyAccepted'));
 			await authenticate();
 		} catch (e) {
-			fail(messageOf(e));
+			fail(messageOf(e, t('shared.useServerProvisioning.unknownError')));
 		} finally {
 			busy.value = false;
 		}
@@ -185,8 +182,8 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		stage.value = 'authenticating';
 		setStepState(steps, 'authenticate', 'running');
 		try {
-			const t = await getTransport();
-			await t.authenticate(connectInfo.value.sessionId, creds.username, creds.auth);
+			const ssh = await getTransport();
+			await ssh.authenticate(connectInfo.value.sessionId, creds.username, creds.auth);
 			setStepState(steps, 'authenticate', 'ok', creds.username);
 			stage.value = 'configure';
 			// Best-effort: pre-fill the DNS A-record target so the operator does
@@ -194,7 +191,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 			// hostname). Never blocks reaching the configure stage.
 			await detectPublicIp(connectInfo.value.sessionId);
 		} catch (e) {
-			fail(messageOf(e));
+			fail(messageOf(e, t('shared.useServerProvisioning.unknownError')));
 		}
 	}
 
@@ -206,9 +203,9 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 	 */
 	async function detectPublicIp(sessionId: string): Promise<void> {
 		try {
-			const t = await getTransport();
+			const ssh = await getTransport();
 			let out = '';
-			await t.execStream(sessionId, detectPublicIpCommand(), (e: ExecEvent) => {
+			await ssh.execStream(sessionId, detectPublicIpCommand(), (e: ExecEvent) => {
 				if (e.kind === 'stdout') out += `${e.line}\n`;
 			});
 			const ip = parsePublicIp(out);
@@ -223,18 +220,18 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		sessionId: string,
 		stepId: string,
 		command: string,
-		onLine?: (line: string, stream: 'stdout' | 'stderr') => void,
+		onLine?: (line: string, stream: 'stdout' | 'stderr') => void
 	): Promise<number> {
 		setStepState(steps, stepId, 'running');
-		const t = await getTransport();
-		const code = await t.execStream(sessionId, command, (e: ExecEvent) => {
+		const ssh = await getTransport();
+		const code = await ssh.execStream(sessionId, command, (e: ExecEvent) => {
 			if (e.kind === 'exit') return;
 			pushLog(e.kind, e.line);
 			onLine?.(e.line, e.kind);
 		});
 		if (code !== 0) {
-			setStepState(steps, stepId, 'failed', `exit ${code}`);
-			throw new Error(`"${stepId}" failed (exit ${code}).`);
+			setStepState(steps, stepId, 'failed', t('shared.useServerProvisioning.exitCode', { code }));
+			throw new Error(t('shared.useServerProvisioning.stepFailed', { step: stepId, code }));
 		}
 		setStepState(steps, stepId, 'ok');
 		return code;
@@ -250,7 +247,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 		secretsRemoved.value = false;
 		stage.value = 'provisioning';
 		try {
-			const t = await getTransport();
+			const ssh = await getTransport();
 
 			// system-check — detect Docker and the server's CPU architecture
 			// (local image builds must target it).
@@ -264,57 +261,32 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 
 			// install-docker — only when missing.
 			if (dockerPresent) {
-				setStepState(steps, 'install-docker', 'skipped', 'already installed');
+				setStepState(
+					steps,
+					'install-docker',
+					'skipped',
+					t('shared.useServerProvisioning.alreadyInstalled')
+				);
 			} else {
 				await runExecStep(sessionId, 'install-docker', installDockerCommand());
 			}
 
 			const source = installSource(remote);
 			if (source !== 'git' && remote.localSource) {
-				// fetch-owlat — upload the local working tree instead of cloning
-				// (dev mode: nothing published yet, or testing local script changes).
-				setStepState(steps, 'fetch-owlat', 'running');
-				const prep = await t.execStream(sessionId, prepareInstallDirCommand(remote), (e: ExecEvent) => {
-					if (e.kind !== 'exit') pushLog(e.kind, e.line);
+				// The dev modes: upload the local working tree instead of cloning, then
+				// get the images onto the server the way this mode calls for.
+				await installLocalSource({
+					ssh,
+					sessionId,
+					steps,
+					remote,
+					localSource: remote.localSource,
+					source,
+					serverArch,
+					pushLog,
+					runExecStep: (stepId, command) => runExecStep(sessionId, stepId, command),
+					t,
 				});
-				if (prep !== 0) {
-					setStepState(steps, 'fetch-owlat', 'failed', `exit ${prep}`);
-					throw new Error(`"fetch-owlat" failed (exit ${prep}).`);
-				}
-				await t.uploadDir(sessionId, remote.localSource, remote.installDir);
-				setStepState(steps, 'fetch-owlat', 'ok', 'uploaded local working tree');
-
-				if (source === 'local-push') {
-					// build-images-local — every stack image, built HERE for the
-					// server's platform (cross-built via Rosetta/qemu when they differ).
-					const platform = dockerPlatform(serverArch);
-					setStepState(steps, 'build-images-local', 'running', platform);
-					const stack = localBuildInvocation(platform);
-					const onLine = (e: ExecEvent) => {
-						if (e.kind !== 'exit') pushLog(e.kind, e.line);
-					};
-					const buildCode = await t.localExec(stack.program, stack.args, remote.localSource, stack.env, onLine);
-					if (buildCode !== 0) {
-						setStepState(steps, 'build-images-local', 'failed', `exit ${buildCode}`);
-						throw new Error(`Local image build failed (exit ${buildCode}). Is Docker running here?`);
-					}
-					const setup = localSetupImageInvocation(platform);
-					const setupCode = await t.localExec(setup.program, setup.args, remote.localSource, setup.env, onLine);
-					if (setupCode !== 0) {
-						setStepState(steps, 'build-images-local', 'failed', `exit ${setupCode}`);
-						throw new Error(`Local setup-image build failed (exit ${setupCode}).`);
-					}
-					setStepState(steps, 'build-images-local', 'ok', platform);
-
-					// push-images — docker save → gzip → ssh → docker load.
-					setStepState(steps, 'push-images', 'running');
-					await t.pushImages(sessionId, [...DEV_IMAGES], onLine);
-					setStepState(steps, 'push-images', 'ok');
-				} else {
-					// build-setup-image — quickstart runs inside this image, so it must
-					// exist on the server before the installer step (it is never pulled).
-					await runExecStep(sessionId, 'build-setup-image', buildSetupImageCommand(remote));
-				}
 			} else {
 				// fetch-owlat — clone or fast-forward the repo.
 				await runExecStep(sessionId, 'fetch-owlat', fetchOwlatCommand(remote));
@@ -322,13 +294,17 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 
 			// upload-config — write the generated setup config.
 			setStepState(steps, 'upload-config', 'running');
-			await t.writeFile(sessionId, setupConfigPath(remote.installDir), JSON.stringify(config, null, 2));
+			await ssh.writeFile(
+				sessionId,
+				setupConfigPath(remote.installDir),
+				JSON.stringify(config, null, 2)
+			);
 			setStepState(steps, 'upload-config', 'ok');
 
 			// installer — drives all server steps via NDJSON.
 			setStepState(steps, 'finish', 'running');
 			let done = false;
-			const code = await t.execStream(sessionId, installerCommand(remote), (e: ExecEvent) => {
+			const code = await ssh.execStream(sessionId, installerCommand(remote), (e: ExecEvent) => {
 				if (e.kind === 'exit') return;
 				if (e.kind === 'stdout') {
 					const ev = parseProgressLine(e.line);
@@ -348,7 +324,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 
 			if (code !== 0 || !done) {
 				setStepState(steps, 'finish', 'failed');
-				throw new Error(`Provisioning did not complete (exit ${code}).`);
+				throw new Error(t('shared.useServerProvisioning.didNotComplete', { code }));
 			}
 
 			// The uploaded config held the admin password + provider keys in
@@ -358,7 +334,7 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 
 			stage.value = 'done';
 		} catch (e) {
-			fail(messageOf(e));
+			fail(messageOf(e, t('shared.useServerProvisioning.unknownError')));
 		} finally {
 			busy.value = false;
 		}
@@ -367,8 +343,12 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 	/** Delete the plaintext setup config from the server (best-effort, never fatal). */
 	async function removeSetupConfig(sessionId: string): Promise<void> {
 		try {
-			const t = await getTransport();
-			const code = await t.execStream(sessionId, removeSetupConfigCommand(remote.installDir), () => {});
+			const ssh = await getTransport();
+			const code = await ssh.execStream(
+				sessionId,
+				removeSetupConfigCommand(remote.installDir),
+				() => {}
+			);
 			secretsRemoved.value = code === 0;
 		} catch {
 			secretsRemoved.value = false;
@@ -425,8 +405,8 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 	async function disconnect(): Promise<void> {
 		if (!connectInfo.value) return;
 		try {
-			const t = await getTransport();
-			await t.disconnect(connectInfo.value.sessionId);
+			const ssh = await getTransport();
+			await ssh.disconnect(connectInfo.value.sessionId);
 		} catch {
 			// best-effort
 		}
@@ -454,7 +434,9 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 	}
 
 	const progress = computed(() => {
-		const done = steps.filter((s) => s.state === 'ok' || s.state === 'warn' || s.state === 'skipped').length;
+		const done = steps.filter(
+			(s) => s.state === 'ok' || s.state === 'warn' || s.state === 'skipped'
+		).length;
 		return Math.round((done / steps.length) * 100);
 	});
 
@@ -484,8 +466,13 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 	};
 }
 
-function messageOf(e: unknown): string {
+/**
+ * The failure a person reads. `fallback` is passed in rather than written here
+ * because this runs at module scope, where there is no `t` to call — the
+ * composable hands it the translated sentence for the locale on screen.
+ */
+function messageOf(e: unknown, fallback: string): string {
 	if (e instanceof Error) return e.message;
 	if (typeof e === 'string') return e;
-	return 'Something went wrong.';
+	return fallback;
 }

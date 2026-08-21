@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, computed, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxThreadList from '../PostboxThreadList.vue';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
@@ -63,6 +64,9 @@ beforeAll(() => {
 	}));
 	vi.stubGlobal('navigateTo', vi.fn());
 	vi.stubGlobal('resolvePostboxShortcut', () => undefined);
+	// The list's empty-state copy and operation labels flow through vue-i18n now;
+	// `useI18n` is a Nuxt auto-import, so it has to exist as a global.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
@@ -103,6 +107,7 @@ function mountList(opts: {
 			emptyContext: opts.emptyContext,
 		},
 		global: {
+			plugins: [createTestI18n()],
 			components: {
 				PostboxThreadRow,
 				PostboxRowCore,

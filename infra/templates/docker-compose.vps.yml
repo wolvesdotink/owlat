@@ -9,9 +9,12 @@
 #   • Every Owlat image MUST be pinned to a concrete OWLAT_VERSION (fail-
 #     closed — if unset, compose refuses to start, rather than silently
 #     pulling :latest).
-#   • Third-party images are pinned to a specific minor version tag. In
-#     production, the release pipeline rewrites these to :tag@sha256:<digest>
-#     via scripts/gen-release-compose.sh so tenants pull immutable artifacts.
+#   • Third-party images are pinned to a specific minor version tag — tag
+#     only, deliberately no @sha256: upstream registries have purged old
+#     manifests before (Convex pinned SHAs, ClamAV minor tags), and a digest
+#     that vanishes bricks every install pulling it. (The Owlat images in the
+#     RELEASE-generated docker-compose-<version>.yml ARE digest-pinned; that
+#     is scripts/gen-release-compose.sh, which does not touch this template.)
 #   • CONVEX_BACKEND_VERSION / CONVEX_DASHBOARD_VERSION let operators pin
 #     upstream Convex images without editing the template.
 #
@@ -254,8 +257,9 @@ services:
     restart: unless-stopped
 
   # ── Redis (MTA job queue) ──
-  # Pinned minor version (upgrades from 7.x to 8.x require manual approval).
-  # Production releases further pin to @sha256 via gen-release-compose.sh.
+  # Pinned minor version, tag only — see the image pinning policy above for
+  # why upstream images carry no @sha256. Upgrades from 7.x to 8.x require
+  # manual approval.
   redis:
     image: redis:7.4-alpine
     # Run directly as the image's redis user (uid 999, gid 1000). With
@@ -280,14 +284,18 @@ services:
 
   # ── ClamAV (antivirus scanning) ──
   # `stable` tracks the current supported release — ClamAV deletes old minor
-  # tags from Docker Hub, so a numeric pin rots into a 404. Production
-  # releases further pin to @sha256.
+  # tags from Docker Hub, so a numeric pin rots into a 404 (and a digest pin
+  # would rot even faster; see the image pinning policy above).
   clamav:
     image: clamav/clamav:stable
     volumes:
       - clamav-data:/var/lib/clamav
     healthcheck:
-      test: ["CMD", "clamdcheck"]
+      # ClamAV 1.5 renamed the healthcheck helper to clamdcheck.sh (the bare
+      # `clamdcheck` alias is gone from clamav/clamav:stable as of 1.5.4);
+      # older images only have the bare name. Probe both so the floating
+      # `stable` tag can move in either direction without going unhealthy.
+      test: ["CMD-SHELL", "clamdcheck.sh || clamdcheck"]
       interval: 60s
       timeout: 10s
       retries: 5
@@ -395,6 +403,10 @@ services:
       - code-workspace:/workspace
     environment:
       CONVEX_URL: http://convex:3210
+      # The worker polls an internalQuery + drives internalMutations, so it
+      # authenticates with the deployment admin key (like imap / mail-sync).
+      # Without it the container exits at startup and tasks sit queued forever.
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -404,6 +416,13 @@ services:
       GITHUB_REPO: ${GITHUB_REPO:-}
       GIT_REPO_URL: ${GIT_REPO_URL:-}
       GIT_BASE_BRANCH: ${GIT_BASE_BRANCH:-main}
+    # EXACTLY ONE worker. `codeWorkTasks.reclaimStale` requeues every running /
+    # testing row on startup, because a single worker that has just started
+    # provably owns none of them. Scale this to two and each start would rip the
+    # other's in-flight task out from under it, so the invariant is pinned here
+    # rather than left to whoever runs `--scale`.
+    deploy:
+      replicas: 1
     # Hard resource ceilings: this container executes UNTRUSTED, inbound-email-
     # driven code (git / vitest / the coding agent), so a single task could
     # otherwise fork-bomb or OOM the whole host. Cap memory, CPU and the process

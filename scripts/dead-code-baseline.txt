@@ -3,7 +3,6 @@ export:packages/email-builder/src/composables/useBlockRenderer.ts:clearAllBlockC
 export:packages/email-builder/src/composables/useBlockRenderer.ts:clearBlockCache
 export:packages/email-builder/src/composables/useBlockRenderer.ts:useBlockRenderer
 export:packages/email-builder/src/composables/useDevicePreview.ts:useDevicePreview
-export:packages/email-builder/src/composables/useKeyboardHandlers.ts:useKeyboardHandlers
 export:packages/email-builder/src/composables/useLinkedBlockDrag.ts:useLinkedBlockDrag
 export:packages/email-builder/src/constants.ts:BASE_CONTAINER_WIDTH
 export:packages/email-builder/src/constants.ts:BUBBLE_MENU_GAP

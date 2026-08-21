@@ -1,5 +1,7 @@
 <script setup lang="ts">
-useHead({ title: 'Files — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.files.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -17,12 +19,43 @@ const { isAdmin } = usePermissions();
 const showUploadModal = ref(false);
 
 type SourceType = 'upload' | 'email_attachment' | 'agent_generated';
-const sourceFilterOptions: { value: SourceType | null; label: string; icon?: string }[] = [
-	{ value: null, label: 'All sources' },
-	{ value: 'upload', label: 'Uploads', icon: 'lucide:upload' },
-	{ value: 'email_attachment', label: 'Email attachments', icon: 'lucide:mail' },
-	{ value: 'agent_generated', label: 'AI generated', icon: 'lucide:sparkles' },
-];
+const sourceFilterOptions = computed<{ value: SourceType | null; label: string; icon?: string }[]>(
+	() => [
+		{ value: null, label: t('dashboard.files.index.sources.all') },
+		{ value: 'upload', label: t('dashboard.files.index.sources.uploads'), icon: 'lucide:upload' },
+		{
+			value: 'email_attachment',
+			label: t('dashboard.files.index.sources.emailAttachments'),
+			icon: 'lucide:mail',
+		},
+		{
+			value: 'agent_generated',
+			label: t('dashboard.files.index.sources.aiGenerated'),
+			icon: 'lucide:sparkles',
+		},
+	]
+);
+
+/** The short source badge in the list view. */
+const sourceBadge = (sourceType: string) => {
+	if (sourceType === 'upload') return t('dashboard.files.index.sourceBadge.upload');
+	if (sourceType === 'email_attachment') return t('dashboard.files.index.sourceBadge.email');
+	return t('dashboard.files.index.sourceBadge.ai');
+};
+
+const formatSize = (bytes: number) => {
+	if (bytes < 1024) return t('dashboard.files.index.size.bytes', { size: bytes });
+	if (bytes < 1024 * 1024)
+		return t('dashboard.files.index.size.kilobytes', { size: (bytes / 1024).toFixed(1) });
+	return t('dashboard.files.index.size.megabytes', { size: (bytes / (1024 * 1024)).toFixed(1) });
+};
+
+const formatCreatedAt = (createdAt: number) =>
+	new Intl.DateTimeFormat(locale.value, {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+	}).format(new Date(createdAt));
 </script>
 
 <template>
@@ -30,14 +63,16 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 		<!-- Header -->
 		<div class="flex items-center justify-between mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Files</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.files.index.title') }}
+				</h1>
 				<p class="text-text-secondary mt-1 text-sm">
-					Manage documents, attachments, and AI-generated files.
+					{{ t('dashboard.files.index.subtitle') }}
 				</p>
 			</div>
 			<UiButton v-if="isAdmin" @click="showUploadModal = true">
 				<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
-				Upload
+				{{ t('common.upload') }}
 			</UiButton>
 		</div>
 
@@ -54,7 +89,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 						v-model="searchQuery"
 						type="text"
 						class="input input-sm pl-9"
-						placeholder="Search files..."
+						:placeholder="t('dashboard.files.index.searchPlaceholder')"
 					/>
 				</div>
 			</div>
@@ -87,7 +122,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 							? 'bg-bg-surface text-text-primary'
 							: 'text-text-tertiary hover:text-text-primary'
 					"
-					title="Grid view"
+					:title="t('dashboard.files.index.gridView')"
 					@click="viewMode = 'grid'"
 				>
 					<Icon name="lucide:layout-grid" class="w-4 h-4" />
@@ -99,7 +134,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 							? 'bg-bg-surface text-text-primary'
 							: 'text-text-tertiary hover:text-text-primary'
 					"
-					title="List view"
+					:title="t('dashboard.files.index.listView')"
 					@click="viewMode = 'list'"
 				>
 					<Icon name="lucide:list" class="w-4 h-4" />
@@ -110,8 +145,8 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
-			error-title="Couldn't load files"
-			loading-label="Loading files..."
+			:error-title="t('dashboard.files.index.errorTitle')"
+			:loading-label="t('dashboard.files.index.loadingLabel')"
 		>
 			<!-- Empty state -->
 			<div
@@ -126,20 +161,24 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 					class="mb-4"
 				/>
 				<p class="text-text-secondary font-medium">
-					{{ searchQuery ? 'No files match your search' : 'No files yet' }}
+					{{
+						searchQuery
+							? t('dashboard.files.index.empty.noMatches')
+							: t('dashboard.files.index.empty.noFiles')
+					}}
 				</p>
 				<p class="text-sm text-text-tertiary mt-1">
 					{{
 						searchQuery
-							? 'Try adjusting your search terms.'
+							? t('dashboard.files.index.empty.adjustSearch')
 							: isAdmin
-								? 'Upload your first file to get started.'
-								: 'Files will appear here once an admin uploads them.'
+								? t('dashboard.files.index.empty.uploadFirst')
+								: t('dashboard.files.index.empty.waitForAdmin')
 					}}
 				</p>
 				<UiButton v-if="!searchQuery && isAdmin" class="mt-4" @click="showUploadModal = true">
 					<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
-					Upload a file
+					{{ t('dashboard.files.index.uploadFile') }}
 				</UiButton>
 			</div>
 
@@ -171,27 +210,27 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 							<th
 								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3"
 							>
-								Name
+								{{ t('common.name') }}
 							</th>
 							<th
 								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3"
 							>
-								Type
+								{{ t('dashboard.files.index.columns.type') }}
 							</th>
 							<th
 								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3"
 							>
-								Size
+								{{ t('dashboard.files.index.columns.size') }}
 							</th>
 							<th
 								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3"
 							>
-								Source
+								{{ t('dashboard.files.index.columns.source') }}
 							</th>
 							<th
 								class="text-left text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3"
 							>
-								Date
+								{{ t('dashboard.files.index.columns.date') }}
 							</th>
 						</tr>
 					</thead>
@@ -229,15 +268,7 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 								}}</span>
 							</td>
 							<td class="px-4 py-3">
-								<span class="text-sm text-text-secondary">
-									{{
-										file.fileSize < 1024
-											? `${file.fileSize} B`
-											: file.fileSize < 1024 * 1024
-												? `${(file.fileSize / 1024).toFixed(1)} KB`
-												: `${(file.fileSize / (1024 * 1024)).toFixed(1)} MB`
-									}}
-								</span>
+								<span class="text-sm text-text-secondary">{{ formatSize(file.fileSize) }}</span>
 							</td>
 							<td class="px-4 py-3">
 								<span
@@ -248,24 +279,12 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 										'bg-brand-subtle text-brand': file.sourceType === 'agent_generated',
 									}"
 								>
-									{{
-										file.sourceType === 'upload'
-											? 'Upload'
-											: file.sourceType === 'email_attachment'
-												? 'Email'
-												: 'AI'
-									}}
+									{{ sourceBadge(file.sourceType) }}
 								</span>
 							</td>
 							<td class="px-4 py-3">
 								<span class="text-sm text-text-secondary">
-									{{
-										new Date(file.createdAt).toLocaleDateString(undefined, {
-											month: 'short',
-											day: 'numeric',
-											year: 'numeric',
-										})
-									}}
+									{{ formatCreatedAt(file.createdAt) }}
 								</span>
 							</td>
 						</tr>
@@ -279,7 +298,9 @@ const sourceFilterOptions: { value: SourceType | null; label: string; icon?: str
 			v-if="files && files.length > 0 && status === 'CanLoadMore'"
 			class="flex justify-center mt-8"
 		>
-			<UiButton variant="outline" size="sm" @click="loadMore()"> Load more </UiButton>
+			<UiButton variant="outline" size="sm" @click="loadMore()">
+				{{ t('dashboard.files.index.loadMore') }}
+			</UiButton>
 		</div>
 
 		<!-- Upload modal -->

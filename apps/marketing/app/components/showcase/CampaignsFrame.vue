@@ -5,19 +5,41 @@
  * only — aria-hidden is carried by the parent section. Swap for a real
  * capture by replacing the body with an <img>. */
 
+const { t } = useI18n();
+
+// Labels AND values come from the catalog: a German visitor reads "2.412" and
+// "38,7 %", not the English number formatting.
 const stats = [
-	{ label: 'Sent', value: '2,412' },
-	{ label: 'Open rate', value: '38.7%' },
-	{ label: 'Click rate', value: '6.1%' },
-	{ label: 'Bounced', value: '0.4%' },
+	{ labelKey: 'showcase.campaigns.stats.sentLabel', valueKey: 'showcase.campaigns.stats.sentValue' },
+	{ labelKey: 'showcase.campaigns.stats.openLabel', valueKey: 'showcase.campaigns.stats.openValue' },
+	{
+		labelKey: 'showcase.campaigns.stats.clickLabel',
+		valueKey: 'showcase.campaigns.stats.clickValue',
+	},
+	{
+		labelKey: 'showcase.campaigns.stats.bouncedLabel',
+		valueKey: 'showcase.campaigns.stats.bouncedValue',
+	},
 ];
 
 // Opens per day since send — plain illustrative shape for the bar chart.
 const bars = [22, 38, 64, 92, 78, 54, 40, 33, 26, 21, 17, 14];
 
 const rows = [
-	{ name: 'Summer Sale 2026', meta: 'Sent · 6 days ago', status: 'Sent', sent: true },
-	{ name: 'June Announcements', meta: 'Draft · updated today', status: 'Draft', sent: false },
+	{
+		id: 'summer',
+		nameKey: 'showcase.campaigns.rows.summer.name',
+		metaKey: 'showcase.campaigns.rows.summer.meta',
+		statusKey: 'showcase.campaigns.rows.summer.status',
+		sent: true,
+	},
+	{
+		id: 'june',
+		nameKey: 'showcase.campaigns.rows.june.name',
+		metaKey: 'showcase.campaigns.rows.june.meta',
+		statusKey: 'showcase.campaigns.rows.june.status',
+		sent: false,
+	},
 ];
 </script>
 
@@ -27,33 +49,35 @@ const rows = [
 			<!-- Header -->
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<p class="text-[11px] font-semibold text-text-primary">Summer Sale 2026</p>
+					<p class="text-[11px] font-semibold text-text-primary">
+						{{ t('showcase.campaigns.name') }}
+					</p>
 					<span
 						class="rounded-full bg-success-subtle text-success text-[7.5px] font-medium px-2 py-0.5"
 					>
-						Sent
+						{{ t('showcase.campaigns.status') }}
 					</span>
 				</div>
 				<span
 					class="rounded-full border border-border-default text-text-secondary text-[8px] font-medium px-2.5 py-1"
 				>
-					Export
+					{{ t('showcase.campaigns.export') }}
 				</span>
 			</div>
-			<p class="text-[8px] text-text-tertiary mt-0.5">Summer Sale — 20% off this week only</p>
+			<p class="text-[8px] text-text-tertiary mt-0.5">{{ t('showcase.campaigns.subject') }}</p>
 
 			<!-- Stat tiles -->
 			<div class="grid grid-cols-4 gap-2 mt-3.5">
 				<div
 					v-for="stat in stats"
-					:key="stat.label"
+					:key="stat.labelKey"
 					class="rounded-lg border border-border-subtle bg-surface-3 px-2.5 py-2"
 				>
 					<p class="text-[7px] font-medium uppercase tracking-[0.08em] text-text-tertiary">
-						{{ stat.label }}
+						{{ t(stat.labelKey) }}
 					</p>
 					<p class="text-[12px] font-semibold text-text-primary mt-0.5 tabular-nums">
-						{{ stat.value }}
+						{{ t(stat.valueKey) }}
 					</p>
 				</div>
 			</div>
@@ -61,8 +85,10 @@ const rows = [
 			<!-- Opens chart -->
 			<div class="rounded-lg border border-border-subtle bg-surface-3 p-3 mt-2.5">
 				<div class="flex items-baseline justify-between">
-					<p class="text-[8px] font-medium text-text-primary">Opens</p>
-					<p class="text-[7px] text-text-tertiary">Last 12 days</p>
+					<p class="text-[8px] font-medium text-text-primary">
+						{{ t('showcase.campaigns.chartTitle') }}
+					</p>
+					<p class="text-[7px] text-text-tertiary">{{ t('showcase.campaigns.chartRange') }}</p>
 				</div>
 				<div class="flex items-end gap-1 h-[52px] mt-2">
 					<div
@@ -77,19 +103,19 @@ const rows = [
 			<!-- Recent campaigns -->
 			<div class="mt-2.5">
 				<p class="text-[7.5px] font-medium uppercase tracking-[0.08em] text-text-tertiary mb-1.5">
-					Recent campaigns
+					{{ t('showcase.campaigns.recentTitle') }}
 				</p>
 				<div
 					class="rounded-lg border border-border-subtle bg-surface-3 divide-y divide-border-subtle"
 				>
 					<div
 						v-for="row in rows"
-						:key="row.name"
+						:key="row.id"
 						class="flex items-center justify-between px-2.5 py-1.5"
 					>
 						<div>
-							<p class="text-[8.5px] font-medium text-text-primary">{{ row.name }}</p>
-							<p class="text-[7px] text-text-tertiary">{{ row.meta }}</p>
+							<p class="text-[8.5px] font-medium text-text-primary">{{ t(row.nameKey) }}</p>
+							<p class="text-[7px] text-text-tertiary">{{ t(row.metaKey) }}</p>
 						</div>
 						<span
 							class="rounded-full text-[7px] font-medium px-2 py-0.5"
@@ -99,7 +125,7 @@ const rows = [
 									: 'border border-border-default text-text-tertiary'
 							"
 						>
-							{{ row.status }}
+							{{ t(row.statusKey) }}
 						</span>
 					</div>
 				</div>

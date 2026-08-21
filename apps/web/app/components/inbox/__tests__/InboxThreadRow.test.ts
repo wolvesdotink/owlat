@@ -13,12 +13,19 @@
  * vocabulary are exercised; Icon / UiAvatar / NuxtLink are global auto-imports,
  * stubbed here (UiAvatar echoes its name so the assignee is assertable).
  */
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import InboxThreadRow, { type InboxThreadRowThread } from '../InboxThreadRow.vue';
 import PostboxRowCore from '../../postbox/PostboxRowCore.vue';
 import StatusChip from '../StatusChip.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// Every visible string flows through vue-i18n now: mount with the real catalog
+// and expose `useI18n`, which is a Nuxt auto-import in the app.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const UiAvatarStub = {
 	props: ['name', 'email', 'image'],
@@ -48,6 +55,7 @@ function mountRow(thread: Partial<InboxThreadRowThread>) {
 	return mount(InboxThreadRow, {
 		props: { thread: full, focused: false, formatCompactRelativeTime: () => '5m' },
 		global: {
+			plugins: [createTestI18n()],
 			components: { PostboxRowCore, InboxStatusChip: StatusChip },
 			stubs: {
 				Icon: true,

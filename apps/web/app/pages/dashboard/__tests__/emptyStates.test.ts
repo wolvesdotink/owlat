@@ -34,26 +34,40 @@ interface EmptyStateGuard {
 
 const guards: EmptyStateGuard[] = [
 	{
+		// Extracted page: the title and the CTA label are message keys in the
+		// source, so the guard anchors on the key it binds rather than the copy
+		// (which now lives in i18n/locales/en.json).
 		name: 'campaigns',
 		page: '../campaigns/index.vue',
-		emptyTitle: 'No campaigns here yet',
-		primaryCta: { label: 'New campaign', handler: 'handleNewCampaign' },
+		emptyTitle: "t('dashboard.campaigns.index.listEmpty.title')",
+		primaryCta: {
+			label: "t('dashboard.campaigns.index.newCampaign')",
+			handler: 'handleNewCampaign',
+		},
 		dataBranchMarker: 'v-for="row in visibleRows"',
 		removedForkMarker: 'font-semibold">No campaigns here yet',
 	},
 	{
+		// Extracted page — same as campaigns above: anchor on the message keys.
 		name: 'automations',
 		page: '../automations/index.vue',
-		emptyTitle: 'No automations yet',
-		primaryCta: { label: 'Create Automation', handler: 'handleNewAutomation' },
+		emptyTitle: "t('dashboard.automations.index.empty.title')",
+		primaryCta: {
+			label: "t('dashboard.automations.index.empty.action')",
+			handler: 'handleNewAutomation',
+		},
 		dataBranchMarker: 'v-for="automation in filteredAutomations"',
 		removedForkMarker: 'font-medium">No automations yet',
 	},
 	{
+		// Extracted page — same as campaigns above: anchor on the message keys.
 		name: 'suppressions',
 		page: '../audience/suppressions.vue',
-		emptyTitle: 'No suppressions',
-		primaryCta: { label: 'Add suppression', handler: 'addModal.open()' },
+		emptyTitle: "t('dashboard.audience.suppressions.empty.title')",
+		primaryCta: {
+			label: "t('dashboard.audience.suppressions.addSuppression')",
+			handler: 'addModal.open()',
+		},
 		dataBranchMarker: 'v-else-if="filteredBlockedEmails.length > 0"',
 		removedForkMarker: 'font-medium">No suppressions',
 	},

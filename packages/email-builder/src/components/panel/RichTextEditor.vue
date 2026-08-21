@@ -268,11 +268,16 @@ function handleSourceInput(event: Event) {
 <template>
 	<div ref="wrapperRef" data-rich-text class="relative border border-border-subtle rounded-lg overflow-hidden transition-[border-color,box-shadow] duration-(--motion-fast) focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(196,120,90,0.06)]">
 		<!-- Toolbar -->
-		<div class="flex items-center gap-px p-1 border-b border-border-subtle bg-bg-surface">
+		<div
+			class="flex items-center gap-px p-1 border-b border-border-subtle bg-bg-surface"
+			role="toolbar"
+			aria-label="Text formatting"
+		>
 			<button
 				type="button"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:title="`Bold (${modKey}+B)`"
+				aria-label="Bold"
 				@click="toggleBold"
 			>
 				<Bold :size="14" />
@@ -281,6 +286,7 @@ function handleSourceInput(event: Event) {
 				type="button"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:title="`Italic (${modKey}+I)`"
+				aria-label="Italic"
 				@click="toggleItalic"
 			>
 				<Italic :size="14" />
@@ -289,6 +295,7 @@ function handleSourceInput(event: Event) {
 				type="button"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:title="`Underline (${modKey}+U)`"
+				aria-label="Underline"
 				@click="toggleUnderline"
 			>
 				<Underline :size="14" />
@@ -297,6 +304,7 @@ function handleSourceInput(event: Event) {
 				type="button"
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:title="`Link (${modKey}+K)`"
+				aria-label="Link"
 				@click="insertLink"
 			>
 				<Link :size="14" />
@@ -307,15 +315,19 @@ function handleSourceInput(event: Event) {
 					type="button"
 					class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 					title="Insert variable"
+					aria-label="Insert variable"
+					aria-haspopup="menu"
+					:aria-expanded="showVariableMenu"
 					@click="showVariableMenu = !showVariableMenu"
 				>
 					<VariableIcon :size="14" />
 				</button>
-				<div v-if="showVariableMenu" class="absolute top-full left-0 z-10 min-w-40 p-1 bg-bg-elevated border border-border-subtle rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.25),0_1px_3px_rgba(0,0,0,0.15)]">
+				<div v-if="showVariableMenu" role="menu" aria-label="Variables" class="absolute top-full left-0 z-10 min-w-40 p-1 bg-bg-elevated border border-border-subtle rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.25),0_1px_3px_rgba(0,0,0,0.15)]">
 					<button
 						v-for="v in variables"
 						:key="v.key"
 						type="button"
+						role="menuitem"
 						class="block w-full py-1.5 px-2 text-xs text-left border-none rounded bg-none text-text-primary cursor-pointer transition-[background-color] duration-(--motion-fast) hover:bg-bg-surface-hover"
 						@click="insertVariable(v)"
 					>
@@ -329,6 +341,8 @@ function handleSourceInput(event: Event) {
 				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 				:class="{ 'bg-brand text-white': isSourceMode }"
 				title="Source mode"
+				aria-label="Source mode"
+				:aria-pressed="isSourceMode"
 				@click="toggleSourceMode"
 			>
 				<Code :size="14" />
@@ -341,6 +355,9 @@ function handleSourceInput(event: Event) {
 			ref="editorRef"
 			class="min-h-20 max-h-[200px] overflow-y-auto p-2 text-[13px] leading-[1.5] text-text-primary outline-none"
 			contenteditable="true"
+			role="textbox"
+			aria-multiline="true"
+			aria-label="Rich text content"
 			@input="handleInput"
 			@keydown="handleKeydown"
 			@blur="closeVariablePicker"
@@ -350,6 +367,7 @@ function handleSourceInput(event: Event) {
 		<textarea
 			v-else
 			class="w-full min-h-20 p-2 text-xs font-mono border-none resize-y outline-none text-text-primary bg-bg-surface"
+			aria-label="HTML source"
 			:value="sourceValue"
 			rows="6"
 			@input="handleSourceInput"

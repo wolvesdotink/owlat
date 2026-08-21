@@ -3,7 +3,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { RELATION_TYPES, relationLabel, type RelationType } from '~/utils/knowledgeEntryTypes';
 
-useHead({ title: 'Knowledge Entry — Owlat' });
+const { t, te, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.knowledge.detail.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -54,26 +56,44 @@ const entryMap = computed(() => {
 	return map;
 });
 
+// Entry-type / source / relation labels are translated here; the shared
+// presentation map (`~/utils/knowledgeEntryTypes`) stays a plain constant, so an
+// unknown value still falls back to its raw label instead of a key path.
+const entryTypeName = (type: string): string => {
+	const key = `dashboard.knowledge.detail.entryTypes.${type}`;
+	return te(key) ? t(key) : typeLabel(type);
+};
+const sourceTypeName = (source: string): string => {
+	const key = `dashboard.knowledge.detail.sourceTypes.${source}`;
+	return te(key) ? t(key) : sourceLabel(source);
+};
+const relationTypeName = (type: string): string => {
+	const key = `dashboard.knowledge.detail.relationTypes.${type}`;
+	return te(key) ? t(key) : relationLabel(type);
+};
+
+const dateTimeFormat = computed(
+	() =>
+		new Intl.DateTimeFormat(locale.value, {
+			month: 'long',
+			day: 'numeric',
+			year: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+		})
+);
+const dateFormat = computed(
+	() => new Intl.DateTimeFormat(locale.value, { month: 'long', day: 'numeric', year: 'numeric' })
+);
+
 const formattedCreatedAt = computed(() => {
 	if (!entry.value) return '';
-	return new Date(entry.value.createdAt).toLocaleDateString('en-US', {
-		month: 'long',
-		day: 'numeric',
-		year: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit',
-	});
+	return dateTimeFormat.value.format(new Date(entry.value.createdAt));
 });
 
 const formattedUpdatedAt = computed(() => {
 	if (!entry.value) return '';
-	return new Date(entry.value.updatedAt).toLocaleDateString('en-US', {
-		month: 'long',
-		day: 'numeric',
-		year: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit',
-	});
+	return dateTimeFormat.value.format(new Date(entry.value.updatedAt));
 });
 
 const formattedExpiresAt = computed(() => {
@@ -81,7 +101,7 @@ const formattedExpiresAt = computed(() => {
 	const date = new Date(entry.value.expiresAt);
 	const isExpired = date.getTime() < Date.now();
 	return {
-		text: date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+		text: dateFormat.value.format(date),
 		isExpired,
 	};
 });
@@ -92,7 +112,7 @@ const showDeleteConfirm = ref(false);
 const isDeleting = ref(false);
 const commitmentStatus = ref<'open' | 'fulfilled' | 'cancelled'>('open');
 const setCommitmentStatus = useBackendOperation(api.knowledge.graph.setCommitmentStatus, {
-	label: 'Update commitment status',
+	label: () => t('dashboard.knowledge.detail.commitmentStatusOperation'),
 });
 
 watch(
@@ -108,7 +128,7 @@ async function saveCommitmentStatus() {
 		entryId: entryId.value,
 		commitmentStatus: commitmentStatus.value,
 	});
-	if (result) showToast('Commitment status updated');
+	if (result) showToast(t('dashboard.knowledge.detail.commitmentStatusToast'));
 }
 
 // Seed the edit form from the loaded entry.
@@ -127,7 +147,7 @@ const editInitialValues = computed(() => {
 
 const handleEdited = () => {
 	showEditForm.value = false;
-	showToast('Knowledge entry updated');
+	showToast(t('dashboard.knowledge.detail.updatedToast'));
 };
 
 const handleDelete = async () => {
@@ -135,7 +155,7 @@ const handleDelete = async () => {
 	try {
 		const result = await deleteEntry({ entryId: entryId.value });
 		if (result === undefined) return;
-		showToast('Knowledge entry deleted');
+		showToast(t('dashboard.knowledge.detail.deletedToast'));
 		router.push('/dashboard/knowledge');
 	} finally {
 		isDeleting.value = false;
@@ -187,7 +207,7 @@ const handleAddRelation = async () => {
 			relationType: relationType.value,
 		});
 		if (result === undefined) return;
-		showToast('Relation added');
+		showToast(t('dashboard.knowledge.detail.relationAddedToast'));
 		resetRelationForm();
 	} finally {
 		isSavingRelation.value = false;
@@ -197,7 +217,7 @@ const handleAddRelation = async () => {
 const handleRemoveRelation = async (relationId: string) => {
 	const result = await removeRelation({ relationId: relationId as Id<'knowledgeRelations'> });
 	if (result === undefined) return;
-	showToast('Relation removed');
+	showToast(t('dashboard.knowledge.detail.relationRemovedToast'));
 };
 </script>
 
@@ -209,7 +229,7 @@ const handleRemoveRelation = async (relationId: string) => {
 			class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Knowledge Graph
+			{{ t('dashboard.knowledge.detail.backToGraph') }}
 		</NuxtLink>
 
 		<!-- Loading -->
@@ -224,11 +244,15 @@ const handleRemoveRelation = async (relationId: string) => {
 			>
 				<Icon name="lucide:file-question" class="w-7 h-7 text-text-tertiary" />
 			</div>
-			<h3 class="text-base font-medium text-text-primary">Entry not found</h3>
+			<h3 class="text-base font-medium text-text-primary">
+				{{ t('dashboard.knowledge.detail.notFoundTitle') }}
+			</h3>
 			<p class="text-sm text-text-secondary mt-1">
-				This knowledge entry may have been deleted or expired.
+				{{ t('dashboard.knowledge.detail.notFoundBody') }}
 			</p>
-			<UiButton to="/dashboard/knowledge" class="mt-4"> Browse Knowledge Graph </UiButton>
+			<UiButton to="/dashboard/knowledge" class="mt-4">
+				{{ t('dashboard.knowledge.detail.browseGraph') }}
+			</UiButton>
 		</div>
 
 		<!-- Entry Detail -->
@@ -263,10 +287,12 @@ const handleRemoveRelation = async (relationId: string) => {
 									'bg-error/10 text-error': typeVariant(entry.entryType) === 'error',
 								}"
 							>
-								{{ typeLabel(entry.entryType) }}
+								{{ entryTypeName(entry.entryType) }}
 							</span>
 						</div>
-						<p class="text-sm text-text-tertiary">Created {{ formattedCreatedAt }}</p>
+						<p class="text-sm text-text-tertiary">
+							{{ t('dashboard.knowledge.detail.createdAt', { date: formattedCreatedAt }) }}
+						</p>
 					</div>
 				</div>
 
@@ -274,11 +300,11 @@ const handleRemoveRelation = async (relationId: string) => {
 				<div class="flex items-center gap-2 flex-shrink-0">
 					<UiButton variant="secondary" class="gap-2" @click="showEditForm = true">
 						<Icon name="lucide:pencil" class="w-4 h-4" />
-						Edit
+						{{ t('common.edit') }}
 					</UiButton>
 					<UiButton variant="danger-outline" class="gap-2" @click="showDeleteConfirm = true">
 						<Icon name="lucide:trash-2" class="w-4 h-4" />
-						Delete
+						{{ t('common.delete') }}
 					</UiButton>
 				</div>
 			</div>
@@ -288,7 +314,9 @@ const handleRemoveRelation = async (relationId: string) => {
 				<div class="lg:col-span-2 space-y-6">
 					<!-- Content -->
 					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-						<h3 class="text-sm font-semibold text-text-primary mb-3">Content</h3>
+						<h3 class="text-sm font-semibold text-text-primary mb-3">
+							{{ t('dashboard.knowledge.detail.content') }}
+						</h3>
 						<p class="text-sm text-text-secondary whitespace-pre-wrap leading-relaxed">
 							{{ entry.content }}
 						</p>
@@ -299,7 +327,9 @@ const handleRemoveRelation = async (relationId: string) => {
 						v-if="entry.tags && entry.tags.length > 0"
 						class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5"
 					>
-						<h3 class="text-sm font-semibold text-text-primary mb-3">Tags</h3>
+						<h3 class="text-sm font-semibold text-text-primary mb-3">
+							{{ t('dashboard.knowledge.detail.tags') }}
+						</h3>
 						<div class="flex flex-wrap gap-2">
 							<span
 								v-for="tag in entry.tags"
@@ -314,7 +344,9 @@ const handleRemoveRelation = async (relationId: string) => {
 					<!-- Relations -->
 					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 						<div class="flex items-center justify-between mb-4">
-							<h3 class="text-sm font-semibold text-text-primary">Relations</h3>
+							<h3 class="text-sm font-semibold text-text-primary">
+								{{ t('dashboard.knowledge.detail.relations') }}
+							</h3>
 							<UiButton
 								variant="secondary"
 								size="sm"
@@ -324,7 +356,7 @@ const handleRemoveRelation = async (relationId: string) => {
 								@click="showRelationForm = true"
 							>
 								<Icon name="lucide:plus" class="w-3.5 h-3.5" />
-								Add relation
+								{{ t('dashboard.knowledge.detail.addRelation') }}
 							</UiButton>
 						</div>
 
@@ -338,11 +370,11 @@ const handleRemoveRelation = async (relationId: string) => {
 									for="relation-type"
 									class="block text-xs font-medium text-text-secondary mb-1.5"
 								>
-									This entry
+									{{ t('dashboard.knowledge.detail.thisEntry') }}
 								</label>
 								<select id="relation-type" v-model="relationType" class="input w-full">
 									<option v-for="rt in RELATION_TYPES" :key="rt" :value="rt">
-										{{ relationLabel(rt) }}
+										{{ relationTypeName(rt) }}
 									</option>
 								</select>
 							</div>
@@ -352,7 +384,7 @@ const handleRemoveRelation = async (relationId: string) => {
 									for="relation-target"
 									class="block text-xs font-medium text-text-secondary mb-1.5"
 								>
-									Related entry
+									{{ t('dashboard.knowledge.detail.relatedEntry') }}
 								</label>
 								<div
 									v-if="selectedTarget"
@@ -362,7 +394,7 @@ const handleRemoveRelation = async (relationId: string) => {
 									<button
 										type="button"
 										class="rounded text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-										aria-label="Clear selection"
+										:aria-label="t('dashboard.knowledge.detail.clearSelection')"
 										@click="selectedTarget = null"
 									>
 										<Icon name="lucide:x" class="w-3.5 h-3.5" />
@@ -373,7 +405,7 @@ const handleRemoveRelation = async (relationId: string) => {
 										id="relation-target"
 										v-model="relationSearch"
 										type="text"
-										placeholder="Search for an entry to relate…"
+										:placeholder="t('dashboard.knowledge.detail.relationSearchPlaceholder')"
 										class="input w-full"
 										autocomplete="off"
 									/>
@@ -396,19 +428,19 @@ const handleRemoveRelation = async (relationId: string) => {
 											<span
 												class="text-2xs uppercase tracking-wide text-text-tertiary ml-auto flex-shrink-0"
 											>
-												{{ typeLabel(candidate.entryType) }}
+												{{ entryTypeName(candidate.entryType) }}
 											</span>
 										</button>
 									</div>
 									<p v-else-if="relationSearch.trim()" class="text-xs text-text-tertiary mt-2">
-										No matching entries.
+										{{ t('dashboard.knowledge.detail.noMatchingEntries') }}
 									</p>
 								</template>
 							</div>
 
 							<div class="flex items-center justify-end gap-2 pt-1">
 								<UiButton variant="secondary" size="sm" type="button" @click="resetRelationForm">
-									Cancel
+									{{ t('common.cancel') }}
 								</UiButton>
 								<UiButton
 									size="sm"
@@ -416,7 +448,11 @@ const handleRemoveRelation = async (relationId: string) => {
 									:disabled="!selectedTarget || isSavingRelation"
 									@click="handleAddRelation"
 								>
-									{{ isSavingRelation ? 'Adding…' : 'Add relation' }}
+									{{
+										isSavingRelation
+											? t('dashboard.knowledge.detail.addingRelation')
+											: t('dashboard.knowledge.detail.addRelation')
+									}}
 								</UiButton>
 							</div>
 						</div>
@@ -429,7 +465,7 @@ const handleRemoveRelation = async (relationId: string) => {
 							@remove="handleRemoveRelation"
 						/>
 						<p v-else-if="!showRelationForm" class="text-sm text-text-tertiary">
-							No relations yet. Link this entry to another to build out the knowledge graph.
+							{{ t('dashboard.knowledge.detail.noRelations') }}
 						</p>
 					</div>
 				</div>
@@ -440,13 +476,21 @@ const handleRemoveRelation = async (relationId: string) => {
 						v-if="entry.entryType === 'decision' || entry.entryType === 'action_item'"
 						class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5"
 					>
-						<h3 class="mb-3 text-sm font-semibold text-text-primary">Commitment status</h3>
+						<h3 class="mb-3 text-sm font-semibold text-text-primary">
+							{{ t('dashboard.knowledge.detail.commitmentStatus') }}
+						</h3>
 						<UiSelect
 							v-model="commitmentStatus"
 							:options="[
-								{ value: 'open', label: 'Open' },
-								{ value: 'fulfilled', label: 'Fulfilled' },
-								{ value: 'cancelled', label: 'Cancelled' },
+								{ value: 'open', label: t('dashboard.knowledge.detail.commitmentStatuses.open') },
+								{
+									value: 'fulfilled',
+									label: t('dashboard.knowledge.detail.commitmentStatuses.fulfilled'),
+								},
+								{
+									value: 'cancelled',
+									label: t('dashboard.knowledge.detail.commitmentStatuses.cancelled'),
+								},
 							]"
 						/>
 						<UiButton
@@ -455,40 +499,44 @@ const handleRemoveRelation = async (relationId: string) => {
 							:loading="setCommitmentStatus.isLoading.value"
 							@click="saveCommitmentStatus"
 						>
-							Save status
+							{{ t('dashboard.knowledge.detail.saveStatus') }}
 						</UiButton>
 					</div>
 
 					<!-- Confidence -->
 					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-						<h3 class="text-sm font-semibold text-text-primary mb-3">Confidence</h3>
+						<h3 class="text-sm font-semibold text-text-primary mb-3">
+							{{ t('dashboard.knowledge.detail.confidence') }}
+						</h3>
 						<div class="flex items-center gap-3">
 							<UiProgressBar
 								class="w-24"
 								size="sm"
 								:value="entry.confidence * 100"
 								:variant="confidenceVariant(entry.confidence)"
-								aria-label="Confidence"
+								:aria-label="t('dashboard.knowledge.detail.confidence')"
 							/>
 							<span class="text-sm font-semibold" :class="confidenceColor(entry.confidence)">
 								{{ formatConfidence(entry.confidence) }}
 							</span>
 						</div>
 						<p class="text-xs text-text-tertiary mt-2">
-							Confidence decays over time, with recent use slowing the decay.
+							{{ t('dashboard.knowledge.detail.confidenceHint') }}
 						</p>
 					</div>
 
 					<!-- Source -->
 					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-						<h3 class="text-sm font-semibold text-text-primary mb-3">Source</h3>
+						<h3 class="text-sm font-semibold text-text-primary mb-3">
+							{{ t('dashboard.knowledge.detail.source') }}
+						</h3>
 						<div class="flex items-center gap-2">
 							<div class="w-8 h-8 rounded-lg bg-bg-surface flex items-center justify-center">
 								<Icon :name="sourceIcon(entry.sourceType)" class="w-4 h-4 text-text-secondary" />
 							</div>
 							<div>
 								<p class="text-sm font-medium text-text-primary">
-									{{ sourceLabel(entry.sourceType) }}
+									{{ sourceTypeName(entry.sourceType) }}
 								</p>
 								<p v-if="entry.sourceId" class="text-xs text-text-tertiary truncate max-w-[160px]">
 									{{ entry.sourceId }}
@@ -501,27 +549,31 @@ const handleRemoveRelation = async (relationId: string) => {
 							class="mt-3 inline-flex items-center gap-1.5 text-xs text-brand hover:text-brand/80 transition-colors"
 						>
 							<Icon name="lucide:message-square" class="w-3.5 h-3.5" />
-							View source thread
+							{{ t('dashboard.knowledge.detail.viewSourceThread') }}
 						</NuxtLink>
 					</div>
 
 					<!-- Dates -->
 					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-						<h3 class="text-sm font-semibold text-text-primary mb-3">Details</h3>
+						<h3 class="text-sm font-semibold text-text-primary mb-3">
+							{{ t('dashboard.knowledge.detail.details') }}
+						</h3>
 						<dl class="space-y-2.5 text-sm">
 							<div class="flex justify-between">
-								<dt class="text-text-tertiary">Created</dt>
+								<dt class="text-text-tertiary">{{ t('dashboard.knowledge.detail.created') }}</dt>
 								<dd class="text-text-secondary">{{ formattedCreatedAt }}</dd>
 							</div>
 							<div class="flex justify-between">
-								<dt class="text-text-tertiary">Updated</dt>
+								<dt class="text-text-tertiary">{{ t('dashboard.knowledge.detail.updated') }}</dt>
 								<dd class="text-text-secondary">{{ formattedUpdatedAt }}</dd>
 							</div>
 							<div v-if="formattedExpiresAt" class="flex justify-between">
-								<dt class="text-text-tertiary">Expires</dt>
+								<dt class="text-text-tertiary">{{ t('dashboard.knowledge.detail.expires') }}</dt>
 								<dd :class="formattedExpiresAt.isExpired ? 'text-error' : 'text-text-secondary'">
 									{{ formattedExpiresAt.text }}
-									<span v-if="formattedExpiresAt.isExpired" class="text-xs">(expired)</span>
+									<span v-if="formattedExpiresAt.isExpired" class="text-xs">
+										{{ t('dashboard.knowledge.detail.expired') }}
+									</span>
 								</dd>
 							</div>
 						</dl>
@@ -532,7 +584,9 @@ const handleRemoveRelation = async (relationId: string) => {
 						v-if="entry.contactIds && entry.contactIds.length > 0"
 						class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5"
 					>
-						<h3 class="text-sm font-semibold text-text-primary mb-3">Linked Contacts</h3>
+						<h3 class="text-sm font-semibold text-text-primary mb-3">
+							{{ t('dashboard.knowledge.detail.linkedContacts') }}
+						</h3>
 						<div class="space-y-2">
 							<NuxtLink
 								v-for="contactId in entry.contactIds"
@@ -571,11 +625,13 @@ const handleRemoveRelation = async (relationId: string) => {
 						<div
 							class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10"
 						>
-							<h3 class="text-base font-semibold text-text-primary">Edit Knowledge Entry</h3>
+							<h3 class="text-base font-semibold text-text-primary">
+								{{ t('dashboard.knowledge.detail.editModalTitle') }}
+							</h3>
 							<button
 								class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="showEditForm = false"
-								aria-label="Close"
+								:aria-label="t('common.close')"
 							>
 								<Icon name="lucide:x" class="w-4 h-4" />
 							</button>
@@ -612,15 +668,22 @@ const handleRemoveRelation = async (relationId: string) => {
 					<div
 						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
 					>
-						<h3 class="text-lg font-semibold text-text-primary mb-2">Delete Knowledge Entry</h3>
+						<h3 class="text-lg font-semibold text-text-primary mb-2">
+							{{ t('dashboard.knowledge.detail.deleteModalTitle') }}
+						</h3>
 						<p class="text-sm text-text-secondary mb-6">
-							This permanently removes this entry from the knowledge graph so it no longer feeds the
-							agent's drafting context. This action cannot be undone.
+							{{ t('dashboard.knowledge.detail.deleteModalBody') }}
 						</p>
 						<div class="flex items-center justify-end gap-3">
-							<UiButton variant="secondary" @click="showDeleteConfirm = false">Cancel</UiButton>
+							<UiButton variant="secondary" @click="showDeleteConfirm = false">
+								{{ t('common.cancel') }}
+							</UiButton>
 							<UiButton variant="danger" :disabled="isDeleting" @click="handleDelete">
-								{{ isDeleting ? 'Deleting...' : 'Delete' }}
+								{{
+									isDeleting
+										? t('dashboard.knowledge.detail.deleting')
+										: t('common.delete')
+								}}
 							</UiButton>
 						</div>
 					</div>

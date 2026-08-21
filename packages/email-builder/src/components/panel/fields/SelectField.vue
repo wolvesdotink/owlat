@@ -6,6 +6,8 @@ const props = defineProps<{
 	value: unknown;
 	options: { label: string; value: string | number | boolean }[];
 	placeholder?: string;
+	/** Names the control for assistive tech; the visible label sits outside this component. */
+	label?: string;
 }>();
 
 const emit = defineEmits<{
@@ -116,6 +118,9 @@ onUnmounted(() => {
 			class="flex items-center justify-between w-full py-2 px-2.5 text-[13px] font-[450] border border-border-subtle rounded-lg bg-bg-surface text-text-primary cursor-pointer outline-none text-left gap-1.5 eb-input-ring"
 			:class="{ 'border-brand/50 shadow-[0_0_0_3px_rgba(196,120,90,0.08)]': isOpen }"
 			type="button"
+			:aria-label="label"
+			aria-haspopup="listbox"
+			:aria-expanded="isOpen"
 			@click="toggle"
 		>
 			<span
@@ -140,6 +145,8 @@ onUnmounted(() => {
 				<div
 					v-if="isOpen"
 					ref="menuRef"
+					role="listbox"
+					:aria-label="label"
 					class="z-[9999] p-1 bg-bg-elevated light border border-border-subtle rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.25),0_2px_6px_rgba(0,0,0,0.1)] overflow-y-auto scrollbar-thin"
 					:style="dropdownStyle"
 				>
@@ -149,6 +156,8 @@ onUnmounted(() => {
 						class="flex items-center justify-between w-full py-[7px] px-2.5 text-[13px] text-left border-none rounded-[5px] bg-none text-text-primary cursor-pointer gap-2 transition-[background-color] duration-(--motion-fast) hover:bg-bg-surface-hover"
 						:class="{ 'text-brand font-medium bg-bg-surface': String(opt.value) === String(value) }"
 						type="button"
+						role="option"
+						:aria-selected="String(opt.value) === String(value)"
 						@click="select(opt.value)"
 					>
 						<span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{{

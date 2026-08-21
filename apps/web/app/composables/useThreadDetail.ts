@@ -3,6 +3,8 @@ import type { Id } from '@owlat/api/dataModel';
 import { categoryIcon } from '~/utils/agentCategories';
 
 export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
+	const { t, locale } = useI18n();
+
 	// Fetch thread with messages
 	const { data: threadData, isLoading: threadLoading } = useConvexQuery(
 		api.inbox.queries.getThread,
@@ -20,29 +22,35 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 
 	// Mutations
 	const { run: approveDraft } = useBackendOperation(api.inbox.mutations.approveDraft, {
-		label: 'Approve draft',
+		label: () => t('shared.useThreadDetail.approveDraft'),
 	});
 	const { run: rejectDraft } = useBackendOperation(api.inbox.mutations.rejectDraft, {
-		label: 'Reject draft',
+		label: () => t('shared.useThreadDetail.rejectDraft'),
 	});
 	const { run: editDraft } = useBackendOperation(api.inbox.mutations.editDraft, {
-		label: 'Save draft',
+		label: () => t('shared.useThreadDetail.saveDraft'),
 	});
 	const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
-		label: 'Assign thread',
+		label: () => t('shared.useThreadDetail.assignThread'),
 	});
 	const { run: updateThreadStatus } = useBackendOperation(api.inbox.mutations.updateThreadStatus, {
-		label: 'Update thread status',
+		label: () => t('shared.useThreadDetail.updateThreadStatus'),
 	});
 	const { run: retryFailedMessage } = useBackendOperation(api.inbox.mutations.retryFailedMessage, {
-		label: 'Retry message',
+		label: () => t('shared.useThreadDetail.retryMessage'),
 	});
 	const { run: snoozeThread } = useBackendOperation(api.inbox.snooze.snoozeThread, {
-		label: 'Snooze thread',
+		label: () => t('shared.useThreadDetail.snoozeThread'),
 	});
 	const { run: unsnoozeThread } = useBackendOperation(api.inbox.snooze.unsnoozeThread, {
-		label: 'Unsnooze thread',
+		label: () => t('shared.useThreadDetail.unsnoozeThread'),
 	});
+	// Declared AFTER the operations above: the unit tests map mocked runs by
+	// declaration order.
+	const { run: saveDraftRevision } = useBackendOperation(
+		api.inbox.draftRevisions.saveDraftRevision,
+		{ label: () => t('shared.useThreadDetail.saveDraftRevision') }
+	);
 
 	// Actions
 	// Return the run result so callers can show a success toast only on a real
@@ -96,6 +104,22 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		return approved;
 	};
 
+	// Inline "Save" (piece D1'): persist the working edit as a draft revision
+	// WITHOUT approving — the message stays in `draft_ready`, the agent original
+	// is preserved as revision 0, and no autonomy feedback is recorded. Editing
+	// mode closes on success; the saved text becomes the visible working draft.
+	const saveDraftOnly = async (messageId: Id<'inboundMessages'>) => {
+		const saved = await saveDraftRevision({
+			inboundMessageId: messageId,
+			draftResponse: editedDraftResponse.value,
+			draftSubject: editedDraftSubject.value || undefined,
+		});
+		if (saved === undefined) return undefined;
+
+		isEditingDraft.value = false;
+		return saved;
+	};
+
 	const handleAssign = async (assignedTo?: string) => {
 		await assignThread({ threadId: threadId.value, assignedTo });
 	};
@@ -129,24 +153,28 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		return colors[status] || 'text-text-tertiary bg-bg-surface';
 	};
 
+	const PROCESSING_STATUS_KEYS: Record<string, string> = {
+		received: 'shared.useThreadDetail.processingStatus.received',
+		processing: 'shared.useThreadDetail.processingStatus.processing',
+		classified: 'shared.useThreadDetail.processingStatus.classified',
+		draft_ready: 'shared.useThreadDetail.processingStatus.draftReady',
+		approved: 'shared.useThreadDetail.processingStatus.approved',
+		sent: 'shared.useThreadDetail.processingStatus.sent',
+		quarantined: 'shared.useThreadDetail.processingStatus.quarantined',
+		failed: 'shared.useThreadDetail.processingStatus.failed',
+	};
+
+	// An unknown status has no message of its own — it renders as the raw value,
+	// exactly as it always has, rather than as a missing key.
 	const getProcessingStatusLabel = (status: string) => {
-		const labels: Record<string, string> = {
-			received: 'Received',
-			processing: 'Processing',
-			classified: 'Classified',
-			draft_ready: 'Draft Ready',
-			approved: 'Approved',
-			sent: 'Sent',
-			quarantined: 'Quarantined',
-			failed: 'Failed',
-		};
-		return labels[status] || status;
+		const key = PROCESSING_STATUS_KEYS[status];
+		return key === undefined ? status : t(key);
 	};
 
 	const getCategoryIcon = categoryIcon;
 
 	const formatTimestamp = (timestamp: number) => {
-		return new Date(timestamp).toLocaleString();
+		return new Date(timestamp).toLocaleString(locale.value);
 	};
 
 	return {
@@ -166,6 +194,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		startEditDraft,
 		cancelEditDraft,
 		saveEditedDraft,
+		saveDraftOnly,
 		handleAssign,
 		handleStatusChange,
 		handleSnooze,

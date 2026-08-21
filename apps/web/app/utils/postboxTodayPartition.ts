@@ -97,30 +97,56 @@ export function partitionTodayMessages<T extends PostboxTodayPartitionMessage>(
 	return { today, older, autoFiled, autoFiledCounts };
 }
 
-/** Fixed display order + nouns for the roll-up line. */
-const AUTO_FILED_NOUNS: ReadonlyArray<{
-	key: PostboxAutoFiledCategory;
-	singular: string;
-	plural: string;
-}> = [
-	{ key: 'newsletter', singular: 'newsletter', plural: 'newsletters' },
-	{ key: 'notification', singular: 'notification', plural: 'notifications' },
-	{ key: 'receipt', singular: 'receipt', plural: 'receipts' },
+/** Fixed display order for the roll-up line. */
+const AUTO_FILED_ORDER: readonly PostboxAutoFiledCategory[] = [
+	'newsletter',
+	'notification',
+	'receipt',
 ];
+
+/**
+ * One message per combination of categories, in the fixed display order.
+ *
+ * The noun list is NOT assembled here from translated fragments: which nouns a
+ * language pluralises, how it joins them and where the count sits are all part
+ * of the sentence, so each combination is its own message. A combination is
+ * only ever singular when the total is one, which by definition means a single
+ * category — hence the singular form exists on those three alone.
+ */
+const AUTO_FILED_LINE_KEYS: Readonly<Record<string, string>> = {
+	newsletter: 'shared.postboxTodayPartition.autoFiled.newsletter',
+	notification: 'shared.postboxTodayPartition.autoFiled.notification',
+	receipt: 'shared.postboxTodayPartition.autoFiled.receipt',
+	'newsletter+notification': 'shared.postboxTodayPartition.autoFiled.newsletterNotification',
+	'newsletter+receipt': 'shared.postboxTodayPartition.autoFiled.newsletterReceipt',
+	'notification+receipt': 'shared.postboxTodayPartition.autoFiled.notificationReceipt',
+	'newsletter+notification+receipt': 'shared.postboxTodayPartition.autoFiled.all',
+};
+
+/** A localizable string: an i18n key plus the values it interpolates. */
+export interface AutoFiledLine {
+	key: string;
+	params: { count: number };
+}
 
 /**
  * Human roll-up line for auto-filed mail, e.g. "12 newsletters & receipts
  * auto-filed" or "1 notification auto-filed". Null when nothing was filed —
  * the view simply omits the line then.
+ *
+ * Returns the message key and its count rather than a sentence: this module is
+ * pure, so the view runs the pair through `t(key, params)`.
  */
 export function formatAutoFiledLine(
 	counts: Partial<Record<PostboxAutoFiledCategory, number>>
-): string | null {
-	const present = AUTO_FILED_NOUNS.filter((noun) => (counts[noun.key] ?? 0) > 0);
-	const total = present.reduce((sum, noun) => sum + (counts[noun.key] ?? 0), 0);
-	if (total === 0) return null;
-	const nouns = present.map((noun) => (total === 1 ? noun.singular : noun.plural));
-	const list =
-		nouns.length === 1 ? nouns[0] : `${nouns.slice(0, -1).join(', ')} & ${nouns[nouns.length - 1]}`;
-	return `${total} ${list} auto-filed`;
+): AutoFiledLine | null {
+	const present = AUTO_FILED_ORDER.filter((category) => (counts[category] ?? 0) > 0);
+	const count = present.reduce((sum, category) => sum + (counts[category] ?? 0), 0);
+	if (count === 0) return null;
+	const combination = present.join('+');
+	const key = AUTO_FILED_LINE_KEYS[combination];
+	if (key === undefined) return null;
+	// The singular reads differently and only exists for a lone category, which
+	// is the only shape a total of one can take.
+	return { key: count === 1 ? `${key}.one` : `${key}.other`, params: { count } };
 }

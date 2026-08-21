@@ -1,3 +1,10 @@
+/**
+ * The MTA-identity step of the setup wizard.
+ *
+ * Module scope, so the validator never calls `useI18n`: it returns a catalog KEY
+ * for the failure (or `undefined` when the draft is fine), and the wizard
+ * resolves it with `t()` where the message is shown.
+ */
 export interface MtaIdentityDraft {
 	transactionalIps: string;
 	campaignIps: string;
@@ -13,7 +20,7 @@ export function validateMtaIdentityDraft(
 		!identity.campaignIps.trim() ||
 		!identity.ehloHostname.trim()
 	) {
-		return 'Enter the transactional and campaign sending IPs plus the EHLO hostname used by their PTR records.';
+		return 'shared.setupMtaIdentity.missingIpsOrHostname';
 	}
 	if (!identity.ehloHostnames.trim()) return;
 	try {
@@ -26,7 +33,7 @@ export function validateMtaIdentityDraft(
 		)
 			throw new Error();
 	} catch {
-		return 'Per-IP EHLO overrides must be a JSON object mapping IP to hostname.';
+		return 'shared.setupMtaIdentity.invalidEhloHostnames';
 	}
 }
 

@@ -14,20 +14,24 @@ const emit = defineEmits<{
 	confirm: [];
 }>();
 
+const { t } = useI18n();
+
 const description = computed(() =>
 	props.replyByName
-		? `${props.replyByName} replied to this thread after you opened it. Send your reply anyway?`
-		: 'Someone on your team replied to this thread after you opened it. Send your reply anyway?'
+		? t('components.postbox.postboxStaleReplyDialog.descriptionNamed', {
+				name: props.replyByName,
+			})
+		: t('components.postbox.postboxStaleReplyDialog.description')
 );
 </script>
 
 <template>
 	<UiConfirmationDialog
 		:open="open"
-		title="A teammate already replied"
+		:title="t('components.postbox.postboxStaleReplyDialog.title')"
 		:description="description"
-		confirm-text="Send anyway"
-		cancel-text="Keep editing"
+		:confirm-text="t('components.postbox.postboxStaleReplyDialog.confirm')"
+		:cancel-text="t('components.postbox.postboxStaleReplyDialog.cancel')"
 		@update:open="emit('update:open', $event)"
 		@confirm="emit('confirm')"
 	/>

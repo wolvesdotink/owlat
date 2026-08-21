@@ -11,10 +11,11 @@
  * to render its default slot so we can assert the row set + emit contract that a
  * keyboard selection resolves to.
  */
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import AssignPopover from '../AssignPopover.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const members = [
 	{ userId: 'me-1', name: 'Ada Lovelace', email: 'ada@example.com', image: null },
@@ -22,8 +23,15 @@ const members = [
 	{ userId: 'u-3', name: null, email: 'cleo@example.com', image: null },
 ];
 
+// Every visible string flows through vue-i18n now: mount with the real catalog
+// and expose `useI18n`, which is a Nuxt auto-import in the app.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
 const mountOpts = {
 	global: {
+		plugins: [createTestI18n()],
 		stubs: {
 			Icon: true,
 			UiAvatar: true,

@@ -164,6 +164,11 @@ const activeGroups = computed(() => {
 	return groupsByTab.value.get(activeCategory.value ?? '') ?? [];
 });
 
+/** Accessible name of the settings popover, so it is not an anonymous group. */
+const activeCategoryLabel = computed(
+	() => visibleCategories.value.find((tab) => tab.id === activeCategory.value)?.label ?? 'Settings'
+);
+
 // ---------------------------------------------------------------------------
 // Sub-popover state
 // ---------------------------------------------------------------------------
@@ -340,6 +345,8 @@ onUnmounted(() => {
 						:title="cat.label"
 						:aria-label="cat.label"
 						:active="activeCategory === cat.id"
+						aria-haspopup="true"
+						:aria-expanded="activeCategory === cat.id"
 						@click="toggleCategory(cat.id)"
 					/>
 					<ToolbarDivider v-if="toolbarFields.length > 0" />
@@ -387,6 +394,8 @@ onUnmounted(() => {
 		<div
 			v-if="activeCategory && !isLinked && !isInlineEditing"
 			ref="subPopoverEl"
+			role="group"
+			:aria-label="`${activeCategoryLabel} settings`"
 			class="light bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden flex flex-col animate-eb-fade-in"
 			:style="subPopoverStyles"
 			@mousedown.stop

@@ -4,7 +4,19 @@ import {
 	transportIdLabel,
 	type TransportHealthInput,
 	type TransportSummaryInput,
+	type TransportText,
 } from '../transportState';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The module's own copy arrives as catalog keys; a name that comes from the
+ * catalog, the backend or an unknown `EMAIL_PROVIDER` value passes through as
+ * itself, and `t()` leaves it alone. Rendering both through this one boundary is
+ * exactly what the card does.
+ */
+const { t } = createTestI18n().global;
+const render = (text: TransportText) =>
+	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
 
 function summary(overrides: Partial<TransportSummaryInput> = {}): TransportSummaryInput {
 	return {
@@ -35,47 +47,49 @@ function health(status: TransportHealthInput['status']): TransportHealthInput {
  */
 describe('transportIdLabel', () => {
 	it('names each built-in kind exactly as the transport card does', () => {
-		expect(transportIdLabel('mta')).toBe('Owlat mail server');
-		expect(transportIdLabel('ses')).toBe('Amazon SES');
-		expect(transportIdLabel('resend')).toBe('Resend');
-		expect(transportIdLabel('smtp')).toBe('SMTP relay');
+		expect(t(transportIdLabel('mta'))).toBe('Owlat mail server');
+		expect(t(transportIdLabel('ses'))).toBe('Amazon SES');
+		expect(t(transportIdLabel('resend'))).toBe('Resend');
+		expect(t(transportIdLabel('smtp'))).toBe('SMTP relay');
 	});
 
 	it('names a plugin relay by the leaf of its id, not the namespaced id', () => {
 		// The ramp and dashboard queries carry the id, not the plugin catalog's
 		// display label, so "instead of plugin.mail-pack.postmark" was the shipped
 		// sentence. The leaf is the pack's own word for the transport.
-		expect(transportIdLabel('plugin.mail-pack.postmark')).toBe('Postmark');
-		expect(transportIdLabel('plugin.relay-pack.mailgun-eu')).toBe('Mailgun-eu');
+		expect(t(transportIdLabel('plugin.mail-pack.postmark'))).toBe('Postmark');
+		expect(t(transportIdLabel('plugin.relay-pack.mailgun-eu'))).toBe('Mailgun-eu');
 	});
 
 	it('falls back to the raw value for anything else', () => {
 		// `EMAIL_PROVIDER` can name a transport this build does not know, and a
 		// malformed plugin id is not a name to guess at either — both must still
 		// read as themselves rather than as "Unknown".
-		expect(transportIdLabel('sendgrid')).toBe('sendgrid');
-		expect(transportIdLabel('plugin.mail-pack')).toBe('plugin.mail-pack');
-		expect(transportIdLabel('plugin.mail-pack.a.b')).toBe('plugin.mail-pack.a.b');
+		expect(t(transportIdLabel('sendgrid'))).toBe('sendgrid');
+		expect(t(transportIdLabel('plugin.mail-pack'))).toBe('plugin.mail-pack');
+		expect(t(transportIdLabel('plugin.mail-pack.a.b'))).toBe('plugin.mail-pack.a.b');
 	});
 });
 
 describe('deriveTransportDisplay — labels', () => {
 	it('names each known transport in human words', () => {
-		expect(deriveTransportDisplay(summary({ provider: 'mta' })).label).toBe('Owlat mail server');
-		expect(deriveTransportDisplay(summary({ provider: 'ses' })).label).toBe('Amazon SES');
-		expect(deriveTransportDisplay(summary({ provider: 'resend' })).label).toBe('Resend');
-		expect(deriveTransportDisplay(summary({ provider: 'smtp' })).label).toBe('SMTP relay');
+		expect(render(deriveTransportDisplay(summary({ provider: 'mta' })).label)).toBe(
+			'Owlat mail server'
+		);
+		expect(render(deriveTransportDisplay(summary({ provider: 'ses' })).label)).toBe('Amazon SES');
+		expect(render(deriveTransportDisplay(summary({ provider: 'resend' })).label)).toBe('Resend');
+		expect(render(deriveTransportDisplay(summary({ provider: 'smtp' })).label)).toBe('SMTP relay');
 	});
 
 	it('handles no transport selected', () => {
 		const d = deriveTransportDisplay(summary({ provider: null, canSend: false }));
-		expect(d.label).toBe('No transport selected');
+		expect(render(d.label)).toBe('No transport selected');
 		expect(d.isConfigured).toBe(false);
 	});
 
 	it('flags an unrecognized EMAIL_PROVIDER value', () => {
 		const d = deriveTransportDisplay(summary({ provider: 'sendgrid', canSend: false }));
-		expect(d.label).toContain('sendgrid');
+		expect(render(d.label)).toContain('sendgrid');
 	});
 
 	it('uses the backend catalog label for a bundled plugin transport', () => {
@@ -86,9 +100,9 @@ describe('deriveTransportDisplay — labels', () => {
 				canSend: true,
 			})
 		);
-		expect(d.label).toBe('Postmark');
-		expect(d.description).toContain('Postmark');
-		expect(d.label).not.toContain('Unrecognized');
+		expect(render(d.label)).toBe('Postmark');
+		expect(render(d.description)).toContain('Postmark');
+		expect(render(d.label)).not.toContain('Unrecognized');
 	});
 });
 
@@ -96,14 +110,14 @@ describe('deriveTransportDisplay — configured tone', () => {
 	it('is success when the instance can send', () => {
 		const d = deriveTransportDisplay(summary({ canSend: true }));
 		expect(d.configuredTone).toBe('success');
-		expect(d.configuredLabel).toBe('Ready to send');
+		expect(t(d.configuredLabel)).toBe('Ready to send');
 		expect(d.isConfigured).toBe(true);
 	});
 
 	it('is error when it cannot', () => {
 		const d = deriveTransportDisplay(summary({ canSend: false }));
 		expect(d.configuredTone).toBe('error');
-		expect(d.configuredLabel).toBe('Not ready');
+		expect(t(d.configuredLabel)).toBe('Not ready');
 	});
 });
 
@@ -111,7 +125,7 @@ describe('deriveTransportDisplay — health', () => {
 	it('is neutral before the first send', () => {
 		const d = deriveTransportDisplay(summary({ health: null }));
 		expect(d.healthTone).toBe('neutral');
-		expect(d.healthLabel).toBe('No sends yet');
+		expect(t(d.healthLabel)).toBe('No sends yet');
 	});
 
 	it('maps each provider-health status to the shared tone vocabulary', () => {

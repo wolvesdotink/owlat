@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { createTestI18n } from '~/__tests__/i18n';
 import { useFormSettings } from '../useFormSettings';
+
+// Every label, error and toast in the composable now comes from the catalog
+// through the `useI18n` auto-import; mounting the real messages keeps these
+// assertions on the English copy a member reads.
+const i18n = createTestI18n();
 
 /**
  * Regression test for the form-field-builder wiring (MISSING_FEATURES gap:
@@ -18,6 +24,7 @@ describe('useFormSettings field editor', () => {
 		createCalls = [];
 		updateCalls = [];
 
+		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useOrganizationContext', () => ({
 			isLoading: ref(false),
 			hasActiveOrganization: ref(true),
@@ -36,21 +43,26 @@ describe('useFormSettings field editor', () => {
 			copy: vi.fn().mockResolvedValue(true),
 			copiedKey: ref(null),
 		}));
-		vi.stubGlobal('useBackendOperation', (_fn: unknown, options: { label: string }) => ({
-			run: (args: Record<string, unknown>) => {
-				if (options.label === 'Create form endpoint') {
-					createCalls.push(args);
-					return Promise.resolve('form1');
-				}
-				if (options.label === 'Update form endpoint') {
-					updateCalls.push(args);
-					return Promise.resolve('form1');
-				}
-				return Promise.resolve('ok');
-			},
-			isLoading: ref(false),
-			inlineError: ref(null),
-		}));
+		vi.stubGlobal(
+			'useBackendOperation',
+			(_fn: unknown, options: { label: string | (() => string) }) => ({
+				run: (args: Record<string, unknown>) => {
+					// Localized surfaces pass a getter so the label follows the locale.
+					const label = typeof options.label === 'function' ? options.label() : options.label;
+					if (label === 'Create form endpoint') {
+						createCalls.push(args);
+						return Promise.resolve('form1');
+					}
+					if (label === 'Update form endpoint') {
+						updateCalls.push(args);
+						return Promise.resolve('form1');
+					}
+					return Promise.resolve('ok');
+				},
+				isLoading: ref(false),
+				inlineError: ref(null),
+			})
+		);
 	});
 
 	it('seeds the add form with a single required email field', () => {

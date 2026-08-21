@@ -79,7 +79,7 @@ describe('rerenderRow theme propagation', () => {
 				fontFamily: 'Georgia, serif',
 				backgroundColor: '#102030',
 				baseWidth: 720,
-			},
+			}
 		);
 
 		expect(htmlTranslations).toBeDefined();
@@ -95,5 +95,32 @@ describe('rerenderRow theme propagation', () => {
 		// Translated text was overlaid.
 		expect(de!.htmlContent).toContain('Los');
 		expect(de!.subject).toBe('Hallo');
+	});
+});
+
+describe('rerenderRow plain-text regeneration', () => {
+	it('regenerates the text/plain body from the blocks alongside the html', () => {
+		const { plainTextContent } = rerenderRow(baseRow, 'personalization', undefined);
+		expect(plainTextContent).toBe('[Go] https://example.com');
+	});
+
+	it('leaves an author override alone — a saved-block edit must not clobber it', () => {
+		const { plainTextContent } = rerenderRow(
+			{ ...baseRow, plainTextOverride: 'My own words' },
+			'personalization',
+			undefined
+		);
+		// `undefined` means "do not patch the column", so the stored override
+		// (which IS plainTextContent) survives the rerender.
+		expect(plainTextContent).toBeUndefined();
+	});
+
+	it('regenerates when the override is whitespace only', () => {
+		const { plainTextContent } = rerenderRow(
+			{ ...baseRow, plainTextOverride: '  \n ' },
+			'personalization',
+			undefined
+		);
+		expect(plainTextContent).toBe('[Go] https://example.com');
 	});
 });

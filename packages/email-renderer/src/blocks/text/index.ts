@@ -10,7 +10,7 @@
 import { fullSupport, type TextBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { transformHtmlLinks } from '../../helpers/linkTransform';
-import { stripHtml, extractLinks } from '../../helpers/text';
+import { stripHtml, extractLinks, underlineHeading } from '../../helpers/text';
 import { escapeAttr, escapeCss, sanitizeRawHtml } from '../../sanitize';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 
@@ -131,7 +131,10 @@ export const textModule: BlockModule<'text'> = {
 	plaintext({ content }) {
 		// Same missing-html guard as html(): blocks written via SDK/API may omit it.
 		const withLinks = extractLinks(content.html || '');
-		return stripHtml(withLinks);
+		const text = stripHtml(withLinks);
+		// Headings keep their rank in the text part via a setext-style rule so a
+		// text-only reader still sees the document's section structure.
+		return underlineHeading(text, content.blockType ?? 'paragraph');
 	},
 
 	amp({ content }) {

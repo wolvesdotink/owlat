@@ -48,6 +48,18 @@ const rows = computed(() =>
 
 const emit = defineEmits<{ select: [cellKey: string] }>();
 
+const { t } = useI18n();
+
+/**
+ * The per-cell vocabulary in `utils/deliverabilityRamp` carries i18n keys rather
+ * than sentences (the registry convention for module-scope definitions); a plain
+ * string is still accepted so a value with nothing to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
 const TONE_CLASS = {
 	ok: 'border-success/40 text-success',
 	attention: 'border-warning/40 text-warning',
@@ -60,11 +72,21 @@ const TONE_CLASS = {
 		<table class="w-full text-sm" :aria-labelledby="labelledBy" data-testid="ramp-cells-grid">
 			<thead>
 				<tr class="text-left text-xs uppercase tracking-wide text-text-secondary">
-					<th scope="col" class="py-2 pr-4 font-medium">Cell</th>
-					<th scope="col" class="py-2 pr-4 font-medium">Own share</th>
-					<th scope="col" class="py-2 pr-4 font-medium">State</th>
-					<th scope="col" class="py-2 pr-4 font-medium">Holding it back</th>
-					<th scope="col" class="py-2 font-medium">Last decision</th>
+					<th scope="col" class="py-2 pr-4 font-medium">
+						{{ t('components.delivery.rampCellsGrid.columns.cell') }}
+					</th>
+					<th scope="col" class="py-2 pr-4 font-medium">
+						{{ t('components.delivery.rampCellsGrid.columns.ownShare') }}
+					</th>
+					<th scope="col" class="py-2 pr-4 font-medium">
+						{{ t('components.delivery.rampCellsGrid.columns.state') }}
+					</th>
+					<th scope="col" class="py-2 pr-4 font-medium">
+						{{ t('components.delivery.rampCellsGrid.columns.holdingItBack') }}
+					</th>
+					<th scope="col" class="py-2 font-medium">
+						{{ t('components.delivery.rampCellsGrid.columns.lastDecision') }}
+					</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -83,7 +105,7 @@ const TONE_CLASS = {
 							:data-testid="`ramp-cell-open-${cell.cellKey}`"
 							@click="emit('select', cell.cellKey)"
 						>
-							{{ rampCellLabel(cell.cell) }}
+							{{ localized(rampCellLabel(cell.cell)) }}
 						</button>
 					</th>
 					<td class="py-3 pr-4 text-text-primary" data-testid="ramp-cell-share">
@@ -96,16 +118,16 @@ const TONE_CLASS = {
 							:data-state="status.key"
 							data-testid="ramp-cell-state"
 						>
-							{{ status.label }}
+							{{ localized(status.label) }}
 						</span>
 					</td>
 					<td class="py-3 pr-4 text-text-secondary" data-testid="ramp-cell-constraint">
-						{{ constraint }}
+						{{ localized(constraint) }}
 					</td>
 					<td class="py-3 text-text-secondary" data-testid="ramp-cell-reason">
 						{{
 							cell.lastDecision === null
-								? 'No decision recorded yet — nothing has needed deciding.'
+								? t('components.delivery.rampCellsGrid.noDecisionYet')
 								: cell.lastDecision.message
 						}}
 					</td>

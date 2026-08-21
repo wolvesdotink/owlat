@@ -4,6 +4,7 @@
  */
 
 export function useModal<T = unknown>(options?: { onOpen?: () => void; onClose?: () => void }) {
+	const { t } = useI18n();
 	const isOpen = ref(false);
 	const isLoading = ref(false);
 	const error = ref<string | null>(null);
@@ -65,7 +66,7 @@ export function useModal<T = unknown>(options?: { onOpen?: () => void; onClose?:
 			options?.onSuccess?.(result);
 			return result;
 		} catch (e) {
-			const errorMessage = e instanceof Error ? e.message : 'An error occurred';
+			const errorMessage = e instanceof Error ? e.message : t('shared.useModal.genericError');
 			error.value = errorMessage;
 			options?.onError?.(e instanceof Error ? e : new Error(errorMessage));
 			return undefined;

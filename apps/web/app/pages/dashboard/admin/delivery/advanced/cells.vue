@@ -19,7 +19,20 @@ import { rampCellLabel, type RampCellControl } from '~/utils/deliverabilityRamp'
 import type { DeliverabilityDashboardCell } from '~/utils/deliverabilityMeasurement';
 import { decisionWindowLabel } from '~/utils/deliverabilityWindows';
 
-useHead({ title: 'Delivery cells — Owlat' });
+const { t } = useI18n();
+
+/**
+ * `utils/deliverabilityRamp` and `utils/deliverabilityWindows` are module-scope
+ * definition sets whose labels carry i18n keys rather than sentences (the
+ * registry convention); a plain string is still accepted so a value with nothing
+ * to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+useHead({ title: () => t('dashboard.admin.delivery.advanced.cells.pageTitle') });
 
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
@@ -65,7 +78,7 @@ const selectedEvidence = computed<DeliverabilityDashboardCell | null>(
  */
 const evidenceWindowLabel = computed(() => {
 	const data = dashboard.value;
-	return data ? decisionWindowLabel(data) : '';
+	return data ? localized(decisionWindowLabel(data)) : '';
 });
 
 const decisionArgs = computed(() => {
@@ -95,10 +108,11 @@ function select(cellKey: string): void {
 <template>
 	<div class="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
 		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Delivery cells</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.delivery.advanced.cells.title') }}
+			</h1>
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-				Every stream and mailbox provider the ramp manages, what it is doing, and why. Open a cell
-				for the numbers behind each check.
+				{{ t('dashboard.admin.delivery.advanced.cells.lede') }}
 			</p>
 		</header>
 
@@ -110,11 +124,16 @@ function select(cellKey: string): void {
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
-			error-title="Couldn’t load the delivery cells"
-			error-message="The cell states could not be loaded. Your mail is unaffected — this page only reads."
+			:error-title="t('dashboard.admin.delivery.advanced.cells.errorTitle')"
+			:error-message="t('dashboard.admin.delivery.advanced.cells.errorMessage')"
 		>
 			<template #loading>
-				<div class="space-y-5" role="status" aria-live="polite" aria-label="Loading delivery cells">
+				<div
+					class="space-y-5"
+					role="status"
+					aria-live="polite"
+					:aria-label="t('dashboard.admin.delivery.advanced.cells.loading')"
+				>
 					<div class="h-64 animate-pulse rounded-xl bg-bg-surface" />
 				</div>
 			</template>
@@ -122,7 +141,7 @@ function select(cellKey: string): void {
 			<div class="space-y-5">
 				<UiCard>
 					<h2 :id="gridHeadingId" class="text-base font-semibold text-text-primary">
-						Stream × mailbox provider
+						{{ t('dashboard.admin.delivery.advanced.cells.gridHeading') }}
 					</h2>
 					<DeliveryRampCellsGrid
 						class="mt-3"
@@ -135,13 +154,17 @@ function select(cellKey: string): void {
 
 				<UiCard v-if="selectedCell">
 					<h2 :id="evidenceHeadingId" class="text-base font-semibold text-text-primary">
-						{{ rampCellLabel(selectedCell.cell) }} — the evidence
+						{{
+							t('dashboard.admin.delivery.advanced.cells.evidenceHeading', {
+								cell: localized(rampCellLabel(selectedCell.cell)),
+							})
+						}}
 					</h2>
 					<UiQueryBoundary
 						:loading="evidenceLoading"
 						:error="evidenceError"
-						error-title="Couldn’t load this cell’s evidence"
-						error-message="The gate readings could not be read. This is not a cell with nothing measured — the numbers simply did not load."
+						:error-title="t('dashboard.admin.delivery.advanced.cells.evidenceErrorTitle')"
+						:error-message="t('dashboard.admin.delivery.advanced.cells.evidenceErrorMessage')"
 						@retry="refetchEvidence"
 					>
 						<template #loading>
@@ -149,7 +172,7 @@ function select(cellKey: string): void {
 								class="mt-3 h-24 animate-pulse rounded-lg bg-bg-surface"
 								role="status"
 								aria-live="polite"
-								aria-label="Loading the evidence for this cell"
+								:aria-label="t('dashboard.admin.delivery.advanced.cells.evidenceLoading')"
 							/>
 						</template>
 						<DeliveryMeasurementGateList
@@ -161,21 +184,20 @@ function select(cellKey: string): void {
 							:decision-window-label="evidenceWindowLabel"
 						/>
 						<p v-else class="mt-3 text-sm text-text-secondary" data-testid="ramp-evidence-absent">
-							No measurements have been recorded for this cell yet. Nothing is wrong — the checks
-							fill in as mail goes out.
+							{{ t('dashboard.admin.delivery.advanced.cells.evidenceAbsent') }}
 						</p>
 					</UiQueryBoundary>
 				</UiCard>
 
 				<UiCard v-if="selectedCell">
 					<h2 :id="historyHeadingId" class="text-base font-semibold text-text-primary">
-						Decision history
+						{{ t('dashboard.admin.delivery.advanced.cells.historyHeading') }}
 					</h2>
 					<UiQueryBoundary
 						:loading="decisionsLoading"
 						:error="decisionsError"
-						error-title="Couldn’t load this cell’s decision history"
-						error-message="The controller’s record for this cell could not be read. An empty timeline would say it has never looked at this cell, which is not what a failed read means."
+						:error-title="t('dashboard.admin.delivery.advanced.cells.historyErrorTitle')"
+						:error-message="t('dashboard.admin.delivery.advanced.cells.historyErrorMessage')"
 						@retry="refetchDecisions"
 					>
 						<template #loading>
@@ -183,7 +205,7 @@ function select(cellKey: string): void {
 								class="mt-3 h-24 animate-pulse rounded-lg bg-bg-surface"
 								role="status"
 								aria-live="polite"
-								aria-label="Loading the decision history for this cell"
+								:aria-label="t('dashboard.admin.delivery.advanced.cells.historyLoading')"
 							/>
 						</template>
 						<DeliveryRampDecisionTimeline
@@ -200,7 +222,7 @@ function select(cellKey: string): void {
 						data-testid="ramp-cells-controls-link"
 					>
 						<Icon name="lucide:sliders-horizontal" class="h-4 w-4" />
-						Pause, pin or reset this cell
+						{{ t('dashboard.admin.delivery.advanced.cells.controlsLink') }}
 					</NuxtLink>
 				</UiCard>
 			</div>

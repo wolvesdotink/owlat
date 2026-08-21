@@ -6,6 +6,11 @@ import {
 	OFFLINE_BODIES_CAP,
 	type OfflineKvDriver,
 } from '../postboxOfflineStore';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// The store never translates (it is a pure data layer): the reason writes were
+// disabled is a message key the surface showing it runs through `t()`.
+const { t } = createTestI18n().global;
 
 /** Minimal in-memory driver standing in for IndexedDB. */
 function memoryDriver(): OfflineKvDriver & { map: Map<string, unknown> } {
@@ -59,7 +64,7 @@ describe('PostboxOfflineStore', () => {
 		expect(await store.loadBody(MBX, 'missing')).toBeNull();
 	});
 
-	it('never serves one mailbox\'s cache to another (namespace isolation)', async () => {
+	it("never serves one mailbox's cache to another (namespace isolation)", async () => {
 		const store = new PostboxOfflineStore(memoryDriver());
 		// Mailbox A caches rows + a body.
 		await store.saveThreads('mbxA', 'inbox', [row('secret-a')]);
@@ -131,7 +136,8 @@ describe('PostboxOfflineStore', () => {
 		const store = new PostboxOfflineStore(quotaDriver());
 		await expect(store.saveThreads(MBX, 'inbox', [row('a')])).resolves.toBeUndefined();
 		expect(store.writesDisabled).toBe(true);
-		expect(store.reason).toMatch(/storage/i);
+		expect(store.reason).toBe('shared.postboxOfflineStore.outOfStorage');
+		expect(t(store.reason!)).toBe('This device is out of storage for offline mail.');
 		// Reads still resolve (to empty) rather than throw.
 		expect(await store.loadThreads(MBX, 'inbox')).toEqual([]);
 	});

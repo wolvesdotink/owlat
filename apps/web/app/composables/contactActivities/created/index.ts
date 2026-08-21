@@ -4,11 +4,16 @@ export const createdEditorModule: ContactActivityEditorModule<'created'> = {
 	literal: 'created',
 	displayConfig: {
 		icon: 'lucide:user-plus',
-		label: 'Contact Created',
+		label: 'shared.contactActivities.created.label',
 		color: 'text-brand',
 	},
 	formatDescription(metadata) {
-		if (metadata?.source) return `Contact created via ${metadata.source}`;
-		return 'Contact created';
+		if (metadata?.source) {
+			return {
+				key: 'shared.contactActivities.created.descriptionWithSource',
+				params: { source: metadata.source },
+			};
+		}
+		return 'shared.contactActivities.created.description';
 	},
 };

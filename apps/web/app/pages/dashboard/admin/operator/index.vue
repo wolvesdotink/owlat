@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Operator Console — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.operator.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -38,36 +40,44 @@ const { data: admins } = useConvexQuery(api.platformAdmin.queries.listPlatformAd
 const { data: allUsers } = useConvexQuery(api.platformAdmin.queries.listAllUsers, () => ({}));
 
 const tabs = computed(() => [
-	{ value: 'overview', label: 'Overview' },
-	{ value: 'review', label: 'Content Review', count: reviewQueue.value?.pendingCount ?? 0 },
-	{ value: 'organizations', label: 'Workspaces', count: flaggedOrgs.value?.length ?? 0 },
-	{ value: 'admins', label: 'Admins', count: admins.value?.length ?? 0 },
+	{ value: 'overview', label: t('dashboard.admin.operator.index.tabs.overview') },
+	{
+		value: 'review',
+		label: t('dashboard.admin.operator.index.tabs.review'),
+		count: reviewQueue.value?.pendingCount ?? 0,
+	},
+	{
+		value: 'organizations',
+		label: t('dashboard.admin.operator.index.tabs.organizations'),
+		count: flaggedOrgs.value?.length ?? 0,
+	},
+	{ value: 'admins', label: t('dashboard.admin.operator.index.tabs.admins'), count: admins.value?.length ?? 0 },
 ]);
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 const { run: approveCampaign, isLoading: approvingCampaign } = useBackendOperation(
 	api.platformAdmin.mutations.approveCampaign,
-	{ label: 'Approve campaign' }
+	{ label: () => t('dashboard.admin.operator.index.operations.approveCampaign') }
 );
 const { run: approveTransactional, isLoading: approvingTransactional } = useBackendOperation(
 	api.platformAdmin.mutations.approveTransactional,
-	{ label: 'Approve transactional email' }
+	{ label: () => t('dashboard.admin.operator.index.operations.approveTransactional') }
 );
 const { run: rejectContent, isLoading: rejecting } = useBackendOperation(
 	api.platformAdmin.mutations.rejectContent,
-	{ label: 'Reject content' }
+	{ label: () => t('dashboard.admin.operator.index.operations.rejectContent') }
 );
 const { run: setOrganizationStatus, isLoading: settingStatus } = useBackendOperation(
 	api.platformAdmin.mutations.setOrganizationStatus,
-	{ label: 'Set workspace status' }
+	{ label: () => t('dashboard.admin.operator.index.operations.setStatus') }
 );
 const { run: addPlatformAdmin, isLoading: addingAdmin } = useBackendOperation(
 	api.platformAdmin.mutations.addPlatformAdmin,
-	{ label: 'Add platform admin' }
+	{ label: () => t('dashboard.admin.operator.index.operations.addAdmin') }
 );
 const { run: removePlatformAdmin, isLoading: removingAdmin } = useBackendOperation(
 	api.platformAdmin.mutations.removePlatformAdmin,
-	{ label: 'Remove platform admin' }
+	{ label: () => t('dashboard.admin.operator.index.operations.removeAdmin') }
 );
 
 // ── Content review actions ────────────────────────────────────────────────────
@@ -83,12 +93,22 @@ type ReviewItem = {
 async function onApprove(item: ReviewItem) {
 	if (item.type === 'campaign') {
 		const r = await approveCampaign({ campaignId: item.id as Id<'campaigns'> });
-		if (r) showToast(`Approved "${item.name ?? 'campaign'}". It is back in draft for sending.`);
+		if (r)
+			showToast(
+				t('dashboard.admin.operator.index.toasts.approvedCampaign', {
+					name: item.name ?? t('dashboard.admin.operator.index.fallbackNames.campaign'),
+				})
+			);
 	} else {
 		const r = await approveTransactional({
 			transactionalEmailId: item.id as Id<'transactionalEmails'>,
 		});
-		if (r) showToast(`Approved "${item.name ?? 'email'}". It is now published.`);
+		if (r)
+			showToast(
+				t('dashboard.admin.operator.index.toasts.approvedTransactional', {
+					name: item.name ?? t('dashboard.admin.operator.index.fallbackNames.email'),
+				})
+			);
 	}
 }
 
@@ -106,7 +126,7 @@ async function confirmReject() {
 	const item = rejectTarget.value;
 	if (!item) return;
 	if (!rejectReason.value.trim()) {
-		showToast('A rejection reason is required.', 'error');
+		showToast(t('dashboard.admin.operator.index.toasts.rejectionReasonRequired'), 'error');
 		return;
 	}
 	const r = await rejectContent({
@@ -115,7 +135,9 @@ async function confirmReject() {
 		reason: rejectReason.value.trim(),
 	});
 	if (r) {
-		showToast(`Rejected "${item.name ?? 'content'}". Returned to draft.`);
+		showToast(
+			t('dashboard.admin.operator.index.toasts.rejected', { name: item.name ?? t('dashboard.admin.operator.index.fallbackNames.content') })
+		);
 		rejectModalOpen.value = false;
 		rejectTarget.value = null;
 	}
@@ -126,12 +148,12 @@ const statusModalOpen = ref(false);
 const statusTargetValue = ref<'clean' | 'warned' | 'suspended' | 'banned'>('suspended');
 const statusReason = ref('');
 
-const statusOptions = [
-	{ value: 'clean', label: 'Clean — restore full sending' },
-	{ value: 'warned', label: 'Warned — flag the operator' },
-	{ value: 'suspended', label: 'Suspended — block all sending' },
-	{ value: 'banned', label: 'Banned — permanent block' },
-];
+const statusOptions = computed(() => [
+	{ value: 'clean', label: t('dashboard.admin.operator.index.statusOptions.clean') },
+	{ value: 'warned', label: t('dashboard.admin.operator.index.statusOptions.warned') },
+	{ value: 'suspended', label: t('dashboard.admin.operator.index.statusOptions.suspended') },
+	{ value: 'banned', label: t('dashboard.admin.operator.index.statusOptions.banned') },
+]);
 
 function openStatus(initial: 'clean' | 'warned' | 'suspended' | 'banned') {
 	statusTargetValue.value = initial;
@@ -141,7 +163,7 @@ function openStatus(initial: 'clean' | 'warned' | 'suspended' | 'banned') {
 
 async function confirmStatus() {
 	if (!statusReason.value.trim()) {
-		showToast('A reason is required.', 'error');
+		showToast(t('dashboard.admin.operator.index.toasts.reasonRequired'), 'error');
 		return;
 	}
 	const r = await setOrganizationStatus({
@@ -149,7 +171,7 @@ async function confirmStatus() {
 		reason: statusReason.value.trim(),
 	});
 	if (r) {
-		showToast(`Workspace status set to "${statusTargetValue.value}".`);
+		showToast(t('dashboard.admin.operator.index.toasts.statusSet', { status: statusTargetValue.value }));
 		statusModalOpen.value = false;
 	}
 }
@@ -167,17 +189,17 @@ const addAdminUserId = ref('');
 const addAdminRole = ref<'admin' | 'superadmin'>('admin');
 
 const userOptions = computed(() => [
-	{ value: '', label: 'Select a user…' },
+	{ value: '', label: t('dashboard.admin.operator.index.addAdminModal.selectUser') },
 	...(allUsers.value ?? []).map((u) => ({
 		value: u.authUserId,
-		label: `${u.name ? `${u.name} · ` : ''}${u.email}`,
+		label: u.name ? t('dashboard.admin.operator.index.addAdminModal.userOption', { name: u.name, email: u.email }) : u.email,
 	})),
 ]);
 
-const roleOptions = [
-	{ value: 'admin', label: 'Admin' },
-	{ value: 'superadmin', label: 'Superadmin' },
-];
+const roleOptions = computed(() => [
+	{ value: 'admin', label: t('dashboard.admin.operator.index.roleOptions.admin') },
+	{ value: 'superadmin', label: t('dashboard.admin.operator.index.roleOptions.superadmin') },
+]);
 
 function openAddAdmin() {
 	addAdminUserId.value = '';
@@ -187,7 +209,7 @@ function openAddAdmin() {
 
 async function confirmAddAdmin() {
 	if (!addAdminUserId.value) {
-		showToast('Select a user to grant platform-admin.', 'error');
+		showToast(t('dashboard.admin.operator.index.toasts.selectUser'), 'error');
 		return;
 	}
 	const user = (allUsers.value ?? []).find((u) => u.authUserId === addAdminUserId.value);
@@ -197,14 +219,14 @@ async function confirmAddAdmin() {
 		role: addAdminRole.value,
 	});
 	if (r) {
-		showToast('Platform admin added.');
+		showToast(t('dashboard.admin.operator.index.toasts.adminAdded'));
 		addAdminModalOpen.value = false;
 	}
 }
 
 async function onRemoveAdmin(adminId: string, email: string) {
 	const r = await removePlatformAdmin({ adminId: adminId as Id<'platformAdmins'> });
-	if (r) showToast(`Removed ${email} from platform admins.`);
+	if (r) showToast(t('dashboard.admin.operator.index.toasts.adminRemoved', { email }));
 }
 
 const anyMutationLoading = computed(
@@ -227,15 +249,16 @@ const anyMutationLoading = computed(
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Back to Settings
+				{{ t('dashboard.admin.operator.index.backToSettings') }}
 			</NuxtLink>
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:shield-alert" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Operator Console</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.operator.index.title') }}
+					</h1>
 					<p class="mt-1 text-text-secondary">
-						Platform-admin controls: review held content, manage workspace sending status, and
-						curate admins.
+						{{ t('dashboard.admin.operator.index.intro') }}
 					</p>
 				</div>
 			</div>
@@ -247,25 +270,33 @@ const anyMutationLoading = computed(
 		<div v-if="activeTab === 'overview'" class="space-y-6">
 			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 				<div class="card p-5">
-					<p class="text-xs text-text-tertiary uppercase tracking-wider">Total sent (30d)</p>
+					<p class="text-xs text-text-tertiary uppercase tracking-wider">
+						{{ t('dashboard.admin.operator.index.stats.totalSent') }}
+					</p>
 					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ stats?.sending.totalSent ?? 0 }}
 					</p>
 				</div>
 				<div class="card p-5">
-					<p class="text-xs text-text-tertiary uppercase tracking-wider">Bounce rate</p>
+					<p class="text-xs text-text-tertiary uppercase tracking-wider">
+						{{ t('dashboard.admin.operator.index.stats.bounceRate') }}
+					</p>
 					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ formatRate(stats?.sending.bounceRate) }}
 					</p>
 				</div>
 				<div class="card p-5">
-					<p class="text-xs text-text-tertiary uppercase tracking-wider">Complaint rate</p>
+					<p class="text-xs text-text-tertiary uppercase tracking-wider">
+						{{ t('dashboard.admin.operator.index.stats.complaintRate') }}
+					</p>
 					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ formatRate(stats?.sending.complaintRate) }}
 					</p>
 				</div>
 				<div class="card p-5">
-					<p class="text-xs text-text-tertiary uppercase tracking-wider">Abuse status</p>
+					<p class="text-xs text-text-tertiary uppercase tracking-wider">
+						{{ t('dashboard.admin.operator.index.stats.abuseStatus') }}
+					</p>
 					<div class="mt-1.5">
 						<UiBadge :variant="abuseStatusVariant(stats?.abuseStatus)" size="md">
 							{{ stats?.abuseStatus ?? 'clean' }}
@@ -277,7 +308,7 @@ const anyMutationLoading = computed(
 			<!-- Recent abuse signals -->
 			<div class="card">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					Recent abuse signals
+					{{ t('dashboard.admin.operator.index.abuse.title') }}
 				</h3>
 				<div
 					v-if="
@@ -286,12 +317,12 @@ const anyMutationLoading = computed(
 					"
 					class="text-caption text-text-tertiary"
 				>
-					No flagged content or pending reviews.
+					{{ t('dashboard.admin.operator.index.abuse.empty') }}
 				</div>
 				<div v-else class="space-y-4">
 					<div v-if="recentAbuse.pendingReview.length">
 						<p class="text-xs font-medium text-text-secondary mb-2">
-							Pending review ({{ recentAbuse.pendingReview.length }})
+							{{ t('dashboard.admin.operator.index.abuse.pendingReview', { count: recentAbuse.pendingReview.length }) }}
 						</p>
 						<ul class="space-y-1">
 							<li
@@ -306,7 +337,7 @@ const anyMutationLoading = computed(
 					</div>
 					<div v-if="recentAbuse.flaggedScans.length">
 						<p class="text-xs font-medium text-text-secondary mb-2">
-							Flagged content scans ({{ recentAbuse.flaggedScans.length }})
+							{{ t('dashboard.admin.operator.index.abuse.flaggedScans', { count: recentAbuse.flaggedScans.length }) }}
 						</p>
 						<ul class="space-y-1">
 							<li
@@ -314,7 +345,9 @@ const anyMutationLoading = computed(
 								:key="`${s.resourceType}-${s.resourceId}-${i}`"
 								class="flex items-center justify-between text-caption"
 							>
-								<span class="text-text-primary">{{ s.resourceType }} · score {{ s.score }}</span>
+								<span class="text-text-primary">
+									{{ t('dashboard.admin.operator.index.abuse.scanEntry', { resourceType: s.resourceType, score: s.score }) }}
+								</span>
 								<UiBadge :variant="scanLevelVariant(s.level)">{{ s.level }}</UiBadge>
 							</li>
 						</ul>
@@ -327,14 +360,14 @@ const anyMutationLoading = computed(
 		<div v-else-if="activeTab === 'review'" class="space-y-6">
 			<div class="card">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					Held for review
+					{{ t('dashboard.admin.operator.index.review.title') }}
 				</h3>
 
 				<UiEmptyState
 					v-if="!reviewQueue || reviewQueue.pending.length === 0"
 					icon="lucide:check-circle-2"
-					title="Nothing waiting"
-					description="Campaigns or transactional emails flagged 'suspicious' by the content scanner show up here for approval."
+					:title="t('dashboard.admin.operator.index.review.emptyTitle')"
+					:description="t('dashboard.admin.operator.index.review.emptyDescription')"
 				/>
 
 				<div v-else class="space-y-3">
@@ -355,7 +388,7 @@ const anyMutationLoading = computed(
 								{{ item.subject }}
 							</p>
 							<p class="mt-1 text-xs text-text-tertiary">
-								Updated {{ formatRelativeTime(item.updatedAt) }}
+								{{ t('dashboard.admin.operator.index.review.updated', { time: formatRelativeTime(item.updatedAt) }) }}
 							</p>
 						</div>
 						<div class="flex gap-2 shrink-0">
@@ -366,7 +399,7 @@ const anyMutationLoading = computed(
 								:disabled="anyMutationLoading"
 								@click="onApprove(item)"
 							>
-								Approve
+								{{ t('dashboard.admin.operator.index.review.approve') }}
 							</UiButton>
 							<UiButton
 								variant="danger-outline"
@@ -374,7 +407,7 @@ const anyMutationLoading = computed(
 								:disabled="anyMutationLoading"
 								@click="openReject(item)"
 							>
-								Reject
+								{{ t('dashboard.admin.operator.index.review.reject') }}
 							</UiButton>
 						</div>
 					</div>
@@ -387,7 +420,7 @@ const anyMutationLoading = computed(
 				class="card"
 			>
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					Recently reviewed
+					{{ t('dashboard.admin.operator.index.review.recentlyReviewed') }}
 				</h3>
 				<ul class="space-y-2">
 					<li
@@ -395,7 +428,7 @@ const anyMutationLoading = computed(
 						:key="i"
 						class="flex items-center justify-between text-caption"
 					>
-						<span class="text-text-primary">{{ auditActionLabel(a.action) }}</span>
+						<span class="text-text-primary">{{ t(auditActionLabel(a.action)) }}</span>
 						<span class="text-text-tertiary">{{ formatRelativeTime(a.createdAt) }}</span>
 					</li>
 				</ul>
@@ -409,7 +442,7 @@ const anyMutationLoading = computed(
 				<div class="flex items-start justify-between gap-4 flex-wrap">
 					<div>
 						<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">
-							Sending status
+							{{ t('dashboard.admin.operator.index.sending.title') }}
 						</h3>
 						<div class="flex items-center gap-2">
 							<UiBadge :variant="abuseStatusVariant(currentAbuseStatus)" size="md">{{
@@ -419,17 +452,17 @@ const anyMutationLoading = computed(
 								v-if="isBlockingAbuseStatus(currentAbuseStatus)"
 								class="text-caption text-error"
 							>
-								All sending is currently blocked.
+								{{ t('dashboard.admin.operator.index.sending.blocked') }}
 							</span>
 							<span v-else-if="isWarnedAbuseStatus" class="text-caption text-warning">
-								Flagged — sending still allowed.
+								{{ t('dashboard.admin.operator.index.sending.warned') }}
 							</span>
 						</div>
 						<p
 							v-if="orgDetail?.settings.abuseStatusReason"
 							class="mt-2 text-caption text-text-secondary"
 						>
-							Reason: {{ orgDetail.settings.abuseStatusReason }}
+							{{ t('dashboard.admin.operator.index.sending.reason', { reason: orgDetail.settings.abuseStatusReason }) }}
 						</p>
 					</div>
 					<div class="flex gap-2">
@@ -440,7 +473,7 @@ const anyMutationLoading = computed(
 							:disabled="anyMutationLoading"
 							@click="openStatus('clean')"
 						>
-							Un-suspend (restore sending)
+							{{ t('dashboard.admin.operator.index.sending.unsuspend') }}
 						</UiButton>
 						<UiButton
 							v-else
@@ -449,7 +482,7 @@ const anyMutationLoading = computed(
 							:disabled="anyMutationLoading"
 							@click="openStatus('suspended')"
 						>
-							Suspend sending
+							{{ t('dashboard.admin.operator.index.sending.suspend') }}
 						</UiButton>
 					</div>
 				</div>
@@ -458,13 +491,13 @@ const anyMutationLoading = computed(
 			<!-- Flagged organizations -->
 			<div class="card">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					Flagged workspaces
+					{{ t('dashboard.admin.operator.index.flagged.title') }}
 				</h3>
 				<div
 					v-if="!flaggedOrgs || flaggedOrgs.length === 0"
 					class="text-caption text-text-tertiary"
 				>
-					No workspaces are flagged for abuse.
+					{{ t('dashboard.admin.operator.index.flagged.empty') }}
 				</div>
 				<ul v-else class="space-y-3">
 					<li
@@ -475,11 +508,18 @@ const anyMutationLoading = computed(
 						<div>
 							<div class="flex items-center gap-2">
 								<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{ o.abuseStatus }}</UiBadge>
-								<UiBadge :variant="riskLevelVariant(o.riskLevel)">risk: {{ o.riskLevel }}</UiBadge>
+								<UiBadge :variant="riskLevelVariant(o.riskLevel)">
+									{{ t('dashboard.admin.operator.index.flagged.risk', { level: o.riskLevel }) }}
+								</UiBadge>
 							</div>
 							<p class="mt-1 text-xs text-text-tertiary">
-								Bounce {{ formatRate(o.bounceRate) }} · Complaint
-								{{ formatRate(o.complaintRate) }} · Sent {{ o.totalSent }}
+								{{
+									t('dashboard.admin.operator.index.flagged.rates', {
+										bounce: formatRate(o.bounceRate),
+										complaint: formatRate(o.complaintRate),
+										sent: o.totalSent,
+									})
+								}}
 							</p>
 						</div>
 					</li>
@@ -489,15 +529,15 @@ const anyMutationLoading = computed(
 			<!-- All organizations -->
 			<div class="card">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
-					Workspaces
+					{{ t('dashboard.admin.operator.index.workspaces.title') }}
 				</h3>
 				<table class="w-full text-caption">
 					<thead>
 						<tr class="border-b border-border-subtle text-text-tertiary">
-							<th class="text-left py-2 font-medium">Sender</th>
-							<th class="text-left py-2 font-medium">Status</th>
-							<th class="text-left py-2 font-medium">Risk</th>
-							<th class="text-right py-2 font-medium">Contacts</th>
+							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.operator.index.workspaces.sender') }}</th>
+							<th class="text-left py-2 font-medium">{{ t('common.status') }}</th>
+							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.operator.index.workspaces.risk') }}</th>
+							<th class="text-right py-2 font-medium">{{ t('dashboard.admin.operator.index.workspaces.contacts') }}</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -527,7 +567,7 @@ const anyMutationLoading = computed(
 			<div class="card">
 				<div class="flex items-center justify-between mb-4">
 					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
-						Platform admins
+						{{ t('dashboard.admin.operator.index.admins.title') }}
 					</h3>
 					<UiButton
 						variant="secondary"
@@ -538,16 +578,16 @@ const anyMutationLoading = computed(
 						<template #iconLeft>
 							<Icon name="lucide:plus" class="w-4 h-4" />
 						</template>
-						Add admin
+						{{ t('dashboard.admin.operator.index.admins.add') }}
 					</UiButton>
 				</div>
 
 				<table class="w-full text-caption">
 					<thead>
 						<tr class="border-b border-border-subtle text-text-tertiary">
-							<th class="text-left py-2 font-medium">Email</th>
-							<th class="text-left py-2 font-medium">Role</th>
-							<th class="text-left py-2 font-medium">Added</th>
+							<th class="text-left py-2 font-medium">{{ t('common.email') }}</th>
+							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.operator.index.admins.role') }}</th>
+							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.operator.index.admins.added') }}</th>
 							<th class="text-right py-2 font-medium" />
 						</tr>
 					</thead>
@@ -571,66 +611,81 @@ const anyMutationLoading = computed(
 									:disabled="anyMutationLoading"
 									@click="onRemoveAdmin(a.id, a.email)"
 								>
-									Remove
+									{{ t('common.remove') }}
 								</UiButton>
 							</td>
 						</tr>
 					</tbody>
 				</table>
 				<p class="mt-3 text-xs text-text-tertiary">
-					Only superadmins can add or remove platform admins. You cannot remove yourself.
+					{{ t('dashboard.admin.operator.index.admins.footnote') }}
 				</p>
 			</div>
 		</div>
 
 		<!-- Reject modal -->
-		<UiModal v-model:open="rejectModalOpen" title="Reject content">
+		<UiModal v-model:open="rejectModalOpen" :title="t('dashboard.admin.operator.index.rejectModal.title')">
 			<div class="space-y-3">
 				<p class="text-sm text-text-secondary">
-					Rejecting returns "{{ rejectTarget?.name }}" to draft. The reason is recorded in the audit
-					log.
+					{{ t('dashboard.admin.operator.index.rejectModal.body', { name: rejectTarget?.name }) }}
 				</p>
 				<UiTextarea
 					v-model="rejectReason"
-					label="Reason"
-					placeholder="Why is this being rejected?"
+					:label="t('dashboard.admin.operator.index.rejectModal.reasonLabel')"
+					:placeholder="t('dashboard.admin.operator.index.rejectModal.reasonPlaceholder')"
 					:rows="3"
 				/>
 			</div>
 			<template #footer>
-				<UiButton variant="ghost" @click="rejectModalOpen = false">Cancel</UiButton>
-				<UiButton variant="danger" :loading="rejecting" @click="confirmReject">Reject</UiButton>
+				<UiButton variant="ghost" @click="rejectModalOpen = false">{{ t('common.cancel') }}</UiButton>
+				<UiButton variant="danger" :loading="rejecting" @click="confirmReject">{{
+					t('dashboard.admin.operator.index.review.reject')
+				}}</UiButton>
 			</template>
 		</UiModal>
 
 		<!-- Org status modal -->
-		<UiModal v-model:open="statusModalOpen" title="Set sending status">
+		<UiModal v-model:open="statusModalOpen" :title="t('dashboard.admin.operator.index.statusModal.title')">
 			<div class="space-y-3">
-				<UiSelect v-model="statusTargetValue" label="Status" :options="statusOptions" />
+				<UiSelect
+					v-model="statusTargetValue"
+					:label="t('common.status')"
+					:options="statusOptions"
+				/>
 				<UiTextarea
 					v-model="statusReason"
-					label="Reason"
-					placeholder="Reason for this change"
+					:label="t('dashboard.admin.operator.index.rejectModal.reasonLabel')"
+					:placeholder="t('dashboard.admin.operator.index.statusModal.reasonPlaceholder')"
 					:rows="3"
 				/>
 			</div>
 			<template #footer>
-				<UiButton variant="ghost" @click="statusModalOpen = false">Cancel</UiButton>
-				<UiButton variant="primary" :loading="settingStatus" @click="confirmStatus">Apply</UiButton>
+				<UiButton variant="ghost" @click="statusModalOpen = false">{{ t('common.cancel') }}</UiButton>
+				<UiButton variant="primary" :loading="settingStatus" @click="confirmStatus">{{
+					t('common.apply')
+				}}</UiButton>
 			</template>
 		</UiModal>
 
 		<!-- Add admin modal -->
-		<UiModal v-model:open="addAdminModalOpen" title="Add platform admin">
+		<UiModal v-model:open="addAdminModalOpen" :title="t('dashboard.admin.operator.index.addAdminModal.title')">
 			<div class="space-y-3">
-				<UiSelect v-model="addAdminUserId" label="User" :options="userOptions" />
-				<UiSelect v-model="addAdminRole" label="Role" :options="roleOptions" />
+				<UiSelect
+					v-model="addAdminUserId"
+					:label="t('dashboard.admin.operator.index.addAdminModal.userLabel')"
+					:options="userOptions"
+				/>
+				<UiSelect
+					v-model="addAdminRole"
+					:label="t('dashboard.admin.operator.index.admins.role')"
+					:options="roleOptions"
+				/>
 			</div>
 			<template #footer>
-				<UiButton variant="ghost" @click="addAdminModalOpen = false">Cancel</UiButton>
-				<UiButton variant="primary" :loading="addingAdmin" @click="confirmAddAdmin"
-					>Add admin</UiButton
-				>
+				<UiButton variant="ghost" @click="addAdminModalOpen = false">{{ t('common.cancel') }}</UiButton>
+				<UiButton variant="primary" :loading="addingAdmin" @click="confirmAddAdmin">{{
+					t('dashboard.admin.operator.index.admins.add')
+				}}</UiButton>
 			</template>
 		</UiModal>
 	</div>

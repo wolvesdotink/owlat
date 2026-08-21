@@ -16,6 +16,7 @@ interface AvailableCard {
 }
 
 export function useAdaptiveDashboard() {
+	const { t } = useI18n();
 	const { user } = useAuth();
 
 	const isAuthed = computed(() => !!user.value?.id);
@@ -43,7 +44,7 @@ export function useAdaptiveDashboard() {
 
 	const { run: saveLayoutMutation } = useBackendOperation(
 		api.analytics.adaptiveDashboard.saveLayout,
-		{ label: 'Save dashboard layout' }
+		{ label: () => t('shared.useAdaptiveDashboard.saveLayout') }
 	);
 
 	const isEditing = ref(false);

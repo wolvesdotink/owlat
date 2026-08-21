@@ -10,11 +10,7 @@ import { v } from 'convex/values';
 import { internalQuery, internalMutation, internalAction } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import { authedQuery, adminQuery, authedMutation } from './lib/authedFunctions';
-import {
-	requireOrgPermission,
-	getBetterAuthSessionWithRole,
-	hasPermission,
-} from './lib/sessionOrganization';
+import { requireOrgPermission, hasPermission } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { unifiedMessageChannelValidator, outboundChannelValidator } from './lib/convexValidators';
@@ -101,20 +97,32 @@ export const listRecent = adminQuery({
 });
 
 /**
- * Get channel configuration and health status
+ * Get channel configuration and health status.
+ *
+ * `configuredFields` is what makes a partial credential re-save safe to offer:
+ * the encrypted envelope can never be read back into the settings form (it is
+ * openable only in a `'use node'` action), so the form uses the field NAMES to
+ * mark the inputs it must not ask for again and leaves them blank, and
+ * `channels.outbound.encryptAndPersistConfig` merges the save over what is
+ * stored. Admin-only, like every other credential-shaped field.
  */
 export const getChannelConfigs = authedQuery({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx, _args, session) => {
 		// all-members: health/display fields feed the dashboard channel card.
-		// The encrypted credential envelope (config) is admin-only — members
-		// get the row WITHOUT it; the settings page (admin) gets it for the
-		// edit form.
+		// The encrypted credential envelope NEVER leaves the backend — no client
+		// surface can open it, so none of them is given it. The presence map of
+		// what is inside it (configuredFields) is admin-only: members get the row
+		// without it, the settings page (admin) gets it for the edit form.
 		const rows = await ctx.db.query('channelConfigs').collect(); // bounded: ≤5 channel-config rows (schema literal union)
-		const session = await getBetterAuthSessionWithRole(ctx);
-		const isAdmin = session?.role != null && hasPermission(session.role, 'organization:manage');
-		if (isAdmin) return rows;
-		return rows.map((row) => ({ ...row, config: undefined }));
+		// The floor already resolved this caller's role — the dashboard live-
+		// subscribes here, so re-reading the session would double every tick.
+		const isAdmin = hasPermission(session.role, 'organization:manage');
+		return rows.map((row) => ({
+			...row,
+			config: undefined,
+			...(isAdmin ? {} : { configuredFields: undefined }),
+		}));
 	},
 });
 
@@ -341,14 +349,18 @@ export const updateChannelConfig = authedMutation({
 
 /**
  * Patch the encrypted credential envelope onto a channel config row. Sole
- * writer of the `config` column. Called only by
- * `channels.outbound.encryptAndPersistConfig` after encryption — the value is
- * always a serialized AES-256-GCM envelope, never plaintext.
+ * writer of the `config` and `configuredFields` columns. Called only by
+ * `channels.outbound.encryptAndPersistConfig` after it merged the save over the
+ * stored credentials and encrypted the result — `config` is always a serialized
+ * AES-256-GCM envelope, never plaintext, and `configuredFields` names the fields
+ * inside it (names only) so the v8 settings query can report which credentials
+ * are stored without being able to open the envelope.
  */
 export const setChannelConfigSecret = internalMutation({
 	args: {
 		channel: unifiedMessageChannelValidator,
 		config: v.string(),
+		configuredFields: v.array(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
@@ -365,7 +377,11 @@ export const setChannelConfigSecret = internalMutation({
 				`setChannelConfigSecret: no channelConfigs row for channel '${args.channel}' — encrypted credential was not persisted`
 			);
 		}
-		await ctx.db.patch(existing._id, { config: args.config, updatedAt: Date.now() });
+		await ctx.db.patch(existing._id, {
+			config: args.config,
+			configuredFields: args.configuredFields,
+			updatedAt: Date.now(),
+		});
 	},
 });
 
@@ -422,11 +438,18 @@ export const getContactChannelIdentifier = internalQuery({
  * Continues the contact's most recent thread for the channel when one exists
  * (so a manual reply lands in the same conversation), otherwise opens a fresh
  * thread. Returns the thread id; the caller schedules `dispatchOutbound`.
+ *
+ * `threadId` PINS the conversation instead of inferring it. The Team Inbox
+ * replies per message, from inside a thread the agent is already reading, and
+ * "the contact's most recent thread on this channel" is not reliably that one —
+ * an older thread reopened for triage would silently answer on the newer one.
+ * The contact composer sends no thread and keeps the inferring behaviour.
  */
 export const resolveOutboundThread = internalMutation({
 	args: {
 		contactId: v.id('contacts'),
 		channel: outboundChannelValidator,
+		threadId: v.optional(v.id('conversationThreads')),
 	},
 	returns: v.id('conversationThreads'),
 	handler: async (ctx, args): Promise<Id<'conversationThreads'>> => {
@@ -462,6 +485,17 @@ export const resolveOutboundThread = internalMutation({
 			if (!identities.some((id) => accepted.includes(id.channel))) {
 				throw new Error(`This contact has no ${args.channel} address on file.`);
 			}
+		}
+
+		// A pinned thread must belong to this contact — the id reaches us from a
+		// client, so an unrelated thread would otherwise become a place to write
+		// an outbound message about someone else.
+		if (args.threadId) {
+			const thread = await ctx.db.get(args.threadId);
+			if (!thread || thread.contactId !== args.contactId) {
+				throw new Error('That conversation does not belong to this contact.');
+			}
+			return thread._id;
 		}
 
 		// Continue the most recent thread for this contact+channel if one exists.

@@ -16,6 +16,7 @@ import {
 } from '../lib/convexValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
+import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
 import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
 import { editAdjustmentValidator } from '../mail/editLearningValidators';
 
@@ -629,6 +630,16 @@ export const mailTables = {
 		// rows written before this field existed.
 		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
 
+		// Inbound PGP signature verification (F1, D9): the honest verdict for a
+		// message that arrived SIGNED but not encrypted (RFC 3156 multipart/signed
+		// or an inline clearsigned body), verified server-side at ingest against
+		// the TOFU-pinned/WKD-discovered sender key. Deliberately a SIBLING of the
+		// sealed record above, never a third arm on it — signed plaintext makes no
+		// encryption claim. Absent on plaintext mail, on sealed mail (the sealed
+		// record owns its own signature claim), and on rows written before this
+		// field existed.
+		inboundSignatureInfo: v.optional(inboundSignatureInfoValidator),
+
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -667,7 +678,7 @@ export const mailTables = {
 		// Convex full-text search indexes the plaintext of `searchField`. This is
 		// the documented, deliberate exception — `snippet` is a short excerpt, never
 		// the full body, and losing it would break server-side mail search. See
-		// lib/atRestBodies.ts and apps/docs/content/3.developer/21.sealed-mail-at-rest.md.
+		// lib/atRestBodies.ts and apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_messages', {
 			searchField: 'snippet',
 			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
@@ -1025,6 +1036,12 @@ export const mailTables = {
 		// discovery/crypto so a trust change during the undo window fails closed.
 		isUnsealedSendAllowed: v.optional(v.boolean()),
 
+		// Idempotency key for offline-outbox replays (adoption-gaps D8): the
+		// queued outbox item's client-generated id, threaded through
+		// `drafts.create` so a drain retry after a lost response reuses the
+		// draft it already created instead of forking a duplicate send.
+		clientNonce: v.optional(v.string()),
+
 		// Scheduled send / undo-send window
 		scheduledSendAt: v.optional(v.number()),
 		undoToken: v.optional(v.string()), // opaque cancel handle, returned to client
@@ -1041,7 +1058,8 @@ export const mailTables = {
 		.index('by_mailbox_and_edited', ['mailboxId', 'lastEditedAt'])
 		.index('by_scheduled', ['scheduledSendAt'])
 		.index('by_state_and_scheduled', ['state', 'scheduledSendAt'])
-		.index('by_undo_token', ['undoToken']),
+		.index('by_undo_token', ['undoToken'])
+		.index('by_client_nonce', ['clientNonce']),
 
 	// Audit log of mailbox-level events (delivery, IMAP login, etc.)
 	mailAuditLog: defineTable({

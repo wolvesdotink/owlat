@@ -4,12 +4,19 @@ import { GENERIC_IMAP_PROVIDER, MAIL_PROVIDERS } from '~/utils/mailAutodiscover'
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Import your mail — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.postbox.migrate.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
 });
+
+/** Counts read as body copy, so they follow the active locale's grouping. */
+function formatCount(value: number | undefined): string {
+	return new Intl.NumberFormat(locale.value).format(value ?? 0);
+}
 
 const { showToast } = useToast();
 const { isEnabled, isLoading: flagsLoading } = useFeatureFlag();
@@ -57,7 +64,7 @@ async function handleConnected() {
 	if (!provider) return;
 	const started = await start(sourceForProvider(provider));
 	if (started === undefined) return;
-	showToast('Importing your mail history now.', 'success');
+	showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
 }
 
 // ── Ready step (already connected) ──────────────────────────────────────────
@@ -73,7 +80,7 @@ const connectedSource = computed<'google' | 'imap'>(() =>
 );
 async function handleStartImport() {
 	const res = await start(connectedSource.value);
-	if (res !== undefined) showToast('Importing your mail history now.', 'success');
+	if (res !== undefined) showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
 }
 
 // The existing account, for pre-filling the edit form. The connected account
@@ -86,26 +93,26 @@ const editAccount = computed(() => (account.value?.configured ? account.value : 
 const editing = ref(false);
 function handleUpdated() {
 	editing.value = false;
-	showToast('Credentials updated.', 'success');
+	showToast(t('dashboard.postbox.migrate.toastCredentialsUpdated'), 'success');
 }
 
 const disconnectOp = useBackendOperation(api.mail.externalAccounts.disconnect, {
-	label: 'Disconnect mailbox',
+	label: () => t('dashboard.postbox.migrate.disconnectOperation'),
 });
 const purgeOp = useBackendOperation(api.mail.externalAccounts.purge, {
-	label: 'Delete mailbox and synced data',
+	label: () => t('dashboard.postbox.migrate.purgeOperation'),
 });
 const showDisconnect = ref(false);
 const showPurge = ref(false);
 async function handleDisconnect() {
 	const res = await disconnectOp.run({});
 	showDisconnect.value = false;
-	if (res !== undefined) showToast('Mailbox disconnected.', 'success');
+	if (res !== undefined) showToast(t('dashboard.postbox.migrate.toastDisconnected'), 'success');
 }
 async function handlePurge() {
 	const res = await purgeOp.run({});
 	showPurge.value = false;
-	if (res !== undefined) showToast('Mailbox and all synced data are being deleted.', 'success');
+	if (res !== undefined) showToast(t('dashboard.postbox.migrate.toastPurging'), 'success');
 }
 
 // ── Detected signature (completion nice-touch) ──────────────────────────────
@@ -118,7 +125,7 @@ const { data: suggestedSignature } = useConvexQuery(api.mail.signatures.suggestF
 	completedMailboxId.value ? { mailboxId: completedMailboxId.value } : 'skip'
 );
 const createSignatureOp = useBackendOperation(api.mail.signatures.create, {
-	label: 'Save signature',
+	label: () => t('dashboard.postbox.migrate.saveSignatureOperation'),
 });
 const signatureSaved = ref(false);
 function detectedSignatureHtml(text: string): string {
@@ -131,13 +138,13 @@ async function saveDetectedSignature() {
 	if (!mailboxId || !text) return;
 	const res = await createSignatureOp.run({
 		mailboxId,
-		name: 'Imported signature',
+		name: t('dashboard.postbox.migrate.importedSignatureName'),
 		html: detectedSignatureHtml(text),
 		isDefault: true,
 	});
 	if (res !== undefined) {
 		signatureSaved.value = true;
-		showToast('Saved as your default signature.', 'success');
+		showToast(t('dashboard.postbox.migrate.toastSignatureSaved'), 'success');
 	}
 }
 
@@ -146,15 +153,15 @@ const showCancel = ref(false);
 async function handleCancel() {
 	const ok = await cancel();
 	showCancel.value = false;
-	if (ok) showToast('Migration cancelled. Imported mail was kept.', 'success');
+	if (ok) showToast(t('dashboard.postbox.migrate.toastCancelled'), 'success');
 }
 
 // ── Step indicator ──────────────────────────────────────────────────────────
 const STEPS = [
-	{ id: 'connect', label: 'Connect', number: 1 },
-	{ id: 'import', label: 'Import mail', number: 2 },
-	{ id: 'learn', label: 'Teach AI', number: 3 },
-	{ id: 'done', label: 'Done', number: 4 },
+	{ id: 'connect', labelKey: 'dashboard.postbox.migrate.steps.connect', number: 1 },
+	{ id: 'import', labelKey: 'dashboard.postbox.migrate.steps.import', number: 2 },
+	{ id: 'learn', labelKey: 'dashboard.postbox.migrate.steps.learn', number: 3 },
+	{ id: 'done', labelKey: 'common.done', number: 4 },
 ];
 const activeIndex = computed(() => {
 	switch (step.value) {
@@ -178,10 +185,16 @@ function isConnectorHighlighted(index: number): boolean {
 	return index < activeIndex.value;
 }
 const learnLabel = computed(() =>
-	migration.value && !isAiIndexing.value ? 'Skipped' : 'Teach AI'
+	migration.value && !isAiIndexing.value
+		? t('dashboard.postbox.migrate.steps.skipped')
+		: t('dashboard.postbox.migrate.steps.learn')
 );
 const steps = computed(() =>
-	STEPS.map((s) => (s.id === 'learn' ? { ...s, label: learnLabel.value } : s))
+	STEPS.map(({ id, number, labelKey }) => ({
+		id,
+		number,
+		label: id === 'learn' ? learnLabel.value : t(labelKey),
+	}))
 );
 </script>
 
@@ -192,9 +205,11 @@ const steps = computed(() =>
 		<header class="flex items-center gap-3">
 			<UiIconBox icon="lucide:mail" size="lg" variant="brand" rounded="2xl" />
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em]">Import your mail</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em]">
+					{{ t('dashboard.postbox.migrate.heading') }}
+				</h1>
 				<p class="text-text-secondary text-sm mt-0.5">
-					Bring your existing mailbox into Owlat — and let your AI assistant learn from it.
+					{{ t('dashboard.postbox.migrate.subheading') }}
 				</p>
 			</div>
 		</header>
@@ -203,7 +218,7 @@ const steps = computed(() =>
 		     so the lock card never flashes at users who have the feature on. -->
 		<div v-if="flagsLoading" class="mt-8 flex justify-center py-10" aria-live="polite">
 			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
-			<span class="sr-only">Loading…</span>
+			<span class="sr-only">{{ t('common.loading') }}</span>
 		</div>
 
 		<!-- ─────────────── Feature off: explain, don't vanish ─────────────── -->
@@ -211,10 +226,9 @@ const steps = computed(() =>
 			<div class="flex items-start gap-3">
 				<UiIconBox icon="lucide:lock" size="md" variant="surface" rounded="xl" />
 				<div>
-					<h2 class="font-semibold">External mailboxes are turned off</h2>
+					<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.featureOffTitle') }}</h2>
 					<p class="text-sm text-text-secondary mt-0.5">
-						Importing from another mailbox needs the external-accounts feature. Ask your Owlat admin
-						to enable it, then come back here to bring your mail in.
+						{{ t('dashboard.postbox.migrate.featureOffBody') }}
 					</p>
 				</div>
 			</div>
@@ -232,7 +246,7 @@ const steps = computed(() =>
 			<section v-if="step === 'connect'" class="space-y-5">
 				<!-- Provider pick -->
 				<div v-if="!selectedProvider">
-					<h2 class="font-semibold mb-3">Where does your mail live now?</h2>
+					<h2 class="font-semibold mb-3">{{ t('dashboard.postbox.migrate.providerPickTitle') }}</h2>
 					<div class="grid sm:grid-cols-2 gap-3">
 						<button
 							v-for="provider in MAIL_PROVIDERS"
@@ -243,8 +257,8 @@ const steps = computed(() =>
 						>
 							<UiIconBox :icon="provider.icon" size="md" variant="brand" rounded="xl" />
 							<span>
-								<span class="font-medium block">{{ provider.name }}</span>
-								<span class="text-xs text-text-tertiary">{{ provider.hint }}</span>
+								<span class="font-medium block">{{ t(provider.name) }}</span>
+								<span class="text-xs text-text-tertiary">{{ t(provider.hint) }}</span>
 							</span>
 						</button>
 					</div>
@@ -255,7 +269,13 @@ const steps = computed(() =>
 					<template #header>
 						<div class="flex items-center gap-2">
 							<UiIconBox :icon="selectedProvider.icon" size="sm" variant="brand" rounded="lg" />
-							<h2 class="font-semibold">Connect {{ selectedProvider.name }}</h2>
+							<h2 class="font-semibold">
+								{{
+									t('dashboard.postbox.migrate.connectProvider', {
+										provider: t(selectedProvider.name),
+									})
+								}}
+							</h2>
 						</div>
 					</template>
 					<PostboxMailboxConnectForm
@@ -273,36 +293,42 @@ const steps = computed(() =>
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:check-circle-2" size="md" variant="success" rounded="xl" />
 						<div>
-							<p class="font-semibold">{{ account?.emailAddress }} is connected</p>
+							<p class="font-semibold">
+								{{
+									t('dashboard.postbox.migrate.readyTitle', { email: account?.emailAddress ?? '' })
+								}}
+							</p>
 							<p class="text-sm text-text-secondary mt-0.5">
-								We'll import your entire mail history — Inbox, Sent, and all your archived mail.
+								{{ t('dashboard.postbox.migrate.readyBody') }}
 							</p>
 						</div>
 					</div>
 					<ul class="mt-4 space-y-2 text-sm text-text-secondary">
 						<li class="flex items-center gap-2">
 							<Icon name="lucide:download" class="w-4 h-4 text-brand" />
-							Your old messages are imported into your Owlat inbox.
+							{{ t('dashboard.postbox.migrate.readyBulletImport') }}
 						</li>
 						<li class="flex items-center gap-2">
 							<Icon name="lucide:sparkles" class="w-4 h-4 text-brand" />
 							{{
 								isAiIndexing
-									? 'Your AI assistant learns from each conversation, scoped per contact.'
-									: 'Enable the AI knowledge feature first to let the assistant learn from your mail.'
+									? t('dashboard.postbox.migrate.readyBulletAiOn')
+									: t('dashboard.postbox.migrate.readyBulletAiOff')
 							}}
 						</li>
 					</ul>
 					<div class="mt-5 flex flex-wrap items-center gap-3">
 						<UiButton variant="primary" :loading="startBusy" @click="handleStartImport">
-							Start import
+							{{ t('dashboard.postbox.migrate.startImport') }}
 						</UiButton>
-						<UiButton variant="ghost" @click="editing = true">Update credentials</UiButton>
+						<UiButton variant="ghost" @click="editing = true">
+							{{ t('dashboard.postbox.migrate.updateCredentials') }}
+						</UiButton>
 						<UiButton variant="ghost" class="text-error" @click="showDisconnect = true">
-							Disconnect
+							{{ t('dashboard.postbox.migrate.disconnect') }}
 						</UiButton>
 						<UiButton variant="ghost" class="text-error" @click="showPurge = true">
-							Delete mailbox & data
+							{{ t('dashboard.postbox.migrate.deleteMailboxAndData') }}
 						</UiButton>
 					</div>
 				</UiCard>
@@ -310,7 +336,13 @@ const steps = computed(() =>
 				<!-- Edit credentials -->
 				<UiCard v-else padding="lg">
 					<template #header>
-						<h2 class="font-semibold">Update {{ account?.emailAddress }} credentials</h2>
+						<h2 class="font-semibold">
+							{{
+								t('dashboard.postbox.migrate.updateCredentialsTitle', {
+									email: account?.emailAddress ?? '',
+								})
+							}}
+						</h2>
 					</template>
 					<PostboxMailboxConnectForm
 						:provider="connectedProvider"
@@ -328,12 +360,15 @@ const steps = computed(() =>
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:key-round" size="md" variant="error" rounded="xl" />
 						<div>
-							<h2 class="font-semibold">Reconnect {{ account?.emailAddress }} first</h2>
-							<p class="text-sm text-text-secondary mt-0.5">
+							<h2 class="font-semibold">
 								{{
-									account?.lastError ??
-									"Your mailbox credentials aren't working. Update your password below before importing — otherwise the import can't connect."
+									t('dashboard.postbox.migrate.reconnectTitle', {
+										email: account?.emailAddress ?? '',
+									})
 								}}
+							</h2>
+							<p class="text-sm text-text-secondary mt-0.5">
+								{{ account?.lastError ?? t('dashboard.postbox.migrate.reconnectBody') }}
 							</p>
 						</div>
 					</div>
@@ -356,10 +391,14 @@ const steps = computed(() =>
 						<UiIconBox icon="lucide:download-cloud" size="md" variant="brand" rounded="xl" />
 						<div>
 							<h2 class="font-semibold">
-								{{ isDiscovering ? 'Discovering your mailbox…' : 'Importing your mail history' }}
+								{{
+									isDiscovering
+										? t('dashboard.postbox.migrate.discoveringTitle')
+										: t('dashboard.postbox.migrate.importingTitle')
+								}}
 							</h2>
 							<p class="text-sm text-text-secondary">
-								You can leave this page — the import keeps running in the background.
+								{{ t('dashboard.postbox.migrate.importingBody') }}
 							</p>
 						</div>
 					</div>
@@ -368,13 +407,23 @@ const steps = computed(() =>
 						<UiProgressBar
 							:value="importPercent"
 							:indeterminate="isDiscovering"
-							:aria-label="isDiscovering ? 'Discovering mailbox' : 'Import progress'"
+							:aria-label="
+								isDiscovering
+									? t('dashboard.postbox.migrate.discoveringProgressLabel')
+									: t('dashboard.postbox.migrate.importProgressLabel')
+							"
 						/>
 						<div class="flex justify-between text-xs text-text-tertiary">
-							<span v-if="isDiscovering">Looking at your folders…</span>
+							<span v-if="isDiscovering">{{
+								t('dashboard.postbox.migrate.discoveringFolders')
+							}}</span>
 							<span v-else>
-								{{ migration?.messagesImported?.toLocaleString() }} of
-								{{ migration?.messagesTotal?.toLocaleString() }} messages
+								{{
+									t('dashboard.postbox.migrate.importCount', {
+										imported: formatCount(migration?.messagesImported),
+										total: formatCount(migration?.messagesTotal),
+									})
+								}}
 							</span>
 							<span v-if="!isDiscovering">{{ importPercent }}%</span>
 						</div>
@@ -382,7 +431,7 @@ const steps = computed(() =>
 
 					<div class="mt-5">
 						<UiButton variant="danger-ghost" size="sm" @click="showCancel = true">
-							Cancel migration
+							{{ t('dashboard.postbox.migrate.cancelMigration') }}
 						</UiButton>
 					</div>
 				</UiCard>
@@ -394,9 +443,9 @@ const steps = computed(() =>
 					<div class="flex items-center gap-3">
 						<UiIconBox icon="lucide:sparkles" size="md" variant="success" rounded="xl" />
 						<div>
-							<h2 class="font-semibold">Teaching your AI assistant</h2>
+							<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.indexingTitle') }}</h2>
 							<p class="text-sm text-text-secondary">
-								Reading through your imported mail to learn about your contacts and conversations.
+								{{ t('dashboard.postbox.migrate.indexingBody') }}
 							</p>
 						</div>
 					</div>
@@ -405,19 +454,23 @@ const steps = computed(() =>
 						<UiProgressBar
 							:value="indexPercent"
 							variant="success"
-							aria-label="AI learning progress"
+							:aria-label="t('dashboard.postbox.migrate.indexProgressLabel')"
 						/>
 						<div class="flex justify-between text-xs text-text-tertiary">
 							<span>
-								Learned from {{ migration?.messagesIndexed?.toLocaleString() }} of
-								{{ migration?.messagesImported?.toLocaleString() }} messages
+								{{
+									t('dashboard.postbox.migrate.indexCount', {
+										indexed: formatCount(migration?.messagesIndexed),
+										imported: formatCount(migration?.messagesImported),
+									})
+								}}
 							</span>
 							<span>{{ indexPercent }}%</span>
 						</div>
 					</div>
 
 					<p class="mt-4 text-xs text-text-tertiary">
-						Your mail is already in your inbox — this last step just makes the AI smarter.
+						{{ t('dashboard.postbox.migrate.indexingFootnote') }}
 					</p>
 				</UiCard>
 			</section>
@@ -433,38 +486,46 @@ const steps = computed(() =>
 							rounded="2xl"
 							class="mx-auto"
 						/>
-						<h2 class="text-xl font-semibold mt-4">You're all moved in</h2>
+						<h2 class="text-xl font-semibold mt-4">
+							{{ t('dashboard.postbox.migrate.completedTitle') }}
+						</h2>
 						<p class="text-text-secondary mt-1">
-							Your mail history is in Owlat{{
-								isAiIndexing ? ' and your AI assistant has learned from it.' : '.'
+							{{
+								isAiIndexing
+									? t('dashboard.postbox.migrate.completedBodyWithAi')
+									: t('dashboard.postbox.migrate.completedBody')
 							}}
 						</p>
 
 						<div class="grid grid-cols-2 gap-3 mt-6 text-left">
 							<div class="rounded-xl bg-text-tertiary/5 p-4">
 								<p class="text-2xl font-medium tracking-[-0.02em]">
-									{{ migration?.messagesImported?.toLocaleString() ?? 0 }}
+									{{ formatCount(migration?.messagesImported) }}
 								</p>
-								<p class="text-xs text-text-tertiary mt-0.5">messages imported</p>
+								<p class="text-xs text-text-tertiary mt-0.5">
+									{{ t('dashboard.postbox.migrate.statMessagesImported') }}
+								</p>
 							</div>
 							<div v-if="isAiIndexing" class="rounded-xl bg-text-tertiary/5 p-4">
 								<p class="text-2xl font-medium tracking-[-0.02em]">
-									{{ migration?.messagesIndexed?.toLocaleString() ?? 0 }}
+									{{ formatCount(migration?.messagesIndexed) }}
 								</p>
-								<p class="text-xs text-text-tertiary mt-0.5">conversations learned</p>
+								<p class="text-xs text-text-tertiary mt-0.5">
+									{{ t('dashboard.postbox.migrate.statConversationsLearned') }}
+								</p>
 							</div>
 						</div>
 
 						<div class="flex flex-col sm:flex-row gap-3 justify-center mt-7">
 							<UiButton variant="primary" @click="navigateTo('/dashboard/postbox/inbox')">
-								Open your inbox
+								{{ t('dashboard.postbox.migrate.openInbox') }}
 							</UiButton>
 							<UiButton
 								v-if="isAiIndexing"
 								variant="secondary"
 								@click="navigateTo('/dashboard/knowledge')"
 							>
-								See what your AI learned
+								{{ t('dashboard.postbox.migrate.seeWhatAiLearned') }}
 							</UiButton>
 						</div>
 
@@ -473,10 +534,11 @@ const steps = computed(() =>
 							v-if="suggestedSignature && !signatureSaved"
 							class="mt-7 text-left rounded-xl border border-border-subtle bg-bg-surface p-4"
 						>
-							<p class="text-sm font-medium">We found your email signature</p>
+							<p class="text-sm font-medium">
+								{{ t('dashboard.postbox.migrate.signatureFoundTitle') }}
+							</p>
 							<p class="text-xs text-text-tertiary mt-0.5">
-								Spotted this at the end of your sent mail. Save it and Owlat will add it to your
-								replies, just like before.
+								{{ t('dashboard.postbox.migrate.signatureFoundBody') }}
 							</p>
 							<pre
 								class="mt-3 text-xs text-text-secondary whitespace-pre-wrap font-sans bg-text-tertiary/5 rounded-lg p-3"
@@ -488,13 +550,13 @@ const steps = computed(() =>
 									:loading="createSignatureOp.isLoading.value"
 									@click="saveDetectedSignature"
 								>
-									Use this signature
+									{{ t('dashboard.postbox.migrate.useThisSignature') }}
 								</UiButton>
 								<NuxtLink
 									to="/dashboard/preferences/signatures"
 									class="text-xs text-text-tertiary hover:text-text-primary"
 								>
-									Edit it first
+									{{ t('dashboard.postbox.migrate.editSignatureFirst') }}
 								</NuxtLink>
 							</div>
 						</div>
@@ -503,15 +565,21 @@ const steps = computed(() =>
 							class="text-xs text-success mt-6 inline-flex items-center gap-1"
 						>
 							<Icon name="lucide:check" class="w-3.5 h-3.5" />
-							Signature saved — it'll be added to your replies.
+							{{ t('dashboard.postbox.migrate.signatureSaved') }}
 						</p>
-						<p v-else class="text-xs text-text-tertiary mt-6">
-							Tip: check your
-							<NuxtLink to="/dashboard/preferences/signatures" class="text-brand hover:underline">
-								email signature
-							</NuxtLink>
-							so your replies look just like they did before.
-						</p>
+						<I18nT
+							v-else
+							keypath="dashboard.postbox.migrate.signatureTip"
+							tag="p"
+							scope="global"
+							class="text-xs text-text-tertiary mt-6"
+						>
+							<template #link>
+								<NuxtLink to="/dashboard/preferences/signatures" class="text-brand hover:underline">
+									{{ t('dashboard.postbox.migrate.signatureTipLink') }}
+								</NuxtLink>
+							</template>
+						</I18nT>
 					</div>
 				</UiCard>
 			</section>
@@ -522,18 +590,18 @@ const steps = computed(() =>
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:alert-triangle" size="md" variant="error" rounded="xl" />
 						<div>
-							<h2 class="font-semibold">Migration ran into a problem</h2>
+							<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.failedTitle') }}</h2>
 							<p class="text-sm text-text-secondary mt-0.5">
-								{{ migration?.lastError ?? 'Something went wrong while importing your mail.' }}
+								{{ migration?.lastError ?? t('dashboard.postbox.migrate.failedFallbackError') }}
 							</p>
 							<p class="text-sm text-text-secondary mt-1">
-								Any mail imported so far was kept. You can try again.
+								{{ t('dashboard.postbox.migrate.failedBody') }}
 							</p>
 						</div>
 					</div>
 					<div class="mt-5">
 						<UiButton variant="primary" :loading="startBusy" @click="handleStartImport">
-							Try again
+							{{ t('dashboard.postbox.migrate.tryAgain') }}
 						</UiButton>
 					</div>
 				</UiCard>
@@ -545,15 +613,15 @@ const steps = computed(() =>
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:circle-slash" size="md" variant="surface" rounded="xl" />
 						<div>
-							<h2 class="font-semibold">Migration cancelled</h2>
+							<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.cancelledTitle') }}</h2>
 							<p class="text-sm text-text-secondary mt-0.5">
-								The mail imported before you cancelled is still in your inbox.
+								{{ t('dashboard.postbox.migrate.cancelledBody') }}
 							</p>
 						</div>
 					</div>
 					<div class="mt-5">
 						<UiButton variant="primary" :loading="startBusy" @click="handleStartImport">
-							Start again
+							{{ t('dashboard.postbox.migrate.startAgain') }}
 						</UiButton>
 					</div>
 				</UiCard>
@@ -563,9 +631,9 @@ const steps = computed(() =>
 		<!-- Cancel confirm -->
 		<UiConfirmationDialog
 			:open="showCancel"
-			title="Cancel the migration?"
-			description="Mail imported so far is kept. The rest of your history won't be imported unless you start again."
-			confirm-text="Cancel migration"
+			:title="t('dashboard.postbox.migrate.cancelDialogTitle')"
+			:description="t('dashboard.postbox.migrate.cancelDialogDescription')"
+			:confirm-text="t('dashboard.postbox.migrate.cancelMigration')"
 			variant="warning"
 			:is-loading="cancelBusy"
 			@confirm="handleCancel"
@@ -576,9 +644,9 @@ const steps = computed(() =>
 		<!-- Disconnect confirm -->
 		<UiConfirmationDialog
 			:open="showDisconnect"
-			title="Disconnect this mailbox?"
-			description="Syncing stops and it's hidden from your inbox. Synced messages are kept unless you delete them separately."
-			confirm-text="Disconnect"
+			:title="t('dashboard.postbox.migrate.disconnectDialogTitle')"
+			:description="t('dashboard.postbox.migrate.disconnectDialogDescription')"
+			:confirm-text="t('dashboard.postbox.migrate.disconnect')"
 			variant="warning"
 			:is-loading="disconnectOp.isLoading.value"
 			@confirm="handleDisconnect"
@@ -589,9 +657,9 @@ const steps = computed(() =>
 		<!-- Purge confirm -->
 		<UiConfirmationDialog
 			:open="showPurge"
-			title="Delete mailbox and all synced data?"
-			description="Every imported message, draft, folder and label is erased and cannot be recovered. Use this if you connected the wrong mailbox or want your imported mail genuinely removed."
-			confirm-text="Delete everything"
+			:title="t('dashboard.postbox.migrate.purgeDialogTitle')"
+			:description="t('dashboard.postbox.migrate.purgeDialogDescription')"
+			:confirm-text="t('dashboard.postbox.migrate.purgeConfirm')"
 			variant="danger"
 			:is-loading="purgeOp.isLoading.value"
 			@confirm="handlePurge"

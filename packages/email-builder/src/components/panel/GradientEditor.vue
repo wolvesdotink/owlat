@@ -140,6 +140,7 @@ function openColorPicker(index: number) {
 			<!-- Direction -->
 			<div class="flex">
 				<ButtonGroup
+					label="Gradient direction"
 					:options="directionOptions"
 					:value="modelValue?.direction ?? 'to right'"
 					@update="updateDirection"
@@ -159,12 +160,14 @@ function openColorPicker(index: number) {
 							class="w-[22px] h-[22px] rounded-[5px] border-[1.5px] border-border-subtle cursor-pointer p-0 transition-[transform,box-shadow] duration-(--motion-moderate) hover:scale-[1.12] hover:border-text-tertiary"
 							:style="{ backgroundColor: stop.color }"
 							:title="stop.color"
+							:aria-label="`Stop ${index + 1} color, ${stop.color}`"
 							type="button"
 							@click="openColorPicker(index)"
 						/>
 						<input
 							:ref="(el) => { colorInputRefs[index] = el as HTMLInputElement }"
 							type="color"
+							:aria-label="`Stop ${index + 1} color`"
 							class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
 							:value="stop.color"
 							@input="(e) => updateStopColor(index, (e.target as HTMLInputElement).value)"
@@ -174,6 +177,7 @@ function openColorPicker(index: number) {
 					<!-- Range slider with gradient track -->
 					<input
 						type="range"
+						:aria-label="`Stop ${index + 1} position`"
 						class="gradient-range flex-1 h-4 cursor-pointer"
 						:style="{ '--gradient-track': gradientTrackStyle }"
 						:value="stop.position"
@@ -186,6 +190,7 @@ function openColorPicker(index: number) {
 					<div class="flex items-center shrink-0">
 						<input
 							type="number"
+							:aria-label="`Stop ${index + 1} position, percent`"
 							class="w-11 py-[3px] px-0.5 text-xs tabular-nums text-right border-none border-b border-b-transparent bg-transparent text-text-primary outline-none appearance-number-plain transition-[border-color] duration-(--motion-fast) hover:border-b-border-subtle focus:border-b-brand"
 							:value="stop.position"
 							min="0"
@@ -200,6 +205,7 @@ function openColorPicker(index: number) {
 						v-if="(modelValue?.stops.length ?? 0) > 2"
 						:icon="Trash2"
 						title="Remove stop"
+						:aria-label="`Remove stop ${index + 1}`"
 						size="sm"
 						variant="destructive"
 						@click="removeStop(index)"
