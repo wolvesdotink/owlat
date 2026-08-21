@@ -614,6 +614,14 @@ const LABEL_SCAN_WINDOW = 1000;
  * the filtering logic lived outside the access-controlled read path. This
  * keeps the scan on the server: bounded indexed read, in-query membership
  * filter, only matching rows cross the wire.
+ *
+ * Contract: a single bounded page, NOT keyset pagination. The scan window is
+ * the view's total reach, so `nextCursor` is always null by design — a
+ * consumer fetches once at its display cap. `hasMore` means matches exist
+ * beyond the returned slice (still inside the window); the UI renders an
+ * honest cap note rather than offering a Load-more that has nothing to walk.
+ * A membership table with true cursor paging is the eventual fix and needs a
+ * migration across every `labelIds` writer (see ADR-0037's one-contract rule).
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listByLabel = publicQuery({
@@ -635,8 +643,10 @@ export const listByLabel = publicQuery({
 		const now = Date.now();
 		const limit = Math.min(Math.max(1, args.limit ?? 200), LABEL_SCAN_WINDOW);
 
-		// Bounded scan of the mailbox's newest messages, filtered to the label.
-		// The window is the documented reach of this view (see LABEL_SCAN_WINDOW).
+		// Scan of the mailbox's newest messages, filtered to the label. Bounded:
+		// LABEL_SCAN_WINDOW rows off `by_mailbox_and_received` — the documented,
+		// deliberate reach of this view (see above); Convex has no
+		// element-containment index for array fields to do better today.
 		const scanned = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))

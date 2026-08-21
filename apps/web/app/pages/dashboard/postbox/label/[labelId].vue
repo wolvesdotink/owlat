@@ -18,33 +18,22 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 // Server-side label view: `listByLabel` scans the mailbox's newest messages
 // server-side and returns only rows carrying this label. Replaces the P3
 // stopgap that fetched up to 500 recent mailbox messages to the browser and
-// filtered labelIds client-side. The view's reach is the backend's bounded
-// scan window, so "Load more" grows the returned slice rather than paging a
-// cursor.
-const resetKey = computed(() => `${String(mailboxId.value ?? '')}:${String(labelId.value)}`);
-const { limit, loadMore } = useGrowableLimit(resetKey, { page: 100, max: 500 });
-
-const {
-	data: labelData,
-	isLoading,
-	error,
-} = useConvexQuery(
+// filtered labelIds client-side.
+//
+// The view is bounded, not cursor-paged: the backend scans its fixed window
+// (LABEL_SCAN_WINDOW) and slices it to `limit`, so a single fetch at the
+// display cap gets everything the view can reach. When matches overflow even
+// that slice (`hasMore`), the honest cap note renders — there is no deeper
+// page to load, by design, until label membership gets a real index.
+const { data: labelData, isLoading, error } = useConvexQuery(
 	api.mail.mailbox.listByLabel,
 	() =>
-		mailboxId.value
-			? { mailboxId: mailboxId.value, labelId: labelId.value, limit: limit.value }
-			: 'skip',
+		mailboxId.value ? { mailboxId: mailboxId.value, labelId: labelId.value, limit: 500 } : 'skip',
 	{ keepPreviousData: true }
 );
 const labelMessages = computed(() => labelData.value?.messages ?? []);
-const hasMore = computed(() => (labelData.value?.hasMore ?? false) && limit.value < 500);
-
-// The label's own row (name + color for the header) — labels are few, so the
-// list query is the cheap way to resolve one without a dedicated by-id read.
-const { data: labels } = useConvexQuery(api.mail.labels.list, () =>
-	mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
-);
-const label = computed(() => (labels.value ?? []).find((l) => l._id === labelId.value));
+/** Matches exist beyond the display slice (within the backend's scan window). */
+const overCap = computed(() => labelData.value?.hasMore ?? false);
 </script>
 
 <template>
@@ -54,13 +43,9 @@ const label = computed(() => (labels.value ?? []).find((l) => l._id === labelId.
 				<aside
 					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex flex-col bg-bg-surface"
 				>
-					<header class="border-b border-border-subtle px-4 py-3 flex items-center gap-2">
-						<span
-							class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-							:style="{ backgroundColor: label?.color || '#6b7280' }"
-						/>
-						<h2 class="text-sm font-semibold text-text-primary truncate">
-							{{ label?.name ?? t('dashboard.postbox.label.detail.heading') }}
+					<header class="border-b border-border-subtle px-4 py-3">
+						<h2 class="text-sm font-semibold text-text-primary">
+							{{ t('dashboard.postbox.label.detail.heading') }}
 						</h2>
 					</header>
 					<PostboxQuickActionsBar :mailbox-id="mailboxId!" />
@@ -69,6 +54,9 @@ const label = computed(() => (labels.value ?? []).find((l) => l._id === labelId.
 						:message="t('dashboard.postbox.label.detail.loadError')"
 						class="m-3"
 					/>
+					<p v-if="overCap" class="px-4 py-2 text-xs text-text-tertiary" role="status">
+						{{ t('dashboard.postbox.label.detail.capNote', { count: 500 }, 500) }}
+					</p>
 					<div class="flex-1 overflow-auto">
 						<PostboxThreadList
 							:mailbox-id="mailboxId!"
@@ -76,8 +64,6 @@ const label = computed(() => (labels.value ?? []).find((l) => l._id === labelId.
 							:loading="isLoading"
 							folder-role="inbox"
 							empty-context="label"
-							:has-more="hasMore"
-							@load-more="loadMore"
 						/>
 					</div>
 				</aside>

@@ -15,6 +15,13 @@ definePageMeta({
 	requiresFeature: 'inbox',
 });
 
+// ── Access gate ──
+// The backend returns empty lists to non-admins by design; without this check
+// that reads as "the queue is clear" when it actually means "no access". Once
+// the role has resolved to a non-admin member, render the honest explainer
+// (with exits) instead of a fake-zero inbox.
+const { isAdmin, showAdminGate, role } = usePermissions();
+
 const {
 	filter,
 	sort,
@@ -26,16 +33,10 @@ const {
 	hasMoreThreads,
 	stats,
 	loadMoreThreads,
-} = useInbox();
+} = useInbox(computed(() => isAdmin.value));
 
 // ── Row triage mutations (shared with the thread detail view) ──
 const { user } = useAuth();
-// ── Access gate ──
-// The backend returns empty lists to non-admins by design; without this check
-// that reads as "the queue is clear" when it actually means "no access". Once
-// the role has resolved to a non-admin member, render the honest explainer
-// (with exits) instead of a fake-zero inbox.
-const { isAdmin, showAdminGate, role } = usePermissions();
 const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
 	label: () => t('dashboard.inbox.index.assignThreadOperation'),
 });
