@@ -158,13 +158,18 @@ rewritten overnight by whoever is holding it.
 
 ## Consequences
 
-- Owlat's deliverability stack gets the input it was missing. An instance can
-  watch its own domains' public standing and read the explanation behind it,
-  which is the Postmaster-Tools-shaped hole filled for self-hosters. Inbound
-  gains an OSTR tier as one more weighted verdict input beside SPF, DKIM, DMARC,
-  ClamAV and spam scoring. Never a hard gate by default.
+- Inbound gains an OSTR tier as one more weighted verdict input beside SPF,
+  DKIM, DMARC, ClamAV and spam scoring. Never a hard gate by default. That half
+  is what this decision ships.
+- The outbound half is the design's answer to the Postmaster-Tools-shaped hole,
+  and it is still on paper. An instance will be able to watch its own domains'
+  public standing and read the explanation behind it, feeding the deliverability
+  stack the input it has never had. Nothing in this change wires that up: the
+  aggregator already answers for any subject, so what is missing is the
+  deliverability side asking about itself and acting on the answer.
 - Even Phase 0 to 1 alone, a private Owlat-only federation, is worth shipping
-  for that reason. Nothing before Phase 2 requires anyone outside Owlat to care.
+  for the inbound input by itself. Nothing before Phase 2 requires anyone
+  outside Owlat to care.
 - **The bootstrap allowlist is centralization, on a timer.** Observer standing
   is defined by corroboration against other observers, which is circular at
   genesis, so Phases 0 through 2 run on a published list of seed observers whose

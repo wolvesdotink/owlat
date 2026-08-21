@@ -30,7 +30,14 @@ const props = defineProps<{
 	 * badge. Absent / all-clear contributes no lines.
 	 */
 	heuristics?: SenderHeuristics;
-	/** Feature-flag gate for the OSTR chip (`ostr`), decided by the reader. */
+	/**
+	 * Feature-flag gate for the OSTR chip (`ostr`), decided by the reader. It
+	 * gates the chip WITHIN this badge, so it is an AND with `enabled` above:
+	 * with `senderAuthBadges` off nothing here renders, tier included. OSTR's
+	 * other half — filing a `flagged` sender's mail as spam, and recording the
+	 * tier on every message — runs server-side and is unaffected; the `ostr`
+	 * flag's own description states that split.
+	 */
 	ostrEnabled?: boolean;
 	/**
 	 * The sender's OSTR registry tier persisted at delivery

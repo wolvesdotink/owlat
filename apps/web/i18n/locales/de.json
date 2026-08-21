@@ -12981,7 +12981,7 @@
 					"label": "Mandantenfähigkeit"
 				},
 				"ostr": {
-					"description": "Das Open Sender Trust Registry nach dem öffentlichen Ansehen eines eingehenden Absenders befragen, dessen Stufe neben dem Absender-Abzeichen anzeigen und Mail von einem markierten Absender als Spam einsortieren. Die Stufe ist ein Signal, kein Urteil: Sie wird ohnehin bei jeder Nachricht festgehalten, und alles unterhalb von „markiert“ ändert nichts daran, wo die Mail landet.",
+					"description": "Das Open Sender Trust Registry nach dem öffentlichen Ansehen eines eingehenden Absenders befragen, dessen Stufe neben dem Absender-Abzeichen anzeigen und Mail von einem markierten Absender als Spam einsortieren. Die Stufe ist ein Signal, kein Urteil: Sie wird ohnehin bei jeder Nachricht festgehalten, und alles unterhalb von „markiert“ ändert nichts daran, wo die Mail landet. Der Stufen-Chip sitzt im Abzeichen für Absender-Authentizität und wird deshalb nur angezeigt, solange auch jene Funktion aktiv ist; das Festhalten der Stufe und das Einsortieren markierter Mail als Spam hängen nicht davon ab.",
 					"label": "Absender-Vertrauensregister (OSTR)"
 				},
 				"postbox": {

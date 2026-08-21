@@ -12981,7 +12981,7 @@
 					"label": "Multi-tenancy"
 				},
 				"ostr": {
-					"description": "Consult the Open Sender Trust Registry for an inbound sender's public standing, show its tier beside the sender badge, and file mail from a flagged sender as spam. The tier is a signal, not a verdict: it is recorded on every message either way, and nothing below \"flagged\" changes where mail lands.",
+					"description": "Consult the Open Sender Trust Registry for an inbound sender's public standing, show its tier beside the sender badge, and file mail from a flagged sender as spam. The tier is a signal, not a verdict: it is recorded on every message either way, and nothing below \"flagged\" changes where mail lands. The tier chip lives inside the sender-authenticity badge, so it renders only while that feature is on as well; recording the tier and filing flagged mail as spam do not depend on it.",
 					"label": "Sender trust registry (OSTR)"
 				},
 				"postbox": {

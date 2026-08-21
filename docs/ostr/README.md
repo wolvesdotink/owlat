@@ -67,6 +67,14 @@ real instances submitting to a shared log — plus challenge sampling, which has
 retention behind it but no endpoint serving it. The v1 observer also publishes
 no trap hits and no IP subjects; `apps/api/convex/ostr/window.ts` says why.
 
+The wiring runs one way. Owlat looks up other people's senders, and nothing
+looks up its own: the deliverability stack does not query the instance's own
+domains, so an operator who wants their own standing asks an aggregator by
+hand. Closing that loop, the outbound half of the Postmaster-Tools replacement
+in [ADR-0058](../adr/0058-open-sender-trust-registry.md), is later work and
+waits on a federation with more than one observer in it. Reading your own tier
+off a log you are the only contributor to tells you what you already know.
+
 "Not started" on Phase 2 is about publication, not about code. The `bl.`/`wl.`
 compatibility views and the signed snapshots are already built on both sides —
 the zone generator emits them (`aggregator/zone.ts`) and `ostr-client` reads
