@@ -12,11 +12,17 @@
  * Cached folders: inbox + snoozed (the two surfaces people open on flaky
  * connections — snoozed mail is exactly what you check without network).
  * Every other folder is a transparent pass-through of the live rows.
+ *
+ * Starred needs no cache key of its own: it is not a folder role (there is no
+ * `starred` mailFolders row to list), but the triage chip over `flagFlagged`
+ * rows — and those rows are already inside the cached inbox/snoozed windows.
+ * The chips run client-side over `rows` below, so a starred slice of cached
+ * mail works offline by construction.
  */
 
 import { reconcileThreadRows } from '~/utils/postboxOfflineStore';
 
-/** Folders whose rows participate in the offline cache. */
+/** Folder roles whose rows participate in the offline cache. */
 const CACHEABLE_FOLDERS = new Set(['inbox', 'snoozed']);
 
 export function usePostboxOfflineThreads<T extends { _id: string }>(args: {

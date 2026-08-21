@@ -3656,7 +3656,8 @@
 				"offlineBanner": "Offline — reading from this device; sends will go out when you're back online.",
 				"offlineBannerQueued": "Offline — reading from this device; sends will go out when you're back online ({count} queued).",
 				"retryQueuedSends": "Retry",
-				"offlineBannerCached": "Offline — showing mail cached from this device at {time}. Actions are paused."
+				"offlineBannerCached": "Offline — showing mail cached from this device at {time}. Actions are paused.",
+				"offlineBannerCachedQueued": "Offline — showing mail cached from this device at {time}; {count} send will go out when you're back online. | Offline — showing mail cached from this device at {time}; {count} sends will go out when you're back online."
 			},
 			"postboxOfflineSettings": {
 				"clear": {
@@ -8045,9 +8046,10 @@
 					"pageTitle": "Mail — Owlat"
 				}
 			},
-			"label": {
-				"detail": {
-					"heading": "Label view",
+				"label": {
+					"detail": {
+						"capNote": "This label has more messages than this view lists — showing the newest {count}. | This label has more messages than this view lists — showing the newest {count}.",
+						"heading": "Label view",
 					"loadError": "Couldn't load messages for this label. Reload to try again.",
 					"pageTitle": "Mail — Owlat",
 					"selectMessage": "Select a message"
@@ -8145,7 +8147,7 @@
 				"pageTitle": "Search — Owlat",
 				"selectResult": "Select a result",
 				"resultCount": "{count} result | {count} results",
-				"moreBelow": "— more available below",
+				"resultCountMore": "{count}+ result — more available below | {count}+ results — more available below",
 				"removeChip": "Remove {chip}",
 				"clearAllFilters": "Clear all filters"
 			}

@@ -35,18 +35,30 @@ const { t } = useI18n();
 	>
 		<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
 		<span class="truncate">{{
-			cachedAt
-				? t('components.postbox.postboxOfflineBanners.offlineBannerCached', {
-						time: new Date(cachedAt).toLocaleTimeString([], {
-							hour: '2-digit',
-							minute: '2-digit',
-						}),
-					})
-				: queuedCount > 0
-					? t('components.postbox.postboxOfflineBanners.offlineBannerQueued', {
+			cachedAt && queuedCount > 0
+				? t(
+						'components.postbox.postboxOfflineBanners.offlineBannerCachedQueued',
+						{
+							time: new Date(cachedAt).toLocaleTimeString([], {
+								hour: '2-digit',
+								minute: '2-digit',
+							}),
 							count: queuedCount,
+						},
+						queuedCount
+					)
+				: cachedAt
+					? t('components.postbox.postboxOfflineBanners.offlineBannerCached', {
+							time: new Date(cachedAt).toLocaleTimeString([], {
+								hour: '2-digit',
+								minute: '2-digit',
+							}),
 						})
-					: t('components.postbox.postboxOfflineBanners.offlineBanner')
+					: queuedCount > 0
+						? t('components.postbox.postboxOfflineBanners.offlineBannerQueued', {
+								count: queuedCount,
+							})
+						: t('components.postbox.postboxOfflineBanners.offlineBanner')
 		}}</span>
 	</div>
 	<!-- Post-drain honesty: items the reconnect drain could NOT send stay

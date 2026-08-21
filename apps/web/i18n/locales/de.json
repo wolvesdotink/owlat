@@ -3656,7 +3656,8 @@
 				"offlineBanner": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind.",
 				"offlineBannerQueued": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind ({count} in der Warteschlange).",
 				"retryQueuedSends": "Erneut versuchen",
-				"offlineBannerCached": "Offline — Mail von diesem Gerät wird angezeigt (Stand {time}). Aktionen sind pausiert."
+				"offlineBannerCached": "Offline — Mail von diesem Gerät wird angezeigt (Stand {time}). Aktionen sind pausiert.",
+				"offlineBannerCachedQueued": "Offline — Mail von diesem Gerät wird angezeigt (Stand {time}); {count} Nachricht geht raus, sobald Sie wieder online sind. | Offline — Mail von diesem Gerät wird angezeigt (Stand {time}); {count} Nachrichten gehen raus, sobald Sie wieder online sind."
 			},
 			"postboxOfflineSettings": {
 				"clear": {
@@ -8047,6 +8048,7 @@
 			},
 			"label": {
 				"detail": {
+					"capNote": "Dieses Label hat mehr Nachrichten, als diese Ansicht auflistet — die neuesten {count} werden angezeigt. | Dieses Label hat mehr Nachrichten, als diese Ansicht auflistet — die neuesten {count} werden angezeigt.",
 					"heading": "Label-Ansicht",
 					"loadError": "Die Nachrichten für dieses Label konnten nicht geladen werden. Laden Sie neu, um es erneut zu versuchen.",
 					"pageTitle": "E-Mail — Owlat",
@@ -8145,7 +8147,7 @@
 				"pageTitle": "Suche — Owlat",
 				"selectResult": "Wählen Sie ein Ergebnis",
 				"resultCount": "{count} Ergebnis | {count} Ergebnisse",
-				"moreBelow": "— mehr weiter unten",
+				"resultCountMore": "{count}+ Ergebnis — mehr weiter unten | {count}+ Ergebnisse — mehr weiter unten",
 				"removeChip": "{chip} entfernen",
 				"clearAllFilters": "Alle Filter löschen"
 			}
