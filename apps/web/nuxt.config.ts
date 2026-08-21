@@ -59,9 +59,13 @@ export default defineNuxtConfig({
 				// previews and inline component styles legitimately need it.
 				// Dropped from script-src to remove the in-page XSS escalation
 				// path. Bundled Nuxt scripts load via `<script src>` and are
-				// covered by 'self' / 'https:'. If your build emits an inline
-				// script (e.g. color-mode FOUC prevention), enable
-				// nuxt-security nonce mode or move it to a static file.
+				// covered by 'self' — no script is ever fetched from a third
+				// party (icons are bundled via @nuxt/icon's clientBundle, fonts
+				// ride font-src). Keeping 'https:' here would let an injected
+				// <script src="https://attacker…"> through and void the policy.
+				// If your build emits an inline script (e.g. color-mode FOUC
+				// prevention), enable nuxt-security nonce mode or move it to a
+				// static file.
 				// Desktop builds keep 'unsafe-inline': the dev SPA shell boots via
 				// inline scripts (WebKit blocks them without it → blank window), and
 				// the packaged app's enforcement boundary is tauri.conf.json's CSP,
@@ -70,7 +74,13 @@ export default defineNuxtConfig({
 				'script-src':
 					process.env['OWLAT_DESKTOP'] === 'true'
 						? ["'self'", 'https:', "'unsafe-inline'"]
-						: ["'self'", 'https:'],
+						: ["'self'"],
+				// Every iframe in the app is srcdoc-based (email previews, postbox
+				// bodies, archives, share pages — all sanitized + sandboxed), so
+				// remote frame loads are never legitimate. Local-scheme frames
+				// (about:srcdoc) are exempt from frame-src and inherit this
+				// document's policy, so this only bars future external embeds.
+				'frame-src': ["'none'"],
 				// Desktop builds (`OWLAT_DESKTOP=true`, produced by `generate:desktop`)
 				// connect to arbitrary self-hosted instances chosen at runtime, so the
 				// build-time single-URL allowlist is wrong for them — allow any https/wss
@@ -158,6 +168,15 @@ export default defineNuxtConfig({
 		// see better-auth's originCheckMiddleware), and the proxy forwards the
 		// browser's Origin header verbatim.
 		'/api/auth/**': { csurf: false },
+
+		// Machine-to-machine control-plane routes authenticate with the
+		// X-Instance-Secret header, not the session cookie, so nuxt-csurf's
+		// cookie+header pair can never be satisfied and every POST would 403
+		// ("CSRF Cookie not found"). Safe to exempt — there is no browser
+		// credential to forge: a cross-site attacker without INSTANCE_SECRET is
+		// rejected by requireInstanceSecret regardless of CSRF.
+		'/api/self-update': { csurf: false },
+		'/api/internal/**': { csurf: false },
 
 		// IA restructure: the Mail + Campaigns sidebar sections merged into one
 		// "Send" section and the email surfaces moved under /dashboard/send/*.
