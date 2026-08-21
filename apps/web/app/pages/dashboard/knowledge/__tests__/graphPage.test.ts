@@ -38,7 +38,9 @@ describe('knowledge graph view — renders only when analytics is on', () => {
 	it('gates the canvas/insights behind analyticsEnabled', () => {
 		// The "off" branch is shown when the flag is off; the graph is the v-else.
 		expect(graphView).toContain('v-if="!analyticsEnabled"');
-		expect(graphView).toContain('Graph analytics are off');
+		// The copy itself lives in the message catalog now; the guard is that the
+		// off-branch heading is the one the view paints there.
+		expect(graphView).toContain('components.knowledge.graphView.analyticsOffTitle');
 		expect(graphView).toMatch(/analyticsEnabled/);
 	});
 

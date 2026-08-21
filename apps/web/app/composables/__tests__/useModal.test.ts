@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createTestI18n } from '~/__tests__/i18n';
 import { useModal, useConfirmModal } from '../useModal';
+
+// `useModal` reads its generic failure copy from the catalog through the
+// `useI18n` auto-import; the real catalog keeps the assertions on English copy.
+const i18n = createTestI18n();
+vi.stubGlobal('useI18n', () => i18n.global);
 
 describe('useModal', () => {
 	describe('initial state', () => {

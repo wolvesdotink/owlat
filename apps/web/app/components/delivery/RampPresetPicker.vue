@@ -42,9 +42,23 @@ const props = defineProps<{
 
 const emit = defineEmits<{ change: [preset: RampPreset | null] }>();
 
-const defaultLabel = computed(
-	() => RAMP_PRESET_OPTIONS.find((option) => option.value === props.defaultPreset)?.label ?? ''
-);
+const { t } = useI18n();
+
+/**
+ * `RAMP_PRESET_OPTIONS` and the stream vocabulary are module-scope definitions,
+ * so they carry i18n keys rather than sentences (the registry convention); a
+ * plain string is still accepted so a value with nothing to translate reads as
+ * itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+const defaultLabel = computed(() => {
+	const option = RAMP_PRESET_OPTIONS.find((entry) => entry.value === props.defaultPreset);
+	return option ? localized(option.label) : '';
+});
 const isStandalone = computed(() => !props.hasReferenceArm);
 
 /** The DOM value for "no stored row" — `null` is not an attribute value. */
@@ -102,8 +116,14 @@ function choose(preset: RampPreset | null): void {
 
 <template>
 	<fieldset ref="group" class="space-y-2" :data-testid="`ramp-preset-${stream}`">
-		<legend class="text-sm font-medium text-text-primary">{{ streamLabel(stream) }} mail</legend>
-		<p class="text-xs text-text-secondary">Default for this deployment: {{ defaultLabel }}.</p>
+		<legend class="text-sm font-medium text-text-primary">
+			{{
+				t('components.delivery.rampPresetPicker.legend', { stream: localized(streamLabel(stream)) })
+			}}
+		</legend>
+		<p class="text-xs text-text-secondary">
+			{{ t('components.delivery.rampPresetPicker.deploymentDefault', { preset: defaultLabel }) }}
+		</p>
 		<div class="space-y-1">
 			<label class="flex items-start gap-2 text-sm">
 				<input
@@ -116,9 +136,11 @@ function choose(preset: RampPreset | null): void {
 					@change="choose(null)"
 				/>
 				<span>
-					<span class="text-text-primary">Use the default</span>
+					<span class="text-text-primary">
+						{{ t('components.delivery.rampPresetPicker.useDefault') }}
+					</span>
 					<span class="block text-xs text-text-secondary">
-						Follows the deployment default, including if that changes later.
+						{{ t('components.delivery.rampPresetPicker.useDefaultDescription') }}
 					</span>
 				</span>
 			</label>
@@ -137,15 +159,16 @@ function choose(preset: RampPreset | null): void {
 					@change="choose(option.value)"
 				/>
 				<span>
-					<span class="text-text-primary">{{ option.label }}</span>
-					<span class="block text-xs text-text-secondary">{{ option.description }}</span>
+					<span class="text-text-primary">{{ localized(option.label) }}</span>
+					<span class="block text-xs text-text-secondary">
+						{{ localized(option.description) }}
+					</span>
 					<span
 						v-if="isStandalone && option.value !== 'conservative'"
 						class="block text-xs text-text-secondary"
 						:data-testid="`ramp-preset-standalone-note-${option.value}`"
 					>
-						With no relay connected the engagement check is the weaker signal, so this pace advances
-						on evidence nothing else has corroborated.
+						{{ t('components.delivery.rampPresetPicker.standaloneNote') }}
 					</span>
 				</span>
 			</label>

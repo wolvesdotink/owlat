@@ -7,6 +7,7 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { nextTick, ref } from 'vue';
 
 import PostboxMessageBody from '../PostboxMessageBody.vue';
@@ -29,6 +30,8 @@ const action = vi.fn();
 const loadBody = vi.fn(async (_messageId: string) => null);
 
 beforeAll(() => {
+	// The body copy flows through vue-i18n now; `useI18n` is a Nuxt auto-import.
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('requireConvex', () => ({ action }));
 	// Real quoted-text splitters (Nuxt auto-imports in the component).
 	vi.stubGlobal('splitQuotedText', splitQuotedText);
@@ -56,6 +59,7 @@ function mountBody(message = { _id: 'msg-1', htmlBodyStorageId: 'blob-1' }) {
 	return mount(PostboxMessageBody, {
 		props: { message },
 		global: {
+			plugins: [createTestI18n()],
 			components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
 		},
 	});

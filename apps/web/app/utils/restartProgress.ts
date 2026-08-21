@@ -51,7 +51,10 @@ export function restartProgressPhase({ pollCount, ready }: RestartProgressInput)
 	return 'applying';
 }
 
-/** Short label + one-line explanation for each phase, in plain language. */
+/**
+ * Short label + one-line explanation for each phase, in plain language — as
+ * i18n keys, since this module is pure; the stepper runs them through `t()`.
+ */
 export interface RestartPhaseCopy {
 	label: string;
 	detail: string;
@@ -59,20 +62,20 @@ export interface RestartPhaseCopy {
 
 export const RESTART_PHASE_COPY: Record<Exclude<RestartPhase, 'done'>, RestartPhaseCopy> = {
 	applying: {
-		label: 'Applying your configuration',
-		detail: 'Writing your settings to the server.',
+		label: 'shared.restartProgress.applying.label',
+		detail: 'shared.restartProgress.applying.detail',
 	},
 	restarting: {
-		label: 'Restarting services',
-		detail: 'Loading the new configuration.',
+		label: 'shared.restartProgress.restarting.label',
+		detail: 'shared.restartProgress.restarting.detail',
 	},
 	waiting: {
-		label: 'Waiting for the app to come back',
-		detail: 'Almost there — reconnecting as soon as it’s online.',
+		label: 'shared.restartProgress.waiting.label',
+		detail: 'shared.restartProgress.waiting.detail',
 	},
 	timeout: {
-		label: 'Taking longer than usual',
-		detail: 'Still waiting for the app to come back.',
+		label: 'shared.restartProgress.timeout.label',
+		detail: 'shared.restartProgress.timeout.detail',
 	},
 };
 

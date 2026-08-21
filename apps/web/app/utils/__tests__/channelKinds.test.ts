@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { ADDABLE_CHANNEL_KINDS, availableChannelKinds, channelHealthDot } from '../channelKinds';
+import {
+	ADDABLE_CHANNEL_KINDS,
+	availableChannelKinds,
+	channelHealthDot,
+	type LocalizedText,
+} from '../channelKinds';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The tables are module scope, so they carry catalog keys rather than words.
+ * Rendering them through the real English catalog keeps these assertions on the
+ * label a person actually reads.
+ */
+const { t } = createTestI18n().global;
+const localized = (value: LocalizedText): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 
 describe('ADDABLE_CHANNEL_KINDS', () => {
 	it('excludes the built-in email and chat kinds', () => {
@@ -45,7 +60,7 @@ describe('channelHealthDot', () => {
 
 	it('uses design-token dot classes and human labels (no enum strings)', () => {
 		expect(channelHealthDot('down').dotClass).toBe('bg-error');
-		expect(channelHealthDot('down').label).toBe('Down');
+		expect(localized(channelHealthDot('down').label)).toBe('Down');
 		expect(channelHealthDot('degraded').dotClass).toBe('bg-warning');
 		expect(channelHealthDot('healthy').dotClass).toBe('bg-success');
 	});

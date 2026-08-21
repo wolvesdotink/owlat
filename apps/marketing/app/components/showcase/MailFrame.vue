@@ -6,9 +6,12 @@
  * description. Swap the mock for a real capture by replacing this component's
  * body with an <img> inside <ShowcaseWindowFrame>. */
 
+const { t } = useI18n();
+
 const folders = [
 	{
-		name: 'Inbox',
+		id: 'inbox',
+		nameKey: 'showcase.mail.folders.inbox',
 		count: 3,
 		active: true,
 		paths: [
@@ -16,18 +19,30 @@ const folders = [
 			'M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z',
 		],
 	},
-	{ name: 'Reply Queue', count: 2, paths: ['m9 17-5-5 5-5', 'M20 18v-2a4 4 0 0 0-4-4H4'] },
 	{
-		name: 'Drafts',
+		id: 'replyQueue',
+		nameKey: 'showcase.mail.folders.replyQueue',
+		count: 2,
+		paths: ['m9 17-5-5 5-5', 'M20 18v-2a4 4 0 0 0-4-4H4'],
+	},
+	{
+		id: 'drafts',
+		nameKey: 'showcase.mail.folders.drafts',
 		paths: ['M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5z', 'M15 3v6h6'],
 	},
-	{ name: 'Sent', paths: ['M22 2 11 13', 'M22 2 15 22l-4-9-9-4z'] },
 	{
-		name: 'Archive',
+		id: 'sent',
+		nameKey: 'showcase.mail.folders.sent',
+		paths: ['M22 2 11 13', 'M22 2 15 22l-4-9-9-4z'],
+	},
+	{
+		id: 'archive',
+		nameKey: 'showcase.mail.folders.archive',
 		paths: ['M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8', 'M2 3h20v5H2z', 'M10 12h4'],
 	},
 	{
-		name: 'Spam',
+		id: 'spam',
+		nameKey: 'showcase.mail.folders.spam',
 		paths: [
 			'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3',
 			'M12 9v4',
@@ -35,7 +50,8 @@ const folders = [
 		],
 	},
 	{
-		name: 'Trash',
+		id: 'trash',
+		nameKey: 'showcase.mail.folders.trash',
 		paths: [
 			'M3 6h18',
 			'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6',
@@ -44,37 +60,15 @@ const folders = [
 	},
 ];
 
-// Sender/subject/snippet/time straight from seedDemo/fixtures/mailboxMessages.json.
+/* Sender/subject/snippet/time started from seedDemo/fixtures/mailboxMessages.json
+ * and now live in i18n/locales/*.json under `showcase.mail.threads.*`: a mock
+ * inbox that stays English on a German page reads like a screenshot of somebody
+ * else's product. Names are kept identical across locales. */
 const threads = [
-	{
-		sender: 'Ben Ortiz',
-		subject: 'Invoice #2041 shows our old billing address',
-		snippet: 'We moved offices last month and invoice #2041 still shows…',
-		time: '45m',
-		unread: true,
-	},
-	{
-		sender: 'Priya Sharma',
-		subject: 'Password reset link expired',
-		snippet: 'I requested a password reset but the link had already…',
-		time: '1h',
-		unread: true,
-	},
-	{
-		sender: 'Mia Nguyen',
-		subject: 'Re: Can we move our onboarding call?',
-		snippet: 'Quick follow-up: Friday morning also works if Thursday…',
-		time: '2h',
-		unread: false,
-		selected: true,
-	},
-	{
-		sender: 'Ada Lovelace',
-		subject: 'Welcome aboard!',
-		snippet: 'Thanks for the smooth setup — everything works as…',
-		time: '5h',
-		unread: false,
-	},
+	{ id: 'ben', unread: true },
+	{ id: 'priya', unread: true },
+	{ id: 'mia', unread: false, selected: true },
+	{ id: 'ada', unread: false },
 ];
 </script>
 
@@ -99,16 +93,16 @@ const threads = [
 						<circle cx="11" cy="11" r="8" />
 						<path d="m21 21-4.3-4.3" />
 					</svg>
-					Search
+					{{ t('showcase.mail.search') }}
 				</div>
 				<div
 					class="rounded-full bg-text-primary text-text-inverse text-[8px] font-medium text-center py-1 mb-1"
 				>
-					Compose
+					{{ t('showcase.mail.compose') }}
 				</div>
 				<div
 					v-for="folder in folders"
-					:key="folder.name"
+					:key="folder.id"
 					class="flex items-center gap-1.5 rounded px-1.5 py-[3px] text-[8.5px]"
 					:class="
 						folder.active ? 'bg-bg-surface font-medium text-text-primary' : 'text-text-secondary'
@@ -128,7 +122,7 @@ const threads = [
 					>
 						<path v-for="(d, i) in folder.paths" :key="i" :d="d" />
 					</svg>
-					<span class="flex-1 truncate">{{ folder.name }}</span>
+					<span class="flex-1 truncate">{{ t(folder.nameKey) }}</span>
 					<span v-if="folder.count" class="text-[7.5px] font-medium text-text-tertiary">
 						{{ folder.count }}
 					</span>
@@ -140,12 +134,16 @@ const threads = [
 				class="w-[212px] max-md:w-[168px] shrink-0 border-r border-border-subtle bg-surface-2 flex flex-col"
 			>
 				<div class="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
-					<span class="text-[9px] font-semibold text-text-primary">Inbox</span>
-					<span class="text-[8px] text-text-tertiary">3 unread</span>
+					<span class="text-[9px] font-semibold text-text-primary">
+						{{ t('showcase.mail.listTitle') }}
+					</span>
+					<span class="text-[8px] text-text-tertiary">
+						{{ t('showcase.mail.unread', { count: 3 }) }}
+					</span>
 				</div>
 				<div
 					v-for="thread in threads"
-					:key="thread.subject"
+					:key="thread.id"
 					class="px-3 py-2 border-b border-border-subtle"
 					:class="{ 'bg-(--surface-1-hover)': thread.selected }"
 				>
@@ -154,17 +152,21 @@ const threads = [
 							class="truncate text-[8.5px]"
 							:class="thread.unread ? 'font-semibold text-text-primary' : 'text-text-secondary'"
 						>
-							{{ thread.sender }}
+							{{ t(`showcase.mail.threads.${thread.id}.sender`) }}
 						</span>
-						<span class="text-[7.5px] text-text-tertiary shrink-0">{{ thread.time }}</span>
+						<span class="text-[7.5px] text-text-tertiary shrink-0">
+							{{ t(`showcase.mail.threads.${thread.id}.time`) }}
+						</span>
 					</div>
 					<p
 						class="truncate text-[8.5px] mt-px"
 						:class="thread.unread ? 'font-medium text-text-primary' : 'text-text-secondary'"
 					>
-						{{ thread.subject }}
+						{{ t(`showcase.mail.threads.${thread.id}.subject`) }}
 					</p>
-					<p class="truncate text-[7.5px] text-text-tertiary mt-px">{{ thread.snippet }}</p>
+					<p class="truncate text-[7.5px] text-text-tertiary mt-px">
+						{{ t(`showcase.mail.threads.${thread.id}.snippet`) }}
+					</p>
 				</div>
 			</div>
 
@@ -196,34 +198,36 @@ const threads = [
 				</div>
 				<div class="px-4 py-3">
 					<p class="text-[10px] font-semibold text-text-primary leading-snug">
-						Re: Can we move our onboarding call?
+						{{ t('showcase.mail.threads.mia.subject') }}
 					</p>
 					<div class="flex items-center gap-2 mt-2.5">
 						<span
 							class="w-5 h-5 rounded-full bg-brand-subtle text-brand text-[7px] font-semibold flex items-center justify-center"
 						>
-							MN
+							{{ t('showcase.mail.reader.initials') }}
 						</span>
 						<div class="min-w-0">
-							<p class="text-[8.5px] font-medium text-text-primary">Mia Nguyen</p>
-							<p class="text-[7.5px] text-text-tertiary">mia@northwind.example · 2h ago</p>
+							<p class="text-[8.5px] font-medium text-text-primary">
+								{{ t('showcase.mail.threads.mia.sender') }}
+							</p>
+							<p class="text-[7.5px] text-text-tertiary">{{ t('showcase.mail.reader.meta') }}</p>
 						</div>
 					</div>
 					<div class="mt-3 space-y-1.5 text-[8.5px] text-text-secondary leading-[1.6]">
-						<p>Quick follow-up: Friday morning also works if Thursday is too tight.</p>
-						<p>Whatever is easiest for you.</p>
-						<p>Mia</p>
+						<p>{{ t('showcase.mail.reader.body1') }}</p>
+						<p>{{ t('showcase.mail.reader.body2') }}</p>
+						<p>{{ t('showcase.mail.reader.signature') }}</p>
 					</div>
 					<div class="flex items-center gap-1.5 mt-4">
 						<span
 							class="rounded-full bg-text-primary text-text-inverse text-[8px] font-medium px-3 py-1"
 						>
-							Reply
+							{{ t('showcase.mail.reader.reply') }}
 						</span>
 						<span
 							class="rounded-full border border-border-default text-text-secondary text-[8px] font-medium px-3 py-1"
 						>
-							Forward
+							{{ t('showcase.mail.reader.forward') }}
 						</span>
 					</div>
 				</div>

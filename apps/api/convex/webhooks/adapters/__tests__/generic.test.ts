@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { genericAdapter } from '../generic';
+import type { ActionCtx } from '../../../_generated/server';
 
 const SECRET = 'test-generic-secret';
+/** The Secret Key an operator typed into the generic-webhook channel card. */
+const STORED_SECRET = 'stored-generic-secret';
+
+/** An action ctx whose credential vault holds `secret` for this channel. */
+function ctxWithStoredSecret(secret: string | null): ActionCtx {
+	return { runAction: async () => secret } as unknown as ActionCtx;
+}
 const REQUEST_URL = 'https://owlat.example.com/webhooks/channel';
 
 function makeRequest(headers: Record<string, string> = {}): Request {
@@ -24,8 +32,7 @@ describe('genericAdapter.verifySignature', () => {
 				reason: expect.stringContaining('GENERIC_WEBHOOK_SECRET'),
 			});
 		} finally {
-			if (original !== undefined)
-				process.env['GENERIC_WEBHOOK_SECRET'] = original;
+			if (original !== undefined) process.env['GENERIC_WEBHOOK_SECRET'] = original;
 		}
 	});
 
@@ -50,10 +57,7 @@ describe('genericAdapter.verifySignature', () => {
 
 	it('accepts a matching Authorization header (bare secret)', async () => {
 		process.env['GENERIC_WEBHOOK_SECRET'] = SECRET;
-		const result = await genericAdapter.verifySignature(
-			makeRequest({ authorization: SECRET }),
-			''
-		);
+		const result = await genericAdapter.verifySignature(makeRequest({ authorization: SECRET }), '');
 		expect(result).toEqual({ ok: true });
 	});
 
@@ -78,6 +82,44 @@ describe('genericAdapter.verifySignature', () => {
 			reason: expect.stringContaining('Invalid'),
 		});
 	});
+
+	it('accepts the channel-stored Secret Key in preference to the env var', async () => {
+		process.env['GENERIC_WEBHOOK_SECRET'] = SECRET;
+		const result = await genericAdapter.verifySignature(
+			makeRequest({ 'x-webhook-secret': STORED_SECRET }),
+			'',
+			ctxWithStoredSecret(STORED_SECRET)
+		);
+		expect(result).toEqual({ ok: true });
+	});
+
+	it('rejects the env-var secret once a Secret Key is stored on the channel', async () => {
+		process.env['GENERIC_WEBHOOK_SECRET'] = SECRET;
+		const result = await genericAdapter.verifySignature(
+			makeRequest({ 'x-webhook-secret': SECRET }),
+			'',
+			ctxWithStoredSecret(STORED_SECRET)
+		);
+		expect(result).toEqual({
+			ok: false,
+			status: 401,
+			reason: expect.stringContaining('Invalid'),
+		});
+	});
+
+	it('fails closed with 503 when neither the channel nor the env var has a secret', async () => {
+		delete process.env['GENERIC_WEBHOOK_SECRET'];
+		const result = await genericAdapter.verifySignature(
+			makeRequest({ 'x-webhook-secret': STORED_SECRET }),
+			'',
+			ctxWithStoredSecret(null)
+		);
+		expect(result).toEqual({
+			ok: false,
+			status: 503,
+			reason: expect.stringContaining('GENERIC_WEBHOOK_SECRET'),
+		});
+	});
 });
 
 describe('genericAdapter.parseEvent', () => {
@@ -99,9 +141,7 @@ describe('genericAdapter.parseEvent', () => {
 	});
 
 	it('falls back to sender when from is missing', () => {
-		const event = genericAdapter.parseEvent(
-			JSON.stringify({ sender: 'someone', message: 'hi' })
-		);
+		const event = genericAdapter.parseEvent(JSON.stringify({ sender: 'someone', message: 'hi' }));
 		if (event?.kind !== 'channel.received') throw new Error('wrong kind');
 		expect(event.from).toBe('someone');
 		expect(event.content.text).toBe('hi');
@@ -133,9 +173,7 @@ describe('genericAdapter.parseEvent', () => {
 	});
 
 	it('omits externalMessageId when neither id nor messageId is present', () => {
-		const event = genericAdapter.parseEvent(
-			JSON.stringify({ from: 'a@b', text: 'hi' })
-		);
+		const event = genericAdapter.parseEvent(JSON.stringify({ from: 'a@b', text: 'hi' }));
 		if (event?.kind !== 'channel.received') throw new Error('wrong kind');
 		expect(event.externalMessageId).toBeUndefined();
 	});

@@ -17,6 +17,8 @@ interface Props {
 	campaignId: Id<'campaigns'> | null;
 }
 
+const { t } = useI18n();
+
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
@@ -37,9 +39,15 @@ const form = reactive({
 // From-name / from-email are chosen through the sender picker (curated senders
 // carry their own identity; the custom branch validates below), so the base
 // schema only owns the two always-free-text fields.
+// The messages resolve when the rule RUNS, not when the schema is built, so a
+// locale switch between mount and submit still validates in the active locale.
 const basicsValidation = useFormValidation({
-	campaignName: [rules.required('Campaign name is required')],
-	replyTo: [rules.email('Please enter a valid email address')],
+	campaignName: [
+		(value) => rules.required(t('components.campaigns.steps.setupStep.errors.nameRequired'))(value),
+	],
+	replyTo: [
+		(value) => rules.email(t('components.campaigns.steps.setupStep.errors.replyToInvalid'))(value),
+	],
 });
 
 // The persisted campaign backs the sender preselect (below) and the A/B
@@ -139,20 +147,20 @@ const removeABTest = () => {
 
 // --- Mutations --------------------------------------------------------------
 const { run: createCampaign } = useBackendOperation(api.campaigns.campaigns.create, {
-	label: 'Create campaign',
+	label: () => t('components.campaigns.steps.setupStep.operations.createCampaign'),
 });
 const { run: updateBasics } = useBackendOperation(api.campaigns.campaigns.updateBasics, {
-	label: 'Update campaign basics',
+	label: () => t('components.campaigns.steps.setupStep.operations.updateBasics'),
 });
 const { run: updateAudience } = useBackendOperation(api.campaigns.campaigns.updateAudience, {
-	label: 'Update campaign audience',
+	label: () => t('components.campaigns.steps.setupStep.operations.updateAudience'),
 	inlineTarget: audienceError,
 });
 const { run: enableABTest } = useBackendOperation(api.campaigns.abTest.enableABTest, {
-	label: 'Enable A/B test',
+	label: () => t('components.campaigns.steps.setupStep.operations.enableABTest'),
 });
 const { run: disableABTest } = useBackendOperation(api.campaigns.abTest.disableABTest, {
-	label: 'Disable A/B test',
+	label: () => t('components.campaigns.steps.setupStep.operations.disableABTest'),
 });
 
 const { isLoading, error, setError, setLoading } = useModal();
@@ -170,11 +178,11 @@ const validate = (): boolean => {
 	if (senderPickerRef.value?.validate() != null) return false;
 
 	if (audienceType.value === 'topic' && !selectedTopicId.value) {
-		audienceError.value = 'Please select a topic';
+		audienceError.value = t('components.campaigns.steps.setupStep.errors.topicRequired');
 		return false;
 	}
 	if (audienceType.value === 'segment' && !selectedSegmentId.value) {
-		audienceError.value = 'Please select a segment';
+		audienceError.value = t('components.campaigns.steps.setupStep.errors.segmentRequired');
 		return false;
 	}
 
@@ -261,21 +269,26 @@ defineExpose({
 		<!-- Campaign details -->
 		<div class="card p-6">
 			<div class="mb-6">
-				<h2 class="text-xl font-semibold text-text-primary">Campaign Details</h2>
-				<p class="text-text-secondary mt-1">Name your campaign and set the sender.</p>
+				<h2 class="text-xl font-semibold text-text-primary">
+					{{ t('components.campaigns.steps.setupStep.detailsTitle') }}
+				</h2>
+				<p class="text-text-secondary mt-1">
+					{{ t('components.campaigns.steps.setupStep.detailsSubtitle') }}
+				</p>
 			</div>
 
 			<div class="space-y-6">
 				<div>
 					<label for="campaignName" class="label flex items-center gap-2">
 						<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
-						Campaign Name <span class="text-error">*</span>
+						{{ t('components.campaigns.steps.setupStep.nameLabel') }}
+						<span class="text-error">*</span>
 					</label>
 					<input
 						id="campaignName"
 						v-model="form.campaignName"
 						type="text"
-						placeholder="e.g., Summer Newsletter 2026"
+						:placeholder="t('components.campaigns.steps.setupStep.namePlaceholder')"
 						:class="[
 							'input mt-1.5',
 							basicsValidation.hasError('campaignName') ? 'input-error' : '',
@@ -288,7 +301,7 @@ defineExpose({
 						{{ basicsValidation.getError('campaignName', true) }}
 					</p>
 					<p v-else class="mt-1.5 text-sm text-text-tertiary">
-						This name is for your reference and won't be visible to recipients.
+						{{ t('components.campaigns.steps.setupStep.nameHint') }}
 					</p>
 				</div>
 
@@ -303,20 +316,30 @@ defineExpose({
 				<div>
 					<label for="replyTo" class="label flex items-center gap-2">
 						<Icon name="lucide:reply" class="w-4 h-4 text-text-tertiary" />
-						Reply-to Email <span class="text-text-tertiary">(optional)</span>
+						<I18nT
+							keypath="components.campaigns.steps.setupStep.replyToLabel"
+							tag="span"
+							scope="global"
+						>
+							<template #optional>
+								<span class="text-text-tertiary">{{
+									t('components.campaigns.steps.setupStep.optional')
+								}}</span>
+							</template>
+						</I18nT>
 					</label>
 					<input
 						id="replyTo"
 						v-model="form.replyTo"
 						type="email"
-						placeholder="e.g., support@acme.com"
+						:placeholder="t('components.campaigns.steps.setupStep.replyToPlaceholder')"
 						:class="['input mt-1.5', basicsValidation.hasError('replyTo') ? 'input-error' : '']"
 					/>
 					<p v-if="basicsValidation.getError('replyTo', true)" class="mt-1.5 text-sm text-error">
 						{{ basicsValidation.getError('replyTo', true) }}
 					</p>
 					<p v-else class="mt-1.5 text-sm text-text-tertiary">
-						Replies will be sent to this address. Leave empty to use the From Email.
+						{{ t('components.campaigns.steps.setupStep.replyToHint') }}
 					</p>
 				</div>
 			</div>
@@ -341,10 +364,10 @@ defineExpose({
 				@click="addABTest"
 			>
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				Add an A/B test
+				{{ t('components.campaigns.steps.setupStep.addABTest') }}
 			</button>
 			<p class="mt-1 text-sm text-text-tertiary">
-				Optional — send two versions to part of your audience, then the winner to the rest.
+				{{ t('components.campaigns.steps.setupStep.addABTestHint') }}
 			</p>
 		</div>
 		<div v-else>
@@ -366,15 +389,15 @@ defineExpose({
 				class="mt-3 text-sm text-text-tertiary hover:text-text-primary transition-colors"
 				@click="removeABTest"
 			>
-				Remove A/B test
+				{{ t('components.campaigns.steps.setupStep.removeABTest') }}
 			</button>
 		</div>
 
 		<!-- Actions -->
 		<div class="flex items-center justify-between pt-2">
-			<UiButton variant="secondary" @click="emit('cancel')">Cancel</UiButton>
+			<UiButton variant="secondary" @click="emit('cancel')">{{ t('common.cancel') }}</UiButton>
 			<UiButton type="submit" :loading="isLoading" :disabled="!canSubmit">
-				{{ isLoading ? 'Saving...' : 'Next' }}
+				{{ isLoading ? t('common.saving') : t('common.next') }}
 				<template v-if="!isLoading" #iconRight>
 					<Icon name="lucide:arrow-right" class="w-4 h-4" />
 				</template>

@@ -1,19 +1,30 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import PostboxAppPasswordCallout from '../PostboxAppPasswordCallout.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
+// Every visible string flows through vue-i18n now: mount with the real catalog
+// and expose `useI18n`, which is a Nuxt auto-import in the app.
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
+// `steps` arrives from the module-scope provider registry and is resolved with
+// `t()` at render time; a value the catalog does not know renders verbatim, so
+// the fixture asserts the rendered sentence either way.
 const help = {
 	provider: 'Gmail',
 	url: 'https://myaccount.google.com/apppasswords',
-	steps: 'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.',
+	steps:
+		'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.',
 };
 
 function mountCallout(authError?: boolean) {
 	return mount(PostboxAppPasswordCallout, {
 		props: { help, authError },
 		// <Icon> is a Nuxt component; render it as an inert stub.
-		global: { stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 	});
 }
 

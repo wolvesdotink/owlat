@@ -13,22 +13,24 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
+const { t } = useI18n();
+
 const { data: rules, isLoading } = useConvexQuery(api.mail.handlingRules.list, () => ({}));
 
 const compileOp = useBackendOperation(api.mail.handlingRulesCompile.compile, {
-	label: 'Compile rule',
+	label: () => t('components.autonomy.handlingRulesManager.compileOperation'),
 	type: 'action',
 });
 const createOp = useBackendOperation(api.mail.handlingRules.create, {
-	label: 'Save rule',
+	label: () => t('components.autonomy.handlingRulesManager.saveOperation'),
 	type: 'mutation',
 });
 const removeOp = useBackendOperation(api.mail.handlingRules.remove, {
-	label: 'Delete rule',
+	label: () => t('components.autonomy.handlingRulesManager.deleteOperation'),
 	type: 'mutation',
 });
 const toggleOp = useBackendOperation(api.mail.handlingRules.update, {
-	label: 'Update rule',
+	label: () => t('components.autonomy.handlingRulesManager.updateOperation'),
 	type: 'mutation',
 });
 
@@ -57,13 +59,19 @@ async function toggle(ruleId: Id<'handlingRules'>, isEnabled: boolean) {
 	await toggleOp.run({ ruleId, isEnabled });
 }
 
-const ACTION_LABELS: Record<string, string> = {
-	draft_with_stance: 'Draft only',
-	categorize: 'Categorize',
-	auto_archive: 'Auto-archive',
-	always_ask: 'Always ask',
-	never_auto_send: 'Never auto-send',
+/** Compiled action type → its catalog key; an unknown type falls back to itself. */
+const ACTION_LABEL_KEYS: Record<string, string> = {
+	draft_with_stance: 'components.autonomy.handlingRulesManager.actions.draftWithStance',
+	categorize: 'components.autonomy.handlingRulesManager.actions.categorize',
+	auto_archive: 'components.autonomy.handlingRulesManager.actions.autoArchive',
+	always_ask: 'components.autonomy.handlingRulesManager.actions.alwaysAsk',
+	never_auto_send: 'components.autonomy.handlingRulesManager.actions.neverAutoSend',
 };
+
+function actionLabel(type: string): string {
+	const key = ACTION_LABEL_KEYS[type];
+	return key ? t(key) : type;
+}
 
 function matcherSummary(matcher: {
 	senders?: string[];
@@ -72,11 +80,15 @@ function matcherSummary(matcher: {
 	categories?: string[];
 }): string {
 	const parts: string[] = [];
-	if (matcher.senders?.length) parts.push(`from ${matcher.senders.join(', ')}`);
+	const prefix = 'components.autonomy.handlingRulesManager.matcher';
+	if (matcher.senders?.length)
+		parts.push(t(`${prefix}.senders`, { senders: matcher.senders.join(', ') }));
 	if (matcher.subjectContains?.length)
-		parts.push(`subject ~ ${matcher.subjectContains.join(', ')}`);
-	if (matcher.bodyContains?.length) parts.push(`body ~ ${matcher.bodyContains.join(', ')}`);
-	if (matcher.categories?.length) parts.push(`category: ${matcher.categories.join(', ')}`);
+		parts.push(t(`${prefix}.subject`, { terms: matcher.subjectContains.join(', ') }));
+	if (matcher.bodyContains?.length)
+		parts.push(t(`${prefix}.body`, { terms: matcher.bodyContains.join(', ') }));
+	if (matcher.categories?.length)
+		parts.push(t(`${prefix}.categories`, { categories: matcher.categories.join(', ') }));
 	return parts.join(' · ');
 }
 </script>
@@ -84,11 +96,11 @@ function matcherSummary(matcher: {
 <template>
 	<section class="space-y-3">
 		<div>
-			<h2 class="text-sm font-semibold text-text-primary">Natural-language rules</h2>
+			<h2 class="text-sm font-semibold text-text-primary">
+				{{ t('components.autonomy.handlingRulesManager.title') }}
+			</h2>
 			<p class="text-xs text-text-secondary">
-				Teach the assistant standing intent in plain English. A rule can hold mail for review,
-				pre-draft a stance, categorize, or auto-archive — it can only ever restrict auto-send, never
-				widen it.
+				{{ t('components.autonomy.handlingRulesManager.intro') }}
 			</p>
 		</div>
 
@@ -96,10 +108,10 @@ function matcherSummary(matcher: {
 			<input
 				v-model="instruction"
 				type="text"
-				placeholder="e.g. always draft a polite decline for recruiters"
+				:placeholder="t('components.autonomy.handlingRulesManager.instructionPlaceholder')"
 				class="input input-sm flex-1"
 				:disabled="busy"
-				aria-label="New handling rule"
+				:aria-label="t('components.autonomy.handlingRulesManager.instructionLabel')"
 			/>
 			<UiButton
 				type="submit"
@@ -114,14 +126,16 @@ function matcherSummary(matcher: {
 						:class="{ 'animate-spin': busy }"
 					/>
 				</template>
-				Teach rule
+				{{ t('components.autonomy.handlingRulesManager.teach') }}
 			</UiButton>
 		</form>
 		<p v-if="compileOp.inlineError.value" class="text-xs text-error">
 			{{ compileOp.inlineError.value }}
 		</p>
 
-		<div v-if="isLoading" class="text-xs text-text-secondary">Loading rules…</div>
+		<div v-if="isLoading" class="text-xs text-text-secondary">
+			{{ t('components.autonomy.handlingRulesManager.loading') }}
+		</div>
 		<ul v-else-if="rules && rules.length" class="space-y-2">
 			<li
 				v-for="rule in rules"
@@ -132,9 +146,7 @@ function matcherSummary(matcher: {
 				<div class="min-w-0">
 					<p class="text-sm text-text-primary truncate">{{ rule.instruction }}</p>
 					<p class="text-xs text-text-secondary">
-						<span class="font-medium">{{
-							ACTION_LABELS[rule.action.type] ?? rule.action.type
-						}}</span>
+						<span class="font-medium">{{ actionLabel(rule.action.type) }}</span>
 						<template v-if="rule.action.stance"> · “{{ rule.action.stance }}”</template>
 						<template v-if="rule.action.category"> · {{ rule.action.category }}</template>
 						<template v-if="matcherSummary(rule.matcher)">
@@ -148,19 +160,25 @@ function matcherSummary(matcher: {
 						class="text-xs text-text-secondary hover:text-text-primary"
 						@click="toggle(rule._id, !rule.isEnabled)"
 					>
-						{{ rule.isEnabled ? 'Disable' : 'Enable' }}
+						{{
+							rule.isEnabled
+								? t('components.autonomy.handlingRulesManager.disable')
+								: t('components.autonomy.handlingRulesManager.enable')
+						}}
 					</button>
 					<button
 						type="button"
 						class="text-xs text-error hover:underline"
-						aria-label="Delete rule"
+						:aria-label="t('components.autonomy.handlingRulesManager.deleteRule')"
 						@click="remove(rule._id)"
 					>
-						Delete
+						{{ t('common.delete') }}
 					</button>
 				</div>
 			</li>
 		</ul>
-		<p v-else class="text-xs text-text-secondary">No rules yet.</p>
+		<p v-else class="text-xs text-text-secondary">
+			{{ t('components.autonomy.handlingRulesManager.emptyState') }}
+		</p>
 	</section>
 </template>

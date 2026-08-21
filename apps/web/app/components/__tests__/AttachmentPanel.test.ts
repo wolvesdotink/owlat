@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, nextTick, ref } from 'vue';
 import AttachmentPanel from '../AttachmentPanel.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const generateUploadUrl = vi.fn();
 const createMediaAsset = vi.fn();
@@ -18,6 +19,7 @@ function mountPanel() {
 	return mount(AttachmentPanel, {
 		props: { attachments: [] },
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				Icon: true,
 				UiProgressBar: true,
@@ -36,8 +38,13 @@ beforeEach(() => {
 		storageId: 'storage-uploaded',
 	});
 
-	vi.stubGlobal('useBackendOperation', (_operation: unknown, options: { label: string }) => ({
-		run: options.label === 'Save attachment' ? createMediaAsset : generateUploadUrl,
+	// `useI18n` is an auto-import in the app; it resolves against the instance
+	// `global.plugins` installs.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	// The operation labels are messages now, so they arrive as getters (a plain
+	// `t()` would freeze the label at the locale that was active at setup).
+	vi.stubGlobal('useBackendOperation', (_operation: unknown, options: { label: () => string }) => ({
+		run: options.label() === 'Save attachment' ? createMediaAsset : generateUploadUrl,
 	}));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useDropZone', () => ({

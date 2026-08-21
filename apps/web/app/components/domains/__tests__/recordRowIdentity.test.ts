@@ -14,6 +14,10 @@ import { capitalize } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import RecordRow from '../RecordRow.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The row renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 // `capitalize` is a Vue helper Nuxt auto-imports; the SFC uses it as a bare
 // template global, so inject it into the render context via `global.mocks`.
@@ -76,7 +80,7 @@ function mountRow(domainOverrides: DomainOverrides = {}, isExpanded = false) {
 			inboundPort: 25,
 			inboundEnabled: false,
 		} as never,
-		global: { stubs, mocks: { capitalize } },
+		global: { plugins: [createTestI18n()], stubs, mocks: { capitalize } },
 	});
 }
 

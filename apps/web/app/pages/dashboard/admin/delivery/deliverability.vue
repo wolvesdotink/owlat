@@ -16,8 +16,29 @@ import {
 	formatVerificationAge,
 	itemKey,
 } from '~/utils/deliverabilityCenter';
+import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 
-useHead({ title: 'Deliverability — Owlat' });
+const { t } = useI18n();
+
+/**
+ * `utils/deliverabilityCenter` is a module-scope definition set whose grade
+ * labels carry i18n keys rather than sentences (the registry convention); a
+ * plain string is still accepted so a value with nothing to translate reads as
+ * itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+/**
+ * A check's name is shared-registry English (Convex stores and mails it with
+ * regression alerts), so the toast names it through the catalog copy derived
+ * from the check id. See `~/composables/useDeliverabilityChecklistCopy`.
+ */
+const { itemTitle } = useDeliverabilityChecklistCopy();
+
+useHead({ title: () => t('dashboard.admin.delivery.deliverability.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -42,11 +63,11 @@ const grade = computed(() =>
 const activeAlertOperation = ref<DeliverabilityAlertOperation | null>(null);
 const { run: acknowledgeRegressionAlert } = useBackendOperation(
 	api.delivery.checklistAlertManagement.acknowledge,
-	{ label: 'Acknowledge deliverability regression' }
+	{ label: () => t('dashboard.admin.delivery.deliverability.operations.acknowledge') }
 );
 const { run: resolveRegressionAlert } = useBackendOperation(
 	api.delivery.checklistAlertManagement.resolve,
-	{ label: 'Resolve deliverability regression' }
+	{ label: () => t('dashboard.admin.delivery.deliverability.operations.resolve') }
 );
 
 async function updateRegressionAlert(
@@ -61,7 +82,9 @@ async function updateRegressionAlert(
 				: await resolveRegressionAlert({ alertId: alert.id });
 		if (result) {
 			showToast(
-				kind === 'acknowledge' ? 'Regression acknowledged' : 'Regression resolved',
+				kind === 'acknowledge'
+					? t('dashboard.admin.delivery.deliverability.toasts.acknowledged')
+					: t('dashboard.admin.delivery.deliverability.toasts.resolved'),
 				'success'
 			);
 		}
@@ -74,7 +97,7 @@ async function openRegressionCheck(alert: DeliverabilityRegressionAlert) {
 	if (!center.value) return;
 	const item = findDeliverabilityItem(center.value.groups, alert);
 	if (!item) {
-		showToast('This check is no longer part of the active sending setup', 'warning');
+		showToast(t('dashboard.admin.delivery.deliverability.toasts.checkGone'), 'warning');
 		return;
 	}
 	await nextTick();
@@ -93,7 +116,7 @@ async function openRegressionCheck(alert: DeliverabilityRegressionAlert) {
 
 const verifyingItemKey = ref<string | null>(null);
 const { run: verifyNow } = useBackendOperation(api.delivery.checklistVerification.verifyNow, {
-	label: 'Verify deliverability check',
+	label: () => t('dashboard.admin.delivery.deliverability.operations.verify'),
 	type: 'action',
 });
 
@@ -106,11 +129,16 @@ async function verify(item: DeliverabilityChecklistItem) {
 		});
 		if (!result) return;
 		if (result.status === 'pass') {
-			showToast(`${item.title} is verified`, 'success');
+			showToast(
+				t('dashboard.admin.delivery.deliverability.toasts.itemVerified', {
+					title: itemTitle(item),
+				}),
+				'success'
+			);
 		} else if (result.status === 'pending-dns') {
-			showToast('We’ll keep checking while DNS spreads');
+			showToast(t('dashboard.admin.delivery.deliverability.toasts.pendingDns'));
 		} else {
-			showToast('The check still needs attention', 'warning');
+			showToast(t('dashboard.admin.delivery.deliverability.toasts.needsAttention'), 'warning');
 		}
 	} finally {
 		verifyingItemKey.value = null;
@@ -119,7 +147,7 @@ async function verify(item: DeliverabilityChecklistItem) {
 
 const { run: startLoopback, isLoading: isStartingLoopback } = useBackendOperation(
 	api.delivery.checklistLoopback.start,
-	{ label: 'Run deliverability proof', type: 'action' }
+	{ label: () => t('dashboard.admin.delivery.deliverability.operations.proof'), type: 'action' }
 );
 
 async function startProof(domainId: Id<'domains'>) {
@@ -127,10 +155,10 @@ async function startProof(domainId: Id<'domains'>) {
 	if (!result) return;
 	showToast(
 		result.status === 'passed'
-			? 'End-to-end proof passed'
+			? t('dashboard.admin.delivery.deliverability.toasts.proofPassed')
 			: result.status === 'sending' || result.status === 'awaiting_inbound'
-				? 'Probe sent — waiting for the receiving check'
-				: 'The end-to-end proof found a problem',
+				? t('dashboard.admin.delivery.deliverability.toasts.proofSending')
+				: t('dashboard.admin.delivery.deliverability.toasts.proofFailed'),
 		result.status === 'passed'
 			? 'success'
 			: result.status === 'failed' || result.status === 'timed_out'
@@ -143,7 +171,9 @@ async function copyReport() {
 	if (!center.value) return;
 	const copied = await copy(buildDeliverabilityReport(center.value), 'deliverability-report');
 	showToast(
-		copied ? 'Setup report copied' : 'Could not copy the report',
+		copied
+			? t('dashboard.admin.delivery.deliverability.toasts.reportCopied')
+			: t('dashboard.admin.delivery.deliverability.toasts.reportCopyFailed'),
 		copied ? 'success' : 'error'
 	);
 }
@@ -155,10 +185,11 @@ async function copyReport() {
 			<div class="flex items-start gap-3">
 				<UiIconBox icon="lucide:shield-check" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Deliverability</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.delivery.deliverability.title') }}
+					</h1>
 					<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-						See what is healthy, fix the most important issue next, and verify every change with a
-						live check.
+						{{ t('dashboard.admin.delivery.deliverability.lede') }}
 					</p>
 				</div>
 			</div>
@@ -167,7 +198,11 @@ async function copyReport() {
 					:name="isCopied('deliverability-report') ? 'lucide:check' : 'lucide:clipboard-copy'"
 					class="h-4 w-4"
 				/>
-				{{ isCopied('deliverability-report') ? 'Report copied' : 'Copy setup report' }}
+				{{
+					isCopied('deliverability-report')
+						? t('dashboard.admin.delivery.deliverability.reportCopied')
+						: t('dashboard.admin.delivery.deliverability.copyReport')
+				}}
 			</UiButton>
 		</header>
 
@@ -175,12 +210,15 @@ async function copyReport() {
 			:loading="isLoading"
 			:error="error"
 			:empty="!center"
-			error-title="Couldn’t load deliverability"
-			error-message="The live checks could not be loaded. Try again before changing your setup."
-			loading-label="Loading live deliverability checks…"
+			:error-title="t('dashboard.admin.delivery.deliverability.errorTitle')"
+			:error-message="t('dashboard.admin.delivery.deliverability.errorMessage')"
+			:loading-label="t('dashboard.admin.delivery.deliverability.loadingLabel')"
 		>
 			<template #loading>
-				<div class="space-y-5" aria-label="Loading deliverability checks">
+				<div
+					class="space-y-5"
+					:aria-label="t('dashboard.admin.delivery.deliverability.loadingChecks')"
+				>
 					<div class="h-32 animate-pulse rounded-xl bg-bg-surface" />
 					<div class="h-80 animate-pulse rounded-xl bg-bg-surface" />
 					<div class="h-48 animate-pulse rounded-xl bg-bg-surface" />
@@ -189,10 +227,12 @@ async function copyReport() {
 			<template #empty>
 				<UiEmptyState
 					icon="lucide:server-off"
-					title="No sending setup found"
-					description="Configure a delivery provider and a sending domain, then return here for the live checklist."
+					:title="t('dashboard.admin.delivery.deliverability.empty.title')"
+					:description="t('dashboard.admin.delivery.deliverability.empty.description')"
 				>
-					<UiButton to="/dashboard/admin/delivery"> Open delivery setup </UiButton>
+					<UiButton to="/dashboard/admin/delivery">
+						{{ t('dashboard.admin.delivery.deliverability.empty.action') }}
+					</UiButton>
 				</UiEmptyState>
 			</template>
 
@@ -217,7 +257,7 @@ async function copyReport() {
 									v-if="grade"
 									class="text-xs font-semibold uppercase tracking-wide text-text-tertiary"
 								>
-									{{ grade.label }}
+									{{ localized(grade.label) }}
 								</p>
 								<h2
 									id="deliverability-grade-heading"
@@ -228,8 +268,10 @@ async function copyReport() {
 								<p class="mt-1 text-xs text-text-tertiary">
 									{{
 										center.checkedAt
-											? `Latest live check ${formatVerificationAge(center.checkedAt)}`
-											: 'No live check has completed yet'
+											? t('dashboard.admin.delivery.deliverability.latestCheck', {
+													age: localized(formatVerificationAge(center.checkedAt)),
+												})
+											: t('dashboard.admin.delivery.deliverability.noCheckYet')
 									}}
 								</p>
 							</div>
@@ -237,19 +279,25 @@ async function copyReport() {
 
 						<dl class="grid grid-cols-3 gap-2 text-center sm:min-w-72">
 							<div class="rounded-lg bg-success/8 px-3 py-2">
-								<dt class="text-xs text-text-secondary">Verified</dt>
+								<dt class="text-xs text-text-secondary">
+									{{ t('dashboard.admin.delivery.deliverability.counts.verified') }}
+								</dt>
 								<dd class="mt-0.5 text-lg font-semibold tabular-nums text-success">
 									{{ counts.passing }}
 								</dd>
 							</div>
 							<div class="rounded-lg bg-warning/8 px-3 py-2">
-								<dt class="text-xs text-text-secondary">Attention</dt>
+								<dt class="text-xs text-text-secondary">
+									{{ t('dashboard.admin.delivery.deliverability.counts.attention') }}
+								</dt>
 								<dd class="mt-0.5 text-lg font-semibold tabular-nums text-warning">
 									{{ counts.attention }}
 								</dd>
 							</div>
 							<div class="rounded-lg bg-brand/8 px-3 py-2">
-								<dt class="text-xs text-text-secondary">Checking</dt>
+								<dt class="text-xs text-text-secondary">
+									{{ t('dashboard.admin.delivery.deliverability.counts.checking') }}
+								</dt>
 								<dd class="mt-0.5 text-lg font-semibold tabular-nums text-brand">
 									{{ counts.pending }}
 								</dd>
@@ -276,6 +324,12 @@ async function copyReport() {
 					"
 					@verify="verify"
 				/>
+
+				<!-- The checks above are about what your DNS says; this is about what
+				     the ramp controller is doing with your traffic. It reads for itself
+				     and states its own faults, so the checklist query this page's
+				     boundary speaks for stays the only thing it speaks for. -->
+				<DeliveryRampNarrativeCard />
 
 				<DeliveryDeliverabilityChecklistGroups
 					:groups="center.groups"

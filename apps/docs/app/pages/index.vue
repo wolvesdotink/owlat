@@ -1,14 +1,19 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'home' })
 
+const { t } = useI18n()
+const localePath = useLocalePath()
+
+// Getters: the strings are read when the tags are rendered, not frozen at the
+// locale that happened to be active while this component was setting up.
 useSeoMeta({
-	title: 'Owlat Docs — Email Infrastructure for Product Teams',
-	ogTitle: 'Owlat Docs — Email Infrastructure for Product Teams',
-	description: 'Product guides, API reference, and developer docs for Owlat. Build, send, and optimize email with drag-and-drop templates, transactional APIs, and deliverability tooling.',
-	ogDescription: 'Product guides, API reference, and developer docs for Owlat. Build, send, and optimize email with drag-and-drop templates, transactional APIs, and deliverability tooling.',
+	title: () => t('home.seo.title'),
+	ogTitle: () => t('home.seo.title'),
+	description: () => t('home.seo.description'),
+	ogDescription: () => t('home.seo.description'),
 })
 
-defineOgImage('Docs', { title: 'Owlat Docs', description: 'Email infrastructure for product teams' })
+defineOgImage('Docs', { title: t('brand.docs'), description: t('home.seo.ogDescription') })
 
 const visible = ref(false)
 const activeTab = ref<'sdk' | 'java' | 'curl'>('sdk')
@@ -30,52 +35,44 @@ onMounted(() => {
 	})
 })
 
-const sections = [
+const sections = computed(() => [
 	{
-		label: 'Guide',
-		href: '/guide/getting-started',
-		description: 'Product workflows, setup, and day-to-day operations',
-		count: '19 articles',
+		key: 'guide',
+		href: localePath('/guide/getting-started'),
 		icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
 	},
 	{
-		label: 'API Reference',
-		href: '/api',
-		description: 'Authenticated and public HTTP endpoint reference',
-		count: '11 references',
+		key: 'api',
+		href: localePath('/api'),
 		icon: 'M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
 	},
 	{
-		label: 'Developer',
-		href: '/developer',
-		description: 'Architecture, backend patterns, and component system',
-		count: '12 guides',
+		key: 'developer',
+		href: localePath('/developer'),
 		icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
 	},
 	{
-		label: 'SDKs',
-		href: '/api/sdk',
-		description: 'Official TypeScript and Java SDKs for server-side integration',
-		count: '2 references',
+		key: 'sdks',
+		href: localePath('/api/sdk'),
 		icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
 	},
 	{
-		label: 'Examples',
-		href: '/examples',
-		description: 'Copy-pasteable integration patterns for common use cases',
-		count: '6 examples',
+		key: 'examples',
+		href: localePath('/examples'),
 		icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z',
 	},
-]
+])
 
-const popularGuides = [
-	{ title: 'Quick Start', href: '/guide/quick-start', description: 'Get up and running in 5 minutes' },
-	{ title: 'Email Editor', href: '/guide/email-editor', description: 'Build emails with the block-based editor' },
-	{ title: 'Campaigns', href: '/guide/campaigns', description: 'Send and track email campaigns' },
-	{ title: 'Transactional Setup', href: '/guide/transactional', description: 'Send transactional emails via API' },
-	{ title: 'Contacts', href: '/guide/contacts', description: 'Manage your audience and contacts' },
-	{ title: 'Deliverability', href: '/guide/deliverability', description: 'Optimize inbox placement and sender reputation' },
-]
+const popularGuides = computed(() =>
+	[
+		{ key: 'quickStart', href: '/guide/quick-start' },
+		{ key: 'emailEditor', href: '/guide/email-editor' },
+		{ key: 'campaigns', href: '/guide/campaigns' },
+		{ key: 'transactional', href: '/guide/transactional' },
+		{ key: 'contacts', href: '/guide/contacts' },
+		{ key: 'deliverability', href: '/guide/deliverability' },
+	].map((guide) => ({ ...guide, href: localePath(guide.href) }))
+)
 </script>
 
 <template>
@@ -87,28 +84,30 @@ const popularGuides = [
 				<div class="hero-grid">
 					<!-- Left column -->
 					<div class="hero-content">
-						<span class="eyebrow anim-badge">Documentation</span>
+						<span class="eyebrow anim-badge">{{ t('home.hero.eyebrow') }}</span>
 
 						<h1 class="hero-title anim-title">
-							Email infrastructure,
-							<span class="title-accent title-warm">end to end.</span>
+							<I18nT keypath="home.hero.title" tag="span" scope="global">
+								<template #accent>
+									<span class="title-accent title-warm">{{ t('home.hero.titleAccent') }}</span>
+								</template>
+							</I18nT>
 						</h1>
 
 						<p class="hero-tagline anim-tagline">
-							Everything you need to build, send, and optimize email — from drag-and-drop
-							templates to transactional APIs and deliverability tooling.
+							{{ t('home.hero.tagline') }}
 						</p>
 
 						<div class="hero-actions anim-actions">
-							<NuxtLink to="/guide/getting-started" class="btn btn-primary group no-underline">
-								<span>Start with the Guide</span>
+							<NuxtLink :to="localePath('/guide/getting-started')" class="btn btn-primary group no-underline">
+								<span>{{ t('home.hero.startGuide') }}</span>
 								<svg class="arrow-nudge" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 									<path d="M5 12h14" />
 									<path d="m12 5 7 7-7 7" />
 								</svg>
 							</NuxtLink>
-							<NuxtLink to="/api" class="btn btn-hairline group no-underline">
-								<span>Explore the API</span>
+							<NuxtLink :to="localePath('/api')" class="btn btn-hairline group no-underline">
+								<span>{{ t('home.hero.exploreApi') }}</span>
 								<svg class="arrow-nudge" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 									<path d="M5 12h14" />
 									<path d="m12 5 7 7-7 7" />
@@ -149,7 +148,7 @@ const popularGuides = [
 				<div class="sections-grid">
 					<NuxtLink
 						v-for="(section, i) in sections"
-						:key="section.label"
+						:key="section.key"
 						:to="section.href"
 						class="section-card reveal-item"
 						:style="{ '--i': i }"
@@ -160,10 +159,12 @@ const popularGuides = [
 									<path :d="section.icon" />
 								</svg>
 							</div>
-							<span class="section-label">{{ section.label }}</span>
-							<span class="section-count">{{ section.count }}</span>
+							<span class="section-label">{{ t(`home.sections.${section.key}.label`) }}</span>
+							<span class="section-count">{{ t(`home.sections.${section.key}.count`) }}</span>
 						</div>
-						<p class="section-description">{{ section.description }}</p>
+						<p class="section-description">
+							{{ t(`home.sections.${section.key}.description`) }}
+						</p>
 						<svg class="section-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<path d="M3.33 8h9.34M8.67 4l4 4-4 4" />
 						</svg>
@@ -176,19 +177,25 @@ const popularGuides = [
 		<section ref="guidesRef" :class="['popular-section', { visible: guidesVisible }]">
 			<div class="section-container">
 				<div class="section-header reveal-item" :style="{ '--i': 0 }">
-					<span class="eyebrow">Guides</span>
-					<h2 class="section-title">Popular <span class="title-accent">guides.</span></h2>
+					<span class="eyebrow">{{ t('home.popular.eyebrow') }}</span>
+					<h2 class="section-title">
+						<I18nT keypath="home.popular.title" tag="span" scope="global">
+							<template #accent>
+								<span class="title-accent">{{ t('home.popular.titleAccent') }}</span>
+							</template>
+						</I18nT>
+					</h2>
 				</div>
 				<div class="guides-grid">
 					<NuxtLink
 						v-for="(guide, i) in popularGuides"
-						:key="guide.title"
+						:key="guide.key"
 						:to="guide.href"
 						class="guide-card reveal-item"
 						:style="{ '--i': i + 1 }"
 					>
-						<h3 class="guide-title">{{ guide.title }}</h3>
-						<p class="guide-description">{{ guide.description }}</p>
+						<h3 class="guide-title">{{ t(`home.guides.${guide.key}.title`) }}</h3>
+						<p class="guide-description">{{ t(`home.guides.${guide.key}.description`) }}</p>
 						<svg class="guide-arrow" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<path d="M3.33 8h9.34M8.67 4l4 4-4 4" />
 						</svg>
@@ -201,8 +208,14 @@ const popularGuides = [
 		<section ref="codeRef" :class="['code-section', { visible: codeVisible }]">
 			<div class="section-container">
 				<div class="section-header reveal-item" :style="{ '--i': 0 }">
-					<span class="eyebrow">Quickstart</span>
-					<h2 class="section-title">Send your first email in <span class="title-accent">seconds.</span></h2>
+					<span class="eyebrow">{{ t('home.quickstart.eyebrow') }}</span>
+					<h2 class="section-title">
+						<I18nT keypath="home.quickstart.title" tag="span" scope="global">
+							<template #accent>
+								<span class="title-accent">{{ t('home.quickstart.titleAccent') }}</span>
+							</template>
+						</I18nT>
+					</h2>
 				</div>
 
 				<div class="code-window reveal-item" :style="{ '--i': 1 }">
@@ -305,11 +318,16 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 							<svg class="oss-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
 								<path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.11.82-.26.82-.58l-.01-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6.02 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.18a4.65 4.65 0 0 1 1.24 3.22c0 4.61-2.81 5.62-5.48 5.92.43.37.81 1.1.81 2.22l-.01 3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .3" />
 							</svg>
-							<span class="oss-label">Open <span class="title-accent">source.</span></span>
+							<span class="oss-label">
+								<I18nT keypath="home.oss.label" tag="span" scope="global">
+									<template #accent>
+										<span class="title-accent">{{ t('home.oss.labelAccent') }}</span>
+									</template>
+								</I18nT>
+							</span>
 						</div>
 						<p class="oss-description">
-							Owlat is open source and community-driven. Explore the codebase,
-							report issues, or contribute on GitHub.
+							{{ t('home.oss.description') }}
 						</p>
 						<a
 							href="https://github.com/wolvesdotink/owlat"
@@ -317,7 +335,7 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 							rel="noopener noreferrer"
 							class="btn btn-hairline btn-sm group oss-link no-underline"
 						>
-							<span>View on GitHub</span>
+							<span>{{ t('home.oss.cta') }}</span>
 							<svg class="arrow-nudge" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 								<path d="M3.33 8h9.34M8.67 4l4 4-4 4" />
 							</svg>
@@ -330,7 +348,12 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 		<!-- Footer -->
 		<footer class="landing-footer">
 			<div class="section-container">
-				<p class="footer-copy">&copy; {{ new Date().getFullYear() }} <a href="https://wolves.ink">Wolves</a>. All rights reserved.</p>
+				<p class="footer-copy">
+					<I18nT keypath="footer.copyright" tag="span" scope="global">
+						<template #year>{{ new Date().getFullYear() }}</template>
+						<template #company><a href="https://wolves.ink">Wolves</a></template>
+					</I18nT>
+				</p>
 			</div>
 		</footer>
 	</div>

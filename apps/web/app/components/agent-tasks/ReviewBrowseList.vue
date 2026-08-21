@@ -1,25 +1,37 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import TaskActions from '~/components/agent-tasks/TaskActions.vue';
-import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import ReviewBrowseCard from '~/components/agent-tasks/ReviewBrowseCard.vue';
+import ReviewBulkActionBar from '~/components/agent-tasks/ReviewBulkActionBar.vue';
+import ReviewQueueHeader from '~/components/agent-tasks/ReviewQueueHeader.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
-import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import {
 	GENERIC_TEAMMATE_NAME,
 	isReplyCollision,
 	replyCollisionToast,
 } from '~/utils/replyCollision';
-import { REVIEW_SHORTCUT_GROUPS } from '~/utils/reviewShortcuts';
-import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trustLabel';
+import type { ReviewRow } from '~/utils/reviewRow';
 
 /**
  * The Review Queue's keyboard-first browse view: a listbox of shared agent task
- * cards (trust chips, revise box, draft options, coach panel). Split out of
- * review.vue so the page just switches between this and the Focus card-stack
- * flow (ReviewFocusFlow). Emits `focus` when the reviewer opens the focused
- * one-task-at-a-time flow instead.
+ * cards (trust chips, revise box, draft options, coach panel — each card's
+ * anatomy lives in ReviewBrowseCard) with multi-select bulk approve/reject
+ * (piece C2). Split out of review.vue so the page just switches between this
+ * and the Focus card-stack flow (ReviewFocusFlow). Emits `focus` when the
+ * reviewer opens the focused one-task-at-a-time flow instead.
  */
 const emit = defineEmits<{ (e: 'focus'): void }>();
+
+const { t } = useI18n();
+
+/**
+ * Collision copy lives in utils/replyCollision as an i18n key + params (the
+ * registry convention for module-scope definitions); the string form is still
+ * accepted so a plain sentence renders as itself.
+ */
+type CollisionMessage = string | { key: string; params?: Record<string, unknown> };
+function collisionText(message: CollisionMessage): string {
+	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+}
 
 const {
 	reviewItems,
@@ -28,6 +40,7 @@ const {
 	onApprove,
 	approveOption,
 	onReject,
+	undoApprove,
 	composeAndSend,
 	editDraft,
 } = useReviewQueue();
@@ -51,7 +64,11 @@ function onAttachSuggested(
 	threadId: string | undefined,
 	candidate: { fileId: string; filename: string }
 ) {
-	showToast(`Suggested attachment: ${candidate.filename} — open the reply to attach and send`);
+	showToast(
+		t('components.agentTasks.reviewBrowseList.toasts.suggestedAttachment', {
+			filename: candidate.filename,
+		})
+	);
 	if (threadId) {
 		navigateTo(`/dashboard/inbox/${threadId}`);
 	}
@@ -80,12 +97,8 @@ const aiEnabled = computed(() => isFeatureEnabled('ai'));
 
 // Flat rows carrying an `_id` so the shared list-keyboard + optimistic-hide
 // composables (which key on `_id`) can drive this page. Each row keeps its
-// message + thread for rendering and navigation.
-type ReviewRow = {
-	_id: string;
-	message: NonNullable<typeof reviewItems.value>[number]['message'];
-	thread: NonNullable<typeof reviewItems.value>[number]['thread'];
-};
+// message + thread for rendering and navigation (the row TYPE lives in
+// `~/utils/reviewRow`, shared with the card component).
 const rows = computed<ReviewRow[]>(() =>
 	(reviewItems.value ?? []).map((it) => ({
 		_id: it.message._id,
@@ -94,55 +107,68 @@ const rows = computed<ReviewRow[]>(() =>
 	}))
 );
 
-// Human trust chip replacing the raw confidence % badge. Draft cards map the
-// DRAFT self-check (score + flags → plain-language reasons); draftless
-// escalations always read "Needs you". The old numbers stay reachable as the
-// chip popover's quiet footer (rowTrustDetail) — disclosure, not deletion.
-function rowTrust(message: ReviewRow['message']): TrustLabel {
-	if (needsReply(message)) return escalationTrustLabel();
-	return trustLabel(
-		message.draftQuality ? message.draftQuality.score : null,
-		message.draftQuality?.flags ?? []
-	);
-}
-
-/** Quiet footer line keeping the classifier's certainty available to power users. */
-function rowTrustDetail(message: ReviewRow['message']): string | undefined {
-	const confidence = message.classification?.confidence;
-	return typeof confidence === 'number'
-		? `Classifier confidence ${Math.round(confidence * 100)}%`
-		: undefined;
-}
-
-/**
- * The muted one-line WHY under the card's ask (shared task-card anatomy):
- * the route step's recorded reason for holding/escalating, moved up from the
- * old rationale block. Grounding provenance stays in InboxDecisionRationale.
- */
-function rowWhy(message: ReviewRow['message']): string | undefined {
-	const reason = message.agentDecision?.reason;
-	if (!reason) return undefined;
-	return needsReply(message) ? `Escalated because: ${reason}` : `Held because: ${reason}`;
-}
-
 // Optimistic row removal — approve/reject hide the row immediately and the live
 // subscription confirms it; a failed action restores the row (usePostboxOptimisticHide).
 const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOptimisticHide(rows);
+
+// Multi-select + bulk approve/reject (piece C2): a selection Set in the
+// Postbox bulk idiom, the sticky action bar above the listbox, and batch
+// mutations whose per-id outcomes drive one shared partial-result undo toast.
+const bulk = useReviewBulkSelect(visibleRows);
+const bulkActions = useReviewBulkActions({
+	ids: bulk.ids,
+	clearSelection: bulk.clear,
+	hideRow,
+	unhideRow,
+});
 
 // Server refused because a teammate just replied — toast the collision and
 // report it handled so callers stop before claiming a false success.
 function handledReplyCollision(result: unknown): boolean {
 	if (!isReplyCollision(result)) return false;
-	showToast(replyCollisionToast(result.heldByName ?? GENERIC_TEAMMATE_NAME), 'error');
+	showToast(
+		collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+		'error'
+	);
+	return true;
+}
+
+// Countdown-undo toast for approvals inside their server-side undo window
+// (agentConfig.humanApproveUndoDelayMs, piece C1). Armed with this list's true
+// inverse: undoAutoSend routes the draft back to `draft_ready` and the row is
+// unhidden immediately rather than waiting on the live subscription round-trip.
+const { arm: armApproveUndo } = useReviewApproveUndo();
+
+async function undoApproveAndRestore(messageId: Id<'inboundMessages'>) {
+	const result = await undoApprove(messageId);
+	if (result === undefined) return; // categorized failure — already toasted
+	if (result.cancelled) {
+		unhideRow(messageId);
+		showToast(t('shared.reviewBulkSummary.undoneOne'));
+	} else {
+		// The window closed while the toast was up — the send already left.
+		showToast(t('shared.reviewBulkSummary.tooLateOne'), 'warning');
+	}
+}
+
+// The lost race: the draft was already approved or declined (double-click, or a
+// teammate got there first), so the server refused the edge and scheduled
+// NOTHING. The row truly left the queue — keep it hidden — but say so honestly
+// instead of claiming an approval, and arm no undo (there is nothing to undo).
+function handledAlreadyHandled(result: unknown): boolean {
+	if (!isApproveAlreadyHandled(result)) return false;
+	showToast(t('shared.reviewApprove.alreadyHandled'), 'info');
 	return true;
 }
 
 // Shared optimistic row action: hide the row, run the mutation, restore it on a
 // no-op or soft collision (reject never collides), else confirm with successMsg.
+// An approve that returns an open undo window arms the countdown-undo toast
+// instead of the plain confirmation.
 async function runOptimistic(
 	messageId: Id<'inboundMessages'>,
 	send: () => Promise<unknown>,
-	successMsg = 'Draft approved and queued for sending'
+	successMsg = t('components.agentTasks.reviewBrowseList.toasts.draftApproved')
 ) {
 	actionInProgress.value = messageId;
 	hideRow(messageId);
@@ -152,7 +178,17 @@ async function runOptimistic(
 			unhideRow(messageId);
 			return;
 		}
-		showToast(successMsg);
+		if (handledAlreadyHandled(result)) return;
+		const undo = approveUndoWindow(result);
+		if (undo) {
+			armApproveUndo({
+				inboundMessageId: messageId,
+				sendAt: undo.sendAt,
+				onUndo: () => undoApproveAndRestore(messageId),
+			});
+		} else {
+			showToast(successMsg);
+		}
 	} finally {
 		actionInProgress.value = null;
 	}
@@ -177,12 +213,17 @@ const onApproveOptionClick = async (
 };
 
 const onRejectClick = (messageId: Id<'inboundMessages'>) =>
-	runOptimistic(messageId, () => onReject(messageId), 'Draft rejected');
+	runOptimistic(
+		messageId,
+		() => onReject(messageId),
+		t('components.agentTasks.reviewBrowseList.toasts.draftRejected')
+	);
 
 // Keyboard-first triage: j/k move, Enter opens the thread, a approves (through
-// the SAME undo-guarded send the button calls), e edits, x/# rejects. Built by
-// reusing the Postbox house composables; keys stay inert while the inline
-// compose input/textarea is focused.
+// the SAME undo-guarded send the button calls), e edits, # rejects — plus the
+// C2 selection layer (Space/x select, Shift+J/K extend, * select-all-visible).
+// Built by reusing the Postbox house composables; keys stay inert while the
+// inline compose input/textarea is focused.
 function openThread(row: ReviewRow) {
 	if (row.thread) void navigateTo(`/dashboard/inbox/${row.thread._id}`);
 }
@@ -215,6 +256,12 @@ const {
 			selectedOption[row.message._id] = index;
 		}
 	},
+	// Space/x toggle, Shift+J/K range-extend, * select-all — the bulk model.
+	selection: {
+		toggle: (row) => bulk.toggle(row._id),
+		selectMany: (rowsToSelect) => bulk.selectMany(rowsToSelect.map((r) => r._id)),
+		selectAllVisible: () => bulk.selectAllVisible(),
+	},
 });
 
 // Focus the listbox on mount so j/k work without a click (keyboard-first).
@@ -229,10 +276,12 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
 	try {
 		const result = await composeAndSend(messageId, body, composeSubject[messageId]);
-		if (result === undefined || handledReplyCollision(result)) return; // no-op or collision
+		// no-op, collision, or the same lost race the approve path reports
+		if (result === undefined || handledReplyCollision(result) || handledAlreadyHandled(result))
+			return;
 		delete composeBody[messageId];
 		delete composeSubject[messageId];
-		showToast('Reply sent');
+		showToast(t('components.agentTasks.reviewBrowseList.toasts.replySent'));
 	} finally {
 		actionInProgress.value = null;
 	}
@@ -241,57 +290,15 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex items-center gap-4 mb-8">
-			<NuxtLink
-				to="/dashboard/inbox"
-				class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			</NuxtLink>
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Review Queue</h1>
-				<p class="text-text-secondary mt-1">
-					Agent-generated drafts and escalations waiting for your action.
-				</p>
-			</div>
-			<!-- Focus: switch to the one-task-at-a-time card-stack flow. -->
-			<button
-				v-if="!isLoading && visibleRows.length > 0"
-				type="button"
-				class="ml-auto inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-brand text-white hover:bg-brand/90 transition-colors duration-(--motion-fast)"
-				@click="emit('focus')"
-			>
-				<Icon name="lucide:target" class="w-4 h-4" />
-				Focus
-			</button>
-		</div>
-
-		<!-- Keyboard hint: this queue is keyboard-first (j/k/Enter/a/e/x). -->
-		<div
-			v-if="visibleRows.length > 0"
-			class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 text-xs text-text-tertiary"
-		>
-			<span
-				v-for="hint in REVIEW_SHORTCUT_GROUPS"
-				:key="hint.label"
-				class="inline-flex items-center gap-1"
-			>
-				<kbd
-					v-for="k in hint.keys"
-					:key="k"
-					class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
-					>{{ k }}</kbd
-				>
-				<span>{{ hint.label }}</span>
-			</span>
-		</div>
+		<ReviewQueueHeader :has-rows="!isLoading && visibleRows.length > 0" @focus="emit('focus')" />
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading review queue...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('components.agentTasks.reviewBrowseList.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -307,192 +314,71 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 				rounded="full"
 				class="mb-4"
 			/>
-			<p class="text-text-secondary font-medium">All caught up!</p>
-			<p class="text-sm text-text-tertiary mt-1">No drafts need your review right now.</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('components.agentTasks.reviewBrowseList.empty.title') }}
+			</p>
+			<p class="text-sm text-text-tertiary mt-1">
+				{{ t('components.agentTasks.reviewBrowseList.empty.body') }}
+			</p>
 		</div>
 
-		<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/1-9/a/e/s/x) of shared agent task cards. -->
-		<ul
-			v-else
-			ref="listboxEl"
-			tabindex="0"
-			role="listbox"
-			aria-label="Review queue"
-			:aria-activedescendant="activeRowId"
-			class="space-y-4 outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset rounded-lg"
-			@keydown="onQueueKeydown"
-		>
-			<TaskCardShell
-				v-for="(row, i) in visibleRows"
-				:id="`review-row-${row._id}`"
-				:key="row._id"
-				as="li"
-				role="option"
-				:aria-selected="focusedIndex === i"
-				:focused="focusedIndex === i"
+		<template v-else>
+			<!-- Sticky bulk bar: appears with the first selected card. -->
+			<ReviewBulkActionBar
+				:count="bulk.count.value"
+				:remaining="visibleRows.length - bulk.count.value"
+				:busy="bulkActions.isBusy.value"
+				@approve="bulkActions.approveSelected()"
+				@reject="bulkActions.rejectSelected()"
+				@select-all="bulk.selectAllVisible()"
+				@clear="bulk.clear()"
+			/>
+
+			<!-- Review Items — a keyboard-navigable listbox (j/k/Enter/1-9/a/e/s/#, Space/x/J/K/* select) of shared agent task cards. -->
+			<ul
+				ref="listboxEl"
+				tabindex="0"
+				role="listbox"
+				:aria-label="t('components.agentTasks.reviewBrowseList.listLabel')"
+				aria-multiselectable="true"
+				:aria-activedescendant="activeRowId"
+				class="space-y-4 outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset rounded-lg"
+				@keydown="onQueueKeydown"
 			>
-				<TaskContext :who="row.message.from" icon="lucide:mail">
-					<template #meta>
-						{{ formatCompactRelativeTime(row.message._creationTime) }}
-						<template v-if="row.thread">
-							&middot;
-							<NuxtLink
-								:to="`/dashboard/inbox/${row.thread._id}`"
-								class="text-brand hover:underline"
-							>
-								View thread
-							</NuxtLink>
-						</template>
-					</template>
-					<!-- One roll-up trust chip (human language; reasons + raw numbers in its popover) + category chip. -->
-					<template #trailing>
-						<div v-if="row.message.classification" class="flex items-center gap-2">
-							<InboxTrustChip
-								:trust="rowTrust(row.message)"
-								:extra-detail="rowTrustDetail(row.message)"
-							/>
-							<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
-								{{ row.message.classification.category }}
-							</span>
-						</div>
-					</template>
-				</TaskContext>
-
-				<!-- The ask: subject + excerpt, with the muted one-line WHY the agent held/escalated it. -->
-				<TaskAsk
-					class="mt-3 mb-4"
-					:ask="row.message.subject || undefined"
-					:detail="row.message.textBody || '(No text content)'"
-					:why="rowWhy(row.message)"
-				/>
-
-				<!-- Draftless escalation: compose a reply inline -->
-				<template v-if="needsReply(row.message)">
-					<div class="bg-warning/5 border border-warning/20 rounded-lg p-4 mb-4">
-						<div class="flex items-center gap-2 mb-3">
-							<Icon name="lucide:user-round" class="w-4 h-4 text-warning" />
-							<p class="text-xs font-medium text-warning uppercase tracking-wider">
-								Escalated — write a reply
-							</p>
-						</div>
-						<input
-							v-model="composeSubject[row.message._id]"
-							type="text"
-							class="input w-full text-sm mb-3"
-							placeholder="Subject (optional)"
-						/>
-						<textarea
-							v-model="composeBody[row.message._id]"
-							rows="6"
-							class="input w-full text-sm resize-y"
-							placeholder="Type your reply…"
-						/>
-						<!-- Coach the ADMIN's own reply before they send it. Advisory only — never rewrites the text. -->
-						<PostboxCoachPanel
-							:draft-text="composeBody[row.message._id] ?? ''"
-							:enabled="aiEnabled"
-							:thread-context="row.message.textBody ?? undefined"
-						/>
-					</div>
-
-					<!-- What the agent had to work from (WHY line above carries the escalation reason). -->
-					<InboxDecisionRationale :grounding-sources="row.message.groundingSources" class="mb-4" />
-
-					<!-- Actions -->
-					<TaskActions
-						primary-label="Send Reply"
-						primary-icon="lucide:send"
-						:primary-disabled="
-							actionInProgress === row.message._id || !composeBody[row.message._id]?.trim()
-						"
-						skip-label="Dismiss"
-						skip-destructive
-						:skip-disabled="actionInProgress === row.message._id"
-						@primary="onComposeSend(row.message._id)"
-						@skip="onRejectClick(row.message._id)"
-					>
-						<NuxtLink
-							v-if="row.thread"
-							:to="`/dashboard/inbox/${row.thread._id}`"
-							class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-						>
-							<Icon name="lucide:external-link" class="w-3 h-3" />
-							Open thread
-						</NuxtLink>
-					</TaskActions>
-				</template>
-
-				<!-- Agent draft awaiting approval -->
-				<template v-else>
-					<!-- Multiple pickable draft options (low-confidence / low-quality cases) -->
-					<InboxDraftOptions
-						v-if="(row.message.draftOptions?.length ?? 0) > 1"
-						:options="row.message.draftOptions ?? []"
-						:model-value="selectedOption[row.message._id] ?? 0"
-						class="mb-4"
-						@update:model-value="selectedOption[row.message._id] = $event"
-					/>
-
-					<!-- Single agent draft -->
-					<div v-else class="bg-brand-subtle/30 rounded-lg p-4 mb-4">
-						<div class="flex items-center gap-2 mb-2">
-							<Icon name="lucide:bot" class="w-4 h-4 text-brand" />
-							<p class="text-xs font-medium text-brand uppercase tracking-wider">Agent Draft</p>
-						</div>
-						<p class="text-text-primary text-sm whitespace-pre-wrap">
-							{{ row.message.draftResponse }}
-						</p>
-
-						<!-- Freeform whole-draft revise ("redo but decline politely"), streamed. -->
-						<AiReviseBox
-							v-if="aiEnabled && row.message.draftResponse"
-							class="mt-3"
-							surface="review"
-							:ai-enabled="aiEnabled"
-							:current-draft="row.message.draftResponse ?? ''"
-							@apply="(text: string) => onReviseApply(row.message._id, text)"
-						/>
-					</div>
-
-					<!-- One-tap "attach the right file?" when a contact-scoped file matched the request. Advisory; the human confirms — the agent never auto-attaches. -->
-					<InboxAttachSuggestion
-						v-if="(row.message.attachmentSuggestions?.candidates?.length ?? 0) > 0"
-						:suggestions="row.message.attachmentSuggestions!"
-						class="mb-4"
-						@attach="(c) => onAttachSuggested(row.thread?._id, c)"
-					/>
-
-					<!-- What it was grounded in (WHY line above carries the hold reason; read-only). -->
-					<InboxDecisionRationale :grounding-sources="row.message.groundingSources" class="mb-4" />
-
-					<!-- Actions -->
-					<TaskActions
-						primary-label="Approve & Send"
-						primary-icon="lucide:check"
-						:primary-disabled="actionInProgress === row.message._id"
-						skip-label="Reject"
-						skip-destructive
-						:skip-disabled="actionInProgress === row.message._id"
-						@primary="
+				<TaskCardShell
+					v-for="(row, i) in visibleRows"
+					:id="`review-row-${row._id}`"
+					:key="row._id"
+					as="li"
+					role="option"
+					:aria-selected="bulk.isSelected(row._id)"
+					:focused="focusedIndex === i"
+					:class="bulk.isSelected(row._id) ? 'ring-1 ring-brand/50' : ''"
+				>
+					<ReviewBrowseCard
+						v-model:selected-option="selectedOption[row.message._id]"
+						v-model:compose-subject="composeSubject[row.message._id]"
+						v-model:compose-body="composeBody[row.message._id]"
+						:row="row"
+						:needs-reply="needsReply(row.message)"
+						:ai-enabled="aiEnabled"
+						:busy="actionInProgress === row.message._id"
+						:selected="bulk.isSelected(row._id)"
+						@toggle-select="bulk.toggle(row._id)"
+						@revise-apply="(text: string) => onReviseApply(row.message._id, text)"
+						@attach="(candidate) => onAttachSuggested(row.thread?._id, candidate)"
+						@approve="
 							onApproveOptionClick(
 								row.message._id,
 								row.message.draftOptions,
 								row.message.draftResponse
 							)
 						"
-						@skip="onRejectClick(row.message._id)"
-					>
-						<NuxtLink
-							v-if="row.thread"
-							:to="`/dashboard/inbox/${row.thread._id}`"
-							class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-						>
-							<Icon name="lucide:pencil" class="w-3 h-3" />
-							Edit
-						</NuxtLink>
-					</TaskActions>
-				</template>
-			</TaskCardShell>
-		</ul>
+						@reject="onRejectClick(row.message._id)"
+						@compose-send="onComposeSend(row.message._id)"
+					/>
+				</TaskCardShell>
+			</ul>
+		</template>
 	</div>
 </template>

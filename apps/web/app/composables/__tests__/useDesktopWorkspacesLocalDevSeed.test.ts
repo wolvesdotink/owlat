@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
+import { createTestI18n } from '~/__tests__/i18n';
+
+// `useDesktopWorkspaces` runs outside a component here, so `useI18n` is stubbed
+// with the real catalog's `t` (it translates the connect-flow failures).
+const { t } = createTestI18n().global;
 
 // Dev-only auto-connect: under `tauri dev` the webview loads the local Nuxt dev
 // server, so loadWorkspaces({ seedLocalDev: true }) must upsert a workspace for
@@ -97,6 +102,7 @@ describe('loadWorkspaces seedLocalDev — dev auto-connect to the local instance
 		saveWorkspaceStore.mockClear();
 		setActiveWorkspace.mockClear();
 		configureKeychainStorage.mockClear();
+		vi.stubGlobal('useI18n', () => ({ t }));
 		fetchMock.mockReset();
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		// happy-dom's default origin already matches, but pin it so the test does

@@ -28,12 +28,26 @@ function delay(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function toError(error: BetterFetchError | null): Error | null {
+/**
+ * The message catalog, resolved where one exists.
+ *
+ * `useAuth` is called from route middleware as well as from page setups, and
+ * `useI18n()` throws outside a component instance. Middleware only reads
+ * session state — it never reaches a branch that produces copy — so outside a
+ * component the fallbacks degrade to their key rather than taking the app down.
+ */
+function authTranslator(): (key: string) => string {
+	if (!getCurrentInstance()) return (key: string) => key;
+	const { t } = useI18n();
+	return (key: string) => t(key);
+}
+
+function toError(error: BetterFetchError | null, t: (key: string) => string): Error | null {
 	if (!error) {
 		return null;
 	}
 
-	return new Error(error.message || 'Authentication request failed');
+	return new Error(error.message || t('shared.useAuth.requestFailed'));
 }
 
 function matchesExpectedSession(session: SessionData, options: RefreshSessionOptions): boolean {
@@ -56,6 +70,7 @@ function matchesExpectedSession(session: SessionData, options: RefreshSessionOpt
 }
 
 export function useAuth() {
+	const t = authTranslator();
 	const sessionState = authClient.useSession();
 
 	const sessionData = computed<SessionData>(() => sessionState.value.data ?? null);
@@ -77,7 +92,7 @@ export function useAuth() {
 	});
 
 	const isPending = computed(() => status.value === 'pending');
-	const error = computed(() => toError(sessionState.value.error));
+	const error = computed(() => toError(sessionState.value.error, t));
 
 	const isAuthenticated = computed(() => {
 		return status.value === 'authenticated';
@@ -100,11 +115,7 @@ export function useAuth() {
 	});
 
 	const waitUntilReady = async (timeoutMs = READY_TIMEOUT_MS) => {
-		await waitForLoaded(
-			status,
-			(s) => s !== 'pending',
-			timeoutMs,
-		);
+		await waitForLoaded(status, (s) => s !== 'pending', timeoutMs);
 
 		return status.value;
 	};
@@ -144,7 +155,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || 'Sign in failed');
+			throw new Error(result.error.message || t('shared.useAuth.signInFailed'));
 		}
 
 		await refetch({ force: true, expected: 'authenticated' });
@@ -160,7 +171,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || 'Sign up failed');
+			throw new Error(result.error.message || t('shared.useAuth.signUpFailed'));
 		}
 
 		await refetch({ force: true, expected: 'authenticated' });
@@ -172,7 +183,7 @@ export function useAuth() {
 		const result = await authClient.signOut();
 
 		if (result.error) {
-			throw new Error(result.error.message || 'Sign out failed');
+			throw new Error(result.error.message || t('shared.useAuth.signOutFailed'));
 		}
 
 		await refetch({ force: true, expected: 'unauthenticated' });
@@ -189,7 +200,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || 'Failed to send reset email');
+			throw new Error(result.error.message || t('shared.useAuth.resetEmailFailed'));
 		}
 
 		return result.data;
@@ -202,7 +213,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || 'Failed to reset password');
+			throw new Error(result.error.message || t('shared.useAuth.resetPasswordFailed'));
 		}
 
 		return result.data;

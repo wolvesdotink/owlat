@@ -36,14 +36,32 @@ const props = defineProps<{
 
 defineEmits<{ dismiss: [] }>();
 
-const headline = computed(() => capacityScheduleHeadline(props.plan));
+const { t, locale } = useI18n();
+
+/**
+ * The sentences the plan itself decides live in `~/lib/campaignCapacityRefusal`,
+ * which is module scope and therefore never calls `useI18n`: it hands back a
+ * catalog key (with its parameters when it has any), and the render boundary —
+ * here — is what turns that into words.
+ */
+type CapacityMessage = string | { key: string; params?: Record<string, unknown> };
+const message = (value: CapacityMessage): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
+const headline = computed(() => message(capacityScheduleHeadline(props.plan)));
 
 /**
  * A finish date is only honest when the enumeration reached the end, and only
  * unqualified when the audience behind it was counted exactly — both decided in
  * `capacityFinishSentence` beside the headline they have to agree with.
+ *
+ * The date inside it is formatted in the ACTIVE locale (its zone stays UTC, so
+ * every operator still reads the same day).
  */
-const finishesOn = computed(() => capacityFinishSentence(props.plan));
+const finishesOn = computed(() => {
+	const sentence = capacityFinishSentence(props.plan, locale.value);
+	return sentence === null ? null : message(sentence);
+});
 
 /**
  * The first few days of the plan, so "over N days" is concrete rather than
@@ -63,7 +81,9 @@ const previewSlices = computed(() => {
 		const dayStart = capacitySliceDayStart(props.plan, index);
 		return {
 			recipients,
-			label: isCapacityDayToday(dayStart, now) ? 'Today' : formatCapacityDay(dayStart, 'short'),
+			label: isCapacityDayToday(dayStart, now)
+				? t('common.today')
+				: formatCapacityDay(dayStart, 'short', locale.value),
 		};
 	});
 });
@@ -79,8 +99,7 @@ const hiddenSliceCount = computed(() => Math.max(0, props.plan.slices.length - 5
 		<div class="min-w-0 flex-1">
 			<p class="text-sm font-medium text-text-primary">{{ headline }}</p>
 			<p class="text-sm text-text-secondary mt-1">
-				Your sending capacity is still warming up, so this audience is paced across several days
-				rather than sent in one go.
+				{{ t('components.campaigns.capacitySchedulePanel.intro') }}
 				<span v-if="finishesOn">{{ finishesOn }}</span>
 			</p>
 
@@ -91,25 +110,30 @@ const hiddenSliceCount = computed(() => Math.max(0, props.plan.slices.length - 5
 					class="flex items-center justify-between text-sm text-text-secondary"
 				>
 					<span>{{ slice.label }}</span>
-					<span class="tabular-nums">{{ slice.recipients.toLocaleString() }} recipients</span>
+					<span class="tabular-nums">{{
+						t('components.campaigns.capacitySchedulePanel.recipients', {
+							count: slice.recipients.toLocaleString(locale),
+						})
+					}}</span>
 				</li>
 				<li v-if="hiddenSliceCount > 0" class="text-sm text-text-tertiary">
-					+{{ hiddenSliceCount }} more {{ hiddenSliceCount === 1 ? 'day' : 'days' }}
+					{{ t('components.campaigns.capacitySchedulePanel.moreDays', hiddenSliceCount) }}
 				</li>
 			</ul>
 
 			<p v-if="plan.audienceUnderCounted" class="text-sm text-text-tertiary mt-3">
-				This audience is larger than we counted exactly, so the schedule above is a floor — the real
-				send may take longer.
+				{{ t('components.campaigns.capacitySchedulePanel.underCounted') }}
 			</p>
 			<p v-if="plan.truncated" class="text-sm text-text-tertiary mt-3">
-				Only the first {{ plan.covered.toLocaleString() }} recipients could be scheduled at your
-				current capacity. Reduce the audience, or send it in stages.
+				{{
+					t('components.campaigns.capacitySchedulePanel.truncated', {
+						covered: plan.covered.toLocaleString(locale),
+					})
+				}}
 			</p>
 
 			<p class="text-sm text-text-secondary mt-3">
-				To start it now, reduce the audience. To keep the whole audience, schedule the campaign for
-				a later date — it is judged against the larger capacity you will have then.
+				{{ t('components.campaigns.capacitySchedulePanel.escape') }}
 			</p>
 
 			<UiButton
@@ -120,7 +144,7 @@ const hiddenSliceCount = computed(() => Math.max(0, props.plan.slices.length - 5
 				class="mt-3"
 				@click="$emit('dismiss')"
 			>
-				Change send options
+				{{ t('components.campaigns.capacitySchedulePanel.changeSendOptions') }}
 			</UiButton>
 		</div>
 	</div>

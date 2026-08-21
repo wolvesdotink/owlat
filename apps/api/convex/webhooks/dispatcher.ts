@@ -21,6 +21,7 @@
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
+import { clearsignedSignatureMirror } from './inboundSignatureMirror';
 import { isAllowedSnsHost } from './adapters/ses';
 import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
@@ -299,6 +300,9 @@ const DISPATCH: DispatchTable = {
 			dkimResult: m.dkimResult,
 			dmarcResult: m.dmarcResult,
 			dmarcPolicy: m.dmarcPolicy,
+			// F1 (D9): AI-inbox mirror of the clearsigned-body signature verdict —
+			// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
+			...((await clearsignedSignatureMirror(ctx, m.textBody, m.from)) ?? {}),
 		});
 	},
 	'channel.received': async (ctx, e) => {

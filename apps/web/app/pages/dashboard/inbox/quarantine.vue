@@ -3,7 +3,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
 
-useHead({ title: 'Quarantine — Owlat' });
+const { t, te } = useI18n();
+
+useHead({ title: () => t('dashboard.inbox.quarantine.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -21,10 +23,10 @@ const {
 // Mutations
 const { run: releaseFromQuarantine } = useBackendOperation(
 	api.inbox.mutations.releaseFromQuarantine,
-	{ label: 'Release message' }
+	{ label: () => t('dashboard.inbox.quarantine.releaseOperation') }
 );
 const { run: blockSender } = useBackendOperation(api.inbox.mutations.blockSender, {
-	label: 'Block sender',
+	label: () => t('dashboard.inbox.quarantine.blockOperation'),
 });
 
 const actionInProgress = ref<string | null>(null);
@@ -38,7 +40,7 @@ const onRelease = async (messageId: Id<'inboundMessages'>) => {
 	try {
 		const result = await releaseFromQuarantine({ inboundMessageId: messageId });
 		if (result === undefined) return;
-		showToast('Message released to processing pipeline');
+		showToast(t('dashboard.inbox.quarantine.releasedToast'));
 	} finally {
 		actionInProgress.value = null;
 	}
@@ -52,7 +54,7 @@ const onBlock = async (messageId: Id<'inboundMessages'>) => {
 	try {
 		const result = await blockSender({ inboundMessageId: messageId });
 		if (result === undefined) return;
-		showToast('Sender blocked');
+		showToast(t('dashboard.inbox.quarantine.blockedToast'));
 	} finally {
 		actionInProgress.value = null;
 	}
@@ -64,16 +66,11 @@ const confirmBlock = async () => {
 	pendingBlock.value = null;
 };
 
+// The injection taxonomy is a backend enum; an unrecognised value renders as
+// stored rather than as a key path.
 const getInjectionTypeLabel = (type: string) => {
-	const labels: Record<string, string> = {
-		direct_injection: 'Direct Injection',
-		delimiter_attack: 'Delimiter Attack',
-		role_impersonation: 'Role Impersonation',
-		encoding_evasion: 'Encoding Evasion',
-		instruction_smuggling: 'Instruction Smuggling',
-		none: 'Unknown',
-	};
-	return labels[type] || type;
+	const key = `dashboard.inbox.quarantine.injectionTypes.${type}`;
+	return te(key) ? t(key) : type;
 };
 </script>
 
@@ -90,10 +87,10 @@ const getInjectionTypeLabel = (type: string) => {
 			<div>
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3">
 					<Icon name="lucide:shield-alert" class="w-7 h-7 text-error" />
-					Quarantine
+					{{ t('dashboard.inbox.quarantine.title') }}
 				</h1>
 				<p class="text-text-secondary mt-1">
-					Messages flagged by the inbound security filter. Review before releasing to the pipeline.
+					{{ t('dashboard.inbox.quarantine.subtitle') }}
 				</p>
 			</div>
 		</div>
@@ -102,15 +99,15 @@ const getInjectionTypeLabel = (type: string) => {
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading quarantined messages...</p>
+				<p class="text-text-secondary text-sm">{{ t('dashboard.inbox.quarantine.loading') }}</p>
 			</div>
 		</div>
 
 		<!-- Error — a faulted query must NOT look like an empty (all-clear) quarantine -->
 		<UiErrorAlert
 			v-else-if="error"
-			title="Couldn't load quarantine"
-			message="We hit an error loading quarantined messages. Reload the page to try again."
+			:title="t('dashboard.inbox.quarantine.errorTitle')"
+			:message="t('dashboard.inbox.quarantine.errorMessage')"
 			class="my-8"
 		/>
 
@@ -126,9 +123,9 @@ const getInjectionTypeLabel = (type: string) => {
 				rounded="full"
 				class="mb-4"
 			/>
-			<p class="text-text-secondary font-medium">No quarantined messages</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.inbox.quarantine.emptyTitle') }}</p>
 			<p class="text-sm text-text-tertiary mt-1">
-				All inbound messages passed the security filter.
+				{{ t('dashboard.inbox.quarantine.emptyBody') }}
 			</p>
 		</div>
 
@@ -153,18 +150,26 @@ const getInjectionTypeLabel = (type: string) => {
 
 				<!-- Security flags -->
 				<div v-if="message.securityFlags" class="mb-4 p-3 bg-error-subtle rounded-lg">
-					<p class="text-xs text-error font-medium uppercase tracking-wider mb-2">Security Alert</p>
+					<p class="text-xs text-error font-medium uppercase tracking-wider mb-2">
+						{{ t('dashboard.inbox.quarantine.securityAlert') }}
+					</p>
 					<div class="space-y-1">
 						<p v-if="message.securityFlags.injectionType" class="text-sm text-text-primary">
-							<span class="font-medium">Type:</span>
+							<span class="font-medium">{{ t('dashboard.inbox.quarantine.typeLabel') }}</span>
 							{{ getInjectionTypeLabel(message.securityFlags.injectionType) }}
 						</p>
 						<p class="text-sm text-text-primary">
-							<span class="font-medium">Confidence:</span>
-							{{ Math.round((message.securityFlags.confidence ?? 0) * 100) }}%
+							<span class="font-medium">{{ t('dashboard.inbox.quarantine.confidenceLabel') }}</span>
+							{{
+								t('dashboard.inbox.quarantine.confidenceValue', {
+									percent: Math.round((message.securityFlags.confidence ?? 0) * 100),
+								})
+							}}
 						</p>
 						<p v-if="message.securityFlags.flaggedContent" class="text-sm text-text-secondary mt-2">
-							<span class="font-medium text-text-primary">Flagged content:</span>
+							<span class="font-medium text-text-primary">
+								{{ t('dashboard.inbox.quarantine.flaggedContentLabel') }}
+							</span>
 							<code class="ml-1 px-1.5 py-0.5 bg-bg-surface rounded text-xs">
 								{{ message.securityFlags.flaggedContent }}
 							</code>
@@ -177,7 +182,7 @@ const getInjectionTypeLabel = (type: string) => {
 					{{ message.subject }}
 				</p>
 				<p class="text-text-secondary text-sm line-clamp-3 mb-4">
-					{{ message.textBody || '(No text content)' }}
+					{{ message.textBody || t('dashboard.inbox.quarantine.noTextContent') }}
 				</p>
 
 				<!-- Actions -->
@@ -190,7 +195,7 @@ const getInjectionTypeLabel = (type: string) => {
 						@click="onRelease(message._id)"
 					>
 						<Icon name="lucide:check-circle" class="w-3 h-3" />
-						Release (False Positive)
+						{{ t('dashboard.inbox.quarantine.release') }}
 					</UiButton>
 					<UiButton
 						variant="ghost"
@@ -200,7 +205,7 @@ const getInjectionTypeLabel = (type: string) => {
 						@click="pendingBlock = { _id: message._id, from: message.from }"
 					>
 						<Icon name="lucide:ban" class="w-3 h-3" />
-						Block Sender
+						{{ t('dashboard.inbox.quarantine.blockSender') }}
 					</UiButton>
 				</div>
 			</div>
@@ -211,9 +216,11 @@ const getInjectionTypeLabel = (type: string) => {
 			v-if="isAdmin"
 			:open="!!pendingBlock"
 			variant="danger"
-			title="Block sender"
-			:description="`Future messages from &quot;${pendingBlock?.from ?? ''}&quot; will be blocked automatically. You can unblock them later from Suppressions.`"
-			confirm-text="Block sender"
+			:title="t('dashboard.inbox.quarantine.blockDialogTitle')"
+			:description="
+				t('dashboard.inbox.quarantine.blockDialogDescription', { sender: pendingBlock?.from ?? '' })
+			"
+			:confirm-text="t('dashboard.inbox.quarantine.blockDialogConfirm')"
 			:is-loading="!!pendingBlock && actionInProgress === pendingBlock._id"
 			@update:open="
 				(v: boolean) => {

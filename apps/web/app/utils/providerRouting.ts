@@ -127,20 +127,22 @@ export function eligibleFallbackRelays(
  * reason the backend keeps one predicate for two callers: a client-side guard
  * that phrases the same refusal differently teaches the operator a rule that
  * does not exist. Checked in the same order the mutation checks them, so the
- * first thing they read is the first thing it would complain about.
+ * first thing they read is the first thing it would complain about. What is
+ * returned is the i18n KEY of that sentence (this module is pure) — the screen
+ * showing the refusal runs it through `t()`.
  */
 export function fallbackRelayIssue(
 	providers: readonly RouteProviderEntry[],
 	relayProviderType: string
 ): string | null {
 	if (relayProviderType === '' || isOwnSendProviderKind(relayProviderType)) {
-		return 'Deliverability fallback relay must be a configured non-MTA transport';
+		return 'shared.providerRouting.fallbackIssue.relayMustBeNonMta';
 	}
 	if (!eligibleFallbackRelays(providers).some((p) => p.providerType === relayProviderType)) {
-		return 'Deliverability fallback relay must be enabled in this route';
+		return 'shared.providerRouting.fallbackIssue.relayMustBeEnabled';
 	}
 	if (!providers.some((p) => p.isEnabled && isOwnSendProviderKind(p.providerType))) {
-		return 'Deliverability fallback requires an enabled owned-MTA route';
+		return 'shared.providerRouting.fallbackIssue.requiresOwnMta';
 	}
 	return null;
 }

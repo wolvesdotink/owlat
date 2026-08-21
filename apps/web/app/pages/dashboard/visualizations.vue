@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Visualizations — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.visualizations.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -19,10 +21,11 @@ const {
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Visualizations</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.visualizations.title') }}
+			</h1>
 			<p class="text-text-secondary mt-1">
-				Generate interactive charts from natural language prompts. Use illustrative sample data for
-				layout mockups, or pick a live dataset to chart your account's real numbers.
+				{{ t('dashboard.visualizations.intro') }}
 			</p>
 		</div>
 
@@ -35,15 +38,15 @@ const {
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading visualizations...</p>
+				<p class="text-text-secondary text-sm">{{ t('dashboard.visualizations.loading') }}</p>
 			</div>
 		</div>
 
 		<!-- Error -->
 		<UiErrorAlert
 			v-else-if="error"
-			title="Couldn't load visualizations"
-			message="We hit an error loading your visualizations. Reload the page to try again."
+			:title="t('dashboard.visualizations.errorTitle')"
+			:message="t('dashboard.visualizations.errorMessage')"
 			class="my-8"
 		/>
 
@@ -59,9 +62,9 @@ const {
 				rounded="full"
 				class="mb-4"
 			/>
-			<p class="text-text-secondary font-medium">No visualizations yet</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.visualizations.emptyTitle') }}</p>
 			<p class="text-sm text-text-tertiary mt-1">
-				Use the prompt above to generate your first visualization.
+				{{ t('dashboard.visualizations.emptyDescription') }}
 			</p>
 		</div>
 

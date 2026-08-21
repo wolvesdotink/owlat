@@ -7,6 +7,7 @@ definePageMeta({
 	requiresFeature: 'chat',
 });
 
+const { t } = useI18n();
 const router = useRouter();
 const { user } = useAuth();
 
@@ -61,10 +62,12 @@ const handleUnarchive = async () => {
 const currentUserId = computed(() => user.value?.id ?? '');
 
 useHead({
-	title: computed(() => {
+	title: () => {
 		const name = room.value?.name;
-		return name ? `${name} — Chat — Owlat` : 'Chat — Owlat';
-	}),
+		return name
+			? t('dashboard.chat.detail.pageTitleForRoom', { room: name })
+			: t('dashboard.chat.detail.pageTitle');
+	},
 });
 
 const handleSelectRoom = (id: Id<'chatRooms'>) => {
@@ -113,13 +116,15 @@ const handleLeave = async () => {
 				class="flex-1 flex flex-col items-center justify-center text-center px-6"
 			>
 				<Icon name="lucide:lock" class="w-8 h-8 text-text-tertiary mb-3" />
-				<h3 class="text-lg font-medium text-text-primary">Room unavailable</h3>
+				<h3 class="text-lg font-medium text-text-primary">
+					{{ t('dashboard.chat.detail.unavailableTitle') }}
+				</h3>
 				<p class="text-sm text-text-secondary mt-1">
-					This room may have been archived or you no longer have access.
+					{{ t('dashboard.chat.detail.unavailableDescription') }}
 				</p>
 				<UiButton variant="secondary" class="mt-4 gap-2" @click="router.push('/dashboard/chat')">
 					<Icon name="lucide:arrow-left" class="w-4 h-4" />
-					Back to chat
+					{{ t('dashboard.chat.detail.backToChat') }}
 				</UiButton>
 			</div>
 
@@ -145,11 +150,11 @@ const handleLeave = async () => {
 				>
 					<Icon name="lucide:eye" class="w-4 h-4 text-text-tertiary" />
 					<p class="text-sm text-text-secondary flex-1">
-						You're previewing this channel. Join to send messages.
+						{{ t('dashboard.chat.detail.previewNotice') }}
 					</p>
 					<UiButton size="sm" class="gap-2" @click="joinChannel">
 						<Icon name="lucide:user-plus" class="w-4 h-4" />
-						Join
+						{{ t('dashboard.chat.detail.join') }}
 					</UiButton>
 				</div>
 
@@ -162,7 +167,7 @@ const handleLeave = async () => {
 							class="mx-auto my-2 px-3 py-1 text-sm link"
 							@click="loadMoreMessages"
 						>
-							Load earlier messages
+							{{ t('dashboard.chat.detail.loadEarlier') }}
 						</button>
 						<ChatMessageList
 							v-if="!messagesLoading"
@@ -227,9 +232,9 @@ const handleLeave = async () => {
 		<UiConfirmationDialog
 			:open="showArchiveConfirm"
 			variant="warning"
-			title="Archive channel?"
-			description="Archiving hides this channel from the sidebar. An admin can unarchive it later from a restore view."
-			confirm-text="Archive channel"
+			:title="t('dashboard.chat.detail.archiveConfirm.title')"
+			:description="t('dashboard.chat.detail.archiveConfirm.description')"
+			:confirm-text="t('dashboard.chat.detail.archiveConfirm.confirm')"
 			:is-loading="isArchiving"
 			@update:open="(v: boolean) => !v && (showArchiveConfirm = false)"
 			@confirm="confirmArchive"

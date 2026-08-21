@@ -99,10 +99,25 @@ export function inspectSmtpTlsCertificate(
 
 // Worker heartbeat tracking
 const WORKER_HEARTBEAT_KEY = 'mta:worker:heartbeat';
-const WORKER_HEARTBEAT_TTL = 120; // 2 minutes — if no heartbeat, worker is considered dead
+/**
+ * Seconds a heartbeat stays "fresh". A worker that has not written one within
+ * this window is considered dead — regardless of whether it processed a job.
+ */
+export const WORKER_HEARTBEAT_TTL = 120;
+/**
+ * How often a live worker refreshes its heartbeat: a quarter of the freshness
+ * window, so three consecutive misses are tolerated before it reads as dead.
+ */
+export const WORKER_HEARTBEAT_INTERVAL_MS = (WORKER_HEARTBEAT_TTL / 4) * 1_000;
 
 /**
- * Record a worker heartbeat (called by the queue worker after processing a job)
+ * Record a worker heartbeat.
+ *
+ * Written when the worker starts, then refreshed on a timer for as long as the
+ * worker lives (see startWorkerHeartbeat in queue/setup.ts), and additionally
+ * after each processed job so a changed serverId beats immediately. Liveness is
+ * therefore a property of the worker being up, not of it having traffic — an
+ * idle install reports a live worker.
  */
 export async function recordWorkerHeartbeat(redis: Redis, serverId: string): Promise<void> {
 	await redis.hset(WORKER_HEARTBEAT_KEY, serverId, String(Date.now()));
@@ -196,7 +211,9 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 }
 
 /**
- * Check if the GroupMQ worker is alive based on heartbeat
+ * Check if the GroupMQ worker is alive based on its heartbeat: alive means a
+ * running worker refreshed the key within WORKER_HEARTBEAT_TTL seconds, which
+ * an idle worker does on its own timer.
  */
 async function checkWorkerLiveness(
 	redis: Redis,

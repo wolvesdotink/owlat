@@ -1,28 +1,44 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useUiI18n } from '../../composables/useUiI18n';
 
 type Variant = 'danger' | 'warning' | 'default';
 
 interface Props {
 	open: boolean;
+	/** Defaults to the localized "Are you sure?". */
 	title?: string;
+	/** Defaults to the localized "This action cannot be undone.". */
 	description?: string;
+	/** Defaults to the localized "Confirm". */
 	confirmText?: string;
+	/** Defaults to the localized "Cancel". */
 	cancelText?: string;
 	variant?: Variant;
 	isLoading?: boolean;
 	persistent?: boolean;
 }
 
+// The copy props have no defaults: prop defaults are evaluated outside the
+// setup context, where `useUiI18n()` cannot run. They resolve below instead.
 const props = withDefaults(defineProps<Props>(), {
-	title: 'Are you sure?',
-	description: 'This action cannot be undone.',
-	confirmText: 'Confirm',
-	cancelText: 'Cancel',
+	title: undefined,
+	description: undefined,
+	confirmText: undefined,
+	cancelText: undefined,
 	variant: 'default',
 	isLoading: false,
 	persistent: false,
 });
+
+const { t } = useUiI18n();
+
+const resolvedTitle = computed(() => props.title ?? t('ui.confirmationDialog.title'));
+const resolvedDescription = computed(
+	() => props.description ?? t('ui.confirmationDialog.description')
+);
+const resolvedConfirmText = computed(() => props.confirmText ?? t('ui.actions.confirm'));
+const resolvedCancelText = computed(() => props.cancelText ?? t('ui.actions.cancel'));
 
 const emit = defineEmits<{
 	'update:open': [value: boolean];
@@ -33,7 +49,7 @@ const emit = defineEmits<{
 const variantConfig: Record<Variant, { icon: string; buttonClass: string; iconClass: string }> = {
 	danger: {
 		icon: 'lucide:trash-2',
-		buttonClass: 'bg-error hover:bg-error/90 text-white',
+		buttonClass: 'bg-error-strong hover:bg-error-strong/90 text-text-inverse',
 		iconClass: 'bg-error/10 text-error',
 	},
 	warning: {
@@ -86,16 +102,16 @@ const handleBackdropClick = () => {
 				<Icon :name="config.icon" class="w-6 h-6" />
 			</div>
 
-			<h3 class="text-lg font-semibold text-text-primary mb-2">{{ title }}</h3>
+			<h3 class="text-lg font-semibold text-text-primary mb-2">{{ resolvedTitle }}</h3>
 
-			<p class="text-text-secondary">{{ description }}</p>
+			<p class="text-text-secondary">{{ resolvedDescription }}</p>
 
 			<slot />
 		</div>
 
 		<template #footer>
 			<UiButton variant="secondary" :disabled="isLoading" @click="handleCancel">
-				{{ cancelText }}
+				{{ resolvedCancelText }}
 			</UiButton>
 			<button
 				type="button"
@@ -108,7 +124,7 @@ const handleBackdropClick = () => {
 			>
 				<Icon v-if="isLoading" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				<Icon v-else :name="config.icon" class="w-4 h-4" />
-				{{ isLoading ? 'Please wait...' : confirmText }}
+				{{ isLoading ? t('ui.actions.pleaseWait') : resolvedConfirmText }}
 			</button>
 		</template>
 	</UiModal>

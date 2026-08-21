@@ -19,11 +19,15 @@
  * Weight-based emphasis + a single dot per the design system: the chip carries
  * a `variant` that maps to a semantic dot colour, never a large fill. Copy is
  * human ("Waiting on them", "Draft ready") — no enum strings, no AI jargon.
+ *
+ * The roll-up is module scope, so it never calls `useI18n`: `label` is a catalog
+ * KEY and every chip resolves it with `t()` at render time.
  */
 
 export type ThreadChipVariant = 'success' | 'warning' | 'info' | 'muted';
 
 export interface ThreadStatusChip {
+	/** Catalog key for the chip's word — resolved with `t()` at render time. */
 	label: string;
 	variant: ThreadChipVariant;
 }
@@ -56,26 +60,26 @@ export function threadStatusChip(input: ThreadChipInput): ThreadStatusChip {
 	// 1. Resolved is terminal — a resolved/closed thread is never shown as
 	//    snoozed or draft-ready.
 	if (input.status === 'resolved' || input.status === 'closed') {
-		return { label: 'Resolved', variant: 'muted' };
+		return { label: 'shared.threadStatusChip.resolved', variant: 'muted' };
 	}
 
 	// 2. An active snooze outranks open + draft.
 	if (input.snoozedUntil != null && input.snoozedUntil > now) {
-		return { label: 'Snoozed', variant: 'info' };
+		return { label: 'shared.threadStatusChip.snoozed', variant: 'info' };
 	}
 
 	// 3. A reviewable draft is the most actionable open state.
 	if (input.latestDraftStatus === 'pending') {
-		return { label: 'Draft ready', variant: 'warning' };
+		return { label: 'shared.threadStatusChip.draftReady', variant: 'warning' };
 	}
 
 	// 4. We replied and are waiting on them.
 	if (input.status === 'waiting') {
-		return { label: 'Waiting on them', variant: 'muted' };
+		return { label: 'shared.threadStatusChip.waiting', variant: 'muted' };
 	}
 
 	// 5. Default active state.
-	return { label: 'Open', variant: 'success' };
+	return { label: 'shared.threadStatusChip.open', variant: 'success' };
 }
 
 /**

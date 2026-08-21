@@ -26,6 +26,7 @@ import {
  * ids, provider-default appliers) stay private.
  */
 export function useAiProviderForm() {
+	const { t } = useI18n();
 	const { showToast } = useToast();
 
 	// getConfig never returns a secret — only selections, a masked preview, booleans.
@@ -33,15 +34,15 @@ export function useAiProviderForm() {
 
 	const { run: runSave, isLoading: isSaving } = useBackendOperation(
 		api.aiProviderConfigActions.saveConfig,
-		{ label: 'Save AI provider', type: 'action' }
+		{ label: () => t('shared.useAiProviderForm.saveOperation'), type: 'action' }
 	);
 	const { run: runTest, isLoading: isTesting } = useBackendOperation(
 		api.aiProviderConfigActions.testConnection,
-		{ label: 'Test AI connection', type: 'action' }
+		{ label: () => t('shared.useAiProviderForm.testOperation'), type: 'action' }
 	);
 	const { run: runListModels, isLoading: isLoadingModels } = useBackendOperation(
 		api.aiProviderConfigActions.listModels,
-		{ label: 'Load available models', type: 'action' }
+		{ label: () => t('shared.useAiProviderForm.listModelsOperation'), type: 'action' }
 	);
 
 	const providerOptions = languageProviderOptions();
@@ -241,7 +242,15 @@ export function useAiProviderForm() {
 			!storedEmbeddingKeySet.value &&
 			!form.embeddingApiKey.trim()
 		) {
-			embeddingError.value = `${embeddingMeta.value?.label ?? 'This embedder'} needs an API key.`;
+			// `EmbeddingProviderMeta.label` is a MESSAGE KEY, not display copy (see
+			// `utils/aiProviders`), so it has to be translated before it lands in the
+			// inline error — otherwise the admin reads
+			// "shared.aiProviders.embedders.openai.label needs an API key."
+			embeddingError.value = t('shared.useAiProviderForm.embeddingKeyRequired', {
+				provider: embeddingMeta.value
+					? t(embeddingMeta.value.label)
+					: t('shared.useAiProviderForm.thisEmbedder'),
+			});
 			return;
 		}
 
@@ -266,7 +275,7 @@ export function useAiProviderForm() {
 		form.embeddingApiKey = '';
 		isDirty.value = false;
 		testState.value = { status: 'idle' };
-		showToast('AI provider saved');
+		showToast(t('shared.useAiProviderForm.saved'));
 	}
 
 	/**
@@ -278,7 +287,7 @@ export function useAiProviderForm() {
 		liveModelsError.value = null;
 		const result = await runListModels({});
 		if (result === undefined) {
-			liveModelsError.value = 'Could not load models.';
+			liveModelsError.value = t('shared.useAiProviderForm.modelsLoadFailed');
 			return;
 		}
 		if (result.error) {
@@ -286,12 +295,12 @@ export function useAiProviderForm() {
 			return;
 		}
 		if (!result.supported) {
-			liveModelsError.value = 'This provider does not support listing models.';
+			liveModelsError.value = t('shared.useAiProviderForm.modelsUnsupported');
 			return;
 		}
 		liveModels.value = result.models;
 		if (result.models.length === 0) {
-			liveModelsError.value = 'No models returned — keep using a custom id.';
+			liveModelsError.value = t('shared.useAiProviderForm.modelsEmpty');
 		}
 	}
 
@@ -303,7 +312,7 @@ export function useAiProviderForm() {
 			testState.value = testConnectionReducer(testState.value, {
 				type: 'result',
 				ok: false,
-				error: 'Connection test failed.',
+				error: t('shared.useAiProviderForm.testFailed'),
 			});
 			return;
 		}

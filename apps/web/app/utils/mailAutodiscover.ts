@@ -182,75 +182,78 @@ export type AppPasswordHelp = {
 	provider: string;
 	/** Deep link to the provider's app-password page. */
 	url: string;
-	/** One concise line describing how to mint the app password. */
+	/** Catalog key for the one concise line describing how to mint the app password. */
 	steps: string;
 };
 
 /**
  * Curated domain → app-password help for the consumer providers that require an
  * app password (not the account password) for IMAP/SMTP. Deep links are static.
+ *
+ * This table is module scope and never calls `useI18n`, so `steps` is the
+ * CATALOG KEY of the sentence rather than the sentence; the callout that renders
+ * it is the boundary that words it. `provider` stays the literal brand name — it
+ * is interpolated into the heading, and a brand is the same in every language.
  */
 const APP_PASSWORD_PROVIDERS: Record<string, AppPasswordHelp> = {
 	// Google — requires 2-Step Verification, then a generated app password.
 	'gmail.com': {
 		provider: 'Gmail',
 		url: 'https://myaccount.google.com/apppasswords',
-		steps:
-			'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.gmail',
 	},
 	'googlemail.com': {
 		provider: 'Gmail',
 		url: 'https://myaccount.google.com/apppasswords',
-		steps:
-			'Turn on 2-Step Verification, then generate a 16-character app password and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.gmail',
 	},
 	// Microsoft consumer accounts.
 	'outlook.com': {
 		provider: 'Outlook',
 		url: 'https://account.live.com/proofs/AppPassword',
-		steps: 'Turn on two-step verification, create an app password and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.outlook',
 	},
 	'hotmail.com': {
 		provider: 'Outlook',
 		url: 'https://account.live.com/proofs/AppPassword',
-		steps: 'Turn on two-step verification, create an app password and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.outlook',
 	},
 	'live.com': {
 		provider: 'Outlook',
 		url: 'https://account.live.com/proofs/AppPassword',
-		steps: 'Turn on two-step verification, create an app password and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.outlook',
 	},
 	// Apple iCloud Mail.
 	'icloud.com': {
 		provider: 'iCloud',
 		url: 'https://appleid.apple.com/account/manage',
-		steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.icloud',
 	},
 	'me.com': {
 		provider: 'iCloud',
 		url: 'https://appleid.apple.com/account/manage',
-		steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.icloud',
 	},
 	'mac.com': {
 		provider: 'iCloud',
 		url: 'https://appleid.apple.com/account/manage',
-		steps: 'Under Sign-In & Security → App-Specific Passwords, generate one and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.icloud',
 	},
 	// Yahoo Mail.
 	'yahoo.com': {
 		provider: 'Yahoo',
 		url: 'https://login.yahoo.com/account/security/app-passwords',
-		steps: 'Generate an app password under Account Security and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.yahoo',
 	},
 	'ymail.com': {
 		provider: 'Yahoo',
 		url: 'https://login.yahoo.com/account/security/app-passwords',
-		steps: 'Generate an app password under Account Security and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.yahoo',
 	},
 	'yahoo.co.uk': {
 		provider: 'Yahoo',
 		url: 'https://login.yahoo.com/account/security/app-passwords',
-		steps: 'Generate an app password under Account Security and paste it here.',
+		steps: 'shared.mailAutodiscover.appPassword.yahoo',
 	},
 };
 
@@ -266,11 +269,11 @@ export type MailProviderId = 'gmail' | 'outlook' | 'fastmail' | 'icloud' | 'yaho
 
 export type MailProvider = {
 	id: MailProviderId;
-	/** Human name shown on the picker card. */
+	/** Catalog key for the name shown on the picker card. */
 	name: string;
 	/** Lucide icon name for the picker card. */
 	icon: string;
-	/** One concise line under the name (the server, or a plain hint). */
+	/** Catalog key for the one concise line under the name (the server, or a plain hint). */
 	hint: string;
 	/** Server preset, or `null` for the generic IMAP provider (manual entry). */
 	preset: MailPreset | null;
@@ -288,9 +291,9 @@ export type MailProvider = {
  */
 export const GENERIC_IMAP_PROVIDER: MailProvider = {
 	id: 'imap',
-	name: 'Any IMAP mailbox',
+	name: 'shared.mailAutodiscover.provider.imap.name',
 	icon: 'lucide:server',
-	hint: 'Your own server, or any other provider',
+	hint: 'shared.mailAutodiscover.provider.imap.hint',
 	preset: null,
 	appPassword: null,
 	manualServer: true,
@@ -304,50 +307,49 @@ export const GENERIC_IMAP_PROVIDER: MailProvider = {
 export const MAIL_PROVIDERS: readonly MailProvider[] = [
 	{
 		id: 'gmail',
-		name: 'Gmail',
+		name: 'shared.mailAutodiscover.provider.gmail.name',
 		icon: 'lucide:mail',
-		hint: 'Gmail or Google Workspace',
+		hint: 'shared.mailAutodiscover.provider.gmail.hint',
 		preset: DOMAIN_PRESETS['gmail.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['gmail.com'] ?? null,
 		manualServer: false,
 	},
 	{
 		id: 'outlook',
-		name: 'Outlook',
+		name: 'shared.mailAutodiscover.provider.outlook.name',
 		icon: 'lucide:mail',
-		hint: 'Outlook.com, Hotmail or Microsoft 365',
+		hint: 'shared.mailAutodiscover.provider.outlook.hint',
 		preset: DOMAIN_PRESETS['outlook.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['outlook.com'] ?? null,
 		manualServer: false,
 	},
 	{
 		id: 'fastmail',
-		name: 'Fastmail',
+		name: 'shared.mailAutodiscover.provider.fastmail.name',
 		icon: 'lucide:mail',
-		hint: 'imap.fastmail.com',
+		hint: 'shared.mailAutodiscover.provider.fastmail.hint',
 		preset: DOMAIN_PRESETS['fastmail.com'] ?? null,
 		appPassword: {
 			provider: 'Fastmail',
 			url: 'https://app.fastmail.com/settings/security/apppasswords',
-			steps:
-				'Create an app password under Settings → Privacy & Security → App Passwords and paste it here.',
+			steps: 'shared.mailAutodiscover.appPassword.fastmail',
 		},
 		manualServer: false,
 	},
 	{
 		id: 'icloud',
-		name: 'iCloud Mail',
+		name: 'shared.mailAutodiscover.provider.icloud.name',
 		icon: 'lucide:mail',
-		hint: 'icloud.com, me.com or mac.com',
+		hint: 'shared.mailAutodiscover.provider.icloud.hint',
 		preset: DOMAIN_PRESETS['icloud.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['icloud.com'] ?? null,
 		manualServer: false,
 	},
 	{
 		id: 'yahoo',
-		name: 'Yahoo Mail',
+		name: 'shared.mailAutodiscover.provider.yahoo.name',
 		icon: 'lucide:mail',
-		hint: 'imap.mail.yahoo.com',
+		hint: 'shared.mailAutodiscover.provider.yahoo.hint',
 		preset: DOMAIN_PRESETS['yahoo.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['yahoo.com'] ?? null,
 		manualServer: false,

@@ -16,6 +16,13 @@
 
 import type { OperationError } from '@owlat/shared/operationError';
 
+/**
+ * A sentence the renderer translates. This module is module scope and never
+ * calls `useI18n`, so the copy it decides travels as an i18n key plus the
+ * parameters that key interpolates (see the UI-localization guide).
+ */
+export type CapacityMessage = { key: string; params?: Record<string, unknown> };
+
 /** The refusal's multi-day schedule, in the shape the UI renders. */
 export interface CampaignCapacitySchedulePlan {
 	/**
@@ -90,11 +97,16 @@ export function capacityRefusalPlan(error: OperationError): CampaignCapacitySche
  *    only know a lower bound for, so `days` is a floor.
  *  - neither — `days` is the projected finish.
  */
-export function capacityScheduleHeadline(plan: CampaignCapacitySchedulePlan): string {
-	if (plan.truncated) return `Sending over more than ${plan.days} days`;
-	const dayWord = plan.days === 1 ? 'day' : 'days';
-	if (plan.audienceUnderCounted) return `Sending over at least ${plan.days} ${dayWord}`;
-	return `Sending over ${plan.days} ${dayWord}`;
+export function capacityScheduleHeadline(plan: CampaignCapacitySchedulePlan): CapacityMessage {
+	const params = { days: plan.days };
+	if (plan.truncated) {
+		return { key: 'shared.campaignCapacityRefusal.headline.moreThan', params };
+	}
+	const plural = plan.days === 1 ? 'one' : 'other';
+	if (plan.audienceUnderCounted) {
+		return { key: `shared.campaignCapacityRefusal.headline.atLeast.${plural}`, params };
+	}
+	return { key: `shared.campaignCapacityRefusal.headline.over.${plural}`, params };
 }
 
 /** One UTC day, in ms. The backend slices the schedule on UTC day boundaries. */
@@ -121,14 +133,21 @@ export function capacitySliceDayStart(plan: CampaignCapacitySchedulePlan, index:
  * boundaries, so rendering them locally shifts every date by a day for half the
  * world and would show two operators two different finish dates for the same
  * plan.
+ *
+ * The ZONE is pinned; the LANGUAGE is not. Callers inside a component pass
+ * `useI18n().locale.value` so the weekday and month read in the active locale.
  */
-export function formatCapacityDay(atMs: number, style: 'long' | 'short' = 'long'): string {
-	return new Date(atMs).toLocaleDateString('en-US', {
+export function formatCapacityDay(
+	atMs: number,
+	style: 'long' | 'short' = 'long',
+	locale = 'en-US'
+): string {
+	return new Intl.DateTimeFormat(locale, {
 		timeZone: 'UTC',
 		weekday: style === 'long' ? 'long' : 'short',
 		month: style === 'long' ? 'long' : 'short',
 		day: 'numeric',
-	});
+	}).format(new Date(atMs));
 }
 
 /**
@@ -157,9 +176,14 @@ export function isCapacityDayToday(dayStartMs: number, now: number): boolean {
  * "Everyone is reached by Friday" reads as a promise for Friday, which is
  * exactly the date the plan just said it does not have (D14).
  */
-export function capacityFinishSentence(plan: CampaignCapacitySchedulePlan): string | null {
+export function capacityFinishSentence(
+	plan: CampaignCapacitySchedulePlan,
+	locale = 'en-US'
+): CapacityMessage | null {
 	if (plan.truncated) return null;
-	const day = formatCapacityDay(capacityFinishDayAt(plan));
-	if (plan.audienceUnderCounted) return `Everyone is reached by ${day} at the earliest.`;
-	return `Everyone is reached by ${day}.`;
+	const params = { day: formatCapacityDay(capacityFinishDayAt(plan), 'long', locale) };
+	if (plan.audienceUnderCounted) {
+		return { key: 'shared.campaignCapacityRefusal.finish.earliest', params };
+	}
+	return { key: 'shared.campaignCapacityRefusal.finish.exact', params };
 }

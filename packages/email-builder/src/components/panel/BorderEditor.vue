@@ -47,6 +47,7 @@ const previewStyle = computed(() => {
 			<div class="flex flex-col gap-[3px]">
 				<FieldLabel size="sm">Width</FieldLabel>
 				<NumberField
+					label="Border width"
 					:value="borderWidth"
 					:min="0"
 					:max="10"
@@ -70,6 +71,7 @@ const previewStyle = computed(() => {
 		<div class="flex flex-col gap-[3px]">
 			<FieldLabel size="sm">Color</FieldLabel>
 			<ColorField
+				label="Border color"
 				:value="borderColor"
 				@update="(val) => emit('update', 'borderColor', val)"
 			/>

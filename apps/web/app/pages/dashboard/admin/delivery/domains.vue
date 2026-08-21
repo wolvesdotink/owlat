@@ -3,10 +3,12 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
-import { createAutoRecheckPoller, type AutoRecheckPoller } from '~/utils/domainAutoRecheck';
+import { useDomainAutoRecheck } from '~/composables/useDomainAutoRecheck';
 import type { DmarcPolicy } from '~/utils/domainStatus';
 
-useHead({ title: 'Sending Domains — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.delivery.domains.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -39,19 +41,19 @@ const hasVerifiedDomain = computed(() =>
 
 // Mutations
 const { run: createDomain } = useBackendOperation(api.domains.domains.create, {
-	label: 'Add domain',
+	label: () => t('dashboard.admin.delivery.domains.operations.add'),
 });
 const { run: removeDomain } = useBackendOperation(api.domains.domains.remove, {
-	label: 'Remove domain',
+	label: () => t('dashboard.admin.delivery.domains.operations.remove'),
 });
 const { run: retryRegistration } = useBackendOperation(api.domains.domains.regenerateDnsRecords, {
-	label: 'Retry domain registration',
+	label: () => t('dashboard.admin.delivery.domains.operations.retryRegistration'),
 });
 const { run: setDmarcPolicy } = useBackendOperation(api.domains.domains.setDmarcPolicy, {
-	label: 'Update DMARC policy',
+	label: () => t('dashboard.admin.delivery.domains.operations.updateDmarc'),
 });
 const { run: verifyDomain } = useBackendOperation(api.domains.dnsVerification.verifyDomain, {
-	label: 'Verify domain',
+	label: () => t('dashboard.admin.delivery.domains.operations.verify'),
 	type: 'action',
 });
 // Dev-only mutation: the import + binding gets tree-shaken from prod bundles
@@ -62,7 +64,7 @@ const { run: verifyDomain } = useBackendOperation(api.domains.dnsVerification.ve
 const isDevBuild = import.meta.env.DEV;
 const { run: forceVerifyDomain } = isDevBuild
 	? useBackendOperation(api.devShortcuts.forceVerifyDomain.forceVerifyDomain, {
-			label: 'Force-verify domain',
+			label: () => t('dashboard.admin.delivery.domains.operations.forceVerify'),
 		})
 	: { run: async (_: { domainId: Id<'domains'> }) => undefined };
 
@@ -139,7 +141,7 @@ const handleDeleteDomain = async () => {
 	if (result === undefined) return;
 
 	deleteModal.close();
-	showToast('Domain removed successfully');
+	showToast(t('dashboard.admin.delivery.domains.toasts.removed'));
 };
 
 // Handle verify domain — routed through useBackendOperation (shared error
@@ -150,12 +152,9 @@ const handleVerifyDomain = async (domainId: Id<'domains'>) => {
 		const result = await verifyDomain({ domainId });
 		if (result === undefined) return; // run() already surfaced the failure
 		if (result.allVerified) {
-			showToast('Domain verified successfully! All DNS records are correctly configured.');
+			showToast(t('dashboard.admin.delivery.domains.toasts.verified'));
 		} else {
-			showToast(
-				'Verification complete. Some DNS records need attention - check the details below.',
-				'error'
-			);
+			showToast(t('dashboard.admin.delivery.domains.toasts.verificationIncomplete'), 'error');
 		}
 	} finally {
 		verifyingDomainId.value = null;
@@ -166,7 +165,7 @@ const handleVerifyDomain = async (domainId: Id<'domains'>) => {
 const handleRetryRegistration = async (domainId: Id<'domains'>) => {
 	const result = await retryRegistration({ domainId });
 	if (result === undefined) return;
-	showToast('Regenerating DNS records...');
+	showToast(t('dashboard.admin.delivery.domains.toasts.regenerating'));
 };
 
 // DMARC enforcement policy. Owners/admins only (backend gates on
@@ -194,19 +193,23 @@ const inboundEnabled = computed(() => hasInboundFeature(flags.value));
 const showReceivingDns = computed(
 	() => Boolean(inboundMailConfig.value?.mailHost) && !flagsLoading.value
 );
-const dmarcPolicyOptions: { value: DmarcPolicy; label: string; hint: string }[] = [
+const dmarcPolicyOptions = computed<{ value: DmarcPolicy; label: string; hint: string }[]>(() => [
 	{
 		value: 'none',
-		label: 'Monitor only (p=none)',
-		hint: 'Collect reports, take no action on failures.',
+		label: t('dashboard.admin.delivery.domains.dmarc.none.label'),
+		hint: t('dashboard.admin.delivery.domains.dmarc.none.hint'),
 	},
-	{ value: 'quarantine', label: 'Quarantine (p=quarantine)', hint: 'Send failing mail to spam.' },
+	{
+		value: 'quarantine',
+		label: t('dashboard.admin.delivery.domains.dmarc.quarantine.label'),
+		hint: t('dashboard.admin.delivery.domains.dmarc.quarantine.hint'),
+	},
 	{
 		value: 'reject',
-		label: 'Reject (p=reject)',
-		hint: 'Reject failing mail outright — full enforcement.',
+		label: t('dashboard.admin.delivery.domains.dmarc.reject.label'),
+		hint: t('dashboard.admin.delivery.domains.dmarc.reject.hint'),
 	},
-];
+]);
 const updatingDmarcDomainId = ref<Id<'domains'> | null>(null);
 
 const handleDmarcPolicyChange = async (domainId: Id<'domains'>, policy: DmarcPolicy) => {
@@ -216,8 +219,8 @@ const handleDmarcPolicyChange = async (domainId: Id<'domains'>, policy: DmarcPol
 		if (result === undefined) return; // run() already surfaced the failure
 		showToast(
 			policy === 'none'
-				? 'DMARC set to monitor-only. Re-publish the updated _dmarc record, then verify.'
-				: `DMARC policy raised to ${policy}. Re-publish the updated _dmarc record, then verify.`
+				? t('dashboard.admin.delivery.domains.toasts.dmarcMonitorOnly')
+				: t('dashboard.admin.delivery.domains.toasts.dmarcRaised', { policy })
 		);
 	} finally {
 		updatingDmarcDomainId.value = null;
@@ -231,7 +234,7 @@ const handleForceVerify = async (domainId: Id<'domains'>) => {
 	const result = await forceVerifyDomain({ domainId });
 	forcingDomainId.value = null;
 	if (result === undefined) return;
-	showToast('Domain force-verified (dev shortcut).');
+	showToast(t('dashboard.admin.delivery.domains.toasts.forceVerified'));
 };
 
 // SPF coexistence hint for the currently-expanded domain. When a domain that
@@ -257,77 +260,14 @@ const toggleDomainExpansion = (domainId: Id<'domains'>) => {
 	});
 };
 
-// Gentle auto-recheck: once a domain panel is expanded, keep quietly re-running
-// verifyDomain on a slow interval so the user doesn't have to click Verify over
-// and over while DNS propagates. Only runs for domains that can still become
-// verified — never for already-verified, still-registering, or
-// failed-registration domains. Stops on verify, collapse, unmount, or the cap.
-const autoRecheckActive = ref(false);
-
-type AutoRecheckStatus = { status: string; lastRegistrationError?: string | null };
-const isAutoRecheckable = (domain: AutoRecheckStatus | undefined): boolean => {
-	if (!domain) return false;
-	if (domain.status === 'verified' || domain.status === 'registering') return false;
-	// A failed *registration* is not something re-running DNS verification fixes.
-	if (domain.status === 'failed' && domain.lastRegistrationError) return false;
-	return true;
-};
-
-let recheckPoller: AutoRecheckPoller | null = null;
-let recheckDomainId: Id<'domains'> | null = null;
-
-const stopAutoRecheck = () => {
-	recheckPoller?.stop();
-	recheckPoller = null;
-	recheckDomainId = null;
-	autoRecheckActive.value = false;
-};
-
-const startAutoRecheck = (domainId: Id<'domains'>) => {
-	// Already polling this exact domain — leave the existing poller running. A
-	// poller that has self-stopped (verified / cap reached) reports isRunning()
-	// false, so it is not mistaken for a live one and auto-recheck can restart.
-	if (recheckPoller && recheckDomainId === domainId && recheckPoller.isRunning()) return;
-	stopAutoRecheck();
-	recheckDomainId = domainId;
-	autoRecheckActive.value = true;
-	recheckPoller = createAutoRecheckPoller({
-		onTick: async () => {
-			// Never overlap with a manual Verify the user just clicked.
-			if (verifyingDomainId.value === domainId) return false;
-			const result = await verifyDomain({ domainId });
-			// run() already surfaced any failure; treat undefined as "keep trying".
-			return result?.allVerified === true;
-		},
-		onStopped: () => {
-			// The poller stopped itself (domain verified, or the ~5-min cap was
-			// reached). Reconcile the component's mirror state so the subtle
-			// "Checking DNS…" indicator stops instead of spinning forever, and a
-			// later domainsData tick can start a fresh poller.
-			if (recheckDomainId === domainId) {
-				recheckPoller = null;
-				recheckDomainId = null;
-				autoRecheckActive.value = false;
-			}
-		},
-	});
-	recheckPoller.start();
-};
-
-// Drive the poller from whichever panel is open and that domain's live status
-// (domainsData is a real-time subscription, so a verify elsewhere collapses it).
-watch([expandedDomainId, () => domainsData.value], () => {
-	const id = expandedDomainId.value;
-	const domain = id ? (domainsData.value ?? []).find((d) => d._id === id) : undefined;
-	if (id && isAutoRecheckable(domain)) {
-		startAutoRecheck(id);
-	} else {
-		stopAutoRecheck();
-	}
-});
-
-onBeforeUnmount(() => {
-	stopAutoRecheck();
+// Gentle auto-recheck while a domain panel is open: the polling lifecycle (which
+// domain, the mirrored "Checking DNS…" flag, teardown) lives in its own
+// composable, over the framework-agnostic poller in `utils/domainAutoRecheck`.
+const { autoRecheckActive } = useDomainAutoRecheck({
+	expandedDomainId,
+	domains: () => domainsData.value ?? [],
+	isVerifying: (domainId) => verifyingDomainId.value === domainId,
+	verifyDomain,
 });
 </script>
 
@@ -340,18 +280,20 @@ onBeforeUnmount(() => {
 				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
 			>
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				Delivery setup
+				{{ t('dashboard.admin.delivery.backToSetup') }}
 			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Sending Domains</h1>
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ t('dashboard.admin.delivery.domains.title') }}
+					</h1>
 					<p class="mt-1 text-text-secondary">
-						Configure custom sending domains for better email deliverability
+						{{ t('dashboard.admin.delivery.domains.lede') }}
 					</p>
 				</div>
 				<UiButton class="gap-2" @click="addModal.open()">
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					Add Domain
+					{{ t('dashboard.admin.delivery.domains.addDomain') }}
 				</UiButton>
 			</div>
 		</div>
@@ -367,9 +309,11 @@ onBeforeUnmount(() => {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:globe" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">No team selected</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.admin.delivery.domains.noTeam.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				Create or select a team to manage sending domains.
+				{{ t('dashboard.admin.delivery.domains.noTeam.description') }}
 			</p>
 		</div>
 
@@ -380,11 +324,11 @@ onBeforeUnmount(() => {
 				<div class="flex gap-4">
 					<UiIconBox icon="lucide:globe" size="sm" variant="brand" rounded="lg" />
 					<div>
-						<h3 class="font-medium text-text-primary mb-1">Why add a custom domain?</h3>
+						<h3 class="font-medium text-text-primary mb-1">
+							{{ t('dashboard.admin.delivery.domains.whyCustom.title') }}
+						</h3>
 						<p class="text-sm text-text-secondary">
-							Sending emails from your own domain improves deliverability and brand recognition.
-							After adding a domain, configure the DNS records with your domain provider to verify
-							ownership.
+							{{ t('dashboard.admin.delivery.domains.whyCustom.body') }}
 						</p>
 					</div>
 				</div>
@@ -413,14 +357,15 @@ onBeforeUnmount(() => {
 			>
 				<UiIconBox icon="lucide:mail-plus" size="sm" variant="surface" rounded="lg" />
 				<div class="flex-1">
-					<h3 class="font-medium text-text-primary mb-1">Don't have a domain to verify?</h3>
+					<h3 class="font-medium text-text-primary mb-1">
+						{{ t('dashboard.admin.delivery.domains.noDomain.title') }}
+					</h3>
 					<p class="text-sm text-text-secondary mb-3">
-						Connect your existing mailbox (Gmail, Fastmail, a company server) over IMAP + SMTP to
-						send and receive personal mail without registering a domain.
+						{{ t('dashboard.admin.delivery.domains.noDomain.body') }}
 					</p>
 					<UiButton variant="secondary" size="sm" to="/dashboard/postbox/migrate" class="gap-2">
 						<Icon name="lucide:mail-plus" class="w-4 h-4" />
-						Connect external mailbox
+						{{ t('dashboard.admin.delivery.domains.noDomain.action') }}
 					</UiButton>
 				</div>
 			</div>
@@ -431,13 +376,15 @@ onBeforeUnmount(() => {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:globe" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No domains configured</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('dashboard.admin.delivery.domains.empty.title') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Add a custom sending domain to improve your email deliverability and brand recognition.
+					{{ t('dashboard.admin.delivery.domains.empty.description') }}
 				</p>
 				<UiButton class="gap-2 mt-4" @click="addModal.open()">
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					Add Your First Domain
+					{{ t('dashboard.admin.delivery.domains.empty.action') }}
 				</UiButton>
 			</div>
 
@@ -478,7 +425,10 @@ onBeforeUnmount(() => {
 
 		<!-- Add Domain Modal — the guided two-field picker lives in the form
 			 component, which composes the single domain string it emits. -->
-		<UiModal v-model:open="addModal.isOpen.value" title="Add Sending Domain">
+		<UiModal
+			v-model:open="addModal.isOpen.value"
+			:title="t('dashboard.admin.delivery.domains.addModalTitle')"
+		>
 			<DomainsAddDomainForm
 				:loading="addModal.isLoading.value"
 				@submit="handleAddDomain"
@@ -489,9 +439,13 @@ onBeforeUnmount(() => {
 		<!-- Delete Domain Confirmation Modal -->
 		<UiConfirmationDialog
 			v-model:open="deleteModal.isOpen.value"
-			title="Remove Domain"
-			:description="`Are you sure you want to remove ${deleteModal.data.value?.domain}? You will no longer be able to send emails from this domain.`"
-			confirm-text="Remove Domain"
+			:title="t('dashboard.admin.delivery.domains.removeModal.title')"
+			:description="
+				t('dashboard.admin.delivery.domains.removeModal.description', {
+					domain: deleteModal.data.value?.domain ?? '',
+				})
+			"
+			:confirm-text="t('dashboard.admin.delivery.domains.removeModal.confirm')"
 			variant="danger"
 			:is-loading="deleteModal.isLoading.value"
 			@confirm="handleDeleteDomain"

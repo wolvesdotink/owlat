@@ -236,3 +236,23 @@ describe('worker — agent_reply vs transactional Auto-Submitted (RFC 3834)', ()
 		expect(isAutomatedMail(composed.headers)).toBe(true);
 	});
 });
+
+describe('worker — the envelope carries the template text/plain body to the composer', () => {
+	it('campaign: the stored body becomes the text part', () => {
+		const composed = composeForSend(
+			buildComposeInput({
+				...baseCampaign,
+				template: {
+					...baseCampaign.template,
+					plainTextContent: 'Hi {{firstName}}\n\nRead more (https://docs.example)',
+				},
+			})
+		);
+		expect(composed.text).toBe('Hi Jane\n\nRead more (https://docs.example)');
+	});
+
+	it('campaign: an envelope without one still gets a text part from the html', () => {
+		const composed = composeForSend(buildComposeInput(baseCampaign));
+		expect(composed.text).toBe('Hi Jane');
+	});
+});

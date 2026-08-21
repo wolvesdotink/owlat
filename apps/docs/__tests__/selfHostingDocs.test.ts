@@ -34,7 +34,9 @@ function walkMarkdown(dir: string): string[] {
 
 const docFiles = [
 	resolve(repoRoot, 'README.md'),
-	...walkMarkdown(resolve(repoRoot, 'apps/docs/content')),
+	// The English tree only: these are phrase-level assertions, and a translated
+	// mirror would fail them for its wording rather than for a wrong claim.
+	...walkMarkdown(resolve(repoRoot, 'apps/docs/content/en')),
 ];
 
 const docs = docFiles.map((path) => ({
@@ -74,7 +76,7 @@ describe('self-hosting docs: the fixes are documented (positive guards)', () => 
 	};
 
 	it('the primary manual flow explains CONVEX_SITE_URL is a built-in', () => {
-		const selfHosting = byRel('apps/docs/content/3.developer/30.self-hosting.md');
+		const selfHosting = byRel('apps/docs/content/en/3.developer/30.self-hosting.md');
 		expect(selfHosting).toMatch(/CONVEX_SITE_URL/);
 		expect(selfHosting).toMatch(/EnvVarNameForbidden|built-in/i);
 	});
@@ -86,7 +88,7 @@ describe('self-hosting docs: the fixes are documented (positive guards)', () => 
 	});
 
 	it('the maintenance doc lists MTA_API_URL as a cause of "MTA can\'t send emails"', () => {
-		const maintenance = byRel('apps/docs/content/3.developer/34.self-hosting-maintenance.md');
+		const maintenance = byRel('apps/docs/content/en/3.developer/34.self-hosting-maintenance.md');
 		const section = maintenance.slice(maintenance.indexOf("### MTA can't send emails"));
 		expect(section).toMatch(/MTA_API_URL/);
 	});

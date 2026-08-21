@@ -5,9 +5,14 @@
  * the generalised registry: known types render (behind WidgetHost), unknown
  * types show the "Unknown card type" affordance, and the size class survives.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import DashboardCardRenderer from '../DashboardCardRenderer.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 beforeEach(() => {
 	// The renderer gates widgets on feature flags; core cards are ungated.
@@ -25,7 +30,10 @@ const stubs = {
 };
 
 function renderCard(card: { type: string; size: 'small' | 'medium' | 'large' }) {
-	return mount(DashboardCardRenderer, { props: { card }, global: { stubs } });
+	return mount(DashboardCardRenderer, {
+		props: { card },
+		global: { plugins: [createTestI18n()], stubs },
+	});
 }
 
 describe('DashboardCardRenderer', () => {

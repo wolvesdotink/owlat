@@ -13,6 +13,7 @@ import {
 } from '~/utils/knowledgeEntryTypes';
 
 export function useKnowledgeGraph() {
+	const { t, locale } = useI18n();
 	const { query: searchQuery, debouncedQuery: debouncedSearch } = useDebouncedSearch(300);
 	const selectedType = ref<EntryType | null>(null);
 
@@ -26,7 +27,7 @@ export function useKnowledgeGraph() {
 				...(selectedType.value ? { entryType: selectedType.value } : {}),
 				limit: 50,
 			};
-		},
+		}
 	);
 
 	// When browsing a specific type (no search), use listByType (skip when
@@ -36,7 +37,7 @@ export function useKnowledgeGraph() {
 		() => {
 			if (debouncedSearch.value || selectedType.value === null) return 'skip';
 			return { entryType: selectedType.value, limit: 50 };
-		},
+		}
 	);
 
 	// The "All" tab (selectedType === null) lists every type, newest first.
@@ -45,7 +46,7 @@ export function useKnowledgeGraph() {
 		() => {
 			if (debouncedSearch.value || selectedType.value !== null) return 'skip';
 			return { limit: 50 };
-		},
+		}
 	);
 
 	const entries = computed(() => {
@@ -61,26 +62,21 @@ export function useKnowledgeGraph() {
 	});
 
 	// Mutations
-	const { run: createEntry } = useBackendOperation(
-		api.knowledge.graph.createEntry,
-		{ label: 'Create knowledge entry' },
-	);
-	const { run: updateEntry } = useBackendOperation(
-		api.knowledge.graph.updateEntry,
-		{ label: 'Update knowledge entry' },
-	);
-	const { run: deleteEntry } = useBackendOperation(
-		api.knowledge.graph.deleteEntry,
-		{ label: 'Delete knowledge entry' },
-	);
-	const { run: addRelation } = useBackendOperation(
-		api.knowledge.graph.addRelation,
-		{ label: 'Add knowledge relation' },
-	);
-	const { run: removeRelation } = useBackendOperation(
-		api.knowledge.graph.removeRelation,
-		{ label: 'Remove knowledge relation' },
-	);
+	const { run: createEntry } = useBackendOperation(api.knowledge.graph.createEntry, {
+		label: () => t('shared.useKnowledgeGraph.operations.createEntry'),
+	});
+	const { run: updateEntry } = useBackendOperation(api.knowledge.graph.updateEntry, {
+		label: () => t('shared.useKnowledgeGraph.operations.updateEntry'),
+	});
+	const { run: deleteEntry } = useBackendOperation(api.knowledge.graph.deleteEntry, {
+		label: () => t('shared.useKnowledgeGraph.operations.deleteEntry'),
+	});
+	const { run: addRelation } = useBackendOperation(api.knowledge.graph.addRelation, {
+		label: () => t('shared.useKnowledgeGraph.operations.addRelation'),
+	});
+	const { run: removeRelation } = useBackendOperation(api.knowledge.graph.removeRelation, {
+		label: () => t('shared.useKnowledgeGraph.operations.removeRelation'),
+	});
 
 	// Helpers (re-exported from the shared presentation map)
 	const typeVariant = entryTypeVariant;
@@ -106,7 +102,10 @@ export function useKnowledgeGraph() {
 		return 'error' as const;
 	};
 
-	const formatConfidence = (value: number) => `${Math.round(value * 100)}%`;
+	const formatConfidence = (value: number) =>
+		new Intl.NumberFormat(locale.value, { style: 'percent', maximumFractionDigits: 0 }).format(
+			value
+		);
 
 	const truncate = (text: string, max = 120) => truncateShared(text, max, '\u2026');
 

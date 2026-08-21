@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import type { Id } from '@owlat/api/dataModel';
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import DeliverabilityLoopbackCard from '../DeliverabilityLoopbackCard.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const domains = [{ id: 'domain-a' as Id<'domains'>, domain: 'example.com', eligible: true }];
 const stubs = {
@@ -17,13 +18,17 @@ const stubs = {
 	UiIconBox: { template: '<i />' },
 };
 
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
 describe('DeliverabilityLoopbackCard', () => {
 	it('explains why proof is locked before required checks pass', () => {
 		const wrapper = mount(DeliverabilityLoopbackCard, {
 			props: {
 				domains: [{ ...domains[0]!, eligible: false, blockedReason: 'Verify SPF and DKIM first.' }],
 			},
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		expect(wrapper.text()).toContain('Finish required checks first');
 		expect(wrapper.text()).toContain('Verify SPF and DKIM first.');
@@ -42,7 +47,7 @@ describe('DeliverabilityLoopbackCard', () => {
 					},
 				],
 			},
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		expect(wrapper.text()).toContain(label);
 		expect(wrapper.text()).toContain('Running proof…');
@@ -64,7 +69,7 @@ describe('DeliverabilityLoopbackCard', () => {
 					},
 				],
 			},
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		expect(wrapper.text()).toContain('Probe timed out');
 		expect(wrapper.text()).toContain('No inbound probe arrived before the deadline.');
@@ -74,7 +79,7 @@ describe('DeliverabilityLoopbackCard', () => {
 	it('emits the selected domain for an eligible proof', async () => {
 		const wrapper = mount(DeliverabilityLoopbackCard, {
 			props: { domains },
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		expect(wrapper.text()).not.toContain('Finish required checks first');
 		const button = wrapper
@@ -107,7 +112,7 @@ describe('DeliverabilityLoopbackCard', () => {
 					},
 				],
 			},
-			global: { stubs },
+			global: { plugins: [createTestI18n()], stubs },
 		});
 		expect(wrapper.text()).toContain('Result for a.example');
 		await wrapper.find('select').setValue('domain-b');

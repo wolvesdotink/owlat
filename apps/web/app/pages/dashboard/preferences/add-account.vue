@@ -3,7 +3,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
 
-useHead({ title: 'Add mail account — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.preferences.addAccount.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -85,17 +87,17 @@ const selectedAddress = computed(() =>
 );
 
 const createMailbox = useBackendOperation(api.mail.mailbox.create, {
-	label: 'Create mailbox',
+	label: () => t('dashboard.preferences.addAccount.createMailboxOperation'),
 	inlineTarget: error,
 });
 const createTeamInbox = useBackendOperation(api.mail.mailboxMembers.createShared, {
-	label: 'Create team inbox',
+	label: () => t('dashboard.preferences.addAccount.createTeamInboxOperation'),
 	inlineTarget: error,
 });
 
 async function handleSubmit() {
 	if (!selectedAddress.value) {
-		error.value = 'Please choose an address for the mailbox.';
+		error.value = t('dashboard.preferences.addAccount.errorNoAddress');
 		return;
 	}
 	provisioning.value = true;
@@ -109,7 +111,7 @@ async function handleSubmit() {
 	} else {
 		if (!user.value?.id) {
 			provisioning.value = false;
-			error.value = 'Please make sure you are signed in.';
+			error.value = t('dashboard.preferences.addAccount.errorNotSignedIn');
 			return;
 		}
 		id = await createMailbox.run({
@@ -137,7 +139,9 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
 		<PreferencesBackLink />
 
-		<h1 class="text-2xl font-medium tracking-[-0.02em]">Add mail account</h1>
+		<h1 class="text-2xl font-medium tracking-[-0.02em]">
+			{{ t('dashboard.preferences.addAccount.heading') }}
+		</h1>
 
 		<!-- Step 1: choose address -->
 		<section v-if="step === 1" class="card mt-6 p-6">
@@ -149,7 +153,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 					:class="mode === 'personal' ? 'bg-bg-base shadow-sm font-medium' : 'text-text-secondary'"
 					@click="mode = 'personal'"
 				>
-					Personal mailbox
+					{{ t('dashboard.preferences.addAccount.modePersonal') }}
 				</button>
 				<button
 					type="button"
@@ -157,7 +161,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 					:class="mode === 'team' ? 'bg-bg-base shadow-sm font-medium' : 'text-text-secondary'"
 					@click="mode = 'team'"
 				>
-					Team inbox
+					{{ t('dashboard.preferences.addAccount.modeTeam') }}
 				</button>
 			</div>
 
@@ -175,7 +179,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 					"
 					@click="teamTransport = 'hosted'"
 				>
-					Hosted address
+					{{ t('dashboard.preferences.addAccount.transportHosted') }}
 				</button>
 				<button
 					type="button"
@@ -187,28 +191,38 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 					"
 					@click="teamTransport = 'external'"
 				>
-					Connect existing mailbox
+					{{ t('dashboard.preferences.addAccount.transportExternal') }}
 				</button>
 			</div>
 
 			<h2 class="font-semibold mb-1">
 				{{
 					isExternalTeam
-						? 'Connect a shared mailbox'
+						? t('dashboard.preferences.addAccount.externalTeamTitle')
 						: isTeam
-							? 'Create a team inbox'
-							: 'Choose your email address'
+							? t('dashboard.preferences.addAccount.teamTitle')
+							: t('dashboard.preferences.addAccount.personalTitle')
 				}}
 			</h2>
-			<p v-if="isExternalTeam" class="text-sm text-text-secondary mb-4">
-				Connect an existing mailbox (like <code>support@yourcompany.com</code>) as a shared inbox
-				your teammates read and send from together. You'll be its owner, and your team reads it
-				through the same connection.
-			</p>
-			<p v-else-if="isTeam" class="text-sm text-text-secondary mb-4">
-				A shared address your teammates can read and send from together — like
-				<code>support@</code> or <code>sales@</code>. You'll be its owner.
-			</p>
+			<I18nT
+				v-if="isExternalTeam"
+				keypath="dashboard.preferences.addAccount.externalTeamDescription"
+				tag="p"
+				scope="global"
+				class="text-sm text-text-secondary mb-4"
+			>
+				<template #example><code>support@yourcompany.com</code></template>
+			</I18nT>
+			<I18nT
+				v-else-if="isTeam"
+				keypath="dashboard.preferences.addAccount.teamDescription"
+				tag="p"
+				scope="global"
+				class="text-sm text-text-secondary mb-4"
+			>
+				<template #support><code>support@</code></template>
+				<template #sales><code>sales@</code></template>
+			</I18nT>
 
 			<!-- External team inbox: pick the roster, then connect the IMAP account.
 			     The connect form provisions the shared external mailbox and reports
@@ -222,13 +236,13 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 				/>
 				<div>
 					<label for="ext-team-displayname" class="text-sm font-medium block mb-1">
-						Display name (optional)
+						{{ t('dashboard.preferences.addAccount.displayNameLabel') }}
 					</label>
 					<input
 						id="ext-team-displayname"
 						v-model="displayName"
 						type="text"
-						placeholder="Support"
+						:placeholder="t('dashboard.preferences.addAccount.displayNamePlaceholderTeam')"
 						class="input w-full"
 					/>
 				</div>
@@ -247,55 +261,73 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 				<template #loading>
 					<div class="flex items-center gap-2 text-text-secondary text-sm py-4">
 						<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-						Checking your verified domains…
+						{{ t('dashboard.preferences.addAccount.checkingDomains') }}
 					</div>
 				</template>
 				<div v-if="verifiedDomains.length === 0" class="text-text-secondary text-sm">
-					You need at least one verified domain before creating a hosted mailbox.
+					{{ t('dashboard.preferences.addAccount.needVerifiedDomain') }}
 					<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">
-						Verify a domain first
+						{{ t('dashboard.preferences.addAccount.verifyDomainFirst') }}
 					</NuxtLink>
 					<div v-if="isEnabled('mail.external')" class="mt-4 pt-4 border-t border-border-subtle">
-						<p class="mb-2">No domain to verify? Connect your existing email account instead.</p>
+						<p class="mb-2">{{ t('dashboard.preferences.addAccount.noDomainHint') }}</p>
 						<UiButton variant="secondary" size="sm" to="/dashboard/postbox/migrate">
 							<Icon name="lucide:mail-plus" class="w-4 h-4 mr-1.5" />
-							Connect external mailbox
+							{{ t('dashboard.preferences.addAccount.connectExternalMailbox') }}
 						</UiButton>
 					</div>
 				</div>
 				<div v-else class="space-y-4">
 					<div>
-						<label class="text-sm font-medium block mb-1">Address</label>
+						<label class="text-sm font-medium block mb-1">{{
+							t('dashboard.preferences.addAccount.addressLabel')
+						}}</label>
 						<div class="flex items-center gap-2">
 							<input
 								v-model="localPart"
 								type="text"
-								:placeholder="isTeam ? 'support' : 'marcel'"
+								:placeholder="
+									isTeam
+										? t('dashboard.preferences.addAccount.addressPlaceholderTeam')
+										: t('dashboard.preferences.addAccount.addressPlaceholderPersonal')
+								"
 								class="input flex-1"
 								pattern="[a-zA-Z0-9.\-_]+"
 							/>
 							<span class="text-text-tertiary">@</span>
 							<select v-model="selectedDomain" class="input">
-								<option value="">Select domain</option>
+								<option value="">{{ t('dashboard.preferences.addAccount.selectDomain') }}</option>
 								<option v-for="d in verifiedDomains" :key="d._id" :value="d.domain">
 									{{ d.domain }}
 								</option>
 							</select>
 						</div>
-						<p v-if="selectedAddress" class="text-xs text-text-tertiary mt-1">
-							Will be created as: <code>{{ selectedAddress }}</code>
-						</p>
+						<I18nT
+							v-if="selectedAddress"
+							keypath="dashboard.preferences.addAccount.willBeCreatedAs"
+							tag="p"
+							scope="global"
+							class="text-xs text-text-tertiary mt-1"
+						>
+							<template #address
+								><code>{{ selectedAddress }}</code></template
+							>
+						</I18nT>
 					</div>
 
 					<div>
 						<label for="displayname" class="text-sm font-medium block mb-1">
-							Display name (optional)
+							{{ t('dashboard.preferences.addAccount.displayNameLabel') }}
 						</label>
 						<input
 							id="displayname"
 							v-model="displayName"
 							type="text"
-							:placeholder="isTeam ? 'Support' : 'Marcel Pfeifer'"
+							:placeholder="
+								isTeam
+									? t('dashboard.preferences.addAccount.displayNamePlaceholderTeam')
+									: t('dashboard.preferences.addAccount.displayNamePlaceholderPersonal')
+							"
 							class="input w-full"
 						/>
 					</div>
@@ -317,7 +349,13 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 						@click="handleSubmit"
 					>
 						<Icon v-if="provisioning" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin" />
-						{{ provisioning ? 'Creating…' : isTeam ? 'Create team inbox' : 'Create mailbox' }}
+						{{
+							provisioning
+								? t('dashboard.preferences.addAccount.creating')
+								: isTeam
+									? t('dashboard.preferences.addAccount.createTeamInbox')
+									: t('dashboard.preferences.addAccount.createMailbox')
+						}}
 					</UiButton>
 				</div>
 			</UiQueryBoundary>
@@ -331,21 +369,23 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 				<Icon name="lucide:check" class="w-6 h-6 text-success" />
 			</div>
 			<h2 class="font-semibold mt-4">
-				{{ isExternalTeam ? 'Your team inbox is connected' : `${selectedAddress} is ready` }}
+				{{
+					isExternalTeam
+						? t('dashboard.preferences.addAccount.successTeamTitle')
+						: t('dashboard.preferences.addAccount.successTitle', { address: selectedAddress })
+				}}
 			</h2>
 			<p class="text-text-secondary mt-2">
 				{{
 					isTeam
-						? 'Your team inbox is ready. Members can open it from their Postbox.'
-						: 'Your mailbox is connected.'
+						? t('dashboard.preferences.addAccount.successTeamBody')
+						: t('dashboard.preferences.addAccount.successBody')
 				}}
 				<template v-if="isExternalTeam">
-					New mail sent to this address will start appearing here shortly. Mail already in the
-					account isn't imported — only messages that arrive from now on.
+					{{ t('dashboard.preferences.addAccount.successExternalNote') }}
 				</template>
 				<template v-else>
-					Make sure your domain sends incoming mail to this Owlat instance so messages start
-					flowing.
+					{{ t('dashboard.preferences.addAccount.successHostedNote') }}
 				</template>
 			</p>
 			<div class="mt-6 flex items-center justify-center gap-3">
@@ -353,14 +393,18 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 					v-if="isTeam && createdMailboxId"
 					:to="`/dashboard/preferences/members/${createdMailboxId}`"
 				>
-					Manage members
+					{{ t('dashboard.preferences.addAccount.manageMembers') }}
 				</UiButton>
-				<UiButton v-else to="/dashboard/postbox/inbox"> Open inbox </UiButton>
+				<UiButton v-else to="/dashboard/postbox/inbox">{{
+					t('dashboard.preferences.addAccount.openInbox')
+				}}</UiButton>
 				<!-- Stays a button, not the shared PreferencesBackLink: this is the
 				     secondary half of a two-button row, and a text link beside a
 				     primary button reads as a footnote rather than the other choice.
 				     Only the stale "settings" wording is corrected. -->
-				<UiButton variant="ghost" to="/dashboard/preferences"> Back to Preferences </UiButton>
+				<UiButton variant="ghost" to="/dashboard/preferences">
+					{{ t('dashboard.preferences.addAccount.backToPreferences') }}
+				</UiButton>
 			</div>
 		</section>
 	</div>

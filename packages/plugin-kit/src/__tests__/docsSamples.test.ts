@@ -1,6 +1,6 @@
 /**
  * Executable source for the contribution samples in the docs-site plugin
- * chapter (`apps/docs/content/3.developer/4*.md`).
+ * chapter (`apps/docs/content/en/3.developer/4*.md`).
  *
  * Documentation drifts silently: a sample that is only prose rots the moment a
  * contract changes. Each sample below lives inside a `#region <name>` marker,

@@ -13,6 +13,8 @@ interface Props {
 
 const props = defineProps<Props>();
 
+const { t } = useI18n();
+
 // Create a lookup map for quick access to link stats by URL
 const linkStatsMap = computed(() => {
 	const map: Record<string, LinkStat> = {};
@@ -117,38 +119,46 @@ const previewSrcdoc = computed(() => {
 		<div class="flex items-center gap-4 text-sm text-text-secondary">
 			<div class="flex items-center gap-2">
 				<Icon name="lucide:mouse-pointer-click" class="w-4 h-4" />
-				<span>Click Heatmap</span>
+				<span>{{ t('components.dashboard.clickHeatmap.legendTitle') }}</span>
 			</div>
 			<div class="flex items-center gap-2">
-				<span class="text-xs">Low</span>
+				<span class="text-xs">{{ t('components.dashboard.clickHeatmap.low') }}</span>
 				<div class="flex h-3 rounded overflow-hidden">
 					<div class="w-6 bg-warning/50" />
 					<div class="w-6 bg-chart-cat-1/60" />
 					<div class="w-6 bg-error/70" />
 				</div>
-				<span class="text-xs">High</span>
+				<span class="text-xs">{{ t('components.dashboard.clickHeatmap.high') }}</span>
 			</div>
 		</div>
 
-		<!-- Email Preview with Heatmap -->
-		<div class="border border-border-subtle rounded-xl overflow-hidden bg-white">
-			<!-- Email content container (sandboxed: no scripts, no app origin) -->
+		<!-- Email Preview with Heatmap.
+		     palette-ok: the paper stays literally white in both app themes — campaign
+		     HTML carries its own (light) colors and the srcdoc body is painted #fff,
+		     so a theme token here would only show as a mismatched flash behind the
+		     frame. -->
+		<!-- Campaign HTML is laid out for ~600px, so on a narrow screen the frame
+		     keeps its natural width and the reader pans instead of getting a
+		     squeezed, unreadable render. -->
+		<div class="border border-border-subtle rounded-xl overflow-x-auto bg-white">
+			<!-- Email content container (sandboxed: no scripts, no app origin).
+			     palette-ok: same white paper as the frame above. -->
 			<iframe
 				:srcdoc="previewSrcdoc"
 				sandbox=""
-				class="w-full h-[600px] border-0 bg-white"
-				title="Campaign content with click heatmap"
+				class="w-full min-w-[640px] h-[600px] border-0 bg-white"
+				:title="t('components.dashboard.clickHeatmap.frameTitle')"
 			/>
 		</div>
 
 		<!-- Click Stats Table -->
 		<div v-if="processedContent.links.length > 0" class="card overflow-hidden">
-			<div class="px-6 py-4 border-b border-border-subtle">
+			<div class="px-4 sm:px-6 py-4 border-b border-border-subtle">
 				<div class="flex items-center gap-3">
 					<UiIconBox icon="lucide:mouse-pointer-click" size="sm" variant="warning" rounded="lg" />
 					<div>
-						<h3 class="text-lg font-medium text-text-primary">Link Click Details</h3>
-						<p class="text-sm text-text-secondary">Click counts per link in your email</p>
+						<h3 class="text-lg font-medium text-text-primary">{{ t('components.dashboard.clickHeatmap.detailsTitle') }}</h3>
+						<p class="text-sm text-text-secondary">{{ t('components.dashboard.clickHeatmap.detailsSubtitle') }}</p>
 					</div>
 				</div>
 			</div>
@@ -157,9 +167,9 @@ const previewSrcdoc = computed(() => {
 				<div
 					v-for="(link, index) in processedContent.links"
 					:key="index"
-					class="px-6 py-4 hover:bg-bg-surface transition-colors"
+					class="px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors"
 				>
-					<div class="flex items-start justify-between gap-4">
+					<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1">
 								<Icon name="lucide:external-link" class="w-4 h-4 text-text-tertiary shrink-0" />
@@ -177,13 +187,13 @@ const previewSrcdoc = computed(() => {
 							</a>
 						</div>
 
-						<div class="flex items-center gap-6 shrink-0">
+						<div class="flex items-center gap-4 sm:gap-6 shrink-0">
 							<!-- Click Count -->
 							<div class="text-right">
 								<div class="text-lg font-semibold text-text-primary">
 									{{ link.stats?.clicks || 0 }}
 								</div>
-								<div class="text-xs text-text-tertiary">clicks</div>
+								<div class="text-xs text-text-tertiary">{{ t('components.dashboard.clickHeatmap.clicks') }}</div>
 							</div>
 
 							<!-- Unique Clickers -->
@@ -191,7 +201,7 @@ const previewSrcdoc = computed(() => {
 								<div class="text-lg font-semibold text-warning">
 									{{ link.stats?.uniqueClickers || 0 }}
 								</div>
-								<div class="text-xs text-text-tertiary">unique</div>
+								<div class="text-xs text-text-tertiary">{{ t('components.dashboard.clickHeatmap.unique') }}</div>
 							</div>
 
 							<!-- Click Rate -->
@@ -199,7 +209,7 @@ const previewSrcdoc = computed(() => {
 								<div class="text-lg font-semibold text-brand">
 									{{ getClickRate(link.stats?.uniqueClickers || 0).toFixed(1) }}%
 								</div>
-								<div class="text-xs text-text-tertiary">rate</div>
+								<div class="text-xs text-text-tertiary">{{ t('components.dashboard.clickHeatmap.rate') }}</div>
 							</div>
 
 							<!-- Heat Indicator -->
@@ -214,7 +224,7 @@ const previewSrcdoc = computed(() => {
 				<!-- Empty state for no links -->
 				<div v-if="processedContent.links.length === 0" class="px-6 py-12 text-center">
 					<Icon name="lucide:info" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-					<p class="text-text-secondary">No trackable links found in this email</p>
+					<p class="text-text-secondary">{{ t('components.dashboard.clickHeatmap.noLinks') }}</p>
 				</div>
 			</div>
 		</div>
@@ -222,9 +232,9 @@ const previewSrcdoc = computed(() => {
 		<!-- No Clicks State -->
 		<div v-else-if="linkStats.length === 0" class="card p-8 text-center">
 			<Icon name="lucide:mouse-pointer-click" class="w-12 h-12 text-text-tertiary mx-auto mb-3" />
-			<p class="text-text-secondary font-medium">No link clicks recorded</p>
+			<p class="text-text-secondary font-medium">{{ t('components.dashboard.clickHeatmap.noClicks') }}</p>
 			<p class="text-sm text-text-tertiary mt-1">
-				Link clicks will appear here as recipients interact with your email
+				{{ t('components.dashboard.clickHeatmap.noClicksHint') }}
 			</p>
 		</div>
 	</div>

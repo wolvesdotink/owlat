@@ -26,6 +26,8 @@ const emit = defineEmits<{
 	(e: 'cancel', id: string): void;
 	(e: 'retry', id: string): void;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -52,7 +54,9 @@ const emit = defineEmits<{
 				<button
 					type="button"
 					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
-					:aria-label="`Remove ${att.filename}`"
+					:aria-label="
+						t('components.postbox.postboxComposerAttachments.remove', { filename: att.filename })
+					"
 					@click="emit('remove', att.storageId)"
 				>
 					<Icon name="lucide:x" class="w-3 h-3" />
@@ -79,16 +83,26 @@ const emit = defineEmits<{
 					:class="up.status === 'failed' ? 'text-error' : 'text-text-tertiary'"
 				/>
 				<span class="truncate max-w-[140px]">{{ up.filename }}</span>
-				<span v-if="up.status === 'failed'" class="text-error">Failed</span>
+				<span v-if="up.status === 'failed'" class="text-error">{{
+					t('components.postbox.postboxComposerAttachments.failed')
+				}}</span>
 				<span v-else class="text-text-tertiary tabular-nums">
-					{{ up.indeterminate ? '…' : Math.round(up.progress * 100) + '%' }}
+					{{
+						up.indeterminate
+							? '…'
+							: t('components.postbox.postboxComposerAttachments.percent', {
+									value: Math.round(up.progress * 100),
+								})
+					}}
 				</span>
 				<button
 					v-if="up.status === 'failed'"
 					type="button"
 					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
-					:aria-label="`Retry ${up.filename}`"
-					title="Retry upload"
+					:aria-label="
+						t('components.postbox.postboxComposerAttachments.retry', { filename: up.filename })
+					"
+					:title="t('components.postbox.postboxComposerAttachments.retryTitle')"
 					@click="emit('retry', up.id)"
 				>
 					<Icon name="lucide:rotate-cw" class="w-3 h-3" />
@@ -96,7 +110,15 @@ const emit = defineEmits<{
 				<button
 					type="button"
 					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
-					:aria-label="up.status === 'failed' ? `Dismiss ${up.filename}` : `Cancel ${up.filename}`"
+					:aria-label="
+						up.status === 'failed'
+							? t('components.postbox.postboxComposerAttachments.dismiss', {
+									filename: up.filename,
+								})
+							: t('components.postbox.postboxComposerAttachments.cancel', {
+									filename: up.filename,
+								})
+					"
 					@click="emit('cancel', up.id)"
 				>
 					<Icon name="lucide:x" class="w-3 h-3" />
@@ -133,12 +155,16 @@ const emit = defineEmits<{
 					class="tabular-nums shrink-0"
 					:class="meter.amber ? 'text-warning' : 'text-text-tertiary'"
 				>
-					{{ formatCompactFileSize(meter.totalBytes) }}
-					of {{ formatCompactFileSize(meter.budgetBytes) }}
+					{{
+						t('components.postbox.postboxComposerAttachments.sizeOf', {
+							used: formatCompactFileSize(meter.totalBytes),
+							budget: formatCompactFileSize(meter.budgetBytes),
+						})
+					}}
 				</span>
 			</div>
 			<p v-if="meter.amber" class="text-[11px] text-warning">
-				Large attachments may bounce — consider sharing a link for oversized files.
+				{{ t('components.postbox.postboxComposerAttachments.largeWarning') }}
 			</p>
 		</div>
 	</div>

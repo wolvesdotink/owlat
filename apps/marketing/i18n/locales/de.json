@@ -1,0 +1,372 @@
+{
+	"seo": {
+		"home": {
+			"title": "Owlat — E-Mail-Infrastruktur für Produktteams",
+			"description": "Kampagnen, Automatisierungen, transaktionale Sendungen und Zielgruppenpflege aus einer Plattform. Auf Convex gebaut, mit AWS SES betrieben.",
+			"ogDescription": "Open-Source-E-Mail-Infrastruktur für Produktteams. Kampagnen versenden, Flows automatisieren, Zielgruppen verwalten — alles aus einer Plattform.",
+			"schemaDescription": "E-Mail-Infrastruktur für Produktteams. Kampagnen, Automatisierungen, transaktionale Sendungen und Zielgruppenpflege aus einer Plattform."
+		},
+		"waitlist": {
+			"title": "Warteliste für die Hosted Cloud — Owlat",
+			"description": "Sichern Sie sich Ihren Platz, bevor Owlat Cloud startet. Bis dahin ist Self-Hosting kostenlos und wird voll unterstützt."
+		}
+	},
+	"ogImage": {
+		"tagline": "E-Mail-Infrastruktur für Produktteams",
+		"label": "Open Source"
+	},
+	"language": {
+		"label": "Sprache",
+		"switchTo": "Sprache auf {language} umstellen"
+	},
+	"download": {
+		"label": "Herunterladen",
+		"labelFor": "Für {platform} herunterladen",
+		"app": "App herunterladen",
+		"aria": "Die Owlat-Desktop-App herunterladen (Releases-Seite)",
+		"ariaFor": "Die Owlat-Desktop-App für {platform} herunterladen",
+		"allPlatforms": "Alle Plattformen",
+		"allPlatformsTitle": "Alle Plattformen auf der Releases-Seite"
+	},
+	"nav": {
+		"home": "Owlat Startseite",
+		"features": "Funktionen",
+		"developers": "Entwickler",
+		"pricing": "Preise",
+		"docs": "Docs",
+		"github": "GitHub",
+		"signIn": "Anmelden",
+		"openMenu": "Menü öffnen",
+		"closeMenu": "Menü schließen"
+	},
+	"hero": {
+		"badgeStatus": "Hosted Cloud kommt bald",
+		"badgeCta": "Auf die Warteliste",
+		"titleLead": "Bessere E-Mails versenden.",
+		"titleAccent": "Den ganzen Stack besitzen.",
+		"subtitle": "Owlat ist eine quelloffene, selbst gehostete E-Mail-Plattform. Kampagnen, Automatisierungen, transaktionale Sendungen und Zielgruppenpflege — mit eigenem MTA und integrierten Werkzeugen für die Zustellbarkeit.",
+		"selfHost": "Selbst hosten",
+		"desktopNote": "Desktop-App für macOS, Windows und Linux — in der Alpha, wie der Rest von Owlat.",
+		"standards": "Auf offenen Standards gebaut"
+	},
+	"product": {
+		"eyebrow": "Produkt",
+		"title": "Eine ruhige Oberfläche für{break} {accent} Ihre E-Mails",
+		"titleAccent": "alle",
+		"intro": "Mailclient, Kampagnenberichte und Werkzeuge für die Zustellbarkeit liegen in einem hellen Arbeitsbereich — kein Jonglieren mit Tabs und Tools.",
+		"srDescription": "Produktvorschauen: der Postbox-Mailclient mit Ordnerleiste, Thread-Liste und Lesebereich; ein Kampagnenbericht mit Statistiken zu Sendungen, Öffnungen und Klicks; und das Zustellbarkeits-Dashboard mit SPF-, DKIM- und DMARC-Prüfungen, dem Sendeanteil des eigenen MTA und Ergebnissen der Seed-Platzierung."
+	},
+	"showcase": {
+		"mail": {
+			"search": "Suchen",
+			"compose": "Verfassen",
+			"folders": {
+				"inbox": "Posteingang",
+				"replyQueue": "Antwort-Queue",
+				"drafts": "Entwürfe",
+				"sent": "Gesendet",
+				"archive": "Archiv",
+				"spam": "Spam",
+				"trash": "Papierkorb"
+			},
+			"listTitle": "Posteingang",
+			"unread": "{count} ungelesen",
+			"threads": {
+				"ben": {
+					"sender": "Ben Ortiz",
+					"subject": "Rechnung #2041 zeigt unsere alte Rechnungsadresse",
+					"snippet": "Wir sind letzten Monat umgezogen, und Rechnung #2041 zeigt…",
+					"time": "45 Min."
+				},
+				"priya": {
+					"sender": "Priya Sharma",
+					"subject": "Link zum Zurücksetzen des Passworts abgelaufen",
+					"snippet": "Ich habe ein neues Passwort angefordert, aber der Link war…",
+					"time": "1 Std."
+				},
+				"mia": {
+					"sender": "Mia Nguyen",
+					"subject": "Re: Können wir den Onboarding-Termin verschieben?",
+					"snippet": "Kurze Rückfrage: Freitagvormittag geht auch, falls Donnerstag…",
+					"time": "2 Std."
+				},
+				"ada": {
+					"sender": "Ada Lovelace",
+					"subject": "Willkommen an Bord!",
+					"snippet": "Danke für die reibungslose Einrichtung — alles läuft wie…",
+					"time": "5 Std."
+				}
+			},
+			"reader": {
+				"initials": "MN",
+				"meta": "mia{'@'}northwind.example · vor 2 Std.",
+				"body1": "Kurze Rückfrage: Freitagvormittag geht auch, falls Donnerstag zu knapp ist.",
+				"body2": "Ganz wie es Ihnen am besten passt.",
+				"signature": "Mia",
+				"reply": "Antworten",
+				"forward": "Weiterleiten"
+			}
+		},
+		"campaigns": {
+			"name": "Summer Sale 2026",
+			"status": "Gesendet",
+			"export": "Exportieren",
+			"subject": "Summer Sale — 20 % Rabatt, nur diese Woche",
+			"stats": {
+				"sentLabel": "Gesendet",
+				"sentValue": "2.412",
+				"openLabel": "Öffnungsrate",
+				"openValue": "38,7 %",
+				"clickLabel": "Klickrate",
+				"clickValue": "6,1 %",
+				"bouncedLabel": "Bounces",
+				"bouncedValue": "0,4 %"
+			},
+			"chartTitle": "Öffnungen",
+			"chartRange": "Letzte 12 Tage",
+			"recentTitle": "Letzte Kampagnen",
+			"rows": {
+				"summer": {
+					"name": "Summer Sale 2026",
+					"meta": "Gesendet · vor 6 Tagen",
+					"status": "Gesendet"
+				},
+				"june": {
+					"name": "Juni-Neuigkeiten",
+					"meta": "Entwurf · heute aktualisiert",
+					"status": "Entwurf"
+				}
+			}
+		},
+		"deliverability": {
+			"title": "Zustellbarkeit",
+			"domain": "acme.io",
+			"grade": "A",
+			"healthTitle": "Gesund",
+			"healthDetail": "Alle Prüfungen bestanden · Reputation wächst",
+			"authTitle": "Authentifizierung",
+			"checks": {
+				"spf": "Ausgerichtet",
+				"dkim": "2048-Bit-Schlüssel",
+				"dmarc": "p=quarantine"
+			},
+			"rampTitle": "Sendeanteil des eigenen MTA",
+			"rampValue": "62 %",
+			"rampNote": "Hochlauf · bei Beschwerdespitzen gedrosselt",
+			"placementTitle": "Seed-Platzierung",
+			"placementRun": "Letzter Lauf · heute",
+			"placementValue": "94 % Posteingang"
+		}
+	},
+	"systemMap": {
+		"eyebrow": "System",
+		"title": "Wie E-Mail {accent}",
+		"titleAccent": "fließt",
+		"intro": "Von der Warteschlange in den Posteingang — und zurück. Zustellsignale fließen in den Ramp-Controller, damit Ihre Versandreputation wächst, statt geraten zu werden.",
+		"srDescription": "Diagramm des Mailflusses von Owlat: Kampagnen, Automatisierungen und API-Sendungen reihen sich am integrierten Owlat-MTA ein; die Nachrichten passieren ein Authentifizierungs-Gate mit DKIM, SPF und DMARC und erreichen dann die Posteingänge der Empfänger. Bounce-, Interaktions- und Platzierungssignale fließen zurück in einen Ramp-Controller, der Sendeanteil und Tempo des MTA anpasst — eine fortlaufende Rückkopplungsschleife für die Zustellbarkeit.",
+		"stepsLabel": "Schritte im Mailfluss",
+		"nodes": {
+			"campaigns": { "label": "Kampagnen", "sub": "Geplante Sendungen" },
+			"automations": { "label": "Automatisierungen", "sub": "Trigger-Flows" },
+			"api": { "label": "API", "sub": "Transaktional" },
+			"mta": { "label": "Owlat MTA", "sub": "SMTP-Engine" },
+			"auth": { "label": "Authentifizierung", "sub": "DKIM · SPF · DMARC" },
+			"inbox": { "label": "Posteingang", "sub": "Empfänger" },
+			"signals": { "label": "Signale", "sub": "Bounce · Interaktion · Platzierung" },
+			"ramp": { "label": "Ramp-Controller", "sub": "Reputation & Tempo" }
+		},
+		"beats": {
+			"send": {
+				"label": "Senden",
+				"caption": "Kampagnen, Automatisierungen und API-Sendungen reihen sich am MTA ein"
+			},
+			"authenticate": {
+				"label": "Authentifizieren",
+				"caption": "Jede Nachricht wird signiert und ausgerichtet: DKIM, SPF, DMARC"
+			},
+			"deliver": {
+				"label": "Zustellen",
+				"caption": "Der integrierte MTA übergibt per SMTP an die Posteingänge der Empfänger"
+			},
+			"measure": {
+				"label": "Messen",
+				"caption": "Bounces, Interaktionen und Platzierung fließen als Signale zurück"
+			},
+			"adapt": {
+				"label": "Anpassen",
+				"caption": "Der Ramp-Controller justiert Sendeanteil und Tempo"
+			}
+		}
+	},
+	"features": {
+		"eyebrow": "Plattform",
+		"title": "Alles, was Sie brauchen,{break} um {accent} auszuliefern",
+		"titleAccent": "E-Mails",
+		"intro": "Vom Builder bis in den Posteingang — jedes Werkzeug in einer Plattform.",
+		"editor": {
+			"title": "Blockbasierter E-Mail-Editor",
+			"desc": "17 Blocktypen per Drag-and-drop, Text direkt im Block bearbeitbar. Bauen Sie mit Text, Bildern, Buttons, Spalten, Tabellen, Karussells und mehr. Speichern Sie Blöcke in Ihrer Bibliothek, pflegen Sie Übersetzungen je Sprache und sehen Sie die Vorschau für jedes Gerät in Echtzeit."
+		},
+		"audience": {
+			"title": "Zielgruppen-Engine",
+			"desc": "Speichern Sie Kontakte mit eigenen Eigenschaften, ordnen Sie sie Themen mit Double-Opt-in zu, bauen Sie dynamische Segmente per Filter, importieren Sie per CSV und gewinnen Sie Leads über einbettbare Formulare."
+		},
+		"campaigns": {
+			"title": "Kampagnen + A/B-Tests",
+			"desc": "Planen Sie Sendungen für den besten Zeitpunkt, testen Sie Betreffzeilen und Inhaltsvarianten nebeneinander und verfolgen Sie Öffnungen, Klicks und Interaktionen, sobald die Ergebnisse eintreffen."
+		},
+		"automations": {
+			"title": "Automatisierungen",
+			"desc": "Bauen Sie triggerbasierte Flows für Onboarding, Reaktivierung und Lifecycle-Nachrichten. Mit Wartezeiten, Bedingungen und Verzweigungen — ganz ohne Code."
+		},
+		"transactional": {
+			"title": "Transaktionaler Versand",
+			"desc": "Versenden Sie Passwort-Resets, Bestellbestätigungen und Belege per API. Referenzieren Sie Templates per Slug oder ID, füllen Sie dynamische Datenvariablen und fallen Sie automatisch auf die Standardsprache zurück."
+		},
+		"deliverability": {
+			"title": "Zustellbarkeit",
+			"desc": "Verifizieren Sie Ihre Absenderdomain mit geführter DNS-Einrichtung für SPF, DKIM und DMARC. Verwalten Sie Blocklisten, senden Sie automatisch One-Click-Unsubscribe-Header mit und streamen Sie Zustellereignisse per Webhook — für volle Transparenz."
+		}
+	},
+	"developers": {
+		"eyebrow": "Entwickler",
+		"title": "Mit dem SDK bauen{break} oder im {accent} bleiben",
+		"titleAccent": "Dashboard",
+		"intro": "Versenden Sie transaktionale E-Mails, verwalten Sie Kontakte, lösen Sie Automatisierungen aus und verfolgen Sie die Zustellung — mit einem einzigen API-Aufruf. Nutzen Sie das TypeScript-SDK für typsichere Integrationen oder sprechen Sie die REST-API direkt aus jeder Sprache an.",
+		"sdkReference": "SDK-Referenz",
+		"apiDocs": "API-Doku",
+		"tabSdk": "TypeScript SDK",
+		"tabCurl": "cURL",
+		"copy": "Kopieren",
+		"copied": "Kopiert"
+	},
+	"openSource": {
+		"eyebrow": "Open Source",
+		"title": "Offen entwickelt,{break} in {accent} Besitz",
+		"titleAccent": "Ihrem",
+		"intro": "Prüfen Sie jede Zeile, hosten Sie zu Ihren Bedingungen und tragen Sie zu der Plattform bei, auf die Sie sich verlassen. Forken, erweitern, migrieren — Ihr E-Mail-Stack gehört immer Ihnen.",
+		"github": {
+			"title": "Auf GitHub ansehen",
+			"desc": "Jede Codezeile ist prüfbar. Melden Sie Issues, reichen Sie Pull Requests ein und gestalten Sie die Roadmap mit."
+		},
+		"selfHosting": {
+			"title": "Anleitung zum Self-Hosting",
+			"desc": "Betreiben Sie Owlat auf eigener Infrastruktur. Ihre Daten bleiben dort, wo Sie es entscheiden — kein Vendor-Lock-in."
+		}
+	},
+	"pricing": {
+		"eyebrow": "Preise",
+		"title": "Für {accent} kostenlos. Ihre Infrastruktur.",
+		"titleAccent": "immer",
+		"intro": "Open Source unter Apache 2.0. Die Hosted Cloud folgt später — hosten Sie heute selbst und behalten Sie Ihre Daten.",
+		"selfHost": {
+			"badge": "Ab heute verfügbar",
+			"name": "Self-Hosting",
+			"tagline": "Auf Ihrem eigenen VPS. Keine Limits. Keine Rechnung.",
+			"price": "Kostenlos",
+			"period": "für immer",
+			"features": {
+				"allFeatures": "Alle Funktionen — keine gesperrten Tarife",
+				"sends": "Unbegrenzt viele Sendungen",
+				"members": "Unbegrenzt viele Teammitglieder",
+				"contacts": "Unbegrenzt viele Kontakte",
+				"updates": "Updates in der App (ein Klick)",
+				"license": "Lizenziert unter Apache 2.0"
+			},
+			"cta": "Jetzt selbst hosten"
+		},
+		"hosted": {
+			"badge": "Kommt bald",
+			"name": "Hosted Cloud",
+			"tagline": "Wir betreiben es für Sie. Start im 3. Quartal.",
+			"price": "€—",
+			"period": "/Mon.",
+			"features": {
+				"managed": "Verwaltete Infrastruktur",
+				"ips": "Dedizierte IPs & Warmup",
+				"backups": "Automatische Updates & Backups"
+			},
+			"cta": "Auf die Warteliste"
+		},
+		"resources": {
+			"title": "Systemanforderungen",
+			"subtitle": "Was Ihr VPS braucht, um Owlat zu betreiben.",
+			"minimum": "Minimum",
+			"recommended": "Empfohlen",
+			"required": "Erforderlich",
+			"ram": "RAM",
+			"ramMin": "4 GB",
+			"ramRecommended": "8 GB",
+			"disk": "Speicher",
+			"diskMin": "20 GB",
+			"diskRecommended": "40 GB",
+			"cpu": "CPU",
+			"cpuMin": "2 vCPU",
+			"cpuRecommended": "4 vCPU",
+			"domain": "Domain + DNS"
+		}
+	},
+	"cta": {
+		"title": "Versenden Sie {accent} E-Mails",
+		"titleAccent": "bessere",
+		"intro": "Jede Funktion ist von Anfang an dabei — keine Feature-Schranken, keine Tarif-Upgrades.",
+		"github": "Auf GitHub ansehen",
+		"trust": {
+			"license": "Apache 2.0",
+			"free": "Kostenlos selbst hostbar",
+			"pricing": "Keine Preise pro Kontakt",
+			"install": "In 10 Minuten installiert"
+		}
+	},
+	"footer": {
+		"tagline": "E-Mail-Infrastruktur für Produktteams. Kampagnen, Automatisierungen und transaktionale Sendungen aus einer Plattform.",
+		"product": "Produkt",
+		"developers": "Entwickler",
+		"company": "Unternehmen",
+		"links": {
+			"features": "Funktionen",
+			"pricing": "Preise",
+			"changelog": "Changelog",
+			"documentation": "Dokumentation",
+			"apiReference": "API-Referenz",
+			"sdk": "SDK",
+			"contact": "Kontakt",
+			"builtBy": "Gebaut von Wolves"
+		},
+		"copyright": "© {year} {wolves}. Alle Rechte vorbehalten.",
+		"license": "Open Source · Apache 2.0"
+	},
+	"waitlist": {
+		"eyebrow": "Hosted Cloud · Kommt bald",
+		"title": "Seien Sie dabei, wenn {accent} öffnet.",
+		"titleAccent": "Owlat Cloud",
+		"intro": "Wir feilen noch an der verwalteten Version. Hinterlassen Sie Ihre E-Mail-Adresse, und wir melden uns, sobald es so weit ist. Bis dahin — {link}.",
+		"introLink": "Self-Hosting ist kostenlos und wird voll unterstützt",
+		"emailLabel": "E-Mail",
+		"emailPlaceholder": "sie{'@'}unternehmen.de",
+		"nameLabel": "Name",
+		"companyLabel": "Unternehmen",
+		"volumeLabel": "Erwartetes Volumen",
+		"volume": {
+			"none": "Ungefähres Sendevolumen pro Monat",
+			"under10k": "Unter 10.000 / Monat",
+			"to100k": "10.000 – 100.000 / Monat",
+			"to1m": "100.000 – 1.000.000 / Monat",
+			"over1m": "Über 1.000.000 / Monat"
+		},
+		"submit": "Auf die Warteliste",
+		"submitting": "Wird gesendet…",
+		"disclaimer": "Wir schreiben Ihnen nur, wenn es Neuigkeiten zu Owlat Cloud gibt. Kein Spam.",
+		"errors": {
+			"invalidEmail": "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
+			"requestFailed": "Anmeldung zur Warteliste fehlgeschlagen (HTTP {status})",
+			"generic": "Etwas ist schiefgelaufen."
+		},
+		"success": {
+			"title": "Sie stehen auf der Liste.",
+			"body": "Wir melden uns, sobald Owlat Cloud bereit ist. Bis dahin: {link}.",
+			"bodyLink": "Self-Hosting dauert etwa 10 Minuten",
+			"back": "← Zurück zu owlat.app"
+		}
+	}
+}

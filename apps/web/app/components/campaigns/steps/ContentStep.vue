@@ -35,6 +35,7 @@ const createdTemplate = ref<{
 	name: string;
 	subject: string;
 } | null>(null);
+const { t } = useI18n();
 const { isPending: authPending, isAuthenticated } = useAuth();
 
 const { data: campaignWithRelations } = useConvexQuery(api.campaigns.campaigns.getWithRelations, () => ({
@@ -61,7 +62,9 @@ watch(
 		}
 
 		if (!newTemplateName.value.trim()) {
-			newTemplateName.value = `${campaign.name} Email`;
+			newTemplateName.value = t('components.campaigns.steps.contentStep.templateNameDefault', {
+				name: campaign.name,
+			});
 		}
 
 		if (!campaignSubject.value.trim()) {
@@ -114,10 +117,10 @@ const handleTemplateSelect = (templateId: Id<'emailTemplates'>) => {
 };
 
 const { run: updateContent } = useBackendOperation(api.campaigns.campaigns.updateContent, {
-	label: 'Update campaign content',
+	label: () => t('components.campaigns.steps.contentStep.updateContentOperation'),
 });
 const { run: createTemplate } = useBackendOperation(api.emailTemplates.emails.create, {
-	label: 'Create email template',
+	label: () => t('components.campaigns.steps.contentStep.createTemplateOperation'),
 });
 // Only the loading flag is needed; validation surfaces via `subjectError` /
 // `contentError` and backend errors are surfaced by the operation module.
@@ -128,17 +131,17 @@ const validate = (): boolean => {
 	contentError.value = '';
 
 	if (selectionType.value === 'existing' && !selectedTemplateId.value) {
-		contentError.value = 'Please select a marketing email template';
+		contentError.value = t('components.campaigns.steps.contentStep.errors.selectTemplate');
 		return false;
 	}
 
 	if (selectionType.value === 'new' && !newTemplateName.value.trim()) {
-		contentError.value = 'Please enter a name for the new template';
+		contentError.value = t('components.campaigns.steps.contentStep.errors.templateName');
 		return false;
 	}
 
 	if (!campaignSubject.value.trim()) {
-		subjectError.value = 'Subject line is required';
+		subjectError.value = t('components.campaigns.steps.contentStep.errors.subjectRequired');
 		return false;
 	}
 
@@ -194,16 +197,21 @@ defineExpose({
 <template>
 	<div class="card p-6">
 		<div class="mb-6">
-			<h2 class="text-xl font-semibold text-text-primary">Campaign Email</h2>
+			<h2 class="text-xl font-semibold text-text-primary">
+				{{ t('components.campaigns.steps.contentStep.title') }}
+			</h2>
 			<p class="text-text-secondary mt-1">
-				Select an existing marketing template, or explicitly create a new one for this campaign.
+				{{ t('components.campaigns.steps.contentStep.subtitle') }}
 			</p>
 		</div>
 
 		<form @submit.prevent="handleSubmit">
 			<div class="space-y-6">
 				<div class="space-y-3">
-					<label class="label">Email Template Choice <span class="text-error">*</span></label>
+					<label class="label"
+						>{{ t('components.campaigns.steps.contentStep.choiceLabel') }}
+						<span class="text-error">*</span></label
+					>
 					<label
 						:class="[
 							'flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors',
@@ -220,8 +228,12 @@ defineExpose({
 							class="mt-1 w-4 h-4 text-brand"
 						/>
 						<div>
-							<p class="font-medium text-text-primary">Use Existing Marketing Email</p>
-							<p class="text-sm text-text-secondary">Pick from your saved marketing templates.</p>
+							<p class="font-medium text-text-primary">
+								{{ t('components.campaigns.steps.contentStep.existingTitle') }}
+							</p>
+							<p class="text-sm text-text-secondary">
+								{{ t('components.campaigns.steps.contentStep.existingDescription') }}
+							</p>
 						</div>
 					</label>
 					<label
@@ -240,23 +252,27 @@ defineExpose({
 							class="mt-1 w-4 h-4 text-brand"
 						/>
 						<div>
-							<p class="font-medium text-text-primary">Create New Marketing Email Template</p>
+							<p class="font-medium text-text-primary">
+								{{ t('components.campaigns.steps.contentStep.newTitle') }}
+							</p>
 							<p class="text-sm text-text-secondary">
-								A new template will be created only when you continue.
+								{{ t('components.campaigns.steps.contentStep.newDescription') }}
 							</p>
 						</div>
 					</label>
 				</div>
 
 				<div v-if="selectionType === 'existing'">
-					<label for="templateSearch" class="label text-sm">Existing Templates</label>
+					<label for="templateSearch" class="label text-sm">{{
+						t('components.campaigns.steps.contentStep.existingTemplatesLabel')
+					}}</label>
 					<div class="relative mt-1.5">
 						<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2" />
 						<input
 							id="templateSearch"
 							v-model="templateSearchQuery"
 							type="text"
-							placeholder="Search by name or subject..."
+							:placeholder="t('components.campaigns.steps.contentStep.searchPlaceholder')"
 							class="input pl-10"
 						/>
 					</div>
@@ -275,7 +291,7 @@ defineExpose({
 							<div class="min-w-0">
 								<p class="font-medium text-text-primary truncate">{{ template.name }}</p>
 								<p class="text-sm text-text-secondary truncate">
-									{{ template.subject || 'No subject' }}
+									{{ template.subject || t('components.campaigns.steps.contentStep.noSubject') }}
 								</p>
 							</div>
 							<div
@@ -295,32 +311,36 @@ defineExpose({
 						v-else
 						class="mt-3 p-4 bg-bg-surface border border-border-subtle rounded-lg text-sm text-text-secondary"
 					>
-						No templates match your search.
+						{{ t('components.campaigns.steps.contentStep.noMatches') }}
 					</div>
 				</div>
 
 				<div v-else>
-					<label for="newTemplateName" class="label text-sm">New Template Name</label>
+					<label for="newTemplateName" class="label text-sm">{{
+						t('components.campaigns.steps.contentStep.newTemplateNameLabel')
+					}}</label>
 					<input
 						id="newTemplateName"
 						v-model="newTemplateName"
 						type="text"
-						placeholder="e.g., Summer Launch Email"
+						:placeholder="t('components.campaigns.steps.contentStep.newTemplateNamePlaceholder')"
 						class="input mt-1.5"
 					/>
 					<p class="mt-1.5 text-sm text-text-tertiary">
-						This will create a new draft marketing template and link it to this campaign.
+						{{ t('components.campaigns.steps.contentStep.newTemplateNameHint') }}
 					</p>
 				</div>
 
 				<div v-if="selectedTemplate" class="p-4 bg-brand/5 border border-brand/30 rounded-lg">
-					<p class="text-sm text-text-secondary">Selected template</p>
+					<p class="text-sm text-text-secondary">
+						{{ t('components.campaigns.steps.contentStep.selectedTemplate') }}
+					</p>
 					<div class="mt-1 flex items-center gap-2">
 						<Icon name="lucide:mail" class="w-4 h-4 text-brand" />
 						<p class="font-medium text-text-primary truncate">{{ selectedTemplate.name }}</p>
 					</div>
 					<p class="text-sm text-text-secondary truncate mt-1">
-						{{ selectedTemplate.subject || 'No subject' }}
+						{{ selectedTemplate.subject || t('components.campaigns.steps.contentStep.noSubject') }}
 					</p>
 				</div>
 
@@ -331,13 +351,14 @@ defineExpose({
 				<div>
 					<label for="campaignSubject" class="label flex items-center gap-2">
 						<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-						Email Subject <span class="text-error">*</span>
+						{{ t('components.campaigns.steps.contentStep.subjectLabel') }}
+						<span class="text-error">*</span>
 					</label>
 					<input
 						id="campaignSubject"
 						v-model="campaignSubject"
 						type="text"
-						placeholder="e.g., Your weekly newsletter is here!"
+						:placeholder="t('components.campaigns.steps.contentStep.subjectPlaceholder')"
 						:class="['input mt-1.5', subjectError ? 'input-error' : '']"
 					/>
 					<p v-if="subjectError" class="mt-1.5 text-sm text-error">
@@ -349,10 +370,10 @@ defineExpose({
 			<div class="flex items-center justify-between mt-8 pt-6 border-t border-border-subtle">
 				<UiButton variant="secondary" @click="emit('back')">
 					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4" /></template>
-					Back
+					{{ t('common.back') }}
 				</UiButton>
 				<UiButton type="submit" :loading="isLoading" :disabled="isLoading">
-					{{ isLoading ? 'Saving...' : 'Next' }}
+					{{ isLoading ? t('common.saving') : t('common.next') }}
 					<template v-if="!isLoading" #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4" /></template>
 				</UiButton>
 			</div>

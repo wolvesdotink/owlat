@@ -1,7 +1,7 @@
 import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyboard';
 import { resolveAgentTaskShortcut } from '~/utils/agentTaskShortcuts';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
-import { resolveReviewShortcut } from '~/utils/reviewShortcuts';
+import { resolveReviewSelectShortcut, resolveReviewShortcut } from '~/utils/reviewShortcuts';
 
 /**
  * Keyboard-first navigation for the agent Review Queue, built by REUSING the
@@ -39,6 +39,18 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 	onReject: (row: T) => void;
 	/** 1–9 — pick the matching option chip on the focused card (optional). */
 	onPickOption?: (row: T, index: number) => void;
+	/**
+	 * Multi-select model (piece C2, optional). When provided, the selection
+	 * vocabulary is resolved BEFORE the single-card keys — so Space/`x` toggle
+	 * the focused card (`x` no longer rejects; `#` still does), Shift+J/K select
+	 * the focused + next/previous card while moving focus, and `*` selects all
+	 * visible. Surfaces without a selection model (the focus flow) are untouched.
+	 */
+	selection?: {
+		toggle: (row: T) => void;
+		selectMany: (rows: T[]) => void;
+		selectAllVisible: () => void;
+	};
 }) {
 	const {
 		focusedIndex,
@@ -74,11 +86,51 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 		},
 	});
 
+	// The multi-select layer runs ahead of the reused list keyboard so its keys
+	// never double as triage keys. Returns true when the event was claimed.
+	function handleSelectionKey(event: KeyboardEvent): boolean {
+		const selection = opts.selection;
+		if (!selection) return false;
+		// Never claim a Cmd/Ctrl/Alt chord (browser shortcut) as selection.
+		if (event.metaKey || event.ctrlKey || event.altKey) return false;
+		const action = resolveReviewSelectShortcut(event.key);
+		if (!action) return false;
+
+		const items = opts.items.value;
+		const focused = items[focusedIndex.value];
+		switch (action) {
+			case 'toggleSelect':
+				if (!focused) return false;
+				// Space would otherwise scroll the listbox.
+				event.preventDefault();
+				selection.toggle(focused);
+				return true;
+			case 'extendSelectDown':
+			case 'extendSelectUp': {
+				if (!focused) return false;
+				event.preventDefault();
+				const nextIndex =
+					action === 'extendSelectDown'
+						? Math.min(focusedIndex.value + 1, items.length - 1)
+						: Math.max(focusedIndex.value - 1, 0);
+				const next = items[nextIndex];
+				selection.selectMany(next && next !== focused ? [focused, next] : [focused]);
+				focusedIndex.value = nextIndex;
+				return true;
+			}
+			case 'selectAllVisible':
+				event.preventDefault();
+				selection.selectAllVisible();
+				return true;
+		}
+	}
+
 	// Guard at the call site (the same place Postbox guards its reader handler):
 	// while focus is in the inline compose input/textarea, keystrokes are the
 	// user typing a reply, not triage — let them through untouched.
 	function onKeydown(event: KeyboardEvent) {
 		if (isEditableTarget(event.target)) return;
+		if (handleSelectionKey(event)) return;
 		listKeydown(event);
 	}
 

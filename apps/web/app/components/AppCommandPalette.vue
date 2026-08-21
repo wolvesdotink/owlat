@@ -35,6 +35,7 @@ import {
  * which the layout listens for).
  */
 
+const { t } = useI18n();
 const { verbItems, contextItems, navItems } = useCommandPaletteProviders();
 const registryProviders = useCommandPaletteRegistry();
 const { isEnabled: isFlagEnabled } = useFeatureFlag();
@@ -257,7 +258,7 @@ onBeforeUnmount(() => {
 				ref="dialogRef"
 				role="dialog"
 				aria-modal="true"
-				aria-label="Command palette"
+				:aria-label="t('components.appCommandPalette.dialogLabel')"
 				class="fixed inset-x-4 top-[12%] mx-auto max-w-xl bg-bg-elevated border border-border-default rounded-xl shadow-8 z-50 overflow-hidden"
 			>
 				<!-- Search input -->
@@ -267,21 +268,21 @@ onBeforeUnmount(() => {
 						ref="inputEl"
 						v-model="searchQuery"
 						type="text"
-						placeholder="Search or run a command…"
+						:placeholder="t('components.appCommandPalette.searchPlaceholder')"
 						class="flex-1 bg-transparent text-text-primary placeholder-text-tertiary outline-none text-base"
 						role="combobox"
 						aria-expanded="true"
 						aria-controls="app-cmdk-list"
+						:aria-label="t('components.appCommandPalette.dialogLabel')"
 						:aria-activedescendant="
 							flatItems[activeIndex] ? `app-cmdk-opt-${activeIndex}` : undefined
 						"
-						aria-label="Command palette"
 						@keydown="onInputKeydown"
 					/>
 					<button
 						v-if="searchQuery"
 						class="p-1 text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-						aria-label="Clear"
+						:aria-label="t('components.appCommandPalette.clearQuery')"
 						@click="searchQuery = ''"
 					>
 						<Icon name="lucide:x" class="w-4 h-4" />
@@ -300,7 +301,7 @@ onBeforeUnmount(() => {
 						class="px-4 py-8 text-center text-text-tertiary"
 					>
 						<UiSpinner class="mx-auto" size="sm" tone="brand" />
-						<p class="mt-2 text-sm">Searching…</p>
+						<p class="mt-2 text-sm">{{ t('components.appCommandPalette.searching') }}</p>
 					</div>
 
 					<div v-else-if="!hasAnyResults" class="px-4 py-8 text-center text-text-tertiary">
@@ -308,8 +309,8 @@ onBeforeUnmount(() => {
 						<p class="text-sm">
 							{{
 								searchQuery.trim().length >= SEARCH_MIN_QUERY
-									? `No results for "${searchQuery}"`
-									: 'No matches'
+									? t('components.appCommandPalette.noResults', { query: searchQuery })
+									: t('components.appCommandPalette.noMatches')
 							}}
 						</p>
 					</div>
@@ -318,13 +319,16 @@ onBeforeUnmount(() => {
 						<div
 							class="flex items-center justify-between px-4 py-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wider"
 						>
-							<span>{{ group.heading }}</span>
+							<!-- Provider group headings are message keys (providers are pure
+							     module-scope registries and cannot call `useI18n`); a heading a
+							     provider still ships as literal text passes through unchanged. -->
+							<span>{{ t(group.heading) }}</span>
 							<button
 								v-if="group.key === 'recent'"
 								class="text-xs normal-case tracking-normal text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
 								@click="clearRecent"
 							>
-								Clear
+								{{ t('components.appCommandPalette.clearRecent') }}
 							</button>
 						</div>
 						<button
@@ -367,19 +371,19 @@ onBeforeUnmount(() => {
 						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>↑↓</kbd
 						>
-						Navigate
+						{{ t('components.appCommandPalette.navigate') }}
 					</span>
 					<span class="flex items-center gap-1">
 						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>↵</kbd
 						>
-						Select
+						{{ t('components.appCommandPalette.select') }}
 					</span>
 					<span class="flex items-center gap-1">
 						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>esc</kbd
 						>
-						Close
+						{{ t('common.close') }}
 					</span>
 				</div>
 			</div>

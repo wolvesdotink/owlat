@@ -1,5 +1,9 @@
 export interface LanguageOption {
 	value: string;
+	/**
+	 * MESSAGE KEY for the language's English name — this catalog is module scope,
+	 * so it carries keys, not copy. Every picker resolves it with `t()`.
+	 */
 	label: string;
 	/** Endonym shown next to the English label (same as label for English). */
 	nativeLabel: string;
@@ -11,25 +15,25 @@ export interface LanguageOption {
  * "Francais"); every language picker imports this one.
  */
 export const languageOptions: LanguageOption[] = [
-	{ value: 'en', label: 'English', nativeLabel: 'English' },
-	{ value: 'de', label: 'German', nativeLabel: 'Deutsch' },
-	{ value: 'fr', label: 'French', nativeLabel: 'Français' },
-	{ value: 'es', label: 'Spanish', nativeLabel: 'Español' },
-	{ value: 'it', label: 'Italian', nativeLabel: 'Italiano' },
-	{ value: 'pt', label: 'Portuguese', nativeLabel: 'Português' },
-	{ value: 'nl', label: 'Dutch', nativeLabel: 'Nederlands' },
-	{ value: 'pl', label: 'Polish', nativeLabel: 'Polski' },
-	{ value: 'ru', label: 'Russian', nativeLabel: 'Русский' },
-	{ value: 'ja', label: 'Japanese', nativeLabel: '日本語' },
-	{ value: 'zh', label: 'Chinese', nativeLabel: '中文' },
-	{ value: 'ko', label: 'Korean', nativeLabel: '한국어' },
-	{ value: 'ar', label: 'Arabic', nativeLabel: 'العربية' },
-	{ value: 'hi', label: 'Hindi', nativeLabel: 'हिन्दी' },
-	{ value: 'tr', label: 'Turkish', nativeLabel: 'Türkçe' },
-	{ value: 'sv', label: 'Swedish', nativeLabel: 'Svenska' },
-	{ value: 'da', label: 'Danish', nativeLabel: 'Dansk' },
-	{ value: 'no', label: 'Norwegian', nativeLabel: 'Norsk' },
-	{ value: 'fi', label: 'Finnish', nativeLabel: 'Suomi' },
+	{ value: 'en', label: 'shared.data.languageOptions.languages.en', nativeLabel: 'English' },
+	{ value: 'de', label: 'shared.data.languageOptions.languages.de', nativeLabel: 'Deutsch' },
+	{ value: 'fr', label: 'shared.data.languageOptions.languages.fr', nativeLabel: 'Français' },
+	{ value: 'es', label: 'shared.data.languageOptions.languages.es', nativeLabel: 'Español' },
+	{ value: 'it', label: 'shared.data.languageOptions.languages.it', nativeLabel: 'Italiano' },
+	{ value: 'pt', label: 'shared.data.languageOptions.languages.pt', nativeLabel: 'Português' },
+	{ value: 'nl', label: 'shared.data.languageOptions.languages.nl', nativeLabel: 'Nederlands' },
+	{ value: 'pl', label: 'shared.data.languageOptions.languages.pl', nativeLabel: 'Polski' },
+	{ value: 'ru', label: 'shared.data.languageOptions.languages.ru', nativeLabel: 'Русский' },
+	{ value: 'ja', label: 'shared.data.languageOptions.languages.ja', nativeLabel: '日本語' },
+	{ value: 'zh', label: 'shared.data.languageOptions.languages.zh', nativeLabel: '中文' },
+	{ value: 'ko', label: 'shared.data.languageOptions.languages.ko', nativeLabel: '한국어' },
+	{ value: 'ar', label: 'shared.data.languageOptions.languages.ar', nativeLabel: 'العربية' },
+	{ value: 'hi', label: 'shared.data.languageOptions.languages.hi', nativeLabel: 'हिन्दी' },
+	{ value: 'tr', label: 'shared.data.languageOptions.languages.tr', nativeLabel: 'Türkçe' },
+	{ value: 'sv', label: 'shared.data.languageOptions.languages.sv', nativeLabel: 'Svenska' },
+	{ value: 'da', label: 'shared.data.languageOptions.languages.da', nativeLabel: 'Dansk' },
+	{ value: 'no', label: 'shared.data.languageOptions.languages.no', nativeLabel: 'Norsk' },
+	{ value: 'fi', label: 'shared.data.languageOptions.languages.fi', nativeLabel: 'Suomi' },
 ];
 
 /** "English (English)" reads silly — only parenthesize differing endonyms. */
@@ -39,23 +43,39 @@ export function formatLanguageLabel(opt: Pick<LanguageOption, 'label' | 'nativeL
 
 /** Catalog variant for contact-level pickers where "unset" is a valid choice. */
 export const languageOptionsWithUnset: LanguageOption[] = [
-	{ value: '', label: 'Not set (use email default)', nativeLabel: 'Not set (use email default)' },
+	{
+		value: '',
+		label: 'shared.data.languageOptions.notSetEmailDefault',
+		nativeLabel: 'shared.data.languageOptions.notSetEmailDefault',
+	},
 	...languageOptions,
 ];
 
 /**
- * Language picker options as `{ value, label }` pairs, with the English label
+ * Language picker options as `{ value, label }` pairs, with the localized name
  * parenthesizing a differing endonym (e.g. "German (Deutsch)"). Single source
  * for contact-level language `<select>`s — replaces the hand-maintained copy
  * that had drifted (it once carried its own "German (Deutsch)" list that could
  * fall out of sync with the catalog).
+ *
+ * A FUNCTION, not a frozen array: the labels are words, so they can only be
+ * built where a translator is in hand. Callers pass `t` from `useI18n()`.
  */
-export const languageSelectOptions: { value: string; label: string }[] = languageOptionsWithUnset.map(
-	(opt) => ({ value: opt.value, label: formatLanguageLabel(opt) }),
-);
+export function languageSelectOptions(
+	translate: (key: string) => string
+): { value: string; label: string }[] {
+	return languageOptionsWithUnset.map((opt) => ({
+		value: opt.value,
+		label: formatLanguageLabel({
+			label: translate(opt.label),
+			nativeLabel: translate(opt.nativeLabel),
+		}),
+	}));
+}
 
 export interface TimezoneOption {
 	value: string;
+	/** MESSAGE KEY — module scope, so this catalog carries keys, not copy. */
 	label: string;
 }
 
@@ -64,23 +84,29 @@ export interface TimezoneOption {
  * campaign default"). Previously inlined in `useContactDetail`.
  */
 export const timezoneOptions: TimezoneOption[] = [
-	{ value: '', label: 'Not set (use campaign default)' },
-	{ value: 'America/New_York', label: 'Eastern Time (ET)' },
-	{ value: 'America/Chicago', label: 'Central Time (CT)' },
-	{ value: 'America/Denver', label: 'Mountain Time (MT)' },
-	{ value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
-	{ value: 'America/Anchorage', label: 'Alaska Time (AKT)' },
-	{ value: 'Pacific/Honolulu', label: 'Hawaii Time (HT)' },
-	{ value: 'Europe/London', label: 'London (GMT/BST)' },
-	{ value: 'Europe/Paris', label: 'Central European (CET)' },
-	{ value: 'Europe/Berlin', label: 'Berlin (CET)' },
-	{ value: 'Europe/Amsterdam', label: 'Amsterdam (CET)' },
-	{ value: 'Asia/Tokyo', label: 'Tokyo (JST)' },
-	{ value: 'Asia/Shanghai', label: 'Shanghai (CST)' },
-	{ value: 'Asia/Singapore', label: 'Singapore (SGT)' },
-	{ value: 'Asia/Dubai', label: 'Dubai (GST)' },
-	{ value: 'Asia/Kolkata', label: 'India (IST)' },
-	{ value: 'Australia/Sydney', label: 'Sydney (AEST)' },
-	{ value: 'Australia/Melbourne', label: 'Melbourne (AEST)' },
-	{ value: 'Pacific/Auckland', label: 'New Zealand (NZST)' },
+	{ value: '', label: 'shared.data.languageOptions.notSetCampaignDefault' },
+	{ value: 'America/New_York', label: 'shared.data.languageOptions.timezones.americaNewYork' },
+	{ value: 'America/Chicago', label: 'shared.data.languageOptions.timezones.americaChicago' },
+	{ value: 'America/Denver', label: 'shared.data.languageOptions.timezones.americaDenver' },
+	{
+		value: 'America/Los_Angeles',
+		label: 'shared.data.languageOptions.timezones.americaLosAngeles',
+	},
+	{ value: 'America/Anchorage', label: 'shared.data.languageOptions.timezones.americaAnchorage' },
+	{ value: 'Pacific/Honolulu', label: 'shared.data.languageOptions.timezones.pacificHonolulu' },
+	{ value: 'Europe/London', label: 'shared.data.languageOptions.timezones.europeLondon' },
+	{ value: 'Europe/Paris', label: 'shared.data.languageOptions.timezones.europeParis' },
+	{ value: 'Europe/Berlin', label: 'shared.data.languageOptions.timezones.europeBerlin' },
+	{ value: 'Europe/Amsterdam', label: 'shared.data.languageOptions.timezones.europeAmsterdam' },
+	{ value: 'Asia/Tokyo', label: 'shared.data.languageOptions.timezones.asiaTokyo' },
+	{ value: 'Asia/Shanghai', label: 'shared.data.languageOptions.timezones.asiaShanghai' },
+	{ value: 'Asia/Singapore', label: 'shared.data.languageOptions.timezones.asiaSingapore' },
+	{ value: 'Asia/Dubai', label: 'shared.data.languageOptions.timezones.asiaDubai' },
+	{ value: 'Asia/Kolkata', label: 'shared.data.languageOptions.timezones.asiaKolkata' },
+	{ value: 'Australia/Sydney', label: 'shared.data.languageOptions.timezones.australiaSydney' },
+	{
+		value: 'Australia/Melbourne',
+		label: 'shared.data.languageOptions.timezones.australiaMelbourne',
+	},
+	{ value: 'Pacific/Auckland', label: 'shared.data.languageOptions.timezones.pacificAuckland' },
 ];

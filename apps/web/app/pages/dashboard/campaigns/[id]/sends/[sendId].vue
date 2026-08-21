@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Send Details — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.campaigns.detail.sends.detail.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -26,8 +28,8 @@ const {
 		<UiQueryBoundary
 			:loading="isLoading && !send"
 			:error="error"
-			error-title="Couldn't load send details"
-			loading-label="Loading send details..."
+			:error-title="t('dashboard.campaigns.detail.sends.detail.errorTitle')"
+			:loading-label="t('dashboard.campaigns.detail.sends.detail.loadingLabel')"
 			@retry="refetch"
 		>
 			<!-- Not Found -->
@@ -36,16 +38,18 @@ const {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:mail" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">Send not found</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('dashboard.campaigns.detail.sends.detail.notFoundTitle') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1">
-					This email send may have been deleted or you don't have access to it.
+					{{ t('dashboard.campaigns.detail.sends.detail.notFoundDescription') }}
 				</p>
 				<UiButton
 					variant="secondary"
 					:to="`/dashboard/campaigns/${campaignId}/report`"
 					class="mt-6"
 				>
-					Back to Campaign Report
+					{{ t('dashboard.campaigns.detail.sends.detail.backToReport') }}
 				</UiButton>
 			</div>
 
@@ -58,13 +62,13 @@ const {
 						class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors"
 					>
 						<Icon name="lucide:arrow-left" class="w-4 h-4" />
-						Back to Campaign Report
+						{{ t('dashboard.campaigns.detail.sends.detail.backToReport') }}
 					</NuxtLink>
 
 					<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
 						<div>
 							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-								{{ send.contactFirstName || send.contactEmail?.split('@')[0] || 'Unknown' }}
+								{{ send.contactFirstName || send.contactEmail?.split('@')[0] || t('common.unknown') }}
 								{{ send.contactLastName || '' }}
 							</h1>
 							<p class="mt-1 text-text-secondary">{{ send.contactEmail }}</p>
@@ -85,7 +89,11 @@ const {
 								v-if="send.abVariant"
 								class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-brand/10 text-brand"
 							>
-								Variant {{ send.abVariant }}
+								{{
+									t('dashboard.campaigns.detail.sends.detail.variant', {
+										variant: send.abVariant,
+									})
+								}}
 							</span>
 							<DashboardSendStatusBadge :status="send.status" fallback="queued" />
 						</div>

@@ -1,0 +1,56 @@
+{
+	"ui": {
+		"actions": {
+			"cancel": "Abbrechen",
+			"confirm": "Bestätigen",
+			"retry": "Erneut versuchen",
+			"pleaseWait": "Bitte warten..."
+		},
+		"alert": {
+			"error": "Fehler",
+			"warning": "Warnung",
+			"info": "Hinweis",
+			"success": "Erfolg"
+		},
+		"chart": {
+			"empty": "Noch keine Daten",
+			"barsAriaLabel": "Balkendiagramm",
+			"trendAriaLabel": "Trenddiagramm"
+		},
+		"confirmationDialog": {
+			"title": "Sind Sie sicher?",
+			"description": "Diese Aktion kann nicht rückgängig gemacht werden."
+		},
+		"disclosure": {
+			"label": "Erweitert"
+		},
+		"errorBoundary": {
+			"message": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
+		},
+		"modal": {
+			"close": "Dialog schließen"
+		},
+		"progress": {
+			"loading": "Wird geladen…"
+		},
+		"richText": {
+			"linkPrompt": "Link-URL"
+		},
+		"select": {
+			"placeholder": "Bitte wählen Sie eine Option"
+		},
+		"stepIndicator": {
+			"label": "Fortschritt",
+			"goBackTo": "Zurück zu {step}"
+		},
+		"themeToggle": {
+			"system": "Systemeinstellung",
+			"light": "Heller Modus",
+			"dark": "Dunkler Modus",
+			"ariaLabel": "Design: {mode}. Klicken Sie, um zu wechseln."
+		},
+		"toast": {
+			"dismiss": "Benachrichtigung ausblenden"
+		}
+	}
+}

@@ -25,8 +25,9 @@ const emit = defineEmits<{
 	<UiModal :open="show" title="Save as Reusable Block" @update:open="emit('close')">
 		<div class="space-y-4">
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-2">Block Name</label>
+				<label class="block text-sm font-medium text-text-secondary mb-2" for="save-block-name">Block Name</label>
 				<input
+					id="save-block-name"
 					:value="blockName"
 					type="text"
 					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand focus:ring-1 focus:ring-brand"

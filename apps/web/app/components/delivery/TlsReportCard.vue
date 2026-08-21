@@ -26,6 +26,8 @@ const props = defineProps<{
 	error?: unknown;
 }>();
 
+const { t } = useI18n();
+
 const hasData = computed(() => !!props.summary && props.summary.reportCount > 0);
 const overallTone = computed(() => successRateTone(props.summary?.overallSuccessRate ?? null));
 const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCounts ?? []));
@@ -39,11 +41,13 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 				<UiIconBox icon="lucide:shield-check" size="md" variant="brand" rounded="lg" />
 				<div class="min-w-0">
 					<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary">
-						Inbound TLS reports
+						{{ t('components.delivery.tlsReportCard.eyebrow') }}
 					</p>
-					<h2 class="text-lg font-semibold text-text-primary">How partners reach us over TLS</h2>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('components.delivery.tlsReportCard.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary mt-0.5">
-						Daily reports other mail servers send us about encrypting mail on the way in.
+						{{ t('components.delivery.tlsReportCard.subtitle') }}
 					</p>
 				</div>
 			</div>
@@ -55,7 +59,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 				data-testid="tls-report-loading"
 			>
 				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin" />
-				<span class="text-sm">Loading TLS reports…</span>
+				<span class="text-sm">{{ t('components.delivery.tlsReportCard.loading') }}</span>
 			</div>
 
 			<!-- Error -->
@@ -65,7 +69,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 				data-testid="tls-report-error"
 			>
 				<Icon name="lucide:alert-circle" class="w-4 h-4 text-warning mt-0.5 shrink-0" />
-				<span>Couldn’t load TLS reports just now. Reload to try again.</span>
+				<span>{{ t('components.delivery.tlsReportCard.error') }}</span>
 			</div>
 
 			<!-- Empty -->
@@ -75,10 +79,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 				data-testid="tls-report-empty"
 			>
 				<Icon name="lucide:inbox" class="w-4 h-4 text-text-tertiary mt-0.5 shrink-0" />
-				<span>
-					No TLS reports yet. Once you publish a reporting address, partners send these daily —
-					they’ll show up here.
-				</span>
+				<span>{{ t('components.delivery.tlsReportCard.empty') }}</span>
 			</div>
 
 			<!-- Populated -->
@@ -91,18 +92,27 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 						data-testid="tls-report-overall"
 					>
 						<span class="w-1.5 h-1.5 rounded-full" :class="healthDotClass[overallTone]" />
-						{{ formatSuccessRate(summary.overallSuccessRate) }} encrypted
+						{{
+							t('components.delivery.tlsReportCard.encryptedShare', {
+								share: formatSuccessRate(summary.overallSuccessRate),
+							})
+						}}
 					</span>
 					<span class="text-xs text-text-tertiary">
-						{{ summary.totalSuccessCount + summary.totalFailureCount }} sessions ·
-						{{ summary.reportCount }} reports · last {{ summary.windowDays }} days
+						{{
+							t('components.delivery.tlsReportCard.volumeSummary', {
+								sessions: summary.totalSuccessCount + summary.totalFailureCount,
+								reports: summary.reportCount,
+								days: summary.windowDays,
+							})
+						}}
 					</span>
 				</div>
 
 				<!-- Per-reporting-organization table -->
 				<div>
 					<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-2">
-						By reporting organization
+						{{ t('components.delivery.tlsReportCard.byOrganization') }}
 					</p>
 					<ul class="divide-y divide-border-subtle">
 						<li
@@ -127,7 +137,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 				<!-- Failure-type breakdown (plain language) -->
 				<div v-if="failureRows.length > 0">
 					<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-2">
-						What went wrong
+						{{ t('components.delivery.tlsReportCard.whatWentWrong') }}
 					</p>
 					<ul class="space-y-1.5">
 						<li

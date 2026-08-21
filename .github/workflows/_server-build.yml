@@ -6,6 +6,11 @@ name: _server-build
 # the caller owns that, so the same core serves both the unified `v*` release
 # (release.yml) and the server-only `server-v*` release (server-release.yml).
 #
+# Beyond building, this core GATES the release: verify-anonymous-pull (every
+# GHCR package publicly pullable) and e2e-install (a full compose install from
+# the draft release's own artifacts, fresh + upgraded volumes) must pass before
+# the caller's `publish` job may flip the draft live. See docs/RELEASING.md.
+#
 # Contract: the caller has already created a (draft) Release for `tag`.
 
 on:
@@ -139,6 +144,27 @@ jobs:
             OWLAT_GIT_SHA=${{ needs.resolve.outputs.git_sha }}
             OWLAT_BUILD_DATE=${{ needs.resolve.outputs.build_date }}
 
+      # The release compose pins each image to :<version>@sha256:<digest>.
+      # Matrix jobs cannot share job outputs (last writer wins), so each leg
+      # publishes its digest as a tiny artifact for upload-release-assets to
+      # collect and feed into gen-release-compose.sh.
+      - name: Record image digest for compose pinning
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/image-digest
+          echo "${{ matrix.name }} ${DIGEST}" > "/tmp/image-digest/${{ matrix.name }}.txt"
+          cat "/tmp/image-digest/${{ matrix.name }}.txt"
+
+      - name: Upload image digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-digest-${{ matrix.name }}
+          path: /tmp/image-digest/${{ matrix.name }}.txt
+          if-no-files-found: error
+          retention-days: 1
+
       # S16 / Phase 1.2: Sigstore keyless sign the pushed image digest via
       # GitHub OIDC. Verification (`cosign verify --certificate-identity-regexp`)
       # then proves the image came from this repo's release workflow.
@@ -218,9 +244,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Collect image digests
+        uses: actions/download-artifact@v8
+        with:
+          pattern: image-digest-*
+          path: /tmp/image-digest
+          merge-multiple: true
+
       - name: Generate pinned docker-compose
         run: |
-          bash scripts/gen-release-compose.sh "${{ inputs.version }}"
+          cat /tmp/image-digest/*.txt > image-digests.txt
+          echo "Collected image digests:"
+          cat image-digests.txt
+          bash scripts/gen-release-compose.sh "${{ inputs.version }}" \
+            "docker-compose-${{ inputs.version }}.yml" image-digests.txt
           ls -lh "docker-compose-${{ inputs.version }}.yml"
 
       - name: Verify compose file is parseable
@@ -267,3 +304,249 @@ jobs:
             "docker-compose-${{ inputs.version }}.yml" \
             "docker-compose-${{ inputs.version }}.yml.sha256" \
             --repo "${{ github.repository }}" --clobber
+
+  # ── End-to-end install from the release artifacts ────────────────────────────
+  # The strongest gate this pipeline has: does THIS release actually install?
+  # From a clean runner, with NO repo checkout: download the compose template +
+  # checksum from the draft Release, pull every first-party image anonymously,
+  # bring the stack up with a scripted minimal env, deploy the Convex functions,
+  # and wait for web / MTA(+worker) / Redis / ClamAV health. A failure here
+  # fails the caller's `server` job and blocks the draft → live flip.
+  #
+  # Two volume states, because both have shipped broken before (#551): `fresh`
+  # (first install) and `seeded` (volumes created by the PREVIOUS release, the
+  # upgrade path — Redis appendonlydir/ClamAV DB ownership only breaks there).
+  e2e-install:
+    name: E2E install (${{ matrix.volumes }} volumes)
+    needs: [build-and-push, verify-anonymous-pull, upload-release-assets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        volumes: [fresh, seeded]
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ inputs.version }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      # An install needs a small set of secrets the wizard would normally mint —
+      # generate them the same way (ensureSecrets / scripts/setup.sh formats).
+      # Also drops a helper library the later steps source.
+      - name: Write scripted minimal env
+        run: |
+          set -euo pipefail
+          INSTALL_DIR="${RUNNER_TEMP}/owlat-e2e"
+          echo "INSTALL_DIR=${INSTALL_DIR}" >> "$GITHUB_ENV"
+          mkdir -p "$INSTALL_DIR"
+          cd "$INSTALL_DIR"
+          cat > .env <<EOF
+          OWLAT_VERSION=${VERSION}
+          INSTANCE_SECRET=$(openssl rand -hex 32)
+          MTA_API_KEY=$(openssl rand -hex 32)
+          MTA_WEBHOOK_SECRET=$(openssl rand -hex 32)
+          MTA_SECRET=$(openssl rand -hex 32)
+          BOUNCE_VERP_KEY=$(openssl rand -hex 32)
+          REDIS_PASSWORD=$(openssl rand -hex 16)
+          FBL_DEDUP_PROTOCOL=owned-v2
+          FBL_DEDUP_CUTOVER_ACK=fresh-install
+          EHLO_HOSTNAME=mail.e2e.test
+          RETURN_PATH_DOMAIN=bounces.e2e.test
+          EMAIL_PROVIDER=mta
+          COMPOSE_PROFILES=mta,clamav
+          OWLAT_INSTALL_DIR=${INSTALL_DIR}
+          EOF
+          cat > e2e-lib.sh <<'EOF'
+          # Wait until a compose service's docker healthcheck reports healthy.
+          # $1 is one compose file, or several space-separated ones (each is
+          # passed as its own -f, in order — the seeded leg overlays the
+          # previous release's compose with a healthcheck fix).
+          wait_healthy() {
+            local compose_files="$1" svc="$2" timeout="$3"
+            local start=$SECONDS cid status
+            local -a files compose_args=()
+            read -ra files <<< "$compose_files"
+            for f in "${files[@]}"; do compose_args+=(-f "$f"); done
+            while true; do
+              cid=$(docker compose "${compose_args[@]}" ps -q "$svc" 2>/dev/null | head -1)
+              if [ -n "$cid" ]; then
+                status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo unknown)
+              else
+                status=absent
+              fi
+              if [ "$status" = "healthy" ]; then
+                echo "✓ ${svc} healthy after $((SECONDS-start))s"
+                return 0
+              fi
+              if [ $((SECONDS-start)) -gt "$timeout" ]; then
+                echo "::error::${svc} not healthy after ${timeout}s (last status: ${status})"
+                return 1
+              fi
+              sleep 10
+            done
+          }
+          # Retry an HTTP probe (any curl invocation) until it succeeds.
+          wait_http() {
+            local label="$1" timeout="$2"; shift 2
+            local start=$SECONDS
+            while ! "$@" > /dev/null 2>&1; do
+              if [ $((SECONDS-start)) -gt "$timeout" ]; then
+                echo "::error::${label} not responding after ${timeout}s"
+                return 1
+              fi
+              sleep 5
+            done
+            echo "✓ ${label} responding after $((SECONDS-start))s"
+          }
+          EOF
+
+      # The upgrade path: find the newest published stable release that shipped
+      # a compose asset. Empty output (first release ever) turns the seeded leg
+      # into a no-op rather than a failure.
+      - name: Resolve previous release (seeded leg)
+        id: prev
+        if: matrix.volumes == 'seeded'
+        run: |
+          set -euo pipefail
+          prev_tag=$(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '
+            [.[]
+             | select(.draft == false and .prerelease == false)
+             | select(.tag_name | test("^(server-)?v[0-9]+\\.[0-9]+\\.[0-9]+$"))
+             | select(.tag_name != "'"$TAG"'")
+             | select([.assets[].name] | any(startswith("docker-compose-")))
+            ][0].tag_name // empty')
+          if [ -z "$prev_tag" ]; then
+            echo "No previous installable release found — seeded leg is a no-op on the first release."
+          else
+            echo "Previous release: $prev_tag"
+          fi
+          prev_version="${prev_tag#server-}"
+          prev_version="${prev_version#v}"
+          {
+            echo "tag=$prev_tag"
+            echo "version=$prev_version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Seed volumes from previous release (seeded leg)
+        if: matrix.volumes == 'seeded' && steps.prev.outputs.tag != ''
+        env:
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+          PREV_VERSION: ${{ steps.prev.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd "$INSTALL_DIR"
+          source ./e2e-lib.sh
+          curl -fsSL -o prev-compose.yml \
+            "https://github.com/${{ github.repository }}/releases/download/${PREV_TAG}/docker-compose-${PREV_VERSION}.yml"
+          # A published compose asset is immutable, but the image tag it pins
+          # ClamAV to (`stable`) is not: clamav/clamav:stable moved to 1.5.4,
+          # which renamed the healthcheck helper `clamdcheck` → `clamdcheck.sh`.
+          # Every release published before that fix (see docker-compose.yml)
+          # therefore has a healthcheck that can never pass, and the seed below
+          # would hang until timeout. Overlay just the clamav healthcheck with
+          # the dual-name probe — compose replaces healthcheck.test wholesale,
+          # and nothing else about the previous release is touched. Only the
+          # seeding phase uses this; the release under test boots unmodified.
+          cat > prev-clamav-override.yml <<'YAML'
+          services:
+            clamav:
+              healthcheck:
+                test: ["CMD-SHELL", "clamdcheck.sh || clamdcheck"]
+          YAML
+          PREV_COMPOSE_FILES="prev-compose.yml prev-clamav-override.yml"
+          # Redis + ClamAV are the services whose entrypoints care about volume
+          # ownership left behind by an earlier run — boot them from the
+          # previous release until healthy (ClamAV healthy = signature DB
+          # downloaded and owned), then stop, PRESERVING the volumes.
+          docker compose -f prev-compose.yml -f prev-clamav-override.yml pull redis clamav
+          docker compose -f prev-compose.yml -f prev-clamav-override.yml up -d redis clamav
+          wait_healthy "$PREV_COMPOSE_FILES" redis 120
+          wait_healthy "$PREV_COMPOSE_FILES" clamav 900
+          docker compose -f prev-compose.yml -f prev-clamav-override.yml down
+
+      - name: Download and verify release compose
+        if: matrix.volumes == 'fresh' || steps.prev.outputs.tag != ''
+        run: |
+          set -euo pipefail
+          cd "$INSTALL_DIR"
+          gh release download "$TAG" --repo "${{ github.repository }}" \
+            --pattern "docker-compose-${VERSION}.yml*" --clobber
+          sha256sum -c "docker-compose-${VERSION}.yml.sha256"
+          cp "docker-compose-${VERSION}.yml" docker-compose.yml
+          # Sanity: the artifact must be digest-pinned (upload job contract).
+          grep -qE "image: ghcr\.io/wolvesdotink/web:${VERSION}@sha256:[0-9a-f]{64}" docker-compose.yml
+
+      # Pull with every first-party profile enabled so ALL published images are
+      # exercised anonymously (a private GHCR package fails here even if it
+      # slipped past verify-anonymous-pull), then bring up the default
+      # self-host profile set (COMPOSE_PROFILES in .env).
+      - name: Pull images anonymously and start the stack
+        if: matrix.volumes == 'fresh' || steps.prev.outputs.tag != ''
+        run: |
+          set -euo pipefail
+          cd "$INSTALL_DIR"
+          docker logout ghcr.io 2>/dev/null || true
+          docker compose --profile mta --profile clamav --profile deploy \
+            --profile personal-mail --profile external-mail pull
+          docker compose up -d
+
+      - name: Deploy Convex functions
+        if: matrix.volumes == 'fresh' || steps.prev.outputs.tag != ''
+        run: |
+          set -euo pipefail
+          cd "$INSTALL_DIR"
+          source ./e2e-lib.sh
+          wait_healthy docker-compose.yml convex 300
+          key_output=$(docker compose exec -T convex ./generate_admin_key.sh)
+          # Same token shape the setup CLI accepts (parseAdminKey in
+          # apps/setup-cli/src/lib/convexDeploy.ts): last long token, keeping
+          # any `name|hex` prefix intact.
+          admin_key=$(printf '%s' "$key_output" | grep -oE '[A-Za-z0-9_|+/=-]{20,}' | tail -1)
+          if [ -z "$admin_key" ]; then
+            echo "::error::Could not parse an admin key from generate_admin_key.sh output"
+            exit 1
+          fi
+          printf 'CONVEX_ADMIN_KEY=%s\n' "$admin_key" >> .env
+          docker compose --profile deploy run --rm convex-deploy
+
+      - name: Wait for stack health
+        if: matrix.volumes == 'fresh' || steps.prev.outputs.tag != ''
+        run: |
+          set -euo pipefail
+          cd "$INSTALL_DIR"
+          source ./e2e-lib.sh
+          wait_healthy docker-compose.yml redis 120
+          # Fresh volumes: first boot downloads the ~300 MB signature DB.
+          wait_healthy docker-compose.yml clamav 900
+          # Web BFF: public instance-discovery endpoint proves Nitro is serving.
+          wait_http "web (/api/instance-info)" 300 \
+            curl -fsS --max-time 10 http://localhost:3000/api/instance-info
+          # MTA: /health always answers 200 with a status body; full "ok"
+          # requires real DNS identity (PTR/FCrDNS) a CI runner cannot have, so
+          # assert the slices an install can prove: the HTTP tier is up, Redis
+          # is connected, and the queue WORKER heartbeat is alive.
+          wait_http "mta (/health)" 300 \
+            curl -fsS --max-time 30 http://127.0.0.1:3100/health
+          mta_check() {
+            curl -fsS --max-time 30 http://127.0.0.1:3100/health \
+              | jq -e '.redis == "connected" and .worker.alive == true'
+          }
+          wait_http "mta worker (redis connected + heartbeat alive)" 600 mta_check
+          echo "E2E install (${{ matrix.volumes }} volumes) succeeded: compose verified, images pulled anonymously, functions deployed, stack healthy."
+
+      - name: Dump stack state on failure
+        if: failure()
+        run: |
+          cd "$INSTALL_DIR" 2>/dev/null || exit 0
+          echo "── docker compose ps -a ──"
+          docker compose ps -a || true
+          echo "── docker compose logs (tail) ──"
+          docker compose logs --tail 200 || true
+          if [ -f prev-compose.yml ]; then
+            echo "── previous-release seed logs (tail) ──"
+            docker compose -f prev-compose.yml logs --tail 100 || true
+          fi

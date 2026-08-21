@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, nextTick } from 'vue';
 import { useAutomationSteps } from '../useAutomationSteps';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/** The real catalog behind the `useI18n` auto-import the composable calls. */
+const i18n = createTestI18n();
 
 /**
  * Regression test for the drag-reorder wiring (FRONTEND_WIRING_REVIEW H3):
@@ -12,6 +16,7 @@ describe('useAutomationSteps.handleDragEnd', () => {
 
 	beforeEach(() => {
 		runCalls = [];
+		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useBackendOperation', () => ({
 			run: (args: unknown) => {
 				runCalls.push(args);

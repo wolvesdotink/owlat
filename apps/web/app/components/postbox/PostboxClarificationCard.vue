@@ -40,6 +40,8 @@ const emit = defineEmits<{
 	(e: 'defer'): void;
 }>();
 
+const { t } = useI18n();
+
 const clarification = computed(() => props.item.clarification);
 const state = computed(() => clarificationCardState(clarification.value));
 const questions = computed(() => clarification.value?.questions ?? []);
@@ -105,7 +107,9 @@ function onCardKeydown(event: KeyboardEvent) {
 	<TaskCardShell
 		data-testid="clarification-card"
 		tabindex="0"
-		:aria-label="`Needs your input: ${item.subject}`"
+		:aria-label="
+			t('components.postbox.postboxClarificationCard.cardLabel', { subject: item.subject })
+		"
 		@keydown="onCardKeydown"
 	>
 		<TaskContext
@@ -113,7 +117,10 @@ function onCardKeydown(event: KeyboardEvent) {
 			:name="item.fromName"
 			:email="item.fromAddress"
 			:status="{
-				label: state === 'ready' ? 'Draft ready' : 'Needs your input',
+				label:
+					state === 'ready'
+						? t('components.postbox.postboxClarificationCard.statusDraftReady')
+						: t('components.postbox.postboxClarificationCard.statusNeedsInput'),
 				icon: 'lucide:message-circle-question',
 				tone: 'brand',
 			}"
@@ -140,16 +147,16 @@ function onCardKeydown(event: KeyboardEvent) {
 			</div>
 			<TaskActions
 				class="mt-2"
-				primary-label="Answer"
+				:primary-label="t('components.postbox.postboxClarificationCard.answer')"
 				primary-test-id="clarification-submit"
 				:primary-disabled="!canSubmit"
 				:primary-loading="submitting"
-				skip-label="Dismiss"
+				:skip-label="t('common.dismiss')"
 				skip-test-id="clarification-dismiss"
 				:hints="[
-					{ keys: ['1–9'], label: 'Pick' },
-					{ keys: ['Enter'], label: 'Answer' },
-					{ keys: ['s'], label: 'Later' },
+					{ keys: ['1–9'], label: t('components.postbox.postboxClarificationCard.hintPick') },
+					{ keys: ['Enter'], label: t('components.postbox.postboxClarificationCard.answer') },
+					{ keys: ['s'], label: t('components.postbox.postboxClarificationCard.hintLater') },
 				]"
 				@primary="submit"
 				@skip="emit('done')"
@@ -164,7 +171,7 @@ function onCardKeydown(event: KeyboardEvent) {
 		<div v-else-if="state === 'drafting'" class="mt-2" data-testid="clarification-drafting">
 			<div class="flex items-center gap-2 text-sm text-text-secondary">
 				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-				Drafting your reply…
+				{{ t('components.postbox.postboxClarificationCard.drafting') }}
 			</div>
 			<div class="flex items-center gap-2 mt-2">
 				<button
@@ -173,7 +180,7 @@ function onCardKeydown(event: KeyboardEvent) {
 					class="text-xs font-medium px-2.5 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 					@click.stop="emit('defer')"
 				>
-					I'll answer later
+					{{ t('components.postbox.postboxClarificationCard.answerLater') }}
 				</button>
 				<button
 					type="button"
@@ -181,7 +188,7 @@ function onCardKeydown(event: KeyboardEvent) {
 					class="text-xs px-2 py-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 					@click.stop="emit('done')"
 				>
-					Dismiss
+					{{ t('common.dismiss') }}
 				</button>
 			</div>
 		</div>
@@ -191,11 +198,16 @@ function onCardKeydown(event: KeyboardEvent) {
 			<TaskAsk class="mt-2" :detail="clarification?.draft" />
 			<TaskActions
 				class="mt-2"
-				primary-label="Open draft"
+				:primary-label="t('components.postbox.postboxClarificationCard.openDraft')"
 				primary-test-id="clarification-open-draft"
-				skip-label="Done"
+				:skip-label="t('common.done')"
 				skip-test-id="clarification-done"
-				:hints="[{ keys: ['Enter'], label: 'Open draft' }]"
+				:hints="[
+					{
+						keys: ['Enter'],
+						label: t('components.postbox.postboxClarificationCard.openDraft'),
+					},
+				]"
 				@primary="emit('open-draft', clarification?.draft ?? '')"
 				@skip="emit('done')"
 			/>

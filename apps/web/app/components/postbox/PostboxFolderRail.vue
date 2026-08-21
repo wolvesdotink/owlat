@@ -10,6 +10,8 @@ const props = defineProps<{
 	forceExpanded?: boolean;
 }>();
 
+const { t } = useI18n();
+
 const mailboxIdRef = computed(() => props.mailboxId);
 const { systemFolders, customFolders, unreadByRole } = usePostboxFolders(mailboxIdRef);
 const { labels } = usePostboxLabels(mailboxIdRef);
@@ -131,8 +133,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			v-else
 			type="button"
 			class="w-9 h-9 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-			title="Search"
-			aria-label="Search"
+			:title="t('common.search')"
+			:aria-label="t('common.search')"
 			@click="goSearch('')"
 		>
 			<Icon name="lucide:search" class="w-4 h-4" />
@@ -155,16 +157,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					? 'relative flex items-center justify-center w-9 h-9'
 					: 'flex items-center gap-2 px-2.5 py-1.5'
 			"
-			:title="railCollapsed ? 'Reply Queue' : undefined"
+			:title="railCollapsed ? t('components.postbox.postboxFolderRail.replyQueue') : undefined"
 			:aria-label="
 				railCollapsed
-					? `Reply Queue${replyQueueCount > 0 ? `, ${replyQueueCount}` : ''}`
+					? replyQueueCount > 0
+						? t('components.postbox.postboxFolderRail.replyQueueAriaLabel', {
+								count: replyQueueCount,
+							})
+						: t('components.postbox.postboxFolderRail.replyQueue')
 					: undefined
 			"
 		>
 			<Icon name="lucide:reply" class="w-4 h-4" />
 			<template v-if="!railCollapsed">
-				<span class="flex-1">Reply Queue</span>
+				<span class="flex-1">{{ t('components.postbox.postboxFolderRail.replyQueue') }}</span>
 				<span v-if="replyQueueCount > 0" class="text-xs font-medium text-text-secondary">{{
 					replyQueueCount
 				}}</span>
@@ -187,11 +193,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					: 'flex items-center gap-2 px-2.5 py-1.5',
 				{ 'bg-bg-surface text-brand': folderRole === 'snoozed' },
 			]"
-			:title="railCollapsed ? 'Snoozed' : undefined"
-			:aria-label="railCollapsed ? 'Snoozed' : undefined"
+			:title="railCollapsed ? t('components.postbox.postboxFolderRail.snoozed') : undefined"
+			:aria-label="railCollapsed ? t('components.postbox.postboxFolderRail.snoozed') : undefined"
 		>
 			<Icon name="lucide:clock" class="w-4 h-4" />
-			<span v-if="!railCollapsed" class="flex-1">Snoozed</span>
+			<span v-if="!railCollapsed" class="flex-1">{{
+				t('components.postbox.postboxFolderRail.snoozed')
+			}}</span>
 		</NuxtLink>
 		<!-- Secondary destination: lighter weight than the mail folders so the
 		     inbox/folders read as the primary rail. -->
@@ -203,11 +211,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					? 'flex items-center justify-center w-9 h-9'
 					: 'flex items-center gap-2 px-2.5 py-1'
 			"
-			:title="railCollapsed ? 'Contacts' : undefined"
-			:aria-label="railCollapsed ? 'Contacts' : undefined"
+			:title="railCollapsed ? t('components.postbox.postboxFolderRail.contacts') : undefined"
+			:aria-label="railCollapsed ? t('components.postbox.postboxFolderRail.contacts') : undefined"
 		>
 			<Icon name="lucide:users" :class="railCollapsed ? 'w-4 h-4' : 'w-3.5 h-3.5'" />
-			<span v-if="!railCollapsed" class="flex-1">Contacts</span>
+			<span v-if="!railCollapsed" class="flex-1">{{
+				t('components.postbox.postboxFolderRail.contacts')
+			}}</span>
 		</NuxtLink>
 
 		<!-- Postbox settings (accounts, signatures, filters, notifications). The
@@ -221,24 +231,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					? 'flex items-center justify-center w-9 h-9'
 					: 'flex items-center gap-2 px-2.5 py-1'
 			"
-			:title="railCollapsed ? 'Settings' : undefined"
-			:aria-label="railCollapsed ? 'Settings' : undefined"
+			:title="railCollapsed ? t('common.settings') : undefined"
+			:aria-label="railCollapsed ? t('common.settings') : undefined"
 		>
 			<Icon name="lucide:settings" :class="railCollapsed ? 'w-4 h-4' : 'w-3.5 h-3.5'" />
-			<span v-if="!railCollapsed" class="flex-1">Settings</span>
+			<span v-if="!railCollapsed" class="flex-1">{{ t('common.settings') }}</span>
 		</NuxtLink>
 
 		<!-- Custom folders (no role; user-created or custom IMAP folders).
 		     Expanded-only: folder CRUD and label management live here. -->
 		<div v-if="!railCollapsed" class="mt-3">
 			<header class="flex items-center justify-between mb-1 px-2">
-				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary"
-					>Folders</span
-				>
+				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
+					t('components.postbox.postboxFolderRail.foldersHeading')
+				}}</span>
 				<button
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
-					title="New folder"
+					:title="t('components.postbox.postboxFolderRail.newFolder')"
 					@click="
 						creatingFolder = true;
 						newFolderName = '';
@@ -250,9 +260,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			<div v-if="creatingFolder" class="px-2 py-1">
 				<input
 					v-model="newFolderName"
-					placeholder="Folder name"
+					:placeholder="t('components.postbox.postboxFolderRail.folderNamePlaceholder')"
 					class="input input-sm"
-					aria-label="New folder name"
+					:aria-label="t('components.postbox.postboxFolderRail.newFolderNameAriaLabel')"
 					@keyup.enter="confirmCreateFolder"
 					@keyup.esc="creatingFolder = false"
 				/>
@@ -263,7 +273,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 						v-if="renamingFolderId === folder._id"
 						v-model="renameFolderName"
 						class="input input-sm flex-1 mx-2"
-						aria-label="Folder name"
+						:aria-label="t('components.postbox.postboxFolderRail.folderNameAriaLabel')"
 						@keyup.enter="confirmRenameFolder"
 						@keyup.esc="renamingFolderId = null"
 					/>
@@ -279,7 +289,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 						<button
 							type="button"
 							class="opacity-0 group-hover:opacity-100 p-1 text-text-tertiary hover:text-text-primary"
-							title="Rename folder"
+							:title="t('components.postbox.postboxFolderRail.renameFolder')"
 							@click="startRenameFolder(folder)"
 						>
 							<Icon name="lucide:pencil" class="w-3 h-3" />
@@ -287,7 +297,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 						<button
 							type="button"
 							class="opacity-0 group-hover:opacity-100 p-1 text-text-tertiary hover:text-error"
-							title="Delete folder"
+							:title="t('components.postbox.postboxFolderRail.deleteFolder')"
 							@click="deletingFolder = { _id: folder._id, name: folder.name }"
 						>
 							<Icon name="lucide:trash-2" class="w-3 h-3" />
@@ -298,7 +308,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					v-if="customFolders.length === 0 && !creatingFolder"
 					class="text-xs text-text-tertiary px-2 py-1"
 				>
-					No custom folders
+					{{ t('components.postbox.postboxFolderRail.noCustomFolders') }}
 				</li>
 			</ul>
 		</div>
@@ -309,13 +319,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     rest of the management UI. -->
 		<div v-if="!railCollapsed" class="mt-3">
 			<header class="flex items-center justify-between mb-1 px-2">
-				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary"
-					>Labels</span
-				>
+				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
+					t('components.postbox.postboxFolderRail.labelsHeading')
+				}}</span>
 				<button
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
-					title="Manage labels"
+					:title="t('components.postbox.postboxFolderRail.manageLabels')"
 					@click="labelManagerOpen = true"
 				>
 					<Icon name="lucide:settings-2" class="w-3.5 h-3.5" />
@@ -335,7 +345,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					</NuxtLink>
 				</li>
 				<li v-if="labels.length === 0" class="text-xs text-text-tertiary px-2 py-1">
-					No labels yet
+					{{ t('components.postbox.postboxFolderRail.noLabels') }}
 				</li>
 			</ul>
 		</div>
@@ -345,8 +355,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			type="button"
 			class="mt-auto flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
 			:class="railCollapsed ? 'w-9 h-9' : 'w-full gap-1.5 px-2.5 py-1.5 text-xs'"
-			:title="railCollapsed ? 'Expand sidebar (Cmd+Shift+D)' : 'Collapse sidebar (Cmd+Shift+D)'"
-			:aria-label="railCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+			:title="
+				railCollapsed
+					? t('components.postbox.postboxFolderRail.expandSidebarTitle')
+					: t('components.postbox.postboxFolderRail.collapseSidebarTitle')
+			"
+			:aria-label="
+				railCollapsed
+					? t('components.postbox.postboxFolderRail.expandSidebar')
+					: t('components.postbox.postboxFolderRail.collapseSidebar')
+			"
 			:aria-pressed="railCollapsed"
 			@click="toggleRail"
 		>
@@ -354,16 +372,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				:name="railCollapsed ? 'lucide:chevrons-right' : 'lucide:chevrons-left'"
 				class="w-4 h-4"
 			/>
-			<span v-if="!railCollapsed">Collapse</span>
+			<span v-if="!railCollapsed">{{
+				t('components.postbox.postboxFolderRail.collapse')
+			}}</span>
 		</button>
 	</aside>
 
 	<UiConfirmationDialog
 		:open="!!deletingFolder"
 		variant="danger"
-		title="Delete folder"
-		:description="`Delete the folder &quot;${deletingFolder?.name ?? ''}&quot;? Messages in it are relocated, not deleted.`"
-		confirm-text="Delete folder"
+		:title="t('components.postbox.postboxFolderRail.deleteFolder')"
+		:description="
+			t('components.postbox.postboxFolderRail.deleteFolderDescription', {
+				name: deletingFolder?.name ?? '',
+			})
+		"
+		:confirm-text="t('components.postbox.postboxFolderRail.deleteFolder')"
 		@update:open="
 			(v: boolean) => {
 				if (!v) deletingFolder = null;

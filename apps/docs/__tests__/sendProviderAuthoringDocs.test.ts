@@ -26,7 +26,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const read = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
 
-const guide = read('apps/docs/content/3.developer/49.plugin-send-providers.md');
+const guide = read('apps/docs/content/en/3.developer/49.plugin-send-providers.md');
 
 // `section` and `tableRows` live in `./markdownDocs`: this suite and
 // `providerCatalogDocs` parse the SAME table (the N+1 checklist on
@@ -113,7 +113,7 @@ describe('the send-provider guide states the capability vocabulary the kit enfor
 
 describe('the send-provider guide states the webhook security floor the host enforces', () => {
 	const inboundSignature = read('packages/plugin-kit/src/inboundSignature.ts');
-	const contributions = read('apps/docs/content/3.developer/42.plugin-contributions.md');
+	const contributions = read('apps/docs/content/en/3.developer/42.plugin-contributions.md');
 	const webhook = section('## Webhook security expectations');
 
 	/**
@@ -299,7 +299,7 @@ describe('the send-provider guide carries the two-tier provider checklist', () =
 	 * divergence fails here instead of shipping.
 	 */
 	describe('and defers to the canonical core-tier list rather than contradicting it', () => {
-		const core = read('apps/docs/content/3.developer/15.providers.md');
+		const core = read('apps/docs/content/en/3.developer/15.providers.md');
 		const coreChecklist = sectionOf(core, '### Send (email) — the provider-N+1 checklist');
 		/**
 		 * `| # | Artifact | Core kind | Required? | Plugin kind |` — the `Required?`

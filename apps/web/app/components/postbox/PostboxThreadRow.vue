@@ -34,6 +34,8 @@ export type PostboxThreadRowMessage = {
  */
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 
+const { t, locale } = useI18n();
+
 const props = defineProps<{
 	msg: PostboxThreadRowMessage;
 	selectable?: boolean;
@@ -100,31 +102,42 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 const contextItems = computed<ContextMenuItem[]>(() => [
 	{
 		id: 'star',
-		label: props.msg.flagFlagged ? 'Unstar' : 'Star',
+		label: props.msg.flagFlagged
+			? t('components.postbox.postboxThreadRow.unstar')
+			: t('components.postbox.postboxThreadRow.star'),
 		icon: 'lucide:star',
 		run: () => triage('toggle-star'),
 	},
 	{
 		id: 'read',
-		label: props.msg.flagSeen ? 'Mark as unread' : 'Mark as read',
+		label: props.msg.flagSeen
+			? t('components.postbox.postboxThreadRow.markAsUnread')
+			: t('components.postbox.postboxThreadRow.markAsRead'),
 		icon: props.msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open',
 		run: () => triage('toggle-read'),
 	},
 	{
 		id: 'archive',
-		label: 'Archive',
+		label: t('common.archive'),
 		icon: 'lucide:archive',
 		run: () => triage('archive'),
 	},
 	{
 		id: 'trash',
-		label: 'Delete',
+		label: t('common.delete'),
 		icon: 'lucide:trash',
 		danger: true,
 		separatorBefore: true,
 		run: () => triage('trash'),
 	},
 ]);
+
+/** Absolute wake time of a snoozed row, formatted against the active locale. */
+function snoozedTitle(until: number): string {
+	return t('components.postbox.postboxThreadRow.snoozedUntil', {
+		when: new Date(until).toLocaleString(locale.value),
+	});
+}
 </script>
 
 <template>
@@ -159,10 +172,14 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 					class="pbx-row-checkbox mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
 					:class="
 						selected
-							? 'bg-brand border-brand text-white'
+							? 'bg-brand border-brand text-text-inverse'
 							: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100'
 					"
-					:aria-label="selected ? 'Deselect' : 'Select'"
+					:aria-label="
+						selected
+							? t('components.postbox.postboxThreadRow.deselect')
+							: t('components.postbox.postboxThreadRow.select')
+					"
 					@click="onCheckboxClick($event)"
 				>
 					<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
@@ -184,7 +201,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 							v-if="msg.snoozedUntil"
 							name="lucide:clock"
 							class="w-3.5 h-3.5 text-brand"
-							:title="`Snoozed until ${new Date(msg.snoozedUntil).toLocaleString()}`"
+							:title="snoozedTitle(msg.snoozedUntil)"
 						/>
 						<Icon
 							v-if="msg.hasAttachments"
@@ -206,7 +223,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 							class="truncate text-sm flex-1"
 							:class="msg.flagSeen ? 'text-text-secondary' : 'font-medium text-text-primary'"
 						>
-							{{ msg.subject || '(no subject)' }}
+							{{ msg.subject || t('components.postbox.postboxThreadRow.noSubject') }}
 						</p>
 					</div>
 					<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
@@ -223,8 +240,16 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			<button
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-warning"
-				:title="msg.flagFlagged ? 'Unstar' : 'Star'"
-				:aria-label="msg.flagFlagged ? 'Unstar' : 'Star'"
+				:title="
+					msg.flagFlagged
+						? t('components.postbox.postboxThreadRow.unstar')
+						: t('components.postbox.postboxThreadRow.star')
+				"
+				:aria-label="
+					msg.flagFlagged
+						? t('components.postbox.postboxThreadRow.unstar')
+						: t('components.postbox.postboxThreadRow.star')
+				"
 				@click="rowAction($event, 'toggle-star')"
 			>
 				<Icon name="lucide:star" class="w-4 h-4" />
@@ -232,8 +257,16 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			<button
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-				:title="msg.flagSeen ? 'Mark unread' : 'Mark read'"
-				:aria-label="msg.flagSeen ? 'Mark unread' : 'Mark read'"
+				:title="
+					msg.flagSeen
+						? t('components.postbox.postboxThreadRow.markUnread')
+						: t('components.postbox.postboxThreadRow.markRead')
+				"
+				:aria-label="
+					msg.flagSeen
+						? t('components.postbox.postboxThreadRow.markUnread')
+						: t('components.postbox.postboxThreadRow.markRead')
+				"
 				@click="rowAction($event, 'toggle-read')"
 			>
 				<Icon :name="msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open'" class="w-4 h-4" />
@@ -241,8 +274,8 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			<button
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-				title="Archive"
-				aria-label="Archive"
+				:title="t('common.archive')"
+				:aria-label="t('common.archive')"
 				@click="rowAction($event, 'archive')"
 			>
 				<Icon name="lucide:archive" class="w-4 h-4" />
@@ -250,8 +283,8 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			<button
 				type="button"
 				class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error"
-				title="Delete"
-				aria-label="Delete"
+				:title="t('common.delete')"
+				:aria-label="t('common.delete')"
 				@click="rowAction($event, 'trash')"
 			>
 				<Icon name="lucide:trash" class="w-4 h-4" />

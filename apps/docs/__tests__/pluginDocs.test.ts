@@ -35,7 +35,7 @@ function read(relativePath: string): string {
 	return readFileSync(resolve(repoRoot, relativePath), 'utf8');
 }
 
-const CONTENT_DIR = 'apps/docs/content/3.developer';
+const CONTENT_DIR = 'apps/docs/content/en/3.developer';
 
 const PAGES = {
 	overview: '40.plugin-platform.md',
@@ -1445,7 +1445,11 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
  * guard, derived from the real `CORE_SECTIONS` rather than a copied list.
  */
 describe('plugin docs: navigation samples name a real core sidebar section', () => {
-	const navigation = read('apps/web/app/lib/dashboardNavigation.ts');
+	// The declarative table moved to dashboardNavigationCore.ts; the fail-closed
+	// merge that consumes it stayed in dashboardNavigation.ts. Both halves are
+	// asserted so neither can drift silently.
+	const navigation = read('apps/web/app/lib/dashboardNavigationCore.ts');
+	const navigationBuilder = read('apps/web/app/lib/dashboardNavigation.ts');
 	const coreSectionKeys = new Set(
 		[...navigation.matchAll(/\n\t\tkey: '([a-z][a-z0-9-]*)',/g)].map((match) => match[1]!)
 	);
@@ -1453,7 +1457,7 @@ describe('plugin docs: navigation samples name a real core sidebar section', () 
 	it('derives a non-empty core section-key set from the host', () => {
 		expect(coreSectionKeys.size).toBeGreaterThan(0);
 		expect(coreSectionKeys).toContain('administration');
-		expect(navigation).toContain('CORE_SECTION_KEYS.has(item.section)');
+		expect(navigationBuilder).toContain('CORE_SECTION_KEYS.has(item.section)');
 	});
 
 	it('uses only core section keys in every documented nav item', () => {

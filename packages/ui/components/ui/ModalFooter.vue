@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useUiI18n } from '../../composables/useUiI18n';
+
 type ButtonVariant =
 	| 'primary'
 	| 'secondary'
@@ -9,20 +11,29 @@ type ButtonVariant =
 	| 'danger-outline';
 
 interface Props {
+	/** Defaults to the localized "Cancel". */
 	cancelText?: string;
+	/** Defaults to the localized "Confirm". */
 	confirmText?: string;
 	confirmVariant?: ButtonVariant;
 	isLoading?: boolean;
 	isDisabled?: boolean;
 }
 
-withDefaults(defineProps<Props>(), {
-	cancelText: 'Cancel',
-	confirmText: 'Confirm',
+// The copy props have no defaults: prop defaults are evaluated outside the
+// setup context, where `useUiI18n()` cannot run. They resolve below instead.
+const props = withDefaults(defineProps<Props>(), {
+	cancelText: undefined,
+	confirmText: undefined,
 	confirmVariant: 'primary',
 	isLoading: false,
 	isDisabled: false,
 });
+
+const { t } = useUiI18n();
+
+const resolvedCancelText = computed(() => props.cancelText ?? t('ui.actions.cancel'));
+const resolvedConfirmText = computed(() => props.confirmText ?? t('ui.actions.confirm'));
 
 defineEmits<{
 	cancel: [];
@@ -35,7 +46,7 @@ defineEmits<{
 		<slot>
 			<div class="flex justify-end gap-3">
 				<UiButton variant="secondary" :disabled="isLoading" @click="$emit('cancel')">
-					{{ cancelText }}
+					{{ resolvedCancelText }}
 				</UiButton>
 				<UiButton
 					:variant="confirmVariant"
@@ -43,7 +54,7 @@ defineEmits<{
 					:disabled="isDisabled"
 					@click="$emit('confirm')"
 				>
-					{{ confirmText }}
+					{{ resolvedConfirmText }}
 				</UiButton>
 			</div>
 		</slot>

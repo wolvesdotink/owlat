@@ -16,6 +16,12 @@
  * kind sorts last of all. Unknown and flag-disabled kinds resolve to a graceful
  * fallback placeholder rather than crashing or dropping the queue item.
  *
+ * LABELS. A built-in kind's label is Owlat's own copy, so it is stored as a
+ * catalog KEY (the registry is module scope and never calls `useI18n`); a
+ * plugin's label is its manifest text and stays verbatim. Whoever renders a
+ * label runs it through `t()`, which resolves the key and leaves plugin text as
+ * it is.
+ *
  * SECURITY. A plugin's `label` is untrusted, manifest-sourced text: it is
  * coerced to a string, stripped of Unicode control/format characters, trimmed,
  * and length-clamped here and only ever rendered as a text node (never
@@ -60,7 +66,10 @@ export interface TaskCardKindDefinition {
 	readonly rank: number;
 	/** Rough per-card time budget (seconds) for the "about N min" hint. */
 	readonly estimateSeconds: number;
-	/** Human label for the peek line and fallback placeholder (untrusted text). */
+	/**
+	 * Human label for the peek line and fallback placeholder: a catalog key for a
+	 * built-in kind, the plugin's own (untrusted, clamped) text otherwise.
+	 */
 	readonly label: string;
 	/** Feature flag gating a plugin kind; absent for built-ins (always on). */
 	readonly flag?: FeatureFlagKey;
@@ -79,9 +88,24 @@ export const UNKNOWN_TASK_CARD_RANK = Number.MAX_SAFE_INTEGER;
 
 /** Built-in metadata, kept identical to the pre-registry constants. */
 const BUILT_IN_DEFINITIONS: readonly TaskCardKindDefinition[] = [
-	Object.freeze({ kind: 'question', rank: 0, estimateSeconds: 45, label: 'Question' }),
-	Object.freeze({ kind: 'draft_review', rank: 1, estimateSeconds: 60, label: 'Draft review' }),
-	Object.freeze({ kind: 'reply', rank: 2, estimateSeconds: 120, label: 'Reply' }),
+	Object.freeze({
+		kind: 'question',
+		rank: 0,
+		estimateSeconds: 45,
+		label: 'shared.taskCardRegistry.kinds.question',
+	}),
+	Object.freeze({
+		kind: 'draft_review',
+		rank: 1,
+		estimateSeconds: 60,
+		label: 'shared.taskCardRegistry.kinds.draftReview',
+	}),
+	Object.freeze({
+		kind: 'reply',
+		rank: 2,
+		estimateSeconds: 120,
+		label: 'shared.taskCardRegistry.kinds.reply',
+	}),
 ];
 
 /** A plugin's contribution before the registry assigns its rank. */

@@ -34,6 +34,7 @@ import DesktopWorkspaceMenu from './WorkspaceMenu.vue';
 /** `showSearch`: the mounting surface has a command palette listening. */
 const props = defineProps<{ showSearch?: boolean }>();
 
+const { t } = useI18n();
 const { isDesktop, isMac } = useDesktopContext();
 const { activeId, active } = useDesktopWorkspaces();
 const { badgeFor } = useWorkspaceBadges();
@@ -111,7 +112,9 @@ function openForYou(): void {
 				</span>
 			</div>
 
-			<UiBadge size="sm" data-tauri-drag-region>Alpha</UiBadge>
+			<UiBadge size="sm" data-tauri-drag-region>
+				{{ t('components.desktop.desktopTitlebar.alphaBadge') }}
+			</UiBadge>
 		</div>
 
 		<!-- CENTER — search pill (absolutely centered so side padding never skews it).
@@ -121,11 +124,13 @@ function openForYou(): void {
 			v-if="active && props.showSearch"
 			type="button"
 			class="tb-search absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2"
-			aria-label="Search"
+			:aria-label="t('common.search')"
 			@click="openSearch"
 		>
 			<Icon name="lucide:search" class="w-3.5 h-3.5 shrink-0" />
-			<span class="hidden min-[560px]:inline text-[13px] leading-none truncate">Search…</span>
+			<span class="hidden min-[560px]:inline text-[13px] leading-none truncate">
+				{{ t('components.desktop.desktopTitlebar.searchPill') }}
+			</span>
 			<kbd class="tb-kbd hidden min-[560px]:inline-flex">⌘K</kbd>
 		</button>
 
@@ -138,11 +143,17 @@ function openForYou(): void {
 					v-if="active"
 					to="/dashboard/postbox/inbox#postbox-for-you"
 					class="tb-unread"
-					:class="unreadCount > 0 ? 'text-white' : 'tb-unread-idle'"
+					:class="unreadCount > 0 ? 'text-text-inverse' : 'tb-unread-idle'"
 					:aria-label="
-						unreadCount > 0 ? `${unreadCount} awaiting you in Postbox` : 'Open Postbox inbox'
+						unreadCount > 0
+							? t('components.desktop.desktopTitlebar.unreadAriaLabel', { count: unreadCount })
+							: t('components.desktop.desktopTitlebar.openPostbox')
 					"
-					:title="unreadCount > 0 ? `${unreadCount} awaiting you` : 'Postbox'"
+					:title="
+						unreadCount > 0
+							? t('components.desktop.desktopTitlebar.unreadTitle', { count: unreadCount })
+							: t('components.desktop.desktopTitlebar.postbox')
+					"
 					@click.prevent="openForYou"
 				>
 					<Icon name="lucide:inbox" class="w-3.5 h-3.5" />
@@ -157,7 +168,7 @@ function openForYou(): void {
 				<button
 					type="button"
 					class="tb-btn"
-					aria-label="Minimize"
+					:aria-label="t('components.desktop.desktopTitlebar.minimize')"
 					@click="control('minimizeWindow')"
 				>
 					<Icon name="lucide:minus" class="w-4 h-4" />
@@ -165,7 +176,7 @@ function openForYou(): void {
 				<button
 					type="button"
 					class="tb-btn"
-					aria-label="Maximize"
+					:aria-label="t('components.desktop.desktopTitlebar.maximize')"
 					@click="control('toggleMaximizeWindow')"
 				>
 					<Icon name="lucide:square" class="w-3.5 h-3.5" />
@@ -173,7 +184,7 @@ function openForYou(): void {
 				<button
 					type="button"
 					class="tb-btn tb-close"
-					aria-label="Close"
+					:aria-label="t('common.close')"
 					@click="control('closeWindow')"
 				>
 					<Icon name="lucide:x" class="w-4 h-4" />
@@ -232,7 +243,9 @@ function openForYou(): void {
 }
 
 /* Right-side unread pill — the one place terracotta appears as a small chip.
-   The white text comes from the `text-white` utility on the element. */
+   The on-fill text color comes from the `text-text-inverse` utility on the
+   element (light copy on the light-mode fill, dark on the lighter dark-mode
+   terracotta). */
 .tb-unread {
 	display: inline-flex;
 	align-items: center;
@@ -289,7 +302,7 @@ function openForYou(): void {
 /* Warm terracotta close affordance — on-brand, not the generic Windows red. */
 .tb-close:hover {
 	background-color: var(--color-error);
-	color: #fff;
+	color: var(--color-text-inverse);
 }
 
 @media (prefers-reduced-motion: reduce) {

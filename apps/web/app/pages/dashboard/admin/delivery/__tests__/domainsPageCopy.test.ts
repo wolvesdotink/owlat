@@ -18,10 +18,17 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
-import { mount } from '@vue/test-utils';
+import { config, mount } from '@vue/test-utils';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+
+// Both mounted components render their copy through vue-i18n, and `useI18n` is
+// a Nuxt auto-import in the app: installed once here so every mount below reads
+// the REAL English catalog rather than failing on a missing global.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+config.global.plugins = [...(config.global.plugins ?? []), createTestI18n()];
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pageSource = readFileSync(resolve(here, '../domains.vue'), 'utf8');
@@ -51,8 +58,10 @@ describe('Add-Domain modal — delegated to the guided form component', () => {
 
 describe('Page ordering — mental model before transports', () => {
 	it('places the "Why add a custom domain?" card before the DNS guidance banner', () => {
-		const h1 = pageSource.indexOf('Sending Domains</h1>');
-		const whyCard = pageSource.indexOf('Why add a custom domain?');
+		// Both are catalog lookups since the extraction; the ORDER on the page is
+		// what this pins, so the anchors are the keypaths the page renders.
+		const h1 = pageSource.indexOf("t('dashboard.admin.delivery.domains.title')");
+		const whyCard = pageSource.indexOf("t('dashboard.admin.delivery.domains.whyCustom.title')");
 		const guidance = pageSource.indexOf('<DeliveryDomainDnsGuidance');
 		expect(h1).toBeGreaterThan(-1);
 		expect(whyCard).toBeGreaterThan(-1);

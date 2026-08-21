@@ -11,9 +11,11 @@
  * The reader itself is stubbed (it is Convex-backed and covered elsewhere);
  * these tests pin the overlay's keyboard/focus contract.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
+
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxTodayReaderOverlay from '../PostboxTodayReaderOverlay.vue';
 
@@ -42,6 +44,12 @@ function msg(id: string) {
 	};
 }
 
+// The pane's accessible name flows through vue-i18n now; `useI18n` is a Nuxt
+// auto-import, so it has to exist as a global.
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
+
 let wrapper: VueWrapper | undefined;
 afterEach(() => {
 	wrapper?.unmount();
@@ -53,7 +61,10 @@ function mountOverlay(id = 'm2', advanceIds = ['m1', 'm2', 'm3']) {
 	wrapper = mount(PostboxTodayReaderOverlay, {
 		attachTo: document.body,
 		props: { message: msg(id) as never, advanceIds },
-		global: { components: { PostboxThreadReader: readerStub } },
+		global: {
+			plugins: [createTestI18n()],
+			components: { PostboxThreadReader: readerStub },
+		},
 	});
 	return wrapper;
 }

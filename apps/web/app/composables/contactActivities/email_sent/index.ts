@@ -4,12 +4,19 @@ export const emailSentEditorModule: ContactActivityEditorModule<'email_sent'> = 
 	literal: 'email_sent',
 	displayConfig: {
 		icon: 'lucide:send',
-		label: 'Email Sent',
+		label: 'shared.contactActivities.emailSent.label',
 		color: 'text-brand',
 	},
 	formatDescription(metadata) {
-		if (metadata?.emailSubject) return `Sent "${metadata.emailSubject}"`;
-		if (metadata?.emailType === 'transactional') return 'Transactional email sent';
-		return 'Email sent';
+		if (metadata?.emailSubject) {
+			return {
+				key: 'shared.contactActivities.emailSent.descriptionWithSubject',
+				params: { subject: metadata.emailSubject },
+			};
+		}
+		if (metadata?.emailType === 'transactional') {
+			return 'shared.contactActivities.emailSent.descriptionTransactional';
+		}
+		return 'shared.contactActivities.emailSent.description';
 	},
 };

@@ -761,6 +761,88 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 		expect(args['metadata']).toBeUndefined();
 		expect(args['externalMessageId']).toBeUndefined();
 	});
+
+	// ── F1 (D9): clearsigned-body signature mirror on the AI-inbox path ──
+	const CLEARSIGNED_BODY = [
+		'-----BEGIN PGP SIGNED MESSAGE-----',
+		'Hash: SHA256',
+		'',
+		'Hello',
+		'-----BEGIN PGP SIGNATURE-----',
+		'iQ..',
+		'-----END PGP SIGNATURE-----',
+	].join('\n');
+
+	function inboundEventWithBody(textBody: string): InboundEvent {
+		return {
+			kind: 'inbound.received',
+			mail: {
+				from: 'sender@example.com',
+				to: 'inbox@owlat.test',
+				subject: 'Hello',
+				textBody,
+				htmlBody: undefined,
+				headers: {},
+				messageId: '<clearsigned@example.com>',
+				inReplyTo: undefined,
+				references: [],
+				attachments: [],
+				timestamp: 7000,
+			},
+		} as unknown as InboundEvent;
+	}
+
+	it('verifies a clearsigned body via e2ee.verifyInboundSignature and mirrors the verdict', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const runActionCalls: { ref: string; args: unknown }[] = [];
+		(ctx as { runAction: unknown }).runAction = vi.fn(async (r: unknown, args: unknown) => {
+			runActionCalls.push({ ref: ref(r), args });
+			return {
+				isSigned: true,
+				info: {
+					isSigned: true,
+					isSignatureValid: true,
+					signerFingerprint: 'ABCDEF1234567890ABCDEF1234567890ABCDEF12',
+					keySource: 'pinned',
+				},
+			};
+		});
+
+		await dispatchInboundEvent(ctx, inboundEventWithBody(CLEARSIGNED_BODY));
+
+		expect(runActionCalls).toHaveLength(1);
+		expect(runActionCalls[0]?.ref).toBe(ref(internal.e2ee.verifyInboundSignature.forInbound));
+		const args = runMutationCalls[0]?.args as Record<string, unknown>;
+		expect(args['isInboundSignatureValid']).toBe(true);
+		expect(args['inboundSignerFingerprint']).toBe('ABCDEF1234567890ABCDEF1234567890ABCDEF12');
+	});
+
+	it('a verifier failure leaves the mirror fields ABSENT and still delivers (fail-soft)', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		(ctx as { runAction: unknown }).runAction = vi.fn(async () => {
+			throw new Error('verifier down');
+		});
+
+		await dispatchInboundEvent(ctx, inboundEventWithBody(CLEARSIGNED_BODY));
+
+		expect(runMutationCalls).toHaveLength(1);
+		expect(runMutationCalls[0]?.ref).toBe(ref(internal.inbox.messages.receiveMessage));
+		const args = runMutationCalls[0]?.args as Record<string, unknown>;
+		expect(args['isInboundSignatureValid']).toBeUndefined();
+		expect(args['inboundSignerFingerprint']).toBeUndefined();
+	});
+
+	it('a plain (non-clearsigned) body never spawns the verify action', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const runAction = vi.fn();
+		(ctx as { runAction: unknown }).runAction = runAction;
+
+		await dispatchInboundEvent(ctx, inboundEventWithBody('just plain text'));
+
+		expect(runAction).not.toHaveBeenCalled();
+		const args = runMutationCalls[0]?.args as Record<string, unknown>;
+		expect(args['isInboundSignatureValid']).toBeUndefined();
+	});
 });
 
 describe('dispatchInboundEvent — internal signals', () => {

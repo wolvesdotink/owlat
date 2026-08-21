@@ -13,6 +13,10 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { splitZone } from '@owlat/shared';
 
 import AddDomainForm from '../AddDomainForm.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The form renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -20,7 +24,7 @@ const stubs = {
 };
 
 function mountForm() {
-	return mount(AddDomainForm, { global: { stubs } });
+	return mount(AddDomainForm, { global: { plugins: [createTestI18n()], stubs } });
 }
 
 // The DOM ids are per-instance (useId), so query by stable test hooks and assert
@@ -114,7 +118,10 @@ describe('AddDomainForm — the per-stream layout is proposed in the wizard (G-1
 	});
 
 	it('is a sending-only note — the tracking context has no streams to split', () => {
-		const w = mount(AddDomainForm, { global: { stubs }, props: { context: 'tracking' as const } });
+		const w = mount(AddDomainForm, {
+			global: { plugins: [createTestI18n()], stubs },
+			props: { context: 'tracking' as const },
+		});
 		expect(w.find('[data-testid="stream-subdomain-note"]').exists()).toBe(false);
 	});
 });

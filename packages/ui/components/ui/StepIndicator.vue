@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useUiI18n } from '../../composables/useUiI18n';
+
 type StepStatus = 'completed' | 'current' | 'upcoming';
 
 interface Step {
@@ -21,6 +23,8 @@ interface Props {
 
 const props = defineProps<Props>();
 
+const { t } = useUiI18n();
+
 function stepIsClickable(stepId: Step['id']): boolean {
 	return !!props.onStepClick && props.getStepStatus(stepId) === 'completed';
 }
@@ -31,7 +35,7 @@ function handleStepClick(stepId: Step['id']): void {
 </script>
 
 <template>
-	<nav aria-label="Progress">
+	<nav :aria-label="t('ui.stepIndicator.label')">
 		<ol class="flex items-center justify-between">
 			<li
 				v-for="(step, index) in steps"
@@ -48,7 +52,9 @@ function handleStepClick(stepId: Step['id']): void {
 							? 'rounded-md text-left cursor-pointer transition-opacity duration-(--motion-fast) hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
 							: ''
 					"
-					:aria-label="stepIsClickable(step.id) ? `Go back to ${step.label}` : undefined"
+					:aria-label="
+						stepIsClickable(step.id) ? t('ui.stepIndicator.goBackTo', { step: step.label }) : undefined
+					"
 					@click="handleStepClick(step.id)"
 				>
 					<!-- Step Circle -->

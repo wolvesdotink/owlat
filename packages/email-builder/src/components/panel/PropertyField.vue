@@ -18,6 +18,7 @@ import ImageField from './fields/ImageField.vue';
 import ToggleField from './fields/ToggleField.vue';
 import SelectField from './fields/SelectField.vue';
 import TextField from './fields/TextField.vue';
+import AltTextField from './fields/AltTextField.vue';
 
 // Complex editors
 import RichTextEditor from './RichTextEditor.vue';
@@ -58,6 +59,10 @@ const emit = defineEmits<{
 }>();
 
 const stringValue = computed(() => (props.value as string) ?? '');
+/** `decorative` lives next to the alt field on the same block content. */
+const isDecorative = computed(
+	() => (props.block.content as { decorative?: boolean }).decorative === true
+);
 const numberValue = computed(() => (props.value as number) ?? 0);
 const booleanValue = computed(() => (props.value as boolean) ?? false);
 
@@ -161,13 +166,25 @@ const fontFamilyOptions = [
 		<TextField
 			v-else-if="field.type === 'text'"
 			:value="stringValue"
+			:label="field.label"
 			:placeholder="field.placeholder"
 			@update="(val) => emit('update', val)"
+		/>
+
+		<!-- Alt text: plain text input plus the missing-alt accessibility nudge -->
+		<AltTextField
+			v-else-if="field.type === 'altText'"
+			:value="stringValue"
+			:decorative="isDecorative"
+			:placeholder="field.placeholder"
+			@update="(val) => emit('update', val)"
+			@mark-decorative="emit('update-keyed', 'decorative', true)"
 		/>
 
 		<!-- Textarea -->
 		<textarea
 			v-else-if="field.type === 'textarea'"
+			:aria-label="field.label"
 			class="w-full py-2 px-2.5 text-xs font-mono border border-border-subtle rounded-lg bg-bg-surface text-text-primary resize-y outline-none eb-input-ring"
 			:value="stringValue"
 			:placeholder="field.placeholder"
@@ -187,6 +204,7 @@ const fontFamilyOptions = [
 		<NumberField
 			v-else-if="field.type === 'number'"
 			:value="numberValue"
+			:label="field.label"
 			:min="field.min"
 			:max="field.max"
 			:step="field.step"
@@ -198,6 +216,7 @@ const fontFamilyOptions = [
 		<SliderField
 			v-else-if="field.type === 'slider'"
 			:value="numberValue"
+			:label="field.label"
 			:min="field.min"
 			:max="field.max"
 			:step="field.step"
@@ -209,6 +228,7 @@ const fontFamilyOptions = [
 		<ColorField
 			v-else-if="field.type === 'color'"
 			:value="stringValue"
+			:label="field.label"
 			:placeholder="field.placeholder"
 			@update="(val) => emit('update', val)"
 		/>
@@ -217,6 +237,7 @@ const fontFamilyOptions = [
 		<SelectField
 			v-else-if="field.type === 'select'"
 			:value="value"
+			:label="field.label"
 			:options="field.options ?? []"
 			@update="(val) => emit('update', val)"
 		/>
@@ -225,6 +246,7 @@ const fontFamilyOptions = [
 		<TextField
 			v-else-if="field.type === 'url'"
 			:value="stringValue"
+			:label="field.label"
 			:placeholder="field.placeholder ?? 'https://'"
 			type="url"
 			@update="(val) => emit('update', val)"
@@ -234,6 +256,7 @@ const fontFamilyOptions = [
 		<input
 			v-else-if="field.type === 'date'"
 			type="datetime-local"
+			:aria-label="field.label"
 			class="w-full py-2 px-2.5 text-[13px] border border-border-subtle rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring"
 			:value="stringValue ? stringValue.slice(0, 16) : ''"
 			@input="(e) => emit('update', new Date((e.target as HTMLInputElement).value).toISOString())"
@@ -287,6 +310,7 @@ const fontFamilyOptions = [
 		<SelectField
 			v-else-if="field.type === 'fontFamily'"
 			:value="stringValue"
+			:label="field.label"
 			:options="fontFamilyOptions"
 			placeholder="Default"
 			@update="(val) => emit('update', val)"
@@ -303,17 +327,20 @@ const fontFamilyOptions = [
 		<!-- Condition: show/hide the block based on a variable -->
 		<div v-else-if="field.type === 'condition'" class="flex flex-col gap-[5px]">
 			<TextField
+				label="Condition variable"
 				:value="condition.variable ?? ''"
 				placeholder="Variable name"
 				@update="(v) => updateCondition({ variable: v })"
 			/>
 			<SelectField
+				label="Condition operator"
 				:value="conditionOperator"
 				:options="conditionOperatorOptions"
 				@update="(v) => updateCondition({ operator: v as ConditionOperator })"
 			/>
 			<TextField
 				v-if="conditionNeedsValue"
+				label="Condition value"
 				:value="condition.value ?? ''"
 				placeholder="Value"
 				@update="(v) => updateCondition({ value: v })"
@@ -325,6 +352,7 @@ const fontFamilyOptions = [
 			<div class="flex flex-col gap-[5px]">
 				<FieldLabel>Array variable</FieldLabel>
 				<TextField
+					label="Repeat over variable"
 					:value="repeat.variable ?? ''"
 					placeholder="e.g. products"
 					@update="(v) => updateRepeat({ variable: v })"
@@ -333,6 +361,7 @@ const fontFamilyOptions = [
 			<div class="flex flex-col gap-[5px]">
 				<FieldLabel>Item alias</FieldLabel>
 				<TextField
+					label="Item alias"
 					:value="repeat.itemAlias ?? ''"
 					:placeholder="DEFAULT_ITEM_ALIAS"
 					@update="(v) => updateRepeat({ itemAlias: v })"
@@ -346,6 +375,7 @@ const fontFamilyOptions = [
 				<FieldLabel>Max items</FieldLabel>
 				<input
 					type="number"
+					aria-label="Max items"
 					min="1"
 					step="1"
 					class="w-full py-2 px-2.5 text-[13px] border border-border-subtle rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring placeholder:text-text-disabled appearance-number-plain"

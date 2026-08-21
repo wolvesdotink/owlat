@@ -24,15 +24,27 @@ const abSplitPercentage = defineModel<number>('abSplitPercentage', { required: t
 const abWinnerCriteria = defineModel<ABWinnerCriteria>('abWinnerCriteria', { required: true });
 const abTestDuration = defineModel<number>('abTestDuration', { required: true });
 
+const { t } = useI18n();
+
 const filteredTemplates = computed(() => {
 	if (!props.emailTemplates) return [];
-	return props.emailTemplates.filter((t) => t._id !== props.selectedTemplateId);
+	return props.emailTemplates.filter((template) => template._id !== props.selectedTemplateId);
 });
+
+/** Hours the auto-winner test can run for, labelled through the catalog. */
+const durationOptions = computed(() =>
+	[1, 2, 4, 6, 12, 24].map((value) => ({
+		value,
+		label: t('components.campaigns.abTestConfig.durationHours', value),
+	}))
+);
 </script>
 
 <template>
 	<div class="card p-6">
-		<h2 class="text-lg font-semibold text-text-primary mb-6">A/B Testing</h2>
+		<h2 class="text-lg font-semibold text-text-primary mb-6">
+			{{ t('components.campaigns.abTestConfig.title') }}
+		</h2>
 
 		<div class="space-y-6">
 			<!-- Enable A/B Test Toggle -->
@@ -55,16 +67,18 @@ const filteredTemplates = computed(() => {
 						<Icon name="lucide:split" class="w-5 h-5" />
 					</div>
 					<div>
-						<p class="font-medium text-text-primary">Enable A/B Testing</p>
+						<p class="font-medium text-text-primary">
+							{{ t('components.campaigns.abTestConfig.enableTitle') }}
+						</p>
 						<p class="text-sm text-text-secondary mt-0.5">
-							Split your audience to test different versions of your email
+							{{ t('components.campaigns.abTestConfig.enableDescription') }}
 						</p>
 					</div>
 				</div>
 				<!-- Decorative: the whole card is the click target -->
 				<UiSwitch
 					:model-value="abTestEnabled"
-					label="Enable A/B testing"
+					:label="t('components.campaigns.abTestConfig.enableSwitchLabel')"
 					class="pointer-events-none"
 					tabindex="-1"
 				/>
@@ -74,7 +88,9 @@ const filteredTemplates = computed(() => {
 			<div v-if="abTestEnabled" class="space-y-6 pt-4 border-t border-border-subtle">
 				<!-- Test Type Selection -->
 				<div>
-					<label class="label mb-3">What do you want to test?</label>
+					<label class="label mb-3">{{
+						t('components.campaigns.abTestConfig.testTypeLabel')
+					}}</label>
 					<div class="grid grid-cols-2 gap-4">
 						<label
 							:class="[
@@ -92,8 +108,12 @@ const filteredTemplates = computed(() => {
 								class="mt-1 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface"
 							/>
 							<div>
-								<p class="font-medium text-text-primary">Subject Line</p>
-								<p class="text-sm text-text-secondary mt-0.5">Test different subject lines</p>
+								<p class="font-medium text-text-primary">
+									{{ t('components.campaigns.abTestConfig.subjectOption') }}
+								</p>
+								<p class="text-sm text-text-secondary mt-0.5">
+									{{ t('components.campaigns.abTestConfig.subjectOptionDescription') }}
+								</p>
 							</div>
 						</label>
 						<label
@@ -112,8 +132,12 @@ const filteredTemplates = computed(() => {
 								class="mt-1 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface"
 							/>
 							<div>
-								<p class="font-medium text-text-primary">Email Content</p>
-								<p class="text-sm text-text-secondary mt-0.5">Test different email templates</p>
+								<p class="font-medium text-text-primary">
+									{{ t('components.campaigns.abTestConfig.contentOption') }}
+								</p>
+								<p class="text-sm text-text-secondary mt-0.5">
+									{{ t('components.campaigns.abTestConfig.contentOptionDescription') }}
+								</p>
 							</div>
 						</label>
 					</div>
@@ -127,7 +151,9 @@ const filteredTemplates = computed(() => {
 						>
 							A
 						</div>
-						<span class="font-medium text-text-primary">Variant A (Original)</span>
+						<span class="font-medium text-text-primary">{{
+							t('components.campaigns.abTestConfig.variantAHeading')
+						}}</span>
 					</div>
 					<p class="text-sm text-text-secondary ml-8">
 						{{ abTestType === 'subject' ? campaignSubject : selectedTemplateName }}
@@ -142,20 +168,22 @@ const filteredTemplates = computed(() => {
 						>
 							B
 						</div>
-						<span class="font-medium text-text-primary">Variant B</span>
+						<span class="font-medium text-text-primary">{{
+							t('components.campaigns.abTestConfig.variantBHeading')
+						}}</span>
 					</div>
 
 					<!-- Subject Line B (for subject tests) -->
 					<div v-if="abTestType === 'subject'" class="ml-8">
 						<label for="abVariantBSubject" class="label flex items-center gap-2">
 							<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-							Subject Line B
+							{{ t('components.campaigns.abTestConfig.subjectBLabel') }}
 						</label>
 						<input
 							id="abVariantBSubject"
 							v-model="abVariantBSubject"
 							type="text"
-							placeholder="e.g., Don't miss out on this special offer!"
+							:placeholder="t('components.campaigns.abTestConfig.subjectBPlaceholder')"
 							class="input mt-1.5"
 						/>
 					</div>
@@ -164,10 +192,12 @@ const filteredTemplates = computed(() => {
 					<div v-else class="ml-8">
 						<label for="abVariantBTemplate" class="label flex items-center gap-2">
 							<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
-							Email Template B
+							{{ t('components.campaigns.abTestConfig.templateBLabel') }}
 						</label>
 						<select id="abVariantBTemplate" v-model="abVariantBTemplateId" class="input mt-1.5">
-							<option :value="null" disabled>Select a template...</option>
+							<option :value="null" disabled>
+								{{ t('components.campaigns.abTestConfig.templateBPlaceholder') }}
+							</option>
 							<option
 								v-for="template in filteredTemplates"
 								:key="template._id"
@@ -183,7 +213,7 @@ const filteredTemplates = computed(() => {
 				<div>
 					<label class="label flex items-center gap-2">
 						<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-						Test Split Percentage
+						{{ t('components.campaigns.abTestConfig.splitLabel') }}
 					</label>
 					<div class="space-y-3">
 						<div class="flex items-center gap-4">
@@ -199,14 +229,22 @@ const filteredTemplates = computed(() => {
 								>{{ abSplitPercentage }}%</span
 							>
 						</div>
-						<p class="text-sm text-text-secondary">
-							<span class="text-brand font-medium">{{ abSplitPercentage }}%</span>
-							of audience gets Variant A,
-							<span class="text-brand font-medium">{{ abSplitPercentage }}%</span>
-							gets Variant B. The remaining
-							<span class="font-medium">{{ Math.max(0, 100 - 2 * abSplitPercentage) }}%</span>
-							will receive the winning version.
-						</p>
+						<I18nT
+							keypath="components.campaigns.abTestConfig.splitExplanation"
+							tag="p"
+							class="text-sm text-text-secondary"
+							scope="global"
+						>
+							<template #variantA>
+								<span class="text-brand font-medium">{{ abSplitPercentage }}%</span>
+							</template>
+							<template #variantB>
+								<span class="text-brand font-medium">{{ abSplitPercentage }}%</span>
+							</template>
+							<template #remaining>
+								<span class="font-medium">{{ Math.max(0, 100 - 2 * abSplitPercentage) }}%</span>
+							</template>
+						</I18nT>
 					</div>
 				</div>
 
@@ -214,7 +252,7 @@ const filteredTemplates = computed(() => {
 				<div>
 					<label class="label flex items-center gap-2">
 						<Icon name="lucide:check-circle" class="w-4 h-4 text-text-tertiary" />
-						How should we pick the winner?
+						{{ t('components.campaigns.abTestConfig.winnerLabel') }}
 					</label>
 					<div class="grid grid-cols-3 gap-3 mt-2">
 						<label
@@ -233,8 +271,12 @@ const filteredTemplates = computed(() => {
 								class="sr-only"
 							/>
 							<Icon name="lucide:eye" class="w-5 h-5 text-brand mb-2" />
-							<span class="text-sm font-medium text-text-primary">Open Rate</span>
-							<span class="text-xs text-text-tertiary mt-1">Most opens wins</span>
+							<span class="text-sm font-medium text-text-primary">{{
+								t('components.campaigns.abTestConfig.winnerOpenRate')
+							}}</span>
+							<span class="text-xs text-text-tertiary mt-1">{{
+								t('components.campaigns.abTestConfig.winnerOpenRateHint')
+							}}</span>
 						</label>
 						<label
 							:class="[
@@ -252,8 +294,12 @@ const filteredTemplates = computed(() => {
 								class="sr-only"
 							/>
 							<Icon name="lucide:mail" class="w-5 h-5 text-brand mb-2" />
-							<span class="text-sm font-medium text-text-primary">Click Rate</span>
-							<span class="text-xs text-text-tertiary mt-1">Most clicks wins</span>
+							<span class="text-sm font-medium text-text-primary">{{
+								t('components.campaigns.abTestConfig.winnerClickRate')
+							}}</span>
+							<span class="text-xs text-text-tertiary mt-1">{{
+								t('components.campaigns.abTestConfig.winnerClickRateHint')
+							}}</span>
 						</label>
 						<label
 							:class="[
@@ -271,8 +317,12 @@ const filteredTemplates = computed(() => {
 								class="sr-only"
 							/>
 							<Icon name="lucide:pencil" class="w-5 h-5 text-brand mb-2" />
-							<span class="text-sm font-medium text-text-primary">Manual</span>
-							<span class="text-xs text-text-tertiary mt-1">You decide</span>
+							<span class="text-sm font-medium text-text-primary">{{
+								t('components.campaigns.abTestConfig.winnerManual')
+							}}</span>
+							<span class="text-xs text-text-tertiary mt-1">{{
+								t('components.campaigns.abTestConfig.winnerManualHint')
+							}}</span>
 						</label>
 					</div>
 				</div>
@@ -281,21 +331,21 @@ const filteredTemplates = computed(() => {
 				<div v-if="abWinnerCriteria !== 'manual'">
 					<label for="abTestDuration" class="label flex items-center gap-2">
 						<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
-						Test Duration (hours)
+						{{ t('components.campaigns.abTestConfig.durationLabel') }}
 					</label>
 					<div class="flex items-center gap-4 mt-1.5">
 						<select id="abTestDuration" v-model="abTestDuration" class="input">
-							<option :value="1">1 hour</option>
-							<option :value="2">2 hours</option>
-							<option :value="4">4 hours</option>
-							<option :value="6">6 hours</option>
-							<option :value="12">12 hours</option>
-							<option :value="24">24 hours</option>
+							<option v-for="option in durationOptions" :key="option.value" :value="option.value">
+								{{ option.label }}
+							</option>
 						</select>
 					</div>
 					<p class="mt-1.5 text-sm text-text-tertiary">
-						After this time, the winning variant will automatically be sent to the remaining
-						{{ Math.max(0, 100 - 2 * abSplitPercentage) }}% of your audience.
+						{{
+							t('components.campaigns.abTestConfig.durationHint', {
+								remaining: Math.max(0, 100 - 2 * abSplitPercentage),
+							})
+						}}
 					</p>
 				</div>
 			</div>

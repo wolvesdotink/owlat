@@ -8,6 +8,7 @@ const props = defineProps<{
 	hasUnsavedChanges: boolean;
 }>();
 
+const { t } = useI18n();
 const isOpen = ref(false);
 const isCreating = ref(false);
 const { copy: copyToClipboard, copiedKey: copiedId } = useCopyToClipboard();
@@ -32,10 +33,10 @@ const { data: shareLinks } = useConvexQuery(api.shareLinks.listShareLinks, () =>
 
 // Mutations
 const { run: createShareLink } = useBackendOperation(api.shareLinks.createShareLink, {
-	label: 'Create share link',
+	label: () => t('components.shareLinksPopover.createOperation'),
 });
 const { run: revokeShareLink } = useBackendOperation(api.shareLinks.revokeShareLink, {
-	label: 'Revoke share link',
+	label: () => t('components.shareLinksPopover.revokeOperation'),
 });
 
 const config = useRuntimeConfig();
@@ -49,7 +50,7 @@ const handleCreate = async () => {
 		});
 		if (result?.url) {
 			await copyToClipboard(result.url);
-			showToast('Share link created and copied to clipboard', 'success');
+			showToast(t('components.shareLinksPopover.createdToast'), 'success');
 		}
 	} finally {
 		isCreating.value = false;
@@ -59,7 +60,7 @@ const handleCreate = async () => {
 const handleRevoke = async (shareLinkId: Id<'shareLinks'>) => {
 	const result = await revokeShareLink({ shareLinkId });
 	if (result === undefined) return;
-	showToast('Share link revoked', 'success');
+	showToast(t('components.shareLinksPopover.revokedToast'), 'success');
 };
 
 const handleCopy = async (token: string) => {
@@ -100,13 +101,13 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 			<UiButton
 				variant="outline"
 				size="sm"
-				title="Share preview link"
+				:title="t('components.shareLinksPopover.triggerTitle')"
 				@click.stop="isOpen = !isOpen"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:share-2" class="w-4 h-4" />
 				</template>
-				Share
+				{{ t('components.shareLinksPopover.share') }}
 			</UiButton>
 		</div>
 
@@ -129,8 +130,12 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 					}"
 				>
 					<div class="p-3 border-b border-border-subtle">
-						<h3 class="text-sm font-medium text-text-primary">Share Preview</h3>
-						<p class="text-xs text-text-tertiary mt-0.5">Create a 48-hour preview link</p>
+						<h3 class="text-sm font-medium text-text-primary">
+							{{ t('components.shareLinksPopover.panelTitle') }}
+						</h3>
+						<p class="text-xs text-text-tertiary mt-0.5">
+							{{ t('components.shareLinksPopover.panelSubtitle') }}
+						</p>
 					</div>
 
 					<!-- Create button -->
@@ -139,17 +144,25 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 							size="sm"
 							class="w-full"
 							:disabled="hasUnsavedChanges || isCreating"
-							:title="hasUnsavedChanges ? 'Save your changes first' : 'Create a new share link'"
+							:title="
+								hasUnsavedChanges
+									? t('components.shareLinksPopover.saveFirst')
+									: t('components.shareLinksPopover.createTitle')
+							"
 							@click="handleCreate"
 						>
 							<template #iconLeft>
 								<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 								<Icon v-else name="lucide:plus" class="w-4 h-4" />
 							</template>
-							{{ isCreating ? 'Creating...' : 'Create share link' }}
+							{{
+								isCreating
+									? t('components.shareLinksPopover.creating')
+									: t('components.shareLinksPopover.create')
+							}}
 						</UiButton>
 						<p v-if="hasUnsavedChanges" class="text-xs text-text-tertiary mt-1.5">
-							Save your changes before creating a share link.
+							{{ t('components.shareLinksPopover.unsavedHint') }}
 						</p>
 					</div>
 
@@ -159,7 +172,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 							v-if="!shareLinks?.length"
 							class="px-3 py-4 text-center text-xs text-text-tertiary"
 						>
-							No share links yet. Create one to share a preview.
+							{{ t('components.shareLinksPopover.empty') }}
 						</div>
 
 						<div
@@ -173,22 +186,28 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 									v-if="getLinkStatus(link) === 'active'"
 									class="text-xs text-success font-medium whitespace-nowrap"
 								>
-									Active &middot; {{ getHoursRemaining(link.expiresAt) }}h left
+									{{
+										t('components.shareLinksPopover.activeStatus', {
+											hours: getHoursRemaining(link.expiresAt),
+										})
+									}}
 								</span>
 								<span
 									v-else-if="getLinkStatus(link) === 'expired'"
 									class="text-xs text-text-tertiary font-medium"
 								>
-									Expired
+									{{ t('components.shareLinksPopover.expired') }}
 								</span>
-								<span v-else class="text-xs text-error font-medium"> Revoked </span>
+								<span v-else class="text-xs text-error font-medium">
+									{{ t('components.shareLinksPopover.revoked') }}
+								</span>
 
 								<!-- Actions -->
 								<div class="flex items-center gap-1">
 									<button
 										v-if="getLinkStatus(link) === 'active'"
 										class="p-1 rounded hover:bg-bg-subtle text-text-secondary hover:text-text-primary transition-colors"
-										title="Copy link"
+										:title="t('components.shareLinksPopover.copyLink')"
 										@click="handleCopy(link.token)"
 									>
 										<Icon
@@ -199,7 +218,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 									<button
 										v-if="getLinkStatus(link) === 'active'"
 										class="p-1 rounded hover:bg-error/10 text-text-secondary hover:text-error transition-colors"
-										title="Revoke link"
+										:title="t('components.shareLinksPopover.revokeLink')"
 										@click="handleRevoke(link._id)"
 									>
 										<Icon name="lucide:x" class="w-3.5 h-3.5" />

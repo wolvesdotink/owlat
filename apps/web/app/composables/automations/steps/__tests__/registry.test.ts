@@ -1,10 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import {
-	STEP_EDITOR_MODULES,
-	stepEditorModuleFor,
-	listStepEditorModules,
-} from '../index';
+import { STEP_EDITOR_MODULES, stepEditorModuleFor, listStepEditorModules } from '../index';
 import { delayUnitLabel } from '../delay';
+import { conditionEditorModuleFor } from '~/composables/conditions';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * Registry modules cannot call `useI18n`, so every label, error and description
+ * they hand back is a message KEY (or a key plus its interpolations) that the
+ * renderer translates. `resolves` asserts the catalog actually carries it: a
+ * key that resolves to itself is a step whose copy would paint as a raw path.
+ */
+const { t, te } = createTestI18n().global;
+const resolves = (key: string) => te(key) && t(key) !== key;
 
 describe('Step editor module registry', () => {
 	it('contains exactly the three canonical step kinds', () => {
@@ -24,11 +31,11 @@ describe('Step editor module registry', () => {
 	});
 
 	it('listStepEditorModules iterates the registry', () => {
-		expect(listStepEditorModules().map((m) => m.kind).sort()).toEqual([
-			'condition',
-			'delay',
-			'email',
-		]);
+		expect(
+			listStepEditorModules()
+				.map((m) => m.kind)
+				.sort()
+		).toEqual(['condition', 'delay', 'email']);
 	});
 });
 
@@ -48,9 +55,9 @@ describe('emailStepEditorModule', () => {
 	});
 
 	it('validateForActivation requires a template', () => {
-		expect(
-			module.validateForActivation({ emailTemplateId: '', subjectOverride: undefined })
-		).toBe('Email step requires a template');
+		expect(module.validateForActivation({ emailTemplateId: '', subjectOverride: undefined })).toBe(
+			'shared.automations.steps.email.templateRequired'
+		);
 		expect(
 			module.validateForActivation({ emailTemplateId: 'tpl_1', subjectOverride: undefined })
 		).toBeNull();
@@ -62,7 +69,7 @@ describe('emailStepEditorModule', () => {
 				{ emailTemplateId: '', subjectOverride: undefined },
 				{ emailTemplates: [] }
 			)
-		).toBe('Select an email template');
+		).toBe('shared.automations.steps.email.selectTemplate');
 		expect(
 			module.getDescription(
 				{ emailTemplateId: 'tpl_1', subjectOverride: undefined },
@@ -72,7 +79,30 @@ describe('emailStepEditorModule', () => {
 					] as never,
 				}
 			)
-		).toBe('Welcome');
+		).toEqual({
+			key: 'shared.automations.steps.email.templateName',
+			params: { name: 'Welcome' },
+		});
+	});
+
+	it('getDescription falls back to a key when the template is gone', () => {
+		expect(
+			module.getDescription(
+				{ emailTemplateId: 'tpl_gone', subjectOverride: undefined },
+				{
+					emailTemplates: [],
+				}
+			)
+		).toBe('shared.automations.steps.email.unknownTemplate');
+	});
+
+	it('every message it can hand back is in the catalog', () => {
+		expect(resolves(module.label)).toBe(true);
+		expect(resolves(module.description)).toBe(true);
+		expect(resolves('shared.automations.steps.email.templateRequired')).toBe(true);
+		expect(resolves('shared.automations.steps.email.selectTemplate')).toBe(true);
+		expect(resolves('shared.automations.steps.email.unknownTemplate')).toBe(true);
+		expect(t('shared.automations.steps.email.templateName', { name: 'Welcome' })).toBe('Welcome');
 	});
 });
 
@@ -93,28 +123,50 @@ describe('delayStepEditorModule', () => {
 
 	it('validateForActivation requires a positive duration', () => {
 		expect(module.validateForActivation({ duration: 0, unit: 'days' })).toBe(
-			'Delay duration must be at least 1'
+			'shared.automations.steps.delay.durationTooShort'
 		);
 		expect(module.validateForActivation({ duration: 1, unit: 'days' })).toBeNull();
 	});
 
+	const described = (config: {
+		duration: number;
+		unit: 'minutes' | 'hours' | 'days' | 'weeks';
+	}) => {
+		const value = module.getDescription(config, { emailTemplates: [] });
+		return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+	};
+
 	it('getDescription pluralises correctly', () => {
-		expect(
-			module.getDescription({ duration: 1, unit: 'days' }, { emailTemplates: [] })
-		).toBe('Wait 1 day');
-		expect(
-			module.getDescription({ duration: 2, unit: 'days' }, { emailTemplates: [] })
-		).toBe('Wait 2 days');
-		expect(
-			module.getDescription({ duration: 30, unit: 'minutes' }, { emailTemplates: [] })
-		).toBe('Wait 30 minutes');
+		expect(described({ duration: 1, unit: 'days' })).toBe('Wait 1 day');
+		expect(described({ duration: 2, unit: 'days' })).toBe('Wait 2 days');
+		expect(described({ duration: 30, unit: 'minutes' })).toBe('Wait 30 minutes');
 	});
 
-	it('delayUnitLabel pluralises across units', () => {
-		expect(delayUnitLabel(1, 'minutes')).toBe('minute');
-		expect(delayUnitLabel(2, 'minutes')).toBe('minutes');
-		expect(delayUnitLabel(1, 'hours')).toBe('hour');
-		expect(delayUnitLabel(1, 'weeks')).toBe('week');
+	it('getDescription hands back a key plus its interpolation', () => {
+		expect(module.getDescription({ duration: 2, unit: 'weeks' }, { emailTemplates: [] })).toEqual({
+			key: 'shared.automations.steps.delay.wait.weeks.other',
+			params: { count: 2 },
+		});
+	});
+
+	it('delayUnitLabel keys the singular and plural unit words', () => {
+		expect(t(delayUnitLabel(1, 'minutes'))).toBe('minute');
+		expect(t(delayUnitLabel(2, 'minutes'))).toBe('minutes');
+		expect(t(delayUnitLabel(1, 'hours'))).toBe('hour');
+		expect(t(delayUnitLabel(1, 'weeks'))).toBe('week');
+	});
+
+	it('every message it can hand back is in the catalog', () => {
+		expect(resolves(module.label)).toBe(true);
+		expect(resolves(module.description)).toBe(true);
+		expect(resolves('shared.automations.steps.delay.durationTooShort')).toBe(true);
+		expect(resolves('shared.automations.steps.delay.configure')).toBe(true);
+		for (const unit of ['minutes', 'hours', 'days', 'weeks'] as const) {
+			for (const count of [1, 2]) {
+				expect(resolves(delayUnitLabel(count, unit))).toBe(true);
+				expect(described({ duration: count, unit })).not.toContain('shared.automations');
+			}
+		}
 	});
 });
 
@@ -148,17 +200,31 @@ describe('conditionStepEditorModule', () => {
 		});
 	});
 
+	// The inner condition registry owns its own copy, so the assertion is that
+	// this step hands that verdict straight through — not what it happens to say.
+	const innerVerdict = (condition: {
+		kind: 'topic_membership';
+		topicId: string;
+		operator: 'equals';
+	}) =>
+		(
+			conditionEditorModuleFor('topic_membership').validateForSubmit as unknown as (
+				c: unknown
+			) => unknown
+		)(condition);
+
 	it('validateForActivation delegates to the inner Condition editor module', () => {
+		const invalid = { kind: 'topic_membership', topicId: '', operator: 'equals' } as const;
 		expect(
 			module.validateForActivation(
 				{
-					condition: { kind: 'topic_membership', topicId: '', operator: 'equals' },
+					condition: invalid,
 					yesBranchStepIndex: null,
 					noBranchStepIndex: null,
 				},
 				{ stepCount: 3 }
 			)
-		).toBe('Please select a topic');
+		).toEqual(innerVerdict(invalid));
 
 		expect(
 			module.validateForActivation(
@@ -193,9 +259,7 @@ describe('conditionStepEditorModule', () => {
 				{ condition: validInner, yesBranchStepIndex: 5, noBranchStepIndex: null },
 				{ stepCount: 3 }
 			)
-		).toBe(
-			'Condition "true" branch points at a step that no longer exists — pick a valid branch target'
-		);
+		).toBe('shared.automations.steps.condition.branchTargetMissing.trueBranch');
 	});
 
 	it('validateForActivation flags an out-of-range "false" branch target', () => {
@@ -204,9 +268,7 @@ describe('conditionStepEditorModule', () => {
 				{ condition: validInner, yesBranchStepIndex: null, noBranchStepIndex: 3 },
 				{ stepCount: 3 }
 			)
-		).toBe(
-			'Condition "false" branch points at a step that no longer exists — pick a valid branch target'
-		);
+		).toBe('shared.automations.steps.condition.branchTargetMissing.falseBranch');
 	});
 
 	it('validateForActivation flags a negative branch target', () => {
@@ -215,21 +277,31 @@ describe('conditionStepEditorModule', () => {
 				{ condition: validInner, yesBranchStepIndex: -1, noBranchStepIndex: null },
 				{ stepCount: 3 }
 			)
-		).toBe(
-			'Condition "true" branch points at a step that no longer exists — pick a valid branch target'
-		);
+		).toBe('shared.automations.steps.condition.branchTargetMissing.trueBranch');
 	});
 
 	it('validateForActivation reports the inner condition error before the branch check', () => {
+		const invalid = { kind: 'topic_membership', topicId: '', operator: 'equals' } as const;
 		expect(
 			module.validateForActivation(
 				{
-					condition: { kind: 'topic_membership', topicId: '', operator: 'equals' },
+					condition: invalid,
 					yesBranchStepIndex: 99,
 					noBranchStepIndex: null,
 				},
 				{ stepCount: 3 }
 			)
-		).toBe('Please select a topic');
+		).toEqual(innerVerdict(invalid));
+	});
+
+	it('every message it owns is in the catalog', () => {
+		expect(resolves(module.label)).toBe(true);
+		expect(resolves(module.description)).toBe(true);
+		expect(resolves('shared.automations.steps.condition.branchTargetMissing.trueBranch')).toBe(
+			true
+		);
+		expect(resolves('shared.automations.steps.condition.branchTargetMissing.falseBranch')).toBe(
+			true
+		);
 	});
 });

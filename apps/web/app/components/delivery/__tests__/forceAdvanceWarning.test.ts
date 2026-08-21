@@ -8,13 +8,21 @@
  * typed; and the phrase is the SAME constant the server checks, so a client that
  * skipped the dialog meets the identical rule.
  */
-import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { config, mount } from '@vue/test-utils';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import RampCellControls from '../RampCellControls.vue';
 import RampConfirmDialog from '../RampConfirmDialog.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { cellControl } from './rampFixtures';
+
+// The copy on these components flows through vue-i18n now; `useI18n` is a Nuxt
+// auto-import, so it has to exist as a bare global for their setup.
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	config.global.plugins = [...(config.global.plugins ?? []), createTestI18n()];
+});
 
 describe('force-advance control', () => {
 	it('emits an INTENT, never a write, and names the consequence beside the button', async () => {

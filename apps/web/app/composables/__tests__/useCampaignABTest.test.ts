@@ -1,6 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import { useCampaignABTest } from '../useCampaignABTest';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The composable resolves its copy through vue-i18n; install the real catalog
+ * behind the `useI18n` auto-import so the assertions read as the app ships.
+ */
+const i18n = createTestI18n();
+vi.stubGlobal('useI18n', () => i18n.global);
 
 describe('useCampaignABTest', () => {
 	it('starts disabled — the Setup step A/B expander is hidden by default', () => {

@@ -40,17 +40,25 @@ export type ReadinessGateKey =
  */
 export type ReadinessGateStatus = 'ready' | 'attention' | 'pending';
 
+/**
+ * A gate's words, as the catalog key that carries them (plus the values to
+ * interpolate). Gate producers are module scope and never call `useI18n`, so
+ * they hand back keys and the panel that renders a gate is the boundary that
+ * turns them into a sentence. A plain string is a key with no parameters.
+ */
+export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+
 export interface ReadinessGate {
 	key: ReadinessGateKey;
 	/** Human title of the gate. */
-	title: string;
+	title: LocalizedText;
 	/** One plain-language line on where this gate stands. No jargon, no lecture. */
-	detail: string;
+	detail: LocalizedText;
 	status: ReadinessGateStatus;
 	/** Shared health tone → token classes (see `healthTone.ts`). */
 	tone: HealthTone;
 	/** In-app route that resolves this gate, or `null` when there's nothing to do. */
 	actionHref: string | null;
 	/** Label for the fix link, or `null` when `actionHref` is `null`. */
-	actionLabel: string | null;
+	actionLabel: LocalizedText | null;
 }

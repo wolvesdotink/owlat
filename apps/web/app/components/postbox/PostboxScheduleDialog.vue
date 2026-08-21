@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const { t, locale } = useI18n();
+
 const props = defineProps<{
 	open: boolean;
 }>();
@@ -15,25 +17,32 @@ function nextOccurrence(hour: number, dayOffset = 0): number {
 	return d.getTime();
 }
 
+/** The preset's clock time, written the way the reader's locale writes it. */
+function formatHour(hour: number): string {
+	const d = new Date();
+	d.setHours(hour, 0, 0, 0);
+	return new Intl.DateTimeFormat(locale.value, { hour: 'numeric', minute: '2-digit' }).format(d);
+}
+
 const PRESETS = computed(() => {
 	const now = new Date();
 	const items: Array<{ label: string; when: () => number; sub: string }> = [
 		{
-			label: 'Tomorrow morning',
-			sub: '9:00 AM',
+			label: t('components.postbox.postboxScheduleDialog.tomorrowMorning'),
+			sub: formatHour(9),
 			when: () => nextOccurrence(9, 1),
 		},
 		{
-			label: 'Tomorrow afternoon',
-			sub: '1:00 PM',
+			label: t('components.postbox.postboxScheduleDialog.tomorrowAfternoon'),
+			sub: formatHour(13),
 			when: () => nextOccurrence(13, 1),
 		},
 	];
 	const dow = now.getDay();
 	const toMon = (1 + 7 - dow) % 7 || 7;
 	items.push({
-		label: 'Monday morning',
-		sub: '9:00 AM',
+		label: t('components.postbox.postboxScheduleDialog.mondayMorning'),
+		sub: formatHour(9),
 		when: () => nextOccurrence(9, toMon),
 	});
 	return items;
@@ -60,7 +69,7 @@ function pickCustom() {
 <template>
 	<UiModal
 		:open="open"
-		title="Schedule send"
+		:title="t('components.postbox.postboxScheduleDialog.title')"
 		size="sm"
 		@update:open="
 			(v) => {
@@ -81,10 +90,14 @@ function pickCustom() {
 			</li>
 		</ul>
 		<div class="border-t border-border-subtle pt-3">
-			<label class="text-xs font-medium text-text-tertiary block mb-1">Custom</label>
+			<label class="text-xs font-medium text-text-tertiary block mb-1">{{
+				t('components.postbox.postboxScheduleDialog.custom')
+			}}</label>
 			<div class="flex items-center gap-2">
 				<input v-model="customDate" type="datetime-local" class="input flex-1" />
-				<UiButton type="button" :disabled="!customDate" @click="pickCustom"> Schedule </UiButton>
+				<UiButton type="button" :disabled="!customDate" @click="pickCustom">
+					{{ t('components.postbox.postboxScheduleDialog.schedule') }}
+				</UiButton>
 			</div>
 		</div>
 	</UiModal>

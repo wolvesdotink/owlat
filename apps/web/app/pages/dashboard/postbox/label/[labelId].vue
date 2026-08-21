@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Mail — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.postbox.label.detail.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -49,20 +51,22 @@ const label = computed(() => (labels.value ?? []).find((l) => l._id === labelId.
 	<div class="flex h-[calc(100vh-4rem)]">
 		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
 			<div class="flex w-full">
-				<aside class="w-96 border-r border-border-subtle flex flex-col bg-bg-surface">
+				<aside
+					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex flex-col bg-bg-surface"
+				>
 					<header class="border-b border-border-subtle px-4 py-3 flex items-center gap-2">
 						<span
 							class="w-2.5 h-2.5 rounded-full flex-shrink-0"
 							:style="{ backgroundColor: label?.color || '#6b7280' }"
 						/>
 						<h2 class="text-sm font-semibold text-text-primary truncate">
-							{{ label?.name ?? 'Label view' }}
+							{{ label?.name ?? t('dashboard.postbox.label.detail.heading') }}
 						</h2>
 					</header>
 					<PostboxQuickActionsBar :mailbox-id="mailboxId!" />
 					<UiErrorAlert
 						v-if="error"
-						message="Couldn't load messages for this label. Reload to try again."
+						:message="t('dashboard.postbox.label.detail.loadError')"
 						class="m-3"
 					/>
 					<div class="flex-1 overflow-auto">
@@ -77,8 +81,10 @@ const label = computed(() => (labels.value ?? []).find((l) => l._id === labelId.
 						/>
 					</div>
 				</aside>
-				<section class="flex-1 flex items-center justify-center text-text-secondary">
-					Select a message
+				<!-- The list is the whole screen below lg, so the placeholder pane
+				     (which has nothing to select into on a phone) drops out. -->
+				<section class="flex-1 hidden lg:flex items-center justify-center text-text-secondary">
+					{{ t('dashboard.postbox.label.detail.selectMessage') }}
 				</section>
 			</div>
 		</PostboxMailboxGuard>

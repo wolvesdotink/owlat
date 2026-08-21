@@ -47,15 +47,20 @@ export function isCoachEligible(enabled: boolean, draftText: string): boolean {
 	return countWords(draftText) >= MIN_COACH_WORDS;
 }
 
-/** Human labels for each category, for the inline chip next to a suggestion. */
+/**
+ * Catalog KEYS for each category's inline chip next to a suggestion. This is a
+ * module-scope registry, so it holds keys rather than copy — the component that
+ * renders a suggestion resolves them with `t()` in the active locale.
+ */
 export const COACH_CATEGORY_LABELS: Record<CoachCategory, string> = {
-	tone: 'Tone',
-	ambiguity: 'Ambiguity',
-	clarity: 'Clarity',
-	'missing-answer': 'Missing answer',
+	tone: 'shared.postbox.usePostboxCoach.categories.tone',
+	ambiguity: 'shared.postbox.usePostboxCoach.categories.ambiguity',
+	clarity: 'shared.postbox.usePostboxCoach.categories.clarity',
+	'missing-answer': 'shared.postbox.usePostboxCoach.categories.missingAnswer',
 };
 
 export function usePostboxCoach(options: UsePostboxCoachOptions) {
+	const { t } = useI18n();
 	/** 'idle' | 'loading' (critique in flight) | 'ready' (result shown). */
 	const status = ref<'idle' | 'loading' | 'ready'>('idle');
 	/** The suggestions from the most recent completed run (empty = clean draft). */
@@ -98,7 +103,7 @@ export function usePostboxCoach(options: UsePostboxCoachOptions) {
 			activeController = null;
 			status.value = 'idle';
 			suggestions.value = [];
-			options.onError?.('Could not coach this draft. Try again.');
+			options.onError?.(t('shared.postbox.usePostboxCoach.failed'));
 			return;
 		}
 		// Reject stale/aborted responses: a newer run (or a reset) replaced us.

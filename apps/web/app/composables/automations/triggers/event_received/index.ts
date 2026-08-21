@@ -3,19 +3,23 @@ import type { TriggerEditorModule } from '../types';
 
 export const eventReceivedTriggerEditorModule: TriggerEditorModule<'event_received'> = {
 	kind: 'event_received',
-	label: 'Event Received',
-	description: 'Trigger when a specific event is received from your app',
+	label: 'shared.automations.triggers.eventReceived.label',
+	description: 'shared.automations.triggers.eventReceived.description',
 	icon: 'lucide:radio',
 	color: 'warning',
 	requiresConfig: true,
 	createDefault: () => ({ eventName: '' }),
 	validateForSubmit(config) {
-		if (!config.eventName.trim()) return 'Please enter an event name';
+		if (!config.eventName.trim())
+			return 'shared.automations.triggers.eventReceived.eventNameRequired';
 		return null;
 	},
 	getSummary(config) {
-		if (!config.eventName.trim()) return 'When an event is received';
-		return `Event: ${config.eventName}`;
+		if (!config.eventName.trim()) return 'shared.automations.triggers.eventReceived.summaryAny';
+		return {
+			key: 'shared.automations.triggers.eventReceived.summary',
+			params: { name: config.eventName },
+		};
 	},
 	EditorComponent: defineAsyncComponent(
 		() => import('../../../../components/automations/triggers/event_received/Editor.vue')

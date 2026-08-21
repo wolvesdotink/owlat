@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
+import type { ComposerAttachment } from '~/composables/postbox/usePostboxComposeAttachments';
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
 import { mentionsAttachment } from '~/utils/attachmentMention';
-import { sealSendBlock } from '~/utils/sealComposer';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -20,6 +20,8 @@ const props = defineProps<{
 	prefillBcc?: string[];
 	prefillSubject?: string;
 	prefillBodyHtml?: string;
+	/** Attachment refs already committed to `draftId` (see ComposerSpec). */
+	prefillAttachments?: ComposerAttachment[];
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
 	attachPendingKey?: string;
 	initialMode?: ComposerMode;
@@ -44,6 +46,8 @@ const emit = defineEmits<{
 	(e: 'minimize'): void;
 	(e: 'promote', payload: ComposerPromotePayload): void;
 }>();
+
+const { t, locale } = useI18n();
 
 const {
 	draftId: activeDraftId,
@@ -90,6 +94,7 @@ const {
 	prefillBcc: props.prefillBcc,
 	prefillSubject: props.prefillSubject,
 	prefillBodyHtml: props.prefillBodyHtml,
+	prefillAttachments: props.prefillAttachments,
 	forwardAttachmentsFromMessageId: props.forwardAttachmentsFromMessageId,
 	attachPendingKey: props.attachPendingKey,
 	initialMode: props.initialMode,
@@ -102,11 +107,13 @@ const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
-// Sealed Mail (E5): the composer seal-lock indicator (honest per-draft seal
-// state, wired in usePostboxComposerSealLock so this file stays focused).
-const { sealedMailEnabled, composerSealState } = usePostboxComposerSealLock(
-	() => activeDraftId.value ?? undefined
-);
+// Sealed Mail (E5): the honest per-draft seal state, the lock indicator and the
+// proceed-or-cancel decision an unsealable draft needs before it can be sent —
+// all wired in usePostboxComposerSealLock so this file stays focused.
+const seal = usePostboxComposerSealLock(() => activeDraftId.value ?? undefined, {
+	flush,
+	onConfirm: (opts) => void handleSend(opts),
+});
 
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
@@ -148,7 +155,11 @@ function onApplyReplyAll() {
 	ccAddresses.value = converted.cc;
 }
 
-const composerName = ref(`Postbox compose ${new Date().toLocaleString()}`);
+const composerName = ref(
+	t('components.postbox.postboxComposer.composerName', {
+		timestamp: new Date().toLocaleString(locale.value),
+	})
+);
 const backgroundColor = ref('#ffffff');
 
 const builderConfig = computed(() => ({
@@ -193,31 +204,18 @@ async function handleSend(opts?: SendOptions) {
 	// than losing the not-yet-committed attachment. Keep this above the canSend
 	// short-circuit so the toast still fires when uploading is the sole blocker.
 	if (isUploading.value) {
-		showToast('Waiting for attachments to finish uploading…');
+		showToast(t('components.postbox.postboxComposer.uploadingToast'));
 		return;
 	}
 	if (!canSend.value || sending.value) return;
-	const sealBlock = sealSendBlock(
-		sealedMailEnabled.value,
-		composerSealState.value,
-		opts?.allowUnsealed === true
-	);
-	if (sealBlock) {
-		if (sealBlock === 'checking') {
-			await flush();
-			showToast('Checking whether this message can be sealed…');
-		} else if (sealBlock === 'key_changed') {
-			showToast('Review and confirm the changed recipient key before sending.');
-		} else {
-			showToast('Choose “Send unsealed” to confirm plaintext delivery.');
-		}
-		return;
-	}
+	// Sealed Mail (E5): an unsealable draft stops here until the sender decides
+	// (proceed or cancel) — nothing goes out in plaintext by omission.
+	if (await seal.blockSend(opts)) return;
 	// Catch the classic "I said 'attached' but forgot to attach" mistake.
 	if (
 		attachments.value.length === 0 &&
 		mentionsAttachment(subject.value, bodyHtml.value) &&
-		!window.confirm('Your message mentions an attachment, but none is attached. Send anyway?')
+		!window.confirm(t('components.postbox.postboxComposer.attachmentMentionConfirm'))
 	) {
 		return;
 	}
@@ -284,9 +282,11 @@ const scheduledLabel = computed(() =>
 );
 
 const lastSavedLabel = computed(() => {
-	if (isSaving.value) return 'Saving…';
+	if (isSaving.value) return t('common.saving');
 	if (!lastSavedAt.value) return '';
-	return `Saved ${new Date(lastSavedAt.value).toLocaleTimeString()}`;
+	return t('components.postbox.postboxComposer.savedAt', {
+		time: new Date(lastSavedAt.value).toLocaleTimeString(locale.value),
+	});
 });
 
 // Scoped OS-level file drops and clipboard attachment pastes.
@@ -324,45 +324,18 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			v-if="dragActive"
 			class="absolute inset-0 z-10 flex items-center justify-center bg-brand/10 border-2 border-dashed border-brand rounded pointer-events-none"
 		>
-			<span class="text-sm font-medium text-brand"> Drop to attach · drop in text to embed </span>
-		</div>
-		<header
-			class="flex items-center justify-between px-3 py-2 bg-bg-surface border-b border-border-subtle"
-		>
-			<span class="text-sm font-semibold">
-				{{ subject || 'New message' }}
+			<span class="text-sm font-medium text-brand">
+				{{ t('components.postbox.postboxComposer.dropHint') }}
 			</span>
-			<div class="flex items-center gap-1">
-				<button
-					v-if="inline"
-					type="button"
-					class="p-1 hover:bg-bg-elevated rounded"
-					title="Open in popup"
-					aria-label="Open in popup"
-					:disabled="promoting"
-					@click="handlePromote"
-				>
-					<Icon name="lucide:maximize-2" class="w-4 h-4" />
-				</button>
-				<button
-					v-else
-					type="button"
-					class="p-1 hover:bg-bg-elevated rounded"
-					title="Minimize"
-					@click="emit('minimize')"
-				>
-					<Icon name="lucide:minus" class="w-4 h-4" />
-				</button>
-				<button
-					type="button"
-					class="p-1 hover:bg-bg-elevated rounded"
-					title="Discard"
-					@click="handleDiscard"
-				>
-					<Icon name="lucide:x" class="w-4 h-4" />
-				</button>
-			</div>
-		</header>
+		</div>
+		<PostboxComposerHeader
+			:subject="subject"
+			:inline="inline"
+			:promoting="promoting"
+			@promote="handlePromote"
+			@minimize="emit('minimize')"
+			@discard="handleDiscard"
+		/>
 
 		<PostboxComposerEnvelope
 			v-model:to-addresses="toAddresses"
@@ -377,16 +350,15 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@apply-reply-all="onApplyReplyAll"
 		/>
 
-		<!-- Sealed Mail (E5): honest seal-lock indicator. Sending unsealed on a
-		     cannotSeal draft is an explicit act — only this control supplies the
-		     plaintext-consent bit to the shared send handler. -->
-		<div v-if="sealedMailEnabled && composerSealState" class="px-3">
-			<PostboxComposerSealLock
-				:enabled="sealedMailEnabled"
-				:seal-state="composerSealState"
-				@send-unsealed="handleSend({ allowUnsealed: true })"
-			/>
-		</div>
+		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
+		     state is being computed. Its unsealed control only REQUESTS the
+		     decision — the dialog below is the single source of plaintext consent. -->
+		<PostboxComposerSealLock
+			:enabled="seal.enabled"
+			:seal-state="seal.state"
+			:pending="seal.pending"
+			@request-unsealed="seal.requestUnsealed()"
+		/>
 
 		<div
 			v-if="isScheduled"
@@ -394,7 +366,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		>
 			<span class="inline-flex items-center gap-1.5 text-text-secondary">
 				<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
-				Scheduled for {{ scheduledLabel }}
+				{{ t('components.postbox.postboxComposer.scheduledFor', { datetime: scheduledLabel }) }}
 			</span>
 			<UiButton
 				variant="ghost"
@@ -404,7 +376,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				@click="handleUnschedule"
 			>
 				<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin" />
-				Unschedule to edit
+				{{ t('components.postbox.postboxComposer.unschedule') }}
 			</UiButton>
 		</div>
 
@@ -413,7 +385,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				v-if="composerMode === 'simple'"
 				ref="basicEditor"
 				v-model="bodyHtml"
-				placeholder="Write your message…"
+				:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"
 				:suggestions-enabled="ghostSuggestionsEnabled"
 				:ghost-thread-context="subject"
 				:rewrite-enabled="aiRewriteEnabled"
@@ -486,6 +458,14 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:open="scheduleOpen"
 			@update:open="scheduleOpen = $event"
 			@confirm="(ts) => handleSend({ scheduledSendAt: ts })"
+		/>
+		<!-- Sealed Mail (E5): the decision behind every unsealed send; confirming
+		     replays the parked send (scheduled time included) as an explicit act. -->
+		<PostboxComposerSealConfirmDialog
+			:open="seal.confirmOpen"
+			:seal-state="seal.state"
+			@update:open="seal.setConfirmOpen"
+			@confirm="seal.confirmUnsealed"
 		/>
 		<!-- Team-inbox collision safety: a teammate replied to this thread after
 		     this reply was opened. Confirm before sending a duplicate. -->

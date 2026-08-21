@@ -24,8 +24,11 @@ import {
 	usePostboxCoach,
 	isCoachEligible,
 	COACH_CATEGORY_LABELS,
+	type CoachCategory,
 	type CoachSuggestion,
 } from '~/composables/postbox/usePostboxCoach';
+
+const { t } = useI18n();
 
 const props = defineProps<{
 	/** The user's own draft text to critique. */
@@ -63,6 +66,16 @@ function onCoachClick() {
 	void coach.run(props.draftText);
 }
 
+/**
+ * The critique categories are declared in the composable as catalog KEYS (the
+ * registry convention), so the label is resolved here at render time. An
+ * unknown category simply renders without a label rather than a raw key.
+ */
+function categoryLabel(category: string): string {
+	const key = COACH_CATEGORY_LABELS[category as CoachCategory];
+	return key ? t(key) : '';
+}
+
 /** Per-category dot colour, purely decorative. */
 const CATEGORY_DOT: Record<string, string> = {
 	tone: 'bg-brand',
@@ -86,9 +99,11 @@ const CATEGORY_DOT: Record<string, string> = {
 			>
 				<Icon v-if="coach.isLoading()" name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
 				<Icon v-else name="lucide:graduation-cap" class="w-3.5 h-3.5" />
-				<span>Coach my draft</span>
+				<span>{{ t('components.postbox.postboxCoachPanel.run') }}</span>
 			</UiButton>
-			<span class="text-xs text-text-tertiary">Reviews your wording — never rewrites it.</span>
+			<span class="text-xs text-text-tertiary">{{
+				t('components.postbox.postboxCoachPanel.hint')
+			}}</span>
 		</div>
 
 		<!-- Clean draft: nothing to flag. -->
@@ -98,7 +113,7 @@ const CATEGORY_DOT: Record<string, string> = {
 			data-testid="postbox-coach-clean"
 		>
 			<Icon name="lucide:check-circle-2" class="w-3.5 h-3.5" />
-			Looks solid — no issues found.
+			{{ t('components.postbox.postboxCoachPanel.clean') }}
 		</p>
 
 		<!-- Advisory critique of the user's OWN text. Never replaces the draft. -->
@@ -113,9 +128,11 @@ const CATEGORY_DOT: Record<string, string> = {
 					:class="CATEGORY_DOT[s.category] ?? 'bg-info'"
 				/>
 				<span>
-					<span class="font-medium text-text-secondary"
-						>{{ COACH_CATEGORY_LABELS[s.category] }}:</span
-					>
+					<span v-if="categoryLabel(s.category)" class="font-medium text-text-secondary">{{
+						t('components.postbox.postboxCoachPanel.suggestionCategory', {
+							category: categoryLabel(s.category),
+						})
+					}}</span>
 					<span class="text-text-secondary"> {{ s.message }}</span>
 				</span>
 			</li>

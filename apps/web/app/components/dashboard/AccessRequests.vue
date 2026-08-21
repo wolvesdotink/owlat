@@ -20,8 +20,10 @@ const { data: requests, isLoading } = useConvexQuery(
 	() => ({})
 );
 
+const { t } = useI18n();
+
 const { run: resolveRequest } = useBackendOperation(api.auth.accessRequest.resolve, {
-	label: 'Resolve access request',
+	label: () => t('components.dashboard.accessRequests.resolveOperation'),
 });
 
 const openRequests = computed(() => requests.value ?? []);
@@ -45,10 +47,11 @@ async function resolve(requestId: Id<'accessRequests'>) {
 		<div class="flex items-center gap-3 mb-4">
 			<UiIconBox icon="lucide:user-plus" variant="surface" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Access requests</h2>
+				<h2 class="text-lg font-semibold text-text-primary">
+					{{ t('components.dashboard.accessRequests.title') }}
+				</h2>
 				<p class="text-sm text-text-secondary mt-0.5">
-					{{ openRequests.length }} {{ openRequests.length === 1 ? 'person is' : 'people are' }}
-					asking to join. Invite them from Members, then mark the request done.
+					{{ t('components.dashboard.accessRequests.subtitle', openRequests.length) }}
 				</p>
 			</div>
 		</div>
@@ -72,7 +75,7 @@ async function resolve(requestId: Id<'accessRequests'>) {
 					:disabled="resolvingId !== null && resolvingId !== req.id"
 					@click="resolve(req.id)"
 				>
-					Mark done
+					{{ t('components.dashboard.accessRequests.markDone') }}
 				</UiButton>
 			</li>
 		</ul>

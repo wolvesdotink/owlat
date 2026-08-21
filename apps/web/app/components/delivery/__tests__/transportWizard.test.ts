@@ -33,6 +33,7 @@ import {
 	armsFixture,
 	buttonByText,
 	fillCredentials,
+	localized,
 	mountWizard,
 	openWizard,
 	stubDoh,
@@ -152,8 +153,12 @@ describe('transport wizard — pure state machine', () => {
 		}
 		// D2 again, in the words the operator reads: nothing to align is a fact,
 		// not a fault.
-		expect(ALIGNMENT_VERDICT_PRESENTATION.single_arm.summary).toContain('nothing to align yet');
-		expect(ALIGNMENT_VERDICT_PRESENTATION.blocked.summary).toContain('names the DNS change');
+		expect(localized(ALIGNMENT_VERDICT_PRESENTATION.single_arm.summary)).toContain(
+			'nothing to align yet'
+		);
+		expect(localized(ALIGNMENT_VERDICT_PRESENTATION.blocked.summary)).toContain(
+			'names the DNS change'
+		);
 	});
 
 	it('never fails on the return-path probe — the worst posture is "not known"', () => {
@@ -417,7 +422,7 @@ describe('transport wizard — in-flight reads render as reads, not as findings'
 			returnPathTransportId: null,
 			returnPathCapability: 'unknown',
 		});
-		expect(wrapper.text()).toContain(RETURN_PATH_NO_REFERENCE_NOTE);
+		expect(wrapper.text()).toContain(localized(RETURN_PATH_NO_REFERENCE_NOTE));
 		// The settles-after-a-bounce note describes a provider; there is none.
 		expect(wrapper.text()).not.toContain('settles the first time a bounce comes back');
 		wrapper.unmount();

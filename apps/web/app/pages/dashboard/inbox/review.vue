@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import ReviewApproveUndoToast from '~/components/agent-tasks/ReviewApproveUndoToast.vue';
 import ReviewBrowseList from '~/components/agent-tasks/ReviewBrowseList.vue';
 import ReviewFocusFlow from '~/components/agent-tasks/ReviewFocusFlow.vue';
 
-useHead({ title: 'Review Queue — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.inbox.review.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -23,5 +26,8 @@ const focusMode = ref(false);
 	<div class="p-6 lg:p-8">
 		<ReviewFocusFlow v-if="focusMode" @exit="focusMode = false" />
 		<ReviewBrowseList v-else @focus="focusMode = true" />
+		<!-- One shared countdown-undo toast for approvals ("Approved — Undo (14s)"),
+		     armed by whichever surface just approved (piece C1). -->
+		<ReviewApproveUndoToast />
 	</div>
 </template>

@@ -5,7 +5,9 @@ import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue
 import { useOrganization } from '~/composables/useOrganization';
 import { INBOX_FILTER_META, type InboxFilter } from '~/utils/inboxFilters';
 
-useHead({ title: 'Team Inbox — Owlat' });
+const { t, te } = useI18n();
+
+useHead({ title: () => t('dashboard.inbox.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -26,26 +28,25 @@ const {
 	loadMoreThreads,
 } = useInbox();
 
+// ── Row triage mutations (shared with the thread detail view) ──
+const { user } = useAuth();
 // ── Access gate ──
 // The backend returns empty lists to non-admins by design; without this check
 // that reads as "the queue is clear" when it actually means "no access". Once
 // the role has resolved to a non-admin member, render the honest explainer
 // (with exits) instead of a fake-zero inbox.
 const { isAdmin, showAdminGate, role } = usePermissions();
-
-// ── Row triage mutations (shared with the thread detail view) ──
-const { user } = useAuth();
 const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
-	label: 'Assign thread',
+	label: () => t('dashboard.inbox.index.assignThreadOperation'),
 });
 const { run: updateThreadStatus } = useBackendOperation(api.inbox.mutations.updateThreadStatus, {
-	label: 'Update thread status',
+	label: () => t('dashboard.inbox.index.updateThreadStatusOperation'),
 });
 const { run: snoozeThread } = useBackendOperation(api.inbox.snooze.snoozeThread, {
-	label: 'Snooze thread',
+	label: () => t('dashboard.inbox.index.snoozeThreadOperation'),
 });
 const { run: unsnoozeThread } = useBackendOperation(api.inbox.snooze.unsnoozeThread, {
-	label: 'Unsnooze thread',
+	label: () => t('dashboard.inbox.index.unsnoozeThreadOperation'),
 });
 
 type TeamThread = InboxThreadRowThread & { _id: Id<'conversationThreads'> };
@@ -84,11 +85,13 @@ const assignMembers = computed(() =>
 
 /** Human undo-toast label for an assignment. */
 function assignLabel(assignedTo: string | undefined): string {
-	if (assignedTo === undefined) return 'Unassigned';
-	if (assignedTo === user.value?.id) return 'Assigned to you';
+	if (assignedTo === undefined) return t('dashboard.inbox.index.undo.unassigned');
+	if (assignedTo === user.value?.id) return t('dashboard.inbox.index.undo.assignedToYou');
 	const member = assignMembers.value.find((m) => m.userId === assignedTo);
 	const name = member?.name || member?.email;
-	return name ? `Assigned to ${name}` : 'Assigned';
+	return name
+		? t('dashboard.inbox.index.undo.assignedTo', { name })
+		: t('dashboard.inbox.index.undo.assigned');
 }
 
 /** Does assigning to `assignedTo` drop the row from the active filter? */
@@ -123,7 +126,7 @@ async function resolveThread(thread: TeamThread) {
 	if (previousStatus === 'resolved') return;
 	await runTriage({
 		id: thread._id,
-		label: 'Resolved',
+		label: t('dashboard.inbox.index.undo.resolved'),
 		leavesView: ACTIVE_WORK_FILTERS.has(filter.value),
 		mutate: () => updateThreadStatus({ threadId: thread._id, status: 'resolved' }),
 		inverse: () => updateThreadStatus({ threadId: thread._id, status: previousStatus }),
@@ -144,7 +147,7 @@ async function onSnoozeConfirm(timestamp: number) {
 	if (!id) return;
 	await runTriage({
 		id,
-		label: 'Snoozed',
+		label: t('dashboard.inbox.index.undo.snoozed'),
 		leavesView: ACTIVE_WORK_FILTERS.has(filter.value),
 		mutate: () => snoozeThread({ threadId: id, until: timestamp }),
 		inverse: () => unsnoozeThread({ threadId: id }),
@@ -157,14 +160,19 @@ const listKey = computed(() => `${filter.value}:${sort.value}`);
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>({
 	items: visibleThreads,
 	resetKey: listKey,
-	rowDomId: (t) => `inbox-row-${t._id}`,
-	onActivate: (t) => navigateTo(`/dashboard/inbox/${t._id}`),
-	onAction: (key, t) => {
-		if (key === 'i' && isAdmin.value) void assignToMe(t);
+	rowDomId: (thread) => `inbox-row-${thread._id}`,
+	onActivate: (thread) => navigateTo(`/dashboard/inbox/${thread._id}`),
+	onAction: (key, thread) => {
+		if (key === 'i' && isAdmin.value) void assignToMe(thread);
 	},
 });
 
-const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
+// Empty-state copy per active pill. The shared filter registry keeps its plain
+// English fallback, so an unknown filter still reads as a sentence.
+const emptyMessage = computed(() => {
+	const key = `dashboard.inbox.index.empty.${filter.value}`;
+	return te(key) ? t(key) : INBOX_FILTER_META[filter.value].empty;
+});
 </script>
 
 <template>
@@ -172,17 +180,19 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Team Inbox</h1>
-				<p class="text-text-secondary mt-1">Customer conversations your team handles together.</p>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.inbox.index.title') }}
+				</h1>
+				<p class="text-text-secondary mt-1">{{ t('dashboard.inbox.index.subtitle') }}</p>
 			</div>
 
 			<div class="flex items-center gap-3">
 				<UiButton to="/dashboard/inbox/review" class="gap-2">
 					<Icon name="lucide:check-circle" class="w-4 h-4" />
-					Review Queue
+					{{ t('dashboard.inbox.index.reviewQueue') }}
 					<span
 						v-if="stats?.draftReady"
-						class="ml-1 bg-white/20 text-white text-xs px-1.5 py-0.5 rounded-full"
+						class="ml-1 bg-text-inverse/20 text-text-inverse text-xs px-1.5 py-0.5 rounded-full"
 					>
 						{{ stats.draftReady }}
 					</span>
@@ -192,52 +202,64 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 
 		<!-- Access explainer: a non-admin on this route sees WHY it's empty and
 		     where to go instead — never a fake "no conversations" zero. -->
-		<div v-if="showAdminGate" class="flex flex-col items-center justify-center py-20 text-center">
+		<div
+			v-if="showAdminGate"
+			class="flex flex-col items-center justify-center py-20 text-center"
+		>
 			<UiIconBox icon="lucide:lock" size="xl" variant="warning" rounded="full" class="mb-4" />
-			<h2 class="text-lg font-medium text-text-primary">Team Inbox is limited to admins</h2>
+			<h2 class="text-lg font-medium text-text-primary">
+				{{ t('dashboard.inbox.index.accessTitle') }}
+			</h2>
 			<p class="text-text-secondary mt-1.5 max-w-md">
-				Your role (<span class="capitalize">{{ role ?? 'member' }}</span
-				>) doesn't include the shared customer inbox. Your own mail lives in Postbox.
+				{{
+					t('dashboard.inbox.index.accessBody', { role: role ?? t('common.role.member') })
+				}}
 			</p>
 			<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
 				<UiButton to="/dashboard/postbox/inbox" class="gap-2">
 					<Icon name="lucide:inbox" class="w-4 h-4" />
-					Open my Postbox
+					{{ t('dashboard.inbox.index.openMyPostbox') }}
 				</UiButton>
 			</div>
 			<p class="text-xs text-text-tertiary mt-4">
-				Need access? Ask an organization admin to change your role in Settings → Team.
+				{{ t('dashboard.inbox.index.accessHint') }}
 			</p>
 		</div>
 
 		<template v-else>
 			<!-- Filter pills (live counts) + needs-attention sort chip -->
 			<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-				<InboxFilterPills v-model="filter" :counts="filterCounts" />
+			<InboxFilterPills v-model="filter" :counts="filterCounts" />
 
-				<button
-					type="button"
-					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
-					:title="
+			<button
+				type="button"
+				class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
+				:title="
+					sort === 'needs-attention'
+						? t('dashboard.inbox.index.sortToggleToNewest')
+						: t('dashboard.inbox.index.sortToggleToNeedsAttention')
+				"
+				@click="toggleSort"
+			>
+				<Icon
+					:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
+					class="w-3.5 h-3.5"
+				/>
+				<span>
+					{{
 						sort === 'needs-attention'
-							? 'Sorted by needs-attention — switch to newest first'
-							: 'Sorted newest first — switch to needs-attention'
-					"
-					@click="toggleSort"
-				>
-					<Icon
-						:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
-						class="w-3.5 h-3.5"
-					/>
-					<span>{{ sort === 'needs-attention' ? 'Sorted by needs-attention' : 'Newest first' }}</span>
-				</button>
+							? t('dashboard.inbox.index.sortedByNeedsAttention')
+							: t('dashboard.inbox.index.sortedNewestFirst')
+					}}
+				</span>
+			</button>
 			</div>
 
 			<!-- Loading — Postbox list skeleton geometry -->
 			<UiQueryBoundary
 				:loading="threadsLoading && threads.length === 0"
 				:error="threadsError"
-				error-title="Couldn't load the inbox"
+				:error-title="t('dashboard.inbox.index.errorTitle')"
 			>
 				<template #loading>
 					<PostboxThreadListSkeleton :rows="8" />
@@ -258,7 +280,7 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 					<ul
 						role="listbox"
 						tabindex="0"
-						aria-label="Team inbox threads"
+						:aria-label="t('dashboard.inbox.index.listAriaLabel')"
 						:aria-activedescendant="activeId"
 						class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
 						@keydown="onKeydown"
@@ -280,7 +302,9 @@ const emptyMessage = computed(() => INBOX_FILTER_META[filter.value].empty);
 
 					<!-- Load More -->
 					<div v-if="hasMoreThreads" class="pt-4 text-center">
-						<UiButton variant="secondary" size="sm" @click="loadMoreThreads">Load More</UiButton>
+						<UiButton variant="secondary" size="sm" @click="loadMoreThreads">
+							{{ t('dashboard.inbox.index.loadMore') }}
+						</UiButton>
 					</div>
 				</div>
 			</UiQueryBoundary>

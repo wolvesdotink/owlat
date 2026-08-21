@@ -45,6 +45,7 @@ import {
 	controlsView,
 } from '~/components/delivery/__tests__/rampFixtures';
 import { cellView } from '~/components/delivery/__tests__/measurementFixtures';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 type AnyQuery = FunctionReference<'query'>;
 
@@ -70,6 +71,9 @@ function stubQueries(answers: readonly (readonly [AnyQuery, StubbedQuery])[]): v
 }
 
 beforeEach(() => {
+	// These screens' copy flows through vue-i18n now; `useI18n` is a Nuxt
+	// auto-import, so it has to exist as a bare global for their setups.
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('navigateTo', vi.fn());
@@ -104,6 +108,7 @@ const globalOptions = {
 		DeliveryRampPresetPicker: RampPresetPicker,
 		DeliveryMeasurementGateList: MeasurementGateList,
 	},
+	plugins: [createTestI18n()],
 };
 
 const dashboardView = {
@@ -238,11 +243,12 @@ describe('the Gmail compliance card', () => {
 		UiCard: { template: '<div><slot /></div>' },
 		UiIconBox: { template: '<i />' },
 	};
+	const cardOptions = { stubs, plugins: [createTestI18n()] };
 
 	it('does not report "Not connected" for an account it could not ask about', () => {
 		const wrapper = mount(PostmasterComplianceCard, {
 			props: { status: undefined, isLoading: false, error: new Error('postmaster unavailable') },
-			global: { stubs },
+			global: cardOptions,
 		});
 
 		expect(wrapper.find('[data-testid="postmaster-not-connected"]').exists()).toBe(false);
@@ -255,7 +261,7 @@ describe('the Gmail compliance card', () => {
 	it('still reads "Not connected" when the query answered that nobody has connected', () => {
 		const wrapper = mount(PostmasterComplianceCard, {
 			props: { status: { connected: false, domains: [] }, isLoading: false, error: null },
-			global: { stubs },
+			global: cardOptions,
 		});
 
 		expect(wrapper.find('[data-testid="postmaster-not-connected"]').exists()).toBe(true);
@@ -319,6 +325,7 @@ describe('the delivery hub page', () => {
 			DeliveryPostmasterComplianceCard: PostmasterComplianceCard,
 			DeliveryDomainTable: DomainTable,
 		},
+		plugins: [createTestI18n()],
 	};
 
 	beforeEach(() => {

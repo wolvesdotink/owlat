@@ -15,6 +15,8 @@ import type { Id } from '@owlat/api/dataModel';
  * reply the user edits. Advisory + fail-soft: an AI failure just clears the
  * options and leaves the chip.
  */
+const { t } = useI18n();
+
 const props = defineProps<{
 	messageId: string;
 	proposedTimes: string[];
@@ -28,7 +30,7 @@ const emit = defineEmits<{
 const replies = ref<string[]>([]);
 
 const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
-	label: 'Draft scheduling reply',
+	label: () => t('components.postbox.postboxSchedulingChip.draftOperation'),
 	type: 'action',
 });
 
@@ -60,13 +62,13 @@ async function draft() {
 						:class="{ 'animate-spin': suggestOp.isLoading.value }"
 					/>
 				</template>
-				Scheduling request — draft a reply?
+				{{ t('components.postbox.postboxSchedulingChip.prompt') }}
 			</UiButton>
 			<button
 				type="button"
 				class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-				title="Dismiss"
-				aria-label="Dismiss scheduling suggestion"
+				:title="t('common.dismiss')"
+				:aria-label="t('components.postbox.postboxSchedulingChip.dismissLabel')"
 				@click="emit('dismiss')"
 			>
 				<Icon name="lucide:x" class="w-3.5 h-3.5" />
@@ -74,11 +76,13 @@ async function draft() {
 		</div>
 
 		<div aria-live="polite" :aria-busy="suggestOp.isLoading.value">
-			<span v-if="suggestOp.isLoading.value" class="sr-only">Drafting…</span>
+			<span v-if="suggestOp.isLoading.value" class="sr-only">{{
+				t('components.postbox.postboxSchedulingChip.drafting')
+			}}</span>
 			<div
 				v-if="replies.length > 0"
 				role="group"
-				aria-label="Suggested scheduling replies"
+				:aria-label="t('components.postbox.postboxSchedulingChip.repliesLabel')"
 				class="mt-2 flex flex-wrap gap-2"
 			>
 				<button

@@ -9,6 +9,8 @@ interface Props {
 const props = defineProps<Props>();
 const emit = defineEmits<{ close: [] }>();
 
+const { t, locale } = useI18n();
+
 const { data: threadsData, isLoading } = useConvexQuery(api.inbox.queries.listThreads, () => ({
 	limit: 100,
 }));
@@ -51,20 +53,24 @@ const unlinkAndClose = async () => {
 };
 
 const formatTime = (timestamp: number) => {
-	return new Date(timestamp).toLocaleDateString(undefined, {
+	return new Intl.DateTimeFormat(locale.value, {
 		month: 'short',
 		day: 'numeric',
-	});
+	}).format(new Date(timestamp));
 };
 </script>
 
 <template>
-	<ChatDialogShell title="Link an email thread" size="lg" @close="emit('close')">
+	<ChatDialogShell
+		:title="t('components.chat.chatLinkEmailDialog.title')"
+		size="lg"
+		@close="emit('close')"
+	>
 		<div class="px-5 py-3 border-b border-border-subtle">
 			<input
 				v-model="search"
 				type="text"
-				placeholder="Search inbox threads…"
+				:placeholder="t('components.chat.chatLinkEmailDialog.searchPlaceholder')"
 				class="input w-full"
 			/>
 		</div>
@@ -74,7 +80,7 @@ const formatTime = (timestamp: number) => {
 				<UiSpinner size="md" />
 			</div>
 			<div v-else-if="threads.length === 0" class="text-center py-8 text-text-tertiary text-sm">
-				No inbox threads found.
+				{{ t('components.chat.chatLinkEmailDialog.empty') }}
 			</div>
 			<div v-else class="space-y-1">
 				<button
@@ -103,9 +109,9 @@ const formatTime = (timestamp: number) => {
 				:disabled="isSubmitting"
 				@click="unlinkAndClose"
 			>
-				Remove current link
+				{{ t('components.chat.chatLinkEmailDialog.removeLink') }}
 			</UiButton>
-			<UiButton variant="secondary" @click="emit('close')">Close</UiButton>
+			<UiButton variant="secondary" @click="emit('close')">{{ t('common.close') }}</UiButton>
 		</div>
 	</ChatDialogShell>
 </template>

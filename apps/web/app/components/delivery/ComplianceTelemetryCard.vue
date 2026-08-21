@@ -2,16 +2,29 @@
 import { api } from '@owlat/api';
 import { formatNumber, formatPercentage } from '~/utils/formatters';
 
+const { t } = useI18n();
+
 const { data: telemetry, isLoading } = useOrganizationQuery(
 	api.analytics.complianceTelemetry.getComplianceTelemetry
 );
 
+/** The catalog rejects `<` inside a message, so the comparison sign is a value. */
+const LESS_THAN = '<';
+
+const DURATION = 'components.delivery.complianceTelemetryCard.unsubscribe';
+
 function formatDuration(milliseconds: number | null): string {
-	if (milliseconds === null) return 'Collecting data';
-	if (milliseconds < 1_000) return `≤ ${milliseconds} ms`;
-	if (milliseconds < 60_000) return `≤ ${Math.round(milliseconds / 1_000)} s`;
-	if (milliseconds < 3_600_000) return `≤ ${Math.round(milliseconds / 60_000)} min`;
-	return `≤ ${Math.round(milliseconds / 3_600_000)} h`;
+	if (milliseconds === null) return t(`${DURATION}.collecting`);
+	if (milliseconds < 1_000) {
+		return t(`${DURATION}.milliseconds`, { milliseconds });
+	}
+	if (milliseconds < 60_000) {
+		return t(`${DURATION}.seconds`, { seconds: Math.round(milliseconds / 1_000) });
+	}
+	if (milliseconds < 3_600_000) {
+		return t(`${DURATION}.minutes`, { minutes: Math.round(milliseconds / 60_000) });
+	}
+	return t(`${DURATION}.hours`, { hours: Math.round(milliseconds / 3_600_000) });
 }
 
 const SPAM_RATE_TONE = {
@@ -21,11 +34,12 @@ const SPAM_RATE_TONE = {
 	hard_limit: 'border-error/40 bg-error/5',
 } as const;
 
+/** Message keys, resolved in the template so a locale switch repaints them. */
 const SPAM_RATE_LABEL = {
-	no_data: 'No data',
-	on_target: 'On target',
-	elevated: 'Above target',
-	hard_limit: 'At hard line',
+	no_data: 'components.delivery.complianceTelemetryCard.spamRateStatus.noData',
+	on_target: 'components.delivery.complianceTelemetryCard.spamRateStatus.onTarget',
+	elevated: 'components.delivery.complianceTelemetryCard.spamRateStatus.elevated',
+	hard_limit: 'components.delivery.complianceTelemetryCard.spamRateStatus.hardLimit',
 } as const;
 </script>
 
@@ -35,9 +49,11 @@ const SPAM_RATE_LABEL = {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:gauge" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Sender compliance</h2>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('components.delivery.complianceTelemetryCard.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary">
-						The provider limits that can change inbox delivery
+						{{ t('components.delivery.complianceTelemetryCard.subtitle') }}
 					</p>
 				</div>
 			</div>
@@ -54,36 +70,44 @@ const SPAM_RATE_LABEL = {
 					:class="SPAM_RATE_TONE[telemetry.spamRate.status]"
 				>
 					<div class="flex items-center justify-between gap-3">
-						<p class="text-sm font-medium text-text-primary">FBL spam rate · 30 days</p>
+						<p class="text-sm font-medium text-text-primary">
+							{{ t('components.delivery.complianceTelemetryCard.spamRate.title') }}
+						</p>
 						<span class="text-xs font-medium text-text-secondary">
-							{{ SPAM_RATE_LABEL[telemetry.spamRate.status] }}
+							{{ t(SPAM_RATE_LABEL[telemetry.spamRate.status]) }}
 						</span>
 					</div>
 					<p class="mt-2 text-2xl font-medium tracking-[-0.02em] tabular-nums text-text-primary">
 						{{
 							telemetry.spamRate.spamRate === null
-								? 'No data'
+								? t('components.delivery.complianceTelemetryCard.spamRate.noValue')
 								: formatPercentage(telemetry.spamRate.spamRate, 3)
 						}}
 					</p>
 					<p class="mt-1 text-xs text-text-secondary">
-						Target &lt; {{ formatPercentage(telemetry.spamRate.target, 1) }} · hard line
-						{{ formatPercentage(telemetry.spamRate.hardThreshold, 1) }}
+						{{
+							t('components.delivery.complianceTelemetryCard.spamRate.thresholds', {
+								lessThan: LESS_THAN,
+								target: formatPercentage(telemetry.spamRate.target, 1),
+								hardLine: formatPercentage(telemetry.spamRate.hardThreshold, 1),
+							})
+						}}
 					</p>
 					<p class="mt-3 text-xs text-text-tertiary">
-						Owlat clean-day evidence is an internal early signal, not Google mitigation eligibility.
-						Verify Postmaster Tools and every sender requirement.
+						{{ t('components.delivery.complianceTelemetryCard.spamRate.evidenceNote') }}
 					</p>
 					<p
 						data-testid="spam-recovery-progress"
 						class="mt-2 text-xs font-medium text-text-secondary"
 					>
-						<span>{{ telemetry.spamRate.cleanInternalDaysBelowHardThreshold }}</span>
-						/
-						<span>{{ telemetry.spamRate.internalCleanDaysRequired }}</span>
-						clean active days in Owlat data
+						{{
+							t('components.delivery.complianceTelemetryCard.spamRate.cleanDays', {
+								clean: telemetry.spamRate.cleanInternalDaysBelowHardThreshold,
+								required: telemetry.spamRate.internalCleanDaysRequired,
+							})
+						}}
 						<span v-if="telemetry.spamRate.hasRequiredInternalCleanDayEvidence">
-							· evidence complete
+							{{ t('components.delivery.complianceTelemetryCard.spamRate.evidenceComplete') }}
 						</span>
 					</p>
 				</section>
@@ -97,29 +121,36 @@ const SPAM_RATE_LABEL = {
 							: 'border-border-subtle'
 					"
 				>
-					<p class="text-sm font-medium text-text-primary">Gmail-provider proximity · 24 h</p>
+					<p class="text-sm font-medium text-text-primary">
+						{{ t('components.delivery.complianceTelemetryCard.gmail.title') }}
+					</p>
 					<p class="mt-2 text-2xl font-medium tracking-[-0.02em] tabular-nums text-text-primary">
 						{{ formatNumber(telemetry.gmail.highestVolumeDomain?.delivered24h ?? 0) }}
-						<span class="text-sm font-normal text-text-secondary">/ ~5,000</span>
+						<span class="text-sm font-normal text-text-secondary">
+							{{ t('components.delivery.complianceTelemetryCard.gmail.bulkThreshold') }}
+						</span>
 					</p>
 					<p class="mt-1 text-xs text-text-secondary">
 						{{
-							telemetry.gmail.highestVolumeDomain?.primaryDomain ?? 'No MTA-observed Gmail traffic'
+							telemetry.gmail.highestVolumeDomain?.primaryDomain ??
+							t('components.delivery.complianceTelemetryCard.gmail.noTraffic')
 						}}
 					</p>
 					<p
 						v-if="telemetry.gmail.approachingBulkClassification"
 						class="mt-3 text-xs font-medium text-warning"
 					>
-						You are approaching permanent Gmail bulk-sender classification. Verify SPF, DKIM, DMARC,
-						TLS, one-click unsubscribe, and spam rate before crossing.
+						{{ t('components.delivery.complianceTelemetryCard.gmail.approachingWarning') }}
 					</p>
 					<p v-else class="mt-3 text-xs text-text-tertiary">
-						MX-derived Gmail destinations; primary-domain totals use hourly materialized counts (up
-						to 60 min overlap).
+						{{ t('components.delivery.complianceTelemetryCard.gmail.sourceNote') }}
 					</p>
 					<p v-if="telemetry.gmail.isDomainListTruncated" class="mt-1 text-xs text-text-tertiary">
-						Showing the {{ telemetry.gmail.domainLimit }} highest-volume primary domains.
+						{{
+							t('components.delivery.complianceTelemetryCard.gmail.truncated', {
+								limit: telemetry.gmail.domainLimit,
+							})
+						}}
 					</p>
 				</section>
 
@@ -132,12 +163,18 @@ const SPAM_RATE_LABEL = {
 							: 'border-border-subtle'
 					"
 				>
-					<p class="text-sm font-medium text-text-primary">One-click processing p95</p>
+					<p class="text-sm font-medium text-text-primary">
+						{{ t('components.delivery.complianceTelemetryCard.unsubscribe.title') }}
+					</p>
 					<p class="mt-2 text-2xl font-medium tracking-[-0.02em] tabular-nums text-text-primary">
 						{{ formatDuration(telemetry.unsubscribe.p95Ms) }}
 					</p>
 					<p class="mt-1 text-xs text-text-secondary">
-						{{ formatNumber(telemetry.unsubscribe.sampleCount) }} requests · 30 days
+						{{
+							t('components.delivery.complianceTelemetryCard.unsubscribe.samples', {
+								count: formatNumber(telemetry.unsubscribe.sampleCount),
+							})
+						}}
 					</p>
 					<p
 						class="mt-3 text-xs"
@@ -147,8 +184,7 @@ const SPAM_RATE_LABEL = {
 								: 'text-text-tertiary'
 						"
 					>
-						Yahoo and Google expect unsubscribe requests honored within 48 hours. Owlat applies the
-						suppression synchronously before recording this sample.
+						{{ t('components.delivery.complianceTelemetryCard.unsubscribe.honorWindow') }}
 					</p>
 				</section>
 			</div>

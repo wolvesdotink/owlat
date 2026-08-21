@@ -4,11 +4,16 @@ export const topicConfirmedEditorModule: ContactActivityEditorModule<'topic_conf
 	literal: 'topic_confirmed',
 	displayConfig: {
 		icon: 'lucide:check-circle',
-		label: 'Topic Confirmed',
+		label: 'shared.contactActivities.topicConfirmed.label',
 		color: 'text-success',
 	},
 	formatDescription(metadata) {
-		if (metadata?.topicName) return `Confirmed subscription to ${metadata.topicName}`;
-		return 'Confirmed topic subscription';
+		if (metadata?.topicName) {
+			return {
+				key: 'shared.contactActivities.topicConfirmed.descriptionWithTopic',
+				params: { topic: metadata.topicName },
+			};
+		}
+		return 'shared.contactActivities.topicConfirmed.description';
 	},
 };

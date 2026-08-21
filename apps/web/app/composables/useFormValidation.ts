@@ -195,10 +195,17 @@ export function useFormValidation<T extends Record<string, unknown>>(schema?: Va
 }
 
 /**
- * Common validation rules
+ * Common validation rules.
+ *
+ * Module scope, so no `useI18n()` here: a rule's DEFAULT message is an i18n key
+ * under `shared.useFormValidation.rules.*` (the registry convention), and the
+ * surface that renders it resolves it with `t()` — passing the counts the
+ * `{min}` / `{max}` messages interpolate, which that surface configured. Every
+ * call site in the app passes its own already-translated copy instead, so the
+ * defaults are only the fallback for a caller that supplies none.
  */
 export const rules = {
-	required: (message = 'This field is required'): ValidationRule => {
+	required: (message = 'shared.useFormValidation.rules.required'): ValidationRule => {
 		return (value) => {
 			if (
 				value === null ||
@@ -212,7 +219,7 @@ export const rules = {
 		};
 	},
 
-	email: (message = 'Please enter a valid email address'): ValidationRule => {
+	email: (message = 'shared.useFormValidation.rules.email'): ValidationRule => {
 		return (value) => {
 			if (!value) return true;
 			return emailRegex.test(String(value)) || message;
@@ -222,7 +229,7 @@ export const rules = {
 	minLength: (min: number, message?: string): ValidationRule => {
 		return (value) => {
 			if (!value) return true;
-			const actualMessage = message || `Must be at least ${min} characters`;
+			const actualMessage = message || 'shared.useFormValidation.rules.minLength';
 			return String(value).length >= min || actualMessage;
 		};
 	},
@@ -230,26 +237,26 @@ export const rules = {
 	maxLength: (max: number, message?: string): ValidationRule => {
 		return (value) => {
 			if (!value) return true;
-			const actualMessage = message || `Must be no more than ${max} characters`;
+			const actualMessage = message || 'shared.useFormValidation.rules.maxLength';
 			return String(value).length <= max || actualMessage;
 		};
 	},
 
-	pattern: (regex: RegExp, message = 'Invalid format'): ValidationRule => {
+	pattern: (regex: RegExp, message = 'shared.useFormValidation.rules.pattern'): ValidationRule => {
 		return (value) => {
 			if (!value) return true;
 			return regex.test(String(value)) || message;
 		};
 	},
 
-	domain: (message = 'Please enter a valid domain name'): ValidationRule => {
+	domain: (message = 'shared.useFormValidation.rules.domain'): ValidationRule => {
 		return (value) => {
 			if (!value) return true;
 			return domainRegex.test(String(value)) || message;
 		};
 	},
 
-	url: (message = 'Please enter a valid URL'): ValidationRule => {
+	url: (message = 'shared.useFormValidation.rules.url'): ValidationRule => {
 		return (value) => {
 			if (!value) return true;
 			return isValidUrl(String(value)) || message;

@@ -31,6 +31,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ nodeClick: [id: string] }>();
 
+const { t } = useI18n();
+
 // Fixed coordinate space; the SVG scales to its container via viewBox.
 const WIDTH = 760;
 const HEIGHT = 520;
@@ -60,7 +62,7 @@ const layout = computed(() =>
 	props.nodes.map((n, i) => {
 		const pos = positions.value[n.id] ?? fallbackPosition(i, props.nodes.length);
 		return { ...n, x: pos.x, y: pos.y };
-	}),
+	})
 );
 
 const layoutById = computed(() => {
@@ -77,7 +79,7 @@ const edgeLines = computed(() =>
 			if (!a || !b) return null;
 			return { edge: e, x1: a.x, y1: a.y, x2: b.x, y2: b.y };
 		})
-		.filter((v): v is NonNullable<typeof v> => v !== null),
+		.filter((v): v is NonNullable<typeof v> => v !== null)
 );
 
 /** stroke-dasharray for an edge line style. */
@@ -115,11 +117,14 @@ function buildSimulation(): void {
 			forceLink<SimNode, SimLink>(simLinks)
 				.id((d) => d.id)
 				.distance(90)
-				.strength(0.4),
+				.strength(0.4)
 		)
 		.force('charge', forceManyBody<SimNode>().strength(-280))
 		.force('center', forceCenter(WIDTH / 2, HEIGHT / 2))
-		.force('collide', forceCollide<SimNode>().radius((d) => d.radius + 8))
+		.force(
+			'collide',
+			forceCollide<SimNode>().radius((d) => d.radius + 8)
+		)
 		.alpha(1)
 		.alphaDecay(0.045);
 
@@ -146,7 +151,7 @@ watch(
 	() => props.nodes.map((n) => n.id).join('|') + '::' + props.edges.map((e) => e.id).join('|'),
 	() => {
 		if (import.meta.client) buildSimulation();
-	},
+	}
 );
 
 onBeforeUnmount(() => {
@@ -156,7 +161,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<div class="relative w-full rounded-xl border border-border-subtle bg-bg-elevated overflow-hidden">
+	<div
+		class="relative w-full rounded-xl border border-border-subtle bg-bg-elevated overflow-hidden"
+	>
 		<div
 			v-if="nodes.length === 0"
 			class="flex flex-col items-center justify-center py-20 text-center"
@@ -164,8 +171,12 @@ onBeforeUnmount(() => {
 			<div class="w-12 h-12 rounded-full bg-bg-surface flex items-center justify-center mb-3">
 				<Icon name="lucide:share-2" class="w-6 h-6 text-text-tertiary" />
 			</div>
-			<p class="text-sm text-text-secondary">No connected knowledge to display.</p>
-			<p class="text-xs text-text-tertiary mt-1">Link entries to build out the graph.</p>
+			<p class="text-sm text-text-secondary">
+				{{ t('components.knowledge.graphCanvas.emptyTitle') }}
+			</p>
+			<p class="text-xs text-text-tertiary mt-1">
+				{{ t('components.knowledge.graphCanvas.emptyHint') }}
+			</p>
 		</div>
 
 		<svg
@@ -174,7 +185,7 @@ onBeforeUnmount(() => {
 			class="w-full"
 			:style="{ height: '520px' }"
 			role="img"
-			aria-label="Knowledge graph"
+			:aria-label="t('components.knowledge.graphCanvas.ariaLabel')"
 		>
 			<!-- Edges -->
 			<g>
@@ -240,7 +251,10 @@ onBeforeUnmount(() => {
 						<div class="w-full h-full flex items-center justify-center text-brand">
 							<Icon
 								:name="entryTypeIcon(node.entryType)"
-								:style="{ width: `${Math.max(10, node.radius)}px`, height: `${Math.max(10, node.radius)}px` }"
+								:style="{
+									width: `${Math.max(10, node.radius)}px`,
+									height: `${Math.max(10, node.radius)}px`,
+								}"
 							/>
 						</div>
 					</foreignObject>

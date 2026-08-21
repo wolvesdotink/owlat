@@ -9,6 +9,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import en from '~~/i18n/locales/en.json';
+import { createTestI18n } from '~/__tests__/i18n';
 
 const { PLUGIN_KIND, PLUGIN_TOKEN_ENV, pluginCatalog } = vi.hoisted(() => {
 	const kind = 'plugin.mock-esp.relay';
@@ -57,6 +59,9 @@ import TransportCredentialFields from '../../components/delivery/TransportCreden
 import { wizardStubs } from '../../components/delivery/__tests__/wizardHarness';
 import { transportDnsGuidance } from '../../utils/transportDnsGuidance';
 
+/** The real catalog's `t`, for the keys the pure modules answer with. */
+const { t } = createTestI18n().global;
+
 function draft(): EmailStepDraft {
 	return {
 		provider: PLUGIN_KIND,
@@ -78,12 +83,16 @@ describe('a bundled plugin transport reaches the credential UI', () => {
 	});
 
 	it('renders capability-derived DNS guidance from the composed entry', () => {
-		expect(transportDnsGuidance(PLUGIN_KIND)).toEqual(
+		const guidance = transportDnsGuidance(PLUGIN_KIND);
+		// The label is the plugin's own (never keyed); the prose is a catalog key
+		// the screen resolves, so the words are asserted through the catalog.
+		expect(guidance).toEqual(
 			expect.objectContaining({
 				label: 'Mock ESP',
-				lead: expect.stringContaining('identity API'),
+				lead: 'shared.transportDnsGuidance.api.lead',
 			})
 		);
+		expect(en.shared.transportDnsGuidance.api.lead).toContain('identity API');
 	});
 
 	it('renders and seeds its generated write-only descriptor', () => {
@@ -106,13 +115,22 @@ describe('a bundled plugin transport reaches the credential UI', () => {
 	});
 
 	it('gates a missing required value and clears the error once supplied', () => {
-		expect(requiredCredentialError(PLUGIN_KIND, {})).toBe('Enter api token.');
+		// The gate is a pure module, so it answers with the sentence's key and the
+		// field it names — here the PLUGIN's own English label, which no shipped
+		// catalog can contain and which `t()` therefore hands back unchanged. The
+		// words are asserted the way the screen assembles them.
+		const missing = requiredCredentialError(PLUGIN_KIND, {});
+		expect(missing).toEqual({
+			key: 'shared.setupWizardCredentials.enterField',
+			field: 'API token',
+		});
+		expect(t(missing!.key, { field: t(missing!.field) })).toBe('Enter API token.');
 		expect(
 			requiredCredentialError(PLUGIN_KIND, { [PLUGIN_TOKEN_ENV]: 'tok-live' })
 		).toBeUndefined();
 
 		const relay = useRelayCredentialDraft(PLUGIN_KIND);
-		expect(relay.requiredCredentialError.value).toBe('Enter api token.');
+		expect(relay.requiredCredentialError.value).toEqual(missing);
 		relay.credentialValues[PLUGIN_TOKEN_ENV] = 'tok-live';
 		expect(relay.requiredCredentialError.value).toBeUndefined();
 	});

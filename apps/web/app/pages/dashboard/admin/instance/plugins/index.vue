@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 
-useHead({ title: 'Plugins — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.plugins.index.pageTitle') });
 definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
 
 // Build-time bundled manifests: the authoritative source for names, versions,
@@ -23,7 +25,7 @@ const {
 const { showToast } = useToast();
 const { run: resetPluginSettings, isLoading: isPurging } = useBackendOperation(
 	api.plugins.settings.resetPluginSettings,
-	{ label: 'Clear plugin settings' }
+	{ label: () => t('dashboard.admin.instance.plugins.index.clearSettingsOperation') }
 );
 
 const plugins = computed(() => overview.value?.plugins ?? []);
@@ -37,21 +39,28 @@ async function confirmPurge() {
 	const res = await resetPluginSettings({ pluginId });
 	purgeTarget.value = null;
 	if (res === undefined) return; // failure already toasted by the operation module
-	showToast(`Cleared residual settings for ${pluginId}.`);
+	showToast(t('dashboard.admin.instance.plugins.index.toasts.cleared', { pluginId }));
 }
 </script>
 
 <template>
 	<div class="p-6 lg:p-8 max-w-4xl mx-auto">
 		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Plugins</h1>
-			<p class="mt-1 text-text-secondary max-w-2xl">
-				Configure each installed plugin. Enabling a plugin and approving the capabilities it
-				requests happens under
-				<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline"
-					>Features</NuxtLink
-				>; this page manages each plugin's own settings.
-			</p>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.instance.plugins.index.title') }}
+			</h1>
+			<I18nT
+				keypath="dashboard.admin.instance.plugins.index.intro"
+				tag="p"
+				scope="global"
+				class="mt-1 text-text-secondary max-w-2xl"
+			>
+				<template #featuresLink>
+					<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline">{{
+						t('dashboard.admin.instance.plugins.index.featuresLink')
+					}}</NuxtLink>
+				</template>
+			</I18nT>
 		</div>
 
 		<UiQueryBoundary :loading="isLoading && !overview" :error="error">
@@ -59,8 +68,8 @@ async function confirmPurge() {
 				<UiCard v-if="manifests.length === 0">
 					<UiEmptyState
 						icon="lucide:puzzle"
-						title="No plugins installed"
-						description="Bundled plugins are added to this deployment's build. Once a plugin is installed it appears here to configure."
+						:title="t('dashboard.admin.instance.plugins.index.empty.title')"
+						:description="t('dashboard.admin.instance.plugins.index.empty.description')"
 					/>
 				</UiCard>
 
@@ -77,16 +86,22 @@ async function confirmPurge() {
 									<div class="flex items-center gap-2 flex-wrap">
 										<h2 class="text-lg font-medium text-text-primary">{{ plugin.pluginId }}</h2>
 										<UiBadge :variant="plugin.enabled ? 'success' : 'neutral'" dot>
-											{{ plugin.enabled ? 'Enabled' : 'Disabled' }}
+											{{ plugin.enabled ? t('common.enabled') : t('common.disabled') }}
 										</UiBadge>
 									</div>
 									<p class="text-sm text-text-secondary mt-0.5 truncate">
-										{{ plugin.packageName }} · v{{ plugin.version }}
+										{{
+											t('dashboard.admin.instance.plugins.index.packageVersion', {
+												packageName: plugin.packageName,
+												version: plugin.version,
+											})
+										}}
 									</p>
 									<p class="text-xs text-text-tertiary mt-1">
-										{{ plugin.capabilities.length }}
-										{{ plugin.capabilities.length === 1 ? 'capability' : 'capabilities' }}
-										<template v-if="plugin.hasSettings"> · configurable settings </template>
+										{{ t('dashboard.admin.instance.plugins.index.capabilityCount', plugin.capabilities.length) }}
+										<template v-if="plugin.hasSettings">
+											{{ t('dashboard.admin.instance.plugins.index.configurableSettings') }}
+										</template>
 									</p>
 								</div>
 								<Icon
@@ -104,9 +119,11 @@ async function confirmPurge() {
 						<div class="flex items-center gap-3">
 							<UiIconBox icon="lucide:trash-2" size="sm" variant="surface" rounded="lg" />
 							<div>
-								<h2 class="text-lg font-semibold text-text-primary">Residual settings</h2>
+								<h2 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.admin.instance.plugins.index.residual.title') }}
+								</h2>
 								<p class="text-sm text-text-secondary">
-									These plugins are no longer installed. Their stored settings can be cleared.
+									{{ t('dashboard.admin.instance.plugins.index.residual.description') }}
 								</p>
 							</div>
 						</div>
@@ -124,7 +141,7 @@ async function confirmPurge() {
 								:disabled="isPurging"
 								@click="purgeTarget = entry.pluginId"
 							>
-								Clear settings
+								{{ t('dashboard.admin.instance.plugins.index.clearSettings') }}
 							</UiButton>
 						</div>
 					</div>
@@ -135,10 +152,14 @@ async function confirmPurge() {
 		<UiConfirmationDialog
 			:open="!!purgeTarget"
 			variant="warning"
-			:title="purgeTarget ? `Clear settings for ${purgeTarget}?` : 'Clear settings?'"
-			description="This permanently removes the stored settings for this uninstalled plugin, including any saved secrets."
-			confirm-text="Clear settings"
-			cancel-text="Cancel"
+			:title="
+				purgeTarget
+					? t('dashboard.admin.instance.plugins.index.confirm.title', { pluginId: purgeTarget })
+					: t('dashboard.admin.instance.plugins.index.confirm.titleFallback')
+			"
+			:description="t('dashboard.admin.instance.plugins.index.confirm.description')"
+			:confirm-text="t('dashboard.admin.instance.plugins.index.clearSettings')"
+			:cancel-text="t('common.cancel')"
 			:is-loading="isPurging"
 			@update:open="(v: boolean) => !v && (purgeTarget = null)"
 			@confirm="confirmPurge"

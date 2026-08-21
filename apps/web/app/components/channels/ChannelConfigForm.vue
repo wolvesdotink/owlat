@@ -7,7 +7,14 @@ import type { ChannelKind } from '~/utils/channelKinds';
 
 const props = defineProps<{
 	channel: ChannelKind;
-	currentConfig: string | null;
+	/**
+	 * Names of the credential fields already stored for this channel
+	 * (`channelConfigs.configuredFields`). The values themselves are encrypted at
+	 * rest and openable only in a Node action, so they are never read back into
+	 * this form — the names are what lets it say "stored" instead of rendering an
+	 * empty input that looks unset.
+	 */
+	storedFields: string[];
 	displayName: string;
 }>();
 
@@ -16,96 +23,118 @@ const emit = defineEmits<{
 	cancelled: [];
 }>();
 
+const { t } = useI18n();
+
 const isSaving = ref(false);
 // Bound as the inline target so config-validation failures show on the form.
 const formError = ref<string | null>('');
 
 const { run: updateChannelConfig } = useBackendOperation(api.unifiedMessages.updateChannelConfig, {
-	label: 'Save channel configuration',
+	label: () => t('components.channels.channelConfigForm.operations.saveConfiguration'),
 	inlineTarget: formError,
 });
 
 // Display name
 const localDisplayName = ref(props.displayName);
 
-// Parse existing config
-function parseConfig(configStr: string | null): Record<string, string> {
-	if (!configStr) return {};
-	try {
-		return JSON.parse(configStr);
-	} catch {
-		return {};
-	}
+/** Does the backend already hold a value for this credential field? */
+function isStored(key: string): boolean {
+	return props.storedFields.includes(key);
 }
-
-const parsedConfig = parseConfig(props.currentConfig);
 
 // Channel-specific field definitions
 interface ConfigField {
 	key: string;
+	/** Message key for the field label. */
 	label: string;
+	/** Message key for the empty-input placeholder. */
 	placeholder: string;
 	type: 'text' | 'password' | 'url';
 	/**
-	 * Optional clarifying line under the input, same treatment as the Display
-	 * Name hint. Used to say what a stored value actually does — a credential
-	 * the operator believes is in force but that nothing reads is the failure
-	 * mode this exists to prevent.
+	 * Message key for an optional clarifying line under the input, same treatment
+	 * as the Display Name hint. Used to say what a stored value actually does — a
+	 * credential the operator believes is in force but that nothing reads is the
+	 * failure mode this exists to prevent.
 	 */
 	hint?: string;
 }
+
+// The definitions are built once, so they carry message KEYS and are translated
+// where they are rendered.
+const F = 'components.channels.channelConfigForm.fields';
 
 const channelFields: Record<ChannelKind, ConfigField[]> = {
 	email: [],
 	sms: [
 		{
 			key: 'accountSid',
-			label: 'Account SID',
-			placeholder: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+			label: `${F}.accountSid.label`,
+			placeholder: `${F}.accountSid.placeholder`,
 			type: 'text',
 		},
 		{
 			key: 'authToken',
-			label: 'Auth Token',
-			placeholder: 'Enter your Twilio auth token',
+			label: `${F}.authToken.label`,
+			placeholder: `${F}.authToken.placeholder`,
 			type: 'password',
+			hint: `${F}.authToken.hint`,
 		},
-		{ key: 'phoneNumber', label: 'Phone Number', placeholder: '+1234567890', type: 'text' },
+		{
+			key: 'phoneNumber',
+			label: `${F}.phoneNumber.label`,
+			placeholder: `${F}.phoneNumber.placeholder`,
+			type: 'text',
+		},
 	],
 	whatsapp: [
 		{
 			key: 'businessAccountId',
-			label: 'Business Account ID',
-			placeholder: 'Enter your WhatsApp Business Account ID',
+			label: `${F}.businessAccountId.label`,
+			placeholder: `${F}.businessAccountId.placeholder`,
 			type: 'text',
-			hint: 'Recorded for reference. Outbound sends are keyed on the Phone Number ID below.',
+			hint: `${F}.businessAccountId.hint`,
 		},
 		{
 			key: 'accessToken',
-			label: 'Access Token',
-			placeholder: 'Enter your access token',
+			label: `${F}.accessToken.label`,
+			placeholder: `${F}.accessToken.placeholder`,
 			type: 'password',
 		},
 		{
 			key: 'phoneNumberId',
-			label: 'Phone Number ID',
-			placeholder: 'Enter your phone number ID',
+			label: `${F}.phoneNumberId.label`,
+			placeholder: `${F}.phoneNumberId.placeholder`,
 			type: 'text',
 		},
+		{
+			key: 'appSecret',
+			label: `${F}.appSecret.label`,
+			placeholder: `${F}.appSecret.placeholder`,
+			type: 'password',
+			hint: `${F}.appSecret.hint`,
+		},
+		{
+			key: 'verifyToken',
+			label: `${F}.verifyToken.label`,
+			placeholder: `${F}.verifyToken.placeholder`,
+			type: 'password',
+			hint: `${F}.verifyToken.hint`,
+		},
 	],
-	// No Secret Key field: its only consumer was `WebhookAdapter.validateSignature`,
-	// a verifier the inbound route never called and that D10 deleted. Inbound
-	// generic webhooks are authenticated against the GENERIC_WEBHOOK_SECRET
-	// deployment variable (apps/api/convex/webhooks/adapters/generic.ts), and the
-	// outbound POST carries no secret header — so collecting one here would seal a
-	// real shared secret into the credential envelope with nothing able to use it.
 	generic: [
 		{
 			key: 'endpointUrl',
-			label: 'Endpoint URL',
-			placeholder: 'https://example.com/webhook',
+			label: `${F}.endpointUrl.label`,
+			placeholder: `${F}.endpointUrl.placeholder`,
 			type: 'url',
-			hint: 'Outbound POSTs are unsigned — put any authentication in the URL itself (secret path or query token).',
+			hint: `${F}.endpointUrl.hint`,
+		},
+		{
+			key: 'secretKey',
+			label: `${F}.secretKey.label`,
+			placeholder: `${F}.secretKey.placeholder`,
+			type: 'password',
+			hint: `${F}.secretKey.hint`,
 		},
 	],
 	chat: [],
@@ -114,23 +143,41 @@ const channelFields: Record<ChannelKind, ConfigField[]> = {
 const fields = computed(() => channelFields[props.channel] ?? []);
 const hasConfigFields = computed(() => fields.value.length > 0);
 
-// Initialize field values from existing config
+// Every input starts blank: stored values are encrypted at rest and are never
+// sent back to the browser. A field left blank keeps whatever is stored (the
+// backend merges the save over it), so blank means "unchanged", not "clear".
 const fieldValues = reactive<Record<string, string>>({});
 for (const field of channelFields[props.channel] ?? []) {
-	fieldValues[field.key] = parsedConfig[field.key] ?? '';
+	fieldValues[field.key] = '';
+}
+
+/**
+ * What an empty input should say. A stored credential says so rather than
+ * showing the example value, which would read as an unset required field and
+ * invite an operator to retype every credential on every edit.
+ */
+function inputPlaceholder(field: ConfigField): string {
+	return isStored(field.key)
+		? t('components.channels.channelConfigForm.storedPlaceholder')
+		: t(field.placeholder);
 }
 
 // Channel info messages for the built-in channels (no per-channel credentials).
 // Email/chat are not offered in the Add-channel menu; these only render for an
 // existing email/chat config row. Email sending lives elsewhere — point there.
+// Message keys, translated where the info box renders them.
 const channelInfoMessages: Record<ChannelKind, string> = {
-	email:
-		'Email is built in — there are no credentials to set here. Configure email sending under Sending Domains and your delivery provider in Technical settings.',
-	chat: 'Chat is natively integrated and requires no additional configuration.',
+	email: 'components.channels.channelConfigForm.info.email',
+	chat: 'components.channels.channelConfigForm.info.chat',
 	sms: '',
 	whatsapp: '',
 	generic: '',
 };
+
+const channelInfoMessage = computed(() => {
+	const key = channelInfoMessages[props.channel];
+	return key ? t(key) : '';
+});
 
 // Password visibility toggles
 const visibleFields = reactive<Record<string, boolean>>({});
@@ -172,37 +219,54 @@ async function handleSave() {
 	<div class="space-y-4">
 		<!-- Display Name -->
 		<div>
-			<label for="localdisplayname" class="block text-sm font-medium text-text-primary mb-1.5"
-				>Display Name</label
-			>
+			<label for="localdisplayname" class="block text-sm font-medium text-text-primary mb-1.5">{{
+				t('components.channels.channelConfigForm.displayNameLabel')
+			}}</label>
 			<input
 				id="localdisplayname"
 				v-model="localDisplayName"
 				type="text"
 				class="input w-full"
-				placeholder="Custom name for this channel"
+				:placeholder="t('components.channels.channelConfigForm.displayNamePlaceholder')"
 			/>
 			<p class="text-xs text-text-tertiary mt-1">
-				Optional. Shown in the UI instead of the default channel name.
+				{{ t('components.channels.channelConfigForm.displayNameHint') }}
 			</p>
 		</div>
 
 		<!-- Channel-specific fields -->
 		<template v-if="hasConfigFields">
+			<!-- Stored credentials are encrypted at rest and are never read back
+			     into this form, so a blank input is not an empty credential — the
+			     backend merges each save over what is stored. Say so, and mark the
+			     fields that already hold a value, so a partial edit is a safe and
+			     obvious thing to do. -->
+			<p class="text-xs text-text-tertiary">
+				{{ t('components.channels.channelConfigForm.credentialsNotice') }}
+			</p>
 			<div v-for="field in fields" :key="field.key">
-				<label class="block text-sm font-medium text-text-primary mb-1.5">{{ field.label }}</label>
+				<label class="flex items-center gap-2 text-sm font-medium text-text-primary mb-1.5">
+					{{ t(field.label) }}
+					<span v-if="isStored(field.key)" class="text-xs font-normal text-text-tertiary">{{
+						t('components.channels.channelConfigForm.stored')
+					}}</span>
+				</label>
 				<div class="relative">
 					<input
 						v-model="fieldValues[field.key]"
 						:type="field.type === 'password' && !visibleFields[field.key] ? 'password' : 'text'"
 						class="input w-full"
 						:class="field.type === 'password' ? 'pr-10' : ''"
-						:placeholder="field.placeholder"
+						:placeholder="inputPlaceholder(field)"
 					/>
 					<button
 						v-if="field.type === 'password'"
 						type="button"
-						:aria-label="visibleFields[field.key] ? 'Hide value' : 'Show value'"
+						:aria-label="
+							visibleFields[field.key]
+								? t('components.channels.channelConfigForm.hideValue')
+								: t('components.channels.channelConfigForm.showValue')
+						"
 						class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-tertiary hover:text-text-secondary transition-colors"
 						@click="toggleFieldVisibility(field.key)"
 					>
@@ -213,7 +277,7 @@ async function handleSave() {
 					</button>
 				</div>
 				<p v-if="field.hint" class="text-xs text-text-tertiary mt-1">
-					{{ field.hint }}
+					{{ t(field.hint) }}
 				</p>
 			</div>
 		</template>
@@ -225,7 +289,7 @@ async function handleSave() {
 		>
 			<Icon name="lucide:info" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 			<p class="text-sm text-text-secondary">
-				{{ channelInfoMessages[channel] }}
+				{{ channelInfoMessage }}
 			</p>
 		</div>
 
@@ -241,11 +305,11 @@ async function handleSave() {
 		<!-- Actions -->
 		<div class="flex items-center justify-end gap-3 pt-2">
 			<UiButton variant="secondary" :disabled="isSaving" @click="emit('cancelled')">
-				Cancel
+				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton class="gap-2" :disabled="isSaving" @click="handleSave">
 				<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-				{{ isSaving ? 'Saving...' : 'Save Configuration' }}
+				{{ isSaving ? t('common.saving') : t('components.channels.channelConfigForm.save') }}
 			</UiButton>
 		</div>
 	</div>

@@ -10,6 +10,11 @@
  * and the contact-profile notice: the same decision made twice drifts the
  * moment a reason is added, which is exactly what happened when the sunset
  * engine introduced 'unengaged'.
+ *
+ * The table is module scope, so it never calls `useI18n`: `label`, `headline`
+ * and the sentence `phrase` returns are catalog KEYS (the phrase carries its
+ * date as a parameter), and each surface resolves them with `t()` at render
+ * time.
  */
 
 import type { Doc } from '@owlat/api/dataModel';
@@ -21,13 +26,16 @@ import type { Doc } from '@owlat/api/dataModel';
  */
 export type BlockReason = Doc<'blockedEmails'>['reason'];
 
+/** A translatable sentence: a catalog key plus the values its message fills in. */
+export type SuppressionReasonText = { key: string; params?: Record<string, string> };
+
 export type SuppressionReasonPresentation = {
 	/** Badge classes for the suppression table. */
 	badge: string;
 	/** Icon tint used outside the badge (stat tiles, row icon). */
 	tone: string;
 	icon: string;
-	/** Plain-language label — explains WHY, no jargon. */
+	/** Plain-language label — explains WHY, no jargon. A catalog key. */
 	label: string;
 	/**
 	 * The notice HEADLINE on the contact profile — what this suppression actually
@@ -40,43 +48,56 @@ export type SuppressionReasonPresentation = {
 	headline: string;
 	/**
 	 * The inline phrase used mid-sentence on the contact profile, e.g.
-	 * "…— bounced on Mar 3.". Takes the pre-formatted date label.
+	 * "…— bounced on Mar 3.". Takes the pre-formatted date label and hands back
+	 * the message key plus that date.
 	 */
-	phrase: (dateLabel: string) => string;
+	phrase: (dateLabel: string) => SuppressionReasonText;
 };
 
 export const SUPPRESSION_REASON_PRESENTATION = {
 	bounced: {
-		headline: 'Not receiving mail',
+		headline: 'shared.suppressionReasons.headline.noMail',
 		badge: 'bg-error/20 text-error border-error/30',
 		tone: 'text-error',
 		icon: 'lucide:mail',
-		label: "Bounced — mailbox doesn't exist",
-		phrase: (dateLabel: string) => `bounced on ${dateLabel}`,
+		label: 'shared.suppressionReasons.bounced.label',
+		phrase: (dateLabel: string) => ({
+			key: 'shared.suppressionReasons.bounced.phrase',
+			params: { date: dateLabel },
+		}),
 	},
 	complained: {
-		headline: 'Not receiving mail',
+		headline: 'shared.suppressionReasons.headline.noMail',
 		badge: 'bg-warning/20 text-warning border-warning/30',
 		tone: 'text-warning',
 		icon: 'lucide:message-square-warning',
-		label: 'Complained — marked a send as spam',
-		phrase: (dateLabel: string) => `complained on ${dateLabel}`,
+		label: 'shared.suppressionReasons.complained.label',
+		phrase: (dateLabel: string) => ({
+			key: 'shared.suppressionReasons.complained.phrase',
+			params: { date: dateLabel },
+		}),
 	},
 	unengaged: {
-		headline: 'Not receiving campaigns',
+		headline: 'shared.suppressionReasons.headline.noCampaigns',
 		badge: 'bg-bg-elevated text-text-secondary border-border-default',
 		tone: 'text-text-secondary',
 		icon: 'lucide:moon',
-		label: 'Unengaged — ignored every message for months',
-		phrase: (dateLabel: string) => `paused on ${dateLabel} after months with no opens or clicks`,
+		label: 'shared.suppressionReasons.unengaged.label',
+		phrase: (dateLabel: string) => ({
+			key: 'shared.suppressionReasons.unengaged.phrase',
+			params: { date: dateLabel },
+		}),
 	},
 	manual: {
-		headline: 'Not receiving mail',
+		headline: 'shared.suppressionReasons.headline.noMail',
 		badge: 'bg-brand/20 text-brand border-brand/30',
 		tone: 'text-brand',
 		icon: 'lucide:user-x',
-		label: 'Manually suppressed',
-		phrase: (dateLabel: string) => `manually suppressed on ${dateLabel}`,
+		label: 'shared.suppressionReasons.manual.label',
+		phrase: (dateLabel: string) => ({
+			key: 'shared.suppressionReasons.manual.phrase',
+			params: { date: dateLabel },
+		}),
 	},
 } as const satisfies Record<BlockReason, SuppressionReasonPresentation>;
 

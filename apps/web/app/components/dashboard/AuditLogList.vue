@@ -29,6 +29,8 @@ const {
 	getUserInitials,
 } = useAuditLogPresentation();
 
+const { t } = useI18n();
+
 const presentedLogs = computed(() =>
 	props.logs.map((log) => ({
 		log,
@@ -59,7 +61,11 @@ const presentedLogs = computed(() =>
 					<div class="flex items-center flex-wrap gap-2 mb-1">
 						<!-- User Name -->
 						<span class="font-medium text-text-primary">
-							{{ entry.log.userProfile?.name ?? entry.log.userProfile?.email ?? 'Unknown User' }}
+							{{
+								entry.log.userProfile?.name ??
+								entry.log.userProfile?.email ??
+								t('components.dashboard.auditLogList.unknownUser')
+							}}
 						</span>
 
 						<!-- Action Badge -->
@@ -99,7 +105,11 @@ const presentedLogs = computed(() =>
 							<span class="font-medium">{{ parseDetails(entry.log.details)['email'] }}</span>
 						</template>
 						<template v-else-if="parseDetails(entry.log.details)['count']">
-							<span class="font-medium">{{ parseDetails(entry.log.details)['count'] }} items</span>
+							<span class="font-medium">{{
+								t('components.dashboard.auditLogList.itemCount', {
+									count: parseDetails(entry.log.details)['count'],
+								})
+							}}</span>
 						</template>
 					</div>
 
@@ -122,7 +132,7 @@ const presentedLogs = computed(() =>
 		<div v-if="hasMore" class="flex justify-center pt-4">
 			<UiButton variant="secondary" class="gap-2" @click="$emit('loadMore')">
 				<Icon name="lucide:chevron-down" class="w-4 h-4" />
-				Load More
+				{{ t('components.dashboard.auditLogList.loadMore') }}
 			</UiButton>
 		</div>
 	</div>

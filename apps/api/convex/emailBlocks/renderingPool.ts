@@ -80,6 +80,9 @@ export const patchTemplateHtml = internalMutation({
 		templateId: v.id('emailTemplates'),
 		htmlContent: v.string(),
 		htmlTranslations: v.optional(v.string()),
+		// Regenerated text/plain body. Absent when the row carries an author
+		// override — that text is theirs and a saved-block edit must not rewrite it.
+		plainTextContent: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const updates: Partial<Doc<'emailTemplates'>> = {
@@ -90,6 +93,9 @@ export const patchTemplateHtml = internalMutation({
 		if (args.htmlTranslations !== undefined) {
 			updates.htmlTranslations = args.htmlTranslations;
 		}
+		if (args.plainTextContent !== undefined) {
+			updates.plainTextContent = args.plainTextContent;
+		}
 		await ctx.db.patch(args.templateId, updates);
 	},
 });
@@ -99,6 +105,9 @@ export const patchTransactionalHtml = internalMutation({
 		emailId: v.id('transactionalEmails'),
 		htmlContent: v.string(),
 		htmlTranslations: v.optional(v.string()),
+		// Regenerated text/plain body. Absent when the row carries an author
+		// override — that text is theirs and a saved-block edit must not rewrite it.
+		plainTextContent: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const updates: Partial<Doc<'transactionalEmails'>> = {
@@ -108,6 +117,9 @@ export const patchTransactionalHtml = internalMutation({
 		};
 		if (args.htmlTranslations !== undefined) {
 			updates.htmlTranslations = args.htmlTranslations;
+		}
+		if (args.plainTextContent !== undefined) {
+			updates.plainTextContent = args.plainTextContent;
 		}
 		await ctx.db.patch(args.emailId, updates);
 	},
@@ -133,7 +145,7 @@ export const onRerenderComplete = internalMutation({
 		v.object({
 			templateIds: v.array(v.id('emailTemplates')),
 			transactionalIds: v.array(v.id('transactionalEmails')),
-		}),
+		})
 	),
 	handler: async (ctx, { result, context }) => {
 		// We only act on terminal failure.

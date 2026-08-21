@@ -12,7 +12,7 @@
 		>
 			<!-- Left: Logo -->
 			<div class="flex items-center gap-6">
-				<NuxtLink to="/" class="flex items-center gap-2.5 text-text-primary">
+				<NuxtLink :to="localePath('/')" class="flex items-center gap-2.5 text-text-primary">
 					<div
 						class="w-7 h-7 text-brand"
 						style="
@@ -22,11 +22,11 @@
 						"
 						aria-hidden="true"
 					/>
-					<span class="text-md font-semibold tracking-tight">Owlat Docs</span>
+					<span class="text-md font-semibold tracking-tight">{{ t('brand.docs') }}</span>
 				</NuxtLink>
 
 				<!-- Nav links (md+) -->
-				<nav class="hidden md:flex items-center gap-1">
+				<nav class="hidden md:flex items-center gap-1" :aria-label="t('nav.primary')">
 					<NuxtLink
 						v-for="link in navLinks"
 						:key="link.to"
@@ -38,7 +38,7 @@
 								: 'text-text-secondary hover:text-text-primary'
 						"
 					>
-						{{ link.label }}
+						{{ t(link.labelKey) }}
 					</NuxtLink>
 				</nav>
 			</div>
@@ -48,6 +48,7 @@
 				<!-- Search trigger -->
 				<button
 					class="flex items-center gap-2.5 h-9 pl-3.5 pr-2 rounded-full border border-border-default bg-transparent text-text-tertiary hover:border-border-strong hover:text-text-secondary transition-colors duration-(--motion-fast) text-caption"
+					:aria-label="t('search.open')"
 					@click="searchOpen = true"
 				>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -58,13 +59,16 @@
 							d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
 						/>
 					</svg>
-					<span class="hidden sm:inline">Search...</span>
+					<span class="hidden sm:inline">{{ t('search.trigger') }}</span>
 					<kbd
 						class="hidden sm:inline-flex items-center h-5 px-2 rounded-full border border-border-subtle bg-bg-soft text-2xs font-mono text-text-tertiary"
 					>
 						{{ metaKey }}K
 					</kbd>
 				</button>
+
+				<!-- Language switcher -->
+				<DocsLanguageSwitcher />
 
 				<!-- Color mode toggle -->
 				<UiThemeToggle
@@ -74,7 +78,7 @@
 				<!-- Mobile hamburger (< lg) -->
 				<button
 					class="flex lg:hidden items-center justify-center w-9 h-9 rounded-full text-text-tertiary hover:text-text-secondary hover:bg-bg-surface transition-colors duration-(--motion-fast)"
-					aria-label="Toggle sidebar"
+					:aria-label="t('nav.toggleSidebar')"
 					@click="$emit('toggleSidebar')"
 				>
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,7 +102,9 @@ defineEmits<{
 	toggleSidebar: [];
 }>();
 
+const { t, locale } = useI18n();
 const route = useRoute();
+const localePath = useLocalePath();
 
 const searchOpen = ref(false);
 
@@ -107,16 +113,23 @@ const metaKey = computed(() => {
 	return navigator.platform?.includes('Mac') ? '⌘' : 'Ctrl+';
 });
 
-const navLinks = [
-	{ label: 'Guide', to: '/guide/getting-started' },
-	{ label: 'API', to: '/api' },
-	{ label: 'Developer', to: '/developer' },
-	{ label: 'Vision', to: '/vision' },
-];
+// `localePath` prefixes these with `/de` when German is active; the docs
+// content path they point at is the same in both locales.
+const navLinks = computed(() =>
+	[
+		{ labelKey: 'nav.guide', to: '/guide/getting-started' },
+		{ labelKey: 'nav.api', to: '/api' },
+		{ labelKey: 'nav.developer', to: '/developer' },
+		{ labelKey: 'nav.vision', to: '/vision' },
+	].map((link) => ({ ...link, to: localePath(link.to) }))
+);
 
 function isActiveSection(to: string): boolean {
-	const section = to.split('/')[1];
-	return route.path.startsWith(`/${section}`);
+	// `to` is already locale-prefixed, so comparing prefixes stays correct for
+	// `/de/guide/…` without special-casing the locale segment.
+	const segments = to.split('/').filter(Boolean);
+	const section = segments[0] === locale.value ? segments.slice(0, 2) : segments.slice(0, 1);
+	return route.path.startsWith(`/${section.join('/')}`);
 }
 
 function onKeydown(e: KeyboardEvent) {

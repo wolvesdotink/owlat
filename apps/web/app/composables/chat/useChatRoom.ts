@@ -8,66 +8,58 @@ import type { Ref } from 'vue';
  * Auto-marks the room read on subscription tick.
  */
 export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
-	const { data: room, isLoading: roomLoading } = useConvexQuery(
-		api.chat.rooms.getRoom,
-		() => (roomId.value ? { roomId: roomId.value } : 'skip'),
+	const { t } = useI18n();
+
+	const { data: room, isLoading: roomLoading } = useConvexQuery(api.chat.rooms.getRoom, () =>
+		roomId.value ? { roomId: roomId.value } : 'skip'
 	);
 
 	// Growable window over the live message subscription: starts at 100, grows by
 	// 100 up to the backend cap so "Load earlier messages" can reach older history
 	// (previously hard-capped at 100 with no way to load more). Resets per room.
-	const { limit: messageLimit, loadMore: loadMoreMessages, atMax: atMaxMessages } = useGrowableLimit(
-		roomId,
-		{ page: 100, max: 500 },
-	);
+	const {
+		limit: messageLimit,
+		loadMore: loadMoreMessages,
+		atMax: atMaxMessages,
+	} = useGrowableLimit(roomId, { page: 100, max: 500 });
 	const { data: messagesData, isLoading: messagesLoading } = useConvexQuery(
 		api.chat.messages.listMessages,
-		() => (roomId.value ? { roomId: roomId.value, limit: messageLimit.value } : 'skip'),
+		() => (roomId.value ? { roomId: roomId.value, limit: messageLimit.value } : 'skip')
 	);
 
 	const { data: membersData, isLoading: membersLoading } = useConvexQuery(
 		api.chat.members.listRoomMembers,
-		() => (roomId.value ? { roomId: roomId.value } : 'skip'),
+		() => (roomId.value ? { roomId: roomId.value } : 'skip')
 	);
 
-	const { data: linkedThread } = useConvexQuery(
-		api.chat.emailLink.getLinkedThreadView,
-		() => (roomId.value ? { roomId: roomId.value } : 'skip'),
+	const { data: linkedThread } = useConvexQuery(api.chat.emailLink.getLinkedThreadView, () =>
+		roomId.value ? { roomId: roomId.value } : 'skip'
 	);
 
 	const messages = computed(() => messagesData.value?.messages ?? []);
 	const hasMoreMessages = computed(() => messagesData.value?.hasMore ?? false);
 	const members = computed(() => membersData.value ?? []);
 
-	const { run: sendMessageMutation } = useBackendOperation(
-		api.chat.messages.sendMessage,
-		{ label: 'Send message' },
-	);
-	const { run: editMessageMutation } = useBackendOperation(
-		api.chat.messages.editMessage,
-		{ label: 'Edit message' },
-	);
-	const { run: deleteMessageMutation } = useBackendOperation(
-		api.chat.messages.deleteMessage,
-		{ label: 'Delete message' },
-	);
-	const { run: markReadMutation } = useBackendOperation(
-		api.chat.messages.markRead,
-		{ label: 'Mark room read' },
-	);
-	const { run: joinChannelMutation } = useBackendOperation(
-		api.chat.members.joinChannel,
-		{ label: 'Join channel' },
-	);
-	const { run: leaveRoomMutation } = useBackendOperation(
-		api.chat.members.leaveRoom,
-		{ label: 'Leave room' },
-	);
+	const { run: sendMessageMutation } = useBackendOperation(api.chat.messages.sendMessage, {
+		label: () => t('shared.chat.useChatRoom.sendMessage'),
+	});
+	const { run: editMessageMutation } = useBackendOperation(api.chat.messages.editMessage, {
+		label: () => t('shared.chat.useChatRoom.editMessage'),
+	});
+	const { run: deleteMessageMutation } = useBackendOperation(api.chat.messages.deleteMessage, {
+		label: () => t('shared.chat.useChatRoom.deleteMessage'),
+	});
+	const { run: markReadMutation } = useBackendOperation(api.chat.messages.markRead, {
+		label: () => t('shared.chat.useChatRoom.markRoomRead'),
+	});
+	const { run: joinChannelMutation } = useBackendOperation(api.chat.members.joinChannel, {
+		label: () => t('shared.chat.useChatRoom.joinChannel'),
+	});
+	const { run: leaveRoomMutation } = useBackendOperation(api.chat.members.leaveRoom, {
+		label: () => t('shared.chat.useChatRoom.leaveRoom'),
+	});
 
-	const sendMessage = async (
-		text: string,
-		attachmentIds?: Id<'mediaAssets'>[],
-	) => {
+	const sendMessage = async (text: string, attachmentIds?: Id<'mediaAssets'>[]) => {
 		if (!roomId.value) return;
 		await sendMessageMutation({
 			roomId: roomId.value,
@@ -109,7 +101,7 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 			if (messages.value.length === 0) return;
 			void markRead();
 		},
-		{ flush: 'post' },
+		{ flush: 'post' }
 	);
 
 	return {

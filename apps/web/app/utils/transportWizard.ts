@@ -55,8 +55,9 @@ export type WizardStepStatus = 'not_started' | 'running' | 'passed' | 'failed' |
 
 interface TransportWizardStep {
 	readonly id: TransportWizardStepId;
+	/** i18n key — this module is module scope, so it never calls `useI18n`. */
 	readonly title: string;
-	/** One line of step-level copy, in the delivery screens' voice. */
+	/** i18n key for one line of step-level copy, in the delivery screens' voice. */
 	readonly description: string;
 	/**
 	 * Whether a non-passing result stops the operator moving on. Only the first
@@ -70,27 +71,26 @@ interface TransportWizardStep {
 export const TRANSPORT_WIZARD_STEPS: readonly TransportWizardStep[] = [
 	{
 		id: 'credentials',
-		title: 'Credentials',
-		description: 'Enter the provider credentials. They are sealed on the server and never shown.',
+		title: 'shared.transportWizard.steps.credentials.title',
+		description: 'shared.transportWizard.steps.credentials.description',
 		blocking: true,
 	},
 	{
 		id: 'test_send',
-		title: 'Live send test',
-		description: 'Send one real message through the transport you just configured.',
+		title: 'shared.transportWizard.steps.testSend.title',
+		description: 'shared.transportWizard.steps.testSend.description',
 		blocking: true,
 	},
 	{
 		id: 'alignment',
-		title: 'SPF, DKIM & DMARC alignment',
-		description:
-			'Check live DNS so both arms look identical to the receiver apart from the infrastructure.',
+		title: 'shared.transportWizard.steps.alignment.title',
+		description: 'shared.transportWizard.steps.alignment.description',
 		blocking: true,
 	},
 	{
 		id: 'return_path',
-		title: 'Return-path capability',
-		description: 'Record whether this provider can carry our own bounce address.',
+		title: 'shared.transportWizard.steps.returnPath.title',
+		description: 'shared.transportWizard.steps.returnPath.description',
 		blocking: false,
 	},
 ];
@@ -191,9 +191,12 @@ export function setStepStatus(
  */
 export interface WizardFinding {
 	readonly id: string;
+	/** i18n key. */
 	readonly label: string;
 	readonly status: 'pass' | 'fail' | 'unknown' | 'info';
+	/** i18n key. */
 	readonly detail: string;
+	/** i18n key, or null when there is nothing to do. */
 	readonly remedy: string | null;
 }
 
@@ -210,22 +213,39 @@ export interface WizardFinding {
 export interface FindingPresentation {
 	readonly icon: string;
 	readonly class: string;
+	/** i18n key. */
 	readonly srLabel: string;
 }
 
 export const FINDING_PRESENTATION: Readonly<Record<WizardFinding['status'], FindingPresentation>> =
 	{
-		pass: { icon: 'lucide:check-circle-2', class: 'text-success', srLabel: 'Passed:' },
-		fail: { icon: 'lucide:x-circle', class: 'text-error', srLabel: 'Needs a change:' },
-		unknown: { icon: 'lucide:help-circle', class: 'text-text-tertiary', srLabel: 'Not known:' },
-		info: { icon: 'lucide:info', class: 'text-text-secondary', srLabel: 'For information:' },
+		pass: {
+			icon: 'lucide:check-circle-2',
+			class: 'text-success',
+			srLabel: 'shared.transportWizard.findingStatus.pass',
+		},
+		fail: {
+			icon: 'lucide:x-circle',
+			class: 'text-error',
+			srLabel: 'shared.transportWizard.findingStatus.fail',
+		},
+		unknown: {
+			icon: 'lucide:help-circle',
+			class: 'text-text-tertiary',
+			srLabel: 'shared.transportWizard.findingStatus.unknown',
+		},
+		info: {
+			icon: 'lucide:info',
+			class: 'text-text-secondary',
+			srLabel: 'shared.transportWizard.findingStatus.info',
+		},
 	};
 
 const ALIGNMENT_CHECK_LABELS: Readonly<Record<AlignmentCheckId, string>> = {
-	from_domain: 'From domain',
-	spf: 'SPF',
-	dkim: 'DKIM',
-	dmarc: 'DMARC',
+	from_domain: 'shared.transportWizard.checks.fromDomain',
+	spf: 'shared.transportWizard.checks.spf',
+	dkim: 'shared.transportWizard.checks.dkim',
+	dmarc: 'shared.transportWizard.checks.dmarc',
 };
 
 function toFinding(check: AlignmentCheckResult): WizardFinding {
@@ -245,7 +265,7 @@ export function alignmentFindings(result: AlignmentPreflightResult): WizardFindi
 
 /**
  * What each pre-flight verdict MEANS to the wizard: the step status it implies
- * and the sentence shown above the findings.
+ * and the message key for the sentence shown above the findings.
  *
  * ONE table rather than two parallel switches over the same four literals (a
  * second one lived in the component, where no unit test could reach the copy).
@@ -260,20 +280,19 @@ export const ALIGNMENT_VERDICT_PRESENTATION: Readonly<
 > = Object.freeze({
 	aligned: {
 		status: 'passed',
-		summary:
-			'Both arms are indistinguishable to the receiver apart from the sending infrastructure.',
+		summary: 'shared.transportWizard.verdict.aligned',
 	},
 	single_arm: {
 		status: 'passed',
-		summary: 'No second transport is configured, so there is nothing to align yet.',
+		summary: 'shared.transportWizard.verdict.singleArm',
 	},
 	blocked: {
 		status: 'failed',
-		summary: 'Some checks did not pass. Each one below names the DNS change to make.',
+		summary: 'shared.transportWizard.verdict.blocked',
 	},
 	unknown: {
 		status: 'unknown',
-		summary: 'DNS could not be resolved for every check. Nothing is wrong yet — try again shortly.',
+		summary: 'shared.transportWizard.verdict.unknown',
 	},
 });
 
@@ -282,7 +301,7 @@ export function alignmentStepStatus(result: AlignmentPreflightResult): WizardSte
 	return ALIGNMENT_VERDICT_PRESENTATION[result.verdict].status;
 }
 
-/** The sentence shown above the findings for a pre-flight verdict. */
+/** The message key for the sentence shown above the findings for a verdict. */
 export function alignmentVerdictSummary(result: AlignmentPreflightResult): string {
 	return ALIGNMENT_VERDICT_PRESENTATION[result.verdict].summary;
 }
@@ -308,28 +327,25 @@ export function returnPathFinding(capability: ReturnPathCapabilityValue): Wizard
 		case 'supported':
 			return {
 				id: 'return_path',
-				label: 'Return path',
+				label: 'shared.transportWizard.returnPath.label',
 				status: 'pass',
-				detail:
-					'This provider carries our own bounce address, so bounces are attributed exactly like the own-MTA arm.',
+				detail: 'shared.transportWizard.returnPath.supported',
 				remedy: null,
 			};
 		case 'unsupported':
 			return {
 				id: 'return_path',
-				label: 'Return path',
+				label: 'shared.transportWizard.returnPath.label',
 				status: 'info',
-				detail:
-					'This provider rewrites the bounce address, so bounce attribution on that arm is coarser. Measurement confidence is lower; sending is unaffected.',
+				detail: 'shared.transportWizard.returnPath.unsupported',
 				remedy: null,
 			};
 		case 'unknown':
 			return {
 				id: 'return_path',
-				label: 'Return path',
+				label: 'shared.transportWizard.returnPath.label',
 				status: 'info',
-				detail:
-					'Not established yet — the probe settles after a real bounce comes back. Until then the arm is measured conservatively. Nothing is blocked.',
+				detail: 'shared.transportWizard.returnPath.unknown',
 				remedy: null,
 			};
 	}
@@ -343,8 +359,7 @@ export function returnPathFinding(capability: ReturnPathCapabilityValue): Wizard
  * ago therefore reads "not known yet" here, every time, and pretending otherwise
  * would make the step look broken. Nothing waits on it (D2).
  */
-export const RETURN_PATH_SETTLES_NOTE =
-	'This one is observed rather than asked for: it settles the first time a bounce comes back through this provider, so a transport you connected a moment ago reads “not known yet”. Nothing waits on it.';
+export const RETURN_PATH_SETTLES_NOTE = 'shared.transportWizard.returnPath.settlesNote';
 
 /**
  * What step 4 says when there is no REFERENCE transport to describe —
@@ -356,8 +371,7 @@ export const RETURN_PATH_SETTLES_NOTE =
  * describe a wait that will never end. Naming the actual situation is both
  * honest and, per D2, not a fault: standalone is a supported configuration.
  */
-export const RETURN_PATH_NO_REFERENCE_NOTE =
-	'No second transport is connected yet, so there is nothing to record here.';
+export const RETURN_PATH_NO_REFERENCE_NOTE = 'shared.transportWizard.returnPath.noReferenceNote';
 
 /** The probe never blocks: any resolved posture finishes the step. */
 export function returnPathStepStatus(capability: ReturnPathCapabilityValue): WizardStepStatus {
@@ -372,10 +386,10 @@ export function returnPathStepStatus(capability: ReturnPathCapabilityValue): Wiz
 export const TRANSPORT_WIZARD_ENTRY = {
 	tone: 'offer',
 	isOptional: true,
-	title: 'Connect an email provider',
-	body: 'If you already pay for an ESP, you can send through it while your own server warms up — and compare the two. Owlat sends on its own without one; this changes nothing until you choose it.',
-	actionLabel: 'Connect a provider',
-	dismissLabel: 'Not now',
+	title: 'shared.transportWizard.entry.title',
+	body: 'shared.transportWizard.entry.body',
+	actionLabel: 'shared.transportWizard.entry.actionLabel',
+	dismissLabel: 'shared.transportWizard.entry.dismissLabel',
 } as const;
 
 /**
@@ -389,7 +403,7 @@ interface WizardSkipImpact {
 	readonly rendersError: boolean;
 	readonly rendersWarning: boolean;
 	readonly marksSetupIncomplete: boolean;
-	/** Plain, non-alarming line the delivery screens may show. Never a nag. */
+	/** i18n key for the plain, non-alarming line the delivery screens may show. Never a nag. */
 	readonly note: string;
 }
 
@@ -422,6 +436,6 @@ export function skippingWizardImpact(): WizardSkipImpact {
 		rendersError: false,
 		rendersWarning: false,
 		marksSetupIncomplete: false,
-		note: 'Sending through your own server only. Measurement confidence is lower without a second arm to compare against.',
+		note: 'shared.transportWizard.skipNote',
 	};
 }

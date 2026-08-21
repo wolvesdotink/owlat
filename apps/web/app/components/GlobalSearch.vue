@@ -5,6 +5,7 @@
  * layout); this button just opens it via the shared `useCommandPalette` control
  * (web only — desktop uses the titlebar pill instead).
  */
+const { t } = useI18n();
 const { open: openSearch } = useCommandPalette();
 </script>
 
@@ -14,7 +15,7 @@ const { open: openSearch } = useCommandPalette();
 		@click="openSearch"
 	>
 		<Icon name="lucide:search" class="w-4 h-4" />
-		<span class="hidden sm:inline">Search...</span>
+		<span class="hidden sm:inline">{{ t('components.globalSearch.search') }}</span>
 		<kbd
 			class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-text-tertiary bg-bg-elevated border border-border-subtle rounded"
 		>

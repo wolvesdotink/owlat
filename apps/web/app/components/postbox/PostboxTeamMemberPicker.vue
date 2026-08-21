@@ -18,23 +18,27 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{ (e: 'toggle', userId: string): void }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
 	<div>
-		<label class="text-sm font-medium block mb-1">Members</label>
+		<label class="text-sm font-medium block mb-1">
+			{{ t('components.postbox.postboxTeamMemberPicker.label') }}
+		</label>
 		<p class="text-xs text-text-tertiary mb-2">
-			Choose who can read and send from this inbox. You can change this later.
+			{{ t('components.postbox.postboxTeamMemberPicker.help') }}
 		</p>
 		<div
 			v-if="loading && members.length === 0"
 			class="flex items-center gap-2 text-text-secondary text-sm py-2"
 		>
 			<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-			Loading teammates…
+			{{ t('components.postbox.postboxTeamMemberPicker.loading') }}
 		</div>
 		<p v-else-if="members.length === 0" class="text-sm text-text-secondary">
-			No teammates to add yet — you can invite people and add them later.
+			{{ t('components.postbox.postboxTeamMemberPicker.empty') }}
 		</p>
 		<ul v-else class="space-y-1 max-h-56 overflow-y-auto">
 			<li v-for="m in members" :key="m.userId">

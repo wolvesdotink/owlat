@@ -6,12 +6,22 @@ import {
 } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
-useHead({ title: 'Owlat setup — Review' });
+
+const { t } = useI18n();
+
+useHead({ title: () => t('setup.review.pageTitle') });
 
 const router = useRouter();
 const { flags, env, admin, isMigrationMode, summary, setupToken, goToStep, completeSetup } =
 	useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'review');
+
+// `SETUP_WIZARD_STEPS` carries message KEYS (it is built at module scope); the
+// indicator renders display text, so resolve them here — as a computed, so the
+// labels follow a locale switch instead of freezing at setup.
+const displaySteps = computed(() =>
+	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
+);
 
 // The privileged apply endpoint authenticates with the one-time setup token.
 const trimmedToken = computed(() => setupToken.value.trim());
@@ -90,7 +100,7 @@ async function apply() {
 			}
 		);
 		if (!res.ok) {
-			error.value = res.message ?? 'Setup failed for an unknown reason.';
+			error.value = res.message ?? t('setup.review.errorUnknown');
 			phase.value = 'idle';
 			return;
 		}
@@ -124,38 +134,48 @@ onUnmounted(stopPolling);
 		<div class="relative mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="lp-eyebrow">Owlat setup</span>
+				<span class="lp-eyebrow">{{ t('setup.review.eyebrow') }}</span>
 			</div>
 
 			<UiStepIndicator
 				class="mb-10"
-				:steps="SETUP_WIZARD_STEPS"
+				:steps="displaySteps"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
 				:on-step-click="goToStep"
 			/>
 
 			<header class="mb-6">
-				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">
-					Review &amp; <span class="lp-title-accent">launch</span>
-				</h1>
+				<I18nT
+					keypath="setup.review.title"
+					tag="h1"
+					scope="global"
+					class="text-3xl font-medium tracking-[-0.02em] mb-2"
+				>
+					<template #accent>
+						<span class="lp-title-accent">{{ t('setup.review.titleAccent') }}</span>
+					</template>
+				</I18nT>
 				<p class="text-text-secondary leading-relaxed">
-					Last chance to change anything. You can also flip toggles from Settings → Features after
-					launch.
+					{{ t('setup.review.intro') }}
 				</p>
 			</header>
 
 			<UiCard padding="lg">
 				<dl class="divide-y divide-border-subtle">
 					<div class="grid grid-cols-[10rem_1fr] gap-4 py-3 first:pt-0">
-						<dt class="text-sm font-medium text-text-secondary">Active features</dt>
+						<dt class="text-sm font-medium text-text-secondary">
+							{{ t('setup.review.activeFeatures') }}
+						</dt>
 						<dd>
 							<div v-if="summary.activeFeatures.length" class="flex flex-wrap gap-1.5">
 								<UiBadge v-for="f in summary.activeFeatures" :key="f" variant="default">{{
 									f
 								}}</UiBadge>
 							</div>
-							<span v-else class="text-sm text-text-tertiary">None enabled</span>
+							<span v-else class="text-sm text-text-tertiary">{{
+								t('setup.review.noneEnabled')
+							}}</span>
 						</dd>
 					</div>
 
@@ -163,37 +183,56 @@ onUnmounted(stopPolling);
 					     external-mailbox import before persisting, so reflect it here — the
 					     operator confirms exactly what gets applied. -->
 					<div v-if="isMigrationMode" class="grid grid-cols-[10rem_1fr] gap-4 py-3">
-						<dt class="text-sm font-medium text-text-secondary">Mailbox import</dt>
+						<dt class="text-sm font-medium text-text-secondary">
+							{{ t('setup.review.mailboxImport') }}
+						</dt>
 						<dd class="text-sm text-text-primary">
-							Enabled — new users can import mail from your old platform at first login.
+							{{ t('setup.review.mailboxImportEnabled') }}
 						</dd>
 					</div>
 
 					<div class="grid grid-cols-[10rem_1fr] gap-4 py-3">
-						<dt class="text-sm font-medium text-text-secondary">Email provider</dt>
-						<dd class="text-sm text-text-primary">{{ summary.providerLabel }}</dd>
+						<dt class="text-sm font-medium text-text-secondary">
+							{{ t('setup.review.emailProvider') }}
+						</dt>
+						<!-- The summary is built by a pure module, so its label is a message
+						     key; an already-translated label passes through `t` unchanged. -->
+						<dd class="text-sm text-text-primary">{{ t(summary.providerLabel) }}</dd>
 					</div>
 
 					<div v-if="summary.fromIdentity" class="grid grid-cols-[10rem_1fr] gap-4 py-3">
-						<dt class="text-sm font-medium text-text-secondary">From identity</dt>
+						<dt class="text-sm font-medium text-text-secondary">
+							{{ t('setup.review.fromIdentity') }}
+						</dt>
 						<dd class="text-sm text-text-primary font-mono">{{ summary.fromIdentity }}</dd>
 					</div>
 
 					<div class="grid grid-cols-[10rem_1fr] gap-4 py-3">
-						<dt class="text-sm font-medium text-text-secondary">Admin account</dt>
+						<dt class="text-sm font-medium text-text-secondary">
+							{{ t('setup.review.adminAccount') }}
+						</dt>
 						<dd class="text-sm text-text-primary">
-							{{ summary.adminEmail || '(not set)' }}
-							<span v-if="summary.adminName" class="text-text-tertiary"
-								>({{ summary.adminName }})</span
-							>
+							{{ summary.adminEmail || t('setup.review.notSet') }}
+							<span v-if="summary.adminName" class="text-text-tertiary">{{
+								t('setup.review.adminName', { name: summary.adminName })
+							}}</span>
 						</dd>
 					</div>
 
 					<div class="grid grid-cols-[10rem_1fr] gap-4 py-3 last:pb-0">
-						<dt class="text-sm font-medium text-text-secondary">Generated secrets</dt>
-						<dd class="text-sm text-text-tertiary">
-							<span class="font-mono">{{ GENERATED_SECRETS.join(', ') }}</span> — created on apply.
-						</dd>
+						<dt class="text-sm font-medium text-text-secondary">
+							{{ t('setup.review.generatedSecrets') }}
+						</dt>
+						<I18nT
+							keypath="setup.review.generatedSecretsNote"
+							tag="dd"
+							scope="global"
+							class="text-sm text-text-tertiary"
+						>
+							<template #secrets>
+								<span class="font-mono">{{ GENERATED_SECRETS.join(', ') }}</span>
+							</template>
+						</I18nT>
 					</div>
 				</dl>
 			</UiCard>
@@ -202,19 +241,19 @@ onUnmounted(stopPolling);
 				<UiInput
 					v-model="setupToken"
 					type="password"
-					label="Setup token"
+					:label="t('setup.review.setupTokenLabel')"
 					placeholder="stk_…"
 					autocomplete="off"
 					autofocus
-					help-text="Printed by the owlat setup command when it enabled setup mode. Required to launch — it proves you're the operator who started setup."
+					:help-text="t('setup.review.setupTokenHelp')"
 				/>
 			</div>
 
 			<div v-if="summary.missingProvider" class="mt-5">
 				<UiErrorAlert
 					variant="warning"
-					title="No delivery provider configured"
-					message="Campaigns, transactional, or automations are enabled but no delivery provider is configured. Go back to the Email step and choose MTA, Resend, or SES."
+					:title="t('setup.review.missingProviderTitle')"
+					:message="t('setup.review.missingProviderMessage')"
 				/>
 			</div>
 
@@ -225,18 +264,20 @@ onUnmounted(stopPolling);
 			<div v-if="phase === 'finalizing'" class="mt-5 space-y-3">
 				<UiErrorAlert
 					variant="success"
-					title="Setup applied"
-					message="Finishing up — the app is loading your configuration, then we'll take you to sign in. This usually takes a few seconds."
+					:title="t('setup.review.appliedTitle')"
+					:message="t('setup.review.appliedMessage')"
 				/>
 				<RestartProgress :poll-count="pollCount" :ready="restartReady">
 					<template #timeout>
-						On a managed install this finishes on its own. If you're running a manual
-						<code class="font-mono text-text-primary">docker compose</code> stack, restart the web
-						container — we'll continue automatically the moment it's back.
+						<I18nT keypath="setup.review.restartTimeout" tag="span" scope="global">
+							<template #command>
+								<code class="font-mono text-text-primary">docker compose</code>
+							</template>
+						</I18nT>
 						<div class="mt-3">
-							<UiButton variant="outline" size="sm" @click="continueNow"
-								>Continue to sign in</UiButton
-							>
+							<UiButton variant="outline" size="sm" @click="continueNow">{{
+								t('setup.review.continueToSignIn')
+							}}</UiButton>
 						</div>
 					</template>
 				</RestartProgress>
@@ -245,7 +286,7 @@ onUnmounted(stopPolling);
 			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
 				<UiButton variant="ghost" :disabled="phase !== 'idle'" @click="router.push('/setup/admin')">
 					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
-					Back
+					{{ t('common.back') }}
 				</UiButton>
 				<UiButton
 					:loading="phase === 'applying'"
@@ -254,10 +295,10 @@ onUnmounted(stopPolling);
 				>
 					{{
 						phase === 'applying'
-							? 'Applying…'
+							? t('setup.review.applying')
 							: phase === 'finalizing'
-								? 'Finishing…'
-								: 'Launch Owlat'
+								? t('setup.review.finishing')
+								: t('setup.review.launch')
 					}}
 					<template v-if="phase === 'idle'" #iconRight
 						><Icon name="lucide:rocket" class="w-4 h-4 ml-2"

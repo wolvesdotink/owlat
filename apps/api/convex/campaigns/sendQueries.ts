@@ -147,6 +147,11 @@ export const getEmailTemplateForLanguage = internalQuery({
 	): Promise<{
 		htmlContent: string;
 		subject: string;
+		// Pre-generated text/plain body. Carried for the DEFAULT language only —
+		// a translated arm has no translated text body, and shipping the default
+		// language's text beside translated html would send two languages in one
+		// message. Absent → `composeForSend` derives the text part from the html.
+		plainTextContent?: string;
 		resolvedLanguage: string;
 	} | null> => {
 		const template = await ctx.db.get(args.templateId);
@@ -166,6 +171,7 @@ export const getEmailTemplateForLanguage = internalQuery({
 			return {
 				htmlContent: template.htmlContent,
 				subject: template.subject,
+				plainTextContent: template.plainTextContent,
 				resolvedLanguage: defaultLanguage,
 			};
 		}
@@ -194,6 +200,7 @@ export const getEmailTemplateForLanguage = internalQuery({
 		return {
 			htmlContent: template.htmlContent,
 			subject: template.subject,
+			plainTextContent: template.plainTextContent,
 			resolvedLanguage: defaultLanguage,
 		};
 	},

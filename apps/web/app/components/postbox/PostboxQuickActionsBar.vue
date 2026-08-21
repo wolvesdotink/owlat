@@ -12,6 +12,8 @@ const props = defineProps<{
 	folderRole?: string;
 }>();
 
+const { t } = useI18n();
+
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 const { folders } = usePostboxFolders(mailboxIdRef);
@@ -22,7 +24,7 @@ const labelOpen = ref(false);
 const snoozeOpen = ref(false);
 
 const snoozeMutation = useBackendOperation(api.mail.snooze.snooze, {
-	label: 'Snooze messages',
+	label: () => t('components.postbox.postboxQuickActionsBar.operations.snooze'),
 });
 
 async function applyLabel(labelId: Id<'mailLabels'>) {
@@ -41,7 +43,7 @@ async function snoozeSelected(until: number) {
 }
 
 const unsnoozeMutation = useBackendOperation(api.mail.snooze.unsnooze, {
-	label: 'Un-snooze messages',
+	label: () => t('components.postbox.postboxQuickActionsBar.operations.unsnooze'),
 });
 
 async function unsnoozeSelected() {
@@ -58,9 +60,7 @@ async function unsnoozeSelected() {
 async function purgeSelected() {
 	const n = bulk.count.value;
 	if (n === 0) return;
-	if (
-		!window.confirm(`Permanently delete ${n} message${n === 1 ? '' : 's'}? This cannot be undone.`)
-	)
+	if (!window.confirm(t('components.postbox.postboxQuickActionsBar.purgeConfirm', { count: n }, n)))
 		return;
 	await bulk.purgeSelected();
 }
@@ -89,43 +89,45 @@ const movableFolders = computed(() =>
 			v-if="bulk.count.value > 0"
 			class="sticky top-0 z-10 bg-bg-elevated border-b border-border-subtle px-3 py-2 flex items-center gap-2 text-sm shadow-sm"
 		>
-			<span class="font-medium">{{ bulk.count.value }} selected</span>
+			<span class="font-medium">{{
+				t('components.postbox.postboxQuickActionsBar.selected', { count: bulk.count.value })
+			}}</span>
 			<span class="w-px h-4 bg-border-subtle mx-1" />
 			<UiButton
 				variant="ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Mark as read"
+				:title="t('components.postbox.postboxQuickActionsBar.markReadTitle')"
 				@click="bulk.markRead(true)"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:mail-open" class="w-4 h-4" />
 				</template>
-				Read
+				{{ t('components.postbox.postboxQuickActionsBar.read') }}
 			</UiButton>
 			<UiButton
 				variant="ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Mark as unread"
+				:title="t('components.postbox.postboxQuickActionsBar.markUnreadTitle')"
 				@click="bulk.markRead(false)"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:mail" class="w-4 h-4" />
 				</template>
-				Unread
+				{{ t('components.postbox.postboxQuickActionsBar.unread') }}
 			</UiButton>
 			<UiButton
 				variant="ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Star"
+				:title="t('components.postbox.postboxQuickActionsBar.starTitle')"
 				@click="bulk.star(true)"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:star" class="w-4 h-4" />
 				</template>
-				Star
+				{{ t('components.postbox.postboxQuickActionsBar.star') }}
 			</UiButton>
 			<span class="w-px h-4 bg-border-subtle mx-1" />
 			<div class="relative">
@@ -141,7 +143,7 @@ const movableFolders = computed(() =>
 					<template #iconLeft>
 						<Icon name="lucide:folder-input" class="w-4 h-4" />
 					</template>
-					Move
+					{{ t('components.postbox.postboxQuickActionsBar.move') }}
 				</UiButton>
 				<div
 					v-if="moveOpen"
@@ -174,7 +176,7 @@ const movableFolders = computed(() =>
 					<template #iconLeft>
 						<Icon name="lucide:tag" class="w-4 h-4" />
 					</template>
-					Label
+					{{ t('components.postbox.postboxQuickActionsBar.label') }}
 				</UiButton>
 				<div
 					v-if="labelOpen"
@@ -194,7 +196,7 @@ const movableFolders = computed(() =>
 						{{ label.name }}
 					</button>
 					<div v-if="labels.length === 0" class="px-3 py-2 text-xs text-text-tertiary">
-						No labels yet
+						{{ t('components.postbox.postboxQuickActionsBar.noLabels') }}
 					</div>
 				</div>
 			</div>
@@ -203,97 +205,97 @@ const movableFolders = computed(() =>
 				variant="ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Snooze"
+				:title="t('components.postbox.postboxQuickActionsBar.snoozeTitle')"
 				@click="snoozeOpen = true"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:clock" class="w-4 h-4" />
 				</template>
-				Snooze
+				{{ t('components.postbox.postboxQuickActionsBar.snooze') }}
 			</UiButton>
 			<UiButton
 				v-else
 				variant="ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Un-snooze — return to its folder now"
+				:title="t('components.postbox.postboxQuickActionsBar.unsnoozeTitle')"
 				@click="unsnoozeSelected()"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:alarm-clock-off" class="w-4 h-4" />
 				</template>
-				Un-snooze
+				{{ t('components.postbox.postboxQuickActionsBar.unsnooze') }}
 			</UiButton>
 			<UiButton
 				v-if="props.folderRole === 'spam'"
 				variant="ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Not spam — move to Inbox"
+				:title="t('components.postbox.postboxQuickActionsBar.notSpamTitle')"
 				@click="bulk.notSpamSelected()"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:shield-check" class="w-4 h-4" />
 				</template>
-				Not spam
+				{{ t('components.postbox.postboxQuickActionsBar.notSpam') }}
 			</UiButton>
 			<UiButton
 				v-else
 				variant="ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Report spam"
+				:title="t('components.postbox.postboxQuickActionsBar.spamTitle')"
 				@click="bulk.reportSpamSelected()"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:shield-alert" class="w-4 h-4" />
 				</template>
-				Spam
+				{{ t('components.postbox.postboxQuickActionsBar.spam') }}
 			</UiButton>
 			<span class="flex-1" />
 			<UiButton
 				variant="ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Archive"
+				:title="t('components.postbox.postboxQuickActionsBar.archiveTitle')"
 				@click="bulk.archiveSelected()"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:archive" class="w-4 h-4" />
 				</template>
-				Archive
+				{{ t('components.postbox.postboxQuickActionsBar.archive') }}
 			</UiButton>
 			<UiButton
 				v-if="props.folderRole === 'trash'"
 				variant="danger-ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Permanently delete — frees storage and cannot be undone"
+				:title="t('components.postbox.postboxQuickActionsBar.deleteForeverTitle')"
 				@click="purgeSelected()"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:trash-2" class="w-4 h-4" />
 				</template>
-				Delete forever
+				{{ t('components.postbox.postboxQuickActionsBar.deleteForever') }}
 			</UiButton>
 			<UiButton
 				v-else
 				variant="danger-ghost"
 				size="sm"
 				class="gap-1.5 px-2 py-1"
-				title="Move to Trash"
+				:title="t('components.postbox.postboxQuickActionsBar.deleteTitle')"
 				@click="bulk.trashSelected()"
 			>
 				<template #iconLeft>
 					<Icon name="lucide:trash" class="w-4 h-4" />
 				</template>
-				Delete
+				{{ t('common.delete') }}
 			</UiButton>
 			<span class="w-px h-4 bg-border-subtle mx-1" />
 			<button
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-				title="Clear selection"
+				:title="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')"
 				@click="bulk.clear()"
 			>
 				<Icon name="lucide:x" class="w-4 h-4" />

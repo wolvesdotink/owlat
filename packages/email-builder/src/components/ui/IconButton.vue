@@ -1,17 +1,23 @@
 <script setup lang="ts">
-import type { Component } from 'vue';
+import { computed, type Component } from 'vue';
 
-defineProps<{
+const props = defineProps<{
 	icon: Component;
 	title: string;
 	size?: 'sm' | 'md';
 	variant?: 'default' | 'destructive';
 	active?: boolean;
+	/** Overrides the tooltip as the accessible name when the two must differ. */
+	ariaLabel?: string;
 }>();
 
 defineEmits<{
 	(e: 'click', event: MouseEvent): void;
 }>();
+
+// The button is icon-only, so it has no accessible name of its own — the
+// tooltip is the name unless a caller supplies a more specific one.
+const label = computed(() => props.ariaLabel ?? props.title);
 </script>
 
 <template>
@@ -27,8 +33,9 @@ defineEmits<{
 		]"
 		type="button"
 		:title="title"
+		:aria-label="label"
 		@click.stop="$emit('click', $event)"
 	>
-		<component :is="icon" :size="size === 'sm' ? 12 : 14" />
+		<component :is="icon" :size="size === 'sm' ? 12 : 14" aria-hidden="true" />
 	</button>
 </template>

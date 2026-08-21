@@ -30,6 +30,7 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	]),
 }));
 
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PluginsIndexPage from '../index.vue';
 
 const overview = ref<{
@@ -60,6 +61,7 @@ beforeEach(() => {
 	};
 	overviewQueryArgs = undefined;
 
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
@@ -76,6 +78,7 @@ const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot/></a>' };
 function mountPage() {
 	return mount(PluginsIndexPage, {
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiQueryBoundary: passthroughStub,
 				UiCard: passthroughStub,

@@ -29,6 +29,7 @@ const emit = defineEmits<{
 			<input
 				:value="name"
 				type="text"
+				:aria-label="mode === 'block' ? 'Block name' : 'Template name'"
 				class="flex-1 bg-transparent text-text-primary font-medium text-sm focus:outline-none border-b border-transparent hover:border-border-default focus:border-brand transition-colors py-0.5"
 				:placeholder="mode === 'block' ? 'Block name' : 'Template name'"
 				@input="emit('update:name', ($event.target as HTMLInputElement).value)"
@@ -39,6 +40,7 @@ const emit = defineEmits<{
 			<input
 				:value="subject"
 				type="text"
+				aria-label="Email subject line"
 				class="flex-1 bg-transparent text-text-primary text-sm focus:outline-none border-b border-transparent hover:border-border-default focus:border-brand transition-colors py-0.5"
 				placeholder="Email subject line"
 				@input="emit('update:subject', ($event.target as HTMLInputElement).value)"

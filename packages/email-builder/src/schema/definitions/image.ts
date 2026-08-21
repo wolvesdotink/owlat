@@ -9,7 +9,13 @@ export const imageSchema: BlockAttributeSchema = {
 			label: 'Content',
 			fields: [
 				{ key: 'src', label: 'Image', type: 'image' },
-				{ key: 'alt', label: 'Alt Text', type: 'text', placeholder: 'Describe the image' },
+				{ key: 'alt', label: 'Alt Text', type: 'altText', placeholder: 'Describe the image' },
+				{
+					key: 'decorative',
+					label: 'Decorative image',
+					type: 'toggle',
+					helpText: 'Screen readers skip this image — use it for spacers and pure ornament.',
+				},
 				{ key: 'title', label: 'Title', type: 'text', placeholder: 'Tooltip text' },
 				{ key: 'linkUrl', label: 'Link URL', type: 'url', placeholder: 'https://' },
 			],
@@ -17,8 +23,24 @@ export const imageSchema: BlockAttributeSchema = {
 		{
 			label: 'Layout',
 			fields: [
-				{ key: 'width', label: 'Width', type: 'slider', min: 10, max: 100, unit: '%', toolbar: true },
-				{ key: 'height', label: 'Height', type: 'number', min: 0, max: 1000, unit: 'px', helpText: 'Leave 0 for auto' },
+				{
+					key: 'width',
+					label: 'Width',
+					type: 'slider',
+					min: 10,
+					max: 100,
+					unit: '%',
+					toolbar: true,
+				},
+				{
+					key: 'height',
+					label: 'Height',
+					type: 'number',
+					min: 0,
+					max: 1000,
+					unit: 'px',
+					helpText: 'Leave 0 for auto',
+				},
 				{ key: 'align', label: 'Alignment', type: 'align', toolbar: true },
 				{ key: 'fluidOnMobile', label: 'Full Width on Mobile', type: 'toggle' },
 				backgroundColorField,

@@ -12,6 +12,8 @@ import { ROLE_DEFINITIONS, roleDefinition } from '~/utils/teamRoles';
  * positioning so it is never clipped by the members table's horizontal scroll
  * container (overflow-x forces overflow-y, which would otherwise cut it off).
  */
+const { t } = useI18n();
+
 const props = withDefaults(
 	defineProps<{
 		role: OrganizationRole;
@@ -184,13 +186,18 @@ onUnmounted(removeListeners);
 			aria-haspopup="menu"
 			:aria-expanded="isOpen"
 			:aria-label="
-				memberLabel ? `Change role for ${memberLabel} (currently ${current.label})` : 'Change role'
+				memberLabel
+					? t('components.settings.teamRoleMenu.changeRoleFor', {
+							member: memberLabel,
+							role: t(current.label),
+						})
+					: t('components.settings.teamRoleMenu.changeRole')
 			"
 			@click="toggleMenu"
 			@keydown="onTriggerKeydown"
 		>
 			<Icon :name="current.icon" class="w-3.5 h-3.5" />
-			<span>{{ current.label }}</span>
+			<span>{{ t(current.label) }}</span>
 			<Icon v-if="!disabled" name="lucide:chevron-down" class="w-3 h-3 text-text-tertiary" />
 		</button>
 
@@ -207,7 +214,7 @@ onUnmounted(removeListeners);
 					v-if="isOpen"
 					ref="menuRef"
 					role="menu"
-					aria-label="Assign role"
+					:aria-label="t('components.settings.teamRoleMenu.assignRole')"
 					class="fixed z-50 w-72 rounded-xl bg-bg-elevated py-1 shadow-lg"
 					:style="{
 						top: openDirection === 'up' ? 'auto' : `${panelPosition.top}px`,
@@ -230,7 +237,7 @@ onUnmounted(removeListeners);
 						<Icon :name="option.icon" class="mt-0.5 w-4 h-4 shrink-0 text-text-secondary" />
 						<span class="min-w-0 flex-1">
 							<span class="flex items-center gap-1.5">
-								<span class="text-sm font-medium text-text-primary">{{ option.label }}</span>
+								<span class="text-sm font-medium text-text-primary">{{ t(option.label) }}</span>
 								<Icon
 									v-if="option.role === role"
 									name="lucide:check"
@@ -238,8 +245,8 @@ onUnmounted(removeListeners);
 									aria-hidden="true"
 								/>
 							</span>
-							<span class="mt-0.5 block text-xs text-text-secondary">{{ option.summary }}</span>
-							<span class="mt-0.5 block text-xs text-text-tertiary">{{ option.detail }}</span>
+							<span class="mt-0.5 block text-xs text-text-secondary">{{ t(option.summary) }}</span>
+							<span class="mt-0.5 block text-xs text-text-tertiary">{{ t(option.detail) }}</span>
 						</span>
 					</button>
 				</div>

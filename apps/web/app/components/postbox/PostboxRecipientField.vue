@@ -29,6 +29,8 @@ const emit = defineEmits<{
 	(e: 'move', payload: { email: string; from: RecipientField }): void;
 }>();
 
+const { t } = useI18n();
+
 const ownDomainLabel = computed(() => props.ownDomains[0] ?? '');
 function isExternal(addr: string): boolean {
 	return isExternalRecipient(addr, props.ownDomains);
@@ -178,7 +180,13 @@ function onBlur() {
 				draggable="true"
 				class="inline-flex items-center gap-1 pl-0.5 pr-2 py-0.5 rounded-full bg-bg-surface text-xs cursor-grab active:cursor-grabbing"
 				:class="isExternal(addr) ? 'ring-1 ring-warning/70' : ''"
-				:title="isExternal(addr) && ownDomainLabel ? `outside ${ownDomainLabel}` : undefined"
+				:title="
+					isExternal(addr) && ownDomainLabel
+						? t('components.postbox.postboxRecipientField.outsideDomain', {
+								domain: ownDomainLabel,
+							})
+						: undefined
+				"
 				@dragstart="onChipDragStart($event, addr)"
 			>
 				<UiAvatar
@@ -193,7 +201,9 @@ function onBlur() {
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
 					@click="removeRecipient(idx)"
-					:aria-label="`Remove ${addr}`"
+					:aria-label="
+						t('components.postbox.postboxRecipientField.removeRecipient', { address: addr })
+					"
 				>
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
@@ -203,7 +213,9 @@ function onBlur() {
 				v-model="inputValue"
 				type="text"
 				class="flex-1 min-w-[120px] bg-transparent outline-none text-sm"
-				:placeholder="modelValue.length === 0 ? 'recipient@example.com' : ''"
+				:placeholder="
+					modelValue.length === 0 ? t('components.postbox.postboxRecipientField.placeholder') : ''
+				"
 				@input="onInput"
 				@focus="onInput"
 				@blur="onBlur"

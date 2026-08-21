@@ -7,6 +7,8 @@ const props = defineProps<{
 	slotIndex: number;
 }>();
 
+const { t } = useI18n();
+
 const stack = usePostboxComposerStack();
 const undoSend = usePostboxUndoSend();
 const { size, setSize } = usePostboxComposerSize();
@@ -89,7 +91,7 @@ onBeforeUnmount(() => {
 		<Transition name="pbx-popup" appear>
 			<div
 				role="dialog"
-				aria-label="Compose message"
+				:aria-label="t('components.postbox.postboxComposerPopup.dialogLabel')"
 				class="flex flex-col z-40 bg-bg-elevated border border-border-subtle overflow-hidden"
 				:class="
 					isFocused
@@ -105,7 +107,7 @@ onBeforeUnmount(() => {
 					v-if="!isFocused"
 					class="absolute top-0 left-0 w-4 h-4 z-50 cursor-nwse-resize touch-none"
 					aria-hidden="true"
-					title="Drag to resize"
+					:title="t('components.postbox.postboxComposerPopup.resizeHandle')"
 					@pointerdown="onResizeDown"
 				/>
 				<PostboxComposer
@@ -117,6 +119,7 @@ onBeforeUnmount(() => {
 					:prefill-bcc="composer.prefillBcc"
 					:prefill-subject="composer.prefillSubject"
 					:prefill-body-html="composer.prefillBodyHtml"
+					:prefill-attachments="composer.prefillAttachments"
 					:forward-attachments-from-message-id="composer.forwardAttachmentsFromMessageId"
 					:attach-pending-key="composer.attachPendingKey"
 					:reply-all-recipients="composer.replyAllRecipients"

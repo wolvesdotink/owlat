@@ -26,6 +26,19 @@ import { healthChipClass, healthTextClass } from '~/utils/healthTone';
 
 const { canManageOrganization } = usePermissions();
 
+const { t } = useI18n();
+
+/**
+ * The readiness verdicts come out of `utils/deliveryReadiness`, a module-scope
+ * definition set that carries i18n keys rather than sentences (the registry
+ * convention); a plain string is still accepted so a value with nothing to
+ * translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
 const {
 	data: transport,
 	isLoading: transportLoading,
@@ -141,7 +154,7 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 		<div v-else-if="hasError" class="p-6 flex items-start gap-3">
 			<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning mt-0.5 shrink-0" />
 			<p class="text-sm text-text-secondary">
-				Couldn't check delivery readiness just now. Reload to try again.
+				{{ t('components.delivery.readinessPanel.error') }}
 			</p>
 		</div>
 
@@ -152,18 +165,20 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 					<UiIconBox icon="lucide:rocket" size="md" variant="brand" rounded="lg" />
 					<div class="min-w-0">
 						<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary">
-							Delivery readiness
+							{{ t('components.delivery.readinessPanel.eyebrow') }}
 						</p>
 						<div class="flex items-center gap-2.5 mt-0.5">
-							<h2 class="text-lg font-semibold text-text-primary">Can this instance send?</h2>
+							<h2 class="text-lg font-semibold text-text-primary">
+								{{ t('components.delivery.readinessPanel.title') }}
+							</h2>
 							<span
 								class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
 								:class="healthChipClass[readiness.tone]"
 							>
-								{{ readiness.headline }}
+								{{ localized(readiness.headline) }}
 							</span>
 						</div>
-						<p class="text-sm text-text-secondary mt-1">{{ readiness.summary }}</p>
+						<p class="text-sm text-text-secondary mt-1">{{ localized(readiness.summary) }}</p>
 					</div>
 				</div>
 			</div>
@@ -181,15 +196,15 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 						:class="healthTextClass[g.tone]"
 					/>
 					<div class="flex-1 min-w-0">
-						<p class="text-sm font-medium text-text-primary">{{ g.title }}</p>
-						<p class="text-sm text-text-secondary mt-0.5">{{ g.detail }}</p>
+						<p class="text-sm font-medium text-text-primary">{{ localized(g.title) }}</p>
+						<p class="text-sm text-text-secondary mt-0.5">{{ localized(g.detail) }}</p>
 					</div>
 					<NuxtLink
 						v-if="g.actionHref && g.actionLabel"
 						:to="g.actionHref"
 						class="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline shrink-0 mt-0.5 group"
 					>
-						{{ g.actionLabel }}
+						{{ localized(g.actionLabel) }}
 						<Icon
 							name="lucide:arrow-right"
 							class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-(--motion-fast)"

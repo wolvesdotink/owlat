@@ -21,6 +21,8 @@ const props = defineProps<{
 	status: RecipientKeyStatus;
 }>();
 
+const { t } = useI18n();
+
 const pinnedFingerprint = computed(() => formatFingerprint(props.status.pinnedFingerprint));
 const observedFingerprint = computed(() => formatFingerprint(props.status.observedFingerprint));
 
@@ -32,9 +34,9 @@ const firstSeen = computed(() => {
 const sourceLabel = computed(() => {
 	switch (props.status.source) {
 		case 'manifest':
-			return 'the sending server';
+			return t('components.postbox.postboxContactKeyPanel.sources.manifest');
 		case 'wkd':
-			return 'their domain (Web Key Directory)';
+			return t('components.postbox.postboxContactKeyPanel.sources.wkd');
 		default:
 			return null;
 	}
@@ -43,14 +45,16 @@ const sourceLabel = computed(() => {
 
 <template>
 	<section class="rounded border border-border-subtle p-3" data-testid="contact-key-panel">
-		<h3 class="text-sm font-medium text-text-primary">Sealing key</h3>
+		<h3 class="text-sm font-medium text-text-primary">
+			{{ t('components.postbox.postboxContactKeyPanel.title') }}
+		</h3>
 
 		<p
 			v-if="status.outcome === 'notFound'"
 			class="mt-2 text-xs text-text-secondary"
 			data-testid="contact-key-empty"
 		>
-			Owlat hasn't found a sealing key for {{ address }} yet, so mail to them is sent normally.
+			{{ t('components.postbox.postboxContactKeyPanel.empty', { address }) }}
 		</p>
 
 		<div v-else class="mt-2 space-y-1.5 text-xs">
@@ -64,21 +68,31 @@ const sourceLabel = computed(() => {
 					:class="status.outcome === 'trusted' ? 'text-text-secondary' : 'text-warning'"
 					data-testid="contact-key-state"
 				>
-					{{ status.outcome === 'trusted' ? 'Trusted key pinned' : 'Key changed — needs review' }}
+					{{
+						status.outcome === 'trusted'
+							? t('components.postbox.postboxContactKeyPanel.trusted')
+							: t('components.postbox.postboxContactKeyPanel.keyChanged')
+					}}
 				</span>
 			</div>
 
 			<dl class="space-y-1 text-text-tertiary">
 				<div v-if="pinnedFingerprint" class="flex gap-2">
-					<dt class="w-24 flex-shrink-0">Fingerprint</dt>
+					<dt class="w-24 flex-shrink-0">
+						{{ t('components.postbox.postboxContactKeyPanel.fingerprint') }}
+					</dt>
 					<dd class="font-mono text-text-secondary break-all">{{ pinnedFingerprint }}</dd>
 				</div>
 				<div v-if="firstSeen" class="flex gap-2">
-					<dt class="w-24 flex-shrink-0">First seen</dt>
+					<dt class="w-24 flex-shrink-0">
+						{{ t('components.postbox.postboxContactKeyPanel.firstSeen') }}
+					</dt>
 					<dd>{{ firstSeen }}</dd>
 				</div>
 				<div v-if="sourceLabel" class="flex gap-2">
-					<dt class="w-24 flex-shrink-0">Found via</dt>
+					<dt class="w-24 flex-shrink-0">
+						{{ t('components.postbox.postboxContactKeyPanel.foundVia') }}
+					</dt>
 					<dd>{{ sourceLabel }}</dd>
 				</div>
 				<div
@@ -86,7 +100,9 @@ const sourceLabel = computed(() => {
 					class="flex gap-2"
 					data-testid="contact-key-new"
 				>
-					<dt class="w-24 flex-shrink-0 text-warning">New key</dt>
+					<dt class="w-24 flex-shrink-0 text-warning">
+						{{ t('components.postbox.postboxContactKeyPanel.newKey') }}
+					</dt>
 					<dd class="font-mono text-warning break-all">{{ observedFingerprint }}</dd>
 				</div>
 			</dl>

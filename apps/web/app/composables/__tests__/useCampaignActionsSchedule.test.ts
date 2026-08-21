@@ -2,9 +2,13 @@ import { computed, ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Doc, Id } from '@owlat/api/dataModel';
 import { useCampaignActions } from '../useCampaignActions';
+import { createTestI18n } from '~/__tests__/i18n';
 import type { useCampaignABTest } from '../useCampaignABTest';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
+
+/** The real catalog behind the `useI18n` auto-import the composable calls. */
+const i18n = createTestI18n();
 
 /**
  * The schedule submit path judges "is this start in the past?" against a LIVE
@@ -47,17 +51,24 @@ describe('useCampaignActions schedule clock', () => {
 		rescheduleRuns.length = 0;
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date('2026-03-10T09:00:00'));
+		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useRouter', () => ({ push: () => {} }));
 		vi.stubGlobal('useToast', () => ({ showToast: () => {} }));
 		// Keyed off the operation LABEL rather than the function reference, so the
 		// stub does not have to reach into the generated Convex api object.
-		vi.stubGlobal('useBackendOperation', (_reference: unknown, options: { label: string }) => ({
-			run: async (args: unknown) => {
-				if (options.label === 'Schedule campaign') scheduleRuns.push(args);
-				else if (options.label === 'Reschedule campaign') rescheduleRuns.push(args);
-				return {};
-			},
-		}));
+		vi.stubGlobal(
+			'useBackendOperation',
+			(_reference: unknown, options: { label: string | (() => string) }) => ({
+				run: async (args: unknown) => {
+					// The label is a getter now (it reads the active locale at report
+					// time), so resolve it before keying off the English copy.
+					const label = typeof options.label === 'function' ? options.label() : options.label;
+					if (label === 'Schedule campaign') scheduleRuns.push(args);
+					else if (label === 'Reschedule campaign') rescheduleRuns.push(args);
+					return {};
+				},
+			})
+		);
 	});
 
 	afterEach(() => {

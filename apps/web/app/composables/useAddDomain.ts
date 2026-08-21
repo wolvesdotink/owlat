@@ -33,6 +33,8 @@ export interface AddDomainFlowDeps {
  * itself (no half-created domain), surfaced by the operation layer.
  */
 export function useAddDomain(deps: AddDomainFlowDeps) {
+	const { t } = useI18n();
+
 	const handleAddDomain = async (payload: { domain: string; returnPathHost: string | null }) => {
 		if (!deps.hasActiveOrganization()) return;
 
@@ -46,7 +48,7 @@ export function useAddDomain(deps: AddDomainFlowDeps) {
 		if (domainId === undefined) return;
 
 		deps.close();
-		deps.showToast('Domain added successfully. Configure your DNS records to verify.');
+		deps.showToast(t('shared.useAddDomain.domainAdded'));
 	};
 
 	return { handleAddDomain };

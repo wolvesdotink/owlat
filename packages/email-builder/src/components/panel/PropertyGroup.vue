@@ -48,6 +48,7 @@ function isFieldVisible(field: { showWhen?: { key: string; value: unknown } }): 
 			v-if="!hideHeader"
 			class="flex items-center justify-between w-full py-2.5 pr-4 pl-4 bg-none border-none cursor-pointer select-none transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover active:bg-bg-surface-hover"
 			type="button"
+			:aria-expanded="!isCollapsed"
 			@click="toggleCollapse"
 		>
 			<div class="flex items-center gap-1.5">

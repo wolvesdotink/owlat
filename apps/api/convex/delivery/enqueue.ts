@@ -81,6 +81,9 @@ export const enqueueCampaignEmails = internalMutation({
 		replyTo: v.optional(v.string()),
 		subject: v.string(),
 		htmlContent: v.string(),
+		// Pre-generated (or author-overridden) text/plain body from the template
+		// row. Absent → the composer strips the untracked html instead.
+		plainTextContent: v.optional(v.string()),
 		convexSiteUrl: v.optional(v.string()),
 		siteUrl: v.optional(v.string()),
 		audienceType: v.optional(v.union(v.literal('topic'), v.literal('segment'))),
@@ -159,6 +162,7 @@ export const enqueueCampaignEmails = internalMutation({
 				template: {
 					subject: args.subject,
 					htmlContent: args.htmlContent,
+					plainTextContent: args.plainTextContent,
 				},
 				contactInfo: {
 					contactId: recipient.contactId,

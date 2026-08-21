@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Assistant — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.assistant.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -37,11 +39,11 @@ watch(
 );
 watch(activeId, scrollToBottom);
 
-const examplePrompts = [
-	'Summarize the performance of our most recent campaign.',
-	'What do we know about our most engaged contacts?',
-	'Draft a friendly re-engagement email for inactive subscribers.',
-];
+const examplePrompts = computed(() => [
+	t('dashboard.assistant.index.examplePrompts.performance'),
+	t('dashboard.assistant.index.examplePrompts.engagedContacts'),
+	t('dashboard.assistant.index.examplePrompts.reEngagement'),
+]);
 
 const onExample = (prompt: string) => {
 	void send(prompt);
@@ -90,7 +92,7 @@ const cancelRename = () => {
 };
 
 const formatDate = (ts: number) =>
-	new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+	new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric' }).format(new Date(ts));
 </script>
 
 <template>
@@ -100,13 +102,15 @@ const formatDate = (ts: number) =>
 			<div class="p-3">
 				<UiButton full-width class="gap-2" @click="newConversation">
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					New chat
+					{{ t('dashboard.assistant.index.newChat') }}
 				</UiButton>
 			</div>
 			<div class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-				<div v-if="conversationsLoading" class="px-3 py-2 text-sm text-text-tertiary">Loading…</div>
+				<div v-if="conversationsLoading" class="px-3 py-2 text-sm text-text-tertiary">
+					{{ t('common.loading') }}
+				</div>
 				<p v-else-if="conversations.length === 0" class="px-3 py-2 text-sm text-text-tertiary">
-					No conversations yet.
+					{{ t('dashboard.assistant.index.noConversations') }}
 				</p>
 				<div
 					v-for="c in conversations"
@@ -139,16 +143,16 @@ const formatDate = (ts: number) =>
 						}}</span>
 						<button
 							class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-text-primary transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							title="Rename conversation"
-							aria-label="Rename conversation"
+							:title="t('dashboard.assistant.index.renameConversation')"
+							:aria-label="t('dashboard.assistant.index.renameConversation')"
 							@click.stop="startRename(c._id, c.title)"
 						>
 							<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
 						</button>
 						<button
 							class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-error transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							title="Delete conversation"
-							aria-label="Delete conversation"
+							:title="t('dashboard.assistant.index.deleteConversation')"
+							:aria-label="t('dashboard.assistant.index.deleteConversation')"
 							@click.stop="pendingDelete = { _id: c._id, title: c.title }"
 						>
 							<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
@@ -181,10 +185,9 @@ const formatDate = (ts: number) =>
 					>
 						<Icon name="lucide:sparkles" class="w-8 h-8" />
 					</div>
-					<h2 class="text-lg font-medium text-text-primary">How can I help?</h2>
+					<h2 class="text-lg font-medium text-text-primary">{{ t('dashboard.assistant.index.welcomeTitle') }}</h2>
 					<p class="text-sm text-text-secondary mt-1 max-w-md">
-						Ask about your contacts, campaigns, knowledge, and files — or have me draft an email or
-						campaign copy. I can search your workspace to ground my answers.
+						{{ t('dashboard.assistant.index.welcomeBody') }}
 					</p>
 					<div class="mt-6 flex flex-col gap-2 w-full max-w-md">
 						<button
@@ -211,9 +214,9 @@ const formatDate = (ts: number) =>
 		<UiConfirmationDialog
 			:open="!!pendingDelete"
 			variant="danger"
-			title="Delete chat"
-			:description="`&quot;${pendingDelete?.title ?? ''}&quot; and all of its messages will be permanently deleted.`"
-			confirm-text="Delete chat"
+			:title="t('dashboard.assistant.index.deleteDialog.title')"
+			:description="t('dashboard.assistant.index.deleteDialog.description', { title: pendingDelete?.title ?? '' })"
+			:confirm-text="t('dashboard.assistant.index.deleteDialog.confirm')"
 			:is-loading="isDeleting"
 			@update:open="
 				(v: boolean) => {

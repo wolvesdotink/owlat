@@ -85,7 +85,11 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		// straight to the Send producer below.
 		const composed = composeForSend({
 			kind: 'automation',
-			template: { subject, htmlContent: template.htmlContent },
+			template: {
+				subject,
+				htmlContent: template.htmlContent,
+				plainTextContent: template.plainTextContent,
+			},
 			contactInfo: {
 				email: contactEmail,
 				firstName: contact.firstName,

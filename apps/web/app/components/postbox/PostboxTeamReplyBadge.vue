@@ -10,6 +10,8 @@ const props = defineProps<{
 	messageId: Id<'mailMessages'>;
 }>();
 
+const { t } = useI18n();
+
 const { data } = useConvexQuery(api.mail.mailbox.latestReplyState, () => ({
 	messageId: props.messageId,
 }));
@@ -18,17 +20,18 @@ const label = computed(() => {
 	const reply = data.value;
 	if (!reply) return null;
 	const when = formatRelativeTime(reply.at);
+	const prefix = 'components.postbox.postboxTeamReplyBadge';
 	// Send-as marker: the reply went out under the teammate's PERSONAL address, so
 	// its copy lives in their own mailbox — not this team thread. Say so plainly so
 	// a teammate knows the reply happened even though it isn't here (no silent fork).
 	if (reply.isFromPersonalAddress) {
-		if (reply.byIsYou) return `You replied from your personal address · ${when}`;
-		if (reply.byName) return `${reply.byName} replied from their personal address · ${when}`;
-		return `A teammate replied from their personal address · ${when}`;
+		if (reply.byIsYou) return t(`${prefix}.youPersonal`, { when });
+		if (reply.byName) return t(`${prefix}.namedPersonal`, { name: reply.byName, when });
+		return t(`${prefix}.teammatePersonal`, { when });
 	}
-	if (reply.byIsYou) return `You replied last · ${when}`;
-	if (reply.byName) return `${reply.byName} replied last · ${when}`;
-	return `A teammate replied last · ${when}`;
+	if (reply.byIsYou) return t(`${prefix}.youLast`, { when });
+	if (reply.byName) return t(`${prefix}.namedLast`, { name: reply.byName, when });
+	return t(`${prefix}.teammateLast`, { when });
 });
 </script>
 

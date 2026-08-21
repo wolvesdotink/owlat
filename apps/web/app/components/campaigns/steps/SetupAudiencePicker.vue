@@ -35,6 +35,8 @@ const selectedSegmentId = defineModel<Id<'segments'> | null>('selectedSegmentId'
 	required: true,
 });
 
+const { t, locale } = useI18n();
+
 const selectedTopicName = computed(
 	() => props.topics?.find((t) => t._id === selectedTopicId.value)?.name ?? null
 );
@@ -52,7 +54,7 @@ const formattedEligibleRecipients = computed(() => {
 	const completeness = props.audienceCount?.completeness;
 	const suffix =
 		completeness === 'candidate_capped' || completeness === 'read_budget_exhausted' ? '+' : '';
-	return `${eligible.toLocaleString()}${suffix}`;
+	return `${eligible.toLocaleString(locale.value)}${suffix}`;
 });
 
 const nonEligibleRecipients = computed(() => {
@@ -64,8 +66,8 @@ const nonEligibleRecipients = computed(() => {
 <template>
 	<div class="card p-6">
 		<div class="mb-6">
-			<h2 class="text-xl font-semibold text-text-primary">Audience</h2>
-			<p class="text-text-secondary mt-1">Choose who will receive this campaign.</p>
+			<h2 class="text-xl font-semibold text-text-primary">{{ t('components.campaigns.steps.setupAudiencePicker.title') }}</h2>
+			<p class="text-text-secondary mt-1">{{ t('components.campaigns.steps.setupAudiencePicker.subtitle') }}</p>
 		</div>
 
 		<div class="space-y-4">
@@ -87,10 +89,10 @@ const nonEligibleRecipients = computed(() => {
 				<div class="flex-1">
 					<div class="flex items-center gap-2">
 						<Icon name="lucide:list-checks" class="w-5 h-5 text-brand" />
-						<span class="font-medium text-text-primary">Specific Topic</span>
+						<span class="font-medium text-text-primary">{{ t('components.campaigns.steps.setupAudiencePicker.topicOption') }}</span>
 					</div>
 					<p class="text-sm text-text-secondary mt-1">
-						Send to contacts subscribed to a specific topic.
+						{{ t('components.campaigns.steps.setupAudiencePicker.topicOptionDescription') }}
 					</p>
 					<div v-if="audienceType === 'topic'" class="mt-4">
 						<select
@@ -98,17 +100,19 @@ const nonEligibleRecipients = computed(() => {
 							:class="['input w-full', error ? 'input-error' : '']"
 							@click.stop
 						>
-							<option :value="null" disabled>Select a topic...</option>
+							<option :value="null" disabled>{{ t('components.campaigns.steps.setupAudiencePicker.topicPlaceholder') }}</option>
 							<option v-for="topic in topics" :key="topic._id" :value="topic._id">
-								{{ topic.name }} ({{ topic.contactCount }} contacts)
+								{{ t('components.campaigns.steps.setupAudiencePicker.topicOptionLabel', { name: topic.name, count: topic.contactCount }) }}
 							</option>
 						</select>
 						<p v-if="error && audienceType === 'topic'" class="mt-1.5 text-sm text-error">
 							{{ error }}
 						</p>
 						<p v-else-if="!topics?.length" class="mt-1.5 text-sm text-text-tertiary">
-							No topics found.
-							<NuxtLink to="/dashboard/audience/topics" class="link">Create a topic</NuxtLink>
+							{{ t('components.campaigns.steps.setupAudiencePicker.noTopics') }}
+							<NuxtLink to="/dashboard/audience/topics" class="link">{{
+								t('components.campaigns.steps.setupAudiencePicker.createTopic')
+							}}</NuxtLink>
 						</p>
 					</div>
 				</div>
@@ -132,10 +136,10 @@ const nonEligibleRecipients = computed(() => {
 				<div class="flex-1">
 					<div class="flex items-center gap-2">
 						<Icon name="lucide:filter" class="w-5 h-5 text-warning" />
-						<span class="font-medium text-text-primary">Saved Segment</span>
+						<span class="font-medium text-text-primary">{{ t('components.campaigns.steps.setupAudiencePicker.segmentOption') }}</span>
 					</div>
 					<p class="text-sm text-text-secondary mt-1">
-						Target contacts matching specific criteria from a saved segment.
+						{{ t('components.campaigns.steps.setupAudiencePicker.segmentOptionDescription') }}
 					</p>
 					<div v-if="audienceType === 'segment'" class="mt-4">
 						<select
@@ -143,7 +147,7 @@ const nonEligibleRecipients = computed(() => {
 							:class="['input w-full', error ? 'input-error' : '']"
 							@click.stop
 						>
-							<option :value="null" disabled>Select a segment...</option>
+							<option :value="null" disabled>{{ t('components.campaigns.steps.setupAudiencePicker.segmentPlaceholder') }}</option>
 							<option v-for="segment in segments" :key="segment._id" :value="segment._id">
 								{{ segment.name }}
 							</option>
@@ -152,25 +156,29 @@ const nonEligibleRecipients = computed(() => {
 							{{ error }}
 						</p>
 						<p v-else-if="!segments?.length" class="mt-1.5 text-sm text-text-tertiary">
-							No segments found.
-							<NuxtLink to="/dashboard/audience/segments" class="link">Create a segment</NuxtLink>
+							{{ t('components.campaigns.steps.setupAudiencePicker.noSegments') }}
+							<NuxtLink to="/dashboard/audience/segments" class="link">{{
+								t('components.campaigns.steps.setupAudiencePicker.createSegment')
+							}}</NuxtLink>
 						</p>
 						<div
 							v-else-if="selectedSegment"
 							class="mt-3 p-3 bg-bg-elevated border border-border-subtle rounded-lg"
 						>
-							<p class="text-xs text-text-tertiary uppercase font-medium mb-1">Segment Criteria</p>
+							<p class="text-xs text-text-tertiary uppercase font-medium mb-1">
+									{{ t('components.campaigns.steps.setupAudiencePicker.segmentCriteria') }}
+								</p>
 							<p v-if="selectedSegment.description" class="text-sm text-text-secondary">
 								{{ selectedSegment.description }}
 							</p>
-							<p v-else class="text-sm text-text-tertiary italic">No description provided</p>
+							<p v-else class="text-sm text-text-tertiary italic">
+									{{ t('components.campaigns.steps.setupAudiencePicker.noDescription') }}
+								</p>
 						</div>
 						<div class="mt-3 p-3 bg-warning/10 border border-warning/20 rounded-lg">
 							<p class="text-sm text-warning">
-								Segments target all matching contacts regardless of topic subscription. Some
-								contacts may not have completed double opt-in. No unsubscribe link will be included
-								since there is no specific topic to unsubscribe from.
-							</p>
+									{{ t('components.campaigns.steps.setupAudiencePicker.segmentWarning') }}
+								</p>
 						</div>
 					</div>
 				</div>
@@ -181,7 +189,7 @@ const nonEligibleRecipients = computed(() => {
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<Icon name="lucide:users" class="w-5 h-5 text-text-tertiary" />
-					<span class="text-text-secondary">Estimated recipients</span>
+					<span class="text-text-secondary">{{ t('components.campaigns.steps.setupAudiencePicker.estimatedRecipients') }}</span>
 				</div>
 				<span
 					data-testid="audience-eligible-count"
@@ -190,30 +198,32 @@ const nonEligibleRecipients = computed(() => {
 				>
 			</div>
 			<p v-if="audienceType === 'topic'" class="mt-1 text-sm text-text-tertiary">
-				Eligible recipients for this topic.
+				{{ t('components.campaigns.steps.setupAudiencePicker.eligibleForTopic') }}
 			</p>
-			<p v-else class="mt-1 text-sm text-text-tertiary">Eligible recipients.</p>
+			<p v-else class="mt-1 text-sm text-text-tertiary">{{ t('components.campaigns.steps.setupAudiencePicker.eligible') }}</p>
 
 			<div
 				v-if="audienceType === 'topic' && nonEligibleRecipients > 0 && audienceCount"
 				class="mt-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
 			>
 				<p class="text-sm text-warning">
-					{{ nonEligibleRecipients.toLocaleString() }} of
-					{{ audienceCount.total.toLocaleString() }} contacts in this topic are not eligible (no
-					email address, unsubscribed/suppressed, or double opt-in not completed) and will be
-					excluded.
+					{{
+						t('components.campaigns.steps.setupAudiencePicker.nonEligible', {
+							nonEligible: nonEligibleRecipients.toLocaleString(locale),
+							total: audienceCount.total.toLocaleString(locale),
+						})
+					}}
 				</p>
 			</div>
 
 			<p class="mt-2 text-sm text-text-tertiary">
 				<template v-if="audienceType === 'topic' && selectedTopicName">
-					Subscribed contacts in "{{ selectedTopicName }}" will receive this campaign.
+					{{ t('components.campaigns.steps.setupAudiencePicker.topicSummary', { topic: selectedTopicName }) }}
 				</template>
 				<template v-else-if="audienceType === 'segment' && selectedSegment">
-					Contacts matching "{{ selectedSegment.name }}" criteria will receive this campaign.
+					{{ t('components.campaigns.steps.setupAudiencePicker.segmentSummary', { segment: selectedSegment.name }) }}
 				</template>
-				<template v-else>Select an audience to see the estimated recipient count.</template>
+				<template v-else>{{ t('components.campaigns.steps.setupAudiencePicker.noSelection') }}</template>
 			</p>
 		</div>
 	</div>

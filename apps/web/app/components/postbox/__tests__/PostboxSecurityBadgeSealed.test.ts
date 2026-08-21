@@ -11,11 +11,16 @@
  * the pinned key. When no `sealed` prop is passed the pre-Sealed-Mail structural
  * badge is unchanged.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import PostboxSecurityBadge from '../PostboxSecurityBadge.vue';
 import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
 
 const iconStub = { props: ['name'], template: '<span />' };
 
@@ -30,7 +35,10 @@ function mountBadge(opts: {
 			message: { _id: 'm1', textBodyInline: opts.textBodyInline },
 			sealed: opts.sealed,
 		},
-		global: { stubs: { Icon: iconStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: iconStub },
+		},
 	});
 }
 

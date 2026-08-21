@@ -16,12 +16,13 @@ export type PostboxReplyDefaultMode = 'reply' | 'reply-all';
 
 export const POSTBOX_REPLY_DEFAULT: PostboxReplyDefaultMode = 'reply';
 
+/** Picker options; `label` is an i18n key the rendering screen runs through `t()`. */
 export const POSTBOX_REPLY_DEFAULT_OPTIONS: Array<{
 	value: PostboxReplyDefaultMode;
 	label: string;
 }> = [
-	{ value: 'reply', label: 'Reply to the sender only' },
-	{ value: 'reply-all', label: 'Reply to everyone (reply all)' },
+	{ value: 'reply', label: 'shared.postboxReplyDefault.options.reply' },
+	{ value: 'reply-all', label: 'shared.postboxReplyDefault.options.replyAll' },
 ];
 
 /**

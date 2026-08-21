@@ -1,26 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import {
-	twilioAdapter,
-	twilioValidationString,
-	verifyTwilioRequest,
-} from '../twilio';
+import { twilioAdapter, twilioValidationString, verifyTwilioRequest } from '../twilio';
+import type { ActionCtx } from '../../../_generated/server';
 
 const AUTH_TOKEN = 'test_twilio_auth_token';
+/** The auth token an operator typed into the SMS channel card. */
+const STORED_TOKEN = 'stored_twilio_auth_token';
 const REQUEST_URL = 'https://owlat.example.com/webhooks/sms';
 
-async function sign(canonical: string): Promise<string> {
+/** An action ctx whose credential vault holds `secret` for this channel. */
+function ctxWithStoredSecret(secret: string | null): ActionCtx {
+	return { runAction: async () => secret } as unknown as ActionCtx;
+}
+
+async function sign(canonical: string, secret: string = AUTH_TOKEN): Promise<string> {
 	const key = await crypto.subtle.importKey(
 		'raw',
-		new TextEncoder().encode(AUTH_TOKEN),
+		new TextEncoder().encode(secret),
 		{ name: 'HMAC', hash: 'SHA-1' },
 		false,
 		['sign']
 	);
-	const sig = await crypto.subtle.sign(
-		'HMAC',
-		key,
-		new TextEncoder().encode(canonical)
-	);
+	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(canonical));
 	return btoa(String.fromCharCode(...new Uint8Array(sig)));
 }
 
@@ -35,11 +35,7 @@ describe('twilioValidationString', () => {
 			From: '+15551234567',
 			MessageSid: 'SM123',
 		});
-		expect(canonical).toBe(
-			`${REQUEST_URL}Bodyhello` +
-				`From+15551234567` +
-				`MessageSidSM123`
-		);
+		expect(canonical).toBe(`${REQUEST_URL}Bodyhello` + `From+15551234567` + `MessageSidSM123`);
 	});
 
 	it('is sort-stable regardless of insertion order', () => {
@@ -61,9 +57,7 @@ describe('twilioValidationString', () => {
 	});
 
 	it('handles a single param', () => {
-		expect(twilioValidationString(REQUEST_URL, { K: 'V' })).toBe(
-			`${REQUEST_URL}KV`
-		);
+		expect(twilioValidationString(REQUEST_URL, { K: 'V' })).toBe(`${REQUEST_URL}KV`);
 	});
 });
 
@@ -78,18 +72,14 @@ describe('verifyTwilioRequest', () => {
 	it('accepts a valid signature', async () => {
 		const canonical = twilioValidationString(REQUEST_URL, params);
 		const sig = await sign(canonical);
-		expect(
-			await verifyTwilioRequest(REQUEST_URL, rawBody, sig, AUTH_TOKEN)
-		).toBe(true);
+		expect(await verifyTwilioRequest(REQUEST_URL, rawBody, sig, AUTH_TOKEN)).toBe(true);
 	});
 
 	it('rejects a tampered body', async () => {
 		const canonical = twilioValidationString(REQUEST_URL, params);
 		const sig = await sign(canonical);
 		const tampered = urlEncode({ ...params, Body: 'evil' });
-		expect(
-			await verifyTwilioRequest(REQUEST_URL, tampered, sig, AUTH_TOKEN)
-		).toBe(false);
+		expect(await verifyTwilioRequest(REQUEST_URL, tampered, sig, AUTH_TOKEN)).toBe(false);
 	});
 
 	it('rejects when the URL changes (mismatched host)', async () => {
@@ -106,14 +96,9 @@ describe('verifyTwilioRequest', () => {
 	});
 
 	it('rejects an entirely bogus signature value', async () => {
-		expect(
-			await verifyTwilioRequest(
-				REQUEST_URL,
-				rawBody,
-				'definitelynotvalid',
-				AUTH_TOKEN
-			)
-		).toBe(false);
+		expect(await verifyTwilioRequest(REQUEST_URL, rawBody, 'definitelynotvalid', AUTH_TOKEN)).toBe(
+			false
+		);
 	});
 });
 
@@ -133,10 +118,7 @@ describe('twilioAdapter.verifySignature', () => {
 		const original = process.env['TWILIO_AUTH_TOKEN'];
 		delete process.env['TWILIO_AUTH_TOKEN'];
 		try {
-			const result = await twilioAdapter.verifySignature(
-				makeRequest(),
-				rawBody
-			);
+			const result = await twilioAdapter.verifySignature(makeRequest(), rawBody);
 			expect(result).toEqual({
 				ok: false,
 				status: 503,
@@ -149,10 +131,7 @@ describe('twilioAdapter.verifySignature', () => {
 
 	it('returns 401 when the signature header is missing', async () => {
 		process.env['TWILIO_AUTH_TOKEN'] = AUTH_TOKEN;
-		const result = await twilioAdapter.verifySignature(
-			makeRequest(),
-			rawBody
-		);
+		const result = await twilioAdapter.verifySignature(makeRequest(), rawBody);
 		expect(result).toEqual({
 			ok: false,
 			status: 401,
@@ -169,6 +148,36 @@ describe('twilioAdapter.verifySignature', () => {
 			rawBody
 		);
 		expect(result).toEqual({ ok: true });
+	});
+
+	it('verifies against the channel-stored auth token in preference to the env var', async () => {
+		// The Auth Token typed into Settings → Channels is the one Twilio signs
+		// with; a stale env var must not be what the endpoint trusts.
+		process.env['TWILIO_AUTH_TOKEN'] = 'stale-env-token';
+		const canonical = twilioValidationString(REQUEST_URL, params);
+		const sig = await sign(canonical, STORED_TOKEN);
+		const result = await twilioAdapter.verifySignature(
+			makeRequest({ 'x-twilio-signature': sig }),
+			rawBody,
+			ctxWithStoredSecret(STORED_TOKEN)
+		);
+		expect(result).toEqual({ ok: true });
+	});
+
+	it('rejects a request signed with the env var once a credential is stored', async () => {
+		process.env['TWILIO_AUTH_TOKEN'] = AUTH_TOKEN;
+		const canonical = twilioValidationString(REQUEST_URL, params);
+		const sig = await sign(canonical, AUTH_TOKEN);
+		const result = await twilioAdapter.verifySignature(
+			makeRequest({ 'x-twilio-signature': sig }),
+			rawBody,
+			ctxWithStoredSecret(STORED_TOKEN)
+		);
+		expect(result).toEqual({
+			ok: false,
+			status: 401,
+			reason: expect.stringContaining('Invalid'),
+		});
 	});
 
 	it('returns 401 for an invalid signature', async () => {

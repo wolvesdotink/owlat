@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const { t } = useI18n();
 const { isHelpModalOpen, closeHelpModal } = useKeyboardShortcuts();
 
 const dialogRef = ref<HTMLElement | null>(null);
@@ -9,28 +10,44 @@ useModalFocus(
 	() => closeHelpModal()
 );
 
-// Shortcut categories
-const shortcuts = {
+// Shortcut categories. Computed, not a frozen object literal: the descriptions
+// are messages, so they have to be re-read when the locale changes.
+const shortcuts = computed(() => ({
 	navigation: [
-		{ keys: ['g', 'd'], description: 'Go to Dashboard' },
-		{ keys: ['g', 'c'], description: 'Go to Contacts' },
-		{ keys: ['g', 'e'], description: 'Go to Emails' },
-		{ keys: ['g', 'm'], description: 'Go to Campaigns' },
-		{ keys: ['g', 'a'], description: 'Go to Automations' },
-		{ keys: ['g', 't'], description: 'Go to Transactional' },
-		{ keys: ['g', 's'], description: 'Go to Settings' },
+		{
+			keys: ['g', 'd'],
+			description: t('components.keyboardShortcutsHelp.shortcuts.goToDashboard'),
+		},
+		{ keys: ['g', 'c'], description: t('components.keyboardShortcutsHelp.shortcuts.goToContacts') },
+		{ keys: ['g', 'e'], description: t('components.keyboardShortcutsHelp.shortcuts.goToEmails') },
+		{
+			keys: ['g', 'm'],
+			description: t('components.keyboardShortcutsHelp.shortcuts.goToCampaigns'),
+		},
+		{
+			keys: ['g', 'a'],
+			description: t('components.keyboardShortcutsHelp.shortcuts.goToAutomations'),
+		},
+		{
+			keys: ['g', 't'],
+			description: t('components.keyboardShortcutsHelp.shortcuts.goToTransactional'),
+		},
+		{ keys: ['g', 's'], description: t('components.keyboardShortcutsHelp.shortcuts.goToSettings') },
 	],
 	actions: [
-		{ keys: ['n'], description: 'New item (context-aware)' },
-		{ keys: ['s'], description: 'Save (when editing)' },
-		{ keys: ['⌘', 'K'], description: 'Open search' },
-		{ keys: ['⌘', '\\'], description: 'Hide / show sidebar' },
+		{ keys: ['n'], description: t('components.keyboardShortcutsHelp.shortcuts.newItem') },
+		{ keys: ['s'], description: t('components.keyboardShortcutsHelp.shortcuts.save') },
+		{ keys: ['⌘', 'K'], description: t('components.keyboardShortcutsHelp.shortcuts.openSearch') },
+		{
+			keys: ['⌘', '\\'],
+			description: t('components.keyboardShortcutsHelp.shortcuts.toggleSidebar'),
+		},
 	],
 	general: [
-		{ keys: ['?'], description: 'Show keyboard shortcuts' },
-		{ keys: ['Esc'], description: 'Close modal / Cancel' },
+		{ keys: ['?'], description: t('components.keyboardShortcutsHelp.shortcuts.showShortcuts') },
+		{ keys: ['Esc'], description: t('components.keyboardShortcutsHelp.shortcuts.closeModal') },
 	],
-};
+}));
 
 // Handle backdrop click
 const handleBackdropClick = () => {
@@ -51,7 +68,7 @@ const handleBackdropClick = () => {
 		>
 			<div
 				v-if="isHelpModalOpen"
-				class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+				class="fixed inset-0 bg-scrim/60 backdrop-blur-sm z-50"
 				@click="handleBackdropClick"
 			/>
 		</Transition>
@@ -81,15 +98,17 @@ const handleBackdropClick = () => {
 						<UiIconBox icon="lucide:keyboard" size="sm" rounded="lg" />
 						<div>
 							<h2 id="keyboard-shortcuts-title" class="text-lg font-semibold text-text-primary">
-								Keyboard Shortcuts
+								{{ t('components.keyboardShortcutsHelp.title') }}
 							</h2>
-							<p class="text-sm text-text-tertiary">Navigate faster with your keyboard</p>
+							<p class="text-sm text-text-tertiary">
+								{{ t('components.keyboardShortcutsHelp.subtitle') }}
+							</p>
 						</div>
 					</div>
 					<button
 						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface rounded-lg transition-colors"
 						@click="closeHelpModal"
-						aria-label="Close"
+						:aria-label="t('common.close')"
 					>
 						<Icon name="lucide:x" class="w-5 h-5" />
 					</button>
@@ -100,7 +119,7 @@ const handleBackdropClick = () => {
 					<!-- Navigation shortcuts -->
 					<div>
 						<h3 class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
-							Navigation
+							{{ t('components.keyboardShortcutsHelp.sections.navigation') }}
 						</h3>
 						<div class="space-y-2">
 							<div
@@ -117,9 +136,9 @@ const handleBackdropClick = () => {
 									>
 										{{ key }}
 									</kbd>
-									<span v-if="shortcut.keys.length > 1" class="text-text-tertiary text-xs mx-0.5"
-										>then</span
-									>
+									<span v-if="shortcut.keys.length > 1" class="text-text-tertiary text-xs mx-0.5">{{
+										t('components.keyboardShortcutsHelp.then')
+									}}</span>
 								</div>
 							</div>
 						</div>
@@ -128,7 +147,7 @@ const handleBackdropClick = () => {
 					<!-- Action shortcuts -->
 					<div>
 						<h3 class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
-							Actions
+							{{ t('components.keyboardShortcutsHelp.sections.actions') }}
 						</h3>
 						<div class="space-y-2">
 							<div
@@ -153,7 +172,7 @@ const handleBackdropClick = () => {
 					<!-- General shortcuts -->
 					<div>
 						<h3 class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
-							General
+							{{ t('components.keyboardShortcutsHelp.sections.general') }}
 						</h3>
 						<div class="space-y-2">
 							<div
@@ -179,12 +198,14 @@ const handleBackdropClick = () => {
 				<!-- Footer -->
 				<div class="px-6 py-3 border-t border-border-subtle bg-bg-surface">
 					<p class="text-xs text-text-tertiary text-center">
-						Press
-						<kbd
-							class="px-1.5 py-0.5 text-[10px] font-medium bg-bg-elevated border border-border-subtle rounded mx-1"
-							>?</kbd
-						>
-						anytime to show this help
+						<I18nT keypath="components.keyboardShortcutsHelp.footer" tag="span" scope="global">
+							<template #key>
+								<kbd
+									class="px-1.5 py-0.5 text-[10px] font-medium bg-bg-elevated border border-border-subtle rounded mx-1"
+									>?</kbd
+								>
+							</template>
+						</I18nT>
 					</p>
 				</div>
 			</div>

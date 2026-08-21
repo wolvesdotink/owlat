@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const { t } = useI18n();
+
 const props = defineProps<{
 	modelValue: string;
 }>();
@@ -44,7 +46,7 @@ defineExpose({ focus });
 			v-model="local"
 			type="text"
 			class="input w-full pl-9 pr-3"
-			placeholder="Search mail (from:sara has:attachment older_than:7d…)"
+			:placeholder="t('components.postbox.postboxSearchBar.placeholder')"
 			@keydown="onKeydown"
 		/>
 	</div>

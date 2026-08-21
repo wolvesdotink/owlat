@@ -5,6 +5,8 @@
  * either emits `cancel` (the parent cancels the armed watch / dismisses the due
  * indicator, ownership-checked server-side).
  */
+const { t, locale } = useI18n();
+
 defineProps<{
 	followUp: { remindAt: number; dueAt?: number; watched: boolean };
 }>();
@@ -12,6 +14,13 @@ defineProps<{
 const emit = defineEmits<{
 	(e: 'cancel', event: MouseEvent): void;
 }>();
+
+/** The armed reminder's absolute time, formatted against the active locale. */
+function reminderTitle(remindAt: number): string {
+	return t('components.postbox.postboxThreadRowFollowUp.reminderTitle', {
+		when: new Date(remindAt).toLocaleString(locale.value),
+	});
+}
 </script>
 
 <template>
@@ -19,19 +28,19 @@ const emit = defineEmits<{
 		v-if="followUp.watched && followUp.dueAt"
 		type="button"
 		class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-warning/10 text-warning text-[10px] font-medium hover:bg-warning/20 flex-shrink-0"
-		title="No reply yet — click to dismiss the reminder"
-		aria-label="No reply yet — dismiss reminder"
+		:title="t('components.postbox.postboxThreadRowFollowUp.dueTitle')"
+		:aria-label="t('components.postbox.postboxThreadRowFollowUp.dueLabel')"
 		@click="emit('cancel', $event)"
 	>
 		<Icon name="lucide:alarm-clock" class="w-3 h-3" />
-		No reply yet
+		{{ t('components.postbox.postboxThreadRowFollowUp.noReplyYet') }}
 	</button>
 	<button
 		v-else-if="followUp.watched"
 		type="button"
 		class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-brand/10 text-brand text-[10px] font-medium hover:bg-brand/20 flex-shrink-0"
-		:title="`Reply reminder ${new Date(followUp.remindAt).toLocaleString()} — click to cancel`"
-		aria-label="Cancel reply reminder"
+		:title="reminderTitle(followUp.remindAt)"
+		:aria-label="t('components.postbox.postboxThreadRowFollowUp.cancelLabel')"
 		@click="emit('cancel', $event)"
 	>
 		<Icon name="lucide:alarm-clock" class="w-3 h-3" />

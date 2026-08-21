@@ -21,6 +21,8 @@ import { trustLabel } from '~/utils/trustLabel';
  * HUMAN REVIEW ONLY: this surface never sends. It emits `review` (open the
  * composer with the draft) and `dismiss` (drop the slot from view).
  */
+const { t } = useI18n();
+
 const props = defineProps<{ draftSlot: ReplyQueueDraftSlot }>();
 const emit = defineEmits<{
 	(e: 'review', draft: string): void;
@@ -51,7 +53,7 @@ const preview = computed(() => {
 				class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded-full bg-brand/10 text-brand"
 			>
 				<Icon name="lucide:sparkles" class="w-3 h-3" aria-hidden="true" />
-				Draft ready
+				{{ t('components.postbox.postboxReviewSlot.draftReady') }}
 			</span>
 			<InboxTrustChip data-testid="review-slot-confidence" :trust="trust" />
 			<span
@@ -59,7 +61,11 @@ const preview = computed(() => {
 				class="text-[10px] text-text-tertiary"
 				data-testid="review-slot-options"
 			>
-				{{ draftSlot.options.length }} options
+				{{
+					t('components.postbox.postboxReviewSlot.optionCount', {
+						count: draftSlot.options.length,
+					})
+				}}
 			</span>
 		</div>
 
@@ -67,10 +73,10 @@ const preview = computed(() => {
 
 		<TaskActions
 			class="mt-2"
-			primary-label="Review &amp; send"
+			:primary-label="t('components.postbox.postboxReviewSlot.reviewAndSend')"
 			primary-icon="lucide:send"
 			primary-test-id="review-slot-send"
-			skip-label="Dismiss"
+			:skip-label="t('common.dismiss')"
 			skip-test-id="review-slot-dismiss"
 			@primary="emit('review', draftSlot.draft)"
 			@skip="emit('dismiss')"

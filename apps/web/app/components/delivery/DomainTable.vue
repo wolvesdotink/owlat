@@ -22,14 +22,20 @@ type DomainStatus = DomainRow['status'];
 
 defineProps<{ rows: DomainRow[] }>();
 
+const { t, locale } = useI18n();
+
 const DOMAIN_SETUP_ROUTE = '/dashboard/admin/delivery/domains';
 
-/** One lookup keyed off status: the chip's human label + its verification tone. */
-const STATUS_META: Record<DomainStatus, { label: string; tone: HealthTone }> = {
-	registering: { label: 'Registering', tone: 'warning' },
-	pending: { label: 'Not verified', tone: 'warning' },
-	verified: { label: 'Verified', tone: 'success' },
-	failed: { label: 'Failed', tone: 'error' },
+/**
+ * One lookup keyed off status: the chip's human label + its verification tone.
+ * The label is a catalog KEY — the table is module scope in spirit (one frozen
+ * map), so the words are resolved where they are painted.
+ */
+const STATUS_META: Record<DomainStatus, { labelKey: string; tone: HealthTone }> = {
+	registering: { labelKey: 'components.delivery.domainTable.status.registering', tone: 'warning' },
+	pending: { labelKey: 'components.delivery.domainTable.status.pending', tone: 'warning' },
+	verified: { labelKey: 'components.delivery.domainTable.status.verified', tone: 'success' },
+	failed: { labelKey: 'components.delivery.domainTable.status.failed', tone: 'error' },
 };
 
 // The health DOT reflects reputation risk (a distinct signal from verification);
@@ -52,26 +58,34 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:globe" size="lg" variant="brand" rounded="xl" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Sending domains</h2>
-					<p class="text-sm text-text-secondary">
-						Verification, internal feedback, and Google Postmaster signals per domain ·
-						<a
-							href="https://docs.owlat.app/developer/external-reputation-feedback#google-postmaster-tools"
-							target="_blank"
-							rel="noopener"
-							class="text-brand hover:underline"
-						>
-							setup guide
-						</a>
-					</p>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('components.delivery.domainTable.title') }}
+					</h2>
+					<I18nT
+						keypath="components.delivery.domainTable.subtitle"
+						tag="p"
+						class="text-sm text-text-secondary"
+						scope="global"
+					>
+						<template #guide>
+							<a
+								href="https://docs.owlat.app/developer/external-reputation-feedback#google-postmaster-tools"
+								target="_blank"
+								rel="noopener"
+								class="text-brand hover:underline"
+							>
+								{{ t('components.delivery.domainTable.setupGuide') }}
+							</a>
+						</template>
+					</I18nT>
 				</div>
 			</div>
 
 			<UiEmptyState
 				v-if="rows.length === 0"
 				icon="lucide:globe"
-				title="No sending domains yet"
-				description="Add a domain and publish its DNS records to start sending from your own domain."
+				:title="t('components.delivery.domainTable.emptyTitle')"
+				:description="t('components.delivery.domainTable.emptyDescription')"
 			>
 				<template #action>
 					<NuxtLink :to="DOMAIN_SETUP_ROUTE">
@@ -79,7 +93,7 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 							<template #iconLeft>
 								<Icon name="lucide:plus" class="w-4 h-4" />
 							</template>
-							Add a domain
+							{{ t('components.delivery.domainTable.addDomain') }}
 						</UiButton>
 					</NuxtLink>
 				</template>
@@ -109,21 +123,27 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 								class="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
 								:class="healthChipClass[STATUS_META[row.status].tone]"
 							>
-								{{ STATUS_META[row.status].label }}
+								{{ t(STATUS_META[row.status].labelKey) }}
 							</span>
 						</div>
 						<!-- Auth roll-up: one clean line when all pass, else name the gap + fix link -->
 						<div class="mt-1 flex items-center gap-2 text-xs">
 							<span v-if="row.missing.length === 0" class="text-success tabular-nums">
-								SPF · DKIM · DMARC ✓
+								{{ t('components.delivery.domainTable.authAllPass') }}
 							</span>
 							<template v-else>
-								<span class="text-text-tertiary"> Missing {{ row.missing.join(', ') }} </span>
+								<span class="text-text-tertiary">
+									{{
+										t('components.delivery.domainTable.missingRecords', {
+											records: row.missing.join(', '),
+										})
+									}}
+								</span>
 								<NuxtLink
 									:to="{ path: DOMAIN_SETUP_ROUTE, query: { domain: row.domain } }"
 									class="inline-flex items-center gap-0.5 text-brand font-medium hover:underline focus-visible:underline focus-visible:outline-none rounded-sm transition-colors duration-(--motion-fast)"
 								>
-									Fix
+									{{ t('components.delivery.domainTable.fix') }}
 									<Icon name="lucide:arrow-right" class="w-3 h-3" />
 								</NuxtLink>
 							</template>
@@ -131,13 +151,23 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 					</div>
 					<div class="text-xs text-text-tertiary tabular-nums shrink-0 text-right">
 						<p>
-							{{ formatNumber(row.sent30d) }} sent
-							<span class="block text-[11px]">30d</span>
+							{{
+								t('components.delivery.domainTable.sentCount', {
+									count: formatNumber(row.sent30d, locale),
+								})
+							}}
+							<span class="block text-[11px]">{{
+								t('components.delivery.domainTable.window30d')
+							}}</span>
 						</p>
 						<!-- Per-domain reputation detail (only when there's in-window activity). -->
 						<p v-if="row.bounceRate !== null" class="mt-1">
-							{{ formatPercentage(row.bounceRate, 2) }} bounced ·
-							{{ formatPercentage(row.complaintRate ?? 0, 2) }} complaints
+							{{
+								t('components.delivery.domainTable.bounceLine', {
+									bounced: formatPercentage(row.bounceRate, 2),
+									complaints: formatPercentage(row.complaintRate ?? 0, 2),
+								})
+							}}
 						</p>
 						<p
 							v-if="row.spamRate !== null"
@@ -150,9 +180,16 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 										: ''
 							"
 						>
-							Owlat FBL spam {{ formatPercentage(row.spamRate, 3) }} · target &lt;
-							{{ formatPercentage(PROVIDER_SPAM_RATE_POLICY.target, 1) }} · hard
-							{{ formatPercentage(PROVIDER_SPAM_RATE_POLICY.hardThreshold, 1) }}
+							{{
+								t('components.delivery.domainTable.fblSpamLine', {
+									rate: formatPercentage(row.spamRate, 3),
+									// The comparison sign is a value, not markup: a message carrying a
+									// literal `<` is rejected by the catalog guard.
+									lessThan: '<',
+									target: formatPercentage(PROVIDER_SPAM_RATE_POLICY.target, 1),
+									hard: formatPercentage(PROVIDER_SPAM_RATE_POLICY.hardThreshold, 1),
+								})
+							}}
 						</p>
 						<div
 							v-if="row.googlePostmaster"
@@ -167,14 +204,21 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 										: ''
 								"
 							>
-								Google spam
-								{{ formatPercentage(row.googlePostmaster.userReportedSpamRatio, 3) }}
+								{{
+									t('components.delivery.domainTable.googleSpam', {
+										rate: formatPercentage(row.googlePostmaster.userReportedSpamRatio, 3),
+									})
+								}}
 							</p>
 							<p class="text-[11px] text-text-tertiary mt-0.5">
-								Domain and IP reputation are unavailable in Google API v2
+								{{ t('components.delivery.domainTable.reputationUnavailable') }}
 							</p>
 							<p class="text-[11px] text-text-tertiary mt-0.5">
-								Google data for {{ formatDate(row.googlePostmaster.periodStart, 'short') }}
+								{{
+									t('components.delivery.domainTable.googleDataFor', {
+										date: formatDate(row.googlePostmaster.periodStart, 'short', locale),
+									})
+								}}
 							</p>
 						</div>
 						<p
@@ -184,11 +228,12 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 							data-testid="domain-spam-recovery"
 							class="mt-1 text-text-secondary"
 						>
-							Owlat evidence
-							<span>{{ row.cleanInternalDaysBelowHardThreshold }}</span>
-							/
-							<span>{{ PROVIDER_SPAM_RATE_POLICY.internalCleanDayEvidenceDays }}</span>
-							clean days
+							{{
+								t('components.delivery.domainTable.cleanDayEvidence', {
+									days: row.cleanInternalDaysBelowHardThreshold,
+									total: PROVIDER_SPAM_RATE_POLICY.internalCleanDayEvidenceDays,
+								})
+							}}
 						</p>
 					</div>
 				</div>

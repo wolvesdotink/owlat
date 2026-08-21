@@ -55,7 +55,7 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 			<button
 				type="button"
 				:data-testid="primaryTestId"
-				class="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded bg-brand text-white hover:bg-brand/90 transition-colors duration-(--motion-fast) disabled:opacity-50 disabled:cursor-not-allowed"
+				class="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded bg-brand text-text-inverse hover:bg-brand/90 transition-colors duration-(--motion-fast) disabled:opacity-50 disabled:cursor-not-allowed"
 				:disabled="primaryDisabled || primaryLoading || held"
 				:aria-disabled="held ? 'true' : undefined"
 				@click.stop.prevent="emit('primary')"

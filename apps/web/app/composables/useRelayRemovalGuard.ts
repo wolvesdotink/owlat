@@ -23,6 +23,7 @@ import {
 	relayRemovalConsequenceCopy,
 	type RelayRemovalConsequence,
 } from '~/utils/deliverabilityRamp';
+import type { LocalizedText } from '~/utils/deliverabilityMeasurement';
 
 export interface RelayRemovalGuard {
 	/**
@@ -32,8 +33,13 @@ export interface RelayRemovalGuard {
 	readonly removesReferenceArm: ComputedRef<boolean>;
 	/** This browser's own consequence copy — the safe date is read off it. */
 	readonly removalConsequence: ComputedRef<RelayRemovalConsequence>;
-	/** The sentence the dialog shows: whichever read actually has figures. */
-	readonly dialogConsequence: ComputedRef<string>;
+	/**
+	 * The sentence the dialog shows: whichever read actually has figures. It is
+	 * `LocalizedText` because the two sources differ in kind — this browser's is
+	 * a catalog key plus figures, the endpoint's refusal is a sentence it already
+	 * wrote — so the caller renders it through its own `localized()`.
+	 */
+	readonly dialogConsequence: ComputedRef<LocalizedText>;
 	/**
 	 * Hand over the consequence the ENDPOINT quoted when it refused, or `null` to
 	 * forget it. Every apply attempt re-derives its own: a sentence kept from the

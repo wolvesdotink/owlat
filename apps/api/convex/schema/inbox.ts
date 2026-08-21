@@ -139,6 +139,17 @@ export const inboxTables = {
 		isSignatureValid: v.optional(v.boolean()),
 		signerFingerprint: v.optional(v.string()),
 		signerInstance: v.optional(v.string()),
+		// F1 (D9): mirrored display fields of the inbound SIGNED-but-not-encrypted
+		// PGP verdict, the signed-plaintext sibling of the sealed mirror above.
+		// The full `inboundSignatureInfo` record lives on the mailMessages side;
+		// here only what the reader's badge needs. `isInboundSignatureValid` is
+		// present ONLY when the message was structurally PGP-signed AND the
+		// verifier ran (true iff the signature verified against the pinned/
+		// discovered sender key); `inboundSignerFingerprint` only when it
+		// verified. Distinct from the sealed fields above so the fail-closed
+		// sealed semantics stay untouched. Absent on plaintext mail and pre-F1 rows.
+		isInboundSignatureValid: v.optional(v.boolean()),
+		inboundSignerFingerprint: v.optional(v.string()),
 		// Relationships
 		threadId: v.optional(v.id('conversationThreads')),
 		contactId: v.optional(v.id('contacts')),
@@ -205,15 +216,16 @@ export const inboxTables = {
 		agentDecision: v.optional(agentDecisionValidator),
 		// Human reviewer assignment
 		assignedTo: v.optional(v.string()),
-		// Cancellable pending-send marker for a delayed AUTONOMOUS auto-send.
-		// Set when an auto-approved message schedules its send after the
-		// configurable undo window (agentConfig.autoSendDelayMs) instead of
-		// firing immediately. `scheduledFnId` is the handle the cancel path
-		// (`cancelAutoSend`) passes to `ctx.scheduler.cancel` to abort an
-		// in-flight delayed send; `sendAt` powers the UI countdown
-		// ("Sending in 0:59 — Undo"). Cleared on any transition out of
-		// `approved`. Absent for human-reviewed approvals and for delay=0
-		// (legacy immediate send).
+		// Cancellable pending-send marker for a DELAYED approved send. Set when
+		// an approved message schedules its send after a configurable undo window
+		// instead of firing immediately — an AUTONOMOUS auto-approve
+		// (agentConfig.autoSendDelayMs) or a HUMAN approve
+		// (agentConfig.humanApproveUndoDelayMs). `scheduledFnId` is the handle
+		// the cancel path (`cancelAutoSend`) passes to `ctx.scheduler.cancel` to
+		// abort an in-flight delayed send; `sendAt` powers the UI countdown
+		// ("Sending in 0:59 — Undo" / "Approved — Undo (14s)"). Cleared on any
+		// transition out of `approved`. Absent for delay=0 (legacy immediate
+		// send).
 		pendingAutoSend: v.optional(
 			v.object({
 				scheduledFnId: v.id('_scheduled_functions'),
@@ -221,6 +233,15 @@ export const inboxTables = {
 				scheduledAt: v.number(),
 			})
 		),
+		// Provenance of the LAST `approved` transition: 'auto' (router
+		// auto-approve) or 'human' (reviewer approve). The send-time learning
+		// recorder consults this rather than trusting `sendApprovedReply`'s
+		// optional `autonomous` arg, because the stuck-approved reconcile
+		// re-fires that action without the arg — an autonomous send recovered by
+		// the cron must not train the loop as a human approval. Absent on
+		// messages approved before this field existed (read as human, matching
+		// the arg-absent semantics).
+		approvalSource: v.optional(v.union(v.literal('auto'), v.literal('human'))),
 		// Open clarification questions parked before drafting. Set when the
 		// clarify step routes the message to `awaiting_clarification`;
 		// answered via `inbox.answerClarification`, which folds each answer back in
@@ -234,10 +255,32 @@ export const inboxTables = {
 		// a best-guess reply always goes to human review. Never cleared by the
 		// pipeline; a human reviews and sends (or discards) the draft.
 		isAutoSendBlocked: v.optional(v.boolean()),
-		// Set once a human edits the agent draft on the review queue (editDraft).
+		// True while the working draft differs from the agent original (kept in
+		// sync by every revision-appending save — see inbox/draftRevisions.ts).
 		// Used to tell an UNEDITED owner-send of an answered-clarification draft
 		// (a strong positive autonomy outcome) apart from an edited-then-sent one.
 		isDraftEdited: v.optional(v.boolean()),
+		// Non-destructive draft revision history (D7, save-without-approving).
+		// Seeded on the FIRST human save with the agent's original as revision 0
+		// (`savedBy: 'agent'`), then one entry appended per save / revise-apply
+		// (`savedBy` = the saving user's id). Revision 0 is immutable — the
+		// review diff renders against it, and the approve-time `'edited'`
+		// autonomy signal compares the sent text to it. Absent until a human
+		// saves.
+		draftRevisions: v.optional(
+			v.array(
+				v.object({
+					text: v.string(),
+					subject: v.optional(v.string()),
+					savedAt: v.number(),
+					savedBy: v.string(),
+				})
+			)
+		),
+		// Stamped on every save-without-approving (and every revision-appending
+		// edit). Drives the review queue's "Saved · edited by you" chip and its
+		// saved-first sort bump. The row stays `draft_ready` — no status change.
+		draftSavedAt: v.optional(v.number()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Timestamps

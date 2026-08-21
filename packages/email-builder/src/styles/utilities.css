@@ -228,6 +228,17 @@
 	}
 }
 
+/* Keyboard focus ring for the focusable blocks in the canvas list. They are
+   plain divs with no default outline worth keeping, and focus tracks selection,
+   so the ring only shows for keyboard-driven focus. */
+@utility eb-canvas-block {
+	outline: none;
+
+	&:focus-visible {
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand, #c4785a) 35%, transparent);
+	}
+}
+
 @utility appearance-number-plain {
 	-moz-appearance: textfield;
 

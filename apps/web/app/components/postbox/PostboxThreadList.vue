@@ -39,13 +39,23 @@ const emit = defineEmits<{
 	(e: 'clear-filter'): void;
 }>();
 
+const { t } = useI18n();
+
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 
-const archiveOp = useBackendOperation(api.mail.messageActions.archive, { label: 'Archive' });
-const trashOp = useBackendOperation(api.mail.messageActions.trash, { label: 'Move to trash' });
-const setStarOp = useBackendOperation(api.mail.messageActions.setStar, { label: 'Star' });
-const markReadOp = useBackendOperation(api.mail.messageActions.markRead, { label: 'Mark read' });
+const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
+	label: () => t('components.postbox.postboxThreadList.archiveOperation'),
+});
+const trashOp = useBackendOperation(api.mail.messageActions.trash, {
+	label: () => t('components.postbox.postboxThreadList.trashOperation'),
+});
+const setStarOp = useBackendOperation(api.mail.messageActions.setStar, {
+	label: () => t('components.postbox.postboxThreadList.starOperation'),
+});
+const markReadOp = useBackendOperation(api.mail.messageActions.markRead, {
+	label: () => t('components.postbox.postboxThreadList.markReadOperation'),
+});
 
 // Optimistic row removal — hide on archive/trash, restore on failure (see
 // usePostboxOptimisticHide).
@@ -75,7 +85,7 @@ async function archiveMsg(id: Id<'mailMessages'>) {
 	}
 	if (result.moved.length > 0) {
 		triageUndo.registerMoveBack({
-			label: 'Archived',
+			label: t('components.postbox.postboxThreadList.archivedUndo'),
 			moved: result.moved,
 			runMove: (a) => moveOp.run(a),
 			after: () => unhideRow(id),
@@ -91,7 +101,7 @@ async function trashMsg(id: Id<'mailMessages'>) {
 	}
 	if (result.moved.length > 0) {
 		triageUndo.registerMoveBack({
-			label: 'Moved to Trash',
+			label: t('components.postbox.postboxThreadList.trashedUndo'),
 			moved: result.moved,
 			runMove: (a) => moveOp.run(a),
 			after: () => unhideRow(id),
@@ -140,13 +150,17 @@ const movableFolders = computed(() =>
 	})
 );
 
-const snoozeOp = useBackendOperation(api.mail.snooze.snooze, { label: 'Snooze' });
-const moveOp = useBackendOperation(api.mail.messageActions.move, { label: 'Move message' });
+const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
+	label: () => t('components.postbox.postboxThreadList.snoozeOperation'),
+});
+const moveOp = useBackendOperation(api.mail.messageActions.move, {
+	label: () => t('components.postbox.postboxThreadList.moveOperation'),
+});
 
 // Follow-up chip on a watched row: cancel the armed watch / dismiss the due
 // "No reply yet" indicator. Ownership-checked server-side.
 const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
-	label: 'Cancel reply reminder',
+	label: () => t('components.postbox.postboxThreadList.cancelFollowUpOperation'),
 });
 function cancelFollowUp(msg: { threadId?: string }) {
 	if (!msg.threadId) return;
@@ -181,7 +195,7 @@ async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
 	}
 	if (result.moved.length > 0) {
 		triageUndo.registerMoveBack({
-			label: 'Moved',
+			label: t('components.postbox.postboxThreadList.movedUndo'),
 			moved: result.moved,
 			runMove: (a) => moveOp.run(a),
 			after: () => unhideRow(id),
@@ -197,7 +211,7 @@ const emptyState = computed(() => {
 	if (props.filterActive) {
 		return {
 			icon: 'lucide:check-circle-2',
-			title: "You're all caught up",
+			title: t('components.postbox.postboxThreadList.emptyFilteredTitle'),
 			hint: undefined as string | undefined,
 			showFilterAction: false,
 		};
@@ -205,30 +219,35 @@ const emptyState = computed(() => {
 	if (props.emptyContext === 'label') {
 		return {
 			icon: 'lucide:tag',
-			title: 'No messages with this label',
-			hint: 'Apply it from a message with the label shortcut (l).',
+			title: t('components.postbox.postboxThreadList.emptyLabelTitle'),
+			hint: t('components.postbox.postboxThreadList.emptyLabelHint'),
 			showFilterAction: false,
 		};
 	}
 	if (props.folderRole === 'inbox') {
 		return {
 			icon: 'lucide:check-circle-2',
-			title: 'All clear',
+			title: t('components.postbox.postboxThreadList.emptyInboxTitle'),
 			// Teach the two moves a new member reaches for first: compose and the
 			// command palette. Quiet enough to stay welcome once the inbox fills.
-			hint: 'Press C to write a message, or ⌘K to search and jump anywhere.',
+			hint: t('components.postbox.postboxThreadList.emptyInboxHint'),
 			showFilterAction: false,
 		};
 	}
 	if (props.folderRole === '') {
 		return {
 			icon: 'lucide:folder-open',
-			title: 'This folder is empty',
-			hint: 'Move messages here, or route them automatically with a filter.',
+			title: t('components.postbox.postboxThreadList.emptyFolderTitle'),
+			hint: t('components.postbox.postboxThreadList.emptyFolderHint'),
 			showFilterAction: true,
 		};
 	}
-	return { icon: 'lucide:inbox', title: 'No messages', hint: undefined, showFilterAction: false };
+	return {
+		icon: 'lucide:inbox',
+		title: t('components.postbox.postboxThreadList.emptyDefaultTitle'),
+		hint: undefined,
+		showFilterAction: false,
+	};
 });
 
 // Keyboard triage (Gmail/Superhuman-style): j/k move, Enter opens; single-key
@@ -398,7 +417,7 @@ onMounted(async () => {
 					class="inline-block mt-2 text-xs text-brand hover:underline"
 					@click="emit('clear-filter')"
 				>
-					Show all messages
+					{{ t('components.postbox.postboxThreadList.showAllMessages') }}
 				</button>
 			</template>
 			<template v-else-if="emptyState.showFilterAction" #action>
@@ -406,7 +425,7 @@ onMounted(async () => {
 					to="/dashboard/preferences/filters"
 					class="inline-block mt-2 text-xs text-brand hover:underline"
 				>
-					Set up a filter
+					{{ t('components.postbox.postboxThreadList.setUpFilter') }}
 				</NuxtLink>
 			</template>
 		</PostboxEmptyState>
@@ -418,7 +437,7 @@ onMounted(async () => {
 			v-else
 			tabindex="0"
 			role="listbox"
-			aria-label="Messages"
+			:aria-label="t('components.postbox.postboxThreadList.listLabel')"
 			:aria-activedescendant="activeRowId"
 			class="outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
 			:class="{ relative: virtualize }"
@@ -454,7 +473,7 @@ onMounted(async () => {
 	     stays so a user can still advance if the auto-load stalls or errors. -->
 		<div v-if="!loading && hasMore" class="p-3 text-center">
 			<button type="button" class="text-sm text-brand hover:underline" @click="emit('load-more')">
-				Load more
+				{{ t('components.postbox.postboxThreadList.loadMore') }}
 			</button>
 		</div>
 	</div>

@@ -3,9 +3,14 @@ import { api } from '@owlat/api';
 import type { OrganizationRole } from '~/composables/useOrganization';
 import { isValidEmail } from '~/utils/validation';
 import { ROLE_DEFINITIONS } from '~/utils/teamRoles';
+import InviteSuccessPanel, {
+	type InviteSuccess,
+} from '~/components/settings/team/InviteSuccessPanel.vue';
 
 // Use BetterAuth organization management (shared useState-backed store — the
 // same invitations/invite the parent page reads).
+const { t } = useI18n();
+
 const { organizationId, invitations, invite } = useOrganization();
 
 // Roles an admin may invite into (never owner — ownership is transferred, not
@@ -14,8 +19,8 @@ const { organizationId, invitations, invite } = useOrganization();
 const inviteRoleOptions = ROLE_DEFINITIONS.filter((r) => r.role !== 'owner');
 
 // Copyable accept links, shared with the Team page so the two build and copy
-// identical links.
-const { buildAcceptUrl, copyLinkText } = useInviteLinks();
+// identical links (the success panel does the copying).
+const { buildAcceptUrl } = useInviteLinks();
 
 // Postbox feature + verified domain lookup for the optional mailbox slot.
 const { isEnabled } = useFeatureFlag();
@@ -71,13 +76,7 @@ const inviteFormErrors = reactive({
 // After a successful invite we keep the modal open on a success panel that
 // surfaces the copyable accept link. Cleared when the modal closes and on
 // "Invite another".
-const inviteSuccess = ref<{
-	email: string;
-	acceptUrl: string;
-	mailboxAddress?: string;
-	// The reserved mailbox's domain is still verifying — it activates on verify.
-	mailboxAwaitingDomain?: boolean;
-} | null>(null);
+const inviteSuccess = ref<InviteSuccess | null>(null);
 
 // Once the admin hand-edits the mailbox local part we stop auto-deriving it
 // from the invitee's email address.
@@ -178,12 +177,12 @@ const validateInviteForm = (): boolean => {
 	inviteFormErrors.mailbox = '';
 
 	if (!inviteForm.email.trim()) {
-		inviteFormErrors.email = 'Email is required';
+		inviteFormErrors.email = t('components.settings.team.inviteModal.emailRequired');
 		return false;
 	}
 
 	if (!isValidEmail(inviteForm.email.trim())) {
-		inviteFormErrors.email = 'Please enter a valid email address';
+		inviteFormErrors.email = t('components.settings.team.inviteModal.emailInvalid');
 		return false;
 	}
 
@@ -191,23 +190,22 @@ const validateInviteForm = (): boolean => {
 	// or copying the existing link is what the admin actually wants here.
 	const emailNorm = inviteForm.email.trim().toLowerCase();
 	if (invitations.value.some((inv) => inv.email.toLowerCase() === emailNorm)) {
-		inviteFormErrors.email =
-			'There is already a pending invite for this address. Resend or copy its link from the list below.';
+		inviteFormErrors.email = t('components.settings.team.inviteModal.emailAlreadyInvited');
 		return false;
 	}
 
 	if (inviteForm.addMailbox) {
 		const lp = inviteForm.mailboxLocalpart.trim();
 		if (!lp) {
-			inviteFormErrors.mailbox = 'Local part is required for the mailbox';
+			inviteFormErrors.mailbox = t('components.settings.team.inviteModal.mailboxLocalpartRequired');
 			return false;
 		}
 		if (!localpartRegex.test(lp)) {
-			inviteFormErrors.mailbox = 'Use letters, digits, dots, hyphens, or underscores';
+			inviteFormErrors.mailbox = t('components.settings.team.inviteModal.mailboxLocalpartInvalid');
 			return false;
 		}
 		if (!inviteForm.mailboxDomain) {
-			inviteFormErrors.mailbox = 'Pick a verified domain';
+			inviteFormErrors.mailbox = t('components.settings.team.inviteModal.mailboxDomainRequired');
 			return false;
 		}
 	}
@@ -246,17 +244,30 @@ const handleInvite = async () => {
 				mailboxAwaitingDomain,
 			};
 		} else {
-			let successMsg = `Invitation sent to ${inviteForm.email}`;
+			let successMsg = t('components.settings.team.inviteModal.invitationSent', {
+				email: inviteForm.email,
+			});
 			if (mailbox) {
+				const address = `${mailbox.localpart}@${mailbox.domain}`;
 				successMsg = mailboxAwaitingDomain
-					? `Invitation sent to ${inviteForm.email}. Mailbox ${mailbox.localpart}@${mailbox.domain} is reserved and activates when ${mailbox.domain} verifies.`
-					: `Invitation sent to ${inviteForm.email}. Mailbox ${mailbox.localpart}@${mailbox.domain} will be created when they accept.`;
+					? t('components.settings.team.inviteModal.invitationSentMailboxReserved', {
+							email: inviteForm.email,
+							address,
+							domain: mailbox.domain,
+						})
+					: t('components.settings.team.inviteModal.invitationSentMailboxPending', {
+							email: inviteForm.email,
+							address,
+						});
 			}
 			showToast(successMsg);
 			isInviteModalOpen.value = false;
 		}
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : 'Failed to send invitation';
+		const errorMessage =
+			error instanceof Error
+				? error.message
+				: t('components.settings.team.inviteModal.inviteFailed');
 		showToast(errorMessage, 'error');
 	} finally {
 		isInviting.value = false;
@@ -268,15 +279,18 @@ defineExpose({ open: openInviteModal });
 </script>
 
 <template>
-	<UiModal v-model:open="isInviteModalOpen" title="Invite Team Member">
+	<UiModal
+		v-model:open="isInviteModalOpen"
+		:title="t('components.settings.team.inviteModal.title')"
+	>
 		<form v-if="!inviteSuccess" @submit.prevent="handleInvite">
 			<div class="space-y-4">
 				<!-- Email -->
 				<UiInput
 					v-model="inviteForm.email"
 					type="email"
-					label="Email Address"
-					placeholder="colleague@company.com"
+					:label="t('components.settings.team.inviteModal.emailLabel')"
+					:placeholder="t('components.settings.team.inviteModal.emailPlaceholder')"
 					:error="inviteFormErrors.email"
 					:disabled="isInviting"
 					:required="true"
@@ -285,7 +299,7 @@ defineExpose({ open: openInviteModal });
 				<!-- Role — copy comes from the single ROLE_DEFINITIONS source so it
 				     stays honest to the permission map (owner is never invitable). -->
 				<div>
-					<label class="label">Role</label>
+					<label class="label">{{ t('components.settings.team.inviteModal.roleLabel') }}</label>
 					<div class="grid grid-cols-2 gap-3">
 						<button
 							v-for="def in inviteRoleOptions"
@@ -302,10 +316,10 @@ defineExpose({ open: openInviteModal });
 						>
 							<div class="flex items-center gap-2 mb-1">
 								<Icon :name="def.icon" class="w-4 h-4 text-text-secondary" />
-								<span class="font-medium text-text-primary text-sm">{{ def.label }}</span>
+								<span class="font-medium text-text-primary text-sm">{{ t(def.label) }}</span>
 							</div>
-							<p class="text-xs text-text-secondary">{{ def.summary }}</p>
-							<p class="mt-0.5 text-xs text-text-tertiary">{{ def.detail }}</p>
+							<p class="text-xs text-text-secondary">{{ t(def.summary) }}</p>
+							<p class="mt-0.5 text-xs text-text-tertiary">{{ t(def.detail) }}</p>
 						</button>
 					</div>
 				</div>
@@ -327,34 +341,33 @@ defineExpose({ open: openInviteModal });
 						/>
 						<span>
 							<span class="font-medium text-text-primary text-sm">
-								Reserve a personal mailbox for this user
+								{{ t('components.settings.team.inviteModal.reserveMailbox') }}
 							</span>
 							<span v-if="canOfferMailbox" class="block text-xs text-text-secondary mt-0.5">
-								We reserve the address now and create the mailbox when they accept. On by default —
-								uncheck to invite without one.
+								{{ t('components.settings.team.inviteModal.reserveMailboxHint') }}
 							</span>
 							<span v-else-if="postboxEnabled" class="block text-xs text-text-secondary mt-0.5">
-								Add a sending domain to reserve mailboxes for new members — you can invite them now
-								and their mailbox activates when the domain verifies.
+								{{ t('components.settings.team.inviteModal.reserveMailboxNoDomain') }}
 								<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">
-									Add a domain
+									{{ t('components.settings.team.inviteModal.addDomainLink') }}
 								</NuxtLink>
 							</span>
 							<span v-else class="block text-xs text-text-secondary mt-0.5">
-								Set up hosted mail — a sending domain and the Postbox — to reserve mailboxes for new
-								members.
+								{{ t('components.settings.team.inviteModal.reserveMailboxNoHostedMail') }}
 							</span>
 						</span>
 					</label>
 
 					<div v-if="canOfferMailbox && inviteForm.addMailbox" class="space-y-3 pl-6">
 						<div>
-							<label class="text-sm font-medium block mb-1">Address</label>
+							<label class="text-sm font-medium block mb-1">{{
+								t('components.settings.team.inviteModal.addressLabel')
+							}}</label>
 							<div class="flex items-center gap-2">
 								<input
 									v-model="inviteForm.mailboxLocalpart"
 									type="text"
-									placeholder="marcel"
+									:placeholder="t('components.settings.team.inviteModal.localpartPlaceholder')"
 									class="input flex-1"
 									:disabled="isInviting"
 									pattern="[a-zA-Z0-9.\-_]+"
@@ -362,40 +375,63 @@ defineExpose({ open: openInviteModal });
 								/>
 								<span class="text-text-tertiary">@</span>
 								<select v-model="inviteForm.mailboxDomain" class="input" :disabled="isInviting">
-									<option value="">Select domain</option>
+									<option value="">
+										{{ t('components.settings.team.inviteModal.selectDomain') }}
+									</option>
 									<option v-for="d in reservableDomains" :key="d._id" :value="d.domain">
-										{{ d.domain }}{{ d.status === 'verified' ? '' : ' (verifying…)' }}
+										{{
+											d.status === 'verified'
+												? d.domain
+												: t('components.settings.team.inviteModal.domainVerifying', {
+														domain: d.domain,
+													})
+										}}
 									</option>
 								</select>
 							</div>
-							<p
+							<I18nT
 								v-if="mailboxPreviewAddress && selectedDomainVerified"
+								keypath="components.settings.team.inviteModal.willBeCreatedAs"
+								tag="p"
+								scope="global"
 								class="text-xs text-text-tertiary mt-1"
 							>
-								Will be created as: <code>{{ mailboxPreviewAddress }}</code>
-							</p>
+								<template #address>
+									<code>{{ mailboxPreviewAddress }}</code>
+								</template>
+							</I18nT>
 							<p
 								v-else-if="mailboxPreviewAddress"
 								class="text-xs text-text-tertiary mt-1"
 								data-testid="invite-mailbox-awaiting-domain"
 							>
-								<code>{{ mailboxPreviewAddress }}</code> is reserved now and activates automatically
-								once <span class="font-medium">{{ inviteForm.mailboxDomain }}</span> verifies.
+								<I18nT
+									keypath="components.settings.team.inviteModal.reservedAwaitingDomain"
+									tag="span"
+									scope="global"
+								>
+									<template #address>
+										<code>{{ mailboxPreviewAddress }}</code>
+									</template>
+									<template #domain>
+										<span class="font-medium">{{ inviteForm.mailboxDomain }}</span>
+									</template>
+								</I18nT>
 								<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">
-									Finish verifying
+									{{ t('components.settings.team.inviteModal.finishVerifyingLink') }}
 								</NuxtLink>
 							</p>
 						</div>
 
 						<div>
 							<label for="inviteform-mailboxdisplayname" class="text-sm font-medium block mb-1">
-								Display name (optional)
+								{{ t('components.settings.team.inviteModal.displayNameLabel') }}
 							</label>
 							<input
 								id="inviteform-mailboxdisplayname"
 								v-model="inviteForm.mailboxDisplayName"
 								type="text"
-								placeholder="Marcel Pfeifer"
+								:placeholder="t('components.settings.team.inviteModal.displayNamePlaceholder')"
 								class="input w-full"
 								:disabled="isInviting"
 							/>
@@ -409,55 +445,13 @@ defineExpose({ open: openInviteModal });
 			</div>
 		</form>
 
-		<!-- Success state: surface the copyable accept link. This link works even
-		     when outbound email delivery isn't configured yet. -->
-		<div v-else class="space-y-4">
-			<div class="flex items-start gap-3">
-				<UiIconBox icon="lucide:check" size="sm" variant="brand" rounded="lg" />
-				<div>
-					<p class="font-medium text-text-primary">Invitation ready</p>
-					<p v-if="emailConfigured" class="text-sm text-text-secondary">
-						We emailed {{ inviteSuccess?.email }} — you can also share the accept link directly.
-					</p>
-					<p v-else class="text-sm text-text-secondary">
-						Share the accept link below with {{ inviteSuccess?.email }} — email delivery isn't set
-						up yet, so this is how they get in.
-					</p>
-				</div>
-			</div>
-
-			<p
-				v-if="inviteSuccess?.mailboxAddress && inviteSuccess?.mailboxAwaitingDomain"
-				class="text-sm text-text-secondary"
-			>
-				Mailbox <code>{{ inviteSuccess.mailboxAddress }}</code> is reserved — it activates
-				automatically once its sending domain verifies.
-			</p>
-			<p v-else-if="inviteSuccess?.mailboxAddress" class="text-sm text-text-secondary">
-				Mailbox <code>{{ inviteSuccess.mailboxAddress }}</code> will be created when they accept.
-			</p>
-
-			<div>
-				<label class="text-sm font-medium block mb-1">Accept link</label>
-				<div class="flex items-center gap-2">
-					<input
-						:value="inviteSuccess?.acceptUrl"
-						readonly
-						class="input flex-1 font-mono text-xs"
-						@focus="($event.target as HTMLInputElement).select()"
-					/>
-					<UiButton variant="secondary" @click="copyLinkText(inviteSuccess?.acceptUrl ?? '')">
-						<template #iconLeft>
-							<Icon name="lucide:copy" class="w-4 h-4" />
-						</template>
-						Copy
-					</UiButton>
-				</div>
-				<p class="text-xs text-text-tertiary mt-1">
-					Works even if email delivery isn't set up yet.
-				</p>
-			</div>
-		</div>
+		<!-- Success state: surface the copyable accept link, which works even when
+		     outbound email delivery isn't configured yet. -->
+		<InviteSuccessPanel
+			v-else-if="inviteSuccess"
+			:success="inviteSuccess"
+			:email-configured="emailConfigured === true"
+		/>
 
 		<template #footer>
 			<template v-if="inviteSuccess">
@@ -465,19 +459,23 @@ defineExpose({ open: openInviteModal });
 					<template #iconLeft>
 						<Icon name="lucide:user-plus" class="w-4 h-4" />
 					</template>
-					Invite another
+					{{ t('components.settings.team.inviteModal.inviteAnother') }}
 				</UiButton>
-				<UiButton @click="isInviteModalOpen = false">Done</UiButton>
+				<UiButton @click="isInviteModalOpen = false">{{ t('common.done') }}</UiButton>
 			</template>
 			<template v-else>
 				<UiButton variant="secondary" :disabled="isInviting" @click="isInviteModalOpen = false">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton :loading="isInviting" @click="handleInvite">
 					<template #iconLeft>
 						<Icon v-if="!isInviting" name="lucide:user-plus" class="w-4 h-4" />
 					</template>
-					{{ isInviting ? 'Sending...' : 'Send Invitation' }}
+					{{
+						isInviting
+							? t('components.settings.team.inviteModal.sending')
+							: t('components.settings.team.inviteModal.sendInvitation')
+					}}
 				</UiButton>
 			</template>
 		</template>

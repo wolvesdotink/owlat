@@ -69,10 +69,13 @@ export function isAiConnected(configGapStatus: Record<string, string[]> | undefi
 
 export interface ChecklistStepMeta {
 	id: ChecklistStepId;
+	/** i18n key — this module is module scope, so it never calls `useI18n`. */
 	title: string;
+	/** i18n key. */
 	description: string;
 	/** Where the CTA navigates to resume this step. */
 	href: string;
+	/** i18n key. */
 	cta: string;
 	icon: string;
 	/** Only meaningful when the instance is bringing mail over from elsewhere. */
@@ -86,55 +89,55 @@ export interface ChecklistStepMeta {
 export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 	{
 		id: 'mailboxReady',
-		title: 'Set up your mailbox',
-		description: 'Add a personal mailbox so you can send and receive mail here.',
+		title: 'shared.welcomeFlow.steps.mailboxReady.title',
+		description: 'shared.welcomeFlow.steps.mailboxReady.description',
 		href: '/dashboard/preferences/add-account',
-		cta: 'Set up',
+		cta: 'shared.welcomeFlow.steps.mailboxReady.cta',
 		icon: 'lucide:mailbox',
 		migrationOnly: false,
 	},
 	{
 		id: 'aiConnected',
-		title: 'Connect your AI',
-		description: 'Point Owlat at an AI provider so drafting, replies, and search light up.',
+		title: 'shared.welcomeFlow.steps.aiConnected.title',
+		description: 'shared.welcomeFlow.steps.aiConnected.description',
 		href: '/dashboard/admin/instance/ai-provider',
-		cta: 'Connect',
+		cta: 'shared.welcomeFlow.steps.aiConnected.cta',
 		icon: 'lucide:sparkles',
 		migrationOnly: false,
 	},
 	{
 		id: 'importDone',
-		title: 'Bring your email over',
-		description: 'Import your existing inbox so nothing is left behind.',
+		title: 'shared.welcomeFlow.steps.importDone.title',
+		description: 'shared.welcomeFlow.steps.importDone.description',
 		href: '/dashboard/postbox/migrate',
-		cta: 'Import',
+		cta: 'shared.welcomeFlow.steps.importDone.cta',
 		icon: 'lucide:import',
 		migrationOnly: true,
 	},
 	{
 		id: 'knowledgeIndexed',
-		title: 'Let AI learn your history',
-		description: 'We read your imported mail so drafts and replies sound like you.',
+		title: 'shared.welcomeFlow.steps.knowledgeIndexed.title',
+		description: 'shared.welcomeFlow.steps.knowledgeIndexed.description',
 		href: '/dashboard/postbox/migrate',
-		cta: 'Continue',
+		cta: 'common.continue',
 		icon: 'lucide:sparkles',
 		migrationOnly: true,
 	},
 	{
 		id: 'sendingSwitched',
-		title: 'Switch sending to this instance',
-		description: 'Start sending outbound mail from Owlat once your domain is verified.',
+		title: 'shared.welcomeFlow.steps.sendingSwitched.title',
+		description: 'shared.welcomeFlow.steps.sendingSwitched.description',
 		href: '/dashboard/preferences#postbox-sending-heading',
-		cta: 'Switch',
+		cta: 'shared.welcomeFlow.steps.sendingSwitched.cta',
 		icon: 'lucide:refresh-cw',
 		migrationOnly: true,
 	},
 	{
 		id: 'firstSendDone',
-		title: 'Send your first email',
-		description: 'Write a message and hit send to make sure everything works.',
+		title: 'shared.welcomeFlow.steps.firstSendDone.title',
+		description: 'shared.welcomeFlow.steps.firstSendDone.description',
 		href: '/dashboard/postbox',
-		cta: 'Compose',
+		cta: 'shared.welcomeFlow.steps.firstSendDone.cta',
 		icon: 'lucide:send',
 		migrationOnly: false,
 	},

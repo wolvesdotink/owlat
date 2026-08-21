@@ -14,6 +14,8 @@ export interface AssistantMessageData {
 
 const props = defineProps<{ message: AssistantMessageData }>();
 
+const { t } = useI18n();
+
 const isUser = computed(() => props.message.role === 'user');
 const isStreaming = computed(() => props.message.status === 'streaming');
 const hasText = computed(() => props.message.text.trim().length > 0);
@@ -41,12 +43,18 @@ const showTyping = computed(
 			<Icon name="lucide:sparkles" class="w-4 h-4" />
 		</div>
 		<div class="flex-1 min-w-0">
-			<div class="text-xs font-semibold text-text-secondary mb-1">Assistant</div>
+			<div class="text-xs font-semibold text-text-secondary mb-1">
+				{{ t('components.assistant.assistantMessage.assistant') }}
+			</div>
 
 			<AssistantToolCalls v-if="message.toolCalls.length > 0" :tool-calls="message.toolCalls" />
 
 			<!-- Typing indicator before any output -->
-			<div v-if="showTyping" class="flex items-center gap-1 py-1" aria-label="Assistant is typing">
+			<div
+				v-if="showTyping"
+				class="flex items-center gap-1 py-1"
+				:aria-label="t('components.assistant.assistantMessage.typing')"
+			>
 				<span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 0ms" />
 				<span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 150ms" />
 				<span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 300ms" />
@@ -61,10 +69,10 @@ const showTyping = computed(
 			</div>
 
 			<p v-if="message.status === 'error'" class="mt-1 text-xs text-error">
-				{{ message.errorMessage || 'The assistant could not complete this reply.' }}
+				{{ message.errorMessage || t('components.assistant.assistantMessage.genericError') }}
 			</p>
 			<p v-else-if="message.status === 'stopped'" class="mt-1 text-xs text-text-tertiary italic">
-				Stopped
+				{{ t('components.assistant.assistantMessage.stopped') }}
 			</p>
 		</div>
 	</div>

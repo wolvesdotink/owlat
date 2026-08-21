@@ -36,23 +36,26 @@ const emit = defineEmits<{
 	delete: [messageId: Id<'chatMessages'>];
 }>();
 
+const { t, locale } = useI18n();
+
 const isEditing = ref(false);
 const editText = ref(props.message.text);
 
 const displayName = computed(() => {
 	if (props.message.author.name) return props.message.author.name;
 	if (props.message.author.email) return props.message.author.email;
-	return 'Unknown';
+	return t('common.unknown');
 });
 
 const avatarSeed = computed(
 	() => props.message.author.name ?? props.message.author.email ?? props.message.authorId
 );
 
-const formattedTime = computed(() => {
-	const date = new Date(props.message.createdAt);
-	return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-});
+const formattedTime = computed(() =>
+	new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit' }).format(
+		new Date(props.message.createdAt)
+	)
+);
 
 const isMentioned = computed(() => (props.message.mentions ?? []).includes(props.currentUserId));
 
@@ -137,7 +140,9 @@ const aiTyping = computed(
 			<div class="flex items-baseline gap-2">
 				<span class="text-sm font-semibold text-text-primary truncate">{{ displayName }}</span>
 				<span class="text-[11px] text-text-tertiary">{{ formattedTime }}</span>
-				<span v-if="message.editedAt" class="text-[11px] text-text-tertiary italic">edited</span>
+				<span v-if="message.editedAt" class="text-[11px] text-text-tertiary italic">
+					{{ t('components.chat.chatMessage.edited') }}
+				</span>
 			</div>
 
 			<!-- Edit mode -->
@@ -150,15 +155,17 @@ const aiTyping = computed(
 					@keydown.escape.prevent="cancelEdit"
 				/>
 				<div class="flex gap-2 mt-1">
-					<UiButton variant="secondary" size="sm" @click="cancelEdit">Cancel</UiButton>
-					<UiButton size="sm" @click="saveEdit">Save</UiButton>
+					<UiButton variant="secondary" size="sm" @click="cancelEdit">
+						{{ t('common.cancel') }}
+					</UiButton>
+					<UiButton size="sm" @click="saveEdit">{{ t('common.save') }}</UiButton>
 				</div>
 			</div>
 
 			<!-- Display mode -->
 			<template v-else>
 				<div v-if="message.deletedAt" class="text-sm text-text-tertiary italic">
-					(this message was deleted)
+					{{ t('components.chat.chatMessage.deleted') }}
 				</div>
 				<!-- AI assistant reply: tool cards + streamed Markdown -->
 				<div v-else-if="isAssistant">
@@ -166,7 +173,7 @@ const aiTyping = computed(
 					<div
 						v-if="aiTyping"
 						class="flex items-center gap-1 py-1"
-						aria-label="Assistant is typing"
+						:aria-label="t('components.chat.chatMessage.assistantTyping')"
 					>
 						<span
 							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
@@ -221,14 +228,14 @@ const aiTyping = computed(
 		>
 			<button
 				class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary flex items-center justify-center"
-				title="Edit"
+				:title="t('common.edit')"
 				@click="startEdit"
 			>
 				<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
 			</button>
 			<button
 				class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-error flex items-center justify-center"
-				title="Delete"
+				:title="t('common.delete')"
 				@click="doDelete"
 			>
 				<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />

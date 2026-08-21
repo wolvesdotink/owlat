@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { useCampaignCommandRows } from '~/composables/useCampaignCommandRows';
 import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
-import { CAMPAIGN_ATTENTION_DISPLAY, classifyCampaignAttention } from '~/utils/campaignAttention';
 import type { CampaignRowFields, DecoratedRow } from '~/utils/campaignCommandRow';
 
-useHead({ title: 'Campaigns — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.campaigns.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -124,84 +126,15 @@ function handleLoadMore() {
 	if (canLoadMore.value) loadMore(100);
 }
 
-const { getStatusBadge } = useCampaignStatusBadge();
-
 // --- Row model: campaign + its attention roll-up + derived rates ------------
-// The row TYPE + row COMPONENT live in siblings (utils/campaignCommandRow +
-// components/campaigns/CommandRow) so this page stays a controller; here we only
-// DERIVE the rows.
-
-function rate(numer: number | undefined, denom: number | undefined): number | null {
-	if (!denom || denom <= 0) return null;
-	return ((numer ?? 0) / denom) * 100;
-}
-
-function decorate(campaign: CampaignRowFields): DecoratedRow {
-	const attention = classifyCampaignAttention({
-		status: campaign.status,
-		scheduledAt: campaign.scheduledAt,
-		isABTest: campaign.isABTest,
-		abTestStatus: campaign.abTestStatus,
-		abWinner: campaign.abWinner,
-		contentBlockReason: campaign.contentBlockReason,
-	});
-	const display = attention.reason ? CAMPAIGN_ATTENTION_DISPLAY[attention.reason] : null;
-	const openRate = rate(campaign.statsOpened, campaign.statsDelivered);
-	const clickRate = rate(campaign.statsClicked, campaign.statsDelivered);
-	// A/B campaigns carry two comparable sends (variant A = main stats,
-	// variant B = abVariantB* fields) — a genuine two-point open-rate trend.
-	const variantA = openRate;
-	const variantB = rate(campaign.abVariantBOpened, campaign.abVariantBSent);
-	const spark =
-		campaign.isABTest === true && variantA != null && variantB != null ? [variantA, variantB] : [];
-	return {
-		campaign,
-		needsAttention: attention.needsAttention,
-		reason: attention.reason,
-		reasonChip: display ? { label: display.chipLabel, dot: display.dot } : null,
-		statusBadge: getStatusBadge(campaign.status),
-		actionLabel: attention.actionLabel,
-		openRate,
-		clickRate,
-		variantA,
-		variantB,
-		spark,
-	};
-}
-
-// Sort helper: attention first, then most-recent (updatedAt) — the design
-// brief's "surface what needs a decision, then the freshest work".
-function byAttentionThenRecency(a: DecoratedRow, b: DecoratedRow): number {
-	if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1;
-	return b.campaign.updatedAt - a.campaign.updatedAt;
-}
-
-// Attention rows come from the org-wide candidate scan, then the client
-// classifier (the source of truth) keeps only the ones genuinely waiting.
-// The browse pills search server-side, but the attention set is fetched
-// unsearched, so we apply the same debounced query here (case-insensitive
-// name/subject over the bounded candidate set) — otherwise typing on the
-// default pill would silently no-op and the "No results" empty state would
-// lie about a search that never ran.
-const attentionRows = computed<DecoratedRow[]>(() => {
-	const q = debouncedSearch.value.toLowerCase();
-	return (attentionCandidates.value ?? [])
-		.map(decorate)
-		.filter((r) => r.needsAttention)
-		.filter((r) => {
-			if (!q) return true;
-			const c = r.campaign;
-			return c.name.toLowerCase().includes(q) || (c.subject?.toLowerCase().includes(q) ?? false);
-		})
-		.sort((a, b) => b.campaign.updatedAt - a.campaign.updatedAt);
+// The DERIVATION, the row TYPE and the row COMPONENT all live in siblings
+// (composables/useCampaignCommandRows + utils/campaignCommandRow +
+// components/campaigns/CommandRow) so this page stays a controller.
+const { attentionRows, attentionCount, browseRows } = useCampaignCommandRows({
+	rows: () => rows.value,
+	attentionCandidates: () => attentionCandidates.value,
+	search: () => debouncedSearch.value,
 });
-
-const attentionCount = computed(() => attentionRows.value.length);
-
-// Browse rows come from the paginated (optionally status-filtered) window.
-const browseRows = computed<DecoratedRow[]>(() =>
-	(rows.value ?? []).map(decorate).sort(byAttentionThenRecency)
-);
 
 const visibleRows = computed(() =>
 	selectedPill.value === 'attention' ? attentionRows.value : browseRows.value
@@ -224,11 +157,19 @@ interface Pill {
 const pills = computed<Pill[]>(() => {
 	const c = statusCounts.value;
 	return [
-		{ key: 'attention', label: 'Needs attention', count: attentionCount.value },
-		{ key: 'all', label: 'All', count: c?.['total'] },
-		{ key: 'draft', label: 'Drafts', count: c?.['draft'] },
-		{ key: 'scheduled', label: 'Scheduled', count: c?.['scheduled'] },
-		{ key: 'sent', label: 'Sent', count: c?.['sent'] },
+		{
+			key: 'attention',
+			label: t('dashboard.campaigns.index.pills.attention'),
+			count: attentionCount.value,
+		},
+		{ key: 'all', label: t('common.all'), count: c?.['total'] },
+		{ key: 'draft', label: t('dashboard.campaigns.index.pills.drafts'), count: c?.['draft'] },
+		{
+			key: 'scheduled',
+			label: t('dashboard.campaigns.index.pills.scheduled'),
+			count: c?.['scheduled'],
+		},
+		{ key: 'sent', label: t('dashboard.campaigns.index.pills.sent'), count: c?.['sent'] },
 	];
 });
 
@@ -270,16 +211,16 @@ function handleNewCampaign() {
 const { showToast } = useToast();
 
 const { run: duplicateCampaign } = useBackendOperation(api.campaigns.campaigns.duplicate, {
-	label: 'Duplicate campaign',
+	label: () => t('dashboard.campaigns.index.duplicateOperation'),
 });
 const { run: deleteCampaign } = useBackendOperation(api.campaigns.campaigns.remove, {
-	label: 'Delete campaign',
+	label: () => t('dashboard.campaigns.index.deleteOperation'),
 });
 
 async function handleDuplicate(id: Id<'campaigns'>) {
 	const newId = await duplicateCampaign({ campaignId: id });
 	if (newId === undefined) return;
-	showToast('Campaign duplicated');
+	showToast(t('dashboard.campaigns.index.toasts.duplicated'));
 	router.push(`/dashboard/campaigns/${newId}/edit`);
 }
 
@@ -301,7 +242,7 @@ async function handleDelete() {
 	try {
 		const result = await deleteCampaign({ campaignId: campaignToDelete.value.id });
 		if (result === undefined) return;
-		showToast('Campaign deleted');
+		showToast(t('dashboard.campaigns.index.toasts.deleted'));
 		closeDeleteModal();
 	} finally {
 		isDeleting.value = false;
@@ -317,14 +258,16 @@ const showEmptyState = computed(
 	<div class="p-6 lg:p-8">
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Campaigns</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.campaigns.index.title') }}
+				</h1>
 				<p class="mt-1 text-text-secondary">
-					Everything you've sent and everything waiting on you, in one place.
+					{{ t('dashboard.campaigns.index.subtitle') }}
 				</p>
 			</div>
 			<UiButton @click="handleNewCampaign">
 				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-				New campaign
+				{{ t('dashboard.campaigns.index.newCampaign') }}
 			</UiButton>
 		</div>
 
@@ -358,8 +301,8 @@ const showEmptyState = computed(
 				<input
 					v-model="searchQuery"
 					type="text"
-					placeholder="Search campaigns…"
-					class="input pl-10 w-64"
+					:placeholder="t('dashboard.campaigns.index.searchPlaceholder')"
+					class="input pl-10 w-full sm:w-64"
 				/>
 			</div>
 		</div>
@@ -370,8 +313,8 @@ const showEmptyState = computed(
 
 		<UiErrorAlert
 			v-else-if="activeError"
-			title="Couldn't load campaigns"
-			message="We hit an error loading your campaigns. Reload the page to try again."
+			:title="t('dashboard.campaigns.index.errorTitle')"
+			:message="t('dashboard.campaigns.index.errorMessage')"
 			class="my-8"
 		/>
 
@@ -386,20 +329,26 @@ const showEmptyState = computed(
 				rounded="full"
 				class="mb-4"
 			/>
-			<p class="text-text-primary font-semibold">Nothing needs you.</p>
+			<p class="text-text-primary font-semibold">
+				{{ t('dashboard.campaigns.index.attentionEmpty.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				No campaigns are waiting on a decision right now.
+				{{ t('dashboard.campaigns.index.attentionEmpty.description') }}
 			</p>
 		</UiCard>
 
 		<UiCard v-else-if="showEmptyState && debouncedSearch" padding="none" overflow="hidden">
 			<UiEmptyState
 				icon="lucide:search"
-				title="No results found"
-				:description="`No campaigns match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+				:title="t('dashboard.campaigns.index.searchEmpty.title')"
+				:description="
+					t('dashboard.campaigns.index.searchEmpty.description', { query: debouncedSearch })
+				"
 			>
 				<template #action>
-					<UiButton variant="secondary" @click="clearSearch">Clear search</UiButton>
+					<UiButton variant="secondary" @click="clearSearch">
+						{{ t('dashboard.campaigns.index.searchEmpty.clear') }}
+					</UiButton>
 				</template>
 			</UiEmptyState>
 		</UiCard>
@@ -407,13 +356,13 @@ const showEmptyState = computed(
 		<UiCard v-else-if="showEmptyState" padding="none" overflow="hidden">
 			<UiEmptyState
 				icon="lucide:send"
-				title="No campaigns here yet"
-				description="Create your first campaign to start reaching your audience."
+				:title="t('dashboard.campaigns.index.listEmpty.title')"
+				:description="t('dashboard.campaigns.index.listEmpty.description')"
 			>
 				<template #action>
 					<UiButton @click="handleNewCampaign">
 						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-						New campaign
+						{{ t('dashboard.campaigns.index.newCampaign') }}
 					</UiButton>
 				</template>
 			</UiEmptyState>
@@ -443,34 +392,50 @@ const showEmptyState = computed(
 					:loading="isLoadingMore"
 					@click="handleLoadMore"
 				>
-					{{ isLoadingMore ? 'Loading…' : 'Load more' }}
+					{{ isLoadingMore ? t('common.loading') : t('dashboard.campaigns.index.loadMore') }}
 				</UiButton>
-				<span v-else class="text-sm text-text-tertiary">All campaigns loaded</span>
+				<span v-else class="text-sm text-text-tertiary">
+					{{ t('dashboard.campaigns.index.allLoaded') }}
+				</span>
 			</div>
 		</UiCard>
 
 		<!-- Delete confirmation -->
-		<UiModal v-model:open="isDeleteModalOpen" title="Delete campaign" :persistent="isDeleting">
+		<UiModal
+			v-model:open="isDeleteModalOpen"
+			:title="t('dashboard.campaigns.index.deleteDialog.title')"
+			:persistent="isDeleting"
+		>
 			<div class="flex items-start gap-4">
 				<div class="p-3 rounded-full bg-error/10 shrink-0 flex items-center justify-center">
 					<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
 				</div>
 				<div>
-					<p class="text-text-primary">
-						Are you sure you want to delete
-						<span class="font-semibold">"{{ campaignToDelete?.name }}"</span>?
-					</p>
+					<I18nT
+						keypath="dashboard.campaigns.index.deleteDialog.confirmQuestion"
+						tag="p"
+						class="text-text-primary"
+						scope="global"
+					>
+						<template #name>
+							<span class="font-semibold">"{{ campaignToDelete?.name }}"</span>
+						</template>
+					</I18nT>
 					<p class="text-sm text-text-secondary mt-2">
-						This action cannot be undone. The campaign and its data will be permanently deleted.
+						{{ t('dashboard.campaigns.index.deleteDialog.description') }}
 					</p>
 				</div>
 			</div>
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
-					{{ isDeleting ? 'Deleting…' : 'Delete campaign' }}
+					{{
+						isDeleting
+							? t('dashboard.campaigns.index.deleteDialog.deleting')
+							: t('dashboard.campaigns.index.deleteDialog.confirm')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>

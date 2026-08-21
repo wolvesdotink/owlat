@@ -17,10 +17,15 @@
  *     order (no positive tabindex, no focus traps on a read-only page).
  */
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import MeasurementCellCard from '../MeasurementCellCard.vue';
 import MeasurementGateList from '../MeasurementGateList.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { cellView, failingGate, holdingGate } from './measurementFixtures';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const stubs = { UiCard: { template: '<div><slot /></div>' }, Icon: { template: '<i />' } };
 
@@ -31,7 +36,11 @@ function mountCard() {
 			referenceTransportId: 'ses',
 			decisionWindowLabel: 'the last 24 hours',
 		},
-		global: { stubs, components: { DeliveryMeasurementGateList: MeasurementGateList } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs,
+			components: { DeliveryMeasurementGateList: MeasurementGateList },
+		},
 	});
 }
 

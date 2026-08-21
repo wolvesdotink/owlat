@@ -3,6 +3,8 @@
  * marketing convention; see showcase/*Frame.vue). Each frame is self-contained
  * so it can later be swapped for a real capture <img> without touching this
  * section. */
+const { t } = useI18n();
+
 const { target, isVisible } = useScrollReveal();
 </script>
 
@@ -16,26 +18,29 @@ const { target, isVisible } = useScrollReveal();
 		<div class="max-w-[1200px] mx-auto">
 			<!-- Section header -->
 			<div class="mb-16 max-md:mb-12 text-center flex flex-col items-center">
-				<span class="show-el lp-eyebrow mb-4" style="--i: 0">Product</span>
-				<h2 class="show-el lp-title mb-4" style="--i: 1">
-					One calm surface for<br class="max-md:hidden" />
-					<span class="lp-title-accent">all</span> of your email
-				</h2>
+				<span class="show-el lp-eyebrow mb-4" style="--i: 0">{{ t('product.eyebrow') }}</span>
+				<I18nT
+					keypath="product.title"
+					tag="h2"
+					class="show-el lp-title mb-4"
+					style="--i: 1"
+					scope="global"
+				>
+					<template #break><br class="max-md:hidden" /></template>
+					<template #accent>
+						<span class="lp-title-accent">{{ t('product.titleAccent') }}</span>
+					</template>
+				</I18nT>
 				<p
 					class="show-el text-base text-text-secondary leading-relaxed max-w-[540px]"
 					style="--i: 2"
 				>
-					The mail client, campaign reports, and deliverability tooling live in one light workspace
-					— no tab juggling between tools.
+					{{ t('product.intro') }}
 				</p>
 			</div>
 
 			<!-- Screen-reader description of the decorative composition -->
-			<p class="sr-only">
-				Product previews: the Postbox mail client with a folder rail, thread list and reading pane;
-				a campaign report with send, open and click statistics; and the deliverability dashboard
-				showing SPF, DKIM and DMARC checks, the own-MTA sending share, and seed placement results.
-			</p>
+			<p class="sr-only">{{ t('product.srDescription') }}</p>
 
 			<!-- Stacked frames (decorative) -->
 			<div

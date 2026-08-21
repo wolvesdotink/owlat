@@ -27,21 +27,24 @@ export interface DailyBriefCounts {
 	autoFiled: number;
 }
 
+/**
+ * A chunk's words, as the catalog key that carries them plus the values to
+ * interpolate. This module is module scope and never calls `useI18n`; the brief
+ * card is the render boundary that words each chunk.
+ */
+export type BriefText = string | { key: string; params?: Record<string, unknown> };
+
 /** One renderable chunk: plain text, or an emphasized count linking somewhere. */
-export type BriefSegment = { text: string; to?: string };
+export type BriefSegment = { text: BriefText; to?: string };
 
 /** A sentence is an ordered list of segments; the card renders them inline. */
 export type BriefSentence = BriefSegment[];
 
-/** Time-of-day serif greeting ("Good morning" before noon, etc.). */
+/** Time-of-day serif greeting ("Good morning" before noon, etc.), as its key. */
 export function briefGreeting(hour: number): string {
-	if (hour < 12) return 'Good morning';
-	if (hour < 18) return 'Good afternoon';
-	return 'Good evening';
-}
-
-function plural(n: number, singular: string, pluralWord?: string): string {
-	return n === 1 ? singular : (pluralWord ?? `${singular}s`);
+	if (hour < 12) return 'shared.postboxDailyBrief.greeting.morning';
+	if (hour < 18) return 'shared.postboxDailyBrief.greeting.afternoon';
+	return 'shared.postboxDailyBrief.greeting.evening';
 }
 
 /**
@@ -56,36 +59,51 @@ export function composeBriefSentences(counts: DailyBriefCounts): BriefSentence[]
 
 	// 1 — new mail since local midnight (always present: it frames the day).
 	if (counts.newMail === 0) {
-		sentences.push([{ text: 'All quiet — nothing new since this morning.' }]);
+		sentences.push([{ text: 'shared.postboxDailyBrief.newMail.allQuiet' }]);
 	} else {
-		const lead = counts.newMail <= 5 ? 'Quiet day: ' : 'Busy morning: ';
+		const lead =
+			counts.newMail <= 5
+				? 'shared.postboxDailyBrief.newMail.leadQuiet'
+				: 'shared.postboxDailyBrief.newMail.leadBusy';
 		sentences.push([
 			{ text: lead },
-			{ text: `${counts.newMail} new`, to: BRIEF_LINK_TARGETS.newMail },
-			{ text: ' since this morning.' },
+			{
+				text: {
+					key: 'shared.postboxDailyBrief.newMail.count',
+					params: { count: counts.newMail },
+				},
+				to: BRIEF_LINK_TARGETS.newMail,
+			},
+			{ text: 'shared.postboxDailyBrief.newMail.tail' },
 		]);
 	}
 
 	// 2 — what the agent already handled (only when it did anything).
 	if (counts.drafted > 0 || counts.autoFiled > 0) {
-		const parts: BriefSentence = [{ text: 'Your agent ' }];
+		const parts: BriefSentence = [{ text: 'shared.postboxDailyBrief.agent.lead' }];
 		if (counts.drafted > 0) {
 			parts.push(
-				{ text: 'drafted ' },
+				{ text: 'shared.postboxDailyBrief.agent.drafted' },
 				{
-					text: `${counts.drafted} ${plural(counts.drafted, 'reply', 'replies')}`,
+					text: {
+						key: 'shared.postboxDailyBrief.agent.draftedCount',
+						params: { count: counts.drafted },
+					},
 					to: BRIEF_LINK_TARGETS.drafts,
 				},
-				{ text: ' for review' }
+				{ text: 'shared.postboxDailyBrief.agent.forReview' }
 			);
 		}
 		if (counts.autoFiled > 0) {
-			if (counts.drafted > 0) parts.push({ text: ' and ' });
+			if (counts.drafted > 0) parts.push({ text: 'shared.postboxDailyBrief.agent.and' });
 			parts.push({
-				text: `filed ${counts.autoFiled} low-priority ${plural(counts.autoFiled, 'email')}`,
+				text: {
+					key: 'shared.postboxDailyBrief.agent.filed',
+					params: { count: counts.autoFiled },
+				},
 			});
 		}
-		parts.push({ text: ' overnight.' });
+		parts.push({ text: 'shared.postboxDailyBrief.agent.overnight' });
 		sentences.push(parts);
 	}
 
@@ -93,13 +111,20 @@ export function composeBriefSentences(counts: DailyBriefCounts): BriefSentence[]
 	if (counts.questions > 0) {
 		sentences.push([
 			{
-				text: `${counts.questions} ${plural(counts.questions, 'question')}`,
+				text: {
+					key: 'shared.postboxDailyBrief.questions.count',
+					params: { count: counts.questions },
+				},
 				to: BRIEF_LINK_TARGETS.questions,
 			},
 			{
-				text: `${counts.questions === 1 ? ' needs' : ' need'} you — answering ${
-					counts.questions === 1 ? 'it' : 'them'
-				} unblocks the waiting replies.`,
+				// Two keys rather than one plural message: this clause opens with the
+				// space that separates it from the count beside it, and the plural
+				// splitter trims the forms it cuts apart.
+				text:
+					counts.questions === 1
+						? 'shared.postboxDailyBrief.questions.tailOne'
+						: 'shared.postboxDailyBrief.questions.tailOther',
 			},
 		]);
 	}

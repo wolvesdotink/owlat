@@ -8,7 +8,9 @@ definePageMeta({
 	requiresFeature: 'ai.agent',
 });
 
-useHead({ title: 'Agent Health — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.agentHealth.pageTitle') });
 
 // Dashboard metrics query
 const { data: metrics, isLoading: metricsLoading } = useConvexQuery(
@@ -96,16 +98,18 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
 			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			Back to Settings
+			{{ t('dashboard.admin.instance.agentHealth.backToSettings') }}
 		</NuxtLink>
 
 		<!-- Header -->
 		<div class="flex items-center gap-4 mb-8">
 			<UiIconBox icon="lucide:activity" size="xl" variant="brand" rounded="full" />
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Agent Health & Monitoring</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.admin.instance.agentHealth.title') }}
+				</h1>
 				<p class="text-text-secondary mt-1">
-					Monitor the AI agent pipeline performance, circuit breaker states, and key metrics.
+					{{ t('dashboard.admin.instance.agentHealth.subtitle') }}
 				</p>
 			</div>
 		</div>
@@ -114,7 +118,9 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 		<div v-if="metricsLoading" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">Loading health metrics...</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('dashboard.admin.instance.agentHealth.loading') }}
+				</p>
 			</div>
 		</div>
 
@@ -123,10 +129,11 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 				<!-- Section 1: Circuit Breaker Status -->
 				<section>
 					<div class="mb-4">
-						<h2 class="text-lg font-medium text-text-primary">Circuit Breakers</h2>
+						<h2 class="text-lg font-medium text-text-primary">
+							{{ t('dashboard.admin.instance.agentHealth.circuitBreakers.title') }}
+						</h2>
 						<p class="text-sm text-text-tertiary mt-1">
-							Circuit breakers protect the pipeline by halting operations when failure thresholds
-							are exceeded.
+							{{ t('dashboard.admin.instance.agentHealth.circuitBreakers.description') }}
 						</p>
 					</div>
 					<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -145,48 +152,50 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 				<!-- Section 2: Key Metrics Grid -->
 				<section>
 					<div class="mb-4">
-						<h2 class="text-lg font-medium text-text-primary">Key Metrics</h2>
+						<h2 class="text-lg font-medium text-text-primary">
+							{{ t('dashboard.admin.instance.agentHealth.keyMetrics.title') }}
+						</h2>
 						<p class="text-sm text-text-tertiary mt-1">
-							Current snapshot of agent pipeline performance over the last 5 minutes.
+							{{ t('dashboard.admin.instance.agentHealth.keyMetrics.description') }}
 						</p>
 					</div>
 					<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 						<AgentMetricCard
-							label="Queue Depth"
+							:label="t('dashboard.admin.instance.agentHealth.metrics.queueDepth.label')"
 							:value="queueDepth"
 							icon="lucide:layers"
-							description="Messages waiting to be processed"
+							:description="t('dashboard.admin.instance.agentHealth.metrics.queueDepth.description')"
 						/>
 						<AgentMetricCard
-							label="Processing Latency"
+							:label="t('dashboard.admin.instance.agentHealth.metrics.latency.label')"
 							:value="processingLatency"
 							icon="lucide:timer"
-							description="Average time to process a message"
+							:description="t('dashboard.admin.instance.agentHealth.metrics.latency.description')"
 						/>
 						<AgentMetricCard
-							label="Error Rate"
+							:label="t('dashboard.admin.instance.agentHealth.metrics.errorRate.label')"
 							:value="errorRate"
 							icon="lucide:alert-circle"
 							:trend="errorTrend"
-							description="Percentage of failed agent actions"
+							:description="t('dashboard.admin.instance.agentHealth.metrics.errorRate.description')"
 						/>
 						<AgentMetricCard
-							label="Auto-Approve Ratio"
+							:label="t('dashboard.admin.instance.agentHealth.metrics.autoApprove.label')"
 							:value="autoApproveRatio"
 							icon="lucide:check-circle"
-							description="Actions auto-approved vs. total"
+							:description="t('dashboard.admin.instance.agentHealth.metrics.autoApprove.description')"
 						/>
 						<AgentMetricCard
-							label="LLM Cost"
+							:label="t('dashboard.admin.instance.agentHealth.metrics.llmCost.label')"
 							:value="llmCost"
 							icon="lucide:coins"
-							description="Estimated cost for the current window"
+							:description="t('dashboard.admin.instance.agentHealth.metrics.llmCost.description')"
 						/>
 						<AgentMetricCard
-							label="Processing"
+							:label="t('dashboard.admin.instance.agentHealth.metrics.processing.label')"
 							:value="metrics?.processingCount ?? 0"
 							icon="lucide:loader"
-							description="Messages currently being classified"
+							:description="t('dashboard.admin.instance.agentHealth.metrics.processing.description')"
 						/>
 					</div>
 				</section>
@@ -194,28 +203,32 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 				<!-- Section 3: Metric History -->
 				<section>
 					<div class="mb-4">
-						<h2 class="text-lg font-medium text-text-primary">Metric History</h2>
-						<p class="text-sm text-text-tertiary mt-1">Trends over the last 24 hours.</p>
+						<h2 class="text-lg font-medium text-text-primary">
+							{{ t('dashboard.admin.instance.agentHealth.history.title') }}
+						</h2>
+						<p class="text-sm text-text-tertiary mt-1">
+							{{ t('dashboard.admin.instance.agentHealth.history.description') }}
+						</p>
 					</div>
 					<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 						<UiCard>
 							<AgentMetricChart
 								:data="latencyChartData"
-								label="Processing Latency (ms)"
+								:label="t('dashboard.admin.instance.agentHealth.charts.latency')"
 								color="var(--color-brand)"
 							/>
 						</UiCard>
 						<UiCard>
 							<AgentMetricChart
 								:data="errorChartData"
-								label="Error Rate"
+								:label="t('dashboard.admin.instance.agentHealth.charts.errorRate')"
 								color="var(--color-error)"
 							/>
 						</UiCard>
 						<UiCard class="lg:col-span-2">
 							<AgentMetricChart
 								:data="queueChartData"
-								label="Queue Depth"
+								:label="t('dashboard.admin.instance.agentHealth.charts.queueDepth')"
 								color="var(--color-warning)"
 							/>
 						</UiCard>

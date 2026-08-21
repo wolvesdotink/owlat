@@ -2,6 +2,8 @@
 import type { Doc } from '@owlat/api/dataModel';
 import type { ContactUpdatedTriggerConfig } from '~/composables/automations/triggers';
 
+const { t } = useI18n();
+
 const props = defineProps<{
 	modelValue: ContactUpdatedTriggerConfig;
 	contactProperties: Doc<'contactProperties'>[] | null | undefined;
@@ -22,10 +24,11 @@ const updatePropertyKey = (event: Event) => {
 	<div>
 		<label for="propertyKey" class="label flex items-center gap-2">
 			<Icon name="lucide:user-cog" class="w-4 h-4 text-brand" />
-			Property to Watch <span class="text-error">*</span>
+			{{ t('components.automations.triggers.contactUpdated.editor.propertyLabel') }}
+			<span class="text-error">*</span>
 		</label>
 		<p class="text-sm text-text-tertiary mt-1 mb-3">
-			This automation will trigger when the selected property changes for any contact.
+			{{ t('components.automations.triggers.contactUpdated.editor.propertyHint') }}
 		</p>
 		<select
 			id="propertyKey"
@@ -33,17 +36,29 @@ const updatePropertyKey = (event: Event) => {
 			:class="['input', error ? 'input-error' : '']"
 			@change="updatePropertyKey"
 		>
-			<option value="" disabled>Select a property...</option>
+			<option value="" disabled>
+				{{ t('components.automations.triggers.contactUpdated.editor.propertyPlaceholder') }}
+			</option>
 			<!-- Only the fields `contacts.update` records in changedProperties can
 				fire this trigger. 'Subscribed Status' (no contact-level field) and
 				custom properties never produced a run, so they are intentionally not
 				offered here to avoid silently-dead automations. -->
-			<optgroup label="Built-in Properties">
-				<option value="email">Email</option>
-				<option value="firstName">First Name</option>
-				<option value="lastName">Last Name</option>
-				<option value="timezone">Timezone</option>
-				<option value="language">Language</option>
+			<optgroup :label="t('components.automations.triggers.contactUpdated.editor.builtInGroup')">
+				<option value="email">
+					{{ t('components.automations.triggers.contactUpdated.editor.properties.email') }}
+				</option>
+				<option value="firstName">
+					{{ t('components.automations.triggers.contactUpdated.editor.properties.firstName') }}
+				</option>
+				<option value="lastName">
+					{{ t('components.automations.triggers.contactUpdated.editor.properties.lastName') }}
+				</option>
+				<option value="timezone">
+					{{ t('components.automations.triggers.contactUpdated.editor.properties.timezone') }}
+				</option>
+				<option value="language">
+					{{ t('components.automations.triggers.contactUpdated.editor.properties.language') }}
+				</option>
 			</optgroup>
 		</select>
 		<p v-if="error" class="mt-2 text-sm text-error">{{ error }}</p>

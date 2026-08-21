@@ -26,12 +26,16 @@ const props = defineProps<{
 	latestOutboundId?: string;
 }>();
 
+const { t } = useI18n();
+
 const followUp = computed(() => props.thread.followUp);
 const isDue = computed(() => followUp.value?.dueAt !== undefined);
 
-const armOp = useBackendOperation(api.mail.followUps.arm, { label: 'Set reply reminder' });
+const armOp = useBackendOperation(api.mail.followUps.arm, {
+	label: () => t('components.postbox.postboxFollowUpChip.armOperation'),
+});
 const cancelOp = useBackendOperation(api.mail.followUps.cancel, {
-	label: 'Cancel reply reminder',
+	label: () => t('components.postbox.postboxFollowUpChip.cancelOperation'),
 });
 
 const dialogOpen = ref(false);
@@ -61,6 +65,13 @@ async function cancelWatch() {
 const remindLabel = computed(() =>
 	followUp.value ? formatDateTime(followUp.value.remindAt) : ''
 );
+
+const dueLabel = computed(() => {
+	const waitingOn = followUp.value?.waitingOn;
+	return waitingOn
+		? t('components.postbox.postboxFollowUpChip.noReplyYetWaitingOn', { name: waitingOn })
+		: t('components.postbox.postboxFollowUpChip.noReplyYet');
+});
 </script>
 
 <template>
@@ -71,12 +82,12 @@ const remindLabel = computed(() =>
 			class="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full bg-warning/10 text-warning text-xs font-medium"
 		>
 			<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" />
-			No reply yet{{ followUp.waitingOn ? ` — waiting on ${followUp.waitingOn}` : '' }}
+			{{ dueLabel }}
 			<button
 				type="button"
 				class="p-0.5 rounded-full hover:bg-warning/20"
-				title="Dismiss reminder"
-				aria-label="Dismiss reminder"
+				:title="t('components.postbox.postboxFollowUpChip.dismissReminder')"
+				:aria-label="t('components.postbox.postboxFollowUpChip.dismissReminder')"
 				:disabled="busy"
 				@click="cancelWatch"
 			>
@@ -87,15 +98,17 @@ const remindLabel = computed(() =>
 		<span
 			v-else-if="followUp"
 			class="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full bg-brand/10 text-brand text-xs font-medium"
-			:title="`You'll be reminded if nobody replies by ${remindLabel}`"
+			:title="
+				t('components.postbox.postboxFollowUpChip.armedTitle', { date: remindLabel })
+			"
 		>
 			<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" />
-			Reply reminder · {{ remindLabel }}
+			{{ t('components.postbox.postboxFollowUpChip.armedChip', { date: remindLabel }) }}
 			<button
 				type="button"
 				class="p-0.5 rounded-full hover:bg-brand/20"
-				title="Cancel reminder"
-				aria-label="Cancel reminder"
+				:title="t('components.postbox.postboxFollowUpChip.cancelReminder')"
+				:aria-label="t('components.postbox.postboxFollowUpChip.cancelReminder')"
 				:disabled="busy"
 				@click="cancelWatch"
 			>
@@ -107,12 +120,12 @@ const remindLabel = computed(() =>
 			v-else-if="latestOutboundId"
 			type="button"
 			class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-border-subtle text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated"
-			title="Remind me if no reply"
+			:title="t('components.postbox.postboxFollowUpChip.remindMe')"
 			:disabled="busy"
 			@click="dialogOpen = true"
 		>
 			<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" />
-			Remind me if no reply
+			{{ t('components.postbox.postboxFollowUpChip.remindMe') }}
 		</button>
 
 		<PostboxFollowUpDialog

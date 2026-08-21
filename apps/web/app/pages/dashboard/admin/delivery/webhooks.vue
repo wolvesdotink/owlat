@@ -1,7 +1,19 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 
-useHead({ title: 'Webhooks — Owlat' });
+const { t } = useI18n();
+
+/**
+ * `getEventLabel` reads a module-scope definition set whose labels carry i18n
+ * keys rather than sentences (the registry convention); a plain string is still
+ * accepted so a value with nothing to translate reads as itself.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
+useHead({ title: () => t('dashboard.admin.delivery.webhooks.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -111,14 +123,16 @@ const {
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">Webhooks</h1>
+				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+					{{ t('dashboard.admin.delivery.webhooks.title') }}
+				</h1>
 				<p class="mt-1 text-text-secondary">
-					Receive real-time notifications when events happen in your account
+					{{ t('dashboard.admin.delivery.webhooks.lede') }}
 				</p>
 			</div>
 			<UiButton class="gap-2" @click="openCreateModal">
 				<Icon name="lucide:plus" class="w-4 h-4" />
-				Create Webhook
+				{{ t('dashboard.admin.delivery.webhooks.create') }}
 			</UiButton>
 		</div>
 
@@ -127,14 +141,21 @@ const {
 			<div class="flex items-start gap-3">
 				<Icon name="lucide:shield" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 				<div>
-					<p class="text-sm text-text-primary font-medium">Secure webhook delivery</p>
-					<p class="text-sm text-text-secondary mt-1">
-						All webhook payloads are signed with HMAC-SHA256 using your webhook secret. Verify the
-						<code class="px-1.5 py-0.5 rounded bg-bg-surface text-text-primary text-xs font-mono"
-							>X-Signature</code
-						>
-						header to ensure authenticity.
+					<p class="text-sm text-text-primary font-medium">
+						{{ t('dashboard.admin.delivery.webhooks.secure.title') }}
 					</p>
+					<I18nT
+						keypath="dashboard.admin.delivery.webhooks.secure.body"
+						tag="p"
+						class="text-sm text-text-secondary mt-1"
+						scope="global"
+					>
+						<template #header>
+							<code class="px-1.5 py-0.5 rounded bg-bg-surface text-text-primary text-xs font-mono"
+								>X-Signature</code
+							>
+						</template>
+					</I18nT>
 				</div>
 			</div>
 		</div>
@@ -152,9 +173,11 @@ const {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:webhook" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No workspace selected</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('dashboard.admin.delivery.webhooks.noWorkspace.title') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Create or select a workspace to manage webhooks.
+					{{ t('dashboard.admin.delivery.webhooks.noWorkspace.description') }}
 				</p>
 			</div>
 
@@ -164,21 +187,28 @@ const {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:webhook" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">No webhooks yet</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('dashboard.admin.delivery.webhooks.empty.title') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					Create a webhook to receive notifications when events occur, such as email opens, clicks,
-					and bounces.
+					{{ t('dashboard.admin.delivery.webhooks.empty.description') }}
 				</p>
 				<UiButton class="gap-2 mt-6" @click="openCreateModal">
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					Create Webhook
+					{{ t('dashboard.admin.delivery.webhooks.create') }}
 				</UiButton>
 			</div>
 
 			<!-- Webhooks List -->
 			<div v-else class="space-y-4">
 				<div class="text-sm text-text-secondary mb-2">
-					{{ activeWebhooksCount }} active {{ activeWebhooksCount === 1 ? 'webhook' : 'webhooks' }}
+					{{
+						t(
+							'dashboard.admin.delivery.webhooks.activeCount',
+							{ count: activeWebhooksCount },
+							activeWebhooksCount
+						)
+					}}
 				</div>
 
 				<div
@@ -193,7 +223,7 @@ const {
 						tabindex="0"
 						:aria-expanded="expandedWebhookId === webhook._id"
 						:aria-controls="`webhook-details-${webhook._id}`"
-						:aria-label="`Details for ${webhook.name}`"
+						:aria-label="t('dashboard.admin.delivery.webhooks.detailsFor', { name: webhook.name })"
 						@click="toggleExpanded(webhook._id)"
 						@keydown.enter.self="toggleExpanded(webhook._id)"
 						@keydown.space.self.prevent="toggleExpanded(webhook._id)"
@@ -221,7 +251,11 @@ const {
 												: 'bg-bg-surface text-text-tertiary',
 										]"
 									>
-										{{ webhook.isActive ? 'Active' : 'Disabled' }}
+										{{
+											webhook.isActive
+												? t('common.active')
+												: t('dashboard.admin.delivery.webhooks.disabled')
+										}}
 									</span>
 								</div>
 								<p class="text-sm text-text-tertiary truncate mt-0.5">
@@ -249,14 +283,16 @@ const {
 						>
 							<!-- Events -->
 							<div class="px-6 py-4 border-b border-border-subtle">
-								<p class="text-sm font-medium text-text-secondary mb-2">Subscribed Events</p>
+								<p class="text-sm font-medium text-text-secondary mb-2">
+									{{ t('dashboard.admin.delivery.webhooks.subscribedEvents') }}
+								</p>
 								<div class="flex flex-wrap gap-2">
 									<span
 										v-for="event in webhook.events"
 										:key="event"
 										class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-bg-surface text-text-primary"
 									>
-										{{ getEventLabel(event) }}
+										{{ localized(getEventLabel(event)) }}
 									</span>
 								</div>
 							</div>
@@ -264,11 +300,15 @@ const {
 							<!-- Info -->
 							<div class="px-6 py-4 border-b border-border-subtle grid grid-cols-2 gap-4">
 								<div>
-									<p class="text-xs text-text-tertiary">Created</p>
+									<p class="text-xs text-text-tertiary">
+										{{ t('dashboard.admin.delivery.webhooks.created') }}
+									</p>
 									<p class="text-sm text-text-secondary">{{ formatDate(webhook.createdAt) }}</p>
 								</div>
 								<div>
-									<p class="text-xs text-text-tertiary">Last Updated</p>
+									<p class="text-xs text-text-tertiary">
+										{{ t('dashboard.admin.delivery.webhooks.lastUpdated') }}
+									</p>
 									<p class="text-sm text-text-secondary">{{ formatDate(webhook.updatedAt) }}</p>
 								</div>
 							</div>
@@ -289,11 +329,15 @@ const {
 										/>
 										<Icon v-else-if="!webhook.isActive" name="lucide:play" class="w-4 h-4" />
 										<Icon v-else name="lucide:pause" class="w-4 h-4" />
-										{{ webhook.isActive ? 'Disable' : 'Enable' }}
+										{{
+											webhook.isActive
+												? t('dashboard.admin.delivery.webhooks.disable')
+												: t('dashboard.admin.delivery.webhooks.enable')
+										}}
 									</UiButton>
 									<UiButton variant="secondary" class="gap-2" @click.stop="openEditModal(webhook)">
 										<Icon name="lucide:settings" class="w-4 h-4" />
-										Edit
+										{{ t('common.edit') }}
 									</UiButton>
 									<UiButton
 										variant="secondary"
@@ -307,7 +351,7 @@ const {
 											class="w-4 h-4 animate-spin"
 										/>
 										<Icon v-else name="lucide:send" class="w-4 h-4" />
-										Send Test
+										{{ t('dashboard.admin.delivery.webhooks.sendTest') }}
 									</UiButton>
 									<UiButton
 										variant="secondary"
@@ -315,7 +359,7 @@ const {
 										@click.stop="openLogsModal(webhook._id, webhook.name)"
 									>
 										<Icon name="lucide:scroll-text" class="w-4 h-4" />
-										Delivery Logs
+										{{ t('dashboard.admin.delivery.webhooks.deliveryLogs') }}
 									</UiButton>
 									<UiButton
 										variant="secondary"
@@ -323,7 +367,7 @@ const {
 										@click.stop="openRegenerateModal(webhook._id, webhook.name)"
 									>
 										<Icon name="lucide:refresh-cw" class="w-4 h-4" />
-										Regenerate Secret
+										{{ t('dashboard.admin.delivery.webhooks.regenerateSecret') }}
 									</UiButton>
 								</div>
 								<UiButton
@@ -332,7 +376,7 @@ const {
 									@click.stop="openDeleteModal(webhook._id, webhook.name)"
 								>
 									<Icon name="lucide:trash-2" class="w-4 h-4" />
-									Delete
+									{{ t('common.delete') }}
 								</UiButton>
 							</div>
 						</div>
@@ -344,9 +388,9 @@ const {
 		<!-- Create Webhook Modal -->
 		<WebhooksWebhookFormModal
 			:is-open="isCreateModalOpen"
-			title="Create Webhook"
-			submit-label="Create Webhook"
-			submitting-label="Creating..."
+			:title="t('dashboard.admin.delivery.webhooks.create')"
+			:submit-label="t('dashboard.admin.delivery.webhooks.create')"
+			:submitting-label="t('dashboard.admin.delivery.webhooks.creating')"
 			:is-submitting="isCreating"
 			:form-error="createFormError"
 			:form-name="createForm.name"
@@ -365,9 +409,9 @@ const {
 		<!-- Edit Webhook Modal -->
 		<WebhooksWebhookFormModal
 			:is-open="isEditModalOpen"
-			title="Edit Webhook"
-			submit-label="Save Changes"
-			submitting-label="Saving..."
+			:title="t('dashboard.admin.delivery.webhooks.editTitle')"
+			:submit-label="t('dashboard.admin.delivery.webhooks.saveChanges')"
+			:submitting-label="t('dashboard.admin.delivery.webhooks.saving')"
 			:is-submitting="isEditing"
 			:form-error="editFormError"
 			:form-name="editForm.name"

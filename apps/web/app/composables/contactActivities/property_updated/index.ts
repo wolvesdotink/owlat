@@ -4,15 +4,21 @@ export const propertyUpdatedEditorModule: ContactActivityEditorModule<'property_
 	literal: 'property_updated',
 	displayConfig: {
 		icon: 'lucide:settings',
-		label: 'Property Updated',
+		label: 'shared.contactActivities.propertyUpdated.label',
 		color: 'text-text-secondary',
 	},
 	formatDescription(metadata) {
-		if (!metadata) return 'Property updated';
+		if (!metadata) return 'shared.contactActivities.propertyUpdated.description';
 		const { propertyKey, oldValue, newValue } = metadata;
 		if (oldValue !== undefined && oldValue !== '') {
-			return `Changed ${propertyKey} from "${oldValue}" to "${newValue}"`;
+			return {
+				key: 'shared.contactActivities.propertyUpdated.descriptionChanged',
+				params: { property: propertyKey, oldValue, newValue },
+			};
 		}
-		return `Set ${propertyKey} to "${newValue}"`;
+		return {
+			key: 'shared.contactActivities.propertyUpdated.descriptionSet',
+			params: { property: propertyKey, newValue },
+		};
 	},
 };

@@ -71,6 +71,13 @@ export const receiveMessage = internalMutation({
 		isSignatureValid: v.optional(v.boolean()),
 		signerFingerprint: v.optional(v.string()),
 		signerInstance: v.optional(v.string()),
+		// F1 (D9): mirrored display fields of the inbound SIGNED-but-not-encrypted
+		// PGP verdict, computed by e2ee/verifyInboundSignature on the dispatcher
+		// path for clearsigned bodies. Distinct from the sealed mirror above —
+		// signed plaintext makes no encryption claim. Both optional so every
+		// existing caller (and plaintext mail) is byte-identical.
+		isInboundSignatureValid: v.optional(v.boolean()),
+		inboundSignerFingerprint: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const senderEmail = extractEmail(args.from);
@@ -130,6 +137,8 @@ export const receiveMessage = internalMutation({
 			isSignatureValid: args.isSignatureValid,
 			signerFingerprint: args.signerFingerprint,
 			signerInstance: args.signerInstance,
+			isInboundSignatureValid: args.isInboundSignatureValid,
+			inboundSignerFingerprint: args.inboundSignerFingerprint,
 		});
 		await applyInboxStatsDelta(ctx, null, 'received');
 

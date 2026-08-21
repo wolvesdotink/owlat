@@ -26,6 +26,10 @@ beforeAll(() => {
 // call the auto-imported composables at setup() time, i.e. during mount.
 import DNSRecordPanel from '../DNSRecordPanel.vue';
 import StreamSubdomainPlanPanel from '../StreamSubdomainPlanPanel.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// The panel renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const OFFER_WITHHELD = {
 	offered: false,
@@ -121,6 +125,7 @@ function mountPanel(plan: unknown, canManage = true) {
 	return mount(StreamSubdomainPlanPanel, {
 		props: { domainId: 'domain_1', canManage },
 		global: {
+			plugins: [createTestI18n()],
 			stubs: { Icon: { props: ['name'], template: '<i :data-icon="name" />' } },
 			components: { DomainsDNSRecordPanel: DNSRecordPanel },
 		},

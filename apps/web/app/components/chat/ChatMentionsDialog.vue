@@ -10,6 +10,7 @@ import type { Id } from '@owlat/api/dataModel';
  */
 const emit = defineEmits<{ close: [] }>();
 
+const { t } = useI18n();
 const router = useRouter();
 // withList=true: this panel is the one place that actually wants the 50-row
 // feed, so the composable's lazy `listMyUnreadMentions` subscription opens here.
@@ -28,7 +29,7 @@ const handleOpen = async (mention: {
 </script>
 
 <template>
-	<ChatDialogShell title="Mentions" size="lg" @close="emit('close')">
+	<ChatDialogShell :title="t('components.chat.chatMentionsDialog.title')" size="lg" @close="emit('close')">
 		<div class="flex-1 overflow-y-auto p-3">
 			<div v-if="mentionsLoading" class="flex items-center justify-center py-8">
 				<UiSpinner size="md" />
@@ -42,8 +43,12 @@ const handleOpen = async (mention: {
 				>
 					<Icon name="lucide:at-sign" class="w-5 h-5 text-text-tertiary" />
 				</div>
-				<p class="text-sm font-medium text-text-primary">You're all caught up</p>
-				<p class="text-xs text-text-tertiary mt-1">No unread mentions.</p>
+				<p class="text-sm font-medium text-text-primary">
+					{{ t('components.chat.chatMentionsDialog.emptyTitle') }}
+				</p>
+				<p class="text-xs text-text-tertiary mt-1">
+					{{ t('components.chat.chatMentionsDialog.emptyBody') }}
+				</p>
 			</div>
 			<div v-else class="space-y-1">
 				<button

@@ -13,6 +13,8 @@ interface Props {
 	// True while the kill-switch mutation is in flight.
 	busy?: boolean;
 }
+const { t } = useI18n();
+
 const props = withDefaults(defineProps<Props>(), { busy: false });
 
 const emit = defineEmits<{ confirm: [] }>();
@@ -30,40 +32,46 @@ const handleConfirm = () => {
 		<div class="flex items-start gap-4">
 			<UiIconBox icon="lucide:octagon-x" size="lg" variant="error" rounded="full" />
 			<div class="flex-1">
-				<h3 class="text-base font-semibold text-text-primary">Stop auto-sending now</h3>
+				<h3 class="text-base font-semibold text-text-primary">
+					{{ t('components.autonomy.autonomyKillSwitch.title') }}
+				</h3>
 				<p class="text-sm text-text-secondary mt-1">
-					Instantly revert to <strong>draft-only</strong>: turns off graduated autonomy and the
-					legacy auto-reply, and pulls back any auto-send still in its undo window. The agent keeps
-					drafting replies for you to review — nothing is dropped.
+					<I18nT keypath="components.autonomy.autonomyKillSwitch.body" tag="span" scope="global">
+						<template #mode>
+							<strong>{{ t('components.autonomy.autonomyKillSwitch.bodyMode') }}</strong>
+						</template>
+					</I18nT>
 				</p>
 
 				<UiButton
 					variant="danger"
 					v-if="!showConfirm"
 					data-testid="kill-switch-open"
-					class="bg-error text-white hover:bg-error/90 gap-2 mt-4"
+					class="gap-2 mt-4"
 					:disabled="busy"
 					@click="showConfirm = true"
 				>
 					<Icon name="lucide:octagon-x" class="w-4 h-4" />
-					Stop auto-sending
+					{{ t('components.autonomy.autonomyKillSwitch.stopCta') }}
 				</UiButton>
 
 				<div v-else class="mt-4 flex flex-wrap items-center gap-3">
-					<span class="text-sm text-text-primary font-medium">Revert to draft-only?</span>
+					<span class="text-sm text-text-primary font-medium">
+						{{ t('components.autonomy.autonomyKillSwitch.confirmQuestion') }}
+					</span>
 					<UiButton
 						variant="danger"
 						data-testid="kill-switch-confirm"
-						class="bg-error text-white hover:bg-error/90 gap-2"
+						class="gap-2"
 						:disabled="busy"
 						@click="handleConfirm"
 					>
 						<UiSpinner v-if="busy" size="xs" tone="inverse" />
 						<Icon v-else name="lucide:check" class="w-4 h-4" />
-						Yes, stop now
+						{{ t('components.autonomy.autonomyKillSwitch.confirmCta') }}
 					</UiButton>
 					<UiButton variant="secondary" :disabled="busy" @click="showConfirm = false">
-						Cancel
+						{{ t('common.cancel') }}
 					</UiButton>
 				</div>
 			</div>

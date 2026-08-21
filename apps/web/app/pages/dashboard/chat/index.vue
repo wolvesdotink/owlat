@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Chat — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.chat.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -51,18 +53,20 @@ const handleSelectRoom = (id: Id<'chatRooms'>) => {
 			>
 				<Icon name="lucide:message-circle" class="w-8 h-8 text-text-tertiary" />
 			</div>
-			<h3 class="text-lg font-medium text-text-primary">Team chat</h3>
+			<h3 class="text-lg font-medium text-text-primary">
+				{{ t('dashboard.chat.index.emptyTitle') }}
+			</h3>
 			<p class="text-sm text-text-secondary mt-1 max-w-sm">
-				Pick a channel or DM from the sidebar, or start something new.
+				{{ t('dashboard.chat.index.emptyDescription') }}
 			</p>
 			<div class="mt-6 flex gap-3">
 				<UiButton variant="secondary" class="gap-2" @click="showBrowseChannels = true">
 					<Icon name="lucide:hash" class="w-4 h-4" />
-					Browse channels
+					{{ t('dashboard.chat.index.browseChannels') }}
 				</UiButton>
 				<UiButton class="gap-2" @click="showCreateChannel = true">
 					<Icon name="lucide:plus" class="w-4 h-4" />
-					New channel
+					{{ t('dashboard.chat.index.newChannel') }}
 				</UiButton>
 			</div>
 		</div>

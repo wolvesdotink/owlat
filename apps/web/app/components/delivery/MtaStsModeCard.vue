@@ -16,6 +16,7 @@ import { isMtaStsMode, type MtaStsMode } from '@owlat/shared/mtaStsPolicy';
  * bytes live on the Domains page (the `_mta-sts` TXT + `mta-sts` records).
  */
 
+const { t } = useI18n();
 const { canManageOrganization } = usePermissions();
 const { showToast } = useToast();
 
@@ -33,7 +34,7 @@ const mode = computed<MtaStsMode>(() => settings.value?.mtaStsMode ?? 'none');
 
 const { run: updateSettings, isLoading: isSaving } = useBackendOperation(
 	api.workspaces.settings.update,
-	{ label: 'Update MTA-STS mode' }
+	{ label: () => t('components.delivery.mtaStsModeCard.updateOperation') }
 );
 
 // All segments disable together for a non-admin (or while a save is in flight):
@@ -41,18 +42,24 @@ const { run: updateSettings, isLoading: isSaving } = useBackendOperation(
 const options = computed(() => {
 	const locked = !canManageOrganization.value || isSaving.value;
 	return [
-		{ value: 'none', label: 'Off', disabled: locked },
-		{ value: 'testing', label: 'Testing', disabled: locked },
-		{ value: 'enforce', label: 'Enforce', disabled: locked },
+		{ value: 'none', label: t('components.delivery.mtaStsModeCard.modes.none'), disabled: locked },
+		{
+			value: 'testing',
+			label: t('components.delivery.mtaStsModeCard.modes.testing'),
+			disabled: locked,
+		},
+		{
+			value: 'enforce',
+			label: t('components.delivery.mtaStsModeCard.modes.enforce'),
+			disabled: locked,
+		},
 	];
 });
 
-const DESCRIPTIONS: Record<MtaStsMode, string> = {
-	none: 'No policy is published. Senders deliver mail to you exactly as they do today.',
-	testing:
-		'A policy is published, but senders only report TLS problems — they never fail delivery. The safe first step while you watch for issues.',
-	enforce:
-		'Senders must deliver over verified TLS or the message is rejected. Turn this on only once testing looks clean.',
+const DESCRIPTION_KEYS: Record<MtaStsMode, string> = {
+	none: 'components.delivery.mtaStsModeCard.descriptions.none',
+	testing: 'components.delivery.mtaStsModeCard.descriptions.testing',
+	enforce: 'components.delivery.mtaStsModeCard.descriptions.enforce',
 };
 
 // Enforce is published but there's no mail host to serve a policy for — the
@@ -64,12 +71,12 @@ const enforceWithoutHost = computed(
 	() => mode.value === 'enforce' && guidance.value != null && !guidance.value.mailHost
 );
 
-// Confirmation toast per saved mode (kept beside DESCRIPTIONS so the two copies
-// can't drift; one map instead of a nested ternary).
-const SAVED_TOASTS: Record<MtaStsMode, string> = {
-	none: 'MTA-STS turned off — no policy is published.',
-	testing: 'MTA-STS set to testing — senders will report TLS problems without failing delivery.',
-	enforce: 'MTA-STS set to enforce — publish the DNS records so senders require verified TLS.',
+// Confirmation toast per saved mode (kept beside DESCRIPTION_KEYS so the two
+// copies can't drift; one map instead of a nested ternary).
+const SAVED_TOAST_KEYS: Record<MtaStsMode, string> = {
+	none: 'components.delivery.mtaStsModeCard.savedToasts.none',
+	testing: 'components.delivery.mtaStsModeCard.savedToasts.testing',
+	enforce: 'components.delivery.mtaStsModeCard.savedToasts.enforce',
 };
 
 async function selectMode(next: string) {
@@ -77,7 +84,7 @@ async function selectMode(next: string) {
 	if (!isMtaStsMode(next) || !canManageOrganization.value || next === mode.value) return;
 	const res = await updateSettings({ mtaStsMode: next });
 	if (res === undefined) return; // failure already toasted
-	showToast(SAVED_TOASTS[next]);
+	showToast(t(SAVED_TOAST_KEYS[next]));
 }
 </script>
 
@@ -87,9 +94,11 @@ async function selectMode(next: string) {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:lock" size="sm" variant="surface" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">Inbound TLS policy (MTA-STS)</h2>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('components.delivery.mtaStsModeCard.title') }}
+					</h2>
 					<p class="text-sm text-text-secondary">
-						Let senders require encrypted delivery to your mail server
+						{{ t('components.delivery.mtaStsModeCard.subtitle') }}
 					</p>
 				</div>
 			</div>
@@ -99,11 +108,13 @@ async function selectMode(next: string) {
 			<!-- Loading -->
 			<div v-if="isLoading" class="flex items-center gap-3 py-2">
 				<UiSpinner size="sm" />
-				<span class="text-sm text-text-secondary">Loading policy…</span>
+				<span class="text-sm text-text-secondary">{{
+					t('components.delivery.mtaStsModeCard.loading')
+				}}</span>
 			</div>
 
 			<template v-else>
-				<div role="group" aria-label="MTA-STS mode">
+				<div role="group" :aria-label="t('components.delivery.mtaStsModeCard.modeGroup')">
 					<UiSegmentedControl
 						:options="options"
 						:model-value="mode"
@@ -111,27 +122,36 @@ async function selectMode(next: string) {
 					/>
 				</div>
 
-				<p class="text-sm text-text-secondary">{{ DESCRIPTIONS[mode] }}</p>
+				<p class="text-sm text-text-secondary">{{ t(DESCRIPTION_KEYS[mode]) }}</p>
 
 				<!-- Once a policy is published, point at the DNS records to add. -->
-				<p v-if="mode !== 'none'" class="text-sm text-text-secondary">
-					Add the <code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">_mta-sts</code> and
-					<code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">mta-sts</code> DNS records on
-					the
-					<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline"
-						>Domains page</NuxtLink
-					>
-					so senders can find and trust this policy.
-				</p>
+				<I18nT
+					v-if="mode !== 'none'"
+					keypath="components.delivery.mtaStsModeCard.dnsRecords"
+					tag="p"
+					class="text-sm text-text-secondary"
+					scope="global"
+				>
+					<template #policyRecord>
+						<code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">_mta-sts</code>
+					</template>
+					<template #hostRecord>
+						<code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">mta-sts</code>
+					</template>
+					<template #domainsLink>
+						<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">{{
+							t('components.delivery.mtaStsModeCard.domainsLink')
+						}}</NuxtLink>
+					</template>
+				</I18nT>
 
 				<!-- Honest warning: enforce with no mail host can't take effect. -->
 				<p v-if="enforceWithoutHost" class="text-sm text-warning">
-					No inbound mail host is configured, so an enforced policy can't be served yet. Set up
-					receiving first, or switch back to testing.
+					{{ t('components.delivery.mtaStsModeCard.enforceWithoutHost') }}
 				</p>
 
 				<p v-if="!canManageOrganization" class="text-xs text-text-tertiary">
-					Only owners and admins can change this.
+					{{ t('components.delivery.mtaStsModeCard.adminsOnly') }}
 				</p>
 			</template>
 		</div>

@@ -1,11 +1,43 @@
 import {
-	fcrdnsReasonMessage,
 	isFcrdnsVerdict,
 	reverseDnsGuidance,
 	type FcrdnsFailureReason,
 } from '@owlat/shared/fcrdns';
 import type { DnsblStatus, IpReadinessBlockReason } from '@owlat/shared/ipReadiness';
 import type { HealthTone } from './healthTone';
+
+/**
+ * The words this module hands back are catalog KEYS — it is module scope and
+ * never calls `useI18n`, so `SendingDetails.vue` is the render boundary that
+ * turns them into sentences.
+ *
+ * WHY THE FCrDNS SENTENCES ARE KEYED HERE rather than read from
+ * `@owlat/shared/fcrdns`. That package is shared with the backend (it words the
+ * same verdict for the MTA's own logs and for API responses) and is not part of
+ * the UI catalog, so calling `fcrdnsReasonMessage` here would paint one English
+ * sentence into an otherwise translated panel. The reason → key map below is the
+ * same set of verdicts with the same copy, worded from the catalog instead.
+ */
+const FCRDNS_REASON_KEYS: Readonly<Record<FcrdnsFailureReason, string>> = {
+	'no-ptr': 'shared.outboundIpStatus.identity.noPtr',
+	'ptr-not-fqdn': 'shared.outboundIpStatus.identity.notFqdn',
+	'forward-mismatch': 'shared.outboundIpStatus.identity.forwardMismatch',
+	'ehlo-mismatch': 'shared.outboundIpStatus.identity.ehloMismatch',
+	'lookup-error': 'shared.outboundIpStatus.identity.lookupError',
+};
+
+/** The identity half of the detail line, as its catalog key. */
+function fcrdnsReasonKey(reason: FcrdnsFailureReason | undefined): string {
+	return (
+		(reason === undefined ? undefined : FCRDNS_REASON_KEYS[reason]) ??
+		'shared.outboundIpStatus.identity.ready'
+	);
+}
+
+/** The last path segment of an identity key — how the combined lines are named. */
+function detailVariant(identityKey: string): string {
+	return identityKey.slice(identityKey.lastIndexOf('.') + 1);
+}
 
 export interface OutboundIpIdentityInput {
 	active: boolean;
@@ -22,8 +54,11 @@ export interface OutboundIpIdentityInput {
 
 export interface OutboundIpPresentation {
 	tone: HealthTone;
+	/** Catalog key for the chip label. */
 	label: string;
+	/** Catalog key for the one-line explanation under the chip. */
 	detail: string;
+	/** Catalog key for the fix-it line, or `null` when there is nothing to do. */
 	remediation: string | null;
 }
 
@@ -43,78 +78,84 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 	let label: string;
 	if (sourceAddressBlocked) {
 		tone = 'error';
-		label = 'Source address unavailable';
+		label = 'shared.outboundIpStatus.label.sourceAddress';
 	} else if (spfBlocked) {
 		tone = 'error';
-		label = 'IPv6 SPF prerequisite';
+		label = 'shared.outboundIpStatus.label.spf';
 	} else if (ipv4IdentityBlocked) {
 		tone = 'error';
-		label = 'IPv4 prerequisite';
+		label = 'shared.outboundIpStatus.label.ipv4';
 	} else if (identityBlocked && dnsblBlocked) {
 		tone = 'error';
-		label = 'Identity + blocklist';
+		label = 'shared.outboundIpStatus.label.identityAndBlocklist';
 	} else if (dnsblBlocked) {
 		tone = 'error';
-		label = ip.dnsbl === 'unknown' ? 'Blocklist check unavailable' : 'Blocklisted';
+		label =
+			ip.dnsbl === 'unknown'
+				? 'shared.outboundIpStatus.label.blocklistUnavailable'
+				: 'shared.outboundIpStatus.label.blocklisted';
 	} else if (identityBlocked) {
 		tone = 'error';
-		label = 'Identity quarantined';
+		label = 'shared.outboundIpStatus.label.identityQuarantined';
 	} else if (identity?.isOverridden) {
 		tone = 'warning';
-		label = 'Lab override';
+		label = 'shared.outboundIpStatus.label.labOverride';
 	} else if (!ip.active) {
 		tone = 'error';
-		label = 'Unavailable';
+		label = 'shared.outboundIpStatus.label.unavailable';
 	} else if (!identity || !isFcrdnsVerdict(identity.verdict) || identity.verdict === 'error') {
 		tone = 'error';
-		label = 'Not verified';
+		label = 'shared.outboundIpStatus.label.notVerified';
 	} else if (dnsblUnavailable) {
 		tone = 'error';
-		label = 'Blocklist check unavailable';
+		label = 'shared.outboundIpStatus.label.blocklistUnavailable';
 	} else if (dnsblDegraded) {
 		tone = 'warning';
-		label = 'Blocklist warning';
+		label = 'shared.outboundIpStatus.label.blocklistWarning';
 	} else if (identity.verdict === 'warn') {
 		tone = 'warning';
-		label = 'Needs attention';
+		label = 'shared.outboundIpStatus.label.needsAttention';
 	} else {
 		tone = 'success';
-		label = 'Ready';
+		label = 'shared.outboundIpStatus.label.ready';
 	}
 
 	const identityDetail = !identity
-		? 'Waiting for the first live reverse-DNS check.'
+		? 'shared.outboundIpStatus.identity.waiting'
 		: identity.isGenericPtr
-			? 'Forward DNS is valid, but this provider-default PTR can hurt sending reputation.'
-			: fcrdnsReasonMessage(identity.reason as FcrdnsFailureReason | undefined);
+			? 'shared.outboundIpStatus.identity.genericPtr'
+			: fcrdnsReasonKey(identity.reason as FcrdnsFailureReason | undefined);
 	const blocklistDetail =
 		ip.dnsbl === 'unknown'
-			? 'The latest DNS blocklist lookup failed, so the prior safety decision is preserved.'
+			? 'shared.outboundIpStatus.blocklist.unavailable'
 			: ip.dnsbl === 'degraded'
-				? 'A non-critical DNS blocklist currently lists this IP.'
-				: 'A critical DNS blocklist currently excludes this IP from delivery.';
+				? 'shared.outboundIpStatus.blocklist.degraded'
+				: 'shared.outboundIpStatus.blocklist.critical';
 	const hasBlocklistConcern = dnsblBlocked || dnsblUnavailable || dnsblDegraded;
 	const detail = sourceAddressBlocked
-		? 'Outbound IPv6 stays quarantined because the MTA cannot bind and route this source address.'
+		? 'shared.outboundIpStatus.detail.sourceAddress'
 		: spfBlocked
-			? 'Outbound IPv6 stays quarantined until the return-path SPF record authorizes its exact ip6: address.'
+			? 'shared.outboundIpStatus.detail.spf'
 			: ipv4IdentityBlocked
-				? 'Outbound IPv6 stays quarantined until every configured IPv4 identity passes FCrDNS.'
+				? 'shared.outboundIpStatus.detail.ipv4'
 				: identityBlocked && dnsblBlocked
-					? `${identityDetail} ${blocklistDetail}`
+					? // Both halves are on screen as one line, and a line is not assembled
+						// from translated fragments (their order is a per-language decision),
+						// so each pairing is its own message.
+						`shared.outboundIpStatus.combined.${detailVariant(identityDetail)}.${detailVariant(blocklistDetail)}`
 					: hasBlocklistConcern
 						? blocklistDetail
 						: identityDetail;
 	const remediation = sourceAddressBlocked
-		? 'Assign and route the IPv6 address on the MTA host/container, then run readiness again.'
+		? 'shared.outboundIpStatus.remediation.sourceAddress'
 		: spfBlocked
-			? 'Publish the generated ip6: mechanism on the return-path domain, then verify again.'
+			? 'shared.outboundIpStatus.remediation.spf'
 			: ipv4IdentityBlocked
-				? 'Repair the IPv4 PTR, forward A record, and EHLO alignment before enabling IPv6.'
+				? 'shared.outboundIpStatus.remediation.ipv4'
 				: identityBlocked && identity
-					? reverseDnsGuidance(identity.ptrNames).instruction
+					? `shared.outboundIpStatus.remediation.${reverseDnsGuidance(identity.ptrNames).provider}`
 					: hasBlocklistConcern
-						? 'Review the MTA blocklist details, resolve the listing cause, and request delisting.'
+						? 'shared.outboundIpStatus.remediation.blocklist'
 						: null;
 
 	return { tone, label, detail, remediation };

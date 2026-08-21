@@ -5,11 +5,18 @@
  * mutation would fire (which schedules cron entries and warms the step
  * walker). The seed leaves the automation in 'active' but the walker only
  * acts on new contact_created events; existing seeded contacts won't re-fire.
+ *
+ * That "only new events" caveat is exactly why a REAL install runs this loader
+ * INERT (`options.inert`): the fixture automation triggers on `contact_created`
+ * and sends a "Summer sale" template, and `automations/triggers.ts` fans out to
+ * every active automation with no seed-tag filter — so on a live instance the
+ * next genuine signup would receive a demo promo. Inert mode writes the
+ * automation `paused` with no `activatedAt`, which the fanout skips.
  */
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
-import { SEED_TAG, type LoadResult, type Loader, type SeedRefs } from './types';
+import { SEED_TAG, type LoadResult, type Loader, type LoaderOptions, type SeedRefs } from './types';
 
 type TriggerType = 'contact_created' | 'contact_updated' | 'event_received' | 'topic_subscribed';
 type AutomationStatus = 'draft' | 'active' | 'paused';
@@ -27,6 +34,7 @@ async function load(
 	ctx: MutationCtx,
 	rawRecords: unknown[],
 	refs: SeedRefs,
+	options: LoaderOptions
 ): Promise<LoadResult> {
 	const records = rawRecords as AutomationFixture[];
 	let inserted = 0;
@@ -45,12 +53,16 @@ async function load(
 			continue;
 		}
 
+		// Inert mode never writes a live automation, whatever the fixture says.
+		const status: AutomationStatus =
+			options.inert && rec.status === 'active' ? 'paused' : rec.status;
+
 		const automationId = await ctx.db.insert('automations', {
 			name: rec.name,
 			description: rec.description,
 			triggerType: rec.triggerType,
-			status: rec.status,
-			activatedAt: rec.status === 'active' ? now : undefined,
+			status,
+			activatedAt: status === 'active' ? now : undefined,
 			seedTag: SEED_TAG,
 			createdAt: now,
 			updatedAt: now,
@@ -58,7 +70,9 @@ async function load(
 
 		for (let idx = 0; idx < rec.steps.length; idx++) {
 			const step = rec.steps[idx]!;
-			const templateId = refs['emailTemplates']?.[step.template] as Id<'emailTemplates'> | undefined;
+			const templateId = refs['emailTemplates']?.[step.template] as
+				| Id<'emailTemplates'>
+				| undefined;
 			if (!templateId) continue;
 			await ctx.db.insert('automationSteps', {
 				automationId,

@@ -8,6 +8,15 @@ import {
 	senderSelectionProblem,
 	type PickerSender,
 } from '../campaignSenderPicker';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The custom-address option is copy the module cannot translate itself, so it
+ * carries a catalog key; rendering it through the real English catalog keeps
+ * this assertion on the label a person reads.
+ */
+const { t } = createTestI18n().global;
+const CUSTOM_LABEL_KEY = 'shared.campaignSenderPicker.customAddress';
 
 const news: PickerSender = { _id: 's1', email: 'news@acme.com', displayName: 'Acme News' };
 const support: PickerSender = { _id: 's2', email: 'support@acme.com' };
@@ -48,12 +57,13 @@ describe('buildSenderOptions — custom visibility per toggle', () => {
 		const options = buildSenderOptions([news], true);
 		expect(options).toHaveLength(2);
 		const last = options[options.length - 1];
-		expect(last).toEqual({ value: CUSTOM_SENDER_VALUE, label: 'Custom address…' });
+		expect(last).toEqual({ value: CUSTOM_SENDER_VALUE, label: CUSTOM_LABEL_KEY });
+		expect(t(CUSTOM_LABEL_KEY)).toBe('Custom address…');
 	});
 
 	it('with no curated senders, offers just the custom option when allowed', () => {
 		expect(buildSenderOptions([], true)).toEqual([
-			{ value: CUSTOM_SENDER_VALUE, label: 'Custom address…' },
+			{ value: CUSTOM_SENDER_VALUE, label: CUSTOM_LABEL_KEY },
 		]);
 	});
 

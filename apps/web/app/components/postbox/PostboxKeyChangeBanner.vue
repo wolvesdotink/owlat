@@ -28,8 +28,10 @@ const emit = defineEmits<{
 	accepted: [];
 }>();
 
+const { t } = useI18n();
+
 const reaccept = useBackendOperation(api.e2ee.recipientKeys.reacceptKeyChange, {
-	label: 'accept-recipient-key',
+	label: () => t('components.postbox.postboxKeyChangeBanner.acceptOperation'),
 });
 
 // Re-pinning a changed key is an `adminMutation` (E2): only owners/admins can
@@ -64,25 +66,28 @@ async function accept() {
 		<div class="flex items-start gap-2.5">
 			<Icon name="lucide:key-round" class="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
 			<div class="min-w-0">
-				<p class="text-sm text-text-primary font-medium">This person's sealing key changed</p>
+				<p class="text-sm text-text-primary font-medium">
+					{{ t('components.postbox.postboxKeyChangeBanner.title') }}
+				</p>
 				<p class="mt-1 text-xs text-text-secondary max-w-prose">
-					The key Owlat uses to seal mail to {{ address }} is different from the one you trusted
-					before. Until you confirm the new key, messages to them are sent normally instead of
-					sealed. Only accept it if you were expecting this change.
+					{{ t('components.postbox.postboxKeyChangeBanner.body', { address }) }}
 				</p>
 				<dl v-if="oldShort || newShort" class="mt-1.5 text-xs text-text-tertiary space-y-0.5">
 					<div v-if="oldShort" class="flex gap-2">
-						<dt class="w-20 flex-shrink-0">Previous key</dt>
+						<dt class="w-20 flex-shrink-0">
+							{{ t('components.postbox.postboxKeyChangeBanner.previousKey') }}
+						</dt>
 						<dd class="font-mono">{{ oldShort }}</dd>
 					</div>
 					<div v-if="newShort" class="flex gap-2">
-						<dt class="w-20 flex-shrink-0">New key</dt>
+						<dt class="w-20 flex-shrink-0">
+							{{ t('components.postbox.postboxKeyChangeBanner.newKey') }}
+						</dt>
 						<dd class="font-mono">{{ newShort }}</dd>
 					</div>
 				</dl>
 				<p v-if="errored" class="mt-1.5 text-xs text-error" data-testid="key-change-error">
-					Couldn't accept the new key. It may have already been accepted by someone else — try
-					reopening this thread.
+					{{ t('components.postbox.postboxKeyChangeBanner.error') }}
 				</p>
 				<div v-if="isAdmin" class="mt-2 flex items-center gap-2">
 					<UiButton
@@ -92,11 +97,15 @@ async function accept() {
 						:disabled="reaccept.isLoading.value"
 						@click="accept"
 					>
-						{{ reaccept.isLoading.value ? 'Accepting…' : 'Accept new key' }}
+						{{
+							reaccept.isLoading.value
+								? t('components.postbox.postboxKeyChangeBanner.accepting')
+								: t('components.postbox.postboxKeyChangeBanner.accept')
+						}}
 					</UiButton>
 				</div>
 				<p v-else class="mt-2 text-xs text-text-secondary" data-testid="key-change-admin-only">
-					Ask a workspace admin to review this key change before sealed mail resumes to this person.
+					{{ t('components.postbox.postboxKeyChangeBanner.adminOnly') }}
 				</p>
 			</div>
 		</div>

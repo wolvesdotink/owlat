@@ -2,13 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the renderer composable. `vi.hoisted` makes the spies exist before the
 // hoisted `vi.mock` factory references them.
-const { renderBlocksToHtml, buildHtmlTranslationsForEmail } = vi.hoisted(() => ({
-	renderBlocksToHtml: vi.fn(),
-	buildHtmlTranslationsForEmail: vi.fn(),
-}));
+const { renderBlocksToHtml, renderBlocksToPlainText, buildHtmlTranslationsForEmail } = vi.hoisted(
+	() => ({
+		renderBlocksToHtml: vi.fn(),
+		renderBlocksToPlainText: vi.fn(),
+		buildHtmlTranslationsForEmail: vi.fn(),
+	})
+);
 
 vi.mock('../useEmailHtmlRendering', () => ({
-	useEmailHtmlRendering: () => ({ renderBlocksToHtml, buildHtmlTranslationsForEmail }),
+	useEmailHtmlRendering: () => ({
+		renderBlocksToHtml,
+		renderBlocksToPlainText,
+		buildHtmlTranslationsForEmail,
+	}),
 }));
 
 import { publishableEmailSave } from '../publishableEmailSave';
@@ -26,6 +33,7 @@ const block = (id: string, savedBlockId?: string): EditorBlock =>
 describe('publishableEmailSave', () => {
 	beforeEach(() => {
 		renderBlocksToHtml.mockReset().mockReturnValue('<html>rendered</html>');
+		renderBlocksToPlainText.mockReset().mockReturnValue('rendered text');
 		buildHtmlTranslationsForEmail
 			.mockReset()
 			.mockResolvedValue({ de: { htmlContent: '<de>', subject: 'Betreff' } });
@@ -71,6 +79,8 @@ describe('publishableEmailSave', () => {
 			htmlContent: '<html>rendered</html>',
 			htmlTranslations: JSON.stringify({ de: { htmlContent: '<de>', subject: 'Betreff' } }),
 			linkedBlockIds: ['b1', 'b2'],
+			plainTextContent: 'rendered text',
+			plainTextOverride: '',
 		});
 	});
 
@@ -94,6 +104,8 @@ describe('publishableEmailSave', () => {
 			htmlContent: '<html>rendered</html>',
 			htmlTranslations: '{}',
 			linkedBlockIds: [],
+			plainTextContent: 'rendered text',
+			plainTextOverride: '',
 		});
 	});
 
@@ -123,6 +135,33 @@ describe('publishableEmailSave', () => {
 			htmlContent: '<html>rendered</html>',
 			htmlTranslations: JSON.stringify({ de: { htmlContent: '<de-new>', subject: 'Betreff' } }),
 			linkedBlockIds: [],
+			plainTextContent: 'rendered text',
+			plainTextOverride: '',
 		});
+	});
+
+	it('passes the author override to the plain-text renderer and persists it', async () => {
+		buildHtmlTranslationsForEmail.mockResolvedValue({});
+		renderBlocksToPlainText.mockReturnValue('My own words');
+		const update = vi.fn().mockResolvedValue(undefined);
+		const blocks = [block('1')];
+
+		await publishableEmailSave({
+			identifier: { emailType: 'marketing', emailId: 'tmpl_1' as EmailIdentifier['emailId'] },
+			blocks,
+			renderOptions: { variableType: 'personalization' },
+			supportedLanguages: [],
+			defaultLanguage: 'en',
+			plainTextOverride: 'My own words',
+			update,
+		});
+
+		expect(renderBlocksToPlainText).toHaveBeenCalledWith(blocks, 'My own words');
+		expect(update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				plainTextContent: 'My own words',
+				plainTextOverride: 'My own words',
+			})
+		);
 	});
 });

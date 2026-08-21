@@ -1,161 +1,68 @@
 <script setup lang="ts">
-import {
-	SETUP_WIZARD_STEPS,
-	SMTP_RELAY_PRESETS,
-	buildProviderEnv,
-	type EmailStepDraft,
-	type ProviderChoice,
-	type SmtpPreset,
-} from '~/composables/useSetupWizard';
-import { emailStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
-import { getActiveProfiles } from '@owlat/shared/featureFlags';
+import { SETUP_WIZARD_STEPS, buildProviderEnv } from '~/composables/useSetupWizard';
+import { emailStepIsValid } from '~/composables/setupWizardValidation';
+import { useSetupEmailStepForm } from '~/composables/useSetupEmailStepForm';
 
 definePageMeta({ layout: false });
-useHead({ title: 'Owlat setup — Email provider' });
+
+const { t } = useI18n();
+
+useHead({ title: () => t('setup.email.pageTitle') });
 
 const router = useRouter();
 const { env, flags, requiresProvider, setupToken, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'email');
 
-// Seed from prior values so navigating back does not wipe operator input.
-const initialProvider = (env.value['EMAIL_PROVIDER'] as ProviderChoice | undefined) ?? null;
-const provider = ref<ProviderChoice>(initialProvider ?? (requiresProvider.value ? 'mta' : 'none'));
-const mtaProfileEnabled = computed(() =>
-	getActiveProfiles(flags.value, { deliveryProvider: provider.value }).includes('mta')
+// `SETUP_WIZARD_STEPS` carries message KEYS (it is built at module scope); the
+// indicator renders display text, so resolve them here — as a computed, so the
+// labels follow a locale switch instead of freezing at setup.
+const displaySteps = computed(() =>
+	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
 );
-const transactionalIps = ref(env.value['IP_POOLS_TRANSACTIONAL'] ?? '');
-const campaignIps = ref(env.value['IP_POOLS_CAMPAIGN'] ?? '');
-const ehloHostname = ref(env.value['EHLO_HOSTNAME'] ?? '');
-const ehloHostnames = ref(env.value['EHLO_HOSTNAMES'] ?? '');
-const resendKey = ref(env.value['RESEND_API_KEY'] ?? '');
-const emailitKey = ref(env.value['EMAILIT_API_KEY'] ?? '');
-const mandrillKey = ref(env.value['MANDRILL_API_KEY'] ?? '');
-const sesRegion = ref(env.value['AWS_SES_REGION'] ?? 'us-east-1');
-const sesAccess = ref(env.value['AWS_SES_ACCESS_KEY_ID'] ?? '');
-const sesSecret = ref(env.value['AWS_SES_SECRET_ACCESS_KEY'] ?? '');
-const fromEmail = ref(env.value['DEFAULT_FROM_EMAIL'] ?? '');
-const fromName = ref(env.value['DEFAULT_FROM_NAME'] ?? '');
 
-// Restore a matching relay preset, otherwise fall back to Custom.
-const initialSmtpHost = env.value['SMTP_RELAY_HOST'] ?? '';
-const initialSmtpPreset: SmtpPreset = (() => {
-	if (!initialSmtpHost) return 'mailgun';
-	const match = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).find(
-		(p) => p !== 'custom' && SMTP_RELAY_PRESETS[p].host === initialSmtpHost
-	);
-	return match ?? 'custom';
-})();
-const smtpPreset = ref<SmtpPreset>(initialSmtpPreset);
-const smtpHost = ref(initialSmtpHost || SMTP_RELAY_PRESETS[initialSmtpPreset].host);
-const smtpPort = ref(env.value['SMTP_RELAY_PORT'] ?? SMTP_RELAY_PRESETS[initialSmtpPreset].port);
-const smtpSecure = ref(
-	env.value['SMTP_RELAY_SECURE'] !== undefined
-		? env.value['SMTP_RELAY_SECURE'] === 'true'
-		: SMTP_RELAY_PRESETS[initialSmtpPreset].secure
-);
-const smtpUsername = ref(env.value['SMTP_RELAY_USERNAME'] ?? '');
-const smtpPassword = ref(env.value['SMTP_RELAY_PASSWORD'] ?? '');
-
-const smtpPresetOptions = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).map((key) => ({
-	value: key,
-	label: SMTP_RELAY_PRESETS[key].label,
-}));
-
-watch(smtpPreset, (preset) => {
-	if (preset === 'custom') return;
-	const cfg = SMTP_RELAY_PRESETS[preset];
-	smtpHost.value = cfg.host;
-	smtpPort.value = cfg.port;
-	smtpSecure.value = cfg.secure;
-});
+// Field state, the SMTP relay presets, the transport choice cards and the
+// validated draft they add up to — see `useSetupEmailStepForm`.
+const {
+	provider,
+	mtaProfileEnabled,
+	transactionalIps,
+	campaignIps,
+	ehloHostname,
+	ehloHostnames,
+	resendKey,
+	emailitKey,
+	mandrillKey,
+	sesRegion,
+	sesAccess,
+	sesSecret,
+	fromEmail,
+	fromName,
+	smtpPreset,
+	smtpHost,
+	smtpPort,
+	smtpSecure,
+	smtpUsername,
+	smtpPassword,
+	smtpPresetOptions,
+	providerOptions,
+	draft,
+	errors,
+} = useSetupEmailStepForm({ env, flags, requiresProvider });
 
 const submitting = ref(false);
 const submitted = ref(false);
 const generalError = ref('');
 
-const draft = computed<EmailStepDraft>(() => ({
-	provider: provider.value,
-	requiresProvider: requiresProvider.value,
-	resendKey: resendKey.value,
-	emailitKey: emailitKey.value,
-	mandrillKey: mandrillKey.value,
-	ses: { region: sesRegion.value, accessKeyId: sesAccess.value, secretAccessKey: sesSecret.value },
-	smtp: {
-		preset: smtpPreset.value,
-		host: smtpHost.value,
-		port: smtpPort.value,
-		secure: smtpSecure.value,
-		username: smtpUsername.value,
-		password: smtpPassword.value,
-	},
-	mtaProfileEnabled: mtaProfileEnabled.value,
-	mtaIdentity: {
-		transactionalIps: transactionalIps.value,
-		campaignIps: campaignIps.value,
-		ehloHostname: ehloHostname.value,
-		ehloHostnames: ehloHostnames.value,
-	},
-	fromEmail: fromEmail.value,
-	fromName: fromName.value,
-}));
-
-// Inline field errors surface after an advance attempt.
-const errors = computed(() => validateEmailStep(draft.value));
+// Inline field errors surface after an advance attempt; the rules module reports
+// message keys (an already-translated string passes through `t` unchanged).
 const showErrors = computed(() => submitted.value);
+function errorText(value: string | undefined): string | undefined {
+	return value ? t(value) : undefined;
+}
 
 // A live provider check (Resend / SMTP) calls a privileged setup endpoint, which
 // requires the one-time setup token echoed in the X-Setup-Token header.
 const needsLiveCheck = computed(() => ['resend', 'emailit', 'smtp'].includes(provider.value));
-
-const providerOptions = computed(() => {
-	const base: { value: ProviderChoice; label: string; hint: string; icon: string }[] = [
-		{
-			value: 'mta',
-			label: 'Run your own MTA',
-			hint: 'Full control, no third party. Needs port 25 open and a clean sending IP, plus your sending domain + DKIM.',
-			icon: 'lucide:server',
-		},
-		{
-			value: 'ses',
-			label: 'Amazon SES',
-			hint: 'Managed deliverability, cheap at scale. Needs an AWS account.',
-			icon: 'lucide:cloud',
-		},
-		{
-			value: 'smtp',
-			label: 'SMTP relay',
-			hint: 'Bring the provider you already pay for — Mailgun, Postmark, SendGrid, Brevo, or any custom SMTP server.',
-			icon: 'lucide:route',
-		},
-		{
-			value: 'resend',
-			label: 'Resend',
-			hint: 'Managed API with a generous free tier. Great developer experience.',
-			icon: 'lucide:zap',
-		},
-		{
-			value: 'mandrill',
-			label: 'Mailchimp Transactional (Mandrill)',
-			hint: 'Coming from Mailchimp? Keep the sending reputation you already have, then move onto your own MTA at your own pace.',
-			icon: 'lucide:shuffle',
-		},
-		{
-			value: 'emailit',
-			label: 'Emailit',
-			hint: 'Managed email API with signed delivery feedback and idempotent sends.',
-			icon: 'lucide:send',
-		},
-	];
-	if (!requiresProvider.value) {
-		base.push({
-			value: 'none',
-			label: 'No delivery provider (receive-only / IMAP-only)',
-			hint: 'Read external mailboxes; no marketing or transactional. System/auth email still needs a transport.',
-			icon: 'lucide:inbox',
-		});
-	}
-	return base;
-});
 
 async function next() {
 	submitted.value = true;
@@ -166,8 +73,7 @@ async function next() {
 	// early with a clear message rather than firing an inevitable 401.
 	const token = setupToken.value.trim();
 	if (needsLiveCheck.value && token === '') {
-		generalError.value =
-			'Enter the setup token printed by `owlat setup` to verify the provider, then try again.';
+		generalError.value = t('setup.email.errors.missingToken');
 		return;
 	}
 	const setupHeaders = { 'X-Setup-Token': token };
@@ -224,7 +130,7 @@ async function next() {
 		env.value = buildProviderEnv(env.value, draft.value);
 		router.push('/setup/admin');
 	} catch (e) {
-		generalError.value = (e as Error).message || 'Could not validate the provider. Try again.';
+		generalError.value = (e as Error).message || t('setup.email.errors.validationFailed');
 	} finally {
 		submitting.value = false;
 	}
@@ -238,22 +144,30 @@ async function next() {
 		<div class="relative mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
-				<span class="lp-eyebrow">Owlat setup</span>
+				<span class="lp-eyebrow">{{ t('setup.email.eyebrow') }}</span>
 			</div>
 
 			<UiStepIndicator
 				class="mb-10"
-				:steps="SETUP_WIZARD_STEPS"
+				:steps="displaySteps"
 				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
 				:is-connector-highlighted="isConnectorHighlighted"
 				:on-step-click="goToStep"
 			/>
 
 			<header class="mb-6">
-				<h1 class="text-3xl font-medium tracking-[-0.02em] mb-2">How should Owlat send <span class="lp-title-accent">mail</span>?</h1>
+				<I18nT
+					keypath="setup.email.title"
+					tag="h1"
+					scope="global"
+					class="text-3xl font-medium tracking-[-0.02em] mb-2"
+				>
+					<template #accent>
+						<span class="lp-title-accent">{{ t('setup.email.titleAccent') }}</span>
+					</template>
+				</I18nT>
 				<p class="text-text-secondary leading-relaxed">
-					Three honest ways to send: run your own mail server for full control, hand delivery to
-					Amazon SES, or relay through an SMTP provider you already pay for.
+					{{ t('setup.email.intro') }}
 				</p>
 			</header>
 
@@ -265,19 +179,19 @@ async function next() {
 						<UiErrorAlert
 							v-if="requiresProvider"
 							variant="info"
-							title="A delivery provider is required"
-							message="You enabled campaigns, transactional, or automations — these send through a delivery provider, so one is required."
+							:title="t('setup.email.providerRequiredTitle')"
+							:message="t('setup.email.providerRequiredMessage')"
 						/>
 						<UiErrorAlert
 							v-else
 							variant="info"
-							title="A delivery provider is optional"
-							message="No bulk sending is enabled. Note that system/auth emails (password reset, invitations) still need a transport."
+							:title="t('setup.email.providerOptionalTitle')"
+							:message="t('setup.email.providerOptionalMessage')"
 						/>
 					</div>
 
 					<fieldset class="space-y-2 mb-2">
-						<legend class="sr-only">Delivery provider</legend>
+						<legend class="sr-only">{{ t('setup.email.providerLegend') }}</legend>
 						<label
 							v-for="opt in providerOptions"
 							:key="opt.value"
@@ -301,23 +215,23 @@ async function next() {
 								rounded="lg"
 							/>
 							<div class="flex-1">
-								<div class="font-medium text-text-primary">{{ opt.label }}</div>
-								<div class="text-sm text-text-secondary">{{ opt.hint }}</div>
+								<div class="font-medium text-text-primary">{{ t(opt.label) }}</div>
+								<div class="text-sm text-text-secondary">{{ t(opt.hint) }}</div>
 							</div>
 						</label>
 					</fieldset>
 					<p v-if="showErrors && errors.provider" class="text-sm text-error mt-1">
-						{{ errors.provider }}
+						{{ errorText(errors.provider) }}
 					</p>
 
 					<div v-if="provider === 'resend'" class="mt-5">
 						<UiInput
 							v-model="resendKey"
 							type="password"
-							label="Resend API key"
+							:label="t('setup.email.resendKeyLabel')"
 							placeholder="re_..."
 							autocomplete="off"
-							:error="showErrors ? errors.resendKey : undefined"
+							:error="showErrors ? errorText(errors.resendKey) : undefined"
 						/>
 					</div>
 
@@ -325,10 +239,10 @@ async function next() {
 						<UiInput
 							v-model="emailitKey"
 							type="password"
-							label="Emailit API key"
+							:label="t('setup.email.emailitKeyLabel')"
 							placeholder="em_..."
 							autocomplete="off"
-							:error="showErrors ? errors.emailitKey : undefined"
+							:error="showErrors ? errorText(errors.emailitKey) : undefined"
 						/>
 					</div>
 
@@ -336,45 +250,62 @@ async function next() {
 						<UiInput
 							v-model="mandrillKey"
 							type="password"
-							label="Mailchimp Transactional API key"
+							:label="t('setup.email.mandrillKeyLabel')"
 							placeholder="md-..."
 							autocomplete="off"
-							:error="showErrors ? errors.mandrillKey : undefined"
+							:error="showErrors ? errorText(errors.mandrillKey) : undefined"
 						/>
 						<p class="text-xs text-text-tertiary">
-							Mailchimp Transactional &rarr; Settings &rarr; API keys. Bounce and complaint feedback
-							needs a webhook too — Delivery &rarr; Provider has the URL and the events to enable
-							once setup is done.
+							{{ t('setup.email.mandrillHint') }}
 						</p>
 					</div>
 
 					<div v-if="provider === 'ses'" class="mt-5 space-y-4">
-						<UiInput v-model="sesRegion" label="Region" placeholder="us-east-1" />
-						<UiInput v-model="sesAccess" label="Access key ID" autocomplete="off" />
+						<UiInput
+							v-model="sesRegion"
+							:label="t('setup.email.sesRegionLabel')"
+							placeholder="us-east-1"
+						/>
+						<UiInput
+							v-model="sesAccess"
+							:label="t('setup.email.sesAccessKeyLabel')"
+							autocomplete="off"
+						/>
 						<UiInput
 							v-model="sesSecret"
 							type="password"
-							label="Secret access key"
+							:label="t('setup.email.sesSecretKeyLabel')"
 							autocomplete="off"
 						/>
-						<p v-if="showErrors && errors.ses" class="text-sm text-error">{{ errors.ses }}</p>
+						<p v-if="showErrors && errors.ses" class="text-sm text-error">
+							{{ errorText(errors.ses) }}
+						</p>
 					</div>
 
 					<div v-if="provider === 'smtp'" class="mt-5 space-y-4">
-						<UiSelect v-model="smtpPreset" label="Provider preset" :options="smtpPresetOptions" />
+						<UiSelect
+							v-model="smtpPreset"
+							:label="t('setup.email.smtpPresetLabel')"
+							:options="smtpPresetOptions"
+						/>
 						<p class="-mt-2 text-sm text-text-tertiary">
-							Prefills the server, port, and encryption. Pick Custom for any other SMTP server.
+							{{ t('setup.email.smtpPresetHint') }}
 						</p>
 						<UiInput
 							v-model="smtpHost"
-							label="Server host"
+							:label="t('setup.email.smtpHostLabel')"
 							placeholder="smtp.mailgun.org"
 							autocomplete="off"
 							:disabled="smtpPreset !== 'custom'"
-							help-text="The relay handles delivery, so authentication (SPF/DKIM) is set up on the relay's side, not Owlat's."
+							:help-text="t('setup.email.smtpHostHelp')"
 						/>
 						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<UiInput v-model="smtpPort" label="Port" placeholder="587" autocomplete="off" />
+							<UiInput
+								v-model="smtpPort"
+								:label="t('setup.email.smtpPortLabel')"
+								placeholder="587"
+								autocomplete="off"
+							/>
 							<label
 								class="flex items-center gap-3 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-3 cursor-pointer transition-[box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
 							>
@@ -384,13 +315,24 @@ async function next() {
 									class="h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus-visible:ring-1 focus-visible:ring-brand"
 								/>
 								<span class="text-sm text-text-secondary">
-									Implicit TLS (port 465). Leave off for STARTTLS on 587.
+									{{ t('setup.email.smtpSecureLabel') }}
 								</span>
 							</label>
 						</div>
-						<UiInput v-model="smtpUsername" label="Username" autocomplete="off" />
-						<UiInput v-model="smtpPassword" type="password" label="Password" autocomplete="off" />
-						<p v-if="showErrors && errors.smtp" class="text-sm text-error">{{ errors.smtp }}</p>
+						<UiInput
+							v-model="smtpUsername"
+							:label="t('setup.email.smtpUsernameLabel')"
+							autocomplete="off"
+						/>
+						<UiInput
+							v-model="smtpPassword"
+							type="password"
+							:label="t('auth.fields.password')"
+							autocomplete="off"
+						/>
+						<p v-if="showErrors && errors.smtp" class="text-sm text-error">
+							{{ errorText(errors.smtp) }}
+						</p>
 					</div>
 
 					<div
@@ -398,40 +340,41 @@ async function next() {
 						class="mt-5 space-y-4 rounded-xl border border-border-subtle p-4"
 					>
 						<div>
-							<h2 class="font-medium text-text-primary">Outbound IP identity</h2>
+							<h2 class="font-medium text-text-primary">
+								{{ t('setup.email.mtaIdentityHeading') }}
+							</h2>
 							<p class="text-sm text-text-secondary mt-1">
-								The MTA profile is enabled. Enter the public source IPs and the hostname their PTR
-								records resolve to before launch.
+								{{ t('setup.email.mtaIdentityIntro') }}
 							</p>
 						</div>
 						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 							<UiInput
 								v-model="transactionalIps"
-								label="Transactional IPs"
+								:label="t('setup.email.transactionalIpsLabel')"
 								placeholder="203.0.113.10"
-								help-text="Comma-separated public IPv4 addresses."
+								:help-text="t('setup.email.transactionalIpsHelp')"
 							/>
 							<UiInput
 								v-model="campaignIps"
-								label="Campaign IPs"
+								:label="t('setup.email.campaignIpsLabel')"
 								placeholder="203.0.113.11"
-								help-text="May repeat a transactional IP for a single-IP deployment."
+								:help-text="t('setup.email.campaignIpsHelp')"
 							/>
 						</div>
 						<UiInput
 							v-model="ehloHostname"
-							label="Default EHLO / PTR hostname"
+							:label="t('setup.email.ehloHostnameLabel')"
 							placeholder="mail.example.com"
-							help-text="Set each IP PTR exactly to its EHLO hostname, then point that hostname back to the IP."
+							:help-text="t('setup.email.ehloHostnameHelp')"
 						/>
 						<UiInput
 							v-model="ehloHostnames"
-							label="Per-IP EHLO overrides (optional JSON)"
+							:label="t('setup.email.ehloOverridesLabel')"
 							placeholder='{"203.0.113.11":"mail2.example.com"}'
-							help-text="Use when different source IPs have different PTR hostnames."
+							:help-text="t('setup.email.ehloOverridesHelp')"
 						/>
 						<p v-if="showErrors && errors.mtaIdentity" class="text-sm text-error">
-							{{ errors.mtaIdentity }}
+							{{ errorText(errors.mtaIdentity) }}
 						</p>
 					</div>
 
@@ -439,34 +382,42 @@ async function next() {
 						<UiInput
 							v-model="setupToken"
 							type="password"
-							label="Setup token"
+							:label="t('setup.email.setupTokenLabel')"
 							placeholder="stk_…"
 							autocomplete="off"
-							help-text="Printed by the owlat setup command when it enabled setup mode. Required to verify the provider and launch."
+							:help-text="t('setup.email.setupTokenHelp')"
 						/>
 					</div>
 
 					<div class="mt-6 border-t border-border-subtle pt-6">
-						<h2 class="font-medium text-text-primary">
-							From identity <span class="text-sm font-normal text-text-tertiary">(optional)</span>
-						</h2>
+						<I18nT
+							keypath="setup.email.fromIdentityHeading"
+							tag="h2"
+							scope="global"
+							class="font-medium text-text-primary"
+						>
+							<template #optional>
+								<span class="text-sm font-normal text-text-tertiary">{{
+									t('setup.email.fromIdentityOptional')
+								}}</span>
+							</template>
+						</I18nT>
 						<p class="text-sm text-text-secondary mb-4">
-							The default From address for system mail. Leave blank to derive it from your sending
-							domain later.
+							{{ t('setup.email.fromIdentityIntro') }}
 						</p>
 						<div class="space-y-4">
 							<UiInput
 								v-model="fromEmail"
 								type="email"
-								label="Default From address"
-								placeholder="noreply@yourdomain.com"
+								:label="t('setup.email.fromAddressLabel')"
+								:placeholder="t('setup.email.fromAddressPlaceholder')"
 								autocomplete="off"
-								:error="errors.fromEmail"
-								help-text="We'll use this for password resets, invitations, and double opt-in."
+								:error="errorText(errors.fromEmail)"
+								:help-text="t('setup.email.fromAddressHelp')"
 							/>
 							<UiInput
 								v-model="fromName"
-								label="From name"
+								:label="t('setup.email.fromNameLabel')"
 								placeholder="Owlat"
 								autocomplete="off"
 							/>
@@ -479,17 +430,17 @@ async function next() {
 
 					<!-- Lets the browser submit the form on Enter; the visible advance
 				     control is the footer button below, which calls the same handler. -->
-					<button type="submit" class="sr-only">Continue</button>
+					<button type="submit" class="sr-only">{{ t('common.continue') }}</button>
 				</form>
 			</UiCard>
 
 			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
 				<UiButton variant="ghost" :disabled="submitting" @click="router.push('/setup/features')">
 					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
-					Back
+					{{ t('common.back') }}
 				</UiButton>
 				<UiButton :loading="submitting" @click="next">
-					{{ submitting ? 'Validating…' : 'Next: Admin account' }}
+					{{ submitting ? t('setup.email.validating') : t('setup.email.next') }}
 					<template v-if="!submitting" #iconRight
 						><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2"
 					/></template>

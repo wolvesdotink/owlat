@@ -30,6 +30,7 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 }));
 
 import FeaturesPage from '../features.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 const liveFlags = ref<Record<string, boolean>>({});
 const configStatus = ref<Record<string, string[]> | undefined>({});
@@ -42,6 +43,7 @@ let queryCall = 0;
 let operationCall = 0;
 
 beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast }));
@@ -108,6 +110,7 @@ const buttonStub = {
 function mountPage() {
 	return mount(FeaturesPage, {
 		global: {
+			plugins: [createTestI18n()],
 			stubs: {
 				UiQueryBoundary: passthroughStub,
 				UiCard: passthroughStub,
@@ -124,6 +127,30 @@ function mountPage() {
 
 const policySwitch = '[data-testid="feature-switch-plugin.policy-pack"]';
 const zeroCapabilitySwitch = '[data-testid="feature-switch-plugin.zero-cap"]';
+const aiDraftSwitch = '[data-testid="feature-switch-postbox.aiDraft"]';
+
+/**
+ * TWO SOURCES OF COPY ON ONE PAGE. Core flags and packs come from the catalog
+ * (`sharedPkg.featureFlags.*`), because `@owlat/shared` keeps English for the
+ * setup CLI; a bundled plugin's flag is MINTED at runtime and no shipped catalog
+ * can hold its words, so it has to fall back to the definition's own label. A
+ * regression in either direction — key paths for the core flags, or a blank
+ * where the plugin's name belongs — is invisible to a source grep.
+ */
+describe('Settings Features — flag copy', () => {
+	it("translates core flags and packs, and falls back to the plugin's own words", () => {
+		const wrapper = mountPage();
+		const text = wrapper.text();
+
+		expect(text).toContain('Marketing campaigns');
+		expect(text).toContain('Schedule and send broadcast campaigns to contacts and segments.');
+		expect(text).toContain('Email Client');
+		expect(text).toContain('Inbox, chat, and personal mail (Postbox) as one bundle.');
+		expect(text).toContain('Policy Pack');
+		expect(text).toContain('Bundled plugin from @example/policy-pack.');
+		expectFullyLocalized(wrapper);
+	});
+});
 
 describe('Settings Features — plugin approval behavior', () => {
 	it('shows loading honestly and blocks only enablement', async () => {
@@ -205,5 +232,39 @@ describe('Settings Features — plugin approval behavior', () => {
 		await flushPromises();
 
 		expect(setFeatureFlag).toHaveBeenCalledWith({ flag: 'plugin.policy-pack', value: false });
+	});
+});
+
+// postbox.aiDraft declares requires:['ai'] + requiresAny:[['postbox','mail.external']]
+// (decision D2); the page renders the "Needs one of" hint generically from the
+// registry, so any future any-of flag gets the same treatment for free.
+describe('Settings Features — any-of dependency hint (requiresAny)', () => {
+	it('disables the toggle with a "Needs one of" hint when no group member is on', () => {
+		liveFlags.value = { ai: true };
+		const wrapper = mountPage();
+		const flagSwitch = wrapper.find(aiDraftSwitch);
+		expect(flagSwitch.attributes('disabled')).toBeDefined();
+		expect(flagSwitch.attributes('title')).toBe(
+			'Needs one of: Personal mail (Postbox), Connect external mailbox'
+		);
+	});
+
+	it('prefers the hard requires hint when a parent is also missing', () => {
+		liveFlags.value = {};
+		const wrapper = mountPage();
+		const flagSwitch = wrapper.find(aiDraftSwitch);
+		expect(flagSwitch.attributes('disabled')).toBeDefined();
+		expect(flagSwitch.attributes('title')).toBe('Enable ai first');
+	});
+
+	it('enables through the external arm alone (postbox stays off)', async () => {
+		liveFlags.value = { ai: true, 'mail.external': true };
+		const wrapper = mountPage();
+		const flagSwitch = wrapper.find(aiDraftSwitch);
+		expect(flagSwitch.attributes('disabled')).toBeUndefined();
+		expect(flagSwitch.attributes('title')).toBeUndefined();
+		await flagSwitch.trigger('click');
+		await flushPromises();
+		expect(setFeatureFlag).toHaveBeenCalledWith({ flag: 'postbox.aiDraft', value: true });
 	});
 });

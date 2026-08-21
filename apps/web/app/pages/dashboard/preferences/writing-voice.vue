@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Writing voice — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.preferences.writingVoice.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -20,19 +22,20 @@ const { isEnabled } = useFeatureFlag();
 			class="text-sm text-text-secondary hover:text-text-primary inline-flex items-center gap-1 mb-4"
 		>
 			<Icon name="lucide:chevron-left" class="w-4 h-4" />
-			Settings
+			{{ t('common.settings') }}
 		</NuxtLink>
 
 		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em]">Writing voice</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em]">
+				{{ t('dashboard.preferences.writingVoice.title') }}
+			</h1>
 			<p class="text-text-secondary mt-1">
-				Owlat can learn how you write from your sent mail so AI reply suggestions sound like you.
-				This is advisory only — nothing is ever sent automatically.
+				{{ t('dashboard.preferences.writingVoice.intro') }}
 			</p>
 		</header>
 
 		<div v-if="!isEnabled('ai')" class="card p-5 text-sm text-text-secondary">
-			AI features are disabled for this workspace, so there is no writing voice to personalize.
+			{{ t('dashboard.preferences.writingVoice.aiDisabled') }}
 		</div>
 
 		<div v-else-if="isLoading" class="p-8 flex justify-center">
@@ -40,7 +43,7 @@ const { isEnabled } = useFeatureFlag();
 		</div>
 
 		<div v-else-if="mailboxes.length === 0" class="card p-8 text-center text-text-secondary">
-			No mailboxes yet. Add an account and send a few messages first.
+			{{ t('dashboard.preferences.writingVoice.noMailboxes') }}
 		</div>
 
 		<div v-else class="space-y-4">

@@ -18,6 +18,11 @@ import { splitZone } from '@owlat/shared';
 
 import AddDomainForm from '../AddDomainForm.vue';
 import TrackingDomainsSection from '../TrackingDomainsSection.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+// Both surfaces render their copy through vue-i18n; `useI18n` is a Nuxt
+// auto-import.
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const stubs = {
 	Icon: { template: '<i />' },
@@ -60,7 +65,7 @@ function mountTrackingForm() {
 			showApexNote: false,
 			submitLabel: 'Add Tracking Domain',
 		},
-		global: { stubs },
+		global: { plugins: [createTestI18n()], stubs },
 	});
 }
 
@@ -76,6 +81,7 @@ describe('X2 — the tracking flow reuses AddDomainForm, not a fork', () => {
 	it('TrackingDomainsSection mounts the SAME AddDomainForm component', () => {
 		const w = mount(TrackingDomainsSection, {
 			global: {
+				plugins: [createTestI18n()],
 				// Map the Nuxt auto-import tag to the real AddDomainForm so a match
 				// proves reuse (a fork would resolve to a different component). Stub the
 				// AddDomainForm's own leaf deps so it renders without a Nuxt runtime.

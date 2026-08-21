@@ -22,6 +22,7 @@ import { ref } from 'vue';
 import TransportEditor from '../TransportEditor.vue';
 import { independenceSummary } from './rampFixtures';
 import { wizardStubs } from './wizardHarness';
+import { expectFullyLocalized } from '~/__tests__/i18n';
 
 const fetchMock = vi.fn();
 
@@ -92,6 +93,20 @@ describe('the transport editor seeds the outbound-TLS floor from the active one'
 			EMAIL_PROVIDER: 'mta',
 			OUTBOUND_TLS_MODE: 'require-verified',
 		});
+	});
+
+	it('names every floor in words, not in the keys the descriptor carries', async () => {
+		// The option labels are `sharedPkg.sendProviderCatalog.*` messages (the
+		// catalog is a module-scope declaration and cannot call `t()`), and this
+		// select is where they become words. The English is pinned HERE because the
+		// shared suite that owns the descriptor can only pin the keys.
+		const wrapper = await openEditor('opportunistic');
+		expect([...tlsSelect(wrapper).options].map((option) => option.text)).toEqual([
+			'Opportunistic (recommended)',
+			'Always encrypt',
+			'Always encrypt and verify',
+		]);
+		expectFullyLocalized(wrapper);
 	});
 
 	it('renders this screen’s own guidance under that field, keyed by the field', async () => {

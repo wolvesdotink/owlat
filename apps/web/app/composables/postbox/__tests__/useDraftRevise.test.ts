@@ -6,6 +6,15 @@ import {
 	type ReviseStreamSnapshot,
 	type ReviseResult,
 } from '../useDraftRevise';
+import { createTestI18n } from '~/__tests__/i18n';
+
+/**
+ * The composable resolves its copy through vue-i18n, so the suite installs the
+ * real catalog behind the `useI18n` auto-import and asserts the English text a
+ * user would actually see.
+ */
+const i18n = createTestI18n();
+vi.stubGlobal('useI18n', () => i18n.global);
 
 /** Deferred runRevise the test resolves by hand, plus a controllable snapshot. */
 function harness() {
@@ -130,7 +139,7 @@ describe('useDraftRevise lifecycle', () => {
 		await h.resolveWith({ status: 'error', text: '', injectionFlagged: false });
 		await p;
 		expect(r.status.value).toBe('error');
-		expect(h.deps.onError).toHaveBeenCalled();
+		expect(h.deps.onError).toHaveBeenCalledWith('Revise failed — your draft is unchanged.');
 		expect(h.deps.deleteStream).toHaveBeenCalled();
 	});
 
@@ -142,6 +151,6 @@ describe('useDraftRevise lifecycle', () => {
 		await h.rejectWith(new Error('network'));
 		await p;
 		expect(r.status.value).toBe('error');
-		expect(h.deps.onError).toHaveBeenCalled();
+		expect(h.deps.onError).toHaveBeenCalledWith('Revise failed — your draft is unchanged.');
 	});
 });

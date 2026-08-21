@@ -20,6 +20,17 @@ const props = defineProps<{
 	reason?: string | null;
 }>();
 
+const { t } = useI18n();
+
+/**
+ * `senderAuthDisplay` is module scope and so never calls `useI18n`: its chip
+ * label and reason arrive as catalog keys (or, for a transport's verbatim
+ * reason, as the sentence itself), and this render boundary resolves them.
+ */
+type AuthMessage = string | { key: string; params?: Record<string, unknown> };
+const message = (value: AuthMessage): string =>
+	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+
 const display = computed<SenderAuthDisplay>(() =>
 	senderAuthDisplay({
 		verified: props.verified,
@@ -43,7 +54,7 @@ const ICON: Record<SenderAuthDisplay['tone'], string> = {
 			:class="healthChipClass[display.tone]"
 		>
 			<Icon :name="ICON[display.tone]" class="w-3.5 h-3.5 shrink-0" />
-			{{ display.label }}
+			{{ message(display.label) }}
 		</span>
 		<p
 			v-if="display.detail"
@@ -51,7 +62,7 @@ const ICON: Record<SenderAuthDisplay['tone'], string> = {
 			:class="healthTextClass[display.tone]"
 		>
 			<Icon name="lucide:info" class="w-4 h-4 mt-0.5 shrink-0" />
-			<span>{{ display.detail }}</span>
+			<span>{{ message(display.detail) }}</span>
 		</p>
 	</div>
 </template>

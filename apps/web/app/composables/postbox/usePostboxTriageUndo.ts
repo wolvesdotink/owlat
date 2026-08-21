@@ -63,6 +63,7 @@ export function usePostboxTriageUndo() {
 		toastId: null,
 	}));
 	const { showToast, removeToast } = useToast();
+	const { t } = useI18n();
 
 	/** Drop the pending entry (expiry, dismissal, or replacement). */
 	function dismiss() {
@@ -91,7 +92,7 @@ export function usePostboxTriageUndo() {
 		const toastId = showToast(args.label, 'success', {
 			durationMs: windowMs,
 			action: {
-				label: 'Undo',
+				label: t('shared.postbox.usePostboxTriageUndo.undo'),
 				onAction: () => {
 					void undo();
 				},

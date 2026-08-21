@@ -2,7 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-useHead({ title: 'Marketing Emails — Owlat' });
+const { t, locale } = useI18n();
+
+useHead({ title: () => t('dashboard.send.marketing.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -16,6 +18,13 @@ const router = useRouter();
 
 // Keyboard shortcuts
 const { registerNewShortcut, registerEscapeHandler, unregisterShortcut } = useKeyboardShortcuts();
+
+// Below `md` the list view's columns can't fit, so the same rows render as a
+// card list. Exactly one of the two trees is mounted: the app runs with
+// `ssr: false`, so the first value is already the real one, and mounting both (a
+// CSS-only `md:hidden` switch) doubles the row DOM — and, here, would give the
+// two copies of every row overflow menu the same `dropdownOpenStates` entry.
+const tableFits = useDataTableViewport();
 
 // View mode and search (using useDataTable for search functionality)
 const viewMode = ref<'grid' | 'list'>('grid');
@@ -33,12 +42,42 @@ type SortOption = {
 };
 
 const sortOptions: SortOption[] = [
-	{ label: 'Last modified', value: 'updatedAt-desc', sortBy: 'updatedAt', sortOrder: 'desc' },
-	{ label: 'Oldest modified', value: 'updatedAt-asc', sortBy: 'updatedAt', sortOrder: 'asc' },
-	{ label: 'Newest created', value: 'createdAt-desc', sortBy: 'createdAt', sortOrder: 'desc' },
-	{ label: 'Oldest created', value: 'createdAt-asc', sortBy: 'createdAt', sortOrder: 'asc' },
-	{ label: 'Name (A-Z)', value: 'name-asc', sortBy: 'name', sortOrder: 'asc' },
-	{ label: 'Name (Z-A)', value: 'name-desc', sortBy: 'name', sortOrder: 'desc' },
+	{
+		label: 'dashboard.send.marketing.index.sort.updatedDesc',
+		value: 'updatedAt-desc',
+		sortBy: 'updatedAt',
+		sortOrder: 'desc',
+	},
+	{
+		label: 'dashboard.send.marketing.index.sort.updatedAsc',
+		value: 'updatedAt-asc',
+		sortBy: 'updatedAt',
+		sortOrder: 'asc',
+	},
+	{
+		label: 'dashboard.send.marketing.index.sort.createdDesc',
+		value: 'createdAt-desc',
+		sortBy: 'createdAt',
+		sortOrder: 'desc',
+	},
+	{
+		label: 'dashboard.send.marketing.index.sort.createdAsc',
+		value: 'createdAt-asc',
+		sortBy: 'createdAt',
+		sortOrder: 'asc',
+	},
+	{
+		label: 'dashboard.send.marketing.index.sort.nameAsc',
+		value: 'name-asc',
+		sortBy: 'name',
+		sortOrder: 'asc',
+	},
+	{
+		label: 'dashboard.send.marketing.index.sort.nameDesc',
+		value: 'name-desc',
+		sortBy: 'name',
+		sortOrder: 'desc',
+	},
 ];
 
 const currentSort = ref<SortOption>(sortOptions[0]!);
@@ -90,17 +129,17 @@ const isLoading = computed(() => teamLoading.value || templatesLoading.value);
 
 // Mutations
 const { run: duplicateTemplate } = useBackendOperation(api.emailTemplates.emails.duplicate, {
-	label: 'Duplicate template',
+	label: () => t('dashboard.send.marketing.index.operations.duplicate'),
 });
 const { run: deleteTemplate } = useBackendOperation(api.emailTemplates.emails.remove, {
-	label: 'Delete template',
+	label: () => t('dashboard.send.marketing.index.operations.delete'),
 });
 const { run: createTemplate } = useBackendOperation(api.emailTemplates.emails.create, {
-	label: 'Create template',
+	label: () => t('dashboard.send.marketing.index.operations.create'),
 });
 const { run: createFromPreset } = useBackendOperation(
 	api.emailTemplates.organization.createFromPreset,
-	{ label: 'Create template' }
+	{ label: () => t('dashboard.send.marketing.index.operations.create') }
 );
 
 // Toast notifications
@@ -109,8 +148,14 @@ const { showToast } = useToast();
 // Get status badge
 const getStatusBadge = (status: 'draft' | 'published') => {
 	return status === 'published'
-		? { color: 'bg-success/10 text-success', label: 'Published' }
-		: { color: 'bg-text-tertiary/10 text-text-tertiary', label: 'Draft' };
+		? {
+				color: 'bg-success/10 text-success',
+				label: t('dashboard.send.marketing.index.status.published'),
+			}
+		: {
+				color: 'bg-text-tertiary/10 text-text-tertiary',
+				label: t('dashboard.send.marketing.index.status.draft'),
+			};
 };
 
 // Action dropdown state
@@ -120,7 +165,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 const handleDuplicate = async (templateId: Id<'emailTemplates'>) => {
 	const result = await duplicateTemplate({ templateId });
 	if (result === undefined) return;
-	showToast('Template duplicated successfully');
+	showToast(t('dashboard.send.marketing.index.toasts.duplicated'));
 };
 
 // Delete confirmation modal
@@ -145,7 +190,7 @@ const handleDelete = async () => {
 	try {
 		const result = await deleteTemplate({ templateId: templateToDelete.value.id });
 		if (result === undefined) return;
-		showToast('Template deleted successfully');
+		showToast(t('dashboard.send.marketing.index.toasts.deleted'));
 		closeDeleteModal();
 	} finally {
 		isDeleting.value = false;
@@ -222,25 +267,29 @@ onUnmounted(() => {
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 			<div>
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					Marketing Templates
+					{{ t('dashboard.send.marketing.index.title') }}
 				</h1>
 				<p class="mt-1 text-text-secondary">
-					Create and manage marketing email templates for campaigns and newsletters
+					{{ t('dashboard.send.marketing.index.subtitle') }}
 				</p>
 			</div>
 			<UiButton size="sm" @click="openCreateModal">
 				<template #iconLeft>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 				</template>
-				New Marketing Template
+				{{ t('dashboard.send.marketing.index.newTemplate') }}
 			</UiButton>
 		</div>
 
 		<!-- Stats and Search -->
 		<div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
 			<div v-if="typeCounts" class="text-sm text-text-secondary">
-				{{ typeCounts['marketing'] }} marketing template{{
-					typeCounts['marketing'] !== 1 ? 's' : ''
+				{{
+					t(
+						'dashboard.send.marketing.index.templateCount',
+						{ count: typeCounts['marketing'] },
+						typeCounts['marketing'] ?? 0
+					)
 				}}
 			</div>
 
@@ -250,7 +299,7 @@ onUnmounted(() => {
 				<UiInput
 					v-model="searchQuery"
 					type="text"
-					placeholder="Search templates..."
+					:placeholder="t('dashboard.send.marketing.index.searchPlaceholder')"
 					size="sm"
 					class="w-64"
 				>
@@ -267,13 +316,13 @@ onUnmounted(() => {
 						aria-haspopup="listbox"
 						:aria-expanded="isSortDropdownOpen"
 						aria-controls="marketing-sort-listbox"
-						aria-label="Sort templates"
+						:aria-label="t('dashboard.send.marketing.index.sortLabel')"
 						@click="isSortDropdownOpen = !isSortDropdownOpen"
 					>
 						<template #iconLeft>
 							<Icon name="lucide:arrow-up-down" class="w-4 h-4" />
 						</template>
-						<span class="hidden sm:inline">{{ currentSort.label }}</span>
+						<span class="hidden sm:inline">{{ t(currentSort.label) }}</span>
 						<template #iconRight>
 							<Icon name="lucide:chevron-down" class="w-4 h-4" />
 						</template>
@@ -290,7 +339,7 @@ onUnmounted(() => {
 							v-if="isSortDropdownOpen"
 							id="marketing-sort-listbox"
 							role="listbox"
-							aria-label="Sort templates"
+							:aria-label="t('dashboard.send.marketing.index.sortLabel')"
 							class="absolute right-0 top-full mt-1 w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20 py-1"
 						>
 							<button
@@ -306,7 +355,7 @@ onUnmounted(() => {
 								]"
 								@click="selectSort(option)"
 							>
-								{{ option.label }}
+								{{ t(option.label) }}
 								<Icon
 									v-if="currentSort.value === option.value"
 									name="lucide:check"
@@ -327,7 +376,7 @@ onUnmounted(() => {
 								: 'text-text-tertiary hover:text-text-primary',
 						]"
 						@click="viewMode = 'grid'"
-						aria-label="Grid view"
+						:aria-label="t('dashboard.send.marketing.index.gridView')"
 					>
 						<Icon name="lucide:grid-3x3" class="w-4 h-4" />
 					</button>
@@ -339,7 +388,7 @@ onUnmounted(() => {
 								: 'text-text-tertiary hover:text-text-primary',
 						]"
 						@click="viewMode = 'list'"
-						aria-label="List view"
+						:aria-label="t('dashboard.send.marketing.index.listView')"
 					>
 						<Icon name="lucide:list" class="w-4 h-4" />
 					</button>
@@ -352,30 +401,30 @@ onUnmounted(() => {
 			<UiQueryBoundary
 				:loading="isLoading && !templates"
 				:error="templatesError"
-				error-title="Couldn't load templates"
-				loading-label="Loading templates..."
+				:error-title="t('dashboard.send.marketing.index.loadError')"
+				:loading-label="t('dashboard.send.marketing.index.loadingTemplates')"
 			>
 				<!-- Empty State (no team) -->
 				<UiEmptyState
 					v-if="!hasActiveOrganization"
 					icon="lucide:mail"
-					title="No team selected"
-					description="Create or select a team to start creating email templates."
+					:title="t('dashboard.send.marketing.index.emptyNoTeam.title')"
+					:description="t('dashboard.send.marketing.index.emptyNoTeam.description')"
 				/>
 
 				<!-- Empty State (no templates) -->
 				<UiEmptyState
 					v-else-if="!isLoading && (!templates || templates.length === 0) && !debouncedSearch"
 					icon="lucide:megaphone"
-					title="No marketing templates yet"
-					description="Create your first marketing template to start sending campaigns and newsletters."
+					:title="t('dashboard.send.marketing.index.empty.title')"
+					:description="t('dashboard.send.marketing.index.empty.description')"
 				>
 					<template #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft>
 								<Icon name="lucide:plus" class="w-4 h-4" />
 							</template>
-							Create Marketing Template
+							{{ t('dashboard.send.marketing.index.empty.action') }}
 						</UiButton>
 					</template>
 				</UiEmptyState>
@@ -384,11 +433,15 @@ onUnmounted(() => {
 				<UiEmptyState
 					v-else-if="!isLoading && (!templates || templates.length === 0) && debouncedSearch"
 					icon="lucide:search"
-					title="No results found"
-					:description="`No templates match &quot;${debouncedSearch}&quot;. Try a different search term.`"
+					:title="t('dashboard.send.marketing.index.noResults.title')"
+					:description="
+						t('dashboard.send.marketing.index.noResults.description', { query: debouncedSearch })
+					"
 				>
 					<template #action>
-						<UiButton variant="secondary" @click="clearSearch()"> Clear search </UiButton>
+						<UiButton variant="secondary" @click="clearSearch()">
+							{{ t('dashboard.send.marketing.index.clearSearch') }}
+						</UiButton>
 					</template>
 				</UiEmptyState>
 
@@ -407,7 +460,7 @@ onUnmounted(() => {
 						class="group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						role="button"
 						tabindex="0"
-						:aria-label="`Edit ${template.name}`"
+						:aria-label="t('dashboard.send.marketing.index.editAriaLabel', { name: template.name })"
 						@click="handleEdit(template._id)"
 						@keydown.enter.self="handleEdit(template._id)"
 						@keydown.space.self.prevent="handleEdit(template._id)"
@@ -422,21 +475,21 @@ onUnmounted(() => {
 								<button
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleEdit(template._id)"
-									aria-label="Edit"
+									:aria-label="t('common.edit')"
 								>
 									<Icon name="lucide:pencil" class="w-4 h-4" />
 								</button>
 								<button
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleDuplicate(template._id)"
-									aria-label="Copy"
+									:aria-label="t('common.copy')"
 								>
 									<Icon name="lucide:copy" class="w-4 h-4" />
 								</button>
 								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="openDeleteModal(template._id, template.name)"
-									aria-label="Delete"
+									:aria-label="t('common.delete')"
 								>
 									<Icon name="lucide:trash-2" class="w-4 h-4" />
 								</button>
@@ -449,7 +502,7 @@ onUnmounted(() => {
 								<div class="min-w-0 flex-1">
 									<h3 class="font-medium text-text-primary truncate">{{ template.name }}</h3>
 									<p class="text-sm text-text-tertiary truncate mt-0.5">
-										{{ template.subject || 'No subject' }}
+										{{ template.subject || t('dashboard.send.marketing.index.noSubject') }}
 									</p>
 								</div>
 								<UiDropdownMenu v-model:open="dropdownOpenStates[template._id]" @click.stop>
@@ -459,10 +512,10 @@ onUnmounted(() => {
 										</UiButton>
 									</template>
 									<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(template._id)">
-										Edit
+										{{ t('common.edit') }}
 									</UiDropdownMenuItem>
 									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(template._id)">
-										Duplicate
+										{{ t('common.duplicate') }}
 									</UiDropdownMenuItem>
 									<UiDropdownDivider />
 									<UiDropdownMenuItem
@@ -470,7 +523,7 @@ onUnmounted(() => {
 										danger
 										@click="openDeleteModal(template._id, template.name)"
 									>
-										Delete
+										{{ t('common.delete') }}
 									</UiDropdownMenuItem>
 								</UiDropdownMenu>
 							</div>
@@ -487,7 +540,11 @@ onUnmounted(() => {
 							</div>
 
 							<p class="text-xs text-text-tertiary mt-3">
-								Updated {{ formatDate(template.updatedAt) }}
+								{{
+									t('dashboard.send.marketing.index.updatedAt', {
+										date: formatDate(template.updatedAt, 'medium', locale),
+									})
+								}}
 							</p>
 						</div>
 					</UiCard>
@@ -495,22 +552,90 @@ onUnmounted(() => {
 
 				<!-- List View -->
 				<UiCard v-else padding="none" overflow="hidden">
-					<div class="overflow-x-auto">
+					<!-- Below md the columns can't fit — the same rows become a card
+					     list, with the row actions folded into the overflow menu. -->
+					<ul v-if="!tableFits" class="divide-y divide-border-subtle">
+						<li v-for="template in templates" :key="template._id">
+							<div class="flex items-start gap-3 px-4 py-3">
+								<button
+									type="button"
+									class="flex-1 min-w-0 text-left"
+									:aria-label="
+										t('dashboard.send.marketing.index.editAriaLabel', { name: template.name })
+									"
+									@click="handleEdit(template._id)"
+								>
+									<span class="block text-text-primary font-medium truncate">{{
+										template.name
+									}}</span>
+									<span class="block text-sm text-text-secondary truncate">
+										{{ template.subject || t('dashboard.send.marketing.index.noSubject') }}
+									</span>
+									<span class="flex items-center gap-2 mt-1.5">
+										<span
+											:class="[
+												'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
+												getStatusBadge(template.status).color,
+											]"
+										>
+											{{ getStatusBadge(template.status).label }}
+										</span>
+										<span class="text-xs text-text-tertiary">
+											{{
+												t('dashboard.send.marketing.index.updatedAt', {
+													date: formatDate(template.updatedAt, 'medium', locale),
+												})
+											}}
+										</span>
+									</span>
+								</button>
+								<UiDropdownMenu v-model:open="dropdownOpenStates[template._id]">
+									<template #trigger>
+										<UiButton
+											variant="ghost"
+											size="sm"
+											:aria-label="t('dashboard.send.marketing.index.rowActions')"
+										>
+											<Icon name="lucide:more-vertical" class="w-4 h-4" />
+										</UiButton>
+									</template>
+									<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(template._id)">
+										{{ t('common.edit') }}
+									</UiDropdownMenuItem>
+									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(template._id)">
+										{{ t('common.duplicate') }}
+									</UiDropdownMenuItem>
+									<UiDropdownDivider />
+									<UiDropdownMenuItem
+										icon="lucide:trash-2"
+										danger
+										@click="openDeleteModal(template._id, template.name)"
+									>
+										{{ t('common.delete') }}
+									</UiDropdownMenuItem>
+								</UiDropdownMenu>
+							</div>
+						</li>
+					</ul>
+
+					<div v-else class="overflow-x-auto">
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">Name</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Subject
+										{{ t('common.name') }}
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Status
+										{{ t('dashboard.send.marketing.index.columns.subject') }}
 									</th>
 									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										Updated
+										{{ t('common.status') }}
+									</th>
+									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+										{{ t('dashboard.send.marketing.index.columns.updated') }}
 									</th>
 									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										Actions
+										{{ t('common.actions') }}
 									</th>
 								</tr>
 							</thead>
@@ -521,7 +646,9 @@ onUnmounted(() => {
 									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
 									role="button"
 									tabindex="0"
-									:aria-label="`Edit ${template.name}`"
+									:aria-label="
+										t('dashboard.send.marketing.index.editAriaLabel', { name: template.name })
+									"
 									@click="handleEdit(template._id)"
 									@keydown.enter.self="handleEdit(template._id)"
 									@keydown.space.self.prevent="handleEdit(template._id)"
@@ -552,21 +679,21 @@ onUnmounted(() => {
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												@click="handleEdit(template._id)"
-												aria-label="Edit"
+												:aria-label="t('common.edit')"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												@click="handleDuplicate(template._id)"
-												aria-label="Copy"
+												:aria-label="t('common.copy')"
 											>
 												<Icon name="lucide:copy" class="w-4 h-4" />
 											</button>
 											<button
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												@click="openDeleteModal(template._id, template.name)"
-												aria-label="Delete"
+												:aria-label="t('common.delete')"
 											>
 												<Icon name="lucide:trash-2" class="w-4 h-4" />
 											</button>
@@ -588,34 +715,52 @@ onUnmounted(() => {
 		>
 			<template #submit-button="{ isCreating }">
 				<UiButton type="submit" :loading="isCreating" @click="handleCreateSubmit">
-					{{ isCreating ? 'Creating...' : 'Create & Edit' }}
+					{{
+						isCreating
+							? t('dashboard.send.marketing.index.creating')
+							: t('dashboard.send.marketing.index.createAndEdit')
+					}}
 				</UiButton>
 			</template>
 		</LazyMailTemplateLibraryModal>
 
 		<!-- Delete Confirmation Modal -->
-		<UiModal v-model:open="isDeleteModalOpen" title="Delete Template" :persistent="isDeleting">
+		<UiModal
+			v-model:open="isDeleteModalOpen"
+			:title="t('dashboard.send.marketing.index.delete.title')"
+			:persistent="isDeleting"
+		>
 			<div class="flex items-start gap-4">
 				<div class="p-3 rounded-full bg-error/10 shrink-0 flex items-center justify-center">
 					<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
 				</div>
 				<div>
-					<p class="text-text-primary">
-						Are you sure you want to delete
-						<span class="font-semibold">"{{ templateToDelete?.name }}"</span>?
-					</p>
+					<I18nT
+						keypath="dashboard.send.marketing.index.delete.confirm"
+						tag="p"
+						class="text-text-primary"
+						scope="global"
+					>
+						<template #name>
+							<span class="font-semibold">"{{ templateToDelete?.name }}"</span>
+						</template>
+					</I18nT>
 					<p class="text-sm text-text-secondary mt-2">
-						This action cannot be undone. The template will be permanently deleted.
+						{{ t('dashboard.send.marketing.index.delete.description') }}
 					</p>
 				</div>
 			</div>
 
 			<template #footer>
 				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					Cancel
+					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
-					{{ isDeleting ? 'Deleting...' : 'Delete Template' }}
+					{{
+						isDeleting
+							? t('dashboard.send.marketing.index.delete.deleting')
+							: t('dashboard.send.marketing.index.delete.confirmButton')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>

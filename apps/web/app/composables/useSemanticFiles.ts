@@ -5,6 +5,7 @@ import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attac
 type SourceType = 'upload' | 'email_attachment' | 'agent_generated';
 
 export function useSemanticFiles() {
+	const { t } = useI18n();
 	const { showToast } = useToast();
 
 	// Search — debounced so each keystroke doesn't tear down and re-subscribe the
@@ -69,16 +70,16 @@ export function useSemanticFiles() {
 
 	// Mutations
 	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
-		label: 'Get upload URL',
+		label: () => t('shared.useSemanticFiles.getUploadUrl'),
 	});
 	const { run: createFile } = useBackendOperation(api.semanticFiles.create, {
-		label: 'Upload file',
+		label: () => t('shared.useSemanticFiles.uploadFile'),
 	});
 	const { run: updateFile } = useBackendOperation(api.semanticFiles.update, {
-		label: 'Update file',
+		label: () => t('shared.useSemanticFiles.updateFile'),
 	});
 	const { run: removeFileMutation } = useBackendOperation(api.semanticFiles.remove, {
-		label: 'Delete file',
+		label: () => t('shared.useSemanticFiles.deleteFile'),
 	});
 
 	// Upload state
@@ -98,14 +99,15 @@ export function useSemanticFiles() {
 		// Guard the advertised size ceiling client-side so the user gets immediate
 		// feedback instead of consuming an upload slot before the server rejects it.
 		if (file.size > MAX_LIBRARY_FILE_BYTES) {
-			showToast(`File exceeds the ${MAX_LIBRARY_FILE_MB} MB upload limit`, 'error');
+			showToast(t('shared.useSemanticFiles.tooLarge', { limit: MAX_LIBRARY_FILE_MB }), 'error');
 			return undefined;
 		}
 		isUploading.value = true;
 		try {
 			const upload = await uploadFileToStorage(file, () => generateUploadUrl({}));
 			if (!upload.ok) {
-				if (upload.reason === 'upload-failed') showToast('Failed to upload file', 'error');
+				if (upload.reason === 'upload-failed')
+					showToast(t('shared.useSemanticFiles.uploadFailed'), 'error');
 				return undefined;
 			}
 			const storageId = upload.storageId;
@@ -124,7 +126,7 @@ export function useSemanticFiles() {
 			});
 			if (fileId === undefined) return undefined;
 
-			showToast('File uploaded successfully');
+			showToast(t('shared.useSemanticFiles.uploaded'));
 			return fileId;
 		} finally {
 			isUploading.value = false;
@@ -141,13 +143,13 @@ export function useSemanticFiles() {
 	) => {
 		const result = await updateFile({ fileId, ...patch });
 		if (result === undefined) return;
-		showToast('File updated');
+		showToast(t('shared.useSemanticFiles.updated'));
 	};
 
 	const removeFile = async (fileId: Id<'semanticFiles'>) => {
 		const result = await removeFileMutation({ fileId });
 		if (result === undefined) return;
-		showToast('File deleted');
+		showToast(t('shared.useSemanticFiles.deleted'));
 	};
 
 	return {

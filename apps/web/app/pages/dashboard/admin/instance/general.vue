@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
+import { instanceTimezoneSelectOptions } from '~/data/instanceTimezoneOptions';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isValidEmail } from '~/utils/validation';
 import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
 
-useHead({ title: 'General instance settings — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.admin.instance.general.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -43,10 +46,10 @@ const isLoading = computed(() => organizationLoading.value || organizationSettin
 
 // Mutations
 const { run: updateOrganizationSettings } = useBackendOperation(api.workspaces.settings.update, {
-	label: 'Save settings',
+	label: () => t('dashboard.admin.instance.general.saveOperation'),
 });
 const { run: setFeatureFlag } = useBackendOperation(api.workspaces.featureFlags.setFeatureFlag, {
-	label: 'Toggle campaign archives',
+	label: () => t('dashboard.admin.instance.general.toggleArchivesOperation'),
 });
 
 // Feature flag state — archive default lives on `campaigns.archive`, not on instanceSettings
@@ -88,42 +91,10 @@ function applyVerifiedDomain(domain: string) {
 const isFormDirty = ref(false);
 const isSaving = ref(false);
 
-// Common timezones for dropdown
-const timezones = [
-	{ value: '', label: 'Select timezone...' },
-	{ value: 'America/New_York', label: 'Eastern Time (US & Canada)' },
-	{ value: 'America/Chicago', label: 'Central Time (US & Canada)' },
-	{ value: 'America/Denver', label: 'Mountain Time (US & Canada)' },
-	{ value: 'America/Los_Angeles', label: 'Pacific Time (US & Canada)' },
-	{ value: 'America/Anchorage', label: 'Alaska' },
-	{ value: 'Pacific/Honolulu', label: 'Hawaii' },
-	{ value: 'America/Phoenix', label: 'Arizona' },
-	{ value: 'America/Toronto', label: 'Eastern Time (Canada)' },
-	{ value: 'America/Vancouver', label: 'Pacific Time (Canada)' },
-	{ value: 'Europe/London', label: 'London' },
-	{ value: 'Europe/Paris', label: 'Paris, Berlin, Amsterdam' },
-	{ value: 'Europe/Berlin', label: 'Berlin, Frankfurt' },
-	{ value: 'Europe/Amsterdam', label: 'Amsterdam' },
-	{ value: 'Europe/Madrid', label: 'Madrid' },
-	{ value: 'Europe/Rome', label: 'Rome, Milan' },
-	{ value: 'Europe/Zurich', label: 'Zurich, Geneva' },
-	{ value: 'Europe/Stockholm', label: 'Stockholm' },
-	{ value: 'Europe/Warsaw', label: 'Warsaw' },
-	{ value: 'Europe/Moscow', label: 'Moscow' },
-	{ value: 'Asia/Dubai', label: 'Dubai' },
-	{ value: 'Asia/Kolkata', label: 'Mumbai, New Delhi' },
-	{ value: 'Asia/Singapore', label: 'Singapore' },
-	{ value: 'Asia/Hong_Kong', label: 'Hong Kong' },
-	{ value: 'Asia/Shanghai', label: 'Shanghai, Beijing' },
-	{ value: 'Asia/Tokyo', label: 'Tokyo' },
-	{ value: 'Asia/Seoul', label: 'Seoul' },
-	{ value: 'Australia/Sydney', label: 'Sydney' },
-	{ value: 'Australia/Melbourne', label: 'Melbourne' },
-	{ value: 'Australia/Brisbane', label: 'Brisbane' },
-	{ value: 'Australia/Perth', label: 'Perth' },
-	{ value: 'Pacific/Auckland', label: 'Auckland' },
-	{ value: 'UTC', label: 'UTC' },
-];
+// Common timezones for dropdown — a computed so the labels follow the active
+// locale rather than the one that happened to be active at setup. The catalog
+// itself lives in ~/data/instanceTimezoneOptions.
+const timezones = computed(() => instanceTimezoneSelectOptions(t));
 
 // Initialize form when organization settings load
 watch(
@@ -188,12 +159,12 @@ const validateForm = (): boolean => {
 	let isValid = true;
 
 	if (!form.name.trim()) {
-		formErrors.name = 'Team name is required';
+		formErrors.name = t('dashboard.admin.instance.general.errors.nameRequired');
 		isValid = false;
 	}
 
 	if (form.defaultFromEmail && !isValidEmail(form.defaultFromEmail)) {
-		formErrors.defaultFromEmail = 'Please enter a valid email address';
+		formErrors.defaultFromEmail = t('dashboard.admin.instance.general.errors.emailInvalid');
 		isValid = false;
 	}
 
@@ -242,7 +213,7 @@ const handleSave = async (): Promise<boolean> => {
 	}
 
 	isSaving.value = false;
-	showToast('Settings saved successfully');
+	showToast(t('dashboard.admin.instance.general.savedToast'));
 	isFormDirty.value = false;
 	return true;
 };
@@ -270,8 +241,12 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">General</h1>
-			<p class="mt-1 text-text-secondary">Workspace-wide identity and sending defaults</p>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ t('dashboard.admin.instance.general.title') }}
+			</h1>
+			<p class="mt-1 text-text-secondary">
+				{{ t('dashboard.admin.instance.general.subtitle') }}
+			</p>
 		</div>
 
 		<UiQueryBoundary
@@ -282,7 +257,9 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 				<div class="flex items-center justify-center py-16">
 					<div class="flex flex-col items-center gap-3">
 						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading settings...</p>
+						<p class="text-text-secondary text-sm">
+							{{ t('dashboard.admin.instance.general.loading') }}
+						</p>
 					</div>
 				</div>
 			</template>
@@ -291,8 +268,8 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 			<UiCard v-if="!hasActiveOrganization">
 				<UiEmptyState
 					icon="lucide:settings"
-					title="No workspace selected"
-					description="Create or select a workspace to manage settings."
+					:title="t('dashboard.admin.instance.general.noWorkspaceTitle')"
+					:description="t('dashboard.admin.instance.general.noWorkspaceBody')"
 				/>
 			</UiCard>
 
@@ -304,8 +281,12 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 						<div class="flex items-center gap-3">
 							<UiIconBox icon="lucide:building-2" size="sm" variant="surface" rounded="lg" />
 							<div>
-								<h2 class="text-lg font-semibold text-text-primary">General</h2>
-								<p class="text-sm text-text-secondary">Team settings and defaults</p>
+								<h2 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.admin.instance.general.cardTitle') }}
+								</h2>
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.admin.instance.general.cardSubtitle') }}
+								</p>
 							</div>
 						</div>
 					</template>
@@ -315,42 +296,40 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 							<!-- Team Name -->
 							<UiInput
 								v-model="form.name"
-								label="Team Name"
-								placeholder="My Team"
+								:label="t('dashboard.admin.instance.general.teamName')"
+								:placeholder="t('dashboard.admin.instance.general.teamNamePlaceholder')"
 								:error="formErrors.name"
 								:disabled="isSaving"
 								:required="true"
-								help-text="This name will be displayed in your team's emails and dashboard."
+								:help-text="t('dashboard.admin.instance.general.teamNameHelp')"
 							/>
 
 							<!-- Timezone -->
 							<UiSelect
 								v-model="form.timezone"
-								label="Timezone"
+								:label="t('dashboard.admin.instance.general.timezone')"
 								:options="timezones"
 								:disabled="isSaving"
 							/>
 							<p class="-mt-4 text-xs text-text-tertiary">
-								Fallback timezone for send-time-optimized campaigns when a recipient's own timezone
-								is unknown.
+								{{ t('dashboard.admin.instance.general.timezoneHelp') }}
 							</p>
 
 							<!-- Divider -->
 							<div class="border-t border-border-subtle pt-6 -mx-6 px-6">
 								<h3 class="text-sm font-medium text-text-primary mb-4 flex items-center gap-2">
 									<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-									Default Sender Information
+									{{ t('dashboard.admin.instance.general.senderSection') }}
 								</h3>
 								<p class="text-xs text-text-tertiary mb-4">
-									These values are the default the app sends system mail from (verifications,
-									password resets) and prefill new campaigns.
+									{{ t('dashboard.admin.instance.general.senderSectionHelp') }}
 								</p>
 								<NuxtLink
 									to="/dashboard/admin/team/senders"
 									class="inline-flex items-center gap-1.5 text-xs text-brand hover:underline"
 								>
 									<Icon name="lucide:at-sign" class="w-3.5 h-3.5" />
-									Manage the addresses campaigns can send from
+									{{ t('dashboard.admin.instance.general.manageSenders') }}
 									<Icon name="lucide:arrow-right" class="w-3.5 h-3.5" />
 								</NuxtLink>
 							</div>
@@ -358,10 +337,10 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 							<!-- Default From Name -->
 							<UiInput
 								v-model="form.defaultFromName"
-								label="Default From Name"
-								placeholder="e.g., Company Name"
+								:label="t('dashboard.admin.instance.general.fromName')"
+								:placeholder="t('dashboard.admin.instance.general.fromNamePlaceholder')"
 								:disabled="isSaving"
-								help-text="The sender name recipients will see in their inbox."
+								:help-text="t('dashboard.admin.instance.general.fromNameHelp')"
 							/>
 
 							<!-- Default From Email -->
@@ -369,11 +348,11 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 								<UiInput
 									v-model="form.defaultFromEmail"
 									type="email"
-									label="Default From Email"
-									placeholder="e.g., hello@company.com"
+									:label="t('dashboard.admin.instance.general.fromEmail')"
+									:placeholder="t('dashboard.admin.instance.general.fromEmailPlaceholder')"
 									:error="formErrors.defaultFromEmail"
 									:disabled="isSaving"
-									help-text="The email address your campaigns will be sent from."
+									:help-text="t('dashboard.admin.instance.general.fromEmailHelp')"
 								/>
 								<!-- Non-blocking warning: domain is not verified for sending -->
 								<p
@@ -387,7 +366,7 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 											to="/dashboard/admin/delivery/domains"
 											class="underline hover:text-warning/80 whitespace-nowrap"
 										>
-											Set up a verified domain →
+											{{ t('dashboard.admin.instance.general.setUpVerifiedDomain') }} →
 										</NuxtLink>
 									</span>
 								</p>
@@ -396,7 +375,7 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 									v-if="(verifiedDomains?.length ?? 0) > 0"
 									class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-text-tertiary"
 								>
-									<span>Verified:</span>
+									<span>{{ t('dashboard.admin.instance.general.verifiedLabel') }}</span>
 									<button
 										v-for="d in verifiedDomains ?? []"
 										:key="d._id"
@@ -414,16 +393,16 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 							<div class="flex items-center justify-between py-2">
 								<div>
 									<p class="text-sm font-medium text-text-primary">
-										Enable campaign archives by default
+										{{ t('dashboard.admin.instance.general.archives') }}
 									</p>
 									<p class="text-xs text-text-tertiary mt-0.5">
-										New campaigns will include a "View in browser" link and a public archive page.
+										{{ t('dashboard.admin.instance.general.archivesHelp') }}
 									</p>
 								</div>
 								<UiSwitch
 									v-model="form.archiveEnabled"
 									:disabled="isSaving"
-									label="Enable campaign archives by default"
+									:label="t('dashboard.admin.instance.general.archives')"
 								/>
 							</div>
 						</div>
@@ -432,7 +411,7 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 						<div class="flex items-center justify-between pt-6 mt-6 border-t border-border-subtle">
 							<p v-if="isFormDirty" class="text-sm text-warning flex items-center gap-2">
 								<Icon name="lucide:alert-circle" class="w-4 h-4" />
-								You have unsaved changes
+								{{ t('dashboard.admin.instance.general.unsavedChanges') }}
 							</p>
 							<p v-else class="text-sm text-text-tertiary" />
 
@@ -440,7 +419,11 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 								<template #iconLeft>
 									<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
 								</template>
-								{{ isSaving ? 'Saving...' : 'Save Changes' }}
+								{{
+									isSaving
+										? t('dashboard.admin.instance.general.saving')
+										: t('dashboard.admin.instance.general.saveChanges')
+								}}
 							</UiButton>
 						</div>
 					</form>
@@ -451,9 +434,11 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 		<!-- Connected workspaces (desktop only) -->
 		<div v-if="isDesktop" class="mt-8">
 			<div class="mb-4">
-				<h2 class="text-lg font-medium text-text-primary">Connected workspaces</h2>
+				<h2 class="text-lg font-medium text-text-primary">
+					{{ t('dashboard.admin.instance.general.connectedWorkspaces') }}
+				</h2>
 				<p class="text-sm text-text-secondary mt-0.5">
-					Switch between the Owlat workspaces you've connected on this device, or connect another.
+					{{ t('dashboard.admin.instance.general.connectedWorkspacesHelp') }}
 				</p>
 			</div>
 			<SettingsConnectedWorkspaces />

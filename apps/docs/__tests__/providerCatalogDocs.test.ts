@@ -52,8 +52,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const read = (path: string) => readFileSync(resolve(repoRoot, path), 'utf8');
 
-const providers = read('apps/docs/content/3.developer/15.providers.md');
-const envVars = read('apps/docs/content/3.developer/8.environment-variables.md');
+const providers = read('apps/docs/content/en/3.developer/15.providers.md');
+const envVars = read('apps/docs/content/en/3.developer/8.environment-variables.md');
 
 /**
  * The catalog's core entries, under the SHAPE rather than the literal's frozen
@@ -461,8 +461,10 @@ describe('the environment-variables reference documents every provider the catal
  * self-hoster reads first.
  *
  * So the gate is the tree, not the two files: every markdown page under
- * `apps/docs/content` is read, and the two claims are checked wherever they are
- * made. ADRs included — a decision record that stated a default would be as
+ * `apps/docs/content/en` is read, and the two claims are checked wherever they
+ * are made. The ENGLISH tree specifically — it is the source every other locale
+ * is translated from, and phrase-level assertions against a translation would
+ * fail on wording, not on a wrong claim. ADRs included — a decision record that stated a default would be as
  * misleading as any other page, and both of ours already say the opposite.
  */
 function contentPages(): { path: string; text: string }[] {
@@ -474,7 +476,7 @@ function contentPages(): { path: string; text: string }[] {
 				pages.push({ path: `${dir}/${entry.name}`, text: read(`${dir}/${entry.name}`) });
 		}
 	};
-	walk('apps/docs/content');
+	walk('apps/docs/content/en');
 	return pages;
 }
 
@@ -716,7 +718,7 @@ describe('the provider-N+1 checklist covers both integration tiers', () => {
 		// The page has to exist, or the tier this table now advertises has no
 		// contract a reader can follow.
 		expect(
-			read('apps/docs/content/3.developer/49.plugin-send-providers.md').length
+			read('apps/docs/content/en/3.developer/49.plugin-send-providers.md').length
 		).toBeGreaterThan(0);
 	});
 
@@ -807,7 +809,7 @@ describe('the provider-N+1 checklist covers both integration tiers', () => {
 	 * author a missing module export and a composition that fails at first send.
 	 */
 	it('summarises the same plugin artifacts the guide requires, step for step', () => {
-		const guide = read('apps/docs/content/3.developer/49.plugin-send-providers.md');
+		const guide = read('apps/docs/content/en/3.developer/49.plugin-send-providers.md');
 		const guideChecklist = section(guide, '## The provider checklist, at both tiers');
 		const guideHeader = tableHeader(guideChecklist);
 		const guideStep = columnIndex(guideHeader, '#');

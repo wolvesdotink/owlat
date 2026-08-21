@@ -5,10 +5,15 @@
  * misled screen-reader users. Each remove control must instead announce the
  * action and its target ("Remove {label}"), never "Close"/"Confirm".
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import ChatMemberPicker from '../ChatMemberPicker.vue';
+import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+
+beforeAll(() => {
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
 
 const iconStub = { props: ['name'], template: '<span />' };
 
@@ -21,7 +26,10 @@ function mountPicker() {
 			],
 			query: '',
 		},
-		global: { stubs: { Icon: iconStub } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: iconStub },
+		},
 	});
 }
 
@@ -36,5 +44,6 @@ describe('ChatMemberPicker accessibility', () => {
 			expect(label).not.toBe('Close');
 			expect(label).not.toBe('Confirm');
 		}
+		expectFullyLocalized(wrapper);
 	});
 });

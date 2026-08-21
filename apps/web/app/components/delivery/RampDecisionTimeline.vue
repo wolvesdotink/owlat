@@ -18,6 +18,18 @@ defineProps<{
 	decisions: readonly RampCellDecision[];
 	labelledBy: string;
 }>();
+
+const { t, locale } = useI18n();
+
+/**
+ * The reason vocabulary in `utils/deliverabilityRamp` carries i18n keys rather
+ * than sentences (the registry convention for module-scope definitions); a plain
+ * string is still accepted, which is what an unknown reason falls back to.
+ */
+type LocalizedText = string | { key: string; params?: Record<string, unknown> };
+function localized(value: LocalizedText): string {
+	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
 </script>
 
 <template>
@@ -27,8 +39,7 @@ defineProps<{
 			class="text-sm text-text-secondary"
 			data-testid="ramp-timeline-empty"
 		>
-			No decisions recorded for this cell yet. The controller writes one every time it looks, so
-			this fills in on its own.
+			{{ t('components.delivery.rampDecisionTimeline.empty') }}
 		</p>
 		<ol v-else class="space-y-3" data-testid="ramp-decision-timeline">
 			<!-- KEYED BY POSITION AS WELL AS INSTANT. Two evaluations of one cell can
@@ -42,14 +53,16 @@ defineProps<{
 			>
 				<p class="text-xs text-text-secondary">
 					<time :datetime="new Date(decision.at).toISOString()">
-						{{ formatShortDate(decision.at) }}
+						{{ formatShortDate(decision.at, locale) }}
 					</time>
 					·
 					<span data-testid="ramp-decision-move">
 						{{ shareLabel(decision.fromShare) }} → {{ shareLabel(decision.toShare) }}
 					</span>
 					·
-					<span data-testid="ramp-decision-reason">{{ rampReasonLabel(decision.reason) }}</span>
+					<span data-testid="ramp-decision-reason">
+						{{ localized(rampReasonLabel(decision.reason)) }}
+					</span>
 				</p>
 				<p class="text-sm text-text-primary">{{ decision.message }}</p>
 				<p

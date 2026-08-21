@@ -126,54 +126,58 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 	return el.isContentEditable === true;
 }
 
-/** Data source for the "?" cheat-sheet overlay (PostboxShortcutHelp). */
+/**
+ * Data source for the "?" cheat-sheet overlay (PostboxShortcutHelp). `title`
+ * and `label` are i18n keys — this module is pure, so the overlay runs them
+ * through `t()`; the keys themselves are never shown.
+ */
 export const POSTBOX_SHORTCUT_GROUPS: ReadonlyArray<{
 	title: string;
 	shortcuts: ReadonlyArray<{ keys: readonly string[]; label: string }>;
 }> = [
 	{
-		title: 'Navigation',
+		title: 'shared.postboxShortcuts.groups.navigation',
 		shortcuts: [
-			{ keys: ['j', '↓'], label: 'Next message' },
-			{ keys: ['k', '↑'], label: 'Previous message' },
-			{ keys: ['Enter'], label: 'Open message' },
-			{ keys: ['/'], label: 'Focus search' },
-			{ keys: ['b'], label: 'Toggle Today / Browse (inbox)' },
-			{ keys: ['Esc'], label: 'Close the open conversation / back to Today' },
+			{ keys: ['j', '↓'], label: 'shared.postboxShortcuts.labels.nextMessage' },
+			{ keys: ['k', '↑'], label: 'shared.postboxShortcuts.labels.previousMessage' },
+			{ keys: ['Enter'], label: 'shared.postboxShortcuts.labels.openMessage' },
+			{ keys: ['/'], label: 'shared.postboxShortcuts.labels.focusSearch' },
+			{ keys: ['b'], label: 'shared.postboxShortcuts.labels.toggleTodayBrowse' },
+			{ keys: ['Esc'], label: 'shared.postboxShortcuts.labels.closeConversation' },
 		],
 	},
 	{
-		title: 'Triage',
+		title: 'shared.postboxShortcuts.groups.triage',
 		shortcuts: [
-			{ keys: ['e'], label: 'Archive' },
-			{ keys: ['#', 'Del'], label: 'Move to trash' },
-			{ keys: ['s'], label: 'Star / unstar' },
-			{ keys: ['u'], label: 'Toggle read' },
-			{ keys: ['Shift', 'U'], label: 'Mark unread' },
-			{ keys: ['x'], label: 'Select / deselect' },
+			{ keys: ['e'], label: 'shared.postboxShortcuts.labels.archive' },
+			{ keys: ['#', 'Del'], label: 'shared.postboxShortcuts.labels.moveToTrash' },
+			{ keys: ['s'], label: 'shared.postboxShortcuts.labels.starUnstar' },
+			{ keys: ['u'], label: 'shared.postboxShortcuts.labels.toggleRead' },
+			{ keys: ['Shift', 'U'], label: 'shared.postboxShortcuts.labels.markUnread' },
+			{ keys: ['x'], label: 'shared.postboxShortcuts.labels.selectDeselect' },
 		],
 	},
 	{
-		title: 'Organize',
+		title: 'shared.postboxShortcuts.groups.organize',
 		shortcuts: [
-			{ keys: ['h'], label: 'Snooze' },
-			{ keys: ['l'], label: 'Add label' },
-			{ keys: ['v'], label: 'Move to folder' },
+			{ keys: ['h'], label: 'shared.postboxShortcuts.labels.snooze' },
+			{ keys: ['l'], label: 'shared.postboxShortcuts.labels.addLabel' },
+			{ keys: ['v'], label: 'shared.postboxShortcuts.labels.moveToFolder' },
 		],
 	},
 	{
-		title: 'Compose',
+		title: 'shared.postboxShortcuts.groups.compose',
 		shortcuts: [
-			{ keys: ['r'], label: 'Reply' },
-			{ keys: ['a'], label: 'Reply all' },
-			{ keys: ['f'], label: 'Forward' },
-			{ keys: ['⌘', 'Shift', 'F'], label: 'Focus the composer' },
-			{ keys: ['⌘', 'Enter'], label: 'Send (in composer)' },
-			{ keys: ['⌘', 'Shift', 'Enter'], label: 'Schedule send (in composer)' },
+			{ keys: ['r'], label: 'shared.postboxShortcuts.labels.reply' },
+			{ keys: ['a'], label: 'shared.postboxShortcuts.labels.replyAll' },
+			{ keys: ['f'], label: 'shared.postboxShortcuts.labels.forward' },
+			{ keys: ['⌘', 'Shift', 'F'], label: 'shared.postboxShortcuts.labels.focusComposer' },
+			{ keys: ['⌘', 'Enter'], label: 'shared.postboxShortcuts.labels.send' },
+			{ keys: ['⌘', 'Shift', 'Enter'], label: 'shared.postboxShortcuts.labels.scheduleSend' },
 		],
 	},
 	{
-		title: 'Help',
-		shortcuts: [{ keys: ['?'], label: 'Show / hide this cheat sheet' }],
+		title: 'shared.postboxShortcuts.groups.help',
+		shortcuts: [{ keys: ['?'], label: 'shared.postboxShortcuts.labels.toggleCheatSheet' }],
 	},
 ];

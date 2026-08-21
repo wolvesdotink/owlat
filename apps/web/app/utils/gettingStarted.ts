@@ -56,21 +56,37 @@ export type InstanceFlagId =
 	| 'createdApiKey'
 	| 'setupDomain';
 
+/**
+ * A piece of copy this module hands back, as the catalog key that carries it —
+ * plus the values to interpolate when it takes any. This module is module scope
+ * and never calls `useI18n`; `GettingStarted.vue` is the render boundary that
+ * words every step it is given.
+ */
+export type GettingStartedMessage = string | { key: string; params?: Record<string, unknown> };
+
 export interface GettingStartedStep {
 	id: string;
-	title: string;
-	description: string;
+	title: GettingStartedMessage;
+	description: GettingStartedMessage;
 	/** Where the CTA navigates to do / resume this step. */
 	href: string;
-	cta: string;
+	cta: GettingStartedMessage;
 	icon: string;
 	completed: boolean;
+	/**
+	 * The member cannot do this step yet — something outside their control is
+	 * missing. A blocked step renders as an honest waiting state (no CTA into a
+	 * dead end) and unblocks itself the moment the reason goes away.
+	 */
+	blocked?: boolean;
+	/** What is being waited on, shown in place of the CTA. Set iff `blocked`. */
+	blockedReason?: GettingStartedMessage;
 }
 
 export interface GettingStartedSection {
 	id: 'instance' | 'personal';
-	title: string;
-	description: string;
+	title: GettingStartedMessage;
+	description: GettingStartedMessage;
 	steps: GettingStartedStep[];
 }
 
@@ -103,12 +119,11 @@ export interface GettingStartedModel {
  */
 export const READY_TO_SEND_STEP: Omit<GettingStartedStep, 'completed'> = {
 	id: 'readyToSend',
-	title: 'Get ready to send',
-	description:
-		'Set up sending and verify your domain in one place — Delivery shows exactly what is left before mail can go out.',
+	title: 'shared.gettingStarted.readyToSend.title',
+	description: 'shared.gettingStarted.readyToSend.description',
 	icon: 'lucide:send',
 	href: '/dashboard/admin/delivery',
-	cta: 'Open delivery',
+	cta: 'shared.gettingStarted.readyToSend.cta',
 };
 
 /**
@@ -123,36 +138,35 @@ interface InstanceStepMeta extends Omit<GettingStartedStep, 'completed' | 'id'> 
 export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 	{
 		id: 'addedContacts',
-		title: 'Add contacts',
-		description: 'Import or add your first contact.',
+		title: 'shared.gettingStarted.addedContacts.title',
+		description: 'shared.gettingStarted.addedContacts.description',
 		icon: 'lucide:users',
 		href: '/dashboard/audience/contacts',
-		cta: 'Add contacts',
+		cta: 'shared.gettingStarted.addedContacts.cta',
 	},
 	{
 		id: 'createdEmail',
-		title: 'Create an email',
-		description: 'Build an email template you can send.',
+		title: 'shared.gettingStarted.createdEmail.title',
+		description: 'shared.gettingStarted.createdEmail.description',
 		icon: 'lucide:file-text',
 		href: '/dashboard/send/marketing',
-		cta: 'Create email',
+		cta: 'shared.gettingStarted.createdEmail.cta',
 	},
 	{
 		id: 'sentCampaign',
-		title: 'Send a campaign',
-		description: 'Send your first email campaign to your audience.',
+		title: 'shared.gettingStarted.sentCampaign.title',
+		description: 'shared.gettingStarted.sentCampaign.description',
 		icon: 'lucide:megaphone',
 		href: '/dashboard/campaigns/new',
-		cta: 'New campaign',
+		cta: 'shared.gettingStarted.sentCampaign.cta',
 	},
 	{
 		id: 'createdApiKey',
-		title: 'Create an API key',
-		description:
-			'Send transactional email (receipts, password resets) programmatically via the API.',
+		title: 'shared.gettingStarted.createdApiKey.title',
+		description: 'shared.gettingStarted.createdApiKey.description',
 		icon: 'lucide:key',
 		href: '/dashboard/admin/team/api',
-		cta: 'Create key',
+		cta: 'shared.gettingStarted.createdApiKey.cta',
 	},
 ];
 
@@ -163,11 +177,11 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
  */
 export const BACKUPS_STEP: Omit<GettingStartedStep, 'completed'> = {
 	id: 'backupsScheduled',
-	title: 'Set up backups',
-	description: 'Nothing is backed up until you turn it on — do this before you store real data.',
+	title: 'shared.gettingStarted.backups.title',
+	description: 'shared.gettingStarted.backups.description',
 	icon: 'lucide:database-backup',
 	href: '/dashboard/admin/backups',
-	cta: 'Set up backups',
+	cta: 'shared.gettingStarted.backups.cta',
 };
 
 export interface GettingStartedInput {
@@ -186,6 +200,65 @@ export interface GettingStartedInput {
 	userDismissed: boolean;
 	/** The resolved set of completed personal step ids (incl. derived aiConnected). */
 	personalCompleted: ReadonlySet<ChecklistStepId>;
+	/**
+	 * Whether the instance can actually deliver mail (member-safe read of the
+	 * same signal as the admin `sendPathReady` flag). While false, the personal
+	 * send steps are BLOCKED rather than merely open — see
+	 * {@link SEND_BLOCKED_STEP_IDS}.
+	 */
+	sendPathReady: boolean;
+	/**
+	 * Campaign volume still sendable TODAY under the IP warm-up cap, or `null`
+	 * when there is no cap to quote / it could not be measured. Folded into the
+	 * "Send a campaign" step so the ramp is visible before a campaign is built
+	 * around an audience it cannot carry — see {@link sentCampaignDescription}.
+	 */
+	sendCapacityToday: number | null;
+}
+
+/**
+ * The personal steps a member cannot complete without an instance-wide outbound
+ * transport. Sending from Owlat is silently dropped without one, so these must
+ * never be presented as a check the member is failing to tick — they are shown
+ * as waiting on setup, and unblock themselves as soon as sending works.
+ */
+export const SEND_BLOCKED_STEP_IDS: ReadonlySet<ChecklistStepId> = new Set([
+	'sendingSwitched',
+	'firstSendDone',
+]);
+
+/** What a send-blocked step shows in place of its CTA. */
+export const SEND_BLOCKED_REASON = 'shared.gettingStarted.sendBlockedReason';
+
+/**
+ * The "Send a campaign" description, with today's real sending headroom folded
+ * in when it is known (`campaigns/sendingReadiness.ts` measures it off the same
+ * paced warming projection the send gate meters against).
+ *
+ * The point is that a warming deployment's cap is met HERE — on the way in —
+ * rather than as a pre-flight refusal after the operator has built a campaign
+ * for an audience today's capacity cannot carry. `null` is "not measured, or no
+ * cap applies", and then the step says nothing extra: an invented number beside
+ * a checklist item is worse than no number (deliverability plan D14).
+ *
+ * WHY THIS IS NOT `sendReadinessNote`. That helper (`~/lib/sendReadiness`)
+ * builds the same measurement into a two-line NOTE — a heading and a detail —
+ * for the surfaces that render one beside a send button. A checklist step has
+ * one description to extend and no audience to compare against, so it needs the
+ * number as a clause rather than a heading, and it is the only surface that has
+ * to explain the limit at all ("while your IPs warm up") because it has no
+ * capacity panel beside it. The NUMBER is single-sourced — both read
+ * `campaigns/sendingReadiness.ts` — the sentence around it is not.
+ */
+export function sentCampaignDescription(capacityToday: number | null): GettingStartedMessage {
+	if (capacityToday === null) return 'shared.gettingStarted.sentCampaign.description';
+	if (capacityToday <= 0) return 'shared.gettingStarted.sentCampaign.descriptionExhausted';
+	return {
+		key: 'shared.gettingStarted.sentCampaign.descriptionCapacity',
+		// Grouped here rather than in the message: this module is locale-free, and
+		// the number is the same one the send gate meters against.
+		params: { count: capacityToday, capacity: capacityToday.toLocaleString() },
+	};
 }
 
 const EMPTY_MODEL: GettingStartedModel = {
@@ -224,6 +297,11 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 			...INSTANCE_STEPS.map((step) => ({
 				...step,
 				completed: input.instanceFlags[step.id],
+				// The send step is the one whose feasibility depends on live warm-up
+				// state, so it carries today's headroom rather than a static sentence.
+				...(step.id === 'sentCampaign'
+					? { description: sentCampaignDescription(input.sendCapacityToday) }
+					: {}),
 			})),
 		];
 		if (input.showBackupsStep && input.isSelfHost) {
@@ -231,8 +309,8 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 		}
 		sections.push({
 			id: 'instance',
-			title: 'Get your instance ready',
-			description: 'A few steps to go live — set up sending, then your first campaign.',
+			title: 'shared.gettingStarted.instanceSection.title',
+			description: 'shared.gettingStarted.instanceSection.description',
 			steps,
 		});
 	}
@@ -241,19 +319,28 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 	const personalComplete = isChecklistComplete(input.mode, input.personalCompleted);
 	const personalActive = !input.userDismissed && !personalComplete;
 	if (personalActive) {
-		const steps: GettingStartedStep[] = visibleChecklistSteps(input.mode).map((step) => ({
-			id: step.id,
-			title: step.title,
-			description: step.description,
-			href: step.href,
-			cta: step.cta,
-			icon: step.icon,
-			completed: input.personalCompleted.has(step.id),
-		}));
+		const steps: GettingStartedStep[] = visibleChecklistSteps(input.mode).map((step) => {
+			const completed = input.personalCompleted.has(step.id);
+			// A send step with no transport behind it is blocked, not open: the
+			// member has nothing to do until the instance can send. The block lifts
+			// on its own the moment `sendPathReady` flips (the same edge that
+			// notifies them — see `auth/sendReadyNotices.ts`).
+			const blocked = !completed && !input.sendPathReady && SEND_BLOCKED_STEP_IDS.has(step.id);
+			return {
+				id: step.id,
+				title: step.title,
+				description: step.description,
+				href: step.href,
+				cta: step.cta,
+				icon: step.icon,
+				completed,
+				...(blocked ? { blocked: true, blockedReason: SEND_BLOCKED_REASON } : {}),
+			};
+		});
 		sections.push({
 			id: 'personal',
-			title: 'Finish setting up your account',
-			description: 'Pick up wherever you left off — nothing here is one-shot.',
+			title: 'shared.gettingStarted.personalSection.title',
+			description: 'shared.gettingStarted.personalSection.description',
 			steps,
 		});
 	}

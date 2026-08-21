@@ -46,6 +46,8 @@ const emit = defineEmits<{
 	'update:open': [value: boolean];
 }>();
 
+const { t } = useI18n();
+
 const isOpen = computed({
 	get: () => props.open,
 	set: (v: boolean) => emit('update:open', v),
@@ -62,7 +64,7 @@ const me = computed<AssignPopoverMember | null>(() => {
 const others = computed(() => props.members.filter((m) => m.userId !== props.currentUserId));
 
 function memberLabel(m: AssignPopoverMember): string {
-	return m.name?.trim() || m.email || 'Teammate';
+	return m.name?.trim() || m.email || t('components.inbox.assignPopover.teammate');
 }
 
 function choose(assignedTo: string | undefined) {
@@ -85,7 +87,7 @@ function choose(assignedTo: string | undefined) {
 				deterministic-color
 				size="sm"
 			/>
-			<span class="flex-1 truncate">Assign to me</span>
+			<span class="flex-1 truncate">{{ t('components.inbox.assignPopover.assignToMe') }}</span>
 			<kbd
 				class="ml-auto text-[10px] text-text-tertiary border border-border-subtle rounded px-1 py-0.5 leading-none"
 			>
@@ -121,7 +123,7 @@ function choose(assignedTo: string | undefined) {
 		<template v-if="assignedTo">
 			<UiDropdownDivider />
 			<UiDropdownMenuItem icon="lucide:user-x" @click="choose(undefined)">
-				Unassign
+				{{ t('components.inbox.assignPopover.unassign') }}
 			</UiDropdownMenuItem>
 		</template>
 	</UiDropdownMenu>

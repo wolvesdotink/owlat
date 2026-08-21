@@ -8,7 +8,9 @@ import {
 import { api } from '@owlat/api';
 import type { StoredAttachment } from '~/components/AttachmentPanel.vue';
 
-useHead({ title: 'Edit Transactional Email — Owlat' });
+const { t } = useI18n();
+
+useHead({ title: () => t('dashboard.send.transactional.detail.edit.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
@@ -21,6 +23,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 const { renderBlocksToHtml, buildHtmlTranslationsForEmail } = useEmailHtmlRendering();
 const { isFocusMode } = useFocusMode();
 const { emailTheme } = useEmailTheme();
+const builderFits = useEmailBuilderViewport();
 
 // Fetch transactional email data
 const {
@@ -32,16 +35,16 @@ const {
 
 // Mutations
 const { run: updateEmail } = useBackendOperation(api.transactional.emails.update, {
-	label: 'Save email',
+	label: () => t('dashboard.send.transactional.detail.edit.operations.save'),
 });
 const { run: publishEmail } = useBackendOperation(api.transactional.emails.publish, {
-	label: 'Publish email',
+	label: () => t('dashboard.send.transactional.detail.edit.operations.publish'),
 });
 const { run: unpublishEmail } = useBackendOperation(api.transactional.emails.unpublish, {
-	label: 'Unpublish email',
+	label: () => t('dashboard.send.transactional.detail.edit.operations.unpublish'),
 });
 const { run: updateSchema } = useBackendOperation(api.transactional.emails.updateSchema, {
-	label: 'Save variable',
+	label: () => t('dashboard.send.transactional.detail.edit.operations.saveVariable'),
 });
 const { showToast } = useToast();
 
@@ -86,7 +89,7 @@ const variables = computed<Variable[]>(() => {
 		key: v.key,
 		label: v.key,
 		type: v.type,
-		group: 'Data Variables',
+		group: t('dashboard.send.transactional.detail.edit.variableGroup'),
 		isBuiltIn: false,
 	}));
 });
@@ -114,6 +117,10 @@ const attachments = ref<StoredAttachment[]>([]);
 // and consumed at send time by the delivery worker.
 const showUnsubscribe = ref(false);
 
+// The author's manual text/plain body ('' = ship the generated one). Edited in
+// the builder's Text view; dirty-tracked and saved with the rest of the email.
+const plainTextOverride = ref('');
+
 // Email editor bridge — owns the handler set, the load→dirty→save loop, and the
 // media-picker / test-email plumbing. The transactional editor adds attachments
 // to the dirty-tracked refs and supplies its own publishable save.
@@ -135,11 +142,12 @@ const {
 	save: handleSave,
 } = useEmailEditorBridge({
 	source: email,
-	extraWatch: [() => attachments.value, () => showUnsubscribe.value],
+	extraWatch: [() => attachments.value, () => showUnsubscribe.value, () => plainTextOverride.value],
 	initialize: (e, ctx) => {
 		ctx.name.value = e.name;
 		ctx.subject.value = e.subject;
 		showUnsubscribe.value = e.showUnsubscribe ?? false;
+		plainTextOverride.value = e.plainTextOverride ?? '';
 		try {
 			const parsed = JSON.parse(e.content || '[]');
 			if (Array.isArray(parsed)) {
@@ -165,6 +173,7 @@ const {
 			renderOptions: { theme: emailTheme.value, variableType: 'data' },
 			supportedLanguages: email.value?.supportedLanguages ?? [],
 			defaultLanguage: email.value?.defaultLanguage ?? 'en',
+			plainTextOverride: plainTextOverride.value,
 			update: async (payload) => {
 				// The bridge clears the dirty flag only when save() resolves. The
 				// operation module has toasted any categorized failure; throw so the
@@ -177,6 +186,8 @@ const {
 					htmlContent: payload.htmlContent,
 					htmlTranslations: payload.htmlTranslations,
 					linkedBlockIds: payload.linkedBlockIds,
+					plainTextContent: payload.plainTextContent,
+					plainTextOverride: payload.plainTextOverride,
 					attachments: JSON.stringify(attachments.value),
 					showUnsubscribe: showUnsubscribe.value,
 				});
@@ -239,15 +250,12 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 	const type = (variable.type ?? 'string') as DataVariableInfo['type'];
 
 	if (!dataVariableKeyRegex.test(key)) {
-		showToast(
-			'Variable names must start with a letter and use letters, numbers, or underscores.',
-			'error'
-		);
+		showToast(t('dashboard.send.transactional.detail.edit.toasts.invalidVariableName'), 'error');
 		return;
 	}
 
 	if (dataVariables.value.some((existing) => existing.key === key)) {
-		showToast('That variable already exists.', 'error');
+		showToast(t('dashboard.send.transactional.detail.edit.toasts.duplicateVariable'), 'error');
 		return;
 	}
 
@@ -277,14 +285,16 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 		<UiQueryBoundary
 			:loading="emailLoading"
 			:error="emailError"
-			error-title="Couldn't load this email"
+			:error-title="t('dashboard.send.transactional.detail.edit.loadError')"
 			@retry="refetchEmail"
 		>
 			<template #loading>
 				<div class="h-full flex items-center justify-center bg-bg-deep">
 					<div class="flex flex-col items-center gap-3">
 						<UiSpinner />
-						<p class="text-text-secondary text-sm">Loading email...</p>
+						<p class="text-text-secondary text-sm">
+							{{ t('dashboard.send.transactional.detail.edit.loading') }}
+						</p>
 					</div>
 				</div>
 			</template>
@@ -293,13 +303,26 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			<div v-if="!email" class="h-full flex items-center justify-center bg-bg-deep">
 				<div class="text-center">
 					<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
-					<h2 class="text-xl font-semibold text-text-primary mb-2">Email not found</h2>
+					<h2 class="text-xl font-semibold text-text-primary mb-2">
+						{{ t('dashboard.send.transactional.detail.edit.notFound.title') }}
+					</h2>
 					<p class="text-text-secondary mb-6">
-						This transactional email doesn't exist or has been deleted.
+						{{ t('dashboard.send.transactional.detail.edit.notFound.description') }}
 					</p>
-					<UiButton @click="handleBack">Back to Emails</UiButton>
+					<UiButton @click="handleBack">{{
+						t('dashboard.send.transactional.detail.edit.backToEmails')
+					}}</UiButton>
 				</div>
 			</div>
+
+			<!-- Too narrow for the canvas — an honest gate beats a broken editor. -->
+			<EmailBuilderViewportGate v-else-if="!builderFits">
+				<template #action>
+					<UiButton variant="secondary" @click="handleBack">
+						{{ t('dashboard.send.transactional.detail.edit.backToEmails') }}
+					</UiButton>
+				</template>
+			</EmailBuilderViewportGate>
 
 			<!-- Email Builder + Attachments -->
 			<EmailBuilder
@@ -314,89 +337,24 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 					hideSubject: false,
 				}"
 				:is-saving="isSaving"
+				:plain-text-override="plainTextOverride"
+				:allow-plain-text-override="true"
+				@update:plain-text-override="plainTextOverride = $event"
 				@save="handleSave"
 				@back="handleBack"
 				@send-test="handleSendTest"
 				@create-variable="handleCreateVariable"
 			>
 				<template #toolbar-actions>
-					<!-- Current lifecycle status — draft / awaiting review / published.
-				     `pending_review` is shown distinctly so the author knows the
-				     template is NOT sendable yet (the send API rejects it). -->
-					<span
-						:class="[
-							'inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium',
-							isPublished
-								? 'bg-success/10 text-success'
-								: isPendingReview
-									? 'bg-warning/10 text-warning'
-									: 'bg-text-tertiary/10 text-text-tertiary',
-						]"
-						:title="
-							isPublished
-								? 'This email is live and can be sent via the API.'
-								: isPendingReview
-									? 'This email was flagged by the content scanner and cannot be sent until an admin approves it.'
-									: 'This email is a draft. Publish it to make it sendable via the API.'
-						"
-					>
-						<Icon
-							:name="
-								isPublished
-									? 'lucide:check-circle'
-									: isPendingReview
-										? 'lucide:clock-3'
-										: 'lucide:pencil'
-							"
-							class="w-3.5 h-3.5"
-						/>
-						{{ isPublished ? 'Published' : isPendingReview ? 'Awaiting review' : 'Draft' }}
-					</span>
-					<ShareLinksPopover :transactional-email-id="emailId" :has-unsaved-changes="hasChanges" />
-					<UiButton
-						variant="outline"
-						size="sm"
-						title="Manage translations"
-						@click="handleTranslations"
-					>
-						<template #iconLeft>
-							<Icon name="lucide:languages" class="w-4 h-4" />
-						</template>
-						Translations
-					</UiButton>
-					<!-- Awaiting review — no author-side action moves this forward, so the
-				     primary action is a disabled, honest state rather than "Publish". -->
-					<UiButton
-						v-if="isPendingReview"
-						variant="secondary"
-						size="sm"
-						disabled
-						title="Flagged by the content scanner — an admin must approve this email before it can be sent."
-					>
-						<template #iconLeft>
-							<Icon name="lucide:clock-3" class="w-4 h-4" />
-						</template>
-						Awaiting review
-					</UiButton>
-					<!-- Publish / Unpublish — the only affordance that makes a transactional
-				     email sendable; without it the send API rejects every request. -->
-					<UiButton
-						v-else
-						:variant="isPublished ? 'secondary' : 'primary'"
-						size="sm"
-						:loading="isPublishing"
-						:title="
-							isPublished
-								? 'Return this email to draft (stops new sends)'
-								: 'Publish this email to make it sendable via the API'
-						"
-						@click="handleTogglePublish"
-					>
-						<template v-if="!isPublishing" #iconLeft>
-							<Icon :name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'" class="w-4 h-4" />
-						</template>
-						{{ isPublished ? 'Unpublish' : 'Publish' }}
-					</UiButton>
+					<TransactionalEditorToolbarActions
+						:email-id="emailId"
+						:is-published="isPublished"
+						:is-pending-review="isPendingReview"
+						:is-publishing="isPublishing"
+						:has-changes="hasChanges"
+						@toggle-publish="handleTogglePublish"
+						@translations="handleTranslations"
+					/>
 				</template>
 				<template #after-canvas>
 					<!-- Awaiting-review banner — the content scanner flagged this email, so
@@ -408,11 +366,11 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 					>
 						<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 						<div>
-							<p class="text-sm font-medium text-text-primary">Awaiting review</p>
+							<p class="text-sm font-medium text-text-primary">
+								{{ t('dashboard.send.transactional.detail.edit.reviewBanner.title') }}
+							</p>
 							<p class="text-sm text-text-secondary mt-1">
-								This email was flagged by our content scanner and is pending review by a platform
-								administrator. It is not published and the send API will reject requests for it
-								until it has been approved. Edit the content and publish again to re-run the scan.
+								{{ t('dashboard.send.transactional.detail.edit.reviewBanner.body') }}
 							</p>
 						</div>
 					</div>
@@ -429,15 +387,16 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 						class="mt-3 rounded-lg shadow-surface-1 bg-bg-elevated px-10 py-5 flex items-center justify-between gap-4"
 					>
 						<div>
-							<p class="text-base font-medium text-text-primary">Show unsubscribe link</p>
+							<p class="text-base font-medium text-text-primary">
+								{{ t('dashboard.send.transactional.detail.edit.unsubscribe.title') }}
+							</p>
 							<p class="text-sm text-text-tertiary mt-0.5">
-								Append a Manage Preferences and Unsubscribe footer to every send of this email.
-								Leave off for receipts, password resets, and other mail recipients can't opt out of.
+								{{ t('dashboard.send.transactional.detail.edit.unsubscribe.description') }}
 							</p>
 						</div>
 						<UiSwitch
 							:model-value="showUnsubscribe"
-							label="Show unsubscribe link"
+							:label="t('dashboard.send.transactional.detail.edit.unsubscribe.title')"
 							class="shrink-0"
 							@update:model-value="showUnsubscribe = $event"
 						/>
