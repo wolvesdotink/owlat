@@ -56,5 +56,12 @@
 		"dockerfile": "apps/setup-cli/Dockerfile",
 		"context": ".",
 		"package": "@owlat/setup-cli"
+	},
+	{
+		"name": "ostr-registry",
+		"dockerfile": "apps/ostr-registry/Dockerfile",
+		"context": ".",
+		"package": "@owlat/ostr-registry",
+		"runtimeSmoke": true
 	}
 ]

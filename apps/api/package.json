@@ -57,6 +57,8 @@
 		"@owlat/mail-canon": "workspace:*",
 		"@owlat/mail-message": "workspace:*",
 		"@owlat/mta-protocol": "workspace:*",
+		"@owlat/ostr-core": "workspace:*",
+		"@owlat/ostr-observer": "workspace:*",
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",
 		"@owlat/provider-kit": "workspace:*",

@@ -68,14 +68,13 @@ function applyFeedbackProvenancePolicy(
 	if (!feedback.feedbackProvenance) return reduction;
 	if (feedback.feedbackProvenance === 'unknown') return { effects: [] };
 	const deliveryDomain = feedback.feedbackProvenance;
-	const events = reduction.effects.map(
-		(effect): BounceEffect =>
-			effect.kind === 'notify_convex'
-				? {
-						...effect,
-						event: { ...effect.event, deliveryDomain },
-					}
-				: effect
+	const events = reduction.effects.map((effect): BounceEffect =>
+		effect.kind === 'notify_convex'
+			? {
+					...effect,
+					event: { ...effect.event, deliveryDomain },
+				}
+			: effect
 	);
 	if (deliveryDomain === 'production') return { effects: events };
 	// Member previews retain only their authenticated lifecycle callback. They
@@ -253,7 +252,17 @@ function reduceMailbox(
 	attempt: Extract<BounceAttempt, { kind: 'mailbox' }>,
 	ctx: BasePhaseCtx
 ): OutcomeReduction {
-	const { parsed, rawBuffer, spfResult, envelopeFromDomain, dkimSigningDomain, returnPath } = ctx;
+	const {
+		parsed,
+		rawBuffer,
+		spfResult,
+		envelopeFromDomain,
+		dkimSigningDomain,
+		returnPath,
+		ostrTier,
+		ostrScore,
+		ostrDkimEvidence,
+	} = ctx;
 	const {
 		mailbox,
 		rcptTo,
@@ -332,6 +341,16 @@ function reduceMailbox(
 						// later impersonation heuristic need not re-parse the .eml.
 						envelopeFromDomain,
 						dkimSigningDomain,
+						// OSTR (plan §12.2), spread so that an instance with the registry
+						// off emits the SAME payload it emitted before OSTR existed — the
+						// keys are absent, not present-and-undefined. `ostrTier` is a
+						// signal beside the verdicts above, never a gate: the message was
+						// accepted before the lookup ran. `ostrDkimEvidence` (§7.2) rides
+						// along only in observer mode, and only for a signature that
+						// actually verified.
+						...(ostrTier !== undefined ? { ostrTier } : {}),
+						...(ostrScore !== undefined ? { ostrScore } : {}),
+						...(ostrDkimEvidence !== undefined ? { ostrDkimEvidence } : {}),
 					},
 					timestamp: Date.now(),
 				},

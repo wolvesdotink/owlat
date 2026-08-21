@@ -57,6 +57,8 @@ export { verifyDkim } from './dkim/verify.js';
 export { isNoRecordDnsError } from './dnsErrors.js';
 export type {
 	DkimDnsResolver,
+	DkimSignatureEvidence,
+	DkimSignedHeader,
 	DkimSignatureResult,
 	DkimVerifyResult,
 	VerifyDkimOptions,

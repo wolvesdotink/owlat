@@ -11,8 +11,10 @@
  * renders nothing.
  */
 import {
+	deriveOstrChip,
 	deriveSenderAuth,
 	deriveSenderHeuristicLines,
+	type OstrChip,
 	type SenderAuthInput,
 	type SenderAuthResult,
 	type SenderHeuristics,
@@ -28,6 +30,13 @@ const props = defineProps<{
 	 * badge. Absent / all-clear contributes no lines.
 	 */
 	heuristics?: SenderHeuristics;
+	/** Feature-flag gate for the OSTR chip (`ostr`), decided by the reader. */
+	ostrEnabled?: boolean;
+	/**
+	 * The sender's OSTR registry tier persisted at delivery
+	 * (`mailMessages.ostrTier`). Absent — or `unknown` — renders no chip.
+	 */
+	ostrTier?: string;
 }>();
 
 const { t } = useI18n();
@@ -49,6 +58,21 @@ const heuristicLines = computed(() =>
 	props.enabled ? deriveSenderHeuristicLines(props.heuristics) : []
 );
 
+// The OSTR registry tier, behind its own flag. A separate signal from the auth
+// verdicts (see `deriveOstrChip`), so it gets its own chip rather than folding
+// into the summary — but it lives inside this badge, and an absent / `unknown`
+// tier stays silent.
+//
+// DEFERRED, deliberately: plan 12.2 also asks for a click-through to the public
+// evidence page, and this chip ships inert. The wire contract persists exactly
+// one field — `mailMessages.ostrTier` — with no subject reference and no
+// evidence URL, and the aggregator's address is server-side config. A link
+// synthesised here from the sender domain alone would point at a page that may
+// hold different evidence than the tier this row was stamped with, i.e. it would
+// claim more than the row carries, which is the one thing this badge may never
+// do. It becomes a link when the row carries an evidence reference.
+const ostrChip = computed(() => (props.ostrEnabled ? deriveOstrChip(props.ostrTier) : null));
+
 // Quiet by default when verified; the warn/danger states start expanded so the
 // reader sees why without having to reach for it. Watch the derived STATE (a
 // primitive) rather than the result object: the parent passes a fresh `auth`
@@ -56,16 +80,19 @@ const heuristicLines = computed(() =>
 // reader's manual expand/collapse on any unrelated re-render.
 const expanded = ref(false);
 watch(
-	[() => result.value?.state, () => heuristicLines.value.length],
-	([state, lineCount]) => {
+	[() => result.value?.state, () => heuristicLines.value.length, () => ostrChip.value?.tone],
+	([state, lineCount, ostrTone]) => {
 		// Expand when there is something the reader should not have to reach for:
 		// any non-trustworthy state, OR an impersonation heuristic fired even on an
 		// otherwise-trustworthy sender (a verified domain can still be a look-alike
 		// of a contact). The trustworthy states — a directly-verified sender and a
 		// trusted-forwarder ARC rescue ('forwarded') — stay quiet with no
 		// heuristics, so a rescued mailing-list message never reads as suspicious.
+		// A warned / flagged registry tier counts as such a signal too: an
+		// authenticated sender can still have a bad public record.
 		const trustworthy = state === 'verified' || state === 'forwarded';
-		expanded.value = state ? !trustworthy || lineCount > 0 : false;
+		const ostrConcern = ostrTone === 'warn' || ostrTone === 'danger';
+		expanded.value = state ? !trustworthy || lineCount > 0 || ostrConcern : false;
 	},
 	{ immediate: true }
 );
@@ -86,6 +113,20 @@ const toneClasses = computed(() => {
 	const tone = result.value?.tone;
 	return tone ? TONE_CLASSES[tone] : FALLBACK_TONE;
 });
+
+// The registry chip reuses the same table, so the two chips can never drift
+// apart, plus the one tone only it has: `neutral` for `establishing`, a tier
+// with real but short evidence. It gets the quiet chip and a NON-green icon, so
+// a sender still building a history is visibly not a sender that has one.
+const OSTR_TONE_CLASSES: Record<OstrChip['tone'], { chip: string; icon: string }> = {
+	...TONE_CLASSES,
+	neutral: FALLBACK_TONE,
+};
+
+const ostrToneClasses = computed(() => {
+	const tone = ostrChip.value?.tone;
+	return tone ? OSTR_TONE_CLASSES[tone] : FALLBACK_TONE;
+});
 </script>
 
 <template>
@@ -105,12 +146,28 @@ const toneClasses = computed(() => {
 				class="w-3 h-3 text-text-tertiary"
 			/>
 		</button>
+		<span
+			v-if="ostrChip"
+			class="ml-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border"
+			:class="ostrToneClasses.chip"
+			data-testid="auth-badge-ostr"
+		>
+			<Icon name="lucide:globe" class="w-3.5 h-3.5" :class="ostrToneClasses.icon" />
+			<span>{{ t(ostrChip.labelKey) }}</span>
+		</span>
 		<p
 			v-if="expanded"
 			class="mt-1.5 text-xs text-text-secondary max-w-prose"
 			data-testid="auth-badge-detail"
 		>
 			{{ message(result.detail) }}
+		</p>
+		<p
+			v-if="expanded && ostrChip"
+			class="mt-1.5 text-xs text-text-secondary max-w-prose"
+			data-testid="auth-badge-ostr-detail"
+		>
+			{{ t(ostrChip.detailKey) }}
 		</p>
 		<ul
 			v-if="expanded && heuristicLines.length"

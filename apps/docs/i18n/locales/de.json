@@ -256,6 +256,7 @@
 			"developer-mta-system": "MTA-System",
 			"developer-providers": "Anbieter",
 			"developer-deliverability-infrastructure": "Zustellbarkeits-Infrastruktur",
+			"developer-trust-registry": "Trust-Registry (OSTR)",
 			"developer-campaign-internals": "Kampagnen-Interna",
 			"developer-audience-internals": "Zielgruppen-Interna",
 			"developer-automation-internals": "Automations-Interna",

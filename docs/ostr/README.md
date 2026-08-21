@@ -33,15 +33,15 @@ Working title only. The public name is chosen at launch and will not contain
 
 ## Where things are
 
-|                  |                                                                                                                                                                            |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Specification    | [spec-v0.md](spec-v0.md), sections in [spec/](spec/)                                                                                                                       |
-| Decision record  | [ADR-0058](../adr/0058-open-sender-trust-registry.md)                                                                                                                      |
-| Design plan      | `TRUST_REGISTRY_PLAN_2026-08-20.html` at the repository root                                                                                                               |
-| Core library     | `packages/ostr-core` (schema, JCS canonicalization, ed25519, Merkle primitives, scoring policy)                                                                            |
-| Consumer library | `packages/ostr-client` (DNS lookup, snapshot and diff sync, observer re-weighting). Empty scaffold; filled in Phase 1, re-weighting in Phase 3                             |
-| Observer library | `packages/ostr-observer` (evidence capture, key observations, windowed aggregation, batch commitments). Empty scaffold; filled in Phase 1                                  |
-| Registry service | `apps/ostr-registry` (log, reference aggregator, DNS zone generation, HTTPS API, explorer). Empty scaffold; single-node log and aggregator in Phase 0, the rest in Phase 2 |
+|                  |                                                                                                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Specification    | [spec-v0.md](spec-v0.md), sections in [spec/](spec/)                                                                                                                      |
+| Decision record  | [ADR-0058](../adr/0058-open-sender-trust-registry.md)                                                                                                                     |
+| Design plan      | `TRUST_REGISTRY_PLAN_2026-08-20.html` at the repository root                                                                                                              |
+| Core library     | `packages/ostr-core` (schema, JCS canonicalization, ed25519, Merkle primitives, scoring policy)                                                                           |
+| Consumer library | `packages/ostr-client` (DNS lookup, snapshot and diff sync, the `bl.`/`wl.` compatibility views). Built; observer re-weighting lands in Phase 3                           |
+| Observer library | `packages/ostr-observer` (evidence capture, key observations, windowed aggregation, batch commitments). Built                                                             |
+| Registry service | `apps/ostr-registry` (log, reference aggregator, DNS zone generation, HTTPS API). Single-node log and aggregator built; the explorer lands in Phase 2                     |
 
 Every tunable of the scoring function lives in the `POLICY_V1` constants
 exported from `@owlat/ostr-core/scoring`. Those constants are normative; the
@@ -52,14 +52,32 @@ floors, are deployment values at v1 and are listed with their status in
 
 ## Phase status
 
-| Phase | Scope                                                                                                                                                              | Status          |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
-| 0     | Written spec v0, `ostr-core` with golden-file determinism tests, single-node log and aggregator behind a dev flag                                                  | **In progress** |
-| 1     | Private federation: observer and client wired into Owlat behind opt-in flags, a handful of real instances submitting, monitor-only challenge sampling              | Not started     |
-| 2     | Public transparency: public log, at least two independent monitors, DNS zone with the `bl.`/`wl.` compatibility views, snapshots, pooled relay for small observers | Not started     |
-| 3     | Federation and governance: second log operator, non-Owlat observers, vouching live, charter ratified, consumer re-weighting shipped                                | Not started     |
-| 4     | Standardization: IETF draft for the attestation format and DNS query interface, outreach to other MTA projects                                                     | Not started     |
+| Phase | Scope                                                                                                                                                              | Status                 |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
+| 0     | Written spec v0, `ostr-core` with golden-file determinism tests, single-node log and aggregator behind a dev flag                                                  | **Built, exit pending** |
+| 1     | Private federation: observer and client wired into Owlat behind opt-in flags, a handful of real instances submitting, monitor-only challenge sampling              | **Wired, federation pending** |
+| 2     | Public transparency: public log, at least two independent monitors, the explorer, pooled relay for small observers                                                 | Not started            |
+| 3     | Federation and governance: second log operator, non-Owlat observers, vouching live, charter ratified, consumer re-weighting shipped                                | Not started            |
+| 4     | Standardization: IETF draft for the attestation format and DNS query interface, outreach to other MTA projects                                                     | Not started            |
+
+Phase 1's wiring is in: the MTA resolves a tier on the inbound path, delivery
+records it, the observer aggregates and submits from Convex, and the reader
+shows the tier under the `ostr` flag. What is left is the federation itself —
+real instances submitting to a shared log — plus challenge sampling, which has
+retention behind it but no endpoint serving it. The v1 observer also publishes
+no trap hits and no IP subjects; `apps/api/convex/ostr/window.ts` says why.
+
+"Not started" on Phase 2 is about publication, not about code. The `bl.`/`wl.`
+compatibility views and the signed snapshots are already built on both sides —
+the zone generator emits them (`aggregator/zone.ts`) and `ostr-client` reads
+them (`rbl.ts`, `sync.ts`) — but nothing serves them at a public name yet, and
+a transparency log with one operator and no monitor is not transparency.
 
 Phase 0 exits when two independent implementations of the scoring function
 produce byte-identical explanations on a shared fixture corpus. One of them is
-TypeScript, in this repository.
+TypeScript, in this repository; the second does not exist yet, which is why the
+row above says "built" and not "done". The golden-file corpus the second
+implementation has to reproduce is checked in under
+`packages/ostr-core/src/scoring/__tests__/goldens/`, so
+writing it is the only remaining Phase 0 work — it does not block Phase 1, and
+the two run in parallel.

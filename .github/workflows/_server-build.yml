@@ -96,6 +96,9 @@ jobs:
           - name: setup
             dockerfile: apps/setup-cli/Dockerfile
             context: .
+          - name: ostr-registry
+            dockerfile: apps/ostr-registry/Dockerfile
+            context: .
     steps:
       - uses: step-security/harden-runner@v2
         with:
@@ -213,7 +216,7 @@ jobs:
           set -euo pipefail
           failed=0
           # Keep this list in sync with the build-and-push matrix above.
-          for name in web mta updater convex-deploy imap mail-sync code-worker setup; do
+          for name in web mta updater convex-deploy imap mail-sync code-worker setup ostr-registry; do
             image="${IMAGE_PREFIX}/${name}:${{ inputs.version }}"
             if docker manifest inspect "$image" > /dev/null 2>&1; then
               echo "OK       ${image}"

@@ -3,8 +3,17 @@
  */
 
 import type { MtaRoutingReentry } from '@owlat/mta-protocol';
+import type { Tier } from '@owlat/ostr-client';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { FblSourceIspToken } from './bounce/fblProcessor.js';
+import type { OstrDkimEvidencePayload } from './bounce/ostrEvidence.js';
+
+/**
+ * The OSTR standing ladder (`unknown` | `establishing` | `trusted` | `warned` |
+ * `flagged`), aliased so the wire types name it without every consumer of this
+ * module reaching into the client package.
+ */
+export type OstrTier = Tier;
 
 // ============ Email Job Types ============
 
@@ -208,6 +217,24 @@ export interface MailboxInboundPayload extends InboundAuthVerdicts {
 	spamScore?: number;
 	spamVerdict?: 'ham' | 'spam' | 'quarantine';
 	virusVerdict?: 'clean' | 'infected' | 'skipped';
+	/**
+	 * OSTR tier for the sender (plan §12.2), when the instance consumes the
+	 * registry and a lookup answered. A SIGNAL beside the auth verdicts, never a
+	 * gate: acceptance was decided before it was known, and a reader that cannot
+	 * make sense of it must ignore it. Absent means "not asked" or "no answer" —
+	 * deliberately indistinguishable, and NOT "unknown sender" (a lookup failure
+	 * is a fact about the lookup; spec 08 §8.1).
+	 */
+	ostrTier?: OstrTier;
+	/** The aggregator's score behind `ostrTier`. */
+	ostrScore?: number;
+	/**
+	 * Observer-mode DKIM evidence (§7.2): everything needed to re-verify offline
+	 * WHY this message's signature passed, so a later spam report can be
+	 * substantiated instead of merely asserted. Present only when the instance
+	 * has observer mode on AND a signature verified.
+	 */
+	ostrDkimEvidence?: OstrDkimEvidencePayload;
 }
 
 /** Parsed inbound email content forwarded to Convex (AI-inbox `inbound.received`) */

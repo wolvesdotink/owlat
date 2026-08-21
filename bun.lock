@@ -35,6 +35,8 @@
         "@owlat/mail-canon": "workspace:*",
         "@owlat/mail-message": "workspace:*",
         "@owlat/mta-protocol": "workspace:*",
+        "@owlat/ostr-core": "workspace:*",
+        "@owlat/ostr-observer": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
         "@owlat/provider-kit": "workspace:*",
@@ -188,6 +190,8 @@
         "@owlat/mail-auth": "workspace:*",
         "@owlat/mail-message": "workspace:*",
         "@owlat/mta-protocol": "workspace:*",
+        "@owlat/ostr-client": "workspace:*",
+        "@owlat/ostr-observer": "workspace:*",
         "@owlat/shared": "workspace:*",
         "@owlat/smtp-client": "workspace:*",
         "@owlat/smtp-listener": "workspace:*",
@@ -198,6 +202,7 @@
         "prom-client": "^15.1.0",
       },
       "devDependencies": {
+        "@owlat/ostr-core": "workspace:*",
         "@types/mailparser": "^3.4.5",
         "@types/node": "catalog:",
         "@types/smtp-server": "^3.5.10",
@@ -542,7 +547,6 @@
       "name": "@owlat/ostr-observer",
       "version": "0.4.4",
       "dependencies": {
-        "@owlat/mail-auth": "workspace:*",
         "@owlat/ostr-core": "workspace:*",
       },
       "devDependencies": {

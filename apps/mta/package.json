@@ -23,6 +23,8 @@
 		"@owlat/mail-auth": "workspace:*",
 		"@owlat/mail-message": "workspace:*",
 		"@owlat/mta-protocol": "workspace:*",
+		"@owlat/ostr-client": "workspace:*",
+		"@owlat/ostr-observer": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"@owlat/smtp-listener": "workspace:*",
@@ -33,6 +35,7 @@
 		"prom-client": "^15.1.0"
 	},
 	"devDependencies": {
+		"@owlat/ostr-core": "workspace:*",
 		"@types/mailparser": "^3.4.5",
 		"@types/node": "catalog:",
 		"@types/smtp-server": "^3.5.10",

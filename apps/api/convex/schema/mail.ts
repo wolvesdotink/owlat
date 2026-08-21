@@ -18,6 +18,7 @@ import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
 import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
+import { ostrTierValidator } from '../ostr/signals';
 import { editAdjustmentValidator } from '../mail/editLearningValidators';
 
 /**
@@ -546,6 +547,15 @@ export const mailTables = {
 		// so an ordinary message can never render it.
 		dmarcOverride: v.optional(v.string()),
 		arcSealer: v.optional(v.string()),
+		// Open Sender Trust Registry tier for the sending domain at delivery time
+		// (plan §6.1, ADR-0058), as the MTA's consumer lookup resolved it. A
+		// SIGNAL, not a gate: only `flagged` — strong, multi-observer negative
+		// evidence — routes to Spam, and only while the `ostr` feature flag is on;
+		// `warned` and below never move a message. Recorded either way, so the
+		// reader's tier chip and an operator asking "what did the registry say?"
+		// read the same value the routing decision saw. Absent on every message
+		// delivered without the registry consulted (the default).
+		ostrTier: v.optional(ostrTierValidator),
 		// Sender-impersonation heuristics computed at ingest (Sealed Mail A4).
 		// Two content-visible signals derived from the scanner rule (a From domain
 		// that homoglyph/punycode-spoofs a real one, a Reply-To on a different
@@ -649,6 +659,15 @@ export const mailTables = {
 		.index('by_folder_and_seen', ['folderId', 'flagSeen', 'uid'])
 		.index('by_folder_and_modseq', ['folderId', 'modseq'])
 		.index('by_mailbox_and_received', ['mailboxId', 'receivedAt'])
+		// Mailbox-scoped RECEIVER clock. `receivedAt` is `Date:` when the sender
+		// supplied one, so it is sender-controlled and can be back-dated, skewed or
+		// delayed in transit; `createdAt` is stamped by this deployment when the row
+		// is written. Anything that must not be steerable from outside ranges here
+		// instead — the OSTR observer's traffic denominator does
+		// (`ostr/store.ts::listWindowObservations`), because a back-dated `Date:`
+		// header would otherwise let a sender drop itself out of the volume it is
+		// judged against.
+		.index('by_mailbox_and_created', ['mailboxId', 'createdAt'])
 		// Folder-scoped arrival order — backs the per-folder list page directly (no
 		// mailbox-wide overfetch-then-filter that starved minority folders).
 		.index('by_folder_and_received', ['folderId', 'receivedAt'])

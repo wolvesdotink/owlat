@@ -34,7 +34,7 @@ export function formatDnsTierAnswer(answer: DnsTierAnswer): string {
 }
 
 export function parseDnsTierAnswer(
-	txt: string,
+	txt: string
 ): { ok: true; answer: DnsTierAnswer } | { ok: false; errors: string[] } {
 	const errors: string[] = [];
 	const fields = new Map<string, string>();
@@ -55,7 +55,8 @@ export function parseDnsTierAnswer(
 	if (tier === undefined || !TIERS.includes(tier)) errors.push('unknown tier');
 	const scoreText = fields.get('score');
 	const score = scoreText !== undefined && /^\d{1,3}$/.test(scoreText) ? Number(scoreText) : NaN;
-	if (!Number.isInteger(score) || score < 0 || score > 100) errors.push('score not an integer in [0,100]');
+	if (!Number.isInteger(score) || score < 0 || score > 100)
+		errors.push('score not an integer in [0,100]');
 	const policy = fields.get('policy');
 	if (policy === undefined || policy === '') errors.push('missing policy');
 	const asof = fields.get('asof');

@@ -60,6 +60,7 @@ export type CoreFeatureFlagKey =
 	| 'scan.urls'
 	| 'senderAuthBadges'
 	| 'sealedMail'
+	| 'ostr'
 	// Analytics & deliverability
 	| 'analytics.posthog'
 	| 'domains.verification'
@@ -438,6 +439,28 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		// End-to-end sealing applies to the Postbox 1:1 plane, and the honest
 		// "Sealed - sender verified" badge builds on sender authenticity.
 		requires: ['postbox', 'senderAuthBadges'],
+	},
+	ostr: {
+		key: 'ostr',
+		category: 'security',
+		label: 'Sender trust registry (OSTR)',
+		description:
+			'Consult the Open Sender Trust Registry for an inbound sender\'s public standing, show its tier beside the sender badge, and file mail from a flagged sender as spam. The tier is a signal, not a verdict: it is recorded on every message either way, and nothing below "flagged" changes where mail lands.',
+		// Off until an operator points it at an aggregator they trust: reading a
+		// reputation source is a decision about whose judgement to consult.
+		default: false,
+		// BOTH or neither. An aggregator is an untrusted intermediary by design —
+		// every answer is signed at the source — so a URL without its verifying
+		// key is a feed that cannot be authenticated, which `lib/env.ts` says must
+		// fail loudly rather than silently downgrade to trust. Listing both here
+		// is what makes the Features "needs configuration" badge tell the truth
+		// about that half-configured state.
+		requiredEnvVars: ['OSTR_AGGREGATOR_URL', 'OSTR_AGGREGATOR_PUBLIC_KEY'],
+		// Both of OSTR's effects — the inbound routing decision in
+		// `deliverToMailbox` and the tier chip beside the sender badge — are
+		// personal-mail surfaces, so without the Postbox plane this flag would be
+		// a toggle that provably does nothing.
+		requires: ['postbox'],
 	},
 
 	'analytics.posthog': {

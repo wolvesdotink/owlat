@@ -10990,6 +10990,26 @@
 				"unknown": "Unbekannte Aktion"
 			}
 		},
+		"ostr": {
+			"tier": {
+				"establishing": {
+					"detail": "Öffentliche Absender-Trust-Registries verzeichnen sauberen Versand für diesen Absender, seine Historie ist aber noch kurz.",
+					"label": "Reputation: im Aufbau"
+				},
+				"flagged": {
+					"detail": "Öffentliche Absender-Trust-Registries haben starke negative Hinweise auf diesen Absender von mehreren unabhängigen Beobachtern verzeichnet. Behandeln Sie diese Nachricht als verdächtig.",
+					"label": "Reputation: markiert"
+				},
+				"trusted": {
+					"detail": "Öffentliche Absender-Trust-Registries verzeichnen eine dauerhaft saubere Historie für diesen Absender, unabhängig beobachtet von mehreren Empfängern.",
+					"label": "Reputation: vertrauenswürdig"
+				},
+				"warned": {
+					"detail": "Öffentliche Absender-Trust-Registries haben kürzlich Beschwerden oder Treffer in Spam-Fallen für diesen Absender verzeichnet. Noch kein dauerhaftes Muster, behandeln Sie diese Nachricht aber mit Vorsicht.",
+					"label": "Reputation: Warnung"
+				}
+			}
+		},
 		"outboundIpStatus": {
 			"blocklist": {
 				"critical": "Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
@@ -12959,6 +12979,10 @@
 				"multiTenancy": {
 					"description": "Isolation pro Organisation über mehrere VPS hinweg (nur gehostete Steuerungsebene).",
 					"label": "Mandantenfähigkeit"
+				},
+				"ostr": {
+					"description": "Das Open Sender Trust Registry nach dem öffentlichen Ansehen eines eingehenden Absenders befragen, dessen Stufe neben dem Absender-Abzeichen anzeigen und Mail von einem markierten Absender als Spam einsortieren. Die Stufe ist ein Signal, kein Urteil: Sie wird ohnehin bei jeder Nachricht festgehalten, und alles unterhalb von „markiert“ ändert nichts daran, wo die Mail landet.",
+					"label": "Absender-Vertrauensregister (OSTR)"
 				},
 				"postbox": {
 					"aiDraft": {

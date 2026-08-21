@@ -64,7 +64,7 @@ jobs:
             owlat upgrade --version ${{ needs.resolve.outputs.version }}
             ```
 
-            **Images:** `web`, `mta`, `updater`, `convex-deploy`, `imap`, `mail-sync`, `code-worker`, `setup` — all `ghcr.io/${{ github.repository_owner }}/<name>:${{ needs.resolve.outputs.version }}`
+            **Images:** `web`, `mta`, `updater`, `convex-deploy`, `imap`, `mail-sync`, `code-worker`, `setup`, `ostr-registry` — all `ghcr.io/${{ github.repository_owner }}/<name>:${{ needs.resolve.outputs.version }}`
 
   server:
     name: Server images
