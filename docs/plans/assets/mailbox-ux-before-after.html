@@ -1,4 +1,12 @@
 <!doctype html>
+<!-- Before/after mockups for PR #574. Regenerate the PNGs next to this file
+     with: node -e "import('playwright-core').then(async ({ chromium }) => {
+       const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1400, height: 1200 }, deviceScaleFactor: 2 });
+       await p.goto('file://' + process.cwd() + '/mailbox-ux-before-after.html');
+       await p.waitForTimeout(1200);
+       for (const el of await p.locator('[data-shot]').all()) el.screenshot({ path: (await el.getAttribute('data-shot')) + '.png' });
+       await b.close();
+     })" -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
