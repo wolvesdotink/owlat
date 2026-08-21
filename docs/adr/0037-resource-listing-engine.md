@@ -100,6 +100,9 @@ interface ListingDescriptor<T extends TableNames> {
   filters?:  string[];          // equality filters (must be filterFields on search)
   softDelete?: boolean;         // deletedAt rides the index, never a page-thinning post-filter
   enrich?: (db: DatabaseReader, row: Doc<T>) => Promise<Record<string, unknown>>;
+  // Per-row redaction run by the engine BEFORE enrichment, on both paths —
+  // capability fields never leave on a listing read (see the amendment).
+  redact?: (row: Doc<T>) => Doc<T>;
   facets?: Record<string, Facet<T>>;
 }
 
@@ -258,3 +261,17 @@ additions are additive and safe; the one hard cutover is external consumers of
 the `emailTemplates` HTTP list, which is intentional and atomic. Behaviour at
 each call site is preserved or improved — a bare array becomes a paginated page,
 a broken search cursor becomes a working one.
+
+## Amendment: the descriptor `redact` hook
+
+*(2026-08-21, security review finding B1.)* A capability field stored on a row
+(a token that authorizes an action on it) must be stripped from every
+member-readable read of that row. Trusting each caller to remember is exactly
+how `doiConfirmationToken` leaked through three contact read paths. The
+descriptor therefore gains an optional per-row
+`redact?: (row: Doc<T>) => Doc<T>`, applied by the engine to every page row
+before enrichment on both the search and browse paths. An entity that stores
+capability fields declares its redactor once, at the same interface that
+already owns its index, cursor, enrichment, and facet policy. Non-listing
+reads (`get`, export) call the same redactor function directly; a regression
+test pins each such path.
