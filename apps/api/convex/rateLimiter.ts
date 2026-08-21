@@ -123,4 +123,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: MINUTE,
 		capacity: 15,
 	},
+
+	// Direct-to-storage upload URL minting (media library, chat attachments).
+	// The minted blob is inert until a gated mutation references it, but an
+	// unbounded mint loop still fills `_storage` with orphaned bytes the
+	// instance pays for. Cap per-user; roomy enough that interactive multi-file
+	// uploads never hit it.
+	storageUpload: {
+		kind: 'token bucket',
+		rate: 20,
+		period: MINUTE,
+		capacity: 40,
+	},
 });

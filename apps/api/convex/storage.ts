@@ -1,7 +1,8 @@
 import { authedMutation, authedQuery } from './lib/authedFunctions';
 import { getUserIdFromSession } from './lib/sessionOrganization';
+import { rateLimiter } from './rateLimiter';
+import { throwRateLimited, throwNotFound } from './_utils/errors';
 import { v } from 'convex/values';
-import { throwNotFound } from './_utils/errors';
 
 /**
  * Generate an upload URL for file storage.
@@ -13,7 +14,14 @@ export const generateUploadUrl = authedMutation({
 	args: {},
 	handler: async (ctx) => {
 		// Require authentication before generating upload URLs
-		await getUserIdFromSession(ctx);
+		const userId = await getUserIdFromSession(ctx);
+		// The blob is content-inert but not cost-inert: an unbounded mint loop
+		// fills `_storage` with orphaned bytes the instance pays for. Cap per
+		// user; interactive multi-file uploads stay well under the bucket.
+		const res = await rateLimiter.limit(ctx, 'storageUpload', { key: userId });
+		if (!res.ok) {
+			throwRateLimited('Too many uploads — try again in a moment.', res.retryAfter);
+		}
 		return await ctx.storage.generateUploadUrl();
 	},
 });

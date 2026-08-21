@@ -21,6 +21,7 @@ import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { constantTimeEqual, hmacSha256Hex } from './security';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
 
 const SIGNATURE_PREFIX = 'sha256=';
 
@@ -49,13 +50,23 @@ interface GithubPullRequestPayload {
 }
 
 export const handleGithubWebhook = httpAction(async (ctx, request) => {
+	// Spend the ingestion bucket BEFORE reading the body, keyed `github:<ip>`
+	// like every other webhook source — an unauthenticated flood must not turn
+	// this route into a free body-read + HMAC oracle.
+	const ip = getClientIp(request);
+	const { ok: rateOk, retryAfter } = await ctx.runMutation(
+		internal.publicRateLimit.checkPublicRateLimit,
+		{ limitType: 'webhookIngestion', key: `github:${ip}` }
+	);
+	if (!rateOk) return rateLimitedResponse(retryAfter);
+
 	const secret = getOptional('GITHUB_WEBHOOK_SECRET');
 	if (!secret) {
 		logError('[GitHub Webhook] GITHUB_WEBHOOK_SECRET is not set');
-		return new Response(
-			JSON.stringify({ error: 'Webhook endpoint is not configured securely' }),
-			{ status: 503, headers: { 'Content-Type': 'application/json' } }
-		);
+		return new Response(JSON.stringify({ error: 'Webhook endpoint is not configured securely' }), {
+			status: 503,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 
 	const signature = request.headers.get('x-hub-signature-256');
