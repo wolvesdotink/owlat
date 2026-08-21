@@ -82,7 +82,8 @@ export type Facet<T extends TableNames> =
 
 export interface ListingDescriptor<
 	T extends TableNames,
-	E extends Record<string, unknown> = Record<string, unknown>,
+	E extends Record<string, unknown> = Record<never, never>,
+	R extends object = Doc<T>,
 > {
 	/** Runtime table name. The `T` generic pins every other field to it. */
 	table: T;
@@ -107,17 +108,21 @@ export interface ListingDescriptor<
 	 * The descriptor author owns the cost: an O(1) cached read vs. a per-row
 	 * scan — stated here, never hidden by the engine. `E` is the enrichment's
 	 * shape, so callers see typed enriched fields (e.g. `contactCount: number`)
-	 * rather than `unknown`.
+	 * rather than `unknown`. It sees the REDACTED row (`R`), which is what the
+	 * engine passes it and what the page carries.
 	 */
-	enrich?: (db: DatabaseReader, row: Doc<T>) => Promise<E>;
+	enrich?: (db: DatabaseReader, row: R) => Promise<E>;
 	/**
 	 * Per-row redaction applied to every page row BEFORE enrichment. Capability
 	 * fields (tokens that authorize an action on the row) must never leave the
 	 * backend on a listing read; an entity that stores any declares them here so
 	 * the engine enforces the strip on both the search and browse paths instead
-	 * of trusting each caller to remember.
+	 * of trusting each caller to remember. `R` is the redacted row's shape and it
+	 * IS the page's row type, so the strip is structural, not a convention: a
+	 * stripped field is a compile error at every call site, not merely absent at
+	 * runtime.
 	 */
-	redact?: (row: Doc<T>) => Doc<T>;
+	redact?: (row: Doc<T>) => R;
 	facets?: Record<string, Facet<T>>;
 }
 
@@ -135,11 +140,12 @@ export interface ListResourcesArgs {
 	paginationOpts: PaginationOptions;
 }
 
-/** A page row: the document plus whatever `enrich` merged onto it. */
+/** A page row: the redacted document plus whatever `enrich` merged onto it. */
 export type EnrichedDoc<
 	T extends TableNames,
-	E extends Record<string, unknown> = Record<string, unknown>,
-> = Doc<T> & E;
+	E extends Record<string, unknown> = Record<never, never>,
+	R extends object = Doc<T>,
+> = R & E;
 
 // The descriptor pins the table; internally everything is cast to `any` because
 // Convex's per-table index-name literals can't flow through a `TableNames`
@@ -171,9 +177,13 @@ function activeFilters(
 	return out;
 }
 
-async function searchPage<T extends TableNames, E extends Record<string, unknown>>(
+async function searchPage<
+	T extends TableNames,
+	E extends Record<string, unknown>,
+	R extends object,
+>(
 	db: DatabaseReader,
-	descriptor: ListingDescriptor<T, E>,
+	descriptor: ListingDescriptor<T, E, R>,
 	search: string,
 	args: ListResourcesArgs
 ): Promise<PaginationResult<Doc<T>>> {
@@ -194,9 +204,13 @@ async function searchPage<T extends TableNames, E extends Record<string, unknown
 	return result as unknown as PaginationResult<Doc<T>>;
 }
 
-async function browsePage<T extends TableNames, E extends Record<string, unknown>>(
+async function browsePage<
+	T extends TableNames,
+	E extends Record<string, unknown>,
+	R extends object,
+>(
 	db: DatabaseReader,
-	descriptor: ListingDescriptor<T, E>,
+	descriptor: ListingDescriptor<T, E, R>,
 	args: ListResourcesArgs
 ): Promise<PaginationResult<Doc<T>>> {
 	// An explicit `order` arg flips the direction of the chosen browse index;
@@ -247,16 +261,22 @@ async function browsePage<T extends TableNames, E extends Record<string, unknown
 	return result as unknown as PaginationResult<Doc<T>>;
 }
 
-async function enrichPage<T extends TableNames, E extends Record<string, unknown>>(
+async function enrichPage<
+	T extends TableNames,
+	E extends Record<string, unknown>,
+	R extends object,
+>(
 	db: DatabaseReader,
-	descriptor: ListingDescriptor<T, E>,
+	descriptor: ListingDescriptor<T, E, R>,
 	page: Doc<T>[]
-): Promise<EnrichedDoc<T, E>[]> {
-	const base = descriptor.redact ? page.map(descriptor.redact) : page;
-	if (!descriptor.enrich) return base as EnrichedDoc<T, E>[];
+): Promise<EnrichedDoc<T, E, R>[]> {
+	// No `redact` means `R` is the row itself (the descriptor's default), which
+	// the generic can't see from in here — hence the pass-through cast.
+	const base = descriptor.redact ? page.map(descriptor.redact) : (page as unknown as R[]);
+	if (!descriptor.enrich) return base as EnrichedDoc<T, E, R>[];
 	const enrich = descriptor.enrich;
 	return Promise.all(
-		base.map(async (row) => ({ ...row, ...(await enrich(db, row)) }) as EnrichedDoc<T, E>)
+		base.map(async (row) => ({ ...row, ...(await enrich(db, row)) }) as EnrichedDoc<T, E, R>)
 	);
 }
 
@@ -269,11 +289,15 @@ async function enrichPage<T extends TableNames, E extends Record<string, unknown
  * optionally an alternate `sort` index. The cursor is a real Convex cursor on
  * both paths (the `'search'` sentinel is gone).
  */
-export async function listResources<T extends TableNames, E extends Record<string, unknown>>(
+export async function listResources<
+	T extends TableNames,
+	E extends Record<string, unknown>,
+	R extends object,
+>(
 	db: DatabaseReader,
-	descriptor: ListingDescriptor<T, E>,
+	descriptor: ListingDescriptor<T, E, R>,
 	args: ListResourcesArgs
-): Promise<PaginationResult<EnrichedDoc<T, E>>> {
+): Promise<PaginationResult<EnrichedDoc<T, E, R>>> {
 	const search = args.search?.trim();
 	const result =
 		search && search.length > 0 && descriptor.search
@@ -291,9 +315,13 @@ export type GroupedCount = Record<string, number> & { total: number };
  * applies; the count zoo (`countByStatus` / `countByType` / `count`) collapses
  * into these. `groupBy` returns per-bucket counts whose `total` is their sum.
  */
-export async function countFacet<T extends TableNames, E extends Record<string, unknown>>(
+export async function countFacet<
+	T extends TableNames,
+	E extends Record<string, unknown>,
+	R extends object,
+>(
 	db: DatabaseReader,
-	descriptor: ListingDescriptor<T, E>,
+	descriptor: ListingDescriptor<T, E, R>,
 	facetName: string
 ): Promise<number | GroupedCount> {
 	const facet = descriptor.facets?.[facetName];

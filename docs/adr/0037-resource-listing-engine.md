@@ -91,7 +91,11 @@ over per-entity **Listing descriptors**, returning one Convex-native contract.
 
 ```ts
 // convex/lib/listing.ts — one source of truth
-interface ListingDescriptor<T extends TableNames> {
+interface ListingDescriptor<
+  T extends TableNames,
+  E extends Record<string, unknown> = Record<never, never>,  // enrichment shape
+  R extends object = Doc<T>,                                 // redacted row shape
+> {
   // Search path (optional): relevance-ordered, multi-page via .withSearchIndex().paginate().
   search?: { index: string; field: string; filterFields?: string[] };
   // Browse path (required): sortable via a regular index + .order().
@@ -99,10 +103,11 @@ interface ListingDescriptor<T extends TableNames> {
   sortKeys?: string[];          // legal sorts — BROWSE PATH ONLY
   filters?:  string[];          // equality filters (must be filterFields on search)
   softDelete?: boolean;         // deletedAt rides the index, never a page-thinning post-filter
-  enrich?: (db: DatabaseReader, row: Doc<T>) => Promise<Record<string, unknown>>;
-  // Per-row redaction run by the engine BEFORE enrichment, on both paths —
-  // capability fields never leave on a listing read (see the amendment).
-  redact?: (row: Doc<T>) => Doc<T>;
+  enrich?: (db: DatabaseReader, row: R) => Promise<E>;   // sees the REDACTED row
+  // Per-row redaction run by the engine BEFORE enrichment, on both paths. `R`
+  // is the redacted row and it IS the page's row type, so a capability field
+  // cannot be read off a listing page at all (see the amendment).
+  redact?: (row: Doc<T>) => R;
   facets?: Record<string, Facet<T>>;
 }
 
@@ -111,11 +116,11 @@ type Facet<T extends TableNames> =
   | { kind: 'groupBy'; field: string; buckets: readonly string[] }   // closed bucket set
   | { kind: 'cachedCounter'; table: TableNames; field: string };     // denormalized counter
 
-async function listResources<T extends TableNames>(
+async function listResources<T extends TableNames, E, R extends object>(
   db: DatabaseReader,
-  descriptor: ListingDescriptor<T>,
+  descriptor: ListingDescriptor<T, E, R>,
   args: { search?: string; filters?: Record<string, unknown>; sort?: string; paginationOpts: PaginationOpts },
-): Promise<PaginationResult<Doc<T> & Record<string, unknown>>>;     // reuses the existing shape
+): Promise<PaginationResult<R & E>>;                                // reuses the existing shape
 ```
 
 The cursor is **Convex-native everywhere** — search uses
@@ -269,9 +274,16 @@ a broken search cursor becomes a working one.
 member-readable read of that row. Trusting each caller to remember is exactly
 how `doiConfirmationToken` leaked through three contact read paths. The
 descriptor therefore gains an optional per-row
-`redact?: (row: Doc<T>) => Doc<T>`, applied by the engine to every page row
-before enrichment on both the search and browse paths. An entity that stores
+`redact?: (row: Doc<T>) => R`, applied by the engine to every page row before
+enrichment on both the search and browse paths. An entity that stores
 capability fields declares its redactor once, at the same interface that
 already owns its index, cursor, enrichment, and facet policy. Non-listing
 reads (`get`, export) call the same redactor function directly; a regression
 test pins each such path.
+
+The redacted row type `R` is a descriptor generic, not a private detail: it
+flows through `EnrichedDoc` into the page, so `listResources` on the contact
+descriptor returns `PublicContact` (`Doc<'contacts'>` minus its capability
+fields) and reading a stripped field off a page row does not compile. The
+strip is a type, not a convention — the runtime hook and the regression test
+back it up rather than being the only thing holding it.

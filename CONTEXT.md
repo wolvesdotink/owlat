@@ -5172,12 +5172,12 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   **Listing engine** is the only reader of the search→filter→sort→paginate→
   count path. Search routes through the descriptor's search index (relevance-
   ordered); browse routes through its browse index (sortable). The engine takes
-   a `DatabaseReader` — the session-auth shell (`contacts.ts:list`) and the
-   API-key shell (`*/organization.ts:listByOrganization`) keep their own auth,
-   the same effects-vs-shell split the lifecycle modules use. The descriptor's
-   `enrich` is shared by the entity's `list` and `get`; its `redact` is
-   enforced by the engine on every page row, and non-listing reads apply the
-   same redactor directly.
+  a `DatabaseReader` — the session-auth shell (`contacts.ts:list`) and the
+  API-key shell (`*/organization.ts:listByOrganization`) keep their own auth,
+  the same effects-vs-shell split the lifecycle modules use. The descriptor's
+  `enrich` is shared by the entity's `list` and `get`; its `redact` is
+  enforced by the engine on every page row, and non-listing reads apply the
+  same redactor directly.
 - A **Block** is implemented by exactly one **Block module** (one-to-one,
   keyed by `type`).
 - The **Walker** dispatches to a **Block** based on `block.type`, applies
