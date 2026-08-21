@@ -144,7 +144,9 @@ export function usePostboxCursorFeed<Query extends FunctionReference<'query'>>(
 	type Rows = FunctionReturnType<Query>['messages'];
 	return {
 		rows: computed(() => accumulated.value as Rows),
-		isLoading: computed(() => (tailCursor.value ? tailLoading.value || isLoading.value : isLoading.value)),
+		isLoading: computed(() =>
+			tailCursor.value ? tailLoading.value || isLoading.value : isLoading.value
+		),
 		isRefetching,
 		error: computed(() => error.value ?? tailError.value),
 		hasMore,

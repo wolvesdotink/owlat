@@ -67,12 +67,24 @@ describe('usePostboxCursorFeed', () => {
 		const resetKey = ref('inbox');
 		const { wrapper, feed } = mountFeed(resetKey);
 
-		emitFirst!([{ _id: 'a', subject: 'A' }, { _id: 'b', subject: 'B' }], 'cursor-1');
+		emitFirst!(
+			[
+				{ _id: 'a', subject: 'A' },
+				{ _id: 'b', subject: 'B' },
+			],
+			'cursor-1'
+		);
 		await nextTick();
 		expect(wrapper.findAll('li').map((li) => li.text())).toEqual(['A', 'B']);
 
 		feed.loadMore();
-		emitTail!([{ _id: 'c', subject: 'C' }, { _id: 'b', subject: 'B (dup)' }], null);
+		emitTail!(
+			[
+				{ _id: 'c', subject: 'C' },
+				{ _id: 'b', subject: 'B (dup)' },
+			],
+			null
+		);
 		await nextTick();
 		// The duplicate `b` (already shown by the first page) is dropped.
 		expect(wrapper.findAll('li').map((li) => li.text())).toEqual(['A', 'B', 'C']);
@@ -92,7 +104,13 @@ describe('usePostboxCursorFeed', () => {
 
 		// New mail arrives: the live first page re-emits with the new row FIRST.
 		// It must land at the top of the rendered list, above the loaded tail.
-		emitFirst!([{ _id: 'new', subject: 'New mail' }, { _id: 'b', subject: 'B' }], 'cursor-1');
+		emitFirst!(
+			[
+				{ _id: 'new', subject: 'New mail' },
+				{ _id: 'b', subject: 'B' },
+			],
+			'cursor-1'
+		);
 		await nextTick();
 		expect(wrapper.findAll('li').map((li) => li.text())).toEqual(['New mail', 'B', 'Old A']);
 	});

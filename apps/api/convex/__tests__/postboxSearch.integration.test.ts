@@ -28,11 +28,12 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -159,19 +160,14 @@ describe('mail.mailbox.search', () => {
 		// Seed two more matches so the first page (limit 1) can't hold them all.
 		await t.run(async (ctx) => {
 			const now = Date.now();
-			const inboxId = (
-				await ctx.db
-					.query('mailFolders')
-					.withIndex('by_mailbox_and_role', (q) =>
-						q.eq('mailboxId', mailboxId).eq('role', 'inbox')
-					)
-					.first()
-				)!._id;
-			const threadId = (
-				await ctx.db.query('mailThreads').withIndex('by_mailbox_and_last_message', (q) =>
-					q.eq('mailboxId', mailboxId)
-				).first()
-			)!._id;
+			const inboxId = (await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', 'inbox'))
+				.first())!._id;
+			const threadId = (await ctx.db
+				.query('mailThreads')
+				.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', mailboxId))
+				.first())!._id;
 			for (const [i, subject] of ['second meeting', 'third meeting'].entries()) {
 				const storageId = await ctx.storage.store(new Blob([subject]));
 				await ctx.db.insert('mailMessages', {

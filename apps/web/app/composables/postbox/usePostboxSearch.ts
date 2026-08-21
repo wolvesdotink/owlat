@@ -106,10 +106,7 @@ export function parseSearchQuery(input: string): ParsedSearchQuery {
 	return result;
 }
 
-export function usePostboxSearch(
-	mailboxId: Ref<Id<'mailboxes'> | null>,
-	query: Ref<string>
-) {
+export function usePostboxSearch(mailboxId: Ref<Id<'mailboxes'> | null>, query: Ref<string>) {
 	const parsed = computed(() => parseSearchQuery(query.value));
 
 	// Keyset-paginated: "Load more" walks past the first page via the backend's
@@ -148,7 +145,10 @@ export function describeChips(parsed: ParsedSearchQuery): Array<{ key: string; l
 	if (parsed.folderRole) chips.push({ key: 'in', label: `in: ${parsed.folderRole}` });
 	if (parsed.labelName) chips.push({ key: 'label', label: `label: ${parsed.labelName}` });
 	if (parsed.beforeMs)
-		chips.push({ key: 'before', label: `before: ${new Date(parsed.beforeMs).toLocaleDateString()}` });
+		chips.push({
+			key: 'before',
+			label: `before: ${new Date(parsed.beforeMs).toLocaleDateString()}`,
+		});
 	if (parsed.afterMs)
 		chips.push({ key: 'after', label: `after: ${new Date(parsed.afterMs).toLocaleDateString()}` });
 	return chips;
