@@ -194,4 +194,95 @@ describe('mail.mailbox.listByLabel', () => {
 		const result = await t.query(api.mail.mailbox.listByLabel, { mailboxId, labelId: labelA });
 		expect(result.messages.map((m) => m.subject)).toEqual(['message 3', 'message 1']);
 	});
+
+	it('rows older than the scan window are out of reach — the documented edge', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, labelA } = await seed(t);
+		// Push the mailbox past LABEL_SCAN_WINDOW (1000): 993 unlabeled fillers
+		// newer than the fixture's 7 rows, then one LABELED row older than all
+		// of them — position 1002, outside the window (while the fixture's
+		// labeled rows sit at positions ≤ 1000, inside it).
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const inboxId = (await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', 'inbox'))
+				.first())!._id;
+			const threadId = (await ctx.db
+				.query('mailThreads')
+				.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', mailboxId))
+				.first())!._id;
+			for (let i = 7; i < 1000; i++) {
+				const storageId = await ctx.storage.store(new Blob([`filler-${i}`]));
+				await ctx.db.insert('mailMessages', {
+					mailboxId,
+					folderId: inboxId,
+					uid: i + 1,
+					modseq: i + 1,
+					rfc822MessageId: `<filler${i}@acme.com>`,
+					threadId,
+					fromAddress: 'sara@acme.com',
+					toAddresses: ['me@example.com'],
+					ccAddresses: [],
+					bccAddresses: [],
+					subject: `filler ${i}`,
+					normalizedSubject: `filler ${i}`,
+					snippet: `body ${i}`,
+					rawStorageId: storageId,
+					rawSize: 8,
+					attachments: [],
+					hasAttachments: false,
+					flagSeen: true,
+					flagFlagged: false,
+					flagAnswered: false,
+					flagDraft: false,
+					flagDeleted: false,
+					customFlags: [],
+					labelIds: [],
+					receivedAt: now + i * 1000,
+					internalDate: now,
+					createdAt: now,
+					updatedAt: now,
+				});
+			}
+			const deepStorageId = await ctx.storage.store(new Blob(['deep']));
+			await ctx.db.insert('mailMessages', {
+				mailboxId,
+				folderId: inboxId,
+				uid: 2000,
+				modseq: 2000,
+				rfc822MessageId: '<deep@acme.com>',
+				threadId,
+				fromAddress: 'sara@acme.com',
+				toAddresses: ['me@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				subject: 'deep labeled',
+				normalizedSubject: 'deep labeled',
+				snippet: 'deep body',
+				rawStorageId: deepStorageId,
+				rawSize: 9,
+				attachments: [],
+				hasAttachments: false,
+				flagSeen: true,
+				flagFlagged: false,
+				flagAnswered: false,
+				flagDraft: false,
+				flagDeleted: false,
+				customFlags: [],
+				labelIds: [labelA],
+				receivedAt: now - 10_000,
+				internalDate: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		const result = await t.query(api.mail.mailbox.listByLabel, { mailboxId, labelId: labelA });
+		// The three windowed labeled rows are served newest-first; the labeled
+		// row beyond the scan window is invisible — LABEL_SCAN_WINDOW is the
+		// view's documented total reach until membership gets a real index.
+		expect(result.messages.map((m) => m.subject)).toEqual(['message 5', 'message 3', 'message 1']);
+		expect(result.hasMore).toBe(false);
+	});
 });

@@ -222,4 +222,82 @@ describe('mail.mailbox.search', () => {
 		// No overlap and no repeat between pages.
 		expect(page2.messages[0]!._id).not.toBe(page1.messages[0]!._id);
 	});
+
+	it('a post-filter that zeroes a page never skips or repeats later matches', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+		// Two bob messages newer than the seeded sara one, plus a second sara
+		// message between them: at limit 2 the FIRST page is entirely
+		// post-filtered away by `from: sara` — its cursor must carry the scan
+		// position (rows consumed, not skipped) so page two still sees both
+		// sara rows exactly once.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const inboxId = (await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', 'inbox'))
+				.first())!._id;
+			const threadId = (await ctx.db
+				.query('mailThreads')
+				.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', mailboxId))
+				.first())!._id;
+			const inserts: Array<{ from: string; at: number; subject: string }> = [
+				{ from: 'bob@acme.com', at: now + 3000, subject: 'bob meeting one' },
+				{ from: 'sara@acme.com', at: now + 1000, subject: 'second meeting' },
+				{ from: 'bob@acme.com', at: now + 2000, subject: 'bob meeting two' },
+			];
+			for (const [i, insert] of inserts.entries()) {
+				const storageId = await ctx.storage.store(new Blob([insert.subject]));
+				await ctx.db.insert('mailMessages', {
+					mailboxId,
+					folderId: inboxId,
+					uid: i + 2,
+					modseq: i + 2,
+					rfc822MessageId: `<m${i + 2}@acme.com>`,
+					threadId,
+					fromAddress: insert.from,
+					toAddresses: ['me@example.com'],
+					ccAddresses: [],
+					bccAddresses: [],
+					subject: insert.subject,
+					normalizedSubject: insert.subject,
+					snippet: `${insert.subject} notes`,
+					rawStorageId: storageId,
+					rawSize: 7,
+					attachments: [],
+					hasAttachments: false,
+					flagSeen: false,
+					flagFlagged: false,
+					flagAnswered: false,
+					flagDraft: false,
+					flagDeleted: false,
+					customFlags: [],
+					labelIds: [],
+					receivedAt: insert.at,
+					internalDate: now,
+					createdAt: now,
+					updatedAt: now,
+				});
+			}
+		});
+
+		const collected: string[] = [];
+		let cursor: string | undefined;
+		for (let page = 0; page < 5; page++) {
+			const result = await t.query(api.mail.mailbox.search, {
+				mailboxId,
+				text: 'meeting',
+				from: 'sara',
+				limit: 2,
+				...(cursor ? { cursor } : {}),
+			});
+			collected.push(...result.messages.map((m) => m.subject));
+			if (!result.nextCursor) break;
+			cursor = result.nextCursor;
+		}
+		// Both sara rows collected exactly once: the zeroed first page handed
+		// its scan position on. (Text-branch order is relevance, not time —
+		// compare as a set.)
+		expect([...collected].sort()).toEqual(['project meeting', 'second meeting']);
+	});
 });
