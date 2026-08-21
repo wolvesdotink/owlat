@@ -120,11 +120,17 @@ export const saveConfig = authedAction({
  * the base URL for reachability. Persists nothing, returns only `{ ok, error }`
  * (never the key). Rate-limited per user.
  */
-// all-members: read-only reachability/credential probe. Persists nothing and
-// returns only { ok, error } — never the key — so any member may run it.
+// authz: admin floor (organization:manage) via internal.auth.membership
+// .assertOrgAdmin — the only caller is the admin instance-settings page, and
+// the local-provider branch fires an outbound request at an admin-configured
+// base URL, so a member should not be able to trigger it.
 export const testConnection = authedAction({
 	args: {},
 	handler: async (ctx): Promise<{ ok: boolean; error?: string }> => {
+		// Admin floor — actions can't run requireOrgPermission directly, so
+		// assert through the internal query that inherits our identity.
+		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
+
 		// `authedAction` has already asserted org membership, so an identity is
 		// guaranteed here; narrow it (rather than an unreachable 'anonymous'
 		// fallback) so distinct callers never collapse onto one rate-limit bucket.
@@ -179,12 +185,15 @@ export const testConnection = authedAction({
  * the provider's `/models`; returns just the ids (never the key). Rate-limited
  * per user, and fails soft: a listing error is returned inline, never thrown.
  */
-// all-members: read-only model-catalog probe against the STORED config. Persists
-// nothing and returns only public model ids — never the key — so any org member
-// may run it (mirrors `testConnection`).
+// authz: admin floor (organization:manage) via internal.auth.membership
+// .assertOrgAdmin — mirrors `testConnection` above (same admin-only caller,
+// same outbound request against the stored base URL).
 export const listModels = authedAction({
 	args: {},
 	handler: async (ctx): Promise<{ supported: boolean; models: string[]; error?: string }> => {
+		// Admin floor — see testConnection.
+		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
+
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) throwUnauthenticated();
 		const rl = await rateLimiter.limit(ctx, 'aiProviderConfigListModels', {
