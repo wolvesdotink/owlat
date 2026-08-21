@@ -457,7 +457,7 @@ const advanceIds = computed(() =>
 		<button
 			v-if="!activeMessageId"
 			type="button"
-			class="lg:hidden fixed bottom-5 right-5 z-30 w-13 h-13 rounded-full bg-brand text-white shadow-lg flex items-center justify-center hover:bg-brand-hover transition-colors duration-(--motion-fast) focus-visible:ring-2 focus-visible:ring-brand/50 outline-none"
+			class="lg:hidden fixed bottom-5 right-5 z-30 w-13 h-13 rounded-full bg-brand text-text-inverse shadow-lg flex items-center justify-center hover:bg-brand-hover transition-colors duration-(--motion-fast) focus-visible:ring-2 focus-visible:ring-brand/50 outline-none"
 			:aria-label="t('components.postbox.postboxComposeButton.compose')"
 			@click="composerStack.open({ mailboxId })"
 		>
