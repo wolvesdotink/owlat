@@ -144,6 +144,10 @@ if [[ $KEEP_ENV -eq 1 ]]; then
 	info ".env: keeping current (as requested)"
 elif [[ -f "$STAGING/env" ]]; then
 	cp "$STAGING/env" .env
+	# The archived .env carries every deployment secret — restore it owner-only
+	# (the archive may have been created before backups were chmod 600, or the
+	# mode may have been lost in an offsite copy).
+	chmod 600 .env
 	ok "Restored .env from archive"
 else
 	warn "Archive has no .env — keeping existing"

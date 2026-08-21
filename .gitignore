@@ -87,6 +87,9 @@ previews/
 # Playwright MCP session artifacts (distinct from playwright-report/ above)
 .playwright-mcp/
 
+# Local smoke-test configs (secret-shaped values; never stage them)
+/.owlat-*
+
 # AI
 .planning/
 .claude/

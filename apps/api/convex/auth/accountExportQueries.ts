@@ -4,6 +4,7 @@ import { ACCOUNT_EXPORT_ORGANIZATION_RESOURCES, serializeAccountExportPage } fro
 import { components } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery } from '../_generated/server';
+import { redactContactCapabilityFields } from '../contacts/listing';
 import { toDeliverabilityAlertRecipientState } from '../delivery/checklistAlertRecipients';
 import { hasPermission, loadOwnUserProfile, requireSelf } from '../lib/sessionOrganization';
 import type { OrganizationRole } from '../lib/sessionOrganization';
@@ -63,9 +64,9 @@ export const listOrganizationData = internalQuery({
 				.paginate(args.paginationOpts);
 			return serializeAccountExportPage({
 				...result,
-				page: result.page.map(
-					({ doiConfirmationToken: _confirmationCapability, ...contact }) => contact
-				),
+				// One redactor, shared with the listing engine's `redact` hook and
+				// the non-listing contact reads — the strip is defined once.
+				page: result.page.map(redactContactCapabilityFields),
 			});
 		}
 		if (args.table === 'apiKeys') {

@@ -5130,7 +5130,8 @@ primitives it subsumes at call sites).
 **Listing descriptor**:
 One entity's full read surface, declared as data: the search index (and its
 `filterFields`), the browse index + the legal sort keys, whether the entity
-is soft-deletable, the optional per-row `enrich`, and its **Facets**. The
+is soft-deletable, the optional per-row `enrich`, the optional per-row
+`redact`, and its **Facets**. The
 unit the **Listing engine** consumes; one per listable entity (Contact,
 Campaign, Email template, Topic, Segment, Automation). Shared by the
 entity's `list` _and_ its `get` for the enrichment half, so the two stop
@@ -5140,7 +5141,11 @@ duplicating it (today `topics.ts:list` and `topics.ts:get` both inline the
 path only** — passing `search` means relevance order, full stop. The
 `enrich` cost (an O(1) cached field vs. a per-row scan) is the descriptor
 author's stated responsibility, documented on the descriptor; the engine
-runs it without hiding the cost.
+runs it without hiding the cost. When the row carries **capability fields**
+(tokens that authorize an action on the row), the descriptor declares them
+once in `redact`: the engine strips them from every page row before
+enrichment, on both paths — a listing read cannot leak them by a caller
+forgetting. See ADR-0037's amendment.
 _Avoid_: Listing module (collides with the two-half module-family pattern —
 Block module, Step module — listing is single-runtime, has no editor half),
 list config (undersells that it owns enrichment + facets), List schema.
@@ -5170,7 +5175,9 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   a `DatabaseReader` — the session-auth shell (`contacts.ts:list`) and the
   API-key shell (`*/organization.ts:listByOrganization`) keep their own auth,
   the same effects-vs-shell split the lifecycle modules use. The descriptor's
-  `enrich` is shared by the entity's `list` and `get`.
+  `enrich` is shared by the entity's `list` and `get`; its `redact` is
+  enforced by the engine on every page row, and non-listing reads apply the
+  same redactor directly.
 - A **Block** is implemented by exactly one **Block module** (one-to-one,
   keyed by `type`).
 - The **Walker** dispatches to a **Block** based on `block.type`, applies

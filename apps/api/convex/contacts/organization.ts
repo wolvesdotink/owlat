@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
+import { redactContactCapabilityFields } from './listing';
 
 // Query to export all contacts (for CSV export, HTTP API)
 export const listForExportByOrganization = authedQuery({
@@ -35,7 +36,10 @@ export const listForExportByOrganization = authedQuery({
 		// string, keeping the order stable across runs.
 		contacts.sort((a, b) => (a.email ?? '').localeCompare(b.email ?? ''));
 
-		return contacts;
+		// Capability fields (doiConfirmationToken / doiTokenExpiresAt) authorize
+		// consent transitions and must never ride an export — same contract as
+		// the GDPR export query and the listing engine's redact hook.
+		return contacts.map(redactContactCapabilityFields);
 	},
 });
 

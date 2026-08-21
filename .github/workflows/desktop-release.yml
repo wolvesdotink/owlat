@@ -31,7 +31,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
           egress-policy: audit
       - id: meta
@@ -40,18 +40,27 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Resolved desktop-only release VERSION=${VERSION}"
 
+  # Same gate as the unified pipeline: a tag push does NOT match test.yml, so
+  # without this job a desktop-v* tag on an un-CI'd commit would sign and
+  # publish unverified artifacts. The whole pipeline is needs-chained below.
+  # Shared core: _verify.yml.
+  verify:
+    name: Verify (ci:verify)
+    needs: resolve
+    uses: ./.github/workflows/_verify.yml
+
   create-release:
     name: Create draft Release
-    needs: resolve
+    needs: [resolve, verify]
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.create.outputs.id }}
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
           egress-policy: audit
       - id: create
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           name: "Owlat Desktop ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
@@ -65,9 +74,13 @@ jobs:
             assets below (macOS `.dmg`, Windows `.msi`/`.exe`, Linux
             `.AppImage`/`.deb`). Existing installs auto-update to this version.
 
+  # `verify` is listed explicitly even though `create-release` already needs it:
+  # the build/sign/publish edge is the one that must never lose the gate, and a
+  # transitive-only dependency would vanish silently if the draft-Release step
+  # were ever dropped or reordered. Keep it redundant — it is the actual gate.
   desktop:
     name: Desktop apps
-    needs: [resolve, create-release]
+    needs: [resolve, verify, create-release]
     uses: ./.github/workflows/_desktop-build.yml
     with:
       tag: ${{ github.ref_name }}
@@ -79,7 +92,7 @@ jobs:
     needs: [resolve, desktop]
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
           egress-policy: audit
       - name: Publish (flip draft → live)

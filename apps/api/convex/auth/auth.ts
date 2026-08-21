@@ -227,6 +227,18 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 							activeOrganizationId: session['activeOrganizationId'] ?? null,
 						};
 					},
+					// REVOCATION WINDOW (accepted): the payload carries
+					// `activeOrganizationId`, so lib/sessionOrganization's claims path
+					// serves calls from the token WITHOUT re-reading the BetterAuth
+					// session row. A server-side revocation (logout-everywhere,
+					// password reset) therefore leaves an already-minted JWT valid for
+					// up to the plugin's 15-minute TTL. This is deliberate: role and
+					// membership are still re-derived per call from the live `member`
+					// row (getBetterAuthSessionWithRole), so demotion fails closed
+					// immediately — only full session revocation has the bounded
+					// window. Revisit only if that window becomes a real requirement;
+					// checking the session row per call would add a DB read to every
+					// authed function the dashboard live-subscribes.
 				},
 			}),
 			organization({

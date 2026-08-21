@@ -170,6 +170,7 @@ Owlat backup
 Taken:        $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 Project name: ${PROJECT}
 Consistency:  $([[ "$HOT" == "1" ]] && echo "HOT (convex/redis not paused — snapshot may be torn)" || echo "convex/redis paused during volume copy")
+Permissions:  archive is owner-only (chmod 600) — it embeds the full .env
 Includes:
 ${captured_list}  env                      — .env file
 $([[ -f "$STAGING/docker-compose.override.yml" ]] && echo "  docker-compose.override.yml — feature-profile selection")
@@ -182,6 +183,9 @@ EOF
 # ── Archive ───────────────────────────────────────────────────────────────────
 info "Creating archive…"
 tar -czf "${BACKUP_DIR}/${NAME}.tar.gz" -C "$STAGING" .
+# The archive embeds the full .env (every deployment secret). Backups get
+# copied offsite more often than almost anything else — keep it owner-only.
+chmod 600 "${BACKUP_DIR}/${NAME}.tar.gz"
 SIZE=$(du -h "${BACKUP_DIR}/${NAME}.tar.gz" | cut -f1)
 
 # ── Checksum ──────────────────────────────────────────────────────────────────

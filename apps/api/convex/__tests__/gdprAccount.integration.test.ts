@@ -426,7 +426,7 @@ describe('accountManagement.exportUserData — secret redaction', () => {
 
 		expect(orgExport.data.webhooks[0]).not.toHaveProperty('secret');
 		expect(orgExport.data.contacts[0]).not.toHaveProperty('doiConfirmationToken');
-		expect(orgExport.data.contacts[0]).toHaveProperty('doiTokenExpiresAt');
+		expect(orgExport.data.contacts[0]).not.toHaveProperty('doiTokenExpiresAt');
 		expect(orgExport.data.campaigns[0]).not.toHaveProperty('archiveToken');
 		expect(orgExport.data.campaigns[0]).toMatchObject({
 			archiveEnabled: true,
