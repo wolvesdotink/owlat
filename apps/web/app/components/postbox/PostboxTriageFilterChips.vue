@@ -9,12 +9,19 @@
  * Counts always reflect the UNFILTERED rows, so a chip never hides its own
  * badge. Rendered under the list header on flat-list folders only — the
  * grouped renderers own their sections.
+ *
+ * With pages still unloaded the counts are a lower bound, so they render as
+ * "12+" with a tooltip saying so, rather than as a precise total the window
+ * cannot back up (see usePostboxTriageFilters for why there is no cheap
+ * folder-wide count).
  */
 import type { PostboxTriageFilter } from '~/composables/postbox/usePostboxTriageFilters';
 
-defineProps<{
+const props = defineProps<{
 	filter: PostboxTriageFilter;
 	counts: { all: number; unread: number; starred: number; attachments: number };
+	/** Counts cover only the loaded pages — render them as a lower bound. */
+	countsArePartial?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -29,6 +36,18 @@ const CHIPS: Array<{ value: PostboxTriageFilter; labelKey: string }> = [
 	{ value: 'starred', labelKey: 'components.postbox.postboxTriageFilterChips.starred' },
 	{ value: 'attachments', labelKey: 'components.postbox.postboxTriageFilterChips.attachments' },
 ];
+
+/** "12" when the window is the whole folder, "12+" while pages remain. */
+function countLabel(value: PostboxTriageFilter): string {
+	return props.countsArePartial ? `${props.counts[value]}+` : String(props.counts[value]);
+}
+
+/** Screen-reader/tooltip text that says what the number actually covers. */
+const countHint = computed(() =>
+	props.countsArePartial
+		? t('components.postbox.postboxTriageFilterChips.partialCountHint')
+		: undefined
+);
 </script>
 
 <template>
@@ -48,13 +67,15 @@ const CHIPS: Array<{ value: PostboxTriageFilter; labelKey: string }> = [
 					: 'border-border-default bg-bg-surface text-text-secondary hover:text-text-primary hover:border-border-strong'
 			"
 			:aria-pressed="filter === chip.value"
+			:title="countHint"
 			@click="emit('select-filter', chip.value)"
 		>
 			{{ t(chip.labelKey) }}
 			<span
 				class="text-2xs tabular-nums"
 				:class="filter === chip.value ? 'text-brand' : 'text-text-tertiary'"
-				>{{ counts[chip.value] }}</span
+				:aria-label="countHint ? `${countLabel(chip.value)} — ${countHint}` : undefined"
+				>{{ countLabel(chip.value) }}</span
 			>
 		</button>
 	</div>

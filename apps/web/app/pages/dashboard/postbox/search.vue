@@ -55,13 +55,12 @@ watch(query, (q) => {
 });
 
 function removeChip(key: string) {
-	const re = new RegExp(`(?:^|\\s)${key}:[^\\s]+`, 'g');
-	query.value = query.value.replace(re, '').trim();
+	query.value = removeSearchOperator(query.value, key);
 }
 
 /** Drop every operator at once (guided empty state's "Clear all filters"). */
 function clearAllChips() {
-	query.value = parsed.value.text;
+	query.value = stripSearchOperators(query.value);
 }
 </script>
 

@@ -1083,6 +1083,11 @@ export const search = publicQuery({
 		// `parseSearchQuery(rawText)` before calling us so the parser
 		// stays close to the UI.
 		text: v.string(),
+		// Quoted runs from the raw query ("exact phrase"). Their words are also in
+		// `text`, so the search index still does the indexed narrowing; these
+		// additionally require ADJACENCY, which a token index cannot express.
+		// Already lowercased by the parser.
+		phrases: v.optional(v.array(v.string())),
 		from: v.optional(v.string()),
 		to: v.optional(v.string()),
 		subject: v.optional(v.string()),
@@ -1159,6 +1164,12 @@ export const search = publicQuery({
 			if (args.from && !m.fromAddress.includes(args.from)) return false;
 			if (args.to && !m.toAddresses.some((a) => a.includes(args.to as string))) return false;
 			if (args.subject && !m.subject.toLowerCase().includes(args.subject)) return false;
+			// Every quoted phrase must appear verbatim in the subject or the
+			// snippet — the two fields the caller can actually see in a result row.
+			if (args.phrases && args.phrases.length > 0) {
+				const haystack = `${m.subject}\n${m.snippet}`.toLowerCase();
+				if (!args.phrases.every((phrase) => haystack.includes(phrase))) return false;
+			}
 			if (args.hasAttachment !== undefined && m.hasAttachments !== args.hasAttachment) return false;
 			if (args.flagSeen !== undefined && m.flagSeen !== args.flagSeen) return false;
 			if (args.flagFlagged !== undefined && m.flagFlagged !== args.flagFlagged) return false;

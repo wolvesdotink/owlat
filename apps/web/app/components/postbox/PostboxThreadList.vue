@@ -135,7 +135,13 @@ const emptyState = computed(() => {
 		return {
 			icon: 'lucide:check-circle-2',
 			title: t('components.postbox.postboxThreadList.emptyFilteredTitle'),
-			hint: undefined as string | undefined,
+			// The chips filter the LOADED pages, so "nothing matches" can mean
+			// "not on these pages yet". Say so while a further page exists — the
+			// Load more below the empty state is then a real next step rather
+			// than a leftover control under a dead end.
+			hint: props.hasMore
+				? t('components.postbox.postboxThreadList.emptyFilteredMoreHint')
+				: (undefined as string | undefined),
 			showFilterAction: false,
 		};
 	}

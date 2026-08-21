@@ -154,6 +154,50 @@ describe('mail.mailbox.search', () => {
 		expect(results.messages).toEqual([]);
 	});
 
+	it('requires a quoted phrase to appear verbatim, not as loose tokens', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+
+		// The seeded row's snippet is "meeting notes about the launch": both words
+		// are present, so the token index matches either ordering. Only the
+		// adjacent one is a phrase hit.
+		const adjacent = await t.query(api.mail.mailbox.search, {
+			mailboxId,
+			text: 'meeting notes',
+			phrases: ['meeting notes'],
+		});
+		expect(adjacent.messages.map((m) => m.subject)).toEqual(['project meeting']);
+
+		const reversed = await t.query(api.mail.mailbox.search, {
+			mailboxId,
+			text: 'meeting notes',
+			phrases: ['notes meeting'],
+		});
+		expect(reversed.messages).toEqual([]);
+	});
+
+	it('matches a phrase across the subject as well as the snippet', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+		const results = await t.query(api.mail.mailbox.search, {
+			mailboxId,
+			text: 'project meeting',
+			phrases: ['project meeting'],
+		});
+		expect(results.messages.map((m) => m.subject)).toEqual(['project meeting']);
+	});
+
+	it('requires EVERY phrase when more than one is quoted', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+		const results = await t.query(api.mail.mailbox.search, {
+			mailboxId,
+			text: 'meeting',
+			phrases: ['meeting notes', 'no such phrase'],
+		});
+		expect(results.messages).toEqual([]);
+	});
+
 	it('paginates: the cursor continues where the first page stopped', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seed(t);

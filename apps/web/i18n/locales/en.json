@@ -3914,6 +3914,7 @@
 				"trashOperation": "Move to trash",
 				"trashedUndo": "Moved to Trash",
 				"emptyFilteredTitle": "You're all caught up",
+				"emptyFilteredMoreHint": "This filter covers the messages loaded so far — load more to keep looking.",
 				"showAllMessages": "Show all messages"
 			},
 			"postboxThreadReader": {
@@ -4064,7 +4065,8 @@
 				"all": "All",
 				"unread": "Unread",
 				"starred": "Starred",
-				"attachments": "Attachments"
+				"attachments": "Attachments",
+				"partialCountHint": "Counts cover the messages loaded so far; scroll to load more."
 			}
 		},
 		"preferences": {

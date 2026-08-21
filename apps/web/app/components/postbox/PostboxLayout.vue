@@ -76,8 +76,9 @@ const {
 	active: triageFilter,
 	setFilter: setTriageFilter,
 	counts: triageCounts,
+	countsArePartial: triageCountsArePartial,
 	filtered: filteredDisplayMessages,
-} = usePostboxTriageFilters({ scope: triageScope, rows: displayMessages });
+} = usePostboxTriageFilters({ scope: triageScope, rows: displayMessages, hasMore });
 
 // What the flat list renders: filter-of-what's-shown.
 const listMessages = computed(() =>
@@ -313,6 +314,7 @@ const advanceIds = computed(() =>
 							class="border-b border-border-subtle pb-3"
 							:filter="triageFilter"
 							:counts="triageCounts"
+							:counts-are-partial="triageCountsArePartial"
 							@select-filter="setTriageFilter"
 						/>
 						<!-- Compact "waiting on your reply" strip — inbox only, non-empty

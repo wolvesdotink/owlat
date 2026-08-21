@@ -3914,6 +3914,7 @@
 				"trashOperation": "In den Papierkorb verschieben",
 				"trashedUndo": "In den Papierkorb verschoben",
 				"emptyFilteredTitle": "Alles erledigt",
+				"emptyFilteredMoreHint": "Dieser Filter umfasst die bisher geladenen Nachrichten — laden Sie weitere, um weiterzusuchen.",
 				"showAllMessages": "Alle Nachrichten anzeigen"
 			},
 			"postboxThreadReader": {
@@ -4064,7 +4065,8 @@
 				"all": "Alle",
 				"unread": "Ungelesen",
 				"starred": "Mit Stern",
-				"attachments": "Mit Anhang"
+				"attachments": "Mit Anhang",
+				"partialCountHint": "Die Zahlen umfassen die bisher geladenen Nachrichten; scrollen Sie, um weitere zu laden."
 			}
 		},
 		"preferences": {

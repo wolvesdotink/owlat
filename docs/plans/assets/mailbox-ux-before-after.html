@@ -1,6 +1,11 @@
 <!doctype html>
-<!-- Before/after mockups for PR #574. Regenerate the PNGs next to this file
-     with: node -e "import('playwright-core').then(async ({ chromium }) => {
+<!-- Before/after mockups for PR #574.
+
+     The rendered PNGs are deliberately NOT committed: they were ~490 KB of
+     review artifacts that no doc links to, and this file reproduces them on
+     demand. Regenerate them next to this file with:
+
+     node -e "import('playwright-core').then(async ({ chromium }) => {
        const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1400, height: 1200 }, deviceScaleFactor: 2 });
        await p.goto('file://' + process.cwd() + '/mailbox-ux-before-after.html');
        await p.waitForTimeout(1200);
