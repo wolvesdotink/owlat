@@ -32,6 +32,7 @@ import { e2eeTables } from './schema/e2ee';
 import { pluginTables } from './schema/plugins';
 import { postmasterTables } from './schema/postmaster';
 import { sndsTables } from './schema/snds';
+import { ostrTables } from './schema/ostr';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -69,4 +70,5 @@ export default defineSchema({
 	...pluginTables,
 	...postmasterTables,
 	...sndsTables,
+	...ostrTables,
 });

@@ -1,0 +1,1 @@
+{"explanation":[{"contribution":0.25,"evidence":[{"index":60,"logId":"log-a"}],"signal":"vouches","summary":"1 active vouch from 1 voucher."}],"policy":"ostr-policy-v1","score":40,"subject":{"domain":"tenant-1.example"},"tier":"unknown"}

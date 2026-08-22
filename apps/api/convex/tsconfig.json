@@ -19,7 +19,14 @@
 
 		/* These compiler options are required by Convex */
 		"target": "ESNext",
-		"lib": ["ES2021", "ES2022.Error", "dom"],
+		/* `lib` is Convex's ES2021 baseline plus two narrow additions, each for a
+		 * dependency that only ever executes in a `'use node'` action:
+		 * `ES2022.Error` for `cause`, and `ES2022.Object` for the single
+		 * `Object.hasOwn` in `@owlat/ostr-core`'s attestation validator, which the
+		 * OSTR observer imports. Widening is global, so keep it to named
+		 * sub-libs — never plain "ES2022" — and drop either the day nothing needs
+		 * it. */
+		"lib": ["ES2021", "ES2022.Error", "ES2022.Object", "dom"],
 		"forceConsistentCasingInFileNames": true,
 		"module": "ESNext",
 		"isolatedModules": true,

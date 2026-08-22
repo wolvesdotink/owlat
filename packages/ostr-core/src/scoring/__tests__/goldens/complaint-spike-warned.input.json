@@ -1,0 +1,107 @@
+{
+	"description": "Recent verified complaint spike from two observers on an otherwise ordinary sender.",
+	"subject": {
+		"domain": "spike.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 20,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "spike.example"
+				},
+				"window": {
+					"from": "2026-04-22T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 24000,
+					"spfPass": 21600,
+					"dkimPass": 22320,
+					"dmarcPass": 22800,
+					"tlsInbound": 24000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 20,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "spike.example"
+				},
+				"window": {
+					"from": "2026-05-02T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 16000,
+					"spfPass": 14400,
+					"dkimPass": 14880,
+					"dmarcPass": 15200,
+					"tlsInbound": 16000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 21,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "spike.example"
+				},
+				"window": {
+					"from": "2026-08-11T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"reports": 420,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 21,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "spike.example"
+				},
+				"window": {
+					"from": "2026-08-12T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"reports": 260,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

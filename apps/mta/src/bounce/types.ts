@@ -17,6 +17,8 @@ import type { InboundRoute } from '../inbound/router.js';
 import type { MailboxCacheEntry } from '../inbound/mailboxResolver.js';
 import type { BounceClassification } from '../types.js';
 import type { ComplaintDedupReservation } from './fblProcessor.js';
+import type { OstrDkimEvidencePayload } from './ostrEvidence.js';
+import type { OstrTier } from '../types.js';
 
 /**
  * The base ctx every Phase receives — derived purely from what the SMTP
@@ -84,6 +86,23 @@ export interface BasePhaseCtx {
 	readonly arcSealerDomain?: string;
 	/** Whether the sealer's AAR attests the original passed authentication. */
 	readonly arcAttestsOriginalPass?: boolean;
+	/**
+	 * OSTR tier for this sender (plan §12.2), looked up in `onData` once DKIM has
+	 * named an authenticated `d=` — the connecting IP's tier when no signature
+	 * verified. Surfaced onto the mailbox payload as one more weighted signal
+	 * beside SPF/DKIM/DMARC; it NEVER gates acceptance, and it is absent whenever
+	 * OSTR is disabled or the lookup did not answer (fail-open).
+	 */
+	readonly ostrTier?: OstrTier;
+	/** The score behind {@link ostrTier}, as published by the aggregator. */
+	readonly ostrScore?: number;
+	/**
+	 * Observer-mode DKIM evidence (§7.2) for the signature that decided the
+	 * verdict, captured only when the operator enabled observer mode AND a
+	 * signature verified. Absent otherwise — an unverifiable bundle is worse than
+	 * none, because it looks like proof.
+	 */
+	readonly ostrDkimEvidence?: OstrDkimEvidencePayload;
 	/**
 	 * The SMTP envelope sender (MAIL FROM / return-path), as taken from
 	 * `session.envelope.mailFrom` in `onData`. Normalized so the RFC 5321

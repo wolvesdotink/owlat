@@ -32,7 +32,19 @@ function serviceBlock(name: string): string {
 	return next === -1 ? after : after.slice(0, next);
 }
 
-const OWLAT_IMAGE_SERVICES = ['web', 'mta', 'updater', 'convex-deploy', 'imap', 'mail-sync'];
+const OWLAT_IMAGE_SERVICES = [
+	'web',
+	'mta',
+	'updater',
+	'convex-deploy',
+	'imap',
+	'mail-sync',
+	// Profile-gated (`ostr`) rather than flag-activatable, but it carries a
+	// ghcr.io image like the rest, so the registry-prefix and version-pin guards
+	// have to cover it too — `scripts/gen-release-compose.sh` hard-fails the
+	// release on an unpinned Owlat image, and that is far too late to find out.
+	'ostr-registry',
+];
 
 describe('docker-compose.yml — image registry', () => {
 	it('contains no ghcr.io/owlat placeholder references', () => {
@@ -191,6 +203,18 @@ describe('docker-compose.yml — feature-flag profile coverage', () => {
 		for (const profile of activatable) {
 			expect(declared, `profile ${profile} missing from docker-compose.yml`).toContain(profile);
 		}
+	});
+
+	it('declares the operator-only `ostr` profile no flag can activate', () => {
+		// The registry node is deliberately NOT flag-activatable — running a
+		// transparency log is not a feature of the instance it sits beside — so the
+		// loop above would never look at it. It still has to exist, because
+		// `--profile ostr` against a compose file that has no such profile starts
+		// nothing and says nothing.
+		expect(declaredProfiles()).toContain('ostr');
+		expect(
+			Object.values(FEATURE_FLAGS).flatMap((def) => [...(def.dockerProfiles ?? [])])
+		).not.toContain('ostr');
 	});
 });
 

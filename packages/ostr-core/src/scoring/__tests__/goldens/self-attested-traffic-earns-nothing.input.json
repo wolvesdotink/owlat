@@ -1,0 +1,117 @@
+{
+	"description": "Four traffic summaries about selfdealer.example, all authored by the subject itself under wildcard subdomains. Observed evidence must be third-party, so none of it counts and the subject stays unknown.",
+	"subject": {
+		"domain": "selfdealer.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 100,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "selfdealer.example",
+				"subject": {
+					"domain": "selfdealer.example"
+				},
+				"window": {
+					"from": "2022-07-12T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 5000000,
+					"spfPass": 5000000,
+					"dkimPass": 5000000,
+					"dmarcPass": 5000000,
+					"tlsInbound": 5000000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 101,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx2.selfdealer.example",
+				"subject": {
+					"domain": "selfdealer.example"
+				},
+				"window": {
+					"from": "2022-07-12T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 5000000,
+					"spfPass": 5000000,
+					"dkimPass": 5000000,
+					"dmarcPass": 5000000,
+					"tlsInbound": 5000000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 102,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx3.selfdealer.example",
+				"subject": {
+					"domain": "selfdealer.example"
+				},
+				"window": {
+					"from": "2022-07-12T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 5000000,
+					"spfPass": 5000000,
+					"dkimPass": 5000000,
+					"dmarcPass": 5000000,
+					"tlsInbound": 5000000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 103,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx4.selfdealer.example",
+				"subject": {
+					"domain": "selfdealer.example"
+				},
+				"window": {
+					"from": "2022-07-12T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 5000000,
+					"spfPass": 5000000,
+					"dkimPass": 5000000,
+					"dmarcPass": 5000000,
+					"tlsInbound": 5000000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

@@ -12,6 +12,7 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 import { throwForbidden } from '../_utils/errors';
+import type { Doc } from '../_generated/dataModel';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { FEATURE_FLAG_REGISTRY } from '../plugins/featureFlagRegistry';
 
@@ -22,6 +23,21 @@ import { FEATURE_FLAG_REGISTRY } from '../plugins/featureFlagRegistry';
  */
 export async function getStoredFlags(ctx: QueryCtx | MutationCtx): Promise<FeatureFlagState> {
 	const settings = await ctx.db.query('instanceSettings').first();
+	return storedFlagsOf(settings);
+}
+
+/**
+ * Resolve flags from an ALREADY-LOADED settings row. For call sites that read
+ * `instanceSettings` for another reason and would otherwise re-query it just to
+ * check a flag; the storage-shape cast lives here and nowhere else.
+ */
+export function resolveFlagsFromSettings(
+	settings: Doc<'instanceSettings'> | null
+): Record<FeatureFlagKey, boolean> {
+	return resolveStoredFeatureFlags(storedFlagsOf(settings));
+}
+
+function storedFlagsOf(settings: Doc<'instanceSettings'> | null | undefined): FeatureFlagState {
 	return (settings?.featureFlags ?? {}) as FeatureFlagState;
 }
 

@@ -182,6 +182,22 @@ services:
       NODE_ENV: production
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
+      # OSTR (trust registry). The first five are the consumer side: the MTA
+      # resolves a sender tier on the inbound path and rides it to Convex on the
+      # webhook payload. It gets its own copy of the aggregator URL and key
+      # because it verifies snapshots itself, on top of the Convex function
+      # variables of the same name. Off unless OSTR_ENABLED; one DNS TXT query
+      # bounded by OSTR_LOOKUP_TIMEOUT_MS; a timeout is not a verdict.
+      # OSTR_OBSERVER_ENABLED is the observer side, and it has to be set HERE and
+      # as a Convex function variable. This half captures the DKIM evidence the
+      # webhook carries; the Convex half retains, signs and publishes it. Set on
+      # one side alone it publishes nothing. See docs/developer/trust-registry.
+      OSTR_ENABLED: ${OSTR_ENABLED:-false}
+      OSTR_ZONE: ${OSTR_ZONE:-}
+      OSTR_LOOKUP_TIMEOUT_MS: ${OSTR_LOOKUP_TIMEOUT_MS:-2000}
+      OSTR_AGGREGATOR_URL: ${OSTR_AGGREGATOR_URL:-}
+      OSTR_AGGREGATOR_PUBLIC_KEY: ${OSTR_AGGREGATOR_PUBLIC_KEY:-}
+      OSTR_OBSERVER_ENABLED: ${OSTR_OBSERVER_ENABLED:-false}
       OWLAT_VERSION: ${OWLAT_VERSION:-dev}
       OWLAT_GIT_SHA: ${OWLAT_GIT_SHA:-unknown}
       OWLAT_BUILD_DATE: ${OWLAT_BUILD_DATE:-unknown}
@@ -671,6 +687,99 @@ services:
     stop_grace_period: 30s
     restart: unless-stopped
 
+  # ── OSTR registry node (transparency log + aggregator + query API) ────
+  # Activated by profile "ostr": docker compose --profile ostr up -d
+  #
+  # This is the SERVER half of the Open Sender Trust Registry, and almost
+  # nobody needs to run it: consuming the registry (OSTR_ZONE, OSTR_ENABLED on
+  # the MTA) and contributing to it (observer mode) both talk to somebody
+  # else's node. Run this one only to operate a registry of your own — a
+  # private federation, a staging log, or a second public node. It is
+  # deliberately standalone: nothing here depends on convex, and the node
+  # never reads the Owlat database.
+  #
+  # No host port is published. The query API is meant to be public, so put it
+  # behind the `tls` profile's reverse proxy (or your own) rather than binding
+  # it raw; inside the stack it answers on ostr-registry:3300.
+  ostr-registry:
+    image: ghcr.io/wolvesdotink/ostr-registry:${OWLAT_VERSION:-dev}
+    build:
+      context: .
+      dockerfile: apps/ostr-registry/Dockerfile
+    environment:
+      OSTR_REGISTRY_PORT: "3300"
+      OSTR_REGISTRY_LISTEN: 0.0.0.0
+      # Matches the Dockerfile's ENV and the volume mount below. The log and
+      # the score store are both SQLite files under here.
+      OSTR_DB_DIR: /app/data
+      # Required, no defaults — apps/ostr-registry/src/config.ts throws on a
+      # missing or malformed value rather than starting a node that cannot
+      # sign. The two keys are raw 32-byte ed25519 keys in base64 and MUST be
+      # different: one says "this log contains these leaves", the other says
+      # "this aggregator computed these scores", and sharing a key makes the
+      # two claims indistinguishable to a monitor. apps/ostr-registry/README.md
+      # carries the one-liner that generates them.
+      #
+      # Pass-through form (`KEY:`) rather than `${KEY}`: compose interpolates
+      # the whole file whatever profile is active, so `${KEY}` would print
+      # three "variable is not set" warnings on every `docker compose up` of
+      # every install that does NOT run a registry — which is nearly all of
+      # them. Both forms fail identically when the profile IS active and the
+      # value is missing, because the node rejects blank and absent alike.
+      OSTR_LOG_ID:
+      OSTR_LOG_PRIVATE_KEY:
+      OSTR_AGGREGATOR_PRIVATE_KEY:
+      # The apex of the generated query zone. The default is RFC 2606's
+      # reserved `.invalid`, so an unconfigured node publishes an obvious
+      # placeholder instead of quietly claiming a real name.
+      OSTR_ZONE_ORIGIN: ${OSTR_ZONE_ORIGIN:-ostr.invalid}
+      # Evidence-page base URL stamped into every published TXT answer.
+      # Blank means "derive it from the zone origin" (https://<origin>/s).
+      OSTR_REF_BASE_URL: ${OSTR_REF_BASE_URL:-}
+      OSTR_STH_INTERVAL_SECONDS: ${OSTR_STH_INTERVAL_SECONDS:-3600}
+      OSTR_REFRESH_INTERVAL_SECONDS: ${OSTR_REFRESH_INTERVAL_SECONDS:-3600}
+      OSTR_MMD_SECONDS: ${OSTR_MMD_SECONDS:-86400}
+      # Blank means no node-wide submission ceiling (spec 08 §8.2 permits one
+      # and requires it be published, but what it is stays operator policy).
+      OSTR_SUBMIT_RATE_PER_MINUTE: ${OSTR_SUBMIT_RATE_PER_MINUTE:-}
+      # Pass-through, NOT `${VAR:-}`: absent means open submission, but a
+      # present-but-empty value is a configuration error the node refuses to
+      # start on — a blank default would silently turn the §4.2 allowlist off.
+      # Compose resolves this form from .env and omits it entirely when unset.
+      OSTR_BOOTSTRAP_OBSERVERS:
+      LOG_LEVEL: ${OSTR_REGISTRY_LOG_LEVEL:-info}
+      NODE_ENV: production
+    volumes:
+      # The transparency log is append-only evidence. Losing it means the node
+      # cannot reproduce the heads it has already signed — which it refuses to
+      # start without. The image creates /app/data owned by `node`, so the
+      # named volume inherits that ownership on first boot.
+      - ostr-data:/app/data
+    healthcheck:
+      # `node -e` rather than curl or wget: the runner is node:26-alpine, which
+      # ships neither curl nor a guaranteed wget applet, and it does ship the
+      # runtime this probe needs. /healthz is liveness only — it answers while
+      # a refresh is running, which is what a restart policy should key on.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3300/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - ostr
+    stop_grace_period: 30s
+    restart: unless-stopped
+
 # ── Networks ────────────────────────────────────────────────────────────────
 # `default` is the implicit bridge every service joins unless it opts out — the
 # whole stack talks over it. `docker-proxy` is an internal-only network (no
@@ -701,3 +810,7 @@ volumes:
   caddy-data:
   caddy-config:
   ollama-data:
+  # OSTR registry node (--profile ostr): the transparency log and the score
+  # store. Back this up like a database — a log that loses its leaves cannot
+  # reproduce the heads it already signed.
+  ostr-data:

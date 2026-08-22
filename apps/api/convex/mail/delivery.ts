@@ -52,6 +52,15 @@ import { resolveDeliverableMailbox } from './mailbox';
 import { clearSnoozeUntilReplyForThread } from './snooze';
 import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 import { storeSealedBlob, type BlobStore } from '../lib/sealedBlob';
+import { resolveFlagsFromSettings } from '../lib/featureFlags';
+import {
+	isOstrFlaggedTier,
+	ostrDkimEvidenceValidator,
+	ostrTierValidator,
+	type OstrTier,
+} from '../ostr/signals';
+import { isObserverModeEnabled } from '../ostr/config';
+import { recordOstrEvidence } from '../ostr/store';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -226,6 +235,17 @@ export const ingestFromWebhook = internalAction({
 		// stored beside the verdicts on `mailMessages`. Both optional.
 		envelopeFromDomain: v.optional(v.string()),
 		dkimSigningDomain: v.optional(v.string()),
+		// OSTR signals (plan §12.2), already narrowed at the webhook boundary. The
+		// TIER is the consumer half: it has a column and a routing meaning. The
+		// EVIDENCE is the observer half — the DKIM proof a spam report will later
+		// commit to — and it is forwarded because observer mode now has a consumer
+		// for it (`ostr/observer.ts`), not merely a validator. It is still only
+		// STORED when observer mode is on: the bundle carries raw signed headers
+		// and a point-in-time DNS key record, which is data to accept only when
+		// something is about to use it. `ostrScore` remains unforwarded.
+		// Both optional: absent is the shipped default.
+		ostrTier: v.optional(ostrTierValidator),
+		ostrDkimEvidence: v.optional(ostrDkimEvidenceValidator),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		// Decode raw MIME and stash in Convex storage.
@@ -376,6 +396,8 @@ export const ingestFromWebhook = internalAction({
 				arcAttestsOriginalPass: args.arcAttestsOriginalPass,
 				envelopeFromDomain: args.envelopeFromDomain,
 				dkimSigningDomain: args.dkimSigningDomain,
+				ostrTier: args.ostrTier,
+				ostrDkimEvidence: args.ostrDkimEvidence,
 				inboundEncryptionInfo,
 				inboundSignatureInfo,
 			}
@@ -541,6 +563,9 @@ export async function insertDeliveredMessage(
 		 * rescued a DMARC fail; `arcSealer` names the honoured sealer's `d=`. */
 		dmarcOverride?: string;
 		arcSealer?: string;
+		/** OSTR tier for the sending domain at delivery time (plan §12.2). Data —
+		 * the routing decision it can influence is made by the caller. */
+		ostrTier?: OstrTier;
 		envelopeFromDomain?: string;
 		dkimSigningDomain?: string;
 		/** Ingest-computed sender-impersonation heuristics (Sealed Mail A4). */
@@ -669,6 +694,7 @@ export async function insertDeliveredMessage(
 		dmarcPolicy: params.dmarcPolicy,
 		dmarcOverride: params.dmarcOverride,
 		arcSealer: params.arcSealer,
+		ostrTier: params.ostrTier,
 		envelopeFromDomain: params.envelopeFromDomain,
 		dkimSigningDomain: params.dkimSigningDomain,
 		senderHeuristics: params.senderHeuristics,
@@ -785,6 +811,16 @@ export const deliverToMailbox = internalMutation({
 		// stored beside the verdicts on `mailMessages`. Both optional.
 		envelopeFromDomain: v.optional(v.string()),
 		dkimSigningDomain: v.optional(v.string()),
+		// OSTR tier for the sending identity (plan §6.1, §12.2). Persisted on the
+		// row whatever it says; consulted for routing only when it is `flagged`
+		// AND the `ostr` flag is on. Absent ⇒ today's behaviour exactly.
+		ostrTier: v.optional(ostrTierValidator),
+		// OSTR observer evidence (plan §7.2). Written to `ostrEvidence` — never to
+		// the message row — and only under `OSTR_OBSERVER_ENABLED`. Nothing about
+		// it can move a message: it is the proof a FUTURE spam report would commit
+		// to, captured now because `dnsKeyRecordTxt` and `verifiedAt` cannot be
+		// reconstructed once the sender rotates its key.
+		ostrDkimEvidence: v.optional(ostrDkimEvidenceValidator),
 		// Sealed Mail (E4, D3): the inbound unsealing outcome, computed by the
 		// ingest action before this mutation. Present only for a message that
 		// arrived sealed; the body args above already hold the RESTORED plaintext
@@ -918,8 +954,24 @@ export const deliverToMailbox = internalMutation({
 			(!arcRescued &&
 				args.dmarcResult === 'fail' &&
 				(args.dmarcPolicy === 'quarantine' || args.dmarcPolicy === 'reject'));
+		// OSTR (plan §6.1, §12.2): the registry tier is a SIGNAL, never a hard gate
+		// by default. `flagged` — the one tier that requires strong, corroborated,
+		// multi-observer negative evidence — routes to Spam, which is exactly what
+		// an enforcing DMARC fail already does above: filed, visible, recoverable,
+		// never rejected or dropped. `warned` and everything below it change
+		// nothing, ever, on any path. The feature flag gates the ROUTING only —
+		// with `ostr` off the tier is still recorded, so an operator turning the
+		// flag on can see what it would have done. Reads the `instanceSettings`
+		// row already loaded for the ARC allow-list above, and only when the tier
+		// is actually `flagged`, so an ordinary delivery does no extra work.
+		const ostrRoutesToSpam =
+			isOstrFlaggedTier(args.ostrTier) && resolveFlagsFromSettings(settings)['ostr'] === true;
+
 		const initialRole =
-			spamVerdict === 'spam' || args.virusVerdict === 'infected' || dmarcQuarantine
+			spamVerdict === 'spam' ||
+			args.virusVerdict === 'infected' ||
+			dmarcQuarantine ||
+			ostrRoutesToSpam
 				? 'spam'
 				: trashAction
 					? 'trash'
@@ -984,6 +1036,7 @@ export const deliverToMailbox = internalMutation({
 			dmarcPolicy: args.dmarcPolicy,
 			dmarcOverride,
 			arcSealer,
+			ostrTier: args.ostrTier,
 			envelopeFromDomain: args.envelopeFromDomain,
 			dkimSigningDomain: args.dkimSigningDomain,
 			senderHeuristics,
@@ -992,6 +1045,19 @@ export const deliverToMailbox = internalMutation({
 			unsubscribe: args.unsubscribe,
 			countUsedBytes: true,
 		});
+
+		// 11a. OSTR observer evidence (plan §7.2). Retained ONLY under observer
+		// mode, in this same transaction, because the one moment it has to exist
+		// is the moment a user junks the message — and a scheduled write could
+		// land after that. Off (the shipped default) ⇒ the bundle is discarded
+		// here and this deployment keeps no signed headers it has no use for.
+		if (args.ostrDkimEvidence !== undefined && isObserverModeEnabled()) {
+			await recordOstrEvidence(ctx, {
+				messageId,
+				mailboxId: mailbox._id,
+				evidence: args.ostrDkimEvidence,
+			});
+		}
 
 		// 11b. Reply Queue: enqueue needs-reply classification for the affected
 		// thread — inbox deliveries only (spam/trash/filter-moved mail never

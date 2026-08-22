@@ -1,0 +1,31 @@
+{
+	"description": "Day 0: posture published, no observed traffic. Hygiene lifts unknown to establishing, never beyond.",
+	"subject": {
+		"domain": "newcomer.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 1,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "posture",
+				"observer": "newcomer.example",
+				"subject": {
+					"domain": "newcomer.example"
+				},
+				"body": {
+					"dmarcPolicy": "reject",
+					"dmarcAlignment": "strict",
+					"dnssec": true,
+					"mtaSts": true,
+					"tlsRpt": true,
+					"declaredIps": ["198.51.100.24"]
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

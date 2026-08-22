@@ -243,6 +243,26 @@ export const TENANT_TABLES = [
 	'auditLogs',
 	'invitationResends',
 	'accessRequests',
+
+	// ── OSTR observer mode (plan §7) ──
+	// The DKIM evidence bundle holds this org's inbound mail verbatim — every
+	// `h=`-signed header, which in practice means Subject and To — keyed by a
+	// `mailMessages` row it must not outlive. The report queue is derived from
+	// it: bundle hashes plus salted tokens for THIS org's mailboxes. Both are
+	// tenant data in the plainest sense, and the ~90-day retention prune is a
+	// deadline, not a substitute for the wipe.
+	'ostrEvidence',
+	'ostrReportQueue',
+	// The retained batch commitments are the ordered hash lists over THIS org's
+	// evidence bundles. They go when the bundles go: a commitment kept without
+	// its bundles can only produce a refusal at challenge time, and keeping one
+	// would leave a per-org artefact behind a wipe that is meant to be total.
+	'ostrBatchCommitments',
+	// The traffic accumulator's held windows carry salted recipient tokens for
+	// this org's mailboxes, so the observer's run state goes with them. An
+	// observer that keeps counting after its only tenant is gone would publish a
+	// denominator for mail nobody received.
+	'ostrObserverState',
 ] as const satisfies readonly TableNames[];
 
 /**
@@ -339,6 +359,20 @@ export const NON_TENANT_TABLES = [
 	// protocol/telemetry tables — wiping it would only make a working channel
 	// read as `awaiting_event` until the provider next spoke.
 	'pluginWebhookFeedbackActivity',
+	// OSTR key observations (§7.5): PUBLIC DKIM keys of OTHER people's domains,
+	// as this instance saw them, plus the window each was last attested for.
+	// Third-party public material and the rate-limit state that keeps a public
+	// log from carrying a per-message record — regenerable from the next
+	// signature, and not this org's contact business data. Out of the tenant wipe
+	// like `recipientKeys`.
+	'ostrKeyObservations',
+	// The cross-log submission ledger holds attestations this observer has
+	// already PUBLISHED — permanently, in logs it does not control. They are
+	// public by construction and carry only bucketed counts and commitments about
+	// third-party senders, never a recipient or a reporter. Wiping the ledger
+	// would not unpublish anything; it would only destroy this deployment's own
+	// record of what it said, which is the one copy an operator can audit.
+	'ostrSubmissionLog',
 ] as const satisfies readonly TableNames[];
 
 /**

@@ -1,0 +1,729 @@
+{
+	"description": "A hosting provider underwrites forty tenants at once. A voucher's total at-risk stake is bounded (plan \u00a76.4), so each tenant receives a fortieth of it rather than the full price.",
+	"subject": {
+		"domain": "tenant-1.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 60,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-1.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 62,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-2.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 63,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-3.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 64,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-4.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 65,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-5.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 66,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-6.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 67,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-7.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 68,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-8.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 69,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-9.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 70,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-10.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 71,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-11.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 72,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-12.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 73,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-13.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 74,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-14.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 75,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-15.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 76,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-16.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 77,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-17.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 78,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-18.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 79,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-19.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 80,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-20.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 81,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-21.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 82,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-22.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 83,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-23.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 84,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-24.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 85,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-25.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 86,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-26.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 87,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-27.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 88,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-28.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 89,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-29.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 90,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-30.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 91,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-31.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 92,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-32.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 93,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-33.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 94,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-34.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 95,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-35.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 96,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-36.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 97,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-37.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 98,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-38.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 99,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-39.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 100,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "tenant-40.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

@@ -1,0 +1,85 @@
+{
+	"description": "A two-half-life-old complaint batch against a domain that has since kept sending clean: the negative has decayed to a quarter of its filed weight.",
+	"subject": {
+		"domain": "redeemed.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 80,
+			"loggedAt": "2025-12-13T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "redeemed.example"
+				},
+				"window": {
+					"from": "2025-07-16T00:00:00Z",
+					"to": "2025-12-13T00:00:00Z"
+				},
+				"body": {
+					"messages": 40000,
+					"spfPass": 36000,
+					"dkimPass": 37200,
+					"dmarcPass": 38000,
+					"tlsInbound": 40000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 81,
+			"loggedAt": "2026-04-23T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "redeemed.example"
+				},
+				"window": {
+					"from": "2026-03-23T00:00:00Z",
+					"to": "2026-04-22T00:00:00Z"
+				},
+				"body": {
+					"reports": 900,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 82,
+			"loggedAt": "2026-08-16T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "redeemed.example"
+				},
+				"window": {
+					"from": "2025-12-23T00:00:00Z",
+					"to": "2026-08-16T00:00:00Z"
+				},
+				"body": {
+					"messages": 60000,
+					"spfPass": 59400,
+					"dkimPass": 59700,
+					"dmarcPass": 59400,
+					"tlsInbound": 60000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

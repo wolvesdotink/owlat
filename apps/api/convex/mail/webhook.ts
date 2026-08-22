@@ -22,6 +22,8 @@ import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
 import { logError } from '../lib/runtimeLog';
 import { getOptional } from '../lib/env';
 import { verifyMtaHeaders } from '../webhooks/adapters/mta';
+import { isOstrTier, parseOstrDkimEvidence } from '../ostr/signals';
+import { isObserverModeEnabled } from '../ostr/config';
 
 interface MailWebhookAttachment {
 	filename: string;
@@ -74,6 +76,24 @@ interface MailWebhookPayload {
 		arcCv?: string;
 		arcSealerDomain?: string;
 		arcAttestsOriginalPass?: boolean;
+		// Open Sender Trust Registry result for the sending identity (plan §12.2),
+		// as the MTA's `@owlat/ostr-client` lookup resolved it. Optional — an MTA
+		// with `OSTR_ENABLED=false` (the default) or an older build omits it.
+		// Declared `unknown` because this whole payload is a `JSON.parse` cast:
+		// the value is narrowed by `convex/ostr/signals.ts` below, not trusted.
+		ostrTier?: unknown;
+		// The DKIM evidence an OBSERVER-MODE MTA captured at verification time —
+		// present only when the far side has observer mode on and a signature
+		// verified, so absence is the normal case. Now that observer mode has a
+		// consumer (`ostr/observer.ts` turns a junk report into a commitment over
+		// it), the field is narrowed and forwarded rather than dropped; it is
+		// still only RETAINED when this side has observer mode on too, because the
+		// bundle carries raw signed headers and a point-in-time DNS key record.
+		//
+		// `ostrScore` is still ignored: the tier is the only consumer-side value
+		// with a column and a meaning, and an unread number is a field that will
+		// go stale in storage.
+		ostrDkimEvidence?: unknown;
 	};
 }
 
@@ -168,6 +188,29 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 
 	const mp = payload.mailboxPayload;
 
+	// OSTR (plan §12.2): narrow the registry tier HERE, at the boundary, rather
+	// than handing it to the action's validator. A malformed tier is DROPPED and
+	// the message delivers exactly as it would have without OSTR — the tier is an
+	// advisory signal (§6.1), so it must never be able to cost us a delivery. The
+	// signature already proved the payload came from our own MTA; this is the
+	// second half of that, which is that a bug on the far side stays a bug.
+	const ostrTier = isOstrTier(mp.ostrTier) ? mp.ostrTier : undefined;
+	// Same rule for the evidence bundle: shape-narrowed here, judged later.
+	// Whether these bytes are ADMISSIBLE evidence is `@owlat/ostr-core`'s call,
+	// made on the report path, and a malformed bundle must cost a future report
+	// rather than this delivery.
+	//
+	// Gated on observer mode AT THE BOUNDARY, not just at the writer. A bundle
+	// carries the `h=`-signed headers verbatim (From, To, Subject) plus the DNS
+	// key record — data this deployment should accept only when something is
+	// about to use it. Observer mode is that consumer; with it off, the field is
+	// dropped where it arrives rather than parsed, rebuilt and carried across two
+	// function boundaries on every inbound message. `deliverToMailbox` re-checks
+	// before it writes, which is defence in depth rather than the gate.
+	const ostrDkimEvidence = isObserverModeEnabled()
+		? parseOstrDkimEvidence(mp.ostrDkimEvidence)
+		: undefined;
+
 	try {
 		const result = await ctx.runAction(internal.mail.delivery.ingestFromWebhook, {
 			deliveryId: mp.deliveryId,
@@ -199,6 +242,8 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 			arcAttestsOriginalPass: mp.arcAttestsOriginalPass,
 			envelopeFromDomain: mp.envelopeFromDomain,
 			dkimSigningDomain: mp.dkimSigningDomain,
+			ostrTier,
+			ostrDkimEvidence,
 		});
 
 		return new Response(JSON.stringify({ success: true, result }), {

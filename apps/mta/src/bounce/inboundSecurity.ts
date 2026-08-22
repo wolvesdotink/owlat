@@ -91,8 +91,17 @@ export async function getConnectionCount(redis: Redis, remoteIp: string): Promis
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-/** Strip the IPv4-mapped IPv6 prefix so a host is keyed consistently. */
-function normalizeIp(ip: string): string {
+/**
+ * Strip the IPv4-mapped IPv6 prefix so a host is keyed consistently.
+ *
+ * Exported because it is not a local convenience: a dual-stack listener reports
+ * a v4 peer as `::ffff:203.0.113.10`, and EVERY consumer that keys, queries or
+ * compares on the peer address has to fold that spelling the same way or it is
+ * talking about a different host than its neighbour. `serverHelpers.ts` compares
+ * against `'::ffff:127.0.0.1'` for the same reason, and `ostrLookup.ts` folds
+ * through here before building a registry query name.
+ */
+export function normalizeIp(ip: string): string {
 	if (ip.startsWith('::ffff:')) {
 		return ip.slice(7);
 	}

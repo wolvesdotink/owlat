@@ -1,0 +1,156 @@
+{
+	"description": "Contested complaint batch: the observer never responded inside the 14-day window, so the evidence is excluded; the second batch was substantiated in time and still counts.",
+	"subject": {
+		"domain": "appellant.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 59,
+			"loggedAt": "2026-07-06T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "appellant.example"
+				},
+				"window": {
+					"from": "2026-06-01T00:00:00Z",
+					"to": "2026-07-05T00:00:00Z"
+				},
+				"body": {
+					"messages": 18000,
+					"spfPass": 17100,
+					"dkimPass": 17100,
+					"dmarcPass": 17100,
+					"tlsInbound": 18000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 60,
+			"loggedAt": "2026-07-01T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "appellant.example"
+				},
+				"window": {
+					"from": "2026-03-23T00:00:00Z",
+					"to": "2026-07-01T00:00:00Z"
+				},
+				"body": {
+					"messages": 30000,
+					"spfPass": 27000,
+					"dkimPass": 27900,
+					"dmarcPass": 28500,
+					"tlsInbound": 30000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 61,
+			"loggedAt": "2026-07-06T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "appellant.example"
+				},
+				"window": {
+					"from": "2026-06-21T00:00:00Z",
+					"to": "2026-07-05T00:00:00Z"
+				},
+				"body": {
+					"reports": 400,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 62,
+			"loggedAt": "2026-07-07T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "appellant.example"
+				},
+				"window": {
+					"from": "2026-06-21T00:00:00Z",
+					"to": "2026-07-05T00:00:00Z"
+				},
+				"body": {
+					"reports": 120,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 63,
+			"loggedAt": "2026-07-11T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "appeal",
+				"observer": "appellant.example",
+				"subject": {
+					"domain": "appellant.example"
+				},
+				"body": {
+					"contested": [
+						{
+							"logId": "log-a",
+							"index": 61
+						},
+						{
+							"logId": "log-a",
+							"index": 62
+						}
+					],
+					"statement": "The reported messages were never sent by this domain."
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 64,
+			"loggedAt": "2026-07-16T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "response",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "appellant.example"
+				},
+				"body": {
+					"appeal": {
+						"logId": "log-a",
+						"index": 63
+					},
+					"outcome": "substantiated",
+					"statement": "Challenge sample opened; every report carried a valid DKIM signature."
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

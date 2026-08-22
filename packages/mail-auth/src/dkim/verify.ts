@@ -32,6 +32,7 @@
 import { resolveTxt } from 'dns/promises';
 import type { Canonicalization } from '../canon.js';
 import type { DkimVerdict } from '../dmarc.js';
+import type { DkimSignatureEvidence } from './evidence.js';
 import { splitMessage } from './message.js';
 import {
 	verifyMessageSignature,
@@ -43,12 +44,37 @@ import {
 // Re-export the shared single-signature surface so consumers (and `index.ts`)
 // keep importing the DKIM types from `./verify.js`.
 export type { DkimDnsResolver, DkimSignatureResult } from './messageSignature.js';
+export type { DkimSignatureEvidence, DkimSignedHeader } from './evidence.js';
 
 export interface VerifyDkimOptions {
 	/** Injectable TXT resolver (defaults to Node `dns/promises` resolveTxt). */
 	readonly resolver?: DkimDnsResolver;
 	/** Verification time in UNIX seconds (defaults to now); for `x=` expiry. */
 	readonly now?: number;
+	/**
+	 * Passive evidence tap (OSTR §7.2): called once per signature that reached
+	 * DNS key resolution, whatever its verdict, with the raw material an observer
+	 * needs to re-derive the check offline. Purely observational — anything it
+	 * throws is swallowed and the verdict is unchanged.
+	 *
+	 * The tap emits a STREAM, not the single record a spam report is filed
+	 * against, so a caller reducing it to one record owes two things:
+	 *
+	 *   - Keep only `verificationVerdict === 'pass'`. Non-pass records are here
+	 *     for local diagnostics; a report is admissible only against a signature
+	 *     that verified (§4.1).
+	 *   - Among those, pick the DMARC-ALIGNED `signingDomain` — the very
+	 *     signature `evaluateDmarc` accepted — not the first or last one to
+	 *     arrive. Any third party may add a valid signature to a message in
+	 *     transit, so "whichever signed last" attributes the report to a domain
+	 *     that merely touched the mail. Misattribution is exactly the
+	 *     false-accusation risk §7.3 exists to bound.
+	 *
+	 * Note also that at most `MAX_SIGNATURES` (10) signatures are evaluated per
+	 * message, so the stream is bounded and a signature past that cap is never
+	 * observed.
+	 */
+	readonly onSignatureEvidence?: (evidence: DkimSignatureEvidence) => void;
 }
 
 /** The message-level DKIM outcome. */
@@ -115,6 +141,9 @@ export async function verifyDkim(
 			signatures.push(
 				await verifyMessageSignature(sigField.raw, headerFields, body, resolver, nowSeconds, {
 					bodyCache,
+					...(options.onSignatureEvidence !== undefined
+						? { onSignatureEvidence: options.onSignatureEvidence }
+						: {}),
 				})
 			);
 		}

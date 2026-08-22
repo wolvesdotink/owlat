@@ -11021,6 +11021,26 @@
 				"unknown": "Unknown action"
 			}
 		},
+		"ostr": {
+			"tier": {
+				"establishing": {
+					"detail": "Public sender-trust registries record clean sending for this sender, but its history is still short.",
+					"label": "Reputation: establishing"
+				},
+				"flagged": {
+					"detail": "Public sender-trust registries recorded strong negative evidence about this sender from several independent observers. Treat this message as suspicious.",
+					"label": "Reputation: flagged"
+				},
+				"trusted": {
+					"detail": "Public sender-trust registries record a sustained clean history for this sender, observed independently by several receivers.",
+					"label": "Reputation: trusted"
+				},
+				"warned": {
+					"detail": "Public sender-trust registries recorded recent complaints or spam-trap hits for this sender. Not a chronic pattern yet, but treat this message with care.",
+					"label": "Reputation: warned"
+				}
+			}
+		},
 		"outboundIpStatus": {
 			"blocklist": {
 				"critical": "A critical DNS blocklist currently excludes this IP from delivery.",
@@ -12990,6 +13010,10 @@
 				"multiTenancy": {
 					"description": "Per-org isolation across VPSes (hosted control plane only).",
 					"label": "Multi-tenancy"
+				},
+				"ostr": {
+					"description": "Consult the Open Sender Trust Registry for an inbound sender's public standing, show its tier beside the sender badge, and file mail from a flagged sender as spam. The tier is a signal, not a verdict: it is recorded on every message either way, and nothing below \"flagged\" changes where mail lands. The tier chip lives inside the sender-authenticity badge, so it renders only while that feature is on as well; recording the tier and filing flagged mail as spam do not depend on it.",
+					"label": "Sender trust registry (OSTR)"
 				},
 				"postbox": {
 					"aiDraft": {

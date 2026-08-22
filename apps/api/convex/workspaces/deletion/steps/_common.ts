@@ -178,7 +178,11 @@ export type OrganizationDeletionTable =
 	| 'draftStrategySelections'
 	| 'shareLinks'
 	| 'integrationImports'
-	| 'codeWorkTasks';
+	| 'codeWorkTasks'
+	| 'ostrEvidence'
+	| 'ostrReportQueue'
+	| 'ostrBatchCommitments'
+	| 'ostrObserverState';
 
 import { TENANT_TABLES } from '../../../lib/tenantTables';
 
@@ -353,7 +357,11 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('draftStrategySelections'),
 	v.literal('shareLinks'),
 	v.literal('integrationImports'),
-	v.literal('codeWorkTasks')
+	v.literal('codeWorkTasks'),
+	v.literal('ostrEvidence'),
+	v.literal('ostrReportQueue'),
+	v.literal('ostrBatchCommitments'),
+	v.literal('ostrObserverState')
 );
 
 export const DEFAULT_BATCH_SIZE = 100;

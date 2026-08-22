@@ -104,7 +104,6 @@ export:packages/shared/src/tlsReport.ts:TLS_RPT_FAILURE_EXPLANATIONS
 export:packages/shared/src/tlsReport.ts:gunzipTlsReport
 export:packages/shared/src/types/blocks.ts:isBlockType
 export:packages/shared/src/utils/errors.ts:normalizeError
-export:packages/shared/src/utils/validation.ts:isNonEmptyString
 export:packages/shared/src/utils/validation.ts:isValidPhone
 export:packages/shared/src/utils/validation.ts:isValidSlug
 export:packages/shared/src/utils/validation.ts:phoneRegex
