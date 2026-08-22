@@ -209,7 +209,34 @@ describe('mailbox read handlers route through loadReadableMailbox', () => {
 		const id = await seedMailbox(t, { userId: 'user-A' });
 		setSession('user-B', 'editor');
 		const result = await t.query(api.mail.mailbox.listMessages, { mailboxId: id });
-		expect(result).toEqual({ messages: [], hasMore: false });
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
+	});
+
+	it('mailbox.listByLabel returns the empty sentinel to a non-owner', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seedMailbox(t, { userId: 'user-A' });
+		const labelId = await t.run(async (ctx) =>
+			ctx.db.insert('mailLabels', { mailboxId: id, name: 'work', createdAt: Date.now() })
+		);
+		setSession('user-B', 'editor');
+		const result = await t.query(api.mail.mailbox.listByLabel, { mailboxId: id, labelId });
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
+	});
+
+	it("mailbox.listByLabel ignores another mailbox's label id", async () => {
+		const t = convexTest(schema, modules);
+		const ownId = await seedMailbox(t, { userId: 'user-A' });
+		const foreignId = await seedMailbox(t, { userId: 'user-B' });
+		const foreignLabelId = await t.run(async (ctx) =>
+			ctx.db.insert('mailLabels', { mailboxId: foreignId, name: 'foreign', createdAt: Date.now() })
+		);
+		setSession('user-A', 'editor');
+		const result = await t.query(api.mail.mailbox.listByLabel, {
+			mailboxId: ownId,
+			labelId: foreignLabelId,
+		});
+		// A label id from another mailbox must never serve (or leak) rows.
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
 	});
 
 	it('mailbox.listMessages returns the empty sentinel on a suspended mailbox to its owner', async () => {
@@ -217,7 +244,7 @@ describe('mailbox read handlers route through loadReadableMailbox', () => {
 		const id = await seedMailbox(t, { userId: 'user-A', status: 'suspended' });
 		setSession('user-A', 'editor');
 		const result = await t.query(api.mail.mailbox.listMessages, { mailboxId: id });
-		expect(result).toEqual({ messages: [], hasMore: false });
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
 	});
 
 	it('mailbox.listFolders lists folders for the owner but is empty for a non-owner', async () => {

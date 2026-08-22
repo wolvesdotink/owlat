@@ -35,11 +35,25 @@ const {
 	setInboxMode,
 } = usePostboxSettings();
 
-const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
-	mailboxId: mailboxIdRef,
-	folderRole: folderRef,
-	folderId: folderIdRef,
-});
+const { messages, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } =
+	usePostboxThreads({
+		mailboxId: mailboxIdRef,
+		folderRole: folderRef,
+		folderId: folderIdRef,
+	});
+
+// The virtual Snoozed folder is take()-bounded server-side: more matches can
+// exist with no cursor to reach them. Say so plainly instead of offering a
+// Load more that cannot advance — the same posture the label view takes.
+const listCapped = computed(() => hasMore.value && !canLoadMore.value);
+
+// Triage filter chips (All / Unread / Starred / Attachments) — client-side
+// over the fetched window, persisted per mailbox+folder. Flat list only; the
+// grouped renderers own their sections. Wired to `displayMessages` below so
+// the chips filter what's actually shown (cache or live).
+const triageScope = computed(
+	() => `${String(props.mailboxId)}:${props.folderId ?? props.folderRole}`
+);
 
 // Offline read cache: serve the last-cached inbox rows instantly on a cold
 // start (with an "updating…" shimmer) and hand back to live rows the moment
@@ -49,12 +63,32 @@ const {
 	rows: displayMessages,
 	showingCached,
 	isOffline,
+	cachedAt,
 } = usePostboxOfflineThreads({
 	mailboxId: computed(() => String(props.mailboxId)),
 	folderRole: folderRef,
 	liveRows: messages,
 	isLoading,
+	isRefetching,
 });
+
+const {
+	active: triageFilter,
+	setFilter: setTriageFilter,
+	counts: triageCounts,
+	countsArePartial: triageCountsArePartial,
+	filtered: filteredDisplayMessages,
+} = usePostboxTriageFilters({ scope: triageScope, rows: displayMessages, hasMore });
+
+// What the flat list renders: filter-of-what's-shown.
+const listMessages = computed(() =>
+	triageFilter.value === 'all' ? displayMessages.value : filteredDisplayMessages.value
+);
+// A chip is "active" when it hides rows that exist — drives the caught-up
+// empty state ("Show all") instead of the folder's usual empty copy.
+const filterHidesRows = computed(
+	() => triageFilter.value !== 'all' && displayMessages.value.length > 0
+);
 
 // Offline outbox (D8): mounting here registers the drain-on-reconnect watcher
 // for the active mailbox; the counts drive the offline banner ("n queued")
@@ -153,6 +187,11 @@ function backToList() {
 	});
 }
 
+/** Compose FAB (stack mode) — the touch entry point while the rail, and its
+ * Compose button with it, live in the drawer. Same entry point as the rail's
+ * button: the composer stack. */
+const composerStack = usePostboxComposerStack();
+
 const threadGroupsEnabled = computed(() => activeListRenderer.value === 'conversations');
 const {
 	threads: threadGroups,
@@ -246,73 +285,38 @@ const advanceIds = computed(() =>
 						:is-offline="isOffline"
 						:queued-count="queuedSendCount"
 						:failed-count="failedSendCount"
+						:cached-at="cachedAt"
 						@retry="() => void retryQueuedSends()"
 					/>
-					<header
-						class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2"
-					>
-						<div class="flex items-center gap-2 min-w-0">
-							<!-- Drawer handle for the folder rail (mobile only). 44px square for
-							     the thumb; the negative margins keep it from growing the header
-							     past the height the 16px icon alone would give it. -->
-							<button
-								type="button"
-								class="lg:hidden -ml-2 -my-2 w-11 h-11 flex items-center justify-center flex-shrink-0 rounded text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-								:aria-label="t('components.postbox.postboxLayout.openFolders')"
-								@click="railOpen = true"
-							>
-								<Icon name="lucide:panel-left" class="w-4 h-4" />
-							</button>
-							<h2
-								class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2 min-w-0"
-							>
-								<span class="truncate">{{ currentFolderName }}</span>
-								<!-- Cold start from the device cache: a quiet "updating…" hint
-					     while the live query catches up. Live rows replace in place. -->
-								<!-- Suppressed while offline: the live query never settles, so a
-					     permanent "updating…" would read as stuck — the offline banner
-					     already communicates the state. -->
-								<span
-									v-if="showingCached && !isOffline"
-									class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
-									>{{ t('components.postbox.postboxLayout.updating') }}</span
-								>
-							</h2>
-						</div>
-						<div v-if="folderRole === 'inbox'" class="flex items-center gap-2">
-							<!-- Back to the focused Today landing view (Esc / B do the same). -->
-							<button
-								v-if="!activeMessageId && !folderId"
-								type="button"
-								class="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-								aria-keyshortcuts="Escape b"
-								:title="t('components.postbox.postboxLayout.backToTodayTitle')"
-								@click="switchInboxMode('today')"
-							>
-								{{ t('common.today') }}
-								<kbd
-									class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
-									aria-hidden="true"
-									>{{ t('components.postbox.postboxLayout.escKey') }}</kbd
-								>
-							</button>
-							<!-- Labeled view-mode control — exactly one mode active; persisted
-					     per user. Inbox-only: other folders stay flat. -->
-							<UiSegmentedControl
-								size="sm"
-								:aria-label="t('components.postbox.postboxLayout.inboxView')"
-								:options="viewModeOptions"
-								:model-value="viewMode"
-								@update:model-value="selectViewMode"
-							/>
-						</div>
-					</header>
+					<PostboxListHeader
+						:folder-name="currentFolderName"
+						:folder-role="folderRole"
+						:folder-id="folderId"
+						:active-message-id="activeMessageId"
+						:showing-cached="showingCached"
+						:is-offline="isOffline"
+						:view-mode="viewMode"
+						:view-mode-options="viewModeOptions"
+						@open-rail="railOpen = true"
+						@switch-today="switchInboxMode('today')"
+						@select-view-mode="selectViewMode"
+					/>
 					<template v-if="folderRole === 'drafts'">
 						<div class="flex-1 overflow-auto">
 							<PostboxDraftList :mailbox-id="mailboxId" />
 						</div>
 					</template>
 					<template v-else>
+						<!-- Triage filter chips — flat list only; the grouped renderers own
+					     their sections. One tap from "everything" to "what needs me". -->
+						<PostboxTriageFilterChips
+							v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
+							class="border-b border-border-subtle pb-3"
+							:filter="triageFilter"
+							:counts="triageCounts"
+							:counts-are-partial="triageCountsArePartial"
+							@select-filter="setTriageFilter"
+						/>
 						<!-- Compact "waiting on your reply" strip — inbox only, non-empty
 				     queue only, dismissible for the session. -->
 						<PostboxReplyQueueStrip :mailbox-id="mailboxId" :folder-role="folderRole" />
@@ -355,12 +359,16 @@ const advanceIds = computed(() =>
 										v-else
 										ref="threadListRef"
 										:mailbox-id="mailboxId"
-										:messages="displayMessages"
+										:messages="listMessages"
 										:loading="isLoading && !showingCached"
 										:folder-role="folderRole"
 										:active-message-id="activeMessageId"
-										:has-more="hasMore"
+										:has-more="canLoadMore"
+										:loading-more="isLoadingMore"
+										:capped="listCapped"
+										:filter-active="filterHidesRows"
 										@load-more="loadMore"
+										@clear-filter="setTriageFilter('all')"
 									/>
 								</div>
 							</Transition>
@@ -407,6 +415,19 @@ const advanceIds = computed(() =>
 				</section>
 			</div>
 		</Transition>
+
+		<!-- Compose FAB (below lg): the touch entry point for writing while the
+		     rail, and its Compose button with it, live in the drawer. Hidden while
+		     a message is open — the reader carries its own reply affordances. -->
+		<button
+			v-if="!activeMessageId"
+			type="button"
+			class="lg:hidden fixed bottom-5 right-5 z-30 w-13 h-13 rounded-full bg-brand text-text-inverse shadow-lg flex items-center justify-center hover:bg-brand-hover transition-colors duration-(--motion-fast) focus-visible:ring-2 focus-visible:ring-brand/50 outline-none"
+			:aria-label="t('components.postbox.postboxComposeButton.compose')"
+			@click="composerStack.open({ mailboxId })"
+		>
+			<Icon name="lucide:pen-line" class="w-5 h-5" />
+		</button>
 
 		<PostboxShortcutHelp />
 	</div>

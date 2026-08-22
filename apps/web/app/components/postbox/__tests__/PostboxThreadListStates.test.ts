@@ -18,6 +18,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxThreadList from '../PostboxThreadList.vue';
+import { usePostboxRowTriage } from '../../../composables/postbox/usePostboxRowTriage';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
@@ -52,6 +53,10 @@ beforeAll(() => {
 		registerMoveBack: vi.fn(),
 		onWindowKeydown: vi.fn(),
 	}));
+	// The REAL triage composable, running against the inert useBackendOperation /
+	// usePostboxTriageUndo stubs above — the list's verbs stay covered end to end
+	// rather than being replaced by a mock that can drift from the real shape.
+	vi.stubGlobal('usePostboxRowTriage', usePostboxRowTriage);
 	vi.stubGlobal('useState', (_key: string, init?: () => unknown) => ref(init ? init() : null));
 	vi.stubGlobal('POSTBOX_PENDING_COMPOSE_KEY', 'postbox:pending-compose');
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));

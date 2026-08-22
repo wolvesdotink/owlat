@@ -15,6 +15,23 @@ definePageMeta({
 	requiresFeature: 'inbox',
 });
 
+// ── Access gate ──
+// The backend returns empty lists to non-admins by design; without this check
+// that reads as "the queue is clear" when it actually means "no access". Once
+// the role has resolved to a non-admin member, render the honest explainer
+// (with exits) instead of a fake-zero inbox.
+const { isAdmin, showAdminGate, role } = usePermissions();
+
+// The role name is interpolated into user-facing copy, so it goes through the
+// catalog rather than shipping the raw wire value into a translated sentence.
+// An unknown role falls back to its own identifier over an inaccurate "member".
+const displayRole = computed(() => {
+	const current = role.value;
+	if (!current) return t('common.roles.member');
+	const key = `common.roles.${current}`;
+	return te(key) ? t(key) : current;
+});
+
 const {
 	filter,
 	sort,
@@ -26,11 +43,10 @@ const {
 	hasMoreThreads,
 	stats,
 	loadMoreThreads,
-} = useInbox();
+} = useInbox(computed(() => isAdmin.value));
 
 // ── Row triage mutations (shared with the thread detail view) ──
 const { user } = useAuth();
-const { isAdmin } = usePermissions();
 const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
 	label: () => t('dashboard.inbox.index.assignThreadOperation'),
 });
@@ -195,87 +211,110 @@ const emptyMessage = computed(() => {
 			</div>
 		</div>
 
-		<!-- Filter pills (live counts) + needs-attention sort chip -->
-		<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-			<InboxFilterPills v-model="filter" :counts="filterCounts" />
-
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
-				:title="
-					sort === 'needs-attention'
-						? t('dashboard.inbox.index.sortToggleToNewest')
-						: t('dashboard.inbox.index.sortToggleToNeedsAttention')
-				"
-				@click="toggleSort"
-			>
-				<Icon
-					:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
-					class="w-3.5 h-3.5"
-				/>
-				<span>
-					{{
-						sort === 'needs-attention'
-							? t('dashboard.inbox.index.sortedByNeedsAttention')
-							: t('dashboard.inbox.index.sortedNewestFirst')
-					}}
-				</span>
-			</button>
+		<!-- Access explainer: a non-admin on this route sees WHY it's empty and
+		     where to go instead — never a fake "no conversations" zero. -->
+		<div v-if="showAdminGate" class="flex flex-col items-center justify-center py-20 text-center">
+			<UiIconBox icon="lucide:lock" size="xl" variant="warning" rounded="full" class="mb-4" />
+			<h2 class="text-lg font-medium text-text-primary">
+				{{ t('dashboard.inbox.index.accessTitle') }}
+			</h2>
+			<p class="text-text-secondary mt-1.5 max-w-md">
+				{{ t('dashboard.inbox.index.accessBody', { role: displayRole }) }}
+			</p>
+			<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+				<UiButton to="/dashboard/postbox/inbox" class="gap-2">
+					<Icon name="lucide:inbox" class="w-4 h-4" />
+					{{ t('dashboard.inbox.index.openMyPostbox') }}
+				</UiButton>
+			</div>
+			<p class="text-xs text-text-tertiary mt-4">
+				{{ t('dashboard.inbox.index.accessHint') }}
+			</p>
 		</div>
 
-		<!-- Loading — Postbox list skeleton geometry -->
-		<UiQueryBoundary
-			:loading="threadsLoading && threads.length === 0"
-			:error="threadsError"
-			:error-title="t('dashboard.inbox.index.errorTitle')"
-		>
-			<template #loading>
-				<PostboxThreadListSkeleton :rows="8" />
-			</template>
+		<template v-else>
+			<!-- Filter pills (live counts) + needs-attention sort chip -->
+			<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+				<InboxFilterPills v-model="filter" :counts="filterCounts" />
 
-			<!-- Empty state — copy per active pill -->
-			<div
-				v-if="visibleThreads.length === 0"
-				class="flex flex-col items-center justify-center py-16 text-center"
-			>
-				<UiIconBox icon="lucide:inbox" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">{{ emptyMessage }}</p>
-			</div>
-
-			<!-- Thread List — Postbox row DNA: single column, weight-based unread,
-		     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
-			<div v-else>
-				<ul
-					role="listbox"
-					tabindex="0"
-					:aria-label="t('dashboard.inbox.index.listAriaLabel')"
-					:aria-activedescendant="activeId"
-					class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
-					@keydown="onKeydown"
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
+					:title="
+						sort === 'needs-attention'
+							? t('dashboard.inbox.index.sortToggleToNewest')
+							: t('dashboard.inbox.index.sortToggleToNeedsAttention')
+					"
+					@click="toggleSort"
 				>
-					<InboxThreadRow
-						v-for="(thread, index) in visibleThreads"
-						:key="thread._id"
-						:thread="thread"
-						:focused="index === focusedIndex"
-						:format-compact-relative-time="formatCompactRelativeTime"
-						:members="assignMembers"
-						:current-user-id="user?.id ?? null"
-						:can-manage="isAdmin"
-						@assign="assignTo(thread, $event)"
-						@resolve="resolveThread(thread)"
-						@snooze="openSnooze(thread)"
+					<Icon
+						:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
+						class="w-3.5 h-3.5"
 					/>
-				</ul>
-
-				<!-- Load More -->
-				<div v-if="hasMoreThreads" class="pt-4 text-center">
-					<UiButton variant="secondary" size="sm" @click="loadMoreThreads">
-						{{ t('dashboard.inbox.index.loadMore') }}
-					</UiButton>
-				</div>
+					<span>
+						{{
+							sort === 'needs-attention'
+								? t('dashboard.inbox.index.sortedByNeedsAttention')
+								: t('dashboard.inbox.index.sortedNewestFirst')
+						}}
+					</span>
+				</button>
 			</div>
-		</UiQueryBoundary>
+
+			<!-- Loading — Postbox list skeleton geometry -->
+			<UiQueryBoundary
+				:loading="threadsLoading && threads.length === 0"
+				:error="threadsError"
+				:error-title="t('dashboard.inbox.index.errorTitle')"
+			>
+				<template #loading>
+					<PostboxThreadListSkeleton :rows="8" />
+				</template>
+
+				<!-- Empty state — copy per active pill -->
+				<div
+					v-if="visibleThreads.length === 0"
+					class="flex flex-col items-center justify-center py-16 text-center"
+				>
+					<UiIconBox icon="lucide:inbox" size="xl" variant="surface" rounded="full" class="mb-4" />
+					<p class="text-text-secondary font-medium">{{ emptyMessage }}</p>
+				</div>
+
+				<!-- Thread List — Postbox row DNA: single column, weight-based unread,
+			     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
+				<div v-else>
+					<ul
+						role="listbox"
+						tabindex="0"
+						:aria-label="t('dashboard.inbox.index.listAriaLabel')"
+						:aria-activedescendant="activeId"
+						class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+						@keydown="onKeydown"
+					>
+						<InboxThreadRow
+							v-for="(thread, index) in visibleThreads"
+							:key="thread._id"
+							:thread="thread"
+							:focused="index === focusedIndex"
+							:format-compact-relative-time="formatCompactRelativeTime"
+							:members="assignMembers"
+							:current-user-id="user?.id ?? null"
+							:can-manage="isAdmin"
+							@assign="assignTo(thread, $event)"
+							@resolve="resolveThread(thread)"
+							@snooze="openSnooze(thread)"
+						/>
+					</ul>
+
+					<!-- Load More -->
+					<div v-if="hasMoreThreads" class="pt-4 text-center">
+						<UiButton variant="secondary" size="sm" @click="loadMoreThreads">
+							{{ t('dashboard.inbox.index.loadMore') }}
+						</UiButton>
+					</div>
+				</div>
+			</UiQueryBoundary>
+		</template>
 
 		<PostboxSnoozeDialog
 			v-if="isAdmin"

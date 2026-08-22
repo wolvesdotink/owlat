@@ -1,7 +1,11 @@
 /**
  * Paginated thread/message list per folder.
  *
- * P1 simplification: returns mailMessages directly. P3 will add a proper
+ * Keyset-paginated via usePostboxCursorFeed: the first page stays a live
+ * subscription (new mail floats in), "Load more" appends one cursor-keyed page
+ * at a time instead of re-subscribing with a growable limit.
+ *
+ * P1 simplification note: returns mailMessages directly. P3 will add a proper
  * thread aggregate query backed by mailThreads.
  */
 
@@ -14,33 +18,36 @@ export function usePostboxThreads(args: {
 	// Custom (non-role) folder addressed by id; takes precedence over folderRole.
 	folderId?: Ref<Id<'mailFolders'> | undefined>;
 }) {
+	// Folder switch: drop the accumulated tail, keep the previous folder's rows
+	// on screen until the new first page lands.
 	const resetKey = computed(() => args.folderId?.value ?? args.folderRole.value);
-	const { limit, loadMore, atMax } = useGrowableLimit(resetKey);
+	// Mailbox switch: additionally suppress the retained page — rows from
+	// account A must never render under account B, however briefly.
+	const hardResetKey = computed(() => args.mailboxId.value);
 
-	const { data, isLoading, isRefetching } = useConvexQuery(
-		api.mail.mailbox.listMessages,
-		() => {
-			if (!args.mailboxId.value) return 'skip';
-			const folderId = args.folderId?.value;
-			return folderId
-				? { mailboxId: args.mailboxId.value, folderId, limit: limit.value }
-				: { mailboxId: args.mailboxId.value, folderRole: args.folderRole.value, limit: limit.value };
-		},
-		// Keep the prior folder's rows visible while the next folder loads, so
-		// switching folders never flashes a blank full-pane spinner.
-		{ keepPreviousData: true }
-	);
-
-	const messages = computed(() => data.value?.messages ?? []);
-	// The server returns a real hasMore (folder-scoped take(limit+1)); stop at
-	// the server cap.
-	const hasMore = computed(() => (data.value?.hasMore ?? false) && !atMax.value);
+	const { rows, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } =
+		usePostboxCursorFeed(
+			api.mail.mailbox.listMessages,
+			() => {
+				if (!args.mailboxId.value) return 'skip';
+				const folderId = args.folderId?.value;
+				return folderId
+					? { mailboxId: args.mailboxId.value, folderId, limit: 50 }
+					: { mailboxId: args.mailboxId.value, folderRole: args.folderRole.value, limit: 50 };
+			},
+			resetKey,
+			// Keep the prior folder's rows visible while the next folder loads, so
+			// switching folders never flashes a blank full-pane spinner.
+			{ keepPreviousData: true, hardResetKey }
+		);
 
 	return {
-		messages,
+		messages: rows,
 		isLoading,
+		isLoadingMore,
 		isRefetching,
 		hasMore,
+		canLoadMore,
 		loadMore,
 	};
 }

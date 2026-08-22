@@ -487,7 +487,14 @@ async function attachThreadFollowUps(
 	return out;
 }
 
-/** List messages in a mailbox (most-recent first), for the webmail UI. */
+/**
+ * List messages in a mailbox (most-recent first), for the webmail UI.
+ *
+ * Keyset-paginated: pass `nextCursor` from the previous response to fetch the
+ * next page. The cursor is opaque (a Convex paginate cursor minted for this
+ * exact index + filter) and stays valid across live updates of already-read
+ * rows; a folder switch simply starts again without one.
+ */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listMessages = publicQuery({
 	args: {
@@ -495,20 +502,24 @@ export const listMessages = publicQuery({
 		folderRole: v.optional(v.string()),
 		folderId: v.optional(v.id('mailFolders')),
 		limit: v.optional(v.number()),
+		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false };
+		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false, nextCursor: null };
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return empty;
 
 		const now = Date.now();
 		const limit = Math.min(args.limit ?? 50, 500);
+		const pagination = { cursor: args.cursor ?? null, numItems: limit };
 		// A message is hidden from its origin folder while snoozedUntil is in the
 		// future; the wakeup cron clears the flag to float it back.
 		const isSnoozed = (m: { snoozedUntil?: number }) => isMessageSnoozed(m, now);
 
 		// Virtual "Snoozed" view — mailbox-scoped, range-scanned on snoozedUntil so
-		// older snoozed mail stays reachable (no fixed recent-window cap).
+		// older snoozed mail stays reachable (no fixed recent-window cap). The
+		// result is re-sorted by arrival client-side, so a keyset cursor has no
+		// stable meaning here — this view stays take()-bounded instead.
 		if (args.folderRole === 'snoozed') {
 			const raw = await ctx.db
 				.query('mailMessages')
@@ -518,7 +529,7 @@ export const listMessages = publicQuery({
 				.take(limit + 1);
 			const hasMore = raw.length > limit;
 			const messages = raw.slice(0, limit).sort((a, b) => b.receivedAt - a.receivedAt);
-			return { messages, hasMore };
+			return { messages, hasMore, nextCursor: null };
 		}
 
 		// Custom-folder view, addressed directly by id — custom IMAP folders carry
@@ -527,22 +538,22 @@ export const listMessages = publicQuery({
 		if (args.folderId) {
 			const folder = await ctx.db.get(args.folderId);
 			if (!folder || folder.mailboxId !== args.mailboxId) return empty;
-			const raw = await ctx.db
+			const page = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
 				.order('desc')
-				.take(limit + 1);
+				.paginate(pagination);
 			return {
 				messages: await attachThreadFollowUps(
 					ctx,
-					raw.slice(0, limit).filter((m) => !isSnoozed(m))
+					page.page.filter((m) => !isSnoozed(m))
 				),
-				hasMore: raw.length > limit,
+				hasMore: !page.isDone,
+				nextCursor: page.isDone ? null : page.continueCursor,
 			};
 		}
 
-		// Folder-scoped view, indexed by arrival (no mailbox-wide overfetch). The
-		// extra row drives a reliable hasMore even after the snooze filter.
+		// Folder-scoped view, indexed by arrival (no mailbox-wide overfetch).
 		if (args.folderRole) {
 			const folder = await ctx.db
 				.query('mailFolders')
@@ -551,32 +562,108 @@ export const listMessages = publicQuery({
 				)
 				.first();
 			if (!folder) return empty;
-			const raw = await ctx.db
+			const page = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
 				.order('desc')
-				.take(limit + 1);
+				.paginate(pagination);
 			return {
 				messages: await attachThreadFollowUps(
 					ctx,
-					raw.slice(0, limit).filter((m) => !isSnoozed(m))
+					page.page.filter((m) => !isSnoozed(m))
 				),
-				hasMore: raw.length > limit,
+				hasMore: !page.isDone,
+				nextCursor: page.isDone ? null : page.continueCursor,
 			};
 		}
 
 		// No folder (label view): whole mailbox by arrival.
-		const raw = await ctx.db
+		const page = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
 			.order('desc')
-			.take(limit + 1);
+			.paginate(pagination);
 		return {
 			messages: await attachThreadFollowUps(
 				ctx,
-				raw.slice(0, limit).filter((m) => !isSnoozed(m))
+				page.page.filter((m) => !isSnoozed(m))
 			),
-			hasMore: raw.length > limit,
+			hasMore: !page.isDone,
+			nextCursor: page.isDone ? null : page.continueCursor,
+		};
+	},
+});
+
+/**
+ * How deep into a mailbox's recent history the label view scans. Convex has no
+ * element-containment index for array fields (an index over `labelIds` matches
+ * whole-array equality only), so the label view reads the mailbox's newest
+ * messages off `by_mailbox_and_received` and filters membership in-query. A
+ * label whose newest message is inside this window is fully served; anything
+ * older is out of view — the same bound the old client-side filter had at 500,
+ * now doubled, moved server-side, and honest about its edge.
+ */
+const LABEL_SCAN_WINDOW = 1000;
+
+/**
+ * Server-side label view — messages carrying one label, newest first.
+ *
+ * Backs `/dashboard/postbox/label/[labelId]`, which previously fetched up to
+ * 500 recent mailbox messages to the CLIENT and filtered `labelIds` there
+ * (the "P7" debt): every visit paid for 500 rows regardless of hit count, and
+ * the filtering logic lived outside the access-controlled read path. This
+ * keeps the scan on the server: bounded indexed read, in-query membership
+ * filter, only matching rows cross the wire.
+ *
+ * Contract: a single bounded page, NOT keyset pagination. The scan window is
+ * the view's total reach, so `nextCursor` is always null by design — a
+ * consumer fetches once at its display cap. `hasMore` means matches exist
+ * beyond the returned slice (still inside the window); the UI renders an
+ * honest cap note rather than offering a Load-more that has nothing to walk.
+ * A membership table with true cursor paging is the eventual fix and needs a
+ * migration across every `labelIds` writer (see ADR-0037's one-contract rule).
+ */
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+export const listByLabel = publicQuery({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		labelId: v.id('mailLabels'),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false, nextCursor: null };
+		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
+		if (!mailbox) return empty;
+
+		// The label must belong to this mailbox — an id from another mailbox must
+		// never serve (or leak) rows.
+		const label = await ctx.db.get(args.labelId);
+		if (!label || label.mailboxId !== args.mailboxId) return empty;
+
+		const now = Date.now();
+		const limit = Math.min(Math.max(1, args.limit ?? 200), LABEL_SCAN_WINDOW);
+
+		// Scan of the mailbox's newest messages, filtered to the label. Bounded:
+		// LABEL_SCAN_WINDOW rows off `by_mailbox_and_received` — the documented,
+		// deliberate reach of this view (see above); Convex has no
+		// element-containment index for array fields to do better today.
+		const scanned = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
+			.order('desc')
+			.take(LABEL_SCAN_WINDOW);
+		// Snoozed rows are hidden from this view, so they must be dropped BEFORE
+		// the slice: filtering afterwards lets them eat result slots (ask for
+		// `limit`, get fewer with matches still in the window) and makes `hasMore`
+		// count rows the caller will never see, overstating the cap note.
+		const matching = scanned.filter(
+			(m) => m.labelIds.includes(args.labelId) && !isMessageSnoozed(m, now)
+		);
+
+		return {
+			messages: await attachThreadFollowUps(ctx, matching.slice(0, limit)),
+			hasMore: matching.length > limit,
+			nextCursor: null,
 		};
 	},
 });
@@ -978,7 +1065,16 @@ export const getMessageRawUrl = publicAction({
 	},
 });
 
-/** Free-text + structured search across messages in a mailbox. */
+/**
+ * Free-text + structured search across messages in a mailbox.
+ *
+ * Keyset-paginated: pass `nextCursor` from the previous response to walk past
+ * the first page (the pre-pagination implementation silently capped at 200
+ * rows with no way to reach deeper matches). Post-filters that the search
+ * index can't express (`from:`/`to:`/`subject:` substrings, label, date range)
+ * shrink a page but never invalidate its cursor — rows are consumed, not
+ * skipped, so continuation stays complete.
+ */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const search = publicQuery({
 	args: {
@@ -987,6 +1083,11 @@ export const search = publicQuery({
 		// `parseSearchQuery(rawText)` before calling us so the parser
 		// stays close to the UI.
 		text: v.string(),
+		// Quoted runs from the raw query ("exact phrase"). Their words are also in
+		// `text`, so the search index still does the indexed narrowing; these
+		// additionally require ADJACENCY, which a token index cannot express.
+		// Already lowercased by the parser.
+		phrases: v.optional(v.array(v.string())),
 		from: v.optional(v.string()),
 		to: v.optional(v.string()),
 		subject: v.optional(v.string()),
@@ -998,10 +1099,11 @@ export const search = publicQuery({
 		beforeMs: v.optional(v.number()),
 		afterMs: v.optional(v.number()),
 		limit: v.optional(v.number()),
+		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
-		if (!mailbox) return [];
+		if (!mailbox) return { messages: [], hasMore: false, nextCursor: null };
 
 		// Resolve folder if `in:role` was specified
 		let folderId: import('../_generated/dataModel').Id<'mailFolders'> | undefined;
@@ -1013,7 +1115,7 @@ export const search = publicQuery({
 				)
 				.first();
 			folderId = folder?._id;
-			if (!folderId) return [];
+			if (!folderId) return { messages: [], hasMore: false, nextCursor: null };
 		}
 
 		// Resolve label by name
@@ -1026,43 +1128,48 @@ export const search = publicQuery({
 				)
 				.first();
 			labelId = label?._id;
-			if (!labelId) return [];
+			if (!labelId) return { messages: [], hasMore: false, nextCursor: null };
 		}
 
 		const limit = Math.min(args.limit ?? 50, 200);
-		let messages;
 
-		if (args.text) {
-			// Full-text via Convex search index
-			messages = await ctx.db
-				.query('mailMessages')
-				.withSearchIndex('search_messages', (q) => {
-					let filtered = q.search('snippet', args.text).eq('mailboxId', args.mailboxId);
-					if (folderId) filtered = filtered.eq('folderId', folderId);
-					// `from` is a partial token (e.g. "sara"), not a full address, so it
-					// can't use the search index's exact .eq('fromAddress') — the substring
-					// post-filter below handles it for both the text and no-text branches.
-					if (args.flagSeen !== undefined) filtered = filtered.eq('flagSeen', args.flagSeen);
-					if (args.flagFlagged !== undefined)
-						filtered = filtered.eq('flagFlagged', args.flagFlagged);
-					return filtered;
-				})
-				.take(limit * 2);
-		} else {
-			// No text → fall back to time-ordered scan over the mailbox
-			messages = await ctx.db
-				.query('mailMessages')
-				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
-				.order('desc')
-				.take(limit * 4);
-		}
+		// Both branches paginate natively: the text branch over the search index,
+		// the no-text branch over the arrival index. The page may shrink below
+		// `limit` after the post-filter; the cursor still marks the true scan
+		// position, so "Load more" never skips or repeats a row.
+		const page = args.text
+			? await ctx.db
+					.query('mailMessages')
+					.withSearchIndex('search_messages', (q) => {
+						let filtered = q.search('snippet', args.text).eq('mailboxId', args.mailboxId);
+						if (folderId) filtered = filtered.eq('folderId', folderId);
+						// `from` is a partial token (e.g. "sara"), not a full address, so it
+						// can't use the search index's exact .eq('fromAddress') — the substring
+						// post-filter below handles it for both the text and no-text branches.
+						if (args.flagSeen !== undefined) filtered = filtered.eq('flagSeen', args.flagSeen);
+						if (args.flagFlagged !== undefined)
+							filtered = filtered.eq('flagFlagged', args.flagFlagged);
+						return filtered;
+					})
+					.paginate({ cursor: args.cursor ?? null, numItems: limit })
+			: await ctx.db
+					.query('mailMessages')
+					.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
+					.order('desc')
+					.paginate({ cursor: args.cursor ?? null, numItems: limit });
 
 		// Final filters that the search index couldn't express
-		const filtered = messages.filter((m) => {
+		const filtered = page.page.filter((m) => {
 			if (folderId && m.folderId !== folderId) return false;
 			if (args.from && !m.fromAddress.includes(args.from)) return false;
 			if (args.to && !m.toAddresses.some((a) => a.includes(args.to as string))) return false;
 			if (args.subject && !m.subject.toLowerCase().includes(args.subject)) return false;
+			// Every quoted phrase must appear verbatim in the subject or the
+			// snippet — the two fields the caller can actually see in a result row.
+			if (args.phrases && args.phrases.length > 0) {
+				const haystack = `${m.subject}\n${m.snippet}`.toLowerCase();
+				if (!args.phrases.every((phrase) => haystack.includes(phrase))) return false;
+			}
 			if (args.hasAttachment !== undefined && m.hasAttachments !== args.hasAttachment) return false;
 			if (args.flagSeen !== undefined && m.flagSeen !== args.flagSeen) return false;
 			if (args.flagFlagged !== undefined && m.flagFlagged !== args.flagFlagged) return false;
@@ -1072,6 +1179,10 @@ export const search = publicQuery({
 			return true;
 		});
 
-		return filtered.slice(0, limit);
+		return {
+			messages: filtered,
+			hasMore: !page.isDone,
+			nextCursor: page.isDone ? null : page.continueCursor,
+		};
 	},
 });

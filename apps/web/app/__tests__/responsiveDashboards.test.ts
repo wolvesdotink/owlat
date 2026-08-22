@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
 const postboxLayout = read('../components/postbox/PostboxLayout.vue');
+const listHeader = read('../components/postbox/PostboxListHeader.vue');
 const folderDrawer = read('../components/postbox/PostboxFolderDrawer.vue');
 const replyQueueStrip = read('../components/postbox/PostboxReplyQueueStrip.vue');
 const postboxSearch = read('../pages/dashboard/postbox/search.vue');
@@ -48,7 +49,10 @@ describe('Postbox — stacked drill-in below lg', () => {
 	});
 
 	it('puts the folder rail behind a drawer handle', () => {
-		expect(postboxLayout).toContain("t('components.postbox.postboxLayout.openFolders')");
+		// The handle lives in the extracted list header; the layout still owns
+		// the drawer state it opens.
+		expect(listHeader).toContain("t('components.postbox.postboxLayout.openFolders')");
+		expect(postboxLayout).toContain('@open-rail="railOpen = true"');
 		expect(postboxLayout).toContain('v-model:open="railOpen"');
 	});
 
@@ -79,7 +83,7 @@ describe('Mobile-only controls clear the 44px touch target', () => {
 	// thumb — an icon in `p-1` is a 24px target and misses about as often as it
 	// hits. 44px is the iOS HIG / WCAG 2.5.5 minimum.
 	it('sizes the folder-drawer handle to 44px square', () => {
-		expect(postboxLayout).toMatch(/w-11 h-11[\s\S]{0,300}?postboxLayout\.openFolders/);
+		expect(listHeader).toMatch(/w-11 h-11[\s\S]{0,300}?postboxLayout\.openFolders/);
 	});
 
 	it('sizes the reader back bar to 44px tall', () => {

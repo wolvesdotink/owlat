@@ -9,9 +9,19 @@ import {
 
 const SORT_STORAGE_KEY = 'inbox-thread-sort';
 
-export function useInbox() {
+/**
+ * The shared-inbox read surface. `gate` (optional) implements the
+ * check-before-subscribe rule for the admin-only inbox: while it is false —
+ * the role not yet resolved, or the member not an admin — none of the three
+ * queries subscribe at all ('skip'), so a non-admin never briefly renders a
+ * fake "queue is clear" zero and an admin's first paint waits out the role
+ * read instead. The backend returns empty lists to non-admins by design; this
+ * keeps even those empty reads off the wire.
+ */
+export function useInbox(gate?: Ref<boolean>) {
 	const route = useRoute();
 	const router = useRouter();
+	const subscribed = () => !gate || gate.value;
 
 	// ── Filter state, mirrored in the URL (`?filter=`) ──
 	// Reads seed from the current query; writes replace the query (shareable,
@@ -52,12 +62,15 @@ export function useInbox() {
 		data: threadsData,
 		isLoading: threadsLoading,
 		error: threadsError,
-	} = useConvexQuery(api.inbox.queries.listThreads, () => ({
-		filter: filter.value,
-		sort: sort.value,
-		limit: 25,
-		cursor: threadCursor.value,
-	}));
+	} = useConvexQuery(api.inbox.queries.listThreads, () => {
+		if (!subscribed()) return 'skip';
+		return {
+			filter: filter.value,
+			sort: sort.value,
+			limit: 25,
+			cursor: threadCursor.value,
+		};
+	});
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
 
@@ -97,14 +110,15 @@ export function useInbox() {
 	const hasMoreThreads = computed(() => !!threadsData.value?.nextCursor);
 
 	// ── Filter-pill counts (bounded reads; a slice at the cap renders "99+") ──
-	const { data: filterCounts } = useConvexQuery(
-		api.inbox.queries.getThreadFilterCounts,
-		() => ({})
+	const { data: filterCounts } = useConvexQuery(api.inbox.queries.getThreadFilterCounts, () =>
+		subscribed() ? {} : 'skip'
 	);
 
 	// Review-queue badge count (drafts ready) — a real pipeline counter, retained
 	// even though the old 8-cell stats grid is gone.
-	const { data: stats } = useConvexQuery(api.inbox.queries.getInboundStats, () => ({}));
+	const { data: stats } = useConvexQuery(api.inbox.queries.getInboundStats, () =>
+		subscribed() ? {} : 'skip'
+	);
 
 	// ── Actions ──
 	const loadMoreThreads = () => {
