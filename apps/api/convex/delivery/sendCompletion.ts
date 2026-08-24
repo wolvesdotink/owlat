@@ -1,6 +1,10 @@
 import { type Infer, v } from 'convex/values';
 import { vOnCompleteArgs } from '@convex-dev/workpool';
-import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS, MAX_GOVERNED_ROUTING_ATTEMPTS } from '@owlat/shared';
+import {
+	admitGovernedRetry,
+	governedDeliveryDeadlineAt,
+	type GovernedDeadlineVerdict,
+} from '@owlat/shared';
 import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { logError } from '../lib/runtimeLog';
@@ -50,12 +54,23 @@ const sendRefValidator = v.union(
 type SendCompletionRef = Infer<typeof sendRefValidator>;
 
 /**
- * How long a Send may sit `queued` with its acceptance unresolved, measured
- * from the FIRST attempt — the same cumulative deadline every other governed
- * outcome is bounded by, so an ambiguous send cannot outlive a deferred one.
+ * How this module answers the deadline arm of the governed retry budget.
+ *
+ * A DIVERGENCE FROM THE OTHER CALL SITES, PRESERVED DELIBERATELY. Dispatch and
+ * routing re-entry refuse a `startedAt` that lies in the future; this module has
+ * always admitted one, because its comparison is a bare `now - startedAt <
+ * MAX_AGE` and a negative age satisfies it. The two readings only differ under a
+ * clock that moved backwards, and turning this into a refusal would terminalize
+ * a send that still has its whole delivery window left — the opposite of what
+ * every arm here is for. An unreadable age (`NaN`, an infinitely old start) is
+ * still refused, exactly as the bare comparison refused it.
+ *
+ * `deadlineAt` for the parked-acceptance arms comes from
+ * `governedDeliveryDeadlineAt` — the one place the instant is computed, so an
+ * ambiguous send cannot outlive a deferred one.
  */
-function acceptanceDeadlineAt(startedAt: number): number {
-	return startedAt + GOVERNED_MTA_MAX_MESSAGE_AGE_MS;
+function deadlineAdmits(verdict: GovernedDeadlineVerdict): boolean {
+	return verdict === 'ok' || verdict === 'clock_reversed';
 }
 
 /**
@@ -180,7 +195,7 @@ export const completeSend = internalMutation({
 						Number.isFinite(candidate)
 					) ?? now;
 				const startedAt = Math.min(reported, now);
-				const deadlineAt = acceptanceDeadlineAt(startedAt);
+				const deadlineAt = governedDeliveryDeadlineAt(startedAt);
 				if (now < deadlineAt) {
 					await ctx.scheduler.runAt(
 						deadlineAt,
@@ -203,7 +218,10 @@ export const completeSend = internalMutation({
 			case 'acceptanceUnknown': {
 				const send = await ctx.db.get(sendRef.id);
 				if (!send || send.status !== 'queued') return;
-				if (now - outcome.retryState.startedAt < GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
+				// Only the deadline arm: this ambiguity is replayed under the SAME
+				// idempotency key, so it is not routing churn and the attempt cap has
+				// never bounded it — the cumulative deadline does, alone.
+				if (deadlineAdmits(admitGovernedRetry(outcome.retryState, now).deadline)) {
 					await ctx.scheduler.runAfter(
 						clampRetryDelayMs(outcome.retryAfterMs, 1_000),
 						internal.delivery.sendCompletion.retrySend,
@@ -247,10 +265,12 @@ export const completeSend = internalMutation({
 				if (outcome.deferralOrigin === 'governed') {
 					await recordDeferralOutcome(ctx, { send: sendRef, at: now });
 				}
-				if (
-					outcome.retryState.attempt <= MAX_GOVERNED_ROUTING_ATTEMPTS &&
-					now - outcome.retryState.startedAt < GOVERNED_MTA_MAX_MESSAGE_AGE_MS
-				) {
+				// BOTH BOUNDS. The retry state carried here is the successor's — the
+				// dispatch boundary already incremented it, and already declined to
+				// increment it for a policy hold — so admitting `attempt <= MAX` is the
+				// exact complement of the cap dispatch would refuse this same number on.
+				const budget = admitGovernedRetry(outcome.retryState, now);
+				if (budget.attempts === 'ok' && deadlineAdmits(budget.deadline)) {
 					await ctx.scheduler.runAfter(
 						clampRetryDelayMs(outcome.retryAfterMs, 60_000),
 						internal.delivery.sendCompletion.retrySend,
@@ -369,7 +389,7 @@ export const expireUnconfirmedAcceptance = internalMutation({
 		// in place is the conservative answer, and the next legitimate arming of
 		// this mutation still closes the row.
 		if (!Number.isFinite(args.startedAt)) return;
-		if (now < acceptanceDeadlineAt(args.startedAt)) return;
+		if (now < governedDeliveryDeadlineAt(args.startedAt)) return;
 		await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 			send: args.sendRef,
 			transition: {

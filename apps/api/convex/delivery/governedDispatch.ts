@@ -1,10 +1,11 @@
 'use node';
 
 import {
-	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
-	MAX_GOVERNED_ROUTING_ATTEMPTS,
+	admitGovernedRetry,
+	nextGovernedAttempt,
 	type DeliveryDomain,
 	type GovernedMessageType,
+	type GovernedRetryBudgetOptions,
 } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
@@ -86,8 +87,19 @@ function currentRetryState(
 	};
 }
 
-function nextRetryState(current: WorkerRetryState): WorkerRetryState {
-	return { ...current, attempt: current.attempt + 1 };
+/**
+ * The retry state the next governed attempt inherits.
+ *
+ * The attempt number comes from the shared budget module, so the ONE case that
+ * spends no attempt — a deliberate policy hold — is stated in the same vocabulary
+ * the cap checks read (`GovernedRetryBudgetOptions.isPolicyHold`), instead of being
+ * an invisible skipped increment here.
+ */
+function nextRetryState(
+	current: WorkerRetryState,
+	options: GovernedRetryBudgetOptions = {}
+): WorkerRetryState {
+	return { ...current, attempt: nextGovernedAttempt(current.attempt, options) };
 }
 
 /**
@@ -134,11 +146,16 @@ export async function dispatchGovernedEmail(
 			? `${request.sendRef.kind === 'seedProbe' ? 'probe' : 'send'}_${request.sendRef.id}`
 			: `legacy_${crypto.randomUUID()}`);
 	const retryState = currentRetryState(request.retryState, idempotencyKey);
-	if (retryState.attempt > MAX_GOVERNED_ROUTING_ATTEMPTS) {
+	// BOTH BOUNDS, ONE PREDICATE, CAP FIRST. `attempt` is the ALREADY-INCREMENTED
+	// successor number a re-entry handed us, so the cap refuses the ninth attempt
+	// rather than the eighth. A message that is out of attempts AND out of time is
+	// refused for the cap — the error an operator reads names the bound that was
+	// hit first, which is why the two arms are still spelled separately here.
+	const budget = admitGovernedRetry(retryState, Date.now());
+	if (budget.attempts === 'attempt_capped') {
 		throw new Error('Governed delivery retry limit exhausted.');
 	}
-	const ageMs = Date.now() - retryState.startedAt;
-	if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
+	if (budget.deadline !== 'ok') {
 		throw new Error('Governed delivery deadline expired.');
 	}
 	const organizationId =
@@ -193,8 +210,10 @@ export async function dispatchGovernedEmail(
 			// The attempt cap bounds routing churn. A deliberate safety hold is
 			// not churn: consuming attempts would terminalize the send minutes
 			// into a pause that is meant to outlast them, so a held message is
-			// bounded by the delivery deadline instead.
-			retryState: routing.isPolicyHold ? retryState : nextRetryState(retryState),
+			// bounded by the delivery deadline instead. The exemption is NAMED
+			// (`isPolicyHold`) rather than expressed as a skipped increment, so the
+			// cap checks downstream read it in the same vocabulary.
+			retryState: nextRetryState(retryState, { isPolicyHold: routing.isPolicyHold === true }),
 		};
 	}
 

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import {
-	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
-	MAX_GOVERNED_ROUTING_ATTEMPTS,
+	admitGovernedRetry,
+	governedDeliveryDeadlineAt,
 	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
 	ROUTING_REENTRY_TOKEN_TTL_MS,
 } from '@owlat/shared';
@@ -259,8 +259,10 @@ export const issueSnapshot = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
-		const ageMs = now - args.retryState.startedAt;
-		if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
+		// A token is only worth issuing while the message it re-enters is still
+		// inside its cumulative deadline. Only the deadline arm: the attempt cap is
+		// the dispatch boundary's to refuse, and it already has.
+		if (admitGovernedRetry(args.retryState, now).deadline !== 'ok') {
 			throw new Error('Routing re-entry deadline expired.');
 		}
 		if (args.sendRef.kind === 'seedProbe') {
@@ -303,7 +305,7 @@ export const issueSnapshot = internalMutation({
 		}
 		const expiresAt = Math.min(
 			now + ROUTING_REENTRY_TOKEN_TTL_MS,
-			args.retryState.startedAt + GOVERNED_MTA_MAX_MESSAGE_AGE_MS
+			governedDeliveryDeadlineAt(args.retryState.startedAt)
 		);
 		const token = await encryptToken({
 			sendKind: args.sendRef.kind,
@@ -445,11 +447,22 @@ export const consumeSnapshot = internalMutation({
 			return { disposition: 'binding_mismatch' as const };
 		}
 		const now = Date.now();
-		const ageMs = now - args.retryState.startedAt;
-		if (!Number.isFinite(ageMs) || ageMs < 0) {
+		// THE WHOLE BUDGET, DECIDED ONCE — but acted on at two different points,
+		// which is why the arms are read separately rather than through the
+		// collapsed `admission`. The deadline terminalizes the Send (below, after
+		// the row is bound and proven still queued), while the attempt cap may only
+		// terminalize AFTER the attempt marker has advanced, or a replayed callback
+		// would re-run the same terminal write. An age that is negative or
+		// unreadable is a token whose clock does not describe this Send: refused as
+		// a binding mismatch, never as an expiry.
+		const budget = admitGovernedRetry(
+			{ attempt: payload.attempt, startedAt: args.retryState.startedAt },
+			now
+		);
+		if (budget.deadline === 'clock_reversed' || budget.deadline === 'clock_unreadable') {
 			return { disposition: 'binding_mismatch' as const };
 		}
-		const deadlineExpired = ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS;
+		const deadlineExpired = budget.deadline === 'deadline_expired';
 		if (!deadlineExpired && payload.expiresAt <= now) return { disposition: 'expired' as const };
 
 		const resolution = await resolveReentryTarget(
@@ -481,7 +494,7 @@ export const consumeSnapshot = internalMutation({
 			return { disposition: 'duplicate' as const };
 		}
 		await recordAttempt();
-		if (payload.attempt > MAX_GOVERNED_ROUTING_ATTEMPTS) {
+		if (budget.attempts === 'attempt_capped') {
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 				send: sendRef,
 				transition: {
