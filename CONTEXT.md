@@ -2294,11 +2294,24 @@ and a `TransitionOutcome` reporting `ok | reason` for duplicate / illegal /
 terminal / kind-mismatched attempts. Two instances today: **Send lifecycle**
 (campaign + transactional `Send`) and **Postbox outbound lifecycle**
 (`mailMessages.outbound`). Both expose `transition` and a webhook-friendly
-`transitionByProviderMessageId`. Replicated by convention, not by a generic
-`Lifecycle<S, E, Eff>` factor — when a third instance lands and the duplication
-bites, that's when the factor lands.
+`transitionByProviderMessageId`. Replicated by convention everywhere except the
+_dispatcher preamble_, which ADR-0058 factored into the **Lifecycle core**
+(`convex/lib/lifecycle.ts`) after eleven instances. Reducers, effects and
+module-local outcome literals stay in the module.
 _Avoid_: State machine (generic; doesn't signal the dispatched-to-MTA
 boundary), Lifecycle alone (every CRUD module has one).
+
+**Lifecycle core**:
+The one layer every Outbound-lifecycle instance shares verbatim, extracted to
+`convex/lib/lifecycle.ts` (ADR-0058). `defineLifecycle(spec, options)` builds a
+graph from a declarative edge spec; `graph.classify(from, to)` returns
+`proceed` (with an `isSelfLoop` flag) or `refused` (`illegal_edge`, or
+`terminal` for the five machines that opt in); `LifecycleReason<TExtra>` unions
+the core's reasons with a module's own literals; `refuse(verdict, context)`
+builds the shared `ok: false` shape. Its scope is the dispatcher preamble and
+nothing else — no `ctx`, no reducers, no effects, no persistence.
+_Avoid_: Lifecycle framework / generic `Lifecycle<S, E, Eff>` (both name the
+larger factor four ADRs refused), State machine engine.
 
 **Send**:
 A single addressed message dispatch tracked in `emailSends` (campaign) or
@@ -5586,13 +5599,17 @@ force?)` guard consumed by every mutation that touches publishable
   deletion as lifecycle entry points (`create()` and `remove()`),
   bracketing the state machine — Topic subscription is the closest
   precedent but it acts on membership rows, not the parent row. The
-  `Lifecycle<S, T, E>` factor question is "active design" rather than
-  "hypothetical" but has not yet landed — each instance differs in
-  non-trivial ways (external keys, polymorphic identity, override entry
-  points, cross-machine coordination, per-kind adapter dispatch) that
-  would be lossy to push behind a generic factor. The factor lands when
-  the duplication bites at the _reducer-implementation_ level, not at
-  the type-signature level — and so far the reducers genuinely diverge.
+  `Lifecycle<S, T, E>` factor question is settled by splitting it in
+  two. The _whole-machine_ factor stays refused: each instance differs
+  in non-trivial ways (external keys, polymorphic identity, override
+  entry points, cross-machine coordination, per-kind adapter dispatch)
+  that would be lossy to push behind a generic runner, and the reducers
+  genuinely diverge. The _dispatcher preamble_ — edge graph, transition
+  validation, self-loop and terminal classification, the shared
+  `ok: false` scaffolding — carries no module vocabulary at all, and
+  ADR-0058 factored exactly that into the **Lifecycle core**
+  (`convex/lib/lifecycle.ts`), piloted on Postbox outbound lifecycle.
+  The remaining machines migrate as they are touched.
 
 ## Example dialogue
 
