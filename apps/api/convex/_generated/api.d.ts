@@ -574,6 +574,7 @@ import type * as lib_ipBlocklist from '../lib/ipBlocklist.js';
 import type * as lib_knowledgeDedup from '../lib/knowledgeDedup.js';
 import type * as lib_knowledgeEdges from '../lib/knowledgeEdges.js';
 import type * as lib_knowledgePrecedence from '../lib/knowledgePrecedence.js';
+import type * as lib_lifecycle from '../lib/lifecycle.js';
 import type * as lib_listing from '../lib/listing.js';
 import type * as lib_llm_complexity from '../lib/llm/complexity.js';
 import type * as lib_llm_dispatch from '../lib/llm/dispatch.js';
@@ -1567,6 +1568,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/knowledgeDedup': typeof lib_knowledgeDedup;
 	'lib/knowledgeEdges': typeof lib_knowledgeEdges;
 	'lib/knowledgePrecedence': typeof lib_knowledgePrecedence;
+	'lib/lifecycle': typeof lib_lifecycle;
 	'lib/listing': typeof lib_listing;
 	'lib/llm/complexity': typeof lib_llm_complexity;
 	'lib/llm/dispatch': typeof lib_llm_dispatch;
