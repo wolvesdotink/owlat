@@ -209,10 +209,11 @@ describe('webhook event wire', () => {
 		}
 	);
 
-	it('only fixtures event types the contract declares', () => {
-		for (const event of Object.keys(WEBHOOK_EVENT_BYTES)) {
-			expect(MTA_WEBHOOK_EVENT_TYPES).toContain(event);
-		}
+	it('fixtures exactly the event types the contract declares — no more, no fewer', () => {
+		// The Record<MtaWebhookEventType, string> annotation makes a missing
+		// fixture a compile error; this pins the same totality at run time so a
+		// widened annotation cannot quietly shed coverage.
+		expect(Object.keys(WEBHOOK_EVENT_BYTES).sort()).toEqual([...MTA_WEBHOOK_EVENT_TYPES].sort());
 	});
 
 	it('keeps the FBL-only fields on the complaint event', () => {

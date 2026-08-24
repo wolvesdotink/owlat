@@ -46,7 +46,7 @@ import {
 	type MtaRoutingDecisionResponse,
 } from './routingDecision';
 import type { MtaSendAccepted, MtaSendRefused, MtaSendRequest } from './send';
-import type { ValidatedMtaWebhookEvent } from './webhookEventShape';
+import type { MtaWebhookEventType, ValidatedMtaWebhookEvent } from './webhookEventShape';
 
 /**
  * The one instant every fixture is stamped with. Shared so a test that fakes
@@ -274,8 +274,17 @@ export const DECISION_DEFER_BYTES: Record<MtaDeferReason, string> = {
 	} satisfies MtaRoutingDecisionResponse),
 };
 
-/** One webhook event per shape the two ends most disagree about. */
-export const WEBHOOK_EVENT_BYTES = {
+/**
+ * One webhook event per kind the wire contract declares — ALL of them. The
+ * `Record<MtaWebhookEventType, string>` annotation is the gate (the same one
+ * {@link DECISION_RELAY_REASON_BYTES} uses): a kind added to
+ * `MTA_WEBHOOK_EVENT_TYPES` is a missing property here until somebody writes
+ * its bytes, and `apps/api`'s suite drives every entry through the shipped
+ * adapter's exhaustive parser registry — `inbound.mailbox.received` through
+ * its explicit ignore entry, since the MTA delivers that kind to
+ * `/webhooks/mta-mailbox` instead.
+ */
+export const WEBHOOK_EVENT_BYTES: Record<MtaWebhookEventType, string> = {
 	sent: JSON.stringify({
 		event: 'sent',
 		messageId: 'send-fixture-1',
@@ -322,6 +331,117 @@ export const WEBHOOK_EVENT_BYTES = {
 		domain: 'mail.example.org',
 		date: WIRE_FIXTURE_DATE,
 		checks: [{ name: 'SPF_ALIGNMENT', state: 'passing' }],
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	failed: JSON.stringify({
+		event: 'failed',
+		messageId: 'send-fixture-1',
+		message: 'Ambiguous post-DATA drop: connection reset',
+		errorCode: 'CONTENT_SCREENED',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'smtp.classified': JSON.stringify({
+		event: 'smtp.classified',
+		messageId: 'send-fixture-1',
+		smtpCategory: 'gmail_rate_limited',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'org.circuit_breaker': JSON.stringify({
+		event: 'org.circuit_breaker',
+		organizationId: 'org-fixture-1',
+		bounceRate: 0.12,
+		message: 'high bounce rate',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'campaign.complaint_rate': JSON.stringify({
+		event: 'campaign.complaint_rate',
+		eventId: 'campaign-complaint-fixture-1',
+		campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
+		complaintRate: 0.004,
+		message: 'Campaign complaint rate 0.40% exceeded 0.3% threshold',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'ip.blocklisted': JSON.stringify({
+		event: 'ip.blocklisted',
+		ip: '192.0.2.10',
+		blocklists: ['zen.spamhaus.org'],
+		severity: 'critical',
+		message: 'Listed on zen.spamhaus.org',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'ip.delisted': JSON.stringify({
+		event: 'ip.delisted',
+		ip: '192.0.2.10',
+		message: 'Delisted from zen.spamhaus.org',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'ip.warming_complete': JSON.stringify({
+		event: 'ip.warming_complete',
+		ip: '192.0.2.10',
+		message: 'Warming complete',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	all_ips_blocked: JSON.stringify({
+		event: 'all_ips_blocked',
+		severity: 'critical',
+		message: 'All sending IPs are blocklisted',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'postmaster.authorize_domain': JSON.stringify({
+		event: 'postmaster.authorize_domain',
+		domain: 'mail.example.org',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'dkim.rotated': JSON.stringify({
+		event: 'dkim.rotated',
+		domain: 'mail.example.org',
+		selector: 's2',
+		dnsRecord: 'v=DKIM1; k=rsa; p=FIXTUREKEY',
+		phase: 'pending',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'inbound.received': JSON.stringify({
+		event: 'inbound.received',
+		organizationId: 'org-fixture-1',
+		inboundPayload: {
+			from: 'sender@example.com',
+			to: 'recipient@mail.example.org',
+			subject: 'Wire fixture',
+			textBody: 'hi',
+			headers: { Date: 'Mon, 16 Jun 2025 15:06:40 +0000' },
+			messageId: '<inbound-fixture-1@example.com>',
+			attachments: [],
+		},
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	// Served by `POST /webhooks/mta-mailbox`, never by `POST /webhooks/mta` —
+	// the Convex feedback adapter maps these bytes to its explicit ignore entry.
+	'inbound.mailbox.received': JSON.stringify({
+		event: 'inbound.mailbox.received',
+		organizationId: 'org-fixture-1',
+		mailboxPayload: { deliveryId: 'delivery-fixture-1' },
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'ip.readiness_regressed': JSON.stringify({
+		event: 'ip.readiness_regressed',
+		eventId: 'ipv6-readiness-v1:spf:2001:db8::10:7',
+		ip: '2001:db8::10',
+		readinessCheck: 'spf',
+		readinessReason: 'missing-ip6-mechanism',
+		eligibilityGeneration: 7,
+		message: 'IPv6 SPF readiness regressed',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
+	'deliverability.probe_observed': JSON.stringify({
+		event: 'deliverability.probe_observed',
+		eventId: 'probe-observed-fixture-1',
+		probeToken: 'a1b2c3d4e.FixtureAAAAA.FixtureBBBBBBBBB',
+		spfResult: 'pass',
+		dkimResult: 'pass',
+		dmarcResult: 'pass',
+		ip: '192.0.2.10',
+		tlsVersion: 'TLSv1.3',
+		ptr: 'mail.example.org',
 		timestamp: WIRE_FIXTURE_NOW,
 	} satisfies ValidatedMtaWebhookEvent),
 };
