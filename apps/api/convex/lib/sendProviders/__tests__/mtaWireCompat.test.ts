@@ -34,6 +34,11 @@ import {
 } from '@owlat/mta-protocol/wireFixtures';
 import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import {
+	MTA_WEBHOOK_EVENT_TYPES,
+	type MtaWebhookEventType,
+} from '@owlat/mta-protocol/webhookEvent';
+import type { InboundEventKind } from '../../../webhooks/types';
+import {
 	MTA_DEFER_REASON_ORIGIN,
 	MTA_ROUTING_DECISION_REQUEST_KEYS,
 } from '@owlat/mta-protocol/routingDecision';
@@ -333,16 +338,57 @@ describe('MTA -> Convex webhook event bytes', () => {
 	// `isMtaWebhookEvent` and then each variant's own required-field check — and
 	// prove the frozen bytes still come out as the inbound event they always did.
 	// A field the union stopped requiring, or started requiring, lands as `null`.
-	it.each([
-		['sent', 'email.delivered'],
-		['bounced', 'email.bounced'],
-		['complained', 'email.complained'],
-		['routing.reentry', 'internal.routing_reentry'],
-		['postmaster.stats', 'internal.postmaster_stats'],
-		['postmaster.compliance', 'internal.postmaster_compliance'],
-	] as const)('parses the frozen %s event into an %s inbound event', (event, kind) => {
-		expect(mtaAdapter.parseEvent(WEBHOOK_EVENT_BYTES[event])).toMatchObject({ kind });
-	});
+	// EVERY kind the wire contract declares maps through the adapter's
+	// exhaustive parser registry. The Record annotation is a compile-time
+	// never-assertion of its own: a kind added to `MTA_WEBHOOK_EVENT_TYPES`
+	// is a missing property here — and a missing fixture in
+	// `WEBHOOK_EVENT_BYTES` — until this round-trip names its meaning.
+	// `null` marks the ONE explicit ignore entry: `inbound.mailbox.received`
+	// is served by `POST /webhooks/mta-mailbox` (`mail/webhook.ts`), never by
+	// this adapter's route.
+	const EXPECTED_INBOUND_KIND: Record<MtaWebhookEventType, InboundEventKind | null> = {
+		sent: 'email.delivered',
+		bounced: 'email.bounced',
+		failed: 'email.failed',
+		complained: 'email.complained',
+		'smtp.classified': 'internal.smtp_classified',
+		'org.circuit_breaker': 'internal.circuit_breaker_tripped',
+		'campaign.complaint_rate': 'internal.campaign_complaint_rate',
+		'ip.blocklisted': 'internal.ip_event',
+		'ip.delisted': 'internal.ip_event',
+		'ip.warming_complete': 'internal.ip_event',
+		all_ips_blocked: 'internal.ip_event',
+		'postmaster.authorize_domain': 'internal.postmaster_authorize_domain',
+		'postmaster.stats': 'internal.postmaster_stats',
+		'postmaster.compliance': 'internal.postmaster_compliance',
+		'dkim.rotated': 'internal.dkim_rotated',
+		'inbound.received': 'inbound.received',
+		'routing.reentry': 'internal.routing_reentry',
+		'inbound.mailbox.received': null,
+		'ip.readiness_regressed': 'internal.ip_readiness_regressed',
+		'deliverability.probe_observed': 'internal.deliverability_probe_observed',
+	};
+
+	it.each(MTA_WEBHOOK_EVENT_TYPES)(
+		'parses the frozen %s event through the exhaustive registry',
+		(event) => {
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			try {
+				const parsed = mtaAdapter.parseEvent(WEBHOOK_EVENT_BYTES[event]);
+				const expected = EXPECTED_INBOUND_KIND[event];
+				if (expected === null) {
+					// The explicit ignore entry acks without dispatch, but observably.
+					expect(parsed).toBeNull();
+					expect(warn).toHaveBeenCalledOnce();
+				} else {
+					expect(parsed).toMatchObject({ kind: expected });
+					expect(warn).not.toHaveBeenCalled();
+				}
+			} finally {
+				warn.mockRestore();
+			}
+		}
+	);
 
 	it('carries the FBL provenance a complaint names off the merged field set', () => {
 		// `reportedDomain`/`sourceIsp` live on the `complained` variant alone. The
