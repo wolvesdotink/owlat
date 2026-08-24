@@ -634,7 +634,16 @@ describe('sendCompletion.completeSend', () => {
 
 		await t.mutation(internal.delivery.sendCompletion.completeSend, {
 			workId: testWorkId,
-			result: { kind: 'success', returnValue: { success: true, providerMessageId: 'msg-123' } },
+			result: {
+				kind: 'success',
+				returnValue: {
+					kind: 'accepted',
+					providerMessageId: 'msg-123',
+					providerType: 'mta',
+					sendLatencyMs: 5,
+					isCustodyHandoff: false,
+				},
+			},
 			context: {
 				sendRef: { kind: 'campaign' as const, id: emailSendId! },
 			},
@@ -720,7 +729,16 @@ describe('sendCompletion.completeSend', () => {
 		// Success for first
 		await t.mutation(internal.delivery.sendCompletion.completeSend, {
 			workId: testWorkId,
-			result: { kind: 'success', returnValue: { success: true, providerMessageId: 'msg-1' } },
+			result: {
+				kind: 'success',
+				returnValue: {
+					kind: 'accepted',
+					providerMessageId: 'msg-1',
+					providerType: 'mta',
+					sendLatencyMs: 5,
+					isCustodyHandoff: false,
+				},
+			},
 			context: { sendRef: { kind: 'campaign' as const, id: sendId1! } },
 		});
 		await t.finishInProgressScheduledFunctions();
@@ -790,7 +808,16 @@ describe('full campaign send lifecycle', () => {
 		// Step 4: completeSend — success for first, failure for second
 		await t.mutation(internal.delivery.sendCompletion.completeSend, {
 			workId: testWorkId,
-			result: { kind: 'success', returnValue: { success: true, providerMessageId: 'msg-abc' } },
+			result: {
+				kind: 'success',
+				returnValue: {
+					kind: 'accepted',
+					providerMessageId: 'msg-abc',
+					providerType: 'mta',
+					sendLatencyMs: 5,
+					isCustodyHandoff: false,
+				},
+			},
 			context: { sendRef: { kind: 'campaign' as const, id: sendIds[0]! } },
 		});
 		await t.finishInProgressScheduledFunctions();

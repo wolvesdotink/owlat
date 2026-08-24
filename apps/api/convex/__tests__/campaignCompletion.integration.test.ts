@@ -27,7 +27,13 @@ function completeArgs(sendId: Id<'emailSends'>) {
 		workId: testWorkId,
 		result: {
 			kind: 'success' as const,
-			returnValue: { success: true, providerMessageId: `msg-${sendId}`, providerType: 'mta' },
+			returnValue: {
+				kind: 'accepted',
+				providerMessageId: `msg-${sendId}`,
+				providerType: 'mta',
+				sendLatencyMs: 4,
+				isCustodyHandoff: false,
+			},
 		},
 		context: { sendRef: { kind: 'campaign' as const, id: sendId } },
 	};
@@ -41,7 +47,10 @@ describe('campaign batch-completion via completeSend', () => {
 		await t.run(async (ctx) => {
 			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			sendId = await ctx.db.insert('emailSends', createTestEmailSend({ campaignId, contactId, status: 'queued' }));
+			sendId = await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, status: 'queued' })
+			);
 		});
 
 		await t.mutation(internal.delivery.sendCompletion.completeSend, completeArgs(sendId));
@@ -61,8 +70,14 @@ describe('campaign batch-completion via completeSend', () => {
 		await t.run(async (ctx) => {
 			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			sendA = await ctx.db.insert('emailSends', createTestEmailSend({ campaignId, contactId, status: 'queued' }));
-			sendB = await ctx.db.insert('emailSends', createTestEmailSend({ campaignId, contactId, status: 'queued' }));
+			sendA = await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, status: 'queued' })
+			);
+			sendB = await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, status: 'queued' })
+			);
 		});
 
 		await t.mutation(internal.delivery.sendCompletion.completeSend, completeArgs(sendA));
@@ -83,10 +98,13 @@ describe('campaign batch-completion via completeSend', () => {
 		await t.run(async (ctx) => {
 			campaignId = await ctx.db.insert(
 				'campaigns',
-				createTestCampaign({ status: 'sending', isABTest: true, abTestStatus: 'testing' }),
+				createTestCampaign({ status: 'sending', isABTest: true, abTestStatus: 'testing' })
 			);
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			sendId = await ctx.db.insert('emailSends', createTestEmailSend({ campaignId, contactId, status: 'queued' }));
+			sendId = await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, status: 'queued' })
+			);
 		});
 
 		// Test phase completes — but the winner-to-remainder phase is still pending.
@@ -100,7 +118,10 @@ describe('campaign batch-completion via completeSend', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.patch(campaignId, { abTestStatus: 'winner_selected' });
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			remainder = await ctx.db.insert('emailSends', createTestEmailSend({ campaignId, contactId, status: 'queued' }));
+			remainder = await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, status: 'queued' })
+			);
 		});
 		await t.mutation(internal.delivery.sendCompletion.completeSend, completeArgs(remainder));
 		await t.run(async (ctx) => {
@@ -118,7 +139,10 @@ describe('reconcileSendingCampaigns (safety-net cron)', () => {
 			// finished: 'sending' with a terminal send and nothing queued.
 			finished = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 			const c1 = await ctx.db.insert('contacts', createTestContact());
-			await ctx.db.insert('emailSends', createTestEmailSend({ campaignId: finished, contactId: c1, status: 'sent' }));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId: finished, contactId: c1, status: 'sent' })
+			);
 			// empty: 'sending' with NO sends yet (orchestrator hasn't inserted them).
 			empty = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 		});

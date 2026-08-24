@@ -175,10 +175,11 @@ describe('MTA post-intake terminal matrix', () => {
 					result: {
 						kind: 'success',
 						returnValue: {
-							success: true,
+							kind: 'accepted',
 							providerMessageId,
 							providerType: 'mta',
-							acceptedForDelivery: true,
+							sendLatencyMs: 6,
+							isCustodyHandoff: true,
 						},
 					},
 					context: { sendRef: value.ref },
@@ -312,8 +313,7 @@ describe('acceptance_unknown callback ordering', () => {
 					result: {
 						kind: 'success' as const,
 						returnValue: {
-							success: false,
-							acceptanceUnknown: true as const,
+							kind: 'acceptanceUnknown' as const,
 							providerMessageId,
 							workAttemptId: 'same-work-attempt',
 							startedAt: Date.now(),

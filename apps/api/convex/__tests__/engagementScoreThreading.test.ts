@@ -126,7 +126,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 			},
 		});
 
-		expect(result.success).toBe(true);
+		expect(result.kind).toBe('accepted');
 		expect(sentBody(fetchSpy)['engagementScore']).toBe(87);
 	});
 
@@ -160,7 +160,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 			},
 		});
 
-		expect(result.success).toBe(true);
+		expect(result.kind).toBe('accepted');
 		expect(sentBody(fetchSpy)['engagementScore']).toBe(42);
 	});
 
@@ -194,7 +194,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 			},
 		});
 
-		expect(result.success).toBe(true);
+		expect(result.kind).toBe('accepted');
 		const body = sentBody(fetchSpy);
 		expect(body['engagementScore']).toBe(0);
 		expect('engagementScore' in body).toBe(true);
@@ -230,7 +230,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 			},
 		});
 
-		expect(result.success).toBe(true);
+		expect(result.kind).toBe('accepted');
 		const body = sentBody(fetchSpy);
 		// Omitted — NOT 0 (which means cold) and NOT null. The MTA reads the
 		// missing field as "unknown" and applies PRIORITY_BANDS.DEFAULT.
@@ -271,7 +271,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 			},
 		});
 
-		expect(result.success).toBe(true);
+		expect(result.kind).toBe('accepted');
 		expect('engagementScore' in sentBody(fetchSpy)).toBe(false);
 	});
 
@@ -302,7 +302,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 			},
 		});
 
-		expect(result.success).toBe(true);
+		expect(result.kind).toBe('accepted');
 		expect('engagementScore' in sentBody(fetchSpy)).toBe(false);
 	});
 
