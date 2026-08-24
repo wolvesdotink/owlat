@@ -938,6 +938,7 @@ import type * as webhooks_adapters_index from '../webhooks/adapters/index.js';
 import type * as webhooks_adapters_mandrill from '../webhooks/adapters/mandrill.js';
 import type * as webhooks_adapters_meta from '../webhooks/adapters/meta.js';
 import type * as webhooks_adapters_mta from '../webhooks/adapters/mta.js';
+import type * as webhooks_adapters_mtaEventParsers from '../webhooks/adapters/mtaEventParsers.js';
 import type * as webhooks_adapters_resend from '../webhooks/adapters/resend.js';
 import type * as webhooks_adapters_ses from '../webhooks/adapters/ses.js';
 import type * as webhooks_adapters_twilio from '../webhooks/adapters/twilio.js';
@@ -1928,6 +1929,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/adapters/mandrill': typeof webhooks_adapters_mandrill;
 	'webhooks/adapters/meta': typeof webhooks_adapters_meta;
 	'webhooks/adapters/mta': typeof webhooks_adapters_mta;
+	'webhooks/adapters/mtaEventParsers': typeof webhooks_adapters_mtaEventParsers;
 	'webhooks/adapters/resend': typeof webhooks_adapters_resend;
 	'webhooks/adapters/ses': typeof webhooks_adapters_ses;
 	'webhooks/adapters/twilio': typeof webhooks_adapters_twilio;
