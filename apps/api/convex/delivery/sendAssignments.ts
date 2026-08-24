@@ -47,7 +47,7 @@ import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import type { MixAssignment, MixRecipientIdentity } from '../lib/sendProviders/strategies';
 import { DEFAULT_MIX_VERSION, OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies';
 import type { MessageType } from '../lib/sendProviders/routeInputs';
-import type { SendProviderKind } from '../lib/sendProviders/types';
+import { isSendProviderKind, type SendProviderKind } from '../lib/sendProviders/types';
 import {
 	buildEngagementRanker,
 	buildTransportLookup,
@@ -84,6 +84,24 @@ export type SendAssignmentKind = Doc<'sendAssignments'>['sendKind'];
  */
 export function armForTransport(transport: SendProviderKind): SendAssignmentArm {
 	return transport === OWN_ARM_TRANSPORT_KIND ? 'own' : 'reference';
+}
+
+/**
+ * The same question, asked of a transport LABEL that has crossed a wire.
+ *
+ * A provider kind that travels through a Convex value (the worker → completion
+ * seam's `providerType`) arrives as a plain string: `SendProviderKind` includes
+ * the namespaced kinds bundled plugins contribute, which no validator can
+ * express, so the wire carries `v.string()`. This narrows it back through the
+ * catalog's own membership test rather than re-deriving the arm from a second
+ * comparison — {@link armForTransport} stays the only place D3's own-arm
+ * declaration is read.
+ *
+ * A label naming no transport this build can dispatch to is not the own arm by
+ * construction, so it measures as `reference`.
+ */
+export function armForTransportLabel(transport: string): SendAssignmentArm {
+	return isSendProviderKind(transport) ? armForTransport(transport) : 'reference';
 }
 
 /**
