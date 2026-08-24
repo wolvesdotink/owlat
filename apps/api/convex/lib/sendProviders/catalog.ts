@@ -101,7 +101,7 @@ export type ApiVerifiedSendProviderKind = Extract<
  * ships. A bundled plugin entry carries a DERIVED `hasProviderFeedback` — true
  * exactly when the manifest declared a feedback `webhook` (the seams plan's
  * P3.1) — so `hasProviderFeedbackFor` answers true for plugin kinds too and the
- * governed boundary takes the `awaitingProviderFeedback` branch for them. That
+ * governed boundary takes the `awaitingFeedback` branch for them. That
  * promise is kept by the generated `/webhooks/plugin/<pluginId>` surface (P2.2),
  * not by this mapped-type guard, which is why the tier stays outside the
  * `Extract` rather than being missing from it by oversight.
@@ -409,7 +409,7 @@ export function preassignsProviderMessageId(source: MessageIdSource): boolean {
  *
  * The twin of {@link preassignsProviderMessageId}, and named for the same
  * reason: the acceptance half of the pair has three consumers already (the
- * `acceptedForDelivery` verdict and the reconciliation arm in
+ * `isCustodyHandoff` verdict and the reconciliation arm in
  * `delivery/governedDispatch.ts`, plus the pins that check them), and a raw
  * `=== 'accepted'` at each is how one of them drifts. Takes the declaration:
  * `takesCustodyOnAcceptance(acceptanceSemanticsFor(kind))`.
