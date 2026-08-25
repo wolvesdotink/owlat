@@ -1,0 +1,9 @@
+# Historical-commit findings that are deliberate non-secrets. The tree itself
+# stays scan-clean; these fingerprints only cover strings that existed in an
+# intermediate commit and were later replaced.
+#
+# probe_observed wire fixture carried a format-valid fake probe token whose
+# entropy tripped generic-api-key; replaced with a low-entropy fixture value in
+# a follow-up commit. The string never was a credential (see wireFixtures.ts —
+# frozen fake bytes for wire-compat tests).
+2cf140378480fa47c1ca7fcd9a6f413046463ca0:packages/mta-protocol/src/wireFixtures.ts:generic-api-key:438

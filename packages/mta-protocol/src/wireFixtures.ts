@@ -435,7 +435,7 @@ export const WEBHOOK_EVENT_BYTES: Record<MtaWebhookEventType, string> = {
 	'deliverability.probe_observed': JSON.stringify({
 		event: 'deliverability.probe_observed',
 		eventId: 'probe-observed-fixture-1',
-		probeToken: 'a1b2c3d4e.FixtureAAAAA.FixtureBBBBBBBBB',
+		probeToken: 'probe0.aaaaaaaaaaaa.aaaaaaaaaaaaaaaa',
 		spfResult: 'pass',
 		dkimResult: 'pass',
 		dmarcResult: 'pass',
