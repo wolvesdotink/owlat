@@ -172,28 +172,10 @@ onMounted(() => {
 							{{ t(link.key) }}
 						</a>
 					</nav>
+					<!-- No language switcher here: on mobile the footer's switcher is the
+					     single place to change language, which keeps this panel short
+					     enough to stay on screen. -->
 					<div class="flex flex-col gap-2 pt-3 mt-2 border-t border-border-subtle">
-						<div
-							class="flex items-center justify-center gap-2 py-1"
-							role="group"
-							:aria-label="t('language.label')"
-						>
-							<a
-								v-for="lang in languages"
-								:key="lang.code"
-								:href="switchLocalePath(lang.code)"
-								:aria-label="t('language.switchTo', { language: lang.name })"
-								:aria-current="lang.code === locale ? 'true' : undefined"
-								class="px-3 py-1.5 rounded-full text-caption font-medium transition-colors duration-(--motion-fast) no-underline"
-								:class="
-									lang.code === locale
-										? 'bg-bg-soft text-text-primary'
-										: 'text-text-tertiary hover:text-text-primary'
-								"
-							>
-								{{ lang.name }}
-							</a>
-						</div>
 						<a
 							href="https://app.owlat.app/login"
 							class="text-caption font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline text-center py-2"

@@ -121,13 +121,17 @@ const languages = computed(() =>
 					</template>
 				</I18nT>
 				<div class="flex items-center gap-4 max-sm:flex-col max-sm:gap-2">
-					<nav class="flex items-center gap-2" :aria-label="t('language.label')">
+					<!-- Sole language control on mobile (the header pill's switcher is
+					     desktop-only), so the links carry tap-sized padding rather than
+					     sitting flush with the meta row. -->
+					<nav class="flex items-center gap-1 -mx-2" :aria-label="t('language.label')">
 						<a
 							v-for="lang in languages"
 							:key="lang.code"
 							:href="switchLocalePath(lang.code)"
+							:aria-label="t('language.switchTo', { language: lang.name })"
 							:aria-current="lang.code === locale ? 'true' : undefined"
-							class="text-caption transition-colors duration-(--motion-fast) no-underline"
+							class="px-2 py-2 rounded-lg text-caption transition-colors duration-(--motion-fast) no-underline"
 							:class="
 								lang.code === locale
 									? 'text-text-primary'
