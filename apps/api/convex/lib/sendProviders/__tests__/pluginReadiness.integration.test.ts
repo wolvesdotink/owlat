@@ -240,10 +240,22 @@ describe('campaign and transactional plugin readiness gates', () => {
 	});
 });
 
-async function expectNonCampaignEnqueueRejected(
+/**
+ * Seed an `automation` route table that names ONE provider kind, plus the
+ * plugin flag/grant fixture that decides whether that kind is ready.
+ *
+ * The non-campaign intake no longer takes a `providerType` argument — its
+ * producers used to resolve an advisory route in their own action and hand the
+ * answer down, and PIECE C2 moved that resolution into the intake transaction.
+ * So the way to put an unready provider in front of the intake is to put it on
+ * the route table the intake itself resolves against, which is also the table
+ * the worker's last-mile re-resolution reads. The claim under test is
+ * unchanged: an unready kind must never carry a send.
+ */
+async function seedRoutedProvider(
 	fixture: ReadinessFixture,
 	providerType: string
-): Promise<void> {
+): Promise<ReturnType<typeof convexTest>> {
 	const t = convexTest(schema, modules);
 	await t.run(async (ctx) => {
 		await ctx.db.insert('instanceSettings', {
@@ -254,21 +266,65 @@ async function expectNonCampaignEnqueueRejected(
 			createdAt: 0,
 			updatedAt: 0,
 		});
+		await ctx.db.insert('providerRoutes', {
+			messageType: 'automation' as const,
+			strategy: 'single' as const,
+			providers: [{ providerType, isEnabled: true }],
+			createdAt: 0,
+			updatedAt: 0,
+		});
 	});
+	return t;
+}
 
-	await expect(
-		t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
-			kind: 'automation',
-			email: 'recipient@example.com',
-			subject: 'Hello',
-			html: '<p>Hello</p>',
-			from: 'Owlat <sender@example.com>',
-			providerType,
-		})
-	).rejects.toThrow('no_delivery_provider');
+function intakeAutomation(t: ReturnType<typeof convexTest>) {
+	return t.mutation(internal.delivery.nonCampaignIntake.intake, {
+		kind: 'automation' as const,
+		email: 'recipient@example.com',
+		subject: 'Hello',
+		html: '<p>Hello</p>',
+		from: 'Owlat <sender@example.com>',
+	});
+}
+
+/** With the routed kind unready AND no env fallback, the intake must refuse. */
+async function expectNonCampaignIntakeRejected(
+	fixture: ReadinessFixture,
+	providerType: string
+): Promise<void> {
+	const t = await seedRoutedProvider(fixture, providerType);
+	vi.stubEnv('EMAIL_PROVIDER', '');
+	vi.stubEnv('MTA_API_URL', '');
+	vi.stubEnv('MTA_API_KEY', '');
+
+	expect(await intakeAutomation(t)).toEqual({
+		ok: false,
+		reason: 'no_delivery_provider',
+		detail: expect.stringContaining('EMAIL_PROVIDER'),
+	});
 
 	const sends = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
 	expect(sends).toHaveLength(0);
+}
+
+/**
+ * With the routed kind unready but the ENV provider ready, the intake falls
+ * back exactly as `resolveRoute` does — and stamps the env kind, never the
+ * unready one. This is the positive half of "enqueue selection matches worker
+ * selection": both sides run the same resolver over the same table.
+ */
+async function expectNonCampaignIntakeFallsBackToEnv(
+	fixture: ReadinessFixture,
+	providerType: string
+): Promise<void> {
+	const t = await seedRoutedProvider(fixture, providerType);
+
+	const outcome = await intakeAutomation(t);
+	expect(outcome.ok).toBe(true);
+	if (!outcome.ok) return;
+	const send = await t.run(async (ctx) => ctx.db.get(outcome.sendId));
+	expect(send?.providerType).toBe('mta');
+	expect(send?.providerType).not.toBe(providerType);
 }
 
 describe('enqueue provider selection matches worker selection', () => {
@@ -285,39 +341,51 @@ describe('enqueue provider selection matches worker selection', () => {
 		['disabled flag', { isEnabled: false }],
 		['missing grant', { isGranted: false }],
 	] as const)(
-		'rejects an explicit plugin with a %s instead of borrowing a ready env provider',
+		'refuses a routed plugin with a %s when nothing else can deliver',
 		async (_label, fixture) => {
-			await expectNonCampaignEnqueueRejected(fixture, pluginKind);
+			await expectNonCampaignIntakeRejected(fixture, pluginKind);
 		}
 	);
 
-	it('rejects an explicit plugin with missing environment instead of borrowing a ready env provider', async () => {
+	it.each([
+		['disabled flag', { isEnabled: false }],
+		['missing grant', { isGranted: false }],
+	] as const)(
+		'never stamps a routed plugin with a %s — it falls back to the ready env provider',
+		async (_label, fixture) => {
+			await expectNonCampaignIntakeFallsBackToEnv(fixture, pluginKind);
+		}
+	);
+
+	it('refuses a routed plugin with missing environment when nothing else can deliver', async () => {
 		vi.stubEnv('POSTMARK_TOKEN', '');
-		await expectNonCampaignEnqueueRejected({}, pluginKind);
+		await expectNonCampaignIntakeRejected({}, pluginKind);
 	});
 
-	it('rejects an invalid explicit provider instead of borrowing a ready env provider', async () => {
-		await expectNonCampaignEnqueueRejected({}, 'plugin.retired-mail.postmark');
+	it('refuses an unknown routed provider when nothing else can deliver', async () => {
+		await expectNonCampaignIntakeRejected({}, 'plugin.retired-mail.postmark');
 	});
 
-	it('rejects an unconfigured explicit core provider instead of borrowing a ready env provider', async () => {
+	it('refuses an unconfigured routed core provider when nothing else can deliver', async () => {
 		vi.stubEnv('RESEND_API_KEY', '');
-		await expectNonCampaignEnqueueRejected({}, 'resend');
+		await expectNonCampaignIntakeRejected({}, 'resend');
 	});
 
-	it('uses the ready environment provider only when no explicit provider is supplied', async () => {
-		const t = convexTest(schema, modules);
-		const { sendId } = await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
-			kind: 'automation',
-			email: 'recipient@example.com',
-			subject: 'Hello',
-			html: '<p>Hello</p>',
-			from: 'Owlat <sender@example.com>',
-		});
+	it('never stamps an unconfigured routed core provider — it falls back to the ready env provider', async () => {
+		vi.stubEnv('RESEND_API_KEY', '');
+		await expectNonCampaignIntakeFallsBackToEnv({}, 'resend');
+	});
 
-		const send = await t.run(async (ctx) => ctx.db.get(sendId));
+	it('stamps the ready environment provider when no route table applies', async () => {
+		const t = convexTest(schema, modules);
+		const outcome = await intakeAutomation(t);
+		expect(outcome.ok).toBe(true);
+		if (!outcome.ok) return;
+
+		const send = await t.run(async (ctx) => ctx.db.get(outcome.sendId));
 		expect(send).toMatchObject({ status: 'queued', email: 'recipient@example.com' });
-		expect(send?.providerType).toBeUndefined();
+		// The intake's own env-fallback resolution — no producer supplied one.
+		expect(send?.providerType).toBe('mta');
 	});
 
 	it('queues delayed recipients for worker-time re-resolution when readiness changes', async () => {

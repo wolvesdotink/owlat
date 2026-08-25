@@ -379,7 +379,7 @@ describe('sunset suppression reuses the shipped path', () => {
 	/**
 	 * THE CHOKEPOINT GATES AT THE SCOPE OF THE MAIL IT IS WRITING.
 	 *
-	 * `enqueueNonCampaignSend` is the single suppression gate for two very
+	 * The non-campaign intake is the single suppression gate for two very
 	 * different kinds: an `automation` step is marketing and takes the strict
 	 * scope, while an `agent_reply` is a 1:1 answer to a human who wrote in and
 	 * takes the transactional one. A hygiene row must not throw away that reply —
@@ -414,7 +414,7 @@ describe('sunset suppression reuses the shipped path', () => {
 		}
 
 		function send(t: TestConvex<typeof schema>, kind: 'automation' | 'agent_reply', email: string) {
-			return t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			return t.mutation(internal.delivery.nonCampaignIntake.intake, {
 				kind,
 				email,
 				subject: 'Re: your question',
@@ -427,14 +427,19 @@ describe('sunset suppression reuses the shipped path', () => {
 			const t = convexTest(schema, enqueueModules);
 			await blocklist(t, 'quiet@example.com', 'unengaged');
 
-			await expect(send(t, 'automation', 'quiet@example.com')).rejects.toThrow('recipient_blocked');
+			expect(await send(t, 'automation', 'quiet@example.com')).toEqual({
+				ok: false,
+				reason: 'recipient_blocked',
+			});
 			await t.run(async (ctx) => {
 				expect(await ctx.db.query('transactionalSends').collect()).toHaveLength(0);
 			});
 
-			const { sendId } = await send(t, 'agent_reply', 'quiet@example.com');
+			const reply = await send(t, 'agent_reply', 'quiet@example.com');
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
 			await t.run(async (ctx) => {
-				const row = await ctx.db.get(sendId);
+				const row = await ctx.db.get(reply.sendId);
 				expect(row?.kind).toBe('agent_reply');
 				expect(row?.status).toBe('queued');
 			});
@@ -444,12 +449,14 @@ describe('sunset suppression reuses the shipped path', () => {
 			const t = convexTest(schema, enqueueModules);
 			await blocklist(t, 'broken@example.com', 'bounced');
 
-			await expect(send(t, 'automation', 'broken@example.com')).rejects.toThrow(
-				'recipient_blocked'
-			);
-			await expect(send(t, 'agent_reply', 'broken@example.com')).rejects.toThrow(
-				'recipient_blocked'
-			);
+			expect(await send(t, 'automation', 'broken@example.com')).toEqual({
+				ok: false,
+				reason: 'recipient_blocked',
+			});
+			expect(await send(t, 'agent_reply', 'broken@example.com')).toEqual({
+				ok: false,
+				reason: 'recipient_blocked',
+			});
 			await t.run(async (ctx) => {
 				expect(await ctx.db.query('transactionalSends').collect()).toHaveLength(0);
 			});
