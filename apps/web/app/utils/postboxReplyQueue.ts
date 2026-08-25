@@ -79,7 +79,7 @@ export interface ReplyQueueItem {
 	messageId: string;
 	urgency: ReplyQueueUrgency;
 	/**
-	 * Unified cross-thread priority score (server-computed in mail/priorityScore.ts):
+	 * Unified cross-thread priority score (server-computed in mail/ai/priorityScore.ts):
 	 * the deterministic sender-importance signal (VIP / known contact / frecency)
 	 * blended with the LLM urgency. The Reply Queue ranks by THIS, not the 3-bucket
 	 * urgency — a terse note from a VIP outranks a wordy ask from a stranger. Absent
@@ -115,7 +115,7 @@ export interface ReplyQueueItem {
 /**
  * Fallback score for a row without a persisted priorityScore (rows classified
  * before scoring existed): map the urgency bucket alone. Mirrors the server
- * weights in mail/priorityScore.ts so mixed old/new rows stay comparable.
+ * weights in mail/ai/priorityScore.ts so mixed old/new rows stay comparable.
  */
 const URGENCY_FALLBACK_SCORE: Record<ReplyQueueUrgency, number> = {
 	high: 100,

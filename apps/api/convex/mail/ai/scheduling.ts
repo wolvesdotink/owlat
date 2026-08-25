@@ -1,7 +1,7 @@
 /**
  * Scheduling-focused reply framing for {@link import('./ai').suggestReplies}.
  *
- * Split out of mail/ai.ts (file-size ratchet) but conceptually part of the same
+ * Split out of mail/ai/assist.ts (file-size ratchet) but conceptually part of the same
  * advisory-AI seam: when the reader's meeting-intent chip fires, it passes the
  * inbound message's verbatim proposed-time phrases here so the model drafts an
  * availability reply. The instruction text is fixed (never user-supplied); the

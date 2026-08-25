@@ -1,5 +1,5 @@
 /**
- * Personal-mail draft-on-arrival (mail/draftOnArrival.ts).
+ * Personal-mail draft-on-arrival (mail/ai/draftOnArrival.ts).
  *
  * Exercises the fail-soft branches and the happy path of generateDraftOnArrival
  * with a hand-rolled ctx — no Convex, no live model. The shared draft service is
@@ -47,7 +47,7 @@ vi.mock('../replyOptions', () => ({
 }));
 vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 
-import { generateDraftOnArrival } from '../draftOnArrival';
+import { generateDraftOnArrival } from '../ai/draftOnArrival';
 
 type Persisted = { draft: string; confidence: number; quality?: unknown; options?: string[] };
 

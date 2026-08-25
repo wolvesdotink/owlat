@@ -164,7 +164,7 @@ export type Effect =
 	| {
 			// Edit-learning flywheel: the sent draft carried an AI baseline, so
 			// diff baseline → sent out of band and fold the delta into the voice
-			// profile / per-contact memory (mail/editLearning.ts). Fire-and-forget;
+			// profile / per-contact memory (mail/ai/editLearning.ts). Fire-and-forget;
 			// never blocks the send.
 			kind: 'schedule_edit_learning';
 			mailboxId: Id<'mailboxes'>;

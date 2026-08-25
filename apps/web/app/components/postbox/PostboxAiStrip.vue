@@ -44,10 +44,10 @@ const generated = ref<{ summary: string; messageCount: number } | null>(null);
 const summaryFailed = ref(false);
 let summaryAttempted = false;
 
-const cacheQuery = useConvexQuery(api.mail.summaryCache.getThreadSummary, () => ({
+const cacheQuery = useConvexQuery(api.mail.ai.summaryCache.getThreadSummary, () => ({
 	messageId: props.messageId as Id<'mailMessages'>,
 }));
-const summaryGenOp = useBackendOperation(api.mail.ai.getOrGenerateThreadSummary, {
+const summaryGenOp = useBackendOperation(api.mail.ai.assist.getOrGenerateThreadSummary, {
 	label: () => t('components.postbox.postboxAiStrip.summarizeOperation'),
 	type: 'action',
 });
@@ -104,7 +104,7 @@ type Turn = { question: string; answer: string };
 const question = ref('');
 const askHistory = ref<Turn[]>([]);
 const askErrored = ref(false);
-const askOp = useBackendOperation(api.mail.ai.askThread, {
+const askOp = useBackendOperation(api.mail.ai.assist.askThread, {
 	label: () => t('components.postbox.postboxAiStrip.askOperation'),
 	type: 'action',
 });
@@ -133,7 +133,7 @@ function clearAsk() {
 
 // --- Draft reply (formerly PostboxAiAssist suggest): reply suggestions.
 const suggestions = ref<string[]>([]);
-const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
+const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
 	label: () => t('components.postbox.postboxAiStrip.suggestOperation'),
 	type: 'action',
 });

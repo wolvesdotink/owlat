@@ -73,7 +73,7 @@ import { detectAttachmentClarification } from './attachment';
 import type { AgentStepModule, TokenUsage } from '../types';
 
 // The slot taxonomy + untrusted-data prompt module is SHARED with the personal
-// -mail Reply Queue refinement (mail/needsReplyClassify.ts) — see
+// -mail Reply Queue refinement (mail/ai/needsReplyClassify.ts) — see
 // inbox/clarificationSlots.ts. Re-exported here so this step's existing tests
 // (and any importer of the step) keep their import path.
 export {

@@ -352,7 +352,7 @@ export const mailDraftAttachmentValidator = v.object({
 
 // Edit-learning flywheel validators (`editDeltaKindValidator`,
 // `editAdjustmentValidator`) live in the feature-local sibling
-// mail/editLearningValidators.ts to keep this shared module under the
+// mail/ai/editLearningValidators.ts to keep this shared module under the
 // file-size cap.
 
 // LLM call accounting (agentActions.tokenUsage and similar)

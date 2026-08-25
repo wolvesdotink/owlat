@@ -2,7 +2,7 @@
  * Storage + context helpers for personal-mail draft-on-arrival (postbox.aiDraft).
  *
  * The Node action that actually calls the shared draft service lives in the
- * sibling `mail/draftOnArrival.ts` ('use node'); the v8-isolate query/mutation
+ * sibling `mail/ai/draftOnArrival.ts` ('use node'); the v8-isolate query/mutation
  * halves live here so a single 'use node' file doesn't try to host a query.
  *
  * FAIL-SOFT posture: the loader returns `null` (skip drafting) for anything that
@@ -11,10 +11,10 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../lib/messageBody';
-import { internalQuery, internalMutation } from '../_generated/server';
-import { draftQualityValidator } from '../lib/convexValidators';
-import { NEEDS_REPLY_CONTEXT_MESSAGES } from './needsReply';
+import { openMailMessageInlineBody } from '../../lib/messageBody';
+import { internalQuery, internalMutation } from '../../_generated/server';
+import { draftQualityValidator } from '../../lib/convexValidators';
+import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 
 /** Cap each message excerpt fed into the draft context. */
 const EXCERPT_CHARS = 2000;

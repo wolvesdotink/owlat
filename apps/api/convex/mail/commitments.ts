@@ -15,7 +15,7 @@
  *      `shouldExtractOutboundCommitment`, pure + unit-tested) bounds the LLM
  *      fan-out — bulk/automated senders and mass recipients are skipped before
  *      any spend.
- *   2. The cheap-tier LLM refinement (mail/commitmentExtract.ts, 'use node')
+ *   2. The cheap-tier LLM refinement (mail/ai/commitmentExtract.ts, 'use node')
  *      extracts the structured commitment behind the same aiGate as the rest of
  *      Postbox AI. Any gate/model failure just leaves no commitment row.
  *   3. The reminder sweep (`sweep` below) surfaces an OPEN commitment before its
@@ -261,7 +261,7 @@ export const sweep = internalMutation({
 					.withIndex('by_message', (q) => q.eq('messageId', msg._id).eq('direction', 'outbound'))
 					.first();
 				if (already) continue;
-				await ctx.scheduler.runAfter(0, internal.mail.commitmentExtract.extractCommitment, {
+				await ctx.scheduler.runAfter(0, internal.mail.ai.commitmentExtract.extractCommitment, {
 					messageId: msg._id,
 					direction: 'outbound',
 				});

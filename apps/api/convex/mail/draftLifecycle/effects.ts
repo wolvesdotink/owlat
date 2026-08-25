@@ -325,7 +325,7 @@ async function applyNonSentEffects(
 			case 'schedule_edit_learning': {
 				// Fire-and-forget: the diff + recurrence gating run out of band so
 				// a learning failure can never block or delay the send.
-				await ctx.scheduler.runAfter(0, internal.mail.editLearning.recordEdit, {
+				await ctx.scheduler.runAfter(0, internal.mail.ai.editLearning.recordEdit, {
 					mailboxId: effect.mailboxId,
 					...(effect.contactAddress !== undefined ? { contactAddress: effect.contactAddress } : {}),
 					baselineText: effect.baselineText,

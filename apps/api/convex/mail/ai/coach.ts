@@ -8,23 +8,23 @@
  * {@link draftQualitySchema}) over the user's own text, surfaced as inline,
  * advisory-only suggestions. The user stays the author.
  *
- * Split out of mail/ai.ts to keep that file under the file-size ratchet; the
+ * Split out of mail/ai/assist.ts to keep that file under the file-size ratchet; the
  * pure adapters ({@link categorizeCoachFlag}, {@link toCoachSuggestions}) are
  * exported for unit testing without a live model.
  */
 
 import { v } from 'convex/values';
-import { authedAction } from '../lib/authedFunctions';
-import { api, internal } from '../_generated/api';
-import { resolveLanguageModel } from '../lib/llmProvider';
-import { runLlmObject } from '../lib/llm/dispatch';
+import { authedAction } from '../../lib/authedFunctions';
+import { api, internal } from '../../_generated/api';
+import { resolveLanguageModel } from '../../lib/llmProvider';
+import { runLlmObject } from '../../lib/llm/dispatch';
 import {
 	buildSelfCheckPrompt,
 	draftQualitySchema,
 	type DraftQuality,
-} from '../agent/steps/draft/index';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import { threadToText } from './ai';
+} from '../../agent/steps/draft/index';
+import { recordLlmSpend } from '../../analytics/llmUsage';
+import { threadToText } from './assist';
 
 /**
  * Categories the flat self-check flags are bucketed into for inline display
@@ -134,7 +134,7 @@ export const coachDraft = authedAction({
 		const draft = args.draftText.trim();
 		if (!draft) return { suggestions: [] };
 		try {
-			await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 			let context = (args.threadContext ?? '').slice(0, COACH_MAX_CONTEXT_CHARS);
 			if (args.messageId) {
 				const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {

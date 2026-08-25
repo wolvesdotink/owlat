@@ -99,13 +99,13 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 
 		// Personalize to the recipient's learned writing voice when a Postbox
 		// mailbox for this inbound recipient has opted in and has a derived
-		// profile. Mirrors mail/ai.ts suggestReplies. OPTIONAL + FAIL-SOFT: no
+		// profile. Mirrors mail/ai/assist.ts suggestReplies. OPTIONAL + FAIL-SOFT: no
 		// recipient / no matching mailbox / personalization off / no profile /
 		// accessor throws all collapse to exactly today's generic org tone.
 		let voiceGuidance: string | null = null;
 		if (message?.to) {
 			try {
-				const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForRecipient, {
+				const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForRecipient, {
 					recipient: message.to,
 				});
 				voiceGuidance = res.guidance;
@@ -168,7 +168,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// THE shared draft pipeline (agent/shared/draftService.ts): context
 		// injection re-scan → primary generation (with the recall tool) → draft
 		// self-check → gated multi-option review drafts. Personal Postbox
-		// (mail/draftOnArrival.ts) runs the exact same service so both surfaces
+		// (mail/ai/draftOnArrival.ts) runs the exact same service so both surfaces
 		// produce identical output for the same inbound message.
 		const { draftBody, draftQuality, draftOptions, tokenUsage, modelUsed } = await runSharedDraft(
 			ctx,

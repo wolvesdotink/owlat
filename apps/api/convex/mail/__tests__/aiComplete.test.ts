@@ -1,5 +1,5 @@
 /**
- * Unit tests for the inline ghost-text completion seam (mail/ai.completeDraft):
+ * Unit tests for the inline ghost-text completion seam (mail/ai/assist.completeDraft):
  * prompt assembly frames the thread + draft as untrusted data, and the
  * post-processor collapses a raw model reply into ONE bounded inline fragment,
  * returning '' when the model declined (low confidence).
@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildCompletePrompt, postProcessCompletion } from '../ai';
+import { buildCompletePrompt, postProcessCompletion } from '../ai/assist';
 
 describe('buildCompletePrompt', () => {
 	it('frames the thread + draft as untrusted data, not instructions', () => {

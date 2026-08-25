@@ -10,18 +10,18 @@
  *     `messageCount`; a new inbound message bumps that count and the query flips
  *     to `null`, which is what triggers the strip to regenerate on next open.
  *   - {@link setThreadSummaryCache} — the sole writer, called by the 'use node'
- *     action mail/ai.ts `getOrGenerateThreadSummary` after a cheap-tier
+ *     action mail/ai/assist.ts `getOrGenerateThreadSummary` after a cheap-tier
  *     regeneration (the action can't hold a mutation, hence this split, mirroring
- *     mail/aiGate.ts).
+ *     mail/ai/gate.ts).
  *
  * Everything here is advisory + fail-soft: the strip disappears entirely when the
  * cache is cold and generation is unavailable. This never moves or modifies mail.
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
-import { publicQuery } from '../lib/authedFunctions';
-import { loadReadableMailbox } from './permissions';
+import { internalMutation } from '../../_generated/server';
+import { publicQuery } from '../../lib/authedFunctions';
+import { loadReadableMailbox } from '../permissions';
 
 // public: soft-auth — returns null for anonymous; mailbox access is enforced
 // in-handler via loadReadableMailbox (returns null for a non-member). The cache is
@@ -51,7 +51,7 @@ export const getThreadSummary = publicQuery({
 
 /**
  * Persist a freshly generated thread summary. Internal-only: the sole caller is
- * mail/ai.ts `getOrGenerateThreadSummary`, which has already enforced ownership
+ * mail/ai/assist.ts `getOrGenerateThreadSummary`, which has already enforced ownership
  * (via listThreadMessages) and the AI gate. Overwrites any previous cache.
  */
 export const setThreadSummaryCache = internalMutation({

@@ -17,14 +17,14 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../lib/messageBody';
-import { internalMutation, internalQuery } from '../_generated/server';
-import { authedMutation } from '../lib/authedFunctions';
-import { internal } from '../_generated/api';
-import { getOrThrow, throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
-import { requireMailboxAccess } from './permissions';
-import { NEEDS_REPLY_CONTEXT_MESSAGES } from './needsReply';
-import { captureStandingAnswers } from '../inbox/clarificationMemory';
+import { openMailMessageInlineBody } from '../../lib/messageBody';
+import { internalMutation, internalQuery } from '../../_generated/server';
+import { authedMutation } from '../../lib/authedFunctions';
+import { internal } from '../../_generated/api';
+import { getOrThrow, throwForbidden, throwInvalidInput, throwNotFound } from '../../_utils/errors';
+import { requireMailboxAccess } from '../permissions';
+import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
+import { captureStandingAnswers } from '../../inbox/clarificationMemory';
 
 /**
  * Answer the clarification questions on a Reply Queue thread and kick off the
@@ -108,7 +108,7 @@ export const answerClarification = authedMutation({
 		}
 
 		// Off the scheduler — the answer is already committed above.
-		await ctx.scheduler.runAfter(0, internal.mail.needsReplyClassify.draftWithAnswers, {
+		await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.draftWithAnswers, {
 			threadId: args.threadId,
 		});
 

@@ -1,7 +1,7 @@
 /**
  * Pure-helper coverage for the Reply Queue base heuristic
  * (mail/needsReply.ts evaluateNeedsReplyCandidate / isBulkOrNoReplySender)
- * and the LLM dueHint normalizer (mail/needsReplyClassify.ts).
+ * and the LLM dueHint normalizer (mail/ai/needsReplyClassify.ts).
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -9,7 +9,7 @@ import {
 	isBulkOrNoReplySender,
 	type NeedsReplyMessageInput,
 } from '../needsReply';
-import { normalizeDueHint, normalizeMeetingIntent } from '../needsReplyClassify';
+import { normalizeDueHint, normalizeMeetingIntent } from '../ai/needsReplyClassify';
 import { isCalendarAttachment } from '../needsReply';
 
 const OWNER = 'me@example.com';

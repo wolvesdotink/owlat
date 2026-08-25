@@ -1,7 +1,7 @@
 /**
  * Edit-learning flywheel — close the loop on the AI's OWN drafts.
  *
- * The voice profile (mail/voiceProfile.ts) learns from a passive SAMPLE of the
+ * The voice profile (mail/ai/voiceProfile.ts) learns from a passive SAMPLE of the
  * user's sent mail. It never learns from the richest, freest ground-truth signal
  * Owlat holds: how the user EDITS an AI draft before sending it. This module
  * captures that delta.
@@ -34,9 +34,9 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
-import { extractEmail } from '../lib/emailAddress';
-import { logError } from '../lib/runtimeLog';
+import { internalMutation } from '../../_generated/server';
+import { extractEmail } from '../../lib/emailAddress';
+import { logError } from '../../lib/runtimeLog';
 
 // ── Tuning ──────────────────────────────────────────────────────────────────
 

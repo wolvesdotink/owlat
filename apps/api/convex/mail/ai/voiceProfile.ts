@@ -5,7 +5,7 @@
  * user actually writes. We derive that from the user's own SENT mail: a bounded
  * sample of recent sent bodies (quoted reply-chains stripped, since those are
  * other people's words) is summarised by one cheap-tier LLM call into a compact
- * structured profile (see mail/voiceProfileActions.ts). This file holds the
+ * structured profile (see mail/ai/voiceProfileActions.ts). This file holds the
  * v8-runtime surface — the sampling query, the persistence mutations, the
  * lazy-refresh scheduler, the read/toggle public functions, and the pure
  * helpers (staleness, sample building, prompt assembly) that back the tests.
@@ -16,16 +16,16 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../lib/messageBody';
-import { internalQuery, internalMutation } from '../_generated/server';
-import type { QueryCtx, MutationCtx } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
-import { isFeatureEnabled } from '../lib/featureFlags';
-import { requireMailboxAccess } from './permissions';
-import { throwForbidden } from '../_utils/errors';
-import { extractEmail } from '../lib/emailAddress';
+import { openMailMessageInlineBody } from '../../lib/messageBody';
+import { internalQuery, internalMutation } from '../../_generated/server';
+import type { QueryCtx, MutationCtx } from '../../_generated/server';
+import { authedMutation, publicQuery } from '../../lib/authedFunctions';
+import { internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
+import { isFeatureEnabled } from '../../lib/featureFlags';
+import { requireMailboxAccess } from '../permissions';
+import { throwForbidden } from '../../_utils/errors';
+import { extractEmail } from '../../lib/emailAddress';
 import {
 	buildLayeredGuidance,
 	promotedDirectives,
@@ -192,7 +192,7 @@ async function guidanceForMailbox(
 		const sentCount = await currentSentCount(ctx, mailboxId);
 		if (row.status === 'idle' && isVoiceProfileStale(row, sentCount, Date.now())) {
 			await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
-			await ctx.scheduler.runAfter(0, internal.mail.voiceProfileActions.refresh, {
+			await ctx.scheduler.runAfter(0, internal.mail.ai.voiceProfileActions.refresh, {
 				mailboxId,
 			});
 		}
@@ -212,7 +212,7 @@ async function guidanceForMailbox(
 /**
  * Read the profile for prompt injection AND lazily schedule a background
  * refresh when it is stale. Internal mutation (not a query) because scheduling
- * is a write; called by mail/ai.ts before it drafts. Returns the guidance block
+ * is a write; called by mail/ai/assist.ts before it drafts. Returns the guidance block
  * to inject, or null for today's non-personalized behaviour. Never throws —
  * personalization must degrade silently.
  */
@@ -409,7 +409,7 @@ export const requestRefresh = authedMutation({
 				updatedAt: now,
 			});
 		}
-		await ctx.scheduler.runAfter(0, internal.mail.voiceProfileActions.refresh, {
+		await ctx.scheduler.runAfter(0, internal.mail.ai.voiceProfileActions.refresh, {
 			mailboxId: args.mailboxId,
 		});
 		return null;

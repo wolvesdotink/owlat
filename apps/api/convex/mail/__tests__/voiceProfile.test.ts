@@ -1,5 +1,5 @@
 /**
- * Pure-logic tests for the writing-voice profile (mail/voiceProfile):
+ * Pure-logic tests for the writing-voice profile (mail/ai/voiceProfile):
  *
  *   - isVoiceProfileStale: fresh → no recompute; old / delta / never-computed → stale
  *   - buildVoiceGuidance: full block when a profile is present, null when absent
@@ -16,7 +16,7 @@ import {
 	VOICE_STALE_MS,
 	VOICE_SENT_DELTA,
 	type VoiceProfile,
-} from '../voiceProfile';
+} from '../ai/voiceProfile';
 
 const PROFILE: VoiceProfile = {
 	greetings: ['Hi', 'Hey'],

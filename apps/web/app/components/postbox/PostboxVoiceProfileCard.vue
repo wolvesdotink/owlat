@@ -9,20 +9,20 @@ const props = defineProps<{
 	address: string;
 }>();
 
-const { data, isLoading } = useConvexQuery(api.mail.voiceProfile.get, () => ({
+const { data, isLoading } = useConvexQuery(api.mail.ai.voiceProfile.get, () => ({
 	mailboxId: props.mailboxId,
 }));
 
-const setEnabled = useBackendOperation(api.mail.voiceProfile.setEnabled, {
+const setEnabled = useBackendOperation(api.mail.ai.voiceProfile.setEnabled, {
 	label: () => t('components.postbox.postboxVoiceProfileCard.updateOperation'),
 });
-const refreshNow = useBackendOperation(api.mail.voiceProfile.requestRefresh, {
+const refreshNow = useBackendOperation(api.mail.ai.voiceProfile.requestRefresh, {
 	label: () => t('components.postbox.postboxVoiceProfileCard.refreshOperation'),
 });
-const saveInstructions = useBackendOperation(api.mail.voiceProfile.setStandingInstructions, {
+const saveInstructions = useBackendOperation(api.mail.ai.voiceProfile.setStandingInstructions, {
 	label: () => t('components.postbox.postboxVoiceProfileCard.saveInstructionsOperation'),
 });
-const removeAdjustment = useBackendOperation(api.mail.voiceProfile.removeDerivedAdjustment, {
+const removeAdjustment = useBackendOperation(api.mail.ai.voiceProfile.removeDerivedAdjustment, {
 	label: () => t('components.postbox.postboxVoiceProfileCard.removeAdjustmentOperation'),
 });
 const instructionDraft = ref('');

@@ -195,7 +195,7 @@ export function reduceSent(
 
 	// Edit-learning flywheel: only when this draft was AI-authored (has a
 	// baseline) AND the user actually changed something before sending. The diff
-	// itself + recurrence gating happen out of band in mail/editLearning.ts.
+	// itself + recurrence gating happen out of band in mail/ai/editLearning.ts.
 	const baselineText = draft.aiDraftBaseline?.text?.trim() ?? '';
 	// `||` (not `??`) so a present-but-empty bodyText falls through to bodyHtml.
 	const sentText = (args.context.bodyText || args.context.bodyHtml).trim();

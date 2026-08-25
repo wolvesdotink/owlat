@@ -11,9 +11,9 @@
  * known; a first-time sender with no address-book row scores as a stranger.
  */
 
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
-import { contactFrecencyScore } from './contacts';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx } from '../../_generated/server';
+import { contactFrecencyScore } from '../contacts';
 import { normalizeEmail } from '@owlat/shared';
 import {
 	computePriorityScore,

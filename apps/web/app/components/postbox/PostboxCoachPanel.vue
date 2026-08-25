@@ -45,7 +45,7 @@ const { showToast } = useToast();
 
 const coach = usePostboxCoach({
 	requestCoach: async (draftText, signal): Promise<CoachSuggestion[]> => {
-		const res = await requireConvex().action(api.mail.aiCoach.coachDraft, {
+		const res = await requireConvex().action(api.mail.ai.coach.coachDraft, {
 			draftText,
 			...(props.messageId ? { messageId: props.messageId } : {}),
 			...(props.threadContext ? { threadContext: props.threadContext } : {}),

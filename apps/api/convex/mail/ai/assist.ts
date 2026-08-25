@@ -9,18 +9,18 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../lib/messageBody';
-import { authedAction } from '../lib/authedFunctions';
-import { api, internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
-import { resolveLanguageModel, resolveLanguageModelForUserText } from '../lib/llmProvider';
-import { runLlmText } from '../lib/llm/dispatch';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import { stripHtml } from './rfc822';
-import { buildSchedulingReplyInstruction } from './availability';
-import { generateReplyOptions } from './replyOptions';
+import { openMailMessageInlineBody } from '../../lib/messageBody';
+import { authedAction } from '../../lib/authedFunctions';
+import { api, internal } from '../../_generated/api';
+import type { Doc } from '../../_generated/dataModel';
+import { resolveLanguageModel, resolveLanguageModelForUserText } from '../../lib/llmProvider';
+import { runLlmText } from '../../lib/llm/dispatch';
+import { recordLlmSpend } from '../../analytics/llmUsage';
+import { stripHtml } from '../rfc822';
+import { buildSchedulingReplyInstruction } from '../availability';
+import { generateReplyOptions } from '../replyOptions';
 import { SYSTEM_GUARD } from './promptGuards';
-import { throwNotFound } from '../_utils/errors';
+import { throwNotFound } from '../../_utils/errors';
 
 /** Flatten a thread into a bounded plaintext transcript for the prompt. Unseals
  * each row's inline body at rest through the accessor choke point (E8b). */
@@ -136,7 +136,7 @@ export const getOrGenerateThreadSummary = authedAction({
 		ctx,
 		args
 	): Promise<{ summary: string; messageCount: number; generatedAt: number } | null> => {
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
 			messageId: args.messageId,
 		});
@@ -163,7 +163,7 @@ export const getOrGenerateThreadSummary = authedAction({
 		const generatedAt = Date.now();
 		const threadId = thread.thread?._id;
 		if (threadId) {
-			await ctx.runMutation(internal.mail.summaryCache.setThreadSummaryCache, {
+			await ctx.runMutation(internal.mail.ai.summaryCache.setThreadSummaryCache, {
 				threadId,
 				summary,
 				messageCount,
@@ -185,7 +185,7 @@ export const suggestReplies = authedAction({
 		proposedTimes: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args): Promise<{ replies: string[] }> => {
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
 			messageId: args.messageId,
 		});
@@ -198,7 +198,7 @@ export const suggestReplies = authedAction({
 		let voiceGuidance: string | null = null;
 		if (mailboxId) {
 			try {
-				const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+				const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
 					mailboxId,
 				});
 				voiceGuidance = res.guidance;
@@ -280,7 +280,7 @@ export const askThread = authedAction({
 		history: v.optional(v.array(v.object({ question: v.string(), answer: v.string() }))),
 	},
 	handler: async (ctx, args): Promise<{ answer: string }> => {
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
 			messageId: args.messageId,
 		});
@@ -318,7 +318,7 @@ export const completeDraft = authedAction({
 		cursorSentence: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ completion: string }> => {
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const { system, prompt } = buildCompletePrompt(args);
 		const { text, tokenUsage, modelUsed } = await runLlmText({
 			// Fast/cheap tier: inline completions are high-volume and must be cheap;
@@ -426,7 +426,7 @@ export const rewriteSelection = authedAction({
 		mailboxId: v.optional(v.id('mailboxes')),
 	},
 	handler: async (ctx, args): Promise<{ rewritten: string }> => {
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		// Personalize to the user's learned voice when a profile exists; never
 		// blocks or throws, so a missing/disabled profile just falls through.
 		let voiceGuidance: string | null = null;
@@ -440,7 +440,7 @@ export const rewriteSelection = authedAction({
 					mailboxId: args.mailboxId,
 				});
 				if (mailbox) {
-					const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+					const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
 						mailboxId: args.mailboxId,
 					});
 					voiceGuidance = res.guidance;

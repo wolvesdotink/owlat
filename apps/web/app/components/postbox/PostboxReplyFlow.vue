@@ -143,11 +143,11 @@ const moveOp = useBackendOperation(api.mail.messageActions.move, {
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.snooze'),
 });
-const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
+const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.draftReply'),
 	type: 'action',
 });
-const answerOp = useBackendOperation(api.mail.needsReplyClarify.answerClarification, {
+const answerOp = useBackendOperation(api.mail.ai.needsReplyClarify.answerClarification, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
 });
 

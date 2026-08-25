@@ -13,18 +13,18 @@
  *   3. LLM refinement on the cheap "summarize" tier, behind the same aiGate
  *      as the user-triggered Postbox AI (feature flag + rate limit). The
  *      thread body is attacker-controlled inbound mail, so it is framed as
- *      untrusted DATA (SYSTEM_GUARD), mirroring mail/ai.ts. The result only
+ *      untrusted DATA (SYSTEM_GUARD), mirroring mail/ai/assist.ts. The result only
  *      ever updates the advisory flag — it never sends or modifies mail.
  */
 
 import { v } from 'convex/values';
 import { z } from 'zod';
-import { internalAction } from '../_generated/server';
-import { internal } from '../_generated/api';
-import { resolveLanguageModel } from '../lib/llmProvider';
-import { runLlmObject, runLlmText } from '../lib/llm/dispatch';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import { evaluateNeedsReplyCandidate } from './needsReply';
+import { internalAction } from '../../_generated/server';
+import { internal } from '../../_generated/api';
+import { resolveLanguageModel } from '../../lib/llmProvider';
+import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
+import { recordLlmSpend } from '../../analytics/llmUsage';
+import { evaluateNeedsReplyCandidate } from '../needsReply';
 import {
 	replySlotsSchema,
 	divergenceSchema,
@@ -35,12 +35,12 @@ import {
 	DIVERGENCE_SAMPLES,
 	MIN_SAMPLES_FOR_JUDGMENT,
 	type ReplySlot,
-} from '../inbox/clarificationSlots';
+} from '../../inbox/clarificationSlots';
 import {
 	measureDraftDelta,
 	predictedAskValue,
 	shouldSampleDraftDelta,
-} from '../inbox/askEagerness';
+} from '../../inbox/askEagerness';
 import { SYSTEM_GUARD } from './promptGuards';
 
 const refinementSchema = z.object({
@@ -147,7 +147,7 @@ export const classifyThread = internalAction({
 		try {
 			// Same gate as the user-triggered Postbox AI: `ai` feature flag +
 			// rate limit. Throws when disabled/limited → deterministic flag stays.
-			await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
 			const transcript = context.messages
 				.map(
@@ -368,17 +368,20 @@ export const draftWithAnswers = internalAction({
 	handler: async (ctx, args) => {
 		try {
 			// Same gate as the user-triggered Postbox AI (feature flag + rate limit).
-			await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
-			const context = await ctx.runQuery(internal.mail.needsReplyClarify.getClarificationContext, {
-				threadId: args.threadId,
-			});
+			const context = await ctx.runQuery(
+				internal.mail.ai.needsReplyClarify.getClarificationContext,
+				{
+					threadId: args.threadId,
+				}
+			);
 			if (!context || context.answers.length === 0) return;
 
 			// Personalize to the owner's learned voice when opted in; never blocks.
 			let voiceGuidance: string | null = null;
 			try {
-				const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+				const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
 					mailboxId: context.mailboxId,
 				});
 				voiceGuidance = res.guidance;
@@ -405,7 +408,7 @@ export const draftWithAnswers = internalAction({
 			const draft = text.trim();
 			if (draft.length === 0) return;
 
-			await ctx.runMutation(internal.mail.needsReplyClarify.persistClarificationDraft, {
+			await ctx.runMutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
 				threadId: args.threadId,
 				expectedLatestMessageId: context.latestMessageId,
 				draft,

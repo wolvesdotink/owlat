@@ -15,7 +15,7 @@
  *     draft is still produced and queued for a human, only the unattended
  *     auto-SEND is withheld — so mail is never silently dropped and an injected
  *     loop can't keep auto-replying past the ceiling.
- *   - ADVISORY, user-triggered features (`mail/aiGate.ts`) degrade gracefully
+ *   - ADVISORY, user-triggered features (`mail/ai/gate.ts`) degrade gracefully
  *     within a RESERVE: they are cut off once remaining headroom drops below the
  *     reserve fraction, preserving the tail of the budget for the critical
  *     drafting path rather than letting manual actions drain it to $0.

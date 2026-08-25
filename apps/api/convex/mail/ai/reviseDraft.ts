@@ -6,7 +6,7 @@
  * The user gives a freeform instruction — "redo but decline politely", "add
  * that the invoice is attached", "make it half the length" — and the model
  * rewrites the ENTIRE draft accordingly. Unlike the fixed five-intent selection
- * rewrite (mail/ai.rewriteSelection), the instruction here is arbitrary user
+ * rewrite (mail/ai/assist.rewriteSelection), the instruction here is arbitrary user
  * text, so it is framed as a TRUSTED directive from the authenticated user and
  * layered OVER the (untrusted) inbound thread, which stays quoted as data behind
  * the same SYSTEM_GUARD framing. This is also the surface the review gate reuses
@@ -27,15 +27,15 @@
  */
 
 import { v } from 'convex/values';
-import { authedAction } from '../lib/authedFunctions';
-import { api, internal } from '../_generated/api';
-import { resolveLanguageModelForUserText } from '../lib/llmProvider';
-import { runLlmStream } from '../lib/llm/dispatch';
-import { recordLlmSpend } from '../analytics/llmUsage';
+import { authedAction } from '../../lib/authedFunctions';
+import { api, internal } from '../../_generated/api';
+import { resolveLanguageModelForUserText } from '../../lib/llmProvider';
+import { runLlmStream } from '../../lib/llm/dispatch';
+import { recordLlmSpend } from '../../analytics/llmUsage';
 import {
 	detectInjection,
 	INJECTION_CONFIDENCE_THRESHOLD,
-} from '../agent/steps/security_scan/patterns';
+} from '../../agent/steps/security_scan/patterns';
 import { SYSTEM_GUARD } from './promptGuards';
 
 /** Bound each untrusted-ish / trusted input that reaches the model. */
@@ -101,7 +101,7 @@ export const reviseDraft = authedAction({
 		ctx,
 		args
 	): Promise<{ text: string; injectionFlagged: boolean; status: 'complete' | 'error' }> => {
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		// Ownership check + reset the buffer to a clean streaming state.
 		await ctx.runMutation(internal.mail.draftStreamStore.beginDraftStream, {
 			streamId: args.streamId,
@@ -116,7 +116,7 @@ export const reviseDraft = authedAction({
 					mailboxId: args.mailboxId,
 				});
 				if (mailbox) {
-					const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+					const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
 						mailboxId: args.mailboxId,
 					});
 					voiceGuidance = res.guidance;

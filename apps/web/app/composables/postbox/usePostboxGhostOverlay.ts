@@ -62,7 +62,7 @@ export function usePostboxGhostOverlay(opts: GhostOverlayOptions) {
 	const ghost = usePostboxGhostText({
 		enabled: () => opts.enabled(),
 		requestCompletion: async (input: GhostTextRequestInput) => {
-			const res = await requireConvex().action(api.mail.ai.completeDraft, {
+			const res = await requireConvex().action(api.mail.ai.assist.completeDraft, {
 				threadContext: input.threadContext,
 				draftSoFar: input.draftSoFar,
 				cursorSentence: input.cursorSentence,

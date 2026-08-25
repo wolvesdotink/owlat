@@ -29,7 +29,7 @@ const emit = defineEmits<{
 
 const replies = ref<string[]>([]);
 
-const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
+const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
 	label: () => t('components.postbox.postboxSchedulingChip.draftOperation'),
 	type: 'action',
 });

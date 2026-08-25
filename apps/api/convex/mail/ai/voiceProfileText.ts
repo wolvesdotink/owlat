@@ -1,6 +1,6 @@
 /**
  * Pure, side-effect-free helpers backing the writing-voice profile
- * (mail/voiceProfile.ts): the tuning constants, the profile shape, and the
+ * (mail/ai/voiceProfile.ts): the tuning constants, the profile shape, and the
  * staleness / sampling / prompt-assembly functions the unit tests exercise
  * directly. Split out of voiceProfile.ts to keep that v8-runtime module under
  * the file-size cap; it holds only the Convex functions and data access.
@@ -10,7 +10,7 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageInlineBody } from '../lib/messageBody';
+import { mailMessageInlineBody } from '../../lib/messageBody';
 import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 
 // ── Tuning ────────────────────────────────────────────────────────────────

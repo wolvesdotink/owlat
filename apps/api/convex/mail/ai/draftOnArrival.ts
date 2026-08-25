@@ -18,13 +18,13 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, type ActionCtx } from '../_generated/server';
-import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
-import { resolveLanguageModel } from '../lib/llmProvider';
-import { buildReplySubject } from '../lib/emailAddress';
-import { logError } from '../lib/runtimeLog';
-import { buildConfirmedContext, runSharedDraft } from '../agent/shared/draftService';
+import { internalAction, type ActionCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
+import { resolveLanguageModel } from '../../lib/llmProvider';
+import { buildReplySubject } from '../../lib/emailAddress';
+import { logError } from '../../lib/runtimeLog';
+import { buildConfirmedContext, runSharedDraft } from '../../agent/shared/draftService';
 
 /** Map the personal-mail urgency bucket onto the shared draft block's priority vocabulary. */
 function priorityForUrgency(urgency: 'high' | 'normal' | 'low'): string {
@@ -50,12 +50,12 @@ export async function generateDraftOnArrival(
 	// site already flag-gated. assertAiAllowed throws when AI is disabled; that
 	// (and every other failure below) degrades to no slot.
 	try {
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 	} catch {
 		return;
 	}
 
-	const loaded = await ctx.runQuery(internal.mail.draftOnArrivalStore.loadForDraft, {
+	const loaded = await ctx.runQuery(internal.mail.ai.draftOnArrivalStore.loadForDraft, {
 		threadId: args.threadId,
 	});
 	if (!loaded) return; // not a live needs-reply personal-mail thread
@@ -64,7 +64,7 @@ export async function generateDraftOnArrival(
 	// missing/disabled profile falls through to the generic tone.
 	let voiceGuidance: string | null = null;
 	try {
-		const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+		const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
 			mailboxId: loaded.mailboxId,
 		});
 		voiceGuidance = res.guidance;
@@ -111,7 +111,7 @@ export async function generateDraftOnArrival(
 
 		if (result.draftBody.trim().length === 0) return; // nothing usable
 
-		await ctx.runMutation(internal.mail.draftOnArrivalStore.persistDraftSlot, {
+		await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
 			threadId: args.threadId,
 			triggerMessageId: loaded.triggerMessageId,
 			draft: result.draftBody,
