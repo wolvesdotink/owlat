@@ -40,7 +40,7 @@ const categories = [
 async function forgetAnswer(id: Id<'clarificationMemory'>) {
 	memoryPendingId.value = id;
 	try {
-		if (await revokeMemory({ id }))
+		if ((await revokeMemory({ id })).ok)
 			showToast(t('components.autonomy.autonomyLearningControls.forgottenToast'));
 	} finally {
 		memoryPendingId.value = null;
@@ -49,7 +49,7 @@ async function forgetAnswer(id: Id<'clarificationMemory'>) {
 async function useForEveryone(id: Id<'clarificationMemory'>) {
 	memoryPendingId.value = id;
 	try {
-		if (await promoteMemory({ id }))
+		if ((await promoteMemory({ id })).ok)
 			showToast(t('components.autonomy.autonomyLearningControls.promotedToast'));
 	} finally {
 		memoryPendingId.value = null;

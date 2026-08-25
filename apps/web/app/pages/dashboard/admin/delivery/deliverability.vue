@@ -80,7 +80,7 @@ async function updateRegressionAlert(
 			kind === 'acknowledge'
 				? await acknowledgeRegressionAlert({ alertId: alert.id })
 				: await resolveRegressionAlert({ alertId: alert.id });
-		if (result) {
+		if (result.ok) {
 			showToast(
 				kind === 'acknowledge'
 					? t('dashboard.admin.delivery.deliverability.toasts.acknowledged')
