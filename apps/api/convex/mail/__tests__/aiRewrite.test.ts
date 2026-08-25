@@ -34,7 +34,7 @@ describe('buildRewritePrompt', () => {
 					intent,
 					selection: 'some selected text here',
 					surroundingContext: '',
-				}).prompt.split('\n')[1],
+				}).prompt.split('\n')[1]
 		);
 		// Every intent yields a non-empty instruction line and they are all distinct.
 		expect(instructions.every((line) => (line ?? '').length > 0)).toBe(true);
@@ -94,9 +94,7 @@ describe('buildRewritePrompt', () => {
 			selection: 'Some text to translate here.',
 			surroundingContext: '',
 		});
-		const langLine = prompt
-			.split('\n')
-			.find((l) => l.startsWith('Target language:'))!;
+		const langLine = prompt.split('\n').find((l) => l.startsWith('Target language:'))!;
 		expect(langLine.length).toBeLessThan(60);
 	});
 });

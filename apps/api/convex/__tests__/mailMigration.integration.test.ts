@@ -57,8 +57,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledge/extraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const CREDS = {
@@ -89,10 +89,7 @@ function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null, o
 	});
 }
 
-async function enableFlags(
-	t: ReturnType<typeof convexTest>,
-	flags: Record<string, boolean>,
-) {
+async function enableFlags(t: ReturnType<typeof convexTest>, flags: Record<string, boolean>) {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('instanceSettings', {
 			featureFlags: flags,
@@ -102,13 +99,11 @@ async function enableFlags(
 }
 
 /** Connect an account for `user-A` and return its id. */
-async function connect(
-	t: ReturnType<typeof convexTest>,
-): Promise<Id<'externalMailAccounts'>> {
+async function connect(t: ReturnType<typeof convexTest>): Promise<Id<'externalMailAccounts'>> {
 	setSession('user-A', 'owner');
 	const { externalAccountId } = await t.mutation(
 		internal.mail.external.accounts._connectInternal,
-		CREDS,
+		CREDS
 	);
 	return externalAccountId;
 }
@@ -181,7 +176,9 @@ describe('mail.migration.start', () => {
 			status: 'auth_error',
 			lastError: 'Invalid credentials',
 		});
-		await expect(t.mutation(api.mail.migration.start, {})).rejects.toThrow(/re-enter your credentials/i);
+		await expect(t.mutation(api.mail.migration.start, {})).rejects.toThrow(
+			/re-enter your credentials/i
+		);
 		await t.run(async (ctx) => {
 			const all = await ctx.db.query('mailboxMigrations').collect();
 			expect(all).toHaveLength(0); // no wedged 'importing' row created

@@ -91,7 +91,7 @@ export function usePostboxGhostOverlay(opts: GhostOverlayOptions) {
 			before.lastIndexOf('. '),
 			before.lastIndexOf('! '),
 			before.lastIndexOf('? '),
-			before.lastIndexOf('\n'),
+			before.lastIndexOf('\n')
 		);
 		const cursorSentence = (lastBreak >= 0 ? before.slice(lastBreak + 1) : before)
 			.slice(-500)

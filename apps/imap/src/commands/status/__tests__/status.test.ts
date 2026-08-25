@@ -75,10 +75,13 @@ function makeDeps(convex: ConvexClient): CommandDeps {
 
 /** Run a command module's `start` and collect every line it sends. */
 async function runCommand(
-	module: { parseArgs: (raw: string[]) => unknown; start: (a: never) => { completion: Promise<void> } },
+	module: {
+		parseArgs: (raw: string[]) => unknown;
+		start: (a: never) => { completion: Promise<void> };
+	},
 	rawArgs: string[],
 	verb: ImapVerb,
-	convex: ConvexClient,
+	convex: ConvexClient
 ): Promise<string[]> {
 	const lines: string[] = [];
 	const parsed = module.parseArgs(rawArgs) as { ok: boolean; args: unknown };
@@ -101,7 +104,7 @@ describe('STATUS UIDVALIDITY', () => {
 			statusModule,
 			['INBOX', '(MESSAGES UIDNEXT UIDVALIDITY UNSEEN)'],
 			'STATUS',
-			stubConvex(),
+			stubConvex()
 		);
 
 		const statusLine = lines.find((l) => l.startsWith('* STATUS'));
@@ -121,14 +124,9 @@ describe('STATUS UIDVALIDITY', () => {
 			statusModule,
 			['INBOX', '(UIDVALIDITY)'],
 			'STATUS',
-			convex,
+			convex
 		);
-		const selectLines = await runCommand(
-			selectModule,
-			['INBOX'],
-			'SELECT',
-			convex,
-		);
+		const selectLines = await runCommand(selectModule, ['INBOX'], 'SELECT', convex);
 
 		const statusUidValidity = statusLines
 			.find((l) => l.startsWith('* STATUS'))

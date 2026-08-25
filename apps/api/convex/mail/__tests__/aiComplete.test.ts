@@ -46,21 +46,15 @@ describe('postProcessCompletion', () => {
 	});
 
 	it('passes through a short confident continuation', () => {
-		expect(postProcessCompletion(' will review it today.')).toBe(
-			' will review it today.',
-		);
+		expect(postProcessCompletion(' will review it today.')).toBe(' will review it today.');
 	});
 
 	it('stops at the first sentence end', () => {
-		expect(postProcessCompletion(' am on it. Also, call me later.')).toBe(
-			' am on it.',
-		);
+		expect(postProcessCompletion(' am on it. Also, call me later.')).toBe(' am on it.');
 	});
 
 	it('strips wrapping quotes some models add', () => {
-		expect(postProcessCompletion('" will follow up soon."')).toBe(
-			' will follow up soon.',
-		);
+		expect(postProcessCompletion('" will follow up soon."')).toBe(' will follow up soon.');
 	});
 
 	it('collapses newlines into a single inline run', () => {

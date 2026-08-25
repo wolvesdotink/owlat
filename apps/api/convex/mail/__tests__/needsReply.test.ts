@@ -136,10 +136,7 @@ describe('evaluateNeedsReplyCandidate', () => {
 		// newest inbound is bulk, so nothing needs a reply.
 		const result = evaluateNeedsReplyCandidate({
 			ownerAddresses: [OWNER],
-			messages: [
-				msg({ receivedAt: 1000 }),
-				msg({ receivedAt: 2000, hasListUnsubscribe: true }),
-			],
+			messages: [msg({ receivedAt: 1000 }), msg({ receivedAt: 2000, hasListUnsubscribe: true })],
 		});
 		expect(result).toEqual({ candidate: false, reason: 'bulk_sender' });
 	});
@@ -151,13 +148,13 @@ describe('isBulkOrNoReplySender', () => {
 			isBulkOrNoReplySender({
 				fromAddress: 'noreply+orders@shop.example',
 				hasListUnsubscribe: false,
-			}),
+			})
 		).toBe(true);
 	});
 
 	it('does not treat a person whose name contains "reply" as bulk', () => {
 		expect(
-			isBulkOrNoReplySender({ fromAddress: 'replyn@example.com', hasListUnsubscribe: false }),
+			isBulkOrNoReplySender({ fromAddress: 'replyn@example.com', hasListUnsubscribe: false })
 		).toBe(false);
 	});
 });
@@ -177,7 +174,9 @@ describe('normalizeDueHint', () => {
 
 describe('isCalendarAttachment', () => {
 	it('matches text/calendar and .ics filenames', () => {
-		expect(isCalendarAttachment({ filename: 'invite.ics', contentType: 'application/octet-stream' })).toBe(true);
+		expect(
+			isCalendarAttachment({ filename: 'invite.ics', contentType: 'application/octet-stream' })
+		).toBe(true);
 		expect(isCalendarAttachment({ filename: 'meeting', contentType: 'text/calendar' })).toBe(true);
 		expect(isCalendarAttachment({ filename: 'photo.png', contentType: 'image/png' })).toBe(false);
 	});
@@ -217,8 +216,8 @@ describe('normalizeMeetingIntent', () => {
 		expect(
 			normalizeMeetingIntent(
 				{ isScheduling: false, proposedTimes: [], topic: null },
-				{ hasCalendarInvite: false },
-			),
+				{ hasCalendarInvite: false }
+			)
 		).toBeUndefined();
 		expect(normalizeMeetingIntent(null, { hasCalendarInvite: false })).toBeUndefined();
 	});

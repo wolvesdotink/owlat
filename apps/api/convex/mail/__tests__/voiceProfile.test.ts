@@ -42,9 +42,7 @@ describe('isVoiceProfileStale', () => {
 	});
 
 	it('is stale when never computed (no profile)', () => {
-		expect(
-			isVoiceProfileStale({ status: 'idle', sentCountAtCompute: 0 }, 0, now)
-		).toBe(true);
+		expect(isVoiceProfileStale({ status: 'idle', sentCountAtCompute: 0 }, 0, now)).toBe(true);
 	});
 
 	it('is stale once older than the staleness window', () => {
