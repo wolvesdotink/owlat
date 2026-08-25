@@ -49,19 +49,21 @@ const { showToast } = useToast();
 
 async function publishMissingKeys() {
 	const result = await publishKeysOp.run({});
-	if (result?.scheduled) showToast(t('dashboard.admin.team.inboxes.toasts.keysScheduled'));
+	if (result.ok && result.result.scheduled)
+		showToast(t('dashboard.admin.team.inboxes.toasts.keysScheduled'));
 }
 
 async function rotateKey(address: string) {
 	const result = await rotateKeyOp.run({ address });
-	if (result?.scheduled) showToast(t('dashboard.admin.team.inboxes.toasts.rotationScheduled', { address }));
+	if (result.ok && result.result.scheduled)
+		showToast(t('dashboard.admin.team.inboxes.toasts.rotationScheduled', { address }));
 }
 
 async function confirmRevokeKey() {
 	const target = revokeKeyTarget.value;
 	if (!target) return;
 	const result = await revokeKeyOp.run({ address: target.address });
-	if (!result) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.admin.team.inboxes.toasts.keyRevoked', { address: target.address }));
 	revokeKeyTarget.value = null;
 }
@@ -130,7 +132,7 @@ async function confirmPurge() {
 	const target = purgeTarget.value;
 	if (!target) return;
 	const res = await purgeOp.run({ mailboxId: target._id });
-	if (!res) return;
+	if (!res.ok) return;
 	if (expandedId.value === target._id) expandedId.value = null;
 	if (reconnectId.value === target._id) reconnectId.value = null;
 	purgeTarget.value = null;
@@ -170,7 +172,12 @@ function formatCreated(createdAt: number) {
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 					{{ t('dashboard.admin.team.inboxes.title') }}
 				</h1>
-				<I18nT keypath="dashboard.admin.team.inboxes.intro" tag="p" scope="global" class="mt-1 text-text-secondary">
+				<I18nT
+					keypath="dashboard.admin.team.inboxes.intro"
+					tag="p"
+					scope="global"
+					class="mt-1 text-text-secondary"
+				>
 					<template #supportAddress><code>support@</code></template>
 					<template #salesAddress><code>sales@</code></template>
 				</I18nT>
@@ -198,7 +205,9 @@ function formatCreated(createdAt: number) {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.inboxes.adminGate.title') }}</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.admin.team.inboxes.adminGate.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				{{ t('dashboard.admin.team.inboxes.adminGate.description') }}
 			</p>
@@ -210,7 +219,9 @@ function formatCreated(createdAt: number) {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:mails" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.inboxes.noWorkspace.title') }}</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.admin.team.inboxes.noWorkspace.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				{{ t('dashboard.admin.team.inboxes.noWorkspace.description') }}
 			</p>
@@ -233,7 +244,9 @@ function formatCreated(createdAt: number) {
 				rounded="full"
 				class="mb-4 mx-auto"
 			/>
-			<h2 class="font-semibold text-text-primary">{{ t('dashboard.admin.team.inboxes.empty.title') }}</h2>
+			<h2 class="font-semibold text-text-primary">
+				{{ t('dashboard.admin.team.inboxes.empty.title') }}
+			</h2>
 			<I18nT
 				keypath="dashboard.admin.team.inboxes.empty.description"
 				tag="p"
@@ -292,7 +305,11 @@ function formatCreated(createdAt: number) {
 								@click="toggleReconnect(inbox._id)"
 							>
 								<Icon name="lucide:refresh-cw" class="w-4 h-4 mr-1.5" />
-								{{ reconnectId === inbox._id ? t('common.cancel') : t('dashboard.admin.team.inboxes.reconnect') }}
+								{{
+									reconnectId === inbox._id
+										? t('common.cancel')
+										: t('dashboard.admin.team.inboxes.reconnect')
+								}}
 							</UiButton>
 							<UiButton
 								variant="ghost"
@@ -313,7 +330,11 @@ function formatCreated(createdAt: number) {
 									:name="expandedId === inbox._id ? 'lucide:chevron-up' : 'lucide:users'"
 									class="w-4 h-4 mr-1.5"
 								/>
-								{{ expandedId === inbox._id ? t('common.done') : t('dashboard.admin.team.inboxes.manageMembers') }}
+								{{
+									expandedId === inbox._id
+										? t('common.done')
+										: t('dashboard.admin.team.inboxes.manageMembers')
+								}}
 							</UiButton>
 							<UiButton
 								v-if="sealedMailEnabled"
@@ -376,7 +397,11 @@ function formatCreated(createdAt: number) {
 							{{ t('dashboard.admin.team.inboxes.ownedBy', { owner: ownerOf(inbox) }) }}
 						</span>
 						<span class="text-text-tertiary">
-							{{ t('dashboard.admin.team.inboxes.createdOn', { date: formatCreated(inbox.createdAt) }) }}
+							{{
+								t('dashboard.admin.team.inboxes.createdOn', {
+									date: formatCreated(inbox.createdAt),
+								})
+							}}
 						</span>
 					</div>
 
@@ -424,7 +449,9 @@ function formatCreated(createdAt: number) {
 					class="border-t border-border-subtle bg-bg-surface/40 p-5 space-y-4"
 				>
 					<div>
-						<h3 class="font-semibold text-text-primary">{{ t('dashboard.admin.team.inboxes.reconnectPanel.title') }}</h3>
+						<h3 class="font-semibold text-text-primary">
+							{{ t('dashboard.admin.team.inboxes.reconnectPanel.title') }}
+						</h3>
 						<p class="text-sm text-text-secondary mt-1">
 							{{ t('dashboard.admin.team.inboxes.reconnectPanel.description') }}
 						</p>
@@ -458,7 +485,8 @@ function formatCreated(createdAt: number) {
 			:title="t('dashboard.admin.team.inboxes.revokeKeyDialog.title')"
 			:description="
 				t('dashboard.admin.team.inboxes.revokeKeyDialog.description', {
-					address: revokeKeyTarget?.address ?? t('dashboard.admin.team.inboxes.revokeKeyDialog.thisInbox'),
+					address:
+						revokeKeyTarget?.address ?? t('dashboard.admin.team.inboxes.revokeKeyDialog.thisInbox'),
 				})
 			"
 			:confirm-text="t('dashboard.admin.team.inboxes.revokeKeyDialog.confirm')"

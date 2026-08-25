@@ -72,7 +72,7 @@ async function choose(value: SealPolicy) {
 	const previous = policy.value;
 	policy.value = value;
 	const result = await saveSettings({ sealPolicy: value });
-	if (result === undefined) policy.value = previous;
+	if (!result.ok) policy.value = previous;
 }
 
 async function setInboundTlsRequired(value: boolean) {
@@ -80,7 +80,7 @@ async function setInboundTlsRequired(value: boolean) {
 	const previous = isInboundTlsRequired.value;
 	isInboundTlsRequired.value = value;
 	const result = await saveSettings({ isInboundTlsRequired: value });
-	if (result === undefined) isInboundTlsRequired.value = previous;
+	if (!result.ok) isInboundTlsRequired.value = previous;
 }
 
 // ── Recovery kit (E6, locked decision D7). The armored private key + plain-words
@@ -103,18 +103,18 @@ async function downloadKit() {
 	const address = kitAddress.value.trim();
 	if (!address) return;
 	const kit = await exportKit({ address });
-	if (kit === undefined) return; // operation error already surfaced
-	if (kit === null) {
+	if (!kit.ok) return; // operation error already surfaced
+	if (kit.result === null) {
 		showToast(t('dashboard.admin.instance.sealedMail.toasts.noKeyForAddress'), 'error');
 		return;
 	}
 	// Bundle the instructions and the private key into one downloadable file.
-	const contents = `${kit.instructions}\n\n${kit.privateKeyArmored}\n`;
+	const contents = `${kit.result.instructions}\n\n${kit.result.privateKeyArmored}\n`;
 	const blob = new Blob([contents], { type: 'application/pgp-keys' });
 	const url = URL.createObjectURL(blob);
 	const anchor = document.createElement('a');
 	anchor.href = url;
-	anchor.download = kit.filename;
+	anchor.download = kit.result.filename;
 	// Attach to the DOM before clicking — some browsers won't trigger a download
 	// from a detached anchor (matches the `downloadCsv` convention).
 	document.body.appendChild(anchor);
@@ -129,8 +129,8 @@ async function restoreKit() {
 	const privateKeyArmored = importKey.value.trim();
 	if (!address || !privateKeyArmored) return;
 	const result = await importKit({ address, privateKeyArmored });
-	if (result === undefined) return;
-	if (result.imported) {
+	if (!result.ok) return;
+	if (result.result.imported) {
 		showToast(t('dashboard.admin.instance.sealedMail.toasts.kitImported'), 'success');
 		importKey.value = '';
 	} else {
@@ -148,7 +148,7 @@ const { run: reSeal, isLoading: reSealing } = useBackendOperation(api.e2ee.lifec
 
 async function runReSeal() {
 	const result = await reSeal({});
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.admin.instance.sealedMail.toasts.reSealStarted'), 'success');
 }
 </script>
@@ -175,10 +175,7 @@ async function runReSeal() {
 			{{ t('dashboard.admin.instance.sealedMail.noWorkspace') }}
 		</div>
 		<template v-else>
-			<div
-				v-if="!sealedMailEnabled"
-				class="flex items-start gap-2.5 card p-4"
-			>
+			<div v-if="!sealedMailEnabled" class="flex items-start gap-2.5 card p-4">
 				<Icon name="lucide:info" class="w-4 h-4 text-text-tertiary flex-shrink-0 mt-0.5" />
 				<p class="text-sm text-text-secondary">
 					{{ t('dashboard.admin.instance.sealedMail.disabledNotice') }}
@@ -217,7 +214,9 @@ async function runReSeal() {
 			<section class="space-y-4 card p-5">
 				<div class="flex items-start justify-between gap-4">
 					<div class="min-w-0">
-						<h2 class="text-base font-semibold text-text-primary">{{ t('dashboard.admin.instance.sealedMail.tls.title') }}</h2>
+						<h2 class="text-base font-semibold text-text-primary">
+							{{ t('dashboard.admin.instance.sealedMail.tls.title') }}
+						</h2>
 						<p class="mt-1 text-sm text-text-secondary">
 							{{ t('dashboard.admin.instance.sealedMail.tls.description') }}
 						</p>
@@ -235,7 +234,7 @@ async function runReSeal() {
 				</div>
 			</section>
 
-			<!-- Recovery kit (E6 / D7): download the private key for an address so
+			<!-- Recovery kit.result (E6 / D7): download the private key for an address so
 			     sealed mail can be restored later; import one to restore access. -->
 			<section class="space-y-4 card p-5">
 				<div>
@@ -248,18 +247,18 @@ async function runReSeal() {
 				</div>
 
 				<div class="space-y-2">
-					<label for="kit-address" class="block text-sm font-medium text-text-primary">
+					<label for="kit.result-address" class="block text-sm font-medium text-text-primary">
 						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.downloadLabel') }}
 					</label>
 					<div class="flex flex-wrap items-center gap-2">
 						<input
-							id="kit-address"
+							id="kit.result-address"
 							v-model="kitAddress"
 							type="email"
 							inputmode="email"
 							autocomplete="off"
 							:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.addressPlaceholder')"
-							data-testid="recovery-kit-address"
+							data-testid="recovery-kit.result-address"
 							class="input input-sm min-w-0 flex-1"
 						/>
 						<UiButton
@@ -275,29 +274,32 @@ async function runReSeal() {
 				</div>
 
 				<div class="space-y-2 border-t border-border-subtle pt-4">
-					<label for="kit-import-address" class="block text-sm font-medium text-text-primary">
+					<label
+						for="kit.result-import-address"
+						class="block text-sm font-medium text-text-primary"
+					>
 						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.restoreLabel') }}
 					</label>
 					<p class="text-xs text-text-secondary">
 						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.restoreDescription') }}
 					</p>
 					<input
-						id="kit-import-address"
+						id="kit.result-import-address"
 						v-model="importAddress"
 						type="email"
 						inputmode="email"
 						autocomplete="off"
 						:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.addressPlaceholder')"
-						data-testid="recovery-kit-import-address"
+						data-testid="recovery-kit.result-import-address"
 						class="input input-sm"
 					/>
 					<textarea
-						id="kit-import-key"
+						id="kit.result-import-key"
 						v-model="importKey"
 						rows="4"
 						spellcheck="false"
 						:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.importKeyPlaceholder')"
-						data-testid="recovery-kit-import-key"
+						data-testid="recovery-kit.result-import-key"
 						class="input input-sm font-mono text-xs"
 					/>
 					<div class="flex justify-end">

@@ -128,7 +128,7 @@ async function saveCommitmentStatus() {
 		entryId: entryId.value,
 		commitmentStatus: commitmentStatus.value,
 	});
-	if (result) showToast(t('dashboard.knowledge.detail.commitmentStatusToast'));
+	if (result.ok) showToast(t('dashboard.knowledge.detail.commitmentStatusToast'));
 }
 
 // Seed the edit form from the loaded entry.
@@ -154,7 +154,7 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	try {
 		const result = await deleteEntry({ entryId: entryId.value });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.knowledge.detail.deletedToast'));
 		router.push('/dashboard/knowledge');
 	} finally {
@@ -206,7 +206,7 @@ const handleAddRelation = async () => {
 			toEntryId: selectedTarget.value.id,
 			relationType: relationType.value,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.knowledge.detail.relationAddedToast'));
 		resetRelationForm();
 	} finally {
@@ -216,7 +216,7 @@ const handleAddRelation = async () => {
 
 const handleRemoveRelation = async (relationId: string) => {
 	const result = await removeRelation({ relationId: relationId as Id<'knowledgeRelations'> });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.knowledge.detail.relationRemovedToast'));
 };
 </script>
@@ -679,11 +679,7 @@ const handleRemoveRelation = async (relationId: string) => {
 								{{ t('common.cancel') }}
 							</UiButton>
 							<UiButton variant="danger" :disabled="isDeleting" @click="handleDelete">
-								{{
-									isDeleting
-										? t('dashboard.knowledge.detail.deleting')
-										: t('common.delete')
-								}}
+								{{ isDeleting ? t('dashboard.knowledge.detail.deleting') : t('common.delete') }}
 							</UiButton>
 						</div>
 					</div>

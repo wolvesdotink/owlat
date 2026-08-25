@@ -47,7 +47,7 @@ async function handleCreate() {
 		keepLocalCopy: keepLocal.value,
 	});
 	submitting.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	newAddress.value = '';
 }
 
@@ -61,7 +61,7 @@ async function confirmRemove() {
 	if (!id) return;
 	const result = await removeMutation.run({ id });
 	ruleToRemove.value = null;
-	if (result === undefined) return;
+	if (!result.ok) return;
 }
 </script>
 

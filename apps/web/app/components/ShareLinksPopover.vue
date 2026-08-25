@@ -48,8 +48,8 @@ const handleCreate = async () => {
 			emailTemplateId: props.emailTemplateId,
 			transactionalEmailId: props.transactionalEmailId,
 		});
-		if (result?.url) {
-			await copyToClipboard(result.url);
+		if (result.ok && result.result.url) {
+			await copyToClipboard(result.result.url);
 			showToast(t('components.shareLinksPopover.createdToast'), 'success');
 		}
 	} finally {
@@ -59,7 +59,7 @@ const handleCreate = async () => {
 
 const handleRevoke = async (shareLinkId: Id<'shareLinks'>) => {
 	const result = await revokeShareLink({ shareLinkId });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('components.shareLinksPopover.revokedToast'), 'success');
 };
 

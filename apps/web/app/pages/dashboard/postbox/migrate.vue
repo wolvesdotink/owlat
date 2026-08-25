@@ -63,7 +63,7 @@ async function handleConnected() {
 	// connection down the generic-IMAP import path.
 	if (!provider) return;
 	const started = await start(sourceForProvider(provider));
-	if (started === undefined) return;
+	if (!started.ok) return;
 	showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
 }
 
@@ -80,7 +80,7 @@ const connectedSource = computed<'google' | 'imap'>(() =>
 );
 async function handleStartImport() {
 	const res = await start(connectedSource.value);
-	if (res !== undefined) showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
+	if (res.ok) showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
 }
 
 // The existing account, for pre-filling the edit form. The connected account
@@ -107,12 +107,12 @@ const showPurge = ref(false);
 async function handleDisconnect() {
 	const res = await disconnectOp.run({});
 	showDisconnect.value = false;
-	if (res !== undefined) showToast(t('dashboard.postbox.migrate.toastDisconnected'), 'success');
+	if (res.ok) showToast(t('dashboard.postbox.migrate.toastDisconnected'), 'success');
 }
 async function handlePurge() {
 	const res = await purgeOp.run({});
 	showPurge.value = false;
-	if (res !== undefined) showToast(t('dashboard.postbox.migrate.toastPurging'), 'success');
+	if (res.ok) showToast(t('dashboard.postbox.migrate.toastPurging'), 'success');
 }
 
 // ── Detected signature (completion nice-touch) ──────────────────────────────
@@ -142,7 +142,7 @@ async function saveDetectedSignature() {
 		html: detectedSignatureHtml(text),
 		isDefault: true,
 	});
-	if (res !== undefined) {
+	if (res.ok) {
 		signatureSaved.value = true;
 		showToast(t('dashboard.postbox.migrate.toastSignatureSaved'), 'success');
 	}
@@ -151,9 +151,9 @@ async function saveDetectedSignature() {
 // ── Cancel migration ────────────────────────────────────────────────────────
 const showCancel = ref(false);
 async function handleCancel() {
-	const ok = await cancel();
+	const cancelled = await cancel();
 	showCancel.value = false;
-	if (ok) showToast(t('dashboard.postbox.migrate.toastCancelled'), 'success');
+	if (cancelled.ok) showToast(t('dashboard.postbox.migrate.toastCancelled'), 'success');
 }
 
 // ── Step indicator ──────────────────────────────────────────────────────────

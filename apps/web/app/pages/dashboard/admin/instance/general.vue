@@ -186,7 +186,7 @@ const handleSave = async (): Promise<boolean> => {
 		defaultFromName: form.defaultFromName.trim() || undefined,
 		defaultFromEmail: form.defaultFromEmail.trim() || undefined,
 	});
-	if (settingsResult === undefined) {
+	if (!settingsResult.ok) {
 		isSaving.value = false;
 		return false;
 	}
@@ -194,10 +194,7 @@ const handleSave = async (): Promise<boolean> => {
 	// Archive default is a feature flag, not an instanceSettings column
 	const archiveFlag = flags.value['campaigns.archive'] === true;
 	if (form.archiveEnabled !== archiveFlag) {
-		if (
-			(await setFeatureFlag({ flag: 'campaigns.archive', value: form.archiveEnabled })) ===
-			undefined
-		) {
+		if (!(await setFeatureFlag({ flag: 'campaigns.archive', value: form.archiveEnabled })).ok) {
 			isSaving.value = false;
 			return false;
 		}

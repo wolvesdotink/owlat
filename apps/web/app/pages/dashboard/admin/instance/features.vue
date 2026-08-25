@@ -225,8 +225,8 @@ async function commitToggle(
 	});
 	pendingCascade.value = null;
 	pendingPluginApproval.value = null;
-	if (res === undefined) return; // failure already toasted by the operation module
-	trackFlagChange(before, res.flags, featureFlagRegistry);
+	if (!res.ok) return; // failure already toasted by the operation module
+	trackFlagChange(before, res.result.flags, featureFlagRegistry);
 	const definition = featureFlagRegistry[flag];
 	const label = definition ? flagLabel(definition) : flag;
 	showToast(
@@ -234,10 +234,10 @@ async function commitToggle(
 			? t('dashboard.admin.instance.features.toasts.flagEnabled', { label })
 			: t('dashboard.admin.instance.features.toasts.flagDisabled', { label })
 	);
-	if (res.cascaded.length > 0) {
+	if (res.result.cascaded.length > 0) {
 		showToast(
 			t('dashboard.admin.instance.features.toasts.alsoDisabled', {
-				flags: res.cascaded.join(', '),
+				flags: res.result.cascaded.join(', '),
 			})
 		);
 	}
@@ -281,18 +281,18 @@ async function togglePack(packKey: FeaturePackKey) {
 	const nextValue = current !== 'on'; // off/partial → on; on → off
 	const before = stored.value;
 	const res = await setFeaturePack({ pack: packKey, value: nextValue });
-	if (res === undefined) return; // failure already toasted
-	trackFlagChange(before, res.flags, featureFlagRegistry);
+	if (!res.ok) return; // failure already toasted
+	trackFlagChange(before, res.result.flags, featureFlagRegistry);
 	const label = packLabel(packKey);
 	showToast(
 		nextValue
 			? t('dashboard.admin.instance.features.toasts.packEnabled', { label })
 			: t('dashboard.admin.instance.features.toasts.packDisabled', { label })
 	);
-	if (res.cascaded.length > 0) {
+	if (res.result.cascaded.length > 0) {
 		showToast(
 			t('dashboard.admin.instance.features.toasts.alsoAffected', {
-				flags: res.cascaded.join(', '),
+				flags: res.result.cascaded.join(', '),
 			})
 		);
 	}

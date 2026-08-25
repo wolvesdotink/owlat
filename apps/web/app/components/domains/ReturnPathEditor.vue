@@ -96,7 +96,7 @@ async function save() {
 		domainId: props.domainId,
 		returnPathHost: composedHost.value,
 	});
-	if (result === undefined) return;
+	if (!result.ok) return;
 	editing.value = false;
 }
 </script>

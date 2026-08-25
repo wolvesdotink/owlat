@@ -86,7 +86,7 @@ beforeEach(() => {
 	isConfigStatusLoading.value = false;
 	configStatusError.value = null;
 	retryConfigStatus.mockReset();
-	setFeatureFlag.mockReset().mockResolvedValue({ flags: {}, cascaded: [] });
+	setFeatureFlag.mockReset().mockResolvedValue({ ok: true, result: { flags: {}, cascaded: [] } });
 	showToast.mockReset();
 });
 

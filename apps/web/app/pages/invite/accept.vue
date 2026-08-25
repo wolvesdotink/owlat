@@ -81,17 +81,20 @@ async function handleAcceptInvitation() {
 		const claim = await claimPendingMailbox({
 			invitationId: invitationId.value,
 		});
-		if (claim?.created) {
-			claimedMailboxAddress.value = claim.address;
-		} else if (claim && !claim.created && 'error' in claim && claim.error === 'awaiting_domain') {
-			reservedAwaitingAddress.value = claim.address;
+		if (claim.ok) {
+			const claimed = claim.result;
+			if (claimed.created) {
+				claimedMailboxAddress.value = claimed.address;
+			} else if ('error' in claimed && claimed.error === 'awaiting_domain') {
+				reservedAwaitingAddress.value = claimed.address;
+			}
 		}
 
 		// Best-effort: materialize any team-inbox memberships reserved for this
 		// person, so the shared inbox is already in their sidebar on arrival.
 		const inbox = await claimInboxMemberships({});
-		if (inbox?.claimed?.length) {
-			claimedInboxAddresses.value = inbox.claimed;
+		if (inbox.ok && inbox.result.claimed.length) {
+			claimedInboxAddresses.value = inbox.result.claimed;
 		}
 
 		status.value = 'success';
@@ -105,8 +108,7 @@ async function handleAcceptInvitation() {
 		}, 2000);
 	} catch (err) {
 		status.value = 'error';
-		errorMessage.value =
-			err instanceof Error ? err.message : t('invite.accept.errors.unexpected');
+		errorMessage.value = err instanceof Error ? err.message : t('invite.accept.errors.unexpected');
 	}
 }
 

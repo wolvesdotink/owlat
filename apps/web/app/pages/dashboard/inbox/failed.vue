@@ -34,7 +34,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
 	try {
 		const result = await retryFailedMessage({ inboundMessageId: messageId });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.inbox.failed.retriedToast'));
 	} finally {
 		actionInProgress.value = null;
@@ -53,7 +53,9 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 			</NuxtLink>
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3">
+				<h1
+					class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3"
+				>
 					<Icon name="lucide:alert-triangle" class="w-7 h-7 text-error" />
 					{{ t('dashboard.inbox.failed.title') }}
 				</h1>

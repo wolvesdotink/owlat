@@ -72,7 +72,7 @@ async function confirmDisable() {
 	if (!mailboxId.value) return;
 	const result = await removeMutation.run({ mailboxId: mailboxId.value });
 	showDisableConfirm.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	draft.enabled = false;
 }
 </script>

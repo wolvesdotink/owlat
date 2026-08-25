@@ -66,7 +66,7 @@ const { run: forceVerifyDomain } = isDevBuild
 	? useBackendOperation(api.devShortcuts.forceVerifyDomain.forceVerifyDomain, {
 			label: () => t('dashboard.admin.delivery.domains.operations.forceVerify'),
 		})
-	: { run: async (_: { domainId: Id<'domains'> }) => undefined };
+	: { run: async (_: { domainId: Id<'domains'> }) => ({ ok: false }) as const };
 
 // Force Verify is owner/admin-only. The backend re-checks via
 // `requirePermission('organization:manage')`; the client-side gate is here so
@@ -138,7 +138,7 @@ const handleDeleteDomain = async () => {
 	const result = await removeDomain({ domainId: deleteModal.data.value._id });
 	deleteModal.setLoading(false);
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	deleteModal.close();
 	showToast(t('dashboard.admin.delivery.domains.toasts.removed'));
@@ -150,8 +150,8 @@ const handleVerifyDomain = async (domainId: Id<'domains'>) => {
 	verifyingDomainId.value = domainId;
 	try {
 		const result = await verifyDomain({ domainId });
-		if (result === undefined) return; // run() already surfaced the failure
-		if (result.allVerified) {
+		if (!result.ok) return; // run() already surfaced the failure
+		if (result.result.allVerified) {
 			showToast(t('dashboard.admin.delivery.domains.toasts.verified'));
 		} else {
 			showToast(t('dashboard.admin.delivery.domains.toasts.verificationIncomplete'), 'error');
@@ -164,7 +164,7 @@ const handleVerifyDomain = async (domainId: Id<'domains'>) => {
 // Handle retry registration (for failed registration)
 const handleRetryRegistration = async (domainId: Id<'domains'>) => {
 	const result = await retryRegistration({ domainId });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.admin.delivery.domains.toasts.regenerating'));
 };
 
@@ -216,7 +216,7 @@ const handleDmarcPolicyChange = async (domainId: Id<'domains'>, policy: DmarcPol
 	updatingDmarcDomainId.value = domainId;
 	try {
 		const result = await setDmarcPolicy({ domainId, policy });
-		if (result === undefined) return; // run() already surfaced the failure
+		if (!result.ok) return; // run() already surfaced the failure
 		showToast(
 			policy === 'none'
 				? t('dashboard.admin.delivery.domains.toasts.dmarcMonitorOnly')
@@ -233,7 +233,7 @@ const handleForceVerify = async (domainId: Id<'domains'>) => {
 	forcingDomainId.value = domainId;
 	const result = await forceVerifyDomain({ domainId });
 	forcingDomainId.value = null;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.admin.delivery.domains.toasts.forceVerified'));
 };
 

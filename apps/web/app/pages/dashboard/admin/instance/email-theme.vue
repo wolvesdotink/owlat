@@ -158,7 +158,7 @@ const handleSave = async () => {
 	});
 	isSaving.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showNotification(t('dashboard.admin.instance.emailTheme.savedToast'));
 	isFormDirty.value = false;

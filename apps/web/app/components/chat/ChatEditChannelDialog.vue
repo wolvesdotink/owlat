@@ -47,15 +47,12 @@ const handleSubmit = async () => {
 		description: description.value,
 		visibility: visibility.value,
 	});
-	if (result !== undefined) emit('saved');
+	if (result.ok) emit('saved');
 };
 </script>
 
 <template>
-	<ChatDialogShell
-		:title="t('components.chat.chatEditChannelDialog.title')"
-		@close="emit('close')"
-	>
+	<ChatDialogShell :title="t('components.chat.chatEditChannelDialog.title')" @close="emit('close')">
 		<div class="px-5 py-4 space-y-4">
 			<div>
 				<label for="edit-name" class="block text-sm font-medium text-text-secondary mb-1.5">{{

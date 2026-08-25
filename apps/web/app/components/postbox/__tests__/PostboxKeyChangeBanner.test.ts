@@ -45,7 +45,10 @@ beforeEach(() => {
 	reacceptLoading.value = false;
 	isAdmin.value = true;
 	reacceptRun.mockReset();
-	reacceptRun.mockResolvedValue({ reaccepted: true, pinnedFingerprint: 'NEWFP' });
+	reacceptRun.mockResolvedValue({
+		ok: true,
+		result: { reaccepted: true, pinnedFingerprint: 'NEWFP' },
+	});
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
@@ -79,7 +82,7 @@ describe('PostboxKeyChangeBanner', () => {
 	});
 
 	it('a no-op re-accept (already resolved) surfaces an error and does not emit accepted', async () => {
-		reacceptRun.mockResolvedValue({ reaccepted: false });
+		reacceptRun.mockResolvedValue({ ok: true, result: { reaccepted: false } });
 		const wrapper = mountBanner();
 		await wrapper.find('[data-testid="key-change-accept"]').trigger('click');
 		await flushPromises();

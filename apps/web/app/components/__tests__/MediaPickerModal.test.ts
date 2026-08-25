@@ -10,8 +10,8 @@ const getStorageUrl = vi.fn();
 const uploadFileToStorage = vi.fn();
 
 beforeEach(() => {
-	generateUploadUrl.mockReset().mockResolvedValue('https://upload.example');
-	createMediaAsset.mockReset().mockResolvedValue('media-uploaded');
+	generateUploadUrl.mockReset().mockResolvedValue({ ok: true, result: 'https://upload.example' });
+	createMediaAsset.mockReset().mockResolvedValue({ ok: true, result: 'media-uploaded' });
 	getStorageUrl.mockReset().mockResolvedValue('https://files.example/uploaded');
 	uploadFileToStorage.mockReset().mockResolvedValue({
 		ok: true,

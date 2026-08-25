@@ -67,7 +67,7 @@ async function askAdmin() {
 	// run() resolves undefined on failure (error already toasted); only confirm
 	// when the request actually landed, so no false "we've let your admins know".
 	const res = await requestMailbox({});
-	if (res) requested.value = true;
+	if (res.ok) requested.value = true;
 }
 
 const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) || requested.value);

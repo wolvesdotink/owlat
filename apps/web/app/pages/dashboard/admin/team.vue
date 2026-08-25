@@ -224,7 +224,7 @@ const handleDeleteOrganization = async () => {
 	isDeletingOrg.value = true;
 
 	const result = await removeOrganization({});
-	if (result === undefined) {
+	if (!result.ok) {
 		isDeletingOrg.value = false;
 		return;
 	}

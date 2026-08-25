@@ -38,7 +38,7 @@ async function confirmPurge() {
 	const pluginId = purgeTarget.value;
 	const res = await resetPluginSettings({ pluginId });
 	purgeTarget.value = null;
-	if (res === undefined) return; // failure already toasted by the operation module
+	if (!res.ok) return; // failure already toasted by the operation module
 	showToast(t('dashboard.admin.instance.plugins.index.toasts.cleared', { pluginId }));
 }
 </script>
@@ -98,7 +98,12 @@ async function confirmPurge() {
 										}}
 									</p>
 									<p class="text-xs text-text-tertiary mt-1">
-										{{ t('dashboard.admin.instance.plugins.index.capabilityCount', plugin.capabilities.length) }}
+										{{
+											t(
+												'dashboard.admin.instance.plugins.index.capabilityCount',
+												plugin.capabilities.length
+											)
+										}}
 										<template v-if="plugin.hasSettings">
 											{{ t('dashboard.admin.instance.plugins.index.configurableSettings') }}
 										</template>

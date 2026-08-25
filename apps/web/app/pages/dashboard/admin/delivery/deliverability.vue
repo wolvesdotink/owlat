@@ -127,15 +127,15 @@ async function verify(item: DeliverabilityChecklistItem) {
 			itemId: item.id,
 			...(item.scope.kind === 'domain' ? { domainId: item.scope.domainId } : {}),
 		});
-		if (!result) return;
-		if (result.status === 'pass') {
+		if (!result.ok) return;
+		if (result.result.status === 'pass') {
 			showToast(
 				t('dashboard.admin.delivery.deliverability.toasts.itemVerified', {
 					title: itemTitle(item),
 				}),
 				'success'
 			);
-		} else if (result.status === 'pending-dns') {
+		} else if (result.result.status === 'pending-dns') {
 			showToast(t('dashboard.admin.delivery.deliverability.toasts.pendingDns'));
 		} else {
 			showToast(t('dashboard.admin.delivery.deliverability.toasts.needsAttention'), 'warning');
@@ -152,16 +152,16 @@ const { run: startLoopback, isLoading: isStartingLoopback } = useBackendOperatio
 
 async function startProof(domainId: Id<'domains'>) {
 	const result = await startLoopback({ domainId });
-	if (!result) return;
+	if (!result.ok) return;
 	showToast(
-		result.status === 'passed'
+		result.result.status === 'passed'
 			? t('dashboard.admin.delivery.deliverability.toasts.proofPassed')
-			: result.status === 'sending' || result.status === 'awaiting_inbound'
+			: result.result.status === 'sending' || result.result.status === 'awaiting_inbound'
 				? t('dashboard.admin.delivery.deliverability.toasts.proofSending')
 				: t('dashboard.admin.delivery.deliverability.toasts.proofFailed'),
-		result.status === 'passed'
+		result.result.status === 'passed'
 			? 'success'
-			: result.status === 'failed' || result.status === 'timed_out'
+			: result.result.status === 'failed' || result.result.status === 'timed_out'
 				? 'warning'
 				: 'info'
 	);

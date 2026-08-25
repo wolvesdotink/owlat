@@ -33,10 +33,10 @@ const isSubmitting = ref(false);
 const linkAndClose = async (threadId: Id<'conversationThreads'>) => {
 	isSubmitting.value = true;
 	try {
-		// useBackendOperation toasts failure and returns undefined; close
+		// useBackendOperation toasts failure and resolves `ok: false`; close
 		// only on a real success result.
 		const result = await linkChannelToInboxThread(props.roomId, threadId);
-		if (result !== undefined) emit('close');
+		if (result.ok) emit('close');
 	} finally {
 		isSubmitting.value = false;
 	}
@@ -46,7 +46,7 @@ const unlinkAndClose = async () => {
 	isSubmitting.value = true;
 	try {
 		const result = await unlinkChannel(props.roomId);
-		if (result !== undefined) emit('close');
+		if (result.ok) emit('close');
 	} finally {
 		isSubmitting.value = false;
 	}
@@ -103,12 +103,7 @@ const formatTime = (timestamp: number) => {
 		</div>
 
 		<div class="flex items-center justify-between gap-3 px-5 py-3 border-t border-border-subtle">
-			<UiButton
-				variant="danger-ghost"
-				size="sm"
-				:disabled="isSubmitting"
-				@click="unlinkAndClose"
-			>
+			<UiButton variant="danger-ghost" size="sm" :disabled="isSubmitting" @click="unlinkAndClose">
 				{{ t('components.chat.chatLinkEmailDialog.removeLink') }}
 			</UiButton>
 			<UiButton variant="secondary" @click="emit('close')">{{ t('common.close') }}</UiButton>

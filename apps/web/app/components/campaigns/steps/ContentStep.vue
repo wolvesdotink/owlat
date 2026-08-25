@@ -38,9 +38,12 @@ const createdTemplate = ref<{
 const { t } = useI18n();
 const { isPending: authPending, isAuthenticated } = useAuth();
 
-const { data: campaignWithRelations } = useConvexQuery(api.campaigns.campaigns.getWithRelations, () => ({
-	campaignId: props.campaignId,
-}));
+const { data: campaignWithRelations } = useConvexQuery(
+	api.campaigns.campaigns.getWithRelations,
+	() => ({
+		campaignId: props.campaignId,
+	})
+);
 
 const { results: emailTemplates } = usePaginatedQuery(
 	api.emailTemplates.emails.list,
@@ -162,13 +165,13 @@ const handleSubmit = async () => {
 				subject: campaignSubject.value.trim(),
 			});
 
-			if (!newId) return;
+			if (!newId.ok) return;
 
-			templateId = newId;
-			selectedTemplateId.value = newId;
+			templateId = newId.result;
+			selectedTemplateId.value = newId.result;
 			selectionType.value = 'existing';
 			createdTemplate.value = {
-				_id: newId,
+				_id: newId.result,
 				name: newTemplateName.value.trim(),
 				subject: campaignSubject.value.trim(),
 			};
@@ -179,7 +182,7 @@ const handleSubmit = async () => {
 			emailTemplateId: templateId!,
 			subject: campaignSubject.value.trim(),
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 
 		emit('submit');
 	} finally {
@@ -267,7 +270,10 @@ defineExpose({
 						t('components.campaigns.steps.contentStep.existingTemplatesLabel')
 					}}</label>
 					<div class="relative mt-1.5">
-						<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2" />
+						<Icon
+							name="lucide:search"
+							class="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2"
+						/>
 						<input
 							id="templateSearch"
 							v-model="templateSearchQuery"
@@ -374,7 +380,9 @@ defineExpose({
 				</UiButton>
 				<UiButton type="submit" :loading="isLoading" :disabled="isLoading">
 					{{ isLoading ? t('common.saving') : t('common.next') }}
-					<template v-if="!isLoading" #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4" /></template>
+					<template v-if="!isLoading" #iconRight
+						><Icon name="lucide:arrow-right" class="w-4 h-4"
+					/></template>
 				</UiButton>
 			</div>
 		</form>

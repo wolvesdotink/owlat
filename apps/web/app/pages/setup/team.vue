@@ -41,7 +41,7 @@ async function requestAccess() {
 	if (requested.value || sending.value) return;
 	const trimmed = note.value.trim();
 	const result = await sendRequest(trimmed ? { note: trimmed } : {});
-	if (result?.requested) {
+	if (result.ok && result.result.requested) {
 		requested.value = true;
 	}
 }

@@ -142,10 +142,10 @@ async function sendTestEmail() {
 	testSending.value = true;
 	try {
 		const created = await createDraftOp.run({ mailboxId: mb._id });
-		if (!created) return;
+		if (!created.ok) return;
 		const testBody = t('welcome.freshStart.testEmail.body');
 		const updated = await updateDraftOp.run({
-			draftId: created.draftId,
+			draftId: created.result.draftId,
 			toAddresses: [mb.address],
 			subject: t('welcome.freshStart.testEmail.subject'),
 			bodyText: testBody,
@@ -153,10 +153,10 @@ async function sendTestEmail() {
 		});
 		// Bail if the update failed (error already toasted): sending a
 		// recipient-less draft would only produce a second "No recipients" toast.
-		if (!updated) return;
-		const sent = await sendDraftOp.run({ draftId: created.draftId });
+		if (!updated.ok) return;
+		const sent = await sendDraftOp.run({ draftId: created.result.draftId });
 		// send() marks firstSendDone server-side; reflect it locally.
-		if (sent) testSent.value = true;
+		if (sent.ok) testSent.value = true;
 	} finally {
 		testSending.value = false;
 	}
@@ -274,11 +274,7 @@ function skipToInbox() {
 					<label for="fresh-notify" class="mb-1.5 block text-sm font-medium">
 						{{ t('welcome.freshStart.notifyLabel') }}
 					</label>
-					<select
-						id="fresh-notify"
-						v-model="notifyChoice"
-						class="input input-sm"
-					>
+					<select id="fresh-notify" v-model="notifyChoice" class="input input-sm">
 						<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt" :value="opt">
 							{{ notifyOptionLabel(opt) }}
 						</option>

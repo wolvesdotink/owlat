@@ -70,7 +70,7 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 			scope: { type: 'classification', id: category },
 			strategyKind: String(strategyKind),
 		});
-		if (result !== undefined)
+		if (result.ok)
 			showToast(
 				t('components.autonomy.autonomyLearningControls.strategyUpdatedToast', { category })
 			);

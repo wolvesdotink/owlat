@@ -131,7 +131,7 @@ const { run: updateNotes, isLoading: isSavingNotes } = useBackendOperation(
 );
 async function saveNotes() {
 	const result = await updateNotes({ contactId: contactId.value, notes: notesDraft.value });
-	if (result !== undefined) showToast(t('dashboard.audience.contacts.detail.toasts.noteSaved'));
+	if (result.ok) showToast(t('dashboard.audience.contacts.detail.toasts.noteSaved'));
 }
 
 // Topics
@@ -166,7 +166,7 @@ const handleAddToTopic = async (topicId: Id<'topics'>) => {
 		contactId: contactId.value,
 	});
 	isAddingToTopic.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	const topicName =
 		allTopics.value?.find((topic) => topic._id === topicId)?.name ||
 		t('dashboard.audience.contacts.detail.topicFallback');
@@ -179,7 +179,7 @@ const handleRemoveFromTopic = async (topicId: Id<'topics'>) => {
 		topicId,
 		contactId: contactId.value,
 	});
-	if (result === undefined) return;
+	if (!result.ok) return;
 	const topicName =
 		contactTopics.value?.find((topic) => topic._id === topicId)?.name ||
 		t('dashboard.audience.contacts.detail.topicFallback');
@@ -210,7 +210,7 @@ const { run: removeSuppression, isLoading: isRemovingSuppression } = useBackendO
 async function handleRemoveSuppression() {
 	if (!suppression.value) return;
 	const result = await removeSuppression({ blockedEmailId: suppression.value._id });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.audience.contacts.detail.toasts.suppressionRemoved'));
 }
 </script>

@@ -41,7 +41,7 @@ async function draft() {
 		focus: 'scheduling',
 		proposedTimes: props.proposedTimes,
 	});
-	if (res) replies.value = res.replies;
+	if (res.ok) replies.value = res.result.replies;
 }
 </script>
 

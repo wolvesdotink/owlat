@@ -101,9 +101,9 @@ async function handleSubmit() {
 		return;
 	}
 	provisioning.value = true;
-	let id: Id<'mailboxes'> | undefined;
+	let created: BackendOperationResult<Id<'mailboxes'>>;
 	if (isTeam.value) {
-		id = await createTeamInbox.run({
+		created = await createTeamInbox.run({
 			address: selectedAddress.value,
 			displayName: displayName.value || undefined,
 			memberUserIds: selectedMemberIds.value,
@@ -114,15 +114,15 @@ async function handleSubmit() {
 			error.value = t('dashboard.preferences.addAccount.errorNotSignedIn');
 			return;
 		}
-		id = await createMailbox.run({
+		created = await createMailbox.run({
 			userId: user.value.id,
 			address: selectedAddress.value,
 			displayName: displayName.value || undefined,
 		});
 	}
 	provisioning.value = false;
-	if (id === undefined) return;
-	createdMailboxId.value = id;
+	if (!created.ok) return;
+	createdMailboxId.value = created.result;
 	step.value = 4;
 }
 

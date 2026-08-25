@@ -200,7 +200,7 @@ const canTest = computed(
 async function handleTest() {
 	testResult.value = null;
 	const res = await testOp.run(buildCredentialArgs(form));
-	if (res) testResult.value = res;
+	if (res.ok) testResult.value = res.result;
 }
 
 async function handleSubmit() {
@@ -209,7 +209,7 @@ async function handleSubmit() {
 	// inbox (connectShared) with the picked roster; a shared update rotates a team
 	// inbox's credentials (updateCredentialsShared, keyed by mailboxId); the rest
 	// are the personal connect / credential update.
-	let res: { mailboxId: string } | undefined;
+	let res: BackendOperationResult<{ mailboxId: string }>;
 	if (props.mode === 'connect' && props.seedProvider) {
 		res = await connectSeedOp.run({
 			...buildCredentialArgs(form),
@@ -235,9 +235,9 @@ async function handleSubmit() {
 	} else {
 		res = await (props.mode === 'update' ? updateOp : connectOp).run(buildCredentialArgs(form));
 	}
-	if (res === undefined) return;
+	if (!res.ok) return;
 	form.password = '';
-	emit('submitted', { mailboxId: res.mailboxId });
+	emit('submitted', { mailboxId: res.result.mailboxId });
 }
 
 // Sharpen the app-password callout when the mailbox is actively failing auth or

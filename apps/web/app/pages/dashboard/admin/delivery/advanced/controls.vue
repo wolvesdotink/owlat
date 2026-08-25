@@ -204,12 +204,13 @@ function cellArgs(cell: RampCellControl) {
  * card afterwards; the other four have nothing to add to it.
  */
 async function writeSelectedCell<T extends { readonly refusal?: RampControlRefusal }>(
-	write: (cell: RampCellControl) => Promise<T | undefined>
+	write: (cell: RampCellControl) => Promise<BackendOperationResult<T>>
 ): Promise<T | undefined> {
 	const cell = selectedCell.value;
 	if (cell === null) return undefined;
 	beginWrite();
-	const result = await write(cell);
+	const written = await write(cell);
+	const result = written.ok ? written.result : undefined;
 	refusal.value = result?.refusal ?? null;
 	refetch();
 	return result;

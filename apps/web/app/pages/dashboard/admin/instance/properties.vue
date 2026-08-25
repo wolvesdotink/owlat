@@ -188,11 +188,9 @@ const handleCreate = async () => {
 	});
 	isCreating.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
-	showToast(
-		t('dashboard.admin.instance.properties.toasts.created', { label: createForm.label })
-	);
+	showToast(t('dashboard.admin.instance.properties.toasts.created', { label: createForm.label }));
 	closeCreateModal();
 };
 
@@ -209,7 +207,7 @@ const handleEdit = async () => {
 	});
 	isEditing.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showToast(t('dashboard.admin.instance.properties.toasts.updated'));
 	isEditModalOpen.value = false;
@@ -266,7 +264,7 @@ const handleDelete = async () => {
 	});
 	isDeleting.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showToast(
 		t('dashboard.admin.instance.properties.toasts.deleted', {
@@ -506,9 +504,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 
 					<!-- Type -->
 					<div>
-						<label class="label">{{
-							t('dashboard.admin.instance.properties.fields.type')
-						}}</label>
+						<label class="label">{{ t('dashboard.admin.instance.properties.fields.type') }}</label>
 						<div class="grid grid-cols-2 gap-3">
 							<button
 								v-for="type in propertyTypes"

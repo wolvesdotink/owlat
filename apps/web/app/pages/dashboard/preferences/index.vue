@@ -89,7 +89,7 @@ async function handleRename() {
 		mailboxId: renameTarget.value._id as Id<'mailboxes'>,
 		displayName: renameValue.value,
 	});
-	if (res === undefined) return;
+	if (!res.ok) return;
 	renameTarget.value = null;
 }
 
@@ -104,7 +104,7 @@ async function handleDelete() {
 	const res = await removeMailbox.run({
 		mailboxId: deleteTarget.value._id as Id<'mailboxes'>,
 	});
-	if (res === undefined) return;
+	if (!res.ok) return;
 	deleteTarget.value = null;
 }
 </script>
