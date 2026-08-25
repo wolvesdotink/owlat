@@ -75,7 +75,7 @@ const transitionInputValidator = v.union(
 		at: v.number(),
 		winner: v.union(v.literal('A'), v.literal('B')),
 	}),
-	v.object({ to: v.literal('none'), at: v.number() }),
+	v.object({ to: v.literal('none'), at: v.number() })
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ type ReducerResult = {
 function reduce(
 	campaign: Doc<'campaigns'>,
 	input: AbTestTransitionInput,
-	userId: string,
+	userId: string
 ): ReducerResult {
 	const from: AbTestMachineState = campaign.abTestStatus ?? 'none';
 
@@ -249,10 +249,7 @@ function buildPatch(input: AbTestTransitionInput): Record<string, unknown> {
 
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
-async function applyEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
-): Promise<void> {
+async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'audit_log': {
@@ -266,19 +263,15 @@ async function applyEffects(
 				break;
 			}
 			case 'schedule_winner_remainder': {
-				await ctx.scheduler.runAfter(
-					0,
-					internal.campaigns.send.sendCampaignWinnerToRemainder,
-					{ campaignId: effect.campaignId },
-				);
+				await ctx.scheduler.runAfter(0, internal.campaigns.send.sendCampaignWinnerToRemainder, {
+					campaignId: effect.campaignId,
+				});
 				break;
 			}
 			case 'schedule_auto_winner': {
-				await ctx.scheduler.runAfter(
-					effect.delayMs,
-					internal.campaigns.abTest.autoDeclareWinner,
-					{ campaignId: effect.campaignId },
-				);
+				await ctx.scheduler.runAfter(effect.delayMs, internal.campaigns.abTest.autoDeclareWinner, {
+					campaignId: effect.campaignId,
+				});
 				break;
 			}
 		}
@@ -291,7 +284,7 @@ async function dispatch(
 	ctx: MutationCtx,
 	campaign: Doc<'campaigns'>,
 	input: AbTestTransitionInput,
-	userId: string,
+	userId: string
 ): Promise<AbTestTransitionOutcome> {
 	const from: AbTestMachineState = campaign.abTestStatus ?? 'none';
 	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
