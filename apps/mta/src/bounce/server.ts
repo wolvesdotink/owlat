@@ -20,7 +20,6 @@ import {
 	createSmtpListener,
 	type SmtpListener,
 	type SmtpSession,
-	type SmtpAddress,
 	type SmtpHandlerResult,
 	type SmtpTlsConfig,
 } from '@owlat/smtp-listener';
@@ -28,23 +27,28 @@ import { parseMessage } from '@owlat/mail-message';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
-import { emailDomain } from '@owlat/shared/spfAlignment';
 import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
 import { createSlotTracker } from '../lib/connectionSlots.js';
-import { checkSpf, evaluateDmarc, dnsDmarcLookup, verifyDkim } from '@owlat/mail-auth';
+import { evaluateDmarc, dnsDmarcLookup, verifyDkim } from '@owlat/mail-auth';
 import { createInboundAuthResolvers } from './inboundAuthResolver.js';
 import { verifyArcChain } from './inboundArc.js';
+import { lookupOstrIpTier, type OstrLookupDeps, type OstrLookupOutcome } from './ostrLookup.js';
+import { resolveOstrMessageContext, startBounceOstr } from './ostrWiring.js';
+import { createOstrEvidenceCapture } from './ostrEvidence.js';
 import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
 import { dmarcFromIdentity } from '../inbound/parsedAddress.js';
 import type { SpfVerdict } from './types.js';
-import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
 import { isLocalAddress } from './serverHelpers.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 import { processBounceAttempt } from './attemptProcessor.js';
 import { recordDeliverabilityProbeIfPresent } from './deliverabilityProbe.js';
 import { buildOnRcptTo } from './recipientGate.js';
+import { buildOnMailFrom } from './senderGate.js';
 export { buildOnRcptTo } from './recipientGate.js';
+// The onMailFrom half lives beside the onRcptTo one (senderGate.ts /
+// recipientGate.ts); re-exported so existing importers are unaffected.
+export { buildOnMailFrom } from './senderGate.js';
 
 /** Hard cap for buffered inbound MIME (advertised via EHLO SIZE AND wire-enforced by the listener). */
 const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
@@ -63,7 +67,20 @@ interface BounceTransaction {
 	deliverabilityProbeToken?: string;
 }
 
-type BounceSession = SmtpSession<unknown, BounceTransaction>;
+/**
+ * Per-CONNECTION state, distinct from {@link BounceTransaction} because what it
+ * holds is a fact about the peer rather than about one message: the OSTR tier
+ * of the connecting IP, looked up once in `onConnect` (plan §12.2 — "IP tier
+ * consulted at connection time") and read back by every transaction on the
+ * connection. Keeping it off `transaction`, which the listener resets after
+ * DATA, is what makes it once-per-connection rather than once-per-message.
+ */
+interface BounceConnection {
+	/** In flight from `onConnect`; resolves to `none` when OSTR is off. */
+	ostrIpTier?: Promise<OstrLookupOutcome>;
+}
+
+type BounceSession = SmtpSession<BounceConnection, BounceTransaction>;
 
 /**
  * AckAndSwallowErrors — the explicit at-least-once decision (I2 e). The MX
@@ -84,6 +101,10 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 	// resolved for one check is served from cache for the next, and the SPF
 	// §4.6.4 lookup budget — which counts real resolver CALLS — is unaffected.
 	const authResolvers = createInboundAuthResolvers(redis);
+
+	// OSTR (plan §12.2): one consumer client for the process — see ostrWiring.ts.
+	const ostrWiring = startBounceOstr(config, authResolvers.ostrTxt);
+	const ostr = ostrWiring.deps;
 
 	// STARTTLS is offered only when cert+key are configured. The listener applies
 	// the hardened TLS floor by default (TLSv1.2, AEAD-only ECDHE, honorCipherOrder —
@@ -118,7 +139,11 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 	// smtp-server's `connections.size > maxClients`.
 	const liveConnections = { count: 0 };
 
-	const listener = createSmtpListener<unknown, BounceTransaction>({
+	const listener = createSmtpListener<BounceConnection, BounceTransaction>({
+		// Per-connection state (see {@link BounceConnection}). Created empty for
+		// EVERY connection so `onConnect` can record the OSTR IP lookup without
+		// each handler having to wonder whether the object exists.
+		createSession: () => ({}),
 		// The 220 greeting + EHLO open with this name (RFC 5321 §4.2). It MUST be
 		// the FQDN that matches the IP's reverse-DNS PTR record, or a connecting
 		// MTA's banner/PTR consistency check fails.
@@ -144,7 +169,8 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 			config,
 			redis,
 			(session) => slots.hold(session),
-			() => liveConnections.count > config.bounceMaxClients
+			() => liveConnections.count > config.bounceMaxClients,
+			ostr
 		),
 
 		// Inbound-TLS gate + SPF authentication of the envelope sender.
@@ -154,7 +180,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 		onRcptTo: buildOnRcptTo(config, redis),
 
 		// The Bounce intake pipeline over a `ParsedMessage`.
-		onData: buildOnData(config, redis, authResolvers),
+		onData: buildOnData(config, redis, authResolvers, ostr),
 
 		onError: (err) => logger.error({ err }, 'Bounce SMTP listener error'),
 	});
@@ -174,6 +200,10 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 		slots.track(socket);
 	});
 
+	// The snapshot refresh belongs to this listener: nothing else consumes the
+	// registry, so a closed listener must not leave an hourly fetch behind it.
+	listener.raw.once('close', () => ostrWiring.stop());
+
 	return listener;
 }
 
@@ -187,12 +217,16 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
  * lock out senders. An admitted non-local peer is tarpitted before proceeding.
  * `onSlotHeld` runs only when a slot was actually held (net +1), so close
  * releases exactly that slot.
+ *
+ * It is also where the OSTR IP tier is asked for (plan §12.2), once per
+ * admitted connection — see {@link BounceConnection}.
  */
 export function buildOnConnect(
 	config: MtaConfig,
 	redis: Redis,
 	onSlotHeld: (session: BounceSession) => void,
-	isOverCapacity: () => boolean
+	isOverCapacity: () => boolean,
+	ostr: OstrLookupDeps = { config, client: null }
 ) {
 	return async function onConnect(session: BounceSession): Promise<SmtpHandlerResult> {
 		const remoteIp = session.remoteAddress;
@@ -214,6 +248,17 @@ export function buildOnConnect(
 			}
 			onSlotHeld(session); // net +1 held — release exactly this slot on close
 
+			// OSTR §12.2: the IP half, at connection time, for an ADMITTED peer —
+			// a refused connection is told nothing and asks nothing. Deliberately
+			// not awaited: it resolves under the tarpit and the transaction that
+			// follows, so by the time `onData` reads it the answer is in hand and
+			// the per-message path carries at most the domain lookup.
+			// `lookupOstrIpTier` neither throws nor rejects (see its module doc), so
+			// this promise cannot become an unhandled rejection while it waits.
+			if (session.state !== undefined) {
+				session.state.ostrIpTier = lookupOstrIpTier(ostr, remoteIp);
+			}
+
 			// Tarpit: deliberately slow non-local connections down.
 			if (config.bounceTarpitEnabled && !isLocalAddress(remoteIp)) {
 				await new Promise((resolve) => setTimeout(resolve, config.bounceTarpitDelayMs));
@@ -222,82 +267,6 @@ export function buildOnConnect(
 		} catch (err) {
 			logger.error({ err, remoteIp }, 'Error in onConnect rate limit check');
 			return; // Fail-open so a Redis hiccup doesn't block legitimate bounces.
-		}
-	};
-}
-
-/**
- * Inbound-TLS gate + SPF authentication of the envelope sender (onMailFrom).
- *
- * A plaintext transaction is refused when the dynamic inbound-TLS policy requires
- * encryption (RFC 3207). For a null reverse-path (`MAIL FROM:<>`), SPF evaluates
- * the RFC5321.HELO identity instead of skipping authentication (RFC 7208 §2.4).
- * When `inboundSpfEnabled` and the applicable identity returns `fail`, the
- * transaction is rejected (RFC 7208 §8.4). The full RFC 7208 §2.6 verdict is stashed on the
- * typed transaction state so `onData` can thread softfail / temperror / neutral
- * into the mailbox payload (RFC 8601).
- */
-export function buildOnMailFrom(
-	config: MtaConfig,
-	redis: Redis,
-	authResolvers: ReturnType<typeof createInboundAuthResolvers>
-) {
-	return async function onMailFrom(
-		address: SmtpAddress,
-		session: BounceSession
-	): Promise<SmtpHandlerResult> {
-		if ((await isInboundTlsRequired(redis)) && !session.secure) {
-			logger.warn(
-				{ remoteIp: session.remoteAddress, from: address.address },
-				'Plaintext inbound SMTP transaction rejected — STARTTLS required'
-			);
-			return inboundTlsRequiredReply();
-		}
-
-		if (!config.inboundSpfEnabled) {
-			return;
-		}
-
-		try {
-			const heloIdentity = session.clientHostname || config.ehloHostname;
-			const spfResult = await checkSpf(
-				session.remoteAddress,
-				address.address,
-				heloIdentity,
-				authResolvers.spf
-			);
-
-			// Record the full verdict (not just fail/accept) plus the envelope MAIL
-			// FROM domain so `onData` can thread them into the payload for DMARC
-			// alignment (RFC 7489 §3.1 — SPF authenticates the envelope, not From).
-			session.transaction = {
-				spfResult: spfResult.result,
-				envelopeFromDomain:
-					emailDomain(address.address) || heloIdentity.trim().toLowerCase().replace(/\.$/, ''),
-			};
-
-			if (spfResult.result === 'fail') {
-				logger.warn(
-					{ remoteIp: session.remoteAddress, from: address.address, spf: spfResult },
-					'SPF check failed — rejecting'
-				);
-				return { code: 550, text: 'SPF authentication failed' };
-			}
-
-			if (spfResult.result === 'softfail') {
-				logger.info(
-					{ remoteIp: session.remoteAddress, from: address.address, spf: spfResult },
-					'SPF softfail — flagged but accepting'
-				);
-			}
-
-			return;
-		} catch (err) {
-			// On SPF lookup failure, accept the message (fail-open to not block
-			// bounces) but record the transient verdict so it is not silently lost.
-			session.transaction = { spfResult: 'temperror' };
-			logger.warn({ err, from: address.address }, 'SPF lookup error — accepting anyway');
-			return;
 		}
 	};
 }
@@ -315,7 +284,8 @@ export function buildOnMailFrom(
 export function buildOnData(
 	config: MtaConfig,
 	redis: Redis,
-	authResolvers: ReturnType<typeof createInboundAuthResolvers>
+	authResolvers: ReturnType<typeof createInboundAuthResolvers>,
+	ostr: OstrLookupDeps = { config, client: null }
 ) {
 	return async function onData(
 		message: Buffer,
@@ -336,10 +306,22 @@ export function buildOnData(
 			const envelopeFrom = session.mailFrom;
 			const returnPath = envelopeFrom && envelopeFrom.address !== '<>' ? envelopeFrom.address : '';
 
+			// Observer mode (OSTR §7.2): tap the verifier as it works so the signature
+			// that decided the verdict can be substantiated later. The tap is passive —
+			// `@owlat/mail-auth` swallows anything the callback throws — and it is armed
+			// only when the operator turned observer mode on, because it captures raw
+			// signed headers and a point-in-time DNS key record.
+			const evidenceCapture = config.ostrObserverEnabled ? createOstrEvidenceCapture() : undefined;
+
 			// Verify inbound DKIM (RFC 6376) over the raw bytes before parsing mangles
 			// canonicalization. Fail-open: a crash yields `temperror`, never a NACK.
 			const dkim = config.inboundDkimEnabled
-				? await verifyDkim(rawBuffer, { resolver: authResolvers.dkim })
+				? await verifyDkim(rawBuffer, {
+						resolver: authResolvers.dkim,
+						...(evidenceCapture !== undefined
+							? { onSignatureEvidence: evidenceCapture.onSignatureEvidence }
+							: {}),
+					})
 				: undefined;
 			const dkimResult = dkim?.result;
 
@@ -394,8 +376,28 @@ export function buildOnData(
 			const arcSealerDomain = arcVerdict?.sealerDomain;
 			const arcAttestsOriginalPass = arcVerdict?.attestsOriginalPass;
 
+			// OSTR (plan §12.2): the registry signal for this message plus the DKIM
+			// evidence an observer may later report on — both in ostrWiring.ts, which
+			// also owns the "which signature is this message judged on" pick.
+			const ostrContext = await resolveOstrMessageContext(ostr, {
+				...(dkim?.passingDomains !== undefined ? { dkimPassingDomains: dkim.passingDomains } : {}),
+				...(passingSignature?.domain !== undefined
+					? { passingSignatureDomain: passingSignature.domain }
+					: {}),
+				fromDomain: fromIdentity.domain,
+				...(session.state?.ostrIpTier !== undefined
+					? { connectionIpTier: session.state.ostrIpTier }
+					: {}),
+				...(evidenceCapture !== undefined ? { evidenceCapture } : {}),
+				...(parsed.messageId !== undefined ? { messageId: parsed.messageId } : {}),
+				verifiedAt: new Date(),
+			});
+
 			const deps = { redis, config };
-			const piped = await runPipeline(deps, mainPipeline, {
+			// One ctx for both the pipeline and the effect runner: they classify and
+			// act over the SAME message, so a field added to one must never be able to
+			// go missing from the other.
+			const ctx = {
 				parsed,
 				rawBuffer,
 				rcptTo,
@@ -409,7 +411,11 @@ export function buildOnData(
 				envelopeFromDomain,
 				dkimSigningDomain: dkim?.domain,
 				returnPath,
-			});
+				// Spread rather than assigned `undefined`: with OSTR off the payload
+				// Convex receives must be byte-identical to the pre-OSTR one.
+				...ostrContext,
+			};
+			const piped = await runPipeline(deps, mainPipeline, ctx);
 
 			if (piped.kind === 'dropSilently') {
 				return AckAndSwallowErrors;
@@ -426,21 +432,7 @@ export function buildOnData(
 				return AckAndSwallowErrors;
 			}
 
-			await processBounceAttempt(deps, piped.attempt, {
-				parsed,
-				rawBuffer,
-				rcptTo,
-				dkimResult,
-				dmarcResult,
-				dmarcPolicy,
-				arcCv,
-				arcSealerDomain,
-				arcAttestsOriginalPass,
-				spfResult,
-				envelopeFromDomain,
-				dkimSigningDomain: dkim?.domain,
-				returnPath,
-			});
+			await processBounceAttempt(deps, piped.attempt, ctx);
 
 			return AckAndSwallowErrors;
 		} catch (err) {

@@ -1,0 +1,1 @@
+{"explanation":[{"contribution":-26.94,"evidence":[{"index":10,"logId":"log-a"},{"index":10,"logId":"log-b"}],"signal":"trap-hits","summary":"Spam-trap hits reported by 2 observers across 2 attestations."}],"policy":"ostr-policy-v1","score":13,"subject":{"ip":"2001:db8:0:1::a"},"tier":"warned"}

@@ -1,5 +1,6 @@
 /**
- * Cached DNS resolvers for the inbound authentication path (SPF / DMARC / DKIM).
+ * Cached DNS resolvers for the inbound authentication path (SPF / DMARC / DKIM),
+ * plus the OSTR tier lookup that rides the same cache.
  *
  * The bounce/inbound SMTP server evaluates SPF (RFC 7208), DMARC (RFC 7489) and
  * DKIM (RFC 6376) for every accepted message. Each of those checks issues DNS
@@ -29,6 +30,7 @@ import {
 	type RedisLike,
 	type SpfDnsResolver,
 } from '@owlat/mail-auth';
+import type { ResolveTxt } from '@owlat/ostr-client';
 import type { ArcDnsResolver } from './inboundArc.js';
 
 /**
@@ -37,6 +39,26 @@ import type { ArcDnsResolver } from './inboundArc.js';
  * cache clamps it to its 1-hour cap, the conservative bound the design allows.
  */
 const POSITIVE_TTL_SECONDS = 3600;
+
+/**
+ * Cache ceiling for an OSTR tier answer, and the reason it is not the 1-hour
+ * cap the auth records take.
+ *
+ * Spec 08 §8.1: "A client MUST honour TTLs and MUST NOT pin answers past them."
+ * Node's stock resolver throws the TXT TTL away (see {@link nodeDnsResolve}), so
+ * the only honest way to obey that rule without a raw-DNS library is to pin for
+ * LESS than any TTL an aggregator plausibly publishes — the same §8.1 says those
+ * are "around one hour for hot entries". Five minutes is comfortably under it,
+ * which bounds how long a demotion to `flagged`, or the retraction of a wrongful
+ * one, can take to reach this MX. The cost is one query per name per 5 minutes
+ * instead of per hour, which is the cheap side of that trade.
+ */
+export const OSTR_TIER_MAX_TTL_SECONDS = 300;
+
+/** Cache key prefix for OSTR tier answers — separate from the auth records so
+ *  the shorter ceiling above cannot be defeated by an entry another lookup
+ *  wrote at the 1-hour cap. */
+const OSTR_CACHE_PREFIX = 'mailauth:dns:ostr:';
 
 /** A low-level DNS answer: the type-specific records plus an optional TTL. */
 export interface RawDnsAnswer {
@@ -148,6 +170,25 @@ export interface InboundAuthResolvers {
 	 * verifier's seal / AMS key lookups need — same shared cache, no real DNS.
 	 */
 	readonly arc: ArcDnsResolver;
+	/**
+	 * OSTR: the `ResolveTxt` shape `@owlat/ostr-client` consumes, over its OWN
+	 * Redis cache (same `base`, same connection, separate key space and a
+	 * separate ceiling — {@link OSTR_TIER_MAX_TTL_SECONDS}), so a busy MX asks
+	 * the aggregator's zone once per name per 5 minutes rather than once per
+	 * message.
+	 *
+	 * `ttlSeconds` is what THIS answer is pinned for, not the record's own TTL:
+	 * Node cannot surface a TXT TTL, so a miss reports the (capped) substitute
+	 * the cache stored the entry under, and a HIT reports 0 — "already pinned
+	 * elsewhere, do not pin again". The client's in-process cache treats 0 as
+	 * "do not cache", which is what keeps the Redis entry the single expiry and
+	 * stops the two caches from compounding into a pin twice as long as either.
+	 *
+	 * "No record" is an EMPTY answer here, which `lookupTierViaDns` reads as
+	 * `not-found` — the fact "no evidence", not a lookup failure. So is a record
+	 * of an unexpected shape (see {@link toTxtRecords}).
+	 */
+	readonly ostrTxt: ResolveTxt;
 }
 
 /**
@@ -164,10 +205,44 @@ export function createInboundAuthResolvers(
 	const cached = createCachedResolver(base, redis);
 	const txtRecords = async (name: string): Promise<string[][]> =>
 		(await cached(name, 'TXT')).records as string[][];
+	const ostrCached = createCachedResolver(base, redis, {
+		keyPrefix: OSTR_CACHE_PREFIX,
+		maxTtlSeconds: OSTR_TIER_MAX_TTL_SECONDS,
+	});
 	return {
 		spf: toSpfResolver(cached),
 		dkim: txtRecords,
 		dmarcTxt: txtRecords,
 		arc: toThrowingTxtResolver(txtRecords),
+		ostrTxt: async (name) => {
+			const answer = await ostrCached(name, 'TXT');
+			return {
+				records: toTxtRecords(answer.records),
+				ttlSeconds: Math.min(answer.ttl, OSTR_TIER_MAX_TTL_SECONDS),
+			};
+		},
 	};
+}
+
+/**
+ * Narrow a cached answer to TXT's `string[][]`, or to NO RECORDS at all.
+ *
+ * The auth resolvers above cast, which is fine for records they hand to
+ * `@owlat/mail-auth`'s own parsers on a path that already treats junk as
+ * `permerror`. The OSTR path is checked instead of cast because its input can
+ * be a Redis entry — stale, or written by anything else holding the connection
+ * — and "one record, parsed" is a load-bearing distinction there (two records
+ * at a name is `not-found` by spec 08 §8.1, not "pick one"). An unexpected
+ * shape becomes an empty answer, i.e. "no evidence", which is the fail-open
+ * outcome every other OSTR failure lands on.
+ */
+function toTxtRecords(records: unknown[]): string[][] {
+	const parsed: string[][] = [];
+	for (const record of records) {
+		if (!Array.isArray(record)) return [];
+		const chunks = record.filter((chunk): chunk is string => typeof chunk === 'string');
+		if (chunks.length !== record.length) return [];
+		parsed.push(chunks);
+	}
+	return parsed;
 }

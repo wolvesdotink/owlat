@@ -1,0 +1,108 @@
+{
+	"description": "A stranger files an appeal carrying the victim as subject. An appellant must author its own appeal, so the contested evidence stays and nobody's appeal budget is burnt.",
+	"subject": {
+		"domain": "victim.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 70,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "victim.example"
+				},
+				"window": {
+					"from": "2026-02-01T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 30000,
+					"spfPass": 29400,
+					"dkimPass": 29400,
+					"dmarcPass": 29400,
+					"tlsInbound": 30000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 71,
+			"loggedAt": "2026-07-11T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "accuser.example",
+				"subject": {
+					"domain": "victim.example"
+				},
+				"window": {
+					"from": "2026-06-21T00:00:00Z",
+					"to": "2026-07-11T00:00:00Z"
+				},
+				"body": {
+					"messages": 20000,
+					"spfPass": 19600,
+					"dkimPass": 19600,
+					"dmarcPass": 19600,
+					"tlsInbound": 20000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 72,
+			"loggedAt": "2026-07-11T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "accuser.example",
+				"subject": {
+					"domain": "victim.example"
+				},
+				"window": {
+					"from": "2026-06-21T00:00:00Z",
+					"to": "2026-07-11T00:00:00Z"
+				},
+				"body": {
+					"reports": 400,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 73,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "appeal",
+				"observer": "stranger.example",
+				"subject": {
+					"domain": "victim.example"
+				},
+				"body": {
+					"contested": [
+						{
+							"logId": "log-a",
+							"index": 72
+						}
+					],
+					"statement": "Filed in the victim's name by someone else."
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

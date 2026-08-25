@@ -8,24 +8,22 @@
  * Canonicalization is delegated to the shared `../canon.ts` public API (D4).
  */
 
-import {
-	createHash,
-	createPublicKey,
-	timingSafeEqual,
-	verify as cryptoVerify,
-	type KeyObject,
-} from 'crypto';
-import {
-	canonicalizeBody,
-	canonicalizeHeaderField,
-	parseCanonicalization,
-	stripSignatureValue,
-	type Canonicalization,
-} from '../canon.js';
+import { createHash, verify as cryptoVerify, type KeyObject } from 'crypto';
+import { canonicalizeBody, parseCanonicalization, type Canonicalization } from '../canon.js';
 import type { DkimVerdict } from '../dmarc.js';
-import { isNoRecordDnsError } from '../dnsErrors.js';
+import {
+	createEvidenceCollector,
+	parseSignedHeaderNames,
+	type DkimSignatureEvidence,
+} from './evidence.js';
 import { isKeyRecordError, parseDkimKeyRecord, type DkimKeyRecord } from './keyRecord.js';
 import type { HeaderField } from './message.js';
+import {
+	buildHeaderHashInput,
+	buildPublicKey,
+	classifyDnsError,
+	timingSafeEqualStrings,
+} from './signatureCrypto.js';
 import { parseTagList } from './tagList.js';
 
 /**
@@ -62,10 +60,13 @@ export interface MessageSignatureOptions {
 	 * so the ARC verifier passes `false`.
 	 */
 	readonly requireVersion?: boolean;
+	/**
+	 * Passive OSTR §7.2 evidence tap: called once per signature attempt that
+	 * reached DNS key resolution, whatever the verdict. Anything it throws is
+	 * swallowed — the verification result is never affected.
+	 */
+	readonly onSignatureEvidence?: (evidence: DkimSignatureEvidence) => void;
 }
-
-/** DER SubjectPublicKeyInfo prefix for a raw 32-byte Ed25519 key (RFC 8410). */
-const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
 /**
  * RFC 8301 §3.2: verifiers MUST NOT treat an RSA public key shorter than 1024
@@ -85,15 +86,6 @@ function isWeakRsaKey(key: KeyObject): boolean {
 /** Strip all whitespace — for base64 (`b=`, `bh=`) and colon lists (`h=`). */
 function stripWsp(value: string): string {
 	return value.replace(/[ \t\r\n]+/g, '');
-}
-
-/** Header names carried by `h=`, normalized for RFC 6376 case-insensitive matching. */
-function signedHeaderNames(hTag: string): string[] {
-	return hTag
-		.split(':')
-		.map((name) => name.toLowerCase())
-		.map((name) => name.trim())
-		.filter((name) => name !== '');
 }
 
 /** Lowercase a DKIM domain for identity comparisons. */
@@ -197,7 +189,16 @@ export async function verifyMessageSignature(
 		...(selector !== undefined ? { selector } : {}),
 		...(algorithmRaw !== undefined ? { algorithm: algorithmRaw } : {}),
 	};
-	const withVerdict = (verdict: DkimVerdict): DkimSignatureResult => ({ ...base, verdict });
+	// OSTR §7.2 evidence tap. The collector stays silent until it is armed at the
+	// key lookup, so a signature that never reached DNS (missing tags, unknown
+	// `a=`, a body-hash mismatch) produces no evidence — there is no key record
+	// to describe. Every exit runs through `withVerdict`, so each post-DNS attempt
+	// reports exactly once, whatever the verdict.
+	const evidence = createEvidenceCollector(options.onSignatureEvidence, sigField, headerFields);
+	const withVerdict = (verdict: DkimVerdict): DkimSignatureResult => {
+		evidence.report(verdict);
+		return { ...base, verdict };
+	};
 
 	// Required tags (RFC 6376 §3.5): v a b bh d s h. ARC's AMS omits `v=` (RFC 8617
 	// §4.1.2), so the ARC caller drops the `v=1` gate via `requireVersion: false`.
@@ -226,7 +227,7 @@ export async function verifyMessageSignature(
 	// lets a cryptographically valid signature authenticate only attacker-chosen
 	// headers/body while leaving the author identity replaceable, which must never
 	// feed a `pass` into DMARC.
-	if (!signedHeaderNames(hTag).includes('from')) {
+	if (!parseSignedHeaderNames(hTag).includes('from')) {
 		return withVerdict('permerror');
 	}
 
@@ -294,6 +295,21 @@ export async function verifyMessageSignature(
 	}
 
 	// --- Public key retrieval --------------------------------------------
+	// Arm the evidence tap here: from this point every exit has reached DNS key
+	// resolution and reports. `dnsKeyRecordTxt` is filled in once a usable record
+	// is chosen and stays `''` when the lookup fails or yields nothing usable.
+	evidence.arm({
+		domain,
+		selector,
+		// `parseAlgorithm` already returned a supported pair above, which is
+		// impossible for an absent `a=`; the `?? ''` only narrows the type (same
+		// precedent as `rawLimit` above) and never actually yields `''`.
+		algorithm: algorithmRaw ?? '',
+		usesBodyLengthTag: hasLengthTag,
+		hTag,
+		bodyHash: stripWsp(bhTag),
+	});
+
 	const keyName = `${selector}._domainkey.${domain}`;
 	let keyRecord: DkimKeyRecord;
 	try {
@@ -302,8 +318,16 @@ export async function verifyMessageSignature(
 		if (joined.length === 0) {
 			return withVerdict('permerror');
 		}
-		const parsed = joined.map((r) => parseDkimKeyRecord(r)).find((r) => !isKeyRecordError(r));
-		if (parsed === undefined || isKeyRecordError(parsed)) {
+		let parsed: DkimKeyRecord | undefined;
+		for (const txt of joined) {
+			const candidate = parseDkimKeyRecord(txt);
+			if (!isKeyRecordError(candidate)) {
+				parsed = candidate;
+				evidence.recordKeyRecord(txt);
+				break;
+			}
+		}
+		if (parsed === undefined) {
 			return withVerdict('permerror');
 		}
 		keyRecord = parsed;
@@ -348,6 +372,7 @@ export async function verifyMessageSignature(
 	} catch {
 		return withVerdict('permerror');
 	}
+	evidence.recordKey(publicKey, algorithm.keyType);
 
 	// RFC 8301 §3.2: an RSA key shorter than 1024 bits is a policy failure, not a
 	// pass — a factorable modulus makes the signature forgeable. mailauth records
@@ -418,82 +443,4 @@ export async function verifyMessageSignature(
 	}
 
 	return withVerdict('pass');
-}
-
-/**
- * Build the byte string over which the DKIM signature is computed: the
- * canonicalized signed headers named by `h=` (each selected bottom-up so a
- * later-added duplicate can't be swapped in), followed by the canonicalized
- * DKIM-Signature header itself with its `b=` value emptied and NO trailing CRLF.
- */
-function buildHeaderHashInput(
-	headerFields: readonly HeaderField[],
-	hTag: string,
-	sigField: string,
-	mode: Canonicalization
-): Buffer {
-	// Per-name stacks of raw fields in document order; consumed from the bottom.
-	const stacks = new Map<string, string[]>();
-	for (const field of headerFields) {
-		const stack = stacks.get(field.name);
-		if (stack) {
-			stack.push(field.raw);
-		} else {
-			stacks.set(field.name, [field.raw]);
-		}
-	}
-
-	const names = hTag
-		.split(':')
-		.map((n) => n.trim().toLowerCase())
-		.filter((n) => n !== '');
-
-	const parts: string[] = [];
-	for (const name of names) {
-		const raw = stacks.get(name)?.pop();
-		// A name in h= with no (remaining) matching header contributes NOTHING —
-		// not even an empty `name:` field or a CRLF — matching mailauth
-		// (`getSigningHeaderLines`) / OpenDKIM. This is what lets the standard
-		// oversigning defense (`h=from:from`, one From header) verify; a synthetic
-		// `${name}:`+CRLF would false-`fail` that legitimate, very common mail.
-		if (raw === undefined) {
-			continue;
-		}
-		parts.push(canonicalizeHeaderField(raw, mode));
-	}
-
-	const sigCanon = canonicalizeHeaderField(stripSignatureValue(sigField), mode);
-	const joined = parts.map((p) => `${p}\r\n`).join('') + sigCanon;
-	return Buffer.from(joined, 'latin1');
-}
-
-/** Construct a Node public key from a parsed DKIM key record. */
-function buildPublicKey(record: DkimKeyRecord, keyType: 'rsa' | 'ed25519'): KeyObject {
-	const material = Buffer.from(record.publicKey, 'base64');
-	if (keyType === 'ed25519') {
-		const der = Buffer.concat([ED25519_SPKI_PREFIX, material]);
-		return createPublicKey({ key: der, format: 'der', type: 'spki' });
-	}
-	// DKIM RSA keys are published as an SPKI SubjectPublicKeyInfo (RFC 6376 §3.6.1),
-	// which is also what the mailauth oracle accepts — do NOT fall back to bare
-	// PKCS#1, or we would verdict-diverge by accepting a key the oracle rejects.
-	return createPublicKey({ key: material, format: 'der', type: 'spki' });
-}
-
-/** Classify a resolver rejection into a permanent vs transient DKIM verdict. */
-function classifyDnsError(err: unknown): DkimVerdict {
-	return isNoRecordDnsError(err) ? 'permerror' : 'temperror';
-}
-
-/**
- * Constant-time equality for base64 hash strings via `crypto.timingSafeEqual`,
- * which needs equal-length buffers (hence the length short-circuit first).
- */
-function timingSafeEqualStrings(a: string, b: string): boolean {
-	const ab = Buffer.from(a, 'latin1');
-	const bb = Buffer.from(b, 'latin1');
-	if (ab.length !== bb.length) {
-		return false;
-	}
-	return timingSafeEqual(ab, bb);
 }

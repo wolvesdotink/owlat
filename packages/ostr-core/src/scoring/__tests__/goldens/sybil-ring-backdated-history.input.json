@@ -1,0 +1,246 @@
+{
+	"description": "A ring of four fresh observers cross-submits fabricated multi-year traffic about its own sender, all logged one day ago. Both defences bite: the copies on the second log fold into one attestation, and the claimed history is bounded by what the log proves.",
+	"subject": {
+		"domain": "sybil-target.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 10,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "watcher-one.example",
+				"subject": {
+					"domain": "sybil-target.example"
+				},
+				"window": {
+					"from": "2021-03-01T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 4000000,
+					"spfPass": 4000000,
+					"dkimPass": 4000000,
+					"dmarcPass": 4000000,
+					"tlsInbound": 4000000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 10,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "watcher-one.example",
+				"subject": {
+					"domain": "sybil-target.example"
+				},
+				"window": {
+					"from": "2021-03-01T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 4000000,
+					"spfPass": 4000000,
+					"dkimPass": 4000000,
+					"dmarcPass": 4000000,
+					"tlsInbound": 4000000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 11,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "watcher-two.example",
+				"subject": {
+					"domain": "sybil-target.example"
+				},
+				"window": {
+					"from": "2021-03-01T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 3500000,
+					"spfPass": 3500000,
+					"dkimPass": 3500000,
+					"dmarcPass": 3500000,
+					"tlsInbound": 3500000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 11,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "watcher-two.example",
+				"subject": {
+					"domain": "sybil-target.example"
+				},
+				"window": {
+					"from": "2021-03-01T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 3500000,
+					"spfPass": 3500000,
+					"dkimPass": 3500000,
+					"dmarcPass": 3500000,
+					"tlsInbound": 3500000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 12,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "watcher-three.example",
+				"subject": {
+					"domain": "sybil-target.example"
+				},
+				"window": {
+					"from": "2021-03-01T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 3000000,
+					"spfPass": 3000000,
+					"dkimPass": 3000000,
+					"dmarcPass": 3000000,
+					"tlsInbound": 3000000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 12,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "watcher-three.example",
+				"subject": {
+					"domain": "sybil-target.example"
+				},
+				"window": {
+					"from": "2021-03-01T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 3000000,
+					"spfPass": 3000000,
+					"dkimPass": 3000000,
+					"dmarcPass": 3000000,
+					"tlsInbound": 3000000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 13,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "watcher-four.example",
+				"subject": {
+					"domain": "sybil-target.example"
+				},
+				"window": {
+					"from": "2021-03-01T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 2500000,
+					"spfPass": 2500000,
+					"dkimPass": 2500000,
+					"dmarcPass": 2500000,
+					"tlsInbound": 2500000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 13,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "watcher-four.example",
+				"subject": {
+					"domain": "sybil-target.example"
+				},
+				"window": {
+					"from": "2021-03-01T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 2500000,
+					"spfPass": 2500000,
+					"dkimPass": 2500000,
+					"dmarcPass": 2500000,
+					"tlsInbound": 2500000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 1,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "posture",
+				"observer": "sybil-target.example",
+				"subject": {
+					"domain": "sybil-target.example"
+				},
+				"body": {
+					"dmarcPolicy": "reject",
+					"dmarcAlignment": "strict",
+					"dnssec": true,
+					"mtaSts": true,
+					"registeredBefore": "2019-01-01T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

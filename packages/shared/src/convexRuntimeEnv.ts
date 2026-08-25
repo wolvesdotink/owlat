@@ -108,6 +108,16 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// Mail sync worker
 	'MAIL_SYNC_API_URL',
 	'MAIL_SYNC_API_KEY',
+	// OSTR (trust registry). The consumer pair feeds the ostr feature flag's
+	// tier lookups and the observer keys drive the report/submission crons —
+	// all read at Convex function runtime, so they must reach the deployment.
+	'OSTR_AGGREGATOR_PUBLIC_KEY',
+	'OSTR_AGGREGATOR_URL',
+	'OSTR_LOG_URLS',
+	'OSTR_MIN_MAILBOXES',
+	'OSTR_OBSERVER_DOMAIN',
+	'OSTR_OBSERVER_ENABLED',
+	'OSTR_OBSERVER_PRIVATE_KEY',
 	// Provider: Resend
 	'RESEND_API_KEY',
 	'RESEND_WEBHOOK_SECRET',

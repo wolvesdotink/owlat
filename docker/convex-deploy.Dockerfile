@@ -90,6 +90,12 @@ COPY packages/email-renderer/ packages/email-renderer/
 COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/channels/ packages/channels/
 COPY packages/plugin-host/ packages/plugin-host/
+# OSTR: `convex/ostr/*` imports the observer machinery (and, through it, the
+# core spec package) at runtime under observer mode, so both are in the deploy
+# closure now — `@owlat/ostr-core` used to be a devDependency reached only by a
+# drift-guard test, which deliberately kept it out of this image.
+COPY packages/ostr-core/ packages/ostr-core/
+COPY packages/ostr-observer/ packages/ostr-observer/
 COPY packages/provider-kit/package.json packages/provider-kit/package.json
 COPY --from=deps /app/packages/provider-kit/dist/ packages/provider-kit/dist/
 COPY packages/plugin-kit/package.json packages/plugin-kit/package.json
@@ -99,7 +105,7 @@ COPY packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts packages/plugin
 
 # Fail the image build if either package export points at an artifact that was
 # not copied into the final deploy image.
-RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/provider-kit', '@owlat/plugin-kit', '@owlat/mta-protocol', '@owlat/shared', '@owlat/mail-message', '@owlat/mail-canon', '@owlat/smtp-client'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
+RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/provider-kit', '@owlat/plugin-kit', '@owlat/mta-protocol', '@owlat/shared', '@owlat/mail-message', '@owlat/mail-canon', '@owlat/smtp-client', '@owlat/ostr-core', '@owlat/ostr-observer'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
 RUN OWLAT_CONVEX_BUNDLE_PRODUCTION_ONLY=1 node packages/plugin-codegen/scripts/convexBundleSmoke.ts
 # Bundle the full function graph with Convex's isolate/node runtime split
 # against exactly what this image ships — catches both a workspace package

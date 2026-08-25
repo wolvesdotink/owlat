@@ -1,0 +1,247 @@
+{
+	"description": "Sustained high-volume clean history across four unrelated observers, each publishing since its window opened.",
+	"subject": {
+		"domain": "veteran.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 6,
+			"loggedAt": "2025-03-28T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "veteran.example"
+				},
+				"window": {
+					"from": "2025-02-26T00:00:00Z",
+					"to": "2025-03-28T00:00:00Z"
+				},
+				"body": {
+					"messages": 9000,
+					"spfPass": 8955,
+					"dkimPass": 8955,
+					"dmarcPass": 8955,
+					"tlsInbound": 9000,
+					"uniqueRecipientsBucket": 4,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 7,
+			"loggedAt": "2025-05-07T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "veteran.example"
+				},
+				"window": {
+					"from": "2025-04-07T00:00:00Z",
+					"to": "2025-05-07T00:00:00Z"
+				},
+				"body": {
+					"messages": 6000,
+					"spfPass": 5970,
+					"dkimPass": 5970,
+					"dmarcPass": 5970,
+					"tlsInbound": 6000,
+					"uniqueRecipientsBucket": 4,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 1,
+			"loggedAt": "2025-05-27T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "smtp.observer-c.example",
+				"subject": {
+					"domain": "veteran.example"
+				},
+				"window": {
+					"from": "2025-04-27T00:00:00Z",
+					"to": "2025-05-27T00:00:00Z"
+				},
+				"body": {
+					"messages": 4500,
+					"spfPass": 4477,
+					"dkimPass": 4477,
+					"dmarcPass": 4477,
+					"tlsInbound": 4500,
+					"uniqueRecipientsBucket": 4,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 2,
+			"loggedAt": "2025-06-16T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "gw.observer-d.example",
+				"subject": {
+					"domain": "veteran.example"
+				},
+				"window": {
+					"from": "2025-05-17T00:00:00Z",
+					"to": "2025-06-16T00:00:00Z"
+				},
+				"body": {
+					"messages": 3000,
+					"spfPass": 2985,
+					"dkimPass": 2985,
+					"dmarcPass": 2985,
+					"tlsInbound": 3000,
+					"uniqueRecipientsBucket": 4,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 10,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "veteran.example"
+				},
+				"window": {
+					"from": "2025-02-26T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 140000,
+					"dkimPass": 139720,
+					"dmarcPass": 139440,
+					"tlsInbound": 140000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0,
+					"spfPass": 139300
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 11,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "veteran.example"
+				},
+				"window": {
+					"from": "2025-04-07T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 95000,
+					"dkimPass": 94810,
+					"dmarcPass": 94620,
+					"tlsInbound": 95000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0,
+					"spfPass": 94525
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 3,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "smtp.observer-c.example",
+				"subject": {
+					"domain": "veteran.example"
+				},
+				"window": {
+					"from": "2025-04-27T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 72000,
+					"dkimPass": 71856,
+					"dmarcPass": 71712,
+					"tlsInbound": 72000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0,
+					"spfPass": 71640
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 4,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "gw.observer-d.example",
+				"subject": {
+					"domain": "veteran.example"
+				},
+				"window": {
+					"from": "2025-05-17T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 48000,
+					"dkimPass": 47904,
+					"dmarcPass": 47808,
+					"tlsInbound": 48000,
+					"uniqueRecipientsBucket": 5,
+					"bounceRateBucket": 0,
+					"spfPass": 47760
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 1,
+			"loggedAt": "2024-12-28T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "posture",
+				"observer": "veteran.example",
+				"subject": {
+					"domain": "veteran.example"
+				},
+				"body": {
+					"dmarcPolicy": "reject",
+					"dmarcAlignment": "strict",
+					"dnssec": true,
+					"mtaSts": true,
+					"tlsRpt": true,
+					"registeredBefore": "2021-02-27T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

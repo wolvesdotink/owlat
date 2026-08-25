@@ -215,6 +215,58 @@ export type EnvKey =
 	// additive-only, so its absence lowers measurement confidence for the
 	// Microsoft cell and slows that cell's ramp, and does nothing else.
 	| 'SNDS_DATA_FEED_URLS'
+	// Open Sender Trust Registry — CONSUMER half (plan §12.2, ADR-0058). The
+	// registry is a public reputation source an instance READS; consuming it is
+	// opt-in twice over, by this URL and by the `ostr` feature flag.
+	// Base URL of the aggregator that serves tier/score/explanation lookups (an
+	// `@owlat/ostr-registry` node, ours or anyone else's). Unset ⇒ no lookups,
+	// so the `ostr` flag has nothing to resolve and inbound mail is routed by
+	// exactly the signals it is routed by today.
+	| 'OSTR_AGGREGATOR_URL'
+	// The aggregator's ed25519 public key, used to verify the signature on every
+	// answer it gives. An aggregator is an untrusted intermediary by design —
+	// scores are signed at the source so a compromised or hostile mirror can be
+	// caught rather than believed — so an unset key means answers cannot be
+	// authenticated and are treated as no answer at all. Never fabricated, never
+	// defaulted: a wrong key must fail loudly, not silently downgrade to trust.
+	| 'OSTR_AGGREGATOR_PUBLIC_KEY'
+	// Open Sender Trust Registry — OBSERVER half (plan §7, ADR-0058). Reading the
+	// registry costs a lookup; CONTRIBUTING to it means turning a user's "mark as
+	// spam" into a signed, permanently logged attestation, so the observer half
+	// is env-gated rather than feature-flagged: it is an operator's decision
+	// about their users' data, not a product surface anyone can toggle in the UI.
+	// The master switch. Off (the default) ⇒ no DKIM evidence is retained, no
+	// report is queued, and both observer crons return having done nothing. On,
+	// it is still not enough on its own: `@owlat/ostr-observer`'s
+	// `assertObserverEligible` hard-disables observer mode below the §7.4 mailbox
+	// floor, because for a one-mailbox instance the observer identity IS the user
+	// identity and no amount of window-widening fixes that.
+	| 'OSTR_OBSERVER_ENABLED'
+	// The FQDN this observer signs as — the name that publishes
+	// `_ostr.<domain>` carrying the public half of the key below, and the name
+	// that appears in every attestation's `observer` field. Usually the MX host.
+	// Unset ⇒ nothing can be signed, so the window cron aggregates and holds but
+	// publishes nothing.
+	| 'OSTR_OBSERVER_DOMAIN'
+	// The observer's raw 32-byte ed25519 PRIVATE key, base64. A secret in the
+	// strongest sense: whoever holds it can publish reputation evidence in this
+	// deployment's name, and the log keeps it forever. Never logged, never
+	// returned to a client, never fabricated — an unset key publishes nothing
+	// rather than falling back to an unsigned or self-invented identity.
+	| 'OSTR_OBSERVER_PRIVATE_KEY'
+	// Comma-separated FULL submission endpoints of the transparency logs this
+	// observer cross-submits to (e.g.
+	// `https://log-a.example/v1/attestations,https://log-b.example/v1/attestations`).
+	// Two or more is the §9.1 redundancy requirement: one log's outage — or one
+	// log's misbehaviour — must not be able to lose or bury evidence. One URL
+	// still works and still publishes; it is simply not redundant. Unset ⇒
+	// nothing is submitted.
+	| 'OSTR_LOG_URLS'
+	// Optional override for the mailbox floor observer mode is disabled below.
+	// RAISE-ONLY: the packaged floor (`OBSERVER_MIN_MAILBOXES`) is the §7.4
+	// minimum, not a suggestion, so a value below it is ignored rather than
+	// honoured. Unset ⇒ the packaged floor.
+	| 'OSTR_MIN_MAILBOXES'
 	// Analytics & links
 	| 'POSTHOG_API_KEY'
 	| 'POSTHOG_HOST'

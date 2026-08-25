@@ -16,6 +16,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { adjustFolderUnseen, bumpFolderModseq } from './folders';
 import { clearThreadNeedsReply } from './needsReply';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
+import { scheduleObserverSpamReports } from '../ostr/junkHook';
 
 type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
 
@@ -410,13 +411,20 @@ async function moveToRoleWithVerdict(
 		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', first.mailboxId).eq('role', role))
 		.first();
 	if (!folder) throwInvalidState(`${role} folder missing`);
+	const reported: { messageId: Id<'mailMessages'>; mailboxId: Id<'mailboxes'> }[] = [];
 	for (const id of messageIds) {
 		const m = await ctx.db.get(id);
 		if (!m) continue;
 		const o = await requireMailboxAccess(ctx, m.mailboxId);
 		if (!o.ok) continue;
 		await ctx.db.patch(id, { spamVerdict: verdict, updatedAt: Date.now() });
+		if (verdict === 'spam') reported.push({ messageId: id, mailboxId: m.mailboxId });
 	}
+	// OSTR observer mode: a junk report is also the moment a receiver can attest
+	// that a domain sent unwanted mail (`ostr/junkHook.ts` owns every rule about
+	// whether it may, and the whole selection travels as one scheduled job). A
+	// `ham` verdict is a no-op there in v1.
+	await scheduleObserverSpamReports(ctx, reported);
 	return await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
 		messageIds,
 		targetFolderId: folder._id,

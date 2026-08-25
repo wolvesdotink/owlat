@@ -28,6 +28,9 @@ COPY packages/mail-canon/ packages/mail-canon/
 COPY packages/mail-message/ packages/mail-message/
 COPY packages/smtp-client/ packages/smtp-client/
 COPY packages/smtp-listener/ packages/smtp-listener/
+COPY packages/ostr-core/ packages/ostr-core/
+COPY packages/ostr-client/ packages/ostr-client/
+COPY packages/ostr-observer/ packages/ostr-observer/
 
 # Keep the TypeScript build as the container-local type/declaration check, then
 # produce one self-contained Node bundle for the runtime stage. Copying an

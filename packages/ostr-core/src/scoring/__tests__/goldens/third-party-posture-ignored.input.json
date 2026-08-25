@@ -1,0 +1,45 @@
+{
+	"description": "A stranger publishes an empty posture about guarded.example after the subject's own. Only self-authored posture is scored, so the hostile record changes nothing.",
+	"subject": {
+		"domain": "guarded.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 1,
+			"loggedAt": "2025-07-16T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "posture",
+				"observer": "guarded.example",
+				"subject": {
+					"domain": "guarded.example"
+				},
+				"body": {
+					"dmarcPolicy": "reject",
+					"dmarcAlignment": "strict",
+					"dnssec": true,
+					"mtaSts": true,
+					"tlsRpt": true
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 2,
+			"loggedAt": "2026-08-15T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "posture",
+				"observer": "griefer.example",
+				"subject": {
+					"domain": "guarded.example"
+				},
+				"body": {},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

@@ -4,6 +4,7 @@ import { registerDeliveryCrons } from './delivery/cronRegistration';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
 import { registerContactHygieneCrons } from './contacts/crons';
 import { registerSeedPlacementCrons } from './analytics/cronRegistration';
+import { registerOstrCrons } from './ostr/cronRegistration';
 
 const crons = cronJobs();
 
@@ -395,6 +396,11 @@ crons.interval(
 // Contact-book hygiene (retention cascade, duplicate auto-merge, engagement
 // score decay, sunset policy). Grouped in `contacts/crons.ts`.
 registerContactHygieneCrons(crons);
+
+// Open Sender Trust Registry observer mode (plan §7): the hourly window closer
+// and the ~90-day evidence retention prune. Both no-op unless the operator has
+// enabled observer mode AND the instance clears the §7.4 mailbox floor.
+registerOstrCrons(crons);
 
 // Append every bundled plugin cron (generated catalog) after the core crons,
 // each wrapped in the host runtime so flag/grant/env are rechecked per tick and

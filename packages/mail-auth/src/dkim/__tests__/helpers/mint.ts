@@ -1,16 +1,21 @@
 /**
  * Shared DKIM signature minter for the verify test suites.
  *
- * All three verify suites (`dkimVerify.differential`, `dkimVerify.ltag`,
- * `dkimAdversarial`) need to synthesize a relaxed/relaxed signature over the
- * package's OWN public `canon` API and prepend it to a raw message. This is the
+ * Every verify suite (`dkimVerify.differential`, `dkimVerify.ltag`,
+ * `dkimAdversarial`, the evidence suites) needs to synthesize a signature —
+ * relaxed/relaxed unless it asks for other `c=` halves — over the package's OWN
+ * public `canon` API and prepend it to a raw message. This is the
  * single implementation they share so the signing rules — including the
  * oversigning rule that a repeated `h=` name with no remaining header
  * contributes NOTHING — never drift apart between suites.
  */
 
-import { createHash, createSign, type KeyObject } from 'crypto';
-import { canonicalizeBodyRelaxed, canonicalizeHeaderField } from '../../../canon.js';
+import { createHash, createSign, sign as cryptoSign, type KeyObject } from 'crypto';
+import {
+	canonicalizeBody,
+	canonicalizeHeaderField,
+	parseCanonicalization,
+} from '../../../canon.js';
 
 export interface MintOptions {
 	/** Private key (PEM string or KeyObject) used to sign, or ignored when `bogusSignature` is set. */
@@ -22,8 +27,14 @@ export interface MintOptions {
 	/** The `h=` tag value (colon-separated, bottom-up per name). */
 	readonly hTag: string;
 	readonly body: string;
-	/** Algorithm tag; the hash is derived (`rsa-sha1` -> sha1, else sha256). Defaults to rsa-sha256. */
-	readonly algTag?: 'rsa-sha256' | 'rsa-sha1';
+	/**
+	 * Algorithm tag; the hash is derived (`rsa-sha1` -> sha1, else sha256).
+	 * Defaults to rsa-sha256. `ed25519-sha256` signs the SHA-256 digest of the
+	 * header input with a pure-EdDSA key (RFC 8463 §3), matching the verifier.
+	 */
+	readonly algTag?: 'rsa-sha256' | 'rsa-sha1' | 'ed25519-sha256';
+	/** The `c=` tag value, signed with exactly these halves. Defaults to relaxed/relaxed. */
+	readonly canonicalization?: string;
 	/** Extra tags injected verbatim before `b=` (e.g. `'l=10; '`, `'t=1; x=2; '`). */
 	readonly extraTags?: string;
 	/** Limit the signed body length used for `bh` (mirrors an `l=` signer). */
@@ -36,21 +47,24 @@ export interface MintOptions {
 }
 
 /**
- * Mint a relaxed/relaxed signature over `headers` + `body` and return the raw
- * message with the DKIM-Signature header prepended.
+ * Mint a signature (relaxed/relaxed unless `canonicalization` says otherwise)
+ * over `headers` + `body` and return the raw message with the DKIM-Signature
+ * header prepended.
  */
 export function mintSignature(opts: MintOptions): Buffer {
 	const algTag = opts.algTag ?? 'rsa-sha256';
 	const hashAlg = algTag === 'rsa-sha1' ? 'sha1' : 'sha256';
+	const cTag = opts.canonicalization ?? 'relaxed/relaxed';
+	const { header: headerMode, body: bodyMode } = parseCanonicalization(cTag);
 
-	let canonBody = canonicalizeBodyRelaxed(Buffer.from(opts.body, 'latin1'));
+	let canonBody = canonicalizeBody(Buffer.from(opts.body, 'latin1'), bodyMode);
 	if (opts.bodyLimit !== undefined) {
 		canonBody = canonBody.subarray(0, opts.bodyLimit);
 	}
 	const bh = createHash(hashAlg).update(canonBody).digest('base64');
 	const extra = opts.extraTags ?? '';
 	const sigUnsigned =
-		`DKIM-Signature: v=1; a=${algTag}; c=relaxed/relaxed; d=${opts.domain}; s=${opts.selector};` +
+		`DKIM-Signature: v=1; a=${algTag}; c=${cTag}; d=${opts.domain}; s=${opts.selector};` +
 		` h=${opts.hTag}; bh=${bh}; ${extra}b=`;
 
 	let b: string;
@@ -79,13 +93,20 @@ export function mintSignature(opts: MintOptions): Buffer {
 			if (raw === undefined) {
 				continue;
 			}
-			parts.push(`${canonicalizeHeaderField(raw, 'relaxed')}\r\n`);
+			parts.push(`${canonicalizeHeaderField(raw, headerMode)}\r\n`);
 		}
 		const headerInput = Buffer.from(
-			parts.join('') + canonicalizeHeaderField(sigUnsigned, 'relaxed'),
+			parts.join('') + canonicalizeHeaderField(sigUnsigned, headerMode),
 			'latin1'
 		);
-		b = createSign(hashAlg).update(headerInput).sign(opts.privateKey, 'base64');
+		b =
+			algTag === 'ed25519-sha256'
+				? cryptoSign(
+						null,
+						createHash('sha256').update(headerInput).digest(),
+						opts.privateKey
+					).toString('base64')
+				: createSign(hashAlg).update(headerInput).sign(opts.privateKey, 'base64');
 	}
 
 	const message = `${opts.headers.join('\r\n')}\r\n\r\n${opts.body}`;
