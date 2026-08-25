@@ -12,7 +12,9 @@ import { describe, it, expect } from 'vitest';
 import {
 	defineLifecycle,
 	refuse,
+	type LifecycleGraph,
 	type LifecycleReason,
+	type LifecycleRefusalReason,
 	type RefusedVerdict,
 } from '../lib/lifecycle';
 
@@ -211,6 +213,92 @@ describe('refuse — outcome scaffolding', () => {
 			mailMessageId: 'msg_1',
 			recipientIdx: 3,
 		});
+	});
+});
+
+/**
+ * The refusal reason `refuse()` hands back is typed by the graph that produced
+ * the verdict, so the six machines that never report `terminal` can call it
+ * without widening their published outcome unions.
+ *
+ * These are compile-level assertions as much as runtime ones: this file sits
+ * inside `convex/tsconfig.json`, so every annotated binding below is checked by
+ * `tsc --noEmit`, and each `@ts-expect-error` is itself the assertion —
+ * TypeScript reports an UNUSED `@ts-expect-error` as an error of its own, so a
+ * regression that widened (or over-narrowed) the reason fails the typecheck.
+ */
+describe('refuse — the reason type follows the graph', () => {
+	it('types a refusal from a terminal-blind graph as illegal_edge alone', () => {
+		const verdict = terminalBlind.classify('bounced', 'sent');
+		expect(verdict.kind).toBe('refused');
+		if (verdict.kind !== 'refused') throw new Error('expected a refusal');
+
+		const reason: 'illegal_edge' = verdict.reason;
+		const outcome: { ok: false; reason: 'illegal_edge' } = refuse(verdict);
+
+		expect(reason).toBe('illegal_edge');
+		expect(outcome).toEqual({ ok: false, reason: 'illegal_edge', from: 'bounced', to: 'sent' });
+	});
+
+	it('excludes terminal from a terminal-blind refusal', () => {
+		const verdict = terminalBlind.classify('bounced', 'sent') as RefusedVerdict<
+			State,
+			State,
+			'illegal_edge'
+		>;
+		// @ts-expect-error — no `terminal` member: this is what lets a machine
+		// publishing only `illegal_edge` return `refuse(verdict)` unchanged.
+		const widened: 'terminal' = refuse(verdict).reason;
+		expect(widened).toBe('illegal_edge');
+	});
+
+	it('keeps both reasons for a terminal-reporting graph', () => {
+		const verdict = terminalAware.classify('bounced', 'sent');
+		if (verdict.kind !== 'refused') throw new Error('expected a refusal');
+
+		const reason: LifecycleRefusalReason = verdict.reason;
+		// @ts-expect-error — opting in keeps `terminal` in the union, so the
+		// narrowing must not leak onto graphs that do report it.
+		const narrowed: 'illegal_edge' = refuse(verdict).reason;
+
+		expect(reason).toBe('terminal');
+		expect(narrowed).toBe('terminal');
+	});
+
+	it('folds context into a narrowed refusal too', () => {
+		const verdict = terminalBlind.classify('bounced', 'sent') as RefusedVerdict<
+			State,
+			State,
+			'illegal_edge'
+		>;
+		const outcome: { ok: false; reason: 'illegal_edge'; draftId: string } = refuse(verdict, {
+			draftId: 'draft_1',
+		});
+		expect(outcome).toEqual({
+			ok: false,
+			reason: 'illegal_edge',
+			from: 'bounced',
+			to: 'sent',
+			draftId: 'draft_1',
+		});
+	});
+
+	it('defaults a bare LifecycleGraph annotation to the full reason union', () => {
+		// `delivery/sendLifecycle` annotates `lifecycleFor(): LifecycleGraph<SendStatus>`
+		// and returns terminal-reporting graphs from it, so the third parameter
+		// has to default wide for that annotation to stay truthful.
+		const graph: LifecycleGraph<State> = terminalAware;
+		expect(graph.reportsTerminalRefusals).toBe(true);
+	});
+
+	it('rejects a terminal flag it cannot read as a literal', () => {
+		const readFlagFromConfig = (): boolean => true;
+		const options = { reportsTerminalRefusals: readFlagFromConfig() };
+		// @ts-expect-error — the flag must be a literal at the call site: from a
+		// plain `boolean` the core cannot tell which reason set the graph
+		// produces, so neither overload matches rather than one guessing.
+		const graph = defineLifecycle<State>(EDGES, options);
+		expect(graph.reportsTerminalRefusals).toBe(true);
 	});
 });
 
