@@ -24,7 +24,7 @@ import { storeSealedBlob, sealedBlobUrl } from '../lib/sealedBlob';
 import { renderEmailHtml, resolvePlainText, renderAmpEmail } from '@owlat/email-renderer';
 import type { EditorBlock } from '@owlat/shared/types';
 import { getMailSyncConfig, getMtaConfig, scanAttachmentBytes } from './mtaClient';
-import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
+import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle/types';
 import { buildMessageId, buildRfc822, stripHtml, type DraftRow } from './rfc822';
 import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
 import type { MtaSendRequest } from '@owlat/mta-protocol/send';
