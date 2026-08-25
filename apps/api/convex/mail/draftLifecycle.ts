@@ -35,6 +35,7 @@ import { internalMutation, internalQuery, type MutationCtx } from '../_generated
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog } from '../lib/auditLog';
+import { defineLifecycle } from '../lib/lifecycle';
 import { isSanctionedSendAsForUser } from './identities';
 import { followUpWaitingOn } from './followUps';
 import { logError } from '../lib/runtimeLog';
@@ -162,12 +163,26 @@ const transitionInputValidator = v.union(
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
+//
+// The graph lives in the generic lifecycle core (`lib/lifecycle.ts`, ADR-0058);
+// the reducers, preconditions and effects below stay here. From-states and
+// to-states are separately parameterized because `sent` is a target only — the
+// row is deleted on arrival, so `sent` is never persisted back as a draft state
+// and never appears as a from-state.
+//
+// Unlike every other migrated machine this dispatcher asks the graph
+// `isLegalEdge` rather than `classify`: it has never granted the implicit
+// self-loop pass, and `draft → draft` must keep refusing as `illegal_edge`
+// (ADR-0028 routes the undo double-fire through `transitionByUndoToken`'s
+// `already_draft` / `recorded` path, not through a reducer self-loop).
+// `reportsTerminalRefusals` is therefore moot and stays off — the published
+// outcome union carries `illegal_edge` and no `terminal` arm.
 
-const LEGAL_EDGES: Record<DraftState, ReadonlySet<TransitionInput['to']>> = {
-	draft: new Set<TransitionInput['to']>(['pending_send', 'scheduled']),
-	pending_send: new Set<TransitionInput['to']>(['draft', 'sent']),
-	scheduled: new Set<TransitionInput['to']>(['draft', 'sent']),
-};
+const DRAFT_LIFECYCLE = defineLifecycle<DraftState, TransitionInput['to']>({
+	draft: ['pending_send', 'scheduled'],
+	pending_send: ['draft', 'sent'],
+	scheduled: ['draft', 'sent'],
+});
 
 // ─── State-guard helper ─────────────────────────────────────────────────────
 
@@ -749,8 +764,7 @@ async function dispatch(
 	input: TransitionInput
 ): Promise<TransitionOutcome> {
 	const from = draft.state;
-	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
-	if (!isLegalEdge) {
+	if (!DRAFT_LIFECYCLE.isLegalEdge(from, input.to)) {
 		return {
 			ok: false,
 			reason: 'illegal_edge',
