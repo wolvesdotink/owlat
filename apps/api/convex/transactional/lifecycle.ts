@@ -31,6 +31,7 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
+import { defineLifecycle } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
@@ -105,17 +106,17 @@ const transitionInputValidator = v.union(
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
-// `approved` / `rejected` resolve to statuses; the legal-edges graph
-// uses the resolved target.
+// `approved` / `rejected` resolve to statuses; the graph is keyed by the
+// resolved target. The graph and the dispatcher preamble that reads it live in
+// the generic lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and
+// effects below stay here. `reportsTerminalRefusals` is off — no state is
+// terminal here and the published outcome union carries only `illegal_edge`.
 
-export const LEGAL_EDGES: Record<
-	TransactionalEmailStatus,
-	ReadonlySet<TransactionalEmailStatus>
-> = {
-	draft: new Set<TransactionalEmailStatus>(['published', 'pending_review']),
-	pending_review: new Set<TransactionalEmailStatus>(['published', 'draft']),
-	published: new Set<TransactionalEmailStatus>(['draft']),
-};
+export const TRANSACTIONAL_EMAIL_LIFECYCLE = defineLifecycle<TransactionalEmailStatus>({
+	draft: ['published', 'pending_review'],
+	pending_review: ['published', 'draft'],
+	published: ['draft'],
+});
 
 // Map the input.to (admin actions) to the resolved persisted status.
 function resolvedTargetStatus(input: TransactionalEmailTransitionInput): TransactionalEmailStatus {
@@ -396,11 +397,14 @@ async function dispatch(
 ): Promise<TransactionalEmailTransitionOutcome> {
 	const from = email.status as TransactionalEmailStatus;
 	const resolvedTo = resolvedTargetStatus(input);
-	const isLegal = LEGAL_EDGES[from].has(resolvedTo);
-	const isSelfLoop = from === resolvedTo;
+	const verdict = TRANSACTIONAL_EMAIL_LIFECYCLE.classify(from, resolvedTo);
 
-	if (!isLegal && !isSelfLoop) {
-		return { ok: false, reason: 'illegal_edge', from, to: resolvedTo };
+	if (verdict.kind === 'refused') {
+		// `refuse()` is not used here: it types `reason` as the core's full
+		// `illegal_edge | terminal` union, and this machine does not report
+		// `terminal`. With that option off, `illegal_edge` is the only refusal
+		// the core can produce.
+		return { ok: false, reason: 'illegal_edge', from: verdict.from, to: verdict.to };
 	}
 
 	const result = reduce(email, input, userId);
