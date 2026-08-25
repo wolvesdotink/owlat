@@ -73,10 +73,7 @@ export type CampaignTransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason:
-				| 'campaign_not_found'
-				| 'illegal_edge'
-				| 'terminal';
+			reason: 'campaign_not_found' | 'illegal_edge' | 'terminal';
 			from?: CampaignStatus;
 			to?: CampaignStatus;
 	  };
@@ -92,7 +89,7 @@ export type CampaignTransitionOutcome =
  */
 export function assertTransitioned(
 	outcome: CampaignTransitionOutcome,
-	verb: string,
+	verb: string
 ): asserts outcome is Extract<CampaignTransitionOutcome, { ok: true }> {
 	if (!outcome.ok) {
 		throwInvalidState(`Cannot ${verb} campaign: ${outcome.reason}`);
@@ -118,7 +115,7 @@ const transitionInputValidator = v.union(
 	v.object({ to: v.literal('cancelled'), at: v.number() }),
 	v.object({ to: v.literal('sending'), at: v.number() }),
 	v.object({ to: v.literal('sent'), at: v.number() }),
-	v.object({ to: v.literal('pending_review'), at: v.number() }),
+	v.object({ to: v.literal('pending_review'), at: v.number() })
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
@@ -139,10 +136,7 @@ const LEGAL_EDGES: Record<CampaignStatus, ReadonlySet<CampaignStatus>> = {
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
-type TrackEventName =
-	| 'campaign_scheduled'
-	| 'campaign_sent'
-	| 'campaign_cancelled';
+type TrackEventName = 'campaign_scheduled' | 'campaign_sent' | 'campaign_cancelled';
 
 type Effect =
 	| {
@@ -186,7 +180,7 @@ type ReducerResult = {
 function reduce(
 	campaign: Doc<'campaigns'>,
 	input: CampaignTransitionInput,
-	userId: string,
+	userId: string
 ): ReducerResult {
 	const from = (campaign.status ?? 'draft') as CampaignStatus;
 
@@ -284,9 +278,7 @@ function reduce(
 		effects.push({
 			kind: 'start_ab_test_if_enabled',
 			campaignId: campaign._id,
-			userId: isSystemUserId(userId)
-				? userId
-				: `system:campaign_lifecycle`,
+			userId: isSystemUserId(userId) ? userId : `system:campaign_lifecycle`,
 			at: input.at,
 		});
 	}
@@ -298,10 +290,7 @@ function isSystemUserId(userId: string): boolean {
 	return userId.startsWith('system:') || userId === 'system';
 }
 
-function auditActionFor(
-	to: CampaignStatus,
-	from: CampaignStatus,
-): AuditAction {
+function auditActionFor(to: CampaignStatus, from: CampaignStatus): AuditAction {
 	switch (to) {
 		case 'scheduled':
 			return 'campaign.scheduled';
@@ -326,7 +315,7 @@ function auditActionFor(
 
 function buildAuditDetails(
 	input: CampaignTransitionInput,
-	from: CampaignStatus,
+	from: CampaignStatus
 ): Record<string, string | number | boolean | null> {
 	const base = {
 		previousStatus: from,
@@ -345,7 +334,7 @@ function buildAuditDetails(
 function buildPatch(
 	campaign: Doc<'campaigns'>,
 	input: CampaignTransitionInput,
-	from: CampaignStatus,
+	from: CampaignStatus
 ): Record<string, unknown> {
 	const updatedAt = input.at;
 	switch (input.to) {
@@ -354,12 +343,8 @@ function buildPatch(
 				status: 'scheduled',
 				scheduledAt: input.scheduledAt,
 				useRecipientTimezone: input.useRecipientTimezone ?? false,
-				...(input.scheduledHour !== undefined
-					? { scheduledHour: input.scheduledHour }
-					: {}),
-				...(input.scheduledMinute !== undefined
-					? { scheduledMinute: input.scheduledMinute }
-					: {}),
+				...(input.scheduledHour !== undefined ? { scheduledHour: input.scheduledHour } : {}),
+				...(input.scheduledMinute !== undefined ? { scheduledMinute: input.scheduledMinute } : {}),
 				updatedAt,
 			};
 		case 'draft': {
@@ -399,9 +384,7 @@ function buildPatch(
 				statsSoftBounced: 0,
 				statsUnsubscribed: 0,
 				// Clear any prior block reason on re-send.
-				...(campaign.contentBlockReason
-					? { contentBlockReason: undefined }
-					: {}),
+				...(campaign.contentBlockReason ? { contentBlockReason: undefined } : {}),
 				updatedAt,
 			};
 		case 'sent':
@@ -415,10 +398,7 @@ function buildPatch(
 
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
-async function applyEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
-): Promise<void> {
+async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'audit_log': {
@@ -432,11 +412,9 @@ async function applyEffects(
 				break;
 			}
 			case 'schedule_campaign_send_orchestrator': {
-				await ctx.scheduler.runAfter(
-					effect.delayMs,
-					internal.campaigns.send.startCampaignSend,
-					{ campaignId: effect.campaignId },
-				);
+				await ctx.scheduler.runAfter(effect.delayMs, internal.campaigns.send.startCampaignSend, {
+					campaignId: effect.campaignId,
+				});
 				break;
 			}
 			case 'track_event': {
@@ -454,14 +432,11 @@ async function applyEffects(
 				// snapshot — we re-check for safety in case of races.
 				const campaign = await ctx.db.get(effect.campaignId);
 				if (!campaign?.isABTest) break;
-				await ctx.runMutation(
-					internal.campaigns.abTestLifecycle.transition,
-					{
-						campaignId: effect.campaignId,
-						input: { to: 'testing', at: effect.at },
-						userId: effect.userId,
-					},
-				);
+				await ctx.runMutation(internal.campaigns.abTestLifecycle.transition, {
+					campaignId: effect.campaignId,
+					input: { to: 'testing', at: effect.at },
+					userId: effect.userId,
+				});
 				break;
 			}
 		}
@@ -474,7 +449,7 @@ async function dispatch(
 	ctx: MutationCtx,
 	campaign: Doc<'campaigns'>,
 	input: CampaignTransitionInput,
-	userId: string,
+	userId: string
 ): Promise<CampaignTransitionOutcome> {
 	const from = (campaign.status ?? 'draft') as CampaignStatus;
 	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
@@ -586,12 +561,17 @@ async function tryCompleteCampaign(ctx: MutationCtx, campaign: Doc<'campaigns'>)
 	const stillQueued = await ctx.db
 		.query('emailSends')
 		.withIndex('by_campaign_and_status', (q) =>
-			q.eq('campaignId', campaign._id).eq('status', 'queued'),
+			q.eq('campaignId', campaign._id).eq('status', 'queued')
 		)
 		.first();
 	if (stillQueued) return false;
 
-	const outcome = await dispatch(ctx, campaign, { to: 'sent', at: Date.now() }, LIFECYCLE_USER_SEND_COMPLETION);
+	const outcome = await dispatch(
+		ctx,
+		campaign,
+		{ to: 'sent', at: Date.now() },
+		LIFECYCLE_USER_SEND_COMPLETION
+	);
 	return outcome.ok === true;
 }
 
