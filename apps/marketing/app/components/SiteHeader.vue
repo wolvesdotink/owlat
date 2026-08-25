@@ -2,9 +2,8 @@
 const mobileOpen = ref(false);
 const activeSection = ref('');
 
-const { t, locale, locales } = useI18n();
+const { t } = useI18n();
 const localePath = useLocalePath();
-const switchLocalePath = useSwitchLocalePath();
 
 const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload();
 
@@ -13,17 +12,7 @@ const navLinks = [
 	{ key: 'nav.developers', href: '#developers' },
 	{ key: 'nav.pricing', href: '#pricing' },
 	{ key: 'nav.docs', href: 'https://docs.owlat.app' },
-	{ key: 'nav.github', href: 'https://github.com/wolvesdotink/owlat' },
 ];
-
-/* The switcher is driven by the module's own locale list, so adding a locale in
- * nuxt.config is the only step needed to make it appear here. `name` is the
- * endonym ("Deutsch"), which is what a visitor who cannot read the current
- * language recognises; the pill itself shows the short code to stay inside the
- * floating nav's width budget. */
-const languages = computed(() =>
-	locales.value.map((entry) => (typeof entry === 'string' ? { code: entry, name: entry } : entry))
-);
 
 onMounted(() => {
 	const sections = ['features', 'developers', 'pricing'];
@@ -64,8 +53,10 @@ onMounted(() => {
 					<span class="text-md font-semibold tracking-tight text-text-primary">Owlat</span>
 				</a>
 
-				<!-- Desktop nav -->
-				<nav class="hidden lg:flex items-center px-2">
+				<!-- Desktop nav. Extra padding on the right separates the last nav item
+				     from the Sign in / Download cluster, which reads as a different kind
+				     of control. -->
+				<nav class="hidden lg:flex items-center pl-2 pr-4">
 					<a
 						v-for="link in navLinks"
 						:key="link.key"
@@ -81,29 +72,9 @@ onMounted(() => {
 					</a>
 				</nav>
 
-				<!-- Desktop CTAs -->
+				<!-- Desktop CTAs. No language switcher: the footer owns that control at
+				     every breakpoint, which keeps the pill inside its width budget. -->
 				<div class="hidden lg:flex items-center gap-2">
-					<div
-						class="flex items-center gap-0.5 rounded-full border border-border-subtle p-0.5"
-						role="group"
-						:aria-label="t('language.label')"
-					>
-						<a
-							v-for="lang in languages"
-							:key="lang.code"
-							:href="switchLocalePath(lang.code)"
-							:aria-label="t('language.switchTo', { language: lang.name })"
-							:aria-current="lang.code === locale ? 'true' : undefined"
-							class="px-2 py-1 rounded-full font-mono text-2xs font-medium uppercase transition-colors duration-(--motion-fast) no-underline"
-							:class="
-								lang.code === locale
-									? 'bg-bg-soft text-text-primary'
-									: 'text-text-tertiary hover:text-text-primary'
-							"
-						>
-							{{ lang.code }}
-						</a>
-					</div>
 					<a
 						href="https://app.owlat.app/login"
 						class="px-3 py-1.5 text-caption font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
@@ -173,28 +144,10 @@ onMounted(() => {
 							{{ t(link.key) }}
 						</a>
 					</nav>
+					<!-- No language switcher here: on mobile the footer's switcher is the
+					     single place to change language, which keeps this panel short
+					     enough to stay on screen. -->
 					<div class="flex flex-col gap-2 pt-3 mt-2 border-t border-border-subtle">
-						<div
-							class="flex items-center justify-center gap-2 py-1"
-							role="group"
-							:aria-label="t('language.label')"
-						>
-							<a
-								v-for="lang in languages"
-								:key="lang.code"
-								:href="switchLocalePath(lang.code)"
-								:aria-label="t('language.switchTo', { language: lang.name })"
-								:aria-current="lang.code === locale ? 'true' : undefined"
-								class="px-3 py-1.5 rounded-full text-caption font-medium transition-colors duration-(--motion-fast) no-underline"
-								:class="
-									lang.code === locale
-										? 'bg-bg-soft text-text-primary'
-										: 'text-text-tertiary hover:text-text-primary'
-								"
-							>
-								{{ lang.name }}
-							</a>
-						</div>
 						<a
 							href="https://app.owlat.app/login"
 							class="text-caption font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline text-center py-2"

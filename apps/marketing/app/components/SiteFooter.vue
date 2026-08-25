@@ -19,8 +19,9 @@ const footerLinks = {
 	],
 };
 
-// Same list the header switcher renders, so the two can never disagree about
-// which languages the site ships.
+// Driven by the i18n module's own locale list, so adding a locale in
+// nuxt.config is the only step needed to make it appear here. This is the site's
+// only language switcher.
 const languages = computed(() =>
 	locales.value.map((entry) => (typeof entry === 'string' ? { code: entry, name: entry } : entry))
 );
@@ -121,20 +122,28 @@ const languages = computed(() =>
 					</template>
 				</I18nT>
 				<div class="flex items-center gap-4 max-sm:flex-col max-sm:gap-2">
-					<nav class="flex items-center gap-2" :aria-label="t('language.label')">
+					<!-- Bordered pill group carried over from the header, which used to
+					     hold the only switcher. The visible label is the short code; the
+					     endonym ("Deutsch") rides on aria-label so a visitor who cannot
+					     read the current language still gets it announced. -->
+					<nav
+						class="flex items-center gap-0.5 rounded-full border border-border-subtle p-0.5"
+						:aria-label="t('language.label')"
+					>
 						<a
 							v-for="lang in languages"
 							:key="lang.code"
 							:href="switchLocalePath(lang.code)"
+							:aria-label="t('language.switchTo', { language: lang.name })"
 							:aria-current="lang.code === locale ? 'true' : undefined"
-							class="text-caption transition-colors duration-(--motion-fast) no-underline"
+							class="px-2.5 py-1.5 rounded-full font-mono text-2xs font-medium uppercase transition-colors duration-(--motion-fast) no-underline"
 							:class="
 								lang.code === locale
-									? 'text-text-primary'
+									? 'bg-bg-soft text-text-primary'
 									: 'text-text-tertiary hover:text-text-primary'
 							"
 						>
-							{{ lang.name }}
+							{{ lang.code }}
 						</a>
 					</nav>
 					<p class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-tertiary">
