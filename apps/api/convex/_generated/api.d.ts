@@ -349,6 +349,7 @@ import type * as delivery_relayReturnPath from '../delivery/relayReturnPath.js';
 import type * as delivery_relayReturnPathProbe from '../delivery/relayReturnPathProbe.js';
 import type * as delivery_readinessValidators from '../delivery/readinessValidators.js';
 import type * as delivery_routingReentry from '../delivery/routingReentry.js';
+import type * as delivery_routingReentryToken from '../delivery/routingReentryToken.js';
 import type * as delivery_nonCampaignIntake from '../delivery/nonCampaignIntake.js';
 import type * as delivery_sendIntakeGates from '../delivery/sendIntakeGates.js';
 import type * as delivery_seedScheduledProbe from '../delivery/seedScheduledProbe.js';
@@ -1357,6 +1358,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/rampReadCtx': typeof delivery_rampReadCtx;
 	'delivery/readinessValidators': typeof delivery_readinessValidators;
 	'delivery/routingReentry': typeof delivery_routingReentry;
+	'delivery/routingReentryToken': typeof delivery_routingReentryToken;
 	'delivery/nonCampaignIntake': typeof delivery_nonCampaignIntake;
 	'delivery/sendIntakeGates': typeof delivery_sendIntakeGates;
 	'delivery/seedScheduledProbe': typeof delivery_seedScheduledProbe;
