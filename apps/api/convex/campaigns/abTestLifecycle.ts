@@ -26,6 +26,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { abTestConfigValidator } from '../lib/convexValidators';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
+import { defineLifecycle } from '../lib/lifecycle';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -79,13 +80,18 @@ const transitionInputValidator = v.union(
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
+//
+// The graph and the dispatcher preamble that reads it live in the generic
+// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and effects below
+// stay here. `reportsTerminalRefusals` is off — every state can still be reset
+// to `none`, and the published outcome union carries only `illegal_edge`.
 
-const LEGAL_EDGES: Record<AbTestMachineState, ReadonlySet<AbTestMachineState>> = {
-	none: new Set<AbTestMachineState>(['pending']),
-	pending: new Set<AbTestMachineState>(['testing', 'none']),
-	testing: new Set<AbTestMachineState>(['winner_selected', 'none']),
-	winner_selected: new Set<AbTestMachineState>(['none']),
-};
+const AB_TEST_LIFECYCLE = defineLifecycle<AbTestMachineState>({
+	none: ['pending'],
+	pending: ['testing', 'none'],
+	testing: ['winner_selected', 'none'],
+	winner_selected: ['none'],
+});
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
@@ -287,11 +293,14 @@ async function dispatch(
 	userId: string
 ): Promise<AbTestTransitionOutcome> {
 	const from: AbTestMachineState = campaign.abTestStatus ?? 'none';
-	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
-	const isSelfLoop = from === input.to;
+	const verdict = AB_TEST_LIFECYCLE.classify(from, input.to);
 
-	if (!isLegalEdge && !isSelfLoop) {
-		return { ok: false, reason: 'illegal_edge', from, to: input.to };
+	if (verdict.kind === 'refused') {
+		// `refuse()` is not used here: it types `reason` as the core's full
+		// `illegal_edge | terminal` union, and this machine does not report
+		// `terminal`. With that option off, `illegal_edge` is the only refusal
+		// the core can produce.
+		return { ok: false, reason: 'illegal_edge', from: verdict.from, to: verdict.to };
 	}
 
 	const result = reduce(campaign, input, userId);
