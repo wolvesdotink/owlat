@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LEGAL_EDGES, TERMINAL, reduce } from '../reducers';
+import { PROCESSING_LIFECYCLE, reduce } from '../reducers';
 import type { Doc, Id } from '../../../_generated/dataModel';
 import type { PendingClarification, TransitionInput } from '../types';
 
@@ -43,28 +43,28 @@ const pendingClarification: PendingClarification = {
 
 describe('clarification legal edges', () => {
 	it('classifying may advance to awaiting_clarification', () => {
-		expect(LEGAL_EDGES.classifying.has('awaiting_clarification')).toBe(true);
+		expect(PROCESSING_LIFECYCLE.isLegalEdge('classifying', 'awaiting_clarification')).toBe(true);
 	});
 
 	it('awaiting_clarification may resume into drafting (answer / fallback)', () => {
-		expect(LEGAL_EDGES.awaiting_clarification.has('drafting')).toBe(true);
+		expect(PROCESSING_LIFECYCLE.isLegalEdge('awaiting_clarification', 'drafting')).toBe(true);
 	});
 
 	it('awaiting_clarification may be archived (dismiss)', () => {
-		expect(LEGAL_EDGES.awaiting_clarification.has('archived')).toBe(true);
+		expect(PROCESSING_LIFECYCLE.isLegalEdge('awaiting_clarification', 'archived')).toBe(true);
 	});
 
 	it('awaiting_clarification may NOT jump straight to draft_ready or approved', () => {
-		expect(LEGAL_EDGES.awaiting_clarification.has('draft_ready')).toBe(false);
-		expect(LEGAL_EDGES.awaiting_clarification.has('approved')).toBe(false);
+		expect(PROCESSING_LIFECYCLE.isLegalEdge('awaiting_clarification', 'draft_ready')).toBe(false);
+		expect(PROCESSING_LIFECYCLE.isLegalEdge('awaiting_clarification', 'approved')).toBe(false);
 	});
 
 	it('awaiting_clarification is NOT terminal (can still fail / be reprocessed)', () => {
-		expect(TERMINAL.has('awaiting_clarification')).toBe(false);
+		expect(PROCESSING_LIFECYCLE.isTerminal('awaiting_clarification')).toBe(false);
 	});
 
 	it('drafting still cannot loop back to awaiting_clarification', () => {
-		expect(LEGAL_EDGES.drafting.has('awaiting_clarification')).toBe(false);
+		expect(PROCESSING_LIFECYCLE.isLegalEdge('drafting', 'awaiting_clarification')).toBe(false);
 	});
 });
 
