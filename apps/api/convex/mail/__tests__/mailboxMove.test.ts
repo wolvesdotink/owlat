@@ -93,7 +93,7 @@ async function enableExternal(t: Ctx): Promise<void> {
 async function connectMailbox(
 	t: Ctx
 ): Promise<{ mailboxId: Id<'mailboxes'>; accountId: Id<'externalMailAccounts'> }> {
-	await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
+	await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 	return await t.run(async (ctx) => {
 		const account = await ctx.db
 			.query('externalMailAccounts')
@@ -341,7 +341,7 @@ describe('archive — stops sync without data loss', () => {
 
 		// The old account is now 'disconnected', so connecting a second external
 		// account on a DIFFERENT address is allowed.
-		await t.mutation(internal.mail.externalAccounts._connectInternal, {
+		await t.mutation(internal.mail.external.accounts._connectInternal, {
 			...CREDS,
 			emailAddress: 'other@example.org',
 			imapUsername: 'other@example.org',
@@ -517,7 +517,7 @@ describe('externalAccounts resolves the LIVE account after a move + reconnect', 
 		await t.mutation(api.mail.mailboxMove.archive, {});
 
 		// The old account is 'disconnected'; connect a second, LIVE account.
-		await t.mutation(internal.mail.externalAccounts._connectInternal, {
+		await t.mutation(internal.mail.external.accounts._connectInternal, {
 			...CREDS,
 			emailAddress: 'other@example.org',
 			imapUsername: 'other@example.org',
@@ -546,7 +546,7 @@ describe('externalAccounts resolves the LIVE account after a move + reconnect', 
 		// only awaits callbacks that have already fired, so the chunk never runs).
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.mail.externalAccounts.purge, {});
+			await t.mutation(api.mail.external.accounts.purge, {});
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();
@@ -574,7 +574,7 @@ describe('externalAccounts resolves the LIVE account after a move + reconnect', 
 
 		// Re-enter credentials (as the migrate page's edit form does, pre-filled from
 		// the live account) with a changed host.
-		await t.mutation(internal.mail.externalAccounts._updateCredentialsInternal, {
+		await t.mutation(internal.mail.external.accounts._updateCredentialsInternal, {
 			...CREDS,
 			emailAddress: 'other@example.org',
 			imapUsername: 'other@example.org',
@@ -606,7 +606,7 @@ describe('externalAccounts resolves the LIVE account after a move + reconnect', 
 
 		// Re-entering credentials for an archive is meaningless — reconnect is the path.
 		await expect(
-			t.mutation(internal.mail.externalAccounts._updateCredentialsInternal, CREDS)
+			t.mutation(internal.mail.external.accounts._updateCredentialsInternal, CREDS)
 		).rejects.toThrow();
 	});
 });

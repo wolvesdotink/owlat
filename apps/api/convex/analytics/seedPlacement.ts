@@ -3,7 +3,7 @@
  * and the only placement signal that needs no third-party account at all.
  *
  * The operator connects a handful of free consumer mailboxes through the
- * SHIPPED external-account flow (`mail/externalAccounts.ts`,
+ * SHIPPED external-account flow (`mail/external/accounts.ts`,
  * `externalMailAccounts`) tagged `purpose: 'seed'`; every send drops a shadow
  * copy into each of them (`delivery/seedShadowCopy.ts`); the shipped IMAP
  * client walks the mailbox, finds the `X-Owlat-Seed-Probe` header and reports

@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import { internal } from '../../_generated/api';
 import schema from '../../schema';
-import { insertExternalAccountRow } from '../../mail/externalAccountShared';
+import { insertExternalAccountRow } from '../../mail/external/accountShared';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModules';
 import {

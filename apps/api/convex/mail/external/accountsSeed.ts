@@ -2,33 +2,33 @@
  * Deliverability SEED mailboxes — the connect half of step 1 of the placement
  * probe (`analytics/seedPlacement.ts`).
  *
- * A domain sibling of `mail/externalAccounts.ts` rather than more lines inside
+ * A domain sibling of `mail/external/accounts.ts` rather than more lines inside
  * it (CONVENTIONS.md — split a feature file at ~500 LOC): a seed shares that
  * file's TABLE, its sealed-credential envelope and its IMAP client, but nothing
  * of its lifecycle. It is never the caller's personal inbox, never syncs into
  * Postbox, and never appears on a personal-external surface.
  *
  * Crypto and the plaintext credential path stay in the `'use node'` sibling
- * `externalAccountsActions.ts`; this file only persists an already-sealed
+ * `accountsActions.ts`; this file only persists an already-sealed
  * envelope.
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
-import { adminMutation } from '../lib/authedFunctions';
-import { requireAdminContext } from '../lib/sessionOrganization';
-import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox/identity';
+import { internalMutation } from '../../_generated/server';
+import { adminMutation } from '../../lib/authedFunctions';
+import { requireAdminContext } from '../../lib/sessionOrganization';
+import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import {
 	insertExternalAccountRow,
 	seedAgeDays,
 	seedProviderOf,
 	takeLiveSeedAccounts,
-} from './externalAccountShared';
-import { connectFieldsValidator } from './externalAccounts';
-import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
-import { recordAuditLog } from '../lib/auditLog';
+} from './accountShared';
+import { connectFieldsValidator } from './accounts';
+import { destinationProviderValidator } from '../../delivery/deliverabilityValidators';
+import { recordAuditLog } from '../../lib/auditLog';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
-import { throwInvalidInput, throwAlreadyExists, throwNotFound } from '../_utils/errors';
+import { throwInvalidInput, throwAlreadyExists, throwNotFound } from '../../_utils/errors';
 
 /**
  * Connect a DELIVERABILITY SEED mailbox — step 1 of the placement probe.

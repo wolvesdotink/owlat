@@ -90,7 +90,7 @@ const CREDS = {
 };
 
 async function connectSeed(t: TestConvex<typeof schema>, emailAddress: string): Promise<void> {
-	await t.mutation(internal.mail.externalAccountsSeed._connectSeedInternal, {
+	await t.mutation(internal.mail.external.accountsSeed._connectSeedInternal, {
 		...CREDS,
 		emailAddress,
 		seedProvider: 'gmail',
@@ -169,7 +169,7 @@ describe('a seed mailbox is never handed to the inbound sync worker', () => {
 			});
 		});
 
-		const connectable = await t.query(internal.mail.externalAccounts.listConnectableAccounts, {});
+		const connectable = await t.query(internal.mail.external.accounts.listConnectableAccounts, {});
 		expect(connectable.map((a) => a.accountId)).toEqual([ordinaryId]);
 	});
 });

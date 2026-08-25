@@ -62,7 +62,7 @@ const reconnectBlocked = computed(
 // The reconnect form's non-secret prefill (servers, username) comes from the
 // linked account; only the panel that's open subscribes.
 const { data: reconnectAccount, isLoading: reconnectLoading } = useConvexQuery(
-	api.mail.externalSharedInbox.getSharedExternalAccount,
+	api.mail.external.sharedInbox.getSharedExternalAccount,
 	() => (props.reconnecting ? { mailboxId: props.inbox._id } : 'skip')
 );
 const reconnectAccountForForm = computed(() =>

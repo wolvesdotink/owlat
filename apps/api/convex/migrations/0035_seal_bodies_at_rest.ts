@@ -40,7 +40,7 @@
  * per-message action ({@link resealMessageBlobs}, `runAfter(0)`, idempotent):
  *   - `mail.imap.appendMessage` (IMAP APPEND uploads the raw `.eml` straight to
  *     storage) schedules the reseal after inserting the row.
- *   - `mail.externalDelivery.ingestExternalMessage` (external IMAP sync) already
+ *   - `mail.external.delivery.ingestExternalMessage` (external IMAP sync) already
  *     seals at write: its sole caller `ingestExternalRaw` is an ACTION that seals
  *     the raw `.eml` (`storeSealedBlob`) and the body blobs (`splitBodyForStorage`
  *     → `storeSealedBlob`) before the mutation runs, so nothing lands plaintext.

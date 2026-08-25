@@ -24,17 +24,17 @@ export type FnRef = string;
 /** Internal Convex functions the worker calls (admin-key authenticated). */
 export const fn = {
 	// Decrypts + returns plaintext IMAP/SMTP creds (internalAction).
-	getCredentialsForWorker: 'mail/externalAccountsActions:getCredentialsForWorker' as FnRef,
+	getCredentialsForWorker: 'mail/external/accountsActions:getCredentialsForWorker' as FnRef,
 	// Accounts to hold connections for (internalQuery).
-	listConnectableAccounts: 'mail/externalAccounts:listConnectableAccounts' as FnRef,
+	listConnectableAccounts: 'mail/external/accounts:listConnectableAccounts' as FnRef,
 	// Connection/sync status write-back (internalMutation).
-	setSyncStatus: 'mail/externalAccounts:setSyncStatus' as FnRef,
+	setSyncStatus: 'mail/external/accounts:setSyncStatus' as FnRef,
 	// Raw-bytes inbound ingestion (internalAction; stores blob + inserts).
-	ingestExternalRaw: 'mail/externalDelivery:ingestExternalRaw' as FnRef,
+	ingestExternalRaw: 'mail/external/delivery:ingestExternalRaw' as FnRef,
 	// Resume cursors per folder (internalQuery).
-	getSyncState: 'mail/externalDelivery:getSyncState' as FnRef,
+	getSyncState: 'mail/external/delivery:getSyncState' as FnRef,
 	// Record remote→local folder mapping + initial high-water UID (internalMutation).
-	recordFolderMapping: 'mail/externalDelivery:recordFolderMapping' as FnRef,
+	recordFolderMapping: 'mail/external/delivery:recordFolderMapping' as FnRef,
 
 	// ── Deliverability seed-probe sweep (gate 5) ─────────────────────────
 	// Seed mailboxes with outstanding probes (internalQuery).

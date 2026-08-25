@@ -2,7 +2,7 @@
  * Mailbox migration orchestration — "Migrate from Google" and friends.
  *
  * A migration is a one-time historical import of a *connected* external mailbox
- * (see `mail/externalAccounts.ts`). The connection itself (IMAP/SMTP creds, the
+ * (see `mail/external/accounts.ts`). The connection itself (IMAP/SMTP creds, the
  * mail-sync worker, forward sync of NEW mail) already exists; this module adds
  * the two extra phases that turn a connection into a migration:
  *
@@ -27,7 +27,7 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { getLivePersonalExternalAccountForUser } from './externalAccounts';
+import { getLivePersonalExternalAccountForUser } from './external/accounts';
 
 // Chunk size for the post-import knowledge sweep (paced inside runIndexChunk).
 const INDEX_CHUNK_SIZE = 25;

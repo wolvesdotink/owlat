@@ -23,7 +23,7 @@ import {
 	seedProviderOf,
 	takeConnectableSeedAccounts,
 	takeLiveSeedAccounts,
-} from '../mail/externalAccountShared';
+} from '../mail/external/accountShared';
 import { recordAuditLog } from '../lib/auditLog';
 
 /**
@@ -74,7 +74,7 @@ export async function loadSeedAccounts(
 	now: number,
 	reach: 'live' | 'connectable' = 'live'
 ): Promise<SeedAccountView[]> {
-	// NOT a silent truncation: `mail/externalAccountsSeed.ts` refuses the
+	// NOT a silent truncation: `mail/external/accountsSeed.ts` refuses the
 	// (limit+1)th LIVE seed at CONNECT time and this read selects through the
 	// same index, so the page can only ever be short of the cap. A seed the
 	// operator connected is always measured.
@@ -132,7 +132,7 @@ export async function hasSeedAccounts(
  * So, in order: the artifact goes through `recordAuditLog` into `auditLogs`,
  * which `auditLogs.list` surfaces org-scoped to admins — a query the product
  * really exposes. Due-ness runs off `seedRotationAcknowledgedAt`, which ONLY an
- * operator writes (`mail/externalAccountsSeed.acknowledgeSeedRotation`);
+ * operator writes (`mail/external/accountsSeed.acknowledgeSeedRotation`);
  * `seedRotationRemindedAt` survives purely as this function's de-duplication
  * stamp, so a repeated sweep cannot write one audit row per tick and cannot
  * silence the nudge either. And the caller is `analytics/seedRotationSweep.ts`,

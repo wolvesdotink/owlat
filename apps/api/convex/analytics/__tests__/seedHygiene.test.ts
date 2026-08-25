@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import { api, internal } from '../../_generated/api';
 import schema from '../../schema';
-import { insertExternalAccountRow } from '../../mail/externalAccountShared';
+import { insertExternalAccountRow } from '../../mail/external/accountShared';
 import { summarizeSeedPlacementWindow } from '../seedPlacement';
 import { loadSeedAccounts } from '../seedAccounts';
 import type { Id } from '../../_generated/dataModel';
@@ -17,7 +17,7 @@ import {
 /**
  * The rotation nudge has to be readable through a query the PRODUCT exposes,
  * and dismissable only by a human — so this suite drives `auditLogs.list`
- * (adminQuery) and `mail.externalAccountsSeed.acknowledgeSeedRotation`
+ * (adminQuery) and `mail.external.accountsSeed.acknowledgeSeedRotation`
  * (adminMutation) for real. Both sit behind the org session, which convex-test
  * has no identity for; the mock is the shipped pattern from
  * `__tests__/auditLogsRead.integration.test.ts`. The internal mutations this
@@ -371,7 +371,7 @@ describe('the rotation reminder surfaces on schedule', () => {
 	): Promise<void> {
 		const clock = vi.spyOn(Date, 'now').mockReturnValue(at);
 		try {
-			await t.mutation(api.mail.externalAccountsSeed.acknowledgeSeedRotation, { accountId });
+			await t.mutation(api.mail.external.accountsSeed.acknowledgeSeedRotation, { accountId });
 		} finally {
 			clock.mockRestore();
 		}
@@ -518,7 +518,7 @@ describe('the rotation reminder surfaces on schedule', () => {
 		const t = convexTest(schema, modules);
 		const { accountId } = await connectSeed(t, 'org_other', 'seed@other.example');
 		await expect(
-			t.mutation(api.mail.externalAccountsSeed.acknowledgeSeedRotation, { accountId })
+			t.mutation(api.mail.external.accountsSeed.acknowledgeSeedRotation, { accountId })
 		).rejects.toThrow();
 	});
 });

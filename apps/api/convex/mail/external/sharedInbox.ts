@@ -2,7 +2,7 @@
  * External account connected AS A SHARED TEAM INBOX (issue #234) — the
  * external-transport twin of `mailboxMembers.createShared`.
  *
- * Split out of `externalAccounts.ts` (kept under the ~500 LOC cap): the personal
+ * Split out of `accounts.ts` (kept under the ~500 LOC cap): the personal
  * BYO-mailbox lifecycle there is per-user 1:1, whereas this path provisions a
  * `kind='external', scope='shared'` mailbox governed by `mailboxMembers`. It
  * reuses that file's `connectFieldsValidator` (the encrypted-envelope shape the
@@ -22,7 +22,7 @@
  *     records the connecting admin (credential custodian + audit); the org owns it.
  *
  * Credential rotation / repair + hard purge for a shared inbox (issue #234):
- *   - The personal `updateCredentials` / `purge` in `externalAccounts.ts` resolve
+ *   - The personal `updateCredentials` / `purge` in `accounts.ts` resolve
  *     the caller's LIVE PERSONAL account and so can never reach a team inbox. A
  *     shared inbox therefore needs its own ADMIN-gated twins, keyed by mailbox id:
  *       · `getSharedExternalAccount` (owner/admin) — the non-secret connection
@@ -37,7 +37,7 @@
  *
  *   Public:   getSharedExternalAccount, purgeShared
  *   Internal: _connectSharedInternal, _updateCredentialsSharedInternal (both
- *             called by externalAccountsActions after encryption).
+ *             called by accountsActions after encryption).
  *
  * NO HISTORICAL BACKFILL (deliberate scope decision — issue #234): a connected
  * shared inbox starts empty and only receives mail that arrives from the connect
@@ -51,24 +51,24 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
-import { authedMutation, authedQuery } from '../lib/authedFunctions';
-import { internal } from '../_generated/api';
-import { requireAdminContext } from '../lib/sessionOrganization';
-import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox/identity';
-import { connectFieldsValidator } from './externalAccounts';
-import { insertExternalAccountRow, applyCredentialRotation } from './externalAccountShared';
-import { seedSharedInboxRoster } from './mailboxMembers';
-import { requireMailboxAccess } from './permissions';
-import { isFeatureEnabled } from '../lib/featureFlags';
+import { internalMutation } from '../../_generated/server';
+import { authedMutation, authedQuery } from '../../lib/authedFunctions';
+import { internal } from '../../_generated/api';
+import { requireAdminContext } from '../../lib/sessionOrganization';
+import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
+import { connectFieldsValidator } from './accounts';
+import { insertExternalAccountRow, applyCredentialRotation } from './accountShared';
+import { seedSharedInboxRoster } from '../mailboxMembers';
+import { requireMailboxAccess } from '../permissions';
+import { isFeatureEnabled } from '../../lib/featureFlags';
 import {
 	throwInvalidInput,
 	throwAlreadyExists,
 	throwForbidden,
 	throwNotFound,
-} from '../_utils/errors';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import type { Doc, Id } from '../_generated/dataModel';
+} from '../../_utils/errors';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import type { Doc, Id } from '../../_generated/dataModel';
 
 /**
  * Load the `scope='shared'`, `kind='external'` mailbox + its linked credential
@@ -277,7 +277,7 @@ export const purgeShared = authedMutation({
 			.collect()) {
 			await ctx.db.delete(grant._id); // bounded: open invites on one inbox
 		}
-		await ctx.scheduler.runAfter(0, internal.mail.externalAccounts._purgeChunk, {
+		await ctx.scheduler.runAfter(0, internal.mail.external.accounts._purgeChunk, {
 			accountId: mailbox.externalAccountId,
 			mailboxId: mailbox._id,
 		});

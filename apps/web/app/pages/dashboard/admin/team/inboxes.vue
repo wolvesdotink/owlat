@@ -90,7 +90,7 @@ function toggleReconnect(id: Id<'mailboxes'>) {
 // on a live inbox directly (no prior soft-remove step), and is external-only —
 // so the affordance is scoped to `kind === 'external'` inboxes.
 const purgeTarget = ref<SharedInbox | null>(null);
-const purgeOp = useBackendOperation(api.mail.externalSharedInbox.purgeShared, {
+const purgeOp = useBackendOperation(api.mail.external.sharedInbox.purgeShared, {
 	label: () => t('dashboard.admin.team.inboxes.operations.deleteInbox'),
 });
 async function confirmPurge() {

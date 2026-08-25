@@ -1,7 +1,7 @@
 /**
  * Shared persistence helpers for external mail accounts — the pieces the
- * PERSONAL lifecycle (`mail/externalAccounts.ts`) and the SHARED team-inbox
- * lifecycle (`mail/externalSharedInbox.ts`) both write through, extracted here so
+ * PERSONAL lifecycle (`mail/external/accounts.ts`) and the SHARED team-inbox
+ * lifecycle (`mail/external/sharedInbox.ts`) both write through, extracted here so
  * the two connect/rotate paths can never drift on the credential row shape.
  *
  * These are plain helpers (they take a `MutationCtx`/account row), not registered
@@ -10,8 +10,8 @@
  */
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-import type { DatabaseReader, MutationCtx } from '../_generated/server';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { DatabaseReader, MutationCtx } from '../../_generated/server';
+import type { Doc, Id } from '../../_generated/dataModel';
 
 /**
  * The account statuses a worker should hold (or retry) a connection for.

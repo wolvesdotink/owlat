@@ -24,7 +24,7 @@ import { assertFeatureEnabled } from '../lib/featureFlags';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { getMtaConfig } from './mtaClient';
-import { getLivePersonalExternalAccountForUser } from './externalAccounts';
+import { getLivePersonalExternalAccountForUser } from './external/accounts';
 import { throwInvalidInput, throwInvalidState, throwNotFound } from '../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';

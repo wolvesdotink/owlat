@@ -6,7 +6,7 @@ import { GENERIC_IMAP_PROVIDER, providerById, type MailProvider } from '~/utils/
 const { t } = useI18n();
 const { data: status } = useOrganizationQuery(api.delivery.observabilityStatus.get);
 const acknowledgeRotation = useBackendOperation(
-	api.mail.externalAccountsSeed.acknowledgeSeedRotation,
+	api.mail.external.accountsSeed.acknowledgeSeedRotation,
 	{ label: () => t('components.delivery.deliveryMeasurementCoverageCard.acknowledgeOperation') }
 );
 const detailsOpen = ref(false);

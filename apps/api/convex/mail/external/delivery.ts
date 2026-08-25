@@ -13,18 +13,21 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageAttachmentValidator, mailUnsubscribeValidator } from '../lib/convexValidators';
+import {
+	mailMessageAttachmentValidator,
+	mailUnsubscribeValidator,
+} from '../../lib/convexValidators';
 import {
 	internalAction,
 	internalMutation,
 	internalQuery,
 	type MutationCtx,
-} from '../_generated/server';
-import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
-import { insertDeliveredMessage, buildSnippet } from './deliveryPipeline/insert';
-import { splitBodyForStorage } from './deliveryPipeline/ingest';
-import { storeSealedBlob } from '../lib/sealedBlob';
+} from '../../_generated/server';
+import { internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
+import { insertDeliveredMessage, buildSnippet } from '../deliveryPipeline/insert';
+import { splitBodyForStorage } from '../deliveryPipeline/ingest';
+import { storeSealedBlob } from '../../lib/sealedBlob';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 
 const folderRoleValidator = v.union(
@@ -331,7 +334,7 @@ export const ingestExternalRaw = internalAction({
 		const unsubscribe =
 			extractListUnsubscribe(rawBytes.subarray(0, 65536).toString('utf8')) ?? undefined;
 		// `ingestExternalMessage` deletes the staged blobs itself on skip/dup.
-		return await ctx.runMutation(internal.mail.externalDelivery.ingestExternalMessage, {
+		return await ctx.runMutation(internal.mail.external.delivery.ingestExternalMessage, {
 			accountId: args.accountId,
 			folderRole: args.folderRole,
 			remoteName: args.remoteName,

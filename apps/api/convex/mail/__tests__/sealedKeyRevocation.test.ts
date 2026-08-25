@@ -147,7 +147,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.mail.externalSharedInbox.purgeShared, { mailboxId });
+			await t.mutation(api.mail.external.sharedInbox.purgeShared, { mailboxId });
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();

@@ -179,10 +179,10 @@ convex/mail/appPasswords.ts:revokeAll
 convex/mail/draftStreamStore.ts:createDraftStream
 convex/mail/draftStreamStore.ts:deleteDraftStream
 convex/mail/draftStreamStore.ts:getDraftStream
-convex/mail/externalAccounts.ts:disconnect
-convex/mail/externalAccounts.ts:purge
-convex/mail/externalAccountsSeed.ts:acknowledgeSeedRotation
-convex/mail/externalSharedInbox.ts:purgeShared
+convex/mail/external/accounts.ts:disconnect
+convex/mail/external/accounts.ts:purge
+convex/mail/external/accountsSeed.ts:acknowledgeSeedRotation
+convex/mail/external/sharedInbox.ts:purgeShared
 convex/mail/handlingRules.ts:create
 convex/mail/handlingRules.ts:remove
 convex/mail/handlingRules.ts:update

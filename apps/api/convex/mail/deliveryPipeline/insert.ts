@@ -6,7 +6,7 @@
  * parsing helpers that shape the row. This is the one place a delivered
  * message becomes a row, shared by the hosted MX inbound path
  * (`mail/delivery.ts::deliverToMailbox`) and external IMAP sync
- * (`mail/externalDelivery.ts::ingestExternalMessage`).
+ * (`mail/external/delivery.ts::ingestExternalMessage`).
  */
 
 import type { MutationCtx } from '../../_generated/server';
@@ -62,7 +62,7 @@ export interface DeliveredAttachment {
  * new message id.
  *
  * Used by `deliverToMailbox` (hosted MX inbound) and
- * `externalDelivery.ingestExternalMessage` (external IMAP sync). Post-delivery
+ * `external/delivery.ingestExternalMessage` (external IMAP sync). Post-delivery
  * hooks (forwarding/vacation) are NOT run here — each caller decides.
  */
 export async function insertDeliveredMessage(

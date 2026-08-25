@@ -96,10 +96,10 @@ function handleUpdated() {
 	showToast(t('dashboard.postbox.migrate.toastCredentialsUpdated'), 'success');
 }
 
-const disconnectOp = useBackendOperation(api.mail.externalAccounts.disconnect, {
+const disconnectOp = useBackendOperation(api.mail.external.accounts.disconnect, {
 	label: () => t('dashboard.postbox.migrate.disconnectOperation'),
 });
-const purgeOp = useBackendOperation(api.mail.externalAccounts.purge, {
+const purgeOp = useBackendOperation(api.mail.external.accounts.purge, {
 	label: () => t('dashboard.postbox.migrate.purgeOperation'),
 });
 const showDisconnect = ref(false);

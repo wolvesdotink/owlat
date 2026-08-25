@@ -121,7 +121,7 @@ describe('userOnboarding — real hook wiring', () => {
 		await enableFlags(t, { 'mail.external': true });
 		sessionMocks.userId = 'user-A';
 
-		await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
+		await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 
 		const state = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
 		expect(typeof state.mailboxReady).toBe('number');
@@ -132,7 +132,7 @@ describe('userOnboarding — real hook wiring', () => {
 		await enableFlags(t, { 'mail.external': true, ai: true, 'ai.knowledge': true });
 		sessionMocks.userId = 'user-A';
 
-		await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
+		await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 
 		const { migrationId } = await t.mutation(api.mail.migration.start, {});
 		let state = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
@@ -162,7 +162,7 @@ describe('userOnboarding — real hook wiring', () => {
 		await enableFlags(t, { 'mail.external': true, ai: true, 'ai.knowledge': true });
 		sessionMocks.userId = 'user-A';
 
-		await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
+		await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 		const { migrationId } = await t.mutation(api.mail.migration.start, {});
 		await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
 
@@ -185,7 +185,7 @@ describe('userOnboarding — real hook wiring', () => {
 			await enableFlags(t, { 'mail.external': true, ai: true, 'ai.knowledge': true });
 			sessionMocks.userId = 'user-A';
 
-			await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
+			await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 			const { migrationId } = await t.mutation(api.mail.migration.start, {});
 			await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
 

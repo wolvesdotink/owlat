@@ -18,7 +18,7 @@ import { assertMarketingOneClickHeaders } from '../marketingCompliance';
 import { composeForSend } from '../sendComposition';
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
 import schema from '../../schema';
-import { insertExternalAccountRow } from '../../mail/externalAccountShared';
+import { insertExternalAccountRow } from '../../mail/external/accountShared';
 import { loadSeedAccounts } from '../../analytics/seedAccounts';
 import { campaignEmailPool } from '../workpool';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';

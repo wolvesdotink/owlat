@@ -8,19 +8,19 @@
  *
  * This file holds the v8 (non-Node) surface: user-facing queries/mutations and
  * the worker-facing internal functions. Crypto + the plaintext credential path
- * live in the sibling `'use node'` file `externalAccountsActions.ts`.
+ * live in the sibling `'use node'` file `accountsActions.ts`.
  *
  * The same machinery also backs a SHARED team inbox — connecting an external
  * account provisions a `kind='external', scope='shared'` mailbox (access
  * governed by `mailboxMembers`) instead of a personal 1:1 account. That path
- * lives in the sibling `mail/externalSharedInbox.ts` (it reuses this file's
+ * lives in the sibling `mail/external/sharedInbox.ts` (it reuses this file's
  * `connectFieldsValidator` + `getLivePersonalExternalAccountForUser` semantics);
  * see the `scope` field on `externalMailAccounts` for the ownership/credential
  * model. The `scope='shared'` discriminator is what keeps a team inbox out of
  * the personal-external surfaces below.
  *
  * A third path — the DELIVERABILITY SEED mailbox — lives in the sibling
- * `mail/externalAccountsSeed.ts`. It reuses this file's `connectFieldsValidator`
+ * `mail/external/accountsSeed.ts`. It reuses this file's `connectFieldsValidator`
  * and the same sealed envelope, but a seed is not an inbox at all: the
  * `purpose='seed'` discriminator keeps it off every personal-external surface
  * below and out of `listConnectableAccounts`.
@@ -39,26 +39,26 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { internal } from '../_generated/api';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
-import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox/identity';
+import { internalQuery, internalMutation } from '../../_generated/server';
+import { authedMutation, publicQuery } from '../../lib/authedFunctions';
+import { internal } from '../../_generated/api';
+import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
+import { assertFeatureEnabled } from '../../lib/featureFlags';
+import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import {
 	insertExternalAccountRow,
 	applyCredentialRotation,
 	CONNECTABLE_ACCOUNT_STATUSES,
-} from './externalAccountShared';
-import { markOnboardingStep } from '../auth/userOnboarding';
+} from './accountShared';
+import { markOnboardingStep } from '../../auth/userOnboarding';
 import {
 	throwForbidden,
 	throwInvalidInput,
 	throwAlreadyExists,
 	throwNotFound,
-} from '../_utils/errors';
-import type { QueryCtx, MutationCtx } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
+} from '../../_utils/errors';
+import type { QueryCtx, MutationCtx } from '../../_generated/server';
+import type { Doc } from '../../_generated/dataModel';
 
 const PURGE_CHUNK = 200;
 
@@ -220,7 +220,7 @@ export const purge = authedMutation({
 		// Mark disconnected first so the worker stops syncing into a draining mailbox.
 		await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
 		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
-		await ctx.scheduler.runAfter(0, internal.mail.externalAccounts._purgeChunk, {
+		await ctx.scheduler.runAfter(0, internal.mail.external.accounts._purgeChunk, {
 			accountId: account._id,
 			mailboxId: account.mailboxId,
 		});
@@ -250,7 +250,7 @@ export const _purgeChunk = internalMutation({
 			await ctx.db.delete(m._id);
 		}
 		if (messages.length === PURGE_CHUNK) {
-			await ctx.scheduler.runAfter(0, internal.mail.externalAccounts._purgeChunk, args);
+			await ctx.scheduler.runAfter(0, internal.mail.external.accounts._purgeChunk, args);
 			return;
 		}
 

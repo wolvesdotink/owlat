@@ -6,7 +6,7 @@
  * Runs in Convex's Node.js runtime (`'use node'`) because credential
  * encryption uses `node:crypto` (via lib/credentialCrypto). All DB work is
  * delegated to internal queries/mutations in the sibling v8 file
- * `externalAccounts.ts`; the BetterAuth session propagates from these public
+ * `accounts.ts`; the BetterAuth session propagates from these public
  * actions into those internal calls.
  *
  *   Public:   connect, connectShared, updateCredentials, updateCredentialsShared,
@@ -19,14 +19,14 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import { internalAction, type ActionCtx } from '../_generated/server';
-import { authedAction } from '../lib/authedFunctions';
-import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
-import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
-import { encryptSecret, decryptSecret } from '../lib/credentialCrypto';
-import { getMailSyncConfig } from './mtaClient';
-import { throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { internalAction, type ActionCtx } from '../../_generated/server';
+import { authedAction } from '../../lib/authedFunctions';
+import { destinationProviderValidator } from '../../delivery/deliverabilityValidators';
+import { internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
+import { encryptSecret, decryptSecret } from '../../lib/credentialCrypto';
+import { getMailSyncConfig } from '../mtaClient';
+import { throwForbidden, throwInvalidInput } from '../../_utils/errors';
 
 interface ProtocolTestResult {
 	ok: boolean;
@@ -142,7 +142,7 @@ export const connect = authedAction({
 		await assertExternalEnabled(ctx);
 		validateShape(args);
 		return await ctx.runMutation(
-			internal.mail.externalAccounts._connectInternal,
+			internal.mail.external.accounts._connectInternal,
 			toConnectFields(args)
 		);
 	},
@@ -170,7 +170,7 @@ export const connectSeed = authedAction({
 	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
-		return await ctx.runMutation(internal.mail.externalAccountsSeed._connectSeedInternal, {
+		return await ctx.runMutation(internal.mail.external.accountsSeed._connectSeedInternal, {
 			...toConnectFields(args),
 			seedProvider: args.seedProvider,
 		});
@@ -198,7 +198,7 @@ export const connectShared = authedAction({
 	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
-		return await ctx.runMutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+		return await ctx.runMutation(internal.mail.external.sharedInbox._connectSharedInternal, {
 			...toConnectFields(args),
 			displayName: args.displayName,
 			memberUserIds: args.memberUserIds,
@@ -226,7 +226,7 @@ export const updateCredentialsShared = authedAction({
 		await assertExternalEnabled(ctx);
 		validateShape(args);
 		return await ctx.runMutation(
-			internal.mail.externalSharedInbox._updateCredentialsSharedInternal,
+			internal.mail.external.sharedInbox._updateCredentialsSharedInternal,
 			{ ...toConnectFields(args), mailboxId: args.mailboxId }
 		);
 	},
@@ -244,7 +244,7 @@ export const updateCredentials = authedAction({
 		await assertExternalEnabled(ctx);
 		validateShape(args);
 		return await ctx.runMutation(
-			internal.mail.externalAccounts._updateCredentialsInternal,
+			internal.mail.external.accounts._updateCredentialsInternal,
 			toConnectFields(args)
 		);
 	},
@@ -310,7 +310,7 @@ export const testConnection = authedAction({
 export const getCredentialsForWorker = internalAction({
 	args: { accountId: v.id('externalMailAccounts') },
 	handler: async (ctx, args): Promise<WorkerCredentials | null> => {
-		const row = await ctx.runQuery(internal.mail.externalAccounts._getRowInternal, {
+		const row = await ctx.runQuery(internal.mail.external.accounts._getRowInternal, {
 			accountId: args.accountId,
 		});
 		if (!row) return null;
