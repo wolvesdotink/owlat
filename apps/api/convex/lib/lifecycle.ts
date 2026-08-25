@@ -37,7 +37,15 @@ export type LifecycleEdgeSpec<TFrom extends string, TTo extends string = TFrom> 
 	Record<TFrom, readonly TTo[]>
 >;
 
-/** The only two refusal reasons the core itself produces. */
+/**
+ * The only two refusal reasons the core itself produces.
+ *
+ * A graph built *without* `reportsTerminalRefusals: true` can only ever produce
+ * `illegal_edge`, and {@link defineLifecycle} says so in its type: such a graph
+ * is a `LifecycleGraph<TFrom, TTo, 'illegal_edge'>`, so `classify` and
+ * {@link refuse} hand those machines a `reason` that has no `terminal` member
+ * and needs no union widening at the call site.
+ */
 export type LifecycleRefusalReason = 'illegal_edge' | 'terminal';
 
 /**
@@ -48,6 +56,25 @@ export type LifecycleRefusalReason = 'illegal_edge' | 'terminal';
 export type LifecycleReason<TExtra extends string = never> = LifecycleRefusalReason | TExtra;
 
 /**
+ * The refused arm of {@link TransitionVerdict}.
+ *
+ * `TReason` is the set of reasons the *producing graph* can report; it defaults
+ * to both. Written structurally rather than as an `Extract<…>` of the verdict
+ * union so that {@link refuse} can infer it from its argument — inference does
+ * not see through an unresolved conditional type.
+ */
+export type RefusedVerdict<
+	TFrom extends string,
+	TTo extends string = TFrom,
+	TReason extends LifecycleRefusalReason = LifecycleRefusalReason,
+> = {
+	readonly kind: 'refused';
+	readonly reason: TReason;
+	readonly from: TFrom;
+	readonly to: TTo;
+};
+
+/**
  * The classification of one attempted edge.
  *
  * `proceed` means the caller may run its reducer. `isSelfLoop` is reported
@@ -56,30 +83,27 @@ export type LifecycleReason<TExtra extends string = never> = LifecycleRefusalRea
  * self-loop that the graph does not declare (the reducer answers `recorded`).
  * Callers that gate a precondition on "not already there" read `isSelfLoop`.
  */
-export type TransitionVerdict<TFrom extends string, TTo extends string = TFrom> =
+export type TransitionVerdict<
+	TFrom extends string,
+	TTo extends string = TFrom,
+	TReason extends LifecycleRefusalReason = LifecycleRefusalReason,
+> =
 	| {
 			readonly kind: 'proceed';
 			readonly from: TFrom;
 			readonly to: TTo;
 			readonly isSelfLoop: boolean;
 	  }
-	| {
-			readonly kind: 'refused';
-			readonly reason: LifecycleRefusalReason;
-			readonly from: TFrom;
-			readonly to: TTo;
-	  };
-
-/** The refused arm of {@link TransitionVerdict}. */
-export type RefusedVerdict<TFrom extends string, TTo extends string = TFrom> = Extract<
-	TransitionVerdict<TFrom, TTo>,
-	{ kind: 'refused' }
->;
+	| RefusedVerdict<TFrom, TTo, TReason>;
 
 /** The shared refusal shape every module's `ok: false` outcome extends. */
-export type LifecycleRefusal<TFrom extends string, TTo extends string = TFrom> = {
+export type LifecycleRefusal<
+	TFrom extends string,
+	TTo extends string = TFrom,
+	TReason extends LifecycleRefusalReason = LifecycleRefusalReason,
+> = {
 	readonly ok: false;
-	readonly reason: LifecycleRefusalReason;
+	readonly reason: TReason;
 	readonly from: TFrom;
 	readonly to: TTo;
 };
@@ -99,13 +123,24 @@ export type LifecycleOptions = {
 	 * Opt in to `terminal` refusals. OFF by default: only five of the eleven
 	 * lifecycle modules distinguish "refused because the from-state has no
 	 * outgoing edges" from a plain illegal edge, and the other six must keep
-	 * answering `illegal_edge` there. Forcing the richer reason on them would
-	 * widen their published outcome unions.
+	 * answering `illegal_edge` there.
+	 *
+	 * The flag is a *type* switch as much as a runtime one — see the
+	 * {@link defineLifecycle} overloads. A graph declared without it hands back
+	 * verdicts and refusals whose `reason` is `'illegal_edge'` alone, so those
+	 * six modules use {@link refuse} without widening their published outcome
+	 * unions. The flag must be written as a literal at the `defineLifecycle`
+	 * call: a `boolean`-typed value matches neither overload, on purpose, since
+	 * the core cannot then tell which reason set the graph produces.
 	 */
 	readonly reportsTerminalRefusals?: boolean;
 };
 
-export type LifecycleGraph<TFrom extends string, TTo extends string = TFrom> = {
+export type LifecycleGraph<
+	TFrom extends string,
+	TTo extends string = TFrom,
+	TReason extends LifecycleRefusalReason = LifecycleRefusalReason,
+> = {
 	/** Every declared from-state, in declaration order. */
 	readonly states: readonly TFrom[];
 	/** Whether this machine reports `terminal` refusals (see LifecycleOptions). */
@@ -117,7 +152,7 @@ export type LifecycleGraph<TFrom extends string, TTo extends string = TFrom> = {
 	/** Whether `state` is declared and has no outgoing edges. */
 	isTerminal(state: TFrom): boolean;
 	/** Classify one attempted edge. The whole point of this module. */
-	classify(from: TFrom, to: TTo, options?: ClassifyOptions): TransitionVerdict<TFrom, TTo>;
+	classify(from: TFrom, to: TTo, options?: ClassifyOptions): TransitionVerdict<TFrom, TTo, TReason>;
 };
 
 const NO_TARGETS: ReadonlySet<string> = new Set<string>();
@@ -131,11 +166,25 @@ const NO_TARGETS: ReadonlySet<string> = new Set<string>();
  *   { reportsTerminalRefusals: true }
  * );
  * ```
+ *
+ * Two overloads, one per reason set: opting in to `terminal` refusals yields a
+ * graph whose refusals are `'illegal_edge' | 'terminal'`; leaving the flag off
+ * (or out) yields one whose refusals are `'illegal_edge'` alone. There is no
+ * third overload accepting a non-literal `reportsTerminalRefusals`, so the
+ * narrowing can never be a lie.
  */
 export function defineLifecycle<TFrom extends string, TTo extends string = TFrom>(
 	spec: LifecycleEdgeSpec<TFrom, TTo>,
+	options: LifecycleOptions & { readonly reportsTerminalRefusals: true }
+): LifecycleGraph<TFrom, TTo, LifecycleRefusalReason>;
+export function defineLifecycle<TFrom extends string, TTo extends string = TFrom>(
+	spec: LifecycleEdgeSpec<TFrom, TTo>,
+	options?: LifecycleOptions & { readonly reportsTerminalRefusals?: false }
+): LifecycleGraph<TFrom, TTo, 'illegal_edge'>;
+export function defineLifecycle<TFrom extends string, TTo extends string = TFrom>(
+	spec: LifecycleEdgeSpec<TFrom, TTo>,
 	options: LifecycleOptions = {}
-): LifecycleGraph<TFrom, TTo> {
+): LifecycleGraph<TFrom, TTo, LifecycleRefusalReason> {
 	const states = Object.keys(spec) as TFrom[];
 	const edges = new Map<TFrom, ReadonlySet<TTo>>(
 		states.map((from) => [from, new Set<TTo>(spec[from])] as const)
@@ -184,21 +233,36 @@ export function defineLifecycle<TFrom extends string, TTo extends string = TFrom
 /**
  * Turn a refused verdict into a module outcome, folding in whatever
  * module-local context that module's `ok: false` shape carries (row ids, an
- * array index, …). The returned `reason` is one of the core's two literals; a
- * module whose union is wider (`LifecycleReason<'unknown_mta_id_prefix'>`)
- * accepts it unchanged.
+ * array index, …).
+ *
+ * The returned `reason` carries exactly the reasons the producing graph can
+ * report, no wider: `'illegal_edge' | 'terminal'` from a graph that opted in,
+ * `'illegal_edge'` from one that did not. So a module publishing only
+ * `illegal_edge` uses this as-is, and a module whose union is wider
+ * (`LifecycleReason<'unknown_mta_id_prefix'>`) accepts it unchanged too.
  */
-export function refuse<TFrom extends string, TTo extends string>(
-	verdict: RefusedVerdict<TFrom, TTo>
-): LifecycleRefusal<TFrom, TTo>;
-export function refuse<TFrom extends string, TTo extends string, TContext extends object>(
-	verdict: RefusedVerdict<TFrom, TTo>,
+export function refuse<
+	TFrom extends string,
+	TTo extends string,
+	TReason extends LifecycleRefusalReason,
+>(verdict: RefusedVerdict<TFrom, TTo, TReason>): LifecycleRefusal<TFrom, TTo, TReason>;
+export function refuse<
+	TFrom extends string,
+	TTo extends string,
+	TReason extends LifecycleRefusalReason,
+	TContext extends object,
+>(
+	verdict: RefusedVerdict<TFrom, TTo, TReason>,
 	context: TContext
-): LifecycleRefusal<TFrom, TTo> & TContext;
-export function refuse<TFrom extends string, TTo extends string>(
-	verdict: RefusedVerdict<TFrom, TTo>,
+): LifecycleRefusal<TFrom, TTo, TReason> & TContext;
+export function refuse<
+	TFrom extends string,
+	TTo extends string,
+	TReason extends LifecycleRefusalReason,
+>(
+	verdict: RefusedVerdict<TFrom, TTo, TReason>,
 	context: object = {}
-): LifecycleRefusal<TFrom, TTo> {
+): LifecycleRefusal<TFrom, TTo, TReason> {
 	return {
 		ok: false,
 		reason: verdict.reason,
