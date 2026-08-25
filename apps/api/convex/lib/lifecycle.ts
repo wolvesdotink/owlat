@@ -6,10 +6,16 @@
  * `mail/draftLifecycle`, `contacts/doiLifecycle`, `inbox/processingLifecycle`,
  * `transactional/lifecycle`, `campaigns/lifecycle`, `campaigns/abTestLifecycle`,
  * `automations/lifecycle`, `emailTemplates/lifecycle`, `domains/lifecycle`)
- * hand-roll the same `LEGAL_EDGES` graph plus the same five-line preamble of
- * their `dispatch`: look up the from-state's target set, test legality, test
- * the self-loop, optionally classify a no-outgoing-edges from-state as
- * `terminal`, otherwise refuse with `illegal_edge`.
+ * used to hand-roll the same `LEGAL_EDGES` graph plus the same five-line
+ * preamble of their `dispatch`: look up the from-state's target set, test
+ * legality, test the self-loop, optionally classify a no-outgoing-edges
+ * from-state as `terminal`, otherwise refuse with `illegal_edge`. All eleven
+ * now declare their edges here instead.
+ *
+ * Two of them do not call `classify` — `mail/draftLifecycle` and
+ * `inbox/processingLifecycle` never granted the implicit self-loop pass, so
+ * they ask `isLegalEdge`/`isTerminal` directly rather than have a same-state
+ * re-drive start proceeding.
  *
  * Scope is deliberately the *dispatcher only*. Reducers, effects, DB-reading
  * preconditions, external-key parsing, cross-machine coordination and every
