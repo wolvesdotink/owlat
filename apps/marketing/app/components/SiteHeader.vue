@@ -53,8 +53,10 @@ onMounted(() => {
 					<span class="text-md font-semibold tracking-tight text-text-primary">Owlat</span>
 				</a>
 
-				<!-- Desktop nav -->
-				<nav class="hidden lg:flex items-center px-2">
+				<!-- Desktop nav. Extra padding on the right separates the last nav item
+				     from the Sign in / Download cluster, which reads as a different kind
+				     of control. -->
+				<nav class="hidden lg:flex items-center pl-2 pr-4">
 					<a
 						v-for="link in navLinks"
 						:key="link.key"
