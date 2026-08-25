@@ -37,9 +37,7 @@ const classification = {
 };
 
 const pendingClarification: PendingClarification = {
-	questions: [
-		{ id: 'q1', slotType: 'order_number', text: 'What is your order number?' },
-	],
+	questions: [{ id: 'q1', slotType: 'order_number', text: 'What is your order number?' }],
 	askedAt: 1000,
 };
 
@@ -90,9 +88,7 @@ describe('reduce: classifying → awaiting_clarification', () => {
 		// No processedAt on a waiting state.
 		expect(result.patch['processedAt']).toBeUndefined();
 		expect(
-			result.effects.some(
-				(e) => e.kind === 'complete_action' && e.actionId === ACTION_ID,
-			),
+			result.effects.some((e) => e.kind === 'complete_action' && e.actionId === ACTION_ID)
 		).toBe(true);
 	});
 
@@ -104,24 +100,23 @@ describe('reduce: classifying → awaiting_clarification', () => {
 
 describe('reduce: awaiting_clarification → drafting (resume / fallback)', () => {
 	it('fires knowledge extraction exactly once on the resume edge', () => {
-		const result = reduce(
-			message({ processingStatus: 'awaiting_clarification', classification }),
-			{ to: 'drafting', at: 3000 },
-		);
+		const result = reduce(message({ processingStatus: 'awaiting_clarification', classification }), {
+			to: 'drafting',
+			at: 3000,
+		});
 		expect(result.patch['processingStatus']).toBe('drafting');
-		const extractions = result.effects.filter(
-			(e) => e.kind === 'schedule_knowledge_extraction',
-		);
+		const extractions = result.effects.filter((e) => e.kind === 'schedule_knowledge_extraction');
 		expect(extractions.length).toBe(1);
 	});
 });
 
 describe('reduce: awaiting_clarification → archived (dismiss)', () => {
 	it('marks the message archived with the dismiss reason', () => {
-		const result = reduce(
-			message({ processingStatus: 'awaiting_clarification' }),
-			{ to: 'archived', at: 4000, reason: 'clarification_dismissed' },
-		);
+		const result = reduce(message({ processingStatus: 'awaiting_clarification' }), {
+			to: 'archived',
+			at: 4000,
+			reason: 'clarification_dismissed',
+		});
 		expect(result.patch['processingStatus']).toBe('archived');
 		expect(result.patch['processedAt']).toBe(4000);
 	});
