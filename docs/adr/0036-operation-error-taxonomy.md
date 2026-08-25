@@ -175,7 +175,9 @@ mutation + a label; the only knob is the optional `inlineTarget` for the two
 inline categories — without it, they toast. `useBackendQuery` maps a query
 failure onto the same vocabulary for empty/error/retry UI.
 `useCampaignActions`-style multi-step flows compose `run` instead of
-re-rolling try/catch.
+re-rolling try/catch. *(Amended — `run` resolves an `{ ok }` envelope, not
+`T | undefined`; see
+[Amendment: the operation result envelope](#amendment-the-operation-result-envelope).)*
 
 ### Decisions resolved in the grilling
 
@@ -314,3 +316,74 @@ policy:
 editor (`useCampaignActions`) and the wizard's Review step. A second, unrelated
 user is the signal to revisit whether the exception belongs in the central map
 after all.
+
+## Amendment: the operation result envelope
+
+*Added by the architecture-deepening pass.*
+
+`run` resolves an explicit envelope rather than the Decision sketch's
+`T | undefined`:
+
+```ts
+type BackendOperationResult<T> = { ok: true; result: T } | { ok: false };
+
+run: (args: FunctionArgs<M>) => Promise<BackendOperationResult<FunctionReturnType<M>>>;
+```
+
+**Why the sketch is no longer sufficient.** `| undefined` was shorthand for
+"this one failed, and has already been surfaced" — but plenty of the mutations
+behind `run` legitimately resolve `undefined` on a perfectly good write (a
+`void` handler, which Convex serializes to `null` on the client; a `remove`
+that returns nothing; a soft-fail that answers `null`). With one channel
+carrying both, a caller cannot tell "the write landed and had nothing to say"
+apart from "the write failed", and every `=== undefined` guard in the app was
+quietly asserting the first case is impossible. The resulting bugs are silent
+by construction: nothing throws, the UI simply declines to confirm a write that
+happened — or confirms one that did not. Two were already in the tree.
+`contacts.propertyValues.remove` returns a bare `true` for no reason except to
+dodge the sentinel (and the app-side test says so in its docblock); the Postbox
+reader's auto-advance keyed its "stay put only on a THROWN error" rule directly
+on `undefined`, so any handler returning nothing would have parked the reader
+on a row that had already left.
+
+This is an amendment, not a reversal. It changes only the shape of the SUCCESS
+channel. The closed category union, the one category → treatment table, and the
+single telemetry decision are untouched — and the failure arm deliberately
+carries nothing, because deciding what a failure LOOKS like is still the
+module's job and never the caller's.
+
+**Both failure paths are `ok: false`** — a categorized throw and the
+no-Convex-client case, which the sketch also flattened into `undefined`.
+
+**A claimed refusal is still a failure.** The `onError` claim (previous
+amendment) suppresses the default surface and the telemetry report, but the
+operation still did not happen, so `run` resolves `{ ok: false }`. That is what
+stops `useCampaignActions` and the wizard's Review step from announcing "Sending
+…" over a campaign pre-flight refused: they abort the sequence on `!ok` and
+render the capacity schedule their `onError` captured.
+
+**No `category` or `code` on the envelope**, by design. Those names belong to
+the `OperationError` contract above and to nothing else; a second `category:`
+literal here would be exactly the drift the `lint:errors` guard bans.
+
+**Call-site shape.** One guard, then the payload:
+
+```ts
+const created = await createDomain({ domain });
+if (!created.ok) return; // the failure is already surfaced
+useTheNewDomain(created.result);
+```
+
+Multi-step flows keep one `if (!step.ok) return;` per step where they used to
+chain `(await step()) === undefined`. Where a seam BETWEEN app modules mirrored
+the sentinel in its own signature — `useAddDomain`'s `createDomain`,
+`useInboxTriage`'s `mutate`, `useDomainAutoRecheck`'s `verifyDomain`,
+`usePostboxRowTriage`'s row-removing `mutate`, `useBlocklistImport`'s
+`bulkAddFn`, `storageUpload`'s `generateUploadUrl` — that parameter takes the
+envelope too, so "did the operation land" has exactly one shape everywhere it
+travels. Composables that hand a `run` straight back to a screen
+(`useThreadDetail`, `useReviewQueue`, `useChatActions`, …) pass the envelope
+through unopened rather than re-flattening it.
+
+`BackendOperationValue<R>` unwraps the payload type for the handful of callers
+that park a verdict in a `ref` and type it off the operation.

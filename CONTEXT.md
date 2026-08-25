@@ -5191,6 +5191,14 @@ UI treatment — `useBackendOperation` for writes, `useBackendQuery` for reactiv
 reads.
 _Avoid_: mutation wrapper, `useConvexMutation`.
 
+**Operation result**:
+The `{ ok: true, result } | { ok: false }` envelope an **Operation module**
+write resolves. `ok` is the only thing a caller ever tests — the failure arm
+carries nothing because the treatment (toast / inline / redirect / telemetry)
+has already been applied. Replaces the `T | undefined` sentinel, which could
+not tell a write that legitimately returned nothing from one that failed.
+_Avoid_: the undefined sentinel, "returns `undefined` on failure".
+
 ## Resource listing
 
 The one read-side surface for "give me a filtered, searched, paginated,
