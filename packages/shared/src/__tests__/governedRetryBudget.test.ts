@@ -4,13 +4,20 @@ import {
 	governedDeliveryDeadlineAt,
 	nextGovernedAttempt,
 	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
-	MAX_GOVERNED_ROUTING_ATTEMPTS,
 } from '../routingReentry';
 
 /**
  * FIXED TIMESTAMPS, NO CLOCK. Every case below states `now` explicitly, so the
  * boundary matrix is the same on a fast machine, a slow one, and a leap second.
  */
+/**
+ * The shipped attempt cap, PINNED HERE rather than imported. The predicate keeps
+ * it private, and that is the point: a test that reads the module's own constant
+ * agrees with any value the module happens to hold, so it could never catch the
+ * cap being changed. This literal is the assertion.
+ */
+const MAX_GOVERNED_ROUTING_ATTEMPTS = 8;
+
 const STARTED_AT = 1_800_000_000_000;
 const DEADLINE_AT = STARTED_AT + GOVERNED_MTA_MAX_MESSAGE_AGE_MS;
 

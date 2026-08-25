@@ -6,8 +6,15 @@ export const ROUTING_REENTRY_CLOCK_SKEW_MS = 60 * 60 * 1000;
 export const ROUTING_REENTRY_TOKEN_TTL_MS =
 	GOVERNED_MTA_MAX_MESSAGE_AGE_MS + ROUTING_REENTRY_CLOCK_SKEW_MS;
 
-/** Includes the initial attempt. Attempt 8 is terminal and never creates attempt 9. */
-export const MAX_GOVERNED_ROUTING_ATTEMPTS = 8;
+/**
+ * Includes the initial attempt. Attempt 8 is terminal and never creates attempt 9.
+ *
+ * DELIBERATELY MODULE-PRIVATE. Dispatch, completion and routing re-entry each
+ * used to import this number and re-spell the comparison, which is how the cap
+ * drifted out of step with the deadline beside it. `admitGovernedRetry` is now
+ * the only reader; callers ask it for a verdict rather than for the number.
+ */
+const MAX_GOVERNED_ROUTING_ATTEMPTS = 8;
 
 // AES-GCM ciphertext contains the bound Send/org/attempt locator. Keep this
 // bounded at every transport edge without constraining normal Convex IDs.

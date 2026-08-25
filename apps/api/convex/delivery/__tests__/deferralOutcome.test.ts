@@ -24,7 +24,6 @@ import type { WorkId } from '@convex-dev/workpool';
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import type { DeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
-import { MAX_GOVERNED_ROUTING_ATTEMPTS } from '@owlat/shared';
 import { modules } from '../../__tests__/testModules';
 import { startOfDayUtc } from '../../lib/clock';
 import { summarizeTransportOutcomes } from '../../analytics/transportOutcomes';
@@ -95,7 +94,9 @@ function deferredResult(
 			retryAfterMs: 60_000,
 			envelopeInput: campaignEnvelope(sendId),
 			retryState: {
-				attempt: retry ? 1 : MAX_GOVERNED_ROUTING_ATTEMPTS + 1,
+				// One past the shipped governed attempt cap of 8 — the predicate owns the
+				// number, so it is spelled here rather than imported.
+				attempt: retry ? 1 : 9,
 				startedAt: Date.now(),
 				idempotencyKey: `send_${sendId}`,
 			},
