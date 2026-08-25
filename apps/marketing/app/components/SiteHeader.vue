@@ -2,9 +2,8 @@
 const mobileOpen = ref(false);
 const activeSection = ref('');
 
-const { t, locale, locales } = useI18n();
+const { t } = useI18n();
 const localePath = useLocalePath();
-const switchLocalePath = useSwitchLocalePath();
 
 const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload();
 
@@ -14,15 +13,6 @@ const navLinks = [
 	{ key: 'nav.pricing', href: '#pricing' },
 	{ key: 'nav.docs', href: 'https://docs.owlat.app' },
 ];
-
-/* The switcher is driven by the module's own locale list, so adding a locale in
- * nuxt.config is the only step needed to make it appear here. `name` is the
- * endonym ("Deutsch"), which is what a visitor who cannot read the current
- * language recognises; the pill itself shows the short code to stay inside the
- * floating nav's width budget. */
-const languages = computed(() =>
-	locales.value.map((entry) => (typeof entry === 'string' ? { code: entry, name: entry } : entry))
-);
 
 onMounted(() => {
 	const sections = ['features', 'developers', 'pricing'];
@@ -80,29 +70,9 @@ onMounted(() => {
 					</a>
 				</nav>
 
-				<!-- Desktop CTAs -->
+				<!-- Desktop CTAs. No language switcher: the footer owns that control at
+				     every breakpoint, which keeps the pill inside its width budget. -->
 				<div class="hidden lg:flex items-center gap-2">
-					<div
-						class="flex items-center gap-0.5 rounded-full border border-border-subtle p-0.5"
-						role="group"
-						:aria-label="t('language.label')"
-					>
-						<a
-							v-for="lang in languages"
-							:key="lang.code"
-							:href="switchLocalePath(lang.code)"
-							:aria-label="t('language.switchTo', { language: lang.name })"
-							:aria-current="lang.code === locale ? 'true' : undefined"
-							class="px-2 py-1 rounded-full font-mono text-2xs font-medium uppercase transition-colors duration-(--motion-fast) no-underline"
-							:class="
-								lang.code === locale
-									? 'bg-bg-soft text-text-primary'
-									: 'text-text-tertiary hover:text-text-primary'
-							"
-						>
-							{{ lang.code }}
-						</a>
-					</div>
 					<a
 						href="https://app.owlat.app/login"
 						class="px-3 py-1.5 text-caption font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
