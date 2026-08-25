@@ -22,7 +22,8 @@ import {
 } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { insertDeliveredMessage, splitBodyForStorage, buildSnippet } from './delivery';
+import { insertDeliveredMessage, buildSnippet } from './deliveryPipeline/insert';
+import { splitBodyForStorage } from './deliveryPipeline/ingest';
 import { storeSealedBlob } from '../lib/sealedBlob';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 

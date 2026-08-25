@@ -6,6 +6,19 @@
  * RFC 5322 threading, allocates per-folder UID + modseq atomically, inserts
  * a mailMessages row, and updates folder/thread aggregates.
  *
+ * This file is the Convex-function surface — the ingest action and the
+ * delivery mutation, at their existing `internal.mail.delivery.*` paths. The
+ * steps live beside it in `./deliveryPipeline/`:
+ *
+ *   ingest.ts   raw staging, decrypt-on-ingest, signature verify, body split,
+ *               attachment capture (action-only)
+ *   scan.ts     the aggregate inbound malware verdict
+ *   routing.ts  pure spam / filter / DMARC-ARC decisions
+ *   insert.ts   threading, UID+modseq, the row insert and its aggregates
+ *
+ * (`deliveryPipeline/` rather than `delivery/` so it never reads as a sibling
+ * of the top-level `convex/delivery/` campaign send domain.)
+ *
  * Threading order:
  *   1. In-Reply-To header → existing message by rfc822MessageId
  *   2. References header → any referenced message
@@ -18,165 +31,26 @@ import {
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
 } from '../lib/convexValidators';
-import {
-	internalMutation,
-	internalAction,
-	type MutationCtx,
-	type ActionCtx,
-} from '../_generated/server';
+import { internalMutation, internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
-import { evaluateFilters } from './filters';
-import { extractEmail, normalizeSubject } from '../lib/emailAddress';
-import { extractAntiLoopHeaders } from '../lib/inboundClassification';
-import { extractAttachments } from '@owlat/shared/mailMime';
-import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
-import { DEFAULT_TRUSTED_ARC_FORWARDERS, shouldArcOverrideDmarc } from '@owlat/shared/arcTrust';
-import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
+import type { Id } from '../_generated/dataModel';
+import { extractEmail } from '../lib/emailAddress';
 import { logError } from '../lib/runtimeLog';
-import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
-import { scanContent } from '@owlat/email-scanner';
-import { computeSenderHeuristics, type SenderHeuristics } from './senderHeuristics';
-import {
-	inboundEncryptionInfoValidator,
-	isSealedPgpMime,
-	usableRestoredBodies,
-	type InboundEncryptionInfo,
-} from '../e2ee/inboundSeal';
-import { inboundSignatureInfoValidator, type InboundSignatureInfo } from '../e2ee/inboundSignature';
-import { isClearsigned, isSignedPgpMime } from '@owlat/shared/secureMessage';
+import { computeSenderHeuristics } from './senderHeuristics';
+import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
+import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
 import { resolveDeliverableMailbox } from './mailbox/identity';
 import { clearSnoozeUntilReplyForThread } from './snooze';
-import { sealBodyAtWriteMaybe } from '../lib/messageBody';
-import { storeSealedBlob, type BlobStore } from '../lib/sealedBlob';
-
-const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
-
-/**
- * Inline a parsed body when it fits the threshold; otherwise stash it as a
- * storage blob so the reader can lazy-fetch it. Bodies over the threshold are
- * NOT stored inline on the row (they'd bloat every list read and can exceed
- * Convex value limits) — previously they were simply dropped, so newsletters /
- * long threads rendered blank. Action-only (needs `ctx.storage.store`).
- */
-export async function splitBodyForStorage(
-	ctx: { storage: BlobStore },
-	body: string | undefined,
-	contentType: string
-): Promise<{ inline?: string; storageId?: Id<'_storage'> }> {
-	if (!body) return {};
-	if (Buffer.byteLength(body, 'utf-8') <= INLINE_BODY_THRESHOLD_BYTES) {
-		return { inline: body };
-	}
-	// E8b: seal the over-threshold body blob at rest (byte cipher). The reader
-	// (`readMailMessageText`) and the web-reader proxy both unseal transparently.
-	const storageId = await storeSealedBlob(ctx.storage, new TextEncoder().encode(body), contentType);
-	return { storageId };
-}
-
-function extractName(field: string): string | undefined {
-	const match = field.match(/^([^<]+?)\s*<[^>]+>$/);
-	return match?.[1]?.trim().replace(/^"|"$/g, '') || undefined;
-}
-
-export function buildSnippet(text: string | undefined, html: string | undefined): string {
-	const source =
-		text?.trim() ??
-		html
-			?.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-			.replace(/<[^>]+>/g, ' ')
-			.replace(/\s+/g, ' ')
-			.trim() ??
-		'';
-	return source.slice(0, 200);
-}
-
-function stripBrackets(s: string | undefined): string | undefined {
-	return s?.replace(/[<>]/g, '').trim() || undefined;
-}
-
-function parseReferences(refs: string | undefined): string[] {
-	if (!refs) return [];
-	return refs
-		.split(/\s+/)
-		.map((r) => r.replace(/[<>]/g, '').trim())
-		.filter(Boolean);
-}
-
-/**
- * Scan an inbound message's attachments for malware before mailbox delivery.
- *
- * ClamAV runs only in the MTA container, so the Convex inbound path POSTs each
- * non-inline attachment leaf to the MTA `/scan/attachment` endpoint (the same
- * endpoint the outbound send path uses — see `mail/outbound.ts` and
- * `delivery/worker.ts`). Defense-in-depth on the RECEIVING side: without this,
- * inbound mail lands in the mailbox with `virusVerdict` undefined, so the
- * `infected → Spam` routing in `deliverToMailbox` can never fire.
- *
- * Returns the aggregate verdict across all attachments:
- *   - `'infected'` — at least one attachment was confirmed malware. The caller
- *     routes the message to Spam/quarantine.
- *   - `'skipped'` — the scanner was unreachable / errored / failed open for at
- *     least one attachment (and none were confirmed infected). Fail-open: the
- *     message is still delivered, but the skip is surfaced via
- *     `lib/scannerHealth.warnScanSkipped` so the operator sees it in the logs.
- *   - `'clean'` — every attachment was scanned and came back clean.
- *   - `undefined` — there was nothing to scan (no attachments) or the MTA is
- *     not configured, so no verdict is asserted (leaves the row's prior verdict
- *     untouched).
- *
- * Pure (no Convex ctx): takes the raw MIME + resolved MTA config so it can be
- * unit-tested with a `fetch` spy, mirroring `deliveryHooks.forwardToTarget`.
- */
-export async function scanInboundAttachments(
-	mta: { baseUrl: string; apiKey: string } | null,
-	rawBytes: Buffer
-): Promise<'clean' | 'infected' | 'skipped' | undefined> {
-	if (!mta) return undefined; // scanner not configured → no verdict asserted
-
-	// The extractor wants a binary string (one char per byte) so binary parts survive.
-	const parts = extractAttachments(rawBytes.toString('latin1'));
-	// Only real (non-inline) attachment leaves carry a malware risk worth gating
-	// delivery on; inline images (logos/signatures) are skipped, matching the
-	// `captureAttachments` policy.
-	const candidates = parts.filter((p) => p.disposition !== 'inline' && p.bytes.byteLength > 0);
-	if (candidates.length === 0) return undefined; // nothing to scan
-
-	let scannedAny = false;
-	let anySkipped = false;
-	let scanned = 0;
-	for (const part of candidates) {
-		// Bound the work: the inbound webhook is attacker-reachable, so a crafted
-		// .eml with many leaves must not amplify per-message scan cost. Cap on the
-		// same count `captureAttachments` uses.
-		if (scanned >= ATTACHMENT_COMPOSE_LIMITS.maxCount) break;
-		scanned++;
-		const filename = part.filename || 'attachment';
-		const data = Buffer.from(part.bytes);
-		// Shared client owns the POST + fail-open (scanner-down / network error
-		// resolve to 'skipped' and are surfaced via warnScanSkipped). This
-		// path's POLICY: AGGREGATE the per-part verdicts — a single confirmed
-		// infection short-circuits to quarantine; any skip downgrades the
-		// aggregate to 'skipped'.
-		const verdict = await scanAttachmentBytes(mta, filename, data);
-		if (verdict.kind === 'infected') {
-			// Confirmed malware — short-circuit; the message goes to quarantine.
-			return 'infected';
-		}
-		if (verdict.kind === 'skipped') {
-			anySkipped = true;
-			continue;
-		}
-		scannedAny = true;
-	}
-
-	if (anySkipped) return 'skipped';
-	if (scannedAny) return 'clean';
-	return undefined;
-}
+import { captureAttachments, prepareInboundMessage } from './deliveryPipeline/ingest';
+import { insertDeliveredMessage, stripBrackets } from './deliveryPipeline/insert';
+import {
+	resolveDmarcRouting,
+	resolveFilterOutcome,
+	resolveSpamVerdict,
+} from './deliveryPipeline/routing';
 
 /**
  * Action: download raw MIME from MTA Redis stage and store in ctx.storage.
@@ -228,122 +102,15 @@ export const ingestFromWebhook = internalAction({
 		dkimSigningDomain: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
-		// Decode raw MIME and stash in Convex storage.
-		const rawBytes = Buffer.from(args.rawBytesBase64, 'base64');
-		const rawSize = rawBytes.length;
-		// Raw header block decoded once (64KB covers any header section) for both
-		// extractions below.
-		const rawHeaderBlock = rawBytes.subarray(0, 65536).toString('utf8');
-		// RFC 3834 anti-loop headers so forwarding + vacation hooks skip
-		// list/auto-submitted mail.
-		const antiLoopHeaders = extractAntiLoopHeaders(rawHeaderBlock);
-		// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
-		// here so the reader's Unsubscribe chip never re-opens the raw .eml.
-		const unsubscribe = extractListUnsubscribe(rawHeaderBlock) ?? undefined;
-		// The raw `.eml` we store IS the E2EE-sealed original when the message
-		// arrived sealed — decrypt-on-ingest keeps that ciphertext downloadable
-		// (D3) while the row's body columns below carry the restored plaintext.
-		// E8b then wraps the bytes in the AT-REST byte cipher so a storage dump
-		// holds no plaintext; the reader path + `/sealed-blob` proxy unseal it.
-		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
-
-		// Sealed Mail (E4, D3): decrypt-on-ingest. When the message arrived as
-		// PGP/MIME ciphertext AND we hold the recipient's vault key, open it here so
-		// the RESTORED plaintext (real Subject + bodies) flows into the normal
-		// pipeline (threading, categorize, needs-reply, agent, knowledge, search). A
-		// message we cannot decrypt — or any plaintext message, or when the flag is
-		// off — falls straight through to the existing path unchanged. The honest
-		// outcome is recorded on the row as `inboundEncryptionInfo`.
-		//
-		// The structural check is pure + cheap, so a PLAINTEXT message (the common
-		// case, and the default while the flag is off) never spawns the `'use node'`
-		// open action — it would only return `{ sealed: false }` anyway. Mirrors the
-		// cheap `extractArmoredCiphertext` pre-gate the AI-inbox path already uses
-		// before its decrypt action.
-		const rawText = rawBytes.toString('utf8');
-		const opened = isSealedPgpMime(rawText)
-			? await ctx.runAction(internal.e2ee.open.openInboundForMailbox, {
-					rawBytesBase64: args.rawBytesBase64,
-					recipientAddress: args.recipientAddress,
-					from: args.from,
-				})
-			: ({ isSealed: false } as const);
-
-		// Inbound PGP signature verification (F1, D9): a message that arrived
-		// SIGNED but not encrypted (RFC 3156 multipart/signed or an inline
-		// clearsigned body) gets its signature verified server-side and the honest
-		// verdict persisted beside the row. Same cheap structural pre-gate pattern
-		// as the sealed check above, so plaintext mail (the common case) never
-		// spawns the `'use node'` verify action. Fail-open by construction: the
-		// action never throws, and even if it did the message still delivers with
-		// an honest `verification_error` verdict — signature verification adds
-		// data, never blocks delivery (D10).
-		let inboundSignatureInfo: InboundSignatureInfo | undefined;
-		if (!opened.isSealed && (isSignedPgpMime(rawText) || isClearsigned(rawText))) {
-			try {
-				const verdict = await ctx.runAction(internal.e2ee.verifyInboundSignature.forInbound, {
-					rawBytesBase64: args.rawBytesBase64,
-					from: args.from,
-				});
-				if (verdict.isSigned) inboundSignatureInfo = verdict.info;
-			} catch (err) {
-				logError('[Mail Webhook] inbound signature verification failed', err);
-				inboundSignatureInfo = {
-					isSigned: true,
-					isSignatureValid: false,
-					keySource: 'not_found',
-					failure: 'verification_error',
-				};
-			}
-		}
-		let effectiveSubject = args.subject;
-		let effectiveText = args.textBody;
-		let effectiveHtml = args.htmlBody;
-		let inboundEncryptionInfo: InboundEncryptionInfo | undefined;
-		if (opened.isSealed) {
-			inboundEncryptionInfo = opened.encryptionInfo;
-			if (opened.isDecrypted) {
-				// Restored plaintext (real Subject + bodies, D4) replaces the outer
-				// placeholder + ciphertext so the normal pipeline sees real content.
-				if (opened.subject !== undefined) effectiveSubject = opened.subject;
-				// Fail-safe: only replace when the restore yields a usable body — see
-				// usableRestoredBodies.
-				const bodies = usableRestoredBodies(opened);
-				if (bodies) {
-					effectiveText = bodies.text;
-					effectiveHtml = bodies.html;
-				}
-			}
-		}
-
-		// Inline small bodies for a fast list/reader render; stash larger bodies
-		// as separate blobs (served lazily by mailbox.getMessageBody).
-		const textBody = await splitBodyForStorage(ctx, effectiveText, 'text/plain; charset=utf-8');
-		const htmlBody = await splitBodyForStorage(ctx, effectiveHtml, 'text/html; charset=utf-8');
-		// Snippet from the FULL body, before the inline/blob split, so >64KB
-		// bodies still get a non-empty preview + search snippet.
-		const snippet = buildSnippet(effectiveText, effectiveHtml);
-
-		// Scan inbound attachments for malware (defense-in-depth on the receiving
-		// side). ClamAV lives in the MTA container, so we POST each attachment leaf
-		// to its `/scan/attachment` endpoint. A confirmed-infected verdict routes
-		// the message to Spam/quarantine in `deliverToMailbox`; a scanner outage
-		// fails open with a `'skipped'` verdict (the message still delivers, and
-		// the skip is surfaced via `scannerHealth.warnScanSkipped`). Any verdict
-		// the MTA pipeline already set on `args` is preserved (infected wins).
-		const inboundVerdict = await scanInboundAttachments(getMtaConfig(), rawBytes);
-		const virusVerdict =
-			args.virusVerdict === 'infected' || inboundVerdict === 'infected'
-				? 'infected'
-				: (inboundVerdict ?? args.virusVerdict);
+		const prepared = await prepareInboundMessage(ctx, args);
 
 		const result: { messageId: Id<'mailMessages'> } | { skipped: true } = await ctx.runMutation(
 			internal.mail.delivery.deliverToMailbox,
 			{
-				rawStorageId,
-				rawSize,
-				antiLoopHeaders,
-				unsubscribe,
+				rawStorageId: prepared.rawStorageId,
+				rawSize: prepared.rawSize,
+				antiLoopHeaders: prepared.antiLoopHeaders,
+				unsubscribe: prepared.unsubscribe,
 				recipientAddress: args.recipientAddress,
 				from: args.from,
 				to: args.to,
@@ -351,14 +118,12 @@ export const ingestFromWebhook = internalAction({
 				bcc: args.bcc,
 				replyTo: args.replyTo,
 				returnPath: args.returnPath,
-				// Restored real subject (D4) when the message was opened; the outer
-				// placeholder `...` otherwise. Threading below keys off this.
-				subject: effectiveSubject,
-				textBodyInline: textBody.inline,
-				textBodyStorageId: textBody.storageId,
-				htmlBodyInline: htmlBody.inline,
-				htmlBodyStorageId: htmlBody.storageId,
-				snippet,
+				subject: prepared.subject,
+				textBodyInline: prepared.text.inline,
+				textBodyStorageId: prepared.text.storageId,
+				htmlBodyInline: prepared.html.inline,
+				htmlBodyStorageId: prepared.html.storageId,
+				snippet: prepared.snippet,
 				messageId: args.messageId,
 				inReplyTo: args.inReplyTo,
 				references: args.references,
@@ -366,7 +131,7 @@ export const ingestFromWebhook = internalAction({
 				attachments: args.attachments,
 				spamScore: args.spamScore,
 				spamVerdict: args.spamVerdict,
-				virusVerdict,
+				virusVerdict: prepared.virusVerdict,
 				spfResult: args.spfResult,
 				dkimResult: args.dkimResult,
 				dmarcResult: args.dmarcResult,
@@ -376,16 +141,16 @@ export const ingestFromWebhook = internalAction({
 				arcAttestsOriginalPass: args.arcAttestsOriginalPass,
 				envelopeFromDomain: args.envelopeFromDomain,
 				dkimSigningDomain: args.dkimSigningDomain,
-				inboundEncryptionInfo,
-				inboundSignatureInfo,
+				inboundEncryptionInfo: prepared.inboundEncryptionInfo,
+				inboundSignatureInfo: prepared.inboundSignatureInfo,
 			}
 		);
 
 		// If delivery was skipped (no mailbox / quota / dup), drop the staged blobs.
 		if ('skipped' in result) {
-			await ctx.storage.delete(rawStorageId);
-			if (textBody.storageId) await ctx.storage.delete(textBody.storageId);
-			if (htmlBody.storageId) await ctx.storage.delete(htmlBody.storageId);
+			await ctx.storage.delete(prepared.rawStorageId);
+			if (prepared.text.storageId) await ctx.storage.delete(prepared.text.storageId);
+			if (prepared.html.storageId) await ctx.storage.delete(prepared.html.storageId);
 			return result;
 		}
 
@@ -396,7 +161,7 @@ export const ingestFromWebhook = internalAction({
 		// pull them here while the raw MIME is still in hand. Best-effort: a
 		// failed capture never fails delivery (the message is already stored).
 		try {
-			await captureAttachments(ctx, rawBytes, args.messageId, args.from);
+			await captureAttachments(ctx, prepared.rawBytes, args.messageId, args.from);
 		} catch (err) {
 			logError('[Mail Webhook] attachment capture failed', err);
 		}
@@ -404,339 +169,6 @@ export const ingestFromWebhook = internalAction({
 		return result;
 	},
 });
-
-/**
- * Pull attachment leaves out of a delivered message's raw MIME and ingest each
- * into `semanticFiles` (source `email_attachment`). Inline parts (logos,
- * signatures) and oversized parts are skipped; the file-type allowlist is
- * enforced inside `semanticFiles.ingest`, which also drops the staged blob when
- * a part is rejected. Each file carries the source Message-ID as provenance.
- *
- * Captured files are scoped to the sender contact: `fromRaw` (the inbound From
- * header) is resolved to an EXISTING contact by email. When a contact matches,
- * the file is linked to it (`contactIds`), so it surfaces under that contact's
- * Files tab and is scoped to that contact in retrieval. Resolution is
- * find-only — an unknown sender leaves the file org-general (no contact link),
- * we never create a contact for every inbound sender. Thread-linking and
- * agent-output capture are intentionally out of scope here.
- *
- * The number of captured parts is capped at `ATTACHMENT_COMPOSE_LIMITS.maxCount`
- * per message. The inbound webhook is attacker-reachable (anyone can email a
- * provisioned mailbox) and each ingested file schedules a summarization +
- * embedding + knowledge-extraction LLM call, so without a cap a single crafted
- * .eml carrying many small attachment leaves would amplify per-message LLM cost.
- */
-async function captureAttachments(
-	ctx: {
-		storage: { store: (blob: Blob) => Promise<Id<'_storage'>> };
-		runMutation: ActionCtx['runMutation'];
-		runQuery: ActionCtx['runQuery'];
-	},
-	rawBytes: Buffer,
-	messageId: string,
-	fromRaw: string
-): Promise<void> {
-	// The extractor wants a binary string (one char per byte) so binary parts survive.
-	const binary = rawBytes.toString('latin1');
-	const parts = extractAttachments(binary);
-
-	// Scope captured files to the sender's EXISTING contact (find-only). A
-	// missing/unresolvable sender leaves the file org-general — we do not create
-	// a contact for every inbound message. Resolved once per message, not per part.
-	const senderEmail = extractEmail(fromRaw);
-	let senderContactIds: Id<'contacts'>[] | undefined;
-	if (senderEmail) {
-		const contact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
-			email: senderEmail,
-		});
-		if (contact) senderContactIds = [contact._id];
-	}
-
-	let captured = 0;
-	for (const part of parts) {
-		// Bound the work per delivered message: each ingested part schedules
-		// LLM calls (summarization + embedding + knowledge extraction), and the
-		// inbound webhook is attacker-reachable, so a crafted .eml with many
-		// small leaves must not amplify cost. Cap on captured (LLM-triggering)
-		// parts so inline/oversized skips don't consume the budget.
-		if (captured >= ATTACHMENT_COMPOSE_LIMITS.maxCount) break;
-		// Skip inline parts (embedded logos / signature images) — they aren't
-		// documents the user thinks of as "attachments".
-		if (part.disposition === 'inline') continue;
-		const size = part.bytes.byteLength;
-		if (size === 0 || size > MAX_ATTACHMENT_BYTES) continue;
-
-		const storageId = await ctx.storage.store(
-			new Blob([Buffer.from(part.bytes)], { type: part.contentType })
-		);
-		// `ingest` runs the file-type policy and deletes the blob if rejected.
-		await ctx.runMutation(internal.semanticFiles.ingest, {
-			storageId,
-			filename: part.filename,
-			mimeType: part.contentType,
-			fileSize: size,
-			sourceType: 'email_attachment',
-			sourceMessageId: messageId,
-			contactIds: senderContactIds,
-		});
-		captured++;
-	}
-}
-
-export interface DeliveredAttachment {
-	filename: string;
-	contentType: string;
-	size: number;
-	contentId?: string;
-	partIndex: string;
-}
-
-/**
- * Shared insert path for a delivered message: RFC 5322 threading, per-folder
- * UID + modseq allocation, the `mailMessages` insert, and the folder/thread/
- * usedBytes aggregates + audit. The caller has already resolved the target
- * `mailbox` + `folder`, run any dedup, and decided flags/labels. Returns the
- * new message id.
- *
- * Used by `deliverToMailbox` (hosted MX inbound) and
- * `externalDelivery.ingestExternalMessage` (external IMAP sync). Post-delivery
- * hooks (forwarding/vacation) are NOT run here — each caller decides.
- */
-export async function insertDeliveredMessage(
-	ctx: MutationCtx,
-	params: {
-		mailbox: Doc<'mailboxes'>;
-		folder: Doc<'mailFolders'>;
-		rawStorageId: Id<'_storage'>;
-		rawSize: number;
-		from: string;
-		to: string[];
-		cc: string[];
-		bcc: string[];
-		replyTo?: string;
-		subject: string;
-		textBodyInline?: string;
-		textBodyStorageId?: Id<'_storage'>;
-		htmlBodyInline?: string;
-		htmlBodyStorageId?: Id<'_storage'>;
-		/** Preview snippet derived from the FULL body before any inline/blob split
-		 * (so >64KB bodies still get a non-empty list/search snippet). */
-		snippet?: string;
-		messageId: string;
-		inReplyTo?: string;
-		references?: string;
-		receivedAt: number;
-		attachments: DeliveredAttachment[];
-		flagSeen?: boolean;
-		flagFlagged?: boolean;
-		labelIds?: Id<'mailLabels'>[];
-		spamScore?: number;
-		spamVerdict?: 'ham' | 'spam' | 'quarantine';
-		virusVerdict?: 'clean' | 'infected' | 'skipped';
-		spfResult?: string;
-		dkimResult?: string;
-		dmarcResult?: string;
-		dmarcPolicy?: string;
-		/** Inbound-auth override (Sealed Mail A5): `'arc'` when a trusted forwarder
-		 * rescued a DMARC fail; `arcSealer` names the honoured sealer's `d=`. */
-		dmarcOverride?: string;
-		arcSealer?: string;
-		envelopeFromDomain?: string;
-		dkimSigningDomain?: string;
-		/** Ingest-computed sender-impersonation heuristics (Sealed Mail A4). */
-		senderHeuristics?: SenderHeuristics;
-		/** Inbound unsealing outcome (Sealed Mail E4, D3): present only for a message
-		 * that arrived sealed. The body columns above hold the RESTORED plaintext when
-		 * `decrypted:true`; the raw `.eml` stays the sealed original either way. */
-		inboundEncryptionInfo?: InboundEncryptionInfo;
-		/** Inbound signature verdict (F1, D9): present only for a message that arrived
-		 * PGP-SIGNED but not encrypted. Honest — every failure state is recorded, and
-		 * its presence never changes routing or delivery. */
-		inboundSignatureInfo?: InboundSignatureInfo;
-		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
-		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
-		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
-		countUsedBytes?: boolean;
-	}
-): Promise<Id<'mailMessages'>> {
-	const { mailbox, folder } = params;
-	const recipient = mailbox.address;
-	const fromAddress = extractEmail(params.from);
-	const fromName = extractName(params.from);
-	const rfc822MessageId = stripBrackets(params.messageId) ?? params.messageId;
-	const refs = parseReferences(params.references);
-	const inReplyTo = stripBrackets(params.inReplyTo);
-	const normalizedSubject = normalizeSubject(params.subject);
-	const now = Date.now();
-	const snippet = params.snippet ?? buildSnippet(params.textBodyInline, params.htmlBodyInline);
-	const hasAttachments = params.attachments.length > 0;
-	const flagSeen = params.flagSeen ?? false;
-	// Unread delta is shared by the folder + thread counters so they stay in
-	// agreement (a pre-marked-read message bumps neither).
-	const unreadDelta = flagSeen ? 0 : 1;
-
-	// Threading: In-Reply-To / References → existing message; else subject window.
-	let threadId: Id<'mailThreads'> | null = null;
-	const candidates = inReplyTo ? [inReplyTo, ...refs] : refs;
-	for (const candidate of candidates) {
-		const referenced = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', candidate))
-			.filter((q) => q.eq(q.field('mailboxId'), mailbox._id))
-			.first();
-		if (referenced) {
-			threadId = referenced.threadId;
-			break;
-		}
-	}
-	if (!threadId && normalizedSubject) {
-		const window = 24 * 60 * 60 * 1000;
-		const recent = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_mailbox_and_subject', (q) =>
-				q.eq('mailboxId', mailbox._id).eq('normalizedSubject', normalizedSubject)
-			)
-			.first();
-		if (recent && Math.abs(params.receivedAt - recent.lastMessageAt) <= window) {
-			threadId = recent._id;
-		}
-	}
-	if (!threadId) {
-		threadId = await ctx.db.insert('mailThreads', {
-			mailboxId: mailbox._id,
-			normalizedSubject,
-			participants: [fromAddress, recipient],
-			messageCount: 0,
-			unreadCount: 0,
-			hasFlagged: false,
-			hasAttachments: false,
-			lastMessageAt: params.receivedAt,
-			firstMessageAt: params.receivedAt,
-			latestSnippet: snippet,
-			latestFromAddress: fromAddress,
-			latestSubject: params.subject,
-			folderRoles: [],
-			labelIds: [],
-			createdAt: now,
-			updatedAt: now,
-		});
-	}
-
-	const uid = folder.uidNext;
-	const modseq = folder.highestModseq + 1;
-
-	const messageId = await ctx.db.insert('mailMessages', {
-		mailboxId: mailbox._id,
-		folderId: folder._id,
-		uid,
-		modseq,
-		rfc822MessageId,
-		inReplyTo,
-		references: refs.length > 0 ? refs : undefined,
-		threadId,
-		fromAddress,
-		fromName,
-		toAddresses: params.to.map(extractEmail),
-		ccAddresses: params.cc.map(extractEmail),
-		bccAddresses: params.bcc.map(extractEmail),
-		replyToAddress: params.replyTo ? extractEmail(params.replyTo) : undefined,
-		subject: params.subject,
-		normalizedSubject,
-		snippet,
-		rawStorageId: params.rawStorageId,
-		rawSize: params.rawSize,
-		textBodyInline: await sealBodyAtWriteMaybe(params.textBodyInline),
-		textBodyStorageId: params.textBodyStorageId,
-		htmlBodyInline: await sealBodyAtWriteMaybe(params.htmlBodyInline),
-		htmlBodyStorageId: params.htmlBodyStorageId,
-		attachments: params.attachments,
-		hasAttachments,
-		flagSeen,
-		flagFlagged: params.flagFlagged ?? false,
-		flagAnswered: false,
-		flagDraft: false,
-		flagDeleted: false,
-		customFlags: [],
-		labelIds: params.labelIds ?? [],
-		receivedAt: params.receivedAt,
-		internalDate: params.receivedAt,
-		spamScore: params.spamScore,
-		spamVerdict: params.spamVerdict,
-		virusVerdict: params.virusVerdict,
-		spfResult: params.spfResult,
-		dkimResult: params.dkimResult,
-		dmarcResult: params.dmarcResult,
-		dmarcPolicy: params.dmarcPolicy,
-		dmarcOverride: params.dmarcOverride,
-		arcSealer: params.arcSealer,
-		envelopeFromDomain: params.envelopeFromDomain,
-		dkimSigningDomain: params.dkimSigningDomain,
-		senderHeuristics: params.senderHeuristics,
-		inboundEncryptionInfo: params.inboundEncryptionInfo,
-		inboundSignatureInfo: params.inboundSignatureInfo,
-		unsubscribe: params.unsubscribe,
-		createdAt: now,
-		updatedAt: now,
-	});
-
-	await ctx.db.patch(folder._id, {
-		uidNext: uid + 1,
-		highestModseq: modseq,
-		totalCount: folder.totalCount + 1,
-		unseenCount: folder.unseenCount + unreadDelta,
-		updatedAt: now,
-	});
-
-	const thread = await ctx.db.get(threadId);
-	if (thread) {
-		const participants = new Set([...thread.participants, fromAddress, recipient]);
-		const folderRoles = new Set(thread.folderRoles);
-		if (folder.role) folderRoles.add(folder.role);
-		// Only advance the "latest" pointers when this message is actually the
-		// newest — external IMAP sync can ingest older messages out of order, and
-		// latestMessageId now drives the conversation-list routing.
-		const isNewest = params.receivedAt >= thread.lastMessageAt;
-		await ctx.db.patch(threadId, {
-			participants: Array.from(participants),
-			messageCount: thread.messageCount + 1,
-			unreadCount: thread.unreadCount + unreadDelta,
-			hasAttachments: thread.hasAttachments || hasAttachments,
-			folderRoles: Array.from(folderRoles),
-			updatedAt: now,
-			...(isNewest
-				? {
-						lastMessageAt: params.receivedAt,
-						latestSnippet: snippet,
-						latestFromAddress: fromAddress,
-						latestSubject: params.subject,
-						latestMessageId: messageId,
-					}
-				: {}),
-		});
-	}
-
-	if (params.countUsedBytes) {
-		await ctx.db.patch(mailbox._id, {
-			usedBytes: mailbox.usedBytes + params.rawSize,
-			updatedAt: now,
-		});
-	}
-
-	await ctx.db.insert('mailAuditLog', {
-		mailboxId: mailbox._id,
-		event: 'delivery',
-		details: JSON.stringify({
-			from: fromAddress,
-			subject: params.subject,
-			size: params.rawSize,
-			folder: folder.role,
-			threadId,
-		}),
-		occurredAt: now,
-	});
-
-	return messageId;
-}
 
 export const deliverToMailbox = internalMutation({
 	args: {
@@ -822,26 +254,17 @@ export const deliverToMailbox = internalMutation({
 			return { skipped: true };
 		}
 
-		// 3b. Content/spam scan for personal mailboxes.
-		//
-		// The MTA only runs @owlat/email-scanner on the OUTBOUND path, so mail
-		// delivered into a hosted (Postbox) mailbox arrives with no spam/phishing
-		// scoring at all. Run scanContent here when the inbound pipeline did not
-		// already supply a verdict, so personal inboxes get the same keyword /
-		// phishing-URL / caps-abuse scoring outbound mail does. An MTA-supplied
-		// verdict (when present) always wins — we only fill the gap.
-		let spamScore = args.spamScore;
-		let spamVerdict = args.spamVerdict;
-		if (spamScore == null && spamVerdict == null) {
-			const scan = scanContent(args.subject, args.htmlBodyInline ?? args.textBodyInline ?? '', {
-				from: args.from,
-				replyTo: args.replyTo,
-			});
-			spamScore = scan.score;
-			// `blocked` (score >= 40) is high enough confidence to route to Spam;
-			// `suspicious`/`clean` stay in the inbox but keep their numeric score.
-			spamVerdict = scan.level === 'blocked' ? 'spam' : 'ham';
-		}
+		// 3b. Content/spam scan for personal mailboxes (fills the gap the MTA's
+		// outbound-only scan leaves; an MTA-supplied verdict always wins).
+		const { spamScore, spamVerdict } = resolveSpamVerdict({
+			subject: args.subject,
+			bodyHtmlInline: args.htmlBodyInline,
+			bodyTextInline: args.textBodyInline,
+			from: args.from,
+			replyTo: args.replyTo,
+			spamScore: args.spamScore,
+			spamVerdict: args.spamVerdict,
+		});
 
 		// 4. Choose target folder (default INBOX; spam verdict → Spam).
 		//    User filters can override the folder, set flags, attach labels,
@@ -850,7 +273,7 @@ export const deliverToMailbox = internalMutation({
 			.query('mailFilters')
 			.withIndex('by_mailbox_and_priority', (q) => q.eq('mailboxId', mailbox._id))
 			.collect(); // bounded: one mailbox's filters
-		const evalResult = evaluateFilters(filters, {
+		const filterOutcome = resolveFilterOutcome(filters, {
 			from: fromAddress,
 			to: args.to.map(extractEmail),
 			cc: args.cc.map(extractEmail),
@@ -863,69 +286,26 @@ export const deliverToMailbox = internalMutation({
 
 		// `discard` short-circuits — drop the message entirely (and its
 		// staged storage blob) without writing it anywhere.
-		if (evalResult.actions.some((a) => a.type === 'discard')) {
+		if (filterOutcome.isDiscarded) {
 			return { skipped: true };
 		}
 
-		const moveAction = evalResult.actions.find((a) => a.type === 'moveToFolder');
-		const labelActions = evalResult.actions.filter((a) => a.type === 'addLabel');
-		const flagsFromFilters = {
-			markRead: evalResult.actions.some((a) => a.type === 'markRead'),
-			markFlagged: evalResult.actions.some((a) => a.type === 'markFlagged'),
-		};
-		const trashAction = evalResult.actions.some((a) => a.type === 'delete');
-		const filterForwardTo = evalResult.actions
-			.filter((a) => a.type === 'forward' && a.forwardTo)
-			.map((a) => a.forwardTo as string);
-
-		// ARC rescue (RFC 8617, Sealed Mail A5): a mailing-list / forwarder that
-		// broke the author's DKIM makes DMARC fail even for legitimate mail. When a
-		// TRUSTED forwarder sealed a VALID chain (`cv=pass`) attesting the original
-		// passed, honour that attestation — skip the Spam-routing below and record
-		// `dmarcOverride: 'arc'` + the sealer so the reader's badge can say
-		// "verified via forwarder". Trust is decided HERE against the operator's
-		// editable allow-list (unset ⇒ the seeded defaults); an explicit `[]`
-		// disables the override. The predicate is shared with the MTA so the two
-		// sides never fork on what "trusted rescue" means.
-		// The override only APPLIES to an actual DMARC fail — that is the only
-		// verdict there is anything to rescue. A message that passed DMARC on its
-		// own (or where DMARC was not evaluated) must keep its own verdict, so a
-		// direct-pass forward is never mislabelled "verified via forwarder".
+		// ARC rescue + the DMARC quarantine decision (RFC 8617 / RFC 7489),
+		// settled against the operator's trusted-forwarder allow-list.
 		const settings = await ctx.db.query('instanceSettings').first();
-		const trustedForwarders = settings?.trustedArcForwarders ?? DEFAULT_TRUSTED_ARC_FORWARDERS;
-		const arcRescued =
-			args.dmarcResult === 'fail' &&
-			shouldArcOverrideDmarc(
-				{
-					arcCv: args.arcCv,
-					arcSealerDomain: args.arcSealerDomain,
-					arcAttestsOriginalPass: args.arcAttestsOriginalPass,
-				},
-				trustedForwarders
-			);
-		const dmarcOverride = arcRescued ? 'arc' : undefined;
-		const arcSealer = arcRescued ? args.arcSealerDomain : undefined;
+		const { dmarcOverride, arcSealer, isDmarcQuarantine } = resolveDmarcRouting(
+			args,
+			settings?.trustedArcForwarders
+		);
 
-		// A DMARC fail (RFC 7489) routes to Spam only when the From-domain owner
-		// published an enforcing policy (`quarantine`/`reject`). A `p=none` fail
-		// is monitor-only — record the verdict but do not move the message. A
-		// trusted-forwarder ARC rescue also suppresses the move. A permanent DMARC
-		// evaluation error is independently fail-closed: malformed/ambiguous From
-		// identifiers have no trustworthy domain from which to obtain a policy and
-		// must not land in Inbox merely because policy lookup is impossible.
-		const dmarcQuarantine =
-			args.dmarcResult === 'permerror' ||
-			(!arcRescued &&
-				args.dmarcResult === 'fail' &&
-				(args.dmarcPolicy === 'quarantine' || args.dmarcPolicy === 'reject'));
 		const initialRole =
-			spamVerdict === 'spam' || args.virusVerdict === 'infected' || dmarcQuarantine
+			spamVerdict === 'spam' || args.virusVerdict === 'infected' || isDmarcQuarantine
 				? 'spam'
-				: trashAction
+				: filterOutcome.isTrashed
 					? 'trash'
 					: 'inbox';
-		const folder = moveAction?.folderId
-			? await ctx.db.get(moveAction.folderId)
+		const folder = filterOutcome.folderId
+			? await ctx.db.get(filterOutcome.folderId)
 			: await ctx.db
 					.query('mailFolders')
 					.withIndex('by_mailbox_and_role', (q) =>
@@ -972,9 +352,9 @@ export const deliverToMailbox = internalMutation({
 			references: args.references,
 			receivedAt: args.receivedAt,
 			attachments: args.attachments,
-			flagSeen: flagsFromFilters.markRead,
-			flagFlagged: flagsFromFilters.markFlagged,
-			labelIds: labelActions.map((a) => a.labelId).filter((id): id is Id<'mailLabels'> => !!id),
+			flagSeen: filterOutcome.flagSeen,
+			flagFlagged: filterOutcome.flagFlagged,
+			labelIds: filterOutcome.labelIds,
 			spamScore,
 			spamVerdict,
 			virusVerdict: args.virusVerdict,
@@ -1048,7 +428,7 @@ export const deliverToMailbox = internalMutation({
 			headers: args.antiLoopHeaders ?? {},
 			// Filter-level "Forward to…" targets — forwarded alongside any
 			// account-level forwarding rules by the post-delivery hook.
-			filterForwardTo,
+			filterForwardTo: filterOutcome.filterForwardTo,
 		});
 
 		return { messageId };

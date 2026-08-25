@@ -29,7 +29,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { scanInboundAttachments } from '../delivery';
+import { scanInboundAttachments } from '../deliveryPipeline/scan';
 import * as scannerHealth from '../../lib/scannerHealth';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
