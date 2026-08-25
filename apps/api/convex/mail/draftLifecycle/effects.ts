@@ -24,6 +24,7 @@ import { isSanctionedSendAsForUser } from '../identities';
 import { followUpWaitingOn } from '../followUps';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { refuse } from '../../lib/lifecycle';
 import {
 	DRAFT_LIFECYCLE,
 	dedupedRecipients,
@@ -345,14 +346,14 @@ export async function dispatch(
 	input: TransitionInput
 ): Promise<TransitionOutcome> {
 	const from = draft.state;
+	// The verdict is stated rather than obtained from `classify`, because this
+	// machine grants no implicit self-loop pass (see the graph in ./reducers).
+	// `refuse` still owns the outcome shape, as it does for every other machine.
 	if (!DRAFT_LIFECYCLE.isLegalEdge(from, input.to)) {
-		return {
-			ok: false,
-			reason: 'illegal_edge',
-			draftId: draft._id,
-			from,
-			to: input.to,
-		};
+		return refuse(
+			{ kind: 'refused', reason: 'illegal_edge', from, to: input.to },
+			{ draftId: draft._id }
+		);
 	}
 
 	// Per-kind precondition checks that depend on freshly-read DB state.

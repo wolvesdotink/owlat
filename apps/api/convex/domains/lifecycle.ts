@@ -55,7 +55,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
-import { defineLifecycle } from '../lib/lifecycle';
+import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { clearReservationsForDomain } from '../mail/pendingMailbox';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
 import { getOptional, getRequired } from '../lib/env';
@@ -626,11 +626,7 @@ async function dispatch(
 	const verdict = SENDING_DOMAIN_LIFECYCLE.classify(from, input.to);
 
 	if (verdict.kind === 'refused') {
-		// `refuse()` is not used here: it types `reason` as the core's full
-		// `illegal_edge | terminal` union, and this machine does not report
-		// `terminal`. With that option off, `illegal_edge` is the only refusal
-		// the core can produce.
-		return { ok: false, reason: 'illegal_edge', from: verdict.from, to: verdict.to };
+		return refuse(verdict);
 	}
 
 	const result = reduce(domain, input);

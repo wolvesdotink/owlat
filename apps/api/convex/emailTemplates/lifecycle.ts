@@ -26,7 +26,7 @@ import { throwInvalidState } from '../_utils/errors';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
-import { defineLifecycle } from '../lib/lifecycle';
+import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { deleteTemplateVersions } from './versions';
 import { buildSearchableText } from '../lib/queryHelpers';
@@ -229,11 +229,7 @@ async function dispatch(
 	const verdict = EMAIL_TEMPLATE_LIFECYCLE.classify(from, input.to);
 
 	if (verdict.kind === 'refused') {
-		// `refuse()` is not used here: it types `reason` as the core's full
-		// `illegal_edge | terminal` union, and this machine does not report
-		// `terminal`. With that option off, `illegal_edge` is the only refusal
-		// the core can produce.
-		return { ok: false, reason: 'illegal_edge', from: verdict.from, to: verdict.to };
+		return refuse(verdict);
 	}
 
 	const result = reduce(template, input, userId);

@@ -26,7 +26,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { abTestConfigValidator } from '../lib/convexValidators';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
-import { defineLifecycle } from '../lib/lifecycle';
+import { defineLifecycle, refuse } from '../lib/lifecycle';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -296,11 +296,7 @@ async function dispatch(
 	const verdict = AB_TEST_LIFECYCLE.classify(from, input.to);
 
 	if (verdict.kind === 'refused') {
-		// `refuse()` is not used here: it types `reason` as the core's full
-		// `illegal_edge | terminal` union, and this machine does not report
-		// `terminal`. With that option off, `illegal_edge` is the only refusal
-		// the core can produce.
-		return { ok: false, reason: 'illegal_edge', from: verdict.from, to: verdict.to };
+		return refuse(verdict);
 	}
 
 	const result = reduce(campaign, input, userId);
