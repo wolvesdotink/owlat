@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7-labs
 
 # ── Stage 1: Install dependencies ──
-FROM oven/bun:1.3-alpine AS deps
+FROM oven/bun:1.4-alpine AS deps
 
 RUN apk add --no-cache python3 make g++
 # node-gyp must be preinstalled (lands in /usr/local/bin): better-sqlite3
