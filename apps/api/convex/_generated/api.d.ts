@@ -748,6 +748,8 @@ import type * as mail_needsReplyClarify from '../mail/needsReplyClarify.js';
 import type * as mail_needsReplyClassify from '../mail/needsReplyClassify.js';
 import type * as mail_needsReplyScoring from '../mail/needsReplyScoring.js';
 import type * as mail_outbound from '../mail/outbound.js';
+import type * as mail_outbound_build from '../mail/outbound/build.js';
+import type * as mail_outbound_dispatch from '../mail/outbound/dispatch.js';
 import type * as mail_outboundCron from '../mail/outboundCron.js';
 import type * as mail_outboundQueries from '../mail/outboundQueries.js';
 import type * as mail_outboundTransport from '../mail/outboundTransport.js';
@@ -1754,6 +1756,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/needsReplyClassify': typeof mail_needsReplyClassify;
 	'mail/needsReplyScoring': typeof mail_needsReplyScoring;
 	'mail/outbound': typeof mail_outbound;
+	'mail/outbound/build': typeof mail_outbound_build;
+	'mail/outbound/dispatch': typeof mail_outbound_dispatch;
 	'mail/outboundCron': typeof mail_outboundCron;
 	'mail/outboundQueries': typeof mail_outboundQueries;
 	'mail/outboundTransport': typeof mail_outboundTransport;

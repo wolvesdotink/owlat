@@ -10,240 +10,31 @@
  * 5. POSTs to the existing MTA /send endpoint per recipient
  * 6. Deletes the draft row
  *
+ * This file is the orchestrating action. Steps 2 and 3's message assembly
+ * (attachment buffering + scan, threading headers, body rendering, RFC 5322
+ * build, Sealed Mail sealing) live in `./outbound/build.ts`; step 5's two
+ * transports live in `./outbound/dispatch.ts`.
+ *
  * MTA delivery webhooks (sent/bounced) flow back to /webhooks/mta and
  * update mailMessages.outbound.state — see webhooks/adapters/mta.ts and the
  * `pb-` branch of webhooks/dispatcher.ts.
  */
 
 import { v } from 'convex/values';
-import { internalAction, type ActionCtx } from '../_generated/server';
+import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
 import { logError, logInfo } from '../lib/runtimeLog';
-import { storeSealedBlob, sealedBlobUrl } from '../lib/sealedBlob';
-import { renderEmailHtml, resolvePlainText, renderAmpEmail } from '@owlat/email-renderer';
-import type { EditorBlock } from '@owlat/shared/types';
-import { getMailSyncConfig, getMtaConfig, scanAttachmentBytes } from './mtaClient';
+import { storeSealedBlob } from '../lib/sealedBlob';
+import { getMtaConfig } from './mtaClient';
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle/types';
-import { buildMessageId, buildRfc822, stripHtml, type DraftRow } from './rfc822';
-import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
-import type { MtaSendRequest } from '@owlat/mta-protocol/send';
-import { decideSeal, type OutboundEncryptionInfo } from './sealPolicy';
-import { sealMime, type SealedMime } from '../e2ee/seal';
-import { openPrivateKey } from '../e2ee/sealing';
-
-/**
- * Resolve the final HTML + plain-text (+ optional AMP) bodies for an outbound
- * draft.
- *
- *   - composerMode='full': bodyBlocks holds the block document built by
- *     the @owlat/email-builder; we render it through the email-renderer
- *     pipeline directly. Block-designed bodies also get an AMP4Email
- *     rendering so interactive blocks (accordion, carousel) ship as a
- *     `text/x-amp-html` alternative for AMP-capable clients.
- *   - composerMode='simple' (or unset): bodyHtml holds rich-text HTML
- *     produced by our in-house PostboxBasicEditor. We wrap it in a
- *     synthetic text block so it inherits the same boilerplate, CSS
- *     inlining, dark-mode handling, etc. No AMP variant — the simple
- *     editor has no interactive blocks.
- */
-function renderDraftBodies(draft: DraftRow): { html: string; text: string; amp?: string } {
-	const wantsFull =
-		draft.composerMode === 'full' ||
-		(!draft.composerMode && draft.bodyBlocks && draft.bodyBlocks !== '[]');
-
-	if (wantsFull && draft.bodyBlocks) {
-		try {
-			const blocks = JSON.parse(draft.bodyBlocks) as EditorBlock[];
-			if (blocks.length > 0) {
-				const html = renderEmailHtml(blocks);
-				const text = resolvePlainText(blocks, draft.bodyText);
-				// Only attach an AMP part when the design actually uses an
-				// interactive block — otherwise the AMP body is byte-for-byte
-				// equivalent to the static fallback and just inflates the message.
-				const amp = blocks.some((b) => b.type === 'accordion' || b.type === 'carousel')
-					? renderAmpEmail(blocks, { title: draft.subject })
-					: undefined;
-				return { html, text, amp };
-			}
-		} catch (err) {
-			logError('[Outbound] Failed to parse block-based body, falling back to bodyHtml:', err);
-		}
-	}
-
-	// Simple mode (or empty designer): wrap bodyHtml in a single text block.
-	const wrapped: EditorBlock = {
-		id: 'postbox-body',
-		type: 'text',
-		content: { html: draft.bodyHtml || '' },
-	} as unknown as EditorBlock;
-	const html = renderEmailHtml([wrapped]);
-	const text = resolvePlainText([wrapped], draft.bodyText);
-	return { html, text };
-}
-
-/**
- * ClamAV scan via MTA `/scan/attachment` endpoint. Throws
- * `ScannedMalwareError` on confirmed malware, returns silently otherwise.
- * Fail-open on scanner outage (the campaign mail path does the same).
- *
- * Postbox dispatch was previously the only outbound path that bypassed
- * the scanner entirely. This wires it in to match emailWorker.ts.
- */
-export class ScannedMalwareError extends Error {
-	constructor(
-		public readonly filename: string,
-		public readonly reason: string
-	) {
-		super(`Attachment "${filename}" blocked by malware scan: ${reason}`);
-		this.name = 'ScannedMalwareError';
-	}
-}
-
-async function scanAttachment(filename: string, data: Buffer): Promise<void> {
-	// Shared client owns the POST + fail-open (not-configured / scanner-down /
-	// network error all resolve to 'skipped' and are surfaced via
-	// warnScanSkipped). This path's POLICY: a confirmed-infected verdict throws
-	// ScannedMalwareError so dispatch aborts; everything else proceeds.
-	const verdict = await scanAttachmentBytes(getMtaConfig(), filename, data);
-	if (verdict.kind === 'infected') {
-		throw new ScannedMalwareError(filename, verdict.reason);
-	}
-}
-
-interface ExternalSendResult {
-	recipients?: Array<{ address: string; status: 'sent' | 'bounced'; error?: string }>;
-}
-
-/**
- * Dispatch a Sent-folder message through the user's external SMTP via the
- * mail-sync worker. Unlike the per-recipient MTA path, this is a SINGLE POST —
- * the external provider fans out — and SMTP is synchronous, so we map the
- * worker's per-recipient result straight onto the postbox outbound lifecycle
- * (no webhook). The worker fetches the raw .eml from `rawEmlUrl` and APPENDs the
- * sent copy to the remote Sent folder. Per ADR-0012.
- */
-async function dispatchViaExternalWorker(
-	ctx: ActionCtx,
-	params: {
-		externalAccountId: Id<'externalMailAccounts'>;
-		mailMessageId: Id<'mailMessages'>;
-		fromAddress: string;
-		recipients: string[];
-		rawStorageId: Id<'_storage'>;
-		rfc822MessageId: string;
-	}
-): Promise<void> {
-	const transitionAll = async (
-		input:
-			| { to: 'sent'; at: number }
-			| { to: 'bounced'; at: number; bounceMessage?: string }
-			| { to: 'failed'; at: number; errorMessage: string; errorCode?: string }
-	) => {
-		for (let i = 0; i < params.recipients.length; i++) {
-			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
-				mailMessageId: params.mailMessageId,
-				recipientIdx: i,
-				input,
-			});
-		}
-	};
-
-	const mailSync = getMailSyncConfig();
-	if (!mailSync) {
-		// Mis-provisioned external-mail install: the mail.external feature is on but
-		// the worker URL/key never reached the Convex runtime. Surface a real
-		// delivery failure on every recipient instead of silently leaving the
-		// message stuck in `queued` forever (the user sees nothing otherwise).
-		logError(
-			'[Outbound] MAIL_SYNC_API_URL/MAIL_SYNC_API_KEY not set — external message could not be dispatched. Enable the mail.external profile so setup pushes MAIL_SYNC_API_URL + MAIL_SYNC_API_KEY into the Convex runtime.'
-		);
-		await transitionAll({
-			to: 'failed',
-			at: Date.now(),
-			errorMessage:
-				'External mail worker is not configured (MAIL_SYNC_API_URL / MAIL_SYNC_API_KEY missing).',
-			errorCode: 'EXTERNAL_NOT_CONFIGURED',
-		});
-		return;
-	}
-	// E8b: the stored `.eml` is sealed at rest, so hand the worker a
-	// decrypt-serving proxy URL — it fetches back the PLAINTEXT bytes to APPEND
-	// the sent copy remotely, exactly as it did with the bare storage URL.
-	const rawEmlUrl = await sealedBlobUrl(ctx.storage, params.rawStorageId, 'message/rfc822');
-	if (!rawEmlUrl) {
-		logError(`[Outbound] Missing raw .eml for external send of ${params.mailMessageId}`);
-		await transitionAll({
-			to: 'failed',
-			at: Date.now(),
-			errorMessage: 'Internal error: raw message body was not available for dispatch.',
-			errorCode: 'EXTERNAL_RAW_EML_MISSING',
-		});
-		return;
-	}
-
-	let result: ExternalSendResult;
-	try {
-		const res = await fetch(`${mailSync.baseUrl}/send`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${mailSync.apiKey}` },
-			body: JSON.stringify({
-				externalAccountId: params.externalAccountId,
-				messageId: params.rfc822MessageId,
-				from: params.fromAddress,
-				recipients: params.recipients,
-				rawEmlUrl,
-			}),
-		});
-		if (!res.ok) {
-			const body = await res.text().catch(() => '');
-			logError(`[Outbound] mail-sync /send failed: ${res.status} ${body}`);
-			await transitionAll({
-				to: 'failed',
-				at: Date.now(),
-				errorMessage: `mail-sync /send ${res.status}: ${body.slice(0, 200)}`,
-				errorCode: 'EXTERNAL_SMTP_HTTP',
-			});
-			return;
-		}
-		result = (await res.json()) as ExternalSendResult;
-	} catch (err) {
-		logError('[Outbound] mail-sync /send error:', err);
-		await transitionAll({
-			to: 'failed',
-			at: Date.now(),
-			errorMessage: err instanceof Error ? err.message : String(err),
-			errorCode: 'EXTERNAL_SMTP_NETWORK',
-		});
-		return;
-	}
-
-	const perRecipient = result.recipients ?? [];
-	for (let i = 0; i < params.recipients.length; i++) {
-		const addr = params.recipients[i]!;
-		const r = perRecipient.find((x) => x.address.toLowerCase() === addr.toLowerCase());
-		// A 2xx response means SMTP accepted the message; a recipient explicitly
-		// flagged 'bounced' is a per-RCPT rejection. Missing entries default to
-		// sent (accepted by the relay).
-		if (r && r.status === 'bounced') {
-			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
-				mailMessageId: params.mailMessageId,
-				recipientIdx: i,
-				input: {
-					to: 'bounced',
-					at: Date.now(),
-					bounceMessage: r.error ?? 'Rejected by SMTP server',
-				},
-			});
-		} else {
-			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
-				mailMessageId: params.mailMessageId,
-				recipientIdx: i,
-				input: { to: 'sent', at: Date.now() },
-			});
-		}
-	}
-}
+import type { DraftRow } from './rfc822';
+import {
+	ScannedMalwareError,
+	bufferDraftAttachments,
+	buildOutboundMime,
+	sealOutboundMessage,
+} from './outbound/build';
+import { dispatchViaExternalWorker, dispatchViaMta } from './outbound/dispatch';
 
 export const dispatchDraft = internalAction({
 	args: { draftId: v.id('mailDrafts'), undoToken: v.string() },
@@ -278,44 +69,11 @@ export const dispatchDraft = internalAction({
 		// dispatch and revert the draft so the user sees it in the composer.
 		// Fail-open on scanner outage — matches the campaign-mail path in
 		// emailWorker.ts.
-		// Inline body images: rewrite each `<img data-inline-cid="X">` the Simple
-		// composer embedded to a `cid:X` reference (the editor kept an ephemeral
-		// blob/preview URL) and learn which content-IDs the body still references.
-		// This runs BEFORE rendering so the wrapped body carries the final `cid:`
-		// srcs, and BEFORE buffering attachments so an inline part whose image the
-		// user deleted from the body is pruned rather than shipped.
-		const { html: inlinedHtml, referencedCids } = rewriteInlineImageCids(draft.bodyHtml ?? '');
-		draft.bodyHtml = inlinedHtml;
-
-		const attachmentBuffers: Array<{
-			filename: string;
-			contentType: string;
-			isInline: boolean;
-			contentId?: string;
-			data: Buffer;
-		}> = [];
+		let attachmentBuffers;
 		try {
-			for (const att of draft.attachments) {
-				// Drop inline parts the body no longer references (image deleted).
-				if (att.isInline && !isInlineImageReferenced(referencedCids, att.contentId)) {
-					continue;
-				}
-				const blob = await ctx.storage.get(att.storageId);
-				if (!blob) continue;
-				const buf = Buffer.from(await blob.arrayBuffer());
-
-				// Throws ScannedMalwareError on positive verdict. Anything else
-				// (scanner missing, network blip, parse error) returns silently.
-				await scanAttachment(att.filename, buf);
-
-				attachmentBuffers.push({
-					filename: att.filename,
-					contentType: att.contentType,
-					isInline: att.isInline,
-					contentId: att.contentId,
-					data: buf,
-				});
-			}
+			const buffered = await bufferDraftAttachments(ctx, draft);
+			draft.bodyHtml = buffered.inlinedHtml;
+			attachmentBuffers = buffered.attachments;
 		} catch (err) {
 			if (err instanceof ScannedMalwareError) {
 				logError(`[Outbound] Aborting draft ${args.draftId}: ${err.message}`);
@@ -332,108 +90,21 @@ export const dispatchDraft = internalAction({
 			throw err;
 		}
 
-		const domain = draft.fromAddress.split('@')[1] ?? 'localhost';
-		const rfc822MessageId = buildMessageId(domain);
+		const { raw, rfc822MessageId, inReplyToHeaderValue, referencesHeaderValue } =
+			await buildOutboundMime(ctx, draft, attachmentBuffers);
 
-		// Threading headers
-		let inReplyToHeaderValue: string | undefined;
-		let referencesHeaderValue: string | undefined;
-		if (draft.inReplyToMessageId) {
-			const original = await ctx.runQuery(internal.mail.outboundQueries.getMessage, {
-				messageId: draft.inReplyToMessageId,
-			});
-			if (original) {
-				inReplyToHeaderValue = `<${original.rfc822MessageId}>`;
-				const refsList = [...(original.references ?? []), original.rfc822MessageId];
-				referencesHeaderValue = refsList.map((r) => `<${r}>`).join(' ');
-			}
-		}
-
-		// Render the final HTML + plaintext bodies through @owlat/email-renderer.
-		// `draft` is mutated in place — both simple-mode (Tiptap) and full-mode
-		// (block-based EmailBuilder) flow through the same pipeline.
-		const rendered = renderDraftBodies(draft);
-		draft.bodyHtml = rendered.html;
-		draft.bodyText = rendered.text;
-		draft.bodyAmp = rendered.amp;
-
-		const { raw } = buildRfc822(
+		// Sealed Mail (E3): signed+encrypted PGP/MIME when policy and every
+		// recipient's pinned key allow it; honest plaintext with a recorded reason
+		// otherwise.
+		const { storedBytes, sealed, encryptionInfo, isFlagEnabled } = await sealOutboundMessage(
+			ctx,
 			draft,
-			attachmentBuffers,
-			rfc822MessageId,
-			inReplyToHeaderValue,
-			referencesHeaderValue
+			raw
 		);
-
-		// ── Sealed Mail (E3): seal the built message into signed+encrypted PGP/MIME
-		// when the org policy allows AND EVERY recipient has a usable pinned key
-		// (locked decisions D1/D2/D4). One keyless recipient => plaintext with the
-		// reason recorded — NEVER a mixed send (D2). The agent-reply path flows
-		// through this exact code (agent drafts dispatch via `dispatchDraft` too),
-		// so it seals identically with no special-casing. When sealed, the stored
-		// `.eml` and the on-wire body are ciphertext; the real subject travels
-		// inside and the outer subject is the literal placeholder "..." (D4).
-		const sealRecipients = [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses];
-		let sealInputs = await ctx.runQuery(internal.mail.outboundQueries.getOutboundSealInputs, {
-			fromAddress: draft.fromAddress,
-			recipients: sealRecipients,
-		});
-		// First contact must get the same chance to seal as a previously-seen peer.
-		// Refresh only absent/expired cache rows, only when auto-sealing could
-		// actually proceed. Discovery is fail-soft and cache-aware; one peer's
-		// network failure becomes an honest plaintext decision, never a stuck send.
-		if (
-			sealInputs.flagEnabled &&
-			sealInputs.policy === 'auto' &&
-			sealInputs.hasSigningKey &&
-			sealInputs.discoveryAddresses.length > 0
-		) {
-			await Promise.all(
-				sealInputs.discoveryAddresses.map((address: string) =>
-					ctx.runAction(internal.e2ee.discovery.discoverRecipientKey, { address })
-				)
-			);
-			sealInputs = await ctx.runQuery(internal.mail.outboundQueries.getOutboundSealInputs, {
-				fromAddress: draft.fromAddress,
-				recipients: sealRecipients,
-			});
-		}
-		const sealDecision = decideSeal(sealInputs);
-
-		let storedBytes: Buffer = raw;
-		let sealed: SealedMime | null = null;
-		let encryptionInfo: OutboundEncryptionInfo;
-		if (sealDecision.seal) {
-			// Open the sender's private signing key from the vault (Node plane only).
-			const signingRow = await ctx.runQuery(internal.e2ee.keys.getAddressKeyInternal, {
-				address: draft.fromAddress,
-			});
-			if (!signingRow) {
-				// The key vanished between the readiness check and here — fail SOFT to
-				// plaintext with the reason recorded rather than blocking the send.
-				encryptionInfo = { isSealed: false, reason: 'no_signing_key' };
-			} else {
-				const signingKeyArmored = openPrivateKey(signingRow.sealedPrivateKey);
-				sealed = await sealMime(raw.toString('utf-8'), {
-					recipientPublicKeysArmored: sealDecision.recipientPublicKeysArmored,
-					signingKeyArmored,
-					protectSubject: true,
-				});
-				storedBytes = Buffer.from(sealed.mime, 'utf-8');
-				encryptionInfo = {
-					isSealed: true,
-					algorithm: sealed.encryptionInfo.algorithm,
-					recipientFingerprints: sealed.encryptionInfo.recipientFingerprints,
-					signingFingerprint: sealed.encryptionInfo.signingFingerprint,
-				};
-			}
-		} else {
-			encryptionInfo = { isSealed: false, reason: sealDecision.reason };
-		}
 		// Consent is checked again after discovery and crypto because either can
 		// change during the undo window. Never silently downgrade a normal Send to
 		// plaintext; return the draft to the composer for an explicit choice.
-		if (sealInputs.flagEnabled && !encryptionInfo.isSealed && !draft.isUnsealedSendAllowed) {
+		if (isFlagEnabled && !encryptionInfo.isSealed && !draft.isUnsealedSendAllowed) {
 			logError(
 				`[Outbound] Refusing unsealed dispatch for draft ${args.draftId}: explicit consent missing`
 			);
@@ -461,7 +132,8 @@ export const dispatchDraft = internalAction({
 		// E8b: wrap the bytes in the AT-REST byte cipher so the stored sent copy is
 		// ciphertext on disk. The outbound MTA / external-SMTP worker fetch the
 		// `.eml` back through the `/sealed-blob` decrypt-serving proxy (see the
-		// `rawEmlUrl` mint below), so what goes on the wire is the plaintext .eml.
+		// `rawEmlUrl` mint in outbound/dispatch.ts), so what goes on the wire is
+		// the plaintext .eml.
 		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
 
 		// Hand off to the lifecycle module — atomic with the six-table
@@ -481,7 +153,7 @@ export const dispatchDraft = internalAction({
 						rawSize: storedSize,
 						// Only stamp the row when Sealed Mail is live — a flag-off
 						// deployment writes no `encryptionInfo`, byte-identical to today.
-						...(sealInputs.flagEnabled ? { encryptionInfo } : {}),
+						...(isFlagEnabled ? { encryptionInfo } : {}),
 						rfc822MessageId: rfc822MessageId.replace(/^<|>$/g, ''),
 						inReplyToHeaderValue: inReplyToHeaderValue?.replace(/^<|>$/g, ''),
 						references:
@@ -536,14 +208,9 @@ export const dispatchDraft = internalAction({
 			return;
 		}
 
-		// POST to MTA /send for each recipient. We prefix the MTA messageId with
-		// "pb-<mailMessagesId>-" so the bounce/sent webhook can look the row back up.
-		const mta = getMtaConfig();
 		const recipients = [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses].filter(
 			(r, i, arr) => arr.indexOf(r) === i
 		);
-
-		const dkimDomain = draft.fromAddress.split('@')[1] ?? 'localhost';
 
 		// Send-as choice: a shared-inbox reply sent from a teammate's personal
 		// identity routes through THAT mailbox's transport and allow-set (not the
@@ -581,101 +248,17 @@ export const dispatchDraft = internalAction({
 			return;
 		}
 
-		// When sealing applied, pass the complete PGP/MIME bytes through the MTA
-		// unchanged; the placeholder Subject and ciphertext body are already inside
-		// that envelope. When not sealed, the classic structured fields ride exactly
-		// as before. The external worker fetches the same stored `.eml` directly.
-		const wireContent: Pick<
-			MtaSendRequest,
-			'subject' | 'html' | 'text' | 'amp' | 'sealedMimeBase64'
-		> = sealed
-			? {
-					subject: sealed.outerSubject,
-					html: ' ',
-					sealedMimeBase64: Buffer.from(sealed.mime, 'utf-8').toString('base64'),
-				}
-			: {
-					subject: draft.subject || '(no subject)',
-					html: draft.bodyHtml || stripHtml(draft.bodyHtml ?? '') || ' ',
-					text: draft.bodyText,
-					...(draft.bodyAmp ? { amp: draft.bodyAmp } : {}),
-				};
-
-		if (mta) {
-			for (let i = 0; i < recipients.length; i++) {
-				const to = recipients[i]!;
-				// Prefix lets the `pb-` branch of webhooks/dispatcher.ts parse the
-				// Convex mailMessages id out of the `payload.messageId` that
-				// webhooks/adapters/mta.ts reports on sent/bounced events. Matches the
-				// recipients[idx].mtaJobId written by the lifecycle's
-				// insert_mail_message effect.
-				const mtaMessageId = `pb-${mailMessageId}-${i}`;
-				try {
-					const res = await fetch(`${mta.baseUrl}/send/postbox`, {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							Authorization: `Bearer ${mta.apiKey}`,
-						},
-						// The postbox intake wire, typed against its one declaration (D7).
-						// `sealedMimeBase64`, `amp` and `allowedFromAddresses` exist on
-						// `MtaSendRequest` for THIS producer and the two in
-						// `deliveryHooks.ts` only, so without the annotation they had no
-						// compile-time producer at all: renaming one on the MTA side would
-						// leave this literal emitting the old key, and the MTA silently
-						// dropping the ciphertext / the AMP part / the From allow-list.
-						body: JSON.stringify({
-							messageId: mtaMessageId,
-							from: draft.fromAddress,
-							to,
-							...wireContent,
-							headers: {
-								'Message-ID': rfc822MessageId,
-								...(inReplyToHeaderValue ? { 'In-Reply-To': inReplyToHeaderValue } : {}),
-								...(referencesHeaderValue ? { References: referencesHeaderValue } : {}),
-							},
-							ipPool: 'transactional',
-							organizationId: 'postbox',
-							dkimDomain,
-							allowedFromAddresses,
-						} satisfies MtaSendRequest),
-					});
-					if (!res.ok) {
-						const body = await res.text().catch(() => '');
-						logError(`[Outbound] MTA /send failed for ${to}: ${res.status} ${body}`);
-						// Per-recipient synchronous bounce — record it now rather
-						// than waiting forever in `queued`. Per ADR-0012.
-						await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
-							mailMessageId,
-							recipientIdx: i,
-							input: {
-								to: 'bounced',
-								at: Date.now(),
-								bounceMessage: `MTA POST ${res.status}: ${body.slice(0, 200)}`,
-							},
-						});
-					}
-				} catch (err) {
-					logError(`[Outbound] MTA /send error for ${to}:`, err);
-					// Per-recipient pre-MTA error (network failure, DNS, etc.).
-					// Recipient resolves to `failed` instead of staying `queued`.
-					await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
-						mailMessageId,
-						recipientIdx: i,
-						input: {
-							to: 'failed',
-							at: Date.now(),
-							errorMessage: err instanceof Error ? err.message : String(err),
-							errorCode: 'MTA_POST_NETWORK',
-						},
-					});
-				}
-			}
-		} else {
-			logError(
-				'[Outbound] MTA_API_URL/MTA_API_KEY not set — message saved to Sent but not dispatched'
-			);
-		}
+		await dispatchViaMta(ctx, {
+			draft,
+			sealed,
+			mailMessageId,
+			recipients,
+			rfc822MessageId,
+			inReplyToHeaderValue,
+			referencesHeaderValue,
+			allowedFromAddresses,
+			mta: getMtaConfig(),
+		});
 	},
 });
 
