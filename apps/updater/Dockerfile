@@ -5,7 +5,7 @@
 # the package.json uses bun workspace `catalog:` versions, which only resolve
 # inside the workspace — a standalone `npm install` cannot parse them.
 
-FROM oven/bun:1.3-alpine AS builder
+FROM oven/bun:1.4-alpine AS builder
 WORKDIR /build
 COPY package.json bun.lock* ./
 COPY patches/ patches/
