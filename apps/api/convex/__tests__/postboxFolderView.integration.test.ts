@@ -27,11 +27,16 @@ const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([path]) =>
-			!path.includes('sesActions') && !path.includes('agentSecurity') && !path.includes('llmProvider'),
-	),
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('llmProvider')
+	)
 );
 
-async function insertMailbox(ctx: { db: DatabaseWriter }, userId: string): Promise<Id<'mailboxes'>> {
+async function insertMailbox(
+	ctx: { db: DatabaseWriter },
+	userId: string
+): Promise<Id<'mailboxes'>> {
 	const now = Date.now();
 	return ctx.db.insert('mailboxes', {
 		userId,
@@ -50,7 +55,7 @@ async function insertFolder(
 	ctx: { db: DatabaseWriter },
 	mailboxId: Id<'mailboxes'>,
 	name: string,
-	role?: 'inbox',
+	role?: 'inbox'
 ): Promise<Id<'mailFolders'>> {
 	const now = Date.now();
 	return ctx.db.insert('mailFolders', {
@@ -73,7 +78,7 @@ async function insertMessage(
 	mailboxId: Id<'mailboxes'>,
 	folderId: Id<'mailFolders'>,
 	subject: string,
-	uid: number,
+	uid: number
 ): Promise<void> {
 	const now = Date.now();
 	const threadId = await ctx.db.insert('mailThreads', {

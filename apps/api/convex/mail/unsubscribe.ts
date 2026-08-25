@@ -39,7 +39,7 @@ export type OneClickResult = { ok: true } | { ok: false; error: string };
  */
 export async function postOneClickUnsubscribe(
 	url: string,
-	fetchImpl: typeof fetch = fetch,
+	fetchImpl: typeof fetch = fetch
 ): Promise<OneClickResult> {
 	if (!isSafeUnsubscribeUrl(url)) return { ok: false, error: 'unsafe_url' };
 	try {
