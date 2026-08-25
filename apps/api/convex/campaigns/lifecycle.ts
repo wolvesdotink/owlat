@@ -30,6 +30,7 @@ import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
+import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { rollupCampaignStatsRow } from './statShards';
 import { throwInvalidState } from '../_utils/errors';
 
@@ -73,7 +74,9 @@ export type CampaignTransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason: 'campaign_not_found' | 'illegal_edge' | 'terminal';
+			// `illegal_edge` / `terminal` come from the generic lifecycle core;
+			// `campaign_not_found` is this module's own.
+			reason: LifecycleReason<'campaign_not_found'>;
 			from?: CampaignStatus;
 			to?: CampaignStatus;
 	  };
@@ -120,19 +123,27 @@ const transitionInputValidator = v.union(
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
-// Mirrors CONTEXT.md "Campaign status" exactly. Maps current status → set
-// of legal next statuses. Self-loops are handled by the reducer as
+// Mirrors CONTEXT.md "Campaign status" exactly. Declares, per current status,
+// the legal next statuses. Self-loops are handled by the reducer as
 // `recorded` (idempotent same-state attempts log an audit row but write
 // no patch and emit no scheduler hops).
+//
+// The graph and the dispatcher preamble that reads it live in the generic
+// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and effects below
+// stay here. `sent` and `cancelled` are terminal and this machine publishes the
+// distinct `terminal` refusal, so `reportsTerminalRefusals` is on.
 
-const LEGAL_EDGES: Record<CampaignStatus, ReadonlySet<CampaignStatus>> = {
-	draft: new Set<CampaignStatus>(['scheduled', 'sending']),
-	scheduled: new Set<CampaignStatus>(['draft', 'cancelled', 'sending']),
-	sending: new Set<CampaignStatus>(['sent', 'draft', 'pending_review']),
-	sent: new Set<CampaignStatus>(),
-	cancelled: new Set<CampaignStatus>(),
-	pending_review: new Set<CampaignStatus>(['sending', 'draft']),
-};
+const CAMPAIGN_LIFECYCLE = defineLifecycle<CampaignStatus>(
+	{
+		draft: ['scheduled', 'sending'],
+		scheduled: ['draft', 'cancelled', 'sending'],
+		sending: ['sent', 'draft', 'pending_review'],
+		sent: [],
+		cancelled: [],
+		pending_review: ['sending', 'draft'],
+	},
+	{ reportsTerminalRefusals: true }
+);
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
@@ -452,14 +463,10 @@ async function dispatch(
 	userId: string
 ): Promise<CampaignTransitionOutcome> {
 	const from = (campaign.status ?? 'draft') as CampaignStatus;
-	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
-	const isSelfLoop = from === input.to;
+	const verdict = CAMPAIGN_LIFECYCLE.classify(from, input.to);
 
-	if (!isLegalEdge && !isSelfLoop) {
-		if (LEGAL_EDGES[from].size === 0) {
-			return { ok: false, reason: 'terminal', from, to: input.to };
-		}
-		return { ok: false, reason: 'illegal_edge', from, to: input.to };
+	if (verdict.kind === 'refused') {
+		return refuse(verdict);
 	}
 
 	const result = reduce(campaign, input, userId);
