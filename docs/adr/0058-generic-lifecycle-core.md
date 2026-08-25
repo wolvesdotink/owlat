@@ -175,3 +175,57 @@ A module that never gets touched keeps working; the core is additive.
 - `inbox/threads/module.ts`. It has no edges graph and is out of scope.
 - Any change to a published outcome literal, mutation signature, or persisted
   status value. The pilot is behaviour-preserving.
+
+---
+
+## Amendment — uniform `refuse()` (2026-08-25)
+
+The decision above made terminal classification opt-in, and correctly so: six
+of the eleven machines publish outcome unions that carry `illegal_edge` and no
+`terminal` arm. What it did not do is carry that opt-in into the _type_ of a
+refusal. `refuse()` typed its `reason` as the full `LifecycleRefusalReason`
+regardless of the graph that produced the verdict, so those six could not call
+it without widening the very unions the flag exists to protect. Each grew its
+own arm instead:
+
+```ts
+if (verdict.kind === 'refused') {
+	// `refuse()` is not used here: it types `reason` as the core's full
+	// `illegal_edge | terminal` union […]
+	return { ok: false, reason: 'illegal_edge', from: verdict.from, to: verdict.to };
+}
+```
+
+That is now fixed at the type level. `LifecycleGraph`, `TransitionVerdict`,
+`RefusedVerdict` and `LifecycleRefusal` take a third parameter naming the
+reasons the producing graph can report, defaulted to both so existing bare
+annotations (`LifecycleGraph<SendStatus>` in `delivery/sendLifecycle`) keep
+their meaning. `defineLifecycle` has two overloads: with
+`reportsTerminalRefusals: true` it returns a graph whose refusals are
+`'illegal_edge' | 'terminal'`, and without the flag one whose refusals are
+`'illegal_edge'` alone. There is deliberately no overload accepting a
+non-literal `boolean` — the core cannot tell which reason set such a graph
+produces, so the call fails to compile rather than guessing the narrow one.
+
+Consequences:
+
+- All eleven machines now build their refusal through `refuse()`. The six
+  hand-built arms and the comments explaining them are gone.
+  `mail/draftLifecycle` states its verdict inline rather than calling
+  `classify`, because it grants no implicit self-loop pass (unchanged from the
+  decision above), but the outcome shape still comes from `refuse()`.
+- Nothing about the runtime changed. `classify` produces the same two reasons
+  under the same conditions; no outcome literal, mutation signature or
+  persisted status moved.
+- The narrowing is asserted at compile time in
+  `__tests__/lifecycleCore.unit.test.ts`: that file is inside
+  `convex/tsconfig.json`, and its `@ts-expect-error` directives fail the
+  typecheck if the reason ever widens back or leaks the narrowing onto a graph
+  that does report `terminal`.
+
+`inbox/processingLifecycle` remains the one migrated machine that builds its
+refusal by hand. It reports `terminal`, so it is unaffected by the widening
+problem this amendment solves; it asks `isLegalEdge`/`isTerminal` directly
+because its failure and archive edges are star-sourced from every non-terminal
+state, which the edge spec cannot express. That is a separate question from
+this one and is left open.
