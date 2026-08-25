@@ -13,7 +13,6 @@ const navLinks = [
 	{ key: 'nav.developers', href: '#developers' },
 	{ key: 'nav.pricing', href: '#pricing' },
 	{ key: 'nav.docs', href: 'https://docs.owlat.app' },
-	{ key: 'nav.github', href: 'https://github.com/wolvesdotink/owlat' },
 ];
 
 /* The switcher is driven by the module's own locale list, so adding a locale in
