@@ -4,7 +4,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestAutomation, createTestAutomationStep, createTestContact } from './factories';
 import {
-	LEGAL_EDGES,
+	AUTOMATION_LIFECYCLE,
 	AUTOMATION_FAILURE_BREAKER_THRESHOLD,
 	type AutomationStatus,
 } from '../automations/lifecycle';
@@ -27,7 +27,7 @@ const ALL_STATUSES: AutomationStatus[] = ['draft', 'active', 'paused'];
 describe('Automation lifecycle — edge legality matrix', () => {
 	for (const from of ALL_STATUSES) {
 		for (const to of ALL_STATUSES) {
-			const isLegal = LEGAL_EDGES[from].has(to);
+			const isLegal = AUTOMATION_LIFECYCLE.isLegalEdge(from, to);
 			const isSelfLoop = from === to;
 
 			it(`${from} → ${to} ${isSelfLoop ? '(self-loop, recorded)' : isLegal ? '(legal, transitioned)' : '(illegal_edge)'}`, async () => {
