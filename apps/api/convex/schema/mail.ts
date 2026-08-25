@@ -18,7 +18,7 @@ import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
 import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
-import { editAdjustmentValidator } from '../mail/editLearningValidators';
+import { editAdjustmentValidator } from '../mail/ai/editLearningValidators';
 
 /**
  * Personal Mail (Postbox) tables — Gmail-equivalent backend.
@@ -90,7 +90,7 @@ export const mailTables = {
 		// DELIVERABILITY SEED account: org infrastructure that is NOT anybody's
 		// inbox. It is filtered out of every caller-visible mailbox surface
 		// (`mail/permissions.ts::loadAccessibleMailboxes`,
-		// `mail/mailbox.ts::getActiveMailboxForUser`), so connecting a seed can
+		// `mail/mailbox/identity.ts::getActiveMailboxForUser`), so connecting a seed can
 		// never put the operator's consumer address in their own Postbox nor make
 		// the fresh-start flow believe they already have a mailbox.
 		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'), v.literal('seed'))),
@@ -182,7 +182,7 @@ export const mailTables = {
 		// on (org, email); a person may be pre-added to several inboxes at once,
 		// so this is a prefix range, not a point read.
 		.index('by_org_email', ['organizationId', 'inviteeEmail'])
-		// Cascade-clean grants when a team inbox is deleted (mail/mailbox.ts:remove).
+		// Cascade-clean grants when a team inbox is deleted (mail/mailbox/identity.ts:remove).
 		.index('by_mailbox', ['mailboxId']),
 
 	// External mailbox connection (BYO IMAP/SMTP). Per-user link to an EXISTING
@@ -283,7 +283,7 @@ export const mailTables = {
 		// `purpose`, so this index only ever returns explicitly-tagged accounts.
 		//
 		// `status` is IN the index, not filtered after a bounded page, because
-		// disconnecting an account is a SOFT status change (`mail/mailbox.ts`'s
+		// disconnecting an account is a SOFT status change (`mail/mailbox/identity.ts`'s
 		// `remove` patches the row to 'disconnected' and keeps it). Filtering a
 		// `.take(cap)` page would let retired rows eat slots — the per-org connect
 		// cap would read short and stop refusing, and the roll-up would silently
@@ -662,7 +662,7 @@ export const mailTables = {
 		// Backs the 1-minute snooze sweep cron — range scan on snoozedUntil <= now.
 		.index('by_snoozed_until', ['snoozedUntil'])
 		// SHARING-AWARE SEAL (Sealed Mail E8b): IMAP COPY shares a storage blob
-		// between rows (`mail/imap.ts` copyMessages spreads the same `rawStorageId`/
+		// between rows (`mail/imap/move.ts` copyMessages spreads the same `rawStorageId`/
 		// `*BodyStorageId` into the new row). The at-rest reseal must repoint EVERY
 		// row that references an old plaintext blob before it deletes that blob, or a
 		// sibling copy is left pointing at a deleted id (unreadable forever). These
@@ -724,7 +724,7 @@ export const mailTables = {
 		// Reply Queue (advisory AI): set when the latest inbound message looks like
 		// it needs a reply from the mailbox owner. A deterministic heuristic flags
 		// the candidate first (source `heuristic`, urgency `normal`); the cheap-tier
-		// LLM refinement pass (mail/needsReplyClassify.ts) upgrades it with
+		// LLM refinement pass (mail/ai/needsReplyClassify.ts) upgrades it with
 		// urgency / askSummary / dueHint when AI is enabled and the call succeeds.
 		// Cleared by any outbound reply in the thread, archive/trash of its
 		// messages, or the manual clear mutation (mail/needsReply.ts).
@@ -735,7 +735,7 @@ export const mailTables = {
 				detectedAt: v.number(),
 				source: v.union(v.literal('heuristic'), v.literal('llm')),
 				urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
-				// Unified cross-thread priority score (mail/priorityScore.ts): the
+				// Unified cross-thread priority score (mail/ai/priorityScore.ts): the
 				// deterministic sender-importance signal (VIP / person / frecency)
 				// blended with the LLM urgency. REPLACES the 3-bucket urgency for
 				// Reply Queue ranking. Optional so pre-existing rows fall back to
@@ -764,7 +764,7 @@ export const mailTables = {
 				// Flips the Reply Queue row from "Needs you" to "Needs your input".
 				// LLM-refined only; every question is deterministically sanitized
 				// (credential/OTP solicitations dropped) and attributed to the sender
-				// in mail/needsReplyClassify.ts before it is persisted here.
+				// in mail/ai/needsReplyClassify.ts before it is persisted here.
 				clarification: v.optional(
 					v.object({
 						// True while at least one question is still awaiting an answer.
@@ -861,7 +861,7 @@ export const mailTables = {
 		// Smart-inbox category (advisory, off by default in the UI). A deterministic
 		// heuristic classifies the latest inbound message first (source `heuristic`);
 		// genuinely ambiguous mail is refined by the cheap-tier LLM (source `llm`,
-		// mail/categoryClassify.ts) behind the same aiGate as the rest of Postbox AI.
+		// mail/ai/categoryClassify.ts) behind the same aiGate as the rest of Postbox AI.
 		// A user "Recategorize as…" override always wins (source `user`) and is
 		// remembered per sender in mailSenderCategoryOverrides. Set at inbound ingest
 		// and by the one-shot backfill; fail-soft to `other` when the LLM is
@@ -879,8 +879,8 @@ export const mailTables = {
 				classifiedAt: v.number(),
 			})
 		),
-		// Cached advisory AI summary for the long-thread summary strip (mail/ai.ts
-		// getOrGenerateThreadSummary + mail/summaryCache.ts). `messageCount` is the
+		// Cached advisory AI summary for the long-thread summary strip (mail/ai/assist.ts
+		// getOrGenerateThreadSummary + mail/ai/summaryCache.ts). `messageCount` is the
 		// thread's messageCount at generation time; the cache is served only while it
 		// still matches the live count, so a new inbound message makes it stale and
 		// the next open regenerates it (edge-triggered, never a hot loop). Absent
@@ -912,7 +912,7 @@ export const mailTables = {
 
 	// Per-identity (mailbox) writing-voice profile, derived from the user's own
 	// SENT mail so advisory AI drafts sound like them. Recomputed lazily (see
-	// mail/voiceProfile.ts): a stale row is served as-is while a background
+	// mail/ai/voiceProfile.ts): a stale row is served as-is while a background
 	// refresh is scheduled. `profile` is undefined until the first successful
 	// derivation — absence means "exactly today's non-personalized behaviour".
 	mailVoiceProfiles: defineTable({
@@ -943,7 +943,7 @@ export const mailTables = {
 		// "sign as Dr.") merged into every draft prompt ABOVE the derived voice.
 		// These are explicit user rules, never inferred, and always applied.
 		standingInstructions: v.optional(v.array(v.string())),
-		// Edit-learning flywheel (mail/editLearning.ts): recurring deltas the user
+		// Edit-learning flywheel (mail/ai/editLearning.ts): recurring deltas the user
 		// makes to the AI's OWN drafts before sending, each with a live observation
 		// count. A delta only becomes a durable, injected rule once its
 		// `promoted` flag flips (recurrence threshold) — one-offs never stick.
@@ -1022,7 +1022,7 @@ export const mailTables = {
 		// when the composer first applies an AI-generated draft. On send, the
 		// sent-effects reducer diffs this baseline against what the user actually
 		// sent and feeds the delta back into the voice profile / per-contact memory
-		// (mail/editLearning.ts). Absent → the draft was not AI-authored (or the
+		// (mail/ai/editLearning.ts). Absent → the draft was not AI-authored (or the
 		// client did not record a baseline) → no learning happens, exactly today's
 		// behaviour. Snapshotted ONCE and never overwritten.
 		aiDraftBaseline: v.optional(v.object({ text: v.string(), capturedAt: v.number() })),
@@ -1338,7 +1338,7 @@ export const mailTables = {
 	// either a deadline SOMEONE GAVE the owner (`inbound` — "please send it by
 	// Friday") or a promise the OWNER MADE in their own sent mail (`outbound` —
 	// "I'll get the draft to you Friday"). Extraction is deterministic-gated then
-	// cheap-tier-LLM-refined (mail/commitmentExtract.ts), behind the same aiGate
+	// cheap-tier-LLM-refined (mail/ai/commitmentExtract.ts), behind the same aiGate
 	// as the rest of Postbox AI and fail-soft. The commitment-reminder cron
 	// (mail/commitments.ts) surfaces an open commitment before its deadline —
 	// arming the thread follow-up (mail/followUps.ts) so it floats into the Reply
@@ -1396,7 +1396,7 @@ export const mailTables = {
 	mailDailyBriefs: defineTable({
 		mailboxId: v.id('mailboxes'),
 		generatedAt: v.number(),
-		// Ranked "needs you" items, highest priority first (mail/priorityScore.ts).
+		// Ranked "needs you" items, highest priority first (mail/ai/priorityScore.ts).
 		items: v.array(
 			v.object({
 				kind: v.union(

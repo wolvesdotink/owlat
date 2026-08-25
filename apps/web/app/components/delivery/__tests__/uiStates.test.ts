@@ -507,7 +507,9 @@ describe('control refusals', () => {
 		cells: readonly RampCellControl[] = [cellControl()],
 		view: Partial<RampControls> = {}
 	): { run: ReturnType<typeof vi.fn> } {
-		const run = vi.fn().mockResolvedValue(result);
+		// `run` hands the page a `{ ok }` envelope; the mutation payload rides
+		// inside it.
+		const run = vi.fn().mockResolvedValue({ ok: true, result });
 		vi.stubGlobal('useHead', vi.fn());
 		vi.stubGlobal('definePageMeta', vi.fn());
 		vi.stubGlobal('useBackendOperation', () => ({ run, isLoading: ref(false) }));

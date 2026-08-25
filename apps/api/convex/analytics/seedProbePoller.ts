@@ -15,7 +15,7 @@
 
 import { v } from 'convex/values';
 import { internalQuery, type DatabaseReader } from '../_generated/server';
-import { CONNECTABLE_ACCOUNT_STATUSES, seedProviderOf } from '../mail/externalAccountShared';
+import { CONNECTABLE_ACCOUNT_STATUSES, seedProviderOf } from '../mail/external/accountShared';
 import { getOptional } from '../lib/env';
 import type { SeedProbeWorkItem, SeedProbeWorkPage } from '@owlat/shared/seedPlacement';
 

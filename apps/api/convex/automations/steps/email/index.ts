@@ -2,7 +2,10 @@ import type { ActionCtx } from '../../../_generated/server';
 import { internal } from '../../../_generated/api';
 import type { Doc, Id } from '../../../_generated/dataModel';
 import { composeForSend } from '../../../delivery/sendComposition';
-import { RECIPIENT_BLOCKED_ERROR } from '../../../delivery/enqueue';
+import type {
+	NonCampaignIntakeOutcome,
+	NonCampaignIntakeRejectionReason,
+} from '../../../delivery/nonCampaignIntake';
 import { formatFromAddress } from '../../../lib/emailProviders/domainVerification';
 import { getOptional } from '../../../lib/env';
 import type { StepExecuteArgs, StepModule, StepOutcome } from '../../types';
@@ -11,6 +14,41 @@ export interface EmailStepConfig {
 	emailTemplateId: string;
 	subjectOverride?: string;
 }
+
+/**
+ * How each typed intake refusal becomes a step outcome.
+ *
+ * TOTAL BY CONSTRUCTION — the `Record<NonCampaignIntakeRejectionReason, …>`
+ * makes a new rejection reason a compile error here. It replaces a
+ * `message === RECIPIENT_BLOCKED_ERROR` string comparison against a magic
+ * constant exported from the enqueue module, where an unrecognised refusal
+ * silently fell through to the generic failure branch.
+ *
+ * The split is per-recipient vs deployment-wide:
+ *   - `recipient_blocked` is about THIS contact and will never clear by
+ *     retrying, so the step COMPLETES as a no-op skip: no Send row was
+ *     written, the run advances, and nothing is retried.
+ *   - `no_delivery_provider` and `abuse_blocked` are about the deployment.
+ *     They FAIL the step, which is what makes them visible to the operator who
+ *     has to fix them — and, for a suspended instance, halting the automation
+ *     is the correct response rather than a silent skip. The walker's bounded
+ *     backoff (`MAX_RETRY_ATTEMPTS`, then cancel the run) applies as it does to
+ *     any other step failure; neither reason spins beyond it.
+ */
+const REJECTION_STEP_OUTCOME: Record<
+	NonCampaignIntakeRejectionReason,
+	(detail: string | undefined) => StepOutcome
+> = {
+	recipient_blocked: () => ({ status: 'completed' }),
+	no_delivery_provider: (detail) => ({
+		status: 'failed',
+		error: detail ?? 'No delivery provider configured',
+	}),
+	abuse_blocked: () => ({
+		status: 'failed',
+		error: 'Sending is disabled while this instance is suspended.',
+	}),
+};
 
 export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 	kind: 'email',
@@ -100,12 +138,22 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		const personalizedHtml = composed.html;
 		const from = formatFromAddress(fromEmail, fromName);
 
-		// Insert a `transactionalSends` Send row (kind='automation') and enqueue
-		// it on the transactional pool. Routing the automation send through the
-		// shared producer + worker means the Send lifecycle owns the worker
-		// outcome — provider health, the sendingReputation denominator, and the
+		// Hand the send to the Non-campaign send intake (module): it runs the
+		// shared gate sequence (abuse → provider-ready → suppression), resolves
+		// the provider route in its own transaction, inserts the
+		// `transactionalSends` row (kind='automation') and enqueues it on the
+		// transactional pool. Routing the automation send through that intake +
+		// the worker means the Send lifecycle owns the worker outcome — provider
+		// health, the sendingReputation denominator, and the
 		// blocklist-on-hard-bounce effect now all fire for automation emails,
 		// which the old direct-dispatch path silently skipped.
+		//
+		// NO route resolution here any more. This step used to run
+		// `resolveSendRoute` first and pass `providerType`/`ipPool` down, which
+		// resolved the same message twice — once from an action that could not see
+		// the row it was about — for a value the worker treats as a fallback. The
+		// intake resolves it in the same transaction as the insert instead. This
+		// step needs no route of its own: nothing above the intake reads one.
 		//
 		// Automation email steps are MARKETING mail (drip series, broadcasts), so
 		// they must carry a `List-Unsubscribe` header to satisfy Gmail/Yahoo's
@@ -115,14 +163,9 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		// across all topics, so it is valid even though an automation has no
 		// single owning topic.
 		const convexSiteUrl = getOptional('CONVEX_SITE_URL');
+		let outcome: NonCampaignIntakeOutcome;
 		try {
-			const route = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-				messageType: 'automation',
-				to: contactEmail,
-				from,
-			});
-			if (!route) return { status: 'failed', error: 'No delivery provider configured' };
-			const { sendId } = await ctx.runMutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			outcome = await ctx.runMutation(internal.delivery.nonCampaignIntake.intake, {
 				kind: 'automation',
 				email: contactEmail,
 				contactId: contact._id,
@@ -130,26 +173,25 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 				subject: personalizedSubject,
 				html: personalizedHtml,
 				from,
-				providerType: route.providerType,
-				ipPool: route.ipPool,
 				...(convexSiteUrl ? { listUnsubscribe: true, convexSiteUrl } : {}),
 			});
-
-			// `completed` here means the send was ENQUEUED (a queued Send row
-			// exists); the actual provider dispatch + lifecycle transition happen
-			// asynchronously on the transactional pool.
-			return { status: 'completed', emailSendId: sendId };
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown email error';
-			// Suppressed recipient (blocklist hit): a permanent, expected state,
-			// not a transient failure. Complete the step as a no-op skip — no Send
-			// row was written and the run advances rather than burning retries on a
-			// condition that will never clear.
-			if (message === RECIPIENT_BLOCKED_ERROR) {
-				return { status: 'completed' };
-			}
-			return { status: 'failed', error: message };
+			// Every REFUSAL is now a typed `{ ok: false }` return, so anything that
+			// still throws is an infrastructure fault (an OCC conflict, a transient
+			// routing deferral crossing the mutation boundary) — never a policy
+			// decision. Nothing is classified by matching the message any more.
+			return {
+				status: 'failed',
+				error: error instanceof Error ? error.message : 'Unknown email error',
+			};
 		}
+
+		if (!outcome.ok) return REJECTION_STEP_OUTCOME[outcome.reason](outcome.detail);
+
+		// `completed` here means the send was ENQUEUED (a queued Send row
+		// exists); the actual provider dispatch + lifecycle transition happen
+		// asynchronously on the transactional pool.
+		return { status: 'completed', emailSendId: outcome.sendId };
 	},
 };
 

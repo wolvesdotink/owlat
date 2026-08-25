@@ -82,11 +82,11 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	async function archiveSelected() {
 		if (ids.value.length === 0) return;
 		const result = await archive.run({ messageIds: ids.value });
-		if (result === undefined) return;
-		if (result?.moved) {
+		if (!result.ok) return;
+		if (result.result?.moved) {
 			triageUndo.registerMoveBack({
-				label: undoLabel('archived', result.moved.length),
-				moved: result.moved,
+				label: undoLabel('archived', result.result.moved.length),
+				moved: result.result.moved,
 				runMove: (a) => move.run(a),
 			});
 		}
@@ -96,11 +96,11 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	async function trashSelected() {
 		if (ids.value.length === 0) return;
 		const result = await trash.run({ messageIds: ids.value });
-		if (result === undefined) return;
-		if (result?.moved) {
+		if (!result.ok) return;
+		if (result.result?.moved) {
 			triageUndo.registerMoveBack({
-				label: undoLabel('trashed', result.moved.length),
-				moved: result.moved,
+				label: undoLabel('trashed', result.result.moved.length),
+				moved: result.result.moved,
 				runMove: (a) => move.run(a),
 			});
 		}
@@ -110,18 +110,18 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	async function purgeSelected() {
 		if (ids.value.length === 0) return;
 		const result = await purge.run({ messageIds: ids.value });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		clear();
 	}
 
 	async function moveSelected(targetFolderId: Id<'mailFolders'>) {
 		if (ids.value.length === 0) return;
 		const result = await move.run({ messageIds: ids.value, targetFolderId });
-		if (result === undefined) return;
-		if (result.moved) {
+		if (!result.ok) return;
+		if (result.result.moved) {
 			triageUndo.registerMoveBack({
-				label: undoLabel('moved', result.moved.length),
-				moved: result.moved,
+				label: undoLabel('moved', result.result.moved.length),
+				moved: result.result.moved,
 				runMove: (a) => move.run(a),
 			});
 		}
@@ -132,13 +132,13 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		if (ids.value.length === 0) return;
 		const messageIds = ids.value;
 		const result = await reportSpamOp.run({ messageIds });
-		if (result === undefined) return;
-		if (result.moved) {
+		if (!result.ok) return;
+		if (result.result.moved) {
 			// notSpam clears the verdict (and parks in Inbox); the follow-up
 			// move restores the true source folder when it wasn't the Inbox.
 			triageUndo.registerMoveBack({
-				label: undoLabel('spam', result.moved.length),
-				moved: result.moved,
+				label: undoLabel('spam', result.result.moved.length),
+				moved: result.result.moved,
 				before: () => notSpamOp.run({ messageIds }),
 				runMove: (a) => move.run(a),
 			});
@@ -149,7 +149,7 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	async function notSpamSelected() {
 		if (ids.value.length === 0) return;
 		const result = await notSpamOp.run({ messageIds: ids.value });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		clear();
 	}
 

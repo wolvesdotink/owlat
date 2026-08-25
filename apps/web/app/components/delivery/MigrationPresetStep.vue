@@ -96,8 +96,8 @@ async function apply(): Promise<void> {
 				key: 'components.delivery.migrationPresetStep.routeWrite',
 				stream: payload.messageType,
 			};
-			// `run` returns undefined on failure and has already surfaced why.
-			if (result === undefined) {
+			// `run` resolves `ok: false` on failure and has already surfaced why.
+			if (!result.ok) {
 				failedAt.value = write;
 				return;
 			}
@@ -109,7 +109,7 @@ async function apply(): Promise<void> {
 				key: 'components.delivery.migrationPresetStep.paceWrite',
 				stream,
 			};
-			if (result === undefined) {
+			if (!result.ok) {
 				failedAt.value = write;
 				return;
 			}

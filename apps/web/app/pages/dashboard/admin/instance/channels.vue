@@ -57,7 +57,7 @@ async function addChannel(kind: ChannelKind) {
 	// via the getChannelConfigs subscription, where credentials are configured.
 	const result = await addChannelConfig({ channel: kind, isEnabled: false });
 	addingChannel.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	displayToast(t('dashboard.admin.instance.channels.addedToast'));
 }
 
@@ -114,9 +114,11 @@ const handleChannelError = (message: string) => {
 						class="text-text-secondary mt-1 max-w-xl"
 					>
 						<template #transportLink>
-							<NuxtLink to="/dashboard/admin/delivery/transport" class="text-brand hover:underline">{{
-								t('dashboard.admin.instance.channels.subtitleTransportLink')
-							}}</NuxtLink>
+							<NuxtLink
+								to="/dashboard/admin/delivery/transport"
+								class="text-brand hover:underline"
+								>{{ t('dashboard.admin.instance.channels.subtitleTransportLink') }}</NuxtLink
+							>
 						</template>
 						<template #domainLink>
 							<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">{{

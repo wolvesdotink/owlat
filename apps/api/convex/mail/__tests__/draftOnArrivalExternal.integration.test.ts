@@ -10,7 +10,7 @@
  *     → deterministic needs-reply verdict (evaluateNeedsReplyCandidate over
  *       the real getThreadContext read)
  *     → applyResult persists the verdict AND schedules
- *       mail/draftOnArrival.generateForThread (the flag gate under test)
+ *       mail/ai/draftOnArrival.generateForThread (the flag gate under test)
  *     → the scheduled Node action runs the REAL shared draft service (only the
  *       LLM seams mocked) and persists the review slot
  *     → the Reply Queue row carries `draftSlot`.

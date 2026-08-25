@@ -4,7 +4,7 @@
  * A single, read-only, SELF-HOSTED free/busy source: the deployment owner points
  * `CALENDAR_FREEBUSY_ICS_URL` at an ICS/CalDAV subscription feed (their own
  * calendar's private iCal export). When the reader's meeting-intent fires, the
- * scheduling reply framing (mail/aiScheduling) can then propose the owner's
+ * scheduling reply framing (mail/ai/scheduling) can then propose the owner's
  * ACTUAL open slots ("Tue 2pm or Wed 10am?") instead of only echoing the
  * sender's phrases.
  *
@@ -19,7 +19,7 @@
  */
 
 import { getOptional } from '../lib/env';
-import { buildSchedulingInstruction } from './aiScheduling';
+import { buildSchedulingInstruction } from './ai/scheduling';
 
 /** A busy time range, epoch-ms half-open interval [start, end). */
 export interface BusyInterval {
@@ -294,7 +294,7 @@ export async function fetchOpenSlots(deps: AvailabilityDeps = {}): Promise<strin
  * (fail-soft — no configured source or any error yields no grounding) and fold
  * them into the fixed scheduling framing from {@link buildSchedulingInstruction}.
  *
- * Kept here rather than inline in mail/ai.ts so the advisory-AI file stays under
+ * Kept here rather than inline in mail/ai/assist.ts so the advisory-AI file stays under
  * the file-size ratchet, and because the free/busy fetch is this module's
  * concern. `proposedTimes` are the verbatim, untrusted sender phrases; the
  * returned string is prompt-ready. Never throws (fetchOpenSlots is fail-soft).

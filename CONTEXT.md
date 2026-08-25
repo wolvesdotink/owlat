@@ -487,10 +487,10 @@ Per-row order of operations (the ordering is load-bearing):
 2. **Contact resolution (module)** with `mode` derived from
    `handleDuplicates` (`'skip' → 'upsert'`, `'update' → 'merge'`).
 3. Property writes per the source-gated policy.
-4. `recordContactActivity` — `'created'` when resolution returned
+3. `recordContactActivity` — `'created'` when resolution returned
    `'created'`; `'property_updated'` when property values were
    written against an existing contact.
-5. When `doiAttest` is set: **DOI lifecycle (module)** `transition({
+4. When `doiAttest` is set: **DOI lifecycle (module)** `transition({
 to: 'confirmed', source: 'admin_attest', attestSource:
 doiAttest.attestSource })`. Must precede step 6 so DOI-required
    topic memberships activate immediately rather than triggering a
@@ -1998,10 +1998,11 @@ attachmentRefs? })` — internal mutation. `templateLookup` is a
   `{ filename, contentType?, url, storageId? }`. Returns one of:
   - `{ ok: true, sendId, contactId, contactCreated, language,
 queued: true }`
-  - `{ ok: false, reason: 'abuse_blocked' | 'recipient_blocked' |
-'template_not_found' | 'template_not_published' |
-'template_no_content' | 'domain_unverified' | 'invalid_variables',
-detail? }`.
+  - `{ ok: false, reason, detail? }` where `reason` is the shared
+    `SendIntakeRejectionReason` (`'abuse_blocked' |
+'no_delivery_provider' | 'recipient_blocked'`) plus this intake's own
+    `'template_not_found' | 'template_not_published' |
+'template_no_content' | 'domain_unverified' | 'invalid_variables'`.
 
 The HTTP shell pre-validates input before calling `dispatch`:
 JSON-shape validation (required fields, types, email format, language
@@ -2012,40 +2013,42 @@ module's input is typed, well-formed data.
 
 Per-call order of operations:
 
-1. Abuse gate (`isSendingAllowed` on `instanceSettings.abuseStatus`)
-   → `abuse_blocked`.
-2. Blocklist (`blockedEmails.isBlockedInternal`) → `recipient_blocked`.
-3. Template lookup (by `id` or `slug` via the `templateLookup`
+1. The **Send intake gates (module)** sequence — abuse gate
+   (`isSendingAllowed` on `instanceSettings.abuseStatus`) →
+   `abuse_blocked`; delivery-provider gate (`isDeliveryConfigured` for
+   `messageType: 'transactional'`) → `no_delivery_provider`; blocklist
+   (`isSuppressed`, scope `'transactional'`) → `recipient_blocked`.
+2. Template lookup (by `id` or `slug` via the `templateLookup`
    discriminator). Missing → `template_not_found`. Not published →
    `template_not_published`. No `htmlContent` → `template_no_content`.
-4. Sender + domain resolution (`defaultFromEmail` →
+3. Sender + domain resolution (`defaultFromEmail` →
    `domains.domains.getEmailDomainVerificationStatus`). Unverified →
    `domain_unverified`.
-5. Validate `dataVariables` against
+4. Validate `dataVariables` against
    `transactionalEmail.dataVariablesSchema` → `invalid_variables`.
-6. **Contact resolution (module)** (`mode: 'upsert'`, `source:
+5. **Contact resolution (module)** (`mode: 'upsert'`, `source:
 'transactional'`) — closes the previously open-coded contact upsert
    with race-retry `try/catch` hack at
    `transactionalApiHttp.ts:484-512`.
-7. Language resolution (request → contact → template default → `'en'`).
+6. Language resolution (request → contact → template default → `'en'`).
    Pulls `htmlContent` + `subject` from `htmlTranslations[language]`
    when available; falls back to default otherwise.
-8. Provider route resolution
+7. Provider route resolution
    (`providerRoutes.getRoute({ messageType: 'transactional' })` +
    provider health → `resolveRoute`).
-9. Template attachments + request attachments merge (template-side
+8. Template attachments + request attachments merge (template-side
    attachments JSON-parsed once at intake; pre-deepening this lived in
    the HTTP shell).
-10. Insert `transactionalSends` row in `queued`. Writes `language` on
+9. Insert `transactionalSends` row in `queued`. Writes `language` on
     the row (new field — closes the silent drift where resolved
     language was only on the API response, not persisted).
-11. Increment BOTH counters atomically with the row insert:
+10. Increment BOTH counters atomically with the row insert:
     `instanceSettings.transactionalSendCount` and
     `emailsQueries.incrementDailySendCountInternal`. Today the daily
     counter is incremented from the HTTP shell _after_ the enqueue;
     consolidating into the module closes the drift seam where any
     future non-HTTP shell would miss it.
-12. Enqueue `transactionalEmailPool.enqueueAction` with
+11. Enqueue `transactionalEmailPool.enqueueAction` with
     `onComplete: emailOnComplete` and `sendRef: { kind: 'transactional',
 id: sendId }`.
 
@@ -2118,6 +2121,82 @@ with **Transactional send** the row), Transactional send orchestrator
 (the orchestrator role is reserved for the **Campaign send
 orchestrator** — that one composes multiple lifecycle calls; this
 module is a single intake function).
+
+**Send intake gates (module)**:
+The module at `convex/delivery/sendIntakeGates.ts` that owns the one
+pre-row gate sequence every send intake runs, in one fixed order:
+**abuse → provider-ready → suppression**. It also names the shared
+refusal vocabulary `SendIntakeRejectionReason` (`abuse_blocked |
+no_delivery_provider | recipient_blocked`), which the
+**Transactional send intake (module)** composes with its own
+template/variable reasons and the **Non-campaign send intake (module)**
+uses whole. Two shapes of the provider question, chosen by the caller:
+`{ kind: 'message_type' }` (route-independent — "can this message type
+deliver at all?", for an intake whose `from` is not settled yet) and
+`{ kind: 'resolved_route' }` (resolve this send's route, judge the
+provider it selected, and hand the resolution back so the row and the
+envelope are stamped from it).
+
+Every gate is PRE-ROW by construction: a refusal leaves no
+`transactionalSends` row, no `sendAssignments` row and no workpool job
+behind. That property is what lets callers treat a rejection as final
+rather than as a failed send to retry. Transient refusals (an open
+delivery circuit, an unverified fallback relay) are deliberately NOT in
+the union — they surface as routing deferrals from the send path, which
+is where the bounded retry lives.
+_Avoid_: Send gate (module) (there is also an **Abuse gate** and a
+suppression gate — the plural names the sequence, which is the thing
+that is shared), Intake validation (these are policy refusals, not
+input validation; the shells validate shape).
+
+**Non-campaign send intake (module)**:
+The module at `convex/delivery/nonCampaignIntake.ts` that owns the
+intake path for every 1:1, non-template-API Send — automation email
+steps (`kind: 'automation'`) and agent approved-replies
+(`kind: 'agent_reply'`). Sibling of the **Transactional send intake
+(module)** and modelled on it: same gate sequence via the **Send intake
+gates (module)**, same in-transaction route resolution, same
+`transactionalSends` row insert → `sendAssignments` record →
+transactional-workpool enqueue, same `ok`-discriminated outcome.
+
+Single entry point:
+
+- `intake({ kind, email, contactId?, automationId?, inboundMessageId?,
+transactionalEmailId?, subject, html, from, replyTo?, headers?,
+listUnsubscribe?, convexSiteUrl? })` — internal mutation. Returns
+  `{ ok: true, sendId, queued: true }` or `{ ok: false, reason,
+detail? }` with `reason: SendIntakeRejectionReason`. `subject` and
+  `html` are PRE-RENDERED by the caller and carry no `dataVariables`.
+
+Two per-kind policy tables, both total by construction (`satisfies
+Record<NonCampaignSendKind, …>`, so a third kind is a compile error
+until it names its policy): the suppression scope (`automation` is
+marketing and takes the strict scope; `agent_reply` is a 1:1 answer to
+a human who wrote in and takes the transactional one) and the route
+table / envelope `messageType`.
+
+Replaces `delivery/enqueue.ts:enqueueNonCampaignSend`, which threw its
+refusals from two exported magic-string constants that its two callers
+re-classified by matching `error.message`. Both producers now map the
+reasons through a total `Record<NonCampaignIntakeRejectionReason, …>` —
+`recipient_blocked` is a permanent per-recipient verdict (the automation
+step completes without sending; the agent reply archives the inbound
+message as `sender_blocked`), while `no_delivery_provider` and
+`abuse_blocked` are deployment faults that fail and stay re-drivable.
+See the PIECE C2 amendment in
+`docs/adr/0021-transactional-send-intake-module.md`.
+
+The module does _not_ own: the campaign producer (`delivery/enqueue.ts`
+— a bulk fan-out from an already-gated orchestrator, not an intake); the
+member-only test preview (`delivery/enqueueTestSend.ts`); template
+personalization (the automation step composes before calling); draft
+escaping or the pre-send reference monitor (the agent pipeline); the
+`queued → sent | failed` transitions (**Send completion (module)**).
+_Avoid_: Non-campaign enqueue (module) (names the mechanism, not the
+role — the shape is an intake with a classified outcome, like its
+sibling), Automation send intake (module) (only half of what it owns),
+1:1 send intake (module) ("1:1" is not a noun the rest of the domain
+language uses).
 
 **Transactional email status**:
 The current state of a **Transactional email** at
@@ -2294,11 +2373,24 @@ and a `TransitionOutcome` reporting `ok | reason` for duplicate / illegal /
 terminal / kind-mismatched attempts. Two instances today: **Send lifecycle**
 (campaign + transactional `Send`) and **Postbox outbound lifecycle**
 (`mailMessages.outbound`). Both expose `transition` and a webhook-friendly
-`transitionByProviderMessageId`. Replicated by convention, not by a generic
-`Lifecycle<S, E, Eff>` factor — when a third instance lands and the duplication
-bites, that's when the factor lands.
+`transitionByProviderMessageId`. Replicated by convention everywhere except the
+_dispatcher preamble_, which ADR-0058 factored into the **Lifecycle core**
+(`convex/lib/lifecycle.ts`) after eleven instances. Reducers, effects and
+module-local outcome literals stay in the module.
 _Avoid_: State machine (generic; doesn't signal the dispatched-to-MTA
 boundary), Lifecycle alone (every CRUD module has one).
+
+**Lifecycle core**:
+The one layer every Outbound-lifecycle instance shares verbatim, extracted to
+`convex/lib/lifecycle.ts` (ADR-0058). `defineLifecycle(spec, options)` builds a
+graph from a declarative edge spec; `graph.classify(from, to)` returns
+`proceed` (with an `isSelfLoop` flag) or `refused` (`illegal_edge`, or
+`terminal` for the five machines that opt in); `LifecycleReason<TExtra>` unions
+the core's reasons with a module's own literals; `refuse(verdict, context)`
+builds the shared `ok: false` shape. Its scope is the dispatcher preamble and
+nothing else — no `ctx`, no reducers, no effects, no persistence.
+_Avoid_: Lifecycle framework / generic `Lifecycle<S, E, Eff>` (both name the
+larger factor four ADRs refused), State machine engine.
 
 **Send**:
 A single addressed message dispatch tracked in `emailSends` (campaign) or
@@ -5099,6 +5191,14 @@ UI treatment — `useBackendOperation` for writes, `useBackendQuery` for reactiv
 reads.
 _Avoid_: mutation wrapper, `useConvexMutation`.
 
+**Operation result**:
+The `{ ok: true, result } | { ok: false }` envelope an **Operation module**
+write resolves. `ok` is the only thing a caller ever tests — the failure arm
+carries nothing because the treatment (toast / inline / redirect / telemetry)
+has already been applied. Replaces the `T | undefined` sentinel, which could
+not tell a write that legitimately returned nothing from one that failed.
+_Avoid_: the undefined sentinel, "returns `undefined` on failure".
+
 ## Resource listing
 
 The one read-side surface for "give me a filtered, searched, paginated,
@@ -5586,13 +5686,17 @@ force?)` guard consumed by every mutation that touches publishable
   deletion as lifecycle entry points (`create()` and `remove()`),
   bracketing the state machine — Topic subscription is the closest
   precedent but it acts on membership rows, not the parent row. The
-  `Lifecycle<S, T, E>` factor question is "active design" rather than
-  "hypothetical" but has not yet landed — each instance differs in
-  non-trivial ways (external keys, polymorphic identity, override entry
-  points, cross-machine coordination, per-kind adapter dispatch) that
-  would be lossy to push behind a generic factor. The factor lands when
-  the duplication bites at the _reducer-implementation_ level, not at
-  the type-signature level — and so far the reducers genuinely diverge.
+  `Lifecycle<S, T, E>` factor question is settled by splitting it in
+  two. The _whole-machine_ factor stays refused: each instance differs
+  in non-trivial ways (external keys, polymorphic identity, override
+  entry points, cross-machine coordination, per-kind adapter dispatch)
+  that would be lossy to push behind a generic runner, and the reducers
+  genuinely diverge. The _dispatcher preamble_ — edge graph, transition
+  validation, self-loop and terminal classification, the shared
+  `ok: false` scaffolding — carries no module vocabulary at all, and
+  ADR-0058 factored exactly that into the **Lifecycle core**
+  (`convex/lib/lifecycle.ts`), piloted on Postbox outbound lifecycle.
+  The remaining machines migrate as they are touched.
 
 ## Example dialogue
 

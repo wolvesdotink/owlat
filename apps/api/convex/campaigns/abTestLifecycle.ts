@@ -26,6 +26,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { abTestConfigValidator } from '../lib/convexValidators';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
+import { defineLifecycle, refuse } from '../lib/lifecycle';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -75,17 +76,22 @@ const transitionInputValidator = v.union(
 		at: v.number(),
 		winner: v.union(v.literal('A'), v.literal('B')),
 	}),
-	v.object({ to: v.literal('none'), at: v.number() }),
+	v.object({ to: v.literal('none'), at: v.number() })
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
+//
+// The graph and the dispatcher preamble that reads it live in the generic
+// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and effects below
+// stay here. `reportsTerminalRefusals` is off — every state can still be reset
+// to `none`, and the published outcome union carries only `illegal_edge`.
 
-const LEGAL_EDGES: Record<AbTestMachineState, ReadonlySet<AbTestMachineState>> = {
-	none: new Set<AbTestMachineState>(['pending']),
-	pending: new Set<AbTestMachineState>(['testing', 'none']),
-	testing: new Set<AbTestMachineState>(['winner_selected', 'none']),
-	winner_selected: new Set<AbTestMachineState>(['none']),
-};
+const AB_TEST_LIFECYCLE = defineLifecycle<AbTestMachineState>({
+	none: ['pending'],
+	pending: ['testing', 'none'],
+	testing: ['winner_selected', 'none'],
+	winner_selected: ['none'],
+});
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
@@ -128,7 +134,7 @@ type ReducerResult = {
 function reduce(
 	campaign: Doc<'campaigns'>,
 	input: AbTestTransitionInput,
-	userId: string,
+	userId: string
 ): ReducerResult {
 	const from: AbTestMachineState = campaign.abTestStatus ?? 'none';
 
@@ -249,10 +255,7 @@ function buildPatch(input: AbTestTransitionInput): Record<string, unknown> {
 
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
-async function applyEffects(
-	ctx: MutationCtx,
-	effects: ReadonlyArray<Effect>,
-): Promise<void> {
+async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): Promise<void> {
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'audit_log': {
@@ -266,19 +269,15 @@ async function applyEffects(
 				break;
 			}
 			case 'schedule_winner_remainder': {
-				await ctx.scheduler.runAfter(
-					0,
-					internal.campaigns.send.sendCampaignWinnerToRemainder,
-					{ campaignId: effect.campaignId },
-				);
+				await ctx.scheduler.runAfter(0, internal.campaigns.send.sendCampaignWinnerToRemainder, {
+					campaignId: effect.campaignId,
+				});
 				break;
 			}
 			case 'schedule_auto_winner': {
-				await ctx.scheduler.runAfter(
-					effect.delayMs,
-					internal.campaigns.abTest.autoDeclareWinner,
-					{ campaignId: effect.campaignId },
-				);
+				await ctx.scheduler.runAfter(effect.delayMs, internal.campaigns.abTest.autoDeclareWinner, {
+					campaignId: effect.campaignId,
+				});
 				break;
 			}
 		}
@@ -291,14 +290,13 @@ async function dispatch(
 	ctx: MutationCtx,
 	campaign: Doc<'campaigns'>,
 	input: AbTestTransitionInput,
-	userId: string,
+	userId: string
 ): Promise<AbTestTransitionOutcome> {
 	const from: AbTestMachineState = campaign.abTestStatus ?? 'none';
-	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
-	const isSelfLoop = from === input.to;
+	const verdict = AB_TEST_LIFECYCLE.classify(from, input.to);
 
-	if (!isLegalEdge && !isSelfLoop) {
-		return { ok: false, reason: 'illegal_edge', from, to: input.to };
+	if (verdict.kind === 'refused') {
+		return refuse(verdict);
 	}
 
 	const result = reduce(campaign, input, userId);

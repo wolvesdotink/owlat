@@ -66,9 +66,9 @@ beforeEach(() => {
 	genRun.mockReset();
 	askRun.mockReset();
 	suggestRun.mockReset();
-	genRun.mockResolvedValue(null);
-	askRun.mockResolvedValue(undefined);
-	suggestRun.mockResolvedValue(undefined);
+	genRun.mockResolvedValue({ ok: true, result: null });
+	askRun.mockResolvedValue({ ok: false });
+	suggestRun.mockResolvedValue({ ok: false });
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
@@ -110,7 +110,7 @@ describe('PostboxAiStrip', () => {
 	});
 
 	it('is visible with only the actions when the thread warrants a summary but none exists', async () => {
-		genRun.mockResolvedValue(null); // generation fails → no gist, strip still there
+		genRun.mockResolvedValue({ ok: true, result: null }); // generation fails → no gist, strip still there
 		const wrapper = mountStrip({ warrantsSummary: true });
 		await flushPromises();
 		expect(wrapper.find('[data-testid="postbox-ai-strip"]').exists()).toBe(true);
@@ -119,7 +119,7 @@ describe('PostboxAiStrip', () => {
 	});
 
 	it('keeps Ask and Draft reply mutually exclusive', async () => {
-		suggestRun.mockResolvedValue({ replies: ['Sounds good.'] });
+		suggestRun.mockResolvedValue({ ok: true, result: { replies: ['Sounds good.'] } });
 		const wrapper = mountStrip({ warrantsSummary: true });
 		await flushPromises();
 
@@ -135,7 +135,7 @@ describe('PostboxAiStrip', () => {
 	});
 
 	it('emits use-reply with the exact suggestion text', async () => {
-		suggestRun.mockResolvedValue({ replies: ['On it — will send today.'] });
+		suggestRun.mockResolvedValue({ ok: true, result: { replies: ['On it — will send today.'] } });
 		const wrapper = mountStrip({ warrantsSummary: true });
 		await flushPromises();
 
@@ -148,7 +148,7 @@ describe('PostboxAiStrip', () => {
 	});
 
 	it('answers an Ask question inline and keeps the ephemeral history', async () => {
-		askRun.mockResolvedValue({ answer: 'We ship on the 14th.' });
+		askRun.mockResolvedValue({ ok: true, result: { answer: 'We ship on the 14th.' } });
 		const wrapper = mountStrip({ warrantsSummary: true });
 		await flushPromises();
 

@@ -107,7 +107,7 @@ function stubQueueGlobals(items: ReturnType<typeof queueItem>[]) {
 			!message.draftResponse || message.draftResponse.trim().length === 0,
 		onApprove,
 		approveOption: vi.fn(),
-		onReject: vi.fn().mockResolvedValue({ success: true }),
+		onReject: vi.fn().mockResolvedValue({ ok: true, result: { success: true } }),
 		undoApprove: vi.fn(),
 		composeAndSend: vi.fn(),
 		editDraft: vi.fn(),
@@ -157,7 +157,7 @@ describe('browse list — a lost-race approve', () => {
 	}
 
 	it('toasts honestly, arms no undo, and keeps the row hidden', async () => {
-		onApprove.mockResolvedValue({ success: false, reason: 'not_found' });
+		onApprove.mockResolvedValue({ ok: true, result: { success: false, reason: 'not_found' } });
 		const wrapper = mountBrowse();
 		expect(wrapper.findAllComponents(ReviewBrowseCard)).toHaveLength(2);
 
@@ -172,7 +172,7 @@ describe('browse list — a lost-race approve', () => {
 	});
 
 	it('still arms the countdown undo for a real approval', async () => {
-		onApprove.mockResolvedValue({ success: true, undo: { sendAt: 12_345 } });
+		onApprove.mockResolvedValue({ ok: true, result: { success: true, undo: { sendAt: 12_345 } } });
 		const wrapper = mountBrowse();
 
 		await approveFirstCard(wrapper);
@@ -184,9 +184,8 @@ describe('browse list — a lost-race approve', () => {
 
 	it('restores the row and names the teammate on a collision hold', async () => {
 		onApprove.mockResolvedValue({
-			success: false,
-			reason: 'reply_in_progress',
-			heldByName: 'Dana',
+			ok: true,
+			result: { success: false, reason: 'reply_in_progress', heldByName: 'Dana' },
 		});
 		const wrapper = mountBrowse();
 
@@ -242,8 +241,8 @@ describe('focus flow — a lost-race approve', () => {
 
 	it('advances past the card without tallying an approve or an undo', async () => {
 		onApprove
-			.mockResolvedValueOnce({ success: false, reason: 'not_found' })
-			.mockResolvedValueOnce({ success: true });
+			.mockResolvedValueOnce({ ok: true, result: { success: false, reason: 'not_found' } })
+			.mockResolvedValueOnce({ ok: true, result: { success: true } });
 		const wrapper = mountFocus();
 		await flushPromises();
 		expect(wrapper.findComponent(flowStub).props('currentKey')).toBe('m1');

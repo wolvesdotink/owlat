@@ -13,27 +13,21 @@
  * classification. Postbox routing (`pb-` prefix on messageId) lives in the
  * dispatcher, not here.
  *
- * Inbound mail (`inbound.received`) delegates parsing to the existing
- * `@owlat/channels` inbound adapter so the MTA SMTP server and the
- * webhook share the same envelope-to-NormalizedInboundMail translation.
- *
- * Events carried by `POST /webhooks/mta` (parsed here, routed by the
- * dispatcher):
- *   email.sent / email.bounced / email.complained          — Send lifecycle
- *   email.sent / email.bounced (with `pb-` messageId)      — Postbox outbound state
- *   inbound.received                                       — inbox.messages
- *   internal.circuit_breaker_tripped                       — org abuse status
- *   internal.campaign_complaint_rate                       — org abuse status
- *   internal.ip_event (blocklisted/delisted/warming_complete/all_blocked)
- *                                                          — warmingSync + log
+ * Events carried by `POST /webhooks/mta` are parsed by `./mtaEventParsers.ts`
+ * — an exhaustive registry over `MtaWebhookEventType` (the `../dispatcher.ts`
+ * DispatchTable pattern), so a kind added to the wire contract is a compile
+ * error there until an entry says what it means. Exactly one kind,
+ * `inbound.mailbox.received`, is an explicit documented ignore: the MTA's
+ * notifier delivers it to `POST /webhooks/mta-mailbox` (`mail/webhook.ts`),
+ * never to this surface.
  */
 
-import { getInboundChannelAdapter } from '@owlat/channels';
 import { constantTimeEqual, hmacSha256Hex } from '../security';
 import type { InboundParser } from '../pipeline';
-import { type InboundEvent, postmasterStatsMetrics } from '../types';
-import { isMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
-import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
+import type { InboundEvent } from '../types';
+import { isMtaWebhookEvent, type ValidatedMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
+import { logWarn } from '../../lib/runtimeLog';
+import { MTA_EVENT_PARSERS } from './mtaEventParsers';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
@@ -69,16 +63,6 @@ function postmasterAcknowledgement(event: InboundEvent, dispatchResult: unknown)
 }
 
 const MTA_TIMESTAMP_TOLERANCE_SECONDS = 300; // 5 minutes
-
-const IP_EVENT_SUBKIND: Record<
-	string,
-	'blocklisted' | 'delisted' | 'warming_complete' | 'all_blocked'
-> = {
-	'ip.blocklisted': 'blocklisted',
-	'ip.delisted': 'delisted',
-	'ip.warming_complete': 'warming_complete',
-	all_ips_blocked: 'all_blocked',
-};
 
 const ROUTING_REENTRY_DISPOSITION_STATUS = {
 	invalid_token: 409,
@@ -116,297 +100,28 @@ export const mtaAdapter: InboundParser<'mta'> = {
 
 	parseEvent(rawBody): InboundEvent | null {
 		const parsed: unknown = JSON.parse(rawBody);
-		if (!isMtaWebhookEvent(parsed)) return null;
-		const payload = parsed;
-		switch (payload.event) {
-			case 'routing.reentry': {
-				const reentry = isRecord(payload.routingReentry) ? payload.routingReentry : null;
-				const retryState =
-					reentry && isRecord(reentry['retryState']) ? reentry['retryState'] : null;
-				// The optional fields are part of the callback digest issued by
-				// `issueSnapshot`, so they must round-trip byte-for-byte. Dropping
-				// them turns every acceptance-reconciliation re-entry into a
-				// permanent `binding_mismatch` and strands the Send in `queued`.
-				const reentryWorkAttemptId = retryState?.['workAttemptId'];
-				const acceptanceReconciliation = retryState?.['acceptanceReconciliation'];
-				if (
-					!payload.messageId ||
-					typeof payload.routingReentryToken !== 'string' ||
-					payload.routingReentryToken.length < 1 ||
-					payload.routingReentryToken.length > 512 ||
-					typeof payload.workAttemptId !== 'string' ||
-					payload.workAttemptId.length < 1 ||
-					payload.workAttemptId.length > 128 ||
-					!reentry ||
-					!isRecord(reentry['envelopeInput']) ||
-					!retryState ||
-					typeof retryState['attempt'] !== 'number' ||
-					!Number.isInteger(retryState['attempt']) ||
-					retryState['attempt'] < 1 ||
-					retryState['attempt'] > 9 ||
-					typeof retryState['startedAt'] !== 'number' ||
-					!Number.isFinite(retryState['startedAt']) ||
-					retryState['idempotencyKey'] !== payload.messageId ||
-					(reentryWorkAttemptId !== undefined &&
-						(typeof reentryWorkAttemptId !== 'string' ||
-							reentryWorkAttemptId.length < 1 ||
-							reentryWorkAttemptId.length > 128)) ||
-					(acceptanceReconciliation !== undefined &&
-						typeof acceptanceReconciliation !== 'boolean') ||
-					(payload.routingReentryReason !== 'routing_lease_stale' &&
-						payload.routingReentryReason !== 'circuit_breaker_changed' &&
-						payload.routingReentryReason !== 'warming_capacity_changed')
-				)
-					return null;
-				return {
-					kind: 'internal.routing_reentry',
-					providerMessageId: payload.messageId,
-					token: payload.routingReentryToken,
-					workAttemptId: payload.workAttemptId,
-					envelopeInput: reentry['envelopeInput'] as WorkerEnvelopeInput,
-					retryState: {
-						attempt: retryState['attempt'],
-						startedAt: retryState['startedAt'],
-						idempotencyKey: payload.messageId,
-						...(typeof reentryWorkAttemptId === 'string'
-							? { workAttemptId: reentryWorkAttemptId }
-							: {}),
-						...(typeof acceptanceReconciliation === 'boolean' ? { acceptanceReconciliation } : {}),
-					},
-					reason: payload.routingReentryReason,
-				};
-			}
-			case 'postmaster.authorize_domain': {
-				if (!payload.domain) return null;
-				return {
-					kind: 'internal.postmaster_authorize_domain',
-					domain: payload.domain,
-				};
-			}
-			case 'bounced': {
-				if (!payload.messageId) return null;
-				return {
-					kind: 'email.bounced',
-					providerMessageId: payload.messageId,
-					at: payload.timestamp,
-					bounceType: payload.bounceType === 'hard' ? 'hard' : 'soft',
-					...(payload.message ? { bounceMessage: payload.message } : {}),
-					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
-					providerType: 'mta',
-				};
-			}
-			case 'failed': {
-				// Terminal, NON-bounce failure (for example a screened message or an
-				// ambiguous post-DATA drop). Map to
-				// the `failed` send status — distinct from `bounced`, so the dispatcher
-				// applies NO recipient suppression and NO reputation penalty.
-				if (!payload.messageId) return null;
-				const errorCode =
-					typeof payload.errorCode === 'string' &&
-					payload.errorCode.length > 0 &&
-					payload.errorCode.length <= 128
-						? payload.errorCode
-						: 'ambiguous_post_data';
-				return {
-					kind: 'email.failed',
-					providerMessageId: payload.messageId,
-					at: payload.timestamp ?? Date.now(),
-					errorMessage: payload.message ?? 'Delivery failed (ambiguous post-DATA drop)',
-					errorCode,
-					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
-					providerType: 'mta',
-				};
-			}
-			case 'complained': {
-				// Prefer Message-ID attribution; fall back to the recipient
-				// address (RFC 5965 §3.2) so a Gmail-redacted FBL still
-				// suppresses the complainer. Drop only when neither is present.
-				//
-				// `reportedDomain` / `sourceIsp` ride along on BOTH shapes: they say
-				// which of our DKIM domains the report named and which ISP filed it,
-				// independent of which attribution handle the report carried. NOT to be
-				// confused with `arf.feedbackProvenance` (production vs member-preview
-				// delivery domain) — hence the `fblReport` prefix.
-				const fblReportProvenance = {
-					...(payload.reportedDomain ? { reportedDomain: payload.reportedDomain } : {}),
-					...(payload.sourceIsp ? { sourceIsp: payload.sourceIsp } : {}),
-				};
-				if (payload.messageId) {
-					return {
-						kind: 'email.complained',
-						providerMessageId: payload.messageId,
-						at: payload.timestamp,
-						providerType: 'mta',
-						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
-						...fblReportProvenance,
-					};
-				}
-				if (payload.recipient) {
-					return {
-						kind: 'email.complained',
-						recipient: payload.recipient,
-						at: payload.timestamp,
-						providerType: 'mta',
-						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
-						...fblReportProvenance,
-					};
-				}
-				return null;
-			}
-			case 'sent': {
-				if (!payload.messageId) return null;
-				return {
-					// The MTA emits this only after the destination SMTP server has
-					// accepted DATA. POST /send queue acceptance is recorded separately
-					// by the worker as `sent`; this is the truthful delivered denominator.
-					kind: 'email.delivered',
-					providerMessageId: payload.messageId,
-					at: payload.timestamp ?? Date.now(),
-					providerType: 'mta',
-					...(payload.organizationId ? { organizationId: payload.organizationId } : {}),
-					...(payload.recipient ? { recipient: payload.recipient } : {}),
-					...(payload.destinationProvider
-						? { destinationProvider: payload.destinationProvider }
-						: {}),
-					...(payload.primarySendingDomain
-						? { primarySendingDomain: payload.primarySendingDomain }
-						: {}),
-					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
-				};
-			}
-			case 'inbound.received': {
-				if (!payload.inboundPayload) return null;
-				// Delegate envelope normalization to @owlat/channels so the
-				// MTA SMTP server and webhook share one parser.
-				const normalized = getInboundChannelAdapter('mta').parseInbound(payload);
-				return { kind: 'inbound.received', mail: normalized };
-			}
-			case 'org.circuit_breaker': {
-				return {
-					kind: 'internal.circuit_breaker_tripped',
-					message: payload.message ?? 'high bounce rate',
-					...(payload.bounceRate !== undefined ? { bounceRate: payload.bounceRate } : {}),
-				};
-			}
-			case 'dkim.rotated': {
-				if (
-					!payload.domain ||
-					!payload.selector ||
-					!payload.dnsRecord ||
-					(payload.phase !== 'pending' && payload.phase !== 'activated')
-				) {
-					return null;
-				}
-				return {
-					kind: 'internal.dkim_rotated',
-					domain: payload.domain,
-					selector: payload.selector,
-					dnsRecord: payload.dnsRecord,
-					phase: payload.phase,
-				};
-			}
-			case 'campaign.complaint_rate': {
-				return {
-					kind: 'internal.campaign_complaint_rate',
-					eventId: payload.eventId,
-					message: payload.message,
-					campaignId: payload.campaignId,
-					complaintRate: payload.complaintRate,
-					at: payload.timestamp,
-				};
-			}
-			case 'ip.blocklisted':
-			case 'ip.delisted':
-			case 'ip.warming_complete':
-			case 'all_ips_blocked': {
-				const subkind = IP_EVENT_SUBKIND[payload.event]!;
-				return {
-					kind: 'internal.ip_event',
-					subkind,
-					...(payload.ip ? { ip: payload.ip } : {}),
-					...(payload.blocklists ? { blocklists: payload.blocklists } : {}),
-					...(payload.severity ? { severity: payload.severity } : {}),
-					...(payload.message ? { message: payload.message } : {}),
-				};
-			}
-			case 'smtp.classified': {
-				// Both fields are already narrowed by `isMtaWebhookEvent` — the category
-				// against the SHARED vocabulary, never re-derived from `message` here.
-				// The re-check is the adapter's own trust boundary, the shape every case
-				// above keeps.
-				if (!payload.messageId || !payload.smtpCategory) return null;
-				return {
-					kind: 'internal.smtp_classified',
-					providerMessageId: payload.messageId,
-					category: payload.smtpCategory,
-					observedAt: payload.timestamp,
-				};
-			}
-			case 'ip.readiness_regressed': {
-				return {
-					kind: 'internal.ip_readiness_regressed',
-					eventId: payload.eventId,
-					ip: payload.ip,
-					readinessCheck: payload.readinessCheck,
-					readinessReason: payload.readinessReason,
-					eligibilityGeneration: payload.eligibilityGeneration,
-					observedAt: payload.timestamp,
-					message: payload.message,
-				};
-			}
-			case 'deliverability.probe_observed': {
-				const authResult = (value: string | undefined) =>
-					value === 'pass'
-						? ('pass' as const)
-						: value === 'fail'
-							? ('fail' as const)
-							: ('unknown' as const);
-				return {
-					kind: 'internal.deliverability_probe_observed',
-					token: payload.probeToken,
-					spf: authResult(payload.spfResult),
-					dkim: authResult(payload.dkimResult),
-					dmarc: authResult(payload.dmarcResult),
-					...(payload.selector ? { dkimSelector: payload.selector } : {}),
-					tlsVersion: payload.tlsVersion,
-					sendingIp: payload.ip,
-					ptr: payload.ptr,
-				};
-			}
-			case 'postmaster.stats': {
-				if (
-					!payload.domain ||
-					!payload.date ||
-					typeof payload.userReportedSpamRatio !== 'number' ||
-					!Number.isFinite(payload.userReportedSpamRatio) ||
-					payload.userReportedSpamRatio < 0 ||
-					payload.userReportedSpamRatio > 1
-				) {
-					return null;
-				}
-				return {
-					kind: 'internal.postmaster_stats',
-					domain: payload.domain,
-					date: payload.date,
-					userReportedSpamRatio: payload.userReportedSpamRatio,
-					...postmasterStatsMetrics(payload),
-					fetchedAt: payload.timestamp,
-				};
-			}
-			case 'postmaster.compliance': {
-				// The shared contract already bounded and shape-checked `checks`.
-				if (!payload.domain || !payload.date || payload.checks === undefined) return null;
-				return {
-					kind: 'internal.postmaster_compliance',
-					domain: payload.domain,
-					date: payload.date,
-					checks: payload.checks,
-					fetchedAt: payload.timestamp,
-				};
-			}
-			default:
-				return null;
+		if (!isMtaWebhookEvent(parsed)) {
+			// The pipeline answers an empty parse with 200 `{ignored:true}` and the
+			// MTA's outbox retires the event — there is no DLQ behind this path
+			// (`apps/mta/src/webhooks/dlq.ts` catches transport failures only). A
+			// payload the ingress guard refuses must therefore leave a trace, or
+			// the discard is indistinguishable from success. Log the discriminator
+			// only: internal payloads (postmaster.*, probes) are sensitive.
+			const kind =
+				isRecord(parsed) && typeof parsed['event'] === 'string'
+					? parsed['event'].slice(0, 64)
+					: '(missing)';
+			logWarn(
+				`[mta Webhook] Ingress guard rejected event "${kind}"; acknowledging without dispatch`
+			);
+			return null;
 		}
+		// Same lookup-cast shape as `../dispatcher.ts` DISPATCH: the table is
+		// total over the union, so the cast only erases the per-key correlation.
+		const parse = MTA_EVENT_PARSERS[parsed.event] as (
+			payload: ValidatedMtaWebhookEvent
+		) => InboundEvent | null;
+		return parse(parsed);
 	},
 
 	successResponse(event, dispatchResult) {

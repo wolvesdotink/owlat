@@ -384,7 +384,7 @@ function generatedReference(module: string, name: string): RegExp {
 }
 
 /**
- * `'mail/imap:fetchEnvelopes'` — how a worker holding a `ConvexHttpClient`
+ * `'mail/imap/fetch:fetchEnvelopes'` — how a worker holding a `ConvexHttpClient`
  * addresses a function without the generated API object. Quoted on both ends, so
  * a docblock naming the same path in prose does not count (and comments are
  * stripped before this ever runs anyway).
@@ -743,7 +743,7 @@ describe('the walk fails an entry nothing can start', () => {
 	const CRONNED = { module: 'delivery/rampSweep.ts', name: 'sweepRamp' } as const;
 	const CALLED = { module: 'delivery/rampWrites.ts', name: 'applyRampWrite' } as const;
 	const CLIENT = { module: 'delivery/rampDoor.ts', name: 'openRampDoor' } as const;
-	const WORKER = { module: 'mail/imap.ts', name: 'fetchEnvelopes' } as const;
+	const WORKER = { module: 'mail/imap/fetch.ts', name: 'fetchEnvelopes' } as const;
 	const ORPHAN = { module: 'delivery/rampOrphan.ts', name: 'promoteOrphan' } as const;
 
 	const convex: ReadonlyMap<string, string> = new Map(
@@ -821,7 +821,7 @@ describe('the walk fails an entry nothing can start', () => {
 				// orphan's path appears too — UNQUOTED, the way a docblock spells it —
 				// and must credit nothing.
 				[
-					"\tfetchEnvelopes: 'mail/imap:fetchEnvelopes' as FnRef,",
+					"\tfetchEnvelopes: 'mail/imap/fetch:fetchEnvelopes' as FnRef,",
 					'\t// replaces delivery/rampOrphan:promoteOrphan',
 				].join('\n'),
 			],

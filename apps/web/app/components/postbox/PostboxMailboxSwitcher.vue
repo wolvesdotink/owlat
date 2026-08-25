@@ -3,7 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 
 // Sidebar mailbox switcher: the caller's personal mailbox(es) plus the shared
 // (team) inboxes they belong to, each with its own unread badge. Sections,
-// labels, and badges all come from `mail.mailbox.accessible` (one accessible +
+// labels, and badges all come from `mail.mailbox.queries.accessible` (one accessible +
 // active truth), so read state is one shared truth per message — a team inbox's
 // badge is identical for every member. Personal-only users with a single mailbox
 // see nothing here — their sidebar is unchanged.

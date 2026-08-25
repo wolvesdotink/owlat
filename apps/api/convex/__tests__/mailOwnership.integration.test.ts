@@ -939,11 +939,11 @@ describe('mail.folders ownership', () => {
 		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
 
 		setUser('user-alice', 'editor');
-		const own = await t.query(api.mail.mailbox.listFolders, { mailboxId: a.mailboxId });
+		const own = await t.query(api.mail.mailbox.queries.listFolders, { mailboxId: a.mailboxId });
 		expect(own.length).toBeGreaterThan(0);
 
 		setUser('user-bob', 'editor');
-		const foreign = await t.query(api.mail.mailbox.listFolders, {
+		const foreign = await t.query(api.mail.mailbox.queries.listFolders, {
 			mailboxId: a.mailboxId,
 		});
 		expect(foreign).toEqual([]);
@@ -1090,13 +1090,13 @@ describe('mail.filters ownership', () => {
 // Mailbox display-name edit — ownership-scoped (mirrors labels.update)
 // ════════════════════════════════════════════════════════════════════
 
-describe('mail.mailbox.setDisplayName ownership', () => {
+describe('mail.mailbox.identity.setDisplayName ownership', () => {
 	it('owner can rename their own mailbox; non-owner is denied', async () => {
 		const t = convexTest(schema, modules);
 		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
 
 		setUser('user-alice', 'editor');
-		await t.mutation(api.mail.mailbox.setDisplayName, {
+		await t.mutation(api.mail.mailbox.identity.setDisplayName, {
 			mailboxId: a.mailboxId,
 			displayName: 'Alice P.',
 		});
@@ -1104,7 +1104,7 @@ describe('mail.mailbox.setDisplayName ownership', () => {
 		expect(mb?.displayName).toBe('Alice P.');
 
 		// A blank value clears the display name back to undefined.
-		await t.mutation(api.mail.mailbox.setDisplayName, {
+		await t.mutation(api.mail.mailbox.identity.setDisplayName, {
 			mailboxId: a.mailboxId,
 			displayName: '   ',
 		});
@@ -1114,7 +1114,7 @@ describe('mail.mailbox.setDisplayName ownership', () => {
 		// Bob (a different editor) cannot rename Alice's mailbox.
 		setUser('user-bob', 'editor');
 		await expect(
-			t.mutation(api.mail.mailbox.setDisplayName, {
+			t.mutation(api.mail.mailbox.identity.setDisplayName, {
 				mailboxId: a.mailboxId,
 				displayName: 'Hijacked',
 			})

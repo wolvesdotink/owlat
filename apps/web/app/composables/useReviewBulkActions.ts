@@ -58,11 +58,11 @@ export function useReviewBulkActions(opts: {
 		const result = await undoOp.run({
 			inboundMessageIds: approvedIds as Id<'inboundMessages'>[],
 		});
-		if (result === undefined) return; // categorized failure — already toasted
-		for (const outcome of result.outcomes) {
+		if (!result.ok) return; // categorized failure — already toasted
+		for (const outcome of result.result.outcomes) {
 			if (outcome.cancelled) opts.unhideRow(outcome.inboundMessageId);
 		}
-		const summary = summarizeBulkUndo(result.outcomes);
+		const summary = summarizeBulkUndo(result.result.outcomes);
 		showToast(
 			t(summary.text.key, summary.text.params ?? {}),
 			summary.allCancelled ? 'success' : 'warning'
@@ -80,11 +80,11 @@ export function useReviewBulkActions(opts: {
 			const result = await approveOp.run({
 				inboundMessageIds: ids as Id<'inboundMessages'>[],
 			});
-			if (result === undefined) {
+			if (!result.ok) {
 				for (const id of ids) opts.unhideRow(id);
 				return;
 			}
-			const outcomes = result.outcomes as BulkApproveOutcome[];
+			const outcomes = result.result.outcomes as BulkApproveOutcome[];
 			const approvedIds: string[] = [];
 			for (const outcome of outcomes) {
 				if (outcome.outcome === 'approved') approvedIds.push(outcome.inboundMessageId);
@@ -95,10 +95,10 @@ export function useReviewBulkActions(opts: {
 			opts.clearSelection();
 
 			const summary = summaryLine(summarizeBulkApprove(outcomes));
-			if (result.undo && approvedIds.length > 0) {
+			if (result.result.undo && approvedIds.length > 0) {
 				armApproveUndo({
 					inboundMessageId: approvedIds[0]!,
-					sendAt: result.undo.sendAt,
+					sendAt: result.result.undo.sendAt,
 					label: summary,
 					onUndo: () => undoApprovedBatch(approvedIds),
 				});
@@ -119,14 +119,14 @@ export function useReviewBulkActions(opts: {
 			const result = await rejectOp.run({
 				inboundMessageIds: ids as Id<'inboundMessages'>[],
 			});
-			if (result === undefined) {
+			if (!result.ok) {
 				for (const id of ids) opts.unhideRow(id);
 				return;
 			}
 			// Both outcomes remove the row from the queue's perspective — nothing
 			// to restore; the summary still names the rows that were already gone.
 			opts.clearSelection();
-			showToast(summaryLine(summarizeBulkReject(result.outcomes as BulkRejectOutcome[])));
+			showToast(summaryLine(summarizeBulkReject(result.result.outcomes as BulkRejectOutcome[])));
 		} finally {
 			isBusy.value = false;
 		}

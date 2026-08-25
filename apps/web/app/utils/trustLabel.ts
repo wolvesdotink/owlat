@@ -51,7 +51,7 @@ export const TRUST_LOOK_MIN = 0.6;
  *
  * The self-check produces FREE-FORM short phrases (its prompt steers it toward
  * completeness, grounding — invented facts/prices/policies/dates/commitments —
- * and tone; `mail/aiCoach.ts` categorizes the same flags heuristically), so the
+ * and tone; `mail/ai/coach.ts` categorizes the same flags heuristically), so the
  * table matches themes, first match wins. Order matters: the more specific
  * money/grounding/commitment themes sit above the broader policy/date buckets.
  */

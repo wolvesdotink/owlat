@@ -23,8 +23,8 @@ type Contact = {
 	organization?: string;
 };
 
-const save = vi.fn(async () => 'contact-id');
-const remove = vi.fn(async () => null);
+const save = vi.fn(async () => ({ ok: true, result: 'contact-id' }));
+const remove = vi.fn(async () => ({ ok: true, result: null }));
 const composerOpen = vi.fn();
 const showToast = vi.fn();
 const contacts = ref<Contact[]>([]);

@@ -11,7 +11,7 @@
  *      senders → notification; a known human correspondent (in the address book
  *      / previously written to) → person. Genuinely ambiguous mail returns
  *      `null` and defers to the LLM.
- *   2. Cheap-tier LLM refinement (mail/categoryClassify.ts, 'use node') for the
+ *   2. Cheap-tier LLM refinement (mail/ai/categoryClassify.ts, 'use node') for the
  *      ambiguous remainder, behind the same aiGate as the rest of Postbox AI.
  *      Fail-soft: any LLM/gate failure leaves the deterministic label (or
  *      `other` when the heuristic was ambiguous).
@@ -146,7 +146,7 @@ export async function enqueueCategoryCheck(
 	threadId: Id<'mailThreads'>,
 	opts: { precedence?: string } = {}
 ): Promise<void> {
-	await ctx.scheduler.runAfter(0, internal.mail.categoryClassify.classifyThread, {
+	await ctx.scheduler.runAfter(0, internal.mail.ai.categoryClassify.classifyThread, {
 		threadId,
 		precedence: opts.precedence,
 	});

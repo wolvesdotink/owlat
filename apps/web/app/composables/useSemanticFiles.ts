@@ -124,10 +124,10 @@ export function useSemanticFiles() {
 				threadId: options?.threadId,
 				previousVersionId: options?.previousVersionId,
 			});
-			if (fileId === undefined) return undefined;
+			if (!fileId.ok) return undefined;
 
 			showToast(t('shared.useSemanticFiles.uploaded'));
-			return fileId;
+			return fileId.result;
 		} finally {
 			isUploading.value = false;
 		}
@@ -142,13 +142,13 @@ export function useSemanticFiles() {
 		}
 	) => {
 		const result = await updateFile({ fileId, ...patch });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('shared.useSemanticFiles.updated'));
 	};
 
 	const removeFile = async (fileId: Id<'semanticFiles'>) => {
 		const result = await removeFileMutation({ fileId });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('shared.useSemanticFiles.deleted'));
 	};
 

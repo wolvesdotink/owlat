@@ -59,7 +59,7 @@ export function useMailMigration() {
 	const { t } = useI18n();
 	const { data: statusData } = useConvexQuery(api.mail.migration.getStatus, () => ({}));
 	const { data: accountData } = useConvexQuery(
-		api.mail.externalAccounts.getForCurrentUser,
+		api.mail.external.accounts.getForCurrentUser,
 		() => ({})
 	);
 

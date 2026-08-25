@@ -225,11 +225,19 @@ export {
 } from './routingDispatch';
 export {
 	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
-	MAX_GOVERNED_ROUTING_ATTEMPTS,
 	ROUTING_REENTRY_CLOCK_SKEW_MS,
 	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
 	ROUTING_REENTRY_TOKEN_TTL_MS,
 	ROUTING_WORK_ATTEMPT_ID_MAX_LENGTH,
+	admitGovernedRetry,
+	governedDeliveryDeadlineAt,
+	nextGovernedAttempt,
+	type GovernedAttemptVerdict,
+	type GovernedDeadlineVerdict,
+	type GovernedRetryAdmission,
+	type GovernedRetryBudgetOptions,
+	type GovernedRetryBudgetState,
+	type GovernedRetryBudgetVerdict,
 } from './routingReentry';
 export type { ValidationIssue } from './validation';
 export {

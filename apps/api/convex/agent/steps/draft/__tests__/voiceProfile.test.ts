@@ -2,7 +2,7 @@
  * `draftStep.execute` voice-profile personalization.
  *
  * The autonomous draft step injects the recipient's learned writing-voice
- * guidance (mail/voiceProfile.getGuidanceForRecipient) into its system prompt
+ * guidance (mail/ai/voiceProfile.getGuidanceForRecipient) into its system prompt
  * when a profile resolves, and degrades to exactly today's generic org tone
  * when it does not — including when the accessor throws. The LLM dispatch seam
  * and the provider selector are mocked so we can assert the assembled system

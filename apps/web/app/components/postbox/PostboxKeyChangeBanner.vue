@@ -46,10 +46,8 @@ const newShort = computed(() => shortFingerprint(props.newFingerprint));
 
 async function accept() {
 	errored.value = false;
-	const result = (await reaccept.run({ address: props.address })) as
-		| { reaccepted: boolean }
-		| undefined;
-	if (result?.reaccepted) {
+	const result = await reaccept.run({ address: props.address });
+	if (result.ok && result.result.reaccepted) {
 		emit('accepted');
 	} else {
 		errored.value = true;

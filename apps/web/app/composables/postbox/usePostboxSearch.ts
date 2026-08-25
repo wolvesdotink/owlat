@@ -211,7 +211,7 @@ export function usePostboxSearch(mailboxId: Ref<Id<'mailboxes'> | null>, query: 
 	// opaque cursor instead of silently stopping at the old 200-row cap. Any
 	// change to the parsed query restarts from a fresh first page.
 	const { rows, isLoading, isLoadingMore, hasMore, canLoadMore, loadMore } = usePostboxCursorFeed(
-		api.mail.mailbox.search,
+		api.mail.mailbox.search.search,
 		() => {
 			if (!mailboxId.value) return 'skip';
 			const trimmed = query.value.trim();

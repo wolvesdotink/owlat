@@ -8,9 +8,8 @@ import type { Id } from '@owlat/api/dataModel';
 export type FolderRole = 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive';
 
 export function usePostboxFolders(mailboxId: Ref<Id<'mailboxes'> | null>) {
-	const { data, isLoading } = useConvexQuery(
-		api.mail.mailbox.listFolders,
-		() => (mailboxId.value ? { mailboxId: mailboxId.value } : 'skip')
+	const { data, isLoading } = useConvexQuery(api.mail.mailbox.queries.listFolders, () =>
+		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
 
 	const folders = computed(() => data.value ?? []);

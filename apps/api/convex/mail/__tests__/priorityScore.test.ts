@@ -1,6 +1,6 @@
 /**
  * Pure-helper coverage for the Reply Queue unified priority score
- * (mail/priorityScore.ts): the deterministic sender-importance signal blended
+ * (mail/ai/priorityScore.ts): the deterministic sender-importance signal blended
  * with the LLM urgency, and the HEY-style first-time-sender screener gate.
  */
 import { describe, it, expect } from 'vitest';
@@ -10,7 +10,7 @@ import {
 	isScreenedOut,
 	urgencyFallbackScore,
 	type SenderSignal,
-} from '../priorityScore';
+} from '../ai/priorityScore';
 
 describe('senderImportanceScore', () => {
 	it('saturates for an explicit VIP regardless of other signals', () => {

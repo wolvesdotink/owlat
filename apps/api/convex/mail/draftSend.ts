@@ -15,7 +15,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
-import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle';
+import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle/types';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { canSendWithSealState } from './sealPolicy';

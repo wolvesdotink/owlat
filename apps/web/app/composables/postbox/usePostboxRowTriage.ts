@@ -61,23 +61,21 @@ export function usePostboxRowTriage(args: {
 		id: Id<'mailMessages'>,
 		undoLabel: string,
 		mutate: () => Promise<
-			| {
-					moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'];
-			  }
-			| null
-			| undefined
+			BackendOperationResult<{
+				moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'];
+			} | null>
 		>
 	) {
 		args.hide(id);
-		const result = await mutate();
-		if (!result) {
+		const outcome = await mutate();
+		if (!outcome.ok || outcome.result === null) {
 			args.unhide(id);
 			return;
 		}
-		if (result.moved.length > 0) {
+		if (outcome.result.moved.length > 0) {
 			triageUndo.registerMoveBack({
 				label: undoLabel,
-				moved: result.moved,
+				moved: outcome.result.moved,
 				runMove: (a) => moveOp.run(a),
 				after: () => args.unhide(id),
 			});
@@ -110,7 +108,7 @@ export function usePostboxRowTriage(args: {
 	/** Snooze is row-removing but has no `moved` inverse — it un-hides on failure. */
 	async function snoozeMsg(id: Id<'mailMessages'>, until: number) {
 		args.hide(id);
-		if ((await snoozeOp.run({ messageId: id, until })) === undefined) args.unhide(id);
+		if (!(await snoozeOp.run({ messageId: id, until })).ok) args.unhide(id);
 	}
 
 	function cancelFollowUp(msg: { threadId?: string }) {

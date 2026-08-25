@@ -138,7 +138,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 		await seedUsers(t, 'user-B', 'user-C');
 
 		const { mailboxId, externalAccountId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{
 				...CREDS,
 				emailAddress: 'Support <support@acme.test>',
@@ -174,18 +174,18 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'user-B');
 		const { mailboxId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: ['user-B'] }
 		);
 
 		// A member reads the (external) shared inbox; a non-member cannot.
 		setSession('user-B', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId })).toBe('member');
-		expect(await t.query(api.mail.mailbox.get, { mailboxId })).not.toBeNull();
+		expect(await t.query(api.mail.mailbox.identity.get, { mailboxId })).not.toBeNull();
 
 		setSession('user-Z', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId })).toBeNull();
-		expect(await t.query(api.mail.mailbox.get, { mailboxId })).toBeNull();
+		expect(await t.query(api.mail.mailbox.identity.get, { mailboxId })).toBeNull();
 	});
 
 	it('surfaces the connected inbox in the admin listShared overview as kind=external', async () => {
@@ -193,7 +193,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'user-B');
 		const { mailboxId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: ['user-B'] }
 		);
 
@@ -207,7 +207,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 		const t = convexTest(schema, modules);
 		setSession('editor-user', 'editor');
 		await expect(
-			t.mutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+			t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
 				...CREDS,
 				emailAddress: 'support@acme.test',
 				memberUserIds: [],
@@ -219,7 +219,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		await expect(
-			t.mutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+			t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
 				...CREDS,
 				emailAddress: 'support@acme.test',
 				memberUserIds: ['ghost-user'],
@@ -245,7 +245,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 			});
 		});
 		await expect(
-			t.mutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+			t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
 				...CREDS,
 				emailAddress: 'support@acme.test',
 				memberUserIds: [],
@@ -259,7 +259,7 @@ describe('personal/shared external-account isolation', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		// Connect a shared team inbox first (leaves a live scope=shared account).
-		await t.mutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+		await t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
 			...CREDS,
 			emailAddress: 'support@acme.test',
 			memberUserIds: [],
@@ -267,7 +267,7 @@ describe('personal/shared external-account isolation', () => {
 
 		// The same user connecting their OWN personal mailbox must NOT trip the
 		// "one live external account per user" guard — that limit is personal-only.
-		const { mailboxId } = await t.mutation(internal.mail.externalAccounts._connectInternal, {
+		const { mailboxId } = await t.mutation(internal.mail.external.accounts._connectInternal, {
 			...CREDS,
 			emailAddress: 'admin@personal.test',
 			imapUsername: 'admin@personal.test',
@@ -280,13 +280,13 @@ describe('personal/shared external-account isolation', () => {
 	it('still enforces one live PERSONAL external account per user', async () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
-		await t.mutation(internal.mail.externalAccounts._connectInternal, {
+		await t.mutation(internal.mail.external.accounts._connectInternal, {
 			...CREDS,
 			emailAddress: 'admin@personal.test',
 			imapUsername: 'admin@personal.test',
 		});
 		await expect(
-			t.mutation(internal.mail.externalAccounts._connectInternal, {
+			t.mutation(internal.mail.external.accounts._connectInternal, {
 				...CREDS,
 				emailAddress: 'admin2@personal.test',
 				imapUsername: 'admin2@personal.test',
@@ -300,19 +300,19 @@ describe('removing a shared external inbox stops its sync worker', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		const { mailboxId, externalAccountId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
 		);
 
 		// Before delete: the account is connectable (pending) — the worker syncs it.
-		const before = await t.query(internal.mail.externalAccounts.listConnectableAccounts, {});
+		const before = await t.query(internal.mail.external.accounts.listConnectableAccounts, {});
 		expect(before.map((a) => a.accountId)).toContain(externalAccountId);
 
-		await t.mutation(api.mail.mailbox.remove, { mailboxId });
+		await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
 
 		const account = await t.run((ctx) => ctx.db.get(externalAccountId));
 		expect(account?.status).toBe('disconnected');
-		const after = await t.query(internal.mail.externalAccounts.listConnectableAccounts, {});
+		const after = await t.query(internal.mail.external.accounts.listConnectableAccounts, {});
 		expect(after.map((a) => a.accountId)).not.toContain(externalAccountId);
 	});
 });
@@ -323,7 +323,7 @@ describe('a shared external account is invisible to the PERSONAL sending + migra
 		setSession('admin-user', 'admin');
 		await enableExternal(t);
 		// The admin has connected ONLY a shared team inbox (no personal account).
-		await t.mutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+		await t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
 			...CREDS,
 			emailAddress: 'support@acme.test',
 			memberUserIds: [],
@@ -339,7 +339,7 @@ describe('a shared external account is invisible to the PERSONAL sending + migra
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		await enableExternal(t);
-		await t.mutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+		await t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
 			...CREDS,
 			emailAddress: 'support@acme.test',
 			memberUserIds: [],
@@ -353,7 +353,7 @@ describe('shared external inbox credential rotation / repair', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		const { mailboxId, externalAccountId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
 		);
 		// Simulate the worker flagging a rotated password.
@@ -361,7 +361,7 @@ describe('shared external inbox credential rotation / repair', () => {
 			ctx.db.patch(externalAccountId, { status: 'auth_error', lastError: 'AUTHENTICATIONFAILED' })
 		);
 
-		await t.mutation(internal.mail.externalSharedInbox._updateCredentialsSharedInternal, {
+		await t.mutation(internal.mail.external.sharedInbox._updateCredentialsSharedInternal, {
 			...CREDS,
 			emailAddress: 'support@acme.test',
 			imapHost: 'imap2.acme.test',
@@ -375,7 +375,7 @@ describe('shared external inbox credential rotation / repair', () => {
 		expect(account?.imapHost).toBe('imap2.acme.test');
 		expect(account?.secretCiphertext).toBe('ct2');
 		// Back on the worker's connectable set after the repair.
-		const connectable = await t.query(internal.mail.externalAccounts.listConnectableAccounts, {});
+		const connectable = await t.query(internal.mail.external.accounts.listConnectableAccounts, {});
 		expect(connectable.map((a) => a.accountId)).toContain(externalAccountId);
 	});
 
@@ -383,12 +383,12 @@ describe('shared external inbox credential rotation / repair', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		const { mailboxId, externalAccountId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
 		);
 		await t.run((ctx) => ctx.db.patch(externalAccountId, { status: 'auth_error' }));
 
-		const view = await t.query(api.mail.externalSharedInbox.getSharedExternalAccount, {
+		const view = await t.query(api.mail.external.sharedInbox.getSharedExternalAccount, {
 			mailboxId,
 		});
 		expect(view.configured).toBe(true);
@@ -404,7 +404,7 @@ describe('shared external inbox credential rotation / repair', () => {
 		await seedUsers(t, 'user-B');
 		// user-B is on the roster as a plain `member`, not an owner.
 		const { mailboxId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: ['user-B'] }
 		);
 		// The member can read the inbox, but getSharedExternalAccount is gated at the
@@ -412,7 +412,7 @@ describe('shared external inbox credential rotation / repair', () => {
 		// pinning the owner-only floor against a silent regression to member-readable.
 		setSession('user-B', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId })).toBe('member');
-		const view = await t.query(api.mail.externalSharedInbox.getSharedExternalAccount, {
+		const view = await t.query(api.mail.external.sharedInbox.getSharedExternalAccount, {
 			mailboxId,
 		});
 		expect(view.configured).toBe(false);
@@ -422,7 +422,7 @@ describe('shared external inbox credential rotation / repair', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		const { mailboxId, externalAccountId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
 		);
 		await t.run((ctx) =>
@@ -438,13 +438,13 @@ describe('shared external inbox credential rotation / repair', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		const { mailboxId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
 		);
 		// A non-member editor has no owner access to the team inbox.
 		setSession('editor-user', 'editor');
 		await expect(
-			t.mutation(internal.mail.externalSharedInbox._updateCredentialsSharedInternal, {
+			t.mutation(internal.mail.external.sharedInbox._updateCredentialsSharedInternal, {
 				...CREDS,
 				emailAddress: 'support@acme.test',
 				mailboxId,
@@ -459,15 +459,15 @@ describe('purging a removed shared external inbox', () => {
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'user-B');
 		const { mailboxId, externalAccountId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: ['user-B'] }
 		);
 		// Remove (soft-delete) first, mirroring the admin flow.
-		await t.mutation(api.mail.mailbox.remove, { mailboxId });
+		await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
 
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.mail.externalSharedInbox.purgeShared, { mailboxId });
+			await t.mutation(api.mail.external.sharedInbox.purgeShared, { mailboxId });
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();
@@ -488,12 +488,12 @@ describe('purging a removed shared external inbox', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		const { mailboxId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
 		);
 		setSession('editor-user', 'editor');
 		await expect(
-			t.mutation(api.mail.externalSharedInbox.purgeShared, { mailboxId })
+			t.mutation(api.mail.external.sharedInbox.purgeShared, { mailboxId })
 		).rejects.toThrow(/owners and admins/i);
 	});
 });
@@ -504,7 +504,7 @@ describe('member erasure preserves a shared team inbox (org infrastructure)', ()
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'admin-user');
 		const { mailboxId, externalAccountId } = await t.mutation(
-			internal.mail.externalSharedInbox._connectSharedInternal,
+			internal.mail.external.sharedInbox._connectSharedInternal,
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
 		);
 

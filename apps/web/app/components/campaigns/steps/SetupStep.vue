@@ -204,30 +204,32 @@ const handleSubmit = async () => {
 
 		if (!campaignId) {
 			const newCampaignId = await createCampaign({ name: form.campaignName.trim() });
-			if (!newCampaignId) return;
-			campaignId = newCampaignId;
+			if (!newCampaignId.ok) return;
+			campaignId = newCampaignId.result;
 		}
 
 		if (
-			(await updateBasics({
-				campaignId,
-				name: form.campaignName.trim(),
-				fromName: form.fromName.trim(),
-				fromEmail: form.fromEmail.trim(),
-				replyTo: form.replyTo.trim() || undefined,
-			})) === undefined
+			!(
+				await updateBasics({
+					campaignId,
+					name: form.campaignName.trim(),
+					fromName: form.fromName.trim(),
+					fromEmail: form.fromEmail.trim(),
+					replyTo: form.replyTo.trim() || undefined,
+				})
+			).ok
 		) {
 			return;
 		}
 
-		if ((await updateAudience({ campaignId, audience: audience.value! })) === undefined) {
+		if (!(await updateAudience({ campaignId, audience: audience.value! })).ok) {
 			return;
 		}
 
 		if (abTest.abTestEnabled.value) {
-			if ((await enableABTest(abTest.buildEnablePayload(campaignId))) === undefined) return;
+			if (!(await enableABTest(abTest.buildEnablePayload(campaignId))).ok) return;
 		} else {
-			if ((await disableABTest({ campaignId })) === undefined) return;
+			if (!(await disableABTest({ campaignId })).ok) return;
 		}
 
 		emit('submit', campaignId);

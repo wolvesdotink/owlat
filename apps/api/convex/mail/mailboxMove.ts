@@ -37,7 +37,7 @@ import { internal } from '../_generated/api';
 import { authedMutation, adminMutation, publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import { provisionMailbox } from './mailbox';
+import { provisionMailbox } from './mailbox/identity';
 import { getOptional } from '../lib/env';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import {

@@ -57,8 +57,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledge/extraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const CREDS = {
@@ -89,10 +89,7 @@ function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null, o
 	});
 }
 
-async function enableFlags(
-	t: ReturnType<typeof convexTest>,
-	flags: Record<string, boolean>,
-) {
+async function enableFlags(t: ReturnType<typeof convexTest>, flags: Record<string, boolean>) {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('instanceSettings', {
 			featureFlags: flags,
@@ -102,13 +99,11 @@ async function enableFlags(
 }
 
 /** Connect an account for `user-A` and return its id. */
-async function connect(
-	t: ReturnType<typeof convexTest>,
-): Promise<Id<'externalMailAccounts'>> {
+async function connect(t: ReturnType<typeof convexTest>): Promise<Id<'externalMailAccounts'>> {
 	setSession('user-A', 'owner');
 	const { externalAccountId } = await t.mutation(
-		internal.mail.externalAccounts._connectInternal,
-		CREDS,
+		internal.mail.external.accounts._connectInternal,
+		CREDS
 	);
 	return externalAccountId;
 }
@@ -176,12 +171,14 @@ describe('mail.migration.start', () => {
 		await enableFlags(t, { 'mail.external': true });
 		const accountId = await connect(t);
 		// Stored credentials went stale — the worker self-stops on this account.
-		await t.mutation(internal.mail.externalAccounts.setSyncStatus, {
+		await t.mutation(internal.mail.external.accounts.setSyncStatus, {
 			accountId,
 			status: 'auth_error',
 			lastError: 'Invalid credentials',
 		});
-		await expect(t.mutation(api.mail.migration.start, {})).rejects.toThrow(/re-enter your credentials/i);
+		await expect(t.mutation(api.mail.migration.start, {})).rejects.toThrow(
+			/re-enter your credentials/i
+		);
 		await t.run(async (ctx) => {
 			const all = await ctx.db.query('mailboxMigrations').collect();
 			expect(all).toHaveLength(0); // no wedged 'importing' row created
@@ -194,7 +191,7 @@ describe('mail.migration.start', () => {
 		const accountId = await connect(t);
 
 		// A leftover folder cursor from a previous (completed) run.
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -232,7 +229,7 @@ describe('mail.migration — worker backfill surface', () => {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true });
 		const accountId = await connect(t);
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -435,14 +432,14 @@ describe('mail.migration — worker backfill surface', () => {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true });
 		const accountId = await connect(t);
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
 			remoteUidValidity: 1,
 			initialLastSeenUid: 0,
 		});
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'sent',
 			remoteName: '[Gmail]/Sent Mail',
@@ -576,7 +573,7 @@ describe('mail.migration — worker backfill surface', () => {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true, ai: true, 'ai.knowledge': true, inbox: true });
 		const accountId = await connect(t);
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -613,7 +610,7 @@ describe('mail.migration.getStatus', () => {
 			const t = convexTest(schema, modules);
 			await enableFlags(t, { 'mail.external': true });
 			const accountId = await connect(t);
-			await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+			await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 				accountId,
 				folderRole: 'inbox',
 				remoteName: 'INBOX',

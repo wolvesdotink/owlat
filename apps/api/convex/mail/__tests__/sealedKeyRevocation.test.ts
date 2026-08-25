@@ -4,7 +4,7 @@
  * The card requires that deleting a mailbox or an alias STOPS publishing that
  * address's E2EE key (while retaining the row decrypt-only). This asserts the
  * flag-gated revocation is actually scheduled from BOTH deletion hooks
- * (`mail/mailbox.ts:remove`, `mail/aliases.ts:remove`) — symmetric with the mint
+ * (`mail/mailbox/identity.ts:remove`, `mail/aliases.ts:remove`) — symmetric with the mint
  * the `create` counterparts schedule.
  */
 
@@ -38,7 +38,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 			if (sessionMock.role === null) throw new Error('Not authenticated');
 			return { userId: sessionMock.userId, role: sessionMock.role };
 		}),
-		// `mail/mailbox.ts:remove` gates via `requireAdminContext`. Its real body
+		// `mail/mailbox/identity.ts:remove` gates via `requireAdminContext`. Its real body
 		// calls the module-sibling `getMutationContext`, which `vi.mock` does NOT
 		// intercept for intra-module calls, so mock it directly here.
 		requireAdminContext: vi.fn(async () => {
@@ -82,7 +82,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.mail.mailbox.remove, { mailboxId });
+			await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();
@@ -147,7 +147,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.mail.externalSharedInbox.purgeShared, { mailboxId });
+			await t.mutation(api.mail.external.sharedInbox.purgeShared, { mailboxId });
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();
@@ -207,7 +207,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.mail.mailbox.remove, { mailboxId });
+			await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();

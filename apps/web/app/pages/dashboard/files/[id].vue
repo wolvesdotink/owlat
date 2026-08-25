@@ -89,7 +89,7 @@ const saveTags = async () => {
 		.map((tag: string) => tag.trim())
 		.filter(Boolean);
 	const result = await updateFile({ fileId: fileId.value, tags });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	isEditingTags.value = false;
 	showToast(t('dashboard.files.detail.toasts.tagsUpdated'));
 };
@@ -109,7 +109,7 @@ const saveTitle = async () => {
 		fileId: fileId.value,
 		title: editTitleInput.value || undefined,
 	});
-	if (result === undefined) return;
+	if (!result.ok) return;
 	isEditingTitle.value = false;
 	showToast(t('dashboard.files.detail.toasts.titleUpdated'));
 };
@@ -127,7 +127,7 @@ const saveContacts = async () => {
 	if (!file.value) return;
 	const contactIds = editContacts.value.map((c) => c._id);
 	const result = await updateFile({ fileId: fileId.value, contactIds });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	isEditingContacts.value = false;
 	showToast(t('dashboard.files.detail.toasts.contactsUpdated'));
 };
@@ -141,7 +141,7 @@ const cancelEditContacts = () => {
 const linkedThread = computed<PickerThread | null>(() =>
 	file.value?.threadId
 		? { _id: file.value.threadId, subject: file.value.threadSubject ?? '' }
-		: null,
+		: null
 );
 
 const startEditThread = () => {
@@ -156,7 +156,7 @@ const saveThread = async () => {
 		fileId: fileId.value,
 		threadId: editThread.value?._id ?? null,
 	});
-	if (result === undefined) return;
+	if (!result.ok) return;
 	isEditingThread.value = false;
 	showToast(t('dashboard.files.detail.toasts.threadUpdated'));
 };
@@ -169,7 +169,7 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	try {
 		const result = await removeFile({ fileId: fileId.value });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.files.detail.toasts.fileDeleted'));
 		router.push('/dashboard/files');
 	} finally {
@@ -654,9 +654,7 @@ const sourceLabel = computed(() => {
 					class="fixed inset-0 z-50 flex items-center justify-center p-4"
 				>
 					<div class="absolute inset-0 bg-scrim/60" @click="showDeleteConfirm = false" />
-					<div
-						class="relative card w-full max-w-sm"
-					>
+					<div class="relative card w-full max-w-sm">
 						<h3 class="text-lg font-semibold text-text-primary mb-2">
 							{{ t('dashboard.files.detail.deleteDialog.title') }}
 						</h3>

@@ -41,12 +41,12 @@ async function teachRule() {
 	const text = instruction.value.trim();
 	if (!text || busy.value) return;
 	const compiled = await compileOp.run({ instruction: text });
-	if (!compiled) return; // errors are surfaced by useBackendOperation
+	if (!compiled.ok) return; // errors are surfaced by useBackendOperation
 	await createOp.run({
 		instruction: text,
-		matcher: compiled.matcher,
-		action: compiled.action,
-		compiledModel: compiled.compiledModel,
+		matcher: compiled.result.matcher,
+		action: compiled.result.action,
+		compiledModel: compiled.result.compiledModel,
 	});
 	instruction.value = '';
 }
@@ -113,12 +113,7 @@ function matcherSummary(matcher: {
 				:disabled="busy"
 				:aria-label="t('components.autonomy.handlingRulesManager.instructionLabel')"
 			/>
-			<UiButton
-				type="submit"
-				variant="outline"
-				size="sm"
-				:disabled="busy || !instruction.trim()"
-			>
+			<UiButton type="submit" variant="outline" size="sm" :disabled="busy || !instruction.trim()">
 				<template #iconLeft>
 					<Icon
 						:name="busy ? 'lucide:loader-2' : 'lucide:sparkles'"

@@ -226,7 +226,7 @@ const handleAddSubmit = async () => {
 		source: 'form',
 	});
 	addModal.isSubmitting.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(
 		t('dashboard.audience.contacts.index.toasts.created', { email: addModal.form.email.trim() })
 	);
@@ -247,9 +247,9 @@ const handleCsvImport = async () => {
 					| Array<{ email: string; topicIds: Id<'topics'>[] }>
 					| undefined,
 			});
-			return (
-				result ?? { imported: 0, updated: 0, skipped: 0, failed: 0, errors: [], addedToList: 0 }
-			);
+			return result.ok
+				? result.result
+				: { imported: 0, updated: 0, skipped: 0, failed: 0, errors: [], addedToList: 0 };
 		},
 		// CSV is an operator import source: the backend drops property values for
 		// keys that are not already registered. Register any mapped custom-column

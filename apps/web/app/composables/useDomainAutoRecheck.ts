@@ -22,12 +22,12 @@ export interface DomainAutoRecheckDeps {
 	/** True while a MANUAL Verify for that domain is in flight. */
 	isVerifying: (domainId: Id<'domains'>) => boolean;
 	/**
-	 * One verification attempt. Resolves `undefined` when the operation layer
+	 * One verification attempt. Resolves `ok: false` when the operation layer
 	 * already surfaced a failure — treated as "keep trying".
 	 */
 	verifyDomain: (args: {
 		domainId: Id<'domains'>;
-	}) => Promise<{ allVerified: boolean } | undefined>;
+	}) => Promise<BackendOperationResult<{ allVerified: boolean }>>;
 }
 
 /**
@@ -78,8 +78,8 @@ export function useDomainAutoRecheck(deps: DomainAutoRecheckDeps) {
 				// Never overlap with a manual Verify the user just clicked.
 				if (deps.isVerifying(domainId)) return false;
 				const result = await deps.verifyDomain({ domainId });
-				// run() already surfaced any failure; treat undefined as "keep trying".
-				return result?.allVerified === true;
+				// run() already surfaced any failure; treat it as "keep trying".
+				return result.ok && result.result.allVerified;
 			},
 			onStopped: () => {
 				// The poller stopped itself (domain verified, or the ~5-min cap was

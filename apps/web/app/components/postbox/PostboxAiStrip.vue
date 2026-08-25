@@ -44,10 +44,10 @@ const generated = ref<{ summary: string; messageCount: number } | null>(null);
 const summaryFailed = ref(false);
 let summaryAttempted = false;
 
-const cacheQuery = useConvexQuery(api.mail.summaryCache.getThreadSummary, () => ({
+const cacheQuery = useConvexQuery(api.mail.ai.summaryCache.getThreadSummary, () => ({
 	messageId: props.messageId as Id<'mailMessages'>,
 }));
-const summaryGenOp = useBackendOperation(api.mail.ai.getOrGenerateThreadSummary, {
+const summaryGenOp = useBackendOperation(api.mail.ai.assist.getOrGenerateThreadSummary, {
 	label: () => t('components.postbox.postboxAiStrip.summarizeOperation'),
 	type: 'action',
 });
@@ -86,8 +86,8 @@ async function maybeGenerateSummary() {
 	if (cachedSummary.value) return;
 	summaryAttempted = true;
 	const res = await summaryGenOp.run({ messageId: props.messageId as Id<'mailMessages'> });
-	if (res && res.summary) {
-		generated.value = { summary: res.summary, messageCount: res.messageCount };
+	if (res.ok && res.result && res.result.summary) {
+		generated.value = { summary: res.result.summary, messageCount: res.result.messageCount };
 	} else {
 		summaryFailed.value = true;
 	}
@@ -104,7 +104,7 @@ type Turn = { question: string; answer: string };
 const question = ref('');
 const askHistory = ref<Turn[]>([]);
 const askErrored = ref(false);
-const askOp = useBackendOperation(api.mail.ai.askThread, {
+const askOp = useBackendOperation(api.mail.ai.assist.askThread, {
 	label: () => t('components.postbox.postboxAiStrip.askOperation'),
 	type: 'action',
 });
@@ -119,8 +119,8 @@ async function submitAsk() {
 		question: q,
 		history: askHistory.value.map((t) => ({ question: t.question, answer: t.answer })),
 	});
-	if (res && res.answer) {
-		askHistory.value.push({ question: q, answer: res.answer });
+	if (res.ok && res.result.answer) {
+		askHistory.value.push({ question: q, answer: res.result.answer });
 		question.value = '';
 	} else {
 		askErrored.value = true;
@@ -133,7 +133,7 @@ function clearAsk() {
 
 // --- Draft reply (formerly PostboxAiAssist suggest): reply suggestions.
 const suggestions = ref<string[]>([]);
-const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
+const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
 	label: () => t('components.postbox.postboxAiStrip.suggestOperation'),
 	type: 'action',
 });
@@ -141,7 +141,7 @@ const suggestBusy = computed(() => suggestOp.isLoading.value);
 
 async function runSuggest() {
 	const res = await suggestOp.run({ messageId: props.messageId as Id<'mailMessages'> });
-	suggestions.value = res ? res.replies : [];
+	suggestions.value = res.ok ? res.result.replies : [];
 }
 
 // --- One expandable section at a time (Ask XOR Draft reply), mutually exclusive.
@@ -324,7 +324,9 @@ const visible = computed(
 			aria-live="polite"
 			:aria-busy="suggestBusy"
 		>
-			<span v-if="suggestBusy" class="sr-only">{{ t('components.postbox.postboxAiStrip.working') }}</span>
+			<span v-if="suggestBusy" class="sr-only">{{
+				t('components.postbox.postboxAiStrip.working')
+			}}</span>
 			<div
 				v-if="suggestions.length > 0"
 				role="group"

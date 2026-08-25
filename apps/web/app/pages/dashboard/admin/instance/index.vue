@@ -55,7 +55,7 @@ function chooseMode(key: OperatingModeKey) {
 async function applyMode() {
 	if (!selectedMode.value || !desiredFlags.value) return;
 	const result = await setAllFlags({ flags: desiredFlags.value });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(
 		t('dashboard.admin.instance.index.modeChangedToast', {
 			mode: t(OPERATING_MODES[selectedMode.value].label),

@@ -385,7 +385,7 @@ describe('pendingInboxMembership.cancelInboxMembershipsForEmail', () => {
 	});
 });
 
-describe('mail.mailbox.remove cascade', () => {
+describe('mail.mailbox.identity.remove cascade', () => {
 	it('drops pending grants pointing at a deleted team inbox', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
@@ -395,7 +395,7 @@ describe('mail.mailbox.remove cascade', () => {
 			inviteeEmail: 'newbie@example.com',
 		});
 
-		await t.mutation(api.mail.mailbox.remove, { mailboxId });
+		await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
 
 		await t.run(async (ctx) => {
 			const grants = await ctx.db

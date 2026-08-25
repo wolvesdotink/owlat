@@ -175,7 +175,7 @@ export function useTransactionalList() {
 
 	const handleDuplicate = async (emailId: Id<'transactionalEmails'>) => {
 		const result = await duplicateEmail({ id: emailId });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('shared.useTransactionalList.duplicated'));
 	};
 
@@ -201,7 +201,7 @@ export function useTransactionalList() {
 		isDeleting.value = true;
 		const result = await deleteEmail({ id: emailToDelete.value.id });
 		isDeleting.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('shared.useTransactionalList.deleted'));
 		closeDeleteModal();
 	};
@@ -274,10 +274,10 @@ export function useTransactionalList() {
 			defaultLanguage: createForm.defaultLanguage,
 		});
 		isCreating.value = false;
-		if (emailId === undefined) return;
+		if (!emailId.ok) return;
 
 		closeCreateModal();
-		router.push(`/dashboard/send/transactional/${emailId}/edit`);
+		router.push(`/dashboard/send/transactional/${emailId.result}/edit`);
 	};
 
 	// --- NAVIGATION ---

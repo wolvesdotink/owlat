@@ -80,7 +80,7 @@ const serverFieldsTouched = ref(false);
 // Guided providers hide the server settings; this reveals them on demand.
 const showAdvanced = ref(props.mode === 'update');
 
-type TestResult = FunctionReturnType<typeof api.mail.externalAccountsActions.testConnection>;
+type TestResult = FunctionReturnType<typeof api.mail.external.accountsActions.testConnection>;
 const testResult = ref<TestResult | null>(null);
 
 // Copy the six IMAP/SMTP server fields from a preset (or an existing account,
@@ -142,33 +142,33 @@ onBeforeUnmount(() => {
 	if (autodiscoverTimer) clearTimeout(autodiscoverTimer);
 });
 
-const testOp = useBackendOperation(api.mail.externalAccountsActions.testConnection, {
+const testOp = useBackendOperation(api.mail.external.accountsActions.testConnection, {
 	type: 'action',
 	label: () => t('components.postbox.postboxMailboxConnectForm.testOperation'),
 	inlineTarget: formError,
 });
-const connectOp = useBackendOperation(api.mail.externalAccountsActions.connect, {
+const connectOp = useBackendOperation(api.mail.external.accountsActions.connect, {
 	type: 'action',
 	label: () => t('components.postbox.postboxMailboxConnectForm.connectOperation'),
 	inlineTarget: formError,
 });
-const connectSharedOp = useBackendOperation(api.mail.externalAccountsActions.connectShared, {
+const connectSharedOp = useBackendOperation(api.mail.external.accountsActions.connectShared, {
 	type: 'action',
 	label: () => t('components.postbox.postboxMailboxConnectForm.connectSharedOperation'),
 	inlineTarget: formError,
 });
-const connectSeedOp = useBackendOperation(api.mail.externalAccountsActions.connectSeed, {
+const connectSeedOp = useBackendOperation(api.mail.external.accountsActions.connectSeed, {
 	type: 'action',
 	label: () => t('components.postbox.postboxMailboxConnectForm.connectSeedOperation'),
 	inlineTarget: formError,
 });
-const updateOp = useBackendOperation(api.mail.externalAccountsActions.updateCredentials, {
+const updateOp = useBackendOperation(api.mail.external.accountsActions.updateCredentials, {
 	type: 'action',
 	label: () => t('components.postbox.postboxMailboxConnectForm.updateOperation'),
 	inlineTarget: formError,
 });
 const updateSharedOp = useBackendOperation(
-	api.mail.externalAccountsActions.updateCredentialsShared,
+	api.mail.external.accountsActions.updateCredentialsShared,
 	{
 		type: 'action',
 		label: () => t('components.postbox.postboxMailboxConnectForm.updateSharedOperation'),
@@ -200,7 +200,7 @@ const canTest = computed(
 async function handleTest() {
 	testResult.value = null;
 	const res = await testOp.run(buildCredentialArgs(form));
-	if (res) testResult.value = res;
+	if (res.ok) testResult.value = res.result;
 }
 
 async function handleSubmit() {
@@ -209,7 +209,7 @@ async function handleSubmit() {
 	// inbox (connectShared) with the picked roster; a shared update rotates a team
 	// inbox's credentials (updateCredentialsShared, keyed by mailboxId); the rest
 	// are the personal connect / credential update.
-	let res: { mailboxId: string } | undefined;
+	let res: BackendOperationResult<{ mailboxId: string }>;
 	if (props.mode === 'connect' && props.seedProvider) {
 		res = await connectSeedOp.run({
 			...buildCredentialArgs(form),
@@ -235,9 +235,9 @@ async function handleSubmit() {
 	} else {
 		res = await (props.mode === 'update' ? updateOp : connectOp).run(buildCredentialArgs(form));
 	}
-	if (res === undefined) return;
+	if (!res.ok) return;
 	form.password = '';
-	emit('submitted', { mailboxId: res.mailboxId });
+	emit('submitted', { mailboxId: res.result.mailboxId });
 }
 
 // Sharpen the app-password callout when the mailbox is actively failing auth or

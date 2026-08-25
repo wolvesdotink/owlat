@@ -154,14 +154,14 @@ const handleToggleStatus = async () => {
 
 	try {
 		if (automation.value.status === 'active') {
-			if ((await pauseAutomation({ automationId: automationId.value })) === undefined) return;
+			if (!(await pauseAutomation({ automationId: automationId.value })).ok) return;
 			showToast(t('dashboard.automations.detail.edit.toasts.paused'));
 		} else if (automation.value.status === 'paused') {
-			if ((await resumeAutomation({ automationId: automationId.value })) === undefined) return;
+			if (!(await resumeAutomation({ automationId: automationId.value })).ok) return;
 			showToast(t('dashboard.automations.detail.edit.toasts.resumed'));
 		} else {
 			// Draft - activate
-			if ((await activateAutomation({ automationId: automationId.value })) === undefined) return;
+			if (!(await activateAutomation({ automationId: automationId.value })).ok) return;
 			showToast(t('dashboard.automations.detail.edit.toasts.activated'));
 		}
 	} finally {
@@ -245,7 +245,7 @@ const handleSaveDraft = async () => {
 			name: automation.value.name,
 			description: automation.value.description,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.automations.detail.edit.toasts.draftSaved'));
 	} finally {
 		isSavingDraft.value = false;

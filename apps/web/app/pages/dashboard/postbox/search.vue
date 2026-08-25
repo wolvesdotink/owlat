@@ -46,7 +46,7 @@ watch(results, (rows) => {
 	}
 });
 
-const { data: activeMessage } = useConvexQuery(api.mail.mailbox.getMessage, () =>
+const { data: activeMessage } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
 	activeMessageId.value ? { messageId: activeMessageId.value as Id<'mailMessages'> } : 'skip'
 );
 

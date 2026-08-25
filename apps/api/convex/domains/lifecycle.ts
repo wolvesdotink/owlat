@@ -55,6 +55,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
+import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { clearReservationsForDomain } from '../mail/pendingMailbox';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
 import { getOptional, getRequired } from '../lib/env';
@@ -270,13 +271,19 @@ export function deriveVerificationVerdict(
 }
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
+//
+// The graph and the dispatcher preamble that reads it live in the generic
+// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers, the per-provider
+// identity write and the effects below stay here. `reportsTerminalRefusals` is
+// off — no state is terminal (a verified domain can be re-registered, a failed
+// one re-checked) and the published outcome union carries only `illegal_edge`.
 
-const LEGAL_EDGES: Record<SendingDomainStatus, ReadonlySet<SendingDomainStatus>> = {
-	registering: new Set<SendingDomainStatus>(['pending', 'failed']),
-	pending: new Set<SendingDomainStatus>(['verified', 'failed', 'registering']),
-	verified: new Set<SendingDomainStatus>(['registering', 'failed', 'pending']),
-	failed: new Set<SendingDomainStatus>(['registering', 'verified', 'pending']),
-};
+const SENDING_DOMAIN_LIFECYCLE = defineLifecycle<SendingDomainStatus>({
+	registering: ['pending', 'failed'],
+	pending: ['verified', 'failed', 'registering'],
+	verified: ['registering', 'failed', 'pending'],
+	failed: ['registering', 'verified', 'pending'],
+});
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
@@ -616,11 +623,10 @@ async function dispatch(
 	userId: string
 ): Promise<SendingDomainTransitionOutcome> {
 	const from = domain.status as SendingDomainStatus;
-	const isLegal = LEGAL_EDGES[from].has(input.to);
-	const isSelfLoop = from === input.to;
+	const verdict = SENDING_DOMAIN_LIFECYCLE.classify(from, input.to);
 
-	if (!isLegal && !isSelfLoop) {
-		return { ok: false, reason: 'illegal_edge', from, to: input.to };
+	if (verdict.kind === 'refused') {
+		return refuse(verdict);
 	}
 
 	const result = reduce(domain, input);
@@ -631,7 +637,7 @@ async function dispatch(
 
 	// On register-completion `→ pending`, persist the per-provider identity
 	// sibling row atomically with the status patch.
-	if (input.to === 'pending' && input.identity !== undefined && !isSelfLoop) {
+	if (input.to === 'pending' && input.identity !== undefined && !verdict.isSelfLoop) {
 		const providerKind = isSendingDomainProviderKind(domain.providerType)
 			? domain.providerType
 			: null;

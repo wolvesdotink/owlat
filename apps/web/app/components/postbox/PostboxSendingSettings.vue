@@ -77,7 +77,7 @@ async function choose(preference: 'external' | 'instance') {
 	const result = await setPreference.run({ preference });
 	// On success the live query re-patches `currentPreference`; on a refusal
 	// (gate race / network error) it doesn't, so force the radios back in sync.
-	if (!result) resyncKey.value++;
+	if (!result.ok) resyncKey.value++;
 }
 </script>
 
@@ -120,8 +120,12 @@ async function choose(preference: 'external' | 'instance') {
 								tag="span"
 								scope="global"
 							>
-								<template #domain><code>{{ domain }}</code></template>
-								<template #signedDomain><code>{{ domain }}</code></template>
+								<template #domain
+									><code>{{ domain }}</code></template
+								>
+								<template #signedDomain
+									><code>{{ domain }}</code></template
+								>
 							</I18nT>
 						</p>
 						<UiButton
@@ -148,7 +152,9 @@ async function choose(preference: 'external' | 'instance') {
 						tag="span"
 						scope="global"
 					>
-						<template #address><code>{{ address }}</code></template>
+						<template #address
+							><code>{{ address }}</code></template
+						>
 					</I18nT>
 				</p>
 
@@ -207,7 +213,9 @@ async function choose(preference: 'external' | 'instance') {
 									tag="span"
 									scope="global"
 								>
-									<template #domain><code>{{ domain }}</code></template>
+									<template #domain
+										><code>{{ domain }}</code></template
+									>
 								</I18nT>
 							</span>
 							<span v-if="!domainVerified" class="text-xs text-warning block mt-1">
@@ -216,7 +224,9 @@ async function choose(preference: 'external' | 'instance') {
 									tag="span"
 									scope="global"
 								>
-									<template #domain><code>{{ domain }}</code></template>
+									<template #domain
+										><code>{{ domain }}</code></template
+									>
 								</I18nT>
 							</span>
 							<span v-else-if="!transportConfigured" class="text-xs text-warning block mt-1">

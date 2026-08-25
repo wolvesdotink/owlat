@@ -73,7 +73,7 @@ const handleAdd = async (payload: { domain: string; returnPathHost: string | nul
 	const result = await addTrackingDomain({ domain: payload.domain });
 	addModal.setLoading(false);
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	addModal.close();
 	showToast(t('components.domains.trackingDomainsSection.toasts.added'));
@@ -88,7 +88,7 @@ const handleDelete = async () => {
 	});
 	deleteModal.setLoading(false);
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	deleteModal.close();
 	showToast(t('components.domains.trackingDomainsSection.toasts.removed'));
@@ -101,7 +101,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 	verifyingId.value = id;
 	try {
 		const result = await verifyTrackingDomain({ trackingDomainId: id });
-		if (result === undefined) return; // run() already surfaced the failure
+		if (!result.ok) return; // run() already surfaced the failure
 		expandedId.value = id;
 		showToast(t('components.domains.trackingDomainsSection.toasts.verifying'));
 	} finally {

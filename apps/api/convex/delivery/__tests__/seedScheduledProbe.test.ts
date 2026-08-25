@@ -40,7 +40,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
-import { insertExternalAccountRow } from '../../mail/externalAccountShared';
+import { insertExternalAccountRow } from '../../mail/external/accountShared';
 import { createTestDomain, createTestInstanceSettings } from '../../__tests__/factories';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import { assertMarketingOneClickHeaders } from '../marketingCompliance';

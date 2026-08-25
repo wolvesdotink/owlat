@@ -27,6 +27,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
+import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { logWarn } from '../lib/runtimeLog';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -62,12 +63,18 @@ const transitionInputValidator = v.union(
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
+//
+// The graph and the dispatcher preamble that reads it live in the generic
+// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducer, the `→ active`
+// preconditions and the effects below stay here. `reportsTerminalRefusals` is
+// off — no state is terminal here and the published outcome union carries only
+// `illegal_edge`.
 
-export const LEGAL_EDGES: Record<AutomationStatus, ReadonlySet<AutomationStatus>> = {
-	draft: new Set<AutomationStatus>(['active']),
-	active: new Set<AutomationStatus>(['paused']),
-	paused: new Set<AutomationStatus>(['active', 'draft']),
-};
+export const AUTOMATION_LIFECYCLE = defineLifecycle<AutomationStatus>({
+	draft: ['active'],
+	active: ['paused'],
+	paused: ['active', 'draft'],
+});
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
@@ -276,16 +283,15 @@ async function dispatch(
 	userId: string
 ): Promise<AutomationTransitionOutcome> {
 	const from = automation.status as AutomationStatus;
-	const isLegal = LEGAL_EDGES[from].has(input.to);
-	const isSelfLoop = from === input.to;
+	const verdict = AUTOMATION_LIFECYCLE.classify(from, input.to);
 
-	if (!isLegal && !isSelfLoop) {
-		return { ok: false, reason: 'illegal_edge', from, to: input.to };
+	if (verdict.kind === 'refused') {
+		return refuse(verdict);
 	}
 
 	// Preconditions for `→ active` (both `draft → active` and
 	// `paused → active`). Skipped on self-loops (already `active`).
-	if (input.to === 'active' && !isSelfLoop) {
+	if (input.to === 'active' && !verdict.isSelfLoop) {
 		const stepCount = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))

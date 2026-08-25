@@ -70,7 +70,7 @@ async function onToggle(next: boolean) {
 
 async function save(next: boolean) {
 	const res = await updateSettings({ isMigrationMode: next });
-	if (res === undefined) return; // failure already toasted by the operation module
+	if (!res.ok) return; // failure already toasted by the operation module
 	showToast(
 		next
 			? t('components.settings.migrationModeCard.toastOn')
@@ -83,11 +83,11 @@ async function confirmAndEnable() {
 	// import the instance cannot perform.
 	const before = (liveFlags.value ?? {}) as Record<string, boolean>;
 	const flagRes = await setFeatureFlag({ flag: 'mail.external', value: true });
-	if (flagRes === undefined) {
+	if (!flagRes.ok) {
 		confirmEnableImport.value = false;
 		return;
 	}
-	trackFlagChange(before, flagRes.flags);
+	trackFlagChange(before, flagRes.result.flags);
 	await save(true);
 	confirmEnableImport.value = false;
 }

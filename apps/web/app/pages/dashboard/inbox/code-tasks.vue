@@ -54,7 +54,7 @@ const handleCreate = async () => {
 	const result = await createTask({ description: createForm.description.trim() });
 	createModal.setLoading(false);
 
-	if (result === undefined) return; // run() already surfaced the failure
+	if (!result.ok) return; // run() already surfaced the failure
 
 	createModal.close();
 	showToast(t('dashboard.inbox.codeTasks.queuedToast'));
@@ -125,7 +125,10 @@ const handleCreate = async () => {
 		</div>
 
 		<!-- Create modal -->
-		<UiModal v-model:open="createModal.isOpen.value" :title="t('dashboard.inbox.codeTasks.newTask')">
+		<UiModal
+			v-model:open="createModal.isOpen.value"
+			:title="t('dashboard.inbox.codeTasks.newTask')"
+		>
 			<form @submit.prevent="handleCreate">
 				<div class="space-y-4">
 					<div>

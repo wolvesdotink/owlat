@@ -145,16 +145,18 @@ const handleSubmit = async () => {
 				triggerType: selectedTriggerType.value,
 				triggerConfig: getTriggerConfig(),
 			});
-			if (!newAutomationId) return;
-			automationId.value = newAutomationId;
+			if (!newAutomationId.ok) return;
+			automationId.value = newAutomationId.result;
 		} else {
 			// Update trigger if automation already exists
 			if (
-				(await updateTrigger({
-					automationId: automationId.value,
-					triggerType: selectedTriggerType.value,
-					triggerConfig: getTriggerConfig(),
-				})) === undefined
+				!(
+					await updateTrigger({
+						automationId: automationId.value,
+						triggerType: selectedTriggerType.value,
+						triggerConfig: getTriggerConfig(),
+					})
+				).ok
 			) {
 				return;
 			}

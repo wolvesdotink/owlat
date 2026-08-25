@@ -58,7 +58,7 @@ export function useChatAttachments() {
 				width,
 				height,
 			});
-			return assetId ?? null;
+			return assetId.ok ? assetId.result : null;
 		} finally {
 			isUploading.value = false;
 		}

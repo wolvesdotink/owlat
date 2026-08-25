@@ -45,8 +45,8 @@ const handleSubmit = async () => {
 	result.value = null;
 
 	const response = await askMutation({ question: q });
-	if (response === undefined) return;
-	result.value = response ?? null;
+	if (!response.ok) return;
+	result.value = response.result ?? null;
 };
 
 const handleKeydown = (e: KeyboardEvent) => {

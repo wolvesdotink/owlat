@@ -5,7 +5,7 @@
  * Convex action cannot push to the client directly, so it throttle-patches an
  * owner-private scratch row here and the client subscribes via {@link getDraftStream}.
  *
- * Split from the streaming action (mail/reviseDraft.ts, a `'use node'` module
+ * Split from the streaming action (mail/ai/reviseDraft.ts, a `'use node'` module
  * that can hold ONLY actions) because these are queries/mutations. Mirrors the
  * assistant streaming pattern (assistant/conversations.ts patch/finalize).
  *

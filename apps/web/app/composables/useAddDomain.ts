@@ -10,13 +10,13 @@ export interface AddDomainFlowDeps {
 	hasActiveOrganization: () => boolean;
 	/**
 	 * Register the domain — optionally with a custom return-path host set
-	 * ATOMICALLY (F2 finding 1). Resolves to the new id, or `undefined` on failure
-	 * (the operation layer surfaces the error, including an invalid host).
+	 * ATOMICALLY (F2 finding 1). Resolves to the new id, or `ok: false` on
+	 * failure (the operation layer surfaces the error, including an invalid host).
 	 */
 	createDomain: (args: {
 		domain: string;
 		returnPathHost?: string;
-	}) => Promise<Id<'domains'> | undefined>;
+	}) => Promise<BackendOperationResult<Id<'domains'>>>;
 	setLoading: (loading: boolean) => void;
 	close: () => void;
 	showToast: (message: string, type?: 'success' | 'error') => void;
@@ -39,13 +39,13 @@ export function useAddDomain(deps: AddDomainFlowDeps) {
 		if (!deps.hasActiveOrganization()) return;
 
 		deps.setLoading(true);
-		const domainId = await deps.createDomain({
+		const registered = await deps.createDomain({
 			domain: payload.domain,
 			...(payload.returnPathHost !== null ? { returnPathHost: payload.returnPathHost } : {}),
 		});
 		deps.setLoading(false);
 
-		if (domainId === undefined) return;
+		if (!registered.ok) return;
 
 		deps.close();
 		deps.showToast(t('shared.useAddDomain.domainAdded'));

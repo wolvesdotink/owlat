@@ -76,14 +76,15 @@ beforeEach(() => {
 		return { data: ref(undefined) };
 	});
 
-	sendRun = vi.fn(async () => undefined);
+	sendRun = vi.fn(async () => ({ ok: false }));
 	// The composable resolves its copy through vue-i18n; install the real
 	// catalog behind the `useI18n` auto-import so toasts read as they ship.
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useBackendOperation', (fn: unknown) => {
 		if (fn === 'drafts.send') return { run: sendRun };
-		if (fn === 'drafts.create') return { run: vi.fn(async () => ({ draftId: 'draft-new' })) };
-		return { run: vi.fn(async () => undefined) };
+		if (fn === 'drafts.create')
+			return { run: vi.fn(async () => ({ ok: true, result: { draftId: 'draft-new' } })) };
+		return { run: vi.fn(async () => ({ ok: true, result: {} })) };
 	});
 	// The offline-outbox chain (E2) pulls these at composable setup; inert here.
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
@@ -131,7 +132,7 @@ describe('usePostboxCompose — send blocked while uploading', () => {
 		expect(composer.canSend.value).toBe(true);
 
 		// A real send now reaches the backend with the committed attachment.
-		sendRun.mockResolvedValueOnce({ undoToken: 'tok', sendAt: 123 });
+		sendRun.mockResolvedValueOnce({ ok: true, result: { undoToken: 'tok', sendAt: 123 } });
 		const result = await composer.send();
 		expect(sendRun).toHaveBeenCalledOnce();
 		expect(result).toEqual({ undoToken: 'tok', sendAt: 123 });

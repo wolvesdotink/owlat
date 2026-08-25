@@ -20,7 +20,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { requireMailboxAccess } from './permissions';
-import { resolveDeliverableMailbox } from './mailbox';
+import { resolveDeliverableMailbox } from './mailbox/identity';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 const PBKDF2_ITERATIONS = 100_000;

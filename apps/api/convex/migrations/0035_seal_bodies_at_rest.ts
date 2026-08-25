@@ -38,9 +38,9 @@
  * cannot read/re-store a blob's bytes (blob contents are action-only), so the two
  * paths that accept a worker-uploaded PLAINTEXT blob seal it via a scheduled
  * per-message action ({@link resealMessageBlobs}, `runAfter(0)`, idempotent):
- *   - `mail.imap.appendMessage` (IMAP APPEND uploads the raw `.eml` straight to
+ *   - `mail.imap.append.appendMessage` (IMAP APPEND uploads the raw `.eml` straight to
  *     storage) schedules the reseal after inserting the row.
- *   - `mail.externalDelivery.ingestExternalMessage` (external IMAP sync) already
+ *   - `mail.external.delivery.ingestExternalMessage` (external IMAP sync) already
  *     seals at write: its sole caller `ingestExternalRaw` is an ACTION that seals
  *     the raw `.eml` (`storeSealedBlob`) and the body blobs (`splitBodyForStorage`
  *     → `storeSealedBlob`) before the mutation runs, so nothing lands plaintext.
@@ -218,7 +218,7 @@ export const mailMessageBlobPage = internalQuery({
  * Repoint EVERY row that references an old plaintext blob at its sealed copy,
  * then delete the old blob — atomically, in one mutation transaction, per column.
  *
- * SHARING-AWARE (the crux): IMAP COPY (`mail/imap.ts` copyMessages) shares a
+ * SHARING-AWARE (the crux): IMAP COPY (`mail/imap/move.ts` copyMessages) shares a
  * storage blob across rows — the copy is a new `mailMessages` row spreading the
  * SAME `rawStorageId`/`textBodyStorageId`/`htmlBodyStorageId`. If we repointed
  * only the row we resealed and deleted the old blob, every sibling copy would be
@@ -367,7 +367,7 @@ export const mailMessageBlobIdsById = internalQuery({
 
 /**
  * Seal ONE message's storage blobs at rest. Scheduled (`runAfter(0)`) from IMAP
- * APPEND (`mail.imap.appendMessage`), which uploads the raw `.eml` straight to
+ * APPEND (`mail.imap.append.appendMessage`), which uploads the raw `.eml` straight to
  * storage as plaintext — a mutation cannot read/re-store a blob's contents, so
  * the staged plaintext blob must be resealed out-of-band. (External IMAP sync
  * already seals at write via the `ingestExternalRaw` action, so it needs no

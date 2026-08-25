@@ -35,14 +35,12 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 
 const testWorkId = 'test-work-id' as WorkId;
 
-/** The worker answer the `awaitingProviderFeedback` arm produces. */
+/** The worker answer the `awaitingFeedback` arm produces. */
 function parkedResult(startedAt: number, sendId: Id<'emailSends'>) {
 	return {
 		kind: 'success' as const,
 		returnValue: {
-			success: false,
-			acceptanceUnknown: true,
-			awaitingProviderFeedback: true,
+			kind: 'awaitingFeedback',
 			providerType: 'mandrill',
 			startedAt,
 			retryState: { attempt: 1, startedAt, idempotencyKey: `send_${sendId}` },

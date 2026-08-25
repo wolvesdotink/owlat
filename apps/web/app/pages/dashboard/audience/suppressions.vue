@@ -124,7 +124,7 @@ const handleAddBlockedEmail = async () => {
 	});
 	addModal.isSubmitting.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showNotification(t('dashboard.audience.suppressions.toasts.added'));
 	addModal.close();
@@ -141,7 +141,7 @@ const handleDeleteBlockedEmail = async () => {
 	});
 	isDeleting.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showNotification(t('dashboard.audience.suppressions.toasts.removed'));
 	emailToDelete.value = null;

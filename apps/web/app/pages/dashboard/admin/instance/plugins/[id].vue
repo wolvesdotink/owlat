@@ -23,7 +23,9 @@ const manifest = computed(
 );
 const schema = computed(() => manifest.value?.settingsSchema ?? []);
 
-useHead(() => ({ title: t('dashboard.admin.instance.plugins.detail.pageTitle', { pluginId: pluginId.value }) }));
+useHead(() => ({
+	title: t('dashboard.admin.instance.plugins.detail.pageTitle', { pluginId: pluginId.value }),
+}));
 
 // Plugin settings require `organization:manage` (the overview is an adminQuery),
 // and the `admin` route middleware above is what enforces it here: it waits for
@@ -108,10 +110,10 @@ async function save() {
 	}
 	const changes = pluginSettingsChanges(schema.value, form.value, baseline.value);
 	const res = await setPluginSettings({ pluginId: pluginId.value, values: changes });
-	if (res === undefined) return; // failure already toasted
+	if (!res.ok) return; // failure already toasted
 	// Seed from the returned redacted state synchronously, not via a live-query
 	// round-trip, so edits typed before the refresh arrives are not clobbered.
-	seedForm(res);
+	seedForm(res.result);
 	showToast(t('dashboard.admin.instance.plugins.detail.toasts.saved'));
 }
 
@@ -122,15 +124,17 @@ async function reset(successMessage: string) {
 	showResetConfirm.value = false;
 	showOrphanClearConfirm.value = false;
 	const res = await resetPluginSettings({ pluginId: pluginId.value });
-	if (res === undefined) return;
-	seedForm(res);
+	if (!res.ok) return;
+	seedForm(res.result);
 	showToast(successMessage);
 }
 function confirmReset() {
 	return reset(t('dashboard.admin.instance.plugins.detail.toasts.reset'));
 }
 function confirmOrphanClear() {
-	return reset(t('dashboard.admin.instance.plugins.detail.toasts.cleared', { pluginId: pluginId.value }));
+	return reset(
+		t('dashboard.admin.instance.plugins.detail.toasts.cleared', { pluginId: pluginId.value })
+	);
 }
 </script>
 
@@ -179,7 +183,9 @@ function confirmOrphanClear() {
 				<!-- Header -->
 				<div class="mb-6">
 					<div class="flex items-center gap-2 flex-wrap">
-						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ entry.pluginId }}</h1>
+						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+							{{ entry.pluginId }}
+						</h1>
 						<UiBadge :variant="entry.enabled ? 'success' : 'neutral'" dot>
 							{{ entry.enabled ? t('common.enabled') : t('common.disabled') }}
 						</UiBadge>
@@ -207,9 +213,11 @@ function confirmOrphanClear() {
 						class="text-sm text-text-secondary"
 					>
 						<template #featuresLink>
-							<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline">{{
-								t('dashboard.admin.instance.plugins.detail.featuresLink')
-							}}</NuxtLink>
+							<NuxtLink
+								to="/dashboard/admin/instance/features"
+								class="text-brand hover:underline"
+								>{{ t('dashboard.admin.instance.plugins.detail.featuresLink') }}</NuxtLink
+							>
 						</template>
 					</I18nT>
 				</div>
@@ -286,12 +294,23 @@ function confirmOrphanClear() {
 							>
 								<Icon name="lucide:key-round" class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
 								<div class="text-sm text-text-secondary">
-									<p>{{ t('dashboard.admin.instance.plugins.detail.settings.envVarsNotice', unsetSecrets.length) }}</p>
+									<p>
+										{{
+											t(
+												'dashboard.admin.instance.plugins.detail.settings.envVarsNotice',
+												unsetSecrets.length
+											)
+										}}
+									</p>
 									<ul class="mt-1.5 space-y-0.5">
 										<li v-for="secret in unsetSecrets" :key="secret.key">
 											<code class="text-xs text-text-tertiary">{{ secret.envVar }}</code>
 											<span class="text-text-tertiary">
-												{{ t('dashboard.admin.instance.plugins.detail.settings.secretLabelSuffix', { label: secret.label }) }}</span
+												{{
+													t('dashboard.admin.instance.plugins.detail.settings.secretLabelSuffix', {
+														label: secret.label,
+													})
+												}}</span
 											>
 										</li>
 									</ul>

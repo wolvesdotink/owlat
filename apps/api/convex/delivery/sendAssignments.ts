@@ -47,7 +47,7 @@ import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import type { MixAssignment, MixRecipientIdentity } from '../lib/sendProviders/strategies';
 import { DEFAULT_MIX_VERSION, OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies';
 import type { MessageType } from '../lib/sendProviders/routeInputs';
-import type { SendProviderKind } from '../lib/sendProviders/types';
+import { isSendProviderKind, type SendProviderKind } from '../lib/sendProviders/types';
 import {
 	buildEngagementRanker,
 	buildTransportLookup,
@@ -87,6 +87,24 @@ export function armForTransport(transport: SendProviderKind): SendAssignmentArm 
 }
 
 /**
+ * The same question, asked of a transport LABEL that has crossed a wire.
+ *
+ * A provider kind that travels through a Convex value (the worker → completion
+ * seam's `providerType`) arrives as a plain string: `SendProviderKind` includes
+ * the namespaced kinds bundled plugins contribute, which no validator can
+ * express, so the wire carries `v.string()`. This narrows it back through the
+ * catalog's own membership test rather than re-deriving the arm from a second
+ * comparison — {@link armForTransport} stays the only place D3's own-arm
+ * declaration is read.
+ *
+ * A label naming no transport this build can dispatch to is not the own arm by
+ * construction, so it measures as `reference`.
+ */
+export function armForTransportLabel(transport: string): SendAssignmentArm {
+	return isSendProviderKind(transport) ? armForTransport(transport) : 'reference';
+}
+
+/**
  * Best-effort organization resolution for the assignment write. The campaign
  * producer usually supplies one; otherwise fall back to the singleton org.
  * An unresolvable org yields `null` and the caller skips the row — recording
@@ -94,7 +112,7 @@ export function armForTransport(transport: SendProviderKind): SendAssignmentArm 
  *
  * `explicit` is deliberately `string | null | undefined`: an optional value
  * returned by a Convex query crosses the function boundary as `null`, not
- * `undefined` (`enqueueNonCampaignSend` resolves its org through
+ * `undefined` (the non-campaign intake resolves its org through
  * `campaigns.sendQueries.getSingletonOrganizationId`). Treating only
  * `undefined` as absent let that `null` through as an organization id, which
  * silently dropped every non-campaign assignment row and made the singleton

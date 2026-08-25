@@ -219,9 +219,9 @@ const { run: deleteCampaign } = useBackendOperation(api.campaigns.campaigns.remo
 
 async function handleDuplicate(id: Id<'campaigns'>) {
 	const newId = await duplicateCampaign({ campaignId: id });
-	if (newId === undefined) return;
+	if (!newId.ok) return;
 	showToast(t('dashboard.campaigns.index.toasts.duplicated'));
-	router.push(`/dashboard/campaigns/${newId}/edit`);
+	router.push(`/dashboard/campaigns/${newId.result}/edit`);
 }
 
 const isDeleteModalOpen = ref(false);
@@ -241,7 +241,7 @@ async function handleDelete() {
 	isDeleting.value = true;
 	try {
 		const result = await deleteCampaign({ campaignId: campaignToDelete.value.id });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.campaigns.index.toasts.deleted'));
 		closeDeleteModal();
 	} finally {

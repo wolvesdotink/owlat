@@ -15,7 +15,7 @@ import { mount } from '@vue/test-utils';
 // triggers the component's `setup()` and the reverse-DNS preflight is inert. The
 // component only destructures `run`, so that is all the stub needs to expose.
 vi.stubGlobal('useBackendOperation', () => ({
-	run: vi.fn(async () => undefined),
+	run: vi.fn(async () => ({ ok: false })),
 }));
 
 // The MTA-STS guidance query + runtime config are also bare auto-imports. Mutable

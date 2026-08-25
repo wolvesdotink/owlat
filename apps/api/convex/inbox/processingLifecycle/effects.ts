@@ -24,7 +24,7 @@ import {
 	type TransitionInput,
 	type TransitionOutcome,
 } from './types';
-import { canFail, LEGAL_EDGES, reduce, TERMINAL } from './reducers';
+import { canFail, PROCESSING_LIFECYCLE, reduce } from './reducers';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -246,17 +246,20 @@ export async function dispatch(
 	} else if (input.to === 'archived' && from !== 'security_check') {
 		// Block-sender / spam-from-classifier can archive from any
 		// non-terminal state — star-source for archived too.
-		if (TERMINAL.has(from)) {
+		if (PROCESSING_LIFECYCLE.isTerminal(from)) {
 			return { ok: false, reason: 'terminal', from, to: input.to };
 		}
-	} else {
-		const isLegal = LEGAL_EDGES[from].has(input.to);
-		if (!isLegal) {
-			if (TERMINAL.has(from)) {
-				return { ok: false, reason: 'terminal', from, to: input.to };
-			}
-			return { ok: false, reason: 'illegal_edge', from, to: input.to };
-		}
+	} else if (!PROCESSING_LIFECYCLE.isLegalEdge(from, input.to)) {
+		// Deliberately `isLegalEdge` rather than the core's `classify`: this
+		// machine has never granted the implicit self-loop pass, and a same-state
+		// re-drive (`drafting → drafting`) must keep refusing rather than
+		// re-running the reducer and re-firing its effects.
+		return {
+			ok: false,
+			reason: PROCESSING_LIFECYCLE.isTerminal(from) ? 'terminal' : 'illegal_edge',
+			from,
+			to: input.to,
+		};
 	}
 
 	const result = reduce(message, input);

@@ -153,7 +153,7 @@ const {
 				})),
 			}),
 		});
-		if (result === undefined) throw new Error('Save failed');
+		if (!result.ok) throw new Error('Save failed');
 		showToast(t('dashboard.send.blocks.detail.edit.savedToast'));
 	},
 });

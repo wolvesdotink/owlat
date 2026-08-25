@@ -141,8 +141,8 @@ const { arm: armApproveUndo } = useReviewApproveUndo();
 
 async function undoApproveAndRestore(messageId: Id<'inboundMessages'>) {
 	const result = await undoApprove(messageId);
-	if (result === undefined) return; // categorized failure — already toasted
-	if (result.cancelled) {
+	if (!result.ok) return; // categorized failure — already toasted
+	if (result.result.cancelled) {
 		unhideRow(messageId);
 		showToast(t('shared.reviewBulkSummary.undoneOne'));
 	} else {
@@ -167,19 +167,19 @@ function handledAlreadyHandled(result: unknown): boolean {
 // instead of the plain confirmation.
 async function runOptimistic(
 	messageId: Id<'inboundMessages'>,
-	send: () => Promise<unknown>,
+	send: () => Promise<BackendOperationResult<unknown>>,
 	successMsg = t('components.agentTasks.reviewBrowseList.toasts.draftApproved')
 ) {
 	actionInProgress.value = messageId;
 	hideRow(messageId);
 	try {
 		const result = await send();
-		if (result === undefined || handledReplyCollision(result)) {
+		if (!result.ok || handledReplyCollision(result.result)) {
 			unhideRow(messageId);
 			return;
 		}
-		if (handledAlreadyHandled(result)) return;
-		const undo = approveUndoWindow(result);
+		if (handledAlreadyHandled(result.result)) return;
+		const undo = approveUndoWindow(result.result);
 		if (undo) {
 			armApproveUndo({
 				inboundMessageId: messageId,
@@ -277,7 +277,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 	try {
 		const result = await composeAndSend(messageId, body, composeSubject[messageId]);
 		// no-op, collision, or the same lost race the approve path reports
-		if (result === undefined || handledReplyCollision(result) || handledAlreadyHandled(result))
+		if (!result.ok || handledReplyCollision(result.result) || handledAlreadyHandled(result.result))
 			return;
 		delete composeBody[messageId];
 		delete composeSubject[messageId];

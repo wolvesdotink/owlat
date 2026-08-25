@@ -122,7 +122,7 @@ describe('mail.aiGate.assertAiAllowed with a spend budget', () => {
 		await setAiFlag(t, true);
 		await insertSpend(t, 12, Date.now());
 
-		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).rejects.toThrow(
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).rejects.toThrow(
 			/spend budget|paused/i
 		);
 	});
@@ -134,6 +134,6 @@ describe('mail.aiGate.assertAiAllowed with a spend budget', () => {
 		await setAiFlag(t, true);
 		await insertSpend(t, 1, Date.now());
 
-		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).resolves.toBeNull();
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).resolves.toBeNull();
 	});
 });

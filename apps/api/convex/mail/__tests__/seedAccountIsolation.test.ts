@@ -26,7 +26,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
 import { loadAccessibleMailboxes } from '../permissions';
-import { getActiveMailboxForUser } from '../mailbox';
+import { getActiveMailboxForUser } from '../mailbox/identity';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
 import type { DatabaseWriter } from '../../_generated/server';
 import { loadSeedAccounts } from '../../analytics/seedAccounts';
@@ -90,7 +90,7 @@ const CREDS = {
 };
 
 async function connectSeed(t: TestConvex<typeof schema>, emailAddress: string): Promise<void> {
-	await t.mutation(internal.mail.externalAccountsSeed._connectSeedInternal, {
+	await t.mutation(internal.mail.external.accountsSeed._connectSeedInternal, {
 		...CREDS,
 		emailAddress,
 		seedProvider: 'gmail',
@@ -169,7 +169,7 @@ describe('a seed mailbox is never handed to the inbound sync worker', () => {
 			});
 		});
 
-		const connectable = await t.query(internal.mail.externalAccounts.listConnectableAccounts, {});
+		const connectable = await t.query(internal.mail.external.accounts.listConnectableAccounts, {});
 		expect(connectable.map((a) => a.accountId)).toEqual([ordinaryId]);
 	});
 });
@@ -250,7 +250,7 @@ async function insertSeedRow(
 		domain: 'gmail.example',
 		kind: 'external' as const,
 		scope: 'seed' as const,
-		// A disconnected account's mailbox is soft-deleted by `mail/mailbox.ts`.
+		// A disconnected account's mailbox is soft-deleted by `mail/mailbox/identity.ts`.
 		status: retired ? ('deleted' as const) : ('active' as const),
 		usedBytes: 0,
 		uidValidity: 1,

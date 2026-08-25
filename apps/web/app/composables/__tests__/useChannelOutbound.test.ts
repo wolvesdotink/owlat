@@ -25,7 +25,7 @@ const SEND_CHAT = getFunctionName(api.unifiedMessages.sendChatMessage);
 
 let role: 'owner' | 'admin' | 'editor' | null;
 let channelConfigs: Array<{ channel: string; isEnabled: boolean }> | undefined;
-/** What each backend operation resolves with — `undefined` is its failure signal. */
+/** What each backend operation resolves with — an `{ ok }` run envelope. */
 let results: Record<string, unknown>;
 let calls: Array<{ fn: string; args: unknown }>;
 let toasts: Array<[string, string]>;
@@ -41,7 +41,10 @@ beforeEach(() => {
 		{ channel: 'email', isEnabled: true },
 		{ channel: 'chat', isEnabled: true },
 	];
-	results = { [SEND_CHANNEL]: 'sent', [SEND_CHAT]: 'msg_1' };
+	results = {
+		[SEND_CHANNEL]: { ok: true, result: 'sent' },
+		[SEND_CHAT]: { ok: true, result: 'msg_1' },
+	};
 	calls = [];
 	toasts = [];
 	loading = {};
@@ -241,9 +244,9 @@ describe('useChannelOutbound outcome', () => {
 	});
 
 	it('reports failure without a success toast, so the composer can keep the text', async () => {
-		// `undefined` is how useBackendOperation reports a handled failure (it has
+		// `ok: false` is how useBackendOperation reports a handled failure (it has
 		// already surfaced the error itself).
-		results = { [SEND_CHANNEL]: undefined, [SEND_CHAT]: undefined };
+		results = { [SEND_CHANNEL]: { ok: false }, [SEND_CHAT]: { ok: false } };
 		const outbound = useChannelOutbound();
 
 		expect(

@@ -30,18 +30,29 @@ describe('useBackendOperation', () => {
 	});
 
 	describe('success path', () => {
-		it('returns the result and surfaces nothing', async () => {
+		it('returns an ok envelope around the result and surfaces nothing', async () => {
 			mutation.mockResolvedValue({ id: '1' });
 			const { run, isLoading, inlineError } = useBackendOperation(fakeOp, { label: 'create' });
 
 			const result = await run({ name: 'x' });
 
-			expect(result).toEqual({ id: '1' });
+			expect(result).toEqual({ ok: true, result: { id: '1' } });
 			expect(mutation).toHaveBeenCalledWith(fakeOp, { name: 'x' });
 			expect(showToast).not.toHaveBeenCalled();
 			expect(captureError).not.toHaveBeenCalled();
 			expect(isLoading.value).toBe(false);
 			expect(inlineError.value).toBeNull();
+		});
+
+		it('tells a successful `undefined` return apart from a failure', async () => {
+			// The reason `run` hands back an envelope at all: plenty of mutations
+			// resolve `undefined`/`null` on a perfectly good write, and the old
+			// `T | undefined` signature made that indistinguishable from "failed".
+			mutation.mockResolvedValue(undefined);
+			const { run } = useBackendOperation(fakeOp, { label: 'create' });
+
+			expect(await run({})).toEqual({ ok: true, result: undefined });
+			expect(showToast).not.toHaveBeenCalled();
 		});
 
 		it('toggles isLoading during the call', async () => {
@@ -74,7 +85,7 @@ describe('useBackendOperation', () => {
 
 			const result = await run({});
 
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(showToast).toHaveBeenCalledWith('No access', 'error');
 			expect(captureError).not.toHaveBeenCalled();
 			expect(navigate).not.toHaveBeenCalled();
@@ -179,7 +190,7 @@ describe('useBackendOperation', () => {
 
 			const result = await run({});
 
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(seen).toEqual([{ reason: 'exceeds_sending_capacity', capacityPlan: { days: 5 } }]);
 			expect(showToast).not.toHaveBeenCalled();
 			expect(captureError).not.toHaveBeenCalled();
@@ -210,13 +221,13 @@ describe('useBackendOperation', () => {
 	});
 
 	describe('null client', () => {
-		it('toasts and returns undefined without throwing', async () => {
+		it('toasts and returns a failure envelope without throwing', async () => {
 			vi.stubGlobal('useConvex', () => null);
 			const { run } = useBackendOperation(fakeOp, { label: 'create' });
 
 			const result = await run({});
 
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(showToast).toHaveBeenCalledWith('Something went wrong. Please try again.', 'error');
 		});
 	});

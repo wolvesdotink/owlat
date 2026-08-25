@@ -1,5 +1,5 @@
 /**
- * mail.mailbox.listByLabel — the server-side label view.
+ * mail.mailbox.queries.listByLabel — the server-side label view.
  *
  * Guards the P7 replacement contract: the label page's filtering happens on
  * the SERVER over a bounded indexed scan (Convex has no element-containment
@@ -145,12 +145,15 @@ async function seed(t: ReturnType<typeof convexTest>): Promise<Fixture> {
 	return fixture;
 }
 
-describe('mail.mailbox.listByLabel', () => {
+describe('mail.mailbox.queries.listByLabel', () => {
 	it('returns exactly the messages carrying the label, newest first', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, labelA, labeledIds } = await seed(t);
 
-		const result = await t.query(api.mail.mailbox.listByLabel, { mailboxId, labelId: labelA });
+		const result = await t.query(api.mail.mailbox.queries.listByLabel, {
+			mailboxId,
+			labelId: labelA,
+		});
 		expect(result.messages.map((m) => m._id)).toEqual([...labeledIds].reverse());
 		expect(result.hasMore).toBe(false);
 		expect(result.nextCursor).toBeNull();
@@ -160,7 +163,7 @@ describe('mail.mailbox.listByLabel', () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, labelA, labeledIds } = await seed(t);
 
-		const page = await t.query(api.mail.mailbox.listByLabel, {
+		const page = await t.query(api.mail.mailbox.queries.listByLabel, {
 			mailboxId,
 			labelId: labelA,
 			limit: 2,
@@ -173,7 +176,10 @@ describe('mail.mailbox.listByLabel', () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, labelB } = await seed(t);
 		// Message 5 carries both A and B; querying B returns only that one.
-		const result = await t.query(api.mail.mailbox.listByLabel, { mailboxId, labelId: labelB });
+		const result = await t.query(api.mail.mailbox.queries.listByLabel, {
+			mailboxId,
+			labelId: labelB,
+		});
 		expect(result.messages).toHaveLength(1);
 		expect(result.messages[0]!.subject).toBe('message 5');
 	});
@@ -191,7 +197,10 @@ describe('mail.mailbox.listByLabel', () => {
 			const target = scanned.find((m) => m.subject === 'message 5')!;
 			await ctx.db.patch(target._id, { snoozedUntil: Date.now() + 60_000 });
 		});
-		const result = await t.query(api.mail.mailbox.listByLabel, { mailboxId, labelId: labelA });
+		const result = await t.query(api.mail.mailbox.queries.listByLabel, {
+			mailboxId,
+			labelId: labelA,
+		});
 		expect(result.messages.map((m) => m.subject)).toEqual(['message 3', 'message 1']);
 	});
 
@@ -211,7 +220,7 @@ describe('mail.mailbox.listByLabel', () => {
 		// Three rows carry label A; the newest is snoozed. Asking for 2 must
 		// return the two VISIBLE rows — slicing before the snooze filter handed
 		// back a short page (one row) with matches still inside the window.
-		const page = await t.query(api.mail.mailbox.listByLabel, {
+		const page = await t.query(api.mail.mailbox.queries.listByLabel, {
 			mailboxId,
 			labelId: labelA,
 			limit: 2,
@@ -305,7 +314,10 @@ describe('mail.mailbox.listByLabel', () => {
 			});
 		});
 
-		const result = await t.query(api.mail.mailbox.listByLabel, { mailboxId, labelId: labelA });
+		const result = await t.query(api.mail.mailbox.queries.listByLabel, {
+			mailboxId,
+			labelId: labelA,
+		});
 		// The three windowed labeled rows are served newest-first; the labeled
 		// row beyond the scan window is invisible — LABEL_SCAN_WINDOW is the
 		// view's documented total reach until membership gets a real index.

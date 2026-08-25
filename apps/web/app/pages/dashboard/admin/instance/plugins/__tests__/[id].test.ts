@@ -65,8 +65,8 @@ beforeEach(() => {
 	overview.value = { plugins: [], orphaned: [] };
 	operationCall = 0;
 	overviewQueryArgs = undefined;
-	setPluginSettings.mockReset();
-	resetPluginSettings.mockReset();
+	setPluginSettings.mockReset().mockResolvedValue({ ok: false });
+	resetPluginSettings.mockReset().mockResolvedValue({ ok: false });
 	showToast.mockReset();
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
@@ -160,7 +160,7 @@ describe('plugin detail — orphaned clear is confirmation-gated', () => {
 	});
 
 	it('reports a purge, not a reset-to-defaults, on the orphan path', async () => {
-		resetPluginSettings.mockResolvedValue({ values: {}, secretsSet: {} });
+		resetPluginSettings.mockResolvedValue({ ok: true, result: { values: {}, secretsSet: {} } });
 		const wrapper = mountPage();
 		await clickButtonByText(wrapper, 'Clear residual settings');
 		await wrapper.find('[data-testid="confirm"]').trigger('click');
@@ -192,8 +192,8 @@ describe('plugin detail — save seeds from the returned redacted state', () => 
 
 	it('keeps an edit typed after save when a stale live-query value re-emits', async () => {
 		setPluginSettings.mockResolvedValue({
-			values: { endpoint: 'https://saved.example' },
-			secretsSet: {},
+			ok: true,
+			result: { values: { endpoint: 'https://saved.example' }, secretsSet: {} },
 		});
 		const wrapper = mountPage();
 

@@ -102,7 +102,7 @@ function makeMocks(tls = true): {
 		convex as unknown as ConvexClient,
 		limiter,
 		'10.0.0.1',
-		tls,
+		tls
 	);
 	return { socket, convex, limiter, connection };
 }
@@ -278,7 +278,7 @@ describe('ImapConnection — unauthenticated commands', () => {
 		expect(lines.some((l) => l.includes('QRESYNC'))).toBe(false);
 		// Untagged ENABLED precedes the tagged OK.
 		expect(lines.indexOf('* ENABLED CONDSTORE')).toBeLessThan(
-			lines.indexOf('a001 OK ENABLE completed'),
+			lines.indexOf('a001 OK ENABLE completed')
 		);
 		expect(lines.pop()).toBe('a001 OK ENABLE completed');
 	});
@@ -312,9 +312,7 @@ describe('ImapConnection — unauthenticated commands', () => {
 
 	it('rejects unknown commands with BAD', async () => {
 		await exec(mocks.socket, 'a001 BOGUSCMD');
-		expect(mocks.socket.lines().pop()).toMatch(
-			/^a001 BAD Command "BOGUSCMD" not supported$/,
-		);
+		expect(mocks.socket.lines().pop()).toMatch(/^a001 BAD Command "BOGUSCMD" not supported$/);
 	});
 });
 
@@ -359,7 +357,7 @@ describe('ImapConnection — LOGIN', () => {
 		await exec(socket, 'a001 LOGIN "ALICE@TEST.COM" "x"');
 		expect(convex.action).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ address: 'alice@test.com', password: 'x', scope: 'imap' }),
+			expect.objectContaining({ address: 'alice@test.com', password: 'x', scope: 'imap' })
 		);
 	});
 
@@ -388,7 +386,7 @@ describe('ImapConnection — LOGIN', () => {
 		await exec(socket, 'a001 LOGIN "alice@test" "good"');
 		expect(convex.mutation).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ appPasswordId: 'ap1', ip: '10.0.0.1' }),
+			expect.objectContaining({ appPasswordId: 'ap1', ip: '10.0.0.1' })
 		);
 		const touchArgs = convex.mutation.mock.calls[0]![1] as Record<string, unknown>;
 		expect(touchArgs).not.toHaveProperty('userAgent');
@@ -410,7 +408,7 @@ describe('ImapConnection — LOGIN', () => {
 				appPasswordId: 'ap1',
 				ip: '10.0.0.1',
 				userAgent: 'Thunderbird',
-			}),
+			})
 		);
 	});
 
@@ -442,10 +440,7 @@ describe('ImapConnection — LOGOUT', () => {
 });
 
 describe('ImapConnection — LIST after LOGIN', () => {
-	async function login(
-		mocks: ReturnType<typeof makeMocks>,
-		mailboxId = 'mb1',
-	): Promise<void> {
+	async function login(mocks: ReturnType<typeof makeMocks>, mailboxId = 'mb1'): Promise<void> {
 		mocks.convex.action.mockResolvedValue({
 			mailboxId,
 			appPasswordId: 'ap1',
@@ -465,7 +460,7 @@ describe('ImapConnection — LIST after LOGIN', () => {
 		await exec(mocks.socket, 'a001 LIST "" "*"');
 		expect(mocks.convex.query).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ mailboxId: 'mb1' }),
+			expect.objectContaining({ mailboxId: 'mb1' })
 		);
 		const tagged = mocks.socket.lines().pop()!;
 		expect(tagged).toMatch(/^a001 OK LIST completed$/);
@@ -531,7 +526,7 @@ describe('ImapConnection — AUTHENTICATE PLAIN', () => {
 
 		expect(convex.action).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ address: 'alice@test', password: 'good', scope: 'imap' }),
+			expect.objectContaining({ address: 'alice@test', password: 'good', scope: 'imap' })
 		);
 		const lines = socket.lines();
 		expect(lines.some((l) => /^\* OK \[CAPABILITY.*\] Authenticated$/.test(l))).toBe(true);
@@ -546,7 +541,7 @@ describe('ImapConnection — AUTHENTICATE PLAIN', () => {
 		await exec(socket, saslPlain('ALICE@TEST.COM', 'x'));
 		expect(convex.action).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ address: 'alice@test.com', password: 'x', scope: 'imap' }),
+			expect.objectContaining({ address: 'alice@test.com', password: 'x', scope: 'imap' })
 		);
 	});
 
@@ -585,7 +580,7 @@ describe('ImapConnection — AUTHENTICATE PLAIN', () => {
 		await exec(socket, `a1 AUTHENTICATE PLAIN ${saslPlain('alice@test', 'good')}`);
 		expect(convex.action).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ address: 'alice@test', password: 'good', scope: 'imap' }),
+			expect.objectContaining({ address: 'alice@test', password: 'good', scope: 'imap' })
 		);
 		expect(socket.lines().pop()).toBe('a1 OK AUTHENTICATE completed');
 		// No continuation needed when the IR is supplied.
@@ -662,7 +657,7 @@ describe('ImapConnection — plaintext (non-TLS dev fallback)', () => {
 		await exec(socket, 'a001 LOGIN "alice@test" "good"');
 		expect(convex.action).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ address: 'alice@test', password: 'good', scope: 'imap' }),
+			expect.objectContaining({ address: 'alice@test', password: 'good', scope: 'imap' })
 		);
 	});
 });
@@ -704,7 +699,7 @@ describe('ImapConnection — SELECT / EXAMINE PERMANENTFLAGS', () => {
 		await execMulti(mocks.socket, 'a001 SELECT INBOX');
 		const lines = mocks.socket.lines();
 		expect(lines).toContain(
-			'* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)] Limited',
+			'* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)] Limited'
 		);
 		// No empty PERMANENTFLAGS and no READ-ONLY for a writable SELECT.
 		expect(lines.some((l) => l.includes('[PERMANENTFLAGS ()]'))).toBe(false);
@@ -743,11 +738,9 @@ describe('ImapConnection — SELECT / EXAMINE PERMANENTFLAGS', () => {
 		const storeLines = mocks.socket.lines();
 		expect(mocks.convex.mutation).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ flags: ['\\Flagged'], mode: 'add' }),
+			expect.objectContaining({ flags: ['\\Flagged'], mode: 'add' })
 		);
-		expect(
-			storeLines.some((l) => /^\* 1 FETCH .*FLAGS \(\\Flagged\)/.test(l)),
-		).toBe(true);
+		expect(storeLines.some((l) => /^\* 1 FETCH .*FLAGS \(\\Flagged\)/.test(l))).toBe(true);
 		expect(storeLines.pop()).toBe('a002 OK STORE completed');
 
 		// FETCH 1 (FLAGS) now reflects the stored flag. The module first reads
@@ -802,24 +795,22 @@ describe('ImapConnection — literal octet framing (RFC 3501 §4.3)', () => {
 			{ _id: 'f1', name: 'INBOX', role: 'inbox', uidNext: 1, totalCount: 0 },
 		]);
 		mocks.convex.mutation.mockImplementation((ref: string, args: unknown) => {
-			if (ref === 'mail/imap:generateRawUploadUrl') {
+			if (ref === 'mail/imap/append:generateRawUploadUrl') {
 				return Promise.resolve('https://upload.test/blob');
 			}
-			if (ref === 'mail/imap:appendMessage') {
+			if (ref === 'mail/imap/append:appendMessage') {
 				appendArgs = args as Record<string, unknown>;
 				return Promise.resolve({ uid: 7, uidValidity: 100, modseq: 1 });
 			}
 			return Promise.resolve(undefined);
 		});
 
-		const fetchMock = vi
-			.spyOn(globalThis, 'fetch')
-			.mockResolvedValue(
-				new Response(JSON.stringify({ storageId: 'sid1' }), {
-					status: 200,
-					headers: { 'Content-Type': 'application/json' },
-				}),
-			);
+		const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response(JSON.stringify({ storageId: 'sid1' }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		);
 
 		try {
 			// Declare a 6-octet literal, then send exactly 6 octets, then a
@@ -880,7 +871,7 @@ describe('ImapConnection — LOGIN literal continuation (RFC 3501 §4.3 / RFC 78
 		// The assembled command parsed to user='user' / password='password'.
 		expect(convex.action).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ address: 'user', password: 'password', scope: 'imap' }),
+			expect.objectContaining({ address: 'user', password: 'password', scope: 'imap' })
 		);
 		expect(socket.lines().pop()).toBe('a OK LOGIN completed');
 	});
@@ -903,7 +894,7 @@ describe('ImapConnection — LOGIN literal continuation (RFC 3501 §4.3 / RFC 78
 		expect(socket.written.some((w) => w.startsWith('+ '))).toBe(false);
 		expect(convex.action).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ address: 'user', password: 'password', scope: 'imap' }),
+			expect.objectContaining({ address: 'user', password: 'password', scope: 'imap' })
 		);
 		expect(socket.lines().pop()).toBe('b OK LOGIN completed');
 	});
@@ -924,7 +915,7 @@ describe('ImapConnection — LOGIN literal continuation (RFC 3501 §4.3 / RFC 78
 
 		expect(convex.action).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ address: 'us', password: 'pä', scope: 'imap' }),
+			expect.objectContaining({ address: 'us', password: 'pä', scope: 'imap' })
 		);
 		// Boundary preserved: the NOOP after the literal command was parsed.
 		expect(socket.lines()).toContain('c2 OK NOOP completed');

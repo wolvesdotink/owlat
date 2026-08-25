@@ -268,7 +268,7 @@ export function useAiProviderForm() {
 			embeddingModel: effectiveEmbeddingModel.value || undefined,
 			embeddingApiKey: embeddingApiKey || undefined,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 
 		// Never keep the plaintext key in memory once persisted.
 		form.apiKey = '';
@@ -286,20 +286,20 @@ export function useAiProviderForm() {
 	async function handleLoadModels() {
 		liveModelsError.value = null;
 		const result = await runListModels({});
-		if (result === undefined) {
+		if (!result.ok) {
 			liveModelsError.value = t('shared.useAiProviderForm.modelsLoadFailed');
 			return;
 		}
-		if (result.error) {
-			liveModelsError.value = result.error;
+		if (result.result.error) {
+			liveModelsError.value = result.result.error;
 			return;
 		}
-		if (!result.supported) {
+		if (!result.result.supported) {
 			liveModelsError.value = t('shared.useAiProviderForm.modelsUnsupported');
 			return;
 		}
-		liveModels.value = result.models;
-		if (result.models.length === 0) {
+		liveModels.value = result.result.models;
+		if (result.result.models.length === 0) {
 			liveModelsError.value = t('shared.useAiProviderForm.modelsEmpty');
 		}
 	}
@@ -307,7 +307,7 @@ export function useAiProviderForm() {
 	async function handleTest() {
 		testState.value = testConnectionReducer(testState.value, { type: 'start' });
 		const result = await runTest({});
-		if (result === undefined) {
+		if (!result.ok) {
 			// The operation layer already toasted the fault; reflect it inline too.
 			testState.value = testConnectionReducer(testState.value, {
 				type: 'result',
@@ -318,8 +318,8 @@ export function useAiProviderForm() {
 		}
 		testState.value = testConnectionReducer(testState.value, {
 			type: 'result',
-			ok: result.ok,
-			error: result.error,
+			ok: result.result.ok,
+			error: result.result.error,
 		});
 	}
 

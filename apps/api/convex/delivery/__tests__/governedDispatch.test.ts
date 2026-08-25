@@ -44,15 +44,25 @@ vi.mock('../../lib/sendProviders/catalog', async (importOriginal) => {
 	};
 });
 
-import { dispatchGovernedEmail, type WorkerRetryState } from '../governedDispatch';
+import { dispatchGovernedEmail } from '../governedDispatch';
+import type { WorkerEnvelopeInput, WorkerRetryState } from '../workerEnvelope';
+import type { Id } from '../../_generated/dataModel';
 
 const runMutation = vi.fn().mockResolvedValue({ token: 'reentry-token', expiresAt: Date.now() });
 const ctx = { runMutation } as unknown as ActionCtx;
-const envelopeInput = {
+// A REAL envelope, not a stub. The deferral and replay arms now carry it
+// through a Convex validator (the worker action's `returns`, and the shape the
+// completion callback matches against), so a partial fixture would prove a
+// round trip the wire would refuse.
+const envelopeInput: WorkerEnvelopeInput = {
 	kind: 'campaign',
-	emailSendId: 'send-row-1',
+	to: 'recipient@example.com',
+	from: 'sender@example.com',
+	template: { subject: 'Subject', htmlContent: '<p>Body</p>' },
+	contactInfo: { email: 'recipient@example.com' },
+	emailSendId: 'send-row-1' as Id<'emailSends'>,
 	organizationId: 'org-1',
-} as const;
+};
 const baseRequest = {
 	envelopeInput,
 	deliveryDomain: 'production' as const,
@@ -92,7 +102,11 @@ describe('dispatchGovernedEmail', () => {
 	});
 
 	it('returns a typed retry envelope without dispatching when routing defers', async () => {
-		resolveLastMileRouting.mockResolvedValue({ kind: 'defer', retryAfterMs: 30_000 });
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'defer',
+			retryAfterMs: 30_000,
+			origin: 'governed',
+		});
 
 		const result = await dispatchGovernedEmail(ctx, baseRequest);
 
@@ -116,8 +130,7 @@ describe('dispatchGovernedEmail', () => {
 		});
 		expect(sendProviderDispatch).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
-			success: false,
-			deferred: true,
+			kind: 'deferred',
 			retryAfterMs: 30_000,
 			envelopeInput,
 			retryState: { attempt: 2, idempotencyKey: 'send_send-row-1' },
@@ -174,11 +187,11 @@ describe('dispatchGovernedEmail', () => {
 			}
 		);
 		expect(result).toEqual({
-			success: true,
+			kind: 'accepted',
 			providerMessageId: 'send_send-row-1',
 			providerType: 'mta',
 			sendLatencyMs: 12,
-			acceptedForDelivery: true,
+			isCustodyHandoff: true,
 		});
 	});
 
@@ -278,8 +291,7 @@ describe('dispatchGovernedEmail', () => {
 		});
 
 		expect(result).toMatchObject({
-			success: false,
-			deferred: true,
+			kind: 'deferred',
 			retryAfterMs: 5_000,
 			// The MTA withdrew its own lease at enqueue: governance about this
 			// identity, so gate 2 may count it.
@@ -327,8 +339,7 @@ describe('dispatchGovernedEmail', () => {
 				retryState: { attempt: 2, startedAt, idempotencyKey: 'send_original' },
 			})
 		).toMatchObject({
-			success: false,
-			deferred: true,
+			kind: 'deferred',
 			retryAfterMs: 5_000,
 			deferralOrigin: 'local',
 			retryState: { attempt: 3, startedAt, idempotencyKey: 'send_original' },
@@ -369,11 +380,10 @@ describe('dispatchGovernedEmail', () => {
 
 		const unknown = await dispatchGovernedEmail(ctx, baseRequest);
 		expect(unknown).toMatchObject({
-			success: false,
-			acceptanceUnknown: true,
+			kind: 'acceptanceUnknown',
 			retryState: { acceptanceReconciliation: true, workAttemptId: expect.any(String) },
 		});
-		if (!('acceptanceUnknown' in unknown)) throw new Error('expected ambiguity');
+		if (unknown.kind !== 'acceptanceUnknown') throw new Error('expected ambiguity');
 		const accepted = await dispatchGovernedEmail(ctx, {
 			...baseRequest,
 			retryState: unknown.retryState,
@@ -386,7 +396,7 @@ describe('dispatchGovernedEmail', () => {
 			workAttemptId: firstExtras.workAttemptId,
 			mtaReconciliation: true,
 		});
-		expect(accepted).toMatchObject({ success: true, acceptedForDelivery: true });
+		expect(accepted).toMatchObject({ kind: 'accepted', isCustodyHandoff: true });
 	});
 
 	it('holds a send under a safety pause without spending its routing attempts', async () => {
@@ -406,8 +416,7 @@ describe('dispatchGovernedEmail', () => {
 		});
 
 		expect(result).toMatchObject({
-			success: false,
-			deferred: true,
+			kind: 'deferred',
 			retryAfterMs: 600_000,
 			// The origin travels to the completion callback, which is the only place
 			// gate 2's numerator can be written from — a hold this deployment chose
@@ -430,7 +439,7 @@ describe('dispatchGovernedEmail', () => {
 		});
 
 		expect(result).toMatchObject({
-			deferred: true,
+			kind: 'deferred',
 			deferralOrigin: 'governed',
 			retryState: { attempt: 5 },
 		});
@@ -500,7 +509,11 @@ describe('dispatchGovernedEmail', () => {
 			vi.useFakeTimers();
 			vi.setSystemTime(new Date('2026-03-01T00:00:00Z'));
 			const now = Date.now();
-			resolveLastMileRouting.mockResolvedValue({ kind: 'defer', retryAfterMs: 30_000 });
+			resolveLastMileRouting.mockResolvedValue({
+				kind: 'defer',
+				retryAfterMs: 30_000,
+				origin: 'governed',
+			});
 			const request = {
 				...baseRequest,
 				retryState: {
@@ -512,8 +525,7 @@ describe('dispatchGovernedEmail', () => {
 
 			if (accepted) {
 				await expect(dispatchGovernedEmail(ctx, request)).resolves.toMatchObject({
-					success: false,
-					deferred: true,
+					kind: 'deferred',
 					retryState: { startedAt: now - offset },
 				});
 				expect(resolveLastMileRouting).toHaveBeenCalledOnce();
@@ -570,7 +582,7 @@ describe('dispatchGovernedEmail', () => {
 			// ctx here deliberately has NO runQuery, so a reintroduced read throws.
 			relayRouting('bounces.example.com');
 			await expect(dispatchGovernedEmail(ctx, baseRequest)).resolves.toMatchObject({
-				success: true,
+				kind: 'accepted',
 				providerType: 'smtp',
 			});
 			expect((ctx as unknown as { runQuery?: unknown }).runQuery).toBeUndefined();
@@ -619,9 +631,7 @@ describe('dispatchGovernedEmail', () => {
 			});
 
 			expect(result).toEqual({
-				success: false,
-				acceptanceUnknown: true,
-				awaitingProviderFeedback: true,
+				kind: 'awaitingFeedback',
 				providerType: 'mandrill',
 				startedAt,
 				retryState: { attempt: 1, startedAt, idempotencyKey: 'send_send-row-1' },
@@ -657,7 +667,7 @@ describe('dispatchGovernedEmail', () => {
  *
  * Four behaviours used to be spelled `providerKind === 'mta'` in
  * `governedDispatch.ts`: the pre-dispatch identity binding, the message-id
- * substitution, `acceptedForDelivery`, and the replay-reconciliation arm of an
+ * substitution, `isCustodyHandoff`, and the replay-reconciliation arm of an
  * ambiguous acceptance. Each case below drives a send whose DECLARED semantics
  * contradict its kind — custody on a relay, none on the MTA — so the suite fails
  * against the identity checks and passes only against declarations.
@@ -759,11 +769,11 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 			providerAnswers('smtp', { success: true, id: 'a-dedup-sentinel' });
 
 			expect(await dispatchGovernedEmail(ctx, baseRequest)).toEqual({
-				success: true,
+				kind: 'accepted',
 				providerMessageId: IDEMPOTENCY_KEY,
 				providerType: 'smtp',
 				sendLatencyMs: 9,
-				acceptedForDelivery: true,
+				isCustodyHandoff: true,
 			});
 		});
 
@@ -778,8 +788,7 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 			const result = await dispatchGovernedEmail(ctx, baseRequest);
 
 			expect(result).toMatchObject({
-				success: false,
-				acceptanceUnknown: true,
+				kind: 'acceptanceUnknown',
 				providerMessageId: IDEMPOTENCY_KEY,
 				workAttemptId: expect.any(String),
 				envelopeInput,
@@ -787,7 +796,7 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 			});
 			// The park arm is the OTHER answer to the same ambiguity; a custody
 			// transport must not take it, or the reconciliation never happens.
-			expect('awaitingProviderFeedback' in result).toBe(false);
+			expect(result.kind).not.toBe('awaitingFeedback');
 		});
 	});
 
@@ -810,15 +819,16 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 
 			const result = await dispatchGovernedEmail(ctx, baseRequest);
 
+			// STATED, not inferred from a missing key: `sendCompletion` switches on
+			// `kind` and then reads this boolean, so "no custody" has to be said out
+			// loud rather than left to the absence of a marker.
 			expect(result).toEqual({
-				success: true,
+				kind: 'accepted',
 				providerMessageId: 'provider-assigned-id',
 				providerType: 'mta',
 				sendLatencyMs: 9,
+				isCustodyHandoff: false,
 			});
-			// Absent, not present-and-false: `sendCompletion` reads this key's
-			// presence to decide whether a Send stays queued for feedback.
-			expect('acceptedForDelivery' in result).toBe(false);
 		});
 
 		it('parks an ambiguous acceptance on the feedback channel instead of replaying it', async () => {
@@ -832,9 +842,7 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 			const result = await dispatchGovernedEmail(ctx, baseRequest);
 
 			expect(result).toEqual({
-				success: false,
-				acceptanceUnknown: true,
-				awaitingProviderFeedback: true,
+				kind: 'awaitingFeedback',
 				providerType: 'mta',
 				startedAt: expect.any(Number),
 				retryState: expect.objectContaining({ idempotencyKey: IDEMPOTENCY_KEY }),
@@ -888,12 +896,12 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 			const result = await dispatchGovernedEmail(ctx, baseRequest);
 
 			expect(result).toEqual({
-				success: true,
+				kind: 'accepted',
 				providerMessageId: IDEMPOTENCY_KEY,
 				providerType: 'mta',
 				sendLatencyMs: 9,
+				isCustodyHandoff: false,
 			});
-			expect('acceptedForDelivery' in result).toBe(false);
 		});
 
 		it('parks an ambiguous acceptance — a pre-assigned id is not permission to replay', async () => {
@@ -907,9 +915,7 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 			const result = await dispatchGovernedEmail(ctx, baseRequest);
 
 			expect(result).toEqual({
-				success: false,
-				acceptanceUnknown: true,
-				awaitingProviderFeedback: true,
+				kind: 'awaitingFeedback',
 				providerType: 'mta',
 				startedAt: expect.any(Number),
 				retryState: expect.objectContaining({ idempotencyKey: IDEMPOTENCY_KEY }),
@@ -931,11 +937,11 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 
 			expect(identityBindings()).toEqual([{ send: SEND_REF, providerMessageId: IDEMPOTENCY_KEY }]);
 			expect(result).toEqual({
-				success: true,
+				kind: 'accepted',
 				providerMessageId: IDEMPOTENCY_KEY,
 				providerType: 'mta',
 				sendLatencyMs: 9,
-				acceptedForDelivery: true,
+				isCustodyHandoff: true,
 			});
 		});
 
@@ -947,10 +953,11 @@ describe('reads the declared dispatch semantics, not the kind', () => {
 
 			expect(identityBindings()).toEqual([]);
 			expect(result).toEqual({
-				success: true,
+				kind: 'accepted',
 				providerMessageId: 'relay-message-id',
 				providerType: 'smtp',
 				sendLatencyMs: 9,
+				isCustodyHandoff: false,
 			});
 		});
 	});

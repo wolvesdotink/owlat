@@ -180,7 +180,7 @@ const handleSendCampaign = async () => {
 		let toastMessage: string;
 
 		if (sendOption.value === 'now') {
-			if ((await sendCampaignNow({ campaignId: props.data.campaignId })) === undefined) return;
+			if (!(await sendCampaignNow({ campaignId: props.data.campaignId })).ok) return;
 			toastMessage = t('components.campaigns.steps.reviewStep.toast.sending');
 		} else {
 			const scheduledDateTime = new Date(`${scheduledDate.value}T${scheduledTime.value}`);
@@ -194,7 +194,7 @@ const handleSendCampaign = async () => {
 				scheduledHour: useRecipientTimezone.value ? scheduledHour : undefined,
 				scheduledMinute: useRecipientTimezone.value ? scheduledMinute : undefined,
 			});
-			if (result === undefined) return;
+			if (!result.ok) return;
 
 			toastMessage = useRecipientTimezone.value
 				? t('components.campaigns.steps.reviewStep.toast.scheduledPerTimezone', {
@@ -471,7 +471,9 @@ const variantBTemplateName = computed(() => {
 					<div class="flex-1">
 						<div class="flex items-center gap-2">
 							<Icon name="lucide:send" class="w-5 h-5 text-brand" />
-							<span class="font-medium text-text-primary">{{ t('components.campaigns.steps.reviewStep.sendNow') }}</span>
+							<span class="font-medium text-text-primary">{{
+								t('components.campaigns.steps.reviewStep.sendNow')
+							}}</span>
 						</div>
 						<p class="text-sm text-text-secondary mt-1">
 							{{ t('components.campaigns.steps.reviewStep.sendNowDescription') }}
@@ -556,7 +558,9 @@ const variantBTemplateName = computed(() => {
 										<p class="text-xs text-text-secondary mt-1">
 											{{
 												t('components.campaigns.steps.reviewStep.recipientTimezoneHint', {
-													time: scheduledTime || t('components.campaigns.steps.reviewStep.scheduledTimeFallback'),
+													time:
+														scheduledTime ||
+														t('components.campaigns.steps.reviewStep.scheduledTimeFallback'),
 												})
 											}}
 										</p>
@@ -570,16 +574,28 @@ const variantBTemplateName = computed(() => {
 								class="p-3 bg-bg-elevated shadow-surface-1 rounded-lg"
 							>
 								<template v-if="useRecipientTimezone">
-									<p class="text-sm text-text-secondary">{{ t('components.campaigns.steps.reviewStep.previewHeadingAt') }}</p>
+									<p class="text-sm text-text-secondary">
+										{{ t('components.campaigns.steps.reviewStep.previewHeadingAt') }}
+									</p>
 									<p class="font-medium text-text-primary mt-1">
-										{{ t('components.campaigns.steps.reviewStep.previewPerTimezone', { time: scheduledTime }) }}
+										{{
+											t('components.campaigns.steps.reviewStep.previewPerTimezone', {
+												time: scheduledTime,
+											})
+										}}
 									</p>
 									<p class="text-xs text-text-tertiary mt-2">
-										{{ t('components.campaigns.steps.reviewStep.previewExample', { time: scheduledTime }) }}
+										{{
+											t('components.campaigns.steps.reviewStep.previewExample', {
+												time: scheduledTime,
+											})
+										}}
 									</p>
 								</template>
 								<template v-else>
-									<p class="text-sm text-text-secondary">{{ t('components.campaigns.steps.reviewStep.previewHeading') }}</p>
+									<p class="text-sm text-text-secondary">
+										{{ t('components.campaigns.steps.reviewStep.previewHeading') }}
+									</p>
 									<p class="font-medium text-text-primary mt-1">
 										{{ formatScheduleDate(scheduledDate, scheduledTime) }}
 									</p>

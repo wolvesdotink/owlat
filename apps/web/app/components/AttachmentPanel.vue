@@ -141,7 +141,10 @@ async function handleFileUpload(files: FileList | File[]) {
 			const contentType = file.type || 'application/octet-stream';
 			const registered = await registerUploadedMediaReference(
 				{
-					createMediaAsset: (metadata) => createMediaAsset(metadata),
+					createMediaAsset: async (metadata) => {
+						const created = await createMediaAsset(metadata);
+						return created.ok ? created.result : undefined;
+					},
 					getUrl: (registeredStorageId) =>
 						requireConvex().query(api.storage.getUrl, { storageId: registeredStorageId }),
 				},

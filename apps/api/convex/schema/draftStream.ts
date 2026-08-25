@@ -4,7 +4,7 @@ import { tokenUsageValidator } from '../lib/convexValidators';
 
 /**
  * Ephemeral, owner-private streaming buffers for the whole-draft REVISE loop
- * (mail/reviseDraft.ts). A revise re-writes an ENTIRE draft from a freeform
+ * (mail/ai/reviseDraft.ts). A revise re-writes an ENTIRE draft from a freeform
  * user instruction layered over the (untrusted) thread; the action drives
  * `runLlmStream` and throttle-patches the accumulating `text` here, so the
  * caller's reactive `useConvexQuery(getDraftStream)` subscription renders tokens

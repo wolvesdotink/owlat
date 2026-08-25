@@ -30,7 +30,8 @@ async function handleCreate() {
 	try {
 		const scopes = (['imap', 'smtp'] as const).filter((s) => newScopes.value[s]);
 		const result = await generate(trimmed, scopes);
-		revealPassword.value = result.cleartext;
+		if (!result.ok) return;
+		revealPassword.value = result.result.cleartext;
 		revealLabel.value = trimmed;
 		revealOpen.value = true;
 		newLabel.value = '';

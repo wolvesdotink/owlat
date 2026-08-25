@@ -166,9 +166,12 @@ function calendarAttachment(msg: {
 }
 
 const messageId = computed(() => props.message._id as Id<'mailMessages'>);
-const { data: threadData, isLoading } = useConvexQuery(api.mail.mailbox.listThreadMessages, () => ({
-	messageId: messageId.value,
-}));
+const { data: threadData, isLoading } = useConvexQuery(
+	api.mail.mailbox.messages.listThreadMessages,
+	() => ({
+		messageId: messageId.value,
+	})
+);
 
 const allMessages = computed(() => threadData.value?.messages ?? [props.message]);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
@@ -381,16 +384,15 @@ const moveOp = useBackendOperation(api.mail.messageActions.move, {
 const triageUndo = usePostboxTriageUndo();
 function registerTriageUndo(
 	label: string,
-	result:
-		| { moved: Array<{ messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }> }
-		| null
-		| undefined,
+	outcome: BackendOperationResult<{
+		moved: Array<{ messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }>;
+	} | null>,
 	before?: () => Promise<unknown>
 ) {
-	if (!result || result.moved.length === 0) return;
+	if (!outcome.ok || !outcome.result || outcome.result.moved.length === 0) return;
 	triageUndo.registerMoveBack({
 		label,
-		moved: result.moved,
+		moved: outcome.result.moved,
 		runMove: (a) => moveOp.run(a),
 		...(before ? { before } : {}),
 	});
@@ -523,19 +525,19 @@ function guardLatestReply(run: () => void) {
 	runGuarded(latestMessage.value, run);
 }
 
-async function runAndAdvance(run: () => Promise<unknown>) {
+async function runAndAdvance(run: () => Promise<BackendOperationResult<unknown>>) {
 	// Capture the target before the mutation — the live list drops the
 	// triaged row once the server confirms, shifting the indices.
 	const target = props.folderRole
 		? pickAdjacentMessageId(props.advanceIds ?? [], props.message._id, autoAdvance.value)
 		: null;
-	const result = await run();
+	const outcome = await run();
 	// Stay put only on THROWN errors — useBackendOperation's catch path maps
-	// those to `undefined`. Anything the server returns (incl. a handler
+	// those to `ok: false`. Anything the server returns (incl. a handler
 	// `return undefined`, which Convex serializes to `null` on the client —
 	// e.g. archive/trash's row-already-gone soft-fail, or snooze's void
 	// success) still advances; that's fine because the row is gone either way.
-	if (result === undefined) return;
+	if (!outcome.ok) return;
 	// Overlay host: swap the reader in place (or close it at the list's ends)
 	// instead of leaving the Today surface for the three-pane route.
 	if (props.advanceInPlace) {
@@ -1135,9 +1137,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 							{{ t('components.postbox.postboxThreadReader.forward') }}
 						</UiButton>
 						<span class="flex-1" />
-						<PostboxOverflowMenu
-							:label="t('components.postbox.postboxThreadReader.moreActions')"
-						>
+						<PostboxOverflowMenu :label="t('components.postbox.postboxThreadReader.moreActions')">
 							<template #default="{ close }">
 								<button
 									v-if="hasOtherRecipients(msg)"

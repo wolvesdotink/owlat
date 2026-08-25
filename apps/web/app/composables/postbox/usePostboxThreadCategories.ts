@@ -1,6 +1,6 @@
 /**
  * Smart-inbox category grouping for the inbox view. Reuses the same
- * mail.mailbox.listThreads feed as the conversation view (usePostboxThreadGroups)
+ * mail.mailbox.queries.listThreads feed as the conversation view (usePostboxThreadGroups)
  * and buckets each thread by its advisory `category.label`, then exposes the
  * ordered sections (People first), per-section collapsed state remembered across
  * navigations, and the "Recategorize as…" override mutation.
@@ -72,7 +72,7 @@ export function usePostboxThreadCategories(args: {
 	);
 
 	const { data, isLoading } = useConvexQuery(
-		api.mail.mailbox.listThreads,
+		api.mail.mailbox.queries.listThreads,
 		() =>
 			args.enabled.value && args.mailboxId.value
 				? {

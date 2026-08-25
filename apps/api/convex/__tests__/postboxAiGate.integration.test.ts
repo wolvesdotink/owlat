@@ -46,7 +46,7 @@ describe('mail.aiGate.assertAiAllowed', () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await setAiFlag(t, false);
-		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).rejects.toThrow(
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).rejects.toThrow(
 			/disabled|forbidden/i
 		);
 	});
@@ -57,13 +57,13 @@ describe('mail.aiGate.assertAiAllowed', () => {
 		await setAiFlag(t, true);
 
 		// First call passes; capacity is 30, so a tight loop eventually trips the limit.
-		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).resolves.toBeNull();
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).resolves.toBeNull();
 
 		let succeeded = 1;
 		let limited = false;
 		for (let i = 0; i < 50; i++) {
 			try {
-				await t.mutation(internal.mail.aiGate.assertAiAllowed, {});
+				await t.mutation(internal.mail.ai.gate.assertAiAllowed, {});
 				succeeded += 1;
 			} catch {
 				limited = true;

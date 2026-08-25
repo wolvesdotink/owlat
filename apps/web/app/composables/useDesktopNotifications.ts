@@ -21,7 +21,7 @@ import {
 /**
  * Desktop-only native notifications and the app-icon unread badge.
  *
- * Driven by `mail.mailbox.newestUnreadInbox`, which returns the exact unread
+ * Driven by `mail.mailbox.queries.newestUnreadInbox`, which returns the exact unread
  * `total` plus a bounded newest-first window of unread messages. From that we:
  *
  *   - keep the dock/taskbar **badge** truthful (the affordance every native mail
@@ -77,7 +77,7 @@ export function useDesktopNotifications() {
 	const previousReviewQueue = ref<number | null>(null);
 
 	// Personal inbox unread window → badge + toast.
-	const { data: unreadData } = useConvexQuery(api.mail.mailbox.newestUnreadInbox, () =>
+	const { data: unreadData } = useConvexQuery(api.mail.mailbox.queries.newestUnreadInbox, () =>
 		isDesktop.value ? { limit: 5 } : 'skip'
 	);
 
