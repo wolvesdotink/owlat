@@ -27,7 +27,7 @@ export function usePostboxThreads(args: {
 
 	const { rows, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } =
 		usePostboxCursorFeed(
-			api.mail.mailbox.listMessages,
+			api.mail.mailbox.queries.listMessages,
 			() => {
 				if (!args.mailboxId.value) return 'skip';
 				const folderId = args.folderId?.value;

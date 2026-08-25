@@ -118,11 +118,11 @@ async function seed(t: ReturnType<typeof convexTest>) {
 	return { mailboxId };
 }
 
-describe('mail.mailbox.search', () => {
+describe('mail.mailbox.search.search', () => {
 	it('matches free text combined with a partial from-token', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seed(t);
-		const results = await t.query(api.mail.mailbox.search, {
+		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'meeting',
 			from: 'sara',
@@ -135,7 +135,7 @@ describe('mail.mailbox.search', () => {
 	it('matches a partial from-token with no free text', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seed(t);
-		const results = await t.query(api.mail.mailbox.search, {
+		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: '',
 			from: 'sara',
@@ -146,7 +146,7 @@ describe('mail.mailbox.search', () => {
 	it('excludes a non-matching from-token', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seed(t);
-		const results = await t.query(api.mail.mailbox.search, {
+		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'meeting',
 			from: 'bob',
@@ -161,14 +161,14 @@ describe('mail.mailbox.search', () => {
 		// The seeded row's snippet is "meeting notes about the launch": both words
 		// are present, so the token index matches either ordering. Only the
 		// adjacent one is a phrase hit.
-		const adjacent = await t.query(api.mail.mailbox.search, {
+		const adjacent = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'meeting notes',
 			phrases: ['meeting notes'],
 		});
 		expect(adjacent.messages.map((m) => m.subject)).toEqual(['project meeting']);
 
-		const reversed = await t.query(api.mail.mailbox.search, {
+		const reversed = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'meeting notes',
 			phrases: ['notes meeting'],
@@ -179,7 +179,7 @@ describe('mail.mailbox.search', () => {
 	it('matches a phrase across the subject as well as the snippet', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seed(t);
-		const results = await t.query(api.mail.mailbox.search, {
+		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'project meeting',
 			phrases: ['project meeting'],
@@ -190,7 +190,7 @@ describe('mail.mailbox.search', () => {
 	it('requires EVERY phrase when more than one is quoted', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seed(t);
-		const results = await t.query(api.mail.mailbox.search, {
+		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'meeting',
 			phrases: ['meeting notes', 'no such phrase'],
@@ -247,7 +247,7 @@ describe('mail.mailbox.search', () => {
 			}
 		});
 
-		const page1 = await t.query(api.mail.mailbox.search, {
+		const page1 = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'meeting',
 			limit: 1,
@@ -256,7 +256,7 @@ describe('mail.mailbox.search', () => {
 		expect(page1.hasMore).toBe(true);
 		expect(page1.nextCursor).not.toBeNull();
 
-		const page2 = await t.query(api.mail.mailbox.search, {
+		const page2 = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'meeting',
 			limit: 1,
@@ -328,7 +328,7 @@ describe('mail.mailbox.search', () => {
 		const collected: string[] = [];
 		let cursor: string | undefined;
 		for (let page = 0; page < 5; page++) {
-			const result = await t.query(api.mail.mailbox.search, {
+			const result = await t.query(api.mail.mailbox.search.search, {
 				mailboxId,
 				text: 'meeting',
 				from: 'sara',

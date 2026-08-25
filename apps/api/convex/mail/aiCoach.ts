@@ -120,7 +120,7 @@ export function toCoachSuggestions(quality: DraftQuality | null): CoachSuggestio
 // authz: org membership enforced by authedAction; the `ai` flag + per-user rate
 // limit enforced by aiGate.assertAiAllowed. Operates on the caller's own draft
 // text; when `messageId` is given, ownership is enforced by
-// mail.mailbox.listThreadMessages (returns null for a non-owned message) and the
+// mail.mailbox.messages.listThreadMessages (returns null for a non-owned message) and the
 // thread is used as READ-ONLY context only.
 export const coachDraft = authedAction({
 	args: {
@@ -137,7 +137,7 @@ export const coachDraft = authedAction({
 			await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
 			let context = (args.threadContext ?? '').slice(0, COACH_MAX_CONTEXT_CHARS);
 			if (args.messageId) {
-				const thread = await ctx.runQuery(api.mail.mailbox.listThreadMessages, {
+				const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
 					messageId: args.messageId,
 				});
 				if (thread && thread.messages.length > 0) {

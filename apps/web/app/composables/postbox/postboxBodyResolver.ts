@@ -53,7 +53,7 @@ async function loadPostboxBody(
 	messageId: string,
 	fetchImpl: BodyFetch
 ): Promise<ResolvedPostboxBody> {
-	const source = (await client.action(api.mail.mailbox.getMessageBody, {
+	const source = (await client.action(api.mail.mailbox.messages.getMessageBody, {
 		messageId: messageId as Id<'mailMessages'>,
 	})) as BodySource;
 	if (!source) return null;

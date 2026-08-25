@@ -1,5 +1,5 @@
 /**
- * mail.mailbox.getMessageBody coverage — the reader's body source.
+ * mail.mailbox.messages.getMessageBody coverage — the reader's body source.
  *
  * Regression guard for the bug where bodies over the 64KB inline threshold were
  * dropped from the row, so newsletters / long threads rendered blank. Large
@@ -138,14 +138,14 @@ async function insertMessage(
 	return id;
 }
 
-describe('mail.mailbox.getMessageBody', () => {
+describe('mail.mailbox.messages.getMessageBody', () => {
 	it('returns the inline body for small messages', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
 		const id = await insertMessage(t, mailboxId, folderId, {
 			htmlBodyInline: '<p>small</p>',
 		});
-		const body = await t.action(api.mail.mailbox.getMessageBody, { messageId: id });
+		const body = await t.action(api.mail.mailbox.messages.getMessageBody, { messageId: id });
 		expect(body?.htmlInline).toBe('<p>small</p>');
 		expect(body?.htmlUrl).toBeNull();
 	});
@@ -158,7 +158,7 @@ describe('mail.mailbox.getMessageBody', () => {
 			storageId = await ctx.storage.store(new Blob(['<p>big</p>'], { type: 'text/html' }));
 		});
 		const id = await insertMessage(t, mailboxId, folderId, { htmlBodyStorageId: storageId });
-		const body = await t.action(api.mail.mailbox.getMessageBody, { messageId: id });
+		const body = await t.action(api.mail.mailbox.messages.getMessageBody, { messageId: id });
 		expect(body?.htmlInline).toBeNull();
 		expect(body?.htmlUrl).toBeTruthy();
 	});
@@ -175,7 +175,7 @@ describe('mail.mailbox.getMessageBody', () => {
 		});
 		vi.stubEnv('INSTANCE_SECRET', undefined);
 
-		const sealedBody = await t.action(api.mail.mailbox.getMessageBody, {
+		const sealedBody = await t.action(api.mail.mailbox.messages.getMessageBody, {
 			messageId: sealedMessageId,
 		});
 		expect(sealedBody?.htmlUrl).toBeNull();
@@ -191,7 +191,7 @@ describe('mail.mailbox.getMessageBody', () => {
 		const legacyMessageId = await insertMessage(t, mailboxId, folderId, {
 			htmlBodyStorageId: legacyStorageId,
 		});
-		const legacyBody = await t.action(api.mail.mailbox.getMessageBody, {
+		const legacyBody = await t.action(api.mail.mailbox.messages.getMessageBody, {
 			messageId: legacyMessageId,
 		});
 		expect(legacyBody?.htmlUrl).toBeTruthy();
@@ -203,12 +203,12 @@ describe('mail.mailbox.getMessageBody', () => {
 	});
 });
 
-describe('mail.mailbox.getMessage (deep-link fallback)', () => {
+describe('mail.mailbox.messages.getMessage (deep-link fallback)', () => {
 	it('returns the full message by id for the owner', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
 		const id = await insertMessage(t, mailboxId, folderId, { htmlBodyInline: '<p>hi</p>' });
-		const msg = await t.query(api.mail.mailbox.getMessage, { messageId: id });
+		const msg = await t.query(api.mail.mailbox.messages.getMessage, { messageId: id });
 		expect(msg?._id).toBe(id);
 		expect(msg?.subject).toBe('s');
 	});

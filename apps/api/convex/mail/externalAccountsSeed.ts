@@ -17,7 +17,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { requireAdminContext } from '../lib/sessionOrganization';
-import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
+import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox/identity';
 import {
 	insertExternalAccountRow,
 	seedAgeDays,

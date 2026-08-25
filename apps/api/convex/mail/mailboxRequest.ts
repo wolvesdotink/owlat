@@ -34,7 +34,7 @@ import {
 	createProvisionedMailbox,
 	getActiveMailboxForUser,
 	isDomainVerified,
-} from './mailbox';
+} from './mailbox/identity';
 import { claimReservedMailbox } from './pendingMailbox';
 import type { Id } from '../_generated/dataModel';
 

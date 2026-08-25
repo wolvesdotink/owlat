@@ -86,7 +86,7 @@ const selectedAddress = computed(() =>
 		: ''
 );
 
-const createMailbox = useBackendOperation(api.mail.mailbox.create, {
+const createMailbox = useBackendOperation(api.mail.mailbox.identity.create, {
 	label: () => t('dashboard.preferences.addAccount.createMailboxOperation'),
 	inlineTarget: error,
 });

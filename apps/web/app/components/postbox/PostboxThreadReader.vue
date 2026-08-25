@@ -166,9 +166,12 @@ function calendarAttachment(msg: {
 }
 
 const messageId = computed(() => props.message._id as Id<'mailMessages'>);
-const { data: threadData, isLoading } = useConvexQuery(api.mail.mailbox.listThreadMessages, () => ({
-	messageId: messageId.value,
-}));
+const { data: threadData, isLoading } = useConvexQuery(
+	api.mail.mailbox.messages.listThreadMessages,
+	() => ({
+		messageId: messageId.value,
+	})
+);
 
 const allMessages = computed(() => threadData.value?.messages ?? [props.message]);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);

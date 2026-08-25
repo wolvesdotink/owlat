@@ -165,10 +165,10 @@ describe('shared inbox unread is one shared truth across members', () => {
 
 		// Both members start seeing the one unread message.
 		setSession('user-A', 'editor');
-		expect((await t.query(api.mail.mailbox.newestUnreadInbox, {})).total).toBe(1);
+		expect((await t.query(api.mail.mailbox.queries.newestUnreadInbox, {})).total).toBe(1);
 		setSession('user-B', 'editor');
-		expect((await t.query(api.mail.mailbox.newestUnreadInbox, {})).total).toBe(1);
-		expect(unreadFor(await t.query(api.mail.mailbox.accessible, {}), mailboxId)).toBe(1);
+		expect((await t.query(api.mail.mailbox.queries.newestUnreadInbox, {})).total).toBe(1);
+		expect(unreadFor(await t.query(api.mail.mailbox.queries.accessible, {}), mailboxId)).toBe(1);
 
 		// user-A reads it via the shared, access-gated mark-read path.
 		setSession('user-A', 'editor');
@@ -179,14 +179,14 @@ describe('shared inbox unread is one shared truth across members', () => {
 
 		// user-B now sees it read too — the read state is shared, not per-user.
 		setSession('user-B', 'editor');
-		expect((await t.query(api.mail.mailbox.newestUnreadInbox, {})).total).toBe(0);
-		expect(unreadFor(await t.query(api.mail.mailbox.accessible, {}), mailboxId)).toBe(0);
+		expect((await t.query(api.mail.mailbox.queries.newestUnreadInbox, {})).total).toBe(0);
+		expect(unreadFor(await t.query(api.mail.mailbox.queries.accessible, {}), mailboxId)).toBe(0);
 	});
 
 	it('accessible returns nothing for a user with no accessible mailbox', async () => {
 		const t = convexTest(schema, modules);
 		await seedSharedInboxWithUnread(t);
 		setSession('stranger', 'editor');
-		expect(await t.query(api.mail.mailbox.accessible, {})).toEqual([]);
+		expect(await t.query(api.mail.mailbox.queries.accessible, {})).toEqual([]);
 	});
 });

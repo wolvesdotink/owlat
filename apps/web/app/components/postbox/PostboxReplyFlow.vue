@@ -173,7 +173,9 @@ async function openReplyComposer(row: FlowItem, bodyText: string) {
 	const messageId = row.messageId as Id<'mailMessages'>;
 	let target: ReplyQuoteTarget = { ...row, _id: row.messageId };
 	try {
-		const message = await requireConvex().query(api.mail.mailbox.getMessage, { messageId });
+		const message = await requireConvex().query(api.mail.mailbox.messages.getMessage, {
+			messageId,
+		});
 		if (message) target = message;
 		target = await resolveBodyFields(target);
 	} catch {

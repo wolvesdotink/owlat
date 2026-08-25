@@ -101,7 +101,7 @@ watchEffect(() => {
 });
 
 // ── Operations ──
-const setDisplayNameOp = useBackendOperation(api.mail.mailbox.setDisplayName, {
+const setDisplayNameOp = useBackendOperation(api.mail.mailbox.identity.setDisplayName, {
 	label: () => t('welcome.freshStart.operations.saveDisplayName'),
 });
 const createSignatureOp = useBackendOperation(api.mail.signatures.create, {

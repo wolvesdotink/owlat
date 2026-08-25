@@ -26,7 +26,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
 import { loadAccessibleMailboxes } from '../permissions';
-import { getActiveMailboxForUser } from '../mailbox';
+import { getActiveMailboxForUser } from '../mailbox/identity';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
 import type { DatabaseWriter } from '../../_generated/server';
 import { loadSeedAccounts } from '../../analytics/seedAccounts';

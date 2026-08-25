@@ -25,7 +25,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from './helpers.testlib';
-import { resolveDeliverableMailbox } from '../mailbox';
+import { resolveDeliverableMailbox } from '../mailbox/identity';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',

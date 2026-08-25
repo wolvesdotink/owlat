@@ -9,7 +9,7 @@ export type FolderRole = 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archi
 
 export function usePostboxFolders(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { data, isLoading } = useConvexQuery(
-		api.mail.mailbox.listFolders,
+		api.mail.mailbox.queries.listFolders,
 		() => (mailboxId.value ? { mailboxId: mailboxId.value } : 'skip')
 	);
 

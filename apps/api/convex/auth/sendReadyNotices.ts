@@ -2,7 +2,7 @@ import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { mailboxHasSendTransport } from '../mail/draftQueries';
-import { getActiveMailboxForUser } from '../mail/mailbox';
+import { getActiveMailboxForUser } from '../mail/mailbox/identity';
 import { getMailSyncConfig, getMtaConfig } from '../mail/mtaClient';
 
 /**

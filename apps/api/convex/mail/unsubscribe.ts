@@ -61,12 +61,12 @@ export async function postOneClickUnsubscribe(
  * One-Click unsubscribe for a received list message. Only ever invoked from
  * an explicit user confirmation in the reader — never on render.
  */
-// authz: ownership enforced by mail.mailbox.getMessage (returns null for a
+// authz: ownership enforced by mail.mailbox.messages.getMessage (returns null for a
 // non-owned message); org membership enforced by authedAction.
 export const performOneClick = authedAction({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args): Promise<OneClickResult> => {
-		const message = await ctx.runQuery(api.mail.mailbox.getMessage, {
+		const message = await ctx.runQuery(api.mail.mailbox.messages.getMessage, {
 			messageId: args.messageId,
 		});
 		if (!message) throwNotFound('Message');

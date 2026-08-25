@@ -186,8 +186,8 @@ convex/mail/externalSharedInbox.ts:purgeShared
 convex/mail/handlingRules.ts:create
 convex/mail/handlingRules.ts:remove
 convex/mail/handlingRules.ts:update
-convex/mail/mailbox.ts:create
-convex/mail/mailbox.ts:remove
+convex/mail/mailbox/identity.ts:create
+convex/mail/mailbox/identity.ts:remove
 convex/mail/mailboxMembers.ts:createShared
 convex/mail/mailboxMove.ts:provisionHosted
 convex/mail/mailboxRequest.ts:freshStartStatus

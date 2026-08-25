@@ -127,7 +127,7 @@ export function postProcessCompletion(raw: string): string {
  * missing/unreadable thread returns `null` and caches nothing, so the strip just
  * disappears and the reader is unaffected.
  */
-// authz: ownership enforced by mail.mailbox.listThreadMessages (returns null for
+// authz: ownership enforced by mail.mailbox.messages.listThreadMessages (returns null for
 // a non-owned message); org membership enforced by authedAction; the `ai` flag +
 // per-user rate limit enforced by aiGate.assertAiAllowed.
 export const getOrGenerateThreadSummary = authedAction({
@@ -137,7 +137,7 @@ export const getOrGenerateThreadSummary = authedAction({
 		args
 	): Promise<{ summary: string; messageCount: number; generatedAt: number } | null> => {
 		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
-		const thread = await ctx.runQuery(api.mail.mailbox.listThreadMessages, {
+		const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
 			messageId: args.messageId,
 		});
 		if (!thread || thread.messages.length === 0) return null;
@@ -175,7 +175,7 @@ export const getOrGenerateThreadSummary = authedAction({
 });
 
 /** Suggest up to 3 short reply options for a message's thread. */
-// authz: ownership enforced by mail.mailbox.listThreadMessages (returns null
+// authz: ownership enforced by mail.mailbox.messages.listThreadMessages (returns null
 // for a non-owned message); org membership enforced by authedAction.
 export const suggestReplies = authedAction({
 	args: {
@@ -186,7 +186,7 @@ export const suggestReplies = authedAction({
 	},
 	handler: async (ctx, args): Promise<{ replies: string[] }> => {
 		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
-		const thread = await ctx.runQuery(api.mail.mailbox.listThreadMessages, {
+		const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
 			messageId: args.messageId,
 		});
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
@@ -270,7 +270,7 @@ export function buildAskThreadPrompt(args: {
  * less new code (one bounded LLM call, no conversation persistence / tool loop),
  * while still grounding on the same bounded thread flatten as the summarizer.
  */
-// authz: ownership enforced by mail.mailbox.listThreadMessages (returns null for
+// authz: ownership enforced by mail.mailbox.messages.listThreadMessages (returns null for
 // a non-owned message); org membership enforced by authedAction; the `ai` flag +
 // per-user rate limit enforced by aiGate.assertAiAllowed.
 export const askThread = authedAction({
@@ -281,7 +281,7 @@ export const askThread = authedAction({
 	},
 	handler: async (ctx, args): Promise<{ answer: string }> => {
 		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
-		const thread = await ctx.runQuery(api.mail.mailbox.listThreadMessages, {
+		const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
 			messageId: args.messageId,
 		});
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
@@ -408,7 +408,7 @@ export function buildRewritePrompt(args: {
 // authz: org membership enforced by authedAction; the `ai` flag + per-user rate
 // limit enforced by aiGate.assertAiAllowed. Operates on the caller's own draft
 // text; mailboxId (if given) is only used to fetch the caller's voice guidance,
-// and ONLY after mail.mailbox.get proves the caller owns that mailbox — a
+// and ONLY after mail.mailbox.identity.get proves the caller owns that mailbox — a
 // foreign mailboxId resolves to null and yields no guidance (never leaks another
 // user's learned voice / example phrasings).
 export const rewriteSelection = authedAction({
@@ -433,10 +433,10 @@ export const rewriteSelection = authedAction({
 		if (args.mailboxId) {
 			try {
 				// Prove the caller owns this mailbox before touching its voice
-				// profile — mail.mailbox.get returns null for a non-owner, so a
+				// profile — mail.mailbox.identity.get returns null for a non-owner, so a
 				// foreign mailboxId can never fold another user's private voice
 				// guidance into the rewrite.
-				const mailbox = await ctx.runQuery(api.mail.mailbox.get, {
+				const mailbox = await ctx.runQuery(api.mail.mailbox.identity.get, {
 					mailboxId: args.mailboxId,
 				});
 				if (mailbox) {

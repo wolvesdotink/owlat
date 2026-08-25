@@ -26,7 +26,7 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 // that slice (`hasMore`), the honest cap note renders — there is no deeper
 // page to load, by design, until label membership gets a real index.
 const { data: labelData, isLoading, error } = useConvexQuery(
-	api.mail.mailbox.listByLabel,
+	api.mail.mailbox.queries.listByLabel,
 	() =>
 		mailboxId.value ? { mailboxId: mailboxId.value, labelId: labelId.value, limit: 500 } : 'skip',
 	{ keepPreviousData: true }

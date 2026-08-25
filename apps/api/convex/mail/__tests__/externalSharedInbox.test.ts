@@ -181,11 +181,11 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 		// A member reads the (external) shared inbox; a non-member cannot.
 		setSession('user-B', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId })).toBe('member');
-		expect(await t.query(api.mail.mailbox.get, { mailboxId })).not.toBeNull();
+		expect(await t.query(api.mail.mailbox.identity.get, { mailboxId })).not.toBeNull();
 
 		setSession('user-Z', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId })).toBeNull();
-		expect(await t.query(api.mail.mailbox.get, { mailboxId })).toBeNull();
+		expect(await t.query(api.mail.mailbox.identity.get, { mailboxId })).toBeNull();
 	});
 
 	it('surfaces the connected inbox in the admin listShared overview as kind=external', async () => {
@@ -308,7 +308,7 @@ describe('removing a shared external inbox stops its sync worker', () => {
 		const before = await t.query(internal.mail.externalAccounts.listConnectableAccounts, {});
 		expect(before.map((a) => a.accountId)).toContain(externalAccountId);
 
-		await t.mutation(api.mail.mailbox.remove, { mailboxId });
+		await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
 
 		const account = await t.run((ctx) => ctx.db.get(externalAccountId));
 		expect(account?.status).toBe('disconnected');
@@ -463,7 +463,7 @@ describe('purging a removed shared external inbox', () => {
 			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: ['user-B'] }
 		);
 		// Remove (soft-delete) first, mirroring the admin flow.
-		await t.mutation(api.mail.mailbox.remove, { mailboxId });
+		await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
 
 		vi.useFakeTimers();
 		try {

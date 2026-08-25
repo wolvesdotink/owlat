@@ -44,7 +44,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
+import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox/identity';
 import {
 	insertExternalAccountRow,
 	applyCredentialRotation,

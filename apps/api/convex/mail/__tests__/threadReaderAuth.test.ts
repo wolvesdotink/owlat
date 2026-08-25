@@ -5,8 +5,8 @@
  * inputs (envelope MAIL FROM domain + DKIM d= domain) on `mailMessages`. This
  * piece threads them out through the reader queries that back
  * `PostboxThreadReader.vue` so A3 can render an honest sender badge. The
- * conversation view subscribes to `mail.mailbox.listThreadMessages`, and the
- * deep-link fallback uses `mail.mailbox.getMessage`; both return the full
+ * conversation view subscribes to `mail.mailbox.messages.listThreadMessages`, and the
+ * deep-link fallback uses `mail.mailbox.messages.getMessage`; both return the full
  * message document, so the contract is simply that nothing along either read
  * path strips the six fields.
  *
@@ -147,13 +147,13 @@ describe('mail reader queries — surface inbound auth verdicts (Sealed Mail A2)
 		if (!('messageId' in result)) return;
 
 		// Deep-link fallback query.
-		const message = await t.query(api.mail.mailbox.getMessage, {
+		const message = await t.query(api.mail.mailbox.messages.getMessage, {
 			messageId: result.messageId,
 		});
 		expectSeededVerdicts(message);
 
 		// Query the reader actually subscribes to for the conversation view.
-		const thread = await t.query(api.mail.mailbox.listThreadMessages, {
+		const thread = await t.query(api.mail.mailbox.messages.listThreadMessages, {
 			messageId: result.messageId,
 		});
 		const threadMessage = thread?.messages.find((m) => m._id === result.messageId);
@@ -173,13 +173,13 @@ describe('mail reader queries — surface inbound auth verdicts (Sealed Mail A2)
 		if (!('messageId' in result)) return;
 
 		// Deep-link fallback query.
-		const message = await t.query(api.mail.mailbox.getMessage, {
+		const message = await t.query(api.mail.mailbox.messages.getMessage, {
 			messageId: result.messageId,
 		});
 		expectAbsentVerdicts(message);
 
 		// Query the reader actually subscribes to for the conversation view.
-		const thread = await t.query(api.mail.mailbox.listThreadMessages, {
+		const thread = await t.query(api.mail.mailbox.messages.listThreadMessages, {
 			messageId: result.messageId,
 		});
 		const threadMessage = thread?.messages.find((m) => m._id === result.messageId);

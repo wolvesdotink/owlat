@@ -55,7 +55,7 @@ import { internalMutation } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireAdminContext } from '../lib/sessionOrganization';
-import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
+import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox/identity';
 import { connectFieldsValidator } from './externalAccounts';
 import { insertExternalAccountRow, applyCredentialRotation } from './externalAccountShared';
 import { seedSharedInboxRoster } from './mailboxMembers';

@@ -82,7 +82,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.mail.mailbox.remove, { mailboxId });
+			await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();
@@ -207,7 +207,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.mail.mailbox.remove, { mailboxId });
+			await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		} finally {
 			vi.useRealTimers();

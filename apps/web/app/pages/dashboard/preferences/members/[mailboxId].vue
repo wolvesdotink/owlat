@@ -13,9 +13,12 @@ definePageMeta({
 
 const mailboxId = useRouteId<'mailboxes'>('mailboxId');
 
-const { data: mailbox, isLoading: mailboxLoading } = useConvexQuery(api.mail.mailbox.get, () => ({
-	mailboxId: mailboxId.value,
-}));
+const { data: mailbox, isLoading: mailboxLoading } = useConvexQuery(
+	api.mail.mailbox.identity.get,
+	() => ({
+		mailboxId: mailboxId.value,
+	})
+);
 // `mailbox.get` soft-fails to `null` for a bad id, a personal mailbox, or an
 // inbox the caller has no access to — distinct from `undefined` (still loading).
 const notFound = computed(() => !mailboxLoading.value && mailbox.value === null);

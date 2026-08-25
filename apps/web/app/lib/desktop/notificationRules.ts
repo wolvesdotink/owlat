@@ -9,7 +9,7 @@
  */
 import type { PostboxMailCategory, PostboxNotifyAbout } from '~/utils/postboxNotify';
 
-/** One unread inbox message as returned by `mail.mailbox.newestUnreadInbox`. */
+/** One unread inbox message as returned by `mail.mailbox.queries.newestUnreadInbox`. */
 export interface UnreadPeekMessage {
 	messageId: string;
 	threadId: string;

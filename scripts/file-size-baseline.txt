@@ -11,7 +11,6 @@ apps/api/convex/lib/sessionOrganization.ts
 apps/api/convex/mail/delivery.ts
 apps/api/convex/mail/draftLifecycle.ts
 apps/api/convex/mail/imap.ts
-apps/api/convex/mail/mailbox.ts
 apps/api/convex/mail/outbound.ts
 apps/api/convex/schema/mail.ts
 apps/api/convex/semanticFiles.ts

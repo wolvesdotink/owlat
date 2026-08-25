@@ -331,7 +331,7 @@ describe('addMember / removeMember', () => {
 		// The new member now has access to the (external) shared mailbox.
 		setSession('user-B', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId: id })).toBe('member');
-		expect(await t.query(api.mail.mailbox.get, { mailboxId: id })).not.toBeNull();
+		expect(await t.query(api.mail.mailbox.identity.get, { mailboxId: id })).not.toBeNull();
 	});
 
 	it('a plain member cannot manage the roster (owner floor)', async () => {
@@ -369,8 +369,8 @@ describe('addMember / removeMember', () => {
 		setSession('user-B', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId: id })).toBeNull();
 		expect(await t.query(api.mail.mailboxMembers.members, { mailboxId: id })).toEqual([]);
-		expect(await t.query(api.mail.mailbox.get, { mailboxId: id })).toBeNull();
-		const list = await t.query(api.mail.mailbox.list, {});
+		expect(await t.query(api.mail.mailbox.identity.get, { mailboxId: id })).toBeNull();
+		const list = await t.query(api.mail.mailbox.identity.list, {});
 		expect(list.map((m) => m._id)).not.toContain(id);
 	});
 

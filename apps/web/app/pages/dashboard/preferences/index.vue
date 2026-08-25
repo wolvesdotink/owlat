@@ -72,7 +72,7 @@ type MailboxRow = (typeof mailboxes.value)[number];
 const renameTarget = ref<MailboxRow | null>(null);
 const renameValue = ref('');
 const renameError = ref<string | null>(null);
-const setDisplayName = useBackendOperation(api.mail.mailbox.setDisplayName, {
+const setDisplayName = useBackendOperation(api.mail.mailbox.identity.setDisplayName, {
 	label: () => t('dashboard.preferences.index.renameOperation'),
 	inlineTarget: renameError,
 });
@@ -95,7 +95,7 @@ async function handleRename() {
 
 // ── Delete (admin-only soft-delete) ────────────────────────────────────
 const deleteTarget = ref<MailboxRow | null>(null);
-const removeMailbox = useBackendOperation(api.mail.mailbox.remove, {
+const removeMailbox = useBackendOperation(api.mail.mailbox.identity.remove, {
 	label: () => t('dashboard.preferences.index.deleteOperation'),
 });
 

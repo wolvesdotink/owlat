@@ -18,7 +18,7 @@
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { components } from '../../_generated/api';
-import { provisionMailbox } from '../../mail/mailbox';
+import { provisionMailbox } from '../../mail/mailbox/identity';
 import type { LoadResult, Loader } from './types';
 
 interface MailboxFixture {

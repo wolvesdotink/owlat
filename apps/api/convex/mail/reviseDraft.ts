@@ -87,7 +87,7 @@ export function buildRevisePrompt(args: {
 // limit enforced by aiGate.assertAiAllowed. `beginDraftStream` proves the caller
 // owns `streamId` before any streaming. Operates on the caller's OWN draft text;
 // mailboxId (if given) only fetches the caller's voice guidance AFTER
-// mail.mailbox.get proves ownership — a foreign mailboxId yields no guidance.
+// mail.mailbox.identity.get proves ownership — a foreign mailboxId yields no guidance.
 export const reviseDraft = authedAction({
 	args: {
 		streamId: v.id('aiDraftStreams'),
@@ -112,7 +112,7 @@ export const reviseDraft = authedAction({
 		let voiceGuidance: string | null = null;
 		if (args.mailboxId) {
 			try {
-				const mailbox = await ctx.runQuery(api.mail.mailbox.get, {
+				const mailbox = await ctx.runQuery(api.mail.mailbox.identity.get, {
 					mailboxId: args.mailboxId,
 				});
 				if (mailbox) {

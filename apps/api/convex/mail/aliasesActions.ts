@@ -20,7 +20,7 @@ export const pushAliasToCache = internalAction({
 		const config = getMtaConfig();
 		if (!config) return;
 
-		const mailbox = await ctx.runQuery(internal.mail.mailboxQueries.getById, {
+		const mailbox = await ctx.runQuery(internal.mail.mailbox.identity.getById, {
 			mailboxId: args.mailboxId,
 		});
 		if (!mailbox) return;

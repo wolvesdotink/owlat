@@ -33,7 +33,7 @@ import type { Id } from '../_generated/dataModel';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
-import { createProvisionedMailbox, canonicalAddress } from './mailbox';
+import { createProvisionedMailbox, canonicalAddress } from './mailbox/identity';
 
 /** Resolve a member's display fields from their `userProfiles` row. */
 async function loadMemberProfile(

@@ -24,7 +24,7 @@ import {
 	throwInvalidState,
 	throwAlreadyExists,
 } from '../_utils/errors';
-import { canonicalAddress, provisionMailbox, isDomainVerified } from './mailbox';
+import { canonicalAddress, provisionMailbox, isDomainVerified } from './mailbox/identity';
 
 // Upper bound on the reservations swept per domain in one verify/remove pass.
 // A brand-new instance carries at most a handful of pre-verification

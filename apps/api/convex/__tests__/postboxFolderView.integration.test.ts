@@ -1,5 +1,5 @@
 /**
- * mail.mailbox.listMessages — the custom-folder (by-id) view that backs custom
+ * mail.mailbox.queries.listMessages — the custom-folder (by-id) view that backs custom
  * IMAP / user-created folders in the Postbox sidebar. Returns only the messages
  * in the addressed folder, and enforces that the folder belongs to the mailbox.
  */
@@ -127,7 +127,7 @@ async function insertMessage(
 	});
 }
 
-describe('mail.mailbox.listMessages — custom folder by id', () => {
+describe('mail.mailbox.queries.listMessages — custom folder by id', () => {
 	it('returns only the messages in the addressed custom folder', async () => {
 		const t = convexTest(schema, modules);
 		let mailboxId!: Id<'mailboxes'>;
@@ -140,7 +140,7 @@ describe('mail.mailbox.listMessages — custom folder by id', () => {
 			await insertMessage(ctx, mailboxId, inboxId, 'in-inbox', 2);
 		});
 
-		const result = await t.query(api.mail.mailbox.listMessages, {
+		const result = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId,
 			folderId: customFolderId,
 		});
@@ -159,7 +159,7 @@ describe('mail.mailbox.listMessages — custom folder by id', () => {
 			await insertMessage(ctx, otherMailboxId, otherFolderId, 'theirs', 1);
 		});
 
-		const result = await t.query(api.mail.mailbox.listMessages, {
+		const result = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId: mineMailboxId,
 			folderId: otherFolderId,
 		});

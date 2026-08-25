@@ -48,7 +48,7 @@ import { isClearsigned, isSignedPgpMime } from '@owlat/shared/secureMessage';
 import { enqueueNeedsReplyCheck } from './needsReply';
 import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
-import { resolveDeliverableMailbox } from './mailbox';
+import { resolveDeliverableMailbox } from './mailbox/identity';
 import { clearSnoozeUntilReplyForThread } from './snooze';
 import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 import { storeSealedBlob, type BlobStore } from '../lib/sealedBlob';

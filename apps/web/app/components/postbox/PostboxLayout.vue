@@ -225,7 +225,7 @@ const listActive = computed(() => messages.value.find((m) => m._id === props.act
 // Deep-link fallback: when the active message isn't in the loaded page (an old
 // message reached via bookmark / notification / search), fetch it by id so the
 // reader renders instead of showing an empty "Select a message".
-const { data: fetchedActive } = useConvexQuery(api.mail.mailbox.getMessage, () =>
+const { data: fetchedActive } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
 	props.activeMessageId && !listActive.value
 		? { messageId: props.activeMessageId as Id<'mailMessages'> }
 		: 'skip'
