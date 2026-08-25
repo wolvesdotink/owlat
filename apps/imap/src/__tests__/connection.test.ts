@@ -802,10 +802,10 @@ describe('ImapConnection — literal octet framing (RFC 3501 §4.3)', () => {
 			{ _id: 'f1', name: 'INBOX', role: 'inbox', uidNext: 1, totalCount: 0 },
 		]);
 		mocks.convex.mutation.mockImplementation((ref: string, args: unknown) => {
-			if (ref === 'mail/imap:generateRawUploadUrl') {
+			if (ref === 'mail/imap/append:generateRawUploadUrl') {
 				return Promise.resolve('https://upload.test/blob');
 			}
-			if (ref === 'mail/imap:appendMessage') {
+			if (ref === 'mail/imap/append:appendMessage') {
 				appendArgs = args as Record<string, unknown>;
 				return Promise.resolve({ uid: 7, uidValidity: 100, modseq: 1 });
 			}

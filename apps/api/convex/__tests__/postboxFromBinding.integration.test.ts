@@ -305,7 +305,7 @@ describe('mailImap.appendMessage — From-binding', () => {
 		const { mailboxId, inboxFolderId } = await seedMailbox(t, 'alice@example.com');
 		const storageId = await seedStorageBlob(t);
 
-		const result = await t.mutation(internal.mail.imap.appendMessage, {
+		const result = await t.mutation(internal.mail.imap.append.appendMessage, {
 			folderId: inboxFolderId,
 			rawStorageId: storageId,
 			rawSize: 1,
@@ -329,7 +329,7 @@ describe('mailImap.appendMessage — From-binding', () => {
 		const storageId = await seedStorageBlob(t);
 
 		await expect(
-			t.mutation(internal.mail.imap.appendMessage, {
+			t.mutation(internal.mail.imap.append.appendMessage, {
 				folderId: inboxFolderId,
 				rawStorageId: storageId,
 				rawSize: 1,
@@ -357,7 +357,7 @@ describe('mailImap.appendMessage — From-binding', () => {
 		});
 		const storageId = await seedStorageBlob(t);
 
-		const result = await t.mutation(internal.mail.imap.appendMessage, {
+		const result = await t.mutation(internal.mail.imap.append.appendMessage, {
 			folderId: inboxFolderId,
 			rawStorageId: storageId,
 			rawSize: 1,

@@ -662,7 +662,7 @@ export const mailTables = {
 		// Backs the 1-minute snooze sweep cron — range scan on snoozedUntil <= now.
 		.index('by_snoozed_until', ['snoozedUntil'])
 		// SHARING-AWARE SEAL (Sealed Mail E8b): IMAP COPY shares a storage blob
-		// between rows (`mail/imap.ts` copyMessages spreads the same `rawStorageId`/
+		// between rows (`mail/imap/move.ts` copyMessages spreads the same `rawStorageId`/
 		// `*BodyStorageId` into the new row). The at-rest reseal must repoint EVERY
 		// row that references an old plaintext blob before it deletes that blob, or a
 		// sibling copy is left pointing at a deleted id (unreadable forever). These

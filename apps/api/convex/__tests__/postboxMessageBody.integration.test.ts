@@ -180,7 +180,7 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 		});
 		expect(sealedBody?.htmlUrl).toBeNull();
 		expect(
-			await t.action(internal.mail.imap.getRawStorageUrl, {
+			await t.action(internal.mail.imap.fetch.getRawStorageUrl, {
 				storageId: sealedStorageId,
 			})
 		).toBeNull();
@@ -196,7 +196,7 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 		});
 		expect(legacyBody?.htmlUrl).toBeTruthy();
 		expect(
-			await t.action(internal.mail.imap.getRawStorageUrl, {
+			await t.action(internal.mail.imap.fetch.getRawStorageUrl, {
 				storageId: legacyStorageId,
 			})
 		).toBeTruthy();

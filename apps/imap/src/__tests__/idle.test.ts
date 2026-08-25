@@ -138,9 +138,9 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 		// ticks. peekFolderModseq returns counters; listFolderUids returns the
 		// live UID list; fetchEnvelopes returns rows changed since modseqSince.
 		convex.query.mockImplementation((ref: string, qargs: Record<string, unknown>) => {
-			if (ref === 'mail/imap:peekFolderModseq') return Promise.resolve(peek);
-			if (ref === 'mail/imap:listFolderUids') return Promise.resolve(uids);
-			if (ref === 'mail/imap:fetchEnvelopes') {
+			if (ref === 'mail/imap/session:peekFolderModseq') return Promise.resolve(peek);
+			if (ref === 'mail/imap/fetch:listFolderUids') return Promise.resolve(uids);
+			if (ref === 'mail/imap/fetch:fetchEnvelopes') {
 				const since = (qargs.modseqSince as number) ?? 0;
 				return Promise.resolve(rows.filter((r) => r.modseq > since));
 			}

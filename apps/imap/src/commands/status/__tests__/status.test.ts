@@ -6,7 +6,7 @@ import type { ConvexClient } from '../../../convex.js';
 import type { CommandDeps, ConnectionState, ImapVerb } from '../../types.js';
 
 /**
- * A folder row as returned by `mail/imap:listFolders` — uidValidity and
+ * A folder row as returned by `mail/imap/session:listFolders` — uidValidity and
  * uidNext are deliberately DISTINCT so the test catches a handler that
  * confuses the two.
  */
