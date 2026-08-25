@@ -112,7 +112,7 @@ export function armForTransportLabel(transport: string): SendAssignmentArm {
  *
  * `explicit` is deliberately `string | null | undefined`: an optional value
  * returned by a Convex query crosses the function boundary as `null`, not
- * `undefined` (`enqueueNonCampaignSend` resolves its org through
+ * `undefined` (the non-campaign intake resolves its org through
  * `campaigns.sendQueries.getSingletonOrganizationId`). Treating only
  * `undefined` as absent let that `null` through as an organization id, which
  * silently dropped every non-campaign assignment row and made the singleton
