@@ -84,7 +84,7 @@ export function useChannelOutbound() {
 		const text = target.text.trim();
 		if (!text || !canSendOn(target.channel)) return false;
 
-		let result: unknown;
+		let result: BackendOperationResult<unknown>;
 		if (target.channel === 'chat') {
 			if (!target.threadId) return false;
 			result = await sendChatMessage({
@@ -101,7 +101,7 @@ export function useChannelOutbound() {
 				...(target.threadId ? { threadId: target.threadId } : {}),
 			});
 		}
-		if (result === undefined) return false; // useBackendOperation surfaced the error
+		if (!result.ok) return false; // useBackendOperation surfaced the error
 		showToast(t('shared.useChannelOutbound.messageSent'), 'success');
 		return true;
 	}

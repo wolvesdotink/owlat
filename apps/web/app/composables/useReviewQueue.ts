@@ -81,7 +81,7 @@ export function useReviewQueue() {
 		currentDraft: string | null | undefined
 	) => {
 		const text = chosenText.trim();
-		if (text.length === 0) return undefined;
+		if (text.length === 0) return { ok: false } as const;
 		if (text === (currentDraft ?? '').trim()) {
 			return await approveDraft({ inboundMessageId: messageId });
 		}
@@ -89,7 +89,7 @@ export function useReviewQueue() {
 			inboundMessageId: messageId,
 			draftResponse: text,
 		});
-		if (edited === undefined) return undefined;
+		if (!edited.ok) return edited;
 		return await approveDraft({ inboundMessageId: messageId });
 	};
 
@@ -100,7 +100,7 @@ export function useReviewQueue() {
 	/**
 	 * True inverse of an approve while its undo window is open: cancels the held
 	 * send server-side and routes the draft back to `draft_ready` (the same
-	 * `undoAutoSend` path autonomous sends use). Resolves `undefined` on a
+	 * `undoAutoSend` path autonomous sends use). Resolves `ok: false` on a
 	 * categorized failure (already toasted); `cancelled: false` when the window
 	 * has closed — a clean no-op the caller should surface honestly.
 	 */
@@ -112,7 +112,7 @@ export function useReviewQueue() {
 	 * Compose a human reply for a draftless escalation and send it: persist the
 	 * text via `editDraft`, then approve+queue via `approveDraft`. Both runs go
 	 * through `useBackendOperation`, which toasts categorized failures and
-	 * resolves to `undefined` — so we stop after a failed edit rather than
+	 * resolves to `ok: false` — so we stop after a failed edit rather than
 	 * approving an empty draft (which would re-throw `No draft to approve`).
 	 */
 	const composeAndSend = async (
@@ -121,14 +121,14 @@ export function useReviewQueue() {
 		subject?: string
 	) => {
 		const text = body.trim();
-		if (text.length === 0) return undefined;
+		if (text.length === 0) return { ok: false } as const;
 
 		const edited = await editDraft({
 			inboundMessageId: messageId,
 			draftResponse: text,
 			draftSubject: subject?.trim() || undefined,
 		});
-		if (edited === undefined) return undefined;
+		if (!edited.ok) return edited;
 
 		return await approveDraft({ inboundMessageId: messageId });
 	};

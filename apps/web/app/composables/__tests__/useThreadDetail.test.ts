@@ -27,7 +27,7 @@ describe('useThreadDetail', () => {
 		vi.stubGlobal('useI18n', () => ({ t, locale }));
 		vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined), isLoading: ref(false) }));
 		vi.stubGlobal('useBackendOperation', () => {
-			const run = vi.fn().mockResolvedValue({ success: true });
+			const run = vi.fn().mockResolvedValue({ ok: true, result: { success: true } });
 			runs.push(run);
 			return { run };
 		});
@@ -54,7 +54,7 @@ describe('useThreadDetail', () => {
 				draftSubject: 'Re: question',
 			});
 			expect(approveRun()).toHaveBeenCalledWith({ inboundMessageId: messageId });
-			expect(result).toEqual({ success: true });
+			expect(result).toEqual({ ok: true, result: { success: true } });
 			// Editing mode closes only once both steps succeed.
 			expect(detail.isEditingDraft.value).toBe(false);
 		});
@@ -77,12 +77,12 @@ describe('useThreadDetail', () => {
 			const detail = useThreadDetail(threadId);
 			detail.editedDraftResponse.value = 'A reply';
 			detail.isEditingDraft.value = true;
-			// useBackendOperation.run resolves to undefined on a categorized failure.
-			editRun().mockResolvedValueOnce(undefined);
+			// useBackendOperation.run resolves `ok: false` on a categorized failure.
+			editRun().mockResolvedValueOnce({ ok: false });
 
 			const result = await detail.saveEditedDraft(messageId);
 
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(approveRun()).not.toHaveBeenCalled();
 			// Stays in edit mode so the user can retry without losing their text.
 			expect(detail.isEditingDraft.value).toBe(true);
@@ -92,11 +92,11 @@ describe('useThreadDetail', () => {
 			const detail = useThreadDetail(threadId);
 			detail.editedDraftResponse.value = 'A reply';
 			detail.isEditingDraft.value = true;
-			approveRun().mockResolvedValueOnce(undefined);
+			approveRun().mockResolvedValueOnce({ ok: false });
 
 			const result = await detail.saveEditedDraft(messageId);
 
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(editRun()).toHaveBeenCalledOnce();
 			expect(detail.isEditingDraft.value).toBe(true);
 		});
@@ -121,7 +121,7 @@ describe('useThreadDetail', () => {
 				draftSubject: 'Re: later',
 			});
 			expect(approveRun()).not.toHaveBeenCalled();
-			expect(result).toEqual({ success: true });
+			expect(result).toEqual({ ok: true, result: { success: true } });
 			expect(detail.isEditingDraft.value).toBe(false);
 		});
 
@@ -129,11 +129,11 @@ describe('useThreadDetail', () => {
 			const detail = useThreadDetail(threadId);
 			detail.editedDraftResponse.value = 'Work in progress';
 			detail.isEditingDraft.value = true;
-			saveRevisionRun().mockResolvedValueOnce(undefined);
+			saveRevisionRun().mockResolvedValueOnce({ ok: false });
 
 			const result = await detail.saveDraftOnly(messageId);
 
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(detail.isEditingDraft.value).toBe(true);
 		});
 	});

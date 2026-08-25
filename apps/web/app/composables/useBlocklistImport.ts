@@ -183,7 +183,7 @@ export function useBlocklistImport() {
 	const startImport = async (
 		bulkAddFn: (
 			emails: { email: string; reason: 'manual' }[]
-		) => Promise<BlocklistImportResults | undefined>
+		) => Promise<BackendOperationResult<BlocklistImportResults>>
 	): Promise<BlocklistImportResults | undefined> => {
 		if (!validation.value || validation.value.valid.length === 0) return undefined;
 
@@ -197,15 +197,15 @@ export function useBlocklistImport() {
 
 		const res = await bulkAddFn(payload);
 
-		if (res === undefined) {
+		if (!res.ok) {
 			// The operation layer already surfaced the error; return to preview.
 			step.value = 'preview';
 			return undefined;
 		}
 
-		results.value = res;
+		results.value = res.result;
 		step.value = 'complete';
-		return res;
+		return res.result;
 	};
 
 	return {

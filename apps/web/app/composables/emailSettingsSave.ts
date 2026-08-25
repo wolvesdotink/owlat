@@ -43,12 +43,12 @@ export interface EmailSettingsSaveArgs {
 	/** The full `update` payload for a plain (non-language-swap) save. */
 	updatePayload: EmailSettingsUpdatePayload;
 	/** Patch the row's editable fields (no content re-keying). */
-	update: (payload: EmailSettingsUpdatePayload) => Promise<unknown>;
+	update: (payload: EmailSettingsUpdatePayload) => Promise<BackendOperationResult<unknown>>;
 	/**
 	 * Promote a translation overlay to the default language: merge its text into
 	 * the body, demote the old default to an overlay, swap subject/preview.
 	 */
-	setDefaultLanguage: (payload: { language: string }) => Promise<unknown>;
+	setDefaultLanguage: (payload: { language: string }) => Promise<BackendOperationResult<unknown>>;
 }
 
 export type EmailSettingsSaveResult =
@@ -85,7 +85,7 @@ export async function emailSettingsSave(
 
 	if (!languageChanged) {
 		const result = await args.update(args.updatePayload);
-		return result === undefined ? { status: 'failed' } : { status: 'saved' };
+		return result.ok ? { status: 'saved' } : { status: 'failed' };
 	}
 
 	// Promoting to a language with no overlay would throw in the backend (and
@@ -103,11 +103,11 @@ export async function emailSettingsSave(
 		...args.updatePayload,
 		defaultLanguage: args.persistedDefaultLanguage,
 	});
-	if (updateResult === undefined) {
+	if (!updateResult.ok) {
 		return { status: 'failed' };
 	}
 
 	// Step 2 — promote the now-persisted overlay to the default language.
 	const result = await args.setDefaultLanguage({ language: args.selectedDefaultLanguage });
-	return result === undefined ? { status: 'failed' } : { status: 'language-promoted' };
+	return result.ok ? { status: 'language-promoted' } : { status: 'failed' };
 }

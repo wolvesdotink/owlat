@@ -61,7 +61,7 @@ export function useWebhookDeliveryLogs(
 		isSendingTest.value = true;
 		const result = await sendTestMutation({ webhookId });
 		isSendingTest.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('shared.useWebhookDeliveryLogs.testSent'));
 	};
 

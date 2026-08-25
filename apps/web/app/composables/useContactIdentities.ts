@@ -49,7 +49,7 @@ export function useContactIdentities(contactId: Ref<Id<'contacts'>>) {
 			isPrimary: addForm.isPrimary,
 		});
 		isAdding.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		addForm.channel = 'email';
 		addForm.identifier = '';
 		addForm.isPrimary = false;

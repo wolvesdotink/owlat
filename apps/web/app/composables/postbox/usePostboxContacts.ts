@@ -21,7 +21,7 @@ export function usePostboxContacts(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	});
 
 	async function save(input: { email: string; displayName?: string; organization?: string }) {
-		if (!mailboxId.value) return undefined;
+		if (!mailboxId.value) return { ok: false } as const;
 		return upsertOp.run({
 			mailboxId: mailboxId.value,
 			email: input.email,

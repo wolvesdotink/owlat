@@ -117,10 +117,10 @@ export function useAutomationSteps(
 			config: config as never,
 			insertAtIndex,
 		});
-		if (stepId === undefined) return;
+		if (!stepId.ok) return;
 
-		if (stepId) {
-			selectedStepId.value = stepId;
+		if (stepId.ok) {
+			selectedStepId.value = stepId.result;
 		}
 
 		showToast(t('shared.useAutomationSteps.stepAdded', { step: t(module.label) }));
@@ -128,7 +128,7 @@ export function useAutomationSteps(
 
 	const handleDeleteStep = async (stepId: Id<'automationSteps'>) => {
 		const result = await removeStepMutation({ stepId });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		if (selectedStepId.value === stepId) {
 			selectedStepId.value = null;
 		}

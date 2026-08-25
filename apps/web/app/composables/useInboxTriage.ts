@@ -37,14 +37,14 @@ export function useInboxTriage<T extends { _id: string }>(rows: Ref<T[]>) {
 		label: string;
 		/** True when the action removes the row from the active filter. */
 		leavesView: boolean;
-		/** Forward mutation — resolves to `undefined` on failure. */
-		mutate: () => Promise<unknown>;
+		/** Forward mutation — a `run` whose envelope says whether it landed. */
+		mutate: () => Promise<BackendOperationResult<unknown>>;
 		/** Reverse mutation, run when the user undoes. */
 		inverse: () => Promise<unknown>;
 	}): Promise<boolean> {
 		if (args.leavesView) hide(args.id);
 		const result = await args.mutate();
-		if (result === undefined) {
+		if (!result.ok) {
 			if (args.leavesView) unhide(args.id);
 			return false;
 		}
