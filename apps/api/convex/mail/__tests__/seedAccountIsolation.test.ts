@@ -250,7 +250,7 @@ async function insertSeedRow(
 		domain: 'gmail.example',
 		kind: 'external' as const,
 		scope: 'seed' as const,
-		// A disconnected account's mailbox is soft-deleted by `mail/mailbox.ts`.
+		// A disconnected account's mailbox is soft-deleted by `mail/mailbox/identity.ts`.
 		status: retired ? ('deleted' as const) : ('active' as const),
 		usedBytes: 0,
 		uidValidity: 1,

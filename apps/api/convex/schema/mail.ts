@@ -90,7 +90,7 @@ export const mailTables = {
 		// DELIVERABILITY SEED account: org infrastructure that is NOT anybody's
 		// inbox. It is filtered out of every caller-visible mailbox surface
 		// (`mail/permissions.ts::loadAccessibleMailboxes`,
-		// `mail/mailbox.ts::getActiveMailboxForUser`), so connecting a seed can
+		// `mail/mailbox/identity.ts::getActiveMailboxForUser`), so connecting a seed can
 		// never put the operator's consumer address in their own Postbox nor make
 		// the fresh-start flow believe they already have a mailbox.
 		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'), v.literal('seed'))),
@@ -182,7 +182,7 @@ export const mailTables = {
 		// on (org, email); a person may be pre-added to several inboxes at once,
 		// so this is a prefix range, not a point read.
 		.index('by_org_email', ['organizationId', 'inviteeEmail'])
-		// Cascade-clean grants when a team inbox is deleted (mail/mailbox.ts:remove).
+		// Cascade-clean grants when a team inbox is deleted (mail/mailbox/identity.ts:remove).
 		.index('by_mailbox', ['mailboxId']),
 
 	// External mailbox connection (BYO IMAP/SMTP). Per-user link to an EXISTING
@@ -283,7 +283,7 @@ export const mailTables = {
 		// `purpose`, so this index only ever returns explicitly-tagged accounts.
 		//
 		// `status` is IN the index, not filtered after a bounded page, because
-		// disconnecting an account is a SOFT status change (`mail/mailbox.ts`'s
+		// disconnecting an account is a SOFT status change (`mail/mailbox/identity.ts`'s
 		// `remove` patches the row to 'disconnected' and keeps it). Filtering a
 		// `.take(cap)` page would let retired rows eat slots — the per-org connect
 		// cap would read short and stop refusing, and the roll-up would silently

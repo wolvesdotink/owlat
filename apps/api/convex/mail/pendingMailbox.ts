@@ -5,7 +5,7 @@
  * invite time; the row is consumed (mailbox actually provisioned)
  * when the invitee accepts and we finally have their `userId`.
  *
- * Live mailbox CRUD stays in `mail/mailbox.ts`; this file only owns
+ * Live mailbox CRUD stays in `mail/mailbox/identity.ts`; this file only owns
  * the intent layer.
  */
 

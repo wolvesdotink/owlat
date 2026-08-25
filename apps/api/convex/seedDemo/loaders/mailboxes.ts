@@ -4,7 +4,7 @@
  * teammate lands on the "No mailbox yet" empty state until an admin manually
  * provisions one — the Postbox should work out of the box in dev.
  *
- * Provisions through `provisionMailbox` (mail/mailbox.ts) — the exact body
+ * Provisions through `provisionMailbox` (mail/mailbox/identity.ts) — the exact body
  * behind the admin create path — so system folders and the implicit owner
  * membership can never drift from production provisioning. The scheduled MTA
  * cache push fail-softs in dev (MTA_API_URL unset → pushMailboxToCache logs
