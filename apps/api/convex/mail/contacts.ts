@@ -178,6 +178,84 @@ export const senderState = publicQuery({
 	},
 });
 
+/**
+ * How many recipients one composer draft may ask about at a time. Each answer
+ * is a single indexed lookup, and a draft with more than this many recipients
+ * is a mailing list — the first-time cue is not what it needs.
+ */
+const KNOWN_RECIPIENT_LIMIT = 50;
+
+/**
+ * Which of `emails` this mailbox already has an address-book row for.
+ *
+ * The composer's counterpart to the reader's `senderState`: it marks the
+ * recipients you have NEVER written to (or heard from), so an autocomplete
+ * mis-pick is visible before the send rather than after it. A row exists once
+ * `internalRecordRecipients` has seen the address on a send, or once the owner
+ * VIP'd / accepted the sender — all of which mean "not a stranger".
+ *
+ * Returns the KNOWN subset rather than the unknown one on purpose: the caller
+ * must not treat a pending or refused answer as "everyone is a stranger", which
+ * would brand every recipient first-time.
+ */
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+export const knownRecipients = publicQuery({
+	args: { mailboxId: v.id('mailboxes'), emails: v.array(v.string()) },
+	handler: async (ctx, args) => {
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
+		if (!owned.ok) return [];
+		const wanted = [
+			...new Set(args.emails.map((raw) => normalizeEmail(raw)).filter((e) => e.includes('@'))),
+		].slice(0, KNOWN_RECIPIENT_LIMIT);
+		const known: string[] = [];
+		for (const email of wanted) {
+			const contact = await ctx.db
+				.query('mailContacts')
+				.withIndex('by_mailbox_and_email', (q) =>
+					q.eq('mailboxId', args.mailboxId).eq('email', email)
+				)
+				.first();
+			if (contact) known.push(email);
+		}
+		return known;
+	},
+});
+
+/** Recency window scanned for correspondent domains — the autocomplete's own. */
+const DOMAIN_SCAN_LIMIT = 200;
+/** Distinct domains handed to the client; more than this is not a typo corpus. */
+const DOMAIN_RESULT_LIMIT = 40;
+
+/**
+ * The domains this mailbox actually writes to, most recently used first.
+ *
+ * Feeds the composer's did-you-mean hint: `@northwind.studio` matters far more
+ * to this user than any global provider list, so a near-miss of a domain in
+ * here is the strongest typo signal available. Deliberately takes no recipient
+ * argument, so the subscription is stable per mailbox while chips come and go.
+ */
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+export const correspondentDomains = publicQuery({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args) => {
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
+		if (!owned.ok) return [];
+		const recent = await ctx.db
+			.query('mailContacts')
+			.withIndex('by_mailbox_and_lastUsed', (q) => q.eq('mailboxId', args.mailboxId))
+			.order('desc')
+			.take(DOMAIN_SCAN_LIMIT);
+		const domains = new Set<string>();
+		for (const contact of recent) {
+			const at = contact.email.lastIndexOf('@');
+			const domain = at > 0 ? contact.email.slice(at + 1).toLowerCase() : '';
+			if (domain.includes('.')) domains.add(domain);
+			if (domains.size >= DOMAIN_RESULT_LIMIT) break;
+		}
+		return [...domains];
+	},
+});
+
 export const upsert = authedMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
