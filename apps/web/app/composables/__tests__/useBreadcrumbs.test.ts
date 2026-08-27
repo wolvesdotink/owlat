@@ -175,6 +175,44 @@ describe('useBreadcrumbs', () => {
 		});
 	});
 
+	/**
+	 * The slug fallback printed the raw `mailMessages` id as the last crumb
+	 * ("Mm_…") whenever it was short enough to survive the >20-char filter — a
+	 * document id shown to a reader as a page name.
+	 */
+	describe('postbox message trail', () => {
+		it('names the message instead of printing its document id', () => {
+			expect(labelsFor('/dashboard/postbox/inbox/Mm_abc123')).toEqual([
+				'Mail',
+				'Inbox',
+				'Message',
+			]);
+		});
+
+		it('carries no id-looking crumb', () => {
+			const id = 'Mm_k97e2h4qz1';
+			expect(labelsFor(`/dashboard/postbox/archive/${id}`)).not.toContain(id);
+		});
+
+		it('links the folder crumb back to the folder it was opened from', () => {
+			expect(trailFor('/dashboard/postbox/sent/Mm_abc123')[1]).toEqual({
+				label: 'components.postbox.postboxLayout.folderRoles.sent',
+				href: '/dashboard/postbox/sent',
+			});
+		});
+
+		it('skips the folder crumb for a custom folder (its param is a raw id)', () => {
+			expect(labelsFor('/dashboard/postbox/j57customfolder/Mm_abc123')).toEqual([
+				'Mail',
+				'Message',
+			]);
+		});
+
+		it('reads a label list as a label, not as a message and not as its id', () => {
+			expect(labelsFor('/dashboard/postbox/label/lbl_abc123')).toEqual(['Mail', 'Label']);
+		});
+	});
+
 	it('dynamic overrides still win over the route table', () => {
 		path.value = '/dashboard/admin/instance/general';
 		setDynamicBreadcrumbs([{ label: 'Custom' }]);

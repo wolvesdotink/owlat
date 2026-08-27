@@ -9769,6 +9769,8 @@
 				"editAutomation": "Edit Automation",
 				"editCampaign": "Edit Campaign",
 				"editTemplate": "Edit Template",
+				"label": "Label",
+				"message": "Message",
 				"newAutomation": "New Automation",
 				"pluginSettings": "Plugin settings",
 				"segmentDetails": "Segment Details",
