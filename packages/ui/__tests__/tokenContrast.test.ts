@@ -117,7 +117,7 @@ function pairs(tokens: Map<string, string>): Array<[string, string]> {
 	return all.filter(([token, surface]) => tokens.has(token) && tokens.has(surface));
 }
 
-describe.each(THEMES)('%s theme text contrast', (theme, tokens) => {
+describe.each(THEMES)('%s theme text contrast', (_theme, tokens) => {
 	it('declares every token this suite claims to cover', () => {
 		const missing = [...TEXT_TOKENS, ...STATUS_TOKENS, ...CONTENT_SURFACES]
 			.concat(STATUS_TOKENS.map((token) => `${token}-subtle`))
@@ -151,9 +151,11 @@ describe.each(THEMES)('%s theme text contrast', (theme, tokens) => {
 
 describe('the token that motivated the floor', () => {
 	it('keeps light-mode warning readable rather than decorative', () => {
-		// It shipped at 3.31:1 — a decorative amber. `theme` order in THEMES puts
-		// light first; assert the value, not the position.
-		expect(contrast(resolve(light, '--color-warning'), resolve(light, '--color-bg-base'))).
-			toBeGreaterThanOrEqual(FLOOR);
+		// It shipped at 3.31:1 — an amber that reads as a highlight, not a word.
+		// Named separately from the table above so a future edit that widened an
+		// exclusion could not quietly take this specific pair back out.
+		expect(
+			contrast(resolve(light, '--color-warning'), resolve(light, '--color-bg-base'))
+		).toBeGreaterThanOrEqual(FLOOR);
 	});
 });

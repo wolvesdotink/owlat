@@ -182,11 +182,7 @@ describe('useBreadcrumbs', () => {
 	 */
 	describe('postbox message trail', () => {
 		it('names the message instead of printing its document id', () => {
-			expect(labelsFor('/dashboard/postbox/inbox/Mm_abc123')).toEqual([
-				'Mail',
-				'Inbox',
-				'Message',
-			]);
+			expect(labelsFor('/dashboard/postbox/inbox/Mm_abc123')).toEqual(['Mail', 'Inbox', 'Message']);
 		});
 
 		it('carries no id-looking crumb', () => {

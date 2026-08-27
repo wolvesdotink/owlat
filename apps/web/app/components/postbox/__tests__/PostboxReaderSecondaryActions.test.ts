@@ -18,8 +18,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const read = (path: string) =>
-	readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
+const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 
 const density = read('../../../assets/css/postbox-density.css');
 const reader = read('../PostboxThreadReader.vue');

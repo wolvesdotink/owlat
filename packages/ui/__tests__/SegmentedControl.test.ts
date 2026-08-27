@@ -20,7 +20,7 @@ import { nextTick } from 'vue';
 import SegmentedControl from '../components/ui/SegmentedControl.vue';
 
 /** Deliberately uneven, like the real Flat / Conversations / Categories row. */
-const LABEL_WIDTH: Record<string, number> = { Flat: 44, Conversations: 108, Categories: 84 };
+const LABEL_WIDTH = { Flat: 44, Conversations: 108, Categories: 84 } as const;
 /** `.segmented-control` padding — the first column starts here. */
 const TRACK_PADDING = 3;
 
@@ -30,7 +30,8 @@ const OPTIONS = [
 	{ value: 'categories', label: 'Categories' },
 ];
 
-const widthOf = (el: Element) => LABEL_WIDTH[el.textContent?.trim() ?? ''] ?? 0;
+const widthOf = (el: Element) =>
+	LABEL_WIDTH[(el.textContent?.trim() ?? '') as keyof typeof LABEL_WIDTH] ?? 0;
 
 let originalWidth: PropertyDescriptor | undefined;
 let originalLeft: PropertyDescriptor | undefined;
@@ -97,7 +98,7 @@ describe('SegmentedControl sliding indicator', () => {
 		const w = mountControl('conversations');
 		await settle();
 		expect(indicatorBox(w.find('.segmented-control__indicator').attributes('style') ?? '')).toEqual(
-			{ left: TRACK_PADDING + LABEL_WIDTH.Flat!, width: LABEL_WIDTH.Conversations }
+			{ left: TRACK_PADDING + LABEL_WIDTH.Flat, width: LABEL_WIDTH.Conversations }
 		);
 		w.unmount();
 	});
@@ -109,7 +110,7 @@ describe('SegmentedControl sliding indicator', () => {
 		await settle();
 		expect(indicatorBox(w.find('.segmented-control__indicator').attributes('style') ?? '')).toEqual(
 			{
-				left: TRACK_PADDING + LABEL_WIDTH.Flat! + LABEL_WIDTH.Conversations!,
+				left: TRACK_PADDING + LABEL_WIDTH.Flat + LABEL_WIDTH.Conversations,
 				width: LABEL_WIDTH.Categories,
 			}
 		);
