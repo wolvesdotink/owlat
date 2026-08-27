@@ -266,53 +266,6 @@ export const spamVerdictValidator = v.union(
 	v.literal('quarantine')
 );
 
-// Postbox reader auto-advance preference (mailUserSettings.autoAdvance and
-// mail/settings update args) — single source so schema and args can't drift.
-export const mailAutoAdvanceValidator = v.union(
-	v.literal('next'),
-	v.literal('previous'),
-	v.literal('back-to-list')
-);
-
-// Postbox default reply behavior (mailUserSettings.replyDefault and mail/settings
-// update args) — whether the primary reply affordance / `r` opens a plain Reply
-// or a Reply-all. Single source so schema and args can't drift.
-export const mailReplyDefaultValidator = v.union(v.literal('reply'), v.literal('reply-all'));
-
-// Postbox list/reader density (mailUserSettings.density and mail/settings update
-// args) — 'comfortable' (the roomy default) vs 'compact' (tighter rows +
-// single-line subject/snippet). Single source so schema and args can't drift.
-export const mailDensityValidator = v.union(v.literal('comfortable'), v.literal('compact'));
-
-// Postbox inbox list view mode (mailUserSettings.viewMode and mail/settings
-// update args) — 'flat' (single message list, the default), 'conversations'
-// (thread-grouped rows), or 'categories' (People / Newsletters / Notifications
-// / Receipts sections). Inbox-only; other folders always render flat. Single
-// source so schema and args can't drift.
-export const mailViewModeValidator = v.union(
-	v.literal('flat'),
-	v.literal('conversations'),
-	v.literal('categories')
-);
-
-// Postbox inbox landing mode (mailUserSettings.inboxMode and mail/settings
-// update args) — 'today' (the focused single-column landing view; the default)
-// vs 'browse' (the full three-pane folder UI). Inbox-only; persisted as the
-// user's last-used mode. Single source so schema and args can't drift.
-export const mailInboxModeValidator = v.union(v.literal('today'), v.literal('browse'));
-
-// Postbox desktop-notification scope (mailUserSettings.notifyAbout and
-// mail/settings update args). 'everything' fires a toast for every new inbox
-// message; 'people-important' only for smart-category `person` mail (and any
-// message whose category is absent — fail-open so nothing is silently dropped
-// before the classifier has run); 'nothing' suppresses toasts entirely. Single
-// source so schema and args can't drift.
-export const mailNotifyAboutValidator = v.union(
-	v.literal('everything'),
-	v.literal('people-important'),
-	v.literal('nothing')
-);
-
 // Email template kind (emailTemplates.type and its CRUD args)
 export const emailTemplateTypeValidator = v.union(
 	v.literal('marketing'),

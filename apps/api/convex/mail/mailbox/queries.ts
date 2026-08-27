@@ -13,6 +13,7 @@
 import { v } from 'convex/values';
 import type { QueryCtx } from '../../_generated/server';
 import { publicQuery } from '../../lib/authedFunctions';
+import { mailSortOrderValidator } from '../../lib/mailSettingsValidators';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { loadReadableMailbox, loadAccessibleMailboxes } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
@@ -54,12 +55,18 @@ async function attachThreadFollowUps(
 }
 
 /**
- * List messages in a mailbox (most-recent first), for the webmail UI.
+ * List messages in a mailbox, for the webmail UI.
+ *
+ * `sortOrder` flips the arrival direction on the same index: 'newest' (the
+ * default, and the only order this view had before) reads descending, 'oldest'
+ * ascending for clearing a backlog front to back. Omitting it is exactly the
+ * previous behaviour, so a client that never sends it is unaffected.
  *
  * Keyset-paginated: pass `nextCursor` from the previous response to fetch the
  * next page. The cursor is opaque (a Convex paginate cursor minted for this
- * exact index + filter) and stays valid across live updates of already-read
- * rows; a folder switch simply starts again without one.
+ * exact index + filter + direction) and stays valid across live updates of
+ * already-read rows; a folder switch or a sort flip simply starts again
+ * without one.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listMessages = publicQuery({
@@ -69,6 +76,7 @@ export const listMessages = publicQuery({
 		folderId: v.optional(v.id('mailFolders')),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
+		sortOrder: v.optional(mailSortOrderValidator),
 	},
 	handler: async (ctx, args) => {
 		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false, nextCursor: null };
@@ -76,6 +84,10 @@ export const listMessages = publicQuery({
 		if (!mailbox) return empty;
 
 		const now = Date.now();
+		// Arrival direction, applied to every branch below so the folder, custom
+		// folder, label and Snoozed views never disagree about what "oldest" means.
+		const oldestFirst = args.sortOrder === 'oldest';
+		const order = oldestFirst ? ('asc' as const) : ('desc' as const);
 		const limit = Math.min(args.limit ?? 50, 500);
 		const pagination = { cursor: args.cursor ?? null, numItems: limit };
 		// A message is hidden from its origin folder while snoozedUntil is in the
@@ -94,7 +106,9 @@ export const listMessages = publicQuery({
 				)
 				.take(limit + 1);
 			const hasMore = raw.length > limit;
-			const messages = raw.slice(0, limit).sort((a, b) => b.receivedAt - a.receivedAt);
+			const messages = raw
+				.slice(0, limit)
+				.sort((a, b) => (oldestFirst ? a.receivedAt - b.receivedAt : b.receivedAt - a.receivedAt));
 			return { messages, hasMore, nextCursor: null };
 		}
 
@@ -107,7 +121,7 @@ export const listMessages = publicQuery({
 			const page = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
-				.order('desc')
+				.order(order)
 				.paginate(pagination);
 			return {
 				messages: await attachThreadFollowUps(
@@ -131,7 +145,7 @@ export const listMessages = publicQuery({
 			const page = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
-				.order('desc')
+				.order(order)
 				.paginate(pagination);
 			return {
 				messages: await attachThreadFollowUps(
@@ -147,7 +161,7 @@ export const listMessages = publicQuery({
 		const page = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
-			.order('desc')
+			.order(order)
 			.paginate(pagination);
 		return {
 			messages: await attachThreadFollowUps(

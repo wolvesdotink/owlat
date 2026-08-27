@@ -78,9 +78,11 @@ async function insertMessage(
 	mailboxId: Id<'mailboxes'>,
 	folderId: Id<'mailFolders'>,
 	subject: string,
-	uid: number
+	uid: number,
+	/** Arrival time — distinct values let the sort-order assertions be exact. */
+	receivedAt?: number
 ): Promise<void> {
-	const now = Date.now();
+	const now = receivedAt ?? Date.now();
 	const threadId = await ctx.db.insert('mailThreads', {
 		mailboxId,
 		normalizedSubject: subject,
@@ -169,5 +171,82 @@ describe('mail.mailbox.queries.listMessages — custom folder by id', () => {
 			folderId: otherFolderId,
 		});
 		expect(result.messages).toHaveLength(0);
+	});
+});
+
+describe('mail.mailbox.queries.listMessages — sort order', () => {
+	/** Three inbox messages an hour apart, oldest ("first") inserted last. */
+	async function seedInbox() {
+		const t = convexTest(schema, modules);
+		let mailboxId!: Id<'mailboxes'>;
+		await t.run(async (ctx) => {
+			mailboxId = await insertMailbox(ctx, 'test-user');
+			const inboxId = await insertFolder(ctx, mailboxId, 'INBOX', 'inbox');
+			const base = Date.now() - 10 * 3_600_000;
+			await insertMessage(ctx, mailboxId, inboxId, 'third', 3, base + 2 * 3_600_000);
+			await insertMessage(ctx, mailboxId, inboxId, 'second', 2, base + 3_600_000);
+			await insertMessage(ctx, mailboxId, inboxId, 'first', 1, base);
+		});
+		return { t, mailboxId };
+	}
+
+	it('defaults to newest-first when no order is given', async () => {
+		const { t, mailboxId } = await seedInbox();
+		const result = await t.query(api.mail.mailbox.queries.listMessages, {
+			mailboxId,
+			folderRole: 'inbox',
+		});
+		expect(result.messages.map((m) => m.subject)).toEqual(['third', 'second', 'first']);
+	});
+
+	it('reads the folder oldest-first when asked', async () => {
+		const { t, mailboxId } = await seedInbox();
+		const result = await t.query(api.mail.mailbox.queries.listMessages, {
+			mailboxId,
+			folderRole: 'inbox',
+			sortOrder: 'oldest',
+		});
+		expect(result.messages.map((m) => m.subject)).toEqual(['first', 'second', 'third']);
+	});
+
+	it('walks the oldest-first cursor forward without repeating a page', async () => {
+		const { t, mailboxId } = await seedInbox();
+		const page1 = await t.query(api.mail.mailbox.queries.listMessages, {
+			mailboxId,
+			folderRole: 'inbox',
+			sortOrder: 'oldest',
+			limit: 2,
+		});
+		expect(page1.messages.map((m) => m.subject)).toEqual(['first', 'second']);
+		expect(page1.nextCursor).not.toBeNull();
+
+		const page2 = await t.query(api.mail.mailbox.queries.listMessages, {
+			mailboxId,
+			folderRole: 'inbox',
+			sortOrder: 'oldest',
+			limit: 2,
+			cursor: page1.nextCursor ?? undefined,
+		});
+		expect(page2.messages.map((m) => m.subject)).toEqual(['third']);
+	});
+
+	it('applies the same direction to a custom folder addressed by id', async () => {
+		const t = convexTest(schema, modules);
+		let mailboxId!: Id<'mailboxes'>;
+		let customFolderId!: Id<'mailFolders'>;
+		await t.run(async (ctx) => {
+			mailboxId = await insertMailbox(ctx, 'test-user');
+			customFolderId = await insertFolder(ctx, mailboxId, 'Receipts');
+			const base = Date.now() - 5 * 3_600_000;
+			await insertMessage(ctx, mailboxId, customFolderId, 'newer', 2, base + 3_600_000);
+			await insertMessage(ctx, mailboxId, customFolderId, 'older', 1, base);
+		});
+
+		const oldest = await t.query(api.mail.mailbox.queries.listMessages, {
+			mailboxId,
+			folderId: customFolderId,
+			sortOrder: 'oldest',
+		});
+		expect(oldest.messages.map((m) => m.subject)).toEqual(['older', 'newer']);
 	});
 });

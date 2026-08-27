@@ -22,8 +22,9 @@ import {
 	mailDensityValidator,
 	mailViewModeValidator,
 	mailInboxModeValidator,
+	mailSortOrderValidator,
 	mailNotifyAboutValidator,
-} from '../lib/convexValidators';
+} from '../lib/mailSettingsValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
 // public: soft-auth — returns null for anonymous; the row is self-scoped to
@@ -46,6 +47,7 @@ export const get = publicQuery({
 			density: row.density,
 			viewMode: row.viewMode,
 			inboxMode: row.inboxMode,
+			sortOrder: row.sortOrder,
 			isSendSoundOn: row.isSendSoundOn,
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
@@ -65,6 +67,7 @@ export const update = authedMutation({
 		density: v.optional(mailDensityValidator),
 		viewMode: v.optional(mailViewModeValidator),
 		inboxMode: v.optional(mailInboxModeValidator),
+		sortOrder: v.optional(mailSortOrderValidator),
 		isSendSoundOn: v.optional(v.boolean()),
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
@@ -88,6 +91,7 @@ export const update = authedMutation({
 			density?: (typeof args)['density'];
 			viewMode?: (typeof args)['viewMode'];
 			inboxMode?: (typeof args)['inboxMode'];
+			sortOrder?: (typeof args)['sortOrder'];
 			isSendSoundOn?: boolean;
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
@@ -101,6 +105,7 @@ export const update = authedMutation({
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
 		if (args.inboxMode !== undefined) patch.inboxMode = args.inboxMode;
+		if (args.sortOrder !== undefined) patch.sortOrder = args.sortOrder;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
 		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;

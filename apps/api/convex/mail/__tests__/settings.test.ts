@@ -124,6 +124,26 @@ describe('mail.settings get/update', () => {
 		).rejects.toThrow();
 	});
 
+	it('round-trips the list sort order without clobbering other preferences', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { viewMode: 'categories' });
+		await t.mutation(api.mail.settings.update, { sortOrder: 'oldest' });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			viewMode: 'categories',
+			sortOrder: 'oldest',
+		});
+	});
+
+	it('rejects a sort order outside the union', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.mail.settings.update, {
+				sortOrder: 'largest' as unknown as 'newest',
+			})
+		).rejects.toThrow();
+	});
+
 	it('rejects a view mode outside the union', async () => {
 		const t = convexTest(schema, modules);
 		await expect(

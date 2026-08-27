@@ -597,6 +597,7 @@ import type * as lib_llmProviders_openaiCompatible from '../lib/llmProviders/ope
 import type * as lib_llmProviders_openrouter from '../lib/llmProviders/openrouter.js';
 import type * as lib_llmProviders_types from '../lib/llmProviders/types.js';
 import type * as lib_mailHost from '../lib/mailHost.js';
+import type * as lib_mailSettingsValidators from '../lib/mailSettingsValidators.js';
 import type * as lib_mailSnooze from '../lib/mailSnooze.js';
 import type * as lib_accountExportEncoding from '../lib/accountExportEncoding.js';
 import type * as lib_accountExportTemplates from '../lib/accountExportTemplates.js';
@@ -1610,6 +1611,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llmProviders/openrouter': typeof lib_llmProviders_openrouter;
 	'lib/llmProviders/types': typeof lib_llmProviders_types;
 	'lib/mailHost': typeof lib_mailHost;
+	'lib/mailSettingsValidators': typeof lib_mailSettingsValidators;
 	'lib/mailSnooze': typeof lib_mailSnooze;
 	'lib/accountExportEncoding': typeof lib_accountExportEncoding;
 	'lib/accountExportTemplates': typeof lib_accountExportTemplates;

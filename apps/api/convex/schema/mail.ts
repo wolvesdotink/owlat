@@ -4,16 +4,19 @@ import { destinationProviderValidator } from '../delivery/deliverabilityValidato
 import {
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
+	mailUnsubscribeValidator,
+	spamVerdictValidator,
+	draftQualityValidator,
+} from '../lib/convexValidators';
+import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
 	mailViewModeValidator,
 	mailInboxModeValidator,
+	mailSortOrderValidator,
 	mailNotifyAboutValidator,
-	mailUnsubscribeValidator,
-	spamVerdictValidator,
-	draftQualityValidator,
-} from '../lib/convexValidators';
+} from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
@@ -1311,6 +1314,11 @@ export const mailTables = {
 		// mode. Optional so existing rows read as undefined; the reader defaults
 		// it to 'today'.
 		inboxMode: v.optional(mailInboxModeValidator),
+		// Message-list sort order: 'newest' (arrival descending) vs 'oldest'
+		// (ascending, for clearing a backlog front to back). Date direction only.
+		// Optional so existing rows read as undefined; the list defaults it to
+		// 'newest' — exactly the hardcoded order it had before the control.
+		sortOrder: v.optional(mailSortOrderValidator),
 		// Play a short confirmation sound when a message is dispatched. Optional so
 		// existing rows read as undefined; the reader defaults it OFF (opt-in).
 		isSendSoundOn: v.optional(v.boolean()),
