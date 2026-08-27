@@ -18,12 +18,17 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { PostboxFlagOverride } from './usePostboxOptimisticFlags';
 
 export function usePostboxRowTriage(args: {
 	/** Hide a row optimistically while its mutation is in flight. */
 	hide: (id: Id<'mailMessages'>) => void;
 	/** Restore a row whose mutation failed, or that the user undid. */
 	unhide: (id: Id<'mailMessages'>) => void;
+	/** Paint a star / read change on a row while its mutation is in flight. */
+	setFlags: (id: Id<'mailMessages'>, patch: PostboxFlagOverride) => void;
+	/** Drop a row's painted flags — the mutation failed, the server value wins. */
+	clearFlags: (id: Id<'mailMessages'>) => void;
 }) {
 	const { t } = useI18n();
 	const triageUndo = usePostboxTriageUndo();
@@ -97,12 +102,20 @@ export function usePostboxRowTriage(args: {
 			moveOp.run({ messageIds: [id], targetFolderId })
 		);
 
-	function toggleStar(id: Id<'mailMessages'>, starred: boolean) {
-		void setStarOp.run({ messageId: id, starred });
+	/**
+	 * Star and mark-read keep their row, so instead of the hide/restore pair they
+	 * paint the new flag immediately and drop the claim if the mutation fails —
+	 * the list's `usePostboxOptimisticFlags` prunes it once the subscription
+	 * delivers the confirmed row.
+	 */
+	async function toggleStar(id: Id<'mailMessages'>, starred: boolean) {
+		args.setFlags(id, { flagFlagged: starred });
+		if (!(await setStarOp.run({ messageId: id, starred })).ok) args.clearFlags(id);
 	}
 
-	function toggleRead(id: Id<'mailMessages'>, seen: boolean) {
-		void markReadOp.run({ messageId: id, seen });
+	async function toggleRead(id: Id<'mailMessages'>, seen: boolean) {
+		args.setFlags(id, { flagSeen: seen });
+		if (!(await markReadOp.run({ messageId: id, seen })).ok) args.clearFlags(id);
 	}
 
 	/** Snooze is row-removing but has no `moved` inverse — it un-hides on failure. */

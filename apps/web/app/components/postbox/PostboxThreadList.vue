@@ -51,14 +51,22 @@ const { t } = useI18n();
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 
-// Optimistic row removal — hide on archive/trash, restore on failure (see
-// usePostboxOptimisticHide).
+// Optimistic row state, in two layers over the rows the folder query delivers:
+//   - flags: star / mark-read paint immediately and are pruned once the live
+//     row agrees (usePostboxOptimisticFlags), then
+//   - removal: archive/trash/snooze hide the row, restoring it on failure
+//     (usePostboxOptimisticHide).
 const messagesRef = computed(() => props.messages);
+const {
+	rows: flaggedMessages,
+	setFlags: setRowFlags,
+	clearFlags: clearRowFlags,
+} = usePostboxOptimisticFlags(messagesRef);
 const {
 	visible: visibleMessages,
 	hide: hideRow,
 	unhide: unhideRow,
-} = usePostboxOptimisticHide(messagesRef);
+} = usePostboxOptimisticHide(flaggedMessages);
 
 // Visual row order for the reader's auto-advance (PostboxLayout reads this
 // via a template ref): the optimistic-hide-filtered list as rendered.
@@ -69,7 +77,12 @@ defineExpose({ visibleIds });
 // context menu, the long-press menu and the single-key shortcuts), including
 // the optimistic hide/restore and the "Undo — Cmd+Z" registration.
 const { archiveMsg, trashMsg, moveMsg, snoozeMsg, toggleStar, toggleRead, cancelFollowUp } =
-	usePostboxRowTriage({ hide: hideRow, unhide: unhideRow });
+	usePostboxRowTriage({
+		hide: hideRow,
+		unhide: unhideRow,
+		setFlags: setRowFlags,
+		clearFlags: clearRowFlags,
+	});
 
 // Pending compose intent for r/a/f from the list: opening the composer needs the
 // reader's quoting/recipient logic, so we open the message first and let
@@ -203,13 +216,13 @@ const {
 				void trashMsg(m._id);
 				break;
 			case 'star':
-				toggleStar(m._id, !m.flagFlagged);
+				void toggleStar(m._id, !m.flagFlagged);
 				break;
 			case 'toggleRead':
-				toggleRead(m._id, !m.flagSeen);
+				void toggleRead(m._id, !m.flagSeen);
 				break;
 			case 'markUnread':
-				toggleRead(m._id, false);
+				void toggleRead(m._id, false);
 				break;
 			case 'toggleSelect':
 				bulk.toggle(m._id);
