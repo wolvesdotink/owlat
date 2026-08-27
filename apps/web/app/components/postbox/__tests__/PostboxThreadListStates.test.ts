@@ -258,3 +258,19 @@ describe('PostboxThreadList optimistic star / mark-read', () => {
 		expect(w.find('[aria-label="Star"]').exists()).toBe(true);
 	});
 });
+
+describe('PostboxThreadList hover read-ahead', () => {
+	it('warms the hovered row, not just the keyboard-focused one', async () => {
+		prefetchSpy.mockClear();
+		const w = mountList({ loading: false, messages: [makeMessage(1), makeMessage(2)] });
+		await w.findAll('li')[1]!.trigger('mouseenter');
+		expect(prefetchSpy).toHaveBeenCalledWith(['msg-2']);
+	});
+
+	it('warms a row the focus ring lands on (tabbing, not just the pointer)', async () => {
+		prefetchSpy.mockClear();
+		const w = mountList({ loading: false, messages: [makeMessage(1), makeMessage(2)] });
+		await w.findAll('li')[0]!.trigger('focusin');
+		expect(prefetchSpy).toHaveBeenCalledWith(['msg-1']);
+	});
+});

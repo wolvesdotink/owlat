@@ -257,6 +257,15 @@ const {
 // previous rows' bodies (same query the reader runs, debounced, LRU-capped and
 // fail-soft) so Enter / auto-advance opens instantly, not on a body round-trip.
 const { prefetch: prefetchAdjacent } = usePostboxPrefetch();
+
+// The mouse half of the same read-ahead: hovering (or tabbing to) a row warms
+// the body the click is about to need. The composable's 150ms debounce means a
+// pointer sweeping down the list warms only where it comes to rest, and its LRU
+// cap bounds what a long sweep can accumulate — so this needs no throttle of
+// its own.
+function prefetchRow(id: string) {
+	prefetchAdjacent([id]);
+}
 watch([focusedIndex, () => props.activeMessageId], () => {
 	const ids = visibleIds.value;
 	let anchor = focusedIndex.value;
@@ -412,6 +421,7 @@ onMounted(async () => {
 					@toggle-read="toggleRead(msg._id, !msg.flagSeen)"
 					@archive="archiveMsg(msg._id)"
 					@trash="trashMsg(msg._id)"
+					@prefetch="prefetchRow(msg._id)"
 					@cancel-follow-up="cancelFollowUp(msg)"
 				/>
 			</div>

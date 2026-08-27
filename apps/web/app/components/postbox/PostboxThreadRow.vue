@@ -54,6 +54,12 @@ const emit = defineEmits<{
 	archive: [];
 	trash: [];
 	'cancel-follow-up': [];
+	/**
+	 * The pointer or the focus ring landed on this row — the list warms its body
+	 * (debounced, so a sweep across the list costs one round-trip, not one per
+	 * row it passes over).
+	 */
+	prefetch: [];
 }>();
 
 const rowId = computed(() => `postbox-row-${props.msg._id}`);
@@ -222,6 +228,8 @@ onUnmounted(cancelLongPress);
 				"
 				@contextmenu="onContextmenu"
 				@keydown="onKeydown"
+				@mouseenter="emit('prefetch')"
+				@focusin="emit('prefetch')"
 				@pointerdown="onRowPointerdown"
 				@pointermove="onRowPointermove"
 				@pointerup="cancelLongPress"
