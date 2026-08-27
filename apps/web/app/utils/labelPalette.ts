@@ -20,9 +20,9 @@ export interface LabelPresetColor {
 export const LABEL_PRESET_COLORS = [
 	{ token: 'brand', hex: '#b86b4d' },
 	{ token: 'accent', hex: '#b8936a' },
-	{ token: 'success', hex: '#5a7a50' },
-	{ token: 'info', hex: '#4a7a9a' },
-	{ token: 'warning', hex: '#a8853a' },
+	{ token: 'success', hex: '#55744b' },
+	{ token: 'info', hex: '#46748f' },
+	{ token: 'warning', hex: '#8a6a25' },
 	{ token: 'error', hex: '#a85545' },
 	{ token: 'brand-dim', hex: '#8a4630' },
 ] as const satisfies readonly LabelPresetColor[];

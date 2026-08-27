@@ -47,9 +47,10 @@
 	--color-border-strong: #d0d0d0;
 
 	/* === SEMANTIC === */
-	--color-success: #5a7a50;
+	/* Light-first defaults; light.css restates them with the contrast notes. */
+	--color-success: #55744b;
 	--color-success-subtle: #f1f6f0;
-	--color-warning: #a8853a;
+	--color-warning: #8a6a25;
 	--color-warning-subtle: #faf5ea;
 	--color-error: #a85545;
 	--color-error-subtle: #faf0ee;
@@ -60,7 +61,7 @@
 	   This one is redder and further from terracotta, and still clears AA against
 	   --color-text-inverse in both themes (6.8:1 light, 5.1:1 dark). */
 	--color-error-strong: #9c3520;
-	--color-info: #4a7a9a;
+	--color-info: #46748f;
 	--color-info-subtle: #eff5f9;
 
 	/* === FONTS === */
