@@ -5,8 +5,6 @@ import type { ComposerAttachment } from '~/composables/postbox/usePostboxCompose
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
-import { canonicalEmailAddress } from '~/utils/recipientHints';
-import { showsRecipientSealGlyphs } from '~/utils/sealRecipients';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -117,27 +115,13 @@ const seal = usePostboxComposerSealLock(() => activeDraftId.value ?? undefined, 
 	onConfirm: (opts) => void handleSend(opts),
 });
 
-// Plan idea 11: the per-recipient key verdicts the envelope draws on its chips.
-// Handed over ONLY for the verdicts that actually turn on recipient keys — under
-// an `off`/`ask` policy or a missing signing key a lock on a chip would imply an
-// encryption that is not going to happen, so the chips stay silent instead.
-const chipSealStates = computed(() =>
-	seal.enabled && showsRecipientSealGlyphs(seal.state) ? seal.recipients : []
-);
-
-/**
- * Drop a keyless recipient named by the seal lock. A recipient-list edit, not a
- * consent path: the server recomputes the seal state from the shorter list, and
- * plaintext still requires the unsealed prompt. Removes from every envelope
- * field, since the blocker set is derived from To + Cc + Bcc together.
- */
-function removeSealBlocker(address: string) {
-	const canon = canonicalEmailAddress(address);
-	const without = (list: string[]) => list.filter((a) => canonicalEmailAddress(a) !== canon);
-	toAddresses.value = without(toAddresses.value);
-	ccAddresses.value = without(ccAddresses.value);
-	bccAddresses.value = without(bccAddresses.value);
-}
+// Plan idea 11: which chips may show a key glyph, and what removing a named
+// blocker does. Both live in a sibling composable so this file stays focused.
+const { chipSealStates, removeSealBlocker } = usePostboxComposerSealChips(seal, {
+	toAddresses,
+	ccAddresses,
+	bccAddresses,
+});
 
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
@@ -304,23 +288,6 @@ const { promoting, basicEditor, focusBody, handlePromote } = usePostboxComposerI
 });
 defineExpose({ focusBody });
 
-const unscheduling = ref(false);
-async function handleUnschedule() {
-	if (unscheduling.value) return;
-	unscheduling.value = true;
-	try {
-		// Reverts the row to 'draft' — re-enables autosave + editing. Errors are
-		// already toasted by useBackendOperation.
-		await cancelSchedule();
-	} finally {
-		unscheduling.value = false;
-	}
-}
-
-const scheduledLabel = computed(() =>
-	scheduledSendAt.value ? formatDateTime(scheduledSendAt.value) : ''
-);
-
 const lastSavedLabel = computed(() => {
 	if (isSaving.value) return t('common.saving');
 	if (!lastSavedAt.value) return '';
@@ -404,25 +371,13 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@remove-recipient="removeSealBlocker"
 		/>
 
-		<div
-			v-if="isScheduled"
-			class="flex items-center justify-between gap-3 px-3 py-2 border-b border-border-subtle bg-bg-surface text-sm"
-		>
-			<span class="inline-flex items-center gap-1.5 text-text-secondary">
-				<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
-				{{ t('components.postbox.postboxComposer.scheduledFor', { datetime: scheduledLabel }) }}
-			</span>
-			<UiButton
-				variant="ghost"
-				type="button"
-				class="text-xs"
-				:disabled="unscheduling"
-				@click="handleUnschedule"
-			>
-				<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin" />
-				{{ t('components.postbox.postboxComposer.unschedule') }}
-			</UiButton>
-		</div>
+		<!-- A scheduled draft is read-only until it is taken back; the banner owns
+		     both the "goes out at" line and the unschedule control. -->
+		<PostboxComposerScheduledBanner
+			:is-scheduled="isScheduled"
+			:scheduled-send-at="scheduledSendAt"
+			:cancel-schedule="cancelSchedule"
+		/>
 
 		<div class="flex-1 overflow-hidden">
 			<PostboxBasicEditor
