@@ -46,6 +46,49 @@ export interface RecipientKeyState {
 	pinnedPublicKeyArmored?: string;
 }
 
+/**
+ * Can this dispatch actually seal to this recipient? The ONE definition — a
+ * pinned key is usable only when the row is `trusted` AND the public material is
+ * actually there. Read by the dispatch decision, by the composer's aggregate
+ * state, and by the per-recipient chip view, so the three can never disagree
+ * about who is keyless. A type predicate, so the dispatch path gets the armored
+ * key narrowed to a string for free rather than re-asserting it.
+ */
+function hasUsableSealKey(
+	recipient: RecipientKeyState
+): recipient is RecipientKeyState & { pinnedPublicKeyArmored: string } {
+	return recipient.outcome === 'trusted' && !!recipient.pinnedPublicKeyArmored;
+}
+
+/**
+ * ONE recipient's key as the composer shows it on their chip (plan idea 11).
+ * Carries the public trust state plus `hasUsableKey` — whether that key can
+ * actually seal to them. The two are NOT the same: a `trusted` row whose pinned
+ * public key is missing cannot seal, and a composer that reasoned from `outcome`
+ * alone would draw a lock on a chip the dispatch path counts as keyless.
+ * Deliberately free of `pinnedPublicKeyArmored`: the chip needs the verdict, not
+ * the material.
+ */
+export interface RecipientSealView {
+	address: string;
+	outcome: RecipientKeyOutcome;
+	hasUsableKey: boolean;
+}
+
+/**
+ * Project recipient key states down to what the composer chips may see, using
+ * the EXACT usability predicate {@link deriveSealState} applies. Pure, and the
+ * single definition of "this recipient can be sealed to", so the per-chip glyph
+ * and the aggregate lock cannot disagree about who is blocking encryption.
+ */
+export function toRecipientSealViews(recipients: RecipientKeyState[]): RecipientSealView[] {
+	return recipients.map((r) => ({
+		address: r.address,
+		outcome: r.outcome,
+		hasUsableKey: hasUsableSealKey(r),
+	}));
+}
+
 /** Everything the dispatch-time seal decision reads, gathered by a V8 query. */
 export interface SealInputs {
 	/** Whether the `sealedMail` feature flag is live. */
@@ -144,9 +187,7 @@ export function decideSeal(inputs: SealInputs): SealDecision {
 	// D2: seal ONLY when ALL recipients have a usable pinned key.
 	const keys: string[] = [];
 	for (const r of inputs.recipients) {
-		if (r.outcome !== 'trusted' || !r.pinnedPublicKeyArmored) {
-			return { seal: false, reason: 'recipient_no_key' };
-		}
+		if (!hasUsableSealKey(r)) return { seal: false, reason: 'recipient_no_key' };
 		keys.push(r.pinnedPublicKeyArmored);
 	}
 	if (!inputs.hasSigningKey) return { seal: false, reason: 'no_signing_key' };
@@ -206,8 +247,9 @@ export function deriveSealState(
 	if (recipients.length === 0) return { kind: 'cannotSeal', reason: 'no_recipients' };
 	const changed = recipients.filter((r) => r.outcome === 'keyChanged').map((r) => r.address);
 	if (changed.length > 0) return { kind: 'keyChanged', addresses: changed };
-	const allTrusted = recipients.every((r) => r.outcome === 'trusted' && !!r.pinnedPublicKeyArmored);
-	if (!allTrusted) return { kind: 'cannotSeal', reason: 'recipient_no_key' };
+	if (!recipients.every(hasUsableSealKey)) {
+		return { kind: 'cannotSeal', reason: 'recipient_no_key' };
+	}
 	if (!hasSigningKey) return { kind: 'cannotSeal', reason: 'no_signing_key' };
 	// Keys are ready. Under `ask` the org wants a human decision, so the composer
 	// reports "won't seal automatically" rather than promising encryption.

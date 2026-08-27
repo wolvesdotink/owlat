@@ -162,3 +162,48 @@ describe('PostboxRecipientField — first-time recipients (plan idea 5)', () => 
 		expect(wrapper.find('[data-testid="postbox-first-time-chip"]').exists()).toBe(false);
 	});
 });
+
+describe('PostboxRecipientField — per-recipient seal state (plan idea 11)', () => {
+	it('marks each chip with its own key verdict', () => {
+		const wrapper = mountField({
+			modelValue: ['ines@northwind.studio', 'jonas@acme-corp.io'],
+			sealStates: [
+				{ address: 'ines@northwind.studio', outcome: 'trusted', hasUsableKey: true },
+				{ address: 'jonas@acme-corp.io', outcome: 'notFound', hasUsableKey: false },
+			],
+		});
+		const chips = wrapper.findAll('[draggable="true"]');
+		expect(chips[0]?.find('[data-testid="postbox-chip-seal-sealed"]').exists()).toBe(true);
+		expect(chips[0]?.find('[data-testid="postbox-chip-no-key"]').exists()).toBe(false);
+		// The keyless one is named in words, not only glyphed.
+		expect(chips[1]?.find('[data-testid="postbox-chip-seal-noKey"]').exists()).toBe(true);
+		expect(chips[1]?.text()).toContain('no key');
+	});
+
+	it('matches a chip to its verdict regardless of the case it was typed in', () => {
+		const wrapper = mountField({
+			modelValue: ['Ines@Northwind.Studio'],
+			sealStates: [{ address: 'ines@northwind.studio', outcome: 'trusted', hasUsableKey: true }],
+		});
+		expect(wrapper.find('[data-testid="postbox-chip-seal-sealed"]').exists()).toBe(true);
+	});
+
+	it('says nothing about sealing when the composer passed no verdicts', () => {
+		const wrapper = mountField({ modelValue: ['ines@northwind.studio'] });
+		expect(wrapper.find('[data-testid="postbox-chip-no-key"]').exists()).toBe(false);
+		expect(wrapper.html()).not.toContain('postbox-chip-seal');
+		// …and the address itself is still rendered.
+		expect(wrapper.get('[draggable="true"]').text()).toContain('ines@northwind.studio');
+	});
+
+	it('leaves a chip the server has not answered for unmarked', () => {
+		const wrapper = mountField({
+			modelValue: ['ines@northwind.studio', 'just-typed@acme-corp.io'],
+			sealStates: [{ address: 'ines@northwind.studio', outcome: 'trusted', hasUsableKey: true }],
+		});
+		const chips = wrapper.findAll('[draggable="true"]');
+		expect(chips[0]?.find('[data-testid="postbox-chip-seal-sealed"]').exists()).toBe(true);
+		expect(chips[1]?.html()).not.toContain('postbox-chip-seal');
+		expect(chips[1]?.text()).toContain('just-typed@acme-corp.io');
+	});
+});

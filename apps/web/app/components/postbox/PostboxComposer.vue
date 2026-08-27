@@ -5,6 +5,8 @@ import type { ComposerAttachment } from '~/composables/postbox/usePostboxCompose
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
+import { canonicalEmailAddress } from '~/utils/recipientHints';
+import { showsRecipientSealGlyphs } from '~/utils/sealRecipients';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -114,6 +116,28 @@ const seal = usePostboxComposerSealLock(() => activeDraftId.value ?? undefined, 
 	flush,
 	onConfirm: (opts) => void handleSend(opts),
 });
+
+// Plan idea 11: the per-recipient key verdicts the envelope draws on its chips.
+// Handed over ONLY for the verdicts that actually turn on recipient keys — under
+// an `off`/`ask` policy or a missing signing key a lock on a chip would imply an
+// encryption that is not going to happen, so the chips stay silent instead.
+const chipSealStates = computed(() =>
+	seal.enabled && showsRecipientSealGlyphs(seal.state) ? seal.recipients : []
+);
+
+/**
+ * Drop a keyless recipient named by the seal lock. A recipient-list edit, not a
+ * consent path: the server recomputes the seal state from the shorter list, and
+ * plaintext still requires the unsealed prompt. Removes from every envelope
+ * field, since the blocker set is derived from To + Cc + Bcc together.
+ */
+function removeSealBlocker(address: string) {
+	const canon = canonicalEmailAddress(address);
+	const without = (list: string[]) => list.filter((a) => canonicalEmailAddress(a) !== canon);
+	toAddresses.value = without(toAddresses.value);
+	ccAddresses.value = without(ccAddresses.value);
+	bccAddresses.value = without(bccAddresses.value);
+}
 
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
@@ -363,6 +387,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:available-identities="availableIdentities"
 			:reply-all-recipients="replyAllRecipients"
 			:guards="guards"
+			:seal-states="chipSealStates"
 			@from-change="onFromChange"
 			@apply-reply-all="onApplyReplyAll"
 		/>
@@ -374,7 +399,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:enabled="seal.enabled"
 			:seal-state="seal.state"
 			:pending="seal.pending"
+			:blocking-recipients="seal.blockingRecipients"
 			@request-unsealed="seal.requestUnsealed()"
+			@remove-recipient="removeSealBlocker"
 		/>
 
 		<div

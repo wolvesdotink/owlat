@@ -4,6 +4,13 @@ import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '~/utils/validation';
 import { canonicalEmailAddress, isExternalRecipient } from '~/utils/recipientHints';
 import { suggestRecipientDomain, type DomainSuggestion } from '~/utils/recipientTypo';
+import {
+	findRecipientSealView,
+	recipientSealGlyph,
+	type RecipientSealGlyph,
+	type RecipientSealView,
+} from '~/utils/sealRecipients';
+import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
 
 interface ContactSuggestion {
 	email: string;
@@ -32,8 +39,23 @@ const props = withDefaults(
 		 * "first time" cue never fires on a pending read.
 		 */
 		firstTimeAddresses?: string[];
+		/**
+		 * Per-recipient seal verdicts for THIS draft (plan idea 11), from
+		 * `api.mail.drafts.getComposerSealState`. Empty — the default — when
+		 * Sealed Mail is off, the answer has not arrived, or the aggregate verdict
+		 * does not turn on recipient keys; the chips then say nothing about
+		 * sealing, exactly as before. The composer decides when they may speak
+		 * (`showsRecipientSealGlyphs`); this field only draws what it is given.
+		 */
+		sealStates?: RecipientSealView[];
 	}>(),
-	{ field: 'to', ownDomains: () => [], knownDomains: () => [], firstTimeAddresses: () => [] }
+	{
+		field: 'to',
+		ownDomains: () => [],
+		knownDomains: () => [],
+		firstTimeAddresses: () => [],
+		sealStates: () => [],
+	}
 );
 
 const emit = defineEmits<{
@@ -54,6 +76,29 @@ function isExternal(addr: string): boolean {
 const firstTimeSet = computed(() => new Set(props.firstTimeAddresses.map(canonicalEmailAddress)));
 function isFirstTime(addr: string): boolean {
 	return firstTimeSet.value.has(canonicalEmailAddress(addr));
+}
+
+// ─── Per-recipient seal state (plan idea 11) ─────────────────────────────────
+// A lock / no-key glyph beside each chip, so a draft that cannot be sealed says
+// WHICH recipient is keyless instead of only that someone is. The glyph is about
+// that recipient's key, never about the message's fate — the aggregate lock
+// below the envelope remains the only thing that speaks for the send.
+// Resolved once per render pass rather than per template read: a chip touches
+// its glyph several times (icon, tone, title, the "no key" tail).
+const sealGlyphs = computed<Map<string, RecipientSealGlyph>>(() => {
+	const glyphs = new Map<string, RecipientSealGlyph>();
+	for (const addr of props.modelValue) {
+		const view = findRecipientSealView(props.sealStates, addr);
+		if (view) glyphs.set(addr, recipientSealGlyph(view));
+	}
+	return glyphs;
+});
+
+/** Resolve a glyph's `{ key, params }` title through the active locale. */
+function sealGlyphTitle(glyph: RecipientSealGlyph): string {
+	return typeof glyph.title === 'string'
+		? t(glyph.title)
+		: t(glyph.title.key, glyph.title.params ?? {});
 }
 
 // ─── Did you mean … ? (plan idea 4) ──────────────────────────────────────────
@@ -254,7 +299,29 @@ function onBlur() {
 					class="flex-shrink-0"
 					aria-hidden="true"
 				/>
-				{{ addr }}
+				<!-- Plan idea 11: this recipient's own sealing key. Absent unless the
+				     composer decided the chips may speak about sealing at all. -->
+				<template v-if="sealGlyphs.get(addr)">
+					<Icon
+						:name="sealGlyphs.get(addr)!.icon"
+						class="w-3 h-3 flex-shrink-0"
+						:class="SEAL_TONE_CLASSES[sealGlyphs.get(addr)!.tone].icon"
+						:data-testid="`postbox-chip-seal-${sealGlyphs.get(addr)!.kind}`"
+						:title="sealGlyphTitle(sealGlyphs.get(addr)!)"
+						:aria-label="sealGlyphTitle(sealGlyphs.get(addr)!)"
+					/>
+					{{ addr }}
+					<!-- Named, not just glyphed: with several chips the sender has to
+					     read who is keyless without hovering each one. -->
+					<span
+						v-if="sealGlyphs.get(addr)!.kind === 'noKey'"
+						class="text-text-tertiary"
+						data-testid="postbox-chip-no-key"
+					>
+						· {{ t('components.postbox.postboxRecipientField.noSealingKey') }}
+					</span>
+				</template>
+				<template v-else>{{ addr }}</template>
 				<!-- Plan idea 5: never written to this address before. A cue, not a
 				     warning — it only says what it actually knows. -->
 				<span

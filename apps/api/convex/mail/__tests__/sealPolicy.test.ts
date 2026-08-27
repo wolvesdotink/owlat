@@ -9,6 +9,7 @@ import {
 	canSendWithSealState,
 	decideSeal,
 	deriveSealState,
+	toRecipientSealViews,
 	type RecipientKeyState,
 	type SealInputs,
 	type SealState,
@@ -174,5 +175,57 @@ describe('mail/sealPolicy · explicit plaintext consent', () => {
 		const changed: SealState = { kind: 'keyChanged', addresses: ['eve@e.test'] };
 		expect(canSendWithSealState(changed, false)).toBe(false);
 		expect(canSendWithSealState(changed, true)).toBe(false);
+	});
+});
+
+/**
+ * The composer's per-recipient chip view (plan idea 11). The chips exist to say
+ * WHO is blocking encryption, so `hasUsableKey` has to be the same predicate
+ * `deriveSealState` and `decideSeal` apply — not a re-reading of `outcome`,
+ * which would draw a lock on a `trusted` row whose pinned material is missing.
+ */
+describe('mail/sealPolicy · toRecipientSealViews', () => {
+	it('never carries key material off the server', () => {
+		const views = toRecipientSealViews([trusted('bob@b.test')]);
+		expect(views).toEqual([{ address: 'bob@b.test', outcome: 'trusted', hasUsableKey: true }]);
+		expect(JSON.stringify(views)).not.toContain('KEY:');
+	});
+
+	it('preserves the recipient list and its order', () => {
+		const recipients = [
+			trusted('bob@b.test'),
+			{ address: 'carol@c.test', outcome: 'notFound' as const },
+			{ address: 'dan@d.test', outcome: 'keyChanged' as const },
+		];
+		expect(toRecipientSealViews(recipients).map((r) => r.address)).toEqual([
+			'bob@b.test',
+			'carol@c.test',
+			'dan@d.test',
+		]);
+	});
+
+	it('counts a trusted row without pinned material as keyless, exactly like dispatch', () => {
+		const recipients: RecipientKeyState[] = [{ address: 'bob@b.test', outcome: 'trusted' }];
+		expect(toRecipientSealViews(recipients)[0]?.hasUsableKey).toBe(false);
+		// …and the aggregate agrees: this is the `recipient_no_key` block.
+		expect(deriveSealState('auto', recipients, true)).toEqual({
+			kind: 'cannotSeal',
+			reason: 'recipient_no_key',
+		});
+	});
+
+	it('agrees with deriveSealState about whether ANY recipient blocks sealing', () => {
+		const cases: RecipientKeyState[][] = [
+			[trusted('bob@b.test')],
+			[trusted('bob@b.test'), { address: 'carol@c.test', outcome: 'notFound' }],
+			[{ address: 'carol@c.test', outcome: 'missing' }],
+			[trusted('bob@b.test'), { address: 'dan@d.test', outcome: 'trusted' }],
+		];
+		for (const recipients of cases) {
+			const everyoneHasKey = toRecipientSealViews(recipients).every((r) => r.hasUsableKey);
+			const state = deriveSealState('auto', recipients, true);
+			const blocked = state.kind === 'cannotSeal' && state.reason === 'recipient_no_key';
+			expect(blocked).toBe(!everyoneHasKey);
+		}
 	});
 });

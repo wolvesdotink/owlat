@@ -13,6 +13,7 @@ import {
 	recipientLabel,
 	canonicalEmailAddress,
 } from '~/utils/recipientHints';
+import type { RecipientSealView } from '~/utils/sealRecipients';
 import {
 	selectedSenderIdentity,
 	senderAuthDisplay,
@@ -40,6 +41,14 @@ const props = defineProps<{
 	 * the warnings themselves.
 	 */
 	guards: ComposerGuards;
+	/**
+	 * Per-recipient sealing verdicts for this draft (plan idea 11), already
+	 * filtered by the composer to the states where recipient keys are what the
+	 * seal verdict turns on. Passed through to every field so a chip in Cc or Bcc
+	 * carries the same glyph as one in To; absent means the chips say nothing
+	 * about sealing.
+	 */
+	sealStates?: RecipientSealView[];
 }>();
 
 const emit = defineEmits<{
@@ -224,6 +233,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 				:own-domains="ownDomains"
 				:known-domains="guards.knownDomains"
 				:first-time-addresses="guards.firstTimeAddresses"
+				:seal-states="sealStates"
 				@move="moveRecipient($event, 'to')"
 			/>
 			<div class="flex items-center gap-2 text-xs pt-0.5">
@@ -280,6 +290,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			:own-domains="ownDomains"
 			:known-domains="guards.knownDomains"
 			:first-time-addresses="guards.firstTimeAddresses"
+			:seal-states="sealStates"
 			@move="moveRecipient($event, 'cc')"
 		/>
 		<PostboxRecipientField
@@ -291,6 +302,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			:own-domains="ownDomains"
 			:known-domains="guards.knownDomains"
 			:first-time-addresses="guards.firstTimeAddresses"
+			:seal-states="sealStates"
 			@move="moveRecipient($event, 'bcc')"
 		/>
 		<!-- Pre-send confidence (plan ideas 3, 5, 15): the first-time-recipient

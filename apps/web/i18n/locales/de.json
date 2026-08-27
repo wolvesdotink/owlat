@@ -3324,6 +3324,8 @@
 				"summary": "{count} Hinweis: {details} | {count} Hinweise: {details}"
 			},
 			"postboxComposerSealLock": {
+				"blockedBy": "Kein Versiegelungsschlüssel für:",
+				"removeBlocker": "{address} aus dieser Nachricht entfernen",
 				"sendUnsealed": "Ungesiegelt senden…"
 			},
 			"postboxContactKeyPanel": {
@@ -3747,6 +3749,7 @@
 				"firstTimeTitle": "Sie haben {address} noch nie geschrieben",
 				"fixIt": "Korrigieren",
 				"keepAsTyped": "So lassen",
+				"noSealingKey": "kein Schlüssel",
 				"outsideDomain": "außerhalb von {domain}",
 				"placeholder": "empfaenger{'@'}beispiel.de",
 				"removeRecipient": "{address} entfernen"
@@ -11603,6 +11606,11 @@
 				"detail": "Alle, denen Sie schreiben, können versiegelte Post empfangen, daher verschlüsselt Owlat diese Nachricht, bevor sie Ihren Workspace verlässt.",
 				"summary": "Diese Nachricht wird versiegelt"
 			}
+		},
+		"sealRecipients": {
+			"hasKeyTitle": "{address} hat einen Versiegelungsschlüssel",
+			"keyChangedTitle": "Der Versiegelungsschlüssel von {address} hat sich geändert und wurde noch nicht neu bestätigt",
+			"noKeyTitle": "{address} hat keinen Versiegelungsschlüssel"
 		},
 		"sealedMessage": {
 			"cantDecrypt": {

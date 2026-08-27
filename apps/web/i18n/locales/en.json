@@ -3324,6 +3324,8 @@
 				"summary": "{count} check: {details} | {count} checks: {details}"
 			},
 			"postboxComposerSealLock": {
+				"blockedBy": "No sealing key for:",
+				"removeBlocker": "Remove {address} from this message",
 				"sendUnsealed": "Send unsealed…"
 			},
 			"postboxContactKeyPanel": {
@@ -3747,6 +3749,7 @@
 				"firstTimeTitle": "You have never written to {address} before",
 				"fixIt": "Fix it",
 				"keepAsTyped": "Keep as typed",
+				"noSealingKey": "no key",
 				"outsideDomain": "outside {domain}",
 				"placeholder": "recipient{'@'}example.com",
 				"removeRecipient": "Remove {address}"
@@ -11603,6 +11606,11 @@
 				"detail": "Everyone you are writing to can receive sealed mail, so Owlat will encrypt this message before it leaves your workspace.",
 				"summary": "This message will be sealed"
 			}
+		},
+		"sealRecipients": {
+			"hasKeyTitle": "{address} has a sealing key",
+			"keyChangedTitle": "{address}'s sealing key changed and has not been re-accepted",
+			"noKeyTitle": "{address} has no sealing key"
 		},
 		"sealedMessage": {
 			"cantDecrypt": {
