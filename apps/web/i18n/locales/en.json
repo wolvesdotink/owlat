@@ -3514,6 +3514,12 @@
 					"flat": "Flat"
 				}
 			},
+			"postboxListHeader": {
+				"newestFirst": "Newest first",
+				"oldestFirst": "Oldest first",
+				"sortToNewest": "Sort by newest first",
+				"sortToOldest": "Sort by oldest first"
+			},
 			"postboxMailboxConnectForm": {
 				"addressLabel": "{provider} address",
 				"advancedSettings": "Advanced server settings",

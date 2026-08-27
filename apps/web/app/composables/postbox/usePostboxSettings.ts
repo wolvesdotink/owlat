@@ -21,6 +21,9 @@
  *   - `inboxMode` — which surface the inbox route lands on: 'today' (the
  *     focused single-column view, the default) or 'browse' (the full
  *     three-pane UI). Persisted as the last-used mode.
+ *   - `sortOrder` — which end of the folder the message list starts at:
+ *     'newest' (arrival descending, the default) or 'oldest'. Date direction
+ *     only; the server flips `.order()` on the existing arrival index.
  *   - `sendSound` — play a short confirmation sound when a message is
  *     dispatched. Defaults OFF (opt-in).
  */
@@ -36,6 +39,8 @@ import type { PostboxViewMode } from '~/utils/postboxViewMode';
 import { resolvePostboxViewMode } from '~/utils/postboxViewMode';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { resolvePostboxInboxMode } from '~/utils/postboxInboxMode';
+import type { PostboxSortOrder } from '~/utils/postboxSortOrder';
+import { resolvePostboxSortOrder } from '~/utils/postboxSortOrder';
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { resolvePostboxNotifyAbout } from '~/utils/postboxNotify';
 
@@ -79,6 +84,12 @@ export function usePostboxSettings() {
 	// landing experience; 'browse' is remembered once the user switches.
 	const inboxMode = computed<PostboxInboxMode>(() =>
 		resolvePostboxInboxMode(data.value?.inboxMode)
+	);
+
+	// Message-list sort order. An unset (or unknown) value resolves to 'newest' —
+	// exactly the hardcoded order the list had before the control existed.
+	const sortOrder = computed<PostboxSortOrder>(() =>
+		resolvePostboxSortOrder(data.value?.sortOrder)
 	);
 
 	// Confirmation sound on send. Default OFF (opt-in): an unset preference means
@@ -138,6 +149,12 @@ export function usePostboxSettings() {
 		return (await updateOp.run({ inboxMode: mode })).ok;
 	}
 
+	// Same success contract as setViewMode: the header flips optimistically and
+	// snaps back when the save did not land.
+	async function setSortOrder(order: PostboxSortOrder): Promise<boolean> {
+		return (await updateOp.run({ sortOrder: order })).ok;
+	}
+
 	async function setSendSound(enabled: boolean) {
 		await updateOp.run({ isSendSoundOn: enabled });
 	}
@@ -162,6 +179,7 @@ export function usePostboxSettings() {
 		density,
 		viewMode,
 		inboxMode,
+		sortOrder,
 		sendSound,
 		notifyAbout,
 		badgeNonPeople,
@@ -174,6 +192,7 @@ export function usePostboxSettings() {
 		setDensity,
 		setViewMode,
 		setInboxMode,
+		setSortOrder,
 		setSendSound,
 		setNotifyAbout,
 		setBadgeNonPeople,

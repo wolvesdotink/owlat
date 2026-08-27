@@ -1,16 +1,16 @@
 <script setup lang="ts">
 /**
  * The thread-list pane's header — folder title, cold-start "updating…" hint,
- * mobile drawer handle, and (inbox only) the Today jump + Flat/Conversations/
- * Categories segmented control. Extracted from PostboxLayout.vue (the plan's
- * R8 list-header seam): pure presentation over semantic emits — every action
- * routes back to the layout's existing handlers.
+ * mobile drawer handle, the newest/oldest sort toggle, and (inbox only) the
+ * Today jump + Flat/Conversations/Categories segmented control. Extracted from
+ * PostboxLayout.vue (the plan's R8 list-header seam): pure presentation over
+ * semantic emits — every action routes back to the layout's existing handlers.
  */
 import type { Id } from '@owlat/api/dataModel';
 
 const { t } = useI18n();
 
-defineProps<{
+const props = defineProps<{
 	/** Resolved display name of the current folder (role label or custom name). */
 	folderName: string;
 	folderRole: string;
@@ -22,7 +22,14 @@ defineProps<{
 	/** Inbox-only view-mode control (Flat / Conversations / Categories). */
 	viewMode?: string;
 	viewModeOptions?: Array<{ value: string; label: string }>;
+	/** Arrival direction of the list — 'newest' (default) or 'oldest'. */
+	sortOrder?: string;
 }>();
+
+// One toggle, two states: the label names the order the list is IN, and the
+// title names the order a tap moves TO, so the control is never ambiguous
+// about which it is describing.
+const sortIsOldest = computed(() => props.sortOrder === 'oldest');
 
 const emit = defineEmits<{
 	/** Mobile drawer handle pressed — the layout owns the drawer state. */
@@ -30,6 +37,8 @@ const emit = defineEmits<{
 	/** Back to the focused Today landing view. */
 	'switch-today': [];
 	'select-view-mode': [value: string];
+	/** Flip the arrival direction (newest <-> oldest). */
+	'toggle-sort': [];
 }>();
 </script>
 
@@ -61,33 +70,63 @@ const emit = defineEmits<{
 				>
 			</h2>
 		</div>
-		<div v-if="folderRole === 'inbox'" class="flex items-center gap-2">
-			<!-- Back to the focused Today landing view (Esc / B do the same). -->
+		<div class="flex items-center gap-2">
+			<!-- Arrival direction. Every folder gets it: "oldest first" is how a
+			     backlog gets cleared, and it was previously unreachable. -->
 			<button
-				v-if="!activeMessageId && !folderId"
 				type="button"
 				class="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-				aria-keyshortcuts="Escape b"
-				:title="t('components.postbox.postboxLayout.backToTodayTitle')"
-				@click="emit('switch-today')"
+				:title="
+					sortIsOldest
+						? t('components.postbox.postboxListHeader.sortToNewest')
+						: t('components.postbox.postboxListHeader.sortToOldest')
+				"
+				:aria-label="
+					sortIsOldest
+						? t('components.postbox.postboxListHeader.sortToNewest')
+						: t('components.postbox.postboxListHeader.sortToOldest')
+				"
+				@click="emit('toggle-sort')"
 			>
-				{{ t('common.today') }}
-				<kbd
-					class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
+				<Icon
+					:name="sortIsOldest ? 'lucide:arrow-up-narrow-wide' : 'lucide:arrow-down-narrow-wide'"
+					class="w-3.5 h-3.5"
 					aria-hidden="true"
-					>{{ t('components.postbox.postboxLayout.escKey') }}</kbd
-				>
+				/>
+				<span class="hidden sm:inline">{{
+					sortIsOldest
+						? t('components.postbox.postboxListHeader.oldestFirst')
+						: t('components.postbox.postboxListHeader.newestFirst')
+				}}</span>
 			</button>
-			<!-- Labeled view-mode control — exactly one mode active; persisted
-			     per user. Inbox-only: other folders stay flat. -->
-			<UiSegmentedControl
-				v-if="viewModeOptions"
-				size="sm"
-				:aria-label="t('components.postbox.postboxLayout.inboxView')"
-				:options="viewModeOptions"
-				:model-value="viewMode"
-				@update:model-value="emit('select-view-mode', String($event))"
-			/>
+			<template v-if="folderRole === 'inbox'">
+				<!-- Back to the focused Today landing view (Esc / B do the same). -->
+				<button
+					v-if="!activeMessageId && !folderId"
+					type="button"
+					class="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+					aria-keyshortcuts="Escape b"
+					:title="t('components.postbox.postboxLayout.backToTodayTitle')"
+					@click="emit('switch-today')"
+				>
+					{{ t('common.today') }}
+					<kbd
+						class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
+						aria-hidden="true"
+						>{{ t('components.postbox.postboxLayout.escKey') }}</kbd
+					>
+				</button>
+				<!-- Labeled view-mode control — exactly one mode active; persisted
+				     per user. Inbox-only: other folders stay flat. -->
+				<UiSegmentedControl
+					v-if="viewModeOptions"
+					size="sm"
+					:aria-label="t('components.postbox.postboxLayout.inboxView')"
+					:options="viewModeOptions"
+					:model-value="viewMode"
+					@update:model-value="emit('select-view-mode', String($event))"
+				/>
+			</template>
 		</div>
 	</header>
 </template>

@@ -33,13 +33,21 @@ const {
 	setViewMode,
 	inboxMode: savedInboxMode,
 	setInboxMode,
+	sortOrder: savedSortOrder,
+	setSortOrder,
 } = usePostboxSettings();
+
+// Newest / oldest arrival order for the list, persisted per user. The flip
+// applies optimistically and the feed re-subscribes on the new order (its
+// resetKey carries the direction, so no cursor outlives the flip).
+const { sortOrder, toggleSortOrder } = usePostboxSortToggle({ savedSortOrder, setSortOrder });
 
 const { messages, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } =
 	usePostboxThreads({
 		mailboxId: mailboxIdRef,
 		folderRole: folderRef,
 		folderId: folderIdRef,
+		sortOrder,
 	});
 
 // The virtual Snoozed folder is take()-bounded server-side: more matches can
@@ -297,9 +305,11 @@ const advanceIds = computed(() =>
 						:is-offline="isOffline"
 						:view-mode="viewMode"
 						:view-mode-options="viewModeOptions"
+						:sort-order="sortOrder"
 						@open-rail="railOpen = true"
 						@switch-today="switchInboxMode('today')"
 						@select-view-mode="selectViewMode"
+						@toggle-sort="toggleSortOrder"
 					/>
 					<template v-if="folderRole === 'drafts'">
 						<div class="flex-1 overflow-auto">
