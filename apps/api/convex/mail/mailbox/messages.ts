@@ -78,6 +78,102 @@ export const listThreadMessages = publicQuery({
 });
 
 /**
+ * Per-recipient OUTBOUND delivery state for every sent message in a thread —
+ * the read behind the reader's delivery strip (plan idea 1).
+ *
+ * `mailMessages.outbound` has existed since ADR-0012 (the Postbox outbound
+ * lifecycle module is its sole writer) but nothing PUBLIC ever exposed it, so a
+ * hard bounce looked exactly like a delivered mail. This adds the read and
+ * nothing else: no new state, no new writer, no change to the lifecycle.
+ *
+ * Thread-scoped rather than message-scoped so the conversation view needs ONE
+ * subscription for the whole thread instead of one per message, and seeded from
+ * the open message exactly like {@link listThreadMessages} beside it.
+ *
+ * The projection is deliberate — `mtaJobId` is dispatch bookkeeping the reader
+ * has no use for and never leaves the backend. Everything returned is the
+ * caller's own sent mail: the addresses they sent to and what the receiving
+ * side said about it.
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
+export const listThreadOutboundDelivery = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	returns: v.union(
+		v.null(),
+		v.array(
+			v.object({
+				messageId: v.id('mailMessages'),
+				state: v.union(
+					v.literal('queued'),
+					v.literal('sent'),
+					v.literal('bounced'),
+					v.literal('failed'),
+					v.literal('partial')
+				),
+				recipients: v.array(
+					v.object({
+						idx: v.number(),
+						address: v.string(),
+						state: v.union(
+							v.literal('queued'),
+							v.literal('sent'),
+							v.literal('bounced'),
+							v.literal('failed')
+						),
+						sentAt: v.optional(v.number()),
+						acceptedAt: v.optional(v.number()),
+						bouncedAt: v.optional(v.number()),
+						failedAt: v.optional(v.number()),
+						bounceMessage: v.optional(v.string()),
+						errorCode: v.optional(v.string()),
+					})
+				),
+			})
+		)
+	),
+	handler: async (ctx, args) => {
+		const seed = await ctx.db.get(args.messageId);
+		if (!seed) return null;
+		const mailbox = await loadReadableMailbox(ctx, seed.mailboxId);
+		if (!mailbox) return null;
+		const siblings = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread', (q) => q.eq('threadId', seed.threadId))
+			.collect(); // bounded: one thread's messages
+		siblings.sort((a, b) => a.receivedAt - b.receivedAt);
+		// Only SENT rows carry `outbound`; an inbound message contributes nothing,
+		// so a purely inbound thread yields an empty array (never a false "queued").
+		return siblings.flatMap((message) =>
+			message.outbound ? [{ messageId: message._id, ...projectOutbound(message.outbound) }] : []
+		);
+	},
+});
+
+/**
+ * Narrow a stored `outbound` object to what the reader may see: every
+ * per-recipient field EXCEPT `mtaJobId`, which is dispatch bookkeeping. Written
+ * as explicit spreads rather than a destructure so an `undefined` never travels
+ * as a present key — the reader must be able to tell "no bounce text" from
+ * "empty bounce text".
+ */
+function projectOutbound(outbound: NonNullable<Doc<'mailMessages'>['outbound']>) {
+	return {
+		state: outbound.state,
+		recipients: outbound.recipients.map((r) => ({
+			idx: r.idx,
+			address: r.address,
+			state: r.state,
+			...(r.sentAt !== undefined ? { sentAt: r.sentAt } : {}),
+			...(r.acceptedAt !== undefined ? { acceptedAt: r.acceptedAt } : {}),
+			...(r.bouncedAt !== undefined ? { bouncedAt: r.bouncedAt } : {}),
+			...(r.failedAt !== undefined ? { failedAt: r.failedAt } : {}),
+			...(r.bounceMessage !== undefined ? { bounceMessage: r.bounceMessage } : {}),
+			...(r.errorCode !== undefined ? { errorCode: r.errorCode } : {}),
+		})),
+	};
+}
+
+/**
  * Team-inbox collision safety. Given any message in a thread, return the
  * thread's newest OUTBOUND reply — who sent it and when — so the reader can
  * show "last reply by …" and the composer can warn a second teammate before
