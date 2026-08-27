@@ -43,7 +43,14 @@ const emit = defineEmits<{
 </script>
 
 <template>
-	<header class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2">
+	<!-- Wraps rather than truncates. The list pane is ~380px at a 1440px window,
+	     which the folder title + sort toggle + view-mode control overflow: as one
+	     nowrap row the title lost first and read "In…" for Inbox. Wrapping drops
+	     the control cluster onto a second line only when it genuinely does not
+	     fit, and a wide pane still gets the single row. -->
+	<header
+		class="border-b border-border-subtle px-4 py-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5"
+	>
 		<div class="flex items-center gap-2 min-w-0">
 			<!-- Drawer handle for the folder rail (mobile only). 44px square for
 			     the thumb; the negative margins keep it from growing the header
@@ -70,7 +77,9 @@ const emit = defineEmits<{
 				>
 			</h2>
 		</div>
-		<div class="flex items-center gap-2">
+		<!-- `flex-shrink-0`: the cluster must wrap as a unit instead of squeezing
+		     the segmented control until its labels collide. -->
+		<div class="flex items-center gap-2 flex-shrink-0 ml-auto">
 			<!-- Arrival direction. Every folder gets it: "oldest first" is how a
 			     backlog gets cleared, and it was previously unreachable. -->
 			<button

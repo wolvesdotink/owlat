@@ -60,3 +60,22 @@ describe('PostboxListHeader sort toggle', () => {
 		expect(sortButton(w)).toBeDefined();
 	});
 });
+
+/**
+ * At a 1440px window the list pane is ~380px, which the folder title + sort
+ * toggle + view-mode control do not fit on one nowrap row — and the title was
+ * the flex item that lost, rendering "In…" for Inbox. The cluster has to wrap as
+ * a unit instead.
+ */
+describe('PostboxListHeader overflow', () => {
+	it('wraps rather than squeezing the folder title', () => {
+		const header = mountHeader().find('header');
+		expect(header.classes()).toContain('flex-wrap');
+	});
+
+	it('keeps the control cluster from shrinking into itself', () => {
+		const w = mountHeader();
+		const cluster = w.findAll('header > div').at(-1);
+		expect(cluster?.classes()).toContain('flex-shrink-0');
+	});
+});
