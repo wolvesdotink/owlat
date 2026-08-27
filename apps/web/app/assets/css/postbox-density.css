@@ -59,6 +59,35 @@
 }
 
 /*
+ * Reply-all and Forward in the reader's per-message action row.
+ *
+ * They used to be `hidden group-hover:inline-flex` at EVERY density, which put
+ * the two verbs people reach for most behind a pointer hover: invisible while
+ * reading, invisible on touch, and a second click away in the ⋯ menu. At the
+ * comfortable default they now simply show. Compact is where trading them for
+ * vertical rhythm is the point, so there they stay hover-revealed — and the
+ * (hover: none) rule pins them open on touch, where hover never fires and the
+ * reveal would never happen at all.
+ */
+.pbx-reader-secondary-action {
+	display: inline-flex;
+}
+
+[data-density='compact'] .pbx-reader-secondary-action {
+	display: none;
+}
+
+[data-density='compact'] .pbx-reader-message:hover .pbx-reader-secondary-action {
+	display: inline-flex;
+}
+
+@media (hover: none) {
+	[data-density='compact'] .pbx-reader-secondary-action {
+		display: inline-flex;
+	}
+}
+
+/*
  * Touch devices (stack mode): hover never fires, so the two hover-gated
  * affordances must be permanently reachable —
  *   - the row's quick-action cluster (.ui-hover-reveal) stays visible at rest,

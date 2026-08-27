@@ -891,7 +891,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				</button>
 
 				<!-- Expanded message -->
-				<section v-else class="group border border-border-subtle rounded bg-bg-surface px-4 py-3">
+				<section
+					v-else
+					class="pbx-reader-message border border-border-subtle rounded bg-bg-surface px-4 py-3"
+				>
 					<header class="flex items-start gap-3">
 						<UiAvatar
 							:name="msg.fromName"
@@ -1132,7 +1135,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 							variant="ghost"
 							v-if="hasOtherRecipients(msg)"
 							type="button"
-							class="hidden group-hover:inline-flex"
+							class="pbx-reader-secondary-action"
 							@click="guardedReplyAll(msg)"
 						>
 							<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
@@ -1141,7 +1144,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						<UiButton
 							variant="ghost"
 							type="button"
-							class="hidden group-hover:inline-flex"
+							class="pbx-reader-secondary-action"
 							@click="openForward(msg)"
 						>
 							<Icon name="lucide:forward" class="w-4 h-4 mr-1.5" />
