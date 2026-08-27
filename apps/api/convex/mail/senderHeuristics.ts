@@ -27,6 +27,7 @@ import {
 	registrableDomain,
 	scanSenderImpersonation,
 } from '@owlat/email-scanner';
+import { boundedEditDistance, LOOKALIKE_MAX_EDITS } from '@owlat/shared';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import type { SenderHeuristics } from '../lib/senderHeuristicsValidator';
@@ -36,35 +37,11 @@ import type { SenderHeuristics } from '../lib/senderHeuristicsValidator';
 // type is derived from it, so the field set never drifts across the three sites.
 export type { SenderHeuristics };
 
-/**
- * Levenshtein edit distance, bounded early-exit at `max`. Small inputs
- * (domain strings), so the full O(n·m) table is fine; the bound just lets us
- * bail once we know the pair is too far apart to matter.
- */
-function boundedEditDistance(a: string, b: string, max: number): number {
-	if (a === b) return 0;
-	if (Math.abs(a.length - b.length) > max) return max + 1;
-	const prev: number[] = Array.from({ length: b.length + 1 }, () => 0);
-	const curr: number[] = Array.from({ length: b.length + 1 }, () => 0);
-	for (let j = 0; j <= b.length; j++) prev[j] = j;
-	for (let i = 1; i <= a.length; i++) {
-		curr[0] = i;
-		let rowMin = curr[0]!;
-		for (let j = 1; j <= b.length; j++) {
-			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-			curr[j] = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost);
-			if (curr[j]! < rowMin) rowMin = curr[j]!;
-		}
-		if (rowMin > max) return max + 1;
-		for (let j = 0; j <= b.length; j++) prev[j] = curr[j]!;
-	}
-	return prev[b.length]!;
-}
+// `boundedEditDistance` / `LOOKALIKE_MAX_EDITS` live in `@owlat/shared`: the
+// composer's outbound typo hint asks the same near-miss question about a domain
+// the user just typed, and one definition of "1-2 single-character slips" has
+// to serve both ends of the mail path.
 
-// A near-miss is 1–2 single-character edits (paypa1.com→paypal.com). Zero is an
-// exact match (a legitimate known contact — never flagged), and 3+ is too far
-// to be a deliberate look-alike without drowning in false positives.
-const LOOKALIKE_MAX_EDITS = 2;
 // Upper bound on contact rows scanned when collecting known domains. Best-effort
 // heuristic: a miss past this window costs a secondary badge line, never a false
 // security claim, so an unbounded table scan is not worth the read amplification.
