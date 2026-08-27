@@ -2981,12 +2981,12 @@
 			},
 			"shortcuts": {
 				"closeModal": "Close modal / Cancel",
+				"goToAdmin": "Go to Admin",
 				"goToAutomations": "Go to Automations",
 				"goToCampaigns": "Go to Campaigns",
 				"goToContacts": "Go to Contacts",
 				"goToDashboard": "Go to Dashboard",
 				"goToEmails": "Go to Emails",
-				"goToSettings": "Go to Settings",
 				"goToTransactional": "Go to Transactional",
 				"newItem": "New item (context-aware)",
 				"openSearch": "Open search",
@@ -12403,12 +12403,12 @@
 		"useKeyboardShortcuts": {
 			"descriptions": {
 				"closeCancel": "Close / Cancel",
+				"goToAdmin": "Go to Admin",
 				"goToAutomations": "Go to Automations",
 				"goToCampaigns": "Go to Campaigns",
 				"goToContacts": "Go to Contacts",
 				"goToDashboard": "Go to Dashboard",
 				"goToEmails": "Go to Emails",
-				"goToSettings": "Go to Settings",
 				"goToTransactional": "Go to Transactional",
 				"newItem": "New item",
 				"save": "Save"

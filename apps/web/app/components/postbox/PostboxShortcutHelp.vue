@@ -6,7 +6,12 @@
  * Self-contained: mounting it registers a window-level "?" toggle (inert
  * while focus is in an input/contenteditable), and Esc closes via the shared
  * modal focus handling. Mounted by PostboxLayout and the search screen.
+ *
+ * Mounting also CLAIMS "?" for this sheet, which silences the app-wide cheat
+ * sheet's own document listener for as long as this one is on screen — both
+ * used to answer the same press and stack two overlays.
  */
+import { claimHelpOverlay } from '~/utils/helpOverlayOwnership';
 
 const { t } = useI18n();
 
@@ -19,8 +24,16 @@ function onGlobalKey(event: KeyboardEvent) {
 	open.value = !open.value;
 }
 
-onMounted(() => window.addEventListener('keydown', onGlobalKey));
-onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
+let releaseClaim: (() => void) | null = null;
+onMounted(() => {
+	releaseClaim = claimHelpOverlay();
+	window.addEventListener('keydown', onGlobalKey);
+});
+onBeforeUnmount(() => {
+	releaseClaim?.();
+	releaseClaim = null;
+	window.removeEventListener('keydown', onGlobalKey);
+});
 </script>
 
 <template>

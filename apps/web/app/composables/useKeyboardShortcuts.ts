@@ -7,6 +7,8 @@
  * - Escape key for closing modals
  */
 
+import { isHelpOverlayClaimed } from '~/utils/helpOverlayOwnership';
+
 type ShortcutHandler = () => void;
 
 interface ShortcutConfig {
@@ -62,9 +64,11 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
 	const key = event.key.toLowerCase();
 
-	// Handle ? for help modal (needs shift)
+	// Handle ? for help modal (needs shift). A surface with its own cheat sheet
+	// (Postbox) claims the key while it is mounted — otherwise both overlays open
+	// on the same press. See utils/helpOverlayOwnership.ts.
 	if (event.shiftKey && key === '?') {
-		if (!isInputFocused()) {
+		if (!isInputFocused() && !isHelpOverlayClaimed()) {
 			event.preventDefault();
 			isHelpModalOpen.value = !isHelpModalOpen.value;
 			return;
@@ -223,11 +227,11 @@ export function useKeyboardShortcuts() {
 			ignoreInputs: true,
 		});
 
-		// g+s - Go to Settings
+		// g+s - Go to Admin (the administration area, not the preferences pages)
 		registerShortcut({
 			key: 'g+s',
 			handler: () => router.push('/dashboard/admin'),
-			description: 'shared.useKeyboardShortcuts.descriptions.goToSettings',
+			description: 'shared.useKeyboardShortcuts.descriptions.goToAdmin',
 			ignoreInputs: true,
 		});
 	}

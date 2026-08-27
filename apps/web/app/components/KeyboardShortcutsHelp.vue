@@ -32,7 +32,9 @@ const shortcuts = computed(() => ({
 			keys: ['g', 't'],
 			description: t('components.keyboardShortcutsHelp.shortcuts.goToTransactional'),
 		},
-		{ keys: ['g', 's'], description: t('components.keyboardShortcutsHelp.shortcuts.goToSettings') },
+		// g+s routes to /dashboard/admin — this sheet used to advertise it as
+		// "Settings", which is the (separate) preferences area.
+		{ keys: ['g', 's'], description: t('components.keyboardShortcutsHelp.shortcuts.goToAdmin') },
 	],
 	actions: [
 		{ keys: ['n'], description: t('components.keyboardShortcutsHelp.shortcuts.newItem') },
