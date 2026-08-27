@@ -48,11 +48,23 @@ const themeOptions = computed<
 				{{ t('components.preferences.preferencesAppearance.accountAndData') }}
 			</NuxtLink>
 		</div>
-		<div class="grid grid-cols-3 gap-3">
+		<!--
+			Toggle buttons in a labelled group, exactly like LanguagePicker one card
+			down: `aria-pressed` is what states the selection to a screen reader.
+			Without it the three cards announce as three plain buttons and the
+			active theme is carried by the border colour alone — invisible to
+			anyone not looking at it.
+		-->
+		<div
+			role="group"
+			:aria-label="t('components.preferences.preferencesAppearance.groupLabel')"
+			class="grid grid-cols-3 gap-3"
+		>
 			<button
 				v-for="option in themeOptions"
 				:key="option.value"
 				type="button"
+				:aria-pressed="themePreference === option.value"
 				:class="[
 					'rounded-xl border p-3 text-left transition-colors',
 					themePreference === option.value

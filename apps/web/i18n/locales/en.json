@@ -4084,6 +4084,7 @@
 					"label": "Dark"
 				},
 				"deviceSettings": "Device settings",
+				"groupLabel": "Theme",
 				"light": {
 					"description": "Bright and crisp",
 					"label": "Light"
@@ -13332,7 +13333,7 @@
 			"sent": "Sent",
 			"signatureHint": "Added to the bottom of new messages.",
 			"signatureLabel": "Signature {optional}",
-			"signaturePlaceholder": "e.g. Marcel · Owlat",
+			"signaturePlaceholder": "e.g. Your name · Your role",
 			"skip": "Skip for now",
 			"testBody": "Confirms everything works — it lands in your inbox.",
 			"testEmail": {

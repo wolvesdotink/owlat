@@ -4084,6 +4084,7 @@
 					"label": "Dunkel"
 				},
 				"deviceSettings": "Geräteeinstellungen",
+				"groupLabel": "Erscheinungsbild",
 				"light": {
 					"description": "Hell und klar",
 					"label": "Hell"
@@ -13332,7 +13333,7 @@
 			"sent": "Gesendet",
 			"signatureHint": "Wird unter neue Nachrichten gesetzt.",
 			"signatureLabel": "Signatur {optional}",
-			"signaturePlaceholder": "z. B. Marcel · Owlat",
+			"signaturePlaceholder": "z. B. Ihr Name · Ihre Rolle",
 			"skip": "Später",
 			"testBody": "Bestätigt, dass alles funktioniert — sie landet in Ihrem Posteingang.",
 			"testEmail": {
