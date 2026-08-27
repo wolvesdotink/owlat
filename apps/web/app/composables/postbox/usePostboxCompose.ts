@@ -17,6 +17,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { OperationError } from '@owlat/shared/operationError';
+import { SurfacedOperationError } from '~/lib/operationError';
 import type { OfflineComposePayload } from '~/utils/postboxOfflineStore';
 import {
 	usePostboxComposeAttachments,
@@ -392,7 +393,9 @@ export function usePostboxCompose(seed: DraftSeed) {
 			// failure was the TRANSPORT, in which case the message queues offline.
 			if (!result.ok) {
 				if (sendNetworkFailed) return queueOfflineSend(opts);
-				throw new Error('Send failed');
+				// Already toasted by the operation module — the throw exists only so
+				// the caller does not treat a refusal as a send.
+				throw new SurfacedOperationError('Send failed');
 			}
 			return result.result as { undoToken: string; sendAt: number };
 		} finally {

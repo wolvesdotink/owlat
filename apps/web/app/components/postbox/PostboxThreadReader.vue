@@ -105,6 +105,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const { showToast } = useToast();
+const { showOperationError } = useOperationErrorToast();
 
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
@@ -765,7 +767,13 @@ async function handleAttachmentDownload(
 	downloadingAttachment.value = key;
 	try {
 		const blob = await extractAttachmentBlob(messageId, att);
-		if (!blob) return;
+		// A null blob is a failure too: the raw message did not load, or the part
+		// is not where the metadata said it was. Both used to end as a spinner
+		// that stopped and a file that never arrived.
+		if (!blob) {
+			showToast(t('components.postbox.postboxThreadReader.attachmentDownloadFailed'), 'error');
+			return;
+		}
 		const objectUrl = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = objectUrl;
@@ -774,8 +782,11 @@ async function handleAttachmentDownload(
 		a.click();
 		a.remove();
 		setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
-	} catch {
-		// Network/extraction failure — silently no-op (the row stays available).
+	} catch (err) {
+		// A dropped connection reads as "Check your connection"; anything else
+		// gets the attachment-specific line. Either way the reader hears about it
+		// — the row stays available to try again.
+		showOperationError(err, 'components.postbox.postboxThreadReader.attachmentDownloadFailed');
 	} finally {
 		downloadingAttachment.value = null;
 	}

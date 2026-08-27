@@ -48,6 +48,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const { showOperationError } = useOperationErrorToast();
 
 const {
 	draftId: activeDraftId,
@@ -130,8 +131,11 @@ async function onFromChange(address: string) {
 	try {
 		await setIdentity(address);
 	} catch (err) {
-		// eslint-disable-next-line no-console
-		console.error('[Postbox] setIdentity failed', err);
+		// The mutation itself is an Operation and toasts its own refusals; what
+		// lands here is the step before it (the draft row could not be created).
+		// Logging alone left the From field silently snapped back to the old
+		// address with no explanation.
+		showOperationError(err);
 	}
 }
 
@@ -225,16 +229,18 @@ async function handleSend(opts?: SendOptions) {
 	sending.value = true;
 	try {
 		// `send()` throws on a backend reject (no_recipients, from_revoked,
-		// illegal_edge, scan-block, …). The underlying operation module has
-		// already surfaced the categorized error as a toast, so we only need to
-		// stay put: do NOT emit `sent` (which would arm undo + navigate away) on
+		// illegal_edge, scan-block, …). Those arrive as a SurfacedOperationError,
+		// because the operation module has already toasted them; here we only need
+		// to stay put: do NOT emit `sent` (which would arm undo + navigate away) on
 		// failure. A real `{ undoToken, sendAt }` reaching here means it sent.
 		const result = await send(opts);
 		emit('sent', result.undoToken, result.sendAt);
 	} catch (err) {
-		// Error already toasted by useBackendOperation; log for telemetry context.
-		// eslint-disable-next-line no-console
-		console.error('[Postbox] send failed', err);
+		// Anything NOT already surfaced (the draft row could not be created, a
+		// throw from the flush before it) gets a toast of its own — this used to
+		// be a console line, so a send could fail with the composer just sitting
+		// there looking idle.
+		showOperationError(err);
 	} finally {
 		sending.value = false;
 	}

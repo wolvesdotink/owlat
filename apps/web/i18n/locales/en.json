@@ -3924,6 +3924,7 @@
 				"showAllMessages": "Show all messages"
 			},
 			"postboxThreadReader": {
+				"attachmentDownloadFailed": "That attachment could not be downloaded. Try again.",
 				"blockSender": "Block sender",
 				"ccLine": "· cc {recipients}",
 				"downloadAttachment": "Download {filename}",

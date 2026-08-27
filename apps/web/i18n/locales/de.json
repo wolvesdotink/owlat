@@ -3924,6 +3924,7 @@
 				"showAllMessages": "Alle Nachrichten anzeigen"
 			},
 			"postboxThreadReader": {
+				"attachmentDownloadFailed": "Dieser Anhang konnte nicht heruntergeladen werden. Bitte erneut versuchen.",
 				"blockSender": "Absender blockieren",
 				"ccLine": "· Kopie an {recipients}",
 				"downloadAttachment": "{filename} herunterladen",
