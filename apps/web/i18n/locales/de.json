@@ -3241,7 +3241,6 @@
 				"compose": "Verfassen"
 			},
 			"postboxComposer": {
-				"attachmentMentionConfirm": "Ihre Nachricht erwähnt einen Anhang, es ist aber keiner angehängt. Trotzdem senden?",
 				"bodyPlaceholder": "Schreiben Sie Ihre Nachricht…",
 				"composerName": "Postbox-Entwurf {timestamp}",
 				"dropHint": "Zum Anhängen ablegen · in den Text ziehen zum Einbetten",
@@ -3292,6 +3291,25 @@
 				"signature": "Signatur",
 				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…"
 			},
+			"postboxComposerGuards": {
+				"alignment": {
+					"fallback": "Mit dieser Absenderadresse stimmt etwas nicht, Postfächer werden sie ablehnen. Trotzdem senden?",
+					"title": "Diese Nachricht wird vermutlich abgelehnt"
+				},
+				"attachment": {
+					"forwardDescription": "Die weitergeleitete Nachricht sagt „{phrase}“, ihr Anhang ist aber nicht mitgekommen. Trotzdem senden?",
+					"forwardTitle": "Anhang der Weiterleitung fehlt?",
+					"mentionDescription": "Ihre Nachricht sagt „{phrase}“, aber es hängt nichts an. Trotzdem senden?",
+					"mentionTitle": "Anhang vergessen?"
+				},
+				"firstTime": {
+					"body": "Zum ersten Mal an {addresses}. | Zum ersten Mal an {addresses}.",
+					"keepEditing": "Weiter bearbeiten",
+					"send": "Trotzdem senden"
+				},
+				"keepEditing": "Weiter bearbeiten",
+				"sendAnyway": "Trotzdem senden"
+			},
 			"postboxComposerModeControls": {
 				"designLayout": "Layout gestalten…",
 				"hideToolbar": "Formatierungsleiste ausblenden (bei Auswahl anzeigen)",
@@ -3301,6 +3319,9 @@
 			"postboxComposerPopup": {
 				"dialogLabel": "Nachricht verfassen",
 				"resizeHandle": "Zum Ändern der Größe ziehen"
+			},
+			"postboxComposerPreflightChip": {
+				"summary": "{count} Hinweis: {details} | {count} Hinweise: {details}"
 			},
 			"postboxComposerSealLock": {
 				"sendUnsealed": "Ungesiegelt senden…"
@@ -3721,6 +3742,11 @@
 				"unsnoozeTitle": "Zurückstellung aufheben — jetzt zurück in den Ordner"
 			},
 			"postboxRecipientField": {
+				"didYouMean": "Meinten Sie {address}?",
+				"firstTime": "zum ersten Mal",
+				"firstTimeTitle": "Sie haben {address} noch nie geschrieben",
+				"fixIt": "Korrigieren",
+				"keepAsTyped": "So lassen",
 				"outsideDomain": "außerhalb von {domain}",
 				"placeholder": "empfaenger{'@'}beispiel.de",
 				"removeRecipient": "{address} entfernen"
@@ -11125,6 +11151,12 @@
 				"alreadySent": "Zu spät zum Rückgängigmachen — diese Nachricht ist bereits unterwegs.",
 				"outOfStorage": "Der Speicher dieses Geräts ist voll — die Nachricht konnte nicht in die Warteschlange gestellt werden.",
 				"storageUnavailable": "Der Offline-Speicher ist auf diesem Gerät nicht verfügbar — die Nachricht konnte nicht in die Warteschlange gestellt werden."
+			},
+			"preflight": {
+				"emptySubject": "kein Betreff",
+				"linkMismatch": "ein Link zeigt {text}, führt aber zu {host}",
+				"placeholder": "„{token}“ steht noch in der Nachricht",
+				"unfilledVariable": "{name} wurde nie ausgefüllt"
 			},
 			"useDraftRevise": {
 				"failed": "Überarbeitung fehlgeschlagen — Ihr Entwurf bleibt unverändert."

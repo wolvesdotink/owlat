@@ -3241,7 +3241,6 @@
 				"compose": "Compose"
 			},
 			"postboxComposer": {
-				"attachmentMentionConfirm": "Your message mentions an attachment, but none is attached. Send anyway?",
 				"bodyPlaceholder": "Write your message…",
 				"composerName": "Postbox compose {timestamp}",
 				"dropHint": "Drop to attach · drop in text to embed",
@@ -3292,6 +3291,25 @@
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…"
 			},
+			"postboxComposerGuards": {
+				"alignment": {
+					"fallback": "This sending address has a problem that mailboxes will reject. Send anyway?",
+					"title": "This message is likely to bounce"
+				},
+				"attachment": {
+					"forwardDescription": "The message you are forwarding says “{phrase}”, but its attachment did not come along. Send anyway?",
+					"forwardTitle": "Forwarded attachment missing?",
+					"mentionDescription": "Your message says “{phrase}”, but nothing is attached. Send anyway?",
+					"mentionTitle": "Attachment missing?"
+				},
+				"firstTime": {
+					"body": "First time writing to {addresses}. | First time writing to {addresses}.",
+					"keepEditing": "Keep editing",
+					"send": "Send anyway"
+				},
+				"keepEditing": "Keep editing",
+				"sendAnyway": "Send anyway"
+			},
 			"postboxComposerModeControls": {
 				"designLayout": "Design layout…",
 				"hideToolbar": "Hide formatting toolbar (show on selection)",
@@ -3301,6 +3319,9 @@
 			"postboxComposerPopup": {
 				"dialogLabel": "Compose message",
 				"resizeHandle": "Drag to resize"
+			},
+			"postboxComposerPreflightChip": {
+				"summary": "{count} check: {details} | {count} checks: {details}"
 			},
 			"postboxComposerSealLock": {
 				"sendUnsealed": "Send unsealed…"
@@ -3721,6 +3742,11 @@
 				"unsnoozeTitle": "Un-snooze — return to its folder now"
 			},
 			"postboxRecipientField": {
+				"didYouMean": "Did you mean {address}?",
+				"firstTime": "first time",
+				"firstTimeTitle": "You have never written to {address} before",
+				"fixIt": "Fix it",
+				"keepAsTyped": "Keep as typed",
 				"outsideDomain": "outside {domain}",
 				"placeholder": "recipient{'@'}example.com",
 				"removeRecipient": "Remove {address}"
@@ -11125,6 +11151,12 @@
 				"alreadySent": "Too late to undo — that message is already on its way.",
 				"outOfStorage": "This device is out of storage — the message could not be queued.",
 				"storageUnavailable": "Offline storage is unavailable on this device — the message could not be queued."
+			},
+			"preflight": {
+				"emptySubject": "no subject",
+				"linkMismatch": "a link reads {text} but goes to {host}",
+				"placeholder": "“{token}” left in the message",
+				"unfilledVariable": "{name} was never filled in"
 			},
 			"useDraftRevise": {
 				"failed": "Revise failed — your draft is unchanged."

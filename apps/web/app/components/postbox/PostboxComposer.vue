@@ -5,7 +5,6 @@ import type { ComposerAttachment } from '~/composables/postbox/usePostboxCompose
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
-import { mentionsAttachment } from '~/utils/attachmentMention';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -200,6 +199,22 @@ const {
 	onConfirm: (opts) => void handleSend(opts),
 });
 
+// The deterministic confidence layer (plan ideas 3, 4, 5, 6, 15). Same
+// blockSend + onConfirm replay contract as the seal and stale-reply guards; no
+// model involved, so all of it works with the `ai` flag off.
+const guards = usePostboxComposerGuards(
+	{
+		mailboxId: () => props.mailboxId,
+		identities: () => availableIdentities.value,
+		fromAddress: () => fromAddress.value,
+		subject: () => subject.value,
+		bodyHtml: () => bodyHtml.value,
+		recipients: () => [...toAddresses.value, ...ccAddresses.value, ...bccAddresses.value],
+		attachmentCount: () => attachments.value.length,
+	},
+	{ onConfirm: (opts) => void handleSend(opts) }
+);
+
 type SendOptions = { scheduledSendAt?: number; allowUnsealed?: boolean };
 
 async function handleSend(opts?: SendOptions) {
@@ -215,14 +230,9 @@ async function handleSend(opts?: SendOptions) {
 	// Sealed Mail (E5): an unsealable draft stops here until the sender decides
 	// (proceed or cancel) — nothing goes out in plaintext by omission.
 	if (await seal.blockSend(opts)) return;
-	// Catch the classic "I said 'attached' but forgot to attach" mistake.
-	if (
-		attachments.value.length === 0 &&
-		mentionsAttachment(subject.value, bodyHtml.value) &&
-		!window.confirm(t('components.postbox.postboxComposer.attachmentMentionConfirm'))
-	) {
-		return;
-	}
+	// A send that will fail DMARC, a message missing the attachment it promises,
+	// a recipient never written to before — each asked once, each replaying it.
+	if (guards.blockSend(opts)) return;
 	// A teammate replied to this shared-inbox thread after this reply opened —
 	// pause for confirmation before sending a duplicate (asked once).
 	if (blockStaleSend(opts)) return;
@@ -352,6 +362,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:from-address="fromAddress"
 			:available-identities="availableIdentities"
 			:reply-all-recipients="replyAllRecipients"
+			:guards="guards"
 			@from-change="onFromChange"
 			@apply-reply-all="onApplyReplyAll"
 		/>
@@ -452,6 +463,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:active-signature-id="activeSignatureId"
 			:composer-mode="composerMode"
 			:persistent-toolbar="persistentToolbar"
+			:preflight="guards.preflight"
 			:last-saved-label="lastSavedLabel"
 			@send="handleSend()"
 			@schedule="scheduleOpen = true"

@@ -2,7 +2,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '~/utils/validation';
-import { isExternalRecipient } from '~/utils/recipientHints';
+import { canonicalEmailAddress, isExternalRecipient } from '~/utils/recipientHints';
+import { suggestRecipientDomain, type DomainSuggestion } from '~/utils/recipientTypo';
 
 interface ContactSuggestion {
 	email: string;
@@ -20,8 +21,19 @@ const props = withDefaults(
 		field?: RecipientField;
 		/** The user's own domains; a chip outside them is flagged as external. */
 		ownDomains?: string[];
+		/**
+		 * Domains this mailbox actually corresponds with — the first corpus the
+		 * did-you-mean hint compares a freshly committed chip against.
+		 */
+		knownDomains?: string[];
+		/**
+		 * Recipients (across all envelope fields) this mailbox has never written
+		 * to. Only ever non-empty once the backend has actually answered, so the
+		 * "first time" cue never fires on a pending read.
+		 */
+		firstTimeAddresses?: string[];
 	}>(),
-	{ field: 'to', ownDomains: () => [] }
+	{ field: 'to', ownDomains: () => [], knownDomains: () => [], firstTimeAddresses: () => [] }
 );
 
 const emit = defineEmits<{
@@ -34,6 +46,47 @@ const { t } = useI18n();
 const ownDomainLabel = computed(() => props.ownDomains[0] ?? '');
 function isExternal(addr: string): boolean {
 	return isExternalRecipient(addr, props.ownDomains);
+}
+
+// ─── First-time recipients (plan idea 5) ─────────────────────────────────────
+// The composer resolves who is a stranger (one mailbox-wide read for all three
+// fields); this component only marks the chips that are in that set.
+const firstTimeSet = computed(() => new Set(props.firstTimeAddresses.map(canonicalEmailAddress)));
+function isFirstTime(addr: string): boolean {
+	return firstTimeSet.value.has(canonicalEmailAddress(addr));
+}
+
+// ─── Did you mean … ? (plan idea 4) ──────────────────────────────────────────
+// Checked once, on chip commit — the moment the address becomes real — and shown
+// as an inline hint with a one-click fix. It NEVER blocks: a domain we don't
+// recognise is a suggestion, not a verdict, and the sender may well be right.
+const suggestion = ref<DomainSuggestion | null>(null);
+
+function checkForTypo(committed: string) {
+	suggestion.value = suggestRecipientDomain(committed, props.knownDomains);
+}
+
+/** Swap the mistyped chip for the suggested one, keeping its position. */
+function applySuggestion() {
+	const fix = suggestion.value;
+	suggestion.value = null;
+	if (!fix) return;
+	const index = props.modelValue.findIndex((addr) => canonicalEmailAddress(addr) === fix.mistyped);
+	if (index < 0) return;
+	const next = [...props.modelValue];
+	// The corrected address may already be a chip (the sender typed it twice,
+	// once with the slip) — then the fix is simply dropping the mistyped one.
+	const duplicate = next.some(
+		(addr, i) => i !== index && canonicalEmailAddress(addr) === fix.address
+	);
+	if (duplicate) next.splice(index, 1);
+	else next[index] = fix.address;
+	emit('update:modelValue', next);
+}
+
+/** "Keep as typed" — the sender knows the domain; stop asking about it. */
+function dismissSuggestion() {
+	suggestion.value = null;
 }
 
 // ─── Drag a chip out of this field (dropped onto another) ────────────────────
@@ -100,11 +153,16 @@ function addRecipient(email: string) {
 	emit('update:modelValue', [...props.modelValue, trimmed]);
 	inputValue.value = '';
 	showSuggestions.value = false;
+	checkForTypo(trimmed);
 }
 
 function removeRecipient(idx: number) {
 	const next = [...props.modelValue];
-	next.splice(idx, 1);
+	const [removed] = next.splice(idx, 1);
+	// A hint about a chip that is gone is noise.
+	if (removed && canonicalEmailAddress(removed) === suggestion.value?.mistyped) {
+		suggestion.value = null;
+	}
 	emit('update:modelValue', next);
 }
 
@@ -197,6 +255,16 @@ function onBlur() {
 					aria-hidden="true"
 				/>
 				{{ addr }}
+				<!-- Plan idea 5: never written to this address before. A cue, not a
+				     warning — it only says what it actually knows. -->
+				<span
+					v-if="isFirstTime(addr)"
+					class="text-text-tertiary"
+					data-testid="postbox-first-time-chip"
+					:title="t('components.postbox.postboxRecipientField.firstTimeTitle', { address: addr })"
+				>
+					· {{ t('components.postbox.postboxRecipientField.firstTime') }}
+				</span>
 				<button
 					type="button"
 					class="text-text-tertiary hover:text-text-primary"
@@ -221,6 +289,34 @@ function onBlur() {
 				@blur="onBlur"
 				@keydown="onKeydown"
 			/>
+			<!-- Plan idea 4: the committed chip's domain is one or two slips away
+			     from a domain this mailbox writes to (or a common provider). Inline,
+			     one click to fix, one to keep — it never blocks the send. -->
+			<div
+				v-if="suggestion"
+				class="basis-full flex flex-wrap items-center gap-1.5 pt-1 text-xs text-text-tertiary"
+				data-testid="postbox-domain-suggestion"
+			>
+				<Icon name="lucide:help-circle" class="w-3.5 h-3.5 shrink-0 text-warning" />
+				<span>
+					{{
+						t('components.postbox.postboxRecipientField.didYouMean', {
+							address: suggestion.address,
+						})
+					}}
+				</span>
+				<button type="button" class="text-brand hover:underline" @click="applySuggestion">
+					{{ t('components.postbox.postboxRecipientField.fixIt') }}
+				</button>
+				<span aria-hidden="true">·</span>
+				<button
+					type="button"
+					class="text-text-tertiary hover:text-text-primary"
+					@click="dismissSuggestion"
+				>
+					{{ t('components.postbox.postboxRecipientField.keepAsTyped') }}
+				</button>
+			</div>
 		</div>
 		<div
 			v-if="showSuggestions && suggestions.length > 0"

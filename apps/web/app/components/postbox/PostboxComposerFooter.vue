@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
+import type { PreflightFinding } from '~/utils/postboxPreflight';
 
 const props = defineProps<{
 	canSend: boolean;
@@ -14,6 +15,8 @@ const props = defineProps<{
 	activeSignatureId: Id<'mailSignatures'> | null;
 	composerMode: ComposerMode;
 	persistentToolbar: boolean;
+	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
+	preflight?: PreflightFinding[];
 	lastSavedLabel: string;
 }>();
 
@@ -153,6 +156,9 @@ function onPickFiles(event: Event) {
 					</div>
 				</template>
 			</PostboxOverflowMenu>
+			<!-- Plan idea 6: the always-on checks, stated beside Send and nowhere
+			     else. Advisory — Send stays enabled. -->
+			<PostboxComposerPreflightChip :findings="preflight ?? []" />
 			<!-- Deliberately a sibling of the ⋯ menu, not slot content: the dialog
 			     must survive the panel closing (see followUpPickerOpen above). -->
 			<PostboxFollowUpDialog

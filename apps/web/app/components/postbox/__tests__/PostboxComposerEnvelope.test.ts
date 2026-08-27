@@ -19,6 +19,7 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import type { Id } from '@owlat/api/dataModel';
 import type { SendAsIdentity } from '~/composables/postbox/usePostboxCompose';
+import type { ComposerGuards } from '~/composables/postbox/usePostboxComposerGuards';
 import PostboxComposerEnvelope from '../PostboxComposerEnvelope.vue';
 // The composer auto-imports this as <CampaignsSenderAuthChip>; register the real
 // component (not a stub) so the disable-with-reason copy is asserted end-to-end.
@@ -55,11 +56,25 @@ const mountOpts = {
 		stubs: {
 			Icon: true,
 			PostboxRecipientField: true,
+			PostboxComposerGuards: true,
 		},
 	},
 };
 
+// The pre-send confidence layer has its own suites (utils/postboxPreflight,
+// utils/attachmentMention, utils/recipientTypo); here it only has to exist so
+// the recipient fields get their inputs.
+const quietGuards = {
+	knownDomains: [],
+	firstTimeAddresses: [],
+	preflight: [],
+	alignmentWarning: null,
+	attachmentHint: null,
+	blockSend: () => false,
+} as unknown as ComposerGuards;
+
 const baseProps = {
+	guards: quietGuards,
 	mailboxId: mb('mb-team'),
 	fromAddress: '',
 	toAddresses: [],
