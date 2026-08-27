@@ -16,6 +16,7 @@ import {
 	mailInboxModeValidator,
 	mailSortOrderValidator,
 	mailNotifyAboutValidator,
+	mailUndoSendSecondsValidator,
 } from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
@@ -1322,6 +1323,12 @@ export const mailTables = {
 		// Play a short confirmation sound when a message is dispatched. Optional so
 		// existing rows read as undefined; the reader defaults it OFF (opt-in).
 		isSendSoundOn: v.optional(v.boolean()),
+		// Undo-send window, in seconds: how long a sent message waits in
+		// `pending_send` before it dispatches (0 = Off, dispatch immediately and
+		// show no undo toast). Optional so existing rows read as undefined; the
+		// composer then sends no `undoSendDelayMs` at all and the server's
+		// DEFAULT_UNDO_SEND_DELAY_MS (30s) applies — exactly today's behaviour.
+		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
 		// Desktop notification scope: which new inbox mail fires a native toast.
 		// Optional so existing rows read as undefined; the desktop reader defaults it
 		// to 'people-important' once smart categories exist and 'everything'

@@ -24,6 +24,7 @@ import {
 	mailInboxModeValidator,
 	mailSortOrderValidator,
 	mailNotifyAboutValidator,
+	mailUndoSendSecondsValidator,
 } from '../lib/mailSettingsValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
@@ -49,6 +50,7 @@ export const get = publicQuery({
 			inboxMode: row.inboxMode,
 			sortOrder: row.sortOrder,
 			isSendSoundOn: row.isSendSoundOn,
+			undoSendSeconds: row.undoSendSeconds,
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
 			isSenderScreenerOn: row.isSenderScreenerOn,
@@ -69,6 +71,7 @@ export const update = authedMutation({
 		inboxMode: v.optional(mailInboxModeValidator),
 		sortOrder: v.optional(mailSortOrderValidator),
 		isSendSoundOn: v.optional(v.boolean()),
+		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
 		isSenderScreenerOn: v.optional(v.boolean()),
@@ -93,6 +96,7 @@ export const update = authedMutation({
 			inboxMode?: (typeof args)['inboxMode'];
 			sortOrder?: (typeof args)['sortOrder'];
 			isSendSoundOn?: boolean;
+			undoSendSeconds?: (typeof args)['undoSendSeconds'];
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
 			isSenderScreenerOn?: boolean;
@@ -107,6 +111,7 @@ export const update = authedMutation({
 		if (args.inboxMode !== undefined) patch.inboxMode = args.inboxMode;
 		if (args.sortOrder !== undefined) patch.sortOrder = args.sortOrder;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
+		if (args.undoSendSeconds !== undefined) patch.undoSendSeconds = args.undoSendSeconds;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
 		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;
 		if (args.isSenderScreenerOn !== undefined) patch.isSenderScreenerOn = args.isSenderScreenerOn;

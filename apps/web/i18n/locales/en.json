@@ -3867,7 +3867,11 @@
 				"noTransport": "Not available yet — this instance has no outbound transport configured. Set one up under Delivery first.",
 				"promptBody": "{domain} is verified here, so Owlat can send your outgoing mail directly — signed and aligned for {signedDomain}. Nothing about how you read mail changes, and you can switch back any time.",
 				"promptCta": "Switch to Owlat sending",
-				"promptTitle": "Send from this Owlat instead"
+				"promptTitle": "Send from this Owlat instead",
+				"undoSendHelp": "Hold messages for a moment after you hit Send, so you can take one back. Off sends immediately — there is no undo.",
+				"undoSendLabel": "Undo send",
+				"undoSendOff": "Off",
+				"undoSendSeconds": "{seconds}s"
 			},
 			"postboxShortcutHelp": {
 				"title": "Keyboard shortcuts"

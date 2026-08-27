@@ -1,22 +1,47 @@
 <script setup lang="ts">
 /**
- * Postbox → Sending: the reversible outbound-transport control for a connected
- * external mailbox (piece c4). After an import a mailbox keeps sending through
- * the user's own SMTP; once their from-domain is verified on THIS instance and a
- * transport is configured, they can flip outbound to the Owlat instance so mail
- * ships from its reputation. Reversible any time.
+ * Postbox → Sending. Two things live under this heading:
  *
- * When every gate holds (`promptEligible`) this renders a highlighted nudge at
- * the top — the same one-click switch the post-import checklist points at. We
- * never offer the instance option for an unverified domain: no spoofing a domain
- * this instance can't sign for.
- *
- * Rendered only when the caller actually has a connected external mailbox; a
- * hosted-only user has nothing to choose here, so the section is absent.
+ * 1. The UNDO-SEND WINDOW (plan idea 8) — how long a message is held after Send
+ *    before it actually dispatches: Off / 10s / 30s / 60s. Everyone has this,
+ *    hosted and connected alike, so it renders unconditionally.
+ * 2. The reversible OUTBOUND-TRANSPORT choice for a connected external mailbox
+ *    (piece c4). After an import a mailbox keeps sending through the user's own
+ *    SMTP; once their from-domain is verified on THIS instance and a transport
+ *    is configured, they can flip outbound to the Owlat instance so mail ships
+ *    from its reputation. Reversible any time. When every gate holds
+ *    (`promptEligible`) it renders a highlighted nudge — the same one-click
+ *    switch the post-import checklist points at. We never offer the instance
+ *    option for an unverified domain: no spoofing a domain this instance can't
+ *    sign for. A hosted-only user has nothing to choose here, so that whole
+ *    block is absent for them.
  */
 import { api } from '@owlat/api';
+import {
+	POSTBOX_UNDO_SEND_SECONDS,
+	type PostboxUndoSendSeconds,
+} from '~/utils/postboxUndoSendWindow';
 
 const { t } = useI18n();
+
+// ── Undo-send window (plan idea 8) ───────────────────────────────────────────
+// Not gated on anything: the hold applies to every send from this account.
+const { undoSendSeconds, setUndoSendSeconds, isSaving } = usePostboxSettings();
+
+function onUndoSendChange(event: Event) {
+	const raw = Number((event.target as HTMLSelectElement).value);
+	// The <option> values come from the closed list itself, so this only guards
+	// against a value that is not in it at all.
+	if (!POSTBOX_UNDO_SEND_SECONDS.includes(raw as PostboxUndoSendSeconds)) return;
+	void setUndoSendSeconds(raw as PostboxUndoSendSeconds);
+}
+
+/** "Off" for the no-hold choice, "10s"/"30s"/"60s" for a real window. */
+function undoSendLabel(seconds: PostboxUndoSendSeconds): string {
+	return seconds === 0
+		? t('components.postbox.postboxSendingSettings.undoSendOff')
+		: t('components.postbox.postboxSendingSettings.undoSendSeconds', { seconds });
+}
 
 // `mail.external` is OFF by default (the fresh-start posture). The backend query
 // asserts the flag and would throw for a flag-off instance, so skip the
@@ -82,162 +107,193 @@ async function choose(preference: 'external' | 'instance') {
 </script>
 
 <template>
-	<section v-if="showSection" class="card !p-0 mb-6" aria-labelledby="postbox-sending-heading">
+	<section class="card !p-0 mb-6" aria-labelledby="postbox-sending-heading">
 		<header class="px-5 py-3 border-b border-border-subtle">
 			<h2 id="postbox-sending-heading" class="font-semibold">
 				{{ t('components.postbox.postboxSendingSettings.heading') }}
 			</h2>
 		</header>
 
-		<!-- Loading -->
-		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
-		</div>
-
-		<!-- Error: the subscription failed. Don't silently drop the section. -->
-		<div v-else-if="error" class="px-5 py-6 flex items-start gap-3" role="alert">
-			<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
-			<p class="text-sm text-text-secondary">
-				{{ t('components.postbox.postboxSendingSettings.loadError') }}
-			</p>
-		</div>
-
-		<template v-else-if="account">
-			<!-- Post-import nudge: shown only when every gate holds. -->
-			<div
-				v-if="promptEligible"
-				class="mx-5 mt-4 rounded-md border border-brand/30 bg-brand-subtle px-4 py-3"
+		<!-- Undo send: how long a message is held after Send. "Off" dispatches
+		     immediately, which is why the help text says so out loud — there is
+		     then no undo toast to catch a mistake with. -->
+		<div class="px-5 py-4 flex items-center justify-between gap-4">
+			<div class="min-w-0">
+				<label for="postbox-undo-send" class="font-medium text-sm block">
+					{{ t('components.postbox.postboxSendingSettings.undoSendLabel') }}
+				</label>
+				<p class="text-xs text-text-tertiary mt-0.5">
+					{{ t('components.postbox.postboxSendingSettings.undoSendHelp') }}
+				</p>
+			</div>
+			<select
+				id="postbox-undo-send"
+				class="input w-32 shrink-0"
+				data-testid="postbox-undo-send-window"
+				:value="String(undoSendSeconds)"
+				:disabled="isSaving"
+				@change="onUndoSendChange"
 			>
-				<div class="flex items-start gap-3">
-					<Icon name="lucide:send" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
-					<div class="min-w-0">
-						<p class="font-medium text-sm">
-							{{ t('components.postbox.postboxSendingSettings.promptTitle') }}
-						</p>
-						<p class="text-xs text-text-secondary mt-1">
-							<I18nT
-								keypath="components.postbox.postboxSendingSettings.promptBody"
-								tag="span"
-								scope="global"
-							>
-								<template #domain
-									><code>{{ domain }}</code></template
-								>
-								<template #signedDomain
-									><code>{{ domain }}</code></template
-								>
-							</I18nT>
-						</p>
-						<UiButton
-							size="sm"
-							class="mt-3"
-							:loading="setPreference.isLoading.value"
-							@click="choose('instance')"
-						>
-							{{ t('components.postbox.postboxSendingSettings.promptCta') }}
-						</UiButton>
-					</div>
-				</div>
+				<option v-for="seconds in POSTBOX_UNDO_SEND_SECONDS" :key="seconds" :value="seconds">
+					{{ undoSendLabel(seconds) }}
+				</option>
+			</select>
+		</div>
+
+		<!-- Outbound transport (piece c4). Self-hides for a hosted-only user, who
+		     has no external mailbox and so nothing to choose. -->
+		<template v-if="showSection">
+			<div class="border-t border-border-subtle" />
+			<!-- Loading -->
+			<div v-if="isLoading" class="p-8 flex justify-center">
+				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
 			</div>
 
-			<!-- The reversible choice. Re-keyed on the preference (and a resync
-			     counter) so the native radios snap back after a refused switch. -->
-			<fieldset :key="`${currentPreference}-${resyncKey}`" class="px-5 py-4">
-				<legend class="sr-only">
-					{{ t('components.postbox.postboxSendingSettings.legend') }}
-				</legend>
-				<p class="text-xs text-text-tertiary mb-3">
-					<I18nT
-						keypath="components.postbox.postboxSendingSettings.chooseIntro"
-						tag="span"
-						scope="global"
-					>
-						<template #address
-							><code>{{ address }}</code></template
-						>
-					</I18nT>
+			<!-- Error: the subscription failed. Don't silently drop the section. -->
+			<div v-else-if="error" class="px-5 py-6 flex items-start gap-3" role="alert">
+				<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+				<p class="text-sm text-text-secondary">
+					{{ t('components.postbox.postboxSendingSettings.loadError') }}
 				</p>
+			</div>
 
-				<div class="space-y-2">
-					<label
-						class="flex items-start gap-3 rounded-md border px-4 py-3 cursor-pointer transition-colors"
-						:class="
-							currentPreference === 'external'
-								? 'border-brand/40 bg-brand-subtle'
-								: 'border-border-subtle hover:bg-bg-surface'
-						"
-					>
-						<input
-							type="radio"
-							name="postbox-sending-transport"
-							class="mt-1 shrink-0 h-4 w-4"
-							:checked="currentPreference === 'external'"
-							:disabled="setPreference.isLoading.value"
-							@change="choose('external')"
-						/>
-						<span class="min-w-0">
-							<span class="font-medium text-sm block">
-								{{ t('components.postbox.postboxSendingSettings.externalTitle') }}
-							</span>
-							<span class="text-xs text-text-tertiary block mt-0.5">
-								{{ t('components.postbox.postboxSendingSettings.externalBody') }}
-							</span>
-						</span>
-					</label>
-
-					<label
-						class="flex items-start gap-3 rounded-md border px-4 py-3 transition-colors"
-						:class="[
-							canUseInstance ? 'cursor-pointer' : 'cursor-not-allowed opacity-70',
-							currentPreference === 'instance'
-								? 'border-brand/40 bg-brand-subtle'
-								: 'border-border-subtle',
-							canUseInstance && currentPreference !== 'instance' ? 'hover:bg-bg-surface' : '',
-						]"
-					>
-						<input
-							type="radio"
-							name="postbox-sending-transport"
-							class="mt-1 shrink-0 h-4 w-4"
-							:checked="currentPreference === 'instance'"
-							:disabled="setPreference.isLoading.value || !canUseInstance"
-							@change="choose('instance')"
-						/>
-						<span class="min-w-0">
-							<span class="font-medium text-sm block">
-								{{ t('components.postbox.postboxSendingSettings.instanceTitle') }}
-							</span>
-							<span class="text-xs text-text-tertiary block mt-0.5">
+			<template v-else-if="account">
+				<!-- Post-import nudge: shown only when every gate holds. -->
+				<div
+					v-if="promptEligible"
+					class="mx-5 mt-4 rounded-md border border-brand/30 bg-brand-subtle px-4 py-3"
+				>
+					<div class="flex items-start gap-3">
+						<Icon name="lucide:send" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+						<div class="min-w-0">
+							<p class="font-medium text-sm">
+								{{ t('components.postbox.postboxSendingSettings.promptTitle') }}
+							</p>
+							<p class="text-xs text-text-secondary mt-1">
 								<I18nT
-									keypath="components.postbox.postboxSendingSettings.instanceBody"
+									keypath="components.postbox.postboxSendingSettings.promptBody"
 									tag="span"
 									scope="global"
 								>
 									<template #domain
 										><code>{{ domain }}</code></template
 									>
-								</I18nT>
-							</span>
-							<span v-if="!domainVerified" class="text-xs text-warning block mt-1">
-								<I18nT
-									keypath="components.postbox.postboxSendingSettings.domainNotVerified"
-									tag="span"
-									scope="global"
-								>
-									<template #domain
+									<template #signedDomain
 										><code>{{ domain }}</code></template
 									>
 								</I18nT>
-							</span>
-							<span v-else-if="!transportConfigured" class="text-xs text-warning block mt-1">
-								{{ t('components.postbox.postboxSendingSettings.noTransport') }}
-							</span>
-						</span>
-					</label>
+							</p>
+							<UiButton
+								size="sm"
+								class="mt-3"
+								:loading="setPreference.isLoading.value"
+								@click="choose('instance')"
+							>
+								{{ t('components.postbox.postboxSendingSettings.promptCta') }}
+							</UiButton>
+						</div>
+					</div>
 				</div>
 
-				<p v-if="switchError" class="text-sm text-error mt-3">{{ switchError }}</p>
-			</fieldset>
+				<!-- The reversible choice. Re-keyed on the preference (and a resync
+			     counter) so the native radios snap back after a refused switch. -->
+				<fieldset :key="`${currentPreference}-${resyncKey}`" class="px-5 py-4">
+					<legend class="sr-only">
+						{{ t('components.postbox.postboxSendingSettings.legend') }}
+					</legend>
+					<p class="text-xs text-text-tertiary mb-3">
+						<I18nT
+							keypath="components.postbox.postboxSendingSettings.chooseIntro"
+							tag="span"
+							scope="global"
+						>
+							<template #address
+								><code>{{ address }}</code></template
+							>
+						</I18nT>
+					</p>
+
+					<div class="space-y-2">
+						<label
+							class="flex items-start gap-3 rounded-md border px-4 py-3 cursor-pointer transition-colors"
+							:class="
+								currentPreference === 'external'
+									? 'border-brand/40 bg-brand-subtle'
+									: 'border-border-subtle hover:bg-bg-surface'
+							"
+						>
+							<input
+								type="radio"
+								name="postbox-sending-transport"
+								class="mt-1 shrink-0 h-4 w-4"
+								:checked="currentPreference === 'external'"
+								:disabled="setPreference.isLoading.value"
+								@change="choose('external')"
+							/>
+							<span class="min-w-0">
+								<span class="font-medium text-sm block">
+									{{ t('components.postbox.postboxSendingSettings.externalTitle') }}
+								</span>
+								<span class="text-xs text-text-tertiary block mt-0.5">
+									{{ t('components.postbox.postboxSendingSettings.externalBody') }}
+								</span>
+							</span>
+						</label>
+
+						<label
+							class="flex items-start gap-3 rounded-md border px-4 py-3 transition-colors"
+							:class="[
+								canUseInstance ? 'cursor-pointer' : 'cursor-not-allowed opacity-70',
+								currentPreference === 'instance'
+									? 'border-brand/40 bg-brand-subtle'
+									: 'border-border-subtle',
+								canUseInstance && currentPreference !== 'instance' ? 'hover:bg-bg-surface' : '',
+							]"
+						>
+							<input
+								type="radio"
+								name="postbox-sending-transport"
+								class="mt-1 shrink-0 h-4 w-4"
+								:checked="currentPreference === 'instance'"
+								:disabled="setPreference.isLoading.value || !canUseInstance"
+								@change="choose('instance')"
+							/>
+							<span class="min-w-0">
+								<span class="font-medium text-sm block">
+									{{ t('components.postbox.postboxSendingSettings.instanceTitle') }}
+								</span>
+								<span class="text-xs text-text-tertiary block mt-0.5">
+									<I18nT
+										keypath="components.postbox.postboxSendingSettings.instanceBody"
+										tag="span"
+										scope="global"
+									>
+										<template #domain
+											><code>{{ domain }}</code></template
+										>
+									</I18nT>
+								</span>
+								<span v-if="!domainVerified" class="text-xs text-warning block mt-1">
+									<I18nT
+										keypath="components.postbox.postboxSendingSettings.domainNotVerified"
+										tag="span"
+										scope="global"
+									>
+										<template #domain
+											><code>{{ domain }}</code></template
+										>
+									</I18nT>
+								</span>
+								<span v-else-if="!transportConfigured" class="text-xs text-warning block mt-1">
+									{{ t('components.postbox.postboxSendingSettings.noTransport') }}
+								</span>
+							</span>
+						</label>
+					</div>
+
+					<p v-if="switchError" class="text-sm text-error mt-3">{{ switchError }}</p>
+				</fieldset>
+			</template>
 		</template>
 	</section>
 </template>

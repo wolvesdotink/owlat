@@ -26,6 +26,9 @@
  *     only; the server flips `.order()` on the existing arrival index.
  *   - `sendSound` — play a short confirmation sound when a message is
  *     dispatched. Defaults OFF (opt-in).
+ *   - `undoSendSeconds` — how long a sent message is held before it dispatches
+ *     (Off / 10 / 30 / 60). Defaults to 30s, the server's own default, so an
+ *     unset preference is exactly the behaviour that shipped before it existed.
  */
 
 import { api } from '@owlat/api';
@@ -43,6 +46,8 @@ import type { PostboxSortOrder } from '~/utils/postboxSortOrder';
 import { resolvePostboxSortOrder } from '~/utils/postboxSortOrder';
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { resolvePostboxNotifyAbout } from '~/utils/postboxNotify';
+import type { PostboxUndoSendSeconds } from '~/utils/postboxUndoSendWindow';
+import { resolvePostboxUndoSendSeconds } from '~/utils/postboxUndoSendWindow';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
@@ -95,6 +100,12 @@ export function usePostboxSettings() {
 	// Confirmation sound on send. Default OFF (opt-in): an unset preference means
 	// no sound, so the composer stays silent unless the user turns it on.
 	const sendSound = computed<boolean>(() => data.value?.isSendSoundOn ?? false);
+
+	// Undo-send window. An unset (or unknown) value resolves to 30s — the server
+	// default the composer gets by sending no `undoSendDelayMs` at all.
+	const undoSendSeconds = computed<PostboxUndoSendSeconds>(() =>
+		resolvePostboxUndoSendSeconds(data.value?.undoSendSeconds)
+	);
 
 	// Desktop notification scope. An unset value resolves to 'people-important'
 	// once categories are live and 'everything' otherwise, so the desktop reader
@@ -159,6 +170,10 @@ export function usePostboxSettings() {
 		await updateOp.run({ isSendSoundOn: enabled });
 	}
 
+	async function setUndoSendSeconds(seconds: PostboxUndoSendSeconds) {
+		await updateOp.run({ undoSendSeconds: seconds });
+	}
+
 	async function setNotifyAbout(mode: PostboxNotifyAbout) {
 		await updateOp.run({ notifyAbout: mode });
 	}
@@ -181,6 +196,7 @@ export function usePostboxSettings() {
 		inboxMode,
 		sortOrder,
 		sendSound,
+		undoSendSeconds,
 		notifyAbout,
 		badgeNonPeople,
 		senderScreener,
@@ -194,6 +210,7 @@ export function usePostboxSettings() {
 		setInboxMode,
 		setSortOrder,
 		setSendSound,
+		setUndoSendSeconds,
 		setNotifyAbout,
 		setBadgeNonPeople,
 		setSenderScreener,

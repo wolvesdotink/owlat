@@ -53,6 +53,22 @@ export const mailInboxModeValidator = v.union(v.literal('today'), v.literal('bro
 // Single source so schema, args and the read cannot drift.
 export const mailSortOrderValidator = v.union(v.literal('newest'), v.literal('oldest'));
 
+// Postbox undo-send window (mailUserSettings.undoSendSeconds and mail/settings
+// update args) — how long a sent message is held in `pending_send` before it
+// actually dispatches, i.e. how long "Undo" stays offered. A CLOSED set of four
+// values rather than a free number: the composer renders it as four radio
+// choices, and an arbitrary window (7 hours) is a footgun, not a preference.
+// `0` is "Off" — dispatch immediately, no undo toast at all. Unset ⇒ the
+// server's DEFAULT_UNDO_SEND_DELAY_MS (30s), which is exactly the behaviour
+// every user had before this control existed. Single source so schema and args
+// can't drift.
+export const mailUndoSendSecondsValidator = v.union(
+	v.literal(0),
+	v.literal(10),
+	v.literal(30),
+	v.literal(60)
+);
+
 // Postbox desktop-notification scope (mailUserSettings.notifyAbout and
 // mail/settings update args). 'everything' fires a toast for every new inbox
 // message; 'people-important' only for smart-category `person` mail (and any

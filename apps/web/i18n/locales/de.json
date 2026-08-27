@@ -3867,7 +3867,11 @@
 				"noTransport": "Noch nicht verfügbar — auf dieser Instanz ist kein ausgehender Transport konfiguriert. Richten Sie zuerst einen unter Zustellung ein.",
 				"promptBody": "{domain} ist hier verifiziert, sodass Owlat Ihre ausgehende Post direkt versenden kann — signiert und ausgerichtet für {signedDomain}. An der Art, wie Sie Ihre Post lesen, ändert sich nichts, und Sie können jederzeit zurückwechseln.",
 				"promptCta": "Auf Owlat-Versand umstellen",
-				"promptTitle": "Stattdessen über dieses Owlat senden"
+				"promptTitle": "Stattdessen über dieses Owlat senden",
+				"undoSendHelp": "Hält Nachrichten nach dem Senden kurz zurück, damit du sie zurückholen kannst. Bei „Aus“ geht die Nachricht sofort raus — ohne Rückholmöglichkeit.",
+				"undoSendLabel": "Senden rückgängig",
+				"undoSendOff": "Aus",
+				"undoSendSeconds": "{seconds}s"
 			},
 			"postboxShortcutHelp": {
 				"title": "Tastenkürzel"

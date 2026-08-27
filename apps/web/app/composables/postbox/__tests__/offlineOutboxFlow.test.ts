@@ -44,6 +44,10 @@ vi.mock('@owlat/api', () => ({
 			},
 			identities: { listSendAsIdentities: 'identities.listSendAs' },
 			signatures: { list: 'signatures.list' },
+			// usePostboxCompose reads the undo-send window through
+			// usePostboxSettings (plan idea 8); unanswered here, so it resolves to
+			// the 30s default and puts no `undoSendDelayMs` on the wire.
+			settings: { get: 'settings.get', update: 'settings.update' },
 		},
 	},
 }));
@@ -252,6 +256,7 @@ beforeEach(async () => {
 
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useToast', () => ({
 		showToast: (msg: string) => {
 			toasts.push(msg);

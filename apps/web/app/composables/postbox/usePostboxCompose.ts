@@ -19,6 +19,7 @@ import type { EditorBlock } from '@owlat/email-builder';
 import type { OperationError } from '@owlat/shared/operationError';
 import { SurfacedOperationError } from '~/lib/operationError';
 import type { OfflineComposePayload } from '~/utils/postboxOfflineStore';
+import { postboxUndoSendDelayMsArg } from '~/utils/postboxUndoSendWindow';
 import {
 	usePostboxComposeAttachments,
 	type ComposerAttachment,
@@ -26,6 +27,7 @@ import {
 import { usePostboxComposeHydration } from './usePostboxComposeHydration';
 import { usePostboxComposeSignatures } from './usePostboxComposeSignatures';
 import { usePostboxOfflineOutbox } from './usePostboxOfflineOutbox';
+import { usePostboxSettings } from './usePostboxSettings';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
@@ -88,6 +90,13 @@ export function usePostboxCompose(seed: DraftSeed) {
 	// Offline outbox (D8): send() queues instead of failing while offline; the
 	// drain replays queued payloads on reconnect (usePostboxOfflineOutbox).
 	const offlineOutbox = usePostboxOfflineOutbox(() => String(seed.mailboxId));
+
+	// Undo-send window (plan idea 8). The per-user preference decides how long a
+	// send is held; `postboxUndoSendDelayMsArg` returns undefined on the default
+	// window, so a user who never touched the setting still sends the exact
+	// mutation args this composable sent before the preference existed.
+	const { undoSendSeconds } = usePostboxSettings();
+	const undoSendDelayMs = computed(() => postboxUndoSendDelayMsArg(undoSendSeconds.value));
 	// While send() is actively intercepting, a TRANSPORT failure is claimed
 	// (no error toast) and turned into an offline enqueue instead. Every other
 	// category, and every failure outside a send, keeps today's treatment.
@@ -353,9 +362,15 @@ export function usePostboxCompose(seed: DraftSeed) {
 				contentType: a.contentType,
 				size: a.size,
 			})),
+			// The caller's options VERBATIM: the reconnect drain replays these, and
+			// it deliberately dispatches a drained item immediately (the sender
+			// already had their undo window while it sat in the queue). Baking the
+			// undo preference in here would re-arm that hold after reconnect, with
+			// no toast left to cancel it — so the window travels beside the payload
+			// instead, where only the toast reads it.
 			sendOptions: opts,
 		};
-		return offlineOutbox.queueSend(payload);
+		return offlineOutbox.queueSend(payload, undoSendDelayMs.value);
 	}
 
 	async function send(opts?: SendOpts) {
@@ -383,7 +398,10 @@ export function usePostboxCompose(seed: DraftSeed) {
 
 			const result = await sendDraft.run({
 				draftId: id,
-				undoSendDelayMs: opts?.undoSendDelayMs,
+				// An explicit per-send window (the offline drain, tests) wins; with
+				// none, the user's preference decides. On the default window that
+				// resolves back to `undefined` and the server's own default applies.
+				undoSendDelayMs: opts?.undoSendDelayMs ?? undoSendDelayMs.value,
 				scheduledSendAt: opts?.scheduledSendAt,
 				allowUnsealed: opts?.allowUnsealed,
 			});
