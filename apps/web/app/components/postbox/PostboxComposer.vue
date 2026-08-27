@@ -499,8 +499,12 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@toggle-toolbar="toggleToolbar"
 			@switch-mode="switchMode"
 		/>
+		<!-- Plan idea 9: the recipients drive the timezone-aware presets. To/Cc/Bcc
+		     together, since the dialog only speaks up when they share ONE zone. -->
 		<PostboxScheduleDialog
 			:open="scheduleOpen"
+			:mailbox-id="mailboxId"
+			:recipients="[...toAddresses, ...ccAddresses, ...bccAddresses]"
 			@update:open="scheduleOpen = $event"
 			@confirm="(ts) => handleSend({ scheduledSendAt: ts })"
 		/>

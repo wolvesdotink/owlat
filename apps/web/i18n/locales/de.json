@@ -3822,11 +3822,15 @@
 			},
 			"postboxScheduleDialog": {
 				"custom": "Benutzerdefiniert",
-				"mondayMorning": "Montagmorgen",
+				"nextWeekdayMorning": "{weekday}morgen",
+				"recipientMorning": "Morgen früh, in ihrer Zeitzone",
+				"recipientZone": "Die Zeiten unten beziehen sich auf {zone}, die hinterlegte Zeitzone deiner Empfänger.",
 				"schedule": "Planen",
+				"theirsThenYours": "{theirs} bei ihnen ({yours} bei dir)",
 				"title": "Senden planen",
 				"tomorrowAfternoon": "Morgen Nachmittag",
-				"tomorrowMorning": "Morgen früh"
+				"tomorrowMorning": "Morgen früh",
+				"yoursThenTheirs": "{yours} bei dir ({theirs} bei ihnen)"
 			},
 			"postboxSchedulingChip": {
 				"dismissLabel": "Terminvorschlag ausblenden",

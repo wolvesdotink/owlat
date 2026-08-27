@@ -3,6 +3,33 @@
 Work named in the plan (`docs/ux-plan/index.html`) that was consciously left
 undone, with the reason and what it would take. Idea numbers refer to that file.
 
+## 9 — recipient timezone is read from the CRM, not inferred from headers
+
+The schedule dialog is timezone-aware: it offers a preset anchored on the
+recipient's morning, labels every preset with both clocks, names the zone it is
+reading against, and degrades silently to the sender-clock presets when it does
+not know. The next-weekday-morning preset landed too.
+
+What the plan asked for and this does NOT do is *infer* the zone "from prior
+message headers". Nothing in `mailMessages` carries the sender's UTC offset:
+the Date header's offset is discarded at ingest and `internalDate` is set to
+`receivedAt` (`mail/deliveryPipeline/insert.ts`), so both stored timestamps are
+plain epochs with no zone in them. Inferring would mean capturing the offset in
+the inbound delivery pipeline, a schema field, and a backfill that cannot exist
+for mail already received — i.e. a change to the inbound plane that yields
+nothing for any existing mailbox.
+
+So the source is `contacts.timezone`, the IANA zone the CRM already holds
+(`mail/contacts.ts:recipientTimeZones`). It is stronger evidence than a header
+guess — someone set it explicitly — and it is available today; it is just
+narrower, since it only covers recipients who are CRM contacts with the field
+filled in.
+
+To pick it up: parse the Date header's offset at ingest, store it as an
+optional field on `mailMessages`, and prefer the CRM zone over a header-derived
+one when both exist (an explicit setting should beat a statistical read of
+where someone's mail client was last configured).
+
 ## 61 — `--color-brand` as text misses the AA floor
 
 `packages/ui/__tests__/tokenContrast.test.ts` holds the neutral text ladder and

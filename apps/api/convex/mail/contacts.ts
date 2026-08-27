@@ -221,6 +221,45 @@ export const knownRecipients = publicQuery({
 	},
 });
 
+/**
+ * The IANA timezone the org's CRM has on record for each of `emails`, for the
+ * recipients it has one for (plan idea 9).
+ *
+ * Feeds the schedule dialog's dual-clock presets: "tomorrow 9:00" means very
+ * different things when you are in San Francisco and they are in Berlin, and
+ * the answer is only worth showing when it is actually KNOWN. `contacts
+ * .timezone` is set explicitly (import, CRM edit, API), so it is a fact about
+ * the recipient rather than a guess — the dialog degrades silently to
+ * sender-clock presets for everyone it gets no answer about.
+ *
+ * Returns only the addresses WITH a timezone, so a pending or refused read can
+ * never be mistaken for "nobody has one" in a way that invents a wrong clock.
+ * Soft-deleted contacts are skipped. Single-org deployment, so the mailbox
+ * guard is the whole authorization story (same shape as `knownRecipients`).
+ */
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+export const recipientTimeZones = publicQuery({
+	args: { mailboxId: v.id('mailboxes'), emails: v.array(v.string()) },
+	handler: async (ctx, args) => {
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
+		if (!owned.ok) return [];
+		const wanted = [
+			...new Set(args.emails.map((raw) => normalizeEmail(raw)).filter((e) => e.includes('@'))),
+		].slice(0, KNOWN_RECIPIENT_LIMIT);
+		const found: Array<{ address: string; timeZone: string }> = [];
+		for (const email of wanted) {
+			const contact = await ctx.db
+				.query('contacts')
+				.withIndex('by_email', (q) => q.eq('email', email))
+				.first();
+			if (!contact || contact.deletedAt !== undefined) continue;
+			const timeZone = contact.timezone?.trim();
+			if (timeZone) found.push({ address: email, timeZone });
+		}
+		return found;
+	},
+});
+
 /** Recency window scanned for correspondent domains — the autocomplete's own. */
 const DOMAIN_SCAN_LIMIT = 200;
 /** Distinct domains handed to the client; more than this is not a typo corpus. */
