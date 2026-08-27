@@ -9800,6 +9800,68 @@
 				}
 			}
 		},
+		"bounceCatalog": {
+			"fault": {
+				"yourSetup": "Liegt an deiner Seite",
+				"theirMailbox": "Liegt nicht an dir",
+				"temporary": "Vorübergehend"
+			},
+			"mailboxUnknown": {
+				"summary": "Unter dieser Adresse gibt es kein Postfach – vertippt, umbenannt oder geschlossen.",
+				"action": "Prüfe die Schreibweise und sende erneut an die korrigierte Adresse."
+			},
+			"mailboxFull": {
+				"summary": "Das Postfach ist voll und konnte die Nachricht nicht annehmen.",
+				"action": "Versuche es morgen erneut oder melde dich anders, wenn es eilt."
+			},
+			"messageTooLarge": {
+				"summary": "Die Nachricht war größer, als dieses Postfach annimmt.",
+				"action": "Verschicke die Anhänge als Link oder teile die Nachricht auf."
+			},
+			"contentRejected": {
+				"summary": "Der Empfangsserver hat die Nachricht als Spam eingestuft und abgelehnt.",
+				"action": "Schreibe die Nachricht ohne Kurz-Links und Anhänge neu und sende erneut."
+			},
+			"policyRejected": {
+				"summary": "Der Empfangsserver nimmt Mail deiner Domain auf diesem Weg nicht an.",
+				"action": "Bitte die Betreiberin dieser Instanz, SPF, DKIM und DMARC für deine Domain fertigzustellen."
+			},
+			"authRequired": {
+				"summary": "Der Empfangsserver hat die Nachricht abgelehnt, weil unsere Zugangsdaten nicht akzeptiert wurden.",
+				"action": "Bitte die Betreiberin dieser Instanz, die Zugangsdaten des Versandwegs zu prüfen."
+			},
+			"gmailIpIdentity": {
+				"summary": "Gmail nimmt keine Mail von der Adresse dieses Servers an, solange der DNS-Name nicht passt.",
+				"action": "Bitte die Betreiberin dieser Instanz, den Reverse-DNS-Eintrag (PTR) einzurichten."
+			},
+			"gmailTlsRequired": {
+				"summary": "Gmail verlangt eine verschlüsselte Verbindung, diese war es nicht.",
+				"action": "Bitte die Betreiberin dieser Instanz, TLS für ausgehende Mail zu aktivieren."
+			},
+			"greylisted": {
+				"summary": "Der Empfangsserver bittet um einen zweiten Versuch in Kürze – eine übliche Spam-Bremse."
+			},
+			"rateLimited": {
+				"summary": "Der Empfangsserver bittet uns, langsamer zu senden; die Nachricht wartet.",
+				"action": "Nichts zu tun – sie geht von allein raus. Sende nur erneut, wenn sie morgen noch hängt."
+			},
+			"yahooDeferred": {
+				"summary": "Yahoo lehnt Mail von der Adresse dieses Servers grundsätzlich ab.",
+				"action": "Bitte die Betreiberin dieser Instanz, die Sperre bei Yahoo aufheben zu lassen."
+			},
+			"networkError": {
+				"summary": "Wir konnten den Empfangsserver nicht erreichen.",
+				"action": "Versuche es in ein paar Minuten erneut; prüfe die Domain, wenn es weiter fehlschlägt."
+			},
+			"temporaryFailure": {
+				"summary": "Der Empfangsserver meldet ein vorübergehendes Problem.",
+				"action": "Versuche es später erneut – auf deiner Seite ist nichts zu reparieren."
+			},
+			"unknown": {
+				"summary": "Der Empfangsserver hat die Nachricht ohne Begründung abgelehnt.",
+				"action": "Lies unten die Antwort des Servers und versuche es erneut oder nimm eine andere Adresse."
+			}
+		},
 		"breadcrumbPatterns": {
 			"pages": {
 				"campaignReport": "Kampagnenbericht",

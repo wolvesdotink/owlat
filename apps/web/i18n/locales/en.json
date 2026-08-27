@@ -9800,6 +9800,68 @@
 				}
 			}
 		},
+		"bounceCatalog": {
+			"fault": {
+				"yourSetup": "Something on your side",
+				"theirMailbox": "Nothing on your side",
+				"temporary": "Temporary"
+			},
+			"mailboxUnknown": {
+				"summary": "There's no mailbox at this address — it was mistyped, renamed or closed.",
+				"action": "Check the spelling, then resend to the corrected address."
+			},
+			"mailboxFull": {
+				"summary": "Their mailbox is full, so it couldn't take the message.",
+				"action": "Try again in a day, or reach them another way if it's urgent."
+			},
+			"messageTooLarge": {
+				"summary": "The message was bigger than this mailbox accepts.",
+				"action": "Send the attachments as a link instead, or split the message."
+			},
+			"contentRejected": {
+				"summary": "The receiving server treated the message as spam and refused it.",
+				"action": "Rewrite the message without link shorteners or attachments, then resend."
+			},
+			"policyRejected": {
+				"summary": "The receiving server doesn't accept mail sent this way from your domain.",
+				"action": "Ask whoever runs this instance to finish SPF, DKIM and DMARC for your domain."
+			},
+			"authRequired": {
+				"summary": "The receiving server refused the message because our sending credentials weren't accepted.",
+				"action": "Ask whoever runs this instance to check the send transport's credentials."
+			},
+			"gmailIpIdentity": {
+				"summary": "Gmail won't take mail from this server's address until its DNS name matches.",
+				"action": "Ask whoever runs this instance to set up the reverse-DNS (PTR) record."
+			},
+			"gmailTlsRequired": {
+				"summary": "Gmail requires an encrypted connection and this one wasn't.",
+				"action": "Ask whoever runs this instance to enable TLS on outgoing mail."
+			},
+			"greylisted": {
+				"summary": "The receiving server asked us to try again shortly — a routine anti-spam delay."
+			},
+			"rateLimited": {
+				"summary": "The receiving server is asking us to slow down, so the message is waiting.",
+				"action": "Nothing to do — it will go out on its own. Resend only if it's still stuck tomorrow."
+			},
+			"yahooDeferred": {
+				"summary": "Yahoo is refusing mail from this server's address outright.",
+				"action": "Ask whoever runs this instance to request delisting with Yahoo."
+			},
+			"networkError": {
+				"summary": "We couldn't reach the receiving server.",
+				"action": "Try again in a few minutes; check the address's domain if it keeps failing."
+			},
+			"temporaryFailure": {
+				"summary": "The receiving server reported a temporary problem.",
+				"action": "Try again later — nothing needs fixing on your side yet."
+			},
+			"unknown": {
+				"summary": "The receiving server refused the message without saying why.",
+				"action": "Read the server's reply below, then try again or use another address."
+			}
+		},
 		"breadcrumbPatterns": {
 			"pages": {
 				"campaignReport": "Campaign Report",
