@@ -44,7 +44,7 @@
 	},
 	"plugins": {
 		"shell": {
-			"open": true
+			"open": "^((mailto:\\w+)|(tel:\\w+)|(https?://\\w+)|(ms-settings:)|(x-apple\\.systempreferences:)).+"
 		},
 		"deep-link": {
 			"desktop": {
