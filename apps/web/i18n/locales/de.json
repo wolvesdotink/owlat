@@ -12857,7 +12857,8 @@
 			}
 		},
 		"useBackendOperation": {
-			"genericError": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
+			"genericError": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
+			"announceDone": "Erledigt: {label}"
 		},
 		"useBlocklistImport": {
 			"errors": {
@@ -13910,7 +13911,8 @@
 			"signOut": "Abmelden",
 			"skipToContent": "Zum Hauptinhalt springen",
 			"theme": "Design",
-			"userFallback": "Benutzer"
+			"userFallback": "Benutzer",
+			"navigatedTo": "Zu {page} gewechselt"
 		},
 		"error": {
 			"forbidden": "Sie haben keine Berechtigung, auf diese Seite zuzugreifen.",

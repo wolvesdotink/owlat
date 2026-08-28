@@ -38,6 +38,17 @@ export interface BackendOperationOptions {
 	 * Return `false` (or omit the option) and nothing changes.
 	 */
 	onError?: (error: OperationError) => boolean;
+	/**
+	 * Announce a completed run into the app's live region (`useAnnounce`), so a
+	 * screen-reader user is told the write landed. ON by default: the majority
+	 * of this app's saves repaint nothing louder than a button label, and the
+	 * failure path is already spoken by the toast.
+	 *
+	 * Set `false` for an operation that runs on a timer, per keystroke, or once
+	 * per row of a bulk action — announcing those is not information, it is
+	 * noise that talks over whatever the person was actually reading.
+	 */
+	announce?: boolean;
 }
 
 /**
@@ -93,6 +104,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 	const client = useConvex();
 	const { t } = useI18n();
 	const { showToast } = useToast();
+	const { announce } = useAnnounce();
 	const posthog = usePostHog();
 
 	const isLoading = ref(false);
@@ -153,6 +165,15 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 				opts.type === 'action'
 					? await client.action(operation as FunctionReference<'action'>, args)
 					: await client.mutation(operation as FunctionReference<'mutation'>, args);
+			// The one place every successful write in the app passes through, which
+			// is why the announcement lives here rather than at several hundred
+			// call sites that would each have to remember it. The label is the same
+			// one telemetry reports — a getter on a localized surface, so a locale
+			// change is reflected at announcement time, not at setup time.
+			if (opts.announce !== false) {
+				const label = typeof opts.label === 'function' ? opts.label() : opts.label;
+				announce(t('shared.useBackendOperation.announceDone', { label }));
+			}
 			return { ok: true, result: result as FunctionReturnType<M> };
 		} catch (e) {
 			applyTreatment(e);

@@ -50,7 +50,9 @@ import {
 	useTemplateRef,
 	type Component,
 } from 'vue';
+import { useAnnounce } from '~/composables/useAnnounce';
 import { useAuthForm } from '~/composables/useAuthForm';
+import { useBreadcrumbs } from '~/composables/useBreadcrumbs';
 import {
 	useMediaQuery,
 	useEmailBuilderViewport,
@@ -270,6 +272,9 @@ function defaultStubs(): Record<string, unknown> {
 		// App-wide composables. Pure ones (no backend, no browser API) are wired
 		// to their REAL implementation so the audit sees the real markup path.
 		useAuthForm,
+		// The app's live region: real, so a surface that announces something is
+		// audited with the announcement in the DOM rather than with a spy.
+		useAnnounce,
 		// Real media-query composables too: happy-dom implements matchMedia, and
 		// its default viewport is desktop-sized, so audits see the table branch.
 		useMediaQuery,
@@ -445,6 +450,9 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			switchContext: vi.fn(),
 		}),
 		useDashboardNavigation: () => ({ navigationSections: ref(sections) }),
+		// Real: the trail is built from the route registries and the stubbed
+		// route, and the shell announces its last crumb on every navigation.
+		useBreadcrumbs,
 		useSendReadyNotice: () => ({ isSendPathReady: ref(true) }),
 	};
 }

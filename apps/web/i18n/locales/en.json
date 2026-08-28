@@ -12857,7 +12857,8 @@
 			}
 		},
 		"useBackendOperation": {
-			"genericError": "Something went wrong. Please try again."
+			"genericError": "Something went wrong. Please try again.",
+			"announceDone": "Done: {label}"
 		},
 		"useBlocklistImport": {
 			"errors": {
@@ -13910,7 +13911,8 @@
 			"signOut": "Sign out",
 			"skipToContent": "Skip to main content",
 			"theme": "Theme",
-			"userFallback": "User"
+			"userFallback": "User",
+			"navigatedTo": "Navigated to {page}"
 		},
 		"error": {
 			"forbidden": "You don't have permission to access this page.",
