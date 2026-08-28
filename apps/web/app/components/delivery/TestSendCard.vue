@@ -62,10 +62,13 @@ watch(
 	{ immediate: true }
 );
 
-const { run: sendTest, isLoading: isSending } = useBackendOperation(api.delivery.status.sendTest, {
-	label: () => t('components.delivery.testSendCard.operationLabel'),
-	type: 'action',
-});
+const { run: sendTest, isLoading: isSending } = useBackendOperation(
+	api.delivery.statusActions.sendTest,
+	{
+		label: () => t('components.delivery.testSendCard.operationLabel'),
+		type: 'action',
+	}
+);
 
 async function handleSendTest() {
 	testError.value = '';

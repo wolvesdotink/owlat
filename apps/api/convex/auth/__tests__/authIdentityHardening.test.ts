@@ -1,11 +1,9 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
-import {
-	assertRegistrationAllowed,
-	createAuthOptions,
-	resolveBetterAuthIpAddressConfig,
-	resolveTrustedOrigins,
-} from '../auth';
+import { createAuthOptions } from '../auth';
+import { resolveBetterAuthIpAddressConfig } from '../ipAddress';
+import { resolveTrustedOrigins } from '../trustedOrigins';
+import { assertRegistrationAllowed } from '../registrationGate';
 
 /**
  * Auth identity hardening (P3):

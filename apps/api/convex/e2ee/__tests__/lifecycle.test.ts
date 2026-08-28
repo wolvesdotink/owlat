@@ -20,7 +20,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { readAddressPublicKey } from '../../__tests__/helpers/e2eeKeys';
 import { evaluatePin } from '../pinning';
-import { verifyRotationStatement } from '../discovery';
+import { verifyRotationStatement } from '../discoveryVerify';
 import { verifyManifest, type ManifestPayload } from '../manifest';
 import { openSealed } from '../open';
 import { openPrivateKey } from '../sealing';

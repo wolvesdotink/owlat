@@ -1,15 +1,9 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
-import {
-	extractApiKey,
-	jsonResponse,
-	errorResponse,
-	authenticateApiRequest,
-	isApiKeyUsable,
-	requireScope,
-	type AuthenticatedContext,
-} from '../auth/apiAuth';
+import { extractApiKey, authenticateApiRequest, isApiKeyUsable } from '../auth/apiKeyAuth';
+import { jsonResponse, errorResponse } from '../auth/apiResponses';
+import { requireScope, type AuthenticatedContext } from '../auth/apiHandlers';
 import {
 	API_SCOPES,
 	ENDPOINT_SCOPES,

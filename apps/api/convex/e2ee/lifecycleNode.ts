@@ -29,7 +29,7 @@ import { normalizeEmail } from '@owlat/shared';
 import { armoredToBinaryBase64, splitAddress, wkdHashForAddress } from './wkd';
 import { openPrivateKey, reSealPrivateKey, sealPrivateKey } from './sealing';
 import { rotationStatementText } from './pinning';
-import { keyCertifiesAddress } from './discovery';
+import { keyCertifiesAddress } from './discoveryVerify';
 import { generateKeypair, KEY_ALGORITHM } from './keysNode';
 import { buildRecoveryKit, type RecoveryKit } from './recoveryKit';
 

@@ -4,11 +4,10 @@ import {
 	parseSetupConfig,
 	SetupConfigError,
 	resolveSetupFlags,
-	buildEnvPatchFromConfig,
 	buildSetupFromConfig,
-	applySetupDefaults,
 	type SetupConfig,
 } from '../setupConfig';
+import { applySetupDefaults, buildEnvPatchFromConfig } from '../setupEnvMapping';
 import { assertFblDedupCutoverConfigured } from '../fblDedupSetup';
 
 /** A minimal valid config; tests clone + mutate it. The default flags enable

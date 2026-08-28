@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { enforceBodyCap } from '../apiAuth';
+import { enforceBodyCap } from '../apiHandlers';
 
 // enforceBodyCap builds a CORS-aware error Response via the shared helpers; the
 // loopback origin default keeps that off the production fail-closed path.

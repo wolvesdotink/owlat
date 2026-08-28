@@ -2,11 +2,10 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
 	createAuthenticatedHandler,
-	jsonResponse,
-	errorResponse,
 	requireScope,
 	type AuthenticatedContext,
-} from '../auth/apiAuth';
+} from '../auth/apiHandlers';
+import { jsonResponse, errorResponse } from '../auth/apiResponses';
 import {
 	isValidEmail,
 	isValidConvexId,

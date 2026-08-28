@@ -4,7 +4,7 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { API_SCOPES, unknownScopes, tier2OnlyScopes } from './apiScopes';
-import { hashApiKey } from './apiAuth';
+import { hashApiKey } from './apiKeyAuth';
 import { randomToken } from '../lib/randomToken';
 import { parsePluginId } from '@owlat/plugin-kit';
 import { allowedPluginBoundScopes, loadPluginBoundKeyContext } from '../plugins/apiKeyBinding';

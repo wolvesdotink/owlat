@@ -3,11 +3,10 @@ import type { Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import {
 	createAuthenticatedHandler,
-	jsonResponse,
-	errorResponse,
 	requireScope,
 	type AuthenticatedContext,
-} from '../auth/apiAuth';
+} from '../auth/apiHandlers';
+import { jsonResponse, errorResponse } from '../auth/apiResponses';
 import { isValidEmail, isValidConvexId, safeDecodeURIComponent } from '../lib/inputGuards';
 import { resolveContactRef } from '../contacts/api';
 

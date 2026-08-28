@@ -1,7 +1,8 @@
 /**
- * Recipient-key discovery — the hard test gate for `e2ee/discovery.ts`. All
- * network is mocked (injected {@link DiscoveryDeps}); real OpenPGP fixture keys
- * (alice, bob) exercise the crypto. Covers:
+ * Recipient-key discovery — the hard test gate for `e2ee/discovery.ts` and its
+ * `discoveryFetch` / `discoveryVerify` siblings. All network is mocked (injected
+ * {@link DiscoveryDeps}); real OpenPGP fixture keys (alice, bob) exercise the
+ * crypto. Covers:
  *   (a) manifest hit, WKD-only fallback, negative cache, TTL refresh, and the
  *       key<->address binding check;
  *   (b) SSRF negatives — a redirect (to 10.x / 169.254.x / localhost), plain
@@ -13,18 +14,19 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as openpgp from 'openpgp';
 import {
-	guardedFetchBytes,
 	discoverKeyForAddress,
-	keyCertifiesAddress,
-	verifyRotationStatement,
 	shouldRefetch,
-	SsrfRejection,
-	buildManifestUrl,
-	buildWkdUrl,
 	TTL_NEGATIVE_MS,
-	type DiscoveryDeps,
 	type RotationStatement,
 } from '../discovery';
+import {
+	guardedFetchBytes,
+	buildManifestUrl,
+	buildWkdUrl,
+	SsrfRejection,
+	type DiscoveryDeps,
+} from '../discoveryFetch';
+import { keyCertifiesAddress, verifyRotationStatement } from '../discoveryVerify';
 import { buildManifestPayload, signManifest } from '../manifest';
 
 const keyPath = (name: string) =>

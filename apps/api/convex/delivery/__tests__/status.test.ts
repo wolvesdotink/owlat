@@ -210,11 +210,11 @@ describe('delivery.status.getProviderFeedbackStatus', () => {
 	});
 });
 
-describe('delivery.status.sendTest — staged diagnostics', () => {
+describe('delivery.statusActions.sendTest — staged diagnostics', () => {
 	it('stops at provider configuration when no transport is usable', async () => {
 		setEnv({});
 		const t = convexTest(schema, modules);
-		const result = await t.action(api.delivery.status.sendTest, { to: 'admin@example.com' });
+		const result = await t.action(api.delivery.statusActions.sendTest, { to: 'admin@example.com' });
 
 		expect(result.success).toBe(false);
 		expect(result.stages[0]).toMatchObject({
@@ -227,7 +227,7 @@ describe('delivery.status.sendTest — staged diagnostics', () => {
 	it('identifies invalid recipient input before resolving a sender', async () => {
 		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
 		const t = convexTest(schema, modules);
-		const result = await t.action(api.delivery.status.sendTest, { to: 'not-an-email' });
+		const result = await t.action(api.delivery.statusActions.sendTest, { to: 'not-an-email' });
 
 		expect(result.success).toBe(false);
 		expect(result.stages.map((stage) => stage.status)).toEqual([
@@ -250,7 +250,7 @@ describe('delivery.status.sendTest — staged diagnostics', () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await seedMember(t, 'admin@example.com');
-		const result = await t.action(api.delivery.status.sendTest, { to: 'admin@example.com' });
+		const result = await t.action(api.delivery.statusActions.sendTest, { to: 'admin@example.com' });
 
 		expect(result.success).toBe(true);
 		expect(result.provider).toBe('mta');
@@ -266,7 +266,7 @@ describe('delivery.status.sendTest — staged diagnostics', () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await seedMember(t, 'admin@example.com');
-		const result = await t.action(api.delivery.status.sendTest, {
+		const result = await t.action(api.delivery.statusActions.sendTest, {
 			to: 'victim@external.example',
 		});
 
@@ -297,7 +297,9 @@ describe('delivery.status.sendTest — staged diagnostics', () => {
 
 		let limited = false;
 		for (let i = 0; i < 40; i++) {
-			const result = await t.action(api.delivery.status.sendTest, { to: 'admin@example.com' });
+			const result = await t.action(api.delivery.statusActions.sendTest, {
+				to: 'admin@example.com',
+			});
 			if (!result.success && /too many/i.test(result.error ?? '')) {
 				limited = true;
 				break;

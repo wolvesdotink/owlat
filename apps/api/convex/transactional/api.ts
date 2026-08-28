@@ -22,11 +22,10 @@ import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import {
 	createAuthenticatedHandler,
-	jsonResponse,
-	errorResponse,
 	requireScope,
 	type AuthenticatedContext,
-} from '../auth/apiAuth';
+} from '../auth/apiHandlers';
+import { jsonResponse, errorResponse } from '../auth/apiResponses';
 import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
 import { validateOutboundUrl } from '../lib/outboundUrlValidation';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';

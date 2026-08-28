@@ -191,6 +191,12 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// every caller, and the public rate-limit buckets collapse to coarse shared
 	// keys — so an operator who sets it in .env would still get no per-IP keying.
 	'RATE_LIMIT_TRUSTED_PROXY',
+	// Shared secret the reverse proxy must present in `X-Owlat-Proxy-Secret` for
+	// the `cloudflare`/`xrealip` trust modes to believe their forwarded-IP header
+	// (M2). Read at Convex function runtime by publicRateLimit.getClientIp, so it
+	// must be pushed into the deployment — otherwise those modes never trust the
+	// header and every caller collapses to the shared 'unknown' bucket.
+	'RATE_LIMIT_PROXY_SECRET',
 	// Reverse-proxy IPs / CIDRs that front this deployment, used by the BetterAuth
 	// login limiter's right-anchored X-Forwarded-For walk (M12). Read at Convex
 	// function runtime by auth/auth.ts, so it must be pushed into the deployment —
