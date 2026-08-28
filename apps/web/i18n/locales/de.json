@@ -3682,12 +3682,49 @@
 					"label": "Alle Post im Badge zählen"
 				},
 				"heading": "Benachrichtigungen",
+				"hidePreview": {
+					"hint": "Benachrichtigungen zeigen nur „Neue Nachricht“ — ohne Absender, ohne Betreff. Für geteilte oder projizierte Bildschirme. Standardmäßig aus.",
+					"label": "Nachrichtenvorschau ausblenden"
+				},
 				"notifyAbout": {
 					"everything": "Alles",
 					"hint": "Welche neue Post eine Desktop-Benachrichtigung auslöst. „Nur Personen & Wichtiges“ nutzt smarte Kategorien, um bei Newslettern und automatisierter Post still zu bleiben.",
 					"label": "Benachrichtigen über",
 					"nothing": "Nichts",
 					"peopleImportant": "Nur Personen & Wichtiges"
+				},
+				"permission": {
+					"allow": "Benachrichtigungen erlauben",
+					"denied": "Vom System blockiert",
+					"deniedHint": "Ihr System blockiert Benachrichtigungen von Owlat. Erlauben Sie sie in den System-Benachrichtigungseinstellungen und kommen Sie dann zurück.",
+					"deniedHintLinux": "Ihr System blockiert Benachrichtigungen von Owlat. Erlauben Sie sie in den Benachrichtigungseinstellungen Ihrer Desktop-Umgebung und kommen Sie dann zurück.",
+					"granted": "Benachrichtigungen erlaubt",
+					"openSettings": "Systemeinstellungen öffnen",
+					"openSettingsFailed": "Die Systemeinstellungen konnten nicht geöffnet werden — öffnen Sie sie bitte selbst und erlauben Sie Benachrichtigungen von Owlat.",
+					"prompt": "Noch nicht aktiviert",
+					"test": "Testbenachrichtigung senden",
+					"testBody": "Wenn Sie das lesen können, funktionieren Benachrichtigungen.",
+					"testFailed": "Die Testbenachrichtigung konnte nicht gesendet werden.",
+					"testSent": "Testbenachrichtigung gesendet.",
+					"testTitle": "Testbenachrichtigung"
+				},
+				"quietHours": {
+					"days": "An diesen Tagen",
+					"from": "Von",
+					"hint": "Hält Desktop-Benachrichtigungen in diesem Zeitraum zurück und fasst sie am Ende zu einer Zusammenfassung zusammen. Unterhaltungen, für die Sie einen Hinweis angefordert haben, kommen weiterhin durch.",
+					"label": "Ruhezeiten",
+					"noDays": "Wählen Sie mindestens einen Tag — bis dahin bewirken die Ruhezeiten nichts.",
+					"overnight": "Zeitraum über Nacht: Er endet am folgenden Morgen.",
+					"to": "Bis",
+					"weekday": {
+						"fri": "Fr",
+						"mon": "Mo",
+						"sat": "Sa",
+						"sun": "So",
+						"thu": "Do",
+						"tue": "Di",
+						"wed": "Mi"
+					}
 				},
 				"screener": {
 					"hint": "Wenn an, wird Post von jemandem, mit dem Sie noch nie korrespondiert haben, aus der Antwort-Warteschlange herausgehalten, bis Sie den Absender akzeptieren — die Post landet trotzdem im Posteingang. Hält die Triage auf Personen fokussiert, die Sie kennen. Standardmäßig aus.",
@@ -3952,6 +3989,8 @@
 				"rowLabel": "{subject}, {count} ungelesen"
 			},
 			"postboxThreadHeader": {
+				"alerted": "Hinweis bei Antwort",
+				"alertedHint": "Sie werden benachrichtigt, wenn hier jemand antwortet — auch während der Ruhezeiten. Zum Beenden klicken.",
 				"backFromSnooze": "Zurück aus dem Schlummer",
 				"markRead": "Als gelesen markieren",
 				"muted": "Stummgeschaltet",
@@ -4001,6 +4040,9 @@
 				"mute": "Unterhaltung stummschalten",
 				"muteOperation": "Unterhaltung stummschalten",
 				"notSpamOperation": "Kein Spam",
+				"notifyOnReply": "Bei Antwort benachrichtigen",
+				"notifyOnReplyOperation": "Antwort-Hinweis",
+				"notifyOnReplyStop": "Nicht mehr bei Antwort benachrichtigen",
 				"previewAttachment": "{filename} in der Vorschau anzeigen",
 				"renderDark": "Diese Nachricht im dunklen Modus darstellen",
 				"renderLight": "Diese Nachricht auf hellem Hintergrund darstellen",
@@ -12579,8 +12621,16 @@
 				"title": "Entwürfe zur Prüfung bereit"
 			},
 			"groupBody": "{count} neue Nachrichten von {sender}",
+			"hiddenPreview": {
+				"group": "1 neue Nachricht | {count} neue Nachrichten",
+				"single": "Neue Nachricht"
+			},
 			"newMail": "Neue E-Mail",
-			"noSubject": "(kein Betreff)"
+			"noSubject": "(kein Betreff)",
+			"quietSummary": {
+				"body": "1 Nachricht ist während der Ruhezeiten eingegangen | {count} Nachrichten sind während der Ruhezeiten eingegangen",
+				"title": "Während Sie weg waren"
+			}
 		},
 		"useDesktopWorkspaces": {
 			"errors": {

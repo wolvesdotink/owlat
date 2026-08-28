@@ -10,6 +10,11 @@ const props = defineProps<{
 		followUp?: { messageId: string; remindAt: number; dueAt?: number; waitingOn?: string };
 		/** Muted conversation (mail/mute.ts) — new mail skips the inbox. */
 		mutedAt?: number;
+		/**
+		 * Armed with "notify me when they reply" (mail/threadAlerts.ts) — a new
+		 * message here toasts through quiet hours and the people-only scope.
+		 */
+		notifyOnReplyAt?: number;
 		/** Just came back from snooze (mail/snooze.ts sweep); cleared on open. */
 		snoozeReturnedAt?: number;
 	} | null;
@@ -25,11 +30,13 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'unmute'): void;
 	(e: 'mark-read'): void;
+	(e: 'stop-alert'): void;
 }>();
 
 const { t } = useI18n();
 
 const isMuted = computed(() => props.thread?.mutedAt != null);
+const isAlerted = computed(() => props.thread?.notifyOnReplyAt != null);
 const cameBackFromSnooze = computed(() => props.thread?.snoozeReturnedAt != null);
 </script>
 
@@ -44,9 +51,23 @@ const cameBackFromSnooze = computed(() => props.thread?.snoozeReturnedAt != null
 				({{ messageCount }})
 			</span>
 		</h1>
-		<!-- Thread state chips: why this conversation is quiet (muted), and the
-		     one-shot "you asked for this back" cue after a snooze returned. -->
-		<div v-if="isMuted || cameBackFromSnooze || showMarkRead" class="mt-2 flex flex-wrap gap-2">
+		<!-- Thread state chips: why this conversation is quiet (muted) or loud
+		     (alerting on reply), and the one-shot "you asked for this back" cue
+		     after a snooze returned. Both toggles are also the way back out. -->
+		<div
+			v-if="isMuted || isAlerted || cameBackFromSnooze || showMarkRead"
+			class="mt-2 flex flex-wrap gap-2"
+		>
+			<button
+				v-if="isAlerted"
+				type="button"
+				class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs border border-border-subtle text-brand hover:bg-bg-surface"
+				:title="t('components.postbox.postboxThreadHeader.alertedHint')"
+				@click="emit('stop-alert')"
+			>
+				<Icon name="lucide:bell-ring" class="w-3.5 h-3.5" />
+				{{ t('components.postbox.postboxThreadHeader.alerted') }}
+			</button>
 			<button
 				v-if="isMuted"
 				type="button"

@@ -211,9 +211,11 @@ const readerThread = computed(
 						dueAt?: number;
 						waitingOn?: string;
 					};
-					// Muted conversation + the transient back-from-snooze marker, both
-					// rendered as header chips (mail/mute.ts, mail/snooze.ts).
+					// Muted conversation, its opt-in twin (alert me when they reply)
+					// and the transient back-from-snooze marker — all rendered as
+					// header chips (mail/mute.ts, mail/threadAlerts.ts, mail/snooze.ts).
 					mutedAt?: number;
+					notifyOnReplyAt?: number;
 					snoozeReturnedAt?: number;
 			  }
 			| null
@@ -492,6 +494,10 @@ const snoozeThreadOp = useBackendOperation(api.mail.snooze.snoozeThread, {
 const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
 	label: () => t('components.postbox.postboxThreadReader.muteOperation'),
 });
+const setNotifyOnReplyOp = useBackendOperation(
+	api.mail.threadAlerts.setNotifyOnReplyForMessage,
+	{ label: () => t('components.postbox.postboxThreadReader.notifyOnReplyOperation') }
+);
 const moveOp = useBackendOperation(api.mail.messageActions.move, {
 	label: () => t('components.postbox.postboxThreadReader.moveOperation'),
 });
@@ -705,6 +711,18 @@ function toggleOpenThreadMute() {
 		return;
 	}
 	void setMutedOp.run({ messageId: messageId.value, muted: false });
+}
+/**
+ * Arm/disarm "notify me when they reply" on the open conversation. Purely a
+ * notification preference — unlike mute it moves no mail, so the reader stays
+ * exactly where it is. The server keeps it mutually exclusive with mute.
+ */
+const isThreadAlerted = computed(() => readerThread.value?.notifyOnReplyAt != null);
+function toggleOpenThreadAlert() {
+	void setNotifyOnReplyOp.run({
+		messageId: messageId.value,
+		enabled: !isThreadAlerted.value,
+	});
 }
 function snoozeOpenMessageUntilReply(capUntil: number) {
 	void runAndAdvance(() => snoozeUntilReplyOp.run({ messageId: messageId.value, capUntil }));
@@ -968,6 +986,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			:show-mark-read="showsManualMarkReadButton"
 			:marking-read="markThreadReadOp.isLoading.value"
 			@unmute="toggleOpenThreadMute"
+			@stop-alert="toggleOpenThreadAlert"
 			@mark-read="markOpenThreadRead"
 		/>
 
@@ -1350,6 +1369,25 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 										isThreadMuted
 											? t('components.postbox.postboxThreadReader.unmute')
 											: t('components.postbox.postboxThreadReader.mute')
+									}}
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+									@click="
+										toggleOpenThreadAlert();
+										close();
+									"
+								>
+									<Icon
+										:name="isThreadAlerted ? 'lucide:bell-off' : 'lucide:bell-ring'"
+										class="w-4 h-4 text-text-tertiary"
+									/>
+									{{
+										isThreadAlerted
+											? t('components.postbox.postboxThreadReader.notifyOnReplyStop')
+											: t('components.postbox.postboxThreadReader.notifyOnReply')
 									}}
 								</button>
 								<button

@@ -3682,12 +3682,49 @@
 					"label": "Count all mail in the badge"
 				},
 				"heading": "Notifications",
+				"hidePreview": {
+					"hint": "Notifications say only \"New message\" — no sender, no subject. For shared or projected screens. Off by default.",
+					"label": "Hide message previews"
+				},
 				"notifyAbout": {
 					"everything": "Everything",
 					"hint": "Which new mail pops a desktop notification. \"People & important only\" uses smart categories to stay quiet about newsletters and automated mail.",
 					"label": "Notify me about",
 					"nothing": "Nothing",
 					"peopleImportant": "People & important only"
+				},
+				"permission": {
+					"allow": "Allow notifications",
+					"denied": "Blocked by your system",
+					"deniedHint": "Your system is blocking notifications from Owlat. Allow them in the system notification settings, then come back.",
+					"deniedHintLinux": "Your system is blocking notifications from Owlat. Allow them in your desktop's notification settings, then come back.",
+					"granted": "Notifications allowed",
+					"openSettings": "Open system settings",
+					"openSettingsFailed": "Couldn't open the system settings — open them yourself and allow notifications from Owlat.",
+					"prompt": "Not enabled yet",
+					"test": "Send test notification",
+					"testBody": "If you can read this, notifications are working.",
+					"testFailed": "The test notification couldn't be sent.",
+					"testSent": "Test notification sent.",
+					"testTitle": "Test notification"
+				},
+				"quietHours": {
+					"days": "On these days",
+					"from": "From",
+					"hint": "Hold desktop notifications during this window and roll them into one summary when it ends. Threads you asked to be alerted about still come through.",
+					"label": "Quiet hours",
+					"noDays": "Pick at least one day — quiet hours do nothing until you do.",
+					"overnight": "Overnight window: it ends the following morning.",
+					"to": "To",
+					"weekday": {
+						"fri": "Fri",
+						"mon": "Mon",
+						"sat": "Sat",
+						"sun": "Sun",
+						"thu": "Thu",
+						"tue": "Tue",
+						"wed": "Wed"
+					}
 				},
 				"screener": {
 					"hint": "When on, mail from someone you've never corresponded with is held out of the Reply Queue until you accept the sender — their mail still lands in the inbox. Keeps triage focused on people you know. Off by default.",
@@ -3952,6 +3989,8 @@
 				"rowLabel": "{subject}, {count} unread"
 			},
 			"postboxThreadHeader": {
+				"alerted": "Alerting on reply",
+				"alertedHint": "You'll be notified when someone replies here, even during quiet hours. Click to stop.",
 				"backFromSnooze": "Back from snooze",
 				"markRead": "Mark read",
 				"muted": "Muted",
@@ -4001,6 +4040,9 @@
 				"mute": "Mute conversation",
 				"muteOperation": "Mute conversation",
 				"notSpamOperation": "Not spam",
+				"notifyOnReply": "Notify me when they reply",
+				"notifyOnReplyOperation": "Reply alert",
+				"notifyOnReplyStop": "Stop notifying me on reply",
 				"previewAttachment": "Preview {filename}",
 				"renderDark": "Render this message in dark mode",
 				"renderLight": "Render this message on a light background",
@@ -12579,8 +12621,16 @@
 				"title": "Drafts ready for review"
 			},
 			"groupBody": "{count} new messages from {sender}",
+			"hiddenPreview": {
+				"group": "1 new message | {count} new messages",
+				"single": "New message"
+			},
 			"newMail": "New mail",
-			"noSubject": "(no subject)"
+			"noSubject": "(no subject)",
+			"quietSummary": {
+				"body": "1 message arrived during quiet hours | {count} messages arrived during quiet hours",
+				"title": "While you were away"
+			}
 		},
 		"useDesktopWorkspaces": {
 			"errors": {
