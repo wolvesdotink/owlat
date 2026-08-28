@@ -2,7 +2,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxComposeMode, PostboxPendingCompose } from '~/utils/postboxShortcuts';
-import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
@@ -115,41 +114,27 @@ function openMessageWithCompose(id: string, mode: PostboxComposeMode) {
 	else void navigateTo(`/dashboard/postbox/${props.folderRole}/${id}`);
 }
 
-// h/l/v open a picker for the focused row; the target id is captured so a
-// focus change while the dialog is open can't retarget the action.
-const snoozeOpen = ref(false);
-const snoozeTargetId = ref<Id<'mailMessages'> | null>(null);
-// The focused row's thread, captured with the id so the dialog's default
-// thread scope can't retarget if the focus moves while it is open.
-const snoozeTargetThreadId = ref<string | null>(null);
-const labelOpen = ref(false);
-const labelTargetId = ref<Id<'mailMessages'> | null>(null);
-const moveOpen = ref(false);
-const moveTargetId = ref<Id<'mailMessages'> | null>(null);
-
-const { labels, setOnMessage } = usePostboxLabels(mailboxIdRef);
-const { folders } = usePostboxFolders(mailboxIdRef);
-// Same destination filter as PostboxQuickActionsBar: moving a received
-// message into Sent/Drafts mis-frames it, and the current folder is a no-op.
-const movableFolders = computed(() =>
-	folders.value.filter((f) => {
-		if (f.role === 'sent' || f.role === 'drafts') return false;
-		if (f.role === props.folderRole) return false;
-		return true;
-	})
-);
-
-async function snoozeFocused(until: number, scope: PostboxSnoozeScope) {
-	const id = snoozeTargetId.value;
-	const threadId = snoozeTargetThreadId.value;
-	snoozeTargetId.value = null;
-	snoozeTargetThreadId.value = null;
-	if (!id) return;
-	// Thread scope needs a thread to address; a row without one (legacy/partial
-	// projection) falls back to deferring just the message rather than no-oping.
-	if (scope === 'thread' && threadId) await snoozeThread(id, threadId, until);
-	else await snoozeMsg(id, until);
-}
+// h/l/v open a picker for the focused row; the target id is captured on open so
+// a focus change while the dialog is up can't retarget the action.
+const {
+	snoozeOpen,
+	labelOpen,
+	moveOpen,
+	labels,
+	movableFolders,
+	openSnooze,
+	openLabel,
+	openMove,
+	snoozeFocused,
+	applyLabelToFocused,
+	moveFocusedTo,
+} = usePostboxRowPickers({
+	mailboxId: mailboxIdRef,
+	folderRole: computed(() => props.folderRole),
+	snoozeMsg,
+	snoozeThread,
+	moveMsg,
+});
 
 /**
  * A committed swipe on a row (UX plan idea 21). It is a fourth ENTRY POINT, not
@@ -174,9 +159,7 @@ function onRowSwipe(m: PostboxThreadRowMessage, action: Exclude<PostboxSwipeActi
 			void toggleRead(m._id, !m.flagSeen);
 			break;
 		case 'snooze':
-			snoozeTargetId.value = m._id;
-			snoozeTargetThreadId.value = m.threadId ?? null;
-			snoozeOpen.value = true;
+			openSnooze(m._id, m.threadId ?? null);
 			break;
 	}
 }
@@ -184,20 +167,6 @@ function onRowSwipe(m: PostboxThreadRowMessage, action: Exclude<PostboxSwipeActi
 /** Mute/unmute the focused row's conversation (the `m` shortcut + context menu). */
 function toggleMuteRow(m: PostboxThreadRowMessage) {
 	void toggleMute(m._id, m.mutedAt == null);
-}
-
-async function applyLabelToFocused(labelId: Id<'mailLabels'>) {
-	const id = labelTargetId.value;
-	labelOpen.value = false;
-	labelTargetId.value = null;
-	if (id) await setOnMessage(id, labelId, true);
-}
-
-async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
-	const id = moveTargetId.value;
-	moveOpen.value = false;
-	moveTargetId.value = null;
-	if (id) await moveMsg(id, targetFolderId);
 }
 
 // Context-aware empty state — a filtered-to-zero folder, inbox zero, an empty
@@ -220,8 +189,26 @@ const emptyState = computed(() => {
 });
 
 // Keyboard triage (Gmail/Superhuman-style): j/k move, Enter opens; single-key
-// actions resolve via utils/postboxShortcuts.ts (e archive, # delete, s star,
-// u toggle read, Shift+U unread, x select, r/a/f compose, h/l/v pickers).
+// actions resolve through the one shortcut registry via
+// utils/postboxShortcuts.ts (e archive, # delete, s star, u toggle read,
+// Shift+U unread, x select, n/p unread jumps, z undo, r/a/f compose, h/l/v
+// pickers) — so the user's preset and remaps apply here without this component
+// knowing which key is which.
+const triageUndo = usePostboxTriageUndo();
+
+/**
+ * `n` / `p`: move the focus to the nearest unread row in that direction. The
+ * search itself is pure (`nextUnreadIndex`); this only translates it to focus.
+ */
+function jumpToUnread(direction: 1 | -1) {
+	const target = nextUnreadIndex(
+		visibleMessages.value.map((m) => m.flagSeen === true),
+		focusedIndex.value,
+		direction
+	);
+	if (target >= 0) focusedIndex.value = target;
+}
+
 const {
 	focusedIndex,
 	activeId: activeRowId,
@@ -267,20 +254,28 @@ const {
 				openMessageWithCompose(m._id, 'forward');
 				break;
 			case 'snooze':
-				snoozeTargetId.value = m._id;
-				snoozeTargetThreadId.value = m.threadId ?? null;
-				snoozeOpen.value = true;
+				openSnooze(m._id, m.threadId ?? null);
 				break;
 			case 'mute':
 				toggleMuteRow(m);
 				break;
 			case 'label':
-				labelTargetId.value = m._id;
-				labelOpen.value = true;
+				openLabel(m._id);
 				break;
 			case 'move':
-				moveTargetId.value = m._id;
-				moveOpen.value = true;
+				openMove(m._id);
+				break;
+			case 'nextUnread':
+				jumpToUnread(1);
+				break;
+			case 'previousUnread':
+				jumpToUnread(-1);
+				break;
+			case 'undo':
+				// The bare `z` of the Gmail vocabulary, alongside the app-wide
+				// Cmd/Ctrl+Z that usePostboxTriageUndo binds for itself. No-op with
+				// an empty stack, so it never eats the key for nothing.
+				void triageUndo.undo();
 				break;
 			// 'help' is handled by the window-level PostboxShortcutHelp listener.
 		}

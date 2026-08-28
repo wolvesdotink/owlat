@@ -1,11 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	resolvePostboxShortcut,
 	isEditableTarget,
 	isFocusComposeChord,
+	nextUnreadIndex,
+	postboxShortcutSheet,
 	settlePendingCompose,
-	POSTBOX_SHORTCUT_GROUPS,
 } from '../postboxShortcuts';
+import { shortcutSheetKeys } from '../shortcutRegistry';
+import { applyShortcutPreferences, resetShortcutPreferences } from '../shortcutScope';
 
 describe('isFocusComposeChord', () => {
 	const chord = (over: Record<string, unknown>) => ({
@@ -32,6 +35,8 @@ describe('isFocusComposeChord', () => {
 });
 
 describe('resolvePostboxShortcut', () => {
+	beforeEach(() => resetShortcutPreferences());
+
 	it('maps the triage keys to their actions', () => {
 		expect(resolvePostboxShortcut('e')).toBe('archive');
 		expect(resolvePostboxShortcut('#')).toBe('trash');
@@ -55,8 +60,28 @@ describe('resolvePostboxShortcut', () => {
 		expect(resolvePostboxShortcut('?')).toBe('help');
 	});
 
+	it('maps the vocabulary added with the registry (n/p unread jumps, z undo)', () => {
+		expect(resolvePostboxShortcut('n')).toBe('nextUnread');
+		expect(resolvePostboxShortcut('p')).toBe('previousUnread');
+		expect(resolvePostboxShortcut('z')).toBe('undo');
+	});
+
+	it('follows the user`s preset — the resolver is a seam, not a table', () => {
+		applyShortcutPreferences('gmail');
+		// Gmail snoozes with `b`, so `h` goes back to meaning nothing.
+		expect(resolvePostboxShortcut('b')).toBe('snooze');
+		expect(resolvePostboxShortcut('h')).toBeNull();
+		applyShortcutPreferences('owlat', [{ id: 'postbox.archive', keys: ['y'] }]);
+		expect(resolvePostboxShortcut('y')).toBe('archive');
+		expect(resolvePostboxShortcut('e')).toBeNull();
+	});
+
+	it('resolves against the postbox scope only, never the app-wide map', () => {
+		// `g d` is "go to Dashboard" globally; a focused list row must not reach it.
+		expect(resolvePostboxShortcut('g')).toBeNull();
+	});
+
 	it('returns null for unmapped keys', () => {
-		expect(resolvePostboxShortcut('z')).toBeNull();
 		expect(resolvePostboxShortcut('Escape')).toBeNull();
 		expect(resolvePostboxShortcut('Tab')).toBeNull();
 		// Capitalized variants of mapped keys are NOT mapped (Shift changes meaning).
@@ -140,10 +165,34 @@ describe('settlePendingCompose (list → reader r/a/f handoff)', () => {
 	});
 });
 
-describe('POSTBOX_SHORTCUT_GROUPS', () => {
+describe('nextUnreadIndex (the n / p jumps)', () => {
+	//            0      1      2      3
+	const seen = [true, false, true, false];
+
+	it('finds the nearest unread row in each direction', () => {
+		expect(nextUnreadIndex(seen, 0, 1)).toBe(1);
+		expect(nextUnreadIndex(seen, 1, 1)).toBe(3);
+		expect(nextUnreadIndex(seen, 3, -1)).toBe(1);
+	});
+
+	it('starts at the top when nothing is focused yet', () => {
+		expect(nextUnreadIndex(seen, -1, 1)).toBe(1);
+		expect(nextUnreadIndex(seen, -1, -1)).toBe(-1);
+	});
+
+	it('does NOT wrap — a jump that teleported would lose your place', () => {
+		expect(nextUnreadIndex(seen, 3, 1)).toBe(-1);
+		expect(nextUnreadIndex(seen, 1, -1)).toBe(-1);
+		expect(nextUnreadIndex([true, true], -1, 1)).toBe(-1);
+	});
+});
+
+describe('the generated cheat sheet', () => {
+	beforeEach(() => resetShortcutPreferences());
+
 	it('documents every action in the resolver vocabulary', () => {
 		const documentedKeys = new Set(
-			POSTBOX_SHORTCUT_GROUPS.flatMap((g) => g.shortcuts.flatMap((s) => [...s.keys]))
+			postboxShortcutSheet().flatMap((g) => g.items.flatMap((i) => shortcutSheetKeys(i)))
 		);
 		// Every single-key triage shortcut shows up in the cheat sheet.
 		for (const key of [
@@ -163,8 +212,26 @@ describe('POSTBOX_SHORTCUT_GROUPS', () => {
 			'v',
 			'?',
 			'/',
+			'n',
+			'p',
+			'z',
 		]) {
 			expect(documentedKeys.has(key), `cheat sheet missing "${key}"`).toBe(true);
 		}
+	});
+
+	it('follows a preset, so it cannot promise a key the resolver dropped', () => {
+		applyShortcutPreferences('gmail');
+		const keys = new Set(
+			postboxShortcutSheet().flatMap((g) => g.items.flatMap((i) => shortcutSheetKeys(i)))
+		);
+		expect(keys.has('b')).toBe(true);
+		expect(keys.has('h')).toBe(false);
+	});
+
+	it('teaches the composer chords alongside the triage keys', () => {
+		const ids = postboxShortcutSheet(true).flatMap((g) => g.items.map((i) => i.id));
+		expect(ids).toContain('composer.send');
+		expect(ids).toContain('postbox.archive');
 	});
 });

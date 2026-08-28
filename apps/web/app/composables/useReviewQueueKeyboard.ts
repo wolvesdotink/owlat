@@ -2,6 +2,7 @@ import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyb
 import { resolveAgentTaskShortcut } from '~/utils/agentTaskShortcuts';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { resolveReviewSelectShortcut, resolveReviewShortcut } from '~/utils/reviewShortcuts';
+import { pushShortcutScope } from '~/utils/shortcutScope';
 
 /**
  * Keyboard-first navigation for the agent Review Queue, built by REUSING the
@@ -133,6 +134,18 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 		if (handleSelectionKey(event)) return;
 		listKeydown(event);
 	}
+
+	// Claim the `review` scope of the shortcut registry while the queue is
+	// mounted, so its keys shadow the app-wide map (`s` is Skip here, not Save)
+	// and the cheat sheet documents this surface rather than the one underneath.
+	let releaseScope: (() => void) | null = null;
+	onMounted(() => {
+		releaseScope = pushShortcutScope('review');
+	});
+	onBeforeUnmount(() => {
+		releaseScope?.();
+		releaseScope = null;
+	});
 
 	return { focusedIndex, activeId, onKeydown };
 }

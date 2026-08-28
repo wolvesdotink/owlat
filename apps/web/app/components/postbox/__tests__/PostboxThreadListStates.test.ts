@@ -20,6 +20,8 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxThreadList from '../PostboxThreadList.vue';
 import { usePostboxRowTriage } from '../../../composables/postbox/usePostboxRowTriage';
 import { usePostboxOptimisticFlags } from '../../../composables/postbox/usePostboxOptimisticFlags';
+import { usePostboxRowPickers } from '../../../composables/postbox/usePostboxRowPickers';
+import { nextUnreadIndex } from '../../../utils/postboxShortcuts';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
@@ -67,6 +69,10 @@ beforeAll(() => {
 	vi.stubGlobal('POSTBOX_PENDING_COMPOSE_KEY', 'postbox:pending-compose');
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
+	// The h/l/v picker state lives in its own composable now; real, because it is
+	// only refs over the two stubbed queries above.
+	vi.stubGlobal('usePostboxRowPickers', usePostboxRowPickers);
+	vi.stubGlobal('nextUnreadIndex', nextUnreadIndex);
 	vi.stubGlobal('usePostboxSettings', () => ({ density: ref('comfortable') }));
 	// The list resolves the sender-trust-marker flag once and passes it down.
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));

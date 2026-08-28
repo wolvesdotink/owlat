@@ -31,8 +31,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-	unregisterShortcut('n');
-	unregisterShortcut('escape');
+	unregisterShortcut('global.newItem');
+	unregisterShortcut('global.close');
 });
 
 // Get the current user's organization

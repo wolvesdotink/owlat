@@ -335,7 +335,7 @@ export function useEmailEditorBridge<S>(
 		});
 	});
 	onUnmounted(() => {
-		unregisterShortcut('s');
+		unregisterShortcut('global.save');
 	});
 
 	return {

@@ -1,34 +1,48 @@
 /**
- * Composable for managing global keyboard shortcuts throughout the app.
+ * The app-wide keyboard dispatcher.
  *
- * Supports:
- * - Single key shortcuts (?, n, s)
- * - Chord shortcuts (g+c, g+e, g+a)
- * - Escape key for closing modals
+ * It no longer owns a key map. Chords, scoping and conflict rules live in the
+ * one registry (`utils/shortcutRegistry.ts` + `utils/shortcutCatalog.ts`); this
+ * composable only binds catalog IDS to handlers and routes a keydown to
+ * whichever id the registry says the press means under the scopes currently
+ * claimed. That is what makes `g s` "go to Starred" inside the Postbox and "go
+ * to Admin" everywhere else without either surface knowing about the other, and
+ * what makes the cheat sheet impossible to drift: it is generated from the same
+ * catalog this dispatcher resolves against.
+ *
+ * Sequence chords (`g` then a letter) are generic — a new one is a catalog line,
+ * not a change here.
  */
 
 import { isHelpOverlayClaimed } from '~/utils/helpOverlayOwnership';
+import { chordFromEvent } from '~/utils/shortcutRegistry';
+import {
+	activeShortcutScopes,
+	isActiveChordPrefix,
+	resolveActiveChord,
+	shortcutBindings,
+} from '~/utils/shortcutScope';
+import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
 
 type ShortcutHandler = () => void;
 
 interface ShortcutConfig {
-	key: string;
+	/** A catalog id (`utils/shortcutCatalog.ts`), never a raw key. */
+	id: string;
 	handler: ShortcutHandler;
-	/**
-	 * i18n KEY for the human description (registry convention). The registry is
-	 * module-scope state that outlives any component, so it stores the key and
-	 * the surface listing the shortcuts renders it with `t()`.
-	 */
-	description?: string;
 	/** If true, only triggers when no input/textarea is focused */
 	ignoreInputs?: boolean;
 }
 
-// Global state for shortcuts
+// Which catalog ids currently have a live handler. Module scope: registrations
+// outlive the component that made them until it unregisters.
 const shortcuts = ref<Map<string, ShortcutConfig>>(new Map());
 const isHelpModalOpen = ref(false);
 const chordBuffer = ref<string | null>(null);
 const chordTimeout = ref<ReturnType<typeof setTimeout> | null>(null);
+
+/** How long a half-finished sequence chord (`g` …) waits for its second key. */
+const CHORD_WINDOW_MS = 500;
 
 // Track whether the composable has been initialized
 let isInitialized = false;
@@ -53,11 +67,32 @@ function isInputFocused(): boolean {
 	return false;
 }
 
+function clearChord() {
+	if (chordTimeout.value) {
+		clearTimeout(chordTimeout.value);
+		chordTimeout.value = null;
+	}
+	chordBuffer.value = null;
+}
+
+/** Fire the handler bound to `id`, if any. Reports whether anything ran. */
+function dispatch(id: string | null, event: KeyboardEvent): boolean {
+	if (!id) return false;
+	const config = shortcuts.value.get(id);
+	if (!config) return false;
+	if (config.ignoreInputs && isInputFocused()) return false;
+	event.preventDefault();
+	config.handler();
+	return true;
+}
+
 /**
  * Handle global keydown events
  */
 function handleGlobalKeydown(event: KeyboardEvent) {
-	// Don't handle if modifier keys are pressed (except for chord sequences)
+	// Modifier chords belong to the browser, the OS, and the surfaces that bind
+	// their own listeners (⌘K palette, ⌘1–9 workspaces, the composer's ⌘Enter).
+	// This dispatcher deliberately never claims one.
 	if (event.ctrlKey || event.metaKey || event.altKey) {
 		return;
 	}
@@ -77,19 +112,13 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
 	// Handle Escape - always process for closing modals
 	if (key === 'escape') {
+		clearChord();
 		if (isHelpModalOpen.value) {
 			event.preventDefault();
 			isHelpModalOpen.value = false;
 			return;
 		}
-
-		// Check for registered escape handler
-		const escapeConfig = shortcuts.value.get('escape');
-		if (escapeConfig) {
-			event.preventDefault();
-			escapeConfig.handler();
-			return;
-		}
+		dispatch('global.close', event);
 		return;
 	}
 
@@ -98,45 +127,26 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 		return;
 	}
 
-	// Handle chord sequences (g+key)
-	if (chordBuffer.value === 'g') {
-		// Clear the chord timeout
-		if (chordTimeout.value) {
-			clearTimeout(chordTimeout.value);
-			chordTimeout.value = null;
-		}
+	const scopes = activeShortcutScopes();
+	const step = chordFromEvent(event);
 
-		const chordKey = `g+${key}`;
-		const config = shortcuts.value.get(chordKey);
-		if (config) {
-			event.preventDefault();
-			config.handler();
-		}
-
-		chordBuffer.value = null;
+	// Second half of a sequence chord (`g` then …). Always consumes the key,
+	// whether or not the pair is bound — a half-typed `g` must not leak into a
+	// single-key action.
+	if (chordBuffer.value) {
+		const pending = `${chordBuffer.value} ${step}`;
+		clearChord();
+		dispatch(resolveActiveChord(pending, scopes), event);
 		return;
 	}
 
-	// Start chord sequence with 'g'
-	if (key === 'g') {
-		event.preventDefault();
-		chordBuffer.value = 'g';
+	if (dispatch(resolveActiveChord(step, scopes), event)) return;
 
-		// Clear chord after 500ms if no follow-up key
-		chordTimeout.value = setTimeout(() => {
-			chordBuffer.value = null;
-		}, 500);
-		return;
-	}
-
-	// Handle single key shortcuts
-	const config = shortcuts.value.get(key);
-	if (config) {
-		if (config.ignoreInputs && isInputFocused()) {
-			return;
-		}
+	// Not a shortcut on its own, but the start of one: hold it briefly.
+	if (isActiveChordPrefix(step, scopes)) {
 		event.preventDefault();
-		config.handler();
+		chordBuffer.value = step;
+		chordTimeout.value = setTimeout(clearChord, CHORD_WINDOW_MS);
 	}
 }
 
@@ -162,78 +172,36 @@ export function useKeyboardShortcuts() {
 	});
 
 	/**
-	 * Register a keyboard shortcut
+	 * Bind a handler to a catalog shortcut id. The keys are the registry's
+	 * business — a caller that wants a different chord changes the catalog (or
+	 * the user remaps it), not this call.
 	 */
 	function registerShortcut(config: ShortcutConfig) {
-		shortcuts.value.set(config.key, config);
+		shortcuts.value.set(config.id, config);
 	}
 
-	/**
-	 * Unregister a keyboard shortcut
-	 */
-	function unregisterShortcut(key: string) {
-		shortcuts.value.delete(key);
+	/** Release a catalog id's handler. */
+	function unregisterShortcut(id: string) {
+		shortcuts.value.delete(id);
 	}
 
 	/**
 	 * Register default navigation shortcuts
 	 */
 	function registerNavigationShortcuts() {
-		// g+d - Go to Dashboard
-		registerShortcut({
-			key: 'g+d',
-			handler: () => router.push('/dashboard'),
-			description: 'shared.useKeyboardShortcuts.descriptions.goToDashboard',
-			ignoreInputs: true,
-		});
-
-		// g+c - Go to Contacts
-		registerShortcut({
-			key: 'g+c',
-			handler: () => router.push('/dashboard/audience/contacts'),
-			description: 'shared.useKeyboardShortcuts.descriptions.goToContacts',
-			ignoreInputs: true,
-		});
-
-		// g+e - Go to Emails
-		registerShortcut({
-			key: 'g+e',
-			handler: () => router.push('/dashboard/send'),
-			description: 'shared.useKeyboardShortcuts.descriptions.goToEmails',
-			ignoreInputs: true,
-		});
-
-		// g+a - Go to Automations
-		registerShortcut({
-			key: 'g+a',
-			handler: () => router.push('/dashboard/automations'),
-			description: 'shared.useKeyboardShortcuts.descriptions.goToAutomations',
-			ignoreInputs: true,
-		});
-
-		// g+m - Go to Campaigns (m for marketing)
-		registerShortcut({
-			key: 'g+m',
-			handler: () => router.push('/dashboard/campaigns'),
-			description: 'shared.useKeyboardShortcuts.descriptions.goToCampaigns',
-			ignoreInputs: true,
-		});
-
-		// g+t - Go to Transactional
-		registerShortcut({
-			key: 'g+t',
-			handler: () => router.push('/dashboard/send/transactional'),
-			description: 'shared.useKeyboardShortcuts.descriptions.goToTransactional',
-			ignoreInputs: true,
-		});
-
-		// g+s - Go to Admin (the administration area, not the preferences pages)
-		registerShortcut({
-			key: 'g+s',
-			handler: () => router.push('/dashboard/admin'),
-			description: 'shared.useKeyboardShortcuts.descriptions.goToAdmin',
-			ignoreInputs: true,
-		});
+		const routes: Record<string, string> = {
+			'global.goToDashboard': '/dashboard',
+			'global.goToContacts': '/dashboard/audience/contacts',
+			'global.goToEmails': '/dashboard/send',
+			'global.goToAutomations': '/dashboard/automations',
+			'global.goToCampaigns': '/dashboard/campaigns',
+			'global.goToTransactional': '/dashboard/send/transactional',
+			// g+s routes to the administration area, not the preferences pages.
+			'global.goToAdmin': '/dashboard/admin',
+		};
+		for (const [id, path] of Object.entries(routes)) {
+			registerShortcut({ id, handler: () => router.push(path), ignoreInputs: true });
+		}
 	}
 
 	/**
@@ -251,52 +219,40 @@ export function useKeyboardShortcuts() {
 	}
 
 	/**
-	 * Get all registered shortcuts for display. `description` is an i18n key —
-	 * the caller renders it with `t()` (it falls back to the raw key chord when a
-	 * shortcut was registered without one).
+	 * The catalog entries that currently have a live handler, with their chords
+	 * already resolved. Used by tests to hold the dispatcher and the cheat sheet
+	 * to the same list; the sheets themselves render from the catalog directly,
+	 * because they document keys that are bound elsewhere too.
 	 */
 	function getRegisteredShortcuts() {
-		return Array.from(shortcuts.value.entries()).map(([key, config]) => ({
-			key,
-			description: config.description || key,
+		return SHORTCUT_CATALOG.filter((def) => shortcuts.value.has(def.id)).map((def) => ({
+			id: def.id,
+			keys: [...(shortcutBindings.value.byId.get(def.id) ?? [])],
+			description: def.labelKey,
 		}));
 	}
 
 	/**
-	 * Register context-aware 'n' (new) shortcut
+	 * Register context-aware 'new' shortcut.
 	 * Call this in page onMounted, pass cleanup function in onUnmounted
 	 */
 	function registerNewShortcut(handler: ShortcutHandler) {
-		registerShortcut({
-			key: 'n',
-			handler,
-			description: 'shared.useKeyboardShortcuts.descriptions.newItem',
-			ignoreInputs: true,
-		});
+		registerShortcut({ id: 'global.newItem', handler, ignoreInputs: true });
 	}
 
 	/**
-	 * Register context-aware 's' (save) shortcut
+	 * Register context-aware 'save' shortcut.
 	 * Call this in page/component onMounted for forms/editors
 	 */
 	function registerSaveShortcut(handler: ShortcutHandler) {
-		registerShortcut({
-			key: 's',
-			handler,
-			description: 'shared.useKeyboardShortcuts.descriptions.save',
-			ignoreInputs: true,
-		});
+		registerShortcut({ id: 'global.save', handler, ignoreInputs: true });
 	}
 
 	/**
 	 * Register escape handler for closing modals/panels
 	 */
 	function registerEscapeHandler(handler: ShortcutHandler) {
-		registerShortcut({
-			key: 'escape',
-			handler,
-			description: 'shared.useKeyboardShortcuts.descriptions.closeCancel',
-		});
+		registerShortcut({ id: 'global.close', handler });
 	}
 
 	return {
