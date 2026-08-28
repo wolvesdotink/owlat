@@ -9,9 +9,6 @@
  * missing piece: a typed JSON schema plus a PURE mapper from that schema to the
  * exact `.env` + flag state the interactive wizard would have produced.
  *
- * The schema, its parser and the flag resolution live here; the env half of the
- * mapper (`buildEnvPatchFromConfig` + `applySetupDefaults`) lives in
- * `./setupEnvMapping`, and `buildSetupFromConfig` below composes the two.
  */
 
 import {
@@ -29,9 +26,9 @@ import {
 } from '@owlat/shared/featureFlags';
 import { ensureSecrets } from './secrets';
 import { mergeEnv, type EnvMap } from './env';
+import { applySetupDefaults } from './setupEnvDefaults';
 import { isValidEmail } from './validators';
 import { assertFblDedupCutoverConfigured } from './fblDedupSetup';
-import { applySetupDefaults, buildEnvPatchFromConfig } from './setupEnvMapping';
 
 export type DeploymentMode = 'selfhost' | 'dev' | 'hosted';
 
@@ -294,6 +291,114 @@ export function resolveSetupFlags(config: SetupConfig): Record<FeatureFlagKey, b
 		state = { ...state, ...config.features.flags };
 	}
 	return resolveFlags(state, { hosted });
+}
+
+/**
+ * Build the provider / integration / domain env patch from a config. Mirrors the
+ * env keys produced by each step of the terminal wizard. Pure — no secrets, no
+ * defaults, no network validation.
+ */
+export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
+	const patch: EnvMap = {};
+
+	if (config.sending) {
+		switch (config.sending.provider) {
+			case 'mta':
+				patch['EMAIL_PROVIDER'] = 'mta';
+				break;
+			case 'resend':
+				patch['EMAIL_PROVIDER'] = 'resend';
+				patch['RESEND_API_KEY'] = config.sending.apiKey;
+				break;
+			case 'emailit':
+				patch['EMAIL_PROVIDER'] = 'emailit';
+				patch['EMAILIT_API_KEY'] = config.sending.apiKey;
+				break;
+			case 'ses':
+				patch['EMAIL_PROVIDER'] = 'ses';
+				patch['AWS_SES_REGION'] = config.sending.region;
+				patch['AWS_SES_ACCESS_KEY_ID'] = config.sending.accessKeyId;
+				patch['AWS_SES_SECRET_ACCESS_KEY'] = config.sending.secretAccessKey;
+				break;
+			case 'smtp':
+				// Port/TLS have safe backend defaults, so emit them only when set.
+				patch['EMAIL_PROVIDER'] = 'smtp';
+				patch['SMTP_RELAY_HOST'] = config.sending.host;
+				patch['SMTP_RELAY_USERNAME'] = config.sending.username;
+				patch['SMTP_RELAY_PASSWORD'] = config.sending.password;
+				if (config.sending.port !== undefined) {
+					patch['SMTP_RELAY_PORT'] = String(config.sending.port);
+				}
+				if (config.sending.secure !== undefined) {
+					patch['SMTP_RELAY_SECURE'] = config.sending.secure ? 'true' : 'false';
+				}
+				break;
+		}
+	}
+
+	if (config.ai) {
+		switch (config.ai.provider) {
+			case 'openrouter':
+				patch['LLM_PROVIDER'] = 'openrouter';
+				patch['LLM_API_KEY'] = config.ai.apiKey;
+				patch['OPENROUTER_API_KEY'] = config.ai.apiKey;
+				break;
+			case 'openai':
+				patch['LLM_PROVIDER'] = 'openai';
+				patch['LLM_API_KEY'] = config.ai.apiKey;
+				patch['OPENAI_API_KEY'] = config.ai.apiKey;
+				break;
+			case 'ollama':
+				patch['LLM_PROVIDER'] = 'ollama';
+				break;
+			case 'custom':
+				patch['LLM_PROVIDER'] = 'custom';
+				patch['LLM_BASE_URL'] = config.ai.baseUrl;
+				patch['LLM_API_KEY'] = config.ai.apiKey;
+				patch['LLM_MODEL_FAST'] = config.ai.modelFast;
+				patch['LLM_MODEL_CAPABLE'] = config.ai.modelCapable;
+				break;
+		}
+	}
+
+	if (config.integrations?.googleSafeBrowsingKey) {
+		patch['GOOGLE_SAFE_BROWSING_API_KEY'] = config.integrations.googleSafeBrowsingKey;
+	}
+	if (config.integrations?.posthog) {
+		patch['POSTHOG_API_KEY'] = config.integrations.posthog.apiKey;
+		patch['POSTHOG_HOST'] = config.integrations.posthog.host;
+		patch['NUXT_PUBLIC_POSTHOG_API_KEY'] = config.integrations.posthog.apiKey;
+		patch['NUXT_PUBLIC_POSTHOG_HOST'] = config.integrations.posthog.host;
+	}
+
+	if (config.domain) {
+		patch['EHLO_HOSTNAME'] = config.domain.ehloHostname;
+		patch['RETURN_PATH_DOMAIN'] = config.domain.bounceDomain;
+		// Wire the system/auth From-identity off the configured sending/EHLO
+		// domain. Without these the Convex runtime never receives DEFAULT_FROM_*,
+		// so system mail falls back to placeholders (noreply@mail.owlat.app /
+		// noreply@example.com — auth/auth.ts, confirmationEmail.ts,
+		// transactional/dispatch.ts). The EHLO hostname is the DKIM-signed sending
+		// domain the MTA identifies as, so it is the correct From domain. Mirrors
+		// the legacy bash wizard (scripts/setup.sh: DEFAULT_FROM_{DOMAIN,EMAIL,NAME}).
+		patch['DEFAULT_FROM_DOMAIN'] = config.domain.ehloHostname;
+		patch['DEFAULT_FROM_EMAIL'] = `noreply@${config.domain.ehloHostname}`;
+		patch['DEFAULT_FROM_NAME'] = 'Owlat';
+	}
+
+	if (config.network) {
+		// Set in the patch so `applySetupDefaults` (which only fills absent keys)
+		// won't clobber them back to localhost. CONVEX_SITE_URL is the function
+		// runtime's own site URL; the NUXT_PUBLIC_* values are what the web app
+		// and the desktop client (via /api/instance-info) consume.
+		patch['SITE_URL'] = config.network.siteUrl;
+		patch['NUXT_PUBLIC_SITE_URL'] = config.network.siteUrl;
+		patch['NUXT_PUBLIC_CONVEX_URL'] = config.network.convexUrl;
+		patch['NUXT_PUBLIC_CONVEX_SITE_URL'] = config.network.convexSiteUrl;
+		patch['CONVEX_SITE_URL'] = config.network.convexSiteUrl;
+	}
+
+	return patch;
 }
 
 export interface ResolvedSetup {
