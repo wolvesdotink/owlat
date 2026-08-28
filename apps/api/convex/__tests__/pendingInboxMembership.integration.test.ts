@@ -40,7 +40,11 @@ function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
 		role: 'owner',
 		activeOrganizationId: orgId,
 	});
-	sessionMocks.requireAdminContext.mockResolvedValue({ userId, role: 'owner' });
+	sessionMocks.requireAdminContext.mockResolvedValue({
+		userId,
+		role: 'owner',
+		activeOrganizationId: orgId,
+	});
 }
 
 function setInviteeSession(userId: string, orgId = 'test-org') {
@@ -404,5 +408,32 @@ describe('mail.mailbox.remove cascade', () => {
 				.collect();
 			expect(grants).toHaveLength(0);
 		});
+	});
+
+	it('refuses to delete a mailbox in ANOTHER organization (cross-org mailboxId)', async () => {
+		// Admin of `test-org`, but the mailbox lives in `other-org`.
+		setAdminSession('admin-user', 'test-org');
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedSharedMailbox(t, 'foreign@hinterland.camp', 'other-org');
+
+		await expect(t.mutation(api.mail.mailbox.remove, { mailboxId })).rejects.toThrow(
+			/not accessible/i
+		);
+
+		// Fail-closed: the foreign mailbox is left active, not soft-deleted.
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(mailboxId))!.status).toBe('active');
+		});
+	});
+
+	it('throws not-found when remove targets a mailbox id that no longer exists', async () => {
+		setAdminSession('admin-user', 'test-org');
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedSharedMailbox(t, 'gone@hinterland.camp', 'test-org');
+		await t.run(async (ctx) => {
+			await ctx.db.delete(mailboxId);
+		});
+
+		await expect(t.mutation(api.mail.mailbox.remove, { mailboxId })).rejects.toThrow();
 	});
 });

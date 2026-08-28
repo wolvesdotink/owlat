@@ -1,6 +1,7 @@
 // Proxy auth requests to Convex to avoid CORS issues
 // See: https://www.better-auth.com/docs/integrations/convex
 import { logError } from '~/lib/runtimeLog';
+import { authPathHasTraversal } from './authPath';
 
 export default defineEventHandler(async (event) => {
 	const config = useRuntimeConfig();
@@ -15,6 +16,15 @@ export default defineEventHandler(async (event) => {
 
 	// Get the path after /api/auth/
 	const path = event.path.replace(/^\/api\/auth/, '/api/auth');
+
+	// Reject any path that normalises to a dot-dot traversal before it is
+	// concatenated onto the Convex site URL — see `authPathHasTraversal`. Only the
+	// path segment can traverse under `new URL()`; the query/fragment cannot, so a
+	// legitimate `?redirect=...` value carrying `..` is not falsely rejected.
+	const pathOnly = path.split(/[?#]/, 1)[0] ?? path;
+	if (authPathHasTraversal(pathOnly)) {
+		throw createError({ statusCode: 400, message: 'Invalid auth path' });
+	}
 
 	// Build the target URL
 	const targetUrl = `${convexSiteUrl.replace(/\/+$/, '')}${path}`;

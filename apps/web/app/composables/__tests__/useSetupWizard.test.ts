@@ -398,16 +398,38 @@ describe('draft persistence round-trip', () => {
 		token: 'stk_abc123',
 	};
 
-	it('restores every collected field after a serialize→parse reload', () => {
+	it('restores every non-secret field after a serialize→parse reload', () => {
 		const restored = parseSetupDraft(serializeSetupDraft(fullDraft));
-		expect(restored).toEqual(fullDraft);
+		expect(restored).toEqual({
+			flags: fullDraft.flags,
+			env: fullDraft.env,
+			// Password blanked, token dropped — the two bearer secrets never persist.
+			admin: { ...validAdmin, password: '' },
+			isMigrationMode: true,
+		});
 	});
 
-	it('preserves the setup token and provider credentials across a reload', () => {
-		const restored = parseSetupDraft(serializeSetupDraft(fullDraft));
-		expect(restored?.token).toBe('stk_abc123');
+	it('never persists the admin password or the setup token', () => {
+		const serialized = serializeSetupDraft(fullDraft);
+		// The raw sessionStorage payload must not contain either secret verbatim.
+		expect(serialized).not.toContain(validAdmin.password);
+		expect(serialized).not.toContain('stk_abc123');
+		const restored = parseSetupDraft(serialized);
+		expect(restored?.token).toBeUndefined();
+		expect(restored?.admin?.password).toBe('');
+		// Provider credentials in `env` are still restored (narrower tradeoff).
 		expect(restored?.env?.['RESEND_API_KEY']).toBe('re_live_1');
-		expect(restored?.admin?.password).toBe(validAdmin.password);
+	});
+
+	it('refuses to surface a password from a legacy entry that still carries one', () => {
+		const restored = parseSetupDraft(
+			JSON.stringify({
+				admin: { email: 'a@b.co', name: 'Admin', password: 'leaked-legacy-secret' },
+				token: 'stk_legacy',
+			})
+		);
+		expect(restored?.admin?.password).toBe('');
+		expect(restored?.token).toBeUndefined();
 	});
 
 	it('returns null for a missing or non-JSON payload so a bad entry never crashes', () => {
@@ -433,9 +455,10 @@ describe('draft persistence round-trip', () => {
 		expect(restored).toEqual({});
 	});
 
-	it('accepts a partial draft, surfacing only the well-typed fields', () => {
+	it('accepts a partial draft, surfacing only the well-typed non-secret fields', () => {
 		const restored = parseSetupDraft(JSON.stringify({ token: 'stk_x', isMigrationMode: false }));
-		expect(restored).toEqual({ token: 'stk_x', isMigrationMode: false });
+		// `token` is never surfaced from storage, so only the migration flag remains.
+		expect(restored).toEqual({ isMigrationMode: false });
 	});
 });
 
@@ -452,9 +475,14 @@ describe('readSetupDraft — sessionStorage read the reload restore hinges on', 
 		sessionStorage.clear();
 	});
 
-	it('returns the persisted draft seeded under the namespaced key', () => {
+	it('returns the persisted (secret-stripped) draft seeded under the namespaced key', () => {
 		sessionStorage.setItem(SETUP_DRAFT_STORAGE_KEY, serializeSetupDraft(fullDraft));
-		expect(readSetupDraft()).toEqual(fullDraft);
+		expect(readSetupDraft()).toEqual({
+			flags: fullDraft.flags,
+			env: fullDraft.env,
+			admin: { ...validAdmin, password: '' },
+			isMigrationMode: true,
+		});
 	});
 
 	it('returns null when no draft has been persisted', () => {

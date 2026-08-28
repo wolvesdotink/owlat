@@ -33,6 +33,8 @@ import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
+import { injectionRisk } from './knowledge/extraction';
+import { detectInjection } from './agent/steps/security_scan/patterns';
 
 /**
  * Process a newly uploaded file: extract text, generate summary,
@@ -81,13 +83,31 @@ export const processFile = internalAction({
 			return;
 		}
 
+		// Prompt-injection guard on the untrusted extracted body. The text is fed
+		// verbatim into the summarize/tag LLM prompt below, and its output is
+		// persisted and later surfaced back to the assistant, so a planted
+		// instruction could poison downstream models. When the deterministic
+		// patterns flag the body, skip the LLM summarization/tag step entirely
+		// (never feed poisoned text to a model) and fall back to filename metadata.
+		const injectionReason = injectionRisk(extractedText);
+		if (injectionReason) {
+			logInfo('[semantic_file] extracted text tripped the injection guard; skipping AI summary', {
+				fileId: args.fileId,
+				reason: injectionReason,
+			});
+		}
+
 		// 2. Generate summary and tags via LLM
 		const textForAI = truncateForLLM(extractedText, 8000);
 		let summary = '';
 		let autoTags: string[] = [];
 		let title = file.title;
 
-		if (textForAI.length > 50) {
+		if (injectionReason) {
+			// Poisoned extracted text: don't hand it to the model. Keep filename-only
+			// metadata so the file is still searchable without an AI round-trip.
+			title = title || file.filename;
+		} else if (textForAI.length > 50) {
 			try {
 				const result = await runLlmObject({
 					model: await resolveLanguageModel(ctx, 'summarize'),
@@ -152,6 +172,11 @@ ${textForAI}`,
 			.filter(Boolean);
 		autoTags = Array.from(new Set([...autoTags, ...contextTags]));
 
+		// Scrub any auto-tag that carries an injection attempt before it is
+		// persisted, indexed into `searchableText`, and surfaced back to a model via
+		// retrieval. The auto-tags are LLM-derived from untrusted file content.
+		autoTags = scrubTags(autoTags);
+
 		// 3c. Version provenance: a coarse diff summary vs the previous version.
 		let changeSummary: string | undefined;
 		if (fileCtx.previousText && extractedText && !extractedText.startsWith('[')) {
@@ -198,6 +223,17 @@ ${textForAI}`,
 		}
 	},
 });
+
+/**
+ * Drop any tag that carries a prompt-injection attempt. Auto-tags are derived by
+ * the LLM from untrusted extracted file content, so a planted instruction could
+ * otherwise be persisted into `autoTags` / `searchableText` and reach a model via
+ * retrieval. Deterministic pattern match — no extra LLM cost. Exported for unit
+ * tests.
+ */
+export function scrubTags(tags: string[]): string[] {
+	return tags.filter((tag) => !detectInjection(tag).detected);
+}
 
 /** Normalize a phrase into a lowercase kebab tag (e.g. "Q3 Financials" → "q3-financials"). */
 function slugifyTag(input: string): string {

@@ -155,9 +155,13 @@ export const senderState = publicQuery({
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return empty;
 		const email = normalizeEmail(args.email);
+		// The screener toggle is a per-user preference, so read it for the CALLER
+		// (`owned.userId`), not the mailbox owner (`owned.mailbox.userId`): on a
+		// shared mailbox a delegate previously saw the owner's screener state
+		// instead of their own. On a personal mailbox the two ids coincide.
 		const settings = await ctx.db
 			.query('mailUserSettings')
-			.withIndex('by_user', (q) => q.eq('userId', owned.mailbox.userId))
+			.withIndex('by_user', (q) => q.eq('userId', owned.userId))
 			.first();
 		const isScreenerEnabled = settings?.isSenderScreenerOn === true;
 		const contact = await ctx.db

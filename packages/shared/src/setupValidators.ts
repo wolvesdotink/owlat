@@ -15,6 +15,7 @@
 
 import { connect as netConnect, type Socket } from 'node:net';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
+import { lookup } from 'node:dns/promises';
 import { validateEmailitKey } from './emailitSetupValidator';
 import { fetchSetupProvider, type ValidationResult } from './setupValidationHttp';
 
@@ -68,6 +69,32 @@ function isBlockedSsrfHost(hostname: string): boolean {
 		return false;
 	}
 	return false;
+}
+
+/**
+ * Best-effort DNS re-check on top of the literal `isBlockedSsrfHost` guard: a
+ * PUBLIC name (which passes the literal check) can still resolve to an INTERNAL
+ * address, the classic public-name → internal-IP SSRF. Resolve the host and
+ * block if ANY resolved address lands in a private/loopback/link-local range —
+ * reusing `isBlockedSsrfHost`, which already classifies IP literals.
+ *
+ * NON-BREAKING BY DESIGN: a resolution failure is NOT treated as blocked (the
+ * subsequent probe fails on its own), so a transient DNS hiccup never turns a
+ * legitimate public host into a false SSRF rejection. This is best-effort — it
+ * narrows, but does not close, the DNS-rebinding window between this lookup and
+ * the actual connect; the setup-token gate remains the primary control.
+ */
+async function resolvesToBlockedAddress(hostname: string): Promise<boolean> {
+	const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+	// A literal IP was already fully classified by `isBlockedSsrfHost`; nothing to
+	// resolve, and `lookup` on an IP just echoes it back.
+	if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(':')) return false;
+	try {
+		const results = await lookup(h, { all: true });
+		return results.some((r) => isBlockedSsrfHost(r.address));
+	} catch {
+		return false;
+	}
 }
 
 export async function validateOpenAIKey(
@@ -132,6 +159,10 @@ export async function validatePostHogHost(
 	if (isBlockedSsrfHost(base.hostname)) {
 		// Refuse private/loopback/link-local targets so this validator can't be
 		// abused to probe internal services (SSRF).
+		return { ok: false, message: 'PostHog host must be a public address.' };
+	}
+	if (await resolvesToBlockedAddress(base.hostname)) {
+		// A public name that resolves to an internal address (public-name → internal-IP).
 		return { ok: false, message: 'PostHog host must be a public address.' };
 	}
 	try {
@@ -450,6 +481,10 @@ function describeSmtpError(e: unknown): string {
 export async function validateSmtpRelay(input: SmtpRelayInput): Promise<ValidationResult> {
 	if (!input.host.trim()) return { ok: false, message: 'SMTP relay host is required.' };
 	if (isBlockedSsrfHost(input.host)) {
+		return { ok: false, message: 'SMTP relay host must be a public address.' };
+	}
+	if (await resolvesToBlockedAddress(input.host)) {
+		// A public name that resolves to an internal address (public-name → internal-IP).
 		return { ok: false, message: 'SMTP relay host must be a public address.' };
 	}
 	if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {

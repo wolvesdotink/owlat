@@ -5,7 +5,7 @@
  * Node runner (`assistant/runner.ts`) and the tool layer (`assistant/tools.ts`).
  */
 
-import { detectInjection } from '../agent/steps/security_scan/patterns';
+import { detectInjection, stripHiddenContent } from '../agent/steps/security_scan/patterns';
 
 export type AssistantSurface = 'personal' | 'chat';
 
@@ -68,7 +68,14 @@ export function clampText(text: string, max: number): string {
  */
 export function scrubForInjection(text: string): string {
 	if (!text) return text;
-	return detectInjection(text).detected
+	// Strip content hidden from a human reader but still legible to an LLM FIRST
+	// (HTML comments, display:none / white-on-white spans, zero-width runs), then
+	// run detection on the cleaned text. An injection smuggled inside a hidden
+	// element — or broken up by zero-width characters to dodge the pattern match —
+	// is now caught, and any hidden text that isn't itself a known injection
+	// phrasing is removed before the content reaches the model.
+	const stripped = stripHiddenContent(text);
+	return detectInjection(stripped).detected
 		? '[omitted: retrieved content contained a possible prompt-injection attempt and was withheld]'
-		: text;
+		: stripped;
 }

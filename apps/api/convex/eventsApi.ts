@@ -6,7 +6,7 @@ import {
 	errorResponse,
 	requireScope,
 	type AuthenticatedContext,
-} from "./auth/apiAuth";
+} from './auth/apiAuth';
 import { isValidEmail, normalizeEmail } from './lib/inputGuards';
 
 // Type for the action context
@@ -107,7 +107,7 @@ export const sendEvent = createAuthenticatedHandler(
 		if (!eventNameRegex.test(body.eventName)) {
 			return errorResponse(
 				'invalid_input',
-				'eventName must start with a letter and contain only alphanumeric characters, underscores, or hyphens (max 100 chars)',
+				'eventName must start with a letter and contain only alphanumeric characters, underscores, or hyphens (max 100 chars)'
 			);
 		}
 
@@ -138,18 +138,15 @@ export const sendEvent = createAuthenticatedHandler(
 			if (!body.createContactIfNotExists) {
 				return errorResponse(
 					'not_found',
-					`Contact with email "${body.email}" not found. Set createContactIfNotExists: true to create the contact automatically.`,
+					`Contact with email "${body.email}" not found. Set createContactIfNotExists: true to create the contact automatically.`
 				);
 			}
 
 			// Create the contact
-			contactId = await ctx.runMutation<Id<'contacts'>>(
-				internal.contacts.contacts.createForTeam,
-				{
-					email: body.email,
-					source: 'api' as const,
-				}
-			);
+			contactId = await ctx.runMutation<Id<'contacts'>>(internal.contacts.contacts.createForTeam, {
+				email: body.email,
+				source: 'api' as const,
+			});
 			contactCreated = true;
 		} else {
 			contactId = existingContact._id;
@@ -161,15 +158,12 @@ export const sendEvent = createAuthenticatedHandler(
 				contactId: Id<'contacts'>;
 				eventName: string;
 				triggeredAutomations: number;
-			}>(
-				internal.automations.triggers.sendEvent,
-				{
-					email: normalizeEmail(body.email),
-					eventName: body.eventName,
-					eventProperties: body.eventProperties,
-					createContactIfNotExists: false, // We already handled contact creation above
-				}
-			);
+			}>(internal.automations.triggers.sendEvent, {
+				email: normalizeEmail(body.email),
+				eventName: body.eventName,
+				eventProperties: body.eventProperties,
+				createContactIfNotExists: false, // We already handled contact creation above
+			});
 
 			const eventId = generateEventId();
 
@@ -187,9 +181,9 @@ export const sendEvent = createAuthenticatedHandler(
 				},
 				201
 			);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to send event';
-			return errorResponse('invalid_input', message);
+		} catch {
+			// Locked error envelope — do not echo the raw internal error message.
+			return errorResponse('invalid_input', 'Failed to send event');
 		}
 	}
 );

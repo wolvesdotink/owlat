@@ -3,11 +3,19 @@
 import { v } from 'convex/values';
 import { z } from 'zod';
 import { authedAction } from './lib/authedFunctions';
+import { internal } from './_generated/api';
 import { logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
 import { resolveLanguageModel } from './lib/llmProvider';
 import { requireAuthenticatedIdentity } from './lib/sessionOrganization';
+import { throwInvalidInput } from './_utils/errors';
+
+// Input caps so a single call can't be looped into an unbounded LLM spend: the
+// batch size and the combined character volume fed to the model are both
+// bounded before any dispatch happens.
+const MAX_TRANSLATE_ITEMS = 50;
+const MAX_TRANSLATE_TOTAL_CHARS = 100_000;
 
 interface TranslationItem {
 	id: string;
@@ -54,6 +62,25 @@ export const translateBatch = authedAction({
 		await requireAuthenticatedIdentity(ctx);
 
 		const { items, sourceLanguage, targetLanguage } = args;
+
+		// Clamp the input BEFORE gating/dispatch so an oversized batch is rejected
+		// cheaply rather than spent against the budget.
+		if (items.length > MAX_TRANSLATE_ITEMS) {
+			throwInvalidInput(`Too many items to translate at once (max ${MAX_TRANSLATE_ITEMS}).`);
+		}
+		const totalChars = items.reduce((sum, item) => sum + item.text.length, 0);
+		if (totalChars > MAX_TRANSLATE_TOTAL_CHARS) {
+			throwInvalidInput(
+				`Too much text to translate at once (max ${MAX_TRANSLATE_TOTAL_CHARS} characters).`
+			);
+		}
+
+		// Gate: `ai` feature flag + per-org spend budget + per-user rate limit,
+		// charged to the translation bucket so a tight loop can't drain the LLM
+		// budget. Runs as a mutation since an action can't touch ctx.db.
+		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {
+			rateLimitBucket: 'translateBatchPerUser',
+		});
 
 		// Build the translation prompt
 		const prompt = buildTranslationPrompt(items, sourceLanguage, targetLanguage);

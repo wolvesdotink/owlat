@@ -64,6 +64,27 @@ const CODE_AGENT_MALICIOUS_PATTERNS: readonly RegExp[] = [
 	/\.github\/workflows\b/i,
 ];
 
+/**
+ * Does the inbound message carry a DMARC-aligned PASS?
+ *
+ * The sender allowlist in `createFromInbound` keys on the verbatim, unverified
+ * `From:` header, which any sender can forge. Before that header is trusted to
+ * name an org member allowed to direct the autonomous coding agent, the message
+ * must carry a DMARC `pass`: the MTA computed it over the raw bytes at ingest,
+ * and DMARC passes ONLY when a passing SPF or DKIM check ALIGNS with the From
+ * domain, so a spoofed member address cannot satisfy it. This is the PRIMARY
+ * spoofing defence; the content denylist below is defence-in-depth.
+ *
+ * Fails CLOSED: an absent verdict (an older MTA or a disabled check omits the
+ * field), an explicit `fail`, or any other RFC 8601 keyword
+ * (`softfail`/`neutral`/`none`/`temperror`/`permerror`) all return false — only
+ * a literal aligned `pass` may spawn a code task. Compared case-insensitively
+ * after trimming, mirroring the reader-badge derivation.
+ */
+export function isDmarcAligned(verdicts: { dmarcResult?: string | undefined }): boolean {
+	return (verdicts.dmarcResult ?? '').trim().toLowerCase() === 'pass';
+}
+
 export interface CodeAgentSafetyResult {
 	/** True when the request may be turned into a code-work task. */
 	safe: boolean;

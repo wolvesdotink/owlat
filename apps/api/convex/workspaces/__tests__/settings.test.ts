@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
 
 /**
@@ -425,6 +426,163 @@ describe('organizations.settings.createInternal', () => {
 		await t.run(async (ctx) => {
 			const row = await ctx.db.get(id);
 			expect(row?.timezone).toBe('UTC');
+		});
+	});
+
+	// ── Durable admin-seed latch (L5) ─────────────────────────────────────────
+
+	it('does NOT stamp the admin-seed latch on an ordinary bootstrap', async () => {
+		const t = convexTest(schema, modules);
+
+		const id = await t.mutation(internal.workspaces.settings.createInternal, {});
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.get(id);
+			expect(row?.adminSeedCompletedAt).toBeUndefined();
+		});
+		expect(await t.query(internal.workspaces.settings.hasCompletedAdminSeedInternal, {})).toBe(
+			false
+		);
+	});
+
+	it('stamps the durable latch when markAdminSeeded is set', async () => {
+		const t = convexTest(schema, modules);
+
+		const id = await t.mutation(internal.workspaces.settings.createInternal, {
+			markAdminSeeded: true,
+		});
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.get(id);
+			expect(typeof row?.adminSeedCompletedAt).toBe('number');
+		});
+		expect(await t.query(internal.workspaces.settings.hasCompletedAdminSeedInternal, {})).toBe(
+			true
+		);
+	});
+
+	it('stamps the latch even when the settings row already exists (seed after wizard bootstrap)', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.mutation(internal.workspaces.settings.createInternal, {});
+		expect(await t.query(internal.workspaces.settings.hasCompletedAdminSeedInternal, {})).toBe(
+			false
+		);
+
+		await t.mutation(internal.workspaces.settings.createInternal, { markAdminSeeded: true });
+		expect(await t.query(internal.workspaces.settings.hasCompletedAdminSeedInternal, {})).toBe(
+			true
+		);
+	});
+
+	it('latch survives later user/settings churn: a plain createInternal never clears it', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.mutation(internal.workspaces.settings.createInternal, { markAdminSeeded: true });
+		// A subsequent bootstrap-shaped call (no markAdminSeeded) must not re-arm.
+		await t.mutation(internal.workspaces.settings.createInternal, { timezone: 'UTC' });
+
+		expect(await t.query(internal.workspaces.settings.hasCompletedAdminSeedInternal, {})).toBe(
+			true
+		);
+	});
+});
+
+// ============================================================
+// claimAdminSeedInternal — atomic one-shot latch claim (L5)
+// ============================================================
+
+describe('organizations.settings.claimAdminSeedInternal', () => {
+	it('claims and creates the singleton (stamping the latch) when none exists', async () => {
+		const t = convexTest(schema, modules);
+
+		const result = await t.mutation(internal.workspaces.settings.claimAdminSeedInternal, {
+			timezone: 'UTC',
+			defaultFromName: "Admin's Team",
+			isMigrationMode: true,
+		});
+
+		expect(result).toEqual({ claimed: true });
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			// The seed's settings columns are persisted by the claim itself, so a
+			// later idempotent createInternal is not required to fill them.
+			expect(row?.defaultFromName).toBe("Admin's Team");
+			expect(row?.isMigrationMode).toBe(true);
+			expect(typeof row?.adminSeedCompletedAt).toBe('number');
+		});
+		expect(await t.query(internal.workspaces.settings.hasCompletedAdminSeedInternal, {})).toBe(
+			true
+		);
+	});
+
+	it('claims (stamps the latch) on an existing UNLATCHED row without clobbering its columns', async () => {
+		const t = convexTest(schema, modules);
+
+		let existingId: Id<'instanceSettings'>;
+		await t.run(async (ctx) => {
+			existingId = await ctx.db.insert('instanceSettings', {
+				timezone: 'Europe/Berlin',
+				defaultFromName: 'Wizard',
+				createdAt: Date.now(),
+			});
+		});
+
+		const result = await t.mutation(internal.workspaces.settings.claimAdminSeedInternal, {
+			timezone: 'UTC',
+			defaultFromName: 'Seed',
+		});
+
+		expect(result).toEqual({ claimed: true });
+		await t.run(async (ctx) => {
+			const row = await ctx.db.get(existingId);
+			// Only the latch is stamped; pre-existing settings columns are preserved.
+			expect(row?.timezone).toBe('Europe/Berlin');
+			expect(row?.defaultFromName).toBe('Wizard');
+			expect(typeof row?.adminSeedCompletedAt).toBe('number');
+		});
+	});
+
+	it('the SECOND claim loses: a re-run against an already-latched instance returns claimed=false', async () => {
+		const t = convexTest(schema, modules);
+
+		const first = await t.mutation(internal.workspaces.settings.claimAdminSeedInternal, {
+			timezone: 'UTC',
+			defaultFromName: 'First',
+		});
+		expect(first).toEqual({ claimed: true });
+
+		const firstStampedAt = await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			return row?.adminSeedCompletedAt;
+		});
+
+		// A second bootstrap attempt (the concurrent loser, or a re-run against a
+		// de-populated instance) must NOT re-claim, and must NOT re-stamp the latch.
+		const second = await t.mutation(internal.workspaces.settings.claimAdminSeedInternal, {
+			timezone: 'UTC',
+			defaultFromName: 'Second',
+		});
+		expect(second).toEqual({ claimed: false });
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			// The latch timestamp is unchanged (the loser wrote nothing) and the
+			// first claimant's column is preserved.
+			expect(row?.adminSeedCompletedAt).toBe(firstStampedAt);
+			expect(row?.defaultFromName).toBe('First');
+		});
+	});
+
+	it('defaults timezone to UTC and isMigrationMode to false when omitted', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.mutation(internal.workspaces.settings.claimAdminSeedInternal, {});
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('instanceSettings').first();
+			expect(row?.timezone).toBe('UTC');
+			expect(row?.isMigrationMode).toBe(false);
 		});
 	});
 });

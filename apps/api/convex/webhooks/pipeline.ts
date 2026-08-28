@@ -19,6 +19,19 @@ import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from '
 import type { InboundEvent } from './types';
 
 /**
+ * Hard ceiling on an inbound webhook body, enforced pre-auth. Provider event
+ * batches are small JSON documents; 5 MiB leaves generous headroom for the
+ * largest (a Mandrill `mandrill_events` array) while capping how much
+ * unauthenticated data any caller can push into memory.
+ */
+const MAX_WEBHOOK_BODY_BYTES = 5 * 1024 * 1024;
+
+/** UTF-8 byte length of a string (a multibyte char is more than one byte). */
+function byteLength(s: string): number {
+	return new TextEncoder().encode(s).length;
+}
+
+/**
  * EVENT SEMANTICS ONLY — what a provider's bytes MEAN, with no opinion about
  * whether they are authentic.
  *
@@ -167,11 +180,27 @@ export async function runInboundPipeline(
 	);
 	if (!rateOk) return rateLimitedResponse(retryAfter);
 
+	// Bound the body BEFORE reading it — the body is unauthenticated at this point
+	// (signature verification happens next), so an attacker could otherwise stream
+	// an arbitrarily large payload into memory pre-auth. A `Content-Length` beyond
+	// the cap is rejected without reading a byte; the largest legitimate provider
+	// batch (Mandrill's `mandrill_events`) is comfortably under it.
+	const declaredLength = Number(request.headers.get('Content-Length'));
+	if (Number.isFinite(declaredLength) && declaredLength > MAX_WEBHOOK_BODY_BYTES) {
+		return jsonResponse(413, { error: 'Payload too large' });
+	}
+
 	let rawBody: string;
 	try {
 		rawBody = await request.text();
 	} catch {
 		return jsonResponse(400, { error: 'Failed to read request body' });
+	}
+
+	// Defense for a chunked request that omits Content-Length: enforce the same
+	// cap on the bytes actually read so the header can't be simply left off.
+	if (byteLength(rawBody) > MAX_WEBHOOK_BODY_BYTES) {
+		return jsonResponse(413, { error: 'Payload too large' });
 	}
 
 	const verification = await adapter.verifySignature(request, rawBody, ctx);

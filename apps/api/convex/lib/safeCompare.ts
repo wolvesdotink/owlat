@@ -8,20 +8,16 @@
  * cannot infer the expected secret length from response timing.
  */
 export function safeCompare(a: string, b: string): boolean {
-	if (a.length !== b.length) {
-		// Run a same-length compare against `a` itself so the loop body still
-		// executes — keeps the total work proportional to `a.length`, not the
-		// (a, b) length pair.
-		let result = 0;
-		for (let i = 0; i < a.length; i++) {
-			result |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i % b.length) | 0);
-		}
-		void result;
-		return false;
+	// Single-path fold — the length difference is folded into the SAME
+	// accumulator as the byte comparison (matching `webhooks/security.ts`
+	// `constantTimeEqual`), so there is no length-dependent branch a caller
+	// could probe as a length oracle. `charCodeAt(i)` past the end of a string
+	// is `NaN`; `NaN | 0` is `0`, so the longer side's trailing bytes XOR
+	// against 0 and force a mismatch without an early return.
+	let mismatch = a.length ^ b.length;
+	const len = Math.max(a.length, b.length);
+	for (let i = 0; i < len; i++) {
+		mismatch |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0);
 	}
-	let result = 0;
-	for (let i = 0; i < a.length; i++) {
-		result |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0);
-	}
-	return result === 0;
+	return mismatch === 0;
 }

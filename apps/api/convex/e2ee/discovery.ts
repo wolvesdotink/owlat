@@ -201,11 +201,21 @@ export async function verifyRotationStatement(
 	observedFingerprint: string
 ): Promise<boolean> {
 	try {
-		if (normalizeEmail(statement.address) !== normalizeEmail(address)) return false;
 		if (!fingerprintsEqual(statement.oldFingerprint, pinnedFingerprint)) return false;
 		if (!fingerprintsEqual(statement.newFingerprint, observedFingerprint)) return false;
+		// The statement no longer carries its address (L7 — it would enumerate
+		// mailboxes on the anonymous manifest). Reconstruct the canonical signed
+		// text from the address WE are discovering, so the signature binds the
+		// statement to this address: a statement signed for a different address
+		// produces different text and fails to verify here.
 		const result = await openpgp.verify({
-			message: await openpgp.createMessage({ text: rotationStatementText(statement) }),
+			message: await openpgp.createMessage({
+				text: rotationStatementText({
+					address,
+					oldFingerprint: statement.oldFingerprint,
+					newFingerprint: statement.newFingerprint,
+				}),
+			}),
 			signature: await openpgp.readSignature({ armoredSignature: statement.signature }),
 			verificationKeys: await openpgp.readKey({ armoredKey: oldPinnedKeyArmored }),
 		});

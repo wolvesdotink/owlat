@@ -64,6 +64,16 @@ export async function requireMailboxAccess(
 	const mailbox = await ctx.db.get(mailboxId);
 	if (!mailbox) return { ok: false, reason: 'mailbox_missing' };
 	if (mailbox.status !== 'active') return { ok: false, reason: 'mailbox_inactive' };
+	// Org scoping is enforced ahead of EVERY access branch — owner/admin, the
+	// mailbox's own user, and explicit members alike — so a caller-supplied
+	// mailbox id belonging to another organization can never be reached, whatever
+	// the caller's role. In single-org-per-deployment this holds trivially; it is
+	// the fail-closed defense-in-depth against a stale/mis-seeded row or a mailbox
+	// that lives in a different org, and it keeps the owner/admin branch from
+	// short-circuiting the check the membership branch already relied on.
+	if (mailbox.organizationId !== s.activeOrganizationId) {
+		return { ok: false, reason: 'forbidden' };
+	}
 	// Org owner/admin act on behalf of any user in the org, and the mailbox's
 	// own user always has owner-level access — both bypass the membership read.
 	// Their effective role on the mailbox is `owner` (the single source of truth
@@ -74,14 +84,6 @@ export async function requireMailboxAccess(
 	// Everyone else needs an explicit membership row meeting `minRole`. This is
 	// the only path that reaches a shared mailbox; personal mailboxes never
 	// carry non-owner members, so their behaviour is unchanged.
-	//
-	// Defense-in-depth: a membership row may only grant access inside the
-	// caller's active organization, so a stale or mis-seeded row can never
-	// reach a mailbox in another org. The owner/admin/self branch above is
-	// unaffected, keeping personal-mailbox behaviour bit-for-bit.
-	if (mailbox.organizationId !== s.activeOrganizationId) {
-		return { ok: false, reason: 'forbidden' };
-	}
 	const membership = await ctx.db
 		.query('mailboxMembers')
 		.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailboxId).eq('authUserId', s.userId))

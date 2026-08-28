@@ -146,6 +146,30 @@ describe('POST /api/setup/apply — relay password at rest', () => {
 	});
 });
 
+describe('POST /api/setup/apply — env value hygiene', () => {
+	it('refuses a newline in an env value before seeding or writing (env injection)', async () => {
+		body = {
+			flags: getDefaultFlags({ hosted: false }),
+			// A newline in the operator-supplied From name would inject an arbitrary
+			// extra `.env` line (here a forged INSTANCE_SECRET) through the line-oriented
+			// writer.
+			env: {
+				EMAIL_PROVIDER: 'smtp',
+				SMTP_RELAY_PASSWORD: PLAINTEXT_PASSWORD,
+				DEFAULT_FROM_NAME: 'Acme\nINSTANCE_SECRET=attacker-owned',
+			},
+			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
+		};
+
+		const result = await callRoute();
+		expect(result.ok).toBe(false);
+		expect(result.message).toMatch(/control characters/);
+		expect(fetch).not.toHaveBeenCalled();
+		expect(pushMock).not.toHaveBeenCalled();
+		expect(writeMock).not.toHaveBeenCalled();
+	});
+});
+
 describe('POST /api/setup/apply — MTA identity gate', () => {
 	it('refuses the happy path before seeding or writing when live FCrDNS fails', async () => {
 		body = {

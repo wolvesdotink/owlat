@@ -360,6 +360,43 @@ describe('providerRoutes.listIpPools', () => {
 	});
 });
 
+describe('providerRoutes.listRoutes — admin gate', () => {
+	it('returns configured routes for an admin (organization:manage)', async () => {
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run((ctx) =>
+			ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'single',
+				providers: [{ providerType: 'mta', isEnabled: true }],
+				ipPool: 'campaign',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+
+		const routes = await t.query(api.providerRoutes.listRoutes, {});
+		expect(routes).toHaveLength(1);
+		expect(routes[0]!.ipPool).toBe('campaign');
+	});
+
+	it('rejects a member without organization:manage (transport topology is admin-only)', async () => {
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run((ctx) =>
+			ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'single',
+				providers: [{ providerType: 'mta', isEnabled: true, weight: 100 }],
+				ipPool: 'campaign',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+
+		permissionState.allowed = false;
+		await expect(t.query(api.providerRoutes.listRoutes, {})).rejects.toThrow();
+	});
+});
+
 describe('deliverability relay domain lifecycle', () => {
 	it('drains verified MTA domains in a cursor batch and schedules continuation', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);

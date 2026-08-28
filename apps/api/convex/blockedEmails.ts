@@ -266,6 +266,11 @@ export const remove = authedMutation({
 	},
 });
 
+// Hard cap on one bulkAdd request. The manual-block import path is an operator
+// tool, not a bulk ingest firehose; bounding the array keeps a single mutation's
+// insert + mirror + audit fan-out inside Convex's per-transaction write budget.
+export const MAX_BULK_BLOCK_ADD = 1000;
+
 // Bulk add emails to the blocklist (for import or auto-blocking)
 export const bulkAdd = authedMutation({
 	args: {
@@ -278,11 +283,17 @@ export const bulkAdd = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireOrgPermission(
+		const session = await requireOrgPermission(
 			ctx,
 			'contacts:manage',
 			'Only owners and admins can manage the blocklist'
 		);
+
+		// Bound the request before any write.
+		if (args.emails.length > MAX_BULK_BLOCK_ADD) {
+			throwInvalidInput(`Cannot block more than ${MAX_BULK_BLOCK_ADD} addresses at once`);
+		}
+
 		const results = {
 			added: 0,
 			skipped: 0,
@@ -308,11 +319,22 @@ export const bulkAdd = authedMutation({
 			}
 
 			// Add to blocklist
-			await ctx.db.insert('blockedEmails', {
+			const blockedEmailId = await ctx.db.insert('blockedEmails', {
 				email: normalizedEmail,
 				reason: item.reason,
 				notes: item.notes,
 				createdAt: Date.now(),
+			});
+
+			// Audit each address a bulk block added — the single `add` path logs
+			// `blocklist.added`, and a bulk block must leave the same trail so a
+			// mass suppression is attributable to the operator who ran it.
+			await recordAuditLog(ctx, {
+				userId: session.userId,
+				action: 'blocklist.added',
+				resource: 'blocklist',
+				resourceId: blockedEmailId,
+				details: { email: normalizedEmail, reason: item.reason, bulk: true },
 			});
 
 			// Mirror to the MTA's Redis suppression backstop. Fire-and-forget.

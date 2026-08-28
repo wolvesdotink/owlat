@@ -1,7 +1,8 @@
 import { betterAuth } from 'better-auth';
+import { APIError } from 'better-auth/api';
 import { organization, oneTimeToken } from 'better-auth/plugins';
 import { createAccessControl } from 'better-auth/plugins/access';
-import { getOptional, getRequired } from '../lib/env';
+import { getOptional, getRequired, getBoolean } from '../lib/env';
 import {
 	defaultStatements,
 	adminAc,
@@ -44,6 +45,181 @@ const editor = ac.newRole({ ...memberAc.statements });
 // organization plugin tables for full organization support
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
+/**
+ * Client-IP resolution for BetterAuth's built-in login/rate limiter, kept in
+ * lockstep with `publicRateLimit.getClientIp`.
+ *
+ * Forwarded headers (`CF-Connecting-IP`, `X-Forwarded-For`, `X-Real-IP`) are
+ * CLIENT-SUPPLIED. A caller hitting the directly-reachable Convex origin can set
+ * any value, so trusting the *leftmost* `X-Forwarded-For` entry (BetterAuth's
+ * unconfigured default) lets an attacker mint a fresh limiter bucket per request
+ * and defeat the login/reset throttle entirely (password brute-force,
+ * reset-mail flooding).
+ *
+ * We therefore believe a header only when the deployment declares its fronting
+ * proxy via `RATE_LIMIT_TRUSTED_PROXY` (the SAME switch the public limiter uses):
+ *   - `cloudflare` → `CF-Connecting-IP` (Cloudflare overwrites it).
+ *   - `xrealip`    → `X-Real-IP` (set by the immediate proxy).
+ *   - `xforwarded` → `X-Forwarded-For`; with `RATE_LIMIT_TRUSTED_PROXIES` set,
+ *                    BetterAuth walks the chain RIGHT-to-left, skips trusted
+ *                    hops, and keys the first untrusted (real client) entry — so
+ *                    injected leftmost hops are ignored. Without it, only a
+ *                    single-value header is trusted and a multi-hop chain fails
+ *                    closed.
+ * Unset / unrecognised ⇒ NO header is trusted, but the limiter stays ON. We pass
+ * an EMPTY `ipAddressHeaders` list (NOT `disableIpTracking`): BetterAuth then
+ * resolves no client IP and keys every caller into the single shared
+ * `no-trusted-ip` bucket — coarse, but a spoofed header can never multiply
+ * buckets AND sign-in/reset are still throttled. `disableIpTracking` would
+ * instead turn the login/reset limiter OFF entirely (getIp → null →
+ * resolveRateLimitConfig returns null → no throttle), a fail-OPEN regression, so
+ * we never use it here. Mirrors publicRateLimit's 'unknown' posture.
+ */
+type BetterAuthIpAddressConfig = {
+	ipAddressHeaders?: string[];
+	trustedProxies?: string[];
+	disableIpTracking?: boolean;
+};
+
+export function resolveBetterAuthIpAddressConfig(): BetterAuthIpAddressConfig {
+	const mode = getOptional('RATE_LIMIT_TRUSTED_PROXY')?.trim().toLowerCase();
+
+	if (mode === 'cloudflare') {
+		return { ipAddressHeaders: ['cf-connecting-ip'] };
+	}
+	if (mode === 'xrealip') {
+		return { ipAddressHeaders: ['x-real-ip'] };
+	}
+	if (mode === 'xforwarded' || mode?.startsWith('xforwarded:')) {
+		// NOTE: the `xforwarded:<hops>` numeric suffix (honoured by the PUBLIC
+		// limiter's getClientIp) is IGNORED here — BetterAuth skips trusted hops by
+		// IP via `trustedProxies`, not by count. Supply RATE_LIMIT_TRUSTED_PROXIES
+		// to trust a multi-hop chain; without it only a single-value XFF is trusted
+		// (multi-hop degrades safely to single-value-only trust).
+		const trustedProxies = (getOptional('RATE_LIMIT_TRUSTED_PROXIES') ?? '')
+			.split(/[\s,]+/)
+			.map((entry) => entry.trim())
+			.filter(Boolean);
+		return {
+			ipAddressHeaders: ['x-forwarded-for'],
+			...(trustedProxies.length > 0 ? { trustedProxies } : {}),
+		};
+	}
+
+	// Fail closed WITHOUT failing open: an empty header list means no spoofable
+	// header is trusted (a direct-origin attacker can't mint a fresh bucket per
+	// request), while the limiter stays active on the shared `no-trusted-ip`
+	// bucket. `disableIpTracking` is deliberately NOT used — it would disable the
+	// login/reset limiter altogether.
+	return { ipAddressHeaders: [] };
+}
+
+// Desktop app (Tauri) origins. The packaged webview serves the bundled SPA from
+// these origins and talks to this instance cross-origin via the cross-domain
+// plugin (header-based session, no cookies). See apps/web/app/lib/auth-client.ts
+// (desktop branch).
+const DESKTOP_TRUSTED_ORIGINS = ['tauri://localhost', 'https://tauri.localhost'] as const;
+
+/**
+ * Resolve the trusted browser origins for BetterAuth (L10).
+ *
+ * In DEV (`OWLAT_DEV_MODE`) the loopback defaults stay so a local checkout works
+ * with no env. In PRODUCTION the silent `http://localhost` fallback is dropped:
+ * `SITE_URL` is REQUIRED (an unset one means the deployment is misconfigured and
+ * would otherwise trust loopback for CSRF/redirect origin checks), and
+ * `ADMIN_SITE_URL` is trusted only when actually set — never defaulted to
+ * `localhost:3001`. Called at request time (see the `trustedOrigins` function),
+ * so the throw fails the request closed rather than the push.
+ */
+export function resolveTrustedOrigins(): string[] {
+	const siteUrl = getOptional('SITE_URL');
+	const adminSiteUrl = getOptional('ADMIN_SITE_URL');
+
+	if (isDevDeployment()) {
+		return [
+			siteUrl || 'http://localhost:3000',
+			adminSiteUrl || 'http://localhost:3001',
+			...DESKTOP_TRUSTED_ORIGINS,
+		];
+	}
+
+	if (!siteUrl) {
+		throw new Error(
+			'Missing required environment variable: SITE_URL (required in production to set trusted auth origins; the localhost fallback is dev-only)'
+		);
+	}
+	return [siteUrl, ...(adminSiteUrl ? [adminSiteUrl] : []), ...DESKTOP_TRUSTED_ORIGINS];
+}
+
+/**
+ * Server-side registration gate (H3).
+ *
+ * The invite-only rule previously lived ONLY in the web register page
+ * (`apps/web/app/pages/auth/register.vue`, a client-side redirect), so
+ * `POST /api/auth/sign-up/email` was open to anyone who called it directly. This
+ * hook enforces the rule on the server, at the one choke point every email
+ * signup passes through (`databaseHooks.user.create.before`).
+ *
+ * The single org is bootstrapped by the `/seed/admin` HTTP action
+ * (`seedAdmin.ts`), which writes through the RAW component adapter and so never
+ * triggers this hook — the seeded owner is created regardless. Past that:
+ *   - Zero users ⇒ this is the very first account (a signup-based bootstrap) ⇒
+ *     allowed.
+ *   - Any user exists ⇒ registration is invite-only: a signup is permitted only
+ *     when a non-expired PENDING invitation exists for that exact (normalized)
+ *     email.
+ *
+ * Fails CLOSED: a missing/unshaped email is rejected, and any signup without a
+ * live invitation on a bootstrapped instance is refused.
+ *
+ * NOTE: this closes the "anyone can self-register an account" hole, but does NOT
+ * by itself stop an attacker who self-registers with a LEAKED invitee's email
+ * (a matching pending invitation exists) — only email verification
+ * (REQUIRE_EMAIL_VERIFICATION) proves inbox ownership and closes that. See the
+ * `requireEmailVerification` wiring below.
+ */
+export async function assertRegistrationAllowed(
+	ctx: ActionCtx,
+	email: string | undefined
+): Promise<void> {
+	const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
+	if (!normalized) {
+		throw new APIError('BAD_REQUEST', { message: 'A valid email is required to register.' });
+	}
+
+	// Is the instance bootstrapped? If no user exists yet, allow the first account
+	// (a signup-based bootstrap); the seed path bypasses this hook entirely.
+	const anyUser = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
+		model: 'user',
+		where: [],
+		paginationOpts: { cursor: null, numItems: 1 },
+	})) as { page?: unknown[] } | null;
+	if (!anyUser?.page?.length) return;
+
+	// Invite-only past bootstrap: require a non-expired pending invitation for the
+	// exact email. BetterAuth stores invitation emails lowercased.
+	const invitations = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
+		model: 'invitation',
+		where: [
+			{ field: 'email', value: normalized },
+			{ field: 'status', value: 'pending' },
+		],
+		paginationOpts: { cursor: null, numItems: 50 },
+	})) as { page?: Array<{ expiresAt?: number | string | null }> } | null;
+
+	const now = Date.now();
+	const hasLiveInvite = (invitations?.page ?? []).some((inv) => {
+		if (inv.expiresAt === undefined || inv.expiresAt === null) return false;
+		return new Date(inv.expiresAt).getTime() > now;
+	});
+
+	if (!hasLiveInvite) {
+		throw new APIError('FORBIDDEN', {
+			message: 'Registration on this instance is invite-only. Ask an administrator to invite you.',
+		});
+	}
+}
+
 // Factory function to create auth options (used by adapter)
 export const createAuthOptions = (ctx: ActionCtx) => {
 	// Auth emails send through the configured system transport (Send system email
@@ -52,10 +228,28 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 	// the action ctx so the four hooks below stay unchanged.
 	const sendViaMta = (params: { to: string; from: string; subject: string; html: string }) =>
 		ctx.runAction(internal.systemMail.sendSystemEmail, params);
+	// Email verification is opt-in per deployment so enabling it can never lock
+	// out an existing install whose current users signed up before verification
+	// existed (they'd have no verified flag). Unset ⇒ off (current behavior); when
+	// on it gates signup AND invitation acceptance on a followed verification link.
+	const requireEmailVerification = getBoolean('REQUIRE_EMAIL_VERIFICATION');
 	return {
 		// Cast required: BetterAuth component bundles its own copy of Convex types
 		// which are structurally identical but nominally different (bun duplicate resolution)
 		database: authComponent.adapter(ctx as Parameters<typeof authComponent.adapter>[0]),
+		// H3: enforce invite-only registration on the server. Fires for every email
+		// signup routed through the BetterAuth instance (the seed path uses the raw
+		// component adapter and is intentionally not gated). See
+		// `assertRegistrationAllowed`.
+		databaseHooks: {
+			user: {
+				create: {
+					before: async (user: { email?: string }) => {
+						await assertRegistrationAllowed(ctx, user.email);
+					},
+				},
+			},
+		},
 		// Fail closed: an unset secret makes BetterAuth fall back to a built-in,
 		// publicly-known default, which would let anyone forge session cookies.
 		// Real deploys always set it (quickstart generates it); this throws loudly
@@ -73,6 +267,10 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			enabled: true,
 			minPasswordLength: 10,
 			maxPasswordLength: 128,
+			// When enabled (REQUIRE_EMAIL_VERIFICATION), an unverified account cannot
+			// sign in — BetterAuth sends a verification link instead. Guarded so
+			// existing installs default to the prior behavior.
+			requireEmailVerification,
 			sendResetPassword: async ({
 				user,
 				token,
@@ -143,6 +341,11 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			},
 		},
 		emailVerification: {
+			// Send a verification link on signup when REQUIRE_EMAIL_VERIFICATION is
+			// on, so a fresh account must confirm ownership of the address before it
+			// is usable (H3: the stored profile email is bound to this verified
+			// identity). Off by default to avoid locking out pre-existing accounts.
+			sendOnSignUp: requireEmailVerification,
 			// Final hop of the change-email flow. BetterAuth invokes this with
 			// `user.email` already set to the NEW address, so the verification
 			// link is delivered to the address being claimed. Following it is
@@ -179,28 +382,27 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			},
 		},
 		rateLimit: {
-			// BetterAuth's built-in limiter keys on the client IP (first entry of
-			// X-Forwarded-For). Production deployments get that header from the
-			// fronting proxy (Caddy, and the web app's /api/auth proxy extends the
-			// chain). Traffic that reaches a DEV deployment directly (the desktop
-			// app in `tauri dev`, curl against :3211) carries no such header, so
-			// the limiter would skip every request and log a WARN each time —
-			// disable it where OWLAT_DEV_MODE is set, keep the default elsewhere.
+			// BetterAuth's built-in login/reset limiter keys on the resolved client
+			// IP (see `advanced.ipAddress` below — right-anchored, spoof-resistant).
+			// Production deployments get the client IP from the fronting proxy
+			// (Caddy, and the web app's /api/auth proxy extends the chain). Traffic
+			// that reaches a DEV deployment directly (the desktop app in `tauri dev`,
+			// curl against :3211) carries no such header, so the limiter would skip
+			// every request and log a WARN each time — disable it where OWLAT_DEV_MODE
+			// is set, keep the default elsewhere.
 			enabled: !isDevDeployment(),
 		},
-		trustedOrigins: (() => {
-			const adminSiteUrl = getOptional('ADMIN_SITE_URL');
-			return [
-				getOptional('SITE_URL') || 'http://localhost:3000',
-				adminSiteUrl ?? 'http://localhost:3001',
-				// Desktop app (Tauri) origins. The packaged webview serves the
-				// bundled SPA from these origins and talks to this instance
-				// cross-origin via the cross-domain plugin (header-based session,
-				// no cookies). See apps/web/app/lib/auth-client.ts (desktop branch).
-				'tauri://localhost',
-				'https://tauri.localhost',
-			];
-		})(),
+		advanced: {
+			// M12: resolve the limiter's client IP from the RIGHT-anchored trusted
+			// proxy entry (aligned with publicRateLimit.getClientIp) instead of
+			// BetterAuth's default leftmost/spoofable X-Forwarded-For.
+			ipAddress: resolveBetterAuthIpAddressConfig(),
+		},
+		// Deferred to request time (a function, not an eager array): in production
+		// this REQUIRES SITE_URL rather than silently trusting the loopback
+		// fallback, and evaluating it at import time — the component schema-analysis
+		// path, where env vars are unavailable — would throw and fail every push.
+		trustedOrigins: () => resolveTrustedOrigins(),
 		plugins: [
 			// Cross-domain plugin: enables cookieless, cross-origin auth for the
 			// Tauri desktop app. It rewrites the `Better-Auth-Cookie` request
@@ -245,6 +447,13 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				// Custom access control with 'editor' role instead of 'member'
 				ac,
 				roles: { owner, admin, editor },
+				// H3: when email verification is enabled, an invitee must confirm the
+				// invited address before the membership is accepted — so the email a
+				// claim path later trusts (pendingInboxMembership / pendingMailbox) is
+				// a verified identity, not an unconfirmed client-supplied value.
+				// Guarded off by default (see requireEmailVerification) so existing
+				// installs are not locked out.
+				requireEmailVerificationOnInvitation: requireEmailVerification,
 				// Single-org-per-instance: the one org is bootstrapped by the
 				// /seed/admin HTTP action (apps/api/convex/seedAdmin.ts) which
 				// writes through the BetterAuth adapter directly. The public

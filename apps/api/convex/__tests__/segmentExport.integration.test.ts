@@ -40,9 +40,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		}),
 		isActiveOrgMember: vi.fn().mockImplementation(async () => sessionMock.member),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		requireAuthenticatedIdentity: vi
-			.fn()
-			.mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
@@ -50,9 +52,7 @@ const modules = import.meta.glob('../**/*.*s');
 
 const acmeFilters: Infer<typeof segmentFiltersValidator> = {
 	logic: 'AND',
-	conditions: [
-		{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' },
-	],
+	conditions: [{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' }],
 };
 
 async function insertContact(ctx: MutationCtx, overrides: Record<string, unknown> = {}) {
@@ -117,6 +117,32 @@ describe('segments.listMembersForExport', () => {
 		expect(members.some((m) => m.email === 'gone@acme.com')).toBe(false);
 	});
 
+	it('never leaks the DOI confirmation token in exported members', async () => {
+		const t = convexTest(schema, modules);
+		const segmentId = await t.run(async (ctx) => {
+			await insertContact(ctx, {
+				email: 'a@acme.com',
+				doiStatus: 'pending',
+				doiConfirmationToken: 'secret-doi-token',
+				doiTokenExpiresAt: Date.now() + 100000,
+			});
+			return ctx.db.insert('segments', {
+				name: 'Acme',
+				filters: acmeFilters,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		const { members } = await t.action(api.segments.listMembersForExport, { id: segmentId });
+		expect(members).toHaveLength(1);
+		// The bearer capability for /confirm/doi must never ride an export.
+		for (const member of members) {
+			expect(member).not.toHaveProperty('doiConfirmationToken');
+			expect(member).not.toHaveProperty('doiTokenExpiresAt');
+		}
+	});
+
 	it('returns an empty, non-truncated result for a missing segment', async () => {
 		const t = convexTest(schema, modules);
 		const segmentId = await t.run(async (ctx) => {
@@ -147,10 +173,10 @@ describe('segments.listMembersForExport', () => {
 					filters: acmeFilters,
 					createdAt: Date.now(),
 					updatedAt: Date.now(),
-				}),
+				})
 			);
 			await expect(
-				t.action(api.segments.listMembersForExport, { id: segmentId }),
+				t.action(api.segments.listMembersForExport, { id: segmentId })
 			).rejects.toThrow();
 		} finally {
 			sessionMock.member = true;

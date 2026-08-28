@@ -25,6 +25,8 @@ import type { Id } from './_generated/dataModel';
 import { authedAction } from './lib/authedFunctions';
 import { decryptSecret, encryptSecret } from './lib/credentialCrypto';
 import { embeddingProviderFor, languageProviderFor } from './lib/llmProviders';
+import { fetchGuarded } from './lib/ssrfGuard';
+import { validateOutboundUrl } from './lib/outboundUrlValidation';
 import { rateLimiter } from './rateLimiter';
 import { throwUnauthenticated } from './_utils/errors';
 import {
@@ -153,8 +155,20 @@ export const testConnection = authedAction({
 				if (!baseUrl) {
 					return { ok: false, error: 'This local provider has no base URL configured.' };
 				}
+				// A local provider legitimately targets http://localhost (so the private
+				// range can't be blocked here), but the URL must still be a shape we
+				// accept, and the probe must refuse redirects (no 30x hop to an internal
+				// host) and time out.
+				const check = validateOutboundUrl(baseUrl, { requirePublic: false });
+				if (!check.ok) {
+					return { ok: false, error: `Base URL ${check.error}.` };
+				}
 				// Any HTTP response (even a 404) proves the endpoint is reachable.
-				await fetch(baseUrl, { method: 'GET', signal: AbortSignal.timeout(5000) });
+				await fetch(check.url.toString(), {
+					method: 'GET',
+					redirect: 'manual',
+					signal: AbortSignal.timeout(5000),
+				});
 				return { ok: true };
 			}
 			const apiKey =
@@ -226,10 +240,26 @@ export const listModels = authedAction({
 							version: row.secretEnvelopeVersion,
 						})
 					: undefined;
-			const models = await discover({
-				apiKey,
-				baseUrl: row.languageBaseUrl ?? adapter.defaultBaseUrl,
-			});
+			const baseUrl = row.languageBaseUrl ?? adapter.defaultBaseUrl;
+			if (!baseUrl) {
+				return { supported: true, models: [], error: 'This provider has no base URL configured.' };
+			}
+			// A hosted provider transmits the decrypted key to `baseUrl`, so it MUST
+			// be https + public and the round trip goes through the SSRF guard
+			// (DNS/connect-time private-range block + redirect refusal). A local,
+			// keyless provider may target localhost, so it validates loosely and uses
+			// a hardened plain fetch (no redirects, bounded). Either way the key never
+			// reaches an unvalidated host.
+			const requirePublic = !adapter.isLocal;
+			const check = validateOutboundUrl(baseUrl, { requirePublic });
+			if (!check.ok) {
+				return { supported: true, models: [], error: `Base URL ${check.error}.` };
+			}
+			const fetchImpl: (input: string, init?: RequestInit) => Promise<Response> = requirePublic
+				? (input, init) => fetchGuarded(input, { ...init, protocols: ['https:'] })
+				: (input, init) =>
+						fetch(input, { ...init, redirect: 'manual', signal: AbortSignal.timeout(5000) });
+			const models = await discover({ apiKey, baseUrl, fetchImpl });
 			return { supported: true, models };
 		} catch (e) {
 			return {

@@ -248,12 +248,20 @@ describe('e2ee/discovery signed rotation statement', () => {
 	const OLD = 'AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555';
 	const NEW = '9999888877776666555544443333222211110000';
 
-	async function sign(statement: Omit<RotationStatement, 'signature'>): Promise<string> {
+	// The rotated address is NO LONGER on the wire (L7); the signature still
+	// covers the canonical text including the address, so the signer takes the
+	// address explicitly and a verifier reconstructs the same text from the
+	// address it is discovering.
+	async function sign(input: {
+		address: string;
+		oldFingerprint: string;
+		newFingerprint: string;
+	}): Promise<string> {
 		const text = [
 			'owlat-key-rotation',
-			statement.address.toLowerCase(),
-			statement.oldFingerprint.toUpperCase(),
-			statement.newFingerprint.toUpperCase(),
+			input.address.toLowerCase(),
+			input.oldFingerprint.toUpperCase(),
+			input.newFingerprint.toUpperCase(),
 		].join('\n');
 		return openpgp.sign({
 			message: await openpgp.createMessage({ text }),
@@ -265,7 +273,6 @@ describe('e2ee/discovery signed rotation statement', () => {
 
 	it('accepts a statement validly signed by the old key binding old->new', async () => {
 		const statement: RotationStatement = {
-			address: BOB,
 			oldFingerprint: OLD,
 			newFingerprint: NEW,
 			signature: await sign({ address: BOB, oldFingerprint: OLD, newFingerprint: NEW }),
@@ -275,7 +282,6 @@ describe('e2ee/discovery signed rotation statement', () => {
 
 	it('rejects a statement whose observed fingerprint does not match', async () => {
 		const statement: RotationStatement = {
-			address: BOB,
 			oldFingerprint: OLD,
 			newFingerprint: NEW,
 			signature: await sign({ address: BOB, oldFingerprint: OLD, newFingerprint: NEW }),
@@ -285,11 +291,23 @@ describe('e2ee/discovery signed rotation statement', () => {
 
 	it('rejects a statement signed by the WRONG key', async () => {
 		const statement: RotationStatement = {
-			address: BOB,
 			oldFingerprint: OLD,
 			newFingerprint: NEW,
 			signature: await sign({ address: BOB, oldFingerprint: OLD, newFingerprint: NEW }),
 		};
 		expect(await verifyRotationStatement(bobPub, statement, BOB, OLD, NEW)).toBe(false);
+	});
+
+	it('rejects a statement replayed onto a DIFFERENT address (signature binds it)', async () => {
+		// Signed for BOB, but verified while discovering a different address: the
+		// reconstructed canonical text differs, so the signature no longer verifies.
+		const statement: RotationStatement = {
+			oldFingerprint: OLD,
+			newFingerprint: NEW,
+			signature: await sign({ address: BOB, oldFingerprint: OLD, newFingerprint: NEW }),
+		};
+		expect(await verifyRotationStatement(alicePub, statement, 'mallory@b.test', OLD, NEW)).toBe(
+			false
+		);
 	});
 });

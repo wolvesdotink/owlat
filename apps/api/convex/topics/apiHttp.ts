@@ -141,9 +141,9 @@ export const addContactToTopic = createAuthenticatedHandler(
 			};
 
 			return jsonResponse({ data: response }, 201);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to add contact to topic';
-			return errorResponse('invalid_input', message);
+		} catch {
+			// Locked error envelope — do not echo the raw internal error message.
+			return errorResponse('invalid_input', 'Failed to add contact to topic');
 		}
 	}
 );
@@ -229,10 +229,9 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 			};
 
 			return jsonResponse({ data: response });
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : 'Failed to remove contact from topic';
-			return errorResponse('invalid_input', message);
+		} catch {
+			// Locked error envelope — do not echo the raw internal error message.
+			return errorResponse('invalid_input', 'Failed to remove contact from topic');
 		}
 	}
 );

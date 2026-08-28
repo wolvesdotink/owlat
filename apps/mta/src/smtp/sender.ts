@@ -305,7 +305,10 @@ export async function sendToMx(
 	);
 	const daneDiscoveryAuthenticated = destination.daneDiscoveryAuthenticated;
 
-	const dkimConfig = await getDkimOptions(redis, job.dkimDomain);
+	// Scope the DKIM key to the job's owning organization (H2): a domain key bound
+	// to another tenant is refused here, so the message ships unsigned rather than
+	// carrying a cross-tenant DKIM signature.
+	const dkimConfig = await getDkimOptions(redis, job.dkimDomain, job.organizationId);
 
 	// VERP return-path host (D1): a sending domain may register its own
 	// bounce/return-path host, making the MAIL FROM domain per-sending-domain

@@ -225,6 +225,37 @@ Do **not** use `isAdminRole`/`isOwnerRole` inline (removed) — they obscure the
 capability being checked. See ADR-0039 (enforcement model) and ADR-0040
 (shared-inbox example).
 
+## Read-side token redaction
+
+`authedQuery` / `publicQuery` serialize whatever the handler returns straight to
+the browser, so a read that returns a raw `Doc` from a **token-bearing** table
+ships a live bearer secret to every reader — the H4/M8 class. Four tables carry
+such a secret:
+
+| table        | secret field(s)                          | bearer for                          |
+| ------------ | ---------------------------------------- | ----------------------------------- |
+| `contacts`   | `doiConfirmationToken` / `doiTokenExpiresAt` | unauthenticated `POST /confirm/doi` |
+| `shareLinks` | `token`                                  | unauthenticated `/share` route      |
+| `apiKeys`    | `keyHash`                                | the API-key verifier                |
+| `webhooks`   | `secret`                                 | the HMAC signing secret             |
+
+`scripts/check-token-redaction.sh` (wired into `bun run lint`) is the read-side
+sibling of `check-permissions.sh`: a **ratchet** that fails CI on any _new_
+`authedQuery`/`publicQuery` which scans one of these tables (`ctx.db.query('…')`)
+without stripping the secret. Satisfy it one of three ways:
+
+- **Redaction/projection helper** — `redactContactCapabilityFields` (returns the
+  `PublicContact` shape, `contacts/listing.ts`) or `stripWebhookSecret`
+  (`webhooks/endpoints.ts`). Prefer this. When you add a new per-table redactor,
+  add its name to the helper regex in the script.
+- **`// token-safe: <reason>` comment** — inside the handler or on the line above
+  the `export const`, when the read genuinely returns no secret (projects to a
+  token-free shape, returns only counts/ids, etc.).
+- **`scripts/token-redaction-baseline.txt`** — the frozen set of reads reviewed
+  when the gate landed (count-only / id-only / field-projected / admin-gated
+  reads that leak no token). Do **not** add new entries; delete an entry once its
+  read is redacted or annotated so the ratchet only moves down.
+
 ## Hosted plugin actions
 
 - Never give plugin code a raw Convex context. Bind host services to the

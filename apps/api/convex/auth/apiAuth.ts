@@ -3,6 +3,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
 import { rateLimiter } from '../rateLimiter';
+import { getClientIp } from '../publicRateLimit';
 import { corsHeaders as sharedCorsHeaders } from '../lib/cors';
 import { logError } from '../lib/runtimeLog';
 import {
@@ -16,6 +17,61 @@ import { deriveEffectiveScopes } from '../plugins/apiKeyBinding';
 
 // Rate limiting configuration
 const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per second
+
+/**
+ * Maximum authenticated v1 request body size (100 KB). Mirrors the public
+ * token-endpoint shell's cap (`lib/publicTokenEndpoint.ts`) so a key-authed
+ * caller can't stream an unbounded body into an action (memory-DoS) — the authed
+ * shell previously capped nothing.
+ */
+const MAX_BODY_BYTES = 100_000;
+
+/** Methods that never carry a request body — the cap simply passes them through. */
+const BODYLESS_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Buffer and size-cap the request body BEFORE the wrapped handler runs, so an
+ * oversized body is rejected without the handler ever reading it. Bodyless
+ * methods pass through untouched. On success the buffered bytes are re-wrapped in
+ * a fresh `Request` (same method/url/headers) so the handler's own
+ * `request.json()` still works. Returns the (possibly re-wrapped) request, or a
+ * 400 Response when the body exceeds {@link MAX_BODY_BYTES}.
+ */
+export async function enforceBodyCap(
+	request: Request,
+	requestOrigin: string | null
+): Promise<{ ok: true; request: Request } | { ok: false; response: Response }> {
+	if (BODYLESS_METHODS.has(request.method.toUpperCase())) {
+		return { ok: true, request };
+	}
+	// Cheap pre-check on the declared length (honest clients / oversized uploads).
+	const contentLength = request.headers.get('Content-Length');
+	if (contentLength && Number.parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+		return {
+			ok: false,
+			response: errorResponse('invalid_input', 'Request body too large', { requestOrigin }),
+		};
+	}
+	// Buffer so a chunked body with no Content-Length can't stream past the cap.
+	const raw = await request.arrayBuffer();
+	if (raw.byteLength > MAX_BODY_BYTES) {
+		return {
+			ok: false,
+			response: errorResponse('invalid_input', 'Request body too large', { requestOrigin }),
+		};
+	}
+	return {
+		ok: true,
+		request:
+			raw.byteLength === 0
+				? request
+				: new Request(request.url, {
+						method: request.method,
+						headers: request.headers,
+						body: raw,
+					}),
+	};
+}
 
 /**
  * Hash an API key using SHA-256. Shared with the key-management path
@@ -208,7 +264,10 @@ export async function authenticateApiRequest(
 	const keyHash = await hashApiKey(apiKey);
 
 	// Validate key and check rate limit in a single mutation
-	// This ensures the rate limit is properly persisted in the database
+	// This ensures the rate limit is properly persisted in the database.
+	// The client IP meters FAILED lookups (see below) so a wrong-key flood can't
+	// probe the key store unbounded — a valid key never spends that bucket.
+	const clientIp = getClientIp(request);
 	const result = await ctx.runMutation<
 		| {
 				success: true;
@@ -224,7 +283,7 @@ export async function authenticateApiRequest(
 				error: 'rate_limited';
 				retryAfter: number;
 		  }
-	>(internal.auth.apiAuth.validateAndCheckRateLimit, { keyHash });
+	>(internal.auth.apiAuth.validateAndCheckRateLimit, { keyHash, ip: clientIp });
 
 	if (!result.success) {
 		if (result.error === 'invalid_key') {
@@ -281,6 +340,10 @@ export async function authenticateApiRequest(
 export const validateAndCheckRateLimit = internalMutation({
 	args: {
 		keyHash: v.string(),
+		// Client IP (resolved by `getClientIp`, honoring RATE_LIMIT_TRUSTED_PROXY).
+		// Optional so a legacy caller still type-checks; absent ⇒ the shared
+		// 'unknown' bucket, exactly like every other public per-IP limiter.
+		ip: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		// First validate the key
@@ -290,6 +353,21 @@ export const validateAndCheckRateLimit = internalMutation({
 			.first();
 
 		if (!key || !isApiKeyUsable(key)) {
+			// Meter the FAILURE per IP. A wrong/expired/unknown key never reaches
+			// the per-key `apiRequest` bucket, so this coarse throttle is the only
+			// thing bounding a brute-force sweep over key hashes. Exhausting it
+			// returns `rate_limited` (429) instead of `invalid_key` (401) — a valid
+			// key is unaffected because a successful lookup never spends this token.
+			const failure = await rateLimiter.limit(ctx, 'apiKeyAuthFailure', {
+				key: args.ip ?? 'unknown',
+			});
+			if (!failure.ok) {
+				return {
+					success: false as const,
+					error: 'rate_limited' as const,
+					retryAfter: failure.retryAfter ?? 1000,
+				};
+			}
 			return { success: false as const, error: 'invalid_key' as const };
 		}
 
@@ -436,9 +514,14 @@ export function createAuthenticatedHandler(
 			});
 		}
 
+		// Cap the request body (authenticated callers only — auth reads headers,
+		// not the body, so an unauthenticated flood never reaches this buffer).
+		const capped = await enforceBodyCap(request, origin);
+		if (!capped.ok) return capped.response;
+
 		// Call the handler with authenticated context
 		try {
-			const response = await handler(ctx as unknown as ActionContext, request, {
+			const response = await handler(ctx as unknown as ActionContext, capped.request, {
 				keyId: authResult.keyId,
 				scopes: authResult.scopes,
 				rateLimit: authResult.rateLimit,

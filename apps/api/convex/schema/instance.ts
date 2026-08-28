@@ -40,6 +40,14 @@ export const instanceTables = {
 				baseWidth: v.optional(v.number()), // Base content width in px (default: 600)
 			})
 		),
+		// Durable one-shot latch for `POST /seed/admin`. Set the moment the admin
+		// seed succeeds and checked (in addition to the "any user exists?" probe)
+		// before seeding is allowed again. The user-existence check alone re-arms
+		// if every user is later deleted; this latch survives that, so a second
+		// unauthenticated bootstrap can't create a fresh owner on a de-populated
+		// instance. Unset on installs that predate the latch — harmless, because
+		// those already have users and fail the existence check.
+		adminSeedCompletedAt: v.optional(v.number()),
 		// Instance is moving from another email platform. DEFAULT FALSE — Owlat is
 		// its own platform by default. When true, first-login onboarding offers a
 		// mail import; when false the welcome flow is a pure fresh-start and exposes

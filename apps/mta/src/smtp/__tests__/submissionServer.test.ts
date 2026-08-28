@@ -162,6 +162,16 @@ describe('submission authenticate — auth chain', () => {
 		expect(session.state.auth).toMatchObject({ organizationId: 'org1', credentialName: 'ci-cred' });
 	});
 
+	it('binds the credential verified-domain set onto the session identity', async () => {
+		lookupCredentialMock.mockResolvedValue({
+			organizationId: 'org1',
+			name: 'ci-cred',
+			allowedDomains: ['brand.com', 'brand.net'],
+		});
+		const { session } = await authCall({ username: 'x', password: 'org-key' });
+		expect(session.state.auth?.allowedDomains).toEqual(['brand.com', 'brand.net']);
+	});
+
 	it('accepts a Postbox app password and binds the mailbox identity', async () => {
 		verifyAppPasswordMock.mockResolvedValue({
 			organizationId: 'org1',
@@ -302,6 +312,48 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 				'"state":"accepted"'
 			);
 		}
+	});
+
+	it('rejects a per-org credential sending From a domain outside its verified set (553 5.7.1)', async () => {
+		const { reply, queue } = await dataCall(baseMime('spoof@victim-tenant.com', 'target@x.com'), {
+			organizationId: 'org1',
+			credentialName: 'cred',
+			allowedDomains: ['brand.com', 'brand.net'],
+		});
+		expect(reply?.code).toBe(553);
+		expect(reply?.enhanced).toBe('5.7.1');
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('accepts a per-org credential sending From a verified domain (case-insensitive)', async () => {
+		const { reply, queue } = await dataCall(baseMime('Sales@Brand.com', 'target@x.com'), {
+			organizationId: 'org1',
+			credentialName: 'cred',
+			allowedDomains: ['brand.com'],
+		});
+		expect(reply).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		expect(queue.add.mock.calls[0]![0].data.dkimDomain).toBe('brand.com');
+	});
+
+	it('rejects any From for a per-org credential with an empty verified set (fail-closed)', async () => {
+		const { reply, queue } = await dataCall(baseMime('anyone@brand.com', 'target@x.com'), {
+			organizationId: 'org1',
+			credentialName: 'cred',
+			allowedDomains: [],
+		});
+		expect(reply?.code).toBe(553);
+		expect(reply?.enhanced).toBe('5.7.1');
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('does not domain-restrict the master session (broad send, no allowedDomains)', async () => {
+		const { reply, queue } = await dataCall(baseMime('anyone@any-domain.com', 'target@x.com'), {
+			organizationId: '__master__',
+			credentialName: 'master',
+		});
+		expect(reply).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(1);
 	});
 
 	it('uses the SMTP envelope recipient order and removes exact duplicates', async () => {

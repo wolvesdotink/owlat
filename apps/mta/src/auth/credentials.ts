@@ -11,8 +11,26 @@ import type Redis from 'ioredis';
 export interface OrgCredential {
 	organizationId: string;
 	name: string;
+	/**
+	 * The organization's verified sending domains (lowercased). When present,
+	 * submission enforces that a message's From domain is in this set — the H2
+	 * cross-tenant From-forgery guard, mirroring the Postbox mailbox guard. Absent
+	 * on legacy credentials created before this field existed: those stay unscoped
+	 * at submission until re-provisioned, and the org-scoped DKIM signer is the
+	 * fail-closed backstop that still blocks signing under another tenant's key.
+	 */
+	allowedDomains?: string[];
 	createdAt: number;
 	lastUsedAt?: number;
+}
+
+/** Normalize a verified-domain list: lowercased, trimmed, de-duplicated, no blanks. */
+function normalizeAllowedDomains(domains: readonly string[]): string[] {
+	return [
+		...new Set(
+			domains.map((domain) => domain.trim().toLowerCase()).filter((domain) => domain.length > 0)
+		),
+	];
 }
 
 const CRED_PREFIX = 'mta:cred:';
@@ -24,13 +42,15 @@ const CRED_INDEX_PREFIX = 'mta:cred-index:'; // org → set of key IDs
 export async function createCredential(
 	redis: Redis,
 	organizationId: string,
-	name: string
+	name: string,
+	allowedDomains?: readonly string[]
 ): Promise<{ apiKey: string; credential: OrgCredential }> {
 	const apiKey = `owlat_${randomBytes(16).toString('hex')}`;
 	const credential: OrgCredential = {
 		organizationId,
 		name,
 		createdAt: Date.now(),
+		...(allowedDomains ? { allowedDomains: normalizeAllowedDomains(allowedDomains) } : {}),
 	};
 
 	await redis.set(`${CRED_PREFIX}${apiKey}`, JSON.stringify(credential));
@@ -112,13 +132,7 @@ export async function listAllCredentials(
 	let cursor = '0';
 
 	do {
-		const [nextCursor, keys] = await redis.scan(
-			cursor,
-			'MATCH',
-			`${CRED_PREFIX}*`,
-			'COUNT',
-			100
-		);
+		const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${CRED_PREFIX}*`, 'COUNT', 100);
 		cursor = nextCursor;
 
 		for (const key of keys) {

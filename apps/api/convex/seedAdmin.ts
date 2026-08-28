@@ -3,6 +3,8 @@ import { components } from './_generated/api';
 import { internal } from './_generated/api';
 import { getOptional } from './lib/env';
 import { safeCompare } from './lib/safeCompare';
+import { getClientIp, rateLimitedResponse } from './publicRateLimit';
+import { logError } from './lib/runtimeLog';
 
 /**
  * HTTP action to seed the first admin user on a local instance.
@@ -26,6 +28,16 @@ import { safeCompare } from './lib/safeCompare';
  */
 
 export const seedAdmin = httpAction(async (ctx, request) => {
+	// Per-IP rate limit BEFORE the secret check, so a caller can't brute-force
+	// the instance secret (or hammer the bootstrap) at line rate. Without a
+	// trusted proxy configured every caller shares one bucket — coarse, but it
+	// still caps total volume, and a healthy deployment calls this once.
+	const { ok: rateOk, retryAfter } = await ctx.runMutation(
+		internal.publicRateLimit.checkPublicRateLimit,
+		{ limitType: 'adminSeed', key: getClientIp(request) }
+	);
+	if (!rateOk) return rateLimitedResponse(retryAfter);
+
 	// Verify instance secret (timing-safe comparison to prevent side-channel attacks)
 	const secret = request.headers.get('X-Instance-Secret');
 	const expectedSecret = getOptional('INSTANCE_SECRET');
@@ -70,7 +82,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		);
 	}
 
-	// One-shot check: refuse if any user already exists
+	// One-shot check: refuse if any user already exists…
 	const existingUser = await ctx.runQuery(components.betterAuth.adapter.findMany, {
 		model: 'user',
 		where: [],
@@ -80,6 +92,57 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	if (existingUser && existingUser.page && existingUser.page.length > 0) {
 		return new Response(
 			JSON.stringify({ error: 'Users already exist. Seed endpoint is one-shot only.' }),
+			{
+				status: 409,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	}
+
+	// Fast path: refuse before any write if the durable latch is already stamped,
+	// even when no user rows remain. The user probe above re-arms if every user is
+	// deleted; this latch does not. (The authoritative, race-free gate is the
+	// atomic claim below — this is just a cheap early reject.)
+	const alreadySeeded = await ctx.runQuery(
+		internal.workspaces.settings.hasCompletedAdminSeedInternal,
+		{}
+	);
+	if (alreadySeeded) {
+		return new Response(
+			JSON.stringify({ error: 'Admin seed has already completed on this instance.' }),
+			{
+				status: 409,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	}
+
+	// The org display name is needed both to seed `instanceSettings.defaultFromName`
+	// and to name the organization row later, so derive it once up front.
+	const orgName = `${body.name}'s Team`;
+
+	// Create the instanceSettings singleton (idempotent) BEFORE the atomic latch
+	// claim, so the seed's settings columns are persisted and the claim always has
+	// a row to stamp. No latch here — the claim below owns stamping it.
+	await ctx.runMutation(internal.workspaces.settings.createInternal, {
+		timezone: 'UTC',
+		defaultFromName: orgName,
+		isMigrationMode: body.isMigrationMode ?? false,
+	});
+
+	// ATOMICALLY claim the durable one-shot latch BEFORE creating any user. The
+	// claim reads and stamps `adminSeedCompletedAt` in a SINGLE transaction and
+	// returns whether THIS request won it, so two concurrent /seed/admin calls
+	// can't both pass a check-then-write and both seed — the loser gets a 409.
+	// A failure AFTER the claim leaves the latch set (fail-closed) — recovering a
+	// half-seeded instance is an operator action.
+	const { claimed } = await ctx.runMutation(
+		internal.workspaces.settings.claimAdminSeedInternal,
+		{}
+	);
+	if (!claimed) {
+		return new Response(
+			JSON.stringify({ error: 'Admin seed has already completed on this instance.' }),
 			{
 				status: 409,
 				headers: { 'Content-Type': 'application/json' },
@@ -136,7 +199,6 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 			.replace(/[^a-z0-9]+/g, '-')
 			.replace(/^-+|-+$/g, '');
 		const orgSlug = slugBase && slugBase.length > 0 ? slugBase : 'org';
-		const orgName = `${body.name}'s Team`;
 
 		const orgDoc = (await ctx.runMutation(components.betterAuth.adapter.create, {
 			input: {
@@ -170,12 +232,10 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 			name: body.name,
 		});
 
-		// Create instanceSettings record
-		await ctx.runMutation(internal.workspaces.settings.createInternal, {
-			timezone: 'UTC',
-			defaultFromName: orgName,
-			isMigrationMode: body.isMigrationMode ?? false,
-		});
+		// The instanceSettings singleton (timezone, defaultFromName, migration mode)
+		// was already created by `createInternal`, and its durable one-shot latch
+		// stamped by the atomic `claimAdminSeedInternal` claim above, before any
+		// user was created.
 
 		// Persist the wizard's chosen feature flags (if provided) so the
 		// selections take effect at runtime instead of falling back to defaults.
@@ -190,8 +250,10 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 			headers: { 'Content-Type': 'application/json' },
 		});
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Internal error';
-		return new Response(JSON.stringify({ error: message }), {
+		// Locked error envelope — log the real cause server-side, return a fixed
+		// message so an internal error never leaks its detail to the HTTP caller.
+		logError('[seedAdmin] seed failed:', error);
+		return new Response(JSON.stringify({ error: 'Internal error' }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },
 		});

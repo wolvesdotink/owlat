@@ -21,6 +21,31 @@ describe('credentials', () => {
 		});
 	});
 
+	describe('allowedDomains (H2 verified-sending-domain set)', () => {
+		it('normalizes, lowercases and de-duplicates the verified domains on create', async () => {
+			const { apiKey } = await createCredential(redis, 'org-1', 'Scoped', [
+				'Brand.com',
+				' brand.net ',
+				'BRAND.COM',
+				'',
+			]);
+			const cred = await lookupCredential(redis, apiKey);
+			expect(cred!.allowedDomains).toEqual(['brand.com', 'brand.net']);
+		});
+
+		it('leaves allowedDomains undefined when none are supplied (legacy behavior)', async () => {
+			const { apiKey } = await createCredential(redis, 'org-1', 'Unscoped');
+			const cred = await lookupCredential(redis, apiKey);
+			expect(cred!.allowedDomains).toBeUndefined();
+		});
+
+		it('records an explicit empty set (fail-closed: authorizes no domain)', async () => {
+			const { apiKey } = await createCredential(redis, 'org-1', 'Locked', []);
+			const cred = await lookupCredential(redis, apiKey);
+			expect(cred!.allowedDomains).toEqual([]);
+		});
+	});
+
 	describe('lookupCredential', () => {
 		it('returns credential for valid key', async () => {
 			const { apiKey } = await createCredential(redis, 'org-1', 'Test Key');

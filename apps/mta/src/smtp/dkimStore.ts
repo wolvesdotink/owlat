@@ -88,6 +88,7 @@ export async function getDkimConfig(redis: Redis, domain: string): Promise<DkimK
 	const config: DkimKeyConfig = {
 		selector: data['selector'],
 		privateKey: await unsealPrivateKey(redis, domain, data['privateKey']),
+		...(data['organizationId'] ? { organizationId: data['organizationId'] } : {}),
 	};
 
 	// Update cache
@@ -96,13 +97,19 @@ export async function getDkimConfig(redis: Redis, domain: string): Promise<DkimK
 }
 
 /**
- * Store a DKIM key for a domain
+ * Store a DKIM key for a domain.
+ *
+ * `organizationId` binds the key to its owning tenant (H2 cross-tenant DKIM
+ * guard). When omitted the existing `organizationId` field (if any) is preserved
+ * — `hset` only writes the fields it is given — so a rotation activation that
+ * does not re-supply the owner never silently drops the binding.
  */
 export async function setDkimKey(
 	redis: Redis,
 	domain: string,
 	selector: string,
-	privateKey: string
+	privateKey: string,
+	organizationId?: string
 ): Promise<void> {
 	// Seal the private key at rest so a Redis dump never exposes a PEM. The
 	// selector and timestamps stay plaintext (non-secret). getDkimConfig unseals
@@ -112,6 +119,7 @@ export async function setDkimKey(
 		privateKey: getMtaSecretBox().seal(privateKey),
 		addedAt: String(Date.now()),
 		rotatedAt: String(Date.now()),
+		...(organizationId ? { organizationId } : {}),
 	});
 
 	// Invalidate cache
@@ -231,7 +239,8 @@ export async function listDkimDomains(redis: Redis): Promise<
 export async function rotateKey(
 	redis: Redis,
 	domain: string,
-	selector?: string
+	selector?: string,
+	organizationId?: string
 ): Promise<{ selector: string; dnsRecord: string }> {
 	const newSelector = selector ?? `s${Date.now()}`;
 
@@ -241,7 +250,7 @@ export async function rotateKey(
 		privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 	});
 
-	await setDkimKey(redis, domain, newSelector, privateKey);
+	await setDkimKey(redis, domain, newSelector, privateKey, organizationId);
 
 	// Format public key for DNS TXT record
 	const pubKeyBase64 = publicKey
@@ -269,10 +278,25 @@ export async function rotateKey(
  */
 export async function registerDomainKey(
 	redis: Redis,
-	domain: string
+	domain: string,
+	organizationId?: string
 ): Promise<{ selector: string; dnsRecord: string; created: boolean }> {
 	const existing = await getDkimConfig(redis, domain);
 	if (existing) {
+		// H2: never hand a domain already owned by ONE organization to another.
+		// A different owner registering the same domain would otherwise be handed
+		// the incumbent's selector + DNS record and, once the DKIM signer trusted
+		// the caller-supplied org, could sign under it. Refuse fail-closed; the
+		// operator must remove the domain (revoking the key) before it can move.
+		if (organizationId && existing.organizationId && existing.organizationId !== organizationId) {
+			throw new Error(`Domain ${domain} is already registered to a different organization`);
+		}
+		// Backfill ownership onto a legacy/unowned key so it becomes org-scoped
+		// without changing the selector or private key (signing stays byte-stable).
+		if (organizationId && !existing.organizationId) {
+			await redis.hset(`${DKIM_PREFIX}${domain}`, { organizationId });
+			cache.delete(domain);
+		}
 		logger.info(
 			{ domain, selector: existing.selector },
 			'DKIM key already exists — registration is a no-op (not clobbering)'
@@ -284,7 +308,7 @@ export async function registerDomainKey(
 		};
 	}
 
-	const { selector, dnsRecord } = await rotateKey(redis, domain);
+	const { selector, dnsRecord } = await rotateKey(redis, domain, undefined, organizationId);
 	return { selector, dnsRecord, created: true };
 }
 

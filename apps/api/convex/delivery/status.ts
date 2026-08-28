@@ -33,6 +33,7 @@ import {
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 import { isValidEmail } from '../lib/inputGuards';
+import { normalizeEmail } from '@owlat/shared';
 import { providerFeedbackFor } from '../providers/feedback';
 import {
 	deriveProviderFeedbackStatus,
@@ -380,6 +381,51 @@ export const sendTest = authedAction({
 			return testResult(stages, {
 				success: false,
 				error: 'Enter a valid recipient address for the test email.',
+				provider,
+				providerMessageId: null,
+				latencyMs: null,
+				attempts: null,
+			});
+		}
+		// Restrict the recipient to an org-member inbox + per-user rate limit, so this
+		// admin test action can't be looped into an open relay that sprays mail from
+		// the instance's verified sending identity to arbitrary external addresses
+		// (mirrors campaigns/testSend). Both checks reuse the shared campaign-test
+		// gate so the two preview paths can't drift.
+		const guard = await ctx.runQuery(
+			internal.campaigns.sendQueries.getTestSendAllowedRecipients,
+			{}
+		);
+		const rl = await ctx.runMutation(internal.campaigns.sendQueries.checkTestSendRateLimit, {
+			userId: guard.callerUserId,
+		});
+		if (!rl.ok) {
+			updateStage(
+				stages,
+				'recipient_validation',
+				'failed',
+				'Too many test emails — wait a moment and try again'
+			);
+			return testResult(stages, {
+				success: false,
+				error: 'Too many test emails — please wait a moment and try again.',
+				provider,
+				providerMessageId: null,
+				latencyMs: null,
+				attempts: null,
+			});
+		}
+		if (!new Set(guard.allowed).has(normalizeEmail(to))) {
+			updateStage(
+				stages,
+				'recipient_validation',
+				'failed',
+				'Recipient is not an organization member address'
+			);
+			return testResult(stages, {
+				success: false,
+				error:
+					"Test emails can only be sent to your organization's own member addresses. Add the recipient as a member, or use their member address.",
 				provider,
 				providerMessageId: null,
 				latencyMs: null,

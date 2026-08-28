@@ -122,10 +122,20 @@ const deliverabilityFallbackValidator = v.object({
 
 /**
  * List all provider routes for the current organization.
+ *
+ * Admin-gated (`organization:manage`): a route row exposes the transport
+ * topology — per-provider weights and the `ipPool` override — which is
+ * operational configuration, not member-readable state. Held to the same
+ * permission the route setters/removers (`setRoute` / `removeRoute`) require.
  */
 export const listRoutes = authedQuery({
 	args: {},
 	handler: async (ctx) => {
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can view provider routing'
+		);
 		return await ctx.db.query('providerRoutes').collect(); // bounded: configured provider routes (few)
 	},
 });

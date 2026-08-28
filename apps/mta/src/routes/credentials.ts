@@ -16,11 +16,23 @@ export function createCredentialRoutes(redis: Redis, config: MtaConfig) {
 
 	// Create credential
 	app.post('/', async (c) => {
-		const body = await c.req.json<{ organizationId: string; name: string }>();
+		const body = await c.req.json<{
+			organizationId: string;
+			name: string;
+			allowedDomains?: string[];
+		}>();
 		if (!body.organizationId || !body.name) {
 			return c.json({ error: 'organizationId and name are required' }, 400);
 		}
-		const result = await credentials.createCredential(redis, body.organizationId, body.name);
+		if (body.allowedDomains !== undefined && !Array.isArray(body.allowedDomains)) {
+			return c.json({ error: 'allowedDomains must be an array of domains' }, 400);
+		}
+		const result = await credentials.createCredential(
+			redis,
+			body.organizationId,
+			body.name,
+			body.allowedDomains
+		);
 		return c.json({ success: true, apiKey: result.apiKey, credential: result.credential });
 	});
 

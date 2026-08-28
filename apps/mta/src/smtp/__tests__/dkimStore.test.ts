@@ -193,6 +193,76 @@ describe('dkimStore', () => {
 		});
 	});
 
+	describe('organization scoping (H2 cross-tenant DKIM guard)', () => {
+		it('stores and returns the owning organizationId', async () => {
+			await setDkimKey(redis, 'owned.com', 's1', 'pk', 'org-a');
+			clearCache();
+			const config = await getDkimConfig(redis, 'owned.com');
+			expect(config!.organizationId).toBe('org-a');
+		});
+
+		it('leaves organizationId undefined for a legacy (unowned) key', async () => {
+			await setDkimKey(redis, 'legacy-unowned.com', 's1', 'pk');
+			clearCache();
+			const config = await getDkimConfig(redis, 'legacy-unowned.com');
+			expect(config!.organizationId).toBeUndefined();
+		});
+
+		it('preserves the owner across a rotation that does not re-supply it', async () => {
+			await setDkimKey(redis, 'rotate-owned.com', 's1', 'pk', 'org-a');
+			// Rotation activation calls setDkimKey WITHOUT an org — the binding must survive.
+			await setDkimKey(redis, 'rotate-owned.com', 's2', 'pk2');
+			clearCache();
+			const config = await getDkimConfig(redis, 'rotate-owned.com');
+			expect(config!.selector).toBe('s2');
+			expect(config!.organizationId).toBe('org-a');
+		});
+
+		it('rotateKey carries the owner onto the freshly generated key', async () => {
+			await rotateKey(redis, 'rotate-new.com', 'sel', 'org-a');
+			clearCache();
+			const config = await getDkimConfig(redis, 'rotate-new.com');
+			expect(config!.organizationId).toBe('org-a');
+		});
+
+		it('registerDomainKey backfills the owner onto a pre-existing unowned key', async () => {
+			// A real key: the existing-key path derives a DNS record from the PEM.
+			const { privateKey } = generateKeyPairSync('rsa', {
+				modulusLength: 2048,
+				publicKeyEncoding: { type: 'spki', format: 'pem' },
+				privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+			});
+			await setDkimKey(redis, 'backfill.com', 's1', privateKey); // legacy, unowned
+			clearCache();
+			const result = await registerDomainKey(redis, 'backfill.com', 'org-a');
+			expect(result.created).toBe(false);
+			clearCache();
+			const config = await getDkimConfig(redis, 'backfill.com');
+			expect(config!.organizationId).toBe('org-a');
+			expect(config!.selector).toBe('s1'); // key untouched, only owner backfilled
+		});
+
+		it('registerDomainKey refuses to hand a domain owned by another organization', async () => {
+			await setDkimKey(redis, 'contested.com', 's1', 'pk', 'org-a');
+			clearCache();
+			await expect(registerDomainKey(redis, 'contested.com', 'org-b')).rejects.toThrow(
+				/different organization/
+			);
+			// The incumbent owner is untouched.
+			clearCache();
+			const config = await getDkimConfig(redis, 'contested.com');
+			expect(config!.organizationId).toBe('org-a');
+		});
+
+		it('registerDomainKey owns a brand-new domain from the start', async () => {
+			const result = await registerDomainKey(redis, 'brandnew.com', 'org-a');
+			expect(result.created).toBe(true);
+			clearCache();
+			const config = await getDkimConfig(redis, 'brandnew.com');
+			expect(config!.organizationId).toBe('org-a');
+		});
+	});
+
 	describe('secrets at rest (sealed private keys)', () => {
 		it('stores the private key SEALED in Redis but returns plaintext on read', async () => {
 			const pem = '-----BEGIN PRIVATE KEY-----\nMIISEALEDkeymaterial\n-----END PRIVATE KEY-----';

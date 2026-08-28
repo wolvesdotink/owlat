@@ -53,7 +53,10 @@ export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCom
 	},
 	async listModels(cfg: ProviderClientConfig): Promise<string[]> {
 		const baseUrl = requireBaseUrl(cfg);
-		const res = await fetch(`${baseUrl}/models`, {
+		// Route through the injected SSRF-guarded fetcher when the caller supplies
+		// one (the Node action does); fall back to global fetch otherwise.
+		const doFetch = cfg.fetchImpl ?? fetch;
+		const res = await doFetch(`${baseUrl}/models`, {
 			headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
 		});
 		if (!res.ok) {

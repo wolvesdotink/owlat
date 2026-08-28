@@ -101,6 +101,12 @@ export const revokeShareLink = authedMutation({
 
 /**
  * List share links for an email template or transactional email.
+ *
+ * Gated on `shareLinks:manage` — each row carries the raw `token`, the bearer
+ * capability for the unauthenticated `/share` route, so listing is held to the
+ * same permission that minting (`createShareLink`) and revoking
+ * (`revokeShareLink`) already require. The only reader (ShareLinksPopover) is an
+ * admin surface whose create/revoke actions already demand this permission.
  */
 export const listShareLinks = authedQuery({
 	args: {
@@ -108,6 +114,11 @@ export const listShareLinks = authedQuery({
 		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 	},
 	handler: async (ctx, args) => {
+		await requireOrgPermission(
+			ctx,
+			'shareLinks:manage',
+			'Only owners and admins can view share links'
+		);
 		let links;
 		if (args.emailTemplateId) {
 			const template = await ctx.db.get(args.emailTemplateId);

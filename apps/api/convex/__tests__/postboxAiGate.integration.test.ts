@@ -74,4 +74,31 @@ describe('mail.aiGate.assertAiAllowed', () => {
 		expect(succeeded).toBeGreaterThan(1);
 		expect(succeeded).toBeLessThanOrEqual(31); // capacity 30 + the first call
 	});
+
+	it('charges a per-feature bucket that is independent of the default Postbox bucket', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await setAiFlag(t, true);
+
+		// Drain the translate bucket completely.
+		let translateLimited = false;
+		for (let i = 0; i < 60; i++) {
+			try {
+				await t.mutation(internal.mail.aiGate.assertAiAllowed, {
+					rateLimitBucket: 'translateBatchPerUser',
+				});
+			} catch {
+				translateLimited = true;
+				break;
+			}
+		}
+		expect(translateLimited).toBe(true);
+
+		// A different feature's bucket (and the default) still has headroom — the
+		// per-feature buckets don't share a token pool.
+		await expect(
+			t.mutation(internal.mail.aiGate.assertAiAllowed, { rateLimitBucket: 'quickQueryPerUser' })
+		).resolves.toBeNull();
+		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).resolves.toBeNull();
+	});
 });

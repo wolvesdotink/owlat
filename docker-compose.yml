@@ -463,7 +463,25 @@ services:
     environment:
       CONVEX_URL: http://convex:3210
       # The worker polls an internalQuery + drives internalMutations, so it
-      # authenticates with the deployment admin key (like imap / mail-sync).
+      # authenticates with a deployment key (like imap / mail-sync).
+      #
+      # LEAST-PRIVILEGE SEAM (security review M4): this container runs UNTRUSTED,
+      # inbound-email-driven code, so handing it the FULL deployment admin key is
+      # more privilege than the poll/claim/complete flow needs. Convex self-hosted
+      # cannot yet mint a key scoped to only `codeWorkTasks:*`, so that remains a
+      # documented deferral. If you have a narrower key — a future Convex scoped
+      # key, or a reverse proxy that allowlists only the codeWorkTasks function
+      # endpoints — set CODE_WORKER_CONVEX_KEY and the admin key never enters this
+      # container. It falls back to CONVEX_ADMIN_KEY so existing installs are
+      # unchanged.
+      #
+      # DEFENCE-IN-DEPTH recommendation while the key is broad: pin an egress
+      # proxy on the isolated `code-worker` network that permits ONLY the Convex
+      # origin (deny all other outbound), and enable Docker userns-remap on the
+      # host so this container's confined-root maps to an unprivileged host uid.
+      # Both narrow the blast radius of a compromised task without weakening the
+      # existing uid-sandbox / cap-drop / read-only isolation below.
+      CODE_WORKER_CONVEX_KEY: ${CODE_WORKER_CONVEX_KEY:-}
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_BASE_URL: ${LLM_BASE_URL:-}

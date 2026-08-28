@@ -17,3 +17,12 @@ process.env['MTA_API_KEY'] ??= 'test-key';
 // back to a publicly-known default. Real deploys always set it (quickstart
 // generates it); provide a fixed one here so auth-constructing tests work.
 process.env['BETTER_AUTH_SECRET'] ??= 'test-better-auth-secret-0123456789abcdef';
+
+// SITE_URL is now fail-closed-required in PRODUCTION for the BetterAuth trusted
+// origins (auth.ts `resolveTrustedOrigins`, L10): outside dev the silent
+// `http://localhost` fallback is gone, so any test that constructs the auth
+// context (every integration `t.fetch` inits the full router) would otherwise
+// throw. Provide a fixed value here — same reasoning as BETTER_AUTH_SECRET
+// above. The handful of tests that assert the production fail-closed throw stub
+// `SITE_URL=''` (or opt into dev mode) themselves to override this default.
+process.env['SITE_URL'] ??= 'http://localhost:3000';

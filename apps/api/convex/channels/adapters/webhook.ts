@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * Generic Webhook Channel Adapter — OUTBOUND ONLY.
  *
@@ -6,6 +8,13 @@
  * normalization) belong to `webhooks/adapters/generic.ts`, which is the half
  * the HTTP route actually calls — and which authenticates against the
  * `GENERIC_WEBHOOK_SECRET` deployment variable, not against anything here.
+ *
+ * The outbound POST goes through {@link fetchGuarded}: the operator-supplied
+ * `outboundUrl` is an opaque config string, so it is shape-validated (https +
+ * hostname + no embedded credentials, reusing the connected-apps endpoint check)
+ * and then fetched with the SSRF guard (private/internal blocklist up front AND
+ * at connect time, redirects refused, a hard timeout) — a raw `fetch` here would
+ * be an SSRF sink.
  */
 
 import type {
@@ -15,6 +24,11 @@ import type {
 	DeliveryStatus,
 	ChannelHealth,
 } from './types';
+import { fetchGuarded } from '../../lib/ssrfGuard';
+import { validateConnectedAppEndpoint } from '../../connectedApps/model';
+
+/** Hard deadline for the outbound webhook POST. */
+const WEBHOOK_TIMEOUT_MS = 10_000;
 
 interface WebhookConfig {
 	outboundUrl: string;
@@ -34,8 +48,14 @@ export class WebhookAdapter implements ChannelAdapter {
 		}
 
 		try {
-			const response = await fetch(this.config.outboundUrl, {
+			// Shape-gate the opaque config URL (https + hostname + no embedded
+			// credentials) before it reaches the network. Throws on a bad shape,
+			// which the catch below turns into a failed SendResult.
+			const outboundUrl = validateConnectedAppEndpoint(this.config.outboundUrl);
+
+			const response = await fetchGuarded(outboundUrl, {
 				method: 'POST',
+				protocols: ['https:'],
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					contactId: message.contactId,
@@ -44,6 +64,7 @@ export class WebhookAdapter implements ChannelAdapter {
 					metadata: message.metadata,
 					timestamp: Date.now(),
 				}),
+				signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
 			});
 
 			return {

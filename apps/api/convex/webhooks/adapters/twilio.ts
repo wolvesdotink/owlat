@@ -4,10 +4,12 @@
  * URL-encoded form payload into a channel.received event. See CONTEXT.md
  * "Inbound adapter".
  *
- * Twilio does not include a timestamp in its signature, so replay
- * protection is not possible at this layer. Acceptable for inbound
- * channels because the worst-case effect is a duplicate inbound message,
- * not a forged state transition.
+ * Twilio does not include a timestamp in its signature, so freshness
+ * cannot be checked at this layer. Replay is instead deduped downstream:
+ * `webhooks/channels.ts:processInboundChannel` skips a message it already
+ * stored under the same `MessageSid` (mapped to `externalMessageId`), so a
+ * captured-and-replayed or provider-retried POST is a no-op rather than a
+ * duplicate inbound.
  *
  * Twilio expects a TwiML XML response on success; `successResponse`
  * supplies the empty-Response envelope (no auto-reply) so wire behavior

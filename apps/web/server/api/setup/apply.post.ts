@@ -65,6 +65,22 @@ export default defineEventHandler(
 			return { ok: false, message: 'Admin password must be at least 12 characters.' };
 		}
 
+		// Reject control characters in any operator-supplied env value before it
+		// reaches writeEnvFile. The writer is line-oriented, so a newline in a value
+		// (e.g. DEFAULT_FROM_NAME) would be reconstructed on the next read as a
+		// separate, attacker-controlled env line (e.g. an injected INSTANCE_SECRET).
+		for (const [key, value] of Object.entries(body.env ?? {})) {
+			if (typeof value !== 'string') {
+				return { ok: false, message: `Env value for ${key} must be a string.` };
+			}
+			if (/[\r\n\0]/.test(value)) {
+				return {
+					ok: false,
+					message: `Env value for ${key} must not contain control characters (newline, carriage return, or NUL).`,
+				};
+			}
+		}
+
 		// Migration mode never promises an import the instance cannot perform: the
 		// import surface reads the `mail.external` flag, so when the operator says they
 		// are moving from another platform, align the plumbing by enabling it before

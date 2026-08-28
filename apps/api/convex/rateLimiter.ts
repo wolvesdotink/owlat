@@ -15,8 +15,30 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 15, // Allow burst up to 15 requests
 	},
 
+	// Failed API-key authentications, keyed per client IP. A wrong or unknown key
+	// never reaches the per-key `apiRequest` bucket (there is no key to key it
+	// on), so without a coarse per-IP failure throttle an attacker can probe key
+	// hashes against the store unbounded. Only FAILURES consume a token, so a
+	// legitimate client presenting a valid key is never affected. Generous enough
+	// that an occasional typo'd key never trips it.
+	apiKeyAuthFailure: {
+		kind: 'token bucket',
+		rate: 20,
+		period: MINUTE,
+		capacity: 40,
+	},
+
 	// Form submissions: strict spam prevention (5 per minute per IP)
 	formSubmission: {
+		kind: 'fixed window',
+		rate: 5,
+		period: MINUTE,
+	},
+
+	// Admin seed endpoint (`POST /seed/admin`). A one-shot bootstrap that hashes
+	// nothing and touches the auth store; cap per IP so a spoofable-header-less
+	// caller can't hammer it. Strict, since a healthy deployment calls it once.
+	adminSeed: {
 		kind: 'fixed window',
 		rate: 5,
 		period: MINUTE,
@@ -96,6 +118,28 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// stop a tight send loop from draining the LLM budget while leaving normal
 	// interactive use roomy.
 	assistantChatPerUser: {
+		kind: 'token bucket',
+		rate: 20,
+		period: MINUTE,
+		capacity: 30,
+	},
+
+	// User-triggered batch translation (`translate.translateBatch`). Each call
+	// spends a fast-tier LLM call over a batch of items, so cap per-user to stop a
+	// tight loop from draining the LLM budget while leaving normal editor use
+	// roomy.
+	translateBatchPerUser: {
+		kind: 'token bucket',
+		rate: 20,
+		period: MINUTE,
+		capacity: 30,
+	},
+
+	// User-triggered cross-source Quick Query (`quickQuery.ask`). Each ask spends
+	// an embedding call plus a capable-tier synthesis call, so cap per-user to
+	// stop a tight loop from draining the LLM budget while leaving normal
+	// interactive use roomy.
+	quickQueryPerUser: {
 		kind: 'token bucket',
 		rate: 20,
 		period: MINUTE,

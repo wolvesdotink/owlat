@@ -12,6 +12,14 @@
  * (non-PR event, unmerged close, or a PR with no matching task) returns 200 so
  * GitHub does not retry. Nothing here throws into the request handler.
  *
+ * Replay: GitHub signs with an HMAC over the body (no timestamp), so a captured
+ * delivery could be re-POSTed. It is harmless here without a separate dedupe
+ * store because the only side effect — `markMergedByPrUrl` → the `markMerged`
+ * lifecycle — is idempotent: moving an already-`merged` task to `merged` is a
+ * no-op, and a delivery whose PR matches no task returns 200 having done
+ * nothing. (X-GitHub-Delivery is available should stricter once-only semantics
+ * ever be required.)
+ *
  * Webhook URL: POST /webhooks/github
  * https://docs.github.com/en/webhooks/webhook-events-and-payloads#pull_request
  */

@@ -26,13 +26,23 @@
 import { normalizeEmail } from '@owlat/shared';
 
 /**
- * A key-rotation statement: the OLD key attests, under its own signature, that
- * it rotated to a NEW key for `address`. Published in the manifest rotation feed
- * (`e2ee/lifecycle.ts` writes it, `e2ee/manifest.ts` serves it) and verified by
- * a peer against the fingerprint it already pinned.
+ * A key-rotation statement, AS PUBLISHED ON THE WIRE: the OLD key attests, under
+ * its own signature, that it rotated to a NEW key. Published in the manifest
+ * rotation feed (`e2ee/lifecycle.ts` writes it, `e2ee/manifest.ts` serves it)
+ * and verified by a peer against the fingerprint it already pinned.
+ *
+ * The rotated ADDRESS is deliberately NOT on the wire (L7): the manifest is a
+ * world-readable, unauthenticated document, so carrying `address` here turned
+ * the rotation feed into a directory that enumerated every mailbox that had ever
+ * rotated a key. The binding to an address is preserved by the SIGNATURE, whose
+ * canonical text ({@link rotationStatementText}) still includes the address — a
+ * verifier reconstructs that text from the address IT is already discovering
+ * (which it learned via a per-hash WKD lookup, not from this feed), so a
+ * statement only verifies for the address it was actually signed for and cannot
+ * be replayed onto a different one. Address discovery stays per-hash (WKD);
+ * nothing here reveals which mailboxes exist.
  */
 export interface RotationStatement {
-	address: string;
 	oldFingerprint: string;
 	newFingerprint: string;
 	/** Armored OpenPGP detached signature by the OLD key over {@link rotationStatementText}. */

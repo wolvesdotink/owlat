@@ -42,11 +42,22 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 
 	// Add or update a DKIM key
 	app.post('/', async (c) => {
-		const body = await c.req.json<{ domain: string; selector: string; privateKey: string }>();
+		const body = await c.req.json<{
+			domain: string;
+			selector: string;
+			privateKey: string;
+			organizationId?: string;
+		}>();
 		if (!body.domain || !body.selector || !body.privateKey) {
 			return c.json({ error: 'domain, selector, and privateKey are required' }, 400);
 		}
-		await dkimStore.setDkimKey(redis, body.domain.toLowerCase(), body.selector, body.privateKey);
+		await dkimStore.setDkimKey(
+			redis,
+			body.domain.toLowerCase(),
+			body.selector,
+			body.privateKey,
+			body.organizationId
+		);
 		return c.json({ success: true, domain: body.domain.toLowerCase(), selector: body.selector });
 	});
 
@@ -93,7 +104,7 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 		// empty/whitespace body is the historic body-less POST; a non-empty body
 		// that fails to parse is a 400 rather than being silently ignored.
 		const rawBody = (await c.req.text().catch(() => '')).trim();
-		let body: { returnPathHost?: unknown } = {};
+		let body: { returnPathHost?: unknown; organizationId?: unknown } = {};
 		if (rawBody.length > 0) {
 			let parsed: unknown;
 			try {
@@ -109,7 +120,7 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
 				return c.json({ error: 'Request body must be a JSON object' }, 400);
 			}
-			body = parsed as { returnPathHost?: unknown };
+			body = parsed as { returnPathHost?: unknown; organizationId?: unknown };
 		}
 
 		// Tri-state on the `returnPathHost` key: absent | null (clear) | value (set).
@@ -127,7 +138,24 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 			returnPathHost = normalized;
 		}
 
-		const result = await dkimStore.registerDomainKey(redis, domain);
+		// Optional owning organization (H2): binds the domain's DKIM key to a tenant
+		// so it can never be used to sign for another org (see getDkimOptions).
+		// Reject a non-string, and let a cross-org conflict surface as a 409.
+		const organizationId =
+			typeof body.organizationId === 'string' ? body.organizationId : undefined;
+		if (body.organizationId !== undefined && organizationId === undefined) {
+			return c.json({ error: 'organizationId must be a string' }, 400);
+		}
+
+		let result: Awaited<ReturnType<typeof dkimStore.registerDomainKey>>;
+		try {
+			result = await dkimStore.registerDomainKey(redis, domain, organizationId);
+		} catch (err) {
+			return c.json(
+				{ error: err instanceof Error ? err.message : 'Failed to register domain key' },
+				409
+			);
+		}
 
 		if (returnPathHost) {
 			await dkimStore.setReturnPathHost(redis, domain, returnPathHost);

@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireSelf } from '../lib/sessionOrganization';
+import { requireSelf, requirePermission, hasPermission } from '../lib/sessionOrganization';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 
 /**
@@ -100,12 +100,20 @@ export const getWithActualProgress = authedQuery({
  * instance-wide progress: a single org per deployment has a single onboarding
  * state, not one per user.
  */
-// authz: self — requireSelf asserts args.userId is the caller.
+// authz: admin + self. Dismissal is an instance-wide surface change, so it is
+// gated on `organization:manage` (L16) — an ordinary member must not be able to
+// hide onboarding for every admin. `requireSelf` additionally binds the recorded
+// `userId` to the caller so the dismissal can't be attributed to someone else.
 export const dismiss = authedMutation({
 	args: {
 		userId: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		// Admin gate on the floor's already-resolved session (L16).
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can dismiss onboarding'
+		);
 		await requireSelf(ctx, args.userId);
 
 		// Get or create this admin's dismissal record

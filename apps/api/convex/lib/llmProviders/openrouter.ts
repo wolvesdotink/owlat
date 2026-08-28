@@ -55,7 +55,11 @@ export const openrouterLanguageAdapter: LanguageProviderAdapter<'openrouter'> = 
 		}
 	},
 	async listModels(cfg: ProviderClientConfig): Promise<string[]> {
-		const res = await fetch(`${openrouterBaseUrl(cfg)}/models`, {
+		// Route through the injected SSRF-guarded fetcher when the caller supplies
+		// one (the Node action does — this carries the hosted key); fall back to
+		// global fetch otherwise.
+		const doFetch = cfg.fetchImpl ?? fetch;
+		const res = await doFetch(`${openrouterBaseUrl(cfg)}/models`, {
 			headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
 		});
 		if (!res.ok) {

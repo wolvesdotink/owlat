@@ -7,10 +7,20 @@
  * unit-testable serialise/parse helpers plus the storage key, kept in a sibling
  * of `useSetupWizard.ts` so that file stays under the file-size budget.
  *
- * sessionStorage (not localStorage) is deliberate: the collected secrets —
- * provider keys, the admin password, the setup token — are scoped to the tab and
- * never outlive the setup session. The composable clears the entry on a
- * successful launch.
+ * sessionStorage (not localStorage) is deliberate: the persisted draft is scoped
+ * to the tab and never outlives the setup session, and the composable clears the
+ * entry on a successful launch.
+ *
+ * SECURITY — the two bearer secrets are NEVER persisted. The admin password and
+ * the one-time setup token live only in `useState` for the tab's lifetime;
+ * `serializeSetupDraft` strips them before anything reaches sessionStorage, and
+ * `parseSetupDraft` refuses to surface them even out of a legacy entry that
+ * predates this rule. A refresh restores everything else; those two are
+ * re-entered. This keeps an XSS payload or a shared-device inspector from lifting
+ * a live admin credential / setup token back out of storage. (Provider API keys
+ * in `env` are still persisted so the provider step survives a reload; that is a
+ * deliberate, narrower tradeoff than exposing the account password and the
+ * privileged setup token.)
  */
 
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
@@ -36,7 +46,12 @@ export interface SetupDraft {
 }
 
 export function serializeSetupDraft(draft: SetupDraft): string {
-	return JSON.stringify(draft);
+	// Strip the two bearer secrets before persisting: the one-time setup `token`
+	// is dropped entirely, and the admin `password` is blanked. Everything else
+	// round-trips so a refresh restores the draft. See the module header.
+	const { token: _token, admin, ...rest } = draft;
+	const safeAdmin: AdminDraft = { ...admin, password: '' };
+	return JSON.stringify({ ...rest, admin: safeAdmin });
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
@@ -78,11 +93,16 @@ export function parseSetupDraft(raw: string | null | undefined): Partial<SetupDr
 	const draft: Partial<SetupDraft> = {};
 	if (isBooleanRecord(record['flags'])) draft.flags = record['flags'];
 	if (isStringRecord(record['env'])) draft.env = record['env'];
-	if (isAdminDraft(record['admin'])) draft.admin = record['admin'];
+	if (isAdminDraft(record['admin'])) {
+		// Defense-in-depth: even a legacy entry that predates the no-persist rule
+		// must never hand a stored password back to the wizard. Blank it on read.
+		draft.admin = { ...record['admin'], password: '' };
+	}
 	if (typeof record['isMigrationMode'] === 'boolean') {
 		draft.isMigrationMode = record['isMigrationMode'];
 	}
-	if (typeof record['token'] === 'string') draft.token = record['token'];
+	// The setup `token` is intentionally never restored from storage — it is never
+	// persisted (see serialize) and a stale stored copy is ignored, not trusted.
 	return draft;
 }
 

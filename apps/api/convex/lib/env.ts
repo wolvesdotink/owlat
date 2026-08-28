@@ -29,6 +29,13 @@ export type EnvKey =
 	// (`/seed/demo`, `/dev/reset`, `forceVerifyDomain`). Fail-closed default:
 	// leaving it unset on a production deployment refuses those endpoints.
 	| 'OWLAT_DEV_MODE'
+	// When set to 'true' / '1' / 'yes' / 'on', requires a verified email before a
+	// signup or invitation can sign in (BetterAuth `requireEmailVerification` +
+	// `sendOnSignUp` and the org plugin's `requireEmailVerificationOnInvitation`).
+	// Fail-OPEN default: unset leaves the existing behavior so installs whose
+	// current users are unverified are not locked out. Deployments SHOULD enable
+	// it — see auth/auth.ts.
+	| 'REQUIRE_EMAIL_VERIFICATION'
 	// Site URLs
 	| 'SITE_URL'
 	| 'ADMIN_SITE_URL'
@@ -228,6 +235,24 @@ export type EnvKey =
 	// the right), 'xrealip' (X-Real-IP). Unset ⇒ headers are NOT trusted (single
 	// shared bucket) so a spoofed header can't multiply rate-limit buckets.
 	| 'RATE_LIMIT_TRUSTED_PROXY'
+	// Shared secret a trusted reverse proxy INJECTS (and strips from client
+	// requests) to authenticate the `cloudflare` / `xrealip` trusted-proxy modes.
+	// Those modes believe an otherwise client-settable header (CF-Connecting-IP /
+	// X-Real-IP); because a Convex deployment is directly reachable at its
+	// *.convex.site URL, the header is only trusted when the request also presents
+	// this secret in `X-Owlat-Proxy-Secret` (constant-time compared). Unset, or a
+	// mismatched/absent secret ⇒ the forwarded IP is NOT trusted and the caller
+	// falls back to the shared 'unknown' bucket (fail closed) — see
+	// publicRateLimit.getClientIp. Unused by the `xforwarded` mode, which is
+	// bypass-resistant on its own.
+	| 'RATE_LIMIT_PROXY_SECRET'
+	// Reverse-proxy IPs / CIDR ranges that front this deployment, used ONLY by the
+	// BetterAuth login limiter when RATE_LIMIT_TRUSTED_PROXY is `xforwarded`: the
+	// X-Forwarded-For chain is walked right-to-left and trusted hops are skipped so
+	// the first UNTRUSTED entry is keyed — a client-injected leftmost hop can never
+	// mint a fresh limiter bucket. Comma- or whitespace-separated (e.g.
+	// `10.0.0.0/8, 192.0.2.10`). Unset ⇒ only a single-value XFF is trusted.
+	| 'RATE_LIMIT_TRUSTED_PROXIES'
 	// Inbound channel webhooks (SMS / WhatsApp / generic)
 	| 'TWILIO_AUTH_TOKEN'
 	| 'META_APP_SECRET'
