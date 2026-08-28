@@ -3348,6 +3348,12 @@
 				"heading": "{greeting} – so ist der Stand",
 				"regionLabel": "Tagesüberblick"
 			},
+			"postboxDeliveryStrip": {
+				"regionLabel": "Zustellstatus je Empfängerin",
+				"showServerReply": "Antwort des Servers",
+				"resendOne": "Nur an {address} erneut senden",
+				"resendMany": "Erneut an die {count} nicht erreichten Empfänger senden"
+			},
 			"postboxDraftList": {
 				"empty": "Keine Entwürfe",
 				"noRecipient": "Kein Empfänger",
@@ -11411,6 +11417,14 @@
 				"count": "{count} Frage | {count} Fragen",
 				"tailOne": " braucht Sie — wenn Sie sie beantworten, werden die wartenden Antworten frei.",
 				"tailOther": " brauchen Sie — wenn Sie sie beantworten, werden die wartenden Antworten frei."
+			}
+		},
+		"postboxDeliveryStrip": {
+			"row": {
+				"delivered": "zugestellt",
+				"sent": "raus – warten auf den anderen Server",
+				"queued": "wartet auf den Versand",
+				"notDelivered": "konnte nicht zugestellt werden"
 			}
 		},
 		"postboxOfflineStore": {

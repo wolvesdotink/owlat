@@ -84,6 +84,7 @@ import {
 	type SecureMessageClass,
 } from '@owlat/shared/secureMessage';
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
+import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -214,6 +215,24 @@ const latestOutboundId = computed(() => {
 		| undefined;
 	return last && last.outbound !== undefined ? last._id : undefined;
 });
+// Per-recipient delivery evidence for the messages WE sent in this thread (plan
+// idea 1). One subscription for the whole conversation rather than one per
+// message; an inbound-only thread gets an empty array and renders no strip.
+const { data: outboundDelivery } = useConvexQuery(
+	api.mail.mailbox.messages.listThreadOutboundDelivery,
+	() => ({ messageId: messageId.value })
+);
+const deliveryByMessage = computed(() => {
+	const map = new Map<string, OutboundDelivery>();
+	for (const row of outboundDelivery.value ?? []) {
+		map.set(row.messageId, { state: row.state, recipients: row.recipients });
+	}
+	return map;
+});
+function deliveryFor(msg: { _id: string }): OutboundDelivery | null {
+	return deliveryByMessage.value.get(msg._id) ?? null;
+}
+
 const labelMap = computed(() => {
 	const map = new Map<string, { _id: string; name: string; color?: string }>();
 	for (const l of threadData.value?.labels ?? []) map.set(l._id, l);
@@ -413,6 +432,7 @@ const {
 	openPrimaryReply,
 	openReplyWithBody,
 	openForward,
+	openResend,
 	hasOtherRecipients,
 	inlineSpec,
 	inlineReplyEl,
@@ -1099,6 +1119,17 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 							</li>
 						</ul>
 					</section>
+
+					<!-- What actually happened to a message WE sent (plan idea 1): one
+					     row per recipient, plus a resend that targets only the ones it
+					     never reached. Renders nothing for inbound mail (no `outbound`
+					     record) and nothing for the ordinary single-recipient send that
+					     simply went out. -->
+					<PostboxDeliveryStrip
+						v-if="deliveryFor(msg)"
+						:delivery="deliveryFor(msg)!"
+						@resend="(addresses) => openResend(msg, addresses)"
+					/>
 
 					<!-- Progressive disclosure: star + reply stay visible; reply-all
 					     and forward reveal on row hover (pointer); the full set is

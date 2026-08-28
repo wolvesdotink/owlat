@@ -3348,6 +3348,12 @@
 				"heading": "{greeting} — here's where things stand",
 				"regionLabel": "Daily brief"
 			},
+			"postboxDeliveryStrip": {
+				"regionLabel": "Delivery status per recipient",
+				"showServerReply": "What the server said",
+				"resendOne": "Resend to {address} only",
+				"resendMany": "Resend to the {count} recipients it didn't reach"
+			},
 			"postboxDraftList": {
 				"empty": "No drafts",
 				"noRecipient": "No recipient",
@@ -11411,6 +11417,14 @@
 				"count": "{count} question | {count} questions",
 				"tailOne": " needs you — answering it unblocks the waiting replies.",
 				"tailOther": " need you — answering them unblocks the waiting replies."
+			}
+		},
+		"postboxDeliveryStrip": {
+			"row": {
+				"delivered": "delivered",
+				"sent": "sent — waiting for the other server",
+				"queued": "waiting to go out",
+				"notDelivered": "couldn't be delivered"
 			}
 		},
 		"postboxOfflineStore": {
