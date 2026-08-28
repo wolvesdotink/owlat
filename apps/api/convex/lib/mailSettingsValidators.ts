@@ -169,3 +169,22 @@ export const mailNotifyAboutValidator = v.union(
 	v.literal('people-important'),
 	v.literal('nothing')
 );
+
+// Trash auto-purge horizon in days (mailUserSettings.trashAutoPurgeDays and
+// mail/settings update args) — how long a message sits in Trash before the
+// retention sweep deletes it for good.
+//
+// A CLOSED set, like the undo-send window: the "Your data" card renders it as a
+// handful of choices, and an arbitrary horizon invites a mailbox that quietly
+// destroys mail on a schedule nobody can name. `0` is "Never" — the value the
+// control shows for a user who wants nothing purged.
+//
+// ABSENT IS ALSO NEVER, and that is the point: Owlat has never auto-deleted
+// trashed mail, so an untouched row must keep behaving exactly as it did. The
+// sweep only ever considers rows that opted in.
+export const mailTrashAutoPurgeDaysValidator = v.union(
+	v.literal(0),
+	v.literal(7),
+	v.literal(30),
+	v.literal(90)
+);

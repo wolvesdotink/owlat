@@ -24,6 +24,7 @@ import {
 	mailMarkReadPolicyValidator,
 	mailQuietHoursValidator,
 	mailDailyBriefEmailValidator,
+	mailTrashAutoPurgeDaysValidator,
 } from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
@@ -384,6 +385,56 @@ export const mailTables = {
 		// by_user/by_status/by_started_at were unused — add one back when a concrete
 		// query (e.g. an ops sweep) needs it.
 		.index('by_account', ['accountId']),
+
+	// Upload-based archive import (idea 50) — the migration path for people who
+	// have no live account left to connect.
+	//
+	// `mailboxMigrations` above walks a CONNECTED external mailbox over IMAP. That
+	// covers a move; it does nothing for the far more common shape of the problem:
+	// a Gmail Takeout `.mbox` on a laptop, a `.eml` saved out of a dead client, an
+	// archive from a provider that closed. This table is the same job idea over
+	// bytes the user hands us instead of a server we can log into.
+	//
+	// RESUMABILITY is `cursorBytes`: the byte offset into the uploaded archive up
+	// to which every message has been committed. The parse (`@owlat/mail-message`)
+	// and the split (`@owlat/shared/mboxArchive`) both run in an action that
+	// budgets itself and reschedules, so an archive larger than one action's
+	// lifetime finishes across as many runs as it takes and a failed run re-reads
+	// only the messages after the last commit. The offsets are BYTES because the
+	// action decodes the archive as latin1 — one char per byte.
+	mailArchiveImports: defineTable({
+		userId: v.string(), // BetterAuth user (mailbox owner who uploaded it)
+		mailboxId: v.id('mailboxes'),
+		// The uploaded archive. Deleted when the job reaches a terminal state —
+		// the imported messages are the artifact, not the upload.
+		storageId: v.optional(v.id('_storage')),
+		// What the user picked it from, for the wizard's copy only.
+		filename: v.string(),
+		// `mbox` splits on `From_` separators; `eml` is one message, whole file.
+		format: v.union(v.literal('mbox'), v.literal('eml')),
+		totalBytes: v.number(),
+		// Resume point: bytes fully committed. Never moves backwards.
+		cursorBytes: v.number(),
+		messagesImported: v.number(),
+		// Duplicates (same Message-ID already in the mailbox) and entries the
+		// parser could not turn into a message. Counted, never silently dropped.
+		messagesSkipped: v.number(),
+		// Gmail Takeout labels created on the way in (`X-Gmail-Labels`).
+		labelsCreated: v.number(),
+		status: v.union(
+			v.literal('importing'),
+			v.literal('completed'),
+			v.literal('failed'),
+			v.literal('cancelled')
+		),
+		lastError: v.optional(v.string()),
+		startedAt: v.number(),
+		completedAt: v.optional(v.number()),
+		updatedAt: v.number(),
+	})
+		// The wizard reads the caller's most recent job for their mailbox.
+		.index('by_mailbox', ['mailboxId'])
+		.index('by_user', ['userId']),
 
 	// Staged "move my mailbox here" job — the full move of a connected external
 	// mailbox onto an Owlat-hosted mailbox on the SAME address, ending with the
@@ -1730,6 +1781,12 @@ export const mailTables = {
 		// its LOCAL day against today's, which is what makes the send
 		// at-most-once-per-day and idempotent across cron ticks and retries.
 		lastDailyBriefEmailAt: v.optional(v.number()),
+		// Trash auto-purge horizon in days (idea 67): how long a trashed message
+		// survives before `mail/trashRetention.ts` deletes it for good. `0` is
+		// "Never", and so is ABSENT — Owlat has never auto-emptied a trash folder,
+		// so an untouched row keeps exactly today's behaviour and the sweep only
+		// looks at rows that opted in.
+		trashAutoPurgeDays: v.optional(mailTrashAutoPurgeDaysValidator),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),

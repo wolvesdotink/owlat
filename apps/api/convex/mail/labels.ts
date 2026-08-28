@@ -81,6 +81,42 @@ async function findOrCreateSegment(
 }
 
 /**
+ * Resolve a label PATH to its leaf, creating whatever is missing on the way.
+ *
+ * The idempotent half of {@link create}, without the caller-facing conflict
+ * error: a bulk writer (the archive import mapping Gmail's `Work/Invoices`
+ * labels) wants "give me this label" and needs to know how many rows it had to
+ * make, not a throw when one of them already existed. Returns `null` for a name
+ * with no usable segment or one that would nest past {@link LABEL_MAX_DEPTH},
+ * so a strange label in an archive skips its label rather than failing the
+ * message.
+ *
+ * The caller MUST have already gated access to `mailboxId`.
+ */
+export async function resolveLabelPath(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>,
+	name: string
+): Promise<{ labelId: Id<'mailLabels'>; created: number } | null> {
+	const segments = name
+		.split(LABEL_PATH_SEPARATOR)
+		.map((part) => part.trim())
+		.filter(Boolean);
+	if (segments.length === 0 || segments.length - 1 > LABEL_MAX_DEPTH) return null;
+
+	let parentId: Id<'mailLabels'> | undefined;
+	let leafId: Id<'mailLabels'> | undefined;
+	let created = 0;
+	for (const segment of segments) {
+		const result = await findOrCreateSegment(ctx, mailboxId, segment, parentId, undefined);
+		if (result.created) created++;
+		parentId = result.id;
+		leafId = result.id;
+	}
+	return leafId ? { labelId: leafId, created } : null;
+}
+
+/**
  * Create a label, optionally nested.
  *
  * `name` may be a PATH (`Work/Clients/Acme`): every missing ancestor is created

@@ -144,6 +144,7 @@ export type OrganizationDeletionTable =
 	| 'mailAuditLog'
 	| 'mailAuthFailures'
 	| 'mailboxMigrations'
+	| 'mailArchiveImports'
 	| 'mailboxMoves'
 	| 'externalMailFolderSync'
 	| 'externalMailAccounts'
@@ -326,6 +327,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailAuditLog'),
 	v.literal('mailAuthFailures'),
 	v.literal('mailboxMigrations'),
+	v.literal('mailArchiveImports'),
 	v.literal('mailboxMoves'),
 	v.literal('externalMailFolderSync'),
 	v.literal('externalMailAccounts'),

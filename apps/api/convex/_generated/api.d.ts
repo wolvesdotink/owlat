@@ -704,6 +704,8 @@ import type * as mail_ai_voiceProfileText from '../mail/ai/voiceProfileText.js';
 import type * as mail_aliases from '../mail/aliases.js';
 import type * as mail_aliasesActions from '../mail/aliasesActions.js';
 import type * as mail_appPasswords from '../mail/appPasswords.js';
+import type * as mail_archiveImport from '../mail/archiveImport.js';
+import type * as mail_archiveImportRun from '../mail/archiveImportRun.js';
 import type * as mail_attachmentBackfill from '../mail/attachmentBackfill.js';
 import type * as mail_attachmentIndex from '../mail/attachmentIndex.js';
 import type * as mail_authHttp from '../mail/authHttp.js';
@@ -1034,6 +1036,7 @@ import type * as workspaces_deletion_steps__common from '../workspaces/deletion/
 import type * as workspaces_deletion_steps_accountExportArtifacts from '../workspaces/deletion/steps/accountExportArtifacts.js';
 import type * as workspaces_deletion_steps_contacts from '../workspaces/deletion/steps/contacts.js';
 import type * as workspaces_deletion_steps_domains from '../workspaces/deletion/steps/domains.js';
+import type * as workspaces_deletion_steps_mailArchiveImports from '../workspaces/deletion/steps/mailArchiveImports.js';
 import type * as workspaces_deletion_steps_mailDrafts from '../workspaces/deletion/steps/mailDrafts.js';
 import type * as workspaces_deletion_steps_mailMessages from '../workspaces/deletion/steps/mailMessages.js';
 import type * as workspaces_deletion_steps_mediaAssets from '../workspaces/deletion/steps/mediaAssets.js';
@@ -1743,6 +1746,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/aliases': typeof mail_aliases;
 	'mail/aliasesActions': typeof mail_aliasesActions;
 	'mail/appPasswords': typeof mail_appPasswords;
+	'mail/archiveImport': typeof mail_archiveImport;
+	'mail/archiveImportRun': typeof mail_archiveImportRun;
 	'mail/attachmentBackfill': typeof mail_attachmentBackfill;
 	'mail/attachmentIndex': typeof mail_attachmentIndex;
 	'mail/authHttp': typeof mail_authHttp;
@@ -2073,6 +2078,7 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/steps/accountExportArtifacts': typeof workspaces_deletion_steps_accountExportArtifacts;
 	'workspaces/deletion/steps/contacts': typeof workspaces_deletion_steps_contacts;
 	'workspaces/deletion/steps/domains': typeof workspaces_deletion_steps_domains;
+	'workspaces/deletion/steps/mailArchiveImports': typeof workspaces_deletion_steps_mailArchiveImports;
 	'workspaces/deletion/steps/mailDrafts': typeof workspaces_deletion_steps_mailDrafts;
 	'workspaces/deletion/steps/mailMessages': typeof workspaces_deletion_steps_mailMessages;
 	'workspaces/deletion/steps/mediaAssets': typeof workspaces_deletion_steps_mediaAssets;

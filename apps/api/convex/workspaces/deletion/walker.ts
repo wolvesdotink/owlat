@@ -30,6 +30,7 @@ import { accountExportArtifactsStep } from './steps/accountExportArtifacts';
 import { semanticFilesStep } from './steps/semanticFiles';
 import { mailMessagesStep } from './steps/mailMessages';
 import { mailDraftsStep } from './steps/mailDrafts';
+import { mailArchiveImportsStep } from './steps/mailArchiveImports';
 import { transactionalSendsStep } from './steps/transactionalSends';
 import { contactsStep } from './steps/contacts';
 import { domainsStep } from './steps/domains';
@@ -108,6 +109,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'externalMailFolderSync',
 	'externalMailAccounts',
 	'mailboxMigrations',
+	'mailArchiveImports',
 	'mailboxMoves',
 	'pendingMailboxes',
 	'mailboxRequests',
@@ -406,6 +408,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAuditLog: makeSweepStep('mailAuditLog'),
 	mailAuthFailures: makeSweepStep('mailAuthFailures'),
 	mailboxMigrations: makeSweepStep('mailboxMigrations'),
+	mailArchiveImports: mailArchiveImportsStep,
 	mailboxMoves: makeSweepStep('mailboxMoves'),
 	externalMailFolderSync: makeSweepStep('externalMailFolderSync'),
 	externalMailAccounts: makeSweepStep('externalMailAccounts'),
