@@ -63,9 +63,11 @@ const searchClauseFields = {
 	cc: v.optional(v.string()),
 	bcc: v.optional(v.string()),
 	subject: v.optional(v.string()),
-	// Attachment filename substring. Matched against the per-message attachment
-	// metadata already stored at ingest, so it needs no separate index — but it
-	// is post-filter only, so it narrows a page rather than the scan.
+	// Attachment filename substring. Once this mailbox's `mailAttachments` index
+	// is built, a text-free `filename:` query DRIVES the scan off it (see
+	// `searchByFilename`) and so reaches attachments of any age; on a mailbox
+	// whose index is still partial it stays the post-filter it always was,
+	// narrowing a page rather than the scan.
 	filename: v.optional(v.string()),
 	hasAttachment: v.optional(v.boolean()),
 	flagSeen: v.optional(v.boolean()),
@@ -378,6 +380,27 @@ async function scanMailbox(
 }
 
 /**
+ * Has the attachment index been built over this mailbox's EXISTING mail?
+ *
+ * `mail/attachmentIndex.ts` writes a junction row for every message delivered
+ * after the index shipped, but mail older than that only enters the index when
+ * the backfill (`mail/attachmentBackfill.ts`) walks it. Until that walk
+ * completes the index is a partial view of the mailbox, so the search stays on
+ * the post-filter it always used rather than silently narrowing to "files we
+ * happen to have indexed".
+ */
+async function isAttachmentIndexComplete(
+	ctx: QueryCtx,
+	mailboxId: Id<'mailboxes'>
+): Promise<boolean> {
+	const job = await ctx.db
+		.query('mailAttachmentBackfillJobs')
+		.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+		.first();
+	return job?.status === 'completed';
+}
+
+/**
  * Index-driven `filename:` — the scan runs over `mailAttachments`, not over
  * `mailMessages`.
  *
@@ -514,7 +537,19 @@ export const search = publicQuery({
 		// could only ever be a post-filter over one page of arrival-ordered mail,
 		// so a contract sent two years ago was unfindable no matter how exactly
 		// its name was typed. Now the scan itself is the filename search.
-		if (single && !single.text && single.filename) {
+		//
+		// ONLY once the index covers this mailbox's existing mail. The write path
+		// fills it from delivery onward, so until the backfill has completed the
+		// index is a partial view and driving the scan off it would make
+		// `filename:` return LESS than the post-filter it replaced — a regression
+		// dressed up as an empty result. Until then the post-filter below runs,
+		// exactly as it did before the index shipped.
+		if (
+			single &&
+			!single.text &&
+			single.filename &&
+			(await isAttachmentIndexComplete(ctx, mailboxId))
+		) {
 			return searchByFilename(ctx, mailboxId, single, names, limit, cursor ?? null);
 		}
 
