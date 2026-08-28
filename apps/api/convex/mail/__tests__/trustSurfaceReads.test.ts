@@ -1,15 +1,20 @@
 /**
- * `mail.mailbox.messages.getMessageDetails` — the read behind the reader's
- * "message details" disclosure (UX plan idea 52).
+ * The two reads behind the trust surfaces: `getMessageDetails` (the reader's
+ * "message details" disclosure, UX plan idea 52) and `listMessages` (the
+ * thread-row danger marker, idea 51).
  *
- * The panel exists to make the sender badge's claims checkable, so the contract
- * has two halves and both are locked here:
+ * `getMessageDetails` exists to make the sender badge's claims checkable, so its
+ * contract has two halves and both are locked here:
  *
  *   - it returns the header facts the panel renders, with a verdict the message
  *     never carried coming back ABSENT rather than defaulted (the panel must not
  *     invent a check nobody ran), and
  *   - it is recipient-scoped: a caller with no session gets `null`, not a header
  *     dump for someone else's mail.
+ *
+ * `listMessages` needs no new field — it returns whole documents — so what is
+ * locked there is that nothing along the list path strips the ones the marker
+ * derives from.
  */
 
 import { convexTest } from 'convex-test';
@@ -180,5 +185,50 @@ describe('getMessageDetails', () => {
 			messageId: result.messageId,
 		});
 		expect(details).toBeNull();
+	});
+});
+
+/**
+ * The thread LIST read, which the row-level trust marker derives from (UX plan
+ * idea 51). The marker needs the same verdict fields the reader badge does plus
+ * the ingest heuristics, and `listMessages` returns whole documents — so the
+ * contract is that nothing along the list path strips them. A regression here
+ * would not fail loudly: the marker would simply go quiet on exactly the
+ * messages it exists for.
+ */
+describe('listMessages — the fields the row trust marker derives from', () => {
+	it('carries the verdicts, the alignment domains and the ingest heuristics', async () => {
+		setOwnerSession();
+		const t = convexTest(schema, modules);
+		const rawStorageId = await setup(t);
+
+		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {
+			...baseDelivery(rawStorageId, '<list-marker@sender.example>'),
+			spfResult: 'pass',
+			dmarcResult: 'fail',
+			dmarcPolicy: 'none',
+			envelopeFromDomain: 'bulk.example',
+			dkimSigningDomain: 'bulk.example',
+		});
+		expect('messageId' in result).toBe(true);
+		if (!('messageId' in result)) return;
+
+		const messageId = result.messageId;
+		const mailboxId = await t.run(async (ctx: { db: DatabaseWriter }) => {
+			await ctx.db.patch(messageId, {
+				senderHeuristics: { lookalikeOfContactDomain: 'sender-real.example' },
+			});
+			const message = await ctx.db.get(messageId);
+			return message!.mailboxId;
+		});
+
+		const page = await t.query(api.mail.mailbox.queries.listMessages, { mailboxId });
+		const row = page.messages.find((m) => m._id === messageId);
+		expect(row).toBeTruthy();
+		expect(row?.spfResult).toBe('pass');
+		expect(row?.dmarcResult).toBe('fail');
+		expect(row?.envelopeFromDomain).toBe('bulk.example');
+		expect(row?.dkimSigningDomain).toBe('bulk.example');
+		expect(row?.senderHeuristics?.lookalikeOfContactDomain).toBe('sender-real.example');
 	});
 });
