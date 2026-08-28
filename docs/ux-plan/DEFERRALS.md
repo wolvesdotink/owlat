@@ -176,3 +176,26 @@ shares, so it gives up the search index entirely).
 
 To pick it up: idea 37's attachment index, plus a search-index filter field for
 the size buckets, so those queries narrow the scan instead of only the page.
+
+## 36 — a fan-out FREE-TEXT search returns one page per mailbox
+
+`mail/mailbox/search.ts` now searches many mailboxes at once and merges the
+slices newest-first, and the merge is fully paginated: each mailbox carries its
+own keyset position inside one opaque cursor, so "Load more" walks the union
+without skipping or repeating a row.
+
+That holds for every query that runs off the arrival index. It does NOT hold for
+a fan-out query with FREE TEXT. Convex allows exactly one `.paginate()` per
+function execution, so N mailboxes cannot each paginate natively, and the manual
+keyset the fan-out uses instead needs an ordered key — which the full-text
+search index does not expose (it is relevance-ordered and has no cursor of its
+own). Each mailbox therefore contributes its top page of text hits and is
+reported as complete. Both consumers are first-page consumers — the Cmd-K
+palette shows five rows, and the Postbox search page still calls the
+single-mailbox path, which paginates natively and reaches every match — so
+nothing on screen today is truncated in a way the user can see.
+
+To pick it up: give the search branch an orderable key. Either add `receivedAt`
+as a search-index filter field and page it in time buckets, or run the fan-out
+text search through a paginated per-mailbox action that merges outside a single
+query execution.
