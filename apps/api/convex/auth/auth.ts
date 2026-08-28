@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth';
-import { organization, oneTimeToken } from 'better-auth/plugins';
+import { organization, oneTimeToken, twoFactor } from 'better-auth/plugins';
 import { createAccessControl } from 'better-auth/plugins/access';
 import { getOptional, getRequired } from '../lib/env';
 import {
@@ -214,6 +214,25 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			// token (bound to the just-authenticated session) that it hands back to
 			// the desktop app via the `owlat://auth?ott=` deep link.
 			oneTimeToken(),
+			// TOTP two-factor. Enrolment is entirely opt-in and lives on
+			// /dashboard/preferences/security: nothing about sign-in changes for an
+			// account that never enables it, and the plugin only intercepts
+			// `/sign-in/email` once `user.twoFactorEnabled` is true (the response
+			// then carries `twoFactorRedirect` instead of a session, and the web
+			// login page prompts for the code).
+			//
+			// Only the TOTP and backup-code factors are wired. `otpOptions` is
+			// deliberately left unconfigured: an emailed OTP would travel over the
+			// very mailbox the second factor exists to protect. Without a
+			// `sendOTP`, `/two-factor/send-otp` fails closed with
+			// OTP_NOT_CONFIGURED, so the factor cannot be reached at all.
+			//
+			// The plugin's schema additions (`twoFactor.failedVerificationCount`,
+			// `twoFactor.lockedUntil`, `user.twoFactorEnabled`) are mirrored into
+			// convex/betterAuth/schema.ts — Convex rejects writes of undeclared
+			// fields, so the account-lockout counter would otherwise throw on the
+			// first wrong code. authSchemaParity.test.ts holds that mirror exact.
+			twoFactor({ issuer: 'Owlat' }),
 			// Convex plugin provides /convex/token and /convex/jwks endpoints
 			// Required for Convex client authentication via JWT
 			convex({
