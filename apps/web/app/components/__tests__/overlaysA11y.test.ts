@@ -13,6 +13,7 @@ import { auditA11y, dashboardShellStubs, installNuxtStubs, queryResult } from '~
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useCommandPaletteProviders } from '~/composables/useCommandPaletteProviders';
 import { useCommandPaletteRegistry } from '~/composables/useCommandPaletteRegistry';
+import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import type { SearchResults } from '~/lib/commandPaletteCore';
@@ -79,6 +80,7 @@ beforeEach(() => {
 		}),
 		useCommandPaletteProviders,
 		useCommandPaletteRegistry,
+		useCommandPaletteRecents,
 		useDebouncedSearch,
 		useBreadcrumbs: () => ({
 			breadcrumbs: ref([

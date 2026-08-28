@@ -15,7 +15,6 @@ import {
 } from '~/lib/commandPalette';
 import { resolvePaletteGroups } from '~/lib/commandPaletteRegistry';
 import {
-	MAX_RECENT_SEARCHES,
 	SEARCH_MIN_QUERY,
 	type SearchResult,
 	type SearchResults,
@@ -27,7 +26,7 @@ import {
  * it works on EVERY dashboard page. Assembled from an ordered, deduplicated
  * provider registry (`~/lib/commandPaletteRegistry`):
  *   1. core providers, built here and consulted first — recent searches, verbs,
- *      sidebar-context switch, object search, and navigation;
+ *      sidebar-context switch, object search, mail, and navigation;
  *   2. surface/plugin providers registered while mounted (e.g. the Postbox
  *      layout registers its reader actions + folders, route-gated to Postbox).
  *
@@ -65,44 +64,8 @@ const { searchQuery, debouncedSearch, setImmediate } = useDebouncedSearch(300);
 // are handled by onInputKeydown below (single source of truth).
 useModalFocus(dialogRef, () => open.value);
 
-// ── Recent object-search queries (carried over from the old GlobalSearch modal)
-const RECENT_KEY = 'owlat_recent_searches';
-const recentSearches = ref<string[]>([]);
-
-function loadRecent() {
-	if (import.meta.server) return;
-	try {
-		const stored = localStorage.getItem(RECENT_KEY);
-		recentSearches.value = stored ? (JSON.parse(stored) as string[]) : [];
-	} catch {
-		recentSearches.value = [];
-	}
-}
-
-function saveRecent(term: string) {
-	const trimmed = term.trim();
-	if (!trimmed || import.meta.server) return;
-	recentSearches.value = [trimmed, ...recentSearches.value.filter((s) => s !== trimmed)].slice(
-		0,
-		MAX_RECENT_SEARCHES
-	);
-	try {
-		localStorage.setItem(RECENT_KEY, JSON.stringify(recentSearches.value));
-	} catch {
-		// Ignore quota / disabled storage.
-	}
-}
-
-function clearRecent() {
-	recentSearches.value = [];
-	if (import.meta.client) {
-		try {
-			localStorage.removeItem(RECENT_KEY);
-		} catch {
-			// Ignore.
-		}
-	}
-}
+// ── Recent object-search terms (localStorage-backed; see the composable).
+const { recentSearches, loadRecent, saveRecent, clearRecent } = useCommandPaletteRecents();
 
 // ── Mode prefixes: the typed `>`/`@`/`#` never reaches a provider or the search
 // index — providers see the bare term, and the mode filters the merged groups.

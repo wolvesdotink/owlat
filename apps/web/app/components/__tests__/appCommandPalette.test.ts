@@ -15,6 +15,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { dashboardShellStubs, installNuxtStubs, queryResult } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useCommandPaletteProviders } from '~/composables/useCommandPaletteProviders';
+import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import type { CommandPaletteProvider } from '~/lib/commandPaletteRegistry';
@@ -99,6 +100,7 @@ beforeEach(() => {
 		navigateTo,
 		useCommandPaletteProviders,
 		useCommandPaletteRegistry: () => ref([argumentProvider()]),
+		useCommandPaletteRecents,
 		useDebouncedSearch,
 		useModalFocus: vi.fn(),
 		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId }),
