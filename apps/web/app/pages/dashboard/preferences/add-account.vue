@@ -254,7 +254,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 			<UiQueryBoundary v-else :loading="domainsLoading && !domainsData" :error="domainsError">
 				<template #loading>
 					<div class="flex items-center gap-2 text-text-secondary text-sm py-4">
-						<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+						<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 						{{ t('dashboard.preferences.addAccount.checkingDomains') }}
 					</div>
 				</template>
@@ -342,7 +342,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 						:disabled="!selectedAddress || provisioning"
 						@click="handleSubmit"
 					>
-						<Icon v-if="provisioning" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin" />
+						<Icon v-if="provisioning" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none" />
 						{{
 							provisioning
 								? t('dashboard.preferences.addAccount.creating')

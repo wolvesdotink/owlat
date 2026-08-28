@@ -282,7 +282,7 @@ function testIcon(outcome: TestResult['outcome']): string {
 							]"
 						>
 							<template v-if="testingId === app._id">
-								<Icon name="lucide:loader-2" class="w-4 h-4 shrink-0 mt-0.5 animate-spin" />
+								<Icon name="lucide:loader-2" class="w-4 h-4 shrink-0 mt-0.5 animate-spin motion-reduce:animate-none" />
 								<span>{{ t('dashboard.admin.team.connectedApps.index.testing') }}</span>
 							</template>
 							<template v-else-if="testResults[app._id]">

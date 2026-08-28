@@ -126,7 +126,7 @@ function start() {
 									: 'lucide:loader-2'
 						"
 						class="h-3.5 w-3.5"
-						:class="{ 'animate-spin': isInFlight }"
+						:class="{ 'animate-spin motion-reduce:animate-none': isInFlight }"
 					/>
 					{{ latestStatusLabel }}
 				</span>

@@ -322,7 +322,7 @@ onUnmounted(() => {
 								{{ t('dashboard.automations.detail.edit.editWorkflow') }}
 							</p>
 						</div>
-						<div v-else-if="isLoadingAutomation" class="animate-pulse">
+						<div v-else-if="isLoadingAutomation" class="animate-pulse motion-reduce:animate-none">
 							<div class="h-5 w-40 bg-bg-surface rounded" />
 							<div class="h-4 w-24 bg-bg-surface rounded mt-1" />
 						</div>
@@ -368,7 +368,7 @@ onUnmounted(() => {
 							:disabled="isSavingDraft"
 							@click="handleSaveDraft"
 						>
-							<Icon v-if="isSavingDraft" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+							<Icon v-if="isSavingDraft" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 							<Icon v-else name="lucide:save" class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.saveDraft') }}
 						</UiButton>
@@ -381,7 +381,7 @@ onUnmounted(() => {
 							:disabled="isActivating"
 							@click="handleToggleStatus"
 						>
-							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 							<Icon v-else name="lucide:pause" class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.pause') }}
 						</UiButton>
@@ -391,7 +391,7 @@ onUnmounted(() => {
 							:disabled="isActivating"
 							@click="handleToggleStatus"
 						>
-							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 							<Icon v-else name="lucide:play" class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.resume') }}
 						</UiButton>
@@ -406,7 +406,7 @@ onUnmounted(() => {
 							"
 							@click="handleShowActivateConfirm"
 						>
-							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 							<Icon v-else name="lucide:play" class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.activate') }}
 						</UiButton>
@@ -446,7 +446,7 @@ onUnmounted(() => {
 
 		<!-- Loading State -->
 		<div v-if="isLoadingAutomation" class="flex-1 flex items-center justify-center">
-			<Icon name="lucide:loader-2" class="w-8 h-8 animate-spin text-brand" />
+			<Icon name="lucide:loader-2" class="w-8 h-8 animate-spin motion-reduce:animate-none text-brand" />
 		</div>
 
 		<!-- Not Found -->
@@ -890,7 +890,7 @@ onUnmounted(() => {
 									:disabled="isActivating"
 									@click="handleConfirmActivate"
 								>
-									<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+									<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 									<Icon v-else name="lucide:play" class="w-4 h-4" />
 									{{
 										isActivating

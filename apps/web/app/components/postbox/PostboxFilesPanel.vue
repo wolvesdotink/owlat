@@ -152,7 +152,7 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 			v-else-if="backfill.status === 'running'"
 			class="card p-4 mb-4 flex items-center gap-3 text-sm text-text-secondary"
 		>
-			<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin flex-shrink-0" />
+			<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none flex-shrink-0" />
 			{{
 				t('components.postbox.postboxFilesPanel.backfillRunning', {
 					scanned: backfill.scannedCount,
@@ -223,7 +223,7 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 		</div>
 
 		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 		</div>
 		<p v-else-if="files.length === 0" class="card p-8 text-center text-text-secondary">
 			{{
@@ -265,7 +265,7 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 					<Icon
 						:name="downloading === file._id ? 'lucide:loader-2' : 'lucide:download'"
 						class="w-4 h-4"
-						:class="{ 'animate-spin': downloading === file._id }"
+						:class="{ 'animate-spin motion-reduce:animate-none': downloading === file._id }"
 					/>
 				</button>
 			</li>

@@ -97,7 +97,7 @@ const CATEGORY_DOT: Record<string, string> = {
 				data-testid="postbox-coach-run"
 				@click="onCoachClick"
 			>
-				<Icon v-if="coach.isLoading()" name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+				<Icon v-if="coach.isLoading()" name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
 				<Icon v-else name="lucide:graduation-cap" class="w-3.5 h-3.5" />
 				<span>{{ t('components.postbox.postboxCoachPanel.run') }}</span>
 			</UiButton>

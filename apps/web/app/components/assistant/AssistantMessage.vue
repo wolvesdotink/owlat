@@ -64,7 +64,7 @@ const showTyping = computed(
 				<AssistantMarkdown :source="message.text" />
 				<span
 					v-if="isStreaming"
-					class="inline-block w-1.5 h-4 align-text-bottom bg-text-secondary animate-pulse ml-0.5"
+					class="inline-block w-1.5 h-4 align-text-bottom bg-text-secondary animate-pulse motion-reduce:animate-none ml-0.5"
 				/>
 			</div>
 

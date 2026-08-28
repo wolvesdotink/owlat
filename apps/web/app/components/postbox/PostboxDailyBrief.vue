@@ -15,6 +15,7 @@
  * opacity-only) hides it until the next local day, persisted server-side.
  */
 import { api } from '@owlat/api';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	briefGreeting,
@@ -117,8 +118,7 @@ const sentences = computed<BriefSentence[]>(() =>
 function scrollToAnchor(hash: string) {
 	const el = document.querySelector(hash);
 	if (!el) return;
-	const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-	el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+	el.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 }
 const isVisible = computed(
 	() =>

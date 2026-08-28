@@ -170,7 +170,7 @@ const localUrl = computed({
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="submit" form="webhook-form" class="gap-2" :disabled="isSubmitting">
-				<Icon v-if="isSubmitting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon v-if="isSubmitting" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				{{ isSubmitting ? submittingLabel : submitLabel }}
 			</UiButton>
 		</template>

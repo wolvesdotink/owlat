@@ -89,7 +89,7 @@ const toneClasses = computed(() =>
 			<Icon
 				:name="lock.icon"
 				class="w-3.5 h-3.5"
-				:class="[toneClasses.icon, lock.kind === 'checking' && 'animate-spin']"
+				:class="[toneClasses.icon, lock.kind === 'checking' && 'animate-spin motion-reduce:animate-none']"
 			/>
 			<span data-testid="seal-lock-summary">{{ localize(lock.summary) }}</span>
 		</div>

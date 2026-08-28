@@ -28,7 +28,7 @@ const { isEnabled } = useFeatureFlag();
 		</div>
 
 		<div v-else-if="isLoading" class="p-8 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 		</div>
 
 		<div v-else-if="mailboxes.length === 0" class="card p-8 text-center text-text-secondary">

@@ -341,7 +341,7 @@ function removeAction(idx: number) {
 			</button>
 			<div v-if="previewOpen" class="mt-2">
 				<div v-if="previewLoading" class="flex items-center gap-2 text-xs text-text-tertiary">
-					<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+					<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
 					{{ t('components.postbox.postboxFilterRuleBuilder.previewRunning') }}
 				</div>
 				<template v-else-if="preview">

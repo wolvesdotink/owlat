@@ -325,7 +325,7 @@ const {
 										<Icon
 											v-if="togglingWebhookId === webhook._id"
 											name="lucide:loader-2"
-											class="w-4 h-4 animate-spin"
+											class="w-4 h-4 animate-spin motion-reduce:animate-none"
 										/>
 										<Icon v-else-if="!webhook.isActive" name="lucide:play" class="w-4 h-4" />
 										<Icon v-else name="lucide:pause" class="w-4 h-4" />
@@ -348,7 +348,7 @@ const {
 										<Icon
 											v-if="isSendingTest"
 											name="lucide:loader-2"
-											class="w-4 h-4 animate-spin"
+											class="w-4 h-4 animate-spin motion-reduce:animate-none"
 										/>
 										<Icon v-else name="lucide:send" class="w-4 h-4" />
 										{{ t('dashboard.admin.delivery.webhooks.sendTest') }}

@@ -95,7 +95,7 @@ watch(
 					<Icon
 						:name="ICON[row.step.state]"
 						class="size-[18px] shrink-0 transition-colors duration-(--motion-moderate)"
-						:class="[COLOR[row.step.state], row.step.state === 'running' ? 'animate-spin' : '']"
+						:class="[COLOR[row.step.state], row.step.state === 'running' ? 'animate-spin motion-reduce:animate-none' : '']"
 					/>
 					<span
 						class="flex-1 text-sm transition-colors duration-(--motion-moderate)"

@@ -906,7 +906,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 					<!-- FINISHING UP: installed, but the public URL isn't answering yet (DNS/TLS) -->
 					<div v-else-if="stage === 'done' && !siteIsLoopback" class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4">
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
-							<Icon name="lucide:loader-circle" class="size-4" :class="{ 'animate-spin': checkingReach }" />
+							<Icon name="lucide:loader-circle" class="size-4" :class="{ 'animate-spin motion-reduce:animate-none': checkingReach }" />
 							{{ t('desktop.setup.finishing.title') }}
 							</p>
 						<I18nT keypath="desktop.setup.finishing.body" tag="p" class="mt-1 text-xs text-text-secondary" scope="global">
@@ -923,7 +923,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						</div>
 						<UiButton variant="outline" size="sm" class="mt-3" :disabled="checkingReach" @click="recheckReachable">
 							<template #iconLeft>
-								<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin': checkingReach }" />
+								<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin motion-reduce:animate-none': checkingReach }" />
 							</template>
 							{{ checkingReach ? t('desktop.setup.finishing.checking') : t('desktop.setup.finishing.checkAgain') }}
 						</UiButton>

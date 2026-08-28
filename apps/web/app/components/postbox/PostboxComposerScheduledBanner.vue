@@ -55,7 +55,7 @@ const scheduledLabel = computed(() =>
 			:disabled="unscheduling"
 			@click="handleUnschedule"
 		>
-			<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin" />
+			<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin motion-reduce:animate-none" />
 			{{ t('components.postbox.postboxComposer.unschedule') }}
 		</UiButton>
 	</div>

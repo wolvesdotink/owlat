@@ -134,7 +134,7 @@ function initial(c: { displayName?: string; email: string }) {
 
 		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
 			<div v-if="isLoading" class="flex justify-center py-12">
-				<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
 			<div v-else-if="filtered.length === 0" class="text-center py-12">
 				<Icon name="lucide:users" class="w-10 h-10 mx-auto text-text-tertiary" />

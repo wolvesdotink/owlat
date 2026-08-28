@@ -237,7 +237,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 					<div class="relative">
 						<div class="w-20 h-20 rounded-full border-4 border-bg-surface" />
 						<div
-							class="absolute inset-0 w-20 h-20 rounded-full border-4 border-brand border-t-transparent animate-spin"
+							class="absolute inset-0 w-20 h-20 rounded-full border-4 border-brand border-t-transparent animate-spin motion-reduce:animate-none"
 						/>
 					</div>
 					<p class="text-lg font-medium text-text-primary">

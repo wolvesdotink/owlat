@@ -457,7 +457,7 @@ const {
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="submit" class="gap-2" :disabled="loading || isFreemail">
-				<Icon v-if="loading" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon v-if="loading" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				<Icon v-else name="lucide:plus" class="w-4 h-4" />
 				{{ loading ? t('components.domains.addDomainForm.adding') : submitLabelText }}
 			</UiButton>

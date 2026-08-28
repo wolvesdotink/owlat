@@ -167,7 +167,7 @@ const emit = defineEmits<{
 				     already communicates the state. -->
 				<span
 					v-if="showingCached && !isOffline"
-					class="animate-pulse text-[11px] font-normal text-text-tertiary lowercase"
+					class="animate-pulse motion-reduce:animate-none text-[11px] font-normal text-text-tertiary lowercase"
 					>{{ t('components.postbox.postboxLayout.updating') }}</span
 				>
 			</h2>

@@ -128,7 +128,7 @@ async function confirmRemove() {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.snippets.yourSnippets') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
 			<div v-else-if="snippets.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.snippets.empty') }}

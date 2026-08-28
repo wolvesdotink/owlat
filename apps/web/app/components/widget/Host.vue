@@ -91,7 +91,7 @@ function retry() {
 			<component :is="asyncComponent" v-bind="boundProps" />
 			<template #fallback>
 				<div class="p-4 flex items-center justify-center gap-2" aria-busy="true">
-					<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+					<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 					<span class="sr-only">{{
 						t('components.widget.host.loading', { label: regionLabel })
 					}}</span>

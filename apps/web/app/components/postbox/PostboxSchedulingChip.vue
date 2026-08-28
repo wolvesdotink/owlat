@@ -59,7 +59,7 @@ async function draft() {
 					<Icon
 						:name="suggestOp.isLoading.value ? 'lucide:loader-2' : 'lucide:calendar-clock'"
 						class="w-3.5 h-3.5"
-						:class="{ 'animate-spin': suggestOp.isLoading.value }"
+						:class="{ 'animate-spin motion-reduce:animate-none': suggestOp.isLoading.value }"
 					/>
 				</template>
 				{{ t('components.postbox.postboxSchedulingChip.prompt') }}

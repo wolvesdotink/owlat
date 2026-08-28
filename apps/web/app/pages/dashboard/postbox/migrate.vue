@@ -217,7 +217,7 @@ const steps = computed(() =>
 		<!-- Wait for the feature-flag subscription before deciding what to show,
 		     so the lock card never flashes at users who have the feature on. -->
 		<div v-if="flagsLoading" class="mt-8 flex justify-center py-10" aria-live="polite">
-			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			<span class="sr-only">{{ t('common.loading') }}</span>
 		</div>
 

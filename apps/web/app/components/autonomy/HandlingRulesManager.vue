@@ -118,7 +118,7 @@ function matcherSummary(matcher: {
 					<Icon
 						:name="busy ? 'lucide:loader-2' : 'lucide:sparkles'"
 						class="w-4 h-4"
-						:class="{ 'animate-spin': busy }"
+						:class="{ 'animate-spin motion-reduce:animate-none': busy }"
 					/>
 				</template>
 				{{ t('components.autonomy.handlingRulesManager.teach') }}

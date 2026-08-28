@@ -83,8 +83,8 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 		</header>
 
 		<div v-if="isLoading" class="px-5 py-4 space-y-3" aria-busy="true">
-			<div class="h-4 w-48 rounded bg-bg-surface animate-pulse" />
-			<div v-for="n in 3" :key="n" class="h-8 rounded bg-bg-surface animate-pulse" />
+			<div class="h-4 w-48 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
+			<div v-for="n in 3" :key="n" class="h-8 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
 		</div>
 
 		<div v-else class="px-5 py-4 space-y-4">

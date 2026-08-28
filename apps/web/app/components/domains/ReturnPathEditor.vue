@@ -192,7 +192,7 @@ async function save() {
 					:disabled="isSaving"
 					@click="save"
 				>
-					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					{{ isSaving ? t('common.saving') : t('common.save') }}
 				</UiButton>
 				<UiButton

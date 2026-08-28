@@ -196,7 +196,7 @@ const visible = computed(
 		<template v-if="hasGist">
 			<div v-if="summaryPending" class="flex items-center gap-2 px-3 py-2" aria-hidden="true">
 				<Icon name="lucide:sparkles" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
-				<div class="h-3 flex-1 rounded bg-bg-surface animate-pulse" />
+				<div class="h-3 flex-1 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
 			</div>
 			<div v-else class="flex items-center gap-2 px-3 py-2">
 				<Icon name="lucide:sparkles" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
@@ -262,7 +262,7 @@ const visible = computed(
 					<Icon
 						:name="suggestBusy ? 'lucide:loader-2' : 'lucide:wand-2'"
 						class="w-3.5 h-3.5"
-						:class="{ 'animate-spin': suggestBusy }"
+						:class="{ 'animate-spin motion-reduce:animate-none': suggestBusy }"
 					/>
 				</template>
 				{{ t('components.postbox.postboxAiStrip.draftReply') }}
@@ -282,7 +282,7 @@ const visible = computed(
 
 			<div aria-live="polite" :aria-busy="askBusy">
 				<p v-if="askBusy" class="flex items-center gap-1.5 text-xs text-text-tertiary">
-					<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+					<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
 					{{ t('components.postbox.postboxAiStrip.thinking') }}
 				</p>
 				<p v-else-if="askErrored" class="text-xs text-text-tertiary">

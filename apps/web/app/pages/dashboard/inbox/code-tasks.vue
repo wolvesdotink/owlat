@@ -169,7 +169,7 @@ const handleCreate = async () => {
 						<Icon
 							v-if="createModal.isLoading.value"
 							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin"
+							class="w-4 h-4 animate-spin motion-reduce:animate-none"
 						/>
 						<Icon v-else name="lucide:plus" class="w-4 h-4" />
 						{{

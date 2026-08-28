@@ -48,7 +48,7 @@ function formatPct(ratio: number): string {
 			<div v-if="isLoading" class="flex items-center justify-center py-6">
 				<Icon
 					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin text-text-tertiary"
+					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
 					:aria-label="t('components.dashboard.cards.accuracyTrend.loading')"
 				/>
 			</div>

@@ -40,7 +40,7 @@ const isRunning = computed(() => job.value?.status === 'running');
 			{{ t('components.postbox.postboxFilterRunControl.nothingToApply') }}
 		</span>
 		<template v-else-if="isRunning">
-			<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			<span class="text-text-tertiary">
 				{{
 					t('components.postbox.postboxFilterRunControl.running', {

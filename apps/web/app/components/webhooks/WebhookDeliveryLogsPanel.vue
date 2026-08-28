@@ -156,7 +156,7 @@ function formatJson(value: unknown) {
 				:disabled="isSendingTest"
 				@click="emit('sendTest')"
 			>
-				<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				<Icon v-else name="lucide:send" class="w-4 h-4" />
 				{{
 					isSendingTest
@@ -336,7 +336,7 @@ function formatJson(value: unknown) {
 					{{ t('components.webhooks.webhookDeliveryLogsPanel.emptyDescription') }}
 				</p>
 				<UiButton class="gap-2 mt-4" :disabled="isSendingTest" @click="emit('sendTest')">
-					<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					<Icon v-else name="lucide:send" class="w-4 h-4" />
 					{{
 						isSendingTest

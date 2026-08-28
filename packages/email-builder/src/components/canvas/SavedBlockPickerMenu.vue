@@ -87,7 +87,7 @@ onUnmounted(() => {
 			</div>
 
 			<div v-if="isLoading" class="flex items-center gap-2 p-4 text-[13px] text-text-tertiary">
-				<Loader2 :size="16" class="animate-spin" />
+				<Loader2 :size="16" class="animate-spin motion-reduce:animate-none" />
 				Loading saved blocks...
 			</div>
 

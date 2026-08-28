@@ -39,7 +39,7 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 			</div>
 		</div>
 		<div v-else class="h-full flex items-center justify-center">
-			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 		</div>
 	</div>
 </template>

@@ -496,7 +496,7 @@ const daysRemaining = computed(() => {
 					</p>
 
 					<UiButton class="gap-2" :disabled="isCancelling" @click="handleCancelDeletion">
-						<Icon v-if="isCancelling" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+						<Icon v-if="isCancelling" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 						<Icon v-else name="lucide:x-circle" class="w-4 h-4" />
 						{{
 							isCancelling
@@ -550,7 +550,7 @@ const daysRemaining = computed(() => {
 										<Icon
 											v-if="isExportingJson"
 											name="lucide:loader-2"
-											class="w-4 h-4 animate-spin"
+											class="w-4 h-4 animate-spin motion-reduce:animate-none"
 										/>
 										<Icon v-else name="lucide:download" class="w-4 h-4" />
 										{{
@@ -584,7 +584,7 @@ const daysRemaining = computed(() => {
 										<Icon
 											v-if="isExportingCsv"
 											name="lucide:loader-2"
-											class="w-4 h-4 animate-spin"
+											class="w-4 h-4 animate-spin motion-reduce:animate-none"
 										/>
 										<Icon v-else name="lucide:download" class="w-4 h-4" />
 										{{
@@ -754,7 +754,7 @@ const daysRemaining = computed(() => {
 					:disabled="isDeleting || deleteConfirmText !== 'DELETE'"
 					@click="handleDeleteAccount"
 				>
-					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					<Icon v-else name="lucide:trash-2" class="w-4 h-4" />
 					{{
 						isDeleting

@@ -974,7 +974,7 @@ const shownCapacityPlan = computed(() => {
 								:disabled="isSaving"
 								@click="handleSave"
 							>
-								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 								{{ t('dashboard.campaigns.detail.edit.actions.saveDraft') }}
 							</UiButton>
 
@@ -985,14 +985,14 @@ const shownCapacityPlan = computed(() => {
 								:disabled="isSaving || !scheduledDate || !scheduledTime"
 								@click="handleSchedule"
 							>
-								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 								<Icon v-else name="lucide:clock" class="w-4 h-4" />
 								{{ isScheduled ? t('dashboard.campaigns.detail.edit.actions.reschedule') : t('dashboard.campaigns.detail.edit.actions.schedule') }}
 							</UiButton>
 
 							<!-- Send Now button -->
 							<UiButton class="gap-2" :disabled="isSaving" @click="showSendConfirm = true">
-								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 								<Icon v-else name="lucide:send" class="w-4 h-4" />
 								{{ t('dashboard.campaigns.detail.edit.actions.sendNow') }}
 							</UiButton>

@@ -161,7 +161,7 @@ async function confirmDisable() {
 					{{ t('dashboard.preferences.vacation.turnOff') }}
 				</UiButton>
 				<UiButton type="button" :disabled="saving" @click="save">
-					<Icon v-if="saving" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin" />
+					<Icon v-if="saving" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none" />
 					{{ saving ? t('common.saving') : t('common.save') }}
 				</UiButton>
 			</div>

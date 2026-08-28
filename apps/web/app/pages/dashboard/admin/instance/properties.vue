@@ -629,7 +629,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 				v-if="isLoadingUsageCount"
 				class="mt-4 p-4 rounded-xl bg-bg-surface border border-border-subtle flex items-center gap-3"
 			>
-				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary" />
 				<span class="text-sm text-text-tertiary">
 					{{ t('dashboard.admin.instance.properties.deleteModal.checkingUsage') }}
 				</span>

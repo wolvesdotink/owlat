@@ -14,6 +14,6 @@ await navigateTo('/dashboard/postbox/migrate', { replace: true });
 
 <template>
 	<div class="p-6 flex justify-center">
-		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 	</div>
 </template>

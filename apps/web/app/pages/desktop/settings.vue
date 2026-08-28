@@ -27,6 +27,6 @@ await navigateTo(active.value ? '/dashboard/preferences/device' : '/desktop/welc
 
 <template>
 	<div class="flex min-h-screen items-center justify-center bg-bg-deep">
-		<Icon name="lucide:loader-2" class="size-5 animate-spin text-text-tertiary" />
+		<Icon name="lucide:loader-2" class="size-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 	</div>
 </template>

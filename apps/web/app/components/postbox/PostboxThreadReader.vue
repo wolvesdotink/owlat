@@ -1291,7 +1291,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 										"
 										class="w-4 h-4"
 										:class="{
-											'animate-spin':
+											'animate-spin motion-reduce:animate-none':
 												downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`,
 										}"
 									/>

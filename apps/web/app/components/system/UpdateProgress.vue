@@ -142,7 +142,7 @@ function colorForStatus(s: StepStatus): string {
 		case 'pending':
 			return 'text-text-disabled';
 		case 'running':
-			return 'text-brand animate-spin';
+			return 'text-brand animate-spin motion-reduce:animate-none';
 		case 'success':
 			return 'text-success';
 		case 'failed':

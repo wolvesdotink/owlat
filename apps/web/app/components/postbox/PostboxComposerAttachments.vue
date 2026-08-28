@@ -131,7 +131,7 @@ const { t } = useI18n();
 				>
 					<span
 						class="block h-full bg-accent transition-[width] duration-(--motion-moderate)"
-						:class="up.indeterminate ? 'w-full animate-pulse' : ''"
+						:class="up.indeterminate ? 'w-full animate-pulse motion-reduce:animate-none' : ''"
 						:style="up.indeterminate ? undefined : { width: Math.round(up.progress * 100) + '%' }"
 					/>
 				</span>
