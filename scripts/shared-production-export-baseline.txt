@@ -1,8 +1,6 @@
 # Existing public runtime exports without a production consumer. This is frozen
 # debt: new lines fail, and stale lines must be removed.
 export:packages/shared/src/arcTrust.ts:isTrustedForwarder
-export:packages/shared/src/bounceClassification.ts:HARD_BOUNCE_PATTERNS
-export:packages/shared/src/bounceClassification.ts:SOFT_BOUNCE_PATTERNS
 export:packages/shared/src/compatibility/registry.ts:blockCompatibilityRegistry
 export:packages/shared/src/compatibility/registry.ts:getAllEmailClients
 export:packages/shared/src/compatibility/registry.ts:getEmailClientInfo
