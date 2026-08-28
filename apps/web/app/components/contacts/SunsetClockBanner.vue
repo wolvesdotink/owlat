@@ -38,7 +38,7 @@ const { run: confirmSunsetClock, isLoading: isConfirming } = useBackendOperation
 
 const handleConfirmClock = async () => {
 	const confirmedAt = await confirmSunsetClock({});
-	if (confirmedAt === undefined) return;
+	if (!confirmedAt.ok) return;
 	showNotification(t('components.contacts.sunsetClockBanner.confirmedToast'));
 };
 </script>

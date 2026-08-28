@@ -1,6 +1,6 @@
 /**
- * Cached thread-summary layer (mail/ai.getOrGenerateThreadSummary +
- * mail/summaryCache.ts) with the LLM dispatch seam MOCKED (no real model call):
+ * Cached thread-summary layer (mail/ai/assist.getOrGenerateThreadSummary +
+ * mail/ai/summaryCache.ts) with the LLM dispatch seam MOCKED (no real model call):
  *
  *   - a warm cache whose messageCount matches the live thread is served WITHOUT
  *     a dispatch call
@@ -189,7 +189,7 @@ describe('mail.ai.getOrGenerateThreadSummary', () => {
 			});
 		});
 
-		const res = await t.action(api.mail.ai.getOrGenerateThreadSummary, {
+		const res = await t.action(api.mail.ai.assist.getOrGenerateThreadSummary, {
 			messageId: latestMessageId,
 		});
 
@@ -214,7 +214,7 @@ describe('mail.ai.getOrGenerateThreadSummary', () => {
 			modelUsed: 'test-model',
 		});
 
-		const res = await t.action(api.mail.ai.getOrGenerateThreadSummary, {
+		const res = await t.action(api.mail.ai.assist.getOrGenerateThreadSummary, {
 			messageId: latestMessageId,
 		});
 
@@ -249,7 +249,7 @@ describe('mail.ai.getOrGenerateThreadSummary', () => {
 			modelUsed: 'test-model',
 		});
 
-		const res = await t.action(api.mail.ai.getOrGenerateThreadSummary, {
+		const res = await t.action(api.mail.ai.assist.getOrGenerateThreadSummary, {
 			messageId: latestMessageId,
 		});
 
@@ -266,7 +266,7 @@ describe('mail.ai.getOrGenerateThreadSummary', () => {
 
 		runLlmTextMock.mockRejectedValue(new Error('llm boom'));
 
-		const res = await t.action(api.mail.ai.getOrGenerateThreadSummary, {
+		const res = await t.action(api.mail.ai.assist.getOrGenerateThreadSummary, {
 			messageId: latestMessageId,
 		});
 
@@ -285,7 +285,7 @@ describe('mail.summaryCache.getThreadSummary', () => {
 
 		// No cache yet → null.
 		expect(
-			await t.query(api.mail.summaryCache.getThreadSummary, { messageId: latestMessageId })
+			await t.query(api.mail.ai.summaryCache.getThreadSummary, { messageId: latestMessageId })
 		).toBeNull();
 
 		// Fresh cache → served.
@@ -295,7 +295,7 @@ describe('mail.summaryCache.getThreadSummary', () => {
 			});
 		});
 		expect(
-			await t.query(api.mail.summaryCache.getThreadSummary, { messageId: latestMessageId })
+			await t.query(api.mail.ai.summaryCache.getThreadSummary, { messageId: latestMessageId })
 		).toEqual({ summary: 'fresh', messageCount: 5, generatedAt: 42 });
 
 		// Stale cache (count mismatch) → null.
@@ -305,7 +305,7 @@ describe('mail.summaryCache.getThreadSummary', () => {
 			});
 		});
 		expect(
-			await t.query(api.mail.summaryCache.getThreadSummary, { messageId: latestMessageId })
+			await t.query(api.mail.ai.summaryCache.getThreadSummary, { messageId: latestMessageId })
 		).toBeNull();
 	});
 });

@@ -47,7 +47,7 @@ const handleRefresh = async () => {
 	isRefreshing.value = true;
 	const result = await regenerate({ id: props.id });
 	isRefreshing.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	emit('refreshed');
 };
 
@@ -55,7 +55,7 @@ const handleTogglePin = async () => {
 	isTogglingPin.value = true;
 	const result = await togglePin({ id: props.id });
 	isTogglingPin.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	emit('toggled');
 };
 
@@ -63,7 +63,7 @@ const handleRemove = async () => {
 	isRemoving.value = true;
 	const result = await remove({ id: props.id });
 	isRemoving.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showConfirmRemove.value = false;
 	emit('removed');
 };

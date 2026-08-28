@@ -37,7 +37,7 @@ async function applyLabel(labelId: Id<'mailLabels'>) {
 async function snoozeSelected(until: number) {
 	for (const id of bulk.ids.value) {
 		const result = await snoozeMutation.run({ messageId: id, until });
-		if (result === undefined) return;
+		if (!result.ok) return;
 	}
 	bulk.clear();
 }
@@ -49,7 +49,7 @@ const unsnoozeMutation = useBackendOperation(api.mail.snooze.unsnooze, {
 async function unsnoozeSelected() {
 	for (const id of bulk.ids.value) {
 		const result = await unsnoozeMutation.run({ messageId: id });
-		if (result === undefined) return;
+		if (!result.ok) return;
 	}
 	bulk.clear();
 }

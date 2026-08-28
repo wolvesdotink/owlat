@@ -3,7 +3,7 @@ import type { MutationCtx } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { requireSelf } from '../lib/sessionOrganization';
 import { throwInvalidState } from '../_utils/errors';
-import { getActiveMailboxForUser } from '../mail/mailbox';
+import { getActiveMailboxForUser } from '../mail/mailbox/identity';
 
 /**
  * Per-user first-login onboarding state.

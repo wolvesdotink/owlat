@@ -86,7 +86,7 @@ async function handleInvite() {
 			inviteeEmail: email,
 		});
 		// `run` already surfaced the failure inline; stop before issuing the invite.
-		if (reserved === undefined) return;
+		if (!reserved.ok) return;
 		try {
 			await invite(email, 'editor');
 		} catch (inviteErr) {
@@ -95,7 +95,7 @@ async function handleInvite() {
 			// a prior, still-live invitation, so deleting it would strand that invite's
 			// promised inbox. And scope the sweep to this mailbox so a duplicate-invite
 			// throw here can't destroy the invitee's grants on other team inboxes.
-			if (!reserved.alreadyReserved) {
+			if (!reserved.result.alreadyReserved) {
 				await cancelInboxMembership.run({ inviteeEmail: email, mailboxId: props.mailboxId });
 			}
 			throw inviteErr;
@@ -115,7 +115,7 @@ async function handleInvite() {
 async function handleAdd() {
 	if (!memberToAdd.value) return;
 	const res = await addMember.run({ mailboxId: props.mailboxId, authUserId: memberToAdd.value });
-	if (res === undefined) return;
+	if (!res.ok) return;
 	memberToAdd.value = '';
 }
 
@@ -129,8 +129,7 @@ const transferTarget = ref<{ authUserId: string; label: string } | null>(null);
 function askTransfer(member: { authUserId: string; name: string | null; email: string | null }) {
 	transferTarget.value = {
 		authUserId: member.authUserId,
-		label:
-			member.name || member.email || t('components.postbox.teamInboxMembersPanel.thisMember'),
+		label: member.name || member.email || t('components.postbox.teamInboxMembersPanel.thisMember'),
 	};
 }
 async function confirmTransfer() {
@@ -140,7 +139,7 @@ async function confirmTransfer() {
 		mailboxId: props.mailboxId,
 		authUserId: target.authUserId,
 	});
-	if (res === undefined) return;
+	if (!res.ok) return;
 	transferTarget.value = null;
 }
 

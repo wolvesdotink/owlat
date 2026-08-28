@@ -3,7 +3,7 @@
  *
  * These tests cover the abuse guards added around the LLM call: the input caps
  * (batch size + total character volume) that reject an oversized request BEFORE
- * any dispatch, and the shared AI gate (`mail.aiGate.assertAiAllowed`, the `ai`
+ * any dispatch, and the shared AI gate (`mail.ai.gate.assertAiAllowed`, the `ai`
  * feature flag) that must run before a translation spends the LLM budget.
  *
  * Answer quality is not exercised — the LLM is never reached in these paths.

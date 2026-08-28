@@ -123,12 +123,12 @@ beforeEach(() => {
 	fetchMock
 		.mockReset()
 		.mockImplementation((url: string) => (url === PROBE_URL ? probeBehavior() : applyBehavior()));
-	updateSettings.mockReset().mockResolvedValue({});
+	updateSettings.mockReset().mockResolvedValue({ ok: true, result: {} });
 	// Mirror the live Convex subscription: a committed toggle updates the
 	// stored map AND the reactive resolved-flags query.
 	setFeatureFlag.mockReset().mockImplementation(async (args: { flag: string; value: boolean }) => {
 		liveFlags.value = { ...liveFlags.value, [args.flag]: args.value };
-		return { flags: { ...liveFlags.value }, cascaded: [] };
+		return { ok: true, result: { flags: { ...liveFlags.value }, cascaded: [] } };
 	});
 	setFeaturePack.mockReset();
 });
@@ -221,7 +221,7 @@ describe('Features page — profile diff detection per flag', () => {
 	it('detects the diff for pack toggles too', async () => {
 		setFeaturePack.mockImplementation(async () => {
 			liveFlags.value = { ...liveFlags.value, inbox: true, chat: true, postbox: true };
-			return { flags: { ...liveFlags.value }, cascaded: [] };
+			return { ok: true, result: { flags: { ...liveFlags.value }, cascaded: [] } };
 		});
 		const wrapper = mountFeatures();
 		await wrapper.find('button[aria-label="Toggle Email Client"]').trigger('click');

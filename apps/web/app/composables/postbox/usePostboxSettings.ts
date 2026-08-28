@@ -129,13 +129,13 @@ export function usePostboxSettings() {
 	// failure: the update mutation returns a row id, while a failed run()
 	// resolves to undefined (the error is already toasted).
 	async function setViewMode(mode: PostboxViewMode): Promise<boolean> {
-		return (await updateOp.run({ viewMode: mode })) !== undefined;
+		return (await updateOp.run({ viewMode: mode })).ok;
 	}
 
 	// Same success contract as setViewMode: callers with an optimistic override
 	// snap back when the save failed (already toasted by useBackendOperation).
 	async function setInboxMode(mode: PostboxInboxMode): Promise<boolean> {
-		return (await updateOp.run({ inboxMode: mode })) !== undefined;
+		return (await updateOp.run({ inboxMode: mode })).ok;
 	}
 
 	async function setSendSound(enabled: boolean) {

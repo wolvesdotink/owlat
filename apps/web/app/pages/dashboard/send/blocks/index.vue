@@ -84,7 +84,7 @@ const { showToast: showNotification } = useToast();
 // Handle duplicate
 const handleDuplicate = async (blockId: Id<'emailBlocks'>) => {
 	const result = await duplicateBlock({ blockId });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showNotification(t('dashboard.send.blocks.index.duplicatedToast'));
 };
 
@@ -109,7 +109,7 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	try {
 		const result = await deleteBlock({ blockId: blockToDelete.value.id });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('dashboard.send.blocks.index.deletedToast'));
 		closeDeleteModal();
 	} finally {
@@ -159,11 +159,11 @@ const handleCreate = async () => {
 			description: createForm.description.trim() || undefined,
 			content: JSON.stringify({ blocks: [] }), // Empty multi-block content
 		});
-		if (blockId === undefined) return;
+		if (!blockId.ok) return;
 
 		closeCreateModal();
 		// Navigate directly to the editor to add content
-		router.push(`/dashboard/send/blocks/${blockId}/edit`);
+		router.push(`/dashboard/send/blocks/${blockId.result}/edit`);
 	} finally {
 		isCreating.value = false;
 	}
@@ -225,7 +225,7 @@ const handleEdit = async () => {
 			name: editForm.name.trim(),
 			description: editForm.description.trim() || undefined,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 
 		showNotification(t('dashboard.send.blocks.index.updatedToast'));
 		closeEditModal();

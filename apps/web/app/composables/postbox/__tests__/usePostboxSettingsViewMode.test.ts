@@ -21,7 +21,7 @@ vi.mock('@owlat/api', () => {
 });
 
 const settingsRow = ref<Record<string, unknown> | null>(null);
-const runSpy = vi.fn(async (): Promise<unknown> => undefined);
+const runSpy = vi.fn(async (): Promise<unknown> => ({ ok: false }));
 
 beforeEach(() => {
 	settingsRow.value = null;
@@ -50,14 +50,14 @@ describe('usePostboxSettings viewMode', () => {
 	});
 
 	it('setViewMode persists through the update mutation and reports success', async () => {
-		runSpy.mockResolvedValueOnce('settingsRowId');
+		runSpy.mockResolvedValueOnce({ ok: true, result: 'settingsRowId' });
 		const { setViewMode } = usePostboxSettings();
 		await expect(setViewMode('categories')).resolves.toBe(true);
 		expect(runSpy).toHaveBeenCalledWith({ viewMode: 'categories' });
 	});
 
 	it('setViewMode reports failure when the save does not land', async () => {
-		// useBackendOperation.run resolves to undefined on error (after toasting).
+		// useBackendOperation.run resolves `ok: false` on error (after toasting).
 		const { setViewMode } = usePostboxSettings();
 		await expect(setViewMode('categories')).resolves.toBe(false);
 	});

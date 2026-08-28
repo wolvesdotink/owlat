@@ -15,10 +15,7 @@
  * to the online-only UX with no branching of its own.
  */
 
-import {
-	getPostboxOfflineStore,
-	type OfflineBodyEntry,
-} from '~/utils/postboxOfflineStore';
+import { getPostboxOfflineStore, type OfflineBodyEntry } from '~/utils/postboxOfflineStore';
 
 const STORAGE_KEY = 'owlat:postbox:offline-cache-enabled';
 
@@ -88,9 +85,7 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | und
 
 	// ── Connectivity ─────────────────────────────────────────────────────
 	if (!onlineRef) {
-		onlineRef = ref(
-			!IS_CLIENT || typeof navigator === 'undefined' ? true : navigator.onLine
-		);
+		onlineRef = ref(!IS_CLIENT || typeof navigator === 'undefined' ? true : navigator.onLine);
 		if (IS_CLIENT) {
 			window.addEventListener('online', () => {
 				if (onlineRef) onlineRef.value = true;
@@ -134,6 +129,12 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | und
 		return store.loadThreads<T>(ns, folderRole);
 	}
 
+	async function loadThreadsMeta(folderRole: string) {
+		const ns = namespace.value;
+		if (!enabled.value || !store || !ns) return null;
+		return store.loadThreadsMeta(ns, folderRole);
+	}
+
 	async function persistBody(messageId: string, srcdoc: string): Promise<void> {
 		const ns = namespace.value;
 		if (!canPersist.value || !store || !ns) return;
@@ -164,6 +165,7 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | und
 		canPersist,
 		persistThreads,
 		loadThreads,
+		loadThreadsMeta,
 		persistBody,
 		loadBody,
 		clearCache,

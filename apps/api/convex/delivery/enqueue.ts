@@ -1,47 +1,35 @@
+/**
+ * Campaign send enqueue — the bulk producer.
+ *
+ * Per ADR-0006, the workpool `onComplete` callback is owned by the Send
+ * completion (module) at `delivery/sendCompletion.ts` — the enqueue below
+ * wires it directly via `internal.delivery.sendCompletion.completeSend`. The
+ * legacy `onEmailComplete` that previously lived in this file (per-kind
+ * branching, inline `transactionalSends.createInternal` on success, inline
+ * contact-activity insert, attachment-cleanup loop, provider health tracking)
+ * is gone; every concern moved to the lifecycle effect list or to the Send
+ * completion module.
+ *
+ * The two NON-campaign producers — automation email steps and agent
+ * approved-replies — live in the sibling **Non-campaign send intake (module)**
+ * at `delivery/nonCampaignIntake.ts`. They are an intake, not a bulk enqueue:
+ * they run the shared pre-row gate sequence and return a discriminated
+ * outcome to a single caller, where a campaign page is fanned out from an
+ * already-gated orchestrator. The member-only TEST PREVIEW producer and its
+ * retention callback live in `delivery/enqueueTestSend.ts` — a preview has no
+ * contact, so it has none of the contact-shaped concerns (suppression,
+ * engagement score, experiment assignment, seed probe) and carries a retention
+ * concern of its own.
+ */
+
 import { type Infer, v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { campaignEmailPool, transactionalEmailPool } from './workpool';
-import { isSuppressed, type SuppressionScope } from '../lib/suppression';
-import { selectedSendProviderReady } from '../lib/sendProviders/capability';
+import { campaignEmailPool } from './workpool';
 import { recordSendAssignments } from './sendAssignments';
 import { normalizeEngagementScore } from './workerEnvelope';
 import { enqueueSeedShadowCopies, type CampaignEnvelopeInput } from './seedShadowCopy';
 import { logError } from '../lib/runtimeLog';
-
-/**
- * Error thrown by `enqueueNonCampaignSend` when the recipient is on the
- * suppression list (`blockedEmails`). Callers (the automation email step and
- * the agent approved-reply action) catch this and translate it into a
- * non-sent terminal outcome instead of producing a Send row. Exported as a
- * stable string so call sites can recognize the suppression case specifically
- * rather than treating it as a transient failure.
- */
-export const RECIPIENT_BLOCKED_ERROR = 'recipient_blocked';
-
-/**
- * Error thrown by `enqueueNonCampaignSend` when no delivery provider is
- * configured for the instance. Automation steps and agent replies dispatch
- * through the composed provider abstraction (transactional pool → transport); with
- * no provider there is nothing to send through, so we throw before writing a
- * `transactionalSends` row that could never deliver. Callers translate this
- * into a failed (not retried-forever) terminal outcome.
- */
-export const NO_DELIVERY_PROVIDER_ERROR = 'no_delivery_provider';
-
-// Per ADR-0006, the workpool `onComplete` callback is owned by the Send
-// completion (module) at `delivery/sendCompletion.ts` — each enqueue below
-// wires it directly via `internal.delivery.sendCompletion.completeSend`. The
-// legacy `onEmailComplete` that previously lived in this file (per-kind
-// branching, inline `transactionalSends.createInternal` on success, inline
-// contact-activity insert, attachment-cleanup loop, provider health tracking)
-// is gone; every concern moved to the lifecycle effect list or to the Send
-// completion module.
-//
-// The member-only TEST PREVIEW producer and its retention callback live in the
-// sibling `delivery/enqueueTestSend.ts` — a preview has no contact, so it has
-// none of this module's contact-shaped concerns (suppression, engagement score,
-// experiment assignment, seed probe) and carries a retention concern of its own.
 
 /**
  * One element of `enqueueCampaignEmails.emails` — the per-recipient slice of a
@@ -231,217 +219,5 @@ export const enqueueCampaignEmails = internalMutation({
 		}
 
 		return { enqueued: args.emails.length };
-	},
-});
-
-/** The kinds of mail `enqueueNonCampaignSend` writes. */
-const nonCampaignSendKindValidator = v.union(v.literal('automation'), v.literal('agent_reply'));
-
-/** @see nonCampaignSendKindValidator */
-export type NonCampaignSendKind = Infer<typeof nonCampaignSendKindValidator>;
-
-/**
- * Which {@link SuppressionScope} each non-campaign kind is gated at.
- *
- * TOTAL BY CONSTRUCTION, and deliberately so. The `satisfies
- * Record<NonCampaignSendKind, SuppressionScope>` makes adding a third literal
- * to {@link nonCampaignSendKindValidator} a COMPILE ERROR until the new kind
- * names its scope — where a ternary with a permissive else-branch would have
- * silently handed it the transactional reading and stopped marketing-hygiene
- * rows blocking it. `lib/suppression.ts` states the same invariant for the
- * default: forgetting to think about scope must yield the blocking behaviour,
- * never the permissive one.
- */
-const SUPPRESSION_SCOPE_BY_KIND = {
-	automation: 'marketing',
-	agent_reply: 'transactional',
-} as const satisfies Record<NonCampaignSendKind, SuppressionScope>;
-
-/**
- * Shared writer for the three NON-campaign, non-template-API Send sources:
- * automation email steps and agent approved-replies (and, in principle, any
- * future 1:1 producer). Inserts a `transactionalSends` row in `queued` with the
- * caller's provenance, then enqueues `sendSingleEmail` on the transactional pool
- * with the same `onComplete` + `sendRef` wiring as `transactional/dispatch.ts`,
- * so the worker outcome flows through the Send lifecycle — and a hard bounce
- * inserts a blocklist row and increments the `sendingReputation` denominator,
- * which the old direct-dispatch path silently skipped.
- *
- * This is the single suppression chokepoint for both non-campaign producers:
- * before inserting the Send row it checks `blockedEmails` (matching the
- * transactional intake at `transactional/dispatch.ts`) and THROWS
- * `recipient_blocked` for a hard-bounced / complained / manually-blocked
- * address. No row is written, so a suppressed recipient never receives
- * automation or agent mail (Gmail/Yahoo 2024 sender requirements + CAN-SPAM
- * §316.5 honor-suppression). Callers catch this and finish in a non-sent
- * terminal state.
- *
- * The subject + html are PRE-RENDERED by the caller (automation personalizes
- * against the contact; agent escapes its draft). They are passed straight to
- * the transactional envelope with NO `dataVariables`, so the transactional
- * composer's re-personalization is a no-op on already-substituted text.
- */
-export const enqueueNonCampaignSend = internalMutation({
-	args: {
-		kind: nonCampaignSendKindValidator,
-		email: v.string(),
-		contactId: v.optional(v.id('contacts')),
-		automationId: v.optional(v.id('automations')),
-		inboundMessageId: v.optional(v.id('inboundMessages')),
-		transactionalEmailId: v.optional(v.id('transactionalEmails')),
-		subject: v.string(),
-		html: v.string(),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		headers: v.optional(v.record(v.string(), v.string())),
-		providerType: v.optional(v.string()),
-		ipPool: v.optional(v.string()),
-		// Marketing List-Unsubscribe wiring (automation steps only): when set, the
-		// worker builds the RFC 8058 one-click header from `contactId` +
-		// `convexSiteUrl`. Agent 1:1 replies leave it unset (no List-Unsubscribe
-		// on 1:1 mail) but DO carry the RFC 3834 Auto-Submitted anti-loop header
-		// stamped by the transactional composer (see below).
-		listUnsubscribe: v.optional(v.boolean()),
-		convexSiteUrl: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		// Delivery-provider gate, matched to the worker's provider selection: an
-		// explicit `providerType` is authoritative, and EMAIL_PROVIDER is consulted
-		// only when it is absent. THROW before the row insert (fail-closed) rather
-		// than queue a doomed `transactionalSends` row.
-		// External-mailbox 1:1 replies use the user's own SMTP via a different path
-		// and never reach this producer.
-		if (!(await selectedSendProviderReady(ctx, args.providerType))) {
-			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
-		}
-
-		// Suppression gate. A recipient on the blocklist (hard bounce / spam
-		// complaint / manual block) must never be sent automation or agent mail.
-		// The shared `isSuppressed` owns the normalization + `by_email` point
-		// read; this path's POLICY is to THROW before the row insert, so no
-		// `transactionalSends` row is produced for a suppressed address.
-		//
-		// THE SCOPE IS PER-KIND, because this producer writes two very different
-		// kinds of mail. An `automation` step is marketing — it takes the strict
-		// scope, so a marketing-hygiene row (`unengaged`) blocks it like every
-		// other reason. An `agent_reply` is a 1:1 answer to a human who wrote in;
-		// it carries no List-Unsubscribe, is classified as the `transactional`
-		// stream for routing a few lines below, and must not be thrown away
-		// because the same person stopped opening campaigns — that inbound is the
-		// clearest possible evidence they are still there. Bounce, complaint and
-		// manual rows still block it: `isMarketingOnlyBlockReason` is false for
-		// those, so the transactional scope keeps blocking on mailbox evidence.
-		//
-		// The mapping is the TOTAL table above, not a ternary: a future kind has
-		// to name its scope to compile.
-		const suppressionScope = SUPPRESSION_SCOPE_BY_KIND[args.kind];
-		if (await isSuppressed(ctx, args.email, { scope: suppressionScope })) {
-			throw new Error(RECIPIENT_BLOCKED_ERROR);
-		}
-
-		const sendId = await ctx.db.insert('transactionalSends', {
-			kind: args.kind,
-			email: args.email,
-			status: 'queued',
-			queuedAt: Date.now(),
-			subject: args.subject,
-			...(args.contactId ? { contactId: args.contactId } : {}),
-			...(args.automationId ? { automationId: args.automationId } : {}),
-			...(args.inboundMessageId ? { inboundMessageId: args.inboundMessageId } : {}),
-			...(args.transactionalEmailId ? { transactionalEmailId: args.transactionalEmailId } : {}),
-			...(args.providerType ? { providerType: args.providerType } : {}),
-		});
-
-		// Recipient engagement score for the MTA's enqueue-time priority bands.
-		// A single indexed point read HERE, in the enqueue transaction, is the
-		// cheap place to pay for it — the dispatch action must never read a
-		// contact per send. A send with no contact record (test previews, agent
-		// replies to an unknown address) does no read at all and carries no
-		// score, which the MTA reads as "unknown" rather than "cold".
-		//
-		// Normalised HERE, at the DB read, so a degenerate stored score never
-		// enters the durable envelope (see the campaign producer above).
-		const engagementScore = args.contactId
-			? normalizeEngagementScore((await ctx.db.get(args.contactId))?.engagementScore)
-			: undefined;
-
-		// Gmail FBL — singleton org id anchors the stable `txn`-stream
-		// Feedback-ID SenderId for automation + agent-reply sends.
-		const organizationId = await ctx.runQuery(
-			internal.campaigns.sendQueries.getSingletonOrganizationId,
-			{}
-		);
-
-		// Experiment record (plan D7), same transaction, before dispatch. An
-		// automation step is the `automation` stream; an agent 1:1 reply is
-		// `transactional`. Both are `transactionalSends` rows, and the stream
-		// is derived ONCE so the new cell axis and the envelope's shipped
-		// `messageType` below cannot drift apart.
-		const stream =
-			args.kind === 'automation' ? ('automation' as const) : ('transactional' as const);
-		await recordSendAssignments(ctx, {
-			organizationId,
-			stream,
-			sendKind: 'transactional',
-			routing: { messageType: stream, from: args.from },
-			// No campaign salt: an automation step or a 1:1 reply is its own
-			// single-recipient experiment. The split then salts with the SEND id
-			// (`MixRecipientIdentity.fallbackKey`), so the contact's arm is
-			// re-drawn on every message instead of being pinned for the life of
-			// the mix version — the fixed-cohort bias D7 exists to prevent, and
-			// `automation` is a first-class high-volume stream, not an edge.
-			recipients: [
-				{
-					sendId,
-					email: args.email,
-					...(args.contactId !== undefined ? { contactId: args.contactId } : {}),
-				},
-			],
-		});
-
-		await transactionalEmailPool.enqueueAction(
-			ctx,
-			internal.delivery.worker.sendSingleEmail,
-			{
-				envelopeInput: {
-					kind: 'transactional' as const,
-					deliveryDomain: 'production' as const,
-					messageType: stream,
-					emailPurpose:
-						args.kind === 'automation' ? ('marketing' as const) : ('transactional' as const),
-					to: args.email,
-					from: args.from,
-					replyTo: args.replyTo,
-					providerType: args.providerType,
-					ipPool: args.ipPool,
-					sendId,
-					template: {
-						subject: args.subject,
-						htmlContent: args.html,
-					},
-					// RFC 3834: an agent 1:1 reply IS an automatic reply to a
-					// specific inbound message, so it stamps
-					// `Auto-Submitted: auto-replied`. Automation steps are not a
-					// reply to a message → they keep the composer's default
-					// `auto-generated`. Both values are `!= no`, so isAutomatedMail
-					// classifies either as automated and the message stays loop-safe.
-					...(args.kind === 'agent_reply' ? { autoSubmittedType: 'auto-replied' as const } : {}),
-					...(organizationId ? { organizationId } : {}),
-					...(args.headers ? { headers: args.headers } : {}),
-					...(args.contactId ? { contactId: args.contactId } : {}),
-					...(args.listUnsubscribe ? { listUnsubscribe: args.listUnsubscribe } : {}),
-					...(args.convexSiteUrl ? { convexSiteUrl: args.convexSiteUrl } : {}),
-					...(engagementScore !== undefined ? { engagementScore } : {}),
-				},
-			},
-			{
-				onComplete: internal.delivery.sendCompletion.completeSend,
-				context: {
-					sendRef: { kind: 'transactional' as const, id: sendId },
-				},
-			}
-		);
-
-		return { sendId };
 	},
 });

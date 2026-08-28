@@ -56,7 +56,7 @@ export function useDraftReviseConvex(opts: DraftReviseConvexOptions) {
 		},
 		runRevise: async (streamId: string, input: ReviseInput): Promise<ReviseResult> => {
 			const mailboxId = opts.mailboxId?.();
-			const res = await requireConvex().action(api.mail.reviseDraft.reviseDraft, {
+			const res = await requireConvex().action(api.mail.ai.reviseDraft.reviseDraft, {
 				streamId: streamId as Id<'aiDraftStreams'>,
 				instruction: input.instruction,
 				currentDraft: input.currentDraft,

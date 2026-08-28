@@ -153,7 +153,12 @@
 		"upload": "Upload",
 		"viewAll": "View all",
 		"yes": "Yes",
-		"yesterday": "Yesterday"
+		"yesterday": "Yesterday",
+		"roles": {
+			"member": "member",
+			"admin": "admin",
+			"owner": "owner"
+		}
 	},
 	"components": {
 		"agent": {
@@ -3652,7 +3657,9 @@
 				"failedSendsBanner": "{count} queued message couldn't be sent — kept on this device. | {count} queued messages couldn't be sent — kept on this device.",
 				"offlineBanner": "Offline — reading from this device; sends will go out when you're back online.",
 				"offlineBannerQueued": "Offline — reading from this device; sends will go out when you're back online ({count} queued).",
-				"retryQueuedSends": "Retry"
+				"retryQueuedSends": "Retry",
+				"offlineBannerCached": "Offline — showing mail cached from this device at {time}. Actions are paused.",
+				"offlineBannerCachedQueued": "Offline — showing mail cached from this device at {time}; {count} send will go out when you're back online. | Offline — showing mail cached from this device at {time}; {count} sends will go out when you're back online."
 			},
 			"postboxOfflineSettings": {
 				"clear": {
@@ -3896,6 +3903,8 @@
 				"emptyLabelTitle": "No messages with this label",
 				"listLabel": "Messages",
 				"loadMore": "Load more",
+				"capNote": "Showing the newest messages in this view.",
+				"loadingMore": "Loading more…",
 				"markReadOperation": "Mark read",
 				"moveOperation": "Move message",
 				"movedUndo": "Moved",
@@ -3903,7 +3912,10 @@
 				"snoozeOperation": "Snooze",
 				"starOperation": "Star",
 				"trashOperation": "Move to trash",
-				"trashedUndo": "Moved to Trash"
+				"trashedUndo": "Moved to Trash",
+				"emptyFilteredTitle": "You're all caught up",
+				"emptyFilteredMoreHint": "This filter covers the messages loaded so far — load more to keep looking.",
+				"showAllMessages": "Show all messages"
 			},
 			"postboxThreadReader": {
 				"blockSender": "Block sender",
@@ -4047,6 +4059,14 @@
 				"transferTitle": "Transfer inbox ownership?",
 				"undoReservationOperation": "Undo team-inbox reservation",
 				"you": "(you)"
+			},
+			"postboxTriageFilterChips": {
+				"groupLabel": "Filter messages",
+				"all": "All",
+				"unread": "Unread",
+				"starred": "Starred",
+				"attachments": "Attachments",
+				"partialCountHint": "Counts cover the messages loaded so far; scroll to load more."
 			}
 		},
 		"preferences": {
@@ -7843,7 +7863,11 @@
 					"unassigned": "Unassigned"
 				},
 				"unsnoozeThreadOperation": "Unsnooze thread",
-				"updateThreadStatusOperation": "Update thread status"
+				"updateThreadStatusOperation": "Update thread status",
+				"accessTitle": "Team Inbox is limited to admins",
+				"accessBody": "Your role ({role}) doesn't include the shared customer inbox. Your own mail lives in Postbox.",
+				"openMyPostbox": "Open my Postbox",
+				"accessHint": "Need access? Ask an organization admin to change your role in Settings → Team."
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Block sender",
@@ -8037,6 +8061,7 @@
 			},
 			"label": {
 				"detail": {
+					"capNote": "This label has more messages than this view lists — showing the newest {count}. | This label has more messages than this view lists — showing the newest {count}.",
 					"heading": "Label view",
 					"loadError": "Couldn't load messages for this label. Reload to try again.",
 					"pageTitle": "Mail — Owlat",
@@ -8131,9 +8156,15 @@
 				"backToResults": "Results",
 				"noResultsHint": "Try fewer or broader terms, or operators like from:, has:attachment, is:unread.",
 				"noResultsTitle": "No results for this search",
+				"keepSearching": "Keep searching",
+				"pageEmptyWithMore": "No matches on this page. There are more messages to search.",
 				"operatorHint": "Try operators like {from}, {hasAttachment}, {before}, {label}, {isUnread}.",
 				"pageTitle": "Search — Owlat",
-				"selectResult": "Select a result"
+				"selectResult": "Select a result",
+				"resultCount": "{count} result | {count} results",
+				"resultCountMore": "{count}+ result — more available below | {count}+ results — more available below",
+				"removeChip": "Remove {chip}",
+				"clearAllFilters": "Clear all filters"
 			}
 		},
 		"preferences": {

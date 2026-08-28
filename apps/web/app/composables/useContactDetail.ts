@@ -126,7 +126,7 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 			contactId: contactId.value,
 		});
 		isResendingDoi.value = false;
-		return result;
+		return result.ok ? result.result : undefined;
 	};
 
 	const editForm = ref({
@@ -210,7 +210,7 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 			timezone: editForm.value.timezone || undefined,
 			language: editForm.value.language || undefined,
 		});
-		if (result === undefined) {
+		if (!result.ok) {
 			isSaving.value = false;
 			return;
 		}
@@ -232,7 +232,7 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 					value: op.value,
 				})),
 			});
-			if (setResult === undefined) {
+			if (!setResult.ok) {
 				isSaving.value = false;
 				return;
 			}
@@ -243,7 +243,7 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 				contactId: contactId.value,
 				propertyId: propertyId as Id<'contactProperties'>,
 			});
-			if (removeResult === undefined) {
+			if (!removeResult.ok) {
 				isSaving.value = false;
 				return;
 			}
@@ -257,7 +257,7 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 		isDeleting.value = true;
 
 		const result = await deleteContact({ contactId: contactId.value });
-		if (result === undefined) {
+		if (!result.ok) {
 			isDeleting.value = false;
 			showDeleteConfirm.value = false;
 			return;

@@ -283,13 +283,16 @@ describe('useReviewBulkActions', () => {
 	it('approve: hides optimistically, restores per id, arms ONE undo toast with the summary', async () => {
 		const { actions, hidden, restored, clearSelection } = await harness(['a', 'b', 'c', 'd']);
 		runs[0]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', outcome: 'approved' },
-				{ inboundMessageId: 'b', outcome: 'approved' },
-				{ inboundMessageId: 'c', outcome: 'reply_in_progress', heldByName: 'Dana' },
-				{ inboundMessageId: 'd', outcome: 'not_found' },
-			],
-			undo: { sendAt: 123_456 },
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', outcome: 'approved' },
+					{ inboundMessageId: 'b', outcome: 'approved' },
+					{ inboundMessageId: 'c', outcome: 'reply_in_progress', heldByName: 'Dana' },
+					{ inboundMessageId: 'd', outcome: 'not_found' },
+				],
+				undo: { sendAt: 123_456 },
+			},
 		});
 
 		await actions.approveSelected();
@@ -311,19 +314,25 @@ describe('useReviewBulkActions', () => {
 	it('undo-all cancels the batch and restores only the rows that came back', async () => {
 		const { actions, restored } = await harness(['a', 'b']);
 		runs[0]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', outcome: 'approved' },
-				{ inboundMessageId: 'b', outcome: 'approved' },
-			],
-			undo: { sendAt: 999 },
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', outcome: 'approved' },
+					{ inboundMessageId: 'b', outcome: 'approved' },
+				],
+				undo: { sendAt: 999 },
+			},
 		});
 		await actions.approveSelected();
 
 		runs[2]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', cancelled: true, reason: 'cancelled' },
-				{ inboundMessageId: 'b', cancelled: false, reason: 'already_sent' },
-			],
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', cancelled: true, reason: 'cancelled' },
+					{ inboundMessageId: 'b', cancelled: false, reason: 'already_sent' },
+				],
+			},
 		});
 		await arm.mock.calls[0]![0].onUndo();
 
@@ -335,8 +344,11 @@ describe('useReviewBulkActions', () => {
 	it('approve without an open window falls back to a plain summary toast', async () => {
 		const { actions } = await harness(['a']);
 		runs[0]!.mockResolvedValue({
-			outcomes: [{ inboundMessageId: 'a', outcome: 'approved' }],
-			// no `undo` — humanApproveUndoDelayMs is 0
+			ok: true,
+			result: {
+				outcomes: [{ inboundMessageId: 'a', outcome: 'approved' }],
+				// no `undo` — humanApproveUndoDelayMs is 0
+			},
 		});
 		await actions.approveSelected();
 		expect(arm).not.toHaveBeenCalled();
@@ -348,10 +360,13 @@ describe('useReviewBulkActions', () => {
 	it('an all-lost-race batch keeps the rows hidden, arms no undo, and says so', async () => {
 		const { actions, hidden, restored, clearSelection } = await harness(['a', 'b']);
 		runs[0]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', outcome: 'not_found' },
-				{ inboundMessageId: 'b', outcome: 'not_found' },
-			],
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', outcome: 'not_found' },
+					{ inboundMessageId: 'b', outcome: 'not_found' },
+				],
+			},
 		});
 
 		await actions.approveSelected();
@@ -365,7 +380,7 @@ describe('useReviewBulkActions', () => {
 
 	it('a categorized failure restores every hidden row and keeps the selection', async () => {
 		const { actions, restored, clearSelection } = await harness(['a', 'b']);
-		runs[0]!.mockResolvedValue(undefined); // useBackendOperation already toasted
+		runs[0]!.mockResolvedValue({ ok: false }); // useBackendOperation already toasted
 		await actions.approveSelected();
 		expect(restored).toEqual(['a', 'b']);
 		expect(clearSelection).not.toHaveBeenCalled();
@@ -375,10 +390,13 @@ describe('useReviewBulkActions', () => {
 	it('reject: same batch shape, no undo, honest summary', async () => {
 		const { actions, hidden, clearSelection } = await harness(['a', 'b']);
 		runs[1]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', outcome: 'rejected' },
-				{ inboundMessageId: 'b', outcome: 'not_found' },
-			],
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', outcome: 'rejected' },
+					{ inboundMessageId: 'b', outcome: 'not_found' },
+				],
+			},
 		});
 		await actions.rejectSelected();
 		expect(runs[1]).toHaveBeenCalledWith({ inboundMessageIds: ['a', 'b'] });

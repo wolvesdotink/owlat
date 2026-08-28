@@ -18,6 +18,10 @@ import { parseAddress } from '@owlat/shared';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { isOutboundChannel } from '../lib/convexValidators';
 import { runReferenceMonitor } from './referenceMonitor';
+import type {
+	NonCampaignIntakeOutcome,
+	NonCampaignIntakeRejectionReason,
+} from '../delivery/nonCampaignIntake';
 
 // ============================================================
 // Helper Queries
@@ -144,6 +148,49 @@ function buildThreadingHeaders(inbound: {
 	headers['References'] = prior ? `${prior} ${wrapped}` : wrapped;
 	return headers;
 }
+
+/**
+ * How each typed refusal from the Non-campaign send intake (module) terminates
+ * the inbound message.
+ *
+ * TOTAL BY CONSTRUCTION — the `Record<NonCampaignIntakeRejectionReason, …>`
+ * makes a new rejection reason a compile error here. Before PIECE C2 this path
+ * did not classify refusals at all: the intake threw, this action caught, and
+ * EVERY refusal — including a suppressed recipient — was flattened into
+ * `fail(err.message)`, i.e. into the same `failed` transition as a real fault.
+ *
+ *   - `recipient_blocked` → `archived` with reason `sender_blocked`, the same
+ *     edge `inbox/messages.ts` uses when blocklisted mail arrives, and the
+ *     same `'transactional'` suppression scope. It is the identical verdict
+ *     about the identical address, only observed at reply time instead of at
+ *     receipt: the recipient is hard-blocked, so there is nothing to fix and
+ *     nothing to retry. `archived` is TERMINAL, so the failed-action retry
+ *     cron never re-drives it — which is the agent-side reading of how the
+ *     automation step treats the same reason (completed, no send, no retry).
+ *     `failed` would have mis-reported a policy decision as a fault AND left
+ *     the message eligible for that cron to retry forever.
+ *   - `no_delivery_provider` / `abuse_blocked` are about the DEPLOYMENT, not
+ *     the recipient: the draft is still good and should send once an operator
+ *     configures a provider or the suspension lifts. Those stay `failed`, so
+ *     the message keeps surfacing as a fault and the retry cron can re-drive
+ *     it — which is exactly the behaviour that would be wrong for a blocklist
+ *     hit and is right here.
+ */
+const REPLY_REFUSAL_BY_REASON: Record<
+	NonCampaignIntakeRejectionReason,
+	| { terminal: 'archived'; archiveReason: 'sender_blocked' }
+	| { terminal: 'failed'; message: (detail: string | undefined) => string }
+> = {
+	recipient_blocked: { terminal: 'archived', archiveReason: 'sender_blocked' },
+	no_delivery_provider: {
+		terminal: 'failed',
+		message: (detail) => detail ?? 'No delivery provider configured',
+	},
+	abuse_blocked: {
+		terminal: 'failed',
+		message: () => 'Sending is disabled while this instance is suspended.',
+	},
+};
 
 /**
  * Send an approved agent-drafted reply to the customer who sent the inbound
@@ -311,18 +358,21 @@ export const sendApprovedReply = internalAction({
 			html = monitor.html;
 		}
 
-		// Enqueue the agent reply as a Send. The inbound message stays in
-		// `approved` until the Send completion module drives it to `sent` / `failed`
-		// (see delivery/sendCompletion.ts) — no more optimistic transition at
-		// dispatch time.
+		// Hand the reply to the Non-campaign send intake (module): it runs the
+		// shared gate sequence (abuse → provider-ready → suppression), resolves
+		// the provider route in its own transaction, and — when nothing refuses —
+		// inserts the `agent_reply` Send row and enqueues it. The inbound message
+		// stays in `approved` until the Send completion module drives it to
+		// `sent` / `failed` (see delivery/sendCompletion.ts) — no more optimistic
+		// transition at dispatch time.
+		//
+		// NO route resolution here any more. This action used to resolve one and
+		// pass `providerType`/`ipPool` down — a second resolution of the same
+		// message for a value the worker only uses as a fallback. Nothing above
+		// the intake reads a route, so it moved into the intake transaction.
+		let outcome: NonCampaignIntakeOutcome;
 		try {
-			const route = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-				messageType: 'transactional',
-				to: recipient,
-				from,
-			});
-			if (!route) throw new Error('No delivery provider configured');
-			const { sendId } = await ctx.runMutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			outcome = await ctx.runMutation(internal.delivery.nonCampaignIntake.intake, {
 				kind: 'agent_reply',
 				email: recipient,
 				...(message.contactId ? { contactId: message.contactId } : {}),
@@ -330,15 +380,34 @@ export const sendApprovedReply = internalAction({
 				subject,
 				html,
 				from,
-				providerType: route.providerType,
-				ipPool: route.ipPool,
 				...(Object.keys(headers).length > 0 ? { headers } : {}),
 			});
-			logInfo(`[Agent Pipeline] Enqueued approved reply to ${recipient} (sendId=${sendId})`);
 		} catch (err) {
+			// Every REFUSAL is a typed `{ ok: false }` return, so a throw here is an
+			// infrastructure fault, never a policy decision. Nothing is classified
+			// by matching the message any more.
 			await fail(err instanceof Error ? err.message : String(err));
 			return;
 		}
+
+		if (!outcome.ok) {
+			const refusal = REPLY_REFUSAL_BY_REASON[outcome.reason];
+			if (refusal.terminal === 'failed') {
+				await fail(refusal.message(outcome.detail));
+				return;
+			}
+			logInfo(
+				`[Agent Pipeline] approved reply withheld (${outcome.reason}); archiving inbound message`,
+				args.inboundMessageId
+			);
+			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId: args.inboundMessageId,
+				input: { to: 'archived', at: Date.now(), reason: refusal.archiveReason },
+			});
+			return;
+		}
+
+		logInfo(`[Agent Pipeline] Enqueued approved reply to ${recipient} (sendId=${outcome.sendId})`);
 
 		await recordHumanApprovalFeedback();
 	},

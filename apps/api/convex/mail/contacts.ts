@@ -237,7 +237,7 @@ export const remove = authedMutation({
 /**
  * Toggle the explicit VIP ("important sender") flag on a contact, creating the
  * address-book row if this sender isn't in it yet. A VIP dominates the Reply
- * Queue priority score (mail/priorityScore.ts) — the owner's transparent,
+ * Queue priority score (mail/ai/priorityScore.ts) — the owner's transparent,
  * easy-to-correct override of the deterministic frecency baseline.
  */
 // authz: mailbox access via requireMailboxAccess; org membership via authedMutation.

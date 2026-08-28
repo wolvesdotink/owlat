@@ -40,11 +40,18 @@ const { showToast } = useToast();
 const registerError = ref<string | null>(null);
 const { run: registerApp, isLoading: isRegistering } = useBackendOperation(
 	api.connectedApps.actions.register,
-	{ label: () => t('dashboard.admin.team.connectedApps.index.operations.register'), type: 'action', inlineTarget: registerError }
+	{
+		label: () => t('dashboard.admin.team.connectedApps.index.operations.register'),
+		type: 'action',
+		inlineTarget: registerError,
+	}
 );
 const { run: rotateSecret, isLoading: isRotating } = useBackendOperation(
 	api.connectedApps.actions.rotateSecret,
-	{ label: () => t('dashboard.admin.team.connectedApps.index.operations.rotateSecret'), type: 'action' }
+	{
+		label: () => t('dashboard.admin.team.connectedApps.index.operations.rotateSecret'),
+		type: 'action',
+	}
 );
 const { run: testConnection } = useBackendOperation(api.connectedApps.actions.testConnection, {
 	label: () => t('dashboard.admin.team.connectedApps.index.operations.testConnection'),
@@ -101,10 +108,16 @@ async function handleRegisterSubmit(payload: {
 	grantedCapabilities: string[];
 }) {
 	const created = await registerApp(payload);
-	if (created === undefined) return; // failure already surfaced inline/toast
+	if (!created.ok) return; // failure already surfaced inline/toast
 	showRegister.value = false;
-	revealed.value = { secret: created.secret, appName: created.name, context: 'created' };
-	showToast(t('dashboard.admin.team.connectedApps.index.toasts.connected', { name: created.name }));
+	revealed.value = {
+		secret: created.result.secret,
+		appName: created.result.name,
+		context: 'created',
+	};
+	showToast(
+		t('dashboard.admin.team.connectedApps.index.toasts.connected', { name: created.result.name })
+	);
 }
 
 // ── Rotate secret (destructive to the old secret) ──────────────────────────
@@ -114,18 +127,20 @@ async function confirmRotate() {
 	if (!target) return;
 	const res = await rotateSecret({ connectedAppId: target._id });
 	rotateTarget.value = null;
-	if (res === undefined) return;
-	revealed.value = { secret: res.secret, appName: target.name, context: 'rotated' };
+	if (!res.ok) return;
+	revealed.value = { secret: res.result.secret, appName: target.name, context: 'rotated' };
 }
 
 // ── Enable / disable (reversible) ──────────────────────────────────────────
 async function handleEnable(app: ConnectedApp) {
 	const res = await enableApp({ connectedAppId: app._id });
-	if (res !== undefined) showToast(t('dashboard.admin.team.connectedApps.index.toasts.enabled', { name: app.name }));
+	if (res.ok)
+		showToast(t('dashboard.admin.team.connectedApps.index.toasts.enabled', { name: app.name }));
 }
 async function handleDisable(app: ConnectedApp) {
 	const res = await disableApp({ connectedAppId: app._id });
-	if (res !== undefined) showToast(t('dashboard.admin.team.connectedApps.index.toasts.disabled', { name: app.name }));
+	if (res.ok)
+		showToast(t('dashboard.admin.team.connectedApps.index.toasts.disabled', { name: app.name }));
 }
 
 // ── Revoke / delete (destructive, confirmed) ───────────────────────────────
@@ -136,34 +151,36 @@ async function confirmRevoke() {
 	if (!target) return;
 	const res = await revokeApp({ connectedAppId: target._id });
 	revokeTarget.value = null;
-	if (res !== undefined) showToast(t('dashboard.admin.team.connectedApps.index.toasts.revoked', { name: target.name }));
+	if (res.ok)
+		showToast(t('dashboard.admin.team.connectedApps.index.toasts.revoked', { name: target.name }));
 }
 async function confirmDelete() {
 	const target = deleteTarget.value;
 	if (!target) return;
 	const res = await removeApp({ connectedAppId: target._id });
 	deleteTarget.value = null;
-	if (res !== undefined) showToast(t('dashboard.admin.team.connectedApps.index.toasts.deleted', { name: target.name }));
+	if (res.ok)
+		showToast(t('dashboard.admin.team.connectedApps.index.toasts.deleted', { name: target.name }));
 }
 
 // ── Connection test ────────────────────────────────────────────────────────
-type TestResult = Awaited<ReturnType<typeof testConnection>>;
-const testResults = ref<Record<string, NonNullable<TestResult>>>({});
+type TestResult = BackendOperationValue<ReturnType<typeof testConnection>>;
+const testResults = ref<Record<string, TestResult>>({});
 const testingId = ref<Id<'connectedApps'> | null>(null);
 
 async function runTest(app: ConnectedApp) {
 	testingId.value = app._id;
 	const result = await testConnection({ connectedAppId: app._id });
 	testingId.value = null;
-	if (result === undefined) return; // transport failure already toasted
-	testResults.value = { ...testResults.value, [app._id]: result };
+	if (!result.ok) return; // transport failure already toasted
+	testResults.value = { ...testResults.value, [app._id]: result.result };
 }
-function testTone(outcome: NonNullable<TestResult>['outcome']): string {
+function testTone(outcome: TestResult['outcome']): string {
 	if (outcome === 'ok') return 'text-success';
 	if (outcome === 'error_status') return 'text-warning';
 	return 'text-error';
 }
-function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
+function testIcon(outcome: TestResult['outcome']): string {
 	if (outcome === 'ok') return 'lucide:check-circle';
 	if (outcome === 'error_status') return 'lucide:alert-triangle';
 	return 'lucide:x-circle';
@@ -193,7 +210,9 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 			class="flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.connectedApps.index.adminGate.title') }}</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.admin.team.connectedApps.index.adminGate.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				{{ t('dashboard.admin.team.connectedApps.index.adminGate.description') }}
 			</p>
@@ -355,7 +374,9 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 			variant="warning"
 			:title="
 				rotateTarget
-					? t('dashboard.admin.team.connectedApps.index.rotateDialog.title', { name: rotateTarget.name })
+					? t('dashboard.admin.team.connectedApps.index.rotateDialog.title', {
+							name: rotateTarget.name,
+						})
 					: t('dashboard.admin.team.connectedApps.index.rotateDialog.titleFallback')
 			"
 			:description="t('dashboard.admin.team.connectedApps.index.rotateDialog.description')"
@@ -372,7 +393,9 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 			variant="warning"
 			:title="
 				revokeTarget
-					? t('dashboard.admin.team.connectedApps.index.revokeDialog.title', { name: revokeTarget.name })
+					? t('dashboard.admin.team.connectedApps.index.revokeDialog.title', {
+							name: revokeTarget.name,
+						})
 					: t('dashboard.admin.team.connectedApps.index.revokeDialog.titleFallback')
 			"
 			:description="t('dashboard.admin.team.connectedApps.index.revokeDialog.description')"
@@ -389,7 +412,9 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 			variant="danger"
 			:title="
 				deleteTarget
-					? t('dashboard.admin.team.connectedApps.index.deleteDialog.title', { name: deleteTarget.name })
+					? t('dashboard.admin.team.connectedApps.index.deleteDialog.title', {
+							name: deleteTarget.name,
+						})
 					: t('dashboard.admin.team.connectedApps.index.deleteDialog.titleFallback')
 			"
 			:description="t('dashboard.admin.team.connectedApps.index.deleteDialog.description')"

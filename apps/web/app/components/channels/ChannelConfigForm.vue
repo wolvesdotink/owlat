@@ -209,7 +209,7 @@ async function handleSave() {
 	});
 	isSaving.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	emit('saved');
 }

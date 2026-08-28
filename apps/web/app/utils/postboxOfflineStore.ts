@@ -50,10 +50,24 @@ export const DB_VERSION = 2;
 // The namespace is the mailboxId; callers thread it through from the signed-in
 // mailbox. Without a namespace nothing is read or written.
 const threadsKey = (ns: string, folderRole: string) => `threads:${ns}:${folderRole}`;
+/** Key for when a folder's rows were last persisted (dated offline banner). */
+type OfflineThreadsMeta = { savedAt: number };
+const threadsMetaKey = (ns: string, folderRole: string) => `threads-meta:${ns}:${folderRole}`;
 const bodyKey = (ns: string, messageId: string) => `body:${ns}:${messageId}`;
 const bodyIndexKey = (ns: string) => `body-index:${ns}`;
 const outboxPrefix = (ns: string) => `outbox:${ns}:`;
 const outboxKey = (ns: string, id: string) => `${outboxPrefix(ns)}${id}`;
+
+import {
+	OUTBOX_CLAIM_TTL_MS,
+	isOutboxClaimLive,
+	type OfflineOutboxItem,
+} from './postboxOfflineOutboxItem';
+
+// Split into postboxOfflineOutboxItem.ts for the file-size ratchet; these
+// re-exports keep every existing import path stable.
+export { OUTBOX_CLAIM_TTL_MS, isOutboxClaimLive };
+export type { OfflineOutboxItem };
 
 /** Minimal async key/value contract the store is built on. */
 export interface OfflineKvDriver {
@@ -109,34 +123,6 @@ export interface OfflineComposePayload {
 		scheduledSendAt?: number;
 		allowUnsealed?: boolean;
 	};
-}
-
-/** One queued send in the `outbox:{ns}` key family. */
-export interface OfflineOutboxItem {
-	id: string;
-	payload: OfflineComposePayload;
-	queuedAt: number;
-	attempts: number;
-	lastError?: string;
-	/**
-	 * When the drain took ownership of this item for a send attempt (see
-	 * {@link PostboxOfflineStore.claimOutbox}). While the claim is live the item
-	 * is on its way to the wire and must not be un-queued;
-	 * {@link PostboxOfflineStore.markOutboxAttempt} clears it again on failure.
-	 */
-	claimedAt?: number;
-}
-
-/**
- * How long a claim stamp is honoured. A tab killed mid-send would otherwise
- * leave its item claimed forever — undrainable AND un-undoable — so an old
- * stamp expires. Comfortably longer than a create → update → send round trip.
- */
-export const OUTBOX_CLAIM_TTL_MS = 60_000;
-
-/** True while `item` is claimed by a send attempt that has not yet expired. */
-export function isOutboxClaimLive(item: OfflineOutboxItem, now: number = Date.now()): boolean {
-	return item.claimedAt !== undefined && now - item.claimedAt < OUTBOX_CLAIM_TTL_MS;
 }
 
 /**
@@ -263,11 +249,19 @@ export class PostboxOfflineStore {
 	 * start never reads these rows.
 	 */
 	async saveThreads<T>(ns: string, folderRole: string, rows: readonly T[]): Promise<void> {
-		await this.safeSet(threadsKey(ns, folderRole), rows.slice(0, OFFLINE_THREADS_CAP));
+		// Freshness stamps only after the rows land — a failed write leaves the
+		// previous meta (and its older savedAt) standing.
+		const ok = await this.safeSet(threadsKey(ns, folderRole), rows.slice(0, OFFLINE_THREADS_CAP));
+		if (ok) await this.safeSet(threadsMetaKey(ns, folderRole), { savedAt: Date.now() });
 	}
 
 	async loadThreads<T>(ns: string, folderRole: string): Promise<T[]> {
 		return this.safeGet<T[]>(threadsKey(ns, folderRole), []);
+	}
+
+	/** When {@link loadThreads}' rows were last persisted; null if never. */
+	loadThreadsMeta(ns: string, folderRole: string): Promise<OfflineThreadsMeta | null> {
+		return this.safeGet<OfflineThreadsMeta | null>(threadsMetaKey(ns, folderRole), null);
 	}
 
 	/**

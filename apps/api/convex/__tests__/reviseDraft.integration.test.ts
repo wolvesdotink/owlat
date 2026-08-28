@@ -7,7 +7,7 @@ import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
 
 /**
- * Whole-draft REVISE-by-instruction (mail/reviseDraft.reviseDraft): the action
+ * Whole-draft REVISE-by-instruction (mail/ai/reviseDraft.reviseDraft): the action
  * drives the streaming LLM seam into an owner-private `aiDraftStreams` buffer,
  * layers the user's TRUSTED instruction over the untrusted draft/thread, runs
  * the injection safety scan on the FINAL text only, and fails soft. The LLM
@@ -85,7 +85,7 @@ describe('reviseDraft — streaming', () => {
 			surface: 'review',
 		});
 
-		const res = await t.action(api.mail.reviseDraft.reviseDraft, {
+		const res = await t.action(api.mail.ai.reviseDraft.reviseDraft, {
 			streamId,
 			instruction: 'Redo but decline politely.',
 			currentDraft: 'Sure, happy to help.',
@@ -130,7 +130,7 @@ describe('reviseDraft — streaming', () => {
 		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
 			surface: 'compose',
 		});
-		const res = await t.action(api.mail.reviseDraft.reviseDraft, {
+		const res = await t.action(api.mail.ai.reviseDraft.reviseDraft, {
 			streamId,
 			instruction: 'anything',
 			currentDraft: 'draft',
@@ -156,7 +156,7 @@ describe('reviseDraft — streaming', () => {
 		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
 			surface: 'review',
 		});
-		const res = await t.action(api.mail.reviseDraft.reviseDraft, {
+		const res = await t.action(api.mail.ai.reviseDraft.reviseDraft, {
 			streamId,
 			instruction: 'anything',
 			currentDraft: 'keep me',
@@ -199,7 +199,7 @@ describe('reviseDraft — streaming', () => {
 		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
 			surface: 'review',
 		});
-		const res = await t.action(api.mail.reviseDraft.reviseDraft, {
+		const res = await t.action(api.mail.ai.reviseDraft.reviseDraft, {
 			streamId,
 			instruction: 'Redo but decline politely.',
 			currentDraft: agentDraft,
@@ -242,7 +242,7 @@ describe('reviseDraft — streaming', () => {
 		// A different user tries to revise into it.
 		sess.user = { userId: 'user-b', role: 'owner' };
 		await expect(
-			t.action(api.mail.reviseDraft.reviseDraft, {
+			t.action(api.mail.ai.reviseDraft.reviseDraft, {
 				streamId,
 				instruction: 'hijack',
 				currentDraft: 'x',

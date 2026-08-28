@@ -6,7 +6,7 @@
  * the owner's own promises are invisible. This cron assembles all of it, once a
  * day per active mailbox, into a persisted `mailDailyBriefs` snapshot:
  *
- *   - a RANKED "needs you" list (mail/priorityScore.ts ordering) of pending
+ *   - a RANKED "needs you" list (mail/ai/priorityScore.ts ordering) of pending
  *     replies + clarification questions + due follow-ups + open commitments /
  *     deadlines, and
  *   - an AUDITABLE bundle of low-signal mail (newsletters / receipts /
@@ -25,7 +25,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { isMessageSnoozed } from '../lib/mailSnooze';
-import { urgencyFallbackScore } from './priorityScore';
+import { urgencyFallbackScore } from './ai/priorityScore';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 

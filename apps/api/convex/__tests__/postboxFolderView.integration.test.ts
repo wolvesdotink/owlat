@@ -1,5 +1,5 @@
 /**
- * mail.mailbox.listMessages — the custom-folder (by-id) view that backs custom
+ * mail.mailbox.queries.listMessages — the custom-folder (by-id) view that backs custom
  * IMAP / user-created folders in the Postbox sidebar. Returns only the messages
  * in the addressed folder, and enforces that the folder belongs to the mailbox.
  */
@@ -27,11 +27,16 @@ const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([path]) =>
-			!path.includes('sesActions') && !path.includes('agentSecurity') && !path.includes('llmProvider'),
-	),
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('llmProvider')
+	)
 );
 
-async function insertMailbox(ctx: { db: DatabaseWriter }, userId: string): Promise<Id<'mailboxes'>> {
+async function insertMailbox(
+	ctx: { db: DatabaseWriter },
+	userId: string
+): Promise<Id<'mailboxes'>> {
 	const now = Date.now();
 	return ctx.db.insert('mailboxes', {
 		userId,
@@ -50,7 +55,7 @@ async function insertFolder(
 	ctx: { db: DatabaseWriter },
 	mailboxId: Id<'mailboxes'>,
 	name: string,
-	role?: 'inbox',
+	role?: 'inbox'
 ): Promise<Id<'mailFolders'>> {
 	const now = Date.now();
 	return ctx.db.insert('mailFolders', {
@@ -73,7 +78,7 @@ async function insertMessage(
 	mailboxId: Id<'mailboxes'>,
 	folderId: Id<'mailFolders'>,
 	subject: string,
-	uid: number,
+	uid: number
 ): Promise<void> {
 	const now = Date.now();
 	const threadId = await ctx.db.insert('mailThreads', {
@@ -127,7 +132,7 @@ async function insertMessage(
 	});
 }
 
-describe('mail.mailbox.listMessages — custom folder by id', () => {
+describe('mail.mailbox.queries.listMessages — custom folder by id', () => {
 	it('returns only the messages in the addressed custom folder', async () => {
 		const t = convexTest(schema, modules);
 		let mailboxId!: Id<'mailboxes'>;
@@ -140,7 +145,7 @@ describe('mail.mailbox.listMessages — custom folder by id', () => {
 			await insertMessage(ctx, mailboxId, inboxId, 'in-inbox', 2);
 		});
 
-		const result = await t.query(api.mail.mailbox.listMessages, {
+		const result = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId,
 			folderId: customFolderId,
 		});
@@ -159,7 +164,7 @@ describe('mail.mailbox.listMessages — custom folder by id', () => {
 			await insertMessage(ctx, otherMailboxId, otherFolderId, 'theirs', 1);
 		});
 
-		const result = await t.query(api.mail.mailbox.listMessages, {
+		const result = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId: mineMailboxId,
 			folderId: otherFolderId,
 		});

@@ -6,7 +6,7 @@
  *
  * Three roles:
  *   - CAPTURE (`captureStandingAnswers`): both answer surfaces — the inbound agent
- *     (`inbox/clarification.ts`) and the Reply Queue (`mail/needsReplyClarify.ts`)
+ *     (`inbox/clarification.ts`) and the Reply Queue (`mail/ai/needsReplyClarify.ts`)
  *     — call this after the owner answers, promoting each answer to a standing
  *     fact scoped to the message's contact.
  *   - FILL (`resolveFills`): before asking, both clarification surfaces look up a
@@ -140,7 +140,7 @@ export interface CaptureAnswer {
  * Capture the owner's answers as standing facts. A plain helper (NOT a mutation)
  * so it is called directly from within the two answer MUTATIONS — the inbound
  * agent (`inbox/clarification.ts`) and the Reply Queue
- * (`mail/needsReplyClarify.ts`) — which cannot `runMutation`. Upserts one row per
+ * (`mail/ai/needsReplyClarify.ts`) — which cannot `runMutation`. Upserts one row per
  * answer at the message's contact scope: an existing row for the same (contact,
  * slot, normalized question) is refreshed to the latest value (a correction
  * wins) and its `answerCount` is bumped; otherwise a new row is inserted.

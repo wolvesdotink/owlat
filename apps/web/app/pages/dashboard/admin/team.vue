@@ -179,11 +179,11 @@ async function handleMarkVerified(member: OrganizationMember) {
 	try {
 		const result = await markEmailVerified({ userId: member.userId });
 		// `run` already surfaced any failure; only announce success.
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(
-			result.alreadyVerified
-				? t('dashboard.admin.team.toasts.emailAlreadyVerified', { email: result.email })
-				: t('dashboard.admin.team.toasts.emailVerified', { email: result.email })
+			result.result.alreadyVerified
+				? t('dashboard.admin.team.toasts.emailAlreadyVerified', { email: result.result.email })
+				: t('dashboard.admin.team.toasts.emailVerified', { email: result.result.email })
 		);
 	} finally {
 		verifyingMemberId.value = null;
@@ -197,15 +197,19 @@ async function handleResendVerification(member: OrganizationMember) {
 	resendingVerifyId.value = member.id;
 	try {
 		const result = await resendVerification({ userId: member.userId });
-		if (result === undefined) return;
-		if (!result.sent) {
-			showToast(t('dashboard.admin.team.toasts.emailAlreadyVerified', { email: result.email }));
+		if (!result.ok) return;
+		if (!result.result.sent) {
+			showToast(
+				t('dashboard.admin.team.toasts.emailAlreadyVerified', { email: result.result.email })
+			);
 			return;
 		}
 		showToast(
 			emailConfigured.value
-				? t('dashboard.admin.team.toasts.verificationResent', { email: result.email })
-				: t('dashboard.admin.team.toasts.verificationResendNoTransport', { email: result.email })
+				? t('dashboard.admin.team.toasts.verificationResent', { email: result.result.email })
+				: t('dashboard.admin.team.toasts.verificationResendNoTransport', {
+						email: result.result.email,
+					})
 		);
 	} finally {
 		resendingVerifyId.value = null;
@@ -283,7 +287,7 @@ const handleDeleteOrganization = async () => {
 	isDeletingOrg.value = true;
 
 	const result = await removeOrganization({});
-	if (result === undefined) {
+	if (!result.ok) {
 		isDeletingOrg.value = false;
 		return;
 	}

@@ -164,7 +164,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 // Handle duplicate
 const handleDuplicate = async (templateId: Id<'emailTemplates'>) => {
 	const result = await duplicateTemplate({ templateId });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.send.marketing.index.toasts.duplicated'));
 };
 
@@ -189,7 +189,7 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	try {
 		const result = await deleteTemplate({ templateId: templateToDelete.value.id });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.send.marketing.index.toasts.deleted'));
 		closeDeleteModal();
 	} finally {
@@ -204,13 +204,13 @@ const templateLibraryRef = ref<{
 		createTemplate: (args: {
 			name: string;
 			type: 'marketing' | 'transactional';
-		}) => Promise<Id<'emailTemplates'> | undefined>,
+		}) => Promise<BackendOperationResult<Id<'emailTemplates'>>>,
 		createFromPreset: (args: {
 			name: string;
 			subject: string;
 			content: string;
 			type: 'marketing' | 'transactional';
-		}) => Promise<Id<'emailTemplates'> | undefined>
+		}) => Promise<BackendOperationResult<Id<'emailTemplates'>>>
 	) => Promise<void>;
 	templateName: string;
 	isCreating: boolean;

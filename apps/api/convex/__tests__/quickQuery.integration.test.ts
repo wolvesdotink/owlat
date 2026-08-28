@@ -62,7 +62,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi.fn().mockImplementation(requireMember),
 		isActiveOrgMember: vi.fn().mockImplementation(async () => sessionMock.member),
 		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.userId),
-		// The AI spend/rate gate (mail.aiGate.assertAiAllowed) keys its per-user
+		// The AI spend/rate gate (mail.ai.gate.assertAiAllowed) keys its per-user
 		// rate limit on this session; drive it from the same mock user.
 		getBetterAuthSessionWithRole: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.userId,

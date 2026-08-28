@@ -209,7 +209,7 @@ async function handleSave() {
 	});
 	isSaving.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showNotification(t('dashboard.admin.delivery.providerRouting.toasts.saved'));
 	editOpen.value = false;
@@ -224,7 +224,7 @@ async function handleReset() {
 	isResetting.value = true;
 	const result = await removeRoute({ messageType: resetMessageType.value });
 	isResetting.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showNotification(t('dashboard.admin.delivery.providerRouting.toasts.reset'));
 	resetMessageType.value = null;
 }

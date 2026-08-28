@@ -153,7 +153,12 @@
 		"upload": "Hochladen",
 		"viewAll": "Alle anzeigen",
 		"yes": "Ja",
-		"yesterday": "Gestern"
+		"yesterday": "Gestern",
+		"roles": {
+			"member": "Mitglied",
+			"admin": "Administrator",
+			"owner": "Inhaber"
+		}
 	},
 	"components": {
 		"agent": {
@@ -3652,7 +3657,9 @@
 				"failedSendsBanner": "{count} Nachricht aus der Warteschlange konnte nicht gesendet werden — sie bleibt auf diesem Gerät. | {count} Nachrichten aus der Warteschlange konnten nicht gesendet werden — sie bleiben auf diesem Gerät.",
 				"offlineBanner": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind.",
 				"offlineBannerQueued": "Offline — Anzeige von diesem Gerät; Ihre Nachrichten gehen raus, sobald Sie wieder online sind ({count} in der Warteschlange).",
-				"retryQueuedSends": "Erneut versuchen"
+				"retryQueuedSends": "Erneut versuchen",
+				"offlineBannerCached": "Offline — Mail von diesem Gerät wird angezeigt (Stand {time}). Aktionen sind pausiert.",
+				"offlineBannerCachedQueued": "Offline — Mail von diesem Gerät wird angezeigt (Stand {time}); {count} Nachricht geht raus, sobald Sie wieder online sind. | Offline — Mail von diesem Gerät wird angezeigt (Stand {time}); {count} Nachrichten gehen raus, sobald Sie wieder online sind."
 			},
 			"postboxOfflineSettings": {
 				"clear": {
@@ -3896,6 +3903,8 @@
 				"emptyLabelTitle": "Keine Nachrichten mit diesem Label",
 				"listLabel": "Nachrichten",
 				"loadMore": "Mehr laden",
+				"capNote": "Es werden die neuesten Nachrichten dieser Ansicht angezeigt.",
+				"loadingMore": "Weitere werden geladen…",
 				"markReadOperation": "Als gelesen markieren",
 				"moveOperation": "Nachricht verschieben",
 				"movedUndo": "Verschoben",
@@ -3903,7 +3912,10 @@
 				"snoozeOperation": "Zurückstellen",
 				"starOperation": "Markieren",
 				"trashOperation": "In den Papierkorb verschieben",
-				"trashedUndo": "In den Papierkorb verschoben"
+				"trashedUndo": "In den Papierkorb verschoben",
+				"emptyFilteredTitle": "Alles erledigt",
+				"emptyFilteredMoreHint": "Dieser Filter umfasst die bisher geladenen Nachrichten — laden Sie weitere, um weiterzusuchen.",
+				"showAllMessages": "Alle Nachrichten anzeigen"
 			},
 			"postboxThreadReader": {
 				"blockSender": "Absender blockieren",
@@ -4047,6 +4059,14 @@
 				"transferTitle": "Inhaberschaft des Postfachs übertragen?",
 				"undoReservationOperation": "Team-Postfach-Reservierung rückgängig machen",
 				"you": "(Sie)"
+			},
+			"postboxTriageFilterChips": {
+				"groupLabel": "Nachrichten filtern",
+				"all": "Alle",
+				"unread": "Ungelesen",
+				"starred": "Mit Stern",
+				"attachments": "Mit Anhang",
+				"partialCountHint": "Die Zahlen umfassen die bisher geladenen Nachrichten; scrollen Sie, um weitere zu laden."
 			}
 		},
 		"preferences": {
@@ -7843,7 +7863,11 @@
 					"unassigned": "Zuweisung aufgehoben"
 				},
 				"unsnoozeThreadOperation": "Zurückstellung aufheben",
-				"updateThreadStatusOperation": "Status der Konversation ändern"
+				"updateThreadStatusOperation": "Status der Konversation ändern",
+				"accessTitle": "Das Team-Postfach ist Administratoren vorbehalten",
+				"accessBody": "Deine Rolle ({role}) umfasst das gemeinsame Kundenpostfach nicht. Deine eigene Post liegt in der Postbox.",
+				"openMyPostbox": "Meine Postbox öffnen",
+				"accessHint": "Du brauchst Zugriff? Bitte eine Organisations-Administration, deine Rolle unter Einstellungen → Team zu ändern."
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Absender blockieren",
@@ -8037,6 +8061,7 @@
 			},
 			"label": {
 				"detail": {
+					"capNote": "Dieses Label hat mehr Nachrichten, als diese Ansicht auflistet — die neuesten {count} werden angezeigt. | Dieses Label hat mehr Nachrichten, als diese Ansicht auflistet — die neuesten {count} werden angezeigt.",
 					"heading": "Label-Ansicht",
 					"loadError": "Die Nachrichten für dieses Label konnten nicht geladen werden. Laden Sie neu, um es erneut zu versuchen.",
 					"pageTitle": "E-Mail — Owlat",
@@ -8131,9 +8156,15 @@
 				"backToResults": "Ergebnisse",
 				"noResultsHint": "Versuchen Sie weniger oder allgemeinere Begriffe oder Operatoren wie from:, has:attachment, is:unread.",
 				"noResultsTitle": "Keine Ergebnisse für diese Suche",
+				"keepSearching": "Weiter suchen",
+				"pageEmptyWithMore": "Keine Treffer auf dieser Seite. Es gibt weitere Nachrichten zu durchsuchen.",
 				"operatorHint": "Verwenden Sie Operatoren wie {from}, {hasAttachment}, {before}, {label}, {isUnread}.",
 				"pageTitle": "Suche — Owlat",
-				"selectResult": "Wählen Sie ein Ergebnis"
+				"selectResult": "Wählen Sie ein Ergebnis",
+				"resultCount": "{count} Ergebnis | {count} Ergebnisse",
+				"resultCountMore": "{count}+ Ergebnis — mehr weiter unten | {count}+ Ergebnisse — mehr weiter unten",
+				"removeChip": "{chip} entfernen",
+				"clearAllFilters": "Alle Filter löschen"
 			}
 		},
 		"preferences": {

@@ -280,7 +280,7 @@ const handleDeleteAccount = async () => {
 	});
 	isDeleting.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	// The backend requestAccountDeletion mutation schedules the confirmation
 	// email (internal.accountDeletionEmail.sendAccountDeletionEmail) before it
@@ -290,9 +290,9 @@ const handleDeleteAccount = async () => {
 	deleteReason.value = '';
 	deleteConfirmText.value = '';
 
-	// `result` carries the scheduledForDeletion timestamp; nothing else to do
+	// `result.result` carries the scheduledForDeletion timestamp; nothing else to do
 	// here — the confirmation email is already scheduled by the mutation above.
-	void result;
+	void result.result;
 };
 
 // Cancel account deletion
@@ -306,7 +306,7 @@ const handleCancelDeletion = async () => {
 	});
 	isCancelling.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showNotification(t('dashboard.preferences.account.deletionCancelled'));
 };

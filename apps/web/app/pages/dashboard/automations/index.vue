@@ -150,10 +150,10 @@ const handleToggleStatus = async (automation: {
 	toggleingId.value = automation._id;
 	try {
 		if (automation.status === 'active') {
-			if ((await pauseAutomation({ automationId: automation._id })) === undefined) return;
+			if (!(await pauseAutomation({ automationId: automation._id })).ok) return;
 			showNotification(t('dashboard.automations.index.toasts.paused', { name: automation.name }));
 		} else {
-			if ((await resumeAutomation({ automationId: automation._id })) === undefined) return;
+			if (!(await resumeAutomation({ automationId: automation._id })).ok) return;
 			showNotification(
 				t('dashboard.automations.index.toasts.activated', { name: automation.name })
 			);
@@ -167,7 +167,7 @@ const handleToggleStatus = async (automation: {
 // Handle duplicate
 const handleDuplicate = async (automationId: Id<'automations'>) => {
 	const result = await duplicateAutomation({ automationId });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showNotification(t('dashboard.automations.index.toasts.duplicated'));
 	openDropdownId.value = null;
 };
@@ -202,7 +202,7 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	try {
 		const result = await deleteAutomation({ automationId: automationToDelete.value.id });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('dashboard.automations.index.toasts.deleted'));
 		closeDeleteModal();
 	} finally {

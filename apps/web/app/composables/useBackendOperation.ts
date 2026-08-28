@@ -41,6 +41,34 @@ export interface BackendOperationOptions {
 }
 
 /**
+ * The outcome of one `run`: either the operation completed and carries its
+ * `result`, or it did not.
+ *
+ * An envelope rather than `T | undefined` because a great many Convex
+ * mutations legitimately return `undefined` (or `null`, or `false`) on
+ * success — with a bare sentinel those are indistinguishable from "the
+ * operation failed and has already been surfaced", and a caller guarding on
+ * `=== undefined` silently treats a fine write as a failure. `ok` is the only
+ * thing a caller ever has to test: the failure arm carries nothing, because
+ * the treatment (toast / inline / redirect / telemetry, or an `onError`
+ * claim) has already been applied by the time `run` resolves — ADR-0036's
+ * whole point is that deciding what a failure LOOKS like is not the caller's
+ * job.
+ */
+export type BackendOperationResult<T> = { ok: true; result: T } | { ok: false };
+
+/**
+ * The success payload of a `run` — the `T` inside a
+ * {@link BackendOperationResult}, given (a promise of) the envelope.
+ *
+ * For the handful of callers that park a verdict in a `ref` and type it off the
+ * operation rather than re-declaring the backend's shape:
+ * `ref<BackendOperationValue<ReturnType<typeof run>>>()`.
+ */
+export type BackendOperationValue<R> =
+	Awaited<R> extends BackendOperationResult<infer T> ? T : never;
+
+/**
  * The **Operation module** for writes (ADR-0036): run a Convex mutation/action,
  * normalize any throw into the shared `{ category, message, data? }` vocabulary,
  * and apply the one category → treatment policy (toast vs inline vs redirect,
@@ -58,7 +86,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 	operation: M,
 	opts: BackendOperationOptions
 ): {
-	run: (args: FunctionArgs<M>) => Promise<FunctionReturnType<M> | undefined>;
+	run: (args: FunctionArgs<M>) => Promise<BackendOperationResult<FunctionReturnType<M>>>;
 	isLoading: Readonly<Ref<boolean>>;
 	inlineError: Readonly<Ref<string | null>>;
 } {
@@ -109,12 +137,14 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		}
 	}
 
-	const run = async (args: FunctionArgs<M>): Promise<FunctionReturnType<M> | undefined> => {
+	const run = async (
+		args: FunctionArgs<M>
+	): Promise<BackendOperationResult<FunctionReturnType<M>>> => {
 		inlineError.value = null;
 
 		if (!client) {
 			showToast(t('shared.useBackendOperation.genericError'), 'error');
-			return undefined;
+			return { ok: false };
 		}
 
 		isLoading.value = true;
@@ -123,10 +153,10 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 				opts.type === 'action'
 					? await client.action(operation as FunctionReference<'action'>, args)
 					: await client.mutation(operation as FunctionReference<'mutation'>, args);
-			return result as FunctionReturnType<M>;
+			return { ok: true, result: result as FunctionReturnType<M> };
 		} catch (e) {
 			applyTreatment(e);
-			return undefined;
+			return { ok: false };
 		} finally {
 			isLoading.value = false;
 		}

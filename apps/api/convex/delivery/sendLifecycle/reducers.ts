@@ -1,3 +1,4 @@
+import { defineLifecycle, type LifecycleEdgeSpec, type LifecycleGraph } from '../../lib/lifecycle';
 import { transportOutcomeEffect, type Effect } from './effects';
 import { contactEmailOf, nonCampaignActivityProvenance } from './lookups';
 import type {
@@ -47,44 +48,62 @@ export { reduceBounced, reduceComplained } from './feedbackReducers';
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
 // Source-of-truth for the lifecycle DAG. Mirrors CONTEXT.md "Send status"
-// exactly. Maps current status → set of legal next statuses (status-changing
-// edges). `opened` and `clicked` self-loops (re-firing the same event) are
-// handled by the reducer as `recorded` outcomes, not status changes.
+// exactly. Declares, per current status, the legal next statuses
+// (status-changing edges). `opened` and `clicked` self-loops (re-firing the
+// same event) are handled by the reducer as `recorded` outcomes, not status
+// changes.
 //
 // `bounced` is terminal ONLY for a HARD bounce. A SOFT bounce also lands in
 // `bounced` (with `bounceType: 'soft'`) but is NON-terminal: the same Send may
 // later receive a hard bounce or a complaint on the same address, which must be
 // recorded — not rejected as `terminal` and lost. Terminality is therefore
-// computed by `legalEdgesFor(send)` (which reads `bounceType`), not by the
-// static map alone.
+// computed by `lifecycleFor(send)` (which reads `bounceType`), not by the
+// static spec alone.
+//
+// The graph and the dispatcher preamble that reads it live in the generic
+// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers below stay here.
 
-export const LEGAL_EDGES: Record<SendStatus, ReadonlySet<SendStatus>> = {
-	queued: new Set<SendStatus>(['sent', 'failed']),
-	sent: new Set<SendStatus>(['failed', 'delivered', 'opened', 'clicked', 'bounced', 'complained']),
-	failed: new Set<SendStatus>(),
-	delivered: new Set<SendStatus>(['opened', 'clicked', 'bounced', 'complained']),
-	opened: new Set<SendStatus>(['clicked', 'bounced', 'complained']),
-	clicked: new Set<SendStatus>(['bounced', 'complained']),
-	bounced: new Set<SendStatus>(),
-	complained: new Set<SendStatus>(),
+const SEND_EDGE_SPEC: LifecycleEdgeSpec<SendStatus> = {
+	queued: ['sent', 'failed'],
+	sent: ['failed', 'delivered', 'opened', 'clicked', 'bounced', 'complained'],
+	failed: [],
+	delivered: ['opened', 'clicked', 'bounced', 'complained'],
+	opened: ['clicked', 'bounced', 'complained'],
+	clicked: ['bounced', 'complained'],
+	bounced: [],
+	complained: [],
 };
+
+export const SEND_LIFECYCLE = defineLifecycle<SendStatus>(SEND_EDGE_SPEC, {
+	reportsTerminalRefusals: true,
+});
 
 // Outgoing edges from a soft-bounced row: it may harden (a later hard bounce)
 // or draw a complaint. A soft → soft re-report is handled as a `recorded`
-// self-loop by `reduceBounced` (counter bump, no status change).
-const SOFT_BOUNCED_LEGAL_EDGES: ReadonlySet<SendStatus> = new Set<SendStatus>([
-	'bounced',
-	'complained',
-]);
+// self-loop by `reduceBounced` (counter bump, no status change). Only the
+// `bounced` from-state differs from the static spec — the overlay is selected
+// solely for rows already sitting in `bounced`.
+const SOFT_BOUNCED_SEND_LIFECYCLE = defineLifecycle<SendStatus>(
+	{ ...SEND_EDGE_SPEC, bounced: ['bounced', 'complained'] },
+	{ reportsTerminalRefusals: true }
+);
 
-// Effective legal-edge set for a loaded Send, accounting for the soft-bounce
-// exception above. All non-`bounced` states use the static map.
-export function legalEdgesFor(send: EmailSendDoc | TransactionalSendDoc): ReadonlySet<SendStatus> {
+// Effective lifecycle graph for a loaded Send, accounting for the soft-bounce
+// exception above. All non-`bounced` states use the static spec.
+export function lifecycleFor(
+	send: EmailSendDoc | TransactionalSendDoc
+): LifecycleGraph<SendStatus> {
 	const from = send.status as SendStatus;
 	if (from === 'bounced' && send.bounceType === 'soft') {
-		return SOFT_BOUNCED_LEGAL_EDGES;
+		return SOFT_BOUNCED_SEND_LIFECYCLE;
 	}
-	return LEGAL_EDGES[from];
+	return SEND_LIFECYCLE;
+}
+
+// Effective legal-edge set for a loaded Send — the from-state's targets in the
+// graph `lifecycleFor` selects.
+export function legalEdgesFor(send: EmailSendDoc | TransactionalSendDoc): ReadonlySet<SendStatus> {
+	return lifecycleFor(send).legalTargets(send.status as SendStatus);
 }
 
 // Per ADR-0006: transactional sends pre-create in `queued` and walk

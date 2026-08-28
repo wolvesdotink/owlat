@@ -18,7 +18,7 @@
  */
 
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { getLivePersonalExternalAccountForUser } from './externalAccounts';
+import { getLivePersonalExternalAccountForUser } from './external/accounts';
 import { throwNotFound, throwUnauthenticated } from '../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';

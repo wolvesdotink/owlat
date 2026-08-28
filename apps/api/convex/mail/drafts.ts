@@ -24,7 +24,7 @@ import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { sealBodyAtWrite } from '../lib/messageBody';
-import { assertStateIs } from './draftLifecycle';
+import { assertStateIs } from './draftLifecycle/reducers';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadDiscoveryAddresses } from './outboundQueries';
 import {

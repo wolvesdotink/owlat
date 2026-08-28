@@ -1,5 +1,5 @@
 /**
- * Unit tests for the selection-rewrite prompt assembly (mail/ai.rewriteSelection
+ * Unit tests for the selection-rewrite prompt assembly (mail/ai/assist.rewriteSelection
  * via the pure exported {@link buildRewritePrompt}): every intent maps to a fixed
  * instruction, the surrounding draft is framed as untrusted data (it may quote
  * inbound mail), the target language reaches a translate prompt, an optional
@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildRewritePrompt, REWRITE_INTENTS } from '../ai';
+import { buildRewritePrompt, REWRITE_INTENTS } from '../ai/assist';
 
 describe('buildRewritePrompt', () => {
 	it('frames the surrounding draft as untrusted data, not instructions', () => {
@@ -34,7 +34,7 @@ describe('buildRewritePrompt', () => {
 					intent,
 					selection: 'some selected text here',
 					surroundingContext: '',
-				}).prompt.split('\n')[1],
+				}).prompt.split('\n')[1]
 		);
 		// Every intent yields a non-empty instruction line and they are all distinct.
 		expect(instructions.every((line) => (line ?? '').length > 0)).toBe(true);
@@ -94,9 +94,7 @@ describe('buildRewritePrompt', () => {
 			selection: 'Some text to translate here.',
 			surroundingContext: '',
 		});
-		const langLine = prompt
-			.split('\n')
-			.find((l) => l.startsWith('Target language:'))!;
+		const langLine = prompt.split('\n').find((l) => l.startsWith('Target language:'))!;
 		expect(langLine.length).toBeLessThan(60);
 	});
 });

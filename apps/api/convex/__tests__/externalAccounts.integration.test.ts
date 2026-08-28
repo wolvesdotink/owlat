@@ -113,7 +113,7 @@ describe('mail.external — feature gate', () => {
 	it('getForCurrentUser throws when the flag is disabled', async () => {
 		const t = convexTest(schema, modules);
 		setSession('user-A', 'owner');
-		await expect(t.query(api.mail.externalAccounts.getForCurrentUser, {})).rejects.toThrow(
+		await expect(t.query(api.mail.external.accounts.getForCurrentUser, {})).rejects.toThrow(
 			/disabled/i
 		);
 	});
@@ -122,7 +122,7 @@ describe('mail.external — feature gate', () => {
 		const t = convexTest(schema, modules);
 		await enableExternal(t);
 		setSession('user-A', 'owner');
-		const result = await t.query(api.mail.externalAccounts.getForCurrentUser, {});
+		const result = await t.query(api.mail.external.accounts.getForCurrentUser, {});
 		expect(result.configured).toBe(false);
 	});
 });
@@ -133,7 +133,7 @@ describe('mail.external — connect + provisioning', () => {
 		await enableExternal(t);
 		setSession('user-A', 'owner');
 		const { mailboxId, externalAccountId } = await t.mutation(
-			internal.mail.externalAccounts._connectInternal,
+			internal.mail.external.accounts._connectInternal,
 			CREDS
 		);
 
@@ -156,9 +156,9 @@ describe('mail.external — connect + provisioning', () => {
 		const t = convexTest(schema, modules);
 		await enableExternal(t);
 		setSession('user-A', 'owner');
-		await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
+		await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 
-		const result = await t.query(api.mail.externalAccounts.getForCurrentUser, {});
+		const result = await t.query(api.mail.external.accounts.getForCurrentUser, {});
 		expect(result.configured).toBe(true);
 		expect(result).not.toHaveProperty('secretCiphertext');
 		expect(result).not.toHaveProperty('secretIv');
@@ -171,9 +171,9 @@ describe('mail.external — connect + provisioning', () => {
 		const t = convexTest(schema, modules);
 		await enableExternal(t);
 		setSession('user-A', 'owner');
-		await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
+		await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 		await expect(
-			t.mutation(internal.mail.externalAccounts._connectInternal, {
+			t.mutation(internal.mail.external.accounts._connectInternal, {
 				...CREDS,
 				emailAddress: 'second@example.com',
 			})
@@ -187,18 +187,18 @@ describe('mail.external — disconnect', () => {
 		await enableExternal(t);
 		setSession('user-A', 'owner');
 		const { mailboxId, externalAccountId } = await t.mutation(
-			internal.mail.externalAccounts._connectInternal,
+			internal.mail.external.accounts._connectInternal,
 			CREDS
 		);
 
-		await t.mutation(api.mail.externalAccounts.disconnect, {});
+		await t.mutation(api.mail.external.accounts.disconnect, {});
 
 		const account = await t.run((ctx) => ctx.db.get(externalAccountId));
 		const mailbox = await t.run((ctx) => ctx.db.get(mailboxId));
 		expect(account?.status).toBe('disconnected');
 		expect(mailbox?.status).toBe('deleted');
 
-		const result = await t.query(api.mail.externalAccounts.getForCurrentUser, {});
+		const result = await t.query(api.mail.external.accounts.getForCurrentUser, {});
 		expect(result.configured).toBe(false);
 	});
 });
@@ -229,7 +229,7 @@ describe('resolveOutboundTransport', () => {
 		const t = convexTest(schema, modules);
 		await enableExternal(t);
 		setSession('user-A', 'owner');
-		const { mailboxId } = await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
+		const { mailboxId } = await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 
 		const res = await t.query(internal.mail.outboundTransport.resolveOutboundTransport, {
 			mailboxId,

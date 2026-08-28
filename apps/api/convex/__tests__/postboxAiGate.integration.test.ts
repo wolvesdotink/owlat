@@ -1,5 +1,5 @@
 /**
- * mail.aiGate.assertAiAllowed — the spend-gate run before every Postbox LLM
+ * mail.ai.gate.assertAiAllowed — the spend-gate run before every Postbox LLM
  * call. Enforces the `ai` feature flag and the per-user rate limit.
  */
 import { convexTest } from 'convex-test';
@@ -41,12 +41,12 @@ async function setAiFlag(t: ReturnType<typeof convexTest>, on: boolean) {
 	});
 }
 
-describe('mail.aiGate.assertAiAllowed', () => {
+describe('mail.ai.gate.assertAiAllowed', () => {
 	it('throws when the ai feature flag is off', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await setAiFlag(t, false);
-		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).rejects.toThrow(
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).rejects.toThrow(
 			/disabled|forbidden/i
 		);
 	});
@@ -57,13 +57,13 @@ describe('mail.aiGate.assertAiAllowed', () => {
 		await setAiFlag(t, true);
 
 		// First call passes; capacity is 30, so a tight loop eventually trips the limit.
-		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).resolves.toBeNull();
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).resolves.toBeNull();
 
 		let succeeded = 1;
 		let limited = false;
 		for (let i = 0; i < 50; i++) {
 			try {
-				await t.mutation(internal.mail.aiGate.assertAiAllowed, {});
+				await t.mutation(internal.mail.ai.gate.assertAiAllowed, {});
 				succeeded += 1;
 			} catch {
 				limited = true;
@@ -84,7 +84,7 @@ describe('mail.aiGate.assertAiAllowed', () => {
 		let translateLimited = false;
 		for (let i = 0; i < 60; i++) {
 			try {
-				await t.mutation(internal.mail.aiGate.assertAiAllowed, {
+				await t.mutation(internal.mail.ai.gate.assertAiAllowed, {
 					rateLimitBucket: 'translateBatchPerUser',
 				});
 			} catch {
@@ -97,8 +97,8 @@ describe('mail.aiGate.assertAiAllowed', () => {
 		// A different feature's bucket (and the default) still has headroom — the
 		// per-feature buckets don't share a token pool.
 		await expect(
-			t.mutation(internal.mail.aiGate.assertAiAllowed, { rateLimitBucket: 'quickQueryPerUser' })
+			t.mutation(internal.mail.ai.gate.assertAiAllowed, { rateLimitBucket: 'quickQueryPerUser' })
 		).resolves.toBeNull();
-		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).resolves.toBeNull();
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).resolves.toBeNull();
 	});
 });

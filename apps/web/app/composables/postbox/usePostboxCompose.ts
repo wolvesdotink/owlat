@@ -183,7 +183,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 		const id = await ensureDraft();
 		if (!id) return;
 		const result = await setIdentityMutation.run({ draftId: id, fromAddress: address });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		fromAddress.value = address.trim().toLowerCase();
 	}
 
@@ -204,15 +204,15 @@ export function usePostboxCompose(seed: DraftSeed) {
 				mailboxId: seed.mailboxId,
 				inReplyToMessageId: seed.inReplyToMessageId,
 			});
-			if (!result) return null;
-			draftId.value = result.draftId as Id<'mailDrafts'>;
-			if (result.inReplySubject && !subject.value) {
-				subject.value = result.inReplySubject.match(/^re\s*:\s*/i)
-					? result.inReplySubject
-					: `Re: ${result.inReplySubject}`;
+			if (!result.ok) return null;
+			draftId.value = result.result.draftId as Id<'mailDrafts'>;
+			if (result.result.inReplySubject && !subject.value) {
+				subject.value = result.result.inReplySubject.match(/^re\s*:\s*/i)
+					? result.result.inReplySubject
+					: `Re: ${result.result.inReplySubject}`;
 			}
-			if (result.inReplyFrom && toAddresses.value.length === 0) {
-				toAddresses.value = [result.inReplyFrom];
+			if (result.result.inReplyFrom && toAddresses.value.length === 0) {
+				toAddresses.value = [result.result.inReplyFrom];
 			}
 			return draftId.value;
 		} finally {
@@ -253,8 +253,8 @@ export function usePostboxCompose(seed: DraftSeed) {
 				// Always sent: a timestamp arms, explicit null clears server-side.
 				followUpRemindAt: followUpRemindAt.value,
 			});
-			if (result === undefined) return;
-			lastSavedAt.value = (result.savedAt as number) ?? Date.now();
+			if (!result.ok) return;
+			lastSavedAt.value = (result.result.savedAt as number) ?? Date.now();
 		} finally {
 			isSaving.value = false;
 		}
@@ -390,11 +390,11 @@ export function usePostboxCompose(seed: DraftSeed) {
 			// toasted them) and returns `undefined`. Surface that as a throw so the
 			// caller never arms undo / navigates away on a failed send — unless the
 			// failure was the TRANSPORT, in which case the message queues offline.
-			if (result === undefined) {
+			if (!result.ok) {
 				if (sendNetworkFailed) return queueOfflineSend(opts);
 				throw new Error('Send failed');
 			}
-			return result as { undoToken: string; sendAt: number };
+			return result.result as { undoToken: string; sendAt: number };
 		} finally {
 			interceptingSend = false;
 		}
@@ -404,7 +404,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 		if (saveTimer) clearTimeout(saveTimer);
 		if (draftId.value) {
 			const result = await discardDraft.run({ draftId: draftId.value });
-			if (result === undefined) return;
+			if (!result.ok) return;
 			draftId.value = null;
 		}
 	}
@@ -419,7 +419,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 		const id = draftId.value;
 		if (!id) return false;
 		const result = await cancelScheduled.run({ draftId: id });
-		if (!result?.ok) return false;
+		if (!result.ok || !result.result.ok) return false;
 		draftState.value = 'draft';
 		scheduledSendAt.value = null;
 		return true;
@@ -427,10 +427,10 @@ export function usePostboxCompose(seed: DraftSeed) {
 
 	async function undoSend(undoToken: string) {
 		const result = await cancelPending.run({ undoToken });
-		if (result?.ok) {
-			draftId.value = (result.draftId as Id<'mailDrafts'>) ?? draftId.value;
+		if (result.ok && result.result.ok) {
+			draftId.value = (result.result.draftId as Id<'mailDrafts'>) ?? draftId.value;
 		}
-		return result;
+		return result.ok ? result.result : undefined;
 	}
 
 	return {

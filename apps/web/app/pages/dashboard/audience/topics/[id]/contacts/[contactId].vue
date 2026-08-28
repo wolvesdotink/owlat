@@ -139,7 +139,7 @@ const handleRemove = async () => {
 		topicId: topicId.value,
 		contactId: contactId.value,
 	});
-	if (result === undefined) {
+	if (!result.ok) {
 		isRemoving.value = false;
 		isRemoveModalOpen.value = false;
 		return;

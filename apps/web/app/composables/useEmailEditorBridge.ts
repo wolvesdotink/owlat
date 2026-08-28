@@ -277,9 +277,15 @@ export function useEmailEditorBridge<S>(
 	// the verbatim part that was copied across the three pages.
 	provideEmailBuilderHandlers({
 		uploadImage: createUploadImageHandler({
-			generateUploadUrl: () => generateUploadUrl({}),
+			generateUploadUrl: async () => {
+				const minted = await generateUploadUrl({});
+				return minted.ok ? minted.result : null;
+			},
 			getUrl: (storageId) => requireConvex().query(api.storage.getUrl, { storageId }),
-			createMediaAsset: (asset) => createMediaAsset(asset),
+			createMediaAsset: async (asset) => {
+				const created = await createMediaAsset(asset);
+				return created.ok ? created.result : undefined;
+			},
 			getImageDimensions,
 		}),
 		pickFromMediaLibrary: (onSelect) => {

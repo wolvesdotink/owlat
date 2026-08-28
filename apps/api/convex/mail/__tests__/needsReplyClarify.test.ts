@@ -33,7 +33,7 @@ import {
 	sanitizeClarificationQuestions,
 	isCredentialSolicitation,
 } from '../../inbox/clarificationSlots';
-import { refineClarification } from '../needsReplyClassify';
+import { refineClarification } from '../ai/needsReplyClassify';
 
 // recordLlmSpend short-circuits on undefined tokenUsage, so ctx is never read.
 const ctx = {} as never;

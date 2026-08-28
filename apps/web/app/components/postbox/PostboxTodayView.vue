@@ -72,7 +72,7 @@ const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 // Advisory smart-inbox categories live on the THREAD, not the message —
 // reuse the same listThreads feed the Categories view reads and index it by
 // thread id. Fail-open: an unclassified thread is never auto-filed.
-const { data: threadData } = useConvexQuery(api.mail.mailbox.listThreads, () =>
+const { data: threadData } = useConvexQuery(api.mail.mailbox.queries.listThreads, () =>
 	props.mailboxId ? { mailboxId: props.mailboxId, folderRole: 'inbox' } : 'skip'
 );
 const categoryByThread = computed(() => {
@@ -208,7 +208,7 @@ const overlayAdvanceIds = computed(() => [
 const openListMessage = computed(() =>
 	openMessageId.value ? messages.value.find((m) => m._id === openMessageId.value) : undefined
 );
-const { data: fetchedOpenMessage } = useConvexQuery(api.mail.mailbox.getMessage, () =>
+const { data: fetchedOpenMessage } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
 	openMessageId.value && !openListMessage.value
 		? { messageId: openMessageId.value as Id<'mailMessages'> }
 		: 'skip'

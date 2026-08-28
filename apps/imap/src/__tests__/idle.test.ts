@@ -75,7 +75,7 @@ function makeDeps(convex: MockConvex): {
 
 function startArgs(
 	deps: CommandDeps,
-	state: ConnectionState,
+	state: ConnectionState
 ): { start: StartArgs<void>; lines: string[] } {
 	const lines: string[] = [];
 	return {
@@ -138,9 +138,9 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 		// ticks. peekFolderModseq returns counters; listFolderUids returns the
 		// live UID list; fetchEnvelopes returns rows changed since modseqSince.
 		convex.query.mockImplementation((ref: string, qargs: Record<string, unknown>) => {
-			if (ref === 'mail/imap:peekFolderModseq') return Promise.resolve(peek);
-			if (ref === 'mail/imap:listFolderUids') return Promise.resolve(uids);
-			if (ref === 'mail/imap:fetchEnvelopes') {
+			if (ref === 'mail/imap/session:peekFolderModseq') return Promise.resolve(peek);
+			if (ref === 'mail/imap/fetch:listFolderUids') return Promise.resolve(uids);
+			if (ref === 'mail/imap/fetch:fetchEnvelopes') {
 				const since = (qargs.modseqSince as number) ?? 0;
 				return Promise.resolve(rows.filter((r) => r.modseq > since));
 			}
@@ -224,7 +224,9 @@ describe('diffIdle — pure RFC 3501 §7.4 response computation', () => {
 
 	it('emits EXISTS whenever a UID arrived, never on a pure decrease or no-op', () => {
 		// Pure append: count grew, new UID 4 present → EXISTS 4.
-		expect(diffIdle({ ...base, nextUids: [1, 2, 3, 4], nextTotal: 4, nextUidNext: 5 }).exists).toBe(4);
+		expect(diffIdle({ ...base, nextUids: [1, 2, 3, 4], nextTotal: 4, nextUidNext: 5 }).exists).toBe(
+			4
+		);
 		// Pure expunge: count dropped, no new UID → no EXISTS.
 		expect(diffIdle({ ...base, nextUids: [1, 2], nextTotal: 2 }).exists).toBeUndefined();
 		// No change at all → no EXISTS.

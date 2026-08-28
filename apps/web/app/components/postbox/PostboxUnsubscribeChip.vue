@@ -49,24 +49,20 @@ async function onClick() {
 	if (target.oneClick && target.httpUrl) {
 		// Explicit confirm — the POST is a state-changing request to a third
 		// party and must never fire on render or by accident.
-		const host =
-			targetHost.value ?? t('components.postbox.postboxUnsubscribeChip.theSender');
+		const host = targetHost.value ?? t('components.postbox.postboxUnsubscribeChip.theSender');
 		if (!window.confirm(t('components.postbox.postboxUnsubscribeChip.confirm', { host }))) {
 			return;
 		}
 		const result = await oneClickOp.run({ messageId: props.messageId as Id<'mailMessages'> });
-		if (result?.ok) {
+		if (result.ok && result.result.ok) {
 			unsubscribed.value = true;
 			showToast(t('components.postbox.postboxUnsubscribeChip.requestSent'));
 		} else {
 			// Fail-soft: fall back to opening the page so the user can finish
-			// manually. When the action *threw* (result === undefined),
+			// manually. When the action *threw* (!result.ok),
 			// useBackendOperation already toasted the error — don't double up.
-			if (result) {
-				showToast(
-					t('components.postbox.postboxUnsubscribeChip.requestFailed'),
-					'error'
-				);
+			if (result.ok) {
+				showToast(t('components.postbox.postboxUnsubscribeChip.requestFailed'), 'error');
 			}
 			window.open(target.httpUrl, '_blank', 'noopener,noreferrer');
 		}
@@ -93,10 +89,7 @@ async function onClick() {
 </script>
 
 <template>
-	<span
-		v-if="unsubscribed"
-		class="inline-flex items-center gap-1 text-xs text-text-tertiary"
-	>
+	<span v-if="unsubscribed" class="inline-flex items-center gap-1 text-xs text-text-tertiary">
 		<Icon name="lucide:check" class="w-3 h-3" />
 		{{ t('components.postbox.postboxUnsubscribeChip.unsubscribed') }}
 	</span>

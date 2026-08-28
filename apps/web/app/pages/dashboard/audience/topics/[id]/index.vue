@@ -261,7 +261,7 @@ const handleRemove = async () => {
 		contactId: removeTarget.value.id,
 	});
 	isRemoving.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(
 		t('dashboard.audience.topics.detail.index.toasts.removed', {
 			email:

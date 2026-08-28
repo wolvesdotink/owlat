@@ -133,7 +133,7 @@ async function seedMailMessageBlobs(
 /**
  * Seed an IMAP-COPY'd PAIR: two `mailMessages` rows that SHARE one raw `.eml`
  * blob AND one text body blob AND one html body blob — exactly what
- * `mail/imap.ts` copyMessages produces (the copy row spreads the original's
+ * `mail/imap/move.ts` copyMessages produces (the copy row spreads the original's
  * `rawStorageId`/`textBodyStorageId`/`htmlBodyStorageId`). Returns the two row
  * ids and the three shared plaintext blob ids so the test can assert both rows
  * survive the reseal and the old plaintext blobs are gone.

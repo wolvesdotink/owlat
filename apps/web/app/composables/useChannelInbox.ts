@@ -81,7 +81,7 @@ export function useChannelInbox(limit = 50) {
 
 	async function resolveThread(threadId: Id<'conversationThreads'>) {
 		const result = await updateThreadStatus({ threadId, status: 'resolved' });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('shared.useChannelInbox.markedResolved'));
 	}
 

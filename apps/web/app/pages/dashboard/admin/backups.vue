@@ -48,7 +48,7 @@ const scheduleCommands = computed(() => [
 async function toggleSchedule(next: boolean) {
 	// Attest what you set up on the host. Run the shown command first.
 	const res = await setSchedule({ enabled: next });
-	if (res) {
+	if (res.ok) {
 		showToast(
 			next
 				? t('dashboard.admin.backups.toastScheduleEnabled')
@@ -60,7 +60,7 @@ async function toggleSchedule(next: boolean) {
 
 async function recordRun(status: 'success' | 'failed') {
 	const res = await logRun({ status });
-	if (res) {
+	if (res.ok) {
 		showToast(
 			status === 'success'
 				? t('dashboard.admin.backups.toastRunLogged')

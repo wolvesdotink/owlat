@@ -17,7 +17,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
-import { VOICE_STALE_MS } from '../mail/voiceProfile';
+import { VOICE_STALE_MS } from '../mail/ai/voiceProfile';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -173,7 +173,7 @@ describe('mail.voiceProfileActions.refresh', () => {
 			modelUsed: 'test-model',
 		});
 
-		await t.action(internal.mail.voiceProfileActions.refresh, { mailboxId });
+		await t.action(internal.mail.ai.voiceProfileActions.refresh, { mailboxId });
 
 		// The fresh prose reached the prompt; the quoted original did not.
 		const prompt = runLlmObjectMock.mock.calls[0]?.[0]?.prompt as string;
@@ -214,7 +214,7 @@ describe('mail.voiceProfileActions.refresh', () => {
 			});
 		});
 
-		await t.action(internal.mail.voiceProfileActions.refresh, { mailboxId });
+		await t.action(internal.mail.ai.voiceProfileActions.refresh, { mailboxId });
 
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
 		const row = await t.run(async (ctx) =>
@@ -284,7 +284,7 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 		await enableFeatures(t, ['ai']);
 		const mailboxId = await seedProfile(t, Date.now());
 
-		const res = await t.mutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+		const res = await t.mutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
 			mailboxId,
 		});
 		expect(res.guidance).toContain('Typical greetings: Hi');
@@ -297,7 +297,7 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 		await enableFeatures(t, ['ai']);
 		const mailboxId = await seedProfile(t, Date.now() - VOICE_STALE_MS - 1);
 
-		const res = await t.mutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+		const res = await t.mutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
 			mailboxId,
 		});
 		// Stale profile is still served immediately (never blocks).
@@ -318,7 +318,7 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 			if (row) await ctx.db.patch(row._id, { isEnabled: false });
 		});
 
-		const res = await t.mutation(internal.mail.voiceProfile.getGuidanceForMailbox, {
+		const res = await t.mutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
 			mailboxId,
 		});
 		expect(res.guidance).toBeNull();

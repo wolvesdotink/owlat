@@ -158,16 +158,16 @@ const handleCreate = async () => {
 	});
 	isCreating.value = false;
 
-	if (!result) return;
+	if (!result.ok) return;
 
 	// Close create modal and show the created key
 	closeCreateModal();
 
 	// Store the created key to display
 	createdKey.value = {
-		name: result.name,
-		apiKey: result.apiKey,
-		keyPrefix: result.keyPrefix,
+		name: result.result.name,
+		apiKey: result.result.apiKey,
+		keyPrefix: result.result.keyPrefix,
 	};
 	showCreatedKey.value = true;
 	resetCopiedKey();
@@ -211,7 +211,7 @@ const handleRevoke = async () => {
 	isRevoking.value = true;
 	const result = await revokeKey({ keyId: keyToRevoke.value.id });
 	isRevoking.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showNotification(t('dashboard.admin.team.api.index.toasts.revoked'));
 	closeRevokeModal();
 };
@@ -237,7 +237,7 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	const result = await deleteKey({ keyId: keyToDelete.value.id });
 	isDeleting.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showNotification(t('dashboard.admin.team.api.index.toasts.deleted'));
 	closeDeleteModal();
 };
@@ -270,7 +270,9 @@ const activeKeysCount = computed(() => {
 			<div class="flex items-start gap-3">
 				<Icon name="lucide:shield" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 				<div>
-					<p class="text-sm text-text-primary font-medium">{{ t('dashboard.admin.team.api.index.secureNotice.title') }}</p>
+					<p class="text-sm text-text-primary font-medium">
+						{{ t('dashboard.admin.team.api.index.secureNotice.title') }}
+					</p>
 					<p class="text-sm text-text-secondary mt-1">
 						{{ t('dashboard.admin.team.api.index.secureNotice.body') }}
 					</p>
@@ -283,7 +285,9 @@ const activeKeysCount = computed(() => {
 			<div class="px-6 py-4 border-b border-border-subtle bg-bg-surface/50">
 				<div class="flex items-center gap-3">
 					<Icon name="lucide:gauge" class="w-5 h-5 text-brand" />
-					<h2 class="text-sm font-semibold text-text-primary">{{ t('dashboard.admin.team.api.index.rateLimit.title') }}</h2>
+					<h2 class="text-sm font-semibold text-text-primary">
+						{{ t('dashboard.admin.team.api.index.rateLimit.title') }}
+					</h2>
 				</div>
 			</div>
 			<div class="p-6">
@@ -292,7 +296,9 @@ const activeKeysCount = computed(() => {
 					<div class="flex items-start gap-4">
 						<UiIconBox icon="lucide:gauge" size="sm" variant="brand" rounded="lg" />
 						<div>
-							<p class="text-sm font-medium text-text-primary">{{ t('dashboard.admin.team.api.index.rateLimit.rate') }}</p>
+							<p class="text-sm font-medium text-text-primary">
+								{{ t('dashboard.admin.team.api.index.rateLimit.rate') }}
+							</p>
 							<p class="text-sm text-text-secondary mt-0.5">
 								{{ t('dashboard.admin.team.api.index.rateLimit.rateDescription') }}
 							</p>
@@ -334,7 +340,9 @@ const activeKeysCount = computed(() => {
 										>X-RateLimit-Limit</code
 									>
 								</td>
-								<td class="px-4 py-2 text-text-secondary">{{ t('dashboard.admin.team.api.index.rateLimit.limitHeader') }}</td>
+								<td class="px-4 py-2 text-text-secondary">
+									{{ t('dashboard.admin.team.api.index.rateLimit.limitHeader') }}
+								</td>
 							</tr>
 							<tr class="border-t border-border-subtle">
 								<td class="px-4 py-2">
@@ -374,7 +382,9 @@ const activeKeysCount = computed(() => {
 
 				<!-- Usage Example -->
 				<div class="mt-4 p-4 rounded-lg bg-bg-deep border border-border-subtle">
-					<p class="text-xs text-text-tertiary mb-2">{{ t('dashboard.admin.team.api.index.rateLimit.exampleHeaders') }}</p>
+					<p class="text-xs text-text-tertiary mb-2">
+						{{ t('dashboard.admin.team.api.index.rateLimit.exampleHeaders') }}
+					</p>
 					<code class="text-xs font-mono text-text-secondary block leading-relaxed">
 						X-RateLimit-Limit: 10<br />
 						X-RateLimit-Remaining: 7<br />
@@ -389,7 +399,9 @@ const activeKeysCount = computed(() => {
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:book" size="sm" variant="surface" rounded="lg" />
 				<div>
-					<p class="text-sm text-text-primary font-medium">{{ t('dashboard.admin.team.api.index.docs.title') }}</p>
+					<p class="text-sm text-text-primary font-medium">
+						{{ t('dashboard.admin.team.api.index.docs.title') }}
+					</p>
 					<p class="text-sm text-text-tertiary">
 						{{ t('dashboard.admin.team.api.index.docs.description') }}
 					</p>
@@ -409,7 +421,9 @@ const activeKeysCount = computed(() => {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.api.index.adminGate.title') }}</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('dashboard.admin.team.api.index.adminGate.title') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 					{{ t('dashboard.admin.team.api.index.adminGate.description') }}
 				</p>
@@ -426,7 +440,9 @@ const activeKeysCount = computed(() => {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:key" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.api.index.noWorkspace.title') }}</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('dashboard.admin.team.api.index.noWorkspace.title') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 					{{ t('dashboard.admin.team.api.index.noWorkspace.description') }}
 				</p>
@@ -438,7 +454,9 @@ const activeKeysCount = computed(() => {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox icon="lucide:key" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.api.index.empty.title') }}</p>
+				<p class="text-text-secondary font-medium">
+					{{ t('dashboard.admin.team.api.index.empty.title') }}
+				</p>
 				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 					{{ t('dashboard.admin.team.api.index.empty.description') }}
 				</p>
@@ -546,7 +564,9 @@ const activeKeysCount = computed(() => {
 										<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
 										{{ formatCompactRelativeTime(key.lastUsedAt) }}
 									</span>
-									<span v-else class="text-text-tertiary text-sm">{{ t('dashboard.admin.team.api.index.neverUsed') }}</span>
+									<span v-else class="text-text-tertiary text-sm">{{
+										t('dashboard.admin.team.api.index.neverUsed')
+									}}</span>
 								</td>
 								<td class="px-6 py-4">
 									<span class="text-text-tertiary text-sm">{{ formatDate(key.createdAt) }}</span>
@@ -629,7 +649,10 @@ const activeKeysCount = computed(() => {
 
 				<!-- Scopes Field -->
 				<div>
-					<span class="label">{{ t('dashboard.admin.team.api.index.form.scopesLabel') }} <span class="text-error">*</span></span>
+					<span class="label"
+						>{{ t('dashboard.admin.team.api.index.form.scopesLabel') }}
+						<span class="text-error">*</span></span
+					>
 					<p class="mb-2 text-xs text-text-tertiary">
 						{{ t('dashboard.admin.team.api.index.form.scopesHelp') }}
 					</p>
@@ -667,7 +690,11 @@ const activeKeysCount = computed(() => {
 				</UiButton>
 				<UiButton type="button" class="gap-2" :disabled="isCreating" @click="handleCreate">
 					<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-					{{ isCreating ? t('dashboard.admin.team.api.index.form.creating') : t('dashboard.admin.team.api.index.form.submit') }}
+					{{
+						isCreating
+							? t('dashboard.admin.team.api.index.form.creating')
+							: t('dashboard.admin.team.api.index.form.submit')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -688,7 +715,9 @@ const activeKeysCount = computed(() => {
 				<!-- Header -->
 				<div class="flex items-center gap-3 mb-6">
 					<UiIconBox icon="lucide:key" size="sm" variant="success" rounded="lg" />
-					<h2 class="text-lg font-semibold text-text-primary">{{ t('dashboard.admin.team.api.index.created.title') }}</h2>
+					<h2 class="text-lg font-semibold text-text-primary">
+						{{ t('dashboard.admin.team.api.index.created.title') }}
+					</h2>
 				</div>
 
 				<!-- Content -->
@@ -696,7 +725,9 @@ const activeKeysCount = computed(() => {
 					<div class="flex items-start gap-3">
 						<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 						<div>
-							<p class="text-sm font-medium text-warning">{{ t('dashboard.admin.team.api.index.created.copyNow') }}</p>
+							<p class="text-sm font-medium text-warning">
+								{{ t('dashboard.admin.team.api.index.created.copyNow') }}
+							</p>
 							<p class="text-sm text-warning/80 mt-1">
 								{{ t('dashboard.admin.team.api.index.created.copyNowBody') }}
 							</p>
@@ -720,7 +751,9 @@ const activeKeysCount = computed(() => {
 						<UiButton variant="secondary" class="shrink-0 gap-2" @click="copyApiKey">
 							<Icon v-if="copiedKey" name="lucide:check" class="w-4 h-4 text-success" />
 							<Icon v-else name="lucide:copy" class="w-4 h-4" />
-							{{ copiedKey ? t('dashboard.admin.team.api.index.created.copied') : t('common.copy') }}
+							{{
+								copiedKey ? t('dashboard.admin.team.api.index.created.copied') : t('common.copy')
+							}}
 						</UiButton>
 					</div>
 				</div>
@@ -736,7 +769,11 @@ const activeKeysCount = computed(() => {
 			:open="isRevokeModalOpen"
 			variant="warning"
 			:title="t('dashboard.admin.team.api.index.revokeDialog.title')"
-			:description="t('dashboard.admin.team.api.index.revokeDialog.description', { name: keyToRevoke?.name ?? '' })"
+			:description="
+				t('dashboard.admin.team.api.index.revokeDialog.description', {
+					name: keyToRevoke?.name ?? '',
+				})
+			"
 			:confirm-text="t('dashboard.admin.team.api.index.revokeDialog.confirm')"
 			:is-loading="isRevoking"
 			@update:open="
@@ -752,7 +789,11 @@ const activeKeysCount = computed(() => {
 			:open="isDeleteModalOpen"
 			variant="danger"
 			:title="t('dashboard.admin.team.api.index.deleteDialog.title')"
-			:description="t('dashboard.admin.team.api.index.deleteDialog.description', { name: keyToDelete?.name ?? '' })"
+			:description="
+				t('dashboard.admin.team.api.index.deleteDialog.description', {
+					name: keyToDelete?.name ?? '',
+				})
+			"
 			:confirm-text="t('dashboard.admin.team.api.index.deleteDialog.confirm')"
 			:is-loading="isDeleting"
 			@update:open="

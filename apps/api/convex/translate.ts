@@ -78,7 +78,7 @@ export const translateBatch = authedAction({
 		// Gate: `ai` feature flag + per-org spend budget + per-user rate limit,
 		// charged to the translation bucket so a tight loop can't drain the LLM
 		// budget. Runs as a mutation since an action can't touch ctx.db.
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 			rateLimitBucket: 'translateBatchPerUser',
 		});
 

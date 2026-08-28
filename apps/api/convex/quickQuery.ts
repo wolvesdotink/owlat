@@ -82,7 +82,7 @@ export const ask = authedAction({
 		// charged to the Quick Query bucket so a tight loop can't drain the LLM
 		// budget. The knowledge gate above enforces `ai.knowledge` + read access;
 		// this adds the shared AI spend/rate ceiling.
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 			rateLimitBucket: 'quickQueryPerUser',
 		});
 

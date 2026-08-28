@@ -53,7 +53,7 @@ const handleCreate = async () => {
 		...(dataset.value !== '' ? { dataset: dataset.value } : {}),
 	});
 	isCreating.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	prompt.value = '';
 	pinToBoard.value = false;
 	dataset.value = '';

@@ -33,7 +33,7 @@ import type { Id } from '../_generated/dataModel';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
-import { createProvisionedMailbox, canonicalAddress } from './mailbox';
+import { createProvisionedMailbox, canonicalAddress } from './mailbox/identity';
 
 /** Resolve a member's display fields from their `userProfiles` row. */
 async function loadMemberProfile(
@@ -78,7 +78,7 @@ export async function assertOrgMemberUser(ctx: MutationCtx, authUserId: string):
  * after asserting each is a real org member. A bogus id throws and — because a
  * Convex mutation is transactional — rolls back the whole create, so no dangling
  * mailbox or half-seeded roster survives. Shared by `createShared` (hosted) and
- * `externalSharedInbox._connectSharedInternal` (external) so the two provisioning
+ * `external/sharedInbox._connectSharedInternal` (external) so the two provisioning
  * paths never drift on how the roster is validated and seeded.
  */
 export async function seedSharedInboxRoster(

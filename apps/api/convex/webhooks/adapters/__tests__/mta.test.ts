@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { verifyMtaHeaders, mtaAdapter } from '../mta';
 
 const SECRET = 'mta-test-secret';
@@ -673,14 +673,65 @@ describe('mtaAdapter.parseEvent', () => {
 		).toBeNull();
 	});
 
-	it('returns null for unknown event types', () => {
-		const event = mtaAdapter.parseEvent(
-			JSON.stringify({
-				event: 'something.weird',
-				timestamp: 1700000000000,
-			})
-		);
-		expect(event).toBeNull();
+	it('rejects unknown event types observably, never as a silent success', () => {
+		// The pipeline 200-acks an empty parse (`{ignored:true}`) and the MTA
+		// outbox retires the event — no DLQ behind this path. The ingress-guard
+		// rejection must therefore leave a trace naming the discriminator.
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			const event = mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'something.weird',
+					timestamp: 1700000000000,
+				})
+			);
+			expect(event).toBeNull();
+			expect(warn).toHaveBeenCalledOnce();
+			expect(String(warn.mock.calls[0]?.[0])).toContain('something.weird');
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it('never leaks a rejected payload body into the rejection trace', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			expect(
+				mtaAdapter.parseEvent(
+					JSON.stringify({
+						event: 'postmaster.stats',
+						domain: 'private.example',
+						timestamp: Number.NaN,
+					})
+				)
+			).toBeNull();
+			expect(warn).toHaveBeenCalledOnce();
+			expect(String(warn.mock.calls[0]?.[0])).not.toContain('private.example');
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it('maps inbound.mailbox.received to the explicit ignore entry with a trace', () => {
+		// The kind is IN the wire union but is served by /webhooks/mta-mailbox
+		// (mail/webhook.ts) — the registry entry exists only to keep the table
+		// total, and an event of this kind arriving here is a routing bug.
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			const event = mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'inbound.mailbox.received',
+					organizationId: 'org-1',
+					mailboxPayload: { deliveryId: 'delivery-1' },
+					timestamp: 1700000000000,
+				})
+			);
+			expect(event).toBeNull();
+			expect(warn).toHaveBeenCalledOnce();
+			expect(String(warn.mock.calls[0]?.[0])).toContain('/webhooks/mta-mailbox');
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });
 

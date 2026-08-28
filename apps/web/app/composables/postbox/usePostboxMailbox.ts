@@ -16,7 +16,7 @@ import { derivePostboxSidebarSections } from '~/utils/postboxMailboxSections';
 const STORAGE_KEY = 'owlat:postbox:active-mailbox';
 
 export function usePostboxMailbox() {
-	const { data, isLoading, error } = useConvexQuery(api.mail.mailbox.list, () => ({}));
+	const { data, isLoading, error } = useConvexQuery(api.mail.mailbox.identity.list, () => ({}));
 	const mailboxes = computed(() => data.value ?? []);
 
 	// Shared across every consumer so a switch in the sidebar reaches the page,
@@ -56,7 +56,7 @@ export function usePostboxMailbox() {
 	// Cmd-K entries, so an admin never sees a teammate's private inbox or a shared
 	// inbox they don't belong to advertised as a switch target, and the badges
 	// always match the listed mailboxes.
-	const { data: accessibleData } = useConvexQuery(api.mail.mailbox.accessible, () => ({}));
+	const { data: accessibleData } = useConvexQuery(api.mail.mailbox.queries.accessible, () => ({}));
 	const accessible = computed(() => accessibleData.value ?? []);
 
 	// Personal mailbox(es) vs shared (team) inboxes, for the sidebar switcher.

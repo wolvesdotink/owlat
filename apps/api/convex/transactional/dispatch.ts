@@ -23,18 +23,16 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
 import { createContact } from '../contacts/creation';
-import { isSendingAllowed } from '../workspaces/abuseGate';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
-import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import { transactionalEmailPool } from '../delivery/workpool';
 import { recordSendAssignments } from '../delivery/sendAssignments';
+import { runSendIntakeGates, type SendIntakeRejectionReason } from '../delivery/sendIntakeGates';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
-import { isSuppressed } from '../lib/suppression';
 import {
 	validateDataVariables,
 	resolveLanguage,
@@ -46,10 +44,16 @@ import {
 // Public types
 // ============================================================
 
+/**
+ * Why this intake refused. The first three members are the shared
+ * {@link SendIntakeRejectionReason} vocabulary — the same three pre-row gates
+ * the **Non-campaign send intake (module)** runs, named once in
+ * `delivery/sendIntakeGates.ts` so the two intakes cannot drift into two
+ * spellings of one refusal. The rest are this intake's own: only the Template
+ * API takes a stored template and caller-supplied variables.
+ */
 export type DispatchRejectionReason =
-	| 'abuse_blocked'
-	| 'no_delivery_provider'
-	| 'recipient_blocked'
+	| SendIntakeRejectionReason
 	| 'template_not_found'
 	| 'template_not_published'
 	| 'template_no_content'
@@ -105,38 +109,38 @@ export const dispatch = internalMutation({
 		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
 	},
 	handler: async (ctx, args): Promise<DispatchOutcome> => {
-		// 1. Abuse gate. Pre-deepening this lived as `isSendingAllowed` on
-		//    the HTTP shell against a separately-fetched instanceSettings.
-		const settings = await ctx.db.query('instanceSettings').first();
-		if (!isSendingAllowed(settings?.abuseStatus ?? null)) {
-			return { ok: false, reason: 'abuse_blocked' };
-		}
-
-		// 1b. Reject at intake (HTTP 4xx, no row) when no delivery provider is set.
-		if (!(await isDeliveryConfigured(ctx, 'transactional'))) {
-			return {
-				ok: false,
-				reason: 'no_delivery_provider',
-				detail:
-					'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) or a provider route before sending transactional email.',
-			};
-		}
-		// 2. Blocklist. The shared `isSuppressed` owns the normalization +
-		//    `by_email` point read (the HTTP shell already lowercases + trims,
-		//    so the re-normalization is a defensive no-op). This path's POLICY
-		//    is to RETURN a typed rejection rather than throw.
+		// 1. The shared pre-row gate sequence: abuse → provider-ready →
+		//    suppression, owned by `delivery/sendIntakeGates.ts` (pre-deepening
+		//    the abuse check lived as `isSendingAllowed` on the HTTP shell against
+		//    a separately-fetched instanceSettings). Every refusal is returned as
+		//    a typed rejection and leaves no row behind.
 		//
-		//    SCOPE `'transactional'`: a bounce or a complaint still blocks, but a
-		//    MARKETING-hygiene suppression does not. A customer who ignores the
-		//    newsletter has not asked to stop receiving their receipts, their
-		//    password resets or the double-opt-in confirmation they just
-		//    requested — and blocking the confirmation would make consent
-		//    itself unreachable.
-		if (await isSuppressed(ctx, args.email, { scope: 'transactional' })) {
-			return { ok: false, reason: 'recipient_blocked' };
-		}
+		//    `settings` is read HERE and handed down because this intake needs the
+		//    same row again for its sender defaults and counters; the gate must
+		//    not read the singleton a second time.
+		//
+		//    SUPPRESSION SCOPE `'transactional'`: a bounce or a complaint still
+		//    blocks, but a MARKETING-hygiene suppression does not. A customer who
+		//    ignores the newsletter has not asked to stop receiving their
+		//    receipts, their password resets or the double-opt-in confirmation
+		//    they just requested — and blocking the confirmation would make
+		//    consent itself unreachable.
+		const settings = await ctx.db.query('instanceSettings').first();
+		const gates = await runSendIntakeGates(ctx, {
+			email: args.email,
+			suppressionScope: 'transactional',
+			settings: settings ?? null,
+			// The Template API's route resolution is address-aware and needs a
+			// `from` that is only settled by step 3 below, so the gate asks the
+			// route-INDEPENDENT question — can this message type deliver at all —
+			// and this intake resolves its own route later (step 7).
+			providerReadiness: { kind: 'message_type', messageType: 'transactional' },
+			noDeliveryProviderDetail:
+				'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) or a provider route before sending transactional email.',
+		});
+		if (!gates.ok) return gates;
 
-		// 3. Template lookup + publish + has-HTML checks.
+		// 2. Template lookup + publish + has-HTML checks.
 		let template: Doc<'transactionalEmails'> | null = null;
 		if (args.templateLookup.kind === 'id') {
 			template = await ctx.db.get(args.templateLookup.id);
@@ -185,7 +189,7 @@ export const dispatch = internalMutation({
 			logWarn(`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`);
 		}
 
-		// 4. Sender + domain verification. Resolve `defaultFromEmail` from
+		// 3. Sender + domain verification. Resolve `defaultFromEmail` from
 		//    settings → env → fallback; verify the sending domain is registered
 		//    and currently `verified`.
 		const defaultFromEmail =
@@ -204,7 +208,7 @@ export const dispatch = internalMutation({
 			};
 		}
 
-		// 5. Validate `dataVariables` shape against the template's declared schema.
+		// 4. Validate `dataVariables` shape against the template's declared schema.
 		const variableValidation = validateDataVariables(
 			args.dataVariables,
 			template.dataVariablesSchema
@@ -217,7 +221,7 @@ export const dispatch = internalMutation({
 			};
 		}
 
-		// 6. Contact resolution. Routes through the Contact resolution module
+		// 5. Contact resolution. Routes through the Contact resolution module
 		//    in `upsert` mode — closes the open-coded find-or-create with
 		//    race-retry try/catch hack at the pre-deepening transactionalApiHttp.ts.
 		const resolved = await createContact(ctx, {
@@ -227,7 +231,7 @@ export const dispatch = internalMutation({
 			mode: 'upsert',
 		});
 
-		// 7. Language resolution. Read the contact (post-upsert) so the
+		// 6. Language resolution. Read the contact (post-upsert) so the
 		//    fallback chain (request → contact → template default → 'en')
 		//    can consider the contact's stored language. The upsert never
 		//    overwrites contact.language, so a pre-existing value wins.
@@ -261,20 +265,29 @@ export const dispatch = internalMutation({
 				? template.plainTextContent
 				: undefined;
 
-		// 8. Provider route resolution. Reads the route config + health
+		// 7. Provider route resolution. Reads the route config + health
 		//    snapshots in-transaction via the shared `resolveSendRoute` seam.
+		//
+		//    KEPT HERE, and kept LATE, on purpose. The sibling non-campaign
+		//    intake resolves its route up in the provider gate; this one cannot,
+		//    because the resolution is address-aware and `defaultFromEmail` is
+		//    only settled by step 4 above. The `providerType`/`ipPool` it yields
+		//    are advisory for the worker either way (`delivery/lastMileRouting.ts`
+		//    re-resolves and reads them only as the fallback), but they are
+		//    authoritative for the `providerType` stamped on the row below, so
+		//    this must run before the insert.
 		const resolvedRoute = await resolveSendRouteFromDb(ctx, 'transactional', {
 			to: args.email,
 			from: defaultFromEmail,
 		});
 
-		// 9. Template + request attachment merge.
+		// 8. Template + request attachment merge.
 		const mergedAttachments = mergeAttachments(template.attachments, args.attachmentRefs);
 		const attachmentStorageIds = args.attachmentRefs
 			?.filter((a) => a.storageId)
 			.map((a) => a.storageId!);
 
-		// 10. Insert `transactionalSends` row in `queued`. Writes the resolved
+		// 9. Insert `transactionalSends` row in `queued`. Writes the resolved
 		//     language onto the row — pre-deepening this lived on the API
 		//     response only.
 		const correlationId = `txn_${nanoid(16)}`;
@@ -293,7 +306,7 @@ export const dispatch = internalMutation({
 			...(attachmentStorageIds && attachmentStorageIds.length > 0 ? { attachmentStorageIds } : {}),
 		});
 
-		// 11. Counter increments — all atomic with the row insert.
+		// 10. Counter increments — all atomic with the row insert.
 		//     Pre-deepening the daily counter fired from the HTTP shell
 		//     *after* the enqueue mutation returned; consolidating into
 		//     `dispatch` closes the drift seam. The per-template `sendCount`
@@ -313,7 +326,7 @@ export const dispatch = internalMutation({
 			sendCount: (template.sendCount ?? 0) + 1,
 		});
 
-		// 12. Enqueue workpool.
+		// 11. Enqueue workpool.
 		const from = formatFromAddress(defaultFromEmail, defaultFromName);
 		// Gmail FBL — singleton org id anchors the stable `txn`-stream
 		// Feedback-ID SenderId the worker's transactional composer emits.
@@ -327,7 +340,7 @@ export const dispatch = internalMutation({
 		// populated only by agent 1:1 replies. Written inside THIS transaction,
 		// before the workpool enqueue.
 		//
-		// It deliberately does NOT reuse `resolvedRoute` from step 8. That one
+		// It deliberately does NOT reuse `resolvedRoute` from step 7. That one
 		// comes from the authoritative per-message resolver, which is
 		// health-influenced and draws with `Math.random()` under
 		// `workload_split` — a draw the worker repeats independently at

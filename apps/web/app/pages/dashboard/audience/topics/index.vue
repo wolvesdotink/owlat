@@ -127,7 +127,7 @@ const handleCreate = async () => {
 		requireDoubleOptIn: createForm.requireDoubleOptIn,
 	});
 	isCreating.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showToast(t('dashboard.audience.topics.index.toasts.created', { name: createForm.name.trim() }));
 	closeCreateModal();
@@ -198,7 +198,7 @@ const handleEdit = async () => {
 		requireDoubleOptIn: editForm.requireDoubleOptIn,
 	});
 	isEditing.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showToast(t('dashboard.audience.topics.index.toasts.updated', { name: editForm.name.trim() }));
 	closeEditModal();
@@ -244,7 +244,7 @@ const handleDelete = async () => {
 
 	const result = await deleteTopic({ topicId: deleteTarget.value.id });
 	isDeleting.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.audience.topics.index.toasts.deleted', { name: deleteTarget.value.name }));
 	closeDeleteModal();
 };

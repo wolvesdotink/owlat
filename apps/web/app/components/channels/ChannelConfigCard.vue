@@ -77,9 +77,7 @@ const channelMeta: Record<string, { icon: string; label: string; description: st
 const meta = computed(() => channelMeta[props.channelConfig.channel] ?? null);
 // An unknown channel keeps falling back to its raw backend name and no blurb.
 const metaIcon = computed(() => meta.value?.icon ?? 'lucide:radio');
-const metaLabel = computed(() =>
-	meta.value ? t(meta.value.label) : props.channelConfig.channel
-);
+const metaLabel = computed(() => (meta.value ? t(meta.value.label) : props.channelConfig.channel));
 const metaDescription = computed(() => (meta.value ? t(meta.value.description) : ''));
 
 // Health status helpers
@@ -132,7 +130,7 @@ async function toggleEnabled() {
 		isEnabled: !props.channelConfig.isEnabled,
 	});
 	isTogglingEnabled.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	emit('saved');
 }
 
@@ -237,7 +235,9 @@ function handleConfigCancelled() {
 				@click="isConfiguring = !isConfiguring"
 			>
 				<Icon name="lucide:settings" class="w-4 h-4" />
-				{{ isConfiguring ? t('common.close') : t('components.channels.channelConfigCard.configure') }}
+				{{
+					isConfiguring ? t('common.close') : t('components.channels.channelConfigCard.configure')
+				}}
 				<Icon
 					name="lucide:chevron-down"
 					:class="['w-4 h-4 transition-transform', isConfiguring ? 'rotate-180' : '']"

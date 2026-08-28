@@ -193,7 +193,7 @@ describe('mail.commitmentExtract.extractCommitment', () => {
 			modelUsed: 'test-model',
 		});
 
-		await t.action(internal.mail.commitmentExtract.extractCommitment, {
+		await t.action(internal.mail.ai.commitmentExtract.extractCommitment, {
 			messageId,
 			direction: 'outbound',
 		});
@@ -233,7 +233,7 @@ describe('mail.commitmentExtract.extractCommitment', () => {
 			modelUsed: 'test-model',
 		});
 
-		await t.action(internal.mail.commitmentExtract.extractCommitment, {
+		await t.action(internal.mail.ai.commitmentExtract.extractCommitment, {
 			messageId,
 			direction: 'outbound',
 		});
@@ -249,7 +249,7 @@ describe('mail.commitmentExtract.extractCommitment', () => {
 		const seeded = await seedMailbox(t);
 		const { messageId } = await seedSentMessage(t, seeded);
 
-		await t.action(internal.mail.commitmentExtract.extractCommitment, {
+		await t.action(internal.mail.ai.commitmentExtract.extractCommitment, {
 			messageId,
 			direction: 'outbound',
 		});

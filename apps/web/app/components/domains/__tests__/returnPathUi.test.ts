@@ -135,7 +135,7 @@ function mountEditor(props: Record<string, unknown> = {}) {
 
 describe('ReturnPathEditor — edit affordance', () => {
 	beforeEach(() => {
-		mockRun = vi.fn(async () => null); // void mutation → null on success
+		mockRun = vi.fn(async () => ({ ok: true, result: null })); // void mutation → null on success
 		savingRef = ref(false);
 		vi.stubGlobal('useBackendOperation', () => ({ run: mockRun, isLoading: savingRef }));
 	});
@@ -320,7 +320,7 @@ function makeDeps(overrides: Partial<AddDomainFlowDeps> = {}): {
 	};
 } {
 	const calls = {
-		createDomain: vi.fn(async () => 'domain_new' as never),
+		createDomain: vi.fn(async () => ({ ok: true, result: 'domain_new' }) as never),
 		close: vi.fn(),
 		showToast: vi.fn(),
 		setLoading: vi.fn(),
@@ -362,7 +362,7 @@ describe('useAddDomain — atomic create-with-host orchestration (F2 finding 1)'
 	});
 
 	it('does nothing on a create failure — no close, no toast (the invalid host fails create)', async () => {
-		const { deps, calls } = makeDeps({ createDomain: vi.fn(async () => undefined) });
+		const { deps, calls } = makeDeps({ createDomain: vi.fn(async () => ({ ok: false })) });
 		await useAddDomain(deps).handleAddDomain({
 			domain: 'mail.example.com',
 			returnPathHost: 'bounce.example.com',

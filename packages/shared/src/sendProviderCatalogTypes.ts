@@ -104,7 +104,7 @@ export type DomainVerificationSupport = 'api' | 'none';
  *  - `accepted`  the transport takes CUSTODY of the message. Success is an
  *                intake acceptance, not a delivery: the Send stays `queued`
  *                until the transport's own feedback terminalizes it, so the
- *                governed boundary reports `acceptedForDelivery`. Intake is
+ *                governed boundary reports `isCustodyHandoff`. Intake is
  *                idempotent under the key WE minted (such a kind declares
  *                `messageIdSource: 'idempotency-key'`), which is what makes an
  *                ambiguous outcome RE-ASKABLE: replaying the attempt either
@@ -161,16 +161,15 @@ export type DomainVerificationSupport = 'api' | 'none';
  *     mutation on purpose (grep one, find the other), so the string is renamed
  *     WITH it rather than before it.
  *  3. `delivery/sendCompletion.ts` — the only consumer of the
- *     `acceptedForDelivery` verdict this declaration produces, and it is
- *     MTA-shaped in three ways: the arm comment calls it "MTA intake", the
- *     identity-conflict guard throws `MTA acceptance conflicts with the Send
- *     provider identity.` at whoever is on call, and the patch defaults
- *     `providerType: returnValue.providerType ?? 'mta'`. That default is DEAD
- *     as written — `dispatchGovernedEmail`'s success branch always carries a
- *     `providerType` — but a second custody kind that leaves it standing has
- *     one silent `'mta'` stamp waiting behind any future caller that omits it,
- *     on exactly the rows item 2 exists to keep honest. Generalize the wording
- *     and delete the default, or re-derive why it is safe.
+ *     `isCustodyHandoff` verdict this declaration produces. Two of its three
+ *     MTA-shaped edges are gone: the arm reads the boolean off a kind-tagged
+ *     wire (`delivery/workerOutcome.ts`) whose `providerType` is REQUIRED, so
+ *     the silent `?? 'mta'` stamp that used to sit behind it no longer exists,
+ *     and the comment no longer says "MTA intake". What remains is the
+ *     identity-conflict guard, which throws `MTA acceptance conflicts with the
+ *     Send provider identity.` at whoever is on call — deliberately, because it
+ *     is about item 2's `bindMtaProviderIdentity` and moves when that mutation
+ *     does.
  */
 export type AcceptanceSemantics = 'accepted' | 'unknown-on-timeout';
 
@@ -406,7 +405,7 @@ export interface SendProviderCatalogEntryShape {
  *  - `accepted` ⇒ `idempotency-key`, because an ambiguous outcome is resolved by
  *    REPLAYING the attempt, which is only safe when the replay carries the id WE
  *    minted. An entry pairing `accepted` with a provider-minted id would (a)
- *    report `acceptedForDelivery` under an identity nothing pre-bound, parking
+ *    report `isCustodyHandoff` under an identity nothing pre-bound, parking
  *    the Send `queued` against a report that can never match it, and (b) answer
  *    an ambiguity with an idempotency key the provider never saw and re-dispatch
  *    to a transport with no idempotency surface — a double delivery.

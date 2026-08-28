@@ -35,7 +35,7 @@ convex/
 ```
 
 Convex generated function paths mirror the folder structure: a query in
-`mail/imap.ts` is reached via `api.mail.imap.<funcName>`.
+`mail/imap/session.ts` is reached via `api.mail.imap.session.<funcName>`.
 
 **Magic root files never move into domain folders.** `schema.ts`,
 `convex.config.ts`, `http.ts`, and `auth.config.ts` are filenames the Convex
@@ -52,7 +52,7 @@ Default: queries, mutations, and actions for one feature live in a single file
 mixing them together.
 
 ```ts
-// mail/imap.ts
+// mail/<feature>.ts
 export const listFolders = query({ ... });
 export const fetchMessage = query({ ... });
 export const setFlag = mutation({ ... });

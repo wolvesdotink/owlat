@@ -218,13 +218,14 @@ async function submitClarification(message: NonNullable<typeof messages.value>[n
 			value: values[question.id]?.trim() ?? '',
 		})),
 	});
-	if (result) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
+	if (result.ok) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
 }
 
 async function cancelAutoSend(messageId: Id<'inboundMessages'>) {
 	if (!isAdmin.value) return;
 	const result = await undoAutoSend({ inboundMessageId: messageId });
-	if (result?.cancelled) showToast(t('dashboard.inbox.detail.autoSendCancelledToast'));
+	if (result.ok && result.result.cancelled)
+		showToast(t('dashboard.inbox.detail.autoSendCancelledToast'));
 }
 
 const remainingAutoSendSeconds = (sendAt: number) =>
@@ -233,13 +234,13 @@ const remainingAutoSendSeconds = (sendAt: number) =>
 // Use the shared global toast. The underlying actions go through
 // useBackendOperation, which already toasts any categorized failure — so we
 // only emit the success toast here, and only when the operation truly
-// succeeded (run resolves to `undefined` on failure, never throws).
+// succeeded (run resolves to `ok: false` on failure, never throws).
 const { showToast } = useToast();
 
 const onSnoozeConfirm = async (timestamp: number) => {
 	showSnoozeDialog.value = false;
 	const result = await handleSnooze(timestamp);
-	if (result !== undefined) showToast(t('dashboard.inbox.detail.snoozedToast'));
+	if (result.ok) showToast(t('dashboard.inbox.detail.snoozedToast'));
 };
 // "Until they reply" maps to a capped snooze: an inbound reply already
 // resurfaces a snoozed thread (the thread module's inbound_activity reducer
@@ -247,11 +248,11 @@ const onSnoozeConfirm = async (timestamp: number) => {
 const onSnoozeUntilReply = async (capTimestamp: number) => {
 	showSnoozeDialog.value = false;
 	const result = await handleSnooze(capTimestamp);
-	if (result !== undefined) showToast(t('dashboard.inbox.detail.snoozedUntilReplyToast'));
+	if (result.ok) showToast(t('dashboard.inbox.detail.snoozedUntilReplyToast'));
 };
 const onUnsnooze = async () => {
 	const result = await handleUnsnooze();
-	if (result !== undefined) showToast(t('dashboard.inbox.detail.unsnoozedToast'));
+	if (result.ok) showToast(t('dashboard.inbox.detail.unsnoozedToast'));
 };
 
 const onApprove = async (messageId: Id<'inboundMessages'>) => {
@@ -259,11 +260,11 @@ const onApprove = async (messageId: Id<'inboundMessages'>) => {
 	isApproving.value = true;
 	try {
 		const result = await handleApprove(messageId);
-		if (result === undefined) return;
+		if (!result.ok) return;
 		// Server refused because a teammate just replied — toast, don't claim success.
-		if (isReplyCollision(result)) {
+		if (isReplyCollision(result.result)) {
 			showToast(
-				collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
 				'error'
 			);
 			return;
@@ -285,7 +286,7 @@ const onReject = async () => {
 	isRejecting.value = true;
 	try {
 		const result = await handleReject(actionMessageId.value, rejectReason.value || undefined);
-		if (result !== undefined) {
+		if (result.ok) {
 			showRejectModal.value = false;
 			showToast(t('dashboard.inbox.detail.draftRejectedToast'));
 		}
@@ -298,7 +299,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 	isRetrying.value = true;
 	try {
 		const result = await handleRetry(messageId);
-		if (result !== undefined) showToast(t('dashboard.inbox.detail.retriedToast'));
+		if (result.ok) showToast(t('dashboard.inbox.detail.retriedToast'));
 	} finally {
 		isRetrying.value = false;
 	}
@@ -309,11 +310,11 @@ const onSaveEdit = async (messageId: Id<'inboundMessages'>) => {
 	isSavingEdit.value = true;
 	try {
 		const result = await saveEditedDraft(messageId);
-		if (result === undefined) return;
+		if (!result.ok) return;
 		// Server refused because a teammate just replied — toast, don't claim success.
-		if (isReplyCollision(result)) {
+		if (isReplyCollision(result.result)) {
 			showToast(
-				collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
 				'error'
 			);
 			return;
@@ -331,7 +332,7 @@ const onSaveOnly = async (messageId: Id<'inboundMessages'>) => {
 	isSavingEdit.value = true;
 	try {
 		const result = await saveDraftOnly(messageId);
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.inbox.detail.toasts.draftSavedNotApproved'));
 	} finally {
 		isSavingEdit.value = false;
@@ -367,11 +368,11 @@ const router = useRouter();
 const { linkChannelToInboxThread } = useChatActions();
 const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 	// Channel was just created — link it to this inbox thread, then jump.
-	// run() toasts its own failure and returns undefined; only navigate into the
-	// channel when the link actually persisted.
+	// run() toasts its own failure and resolves `ok: false`; only navigate into
+	// the channel when the link actually persisted.
 	const result = await linkChannelToInboxThread(roomId, threadId.value);
 	showNewChannel.value = false;
-	if (result === undefined) {
+	if (!result.ok) {
 		showToast(t('dashboard.inbox.detail.channelLinkFailedToast'), 'error');
 		return;
 	}

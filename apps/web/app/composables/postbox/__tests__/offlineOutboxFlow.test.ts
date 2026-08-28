@@ -262,15 +262,15 @@ beforeEach(async () => {
 		mutation: (op: string, args: Record<string, unknown>) => backend.call(op, args),
 		query: (op: string, args: Record<string, unknown>) => backend.call(op, args),
 	}));
-	// Mirrors the real module's contract: run() resolves the backend result,
-	// or normalizes a throw, offers it to onError (claimed → silent), and
-	// returns undefined.
+	// Mirrors the real module's contract: run() resolves an `ok: true` envelope
+	// around the backend result, or normalizes a throw, offers it to onError
+	// (claimed → silent), and resolves `ok: false`.
 	vi.stubGlobal(
 		'useBackendOperation',
 		(op: string, opts?: { onError?: (e: { category: string; message: string }) => boolean }) => ({
 			run: async (args: Record<string, unknown>) => {
 				try {
-					return await backend.call(op, args);
+					return { ok: true, result: await backend.call(op, args) };
 				} catch (e) {
 					const err = e as Error & { category?: string };
 					const normalized = {
@@ -278,7 +278,7 @@ beforeEach(async () => {
 						message: err.message,
 					};
 					if (opts?.onError?.(normalized) !== true) toasts.push(normalized.message);
-					return undefined;
+					return { ok: false };
 				}
 			},
 			isLoading: ref(false),

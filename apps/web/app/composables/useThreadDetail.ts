@@ -87,7 +87,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	// transitions to `approved` and is queued for sending. `editDraft` only
 	// patches the draft text (leaving the message in `draft_ready`), so the
 	// follow-up `approveDraft` reads the just-saved text and fires the transition.
-	// Each step toasts its own categorized failure and resolves to `undefined`,
+	// Each step toasts its own categorized failure and resolves to `ok: false`,
 	// so a failed save short-circuits before approval.
 	const saveEditedDraft = async (messageId: Id<'inboundMessages'>) => {
 		const saved = await editDraft({
@@ -95,10 +95,10 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 			draftResponse: editedDraftResponse.value,
 			draftSubject: editedDraftSubject.value || undefined,
 		});
-		if (saved === undefined) return undefined;
+		if (!saved.ok) return saved;
 
 		const approved = await approveDraft({ inboundMessageId: messageId });
-		if (approved === undefined) return undefined;
+		if (!approved.ok) return approved;
 
 		isEditingDraft.value = false;
 		return approved;
@@ -114,7 +114,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 			draftResponse: editedDraftResponse.value,
 			draftSubject: editedDraftSubject.value || undefined,
 		});
-		if (saved === undefined) return undefined;
+		if (!saved.ok) return saved;
 
 		isEditingDraft.value = false;
 		return saved;

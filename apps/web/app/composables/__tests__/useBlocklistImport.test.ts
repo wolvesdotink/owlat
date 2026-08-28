@@ -113,7 +113,9 @@ describe('useBlocklistImport', () => {
 		const imp = useBlocklistImport();
 		await simulateFileSelect(imp, [['a@example.com'], ['b@example.com']]);
 
-		const bulkAdd = vi.fn().mockResolvedValue({ added: 2, skipped: 0, errors: [] });
+		const bulkAdd = vi
+			.fn()
+			.mockResolvedValue({ ok: true, result: { added: 2, skipped: 0, errors: [] } });
 		const res = await imp.startImport(bulkAdd);
 
 		expect(bulkAdd).toHaveBeenCalledWith([
@@ -125,11 +127,11 @@ describe('useBlocklistImport', () => {
 		expect(imp.results.value).toEqual({ added: 2, skipped: 0, errors: [] });
 	});
 
-	it('returns to preview when the import operation fails (undefined)', async () => {
+	it('returns to preview when the import operation fails', async () => {
 		const imp = useBlocklistImport();
 		await simulateFileSelect(imp, [['a@example.com']]);
 
-		const bulkAdd = vi.fn().mockResolvedValue(undefined);
+		const bulkAdd = vi.fn().mockResolvedValue({ ok: false });
 		const res = await imp.startImport(bulkAdd);
 
 		expect(res).toBeUndefined();

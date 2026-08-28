@@ -77,24 +77,25 @@ async function handleSendTest() {
 		return;
 	}
 	const result = await sendTest({ to });
-	if (result === undefined) return;
-	testStages.value = result.stages;
+	if (!result.ok) return;
+	testStages.value = result.result.stages;
 	if (
-		result.provider &&
-		result.providerMessageId &&
-		result.latencyMs !== null &&
-		result.attempts !== null
+		result.result.provider &&
+		result.result.providerMessageId &&
+		result.result.latencyMs !== null &&
+		result.result.attempts !== null
 	) {
 		testReceipt.value = {
-			provider: result.provider,
-			providerMessageId: result.providerMessageId,
-			latencyMs: result.latencyMs,
-			attempts: result.attempts,
+			provider: result.result.provider,
+			providerMessageId: result.result.providerMessageId,
+			latencyMs: result.result.latencyMs,
+			attempts: result.result.attempts,
 		};
 	}
-	if (result.success) showToast(t('components.delivery.testSendCard.acceptedToast', { email: to }));
-	else testError.value = result.error ?? t('components.delivery.testSendCard.sendFailed');
-	emit('result', { success: result.success });
+	if (result.result.success)
+		showToast(t('components.delivery.testSendCard.acceptedToast', { email: to }));
+	else testError.value = result.result.error ?? t('components.delivery.testSendCard.sendFailed');
+	emit('result', { success: result.result.success });
 }
 </script>
 

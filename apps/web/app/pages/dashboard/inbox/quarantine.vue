@@ -39,7 +39,7 @@ const onRelease = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
 	try {
 		const result = await releaseFromQuarantine({ inboundMessageId: messageId });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.inbox.quarantine.releasedToast'));
 	} finally {
 		actionInProgress.value = null;
@@ -53,7 +53,7 @@ const onBlock = async (messageId: Id<'inboundMessages'>) => {
 	actionInProgress.value = messageId;
 	try {
 		const result = await blockSender({ inboundMessageId: messageId });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.inbox.quarantine.blockedToast'));
 	} finally {
 		actionInProgress.value = null;
@@ -85,7 +85,9 @@ const getInjectionTypeLabel = (type: string) => {
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 			</NuxtLink>
 			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3">
+				<h1
+					class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3"
+				>
 					<Icon name="lucide:shield-alert" class="w-7 h-7 text-error" />
 					{{ t('dashboard.inbox.quarantine.title') }}
 				</h1>
@@ -123,7 +125,9 @@ const getInjectionTypeLabel = (type: string) => {
 				rounded="full"
 				class="mb-4"
 			/>
-			<p class="text-text-secondary font-medium">{{ t('dashboard.inbox.quarantine.emptyTitle') }}</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.inbox.quarantine.emptyTitle') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1">
 				{{ t('dashboard.inbox.quarantine.emptyBody') }}
 			</p>

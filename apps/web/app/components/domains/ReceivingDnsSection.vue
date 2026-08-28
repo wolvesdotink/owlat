@@ -94,8 +94,8 @@ const { run: runReverseDnsCheck } = useBackendOperation(
 	{ label: () => t('components.domains.receivingDnsSection.reverseDnsOperation'), type: 'action' }
 );
 
-type ReverseDnsVerdict = Awaited<ReturnType<typeof runReverseDnsCheck>>;
-const reverseDns = ref<ReverseDnsVerdict>(undefined);
+type ReverseDnsVerdict = BackendOperationValue<ReturnType<typeof runReverseDnsCheck>>;
+const reverseDns = ref<ReverseDnsVerdict | undefined>(undefined);
 const reverseDnsChecked = ref(false);
 
 // Run the PTR preflight once both a mail host and inbound-enabled are true. A
@@ -111,7 +111,8 @@ watch(
 	async (ready) => {
 		if (!ready || hasRun.value) return;
 		hasRun.value = true;
-		reverseDns.value = await runReverseDnsCheck({});
+		const verdict = await runReverseDnsCheck({});
+		reverseDns.value = verdict.ok ? verdict.result : undefined;
 		reverseDnsChecked.value = true;
 	},
 	{ immediate: true }
@@ -162,7 +163,9 @@ watch(
 				<strong class="text-text-primary">{{ domain }}</strong>
 			</template>
 			<template #zone>
-				<strong class="text-text-primary" data-testid="receiving-zone">{{ registrableZone }}</strong>
+				<strong class="text-text-primary" data-testid="receiving-zone">{{
+					registrableZone
+				}}</strong>
 			</template>
 			<template #mailHost>
 				<code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">{{ mailHost }}</code>

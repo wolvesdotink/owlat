@@ -102,7 +102,7 @@ const handleSave = async () => {
 		signatureTemplate: form.signatureTemplate || undefined,
 		coalesceWindowMs: form.coalesceWindowMs,
 	});
-	if (configResult === undefined) {
+	if (!configResult.ok) {
 		isSaving.value = false;
 		return;
 	}
@@ -111,7 +111,7 @@ const handleSave = async () => {
 	// knowledge-backfill the first time it flips on)
 	const agentFlag = flags.value['ai.agent'] === true;
 	if (form.enabled !== agentFlag) {
-		if ((await setFeatureFlag({ flag: 'ai.agent', value: form.enabled })) === undefined) {
+		if (!(await setFeatureFlag({ flag: 'ai.agent', value: form.enabled })).ok) {
 			isSaving.value = false;
 			return;
 		}

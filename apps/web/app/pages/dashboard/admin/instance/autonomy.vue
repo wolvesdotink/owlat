@@ -118,7 +118,7 @@ const handleKillSwitch = async () => {
 	killSwitchBusy.value = true;
 	try {
 		const result = await runKillSwitch({});
-		if (result === undefined) return;
+		if (!result.ok) return;
 		displayToast(t('dashboard.admin.instance.autonomy.toasts.autoSendingStopped'));
 	} finally {
 		killSwitchBusy.value = false;
@@ -133,7 +133,7 @@ const handleAcceptOffer = async (payload: { category: string; sender: string }) 
 			sender: payload.sender,
 			isEnabled: true,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 		displayToast(
 			t('dashboard.admin.instance.autonomy.toasts.senderEnabled', { sender: payload.sender })
 		);
@@ -148,7 +148,7 @@ const handleAcceptSuggestion = async (payload: { suggestionId: string }) => {
 		const result = await runAcceptSuggestion({
 			suggestionId: payload.suggestionId as Id<'autonomySuggestions'>,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 		displayToast(t('dashboard.admin.instance.autonomy.toasts.suggestionApplied'));
 	} finally {
 		nudgePendingKey.value = null;
@@ -161,7 +161,7 @@ const handleAcknowledgeDemotion = async (payload: { ruleId: string }) => {
 		const result = await runAcknowledgeDemotion({
 			ruleId: payload.ruleId as Id<'autonomyRules'>,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 		displayToast(t('dashboard.admin.instance.autonomy.toasts.alertDismissed'));
 	} finally {
 		demotionPendingId.value = null;
@@ -184,7 +184,7 @@ const handleSaveWorkingHours = async (payload: {
 			workingHoursEnd: payload.end,
 			workingHoursDays: payload.days,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 		displayToast(t('dashboard.admin.instance.autonomy.toasts.workingHoursSaved'));
 	} finally {
 		workingHoursBusy.value = false;

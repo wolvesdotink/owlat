@@ -57,3 +57,37 @@
 [data-density='compact'] .pbx-reader-header {
 	margin-bottom: 0.75rem;
 }
+
+/*
+ * Touch devices (stack mode): hover never fires, so the two hover-gated
+ * affordances must be permanently reachable —
+ *   - the row's quick-action cluster (.ui-hover-reveal) stays visible at rest,
+ *     and
+ *   - the bulk-select checkbox (opacity-0 group-hover:opacity-100) shows too.
+ * Desktop is untouched: both rules are scoped to (hover: none), which no
+ * mouse-driven device matches. Rows also get a comfortable touch floor — 44px
+ * is the minimum target size; the comfortable density already clears it, so
+ * only compact needs lifting.
+ */
+@media (hover: none) {
+	.postbox-thread-list .ui-hover-reveal {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.postbox-thread-list .pbx-row-checkbox {
+		opacity: 1;
+	}
+
+	[data-density='compact'] .postbox-thread-list .pbx-row-link {
+		padding-top: 0.65rem;
+		padding-bottom: 0.65rem;
+	}
+
+	/* The long-press context menu is the touch route to the triage verbs —
+	   stop iOS's press-and-hold text-selection callout from fighting it. */
+	.postbox-thread-list .pbx-row-li {
+		user-select: none;
+		-webkit-touch-callout: none;
+	}
+}

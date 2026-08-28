@@ -35,7 +35,7 @@ const handleSubmit = async () => {
 			visibility: visibility.value,
 			initialMemberIds: selectedMembers.value.map((m) => m.memberId),
 		});
-		if (id) emit('created', id);
+		if (id.ok) emit('created', id.result);
 	} catch (e) {
 		error.value =
 			e instanceof Error ? e.message : t('components.chat.chatNewChannelDialog.createFailed');

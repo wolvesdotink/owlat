@@ -191,7 +191,7 @@ const {
 					attachments: JSON.stringify(attachments.value),
 					showUnsubscribe: showUnsubscribe.value,
 				});
-				if (result === undefined) throw new Error('Save failed');
+				if (!result.ok) throw new Error('Save failed');
 			},
 		});
 	},
@@ -266,7 +266,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 		id: emailId.value,
 		dataVariablesSchema: buildDataVariablesSchema(nextVariables),
 	});
-	if (result === undefined) {
+	if (!result.ok) {
 		// Roll back the optimistic add; the module has toasted the failure.
 		dataVariables.value = dataVariables.value.filter((existing) => existing.key !== key);
 		return;

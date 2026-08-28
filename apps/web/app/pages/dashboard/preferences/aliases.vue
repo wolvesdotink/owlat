@@ -39,7 +39,7 @@ async function handleCreate() {
 	submitting.value = true;
 	const result = await createMutation.run({ mailboxId: mailboxId.value, alias: trimmed });
 	submitting.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	newAlias.value = '';
 }
 
@@ -50,7 +50,7 @@ async function confirmRemove() {
 	if (!id) return;
 	const result = await removeMutation.run({ aliasId: id });
 	aliasToRemove.value = null;
-	if (result === undefined) return;
+	if (!result.ok) return;
 }
 </script>
 

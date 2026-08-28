@@ -1,6 +1,9 @@
 # Transactional send intake module — single intake path for the public transactional send API
 
-**Status:** proposed
+**Status:** proposed; **amended 2026-08-25** — the "Scope — include
+automation step's email send path or not" decision is REOPENED and
+partly reversed (see [Amendment — PIECE C2](#amendment--piece-c2-2026-08-25)
+at the end of this document). Everything else stands.
 
 ## Context
 
@@ -439,6 +442,12 @@ the deepening's discipline forces the audit.
 
 ### Scope — include automation step's email send path or not
 
+> **REOPENED 2026-08-25 — see [Amendment — PIECE C2](#amendment--piece-c2-2026-08-25).**
+> The decision below stands as written and as reasoned. It is recorded here
+> unedited because the amendment's whole argument is that its PREMISES about
+> the automation step stopped being true after this ADR was written, and
+> because the ADR itself named the condition on which it should be revisited.
+
 **Chosen: leave automation step separate.**
 
 `convex/automations/steps/email/index.ts` is an `ActionCtx`-bound
@@ -852,3 +861,194 @@ rg "language:" apps/api/convex/transactional/dispatch.ts
   (helper)** producer list update, and the Relationships bullet match
   this ADR.
 - The grep verification matches above all hold.
+
+
+---
+
+## Amendment — PIECE C2 (2026-08-25)
+
+### Why this is reopened
+
+This ADR left one scope question open with an explicit escape clause. The
+"Scope — include automation step's email send path or not" section chose
+**leave automation step separate**, and closed with:
+
+> Keeping them separate is the right call until a third path appears with
+> the same divergence pattern.
+
+Both halves of that section have since stopped holding.
+
+**Its premises are now false.** The section justified the split by five
+divergences, three of which described the automation step as it existed
+when this ADR was written:
+
+> It does **not** write a `transactionalSends` row, does **not** use the
+> workpool, dispatches synchronously […]
+> - Sync vs async (workpool queueing)
+> - Row-writing vs row-less
+
+None of that is true any more. ADR-0006 pre-created `transactionalSends`
+rows so every send walks the Send lifecycle, and the automation email step
+was moved onto that path: `automations/steps/email/index.ts` called
+`internal.delivery.enqueue.enqueueNonCampaignSend`, which inserted a
+`transactionalSends` row in `queued` and enqueued the send on
+`transactionalEmailPool` with the same `onComplete` + `sendRef` wiring as
+`transactional/dispatch.ts`. Row-writing, workpool-queued, asynchronous —
+the same three properties the section used to argue the paths were
+different in kind. Of the five divergences, only two survive
+(contact-by-id vs email-upsert, and schema-validated `dataVariables` vs
+none), and both are about the SHAPE OF THE INPUT, not about what the
+intake does with it.
+
+**Its reopening condition is met.** A third path appeared with the same
+divergence pattern: the agent approved-reply
+(`agent/agentPipeline.ts:sendApprovedReply`) is also an `ActionCtx`-bound
+producer of a pre-rendered subject + html for a known recipient, and it
+went through the same `enqueueNonCampaignSend`. Three producers, one
+writer, no shared intake vocabulary.
+
+### What the split had cost by then
+
+`enqueueNonCampaignSend` signalled its two refusals by THROWING, from two
+exported magic-string constants (`RECIPIENT_BLOCKED_ERROR`,
+`NO_DELIVERY_PROVIDER_ERROR`). This ADR's own "Outcome shape" section had
+already rejected exactly that for the Template API — "flat reason union"
+was chosen over "throw" — so the codebase carried both policies at once,
+for the same three gates, ten lines apart in behaviour:
+
+- `automations/steps/email/index.ts` re-derived the reason with
+  `message === RECIPIENT_BLOCKED_ERROR`. Any refusal without a constant
+  fell through to the generic failure branch.
+- `agent/agentPipeline.ts` did not classify at all: it caught and called
+  `fail(err.message)`, so a SUPPRESSED RECIPIENT — an expected, permanent,
+  per-recipient policy verdict — became the same `failed` transition as a
+  real fault, and stayed eligible for the failed-action retry cron to
+  re-drive a send that would never be allowed.
+- The non-campaign path had NO abuse gate at all, so a suspended instance
+  still sent automation and agent mail while the Template API refused.
+- All three producers pre-resolved an ADVISORY route in their own action
+  or transaction and handed `providerType`/`ipPool` down, for a value the
+  worker's own re-resolution (`delivery/lastMileRouting.ts`) reads only as
+  a fallback.
+
+### Decision
+
+**Partly reversed.** The automation step (and the agent reply) do NOT fold
+into `transactional/dispatch.ts` — the two surviving divergences are real,
+and a single mutation parameterized over "stored template + variables +
+contact upsert" versus "pre-rendered body for a known recipient" would be
+the higher-level abstraction this ADR rightly refused. What DOES unify is
+everything downstream of the input:
+
+1. **Send intake gates (module)** — `delivery/sendIntakeGates.ts`. The one
+   pre-row gate sequence, in one fixed order: **abuse → provider-ready →
+   suppression**, plus the `SendIntakeRejectionReason` vocabulary
+   (`abuse_blocked | no_delivery_provider | recipient_blocked`) both
+   intakes refuse with. `DispatchRejectionReason` is now that union plus
+   the Template API's own template/variable reasons, so the two intakes
+   cannot drift into two spellings of one refusal. Every gate is pre-row,
+   which is what makes a rejection safe to treat as final.
+
+2. **Non-campaign send intake (module)** — `delivery/nonCampaignIntake.ts`.
+   `enqueueNonCampaignSend` moved out of `delivery/enqueue.ts` (which now
+   holds only the campaign producer), runs the shared gates, resolves its
+   own route, inserts the row, records the experiment assignment, enqueues
+   the workpool job, and returns `{ ok: true, sendId, queued: true } |
+   { ok: false, reason, detail? }` — the `DispatchOutcome` shape this ADR
+   chose, now used by both intakes.
+
+3. **Both magic-string constants are deleted**, along with every
+   string-match. Each producer maps the reasons through a
+   `Record<SendIntakeRejectionReason, …>` that is total by construction, so
+   a future reason is a compile error at every consumer.
+
+4. **Route resolution moved into the intake.** The three upstream advisory
+   resolutions are gone; the non-campaign intake resolves once, in the same
+   transaction as the insert, through the same `resolveSendRouteFromDb`
+   seam the last mile re-runs, and the provider gate judges the exact
+   provider that resolution selected. `transactional/dispatch.ts` keeps its
+   own resolution late and in-transaction, documented at the call site: its
+   resolution is address-aware and its `from` is not settled until the
+   sender/domain step.
+
+### Per-reason mappings, and why
+
+The point of a typed union is that each producer answers each reason
+DELIBERATELY. Recorded here because the choices are policy, not mechanics:
+
+| reason | automation step | agent approved-reply |
+| --- | --- | --- |
+| `recipient_blocked` | step `completed`, no Send row, no retry | inbound message → `archived`, reason `sender_blocked` |
+| `no_delivery_provider` | step `failed` | inbound message → `failed` |
+| `abuse_blocked` | step `failed` | inbound message → `failed` |
+
+`recipient_blocked` is about the RECIPIENT and will never clear by
+retrying, so neither producer treats it as a fault. The agent side archives
+with reason `sender_blocked` — the same lifecycle edge, the same reason and
+the same `'transactional'` suppression scope `inbox/messages.ts` uses when
+blocklisted mail ARRIVES. It is the identical verdict about the identical
+address, observed at reply time instead of at receipt, and `archived` is
+terminal, so the failed-action retry cron can never re-drive it. That is
+the agent-side reading of the automation step's completed-without-sending.
+
+`no_delivery_provider` and `abuse_blocked` are about the DEPLOYMENT: the
+message is still good and should send once an operator configures a
+provider or the suspension lifts. Both producers fail, which keeps them
+visible and re-drivable. Neither spins: the automation walker applies its
+existing bounded backoff and then cancels the run; the agent's failed
+messages are re-driven only by a cron, never in a tight loop.
+
+`abuse_blocked` on the non-campaign path is NEW behaviour, not a
+refactoring artefact — closing the gap where a suspended instance kept
+sending automation and agent mail.
+
+### What is still deliberately separate
+
+- `transactional/dispatch.ts` keeps its template lookup, `dataVariables`
+  validation, contact upsert, language resolution, attachment merge and
+  counter increments. None of them exist on the non-campaign path.
+- `delivery/enqueueTestSend.ts` keeps a plain throw. A member-only preview
+  has ONE caller, reached from an authed action that surfaces the throw to
+  the operator directly, so there is no second call site to keep in
+  agreement — and nothing ever string-matched it, which is why the shared
+  constant could be deleted rather than moved.
+- `delivery/enqueue.ts` keeps the campaign producer. A campaign page is
+  fanned out from an already-gated orchestrator (`campaigns/preflight.ts`
+  owns its refusals, with its own reason union); it is a bulk enqueue, not
+  an intake with a single caller and an outcome to classify.
+
+### Verification
+
+These should return matches:
+
+```sh
+# The two new modules exist
+test -f apps/api/convex/delivery/sendIntakeGates.ts && \
+test -f apps/api/convex/delivery/nonCampaignIntake.ts
+
+# Both intakes run the one gate sequence
+rg "runSendIntakeGates" apps/api/convex/transactional/dispatch.ts \
+  apps/api/convex/delivery/nonCampaignIntake.ts
+
+# The shared reason union is composed into the Template API's
+rg "SendIntakeRejectionReason" apps/api/convex/transactional/dispatch.ts
+
+# Both producers map reasons through a total record
+rg "NonCampaignIntakeRejectionReason" \
+  apps/api/convex/automations/steps/email/index.ts \
+  apps/api/convex/agent/agentPipeline.ts
+```
+
+These should return NOTHING. They target DECLARATIONS and CALL SITES, not
+prose: the new module's doc comment names what it replaced on purpose.
+
+```sh
+# The magic-string constants — and so every string-match on them — are gone
+rg "export const (RECIPIENT_BLOCKED_ERROR|NO_DELIVERY_PROVIDER_ERROR)" apps/api/convex
+
+# The old shared writer has no callers
+rg "internal\.delivery\.enqueue\.enqueueNonCampaignSend" apps/api/convex
+
+# The three upstream advisory route resolutions are gone
+rg "route\.resolveSendRoute\b" apps/api/convex/automations apps/api/convex/agent
+```

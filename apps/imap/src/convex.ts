@@ -35,28 +35,28 @@ export function createConvexClient(config: ImapConfig): ConvexClient {
 export type FnRef = string;
 
 // Convex addresses functions by their module path (directory + filename,
-// minus the .ts), so functions in convex/mail/imap.ts and
-// convex/mail/appPasswords.ts are referenced as `mail/imap:fn` /
+// minus the .ts), so functions in convex/mail/imap/session.ts and
+// convex/mail/appPasswords.ts are referenced as `mail/imap/session:fn` /
 // `mail/appPasswords:fn` — NOT the flat `mailImap:` / `mailAppPasswords:`
 // names these once used. Because these strings are cast `as never` they
 // bypass typecheck, so they must be kept in sync with apps/api by hand.
 export const fn = {
 	verifyAppPassword: 'mail/appPasswords:verify' as FnRef,
 	touchAppPassword: 'mail/appPasswords:touch' as FnRef,
-	listFolders: 'mail/imap:listFolders' as FnRef,
-	selectFolder: 'mail/imap:selectFolder' as FnRef,
-	fetchEnvelopes: 'mail/imap:fetchEnvelopes' as FnRef,
-	listFolderUids: 'mail/imap:listFolderUids' as FnRef,
-	fetchRawStorageId: 'mail/imap:fetchRawStorageId' as FnRef,
-	peekFolderModseq: 'mail/imap:peekFolderModseq' as FnRef,
-	resolveSpecialFolder: 'mail/imap:resolveSpecialFolder' as FnRef,
+	listFolders: 'mail/imap/session:listFolders' as FnRef,
+	selectFolder: 'mail/imap/session:selectFolder' as FnRef,
+	fetchEnvelopes: 'mail/imap/fetch:fetchEnvelopes' as FnRef,
+	listFolderUids: 'mail/imap/fetch:listFolderUids' as FnRef,
+	fetchRawStorageId: 'mail/imap/fetch:fetchRawStorageId' as FnRef,
+	peekFolderModseq: 'mail/imap/session:peekFolderModseq' as FnRef,
+	resolveSpecialFolder: 'mail/imap/session:resolveSpecialFolder' as FnRef,
 	// P5 — write commands
-	storeFlags: 'mail/imap:storeFlags' as FnRef,
-	copyMessages: 'mail/imap:copyMessages' as FnRef,
-	moveMessages: 'mail/imap:moveMessages' as FnRef,
-	expungeFolder: 'mail/imap:expungeFolder' as FnRef,
-	appendMessage: 'mail/imap:appendMessage' as FnRef,
-	resolveMessageIdsByUid: 'mail/imap:resolveMessageIdsByUid' as FnRef,
-	getRawStorageUrl: 'mail/imap:getRawStorageUrl' as FnRef,
-	generateUploadUrl: 'mail/imap:generateRawUploadUrl' as FnRef,
+	storeFlags: 'mail/imap/flags:storeFlags' as FnRef,
+	copyMessages: 'mail/imap/move:copyMessages' as FnRef,
+	moveMessages: 'mail/imap/move:moveMessages' as FnRef,
+	expungeFolder: 'mail/imap/move:expungeFolder' as FnRef,
+	appendMessage: 'mail/imap/append:appendMessage' as FnRef,
+	resolveMessageIdsByUid: 'mail/imap/fetch:resolveMessageIdsByUid' as FnRef,
+	getRawStorageUrl: 'mail/imap/fetch:getRawStorageUrl' as FnRef,
+	generateUploadUrl: 'mail/imap/append:generateRawUploadUrl' as FnRef,
 };

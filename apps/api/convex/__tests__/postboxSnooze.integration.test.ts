@@ -199,13 +199,13 @@ describe('postbox snooze hide-from-inbox', () => {
 			snoozedUntil: future,
 		});
 
-		const inbox = await t.query(api.mail.mailbox.listMessages, {
+		const inbox = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId,
 			folderRole: 'inbox',
 		});
 		expect(inbox.messages.map((m) => m.subject)).toEqual(['visible']);
 
-		const snoozed = await t.query(api.mail.mailbox.listMessages, {
+		const snoozed = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId,
 			folderRole: 'snoozed',
 		});
@@ -220,12 +220,12 @@ describe('postbox snooze hide-from-inbox', () => {
 
 		await t.mutation(internal.mail.snooze.internalSweep, {});
 
-		const inbox = await t.query(api.mail.mailbox.listMessages, {
+		const inbox = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId,
 			folderRole: 'inbox',
 		});
 		expect(inbox.messages.map((m) => m.subject)).toEqual(['due']);
-		const snoozed = await t.query(api.mail.mailbox.listMessages, {
+		const snoozed = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId,
 			folderRole: 'snoozed',
 		});
@@ -333,7 +333,7 @@ describe('postbox snooze hide-from-inbox', () => {
 			await ctx.db.patch(newestId, { receivedAt: Date.now() + 1000 });
 		});
 
-		const latest = await t.query(api.mail.mailbox.newestUnreadInbox, { limit: 1 });
+		const latest = await t.query(api.mail.mailbox.queries.newestUnreadInbox, { limit: 1 });
 		expect(latest.messages[0]?.messageId).toBe(newestId);
 		expect(latest.messages[0]?.subject).toBe('newest');
 	});
@@ -345,7 +345,7 @@ describe('postbox snooze hide-from-inbox', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.patch(id, { flagSeen: true });
 		});
-		expect(await t.query(api.mail.mailbox.newestUnreadInbox, {})).toEqual({
+		expect(await t.query(api.mail.mailbox.queries.newestUnreadInbox, {})).toEqual({
 			total: 0,
 			messages: [],
 		});
@@ -422,7 +422,7 @@ describe('postbox snooze hide-from-inbox', () => {
 		for (let i = 0; i < 3; i++) {
 			await seedMessage(t, { mailboxId, folderId: inboxId, subject: `m${i}` });
 		}
-		const page = await t.query(api.mail.mailbox.listMessages, {
+		const page = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId,
 			folderRole: 'inbox',
 			limit: 2,
@@ -430,7 +430,7 @@ describe('postbox snooze hide-from-inbox', () => {
 		expect(page.messages.length).toBe(2);
 		expect(page.hasMore).toBe(true);
 
-		const full = await t.query(api.mail.mailbox.listMessages, {
+		const full = await t.query(api.mail.mailbox.queries.listMessages, {
 			mailboxId,
 			folderRole: 'inbox',
 			limit: 50,

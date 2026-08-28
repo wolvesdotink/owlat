@@ -3,7 +3,7 @@
 /**
  * Shared draft-generation service — the pipeline capability BOTH the B2B
  * shared-inbox agent (agent/steps/draft) and personal Postbox mail
- * (mail/draftOnArrival) consume.
+ * (mail/ai/draftOnArrival) consume.
  *
  * The vision-machinery (draft + draft-quality self-check + multi-option review
  * drafts) originally lived only inside the inbound agent's `draft` step, welded

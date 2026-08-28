@@ -29,7 +29,7 @@ import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
-import { insertExternalAccountRow } from '../../mail/externalAccountShared';
+import { insertExternalAccountRow } from '../../mail/external/accountShared';
 import { modules } from '../../__tests__/testModules';
 import { SEED_ROTATION_INTERVAL_MS } from '@owlat/shared/seedPlacement';
 import {

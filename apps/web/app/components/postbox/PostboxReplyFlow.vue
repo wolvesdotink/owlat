@@ -143,11 +143,11 @@ const moveOp = useBackendOperation(api.mail.messageActions.move, {
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.snooze'),
 });
-const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
+const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.draftReply'),
 	type: 'action',
 });
-const answerOp = useBackendOperation(api.mail.needsReplyClarify.answerClarification, {
+const answerOp = useBackendOperation(api.mail.ai.needsReplyClarify.answerClarification, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
 });
 
@@ -173,7 +173,9 @@ async function openReplyComposer(row: FlowItem, bodyText: string) {
 	const messageId = row.messageId as Id<'mailMessages'>;
 	let target: ReplyQuoteTarget = { ...row, _id: row.messageId };
 	try {
-		const message = await requireConvex().query(api.mail.mailbox.getMessage, { messageId });
+		const message = await requireConvex().query(api.mail.mailbox.messages.getMessage, {
+			messageId,
+		});
 		if (message) target = message;
 		target = await resolveBodyFields(target);
 	} catch {
@@ -202,7 +204,7 @@ async function draftReply(row: FlowItem) {
 		let suggestion = '';
 		if (aiEnabled.value) {
 			const res = await suggestOp.run({ messageId: row.messageId as Id<'mailMessages'> });
-			suggestion = res?.replies[0] ?? '';
+			suggestion = res.ok ? (res.result.replies[0] ?? '') : '';
 		}
 		await openReplyComposer(row, suggestion);
 		flow.complete(row.id, { outcome: 'replied' });
@@ -217,14 +219,14 @@ async function markDone(row: FlowItem) {
 		row.kind === 'followup'
 			? await cancelFollowUpOp.run({ threadId: row.threadId as Id<'mailThreads'> })
 			: await clearOp.run({ threadId: row.threadId as Id<'mailThreads'> });
-	if (result !== undefined) flow.complete(row.id, { outcome: 'cleared' });
+	if (result.ok) flow.complete(row.id, { outcome: 'cleared' });
 }
 
 /** Archive — moves the flagged message; Cmd/Ctrl+Z moves it back. */
 async function archiveRow(row: FlowItem) {
 	const result = await archiveOp.run({ messageIds: [row.messageId as Id<'mailMessages'>] });
-	if (result == null || !('moved' in result)) return;
-	const moved = result.moved;
+	if (!result.ok || result.result == null || !('moved' in result.result)) return;
+	const moved = result.result.moved;
 	flow.complete(row.id, {
 		outcome: 'archived',
 		inverse: async () => {
@@ -247,7 +249,7 @@ async function confirmSnooze(until: number) {
 	snoozeTarget.value = null;
 	if (!row) return;
 	const result = await snoozeOp.run({ messageId: row.messageId as Id<'mailMessages'>, until });
-	if (result !== undefined) flow.complete(row.id, { outcome: 'snoozed' });
+	if (result.ok) flow.complete(row.id, { outcome: 'snoozed' });
 }
 
 function openRow(row: FlowItem) {

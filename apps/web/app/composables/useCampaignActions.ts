@@ -132,11 +132,11 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 			// Update A/B test settings
 			if (abTest.abTestEnabled.value) {
-				if ((await enableABTest(abTest.buildEnablePayload(campaignId.value))) === undefined) {
+				if (!(await enableABTest(abTest.buildEnablePayload(campaignId.value))).ok) {
 					return false;
 				}
 			} else if (campaignData.value?.isABTest) {
-				if ((await disableABTest({ campaignId: campaignId.value })) === undefined) {
+				if (!(await disableABTest({ campaignId: campaignId.value })).ok) {
 					return false;
 				}
 			}
@@ -164,10 +164,10 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 			}
 
 			if (isScheduled.value) {
-				if ((await unscheduleCampaign({ campaignId: campaignId.value })) === undefined) return;
+				if (!(await unscheduleCampaign({ campaignId: campaignId.value })).ok) return;
 			}
 
-			if ((await sendCampaignNow({ campaignId: campaignId.value })) === undefined) return;
+			if (!(await sendCampaignNow({ campaignId: campaignId.value })).ok) return;
 
 			showToast(t('shared.useCampaignActions.toasts.sending'));
 
@@ -204,29 +204,33 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 			if (isDraft.value) {
 				if (!(await handleSave())) return;
 				if (
-					(await scheduleCampaign({
-						campaignId: campaignId.value,
-						scheduledAt: scheduledDateTime.getTime(),
-						useRecipientTimezone: useRecipientTimezone.value,
-						scheduledHour: useRecipientTimezone.value ? scheduledDateTime.getHours() : undefined,
-						scheduledMinute: useRecipientTimezone.value
-							? scheduledDateTime.getMinutes()
-							: undefined,
-					})) === undefined
+					!(
+						await scheduleCampaign({
+							campaignId: campaignId.value,
+							scheduledAt: scheduledDateTime.getTime(),
+							useRecipientTimezone: useRecipientTimezone.value,
+							scheduledHour: useRecipientTimezone.value ? scheduledDateTime.getHours() : undefined,
+							scheduledMinute: useRecipientTimezone.value
+								? scheduledDateTime.getMinutes()
+								: undefined,
+						})
+					).ok
 				) {
 					return;
 				}
 			} else if (isScheduled.value) {
 				if (
-					(await rescheduleCampaign({
-						campaignId: campaignId.value,
-						scheduledAt: scheduledDateTime.getTime(),
-						useRecipientTimezone: useRecipientTimezone.value,
-						scheduledHour: useRecipientTimezone.value ? scheduledDateTime.getHours() : undefined,
-						scheduledMinute: useRecipientTimezone.value
-							? scheduledDateTime.getMinutes()
-							: undefined,
-					})) === undefined
+					!(
+						await rescheduleCampaign({
+							campaignId: campaignId.value,
+							scheduledAt: scheduledDateTime.getTime(),
+							useRecipientTimezone: useRecipientTimezone.value,
+							scheduledHour: useRecipientTimezone.value ? scheduledDateTime.getHours() : undefined,
+							scheduledMinute: useRecipientTimezone.value
+								? scheduledDateTime.getMinutes()
+								: undefined,
+						})
+					).ok
 				) {
 					return;
 				}
@@ -278,7 +282,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		try {
 			const result = await unscheduleCampaign({ campaignId: campaignId.value });
-			if (result === undefined) return;
+			if (!result.ok) return;
 			showToast(t('shared.useCampaignActions.toasts.unscheduled'));
 		} finally {
 			isSaving.value = false;
@@ -293,7 +297,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		saveError.value = '';
 
 		try {
-			if ((await cancelCampaign({ campaignId: campaignId.value })) === undefined) return;
+			if (!(await cancelCampaign({ campaignId: campaignId.value })).ok) return;
 
 			showToast(t('shared.useCampaignActions.toasts.cancelled'));
 

@@ -1164,18 +1164,19 @@ describe('sendAssignments — non-campaign write path', () => {
 	it('records the automation stream for an automation step send', async () => {
 		const t = convexTest(schema, modules);
 
-		const { sendId } = await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+		const outcome = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
 			kind: 'automation' as const,
 			email: 'subscriber@gmail.com',
 			subject: 'Welcome',
 			html: '<p>hi</p>',
 			from: 'news@example.com',
-			providerType: 'mta',
 		});
+		expect(outcome.ok).toBe(true);
+		if (!outcome.ok) return;
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
 		expect(rows).toHaveLength(1);
-		expect(rows[0]?.sendId).toBe(sendId);
+		expect(rows[0]?.sendId).toBe(outcome.sendId);
 		expect(rows[0]?.sendKind).toBe('transactional');
 		expect(rows[0]?.cell).toBe('automation:gmail');
 		expect(rows[0]?.arm).toBe('own');
@@ -1184,8 +1185,8 @@ describe('sendAssignments — non-campaign write path', () => {
 	it('records the transactional stream and the route table for the agent-reply message type', async () => {
 		const t = convexTest(schema, modules);
 		// The `transactional` route table names the SMTP relay; the recorded
-		// transport must come from THAT resolution, not from the producer's
-		// `providerType` argument (which deliberately says something else).
+		// transport must come from THAT resolution, through the health-free cell
+		// seam — not from whatever the intake's own route resolution selected.
 		await t.run(async (ctx) => {
 			await ctx.db.insert('providerRoutes', {
 				messageType: 'transactional' as const,
@@ -1196,13 +1197,12 @@ describe('sendAssignments — non-campaign write path', () => {
 			});
 		});
 
-		await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+		await t.mutation(internal.delivery.nonCampaignIntake.intake, {
 			kind: 'agent_reply' as const,
 			email: 'customer@yahoo.com',
 			subject: 'Re: order',
 			html: '<p>hi</p>',
 			from: 'support@example.com',
-			providerType: 'mta',
 		});
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
@@ -1306,16 +1306,14 @@ describe('sendAssignments — non-campaign write path', () => {
 			});
 		});
 
-		await expect(
-			t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
-				kind: 'automation' as const,
-				email: 'blocked@gmail.com',
-				subject: 'Welcome',
-				html: '<p>hi</p>',
-				from: 'news@example.com',
-				providerType: 'mta',
-			})
-		).rejects.toThrow();
+		const outcome = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+			kind: 'automation' as const,
+			email: 'blocked@gmail.com',
+			subject: 'Welcome',
+			html: '<p>hi</p>',
+			from: 'news@example.com',
+		});
+		expect(outcome).toEqual({ ok: false, reason: 'recipient_blocked' });
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
 		expect(rows).toHaveLength(0);

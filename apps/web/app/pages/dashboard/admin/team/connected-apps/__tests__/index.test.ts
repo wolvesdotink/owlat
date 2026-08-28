@@ -90,7 +90,7 @@ beforeEach(() => {
 	// and are resolved here to the English copy the assertions key on.
 	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: string | (() => string) }) => {
 		const label = typeof opts.label === 'function' ? opts.label() : opts.label;
-		const run = runByLabel[label] ?? (runByLabel[label] = vi.fn());
+		const run = runByLabel[label] ?? (runByLabel[label] = vi.fn().mockResolvedValue({ ok: false }));
 		return { run, isLoading: ref(false), inlineError: ref(null) };
 	});
 	vi.stubGlobal('useConvexQuery', (_fn: unknown, args: (() => unknown) | undefined) => {
@@ -185,9 +185,12 @@ describe('Connected apps — connection test', () => {
 		apps.value = [seedApp()];
 		const wrapper = mountPage();
 		runByLabel['Test connected-app connection']!.mockResolvedValue({
-			outcome: 'ok',
-			status: 204,
-			message: 'Endpoint responded successfully (HTTP 204).',
+			ok: true,
+			result: {
+				outcome: 'ok',
+				status: 204,
+				message: 'Endpoint responded successfully (HTTP 204).',
+			},
 		});
 		await clickButtonByText(wrapper, 'Test connection');
 		await flushPromises();
@@ -210,9 +213,12 @@ describe('Connected apps — connection test', () => {
 		expect(before.text()).toBe('');
 
 		runByLabel['Test connected-app connection']!.mockResolvedValue({
-			outcome: 'error_status',
-			status: 503,
-			message: 'Endpoint is reachable but returned HTTP 503.',
+			ok: true,
+			result: {
+				outcome: 'error_status',
+				status: 503,
+				message: 'Endpoint is reachable but returned HTTP 503.',
+			},
 		});
 		await clickButtonByText(wrapper, 'Test connection');
 		await flushPromises();
@@ -228,9 +234,12 @@ describe('Connected apps — register + one-time secret reveal', () => {
 		const wrapper = mountPage();
 		// Mutate the mock the component captured at setup (do not reassign the slot).
 		runByLabel['Register connected app']!.mockResolvedValue({
-			_id: 'app-2',
-			name: 'New app',
-			secret: 'cah_the-only-time-you-see-this',
+			ok: true,
+			result: {
+				_id: 'app-2',
+				name: 'New app',
+				secret: 'cah_the-only-time-you-see-this',
+			},
 		});
 		await clickButtonByText(wrapper, 'Connect an app');
 		await wrapper.find('.register-submit').trigger('click');

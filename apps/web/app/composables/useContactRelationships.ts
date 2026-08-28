@@ -83,7 +83,7 @@ export function useContactRelationships(contactId: Ref<Id<'contacts'>>) {
 			confidence: addForm.confidence,
 		});
 		isAdding.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		addForm.toContactId = '';
 		addForm.toContactLabel = '';
 		addForm.relationship = 'colleague';

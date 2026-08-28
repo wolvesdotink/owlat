@@ -74,19 +74,19 @@ describe('useContactDetail.diffPropertyValues', () => {
 });
 
 /**
- * Regression test for the void-remove bug: propertyValues.remove now returns a
- * defined value (true) so a successful clear is no longer mistaken for the
- * useBackendOperation error sentinel (undefined). Before the fix, saveChanges
- * bailed out on the first clear — leaving isEditing=true and skipping every
- * subsequent removal when more than one property was cleared.
+ * Regression test for the void-remove bug: a successful clear must never be
+ * mistaken for a failure. `run` now says so explicitly (`ok: true` around
+ * whatever the mutation returned), so even a `void` clear reads as success —
+ * before, saveChanges bailed out on the first clear, leaving isEditing=true and
+ * skipping every subsequent removal when more than one property was cleared.
  */
 describe('useContactDetail.saveChanges (custom property clears)', () => {
 	type RunMock = (args: unknown) => Promise<unknown>;
 
 	let removeCalls: unknown[];
 	let setCalls: unknown[];
-	// Per-label run() implementations; success returns a defined value, error
-	// returns undefined (mirrors useBackendOperation.run semantics).
+	// Per-label run() implementations; they resolve the `{ ok }` envelope
+	// useBackendOperation.run hands back.
 	let runByLabel: Record<string, RunMock>;
 
 	const contactRecord = {
@@ -109,18 +109,17 @@ describe('useContactDetail.saveChanges (custom property clears)', () => {
 		removeCalls = [];
 		setCalls = [];
 		runByLabel = {
-			'Update contact': () => Promise.resolve({ _id: 'c1' }),
+			'Update contact': () => Promise.resolve({ ok: true, result: { _id: 'c1' } }),
 			'Update contact properties': (args) => {
 				setCalls.push(args);
-				return Promise.resolve(['p1']);
+				return Promise.resolve({ ok: true, result: ['p1'] });
 			},
-			// Successful remove resolves to a defined value (the real mutation
-			// now returns true) — not undefined.
+			// A successful clear is `ok: true` whatever the mutation returned.
 			'Clear contact property': (args) => {
 				removeCalls.push(args);
-				return Promise.resolve(true);
+				return Promise.resolve({ ok: true, result: true });
 			},
-			'Delete contact': () => Promise.resolve({ _id: 'c1' }),
+			'Delete contact': () => Promise.resolve({ ok: true, result: { _id: 'c1' } }),
 		};
 
 		vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
@@ -167,8 +166,8 @@ describe('useContactDetail.saveChanges (custom property clears)', () => {
 	it('stops and stays in edit mode if a removal fails', async () => {
 		runByLabel['Clear contact property'] = (args) => {
 			removeCalls.push(args);
-			// First clear errors -> run resolves undefined.
-			return Promise.resolve(undefined);
+			// First clear errors -> run resolves `ok: false`.
+			return Promise.resolve({ ok: false });
 		};
 
 		const detail = make();
@@ -273,9 +272,9 @@ describe('useContactDetail.resendDoiConfirmation', () => {
 			run: (args: unknown) => {
 				if (options.label() === 'Resend confirmation email') {
 					resendCalls.push(args);
-					return Promise.resolve({ success: true });
+					return Promise.resolve({ ok: true, result: { success: true } });
 				}
-				return Promise.resolve({ _id: 'c1' });
+				return Promise.resolve({ ok: true, result: { _id: 'c1' } });
 			},
 			isLoading: ref(false),
 			inlineError: ref(null),

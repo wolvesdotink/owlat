@@ -62,7 +62,7 @@ export function usePostboxGhostOverlay(opts: GhostOverlayOptions) {
 	const ghost = usePostboxGhostText({
 		enabled: () => opts.enabled(),
 		requestCompletion: async (input: GhostTextRequestInput) => {
-			const res = await requireConvex().action(api.mail.ai.completeDraft, {
+			const res = await requireConvex().action(api.mail.ai.assist.completeDraft, {
 				threadContext: input.threadContext,
 				draftSoFar: input.draftSoFar,
 				cursorSentence: input.cursorSentence,
@@ -91,7 +91,7 @@ export function usePostboxGhostOverlay(opts: GhostOverlayOptions) {
 			before.lastIndexOf('. '),
 			before.lastIndexOf('! '),
 			before.lastIndexOf('? '),
-			before.lastIndexOf('\n'),
+			before.lastIndexOf('\n')
 		);
 		const cursorSentence = (lastBreak >= 0 ? before.slice(lastBreak + 1) : before)
 			.slice(-500)

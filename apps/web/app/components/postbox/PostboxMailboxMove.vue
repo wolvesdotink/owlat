@@ -112,7 +112,7 @@ async function onProvision() {
 }
 async function onCheckMx() {
 	const res = await checkMx.run({});
-	if (res !== undefined) mxCheck.value = res;
+	if (res.ok) mxCheck.value = res.result;
 }
 async function onArchive() {
 	opError.value = null;
@@ -123,7 +123,7 @@ async function onArchive() {
 async function onCancel() {
 	opError.value = null;
 	const res = await cancelMove.run({});
-	if (res !== undefined) {
+	if (res.ok) {
 		// Clear the verdict so a fresh move doesn't resurface the old result.
 		mxCheck.value = null;
 		showCancel.value = false;

@@ -11,7 +11,7 @@
  *
  * The fix adds an O(1) `blockedEmails.by_email` point read in
  * `delivery/worker.ts` (`sendSingleEmail`) immediately before dispatch. On a
- * hit the worker returns `{ success: false, suppressed: true }` WITHOUT
+ * hit the worker returns the `suppressed` arm of `SendWorkerOutcome` WITHOUT
  * contacting any provider, and the Send completion handler
  * (`delivery/sendCompletion.ts`) finalizes the Send as a terminal, suppression-
  * labelled non-delivery (status 'failed', code RECIPIENT_SUPPRESSED).
@@ -101,7 +101,7 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 		const fetchSpy = vi.fn();
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
-		const result = (await t.action(internal.delivery.worker.sendSingleEmail, {
+		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
 			envelopeInput: {
 				kind: 'campaign' as const,
 				to: BLOCKED,
@@ -112,10 +112,9 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 				emailSendId: emailSendId as never,
 				convexSiteUrl: 'https://convex.example',
 			},
-		})) as { success: boolean; suppressed?: boolean };
+		});
 
-		expect(result.success).toBe(false);
-		expect(result.suppressed).toBe(true);
+		expect(result).toEqual({ kind: 'suppressed' });
 		// The suppressed recipient was NEVER dispatched to the provider.
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
@@ -126,7 +125,7 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 
 		await t.mutation(internal.delivery.sendCompletion.completeSend, {
 			workId: 'test-work-id' as never,
-			result: { kind: 'success', returnValue: { success: false, suppressed: true } },
+			result: { kind: 'success', returnValue: { kind: 'suppressed' } },
 			context: { sendRef: { kind: 'campaign' as const, id: emailSendId } },
 		});
 
@@ -155,7 +154,7 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 			);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
-		const result = (await t.action(internal.delivery.worker.sendSingleEmail, {
+		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
 			envelopeInput: {
 				kind: 'campaign' as const,
 				to: 'clean@example.com',
@@ -167,10 +166,9 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 				emailSendId: emailSendId as never,
 				convexSiteUrl: 'https://convex.example',
 			},
-		})) as { success: boolean; suppressed?: boolean };
+		});
 
-		expect(result.success).toBe(true);
-		expect(result.suppressed).toBeUndefined();
+		expect(result.kind).toBe('accepted');
 		expect(fetchSpy).toHaveBeenCalled();
 	});
 });

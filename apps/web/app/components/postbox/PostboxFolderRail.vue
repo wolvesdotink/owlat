@@ -5,6 +5,9 @@ const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	folderRole: string;
 	folderId?: Id<'mailFolders'>;
+	/** Ignore the persisted icon-strip collapse and render fully expanded —
+	 * used by the stack-mode drawer, which must always open readable. */
+	forceExpanded?: boolean;
 }>();
 
 const { t } = useI18n();
@@ -14,7 +17,9 @@ const { systemFolders, customFolders, unreadByRole } = usePostboxFolders(mailbox
 const { labels } = usePostboxLabels(mailboxIdRef);
 
 // Collapsible folder rail — icon strip when collapsed. Persisted per-device.
-const { collapsed: railCollapsed, toggle: toggleRail } = usePostboxRailCollapsed();
+// forceExpanded (drawer staging) wins over the saved preference.
+const { collapsed: savedCollapsed, toggle: toggleRail } = usePostboxRailCollapsed();
+const railCollapsed = computed(() => !props.forceExpanded && savedCollapsed.value);
 
 // Reply Queue rail badge (the count subscription is shared/deduped with the
 // inbox strip in PostboxLayout).

@@ -5,7 +5,7 @@
  * shared TEAM inboxes they belong to, so the sidebar can render a distinct
  * "Team" section (LOCKED decision 7 of the 2026-07-10 experience plan: a team
  * inbox is a `mailboxes` row with `scope='shared'` governed by explicit
- * membership). Operates on the `mail.mailbox.accessible` rows — the caller's
+ * membership). Operates on the `mail.mailbox.queries.accessible` rows — the caller's
  * accessible+active set with precomputed label/scope/unread — so the switcher,
  * its badges, and the Cmd-K entries all derive from one truth. Pure so the
  * derivation is unit-testable without mounting the Convex-backed sidebar.

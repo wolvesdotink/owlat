@@ -4,7 +4,7 @@
  * AES-256-GCM encryption for external-mailbox credentials at rest.
  *
  * NODE-RUNTIME ONLY. This module imports `node:crypto`, so it must only be
- * imported from Convex `'use node'` action files (today: mail/externalAccountsActions.ts).
+ * imported from Convex `'use node'` action files (today: mail/external/accountsActions.ts).
  * Importing it from a v8 query/mutation file breaks that file's deploy bundle.
  *
  * Key derivation: HKDF-SHA256 over INSTANCE_SECRET with a fixed, version-pinned

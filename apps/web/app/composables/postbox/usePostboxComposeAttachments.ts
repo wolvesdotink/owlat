@@ -68,12 +68,16 @@ export function usePostboxComposeAttachments(opts: {
 	// upload URL + XHR + addAttachment) is injected so the state machine stays
 	// testable and this composable owns only the wiring.
 	const uploader = createAttachmentUploads({
-		generateUploadUrl: async () => (await generateUploadUrl.run({})) ?? null,
+		generateUploadUrl: async () => {
+			const minted = await generateUploadUrl.run({});
+			return minted.ok ? minted.result : null;
+		},
 		putFile: xhrPutFile,
 		attach: async (a) => {
 			const draftIdVal = opts.draftId.value;
 			if (!draftIdVal) return false;
-			// addAttachment returns { ok } — run() yields undefined on failure.
+			// addAttachment returns its own `{ ok }`; a failed operation is the
+			// envelope's `ok: false` and never reaches it.
 			const result = await addAttachmentOp.run({
 				draftId: draftIdVal,
 				storageId: a.storageId as Id<'_storage'>,
@@ -81,7 +85,7 @@ export function usePostboxComposeAttachments(opts: {
 				contentType: a.contentType,
 				size: a.size,
 			});
-			return !!result?.ok;
+			return result.ok && result.result.ok;
 		},
 		onCommitted: (a, thumbUrl) => {
 			if (thumbUrl) thumbUrls.set(a.storageId, thumbUrl);
@@ -201,9 +205,9 @@ export function usePostboxComposeAttachments(opts: {
 		uploadingCount.value += 1;
 		try {
 			const url = await generateUploadUrl.run({});
-			if (!url) return null;
+			if (!url.ok) return null;
 			const contentType = scaled.type || 'image/jpeg';
-			const res = await fetch(url, {
+			const res = await fetch(url.result, {
 				method: 'POST',
 				headers: { 'Content-Type': contentType },
 				body: scaled,
@@ -226,7 +230,7 @@ export function usePostboxComposeAttachments(opts: {
 				isInline: true,
 				contentId,
 			});
-			if (!result?.ok) return null;
+			if (!result.ok || !result.result.ok) return null;
 			inlineParts.value = [...inlineParts.value, { contentId, storageId }];
 			return { contentId, previewUrl: URL.createObjectURL(scaled) };
 		} finally {
@@ -254,7 +258,7 @@ export function usePostboxComposeAttachments(opts: {
 			draftId: id,
 			storageId: storageId as Id<'_storage'>,
 		});
-		if (!result?.ok) return;
+		if (!result.ok || !result.result?.ok) return;
 		attachments.value = attachments.value.filter((a) => a.storageId !== storageId);
 		const thumb = thumbUrls.get(storageId);
 		if (thumb) {

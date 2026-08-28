@@ -370,7 +370,7 @@ export function useOrganization() {
 				domain: mailbox.domain,
 				displayName: mailbox.displayName,
 			});
-			if (reserved === undefined) {
+			if (!reserved.ok) {
 				const wrapped = new Error(t('shared.useOrganization.errors.mailboxNotReserved'));
 				(wrapped as Error & { invitationSent?: boolean }).invitationSent = true;
 				throw wrapped;
@@ -541,7 +541,7 @@ export function useOrganization() {
 		}
 
 		const allowed = await throttleResend({ invitationId: invitation.id });
-		if (allowed === undefined) {
+		if (!allowed.ok) {
 			// Throttled (or the throttle mutation failed) — `run` already toasted.
 			return false;
 		}

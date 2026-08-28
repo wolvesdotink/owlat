@@ -165,14 +165,14 @@ export function useWebhookForm() {
 		});
 		isCreating.value = false;
 
-		if (!result) return;
+		if (!result.ok) return;
 
 		closeCreateModal();
 
 		createdWebhook.value = {
-			name: result.name,
-			url: result.url,
-			secret: result.secret,
+			name: result.result.name,
+			url: result.result.url,
+			secret: result.result.secret,
 		};
 		showCreatedWebhook.value = true;
 		resetCopied();
@@ -272,7 +272,7 @@ export function useWebhookForm() {
 		});
 		isEditing.value = false;
 
-		if (result === undefined) return;
+		if (!result.ok) return;
 
 		closeEditModal();
 		showNotification(t(`${K}.updated`));

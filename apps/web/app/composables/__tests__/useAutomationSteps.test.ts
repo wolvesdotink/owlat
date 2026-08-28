@@ -20,7 +20,7 @@ describe('useAutomationSteps.handleDragEnd', () => {
 		vi.stubGlobal('useBackendOperation', () => ({
 			run: (args: unknown) => {
 				runCalls.push(args);
-				return Promise.resolve('ok');
+				return Promise.resolve({ ok: true, result: 'ok' });
 			},
 			isLoading: ref(false),
 			inlineError: ref(null),
@@ -82,7 +82,7 @@ describe('useAutomationSteps step-config dirty tracking', () => {
 		vi.stubGlobal('useBackendOperation', () => ({
 			run: (args: unknown) => {
 				updateArgs.push(args);
-				return Promise.resolve('ok');
+				return Promise.resolve({ ok: true, result: 'ok' });
 			},
 			isLoading: ref(false),
 			inlineError: ref(null),

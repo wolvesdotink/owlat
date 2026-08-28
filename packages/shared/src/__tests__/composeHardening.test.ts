@@ -154,9 +154,19 @@ describe('docker-compose.yml — Tier-3 worker sandbox (code + plugin jobs)', ()
 		const block = worker();
 		expect(block).toMatch(/networks:\s*\n\s*-\s*code-worker\s*\n/);
 		expect(block).not.toMatch(/-\s*default\b/);
-		// Only convex and the worker share that isolated bridge.
+		// Exactly four services sit on that isolated bridge, and no more: convex,
+		// the worker itself, and the worker's two dual-homed sidecars — the
+		// convex-fn-proxy (holds the admin key, forwards only the worker's
+		// allowlisted functions) and code-worker-egress (the SOLE route off the
+		// network, since `code-worker` is `internal: true`). A fifth member would
+		// widen what a compromised job can reach laterally.
+		for (const svc of ['convex', 'code-worker', 'convex-fn-proxy', 'code-worker-egress']) {
+			expect(serviceBlock(svc), `${svc} must join the code-worker network`).toMatch(
+				/-\s*code-worker\s*$/m
+			);
+		}
 		const members = (compose.match(/^\s*-\s*code-worker\s*$/gm) ?? []).length;
-		expect(members).toBe(2);
+		expect(members).toBe(4);
 	});
 
 	it('activates for both the coding-agent and the Tier-3 plugin-task profile', () => {
