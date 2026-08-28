@@ -29,6 +29,7 @@ import {
 	mailUndoSendSecondsValidator,
 	mailMarkReadPolicyValidator,
 	mailQuietHoursValidator,
+	mailDailyBriefEmailValidator,
 } from '../lib/mailSettingsValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
@@ -64,6 +65,8 @@ export const get = publicQuery({
 			isHidePreviewOn: row.isHidePreviewOn,
 			isSenderScreenerOn: row.isSenderScreenerOn,
 			markReadPolicy: row.markReadPolicy,
+			dailyBriefEmail: row.dailyBriefEmail,
+			lastDailyBriefEmailAt: row.lastDailyBriefEmailAt,
 		};
 	},
 });
@@ -91,6 +94,7 @@ export const update = authedMutation({
 		isHidePreviewOn: v.optional(v.boolean()),
 		isSenderScreenerOn: v.optional(v.boolean()),
 		markReadPolicy: v.optional(mailMarkReadPolicyValidator),
+		dailyBriefEmail: v.optional(mailDailyBriefEmailValidator),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -122,6 +126,7 @@ export const update = authedMutation({
 			isHidePreviewOn?: boolean;
 			isSenderScreenerOn?: boolean;
 			markReadPolicy?: (typeof args)['markReadPolicy'];
+			dailyBriefEmail?: (typeof args)['dailyBriefEmail'];
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
@@ -143,6 +148,19 @@ export const update = authedMutation({
 		if (args.isHidePreviewOn !== undefined) patch.isHidePreviewOn = args.isHidePreviewOn;
 		if (args.isSenderScreenerOn !== undefined) patch.isSenderScreenerOn = args.isSenderScreenerOn;
 		if (args.markReadPolicy !== undefined) patch.markReadPolicy = args.markReadPolicy;
+		if (args.dailyBriefEmail !== undefined) {
+			// Clamp here rather than trusting the client: `minute` becomes a
+			// scheduling comparison in a cron, and an out-of-range value would
+			// either never fire or fire every tick.
+			patch.dailyBriefEmail = {
+				enabled: args.dailyBriefEmail.enabled,
+				minute: Math.min(1439, Math.max(0, Math.round(args.dailyBriefEmail.minute))),
+				utcOffsetMinutes: Math.min(
+					840,
+					Math.max(-720, Math.round(args.dailyBriefEmail.utcOffsetMinutes))
+				),
+			};
+		}
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;

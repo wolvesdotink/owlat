@@ -374,6 +374,19 @@ crons.interval(
 // signals only (no LLM spend); in-app surface via getLatestBrief.
 crons.interval('build daily briefs', { hours: 24 }, internal.mail.dailyBrief.buildDailyBriefs, {});
 
+// Daily-brief EMAIL delivery (mail/briefEmailActions.ts, idea 29) — the opt-in
+// `mailDailyBriefs` documented but never had. Ticks every 15 minutes and mails
+// the newest persisted brief to each opted-in owner's own mailbox when their
+// LOCAL clock passes the time they chose; the delivery stamp makes it
+// at-most-once per local day, so a double tick or a retry cannot mail twice.
+// Builds nothing — it reads the snapshot the build cron already persisted.
+crons.interval(
+	'deliver daily brief emails',
+	{ minutes: 15 },
+	internal.mail.briefEmailActions.deliverDueBriefs,
+	{}
+);
+
 // Triage-tally retention (mail/triageTally.ts, idea 27). The per-sender counters
 // behind "you archive everything from X, always archive it?" are a rolling
 // picture of RECENT habits, so rows nothing has touched inside the retention

@@ -4420,6 +4420,13 @@
 				"unassigned": "noch niemandem zugewiesen",
 				"replied": "dort bereits beantwortet",
 				"open": "Im Team-Posteingang öffnen"
+			},
+			"postboxDailyBriefSettings": {
+				"title": "Tagesüberblick per E-Mail",
+				"description": "Der Tagesüberblick wird in Ihr eigenes Postfach zugestellt, damit Sie ihn sehen, ohne die App zu öffnen.",
+				"enable": "Tagesüberblick an mich senden",
+				"timeLabel": "Senden um",
+				"localTimeHint": "Ihre Ortszeit, auf ein paar Minuten genau."
 			}
 		},
 		"preferences": {
@@ -12427,6 +12434,10 @@
 				"readingPane": {
 					"title": "Lesebereich",
 					"keywords": "Layout, geteilt, Vorschau, drei Spalten, Größe, Listenbreite"
+				},
+				"dailyBriefEmail": {
+					"title": "Tagesüberblick per E-Mail",
+					"keywords": "Überblick, Zusammenfassung, Digest, täglich"
 				}
 			}
 		},

@@ -710,6 +710,8 @@ import type * as mail_authHttp from '../mail/authHttp.js';
 import type * as mail_authRateLimit from '../mail/authRateLimit.js';
 import type * as mail_availability from '../mail/availability.js';
 import type * as mail_brief from '../mail/brief.js';
+import type * as mail_briefEmail from '../mail/briefEmail.js';
+import type * as mail_briefEmailActions from '../mail/briefEmailActions.js';
 import type * as mail_category from '../mail/category.js';
 import type * as mail_commitments from '../mail/commitments.js';
 import type * as mail_contacts from '../mail/contacts.js';
@@ -1744,6 +1746,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/authRateLimit': typeof mail_authRateLimit;
 	'mail/availability': typeof mail_availability;
 	'mail/brief': typeof mail_brief;
+	'mail/briefEmail': typeof mail_briefEmail;
+	'mail/briefEmailActions': typeof mail_briefEmailActions;
 	'mail/category': typeof mail_category;
 	'mail/commitments': typeof mail_commitments;
 	'mail/contacts': typeof mail_contacts;

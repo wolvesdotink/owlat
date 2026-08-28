@@ -22,6 +22,7 @@ import {
 	mailUndoSendSecondsValidator,
 	mailMarkReadPolicyValidator,
 	mailQuietHoursValidator,
+	mailDailyBriefEmailValidator,
 } from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
@@ -713,6 +714,13 @@ export const mailTables = {
 	// Conversation grouping across folders. Aggregates updated by mutations.
 	mailThreads: defineTable({
 		mailboxId: v.id('mailboxes'),
+		// ANTI-LOOP MARKER (idea 29). Set on the thread of a daily brief this
+		// deployment mailed to the owner's own mailbox, so the NEXT brief skips it.
+		// Without it the brief is ordinary inbox mail from a known correspondent
+		// and would happily become an item in tomorrow's digest — a digest of the
+		// digest, compounding daily. Absent on every other thread, so the brief
+		// builder's behaviour for real mail is unchanged.
+		isSelfDeliveredBrief: v.optional(v.boolean()),
 		normalizedSubject: v.string(),
 		participants: v.array(v.string()),
 		messageCount: v.number(),
@@ -1644,6 +1652,16 @@ export const mailTables = {
 		// existing rows read as undefined; the reader defaults it OFF (opt-in), so
 		// a deploy that never toggles it keeps today's behaviour.
 		isSenderScreenerOn: v.optional(v.boolean()),
+		// Daily-brief email delivery (idea 29): the opt-in `mailDailyBriefs`
+		// documented but never had. Absent ⇒ nothing is ever mailed, which is
+		// exactly today's behaviour. `minute` is minutes past the user's LOCAL
+		// midnight and `utcOffsetMinutes` carries the offset the cron needs, since
+		// the sender has no request (and therefore no clock) behind it.
+		dailyBriefEmail: v.optional(mailDailyBriefEmailValidator),
+		// When a brief was last mailed to this user. The delivery cron compares
+		// its LOCAL day against today's, which is what makes the send
+		// at-most-once-per-day and idempotent across cron ticks and retries.
+		lastDailyBriefEmailAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),

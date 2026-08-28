@@ -38,6 +38,10 @@
  *     OFF, so an untouched row suppresses nothing.
  *   - `hidePreview` — desktop notifications carry a generic "New message" line
  *     instead of the sender and subject. Defaults OFF.
+ *   - `dailyBriefEmail` — opt-in delivery of the Daily Brief to the owner's own
+ *     mailbox at a chosen LOCAL time. Absent means no delivery at all, which is
+ *     exactly the behaviour before it existed; the stored `utcOffsetMinutes` is
+ *     what lets a cron with no request behind it honour "07:00 my time".
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -172,6 +176,11 @@ export function usePostboxSettings() {
 		resolvePostboxMarkReadPolicy(data.value?.markReadPolicy)
 	);
 
+	// Daily-brief email delivery. Deliberately NOT defaulted: absent means the
+	// user has never opted in, and the card renders the off state rather than
+	// inventing a schedule nobody chose.
+	const dailyBriefEmail = computed(() => data.value?.dailyBriefEmail ?? null);
+
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',
 	});
@@ -262,6 +271,14 @@ export function usePostboxSettings() {
 		await updateOp.run({ markReadPolicy: policy });
 	}
 
+	async function setDailyBriefEmail(value: {
+		enabled: boolean;
+		minute: number;
+		utcOffsetMinutes: number;
+	}) {
+		await updateOp.run({ dailyBriefEmail: value });
+	}
+
 	return {
 		autoAdvance,
 		writingSuggestions,
@@ -282,6 +299,7 @@ export function usePostboxSettings() {
 		hidePreview,
 		senderScreener,
 		markReadPolicy,
+		dailyBriefEmail,
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
@@ -301,6 +319,7 @@ export function usePostboxSettings() {
 		setHidePreview,
 		setSenderScreener,
 		setMarkReadPolicy,
+		setDailyBriefEmail,
 		isSaving: updateOp.isLoading,
 	};
 }

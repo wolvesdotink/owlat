@@ -4420,6 +4420,13 @@
 				"unassigned": "nobody has taken it yet",
 				"replied": "already answered there",
 				"open": "Open in Team Inbox"
+			},
+			"postboxDailyBriefSettings": {
+				"title": "Daily brief by email",
+				"description": "Get the brief delivered to your own mailbox, so you see it without opening the app.",
+				"enable": "Send me the daily brief",
+				"timeLabel": "Send at",
+				"localTimeHint": "Your local time, give or take a few minutes."
 			}
 		},
 		"preferences": {
@@ -12427,6 +12434,10 @@
 				"readingPane": {
 					"title": "Reading pane",
 					"keywords": "layout, split, preview pane, three panes, resize, list width"
+				},
+				"dailyBriefEmail": {
+					"title": "Daily brief by email",
+					"keywords": "brief, digest, summary, daily"
 				}
 			}
 		},

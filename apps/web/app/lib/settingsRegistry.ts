@@ -150,6 +150,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('writingSuggestions', 'reading', all(hasMail, flag('ai'))),
 			control('autoSummarize', 'reading', all(hasMail, flag('ai'))),
 			control('sendSound', 'reading', hasMail),
+			control('dailyBriefEmail', 'daily-brief', hasMail),
 			control('mailboxes', 'mailboxes', hasMail),
 		],
 	}),

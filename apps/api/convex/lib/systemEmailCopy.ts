@@ -12,8 +12,9 @@
  * before that field existed, so nobody's mail changes language until they
  * touch the picker.
  *
- * Only the account-deletion mail is translated so far. The other six generators
- * in `systemEmails.ts` still ship English; see `docs/ux-plan/DEFERRALS.md`.
+ * The account-deletion mail and the daily-brief digest are translated. The six
+ * generators in `systemEmails.ts` still ship English; see
+ * `docs/ux-plan/DEFERRALS.md`.
  */
 
 /** The interface languages this product ships. */
@@ -102,6 +103,45 @@ const DELETION_EMAIL: Record<SystemEmailLocale, DeletionEmailCopy> = {
 
 export function deletionEmailCopy(locale: SystemEmailLocale): DeletionEmailCopy {
 	return DELETION_EMAIL[locale];
+}
+
+/** The sentences the opt-in Daily Brief digest (idea 29) is made of. */
+export interface DailyBriefEmailCopy {
+	subject: (count: number) => string;
+	heading: string;
+	emptyLine: string;
+	bundledLine: (total: number) => string;
+}
+
+const DAILY_BRIEF_EMAIL: Record<SystemEmailLocale, DailyBriefEmailCopy> = {
+	en: {
+		subject: (count) =>
+			count === 1
+				? 'Your daily brief — 1 thing needs you'
+				: `Your daily brief — ${count} things need you`,
+		heading: 'What needs you today',
+		emptyLine: 'Nothing needs you today.',
+		bundledLine: (total) =>
+			total === 1
+				? '1 low-signal message was bundled away and is waiting in your inbox.'
+				: `${total} low-signal messages were bundled away and are waiting in your inbox.`,
+	},
+	de: {
+		subject: (count) =>
+			count === 1
+				? 'Ihr Tagesüberblick — 1 Sache braucht Sie'
+				: `Ihr Tagesüberblick — ${count} Sachen brauchen Sie`,
+		heading: 'Was heute Ihre Aufmerksamkeit braucht',
+		emptyLine: 'Heute braucht Sie nichts.',
+		bundledLine: (total) =>
+			total === 1
+				? '1 Nachricht mit geringer Relevanz wurde gebündelt und wartet in Ihrem Posteingang.'
+				: `${total} Nachrichten mit geringer Relevanz wurden gebündelt und warten in Ihrem Posteingang.`,
+	},
+};
+
+export function dailyBriefEmailCopy(locale: SystemEmailLocale): DailyBriefEmailCopy {
+	return DAILY_BRIEF_EMAIL[locale];
 }
 
 /**

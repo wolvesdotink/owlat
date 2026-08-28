@@ -131,6 +131,33 @@ export const mailQuietHoursValidator = v.object({
 	days: v.array(v.number()),
 });
 
+// Daily-brief email delivery (mailUserSettings.dailyBriefEmail and mail/settings
+// update args) — the opt-in the schema comment on `mailDailyBriefs` has promised
+// since the digest was built: the brief mailed to the owner's own mailbox at a
+// time they choose, instead of only existing at the top of Today.
+//
+// `minute` is minutes past LOCAL midnight (0..1439), the same unit quiet hours
+// uses, because "send it at 07:30" means 07:30 wherever the user is. Unlike
+// quiet hours — evaluated in the browser, which knows the clock — the SENDER is
+// a cron with no request behind it, so the offset has to travel with the
+// preference: `utcOffsetMinutes` is the browser's offset at the moment the
+// preference was saved.
+//
+// That makes DST a real edge, and it is handled honestly rather than pretended
+// away: the client re-saves the offset whenever it notices the browser's has
+// changed, so the first app visit after a shift corrects the schedule. Until
+// then a brief can arrive an hour early or late — which is the right failure for
+// a digest, and far better than a stored IANA zone the backend cannot resolve.
+//
+// `enabled` is stored rather than inferred from the object's presence so turning
+// delivery off keeps the time the user picked. Absent ⇒ no delivery at all,
+// which is exactly today's behaviour.
+export const mailDailyBriefEmailValidator = v.object({
+	enabled: v.boolean(),
+	minute: v.number(),
+	utcOffsetMinutes: v.number(),
+});
+
 // Postbox desktop-notification scope (mailUserSettings.notifyAbout and
 // mail/settings update args). 'everything' fires a toast for every new inbox
 // message; 'people-important' only for smart-category `person` mail (and any

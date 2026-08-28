@@ -105,6 +105,10 @@ async function handleDelete() {
 		     asking. Self-hides until the reader has granted at least one. -->
 			<PostboxTrustedSendersSettings />
 
+			<!-- Daily brief by email (idea 29): opt-in delivery of the digest that
+		     until now only existed at the top of Today. -->
+			<PostboxDailyBriefSettings />
+
 			<section id="mailboxes" class="card !p-0 scroll-mt-6">
 				<header class="px-5 py-3 border-b border-border-subtle">
 					<h2 class="font-semibold">{{ t('dashboard.preferences.index.mailboxes') }}</h2>
