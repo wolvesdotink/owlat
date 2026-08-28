@@ -8114,10 +8114,6 @@
 				"pageTitle": "Team-Posteingang — Owlat",
 				"reviewQueue": "Prüfliste",
 				"snoozeThreadOperation": "Konversation zurückstellen",
-				"sortToggleToNeedsAttention": "Neueste zuerst — zu „Nach Dringlichkeit“ wechseln",
-				"sortToggleToNewest": "Nach Dringlichkeit sortiert — zu „Neueste zuerst“ wechseln",
-				"sortedByNeedsAttention": "Nach Dringlichkeit sortiert",
-				"sortedNewestFirst": "Neueste zuerst",
 				"subtitle": "Kundengespräche, die Ihr Team gemeinsam bearbeitet.",
 				"title": "Team-Posteingang",
 				"undo": {
@@ -8133,7 +8129,9 @@
 				"accessTitle": "Das Team-Postfach ist Administratoren vorbehalten",
 				"accessBody": "Deine Rolle ({role}) umfasst das gemeinsame Kundenpostfach nicht. Deine eigene Post liegt in der Postbox.",
 				"openMyPostbox": "Meine Postbox öffnen",
-				"accessHint": "Du brauchst Zugriff? Bitte eine Organisations-Administration, deine Rolle unter Einstellungen → Team zu ändern."
+				"accessHint": "Du brauchst Zugriff? Bitte eine Organisations-Administration, deine Rolle unter Einstellungen → Team zu ändern.",
+				"sortedBy": "Sortiert nach {sort}",
+				"sortSwitchTo": "Nach {sort} sortieren"
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Absender blockieren",
@@ -11373,6 +11371,10 @@
 			"waiting": {
 				"empty": "Keine Konversation wartet auf eine Kundenantwort.",
 				"label": "Wartend"
+			},
+			"waiting24h": {
+				"label": "Wartet 24 Std.+",
+				"empty": "Niemand wartet länger als einen Tag auf uns."
 			}
 		},
 		"mailAutodiscover": {
@@ -13446,6 +13448,17 @@
 			"right": "Reader rechts (in der Breite verstellbar)",
 			"bottom": "Reader unter einer breiten Liste",
 			"off": "Kein Lesebereich – Öffnen wechselt die Ansicht"
+		},
+		"inboxSorts": {
+			"needsAttention": "Handlungsbedarf",
+			"oldestWaiting": "längste Wartezeit",
+			"newest": "neueste zuerst"
+		},
+		"inboxWaiting": {
+			"minutes": "wartet {minutes} Min.",
+			"hours": "wartet {hours} Std.",
+			"days": "wartet {days} T.",
+			"daysHours": "wartet {days} T. {hours} Std."
 		}
 	},
 	"sharedPkg": {

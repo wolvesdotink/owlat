@@ -8114,10 +8114,6 @@
 				"pageTitle": "Team Inbox — Owlat",
 				"reviewQueue": "Review Queue",
 				"snoozeThreadOperation": "Snooze thread",
-				"sortToggleToNeedsAttention": "Sorted newest first — switch to needs-attention",
-				"sortToggleToNewest": "Sorted by needs-attention — switch to newest first",
-				"sortedByNeedsAttention": "Sorted by needs-attention",
-				"sortedNewestFirst": "Newest first",
 				"subtitle": "Customer conversations your team handles together.",
 				"title": "Team Inbox",
 				"undo": {
@@ -8133,7 +8129,9 @@
 				"accessTitle": "Team Inbox is limited to admins",
 				"accessBody": "Your role ({role}) doesn't include the shared customer inbox. Your own mail lives in Postbox.",
 				"openMyPostbox": "Open my Postbox",
-				"accessHint": "Need access? Ask an organization admin to change your role in Settings → Team."
+				"accessHint": "Need access? Ask an organization admin to change your role in Settings → Team.",
+				"sortedBy": "Sorted by {sort}",
+				"sortSwitchTo": "Sort by {sort}"
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Block sender",
@@ -11373,6 +11371,10 @@
 			"waiting": {
 				"empty": "No threads are waiting on a customer reply.",
 				"label": "Waiting"
+			},
+			"waiting24h": {
+				"label": "Waiting 24h+",
+				"empty": "Nobody has been waiting on us for more than a day."
 			}
 		},
 		"mailAutodiscover": {
@@ -13446,6 +13448,17 @@
 			"right": "Reader on the right (resizable)",
 			"bottom": "Reader below a wide list",
 			"off": "No reading pane — opening navigates"
+		},
+		"inboxSorts": {
+			"needsAttention": "needs attention",
+			"oldestWaiting": "oldest waiting",
+			"newest": "newest first"
+		},
+		"inboxWaiting": {
+			"minutes": "waiting {minutes}m",
+			"hours": "waiting {hours}h",
+			"days": "waiting {days}d",
+			"daysHours": "waiting {days}d {hours}h"
 		}
 	},
 	"sharedPkg": {

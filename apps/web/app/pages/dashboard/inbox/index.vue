@@ -3,7 +3,12 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
-import { INBOX_FILTER_META, type InboxFilter } from '~/utils/inboxFilters';
+import {
+	INBOX_FILTER_META,
+	INBOX_SORT_META,
+	nextInboxSort,
+	type InboxFilter,
+} from '~/utils/inboxFilters';
 
 const { t, te } = useI18n();
 
@@ -64,7 +69,13 @@ type TeamThread = InboxThreadRowThread & { _id: Id<'conversationThreads'> };
 
 // Filters whose rows require an open/waiting, not-snoozed thread — resolving or
 // snoozing a row removes it from these, so those actions hide optimistically.
-const ACTIVE_WORK_FILTERS = new Set<InboxFilter>(['open', 'mine', 'unassigned', 'waiting']);
+const ACTIVE_WORK_FILTERS = new Set<InboxFilter>([
+	'open',
+	'mine',
+	'unassigned',
+	'waiting',
+	'waiting-24h',
+]);
 
 // Optimistic hide + one-slot undo toast (Cmd/Ctrl+Z), reusing the Postbox house
 // composables. The list renders `visibleThreads`; a failed mutation restores the
@@ -174,11 +185,27 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>
 	},
 });
 
+// One ticking clock for the whole list: the waiting chips age in place without
+// a reload, and a minute of drift is invisible on a chip that reads in hours.
+// Deriving it per row would be one interval per visible thread.
+const now = ref(Date.now());
+let waitingClock: number | undefined;
+onMounted(() => {
+	waitingClock = window.setInterval(() => {
+		now.value = Date.now();
+	}, 60_000);
+});
+onUnmounted(() => {
+	if (waitingClock !== undefined) window.clearInterval(waitingClock);
+});
+
 // Empty-state copy per active pill. The shared filter registry keeps its plain
 // English fallback, so an unknown filter still reads as a sentence.
 const emptyMessage = computed(() => {
 	const key = `dashboard.inbox.index.empty.${filter.value}`;
-	return te(key) ? t(key) : INBOX_FILTER_META[filter.value].empty;
+	// The registry holds a KEY, not a sentence — resolve it rather than
+	// rendering `shared.inboxFilters.…` at a person.
+	return te(key) ? t(key) : t(INBOX_FILTER_META[filter.value].empty);
 });
 </script>
 
@@ -233,26 +260,21 @@ const emptyMessage = computed(() => {
 			<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
 				<InboxFilterPills v-model="filter" :counts="filterCounts" />
 
+				<!-- The sort chip states the CURRENT order and cycles to the next
+				     one; with three orders a toggle would have had to hide one. -->
 				<button
 					type="button"
 					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
 					:title="
-						sort === 'needs-attention'
-							? t('dashboard.inbox.index.sortToggleToNewest')
-							: t('dashboard.inbox.index.sortToggleToNeedsAttention')
+						t('dashboard.inbox.index.sortSwitchTo', {
+							sort: t(INBOX_SORT_META[nextInboxSort(sort)].label),
+						})
 					"
 					@click="toggleSort"
 				>
-					<Icon
-						:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
-						class="w-3.5 h-3.5"
-					/>
+					<Icon :name="INBOX_SORT_META[sort].icon" class="w-3.5 h-3.5" />
 					<span>
-						{{
-							sort === 'needs-attention'
-								? t('dashboard.inbox.index.sortedByNeedsAttention')
-								: t('dashboard.inbox.index.sortedNewestFirst')
-						}}
+						{{ t('dashboard.inbox.index.sortedBy', { sort: t(INBOX_SORT_META[sort].label) }) }}
 					</span>
 				</button>
 			</div>
@@ -296,6 +318,7 @@ const emptyMessage = computed(() => {
 							:members="assignMembers"
 							:current-user-id="user?.id ?? null"
 							:can-manage="isAdmin"
+							:now="now"
 							@assign="assignTo(thread, $event)"
 							@resolve="resolveThread(thread)"
 							@snooze="openSnooze(thread)"

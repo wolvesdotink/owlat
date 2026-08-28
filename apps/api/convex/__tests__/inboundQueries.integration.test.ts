@@ -240,6 +240,77 @@ describe('inboundQueries.listThreads', () => {
 		expect(needs.threads[0]!.subject).toBe('DraftReady');
 	});
 
+	it('filters and orders by how long the customer has waited on US', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		const now = Date.now();
+		const DAY = 24 * 60 * 60 * 1000;
+
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			// Three days of silence from us — the row the pill exists for.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'Neglected',
+					status: 'open',
+					lastMessageAt: now - 3 * DAY,
+				})
+			);
+			// An hour old: waiting on us, but nowhere near the escalation.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'Fresh',
+					status: 'open',
+					lastMessageAt: now - 60 * 60 * 1000,
+				})
+			);
+			// Ancient, but the ball is in the CUSTOMER's court.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'TheirMove',
+					status: 'waiting',
+					lastMessageAt: now - 9 * DAY,
+				})
+			);
+			// Ancient, but deliberately parked until next week.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'Snoozed',
+					status: 'open',
+					lastMessageAt: now - 9 * DAY,
+					snoozedUntil: now + DAY,
+				})
+			);
+		});
+
+		const overdue = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { filter: 'waiting-24h' });
+		expect(overdue.threads.map((row) => row.subject)).toEqual(['Neglected']);
+
+		// The oldest-waiting sort leads with the longest wait and sinks the rows
+		// that are not waiting on us at all.
+		const oldest = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { sort: 'oldest-waiting' });
+		expect(oldest.threads[0]!.subject).toBe('Neglected');
+		expect(oldest.threads[1]!.subject).toBe('Fresh');
+		expect(
+			oldest.threads
+				.slice(2)
+				.map((row) => row.subject)
+				.sort()
+		).toEqual(['Snoozed', 'TheirMove']);
+	});
+
 	it('should respect the limit parameter', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['inbox']);
@@ -315,6 +386,11 @@ describe('inboundQueries.getThreadFilterCounts', () => {
 				'conversationThreads',
 				threadData({ contactId, status: 'open', snoozedUntil: now + 60_000 })
 			);
+			// Open and untouched for three days — the only Waiting > 24h row.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', lastMessageAt: now - 3 * 24 * 60 * 60 * 1000 })
+			);
 		});
 
 		const counts = await t
@@ -322,13 +398,15 @@ describe('inboundQueries.getThreadFilterCounts', () => {
 			.query(api.inbox.queries.getThreadFilterCounts, {});
 
 		// open excludes the snoozed row; mine = the one assigned to me;
-		// unassigned = open/waiting with no owner (the plain open + the waiting);
-		// waiting/resolved/snoozed each = 1.
+		// unassigned = open/waiting with no owner (the plain open + the waiting +
+		// the neglected one); waiting/resolved/snoozed each = 1; waitingOver24h
+		// counts only the three-day-old open row.
 		expect(counts).toMatchObject({
-			open: 2,
+			open: 3,
 			mine: 1,
-			unassigned: 2,
+			unassigned: 3,
 			waiting: 1,
+			waitingOver24h: 1,
 			resolved: 1,
 			snoozed: 1,
 			cap: 100,

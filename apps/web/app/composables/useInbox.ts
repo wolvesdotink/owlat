@@ -2,7 +2,9 @@ import { api } from '@owlat/api';
 import {
 	DEFAULT_INBOX_SORT,
 	inboxFilterToQuery,
+	nextInboxSort,
 	parseInboxFilter,
+	resolveInboxSort,
 	type InboxFilter,
 	type InboxSort,
 } from '~/utils/inboxFilters';
@@ -51,9 +53,12 @@ export function useInbox(gate?: Ref<boolean>) {
 		SORT_STORAGE_KEY,
 		DEFAULT_INBOX_SORT
 	);
-	const sort = computed<InboxSort>(() => storedSort.value);
+	// Normalised on read: the stored value predates the "oldest waiting" order,
+	// and a browser holding something unknown must not select a nonexistent
+	// backend index.
+	const sort = computed<InboxSort>(() => resolveInboxSort(storedSort.value));
 	const toggleSort = () => {
-		setStoredSort(storedSort.value === 'needs-attention' ? 'newest' : 'needs-attention');
+		setStoredSort(nextInboxSort(sort.value));
 	};
 
 	// ── Thread list (keyset pagination; the args pick the backend index) ──
