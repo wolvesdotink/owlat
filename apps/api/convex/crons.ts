@@ -359,6 +359,18 @@ crons.interval(
 	{}
 );
 
+// Postbox trash auto-purge — delete mail that has sat in the bin past the
+// owner's chosen horizon (mailUserSettings.trashAutoPurgeDays). Opt-in: a user
+// who never set a horizon keeps every trashed message forever, exactly as
+// before. Hourly is fine for a horizon measured in days, and it keeps each tick
+// small.
+crons.interval(
+	'postbox trash auto-purge',
+	{ hours: 1 },
+	internal.mail.trashRetention.sweepExpiredTrash,
+	{}
+);
+
 // Postbox Reply Queue reconcile — re-schedule needs-reply classification for
 // threads whose ingest-time scheduled check was lost (deploy restart etc.).
 crons.interval(

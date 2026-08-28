@@ -149,6 +149,10 @@
 			"types": "./src/postboxLinkTransparency.ts",
 			"import": "./src/postboxLinkTransparency.ts"
 		},
+		"./retentionHorizons": {
+			"types": "./src/retentionHorizons.ts",
+			"import": "./src/retentionHorizons.ts"
+		},
 		"./mboxArchive": {
 			"types": "./src/mboxArchive.ts",
 			"import": "./src/mboxArchive.ts"

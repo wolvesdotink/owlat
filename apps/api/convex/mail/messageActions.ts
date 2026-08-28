@@ -15,7 +15,7 @@ import { requireMailboxAccess } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { adjustFolderUnseen, bumpFolderModseq } from './folders';
 import { clearThreadNeedsReply } from './needsReply';
-import { removeMessageAttachments } from './attachmentIndex';
+import { purgeMessageRow } from './messagePurge';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
 import { rebuildThreadAggregates } from './threadAggregates';
 import { recordTriageVerb } from './triageTally';
@@ -174,6 +174,10 @@ export async function moveMessagesToFolder(
 			folderId: args.targetFolderId,
 			uid,
 			modseq,
+			// Stamp entry into the bin and clear it on the way out, so the opt-in
+			// auto-purge sweep can date a message by how long it has been TRASHED
+			// rather than by when it arrived (idea 67).
+			trashedAt: target.role === 'trash' ? now : undefined,
 			updatedAt: Date.now(),
 		});
 		moved.push({ messageId: id, sourceFolderId: sourceFolder._id });
@@ -292,52 +296,7 @@ export const purge = authedMutation({
 			if (!message) continue;
 			const owned = await requireMailboxAccess(ctx, message.mailboxId);
 			if (!owned.ok) continue;
-
-			const folder = await ctx.db.get(message.folderId);
-			if (folder) {
-				// A snoozed unread message isn't in unseenCount; don't decrement it.
-				const wasCounted = !message.flagSeen && !isMessageSnoozed(message, Date.now());
-				await ctx.db.patch(folder._id, {
-					totalCount: Math.max(0, folder.totalCount - 1),
-					unseenCount: Math.max(0, folder.unseenCount - (wasCounted ? 1 : 0)),
-					highestModseq: folder.highestModseq + 1,
-					updatedAt: Date.now(),
-				});
-			}
-
-			const mailbox = await ctx.db.get(message.mailboxId);
-			if (mailbox) {
-				await ctx.db.patch(message.mailboxId, {
-					usedBytes: Math.max(0, mailbox.usedBytes - message.rawSize),
-					updatedAt: Date.now(),
-				});
-			}
-
-			try {
-				await ctx.storage.delete(message.rawStorageId);
-			} catch {
-				// Storage may already be gone — proceed to row deletion
-			}
-			if (message.textBodyStorageId) {
-				try {
-					await ctx.storage.delete(message.textBodyStorageId);
-				} catch {
-					/* noop */
-				}
-			}
-			if (message.htmlBodyStorageId) {
-				try {
-					await ctx.storage.delete(message.htmlBodyStorageId);
-				} catch {
-					/* noop */
-				}
-			}
-
-			touchedThreads.add(message.threadId);
-			// The attachment index is a function of the message table; a row that
-			// outlived its message would list a file that opens into nothing.
-			await removeMessageAttachments(ctx, id);
-			await ctx.db.delete(id);
+			touchedThreads.add(await purgeMessageRow(ctx, message));
 		}
 		for (const t of touchedThreads) {
 			await rebuildThreadAggregates(ctx, t);

@@ -42,6 +42,10 @@
  *     mailbox at a chosen LOCAL time. Absent means no delivery at all, which is
  *     exactly the behaviour before it existed; the stored `utcOffsetMinutes` is
  *     what lets a cron with no request behind it honour "07:00 my time".
+ *   - `trashAutoPurgeDays` — how long a message sits in Trash before the
+ *     retention sweep deletes it for good (Never / 7 / 30 / 90 days). Defaults
+ *     to Never, so an untouched row keeps every trashed message forever, which
+ *     is exactly the behaviour that shipped before the control existed.
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -71,6 +75,8 @@ import type { PostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
 import { resolvePostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
 import type { PostboxQuietHours } from '~/utils/postboxQuietHours';
 import { resolvePostboxQuietHours } from '~/utils/postboxQuietHours';
+import type { PostboxTrashAutoPurgeDays } from '~/utils/postboxTrashRetention';
+import { resolvePostboxTrashAutoPurgeDays } from '~/utils/postboxTrashRetention';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
@@ -176,6 +182,13 @@ export function usePostboxSettings() {
 		resolvePostboxMarkReadPolicy(data.value?.markReadPolicy)
 	);
 
+	// Trash auto-purge horizon, in days. An unset (or unknown) value resolves to
+	// 0 — "Never" — which is exactly what every mailbox did before the setting
+	// existed: nothing in the bin is ever deleted unless the owner says so.
+	const trashAutoPurgeDays = computed<PostboxTrashAutoPurgeDays>(() =>
+		resolvePostboxTrashAutoPurgeDays(data.value?.trashAutoPurgeDays)
+	);
+
 	// Daily-brief email delivery. Deliberately NOT defaulted: absent means the
 	// user has never opted in, and the card renders the off state rather than
 	// inventing a schedule nobody chose.
@@ -271,6 +284,10 @@ export function usePostboxSettings() {
 		await updateOp.run({ markReadPolicy: policy });
 	}
 
+	async function setTrashAutoPurgeDays(days: PostboxTrashAutoPurgeDays) {
+		await updateOp.run({ trashAutoPurgeDays: days });
+	}
+
 	async function setDailyBriefEmail(value: {
 		enabled: boolean;
 		minute: number;
@@ -299,6 +316,7 @@ export function usePostboxSettings() {
 		hidePreview,
 		senderScreener,
 		markReadPolicy,
+		trashAutoPurgeDays,
 		dailyBriefEmail,
 		isLoading,
 		setAutoAdvance,
@@ -319,6 +337,7 @@ export function usePostboxSettings() {
 		setHidePreview,
 		setSenderScreener,
 		setMarkReadPolicy,
+		setTrashAutoPurgeDays,
 		setDailyBriefEmail,
 		isSaving: updateOp.isLoading,
 	};

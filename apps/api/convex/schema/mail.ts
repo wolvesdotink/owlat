@@ -564,6 +564,16 @@ export const mailTables = {
 		customFlags: v.array(v.string()),
 		labelIds: v.array(v.id('mailLabels')),
 
+		// When this message was moved INTO the trash (idea 67). Stamped by
+		// `moveMessagesToFolder` on a trash destination and cleared on the way
+		// out, so it always answers "how long has this been in the bin" — which
+		// `receivedAt` cannot (a year-old message trashed today) and `updatedAt`
+		// cannot either (any flag change moves it). Read only by the opt-in
+		// trash auto-purge sweep; absent on every row trashed before the field
+		// existed, and the sweep treats absent as "not yet dateable" rather than
+		// as "old", so turning the setting on can never destroy mail whose age in
+		// the bin is unknown.
+		trashedAt: v.optional(v.number()),
 		// Snooze (P8): hides the message from the inbox until the timestamp
 		// passes; a 1-min cron sweep returns it (and bumps the thread
 		// `lastMessageAt` so the inbox sort floats it back to the top).
@@ -743,6 +753,10 @@ export const mailTables = {
 		.index('by_folder_and_section_and_seen', ['folderId', 'pinnedSection', 'flagSeen'])
 		// Mailbox-scoped snooze range — backs the "Snoozed" view without scanning
 		// the whole mailbox.
+		// Trash auto-purge (idea 67): expired-first within one bin. `trashedAt` is
+		// optional, so the sweep pins the range with `gte(0)` to exclude the rows
+		// that carry no stamp at all.
+		.index('by_folder_and_trashed', ['folderId', 'trashedAt'])
 		.index('by_mailbox_and_snoozed', ['mailboxId', 'snoozedUntil'])
 		.index('by_thread', ['threadId'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])

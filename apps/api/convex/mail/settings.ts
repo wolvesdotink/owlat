@@ -30,6 +30,7 @@ import {
 	mailMarkReadPolicyValidator,
 	mailQuietHoursValidator,
 	mailDailyBriefEmailValidator,
+	mailTrashAutoPurgeDaysValidator,
 } from '../lib/mailSettingsValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
@@ -67,6 +68,7 @@ export const get = publicQuery({
 			markReadPolicy: row.markReadPolicy,
 			dailyBriefEmail: row.dailyBriefEmail,
 			lastDailyBriefEmailAt: row.lastDailyBriefEmailAt,
+			trashAutoPurgeDays: row.trashAutoPurgeDays,
 		};
 	},
 });
@@ -95,6 +97,7 @@ export const update = authedMutation({
 		isSenderScreenerOn: v.optional(v.boolean()),
 		markReadPolicy: v.optional(mailMarkReadPolicyValidator),
 		dailyBriefEmail: v.optional(mailDailyBriefEmailValidator),
+		trashAutoPurgeDays: v.optional(mailTrashAutoPurgeDaysValidator),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -127,6 +130,7 @@ export const update = authedMutation({
 			isSenderScreenerOn?: boolean;
 			markReadPolicy?: (typeof args)['markReadPolicy'];
 			dailyBriefEmail?: (typeof args)['dailyBriefEmail'];
+			trashAutoPurgeDays?: (typeof args)['trashAutoPurgeDays'];
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
@@ -148,6 +152,7 @@ export const update = authedMutation({
 		if (args.isHidePreviewOn !== undefined) patch.isHidePreviewOn = args.isHidePreviewOn;
 		if (args.isSenderScreenerOn !== undefined) patch.isSenderScreenerOn = args.isSenderScreenerOn;
 		if (args.markReadPolicy !== undefined) patch.markReadPolicy = args.markReadPolicy;
+		if (args.trashAutoPurgeDays !== undefined) patch.trashAutoPurgeDays = args.trashAutoPurgeDays;
 		if (args.dailyBriefEmail !== undefined) {
 			// Clamp here rather than trusting the client: `minute` becomes a
 			// scheduling comparison in a cron, and an out-of-range value would
