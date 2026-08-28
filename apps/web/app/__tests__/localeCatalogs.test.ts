@@ -190,6 +190,14 @@ describe('UI message catalogs', () => {
 		'components.postbox.postboxLayout.escKey',
 		'components.postbox.postboxLayout.folderRoles.spam',
 		'components.postbox.postboxMailboxConnectForm.ssl',
+		// Protocol names and RFC header field names — the same words in both
+		// locales, and translating them would stop them matching the raw message.
+		'components.postbox.postboxMessageDetails.arc',
+		'components.postbox.postboxMessageDetails.dkim',
+		'components.postbox.postboxMessageDetails.dmarc',
+		'components.postbox.postboxMessageDetails.messageId',
+		'components.postbox.postboxMessageDetails.returnPath',
+		'components.postbox.postboxMessageDetails.spf',
 		'components.postbox.postboxMailboxSwitcher.personal.title',
 		'components.postbox.postboxMailboxSwitcher.team.heading',
 		'components.postbox.postboxQuickActionsBar.label',

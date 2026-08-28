@@ -78,6 +78,87 @@ export const listThreadMessages = publicQuery({
 });
 
 /**
+ * The header facts behind the reader's sender badge — the "message details"
+ * disclosure (UX plan idea 52).
+ *
+ * The badge tells a reader "verified sender" and nothing lets them check it.
+ * This is the read that makes the claim falsifiable: the addresses the message
+ * carries (From, Reply-To), each authentication verdict WITH the exact domain it
+ * authenticated, and the forwarder whose ARC seal was honoured when a rescue
+ * applied. Every value is a field persisted at ingest from the raw header block;
+ * the panel adds no interpretation the badge does not already make.
+ *
+ * A QUERY, not an action, and therefore a read over the header fields we PARSED,
+ * not over the raw `.eml` bytes: Convex queries cannot read storage blobs, and
+ * fetching a multi-megabyte message to display four lines would be a poor trade
+ * on every message open. The raw bytes stay behind {@link getMessageRawUrl},
+ * which the panel's "download original" already uses — so a reader who wants the
+ * literal header block can still have it, in one click.
+ *
+ * The `Return-Path` line is served as the envelope sender DOMAIN
+ * (`envelopeFromDomain`), which is what SPF actually authenticated and what we
+ * persist; the full envelope address is not stored (see docs/ux-plan/DEFERRALS).
+ *
+ * Recipient-scoped: `loadReadableMessage` is the same owner/admin + active
+ * mailbox gate every other by-id read in this file uses, so a message id from
+ * another mailbox returns null rather than a header dump.
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
+export const getMessageDetails = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	returns: v.union(
+		v.null(),
+		v.object({
+			fromAddress: v.string(),
+			fromName: v.optional(v.string()),
+			replyToAddress: v.optional(v.string()),
+			toAddresses: v.array(v.string()),
+			ccAddresses: v.array(v.string()),
+			rfc822MessageId: v.string(),
+			receivedAt: v.number(),
+			rawSize: v.number(),
+			spfResult: v.optional(v.string()),
+			dkimResult: v.optional(v.string()),
+			dmarcResult: v.optional(v.string()),
+			dmarcPolicy: v.optional(v.string()),
+			envelopeFromDomain: v.optional(v.string()),
+			dkimSigningDomain: v.optional(v.string()),
+			dmarcOverride: v.optional(v.string()),
+			arcSealer: v.optional(v.string()),
+		})
+	),
+	handler: async (ctx, args) => {
+		const message = await loadReadableMessage(ctx, args.messageId);
+		if (!message) return null;
+		// Explicit spreads rather than a destructure of the whole row: an
+		// `undefined` must never travel as a present key, because the panel
+		// distinguishes "this header was absent" from "this header was empty".
+		return {
+			fromAddress: message.fromAddress,
+			...(message.fromName !== undefined ? { fromName: message.fromName } : {}),
+			...(message.replyToAddress !== undefined ? { replyToAddress: message.replyToAddress } : {}),
+			toAddresses: message.toAddresses,
+			ccAddresses: message.ccAddresses,
+			rfc822MessageId: message.rfc822MessageId,
+			receivedAt: message.receivedAt,
+			rawSize: message.rawSize,
+			...(message.spfResult !== undefined ? { spfResult: message.spfResult } : {}),
+			...(message.dkimResult !== undefined ? { dkimResult: message.dkimResult } : {}),
+			...(message.dmarcResult !== undefined ? { dmarcResult: message.dmarcResult } : {}),
+			...(message.dmarcPolicy !== undefined ? { dmarcPolicy: message.dmarcPolicy } : {}),
+			...(message.envelopeFromDomain !== undefined
+				? { envelopeFromDomain: message.envelopeFromDomain }
+				: {}),
+			...(message.dkimSigningDomain !== undefined
+				? { dkimSigningDomain: message.dkimSigningDomain }
+				: {}),
+			...(message.dmarcOverride !== undefined ? { dmarcOverride: message.dmarcOverride } : {}),
+			...(message.arcSealer !== undefined ? { arcSealer: message.arcSealer } : {}),
+		};
+	},
+});
+
+/**
  * Per-recipient OUTBOUND delivery state for every sent message in a thread —
  * the read behind the reader's delivery strip (plan idea 1).
  *

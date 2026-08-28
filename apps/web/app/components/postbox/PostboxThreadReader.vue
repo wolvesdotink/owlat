@@ -1157,6 +1157,9 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								:auth="senderAuthInput(msg)"
 								:heuristics="msg.senderHeuristics"
 							/>
+							<!-- The badge's claims, made checkable: the real headers behind them,
+							     and the original .eml (UX plan idea 52). -->
+							<PostboxMessageDetails :message-id="msg._id" />
 						</div>
 					</header>
 

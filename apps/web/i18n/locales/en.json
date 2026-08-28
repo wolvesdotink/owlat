@@ -3687,6 +3687,34 @@
 				"stopTrustingSender": "Block again",
 				"trackersKeptBlocked": "{count} tracking pixel kept blocked. | {count} tracking pixels kept blocked."
 			},
+			"postboxMessageDetails": {
+				"arc": "ARC",
+				"dkim": "DKIM",
+				"dmarc": "DMARC",
+				"download": "Download original (.eml)",
+				"downloadFailed": "We couldn't fetch the original message. Try again in a moment.",
+				"downloading": "Preparing download…",
+				"empty": "This message carries no authentication results we recorded.",
+				"from": "From",
+				"loading": "Loading message details…",
+				"messageId": "Message-ID",
+				"notes": {
+					"arcRescue": "sealed this message on its way here, and we trust that sealer",
+					"arcRescueUnnamed": "A forwarder's seal we trust vouched for this message.",
+					"envelopeDomain": "the envelope sender's domain, which is what SPF checked",
+					"noDomainRecorded": "no domain recorded for this check",
+					"policy": {
+						"none": "the domain asks only to be told about failures",
+						"quarantine": "the domain asks that failures be treated as suspicious",
+						"reject": "the domain asks that failures be rejected"
+					},
+					"replyToDiffers": "different domain from the sender"
+				},
+				"replyTo": "Reply-To",
+				"returnPath": "Return-Path",
+				"spf": "SPF",
+				"toggle": "Message details"
+			},
 			"postboxMovePickerDialog": {
 				"noOtherFolders": "No other folders",
 				"title": "Move to folder"

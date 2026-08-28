@@ -3687,6 +3687,34 @@
 				"stopTrustingSender": "Wieder blockieren",
 				"trackersKeptBlocked": "{count} Trackingpixel bleibt blockiert. | {count} Trackingpixel bleiben blockiert."
 			},
+			"postboxMessageDetails": {
+				"arc": "ARC",
+				"dkim": "DKIM",
+				"dmarc": "DMARC",
+				"download": "Original herunterladen (.eml)",
+				"downloadFailed": "Wir konnten die Originalnachricht nicht laden. Versuchen Sie es gleich noch einmal.",
+				"downloading": "Download wird vorbereitet…",
+				"empty": "Zu dieser Nachricht haben wir keine Authentifizierungsergebnisse festgehalten.",
+				"from": "Von",
+				"loading": "Nachrichtendetails werden geladen…",
+				"messageId": "Message-ID",
+				"notes": {
+					"arcRescue": "hat diese Nachricht auf dem Weg hierher gesiegelt, und diesem Siegler vertrauen wir",
+					"arcRescueUnnamed": "Das Siegel eines Weiterleiters, dem wir vertrauen, hat für diese Nachricht gebürgt.",
+					"envelopeDomain": "die Domain des Umschlagabsenders — genau die hat SPF geprüft",
+					"noDomainRecorded": "für diese Prüfung wurde keine Domain festgehalten",
+					"policy": {
+						"none": "die Domain möchte über Fehlschläge nur informiert werden",
+						"quarantine": "die Domain möchte, dass Fehlschläge als verdächtig behandelt werden",
+						"reject": "die Domain möchte, dass Fehlschläge abgewiesen werden"
+					},
+					"replyToDiffers": "andere Domain als der Absender"
+				},
+				"replyTo": "Antwort an",
+				"returnPath": "Return-Path",
+				"spf": "SPF",
+				"toggle": "Nachrichtendetails"
+			},
 			"postboxMovePickerDialog": {
 				"noOtherFolders": "Keine weiteren Ordner",
 				"title": "In Ordner verschieben"
