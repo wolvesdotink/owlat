@@ -47,7 +47,7 @@ import {
  */
 
 const { t } = useI18n();
-const { verbItems, contextItems, navItems } = useCommandPaletteProviders();
+const { verbItems, contextItems, navItems, settingsItems } = useCommandPaletteProviders();
 const registryProviders = useCommandPaletteRegistry();
 const { isEnabled: isFlagEnabled } = useFeatureFlag();
 const route = useRoute();
@@ -147,6 +147,7 @@ const coreProviders = buildCorePaletteProviders({
 	verbItems: () => verbItems.value,
 	contextItems: () => contextItems.value,
 	navItems: () => navItems.value,
+	settingsItems: () => settingsItems.value,
 	searchResults: () => searchResults.value,
 	onRecentTerm: (term) => setImmediate(term),
 	buildResultItems: (results) => toResultItems(results),

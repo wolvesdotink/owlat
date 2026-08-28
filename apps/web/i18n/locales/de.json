@@ -10237,15 +10237,11 @@
 		},
 		"breadcrumbRoutes": {
 			"pages": {
-				"account": "Konto",
-				"addMailAccount": "Mailkonto hinzufügen",
 				"agentHealth": "Agentenzustand",
 				"aiAgent": "KI-Agent",
 				"aiProvider": "KI-Anbieter",
-				"aliases": "Aliase",
 				"apiKeys": "API-Schlüssel",
 				"apiQuickstart": "API-Schnellstart",
-				"appPasswords": "App-Passwörter",
 				"auditLog": "Audit-Protokoll",
 				"autonomyRules": "Autonomieregeln",
 				"backups": "Backups",
@@ -10255,7 +10251,6 @@
 				"cells": "Zellen",
 				"channels": "Kanäle",
 				"connectedApps": "Verbundene Apps",
-				"connectedMailboxes": "Verbundene Postfächer",
 				"contactProperties": "Kontakteigenschaften",
 				"contacts": "Kontakte",
 				"controls": "Steuerung",
@@ -10263,9 +10258,7 @@
 				"deliveryProvider": "Zustelldienst",
 				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
-				"filters": "Filter",
 				"forms": "Formulare",
-				"forwarding": "Weiterleitung",
 				"general": "Allgemein",
 				"health": "Zustand",
 				"independence": "Unabhängigkeit",
@@ -10280,11 +10273,8 @@
 				"plugins": "Plugins",
 				"providerRouting": "Anbieter-Routing",
 				"secureMail": "Sichere Mail",
-				"security": "Anmeldung und Sicherheit",
 				"segments": "Segmente",
 				"sendingDomains": "Versanddomains",
-				"signatures": "Signaturen",
-				"snippets": "Textbausteine",
 				"suppressions": "Sperrlisten",
 				"systemAndUpdates": "System & Updates",
 				"teamAccess": "Team & Zugriff",
@@ -10292,9 +10282,7 @@
 				"templatesAndBlocks": "Vorlagen & Blöcke",
 				"topics": "Themen",
 				"transactional": "Transaktional",
-				"vacationAutoReply": "Abwesenheitsnotiz",
-				"webhooks": "Webhooks",
-				"writingVoice": "Schreibstil"
+				"webhooks": "Webhooks"
 			},
 			"sections": {
 				"administration": "Verwaltung",
@@ -10407,6 +10395,7 @@
 				"mail": "E-Mail",
 				"navigation": "Gehe zu",
 				"recent": "Letzte Suchen",
+				"settings": "Einstellungen",
 				"templates": "Vorlagen"
 			}
 		},
@@ -10622,15 +10611,6 @@
 					"sent": "Gesendet",
 					"spam": "Spam",
 					"trash": "Papierkorb"
-				},
-				"preferences": {
-					"account": "Konto",
-					"connectedMailboxes": "Verbundene Postfächer",
-					"desktop": "Desktop",
-					"filters": "Filter",
-					"overview": "Übersicht",
-					"security": "Anmeldung und Sicherheit",
-					"signatures": "Signaturen"
 				},
 				"send": {
 					"automations": "Automationen",
@@ -12180,6 +12160,168 @@
 				"detail": "Wir haben bestätigt, dass diese Nachricht wirklich für {domain} gesendet wurde.",
 				"detailUnknownSender": "Wir haben bestätigt, dass diese Nachricht wirklich für diesen Absender gesendet wurde.",
 				"summary": "Bestätigter Absender"
+			}
+		},
+		"settingsRegistry": {
+			"sections": {
+				"general": "Allgemein",
+				"mail": "E-Mail",
+				"account": "Konto",
+				"device": "Dieses Gerät"
+			},
+			"entries": {
+				"overview": {
+					"title": "Allgemein",
+					"description": "Erscheinungsbild, Sprache und wie sich Post liest",
+					"keywords": "Einstellungen, Optionen, Übersicht, Voreinstellungen"
+				},
+				"filters": {
+					"title": "Filter",
+					"description": "Eingehende Post automatisch einsortieren",
+					"keywords": "Regeln, Sieve, Sortierung, Posteingangsregeln"
+				},
+				"aliases": {
+					"title": "Aliase",
+					"description": "Alternative Adressen",
+					"keywords": "alternative Adresse, Plus-Adressierung, zweite Adresse"
+				},
+				"forwarding": {
+					"title": "Weiterleitung",
+					"description": "Regeln für externe Weiterleitungen",
+					"keywords": "umleiten, Kopie senden, externe Adresse"
+				},
+				"vacation": {
+					"title": "Abwesenheitsnotiz",
+					"description": "Automatische Antwort während der Abwesenheit",
+					"keywords": "Abwesenheit, Urlaub, automatische Antwort"
+				},
+				"signatures": {
+					"title": "Signaturen",
+					"description": "Automatisch an neue Entwürfe anhängen",
+					"keywords": "Grußformel, Fußzeile, Haftungsausschluss"
+				},
+				"snippets": {
+					"title": "Textbausteine",
+					"description": "Vorgefertigte Antworten über den Schrägstrich",
+					"keywords": "vorgefertigte Antworten, Standardtext, Kürzel"
+				},
+				"writingVoice": {
+					"title": "Schreibstil",
+					"description": "KI-Entwürfe klingen lassen wie Sie",
+					"keywords": "Tonfall, Stil, KI-Entwürfe, Stimme"
+				},
+				"connectedMailboxes": {
+					"title": "Verbundene Postfächer",
+					"description": "Gmail, Fastmail, Outlook oder ein beliebiger anderer Anbieter",
+					"keywords": "Import, Gmail, Outlook, Fastmail, IMAP, externes Konto, Umzug"
+				},
+				"addAccount": {
+					"title": "Mailkonto hinzufügen",
+					"description": "Eine weitere Adresse auf dieser Instanz anlegen",
+					"keywords": "neues Postfach, Adresse anlegen, Team-Postfach"
+				},
+				"account": {
+					"title": "Konto",
+					"description": "Ihr Name, Ihre E-Mail-Adresse und die Kontolöschung",
+					"keywords": "Profil, Name, Konto löschen, Konto schließen"
+				},
+				"security": {
+					"title": "Anmeldung und Sicherheit",
+					"description": "Passwort, Zwei-Faktor und aktive Sitzungen",
+					"keywords": "Passwort, Zwei-Faktor, 2FA, MFA, Sitzungen, abmelden"
+				},
+				"appPasswords": {
+					"title": "App-Passwörter",
+					"description": "Für Apple Mail, Thunderbird und andere Programme",
+					"keywords": "IMAP, SMTP, Thunderbird, Apple Mail, Programmpasswort"
+				},
+				"device": {
+					"title": "Dieses Gerät",
+					"description": "Offline-Cache, Benachrichtigungen und die Desktop-App",
+					"keywords": "Desktop, offline, Benachrichtigungen, Workspaces, Updates, Start"
+				}
+			},
+			"controls": {
+				"appearance": {
+					"title": "Erscheinungsbild",
+					"keywords": "Dunkelmodus, heller Modus, Design, Farbschema"
+				},
+				"language": {
+					"title": "Sprache",
+					"keywords": "Gebietsschema, Übersetzung, Englisch, Deutsch"
+				},
+				"autoAdvance": {
+					"title": "Nach dem Archivieren, Löschen oder Schlummern",
+					"keywords": "automatisch weiter, nächste Nachricht, nächste Konversation"
+				},
+				"markRead": {
+					"title": "Als gelesen markieren",
+					"keywords": "ungelesen, Verzögerung, als gelesen markieren"
+				},
+				"density": {
+					"title": "Dichte",
+					"keywords": "kompakt, komfortabel, Abstand, Zeilenhöhe"
+				},
+				"replyDefault": {
+					"title": "Standardverhalten beim Antworten",
+					"keywords": "allen antworten, antworten, Taste r"
+				},
+				"writingSuggestions": {
+					"title": "Schreibvorschläge",
+					"keywords": "KI, Autovervollständigung, Schreibhilfe"
+				},
+				"autoSummarize": {
+					"title": "Lange Konversationen automatisch zusammenfassen",
+					"keywords": "KI, Zusammenfassung, Kurzfassung"
+				},
+				"sendSound": {
+					"title": "Ton beim Senden abspielen",
+					"keywords": "Ton, Audio, stumm"
+				},
+				"mailboxes": {
+					"title": "Postfächer",
+					"keywords": "Postfach umbenennen, Postfach löschen, Speicher, Kontingent"
+				},
+				"offlineCache": {
+					"title": "Offline-Cache",
+					"keywords": "offline, lokaler Cache, Post auf diesem Gerät speichern, Cache leeren"
+				},
+				"notifyAbout": {
+					"title": "Benachrichtigen über",
+					"keywords": "Benachrichtigungen, Hinweise, native Benachrichtigungen"
+				},
+				"quietHours": {
+					"title": "Ruhezeiten",
+					"keywords": "nicht stören, still, Nacht"
+				},
+				"hidePreview": {
+					"title": "Nachrichtenvorschau ausblenden",
+					"keywords": "Privatsphäre, Vorschau, Sperrbildschirm"
+				},
+				"autostart": {
+					"title": "Beim Anmelden starten",
+					"keywords": "Start, Autostart, hochfahren"
+				},
+				"startupWorkspace": {
+					"title": "Beim Start öffnen",
+					"keywords": "Start-Workspace, Standard-Workspace"
+				},
+				"unreadBadge": {
+					"title": "Ungelesen-Zähler",
+					"keywords": "Dock-Zähler, Taskleisten-Anzahl, ungelesene Anzahl"
+				},
+				"updates": {
+					"title": "Aktualisierungen",
+					"keywords": "nach Updates suchen, Version, Upgrade"
+				},
+				"defaultApp": {
+					"title": "Standard-E-Mail-App",
+					"keywords": "mailto, Standard-Handler, Mail-Links öffnen"
+				},
+				"workspaces": {
+					"title": "Workspaces",
+					"keywords": "verbundene Server, Akzent, Workspace entfernen"
+				}
 			}
 		},
 		"setupMtaIdentity": {

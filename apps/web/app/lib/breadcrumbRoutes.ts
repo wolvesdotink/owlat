@@ -6,7 +6,12 @@
  * consumes both — the tables live outside the composable so it stays
  * logic-only, and the coverage-parity test in
  * `composables/__tests__/useBreadcrumbs.test.ts` guards the tables as data.
+ *
+ * The Preferences trails are not written out here: they are derived from
+ * `lib/settingsRegistry`, the one declaration the hub, the left nav and the
+ * command palette also read.
  */
+import { SETTINGS_REGISTRY, SETTINGS_ROOT } from './settingsRegistry';
 
 /**
  * Route configuration mapping paths to breadcrumb structure.
@@ -21,6 +26,31 @@ export interface RouteConfig {
 	subsection?: string;
 	subsectionHref?: string;
 	page?: string;
+}
+
+/**
+ * The Preferences trails, projected out of the settings registry.
+ *
+ * Preferences pages used to be restated here by hand, so a new page had to be
+ * remembered in the sidebar table, in this one, and in the hub's link grid; the
+ * three had already drifted. One declaration means a registry entry gets its
+ * crumb — with the SAME words the left nav and the hub print for it — for free.
+ * Gates are deliberately ignored: a crumb describes where you are, and if a
+ * gate let you reach the page the trail must still name it.
+ */
+function preferencesRouteConfigs(): Record<string, RouteConfig> {
+	return Object.fromEntries(
+		SETTINGS_REGISTRY.map((entry) => [
+			entry.path,
+			{
+				section: 'shared.breadcrumbRoutes.sections.preferences',
+				sectionHref: SETTINGS_ROOT,
+				// The hub is the section crumb itself — a second "Overview" crumb
+				// under it would just repeat the link you are standing on.
+				...(entry.path === SETTINGS_ROOT ? {} : { page: entry.titleKey }),
+			},
+		])
+	);
 }
 
 // Define route configurations for the new navigation structure
@@ -320,75 +350,14 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		page: 'shared.breadcrumbRoutes.pages.contactProperties',
 	},
 
-	// Preferences section (personal, per-user settings)
-	'/dashboard/preferences': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-	},
-	'/dashboard/preferences/account': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.account',
-	},
-	'/dashboard/preferences/security': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.security',
-	},
-	'/dashboard/preferences/filters': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.filters',
-	},
-	'/dashboard/preferences/signatures': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.signatures',
-	},
-	'/dashboard/preferences/snippets': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.snippets',
-	},
-	'/dashboard/preferences/vacation': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.vacationAutoReply',
-	},
-	'/dashboard/preferences/forwarding': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.forwarding',
-	},
-	'/dashboard/preferences/aliases': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.aliases',
-	},
-	'/dashboard/preferences/app-passwords': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.appPasswords',
-	},
-	'/dashboard/preferences/writing-voice': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.writingVoice',
-	},
-	'/dashboard/preferences/external-account': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.connectedMailboxes',
-	},
-	'/dashboard/preferences/add-account': {
-		section: 'shared.breadcrumbRoutes.sections.preferences',
-		sectionHref: '/dashboard/preferences',
-		page: 'shared.breadcrumbRoutes.pages.addMailAccount',
-	},
+	// Preferences section (personal, per-user settings) is DERIVED — see
+	// `preferencesRouteConfigs` below.
 
 	// Automations section
 	'/dashboard/automations': {
 		section: 'shared.breadcrumbRoutes.sections.automations',
 		sectionHref: '/dashboard/automations',
 	},
+
+	...preferencesRouteConfigs(),
 };

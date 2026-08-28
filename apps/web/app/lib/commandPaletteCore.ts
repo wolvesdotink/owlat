@@ -1,8 +1,8 @@
 /**
  * Pure factory for the app command palette's built-in ("core") providers.
  *
- * The six core providers — recent searches, verbs, sidebar-context switch,
- * object search, mail, and navigation — used to live as inline closures inside
+ * The core providers — recent searches, verbs, sidebar-context switch, settings
+ * controls, object search, mail, and navigation — used to live as inline closures inside
  * `AppCommandPalette.vue`, so their ids, priorities, group keys, `order`/`cap`
  * values, and idle-vs-query gating conditions were untestable without mounting
  * the component. This factory extracts that composition, taking the reactive
@@ -23,6 +23,16 @@
  */
 import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalette';
 import type { CommandPaletteProvider } from './commandPaletteRegistry';
+import { filterByKeywords } from './settingsRegistry';
+
+/**
+ * A palette row for one SETTINGS CONTROL rather than a destination. It carries
+ * localized synonyms so "dark" finds Appearance and "out of office" finds the
+ * vacation auto-reply; the words are search-only and never rendered.
+ */
+export interface SettingsPaletteItem extends PaletteItem {
+	keywords: readonly string[];
+}
 
 /** A single object-search hit from the shared search index. */
 export interface SearchResult {
@@ -65,6 +75,12 @@ export interface CorePaletteProviderDeps {
 	contextItems: () => PaletteItem[];
 	/** Navigation items — every sidebar destination. */
 	navItems: () => PaletteItem[];
+	/**
+	 * Individual settings CONTROLS (dark mode, auto-advance, notify me about),
+	 * each deep-linking to the section that holds it. Search-only: they stay out
+	 * of the idle palette so ⌘K opens on destinations, not on twenty switches.
+	 */
+	settingsItems: () => SettingsPaletteItem[];
 	/** Current object-search results, or undefined while none have resolved. */
 	searchResults: () => SearchResults | undefined;
 	/** Refill the palette query with a recent term (palette stays open). */
@@ -83,7 +99,7 @@ export interface CorePaletteProviderDeps {
 
 /**
  * Build the ordered core provider set. Priorities fix the consult/dedup order
- * (10/20/30/40/50); each provider's group `order` still drives the final render
+ * (10/20/30/35/40/45/50); each provider's group `order` still drives the final render
  * sort in `mergeGroups`. Pure.
  */
 export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): CommandPaletteProvider[] {
@@ -139,6 +155,26 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 					items: filterItems(deps.contextItems(), query),
 				},
 			],
+		},
+		{
+			// Settings controls — the switches themselves, matched on their synonyms
+			// as well as their names. Only once something is typed: the idle palette
+			// answers "where do I go", not "which switch exists".
+			id: 'core:settings',
+			priority: 35,
+			build: ({ query }): PaletteGroup[] => {
+				if (!query.trim()) return [];
+				return [
+					{
+						key: 'settings',
+						heading: 'shared.commandPaletteCore.groups.settings',
+						order: 30,
+						cap: 6,
+						mode: 'commands',
+						items: filterByKeywords(deps.settingsItems(), query),
+					},
+				];
+			},
 		},
 		{
 			// Object search — only once the query is meaningful and results arrived.

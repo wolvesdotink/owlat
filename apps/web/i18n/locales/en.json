@@ -10237,15 +10237,11 @@
 		},
 		"breadcrumbRoutes": {
 			"pages": {
-				"account": "Account",
-				"addMailAccount": "Add mail account",
 				"agentHealth": "Agent health",
 				"aiAgent": "AI agent",
 				"aiProvider": "AI provider",
-				"aliases": "Aliases",
 				"apiKeys": "API Keys",
 				"apiQuickstart": "API Quickstart",
-				"appPasswords": "App passwords",
 				"auditLog": "Audit Log",
 				"autonomyRules": "Autonomy rules",
 				"backups": "Backups",
@@ -10255,7 +10251,6 @@
 				"cells": "Cells",
 				"channels": "Channels",
 				"connectedApps": "Connected apps",
-				"connectedMailboxes": "Connected mailboxes",
 				"contactProperties": "Contact properties",
 				"contacts": "Contacts",
 				"controls": "Controls",
@@ -10263,9 +10258,7 @@
 				"deliveryProvider": "Delivery provider",
 				"emailTheme": "Email Theme",
 				"features": "Features",
-				"filters": "Filters",
 				"forms": "Forms",
-				"forwarding": "Forwarding",
 				"general": "General",
 				"health": "Health",
 				"independence": "Independence",
@@ -10280,11 +10273,8 @@
 				"plugins": "Plugins",
 				"providerRouting": "Provider Routing",
 				"secureMail": "Secure mail",
-				"security": "Sign-in and security",
 				"segments": "Segments",
 				"sendingDomains": "Sending Domains",
-				"signatures": "Signatures",
-				"snippets": "Snippets",
 				"suppressions": "Suppressions",
 				"systemAndUpdates": "System & Updates",
 				"teamAccess": "Team & access",
@@ -10292,9 +10282,7 @@
 				"templatesAndBlocks": "Templates & blocks",
 				"topics": "Topics",
 				"transactional": "Transactional",
-				"vacationAutoReply": "Vacation auto-reply",
-				"webhooks": "Webhooks",
-				"writingVoice": "Writing voice"
+				"webhooks": "Webhooks"
 			},
 			"sections": {
 				"administration": "Administration",
@@ -10407,6 +10395,7 @@
 				"mail": "Mail",
 				"navigation": "Go to",
 				"recent": "Recent searches",
+				"settings": "Settings",
 				"templates": "Templates"
 			}
 		},
@@ -10622,15 +10611,6 @@
 					"sent": "Sent",
 					"spam": "Spam",
 					"trash": "Trash"
-				},
-				"preferences": {
-					"account": "Account",
-					"connectedMailboxes": "Connected mailboxes",
-					"desktop": "Desktop",
-					"filters": "Filters",
-					"overview": "Overview",
-					"security": "Sign-in and security",
-					"signatures": "Signatures"
 				},
 				"send": {
 					"automations": "Automations",
@@ -12180,6 +12160,168 @@
 				"detail": "We confirmed this message really was sent for {domain}.",
 				"detailUnknownSender": "We confirmed this message really was sent for this sender.",
 				"summary": "Verified sender"
+			}
+		},
+		"settingsRegistry": {
+			"sections": {
+				"general": "General",
+				"mail": "Mail",
+				"account": "Account",
+				"device": "This device"
+			},
+			"entries": {
+				"overview": {
+					"title": "General",
+					"description": "Appearance, language and how mail reads",
+					"keywords": "settings, options, hub, preferences"
+				},
+				"filters": {
+					"title": "Filters",
+					"description": "Auto-route inbound mail",
+					"keywords": "rules, sieve, sorting, inbox rules"
+				},
+				"aliases": {
+					"title": "Aliases",
+					"description": "Alternate addresses",
+					"keywords": "alternate address, plus addressing, second address"
+				},
+				"forwarding": {
+					"title": "Forwarding",
+					"description": "External forwarding rules",
+					"keywords": "redirect, send a copy, external address"
+				},
+				"vacation": {
+					"title": "Vacation auto-reply",
+					"description": "Auto-reply while away",
+					"keywords": "out of office, away, holiday, autoresponder"
+				},
+				"signatures": {
+					"title": "Signatures",
+					"description": "Auto-append to new drafts",
+					"keywords": "sign-off, footer, disclaimer"
+				},
+				"snippets": {
+					"title": "Snippets",
+					"description": "Canned responses via slash",
+					"keywords": "canned responses, boilerplate, shortcuts"
+				},
+				"writingVoice": {
+					"title": "Writing voice",
+					"description": "Make AI drafts sound like you",
+					"keywords": "tone, style, ai drafts, voice"
+				},
+				"connectedMailboxes": {
+					"title": "Connected mailboxes",
+					"description": "Gmail, Fastmail, Outlook or any other provider",
+					"keywords": "import, gmail, outlook, fastmail, imap, external account, migrate"
+				},
+				"addAccount": {
+					"title": "Add mail account",
+					"description": "Add another address to this instance",
+					"keywords": "new mailbox, create address, team inbox"
+				},
+				"account": {
+					"title": "Account",
+					"description": "Your name, email address and account removal",
+					"keywords": "profile, name, delete account, close account"
+				},
+				"security": {
+					"title": "Sign-in and security",
+					"description": "Password, two-factor and active sessions",
+					"keywords": "password, two-factor, 2fa, mfa, sessions, sign out"
+				},
+				"appPasswords": {
+					"title": "App passwords",
+					"description": "For Apple Mail, Thunderbird and other clients",
+					"keywords": "imap, smtp, thunderbird, apple mail, client password"
+				},
+				"device": {
+					"title": "This device",
+					"description": "Offline cache, notifications and the desktop app",
+					"keywords": "desktop, offline, notifications, workspaces, updates, startup"
+				}
+			},
+			"controls": {
+				"appearance": {
+					"title": "Appearance",
+					"keywords": "dark mode, light mode, theme, colour scheme"
+				},
+				"language": {
+					"title": "Language",
+					"keywords": "locale, translation, English, German"
+				},
+				"autoAdvance": {
+					"title": "After archiving, deleting or snoozing",
+					"keywords": "auto-advance, next message, next conversation"
+				},
+				"markRead": {
+					"title": "Mark as read",
+					"keywords": "unread, read delay, mark read"
+				},
+				"density": {
+					"title": "Density",
+					"keywords": "compact, comfortable, spacing, row height"
+				},
+				"replyDefault": {
+					"title": "Default reply behavior",
+					"keywords": "reply all, reply, r key"
+				},
+				"writingSuggestions": {
+					"title": "Writing suggestions",
+					"keywords": "ai, autocomplete, drafting help"
+				},
+				"autoSummarize": {
+					"title": "Auto-summarize long threads",
+					"keywords": "ai, summary, digest"
+				},
+				"sendSound": {
+					"title": "Play sound when sending",
+					"keywords": "sound, audio, mute"
+				},
+				"mailboxes": {
+					"title": "Mailboxes",
+					"keywords": "rename mailbox, delete mailbox, storage, quota"
+				},
+				"offlineCache": {
+					"title": "Offline cache",
+					"keywords": "offline, local cache, store mail on this device, clear cache"
+				},
+				"notifyAbout": {
+					"title": "Notify me about",
+					"keywords": "notifications, alerts, native notifications"
+				},
+				"quietHours": {
+					"title": "Quiet hours",
+					"keywords": "do not disturb, silence, night"
+				},
+				"hidePreview": {
+					"title": "Hide message preview",
+					"keywords": "privacy, preview, lock screen"
+				},
+				"autostart": {
+					"title": "Launch at login",
+					"keywords": "startup, autostart, boot"
+				},
+				"startupWorkspace": {
+					"title": "Open at startup",
+					"keywords": "startup workspace, default workspace"
+				},
+				"unreadBadge": {
+					"title": "Unread badge",
+					"keywords": "dock badge, taskbar count, unread count"
+				},
+				"updates": {
+					"title": "Updates",
+					"keywords": "check for updates, version, upgrade"
+				},
+				"defaultApp": {
+					"title": "Default email app",
+					"keywords": "mailto, default handler, open mail links"
+				},
+				"workspaces": {
+					"title": "Workspaces",
+					"keywords": "connected servers, accent, remove workspace"
+				}
 			}
 		},
 		"setupMtaIdentity": {

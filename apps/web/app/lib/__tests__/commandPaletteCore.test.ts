@@ -42,6 +42,13 @@ function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePalette
 		verbItems: () => [paletteItem('verb:new-contact')],
 		contextItems: () => [paletteItem('context:inbox')],
 		navItems: () => [paletteItem('nav:/dashboard/inbox')],
+		settingsItems: () => [
+			{
+				...paletteItem('setting:overview:appearance'),
+				label: 'Appearance',
+				keywords: ['dark mode'],
+			},
+		],
 		searchResults: () => EMPTY_RESULTS,
 		onRecentTerm: () => {},
 		buildResultItems: (results) => results.map((r) => paletteItem(`search:${r.id}`)),
@@ -63,17 +70,18 @@ function groupByKey(groups: PaletteGroup[], key: string): PaletteGroup | undefin
 }
 
 describe('buildCorePaletteProviders — provider set', () => {
-	it('is exactly the six core providers, in priority order, at fixed priorities', () => {
+	it('is exactly the seven core providers, in priority order, at fixed priorities', () => {
 		const providers = buildCorePaletteProviders(makeDeps());
 		expect(providers.map((p) => p.id)).toEqual([
 			'core:recent',
 			'core:verbs',
 			'core:context',
+			'core:settings',
 			'core:search',
 			'core:mail',
 			'core:navigation',
 		]);
-		expect(providers.map((p) => p.priority)).toEqual([10, 20, 30, 40, 45, 50]);
+		expect(providers.map((p) => p.priority)).toEqual([10, 20, 30, 35, 40, 45, 50]);
 	});
 
 	it('declares no flag or route gate on any core provider (core is always consulted)', () => {
@@ -119,6 +127,33 @@ describe('core:verbs and core:context', () => {
 		// The query filters items (a non-matching query empties the group).
 		const filtered = groupByKey(build('core:verbs', 'zzzz'), 'verbs');
 		expect(filtered?.items).toEqual([]);
+	});
+});
+
+describe('core:settings', () => {
+	it('stays out of the idle palette (destinations first, switches on demand)', () => {
+		expect(build('core:settings', '')).toEqual([]);
+		expect(build('core:settings', '   ')).toEqual([]);
+	});
+
+	it('contributes a capped Settings group under the Go-to groups', () => {
+		const settings = groupByKey(build('core:settings', 'appearance'), 'settings');
+		expect(settings?.order).toBe(30);
+		expect(settings?.cap).toBe(6);
+		expect(settings?.mode).toBe('commands');
+		expect(t(settings?.heading ?? '')).toBe('Settings');
+		expect(settings?.items.map((item) => item.id)).toEqual(['setting:overview:appearance']);
+	});
+
+	// The whole point of the keywords column: the switch is called "Appearance",
+	// nobody types that.
+	it('matches a control on its synonyms, not just on its name', () => {
+		const settings = groupByKey(build('core:settings', 'dark'), 'settings');
+		expect(settings?.items.map((item) => item.id)).toEqual(['setting:overview:appearance']);
+	});
+
+	it('drops a control that matches neither name nor synonym', () => {
+		expect(groupByKey(build('core:settings', 'zzzz'), 'settings')?.items).toEqual([]);
 	});
 });
 
