@@ -60,6 +60,15 @@ async function confirmDeleteFolder() {
 	deletingFolder.value = null;
 }
 
+// Pinned saved searches — recurring questions ("unread from Ines", "invoices
+// with attachments") as rail rows. Each is a plain `?q=` link, so a pinned
+// search and a bookmarked one are the same navigation.
+const { pinnedSearches, setPinned } = usePostboxSavedSearches(mailboxIdRef);
+const route = useRoute();
+const activeSavedQuery = computed(() =>
+	route.path === '/dashboard/postbox/search' ? String(route.query['q'] ?? '') : ''
+);
+
 // Search entry point: a box in the folder rail + a "/" shortcut to focus it.
 const searchQuery = ref('');
 const searchBar = ref<{ focus: () => void } | null>(null);
@@ -127,6 +136,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			v-if="!railCollapsed"
 			ref="searchBar"
 			v-model="searchQuery"
+			:mailbox-id="mailboxId"
 			@submit="goSearch"
 		/>
 		<button
@@ -330,6 +340,41 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					class="text-xs text-text-tertiary px-2 py-1"
 				>
 					{{ t('components.postbox.postboxFolderRail.noCustomFolders') }}
+				</li>
+			</ul>
+		</div>
+
+		<!-- Pinned saved searches. Expanded-only, and rendered only once something
+		     is pinned: an empty section would be a permanent unexplained heading
+		     in a rail that is already dense. -->
+		<div v-if="!railCollapsed && pinnedSearches.length > 0" class="mt-3">
+			<header class="flex items-center justify-between mb-1 px-2">
+				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
+					t('components.postbox.postboxFolderRail.pinnedSearchesHeading')
+				}}</span>
+			</header>
+			<ul class="flex flex-col gap-0.5">
+				<li v-for="saved in pinnedSearches" :key="saved._id" class="group flex items-center">
+					<NuxtLink
+						:to="savedSearchPath(saved.rawQuery)"
+						class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
+						:class="{ 'bg-bg-surface text-brand': activeSavedQuery === saved.rawQuery }"
+						:title="saved.rawQuery"
+					>
+						<Icon name="lucide:search" class="w-4 h-4 flex-shrink-0" />
+						<span class="truncate">{{ saved.name }}</span>
+					</NuxtLink>
+					<button
+						type="button"
+						class="opacity-0 group-hover:opacity-100 p-1 text-text-tertiary hover:text-text-primary"
+						:title="t('components.postbox.postboxFolderRail.unpinSearch')"
+						:aria-label="
+							t('components.postbox.postboxFolderRail.unpinSearchAriaLabel', { name: saved.name })
+						"
+						@click="setPinned(saved._id, false)"
+					>
+						<Icon name="lucide:pin-off" class="w-3 h-3" />
+					</button>
 				</li>
 			</ul>
 		</div>

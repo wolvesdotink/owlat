@@ -3453,7 +3453,10 @@
 				"replyQueue": "Reply Queue",
 				"replyQueueAriaLabel": "Reply Queue, {count}",
 				"snoozed": "Snoozed",
-				"subscriptions": "Subscriptions"
+				"subscriptions": "Subscriptions",
+				"pinnedSearchesHeading": "Pinned searches",
+				"unpinSearch": "Unpin search",
+				"unpinSearchAriaLabel": "Unpin the saved search {name}"
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Set reply reminder",
@@ -3893,7 +3896,30 @@
 				"repliesLabel": "Suggested scheduling replies"
 			},
 			"postboxSearchBar": {
-				"placeholder": "Search mail (from:sara has:attachment older_than:7d…)"
+				"placeholder": "Search mail (from:sara has:attachment older_than:7d…)",
+				"suggestionsLabel": "Search suggestions",
+				"suggestions": {
+					"from": "sender address or name",
+					"to": "recipient address or name",
+					"cc": "copied recipient",
+					"bcc": "blind-copied recipient",
+					"subject": "words in the subject",
+					"label": "one of your labels",
+					"in": "a folder",
+					"isUnread": "not read yet",
+					"isRead": "already read",
+					"isStarred": "starred",
+					"hasAttachment": "has an attachment",
+					"hasNoAttachment": "has no attachment",
+					"filename": "attachment file name",
+					"larger": "bigger than a size, e.g. 5M",
+					"smaller": "smaller than a size, e.g. 500k",
+					"before": "received before a date",
+					"after": "received after a date",
+					"newerThan": "within the last 7d, 24h, 30m",
+					"olderThan": "older than 7d, 24h, 30m",
+					"recent": "Recent"
+				}
 			},
 			"postboxSecurityBadge": {
 				"cantDecryptSuffix": "· can't decrypt",
@@ -8307,7 +8333,11 @@
 				"resultCount": "{count} result | {count} results",
 				"resultCountMore": "{count}+ result — more available below | {count}+ results — more available below",
 				"removeChip": "Remove {chip}",
-				"clearAllFilters": "Clear all filters"
+				"clearAllFilters": "Clear all filters",
+				"saveThisSearch": "Save this search",
+				"saveNameLabel": "Name for this saved search",
+				"saveNamePlaceholder": "Name this search",
+				"alreadySaved": "Saved as {name}"
 			},
 			"subscriptions": {
 				"addMailAccount": "Add a mail account",
@@ -11495,6 +11525,11 @@
 			"usePostboxImageAllowlist": {
 				"allowOperation": "Always show images from this sender",
 				"revokeOperation": "Block images from this sender again"
+			},
+			"usePostboxSavedSearches": {
+				"saveSearch": "Save search",
+				"updateSearch": "Update saved search",
+				"deleteSearch": "Delete saved search"
 			}
 		},
 		"postboxAutoAdvance": {

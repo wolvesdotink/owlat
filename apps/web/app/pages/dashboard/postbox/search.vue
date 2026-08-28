@@ -62,6 +62,36 @@ function removeChip(key: string) {
 function clearAllChips() {
 	query.value = stripSearchOperators(query.value);
 }
+
+// ── Save this search ───────────────────────────────────────────────────────
+// The saved artifact is the raw query string, which is also this page's `?q=`:
+// a saved search and a bookmarked URL are the same thing, and saving one pins
+// it into the folder rail by default (that is the whole point of saving it).
+const { savedSearches, save, isSaving } = usePostboxSavedSearches(mailboxId);
+const isNamingSave = ref(false);
+const saveName = ref('');
+
+/** Already saved under this exact query — offer nothing rather than a duplicate. */
+const existingSave = computed(() =>
+	savedSearches.value.find((row) => row.rawQuery === query.value.trim())
+);
+
+function startSave() {
+	// Seed with the query itself: most saved searches are named after what they
+	// search for, and an empty required field is one more step for no reason.
+	saveName.value = query.value.trim().slice(0, 80);
+	isNamingSave.value = true;
+}
+
+async function confirmSave() {
+	const name = saveName.value.trim();
+	if (!name) return;
+	const result = await save(name, query.value);
+	if (result.ok) {
+		isNamingSave.value = false;
+		saveName.value = '';
+	}
+}
 </script>
 
 <template>
@@ -75,11 +105,55 @@ function clearAllChips() {
 					:class="activeMessageId ? 'hidden lg:flex' : 'flex'"
 				>
 					<header class="border-b border-border-subtle px-4 py-3 space-y-2">
-						<PostboxSearchBar v-model="query" />
+						<PostboxSearchBar v-model="query" :mailbox-id="mailboxId" />
+						<!-- Save this search: a recurring question ("unread from my boss")
+						     otherwise gets retyped every morning. Saving pins it into the
+						     folder rail, where it is one click and a bookmarkable URL. -->
+						<div v-if="query.trim() && mailboxId" class="flex items-center gap-2">
+							<template v-if="isNamingSave">
+								<input
+									v-model="saveName"
+									class="input input-sm flex-1"
+									:aria-label="t('dashboard.postbox.search.saveNameLabel')"
+									:placeholder="t('dashboard.postbox.search.saveNamePlaceholder')"
+									@keyup.enter="confirmSave"
+									@keyup.esc="isNamingSave = false"
+								/>
+								<button
+									type="button"
+									class="text-xs text-brand hover:underline disabled:opacity-50"
+									:disabled="!saveName.trim() || isSaving"
+									@click="confirmSave"
+								>
+									{{ t('common.save') }}
+								</button>
+								<button
+									type="button"
+									class="text-xs text-text-tertiary hover:text-text-primary"
+									@click="isNamingSave = false"
+								>
+									{{ t('common.cancel') }}
+								</button>
+							</template>
+							<p v-else-if="existingSave" class="text-xs text-text-tertiary" role="status">
+								{{
+									t('dashboard.postbox.search.alreadySaved', { name: existingSave.name })
+								}}
+							</p>
+							<button
+								v-else
+								type="button"
+								class="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
+								@click="startSave"
+							>
+								<Icon name="lucide:bookmark-plus" class="w-3.5 h-3.5" />
+								{{ t('dashboard.postbox.search.saveThisSearch') }}
+							</button>
+						</div>
 						<div v-if="chips.length > 0" class="flex flex-wrap gap-1">
 							<button
 								v-for="chip in chips"
-								:key="chip.label"
+								:key="`${chip.key} ${chip.label}`"
 								type="button"
 								class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-bg-elevated text-text-secondary hover:text-text-primary"
 								@click="removeChip(chip.key)"
@@ -136,7 +210,7 @@ function clearAllChips() {
 								<div class="mt-3 flex flex-wrap items-center justify-center gap-1.5">
 									<button
 										v-for="chip in chips.slice(0, 2)"
-										:key="chip.key"
+										:key="`${chip.key} ${chip.label}`"
 										type="button"
 										class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border-default bg-bg-surface text-xs text-text-secondary hover:text-text-primary hover:border-border-strong"
 										@click="removeChip(chip.key)"
