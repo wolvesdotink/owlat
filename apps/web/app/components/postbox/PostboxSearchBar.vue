@@ -2,13 +2,16 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import {
+	NO_SUGGESTION,
 	type SearchSuggestion,
 	activeSearchToken,
 	applySearchSuggestion,
 	buildSearchSuggestions,
 	loadRecentSearches,
+	moveSuggestionIndex,
 	pushRecentSearch,
 	saveRecentSearches,
+	selectedSuggestion,
 } from '~/utils/postboxSearchSuggest';
 
 /**
@@ -56,7 +59,12 @@ const inputEl = ref<HTMLInputElement | null>(null);
 // ── The token under the caret ──────────────────────────────────────────────
 const caret = ref(0);
 const isOpen = ref(false);
-const activeIndex = ref(0);
+/**
+ * The highlighted row, or `NO_SUGGESTION` for "none". The list deliberately
+ * opens with nothing selected so Enter keeps running the typed query; an arrow
+ * key is what hands the keyboard over to the dropdown.
+ */
+const activeIndex = ref(NO_SUGGESTION);
 const listId = useId();
 
 function syncCaret() {
@@ -116,17 +124,24 @@ function rememberQuery(value: string) {
 const suggestions = computed<SearchSuggestion[]>(() =>
 	buildSearchSuggestions({
 		token: token.value.text,
+		boxEmpty: local.value.trim().length === 0,
 		contacts: contacts.value,
 		labels: labels.value,
 		recents: recents.value,
 	})
 );
 
+// Typing another character re-ranks the rows, so any highlight the user set is
+// stale — drop back to "no selection" rather than silently pointing Enter at
+// whatever now sits in that slot.
 watch(suggestions, () => {
-	activeIndex.value = 0;
+	activeIndex.value = NO_SUGGESTION;
 });
 
 const isListVisible = computed(() => isOpen.value && suggestions.value.length > 0);
+const activeOptionId = computed(() =>
+	isListVisible.value && activeIndex.value >= 0 ? `${listId}-${activeIndex.value}` : undefined
+);
 
 function accept(suggestion: SearchSuggestion) {
 	if (suggestion.kind === 'recent') {
@@ -164,19 +179,19 @@ function focus() {
 	inputEl.value?.focus();
 	inputEl.value?.select();
 	syncCaret();
+	activeIndex.value = NO_SUGGESTION;
 	isOpen.value = true;
 }
 
 function onKeydown(event: KeyboardEvent) {
 	if (event.key === 'ArrowDown' && isListVisible.value) {
 		event.preventDefault();
-		activeIndex.value = (activeIndex.value + 1) % suggestions.value.length;
+		activeIndex.value = moveSuggestionIndex(activeIndex.value, suggestions.value.length, 1);
 		return;
 	}
 	if (event.key === 'ArrowUp' && isListVisible.value) {
 		event.preventDefault();
-		activeIndex.value =
-			(activeIndex.value - 1 + suggestions.value.length) % suggestions.value.length;
+		activeIndex.value = moveSuggestionIndex(activeIndex.value, suggestions.value.length, -1);
 		return;
 	}
 	if (event.key === 'Escape' && isListVisible.value) {
@@ -187,8 +202,10 @@ function onKeydown(event: KeyboardEvent) {
 		isOpen.value = false;
 		return;
 	}
+	// Both completion keys accept only a row the user selected with the arrows.
+	// Unselected, Tab keeps moving focus and Enter runs the typed query.
 	if (event.key === 'Tab' && isListVisible.value) {
-		const picked = suggestions.value[activeIndex.value];
+		const picked = selectedSuggestion(suggestions.value, activeIndex.value);
 		if (picked) {
 			event.preventDefault();
 			accept(picked);
@@ -197,7 +214,9 @@ function onKeydown(event: KeyboardEvent) {
 	}
 	if (event.key === 'Enter') {
 		event.preventDefault();
-		const picked = isListVisible.value ? suggestions.value[activeIndex.value] : undefined;
+		const picked = isListVisible.value
+			? selectedSuggestion(suggestions.value, activeIndex.value)
+			: undefined;
 		if (picked) accept(picked);
 		else submit();
 	}
@@ -221,7 +240,7 @@ defineExpose({ focus });
 			aria-autocomplete="list"
 			:aria-expanded="isListVisible"
 			:aria-controls="listId"
-			:aria-activedescendant="isListVisible ? `${listId}-${activeIndex}` : undefined"
+			:aria-activedescendant="activeOptionId"
 			:placeholder="t('components.postbox.postboxSearchBar.placeholder')"
 			@keydown="onKeydown"
 			@input="

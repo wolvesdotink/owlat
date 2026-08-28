@@ -140,6 +140,17 @@ export interface SuggestInput {
 	labels?: SuggestLabel[];
 	/** Previous raw queries, most recent first. */
 	recents?: string[];
+	/**
+	 * Whether the whole box — not just the active token — is empty.
+	 *
+	 * History answers "what did I search for before", which only makes sense
+	 * as an offer for an empty box. Mid-query the active token also goes empty
+	 * (every terminal completion appends a trailing space), and surfacing
+	 * unrelated old queries there would be noise on top of a half-built query.
+	 * Defaults to `true` so a caller that only knows the token keeps the
+	 * empty-box behaviour.
+	 */
+	boxEmpty?: boolean;
 	limit?: number;
 }
 
@@ -168,7 +179,11 @@ export function buildSearchSuggestions(input: SuggestInput): SearchSuggestion[] 
 	const rows: SearchSuggestion[] = [];
 
 	// An empty box has no grammar to complete, so history is the whole offer.
+	// An empty token in a NON-empty box is the gap after a completed term; it
+	// has nothing to offer, and offering history there would put an unrelated
+	// old query under the caret.
 	if (!prefix) {
+		if (input.boxEmpty === false) return rows;
 		rows.push(...recentRows(input.recents ?? [], '', limit));
 		return rows;
 	}
@@ -190,6 +205,29 @@ export function buildSearchSuggestions(input: SuggestInput): SearchSuggestion[] 
 	// through typing beats a query they ran yesterday.
 	rows.push(...recentRows(input.recents ?? [], prefix, limit - rows.length));
 	return rows.slice(0, limit);
+}
+
+/**
+ * "No row is selected" — the state the list opens in.
+ *
+ * A search box's primary action is that Enter runs what you typed. Pre-selecting
+ * the first row would make Enter run a suggestion instead: with any history at
+ * all, `notes` would submit the older `meeting notes`, and `in` would insert
+ * `in:` rather than searching for it. So the highlight starts off, an arrow key
+ * turns it on, and Enter only accepts a row the user actually moved onto.
+ */
+export const NO_SUGGESTION = -1;
+
+/** Wrap the highlight by one row; from "no selection" it lands on the end. */
+export function moveSuggestionIndex(current: number, length: number, delta: 1 | -1): number {
+	if (length <= 0) return NO_SUGGESTION;
+	if (current < 0) return delta === 1 ? 0 : length - 1;
+	return (current + delta + length) % length;
+}
+
+/** The row Enter/Tab should accept — `undefined` while nothing is selected. */
+export function selectedSuggestion<T>(rows: readonly T[], index: number): T | undefined {
+	return index < 0 ? undefined : rows[index];
 }
 
 function recentRows(recents: string[], prefix: string, limit: number): SearchSuggestion[] {

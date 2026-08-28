@@ -11,10 +11,13 @@ import { describe, it, expect } from 'vitest';
 
 import {
 	MAX_RECENT_POSTBOX_SEARCHES,
+	NO_SUGGESTION,
 	activeSearchToken,
 	applySearchSuggestion,
 	buildSearchSuggestions,
+	moveSuggestionIndex,
 	pushRecentSearch,
+	selectedSuggestion,
 } from '../postboxSearchSuggest';
 
 const contacts = [
@@ -107,6 +110,18 @@ describe('buildSearchSuggestions', () => {
 		expect(rows[0]).toMatchObject({ kind: 'recent', insert: 'is:unread has:attachment' });
 	});
 
+	it('offers no history for the empty token mid-query', () => {
+		// Every terminal completion appends a trailing space, so the token goes
+		// empty in the middle of a query the user is still building. Old queries
+		// have nothing to do with that gap.
+		const rows = buildSearchSuggestions({
+			token: '',
+			boxEmpty: false,
+			recents: ['is:unread has:attachment'],
+		});
+		expect(rows).toEqual([]);
+	});
+
 	it('ranks history below the grammar it is still completing', () => {
 		const rows = buildSearchSuggestions({ token: 'is', recents: ['is:unread from:ines'] });
 		expect(rows[0]?.kind).toBe('operator');
@@ -121,6 +136,32 @@ describe('buildSearchSuggestions', () => {
 		for (const row of buildSearchSuggestions({ token: 'a' })) {
 			if (row.hint) expect(row.hint.key).toMatch(/^components\.postbox\./);
 		}
+	});
+});
+
+describe('keyboard selection', () => {
+	it('opens with nothing selected, so Enter belongs to the typed query', () => {
+		expect(selectedSuggestion(['a', 'b'], NO_SUGGESTION)).toBeUndefined();
+	});
+
+	it('steps onto the first row from no selection, and the last one going up', () => {
+		expect(moveSuggestionIndex(NO_SUGGESTION, 3, 1)).toBe(0);
+		expect(moveSuggestionIndex(NO_SUGGESTION, 3, -1)).toBe(2);
+	});
+
+	it('wraps at both ends once a row is selected', () => {
+		expect(moveSuggestionIndex(2, 3, 1)).toBe(0);
+		expect(moveSuggestionIndex(0, 3, -1)).toBe(2);
+		expect(moveSuggestionIndex(0, 3, 1)).toBe(1);
+	});
+
+	it('stays unselected when there are no rows to move onto', () => {
+		expect(moveSuggestionIndex(NO_SUGGESTION, 0, 1)).toBe(NO_SUGGESTION);
+		expect(selectedSuggestion([], NO_SUGGESTION)).toBeUndefined();
+	});
+
+	it('hands back the selected row once one is selected', () => {
+		expect(selectedSuggestion(['a', 'b'], 1)).toBe('b');
 	});
 });
 
