@@ -50,6 +50,11 @@
  *     user creates (idea 10). Absent means 14 days: share links did not exist
  *     before this setting, so there is no older behaviour to preserve, only a
  *     sensible default to agree on with the server.
+ *   - `swipeLeftAction` / `swipeRightAction` — what a horizontal swipe on a
+ *     thread row does per direction (idea 21), touch and pen only. Absent means
+ *     the plan's mapping (archive left, snooze right) rather than "off": rows
+ *     had no touch verbs at all before this, so there is no older behaviour for
+ *     an untouched row to preserve. `'none'` is how a direction is turned off.
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -81,6 +86,12 @@ import type { PostboxQuietHours } from '~/utils/postboxQuietHours';
 import { resolvePostboxQuietHours } from '~/utils/postboxQuietHours';
 import type { PostboxTrashAutoPurgeDays } from '~/utils/postboxTrashRetention';
 import { resolvePostboxTrashAutoPurgeDays } from '~/utils/postboxTrashRetention';
+import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
+import {
+	POSTBOX_SWIPE_LEFT_DEFAULT,
+	POSTBOX_SWIPE_RIGHT_DEFAULT,
+	resolvePostboxSwipeAction,
+} from '~/utils/postboxSwipe';
 import type { AttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
 import { resolveAttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
 
@@ -195,6 +206,16 @@ export function usePostboxSettings() {
 		resolvePostboxTrashAutoPurgeDays(data.value?.trashAutoPurgeDays)
 	);
 
+	// Swipe-to-triage mapping, per direction. An unset (or unknown) value
+	// resolves to that direction's default — archive left, snooze right — so the
+	// list can consume both unconditionally while the query loads.
+	const swipeLeftAction = computed<PostboxSwipeAction>(() =>
+		resolvePostboxSwipeAction(data.value?.swipeLeftAction, POSTBOX_SWIPE_LEFT_DEFAULT)
+	);
+	const swipeRightAction = computed<PostboxSwipeAction>(() =>
+		resolvePostboxSwipeAction(data.value?.swipeRightAction, POSTBOX_SWIPE_RIGHT_DEFAULT)
+	);
+
 	// Daily-brief email delivery. Deliberately NOT defaulted: absent means the
 	// user has never opted in, and the card renders the off state rather than
 	// inventing a schedule nobody chose.
@@ -305,6 +326,12 @@ export function usePostboxSettings() {
 		await updateOp.run({ shareLinkExpiryDays: days });
 	}
 
+	async function setSwipeAction(direction: 'left' | 'right', action: PostboxSwipeAction) {
+		await updateOp.run(
+			direction === 'left' ? { swipeLeftAction: action } : { swipeRightAction: action }
+		);
+	}
+
 	async function setDailyBriefEmail(value: {
 		enabled: boolean;
 		minute: number;
@@ -335,6 +362,8 @@ export function usePostboxSettings() {
 		markReadPolicy,
 		trashAutoPurgeDays,
 		shareLinkExpiryDays,
+		swipeLeftAction,
+		swipeRightAction,
 		dailyBriefEmail,
 		isLoading,
 		setAutoAdvance,
@@ -357,6 +386,7 @@ export function usePostboxSettings() {
 		setMarkReadPolicy,
 		setTrashAutoPurgeDays,
 		setShareLinkExpiryDays,
+		setSwipeAction,
 		setDailyBriefEmail,
 		isSaving: updateOp.isLoading,
 	};

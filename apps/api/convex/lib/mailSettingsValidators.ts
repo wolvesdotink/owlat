@@ -209,3 +209,26 @@ export const mailShareLinkExpiryDaysValidator = v.union(
 	v.literal(30),
 	v.literal(90)
 );
+
+// What a horizontal swipe on a thread row does, per direction
+// (mailUserSettings.swipeLeftAction / swipeRightAction and the mail/settings
+// update args). Touch-only: mouse pointers never reach the gesture layer.
+//
+// `'none'` is a first-class choice rather than an absence — it is how a user
+// turns one direction (or, picked twice, the whole gesture) off, and the row
+// then refuses to claim a horizontal drag on that side at all, leaving the
+// pointer to the list's scroller.
+//
+// ABSENT is NOT 'none': it resolves to the plan's mapping, archive on a
+// leftward drag and snooze on a rightward one. The usual "absent = exactly
+// today's behaviour" rule has nothing to preserve here — rows had no touch
+// verbs before this existed — so what an untouched row must mean is the
+// default mapping, the same reasoning `shareLinkExpiryDays` uses.
+export const mailSwipeActionValidator = v.union(
+	v.literal('archive'),
+	v.literal('trash'),
+	v.literal('snooze'),
+	v.literal('star'),
+	v.literal('read'),
+	v.literal('none')
+);

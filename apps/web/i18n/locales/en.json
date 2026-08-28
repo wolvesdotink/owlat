@@ -4581,7 +4581,11 @@
 				"autoSummarizeLabel": "Auto-summarize long threads",
 				"autoSummarizeHelp": "Show a one-line AI summary at the top of long conversations. Click it to expand the key points.",
 				"sendSoundLabel": "Play sound when sending",
-				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default."
+				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
+				"swipeLeftLabel": "Swipe left on a message",
+				"swipeRightLabel": "Swipe right on a message",
+				"swipeHelp": "Drag a row sideways on a touchscreen to triage it. A mouse never triggers this.",
+				"swipeRightHelp": "The same gesture, the other way."
 			},
 			"preferencesYourData": {
 				"mailExportAction": "Download .mbox",
@@ -12615,6 +12619,10 @@
 				"sharedLinks": {
 					"keywords": "share link, shared files, revoke link, expiring link, large attachment",
 					"title": "Shared links"
+				},
+				"swipeActions": {
+					"title": "Swipe actions",
+					"keywords": "swipe, gesture, touch, phone, swipe left, swipe right"
 				}
 			}
 		},
@@ -13803,6 +13811,16 @@
 				"expired": "Expired. Downloads before that: {downloads}",
 				"live": "{downloads} downloads so far",
 				"revoked": "Revoked. Downloads before that: {downloads}"
+			}
+		},
+		"postboxSwipe": {
+			"actions": {
+				"archive": "Archive",
+				"trash": "Delete",
+				"snooze": "Snooze",
+				"star": "Star",
+				"read": "Mark read",
+				"none": "Nothing"
 			}
 		}
 	},

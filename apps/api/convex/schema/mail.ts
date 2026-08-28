@@ -28,6 +28,7 @@ import {
 	mailDailyBriefEmailValidator,
 	mailTrashAutoPurgeDaysValidator,
 	mailShareLinkExpiryDaysValidator,
+	mailSwipeActionValidator,
 } from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
@@ -1808,6 +1809,13 @@ export const mailTables = {
 		// (idea 10). Absent ⇒ the shared default of 14 days; share links did not
 		// exist before this field, so there is no older behaviour to preserve.
 		shareLinkExpiryDays: v.optional(mailShareLinkExpiryDaysValidator),
+		// What a horizontal swipe on a thread row does, per direction (idea 21).
+		// Touch and pen only. Absent ⇒ the default mapping (left archives, right
+		// snoozes) rather than "off": rows had no touch verbs at all before this,
+		// so there is no earlier behaviour for an untouched row to preserve. A
+		// user who wants a direction inert stores 'none' there.
+		swipeLeftAction: v.optional(mailSwipeActionValidator),
+		swipeRightAction: v.optional(mailSwipeActionValidator),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),

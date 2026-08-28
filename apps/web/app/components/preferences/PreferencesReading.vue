@@ -22,6 +22,8 @@ import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
 import { POSTBOX_READING_PANE_OPTIONS } from '~/utils/postboxReadingPane';
 import type { PostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
 import { POSTBOX_MARK_READ_POLICY_OPTIONS } from '~/utils/postboxMarkReadPolicy';
+import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
+import { POSTBOX_SWIPE_ACTION_OPTIONS } from '~/utils/postboxSwipe';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
@@ -41,6 +43,9 @@ const {
 	setReadingPane,
 	markReadPolicy,
 	setMarkReadPolicy,
+	swipeLeftAction,
+	swipeRightAction,
+	setSwipeAction,
 	sendSound,
 	setSendSound,
 	isSaving,
@@ -69,6 +74,12 @@ function onReadingPaneChange(event: Event) {
 function onMarkReadPolicyChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxMarkReadPolicy;
 	void setMarkReadPolicy(value);
+}
+
+/** Both directions share one handler — the field is the only thing that differs. */
+function onSwipeChange(direction: 'left' | 'right', event: Event) {
+	const value = (event.target as HTMLSelectElement).value as PostboxSwipeAction;
+	void setSwipeAction(direction, value);
 }
 
 function onWritingSuggestionsChange(event: Event) {
@@ -191,6 +202,52 @@ function onSendSoundChange(event: Event) {
 					:key="option.value"
 					:value="option.value"
 				>
+					{{ t(option.label) }}
+				</option>
+			</select>
+		</div>
+		<!-- Swipe-to-triage (idea 21). Rendered on every device — the gesture only
+		     answers to touch and pen, but people configure their phone from their
+		     desktop, and a control that hides itself where it is easiest to reach
+		     is a control nobody finds. -->
+		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+			<div class="min-w-0">
+				<label for="postbox-swipe-left" class="font-medium text-sm block">
+					{{ t('components.preferences.preferencesReading.swipeLeftLabel') }}
+				</label>
+				<p class="text-xs text-text-tertiary mt-0.5">
+					{{ t('components.preferences.preferencesReading.swipeHelp') }}
+				</p>
+			</div>
+			<select
+				id="postbox-swipe-left"
+				class="input w-64 shrink-0"
+				:value="swipeLeftAction"
+				:disabled="isSaving"
+				@change="onSwipeChange('left', $event)"
+			>
+				<option v-for="option in POSTBOX_SWIPE_ACTION_OPTIONS" :key="option.value" :value="option.value">
+					{{ t(option.label) }}
+				</option>
+			</select>
+		</div>
+		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+			<div class="min-w-0">
+				<label for="postbox-swipe-right" class="font-medium text-sm block">
+					{{ t('components.preferences.preferencesReading.swipeRightLabel') }}
+				</label>
+				<p class="text-xs text-text-tertiary mt-0.5">
+					{{ t('components.preferences.preferencesReading.swipeRightHelp') }}
+				</p>
+			</div>
+			<select
+				id="postbox-swipe-right"
+				class="input w-64 shrink-0"
+				:value="swipeRightAction"
+				:disabled="isSaving"
+				@change="onSwipeChange('right', $event)"
+			>
+				<option v-for="option in POSTBOX_SWIPE_ACTION_OPTIONS" :key="option.value" :value="option.value">
 					{{ t(option.label) }}
 				</option>
 			</select>

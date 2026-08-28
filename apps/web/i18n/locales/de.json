@@ -4581,7 +4581,11 @@
 				"autoSummarizeLabel": "Lange Konversationen automatisch zusammenfassen",
 				"autoSummarizeHelp": "Eine einzeilige KI-Zusammenfassung oben in langen Konversationen anzeigen. Klicken Sie darauf, um die Kernpunkte aufzuklappen.",
 				"sendSoundLabel": "Ton beim Senden abspielen",
-				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus."
+				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
+				"swipeLeftLabel": "Nach links wischen",
+				"swipeRightLabel": "Nach rechts wischen",
+				"swipeHelp": "Ziehe eine Zeile auf dem Touchscreen zur Seite, um sie abzuarbeiten. Mit der Maus passiert nichts.",
+				"swipeRightHelp": "Dieselbe Geste, andere Richtung."
 			},
 			"preferencesYourData": {
 				"mailExportAction": ".mbox herunterladen",
@@ -12615,6 +12619,10 @@
 				"sharedLinks": {
 					"keywords": "freigabelink, geteilte dateien, link zurückziehen, ablaufender link, großer anhang",
 					"title": "Geteilte Links"
+				},
+				"swipeActions": {
+					"title": "Wischgesten",
+					"keywords": "wischen, geste, touch, handy, nach links wischen, nach rechts wischen"
 				}
 			}
 		},
@@ -13803,6 +13811,16 @@
 				"expired": "Abgelaufen. Downloads davor: {downloads}",
 				"live": "Bisher {downloads} Downloads",
 				"revoked": "Zurückgezogen. Downloads davor: {downloads}"
+			}
+		},
+		"postboxSwipe": {
+			"actions": {
+				"archive": "Archivieren",
+				"trash": "Löschen",
+				"snooze": "Zurückstellen",
+				"star": "Markieren",
+				"read": "Als gelesen markieren",
+				"none": "Nichts"
 			}
 		}
 	},
