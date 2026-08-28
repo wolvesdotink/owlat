@@ -173,6 +173,26 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 		session: {
 			expiresIn: 60 * 60 * 24 * 3, // 3 days
 			updateAge: 60 * 60 * 12, // Update session every 12 hours
+			// Freshness OFF, deliberately.
+			//
+			// BetterAuth's `freshAge` (default 24h, measured from session
+			// CREATION and never refreshed by updateAge) gates exactly three
+			// endpoints. Two are unreachable on this instance: `/delete-user` is
+			// 404 because `user.deleteUser` is not enabled — account deletion runs
+			// through convex/auth/accountManagement.ts instead — and
+			// `/unlink-account` has nothing to unlink with no social providers
+			// configured. The third is `/list-sessions`, which the sign-in and
+			// security page is built on.
+			//
+			// So the default would buy no protection here and would instead make
+			// that page fail with SESSION_NOT_FRESH for two of every three days of
+			// a session's life. A security page that usually cannot load is worse
+			// than one with no freshness gate: it teaches people to ignore it.
+			// Revoking is unaffected either way — the revoke endpoints use the
+			// authoritative-session middleware, which has no freshness component.
+			//
+			// Re-enabling `user.deleteUser` means revisiting this.
+			freshAge: 0,
 			cookieCache: {
 				enabled: true,
 				maxAge: 5 * 60, // 5 minutes
