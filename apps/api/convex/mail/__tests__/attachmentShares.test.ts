@@ -354,6 +354,27 @@ describe('the management list', () => {
 		expect(rows[1]!.hasBytes).toBe(false);
 	});
 
+	it('hands out a copyable URL only while the link would actually resolve', async () => {
+		vi.stubEnv('CONVEX_SITE_URL', 'https://deploy.convex.site');
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		const seeded = await seedDraftWithAttachment(t, mailboxId);
+		const created = await createShare(t, seeded.draftId, seeded.storageId);
+
+		const [live] = await t.query(api.mail.attachmentShares.list, { mailboxId });
+		expect(live?.publicUrl).toBe(`https://deploy.convex.site/attachment-share/${TOKEN}`);
+
+		// Narrowing kills the public URL without touching the file.
+		await t.mutation(api.mail.attachmentShares.setScope, {
+			shareId: created.shareId,
+			scope: 'mailbox',
+		});
+		const [narrowed] = await t.query(api.mail.attachmentShares.list, { mailboxId });
+		expect(narrowed?.publicUrl).toBeNull();
+		expect(narrowed?.hasBytes).toBe(true);
+		vi.unstubAllEnvs();
+	});
+
 	it('never shows a teammate the links somebody else created', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, { scope: 'shared' });
@@ -363,6 +384,54 @@ describe('the management list', () => {
 		sessionMocks.userId = 'user-Z';
 		sessionMocks.role = 'admin';
 		expect(await t.query(api.mail.attachmentShares.list, { mailboxId })).toEqual([]);
+	});
+});
+
+describe('the owner-side download', () => {
+	it('still reaches a file whose public link was narrowed away', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		const seeded = await seedDraftWithAttachment(t, mailboxId);
+		const created = await createShare(t, seeded.draftId, seeded.storageId);
+
+		// The partial revoke: the stranger loses the link, the owner does not
+		// lose the file.
+		await t.mutation(api.mail.attachmentShares.setScope, {
+			shareId: created.shareId,
+			scope: 'mailbox',
+		});
+
+		const url = await t.query(api.mail.attachmentShares.downloadUrl, {
+			shareId: created.shareId,
+		});
+		expect(url).toBeTruthy();
+	});
+
+	it('has nothing to hand back once the bytes are reclaimed', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		const seeded = await seedDraftWithAttachment(t, mailboxId);
+		const created = await createShare(t, seeded.draftId, seeded.storageId);
+		await t.mutation(api.mail.attachmentShares.revoke, { shareId: created.shareId });
+
+		// The row outlives its file so the list can explain the dead link; asking
+		// it for a download is normal, and the answer is "there is none".
+		expect(
+			await t.query(api.mail.attachmentShares.downloadUrl, { shareId: created.shareId })
+		).toBeNull();
+	});
+
+	it('refuses a teammate who did not create the link', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { scope: 'shared' });
+		const seeded = await seedDraftWithAttachment(t, mailboxId);
+		const created = await createShare(t, seeded.draftId, seeded.storageId);
+
+		sessionMocks.userId = 'user-Z';
+		sessionMocks.role = 'admin';
+		await expect(
+			t.query(api.mail.attachmentShares.downloadUrl, { shareId: created.shareId })
+		).rejects.toThrow();
 	});
 });
 

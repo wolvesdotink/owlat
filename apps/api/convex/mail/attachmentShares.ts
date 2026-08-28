@@ -30,21 +30,24 @@ import { v } from 'convex/values';
 import {
 	attachmentShareExpiryAt,
 	attachmentShareState,
+	attachmentShareUrl,
+	isAttachmentShareServable,
 	isAttachmentShareToken,
 	resolveAttachmentShareExpiryDays,
 	type AttachmentShareState,
 } from '@owlat/shared/attachmentShares';
 import { internalMutation, internalQuery } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { authedMutation, authedQuery, publicQuery } from '../lib/authedFunctions';
 import {
 	mailAttachmentShareScanValidator,
 	mailAttachmentShareScopeValidator,
 } from '../lib/convexValidators';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
 import { requireMailboxAccess } from './permissions';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 
 /**
  * Defensive cap on the management list. Share links are created one deliberate
@@ -53,14 +56,28 @@ import type { MutationCtx } from '../_generated/server';
  */
 export const ATTACHMENT_SHARE_LIST_LIMIT = 200;
 
-/** The row projection every surface reads, plus its state at `now`. */
-function projectShare(row: Doc<'mailAttachmentShares'>, now: number) {
+/**
+ * The row projection the management list reads, plus its state at `now`.
+ *
+ * `publicUrl` is present ONLY while the link would actually resolve. The list
+ * offers a copy button beside it, and a copyable URL for a link the route
+ * refuses is a support ticket waiting to happen — so the same predicate that
+ * gates serving gates whether a URL is handed out at all. It is also why the
+ * raw token is not projected: there is no surface that needs it without the
+ * origin in front, and a bare token in a client payload is one careless log
+ * line away from being a leak.
+ */
+function projectShare(row: Doc<'mailAttachmentShares'>, now: number, siteUrl: string | undefined) {
+	const servable = isAttachmentShareServable(
+		{ ...row, hasBytes: row.storageId !== undefined },
+		now
+	);
 	return {
 		_id: row._id,
 		filename: row.filename,
 		contentType: row.contentType,
 		size: row.size,
-		token: row.token,
+		publicUrl: servable && siteUrl ? attachmentShareUrl(siteUrl, row.token) : null,
 		scope: row.scope,
 		expiresAt: row.expiresAt,
 		revokedAt: row.revokedAt,
@@ -108,7 +125,7 @@ export async function releaseShareBytes(
  * list of people who should be able to break it.
  */
 async function requireOwnShare(
-	ctx: MutationCtx,
+	ctx: QueryCtx | MutationCtx,
 	shareId: Id<'mailAttachmentShares'>
 ): Promise<Doc<'mailAttachmentShares'>> {
 	const row = await ctx.db.get(shareId);
@@ -138,7 +155,10 @@ export const list = publicQuery({
 			)
 			.take(ATTACHMENT_SHARE_LIST_LIMIT);
 		const now = Date.now();
-		return rows.map((row) => projectShare(row, now)).sort((a, b) => b.createdAt - a.createdAt);
+		const siteUrl = getOptional('CONVEX_SITE_URL');
+		return rows
+			.map((row) => projectShare(row, now, siteUrl))
+			.sort((a, b) => b.createdAt - a.createdAt);
 	},
 });
 
@@ -181,6 +201,32 @@ export const setScope = authedMutation({
 			await ctx.db.patch(row._id, { scope: args.scope, updatedAt: Date.now() });
 		}
 		return { ok: true as const, scope: args.scope };
+	},
+});
+
+/**
+ * The AUTHED way back to the bytes, for the owner rather than the recipient.
+ *
+ * Narrowing a link to `mailbox` kills the public route — `consumeShareToken`
+ * refuses anything that is not scoped `anyone` — and without this the owner's
+ * own file would be unreachable from the moment they pressed the partial
+ * revoke, which turns "stop the stranger" into "lose the file too". So the
+ * management list can still open it, through a short-lived Convex storage URL
+ * minted only after the same two gates the revoke button passes: access to the
+ * mailbox, and authorship of the link.
+ *
+ * Returns `null` rather than throwing once the bytes are gone (revoked, or
+ * swept), because the row deliberately outlives its file so the list can
+ * explain a dead link — and asking for the download of a dead link is a normal
+ * thing to do from a screen that still shows the row.
+ */
+// authz: requireOwnShare — mailbox access AND authorship of this link.
+export const downloadUrl = authedQuery({
+	args: { shareId: v.id('mailAttachmentShares') },
+	handler: async (ctx, args): Promise<string | null> => {
+		const row = await requireOwnShare(ctx, args.shareId);
+		if (!row.storageId) return null;
+		return await ctx.storage.getUrl(row.storageId);
 	},
 });
 
