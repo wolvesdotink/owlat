@@ -843,3 +843,29 @@ emoji / ghost-text / cid-image integrations working, and keep
 `PostboxBasicEditor.vue`'s v-model HTML contract so `PostboxComposer.vue`
 barely changes. Landing it behind an editor-choice setting with the classic
 editor as default would make the rollout reversible.
+
+## 43b — two key handlers stay outside the registry's dispatcher
+
+The shortcut registry (`apps/web/app/utils/shortcutRegistry.ts`) now owns the
+vocabulary of every chord the app answers, and the app-wide dispatcher, the
+Postbox triage seam and the Review Queue seam all resolve through it. Two
+handlers are declared in the catalog — so both cheat sheets document them, and
+the remapping UI knows to refuse them — but still match their own events:
+
+- `useWorkspaceHotkeys` (⌘1–9) matches on `event.code`, which is what keeps it
+  working on a non-US layout where ⌘2 is not the "2" key. The registry's chords
+  are `KeyboardEvent.key` values; teaching it `code`-based chords for one
+  shortcut would complicate every other lookup.
+- The composer's ⌘⇧F "focus compose" chord (`isFocusComposeChord`) matches both
+  `f` and `F`, because some browsers drop the Shift from `event.key` while Cmd
+  is held. The catalog carries the lenient `mod+F` binding and a display-only
+  `mod+shift+F`, which is honest about what is pressed but not a chord the
+  strict resolver could own.
+
+Both are marked `remappable: false`, so nothing offers to move a key the
+dispatcher would not honour.
+
+To pick it up: add an optional `code:`-prefixed chord form to
+`normalizeChord`/`chordFromEvent` (e.g. `mod+code:Digit1`) and a lenient-shift
+flag on a definition; then the two handlers become ordinary registrations and
+the last of the old parallel systems is gone.
