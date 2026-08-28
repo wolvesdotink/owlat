@@ -211,6 +211,25 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				t('components.postbox.postboxFolderRail.snoozed')
 			}}</span>
 		</NuxtLink>
+		<!-- Virtual "Files" view: the attachment index, browsable by type,
+		     sender and recency. Nothing moves — it is a second way into mail
+		     you already have, so it sits with the other virtual views. -->
+		<NuxtLink
+			to="/dashboard/postbox/files"
+			class="rounded text-sm hover:bg-bg-surface"
+			:class="
+				railCollapsed
+					? 'flex items-center justify-center w-9 h-9'
+					: 'flex items-center gap-2 px-2.5 py-1.5'
+			"
+			:title="railCollapsed ? t('components.postbox.postboxFolderRail.files') : undefined"
+			:aria-label="railCollapsed ? t('components.postbox.postboxFolderRail.files') : undefined"
+		>
+			<Icon name="lucide:paperclip" class="w-4 h-4" />
+			<span v-if="!railCollapsed" class="flex-1">{{
+				t('components.postbox.postboxFolderRail.files')
+			}}</span>
+		</NuxtLink>
 		<!-- Virtual "Subscriptions" view: every inbox sender that ships a
 		     List-Unsubscribe target, with the batch unsubscribe verb. Nothing
 		     moves until the user acts, so it sits with the other virtual views. -->

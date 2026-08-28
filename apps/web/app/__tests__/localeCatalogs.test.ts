@@ -181,6 +181,8 @@ describe('UI message catalogs', () => {
 		'components.postbox.postboxComposerEnvelope.cc',
 		'components.postbox.postboxEditorToolbar.link',
 		'components.postbox.postboxEmojiPicker.listLabel',
+		// "PDFs" is the German plural too.
+		'components.postbox.postboxFilesPanel.kinds.pdf',
 		'components.postbox.postboxFilterRuleBuilder.fields.cc',
 		'components.postbox.postboxFilterRuleBuilder.fields.header',
 		'components.postbox.postboxFilterRuleBuilder.headerNamePlaceholder',

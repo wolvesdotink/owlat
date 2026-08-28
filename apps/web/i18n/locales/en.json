@@ -3472,7 +3472,8 @@
 				"subscriptions": "Subscriptions",
 				"pinnedSearchesHeading": "Pinned searches",
 				"unpinSearch": "Unpin search",
-				"unpinSearchAriaLabel": "Unpin the saved search {name}"
+				"unpinSearchAriaLabel": "Unpin the saved search {name}",
+				"files": "Files"
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Set reply reminder",
@@ -4296,6 +4297,37 @@
 				},
 				"volume": "{count} message | {count} messages",
 				"windowNote": "Based on your {count} most recent inbox messages."
+			},
+			"postboxFilesPanel": {
+				"heading": "Files",
+				"intro": "Everything ever attached to this mailbox, newest first.",
+				"searchLabel": "Search filenames",
+				"searchPlaceholder": "Search filenames…",
+				"fromLabel": "From",
+				"anySender": "Anyone",
+				"dateLabel": "Received",
+				"clearFacets": "Clear filters",
+				"empty": "No files yet. Attachments show up here as mail arrives.",
+				"emptyFiltered": "No files match these filters.",
+				"download": "Download {name}",
+				"downloadFailed": "That file could not be downloaded.",
+				"backfillPrompt": "Mail received before the file index existed is not listed yet. Building the index reads your mail once and adds every attachment.",
+				"backfillStart": "Build file index",
+				"backfillRunning": "Indexing older mail — {scanned} messages read, {indexed} files added.",
+				"kinds": {
+					"pdf": "PDFs",
+					"image": "Images",
+					"document": "Documents",
+					"archive": "Archives",
+					"other": "Other"
+				},
+				"dates": {
+					"all": "Any time",
+					"week": "Last 7 days",
+					"month": "Last 30 days",
+					"year": "Last year"
+				},
+				"loadMore": "Load more"
 			}
 		},
 		"preferences": {
@@ -8393,6 +8425,12 @@
 				"noMailbox": "No mailbox yet",
 				"noMailboxHint": "Connect or create a mail account to see what you are subscribed to.",
 				"pageTitle": "Subscriptions"
+			},
+			"files": {
+				"pageTitle": "Files — Owlat",
+				"noMailbox": "No mailbox yet",
+				"noMailboxHint": "Connect or create a mailbox to browse its attachments.",
+				"addMailAccount": "Add mail account"
 			}
 		},
 		"preferences": {
@@ -11666,6 +11704,10 @@
 				"saveSearch": "Save search",
 				"updateSearch": "Update saved search",
 				"deleteSearch": "Delete saved search"
+			},
+			"usePostboxFileIndexBackfill": {
+				"startIndex": "build the file index",
+				"cancelIndex": "stop the file index"
 			}
 		},
 		"postboxAutoAdvance": {

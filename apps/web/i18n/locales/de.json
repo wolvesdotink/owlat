@@ -3472,7 +3472,8 @@
 				"subscriptions": "Abonnements",
 				"pinnedSearchesHeading": "Angeheftete Suchen",
 				"unpinSearch": "Suche lösen",
-				"unpinSearchAriaLabel": "Gespeicherte Suche {name} lösen"
+				"unpinSearchAriaLabel": "Gespeicherte Suche {name} lösen",
+				"files": "Dateien"
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Antwort-Erinnerung setzen",
@@ -4296,6 +4297,37 @@
 				},
 				"volume": "{count} Nachricht | {count} Nachrichten",
 				"windowNote": "Basiert auf deinen {count} neuesten Nachrichten im Posteingang."
+			},
+			"postboxFilesPanel": {
+				"heading": "Dateien",
+				"intro": "Alles, was jemals an dieses Postfach angehängt wurde, neueste zuerst.",
+				"searchLabel": "Dateinamen durchsuchen",
+				"searchPlaceholder": "Dateinamen durchsuchen …",
+				"fromLabel": "Von",
+				"anySender": "Alle",
+				"dateLabel": "Empfangen",
+				"clearFacets": "Filter zurücksetzen",
+				"empty": "Noch keine Dateien. Anhänge erscheinen hier, sobald E-Mails eintreffen.",
+				"emptyFiltered": "Keine Dateien passen zu diesen Filtern.",
+				"download": "{name} herunterladen",
+				"downloadFailed": "Diese Datei konnte nicht heruntergeladen werden.",
+				"backfillPrompt": "E-Mails, die vor dem Dateiindex eintrafen, fehlen noch. Beim Aufbau des Index wird Ihre Mail einmal gelesen und jeder Anhang aufgenommen.",
+				"backfillStart": "Dateiindex aufbauen",
+				"backfillRunning": "Ältere E-Mails werden indexiert – {scanned} Nachrichten gelesen, {indexed} Dateien aufgenommen.",
+				"kinds": {
+					"pdf": "PDFs",
+					"image": "Bilder",
+					"document": "Dokumente",
+					"archive": "Archive",
+					"other": "Sonstige"
+				},
+				"dates": {
+					"all": "Jederzeit",
+					"week": "Letzte 7 Tage",
+					"month": "Letzte 30 Tage",
+					"year": "Letztes Jahr"
+				},
+				"loadMore": "Mehr laden"
 			}
 		},
 		"preferences": {
@@ -8393,6 +8425,12 @@
 				"noMailbox": "Noch kein Postfach",
 				"noMailboxHint": "Verbinde oder erstelle ein Mailkonto, um zu sehen, was du abonniert hast.",
 				"pageTitle": "Abonnements"
+			},
+			"files": {
+				"pageTitle": "Dateien – Owlat",
+				"noMailbox": "Noch kein Postfach",
+				"noMailboxHint": "Verbinden oder erstellen Sie ein Postfach, um dessen Anhänge zu durchsuchen.",
+				"addMailAccount": "E-Mail-Konto hinzufügen"
 			}
 		},
 		"preferences": {
@@ -11666,6 +11704,10 @@
 				"saveSearch": "Suche speichern",
 				"updateSearch": "Gespeicherte Suche aktualisieren",
 				"deleteSearch": "Gespeicherte Suche löschen"
+			},
+			"usePostboxFileIndexBackfill": {
+				"startIndex": "den Dateiindex aufbauen",
+				"cancelIndex": "den Dateiindex-Aufbau stoppen"
 			}
 		},
 		"postboxAutoAdvance": {
