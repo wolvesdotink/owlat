@@ -234,6 +234,11 @@ async function runReSeal() {
 				</div>
 			</section>
 
+			<!-- Deep body search (idea 32 / ADR-0059): the other lever on how much
+			     plaintext this instance keeps indexable. It belongs beside the
+			     sealing policy because that is what it trades against. -->
+			<SettingsBodySearchIndexCard />
+
 			<!-- Recovery kit.result (E6 / D7): download the private key for an address so
 			     sealed mail can be restored later; import one to restore access. -->
 			<section class="space-y-4 card p-5">

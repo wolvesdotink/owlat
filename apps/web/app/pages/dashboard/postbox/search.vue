@@ -63,6 +63,26 @@ function clearAllChips() {
 	query.value = stripSearchOperators(query.value);
 }
 
+// ── How deep this search actually reaches (idea 32) ────────────────────────
+// Server-side search indexes either the 200-character snippet or the ~8KB body
+// excerpt, and the deeper index is instance opt-in plus a per-mailbox backfill.
+// A search that quietly stops at character 200 is the failure the whole idea
+// exists to remove, so the box says which of those it is doing rather than
+// letting an empty result imply the text is not there.
+const { data: instanceSettings } = useConvexQuery(api.workspaces.settings.get, {});
+const { data: bodySearchJob } = useConvexQuery(api.mail.bodySearchBackfill.status, () =>
+	mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
+);
+const bodySearchHint = computed(() => {
+	if (!query.value.trim()) return null;
+	return bodySearchDepthHint(
+		resolveBodySearchDepth({
+			isIndexingEnabled: instanceSettings.value?.isBodySearchIndexingEnabled === true,
+			job: bodySearchJob.value ?? null,
+		})
+	);
+});
+
 // ── Save this search ───────────────────────────────────────────────────────
 // The saved artifact is the raw query string, which is also this page's `?q=`:
 // a saved search and a bookmarked URL are the same thing, and saving one pins
@@ -136,9 +156,7 @@ async function confirmSave() {
 								</button>
 							</template>
 							<p v-else-if="existingSave" class="text-xs text-text-tertiary" role="status">
-								{{
-									t('dashboard.postbox.search.alreadySaved', { name: existingSave.name })
-								}}
+								{{ t('dashboard.postbox.search.alreadySaved', { name: existingSave.name }) }}
 							</p>
 							<button
 								v-else
@@ -150,6 +168,15 @@ async function confirmSave() {
 								{{ t('dashboard.postbox.search.saveThisSearch') }}
 							</button>
 						</div>
+						<!-- Quiet, never a banner: it explains a limit, it is not an alert. -->
+						<p
+							v-if="bodySearchHint"
+							class="flex items-center gap-1.5 text-xs text-text-tertiary"
+							data-testid="body-search-depth-hint"
+						>
+							<Icon name="lucide:info" class="w-3 h-3 flex-shrink-0" />
+							{{ t(bodySearchHint.key) }}
+						</p>
 						<div v-if="chips.length > 0" class="flex flex-wrap gap-1">
 							<button
 								v-for="chip in chips"

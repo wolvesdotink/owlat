@@ -4582,6 +4582,26 @@
 			"aiModelPicker": {
 				"customPlaceholder": "Modell-ID eingeben"
 			},
+			"bodySearchIndexCard": {
+				"adminsOnly": "Nur Inhaber und Administratoren können dies ändern.",
+				"backfillAgain": "Erneut indexieren",
+				"backfillDescription": "Die Einstellung gilt für E-Mails, die ab jetzt eintreffen. Für vorhandene E-Mails durchsucht die Suche weiterhin nur den kurzen Auszug, bis Sie sie indexieren.",
+				"backfillDone": "Vorhandene E-Mails sind indexiert ({count} Nachrichten).",
+				"backfillOperation": "Vorhandene E-Mails indexieren",
+				"backfillPending": "Vorhandene E-Mails sind noch nicht indexiert.",
+				"backfillRunning": "Indexierung läuft … {count} Nachrichten gelesen",
+				"backfillStart": "Vorhandene E-Mails indexieren",
+				"cancelOperation": "Indexierung stoppen",
+				"confirmDisableAction": "Deaktivieren und Auszüge löschen",
+				"confirmDisableDescription": "Die Suche erfasst wieder nur die ersten 200 Zeichen jeder Nachricht, und alle bereits gespeicherten Textauszüge werden gelöscht. Sie können die Option später wieder aktivieren, vorhandene E-Mails müssen dann aber neu indexiert werden.",
+				"confirmDisableTitle": "Tiefensuche deaktivieren?",
+				"description": "Die E-Mail-Suche erfasst normalerweise nur die ersten 200 Zeichen einer Nachricht. Aktivieren Sie diese Option, um stattdessen etwa 8 KB jeder Nachricht zu indexieren, damit auch eine Formulierung tief in einer langen E-Mail auffindbar ist.",
+				"plaintextWarning": "Nachrichtentexte sind im Ruhezustand verschlüsselt, aber alles Durchsuchbare muss als lesbarer Text gespeichert werden. Mit dieser Option wächst dieser lesbare Auszug von 200 Zeichen auf etwa 8 KB pro Nachricht.",
+				"title": "In Nachrichtentexten suchen",
+				"toastOff": "Tiefensuche ist aus. Die bereits gespeicherten Auszüge werden gelöscht.",
+				"toastOn": "Tiefensuche ist aktiv. Neue E-Mails werden ab sofort indexiert — starten Sie unten die Indexierung für bereits vorhandene E-Mails.",
+				"updateOperation": "Einstellung zur Textsuche aktualisieren"
+			},
 			"connectedApps": {
 				"connectedAppRegisterModal": {
 					"capabilitiesHint": "Gewähren Sie nur, was diese App benötigt. Jede ist eine vom Plugin deklarierte Berechtigung; Sie können eine Teilmenge gewähren, niemals mehr.",
@@ -8588,7 +8608,12 @@
 				"saveThisSearch": "Diese Suche speichern",
 				"saveNameLabel": "Name für diese gespeicherte Suche",
 				"saveNamePlaceholder": "Suche benennen",
-				"alreadySaved": "Gespeichert als {name}"
+				"alreadySaved": "Gespeichert als {name}",
+				"depth": {
+					"disabled": "Diese Instanz durchsucht nur die ersten 200 Zeichen einer Nachricht.",
+					"indexing": "Nachrichtentexte werden indexiert — ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht.",
+					"pending": "Ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht. Ein Administrator kann sie unter Einstellungen → Sealed Mail indexieren."
+				}
 			},
 			"subscriptions": {
 				"addMailAccount": "Mailkonto hinzufügen",

@@ -4582,6 +4582,26 @@
 			"aiModelPicker": {
 				"customPlaceholder": "Enter a model id"
 			},
+			"bodySearchIndexCard": {
+				"adminsOnly": "Only owners and admins can change this.",
+				"backfillAgain": "Index again",
+				"backfillDescription": "The switch covers mail that arrives from now on. Search keeps reading the short snippet for mail you already have until you index it.",
+				"backfillDone": "Existing mail is indexed ({count} messages).",
+				"backfillOperation": "Index existing mail",
+				"backfillPending": "Existing mail is not indexed yet.",
+				"backfillRunning": "Indexing… {count} messages read",
+				"backfillStart": "Index existing mail",
+				"cancelOperation": "Stop indexing",
+				"confirmDisableAction": "Turn off and clear excerpts",
+				"confirmDisableDescription": "Search will go back to the first 200 characters of each message, and every body excerpt already stored will be deleted. You can turn it on again later, but existing mail will have to be indexed from scratch.",
+				"confirmDisableTitle": "Turn off deep search?",
+				"description": "Mail search normally reaches only the first 200 characters of a message. Turn this on to index about 8 KB of each message instead, so a phrase deep inside a long email is findable.",
+				"plaintextWarning": "Message bodies are encrypted at rest, but anything searchable has to be stored as readable text. With this on, that readable excerpt grows from 200 characters to about 8 KB per message.",
+				"title": "Search inside message bodies",
+				"toastOff": "Deep search is off. The excerpts already stored are being cleared.",
+				"toastOn": "Deep search is on. New mail is indexed from now on — run the index below to cover mail you already have.",
+				"updateOperation": "Update body search setting"
+			},
 			"connectedApps": {
 				"connectedAppRegisterModal": {
 					"capabilitiesHint": "Grant only what this app needs. Each is a capability the plugin declared; you can grant a subset, never more.",
@@ -8588,7 +8608,12 @@
 				"saveThisSearch": "Save this search",
 				"saveNameLabel": "Name for this saved search",
 				"saveNamePlaceholder": "Name this search",
-				"alreadySaved": "Saved as {name}"
+				"alreadySaved": "Saved as {name}",
+				"depth": {
+					"disabled": "This instance searches only the first 200 characters of a message.",
+					"indexing": "Indexing message bodies — older mail is still searched by its first 200 characters.",
+					"pending": "Older mail is still searched by its first 200 characters. An admin can index it in Settings → Sealed Mail."
+				}
 			},
 			"subscriptions": {
 				"addMailAccount": "Add a mail account",
