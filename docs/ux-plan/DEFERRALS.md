@@ -101,3 +101,40 @@ To pick it up: denormalize a per-sender counter (a `mailListSenders` sidecar
 maintained at ingest, the shape `mailContacts` already uses) so volume is O(1)
 and genuinely all-time, and keep this scan only as the fallback for mail that
 arrived before the counter existed.
+
+## 22 — the permission gate is in TypeScript, and the away-summary is per session
+
+Quiet hours (window + weekday mask, evaluated in `notificationRules.ts`, with
+the suppressed toasts rolled into one "N while you were away" notification),
+the per-thread reply alert, the permission flow (check / request / test button
+/ denied banner) and the hide-preview toggle all landed. Two edges did not.
+
+**The permission check gates the callers, not the Rust commands.**
+`useDesktopNotifications` refuses to send when the plugin reports `denied`, and
+`apps/desktop/src/notifications.ts` wraps `isPermissionGranted` /
+`requestPermission` around the bridge. The Rust side is unchanged:
+`send_native_notification` still calls `.show()` unconditionally, and
+`send_actionable_notification` goes around the plugin entirely on macOS and
+Linux (mac-notification-sys / notify-rust, because the Tauri plugin only
+renders action buttons on mobile). So a future caller that invokes those
+commands without asking the composable first would be back where we started.
+The brief asked to keep `src-tauri` changes minimal, and a permission check
+inside those commands is not a one-liner: mac-notification-sys has no
+permission API of its own, so the command would have to consult the plugin's
+stored state before falling through to the native crate.
+
+To pick it up: read the plugin permission at the top of both commands
+(`app.notification().permission_state()`) and return an error variant the
+webview can surface, instead of relying on every call site to have asked.
+
+**The away-summary count lives in the composable, not on disk.** The suppressed
+count is plain module state in the running session (`stepQuietHours` is pure and
+takes it as an argument, so the storage choice is the caller's). Quitting the
+app mid-window therefore loses the tally, and the summary that would have fired
+at 07:00 never does — the mail is all still there, unread and badged, so nothing
+is hidden, but the roll-up is missed. Persisting it would mean a new device-local
+store key and a decision about what a stale count from three days ago means.
+
+To pick it up: keep `{ quiet, deferred, windowStartedAt }` in the desktop app
+settings store, and discard it on load when `windowStartedAt` is older than one
+day so a long-closed laptop never greets the user with a stale number.
