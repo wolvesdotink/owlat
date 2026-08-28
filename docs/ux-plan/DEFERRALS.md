@@ -747,3 +747,82 @@ each cached body, add a matcher over the parsed query that runs against
 {subject, from, snippet, bodyText} in `app/utils/`, and branch
 `usePostboxSearch` on `isOffline` with the result set explicitly labelled as
 "cached mail only" so nobody reads an empty offline result as an empty mailbox.
+
+## 50 — a Takeout `.zip` has to be unzipped before it can be imported
+
+The upload import lands whole for the two formats a mail archive actually
+travels in: `.mbox` (what Google Takeout produces) and a single `.eml`. What it
+does not do is accept the `.zip` Takeout hands you, so the card refuses one with
+its own message — "unzip your Takeout download first, then pick the .mbox file
+inside it" — rather than a generic "unsupported file".
+
+The unzip itself is feasible in the browser: a ZIP central directory is a
+scannable structure and `DecompressionStream('deflate-raw')` is in every browser
+the app targets. What makes it more than an afternoon is that the archive then
+has no single file: a Takeout `.zip` carries the mbox next to contacts, Calendar
+and Drive exports, so the card grows a file PICKER inside the archive, an entry
+listing with sizes, and its own progress phase for the decompression — and it
+still has to hold the decompressed mbox somewhere before uploading it, which for
+a multi-gigabyte Takeout means an OPFS spill file and a second resumable
+pipeline in front of the resumable one that already exists.
+
+The archive import's own ceiling of 64 MiB per file (`MAX_ARCHIVE_IMPORT_BYTES`)
+is the same shape of limit and would have to move first: the runner re-reads the
+uploaded blob on every pass, which is exactly what makes a resumed pass a byte
+offset rather than carried state.
+
+To pick it up: read the central directory client-side, list the `*.mbox` entries
+for the user to choose from, stream the chosen one through
+`DecompressionStream('deflate-raw')` into an OPFS file, and upload THAT — then
+raise the size ceiling by teaching the runner to fetch byte ranges instead of the
+whole blob.
+
+## 67 — the export manifest counts personal data, not organization data
+
+The manifest lists every resource the account export contains, and the progress
+bar counts rows written against it. The counts, though, are only exact for the
+PERSONAL half — mailboxes, messages (read off the per-folder `totalCount`
+aggregates the delivery path already maintains), drafts, connected accounts,
+chat, alert settings. Each organization resource is listed as included with a
+dash instead of a number, and the card says those are counted as they export.
+
+Counting them properly means re-walking exactly the rows the export is about to
+stream. Convex has no count aggregate, every org resource is scoped through a
+per-organization membership check (`hasOrganizationExportAccess`), and several
+are paginated behind capability redaction — so a pre-count is a second full pass
+over the same data, paid before the user has decided whether they want the file
+at all. The personal counts avoid this only because mail has folder aggregates
+and the rest are small enough to count under a cap.
+
+The bar handles the resulting asymmetry honestly rather than hiding it: the
+denominator is the counted half, so a real run always overshoots it, and
+`accountExportPercent` caps at 99 until the export reports completion instead of
+sitting at a fake 100 while the org half still streams.
+
+To pick it up: maintain per-organization row-count rollups (the pattern
+`reconcileAllContactCounts` already establishes for contacts) and read those in
+`getExportPlan`, or accept a bounded `take(cap + 1)` per org resource and mark
+every one of them "more than N".
+
+## 50 — Gmail filters come across; Gmail's whole vocabulary does not
+
+The filter import translates the criteria and actions that have an Owlat
+equivalent: from / to / subject / has-the-word / does-not-have-the-word /
+has-attachment, and label / archive / trash / spam / star / mark-read. What it
+cannot express it REPORTS — the card lists each untranslated rule with the
+property that defeated it, so the user knows which ones they still have to
+rebuild instead of discovering the gap months later when mail lands in the wrong
+place.
+
+Two groups are deliberately outside the translation. Gmail's size operators
+(`size` + `sizeOperator`) map onto a `size` condition Owlat's filter grammar
+does have, but Gmail's units are ambiguous across its own export versions and a
+mis-scaled threshold silently files everything or nothing — worse than not
+importing the rule. And `forwardTo` / `shouldNeverSpam` are refused on purpose:
+an import that quietly configures auto-forwarding to a third party, or that
+disables spam filtering for a sender, is a security decision made on the user's
+behalf by a file.
+
+To pick it up: pin Gmail's size units against real exports before mapping
+`sizeOperator`, and route `forwardTo` through the existing forwarding UI as a
+SUGGESTION the user confirms, never as a filter the import creates.
