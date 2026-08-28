@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { isValidEmail } from '~/utils/validation';
-import { isCompleteTotpCode, normalizeTotpCode, requiresTwoFactor } from '~/utils/accountTwoFactor';
+import { requiresTwoFactor } from '~/utils/accountTwoFactor';
+import { useTwoFactorChallenge } from '~/composables/useTwoFactorChallenge';
 
 const { t } = useI18n();
 
@@ -33,35 +34,31 @@ const errors = reactive({
  * Sign-in is two stages once an account has TOTP enabled. BetterAuth answers the
  * password POST with `{ twoFactorRedirect: true }` and NO session, so navigating
  * on that response would land on a dashboard the user is not signed in to. The
- * challenge is a stage of THIS form rather than its own route: the desktop app
- * ships the same page and has nowhere to navigate to, and a route would put the
- * half-finished sign-in in the browser's history.
+ * challenge is a stage of THIS form rather than its own route: the desktop
+ * connect handshake needs the same stage with nowhere to navigate to, and a
+ * route would put the half-finished sign-in in the browser's history. The state
+ * is shared with that page (`pages/desktop/connect.vue`); only the markup here
+ * is this page's own.
  */
-const stage = ref<'credentials' | 'two-factor'>('credentials');
-const twoFactorCode = ref('');
-/** The fallback for a lost authenticator. A different endpoint, not a format. */
-const useBackupCode = ref(false);
-
-function onCodeInput(value: string) {
-	// Backup codes are not six digits and must not be filtered down to their
-	// digits; only the TOTP field is normalised.
-	twoFactorCode.value = useBackupCode.value ? value.trim() : normalizeTotpCode(value);
-}
-
-const canSubmitCode = computed(() =>
-	useBackupCode.value ? twoFactorCode.value.length > 0 : isCompleteTotpCode(twoFactorCode.value)
-);
+const {
+	stage,
+	code: twoFactorCode,
+	useBackupCode,
+	method: twoFactorMethod,
+	canSubmit: canSubmitCode,
+	onCodeInput,
+	challenge,
+	switchMethod,
+	reset: resetChallenge,
+} = useTwoFactorChallenge();
 
 function switchCodeMethod() {
-	useBackupCode.value = !useBackupCode.value;
-	twoFactorCode.value = '';
+	switchMethod();
 	errorMessage.value = '';
 }
 
 function backToCredentials() {
-	stage.value = 'credentials';
-	twoFactorCode.value = '';
-	useBackupCode.value = false;
+	resetChallenge();
 	password.value = '';
 	errorMessage.value = '';
 }
@@ -113,7 +110,7 @@ async function handleSubmit() {
 		// The password was right but the account wants its second factor. No
 		// session exists yet, so this must NOT fall through to the redirect.
 		if (requiresTwoFactor(result)) {
-			stage.value = 'two-factor';
+			challenge();
 			return;
 		}
 
@@ -134,10 +131,7 @@ async function handleTwoFactorSubmit() {
 	if (!canSubmitCode.value) return;
 
 	await submit(async () => {
-		await completeTwoFactorSignIn({
-			code: twoFactorCode.value,
-			method: useBackupCode.value ? 'backup-code' : 'totp',
-		});
+		await completeTwoFactorSignIn({ code: twoFactorCode.value, method: twoFactorMethod.value });
 		await finishSignIn();
 	});
 }
