@@ -10,6 +10,10 @@
  *   - the list-row projection carries `mutedAt` for the chip
  *   - unmuteThread clears the marker and does NOT un-archive what mute filed
  *   - both mutations refuse a mailbox the caller does not own
+ *
+ * Plus its opt-in twin, the per-thread reply alert (mail/threadAlerts.ts):
+ * the marker, its `alerted` flag on the unread peek, and the invariant that
+ * arming one clears the other.
  */
 
 import { convexTest } from 'convex-test';
@@ -397,5 +401,101 @@ describe('conversation mute', () => {
 
 		await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: false });
 		expect((await t.run((ctx) => ctx.db.get(threadId)))?.mutedAt).toBeUndefined();
+	});
+});
+
+/**
+ * Per-thread reply alerts (mail/threadAlerts.ts) — the opt-IN twin of mute:
+ * one marker, surfaced on the unread peek, kept mutually exclusive with mute.
+ */
+describe('per-thread reply alert', () => {
+	it('arming stamps the marker and the unread peek reports it', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		const { threadId, messageId } = await seedThread(t, seeded, {
+			subject: 'watch this one',
+			rfcMessageId: 'watch-1@example.com',
+		});
+		expect(
+			(await t.query(api.mail.mailbox.queries.newestUnreadInbox, {})).messages[0]?.alerted
+		).toBe(false);
+
+		expect(
+			await t.mutation(api.mail.threadAlerts.setNotifyOnReplyForMessage, {
+				messageId,
+				enabled: true,
+			})
+		).toEqual({ ok: true, threadId });
+		expect((await t.run((ctx) => ctx.db.get(threadId)))?.notifyOnReplyAt).toBeGreaterThan(0);
+		expect(
+			(await t.query(api.mail.mailbox.queries.newestUnreadInbox, {})).messages[0]?.alerted
+		).toBe(true);
+	});
+
+	it('disarming drops the marker again', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		const { threadId, messageId } = await seedThread(t, seeded, {
+			subject: 'watch this one',
+			rfcMessageId: 'watch-1@example.com',
+		});
+		await t.mutation(api.mail.threadAlerts.setNotifyOnReplyForMessage, {
+			messageId,
+			enabled: true,
+		});
+		await t.mutation(api.mail.threadAlerts.setNotifyOnReplyForMessage, {
+			messageId,
+			enabled: false,
+		});
+		expect((await t.run((ctx) => ctx.db.get(threadId)))?.notifyOnReplyAt).toBeUndefined();
+	});
+
+	it('alert and mute are mutually exclusive in both directions', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		const { threadId, messageId } = await seedThread(t, seeded, {
+			subject: 'watch this one',
+			rfcMessageId: 'watch-1@example.com',
+		});
+
+		// Arming an alert on a muted thread lifts the mute — a conversation that
+		// is both silenced and shouting is a state the user cannot make sense of.
+		await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true });
+		await t.mutation(api.mail.threadAlerts.setNotifyOnReplyForMessage, {
+			messageId,
+			enabled: true,
+		});
+		let thread = await t.run((ctx) => ctx.db.get(threadId));
+		expect(thread?.mutedAt).toBeUndefined();
+		expect(thread?.notifyOnReplyAt).toBeGreaterThan(0);
+
+		// And muting disarms the alert.
+		await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true });
+		thread = await t.run((ctx) => ctx.db.get(threadId));
+		expect(thread?.notifyOnReplyAt).toBeUndefined();
+		expect(thread?.mutedAt).toBeGreaterThan(0);
+	});
+
+	it('refuses a message in a mailbox the caller has no membership on', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		const { threadId, messageId } = await seedThread(t, seeded, {
+			subject: 'watch this one',
+			rfcMessageId: 'watch-1@example.com',
+		});
+		sessionMock.userId = 'someone-else';
+		sessionMock.role = 'editor';
+		try {
+			await expect(
+				t.mutation(api.mail.threadAlerts.setNotifyOnReplyForMessage, {
+					messageId,
+					enabled: true,
+				})
+			).rejects.toThrow();
+		} finally {
+			sessionMock.userId = 'test-user';
+			sessionMock.role = 'owner';
+		}
+		expect((await t.run((ctx) => ctx.db.get(threadId)))?.notifyOnReplyAt).toBeUndefined();
 	});
 });

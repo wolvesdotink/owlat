@@ -82,6 +82,28 @@ export const mailMarkReadPolicyValidator = v.union(
 	v.literal('manual')
 );
 
+// Postbox quiet hours (mailUserSettings.quietHours and mail/settings update
+// args) — a daily window during which desktop toasts are held back and rolled
+// into one "N while you were away" summary when the window ends.
+//
+// `startMinute`/`endMinute` are minutes past LOCAL midnight (0..1439) on the
+// user's device, not a UTC instant: "quiet from 22:00" means 22:00 wherever the
+// user is, and the evaluation therefore happens client-side in the pure rules
+// module. A window whose end is <= its start wraps midnight (22:00 → 07:00).
+// `days` is the weekday mask the window STARTS on, 0=Sunday..6=Saturday, so a
+// Friday-night window still covers Saturday's small hours.
+//
+// `enabled` is stored rather than inferred from the object's presence so
+// turning quiet hours off keeps the window the user configured (the mutation
+// patches fields, and an absent field cannot express "clear this"). Absent ⇒
+// exactly today's behaviour: no window, nothing suppressed.
+export const mailQuietHoursValidator = v.object({
+	enabled: v.boolean(),
+	startMinute: v.number(),
+	endMinute: v.number(),
+	days: v.array(v.number()),
+});
+
 // Postbox desktop-notification scope (mailUserSettings.notifyAbout and
 // mail/settings update args). 'everything' fires a toast for every new inbox
 // message; 'people-important' only for smart-category `person` mail (and any

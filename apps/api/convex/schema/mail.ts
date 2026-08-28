@@ -18,6 +18,7 @@ import {
 	mailNotifyAboutValidator,
 	mailUndoSendSecondsValidator,
 	mailMarkReadPolicyValidator,
+	mailQuietHoursValidator,
 } from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
@@ -904,6 +905,13 @@ export const mailTables = {
 		// mute is a property of the CONVERSATION, not of the sender, so muting one
 		// noisy thread never silences the same person elsewhere.
 		mutedAt: v.optional(v.number()),
+		// Per-thread "notify me when they reply" (`mail/threadAlerts.ts`). Set when
+		// the owner asks to be alerted about this ONE conversation: a new message
+		// on it fires a desktop toast even when the notification scope is
+		// people-only and even inside quiet hours. The opt-in twin of `mutedAt` —
+		// absent ⇒ exactly today's behaviour, and the two are mutually exclusive
+		// (arming the alert unmutes, muting disarms the alert).
+		notifyOnReplyAt: v.optional(v.number()),
 		// Transient "came back from snooze" marker (ported from the Team Inbox's
 		// `inboxThreads.snoozeReturnedAt`). Stamped by the snooze wake sweep, shown
 		// as a quiet chip on the list row and in the reader header, and cleared the
@@ -1377,6 +1385,19 @@ export const mailTables = {
 		// truthful). Optional so existing rows read as undefined; the reader defaults
 		// it ON (badge counts everything — the pre-existing behavior).
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
+		// Quiet hours: a local-time window (with a weekday mask) during which
+		// desktop toasts are held back and rolled into a single "N while you were
+		// away" summary when the window ends. Evaluated client-side in
+		// `lib/desktop/notificationRules` because the minutes are the USER's local
+		// clock, not a UTC instant. Optional so existing rows read as undefined;
+		// absent ⇒ no quiet window at all, exactly today's behaviour.
+		quietHours: v.optional(mailQuietHoursValidator),
+		// Hide message previews: a toast then carries a generic "New message" line
+		// instead of the sender and subject (for shared or projected screens). The
+		// notification is still actionable — only its body changes. Optional so
+		// existing rows read as undefined; the reader defaults it OFF, which is
+		// exactly the sender+subject preview that shipped before it existed.
+		isHidePreviewOn: v.optional(v.boolean()),
 		// HEY-style first-time-sender screener. When ON, mail from a sender who is
 		// not a known contact / VIP / already-accepted is held OUT of the Reply
 		// Queue and clarification loop until the owner accepts them. Optional so

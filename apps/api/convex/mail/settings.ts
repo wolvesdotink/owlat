@@ -26,6 +26,7 @@ import {
 	mailNotifyAboutValidator,
 	mailUndoSendSecondsValidator,
 	mailMarkReadPolicyValidator,
+	mailQuietHoursValidator,
 } from '../lib/mailSettingsValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
@@ -54,6 +55,8 @@ export const get = publicQuery({
 			undoSendSeconds: row.undoSendSeconds,
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
+			quietHours: row.quietHours,
+			isHidePreviewOn: row.isHidePreviewOn,
 			isSenderScreenerOn: row.isSenderScreenerOn,
 			markReadPolicy: row.markReadPolicy,
 		};
@@ -76,6 +79,8 @@ export const update = authedMutation({
 		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
+		quietHours: v.optional(mailQuietHoursValidator),
+		isHidePreviewOn: v.optional(v.boolean()),
 		isSenderScreenerOn: v.optional(v.boolean()),
 		markReadPolicy: v.optional(mailMarkReadPolicyValidator),
 	},
@@ -102,6 +107,8 @@ export const update = authedMutation({
 			undoSendSeconds?: (typeof args)['undoSendSeconds'];
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
+			quietHours?: (typeof args)['quietHours'];
+			isHidePreviewOn?: boolean;
 			isSenderScreenerOn?: boolean;
 			markReadPolicy?: (typeof args)['markReadPolicy'];
 		} = {};
@@ -118,6 +125,8 @@ export const update = authedMutation({
 		if (args.undoSendSeconds !== undefined) patch.undoSendSeconds = args.undoSendSeconds;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
 		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;
+		if (args.quietHours !== undefined) patch.quietHours = args.quietHours;
+		if (args.isHidePreviewOn !== undefined) patch.isHidePreviewOn = args.isHidePreviewOn;
 		if (args.isSenderScreenerOn !== undefined) patch.isSenderScreenerOn = args.isSenderScreenerOn;
 		if (args.markReadPolicy !== undefined) patch.markReadPolicy = args.markReadPolicy;
 		if (existing) {

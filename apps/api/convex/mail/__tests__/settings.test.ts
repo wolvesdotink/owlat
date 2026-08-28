@@ -162,6 +162,61 @@ describe('mail.settings get/update', () => {
 		).rejects.toThrow();
 	});
 
+	it('round-trips the quiet-hours window and mask without clobbering other preferences', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { notifyAbout: 'people-important' });
+		await t.mutation(api.mail.settings.update, {
+			quietHours: { enabled: true, startMinute: 1320, endMinute: 420, days: [1, 2, 3, 4, 5] },
+		});
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			notifyAbout: 'people-important',
+			quietHours: { enabled: true, startMinute: 1320, endMinute: 420, days: [1, 2, 3, 4, 5] },
+		});
+	});
+
+	it('keeps the configured window when quiet hours are switched off', async () => {
+		// `enabled` is a stored field precisely so switching off is not "forget it":
+		// the patch-shaped mutation has no way to express clearing a field.
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, {
+			quietHours: { enabled: true, startMinute: 1320, endMinute: 420, days: [5] },
+		});
+		await t.mutation(api.mail.settings.update, {
+			quietHours: { enabled: false, startMinute: 1320, endMinute: 420, days: [5] },
+		});
+		const row = await t.query(api.mail.settings.get, {});
+		expect(row?.quietHours).toEqual({
+			enabled: false,
+			startMinute: 1320,
+			endMinute: 420,
+			days: [5],
+		});
+	});
+
+	it('rejects a quiet-hours object missing a field', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.mail.settings.update, {
+				quietHours: { enabled: true, startMinute: 1320 } as unknown as {
+					enabled: boolean;
+					startMinute: number;
+					endMinute: number;
+					days: number[];
+				},
+			})
+		).rejects.toThrow();
+	});
+
+	it('round-trips the hide-preview toggle', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { isHidePreviewOn: true });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			isHidePreviewOn: true,
+		});
+	});
+
 	it("is scoped per user: one user's preference is invisible to another", async () => {
 		const t = convexTest(schema, modules);
 		await t.mutation(api.mail.settings.update, { autoAdvance: 'previous' });

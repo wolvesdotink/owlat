@@ -77,7 +77,14 @@ async function applyMute(
 	thread: Doc<'mailThreads'>
 ): Promise<{ ok: true; archived: number }> {
 	const now = Date.now();
-	await ctx.db.patch(thread._id, { mutedAt: now, updatedAt: now });
+	// Mute and the per-thread reply alert (mail/threadAlerts.ts) are the two ends
+	// of one axis, so muting disarms the alert rather than leaving a thread that
+	// is both silenced and shouting.
+	await ctx.db.patch(thread._id, {
+		mutedAt: now,
+		...(thread.notifyOnReplyAt !== undefined ? { notifyOnReplyAt: undefined } : {}),
+		updatedAt: now,
+	});
 	// A muted thread is one the owner opted out of; it has no business sitting
 	// in the Reply Queue asking for an answer.
 	await clearThreadNeedsReply(ctx, thread._id);

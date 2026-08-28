@@ -399,6 +399,11 @@ export const newestUnreadInbox = publicQuery({
 				category?: 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
 				/** Muted conversation (mail/mute.ts) — never fires a desktop toast. */
 				muted?: boolean;
+				/**
+				 * Thread armed with "notify me when they reply" (mail/threadAlerts.ts)
+				 * — pierces the people-only scope AND quiet hours.
+				 */
+				alerted?: boolean;
 				receivedAt: number;
 			}>,
 		};
@@ -440,6 +445,7 @@ export const newestUnreadInbox = publicQuery({
 				{
 					category?: 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
 					muted: boolean;
+					alerted: boolean;
 				}
 			>();
 			for (const m of recent) {
@@ -447,7 +453,11 @@ export const newestUnreadInbox = publicQuery({
 				let state = threadState.get(m.threadId);
 				if (!state) {
 					const thread = await ctx.db.get(m.threadId);
-					state = { category: thread?.category?.label, muted: isThreadMuted(thread) };
+					state = {
+						category: thread?.category?.label,
+						muted: isThreadMuted(thread),
+						alerted: thread?.notifyOnReplyAt != null,
+					};
 					threadState.set(m.threadId, state);
 				}
 				collected.push({
@@ -458,6 +468,7 @@ export const newestUnreadInbox = publicQuery({
 					subject: m.subject,
 					category: state.category,
 					muted: state.muted,
+					alerted: state.alerted,
 					receivedAt: m.receivedAt,
 				});
 			}
