@@ -826,3 +826,20 @@ behalf by a file.
 To pick it up: pin Gmail's size units against real exports before mapping
 `sizeOperator`, and route `forwardTo` through the existing forwarding UI as a
 SUGGESTION the user confirms, never as a filter the import creates.
+
+## 16 — the composer keeps the execCommand editor for now
+
+Deferred by decision, not by difficulty: the call was made mid-implementation
+to keep the current hand-rolled `contenteditable` editor
+(`PostboxBasicEditor.vue`) rather than land the TipTap migration in this
+change set. A migration was in progress (TipTap dependencies, a
+`PostboxTipTapEditor.vue`, an editor-engine seam, and an editor-choice
+setting) and was discarded uncommitted; no trace of it ships here.
+
+To pick it up: the plan's idea 16 still stands — migrate the simple mode onto
+TipTap preserving the floating format bar, the persistent-toolbar toggle and
+the existing formatting vocabulary, keep the slash-snippet /
+emoji / ghost-text / cid-image integrations working, and keep
+`PostboxBasicEditor.vue`'s v-model HTML contract so `PostboxComposer.vue`
+barely changes. Landing it behind an editor-choice setting with the classic
+editor as default would make the rollout reversible.
