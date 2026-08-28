@@ -9,7 +9,7 @@
  * signal at all. This card gives them one from data they are already allowed to
  * read — their own send-as identity's verification + transport alignment
  * (`listSendAsIdentities`, mailbox-scoped) and their own recent sends
- * (`mailbox.queries.sendingHealth`, over their sent folder).
+ * (`mailbox.sendingHealth.getSendingHealth`, over their sent folder).
  *
  * Nothing here is org-wide or admin-gated, and the card deliberately offers no
  * fix links: a member cannot open `/dashboard/admin/delivery/*`, so pointing
@@ -39,7 +39,7 @@ const { data: identities, isLoading: identitiesLoading } = useConvexQuery(
 );
 
 const { data: stats, isLoading: statsLoading } = useConvexQuery(
-	api.mail.mailbox.queries.sendingHealth,
+	api.mail.mailbox.sendingHealth.getSendingHealth,
 	() => (mailboxId.value ? { mailboxId: mailboxId.value } : 'skip')
 );
 

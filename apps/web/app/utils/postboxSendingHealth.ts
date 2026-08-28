@@ -16,7 +16,7 @@
  * links to `/dashboard/admin/delivery/*` — pages a member cannot open, offering
  * fixes a member cannot apply. The card here asks the member's own question
  * instead, off `mail.identities.listSendAsIdentities` (their address) and
- * `mail.mailbox.queries.sendingHealth` (their sent folder). It reuses that
+ * `mail.mailbox.sendingHealth` (their sent folder). It reuses that
  * module's vocabulary — `ReadinessLevel`, `ReadinessGateStatus`, `HealthTone`,
  * `LocalizedText` — and the `senderAuthDisplay` registry's copy, so the two
  * surfaces stay recognisably one system, and it deliberately carries NO action
@@ -41,7 +41,7 @@ export interface SendingHealthIdentity {
 	alignmentReason?: string | null;
 }
 
-/** The bounce half — `mail.mailbox.queries.sendingHealth`, verbatim. */
+/** The bounce half — `mail.mailbox.sendingHealth.getSendingHealth`, verbatim. */
 export interface SendingHealthStats {
 	sends: number;
 	attempts: number;

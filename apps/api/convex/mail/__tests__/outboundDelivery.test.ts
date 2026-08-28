@@ -9,7 +9,7 @@
  *    message in the thread with every per-recipient state, and NOTHING for an
  *    inbound-only thread (no false "queued") — and refuses a caller with no
  *    access to the mailbox.
- *  - `mailbox.queries.sendingHealth` counts recipients, not messages, over a
+ *  - `mailbox.sendingHealth.getSendingHealth` counts recipients, not messages, over a
  *    bounded window of the sent folder, and names the newest failure.
  *
  * Both are soft-auth reads, so the refusal assertion is `null`, not a throw.
@@ -327,7 +327,7 @@ describe('sendingHealth', () => {
 			});
 		});
 
-		const health = await t.query(api.mail.mailbox.queries.sendingHealth, { mailboxId });
+		const health = await t.query(api.mail.mailbox.sendingHealth.getSendingHealth, { mailboxId });
 		expect(health).toEqual({
 			sends: 2,
 			attempts: 3,
@@ -353,7 +353,7 @@ describe('sendingHealth', () => {
 			await insertFolder(ctx, mailboxId, 'Sent', 'sent');
 		});
 
-		const health = await t.query(api.mail.mailbox.queries.sendingHealth, { mailboxId });
+		const health = await t.query(api.mail.mailbox.sendingHealth.getSendingHealth, { mailboxId });
 		expect(health).toEqual({
 			sends: 0,
 			attempts: 0,
@@ -375,7 +375,7 @@ describe('sendingHealth', () => {
 
 		setSession('user-B', 'member');
 		await expect(
-			t.query(api.mail.mailbox.queries.sendingHealth, { mailboxId })
+			t.query(api.mail.mailbox.sendingHealth.getSendingHealth, { mailboxId })
 		).resolves.toBeNull();
 	});
 });
