@@ -3756,7 +3756,7 @@
 				"unsnooze": "Un-snooze",
 				"unsnoozeTitle": "Un-snooze — return to its folder now",
 				"unsubscribe": "Unsubscribe",
-				"unsubscribeConfirm": "Unsubscribe from {count} sender and archive their mail?",
+				"unsubscribeConfirm": "Unsubscribe from {count} sender and archive their mail? | Unsubscribe from {count} senders and archive their mail?",
 				"unsubscribeTitle": "Unsubscribe from {count} sender in this selection and archive their mail | Unsubscribe from {count} senders in this selection and archive their mail"
 			},
 			"postboxRecipientField": {

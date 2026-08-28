@@ -3756,7 +3756,7 @@
 				"unsnooze": "Zurückstellung aufheben",
 				"unsnoozeTitle": "Zurückstellung aufheben — jetzt zurück in den Ordner",
 				"unsubscribe": "Abmelden",
-				"unsubscribeConfirm": "Von {count} Absender abmelden und deren Post archivieren?",
+				"unsubscribeConfirm": "Von {count} Absender abmelden und dessen Post archivieren? | Von {count} Absendern abmelden und deren Post archivieren?",
 				"unsubscribeTitle": "Von {count} Absender in dieser Auswahl abmelden und dessen Post archivieren | Von {count} Absendern in dieser Auswahl abmelden und deren Post archivieren"
 			},
 			"postboxRecipientField": {
