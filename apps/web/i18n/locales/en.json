@@ -2986,6 +2986,11 @@
 			},
 			"trustChip": {
 				"seeWhy": "{label} — see why"
+			},
+			"inboxCrossSurfaceStrip": {
+				"alsoInPostbox": "Also in {mailbox}",
+				"alreadyAnswered": "already answered there",
+				"open": "Open in Postbox"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -4406,6 +4411,15 @@
 				"created": "Rule created: {rule}",
 				"viewRule": "View rule",
 				"undo": "Undo"
+			},
+			"postboxCrossSurfaceStrip": {
+				"alsoInTeamInbox": "Also in Team Inbox",
+				"assigned": "assigned to {assignee}",
+				"assignedWithDraft": "assigned to {assignee}, draft pending",
+				"draftPending": "draft pending",
+				"unassigned": "nobody has taken it yet",
+				"replied": "already answered there",
+				"open": "Open in Team Inbox"
 			}
 		},
 		"preferences": {

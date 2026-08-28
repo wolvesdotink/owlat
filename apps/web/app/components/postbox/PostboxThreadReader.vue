@@ -1024,6 +1024,11 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			@mark-read="markOpenThreadRead"
 		/>
 
+		<!-- The same conversation, seen from the other surface (idea 31). Renders
+		     only when this message ALSO exists in the Team Inbox and the viewer is
+		     permitted on both sides; read-only, and it merges nothing. -->
+		<PostboxCrossSurfaceStrip :message-id="messageId" class="mb-3" />
+
 		<!-- Sealed Mail (E5): thread-level trust surfaces for the correspondent —
 		     the Signal-style key-change banner (explicit re-pin) + the contact key
 		     panel. Flag-gated; renders nothing without a key on file. -->

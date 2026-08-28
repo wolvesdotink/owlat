@@ -2986,6 +2986,11 @@
 			},
 			"trustChip": {
 				"seeWhy": "{label} — Begründung anzeigen"
+			},
+			"inboxCrossSurfaceStrip": {
+				"alsoInPostbox": "Auch in {mailbox}",
+				"alreadyAnswered": "dort bereits beantwortet",
+				"open": "In Postbox öffnen"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -4406,6 +4411,15 @@
 				"created": "Regel erstellt: {rule}",
 				"viewRule": "Regel ansehen",
 				"undo": "Rückgängig"
+			},
+			"postboxCrossSurfaceStrip": {
+				"alsoInTeamInbox": "Auch im Team-Posteingang",
+				"assigned": "zugewiesen an {assignee}",
+				"assignedWithDraft": "zugewiesen an {assignee}, Entwurf ausstehend",
+				"draftPending": "Entwurf ausstehend",
+				"unassigned": "noch niemandem zugewiesen",
+				"replied": "dort bereits beantwortet",
+				"open": "Im Team-Posteingang öffnen"
 			}
 		},
 		"preferences": {
