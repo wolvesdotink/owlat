@@ -15,7 +15,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
-import { modules, seedMailbox } from './helpers.testlib';
+import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -48,97 +48,22 @@ type Ctx = TestConvex<typeof schema>;
 /** A mailbox with an inbox folder, owned by `userId`. */
 async function seedInbox(t: Ctx, userId: string, address: string): Promise<Id<'mailboxes'>> {
 	const mailboxId = await seedMailbox(t, { userId, address });
-	await t.run(async (ctx) => {
-		const now = Date.now();
-		await ctx.db.insert('mailFolders', {
-			mailboxId,
-			name: 'INBOX',
-			role: 'inbox',
-			uidNext: 1,
-			uidValidity: now,
-			highestModseq: 1,
-			totalCount: 0,
-			unseenCount: 0,
-			subscribed: true,
-			createdAt: now,
-			updatedAt: now,
-		});
-	});
+	await seedFolder(t, mailboxId);
 	return mailboxId;
 }
 
-/** One message in the mailbox's inbox, with a controlled `receivedAt`. */
-async function seedMessage(
-	t: Ctx,
-	mailboxId: Id<'mailboxes'>,
-	subject: string,
-	receivedAt: number
-): Promise<Id<'mailMessages'>> {
-	return await t.run(async (ctx) => {
-		const folder = await ctx.db
-			.query('mailFolders')
-			.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', 'inbox'))
-			.first();
-		if (!folder) throw new Error('inbox folder missing');
-		const threadId = await ctx.db.insert('mailThreads', {
-			mailboxId,
-			normalizedSubject: subject,
-			participants: ['someone@example.com'],
-			messageCount: 1,
-			unreadCount: 1,
-			hasFlagged: false,
-			hasAttachments: false,
-			lastMessageAt: receivedAt,
-			firstMessageAt: receivedAt,
-			latestSnippet: subject,
-			latestFromAddress: 'someone@example.com',
-			latestSubject: subject,
-			folderRoles: ['inbox'],
-			labelIds: [],
-			createdAt: receivedAt,
-			updatedAt: receivedAt,
-		});
-		const rawStorageId = await ctx.storage.store(new Blob(['raw']));
-		return await ctx.db.insert('mailMessages', {
-			mailboxId,
-			folderId: folder._id,
-			uid: 1,
-			modseq: 1,
-			rfc822MessageId: `<${subject}@example.com>`,
-			threadId,
-			fromAddress: 'someone@example.com',
-			toAddresses: ['me@example.com'],
-			ccAddresses: [],
-			bccAddresses: [],
-			subject,
-			normalizedSubject: subject,
-			snippet: subject,
-			rawStorageId,
-			rawSize: 3,
-			attachments: [],
-			hasAttachments: false,
-			flagSeen: false,
-			flagFlagged: false,
-			flagAnswered: false,
-			flagDraft: false,
-			flagDeleted: false,
-			customFlags: [],
-			labelIds: [],
-			receivedAt,
-			internalDate: receivedAt,
-			createdAt: receivedAt,
-			updatedAt: receivedAt,
-		});
-	});
+/** One message in the mailbox's inbox, at a controlled arrival time. */
+async function seedAt(t: Ctx, mailboxId: Id<'mailboxes'>, subject: string, receivedAt: number) {
+	return await seedMessage(t, mailboxId, { subject, receivedAt });
 }
 
 /** Two mailboxes of user-A with interleaved arrival times. */
 async function seedTwoMailboxes(t: Ctx) {
 	const personal = await seedInbox(t, 'user-A', 'a@hinterland.camp');
 	const team = await seedInbox(t, 'user-A', 'team@hinterland.camp');
-	await seedMessage(t, personal, 'oldest', 1_000);
-	await seedMessage(t, team, 'middle', 2_000);
-	await seedMessage(t, personal, 'newest', 3_000);
+	await seedAt(t, personal, 'oldest', 1_000);
+	await seedAt(t, team, 'middle', 2_000);
+	await seedAt(t, personal, 'newest', 3_000);
 	return { personal, team };
 }
 
@@ -161,7 +86,7 @@ describe('search — single mailbox (legacy shape)', () => {
 	it('returns empty for a mailbox the caller cannot read', async () => {
 		const t = convexTest(schema, modules);
 		const foreign = await seedInbox(t, 'user-B', 'b@hinterland.camp');
-		await seedMessage(t, foreign, 'secret', 5_000);
+		await seedAt(t, foreign, 'secret', 5_000);
 		const result = await t.query(api.mail.mailbox.search.search, { mailboxId: foreign, text: '' });
 		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
 	});
@@ -189,7 +114,7 @@ describe('search — fan-out', () => {
 		const t = convexTest(schema, modules);
 		const { personal } = await seedTwoMailboxes(t);
 		const foreign = await seedInbox(t, 'user-B', 'b@hinterland.camp');
-		await seedMessage(t, foreign, 'secret', 9_000);
+		await seedAt(t, foreign, 'secret', 9_000);
 		const result = await t.query(api.mail.mailbox.search.search, {
 			mailboxIds: [personal, foreign],
 			text: '',
@@ -201,7 +126,7 @@ describe('search — fan-out', () => {
 		const t = convexTest(schema, modules);
 		await seedTwoMailboxes(t);
 		const foreign = await seedInbox(t, 'user-B', 'b@hinterland.camp');
-		await seedMessage(t, foreign, 'secret', 9_000);
+		await seedAt(t, foreign, 'secret', 9_000);
 		const result = await t.query(api.mail.mailbox.search.search, { text: '' });
 		expect(subjects(result)).not.toContain('secret');
 	});
@@ -228,7 +153,7 @@ describe('search — fan-out', () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedInbox(t, 'user-A', 'a@hinterland.camp');
 		for (const subject of ['tie-1', 'tie-2', 'tie-3']) {
-			await seedMessage(t, mailboxId, subject, 4_000);
+			await seedAt(t, mailboxId, subject, 4_000);
 		}
 		const seen: string[] = [];
 		let cursor: string | undefined;
@@ -256,9 +181,9 @@ describe('search — fan-out', () => {
 		const t = convexTest(schema, modules);
 		const personal = await seedInbox(t, 'user-A', 'a@hinterland.camp');
 		const team = await seedInbox(t, 'user-A', 'team@hinterland.camp');
-		await seedMessage(t, personal, 'invoice overdue', 1_000);
-		await seedMessage(t, team, 'invoice paid', 2_000);
-		await seedMessage(t, personal, 'lunch', 3_000);
+		await seedAt(t, personal, 'invoice overdue', 1_000);
+		await seedAt(t, team, 'invoice paid', 2_000);
+		await seedAt(t, personal, 'lunch', 3_000);
 		const result = await t.query(api.mail.mailbox.search.search, { text: 'invoice' });
 		expect(subjects(result)).toEqual(['invoice paid', 'invoice overdue']);
 	});
