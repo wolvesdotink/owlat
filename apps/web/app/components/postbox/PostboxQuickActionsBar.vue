@@ -6,6 +6,7 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { subscriptionBatchSummary, summarizeSubscriptionBatch } from '~/utils/postboxSubscriptions';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -13,6 +14,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const { showToast } = useToast();
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
@@ -50,6 +52,46 @@ async function unsnoozeSelected() {
 	for (const id of bulk.ids.value) {
 		const result = await unsnoozeMutation.run({ messageId: id });
 		if (!result.ok) return;
+	}
+	bulk.clear();
+}
+
+// Unsubscribe + archive, for whatever list mail is in the selection. The
+// selected ROWS collapse to their distinct senders server-side (a selection of
+// six newsletters is usually two or three publishers), and the button self-
+// disables when the selection carries no One-Click list mail at all — the verb
+// never appears to promise something the protocol can't do here.
+const { data: selectionSenders } = useConvexQuery(api.mail.subscriptions.sendersOfMessages, () =>
+	bulk.ids.value.length > 0 ? { mailboxId: props.mailboxId, messageIds: bulk.ids.value } : 'skip'
+);
+const unsubscribableSenders = computed(() => selectionSenders.value ?? []);
+
+const unsubscribeOp = useBackendOperation(api.mail.subscriptions.unsubscribeAndArchive, {
+	label: () => t('components.postbox.postboxQuickActionsBar.operations.unsubscribe'),
+	type: 'action',
+});
+
+async function unsubscribeSelected() {
+	const senderEmails = unsubscribableSenders.value;
+	if (senderEmails.length === 0) return;
+	// N state-changing POSTs at third parties — always behind an explicit yes.
+	if (
+		!window.confirm(
+			t(
+				'components.postbox.postboxQuickActionsBar.unsubscribeConfirm',
+				{ count: senderEmails.length },
+				senderEmails.length
+			)
+		)
+	) {
+		return;
+	}
+	const outcome = await unsubscribeOp.run({ mailboxId: props.mailboxId, senderEmails });
+	if (!outcome.ok) return;
+	const summary = subscriptionBatchSummary(summarizeSubscriptionBatch(outcome.result.results));
+	const headline = summary.lines[0];
+	if (headline) {
+		showToast(t(headline.key, { count: headline.count }, headline.count), summary.tone);
 	}
 	bulk.clear();
 }
@@ -251,6 +293,28 @@ const movableFolders = computed(() =>
 					<Icon name="lucide:shield-alert" class="w-4 h-4" />
 				</template>
 				{{ t('components.postbox.postboxQuickActionsBar.spam') }}
+			</UiButton>
+			<!-- Unsubscribe + archive: only offered when the selection actually
+			     holds One-Click list mail, so it is never a dead button. -->
+			<UiButton
+				v-if="unsubscribableSenders.length > 0"
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
+				:loading="unsubscribeOp.isLoading.value"
+				:title="
+					t(
+						'components.postbox.postboxQuickActionsBar.unsubscribeTitle',
+						{ count: unsubscribableSenders.length },
+						unsubscribableSenders.length
+					)
+				"
+				@click="unsubscribeSelected()"
+			>
+				<template #iconLeft>
+					<Icon name="lucide:bell-off" class="w-4 h-4" />
+				</template>
+				{{ t('components.postbox.postboxQuickActionsBar.unsubscribe') }}
 			</UiButton>
 			<span class="flex-1" />
 			<UiButton

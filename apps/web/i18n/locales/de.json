@@ -3452,7 +3452,8 @@
 				"renameFolder": "Ordner umbenennen",
 				"replyQueue": "Antwort-Warteschlange",
 				"replyQueueAriaLabel": "Antwort-Warteschlange, {count}",
-				"snoozed": "Zurückgestellt"
+				"snoozed": "Zurückgestellt",
+				"subscriptions": "Abonnements"
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Antwort-Erinnerung setzen",
@@ -3739,7 +3740,8 @@
 				"notSpamTitle": "Kein Spam — in den Posteingang verschieben",
 				"operations": {
 					"snooze": "Nachrichten zurückstellen",
-					"unsnooze": "Zurückstellung von Nachrichten aufheben"
+					"unsnooze": "Zurückstellung von Nachrichten aufheben",
+					"unsubscribe": "Abmelden und archivieren"
 				},
 				"purgeConfirm": "{count} Nachricht endgültig löschen? Das kann nicht rückgängig gemacht werden. | {count} Nachrichten endgültig löschen? Das kann nicht rückgängig gemacht werden.",
 				"read": "Gelesen",
@@ -3752,7 +3754,10 @@
 				"starTitle": "Mit Stern markieren",
 				"unread": "Ungelesen",
 				"unsnooze": "Zurückstellung aufheben",
-				"unsnoozeTitle": "Zurückstellung aufheben — jetzt zurück in den Ordner"
+				"unsnoozeTitle": "Zurückstellung aufheben — jetzt zurück in den Ordner",
+				"unsubscribe": "Abmelden",
+				"unsubscribeConfirm": "Von {count} Absender abmelden und deren Post archivieren?",
+				"unsubscribeTitle": "Von {count} Absender in dieser Auswahl abmelden und dessen Post archivieren | Von {count} Absendern in dieser Auswahl abmelden und deren Post archivieren"
 			},
 			"postboxRecipientField": {
 				"didYouMean": "Meinten Sie {address}?",
@@ -4146,6 +4151,29 @@
 				"hint": "Externe Bilder dieser Absender werden ohne Nachfrage geladen. Zählpixel bleiben in beiden Fällen blockiert.",
 				"revoke": "Entziehen",
 				"revokeAriaLabel": "Bilder von {sender} nicht mehr laden"
+			},
+			"postboxSubscriptionsPanel": {
+				"action": "Abmelden und archivieren | Abmelden und archivieren ({count})",
+				"clearSelection": "Auswahl aufheben",
+				"confirm": "Von {count} Absender abmelden und deren Post archivieren?",
+				"empty": "Keine Abonnements gefunden.",
+				"emptyHint": "Newsletter und andere Listenpost erscheinen hier, sobald welche ankommt.",
+				"heading": "Abonnements",
+				"hint": "Alle Absender in deinem Posteingang, die einen Abmeldelink mitschicken.",
+				"manualExcluded": "{count} ausgewählter Absender muss auf seiner eigenen Seite abgemeldet werden. | {count} ausgewählte Absender müssen auf ihren eigenen Seiten abgemeldet werden.",
+				"manualOnly": "Dieser Absender bietet keinen Ein-Klick-Endpunkt, die Abmeldung muss auf seiner eigenen Seite abgeschlossen werden.",
+				"openPage": "Seite öffnen",
+				"operation": "Abmelden und archivieren",
+				"selectAll": "Alle Ein-Klick-Absender auswählen",
+				"senderCount": "{count} Absender | {count} Absender",
+				"status": {
+					"failed": "Fehlgeschlagen",
+					"manual": "Braucht ihre Seite",
+					"not_found": "Keine Listenpost gefunden",
+					"unsubscribed": "Abgemeldet"
+				},
+				"volume": "{count} Nachricht | {count} Nachrichten",
+				"windowNote": "Basiert auf deinen {count} neuesten Nachrichten im Posteingang."
 			}
 		},
 		"preferences": {
@@ -8238,6 +8266,12 @@
 				"resultCountMore": "{count}+ Ergebnis — mehr weiter unten | {count}+ Ergebnisse — mehr weiter unten",
 				"removeChip": "{chip} entfernen",
 				"clearAllFilters": "Alle Filter löschen"
+			},
+			"subscriptions": {
+				"addMailAccount": "Mailkonto hinzufügen",
+				"noMailbox": "Noch kein Postfach",
+				"noMailboxHint": "Verbinde oder erstelle ein Mailkonto, um zu sehen, was du abonniert hast.",
+				"pageTitle": "Abonnements"
 			}
 		},
 		"preferences": {
@@ -12902,6 +12936,23 @@
 		"postboxSnoozeScope": {
 			"message": "Nur diese Nachricht",
 			"thread": "Ganze Unterhaltung"
+		},
+		"postboxSubscriptions": {
+			"lastRead": {
+				"days": "Vor {count} Tag geöffnet | Vor {count} Tagen geöffnet",
+				"months": "Vor {count} Monat geöffnet | Vor {count} Monaten geöffnet",
+				"never": "Nie geöffnet",
+				"today": "Heute geöffnet",
+				"years": "Vor {count} Jahr geöffnet | Vor {count} Jahren geöffnet"
+			},
+			"summary": {
+				"archived": "{count} Nachricht archiviert. | {count} Nachrichten archiviert.",
+				"failed": "{count} Absender hat die Anfrage nicht angenommen. | {count} Absender haben die Anfrage nicht angenommen.",
+				"manual": "{count} Absender muss auf seiner eigenen Seite abgemeldet werden. | {count} Absender müssen auf ihren eigenen Seiten abgemeldet werden.",
+				"noneDone": "Es wurde nichts abgemeldet.",
+				"notFound": "Bei {count} Absender gab es keine Listenpost mehr. | Bei {count} Absendern gab es keine Listenpost mehr.",
+				"unsubscribed": "Von {count} Absender abgemeldet. | Von {count} Absendern abgemeldet."
+			}
 		}
 	},
 	"sharedPkg": {

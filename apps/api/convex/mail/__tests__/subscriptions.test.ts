@@ -317,6 +317,36 @@ describe('mail.subscriptions.list', () => {
 	});
 });
 
+describe('mail.subscriptions.sendersOfMessages', () => {
+	it('collapses a selection to its distinct list senders', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailboxWithFolders(t);
+		const a1 = await seedListMessage(t, seeded, { fromAddress: 'news@a.example', receivedAt: 10 });
+		const a2 = await seedListMessage(t, seeded, { fromAddress: 'news@a.example', receivedAt: 20 });
+		const b1 = await seedListMessage(t, seeded, { fromAddress: 'deals@b.example', receivedAt: 30 });
+
+		const senders = await t.query(api.mail.subscriptions.sendersOfMessages, {
+			mailboxId: seeded.mailboxId,
+			messageIds: [a1, a2, b1],
+		});
+		expect(senders).toEqual(['deals@b.example', 'news@a.example']);
+	});
+
+	it("returns nothing for another user's mailbox", async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailboxWithFolders(t, 'user-A');
+		const id = await seedListMessage(t, seeded, { fromAddress: 'news@a.example', receivedAt: 10 });
+
+		sessionMock.userId = 'user-B';
+		expect(
+			await t.query(api.mail.subscriptions.sendersOfMessages, {
+				mailboxId: seeded.mailboxId,
+				messageIds: [id],
+			})
+		).toEqual([]);
+	});
+});
+
 describe('mail.subscriptions.archiveSenderInInbox', () => {
 	it("archives only the named sender's inbox mail", async () => {
 		const t = convexTest(schema, modules);

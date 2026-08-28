@@ -49,6 +49,9 @@ export const SUBSCRIPTION_BATCH_DELAY_MS = 400;
 /** Messages from one sender archived per batch entry. */
 const ARCHIVE_LIMIT_PER_SENDER = 200;
 
+/** Selected rows `sendersOfMessages` will resolve in one call. */
+const SELECTION_RESOLVE_MAX = 200;
+
 /**
  * How a sender can be unsubscribed from, best first.
  *   - `one-click` → RFC 8058 https POST, the only method the batch can perform
@@ -208,6 +211,34 @@ export const list = publicQuery({
 			scanned: rows.length,
 			truncated: rows.length === SUBSCRIPTION_SCAN_LIMIT,
 		};
+	},
+});
+
+/**
+ * The distinct list senders behind a message SELECTION — what the list's
+ * bulk-actions bar needs to turn "these four rows" into "these two senders"
+ * before it offers the Unsubscribe verb (and to grey the verb out when the
+ * selection holds no list mail at all).
+ *
+ * Messages outside `mailboxId`, and messages with no usable unsubscribe target,
+ * drop out silently: the caller asked "what can I act on here", not "did every
+ * id resolve".
+ */
+// public: soft-auth — returns empty for anonymous; mailbox access is still
+// enforced in-handler via requireMailboxAccess.
+export const sendersOfMessages = publicQuery({
+	args: { mailboxId: v.id('mailboxes'), messageIds: v.array(v.id('mailMessages')) },
+	handler: async (ctx, args): Promise<string[]> => {
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
+		if (!owned.ok) return [];
+		const senders = new Set<string>();
+		for (const messageId of args.messageIds.slice(0, SELECTION_RESOLVE_MAX)) {
+			const message = await ctx.db.get(messageId);
+			if (!message || message.mailboxId !== args.mailboxId) continue;
+			if (!subscriptionMethodOf(message.unsubscribe)) continue;
+			senders.add(normalizeEmail(message.fromAddress));
+		}
+		return [...senders].sort();
 	},
 });
 

@@ -201,6 +201,27 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				t('components.postbox.postboxFolderRail.snoozed')
 			}}</span>
 		</NuxtLink>
+		<!-- Virtual "Subscriptions" view: every inbox sender that ships a
+		     List-Unsubscribe target, with the batch unsubscribe verb. Nothing
+		     moves until the user acts, so it sits with the other virtual views. -->
+		<NuxtLink
+			to="/dashboard/postbox/subscriptions"
+			class="rounded text-sm hover:bg-bg-surface"
+			:class="
+				railCollapsed
+					? 'flex items-center justify-center w-9 h-9'
+					: 'flex items-center gap-2 px-2.5 py-1.5'
+			"
+			:title="railCollapsed ? t('components.postbox.postboxFolderRail.subscriptions') : undefined"
+			:aria-label="
+				railCollapsed ? t('components.postbox.postboxFolderRail.subscriptions') : undefined
+			"
+		>
+			<Icon name="lucide:bell-off" class="w-4 h-4" />
+			<span v-if="!railCollapsed" class="flex-1">{{
+				t('components.postbox.postboxFolderRail.subscriptions')
+			}}</span>
+		</NuxtLink>
 		<!-- Secondary destination: lighter weight than the mail folders so the
 		     inbox/folders read as the primary rail. -->
 		<NuxtLink
@@ -372,9 +393,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				:name="railCollapsed ? 'lucide:chevrons-right' : 'lucide:chevrons-left'"
 				class="w-4 h-4"
 			/>
-			<span v-if="!railCollapsed">{{
-				t('components.postbox.postboxFolderRail.collapse')
-			}}</span>
+			<span v-if="!railCollapsed">{{ t('components.postbox.postboxFolderRail.collapse') }}</span>
 		</button>
 	</aside>
 

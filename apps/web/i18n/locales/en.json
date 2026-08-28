@@ -3452,7 +3452,8 @@
 				"renameFolder": "Rename folder",
 				"replyQueue": "Reply Queue",
 				"replyQueueAriaLabel": "Reply Queue, {count}",
-				"snoozed": "Snoozed"
+				"snoozed": "Snoozed",
+				"subscriptions": "Subscriptions"
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Set reply reminder",
@@ -3739,7 +3740,8 @@
 				"notSpamTitle": "Not spam — move to Inbox",
 				"operations": {
 					"snooze": "Snooze messages",
-					"unsnooze": "Un-snooze messages"
+					"unsnooze": "Un-snooze messages",
+					"unsubscribe": "Unsubscribe and archive"
 				},
 				"purgeConfirm": "Permanently delete {count} message? This cannot be undone. | Permanently delete {count} messages? This cannot be undone.",
 				"read": "Read",
@@ -3752,7 +3754,10 @@
 				"starTitle": "Star",
 				"unread": "Unread",
 				"unsnooze": "Un-snooze",
-				"unsnoozeTitle": "Un-snooze — return to its folder now"
+				"unsnoozeTitle": "Un-snooze — return to its folder now",
+				"unsubscribe": "Unsubscribe",
+				"unsubscribeConfirm": "Unsubscribe from {count} sender and archive their mail?",
+				"unsubscribeTitle": "Unsubscribe from {count} sender in this selection and archive their mail | Unsubscribe from {count} senders in this selection and archive their mail"
 			},
 			"postboxRecipientField": {
 				"didYouMean": "Did you mean {address}?",
@@ -4146,6 +4151,29 @@
 				"hint": "Remote images from these senders load without asking. Tracking pixels stay blocked either way.",
 				"revoke": "Revoke",
 				"revokeAriaLabel": "Stop loading images from {sender}"
+			},
+			"postboxSubscriptionsPanel": {
+				"action": "Unsubscribe and archive | Unsubscribe and archive ({count})",
+				"clearSelection": "Clear selection",
+				"confirm": "Unsubscribe from {count} sender and archive their mail?",
+				"empty": "No subscriptions found.",
+				"emptyHint": "Newsletters and other list mail show up here once some arrives.",
+				"heading": "Subscriptions",
+				"hint": "Every sender in your inbox that offers an unsubscribe link.",
+				"manualExcluded": "{count} selected sender has to be finished on its own page. | {count} selected senders have to be finished on their own pages.",
+				"manualOnly": "This sender has no one-click endpoint, so it has to be finished on their own page.",
+				"openPage": "Open page",
+				"operation": "Unsubscribe and archive",
+				"selectAll": "Select all one-click senders",
+				"senderCount": "{count} sender | {count} senders",
+				"status": {
+					"failed": "Failed",
+					"manual": "Needs their page",
+					"not_found": "No list mail found",
+					"unsubscribed": "Unsubscribed"
+				},
+				"volume": "{count} message | {count} messages",
+				"windowNote": "Based on your {count} most recent inbox messages."
 			}
 		},
 		"preferences": {
@@ -8238,6 +8266,12 @@
 				"resultCountMore": "{count}+ result — more available below | {count}+ results — more available below",
 				"removeChip": "Remove {chip}",
 				"clearAllFilters": "Clear all filters"
+			},
+			"subscriptions": {
+				"addMailAccount": "Add a mail account",
+				"noMailbox": "No mailbox yet",
+				"noMailboxHint": "Connect or create a mail account to see what you are subscribed to.",
+				"pageTitle": "Subscriptions"
 			}
 		},
 		"preferences": {
@@ -12902,6 +12936,23 @@
 		"postboxSnoozeScope": {
 			"message": "Just this message",
 			"thread": "Whole conversation"
+		},
+		"postboxSubscriptions": {
+			"lastRead": {
+				"days": "Opened {count} day ago | Opened {count} days ago",
+				"months": "Opened {count} month ago | Opened {count} months ago",
+				"never": "Never opened",
+				"today": "Opened today",
+				"years": "Opened {count} year ago | Opened {count} years ago"
+			},
+			"summary": {
+				"archived": "{count} message archived. | {count} messages archived.",
+				"failed": "{count} sender did not accept the request. | {count} senders did not accept the request.",
+				"manual": "{count} sender has to be finished on its own page. | {count} senders have to be finished on their own pages.",
+				"noneDone": "Nothing was unsubscribed.",
+				"notFound": "{count} sender had no list mail left to act on. | {count} senders had no list mail left to act on.",
+				"unsubscribed": "Unsubscribed from {count} sender. | Unsubscribed from {count} senders."
+			}
 		}
 	},
 	"sharedPkg": {
