@@ -303,6 +303,17 @@ export const mailUnsubscribeValidator = v.object({
 	oneClick: v.boolean(),
 });
 
+// Observed triage verb (mailTriageTallies.verb + the mail/triageTally args).
+// Exactly the verbs that map onto a filter action a user would plausibly
+// automate: archive → move to Archive, trash → delete, spam → move to Spam.
+// Single source so the table, the recorder and the accept mutation cannot drift.
+export const mailTriageVerbValidator = v.union(
+	v.literal('archive'),
+	v.literal('trash'),
+	v.literal('spam')
+);
+export type MailTriageVerb = Infer<typeof mailTriageVerbValidator>;
+
 // Compose-draft attachment referencing Convex storage (mailDrafts.attachments)
 export const mailDraftAttachmentValidator = v.object({
 	storageId: v.id('_storage'),

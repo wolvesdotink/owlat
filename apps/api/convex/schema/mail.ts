@@ -4,6 +4,7 @@ import { destinationProviderValidator } from '../delivery/deliverabilityValidato
 import {
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
+	mailTriageVerbValidator,
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
 	draftQualityValidator,
@@ -1471,6 +1472,49 @@ export const mailTables = {
 		senderEmail: v.string(), // canonical lowercase
 		createdAt: v.number(),
 	}).index('by_mailbox_and_sender', ['mailboxId', 'senderEmail']),
+
+	// Per-sender triage tally (idea 27) — the observation behind "you archive
+	// everything from noreply@x, always archive it?".
+	//
+	// The rule engine is powerful and entirely manual: the system can watch
+	// someone archive-on-sight from the same sender forty times and say nothing.
+	// One row per (mailbox, sender, verb), incremented by the triage mutations in
+	// mail/messageActions.ts. This is a COUNTER, not a log — no message ids, no
+	// subjects, nothing that outlives the mail it describes.
+	//
+	// `count` is messages triaged; `sessions` is how many separate triage ACTIONS
+	// produced them. Both gate a suggestion, so one bulk sweep over a backlog can
+	// never manufacture a rule on its own — the recurrence gate the edit-learning
+	// flywheel (mailVoiceProfiles.derivedAdjustments) uses, applied to triage.
+	//
+	// A suggestion is only ever an OFFER, exactly like autonomySuggestions:
+	// `dismissedAt` records that the user declined it (and stops it coming back),
+	// `actedFilterId` names the rule they accepted it into — which is also what
+	// the undo deletes. Bounded per mailbox and pruned by retention, so the table
+	// stays a small rolling picture of recent habits rather than a history.
+	mailTriageTallies: defineTable({
+		mailboxId: v.id('mailboxes'),
+		senderAddress: v.string(), // canonical lowercase
+		// The verbs that map onto a filter action a user would plausibly automate.
+		verb: mailTriageVerbValidator,
+		count: v.number(),
+		sessions: v.number(),
+		firstAt: v.number(),
+		lastAt: v.number(),
+		// The user declined this suggestion. Set once; the suggestion never
+		// returns for this sender+verb (a nag is worse than no suggestion).
+		dismissedAt: v.optional(v.number()),
+		// The rule the user accepted this suggestion into. Present ⇒ the reader
+		// shows the rule (with an undo) instead of the offer.
+		actedFilterId: v.optional(v.id('mailFilters')),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		// The reader's footer read: every verb tallied for one sender.
+		.index('by_mailbox_and_sender', ['mailboxId', 'senderAddress'])
+		// Eviction + retention both walk least-recently-touched first.
+		.index('by_mailbox_and_last', ['mailboxId', 'lastAt'])
+		.index('by_last', ['lastAt']),
 
 	// Per-mailbox signatures. Default-on-new-draft when isDefault=true.
 	mailSignatures: defineTable({

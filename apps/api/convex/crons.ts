@@ -374,6 +374,13 @@ crons.interval(
 // signals only (no LLM spend); in-app surface via getLatestBrief.
 crons.interval('build daily briefs', { hours: 24 }, internal.mail.dailyBrief.buildDailyBriefs, {});
 
+// Triage-tally retention (mail/triageTally.ts, idea 27). The per-sender counters
+// behind "you archive everything from X, always archive it?" are a rolling
+// picture of RECENT habits, so rows nothing has touched inside the retention
+// window are dropped. One bounded batch per tick; rows behind an accepted
+// suggestion are kept, because they anchor its undo.
+crons.interval('prune triage tallies', { hours: 24 }, internal.mail.triageTally.pruneTallies, {});
+
 // Commitment sweep — bidirectional deadline/promise tracking (mail/commitments.ts).
 // Schedules cheap-tier LLM extraction for recent sent promises (bounded fan-out)
 // and arms a pre-lapse reminder (reusing mail/followUps.ts) for any open

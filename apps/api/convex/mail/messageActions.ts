@@ -18,6 +18,7 @@ import { clearThreadNeedsReply } from './needsReply';
 import { removeMessageAttachments } from './attachmentIndex';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
 import { rebuildThreadAggregates } from './threadAggregates';
+import { recordTriageVerb } from './triageTally';
 
 // Re-exported so the modules that reach the rebuild through this one keep
 // working unchanged; it lives in ./threadAggregates now (size cap).
@@ -241,10 +242,16 @@ export const archive = authedMutation({
 			)
 			.first();
 		if (!archive) throwInvalidState('Archive folder missing');
-		return await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
-			messageIds: args.messageIds,
-			targetFolderId: archive._id,
-		});
+		const result = await ctx.runMutation(
+			(await import('../_generated/api')).api.mail.messageActions.move,
+			{ messageIds: args.messageIds, targetFolderId: archive._id }
+		);
+		// Idea 27: one triage SESSION observed for these senders. Recorded on the
+		// human-initiated wrapper only — the retroactive filter sweep also moves
+		// mail through `move`, and a rule's own work must never become evidence
+		// for suggesting that rule again.
+		await recordTriageVerb(ctx, args.messageIds, 'archive');
+		return result;
 	},
 });
 
@@ -265,10 +272,12 @@ export const trash = authedMutation({
 			)
 			.first();
 		if (!trash) throwInvalidState('Trash folder missing');
-		return await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
-			messageIds: args.messageIds,
-			targetFolderId: trash._id,
-		});
+		const result = await ctx.runMutation(
+			(await import('../_generated/api')).api.mail.messageActions.move,
+			{ messageIds: args.messageIds, targetFolderId: trash._id }
+		);
+		await recordTriageVerb(ctx, args.messageIds, 'trash');
+		return result;
 	},
 });
 
@@ -397,7 +406,9 @@ async function moveToRoleWithVerdict(
 export const reportSpam = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult> => {
-		return await moveToRoleWithVerdict(ctx, args.messageIds, 'spam', 'spam');
+		const result = await moveToRoleWithVerdict(ctx, args.messageIds, 'spam', 'spam');
+		await recordTriageVerb(ctx, args.messageIds, 'spam');
+		return result;
 	},
 });
 

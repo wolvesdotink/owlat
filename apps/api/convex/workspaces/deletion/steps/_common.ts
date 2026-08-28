@@ -136,6 +136,7 @@ export type OrganizationDeletionTable =
 	| 'mailContacts'
 	| 'mailSenderCategoryOverrides'
 	| 'mailSenderImageAllowlist'
+	| 'mailTriageTallies'
 	| 'mailForwarding'
 	| 'mailVacationResponders'
 	| 'mailVacationLog'
@@ -316,6 +317,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailContacts'),
 	v.literal('mailSenderCategoryOverrides'),
 	v.literal('mailSenderImageAllowlist'),
+	v.literal('mailTriageTallies'),
 	v.literal('mailForwarding'),
 	v.literal('mailVacationResponders'),
 	v.literal('mailVacationLog'),

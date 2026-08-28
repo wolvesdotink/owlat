@@ -4384,6 +4384,28 @@
 				"noSubject": "(kein Betreff)",
 				"unreadCapped": "{count}+",
 				"loadMoreIn": "Mehr laden in {section}"
+			},
+			"postboxTriageSuggestion": {
+				"label": "Regelvorschlag",
+				"prompt": {
+					"archive": "Sie haben {count} Nachrichten von {sender} archiviert, ohne zu antworten.",
+					"trash": "Sie haben {count} Nachrichten von {sender} gelöscht, ohne zu antworten.",
+					"spam": "Sie haben {count} Nachrichten von {sender} als Spam markiert."
+				},
+				"accept": {
+					"archive": "Immer archivieren",
+					"trash": "Immer löschen",
+					"spam": "Immer als Spam markieren"
+				},
+				"ruleName": {
+					"archive": "Post von {sender} immer archivieren",
+					"trash": "Post von {sender} immer löschen",
+					"spam": "Post von {sender} immer als Spam markieren"
+				},
+				"dismiss": "Nein danke",
+				"created": "Regel erstellt: {rule}",
+				"viewRule": "Regel ansehen",
+				"undo": "Rückgängig"
 			}
 		},
 		"preferences": {
@@ -11785,6 +11807,11 @@
 				"unsubscribeOperation": "Bündel abbestellen",
 				"undoArchived": "{count} Nachrichten archiviert",
 				"unsubscribeConfirm": "{count} Absender abbestellen und ihre Mail archivieren? Jede Abmeldung ist eine Anfrage in deinem Namen."
+			},
+			"usePostboxTriageSuggestion": {
+				"createRule": "Regel aus Vorschlag erstellen",
+				"dismissSuggestion": "Regelvorschlag verwerfen",
+				"undoRule": "Erstellte Regel rückgängig machen"
 			}
 		},
 		"postboxAutoAdvance": {

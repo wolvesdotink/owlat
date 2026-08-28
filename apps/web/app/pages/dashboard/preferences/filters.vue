@@ -84,10 +84,29 @@ function startFromMessage(seed: { from?: string; subject?: string }) {
 }
 
 // `?filterFrom=<address>&filterSubject=<subject>` is how the reader's overflow
-// hands a message over. Read once on mount and cleared from the URL, so a
-// reload does not reopen an editor the user already dismissed.
+// hands a message over; `?openFilter=<id>` is how the reader's accepted rule
+// suggestion (idea 27) links to the rule it created. Read once on mount and
+// cleared from the URL, so a reload does not reopen an editor the user already
+// dismissed.
 const route = useRoute();
 onMounted(() => {
+	const openId = route.query['openFilter'];
+	if (typeof openId === 'string') {
+		// The list may still be loading; watch once for the row rather than
+		// silently dropping a deep link that arrived first.
+		const stop = watch(
+			filters,
+			(rows) => {
+				const found = rows.find((f) => f._id === openId);
+				if (!found) return;
+				startEdit(found);
+				stop();
+				void navigateTo({ query: {} }, { replace: true });
+			},
+			{ immediate: true }
+		);
+		return;
+	}
 	const from = route.query['filterFrom'];
 	const subject = route.query['filterSubject'];
 	if (!from && !subject) return;
@@ -212,7 +231,10 @@ async function confirmRemove() {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.filters.activeFilters') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
 			<div v-else-if="filters.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.filters.empty') }}

@@ -1489,6 +1489,13 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				"
 				@collapse="collapseInline"
 			/>
+
+			<!-- "You archive everything from this sender. Always archive it?"
+			     (idea 27). Foot of the reader, under the conversation: it is an
+			     observation about the SENDER, not about this message. Strictly an
+			     offer — it renders nothing until a sender's tally earns one, and
+			     nothing is ever applied without the explicit click. -->
+			<PostboxTriageSuggestion v-if="latestMessage" :message-id="latestMessage._id" />
 		</div>
 
 		<!-- One-time-per-thread confirm before replying to a message that failed

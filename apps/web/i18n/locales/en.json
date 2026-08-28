@@ -4384,6 +4384,28 @@
 				"noSubject": "(no subject)",
 				"unreadCapped": "{count}+",
 				"loadMoreIn": "Load more in {section}"
+			},
+			"postboxTriageSuggestion": {
+				"label": "Rule suggestion",
+				"prompt": {
+					"archive": "You have archived {count} messages from {sender} without replying.",
+					"trash": "You have deleted {count} messages from {sender} without replying.",
+					"spam": "You have marked {count} messages from {sender} as spam."
+				},
+				"accept": {
+					"archive": "Always archive it",
+					"trash": "Always delete it",
+					"spam": "Always mark it as spam"
+				},
+				"ruleName": {
+					"archive": "Always archive mail from {sender}",
+					"trash": "Always delete mail from {sender}",
+					"spam": "Always mark mail from {sender} as spam"
+				},
+				"dismiss": "No thanks",
+				"created": "Rule created: {rule}",
+				"viewRule": "View rule",
+				"undo": "Undo"
 			}
 		},
 		"preferences": {
@@ -11785,6 +11807,11 @@
 				"unsubscribeOperation": "Unsubscribe from bundle",
 				"undoArchived": "Archived {count} messages",
 				"unsubscribeConfirm": "Unsubscribe from {count} senders and archive their mail? Each one is a request sent on your behalf."
+			},
+			"usePostboxTriageSuggestion": {
+				"createRule": "Create rule from suggestion",
+				"dismissSuggestion": "Dismiss rule suggestion",
+				"undoRule": "Undo the created rule"
 			}
 		},
 		"postboxAutoAdvance": {
