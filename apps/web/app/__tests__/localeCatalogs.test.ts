@@ -353,7 +353,6 @@ describe('UI message catalogs', () => {
 		'dashboard.send.transactional.index.columns.slug',
 		'dashboard.send.transactional.index.create.slugLabel',
 		'desktop.settings.globalHeading',
-		'desktop.settings.theme.system',
 		'desktop.settings.updates.title',
 		'desktop.settings.updates.version',
 		'desktop.settings.workspaces.heading',

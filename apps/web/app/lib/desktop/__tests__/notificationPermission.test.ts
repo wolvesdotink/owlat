@@ -1,19 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { desktopPlatformFrom, osNotificationSettingsUri } from '../notificationPermission';
-
-describe('desktopPlatformFrom', () => {
-	it('reads the three targets we ship out of navigator.platform', () => {
-		expect(desktopPlatformFrom('MacIntel')).toBe('mac');
-		expect(desktopPlatformFrom('Win32')).toBe('windows');
-		expect(desktopPlatformFrom('Linux x86_64')).toBe('linux');
-	});
-
-	it('falls back to linux for anything unrecognised', () => {
-		// Better a missing deep link (we render instructions) than a wrong one.
-		expect(desktopPlatformFrom('')).toBe('linux');
-		expect(desktopPlatformFrom('FreeBSD amd64')).toBe('linux');
-	});
-});
+import { osNotificationSettingsUri } from '../notificationPermission';
 
 describe('osNotificationSettingsUri', () => {
 	it('deep-links the notification pane on macOS and Windows', () => {

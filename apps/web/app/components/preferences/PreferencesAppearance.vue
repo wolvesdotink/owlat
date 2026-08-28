@@ -80,7 +80,7 @@ const themeOptions = computed<
 		</div>
 		<NuxtLink
 			v-if="isDesktop"
-			to="/desktop/settings"
+			to="/dashboard/preferences/device"
 			class="mt-4 inline-flex items-center gap-1.5 text-sm text-brand hover:underline"
 		>
 			<Icon name="lucide:app-window" class="w-4 h-4" />

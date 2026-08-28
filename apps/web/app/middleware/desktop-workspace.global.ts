@@ -9,9 +9,10 @@
  */
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 
-// `/desktop/settings` is deliberately reachable with no active workspace: the
-// native menu's Settings item must open it from the welcome flow too (global
-// device settings don't need a connection).
+// `/desktop/settings` stays reachable with no active workspace even though it is
+// now only a redirect into Preferences: the page itself decides where to send a
+// visitor who has not connected anything yet (the connect flow), which it cannot
+// do if this guard bounces it first.
 const ALLOWED_PREFIXES = [
 	'/desktop/welcome',
 	'/desktop/connect',

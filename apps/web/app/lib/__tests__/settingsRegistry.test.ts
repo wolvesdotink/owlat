@@ -36,6 +36,7 @@ const NO_MAIL: SettingsEnvironment = {
 	isDesktop: false,
 };
 const NO_AI: SettingsEnvironment = { isFeatureEnabled: (flag) => flag !== 'ai', isDesktop: false };
+const WEB_WITH_MAIL: SettingsEnvironment = { isFeatureEnabled: () => true, isDesktop: false };
 
 /** Every non-dynamic `.vue` page under `pages/dashboard/preferences`, as a route. */
 async function preferenceRoutes(): Promise<string[]> {
@@ -68,9 +69,10 @@ describe('SETTINGS_REGISTRY — coverage', () => {
 		expect(undeclared).toEqual([]);
 	});
 
-	it('declares no entry without a page (every path is under the Preferences root)', () => {
-		const stray = SETTINGS_REGISTRY.filter(
-			(entry) => entry.path !== SETTINGS_ROOT && !entry.path.startsWith(`${SETTINGS_ROOT}/`)
+	it('declares no entry that is not a Preferences page', async () => {
+		const onDisk = new Set(await preferenceRoutes());
+		const stray = SETTINGS_REGISTRY.filter((entry) => !onDisk.has(entry.path)).map(
+			(entry) => entry.path
 		);
 		expect(stray).toEqual([]);
 	});
@@ -140,6 +142,11 @@ describe('gates', () => {
 		expect(visibleSettingsEntries(NO_AI).map((entry) => entry.id)).toContain('snippets');
 	});
 
+	it('keeps the device page on the web (the offline cache lives there too)', () => {
+		expect(visibleSettingsEntries(WEB_WITH_MAIL).map((entry) => entry.id)).toContain('device');
+		expect(visibleSettingsEntries(NO_MAIL).map((entry) => entry.id)).not.toContain('device');
+	});
+
 	it('leaves a hidden entry reachable but unlisted', () => {
 		expect(visibleSettingsEntries(FULL).map((entry) => entry.id)).not.toContain('addAccount');
 		expect(settingsEntryFor(`${SETTINGS_ROOT}/add-account`)?.hidden).toBe(true);
@@ -154,6 +161,7 @@ describe('gates', () => {
 			'general',
 			'mail',
 			'account',
+			'device',
 		]);
 	});
 });
@@ -163,6 +171,13 @@ describe('settingsControlTargets', () => {
 		for (const target of settingsControlTargets(FULL)) {
 			expect(target.href).toBe(`${target.entry.path}#${target.control.anchor}`);
 		}
+	});
+
+	it('drops the desktop-only switches on the web', () => {
+		const ids = settingsControlTargets(WEB_WITH_MAIL).map((target) => target.control.id);
+		expect(ids).toContain('offlineCache');
+		expect(ids).not.toContain('autostart');
+		expect(ids).not.toContain('notifyAbout');
 	});
 
 	it('drops every control of a page the environment cannot reach', () => {

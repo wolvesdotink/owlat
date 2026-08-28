@@ -21,7 +21,6 @@ definePageMeta({
 const { mailboxes, isLoading } = usePostboxMailbox();
 const { isEnabled } = useFeatureFlag();
 const { isAdmin } = usePermissions();
-const { isDesktop } = useDesktopContext();
 const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'));
 
 // ── Reading behavior (per-user, spans all mailboxes) ───────────────────
@@ -341,12 +340,6 @@ async function handleDelete() {
 			<!-- Reading protections: the senders whose remote images load without
 		     asking. Self-hides until the reader has granted at least one. -->
 			<PostboxTrustedSendersSettings />
-
-			<!-- On this device: offline read cache (device-local, never synced). -->
-			<PostboxOfflineSettings />
-
-			<!-- Desktop-only: native notification behavior. -->
-			<PostboxNotificationSettings v-if="isDesktop" />
 
 			<section id="mailboxes" class="card !p-0 scroll-mt-6">
 				<header class="px-5 py-3 border-b border-border-subtle">

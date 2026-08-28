@@ -293,3 +293,30 @@ the desktop webview, which WebAuthn will likely reject — worth checking before
 promising desktop support), add `passkeyClient()` in `app/lib/auth-client.ts`,
 and hang an add/name/remove section off the existing sign-in and security page,
 which already has the card layout and the enrolment-dialog pattern for it.
+
+## 60 — device settings are no longer reachable before a workspace is connected
+
+`/desktop/settings` is now a redirect into `/dashboard/preferences/device`, the
+"This device" section of the Preferences layout, and the standalone 441-line
+island is gone with its titlebar, its `layout: false` and its duplicate
+appearance and notification controls.
+
+What that costs is the pre-connection case. The old page rendered outside
+`/dashboard`, so the native menu's Settings item worked with no workspace and no
+session: launch a fresh install, and you could still set the theme, turn on
+launch-at-login, turn off automatic update checks and read the "make Owlat your
+default mail app" steps before connecting to anything. The new home is a
+dashboard route, and a dashboard route needs a workspace, so the redirect sends
+a visitor with none to `/desktop/welcome` instead. Those four device-global
+switches are unreachable until a workspace exists.
+
+The route stays allow-listed in `middleware/desktop-workspace.global.ts` so the
+redirect page itself gets to make that decision rather than being bounced first;
+everything device-local that a connected user can reach is unchanged.
+
+To pick it up: the settings the pre-connection case needs are the four global
+ones, and they are already a self-contained group on the device page
+(`#startup`, `#updates`, `#default-app`) reading `useDesktopAppSettings` and
+`useDesktopSettings`, neither of which touches Convex. Extract that group into a
+component and render it from `/desktop/welcome` — the screen someone with no
+workspace is already looking at — rather than reviving a second settings route.

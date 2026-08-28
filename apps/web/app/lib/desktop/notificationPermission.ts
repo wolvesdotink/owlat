@@ -12,10 +12,13 @@
  * (`apps/desktop/src-tauri/tauri.conf.json`), which otherwise only permits
  * mailto/tel/http(s).
  *
- * Pure and platform-parameterised so it unit-tests without a webview.
+ * Pure and platform-parameterised so it unit-tests without a webview. WHICH
+ * platform is not decided here — `lib/desktop/platform.ts` is the one module
+ * that reads the navigator.
  */
+import type { DesktopPlatform } from './platform';
 
-export type DesktopPlatform = 'mac' | 'windows' | 'linux';
+export type { DesktopPlatform };
 
 /**
  * The deep link that opens the OS notification settings, or null when the
@@ -31,11 +34,4 @@ export function osNotificationSettingsUri(platform: DesktopPlatform): string | n
 		case 'linux':
 			return null;
 	}
-}
-
-/** Narrow the browser's platform string to the three targets we ship. */
-export function desktopPlatformFrom(navigatorPlatform: string): DesktopPlatform {
-	if (/Mac/i.test(navigatorPlatform)) return 'mac';
-	if (/Win/i.test(navigatorPlatform)) return 'windows';
-	return 'linux';
 }

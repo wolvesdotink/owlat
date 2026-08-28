@@ -1,8 +1,4 @@
-import {
-	desktopPlatformFrom,
-	osNotificationSettingsUri,
-	type DesktopPlatform,
-} from '~/lib/desktop/notificationPermission';
+import { osNotificationSettingsUri } from '~/lib/desktop/notificationPermission';
 import type { DesktopNotificationPermission } from '@owlat/desktop/src/notifications';
 
 /**
@@ -20,7 +16,7 @@ import type { DesktopNotificationPermission } from '@owlat/desktop/src/notificat
  * tries, exactly as it did before this check existed.
  */
 export function useDesktopNotificationPermission() {
-	const { isDesktop } = useDesktopContext();
+	const { isDesktop, platform } = useDesktopContext();
 	const permission = useState<DesktopNotificationPermission>(
 		'desktop-notification-permission',
 		() => 'unavailable'
@@ -31,9 +27,6 @@ export function useDesktopNotificationPermission() {
 	const canSend = computed(() => permission.value !== 'denied');
 	const isDenied = computed(() => permission.value === 'denied');
 
-	const platform = computed<DesktopPlatform>(() =>
-		typeof navigator === 'undefined' ? 'linux' : desktopPlatformFrom(navigator.platform)
-	);
 	/** Null on Linux, where the pane differs per desktop environment. */
 	const osSettingsUri = computed(() => osNotificationSettingsUri(platform.value));
 

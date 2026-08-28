@@ -47,10 +47,15 @@ const flag =
 /** Mail exists on this instance at all (hosted postbox or a connected mailbox). */
 export const hasMail: SettingsGate = (env) =>
 	env.isFeatureEnabled('postbox') || env.isFeatureEnabled('mail.external');
+const desktopOnly: SettingsGate = (env) => env.isDesktop;
 const all =
 	(...gates: readonly SettingsGate[]): SettingsGate =>
 	(env) =>
 		gates.every((gate) => gate(env));
+const any =
+	(...gates: readonly SettingsGate[]): SettingsGate =>
+	(env) =>
+		gates.some((gate) => gate(env));
 
 /** The four groups the hub, the left nav and the palette subtitle share. */
 export type SettingsSectionKey = 'general' | 'mail' | 'account' | 'device';
@@ -217,6 +222,27 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		icon: 'lucide:key-round',
 		section: 'account',
 		gate: hasMail,
+	}),
+	entry('device', {
+		path: `${SETTINGS_ROOT}/device`,
+		icon: 'lucide:monitor',
+		section: 'device',
+		// Everything on this page is device-local: the offline read cache (any
+		// browser) plus the desktop app's own switches. Each section self-hides,
+		// and the page disappears entirely on an instance with neither.
+		gate: any(desktopOnly, hasMail),
+		controls: [
+			control('offlineCache', 'offline', hasMail),
+			control('notifyAbout', 'notifications', all(desktopOnly, hasMail)),
+			control('quietHours', 'notifications', all(desktopOnly, hasMail)),
+			control('hidePreview', 'notifications', all(desktopOnly, hasMail)),
+			control('autostart', 'startup', desktopOnly),
+			control('startupWorkspace', 'startup', desktopOnly),
+			control('unreadBadge', 'notifications', desktopOnly),
+			control('updates', 'updates', desktopOnly),
+			control('defaultApp', 'default-app', desktopOnly),
+			control('workspaces', 'workspaces', desktopOnly),
+		],
 	}),
 ];
 

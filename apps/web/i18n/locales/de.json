@@ -8563,6 +8563,10 @@
 				"usageLine": "Erstellt {created} · Zuletzt verwendet {lastUsed}",
 				"usernameLabel": "Benutzername"
 			},
+			"device": {
+				"intro": "Einstellungen, die nur auf diesem Gerät gespeichert werden — sie wandern nie auf einen anderen Computer oder Browser.",
+				"nothingHere": "Auf dieser Instanz speichert nichts etwas auf diesem Gerät."
+			},
 			"filters": {
 				"activeFilters": "Aktive Filter",
 				"createFilter": "Filter erstellen",
@@ -9272,10 +9276,6 @@
 			"title": "Desktop-App verbinden"
 		},
 		"settings": {
-			"appearance": {
-				"description": "Design für die gesamte App auf diesem Gerät.",
-				"title": "Erscheinungsbild"
-			},
 			"autostart": {
 				"description": "Owlat automatisch starten, wenn Sie sich anmelden.",
 				"title": "Beim Anmelden starten"
@@ -9286,12 +9286,10 @@
 				"macos": "Öffnen Sie {path} und setzen Sie {setting} auf Owlat.",
 				"macosPath": "Mail → Einstellungen → Allgemein",
 				"macosSetting": "Standard-E-Mail-Programm",
-				"other": "Legen Sie Owlat in den Standard-App-Einstellungen Ihres Betriebssystems als {scheme}-Handler fest.",
 				"title": "Standard-E-Mail-App",
 				"windows": "Öffnen Sie {path}, suchen Sie nach Owlat und legen Sie es als Handler für {scheme} fest.",
 				"windowsPath": "Einstellungen → Apps → Standard-Apps"
 			},
-			"desktopOnly": "Diese Einstellungen sind nur in der Owlat-Desktop-App verfügbar.",
 			"globalHeading": "Global",
 			"notifications": {
 				"description": "Native Benachrichtigungen für neue E-Mails und Aktivitäten anzeigen.",
@@ -9302,12 +9300,6 @@
 				"description": "Welchen Workspace Owlat beim Start öffnet.",
 				"lastActive": "Zuletzt aktiver Workspace",
 				"title": "Beim Start öffnen"
-			},
-			"subtitle": "Globale Einstellungen gelten für die Owlat-App auf diesem Gerät, über alle Workspaces hinweg.",
-			"theme": {
-				"dark": "Dunkel",
-				"light": "Hell",
-				"system": "System"
 			},
 			"unreadBadge": {
 				"description": "Die Anzahl ungelesener Nachrichten auf dem App-Symbol anzeigen.",

@@ -8563,6 +8563,10 @@
 				"usageLine": "Created {created} · Last used {lastUsed}",
 				"usernameLabel": "Username"
 			},
+			"device": {
+				"intro": "Settings stored on this device only — they never travel to another computer or browser.",
+				"nothingHere": "Nothing on this instance stores anything on this device."
+			},
 			"filters": {
 				"activeFilters": "Active filters",
 				"createFilter": "Create filter",
@@ -9272,10 +9276,6 @@
 			"title": "Connect the desktop app"
 		},
 		"settings": {
-			"appearance": {
-				"description": "Theme for the whole app on this device.",
-				"title": "Appearance"
-			},
 			"autostart": {
 				"description": "Start Owlat automatically when you log in.",
 				"title": "Launch at login"
@@ -9286,12 +9286,10 @@
 				"macos": "Open {path} and set {setting} to Owlat.",
 				"macosPath": "Mail → Settings → General",
 				"macosSetting": "Default email reader",
-				"other": "Set Owlat as the {scheme} handler in your operating system's default-apps settings.",
 				"title": "Default email app",
 				"windows": "Open {path}, search for Owlat, and set it as the handler for {scheme}.",
 				"windowsPath": "Settings → Apps → Default apps"
 			},
-			"desktopOnly": "These settings are only available in the Owlat desktop app.",
 			"globalHeading": "Global",
 			"notifications": {
 				"description": "Show native notifications for new mail and activity.",
@@ -9302,12 +9300,6 @@
 				"description": "Which workspace Owlat opens when it launches.",
 				"lastActive": "Last active workspace",
 				"title": "Open at startup"
-			},
-			"subtitle": "Global settings apply to the Owlat app on this device, across every workspace.",
-			"theme": {
-				"dark": "Dark",
-				"light": "Light",
-				"system": "System"
 			},
 			"unreadBadge": {
 				"description": "Show the unread count on the app icon.",
