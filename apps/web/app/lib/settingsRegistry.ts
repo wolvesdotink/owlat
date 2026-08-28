@@ -282,6 +282,24 @@ export function settingsControlTargets(env: SettingsEnvironment): SettingsContro
 	);
 }
 
+/**
+ * Read a settings deep link's `#anchor` back, but only if some registry control
+ * actually declares it.
+ *
+ * The layout scrolls to whatever the hash names, so an unvalidated hash would
+ * let any link on the internet point the page at an arbitrary element id. Only
+ * anchors the registry itself declares are honoured; anything else is ignored
+ * and the page opens at the top. Pure.
+ */
+export function settingsAnchorFromHash(hash: string): string | null {
+	const anchor = hash.startsWith('#') ? hash.slice(1) : hash;
+	if (!anchor) return null;
+	const declared = SETTINGS_REGISTRY.some((owner) =>
+		(owner.controls ?? []).some((candidate) => candidate.anchor === anchor)
+	);
+	return declared ? anchor : null;
+}
+
 /** Split a resolved keywords message into its individual synonyms. Pure. */
 export function parseKeywords(resolved: string): string[] {
 	return resolved

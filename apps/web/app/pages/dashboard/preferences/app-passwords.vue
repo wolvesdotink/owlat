@@ -4,7 +4,7 @@ const { t, locale } = useI18n();
 useHead({ title: () => t('dashboard.preferences.appPasswords.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
@@ -73,18 +73,11 @@ const smtpHost = computed(() => imapHost.value);
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-3xl mx-auto">
-		<PreferencesBackLink />
-
-		<header class="mb-6 flex items-center justify-between">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em]">
-					{{ t('dashboard.preferences.appPasswords.heading') }}
-				</h1>
-				<p class="text-text-secondary mt-1">
-					{{ t('dashboard.preferences.appPasswords.subheading') }}
-				</p>
-			</div>
+	<div>
+		<header class="mb-6 flex items-center justify-between gap-4">
+			<p class="text-text-secondary">
+				{{ t('dashboard.preferences.appPasswords.subheading') }}
+			</p>
 			<UiButton v-if="mailboxId" type="button" @click="showCreate = true">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.appPasswords.generate') }}

@@ -4321,54 +4321,13 @@
 			"preferencesBackLink": {
 				"label": "Zurück zu den Einstellungen"
 			},
-			"preferencesHeader": {
-				"addAccount": "Konto hinzufügen",
-				"subtitle": "Einstellungen, die nur Sie betreffen.",
-				"title": "Einstellungen"
+			"preferencesDestinations": {
+				"ariaLabel": "Einstellungsbereiche"
 			},
 			"preferencesLanguage": {
 				"hint": "Wird in diesem Browser gespeichert. Noch nicht übersetzte Texte erscheinen auf Englisch.",
 				"subtitle": "Wählen Sie die Sprache, in der die Owlat-Oberfläche auf diesem Gerät erscheint.",
 				"title": "Sprache"
-			},
-			"preferencesMailLinks": {
-				"aliases": {
-					"description": "Alternative Adressen",
-					"title": "Aliase"
-				},
-				"appPasswords": {
-					"description": "Für Apple Mail / Thunderbird",
-					"title": "App-Passwörter"
-				},
-				"ariaLabel": "E-Mail-Einstellungen",
-				"filters": {
-					"description": "Eingehende E-Mails automatisch zuordnen",
-					"title": "Filter"
-				},
-				"forwarding": {
-					"description": "Regeln für externe Weiterleitungen",
-					"title": "Weiterleitung"
-				},
-				"import": {
-					"description": "Gmail, Fastmail, Outlook oder ein beliebiger E-Mail-Anbieter + trainieren Sie Ihre KI",
-					"title": "Ihre E-Mails importieren"
-				},
-				"signatures": {
-					"description": "Automatisch an neue Entwürfe anhängen",
-					"title": "Signaturen"
-				},
-				"snippets": {
-					"description": "Vorgefertigte Antworten über \"/\"",
-					"title": "Textbausteine"
-				},
-				"vacation": {
-					"description": "Automatische Antwort bei Abwesenheit",
-					"title": "Abwesenheit"
-				},
-				"writingVoice": {
-					"description": "KI-Entwürfe klingen wie Sie",
-					"title": "Schreibstil"
-				}
 			}
 		},
 		"query": {
@@ -8492,7 +8451,6 @@
 				"exportSubtitle": "Laden Sie eine Kopie all Ihrer Daten im JSON- oder CSV-Format herunter",
 				"exportTitle": "Ihre Daten exportieren",
 				"exporting": "Wird exportiert...",
-				"heading": "Kontoverwaltung",
 				"loginEmailTitle": "Anmelde-E-Mail",
 				"loginEmailUnverifiedDescription": "Ändern Sie die E-Mail-Adresse, mit der Sie sich anmelden. Wir senden einen Bestätigungslink an die neue Adresse — Ihre Anmelde-E-Mail ändert sich erst, sobald Sie ihm folgen.",
 				"loginEmailVerifiedDescription": "Ändern Sie die E-Mail-Adresse, mit der Sie sich anmelden. Wir senden einen Bestätigungslink an Ihre aktuelle Adresse; sobald Sie ihm folgen, senden wir einen abschließenden Bestätigungslink an die neue Adresse. Ihre Anmelde-E-Mail ändert sich erst, wenn Sie diesem letzten Link gefolgt sind.",
@@ -8540,7 +8498,6 @@
 				"errorNotSignedIn": "Bitte stellen Sie sicher, dass Sie angemeldet sind.",
 				"externalTeamDescription": "Verbinden Sie ein bestehendes Postfach (etwa {example}) als gemeinsames Postfach, das Ihr Team zusammen liest und aus dem es sendet. Sie sind dessen Inhaberin oder Inhaber, und Ihr Team liest es über dieselbe Verbindung.",
 				"externalTeamTitle": "Gemeinsames Postfach verbinden",
-				"heading": "E-Mail-Konto hinzufügen",
 				"manageMembers": "Mitglieder verwalten",
 				"modePersonal": "Persönliches Postfach",
 				"modeTeam": "Team-Postfach",
@@ -8569,7 +8526,6 @@
 				"addAliasOperation": "Alias hinzufügen",
 				"aliasPlaceholder": "marcel+sales{'@'}hl.camp",
 				"empty": "Noch keine Aliasse.",
-				"heading": "Aliasse",
 				"noMailbox": "Kein Postfach konfiguriert.",
 				"pageTitle": "Aliasse — Owlat",
 				"removeAlias": "Alias entfernen",
@@ -8586,7 +8542,6 @@
 				"generate": "Erzeugen",
 				"generateDialogTitle": "App-Passwort erzeugen",
 				"generating": "Wird erzeugt…",
-				"heading": "App-Passwörter",
 				"imapLabel": "IMAP",
 				"imapValue": "{host}:993 (TLS)",
 				"labelLabel": "Bezeichnung",
@@ -8622,8 +8577,7 @@
 				"ruleSummary": "{conditions} Bedingung(en) · {actions} Aktion(en)",
 				"saveChanges": "Änderungen speichern",
 				"stopBadge": "Stopp",
-				"stopTitle": "Stoppt weitere Filter",
-				"title": "Filter"
+				"stopTitle": "Stoppt weitere Filter"
 			},
 			"forwarding": {
 				"activeRules": "Aktive Regeln",
@@ -8640,10 +8594,10 @@
 				"removeDescription": "Eingehende Mail wird nicht mehr an diese Adresse weitergeleitet.",
 				"removeOperation": "Weiterleitungsregel entfernen",
 				"removeTitle": "Weiterleitungsregel entfernen?",
-				"title": "Weiterleitung",
 				"updateOperation": "Weiterleitungsregel aktualisieren"
 			},
 			"index": {
+				"addAccount": "Mailkonto hinzufügen",
 				"autoAdvanceHelp": "Was der Reader anzeigt, sobald die geöffnete Konversation abgearbeitet ist.",
 				"autoAdvanceLabel": "Nach dem Archivieren, Löschen oder Schlummern",
 				"autoSummarizeHelp": "Eine einzeilige KI-Zusammenfassung oben in langen Konversationen anzeigen. Klicken Sie darauf, um die Kernpunkte aufzuklappen.",
@@ -8676,6 +8630,7 @@
 				"replyDefaultLabel": "Standardverhalten beim Antworten",
 				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
 				"sendSoundLabel": "Ton beim Senden abspielen",
+				"subtitle": "Wie Owlat für Sie aussieht, liest und sendet.",
 				"teamManage": "Team · verwalten",
 				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
 				"writingSuggestionsLabel": "Schreibvorschläge"
@@ -8692,7 +8647,6 @@
 			},
 			"security": {
 				"pageTitle": "Anmeldung und Sicherheit — Owlat",
-				"heading": "Anmeldung und Sicherheit",
 				"subheading": "Wo dein Konto angemeldet ist — und welcher zweite Faktor es schützt.",
 				"device": {
 					"browsers": {
@@ -8817,7 +8771,6 @@
 				"noMailbox": "Kein Postfach konfiguriert.",
 				"pageTitle": "Signaturen — Owlat",
 				"saveChanges": "Änderungen speichern",
-				"title": "Signaturen",
 				"useAsDefault": "Als Standardsignatur für neue Entwürfe verwenden",
 				"yourSignatures": "Ihre Signaturen"
 			},
@@ -8834,7 +8787,6 @@
 				"pageTitle": "Textbausteine — Owlat",
 				"saveChanges": "Änderungen speichern",
 				"shortcutPlaceholder": "Kürzel",
-				"title": "Textbausteine",
 				"yourSnippets": "Ihre Textbausteine"
 			},
 			"vacation": {
@@ -8850,7 +8802,6 @@
 				"saveOperation": "Abwesenheitsnotiz speichern",
 				"start": "Beginn (optional)",
 				"subject": "Betreff",
-				"title": "Abwesenheitsnotiz",
 				"turnOff": "Ausschalten",
 				"turnOffDescription": "Der Abwesenheits-Autoresponder antwortet nicht mehr auf eingehende Mail.",
 				"turnOffOperation": "Abwesenheitsnotiz ausschalten",
@@ -8860,8 +8811,7 @@
 				"aiDisabled": "KI-Funktionen sind für diesen Workspace deaktiviert, daher gibt es keinen Schreibstil zu personalisieren.",
 				"intro": "Owlat kann aus Ihren gesendeten Mails lernen, wie Sie schreiben, damit KI-Antwortvorschläge nach Ihnen klingen. Das ist nur beratend — es wird nie etwas automatisch gesendet.",
 				"noMailboxes": "Noch keine Postfächer. Fügen Sie ein Konto hinzu und senden Sie zuerst ein paar Nachrichten.",
-				"pageTitle": "Schreibstil — Owlat",
-				"title": "Schreibstil"
+				"pageTitle": "Schreibstil — Owlat"
 			}
 		},
 		"send": {
@@ -13901,6 +13851,10 @@
 			"pageTitleNotFound": "Seite nicht gefunden — Owlat",
 			"serverError": "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuchen Sie es später erneut.",
 			"unexpected": "Ein unerwarteter Fehler ist aufgetreten."
+		},
+		"preferences": {
+			"title": "Einstellungen",
+			"navLabel": "Einstellungsbereiche"
 		}
 	},
 	"terms": {

@@ -7,7 +7,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.filters.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
@@ -87,18 +87,11 @@ async function confirmRemove() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-3xl mx-auto">
-		<PreferencesBackLink />
-
-		<header class="mb-6 flex items-center justify-between">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em]">
-					{{ t('dashboard.preferences.filters.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">
-					{{ t('dashboard.preferences.filters.intro') }}
-				</p>
-			</div>
+	<div>
+		<header class="mb-6 flex items-center justify-between gap-4">
+			<p class="text-text-secondary">
+				{{ t('dashboard.preferences.filters.intro') }}
+			</p>
 			<UiButton v-if="mailboxId && !editor" type="button" @click="startCreate">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.filters.newFilter') }}

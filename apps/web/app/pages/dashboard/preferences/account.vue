@@ -15,7 +15,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.account.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 });
 
@@ -321,15 +321,8 @@ const daysRemaining = computed(() => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="mb-6">
-			<PreferencesBackLink />
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.preferences.account.heading') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">{{ t('dashboard.preferences.account.subheading') }}</p>
-		</div>
+	<div>
+		<p class="mb-6 text-text-secondary">{{ t('dashboard.preferences.account.subheading') }}</p>
 
 		<!-- Loading State -->
 		<div v-if="deletionLoading && !pendingDeletion" class="flex items-center justify-center py-16">

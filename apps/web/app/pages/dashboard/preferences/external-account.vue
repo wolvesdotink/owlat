@@ -5,7 +5,7 @@
 // simply redirects to the wizard, which now also hosts connect / update
 // credentials / disconnect / delete for the connected mailbox.
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 });
 

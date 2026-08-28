@@ -19,7 +19,7 @@ const { t, locale } = useI18n();
 useHead({ title: () => t('dashboard.preferences.security.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 });
 
@@ -101,14 +101,9 @@ async function confirmSignOutOthers() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-3xl mx-auto">
-		<PreferencesBackLink />
-
+	<div>
 		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em]">
-				{{ t('dashboard.preferences.security.heading') }}
-			</h1>
-			<p class="text-text-secondary mt-1">
+			<p class="text-text-secondary">
 				{{ t('dashboard.preferences.security.subheading') }}
 			</p>
 		</header>

@@ -8,7 +8,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.addAccount.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
@@ -136,15 +136,9 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
-		<PreferencesBackLink />
-
-		<h1 class="text-2xl font-medium tracking-[-0.02em]">
-			{{ t('dashboard.preferences.addAccount.heading') }}
-		</h1>
-
+	<div>
 		<!-- Step 1: choose address -->
-		<section v-if="step === 1" class="card mt-6 p-6">
+		<section v-if="step === 1" class="card p-6">
 			<!-- Personal vs team inbox. Only admins can create a shared team inbox. -->
 			<div v-if="isAdmin" class="flex gap-1 p-1 mb-5 rounded-md bg-bg-surface w-fit">
 				<button

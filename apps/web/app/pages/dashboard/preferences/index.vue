@@ -14,7 +14,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.index.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 });
 
@@ -119,17 +119,33 @@ async function handleDelete() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-4xl">
-		<PreferencesHeader :has-mail="hasMail" />
+	<div>
+		<div class="mb-6 flex items-start justify-between gap-4">
+			<p class="text-text-secondary">{{ t('dashboard.preferences.index.subtitle') }}</p>
+			<UiButton
+				v-if="hasMail"
+				class="shrink-0"
+				@click="navigateTo('/dashboard/preferences/add-account')"
+			>
+				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+				{{ t('dashboard.preferences.index.addAccount') }}
+			</UiButton>
+		</div>
 
-		<PreferencesAppearance />
+		<!-- Every reachable Preferences page, from the settings registry. Not
+		     gated on mail: the hand-written grid this replaced was, which left
+		     aliases, vacation, snippets, writing voice and app passwords with no
+		     entry point on an instance without it. -->
+		<PreferencesDestinations />
 
-		<PreferencesLanguage />
+		<!-- `id`s are the settings registry's own control anchors, so a palette
+		     deep link ("dark mode", "auto-advance") lands on the right card. -->
+		<PreferencesAppearance id="appearance" class="scroll-mt-6" />
+
+		<PreferencesLanguage id="language" class="scroll-mt-6" />
 
 		<template v-if="hasMail">
-			<PreferencesMailLinks />
-
-			<section class="card !p-0 mb-6">
+			<section id="reading" class="card !p-0 mb-6 scroll-mt-6">
 				<header class="px-5 py-3 border-b border-border-subtle">
 					<h2 class="font-semibold">{{ t('dashboard.preferences.index.reading') }}</h2>
 				</header>
@@ -332,7 +348,7 @@ async function handleDelete() {
 			<!-- Desktop-only: native notification behavior. -->
 			<PostboxNotificationSettings v-if="isDesktop" />
 
-			<section class="card !p-0">
+			<section id="mailboxes" class="card !p-0 scroll-mt-6">
 				<header class="px-5 py-3 border-b border-border-subtle">
 					<h2 class="font-semibold">{{ t('dashboard.preferences.index.mailboxes') }}</h2>
 				</header>

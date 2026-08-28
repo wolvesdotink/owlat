@@ -4321,54 +4321,13 @@
 			"preferencesBackLink": {
 				"label": "Back to Preferences"
 			},
-			"preferencesHeader": {
-				"addAccount": "Add account",
-				"subtitle": "Settings that affect only you.",
-				"title": "Preferences"
+			"preferencesDestinations": {
+				"ariaLabel": "Preferences sections"
 			},
 			"preferencesLanguage": {
 				"hint": "Remembered in this browser. Anything not translated yet is shown in English.",
 				"subtitle": "Choose the language Owlat's interface is shown in on this device.",
 				"title": "Language"
-			},
-			"preferencesMailLinks": {
-				"aliases": {
-					"description": "Alternate addresses",
-					"title": "Aliases"
-				},
-				"appPasswords": {
-					"description": "For Apple Mail / Thunderbird",
-					"title": "App passwords"
-				},
-				"ariaLabel": "Mail preferences",
-				"filters": {
-					"description": "Auto-route inbound mail",
-					"title": "Filters"
-				},
-				"forwarding": {
-					"description": "External forwarding rules",
-					"title": "Forwarding"
-				},
-				"import": {
-					"description": "Gmail, Fastmail, Outlook or any mail provider + teach your AI",
-					"title": "Import your mail"
-				},
-				"signatures": {
-					"description": "Auto-append to new drafts",
-					"title": "Signatures"
-				},
-				"snippets": {
-					"description": "Canned responses via \"/\"",
-					"title": "Snippets"
-				},
-				"vacation": {
-					"description": "Auto-reply while away",
-					"title": "Vacation"
-				},
-				"writingVoice": {
-					"description": "Make AI drafts sound like you",
-					"title": "Writing voice"
-				}
 			}
 		},
 		"query": {
@@ -8492,7 +8451,6 @@
 				"exportSubtitle": "Download a copy of all your data in JSON or CSV format",
 				"exportTitle": "Export Your Data",
 				"exporting": "Exporting...",
-				"heading": "Account Management",
 				"loginEmailTitle": "Login email",
 				"loginEmailUnverifiedDescription": "Change the email address you use to sign in. We send a confirmation link to the new address — your login email only changes once you follow it.",
 				"loginEmailVerifiedDescription": "Change the email address you use to sign in. We send an approval link to your current address; once you follow it we send a final confirmation link to the new address. Your login email only changes after that last link is followed.",
@@ -8540,7 +8498,6 @@
 				"errorNotSignedIn": "Please make sure you are signed in.",
 				"externalTeamDescription": "Connect an existing mailbox (like {example}) as a shared inbox your teammates read and send from together. You'll be its owner, and your team reads it through the same connection.",
 				"externalTeamTitle": "Connect a shared mailbox",
-				"heading": "Add mail account",
 				"manageMembers": "Manage members",
 				"modePersonal": "Personal mailbox",
 				"modeTeam": "Team inbox",
@@ -8569,7 +8526,6 @@
 				"addAliasOperation": "Add alias",
 				"aliasPlaceholder": "marcel+sales{'@'}hl.camp",
 				"empty": "No aliases yet.",
-				"heading": "Aliases",
 				"noMailbox": "No mailbox configured.",
 				"pageTitle": "Aliases — Owlat",
 				"removeAlias": "Remove alias",
@@ -8586,7 +8542,6 @@
 				"generate": "Generate",
 				"generateDialogTitle": "Generate app password",
 				"generating": "Generating…",
-				"heading": "App passwords",
 				"imapLabel": "IMAP",
 				"imapValue": "{host}:993 (TLS)",
 				"labelLabel": "Label",
@@ -8622,8 +8577,7 @@
 				"ruleSummary": "{conditions} condition(s) · {actions} action(s)",
 				"saveChanges": "Save changes",
 				"stopBadge": "Stop",
-				"stopTitle": "Stops further filters",
-				"title": "Filters"
+				"stopTitle": "Stops further filters"
 			},
 			"forwarding": {
 				"activeRules": "Active rules",
@@ -8640,10 +8594,10 @@
 				"removeDescription": "Inbound mail will no longer be forwarded to this address.",
 				"removeOperation": "Remove forwarding rule",
 				"removeTitle": "Remove forwarding rule?",
-				"title": "Forwarding",
 				"updateOperation": "Update forwarding rule"
 			},
 			"index": {
+				"addAccount": "Add mail account",
 				"autoAdvanceHelp": "What the reader shows once the open conversation is triaged away.",
 				"autoAdvanceLabel": "After archiving, deleting or snoozing",
 				"autoSummarizeHelp": "Show a one-line AI summary at the top of long conversations. Click it to expand the key points.",
@@ -8676,6 +8630,7 @@
 				"replyDefaultLabel": "Default reply behavior",
 				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
 				"sendSoundLabel": "Play sound when sending",
+				"subtitle": "How Owlat looks, reads and sends for you.",
 				"teamManage": "Team · manage",
 				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
 				"writingSuggestionsLabel": "Writing suggestions"
@@ -8692,7 +8647,6 @@
 			},
 			"security": {
 				"pageTitle": "Sign-in and security — Owlat",
-				"heading": "Sign-in and security",
 				"subheading": "Where your account is signed in, and the second factor guarding it.",
 				"device": {
 					"browsers": {
@@ -8817,7 +8771,6 @@
 				"noMailbox": "No mailbox configured.",
 				"pageTitle": "Signatures — Owlat",
 				"saveChanges": "Save changes",
-				"title": "Signatures",
 				"useAsDefault": "Use as the default signature for new drafts",
 				"yourSignatures": "Your signatures"
 			},
@@ -8834,7 +8787,6 @@
 				"pageTitle": "Snippets — Owlat",
 				"saveChanges": "Save changes",
 				"shortcutPlaceholder": "shortcut",
-				"title": "Snippets",
 				"yourSnippets": "Your snippets"
 			},
 			"vacation": {
@@ -8850,7 +8802,6 @@
 				"saveOperation": "Save auto-reply",
 				"start": "Start (optional)",
 				"subject": "Subject",
-				"title": "Vacation auto-reply",
 				"turnOff": "Turn off",
 				"turnOffDescription": "The vacation auto-responder will stop replying to incoming mail.",
 				"turnOffOperation": "Turn off auto-reply",
@@ -8860,8 +8811,7 @@
 				"aiDisabled": "AI features are disabled for this workspace, so there is no writing voice to personalize.",
 				"intro": "Owlat can learn how you write from your sent mail so AI reply suggestions sound like you. This is advisory only — nothing is ever sent automatically.",
 				"noMailboxes": "No mailboxes yet. Add an account and send a few messages first.",
-				"pageTitle": "Writing voice — Owlat",
-				"title": "Writing voice"
+				"pageTitle": "Writing voice — Owlat"
 			}
 		},
 		"send": {
@@ -13901,6 +13851,10 @@
 			"pageTitleNotFound": "Page Not Found — Owlat",
 			"serverError": "Something went wrong on our end. Please try again later.",
 			"unexpected": "An unexpected error occurred."
+		},
+		"preferences": {
+			"title": "Preferences",
+			"navLabel": "Preferences sections"
 		}
 	},
 	"terms": {

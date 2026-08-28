@@ -6,7 +6,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.snippets.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
@@ -75,24 +75,17 @@ async function confirmRemove() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-3xl mx-auto">
-		<PreferencesBackLink />
-
-		<header class="mb-6 flex items-center justify-between">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em]">
-					{{ t('dashboard.preferences.snippets.title') }}
-				</h1>
-				<I18nT
-					keypath="dashboard.preferences.snippets.intro"
-					tag="p"
-					class="text-text-secondary mt-1"
-					scope="global"
-				>
-					<template #slashKey><code>/</code></template>
-					<template #firstNameToken><code v-text="firstNamePlaceholder" /></template>
-				</I18nT>
-			</div>
+	<div>
+		<header class="mb-6 flex items-center justify-between gap-4">
+			<I18nT
+				keypath="dashboard.preferences.snippets.intro"
+				tag="p"
+				class="text-text-secondary"
+				scope="global"
+			>
+				<template #slashKey><code>/</code></template>
+				<template #firstNameToken><code v-text="firstNamePlaceholder" /></template>
+			</I18nT>
 			<UiButton v-if="mailboxId && !editor" type="button" @click="startCreate">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.snippets.newSnippet') }}
