@@ -8059,31 +8059,67 @@
 				"blockOperation": "Block sender",
 				"blockSender": "Block Sender",
 				"blockedToast": "Sender blocked",
-				"confidenceLabel": "Confidence:",
-				"confidenceValue": "{percent}%",
 				"emptyBody": "All inbound messages passed the security filter.",
 				"emptyTitle": "No quarantined messages",
 				"errorMessage": "We hit an error loading quarantined messages. Reload the page to try again.",
 				"errorTitle": "Couldn't load quarantine",
 				"flaggedContentLabel": "Flagged content:",
-				"injectionTypes": {
-					"delimiter_attack": "Delimiter Attack",
-					"direct_injection": "Direct Injection",
-					"encoding_evasion": "Encoding Evasion",
-					"instruction_smuggling": "Instruction Smuggling",
-					"none": "Unknown",
-					"role_impersonation": "Role Impersonation"
+				"footer": {
+					"confidenceOnly": "Automated check: {percent}% confidence.",
+					"heading": "What the check recorded",
+					"noRecord": "The scan left no machine-readable record for this message.",
+					"typeAndConfidence": "Automated check: {type}, {percent}% confidence.",
+					"typeOnly": "Automated check: {type}."
 				},
 				"loading": "Loading quarantined messages...",
 				"noTextContent": "(No text content)",
+				"outcomes": {
+					"delimiterAttack": {
+						"headline": "We held this back because it imitates the markers that separate your assistant's instructions from a message's content.",
+						"reason": "It copies the formatting our assistant uses to tell instructions from content, which is how an email tries to pass itself off as an instruction."
+					},
+					"directInjection": {
+						"headline": "We held this back because it contains instructions aimed at your assistant rather than at you.",
+						"reason": "The text gives orders to the assistant that reads your mail, not to a person."
+					},
+					"encodingEvasion": {
+						"headline": "We held this back because it hides what it says behind encoding tricks.",
+						"reason": "Part of the message is obscured so a filter reading it plainly would miss the real content."
+					},
+					"generic": {
+						"headline": "We held this back for a closer look before anything acts on it.",
+						"reason": "The safety check flagged something it could not vouch for."
+					},
+					"guardUnavailable": {
+						"headline": "We held this back because the safety check could not run.",
+						"reason": "Our automated check did not finish, so this was held rather than passed through unchecked."
+					},
+					"instructionSmuggling": {
+						"headline": "We held this back because it hides instructions for your assistant inside ordinary-looking text.",
+						"reason": "Instructions are buried in the message body where a person reading it would not notice them."
+					},
+					"noRecord": {
+						"reason": "The check that held this message left no record of what it saw."
+					},
+					"phishing": {
+						"headline": "We held this back because it looks like it is pretending to be someone you trust.",
+						"reason": "It imitates a person or company you deal with, which is how account details get stolen."
+					},
+					"roleImpersonation": {
+						"headline": "We held this back because it pretends to be the operator of your assistant.",
+						"reason": "The message claims an authority it does not have, to change how the assistant behaves."
+					},
+					"spam": {
+						"reason": "It also scored high on the ordinary spam filters."
+					}
+				},
 				"pageTitle": "Quarantine — Owlat",
 				"release": "Release (False Positive)",
 				"releaseOperation": "Release message",
 				"releasedToast": "Message released to processing pipeline",
-				"securityAlert": "Security Alert",
 				"subtitle": "Messages flagged by the inbound security filter. Review before releasing to the pipeline.",
 				"title": "Quarantine",
-				"typeLabel": "Type:"
+				"whyHeldLabel": "Why this was held"
 			},
 			"review": {
 				"pageTitle": "Review Queue — Owlat"

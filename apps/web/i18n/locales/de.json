@@ -8059,31 +8059,67 @@
 				"blockOperation": "Absender blockieren",
 				"blockSender": "Absender blockieren",
 				"blockedToast": "Absender blockiert",
-				"confidenceLabel": "Konfidenz:",
-				"confidenceValue": "{percent} %",
 				"emptyBody": "Alle eingehenden Nachrichten haben den Sicherheitsfilter passiert.",
 				"emptyTitle": "Keine Nachrichten in Quarantäne",
 				"errorMessage": "Beim Laden der Nachrichten in Quarantäne ist ein Fehler aufgetreten. Laden Sie die Seite neu, um es erneut zu versuchen.",
 				"errorTitle": "Quarantäne konnte nicht geladen werden",
 				"flaggedContentLabel": "Markierter Inhalt:",
-				"injectionTypes": {
-					"delimiter_attack": "Trennzeichen-Angriff",
-					"direct_injection": "Direkte Injektion",
-					"encoding_evasion": "Kodierungs-Umgehung",
-					"instruction_smuggling": "Eingeschleuste Anweisungen",
-					"none": "Unbekannt",
-					"role_impersonation": "Rollen-Imitation"
+				"footer": {
+					"confidenceOnly": "Automatische Prüfung: {percent}% Konfidenz.",
+					"heading": "Was die Prüfung festgehalten hat",
+					"noRecord": "Die Prüfung hat für diese Nachricht keinen maschinenlesbaren Eintrag hinterlassen.",
+					"typeAndConfidence": "Automatische Prüfung: {type}, {percent}% Konfidenz.",
+					"typeOnly": "Automatische Prüfung: {type}."
 				},
 				"loading": "Nachrichten in Quarantäne werden geladen …",
 				"noTextContent": "(Kein Textinhalt)",
+				"outcomes": {
+					"delimiterAttack": {
+						"headline": "Wir haben diese Nachricht zurückgehalten, weil sie die Markierungen nachahmt, die die Anweisungen Ihres Assistenten vom Inhalt einer Nachricht trennen.",
+						"reason": "Sie kopiert die Formatierung, an der unser Assistent Anweisungen von Inhalt unterscheidet — so versucht eine E-Mail, sich als Anweisung auszugeben."
+					},
+					"directInjection": {
+						"headline": "Wir haben diese Nachricht zurückgehalten, weil sie Anweisungen enthält, die an Ihren Assistenten gerichtet sind statt an Sie.",
+						"reason": "Der Text erteilt dem Assistenten, der Ihre Mail liest, Befehle — nicht einem Menschen."
+					},
+					"encodingEvasion": {
+						"headline": "Wir haben diese Nachricht zurückgehalten, weil sie ihren Inhalt hinter Kodierungstricks verbirgt.",
+						"reason": "Ein Teil der Nachricht ist so verschleiert, dass ein Filter beim einfachen Lesen den eigentlichen Inhalt übersieht."
+					},
+					"generic": {
+						"headline": "Wir haben diese Nachricht für eine genauere Prüfung zurückgehalten, bevor irgendetwas darauf reagiert.",
+						"reason": "Die Sicherheitsprüfung hat etwas beanstandet, wofür sie nicht bürgen konnte."
+					},
+					"guardUnavailable": {
+						"headline": "Wir haben diese Nachricht zurückgehalten, weil die Sicherheitsprüfung nicht laufen konnte.",
+						"reason": "Unsere automatische Prüfung ist nicht durchgelaufen, deshalb wurde die Nachricht zurückgehalten statt ungeprüft durchgelassen."
+					},
+					"instructionSmuggling": {
+						"headline": "Wir haben diese Nachricht zurückgehalten, weil sie Anweisungen für Ihren Assistenten in unauffällig wirkendem Text versteckt.",
+						"reason": "Anweisungen stecken im Nachrichtentext an Stellen, die einem lesenden Menschen nicht auffallen."
+					},
+					"noRecord": {
+						"reason": "Die Prüfung, die diese Nachricht zurückgehalten hat, hat nicht festgehalten, was sie gesehen hat."
+					},
+					"phishing": {
+						"headline": "Wir haben diese Nachricht zurückgehalten, weil sie sich als jemand ausgibt, dem Sie vertrauen.",
+						"reason": "Sie ahmt eine Person oder Firma nach, mit der Sie zu tun haben — so werden Zugangsdaten gestohlen."
+					},
+					"roleImpersonation": {
+						"headline": "Wir haben diese Nachricht zurückgehalten, weil sie sich als Betreiber Ihres Assistenten ausgibt.",
+						"reason": "Die Nachricht beansprucht eine Befugnis, die sie nicht hat, um das Verhalten des Assistenten zu ändern."
+					},
+					"spam": {
+						"reason": "Sie hat außerdem in den gewöhnlichen Spam-Filtern hoch gepunktet."
+					}
+				},
 				"pageTitle": "Quarantäne — Owlat",
 				"release": "Freigeben (Fehlalarm)",
 				"releaseOperation": "Nachricht freigeben",
 				"releasedToast": "Nachricht zur Verarbeitung freigegeben",
-				"securityAlert": "Sicherheitswarnung",
 				"subtitle": "Nachrichten, die der eingehende Sicherheitsfilter markiert hat. Prüfen Sie sie, bevor Sie sie freigeben.",
 				"title": "Quarantäne",
-				"typeLabel": "Typ:"
+				"whyHeldLabel": "Warum diese Nachricht zurückgehalten wurde"
 			},
 			"review": {
 				"pageTitle": "Prüfliste — Owlat"
