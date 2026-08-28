@@ -1,0 +1,21 @@
+# Egress allowlist for the code-worker forward-proxy (see tinyproxy.conf).
+# POSIX extended regex, one per line, matched against the DESTINATION HOST.
+# FilterDefaultDeny Yes means anything not matched here is refused.
+#
+# Shipped defaults cover the internal Convex function-allowlist proxy and the
+# GitHub git remote. If your deployment uses a different git host or a hosted
+# LLM endpoint, ADD its host below (e.g. `^api\.openai\.com$`) — otherwise the
+# worker cannot reach it. Keep this list as tight as your setup allows.
+
+# Convex function-allowlist proxy (internal service on the code-worker network).
+^convex-fn-proxy$
+
+# GitHub git remote (clone / push over HTTPS) — the default GIT_REPO_URL host.
+^github\.com$
+^api\.github\.com$
+^codeload\.github\.com$
+
+# LLM endpoint — uncomment / adjust to YOUR provider's host. Left commented so
+# the allowlist ships closed; add exactly the host your LLM_BASE_URL uses.
+# ^api\.openai\.com$
+# ^ollama$

@@ -166,6 +166,9 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 		// Echo the resolved return-path host so the caller (D2/Convex) can confirm
 		// what was persisted. Omitted when the domain has no override.
 		const storedReturnPathHost = await dkimStore.getReturnPathHost(redis, domain);
+		// `result` carries `ownership` (assigned | unchanged | unowned) — echoed via
+		// the spread so the org-ownership backfill migration can tally outcomes from
+		// the response without a second read.
 		return c.json({
 			success: true,
 			domain,

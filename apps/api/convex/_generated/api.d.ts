@@ -93,6 +93,7 @@ import type * as auth_apiAuth from '../auth/apiAuth.js';
 import type * as auth_apiKeys from '../auth/apiKeys.js';
 import type * as auth_apiScopes from '../auth/apiScopes.js';
 import type * as auth_auth from '../auth/auth.js';
+import type * as auth_emailVerificationAdmin from '../auth/emailVerificationAdmin.js';
 import type * as auth_invitationResend from '../auth/invitationResend.js';
 import type * as auth_memberErasure from '../auth/memberErasure.js';
 import type * as auth_membership from '../auth/membership.js';
@@ -774,6 +775,8 @@ import type * as migrations_0035_seal_bodies_at_rest from '../migrations/0035_se
 import type * as migrations_0036_seed_platform_admin from '../migrations/0036_seed_platform_admin.js';
 import type * as migrations_0037_backfill_mail_categories from '../migrations/0037_backfill_mail_categories.js';
 import type * as migrations_0038_rebuild_file_search_text from '../migrations/0038_rebuild_file_search_text.js';
+import type * as migrations_0039_backfill_dkim_ownership from '../migrations/0039_backfill_dkim_ownership.js';
+import type * as migrations_0040_backfill_credential_allowed_domains from '../migrations/0040_backfill_credential_allowed_domains.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
 import type * as platformAdmin_queries from '../platformAdmin/queries.js';
@@ -1083,6 +1086,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/apiKeys': typeof auth_apiKeys;
 	'auth/apiScopes': typeof auth_apiScopes;
 	'auth/auth': typeof auth_auth;
+	'auth/emailVerificationAdmin': typeof auth_emailVerificationAdmin;
 	'auth/invitationResend': typeof auth_invitationResend;
 	'auth/memberErasure': typeof auth_memberErasure;
 	'auth/membership': typeof auth_membership;
@@ -1764,6 +1768,8 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0036_seed_platform_admin': typeof migrations_0036_seed_platform_admin;
 	'migrations/0037_backfill_mail_categories': typeof migrations_0037_backfill_mail_categories;
 	'migrations/0038_rebuild_file_search_text': typeof migrations_0038_rebuild_file_search_text;
+	'migrations/0039_backfill_dkim_ownership': typeof migrations_0039_backfill_dkim_ownership;
+	'migrations/0040_backfill_credential_allowed_domains': typeof migrations_0040_backfill_credential_allowed_domains;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;
 	'platformAdmin/queries': typeof platformAdmin_queries;

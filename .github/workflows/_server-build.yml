@@ -113,6 +113,11 @@ jobs:
           - name: code-worker
             dockerfile: apps/code-worker/Dockerfile
             context: .
+          - name: convex-fn-proxy
+            dockerfile: apps/convex-fn-proxy/Dockerfile
+            # Monorepo-root context: the proxy's `catalog:` versions only resolve
+            # via a bun workspace install (see its Dockerfile).
+            context: .
           - name: setup
             dockerfile: apps/setup-cli/Dockerfile
             context: .
@@ -233,7 +238,7 @@ jobs:
           set -euo pipefail
           failed=0
           # Keep this list in sync with the build-and-push matrix above.
-          for name in web mta updater convex-deploy imap mail-sync code-worker setup; do
+          for name in web mta updater convex-deploy imap mail-sync code-worker convex-fn-proxy setup; do
             image="${IMAGE_PREFIX}/${name}:${{ inputs.version }}"
             if docker manifest inspect "$image" > /dev/null 2>&1; then
               echo "OK       ${image}"

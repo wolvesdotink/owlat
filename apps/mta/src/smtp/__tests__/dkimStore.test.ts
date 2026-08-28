@@ -236,10 +236,24 @@ describe('dkimStore', () => {
 			clearCache();
 			const result = await registerDomainKey(redis, 'backfill.com', 'org-a');
 			expect(result.created).toBe(false);
+			expect(result.ownership).toBe('assigned');
 			clearCache();
 			const config = await getDkimConfig(redis, 'backfill.com');
 			expect(config!.organizationId).toBe('org-a');
 			expect(config!.selector).toBe('s1'); // key untouched, only owner backfilled
+		});
+
+		it('registerDomainKey reports `unchanged` for a key already owned by the org', async () => {
+			const { privateKey } = generateKeyPairSync('rsa', {
+				modulusLength: 2048,
+				publicKeyEncoding: { type: 'spki', format: 'pem' },
+				privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+			});
+			await setDkimKey(redis, 'already.com', 's1', privateKey, 'org-a');
+			clearCache();
+			const result = await registerDomainKey(redis, 'already.com', 'org-a');
+			expect(result.created).toBe(false);
+			expect(result.ownership).toBe('unchanged');
 		});
 
 		it('registerDomainKey refuses to hand a domain owned by another organization', async () => {
@@ -257,6 +271,7 @@ describe('dkimStore', () => {
 		it('registerDomainKey owns a brand-new domain from the start', async () => {
 			const result = await registerDomainKey(redis, 'brandnew.com', 'org-a');
 			expect(result.created).toBe(true);
+			expect(result.ownership).toBe('assigned');
 			clearCache();
 			const config = await getDkimConfig(redis, 'brandnew.com');
 			expect(config!.organizationId).toBe('org-a');

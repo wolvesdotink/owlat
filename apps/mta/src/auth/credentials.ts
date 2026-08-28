@@ -82,6 +82,67 @@ export async function lookupCredential(
 }
 
 /**
+ * Overwrite a credential's `allowedDomains` (the H2 verified-sending-domain set),
+ * preserving every other field on the blob. The list is normalized (lowercased,
+ * trimmed, de-duplicated, no blanks) exactly as {@link createCredential} does, so
+ * the two write paths can never disagree on the stored shape.
+ *
+ * Idempotent: re-writing the same normalized set leaves the blob byte-identical.
+ * Returns `false` when no credential exists for `apiKey` (so the route can 404),
+ * or when the stored blob is unparseable.
+ */
+export async function setAllowedDomains(
+	redis: Redis,
+	apiKey: string,
+	domains: readonly string[]
+): Promise<boolean> {
+	const data = await redis.get(`${CRED_PREFIX}${apiKey}`);
+	if (!data) return false;
+
+	let credential: OrgCredential;
+	try {
+		credential = JSON.parse(data) as OrgCredential;
+	} catch {
+		return false;
+	}
+
+	const updated: OrgCredential = {
+		...credential,
+		allowedDomains: normalizeAllowedDomains(domains),
+	};
+	await redis.set(`${CRED_PREFIX}${apiKey}`, JSON.stringify(updated));
+	return true;
+}
+
+/**
+ * List an organization's credentials WITH their full API keys (master-key admin
+ * paths only — e.g. the allowedDomains backfill migration, which must address a
+ * PATCH by the full key). This is the un-truncated sibling of
+ * {@link listCredentials}: that one redacts the key for any surface that might
+ * reach an operator, this one is for server-to-server use behind the master key.
+ */
+export async function listCredentialsWithKeys(
+	redis: Redis,
+	organizationId: string
+): Promise<Array<{ apiKey: string; credential: OrgCredential }>> {
+	const keys = await redis.smembers(`${CRED_INDEX_PREFIX}${organizationId}`);
+	const results: Array<{ apiKey: string; credential: OrgCredential }> = [];
+
+	for (const key of keys) {
+		const data = await redis.get(`${CRED_PREFIX}${key}`);
+		if (data) {
+			try {
+				results.push({ apiKey: key, credential: JSON.parse(data) as OrgCredential });
+			} catch {
+				// Skip invalid entries
+			}
+		}
+	}
+
+	return results;
+}
+
+/**
  * Revoke a credential
  */
 export async function revokeCredential(redis: Redis, apiKey: string): Promise<boolean> {

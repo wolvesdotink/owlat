@@ -441,6 +441,16 @@ export function applySetupDefaults(
 	};
 	if (isFreshInstall) {
 		applyFreshFblDedupDefaults(defaults);
+		// NEW-DEPLOYMENT-ONLY: require a verified email before a signup/invitation
+		// can sign in (BetterAuth requireEmailVerification + sendOnSignUp + the org
+		// plugin's requireEmailVerificationOnInvitation — apps/api/convex/auth/auth.ts).
+		// Gated on `isFreshInstall` so re-running setup on an EXISTING install never
+		// flips it on and locks out legacy users who have no verified flag. It is
+		// pushed into the Convex function runtime (convexRuntimeEnv), and every
+		// deployment here has MTA_API_URL wired above so the verification link can be
+		// delivered. A stranded user is recoverable by an owner/admin via the
+		// mark-verified / resend-verification actions (auth/emailVerificationAdmin.ts).
+		defaults['REQUIRE_EMAIL_VERIFICATION'] = 'true';
 	}
 	// External-mailbox feature (apps/mail-sync worker, mail.external flag): the
 	// Convex function runtime dispatches outbound mail for external IMAP/SMTP

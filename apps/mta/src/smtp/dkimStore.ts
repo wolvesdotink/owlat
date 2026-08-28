@@ -15,6 +15,17 @@ const DKIM_PREFIX = 'mta:dkim:';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
+ * What `registerDomainKey` did to a domain's DKIM ownership binding (H2), so the
+ * ownership-backfill migration can count outcomes without a second Redis read:
+ *   - `assigned`  — the key is now owned by the supplied org (backfilled onto a
+ *                   previously-unowned key, or a freshly generated owned key).
+ *   - `unchanged` — the key was already owned by the supplied org (idempotent
+ *                   re-run) — a true cross-org clash throws instead.
+ *   - `unowned`   — no org was supplied and the key carries no owner.
+ */
+export type DkimOwnershipOutcome = 'assigned' | 'unchanged' | 'unowned';
+
+/**
  * Hash field on `mta:dkim:{domain}` holding that domain's per-domain VERP
  * return-path host (D1). Co-located with the DKIM material so it shares the
  * domain's lifecycle: registration writes it, `removeDkimKey` (whole-hash DEL)
@@ -280,7 +291,12 @@ export async function registerDomainKey(
 	redis: Redis,
 	domain: string,
 	organizationId?: string
-): Promise<{ selector: string; dnsRecord: string; created: boolean }> {
+): Promise<{
+	selector: string;
+	dnsRecord: string;
+	created: boolean;
+	ownership: DkimOwnershipOutcome;
+}> {
 	const existing = await getDkimConfig(redis, domain);
 	if (existing) {
 		// H2: never hand a domain already owned by ONE organization to another.
@@ -293,23 +309,31 @@ export async function registerDomainKey(
 		}
 		// Backfill ownership onto a legacy/unowned key so it becomes org-scoped
 		// without changing the selector or private key (signing stays byte-stable).
+		let ownership: DkimOwnershipOutcome;
 		if (organizationId && !existing.organizationId) {
 			await redis.hset(`${DKIM_PREFIX}${domain}`, { organizationId });
 			cache.delete(domain);
+			ownership = 'assigned';
+		} else if (organizationId && existing.organizationId === organizationId) {
+			ownership = 'unchanged';
+		} else {
+			// No org supplied, or an already-owned key left untouched.
+			ownership = existing.organizationId ? 'unchanged' : 'unowned';
 		}
 		logger.info(
-			{ domain, selector: existing.selector },
+			{ domain, selector: existing.selector, ownership },
 			'DKIM key already exists — registration is a no-op (not clobbering)'
 		);
 		return {
 			selector: existing.selector,
 			dnsRecord: dnsRecordFromPrivateKey(existing.privateKey),
 			created: false,
+			ownership,
 		};
 	}
 
 	const { selector, dnsRecord } = await rotateKey(redis, domain, undefined, organizationId);
-	return { selector, dnsRecord, created: true };
+	return { selector, dnsRecord, created: true, ownership: organizationId ? 'assigned' : 'unowned' };
 }
 
 /**

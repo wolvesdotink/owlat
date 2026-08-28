@@ -84,6 +84,21 @@ describe('code-worker getConvexClient', () => {
 		expect(mocks.setAdminAuth).toHaveBeenCalledWith('scoped-key-only');
 	});
 
+	it('runs in proxy-token-only mode: URL points at the fn-proxy, token is the proxy secret', async () => {
+		// The composed hardened deployment (apps/convex-fn-proxy): CONVEX_URL is the
+		// proxy, CODE_WORKER_CONVEX_KEY is the proxy token, and NO admin key is in
+		// the container. setAdminAuth sends the token as `Authorization: Convex
+		// <token>`, which the proxy validates+strips and replaces with the admin key.
+		delete process.env['CONVEX_ADMIN_KEY'];
+		process.env['CONVEX_URL'] = 'http://convex-fn-proxy:3220';
+		process.env['CODE_WORKER_CONVEX_KEY'] = 'proxy-token-secret';
+		const { getConvexClient } = await import('../convexClient.js');
+		getConvexClient();
+		expect(mocks.ctor).toHaveBeenCalledWith('http://convex-fn-proxy:3220');
+		expect(mocks.setAdminAuth).toHaveBeenCalledWith('proxy-token-secret');
+		expect(mocks.setAdminAuth).not.toHaveBeenCalledWith('admin-key-abc123');
+	});
+
 	it('caches the client across calls (constructed + authed once)', async () => {
 		const { getConvexClient } = await import('../convexClient.js');
 		const a = getConvexClient();

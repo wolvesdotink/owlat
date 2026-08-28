@@ -220,8 +220,9 @@ describe('mtaProvider.registerDomain — mailFrom host from returnPathHost', () 
 		expect(result.dnsRecords.mailFrom).toHaveLength(1);
 		expect(result.dnsRecords.mailFrom![0]!.hostname).toBe(GLOBAL_RETURN_PATH);
 		expect(result.dnsRecords.mailFrom![0]!.value).toContain(`ip4:${POOL_IP}`);
-		// No custom host → the MTA is told nothing (keeps its global).
-		expect(registerDomainMock).toHaveBeenCalledWith('acme.com', undefined);
+		// No custom host → the MTA is told nothing (keeps its global). No org bound
+		// here (this call omits it) → third arg undefined.
+		expect(registerDomainMock).toHaveBeenCalledWith('acme.com', undefined, undefined);
 	});
 
 	it('builds the mailFrom record on the OVERRIDE host and reflects it to the MTA', async () => {
@@ -232,7 +233,7 @@ describe('mtaProvider.registerDomain — mailFrom host from returnPathHost', () 
 
 		expect(result.dnsRecords.mailFrom![0]!.hostname).toBe('bounce.acme.com');
 		expect(result.dnsRecords.mailFrom![0]!.value).toContain(`ip4:${POOL_IP}`);
-		expect(registerDomainMock).toHaveBeenCalledWith('acme.com', 'bounce.acme.com');
+		expect(registerDomainMock).toHaveBeenCalledWith('acme.com', 'bounce.acme.com', undefined);
 	});
 });
 

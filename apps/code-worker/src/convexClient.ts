@@ -12,12 +12,18 @@ let client: ConvexHttpClient | null = null;
  * `codeWorkTasks`. Ideally it would present a key scoped to ONLY those functions
  * rather than the full deployment admin key. Convex self-hosted does not (today)
  * mint per-function scoped keys, so the scoped-key path is a documented DEFERRAL,
- * not a silent gap. The seam is here so an operator who has a narrower key (a
- * future Convex capability, or a reverse-proxy that allowlists only the
- * `codeWorkTasks:*` function endpoints) can supply it via `CODE_WORKER_CONVEX_KEY`
- * WITHOUT a code change. It falls back to `CONVEX_ADMIN_KEY` so existing installs
- * keep working unchanged — the safe default. When you set the scoped key, the
- * admin key never has to enter this container's environment at all.
+ * not a silent gap. The seam is here so an operator who has a narrower key can
+ * supply it via `CODE_WORKER_CONVEX_KEY` WITHOUT a code change. The concrete
+ * narrower key shipped for this is the `apps/convex-fn-proxy` sidecar: it holds
+ * the real admin key, forwards ONLY the thirteen allowlisted `codeWorkTasks:*` /
+ * `plugins/workerTasks:*` calls this module makes, and validates+strips the
+ * token the worker presents. In that composed deployment `CONVEX_URL` points at
+ * the proxy and `CODE_WORKER_CONVEX_KEY` is the proxy token — the token is what
+ * `setAdminAuth` sends as `Authorization: Convex <token>`, which the proxy
+ * checks and replaces with the admin key. It falls back to `CONVEX_ADMIN_KEY` so
+ * existing (non-proxied) installs keep working unchanged — the safe default.
+ * When the scoped key / proxy token is set, the admin key never has to enter
+ * this container's environment at all.
  */
 function resolveConvexKey(): string | undefined {
 	// Prefer an explicitly scoped key; fall back to the deployment admin key.

@@ -21,6 +21,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { logError, logInfo, logWarn } from '../../lib/runtimeLog';
 import { createMtaIdentityManager } from '../../lib/emailProviders/mtaIdentity';
 import { createSESIdentityManager } from '../../lib/emailProviders/sesIdentity';
+import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
 import { providerFor } from './index';
 import { resolveSesMailFrom } from './ses/mailFrom';
 import type { SendingDomainProviderKind } from './types';
@@ -64,8 +65,30 @@ export const run = internalAction({
 			// adapter reflects it to the provider and builds the `mailFrom` SPF
 			// record on that host. Absent ⇒ the adapter falls back to the global
 			// `MTA_RETURN_PATH_DOMAIN` (historic behavior).
+			//
+			// Also thread the owning organization (H2): this is a scheduled action
+			// with no session, and Owlat is single-org-per-deployment, so the
+			// singleton org is the domain's owner. The MTA adapter binds the DKIM key
+			// to it so new keys are born owned; providers with no per-domain key
+			// ignore it.
+			//
+			// BEST-EFFORT: the ownership binding is defense-in-depth (the DKIM signer's
+			// fail-closed org check is the real control), so a failure to resolve the
+			// org must NEVER fail the whole registration — we register unbound and log.
+			let organizationId: string | undefined;
+			try {
+				organizationId = await getSingletonOrganizationId(ctx);
+			} catch (orgError) {
+				const orgMessage =
+					orgError instanceof Error ? orgError.message : `Unknown ${tag} org-resolution error`;
+				logWarn(
+					`[${tag}] Could not resolve owning org for ${domain.domain}; registering without DKIM ownership binding:`,
+					orgMessage
+				);
+			}
 			const { dnsRecords, identity } = await adapter.registerDomain(domain.domain, {
 				returnPathHost: domain.returnPathHost,
+				organizationId,
 			});
 
 			await ctx.runMutation(internal.domains.lifecycle.transition, {

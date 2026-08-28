@@ -127,6 +127,11 @@ export const AUDIT_ACTION_LITERALS = [
 	action('team_member.invited'),
 	action('team_member.removed'),
 	action('team_member.role_changed'),
+	// Admin recovery for the email-verification gate (auth/emailVerificationAdmin.ts):
+	// an owner/admin marking a stranded member's email verified out-of-band, and an
+	// admin re-sending the verification link. Both are org-scoped and role-gated.
+	action('team_member.email_verified'),
+	action('team_member.verification_resent'),
 	// API + webhooks
 	action('api_key.created'),
 	action('api_key.revoked'),

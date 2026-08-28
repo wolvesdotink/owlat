@@ -1,0 +1,27 @@
+{
+	"name": "@owlat/convex-fn-proxy",
+	"version": "0.4.4",
+	"private": true,
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
+	"description": "Owlat Convex function-allowlist proxy. Holds the deployment admin key and forwards only the code-worker's thirteen allowlisted codeWorkTasks/workerTasks calls, so the untrusted worker never holds admin.",
+	"type": "module",
+	"scripts": {
+		"dev": "tsx watch src/index.ts",
+		"build": "bun build src/index.ts --target=node --outdir=dist",
+		"typecheck": "tsc --noEmit",
+		"start": "node dist/index.js",
+		"lint": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src --fix",
+		"test": "vitest run --passWithNoTests",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage --passWithNoTests"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"convex": "catalog:convex",
+		"tsx": "^4.19.0",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

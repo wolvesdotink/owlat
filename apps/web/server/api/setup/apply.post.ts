@@ -106,6 +106,24 @@ export default defineEventHandler(
 			};
 		}
 
+		// Email verification (REQUIRE_EMAIL_VERIFICATION) sends the confirmation link
+		// through the system-mail transport, which FAIL-CLOSED throws when no delivery
+		// provider is configured — so finishing setup with verification ON but no
+		// provider would lock every new signup/invitee out of their own account.
+		// Couple the two: when the operator turns verification on, a real delivery
+		// provider is required, reusing the same provider-required floor as bulk
+		// sending above. (Truthy set matches the Convex getBoolean parser.)
+		const verificationOn = /^(true|1|yes|on)$/i.test(
+			(body.env?.['REQUIRE_EMAIL_VERIFICATION'] ?? '').trim()
+		);
+		if (verificationOn && !hasRealProvider) {
+			return {
+				ok: false,
+				message:
+					'Email verification (REQUIRE_EMAIL_VERIFICATION) is on but no delivery provider is configured to send the verification link — new users would be locked out. Choose MTA, Resend, SES, or an SMTP relay, or turn verification off.',
+			};
+		}
+
 		// The built-in MTA is opt-in: it runs only when it is the delivery provider
 		// or when postbox/inbox need it, so pass the chosen provider through.
 		const profiles = getActiveProfiles(flags, {

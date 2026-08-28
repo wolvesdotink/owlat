@@ -102,6 +102,25 @@ const { run: removeOrganization } = useBackendOperation(api.workspaces.settings.
 	label: () => t('dashboard.admin.team.operations.deleteWorkspace'),
 });
 
+// Email-verification recovery (H3 escape hatch). When REQUIRE_EMAIL_VERIFICATION
+// is on, an account that never received its verification link (mail outage, wrong
+// provider, an account that predates the gate) cannot sign in. These two
+// owner/admin-gated backend paths unblock them: mark the member verified
+// out-of-band, or re-send the verification email through the same BetterAuth route
+// a signup uses. Both are org-scoped and fail closed server-side.
+const { run: markEmailVerified } = useBackendOperation(
+	api.auth.emailVerificationAdmin.markMemberEmailVerified,
+	{ label: () => t('dashboard.admin.team.operations.markEmailVerified') }
+);
+const { run: resendVerification } = useBackendOperation(
+	api.auth.emailVerificationAdmin.resendMemberVerificationEmail,
+	{ label: () => t('dashboard.admin.team.operations.resendVerification'), type: 'action' }
+);
+
+// Per-member inflight guards so a double-click can't fire the same recovery twice.
+const verifyingMemberId = ref<string | null>(null);
+const resendingVerifyId = ref<string | null>(null);
+
 // Toast notification using global composable
 const { showToast } = useToast();
 
@@ -150,6 +169,46 @@ async function handleResend(inv: OrganizationInvitation) {
 		showToast(msg, 'error');
 	} finally {
 		resendingId.value = null;
+	}
+}
+
+// Owner/admin escape hatch: mark a stranded member's email verified out-of-band
+// so they can sign in again. Idempotent — an already-verified member is a no-op.
+async function handleMarkVerified(member: OrganizationMember) {
+	verifyingMemberId.value = member.id;
+	try {
+		const result = await markEmailVerified({ userId: member.userId });
+		// `run` already surfaced any failure; only announce success.
+		if (result === undefined) return;
+		showToast(
+			result.alreadyVerified
+				? t('dashboard.admin.team.toasts.emailAlreadyVerified', { email: result.email })
+				: t('dashboard.admin.team.toasts.emailVerified', { email: result.email })
+		);
+	} finally {
+		verifyingMemberId.value = null;
+	}
+}
+
+// Owner/admin escape hatch: re-send the verification link through BetterAuth's
+// own sendVerificationEmail route. Only claim "we emailed them" when a transport
+// exists — the send hook fails closed, so without one there is nothing to receive.
+async function handleResendVerification(member: OrganizationMember) {
+	resendingVerifyId.value = member.id;
+	try {
+		const result = await resendVerification({ userId: member.userId });
+		if (result === undefined) return;
+		if (!result.sent) {
+			showToast(t('dashboard.admin.team.toasts.emailAlreadyVerified', { email: result.email }));
+			return;
+		}
+		showToast(
+			emailConfigured.value
+				? t('dashboard.admin.team.toasts.verificationResent', { email: result.email })
+				: t('dashboard.admin.team.toasts.verificationResendNoTransport', { email: result.email })
+		);
+	} finally {
+		resendingVerifyId.value = null;
 	}
 }
 
@@ -575,10 +634,13 @@ const formatExpiryTime = (expiresAt: Date) => {
 									{{ formatShortDate(member.createdAt, locale) }}
 								</td>
 
-								<!-- Overflow menu: destructive + ownership actions -->
+								<!-- Overflow menu: verification recovery + ownership/destructive
+								     actions. Owners and admins both manage members, so the menu
+								     opens for any non-owner row; the owner-only and admin-only
+								     entries are gated inside. -->
 								<td class="px-6 py-4 text-right">
 									<UiDropdownMenu
-										v-if="isOwner && member.role !== 'owner'"
+										v-if="canManageMembers && member.role !== 'owner'"
 										v-model:open="dropdownOpenStates[member.id]"
 									>
 										<template #trigger>
@@ -594,34 +656,49 @@ const formatExpiryTime = (expiresAt: Date) => {
 												<Icon name="lucide:more-horizontal" class="w-4 h-4" />
 											</UiButton>
 										</template>
-										<UiDropdownMenuItem icon="lucide:crown" @click="memberToPromote = member">
-											{{ t('dashboard.admin.team.members.transferOwnership') }}
-										</UiDropdownMenuItem>
-										<UiDropdownDivider />
+										<!-- Email-verification recovery (owner + admin): unblock a
+										     member the verification gate stranded. -->
 										<UiDropdownMenuItem
-											icon="lucide:trash-2"
-											danger
-											@click="openRemoveMemberModal(member)"
+											icon="lucide:mail-check"
+											:disabled="verifyingMemberId === member.id"
+											@click="handleMarkVerified(member)"
 										>
-											{{ t('dashboard.admin.team.members.removeFromTeam') }}
+											{{ t('dashboard.admin.team.members.markEmailVerified') }}
 										</UiDropdownMenuItem>
+										<UiDropdownMenuItem
+											icon="lucide:send"
+											:disabled="resendingVerifyId === member.id"
+											@click="handleResendVerification(member)"
+										>
+											{{ t('dashboard.admin.team.members.resendVerification') }}
+										</UiDropdownMenuItem>
+										<!-- Owner-only: succession + removing any member. -->
+										<template v-if="isOwner">
+											<UiDropdownDivider />
+											<UiDropdownMenuItem icon="lucide:crown" @click="memberToPromote = member">
+												{{ t('dashboard.admin.team.members.transferOwnership') }}
+											</UiDropdownMenuItem>
+											<UiDropdownDivider />
+											<UiDropdownMenuItem
+												icon="lucide:trash-2"
+												danger
+												@click="openRemoveMemberModal(member)"
+											>
+												{{ t('dashboard.admin.team.members.removeFromTeam') }}
+											</UiDropdownMenuItem>
+										</template>
+										<!-- Admins (non-owners) may remove editors. -->
+										<template v-else-if="member.role === 'editor'">
+											<UiDropdownDivider />
+											<UiDropdownMenuItem
+												icon="lucide:trash-2"
+												danger
+												@click="openRemoveMemberModal(member)"
+											>
+												{{ t('dashboard.admin.team.members.removeFromTeam') }}
+											</UiDropdownMenuItem>
+										</template>
 									</UiDropdownMenu>
-
-									<!-- Admins (non-owners) may remove editors -->
-									<UiButton
-										v-else-if="canManageMembers && member.role === 'editor'"
-										variant="ghost"
-										size="sm"
-										class="text-error"
-										:aria-label="
-											t('dashboard.admin.team.members.removeMemberLabel', {
-												member: member.user.name || member.user.email,
-											})
-										"
-										@click="memberToRemove = member"
-									>
-										<Icon name="lucide:trash-2" class="w-4 h-4" />
-									</UiButton>
 								</td>
 							</tr>
 						</tbody>
