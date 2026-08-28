@@ -18,8 +18,8 @@
  * re-schedules threads whose scheduled classification was lost.
  *
  * Clearing: any outbound send in the thread (draftLifecycle sent-effects),
- * archiving/trashing its messages (messageActions.move), or the manual
- * `clear` mutation for the UI.
+ * archiving/trashing its messages (messageActions.move), muting it (mail/mute.ts
+ * — a muted thread is skipped by the queue read too), or the manual `clear`.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -30,6 +30,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
+import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
@@ -368,7 +369,8 @@ export const listQueue = publicQuery({
 		const items = [];
 		for (const thread of threads) {
 			const flag = thread.needsReply;
-			if (!flag) continue;
+			// Muted (mail/mute.ts) = the owner opted out of the conversation.
+			if (!flag || isThreadMuted(thread)) continue;
 			const message = await ctx.db.get(flag.messageId);
 			if (!message) continue;
 			// Snoozed = deliberately deferred; it re-enters the queue on wakeup.
@@ -414,7 +416,7 @@ export const listQueue = publicQuery({
 			.take(QUEUE_LIMIT);
 		for (const thread of dueFollowUps) {
 			const flag = thread.followUp;
-			if (!flag || flag.dueAt === undefined) continue;
+			if (!flag || flag.dueAt === undefined || isThreadMuted(thread)) continue;
 			const message = await ctx.db.get(flag.messageId);
 			if (!message) continue;
 			if (isMessageSnoozed(message, now)) continue;

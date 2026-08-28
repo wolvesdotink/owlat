@@ -17,6 +17,7 @@ import {
 	mailSortOrderValidator,
 	mailNotifyAboutValidator,
 	mailUndoSendSecondsValidator,
+	mailMarkReadPolicyValidator,
 } from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
@@ -896,6 +897,20 @@ export const mailTables = {
 				generatedAt: v.number(),
 			})
 		),
+		// Muted conversation (`mail/mute.ts`). Set when the owner mutes the thread:
+		// new inbound mail on it skips the inbox (the delivery pipeline routes it
+		// straight to Archive), it never fires a desktop notification, and it is
+		// excluded from the Reply Queue. Absent ⇒ exactly today's behaviour; the
+		// mute is a property of the CONVERSATION, not of the sender, so muting one
+		// noisy thread never silences the same person elsewhere.
+		mutedAt: v.optional(v.number()),
+		// Transient "came back from snooze" marker (ported from the Team Inbox's
+		// `inboxThreads.snoozeReturnedAt`). Stamped by the snooze wake sweep, shown
+		// as a quiet chip on the list row and in the reader header, and cleared the
+		// first time the thread is opened — so a resurfaced conversation is
+		// recognisable as "you asked for this back" rather than looking like new
+		// mail. Advisory display state only: nothing routes off it.
+		snoozeReturnedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -1329,6 +1344,13 @@ export const mailTables = {
 		// composer then sends no `undoSendDelayMs` at all and the server's
 		// DEFAULT_UNDO_SEND_DELAY_MS (30s) applies — exactly today's behaviour.
 		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
+		// When an opened conversation loses its unread flags: 'immediate' (mark on
+		// render), 'after-dwell' (mark after a short visible dwell, cancelled by
+		// navigating away first) or 'manual' (never automatic — the reader offers
+		// an explicit mark-read button). Optional so existing rows read as
+		// undefined; the reader defaults it to 'immediate', which is exactly the
+		// mark-on-render behaviour it had before this control existed.
+		markReadPolicy: v.optional(mailMarkReadPolicyValidator),
 		// Desktop notification scope: which new inbox mail fires a native toast.
 		// Optional so existing rows read as undefined; the desktop reader defaults it
 		// to 'people-important' once smart categories exist and 'everything'

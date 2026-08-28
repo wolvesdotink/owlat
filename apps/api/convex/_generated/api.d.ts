@@ -598,6 +598,7 @@ import type * as lib_llmProviders_openrouter from '../lib/llmProviders/openroute
 import type * as lib_llmProviders_types from '../lib/llmProviders/types.js';
 import type * as lib_mailHost from '../lib/mailHost.js';
 import type * as lib_mailSettingsValidators from '../lib/mailSettingsValidators.js';
+import type * as lib_mailMute from '../lib/mailMute.js';
 import type * as lib_mailSnooze from '../lib/mailSnooze.js';
 import type * as lib_accountExportEncoding from '../lib/accountExportEncoding.js';
 import type * as lib_accountExportTemplates from '../lib/accountExportTemplates.js';
@@ -760,6 +761,7 @@ import type * as mail_messageActions from '../mail/messageActions.js';
 import type * as mail_migration from '../mail/migration.js';
 import type * as mail_migrationIndexing from '../mail/migrationIndexing.js';
 import type * as mail_mtaClient from '../mail/mtaClient.js';
+import type * as mail_mute from '../mail/mute.js';
 import type * as mail_needsReply from '../mail/needsReply.js';
 import type * as mail_outbound from '../mail/outbound.js';
 import type * as mail_outbound_build from '../mail/outbound/build.js';
@@ -1613,6 +1615,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llmProviders/types': typeof lib_llmProviders_types;
 	'lib/mailHost': typeof lib_mailHost;
 	'lib/mailSettingsValidators': typeof lib_mailSettingsValidators;
+	'lib/mailMute': typeof lib_mailMute;
 	'lib/mailSnooze': typeof lib_mailSnooze;
 	'lib/accountExportEncoding': typeof lib_accountExportEncoding;
 	'lib/accountExportTemplates': typeof lib_accountExportTemplates;
@@ -1775,6 +1778,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/migration': typeof mail_migration;
 	'mail/migrationIndexing': typeof mail_migrationIndexing;
 	'mail/mtaClient': typeof mail_mtaClient;
+	'mail/mute': typeof mail_mute;
 	'mail/needsReply': typeof mail_needsReply;
 	'mail/outbound': typeof mail_outbound;
 	'mail/outbound/build': typeof mail_outbound_build;

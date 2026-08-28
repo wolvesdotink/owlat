@@ -378,8 +378,11 @@ export const deliverToMailbox = internalMutation({
 		// needs a reply prompt), and only on this webhook ingest path so bulk
 		// IMAP backfill can't fan out background LLM work. The Precedence
 		// header rides along because it is not persisted on the message row.
+		// The row's ACTUAL folder is what counts: a MUTED thread's delivery was
+		// re-routed to Archive inside the insert (mail/mute.ts), and neither the
+		// Reply Queue nor the category classifier should spend work on it.
 		const delivered = await ctx.db.get(messageId);
-		if (delivered && folder.role === 'inbox') {
+		if (delivered && folder.role === 'inbox' && delivered.folderId === folder._id) {
 			await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
 				precedence: args.antiLoopHeaders?.['precedence'],
 			});

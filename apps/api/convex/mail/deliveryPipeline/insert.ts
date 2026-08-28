@@ -13,6 +13,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { redirectMutedDelivery } from '../mute';
 import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
@@ -122,7 +123,10 @@ export async function insertDeliveredMessage(
 		countUsedBytes?: boolean;
 	}
 ): Promise<Id<'mailMessages'>> {
-	const { mailbox, folder } = params;
+	const { mailbox } = params;
+	// Reassigned below when the resolved thread turns out to be MUTED: the row is
+	// then filed straight into Archive instead of the Inbox (mail/mute.ts).
+	let folder = params.folder;
 	const recipient = mailbox.address;
 	const fromAddress = extractEmail(params.from);
 	const fromName = extractName(params.from);
@@ -184,6 +188,11 @@ export async function insertDeliveredMessage(
 			updatedAt: now,
 		});
 	}
+
+	// Mute (mail/mute.ts) is applied AFTER threading and BEFORE the UID/modseq
+	// allocation, so a muted thread's new mail is allocated in — and counted
+	// against — the folder it actually lands in.
+	folder = await redirectMutedDelivery(ctx, threadId, folder);
 
 	const uid = folder.uidNext;
 	const modseq = folder.highestModseq + 1;
