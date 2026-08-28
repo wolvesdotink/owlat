@@ -12,9 +12,19 @@
 
 import { v } from 'convex/values';
 import { publicQuery } from '../../lib/authedFunctions';
+import type { QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { loadReadableMailbox } from '../permissions';
-import type { FolderRole } from './shared';
+import { loadAccessibleMailboxes, loadReadableMailbox } from '../permissions';
+import { readSession, type FolderRole } from './shared';
+import {
+	type MailboxPage,
+	type MailboxScanPosition,
+	decodeMultiCursor,
+	encodeMultiCursor,
+	isConsumed,
+	mergeMailboxPages,
+	positionRows,
+} from './searchCursor';
 
 /**
  * Excluded operands (`-from:ines`), per operator. Arrays because several
@@ -207,7 +217,168 @@ function matchesClause(
 }
 
 /**
- * Free-text + structured search across messages in a mailbox.
+ * Resolve every `in:` role and `label:` name a clause set mentions — positive
+ * and negated — once per mailbox, so a disjunction doesn't re-read the same
+ * folder per alternative.
+ */
+async function resolveNames(
+	ctx: QueryCtx,
+	mailboxId: Id<'mailboxes'>,
+	clauses: readonly SearchClause[]
+): Promise<ResolvedNames> {
+	const names: ResolvedNames = { folderByRole: new Map(), labelByName: new Map() };
+	// Labels are stored with their display casing while the parser lowercases
+	// every operand, so `label:work` has to reach a label named "Work". The
+	// indexed exact hit is tried first and the case-insensitive sweep over the
+	// mailbox's (few) labels is the fallback.
+	let allLabels: Doc<'mailLabels'>[] | null = null;
+	for (const clause of clauses) {
+		for (const role of [clause.folderRole, ...(clause.not?.folderRole ?? [])]) {
+			if (!role || names.folderByRole.has(role)) continue;
+			const folder = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) =>
+					q.eq('mailboxId', mailboxId).eq('role', role as FolderRole)
+				)
+				.first();
+			names.folderByRole.set(role, folder?._id ?? null);
+		}
+		for (const name of [clause.labelName, ...(clause.not?.labelName ?? [])]) {
+			if (!name || names.labelByName.has(name)) continue;
+			const exact = await ctx.db
+				.query('mailLabels')
+				.withIndex('by_mailbox_and_name', (q) => q.eq('mailboxId', mailboxId).eq('name', name))
+				.first();
+			if (exact) {
+				names.labelByName.set(name, exact._id);
+				continue;
+			}
+			allLabels ??= await ctx.db
+				.query('mailLabels')
+				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+				.collect(); // bounded: one mailbox's labels
+			const insensitive = allLabels.find((label) => label.name.toLowerCase() === name);
+			names.labelByName.set(name, insensitive?._id ?? null);
+		}
+	}
+	return names;
+}
+
+/** How many mailboxes one fan-out search may scan. Bounds the per-page reads. */
+const MAX_SEARCH_MAILBOXES = 10;
+
+/** Hard ceiling on one mailbox's raw page, including a re-read tie-group prefix. */
+const MAX_SCAN_ROWS = 512;
+
+/**
+ * The mailboxes a fan-out search runs over: the explicitly requested ones
+ * (each re-checked through the same read gate as the single-mailbox path, so an
+ * id the caller cannot read is dropped rather than searched), or — when none
+ * are named — every ACTIVE mailbox the caller can reach (own + shared
+ * memberships).
+ */
+async function resolveTargets(
+	ctx: QueryCtx,
+	requested: Id<'mailboxes'>[] | undefined
+): Promise<Id<'mailboxes'>[]> {
+	if (requested) {
+		const readable: Id<'mailboxes'>[] = [];
+		for (const id of [...new Set(requested)].slice(0, MAX_SEARCH_MAILBOXES)) {
+			const mailbox = await loadReadableMailbox(ctx, id);
+			if (mailbox) readable.push(mailbox._id);
+		}
+		return readable;
+	}
+	const session = await readSession(ctx);
+	if (!session) return [];
+	const mailboxes = await loadAccessibleMailboxes(
+		ctx,
+		session.userId,
+		session.activeOrganizationId
+	);
+	return mailboxes
+		.filter((mailbox) => mailbox.status === 'active')
+		.slice(0, MAX_SEARCH_MAILBOXES)
+		.map((mailbox) => mailbox._id);
+}
+
+/**
+ * One mailbox's slice of a fan-out page, read with a MANUAL keyset (Convex
+ * allows a single `.paginate()` per function execution, so N mailboxes cannot
+ * each paginate natively).
+ *
+ * The free-text branch is the exception: the search index is relevance-ordered
+ * and exposes no keyset, so a fan-out text search reads one page per mailbox
+ * and reports that mailbox as complete (`done`) — deeper text matches stay
+ * reachable through the single-mailbox path, which still paginates natively.
+ */
+async function scanMailbox(
+	ctx: QueryCtx,
+	mailboxId: Id<'mailboxes'>,
+	clauses: readonly SearchClause[],
+	limit: number,
+	previous: MailboxScanPosition | null
+): Promise<MailboxPage<Doc<'mailMessages'>>> {
+	const names = await resolveNames(ctx, mailboxId, clauses);
+	const live = clauses.filter((clause) => !isDeadClause(clause, names));
+	if (live.length === 0) return { mailboxId, previous, rows: [], done: true };
+
+	const disjunctive = live.length > 1;
+	const single = disjunctive ? null : live[0]!;
+	if (single && single.text) {
+		const folderId = single.folderRole
+			? (names.folderByRole.get(single.folderRole) ?? undefined)
+			: undefined;
+		const hits = await ctx.db
+			.query('mailMessages')
+			.withSearchIndex('search_messages', (q) => {
+				let filtered = q.search('snippet', single.text).eq('mailboxId', mailboxId);
+				if (folderId) filtered = filtered.eq('folderId', folderId);
+				if (single.flagSeen !== undefined) filtered = filtered.eq('flagSeen', single.flagSeen);
+				if (single.flagFlagged !== undefined)
+					filtered = filtered.eq('flagFlagged', single.flagFlagged);
+				return filtered;
+			})
+			.take(limit);
+		return {
+			mailboxId,
+			previous,
+			rows: positionRows(hits.filter((m) => matchesClause(m, single, names, false))),
+			done: true,
+		};
+	}
+
+	// The range bound is `<=` because a `(receivedAt, _id)` compound bound is not
+	// expressible, so resuming re-reads the boundary timestamp's whole tie group.
+	// Reading `skip` extra rows covers exactly that re-read prefix, so every page
+	// still surfaces up to `limit` fresh rows — even at `limit: 1` inside a long
+	// tie group. The overall take stays bounded by MAX_SCAN_ROWS; a tie group
+	// past that bound ends the walk rather than looping on it.
+	const takeCount = Math.min(limit + (previous?.skip ?? 0), MAX_SCAN_ROWS);
+	const scanned = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_mailbox_and_received', (q) =>
+			previous
+				? q.eq('mailboxId', mailboxId).lte('receivedAt', previous.at)
+				: q.eq('mailboxId', mailboxId)
+		)
+		.order('desc')
+		.take(takeCount);
+	const positioned = positionRows(scanned);
+	const fresh = positioned.filter((entry) => !isConsumed(entry.position, previous));
+	return {
+		mailboxId,
+		previous,
+		rows: fresh.filter((entry) =>
+			live.some((clause) => matchesClause(entry.row, clause, names, disjunctive))
+		),
+		scanned: positioned[positioned.length - 1]?.position,
+		done: scanned.length < takeCount || fresh.length === 0,
+	};
+}
+
+/**
+ * Free-text + structured search across messages in one or many mailboxes.
  *
  * Keyset-paginated: pass `nextCursor` from the previous response to walk past
  * the first page (the pre-pagination implementation silently capped at 200
@@ -222,67 +393,61 @@ function matchesClause(
  * the search index (there is no one text every alternative shares) and walks
  * the arrival index instead — still paginated, just unnarrowed, exactly like
  * an operator-only query today.
+ *
+ * FAN-OUT. `mailboxIds` searches several mailboxes at once — and passing
+ * neither `mailboxId` nor `mailboxIds` searches every mailbox the caller can
+ * read (own + shared memberships, active only), so "search everywhere" needs no
+ * client-side list. Each mailbox is read with its own keyset and the slices are
+ * merged newest-first by `receivedAt`, with all positions carried in one opaque
+ * cursor (see `./searchCursor`). Passing `mailboxId` alone keeps the original
+ * single-mailbox path bit-for-bit — same index branches, same native
+ * `.paginate()` cursor — so existing callers are untouched.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const search = publicQuery({
 	args: {
-		mailboxId: v.id('mailboxes'),
+		// Single-mailbox search (legacy shape). Optional so a caller can fan out
+		// over `mailboxIds`, or over everything readable by passing neither.
+		mailboxId: v.optional(v.id('mailboxes')),
+		mailboxIds: v.optional(v.array(v.id('mailboxes'))),
 		...searchClauseFields,
 		or: v.optional(v.array(searchClauseValidator)),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const empty = { messages: [], hasMore: false, nextCursor: null };
-		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
-		if (!mailbox) return empty;
-
-		const { mailboxId, or, limit: rawLimit, cursor, ...primary } = args;
+		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false, nextCursor: null };
+		const { mailboxId, mailboxIds, or, limit: rawLimit, cursor, ...primary } = args;
 		const clauses: SearchClause[] = [primary as SearchClause, ...(or ?? [])];
+		const limit = Math.min(rawLimit ?? 50, 200);
 
-		// Resolve every `in:` role and `label:` name once — positive and negated,
-		// across all clauses — so a disjunction doesn't re-read the same folder
-		// per alternative.
-		const names: ResolvedNames = { folderByRole: new Map(), labelByName: new Map() };
-		// Labels are stored with their display casing while the parser lowercases
-		// every operand, so `label:work` has to reach a label named "Work". The
-		// indexed exact hit is tried first and the case-insensitive sweep over the
-		// mailbox's (few) labels is the fallback.
-		let allLabels: Doc<'mailLabels'>[] | null = null;
-		for (const clause of clauses) {
-			for (const role of [clause.folderRole, ...(clause.not?.folderRole ?? [])]) {
-				if (!role || names.folderByRole.has(role)) continue;
-				const folder = await ctx.db
-					.query('mailFolders')
-					.withIndex('by_mailbox_and_role', (q) =>
-						q.eq('mailboxId', mailboxId).eq('role', role as FolderRole)
-					)
-					.first();
-				names.folderByRole.set(role, folder?._id ?? null);
+		// ── Fan-out: several mailboxes (or every readable one), manual keyset.
+		if (!mailboxId || mailboxIds) {
+			const targets = await resolveTargets(ctx, mailboxIds);
+			if (targets.length === 0) return empty;
+			const decoded = decodeMultiCursor(cursor);
+			const pages: MailboxPage<Doc<'mailMessages'>>[] = [];
+			for (const target of targets) {
+				// A mailbox missing from a live cursor was drained on an earlier page.
+				if (decoded && !(target in decoded)) continue;
+				pages.push(await scanMailbox(ctx, target, clauses, limit, decoded?.[target] ?? null));
 			}
-			for (const name of [clause.labelName, ...(clause.not?.labelName ?? [])]) {
-				if (!name || names.labelByName.has(name)) continue;
-				const exact = await ctx.db
-					.query('mailLabels')
-					.withIndex('by_mailbox_and_name', (q) => q.eq('mailboxId', mailboxId).eq('name', name))
-					.first();
-				if (exact) {
-					names.labelByName.set(name, exact._id);
-					continue;
-				}
-				allLabels ??= await ctx.db
-					.query('mailLabels')
-					.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
-					.collect(); // bounded: one mailbox's labels
-				const insensitive = allLabels.find((label) => label.name.toLowerCase() === name);
-				names.labelByName.set(name, insensitive?._id ?? null);
-			}
+			const merged = mergeMailboxPages(pages, limit);
+			return {
+				messages: merged.page,
+				hasMore: merged.hasMore,
+				nextCursor: merged.hasMore ? encodeMultiCursor(merged.cursor) : null,
+			};
 		}
 
+		// ── Single mailbox: unchanged native pagination.
+		const mailbox = await loadReadableMailbox(ctx, mailboxId);
+		if (!mailbox) return empty;
+
+		const names = await resolveNames(ctx, mailboxId, clauses);
 		const live = clauses.filter((clause) => !isDeadClause(clause, names));
 		if (live.length === 0) return empty;
 
-		const limit = Math.min(rawLimit ?? 50, 200);
 		// A disjunction has no shared text to search on, so it walks the arrival
 		// index and re-checks each clause's text in the post-filter.
 		const disjunctive = live.length > 1;
