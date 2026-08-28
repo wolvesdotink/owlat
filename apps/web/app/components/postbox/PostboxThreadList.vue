@@ -10,6 +10,7 @@ import {
 	rememberScroll,
 	recallScroll,
 } from '~/composables/postbox/usePostboxVirtualList';
+import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -341,28 +342,20 @@ watch(focusedIndex, (idx) => {
 });
 
 // Auto-grow the page as the window nears the end (replacing the manual "Load
-// more" click; the button stays as an always-available fallback). Guarded to
-// one emit per page count so a load in flight is never spammed — the count
-// changes when the new page lands, which re-arms the trigger.
-const AUTOLOAD_MARGIN_PX = 240;
-let emittedForCount = -1;
+// more" click; the button stays as an always-available fallback), coalesced to
+// one derivation per animation frame.
 const folderScrollKey = computed(() => `postbox:scroll:${props.folderRole}`);
-
-function onListScroll(event: Event) {
-	const el = event.target as HTMLElement;
-	syncScroll();
-	rememberScroll(folderScrollKey.value, el.scrollTop);
-	if (
-		props.hasMore &&
-		!props.loading &&
-		!props.loadingMore &&
-		emittedForCount !== itemCount.value &&
-		el.scrollHeight - el.scrollTop - el.clientHeight < AUTOLOAD_MARGIN_PX
-	) {
-		emittedForCount = itemCount.value;
-		emit('load-more');
-	}
-}
+const { handleScroll } = usePostboxListAutoLoad({
+	scrollEl,
+	itemCount,
+	hasMore: computed(() => props.hasMore === true),
+	blocked: computed(() => props.loading || props.loadingMore === true),
+	onScroll: (el) => {
+		syncScroll();
+		rememberScroll(folderScrollKey.value, el.scrollTop);
+	},
+	loadMore: () => emit('load-more'),
+});
 
 // Restore the folder's last scroll position when the list (re)mounts, e.g.
 // returning from an opened thread. Best-effort: if the rows aren't tall enough
@@ -384,7 +377,7 @@ onMounted(async () => {
 	<div
 		ref="scrollEl"
 		class="postbox-thread-list h-full overflow-auto scroll-fade"
-		@scroll="onListScroll"
+		@scroll="handleScroll()"
 	>
 		<!-- Skeleton only on FIRST load (no rows yet): live-query refreshes keep
 	     `keepPreviousData` rows visible, so they never flash the skeleton. -->

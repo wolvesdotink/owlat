@@ -55,10 +55,7 @@ describe('pushUndoEntry', () => {
 
 describe('pruneUndoStack', () => {
 	it('splits live from expired without reordering the survivors', () => {
-		const { stack, expired } = pruneUndoStack(
-			[entry('c'), entry('b', NOW - 1), entry('a')],
-			NOW
-		);
+		const { stack, expired } = pruneUndoStack([entry('c'), entry('b', NOW - 1), entry('a')], NOW);
 		expect(stack.map((e) => e.id)).toEqual(['c', 'a']);
 		expect(expired.map((e) => e.id)).toEqual(['b']);
 	});

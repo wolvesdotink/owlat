@@ -10,6 +10,9 @@ import {
 	RECATEGORIZE_OPTIONS,
 	type MailCategory,
 } from '~/composables/postbox/usePostboxThreadCategories';
+import { POSTBOX_ROW_HEIGHT, POSTBOX_SECTION_HEADER_HEIGHT } from '~/utils/postboxDensity';
+import { usePostboxSectionedVirtualList } from '~/composables/postbox/usePostboxVirtualList';
+import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
 
 type CategoryThread = {
 	_id: string;
@@ -64,6 +67,56 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	},
 });
 
+// --- Section-aware windowed rendering + infinite scroll -----------------------
+// Rows are fixed-height per density and section headers are a known constant,
+// so the window is pure arithmetic over the section row counts — no measuring.
+// It is expressed as spacers around each section's mounted slice rather than
+// one absolute translate, because the headers are `position: sticky` and
+// sticky only works in normal flow.
+const VIRTUAL_THRESHOLD = 100;
+const scrollEl = ref<HTMLElement | null>(null);
+const { density } = usePostboxSettings();
+const rowHeight = computed(() => POSTBOX_ROW_HEIGHT[density.value]);
+const headerHeight = computed(() => POSTBOX_SECTION_HEADER_HEIGHT);
+// A collapsed section contributes no rows and still costs its header — the
+// same shape `visibleThreads` flattens, so the two can't drift.
+const sectionCounts = computed(() =>
+	props.sections.map((s) => (props.collapsed[s.key] ? 0 : s.threads.length))
+);
+const itemCount = computed(() => visibleThreads.value.length);
+const virtualize = computed(() => itemCount.value > VIRTUAL_THRESHOLD);
+
+const { windows, syncScroll, scrollToFlatIndex } = usePostboxSectionedVirtualList({
+	scrollEl,
+	sectionCounts,
+	rowHeight,
+	headerHeight,
+	enabled: virtualize,
+});
+
+/** The rows of one section that are actually mounted, with their spacers. */
+function sectionWindow(index: number) {
+	return windows.value[index] ?? { startIndex: 0, endIndex: 0, padTop: 0, padBottom: 0 };
+}
+
+// j/k can land on a row outside the mounted window; shifting the scroll
+// re-derives the window and mounts it, after which the keyboard composable's
+// own scrollIntoView refines to "nearest".
+watch(focusedIndex, (idx) => {
+	if (idx < 0 || !virtualize.value) return;
+	scrollToFlatIndex(idx);
+});
+
+// Grow the page before the seam shows, coalesced to one derivation per frame.
+const { handleScroll } = usePostboxListAutoLoad({
+	scrollEl,
+	itemCount,
+	hasMore: computed(() => props.hasMore === true),
+	blocked: computed(() => props.loading),
+	onScroll: () => syncScroll(),
+	loadMore: () => emit('load-more'),
+});
+
 // "Recategorize as…" picker — driven per row.
 const recategorizeTarget = ref<string | null>(null);
 function pickCategory(label: MailCategory) {
@@ -81,7 +134,7 @@ function pickCategory(label: MailCategory) {
 		icon="lucide:check-circle-2"
 		:title="t('components.postbox.postboxThreadCategoryList.allClear')"
 	/>
-	<div v-else>
+	<div v-else ref="scrollEl" class="h-full overflow-auto" @scroll="handleScroll()">
 		<ul
 			tabindex="0"
 			role="listbox"
@@ -90,7 +143,7 @@ function pickCategory(label: MailCategory) {
 			class="outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:ring-inset"
 			@keydown="onKeydown"
 		>
-			<template v-for="section in sections" :key="section.key">
+			<template v-for="(section, sectionIndex) in sections" :key="section.key">
 				<!-- Collapsible section header with a count. -->
 				<li class="sticky top-0 z-10 bg-bg-surface">
 					<button
@@ -109,11 +162,25 @@ function pickCategory(label: MailCategory) {
 					</button>
 				</li>
 				<template v-if="!collapsed[section.key]">
+					<!-- Spacers stand in for the rows this section is not mounting, so
+					     the scroll height stays honest and the sticky header above
+					     stays in normal flow. -->
 					<li
-						v-for="thread in section.threads"
+						v-if="sectionWindow(sectionIndex).padTop > 0"
+						aria-hidden="true"
+						:style="{ height: `${sectionWindow(sectionIndex).padTop}px` }"
+					/>
+					<li
+						v-for="thread in section.threads.slice(
+							sectionWindow(sectionIndex).startIndex,
+							sectionWindow(sectionIndex).endIndex
+						)"
 						:key="thread._id"
 						class="group relative border-b border-border-subtle"
-						style="content-visibility: auto; contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px)"
+						style="
+							content-visibility: auto;
+							contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px);
+						"
 					>
 						<NuxtLink
 							:id="`postbox-cat-thread-${thread._id}`"
@@ -121,12 +188,18 @@ function pickCategory(label: MailCategory) {
 							:aria-selected="visibleThreads[focusedIndex]?._id === thread._id"
 							:to="threadTo(thread)"
 							class="pbx-row-link block px-4 py-3 hover:bg-bg-elevated"
-							:class="{ 'bg-bg-elevated': activeMessageId && activeMessageId === thread.latestMessageId }"
+							:class="{
+								'bg-bg-elevated': activeMessageId && activeMessageId === thread.latestMessageId,
+							}"
 						>
 							<div class="flex items-baseline justify-between gap-3">
 								<span
 									class="truncate text-sm"
-									:class="thread.unreadCount > 0 ? 'font-semibold text-text-primary' : 'text-text-secondary'"
+									:class="
+										thread.unreadCount > 0
+											? 'font-semibold text-text-primary'
+											: 'text-text-secondary'
+									"
 								>
 									{{ thread.latestFromAddress }}
 									<span v-if="thread.messageCount > 1" class="text-text-tertiary font-normal"
@@ -138,7 +211,11 @@ function pickCategory(label: MailCategory) {
 								</span>
 							</div>
 							<div class="flex items-center gap-1.5 mt-0.5">
-								<Icon v-if="thread.hasFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
+								<Icon
+									v-if="thread.hasFlagged"
+									name="lucide:star"
+									class="w-3.5 h-3.5 text-warning"
+								/>
 								<Icon
 									v-if="thread.hasAttachments"
 									name="lucide:paperclip"
@@ -146,19 +223,24 @@ function pickCategory(label: MailCategory) {
 								/>
 								<p
 									class="truncate text-sm flex-1"
-									:class="thread.unreadCount > 0 ? 'font-medium text-text-primary' : 'text-text-secondary'"
+									:class="
+										thread.unreadCount > 0 ? 'font-medium text-text-primary' : 'text-text-secondary'
+									"
 								>
 									{{
-									thread.latestSubject ||
-									t('components.postbox.postboxThreadCategoryList.noSubject')
-								}}
+										thread.latestSubject ||
+										t('components.postbox.postboxThreadCategoryList.noSubject')
+									}}
 								</p>
 								<span
 									v-if="thread.unreadCount > 0"
 									class="text-xs bg-brand text-text-inverse rounded-full px-1.5 min-w-[1.25rem] text-center"
-								>{{ thread.unreadCount }}</span>
+									>{{ thread.unreadCount }}</span
+								>
 							</div>
-							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">{{ thread.latestSnippet }}</p>
+							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
+								{{ thread.latestSnippet }}
+							</p>
 						</NuxtLink>
 						<!-- Overflow: recategorize this sender's mail. -->
 						<button
@@ -171,9 +253,16 @@ function pickCategory(label: MailCategory) {
 							<Icon name="lucide:tag" class="w-3.5 h-3.5" />
 						</button>
 					</li>
+					<li
+						v-if="sectionWindow(sectionIndex).padBottom > 0"
+						aria-hidden="true"
+						:style="{ height: `${sectionWindow(sectionIndex).padBottom}px` }"
+					/>
 				</template>
 			</template>
 		</ul>
+		<!-- Fallback trigger: the scroll auto-grows the page, but the button stays
+		     so a user can still advance if the auto-load stalls. -->
 		<div v-if="!loading && hasMore" class="p-3 text-center">
 			<button type="button" class="text-sm text-brand hover:underline" @click="emit('load-more')">
 				{{ t('components.postbox.postboxThreadCategoryList.loadMore') }}
@@ -185,7 +274,11 @@ function pickCategory(label: MailCategory) {
 		:open="recategorizeTarget !== null"
 		:title="t('components.postbox.postboxThreadCategoryList.recategorize')"
 		size="sm"
-		@update:open="(v: boolean) => { if (!v) recategorizeTarget = null; }"
+		@update:open="
+			(v: boolean) => {
+				if (!v) recategorizeTarget = null;
+			}
+		"
 	>
 		<ul class="space-y-1">
 			<li v-for="option in RECATEGORIZE_OPTIONS" :key="option.key">

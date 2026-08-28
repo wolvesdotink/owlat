@@ -46,3 +46,11 @@ export const POSTBOX_ROW_HEIGHT: Record<PostboxDensity, number> = {
 	comfortable: 76,
 	compact: 52,
 };
+
+/**
+ * Height of a collapsible section header in the grouped list renderers
+ * (`px-4 py-2` around a 16px `text-xs` line). Density-independent: the header
+ * is a label, not a row, and stays the same size in both modes. The sectioned
+ * windowing math needs it to know where each section's rows begin.
+ */
+export const POSTBOX_SECTION_HEADER_HEIGHT = 32;
