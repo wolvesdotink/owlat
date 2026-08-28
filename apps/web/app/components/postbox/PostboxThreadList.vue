@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxComposeMode, PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
+import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import {
@@ -11,6 +12,7 @@ import {
 	recallScroll,
 } from '~/composables/postbox/usePostboxVirtualList';
 import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
+import { postboxListEmptyState } from '~/utils/postboxListEmptyState';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -149,6 +151,36 @@ async function snoozeFocused(until: number, scope: PostboxSnoozeScope) {
 	else await snoozeMsg(id, until);
 }
 
+/**
+ * A committed swipe on a row (UX plan idea 21). It is a fourth ENTRY POINT, not
+ * a fourth implementation: every branch lands on the verb the hover buttons,
+ * the context menu and the single-key shortcuts already call, so the optimistic
+ * hide and the "Undo — Cmd+Z" registration come along for free. Snooze opens
+ * the same picker `h` does — a deferral needs a time, and guessing one from a
+ * gesture is how mail disappears until Thursday.
+ */
+function onRowSwipe(m: PostboxThreadRowMessage, action: Exclude<PostboxSwipeAction, 'none'>) {
+	switch (action) {
+		case 'archive':
+			void archiveMsg(m._id);
+			break;
+		case 'trash':
+			void trashMsg(m._id);
+			break;
+		case 'star':
+			void toggleStar(m._id, !m.flagFlagged);
+			break;
+		case 'read':
+			void toggleRead(m._id, !m.flagSeen);
+			break;
+		case 'snooze':
+			snoozeTargetId.value = m._id;
+			snoozeTargetThreadId.value = m.threadId ?? null;
+			snoozeOpen.value = true;
+			break;
+	}
+}
+
 /** Mute/unmute the focused row's conversation (the `m` shortcut + context menu). */
 function toggleMuteRow(m: PostboxThreadRowMessage) {
 	void toggleMute(m._id, m.mutedAt == null);
@@ -168,56 +200,22 @@ async function moveFocusedTo(targetFolderId: Id<'mailFolders'>) {
 	if (id) await moveMsg(id, targetFolderId);
 }
 
-// Context-aware empty state: a filter that hides every row gets a caught-up
-// moment with a one-tap "Show all"; inbox-zero gets a quiet "All clear";
-// empty custom folders (no role) and label views get a one-line hint with a
-// relevant action; other system folders keep a neutral "No messages".
+// Context-aware empty state — a filtered-to-zero folder, inbox zero, an empty
+// label and an empty custom folder each say something different. The choice is
+// a pure derivation (utils/postboxListEmptyState.ts); this is the render
+// boundary that resolves its catalog keys.
 const emptyState = computed(() => {
-	if (props.filterActive) {
-		return {
-			icon: 'lucide:check-circle-2',
-			title: t('components.postbox.postboxThreadList.emptyFilteredTitle'),
-			// The chips filter the LOADED pages, so "nothing matches" can mean
-			// "not on these pages yet". Say so while a further page exists — the
-			// Load more below the empty state is then a real next step rather
-			// than a leftover control under a dead end.
-			hint: props.hasMore
-				? t('components.postbox.postboxThreadList.emptyFilteredMoreHint')
-				: (undefined as string | undefined),
-			showFilterAction: false,
-		};
-	}
-	if (props.emptyContext === 'label') {
-		return {
-			icon: 'lucide:tag',
-			title: t('components.postbox.postboxThreadList.emptyLabelTitle'),
-			hint: t('components.postbox.postboxThreadList.emptyLabelHint'),
-			showFilterAction: false,
-		};
-	}
-	if (props.folderRole === 'inbox') {
-		return {
-			icon: 'lucide:check-circle-2',
-			title: t('components.postbox.postboxThreadList.emptyInboxTitle'),
-			// Teach the two moves a new member reaches for first: compose and the
-			// command palette. Quiet enough to stay welcome once the inbox fills.
-			hint: t('components.postbox.postboxThreadList.emptyInboxHint'),
-			showFilterAction: false,
-		};
-	}
-	if (props.folderRole === '') {
-		return {
-			icon: 'lucide:folder-open',
-			title: t('components.postbox.postboxThreadList.emptyFolderTitle'),
-			hint: t('components.postbox.postboxThreadList.emptyFolderHint'),
-			showFilterAction: true,
-		};
-	}
+	const state = postboxListEmptyState({
+		filterActive: props.filterActive === true,
+		hasMore: props.hasMore === true,
+		emptyContext: props.emptyContext,
+		folderRole: props.folderRole,
+	});
 	return {
-		icon: 'lucide:inbox',
-		title: t('components.postbox.postboxThreadList.emptyDefaultTitle'),
-		hint: undefined,
-		showFilterAction: false,
+		icon: state.icon,
+		title: t(state.titleKey),
+		hint: state.hintKey ? t(state.hintKey) : undefined,
+		showFilterAction: state.showFilterAction,
 	};
 });
 
@@ -318,7 +316,7 @@ watch([focusedIndex, () => props.activeMessageId], () => {
 // constant, so this is fixed-height windowing with no dynamic measurement.
 const VIRTUAL_THRESHOLD = 100;
 const scrollEl = ref<HTMLElement | null>(null);
-const { density } = usePostboxSettings();
+const { density, swipeLeftAction, swipeRightAction } = usePostboxSettings();
 const rowHeight = computed(() => POSTBOX_ROW_HEIGHT[density.value]);
 const itemCount = computed(() => visibleMessages.value.length);
 const virtualize = computed(() => itemCount.value > VIRTUAL_THRESHOLD);
@@ -439,6 +437,8 @@ onMounted(async () => {
 					:msg="msg"
 					:selectable="selectable"
 					:trust-markers="trustMarkers"
+					:swipe-left="swipeLeftAction"
+					:swipe-right="swipeRightAction"
 					:folder-role="props.folderRole"
 					:virtualize="virtualize"
 					:selected="bulk.isSelected(msg._id)"
@@ -456,6 +456,7 @@ onMounted(async () => {
 					@toggle-mute="toggleMuteRow(msg)"
 					@prefetch="prefetchRow(msg._id)"
 					@cancel-follow-up="cancelFollowUp(msg)"
+					@swipe="(action: Exclude<PostboxSwipeAction, 'none'>) => onRowSwipe(msg, action)"
 				/>
 			</div>
 		</ul>

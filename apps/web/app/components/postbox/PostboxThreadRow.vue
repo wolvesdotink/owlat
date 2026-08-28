@@ -50,6 +50,8 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
  */
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { deriveSenderRowMarker, senderRiskInputOf, type SenderAuthText } from '~/utils/senderAuth';
+import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
+import { usePostboxRowGestures } from '~/composables/postbox/usePostboxRowGestures';
 
 const { t, locale } = useI18n();
 
@@ -67,6 +69,13 @@ const props = defineProps<{
 	 * mount one flag subscription per visible row.
 	 */
 	trustMarkers?: boolean;
+	/**
+	 * The swipe mapping (UX plan idea 21), resolved once by the list rather than
+	 * per row so a folder page does not mount one settings subscription per
+	 * visible row. Absent on either side means that direction is inert.
+	 */
+	swipeLeft?: PostboxSwipeAction;
+	swipeRight?: PostboxSwipeAction;
 }>();
 
 const emit = defineEmits<{
@@ -79,6 +88,8 @@ const emit = defineEmits<{
 	trash: [];
 	'toggle-mute': [];
 	'cancel-follow-up': [];
+	/** A committed swipe (idea 21). The list maps it onto its own triage verbs. */
+	swipe: [action: Exclude<PostboxSwipeAction, 'none'>];
 	/**
 	 * The pointer or the focus ring landed on this row — the list warms its body
 	 * (debounced, so a sweep across the list costs one round-trip, not one per
@@ -215,67 +226,32 @@ function snoozedTitle(until: number): string {
 	});
 }
 
-// ── Touch entry point: long-press opens the SAME context menu ──
+// ── Touch entry points: long-press for the menu, swipe to triage ──
 // On touch devices the hover-reveal actions stay visible at rest
-// (postbox-density.css), but the triage verbs' second entry point — the
-// right-click menu — never fires. Per the mailbox plan this is wiring, not
-// new UI: a ~500ms hold re-dispatches the row's own `contextmenu` event at
-// the touch point, so UiContextMenu's existing open-at-position path (with
-// its focus trap, Esc handling and action source) runs unchanged.
-const LONG_PRESS_MS = 500;
-const LONG_PRESS_SLOP_PX = 8;
-let pressTimer: ReturnType<typeof setTimeout> | null = null;
-let pressOrigin: { x: number; y: number } | null = null;
-/** Set when the long-press fired, so the finger-lift click doesn't navigate. */
-let suppressNextClick = false;
-
-function cancelLongPress() {
-	if (pressTimer !== null) {
-		clearTimeout(pressTimer);
-		pressTimer = null;
-	}
-	pressOrigin = null;
-}
-
-function onRowPointerdown(event: PointerEvent) {
-	// Mice already own right-click; multi-touch secondary points are ignored;
-	// taps on the row's own buttons (checkbox, quick actions) handle themselves.
-	if (event.pointerType === 'mouse' || !event.isPrimary) return;
-	if ((event.target as HTMLElement | null)?.closest('button')) return;
-	// A new press starts clean: the previous long-press's click may have been
-	// swallowed by the menu's backdrop (dismiss by tapping outside, or Esc)
-	// rather than reaching this row, which would otherwise leave the flag set
-	// and eat the next legitimate tap.
-	suppressNextClick = false;
-	cancelLongPress();
-	pressOrigin = { x: event.clientX, y: event.clientY };
-	const row = event.currentTarget as HTMLElement;
-	pressTimer = setTimeout(() => {
-		pressTimer = null;
-		suppressNextClick = true;
+// (postbox-density.css), but the triage verbs' other entry points — the
+// right-click menu and a pointer that can hover — never fire. A ~500ms hold
+// re-dispatches the row's own `contextmenu` event at the touch point, so
+// UiContextMenu's existing open-at-position path (focus trap, Esc handling,
+// one action source) runs unchanged; a horizontal drag past the commit
+// distance emits `swipe`, which the list routes into the SAME verbs (UX plan
+// idea 21). Both live in one composable because they are one pointer stream:
+// the first few pixels of movement decide which gesture it becomes.
+const gestures = usePostboxRowGestures({
+	leftAction: () => props.swipeLeft ?? 'none',
+	rightAction: () => props.swipeRight ?? 'none',
+	onSwipe: (action) => emit('swipe', action),
+	onLongPress: (row, point) =>
 		row.dispatchEvent(
 			new MouseEvent('contextmenu', {
 				bubbles: true,
 				cancelable: true,
-				clientX: pressOrigin?.x ?? 0,
-				clientY: pressOrigin?.y ?? 0,
+				clientX: point.x,
+				clientY: point.y,
 			})
-		);
-	}, LONG_PRESS_MS);
-}
+		),
+});
 
-/** A drag past the slop is a scroll, not a hold — stand down. */
-function onRowPointermove(event: PointerEvent) {
-	if (!pressOrigin || pressTimer === null) return;
-	if (
-		Math.abs(event.clientX - pressOrigin.x) > LONG_PRESS_SLOP_PX ||
-		Math.abs(event.clientY - pressOrigin.y) > LONG_PRESS_SLOP_PX
-	) {
-		cancelLongPress();
-	}
-}
-
-/** Swallow the click that follows a fired long-press (it would open the row). */
+/** Swallow the click a fired long-press or a swipe leaves behind. */
 function onCapturedClick(event: MouseEvent) {
 	// Shift+click anywhere on the row extends the selection instead of opening
 	// the message — a range that only the 4x4px checkbox could start would be
@@ -286,13 +262,10 @@ function onCapturedClick(event: MouseEvent) {
 		emit('toggle-select', true);
 		return;
 	}
-	if (!suppressNextClick) return;
-	suppressNextClick = false;
+	if (!gestures.consumeClickSuppression()) return;
 	event.preventDefault();
 	event.stopPropagation();
 }
-
-onUnmounted(cancelLongPress);
 </script>
 
 <template>
@@ -310,7 +283,11 @@ onUnmounted(cancelLongPress);
 			<li
 				role="none"
 				class="group relative pbx-row-li"
-				:class="{ 'pbx-virtual-row': virtualize, 'pbx-row-danger': !!trustMarker }"
+				:class="{
+					'pbx-virtual-row': virtualize,
+					'pbx-row-danger': !!trustMarker,
+					'pbx-row-swiping': !!gestures.track.value,
+				}"
 				style="
 					content-visibility: auto;
 					contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px);
@@ -319,12 +296,14 @@ onUnmounted(cancelLongPress);
 				@keydown="onKeydown"
 				@mouseenter="emit('prefetch')"
 				@focusin="emit('prefetch')"
-				@pointerdown="onRowPointerdown"
-				@pointermove="onRowPointermove"
-				@pointerup="cancelLongPress"
-				@pointercancel="cancelLongPress"
+				@pointerdown="gestures.onPointerdown"
+				@pointermove="gestures.onPointermove"
+				@pointerup="gestures.onPointerup"
+				@pointercancel="gestures.onPointercancel"
 				@click.capture="onCapturedClick"
 			>
+				<!-- Revealed behind the row while it follows the finger sideways. -->
+				<PostboxSwipeTrack v-if="gestures.track.value" :track="gestures.track.value" />
 				<component
 					:is="selectable ? 'div' : (resolveComponent('NuxtLink') as 'div')"
 					:id="rowId"
@@ -338,7 +317,9 @@ onUnmounted(cancelLongPress);
 						'bg-brand/5': selected,
 						'ring-1 ring-inset ring-brand/50': focused,
 						'cursor-pointer': selectable,
+						'pbx-row-settle': gestures.settling.value,
 					}"
+					:style="gestures.rowStyle.value"
 					@click="selectable ? emit('select') : undefined"
 				>
 					<div class="flex items-start gap-2">
