@@ -3283,6 +3283,8 @@
 				"remove": "Remove {filename}",
 				"retry": "Retry {filename}",
 				"retryTitle": "Retry upload",
+				"share": "Share {filename} as a link instead",
+				"shareTitle": "Share as link instead",
 				"sizeOf": "{used} of {budget}"
 			},
 			"postboxComposerDock": {
@@ -4503,6 +4505,23 @@
 				"subtitle": "For an account you can no longer sign in to",
 				"title": "Import from a file",
 				"uploading": "Uploading…"
+			},
+			"postboxSharedLinksSettings": {
+				"copied": "Copied",
+				"copy": "Copy link",
+				"expiryDays": "{days} days",
+				"expiryHint": "Applies to links you create from now on.",
+				"expiryLabel": "New links expire after",
+				"heading": "Files you shared as links",
+				"hint": "Anyone with one of these links can download the file until it expires or you revoke it.",
+				"limit": "Limit to my mailbox",
+				"limitAriaLabel": "Stop the public link to {filename} from working",
+				"limitTitle": "Stop the public link from working, but keep the file",
+				"open": "Open",
+				"openAriaLabel": "Open your copy of {filename}",
+				"revoke": "Revoke",
+				"revokeAriaLabel": "Revoke the link to {filename}",
+				"revokeDescription": "The link to {filename} stops working immediately and the file is deleted. This cannot be undone."
 			}
 		},
 		"preferences": {
@@ -11856,6 +11875,11 @@
 				"attachOperation": "Attach file",
 				"prepareUploadOperation": "Prepare upload",
 				"removeOperation": "Remove attachment",
+				"shareBlockHeading": "Shared file",
+				"shareBlockMeta": "{size} — this link expires on {date}",
+				"shareDone": "{filename} is now a link in your message",
+				"shareInfected": "{filename} was blocked by the malware scan and was not shared",
+				"shareOperation": "sharing the attachment as a link",
 				"tooLarge": "{filename} is too large (max {max} MB).",
 				"tooManyFiles": "You can attach up to {count} files.",
 				"totalTooLarge": "Attachments exceed the {max} MB total limit.",
@@ -11978,6 +12002,10 @@
 				"started": "Importing your archive.",
 				"uploadFailed": "The archive could not be uploaded.",
 				"uploadOperation": "Upload archive"
+			},
+			"usePostboxAttachmentShares": {
+				"revokeOperation": "revoking the share link",
+				"scopeOperation": "changing who can open the share link"
 			}
 		},
 		"postboxAutoAdvance": {
@@ -12583,6 +12611,10 @@
 				"dailyBriefEmail": {
 					"title": "Daily brief by email",
 					"keywords": "brief, digest, summary, daily"
+				},
+				"sharedLinks": {
+					"keywords": "share link, shared files, revoke link, expiring link, large attachment",
+					"title": "Shared links"
 				}
 			}
 		},
@@ -13756,6 +13788,22 @@
 			"days7": "After 7 days",
 			"days90": "After 90 days",
 			"never": "Never"
+		},
+		"postboxShareLink": {
+			"state": {
+				"expired": "Expired",
+				"live": "Active",
+				"revoked": "Revoked"
+			},
+			"scope": {
+				"anyone": "Anyone with the link",
+				"mailbox": "Only me"
+			},
+			"summary": {
+				"expired": "Expired. Downloads before that: {downloads}",
+				"live": "{downloads} downloads so far",
+				"revoked": "Revoked. Downloads before that: {downloads}"
+			}
 		}
 	},
 	"sharedPkg": {

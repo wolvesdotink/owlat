@@ -70,6 +70,8 @@ const {
 	thumbUrlFor,
 	addFiles,
 	removeAttachment,
+	shareAsLink,
+	isSharing,
 	cancelUpload,
 	retryUpload,
 	addInlineImage,
@@ -432,7 +434,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:uploads="uploads"
 			:meter="attachmentSizeMeter"
 			:thumb-url-for="thumbUrlFor"
+			:is-sharing="isSharing"
 			@remove="removeAttachment"
+			@share="shareAsLink"
 			@cancel="cancelUpload"
 			@retry="retryUpload"
 		/>

@@ -3283,6 +3283,8 @@
 				"remove": "{filename} entfernen",
 				"retry": "{filename} erneut versuchen",
 				"retryTitle": "Upload erneut versuchen",
+				"share": "{filename} stattdessen als Link teilen",
+				"shareTitle": "Stattdessen als Link teilen",
 				"sizeOf": "{used} von {budget}"
 			},
 			"postboxComposerDock": {
@@ -4503,6 +4505,23 @@
 				"subtitle": "Für ein Konto, in das du dich nicht mehr einloggen kannst",
 				"title": "Aus einer Datei importieren",
 				"uploading": "Wird hochgeladen…"
+			},
+			"postboxSharedLinksSettings": {
+				"copied": "Kopiert",
+				"copy": "Link kopieren",
+				"expiryDays": "{days} Tagen",
+				"expiryHint": "Gilt für Links, die du ab jetzt erstellst.",
+				"expiryLabel": "Neue Links laufen ab nach",
+				"heading": "Als Link geteilte Dateien",
+				"hint": "Wer einen dieser Links hat, kann die Datei herunterladen, bis der Link abläuft oder du ihn zurückziehst.",
+				"limit": "Auf mein Postfach beschränken",
+				"limitAriaLabel": "Den öffentlichen Link zu {filename} abschalten",
+				"limitTitle": "Den öffentlichen Link abschalten, die Datei aber behalten",
+				"open": "Öffnen",
+				"openAriaLabel": "Deine Kopie von {filename} öffnen",
+				"revoke": "Zurückziehen",
+				"revokeAriaLabel": "Den Link zu {filename} zurückziehen",
+				"revokeDescription": "Der Link zu {filename} funktioniert sofort nicht mehr und die Datei wird gelöscht. Das lässt sich nicht rückgängig machen."
 			}
 		},
 		"preferences": {
@@ -11856,6 +11875,11 @@
 				"attachOperation": "Datei anhängen",
 				"prepareUploadOperation": "Upload vorbereiten",
 				"removeOperation": "Anhang entfernen",
+				"shareBlockHeading": "Geteilte Datei",
+				"shareBlockMeta": "{size} — dieser Link läuft am {date} ab",
+				"shareDone": "{filename} liegt jetzt als Link in deiner Nachricht",
+				"shareInfected": "{filename} wurde vom Virenscanner blockiert und nicht geteilt",
+				"shareOperation": "Anhang als Link teilen",
 				"tooLarge": "{filename} ist zu groß (max. {max} MB).",
 				"tooManyFiles": "Sie können bis zu {count} Dateien anhängen.",
 				"totalTooLarge": "Die Anhänge überschreiten das Gesamtlimit von {max} MB.",
@@ -11978,6 +12002,10 @@
 				"started": "Dein Archiv wird importiert.",
 				"uploadFailed": "Das Archiv konnte nicht hochgeladen werden.",
 				"uploadOperation": "Archiv hochladen"
+			},
+			"usePostboxAttachmentShares": {
+				"revokeOperation": "Freigabelink zurückziehen",
+				"scopeOperation": "Zugriff auf den Freigabelink ändern"
 			}
 		},
 		"postboxAutoAdvance": {
@@ -12583,6 +12611,10 @@
 				"dailyBriefEmail": {
 					"title": "Tagesüberblick per E-Mail",
 					"keywords": "Überblick, Zusammenfassung, Digest, täglich"
+				},
+				"sharedLinks": {
+					"keywords": "freigabelink, geteilte dateien, link zurückziehen, ablaufender link, großer anhang",
+					"title": "Geteilte Links"
 				}
 			}
 		},
@@ -13756,6 +13788,22 @@
 			"days7": "Nach 7 Tagen",
 			"days90": "Nach 90 Tagen",
 			"never": "Nie"
+		},
+		"postboxShareLink": {
+			"state": {
+				"expired": "Abgelaufen",
+				"live": "Aktiv",
+				"revoked": "Zurückgezogen"
+			},
+			"scope": {
+				"anyone": "Alle mit dem Link",
+				"mailbox": "Nur ich"
+			},
+			"summary": {
+				"expired": "Abgelaufen. Downloads davor: {downloads}",
+				"live": "Bisher {downloads} Downloads",
+				"revoked": "Zurückgezogen. Downloads davor: {downloads}"
+			}
 		}
 	},
 	"sharedPkg": {

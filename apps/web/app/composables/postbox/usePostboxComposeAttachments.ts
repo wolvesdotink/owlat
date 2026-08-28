@@ -14,6 +14,7 @@ import { extractAttachments } from '@owlat/shared/mailMime';
 import { downscaleImageFile } from './postboxInlineImage';
 import { attachmentMeter } from './postboxAttachmentMeter';
 import { createAttachmentUploads, xhrPutFile } from './postboxAttachmentUploads';
+import { appendShareLinkBlock, shareLinkBlockHtml } from '~/utils/postboxShareLink';
 
 // Per-file attachment ceiling for user-facing copy, derived from the shared cap
 // (mirrors MAX_LIBRARY_FILE_MB) so the label moves with MAX_ATTACHMENT_BYTES.
@@ -33,6 +34,12 @@ export interface ComposerAttachment {
 export function usePostboxComposeAttachments(opts: {
 	ensureDraft: () => Promise<Id<'mailDrafts'> | null>;
 	draftId: Ref<Id<'mailDrafts'> | null>;
+	/**
+	 * The draft body. "Share as link instead" edits it: the attachment leaves the
+	 * message and a link block takes its place, so the two halves of the swap
+	 * have to happen against the same ref the parent autosaves.
+	 */
+	bodyHtml?: Ref<string>;
 	/** Attach a transient generated file handed off via usePostboxPendingAttachments. */
 	attachPendingKey?: string;
 	/** Forward: clone the original message's attachments onto this draft. */
@@ -251,6 +258,71 @@ export function usePostboxComposeAttachments(opts: {
 		});
 	}
 
+	// ── Share as link instead (idea 10) ──────────────────────────────────────
+	const shareAttachmentOp = useBackendOperation(
+		api.mail.attachmentSharesActions.shareDraftAttachment,
+		{ label: () => t('shared.postbox.usePostboxComposeAttachments.shareOperation') }
+	);
+
+	/**
+	 * Swap one committed attachment for an expiring link in the body.
+	 *
+	 * The server owns the swap — it detaches the part and creates the share in
+	 * one transaction after the malware scan — so this only mirrors the result
+	 * locally: drop the chip, append the block. If the scan refuses the file,
+	 * the chip stays exactly where it was and the user is told why, because the
+	 * alternative (a silently vanished attachment) is far worse than a bounce.
+	 */
+	async function shareAsLink(storageId: string): Promise<boolean> {
+		const id = opts.draftId.value;
+		if (!id) return false;
+		const attachment = attachments.value.find((a) => a.storageId === storageId);
+		if (!attachment) return false;
+
+		const outcome = await shareAttachmentOp.run({
+			draftId: id,
+			storageId: storageId as Id<'_storage'>,
+		});
+		if (!outcome.ok) return false;
+		const share = outcome.result;
+		if (!share.ok) {
+			showToast(
+				t('shared.postbox.usePostboxComposeAttachments.shareInfected', {
+					filename: share.filename,
+				}),
+				'error'
+			);
+			return false;
+		}
+
+		if (opts.bodyHtml) {
+			opts.bodyHtml.value = appendShareLinkBlock(
+				opts.bodyHtml.value,
+				shareLinkBlockHtml({
+					url: share.url,
+					filename: share.filename,
+					heading: t('shared.postbox.usePostboxComposeAttachments.shareBlockHeading'),
+					meta: t('shared.postbox.usePostboxComposeAttachments.shareBlockMeta', {
+						size: formatCompactFileSize(share.size),
+						date: formatDate(share.expiresAt, 'medium', locale.value),
+					}),
+				})
+			);
+		}
+
+		attachments.value = attachments.value.filter((a) => a.storageId !== storageId);
+		const thumb = thumbUrls.get(storageId);
+		if (thumb) {
+			URL.revokeObjectURL(thumb);
+			thumbUrls.delete(storageId);
+		}
+		showToast(
+			t('shared.postbox.usePostboxComposeAttachments.shareDone', { filename: share.filename }),
+			'success'
+		);
+		return true;
+	}
+
 	async function removeAttachment(storageId: string) {
 		const id = opts.draftId.value;
 		if (!id) return;
@@ -310,6 +382,8 @@ export function usePostboxComposeAttachments(opts: {
 		thumbUrlFor,
 		addFiles,
 		removeAttachment,
+		shareAsLink,
+		isSharing: shareAttachmentOp.isLoading,
 		cancelUpload: uploader.cancel,
 		retryUpload: uploader.retry,
 		addInlineImage,

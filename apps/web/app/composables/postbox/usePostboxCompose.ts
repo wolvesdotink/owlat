@@ -143,6 +143,8 @@ export function usePostboxCompose(seed: DraftSeed) {
 		thumbUrlFor,
 		addFiles,
 		removeAttachment,
+		shareAsLink,
+		isSharing,
 		cancelUpload,
 		retryUpload,
 		addInlineImage,
@@ -150,6 +152,11 @@ export function usePostboxCompose(seed: DraftSeed) {
 	} = usePostboxComposeAttachments({
 		ensureDraft,
 		draftId,
+		// "Share as link instead" (idea 10) takes the file out of the message and
+		// puts a link block in the body, so it needs the very ref this composable
+		// autosaves — otherwise the swap would drop the attachment and leave the
+		// recipient with no way to reach it.
+		bodyHtml,
 		attachPendingKey: seed.attachPendingKey,
 		forwardAttachmentsFromMessageId: seed.forwardAttachmentsFromMessageId,
 	});
@@ -496,6 +503,8 @@ export function usePostboxCompose(seed: DraftSeed) {
 		thumbUrlFor,
 		addFiles,
 		removeAttachment,
+		shareAsLink,
+		isSharing,
 		cancelUpload,
 		retryUpload,
 		addInlineImage,

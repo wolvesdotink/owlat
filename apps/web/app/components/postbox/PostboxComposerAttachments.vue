@@ -10,7 +10,7 @@ interface ComposerAttachment {
 	size: number;
 }
 
-defineProps<{
+const props = defineProps<{
 	/** Committed attachments (uploaded, graduated out of the upload chips). */
 	attachments: ComposerAttachment[];
 	/** In-flight / failed upload chips (no storageId yet). */
@@ -19,15 +19,26 @@ defineProps<{
 	meter: AttachmentMeter;
 	/** Resolve a committed attachment's image thumbnail object URL, if any. */
 	thumbUrlFor: (storageId: string) => string | null;
+	/** A share swap is in flight (the scan runs server-side and takes a moment). */
+	isSharing?: boolean;
 }>();
 
 const emit = defineEmits<{
 	(e: 'remove', storageId: string): void;
+	(e: 'share', storageId: string): void;
 	(e: 'cancel', id: string): void;
 	(e: 'retry', id: string): void;
 }>();
 
 const { t } = useI18n();
+
+/**
+ * "Share as link instead" appears exactly when the meter turns amber (idea 10).
+ * The meter's warning line has always talked about links; until now there was
+ * nothing to press. Below the threshold the button would make every ordinary
+ * attachment a decision, so it stays hidden.
+ */
+const offerShare = computed(() => shouldOfferShareLink(props.meter));
 </script>
 
 <template>
@@ -51,6 +62,22 @@ const { t } = useI18n();
 				<Icon v-else name="lucide:paperclip" class="w-3 h-3 text-text-tertiary" />
 				<span class="truncate max-w-[140px]">{{ att.filename }}</span>
 				<span class="text-text-tertiary">{{ formatCompactFileSize(att.size) }}</span>
+				<!-- Idea 10: swap this file for an expiring link in the body. Offered
+				     only once the meter is worried; the file is malware-scanned before it
+				     becomes shareable, so the click takes a moment. -->
+				<button
+					v-if="offerShare"
+					type="button"
+					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
+					:disabled="isSharing"
+					:title="t('components.postbox.postboxComposerAttachments.shareTitle')"
+					:aria-label="
+						t('components.postbox.postboxComposerAttachments.share', { filename: att.filename })
+					"
+					@click="emit('share', att.storageId)"
+				>
+					<Icon name="lucide:link" class="w-3 h-3" />
+				</button>
 				<button
 					type="button"
 					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
