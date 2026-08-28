@@ -8,9 +8,9 @@
 
 import { v } from 'convex/values';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 
 /** Per-batch row cap for the scheduled label-reference cleanup. */
@@ -194,6 +194,61 @@ export const list = publicQuery({
 	},
 });
 
+/**
+ * Write one message's label membership. Returns false when the message already
+ * had the requested state (nothing patched), so batch callers can skip the
+ * thread reconciliation for a no-op.
+ */
+async function applyLabelToMessage(
+	ctx: MutationCtx,
+	message: Doc<'mailMessages'>,
+	labelId: Id<'mailLabels'>,
+	add: boolean,
+	now: number
+): Promise<boolean> {
+	const has = message.labelIds.includes(labelId);
+	if (add === has) return false;
+
+	// Bump modseq so IMAP CONDSTORE clients pick up the change
+	const folder = await ctx.db.get(message.folderId);
+	if (!folder) return false;
+	const modseq = folder.highestModseq + 1;
+	await ctx.db.patch(folder._id, { highestModseq: modseq, updatedAt: now });
+
+	await ctx.db.patch(message._id, {
+		labelIds: add ? [...message.labelIds, labelId] : message.labelIds.filter((id) => id !== labelId),
+		modseq,
+		updatedAt: now,
+	});
+	return true;
+}
+
+/**
+ * Re-derive whether a thread still carries a label from its messages, AFTER
+ * their rows have been written. Done once per touched thread (not once per
+ * message) so a batch that labels twenty messages of one conversation pays a
+ * single sibling scan.
+ */
+async function reconcileThreadLabel(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	labelId: Id<'mailLabels'>,
+	now: number
+): Promise<void> {
+	const thread = await ctx.db.get(threadId);
+	if (!thread) return;
+	const siblings = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+		.collect(); // bounded: one thread's messages
+	const stillUsed = siblings.some((m) => m.labelIds.includes(labelId));
+	if (stillUsed === thread.labelIds.includes(labelId)) return;
+	const threadLabels = new Set(thread.labelIds);
+	if (stillUsed) threadLabels.add(labelId);
+	else threadLabels.delete(labelId);
+	await ctx.db.patch(threadId, { labelIds: Array.from(threadLabels), updatedAt: now });
+}
+
 /** Add or remove a label on a single message. */
 export const toggleOnMessage = authedMutation({
 	args: {
@@ -211,49 +266,63 @@ export const toggleOnMessage = authedMutation({
 			throwInvalidInput('Label does not belong to this mailbox');
 		}
 
-		const has = message.labelIds.includes(args.labelId);
-		if (args.add && has) return;
-		if (!args.add && !has) return;
+		const now = Date.now();
+		if (!(await applyLabelToMessage(ctx, message, args.labelId, args.add, now))) return;
+		await reconcileThreadLabel(ctx, message.threadId, args.labelId, now);
+	},
+});
+
+/**
+ * Per-call ceiling on a batch label write, matching
+ * `mailbox/selection.BULK_SELECTION_CAP`: a selection that query hands out is
+ * always one this mutation can apply in a single transaction.
+ */
+const LABEL_BATCH_CAP = 500;
+
+/**
+ * Add or remove ONE label across many messages in a single transaction — the
+ * write behind the thread list's bulk "Label" action, which previously fired
+ * `toggleOnMessage` once per selected row (N round trips, N partial states
+ * visible to the live query, and no way to fail as a unit).
+ *
+ * Access is checked per message rather than once for the batch: a selection is
+ * client-supplied and may name ids from another mailbox. An unreachable or
+ * missing id is SKIPPED, not fatal — the same shape `messageActions.setFlags`
+ * uses, so a stale row in a selection can't sink the whole action. The count of
+ * messages actually changed comes back for the caller's toast.
+ */
+export const setOnMessages = authedMutation({
+	args: {
+		messageIds: v.array(v.id('mailMessages')),
+		labelId: v.id('mailLabels'),
+		add: v.boolean(),
+	},
+	handler: async (ctx, args): Promise<{ changed: number }> => {
+		if (args.messageIds.length > LABEL_BATCH_CAP) {
+			throwInvalidInput(`At most ${LABEL_BATCH_CAP} messages per batch`);
+		}
+		const label = await getOrThrow(ctx, args.labelId, 'Label');
+		const owned = await requireMailboxAccess(ctx, label.mailboxId);
+		if (!owned.ok) throwForbidden('Label not accessible');
 
 		const now = Date.now();
-		const newLabels = args.add
-			? [...message.labelIds, args.labelId]
-			: message.labelIds.filter((id) => id !== args.labelId);
-
-		// Bump modseq so IMAP CONDSTORE clients pick up the change
-		const folder = await ctx.db.get(message.folderId);
-		if (!folder) return;
-		const modseq = folder.highestModseq + 1;
-		await ctx.db.patch(folder._id, { highestModseq: modseq, updatedAt: now });
-
-		await ctx.db.patch(args.messageId, {
-			labelIds: newLabels,
-			modseq,
-			updatedAt: now,
-		});
-
-		// Reflect on thread aggregate
-		const thread = await ctx.db.get(message.threadId);
-		if (thread) {
-			const threadLabels = new Set(thread.labelIds);
-			if (args.add) {
-				threadLabels.add(args.labelId);
-			} else {
-				// Only remove from the thread if no other message still carries it
-				const siblings = await ctx.db
-					.query('mailMessages')
-					.withIndex('by_thread', (q) => q.eq('threadId', message.threadId))
-					.collect(); // bounded: one thread's messages
-				const stillUsed = siblings.some(
-					(m) => m._id !== args.messageId && m.labelIds.includes(args.labelId)
-				);
-				if (!stillUsed) threadLabels.delete(args.labelId);
+		const touchedThreads = new Set<Id<'mailThreads'>>();
+		let changed = 0;
+		for (const id of args.messageIds) {
+			const message = await ctx.db.get(id);
+			// Cross-mailbox ids are the reason this is a per-message check: the
+			// label's mailbox is the authority, so a message from anywhere else is
+			// simply not part of this batch.
+			if (!message || message.mailboxId !== label.mailboxId) continue;
+			if (await applyLabelToMessage(ctx, message, args.labelId, args.add, now)) {
+				changed += 1;
+				touchedThreads.add(message.threadId);
 			}
-			await ctx.db.patch(thread._id, {
-				labelIds: Array.from(threadLabels),
-				updatedAt: now,
-			});
 		}
+		for (const threadId of touchedThreads) {
+			await reconcileThreadLabel(ctx, threadId, args.labelId, now);
+		}
+		return { changed };
 	},
 });
 

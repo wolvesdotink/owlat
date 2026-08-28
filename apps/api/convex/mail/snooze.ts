@@ -248,6 +248,81 @@ export const unsnooze = authedMutation({
 	},
 });
 
+/**
+ * Per-call ceiling on a batch snooze write, matching
+ * `mailbox/selection.BULK_SELECTION_CAP` so a "select all matching" answer is
+ * always one this mutation can apply in a single transaction.
+ */
+const SNOOZE_BATCH_CAP = 500;
+
+/**
+ * Defer MANY messages to the same wake time in one transaction — the write
+ * behind the thread list's bulk Snooze, which previously called `snooze` once
+ * per selected row (N round trips, and a failure halfway through left half the
+ * selection deferred with no way to name what happened).
+ *
+ * Per-message access check, unreachable ids skipped: a client-supplied
+ * selection may carry a stale or foreign id, and one of those must not sink the
+ * batch. `snoozed` counts the rows that actually moved.
+ */
+// authz: each message → mailbox ownership via requireMessageAccess; org
+// membership via authedMutation.
+export const snoozeMany = authedMutation({
+	args: {
+		messageIds: v.array(v.id('mailMessages')),
+		until: v.number(),
+	},
+	handler: async (ctx, args): Promise<{ snoozed: number }> => {
+		if (args.messageIds.length > SNOOZE_BATCH_CAP) {
+			throwInvalidInput(`At most ${SNOOZE_BATCH_CAP} messages per batch`);
+		}
+		const now = Date.now();
+		// One shared clock for the whole batch: the guard and every write must
+		// agree, or a long transaction could reject its own tail.
+		if (args.until <= now) throwInvalidInput('Snooze time must be in the future');
+
+		let snoozed = 0;
+		for (const messageId of args.messageIds) {
+			const owned = await requireMessageAccess(ctx, messageId);
+			if (!owned.ok) continue;
+			const message = owned.message;
+			const alreadySnoozed = isMessageSnoozed(message, now);
+			await ctx.db.patch(messageId, {
+				snoozedUntil: args.until,
+				snoozedFromFolderId: message.snoozedFromFolderId ?? message.folderId,
+				updatedAt: now,
+			});
+			if (!message.flagSeen && !alreadySnoozed) {
+				await adjustFolderUnseen(ctx, message.folderId, -1);
+			}
+			snoozed += 1;
+		}
+		return { snoozed };
+	},
+});
+
+/** Wake MANY snoozed messages at once — the inverse of {@link snoozeMany}. */
+// authz: each message → mailbox ownership via requireMessageAccess; org
+// membership via authedMutation.
+export const unsnoozeMany = authedMutation({
+	args: { messageIds: v.array(v.id('mailMessages')) },
+	handler: async (ctx, args): Promise<{ woken: number }> => {
+		if (args.messageIds.length > SNOOZE_BATCH_CAP) {
+			throwInvalidInput(`At most ${SNOOZE_BATCH_CAP} messages per batch`);
+		}
+		const now = Date.now();
+		let woken = 0;
+		for (const messageId of args.messageIds) {
+			const owned = await requireMessageAccess(ctx, messageId);
+			if (!owned.ok) continue;
+			if (owned.message.snoozedUntil == null) continue;
+			await clearMessageSnooze(ctx, owned.message, now);
+			woken += 1;
+		}
+		return { woken };
+	},
+});
+
 // ── Internal cron sweep ────────────────────────────────────────────
 
 /**

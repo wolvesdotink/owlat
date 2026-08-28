@@ -750,6 +750,7 @@ import type * as mail_mailbox_messages from '../mail/mailbox/messages.js';
 import type * as mail_mailbox_queries from '../mail/mailbox/queries.js';
 import type * as mail_mailbox_search from '../mail/mailbox/search.js';
 import type * as mail_mailbox_searchCursor from '../mail/mailbox/searchCursor.js';
+import type * as mail_mailbox_selection from '../mail/mailbox/selection.js';
 import type * as mail_mailbox_sendingHealth from '../mail/mailbox/sendingHealth.js';
 import type * as mail_mailbox_shared from '../mail/mailbox/shared.js';
 import type * as mail_mailboxActions from '../mail/mailboxActions.js';
@@ -1772,6 +1773,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailbox/queries': typeof mail_mailbox_queries;
 	'mail/mailbox/search': typeof mail_mailbox_search;
 	'mail/mailbox/searchCursor': typeof mail_mailbox_searchCursor;
+	'mail/mailbox/selection': typeof mail_mailbox_selection;
 	'mail/mailbox/sendingHealth': typeof mail_mailbox_sendingHealth;
 	'mail/mailbox/shared': typeof mail_mailbox_shared;
 	'mail/mailboxActions': typeof mail_mailboxActions;
