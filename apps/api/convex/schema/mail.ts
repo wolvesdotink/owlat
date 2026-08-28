@@ -1399,8 +1399,11 @@ export const mailTables = {
 		ip: v.optional(v.string()),
 		// Which credential prompt the failure came from. `recovery-kit` is the
 		// Sealed-Mail password re-prompt (plan idea 55); it shares the table but
-		// NOT the budget — `e2ee/memberKeys.ts` counts only its own scope, so a
-		// fumbled settings prompt can never lock a mail client out of submission.
+		// NOT the budget. Both readers count only the scopes they own —
+		// `e2ee/memberKeys.ts` counts `recovery-kit`, `mail/authRateLimit.ts`
+		// counts `imap`/`smtp` — so a fumbled settings prompt can never lock a
+		// mail client out of submission, nor a mail client the settings prompt.
+		// A new scope MUST be filtered in by its own reader, never inherited.
 		scope: v.union(v.literal('imap'), v.literal('smtp'), v.literal('recovery-kit')),
 		occurredAt: v.number(),
 	})

@@ -239,6 +239,30 @@ describe('e2ee/memberKeys · the recovery-kit re-auth throttle', () => {
 		).resolves.toBe(false);
 	});
 
+	it('does not feed the SMTP/IMAP limiter, so the prompt cannot lock a mail client out', async () => {
+		const t = convexTest(schema, modules);
+		const address = 'alice@owlat.test';
+
+		// Twice the submission limiter's per-address budget, all from the settings
+		// prompt. Submission must stay open: these two limiters share a table, and
+		// the isolation has to hold in BOTH directions.
+		for (let i = 0; i < 10; i++) {
+			await t.mutation(internal.e2ee.memberKeys.recordRecoveryKitFailure, { address });
+		}
+
+		await expect(t.query(internal.mail.authRateLimit.isThrottled, { address })).resolves.toBe(
+			false
+		);
+
+		// The address is not somehow immune — real submission failures still trip it.
+		await t.run(async (ctx: RunCtx) => {
+			for (let i = 0; i < 5; i++) {
+				await ctx.db.insert('mailAuthFailures', { address, scope: 'smtp', occurredAt: Date.now() });
+			}
+		});
+		await expect(t.query(internal.mail.authRateLimit.isThrottled, { address })).resolves.toBe(true);
+	});
+
 	it('lets an old lockout expire', async () => {
 		const t = convexTest(schema, modules);
 		const address = 'alice@owlat.test';

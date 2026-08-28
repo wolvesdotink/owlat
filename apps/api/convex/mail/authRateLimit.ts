@@ -19,6 +19,17 @@ const PER_ADDRESS_LIMIT = 5;
 const PER_IP_LIMIT = 50;
 const FAILURE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * The `mailAuthFailures.scope`s this limiter owns. Other modules share the
+ * table but not the budget — `e2ee/memberKeys.ts` records `recovery-kit`
+ * failures against the same address, and those must never count towards mail
+ * submission, or a member fumbling a settings password prompt would lock their
+ * own mail client out of SMTP/IMAP. The isolation has to hold in BOTH
+ * directions, so this counts only its own scopes rather than everything the
+ * address has ever failed.
+ */
+const OWNED_SCOPES = new Set<string>(['imap', 'smtp']);
+
 export const recordFailure = internalMutation({
 	args: {
 		address: v.string(),
@@ -48,14 +59,16 @@ export const isThrottled = internalQuery({
 			.query('mailAuthFailures')
 			.withIndex('by_address_and_time', (q) => q.eq('address', lower).gte('occurredAt', cutoff))
 			.collect(); // bounded: one address's auth failures in the time window
-		if (byAddr.length >= PER_ADDRESS_LIMIT) return true;
+		if (byAddr.filter((f) => OWNED_SCOPES.has(f.scope)).length >= PER_ADDRESS_LIMIT) return true;
 
 		if (args.ip) {
 			const byIp = await ctx.db
 				.query('mailAuthFailures')
 				.withIndex('by_ip_and_time', (q) => q.eq('ip', args.ip).gte('occurredAt', cutoff))
 				.collect(); // bounded: one IP's auth failures in the time window
-			if (byIp.length >= PER_IP_LIMIT) return true;
+			// Recovery-kit rows carry no ip today, so filtering here is belt and
+			// braces — it keeps the by-IP budget honest if one ever does.
+			if (byIp.filter((f) => OWNED_SCOPES.has(f.scope)).length >= PER_IP_LIMIT) return true;
 		}
 
 		return false;
