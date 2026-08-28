@@ -126,6 +126,12 @@ export type MessageSeed = {
 	receivedAt?: number;
 	/** Which system folder to file it in — the folder must already be seeded. */
 	role?: SeededFolderRole;
+	/** Split inbox (idea 24): the named section a `pinToSection` filter claimed it for. */
+	pinnedSection?: string;
+	/** Seed the row already read — the per-section unread counts need both states. */
+	flagSeen?: boolean;
+	/** RFC 5322 Message-ID, for the cross-surface correlation (idea 31). */
+	rfc822MessageId?: string;
 	/** Attachment metadata as it sits on the row (NOT the junction index). */
 	attachments?: {
 		filename: string;
@@ -183,7 +189,7 @@ export async function seedMessage(
 			folderId: folder._id,
 			uid: 1,
 			modseq: 1,
-			rfc822MessageId: `<${subject}-${receivedAt}@example.com>`,
+			rfc822MessageId: seed.rfc822MessageId ?? `<${subject}-${receivedAt}@example.com>`,
 			threadId,
 			fromAddress,
 			...(seed.fromName ? { fromName: seed.fromName } : {}),
@@ -197,7 +203,8 @@ export async function seedMessage(
 			rawSize: 3,
 			attachments: seed.attachments ?? [],
 			hasAttachments: (seed.attachments?.length ?? 0) > 0,
-			flagSeen: false,
+			...(seed.pinnedSection ? { pinnedSection: seed.pinnedSection } : {}),
+			flagSeen: seed.flagSeen ?? false,
 			flagFlagged: false,
 			flagAnswered: false,
 			flagDraft: false,

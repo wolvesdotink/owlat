@@ -120,6 +120,10 @@ export async function insertDeliveredMessage(
 		inboundSignatureInfo?: InboundSignatureInfo;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
 		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+		/** Split inbox (idea 24): the named inbox section a `pinToSection` filter
+		 * claimed this message for. Absent ⇒ the message renders in the trailing
+		 * "Everything else" section, which is exactly today's flat inbox. */
+		pinnedSection?: string;
 		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
 		countUsedBytes?: boolean;
 	}
@@ -248,6 +252,7 @@ export async function insertDeliveredMessage(
 		inboundEncryptionInfo: params.inboundEncryptionInfo,
 		inboundSignatureInfo: params.inboundSignatureInfo,
 		unsubscribe: params.unsubscribe,
+		pinnedSection: params.pinnedSection,
 		createdAt: now,
 		updatedAt: now,
 	});

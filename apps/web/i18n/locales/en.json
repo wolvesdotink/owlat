@@ -3399,7 +3399,8 @@
 					"forward": "Forward to…",
 					"markFlagged": "Star",
 					"markRead": "Mark read",
-					"moveToFolder": "Move to folder"
+					"moveToFolder": "Move to folder",
+					"pinToSection": "Pin to inbox section"
 				},
 				"actionsHeading": "Then do…",
 				"addAction": "+ Add action",
@@ -3440,7 +3441,8 @@
 				"hidePreview": "Hide preview",
 				"previewRunning": "Checking recent mail…",
 				"previewSummary": "Matches {count} of the last {scanned} messages.",
-				"previewNeedsValue": "Fill in a condition value to preview what this rule would catch."
+				"previewNeedsValue": "Fill in a condition value to preview what this rule would catch.",
+				"sectionNamePlaceholder": "Section name (e.g. Deploys)"
 			},
 			"postboxFloatingFormatBar": {
 				"toolbarLabel": "Format selection"
@@ -3575,7 +3577,8 @@
 					"categories": "Categories",
 					"conversations": "Conversations",
 					"flat": "Flat",
-					"bundled": "Bundled"
+					"bundled": "Bundled",
+					"sections": "Sections"
 				}
 			},
 			"postboxListHeader": {
@@ -4373,6 +4376,14 @@
 				"archiveAllLabel": "Archive all {count} messages in this bundle",
 				"unsubscribe": "Unsubscribe",
 				"unsubscribeHint": "Unsubscribe from the senders in this bundle that support one-click, and archive what they left in your inbox."
+			},
+			"postboxThreadSectionList": {
+				"allClear": "All clear",
+				"listLabel": "Inbox sections",
+				"everythingElse": "Everything else",
+				"noSubject": "(no subject)",
+				"unreadCapped": "{count}+",
+				"loadMoreIn": "Load more in {section}"
 			}
 		},
 		"preferences": {

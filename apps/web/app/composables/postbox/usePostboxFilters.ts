@@ -34,6 +34,8 @@ export type FilterActionType =
 	| 'markFlagged'
 	| 'forward'
 	| 'delete'
+	/** Split inbox (idea 24): file into a named inbox SECTION, moving nothing. */
+	| 'pinToSection'
 	| 'discard';
 
 export interface MailFilterCondition {
@@ -58,6 +60,7 @@ export const RETROACTIVE_ACTION_TYPES: readonly FilterActionType[] = [
 	'addLabel',
 	'markRead',
 	'markFlagged',
+	'pinToSection',
 ];
 
 export function hasRetroactiveActions(actions: readonly FilterAction[]): boolean {
@@ -69,6 +72,8 @@ export interface FilterAction {
 	folderId?: Id<'mailFolders'>;
 	labelId?: Id<'mailLabels'>;
 	forwardTo?: string;
+	/** For `pinToSection` — the section name, which IS the section's identity. */
+	sectionName?: string;
 }
 
 export function usePostboxFilters(mailboxId: Ref<Id<'mailboxes'> | null>) {

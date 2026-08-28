@@ -39,7 +39,8 @@ export const mailViewModeValidator = v.union(
 	v.literal('flat'),
 	v.literal('conversations'),
 	v.literal('categories'),
-	v.literal('bundled')
+	v.literal('bundled'),
+	v.literal('sections')
 );
 
 // Postbox reading-pane layout (mailUserSettings.readingPane and mail/settings

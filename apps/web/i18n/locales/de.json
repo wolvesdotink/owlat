@@ -3399,7 +3399,8 @@
 					"forward": "Weiterleiten an…",
 					"markFlagged": "Mit Stern markieren",
 					"markRead": "Als gelesen markieren",
-					"moveToFolder": "In Ordner verschieben"
+					"moveToFolder": "In Ordner verschieben",
+					"pinToSection": "In Posteingangs-Bereich anheften"
 				},
 				"actionsHeading": "Dann Folgendes tun…",
 				"addAction": "+ Aktion hinzufügen",
@@ -3440,7 +3441,8 @@
 				"hidePreview": "Vorschau ausblenden",
 				"previewRunning": "Aktuelle E-Mails werden geprüft …",
 				"previewSummary": "Trifft auf {count} der letzten {scanned} Nachrichten zu.",
-				"previewNeedsValue": "Geben Sie einen Bedingungswert ein, um zu sehen, was diese Regel erfassen würde."
+				"previewNeedsValue": "Geben Sie einen Bedingungswert ein, um zu sehen, was diese Regel erfassen würde.",
+				"sectionNamePlaceholder": "Bereichsname (z. B. Deploys)"
 			},
 			"postboxFloatingFormatBar": {
 				"toolbarLabel": "Auswahl formatieren"
@@ -3575,7 +3577,8 @@
 					"categories": "Kategorien",
 					"conversations": "Konversationen",
 					"flat": "Einfach",
-					"bundled": "Gebündelt"
+					"bundled": "Gebündelt",
+					"sections": "Bereiche"
 				}
 			},
 			"postboxListHeader": {
@@ -4373,6 +4376,14 @@
 				"archiveAllLabel": "Alle {count} Nachrichten dieses Bündels archivieren",
 				"unsubscribe": "Abbestellen",
 				"unsubscribeHint": "Die Absender dieses Bündels abbestellen, die Ein-Klick unterstützen, und ihre Mail im Posteingang archivieren."
+			},
+			"postboxThreadSectionList": {
+				"allClear": "Alles erledigt",
+				"listLabel": "Posteingangs-Bereiche",
+				"everythingElse": "Alles Übrige",
+				"noSubject": "(kein Betreff)",
+				"unreadCapped": "{count}+",
+				"loadMoreIn": "Mehr laden in {section}"
 			}
 		},
 		"preferences": {

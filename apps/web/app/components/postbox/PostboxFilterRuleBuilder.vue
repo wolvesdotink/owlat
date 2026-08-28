@@ -42,6 +42,14 @@ const mailboxIdRef = computed(() => props.mailboxId);
 const { folders } = usePostboxFolders(mailboxIdRef);
 const { labels } = usePostboxLabels(mailboxIdRef);
 
+/**
+ * Same ceiling the server enforces on a `pinToSection` name — the name is the
+ * section's identity and becomes an index key on every message it files, so the
+ * input stops where the mutation would truncate rather than silently losing the
+ * tail of what was typed.
+ */
+const MAX_SECTION_NAME_LENGTH = 60;
+
 const local = reactive<FilterDraft>(JSON.parse(JSON.stringify(props.modelValue)));
 
 watch(local, (v) => emit('update:modelValue', JSON.parse(JSON.stringify(v))), {
@@ -274,6 +282,12 @@ function removeAction(idx: number) {
 						<option value="delete">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.delete') }}
 						</option>
+						<!-- Split inbox (idea 24): the one action that REARRANGES the
+						     inbox instead of emptying it — the message stays put and
+						     gains a section. -->
+						<option value="pinToSection">
+							{{ t('components.postbox.postboxFilterRuleBuilder.actions.pinToSection') }}
+						</option>
 						<option value="discard">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.discard') }}
 						</option>
@@ -302,6 +316,17 @@ function removeAction(idx: number) {
 						type="text"
 						class="input flex-1"
 						:placeholder="t('components.postbox.postboxFilterRuleBuilder.forwardToPlaceholder')"
+					/>
+					<!-- Free text, not a picker: there is no section table. A section
+					     exists exactly as long as an enabled rule names it, and typing
+					     the same name in a second rule feeds the same section. -->
+					<input
+						v-else-if="action.type === 'pinToSection'"
+						v-model="action.sectionName"
+						type="text"
+						class="input flex-1"
+						:maxlength="MAX_SECTION_NAME_LENGTH"
+						:placeholder="t('components.postbox.postboxFilterRuleBuilder.sectionNamePlaceholder')"
 					/>
 					<span v-else class="flex-1 text-xs text-text-tertiary" />
 					<button
@@ -341,7 +366,10 @@ function removeAction(idx: number) {
 			</button>
 			<div v-if="previewOpen" class="mt-2">
 				<div v-if="previewLoading" class="flex items-center gap-2 text-xs text-text-tertiary">
-					<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+					<Icon
+						name="lucide:loader-2"
+						class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
+					/>
 					{{ t('components.postbox.postboxFilterRuleBuilder.previewRunning') }}
 				</div>
 				<template v-else-if="preview">

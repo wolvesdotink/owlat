@@ -152,18 +152,11 @@ watch(
 // while the stack is non-empty, so binding it here too would undo two entries
 // per keypress.
 
-// Folder name shown in the list header (custom folders carry no role). A system
-// folder arrives as its role, which has a translated name; a custom/unknown role
-// keeps rendering the server-provided value verbatim.
-const NAMED_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive', 'snoozed'];
-const currentFolderName = computed(() => {
-	if (props.folderId) {
-		const custom = customFolders.value.find((f) => f._id === props.folderId)?.name;
-		return custom ?? t('components.postbox.postboxLayout.folderFallback');
-	}
-	return NAMED_FOLDER_ROLES.includes(props.folderRole)
-		? t(`components.postbox.postboxLayout.folderRoles.${props.folderRole}`)
-		: props.folderRole;
+// Folder name shown in the list header (custom folders carry no role).
+const currentFolderName = usePostboxFolderName({
+	folderRole: folderRef,
+	folderId: folderIdRef,
+	customFolders,
 });
 
 // ── Below `lg` the three panes become a stacked drill-in (the shell's mobile
@@ -203,24 +196,12 @@ const {
 	setInboxMode,
 });
 
-// The Today overlay closed while the route still points at a deep-linked
-// message — settle the URL back on the plain inbox (replace: the overlay was
-// never its own history entry when opened from the list).
-function onTodayReaderClosed() {
-	if (props.activeMessageId) void navigateTo('/dashboard/postbox/inbox', { replace: true });
-}
-
-/**
- * Drill-in "back": from the reader to the folder's list route. Replace, don't
- * push — opening the message pushed the entry this button dismisses, so a push
- * here would leave the system Back gesture reopening the reader the user just
- * closed, and grow the history stack by two entries per open/close cycle.
- */
-function backToList() {
-	void navigateTo(`/dashboard/postbox/${String(props.folderId ?? props.folderRole)}`, {
-		replace: true,
-	});
-}
+// The layout's own two route moves (drill-in back, Today overlay close).
+const { backToList, onTodayReaderClosed } = usePostboxLayoutNav({
+	folderRole: folderRef,
+	folderId: folderIdRef,
+	activeMessageId: computed(() => props.activeMessageId),
+});
 
 /** Compose FAB (stack mode) — the touch entry point while the rail, and its
  * Compose button with it, live in the drawer. Same entry point as the rail's
@@ -234,9 +215,11 @@ const {
 	conversationsEnabled,
 	categoriesEnabled,
 	bundlesEnabled,
+	sectionsEnabled,
 	conversations,
 	categories,
 	bundles,
+	sections,
 } = usePostboxListSources({
 	mailboxId: mailboxIdRef,
 	folderRole: folderRef,
@@ -272,7 +255,12 @@ const advanceIds = computed(() =>
 </script>
 
 <template>
-	<div class="flex w-full" :data-density="density" :data-reading-pane="readingPane" :style="paneStyle">
+	<div
+		class="flex w-full"
+		:data-density="density"
+		:data-reading-pane="readingPane"
+		:style="paneStyle"
+	>
 		<!-- Landing mode: the focused Today column replaces the three panes on
 		     the inbox route until the user opens a message or switches to
 		     Browse (header button / B / Esc back). pbx-fade is opacity-only and
@@ -404,6 +392,16 @@ const advanceIds = computed(() =>
 											@unsubscribe-bundle="
 												(senders, ids) => void bundles.unsubscribeBundle(senders, ids)
 											"
+										/>
+										<PostboxThreadSectionList
+											v-else-if="sectionsEnabled"
+											:sections="sections.sections.value"
+											:collapsed="sections.collapsed.value"
+											:loading="sections.isLoading.value"
+											:folder-role="folderRole"
+											:active-message-id="activeMessageId"
+											@load-more="sections.loadMore"
+											@toggle="sections.toggle"
 										/>
 										<PostboxThreadList
 											v-else

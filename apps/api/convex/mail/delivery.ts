@@ -370,6 +370,7 @@ export const deliverToMailbox = internalMutation({
 			inboundEncryptionInfo: args.inboundEncryptionInfo,
 			inboundSignatureInfo: args.inboundSignatureInfo,
 			unsubscribe: args.unsubscribe,
+			pinnedSection: filterOutcome.pinnedSection,
 			countUsedBytes: true,
 		});
 

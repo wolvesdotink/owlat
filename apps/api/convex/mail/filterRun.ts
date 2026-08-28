@@ -12,7 +12,8 @@
  * irreversible and were authored for the inbound moment, not for a retroactive
  * sweep over years of mail. Mailing a decade of archive to a forwarding address
  * because a rule mentioned it is not a feature. `moveToFolder`, `addLabel`,
- * `markRead` and `markFlagged` all run, and each is undoable by hand.
+ * `markRead`, `markFlagged` and `pinToSection` all run, and each is undoable by
+ * hand.
  */
 
 import { v } from 'convex/values';
@@ -34,7 +35,16 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 export const FILTER_RUN_BATCH = 64;
 
 /** Action types a retroactive sweep is allowed to perform. */
-const SAFE_ACTION_TYPES = new Set(['moveToFolder', 'addLabel', 'markRead', 'markFlagged']);
+const SAFE_ACTION_TYPES = new Set([
+	'moveToFolder',
+	'addLabel',
+	'markRead',
+	'markFlagged',
+	// Split inbox (idea 24). Safe by the same test as the others: it only
+	// rearranges where a message READS in the inbox, moves nothing out of sight,
+	// and is undone by deleting the rule and re-running.
+	'pinToSection',
+]);
 
 /**
  * Does this filter do anything a retroactive run can perform? A rule that only
@@ -143,13 +153,22 @@ async function applyActions(
 	filter: Doc<'mailFilters'>,
 	message: Doc<'mailMessages'>
 ): Promise<void> {
-	const flagPatch: { flagSeen?: boolean; flagFlagged?: boolean } = {};
+	const flagPatch: { flagSeen?: boolean; flagFlagged?: boolean; pinnedSection?: string } = {};
 	let labelIds = message.labelIds;
 
 	for (const action of filter.actions) {
 		if (action.type === 'markRead' && !message.flagSeen) flagPatch.flagSeen = true;
 		else if (action.type === 'markFlagged' && !message.flagFlagged) flagPatch.flagFlagged = true;
-		else if (action.type === 'addLabel' && action.labelId) {
+		else if (
+			// FIRST pin wins, mirroring the delivery-time precedence in
+			// deliveryPipeline/routing.ts — a message belongs to one section.
+			action.type === 'pinToSection' &&
+			action.sectionName &&
+			flagPatch.pinnedSection === undefined &&
+			message.pinnedSection !== action.sectionName
+		) {
+			flagPatch.pinnedSection = action.sectionName;
+		} else if (action.type === 'addLabel' && action.labelId) {
 			// A label from another mailbox can only be a stale reference; applying
 			// it would put a foreign id on the row.
 			const label = await ctx.db.get(action.labelId);

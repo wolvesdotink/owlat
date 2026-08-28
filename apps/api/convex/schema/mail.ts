@@ -514,6 +514,14 @@ export const mailTables = {
 		// arrives, the normal snooze sweep resurfaces it once at the cap.
 		isSnoozeUntilReply: v.optional(v.boolean()),
 
+		// Split inbox (idea 24): the named inbox SECTION a `pinToSection` filter
+		// filed this message into. Purely a reading arrangement — the row stays in
+		// whatever folder it was delivered to, and a message with no section simply
+		// renders in the trailing "Everything else" section, so absent = exactly
+		// today's flat inbox. Stamped at delivery (deliveryPipeline/routing) and by
+		// the retroactive sweep (mail/filterRun.ts); never read by IMAP.
+		pinnedSection: v.optional(v.string()),
+
 		// List mail: parsed List-Unsubscribe / List-Unsubscribe-Post target
 		// (RFC 2369 / RFC 8058), extracted once at ingest from the raw header
 		// block. Absent for non-list mail — the reader's Unsubscribe chip keys
@@ -660,6 +668,15 @@ export const mailTables = {
 		// Folder-scoped arrival order — backs the per-folder list page directly (no
 		// mailbox-wide overfetch-then-filter that starved minority folders).
 		.index('by_folder_and_received', ['folderId', 'receivedAt'])
+		// Split inbox (idea 24) — ONE INDEX PER SECTION SLICE, which is what keeps
+		// the sectioned renderer from starving a section. Paging a single mixed
+		// feed and bucketing it client-side would let a chatty section eat the
+		// whole page and leave a quiet one permanently empty; instead each section
+		// walks its OWN arrival-ordered range with its OWN limit. The `by_seen`
+		// sibling backs the per-section unread count as a bounded indexed take
+		// rather than a scan of the section.
+		.index('by_folder_and_section_and_received', ['folderId', 'pinnedSection', 'receivedAt'])
+		.index('by_folder_and_section_and_seen', ['folderId', 'pinnedSection', 'flagSeen'])
 		// Mailbox-scoped snooze range — backs the "Snoozed" view without scanning
 		// the whole mailbox.
 		.index('by_mailbox_and_snoozed', ['mailboxId', 'snoozedUntil'])
@@ -1290,11 +1307,20 @@ export const mailTables = {
 					v.literal('markFlagged'),
 					v.literal('forward'),
 					v.literal('delete'),
+					// Split inbox (idea 24): file the message into a NAMED SECTION of
+					// the inbox instead of moving it out of sight. The message stays in
+					// Inbox — `pinnedSection` on the row is the only thing that changes —
+					// so a section is a reading arrangement, never a hiding place.
+					v.literal('pinToSection'),
 					v.literal('discard')
 				),
 				folderId: v.optional(v.id('mailFolders')),
 				labelId: v.optional(v.id('mailLabels')),
 				forwardTo: v.optional(v.string()),
+				// For `pinToSection` — the section's display name, which IS its
+				// identity (there is no section table; the set of sections is derived
+				// from the enabled filters that name one).
+				sectionName: v.optional(v.string()),
 			})
 		),
 		// ONE grouping level (idea 39): `all` AND-s the conditions, `any` OR-s
@@ -1496,10 +1522,12 @@ export const mailTables = {
 		// undefined; the reader defaults it to 'comfortable'.
 		density: v.optional(mailDensityValidator),
 		// Inbox list view mode: 'flat' (single message list), 'conversations'
-		// (thread-grouped), 'categories' (smart-inbox sections) or 'bundled' (the
+		// (thread-grouped), 'categories' (smart-inbox sections), 'bundled' (the
 		// flat feed with consecutive low-signal runs folded into one row per
-		// category). Inbox-only — other folders always render flat. Optional so
-		// existing rows read as undefined; the reader defaults it to 'flat'.
+		// category) or 'sections' (the split inbox — the sections a user's
+		// `pinToSection` filter rules name). Inbox-only — other folders always
+		// render flat. Optional so existing rows read as undefined; the reader
+		// defaults it to 'flat'.
 		viewMode: v.optional(mailViewModeValidator),
 		// Reading-pane layout: 'right' (the reader beside the list — the geometry
 		// that shipped before this control existed), 'bottom' (a full-width list

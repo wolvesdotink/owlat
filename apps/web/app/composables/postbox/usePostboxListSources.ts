@@ -3,7 +3,8 @@
  *
  * PostboxLayout owns the panes; which feed a renderer reads is a separate
  * concern that was accreting in that file one view mode at a time (thread
- * groups, then categories, then bundles), each with its own `enabled` flag,
+ * groups, then categories, then bundles, then sections), each with its own
+ * `enabled` flag,
  * its own destructure and its own rename. Lifting all three out keeps the
  * layout under the file-size cap and puts the one invariant they share in a
  * single place: EXACTLY ONE renderer is active, so exactly one of these feeds
@@ -31,6 +32,7 @@ export function usePostboxListSources(args: {
 	const conversationsEnabled = computed(() => args.renderer.value === 'conversations');
 	const categoriesEnabled = computed(() => args.renderer.value === 'categories');
 	const bundlesEnabled = computed(() => args.renderer.value === 'bundled');
+	const sectionsEnabled = computed(() => args.renderer.value === 'sections');
 	/** True for every renderer that is not the plain flat list. */
 	const grouped = computed(() => args.renderer.value !== 'flat');
 
@@ -56,13 +58,23 @@ export function usePostboxListSources(args: {
 		enabled: bundlesEnabled,
 	});
 
+	// Split inbox — the ordered, collapsible sections a user's `pinToSection`
+	// filter rules name. Its own server read, because each section pages
+	// independently (a shared page starves the quiet sections).
+	const sections = usePostboxThreadSections({
+		mailboxId: args.mailboxId,
+		enabled: sectionsEnabled,
+	});
+
 	return {
 		conversationsEnabled,
 		categoriesEnabled,
 		bundlesEnabled,
+		sectionsEnabled,
 		grouped,
 		conversations,
 		categories,
 		bundles,
+		sections,
 	};
 }

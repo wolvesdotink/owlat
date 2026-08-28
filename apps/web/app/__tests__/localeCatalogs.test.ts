@@ -208,6 +208,8 @@ describe('UI message catalogs', () => {
 		'components.postbox.postboxSenderControls.vipOperation',
 		// A bare unit suffix on a number ("30s") — same in both languages.
 		'components.postbox.postboxSendingSettings.undoSendSeconds',
+		// A count that overflowed its cap ("99+") — a numeral and a plus sign.
+		'components.postbox.postboxThreadSectionList.unreadCapped',
 		'components.postbox.postboxTodayView.forYouDetail',
 		'components.postbox.postboxVoiceProfileCard.emoji',
 		'components.postbox.postboxVoiceProfileCard.outOfFive',
