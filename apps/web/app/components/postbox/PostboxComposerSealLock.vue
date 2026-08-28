@@ -49,8 +49,14 @@ const props = withDefaults(
 		 * own copy already names the rotated addresses.
 		 */
 		blockingRecipients?: string[];
+		/**
+		 * Every recipient's key has been verified by a human here (plan idea 54).
+		 * Only strengthens the `willSeal` wording; it never changes whether the
+		 * message seals or whether Send is allowed.
+		 */
+		allVerified?: boolean;
 	}>(),
-	{ pending: false, blockingRecipients: () => [] }
+	{ pending: false, blockingRecipients: () => [], allVerified: false }
 );
 
 const emit = defineEmits<{
@@ -69,7 +75,9 @@ const localize = (value: string | { key: string; params?: Record<string, unknown
 // Nothing to say only before a draft exists (no query yet): from the moment the
 // state is being computed the lock speaks, first as `checking`.
 const lock = computed(() =>
-	props.enabled && (props.sealState || props.pending) ? deriveComposerLock(props.sealState) : null
+	props.enabled && (props.sealState || props.pending)
+		? deriveComposerLock(props.sealState, props.allVerified)
+		: null
 );
 
 // FF-token chip/icon classes, shared with the reader's sealed badge.
@@ -89,7 +97,10 @@ const toneClasses = computed(() =>
 			<Icon
 				:name="lock.icon"
 				class="w-3.5 h-3.5"
-				:class="[toneClasses.icon, lock.kind === 'checking' && 'animate-spin motion-reduce:animate-none']"
+				:class="[
+					toneClasses.icon,
+					lock.kind === 'checking' && 'animate-spin motion-reduce:animate-none',
+				]"
 			/>
 			<span data-testid="seal-lock-summary">{{ localize(lock.summary) }}</span>
 		</div>

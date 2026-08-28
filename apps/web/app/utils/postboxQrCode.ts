@@ -90,7 +90,7 @@ function generatorPoly(degree: number): number[] {
 	for (let i = 0; i < degree; i++) {
 		// Multiply by (x + α^i): coefficients are descending, so the shifted term
 		// lands on the SAME index and the scaled one on the next.
-		const next = new Array<number>(poly.length + 1).fill(0);
+		const next = Array.from<number>({ length: poly.length + 1 }).fill(0);
 		for (let j = 0; j < poly.length; j++) {
 			next[j] = (next[j] as number) ^ (poly[j] as number);
 			next[j + 1] = (next[j + 1] as number) ^ gfMul(poly[j] as number, EXP[i] as number);
@@ -107,7 +107,7 @@ function generatorPoly(degree: number): number[] {
  */
 export function eccForBlock(data: readonly number[], degree: number): number[] {
 	const gen = generatorPoly(degree);
-	const remainder = new Array<number>(degree).fill(0);
+	const remainder = Array.from<number>({ length: degree }).fill(0);
 	for (const byte of data) {
 		const factor = byte ^ (remainder[0] as number);
 		remainder.shift();
@@ -237,7 +237,9 @@ function placeAlignment(grid: Grid, version: number): void {
 
 /** Finder, separator, timing, alignment and the reserved format areas. */
 function buildFunctionPatterns(size: number, version: number): Grid {
-	const grid: Grid = Array.from({ length: size }, () => new Array<boolean | null>(size).fill(null));
+	const grid: Grid = Array.from({ length: size }, () =>
+		Array.from<boolean | null>({ length: size }).fill(null)
+	);
 	placeFinder(grid, 0, 0);
 	placeFinder(grid, 0, size - 7);
 	placeFinder(grid, size - 7, 0);

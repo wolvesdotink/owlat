@@ -14,6 +14,7 @@
  * contact-key panel. When there is no key status, it renders nothing.
  */
 import { api } from '@owlat/api';
+import { resolveContactVerification } from '~/utils/postboxKeyVerification';
 import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 
 const props = defineProps<{
@@ -26,6 +27,15 @@ const statusQuery = useConvexQuery(api.e2ee.recipientKeys.getRecipientKeyStatus,
 );
 
 const status = computed(() => statusQuery.data.value as RecipientKeyStatus | null | undefined);
+
+/**
+ * Did a human here verify the key this contact just rotated AWAY from (plan idea
+ * 54)? A key change is always worth reading; a key change to a key somebody
+ * physically checked is worth stopping over, and the banner says so differently.
+ * On a `keyChanged` row the pin is still the OLD key, so a verification that
+ * matches the pin is a verification of the key being replaced.
+ */
+const wasVerified = computed(() => resolveContactVerification(status.value ?? {}) === 'verified');
 </script>
 
 <template>
@@ -35,12 +45,14 @@ const status = computed(() => statusQuery.data.value as RecipientKeyStatus | nul
 			:address="correspondent"
 			:old-fingerprint="status.pinnedFingerprint"
 			:new-fingerprint="status.observedFingerprint"
+			:was-verified="wasVerified"
 			@accepted="statusQuery.refetch()"
 		/>
 		<PostboxContactKeyPanel
 			v-if="status.outcome !== 'notFound'"
 			:address="correspondent"
 			:status="status"
+			@verification-changed="statusQuery.refetch()"
 		/>
 	</div>
 </template>

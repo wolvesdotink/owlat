@@ -26,7 +26,11 @@ import { computed, reactive, ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { deriveUnsealedPrompt, sealSendBlock, type SealState } from '~/utils/sealComposer';
-import { sealBlockingRecipients, type RecipientSealView } from '~/utils/sealRecipients';
+import {
+	allRecipientsVerified,
+	sealBlockingRecipients,
+	type RecipientSealView,
+} from '~/utils/sealRecipients';
 
 /** The send options parked while the sender decides; replayed on confirm. */
 export type SealGateSendOptions = { scheduledSendAt?: number; allowUnsealed?: boolean };
@@ -69,6 +73,12 @@ export function usePostboxComposerSealLock(
 	const blockingRecipients = computed(() =>
 		sealBlockingRecipients(composerSealState.value, sealRecipients.value)
 	);
+	/**
+	 * Every recipient's key has been verified by a human here (plan idea 54) —
+	 * the lock's stronger wording. Display only: it feeds no send gate, so a
+	 * verified draft and an unverified one are sent by exactly the same path.
+	 */
+	const allVerified = computed(() => allRecipientsVerified(sealRecipients.value));
 
 	// True while the answer is still on its way for a draft that exists — the lock
 	// says "checking" rather than staying blank, so the sender is never left to
@@ -132,6 +142,7 @@ export function usePostboxComposerSealLock(
 		state: composerSealState,
 		recipients: sealRecipients,
 		blockingRecipients,
+		allVerified,
 		pending: composerSealPending,
 		confirmOpen,
 		blockSend,

@@ -16,6 +16,7 @@ import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
+import type { MutationCtx } from '../../_generated/server';
 import { enableSealedMail, modules } from './sealedMailTestHelpers';
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -47,10 +48,14 @@ const PIN = 'AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555';
 const ROTATED = 'FFFF9999EEEE8888DDDD7777CCCC6666BBBB5555';
 
 type Ctx = ReturnType<typeof convexTest>;
+// `t.run`'s callback ctx is generic on the handle, and the handle type above has
+// no data model, so seed helpers annotate it with this project's MutationCtx to
+// get the real tables and indexes back.
+type RunCtx = MutationCtx;
 
 /** Seed one discovered, trusted recipient row for `contact@peer.test`. */
 async function seedTrustedContact(t: Ctx, fingerprint = PIN): Promise<void> {
-	await t.run(async (ctx) => {
+	await t.run(async (ctx: RunCtx) => {
 		await ctx.db.insert('recipientKeys', {
 			address: 'contact@peer.test',
 			domain: 'peer.test',
@@ -136,7 +141,7 @@ describe('e2ee/recipientKeys · setContactKeyVerified', () => {
 	it('refuses to verify a contact whose key changed under us', async () => {
 		const t = convexTest(schema, modules);
 		await enableSealedMail(t);
-		await t.run(async (ctx) => {
+		await t.run(async (ctx: RunCtx) => {
 			await ctx.db.insert('recipientKeys', {
 				address: 'contact@peer.test',
 				domain: 'peer.test',
@@ -215,7 +220,7 @@ describe('e2ee/recipientKeys · a verification does not outlive its key', () => 
 		});
 
 		// The contact rotates without a signed statement, and an admin re-accepts.
-		await t.run(async (ctx) => {
+		await t.run(async (ctx: RunCtx) => {
 			const row = await ctx.db
 				.query('recipientKeys')
 				.withIndex('by_address', (q) => q.eq('address', 'contact@peer.test'))
@@ -245,7 +250,7 @@ describe('e2ee/recipientKeys · a verification does not outlive its key', () => 
 			verified: true,
 			fingerprint: PIN,
 		});
-		await t.run(async (ctx) => {
+		await t.run(async (ctx: RunCtx) => {
 			const row = await ctx.db
 				.query('recipientKeys')
 				.withIndex('by_address', (q) => q.eq('address', 'contact@peer.test'))

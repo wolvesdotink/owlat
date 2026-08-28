@@ -3358,14 +3358,17 @@
 				"fingerprint": "Fingerabdruck",
 				"firstSeen": "Zuerst gesehen",
 				"foundVia": "Gefunden über",
+				"hideVerify": "Verifizierung ausblenden",
 				"keyChanged": "Schlüssel geändert – Prüfung erforderlich",
 				"newKey": "Neuer Schlüssel",
+				"showVerify": "Diesen Kontakt verifizieren",
 				"sources": {
 					"manifest": "den sendenden Server",
 					"wkd": "ihre Domain (Web Key Directory)"
 				},
 				"title": "Siegelschlüssel",
-				"trusted": "Vertrauter Schlüssel angeheftet"
+				"trusted": "Vertrauter Schlüssel angeheftet",
+				"verifiedOn": "am {date}"
 			},
 			"postboxDailyBrief": {
 				"dismissLabel": "Überblick bis morgen ausblenden",
@@ -3551,7 +3554,8 @@
 				"error": "Der neue Schlüssel konnte nicht akzeptiert werden. Möglicherweise hat ihn bereits jemand anderes akzeptiert — öffnen Sie diese Konversation erneut.",
 				"newKey": "Neuer Schlüssel",
 				"previousKey": "Vorheriger Schlüssel",
-				"title": "Der Siegelschlüssel dieser Person hat sich geändert"
+				"title": "Der Siegelschlüssel dieser Person hat sich geändert",
+				"wasVerified": "Sie hatten den vorherigen Schlüssel direkt mit {address} verifiziert. Ein Wechsel weg von einem geprüften Schlüssel ist es wert, vor dem Annehmen nachzufragen."
 			},
 			"postboxLabelManager": {
 				"deleteLabel": "Label löschen",
@@ -4522,6 +4526,42 @@
 				"revoke": "Zurückziehen",
 				"revokeAriaLabel": "Den Link zu {filename} zurückziehen",
 				"revokeDescription": "Der Link zu {filename} funktioniert sofort nicht mehr und die Datei wird gelöscht. Das lässt sich nicht rückgängig machen."
+			},
+			"postboxContactVerifyPanel": {
+				"caveat": "Die Markierung hält nur fest, dass Sie geprüft haben. Alle in diesem Workspace sehen sie, und sie verfällt von selbst, sobald sich dieser Schlüssel ändert.",
+				"confirm": "Stimmt überein – als verifiziert markieren",
+				"error": "Das konnte nicht gespeichert werden. Falls sich der Schlüssel geändert hat, während das Feld offen war, schließen und öffnen Sie es erneut, damit Sie den aktuellen prüfen.",
+				"intro": "Owlat hat diesen Schlüssel beim ersten Kontakt gemerkt. Um sicherzugehen, dass am anderen Ende wirklich {address} sitzt, gleichen Sie denselben Fingerabdruck telefonisch oder persönlich ab – Code scannen, Zahlen vorlesen oder Zeichen vergleichen. Alle drei zeigen denselben Schlüssel.",
+				"operation": "Kontaktschlüssel verifizieren",
+				"qrLabel": "Fingerabdruck des Versiegelungsschlüssels von {address} als scanbarer Code",
+				"spokenLabel": "Zum Vorlesen",
+				"withdraw": "Verifizierung zurückziehen",
+				"writtenLabel": "Geschrieben"
+			},
+			"postboxSealedMailCard": {
+				"confirmAction": "Herunterladen",
+				"confirmBody": "Sie laden gleich den Schlüssel herunter, der versiegelte Post für {address} öffnet. Wer diese Datei hat, kann sie lesen – geben Sie zum Fortfahren Ihr Passwort ein.",
+				"confirmTitle": "Bestätigen Sie, dass Sie es sind",
+				"explanation": "Nachrichten zwischen Owlat-Instanzen werden mit einem Schlüssel verschlüsselt, den nur Ihre Adresse besitzt. Niemand dazwischen kann sie lesen – auch nicht, wer die Server betreibt.",
+				"exportOperation": "Wiederherstellungspaket herunterladen",
+				"getKit": "Wiederherstellungspaket holen",
+				"hasKey": "Diese Adresse hat einen Versiegelungsschlüssel.",
+				"heading": "Ihre Post ist versiegelt",
+				"kitHint": "Das Wiederherstellungspaket ist eine Kopie des Schlüssels, der Ihre versiegelte Post öffnet. Bewahren Sie es privat und offline auf. Es gibt keine Zweitkopie: Wird dieser Server neu aufgesetzt und überlebt kein Paket, lässt sich bereits empfangene versiegelte Post nicht mehr öffnen.",
+				"noKey": "Noch kein Versiegelungsschlüssel – Post an und von dieser Adresse wird normal versendet.",
+				"passwordLabel": "Ihr Passwort",
+				"refusal": {
+					"badPassword": "Das Passwort stimmt nicht. Bitte erneut versuchen.",
+					"failed": "Das Wiederherstellungspaket konnte nicht erstellt werden. Bitte gleich noch einmal versuchen.",
+					"featureOff": "Versiegelte Post ist für diesen Workspace deaktiviert.",
+					"noKey": "Für diese Adresse gibt es keinen Versiegelungsschlüssel zum Exportieren.",
+					"notYourAddress": "Sie können ein Wiederherstellungspaket nur für eine Adresse laden, von der Sie senden.",
+					"throttled": "Zu viele Versuche. Warten Sie einige Minuten, bevor Sie es erneut versuchen."
+				}
+			},
+			"postboxSealedMailNudge": {
+				"action": "ansehen, was das bedeutet, und Wiederherstellungspaket sichern",
+				"body": "Post zwischen Owlat-Instanzen ist jetzt versiegelt, sodass nur Sie sie lesen können. Damit zählt auch der Schlüssel:"
 			}
 		},
 		"preferences": {
@@ -12341,7 +12381,9 @@
 			},
 			"willSeal": {
 				"detail": "Alle, denen Sie schreiben, können versiegelte Post empfangen, daher verschlüsselt Owlat diese Nachricht, bevor sie Ihren Workspace verlässt.",
-				"summary": "Diese Nachricht wird versiegelt"
+				"detailVerified": "Jemand hier hat diesen Schlüssel mit seinem Inhaber abgeglichen. Owlat verschlüsselt also an einen Schlüssel, den ein Mensch geprüft hat – nicht nur an den, den es immer wieder sieht.",
+				"summary": "Diese Nachricht wird versiegelt",
+				"summaryVerified": "Diese Nachricht wird an einen verifizierten Schlüssel versiegelt"
 			}
 		},
 		"sealRecipients": {
@@ -12623,6 +12665,10 @@
 				"swipeActions": {
 					"title": "Wischgesten",
 					"keywords": "wischen, geste, touch, handy, nach links wischen, nach rechts wischen"
+				},
+				"sealedMail": {
+					"keywords": "versiegelte Post, Verschlüsselung, Wiederherstellungspaket, privater Schlüssel, Ende-zu-Ende",
+					"title": "Versiegelte Post"
 				}
 			}
 		},
@@ -13822,6 +13868,12 @@
 				"read": "Als gelesen markieren",
 				"none": "Nichts"
 			}
+		},
+		"postboxKeyVerification": {
+			"stale": "Verifizierter Schlüssel nicht mehr in Verwendung",
+			"unverified": "Nicht persönlich verifiziert",
+			"verifiedByTeammate": "Von einem Teammitglied verifiziert",
+			"verifiedByYou": "Von Ihnen verifiziert"
 		}
 	},
 	"sharedPkg": {

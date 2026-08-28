@@ -3358,14 +3358,17 @@
 				"fingerprint": "Fingerprint",
 				"firstSeen": "First seen",
 				"foundVia": "Found via",
+				"hideVerify": "Hide verification",
 				"keyChanged": "Key changed — needs review",
 				"newKey": "New key",
+				"showVerify": "Verify this contact",
 				"sources": {
 					"manifest": "the sending server",
 					"wkd": "their domain (Web Key Directory)"
 				},
 				"title": "Sealing key",
-				"trusted": "Trusted key pinned"
+				"trusted": "Trusted key pinned",
+				"verifiedOn": "on {date}"
 			},
 			"postboxDailyBrief": {
 				"dismissLabel": "Hide the brief until tomorrow",
@@ -3551,7 +3554,8 @@
 				"error": "Couldn't accept the new key. It may have already been accepted by someone else — try reopening this thread.",
 				"newKey": "New key",
 				"previousKey": "Previous key",
-				"title": "This person's sealing key changed"
+				"title": "This person's sealing key changed",
+				"wasVerified": "You had verified the previous key with {address} directly. A change away from a checked key is worth asking them about before you accept it."
 			},
 			"postboxLabelManager": {
 				"deleteLabel": "Delete label",
@@ -4522,6 +4526,42 @@
 				"revoke": "Revoke",
 				"revokeAriaLabel": "Revoke the link to {filename}",
 				"revokeDescription": "The link to {filename} stops working immediately and the file is deleted. This cannot be undone."
+			},
+			"postboxContactVerifyPanel": {
+				"caveat": "Marking this only records that you checked. Everyone in this workspace sees it, and it clears itself if this key ever changes.",
+				"confirm": "It matches — mark as verified",
+				"error": "Couldn't save that. If this key changed while the panel was open, close and reopen it so you are checking the current one.",
+				"intro": "Owlat pinned this key the first time it saw it. To be sure it is really {address} on the other end, compare the same fingerprint with them over a call or in person — scan the code, read out the numbers, or check the letters. All three show the same key.",
+				"operation": "Verify contact key",
+				"qrLabel": "Fingerprint of the sealing key for {address}, as a scannable code",
+				"spokenLabel": "To read out loud",
+				"withdraw": "Withdraw verification",
+				"writtenLabel": "Written"
+			},
+			"postboxSealedMailCard": {
+				"confirmAction": "Download",
+				"confirmBody": "You are about to download the key that opens sealed mail for {address}. Anyone with this file can read it, so enter your password to continue.",
+				"confirmTitle": "Confirm it is you",
+				"explanation": "Messages between Owlat instances are encrypted with a key only your address holds, so nobody in between — including whoever runs the servers — can read them.",
+				"exportOperation": "Download recovery kit",
+				"getKit": "Get recovery kit",
+				"hasKey": "This address has a sealing key.",
+				"heading": "Your mail is sealed",
+				"kitHint": "The recovery kit is a copy of the key that opens your sealed mail. Keep it somewhere private and offline. There is no master copy: if this server is rebuilt and no kit survives, sealed mail you already received cannot be opened again.",
+				"noKey": "No sealing key yet, so mail to and from this address is sent normally.",
+				"passwordLabel": "Your password",
+				"refusal": {
+					"badPassword": "That password didn't match. Try again.",
+					"failed": "Couldn't prepare the recovery kit. Try again in a moment.",
+					"featureOff": "Sealed mail is turned off for this workspace.",
+					"noKey": "This address has no sealing key to export.",
+					"notYourAddress": "You can only download a recovery kit for an address you send from.",
+					"throttled": "Too many attempts. Wait a few minutes before trying again."
+				}
+			},
+			"postboxSealedMailNudge": {
+				"action": "see what this means and save your recovery kit",
+				"body": "Mail between Owlat instances is now sealed, so only you can read it. That also means the key matters:"
 			}
 		},
 		"preferences": {
@@ -12341,7 +12381,9 @@
 			},
 			"willSeal": {
 				"detail": "Everyone you are writing to can receive sealed mail, so Owlat will encrypt this message before it leaves your workspace.",
-				"summary": "This message will be sealed"
+				"detailVerified": "Someone here has compared this key with its owner, so Owlat is encrypting to a key a person has checked — not only to the one it keeps seeing.",
+				"summary": "This message will be sealed",
+				"summaryVerified": "This message will be sealed to a verified key"
 			}
 		},
 		"sealRecipients": {
@@ -12623,6 +12665,10 @@
 				"swipeActions": {
 					"title": "Swipe actions",
 					"keywords": "swipe, gesture, touch, phone, swipe left, swipe right"
+				},
+				"sealedMail": {
+					"keywords": "sealed mail, encryption, recovery kit, private key, end-to-end",
+					"title": "Sealed mail"
 				}
 			}
 		},
@@ -13822,6 +13868,12 @@
 				"read": "Mark read",
 				"none": "Nothing"
 			}
+		},
+		"postboxKeyVerification": {
+			"stale": "Verified key no longer in use",
+			"unverified": "Not verified in person",
+			"verifiedByTeammate": "Verified by a teammate",
+			"verifiedByYou": "Verified by you"
 		}
 	},
 	"sharedPkg": {

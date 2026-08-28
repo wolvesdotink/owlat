@@ -109,6 +109,11 @@ async function handleDelete() {
 		     until now only existed at the top of Today. -->
 			<PostboxDailyBriefSettings />
 
+			<!-- Your mail is sealed (idea 55): per-address key coverage plus the
+			     recovery kit, behind a password re-prompt. Self-hides when the
+			     sealedMail flag is off. -->
+			<PostboxSealedMailCard />
+
 			<!-- Files shared as links (idea 10): every link the composer handed out,
 		     with an immediate revoke. Self-hides until something is shared. -->
 			<PostboxSharedLinksSettings />

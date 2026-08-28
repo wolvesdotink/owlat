@@ -153,6 +153,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('sendSound', 'reading', hasMail),
 			control('dailyBriefEmail', 'daily-brief', hasMail),
 			control('sharedLinks', 'shared-links', hasMail),
+			control('sealedMail', 'sealed-mail', all(hasMail, flag('sealedMail'))),
 			control('mailboxes', 'mailboxes', hasMail),
 		],
 	}),

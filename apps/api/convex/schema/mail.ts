@@ -1820,6 +1820,16 @@ export const mailTables = {
 		// user who wants a direction inert stores 'none' there.
 		swipeLeftAction: v.optional(mailSwipeActionValidator),
 		swipeRightAction: v.optional(mailSwipeActionValidator),
+		// When this user dismissed the one-time "your mail is sealed" nudge (idea
+		// 55) — the pointer from the inbox to the Preferences card that explains
+		// sealing and offers the recovery kit. A TIMESTAMP rather than a boolean so
+		// the strip can be brought back deliberately later (a re-nudge after a key
+		// rotation, say) by comparing against the event, instead of needing a
+		// second flag. ABSENT means "not shown yet", not "already seen": the nudge
+		// is new, so there is no earlier behaviour for an untouched row to
+		// preserve — the same reasoning `shareLinkExpiryDays` uses — and it is
+		// gated on the `sealedMail` flag, which is off by default.
+		sealedMailNudgeSeenAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),

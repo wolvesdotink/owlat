@@ -13,6 +13,7 @@ import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
+import type { MutationCtx } from '../../_generated/server';
 import { enableSealedMail, modules } from './sealedMailTestHelpers';
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -33,9 +34,13 @@ const ALICE = { subject: 'alice', issuer: 'test', tokenIdentifier: 'test|alice' 
 const BOB = { subject: 'bob', issuer: 'test', tokenIdentifier: 'test|bob' };
 
 type Ctx = ReturnType<typeof convexTest>;
+// `t.run`'s callback ctx is generic on the handle, and the handle type above has
+// no data model, so seed helpers annotate it with this project's MutationCtx to
+// get the real tables and indexes back.
+type RunCtx = MutationCtx;
 
 async function seedMailbox(t: Ctx, userId: string, address: string): Promise<void> {
-	await t.run(async (ctx) => {
+	await t.run(async (ctx: RunCtx) => {
 		const mailboxId = await ctx.db.insert('mailboxes', {
 			userId,
 			organizationId: 'org1',
@@ -52,7 +57,7 @@ async function seedMailbox(t: Ctx, userId: string, address: string): Promise<voi
 }
 
 async function seedAlias(t: Ctx, alias: string, targetAddress: string): Promise<void> {
-	await t.run(async (ctx) => {
+	await t.run(async (ctx: RunCtx) => {
 		const mailbox = await ctx.db
 			.query('mailboxes')
 			.withIndex('by_address', (q) => q.eq('address', targetAddress))
@@ -67,7 +72,7 @@ async function seedAlias(t: Ctx, alias: string, targetAddress: string): Promise<
 }
 
 async function seedVaultKey(t: Ctx, address: string, fingerprint: string): Promise<void> {
-	await t.run(async (ctx) => {
+	await t.run(async (ctx: RunCtx) => {
 		await ctx.db.insert('keyVault', {
 			kind: 'address',
 			address,
@@ -157,7 +162,7 @@ describe('e2ee/memberKeys · isOwnSendableAddress', () => {
 	it('refuses a shared inbox the caller is only a MEMBER of', async () => {
 		const t = convexTest(schema, modules);
 		await seedMailbox(t, 'alice', 'team@owlat.test');
-		await t.run(async (ctx) => {
+		await t.run(async (ctx: RunCtx) => {
 			const mailbox = await ctx.db
 				.query('mailboxes')
 				.withIndex('by_address', (q) => q.eq('address', 'team@owlat.test'))
@@ -187,7 +192,7 @@ describe('e2ee/memberKeys · isOwnSendableAddress', () => {
 			t.query(internal.e2ee.memberKeys.isOwnSendableAddress, { address: 'alice@owlat.test' })
 		).resolves.toBe(false);
 
-		await t.run(async (ctx) => {
+		await t.run(async (ctx: RunCtx) => {
 			const mailbox = await ctx.db
 				.query('mailboxes')
 				.withIndex('by_address', (q) => q.eq('address', 'alice@owlat.test'))
@@ -220,7 +225,7 @@ describe('e2ee/memberKeys · the recovery-kit re-auth throttle', () => {
 	it('does not count SMTP/IMAP failures, so a mail client cannot lock the prompt', async () => {
 		const t = convexTest(schema, modules);
 		const address = 'alice@owlat.test';
-		await t.run(async (ctx) => {
+		await t.run(async (ctx: RunCtx) => {
 			for (let i = 0; i < 10; i++) {
 				await ctx.db.insert('mailAuthFailures', {
 					address,
@@ -237,7 +242,7 @@ describe('e2ee/memberKeys · the recovery-kit re-auth throttle', () => {
 	it('lets an old lockout expire', async () => {
 		const t = convexTest(schema, modules);
 		const address = 'alice@owlat.test';
-		await t.run(async (ctx) => {
+		await t.run(async (ctx: RunCtx) => {
 			for (let i = 0; i < 10; i++) {
 				await ctx.db.insert('mailAuthFailures', {
 					address,

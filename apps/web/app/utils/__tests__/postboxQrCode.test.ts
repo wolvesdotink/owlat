@@ -36,7 +36,9 @@ const CENTERS: Record<number, number[]> = {
 
 /** Which modules are function patterns — the cells the data walk must skip. */
 function functionModules(size: number, version: number): boolean[][] {
-	const reserved = Array.from({ length: size }, () => new Array<boolean>(size).fill(false));
+	const reserved = Array.from({ length: size }, () =>
+		Array.from<boolean>({ length: size }).fill(false)
+	);
 	const mark = (row: number, col: number) => {
 		if (row >= 0 && row < size && col >= 0 && col < size) reserved[row]![col] = true;
 	};

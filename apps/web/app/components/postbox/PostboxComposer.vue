@@ -375,6 +375,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:seal-state="seal.state"
 			:pending="seal.pending"
 			:blocking-recipients="seal.blockingRecipients"
+			:all-verified="seal.allVerified"
 			@request-unsealed="seal.requestUnsealed()"
 			@remove-recipient="removeSealBlocker"
 		/>

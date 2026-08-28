@@ -14,14 +14,24 @@
 import { api } from '@owlat/api';
 import { shortFingerprint } from '~/utils/fingerprints';
 
-const props = defineProps<{
-	/** The recipient whose key changed (drives the copy and the re-pin call). */
-	address: string;
-	/** The previously trusted fingerprint (may be absent on a legacy row). */
-	oldFingerprint?: string | null;
-	/** The newly observed fingerprint awaiting acceptance. */
-	newFingerprint?: string | null;
-}>();
+const props = withDefaults(
+	defineProps<{
+		/** The recipient whose key changed (drives the copy and the re-pin call). */
+		address: string;
+		/** The previously trusted fingerprint (may be absent on a legacy row). */
+		oldFingerprint?: string | null;
+		/** The newly observed fingerprint awaiting acceptance. */
+		newFingerprint?: string | null;
+		/**
+		 * Whether a human here had VERIFIED the key being replaced (plan idea 54).
+		 * A rotation nobody checked is routine; a rotation away from a key somebody
+		 * compared in person is the shape of an interception, so the banner says
+		 * that outright instead of leaving both changes looking the same.
+		 */
+		wasVerified?: boolean;
+	}>(),
+	{ oldFingerprint: null, newFingerprint: null, wasVerified: false }
+);
 
 const emit = defineEmits<{
 	/** The reader re-accepted the new key (re-pin succeeded). */
@@ -69,6 +79,13 @@ async function accept() {
 				</p>
 				<p class="mt-1 text-xs text-text-secondary max-w-prose">
 					{{ t('components.postbox.postboxKeyChangeBanner.body', { address }) }}
+				</p>
+				<p
+					v-if="wasVerified"
+					class="mt-1.5 text-xs text-warning font-medium max-w-prose"
+					data-testid="key-change-was-verified"
+				>
+					{{ t('components.postbox.postboxKeyChangeBanner.wasVerified', { address }) }}
 				</p>
 				<dl v-if="oldShort || newShort" class="mt-1.5 text-xs text-text-tertiary space-y-0.5">
 					<div v-if="oldShort" class="flex gap-2">

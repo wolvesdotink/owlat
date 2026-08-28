@@ -298,6 +298,9 @@ const advanceIds = computed(() =>
 						class="pbx-pane-list w-full border-border-subtle flex-col bg-bg-surface min-w-0 min-h-0"
 						:class="[listPaneVisibility, listPaneBorder]"
 					>
+						<!-- Idea 55: said once, when the instance turns sealing on, because
+						     the only other clue is a lock glyph nobody explained. -->
+						<PostboxSealedMailNudge />
 						<PostboxOfflineBanners
 							:is-offline="isOffline"
 							:queued-count="queuedSendCount"

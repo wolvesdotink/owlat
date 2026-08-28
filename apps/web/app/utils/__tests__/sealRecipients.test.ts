@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { deriveComposerLock, deriveUnsealedPrompt, type SealState } from '../sealComposer';
 import {
+	allRecipientsVerified,
 	findRecipientSealView,
 	recipientSealGlyph,
 	sealBlockingRecipients,
@@ -199,5 +200,34 @@ describe('no-silent-downgrade guarantee', () => {
 		const willSeal: SealState = { kind: 'willSeal' };
 		expect(sealBlockingRecipients(willSeal, [trusted('a@x.test')])).toEqual([]);
 		expect(deriveComposerLock(willSeal).allowSendUnsealed).toBe(false);
+	});
+});
+
+/**
+ * Verification is unanimous or it is not claimed (plan idea 54). A lock that
+ * said "verified" over a list where only some keys were checked would be read as
+ * covering all of them — the same all-or-nothing reasoning D2 applies to sealing
+ * itself.
+ */
+describe('allRecipientsVerified', () => {
+	const view = (address: string, verified?: boolean): RecipientSealView => ({
+		address,
+		outcome: 'trusted',
+		hasUsableKey: true,
+		...(verified === undefined ? {} : { verified }),
+	});
+
+	it('is true only when every recipient is verified', () => {
+		expect(allRecipientsVerified([view('a@x.test', true)])).toBe(true);
+		expect(allRecipientsVerified([view('a@x.test', true), view('b@x.test', true)])).toBe(true);
+		expect(allRecipientsVerified([view('a@x.test', true), view('b@x.test', false)])).toBe(false);
+	});
+
+	it('treats an absent field as unverified, so an older server never over-claims', () => {
+		expect(allRecipientsVerified([view('a@x.test')])).toBe(false);
+	});
+
+	it('claims nothing about an empty recipient list', () => {
+		expect(allRecipientsVerified([])).toBe(false);
 	});
 });

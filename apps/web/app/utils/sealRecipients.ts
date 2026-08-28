@@ -47,6 +47,24 @@ export interface RecipientSealView {
 	address: string;
 	outcome: RecipientKeyOutcome;
 	hasUsableKey: boolean;
+	/**
+	 * A human here compared this recipient's fingerprint with its owner (plan
+	 * idea 54). Optional in the mirror so a response from a deployment that
+	 * predates the field reads as "not verified" rather than as undefined.
+	 */
+	verified?: boolean;
+}
+
+/**
+ * Is EVERY recipient of this draft human-verified? Mirrors the Convex
+ * `allRecipientsVerified` exactly, including the all-or-nothing rule: the lock
+ * makes the stronger claim only on a unanimous yes, because "verified" over a
+ * mixed list is a sentence the reader would apply to all of it.
+ *
+ * An empty list is not verified — there is nobody to have verified.
+ */
+export function allRecipientsVerified(recipients: readonly RecipientSealView[]): boolean {
+	return recipients.length > 0 && recipients.every((r) => r.verified === true);
 }
 
 /** What one chip renders about its recipient's key. */

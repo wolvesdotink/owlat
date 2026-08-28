@@ -74,6 +74,7 @@ export const get = publicQuery({
 			shareLinkExpiryDays: row.shareLinkExpiryDays,
 			swipeLeftAction: row.swipeLeftAction,
 			swipeRightAction: row.swipeRightAction,
+			sealedMailNudgeSeenAt: row.sealedMailNudgeSeenAt,
 		};
 	},
 });
@@ -106,6 +107,10 @@ export const update = authedMutation({
 		shareLinkExpiryDays: v.optional(mailShareLinkExpiryDaysValidator),
 		swipeLeftAction: v.optional(mailSwipeActionValidator),
 		swipeRightAction: v.optional(mailSwipeActionValidator),
+		// The one-time Sealed-Mail nudge (idea 55). A plain timestamp, so the
+		// caller stamps `Date.now()` on dismissal; there is no closed set to
+		// validate and nothing to clamp.
+		sealedMailNudgeSeenAt: v.optional(v.number()),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -142,6 +147,7 @@ export const update = authedMutation({
 			shareLinkExpiryDays?: (typeof args)['shareLinkExpiryDays'];
 			swipeLeftAction?: (typeof args)['swipeLeftAction'];
 			swipeRightAction?: (typeof args)['swipeRightAction'];
+			sealedMailNudgeSeenAt?: number;
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
@@ -168,6 +174,8 @@ export const update = authedMutation({
 			patch.shareLinkExpiryDays = args.shareLinkExpiryDays;
 		if (args.swipeLeftAction !== undefined) patch.swipeLeftAction = args.swipeLeftAction;
 		if (args.swipeRightAction !== undefined) patch.swipeRightAction = args.swipeRightAction;
+		if (args.sealedMailNudgeSeenAt !== undefined)
+			patch.sealedMailNudgeSeenAt = args.sealedMailNudgeSeenAt;
 		if (args.dailyBriefEmail !== undefined) {
 			// Clamp here rather than trusting the client: `minute` becomes a
 			// scheduling comparison in a cron, and an out-of-range value would

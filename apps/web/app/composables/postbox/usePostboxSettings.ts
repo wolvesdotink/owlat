@@ -55,6 +55,10 @@
  *     the plan's mapping (archive left, snooze right) rather than "off": rows
  *     had no touch verbs at all before this, so there is no older behaviour for
  *     an untouched row to preserve. `'none'` is how a direction is turned off.
+ *   - `hasSeenSealedMailNudge` — whether the one-time "your mail is sealed"
+ *     pointer has been dismissed (idea 55). Absent means NOT yet seen, not
+ *     "already seen": the nudge is new, so there is no earlier behaviour for an
+ *     untouched row to preserve, and it only ever appears with `sealedMail` on.
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -232,6 +236,12 @@ export function usePostboxSettings() {
 		resolveAttachmentShareExpiryDays(data.value?.shareLinkExpiryDays)
 	);
 
+	// Reads FALSE while the settings row is still loading, so the nudge never
+	// flashes on for a user who dismissed it a month ago.
+	const hasSeenSealedMailNudge = computed(
+		() => isLoading.value || data.value?.sealedMailNudgeSeenAt !== undefined
+	);
+
 	async function setAutoAdvance(mode: PostboxAutoAdvanceMode) {
 		await updateOp.run({ autoAdvance: mode });
 	}
@@ -332,6 +342,16 @@ export function usePostboxSettings() {
 		);
 	}
 
+	/**
+	 * Dismiss the one-time Sealed-Mail nudge (idea 55). Stamps the moment rather
+	 * than a boolean, so a future re-nudge (after a key rotation, say) can compare
+	 * against the event instead of needing a second flag.
+	 */
+	async function dismissSealedMailNudge() {
+		if (hasSeenSealedMailNudge.value) return;
+		await updateOp.run({ sealedMailNudgeSeenAt: Date.now() });
+	}
+
 	async function setDailyBriefEmail(value: {
 		enabled: boolean;
 		minute: number;
@@ -365,6 +385,7 @@ export function usePostboxSettings() {
 		swipeLeftAction,
 		swipeRightAction,
 		dailyBriefEmail,
+		hasSeenSealedMailNudge,
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
@@ -388,6 +409,7 @@ export function usePostboxSettings() {
 		setShareLinkExpiryDays,
 		setSwipeAction,
 		setDailyBriefEmail,
+		dismissSealedMailNudge,
 		isSaving: updateOp.isLoading,
 	};
 }
