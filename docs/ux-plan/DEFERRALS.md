@@ -261,3 +261,35 @@ To pick it up: parse and persist the `Return-Path` address at ingest beside
 possible for existing mail), and — if the literal block is ever wanted in-app —
 add a header-only action that byte-range-fetches the top of the blob rather than
 the whole message.
+
+## 57 — passkeys need a BetterAuth major the Convex adapter forbids
+
+Sessions and TOTP two-factor both shipped. Passkeys did not, and the reason is
+a version wall rather than a design question.
+
+BetterAuth stopped shipping the passkey plugin inside the main package: `1.6.25`
+(what this repo pins) exports no `better-auth/plugins/passkey`, has no
+`passkeyClient` in `better-auth/client/plugins`, and carries no WebAuthn code at
+all. The plugin now lives in `@better-auth/passkey`, whose FIRST release is
+`1.7.0-beta.1` and whose peer range is `better-auth: ^1.7.2`.
+
+That range cannot be satisfied here. `@convex-dev/better-auth@0.12.5` — the
+adapter the whole auth plane runs through — peers `better-auth: >=1.6.11 <1.7.0`,
+which is why the root `package.json` catalog pins `>=1.6.22 <1.7.0`. Installing
+the passkey plugin therefore means moving BetterAuth to 1.7.x, which means
+waiting for (or driving) a `@convex-dev/better-auth` release that supports it,
+and re-diffing `convex/betterAuth/schema.ts` against the new bundled schema.
+
+The database side is already in place: the `passkey` table exists in
+`convex/betterAuth/schema.ts` with `credentialID` and `userId` indexes, and
+`authSchemaParity.test.ts` will hold it against the plugin's declared fields the
+moment the plugin is added to the options.
+
+To pick it up: bump `@convex-dev/better-auth` to a release peering `better-auth`
+1.7.x, move the catalog pin, add `@better-auth/passkey` to `apps/api` and
+`apps/web`, register `passkey({ rpID, rpName, origin })` in the plugin list (the
+origin list has to cover `tauri://localhost` and `https://tauri.localhost` for
+the desktop webview, which WebAuthn will likely reject — worth checking before
+promising desktop support), add `passkeyClient()` in `app/lib/auth-client.ts`,
+and hang an add/name/remove section off the existing sign-in and security page,
+which already has the card layout and the enrolment-dialog pattern for it.
