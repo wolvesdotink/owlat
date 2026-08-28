@@ -524,3 +524,92 @@ lastOutboundAt`. That is a schema field plus a write on the send path, and the
 same predicate then serves the pill's index range — which would need a second
 index, since the range is currently a plain `lastMessageAt` walk under
 `by_status_and_last_message_at`.
+
+## 24 — sections page on a bounded take, not a keyset cursor
+
+Each section walks its own `by_folder_and_section_and_received` range with its
+own limit, which is what stops a chatty section from starving a quiet one. What
+it is NOT is keyset pagination: a Convex query may call `.paginate()` once, and
+one section's cursor cannot be spent on behalf of the others, so "load more"
+raises that section's limit and the query re-reads its page from the top.
+
+The cost is a re-read per expansion and a ceiling (`MAX_SECTION_LIMIT`) past
+which a section stops growing. For a split inbox — where the whole point is that
+each section is small enough to read — that ceiling is far above any section
+worth keeping, and the re-read is one indexed range scan. The alternative is a
+query per section, which multiplies the round trips by the section count and
+makes the sections load raggedly.
+
+To pick it up: one paginated query per section, called once per section from the
+client with its own cursor, and a renderer that tolerates sections arriving at
+different times.
+
+The sectioned renderer also carries no row-level triage (hover archive/star,
+range selection, the bulk-actions bar) — the same shape the category and
+conversation renderers have, since those affordances live in `PostboxThreadList`
+and its selection composables. Sections inherit that gap rather than adding one.
+
+## 27 — suggestions are per sender and per triage verb, nothing else
+
+The tally is keyed on (mailbox, sender, verb) and the verbs are archive, trash
+and spam: the three that map onto a filter action a person would plausibly
+automate. Deliberately absent:
+
+- "you always label mail with `[JIRA]` in the subject" — a subject/pattern
+  suggestion needs a candidate-pattern miner, not a counter, and a wrong pattern
+  writes a rule that governs mail the user never looked at.
+- `markRead` and `addLabel` as observed verbs. Both are high-frequency and
+  low-intent (arrow-keying past a row marks it read), so their tallies would be
+  noise dressed as a habit.
+
+The dominance gate is also per verb rather than per (verb, folder): "always move
+this sender to Projects" is not offered, because the tally does not record which
+folder a manual move went to.
+
+To pick it up: record the target folder alongside a `moveToFolder` triage, and
+give the tally a second key for the subject-pattern miner — which wants its own
+recurrence gate, since a pattern is a much larger claim than a sender.
+
+## 29 — the delivery clock is a stored UTC offset, not an IANA zone
+
+The send cron has no request behind it, so it cannot ask a browser what time it
+is where the reader is. The preference therefore carries `utcOffsetMinutes`, the
+browser's offset at the moment it was saved, and the settings card re-saves it
+whenever it notices the browser's offset has moved — so the first visit after a
+DST shift corrects the schedule.
+
+Until that visit the brief can arrive an hour early or late. That is the right
+failure for a digest, and the alternative — storing an IANA zone and resolving
+it in the Convex isolate — is a dependency on `Intl` behaviour in a runtime
+where it is not part of any contract we test against, for an hour of accuracy
+twice a year.
+
+The plan's other branch, "or a desktop push summary", is not built. The desktop
+notification plumbing exists (`lib/desktop/notificationRules`), but a brief is a
+list of a dozen linked items and a native toast is one line — it would be a
+different feature wearing the same name.
+
+To pick it up: store the IANA zone beside the offset, resolve it server-side
+with a tested `Intl` shim, and keep the offset as the fallback.
+
+## 31 — the cross-surface link correlates on Message-ID only
+
+`mailMessages.rfc822MessageId` ↔ `inboundMessages.messageId`, both indexed, both
+spellings tried (Postbox strips the angle brackets at ingest, the AI-inbox path
+keeps them). One message, one counterpart.
+
+What it does not do is correlate CONVERSATIONS. A personal copy of the second
+message in a thread finds nothing if only the first was also delivered to the
+shared address, because there is no walk of `References` and no subject
+fallback. A subject fallback in particular would be a bad trade here: it crosses
+a permission boundary, and "same subject within 24h" is exactly the heuristic
+that would link two customers' unrelated "Re: Invoice" threads across a personal
+and a shared inbox.
+
+The mirror also names only the FIRST personal copy the viewer can read, of up to
+20 rows sharing a Message-ID; a shared address fanned out to several members
+shows one of them rather than a list.
+
+To pick it up: correlate at the thread level by intersecting the Message-IDs of
+both threads' messages, and re-run the both-sides permission check per matched
+pair rather than per message.
