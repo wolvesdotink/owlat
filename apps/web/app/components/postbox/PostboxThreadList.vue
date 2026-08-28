@@ -50,12 +50,9 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-// Sender-trust markers on rows (UX plan idea 51) ride the same flag as the
-// reader's badge, `senderAuthBadges`: one derivation, one switch. Resolved ONCE
-// here and passed down, so a thousand-row folder holds one flag subscription
-// rather than one per row.
-const { isEnabled: isFeatureEnabled } = useFeatureFlag();
-const trustMarkers = computed(() => isFeatureEnabled('senderAuthBadges'));
+// Row trust markers (idea 51) ride the badge's flag, resolved once for the list.
+const { isEnabled: isFlagEnabled } = useFeatureFlag();
+const trustMarkers = computed(() => isFlagEnabled('senderAuthBadges'));
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
