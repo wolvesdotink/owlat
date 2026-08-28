@@ -39,10 +39,7 @@
  * inventing a diagnosis.
  */
 
-import {
-	HARD_BOUNCE_PATTERNS,
-	SOFT_BOUNCE_PATTERNS,
-} from '@owlat/shared/bounceClassification';
+import { HARD_BOUNCE_PATTERNS, SOFT_BOUNCE_PATTERNS } from '@owlat/shared/bounceClassification';
 import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { HealthTone } from '~/utils/healthTone';
 import type { LocalizedText } from '~/utils/readinessGate';

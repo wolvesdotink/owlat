@@ -178,10 +178,7 @@ describe('isDeliveryStripWorthShowing', () => {
 		});
 		const many = deliveryStripView({
 			state: 'sent',
-			recipients: [
-				recipient({ idx: 0, acceptedAt: AT }),
-				recipient({ idx: 1, acceptedAt: AT }),
-			],
+			recipients: [recipient({ idx: 0, acceptedAt: AT }), recipient({ idx: 1, acceptedAt: AT })],
 		});
 		expect([failed, queued, many].map(isDeliveryStripWorthShowing)).toEqual([true, true, true]);
 	});
