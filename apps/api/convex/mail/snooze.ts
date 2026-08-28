@@ -239,15 +239,6 @@ export const clearSnoozeReturned = authedMutation({
 	},
 });
 
-export const unsnooze = authedMutation({
-	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args) => {
-		const owned = await requireMessageAccess(ctx, args.messageId);
-		if (!owned.ok) throwForbidden('Message not accessible');
-		await clearMessageSnooze(ctx, owned.message, Date.now());
-	},
-});
-
 /**
  * Per-call ceiling on a batch snooze write, matching
  * `mailbox/selection.BULK_SELECTION_CAP` so a "select all matching" answer is
@@ -301,7 +292,11 @@ export const snoozeMany = authedMutation({
 	},
 });
 
-/** Wake MANY snoozed messages at once — the inverse of {@link snoozeMany}. */
+/**
+ * Wake MANY snoozed messages at once — the inverse of {@link snoozeMany}, and
+ * the only manual un-snooze verb: the single-message `unsnooze` it replaced
+ * had exactly one caller, the bulk bar's per-row loop.
+ */
 // authz: each message → mailbox ownership via requireMessageAccess; org
 // membership via authedMutation.
 export const unsnoozeMany = authedMutation({
