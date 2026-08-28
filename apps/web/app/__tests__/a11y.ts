@@ -353,6 +353,10 @@ function defaultStubs(): Record<string, unknown> {
 			closeHelpModal: vi.fn(),
 			getRegisteredShortcuts: () => [],
 		}),
+		// The bridge from the settings row to the shortcut registry. Stubbed
+		// rather than real: it opens a Convex query, and the registry it feeds is
+		// module state that already reads as the shipped map.
+		useShortcutPreferences: vi.fn(),
 		useClickOutside: vi.fn(),
 		useColorMode: () => reactive({ preference: 'dark', value: 'dark' }),
 		useAppTheme: () => ({ theme: ref('dark'), setTheme: vi.fn() }),

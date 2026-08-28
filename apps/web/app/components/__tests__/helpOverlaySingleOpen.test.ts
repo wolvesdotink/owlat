@@ -15,7 +15,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, nextTick, ref, type Ref } from 'vue';
 import { claimHelpOverlay, isHelpOverlayClaimed } from '~/utils/helpOverlayOwnership';
-import { isEditableTarget, POSTBOX_SHORTCUT_GROUPS } from '~/utils/postboxShortcuts';
+import { isEditableTarget, postboxShortcutSheet } from '~/utils/postboxShortcuts';
+import { shortcutSheetKeys } from '~/utils/shortcutRegistry';
+import { usePostboxShortcutScope } from '~/composables/postbox/usePostboxShortcutScope';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxShortcutHelp from '../postbox/PostboxShortcutHelp.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
@@ -59,7 +61,14 @@ beforeEach(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useState', () => postboxHelpOpen);
 	vi.stubGlobal('isEditableTarget', isEditableTarget);
-	vi.stubGlobal('POSTBOX_SHORTCUT_GROUPS', POSTBOX_SHORTCUT_GROUPS);
+	vi.stubGlobal('postboxShortcutSheet', postboxShortcutSheet);
+	vi.stubGlobal('shortcutSheetKeys', shortcutSheetKeys);
+	// The sheet is generated now, so it reads the platform (for ⌘ vs Ctrl) and
+	// claims the Postbox scope of the shortcut registry while it is mounted.
+	vi.stubGlobal('useDesktopContext', () => ({ platform: ref('linux') }));
+	vi.stubGlobal('usePostboxShortcutScope', usePostboxShortcutScope);
+	vi.stubGlobal('useKeyboardShortcuts', useKeyboardShortcuts);
+	vi.stubGlobal('navigateTo', vi.fn());
 });
 
 afterEach(() => {
