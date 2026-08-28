@@ -3656,14 +3656,19 @@
 				}
 			},
 			"postboxMessageBody": {
+				"alwaysForSender": "Always for {host}",
+				"alwaysForSenderTitle": "Always load remote images from this sender. Tracking pixels stay blocked.",
 				"blockedImage": "[image]",
 				"emptyMessage": "(empty message)",
 				"hideQuoted": "Hide quoted text",
+				"imagesAutoLoaded": "Images from {host} load automatically. Tracking pixels are still stripped.",
 				"imagesBlocked": "Images blocked to protect your privacy.",
 				"imagesBlockedTrackers": "Images blocked — {count} tracking pixel detected. | Images blocked — {count} tracking pixels detected.",
 				"loadEverything": "Load everything",
-				"showImages": "Show images",
+				"manageTrustedSenders": "Manage trusted senders",
+				"showOnce": "Show once",
 				"showQuoted": "Show quoted text",
+				"stopTrustingSender": "Block again",
 				"trackersKeptBlocked": "{count} tracking pixel kept blocked. | {count} tracking pixels kept blocked."
 			},
 			"postboxMovePickerDialog": {
@@ -4135,6 +4140,12 @@
 				"starred": "Starred",
 				"attachments": "Attachments",
 				"partialCountHint": "Counts cover the messages loaded so far; scroll to load more."
+			},
+			"postboxTrustedSendersSettings": {
+				"heading": "Senders whose images load automatically",
+				"hint": "Remote images from these senders load without asking. Tracking pixels stay blocked either way.",
+				"revoke": "Revoke",
+				"revokeAriaLabel": "Stop loading images from {sender}"
 			}
 		},
 		"preferences": {
@@ -11404,6 +11415,10 @@
 			},
 			"usePostboxTriageUndo": {
 				"undo": "Undo"
+			},
+			"usePostboxImageAllowlist": {
+				"allowOperation": "Always show images from this sender",
+				"revokeOperation": "Block images from this sender again"
 			}
 		},
 		"postboxAutoAdvance": {

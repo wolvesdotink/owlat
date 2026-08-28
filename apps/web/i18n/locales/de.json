@@ -3656,14 +3656,19 @@
 				}
 			},
 			"postboxMessageBody": {
+				"alwaysForSender": "Immer für {host}",
+				"alwaysForSenderTitle": "Externe Bilder dieses Absenders immer laden. Zählpixel bleiben blockiert.",
 				"blockedImage": "[Bild]",
 				"emptyMessage": "(leere Nachricht)",
 				"hideQuoted": "Zitierten Text ausblenden",
+				"imagesAutoLoaded": "Bilder von {host} werden automatisch geladen. Zählpixel werden weiterhin entfernt.",
 				"imagesBlocked": "Bilder blockiert, um Ihre Privatsphäre zu schützen.",
 				"imagesBlockedTrackers": "Bilder blockiert — {count} Trackingpixel erkannt. | Bilder blockiert — {count} Trackingpixel erkannt.",
 				"loadEverything": "Alles laden",
-				"showImages": "Bilder anzeigen",
+				"manageTrustedSenders": "Vertraute Absender verwalten",
+				"showOnce": "Einmalig anzeigen",
 				"showQuoted": "Zitierten Text anzeigen",
+				"stopTrustingSender": "Wieder blockieren",
 				"trackersKeptBlocked": "{count} Trackingpixel bleibt blockiert. | {count} Trackingpixel bleiben blockiert."
 			},
 			"postboxMovePickerDialog": {
@@ -4135,6 +4140,12 @@
 				"starred": "Mit Stern",
 				"attachments": "Mit Anhang",
 				"partialCountHint": "Die Zahlen umfassen die bisher geladenen Nachrichten; scrollen Sie, um weitere zu laden."
+			},
+			"postboxTrustedSendersSettings": {
+				"heading": "Absender, deren Bilder automatisch geladen werden",
+				"hint": "Externe Bilder dieser Absender werden ohne Nachfrage geladen. Zählpixel bleiben in beiden Fällen blockiert.",
+				"revoke": "Entziehen",
+				"revokeAriaLabel": "Bilder von {sender} nicht mehr laden"
 			}
 		},
 		"preferences": {
@@ -11404,6 +11415,10 @@
 			},
 			"usePostboxTriageUndo": {
 				"undo": "Rückgängig"
+			},
+			"usePostboxImageAllowlist": {
+				"allowOperation": "Bilder dieses Absenders immer anzeigen",
+				"revokeOperation": "Bilder dieses Absenders wieder blockieren"
 			}
 		},
 		"postboxAutoAdvance": {

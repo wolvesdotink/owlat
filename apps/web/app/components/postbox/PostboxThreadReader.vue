@@ -463,6 +463,11 @@ const readerMovableFolders = computed(() =>
 	readerFolders.value.filter((f) => f.role !== 'sent' && f.role !== 'drafts')
 );
 
+// Per-sender remote-image allowlist. One subscription for the whole thread —
+// every message body asks this the same question, and a per-body query would
+// open one subscription per rendered message.
+const imageAllowlist = usePostboxImageAllowlist(mailboxIdRef);
+
 const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
 	label: () => t('common.archive'),
 });
@@ -1159,7 +1164,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						v-if="!hideRawBody(msg)"
 						:message="msg"
 						:force-light="isForcedLight(msg._id)"
+						:sender-images-allowed="imageAllowlist.isAllowed(msg.fromAddress)"
 						@trackers="onTrackersDetected(msg._id, $event)"
+						@trust-sender="imageAllowlist.allow($event)"
+						@untrust-sender="imageAllowlist.revoke($event)"
 					/>
 
 					<PostboxInviteCard

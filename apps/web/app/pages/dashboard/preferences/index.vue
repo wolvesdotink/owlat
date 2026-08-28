@@ -322,6 +322,10 @@ async function handleDelete() {
 		     mailbox onto a hosted one. Self-hides for hosted-only users. -->
 			<PostboxMailboxMove />
 
+			<!-- Reading protections: the senders whose remote images load without
+		     asking. Self-hides until the reader has granted at least one. -->
+			<PostboxTrustedSendersSettings />
+
 			<!-- On this device: offline read cache (device-local, never synced). -->
 			<PostboxOfflineSettings />
 
