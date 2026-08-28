@@ -594,7 +594,10 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 			text: 'lunch',
 			or: [{ text: 'deck' }],
 		});
-		expect(results.messages.map((m) => m.subject).sort()).toEqual(['lunch plans', 'quarterly deck']);
+		expect(results.messages.map((m) => m.subject).sort()).toEqual([
+			'lunch plans',
+			'quarterly deck',
+		]);
 	});
 
 	it('drops a dead OR side instead of letting it widen the union', async () => {

@@ -203,7 +203,7 @@ describe('mail.savedSearches CRUD', () => {
 });
 
 describe('mail.savedSearches ownership', () => {
-	it('does not list another user\'s saved searches', async () => {
+	it("does not list another user's saved searches", async () => {
 		const t = convexTest(schema, modules);
 		const mineId = await seedMailbox(t, 'user-A');
 		await t.mutation(api.mail.savedSearches.create, {
@@ -229,7 +229,7 @@ describe('mail.savedSearches ownership', () => {
 		).rejects.toThrow();
 	});
 
-	it('refuses to update or remove another user\'s saved search', async () => {
+	it("refuses to update or remove another user's saved search", async () => {
 		const t = convexTest(schema, modules);
 		const mineId = await seedMailbox(t, 'user-A');
 		const id = await t.mutation(api.mail.savedSearches.create, {

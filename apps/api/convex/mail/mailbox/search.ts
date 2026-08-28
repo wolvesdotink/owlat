@@ -305,7 +305,8 @@ export const search = publicQuery({
 							// `from` is a partial token (e.g. "sara"), not a full address, so it
 							// can't use the search index's exact .eq('fromAddress') — the substring
 							// post-filter below handles it for both the text and no-text branches.
-							if (single.flagSeen !== undefined) filtered = filtered.eq('flagSeen', single.flagSeen);
+							if (single.flagSeen !== undefined)
+								filtered = filtered.eq('flagSeen', single.flagSeen);
 							if (single.flagFlagged !== undefined)
 								filtered = filtered.eq('flagFlagged', single.flagFlagged);
 							return filtered;

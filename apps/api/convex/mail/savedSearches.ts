@@ -15,7 +15,12 @@
 import { v } from 'convex/values';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
-import { getOrThrow, throwAlreadyExists, throwForbidden, throwInvalidInput } from '../_utils/errors';
+import {
+	getOrThrow,
+	throwAlreadyExists,
+	throwForbidden,
+	throwInvalidInput,
+} from '../_utils/errors';
 
 /**
  * Hard caps. A saved search is a shortcut, not a document: a name has to fit a
