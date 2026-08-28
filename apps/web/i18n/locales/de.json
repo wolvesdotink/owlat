@@ -4427,6 +4427,11 @@
 				"enable": "Tagesüberblick an mich senden",
 				"timeLabel": "Senden um",
 				"localTimeHint": "Ihre Ortszeit, auf ein paar Minuten genau."
+			},
+			"postboxDraftRestoreBar": {
+				"dismiss": "Gespeicherte Fassung behalten",
+				"message": "Ungespeicherte Änderungen von {time} wurden auf diesem Gerät gefunden.",
+				"restore": "Ungespeicherte Änderungen wiederherstellen"
 			}
 		},
 		"preferences": {

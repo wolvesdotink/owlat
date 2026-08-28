@@ -468,6 +468,13 @@ export function createIndexedDbDriver(
 }
 
 let singleton: PostboxOfflineStore | null = null;
+let sharedDriver: OfflineKvDriver | null = null;
+
+/** The one driver this session; shared with `postboxDraftMirrorStore.ts`. */
+export function getOfflineKvDriver(): OfflineKvDriver {
+	sharedDriver ??= createIndexedDbDriver() ?? createNoopDriver();
+	return sharedDriver;
+}
 
 /**
  * The shared Postbox offline store for this session, backed by real IndexedDB.
@@ -476,8 +483,7 @@ let singleton: PostboxOfflineStore | null = null;
  */
 export function getPostboxOfflineStore(): PostboxOfflineStore {
 	if (singleton) return singleton;
-	const driver = createIndexedDbDriver() ?? createNoopDriver();
-	singleton = new PostboxOfflineStore(driver);
+	singleton = new PostboxOfflineStore(getOfflineKvDriver());
 	return singleton;
 }
 

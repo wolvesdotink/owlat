@@ -76,6 +76,7 @@ const {
 	removeInlineImage,
 	isSaving,
 	lastSavedAt,
+	draftMirror,
 	isUploading,
 	canSend,
 	isScheduled,
@@ -369,6 +370,14 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:blocking-recipients="seal.blockingRecipients"
 			@request-unsealed="seal.requestUnsealed()"
 			@remove-recipient="removeSealBlocker"
+		/>
+
+		<!-- Plan idea 7: keystrokes the server row never received, after a crash.
+		     Above the editor, because it offers to replace what is in it. -->
+		<PostboxDraftRestoreBar
+			:entry="draftMirror.restorable"
+			@restore="draftMirror.restore"
+			@dismiss="draftMirror.dismiss"
 		/>
 
 		<!-- A scheduled draft is read-only until it is taken back; the banner owns

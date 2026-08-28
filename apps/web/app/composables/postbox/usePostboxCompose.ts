@@ -18,13 +18,14 @@ import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { OperationError } from '@owlat/shared/operationError';
 import { SurfacedOperationError } from '~/lib/operationError';
-import type { OfflineComposePayload } from '~/utils/postboxOfflineStore';
 import { postboxUndoSendDelayMsArg } from '~/utils/postboxUndoSendWindow';
 import {
 	usePostboxComposeAttachments,
 	type ComposerAttachment,
 } from './usePostboxComposeAttachments';
 import { usePostboxComposeHydration } from './usePostboxComposeHydration';
+import { usePostboxComposeMirror } from './usePostboxComposeMirror';
+import { usePostboxComposeOfflineSend, type SendOpts } from './usePostboxComposeOfflineSend';
 import { usePostboxComposeSignatures } from './usePostboxComposeSignatures';
 import { usePostboxOfflineOutbox } from './usePostboxOfflineOutbox';
 import { usePostboxSettings } from './usePostboxSettings';
@@ -176,8 +177,27 @@ export function usePostboxCompose(seed: DraftSeed) {
 			scheduledSendAt,
 			followUpRemindAt,
 			attachments,
+			lastSavedAt,
 		});
 	}
+
+	// Plan idea 7: mirror these exact fields on-device between server autosaves,
+	// and offer them back when a crash left the server row behind.
+	const draftMirror = usePostboxComposeMirror({
+		mailboxId: seed.mailboxId,
+		seedDraftId: seed.draftId,
+		inReplyToMessageId: seed.inReplyToMessageId,
+		draftId,
+		lastSavedAt,
+		draftState,
+		toAddresses,
+		ccAddresses,
+		bccAddresses,
+		subject,
+		bodyHtml,
+		bodyBlocks,
+		composerMode,
+	});
 
 	// Send-as identities for this mailbox: the mailbox's own allowed-from set
 	// (canonical address + active aliases) and, in a shared (team) inbox, the
@@ -323,55 +343,31 @@ export function usePostboxCompose(seed: DraftSeed) {
 		return plain.length > 0;
 	});
 
-	type SendOpts = {
-		undoSendDelayMs?: number;
-		scheduledSendAt?: number;
-		allowUnsealed?: boolean;
-	};
-
-	/**
-	 * Queue the CURRENT compose fields in the on-device outbox and return the
-	 * synthetic `{undoToken, sendAt}` — payload-complete, so the reconnect
-	 * drain can replay `create → update → send` even when this composition
-	 * never had a server draft row. Throws (like a failed send) when the
-	 * device cannot store it, so the caller never arms undo on a lost message.
-	 */
-	async function queueOfflineSend(opts?: SendOpts): Promise<{ undoToken: string; sendAt: number }> {
-		// Nothing to flush to a server we can't reach — the payload carries the
-		// live field values, which supersede whatever autosave last persisted.
-		if (saveTimer) {
-			clearTimeout(saveTimer);
-			saveTimer = null;
-		}
-		const payload: OfflineComposePayload = {
-			mailboxId: String(seed.mailboxId),
-			draftId: draftId.value ? String(draftId.value) : undefined,
-			inReplyToMessageId: seed.inReplyToMessageId ? String(seed.inReplyToMessageId) : undefined,
-			toAddresses: [...toAddresses.value],
-			ccAddresses: [...ccAddresses.value],
-			bccAddresses: [...bccAddresses.value],
-			subject: subject.value,
-			bodyHtml: bodyHtml.value,
-			bodyBlocks: composerMode.value === 'full' ? JSON.stringify(bodyBlocks.value) : undefined,
-			composerMode: composerMode.value,
-			fromAddress: fromAddress.value || undefined,
-			followUpRemindAt: followUpRemindAt.value,
-			attachments: attachments.value.map((a) => ({
-				storageId: String(a.storageId),
-				filename: a.filename,
-				contentType: a.contentType,
-				size: a.size,
-			})),
-			// The caller's options VERBATIM: the reconnect drain replays these, and
-			// it deliberately dispatches a drained item immediately (the sender
-			// already had their undo window while it sat in the queue). Baking the
-			// undo preference in here would re-arm that hold after reconnect, with
-			// no toast left to cancel it — so the window travels beside the payload
-			// instead, where only the toast reads it.
-			sendOptions: opts,
-		};
-		return offlineOutbox.queueSend(payload, undoSendDelayMs.value);
-	}
+	// The offline queue's payload builder lives in a sibling (file-size ratchet);
+	// it snapshots these exact refs, so nothing here needs to change on a send.
+	const queueOfflineSend = usePostboxComposeOfflineSend({
+		mailboxId: seed.mailboxId,
+		inReplyToMessageId: seed.inReplyToMessageId,
+		draftId,
+		toAddresses,
+		ccAddresses,
+		bccAddresses,
+		subject,
+		bodyHtml,
+		bodyBlocks,
+		composerMode,
+		fromAddress,
+		followUpRemindAt,
+		attachments,
+		cancelAutosave: () => {
+			if (saveTimer) {
+				clearTimeout(saveTimer);
+				saveTimer = null;
+			}
+		},
+		queue: (payload, delay) => offlineOutbox.queueSend(payload, delay),
+		undoSendDelayMs: () => undoSendDelayMs.value,
+	});
 
 	async function send(opts?: SendOpts) {
 		// D8: offline never touches the network — queue the payload on-device.
@@ -415,6 +411,9 @@ export function usePostboxCompose(seed: DraftSeed) {
 				// the caller does not treat a refusal as a send.
 				throw new SurfacedOperationError('Send failed');
 			}
+			// It is on the wire (or queued behind the undo window) — the mirror has
+			// nothing left to protect, and must not resurface on a reopened draft.
+			draftMirror.retire();
 			return result.result as { undoToken: string; sendAt: number };
 		} finally {
 			interceptingSend = false;
@@ -423,6 +422,9 @@ export function usePostboxCompose(seed: DraftSeed) {
 
 	async function discard() {
 		if (saveTimer) clearTimeout(saveTimer);
+		// A deliberate throw-away: tombstone the mirror so nothing offers this
+		// text back on a later open (and an already-debounced write no-ops).
+		draftMirror.retire();
 		if (draftId.value) {
 			const result = await discardDraft.run({ draftId: draftId.value });
 			if (!result.ok) return;
@@ -482,6 +484,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 		removeInlineImage,
 		isSaving,
 		lastSavedAt,
+		draftMirror,
 		canSend,
 		isScheduled,
 		scheduledSendAt,

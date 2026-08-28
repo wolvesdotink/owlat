@@ -4427,6 +4427,11 @@
 				"enable": "Send me the daily brief",
 				"timeLabel": "Send at",
 				"localTimeHint": "Your local time, give or take a few minutes."
+			},
+			"postboxDraftRestoreBar": {
+				"dismiss": "Keep saved version",
+				"message": "Unsaved changes from {time} were recovered from this device.",
+				"restore": "Restore unsaved changes"
 			}
 		},
 		"preferences": {
