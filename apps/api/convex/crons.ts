@@ -371,6 +371,18 @@ crons.interval(
 	{}
 );
 
+// Attachment share links (idea 10): release the bytes of every lapsed link, and
+// delete the record once it has sat byte-less through the grace window. The
+// serving route already refuses an expired token, so this is what turns
+// "expires in 14 days" into the file actually ceasing to exist. Hourly matches
+// the trash sweep — the horizon is measured in days, so a tick stays small.
+crons.interval(
+	'postbox attachment share expiry',
+	{ hours: 1 },
+	internal.mail.attachmentShareRetention.sweepExpiredShares,
+	{}
+);
+
 // Postbox Reply Queue reconcile — re-schedule needs-reply classification for
 // threads whose ingest-time scheduled check was lost (deploy restart etc.).
 crons.interval(

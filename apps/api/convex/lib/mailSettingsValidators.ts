@@ -188,3 +188,24 @@ export const mailTrashAutoPurgeDaysValidator = v.union(
 	v.literal(30),
 	v.literal(90)
 );
+
+// Default lifetime, in days, of an attachment share link this user creates
+// (mailUserSettings.shareLinkExpiryDays and the mail/settings update args).
+//
+// A CLOSED set for the same reason the trash horizon is one — the card renders
+// it as a handful of choices — and deliberately WITHOUT a "never expires"
+// option: a link that outlives everyone's memory of why it existed is the
+// failure mode this feature has to avoid, not a preference to offer.
+//
+// ABSENT means the shared default (14 days), not "no expiry". Share links did
+// not exist before this setting, so there is no prior behaviour to preserve;
+// the value both planes fall back to is
+// `ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS`, and the literals here are exactly
+// `ATTACHMENT_SHARE_EXPIRY_DAY_CHOICES` (Convex validators must be literal, so
+// the set is spelled out here and unit-tested against the shared constant).
+export const mailShareLinkExpiryDaysValidator = v.union(
+	v.literal(7),
+	v.literal(14),
+	v.literal(30),
+	v.literal(90)
+);

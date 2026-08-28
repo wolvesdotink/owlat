@@ -2,6 +2,8 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
 import {
+	mailAttachmentShareScanValidator,
+	mailAttachmentShareScopeValidator,
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
 	mailSnippetVariableValidator,
@@ -25,6 +27,7 @@ import {
 	mailQuietHoursValidator,
 	mailDailyBriefEmailValidator,
 	mailTrashAutoPurgeDaysValidator,
+	mailShareLinkExpiryDaysValidator,
 } from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
@@ -1801,9 +1804,76 @@ export const mailTables = {
 		// so an untouched row keeps exactly today's behaviour and the sweep only
 		// looks at rows that opted in.
 		trashAutoPurgeDays: v.optional(mailTrashAutoPurgeDaysValidator),
+		// Default lifetime, in days, of an attachment share link this user creates
+		// (idea 10). Absent ⇒ the shared default of 14 days; share links did not
+		// exist before this field, so there is no older behaviour to preserve.
+		shareLinkExpiryDays: v.optional(mailShareLinkExpiryDaysValidator),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),
+
+	// Attachment share links (idea 10) — the file the composer took OUT of a
+	// message and put behind a URL instead.
+	//
+	// WHY A ROW AND NOT JUST A SIGNED URL. The sealed-blob proxy already hands
+	// out capability URLs, but those are minted for a caller the query site just
+	// authorized and they die in an hour. A share link is the opposite: it is
+	// handed to a stranger, it has to survive for weeks, and — because it does —
+	// its owner must be able to see it in a list and kill it. None of that is
+	// expressible in a signature; it needs a record.
+	//
+	// THE BYTES. `storageId` is the SAME blob the draft attachment used: the
+	// composer detaches the part from the draft rather than deleting it, so
+	// nothing is re-uploaded and the file never exists twice. That also means the
+	// row OWNS the blob from then on — the draft no longer knows about it, so if
+	// this row does not delete it, nothing will. It goes optional precisely so
+	// "the bytes are gone" is representable: revocation and the expiry sweep both
+	// reclaim storage immediately and clear the field, while the record survives
+	// so the management list can still explain a link a recipient is asking about.
+	//
+	// THE SCAN GATE. A row only exists after the same ClamAV path the outbound
+	// send uses returned something other than `infected`, and `scanVerdict`
+	// records which outcome opened the door. Sharing must not be the hole that
+	// lets a file this instance would refuse to SEND reach the internet anyway.
+	mailAttachmentShares: defineTable({
+		mailboxId: v.id('mailboxes'),
+		// BetterAuth user id of the creator, so the management list is the acting
+		// person's own links even inside a shared team mailbox.
+		userId: v.string(),
+		// The blob, while it still exists. Absent ⇒ reclaimed (revoked or swept).
+		storageId: v.optional(v.id('_storage')),
+		filename: v.string(),
+		contentType: v.string(),
+		size: v.number(),
+		// The unguessable capability. 32 chars of the URL alphabet (192 bits) —
+		// this IS the access control for an `anyone`-scoped link.
+		token: v.string(),
+		scope: mailAttachmentShareScopeValidator,
+		// Provenance, for the list ("shared from this draft/message"). Optional
+		// because the source row can be discarded or purged long before the link
+		// lapses, and a dangling id must not strand the share.
+		sourceDraftId: v.optional(v.id('mailDrafts')),
+		sourceMessageId: v.optional(v.id('mailMessages')),
+		expiresAt: v.number(),
+		// Stamped by the owner's immediate revoke. Wins over `expiresAt` when both
+		// are true: revocation is the deliberate fact and the list must say so.
+		revokedAt: v.optional(v.number()),
+		// Which malware-scan outcome allowed the share ('clean' | 'skipped').
+		scanVerdict: mailAttachmentShareScanValidator,
+		// Serving telemetry, so an owner can tell a link nobody used from one that
+		// leaked. Incremented by the public route.
+		downloadCount: v.number(),
+		lastAccessedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		// The public serving route's only lookup.
+		.index('by_token', ['token'])
+		// The management list: this person's links inside one mailbox.
+		.index('by_mailbox_user', ['mailboxId', 'userId'])
+		// The expiry sweep walks rows in expiry order and stops at `now`, so a
+		// tick's work is proportional to what actually lapsed, not to the table.
+		.index('by_expiry', ['expiresAt']),
 
 	// Bidirectional commitment / deadline tracking (Daily Brief). A commitment is
 	// either a deadline SOMEONE GAVE the owner (`inbound` — "please send it by

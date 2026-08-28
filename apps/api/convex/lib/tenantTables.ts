@@ -199,6 +199,11 @@ export const TENANT_TABLES = [
 	'mailContacts',
 	'mailSenderCategoryOverrides',
 	'mailSenderImageAllowlist',
+	// Attachment share links (idea 10). Each row is one of this org's files —
+	// filename, size and the token that opens it — so it wipes with the mail it
+	// was lifted out of. Deleting the row is also the only thing that stops the
+	// link resolving, which makes leaving it behind unthinkable.
+	'mailAttachmentShares',
 	'mailTriageTallies',
 	'mailCommitments',
 	'mailDailyBriefs',

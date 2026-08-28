@@ -30,6 +30,7 @@ import {
 import { pluginFeedbackWebhook } from './webhooks/pluginFeedbackHttp';
 import { handleMailWebhook } from './mail/webhook';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
+import { serveAttachmentShare } from './mail/attachmentShareHttp';
 import { handleVerifyCredential } from './mail/authHttp';
 import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
 import { handleSmsWebhook, handleWhatsAppWebhook, handleGenericWebhook } from './webhooks/channels';
@@ -346,6 +347,17 @@ http.route({
 	path: '/sealed-blob',
 	method: 'GET',
 	handler: serveSealedBlob,
+});
+
+// GET /attachment-share/{token} - the PUBLIC expiring-token download for a file
+// the composer lifted out of a message (plan idea 10). No session and no
+// signature: the token in the path is the whole capability, and every gate
+// (revoked / expired / narrowed to the mailbox / bytes reclaimed) is decided
+// per request inside the handler.
+http.route({
+	pathPrefix: '/attachment-share/',
+	method: 'GET',
+	handler: serveAttachmentShare,
 });
 
 // ============ CHANNEL WEBHOOK ENDPOINTS ============

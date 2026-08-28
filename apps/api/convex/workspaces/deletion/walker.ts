@@ -30,6 +30,7 @@ import { accountExportArtifactsStep } from './steps/accountExportArtifacts';
 import { semanticFilesStep } from './steps/semanticFiles';
 import { mailMessagesStep } from './steps/mailMessages';
 import { mailDraftsStep } from './steps/mailDrafts';
+import { mailAttachmentSharesStep } from './steps/mailAttachmentShares';
 import { mailArchiveImportsStep } from './steps/mailArchiveImports';
 import { transactionalSendsStep } from './steps/transactionalSends';
 import { contactsStep } from './steps/contacts';
@@ -63,6 +64,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailBodySearchBackfillJobs',
 	'mailMessages',
 	'mailDrafts',
+	// Share links own the blobs the drafts above no longer reference, so they
+	// have to purge their own storage rather than ride a generic sweep.
+	'mailAttachmentShares',
 	'transactionalSends',
 
 	// Send + dispatch leaves
@@ -398,6 +402,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailContacts: makeSweepStep('mailContacts'),
 	mailSenderCategoryOverrides: makeSweepStep('mailSenderCategoryOverrides'),
 	mailSenderImageAllowlist: makeSweepStep('mailSenderImageAllowlist'),
+	mailAttachmentShares: mailAttachmentSharesStep,
 	mailTriageTallies: makeSweepStep('mailTriageTallies'),
 	mailCommitments: makeSweepStep('mailCommitments'),
 	mailDailyBriefs: makeSweepStep('mailDailyBriefs'),

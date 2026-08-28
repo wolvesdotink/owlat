@@ -185,6 +185,10 @@
 			"types": "./src/attachments.ts",
 			"import": "./src/attachments.ts"
 		},
+		"./attachmentShares": {
+			"types": "./src/attachmentShares.ts",
+			"import": "./src/attachmentShares.ts"
+		},
 		"./bounceClassification": {
 			"types": "./src/bounceClassification.ts",
 			"import": "./src/bounceClassification.ts"
