@@ -22,6 +22,7 @@
 
 import { v } from 'convex/values';
 import { routeGmailLabels, parseGmailLabelsHeader } from '@owlat/shared/gmailTakeout';
+import { MAX_ARCHIVE_IMPORT_BYTES } from '@owlat/shared/mboxArchive';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -33,16 +34,11 @@ import { mailMessageAttachmentValidator } from '../lib/convexValidators';
 import { resolveLabelPath } from './labels';
 
 /**
- * Largest archive one job accepts.
- *
- * The runner re-reads the uploaded blob on every run (that is what makes a
- * resumed run cheap to reason about — it seeks to a byte offset rather than
- * carrying state across action lifetimes), so the ceiling is really "how much
- * an action can hold at once". 64 MiB leaves generous headroom and still covers
- * a typical multi-year Takeout of a personal mailbox; a bigger archive splits
- * into several uploads, which Takeout itself already does.
+ * Largest archive one job accepts. Defined in `@owlat/shared` because the upload
+ * form refuses an over-size file before spending the user's bandwidth on it, and
+ * the two ceilings must be the same number.
  */
-export const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
+export const MAX_ARCHIVE_BYTES = MAX_ARCHIVE_IMPORT_BYTES;
 
 const archiveFormatValidator = v.union(v.literal('mbox'), v.literal('eml'));
 

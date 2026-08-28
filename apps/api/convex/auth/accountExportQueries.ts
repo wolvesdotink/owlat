@@ -309,3 +309,97 @@ export const listDeliverabilityAlertRecipientStates = internalQuery({
 		};
 	},
 });
+
+/**
+ * The PRE-RUN manifest's row counts (idea 67).
+ *
+ * "Export my data" used to be one button and a spinner: nothing said what was
+ * about to be written or how much of it there was, so a fifteen-minute export
+ * of a large mailbox was indistinguishable from a hung one. This is the count
+ * the manifest shows before the first byte is fetched.
+ *
+ * PERSONAL resources only. Every org resource is scoped through a membership
+ * check per organization, and counting them would mean re-walking the same rows
+ * the export is about to stream — i.e. paying for the export twice to describe
+ * it. The org half of the manifest is therefore counted AS it streams; see
+ * docs/ux-plan/DEFERRALS.md.
+ *
+ * Mail messages come from the per-folder `totalCount` aggregates, which the
+ * delivery path already maintains, so the biggest number in the manifest costs
+ * a handful of reads rather than a walk over years of mail. The remaining
+ * counts are bounded by {@link EXPORT_COUNT_CAP}: past it the manifest says
+ * "more than N" instead of pretending to a number it did not finish counting.
+ */
+export const EXPORT_COUNT_CAP = 2_000;
+
+async function boundedCount<T>(query: {
+	take: (n: number) => Promise<T[]>;
+}): Promise<{ count: number; isCapped: boolean }> {
+	const rows = await query.take(EXPORT_COUNT_CAP + 1);
+	return {
+		count: Math.min(rows.length, EXPORT_COUNT_CAP),
+		isCapped: rows.length > EXPORT_COUNT_CAP,
+	};
+}
+
+export const getPersonalExportCounts = internalQuery({
+	args: { userId: v.string() },
+	handler: async (ctx, args) => {
+		await requireSelf(ctx, args.userId);
+		const mailboxes = (
+			await ctx.db
+				.query('mailboxes')
+				.withIndex('by_user', (q) => q.eq('userId', args.userId))
+				.take(EXPORT_COUNT_CAP + 1)
+		).filter((mailbox) => mailbox.scope !== 'shared');
+
+		let mailMessages = 0;
+		let mailDrafts = 0;
+		let isDraftCountCapped = false;
+		for (const mailbox of mailboxes) {
+			const folders = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
+				.collect(); // bounded: one mailbox's folders
+			for (const folder of folders) mailMessages += folder.totalCount;
+			const drafts = await boundedCount(
+				ctx.db.query('mailDrafts').withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
+			);
+			mailDrafts += drafts.count;
+			isDraftCountCapped ||= drafts.isCapped;
+		}
+
+		const externalMailAccounts = await boundedCount(
+			ctx.db.query('externalMailAccounts').withIndex('by_user', (q) => q.eq('userId', args.userId))
+		);
+		const chatMessages = await boundedCount(
+			ctx.db.query('chatMessages').withIndex('by_author', (q) => q.eq('authorId', args.userId))
+		);
+		const alertStates = await boundedCount(
+			ctx.db
+				.query('deliverabilityAlertRecipients')
+				.withIndex('by_user', (q) => q.eq('userId', args.userId))
+		);
+
+		return [
+			{ resource: 'mailboxes' as const, count: mailboxes.length, isCapped: false },
+			{ resource: 'mailMessages' as const, count: mailMessages, isCapped: false },
+			{ resource: 'mailDrafts' as const, count: mailDrafts, isCapped: isDraftCountCapped },
+			{
+				resource: 'externalMailAccounts' as const,
+				count: externalMailAccounts.count,
+				isCapped: externalMailAccounts.isCapped,
+			},
+			{
+				resource: 'chatMessages' as const,
+				count: chatMessages.count,
+				isCapped: chatMessages.isCapped,
+			},
+			{
+				resource: 'deliverabilityAlertRecipientStates' as const,
+				count: alertStates.count,
+				isCapped: alertStates.isCapped,
+			},
+		];
+	},
+});

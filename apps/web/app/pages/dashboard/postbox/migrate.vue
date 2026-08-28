@@ -217,7 +217,10 @@ const steps = computed(() =>
 		<!-- Wait for the feature-flag subscription before deciding what to show,
 		     so the lock card never flashes at users who have the feature on. -->
 		<div v-if="flagsLoading" class="mt-8 flex justify-center py-10" aria-live="polite">
-			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
+			/>
 			<span class="sr-only">{{ t('common.loading') }}</span>
 		</div>
 
@@ -627,6 +630,14 @@ const steps = computed(() =>
 				</UiCard>
 			</section>
 		</template>
+
+		<!--
+			Import from a file. Outside the feature gate above on purpose: the IMAP
+			half of this wizard needs `mail.external`, but taking someone's Takeout
+			archive needs nothing but a mailbox to put it in — and the people with
+			only a file are exactly the ones who cannot connect an account.
+		-->
+		<PostboxArchiveImportCard v-if="!flagsLoading" class="mt-8" />
 
 		<!-- Cancel confirm -->
 		<UiConfirmationDialog

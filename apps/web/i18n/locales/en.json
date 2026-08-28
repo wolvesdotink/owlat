@@ -4488,6 +4488,21 @@
 				"searchAll": "Search all mail from this sender",
 				"sharedFiles": "Shared attachments",
 				"title": "Sender"
+			},
+			"postboxArchiveImportCard": {
+				"body": "Pick a .mbox archive (what Google Takeout gives you) or a single .eml message. Everything lands in this mailbox, with Gmail's labels and read state kept.",
+				"cancel": "Cancel import",
+				"chooseFile": "Choose a file",
+				"filtersAction": "Import filters (.xml)",
+				"filtersHelp": "Export your filters from Gmail settings and pick the .xml file. Rules that label, archive, trash, star or mark read come across; the rest are listed so you can rebuild them.",
+				"filtersTitle": "Gmail filters",
+				"filtersUntranslated": "{count} rules could not be brought across:",
+				"help": "Up to 64 MB per file. You can close this page — the import keeps running.",
+				"labelsCreated": "{count} labels created from the archive",
+				"progressLabel": "Import progress",
+				"subtitle": "For an account you can no longer sign in to",
+				"title": "Import from a file",
+				"uploading": "Uploading…"
 			}
 		},
 		"preferences": {
@@ -4516,6 +4531,15 @@
 			"preferencesDestinations": {
 				"ariaLabel": "Preferences sections"
 			},
+			"preferencesExportManifest": {
+				"loading": "Counting…",
+				"moreThan": "more than {count}",
+				"progress": "{count} rows written",
+				"progressLabel": "Export progress",
+				"title": "What the export contains",
+				"unavailable": "The contents could not be counted in advance. The export still includes everything.",
+				"uncountedNote": "Rows marked — are counted as they export."
+			},
 			"preferencesLanguage": {
 				"hint": "Remembered in this browser and on your account, so a new device and the emails we send you follow it too. Anything not translated yet is shown in English.",
 				"subtitle": "Choose the language Owlat's interface is shown in on this device.",
@@ -4539,6 +4563,19 @@
 				"autoSummarizeHelp": "Show a one-line AI summary at the top of long conversations. Click it to expand the key points.",
 				"sendSoundLabel": "Play sound when sending",
 				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default."
+			},
+			"preferencesYourData": {
+				"mailExportAction": "Download .mbox",
+				"mailExportDone": "Downloaded {count} messages.",
+				"mailExportFailed": "The mail archive could not be downloaded.",
+				"mailExportHelp": "One .mbox archive of this mailbox, in the format every other mail program reads.",
+				"mailExportProgress": "{count} messages written",
+				"mailExportRunning": "Downloading…",
+				"mailExportTitle": "Download all my mail",
+				"subtitle": "What this instance keeps, and for how long",
+				"title": "Your data",
+				"trashPurgeHelp": "Counted from the day you bin a message. Off unless you turn it on.",
+				"trashPurgeLabel": "Empty the trash automatically"
 			}
 		},
 		"query": {
@@ -11930,6 +11967,17 @@
 					"senderEmail": "My From address",
 					"senderName": "My name"
 				}
+			},
+			"useArchiveImport": {
+				"cancelOperation": "Cancel archive import",
+				"cancelled": "Import cancelled. The mail it already brought in stays.",
+				"filtersImported": "{created} filters created, {skipped} skipped.",
+				"filtersNoneFound": "No filters Owlat can create were found in that file.",
+				"filtersOperation": "Import Gmail filters",
+				"startOperation": "Start archive import",
+				"started": "Importing your archive.",
+				"uploadFailed": "The archive could not be uploaded.",
+				"uploadOperation": "Upload archive"
 			}
 		},
 		"postboxAutoAdvance": {
@@ -13643,6 +13691,71 @@
 			"newsletter": "Newsletters",
 			"notification": "Notifications",
 			"receipt": "Receipts"
+		},
+		"accountExportResources": {
+			"apiKeys": "API keys",
+			"automations": "Automations",
+			"blockedEmails": "Blocked addresses",
+			"campaigns": "Campaigns",
+			"chatMessages": "Chat messages",
+			"contactProperties": "Contact properties",
+			"contacts": "Contacts",
+			"deliverabilityAlertRecipientStates": "Delivery alert settings",
+			"domains": "Domains",
+			"emailTemplates": "Email templates",
+			"externalMailAccounts": "Connected mail accounts",
+			"formEndpoints": "Forms",
+			"mailDrafts": "Drafts",
+			"mailMessages": "Messages",
+			"mailboxes": "Mailboxes",
+			"organizationMemberships": "Workspace memberships",
+			"segments": "Segments",
+			"topics": "Topics",
+			"transactionalEmails": "Transactional emails",
+			"webhooks": "Webhooks"
+		},
+		"archiveImport": {
+			"refused": {
+				"already_running": "An import is already running for this mailbox.",
+				"empty": "That file is empty.",
+				"mailbox_inactive": "This mailbox is not active.",
+				"too_large": "That archive is over 64 MB. Split it and import each part."
+			},
+			"rejected": {
+				"empty": "That file is empty.",
+				"too_large": "That archive is over 64 MB. Split it and import each part.",
+				"unsupported_type": "Pick a .mbox or .eml file.",
+				"zip": "Unzip your Takeout download first, then pick the .mbox file inside it."
+			},
+			"summaryCancelled": "Cancelled after {messages} messages",
+			"summaryCompleted": "Imported {messages} messages",
+			"summaryCompletedWithSkips": "Imported {messages} messages, skipped {skipped} you already had",
+			"summaryFailed": "Stopped after {messages} messages",
+			"summaryImporting": "{messages} messages imported so far"
+		},
+		"dataRetention": {
+			"deliverabilityCompletedLabel": "Resolved delivery incidents",
+			"deliverabilityEvidenceLabel": "Deliverability checks",
+			"keptForDays": "Kept for {days} days",
+			"keptUntilDeleted": "Kept until you delete it",
+			"mailLabel": "Mail in your folders",
+			"spamLabel": "Spam",
+			"trashLabel": "Trash",
+			"trashPurgedAfter": "Deleted {days} days after you bin it"
+		},
+		"gmailFilterImport": {
+			"reason": {
+				"noActions": "does nothing Owlat can do",
+				"noConditions": "matches on nothing Owlat can test",
+				"unsupportedAction": "forwards or overrides spam, which an import will not set up for you",
+				"unsupportedCriteria": "uses a size rule Owlat has no field for"
+			}
+		},
+		"postboxTrashAutoPurge": {
+			"days30": "After 30 days",
+			"days7": "After 7 days",
+			"days90": "After 90 days",
+			"never": "Never"
 		}
 	},
 	"sharedPkg": {

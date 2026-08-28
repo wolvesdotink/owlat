@@ -4488,6 +4488,21 @@
 				"searchAll": "Alle Mails dieser Absenderin durchsuchen",
 				"sharedFiles": "Geteilte Anhänge",
 				"title": "Absenderin"
+			},
+			"postboxArchiveImportCard": {
+				"body": "Wähle ein .mbox-Archiv (das bekommst du von Google Takeout) oder eine einzelne .eml-Nachricht. Alles landet in diesem Postfach, samt Gmail-Labels und Gelesen-Status.",
+				"cancel": "Import abbrechen",
+				"chooseFile": "Datei wählen",
+				"filtersAction": "Filter importieren (.xml)",
+				"filtersHelp": "Exportiere deine Filter in den Gmail-Einstellungen und wähle die .xml-Datei. Regeln mit Label, Archivieren, Papierkorb, Stern oder Als-gelesen kommen mit; alles andere wird aufgelistet, damit du es neu anlegen kannst.",
+				"filtersTitle": "Gmail-Filter",
+				"filtersUntranslated": "{count} Regeln konnten nicht übernommen werden:",
+				"help": "Bis 64 MB pro Datei. Du kannst diese Seite schließen — der Import läuft weiter.",
+				"labelsCreated": "{count} Labels aus dem Archiv angelegt",
+				"progressLabel": "Import-Fortschritt",
+				"subtitle": "Für ein Konto, in das du dich nicht mehr einloggen kannst",
+				"title": "Aus einer Datei importieren",
+				"uploading": "Wird hochgeladen…"
 			}
 		},
 		"preferences": {
@@ -4516,6 +4531,15 @@
 			"preferencesDestinations": {
 				"ariaLabel": "Einstellungsbereiche"
 			},
+			"preferencesExportManifest": {
+				"loading": "Wird gezählt…",
+				"moreThan": "mehr als {count}",
+				"progress": "{count} Zeilen geschrieben",
+				"progressLabel": "Export-Fortschritt",
+				"title": "Was der Export enthält",
+				"unavailable": "Der Inhalt konnte vorab nicht gezählt werden. Der Export enthält trotzdem alles.",
+				"uncountedNote": "Zeilen mit — werden während des Exports gezählt."
+			},
 			"preferencesLanguage": {
 				"hint": "Wird in diesem Browser und in Ihrem Konto gespeichert, damit ein neues Gerät und unsere E-Mails an Sie der Auswahl ebenfalls folgen. Noch nicht übersetzte Texte erscheinen auf Englisch.",
 				"subtitle": "Wählen Sie die Sprache, in der die Owlat-Oberfläche auf diesem Gerät erscheint.",
@@ -4539,6 +4563,19 @@
 				"autoSummarizeHelp": "Eine einzeilige KI-Zusammenfassung oben in langen Konversationen anzeigen. Klicken Sie darauf, um die Kernpunkte aufzuklappen.",
 				"sendSoundLabel": "Ton beim Senden abspielen",
 				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus."
+			},
+			"preferencesYourData": {
+				"mailExportAction": ".mbox herunterladen",
+				"mailExportDone": "{count} Nachrichten heruntergeladen.",
+				"mailExportFailed": "Das Mail-Archiv konnte nicht heruntergeladen werden.",
+				"mailExportHelp": "Ein .mbox-Archiv dieses Postfachs — das Format, das jedes andere Mailprogramm liest.",
+				"mailExportProgress": "{count} Nachrichten geschrieben",
+				"mailExportRunning": "Wird heruntergeladen…",
+				"mailExportTitle": "Alle meine E-Mails herunterladen",
+				"subtitle": "Was diese Instanz aufbewahrt, und wie lange",
+				"title": "Deine Daten",
+				"trashPurgeHelp": "Gezählt ab dem Tag, an dem du etwas wegwirfst. Standardmäßig aus.",
+				"trashPurgeLabel": "Papierkorb automatisch leeren"
 			}
 		},
 		"query": {
@@ -11930,6 +11967,17 @@
 					"senderEmail": "Meine Absenderadresse",
 					"senderName": "Mein Name"
 				}
+			},
+			"useArchiveImport": {
+				"cancelOperation": "Archiv-Import abbrechen",
+				"cancelled": "Import beendet. Was schon importiert wurde, bleibt.",
+				"filtersImported": "{created} Filter angelegt, {skipped} übersprungen.",
+				"filtersNoneFound": "In dieser Datei stehen keine Filter, die Owlat anlegen kann.",
+				"filtersOperation": "Gmail-Filter importieren",
+				"startOperation": "Archiv-Import starten",
+				"started": "Dein Archiv wird importiert.",
+				"uploadFailed": "Das Archiv konnte nicht hochgeladen werden.",
+				"uploadOperation": "Archiv hochladen"
 			}
 		},
 		"postboxAutoAdvance": {
@@ -13643,6 +13691,71 @@
 			"newsletter": "Newsletter",
 			"notification": "Benachrichtigungen",
 			"receipt": "Belege"
+		},
+		"accountExportResources": {
+			"apiKeys": "API-Schlüssel",
+			"automations": "Automationen",
+			"blockedEmails": "Blockierte Adressen",
+			"campaigns": "Kampagnen",
+			"chatMessages": "Chat-Nachrichten",
+			"contactProperties": "Kontaktfelder",
+			"contacts": "Kontakte",
+			"deliverabilityAlertRecipientStates": "Einstellungen für Zustellwarnungen",
+			"domains": "Domains",
+			"emailTemplates": "E-Mail-Vorlagen",
+			"externalMailAccounts": "Verbundene Mail-Konten",
+			"formEndpoints": "Formulare",
+			"mailDrafts": "Entwürfe",
+			"mailMessages": "Nachrichten",
+			"mailboxes": "Postfächer",
+			"organizationMemberships": "Workspace-Mitgliedschaften",
+			"segments": "Segmente",
+			"topics": "Themen",
+			"transactionalEmails": "Transaktions-E-Mails",
+			"webhooks": "Webhooks"
+		},
+		"archiveImport": {
+			"refused": {
+				"already_running": "Für dieses Postfach läuft bereits ein Import.",
+				"empty": "Die Datei ist leer.",
+				"mailbox_inactive": "Dieses Postfach ist nicht aktiv.",
+				"too_large": "Das Archiv ist größer als 64 MB. Teile es auf und importiere die Teile einzeln."
+			},
+			"rejected": {
+				"empty": "Die Datei ist leer.",
+				"too_large": "Das Archiv ist größer als 64 MB. Teile es auf und importiere die Teile einzeln.",
+				"unsupported_type": "Wähle eine .mbox- oder .eml-Datei.",
+				"zip": "Entpacke deinen Takeout-Download und wähle die .mbox-Datei darin."
+			},
+			"summaryCancelled": "Nach {messages} Nachrichten beendet",
+			"summaryCompleted": "{messages} Nachrichten importiert",
+			"summaryCompletedWithSkips": "{messages} Nachrichten importiert, {skipped} übersprungen, die du schon hattest",
+			"summaryFailed": "Nach {messages} Nachrichten abgebrochen",
+			"summaryImporting": "Bisher {messages} Nachrichten importiert"
+		},
+		"dataRetention": {
+			"deliverabilityCompletedLabel": "Erledigte Zustellprobleme",
+			"deliverabilityEvidenceLabel": "Zustellbarkeits-Prüfungen",
+			"keptForDays": "Bleibt {days} Tage",
+			"keptUntilDeleted": "Bleibt, bis du es löschst",
+			"mailLabel": "E-Mails in deinen Ordnern",
+			"spamLabel": "Spam",
+			"trashLabel": "Papierkorb",
+			"trashPurgedAfter": "Wird {days} Tage nach dem Wegwerfen gelöscht"
+		},
+		"gmailFilterImport": {
+			"reason": {
+				"noActions": "tut nichts, was Owlat ausführen kann",
+				"noConditions": "prüft nichts, was Owlat testen kann",
+				"unsupportedAction": "leitet weiter oder überschreibt die Spam-Einstufung — das richtet ein Import nicht für dich ein",
+				"unsupportedCriteria": "nutzt eine Größenregel, für die Owlat kein Feld hat"
+			}
+		},
+		"postboxTrashAutoPurge": {
+			"days30": "Nach 30 Tagen",
+			"days7": "Nach 7 Tagen",
+			"days90": "Nach 90 Tagen",
+			"never": "Nie"
 		}
 	},
 	"sharedPkg": {

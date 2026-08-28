@@ -23,6 +23,21 @@
  * quoted from one that was always `>From `.
  */
 
+/**
+ * Largest archive one import job accepts, in bytes.
+ *
+ * Lives here rather than in the Convex module that enforces it because the
+ * upload form has to refuse an over-size file BEFORE spending the user's
+ * bandwidth on it, and a client-side ceiling that disagrees with the server's is
+ * either a wasted upload or a promise the server breaks.
+ *
+ * 64 MiB is what one action can hold: the runner re-reads the uploaded blob on
+ * every pass (that is what makes a resumed pass a byte offset rather than
+ * carried state). A larger export splits into several files, which Google
+ * Takeout already does on its own.
+ */
+export const MAX_ARCHIVE_IMPORT_BYTES = 64 * 1024 * 1024;
+
 /** Line that opens a message in an mbox archive. */
 const FROM_PREFIX = 'From ';
 
