@@ -20,6 +20,7 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 
 const postboxLayout = read('../components/postbox/PostboxLayout.vue');
 const readingPaneComposable = read('../composables/postbox/usePostboxReadingPane.ts');
+const layoutNavComposable = read('../composables/postbox/usePostboxLayoutNav.ts');
 const listHeader = read('../components/postbox/PostboxListHeader.vue');
 const folderDrawer = read('../components/postbox/PostboxFolderDrawer.vue');
 const replyQueueStrip = read('../components/postbox/PostboxReplyQueueStrip.vue');
@@ -51,8 +52,10 @@ describe('Postbox — stacked drill-in below lg', () => {
 
 	it('dismisses the reader without pushing a history entry', () => {
 		// Opening the message already pushed the entry this button dismisses: a
-		// push here makes the system Back gesture reopen the closed reader.
-		expect(postboxLayout).toMatch(/function backToList\(\)[\s\S]*?replace: true/);
+		// push here makes the system Back gesture reopen the closed reader. The
+		// navigation moved into usePostboxLayoutNav when the layout crossed the
+		// file-size cap; the contract is pinned where it now lives.
+		expect(layoutNavComposable).toMatch(/function backToList\(\)[\s\S]*?replace: true/);
 	});
 
 	it('puts the folder rail behind a drawer handle', () => {
