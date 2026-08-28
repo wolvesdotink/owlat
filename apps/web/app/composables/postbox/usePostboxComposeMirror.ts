@@ -18,11 +18,15 @@
  *    onto it, or the next open — which only knows the draft id — finds nothing.
  *  - CLEAR ON CONFIRMED SAVE. Once the server acknowledges (`lastSavedAt`
  *    advances) it holds the text and the mirror is redundant.
- *  - NEVER RESURRECT A DISCARD. Discarding, dismissing the offer or sending
- *    tombstones the key in the store, so a write that was already debounced
- *    when the user acted lands as a no-op rather than a resurrection — the same
- *    claim-before-act ordering the offline outbox uses to keep undo from racing
- *    the drain.
+ *  - NEVER RESURRECT A DISCARD. Discarding, or sending — online or into the
+ *    offline outbox — tombstones the key in the store, so a write that was
+ *    already debounced when the user acted lands as a no-op rather than a
+ *    resurrection: the same claim-before-act ordering the offline outbox uses
+ *    to keep undo from racing the drain. The tombstone is one-shot (the next
+ *    open of that key consumes it), because `new` and `new-reply:<id>` are
+ *    shared by every later composition of their kind. Dismissing an offer only
+ *    drops the superseded entry — the composer it was offered in is still open,
+ *    and what gets typed next deserves the same protection.
  *
  * Fail-soft throughout: the store swallows its own write failures, so a device
  * with no usable IndexedDB degrades to exactly today's server-only autosave.
@@ -170,12 +174,15 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	}
 
 	/**
-	 * Refuse the offer — a deliberate "keep the saved version". Tombstoned, so
-	 * the same superseded text is never offered again on a later open.
+	 * Refuse the offer — a deliberate "keep the saved version". The superseded
+	 * entry is dropped, so it is never offered again, but the key stays live:
+	 * this composer is still open and everything typed from here on is unsaved
+	 * work again. Tombstoning instead would answer one refused offer by turning
+	 * crash recovery off for the rest of this draft's life.
 	 */
 	function dismiss() {
 		restorable.value = null;
-		void store.discard(namespace, activeKey);
+		void store.clear(namespace, activeKey);
 	}
 
 	/** The composition is gone for good (discarded, or sent). */

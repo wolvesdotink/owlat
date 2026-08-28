@@ -185,11 +185,40 @@ describe('PostboxDraftMirrorStore', () => {
 
 	it('refuses a discarded key in a fresh session too, via the stored tombstone', async () => {
 		const driver = memoryDriver();
-		await new PostboxDraftMirrorStore(driver).discard('mbx1', 'draft1');
-		// A new store instance (new tab / next page load) over the same data.
+		const first = new PostboxDraftMirrorStore(driver);
+		await first.save('mbx1', 'draft1', mirror());
+		await first.discard('mbx1', 'draft1');
+		// A new store instance (new tab / next page load) over the same data: the
+		// write the discarding tab had debounced may only land now.
 		const next = new PostboxDraftMirrorStore(driver);
 		expect(await next.load('mbx1', 'draft1')).toBeNull();
-		expect(await next.save('mbx1', 'draft1', mirror())).toBe(false);
+	});
+
+	it('consumes the tombstone, so the NEXT composition on that key mirrors again', async () => {
+		// The provisional keys are shared: one Discard of a blank compose must not
+		// cost every later compose its crash recovery.
+		const store = new PostboxDraftMirrorStore(memoryDriver());
+		await store.save('mbx1', 'new', mirror());
+		await store.discard('mbx1', 'new');
+
+		// The next composer opens on the same key and reads first — that read is
+		// what retires the tombstone.
+		expect(await store.load('mbx1', 'new')).toBeNull();
+		expect(await store.save('mbx1', 'new', mirror({ savedAt: 3_000 }))).toBe(true);
+		expect(await store.load('mbx1', 'new')).toMatchObject({ savedAt: 3_000 });
+	});
+
+	it('consumes the tombstone across sessions as well', async () => {
+		const driver = memoryDriver();
+		await new PostboxDraftMirrorStore(driver).discard('mbx1', 'new');
+
+		const second = new PostboxDraftMirrorStore(driver);
+		expect(await second.load('mbx1', 'new')).toBeNull();
+		expect(await second.save('mbx1', 'new', mirror({ savedAt: 4_000 }))).toBe(true);
+
+		// …and the marker is gone from the device, not merely ignored in memory.
+		const third = new PostboxDraftMirrorStore(driver);
+		expect(await third.load('mbx1', 'new')).toMatchObject({ savedAt: 4_000 });
 	});
 
 	it('evicts the oldest mirrors past the cap', async () => {

@@ -10,9 +10,15 @@
  *     exactly today's server-only autosave. A composer must never refuse a
  *     keystroke over a storage failure. (The outbox is the opposite: queued
  *     mail has no other copy, so those writes throw.)
- *   - TOMBSTONED. A deliberately thrown-away draft leaves a `draft-mirror-dead:`
- *     marker so nothing — not a write that was already debounced when Discard
- *     was pressed, not a later reopen — can resurrect it.
+ *   - TOMBSTONED, BUT ONE-SHOT. A deliberately thrown-away draft leaves a
+ *     `draft-mirror-dead:` marker so a write that was already debounced when
+ *     Discard was pressed cannot resurrect it — including from the next page
+ *     load, since that write may only land after a reload. The marker is
+ *     CONSUMED by the read that honours it, because mirror keys are reused: a
+ *     fresh compose keys off `new`, a reply off the message it answers, and a
+ *     draft id outlives the composer that discarded it. A permanent tombstone
+ *     would therefore trade one Discard for crash recovery on every later
+ *     composition sharing that key, forever.
  *
  * Namespaced by mailboxId like every other key family here, so one account's
  * unsent text is never offered inside another on a shared device.
@@ -41,7 +47,8 @@ export class PostboxDraftMirrorStore {
 	 * Keys retired this session. Held in memory as well as on disk so the
 	 * refusal costs no extra read on the hot (debounced, per-burst-of-typing)
 	 * write path — the race it closes is same-tab, between Discard and a mirror
-	 * write that was already scheduled when Discard fired.
+	 * write that was already scheduled when Discard fired. Consumed by
+	 * {@link load}, which is the moment a new composition claims the key.
 	 */
 	private readonly discarded = new Set<string>();
 
@@ -95,16 +102,31 @@ export class PostboxDraftMirrorStore {
 
 	/**
 	 * The mirror for one composition, or null when there is none — including
-	 * when it was deliberately discarded. The tombstone is read back here, so a
+	 * when it was deliberately retired. The tombstone is read back here, so a
 	 * LATER SESSION (not only the tab that discarded) refuses it too.
+	 *
+	 * REFUSE AND CONSUME. Honouring a tombstone also retires it: a `load` is a
+	 * new composer claiming the key, and by then every write the retired one had
+	 * in flight has either landed (and is refused here) or been cancelled. Left
+	 * standing, the marker would refuse that new composition's writes as well —
+	 * one Discard of a blank compose would disable crash recovery for every
+	 * later compose on `new`, in this session and all the ones after it.
 	 */
 	async load(ns: string, id: string): Promise<DraftMirrorEntry | null> {
+		const key = mirrorKey(ns, id);
 		const tomb = await this.safeGet<{ at: number } | null>(mirrorTombKey(ns, id), null);
-		if (tomb) {
-			this.discarded.add(mirrorKey(ns, id));
+		if (tomb || this.discarded.has(key)) {
+			this.discarded.delete(key);
+			if (tomb) {
+				try {
+					await this.driver.delete(mirrorTombKey(ns, id));
+				} catch {
+					// A surviving tombstone only costs one more refused open.
+				}
+			}
 			return null;
 		}
-		return this.safeGet<DraftMirrorEntry | null>(mirrorKey(ns, id), null);
+		return this.safeGet<DraftMirrorEntry | null>(key, null);
 	}
 
 	/**
@@ -128,8 +150,14 @@ export class PostboxDraftMirrorStore {
 	}
 
 	/**
-	 * Retire a composition for good (Discard, a refused restore offer, a
-	 * completed send): clear the mirror AND tombstone the key.
+	 * Retire a composition (Discard, a queued or completed send): clear the
+	 * mirror AND tombstone the key, so a write this composition still had in
+	 * flight cannot put it back. The tombstone lasts exactly until the next
+	 * {@link load} — see there for why it must not outlive that.
+	 *
+	 * Superseding a single stale entry under a key that stays live — dismissing
+	 * a restore offer on a draft the user goes on editing — is {@link clear},
+	 * not this.
 	 */
 	async discard(ns: string, id: string): Promise<void> {
 		this.discarded.add(mirrorKey(ns, id));
