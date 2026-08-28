@@ -2995,28 +2995,7 @@
 		},
 		"keyboardShortcutsHelp": {
 			"footer": "Press {key} anytime to show this help",
-			"sections": {
-				"actions": "Actions",
-				"general": "General",
-				"navigation": "Navigation"
-			},
-			"shortcuts": {
-				"closeModal": "Close modal / Cancel",
-				"goToAdmin": "Go to Admin",
-				"goToAutomations": "Go to Automations",
-				"goToCampaigns": "Go to Campaigns",
-				"goToContacts": "Go to Contacts",
-				"goToDashboard": "Go to Dashboard",
-				"goToEmails": "Go to Emails",
-				"goToTransactional": "Go to Transactional",
-				"newItem": "New item (context-aware)",
-				"openSearch": "Open search",
-				"save": "Save (when editing)",
-				"showShortcuts": "Show keyboard shortcuts",
-				"toggleSidebar": "Hide / show sidebar"
-			},
 			"subtitle": "Navigate faster with your keyboard",
-			"then": "then",
 			"title": "Keyboard Shortcuts"
 		},
 		"knowledge": {
@@ -4057,6 +4036,24 @@
 			},
 			"postboxShortcutHelp": {
 				"title": "Keyboard shortcuts"
+			},
+			"postboxShortcutSettings": {
+				"change": "Change",
+				"changeAriaLabel": "Change the shortcut for {shortcut}",
+				"heading": "Keyboard shortcuts",
+				"hint": "Pick the map you already know, then move the keys you disagree with. Press a key while a row is listening.",
+				"listening": "Press a key…",
+				"presetLabel": "Keyboard map",
+				"presets": {
+					"gmail": "Gmail",
+					"outlook": "Outlook",
+					"owlat": "Owlat (default)",
+					"superhuman": "Superhuman"
+				},
+				"reset": "Reset",
+				"resetAll": "Reset all my changes",
+				"taken": "{shortcut} already uses that key.",
+				"unbound": "Not set"
 			},
 			"postboxSnippetPicker": {
 				"empty": "No matching snippets",
@@ -12138,41 +12135,6 @@
 				}
 			}
 		},
-		"postboxShortcuts": {
-			"groups": {
-				"compose": "Compose",
-				"help": "Help",
-				"navigation": "Navigation",
-				"organize": "Organize",
-				"triage": "Triage"
-			},
-			"labels": {
-				"addLabel": "Add label",
-				"archive": "Archive",
-				"closeConversation": "Close the open conversation / back to Today",
-				"extendSelection": "Extend selection",
-				"focusComposer": "Focus the composer",
-				"focusSearch": "Focus search",
-				"forward": "Forward",
-				"markUnread": "Mark unread",
-				"moveToFolder": "Move to folder",
-				"moveToTrash": "Move to trash",
-				"muteConversation": "Mute conversation",
-				"nextMessage": "Next message",
-				"openMessage": "Open message",
-				"previousMessage": "Previous message",
-				"reply": "Reply",
-				"replyAll": "Reply all",
-				"scheduleSend": "Schedule send (in composer)",
-				"selectDeselect": "Select / deselect",
-				"send": "Send (in composer)",
-				"snooze": "Snooze",
-				"starUnstar": "Star / unstar",
-				"toggleCheatSheet": "Show / hide this cheat sheet",
-				"toggleRead": "Toggle read",
-				"toggleTodayBrowse": "Toggle Today / Browse (inbox)"
-			}
-		},
 		"postboxTodayPartition": {
 			"autoFiled": {
 				"all": {
@@ -12330,21 +12292,6 @@
 			"undoneOne": "Approval undone — the draft is back in the queue",
 			"undonePartialMany": "{cancelled} approvals undone — {missed} already sent",
 			"undonePartialOne": "{cancelled} approval undone — {missed} already sent"
-		},
-		"reviewShortcuts": {
-			"labels": {
-				"approveAndSend": "Approve & send",
-				"edit": "Edit",
-				"extendSelection": "Extend selection",
-				"next": "Next",
-				"openThread": "Open thread",
-				"pickOption": "Pick option",
-				"previous": "Previous",
-				"reject": "Reject",
-				"select": "Select",
-				"selectAll": "Select all",
-				"skip": "Skip"
-			}
 		},
 		"sealComposer": {
 			"cannotSeal": {
@@ -12594,6 +12541,10 @@
 					"title": "Default reply behavior",
 					"keywords": "reply all, reply, r key"
 				},
+				"shortcuts": {
+					"keywords": "keyboard, shortcuts, hotkeys, key bindings, remap, gmail keys, superhuman keys, outlook keys",
+					"title": "Keyboard shortcuts"
+				},
 				"writingSuggestions": {
 					"title": "Writing suggestions",
 					"keywords": "ai, autocomplete, drafting help"
@@ -12700,6 +12651,76 @@
 				"sesIncomplete": "Region, access key ID, and secret access key are all required for SES.",
 				"smtpIncomplete": "Server host, username, and password are all required for an SMTP relay.",
 				"smtpPortInvalid": "Port must be a whole number between 1 and 65535 (leave blank for 587)."
+			}
+		},
+		"shortcuts": {
+			"groups": {
+				"actions": "Actions",
+				"compose": "Compose",
+				"general": "General",
+				"navigation": "Navigation",
+				"organize": "Organize",
+				"review": "Review queue",
+				"triage": "Triage",
+				"workspace": "Workspaces"
+			},
+			"labels": {
+				"addLabel": "Add label",
+				"approveAndSend": "Approve & send",
+				"archive": "Archive",
+				"closeCancel": "Close / Cancel",
+				"closeConversation": "Close the open conversation / back to Today",
+				"edit": "Edit",
+				"extendSelection": "Extend selection",
+				"focusComposer": "Focus the composer",
+				"focusSearch": "Focus search",
+				"forward": "Forward",
+				"goToAdmin": "Go to Admin",
+				"goToAutomations": "Go to Automations",
+				"goToCampaigns": "Go to Campaigns",
+				"goToContacts": "Go to Contacts",
+				"goToDashboard": "Go to Dashboard",
+				"goToDrafts": "Go to Drafts",
+				"goToEmails": "Go to Emails",
+				"goToInbox": "Go to Inbox",
+				"goToSent": "Go to Sent",
+				"goToStarred": "Go to Starred",
+				"goToTransactional": "Go to Transactional",
+				"markUnread": "Mark unread",
+				"minimizeComposer": "Minimize the composer",
+				"moveToFolder": "Move to folder",
+				"moveToTrash": "Move to trash",
+				"muteConversation": "Mute conversation",
+				"newItem": "New item (context-aware)",
+				"next": "Next",
+				"nextMessage": "Next message",
+				"nextUnread": "Next unread",
+				"openMessage": "Open message",
+				"openSearch": "Open search",
+				"openThread": "Open thread",
+				"pickOption": "Pick option",
+				"previous": "Previous",
+				"previousMessage": "Previous message",
+				"previousUnread": "Previous unread",
+				"reject": "Reject",
+				"reply": "Reply",
+				"replyAll": "Reply all",
+				"save": "Save (when editing)",
+				"scheduleSend": "Schedule send (in composer)",
+				"select": "Select",
+				"selectAll": "Select all",
+				"selectDeselect": "Select / deselect",
+				"send": "Send (in composer)",
+				"showShortcuts": "Show keyboard shortcuts",
+				"skip": "Skip",
+				"snooze": "Snooze",
+				"starUnstar": "Star / unstar",
+				"switchWorkspace": "Switch workspace",
+				"toggleCheatSheet": "Show / hide this cheat sheet",
+				"toggleRead": "Toggle read",
+				"toggleSidebar": "Hide / show sidebar",
+				"toggleTodayBrowse": "Toggle Today / Browse (inbox)",
+				"undoTriage": "Undo last triage"
 			}
 		},
 		"signatureBadge": {
@@ -13429,20 +13450,6 @@
 			"toasts": {
 				"copied": "Invite link copied",
 				"copyFailed": "Could not copy the link"
-			}
-		},
-		"useKeyboardShortcuts": {
-			"descriptions": {
-				"closeCancel": "Close / Cancel",
-				"goToAdmin": "Go to Admin",
-				"goToAutomations": "Go to Automations",
-				"goToCampaigns": "Go to Campaigns",
-				"goToContacts": "Go to Contacts",
-				"goToDashboard": "Go to Dashboard",
-				"goToEmails": "Go to Emails",
-				"goToTransactional": "Go to Transactional",
-				"newItem": "New item",
-				"save": "Save"
 			}
 		},
 		"useKnowledgeGraph": {

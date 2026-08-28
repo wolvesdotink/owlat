@@ -2995,28 +2995,7 @@
 		},
 		"keyboardShortcutsHelp": {
 			"footer": "Drücken Sie jederzeit {key}, um diese Hilfe anzuzeigen",
-			"sections": {
-				"actions": "Aktionen",
-				"general": "Allgemein",
-				"navigation": "Navigation"
-			},
-			"shortcuts": {
-				"closeModal": "Dialog schließen / Abbrechen",
-				"goToAdmin": "Zur Administration",
-				"goToAutomations": "Zu den Automationen",
-				"goToCampaigns": "Zu den Kampagnen",
-				"goToContacts": "Zu den Kontakten",
-				"goToDashboard": "Zum Dashboard",
-				"goToEmails": "Zu den E-Mails",
-				"goToTransactional": "Zu Transaktional",
-				"newItem": "Neues Element (kontextabhängig)",
-				"openSearch": "Suche öffnen",
-				"save": "Speichern (beim Bearbeiten)",
-				"showShortcuts": "Tastenkürzel anzeigen",
-				"toggleSidebar": "Seitenleiste ein-/ausblenden"
-			},
 			"subtitle": "Schneller arbeiten mit der Tastatur",
-			"then": "dann",
 			"title": "Tastenkürzel"
 		},
 		"knowledge": {
@@ -4057,6 +4036,24 @@
 			},
 			"postboxShortcutHelp": {
 				"title": "Tastenkürzel"
+			},
+			"postboxShortcutSettings": {
+				"change": "Ändern",
+				"changeAriaLabel": "Tastenkürzel für {shortcut} ändern",
+				"heading": "Tastenkürzel",
+				"hint": "Wählen Sie die Belegung, die Sie kennen, und ändern Sie einzelne Tasten. Drücken Sie eine Taste, während eine Zeile darauf wartet.",
+				"listening": "Taste drücken …",
+				"presetLabel": "Tastaturbelegung",
+				"presets": {
+					"gmail": "Gmail",
+					"outlook": "Outlook",
+					"owlat": "Owlat (Standard)",
+					"superhuman": "Superhuman"
+				},
+				"reset": "Zurücksetzen",
+				"resetAll": "Alle Änderungen zurücksetzen",
+				"taken": "{shortcut} belegt diese Taste bereits.",
+				"unbound": "Nicht belegt"
 			},
 			"postboxSnippetPicker": {
 				"empty": "Keine passenden Textbausteine",
@@ -12138,41 +12135,6 @@
 				}
 			}
 		},
-		"postboxShortcuts": {
-			"groups": {
-				"compose": "Verfassen",
-				"help": "Hilfe",
-				"navigation": "Navigation",
-				"organize": "Organisieren",
-				"triage": "Triage"
-			},
-			"labels": {
-				"addLabel": "Label hinzufügen",
-				"archive": "Archivieren",
-				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Heute",
-				"extendSelection": "Auswahl erweitern",
-				"focusComposer": "Editor fokussieren",
-				"focusSearch": "Suche fokussieren",
-				"forward": "Weiterleiten",
-				"markUnread": "Als ungelesen markieren",
-				"moveToFolder": "In Ordner verschieben",
-				"moveToTrash": "In den Papierkorb verschieben",
-				"muteConversation": "Unterhaltung stummschalten",
-				"nextMessage": "Nächste Nachricht",
-				"openMessage": "Nachricht öffnen",
-				"previousMessage": "Vorherige Nachricht",
-				"reply": "Antworten",
-				"replyAll": "Allen antworten",
-				"scheduleSend": "Senden planen (im Editor)",
-				"selectDeselect": "Auswählen / Auswahl aufheben",
-				"send": "Senden (im Editor)",
-				"snooze": "Zurückstellen",
-				"starUnstar": "Markieren / Markierung entfernen",
-				"toggleCheatSheet": "Diese Kurzübersicht ein-/ausblenden",
-				"toggleRead": "Gelesen-Status umschalten",
-				"toggleTodayBrowse": "Zwischen Heute / Durchsuchen wechseln (Posteingang)"
-			}
-		},
 		"postboxTodayPartition": {
 			"autoFiled": {
 				"all": {
@@ -12330,21 +12292,6 @@
 			"undoneOne": "Genehmigung rückgängig gemacht — der Entwurf ist zurück in der Warteschlange",
 			"undonePartialMany": "{cancelled} Genehmigungen rückgängig gemacht — {missed} bereits gesendet",
 			"undonePartialOne": "{cancelled} Genehmigung rückgängig gemacht — {missed} bereits gesendet"
-		},
-		"reviewShortcuts": {
-			"labels": {
-				"approveAndSend": "Freigeben & senden",
-				"edit": "Bearbeiten",
-				"extendSelection": "Auswahl erweitern",
-				"next": "Weiter",
-				"openThread": "Unterhaltung öffnen",
-				"pickOption": "Option wählen",
-				"previous": "Zurück",
-				"reject": "Ablehnen",
-				"select": "Auswählen",
-				"selectAll": "Alle auswählen",
-				"skip": "Überspringen"
-			}
 		},
 		"sealComposer": {
 			"cannotSeal": {
@@ -12594,6 +12541,10 @@
 					"title": "Standardverhalten beim Antworten",
 					"keywords": "allen antworten, antworten, Taste r"
 				},
+				"shortcuts": {
+					"keywords": "Tastatur, Tastenkürzel, Hotkeys, Tastenbelegung, neu belegen, Gmail-Tasten, Superhuman-Tasten, Outlook-Tasten",
+					"title": "Tastenkürzel"
+				},
 				"writingSuggestions": {
 					"title": "Schreibvorschläge",
 					"keywords": "KI, Autovervollständigung, Schreibhilfe"
@@ -12700,6 +12651,76 @@
 				"sesIncomplete": "Region, Zugriffsschlüssel-ID und geheimer Zugriffsschlüssel sind für SES alle erforderlich.",
 				"smtpIncomplete": "Server-Host, Benutzername und Passwort sind für ein SMTP-Relay alle erforderlich.",
 				"smtpPortInvalid": "Der Port muss eine ganze Zahl zwischen 1 und 65535 sein (für 587 leer lassen)."
+			}
+		},
+		"shortcuts": {
+			"groups": {
+				"actions": "Aktionen",
+				"compose": "Verfassen",
+				"general": "Allgemein",
+				"navigation": "Navigation",
+				"organize": "Organisieren",
+				"review": "Freigabe-Warteschlange",
+				"triage": "Triage",
+				"workspace": "Arbeitsbereiche"
+			},
+			"labels": {
+				"addLabel": "Label hinzufügen",
+				"approveAndSend": "Freigeben & senden",
+				"archive": "Archivieren",
+				"closeCancel": "Schließen / Abbrechen",
+				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Heute",
+				"edit": "Bearbeiten",
+				"extendSelection": "Auswahl erweitern",
+				"focusComposer": "Editor fokussieren",
+				"focusSearch": "Suche fokussieren",
+				"forward": "Weiterleiten",
+				"goToAdmin": "Zur Administration",
+				"goToAutomations": "Zu den Automationen",
+				"goToCampaigns": "Zu den Kampagnen",
+				"goToContacts": "Zu den Kontakten",
+				"goToDashboard": "Zum Dashboard",
+				"goToDrafts": "Zu den Entwürfen",
+				"goToEmails": "Zu den E-Mails",
+				"goToInbox": "Zum Posteingang",
+				"goToSent": "Zu den gesendeten Nachrichten",
+				"goToStarred": "Zu den Markierten",
+				"goToTransactional": "Zu Transaktional",
+				"markUnread": "Als ungelesen markieren",
+				"minimizeComposer": "Editor minimieren",
+				"moveToFolder": "In Ordner verschieben",
+				"moveToTrash": "In den Papierkorb verschieben",
+				"muteConversation": "Unterhaltung stummschalten",
+				"newItem": "Neues Element (kontextabhängig)",
+				"next": "Weiter",
+				"nextMessage": "Nächste Nachricht",
+				"nextUnread": "Nächste ungelesene",
+				"openMessage": "Nachricht öffnen",
+				"openSearch": "Suche öffnen",
+				"openThread": "Unterhaltung öffnen",
+				"pickOption": "Option wählen",
+				"previous": "Zurück",
+				"previousMessage": "Vorherige Nachricht",
+				"previousUnread": "Vorherige ungelesene",
+				"reject": "Ablehnen",
+				"reply": "Antworten",
+				"replyAll": "Allen antworten",
+				"save": "Speichern (beim Bearbeiten)",
+				"scheduleSend": "Senden planen (im Editor)",
+				"select": "Auswählen",
+				"selectAll": "Alle auswählen",
+				"selectDeselect": "Auswählen / Auswahl aufheben",
+				"send": "Senden (im Editor)",
+				"showShortcuts": "Tastenkürzel anzeigen",
+				"skip": "Überspringen",
+				"snooze": "Zurückstellen",
+				"starUnstar": "Markieren / Markierung entfernen",
+				"switchWorkspace": "Arbeitsbereich wechseln",
+				"toggleCheatSheet": "Diese Kurzübersicht ein-/ausblenden",
+				"toggleRead": "Gelesen-Status umschalten",
+				"toggleSidebar": "Seitenleiste ein-/ausblenden",
+				"toggleTodayBrowse": "Zwischen Heute / Durchsuchen wechseln (Posteingang)",
+				"undoTriage": "Letzte Triage rückgängig machen"
 			}
 		},
 		"signatureBadge": {
@@ -13429,20 +13450,6 @@
 			"toasts": {
 				"copied": "Einladungslink kopiert",
 				"copyFailed": "Der Link konnte nicht kopiert werden"
-			}
-		},
-		"useKeyboardShortcuts": {
-			"descriptions": {
-				"closeCancel": "Schließen / Abbrechen",
-				"goToAdmin": "Zur Administration",
-				"goToAutomations": "Zu den Automationen",
-				"goToCampaigns": "Zu den Kampagnen",
-				"goToContacts": "Zu den Kontakten",
-				"goToDashboard": "Zum Dashboard",
-				"goToEmails": "Zu den E-Mails",
-				"goToTransactional": "Zu Transaktional",
-				"newItem": "Neues Element",
-				"save": "Speichern"
 			}
 		},
 		"useKnowledgeGraph": {
