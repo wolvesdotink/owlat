@@ -202,3 +202,62 @@ To pick it up: give the search branch an orderable key. Either add `receivedAt`
 as a search-index filter field and page it in time buckets, or run the fan-out
 text search through a paginated per-mailbox action that merges outside a single
 query execution.
+
+## 51 — the danger marker reaches the message list, not the grouped thread views
+
+Thread rows carry the marker (`utils/senderAuth.ts` `deriveSenderRowMarker`,
+rendered by `PostboxThreadRow.vue` behind the `senderAuthBadges` flag), so the
+folder list, the search results pane, the label view and the Today view all
+show it: they all render through `PostboxThreadList`.
+
+`PostboxThreadGroupList` and `PostboxThreadCategoryList` do not. Those two
+render one row per THREAD, off `mailThreads` aggregates — `latestFromAddress`,
+`latestSubject`, counts — and a thread row carries no authentication verdicts at
+all. The verdicts live on `mailMessages` (`spfResult`, `dkimResult`,
+`dmarcResult`, the two alignment domains, `senderHeuristics`), one set per
+message, and a conversation can mix a genuine reply with a spoofed one.
+
+Marking those rows means either a per-row read of the thread's latest message
+(one extra document get per visible row, on the two surfaces built for large
+folders) or denormalizing a "worst verdict in this thread" onto `mailThreads` at
+ingest — a new field, a new writer, and a decision about what the aggregate of
+two disagreeing messages means. Neither is a chip.
+
+To pick it up: denormalize the latest inbound message's verdict + look-alike
+flag onto `mailThreads` in the delivery pipeline (beside `latestFromAddress`,
+which is maintained there already) and derive the row marker from that, so the
+grouped views cost nothing extra to mark.
+
+The plan's brief also mentions tuning "all three densities". There are two
+(`comfortable` and `compact`, `utils/postboxDensity.ts`); the marker is tuned
+for both, plus the touch variant of compact, which gets its label back along
+with the 44px row floor.
+
+## 52 — Return-Path is the envelope DOMAIN, and the panel reads parsed headers
+
+The message-details disclosure shows From, Reply-To (highlighted when it points
+at another domain), each SPF/DKIM/DMARC verdict with the domain it actually
+authenticated, the published DMARC policy, the honoured ARC sealer, the
+Message-ID and a download of the original `.eml`.
+
+Two things are narrower than the mockup implies.
+
+**The Return-Path row is a domain, not an address.** The inbound pipeline
+persists `envelopeFromDomain` — the MAIL FROM domain SPF authenticated — and
+never stores the full envelope sender address; the literal `Return-Path:` header
+exists only inside the raw `.eml` blob. The row is labelled as the envelope
+sender's domain and says which check used it, rather than presenting a domain as
+if it were the address.
+
+**The panel reads the fields we parsed at ingest, not the raw header block.**
+`getMessageDetails` is a Convex query, and queries cannot read storage blobs
+(`ctx.storage.get` is action-only). Serving the literal header block would mean
+an action that fetches the whole message — potentially megabytes, per message
+open, to print a dozen lines. "Download original (.eml)" already hands over the
+exact bytes for anyone who wants to read the headers themselves.
+
+To pick it up: parse and persist the `Return-Path` address at ingest beside
+`envelopeFromDomain` (a one-line addition to the insert path, with no backfill
+possible for existing mail), and — if the literal block is ever wanted in-app —
+add a header-only action that byte-range-fetches the top of the blob rather than
+the whole message.
