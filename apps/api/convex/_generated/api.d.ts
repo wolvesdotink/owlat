@@ -797,6 +797,7 @@ import type * as mail_signatures from '../mail/signatures.js';
 import type * as mail_snippets from '../mail/snippets.js';
 import type * as mail_snooze from '../mail/snooze.js';
 import type * as mail_subscriptions from '../mail/subscriptions.js';
+import type * as mail_threadAggregates from '../mail/threadAggregates.js';
 import type * as mail_threadAlerts from '../mail/threadAlerts.js';
 import type * as mail_unsubscribe from '../mail/unsubscribe.js';
 import type * as mail_vacation from '../mail/vacation.js';
@@ -1828,6 +1829,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/snippets': typeof mail_snippets;
 	'mail/snooze': typeof mail_snooze;
 	'mail/subscriptions': typeof mail_subscriptions;
+	'mail/threadAggregates': typeof mail_threadAggregates;
 	'mail/threadAlerts': typeof mail_threadAlerts;
 	'mail/unsubscribe': typeof mail_unsubscribe;
 	'mail/vacation': typeof mail_vacation;

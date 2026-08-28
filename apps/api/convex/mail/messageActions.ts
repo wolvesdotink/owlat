@@ -17,6 +17,11 @@ import { adjustFolderUnseen, bumpFolderModseq } from './folders';
 import { clearThreadNeedsReply } from './needsReply';
 import { removeMessageAttachments } from './attachmentIndex';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
+import { rebuildThreadAggregates } from './threadAggregates';
+
+// Re-exported so the modules that reach the rebuild through this one keep
+// working unchanged; it lives in ./threadAggregates now (size cap).
+export { rebuildThreadAggregates };
 
 type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
 
@@ -31,62 +36,6 @@ export type MovedMessage = {
 };
 
 type MoveResult = { ok: true; moved: MovedMessage[] };
-
-/** Re-derive a thread's aggregate counters from its current messages. */
-export async function rebuildThreadAggregates(
-	ctx: MutationCtx,
-	threadId: Id<'mailThreads'>
-): Promise<void> {
-	const thread = await ctx.db.get(threadId);
-	if (!thread) return;
-	const messages = await ctx.db
-		.query('mailMessages')
-		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect(); // bounded: one thread's messages
-
-	if (messages.length === 0) {
-		await ctx.db.delete(threadId);
-		return;
-	}
-
-	const sorted = [...messages].sort((a, b) => b.receivedAt - a.receivedAt);
-	const latest = sorted[0]!;
-	const oldest = sorted[sorted.length - 1]!;
-	const unread = messages.filter((m) => !m.flagSeen).length;
-	const hasFlagged = messages.some((m) => m.flagFlagged);
-	const hasAttachments = messages.some((m) => m.hasAttachments);
-	const folderRoles = new Set<string>();
-	for (const m of messages) {
-		const folder = await ctx.db.get(m.folderId);
-		if (folder?.role) folderRoles.add(folder.role);
-	}
-	const labelIds = new Set<Id<'mailLabels'>>();
-	for (const m of messages) {
-		for (const l of m.labelIds) labelIds.add(l);
-	}
-	const participants = new Set<string>();
-	for (const m of messages) {
-		participants.add(m.fromAddress);
-		for (const a of m.toAddresses) participants.add(a);
-	}
-
-	await ctx.db.patch(threadId, {
-		messageCount: messages.length,
-		unreadCount: unread,
-		hasFlagged,
-		hasAttachments,
-		lastMessageAt: latest.receivedAt,
-		firstMessageAt: oldest.receivedAt,
-		latestSnippet: latest.snippet,
-		latestFromAddress: latest.fromAddress,
-		latestSubject: latest.subject,
-		latestMessageId: latest._id,
-		folderRoles: Array.from(folderRoles),
-		labelIds: Array.from(labelIds),
-		participants: Array.from(participants),
-		updatedAt: Date.now(),
-	});
-}
 
 /** Apply a flag delta to a single message and update folder/thread caches. */
 async function applyFlagDelta(
