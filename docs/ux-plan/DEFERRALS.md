@@ -638,3 +638,86 @@ shows one of them rather than a list.
 To pick it up: correlate at the thread level by intersecting the Message-IDs of
 both threads' messages, and re-run the both-sides permission check per matched
 pair rather than per message.
+
+## 7 — the restore offer needs the server row to have arrived
+
+The mirror writes on a 400ms debounce and reconciles on open, and the decision
+is clock-free: each mirror records the server `lastEditedAt` it was taken
+against, so device skew can neither resurrect stale text nor suppress a real
+offer (`app/utils/postboxDraftMirror.ts`).
+
+That clock-free property is exactly what limits it. Reconcile compares the row's
+current `lastEditedAt` to the one the mirror recorded, so it cannot run until
+`drafts.get` has answered. Reopen a draft on a device that is still offline and
+the panel does not appear. The keystrokes are safe on disk and the offer comes
+back with the connection, but the one moment a user most wants it is the one
+moment it cannot decide. The alternative is offering a restore against unknown
+server state, which is how a mirror overwrites a newer save.
+
+A fresh compose that has not yet earned a draft id mirrors under a provisional
+key. A reply keys off the message it answers, so reopening the same reply finds
+its own text; two blank composes open at once share one key, and the second to
+be mirrored wins until the first autosave (~1.5s in) gives each a real id.
+
+To pick it up: keep a client-side copy of the last-seen `lastEditedAt` per draft
+id (it is already written on every save) so an offline open has a server
+timestamp to compare against without a live query.
+
+## 13 — the builder's saved blocks are not exposed as templates
+
+Snippets now carry a typed variable set resolved at insertion, and the
+`{{token}}` grammar is shared with the designer and the send path
+(`@owlat/shared/templateVariables`). The plan's second sentence, marked optional
+there, is not done: "optionally expose the builder's saved blocks as full-mode
+templates".
+
+A snippet is rich-text HTML inserted at the caret; a saved block document is an
+`EditorBlock[]` that only means anything in the full designer. Offering them in
+the same "/" list would mean a picker whose entries behave differently depending
+on which composer mode you are in, and silently switching a reply into the block
+designer to insert one is not a canned response any more.
+
+To pick it up: give the picker a second, visually distinct section that only
+appears in `full` mode and inserts blocks rather than HTML.
+
+## 14 — three panes, not the builder's device-preview machinery
+
+"Preview as sent" renders the HTML part, the real `text/plain` alternative and a
+dark-mode rendering, all from `renderDraftBodies` in `@owlat/email-renderer`.
+That is the same function the dispatch action calls, which is the property that
+matters. The preview cannot drift from the wire.
+
+The plan suggested borrowing the builder's `usePreview`/`useDevicePreview`. That
+machinery is viewport switching (mobile/desktop widths) and per-client
+simulation over a live `EditorBlock[]` inside the designer's own store. The
+composer has no store to attach it to, and simple-mode drafts have no blocks at
+all; they are wrapped into a synthetic one at render time. Reaching for it would
+have meant a second render path for the only pane where the two agree.
+
+The AMP alternative is reported ("+ AMP part") but not rendered as a fourth
+pane. It exists only for designs using an accordion or carousel, and previewing
+AMP faithfully needs the AMP runtime, not an iframe.
+
+To pick it up: lift the device-width switcher out of `useDevicePreview` into
+something that takes rendered HTML rather than blocks, and give the HTML and
+dark panes a width control.
+
+## 45 — the profile's numbers are a bounded window
+
+The panel reads one indexed page per sender (250 messages, newest first) and
+derives the thread list, the counts and the authentication summary from it. Past
+that the count is worded as a floor ("250+ messages here"), and `firstSeenAt` is
+the oldest message SEEN rather than the true first contact.
+
+That is deliberate. A correspondent of ten years must not be table-scanned to
+render a slide-over, and a maintained per-sender aggregate would be a
+denormalized counter written on every delivery for a panel most mail never
+opens. The authentication summary is bounded the same way, and describes the
+sampled window rather than the whole history.
+
+The plan's mockup also implies frecency-flavoured ordering. Threads are listed
+in arrival order instead, because the frecency score (`mailContacts.useCount`)
+is per-CONTACT rather than per-thread and would rank nothing within one sender.
+
+To pick it up: maintain a per-sender rollup row (count, first seen, auth tally)
+updated in the delivery pipeline, and read it beside the bounded page.
