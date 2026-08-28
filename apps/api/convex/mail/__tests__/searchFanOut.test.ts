@@ -188,6 +188,30 @@ describe('search — fan-out', () => {
 		expect(subjects(result)).toEqual(['invoice paid', 'invoice overdue']);
 	});
 
+	it('never repeats a free-text hit when the page limit cuts a mailbox off', async () => {
+		// The free-text branch reads the relevance-ordered search index, which has
+		// no keyset to resume from. A cursor pointing back into it would re-read
+		// the same relevance page, so a truncated text page must end its mailbox
+		// rather than continue it — one page per mailbox, as the deferral records.
+		const t = convexTest(schema, modules);
+		const personal = await seedInbox(t, 'user-A', 'a@hinterland.camp');
+		const team = await seedInbox(t, 'user-A', 'team@hinterland.camp');
+		await seedAt(t, personal, 'invoice h1', 2_000);
+		await seedAt(t, personal, 'invoice h2', 1_000);
+		await seedAt(t, team, 'invoice b1', 3_000);
+		const seen: string[] = [];
+		let cursor: string | undefined;
+		for (let guard = 0; guard < 6; guard += 1) {
+			const page: { messages: Array<{ subject: string }>; hasMore: boolean; nextCursor: unknown } =
+				await t.query(api.mail.mailbox.search.search, { text: 'invoice', limit: 2, cursor });
+			seen.push(...subjects(page));
+			if (!page.hasMore) break;
+			cursor = page.nextCursor as string;
+		}
+		expect(new Set(seen).size).toBe(seen.length);
+		expect(seen).toEqual(['invoice b1', 'invoice h1']);
+	});
+
 	it('returns nothing for an anonymous caller', async () => {
 		const t = convexTest(schema, modules);
 		await seedTwoMailboxes(t);

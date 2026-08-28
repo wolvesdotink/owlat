@@ -184,6 +184,52 @@ describe('mergeMailboxPages', () => {
 		expect(merged.hasMore).toBe(true);
 	});
 
+	it('drops a truncated page that has no keyset position instead of repeating it', () => {
+		// The free-text branch reads the relevance-ordered search index: it reports
+		// `done` and carries no `scanned` position. Giving it a resume position
+		// would re-read the same relevance page and hand `h2` out twice, so the
+		// mailbox leaves the cursor and stays one page — the recorded deferral.
+		const merged = mergeMailboxPages(
+			[
+				page({
+					mailboxId: 'mb1',
+					rows: scan('mb1', [
+						['h1', 300],
+						['h2', 100],
+					]),
+					done: true,
+				}),
+				page({ mailboxId: 'mb2', rows: scan('mb2', [['b1', 400]]), done: true }),
+			],
+			2
+		);
+		expect(merged.page.map((r) => r._id)).toEqual(['b1', 'h1']);
+		expect(merged.cursor).toEqual({});
+		expect(merged.hasMore).toBe(false);
+	});
+
+	it('still resumes a truncated keyset page that read rows', () => {
+		// The guard above keys on the MISSING position, not on `done`: a keyset
+		// scan that hit the end of its mailbox mid-page must still come back for
+		// the rows the limit cut off.
+		const merged = mergeMailboxPages(
+			[
+				page({
+					mailboxId: 'mb1',
+					rows: scan('mb1', [
+						['a', 300],
+						['b', 100],
+					]),
+					scanned: { at: 100, skip: 1 },
+					done: true,
+				}),
+			],
+			1
+		);
+		expect(merged.page.map((r) => r._id)).toEqual(['a']);
+		expect(merged.cursor).toEqual({ mb1: { at: 300, skip: 1 } });
+	});
+
 	it('never steps over a gap when the limit cuts inside a receivedAt tie', () => {
 		// Both rows share a timestamp; the merge tie-break hands out `y` (higher
 		// `_id`) first, but the scan order was x, y — so the cursor must stop

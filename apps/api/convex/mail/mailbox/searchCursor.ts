@@ -24,7 +24,10 @@
  *   - a mailbox's position only advances past rows the caller was actually
  *     handed, or past rows the post-filter rejected — a row is never skipped;
  *   - a mailbox absent from the cursor is EXHAUSTED, and a mailbox present with
- *     a `null` position has not been scanned past its newest row yet.
+ *     a `null` position has not been scanned past its newest row yet;
+ *   - a mailbox whose scan reported completion WITHOUT a keyset position is
+ *     exhausted after one page — that is the free-text branch, whose relevance
+ *     order has no position to resume from (see `docs/ux-plan/DEFERRALS.md`).
  */
 
 /**
@@ -182,7 +185,9 @@ function newestFirst<T extends ScannedRow>(
  * off, it advances only across the unbroken run of rows that were actually
  * handed over, so the remainder is re-read on the next page instead of being
  * lost. A mailbox that contributed nothing and was not exhausted keeps its
- * previous position. Pure.
+ * previous position, and one that finished without a keyset position leaves the
+ * cursor even when the `limit` cut it off — it has nowhere to resume from, so a
+ * position would repeat rows rather than continue past them. Pure.
  */
 export function mergeMailboxPages<T extends ScannedRow>(
 	pages: readonly MailboxPage<T>[],
@@ -196,6 +201,15 @@ export function mergeMailboxPages<T extends ScannedRow>(
 
 	const cursor: MultiSearchCursor = {};
 	for (const mailboxPage of pages) {
+		// A page that finished without a keyset position cannot be resumed: its
+		// rows carry ranks, not a place in an ordered walk (the free-text branch
+		// reads the relevance-ordered search index, which exposes no cursor). Such
+		// a mailbox is one page and done — handing it a resume position would
+		// re-read the same relevance page and hand out its rows a second time. A
+		// keyset scan that read at least one row always sets `scanned`, and one
+		// that read none has nothing left to truncate, so only the free-text pages
+		// land here.
+		if (mailboxPage.done && !mailboxPage.scanned) continue;
 		// Advance only across the UNBROKEN run of emitted rows: the first row the
 		// `limit` cut off is where this mailbox resumes, so nothing behind it can
 		// be stepped over even if the merge order disagrees with the scan order

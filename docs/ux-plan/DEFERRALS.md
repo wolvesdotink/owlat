@@ -190,8 +190,11 @@ function execution, so N mailboxes cannot each paginate natively, and the manual
 keyset the fan-out uses instead needs an ordered key — which the full-text
 search index does not expose (it is relevance-ordered and has no cursor of its
 own). Each mailbox therefore contributes its top page of text hits and is
-reported as complete. Both consumers are first-page consumers — the Cmd-K
-palette shows five rows, and the Postbox search page still calls the
+reported as complete: the merge drops such a mailbox from the cursor even when
+the page `limit` cut some of its hits off, because a resume position would point
+back into the same relevance page and hand those rows out twice. Truncated text
+hits are dropped, never repeated. Both consumers are first-page consumers — the
+Cmd-K palette shows five rows, and the Postbox search page still calls the
 single-mailbox path, which paginates natively and reaches every match — so
 nothing on screen today is truncated in a way the user can see.
 
