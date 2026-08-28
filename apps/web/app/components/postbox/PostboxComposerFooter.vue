@@ -96,7 +96,19 @@ function onPickFiles(event: Event) {
 			>
 				<Icon name="lucide:paperclip" class="w-4 h-4" />
 			</UiButton>
-			<input ref="fileInput" type="file" multiple class="hidden" @change="onPickFiles" />
+			<!-- A proxy for the paperclip button above, opened by `.click()` and
+			     never seen or tabbed to. Out of the accessibility tree explicitly:
+			     `class="hidden"` is a stylesheet away from being an unlabelled,
+			     focusable file field a screen reader would announce. -->
+			<input
+				ref="fileInput"
+				type="file"
+				multiple
+				class="hidden"
+				aria-hidden="true"
+				tabindex="-1"
+				@change="onPickFiles"
+			/>
 			<!-- Secondary controls collapse behind ⋯ to keep the footer
 			     lean; the schedule shortcut (Cmd/Ctrl+Shift+Enter) still works. -->
 			<PostboxOverflowMenu

@@ -3234,7 +3234,8 @@
 				"previous": "Vorheriger Anhang"
 			},
 			"postboxBasicEditor": {
-				"placeholder": "Schreiben Sie Ihre Nachricht…"
+				"placeholder": "Schreiben Sie Ihre Nachricht…",
+				"label": "Nachrichtentext"
 			},
 			"postboxClarificationCard": {
 				"answer": "Antworten",
@@ -3986,7 +3987,8 @@
 					"newerThan": "aus den letzten 7d, 24h, 30m",
 					"olderThan": "älter als 7d, 24h, 30m",
 					"recent": "Zuletzt"
-				}
+				},
+				"label": "E-Mails durchsuchen"
 			},
 			"postboxSecurityBadge": {
 				"cantDecryptSuffix": "· nicht entschlüsselbar",
@@ -13923,7 +13925,8 @@
 		},
 		"preferences": {
 			"title": "Einstellungen",
-			"navLabel": "Einstellungsbereiche"
+			"navLabel": "Einstellungsbereiche",
+			"navLabelCompact": "Einstellungsbereiche (kompakt)"
 		}
 	},
 	"terms": {

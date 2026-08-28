@@ -237,6 +237,7 @@ defineExpose({ focus });
 			type="text"
 			class="input w-full pl-9 pr-3"
 			role="combobox"
+			:aria-label="t('components.postbox.postboxSearchBar.label')"
 			aria-autocomplete="list"
 			:aria-expanded="isListVisible"
 			:aria-controls="listId"

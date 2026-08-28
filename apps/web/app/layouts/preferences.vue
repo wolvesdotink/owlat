@@ -103,9 +103,14 @@ watch(
 				<div class="min-w-0 flex-1">
 					<!-- Below lg the rail becomes a scrollable pill row, so switching
 					     pages still costs one tap instead of a trip back to the hub. -->
+					<!-- Same destinations as the rail above, laid out for a narrow
+					     viewport. Both are in the DOM at once (the swap is a media
+					     query, not a branch), so they need DISTINGUISHABLE landmark
+					     names — two `<nav>`s answering to "Preferences sections" is a
+					     landmark list a screen-reader user cannot choose from. -->
 					<nav
 						class="lg:hidden -mx-1 mb-5 flex gap-1.5 overflow-x-auto pb-1"
-						:aria-label="t('shell.preferences.navLabel')"
+						:aria-label="t('shell.preferences.navLabelCompact')"
 					>
 						<template v-for="section in sections" :key="section.key">
 							<NuxtLink

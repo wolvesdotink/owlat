@@ -3234,7 +3234,8 @@
 				"previous": "Previous attachment"
 			},
 			"postboxBasicEditor": {
-				"placeholder": "Write your message…"
+				"placeholder": "Write your message…",
+				"label": "Message body"
 			},
 			"postboxClarificationCard": {
 				"answer": "Answer",
@@ -3986,7 +3987,8 @@
 					"newerThan": "within the last 7d, 24h, 30m",
 					"olderThan": "older than 7d, 24h, 30m",
 					"recent": "Recent"
-				}
+				},
+				"label": "Search mail"
 			},
 			"postboxSecurityBadge": {
 				"cantDecryptSuffix": "· can't decrypt",
@@ -13923,7 +13925,8 @@
 		},
 		"preferences": {
 			"title": "Preferences",
-			"navLabel": "Preferences sections"
+			"navLabel": "Preferences sections",
+			"navLabelCompact": "Preferences sections (compact)"
 		}
 	},
 	"terms": {

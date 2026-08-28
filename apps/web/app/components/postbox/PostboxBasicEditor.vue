@@ -87,6 +87,26 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
+/**
+ * The hint painted over an empty document. Shared by the placeholder overlay
+ * and by the accessible name below, so the two can never disagree.
+ */
+const placeholderText = computed(
+	() => props.placeholder ?? t('components.postbox.postboxBasicEditor.placeholder')
+);
+
+/**
+ * The accessible name of the `role="textbox"` surface. A contenteditable div is
+ * not a labelable element, so nothing associates it with a `<label>` and the
+ * placeholder overlay is a sibling `<div>` rather than an HTML `placeholder`
+ * attribute — without this the composer body announced as an unnamed text box.
+ * A caller-supplied placeholder ("Your signature…") names the field better than
+ * the generic fallback, so it wins when it is there.
+ */
+const editorLabel = computed(
+	() => props.placeholder ?? t('components.postbox.postboxBasicEditor.label')
+);
+
 const editorRef = ref<HTMLDivElement | null>(null);
 const surfaceRef = ref<HTMLDivElement | null>(null);
 
@@ -352,6 +372,7 @@ defineExpose({ focus: focusEditor });
 			<div
 				ref="editorRef"
 				role="textbox"
+				:aria-label="editorLabel"
 				aria-multiline="true"
 				contenteditable="true"
 				spellcheck="true"
@@ -363,11 +384,14 @@ defineExpose({ focus: focusEditor });
 				@drop="onDrop"
 				@blur="onBlur"
 			/>
+			<!-- Decorative: the same words are already the textbox's accessible
+			     name, so announcing them twice is noise. -->
 			<div
 				v-if="isEmpty"
+				aria-hidden="true"
 				class="absolute top-3 left-3 text-text-tertiary text-sm pointer-events-none select-none"
 			>
-				{{ placeholder ?? t('components.postbox.postboxBasicEditor.placeholder') }}
+				{{ placeholderText }}
 			</div>
 			<!--
 				Ghost text: non-editable, positioned at the caret. Lives OUTSIDE the

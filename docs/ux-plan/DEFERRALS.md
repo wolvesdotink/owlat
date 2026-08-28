@@ -384,3 +384,35 @@ never asked. The four that do run are each reversible by hand.
 To pick it up, the missing piece is consent, not code: a per-run confirmation
 that names the destructive action and the count it would touch (which the
 dry-run preview already computes), plus an undo journal for the delete case.
+
+## 62 — the thread row stays a composite `option`, so two axe rules stay open
+
+`app/components/postbox/__tests__/postboxA11y.test.ts` audits the four Postbox
+surfaces with axe and the real message catalog. Three rule families the rows
+were failing are fixed (`aria-required-parent`, `aria-required-children` for the
+`<li>`, `listitem` — one `role="none"`), along with the two label defects the
+suite was written for and an unlabelled hidden file input in the composer
+footer. Two violations on the thread list are pinned rather than fixed:
+
+- `nested-interactive` — each row's link carries `role="option"` and CONTAINS
+  the bulk-select checkbox button;
+- `aria-required-children` — the hover quick-actions (star / read / archive)
+  sit beside the link inside the same `<li>`, so the surrounding
+  `role="listbox"` would own buttons it may not own.
+
+Both say the same thing: a row is a composite widget, and `listbox`/`option` is
+a single-value selection pattern that does not admit controls inside an option.
+The list's keyboard model is built on that pattern — `aria-activedescendant` on
+the `<ul>`, arrow keys, and the row shortcuts — so the fix is not an attribute
+but a different pattern: `role="grid"` with one `row` per message and a
+`gridcell` per control, with two-dimensional arrow navigation to match. That is
+a keyboard-behaviour change for the screen people spend their day in, and it
+wants its own idea and its own review.
+
+The suite pins the exact violation COUNT as well as the two rule names, so
+closing either one fails the test and forces the exemption to be retired rather
+than quietly widened.
+
+To pick it up: move the row to the grid pattern (or move the checkbox and the
+quick-actions out of the option and reach them with a roving tabindex), then
+delete `KNOWN_COMPOSITE_ROW_GAPS` from the suite.

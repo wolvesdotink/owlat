@@ -296,7 +296,17 @@ onUnmounted(cancelLongPress);
 <template>
 	<UiContextMenu :items="contextItems">
 		<template #default="{ onContextmenu, onKeydown }">
+			<!-- `role="none"` because the OPTION is the link below, not this `<li>`.
+			     Left implicit, the `<li>` announced as a `listitem` the surrounding
+			     `role="listbox"` may not own (axe: aria-required-children), the link
+			     announced as an `option` with no listbox parent
+			     (aria-required-parent), and the `<li>` as a list item with no list
+			     (listitem) — three critical/serious violations for one missing
+			     attribute. The `<li role="none"><a role="option">` shape is the same
+			     one the menu pattern uses, and the presentational hop is what lets
+			     the listbox own the link. -->
 			<li
+				role="none"
 				class="group relative pbx-row-li"
 				:class="{ 'pbx-virtual-row': virtualize, 'pbx-row-danger': !!trustMarker }"
 				style="
