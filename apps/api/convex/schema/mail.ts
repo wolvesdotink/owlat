@@ -29,6 +29,8 @@ import {
 	mailTrashAutoPurgeDaysValidator,
 	mailShareLinkExpiryDaysValidator,
 	mailSwipeActionValidator,
+	mailShortcutPresetValidator,
+	mailShortcutOverridesValidator,
 } from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
@@ -1832,6 +1834,13 @@ export const mailTables = {
 		// is new, so there is no earlier behaviour for an untouched row to
 		// preserve — the same reasoning `shareLinkExpiryDays` uses — and it is
 		// gated on the `sealedMail` flag, which is off by default.
+		// Keyboard map this user drives the app with (idea 43b): a named preset
+		// plus their own per-shortcut remaps on top. Absent ⇒ the shipped 'owlat'
+		// map with no remaps, which is exactly the keyboard before the setting
+		// existed. The registry that consumes both lives in the web app; the
+		// backend only stores the choice.
+		shortcutPreset: v.optional(mailShortcutPresetValidator),
+		shortcutOverrides: v.optional(mailShortcutOverridesValidator),
 		sealedMailNudgeSeenAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),

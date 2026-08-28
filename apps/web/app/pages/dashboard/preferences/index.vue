@@ -118,6 +118,10 @@ async function handleDelete() {
 		     with an immediate revoke. Self-hides until something is shared. -->
 			<PostboxSharedLinksSettings />
 
+			<!-- Keyboard shortcuts (idea 43b): the named map this person drives the
+		     app with, plus their own remaps on top. -->
+			<PostboxShortcutSettings />
+
 			<section id="mailboxes" class="card !p-0 scroll-mt-6">
 				<header class="px-5 py-3 border-b border-border-subtle">
 					<h2 class="font-semibold">{{ t('dashboard.preferences.index.mailboxes') }}</h2>

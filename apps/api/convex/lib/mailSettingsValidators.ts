@@ -232,3 +232,32 @@ export const mailSwipeActionValidator = v.union(
 	v.literal('read'),
 	v.literal('none')
 );
+
+// Which named keyboard map this user drives the app with (idea 43b), stored on
+// `mailUserSettings.shortcutPreset`. The literals mirror `SHORTCUT_PRESETS` in
+// `apps/web/app/utils/shortcutCatalog.ts`; Convex validators must be literal,
+// so the set is spelled out here and the web resolves an unknown value back to
+// the default rather than trusting the row.
+//
+// ABSENT is 'owlat' — the map that shipped, so an untouched row is exactly
+// today's keyboard.
+export const mailShortcutPresetValidator = v.union(
+	v.literal('owlat'),
+	v.literal('gmail'),
+	v.literal('superhuman'),
+	v.literal('outlook')
+);
+
+// Per-shortcut remaps layered ON TOP of the preset: catalog id → the chords the
+// user wants for it (`[]` unbinds one deliberately). Ids and chords are opaque
+// strings here on purpose — the backend never dispatches a keystroke, and a row
+// written by a newer client must not be rejected by an older schema. The web
+// drops ids it does not know and chords it cannot parse
+// (`shortcutOverridesToOverlay`), so a stale row degrades to the preset instead
+// of taking the keyboard down.
+//
+// ABSENT means "no remaps", which is exactly the preset — and, with no preset
+// either, exactly the shipped map.
+export const mailShortcutOverridesValidator = v.array(
+	v.object({ id: v.string(), keys: v.array(v.string()) })
+);

@@ -12,6 +12,10 @@ const router = useRouter();
 // Initialize keyboard shortcuts
 const { registerNavigationShortcuts } = useKeyboardShortcuts();
 
+// Feed this user's keyboard map (preset + their own remaps) into the shortcut
+// registry, so every surface below dispatches and documents the same chords.
+useShortcutPreferences();
+
 // Sidebar state management
 const {
 	isCollapsed,

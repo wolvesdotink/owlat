@@ -59,6 +59,11 @@
  *     pointer has been dismissed (idea 55). Absent means NOT yet seen, not
  *     "already seen": the nudge is new, so there is no earlier behaviour for an
  *     untouched row to preserve, and it only ever appears with `sealedMail` on.
+ *   - `shortcutPreset` / `shortcutOverrides` — the keyboard map this user drives
+ *     the app with (idea 43b): a named preset (Owlat / Gmail / Superhuman /
+ *     Outlook) plus their own per-shortcut remaps on top. Absent means the
+ *     shipped 'owlat' map with no remaps, which is exactly the keyboard before
+ *     the setting existed.
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -96,6 +101,8 @@ import {
 	POSTBOX_SWIPE_RIGHT_DEFAULT,
 	resolvePostboxSwipeAction,
 } from '~/utils/postboxSwipe';
+import type { ShortcutPreset, StoredShortcutOverride } from '~/utils/shortcutPresets';
+import { resolveShortcutPreset } from '~/utils/shortcutPresets';
 import type { AttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
 import { resolveAttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
 
@@ -220,6 +227,16 @@ export function usePostboxSettings() {
 		resolvePostboxSwipeAction(data.value?.swipeRightAction, POSTBOX_SWIPE_RIGHT_DEFAULT)
 	);
 
+	// Keyboard map. An unset (or unknown) preset resolves to 'owlat' — the map
+	// that shipped — and an unset override list to none, so the registry can be
+	// fed unconditionally while the query loads.
+	const shortcutPreset = computed<ShortcutPreset>(() =>
+		resolveShortcutPreset(data.value?.shortcutPreset)
+	);
+	const shortcutOverrides = computed<StoredShortcutOverride[]>(() =>
+		(data.value?.shortcutOverrides ?? []).map((row) => ({ id: row.id, keys: [...row.keys] }))
+	);
+
 	// Daily-brief email delivery. Deliberately NOT defaulted: absent means the
 	// user has never opted in, and the card renders the off state rather than
 	// inventing a schedule nobody chose.
@@ -336,6 +353,14 @@ export function usePostboxSettings() {
 		await updateOp.run({ shareLinkExpiryDays: days });
 	}
 
+	async function setShortcutPreset(preset: ShortcutPreset) {
+		await updateOp.run({ shortcutPreset: preset });
+	}
+
+	async function setShortcutOverrides(overrides: StoredShortcutOverride[]) {
+		await updateOp.run({ shortcutOverrides: overrides });
+	}
+
 	async function setSwipeAction(direction: 'left' | 'right', action: PostboxSwipeAction) {
 		await updateOp.run(
 			direction === 'left' ? { swipeLeftAction: action } : { swipeRightAction: action }
@@ -384,6 +409,8 @@ export function usePostboxSettings() {
 		shareLinkExpiryDays,
 		swipeLeftAction,
 		swipeRightAction,
+		shortcutPreset,
+		shortcutOverrides,
 		dailyBriefEmail,
 		hasSeenSealedMailNudge,
 		isLoading,
@@ -408,6 +435,8 @@ export function usePostboxSettings() {
 		setTrashAutoPurgeDays,
 		setShareLinkExpiryDays,
 		setSwipeAction,
+		setShortcutPreset,
+		setShortcutOverrides,
 		setDailyBriefEmail,
 		dismissSealedMailNudge,
 		isSaving: updateOp.isLoading,

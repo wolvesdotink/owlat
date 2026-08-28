@@ -33,6 +33,8 @@ import {
 	mailTrashAutoPurgeDaysValidator,
 	mailShareLinkExpiryDaysValidator,
 	mailSwipeActionValidator,
+	mailShortcutPresetValidator,
+	mailShortcutOverridesValidator,
 } from '../lib/mailSettingsValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
@@ -74,6 +76,8 @@ export const get = publicQuery({
 			shareLinkExpiryDays: row.shareLinkExpiryDays,
 			swipeLeftAction: row.swipeLeftAction,
 			swipeRightAction: row.swipeRightAction,
+			shortcutPreset: row.shortcutPreset,
+			shortcutOverrides: row.shortcutOverrides,
 			sealedMailNudgeSeenAt: row.sealedMailNudgeSeenAt,
 		};
 	},
@@ -107,6 +111,8 @@ export const update = authedMutation({
 		shareLinkExpiryDays: v.optional(mailShareLinkExpiryDaysValidator),
 		swipeLeftAction: v.optional(mailSwipeActionValidator),
 		swipeRightAction: v.optional(mailSwipeActionValidator),
+		shortcutPreset: v.optional(mailShortcutPresetValidator),
+		shortcutOverrides: v.optional(mailShortcutOverridesValidator),
 		// The one-time Sealed-Mail nudge (idea 55). A plain timestamp, so the
 		// caller stamps `Date.now()` on dismissal; there is no closed set to
 		// validate and nothing to clamp.
@@ -145,6 +151,8 @@ export const update = authedMutation({
 			dailyBriefEmail?: (typeof args)['dailyBriefEmail'];
 			trashAutoPurgeDays?: (typeof args)['trashAutoPurgeDays'];
 			shareLinkExpiryDays?: (typeof args)['shareLinkExpiryDays'];
+			shortcutPreset?: (typeof args)['shortcutPreset'];
+			shortcutOverrides?: (typeof args)['shortcutOverrides'];
 			swipeLeftAction?: (typeof args)['swipeLeftAction'];
 			swipeRightAction?: (typeof args)['swipeRightAction'];
 			sealedMailNudgeSeenAt?: number;
@@ -172,6 +180,8 @@ export const update = authedMutation({
 		if (args.trashAutoPurgeDays !== undefined) patch.trashAutoPurgeDays = args.trashAutoPurgeDays;
 		if (args.shareLinkExpiryDays !== undefined)
 			patch.shareLinkExpiryDays = args.shareLinkExpiryDays;
+		if (args.shortcutPreset !== undefined) patch.shortcutPreset = args.shortcutPreset;
+		if (args.shortcutOverrides !== undefined) patch.shortcutOverrides = args.shortcutOverrides;
 		if (args.swipeLeftAction !== undefined) patch.swipeLeftAction = args.swipeLeftAction;
 		if (args.swipeRightAction !== undefined) patch.swipeRightAction = args.swipeRightAction;
 		if (args.sealedMailNudgeSeenAt !== undefined)

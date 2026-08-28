@@ -217,6 +217,40 @@ describe('mail.settings get/update', () => {
 		});
 	});
 
+	it('round-trips the keyboard preset and per-shortcut remaps', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { shortcutPreset: 'gmail' });
+		await t.mutation(api.mail.settings.update, {
+			shortcutOverrides: [{ id: 'postbox.archive', keys: ['y'] }],
+		});
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			shortcutPreset: 'gmail',
+			shortcutOverrides: [{ id: 'postbox.archive', keys: ['y'] }],
+		});
+	});
+
+	it('rejects a keyboard preset outside the union', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.mail.settings.update, {
+				shortcutPreset: 'vim' as unknown as 'gmail',
+			})
+		).rejects.toThrow();
+	});
+
+	it('stores an empty remap list, which is how the user clears every change', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, {
+			shortcutOverrides: [{ id: 'postbox.archive', keys: ['y'] }],
+		});
+		await t.mutation(api.mail.settings.update, { shortcutOverrides: [] });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			shortcutOverrides: [],
+		});
+	});
+
 	it("is scoped per user: one user's preference is invisible to another", async () => {
 		const t = convexTest(schema, modules);
 		await t.mutation(api.mail.settings.update, { autoAdvance: 'previous' });
