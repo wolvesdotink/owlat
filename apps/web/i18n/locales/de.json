@@ -3311,7 +3311,8 @@
 				"scheduleSend": "Senden planen…",
 				"sending": "Wird gesendet…",
 				"signature": "Signatur",
-				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…"
+				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…",
+				"previewAsSent": "Vorschau wie gesendet"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -4432,6 +4433,23 @@
 				"dismiss": "Gespeicherte Fassung behalten",
 				"message": "Ungespeicherte Änderungen von {time} wurden auf diesem Gerät gefunden.",
 				"restore": "Ungespeicherte Änderungen wiederherstellen"
+			},
+			"postboxPreviewAsSent": {
+				"ampNote": "+ AMP-Teil",
+				"ampNoteTitle": "Dieses Design nutzt einen interaktiven Block, daher geht neben dem HTML eine AMP-Alternative mit.",
+				"captions": {
+					"dark": "Dieselbe Nachricht, gerendert von einem Programm im Dunkelmodus.",
+					"html": "Der text/html-Teil, so wie ihn das Mailprogramm der Empfängerin darstellt.",
+					"plain": "Der text/plain-Teil, der neben dem HTML mitgeht — das lesen Terminal-Programme und Screenreader."
+				},
+				"emptyPlain": "Die Nur-Text-Alternative ist leer. Wer text/plain angezeigt bekommt, sähe nichts.",
+				"hint": "Gerendert vom selben Baustein wie der Versand — genau das verlässt also das Haus.",
+				"panes": {
+					"dark": "Dunkelmodus",
+					"html": "HTML",
+					"plain": "Nur Text"
+				},
+				"title": "Vorschau wie gesendet"
 			}
 		},
 		"preferences": {

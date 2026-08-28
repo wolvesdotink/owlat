@@ -27,8 +27,11 @@ export default defineConfig({
 			{ find: '~~', replacement: resolve(__dirname, '.') },
 			{ find: '~', replacement: resolve(__dirname, 'app') },
 			{
+				// Subpath exports are a mix of `src/<name>.ts` and `src/<name>/index.ts`
+				// (e.g. `@owlat/shared/registry`), so the replacement stops at the
+				// stem and lets Vite's extension/index resolution finish the job.
 				find: /^@owlat\/shared\/(.+)$/,
-				replacement: resolve(__dirname, '../../packages/shared/src/$1.ts'),
+				replacement: resolve(__dirname, '../../packages/shared/src/$1'),
 			},
 			{
 				find: '@owlat/shared',

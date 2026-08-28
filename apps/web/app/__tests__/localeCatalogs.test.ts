@@ -202,6 +202,8 @@ describe('UI message catalogs', () => {
 		'components.postbox.postboxMessageDetails.spf',
 		'components.postbox.postboxMailboxSwitcher.personal.title',
 		'components.postbox.postboxMailboxSwitcher.team.heading',
+		// The name of a MIME part ("HTML") — a wire term, not a word to translate.
+		'components.postbox.postboxPreviewAsSent.panes.html',
 		'components.postbox.postboxQuickActionsBar.label',
 		'components.postbox.postboxQuickActionsBar.spam',
 		'components.postbox.postboxRewritePreview.original',

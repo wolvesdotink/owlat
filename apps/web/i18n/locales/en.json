@@ -3311,7 +3311,8 @@
 				"scheduleSend": "Schedule send…",
 				"sending": "Sending…",
 				"signature": "Signature",
-				"uploadingTitle": "Waiting for attachments to finish uploading…"
+				"uploadingTitle": "Waiting for attachments to finish uploading…",
+				"previewAsSent": "Preview as sent"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -4432,6 +4433,23 @@
 				"dismiss": "Keep saved version",
 				"message": "Unsaved changes from {time} were recovered from this device.",
 				"restore": "Restore unsaved changes"
+			},
+			"postboxPreviewAsSent": {
+				"ampNote": "+ AMP part",
+				"ampNoteTitle": "This design uses an interactive block, so an AMP alternative ships alongside the HTML.",
+				"captions": {
+					"dark": "The same message rendered by a client in dark mode.",
+					"html": "The text/html part, as the recipient’s mail client will lay it out.",
+					"plain": "The text/plain part that ships beside the HTML — what terminal clients and screen readers read."
+				},
+				"emptyPlain": "The plain-text alternative is empty. Recipients whose client shows text/plain would see nothing.",
+				"hint": "Rendered by the same builder the send path uses, so this is what actually leaves the building.",
+				"panes": {
+					"dark": "Dark mode",
+					"html": "HTML",
+					"plain": "Plain text"
+				},
+				"title": "Preview as sent"
 			}
 		},
 		"preferences": {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { EditorBlock } from '@owlat/email-builder';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
 
@@ -14,6 +15,10 @@ const props = defineProps<{
 	signatures: { _id: Id<'mailSignatures'>; name: string }[];
 	activeSignatureId: Id<'mailSignatures'> | null;
 	composerMode: ComposerMode;
+	/** Live subject + body, for the read-only "Preview as sent" dialog below. */
+	subject: string;
+	bodyHtml: string;
+	bodyBlocks: EditorBlock[];
 	persistentToolbar: boolean;
 	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
 	preflight?: PreflightFinding[];
@@ -55,6 +60,9 @@ const { isDesktop, pickNativeFiles } = useNativeFilePicker();
 // first click outside it — which includes clicks inside the teleported dialog —
 // so a dialog owned by the slot would be unmounted mid-interaction.
 const followUpPickerOpen = ref(false);
+// Same reason as followUpPickerOpen: the ⋯ panel unmounts on the first click
+// outside it, so the preview dialog it opens is rendered as its sibling below.
+const previewOpen = ref(false);
 
 async function onAttachClick() {
 	if (isDesktop.value) {
@@ -143,6 +151,21 @@ function onPickFiles(event: Event) {
 						</select>
 					</label>
 					<div class="border-t border-border-subtle my-1" />
+					<!-- Plan idea 14: the HTML, the REAL text/plain alternative and a
+					     dark rendering, from the same builder the send path uses. -->
+					<button
+						type="button"
+						role="menuitem"
+						class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+						@click="
+							emit('preview');
+							close();
+						"
+					>
+						<Icon name="lucide:scan-eye" class="w-4 h-4 text-text-tertiary" />
+						{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
+					</button>
+					<div class="border-t border-border-subtle my-1" />
 					<button
 						type="button"
 						role="menuitem"
@@ -173,6 +196,15 @@ function onPickFiles(event: Event) {
 			<PostboxComposerPreflightChip :findings="preflight ?? []" />
 			<!-- Deliberately a sibling of the ⋯ menu, not slot content: the dialog
 			     must survive the panel closing (see followUpPickerOpen above). -->
+			<!-- Plan idea 14: read-only, derived from the send path's own builder. -->
+			<PostboxPreviewAsSent
+				:open="previewOpen"
+				:subject="subject"
+				:body-html="bodyHtml"
+				:body-blocks="bodyBlocks"
+				:composer-mode="composerMode"
+				@update:open="previewOpen = $event"
+			/>
 			<PostboxFollowUpDialog
 				:open="followUpPickerOpen"
 				@update:open="followUpPickerOpen = $event"
