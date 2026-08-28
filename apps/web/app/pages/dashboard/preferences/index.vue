@@ -273,6 +273,11 @@ async function handleDelete() {
 				</div>
 			</section>
 
+			<!-- Is my mail arriving? The member-readable half of what the admin
+		     delivery hub answers: my address's verification, my transport
+		     alignment, and how my recent sends actually landed. -->
+			<PostboxSendingHealthCard />
+
 			<!-- Sending: reversible outbound-transport choice for a connected external
 		     mailbox (own SMTP vs this instance). Self-hides for hosted-only users. -->
 			<PostboxSendingSettings />

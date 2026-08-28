@@ -3866,6 +3866,10 @@
 				"removeVip": "Remove VIP",
 				"vipOperation": "VIP"
 			},
+			"postboxSendingHealthCard": {
+				"heading": "Is my mail arriving?",
+				"ratio": "{failures} of {attempts} recent deliveries failed."
+			},
 			"postboxSendingSettings": {
 				"changeOperation": "Change sending",
 				"chooseIntro": "Choose where {address} sends its outgoing mail. This only affects sending — your inbox keeps syncing exactly as before.",
@@ -11442,6 +11446,35 @@
 			"noSubject": "(no subject)",
 			"waitingOn": "You're waiting on {who}",
 			"waitingOnReply": "You're waiting on a reply"
+		},
+		"postboxSendingHealth": {
+			"headline": {
+				"ready": "Your mail is arriving",
+				"incomplete": "Worth a look",
+				"blocked": "Sending is off"
+			},
+			"nextStep": {
+				"allClear": "Nothing to fix — everything you've sent recently was accepted."
+			},
+			"gates": {
+				"domain": {
+					"title": "Your sending address",
+					"verified": "{address} is verified, so you can send from it.",
+					"unknown": "We couldn't check this address yet."
+				},
+				"alignment": {
+					"title": "How your mail is signed",
+					"aligned": "Mail from this address is signed and returned as your own domain.",
+					"awaitingDomain": "Nothing to check until your address is verified."
+				},
+				"bounces": {
+					"title": "Your recent sends",
+					"allAccepted": "All {sends} of your recent messages were accepted.",
+					"someFailed": "{failures} of {attempts} recent deliveries didn't get through.",
+					"nothingSent": "You haven't sent anything from here yet.",
+					"unknown": "We're still checking your recent sends."
+				}
+			}
 		},
 		"postboxShortcuts": {
 			"groups": {

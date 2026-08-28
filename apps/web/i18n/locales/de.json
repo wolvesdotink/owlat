@@ -3866,6 +3866,10 @@
 				"removeVip": "VIP entfernen",
 				"vipOperation": "VIP"
 			},
+			"postboxSendingHealthCard": {
+				"heading": "Kommt meine Mail an?",
+				"ratio": "{failures} von {attempts} Zustellungen sind fehlgeschlagen."
+			},
 			"postboxSendingSettings": {
 				"changeOperation": "Versand ändern",
 				"chooseIntro": "Wählen Sie, worüber {address} seine ausgehende Post versendet. Das betrifft nur den Versand — Ihr Posteingang synchronisiert weiterhin genau wie bisher.",
@@ -11442,6 +11446,35 @@
 			"noSubject": "(kein Betreff)",
 			"waitingOn": "Sie warten auf {who}",
 			"waitingOnReply": "Sie warten auf eine Antwort"
+		},
+		"postboxSendingHealth": {
+			"headline": {
+				"ready": "Deine Mail kommt an",
+				"incomplete": "Einen Blick wert",
+				"blocked": "Versand ist aus"
+			},
+			"nextStep": {
+				"allClear": "Nichts zu tun – alles, was du zuletzt gesendet hast, wurde angenommen."
+			},
+			"gates": {
+				"domain": {
+					"title": "Deine Absenderadresse",
+					"verified": "{address} ist verifiziert, du kannst darüber senden.",
+					"unknown": "Diese Adresse konnten wir noch nicht prüfen."
+				},
+				"alignment": {
+					"title": "Wie deine Mail signiert wird",
+					"aligned": "Mail von dieser Adresse wird als deine eigene Domain signiert und zurückgeleitet.",
+					"awaitingDomain": "Hier gibt es nichts zu prüfen, solange deine Adresse nicht verifiziert ist."
+				},
+				"bounces": {
+					"title": "Deine letzten Sendungen",
+					"allAccepted": "Alle {sends} deiner letzten Nachrichten wurden angenommen.",
+					"someFailed": "{failures} von {attempts} Zustellungen kamen nicht durch.",
+					"nothingSent": "Du hast von hier aus noch nichts gesendet.",
+					"unknown": "Wir prüfen deine letzten Sendungen noch."
+				}
+			}
 		},
 		"postboxShortcuts": {
 			"groups": {
