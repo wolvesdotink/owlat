@@ -493,3 +493,34 @@ To pick it up: add a locale to the invitation record and to whatever context
 BetterAuth's email hooks can carry, and add an instance/organization default
 locale for recipients who are not users. The copy tables extend
 `lib/systemEmailCopy.ts`, which is already shaped for it.
+
+## 30 — "waiting on us" is derived from status, not from a stored last-outbound
+
+The waiting chip, the "Waiting 24h+" pill and the "oldest waiting" order all
+rest on one invariant of the thread module: `conversationThreads.lastMessageAt`
+is bumped ONLY by the `inbound_activity` reducer
+(`inbox/threads/module.ts`), so it is not "the newest message" in general — it
+is the newest message the CUSTOMER sent. Time since it is exactly how long they
+have waited, with no join to the message table.
+
+What the plan asked for is "when the newest message is inbound". Nothing on the
+thread records outbound activity: sending a reply writes no timestamp, and
+`latestDraftStatus: 'sent'` carries no time, so "did we answer after their last
+message?" is not a question the row can ask. The stand-in is the status
+machine — a thread counts as waiting on us when it is `open` and not snoozed,
+because `waiting` means the ball is theirs and `resolved`/`closed` are done.
+
+The gap this leaves: a thread that was answered but never moved off `open` goes
+on accruing a wait. `status` is set by hand
+(`inbox/mutations.ts:updateThreadStatus`) and no send flips it, so a team that
+replies without touching the status sees ages that are too old. The chip is
+therefore honest about the DATA it has (nothing has come in from them for 3d)
+and only approximate about the INTENT (we may already have replied).
+
+To pick it up: add `lastOutboundAt` to `conversationThreads`, bump it from the
+draft-send lifecycle (`inbox/processingLifecycle`) and from any manual reply
+path, and treat a thread as waiting on us only when `lastMessageAt >
+lastOutboundAt`. That is a schema field plus a write on the send path, and the
+same predicate then serves the pill's index range — which would need a second
+index, since the range is currently a plain `lastMessageAt` walk under
+`by_status_and_last_message_at`.
