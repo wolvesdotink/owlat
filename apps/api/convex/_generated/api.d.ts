@@ -761,6 +761,7 @@ import type * as mail_mailbox_attachments from '../mail/mailbox/attachments.js';
 import type * as mail_mailbox_identity from '../mail/mailbox/identity.js';
 import type * as mail_mailbox_messages from '../mail/mailbox/messages.js';
 import type * as mail_mailbox_queries from '../mail/mailbox/queries.js';
+import type * as mail_mailbox_rawExport from '../mail/mailbox/rawExport.js';
 import type * as mail_mailbox_search from '../mail/mailbox/search.js';
 import type * as mail_mailbox_searchCursor from '../mail/mailbox/searchCursor.js';
 import type * as mail_mailbox_selection from '../mail/mailbox/selection.js';
@@ -1803,6 +1804,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailbox/identity': typeof mail_mailbox_identity;
 	'mail/mailbox/messages': typeof mail_mailbox_messages;
 	'mail/mailbox/queries': typeof mail_mailbox_queries;
+	'mail/mailbox/rawExport': typeof mail_mailbox_rawExport;
 	'mail/mailbox/search': typeof mail_mailbox_search;
 	'mail/mailbox/searchCursor': typeof mail_mailbox_searchCursor;
 	'mail/mailbox/selection': typeof mail_mailbox_selection;
