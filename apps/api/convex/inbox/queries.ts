@@ -12,7 +12,6 @@ import { assertFeatureEnabled } from '../lib/featureFlags';
 import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
 import { compareNeedsAttention, compareOldestWaiting } from './threadSort';
 import {
-	COUNTED_FILTERS,
 	FILTER_COUNT_CAP,
 	buildThreadQuery,
 	threadFilterValidator,
@@ -166,6 +165,9 @@ export const getThreadFilterCounts = publicQuery({
 			return rows.length;
 		};
 
+		// The escalation pill is `waitingOver24h` on the wire: a Convex object field
+		// is an identifier and the filter slug carries a hyphen. The web registry
+		// (utils/inboxFilters) is where the two names are tied together.
 		const [open, mine, unassigned, waiting, waitingOver24h, snoozed, resolved] = await Promise.all([
 			countFilter('open'),
 			countFilter('mine'),

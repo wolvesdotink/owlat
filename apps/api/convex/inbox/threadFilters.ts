@@ -36,17 +36,6 @@ export const threadFilterValidator = v.union(
 /** How many rows a filter-count pill will read before rendering "99+". */
 export const FILTER_COUNT_CAP = 100;
 
-/** Pill order the counts are destructured in — one place, so they can't shear. */
-export const COUNTED_FILTERS = [
-	'open',
-	'mine',
-	'unassigned',
-	'waiting',
-	'waiting-24h',
-	'snoozed',
-	'resolved',
-] as const;
-
 /** Derived from the validator, so the two can never drift apart. */
 export type ThreadFilter = Infer<typeof threadFilterValidator>;
 
