@@ -3473,7 +3473,11 @@
 				"pinnedSearchesHeading": "Pinned searches",
 				"unpinSearch": "Unpin search",
 				"unpinSearchAriaLabel": "Unpin the saved search {name}",
-				"files": "Files"
+				"files": "Files",
+				"newLabel": "New label",
+				"newLabelNameAriaLabel": "New label name",
+				"labelNamePlaceholder": "Label name",
+				"labelNestingHint": "Use Work/Clients/Acme to nest."
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Set reply reminder",
@@ -4328,6 +4332,12 @@
 					"year": "Last year"
 				},
 				"loadMore": "Load more"
+			},
+			"postboxLabelTree": {
+				"expand": "Expand {name}",
+				"collapse": "Collapse {name}",
+				"moveUp": "Move {name} up",
+				"moveDown": "Move {name} down"
 			}
 		},
 		"preferences": {
@@ -11660,7 +11670,8 @@
 				"deleteLabel": "Delete label",
 				"updateLabel": "Update label",
 				"updateMessageLabels": "Update message labels",
-				"updateThreadLabels": "Update thread labels"
+				"updateThreadLabels": "Update thread labels",
+				"reorderLabels": "reorder labels"
 			},
 			"usePostboxSelectionRewrite": {
 				"failed": "Could not rewrite the selection. Try again.",

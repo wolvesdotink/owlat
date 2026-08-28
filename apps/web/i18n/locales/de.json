@@ -3473,7 +3473,11 @@
 				"pinnedSearchesHeading": "Angeheftete Suchen",
 				"unpinSearch": "Suche lösen",
 				"unpinSearchAriaLabel": "Gespeicherte Suche {name} lösen",
-				"files": "Dateien"
+				"files": "Dateien",
+				"newLabel": "Neues Label",
+				"newLabelNameAriaLabel": "Name des neuen Labels",
+				"labelNamePlaceholder": "Labelname",
+				"labelNestingHint": "Mit Arbeit/Kunden/Acme verschachteln."
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Antwort-Erinnerung setzen",
@@ -4328,6 +4332,12 @@
 					"year": "Letztes Jahr"
 				},
 				"loadMore": "Mehr laden"
+			},
+			"postboxLabelTree": {
+				"expand": "{name} ausklappen",
+				"collapse": "{name} einklappen",
+				"moveUp": "{name} nach oben verschieben",
+				"moveDown": "{name} nach unten verschieben"
 			}
 		},
 		"preferences": {
@@ -11660,7 +11670,8 @@
 				"deleteLabel": "Label löschen",
 				"updateLabel": "Label aktualisieren",
 				"updateMessageLabels": "Nachrichtenlabels aktualisieren",
-				"updateThreadLabels": "Konversationslabels aktualisieren"
+				"updateThreadLabels": "Konversationslabels aktualisieren",
+				"reorderLabels": "Labels neu sortieren"
 			},
 			"usePostboxSelectionRewrite": {
 				"failed": "Die Auswahl konnte nicht umformuliert werden. Versuchen Sie es erneut.",

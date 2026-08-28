@@ -14,7 +14,21 @@ const { t } = useI18n();
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const { systemFolders, customFolders, unreadByRole } = usePostboxFolders(mailboxIdRef);
-const { labels } = usePostboxLabels(mailboxIdRef);
+const { create: createLabel } = usePostboxLabels(mailboxIdRef);
+
+// Label creation accepts a PATH (`Work/Clients/Acme`) — the backend creates any
+// missing ancestor — so nesting is one action rather than three.
+const creatingLabel = ref(false);
+const newLabelName = ref('');
+
+async function confirmCreateLabel() {
+	const name = newLabelName.value.trim();
+	if (!name) return;
+	if (await createLabel(name)) {
+		newLabelName.value = '';
+		creatingLabel.value = false;
+	}
+}
 
 // Collapsible folder rail — icon strip when collapsed. Persisted per-device.
 // forceExpanded (drawer staging) wins over the saved preference.
@@ -67,6 +81,11 @@ const { pinnedSearches, setPinned } = usePostboxSavedSearches(mailboxIdRef);
 const route = useRoute();
 const activeSavedQuery = computed(() =>
 	route.path === '/dashboard/postbox/search' ? String(route.query['q'] ?? '') : ''
+);
+
+// The open label view, so the tree can reveal (and mark) its branch.
+const activeLabelId = computed(() =>
+	route.path.startsWith('/dashboard/postbox/label/') ? String(route.params['labelId'] ?? '') : ''
 );
 
 // Search entry point: a box in the folder rail + a "/" shortcut to focus it.
@@ -407,32 +426,42 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
 					t('components.postbox.postboxFolderRail.labelsHeading')
 				}}</span>
-				<button
-					type="button"
-					class="text-text-tertiary hover:text-text-primary"
-					:title="t('components.postbox.postboxFolderRail.manageLabels')"
-					@click="labelManagerOpen = true"
-				>
-					<Icon name="lucide:settings-2" class="w-3.5 h-3.5" />
-				</button>
-			</header>
-			<ul class="flex flex-col gap-0.5">
-				<li v-for="label in labels" :key="label._id">
-					<NuxtLink
-						:to="`/dashboard/postbox/label/${label._id}`"
-						class="flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface"
+				<span class="flex items-center gap-1.5">
+					<button
+						type="button"
+						class="text-text-tertiary hover:text-text-primary"
+						:title="t('components.postbox.postboxFolderRail.newLabel')"
+						@click="
+							creatingLabel = true;
+							newLabelName = '';
+						"
 					>
-						<span
-							class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-							:style="{ backgroundColor: label.color || '#6b7280' }"
-						/>
-						<span class="truncate">{{ label.name }}</span>
-					</NuxtLink>
-				</li>
-				<li v-if="labels.length === 0" class="text-xs text-text-tertiary px-2 py-1">
-					{{ t('components.postbox.postboxFolderRail.noLabels') }}
-				</li>
-			</ul>
+						<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+					</button>
+					<button
+						type="button"
+						class="text-text-tertiary hover:text-text-primary"
+						:title="t('components.postbox.postboxFolderRail.manageLabels')"
+						@click="labelManagerOpen = true"
+					>
+						<Icon name="lucide:settings-2" class="w-3.5 h-3.5" />
+					</button>
+				</span>
+			</header>
+			<div v-if="creatingLabel" class="px-2 py-1">
+				<input
+					v-model="newLabelName"
+					:placeholder="t('components.postbox.postboxFolderRail.labelNamePlaceholder')"
+					class="input input-sm"
+					:aria-label="t('components.postbox.postboxFolderRail.newLabelNameAriaLabel')"
+					@keyup.enter="confirmCreateLabel"
+					@keyup.esc="creatingLabel = false"
+				/>
+				<p class="text-2xs text-text-tertiary mt-1">
+					{{ t('components.postbox.postboxFolderRail.labelNestingHint') }}
+				</p>
+			</div>
+			<PostboxLabelTree :mailbox-id="mailboxId" :active-label-id="activeLabelId" />
 		</div>
 
 		<!-- Collapse toggle pinned to the rail bottom (also Cmd/Ctrl+Shift+D). -->

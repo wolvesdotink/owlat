@@ -8,7 +8,7 @@
  * enter the index, and a deleted message takes its rows with it.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
@@ -52,7 +52,7 @@ beforeEach(() => {
  * timer APIs mocked, and the walk reschedules itself, so the fake clock has to
  * span the whole drain rather than a single hop.
  */
-async function drainScheduler(t: ReturnType<typeof convexTest>): Promise<void> {
+async function drainScheduler(t: TestConvex<typeof schema>): Promise<void> {
 	vi.useFakeTimers();
 	try {
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -66,7 +66,7 @@ function pdf(filename: string, partIndex = '0') {
 }
 
 async function countIndexed(
-	t: ReturnType<typeof convexTest>,
+	t: TestConvex<typeof schema>,
 	mailboxId: Id<'mailboxes'>
 ): Promise<number> {
 	let n = 0;
