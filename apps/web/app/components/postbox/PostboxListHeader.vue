@@ -30,6 +30,14 @@ const props = defineProps<{
 	mailboxId?: Id<'mailboxes'>;
 	/** Ids of the rows the list currently has loaded, in render order. */
 	pageIds?: string[];
+	/**
+	 * False when the rendered rows are a narrower set than the folder scope —
+	 * i.e. a triage chip (unread / starred / attachments) is filtering the list.
+	 * The whole-folder escape hatch below queries by folder scope alone, so
+	 * under a chip it would silently select rows the chip is hiding. Absent
+	 * means unfiltered, which is what every non-chip caller is.
+	 */
+	selectAllScopeMatchesList?: boolean;
 }>();
 
 // One toggle, two states: the label names the order the list is IN, and the
@@ -55,13 +63,21 @@ function toggleSelectPage() {
 
 const loadingAllMatching = ref(false);
 /**
+ * The escape hatch is only honest when the rows on screen ARE the folder
+ * scope. `listMessageIds` narrows by folder, not by triage chip, so under an
+ * active chip "select everything in this folder" would hand the next bulk verb
+ * messages the user never saw as selected. Withhold it instead of lying: the
+ * page-level selection (and its count) stays available.
+ */
+const canSelectAllMatching = computed(() => props.selectAllScopeMatchesList !== false);
+/**
  * Replace the page selection with every message the current folder scope
  * holds. One-shot read, not a subscription: the answer is consumed once by the
  * bulk action that follows, and a live id list of a whole folder would re-run
  * on every arrival.
  */
 async function selectAllMatching() {
-	if (!props.mailboxId || loadingAllMatching.value) return;
+	if (!props.mailboxId || loadingAllMatching.value || !canSelectAllMatching.value) return;
 	loadingAllMatching.value = true;
 	try {
 		const result = await requireConvex().query(api.mail.mailbox.selection.listMessageIds, {
@@ -218,7 +234,9 @@ const emit = defineEmits<{
 		</div>
 		<!-- Escape hatch past the loaded page. Only offered once the page itself
 		     is fully selected, so it reads as "and the rest" rather than as a
-		     second, competing select-all. -->
+		     second, competing select-all — and only while the page IS the folder
+		     scope, since a triage chip makes "everything in this folder" a
+		     different (larger) set than the one on screen. -->
 		<div
 			v-if="selectionEnabled && selectionState === 'all'"
 			class="w-full text-xs text-text-secondary flex items-center gap-2"
@@ -250,6 +268,7 @@ const emit = defineEmits<{
 					)
 				}}</span>
 				<button
+					v-if="canSelectAllMatching"
 					type="button"
 					class="text-brand hover:underline disabled:opacity-50"
 					:disabled="loadingAllMatching"

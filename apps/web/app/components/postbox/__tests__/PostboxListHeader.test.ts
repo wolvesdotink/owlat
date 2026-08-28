@@ -49,6 +49,7 @@ function mountHeader(
 		sortOrder?: string;
 		mailboxId?: string;
 		pageIds?: string[];
+		selectAllScopeMatchesList?: boolean;
 	} = {}
 ) {
 	return mount(PostboxListHeader, {
@@ -58,6 +59,7 @@ function mountHeader(
 			sortOrder: props.sortOrder,
 			mailboxId: props.mailboxId,
 			pageIds: props.pageIds,
+			selectAllScopeMatchesList: props.selectAllScopeMatchesList,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -177,5 +179,59 @@ describe('PostboxListHeader select-all', () => {
 			sortOrder: 'oldest',
 		});
 		expect(w.text()).toContain('3 messages selected.');
+	});
+});
+
+/**
+ * The escape hatch queries by FOLDER scope, but a triage chip (unread /
+ * starred / attachments) narrows what the list renders below that scope. Offered
+ * under a chip it would quietly hand the next bulk verb — trash, archive, spam,
+ * snooze — the rows the chip is hiding. It has to be withheld instead.
+ */
+describe('PostboxListHeader select-all under a triage filter', () => {
+	const hatchOf = (w: ReturnType<typeof mountHeader>) =>
+		w.findAll('button').find((b) => b.text() === 'Select everything in this folder');
+
+	it('withholds the whole-folder hatch while a chip filters the list', async () => {
+		const w = mountHeader({
+			mailboxId: 'mbx',
+			pageIds: ['a', 'b', 'c'],
+			selectAllScopeMatchesList: false,
+		});
+		await selectAllBox(w).trigger('click');
+
+		expect(hatchOf(w)).toBeUndefined();
+		// The page selection itself is untouched — only the promise it can't keep
+		// is gone, and the count that tells the user what IS selected stays.
+		expect(selectAllBox(w).attributes('aria-checked')).toBe('true');
+		expect(w.text()).toContain('All 3 loaded messages are selected.');
+	});
+
+	it('offers it again once the filter is cleared', async () => {
+		const w = mountHeader({
+			mailboxId: 'mbx',
+			pageIds: ['a', 'b', 'c'],
+			selectAllScopeMatchesList: false,
+		});
+		await selectAllBox(w).trigger('click');
+		await w.setProps({ selectAllScopeMatchesList: true });
+
+		expect(hatchOf(w)).toBeDefined();
+	});
+
+	it('never reaches the server for a scope the list is not showing', async () => {
+		const w = mountHeader({
+			mailboxId: 'mbx',
+			pageIds: ['a', 'b', 'c'],
+			selectAllScopeMatchesList: false,
+		});
+		await selectAllBox(w).trigger('click');
+		// Belt and braces: the handler itself refuses, so no future caller can
+		// re-expose the unsafe query by rendering a control that reaches it.
+		const vm = w.vm as unknown as { selectAllMatching: () => Promise<void> };
+		expect(typeof vm.selectAllMatching).toBe('function');
+		await vm.selectAllMatching();
+
+		expect(listMessageIds).not.toHaveBeenCalled();
 	});
 });

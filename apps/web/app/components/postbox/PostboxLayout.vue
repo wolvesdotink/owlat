@@ -314,6 +314,7 @@ const advanceIds = computed(() =>
 								: undefined
 						"
 						:page-ids="listMessageIds"
+						:select-all-scope-matches-list="triageFilter === 'all'"
 						@open-rail="railOpen = true"
 						@switch-today="switchInboxMode('today')"
 						@select-view-mode="selectViewMode"
