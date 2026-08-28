@@ -266,6 +266,41 @@ describe('mail.filterRun', () => {
 		});
 	});
 
+	it('leaves the folder’s unseen count alone for snoozed mail it marks read', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		const inboxId = await seedFolder(t, mailboxId);
+		const plainHit = await seedMessage(t, mailboxId, { subject: 'Invoice 4471' });
+		const snoozedHit = await seedMessage(t, mailboxId, { subject: 'Invoice 4472' });
+		await seedMessage(t, mailboxId, { subject: 'Lunch?' });
+		await seedMessage(t, mailboxId, { subject: 'Standup' });
+
+		await t.run(async (ctx) => {
+			await ctx.db.patch(snoozedHit, { snoozedUntil: Date.now() + 60 * 60 * 1000 });
+			// The truth for four unread rows, one of them snoozed: `unseenCount`
+			// counts unread AND not-snoozed.
+			await ctx.db.patch(inboxId, { unseenCount: 3 });
+		});
+
+		const filterId = await t.mutation(api.mail.filters.create, {
+			mailboxId,
+			name: 'File invoices',
+			conditions: [{ field: 'subject', op: 'contains', value: 'invoice' }],
+			actions: [{ type: 'markRead' }],
+		});
+
+		await t.mutation(api.mail.filterRun.start, { filterId });
+		await drainScheduler(t);
+
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(plainHit))!.flagSeen).toBe(true);
+			expect((await ctx.db.get(snoozedHit))!.flagSeen).toBe(true);
+			// Exactly one decrement: the snoozed row was never in the count, so
+			// reading it must not shrink the badge below the mail it still stands for.
+			expect((await ctx.db.get(inboxId))!.unseenCount).toBe(2);
+		});
+	});
+
 	it('never forwards, deletes or discards retroactively', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t);

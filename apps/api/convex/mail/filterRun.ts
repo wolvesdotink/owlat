@@ -24,6 +24,7 @@ import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { evalMessageFromRow, filterConditionsMatch } from './filters';
 import { moveMessagesToFolder, rebuildThreadAggregates } from './messageActions';
+import { isMessageSnoozed } from '../lib/mailSnooze';
 
 /**
  * Messages read per transaction. Smaller than the attachment backfill's page:
@@ -163,13 +164,18 @@ async function applyActions(
 		// Bump the folder's modseq so IMAP CONDSTORE clients see the change, and
 		// decrement `unseenCount` when a row goes read — otherwise the rail badge
 		// outlives the mail it counted.
+		//
+		// A snoozed message was never in `unseenCount` (the counter tracks unread
+		// AND not-snoozed; `snooze.ts` adjusts it when the flag flips), so marking
+		// one read must leave the counter alone — mirrors `applyFlagDelta` in
+		// `messageActions.ts`. Without this a retroactive sweep over a mailbox
+		// holding snoozed unread mail permanently undercounts the folder badge.
+		const wasCounted = flagPatch.flagSeen === true && !isMessageSnoozed(message, now);
 		const modseq = folder ? folder.highestModseq + 1 : message.modseq;
 		if (folder) {
 			await ctx.db.patch(folder._id, {
 				highestModseq: modseq,
-				...(flagPatch.flagSeen === true
-					? { unseenCount: Math.max(0, folder.unseenCount - 1) }
-					: {}),
+				...(wasCounted ? { unseenCount: Math.max(0, folder.unseenCount - 1) } : {}),
 				updatedAt: now,
 			});
 		}
