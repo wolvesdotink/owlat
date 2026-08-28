@@ -69,21 +69,17 @@ const ACTIVE_WORK_FILTERS = new Set<InboxFilter>(['open', 'mine', 'unassigned', 
 // Optimistic hide + one-slot undo toast (Cmd/Ctrl+Z), reusing the Postbox house
 // composables. The list renders `visibleThreads`; a failed mutation restores the
 // row and a successful one is undoable for ~8s.
-const {
-	visible: visibleThreads,
-	run: runTriage,
-	onWindowKeydown: onTriageUndoKeydown,
-} = useInboxTriage(threads as Ref<TeamThread[]>);
+const { visible: visibleThreads, run: runTriage } = useInboxTriage(
+	threads as Ref<TeamThread[]>
+);
 
 // Org members for the row hover assignee picker (Me / members / Unassign).
 const { members, fetchMembers } = useOrganization();
+// Cmd/Ctrl+Z undoes the last triage while focus is outside any text field —
+// usePostboxTriageUndo binds that listener app-wide while its stack is
+// non-empty, so this page only has to register the actions.
 onMounted(() => {
 	void fetchMembers();
-	// Cmd/Ctrl+Z undoes the last triage while focus is outside any text field.
-	window.addEventListener('keydown', onTriageUndoKeydown);
-});
-onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onTriageUndoKeydown);
 });
 const assignMembers = computed(() =>
 	members.value.map((m) => ({

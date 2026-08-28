@@ -119,11 +119,10 @@ watch(
 	{ immediate: true }
 );
 
-// Cmd/Ctrl+Z re-triages the last archive/trash/move/spam action while the
-// undo toast is visible (inert in inputs/contenteditable — see composable).
-const triageUndo = usePostboxTriageUndo();
-onMounted(() => window.addEventListener('keydown', triageUndo.onWindowKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', triageUndo.onWindowKeydown));
+// Cmd/Ctrl+Z walks back the undo stack (newest first) while entries are
+// pending. The listener is installed app-wide by usePostboxTriageUndo itself
+// while the stack is non-empty, so binding it here too would undo two entries
+// per keypress.
 
 // Folder name shown in the list header (custom folders carry no role). A system
 // folder arrives as its role, which has a translated name; a custom/unknown role
