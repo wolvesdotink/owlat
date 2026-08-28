@@ -672,6 +672,7 @@ import type * as lib_sessionOrganization from '../lib/sessionOrganization.js';
 import type * as lib_ssrfGuard from '../lib/ssrfGuard.js';
 import type * as lib_statShards from '../lib/statShards.js';
 import type * as lib_suppression from '../lib/suppression.js';
+import type * as lib_systemEmailCopy from '../lib/systemEmailCopy.js';
 import type * as lib_systemEmails from '../lib/systemEmails.js';
 import type * as lib_systemMailOutcome from '../lib/systemMailOutcome.js';
 import type * as lib_tenantTables from '../lib/tenantTables.js';
@@ -1699,6 +1700,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/ssrfGuard': typeof lib_ssrfGuard;
 	'lib/statShards': typeof lib_statShards;
 	'lib/suppression': typeof lib_suppression;
+	'lib/systemEmailCopy': typeof lib_systemEmailCopy;
 	'lib/systemEmails': typeof lib_systemEmails;
 	'lib/systemMailOutcome': typeof lib_systemMailOutcome;
 	'lib/tenantTables': typeof lib_tenantTables;
