@@ -6,7 +6,9 @@
  * PostboxLayout.vue (the plan's R8 list-header seam): pure presentation over
  * semantic emits — every action routes back to the layout's existing handlers.
  */
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { headerSelectionState } from '~/utils/postboxRangeSelect';
 
 const { t } = useI18n();
 
@@ -24,12 +26,54 @@ const props = defineProps<{
 	viewModeOptions?: Array<{ value: string; label: string }>;
 	/** Arrival direction of the list — 'newest' (default) or 'oldest'. */
 	sortOrder?: string;
+	/** Set on the flat list, which is the only renderer with a selection model. */
+	mailboxId?: Id<'mailboxes'>;
+	/** Ids of the rows the list currently has loaded, in render order. */
+	pageIds?: string[];
 }>();
 
 // One toggle, two states: the label names the order the list is IN, and the
 // title names the order a tap moves TO, so the control is never ambiguous
 // about which it is describing.
 const sortIsOldest = computed(() => props.sortOrder === 'oldest');
+
+// --- Select-all -------------------------------------------------------------
+// The header owns the checkbox that covers the whole page of rows, plus the
+// escape hatch past it: the loaded page is 50 messages and "select all" over
+// 4 000 is a different promise, so whole-folder selection goes through a
+// server-side id query rather than pretending the page is the folder.
+const mailboxIdRef = computed(() => props.mailboxId ?? null);
+const bulk = usePostboxBulkActions(mailboxIdRef);
+const pageIds = computed(() => props.pageIds ?? []);
+const selectionEnabled = computed(() => props.mailboxId != null && pageIds.value.length > 0);
+const selectionState = computed(() => headerSelectionState(pageIds.value, bulk.selected.value));
+
+function toggleSelectPage() {
+	if (selectionState.value === 'all') bulk.clear();
+	else bulk.selectPage(pageIds.value as Id<'mailMessages'>[]);
+}
+
+const loadingAllMatching = ref(false);
+/**
+ * Replace the page selection with every message the current folder scope
+ * holds. One-shot read, not a subscription: the answer is consumed once by the
+ * bulk action that follows, and a live id list of a whole folder would re-run
+ * on every arrival.
+ */
+async function selectAllMatching() {
+	if (!props.mailboxId || loadingAllMatching.value) return;
+	loadingAllMatching.value = true;
+	try {
+		const result = await requireConvex().query(api.mail.mailbox.selection.listMessageIds, {
+			mailboxId: props.mailboxId,
+			...(props.folderId ? { folderId: props.folderId } : { folderRole: props.folderRole }),
+			...(sortIsOldest.value ? { sortOrder: 'oldest' as const } : {}),
+		});
+		bulk.selectAllMatchingIds(result.ids, result.capped);
+	} finally {
+		loadingAllMatching.value = false;
+	}
+}
 
 const emit = defineEmits<{
 	/** Mobile drawer handle pressed — the layout owns the drawer state. */
@@ -52,6 +96,39 @@ const emit = defineEmits<{
 		class="border-b border-border-subtle px-4 py-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5"
 	>
 		<div class="flex items-center gap-2 min-w-0">
+			<!-- Tri-state select-all over the rows that are loaded: unchecked,
+			     a dash while some are picked, checked when the page is covered. -->
+			<button
+				v-if="selectionEnabled"
+				type="button"
+				role="checkbox"
+				:aria-checked="
+					selectionState === 'all' ? 'true' : selectionState === 'partial' ? 'mixed' : 'false'
+				"
+				class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+				:class="
+					selectionState === 'none'
+						? 'border-border-subtle bg-bg-base'
+						: 'bg-brand border-brand text-text-inverse'
+				"
+				:aria-label="
+					selectionState === 'all'
+						? t('components.postbox.postboxListHeader.deselectPage')
+						: t('components.postbox.postboxListHeader.selectPage')
+				"
+				:title="
+					selectionState === 'all'
+						? t('components.postbox.postboxListHeader.deselectPage')
+						: t('components.postbox.postboxListHeader.selectPage')
+				"
+				@click="toggleSelectPage()"
+			>
+				<Icon
+					v-if="selectionState !== 'none'"
+					:name="selectionState === 'all' ? 'lucide:check' : 'lucide:minus'"
+					class="w-3 h-3"
+				/>
+			</button>
 			<!-- Drawer handle for the folder rail (mobile only). 44px square for
 			     the thumb; the negative margins keep it from growing the header
 			     past the height the 16px icon alone would give it. -->
@@ -63,7 +140,9 @@ const emit = defineEmits<{
 			>
 				<Icon name="lucide:panel-left" class="w-4 h-4" />
 			</button>
-			<h2 class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2 min-w-0">
+			<h2
+				class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2 min-w-0"
+			>
 				<span class="truncate">{{ folderName }}</span>
 				<!-- Cold start from the device cache: a quiet "updating…" hint
 				     while the live query catches up. Live rows replace in place.
@@ -135,6 +214,53 @@ const emit = defineEmits<{
 					:model-value="viewMode"
 					@update:model-value="emit('select-view-mode', String($event))"
 				/>
+			</template>
+		</div>
+		<!-- Escape hatch past the loaded page. Only offered once the page itself
+		     is fully selected, so it reads as "and the rest" rather than as a
+		     second, competing select-all. -->
+		<div
+			v-if="selectionEnabled && selectionState === 'all'"
+			class="w-full text-xs text-text-secondary flex items-center gap-2"
+			role="status"
+		>
+			<template v-if="bulk.selectAllMatching.value.active">
+				<span>{{
+					t(
+						'components.postbox.postboxListHeader.allMatchingSelected',
+						{ count: bulk.count.value },
+						bulk.count.value
+					)
+				}}</span>
+				<span v-if="bulk.selectAllMatching.value.capped" class="text-text-tertiary">{{
+					t('components.postbox.postboxListHeader.allMatchingCapped', {
+						count: bulk.count.value,
+					})
+				}}</span>
+				<button type="button" class="text-brand hover:underline" @click="bulk.clear()">
+					{{ t('components.postbox.postboxListHeader.clearSelection') }}
+				</button>
+			</template>
+			<template v-else>
+				<span>{{
+					t(
+						'components.postbox.postboxListHeader.pageSelected',
+						{ count: bulk.count.value },
+						bulk.count.value
+					)
+				}}</span>
+				<button
+					type="button"
+					class="text-brand hover:underline disabled:opacity-50"
+					:disabled="loadingAllMatching"
+					@click="selectAllMatching()"
+				>
+					{{
+						loadingAllMatching
+							? t('components.postbox.postboxListHeader.selectingAllMatching')
+							: t('components.postbox.postboxListHeader.selectAllMatching')
+					}}
+				</button>
 			</template>
 		</div>
 	</header>

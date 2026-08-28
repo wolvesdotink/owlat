@@ -19,40 +19,44 @@ const { showToast } = useToast();
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 const { folders } = usePostboxFolders(mailboxIdRef);
-const { labels, setOnMessage } = usePostboxLabels(mailboxIdRef);
+const { labels } = usePostboxLabels(mailboxIdRef);
 
 const moveOpen = ref(false);
 const labelOpen = ref(false);
 const snoozeOpen = ref(false);
 
-const snoozeMutation = useBackendOperation(api.mail.snooze.snooze, {
+// Label / snooze / unsnooze are ONE mutation over the whole selection, like
+// every other verb in this bar. They used to loop the single-message mutation
+// per selected row: a 200-message selection meant 200 round trips, 200 live
+// re-renders, and a failure halfway through left the selection half-applied
+// with nothing able to name where it stopped.
+const setLabelOnSelection = useBackendOperation(api.mail.labels.setOnMessages, {
+	label: () => t('components.postbox.postboxQuickActionsBar.operations.label'),
+});
+const snoozeMutation = useBackendOperation(api.mail.snooze.snoozeMany, {
 	label: () => t('components.postbox.postboxQuickActionsBar.operations.snooze'),
 });
-
-async function applyLabel(labelId: Id<'mailLabels'>) {
-	for (const id of bulk.ids.value) {
-		await setOnMessage(id, labelId, true);
-	}
-	labelOpen.value = false;
-}
-
-async function snoozeSelected(until: number) {
-	for (const id of bulk.ids.value) {
-		const result = await snoozeMutation.run({ messageId: id, until });
-		if (!result.ok) return;
-	}
-	bulk.clear();
-}
-
-const unsnoozeMutation = useBackendOperation(api.mail.snooze.unsnooze, {
+const unsnoozeMutation = useBackendOperation(api.mail.snooze.unsnoozeMany, {
 	label: () => t('components.postbox.postboxQuickActionsBar.operations.unsnooze'),
 });
 
+async function applyLabel(labelId: Id<'mailLabels'>) {
+	labelOpen.value = false;
+	if (bulk.ids.value.length === 0) return;
+	await setLabelOnSelection.run({ messageIds: bulk.ids.value, labelId, add: true });
+}
+
+async function snoozeSelected(until: number) {
+	if (bulk.ids.value.length === 0) return;
+	const result = await snoozeMutation.run({ messageIds: bulk.ids.value, until });
+	if (!result.ok) return;
+	bulk.clear();
+}
+
 async function unsnoozeSelected() {
-	for (const id of bulk.ids.value) {
-		const result = await unsnoozeMutation.run({ messageId: id });
-		if (!result.ok) return;
-	}
+	if (bulk.ids.value.length === 0) return;
+	const result = await unsnoozeMutation.run({ messageIds: bulk.ids.value });
+	if (!result.ok) return;
 	bulk.clear();
 }
 

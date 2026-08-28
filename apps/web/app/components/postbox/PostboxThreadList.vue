@@ -232,6 +232,9 @@ const {
 		props.selectable
 			? emit('select', m._id)
 			: void navigateTo(`/dashboard/postbox/${props.folderRole}/${m._id}`),
+	// Shift+J / Shift+K drag the selection along with the focus, extending from
+	// the anchor the last plain toggle set.
+	onExtendSelection: (to, from) => bulk.extendTo(visibleIds.value, to._id, from?._id),
 	onAction: (key, m) => {
 		switch (resolvePostboxShortcut(key)) {
 			case 'archive':
@@ -437,7 +440,10 @@ onMounted(async () => {
 					:focused="focusedIndex === windowStart + localI"
 					:active="activeMessageId === msg._id"
 					@select="emit('select', msg._id)"
-					@toggle-select="bulk.toggle(msg._id)"
+					@toggle-select="
+						(extend: boolean) =>
+							extend ? bulk.extendTo(visibleIds, msg._id) : bulk.toggle(msg._id)
+					"
 					@toggle-star="toggleStar(msg._id, !msg.flagFlagged)"
 					@toggle-read="toggleRead(msg._id, !msg.flagSeen)"
 					@archive="archiveMsg(msg._id)"

@@ -92,6 +92,9 @@ const {
 const listMessages = computed(() =>
 	triageFilter.value === 'all' ? displayMessages.value : filteredDisplayMessages.value
 );
+// The ids the header's tri-state select-all covers: exactly the rows the flat
+// list renders, so "select all" never quietly picks a row that is filtered out.
+const listMessageIds = computed(() => listMessages.value.map((m) => m._id));
 // A chip is "active" when it hides rows that exist — drives the caught-up
 // empty state ("Show all") instead of the folder's usual empty copy.
 const filterHidesRows = computed(
@@ -305,6 +308,12 @@ const advanceIds = computed(() =>
 						:view-mode="viewMode"
 						:view-mode-options="viewModeOptions"
 						:sort-order="sortOrder"
+						:mailbox-id="
+							!threadGroupsEnabled && !categoryGroupsEnabled && folderRole !== 'drafts'
+								? mailboxId
+								: undefined
+						"
+						:page-ids="listMessageIds"
 						@open-rail="railOpen = true"
 						@switch-today="switchInboxMode('today')"
 						@select-view-mode="selectViewMode"

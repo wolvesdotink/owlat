@@ -3552,8 +3552,16 @@
 				}
 			},
 			"postboxListHeader": {
+				"allMatchingCapped": "Auf die ersten {count} begrenzt — erst bearbeiten, dann erneut auswählen.",
+				"allMatchingSelected": "{count} Nachricht ausgewählt. | {count} Nachrichten ausgewählt.",
+				"clearSelection": "Auswahl aufheben",
+				"deselectPage": "Auswahl aufheben",
 				"newestFirst": "Neueste zuerst",
 				"oldestFirst": "Älteste zuerst",
+				"pageSelected": "Die {count} geladene Nachricht ist ausgewählt. | Alle {count} geladenen Nachrichten sind ausgewählt.",
+				"selectAllMatching": "Alles in diesem Ordner auswählen",
+				"selectPage": "Alle geladenen Nachrichten auswählen",
+				"selectingAllMatching": "Wird ausgewählt…",
 				"sortToNewest": "Nach neuesten zuerst sortieren",
 				"sortToOldest": "Nach ältesten zuerst sortieren"
 			},
@@ -3783,6 +3791,7 @@
 				"notSpam": "Kein Spam",
 				"notSpamTitle": "Kein Spam — in den Posteingang verschieben",
 				"operations": {
+					"label": "Nachrichten mit Label versehen",
 					"snooze": "Nachrichten zurückstellen",
 					"unsnooze": "Zurückstellung von Nachrichten aufheben",
 					"unsubscribe": "Abmelden und archivieren"
@@ -11641,6 +11650,7 @@
 				"addLabel": "Label hinzufügen",
 				"archive": "Archivieren",
 				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Heute",
+				"extendSelection": "Auswahl erweitern",
 				"focusComposer": "Editor fokussieren",
 				"focusSearch": "Suche fokussieren",
 				"forward": "Weiterleiten",

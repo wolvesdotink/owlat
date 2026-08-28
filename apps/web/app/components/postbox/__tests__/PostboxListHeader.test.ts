@@ -5,21 +5,59 @@
  * folder, not just the inbox (a backlog is cleared oldest-first wherever it
  * sits).
  */
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxListHeader from '../PostboxListHeader.vue';
+import { usePostboxBulkActions } from '~/composables/postbox/usePostboxBulkActions';
+
+// The header holds the shared per-mailbox selection bucket, so the Nuxt state
+// + Convex layers it reaches through have to exist for any mount.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let stateBuckets: Map<string, any>;
+const listMessageIds = vi.fn(async () => ({ ids: ['a', 'b', 'c'], capped: false }));
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
-function mountHeader(props: { folderRole?: string; sortOrder?: string } = {}) {
+beforeEach(() => {
+	stateBuckets = new Map();
+	listMessageIds.mockClear();
+	vi.stubGlobal('useState', (key: string, init: () => unknown) => {
+		if (!stateBuckets.has(key)) stateBuckets.set(key, ref(init()));
+		return stateBuckets.get(key);
+	});
+	vi.stubGlobal('useBackendOperation', () => ({
+		run: vi.fn(async () => ({ ok: true, result: {} })),
+		isLoading: ref(false),
+	}));
+	vi.stubGlobal('usePostboxTriageUndo', () => ({
+		register: vi.fn(),
+		registerMoveBack: vi.fn(),
+	}));
+	vi.stubGlobal('requireConvex', () => ({ query: listMessageIds }));
+	// The real selection composable, over the stubbed state + mutation layers:
+	// the point of these cases is the header's reading of that shared bucket.
+	vi.stubGlobal('usePostboxBulkActions', usePostboxBulkActions);
+});
+
+function mountHeader(
+	props: {
+		folderRole?: string;
+		sortOrder?: string;
+		mailboxId?: string;
+		pageIds?: string[];
+	} = {}
+) {
 	return mount(PostboxListHeader, {
 		props: {
 			folderName: 'Inbox',
 			folderRole: props.folderRole ?? 'inbox',
 			sortOrder: props.sortOrder,
+			mailboxId: props.mailboxId,
+			pageIds: props.pageIds,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -77,5 +115,67 @@ describe('PostboxListHeader overflow', () => {
 		const w = mountHeader();
 		const cluster = w.findAll('header > div').at(-1);
 		expect(cluster?.classes()).toContain('flex-shrink-0');
+	});
+});
+
+/**
+ * The tri-state select-all: it covers the rows the list has LOADED, and the
+ * escape hatch past that page goes to the server rather than pretending the
+ * page is the folder.
+ */
+const selectAllBox = (w: ReturnType<typeof mountHeader>) => w.find('button[role="checkbox"]');
+
+describe('PostboxListHeader select-all', () => {
+	it('is absent without a selection model or without rows', () => {
+		expect(selectAllBox(mountHeader()).exists()).toBe(false);
+		expect(selectAllBox(mountHeader({ mailboxId: 'mbx', pageIds: [] })).exists()).toBe(false);
+	});
+
+	it('walks unchecked → checked over the loaded page and back', async () => {
+		const w = mountHeader({ mailboxId: 'mbx', pageIds: ['a', 'b', 'c'] });
+		expect(selectAllBox(w).attributes('aria-checked')).toBe('false');
+
+		await selectAllBox(w).trigger('click');
+		expect(selectAllBox(w).attributes('aria-checked')).toBe('true');
+
+		await selectAllBox(w).trigger('click');
+		expect(selectAllBox(w).attributes('aria-checked')).toBe('false');
+	});
+
+	it('reads as mixed while only some of the page is picked', async () => {
+		const w = mountHeader({ mailboxId: 'mbx', pageIds: ['a', 'b', 'c'] });
+		// A row toggled from the list writes into the same per-mailbox bucket.
+		stateBuckets.get('postbox:bulk:mbx').value = new Set(['b']);
+		await w.vm.$nextTick();
+		expect(selectAllBox(w).attributes('aria-checked')).toBe('mixed');
+	});
+
+	it('offers the whole-folder escape hatch only once the page is covered', async () => {
+		const w = mountHeader({ mailboxId: 'mbx', pageIds: ['a', 'b', 'c'] });
+		expect(w.text()).not.toContain('Select everything in this folder');
+
+		await selectAllBox(w).trigger('click');
+		expect(w.text()).toContain('Select everything in this folder');
+	});
+
+	it('asks the server for the folder scope and adopts the answer', async () => {
+		const w = mountHeader({ mailboxId: 'mbx', pageIds: ['a', 'b', 'c'], sortOrder: 'oldest' });
+		await selectAllBox(w).trigger('click');
+		const escapeHatch = w
+			.findAll('button')
+			.find((b) => b.text() === 'Select everything in this folder');
+		await escapeHatch?.trigger('click');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await w.vm.$nextTick();
+
+		expect(listMessageIds).toHaveBeenCalledTimes(1);
+		// The list's own arrival direction rides along, so a capped answer keeps
+		// the ids the user is actually looking at.
+		expect(listMessageIds.mock.calls[0]?.[1]).toMatchObject({
+			mailboxId: 'mbx',
+			folderRole: 'inbox',
+			sortOrder: 'oldest',
+		});
+		expect(w.text()).toContain('3 messages selected.');
 	});
 });

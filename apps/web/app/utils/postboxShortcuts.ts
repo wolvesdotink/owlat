@@ -158,6 +158,7 @@ export const POSTBOX_SHORTCUT_GROUPS: ReadonlyArray<{
 			{ keys: ['u'], label: 'shared.postboxShortcuts.labels.toggleRead' },
 			{ keys: ['Shift', 'U'], label: 'shared.postboxShortcuts.labels.markUnread' },
 			{ keys: ['x'], label: 'shared.postboxShortcuts.labels.selectDeselect' },
+			{ keys: ['Shift', 'j/k'], label: 'shared.postboxShortcuts.labels.extendSelection' },
 		],
 	},
 	{

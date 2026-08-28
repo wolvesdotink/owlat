@@ -54,7 +54,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	select: [];
-	'toggle-select': [];
+	/** True when the pointer/key carried Shift: extend the range from the anchor. */
+	'toggle-select': [extend: boolean];
 	'toggle-star': [];
 	'toggle-read': [];
 	archive: [];
@@ -71,11 +72,15 @@ const emit = defineEmits<{
 
 const rowId = computed(() => `postbox-row-${props.msg._id}`);
 
-/** Checkbox toggles selection without following the row's NuxtLink. */
+/**
+ * Checkbox toggles selection without following the row's NuxtLink. Shift means
+ * "extend from the anchor" — the file-manager idiom, so twenty messages take
+ * two clicks rather than twenty.
+ */
 function onCheckboxClick(event: MouseEvent) {
 	event.stopPropagation();
 	event.preventDefault();
-	emit('toggle-select');
+	emit('toggle-select', event.shiftKey);
 }
 
 /**
@@ -225,6 +230,15 @@ function onRowPointermove(event: PointerEvent) {
 
 /** Swallow the click that follows a fired long-press (it would open the row). */
 function onCapturedClick(event: MouseEvent) {
+	// Shift+click anywhere on the row extends the selection instead of opening
+	// the message — a range that only the 4x4px checkbox could start would be
+	// the idiom in name only.
+	if (event.shiftKey) {
+		event.preventDefault();
+		event.stopPropagation();
+		emit('toggle-select', true);
+		return;
+	}
 	if (!suppressNextClick) return;
 	suppressNextClick = false;
 	event.preventDefault();

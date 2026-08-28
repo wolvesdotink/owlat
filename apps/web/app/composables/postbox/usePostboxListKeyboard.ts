@@ -14,6 +14,14 @@ export function usePostboxListKeyboard<T extends { _id: string }>(opts: {
 	rowDomId: (item: T) => string;
 	onActivate: (item: T) => void;
 	onAction?: (key: string, item: T) => void;
+	/**
+	 * Shift+J / Shift+K — move the focus AND drag the selection with it (the
+	 * Postbox half of the Review Queue's `extendSelect*` vocabulary). Called
+	 * with the row the focus lands on; the caller extends from its own anchor.
+	 * Surfaces without a selection model simply leave it out and Shift+J/K
+	 * falls through to `onAction` like any other key.
+	 */
+	onExtendSelection?: (item: T, from: T | undefined) => void;
 }) {
 	const focusedIndex = ref(-1);
 	let focusedId: string | undefined;
@@ -65,6 +73,25 @@ export function usePostboxListKeyboard<T extends { _id: string }>(opts: {
 				event.preventDefault();
 				focusedIndex.value = Math.max(cur - 1, 0);
 				break;
+			case 'J':
+			case 'K': {
+				// Shift+j / Shift+k. Without a selection model this is just another
+				// key — fall through to onAction rather than swallowing it.
+				if (!opts.onExtendSelection) {
+					const m = items[cur];
+					if (m && opts.onAction) opts.onAction(event.key, m);
+					break;
+				}
+				event.preventDefault();
+				// From "nothing focused" both keys land on the first row.
+				const next = event.key === 'J' ? Math.min(cur + 1, items.length - 1) : Math.max(cur - 1, 0);
+				focusedIndex.value = next;
+				const landed = items[next];
+				// The row the focus LEFT is where a first Shift+J/K anchors, so the
+				// very first press selects both ends rather than only the new one.
+				if (landed) opts.onExtendSelection(landed, items[cur]);
+				break;
+			}
 			case 'Enter': {
 				const m = items[cur];
 				if (m) opts.onActivate(m);

@@ -3552,8 +3552,16 @@
 				}
 			},
 			"postboxListHeader": {
+				"allMatchingCapped": "Capped at the first {count} — act on these, then select again.",
+				"allMatchingSelected": "{count} message selected. | {count} messages selected.",
+				"clearSelection": "Clear selection",
+				"deselectPage": "Clear selection",
 				"newestFirst": "Newest first",
 				"oldestFirst": "Oldest first",
+				"pageSelected": "All {count} loaded message is selected. | All {count} loaded messages are selected.",
+				"selectAllMatching": "Select everything in this folder",
+				"selectPage": "Select all loaded messages",
+				"selectingAllMatching": "Selecting…",
 				"sortToNewest": "Sort by newest first",
 				"sortToOldest": "Sort by oldest first"
 			},
@@ -3783,6 +3791,7 @@
 				"notSpam": "Not spam",
 				"notSpamTitle": "Not spam — move to Inbox",
 				"operations": {
+					"label": "Label messages",
 					"snooze": "Snooze messages",
 					"unsnooze": "Un-snooze messages",
 					"unsubscribe": "Unsubscribe and archive"
@@ -11641,6 +11650,7 @@
 				"addLabel": "Add label",
 				"archive": "Archive",
 				"closeConversation": "Close the open conversation / back to Today",
+				"extendSelection": "Extend selection",
 				"focusComposer": "Focus the composer",
 				"focusSearch": "Focus search",
 				"forward": "Forward",
