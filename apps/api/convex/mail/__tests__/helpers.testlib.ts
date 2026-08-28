@@ -132,6 +132,10 @@ export type MessageSeed = {
 	flagSeen?: boolean;
 	/** RFC 5322 Message-ID, for the cross-surface correlation (idea 31). */
 	rfc822MessageId?: string;
+	/** Inline plain-text body — what the deep-search backfill (idea 32) reads. */
+	textBodyInline?: string;
+	/** Pre-populated deep-search excerpt (idea 32), as a completed backfill leaves it. */
+	searchBody?: string;
 	/** Attachment metadata as it sits on the row (NOT the junction index). */
 	attachments?: {
 		filename: string;
@@ -199,6 +203,8 @@ export async function seedMessage(
 			subject,
 			normalizedSubject: subject,
 			snippet,
+			...(seed.textBodyInline ? { textBodyInline: seed.textBodyInline } : {}),
+			...(seed.searchBody ? { searchBody: seed.searchBody } : {}),
 			rawStorageId,
 			rawSize: 3,
 			attachments: seed.attachments ?? [],

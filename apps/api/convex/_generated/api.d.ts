@@ -709,6 +709,7 @@ import type * as mail_attachmentIndex from '../mail/attachmentIndex.js';
 import type * as mail_authHttp from '../mail/authHttp.js';
 import type * as mail_authRateLimit from '../mail/authRateLimit.js';
 import type * as mail_availability from '../mail/availability.js';
+import type * as mail_bodySearchBackfill from '../mail/bodySearchBackfill.js';
 import type * as mail_brief from '../mail/brief.js';
 import type * as mail_briefEmail from '../mail/briefEmail.js';
 import type * as mail_briefEmailActions from '../mail/briefEmailActions.js';
@@ -790,6 +791,7 @@ import type * as mail_postboxOutboundLifecycle from '../mail/postboxOutboundLife
 import type * as mail_replyOptions from '../mail/replyOptions.js';
 import type * as mail_rfc822 from '../mail/rfc822.js';
 import type * as mail_savedSearches from '../mail/savedSearches.js';
+import type * as mail_searchBody from '../mail/searchBody.js';
 import type * as mail_sealPolicy from '../mail/sealPolicy.js';
 import type * as mail_sealedBlobHttp from '../mail/sealedBlobHttp.js';
 import type * as mail_sections from '../mail/sections.js';
@@ -1746,6 +1748,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/authHttp': typeof mail_authHttp;
 	'mail/authRateLimit': typeof mail_authRateLimit;
 	'mail/availability': typeof mail_availability;
+	'mail/bodySearchBackfill': typeof mail_bodySearchBackfill;
 	'mail/brief': typeof mail_brief;
 	'mail/briefEmail': typeof mail_briefEmail;
 	'mail/briefEmailActions': typeof mail_briefEmailActions;
@@ -1827,6 +1830,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/replyOptions': typeof mail_replyOptions;
 	'mail/rfc822': typeof mail_rfc822;
 	'mail/savedSearches': typeof mail_savedSearches;
+	'mail/searchBody': typeof mail_searchBody;
 	'mail/sealPolicy': typeof mail_sealPolicy;
 	'mail/sealedBlobHttp': typeof mail_sealedBlobHttp;
 	'mail/sections': typeof mail_sections;

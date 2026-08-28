@@ -15,6 +15,7 @@ import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
+import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
@@ -87,6 +88,11 @@ export async function insertDeliveredMessage(
 		/** Preview snippet derived from the FULL body before any inline/blob split
 		 * (so >64KB bodies still get a non-empty list/search snippet). */
 		snippet?: string;
+		/** Deep-search excerpt (idea 32), derived from the FULL body before the
+		 * inline/blob split for the same reason as `snippet` — the interesting
+		 * depth of a long message is exactly what gets split into a blob. Only
+		 * PERSISTED when the instance opted in; the caller always computes it. */
+		searchBody?: string;
 		messageId: string;
 		inReplyTo?: string;
 		references?: string;
@@ -141,6 +147,14 @@ export async function insertDeliveredMessage(
 	const normalizedSubject = normalizeSubject(params.subject);
 	const now = Date.now();
 	const snippet = params.snippet ?? buildSnippet(params.textBodyInline, params.htmlBodyInline);
+	// Deep body search (idea 32): the ONE gate for the widened plaintext
+	// carve-out. Off (the default) leaves the column absent, which is exactly the
+	// snippet-only row this pipeline wrote before the field existed. An empty
+	// excerpt is stored as absent too — an empty search field indexes nothing.
+	const excerpt = (await isBodySearchIndexingEnabled(ctx))
+		? (params.searchBody ?? buildSearchBody(params.textBodyInline, params.htmlBodyInline))
+		: '';
+	const searchBody = excerpt || undefined;
 	const hasAttachments = params.attachments.length > 0;
 	const flagSeen = params.flagSeen ?? false;
 	// Unread delta is shared by the folder + thread counters so they stay in
@@ -220,6 +234,7 @@ export async function insertDeliveredMessage(
 		subject: params.subject,
 		normalizedSubject,
 		snippet,
+		searchBody,
 		rawStorageId: params.rawStorageId,
 		rawSize: params.rawSize,
 		textBodyInline: await sealBodyAtWriteMaybe(params.textBodyInline),

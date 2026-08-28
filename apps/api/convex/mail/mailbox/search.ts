@@ -16,6 +16,7 @@ import type { QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { loadAccessibleMailboxes, loadReadableMailbox } from '../permissions';
 import { readSession, type FolderRole } from './shared';
+import { resolveBodySearchMode, textSearchQuery } from '../searchBody';
 import {
 	type MailboxPage,
 	type MailboxScanPosition,
@@ -331,17 +332,14 @@ async function scanMailbox(
 		const folderId = single.folderRole
 			? (names.folderByRole.get(single.folderRole) ?? undefined)
 			: undefined;
-		const hits = await ctx.db
-			.query('mailMessages')
-			.withSearchIndex('search_messages', (q) => {
-				let filtered = q.search('snippet', single.text).eq('mailboxId', mailboxId);
-				if (folderId) filtered = filtered.eq('folderId', folderId);
-				if (single.flagSeen !== undefined) filtered = filtered.eq('flagSeen', single.flagSeen);
-				if (single.flagFlagged !== undefined)
-					filtered = filtered.eq('flagFlagged', single.flagFlagged);
-				return filtered;
-			})
-			.take(limit);
+		const mode = await resolveBodySearchMode(ctx, mailboxId);
+		const hits = await textSearchQuery(ctx, mode, {
+			mailboxId,
+			text: single.text,
+			folderId,
+			flagSeen: single.flagSeen,
+			flagFlagged: single.flagFlagged,
+		}).take(limit);
 		return {
 			mailboxId,
 			previous,
@@ -557,23 +555,18 @@ export const search = publicQuery({
 		// the no-text branch over the arrival index. The page may shrink below
 		// `limit` after the post-filter; the cursor still marks the true scan
 		// position, so "Load more" never skips or repeats a row.
+		// `from` is a partial token (e.g. "sara"), not a full address, so it can't
+		// use the search index's exact .eq('fromAddress') — the substring
+		// post-filter below handles it for both the text and no-text branches.
 		const page =
 			single && single.text
-				? await ctx.db
-						.query('mailMessages')
-						.withSearchIndex('search_messages', (q) => {
-							let filtered = q.search('snippet', single.text).eq('mailboxId', mailboxId);
-							if (folderId) filtered = filtered.eq('folderId', folderId);
-							// `from` is a partial token (e.g. "sara"), not a full address, so it
-							// can't use the search index's exact .eq('fromAddress') — the substring
-							// post-filter below handles it for both the text and no-text branches.
-							if (single.flagSeen !== undefined)
-								filtered = filtered.eq('flagSeen', single.flagSeen);
-							if (single.flagFlagged !== undefined)
-								filtered = filtered.eq('flagFlagged', single.flagFlagged);
-							return filtered;
-						})
-						.paginate({ cursor: cursor ?? null, numItems: limit })
+				? await textSearchQuery(ctx, await resolveBodySearchMode(ctx, mailboxId), {
+						mailboxId,
+						text: single.text,
+						folderId,
+						flagSeen: single.flagSeen,
+						flagFlagged: single.flagFlagged,
+					}).paginate({ cursor: cursor ?? null, numItems: limit })
 				: await ctx.db
 						.query('mailMessages')
 						.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))

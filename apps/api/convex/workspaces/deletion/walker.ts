@@ -59,6 +59,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// parent rows so the sweep never leaves a file pointing at a deleted message.
 	'mailAttachments',
 	'mailAttachmentBackfillJobs',
+	'mailBodySearchBackfillJobs',
 	'mailMessages',
 	'mailDrafts',
 	'transactionalSends',
@@ -291,6 +292,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	semanticFiles: semanticFilesStep,
 	mailAttachments: makeSweepStep('mailAttachments'),
 	mailAttachmentBackfillJobs: makeSweepStep('mailAttachmentBackfillJobs'),
+	mailBodySearchBackfillJobs: makeSweepStep('mailBodySearchBackfillJobs'),
 	mailMessages: mailMessagesStep,
 	mailDrafts: mailDraftsStep,
 	transactionalSends: transactionalSendsStep,

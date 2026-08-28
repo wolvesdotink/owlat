@@ -30,6 +30,7 @@ export type OrganizationDeletionTable =
 	| 'semanticFiles'
 	| 'mailAttachments'
 	| 'mailAttachmentBackfillJobs'
+	| 'mailBodySearchBackfillJobs'
 	| 'mailMessages'
 	| 'mailDrafts'
 	| 'transactionalSends'
@@ -211,6 +212,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('semanticFiles'),
 	v.literal('mailAttachments'),
 	v.literal('mailAttachmentBackfillJobs'),
+	v.literal('mailBodySearchBackfillJobs'),
 	v.literal('mailMessages'),
 	v.literal('mailDrafts'),
 	v.literal('transactionalSends'),

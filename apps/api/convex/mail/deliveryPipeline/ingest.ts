@@ -29,6 +29,7 @@ import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
 import { isClearsigned, isSignedPgpMime } from '@owlat/shared/secureMessage';
 import { storeSealedBlob, type BlobStore } from '../../lib/sealedBlob';
 import { buildSnippet } from './insert';
+import { buildSearchBody } from '../searchBody';
 import { scanInboundAttachments } from './scan';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
@@ -171,6 +172,11 @@ export async function prepareInboundMessage(
 	// Snippet from the FULL body, before the inline/blob split, so >64KB
 	// bodies still get a non-empty preview + search snippet.
 	const snippet = buildSnippet(effectiveText, effectiveHtml);
+	// Deep-search excerpt (idea 32), computed from the same pre-split body for the
+	// same reason: the depth worth finding in a long message is precisely the part
+	// that ends up in a blob. Computed unconditionally and cheap; whether it is
+	// PERSISTED is decided by the instance opt-in in `insertDeliveredMessage`.
+	const searchBody = buildSearchBody(effectiveText, effectiveHtml);
 
 	// Scan inbound attachments for malware (defense-in-depth on the receiving
 	// side). ClamAV lives in the MTA container, so we POST each attachment leaf
@@ -197,6 +203,7 @@ export async function prepareInboundMessage(
 		text: textBody,
 		html: htmlBody,
 		snippet,
+		searchBody,
 		virusVerdict,
 		inboundEncryptionInfo,
 		inboundSignatureInfo,

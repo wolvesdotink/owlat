@@ -173,6 +173,11 @@ export const TENANT_TABLES = [
 	// the mail they mirror rather than being treated as a regenerable cache.
 	'mailAttachments',
 	'mailAttachmentBackfillJobs',
+	// The deep-body-search backfill job (idea 32). Same reasoning as the
+	// attachment job above: it is derived bookkeeping over `mailMessages`, but it
+	// names this org's mailboxes, so it wipes with the mail it walked. (The
+	// excerpt itself is a COLUMN on `mailMessages` and needs no entry here.)
+	'mailBodySearchBackfillJobs',
 	'mailMessages',
 	'mailThreads',
 	'mailDrafts',

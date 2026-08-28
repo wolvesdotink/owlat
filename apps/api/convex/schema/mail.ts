@@ -481,6 +481,16 @@ export const mailTables = {
 		subject: v.string(),
 		normalizedSubject: v.string(),
 		snippet: v.string(),
+		// DEEP BODY SEARCH (idea 32) — a normalized ~8KB excerpt of the same body
+		// `snippet` takes its first 200 characters from, indexed by
+		// `search_message_bodies` below. WIDENS the sealed-at-rest plaintext
+		// carve-out documented at that index, so it is written ONLY when the
+		// instance opt-in `instanceSettings.isBodySearchIndexingEnabled` is on;
+		// ABSENT is the default and is exactly the pre-idea-32 behaviour. Turning
+		// the switch back off schedules a sweep that clears it again
+		// (`mail/bodySearchBackfill.purgeSearchBodies`). See `mail/searchBody.ts`
+		// and docs/adr/0059-widened-body-search-carve-out.md.
+		searchBody: v.optional(v.string()),
 
 		// Storage refs
 		rawStorageId: v.id('_storage'),
@@ -709,6 +719,25 @@ export const mailTables = {
 		// lib/atRestBodies.ts and apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_messages', {
 			searchField: 'snippet',
+			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
+		})
+		// THE WIDENED CARVE-OUT (idea 32, ADR-0059). Same exception as above, one
+		// order of magnitude deeper: `searchBody` is a ~8KB normalized excerpt
+		// instead of a 200-character one, so a phrase at character 1,400 of a
+		// contract is findable instead of silently absent. Because that is a real
+		// change in what a database dump reveals, the column is written ONLY on an
+		// instance that opted in (`instanceSettings.isBodySearchIndexingEnabled`);
+		// everywhere else it is absent and this index is empty, which costs
+		// nothing and matches the snippet-only behaviour exactly.
+		//
+		// A SECOND INDEX, NOT A REPOINTED ONE: repointing `search_messages` at
+		// `searchBody` would drop every message delivered before the switch out of
+		// search until a backfill finished. The read path (`mail/searchBody.ts`
+		// `resolveBodySearchMode`) picks this index only once the per-mailbox
+		// backfill reports `completed`, so search never narrows behind the user's
+		// back.
+		.searchIndex('search_message_bodies', {
+			searchField: 'searchBody',
 			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
 		}),
 
@@ -1113,6 +1142,38 @@ export const mailTables = {
 		// Resumable pagination cursor over `mailMessages` (Convex continueCursor).
 		cursor: v.optional(v.string()),
 		scannedCount: v.number(),
+		indexedCount: v.number(),
+		startedAt: v.number(),
+		updatedAt: v.number(),
+		finishedAt: v.optional(v.number()),
+		errorMessage: v.optional(v.string()),
+	}).index('by_mailbox', ['mailboxId']),
+
+	// Resumable backfill of `mailMessages.searchBody` over mail that predates the
+	// deep-search opt-in (idea 32). Same one-row-per-mailbox shape as
+	// `mailAttachmentBackfillJobs` above, with two differences that matter:
+	//
+	//  - `mode` — an `index` walk WRITES excerpts; a `purge` walk CLEARS them. The
+	//    purge is what makes the opt-out real: turning the instance switch off
+	//    stops new writes AND removes the plaintext already stored. Only a
+	//    `completed` `index` job opens the `search_message_bodies` read path
+	//    (`mail/searchBody.isBodySearchIndexComplete`), so a completed purge can
+	//    never be mistaken for a ready index.
+	//  - the walk runs from an ACTION, not a mutation: a large body lives in a
+	//    storage blob and blob contents are unreadable from a query/mutation.
+	mailBodySearchBackfillJobs: defineTable({
+		mailboxId: v.id('mailboxes'),
+		mode: v.union(v.literal('index'), v.literal('purge')),
+		status: v.union(
+			v.literal('running'),
+			v.literal('completed'),
+			v.literal('cancelled'),
+			v.literal('failed')
+		),
+		// Resumable pagination cursor over `mailMessages` (Convex continueCursor).
+		cursor: v.optional(v.string()),
+		scannedCount: v.number(),
+		/** Rows whose `searchBody` this walk actually wrote (or cleared). */
 		indexedCount: v.number(),
 		startedAt: v.number(),
 		updatedAt: v.number(),

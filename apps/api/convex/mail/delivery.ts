@@ -124,6 +124,7 @@ export const ingestFromWebhook = internalAction({
 				htmlBodyInline: prepared.html.inline,
 				htmlBodyStorageId: prepared.html.storageId,
 				snippet: prepared.snippet,
+				searchBody: prepared.searchBody,
 				messageId: args.messageId,
 				inReplyTo: args.inReplyTo,
 				references: args.references,
@@ -193,6 +194,9 @@ export const deliverToMailbox = internalMutation({
 		htmlBodyInline: v.optional(v.string()),
 		htmlBodyStorageId: v.optional(v.id('_storage')),
 		snippet: v.optional(v.string()),
+		// Deep-search excerpt (idea 32). Always sent by the ingest action; the
+		// insert step drops it unless the instance opted in.
+		searchBody: v.optional(v.string()),
 		messageId: v.string(),
 		inReplyTo: v.optional(v.string()),
 		references: v.optional(v.string()),
@@ -347,6 +351,7 @@ export const deliverToMailbox = internalMutation({
 			htmlBodyInline: args.htmlBodyInline,
 			htmlBodyStorageId: args.htmlBodyStorageId,
 			snippet: args.snippet,
+			searchBody: args.searchBody,
 			messageId: args.messageId,
 			inReplyTo: args.inReplyTo,
 			references: args.references,

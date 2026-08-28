@@ -26,6 +26,7 @@ import {
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { insertDeliveredMessage, buildSnippet } from '../deliveryPipeline/insert';
+import { buildSearchBody } from '../searchBody';
 import { splitBodyForStorage } from '../deliveryPipeline/ingest';
 import { storeSealedBlob } from '../../lib/sealedBlob';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
@@ -70,6 +71,9 @@ export const ingestExternalMessage = internalMutation({
 		htmlBodyInline: v.optional(v.string()),
 		htmlBodyStorageId: v.optional(v.id('_storage')),
 		snippet: v.optional(v.string()),
+		// Deep-search excerpt (idea 32). Always sent by the sync action; the insert
+		// step drops it unless the instance opted in.
+		searchBody: v.optional(v.string()),
 		messageId: v.string(),
 		inReplyTo: v.optional(v.string()),
 		references: v.optional(v.string()),
@@ -144,6 +148,7 @@ export const ingestExternalMessage = internalMutation({
 			htmlBodyInline: args.htmlBodyInline,
 			htmlBodyStorageId: args.htmlBodyStorageId,
 			snippet: args.snippet,
+			searchBody: args.searchBody,
 			messageId: args.messageId,
 			inReplyTo: args.inReplyTo,
 			references: args.references,
@@ -329,6 +334,9 @@ export const ingestExternalRaw = internalAction({
 			'text/html; charset=utf-8'
 		);
 		const snippet = buildSnippet(args.textBodyInline, args.htmlBodyInline);
+		// Deep-search excerpt (idea 32) from the pre-split body, same as the hosted
+		// inbound path; persisted only when the instance opted in.
+		const searchBody = buildSearchBody(args.textBodyInline, args.htmlBodyInline);
 		// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
 		// at ingest so the reader's Unsubscribe chip never re-opens the raw .eml.
 		const unsubscribe =
@@ -353,6 +361,7 @@ export const ingestExternalRaw = internalAction({
 			htmlBodyInline: htmlBody.inline,
 			htmlBodyStorageId: htmlBody.storageId,
 			snippet,
+			searchBody,
 			messageId: args.messageId,
 			inReplyTo: args.inReplyTo,
 			references: args.references,
