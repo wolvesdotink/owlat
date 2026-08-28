@@ -149,6 +149,14 @@
 			"types": "./src/postboxLinkTransparency.ts",
 			"import": "./src/postboxLinkTransparency.ts"
 		},
+		"./mboxArchive": {
+			"types": "./src/mboxArchive.ts",
+			"import": "./src/mboxArchive.ts"
+		},
+		"./gmailTakeout": {
+			"types": "./src/gmailTakeout.ts",
+			"import": "./src/gmailTakeout.ts"
+		},
 		"./mailMime": {
 			"types": "./src/mailMime.ts",
 			"import": "./src/mailMime.ts"
