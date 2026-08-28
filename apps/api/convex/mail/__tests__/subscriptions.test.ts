@@ -10,7 +10,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
@@ -209,6 +209,7 @@ async function seedListMessage(
 		flagSeen?: boolean;
 		oneClick?: boolean;
 		folderId?: Id<'mailFolders'>;
+		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 	}
 ): Promise<Id<'mailMessages'>> {
 	return await t.run(async (ctx) => {
@@ -258,7 +259,7 @@ async function seedListMessage(
 			flagDeleted: false,
 			customFlags: [],
 			labelIds: [],
-			unsubscribe: {
+			unsubscribe: options.unsubscribe ?? {
 				httpUrl: 'https://list.example/u',
 				oneClick: options.oneClick ?? true,
 			},
@@ -318,7 +319,7 @@ describe('mail.subscriptions.list', () => {
 });
 
 describe('mail.subscriptions.sendersOfMessages', () => {
-	it('collapses a selection to its distinct list senders', async () => {
+	it('collapses a selection to its distinct senders, newest message each', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seedMailboxWithFolders(t);
 		const a1 = await seedListMessage(t, seeded, { fromAddress: 'news@a.example', receivedAt: 10 });
@@ -329,7 +330,54 @@ describe('mail.subscriptions.sendersOfMessages', () => {
 			mailboxId: seeded.mailboxId,
 			messageIds: [a1, a2, b1],
 		});
-		expect(senders).toEqual(['deals@b.example', 'news@a.example']);
+		expect(senders).toEqual([
+			{ senderEmail: 'deals@b.example', actionMessageId: b1 },
+			{ senderEmail: 'news@a.example', actionMessageId: a2 },
+		]);
+	});
+
+	it('offers nothing for a selection that only has manual unsubscribe targets', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailboxWithFolders(t);
+		const mailtoOnly = await seedListMessage(t, seeded, {
+			fromAddress: 'news@a.example',
+			receivedAt: 10,
+			unsubscribe: { mailtoUrl: 'mailto:stop@a.example', oneClick: false },
+		});
+		const pageOnly = await seedListMessage(t, seeded, {
+			fromAddress: 'deals@b.example',
+			receivedAt: 20,
+			oneClick: false,
+		});
+		const plain = await seedListMessage(t, seeded, {
+			fromAddress: 'friend@c.example',
+			receivedAt: 30,
+			unsubscribe: { oneClick: false },
+		});
+
+		expect(
+			await t.query(api.mail.subscriptions.sendersOfMessages, {
+				mailboxId: seeded.mailboxId,
+				messageIds: [mailtoOnly, pageOnly, plain],
+			})
+		).toEqual([]);
+	});
+
+	it('resolves selected mail that never appears in the panel window', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailboxWithFolders(t);
+		const archived = await seedListMessage(t, seeded, {
+			fromAddress: 'news@a.example',
+			receivedAt: 10,
+			folderId: seeded.archiveId,
+		});
+
+		expect(
+			await t.query(api.mail.subscriptions.sendersOfMessages, {
+				mailboxId: seeded.mailboxId,
+				messageIds: [archived],
+			})
+		).toEqual([{ senderEmail: 'news@a.example', actionMessageId: archived }]);
 	});
 
 	it("returns nothing for another user's mailbox", async () => {
@@ -344,6 +392,86 @@ describe('mail.subscriptions.sendersOfMessages', () => {
 				messageIds: [id],
 			})
 		).toEqual([]);
+	});
+});
+
+describe('mail.subscriptions.unsubscribeAndArchive', () => {
+	/** One-Click endpoints answer 200; the POST itself is `unsubscribe.ts`'s. */
+	function stubOneClickEndpoint() {
+		const fetchSpy = vi.fn(async () => new Response(null, { status: 200 }));
+		vi.stubGlobal('fetch', fetchSpy);
+		return fetchSpy;
+	}
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('acts on a selected message outside the panel window', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailboxWithFolders(t);
+		// Nothing from this sender is in the Inbox, so `list` — the panel's
+		// snapshot — knows nothing about them. The selection does.
+		const selected = await seedListMessage(t, seeded, {
+			fromAddress: 'news@a.example',
+			receivedAt: 10,
+			folderId: seeded.archiveId,
+		});
+		const fetchSpy = stubOneClickEndpoint();
+
+		const { results } = await t.action(api.mail.subscriptions.unsubscribeAndArchive, {
+			mailboxId: seeded.mailboxId,
+			senderEmails: ['news@a.example'],
+			messageIds: [selected],
+		});
+		expect(results).toEqual([
+			{ senderEmail: 'news@a.example', status: 'unsubscribed', archived: 0 },
+		]);
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it('archives the sender inbox mail behind a selection-driven run', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailboxWithFolders(t);
+		const selected = await seedListMessage(t, seeded, {
+			fromAddress: 'news@a.example',
+			receivedAt: 10,
+		});
+		await seedListMessage(t, seeded, { fromAddress: 'news@a.example', receivedAt: 20 });
+		stubOneClickEndpoint();
+
+		const { results } = await t.action(api.mail.subscriptions.unsubscribeAndArchive, {
+			mailboxId: seeded.mailboxId,
+			senderEmails: ['News@A.example'],
+			messageIds: [selected],
+		});
+		expect(results[0]?.status).toBe('unsubscribed');
+		expect(results[0]?.archived).toBe(2);
+	});
+
+	it('falls back to the inbox snapshot when no selection is given', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailboxWithFolders(t);
+		await seedListMessage(t, seeded, {
+			fromAddress: 'news@a.example',
+			receivedAt: 10,
+			oneClick: false,
+		});
+		stubOneClickEndpoint();
+
+		const { results } = await t.action(api.mail.subscriptions.unsubscribeAndArchive, {
+			mailboxId: seeded.mailboxId,
+			senderEmails: ['news@a.example', 'ghost@z.example'],
+		});
+		expect(results).toEqual([
+			{
+				senderEmail: 'news@a.example',
+				status: 'manual',
+				archived: 0,
+				httpUrl: 'https://list.example/u',
+			},
+			{ senderEmail: 'ghost@z.example', status: 'not_found', archived: 0 },
+		]);
 	});
 });
 

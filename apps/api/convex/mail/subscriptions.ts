@@ -215,30 +215,56 @@ export const list = publicQuery({
 });
 
 /**
- * The distinct list senders behind a message SELECTION — what the list's
+ * One sender the batch can finish from a SELECTION, plus the exact message it
+ * should POST. The message id travels with the sender because the selection is
+ * the authority here: it may name mail in Archive, in Spam, under a label, or
+ * older than the panel's inbox window, none of which the `list` snapshot knows
+ * about.
+ */
+export interface SubscriptionSelectionTarget {
+	senderEmail: string;
+	actionMessageId: Id<'mailMessages'>;
+}
+
+/**
+ * The distinct One-Click senders behind a message SELECTION — what the list's
  * bulk-actions bar needs to turn "these four rows" into "these two senders"
- * before it offers the Unsubscribe verb (and to grey the verb out when the
- * selection holds no list mail at all).
+ * before it offers the Unsubscribe verb (and to hide the verb when the
+ * selection holds nothing this verb can finish).
  *
- * Messages outside `mailboxId`, and messages with no usable unsubscribe target,
- * drop out silently: the caller asked "what can I act on here", not "did every
- * id resolve".
+ * Only `one-click` senders come back. The bar's button performs RFC 8058 POSTs
+ * and nothing else, so a selection of `http`/`mailto`-only list mail — the
+ * common case — must not light it up: the verb would run, attempt nothing, and
+ * report "nothing unsubscribed".
+ *
+ * Messages outside `mailboxId`, and messages with no One-Click target, drop out
+ * silently: the caller asked "what can I act on here", not "did every id
+ * resolve".
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still
 // enforced in-handler via requireMailboxAccess.
 export const sendersOfMessages = publicQuery({
 	args: { mailboxId: v.id('mailboxes'), messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<string[]> => {
+	handler: async (ctx, args): Promise<SubscriptionSelectionTarget[]> => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
-		const senders = new Set<string>();
+		const targets = new Map<string, { actionMessageId: Id<'mailMessages'>; receivedAt: number }>();
 		for (const messageId of args.messageIds.slice(0, SELECTION_RESOLVE_MAX)) {
 			const message = await ctx.db.get(messageId);
 			if (!message || message.mailboxId !== args.mailboxId) continue;
-			if (!subscriptionMethodOf(message.unsubscribe)) continue;
-			senders.add(normalizeEmail(message.fromAddress));
+			if (subscriptionMethodOf(message.unsubscribe) !== 'one-click') continue;
+			const senderEmail = normalizeEmail(message.fromAddress);
+			if (!senderEmail) continue;
+			// Newest selected message wins: an unsubscribe token is likelier to
+			// still be honoured on the most recent send from that sender.
+			const seen = targets.get(senderEmail);
+			if (!seen || message.receivedAt > seen.receivedAt) {
+				targets.set(senderEmail, { actionMessageId: message._id, receivedAt: message.receivedAt });
+			}
 		}
-		return [...senders].sort();
+		return [...targets.entries()]
+			.map(([senderEmail, { actionMessageId }]) => ({ senderEmail, actionMessageId }))
+			.sort((a, b) => a.senderEmail.localeCompare(b.senderEmail));
 	},
 });
 
@@ -322,11 +348,25 @@ export type SubscriptionBatchOutcome = {
  *
  * Every sender produces an outcome — the caller renders a summary, and one
  * sender's failure never aborts the rest.
+ *
+ * `messageIds` is the SELECTION the verb was offered for (the bulk-actions bar
+ * path). Those messages are resolved first and win, because they are the rows
+ * the user actually ticked: they may sit in Archive, in Spam, under a label, or
+ * outside the panel's newest-`SUBSCRIPTION_SCAN_LIMIT` inbox window, and
+ * resolving such a sender against the inbox snapshot alone would report
+ * `not_found` for mail we are holding the id of. The snapshot is the fallback
+ * for anything the selection did not cover — the subscriptions panel sends no
+ * ids at all — and is skipped entirely when it would answer nothing.
  */
-// authz: mailbox access via requireMailboxAccess (through the list query and
-// the archive mutation, both of which re-check); org membership via authedAction.
+// authz: mailbox access via requireMailboxAccess (through the list and
+// sendersOfMessages queries and the archive mutation, all of which re-check);
+// org membership via authedAction.
 export const unsubscribeAndArchive = authedAction({
-	args: { mailboxId: v.id('mailboxes'), senderEmails: v.array(v.string()) },
+	args: {
+		mailboxId: v.id('mailboxes'),
+		senderEmails: v.array(v.string()),
+		messageIds: v.optional(v.array(v.id('mailMessages'))),
+	},
 	handler: async (ctx, args): Promise<{ results: SubscriptionBatchOutcome[] }> => {
 		// Deduplicate + canonicalize before the cap, so a caller can't smuggle
 		// extra work past it with case variants of one address.
@@ -334,11 +374,34 @@ export const unsubscribeAndArchive = authedAction({
 			.filter((email) => email.includes('@'))
 			.slice(0, SUBSCRIPTION_BATCH_MAX);
 
-		const snapshot: { senders: SubscriptionSender[] } = await ctx.runQuery(
-			api.mail.subscriptions.list,
-			{ mailboxId: args.mailboxId }
-		);
-		const bySender = new Map(snapshot.senders.map((s) => [s.senderEmail, s]));
+		type BatchTarget = Pick<
+			SubscriptionSender,
+			'method' | 'actionMessageId' | 'httpUrl' | 'mailtoUrl'
+		>;
+		const bySender = new Map<string, BatchTarget>();
+
+		if (args.messageIds && args.messageIds.length > 0) {
+			const selected: SubscriptionSelectionTarget[] = await ctx.runQuery(
+				api.mail.subscriptions.sendersOfMessages,
+				{ mailboxId: args.mailboxId, messageIds: args.messageIds }
+			);
+			for (const target of selected) {
+				bySender.set(target.senderEmail, {
+					method: 'one-click',
+					actionMessageId: target.actionMessageId,
+				});
+			}
+		}
+
+		if (senders.some((senderEmail) => !bySender.has(senderEmail))) {
+			const snapshot: { senders: SubscriptionSender[] } = await ctx.runQuery(
+				api.mail.subscriptions.list,
+				{ mailboxId: args.mailboxId }
+			);
+			for (const sender of snapshot.senders) {
+				if (!bySender.has(sender.senderEmail)) bySender.set(sender.senderEmail, sender);
+			}
+		}
 
 		const results: SubscriptionBatchOutcome[] = [];
 		for (const [index, senderEmail] of senders.entries()) {

@@ -58,9 +58,14 @@ async function unsnoozeSelected() {
 
 // Unsubscribe + archive, for whatever list mail is in the selection. The
 // selected ROWS collapse to their distinct senders server-side (a selection of
-// six newsletters is usually two or three publishers), and the button self-
-// disables when the selection carries no One-Click list mail at all — the verb
-// never appears to promise something the protocol can't do here.
+// six newsletters is usually two or three publishers), and each sender comes
+// back paired with the message the POST should use, so the action operates on
+// exactly the rows the verb was offered for — including rows in Archive, Spam
+// or a label view, which the subscriptions panel's inbox window never sees.
+//
+// Only One-Click senders come back, so the button self-hides when the selection
+// holds nothing this verb can finish: a page-only or mailto-only newsletter is
+// left to the reader's own unsubscribe chip rather than being promised here.
 const { data: selectionSenders } = useConvexQuery(api.mail.subscriptions.sendersOfMessages, () =>
 	bulk.ids.value.length > 0 ? { mailboxId: props.mailboxId, messageIds: bulk.ids.value } : 'skip'
 );
@@ -72,7 +77,7 @@ const unsubscribeOp = useBackendOperation(api.mail.subscriptions.unsubscribeAndA
 });
 
 async function unsubscribeSelected() {
-	const senderEmails = unsubscribableSenders.value;
+	const senderEmails = unsubscribableSenders.value.map((sender) => sender.senderEmail);
 	if (senderEmails.length === 0) return;
 	// N state-changing POSTs at third parties — always behind an explicit yes.
 	if (
@@ -86,13 +91,19 @@ async function unsubscribeSelected() {
 	) {
 		return;
 	}
-	const outcome = await unsubscribeOp.run({ mailboxId: props.mailboxId, senderEmails });
+	const outcome = await unsubscribeOp.run({
+		mailboxId: props.mailboxId,
+		senderEmails,
+		messageIds: bulk.ids.value,
+	});
 	if (!outcome.ok) return;
+	// Every line, not just the headline: "2 unsubscribed" alone hides the 148
+	// archived and the one that still needs finishing by hand.
 	const summary = subscriptionBatchSummary(summarizeSubscriptionBatch(outcome.result.results));
-	const headline = summary.lines[0];
-	if (headline) {
-		showToast(t(headline.key, { count: headline.count }, headline.count), summary.tone);
-	}
+	const message = summary.lines
+		.map((line) => t(line.key, { count: line.count }, line.count))
+		.join(' · ');
+	if (message) showToast(message, summary.tone);
 	bulk.clear();
 }
 
