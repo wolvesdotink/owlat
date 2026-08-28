@@ -549,6 +549,31 @@ range selection, the bulk-actions bar) — the same shape the category and
 conversation renderers have, since those affordances live in `PostboxThreadList`
 and its selection composables. Sections inherit that gap rather than adding one.
 
+## 24 — a retired section's stamp is left on the row, not swept off it
+
+`mailMessages.pinnedSection` is never cleared. Deleting, disabling or renaming a
+`pinToSection` rule retires the section, but every message it already filed keeps
+the name. Reading "Everything else" is what repairs this: it is the complement of
+the names actually being rendered (`belongsToRemainder`), so an orphaned or
+over-cap name folds back into the remainder on the next read rather than falling
+out of both lists. The user-visible contract holds; the stored field is stale.
+
+The price is that the remainder cannot be an index equality and must filter in
+code, so it walks `by_folder_and_received` under a scan budget
+(`REMAINDER_SCAN_FACTOR` per row kept, `REMAINDER_MAX_SCAN` absolute). A folder
+whose recent mail is almost entirely pinned can exhaust that budget before it
+fills the page, and then says `hasMore` — honest, but it means "ask for more"
+rather than "there is definitely more". The unread count degrades the same way:
+past the budget it is a floor, which is what the existing "{count}+" label says.
+
+To pick it up: sweep the stamp when a section retires — `mail/filters.ts`
+remove/update/toggle schedules a bounded internal mutation that walks
+`by_folder_and_section_and_received` at the retired name and patches
+`pinnedSection` to `undefined` in batches (the filter row names the section, so
+nothing has to be enumerated), plus a write-time rejection of a section name past
+`MAX_SECTIONS`. With no orphan possible, the remainder can go back to the
+`undefined` index slice and the scan budget disappears.
+
 ## 27 — suggestions are per sender and per triage verb, nothing else
 
 The tally is keyed on (mailbox, sender, verb) and the verbs are archive, trash

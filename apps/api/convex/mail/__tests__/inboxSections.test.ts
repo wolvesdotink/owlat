@@ -10,6 +10,8 @@
  *     chatty section filling its page leaves a quiet one fully visible.
  *   - "Everything else" is the remainder and always exists, so a mailbox with no
  *     section filter reads exactly like the flat inbox.
+ *   - the remainder is the true complement of the sections on screen: a row still
+ *     stamped with a retired or over-cap name reads there, never nowhere.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -20,6 +22,7 @@ import { api } from '../../_generated/api';
 import { evaluateFilters } from '../filters';
 import { resolveFilterOutcome } from '../deliveryPipeline/routing';
 import {
+	belongsToRemainder,
 	DEFAULT_SECTION_LIMIT,
 	MAX_SECTIONS,
 	MAX_SECTION_LIMIT,
@@ -107,6 +110,20 @@ describe('sectionNamesFromFilters', () => {
 			filterRow({ priority: i, actions: [{ type: 'pinToSection', sectionName: `S${i}` }] })
 		);
 		expect(sectionNamesFromFilters(many)).toHaveLength(MAX_SECTIONS);
+	});
+});
+
+describe('belongsToRemainder', () => {
+	it('keeps unstamped mail and mail whose name no rendered section carries', () => {
+		const rendered = new Set(['Team', 'Deploys']);
+		expect(belongsToRemainder(undefined, rendered)).toBe(true);
+		// Retired rule, renamed rule, or a name pushed past the section cap.
+		expect(belongsToRemainder('Gone', rendered)).toBe(true);
+		expect(belongsToRemainder('Team', rendered)).toBe(false);
+	});
+
+	it('holds the whole inbox when nothing is rendered', () => {
+		expect(belongsToRemainder('Team', new Set())).toBe(true);
 	});
 });
 
@@ -282,6 +299,86 @@ describe('mail.sections.listSections', () => {
 		// …and the flooded section says so on its own, not on everyone's behalf.
 		expect(deploys?.hasMore).toBe(true);
 		expect(team?.hasMore).toBe(false);
+	});
+
+	it('folds mail from a retired section back into "Everything else"', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedSectionedInbox(t);
+		// Stamped by a rule that no longer exists (deleted, disabled or renamed).
+		// Nothing clears the stamp, so the read has to tolerate it.
+		await seedMessage(t, mailboxId, { subject: 'from a retired rule', pinnedSection: 'Gone' });
+
+		const { sections } = await t.query(api.mail.sections.listSections, { mailboxId });
+		expect(sections.map((s) => s.name)).toEqual(['Team', 'Deploys', null]);
+		expect(sections.flatMap((s) => s.messages.map((m) => m.subject))).toEqual([
+			'from a retired rule',
+		]);
+		expect(sections[2]?.unreadCount).toBe(1);
+	});
+
+	it('keeps the mail visible after the rule that filed it is deleted', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		const filterId = await t.mutation(api.mail.filters.create, {
+			mailboxId,
+			name: 'Team',
+			conditions: [{ field: 'from', op: 'contains', value: 'ines' }],
+			actions: [{ type: 'pinToSection', sectionName: 'Team' }],
+		});
+		await seedMessage(t, mailboxId, { subject: 'standup', pinnedSection: 'Team' });
+
+		await t.mutation(api.mail.filters.remove, { filterId });
+
+		const { sections } = await t.query(api.mail.sections.listSections, { mailboxId });
+		expect(sections.map((s) => s.name)).toEqual([null]);
+		expect(sections[0]?.messages.map((m) => m.subject)).toEqual(['standup']);
+	});
+
+	it('shows mail stamped past the section cap instead of hiding it', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		// Delivery stamps ANY matching pin name; only the render is capped.
+		for (let i = 0; i < MAX_SECTIONS + 1; i++) {
+			await t.mutation(api.mail.filters.create, {
+				mailboxId,
+				name: `S${i}`,
+				priority: 100 + i,
+				conditions: [{ field: 'from', op: 'contains', value: `s${i}@` }],
+				actions: [{ type: 'pinToSection', sectionName: `S${i}` }],
+			});
+		}
+		const overCap = `S${MAX_SECTIONS}`;
+		await seedMessage(t, mailboxId, { subject: 'over the cap', pinnedSection: overCap });
+
+		const { sections } = await t.query(api.mail.sections.listSections, { mailboxId });
+		expect(sections).toHaveLength(MAX_SECTIONS + 1);
+		expect(sections.map((s) => s.name)).not.toContain(overCap);
+		const rest = sections[sections.length - 1];
+		expect(rest?.name).toBeNull();
+		expect(rest?.messages.map((m) => m.subject)).toEqual(['over the cap']);
+	});
+
+	it('pages the remainder past pinned mail rather than counting it against the page', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedSectionedInbox(t);
+		// A flood of pinned mail sits above the two unpinned rows in arrival order.
+		for (let i = 0; i < 20; i++) {
+			await seedMessage(t, mailboxId, {
+				subject: `deploy ${i}`,
+				pinnedSection: 'Deploys',
+				receivedAt: 10_000 + i,
+			});
+		}
+		await seedMessage(t, mailboxId, { subject: 'older a', receivedAt: 2_000 });
+		await seedMessage(t, mailboxId, { subject: 'older b', receivedAt: 1_000 });
+
+		const { sections } = await t.query(api.mail.sections.listSections, { mailboxId });
+		const rest = sections.find((s) => s.name === null);
+		expect(rest?.messages.map((m) => m.subject)).toEqual(['older a', 'older b']);
+		expect(rest?.hasMore).toBe(false);
+		expect(rest?.unreadCount).toBe(2);
 	});
 
 	it('degrades to one "Everything else" section when no filter names one', async () => {

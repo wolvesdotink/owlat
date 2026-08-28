@@ -42,7 +42,8 @@ const SAFE_ACTION_TYPES = new Set([
 	'markFlagged',
 	// Split inbox (idea 24). Safe by the same test as the others: it only
 	// rearranges where a message READS in the inbox, moves nothing out of sight,
-	// and is undone by deleting the rule and re-running.
+	// and is undone by deleting the rule — the stamp then names no rendered
+	// section, so `mail/sections.ts` reads the mail back under "Everything else".
 	'pinToSection',
 ]);
 
