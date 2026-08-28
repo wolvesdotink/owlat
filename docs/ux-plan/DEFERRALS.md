@@ -10,7 +10,7 @@ recipient's morning, labels every preset with both clocks, names the zone it is
 reading against, and degrades silently to the sender-clock presets when it does
 not know. The next-weekday-morning preset landed too.
 
-What the plan asked for and this does NOT do is *infer* the zone "from prior
+What the plan asked for and this does NOT do is _infer_ the zone "from prior
 message headers". Nothing in `mailMessages` carries the sender's UTC offset:
 the Date header's offset is discarded at ingest and `internalDate` is set to
 `receivedAt` (`mail/deliveryPipeline/insert.ts`), so both stored timestamps are
@@ -67,3 +67,37 @@ module scope by design. Showing it would mean a page-level query plus
 message — i.e. either a duplicate fetch or a new emit path out of the layout,
 and a trail that is blank for a beat on every message open. Not worth it for a
 crumb; the reader shows the subject as its own heading one line below.
+
+## 26 — "last opened" is inferred, and the volume column is a window
+
+The subscriptions panel ships whole: grouped senders, multi-select, the batch
+unsubscribe-and-archive over the existing RFC 8058 one-click flow, and a
+per-sender partial-failure summary. Two of its numbers are narrower than the
+plan's mockup implies, and the UI is worded so it does not overclaim.
+
+**"Last opened" is not a timestamp anyone recorded.** Nothing stores when a
+message was opened — `mailMessages` carries `flagSeen` and nothing beside it, and
+`updatedAt` moves on any flag, label or folder change, so it is not a read
+marker. `mail/subscriptions.ts` therefore reports the _arrival time of the newest
+message from that sender which has been read_, and the column says "Opened 6
+months ago" on that basis. The signal the panel is really built around —
+`lastReadAt === null`, i.e. nothing from this sender was ever opened — is exact;
+the elapsed time on the ones you did read is an approximation that skews old for
+a sender you read late.
+
+To pick it up: stamp a `readAt` on the message (or the thread) in the mark-read
+paths — `messageActions.setFlags` and `markThreadRead` — and prefer it over the
+arrival time when present. Existing mail has no value to backfill, so the panel
+would read from both for a long time.
+
+**Volume counts the scanned window, not the mailbox.** The query reads the newest
+`SUBSCRIPTION_SCAN_LIMIT` (300) inbox messages. A Convex query is a transaction
+with a read budget and a message row can carry a 64 KiB inline body, so an
+unbounded folder walk would be worst on exactly the newsletter-heavy mailboxes
+this feature exists for. The panel says which window the numbers describe
+(`windowNote`) when the scan was truncated rather than presenting them as totals.
+
+To pick it up: denormalize a per-sender counter (a `mailListSenders` sidecar
+maintained at ingest, the shape `mailContacts` already uses) so volume is O(1)
+and genuinely all-time, and keep this scan only as the fallback for mail that
+arrived before the counter existed.
