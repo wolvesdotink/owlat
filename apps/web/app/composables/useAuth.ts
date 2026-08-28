@@ -1,6 +1,7 @@
 import type { BetterFetchError } from '@better-fetch/fetch';
 import { authClient, type AuthSessionData } from '~/lib/auth-client';
 import { resetConvexAuthTokenCache } from '~/lib/convex-auth';
+import { requiresTwoFactor } from '~/utils/accountTwoFactor';
 
 type SessionData = AuthSessionData | null;
 
@@ -158,6 +159,46 @@ export function useAuth() {
 			throw new Error(result.error.message || t('shared.useAuth.signInFailed'));
 		}
 
+		// An account with TOTP enabled answers with `{ twoFactorRedirect: true }`
+		// and NO session. Syncing here would burn the full retry budget waiting
+		// for a session the server is deliberately withholding, and then return
+		// as if sign-in had succeeded — the caller must run the challenge and
+		// come back through `completeTwoFactorSignIn`.
+		if (requiresTwoFactor(result.data)) {
+			return result.data;
+		}
+
+		await refetch({ force: true, expected: 'authenticated' });
+
+		return result.data;
+	};
+
+	/**
+	 * Second leg of a two-factor sign-in: redeem the challenge, then run the same
+	 * forced session sync the password leg runs, so a caller cannot navigate
+	 * before the Convex token cache has been reset against the new session.
+	 *
+	 * `method` picks the factor. A backup code is a one-shot fallback for a lost
+	 * authenticator, so it is a different endpoint, not a different code format.
+	 */
+	const completeTwoFactorSignIn = async (input: {
+		code: string;
+		method?: 'totp' | 'backup-code';
+	}) => {
+		const result =
+			input.method === 'backup-code'
+				? await authClient.twoFactor.verifyBackupCode({ code: input.code })
+				: await authClient.twoFactor.verifyTotp({ code: input.code });
+
+		if (result.error) {
+			// Unlike the sibling calls above, the server's own message is NOT used:
+			// every failure here is "that code was not accepted" (wrong code, spent
+			// backup code, expired challenge), and BetterAuth phrases those as
+			// untranslated English prose that would land straight on the sign-in
+			// form. One catalog message says the same thing in the user's language.
+			throw new Error(t('shared.useAuth.twoFactorFailed'));
+		}
+
 		await refetch({ force: true, expected: 'authenticated' });
 
 		return result.data;
@@ -230,6 +271,7 @@ export function useAuth() {
 		activeOrganizationId,
 		hasActiveOrganization,
 		signInWithEmail,
+		completeTwoFactorSignIn,
 		signUpWithEmail,
 		signOut,
 		forgotPassword,

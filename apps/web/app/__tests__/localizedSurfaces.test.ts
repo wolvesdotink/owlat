@@ -28,7 +28,10 @@ import WelcomePage from '../pages/welcome.vue';
 // ── Nuxt auto-imports the pages reach for ──
 let routeQuery: Record<string, string> = {};
 let headOptions: { title?: () => string } = {};
-const signInWithEmail = vi.fn(async () => ({}));
+// Typed as a record so a test can hand back BetterAuth's two-factor answer
+// (`{ twoFactorRedirect: true }`) without widening at the call site.
+const signInWithEmail = vi.fn(async (): Promise<Record<string, unknown>> => ({}));
+const completeTwoFactorSignIn = vi.fn(async () => ({}));
 const signUpWithEmail = vi.fn(async () => ({ user: { id: 'user-1' } }));
 const forgotPassword = vi.fn(async () => undefined);
 const resetPassword = vi.fn(async () => undefined);
@@ -70,6 +73,7 @@ beforeAll(() => {
 		useAuth: () => ({
 			user,
 			signInWithEmail,
+			completeTwoFactorSignIn,
 			signUpWithEmail,
 			forgotPassword,
 			resetPassword,
@@ -161,6 +165,60 @@ describe('auth/login', () => {
 		expect(w.text()).toContain('Email is required');
 		expect(w.text()).toContain('Password is required');
 		expectFullyLocalized(w);
+	});
+
+	/**
+	 * The second stage only ever appears after a real 2FA account signs in, so it
+	 * is the surface most likely to ship with an untranslated key: nothing in the
+	 * default render touches it. These three drive it from the response that
+	 * produces it rather than by poking internal state.
+	 */
+	describe('two-factor challenge', () => {
+		async function reachChallenge() {
+			signInWithEmail.mockResolvedValueOnce({ twoFactorRedirect: true });
+			const w = mountSurface(LoginPage);
+			await w.get('#email').setValue('ada@northwind.studio');
+			await w.get('#password').setValue('a-long-enough-password');
+			await w.get('form').trigger('submit');
+			await flushPromises();
+			return w;
+		}
+
+		it('replaces the credentials form with the code prompt', async () => {
+			const w = await reachChallenge();
+
+			expect(w.text()).toContain('One more step');
+			expect(w.text()).toContain('Enter the six-digit code your authenticator app is showing.');
+			expect(w.text()).toContain('Verify');
+			expect(w.text()).toContain('Use a backup code');
+			expect(w.text()).toContain('Start over');
+			// The password fields are gone — the password leg is already done.
+			expect(w.find('#password').exists()).toBe(false);
+			expect(w.get('#two-factor-code').exists()).toBe(true);
+			expectFullyLocalized(w);
+		});
+
+		it('renders the backup-code copy after switching method', async () => {
+			const w = await reachChallenge();
+			const [switchMethod] = w.findAll('button[type="button"]');
+			await switchMethod!.trigger('click');
+
+			expect(w.text()).toContain(
+				'Enter one of the backup codes you saved when you turned two-factor on.'
+			);
+			expect(w.text()).toContain('Use your authenticator app');
+			expectFullyLocalized(w);
+		});
+
+		it('goes back to the credentials form on start over', async () => {
+			const w = await reachChallenge();
+			const buttons = w.findAll('button[type="button"]');
+			await buttons[buttons.length - 1]!.trigger('click');
+
+			expect(w.get('#password').exists()).toBe(true);
+			expect(w.find('#two-factor-code').exists()).toBe(false);
+			expectFullyLocalized(w);
+		});
 	});
 });
 

@@ -29,7 +29,19 @@
 			"submitting": "Signing in...",
 			"tagline": "Sign in to your Owlat account.",
 			"title": "Welcome",
-			"titleAccent": "back"
+			"titleAccent": "back",
+			"twoFactor": {
+				"title": "One more step",
+				"body": "Enter the six-digit code your authenticator app is showing.",
+				"codeLabel": "Six-digit code",
+				"backupBody": "Enter one of the backup codes you saved when you turned two-factor on.",
+				"backupLabel": "Backup code",
+				"submit": "Verify",
+				"submitting": "Verifying...",
+				"useBackupCode": "Use a backup code",
+				"useAuthenticator": "Use your authenticator app",
+				"cancel": "Start over"
+			}
 		},
 		"register": {
 			"createProfileOperation": "Create profile",
@@ -12643,7 +12655,8 @@
 			"resetPasswordFailed": "Failed to reset password",
 			"signInFailed": "Sign in failed",
 			"signOutFailed": "Sign out failed",
-			"signUpFailed": "Sign up failed"
+			"signUpFailed": "Sign up failed",
+			"twoFactorFailed": "That code was not accepted. Codes change every 30 seconds — try the one showing now."
 		},
 		"useAuthForm": {
 			"unexpectedError": "An unexpected error occurred. Please try again."

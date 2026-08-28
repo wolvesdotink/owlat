@@ -29,7 +29,19 @@
 			"submitting": "Anmeldung läuft...",
 			"tagline": "Melden Sie sich bei Ihrem Owlat-Konto an.",
 			"title": "Willkommen",
-			"titleAccent": "zurück"
+			"titleAccent": "zurück",
+			"twoFactor": {
+				"title": "Noch ein Schritt",
+				"body": "Gib den sechsstelligen Code aus deiner Authenticator-App ein.",
+				"codeLabel": "Sechsstelliger Code",
+				"backupBody": "Gib einen der Backup-Codes ein, die du beim Aktivieren gesichert hast.",
+				"backupLabel": "Backup-Code",
+				"submit": "Bestätigen",
+				"submitting": "Wird geprüft ...",
+				"useBackupCode": "Backup-Code benutzen",
+				"useAuthenticator": "Authenticator-App benutzen",
+				"cancel": "Von vorn beginnen"
+			}
 		},
 		"register": {
 			"createProfileOperation": "Profil erstellen",
@@ -12643,7 +12655,8 @@
 			"resetPasswordFailed": "Passwort konnte nicht zurückgesetzt werden",
 			"signInFailed": "Anmeldung fehlgeschlagen",
 			"signOutFailed": "Abmeldung fehlgeschlagen",
-			"signUpFailed": "Registrierung fehlgeschlagen"
+			"signUpFailed": "Registrierung fehlgeschlagen",
+			"twoFactorFailed": "Dieser Code wurde nicht akzeptiert. Codes wechseln alle 30 Sekunden — nimm den, der gerade angezeigt wird."
 		},
 		"useAuthForm": {
 			"unexpectedError": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es erneut."
