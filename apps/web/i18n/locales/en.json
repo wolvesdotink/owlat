@@ -3574,7 +3574,8 @@
 				"viewModes": {
 					"categories": "Categories",
 					"conversations": "Conversations",
-					"flat": "Flat"
+					"flat": "Flat",
+					"bundled": "Bundled"
 				}
 			},
 			"postboxListHeader": {
@@ -4361,6 +4362,17 @@
 			"postboxPaneResizer": {
 				"label": "Resize the message list",
 				"valueText": "{size} pixels"
+			},
+			"postboxThreadBundleList": {
+				"allClear": "All clear",
+				"listLabel": "Bundled messages",
+				"loadMore": "Load more",
+				"noSubject": "(no subject)",
+				"latestFrom": "latest from {sender}",
+				"archiveAll": "Archive all",
+				"archiveAllLabel": "Archive all {count} messages in this bundle",
+				"unsubscribe": "Unsubscribe",
+				"unsubscribeHint": "Unsubscribe from the senders in this bundle that support one-click, and archive what they left in your inbox."
 			}
 		},
 		"preferences": {
@@ -11755,6 +11767,13 @@
 			"usePostboxFileIndexBackfill": {
 				"startIndex": "build the file index",
 				"cancelIndex": "stop the file index"
+			},
+			"usePostboxThreadBundles": {
+				"archiveOperation": "Archive bundle",
+				"moveOperation": "Move messages",
+				"unsubscribeOperation": "Unsubscribe from bundle",
+				"undoArchived": "Archived {count} messages",
+				"unsubscribeConfirm": "Unsubscribe from {count} senders and archive their mail? Each one is a request sent on your behalf."
 			}
 		},
 		"postboxAutoAdvance": {
@@ -13459,6 +13478,11 @@
 			"hours": "waiting {hours}h",
 			"days": "waiting {days}d",
 			"daysHours": "waiting {days}d {hours}h"
+		},
+		"postboxBundles": {
+			"newsletter": "Newsletters",
+			"notification": "Notifications",
+			"receipt": "Receipts"
 		}
 	},
 	"sharedPkg": {

@@ -1496,9 +1496,10 @@ export const mailTables = {
 		// undefined; the reader defaults it to 'comfortable'.
 		density: v.optional(mailDensityValidator),
 		// Inbox list view mode: 'flat' (single message list), 'conversations'
-		// (thread-grouped), or 'categories' (smart-inbox sections). Inbox-only —
-		// other folders always render flat. Optional so existing rows read as
-		// undefined; the reader defaults it to 'flat'.
+		// (thread-grouped), 'categories' (smart-inbox sections) or 'bundled' (the
+		// flat feed with consecutive low-signal runs folded into one row per
+		// category). Inbox-only — other folders always render flat. Optional so
+		// existing rows read as undefined; the reader defaults it to 'flat'.
 		viewMode: v.optional(mailViewModeValidator),
 		// Reading-pane layout: 'right' (the reader beside the list — the geometry
 		// that shipped before this control existed), 'bottom' (a full-width list

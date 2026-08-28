@@ -36,6 +36,8 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 	// The row's thread just came BACK from snooze (mail/snooze.ts sweep).
 	// Transient: the reader clears it the first time the thread is opened.
 	snoozeReturnedAt?: number;
+	// Parsed List-Unsubscribe target; `oneClick` is what lets a bundle offer one.
+	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 };
 </script>
 

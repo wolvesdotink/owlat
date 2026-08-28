@@ -30,13 +30,16 @@ export const mailDensityValidator = v.union(v.literal('comfortable'), v.literal(
 
 // Postbox inbox list view mode (mailUserSettings.viewMode and mail/settings
 // update args) — 'flat' (single message list, the default), 'conversations'
-// (thread-grouped rows), or 'categories' (People / Newsletters / Notifications
-// / Receipts sections). Inbox-only; other folders always render flat. Single
-// source so schema and args can't drift.
+// (thread-grouped rows), 'categories' (People / Newsletters / Notifications /
+// Receipts sections) or 'bundled' (the flat feed with runs of consecutive
+// low-signal mail folded into one expandable row per category). Inbox-only;
+// other folders always render flat. Single source so schema and args can't
+// drift.
 export const mailViewModeValidator = v.union(
 	v.literal('flat'),
 	v.literal('conversations'),
-	v.literal('categories')
+	v.literal('categories'),
+	v.literal('bundled')
 );
 
 // Postbox reading-pane layout (mailUserSettings.readingPane and mail/settings

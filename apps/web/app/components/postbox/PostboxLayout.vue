@@ -227,33 +227,21 @@ function backToList() {
  * button: the composer stack. */
 const composerStack = usePostboxComposerStack();
 
-const threadGroupsEnabled = computed(() => activeListRenderer.value === 'conversations');
+// The feed behind whichever renderer is active (conversations / categories /
+// bundles). Exactly one subscribes; the rest skip.
 const {
-	threads: threadGroups,
-	isLoading: threadGroupsLoading,
-	hasMore: threadGroupsHasMore,
-	loadMore: loadMoreThreadGroups,
-} = usePostboxThreadGroups({
+	grouped,
+	conversationsEnabled,
+	categoriesEnabled,
+	bundlesEnabled,
+	conversations,
+	categories,
+	bundles,
+} = usePostboxListSources({
 	mailboxId: mailboxIdRef,
 	folderRole: folderRef,
-	enabled: threadGroupsEnabled,
-});
-
-// Smart-inbox split view — groups the inbox into People / Newsletters /
-// Notifications / Receipts sections.
-const categoryGroupsEnabled = computed(() => activeListRenderer.value === 'categories');
-const {
-	sections: categorySections,
-	isLoading: categoryLoading,
-	hasMore: categoryHasMore,
-	loadMore: loadMoreCategories,
-	collapsed: categoryCollapsed,
-	toggle: toggleCategory,
-	recategorize,
-} = usePostboxThreadCategories({
-	mailboxId: mailboxIdRef,
-	folderRole: folderRef,
-	enabled: categoryGroupsEnabled,
+	renderer: activeListRenderer,
+	listMessages,
 });
 
 const listActive = computed(() => messages.value.find((m) => m._id === props.activeMessageId));
@@ -268,12 +256,12 @@ const { data: fetchedActive } = useConvexQuery(api.mail.mailbox.messages.getMess
 const activeMessage = computed(() => listActive.value ?? fetchedActive.value ?? undefined);
 
 // Auto-advance context for the reader: the flat list's visual row order
-// (optimistic-hide filtered, via the template ref below). In the
-// thread-grouped view the flat order doesn't match what's on screen, so an
-// empty list makes every triage fall back to back-to-list there.
+// (optimistic-hide filtered, via the template ref below). In every grouped
+// renderer the flat order doesn't match what's on screen, so an empty list
+// makes every triage fall back to back-to-list there.
 const threadListRef = ref<{ visibleIds: string[] } | null>(null);
 const advanceIds = computed(() =>
-	threadGroupsEnabled.value || categoryGroupsEnabled.value
+	grouped.value
 		? []
 		: // The raw-messages fallback only applies while the list component is
 			// unmounted (e.g. the search overlay covers it); it skips the
@@ -339,11 +327,7 @@ const advanceIds = computed(() =>
 							:view-mode="viewMode"
 							:view-mode-options="viewModeOptions"
 							:sort-order="sortOrder"
-							:mailbox-id="
-								!threadGroupsEnabled && !categoryGroupsEnabled && folderRole !== 'drafts'
-									? mailboxId
-									: undefined
-							"
+							:mailbox-id="!grouped && folderRole !== 'drafts' ? mailboxId : undefined"
 							:page-ids="listMessageIds"
 							:select-all-scope-matches-list="triageFilter === 'all'"
 							@open-rail="railOpen = true"
@@ -360,7 +344,7 @@ const advanceIds = computed(() =>
 							<!-- Triage filter chips — flat list only; the grouped renderers own
 						     their sections. One tap from "everything" to "what needs me". -->
 							<PostboxTriageFilterChips
-								v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
+								v-if="!grouped"
 								class="border-b border-border-subtle pb-3"
 								:filter="triageFilter"
 								:counts="triageCounts"
@@ -371,7 +355,7 @@ const advanceIds = computed(() =>
 					     queue only, dismissible for the session. -->
 							<PostboxReplyQueueStrip :mailbox-id="mailboxId" :folder-role="folderRole" />
 							<PostboxQuickActionsBar
-								v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
+								v-if="!grouped"
 								:mailbox-id="mailboxId"
 								:folder-role="folderRole"
 							/>
@@ -385,25 +369,41 @@ const advanceIds = computed(() =>
 										class="h-full"
 									>
 										<PostboxThreadCategoryList
-											v-if="categoryGroupsEnabled"
-											:sections="categorySections"
-											:collapsed="categoryCollapsed"
-											:loading="categoryLoading"
+											v-if="categoriesEnabled"
+											:sections="categories.sections.value"
+											:collapsed="categories.collapsed.value"
+											:loading="categories.isLoading.value"
 											:folder-role="folderRole"
 											:active-message-id="activeMessageId"
-											:has-more="categoryHasMore"
-											@load-more="loadMoreCategories"
-											@toggle="toggleCategory"
-											@recategorize="recategorize"
+											:has-more="categories.hasMore.value"
+											@load-more="categories.loadMore"
+											@toggle="categories.toggle"
+											@recategorize="categories.recategorize"
 										/>
 										<PostboxThreadGroupList
-											v-else-if="threadGroupsEnabled"
-											:threads="threadGroups"
-											:loading="threadGroupsLoading"
+											v-else-if="conversationsEnabled"
+											:threads="conversations.threads.value"
+											:loading="conversations.isLoading.value"
 											:folder-role="folderRole"
 											:active-message-id="activeMessageId"
-											:has-more="threadGroupsHasMore"
-											@load-more="loadMoreThreadGroups"
+											:has-more="conversations.hasMore.value"
+											@load-more="conversations.loadMore"
+										/>
+										<PostboxThreadBundleList
+											v-else-if="bundlesEnabled"
+											:entries="bundles.entries.value"
+											:expanded="bundles.expanded.value"
+											:loading="isLoading && !showingCached"
+											:folder-role="folderRole"
+											:active-message-id="activeMessageId"
+											:has-more="canLoadMore"
+											:busy="bundles.isBusy.value"
+											@load-more="loadMore"
+											@toggle="bundles.toggle"
+											@archive-bundle="(ids) => void bundles.archiveBundle(ids)"
+											@unsubscribe-bundle="
+												(senders, ids) => void bundles.unsubscribeBundle(senders, ids)
+											"
 										/>
 										<PostboxThreadList
 											v-else

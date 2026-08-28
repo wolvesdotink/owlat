@@ -8,13 +8,16 @@
  *   - 'conversations' → PostboxThreadGroupList (thread-grouped rows)
  *   - 'categories'    → PostboxThreadCategoryList (People / Newsletters /
  *                       Notifications / Receipts sections)
+ *   - 'bundled'       → PostboxThreadBundleList (the flat feed with runs of
+ *                       consecutive low-signal mail folded into one expandable
+ *                       row per category)
  *
  * Inbox-only: every other folder always renders flat, so the mode is a stored
  * preference of the person, not a per-folder property. Pure derivations so
  * the mapping stays unit-testable without mounting the Convex-backed layout.
  */
 
-export type PostboxViewMode = 'flat' | 'conversations' | 'categories';
+export type PostboxViewMode = 'flat' | 'conversations' | 'categories' | 'bundled';
 
 export const POSTBOX_VIEW_MODE_DEFAULT: PostboxViewMode = 'flat';
 
@@ -26,11 +29,14 @@ export const POSTBOX_VIEW_MODE_OPTIONS: Array<{
 	{ value: 'flat', label: 'Flat' },
 	{ value: 'conversations', label: 'Conversations' },
 	{ value: 'categories', label: 'Categories' },
+	{ value: 'bundled', label: 'Bundled' },
 ];
 
 /** Normalise a stored/unknown value to a valid view mode, defaulting safely. */
 export function resolvePostboxViewMode(value: string | undefined | null): PostboxViewMode {
-	return value === 'conversations' || value === 'categories' ? value : POSTBOX_VIEW_MODE_DEFAULT;
+	return value === 'conversations' || value === 'categories' || value === 'bundled'
+		? value
+		: POSTBOX_VIEW_MODE_DEFAULT;
 }
 
 /**

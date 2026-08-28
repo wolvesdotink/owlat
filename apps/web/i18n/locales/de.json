@@ -3574,7 +3574,8 @@
 				"viewModes": {
 					"categories": "Kategorien",
 					"conversations": "Konversationen",
-					"flat": "Einfach"
+					"flat": "Einfach",
+					"bundled": "Gebündelt"
 				}
 			},
 			"postboxListHeader": {
@@ -4361,6 +4362,17 @@
 			"postboxPaneResizer": {
 				"label": "Breite der Nachrichtenliste ändern",
 				"valueText": "{size} Pixel"
+			},
+			"postboxThreadBundleList": {
+				"allClear": "Alles erledigt",
+				"listLabel": "Gebündelte Nachrichten",
+				"loadMore": "Mehr laden",
+				"noSubject": "(kein Betreff)",
+				"latestFrom": "zuletzt von {sender}",
+				"archiveAll": "Alle archivieren",
+				"archiveAllLabel": "Alle {count} Nachrichten dieses Bündels archivieren",
+				"unsubscribe": "Abbestellen",
+				"unsubscribeHint": "Die Absender dieses Bündels abbestellen, die Ein-Klick unterstützen, und ihre Mail im Posteingang archivieren."
 			}
 		},
 		"preferences": {
@@ -11755,6 +11767,13 @@
 			"usePostboxFileIndexBackfill": {
 				"startIndex": "den Dateiindex aufbauen",
 				"cancelIndex": "den Dateiindex-Aufbau stoppen"
+			},
+			"usePostboxThreadBundles": {
+				"archiveOperation": "Bündel archivieren",
+				"moveOperation": "Nachrichten verschieben",
+				"unsubscribeOperation": "Bündel abbestellen",
+				"undoArchived": "{count} Nachrichten archiviert",
+				"unsubscribeConfirm": "{count} Absender abbestellen und ihre Mail archivieren? Jede Abmeldung ist eine Anfrage in deinem Namen."
 			}
 		},
 		"postboxAutoAdvance": {
@@ -13459,6 +13478,11 @@
 			"hours": "wartet {hours} Std.",
 			"days": "wartet {days} T.",
 			"daysHours": "wartet {days} T. {hours} Std."
+		},
+		"postboxBundles": {
+			"newsletter": "Newsletter",
+			"notification": "Benachrichtigungen",
+			"receipt": "Belege"
 		}
 	},
 	"sharedPkg": {
