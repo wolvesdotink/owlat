@@ -1,13 +1,17 @@
 /**
  * Pure, side-effect-free rules for desktop mail notifications. Extracted from
  * `useDesktopNotifications` so the category-x-setting toast matrix, the
- * badge sub-setting, and the per-thread grouping window are unit-testable
- * without a running Tauri bridge or a live Convex subscription.
+ * badge sub-setting, the per-thread grouping window, the quiet-hours window
+ * (with its "while you were away" roll-up), the per-thread reply alert and the
+ * hide-preview copy are all unit-testable without a running Tauri bridge or a
+ * live Convex subscription.
  *
  * Nothing here touches the DOM, Tauri, or the network — the composable feeds it
  * plain data and executes the returned plan.
  */
 import type { PostboxMailCategory, PostboxNotifyAbout } from '~/utils/postboxNotify';
+import type { PostboxQuietHours } from '~/utils/postboxQuietHours';
+import { isQuietHoursArmed, MINUTES_PER_DAY } from '~/utils/postboxQuietHours';
 
 /** One unread inbox message as returned by `mail.mailbox.queries.newestUnreadInbox`. */
 export interface UnreadPeekMessage {
@@ -19,6 +23,11 @@ export interface UnreadPeekMessage {
 	category?: PostboxMailCategory;
 	/** The message's thread is MUTED (mail/mute.ts) — never toast it. */
 	muted?: boolean;
+	/**
+	 * The message's thread is armed with "notify me when they reply"
+	 * (mail/threadAlerts.ts) — it pierces the people-only scope AND quiet hours.
+	 */
+	alerted?: boolean;
 	receivedAt: number;
 }
 
@@ -44,6 +53,114 @@ export function shouldNotify(
 	if (setting === 'everything') return true;
 	// people-important
 	return category === undefined || category === 'person';
+}
+
+/**
+ * Is `at` (a LOCAL wall-clock instant on the user's device) inside the quiet
+ * window? False for an inert window — off, no weekday selected, or zero-length.
+ *
+ * A window whose end is at or before its start wraps midnight, and the weekday
+ * mask names the day the window STARTS on: with Friday masked, 22:00 → 07:00
+ * covers Friday night AND Saturday until 07:00, which is what "quiet on Friday
+ * night" means to a person.
+ */
+export function isWithinQuietHours(q: PostboxQuietHours | undefined, at: Date): boolean {
+	if (!q || !isQuietHoursArmed(q)) return false;
+	const minutes = at.getHours() * 60 + at.getMinutes();
+	const day = at.getDay();
+	if (q.startMinute < q.endMinute) {
+		// Same-day window (09:00 → 17:00): start inclusive, end exclusive.
+		return q.days.includes(day) && minutes >= q.startMinute && minutes < q.endMinute;
+	}
+	// Wrapping window (22:00 → 07:00): the tail belongs to the PREVIOUS day's mask.
+	if (minutes >= q.startMinute) return q.days.includes(day);
+	if (minutes < q.endMinute) return q.days.includes((day + 6) % 7);
+	return false;
+}
+
+/**
+ * Minutes from `at` until the current quiet window ends, or null when `at` is
+ * not inside one. Lets the composable schedule the "while you were away"
+ * summary instead of waiting for the next piece of mail to notice.
+ */
+export function minutesUntilQuietHoursEnd(
+	q: PostboxQuietHours | undefined,
+	at: Date
+): number | null {
+	if (!isWithinQuietHours(q, at) || !q) return null;
+	const minutes = at.getHours() * 60 + at.getMinutes();
+	const delta = q.endMinute - minutes;
+	return delta > 0 ? delta : delta + MINUTES_PER_DAY;
+}
+
+/** Why a toast did not fire, or null when it did. */
+export type NotificationSuppression = 'muted' | 'scope' | 'quiet-hours' | null;
+
+export interface NotifyDecisionInput {
+	category?: PostboxMailCategory;
+	setting: PostboxNotifyAbout;
+	/** The thread is muted (mail/mute.ts). */
+	muted?: boolean;
+	/** The thread is armed with "notify me when they reply". */
+	alerted?: boolean;
+	/** We are currently inside the user's quiet-hours window. */
+	quiet?: boolean;
+}
+
+/**
+ * The whole per-message decision in one place, in precedence order:
+ *
+ *   1. MUTED wins over everything, including an armed alert — the two are kept
+ *      mutually exclusive server-side, so a thread carrying both is stale data
+ *      and the quieter reading is the safe one.
+ *   2. An ARMED thread ("notify me when they reply") fires regardless of scope
+ *      and regardless of quiet hours. That is the entire point of arming it:
+ *      one conversation the user explicitly asked to be interrupted for.
+ *   3. The global SCOPE (Everything / People & important / Nothing).
+ *   4. QUIET HOURS suppress what is left — and, unlike the cases above, those
+ *      toasts are counted so they can be rolled into one summary at the end of
+ *      the window rather than silently dropped.
+ */
+export function decideNotification(input: NotifyDecisionInput): {
+	fire: boolean;
+	suppressed: NotificationSuppression;
+} {
+	if (input.muted) return { fire: false, suppressed: 'muted' };
+	if (input.alerted) return { fire: true, suppressed: null };
+	if (!shouldNotify(input.category, input.setting)) return { fire: false, suppressed: 'scope' };
+	if (input.quiet) return { fire: false, suppressed: 'quiet-hours' };
+	return { fire: true, suppressed: null };
+}
+
+/** Quiet-hours bookkeeping carried between ticks (non-reactive, pure data). */
+export interface QuietHoursState {
+	/** Were we inside the window at the previous tick? */
+	quiet: boolean;
+	/** Toasts held back by the window and not yet summarized. */
+	deferred: number;
+}
+
+export const QUIET_HOURS_INITIAL_STATE: QuietHoursState = { quiet: false, deferred: 0 };
+
+/**
+ * Advance the quiet-hours bookkeeping by one tick.
+ *
+ * While the window is open, newly suppressed toasts accumulate. The first tick
+ * after it closes returns the accumulated count as `summaryCount` and resets —
+ * that is the single "N while you were away" notification, and it is emitted
+ * exactly once because the counter is cleared in the same step.
+ *
+ * Suppressed toasts that arrive on a tick where the window is already closed
+ * (a clock jump, a settings change mid-flight) are still counted into the
+ * summary rather than lost.
+ */
+export function stepQuietHours(
+	prev: QuietHoursState,
+	tick: { quiet: boolean; suppressed: number }
+): { state: QuietHoursState; summaryCount: number } {
+	const deferred = prev.deferred + Math.max(0, tick.suppressed);
+	if (tick.quiet) return { state: { quiet: true, deferred }, summaryCount: 0 };
+	return { state: { quiet: false, deferred: 0 }, summaryCount: deferred };
 }
 
 /**
@@ -83,7 +200,9 @@ export type PlannedNotification =
 			sender: string;
 			count: number;
 			sample: UnreadPeekMessage;
-	  };
+	  }
+	/** The one roll-up fired when a quiet-hours window closes. */
+	| { kind: 'quiet-summary'; count: number };
 
 /** Per-thread grouping memory: how many were bundled and when last fired. */
 export interface ThreadWindowEntry {
@@ -160,9 +279,64 @@ export function planNotifications(
 export const NOTIFICATION_GROUP_WINDOW_MS = 30_000;
 
 /**
- * Plain-text body for a grouped notification ("3 new messages from Anna").
- * All notification content is plain text — never HTML.
+ * Copy produced by these rules: either LITERAL text that came from the mail
+ * itself (a sender name, a subject — never translatable) or a message KEY
+ * resolved at the render boundary. Tagged rather than a bare `string | {key}`
+ * union precisely because a subject like "Nothing" must not be mistaken for a
+ * catalog lookup. This module is Vue-free, so it never calls `t` itself.
  */
-export function groupBody(count: number, sender: string): string {
-	return `${count} new messages from ${sender}`;
+export type NoticeText =
+	| { text: string }
+	| { key: string; params?: Record<string, string | number> };
+
+/** Everything the composable needs to fire one planned notification. */
+export interface NotificationParts {
+	title: NoticeText;
+	body: NoticeText;
+	/**
+	 * The message the notification's Archive / Mark read / click actions address.
+	 * Absent for the quiet-hours summary, which is about no single message and is
+	 * therefore sent as a plain notification.
+	 */
+	messageId?: string;
+}
+
+const KEY_PREFIX = 'shared.useDesktopNotifications';
+
+/**
+ * Title + body for a planned notification, honoring the "hide message preview"
+ * preference: with previews hidden nothing from the mail itself reaches the OS
+ * notification — no sender, no subject, no count per sender — only a generic
+ * localized "New message" line, so a shared or projected screen leaks nothing.
+ * All notification content is plain text; never HTML.
+ */
+export function notificationParts(n: PlannedNotification, hidePreview = false): NotificationParts {
+	if (n.kind === 'quiet-summary') {
+		return {
+			title: { key: `${KEY_PREFIX}.quietSummary.title` },
+			body: { key: `${KEY_PREFIX}.quietSummary.body`, params: { count: n.count } },
+		};
+	}
+	if (n.kind === 'group') {
+		return {
+			title: { key: `${KEY_PREFIX}.newMail` },
+			body: hidePreview
+				? { key: `${KEY_PREFIX}.hiddenPreview.group`, params: { count: n.count } }
+				: { key: `${KEY_PREFIX}.groupBody`, params: { count: n.count, sender: n.sender } },
+			messageId: n.sample.messageId,
+		};
+	}
+	const m = n.message;
+	if (hidePreview) {
+		return {
+			title: { key: `${KEY_PREFIX}.newMail` },
+			body: { key: `${KEY_PREFIX}.hiddenPreview.single` },
+			messageId: m.messageId,
+		};
+	}
+	return {
+		title: { text: m.fromName || m.fromAddress },
+		body: m.subject ? { text: m.subject } : { key: `${KEY_PREFIX}.noSubject` },
+		messageId: m.messageId,
+	};
 }

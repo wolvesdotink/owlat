@@ -29,6 +29,11 @@
  *   - `undoSendSeconds` — how long a sent message is held before it dispatches
  *     (Off / 10 / 30 / 60). Defaults to 30s, the server's own default, so an
  *     unset preference is exactly the behaviour that shipped before it existed.
+ *   - `quietHours` — a local-time window plus weekday mask during which desktop
+ *     toasts are held back and rolled into one summary when it ends. Defaults
+ *     OFF, so an untouched row suppresses nothing.
+ *   - `hidePreview` — desktop notifications carry a generic "New message" line
+ *     instead of the sender and subject. Defaults OFF.
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -54,6 +59,8 @@ import type { PostboxUndoSendSeconds } from '~/utils/postboxUndoSendWindow';
 import { resolvePostboxUndoSendSeconds } from '~/utils/postboxUndoSendWindow';
 import type { PostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
 import { resolvePostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
+import type { PostboxQuietHours } from '~/utils/postboxQuietHours';
+import { resolvePostboxQuietHours } from '~/utils/postboxQuietHours';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
@@ -123,6 +130,18 @@ export function usePostboxSettings() {
 	// Whether non-`person` mail still increments the dock/taskbar badge. Default ON
 	// (unset => badge counts everything, the pre-existing behavior).
 	const badgeNonPeople = computed<boolean>(() => data.value?.isBadgeNonPeopleOn ?? true);
+
+	// Quiet-hours window + weekday mask. An unset value resolves to the OFF
+	// default (with a 22:00–07:00 window pre-filled), so an untouched row
+	// suppresses nothing — exactly the behaviour before the control existed.
+	const quietHours = computed<PostboxQuietHours>(() =>
+		resolvePostboxQuietHours(data.value?.quietHours)
+	);
+
+	// Hide message previews in desktop notifications (generic "New message" body
+	// instead of sender + subject). Default OFF (opt-in) — the preview is what
+	// shipped before this control existed.
+	const hidePreview = computed<boolean>(() => data.value?.isHidePreviewOn ?? false);
 
 	// HEY-style first-time-sender screener. Default OFF (opt-in): mail from an
 	// unknown sender only skips the Reply Queue when the owner turns this on, so
@@ -195,6 +214,14 @@ export function usePostboxSettings() {
 		await updateOp.run({ isBadgeNonPeopleOn: enabled });
 	}
 
+	async function setQuietHours(value: PostboxQuietHours) {
+		await updateOp.run({ quietHours: value });
+	}
+
+	async function setHidePreview(enabled: boolean) {
+		await updateOp.run({ isHidePreviewOn: enabled });
+	}
+
 	async function setSenderScreener(enabled: boolean) {
 		await updateOp.run({ isSenderScreenerOn: enabled });
 	}
@@ -216,6 +243,8 @@ export function usePostboxSettings() {
 		undoSendSeconds,
 		notifyAbout,
 		badgeNonPeople,
+		quietHours,
+		hidePreview,
 		senderScreener,
 		markReadPolicy,
 		isLoading,
@@ -231,6 +260,8 @@ export function usePostboxSettings() {
 		setUndoSendSeconds,
 		setNotifyAbout,
 		setBadgeNonPeople,
+		setQuietHours,
+		setHidePreview,
 		setSenderScreener,
 		setMarkReadPolicy,
 		isSaving: updateOp.isLoading,
