@@ -982,6 +982,25 @@ function loadLightboxPart(att: AttachmentMeta): Promise<Blob | null> {
 	return lb ? extractAttachmentBlob(lb.messageId, att) : Promise.resolve(null);
 }
 
+/**
+ * Open the filter builder pre-filled from this message.
+ *
+ * The moment someone thinks "I want a rule for this" is while looking at the
+ * mail, not while staring at an empty rule form in Preferences — so the sender
+ * and the normalized subject travel along as query params (a shareable deep
+ * link that survives a reload) and the builder seeds its conditions from them.
+ */
+function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
+	const query: Record<string, string> = {};
+	if (msg.fromAddress) query['filterFrom'] = msg.fromAddress;
+	// Strip the Re:/Fwd: run: a rule keyed on "Re: Invoice 4471" would miss the
+	// original and every future thread on the same subject.
+	const subject = (msg.subject ?? '').replace(/^((re|fwd|fw|aw|wg)\s*:\s*)+/i, '').trim();
+	if (subject) query['filterSubject'] = subject;
+	if (Object.keys(query).length === 0) return;
+	void navigateTo({ path: '/dashboard/preferences/filters', query });
+}
+
 function downloadLightboxAttachment(att: AttachmentMeta) {
 	const lb = lightbox.value;
 	if (lb) void handleAttachmentDownload(lb.messageId, att);
@@ -1431,6 +1450,20 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 								>
 									<Icon name="lucide:ban" class="w-4 h-4 text-text-tertiary" />
 									{{ t('components.postbox.postboxThreadReader.blockSender') }}
+								</button>
+								<!-- "One more of these" is where a filter gets written, so the
+								     rule builder opens from the message, pre-filled with it. -->
+								<button
+									type="button"
+									role="menuitem"
+									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+									@click="
+										createFilterFrom(msg);
+										close();
+									"
+								>
+									<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
+									{{ t('components.postbox.postboxThreadReader.createFilter') }}
 								</button>
 							</template>
 						</PostboxOverflowMenu>

@@ -732,6 +732,7 @@ import type * as mail_external_accountsActions from '../mail/external/accountsAc
 import type * as mail_external_accountsSeed from '../mail/external/accountsSeed.js';
 import type * as mail_external_delivery from '../mail/external/delivery.js';
 import type * as mail_external_sharedInbox from '../mail/external/sharedInbox.js';
+import type * as mail_filterRun from '../mail/filterRun.js';
 import type * as mail_filters from '../mail/filters.js';
 import type * as mail_folders from '../mail/folders.js';
 import type * as mail_followUps from '../mail/followUps.js';
@@ -1758,6 +1759,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/accountsSeed': typeof mail_external_accountsSeed;
 	'mail/external/delivery': typeof mail_external_delivery;
 	'mail/external/sharedInbox': typeof mail_external_sharedInbox;
+	'mail/filterRun': typeof mail_filterRun;
 	'mail/filters': typeof mail_filters;
 	'mail/folders': typeof mail_folders;
 	'mail/followUps': typeof mail_followUps;

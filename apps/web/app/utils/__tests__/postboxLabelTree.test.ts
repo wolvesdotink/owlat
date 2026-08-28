@@ -4,7 +4,6 @@ import {
 	flattenLabelTree,
 	labelAncestorIds,
 	labelPath,
-	moveSibling,
 	type PostboxLabelNodeInput,
 } from '../postboxLabelTree';
 
@@ -106,18 +105,5 @@ describe('labelPath', () => {
 
 	it('is empty for a label that is not in the set', () => {
 		expect(labelPath([WORK], 'gone')).toBe('');
-	});
-});
-
-describe('moveSibling', () => {
-	it('moves one slot in either direction', () => {
-		expect(moveSibling(['a', 'b', 'c'], 'c', -1)).toEqual(['a', 'c', 'b']);
-		expect(moveSibling(['a', 'b', 'c'], 'a', 1)).toEqual(['b', 'a', 'c']);
-	});
-
-	it('refuses to fall off either end, so the caller can skip the write', () => {
-		expect(moveSibling(['a', 'b'], 'a', -1)).toEqual(['a', 'b']);
-		expect(moveSibling(['a', 'b'], 'b', 1)).toEqual(['a', 'b']);
-		expect(moveSibling(['a', 'b'], 'missing', 1)).toEqual(['a', 'b']);
 	});
 });

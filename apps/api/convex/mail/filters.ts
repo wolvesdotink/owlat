@@ -5,7 +5,10 @@
  *   - Filters are stored as structured JSON (conditions + actions). NO `eval`,
  *     no shell-out — the evaluator below is a pure-JS dispatcher over a fixed
  *     allowlist of operators.
- *   - Conditions inside one filter are AND-ed. To OR, define multiple filters.
+ *   - Conditions inside one filter are grouped by `matchType`: `all` AND-s them
+ *     (the default, and what every filter written before the toggle means),
+ *     `any` OR-s them. ONE grouping level only — mixed trees are a second
+ *     grammar, and "define two filters" is still the escape hatch.
  *   - Filters run in `priority` ascending order. A matching filter whose
  *     `stopProcessing=true` halts further evaluation.
  *   - Actions accumulate (e.g. `markRead` + `addLabel` is one filter, two
@@ -17,6 +20,8 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { removeFilterRunJob } from './filterRun';
+import { openMailMessageInlineBody } from '../lib/messageBody';
 
 // ── Public CRUD ───────────────────────────────────────────────────
 
@@ -58,6 +63,9 @@ const conditionValidator = v.object({
 	valueNumber: v.optional(v.number()),
 });
 
+/** One grouping level: `all` AND-s the conditions, `any` OR-s them. */
+const matchTypeValidator = v.union(v.literal('all'), v.literal('any'));
+
 const actionValidator = v.object({
 	type: v.union(
 		v.literal('moveToFolder'),
@@ -81,6 +89,7 @@ export const create = authedMutation({
 		priority: v.optional(v.number()),
 		conditions: v.array(conditionValidator),
 		actions: v.array(actionValidator),
+		matchType: v.optional(matchTypeValidator),
 		stopProcessing: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
@@ -129,6 +138,9 @@ export const create = authedMutation({
 			priority,
 			conditions: args.conditions,
 			actions: args.actions,
+			// Absent means `all` — the pre-toggle meaning — so an omitted arg
+			// stores nothing rather than stamping a default onto every row.
+			...(args.matchType && args.matchType !== 'all' ? { matchType: args.matchType } : {}),
 			stopProcessing: args.stopProcessing ?? false,
 			createdAt: now,
 			updatedAt: now,
@@ -144,6 +156,7 @@ export const update = authedMutation({
 		priority: v.optional(v.number()),
 		conditions: v.optional(v.array(conditionValidator)),
 		actions: v.optional(v.array(actionValidator)),
+		matchType: v.optional(matchTypeValidator),
 		stopProcessing: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
@@ -157,6 +170,11 @@ export const update = authedMutation({
 		if (args.priority !== undefined) patch['priority'] = args.priority;
 		if (args.conditions !== undefined) patch['conditions'] = args.conditions;
 		if (args.actions !== undefined) patch['actions'] = args.actions;
+		// `all` clears the field rather than storing it, keeping "absent = today's
+		// behavior" true for a filter that is toggled back.
+		if (args.matchType !== undefined) {
+			patch['matchType'] = args.matchType === 'all' ? undefined : args.matchType;
+		}
 		if (args.stopProcessing !== undefined) patch['stopProcessing'] = args.stopProcessing;
 		await ctx.db.patch(args.filterId, patch);
 	},
@@ -169,7 +187,117 @@ export const remove = authedMutation({
 		if (!filter) return;
 		const owned = await requireMailboxAccess(ctx, filter.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Filter not accessible');
+		// The retroactive-run job is bookkeeping ABOUT this filter; leaving it
+		// behind would strand a "running" row whose next batch stops on a missing
+		// filter and can never be started or cancelled again.
+		await removeFilterRunJob(ctx, args.filterId);
 		await ctx.db.delete(args.filterId);
+	},
+});
+
+/**
+ * Priority step between adjacent filters after a reorder. Kept wide (matching
+ * the append step in `create`) so a later single-filter insert has room between
+ * two neighbours without rewriting the run.
+ */
+const PRIORITY_STEP = 100;
+
+/**
+ * Write a new run order in one transaction.
+ *
+ * `priority` decided evaluation order from day one — and `stopProcessing` makes
+ * that order load-bearing — but there was no way to change it, so a rule that
+ * needed to run first could only be recreated. The caller sends the ids in the
+ * order it wants and gets 100, 200, 300…; ids from another mailbox are skipped
+ * rather than fatal, so a stale list cannot sink the whole reorder.
+ */
+export const reorder = authedMutation({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		/** Filter ids, first to run to last. */
+		filterIds: v.array(v.id('mailFilters')),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
+		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		const now = Date.now();
+		let slot = 0;
+		for (const filterId of args.filterIds) {
+			const filter = await ctx.db.get(filterId);
+			if (!filter || filter.mailboxId !== args.mailboxId) continue;
+			slot += 1;
+			const priority = slot * PRIORITY_STEP;
+			if (filter.priority === priority) continue;
+			await ctx.db.patch(filterId, { priority, updatedAt: now });
+		}
+	},
+});
+
+/**
+ * How much recent mail the dry-run preview evaluates. A preview is a sanity
+ * check ("does this catch what I think it catches?"), not a search, so it reads
+ * a fixed recent window and says so.
+ */
+export const PREVIEW_SCAN_WINDOW = 300;
+
+/** Rows the preview hands back — enough to recognise a message, no body. */
+export interface FilterPreviewMatch {
+	messageId: Id<'mailMessages'>;
+	fromAddress: string;
+	subject: string;
+	receivedAt: number;
+}
+
+/**
+ * Dry-run: which of the mailbox's recent messages would this rule match?
+ *
+ * Takes the DRAFT conditions rather than a saved filter id, so the preview runs
+ * against what is on screen — the point is to see the rule before committing to
+ * it. Runs the exact same `filterConditionsMatch` the delivery pipeline uses;
+ * a preview computed by a second, parallel implementation would be worth less
+ * than no preview at all.
+ */
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+export const preview = publicQuery({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		conditions: v.array(conditionValidator),
+		matchType: v.optional(matchTypeValidator),
+		limit: v.optional(v.number()),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{ matches: FilterPreviewMatch[]; scanned: number; matchCount: number }> => {
+		const empty = { matches: [], scanned: 0, matchCount: 0 };
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
+		if (!owned.ok) return empty;
+		if (args.conditions.length === 0) return empty;
+
+		const scanned = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
+			.order('desc')
+			.take(PREVIEW_SCAN_WINDOW);
+
+		const draft = { conditions: args.conditions, matchType: args.matchType };
+		const matching: typeof scanned = [];
+		for (const m of scanned) {
+			if (filterConditionsMatch(draft, await evalMessageFromRow(m))) matching.push(m);
+		}
+		const limit = Math.min(Math.max(1, args.limit ?? 20), 100);
+		return {
+			matches: matching.slice(0, limit).map((m) => ({
+				messageId: m._id,
+				fromAddress: m.fromAddress,
+				subject: m.subject,
+				receivedAt: m.receivedAt,
+			})),
+			scanned: scanned.length,
+			// The honest total inside the window, so the panel can say "12 of the
+			// last 300" instead of implying the preview is the whole answer.
+			matchCount: matching.length,
+		};
 	},
 });
 
@@ -262,6 +390,67 @@ function conditionMatches(
 }
 
 /**
+ * Does one filter's condition group match?
+ *
+ * The one place `matchType` is interpreted, so the delivery pipeline, the
+ * dry-run preview and the run-on-existing-mail sweep can never disagree about
+ * what a rule means. `matchType` absent is `all`, which is what every filter
+ * written before the toggle meant.
+ *
+ * A filter with no conditions matches NOTHING — under `any` an empty group
+ * would otherwise vacuously match every message in the mailbox.
+ */
+export function filterConditionsMatch(
+	filter: Pick<Doc<'mailFilters'>, 'conditions' | 'matchType'>,
+	message: EvalMessage
+): boolean {
+	if (filter.conditions.length === 0) return false;
+	return filter.matchType === 'any'
+		? filter.conditions.some((c) => conditionMatches(c, message))
+		: filter.conditions.every((c) => conditionMatches(c, message));
+}
+
+/**
+ * Project a stored message row onto the evaluator's input.
+ *
+ * ASYNC because the inline body columns are SEALED at rest (E8b): matching a
+ * `body:` condition against the sealed bytes would silently never fire, so the
+ * row goes through `openMailMessageInlineBody` rather than being read directly.
+ *
+ * The stored row has no raw headers (they live inside the .eml blob), so
+ * `header:` conditions see an empty map and simply do not match — which is the
+ * honest answer for a retroactive run, not a silent claim that they did.
+ */
+export async function evalMessageFromRow(
+	message: Pick<
+		Doc<'mailMessages'>,
+		| 'fromAddress'
+		| 'toAddresses'
+		| 'ccAddresses'
+		| 'subject'
+		| 'snippet'
+		| 'textBodyInline'
+		| 'htmlBodyInline'
+		| 'rawSize'
+		| 'hasAttachments'
+	>
+): Promise<EvalMessage> {
+	const body = await openMailMessageInlineBody(message);
+	return {
+		from: message.fromAddress,
+		to: message.toAddresses,
+		cc: message.ccAddresses,
+		subject: message.subject,
+		// Falls back to the snippet when the body was blobbed out of the row, so
+		// `body:` still has something true to match rather than nothing at all.
+		bodyText: body.text ?? message.snippet,
+		bodyHtml: body.html,
+		size: message.rawSize,
+		hasAttachment: message.hasAttachments,
+	};
+}
+
+/**
  * Evaluate a filter list against an inbound message. Pure function — safe
  * to call from inside an internalMutation.
  */
@@ -273,9 +462,7 @@ export function evaluateFilters(filters: Doc<'mailFilters'>[], message: EvalMess
 	let stopped = false;
 
 	for (const filter of ordered) {
-		if (filter.conditions.length === 0) continue;
-		const allMatch = filter.conditions.every((c) => conditionMatches(c, message));
-		if (!allMatch) continue;
+		if (!filterConditionsMatch(filter, message)) continue;
 
 		matched.push(filter._id);
 		for (const action of filter.actions) {

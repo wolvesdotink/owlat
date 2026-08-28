@@ -3431,7 +3431,15 @@
 				"sizePlaceholder": "100000",
 				"stopProcessing": "Keine weiteren Filter mehr anwenden, wenn dieser zutrifft",
 				"trueValue": "wahr",
-				"valuePlaceholder": "Wert"
+				"valuePlaceholder": "Wert",
+				"matchLabel": "Treffer",
+				"matchAll": "alle Bedingungen",
+				"matchAny": "eine beliebige Bedingung",
+				"showPreview": "Treffer vorab ansehen",
+				"hidePreview": "Vorschau ausblenden",
+				"previewRunning": "Aktuelle E-Mails werden geprüft …",
+				"previewSummary": "Trifft auf {count} der letzten {scanned} Nachrichten zu.",
+				"previewNeedsValue": "Geben Sie einen Bedingungswert ein, um zu sehen, was diese Regel erfassen würde."
 			},
 			"postboxFloatingFormatBar": {
 				"toolbarLabel": "Auswahl formatieren"
@@ -4144,7 +4152,8 @@
 				"undoSpam": "Als Spam markiert",
 				"undoTrashed": "In den Papierkorb verschoben",
 				"unmute": "Stummschaltung aufheben",
-				"unstar": "Markierung entfernen"
+				"unstar": "Markierung entfernen",
+				"createFilter": "Filter hieraus erstellen"
 			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Zurück aus dem Schlummer",
@@ -4338,6 +4347,14 @@
 				"collapse": "{name} einklappen",
 				"moveUp": "{name} nach oben verschieben",
 				"moveDown": "{name} nach unten verschieben"
+			},
+			"postboxFilterRunControl": {
+				"run": "Auf vorhandene E-Mails anwenden",
+				"runAgain": "Erneut anwenden",
+				"running": "Läuft – {scanned} gelesen, {matched} getroffen.",
+				"completed": "Auf {matched} Nachrichten angewendet.",
+				"cancelled": "Nach {matched} Nachrichten gestoppt.",
+				"nothingToApply": "Weiterleiten und Löschen werden nicht auf vorhandene E-Mails angewendet."
 			}
 		},
 		"preferences": {
@@ -8629,7 +8646,11 @@
 				"ruleSummary": "{conditions} Bedingung(en) · {actions} Aktion(en)",
 				"saveChanges": "Änderungen speichern",
 				"stopBadge": "Stopp",
-				"stopTitle": "Stoppt weitere Filter"
+				"stopTitle": "Stoppt weitere Filter",
+				"ruleSummaryAny": "Eine von {conditions} Bedingung(en) · {actions} Aktion(en)",
+				"moveUp": "{name} nach vorne verschieben",
+				"moveDown": "{name} nach hinten verschieben",
+				"fromSenderName": "E-Mail von {sender}"
 			},
 			"forwarding": {
 				"activeRules": "Aktive Regeln",
@@ -11657,7 +11678,10 @@
 			"usePostboxFilters": {
 				"createFilter": "Filter erstellen",
 				"deleteFilter": "Filter löschen",
-				"updateFilter": "Filter aktualisieren"
+				"updateFilter": "Filter aktualisieren",
+				"reorderFilters": "Filter neu sortieren",
+				"runOnExistingMail": "den Filter auf vorhandene E-Mails anwenden",
+				"cancelFilterRun": "den Filterlauf stoppen"
 			},
 			"usePostboxFolderActions": {
 				"createFolder": "Ordner erstellen",

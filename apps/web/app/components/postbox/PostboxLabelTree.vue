@@ -14,7 +14,8 @@
  */
 
 import type { Id } from '@owlat/api/dataModel';
-import { flattenLabelTree, labelAncestorIds, moveSibling } from '~/utils/postboxLabelTree';
+import { flattenLabelTree, labelAncestorIds } from '~/utils/postboxLabelTree';
+import { moveSibling } from '~/utils/postboxReorder';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;

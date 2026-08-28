@@ -3431,7 +3431,15 @@
 				"sizePlaceholder": "100000",
 				"stopProcessing": "Stop applying further filters once this one matches",
 				"trueValue": "true",
-				"valuePlaceholder": "value"
+				"valuePlaceholder": "value",
+				"matchLabel": "Match",
+				"matchAll": "all conditions",
+				"matchAny": "any condition",
+				"showPreview": "Preview matches",
+				"hidePreview": "Hide preview",
+				"previewRunning": "Checking recent mail…",
+				"previewSummary": "Matches {count} of the last {scanned} messages.",
+				"previewNeedsValue": "Fill in a condition value to preview what this rule would catch."
 			},
 			"postboxFloatingFormatBar": {
 				"toolbarLabel": "Format selection"
@@ -4144,7 +4152,8 @@
 				"undoSpam": "Marked as spam",
 				"undoTrashed": "Moved to Trash",
 				"unmute": "Unmute conversation",
-				"unstar": "Unstar"
+				"unstar": "Unstar",
+				"createFilter": "Create filter from this"
 			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Back from snooze",
@@ -4338,6 +4347,14 @@
 				"collapse": "Collapse {name}",
 				"moveUp": "Move {name} up",
 				"moveDown": "Move {name} down"
+			},
+			"postboxFilterRunControl": {
+				"run": "Run on existing mail",
+				"runAgain": "Run again",
+				"running": "Running — {scanned} read, {matched} matched.",
+				"completed": "Applied to {matched} messages.",
+				"cancelled": "Stopped after {matched} messages.",
+				"nothingToApply": "Forwarding and deleting are not applied to existing mail."
 			}
 		},
 		"preferences": {
@@ -8629,7 +8646,11 @@
 				"ruleSummary": "{conditions} condition(s) · {actions} action(s)",
 				"saveChanges": "Save changes",
 				"stopBadge": "Stop",
-				"stopTitle": "Stops further filters"
+				"stopTitle": "Stops further filters",
+				"ruleSummaryAny": "Any of {conditions} condition(s) · {actions} action(s)",
+				"moveUp": "Move {name} earlier",
+				"moveDown": "Move {name} later",
+				"fromSenderName": "Mail from {sender}"
 			},
 			"forwarding": {
 				"activeRules": "Active rules",
@@ -11657,7 +11678,10 @@
 			"usePostboxFilters": {
 				"createFilter": "Create filter",
 				"deleteFilter": "Delete filter",
-				"updateFilter": "Update filter"
+				"updateFilter": "Update filter",
+				"reorderFilters": "reorder filters",
+				"runOnExistingMail": "run the filter on existing mail",
+				"cancelFilterRun": "stop the filter run"
 			},
 			"usePostboxFolderActions": {
 				"createFolder": "Create folder",
