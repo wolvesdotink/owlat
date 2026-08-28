@@ -194,9 +194,12 @@ describe('formatRelativeTime', () => {
 		expect(formatRelativeTime('not a date')).toBe('Invalid date');
 	});
 
-	it('returns "just now" for < 60 seconds ago', () => {
+	it('says the seconds rather than a vague "just now"', () => {
+		// `Intl` owns the wording now; sub-minute durations are spoken as
+		// seconds, and `numeric: 'auto'` reserves "now" for the actual moment.
 		const date = new Date(2024, 5, 15, 11, 59, 30);
-		expect(formatRelativeTime(date)).toBe('just now');
+		expect(formatRelativeTime(date)).toBe('30 seconds ago');
+		expect(formatRelativeTime(new Date(2024, 5, 15, 12, 0, 0))).toBe('now');
 	});
 
 	it('returns minutes ago', () => {
@@ -224,9 +227,11 @@ describe('formatRelativeTime', () => {
 		expect(formatRelativeTime(date)).toBe('2 days ago');
 	});
 
-	it('returns singular day', () => {
+	it('uses the locale word for a day back, not "1 day ago"', () => {
+		// The point of `numeric: 'auto'`: every locale has a word for this and
+		// the hand-rolled ladder could produce none of them.
 		const date = new Date(2024, 5, 14, 12, 0, 0);
-		expect(formatRelativeTime(date)).toBe('1 day ago');
+		expect(formatRelativeTime(date)).toBe('yesterday');
 	});
 
 	it('returns weeks ago', () => {
@@ -244,15 +249,15 @@ describe('formatRelativeTime', () => {
 		expect(formatRelativeTime(date)).toBe('2 years ago');
 	});
 
-	it('returns singular year', () => {
+	it('uses the locale word for a year back', () => {
 		const date = new Date(2023, 5, 15, 12, 0, 0);
-		expect(formatRelativeTime(date)).toBe('1 year ago');
+		expect(formatRelativeTime(date)).toBe('last year');
 	});
 
 	// Future dates
-	it('returns "in a few seconds" for future < 60 seconds', () => {
+	it('says how many seconds ahead, not "in a few seconds"', () => {
 		const date = new Date(2024, 5, 15, 12, 0, 30);
-		expect(formatRelativeTime(date)).toBe('in a few seconds');
+		expect(formatRelativeTime(date)).toBe('in 30 seconds');
 	});
 
 	it('returns "in X minutes" for future minutes', () => {
@@ -275,12 +280,13 @@ describe('formatRelativeTime', () => {
 		expect(formatRelativeTime(date)).toBe('in 2 days');
 	});
 
-	it('falls back to formatted date for far future', () => {
+	it('stays relative for a far-future date instead of switching to a calendar', () => {
+		// The old ladder gave up past a week ahead and printed "Jan 15, 2025",
+		// so a scheduled send seven months out read as a date with no sense of
+		// distance. One direction, one vocabulary; the COMPACT style is the one
+		// that falls back to a date, and only for the past.
 		const date = new Date(2025, 0, 15, 12, 0, 0);
-		const result = formatRelativeTime(date);
-		// Should fall back to formatDate with 'medium' style
-		expect(result).toContain('Jan');
-		expect(result).toContain('2025');
+		expect(formatRelativeTime(date)).toBe('in 7 months');
 	});
 });
 
@@ -306,8 +312,8 @@ describe('formatCompactRelativeTime', () => {
 		expect(formatCompactRelativeTime(null, { emptyLabel: 'never used' })).toBe('never used');
 	});
 
-	it('returns "Just now" under a minute', () => {
-		expect(formatCompactRelativeTime(NOW.getTime() - 30_000)).toBe('Just now');
+	it('is terse under a minute', () => {
+		expect(formatCompactRelativeTime(NOW.getTime() - 30_000)).toBe('30s ago');
 	});
 
 	it('formats minutes compactly', () => {
@@ -327,8 +333,10 @@ describe('formatCompactRelativeTime', () => {
 		expect(formatCompactRelativeTime(NOW.getTime() - 23 * 3_600_000)).toBe('23h ago');
 	});
 
-	it('formats yesterday as 1d ago', () => {
-		expect(formatCompactRelativeTime(NOW.getTime() - 24 * 3_600_000)).toBe('1d ago');
+	it('says "yesterday" rather than "1d ago"', () => {
+		// Terse does not mean cryptic: `numeric: 'auto'` keeps the one word every
+		// locale has for the day before, even in the narrow style.
+		expect(formatCompactRelativeTime(NOW.getTime() - 24 * 3_600_000)).toBe('yesterday');
 	});
 
 	it('formats days compactly', () => {

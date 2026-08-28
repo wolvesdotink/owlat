@@ -416,3 +416,41 @@ than quietly widened.
 To pick it up: move the row to the grid pattern (or move the checkbox and the
 quick-actions out of the option and reach them with a roving tabindex), then
 delete `KNOWN_COMPOSITE_ROW_GAPS` from the suite.
+
+## 66 — the ~200 formatter call sites keep their function names
+
+`useFormat()` (`app/composables/useFormat.ts`) is in, reading the reader's
+locale off the active vue-i18n instance, formatting through the named
+`datetimeFormats`/`numberFormats` in `i18n/formats.ts`, rendering relative times
+with `Intl.RelativeTimeFormat` and taking "Never" / "Invalid date" / "Invalid
+time" from the message catalog. What did NOT happen is the rewrite of the ~225
+`formatDate(...)` / `formatNumber(...)` / `formatPercentage(...)` calls across
+90 `.vue` files and 8 pure `utils/*` modules into
+`const { formatDate } = useFormat()`.
+
+Deliberately, because the migration is not what fixes the bug. The defect was
+never at a call site: `utils/formatters.ts` declared `locale = 'en-US'` as its
+DEFAULT, and ~160 sites correctly took the default. A default cannot be
+repaired at the places that accept it. So the default itself now points at the
+language the app is rendering in — `bindAppLocale`, installed and re-installed
+on every language change by `plugins/i18n-format.client.ts` — and every one of
+those ~160 sites renders German dates in a German UI today, without touching
+them.
+
+What the migration would still buy is the removal of a module-scope binding in
+favour of an explicit dependency, which is worth having and is not worth a
+200-file mechanical diff landed alongside four other ideas: each `.vue` file
+needs a destructure inserted in its `<script setup>`, and the ~90 component
+suites that mount those files each need `useFormat` stubbed or the real
+composable wired to an i18n instance. That is its own change, with its own
+review.
+
+The 8 pure `utils/*` modules (`deliveryHub`, `deliverabilityRamp`,
+`operatorConsole`, …) are a separate case: they build copy with no component to
+hang a composable off, so they keep calling the pure functions and would need
+the locale threaded through as a parameter.
+
+To pick it up: migrate `.vue` files first (the destructure is mechanical), then
+thread a locale argument through the pure builders, then delete
+`bindAppLocale`, `activeFormatLocale` and the plugin — at which point
+`formatters.ts` has no ambient state left.

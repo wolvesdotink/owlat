@@ -13424,6 +13424,11 @@
 				"notFound": "{count} sender had no list mail left to act on. | {count} senders had no list mail left to act on.",
 				"unsubscribed": "Unsubscribed from {count} sender. | Unsubscribed from {count} senders."
 			}
+		},
+		"format": {
+			"never": "Never",
+			"invalidDate": "Invalid date",
+			"invalidTime": "Invalid time"
 		}
 	},
 	"sharedPkg": {

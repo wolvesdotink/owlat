@@ -13424,6 +13424,11 @@
 				"notFound": "Bei {count} Absender gab es keine Listenpost mehr. | Bei {count} Absendern gab es keine Listenpost mehr.",
 				"unsubscribed": "Von {count} Absender abgemeldet. | Von {count} Absendern abgemeldet."
 			}
+		},
+		"format": {
+			"never": "Nie",
+			"invalidDate": "Ungültiges Datum",
+			"invalidTime": "Ungültige Uhrzeit"
 		}
 	},
 	"sharedPkg": {
