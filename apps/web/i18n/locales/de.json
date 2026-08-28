@@ -4463,6 +4463,24 @@
 				"promptPlaceholder": "Wonach soll ich fragen? z. B. „Ticketnummer“",
 				"sourceLabel": "Wofür {token} steht",
 				"title": "Variablen"
+			},
+			"postboxSenderProfile": {
+				"auth": {
+					"mixed": "{failed} von {checked} neueren Nachrichten sind durch die Prüfung gefallen",
+					"pass": "Über {checked} neuere Nachrichten hinweg authentifiziert",
+					"unknown": "Für diese Absenderin wurde nie eine Prüfung erfasst",
+					"viaForwarder": "Authentifiziert über den Weiterleiter {sealer}"
+				},
+				"keyPinned": "Schlüssel angeheftet",
+				"messages": "{count} Nachrichten hier",
+				"messagesAtLeast": "{count}+ Nachrichten hier",
+				"noSubject": "(kein Betreff)",
+				"open": "Alles von dieser Absenderin",
+				"recentThreads": "Neuere Unterhaltungen",
+				"screenerAccepted": "Vorprüfung: angenommen",
+				"searchAll": "Alle Mails dieser Absenderin durchsuchen",
+				"sharedFiles": "Geteilte Anhänge",
+				"title": "Absenderin"
 			}
 		},
 		"preferences": {

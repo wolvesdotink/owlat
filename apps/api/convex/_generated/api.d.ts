@@ -794,6 +794,7 @@ import type * as mail_sealPolicy from '../mail/sealPolicy.js';
 import type * as mail_sealedBlobHttp from '../mail/sealedBlobHttp.js';
 import type * as mail_sections from '../mail/sections.js';
 import type * as mail_senderHeuristics from '../mail/senderHeuristics.js';
+import type * as mail_senderProfile from '../mail/senderProfile.js';
 import type * as mail_sendingSwitch from '../mail/sendingSwitch.js';
 import type * as mail_settings from '../mail/settings.js';
 import type * as mail_signatures from '../mail/signatures.js';
@@ -1830,6 +1831,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/sealedBlobHttp': typeof mail_sealedBlobHttp;
 	'mail/sections': typeof mail_sections;
 	'mail/senderHeuristics': typeof mail_senderHeuristics;
+	'mail/senderProfile': typeof mail_senderProfile;
 	'mail/sendingSwitch': typeof mail_sendingSwitch;
 	'mail/settings': typeof mail_settings;
 	'mail/signatures': typeof mail_signatures;

@@ -181,6 +181,14 @@ function calendarAttachment(msg: {
 	);
 }
 
+// Plan idea 45: the sender profile slide-over. One instance for the whole
+// reader — a thread with twenty collapsed messages must not mount (and
+// subscribe) twenty panels, so the opened sender travels in state instead.
+const senderProfile = ref<{ fromAddress: string; fromName: string | null } | null>(null);
+function openSenderProfile(msg: { fromAddress: string; fromName?: string | null }) {
+	senderProfile.value = { fromAddress: msg.fromAddress, fromName: msg.fromName ?? null };
+}
+
 const messageId = computed(() => props.message._id as Id<'mailMessages'>);
 const { data: threadData, isLoading } = useConvexQuery(
 	api.mail.mailbox.messages.listThreadMessages,
@@ -1105,14 +1113,21 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 						/>
 						<div class="flex-1 min-w-0">
 							<div class="flex items-baseline justify-between gap-3">
-								<div>
+								<!-- Plan idea 45: the sender line was a text label. It now opens
+								     everything this mailbox knows about the person. -->
+								<button
+									type="button"
+									class="text-left hover:underline"
+									:title="t('components.postbox.postboxSenderProfile.open')"
+									@click="openSenderProfile(msg)"
+								>
 									<span class="font-medium text-text-primary">
 										{{ msg.fromName || msg.fromAddress }}
 									</span>
 									<span v-if="msg.fromName" class="text-text-tertiary text-sm">
 										&lt;{{ msg.fromAddress }}&gt;
 									</span>
-								</div>
+								</button>
 								<div class="flex items-center gap-2 flex-shrink-0">
 									<PostboxSenderControls
 										v-if="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
@@ -1527,6 +1542,16 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			:folders="readerMovableFolders"
 			@update:open="moveDialogOpen = $event"
 			@pick="moveOpenMessageTo"
+		/>
+
+		<!-- Plan idea 45: one slide-over for whichever sender line was clicked. -->
+		<PostboxSenderProfile
+			v-if="senderProfile"
+			:open="true"
+			:mailbox-id="message.mailboxId"
+			:from-address="senderProfile.fromAddress"
+			:from-name="senderProfile.fromName"
+			@update:open="(open: boolean) => !open && (senderProfile = null)"
 		/>
 
 		<!-- Quick Look overlay for image/PDF attachments (Teleports to body). -->

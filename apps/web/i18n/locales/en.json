@@ -4463,6 +4463,24 @@
 				"promptPlaceholder": "What should I ask for? e.g. “Ticket number”",
 				"sourceLabel": "What {token} stands for",
 				"title": "Variables"
+			},
+			"postboxSenderProfile": {
+				"auth": {
+					"mixed": "{failed} of {checked} recent messages failed authentication",
+					"pass": "Authenticated across {checked} recent messages",
+					"unknown": "Authentication was never checked for this sender",
+					"viaForwarder": "Authenticated via the forwarder {sealer}"
+				},
+				"keyPinned": "Key pinned",
+				"messages": "{count} messages here",
+				"messagesAtLeast": "{count}+ messages here",
+				"noSubject": "(no subject)",
+				"open": "Everything from this sender",
+				"recentThreads": "Recent threads",
+				"screenerAccepted": "Screener: accepted",
+				"searchAll": "Search all mail from this sender",
+				"sharedFiles": "Shared attachments",
+				"title": "Sender"
 			}
 		},
 		"preferences": {
