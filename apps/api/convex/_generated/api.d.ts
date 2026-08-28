@@ -777,6 +777,7 @@ import type * as mail_postboxOutboundAudit from '../mail/postboxOutboundAudit.js
 import type * as mail_postboxOutboundLifecycle from '../mail/postboxOutboundLifecycle.js';
 import type * as mail_replyOptions from '../mail/replyOptions.js';
 import type * as mail_rfc822 from '../mail/rfc822.js';
+import type * as mail_savedSearches from '../mail/savedSearches.js';
 import type * as mail_sealPolicy from '../mail/sealPolicy.js';
 import type * as mail_sealedBlobHttp from '../mail/sealedBlobHttp.js';
 import type * as mail_senderHeuristics from '../mail/senderHeuristics.js';
@@ -1797,6 +1798,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/postboxOutboundLifecycle': typeof mail_postboxOutboundLifecycle;
 	'mail/replyOptions': typeof mail_replyOptions;
 	'mail/rfc822': typeof mail_rfc822;
+	'mail/savedSearches': typeof mail_savedSearches;
 	'mail/sealPolicy': typeof mail_sealPolicy;
 	'mail/sealedBlobHttp': typeof mail_sealedBlobHttp;
 	'mail/senderHeuristics': typeof mail_senderHeuristics;

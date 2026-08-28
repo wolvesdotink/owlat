@@ -1006,6 +1006,33 @@ export const mailTables = {
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_mailbox_and_name', ['mailboxId', 'name']),
 
+	// Saved searches — a named, re-runnable Postbox query.
+	//
+	// `rawQuery` is the query STRING exactly as typed, not the parsed payload:
+	// the grammar is the user's, the parser is free to grow (negation, OR, new
+	// operators all landed after this table), and re-parsing on read means a
+	// saved search picks up every parser fix instead of freezing the shape it
+	// had on the day it was saved. It is also what the `?q=` URL carries, so a
+	// saved search and a bookmarked one are the same thing.
+	//
+	// Mailbox-scoped, like labels and snippets: a query naming this mailbox's
+	// folders and labels is meaningless in another one.
+	mailSavedSearches: defineTable({
+		mailboxId: v.id('mailboxes'),
+		name: v.string(),
+		rawQuery: v.string(),
+		// Pinned entries render in the folder rail; the rest live on the search
+		// page. Kept explicit rather than derived so unpinning is not a delete.
+		isPinned: v.boolean(),
+		// Manual rail order, ascending. Assigned at insert (append to the end);
+		// ties break on creation time so a duplicated order can't reshuffle.
+		order: v.number(),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index('by_mailbox', ['mailboxId'])
+		.index('by_mailbox_and_name', ['mailboxId', 'name']),
+
 	// Compose drafts. Live separately from mailMessages so autosaves don't
 	// pollute the Drafts folder IMAP view. On Send, the draft is finalized
 	// into mailMessages (Sent folder) and the draft row is deleted.
