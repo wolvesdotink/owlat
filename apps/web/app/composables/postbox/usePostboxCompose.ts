@@ -369,9 +369,27 @@ export function usePostboxCompose(seed: DraftSeed) {
 		undoSendDelayMs: () => undoSendDelayMs.value,
 	});
 
+	/**
+	 * Hand the composition to the on-device outbox and retire its mirror.
+	 *
+	 * The queued payload is a COMPLETE copy of the text (undo hands the whole
+	 * thing back), so the mirror has nothing left to protect — and leaving it
+	 * would be actively wrong: a fresh compose mirrors under a shared
+	 * provisional key, so the next blank compose would be offered "Restore
+	 * unsaved changes" holding a message that is already queued, one click from
+	 * sending it twice. Only reached on a successful queue: `queueOfflineSend`
+	 * throws when the device could not store the payload, and that message still
+	 * lives in the composer.
+	 */
+	async function queueSendOffline(opts?: SendOpts) {
+		const queued = await queueOfflineSend(opts);
+		draftMirror.retire();
+		return queued;
+	}
+
 	async function send(opts?: SendOpts) {
 		// D8: offline never touches the network — queue the payload on-device.
-		if (offlineOutbox.isOffline.value) return queueOfflineSend(opts);
+		if (offlineOutbox.isOffline.value) return queueSendOffline(opts);
 
 		interceptingSend = true;
 		sendNetworkFailed = false;
@@ -388,7 +406,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 			if (!id) {
 				// The draft row couldn't be created because the connection dropped
 				// mid-send — queue instead of losing the message.
-				if (sendNetworkFailed) return queueOfflineSend(opts);
+				if (sendNetworkFailed) return queueSendOffline(opts);
 				throw new Error('No draft');
 			}
 
@@ -406,7 +424,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 			// caller never arms undo / navigates away on a failed send — unless the
 			// failure was the TRANSPORT, in which case the message queues offline.
 			if (!result.ok) {
-				if (sendNetworkFailed) return queueOfflineSend(opts);
+				if (sendNetworkFailed) return queueSendOffline(opts);
 				// Already toasted by the operation module — the throw exists only so
 				// the caller does not treat a refusal as a send.
 				throw new SurfacedOperationError('Send failed');
