@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { nanoid } from 'nanoid';
 import { getOptional } from './lib/env';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from './_utils/errors';
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
@@ -113,10 +113,9 @@ export const listShareLinks = authedQuery({
 		emailTemplateId: v.optional(v.id('emailTemplates')),
 		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'shareLinks:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'shareLinks:manage'),
 			'Only owners and admins can view share links'
 		);
 		let links;

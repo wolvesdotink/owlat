@@ -13,7 +13,7 @@ import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
 import { isFeatureEnabled } from './lib/featureFlags';
 import { getOrThrow, throwInvalidState } from './_utils/errors';
 import { extractEmail } from './lib/emailAddress';
@@ -81,10 +81,9 @@ async function isTrustedInboundSender(ctx: MutationCtx, fromField: string): Prom
  */
 export const listRecent = authedQuery({
 	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can view code tasks'
 		);
 		const requested = args.limit ?? LIST_RECENT_DEFAULT_LIMIT;

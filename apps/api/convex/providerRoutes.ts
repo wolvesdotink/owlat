@@ -3,7 +3,7 @@ import { paginationOptsValidator } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
 import { type MutationCtx, type QueryCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
 import { messageTypeValidator } from './lib/sendProviders/route';
 import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
@@ -130,10 +130,9 @@ const deliverabilityFallbackValidator = v.object({
  */
 export const listRoutes = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, _args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can view provider routing'
 		);
 		return await ctx.db.query('providerRoutes').collect(); // bounded: configured provider routes (few)

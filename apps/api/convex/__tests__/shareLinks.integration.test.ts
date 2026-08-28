@@ -20,7 +20,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// The gated reads now use the THREADED session (handler's 3rd arg) with
+		// requirePermission(hasPermission(session.role, …)), so denial is expressed
+		// as a non-admin role here rather than by stubbing requireOrgPermission.
+		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: 'test-user',
+			role: permissionState.allowed ? 'owner' : 'editor',
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({

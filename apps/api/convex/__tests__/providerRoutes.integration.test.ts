@@ -30,7 +30,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 		// stands up a BetterAuth component to answer it from.
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org-test'),
 		// `authedQuery`/`authedMutation` floor + the handler's own role check.
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// The gated reads now use the THREADED session (handler's 3rd arg) with
+		// requirePermission(hasPermission(session.role, …)), so denial is expressed
+		// as a non-admin role here rather than by stubbing requireOrgPermission.
+		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: 'test-user',
+			role: permissionState.allowed ? 'owner' : 'editor',
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
