@@ -743,6 +743,7 @@ import type * as mail_external_sharedInbox from '../mail/external/sharedInbox.js
 import type * as mail_filterRun from '../mail/filterRun.js';
 import type * as mail_filters from '../mail/filters.js';
 import type * as mail_filtersEval from '../mail/filtersEval.js';
+import type * as mail_filtersImport from '../mail/filtersImport.js';
 import type * as mail_folders from '../mail/folders.js';
 import type * as mail_followUps from '../mail/followUps.js';
 import type * as mail_forwarding from '../mail/forwarding.js';
@@ -1788,6 +1789,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/filterRun': typeof mail_filterRun;
 	'mail/filters': typeof mail_filters;
 	'mail/filtersEval': typeof mail_filtersEval;
+	'mail/filtersImport': typeof mail_filtersImport;
 	'mail/folders': typeof mail_folders;
 	'mail/followUps': typeof mail_followUps;
 	'mail/forwarding': typeof mail_forwarding;
