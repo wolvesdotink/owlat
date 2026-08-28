@@ -109,6 +109,10 @@ async function handleDelete() {
 		     until now only existed at the top of Today. -->
 			<PostboxDailyBriefSettings />
 
+			<!-- Files shared as links (idea 10): every link the composer handed out,
+		     with an immediate revoke. Self-hides until something is shared. -->
+			<PostboxSharedLinksSettings />
+
 			<section id="mailboxes" class="card !p-0 scroll-mt-6">
 				<header class="px-5 py-3 border-b border-border-subtle">
 					<h2 class="font-semibold">{{ t('dashboard.preferences.index.mailboxes') }}</h2>

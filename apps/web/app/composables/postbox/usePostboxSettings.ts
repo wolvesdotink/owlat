@@ -46,6 +46,10 @@
  *     retention sweep deletes it for good (Never / 7 / 30 / 90 days). Defaults
  *     to Never, so an untouched row keeps every trashed message forever, which
  *     is exactly the behaviour that shipped before the control existed.
+ *   - `shareLinkExpiryDays` — default lifetime of an attachment share link this
+ *     user creates (idea 10). Absent means 14 days: share links did not exist
+ *     before this setting, so there is no older behaviour to preserve, only a
+ *     sensible default to agree on with the server.
  *   - `markReadPolicy` — when an opened conversation loses its unread flags:
  *     'immediate' (mark on render, the default and today's behaviour),
  *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
@@ -77,6 +81,8 @@ import type { PostboxQuietHours } from '~/utils/postboxQuietHours';
 import { resolvePostboxQuietHours } from '~/utils/postboxQuietHours';
 import type { PostboxTrashAutoPurgeDays } from '~/utils/postboxTrashRetention';
 import { resolvePostboxTrashAutoPurgeDays } from '~/utils/postboxTrashRetention';
+import type { AttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
+import { resolveAttachmentShareExpiryDays } from '@owlat/shared/attachmentShares';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
@@ -198,6 +204,13 @@ export function usePostboxSettings() {
 		label: 'Save Postbox settings',
 	});
 
+	// Default lifetime of a new share link. Resolves through the SAME shared
+	// helper the backend uses, so an unset (or out-of-range) row reads as the
+	// 14-day default on both sides of the wire.
+	const shareLinkExpiryDays = computed<AttachmentShareExpiryDays>(() =>
+		resolveAttachmentShareExpiryDays(data.value?.shareLinkExpiryDays)
+	);
+
 	async function setAutoAdvance(mode: PostboxAutoAdvanceMode) {
 		await updateOp.run({ autoAdvance: mode });
 	}
@@ -288,6 +301,10 @@ export function usePostboxSettings() {
 		await updateOp.run({ trashAutoPurgeDays: days });
 	}
 
+	async function setShareLinkExpiryDays(days: AttachmentShareExpiryDays) {
+		await updateOp.run({ shareLinkExpiryDays: days });
+	}
+
 	async function setDailyBriefEmail(value: {
 		enabled: boolean;
 		minute: number;
@@ -317,6 +334,7 @@ export function usePostboxSettings() {
 		senderScreener,
 		markReadPolicy,
 		trashAutoPurgeDays,
+		shareLinkExpiryDays,
 		dailyBriefEmail,
 		isLoading,
 		setAutoAdvance,
@@ -338,6 +356,7 @@ export function usePostboxSettings() {
 		setSenderScreener,
 		setMarkReadPolicy,
 		setTrashAutoPurgeDays,
+		setShareLinkExpiryDays,
 		setDailyBriefEmail,
 		isSaving: updateOp.isLoading,
 	};

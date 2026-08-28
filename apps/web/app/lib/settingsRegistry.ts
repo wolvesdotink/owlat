@@ -151,6 +151,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('autoSummarize', 'reading', all(hasMail, flag('ai'))),
 			control('sendSound', 'reading', hasMail),
 			control('dailyBriefEmail', 'daily-brief', hasMail),
+			control('sharedLinks', 'shared-links', hasMail),
 			control('mailboxes', 'mailboxes', hasMail),
 		],
 	}),
