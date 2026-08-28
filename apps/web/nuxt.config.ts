@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 
@@ -27,6 +28,17 @@ export default defineNuxtConfig({
 	},
 
 	nitro: {
+		// The offline app shell service worker (service-worker/sw.js → /sw.js).
+		// It is NOT in public/ so that this one line can keep it out of a build:
+		// the desktop bundle (`generate:desktop`) is served from a Tauri custom
+		// scheme where service workers do not apply, so it must never contain the
+		// file — and the client plugin refuses to register there anyway.
+		// `maxAge: 0` is deliberate: a long-cached worker script is a deploy that
+		// can never be picked up.
+		publicAssets:
+			process.env['OWLAT_DESKTOP'] === 'true'
+				? []
+				: [{ dir: fileURLToPath(new URL('./service-worker', import.meta.url)), maxAge: 0 }],
 		// Exclude papaparse from the server bundle — it's client-only and its
 		// blob URL code breaks Rollup's parser during the Nitro build.
 		externals: {
@@ -94,6 +106,13 @@ export default defineNuxtConfig({
 				// the packaged app's enforcement boundary is tauri.conf.json's CSP,
 				// which allows inline scripts anyway.
 				'style-src': ["'self'", 'https:', "'unsafe-inline'"],
+				// The offline app shell worker (/sw.js). Same value on both branches
+				// — it is only ever registered from this origin, and the desktop
+				// build ships no worker at all. Stated explicitly rather than left to
+				// the worker-src → script-src fallback, so tightening script-src (or
+				// adding a default-src) can never silently stop the worker from
+				// registering, which would degrade to a blank offline window.
+				'worker-src': ["'self'"],
 				'script-src':
 					process.env['OWLAT_DESKTOP'] === 'true'
 						? ["'self'", 'https:', "'unsafe-inline'"]
@@ -340,6 +359,13 @@ export default defineNuxtConfig({
 			// auth) so the SPA reads its backend from the active workspace at runtime
 			// instead of the build-time NUXT_PUBLIC_CONVEX_URL.
 			isDesktopBuild: process.env['OWLAT_DESKTOP'] === 'true',
+			// Offline app shell kill switch (`NUXT_PUBLIC_OFFLINE_SHELL=false`).
+			// ON by default: the service worker only ever caches the SPA shell and
+			// content-hashed build assets, and answers navigations network-first.
+			// Baked at build time like every other public value in an ssr:false
+			// bundle, so flipping it needs a rebuild — and flipping it OFF actively
+			// unregisters the worker (app/plugins/service-worker.client.ts).
+			offlineShell: process.env['NUXT_PUBLIC_OFFLINE_SHELL'] !== 'false',
 			// Deployment mode — 'selfhost' or 'hosted'
 			// Drives the onboarding banner, hides hosted-only UI (billing tabs,
 			// upgrade prompts), and gates the in-app update feature.

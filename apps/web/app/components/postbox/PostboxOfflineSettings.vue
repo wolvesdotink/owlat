@@ -8,9 +8,31 @@
  * "Clear local cache" action. No mailbox id is threaded here: the toggle is
  * device-global and Clear wipes every mailbox's cache on this device.
  */
+import { describeShellStatus } from '~/utils/offlineShell';
+
 const { t } = useI18n();
 
 const { isDesktop } = useDesktopContext();
+
+// Offline START (the service worker) is a different thing from the offline mail
+// cache below it: it decides whether the app PAINTS without a connection, and
+// it is instance-wide rather than a per-device choice, so it reports rather
+// than toggles. `controller` only settles after mount — a page loaded before
+// the worker took over is not yet controlled.
+const config = useRuntimeConfig();
+const shellControlled = ref(false);
+onMounted(() => {
+	shellControlled.value = !!navigator.serviceWorker?.controller;
+});
+const shellStatus = computed(() =>
+	describeShellStatus({
+		supported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+		isDesktopBuild: config.public.isDesktopBuild === true,
+		isDev: import.meta.dev,
+		enabled: config.public.offlineShell !== false,
+		controlled: shellControlled.value,
+	})
+);
 
 const {
 	enabled: offlineCacheEnabled,
@@ -65,6 +87,16 @@ async function onClearOfflineCache() {
 				:checked="offlineCacheEnabled"
 				@change="onOfflineCacheChange"
 			/>
+		</div>
+		<div
+			v-if="shellStatus"
+			class="px-5 py-4 border-t border-border-subtle"
+			data-testid="offline-shell-status"
+		>
+			<p class="font-medium text-sm">
+				{{ t('components.postbox.postboxOfflineSettings.shell.label') }}
+			</p>
+			<p class="text-xs text-text-tertiary mt-0.5">{{ t(shellStatus.key) }}</p>
 		</div>
 		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">

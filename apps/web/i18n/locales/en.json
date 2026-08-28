@@ -3825,6 +3825,13 @@
 					"label": "Clear local cache"
 				},
 				"heading": "On this device",
+				"shell": {
+					"disabled": "Turned off for this instance — Owlat needs a connection to start.",
+					"label": "Offline start",
+					"pending": "Almost ready — after your next reload this app opens without a connection.",
+					"ready": "Ready — this app opens and renders your cached mail without a connection.",
+					"unsupported": "Not available in this browser — Owlat needs a connection to start."
+				},
 				"store": {
 					"defaultBrowser": "Off by default in the browser.",
 					"defaultDesktop": "On by default in the desktop app.",

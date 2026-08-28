@@ -3825,6 +3825,13 @@
 					"label": "Lokalen Cache leeren"
 				},
 				"heading": "Auf diesem Gerät",
+				"shell": {
+					"disabled": "Für diese Instanz deaktiviert — Owlat braucht zum Starten eine Verbindung.",
+					"label": "Offline-Start",
+					"pending": "Fast bereit — nach dem nächsten Neuladen öffnet sich die App auch ohne Verbindung.",
+					"ready": "Bereit — die App öffnet sich und zeigt zwischengespeicherte Post auch ohne Verbindung.",
+					"unsupported": "In diesem Browser nicht verfügbar — Owlat braucht zum Starten eine Verbindung."
+				},
 				"store": {
 					"defaultBrowser": "Im Browser standardmäßig aus.",
 					"defaultDesktop": "In der Desktop-App standardmäßig an.",
