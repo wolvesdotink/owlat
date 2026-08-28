@@ -211,6 +211,21 @@ describe('encodeQrMatrix', () => {
 		expect(matrix[size - 8]![8]).toBe(true);
 	});
 
+	it('draws the alignment pattern a scanner uses to correct for perspective', () => {
+		// Asserted directly rather than via the round trip: the reader below skips
+		// the same modules the encoder reserves, so an encoder that RESERVED the
+		// alignment square without DRAWING it would still decode perfectly here and
+		// fail on every real camera.
+		const matrix = encodeQrMatrix('X'.repeat(50))!; // version 4, centre at (26, 26)
+		expect(matrix.length).toBe(33);
+		expect(matrix[26]![26]).toBe(true); // dark centre
+		expect(matrix[25]![26]).toBe(false); // light ring
+		expect(matrix[26]![25]).toBe(false);
+		expect(matrix[24]![26]).toBe(true); // dark outer ring
+		expect(matrix[24]![24]).toBe(true);
+		expect(matrix[28]![28]).toBe(true);
+	});
+
 	it('writes the same format information into both copies', () => {
 		const matrix = encodeQrMatrix(openpgpFingerprintUri(fingerprint))!;
 		const size = matrix.length;
