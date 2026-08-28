@@ -1,12 +1,20 @@
 <script lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { SenderAuthMessage } from '~/utils/senderAuth';
 
 /**
  * One thread-list row's message shape. Extracted here (shared with
  * PostboxThreadList.vue) so the list and the row agree on the projection the
  * folder query returns.
+ *
+ * It extends `SenderAuthMessage` — the persisted SPF/DKIM/DMARC verdicts, the
+ * domains those checks authenticated and the ingest impersonation heuristics —
+ * because the row now derives the danger-only trust marker (UX plan idea 51)
+ * from exactly the fields the reader's badge reads. `mail/mailbox/queries.ts`
+ * already returns whole `mailMessages` documents, so nothing new crosses the
+ * wire; every field is optional, so a legacy row simply yields no marker.
  */
-export type PostboxThreadRowMessage = {
+export type PostboxThreadRowMessage = SenderAuthMessage & {
 	_id: Id<'mailMessages'>;
 	threadId?: string;
 	fromAddress: string;
@@ -39,6 +47,7 @@ export type PostboxThreadRowMessage = {
  * keeps PostboxThreadList.vue under the file-size ratchet.
  */
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
+import { deriveSenderRowMarker, senderRiskInputOf, type SenderAuthText } from '~/utils/senderAuth';
 
 const { t, locale } = useI18n();
 
@@ -50,6 +59,12 @@ const props = defineProps<{
 	selected: boolean;
 	focused: boolean;
 	active: boolean;
+	/**
+	 * Flag gate for the danger-only sender-trust marker (`senderAuthBadges`).
+	 * Resolved once by the list rather than per row, so a folder page does not
+	 * mount one flag subscription per visible row.
+	 */
+	trustMarkers?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -71,6 +86,36 @@ const emit = defineEmits<{
 }>();
 
 const rowId = computed(() => `postbox-row-${props.msg._id}`);
+
+/**
+ * Danger-only sender-trust marker (UX plan idea 51). Triage is where phishing
+ * gets clicked, and the five-state verdict used to render only inside an opened
+ * thread. `deriveSenderRowMarker` stays silent for verified, unauthenticated and
+ * legacy rows — the list must not become a wall of shields — so this is null on
+ * the overwhelming majority of rows.
+ */
+const trustMarker = computed(() =>
+	props.trustMarkers ? deriveSenderRowMarker(senderRiskInputOf(props.msg)) : null
+);
+
+/**
+ * The marker's full sentence, resolved here: the derivation is module scope and
+ * hands back catalog keys (`{ key, params }` when it names a domain).
+ */
+function markerText(text: SenderAuthText): string {
+	return typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
+}
+
+/**
+ * The chip's accessible name. The compact density hides the visible label to
+ * keep a one-line row one line, so the name has to carry BOTH halves — the
+ * short summary and why — or a screen reader would hear a bare warning icon.
+ */
+const trustMarkerLabel = computed(() => {
+	const marker = trustMarker.value;
+	if (!marker) return '';
+	return `${t(marker.label)} — ${markerText(marker.title)}`;
+});
 
 /**
  * Checkbox toggles selection without following the row's NuxtLink. Shift means
@@ -253,7 +298,7 @@ onUnmounted(cancelLongPress);
 		<template #default="{ onContextmenu, onKeydown }">
 			<li
 				class="group relative pbx-row-li"
-				:class="{ 'pbx-virtual-row': virtualize }"
+				:class="{ 'pbx-virtual-row': virtualize, 'pbx-row-danger': !!trustMarker }"
 				style="
 					content-visibility: auto;
 					contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px);
@@ -314,6 +359,18 @@ onUnmounted(cancelLongPress);
 							<template #identifier>{{ msg.fromName || msg.fromAddress }}</template>
 							<template #meta>{{ formatThreadTimestamp(msg.receivedAt) }}</template>
 							<div class="flex items-center gap-1.5 mt-0.5">
+								<!-- Danger-only sender marker: failed / misaligned / look-alike of a
+								     known contact's domain. Silent for every other verdict. -->
+								<span
+									v-if="trustMarker"
+									class="pbx-row-trust inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-error/40 text-error whitespace-nowrap flex-shrink-0"
+									data-testid="row-trust-marker"
+									:title="trustMarkerLabel"
+									:aria-label="trustMarkerLabel"
+								>
+									<Icon :name="trustMarker.icon" class="w-3 h-3" />
+									<span class="pbx-row-trust-label">{{ t(trustMarker.label) }}</span>
+								</span>
 								<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
 								<Icon
 									v-if="msg.snoozedUntil"

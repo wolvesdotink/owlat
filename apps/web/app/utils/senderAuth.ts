@@ -34,6 +34,8 @@
  * would never be translated.
  */
 
+import { extractEmailAddress } from './emailAddress';
+
 export type SenderAuthState =
 	| 'verified'
 	| 'forwarded'
@@ -289,4 +291,177 @@ export function deriveSenderHeuristicLines(
 		lines.push('shared.senderAuth.heuristics.firstTimeSender');
 	}
 	return lines;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * DANGER-ONLY trust surfaces: the thread-list marker (UX plan idea 51) and the
+ * widened reply guard (idea 56).
+ *
+ * Both answer one question — "is there something about this sender we should
+ * say out loud before the reader acts?" — so they share ONE derivation. The
+ * rule stays the honesty rule the badge lives by: a risk line exists only when
+ * a check actually observed the thing it names, and every line is a catalog key
+ * the render boundary resolves.
+ *
+ * Deliberately narrower than the badge. `unauthenticated` ("we couldn't
+ * confirm") is NOT a risk: most legitimate mail from small senders lands there,
+ * and a list that marked it would be a wall of shields nobody reads. Only the
+ * three accusatory shapes qualify — an explicit DMARC failure, a pass that
+ * belongs to a different domain than the visible From, and a From domain the
+ * ingest heuristic matched against a KNOWN contact's domain — plus, for the
+ * reply guard alone, the Reply-To redirect.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Why a sender is being flagged. Ordered strongest-evidence-first below. */
+export type SenderRiskReason = 'failed' | 'misaligned' | 'lookalike' | 'replyToMismatch';
+
+/** The verdict + heuristic halves one message contributes to the derivation. */
+export interface SenderRiskInput {
+	auth: SenderAuthInput;
+	heuristics?: SenderHeuristics;
+}
+
+/** One flagged shape and the sentence that explains it (a key, or key+params). */
+export interface SenderRiskLine {
+	reason: SenderRiskReason;
+	text: SenderAuthText;
+}
+
+/**
+ * The dangerous shapes this message is in, strongest evidence first.
+ *
+ * The `failed` / `misaligned` sentences are the badge's OWN detail strings, so
+ * the list marker, the reply interstitial and the reader badge can never
+ * describe the same message differently. `forwarded` (a trusted forwarder's ARC
+ * rescue) is not a risk by construction: `deriveSenderAuth` resolves it before
+ * the fail branch, so a rescued mailing-list message contributes no line.
+ *
+ * Returns [] for everything else — verified, unauthenticated, and the legacy
+ * row with no verdicts at all.
+ */
+export function deriveSenderRisk(input: SenderRiskInput): SenderRiskLine[] {
+	const lines: SenderRiskLine[] = [];
+	const auth = deriveSenderAuth(input.auth);
+	if (auth?.state === 'failed' || auth?.state === 'misaligned') {
+		lines.push({ reason: auth.state, text: auth.detail });
+	}
+	const lookalike = input.heuristics?.lookalikeOfContactDomain?.trim();
+	if (lookalike) {
+		lines.push({
+			reason: 'lookalike',
+			text: { key: 'shared.senderAuth.heuristics.lookalike', params: { domain: lookalike } },
+		});
+	}
+	if (input.heuristics?.isReplyToMismatch) {
+		lines.push({ reason: 'replyToMismatch', text: 'shared.senderAuth.heuristics.replyToMismatch' });
+	}
+	return lines;
+}
+
+/** Short chip label per row-worthy reason — the badge's own summaries, reused. */
+const ROW_MARKER_LABELS: Record<Exclude<SenderRiskReason, 'replyToMismatch'>, string> = {
+	failed: 'shared.senderAuth.failed.summary',
+	misaligned: 'shared.senderAuth.misaligned.summary',
+	lookalike: 'shared.senderAuth.marker.lookalikeSummary',
+};
+
+/** The compact danger marker one thread-list row renders (idea 51). */
+export interface SenderRowMarker {
+	reason: Exclude<SenderRiskReason, 'replyToMismatch'>;
+	/** Chip label — a catalog key. */
+	label: string;
+	/** The full sentence, used as the chip's title / accessible name. */
+	title: SenderAuthText;
+	icon: string;
+}
+
+/**
+ * The row marker for a list row, or null to stay silent.
+ *
+ * Danger-only and one marker at most: the strongest reason wins, so a row never
+ * grows a second chip. A Reply-To redirect alone does NOT mark a row — it says
+ * nothing about who sent the message, only about where a reply would go, which
+ * is the reply guard's business (idea 56) and not triage's.
+ */
+export function deriveSenderRowMarker(input: SenderRiskInput): SenderRowMarker | null {
+	for (const line of deriveSenderRisk(input)) {
+		if (line.reason === 'replyToMismatch') continue;
+		return {
+			reason: line.reason,
+			label: ROW_MARKER_LABELS[line.reason],
+			title: line.text,
+			icon: 'lucide:shield-alert',
+		};
+	}
+	return null;
+}
+
+/** What the reply interstitial has to say about this sender (idea 56). */
+export interface ReplyRisk {
+	reasons: SenderRiskReason[];
+	/** The plain-language reasons, strongest first — catalog keys. */
+	lines: SenderAuthText[];
+}
+
+/**
+ * The reply-guard verdict: null when replying is unremarkable (the guard then
+ * never renders), else every flagged shape. Wider than the row marker by
+ * exactly one reason — a Reply-To on a different domain is precisely the
+ * business-email-compromise shape a reply walks into.
+ */
+export function deriveReplyRisk(input: SenderRiskInput): ReplyRisk | null {
+	const risk = deriveSenderRisk(input);
+	if (risk.length === 0) return null;
+	return { reasons: risk.map((l) => l.reason), lines: risk.map((l) => l.text) };
+}
+
+/**
+ * The persisted fields a message row carries into both derivations. Kept as a
+ * structural type (not a Convex Doc) so the list row, the reader and the tests
+ * can all satisfy it without importing the backend's data model.
+ */
+export interface SenderAuthMessage {
+	fromAddress: string;
+	spfResult?: string;
+	dkimResult?: string;
+	dmarcResult?: string;
+	dmarcPolicy?: string;
+	envelopeFromDomain?: string;
+	dkimSigningDomain?: string;
+	dmarcOverride?: string;
+	arcSealer?: string;
+	senderHeuristics?: SenderHeuristics;
+}
+
+/**
+ * Map a stored message row onto the derivation's input. ONE mapping shared by
+ * the reader badge, the list marker and the reply guard, so a field that is
+ * added (or forgotten) can never reach one surface and miss another.
+ */
+export function senderAuthInputOf(msg: SenderAuthMessage): SenderAuthInput {
+	return {
+		fromDomain: senderDomainOf(msg.fromAddress),
+		spfResult: msg.spfResult,
+		dkimResult: msg.dkimResult,
+		dmarcResult: msg.dmarcResult,
+		dmarcPolicy: msg.dmarcPolicy,
+		envelopeFromDomain: msg.envelopeFromDomain,
+		dkimSigningDomain: msg.dkimSigningDomain,
+		dmarcOverride: msg.dmarcOverride,
+		arcSealer: msg.arcSealer,
+	};
+}
+
+/** The same mapping plus the ingest heuristics — the risk derivations' input. */
+export function senderRiskInputOf(msg: SenderAuthMessage): SenderRiskInput {
+	return { auth: senderAuthInputOf(msg), heuristics: msg.senderHeuristics };
+}
+
+/**
+ * The domain of a `From:` header value ("Name <a@b.com>" → "b.com"). Empty when
+ * the header carries no address at all, which the derivation renders as its own
+ * unknown-sender copy rather than splicing a placeholder noun into a message.
+ */
+export function senderDomainOf(fromAddress: string | undefined): string {
+	return extractEmailAddress(fromAddress ?? '').split('@')[1] ?? '';
 }

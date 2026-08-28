@@ -68,6 +68,8 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
 	vi.stubGlobal('usePostboxSettings', () => ({ density: ref('comfortable') }));
+	// The list resolves the sender-trust-marker flag once and passes it down.
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));
 	vi.stubGlobal('usePostboxListKeyboard', () => ({
 		focusedIndex: ref(-1),
 		activeId: ref(undefined),

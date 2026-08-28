@@ -7,8 +7,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+	deriveReplyRisk,
 	deriveSenderAuth,
 	deriveSenderHeuristicLines,
+	deriveSenderRisk,
+	deriveSenderRowMarker,
+	senderAuthInputOf,
+	senderRiskInputOf,
 	type SenderAuthInput,
 	type SenderAuthText,
 } from '../senderAuth';
@@ -214,5 +219,165 @@ describe('deriveSenderHeuristicLines', () => {
 		expect(deriveSenderHeuristicLines({ isFirstTimeSender: true }).map(render)).toEqual([
 			"This is the first message you've received from this address.",
 		]);
+	});
+});
+
+/**
+ * The danger-only surfaces (UX plan ideas 51 + 56). Same honesty rule: a flagged
+ * shape must rest on something that was actually observed, and the SILENT cases
+ * matter as much as the loud ones — `unauthenticated` is not an accusation, and
+ * neither is a legacy row.
+ */
+describe('deriveSenderRisk', () => {
+	it('flags an explicit DMARC failure with the badge’s own sentence', () => {
+		const risk = deriveSenderRisk({
+			auth: { fromDomain: 'acme.com', dmarcResult: 'fail', dmarcPolicy: 'reject' },
+		});
+		expect(risk.map((l) => l.reason)).toEqual(['failed']);
+		expect(render(risk[0]!.text)).toBe(
+			"This message says it's from acme.com, but it failed that domain's authentication checks — and acme.com asks that such messages be rejected. Treat it as suspicious."
+		);
+	});
+
+	it('flags the misaligned shape and names the domain that actually sent it', () => {
+		const risk = deriveSenderRisk({
+			auth: { fromDomain: 'acme.com', spfResult: 'pass', envelopeFromDomain: 'bulk.example' },
+		});
+		expect(risk.map((l) => l.reason)).toEqual(['misaligned']);
+		expect(render(risk[0]!.text)).toBe(
+			'Sent by bulk.example, which is not authorized to send for acme.com.'
+		);
+	});
+
+	it('stacks the heuristics onto the verdict, strongest evidence first', () => {
+		const risk = deriveSenderRisk({
+			auth: { fromDomain: 'brightpath-finance.co', dmarcResult: 'fail' },
+			heuristics: { lookalikeOfContactDomain: 'brightpath.com', isReplyToMismatch: true },
+		});
+		expect(risk.map((l) => l.reason)).toEqual(['failed', 'lookalike', 'replyToMismatch']);
+	});
+
+	it('says nothing about a verified sender', () => {
+		expect(
+			deriveSenderRisk({
+				auth: { fromDomain: 'acme.com', dmarcResult: 'pass', spfResult: 'pass' },
+			})
+		).toEqual([]);
+	});
+
+	it('says nothing about an unauthenticated sender — unknown is not an accusation', () => {
+		expect(deriveSenderRisk({ auth: { fromDomain: 'acme.com', spfResult: 'none' } })).toEqual([]);
+	});
+
+	it('says nothing about a legacy row with no verdicts at all', () => {
+		expect(deriveSenderRisk({ auth: { fromDomain: 'acme.com' } })).toEqual([]);
+	});
+
+	it('says nothing about a message a trusted forwarder’s ARC chain rescued', () => {
+		expect(
+			deriveSenderRisk({
+				auth: {
+					fromDomain: 'author.example',
+					dmarcResult: 'fail',
+					dmarcOverride: 'arc',
+					arcSealer: 'lists.example',
+				},
+			})
+		).toEqual([]);
+	});
+});
+
+describe('deriveSenderRowMarker', () => {
+	it('renders the strongest reason only — one row never grows two chips', () => {
+		const marker = deriveSenderRowMarker({
+			auth: { fromDomain: 'acme.com', dmarcResult: 'fail' },
+			heuristics: { lookalikeOfContactDomain: 'acme-corp.com' },
+		});
+		expect(marker?.reason).toBe('failed');
+		expect(t(marker!.label)).toBe('Failed sender check');
+	});
+
+	it('marks a look-alike domain even when the sender itself is verified', () => {
+		const marker = deriveSenderRowMarker({
+			auth: {
+				fromDomain: 'brightpath-finance.co',
+				dmarcResult: 'pass',
+				spfResult: 'pass',
+				envelopeFromDomain: 'brightpath-finance.co',
+			},
+			heuristics: { lookalikeOfContactDomain: 'brightpath.com' },
+		});
+		expect(marker?.reason).toBe('lookalike');
+		expect(t(marker!.label)).toBe('Look-alike sender');
+		expect(render(marker!.title)).toBe(
+			"This sender's domain looks like brightpath.com, but is not it."
+		);
+	});
+
+	it('does NOT mark a row for a Reply-To redirect alone (that is the reply guard’s job)', () => {
+		expect(
+			deriveSenderRowMarker({
+				auth: {
+					fromDomain: 'acme.com',
+					dmarcResult: 'pass',
+					spfResult: 'pass',
+					envelopeFromDomain: 'acme.com',
+				},
+				heuristics: { isReplyToMismatch: true },
+			})
+		).toBeNull();
+	});
+
+	it('is null when nothing dangerous fired', () => {
+		expect(
+			deriveSenderRowMarker({ auth: { fromDomain: 'acme.com', spfResult: 'none' } })
+		).toBeNull();
+	});
+});
+
+describe('deriveReplyRisk', () => {
+	it('fires on a Reply-To redirect the row marker deliberately ignores', () => {
+		const risk = deriveReplyRisk({
+			auth: {
+				fromDomain: 'acme.com',
+				dmarcResult: 'pass',
+				spfResult: 'pass',
+				envelopeFromDomain: 'acme.com',
+			},
+			heuristics: { isReplyToMismatch: true },
+		});
+		expect(risk?.reasons).toEqual(['replyToMismatch']);
+		expect(risk!.lines.map(render)).toEqual([
+			'Replies would go to a different domain than this message claims to be from.',
+		]);
+	});
+
+	it('is null for an ordinary sender, so the interstitial never renders', () => {
+		expect(
+			deriveReplyRisk({
+				auth: {
+					fromDomain: 'acme.com',
+					dmarcResult: 'pass',
+					spfResult: 'pass',
+					envelopeFromDomain: 'acme.com',
+				},
+			})
+		).toBeNull();
+	});
+});
+
+describe('senderRiskInputOf', () => {
+	it('reads the From domain out of a full header value', () => {
+		const input = senderRiskInputOf({
+			fromAddress: 'Brightpath Finance <billing@Brightpath-Finance.CO>',
+			dmarcResult: 'fail',
+			senderHeuristics: { isFirstTimeSender: true },
+		});
+		expect(input.auth.fromDomain).toBe('brightpath-finance.co');
+		expect(input.heuristics).toEqual({ isFirstTimeSender: true });
+	});
+
+	it('leaves the domain empty when the header carries no address', () => {
+		expect(senderAuthInputOf({ fromAddress: 'undisclosed-recipients' }).fromDomain).toBe('');
 	});
 });

@@ -11966,6 +11966,9 @@
 				"replyToMismatch": "Replies would go to a different domain than this message claims to be from.",
 				"spoofedCharacters": "The sender's domain uses look-alike characters that imitate another domain."
 			},
+			"marker": {
+				"lookalikeSummary": "Look-alike sender"
+			},
 			"misaligned": {
 				"detail": "Sent by {sender}, which is not authorized to send for {domain}.",
 				"detailUnknownSender": "Sent by {sender}, which is not authorized to send for this sender.",

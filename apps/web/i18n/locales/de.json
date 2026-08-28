@@ -11966,6 +11966,9 @@
 				"replyToMismatch": "Antworten gingen an eine andere Domain, als diese Nachricht als Absender angibt.",
 				"spoofedCharacters": "Die Domain des Absenders verwendet ähnlich aussehende Zeichen, die eine andere Domain nachahmen."
 			},
+			"marker": {
+				"lookalikeSummary": "Täuschend ähnlicher Absender"
+			},
 			"misaligned": {
 				"detail": "Gesendet von {sender}, die nicht berechtigt ist, für {domain} zu senden.",
 				"detailUnknownSender": "Gesendet von {sender}, die nicht berechtigt ist, für diesen Absender zu senden.",
