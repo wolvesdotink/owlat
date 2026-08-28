@@ -138,3 +138,41 @@ store key and a decision about what a stale count from three days ago means.
 To pick it up: keep `{ quiet, deferred, windowStartedAt }` in the desktop app
 settings store, and discard it on load when `windowStartedAt` is older than one
 day so a long-closed laptop never greets the user with a stale number.
+
+## 33 — pinned saved searches carry no unread count
+
+The rail mockup labels each pinned search with a count ("Unread from Ines 3").
+The rail renders the name and links to `?q=…`; it does not render a number.
+
+A count is not a cheap read here. A saved search is a raw query string, so the
+count is "run this search and tell me how many rows survive" — the same
+post-filtered, cursor-paginated scan the results list runs, per pinned entry,
+live, on every mailbox render. `mailFolders.unseenCount` and the label views can
+be counted because a folder or a label is an indexed equality; an arbitrary
+conjunction of substring operators, size bounds, exclusions and an OR is not.
+Approximating it from the first page only would print a number that is right for
+small results and quietly wrong (capped at the page size) for exactly the
+searches worth pinning.
+
+To pick it up: give the backend a `countSavedSearch` query that walks the same
+scan with a hard ceiling and returns `{ count, isCapped }`, so the rail can
+render "12" honestly and "50+" honestly, and subscribe it per pinned entry with
+the existing chunk-warmup batching rather than one subscription per row.
+
+## 35 — `filename:` searches attachment metadata, not an attachment index
+
+The plan pairs `filename:` with idea 37's attachment index. It landed without
+one: `mailMessages.attachments` already carries every part's filename from
+ingest, so the operator is a real post-filter today and needs no "not yet
+indexed" state.
+
+What it does NOT have is index narrowing. `filename:invoice` with no free text
+walks the arrival index and filters a page at a time, so on a large mailbox the
+matches can sit several "Keep searching" pages deep — the same shape as
+`has:attachment` alone, and the page-empty-with-more state already tells the
+truth about it. The same is true of `larger:`/`smaller:`, of the exclusions, and
+of any query using `OR` (a disjunction has no single text every alternative
+shares, so it gives up the search index entirely).
+
+To pick it up: idea 37's attachment index, plus a search-index filter field for
+the size buckets, so those queries narrow the scan instead of only the page.
