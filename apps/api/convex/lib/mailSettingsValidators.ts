@@ -39,6 +39,29 @@ export const mailViewModeValidator = v.union(
 	v.literal('categories')
 );
 
+// Postbox reading-pane layout (mailUserSettings.readingPane and mail/settings
+// update args) — where the reader sits relative to the message list. 'right'
+// (the default) is the side-by-side geometry that shipped before the control
+// existed; 'bottom' puts a full-width list above the reader; 'off' drops the
+// reading pane entirely and makes opening a message navigate. Single source so
+// schema and args can't drift.
+export const mailReadingPaneValidator = v.union(
+	v.literal('right'),
+	v.literal('bottom'),
+	v.literal('off')
+);
+
+// Postbox list-pane size (mailUserSettings.listWidth / listHeight and
+// mail/settings update args) — where the divider between the list and the
+// reader sits, in CSS pixels. A plain number rather than a closed set: this is
+// a drag handle, so every pixel in the range is a legitimate value. The bounds
+// are NOT enforced here — the client clamps on both write and read
+// (utils/postboxReadingPane), so a row written by an older/newer client, or one
+// whose bounds later change, still resolves to a sane layout instead of being
+// rejected mid-drag. Absent ⇒ the axis default (384px wide), which is exactly
+// the hardcoded geometry the layout had.
+export const mailListSizeValidator = v.number();
+
 // Postbox inbox landing mode (mailUserSettings.inboxMode and mail/settings
 // update args) — 'today' (the focused single-column landing view; the default)
 // vs 'browse' (the full three-pane folder UI). Inbox-only; persisted as the

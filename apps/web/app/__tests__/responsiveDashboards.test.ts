@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
 const postboxLayout = read('../components/postbox/PostboxLayout.vue');
+const readingPaneComposable = read('../composables/postbox/usePostboxReadingPane.ts');
 const listHeader = read('../components/postbox/PostboxListHeader.vue');
 const folderDrawer = read('../components/postbox/PostboxFolderDrawer.vue');
 const replyQueueStrip = read('../components/postbox/PostboxReplyQueueStrip.vue');
@@ -33,12 +34,18 @@ const builderRoutes = {
 
 describe('Postbox — stacked drill-in below lg', () => {
 	it('gives the list the full width and hides it once a message is open', () => {
-		expect(postboxLayout).toContain('class="w-full lg:w-96');
-		expect(postboxLayout).toContain(":class=\"activeMessageId ? 'hidden lg:flex' : 'flex'\"");
+		expect(postboxLayout).toContain('class="pbx-pane-list w-full');
+		// The two visibility strings moved into usePostboxReadingPane when the
+		// reading pane became a preference (the reader can now sit below the
+		// list, or nowhere) — the drill-in itself is unchanged and pinned there.
+		expect(postboxLayout).toContain(':class="[listPaneVisibility, listPaneBorder]"');
+		expect(readingPaneComposable).toContain("return 'flex';");
+		expect(readingPaneComposable).toContain("? 'hidden lg:flex' : 'hidden'");
 	});
 
 	it('shows the reader only when a message is open, with a back affordance', () => {
-		expect(postboxLayout).toContain(":class=\"activeMessageId ? 'block' : 'hidden lg:block'\"");
+		expect(postboxLayout).toContain(':class="readerPaneVisibility"');
+		expect(readingPaneComposable).toContain("? 'hidden lg:block' : 'hidden'");
 		expect(postboxLayout).toContain('@click="backToList"');
 	});
 

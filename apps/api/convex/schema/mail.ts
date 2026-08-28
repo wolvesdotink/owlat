@@ -13,6 +13,8 @@ import {
 	mailReplyDefaultValidator,
 	mailDensityValidator,
 	mailViewModeValidator,
+	mailReadingPaneValidator,
+	mailListSizeValidator,
 	mailInboxModeValidator,
 	mailSortOrderValidator,
 	mailNotifyAboutValidator,
@@ -1498,6 +1500,22 @@ export const mailTables = {
 		// other folders always render flat. Optional so existing rows read as
 		// undefined; the reader defaults it to 'flat'.
 		viewMode: v.optional(mailViewModeValidator),
+		// Reading-pane layout: 'right' (the reader beside the list — the geometry
+		// that shipped before this control existed), 'bottom' (a full-width list
+		// above the reader) or 'off' (no reading pane; opening a message
+		// navigates). Optional so existing rows read as undefined; the layout
+		// defaults it to 'right'.
+		readingPane: v.optional(mailReadingPaneValidator),
+		// Where the divider between the list and the reader sits, in CSS pixels —
+		// one field per axis, because the two layouts split along different ones
+		// and a single number would carry a nonsensical size across a pane switch.
+		// `listWidth` applies to the 'right' pane, `listHeight` to 'bottom'.
+		// Unbounded on the wire; the client clamps on read and write, so an
+		// out-of-range row resolves to a sane layout instead of a broken one.
+		// Optional so existing rows read as undefined; absent ⇒ 384px / 320px,
+		// exactly the hardcoded geometry.
+		listWidth: v.optional(mailListSizeValidator),
+		listHeight: v.optional(mailListSizeValidator),
 		// Inbox landing mode: 'today' (focused single-column landing view) vs
 		// 'browse' (the full three-pane folder UI). Persisted as the last-used
 		// mode. Optional so existing rows read as undefined; the reader defaults

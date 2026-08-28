@@ -21,6 +21,8 @@ import {
 	mailReplyDefaultValidator,
 	mailDensityValidator,
 	mailViewModeValidator,
+	mailReadingPaneValidator,
+	mailListSizeValidator,
 	mailInboxModeValidator,
 	mailSortOrderValidator,
 	mailNotifyAboutValidator,
@@ -49,6 +51,9 @@ export const get = publicQuery({
 			replyDefault: row.replyDefault,
 			density: row.density,
 			viewMode: row.viewMode,
+			readingPane: row.readingPane,
+			listWidth: row.listWidth,
+			listHeight: row.listHeight,
 			inboxMode: row.inboxMode,
 			sortOrder: row.sortOrder,
 			isSendSoundOn: row.isSendSoundOn,
@@ -73,6 +78,9 @@ export const update = authedMutation({
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		density: v.optional(mailDensityValidator),
 		viewMode: v.optional(mailViewModeValidator),
+		readingPane: v.optional(mailReadingPaneValidator),
+		listWidth: v.optional(mailListSizeValidator),
+		listHeight: v.optional(mailListSizeValidator),
 		inboxMode: v.optional(mailInboxModeValidator),
 		sortOrder: v.optional(mailSortOrderValidator),
 		isSendSoundOn: v.optional(v.boolean()),
@@ -101,6 +109,9 @@ export const update = authedMutation({
 			replyDefault?: (typeof args)['replyDefault'];
 			density?: (typeof args)['density'];
 			viewMode?: (typeof args)['viewMode'];
+			readingPane?: (typeof args)['readingPane'];
+			listWidth?: number;
+			listHeight?: number;
 			inboxMode?: (typeof args)['inboxMode'];
 			sortOrder?: (typeof args)['sortOrder'];
 			isSendSoundOn?: boolean;
@@ -119,6 +130,9 @@ export const update = authedMutation({
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
+		if (args.readingPane !== undefined) patch.readingPane = args.readingPane;
+		if (args.listWidth !== undefined) patch.listWidth = args.listWidth;
+		if (args.listHeight !== undefined) patch.listHeight = args.listHeight;
 		if (args.inboxMode !== undefined) patch.inboxMode = args.inboxMode;
 		if (args.sortOrder !== undefined) patch.sortOrder = args.sortOrder;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;

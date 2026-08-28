@@ -4357,6 +4357,10 @@
 				"completed": "Applied to {matched} messages.",
 				"cancelled": "Stopped after {matched} messages.",
 				"nothingToApply": "Forwarding and deleting are not applied to existing mail."
+			},
+			"postboxPaneResizer": {
+				"label": "Resize the message list",
+				"valueText": "{size} pixels"
 			}
 		},
 		"preferences": {
@@ -4389,6 +4393,25 @@
 				"hint": "Remembered in this browser and on your account, so a new device and the emails we send you follow it too. Anything not translated yet is shown in English.",
 				"subtitle": "Choose the language Owlat's interface is shown in on this device.",
 				"title": "Language"
+			},
+			"preferencesReading": {
+				"reading": "Reading",
+				"autoAdvanceLabel": "After archiving, deleting or snoozing",
+				"autoAdvanceHelp": "What the reader shows once the open conversation is triaged away.",
+				"markReadLabel": "Mark as read",
+				"markReadHelp": "When an open conversation loses its unread mark.",
+				"densityLabel": "Density",
+				"densityHelp": "How tightly the message list and reader are packed. Compact drops the snippet line for single-line rows.",
+				"readingPaneLabel": "Reading pane",
+				"readingPaneHelp": "Where the reader sits next to the list. Drag the divider — or focus it and use the arrow keys — to move the seam.",
+				"replyDefaultLabel": "Default reply behavior",
+				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
+				"writingSuggestionsLabel": "Writing suggestions",
+				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
+				"autoSummarizeLabel": "Auto-summarize long threads",
+				"autoSummarizeHelp": "Show a one-line AI summary at the top of long conversations. Click it to expand the key points.",
+				"sendSoundLabel": "Play sound when sending",
+				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default."
 			}
 		},
 		"query": {
@@ -8673,15 +8696,9 @@
 			},
 			"index": {
 				"addAccount": "Add mail account",
-				"autoAdvanceHelp": "What the reader shows once the open conversation is triaged away.",
-				"autoAdvanceLabel": "After archiving, deleting or snoozing",
-				"autoSummarizeHelp": "Show a one-line AI summary at the top of long conversations. Click it to expand the key points.",
-				"autoSummarizeLabel": "Auto-summarize long threads",
 				"deleteMailbox": "Delete mailbox",
 				"deleteMailboxDescription": "Deleting \"{address}\" stops it from receiving new mail. Existing messages stay on the server but the address is removed from routing.",
 				"deleteOperation": "Delete mailbox",
-				"densityHelp": "How tightly the message list and reader are packed. Compact drops the snippet line for single-line rows.",
-				"densityLabel": "Density",
 				"displayName": "Display name",
 				"displayNameHelp": "Leave blank to clear it.",
 				"displayNamePlaceholder": "Marcel Pfeifer",
@@ -8692,23 +8709,14 @@
 					"suspended": "suspended"
 				},
 				"mailboxes": "Mailboxes",
-				"markReadHelp": "When an open conversation loses its unread mark.",
-				"markReadLabel": "Mark as read",
 				"noDisplayName": "(no display name)",
 				"noMailboxes": "No mailboxes yet. Add your first account to start receiving mail.",
 				"pageTitle": "Preferences — Owlat",
-				"reading": "Reading",
 				"renameIntro": "Display name for {address}. The address itself can't be changed.",
 				"renameMailbox": "Rename mailbox",
 				"renameOperation": "Rename mailbox",
-				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
-				"replyDefaultLabel": "Default reply behavior",
-				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
-				"sendSoundLabel": "Play sound when sending",
 				"subtitle": "How Owlat looks, reads and sends for you.",
-				"teamManage": "Team · manage",
-				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
-				"writingSuggestionsLabel": "Writing suggestions"
+				"teamManage": "Team · manage"
 			},
 			"members": {
 				"detail": {
@@ -12342,6 +12350,10 @@
 				"workspaces": {
 					"title": "Workspaces",
 					"keywords": "connected servers, accent, remove workspace"
+				},
+				"readingPane": {
+					"title": "Reading pane",
+					"keywords": "layout, split, preview pane, three panes, resize, list width"
 				}
 			}
 		},
@@ -13429,6 +13441,11 @@
 			"never": "Never",
 			"invalidDate": "Invalid date",
 			"invalidTime": "Invalid time"
+		},
+		"postboxReadingPane": {
+			"right": "Reader on the right (resizable)",
+			"bottom": "Reader below a wide list",
+			"off": "No reading pane — opening navigates"
 		}
 	},
 	"sharedPkg": {

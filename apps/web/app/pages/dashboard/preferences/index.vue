@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
-import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
-import { POSTBOX_REPLY_DEFAULT_OPTIONS } from '~/utils/postboxReplyDefault';
-import type { PostboxDensity } from '~/utils/postboxDensity';
-import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
-import type { PostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
-import { POSTBOX_MARK_READ_POLICY_OPTIONS } from '~/utils/postboxMarkReadPolicy';
 
 const { t } = useI18n();
 
@@ -22,57 +15,6 @@ const { mailboxes, isLoading } = usePostboxMailbox();
 const { isEnabled } = useFeatureFlag();
 const { isAdmin } = usePermissions();
 const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'));
-
-// ── Reading behavior (per-user, spans all mailboxes) ───────────────────
-const {
-	autoAdvance,
-	setAutoAdvance,
-	writingSuggestions,
-	setWritingSuggestions,
-	autoSummarize,
-	setAutoSummarize,
-	replyDefault,
-	setReplyDefault,
-	density,
-	setDensity,
-	markReadPolicy,
-	setMarkReadPolicy,
-	sendSound,
-	setSendSound,
-	isSaving: isSavingAutoAdvance,
-} = usePostboxSettings();
-
-function onAutoAdvanceChange(event: Event) {
-	const value = (event.target as HTMLSelectElement).value as PostboxAutoAdvanceMode;
-	void setAutoAdvance(value);
-}
-
-function onReplyDefaultChange(event: Event) {
-	const value = (event.target as HTMLSelectElement).value as PostboxReplyDefaultMode;
-	void setReplyDefault(value);
-}
-
-function onDensityChange(event: Event) {
-	const value = (event.target as HTMLSelectElement).value as PostboxDensity;
-	void setDensity(value);
-}
-
-function onMarkReadPolicyChange(event: Event) {
-	const value = (event.target as HTMLSelectElement).value as PostboxMarkReadPolicy;
-	void setMarkReadPolicy(value);
-}
-
-function onWritingSuggestionsChange(event: Event) {
-	void setWritingSuggestions((event.target as HTMLInputElement).checked);
-}
-
-function onAutoSummarizeChange(event: Event) {
-	void setAutoSummarize((event.target as HTMLInputElement).checked);
-}
-
-function onSendSoundChange(event: Event) {
-	void setSendSound((event.target as HTMLInputElement).checked);
-}
 
 type MailboxRow = (typeof mailboxes.value)[number];
 
@@ -144,185 +86,7 @@ async function handleDelete() {
 		<PreferencesLanguage id="language" class="scroll-mt-6" />
 
 		<template v-if="hasMail">
-			<section id="reading" class="card !p-0 mb-6 scroll-mt-6">
-				<header class="px-5 py-3 border-b border-border-subtle">
-					<h2 class="font-semibold">{{ t('dashboard.preferences.index.reading') }}</h2>
-				</header>
-				<div class="px-5 py-4 flex items-center justify-between gap-4">
-					<div class="min-w-0">
-						<label for="postbox-auto-advance" class="font-medium text-sm block">
-							{{ t('dashboard.preferences.index.autoAdvanceLabel') }}
-						</label>
-						<p class="text-xs text-text-tertiary mt-0.5">
-							{{ t('dashboard.preferences.index.autoAdvanceHelp') }}
-						</p>
-					</div>
-					<select
-						id="postbox-auto-advance"
-						class="input w-64 shrink-0"
-						:value="autoAdvance"
-						:disabled="isSavingAutoAdvance"
-						@change="onAutoAdvanceChange"
-					>
-						<option
-							v-for="option in POSTBOX_AUTO_ADVANCE_OPTIONS"
-							:key="option.value"
-							:value="option.value"
-						>
-							{{ t(option.label) }}
-						</option>
-					</select>
-				</div>
-				<div
-					class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-				>
-					<div class="min-w-0">
-						<label for="postbox-mark-read" class="font-medium text-sm block">
-							{{ t('dashboard.preferences.index.markReadLabel') }}
-						</label>
-						<p class="text-xs text-text-tertiary mt-0.5">
-							{{ t('dashboard.preferences.index.markReadHelp') }}
-						</p>
-					</div>
-					<select
-						id="postbox-mark-read"
-						class="input w-64 shrink-0"
-						:value="markReadPolicy"
-						:disabled="isSavingAutoAdvance"
-						@change="onMarkReadPolicyChange"
-					>
-						<option
-							v-for="option in POSTBOX_MARK_READ_POLICY_OPTIONS"
-							:key="option.value"
-							:value="option.value"
-						>
-							{{ t(option.label) }}
-						</option>
-					</select>
-				</div>
-				<div
-					class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-				>
-					<div class="min-w-0">
-						<label for="postbox-density" class="font-medium text-sm block">
-							{{ t('dashboard.preferences.index.densityLabel') }}
-						</label>
-						<p class="text-xs text-text-tertiary mt-0.5">
-							{{ t('dashboard.preferences.index.densityHelp') }}
-						</p>
-					</div>
-					<select
-						id="postbox-density"
-						class="input w-64 shrink-0"
-						:value="density"
-						:disabled="isSavingAutoAdvance"
-						@change="onDensityChange"
-					>
-						<option
-							v-for="option in POSTBOX_DENSITY_OPTIONS"
-							:key="option.value"
-							:value="option.value"
-						>
-							{{ t(option.label) }}
-						</option>
-					</select>
-				</div>
-				<div
-					class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-				>
-					<div class="min-w-0">
-						<label for="postbox-reply-default" class="font-medium text-sm block">
-							{{ t('dashboard.preferences.index.replyDefaultLabel') }}
-						</label>
-						<I18nT
-							keypath="dashboard.preferences.index.replyDefaultHelp"
-							tag="p"
-							class="text-xs text-text-tertiary mt-0.5"
-							scope="global"
-						>
-							<template #replyKey><kbd>r</kbd></template>
-							<template #replyAllKey><kbd>a</kbd></template>
-						</I18nT>
-					</div>
-					<select
-						id="postbox-reply-default"
-						class="input w-64 shrink-0"
-						:value="replyDefault"
-						:disabled="isSavingAutoAdvance"
-						@change="onReplyDefaultChange"
-					>
-						<option
-							v-for="option in POSTBOX_REPLY_DEFAULT_OPTIONS"
-							:key="option.value"
-							:value="option.value"
-						>
-							{{ t(option.label) }}
-						</option>
-					</select>
-				</div>
-				<div
-					v-if="isEnabled('ai')"
-					class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-				>
-					<div class="min-w-0">
-						<label for="postbox-writing-suggestions" class="font-medium text-sm block">
-							{{ t('dashboard.preferences.index.writingSuggestionsLabel') }}
-						</label>
-						<p class="text-xs text-text-tertiary mt-0.5">
-							{{ t('dashboard.preferences.index.writingSuggestionsHelp') }}
-						</p>
-					</div>
-					<input
-						id="postbox-writing-suggestions"
-						type="checkbox"
-						class="shrink-0 h-4 w-4"
-						:checked="writingSuggestions"
-						:disabled="isSavingAutoAdvance"
-						@change="onWritingSuggestionsChange"
-					/>
-				</div>
-				<div
-					v-if="isEnabled('ai')"
-					class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-				>
-					<div class="min-w-0">
-						<label for="postbox-auto-summarize" class="font-medium text-sm block">
-							{{ t('dashboard.preferences.index.autoSummarizeLabel') }}
-						</label>
-						<p class="text-xs text-text-tertiary mt-0.5">
-							{{ t('dashboard.preferences.index.autoSummarizeHelp') }}
-						</p>
-					</div>
-					<input
-						id="postbox-auto-summarize"
-						type="checkbox"
-						class="shrink-0 h-4 w-4"
-						:checked="autoSummarize"
-						:disabled="isSavingAutoAdvance"
-						@change="onAutoSummarizeChange"
-					/>
-				</div>
-				<div
-					class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-				>
-					<div class="min-w-0">
-						<label for="postbox-send-sound" class="font-medium text-sm block">
-							{{ t('dashboard.preferences.index.sendSoundLabel') }}
-						</label>
-						<p class="text-xs text-text-tertiary mt-0.5">
-							{{ t('dashboard.preferences.index.sendSoundHelp') }}
-						</p>
-					</div>
-					<input
-						id="postbox-send-sound"
-						type="checkbox"
-						class="shrink-0 h-4 w-4"
-						:checked="sendSound"
-						:disabled="isSavingAutoAdvance"
-						@change="onSendSoundChange"
-					/>
-				</div>
-			</section>
+			<PreferencesReading id="reading" class="scroll-mt-6" />
 
 			<!-- Is my mail arriving? The member-readable half of what the admin
 		     delivery hub answers: my address's verification, my transport
@@ -346,7 +110,10 @@ async function handleDelete() {
 					<h2 class="font-semibold">{{ t('dashboard.preferences.index.mailboxes') }}</h2>
 				</header>
 				<div v-if="isLoading" class="p-8 flex justify-center">
-					<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+					<Icon
+						name="lucide:loader-2"
+						class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+					/>
 				</div>
 				<div v-else-if="mailboxes.length === 0" class="p-8 text-center text-text-secondary">
 					{{ t('dashboard.preferences.index.noMailboxes') }}

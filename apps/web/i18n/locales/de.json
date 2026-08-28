@@ -4357,6 +4357,10 @@
 				"completed": "Auf {matched} Nachrichten angewendet.",
 				"cancelled": "Nach {matched} Nachrichten gestoppt.",
 				"nothingToApply": "Weiterleiten und Löschen werden nicht auf vorhandene E-Mails angewendet."
+			},
+			"postboxPaneResizer": {
+				"label": "Breite der Nachrichtenliste ändern",
+				"valueText": "{size} Pixel"
 			}
 		},
 		"preferences": {
@@ -4389,6 +4393,25 @@
 				"hint": "Wird in diesem Browser und in Ihrem Konto gespeichert, damit ein neues Gerät und unsere E-Mails an Sie der Auswahl ebenfalls folgen. Noch nicht übersetzte Texte erscheinen auf Englisch.",
 				"subtitle": "Wählen Sie die Sprache, in der die Owlat-Oberfläche auf diesem Gerät erscheint.",
 				"title": "Sprache"
+			},
+			"preferencesReading": {
+				"reading": "Lesen",
+				"autoAdvanceLabel": "Nach dem Archivieren, Löschen oder Schlummern",
+				"autoAdvanceHelp": "Was der Reader anzeigt, sobald die geöffnete Konversation abgearbeitet ist.",
+				"markReadLabel": "Als gelesen markieren",
+				"markReadHelp": "Wann eine geöffnete Unterhaltung ihre Ungelesen-Markierung verliert.",
+				"densityLabel": "Dichte",
+				"densityHelp": "Wie eng Nachrichtenliste und Reader gepackt sind. Kompakt lässt die Vorschauzeile weg und zeigt einzeilige Zeilen.",
+				"readingPaneLabel": "Lesebereich",
+				"readingPaneHelp": "Wo der Reader neben der Liste sitzt. Zieh den Trenner – oder fokussiere ihn und nutze die Pfeiltasten –, um ihn zu verschieben.",
+				"replyDefaultLabel": "Standardverhalten beim Antworten",
+				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen können Sie eine Antwort auf „Allen antworten“ umstellen.",
+				"writingSuggestionsLabel": "Schreibvorschläge",
+				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
+				"autoSummarizeLabel": "Lange Konversationen automatisch zusammenfassen",
+				"autoSummarizeHelp": "Eine einzeilige KI-Zusammenfassung oben in langen Konversationen anzeigen. Klicken Sie darauf, um die Kernpunkte aufzuklappen.",
+				"sendSoundLabel": "Ton beim Senden abspielen",
+				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus."
 			}
 		},
 		"query": {
@@ -8673,15 +8696,9 @@
 			},
 			"index": {
 				"addAccount": "Mailkonto hinzufügen",
-				"autoAdvanceHelp": "Was der Reader anzeigt, sobald die geöffnete Konversation abgearbeitet ist.",
-				"autoAdvanceLabel": "Nach dem Archivieren, Löschen oder Schlummern",
-				"autoSummarizeHelp": "Eine einzeilige KI-Zusammenfassung oben in langen Konversationen anzeigen. Klicken Sie darauf, um die Kernpunkte aufzuklappen.",
-				"autoSummarizeLabel": "Lange Konversationen automatisch zusammenfassen",
 				"deleteMailbox": "Postfach löschen",
 				"deleteMailboxDescription": "Wenn Sie „{address}“ löschen, empfängt die Adresse keine neue Mail mehr. Vorhandene Nachrichten bleiben auf dem Server, die Adresse wird aber aus dem Routing entfernt.",
 				"deleteOperation": "Postfach löschen",
-				"densityHelp": "Wie eng Nachrichtenliste und Reader gepackt sind. Kompakt lässt die Vorschauzeile weg und zeigt einzeilige Zeilen.",
-				"densityLabel": "Dichte",
 				"displayName": "Anzeigename",
 				"displayNameHelp": "Leer lassen, um ihn zu entfernen.",
 				"displayNamePlaceholder": "Marcel Pfeifer",
@@ -8692,23 +8709,14 @@
 					"suspended": "gesperrt"
 				},
 				"mailboxes": "Postfächer",
-				"markReadHelp": "Wann eine geöffnete Unterhaltung ihre Ungelesen-Markierung verliert.",
-				"markReadLabel": "Als gelesen markieren",
 				"noDisplayName": "(kein Anzeigename)",
 				"noMailboxes": "Noch keine Postfächer. Fügen Sie Ihr erstes Konto hinzu, um Mail zu empfangen.",
 				"pageTitle": "Einstellungen — Owlat",
-				"reading": "Lesen",
 				"renameIntro": "Anzeigename für {address}. Die Adresse selbst kann nicht geändert werden.",
 				"renameMailbox": "Postfach umbenennen",
 				"renameOperation": "Postfach umbenennen",
-				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen können Sie eine Antwort auf „Allen antworten“ umstellen.",
-				"replyDefaultLabel": "Standardverhalten beim Antworten",
-				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
-				"sendSoundLabel": "Ton beim Senden abspielen",
 				"subtitle": "Wie Owlat für Sie aussieht, liest und sendet.",
-				"teamManage": "Team · verwalten",
-				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
-				"writingSuggestionsLabel": "Schreibvorschläge"
+				"teamManage": "Team · verwalten"
 			},
 			"members": {
 				"detail": {
@@ -12342,6 +12350,10 @@
 				"workspaces": {
 					"title": "Workspaces",
 					"keywords": "verbundene Server, Akzent, Workspace entfernen"
+				},
+				"readingPane": {
+					"title": "Lesebereich",
+					"keywords": "Layout, geteilt, Vorschau, drei Spalten, Größe, Listenbreite"
 				}
 			}
 		},
@@ -13429,6 +13441,11 @@
 			"never": "Nie",
 			"invalidDate": "Ungültiges Datum",
 			"invalidTime": "Ungültige Uhrzeit"
+		},
+		"postboxReadingPane": {
+			"right": "Reader rechts (in der Breite verstellbar)",
+			"bottom": "Reader unter einer breiten Liste",
+			"off": "Kein Lesebereich – Öffnen wechselt die Ansicht"
 		}
 	},
 	"sharedPkg": {

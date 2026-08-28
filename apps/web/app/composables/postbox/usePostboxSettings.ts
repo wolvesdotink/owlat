@@ -18,6 +18,10 @@
  *   - `viewMode` — which list renderer the inbox uses: 'flat' (default),
  *     'conversations' (thread-grouped), or 'categories' (smart-inbox
  *     sections). Inbox-only; other folders always render flat.
+ *   - `readingPane` — where the reader sits relative to the list: 'right'
+ *     (side-by-side, the default and today's geometry), 'bottom' (a full-width
+ *     list above the reader) or 'off' (no reading pane; opening navigates).
+ *     `listWidth` / `listHeight` carry the divider position per axis.
  *   - `inboxMode` — which surface the inbox route lands on: 'today' (the
  *     focused single-column view, the default) or 'browse' (the full
  *     three-pane UI). Persisted as the last-used mode.
@@ -49,6 +53,8 @@ import type { PostboxDensity } from '~/utils/postboxDensity';
 import { resolvePostboxDensity } from '~/utils/postboxDensity';
 import type { PostboxViewMode } from '~/utils/postboxViewMode';
 import { resolvePostboxViewMode } from '~/utils/postboxViewMode';
+import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
+import { resolvePostboxListSize, resolvePostboxReadingPane } from '~/utils/postboxReadingPane';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { resolvePostboxInboxMode } from '~/utils/postboxInboxMode';
 import type { PostboxSortOrder } from '~/utils/postboxSortOrder';
@@ -96,6 +102,17 @@ export function usePostboxSettings() {
 	// Inbox list view mode. An unset (or unknown) value resolves to 'flat', so
 	// the layout can consume it unconditionally while the query loads.
 	const viewMode = computed<PostboxViewMode>(() => resolvePostboxViewMode(data.value?.viewMode));
+
+	// Reading-pane layout + the divider position per axis. All three resolve
+	// through the pure module, so an unset (or out-of-range) row reads as the
+	// side-by-side 384px geometry the layout had before the control existed.
+	const readingPane = computed<PostboxReadingPane>(() =>
+		resolvePostboxReadingPane(data.value?.readingPane)
+	);
+	const listWidth = computed<number>(() => resolvePostboxListSize(data.value?.listWidth, 'width'));
+	const listHeight = computed<number>(() =>
+		resolvePostboxListSize(data.value?.listHeight, 'height')
+	);
 
 	// Inbox landing mode ('today' vs 'browse'). An unset (or unknown) value
 	// resolves to 'today' — the focused single-column view is the default
@@ -186,6 +203,21 @@ export function usePostboxSettings() {
 		return (await updateOp.run({ viewMode: mode })).ok;
 	}
 
+	// Same success contract as setViewMode: the layout flips optimistically and
+	// snaps back when the save did not land.
+	async function setReadingPane(pane: PostboxReadingPane): Promise<boolean> {
+		return (await updateOp.run({ readingPane: pane })).ok;
+	}
+
+	// The divider drag writes ONCE, on release — a mutation per pointermove
+	// would be a write storm. Clamped here as well as on read so a stray
+	// pointer value can never be persisted out of range.
+	async function setListSize(axis: 'width' | 'height', size: number): Promise<boolean> {
+		const clamped = resolvePostboxListSize(size, axis);
+		return (await updateOp.run(axis === 'width' ? { listWidth: clamped } : { listHeight: clamped }))
+			.ok;
+	}
+
 	// Same success contract as setViewMode: callers with an optimistic override
 	// snap back when the save failed (already toasted by useBackendOperation).
 	async function setInboxMode(mode: PostboxInboxMode): Promise<boolean> {
@@ -237,6 +269,9 @@ export function usePostboxSettings() {
 		replyDefault,
 		density,
 		viewMode,
+		readingPane,
+		listWidth,
+		listHeight,
 		inboxMode,
 		sortOrder,
 		sendSound,
@@ -254,6 +289,8 @@ export function usePostboxSettings() {
 		setReplyDefault,
 		setDensity,
 		setViewMode,
+		setReadingPane,
+		setListSize,
 		setInboxMode,
 		setSortOrder,
 		setSendSound,

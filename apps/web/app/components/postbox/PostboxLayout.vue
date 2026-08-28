@@ -27,15 +27,40 @@ usePostboxCommandSurface(mailboxIdRef);
 // Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
 // viewMode → which of the three inbox list renderers is active (Flat /
 // Conversations / Categories), persisted per user on the server.
+// readingPane → where the reader sits (right / bottom / off) and how big the
+// list pane is; one data-attribute plus two custom properties (postbox-panes.css).
 const {
 	density,
 	viewMode: savedViewMode,
 	setViewMode,
+	readingPane,
+	listWidth,
+	listHeight,
+	setListSize,
 	inboxMode: savedInboxMode,
 	setInboxMode,
 	sortOrder: savedSortOrder,
 	setSortOrder,
 } = usePostboxSettings();
+
+const {
+	geometry,
+	listPaneBorder,
+	listPaneVisibility,
+	readerPaneVisibility,
+	listSize,
+	previewListSize,
+	commitListSize,
+	paneStyle,
+} = usePostboxReadingPane({
+	readingPane,
+	listWidth,
+	listHeight,
+	setListSize,
+	activeMessageId: computed(() => props.activeMessageId),
+});
+// The divider measures the list pane it moves, so it needs the element itself.
+const listPaneRef = ref<HTMLElement | null>(null);
 
 // Newest / oldest arrival order for the list, persisted per user. The flip
 // applies optimistically and the feed re-subscribes on the new order (its
@@ -259,7 +284,7 @@ const advanceIds = computed(() =>
 </script>
 
 <template>
-	<div class="flex w-full" :data-density="density">
+	<div class="flex w-full" :data-density="density" :data-reading-pane="readingPane" :style="paneStyle">
 		<!-- Landing mode: the focused Today column replaces the three panes on
 		     the inbox route until the user opens a message or switches to
 		     Browse (header button / B / Esc back). pbx-fade is opacity-only and
@@ -285,153 +310,173 @@ const advanceIds = computed(() =>
 					:folder-id="folderId"
 				/>
 
-				<!-- Pane 2: thread/message list — the whole width below lg, and hidden
-			     entirely once a message is open (the reader takes over). -->
-				<section
-					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex-col bg-bg-surface"
-					:class="activeMessageId ? 'hidden lg:flex' : 'flex'"
-				>
-					<PostboxOfflineBanners
-						:is-offline="isOffline"
-						:queued-count="queuedSendCount"
-						:failed-count="failedSendCount"
-						:cached-at="cachedAt"
-						@retry="() => void retryQueuedSends()"
-					/>
-					<PostboxListHeader
-						:folder-name="currentFolderName"
-						:folder-role="folderRole"
-						:folder-id="folderId"
-						:active-message-id="activeMessageId"
-						:showing-cached="showingCached"
-						:is-offline="isOffline"
-						:view-mode="viewMode"
-						:view-mode-options="viewModeOptions"
-						:sort-order="sortOrder"
-						:mailbox-id="
-							!threadGroupsEnabled && !categoryGroupsEnabled && folderRole !== 'drafts'
-								? mailboxId
-								: undefined
-						"
-						:page-ids="listMessageIds"
-						:select-all-scope-matches-list="triageFilter === 'all'"
-						@open-rail="railOpen = true"
-						@switch-today="switchInboxMode('today')"
-						@select-view-mode="selectViewMode"
-						@toggle-sort="toggleSortOrder"
-					/>
-					<template v-if="folderRole === 'drafts'">
-						<div class="flex-1 overflow-auto">
-							<PostboxDraftList :mailbox-id="mailboxId" />
-						</div>
-					</template>
-					<template v-else>
-						<!-- Triage filter chips — flat list only; the grouped renderers own
-					     their sections. One tap from "everything" to "what needs me". -->
-						<PostboxTriageFilterChips
-							v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
-							class="border-b border-border-subtle pb-3"
-							:filter="triageFilter"
-							:counts="triageCounts"
-							:counts-are-partial="triageCountsArePartial"
-							@select-filter="setTriageFilter"
-						/>
-						<!-- Compact "waiting on your reply" strip — inbox only, non-empty
-				     queue only, dismissible for the session. -->
-						<PostboxReplyQueueStrip :mailbox-id="mailboxId" :folder-role="folderRole" />
-						<PostboxQuickActionsBar
-							v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
-							:mailbox-id="mailboxId"
-							:folder-role="folderRole"
-						/>
-						<div class="flex-1 overflow-auto">
-							<!-- Keyed on folder + renderer so both folder changes and view-mode
-					     switches cross-fade (pbx-fade is opacity-only and inert under
-					     prefers-reduced-motion). -->
-							<Transition name="pbx-fade" mode="out-in">
-								<div
-									:key="`${String(folderId ?? folderRole ?? 'all')}:${activeListRenderer}`"
-									class="h-full"
-								>
-									<PostboxThreadCategoryList
-										v-if="categoryGroupsEnabled"
-										:sections="categorySections"
-										:collapsed="categoryCollapsed"
-										:loading="categoryLoading"
-										:folder-role="folderRole"
-										:active-message-id="activeMessageId"
-										:has-more="categoryHasMore"
-										@load-more="loadMoreCategories"
-										@toggle="toggleCategory"
-										@recategorize="recategorize"
-									/>
-									<PostboxThreadGroupList
-										v-else-if="threadGroupsEnabled"
-										:threads="threadGroups"
-										:loading="threadGroupsLoading"
-										:folder-role="folderRole"
-										:active-message-id="activeMessageId"
-										:has-more="threadGroupsHasMore"
-										@load-more="loadMoreThreadGroups"
-									/>
-									<PostboxThreadList
-										v-else
-										ref="threadListRef"
-										:mailbox-id="mailboxId"
-										:messages="listMessages"
-										:loading="isLoading && !showingCached"
-										:folder-role="folderRole"
-										:active-message-id="activeMessageId"
-										:has-more="canLoadMore"
-										:loading-more="isLoadingMore"
-										:capped="listCapped"
-										:filter-active="filterHidesRows"
-										@load-more="loadMore"
-										@clear-filter="setTriageFilter('all')"
-									/>
-								</div>
-							</Transition>
-						</div>
-					</template>
-				</section>
-
-				<!-- Pane 3: reader — below lg it replaces the list rather than sitting
-			     beside it, so the empty "Select a message" pane never shows there. -->
-				<section
-					class="flex-1 min-w-0 overflow-auto bg-bg-base"
-					:class="activeMessageId ? 'block' : 'hidden lg:block'"
-				>
-					<!-- Drill-in back navigation (mobile only; on lg the list is still
-				     on screen beside the reader). py-3 puts the full-width bar past
-				     the 44px touch target — it is the only way out of the reader. -->
-					<button
-						v-if="activeMessageId"
-						type="button"
-						class="lg:hidden sticky top-0 z-10 w-full flex items-center gap-1.5 border-b border-border-subtle bg-bg-base px-3 py-3 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-						@click="backToList"
+				<!-- The list + reader split. Its own flex container so the reading
+				     pane can flip it to a column ('bottom') without taking the folder
+				     rail with it. -->
+				<div class="pbx-pane-split flex flex-1 min-w-0 min-h-0">
+					<!-- Pane 2: thread/message list — the whole width below lg, and hidden
+			     entirely once a message is open (the reader takes over). Its lg
+			     size comes from postbox-panes.css, driven by the persisted seam. -->
+					<section
+						ref="listPaneRef"
+						class="pbx-pane-list w-full border-border-subtle flex-col bg-bg-surface min-w-0 min-h-0"
+						:class="[listPaneVisibility, listPaneBorder]"
 					>
-						<Icon name="lucide:arrow-left" class="w-4 h-4" />
-						<span class="capitalize truncate">{{ currentFolderName }}</span>
-					</button>
-
-					<Transition name="pbx-reader" mode="out-in">
-						<PostboxThreadReader
-							v-if="activeMessage"
-							:key="activeMessageId ?? undefined"
-							:message="activeMessage"
-							:advance-ids="advanceIds"
-							:folder-role="folderId ? String(folderId) : folderRole"
+						<PostboxOfflineBanners
+							:is-offline="isOffline"
+							:queued-count="queuedSendCount"
+							:failed-count="failedSendCount"
+							:cached-at="cachedAt"
+							@retry="() => void retryQueuedSends()"
 						/>
-						<div v-else class="h-full flex items-center justify-center">
-							<div class="text-center">
-								<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-								<p class="mt-4 text-text-secondary">
-									{{ t('components.postbox.postboxLayout.selectMessage') }}
-								</p>
+						<PostboxListHeader
+							:folder-name="currentFolderName"
+							:folder-role="folderRole"
+							:folder-id="folderId"
+							:active-message-id="activeMessageId"
+							:showing-cached="showingCached"
+							:is-offline="isOffline"
+							:view-mode="viewMode"
+							:view-mode-options="viewModeOptions"
+							:sort-order="sortOrder"
+							:mailbox-id="
+								!threadGroupsEnabled && !categoryGroupsEnabled && folderRole !== 'drafts'
+									? mailboxId
+									: undefined
+							"
+							:page-ids="listMessageIds"
+							:select-all-scope-matches-list="triageFilter === 'all'"
+							@open-rail="railOpen = true"
+							@switch-today="switchInboxMode('today')"
+							@select-view-mode="selectViewMode"
+							@toggle-sort="toggleSortOrder"
+						/>
+						<template v-if="folderRole === 'drafts'">
+							<div class="flex-1 overflow-auto">
+								<PostboxDraftList :mailbox-id="mailboxId" />
 							</div>
-						</div>
-					</Transition>
-				</section>
+						</template>
+						<template v-else>
+							<!-- Triage filter chips — flat list only; the grouped renderers own
+						     their sections. One tap from "everything" to "what needs me". -->
+							<PostboxTriageFilterChips
+								v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
+								class="border-b border-border-subtle pb-3"
+								:filter="triageFilter"
+								:counts="triageCounts"
+								:counts-are-partial="triageCountsArePartial"
+								@select-filter="setTriageFilter"
+							/>
+							<!-- Compact "waiting on your reply" strip — inbox only, non-empty
+					     queue only, dismissible for the session. -->
+							<PostboxReplyQueueStrip :mailbox-id="mailboxId" :folder-role="folderRole" />
+							<PostboxQuickActionsBar
+								v-if="!threadGroupsEnabled && !categoryGroupsEnabled"
+								:mailbox-id="mailboxId"
+								:folder-role="folderRole"
+							/>
+							<div class="flex-1 overflow-auto">
+								<!-- Keyed on folder + renderer so both folder changes and view-mode
+						     switches cross-fade (pbx-fade is opacity-only and inert under
+						     prefers-reduced-motion). -->
+								<Transition name="pbx-fade" mode="out-in">
+									<div
+										:key="`${String(folderId ?? folderRole ?? 'all')}:${activeListRenderer}`"
+										class="h-full"
+									>
+										<PostboxThreadCategoryList
+											v-if="categoryGroupsEnabled"
+											:sections="categorySections"
+											:collapsed="categoryCollapsed"
+											:loading="categoryLoading"
+											:folder-role="folderRole"
+											:active-message-id="activeMessageId"
+											:has-more="categoryHasMore"
+											@load-more="loadMoreCategories"
+											@toggle="toggleCategory"
+											@recategorize="recategorize"
+										/>
+										<PostboxThreadGroupList
+											v-else-if="threadGroupsEnabled"
+											:threads="threadGroups"
+											:loading="threadGroupsLoading"
+											:folder-role="folderRole"
+											:active-message-id="activeMessageId"
+											:has-more="threadGroupsHasMore"
+											@load-more="loadMoreThreadGroups"
+										/>
+										<PostboxThreadList
+											v-else
+											ref="threadListRef"
+											:mailbox-id="mailboxId"
+											:messages="listMessages"
+											:loading="isLoading && !showingCached"
+											:folder-role="folderRole"
+											:active-message-id="activeMessageId"
+											:has-more="canLoadMore"
+											:loading-more="isLoadingMore"
+											:capped="listCapped"
+											:filter-active="filterHidesRows"
+											@load-more="loadMore"
+											@clear-filter="setTriageFilter('all')"
+										/>
+									</div>
+								</Transition>
+							</div>
+						</template>
+					</section>
+
+					<!-- The seam. Keyboard-operable (it is the only way to move a
+					     geometry the user now owns) and hidden below lg, where the
+					     panes are a stacked drill-in with no seam to move. -->
+					<PostboxPaneResizer
+						v-if="geometry.axis"
+						:axis="geometry.axis"
+						:model-value="listSize"
+						:pane-el="listPaneRef"
+						@update:model-value="previewListSize"
+						@commit="commitListSize"
+					/>
+
+					<!-- Pane 3: reader — below lg it replaces the list rather than sitting
+				     beside it, so the empty "Select a message" pane never shows there.
+				     With the reading pane off it only exists once a message is open. -->
+					<section
+						class="pbx-pane-reader flex-1 min-w-0 min-h-0 overflow-auto bg-bg-base"
+						:class="readerPaneVisibility"
+					>
+						<!-- Drill-in back navigation (mobile only; on lg the list is still
+					     on screen beside the reader). py-3 puts the full-width bar past
+					     the 44px touch target — it is the only way out of the reader. -->
+						<button
+							v-if="activeMessageId"
+							type="button"
+							class="lg:hidden sticky top-0 z-10 w-full flex items-center gap-1.5 border-b border-border-subtle bg-bg-base px-3 py-3 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+							@click="backToList"
+						>
+							<Icon name="lucide:arrow-left" class="w-4 h-4" />
+							<span class="capitalize truncate">{{ currentFolderName }}</span>
+						</button>
+
+						<Transition name="pbx-reader" mode="out-in">
+							<PostboxThreadReader
+								v-if="activeMessage"
+								:key="activeMessageId ?? undefined"
+								:message="activeMessage"
+								:advance-ids="advanceIds"
+								:folder-role="folderId ? String(folderId) : folderRole"
+							/>
+							<div v-else class="h-full flex items-center justify-center">
+								<div class="text-center">
+									<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
+									<p class="mt-4 text-text-secondary">
+										{{ t('components.postbox.postboxLayout.selectMessage') }}
+									</p>
+								</div>
+							</div>
+						</Transition>
+					</section>
+				</div>
 			</div>
 		</Transition>
 
