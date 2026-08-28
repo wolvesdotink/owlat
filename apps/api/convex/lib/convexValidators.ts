@@ -314,6 +314,32 @@ export const mailTriageVerbValidator = v.union(
 );
 export type MailTriageVerb = Infer<typeof mailTriageVerbValidator>;
 
+// One typed variable declared on a snippet (mailSnippets.variables, plan idea
+// 13). `token` is the name inside `{{…}}`; `source` says where the composer
+// resolves it from at insertion — recipient facts and the sender identity come
+// from what the composer already knows, `date` from the reader's clock, and
+// `prompt` asks the person inserting it (that is the only source `label` is
+// meaningful for). A body token with no declaration falls back to an implicit
+// name table client-side, so every snippet saved before this field keeps
+// working: absent = exactly today's `{{firstName}}` behaviour.
+export const mailSnippetVariableSourceValidator = v.union(
+	v.literal('recipientFirstName'),
+	v.literal('recipientFullName'),
+	v.literal('recipientCompany'),
+	v.literal('senderName'),
+	v.literal('senderEmail'),
+	v.literal('date'),
+	v.literal('prompt')
+);
+export type MailSnippetVariableSource = Infer<typeof mailSnippetVariableSourceValidator>;
+
+export const mailSnippetVariableValidator = v.object({
+	token: v.string(),
+	source: mailSnippetVariableSourceValidator,
+	/** What the insert-time prompt asks for. Only read for `source: 'prompt'`. */
+	label: v.optional(v.string()),
+});
+
 // Compose-draft attachment referencing Convex storage (mailDrafts.attachments)
 export const mailDraftAttachmentValidator = v.object({
 	storageId: v.id('_storage'),

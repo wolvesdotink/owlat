@@ -21,6 +21,10 @@
 			"types": "./src/types/index.ts",
 			"import": "./src/types/index.ts"
 		},
+		"./templateVariables": {
+			"types": "./src/templateVariables.ts",
+			"import": "./src/templateVariables.ts"
+		},
 		"./registry": {
 			"types": "./src/registry/index.ts",
 			"import": "./src/registry/index.ts"

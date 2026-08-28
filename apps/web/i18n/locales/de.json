@@ -4450,6 +4450,19 @@
 					"plain": "Nur Text"
 				},
 				"title": "Vorschau wie gesendet"
+			},
+			"postboxSnippetVariableDialog": {
+				"description": "„{name}“ braucht noch ein paar Angaben.",
+				"insert": "Einfügen",
+				"title": "Textbaustein ausfüllen"
+			},
+			"postboxSnippetVariableEditor": {
+				"automatic": "Automatisch ermitteln",
+				"hint": "Jeder Platzhalter im Text bekommt eine Zeile. Auf Automatisch löst der Editor die üblichen Namen selbst auf.",
+				"promptLabel": "Wonach beim Einfügen von {token} gefragt wird",
+				"promptPlaceholder": "Wonach soll ich fragen? z. B. „Ticketnummer“",
+				"sourceLabel": "Wofür {token} steht",
+				"title": "Variablen"
 			}
 		},
 		"preferences": {
@@ -11856,6 +11869,17 @@
 				"createRule": "Regel aus Vorschlag erstellen",
 				"dismissSuggestion": "Regelvorschlag verwerfen",
 				"undoRule": "Erstellte Regel rückgängig machen"
+			},
+			"snippetVariables": {
+				"sources": {
+					"date": "Heutiges Datum",
+					"prompt": "Beim Einfügen nachfragen",
+					"recipientCompany": "Firma der Empfängerin",
+					"recipientFirstName": "Vorname der Empfängerin",
+					"recipientFullName": "Voller Name der Empfängerin",
+					"senderEmail": "Meine Absenderadresse",
+					"senderName": "Mein Name"
+				}
 			}
 		},
 		"postboxAutoAdvance": {

@@ -4450,6 +4450,19 @@
 					"plain": "Plain text"
 				},
 				"title": "Preview as sent"
+			},
+			"postboxSnippetVariableDialog": {
+				"description": "“{name}” needs a few details before it goes in.",
+				"insert": "Insert",
+				"title": "Fill in the snippet"
+			},
+			"postboxSnippetVariableEditor": {
+				"automatic": "Work it out automatically",
+				"hint": "Every placeholder in the text gets a row. Leave one on automatic and the composer resolves the usual names itself.",
+				"promptLabel": "What to ask for when inserting {token}",
+				"promptPlaceholder": "What should I ask for? e.g. “Ticket number”",
+				"sourceLabel": "What {token} stands for",
+				"title": "Variables"
 			}
 		},
 		"preferences": {
@@ -11856,6 +11869,17 @@
 				"createRule": "Create rule from suggestion",
 				"dismissSuggestion": "Dismiss rule suggestion",
 				"undoRule": "Undo the created rule"
+			},
+			"snippetVariables": {
+				"sources": {
+					"date": "Today’s date",
+					"prompt": "Ask me when inserting",
+					"recipientCompany": "Recipient’s company",
+					"recipientFirstName": "Recipient’s first name",
+					"recipientFullName": "Recipient’s full name",
+					"senderEmail": "My From address",
+					"senderName": "My name"
+				}
 			}
 		},
 		"postboxAutoAdvance": {

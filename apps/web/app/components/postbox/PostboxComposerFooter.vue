@@ -92,7 +92,11 @@ function onPickFiles(event: Event) {
 				:disabled="!canSend || sending || isScheduled"
 				@click="emit('send')"
 			>
-				<Icon v-if="sending" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none" />
+				<Icon
+					v-if="sending"
+					name="lucide:loader-2"
+					class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
+				/>
 				<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
 				{{ sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send') }}
 			</UiButton>
@@ -158,7 +162,7 @@ function onPickFiles(event: Event) {
 						role="menuitem"
 						class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
 						@click="
-							emit('preview');
+							previewOpen = true;
 							close();
 						"
 					>

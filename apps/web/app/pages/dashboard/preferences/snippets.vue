@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { SnippetVariable } from '~/utils/postboxSnippetVariables';
 
 const { t } = useI18n();
 
@@ -24,12 +25,14 @@ interface Editor {
 	name: string;
 	shortcut: string;
 	bodyHtml: string;
+	/** Typed variable declarations (plan idea 13); empty = implicit tokens only. */
+	variables: SnippetVariable[];
 }
 
 const editor = ref<Editor | null>(null);
 
 function startCreate() {
-	editor.value = { id: null, name: '', shortcut: '', bodyHtml: '' };
+	editor.value = { id: null, name: '', shortcut: '', bodyHtml: '', variables: [] };
 }
 
 function startEdit(s: (typeof snippets.value)[number]) {
@@ -38,6 +41,7 @@ function startEdit(s: (typeof snippets.value)[number]) {
 		name: s.name,
 		shortcut: s.shortcut,
 		bodyHtml: s.bodyHtml,
+		variables: (s.variables ?? []) as SnippetVariable[],
 	};
 }
 
@@ -51,9 +55,10 @@ async function save() {
 			name,
 			shortcut,
 			bodyHtml: editor.value.bodyHtml,
+			variables: editor.value.variables,
 		});
 	} else {
-		await create(name, shortcut, editor.value.bodyHtml);
+		await create(name, shortcut, editor.value.bodyHtml, editor.value.variables);
 	}
 	editor.value = null;
 }
@@ -113,6 +118,7 @@ async function confirmRemove() {
 					t('dashboard.preferences.snippets.bodyPlaceholder', { firstName: firstNamePlaceholder })
 				"
 			/>
+			<PostboxSnippetVariableEditor v-model="editor.variables" :body-html="editor.bodyHtml" />
 			<div class="flex items-center justify-end gap-2">
 				<UiButton variant="ghost" type="button" @click="editor = null">
 					{{ t('common.cancel') }}
@@ -128,7 +134,10 @@ async function confirmRemove() {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.snippets.yourSnippets') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
 			<div v-else-if="snippets.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.snippets.empty') }}

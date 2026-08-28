@@ -9,14 +9,22 @@
  * message HTML uses (POSTBOX_SANITIZE_CONFIG): a snippet is inserted straight
  * into the draft body, so storing known-good HTML keeps the one untrusted-HTML
  * boundary (the sandboxed reader iframe) as the only place raw markup lives.
- * Snippet bodies may carry plain-text {{firstName}}-style placeholder tokens;
- * those are resolved client-side at insert time and are not HTML, so they
- * survive sanitization untouched.
+ * Snippet bodies may carry plain-text {{token}} placeholders; those are resolved
+ * client-side at insert time and are not HTML, so they survive sanitization
+ * untouched. `variables` optionally DECLARES what each token means (plan idea
+ * 13) — recipient facts, the sender identity, the date, or a prompt the person
+ * inserting it answers. It is only ever read by the composer: nothing on the
+ * send path substitutes a Postbox draft, so a stale or nonsensical declaration
+ * costs a resolved token, never a wrong message on the wire.
  */
 
 import { v } from 'convex/values';
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
+import {
+	mailSnippetVariableValidator,
+	type MailSnippetVariableSource,
+} from '../lib/convexValidators';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
@@ -39,6 +47,41 @@ function sanitizeSnippet(html: string): string {
 	return cleaned;
 }
 
+/**
+ * How many variables one snippet may declare. A canned response with more
+ * blanks than this is a form, and the insert-time prompt would be a wall of
+ * fields rather than the one-line question it is meant to be.
+ */
+const SNIPPET_MAX_VARIABLES = 20;
+
+/**
+ * Trim, drop unusable declarations and collapse duplicates. A token is the name
+ * inside `{{…}}`, so it has to match the grammar the composer resolves with
+ * (`\w+`); anything else could never be substituted and would sit in the row
+ * looking like it does something. Returns undefined for an empty result so the
+ * row reads exactly like a pre-idea-13 one.
+ */
+type SnippetVariable = { token: string; source: MailSnippetVariableSource; label?: string };
+
+function normalizeVariables(
+	variables: SnippetVariable[] | undefined
+): SnippetVariable[] | undefined {
+	if (variables === undefined) return undefined;
+	const seen = new Set<string>();
+	const cleaned: SnippetVariable[] = [];
+	for (const variable of variables) {
+		const token = variable.token.trim();
+		if (!/^\w+$/.test(token) || seen.has(token)) continue;
+		seen.add(token);
+		const label = variable.label?.trim();
+		cleaned.push(
+			label ? { token, source: variable.source, label } : { token, source: variable.source }
+		);
+		if (cleaned.length >= SNIPPET_MAX_VARIABLES) break;
+	}
+	return cleaned.length > 0 ? cleaned : undefined;
+}
+
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
@@ -59,6 +102,7 @@ export const create = authedMutation({
 		name: v.string(),
 		shortcut: v.string(),
 		bodyHtml: v.string(),
+		variables: v.optional(v.array(mailSnippetVariableValidator)),
 	},
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
@@ -74,6 +118,7 @@ export const create = authedMutation({
 			name,
 			shortcut,
 			bodyHtml: sanitizeSnippet(args.bodyHtml),
+			variables: normalizeVariables(args.variables),
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -86,6 +131,7 @@ export const update = authedMutation({
 		name: v.optional(v.string()),
 		shortcut: v.optional(v.string()),
 		bodyHtml: v.optional(v.string()),
+		variables: v.optional(v.array(mailSnippetVariableValidator)),
 	},
 	handler: async (ctx, args) => {
 		const snippet = await getOrThrow(ctx, args.snippetId, 'Snippet');
@@ -100,6 +146,9 @@ export const update = authedMutation({
 		}
 		if (args.shortcut !== undefined) patch['shortcut'] = args.shortcut.trim();
 		if (args.bodyHtml !== undefined) patch['bodyHtml'] = sanitizeSnippet(args.bodyHtml);
+		// An explicit empty array clears the declarations (back to implicit
+		// tokens); omitting the field leaves whatever the row already carries.
+		if (args.variables !== undefined) patch['variables'] = normalizeVariables(args.variables);
 		await ctx.db.patch(args.snippetId, patch);
 	},
 });

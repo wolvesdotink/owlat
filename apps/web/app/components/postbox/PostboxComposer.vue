@@ -130,9 +130,14 @@ const { chipSealStates, removeSealBlocker } = usePostboxComposerSealChips(seal, 
 const { persistentToolbar, toggleToolbar } = usePostboxToolbarPreference();
 
 // Canned responses ("/" slash-trigger); inert when the mailbox has no snippets.
-const { editorSnippets, snippetFirstName } = usePostboxComposerSnippets(
+// The third argument is what a snippet's sender-identity variables resolve to.
+const { editorSnippets, snippetVariableContext } = usePostboxComposerSnippets(
 	() => props.mailboxId ?? null,
-	() => toAddresses.value[0]
+	() => toAddresses.value[0],
+	() => ({
+		name: availableIdentities.value.find((i) => i.address === fromAddress.value)?.label,
+		email: fromAddress.value,
+	})
 );
 
 async function onFromChange(address: string) {
@@ -404,7 +409,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:embed-image="addInlineImage"
 				:on-remove-embedded-image="removeInlineImage"
 				:snippets="editorSnippets"
-				:snippet-first-name="snippetFirstName"
+				:snippet-variable-context="snippetVariableContext"
 			/>
 			<EmailBuilder
 				v-else

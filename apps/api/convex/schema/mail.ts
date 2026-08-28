@@ -4,6 +4,7 @@ import { destinationProviderValidator } from '../delivery/deliverabilityValidato
 import {
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
+	mailSnippetVariableValidator,
 	mailTriageVerbValidator,
 	mailUnsubscribeValidator,
 	spamVerdictValidator,
@@ -1545,6 +1546,12 @@ export const mailTables = {
 		name: v.string(),
 		shortcut: v.string(),
 		bodyHtml: v.string(),
+		// Typed variables the composer resolves at insertion (plan idea 13):
+		// recipient facts, the sender identity, the date, or a prompt-on-insert
+		// question. Optional so existing rows read as undefined — an undeclared
+		// token still resolves through the client's implicit name table, so
+		// absent = exactly today's `{{firstName}}` behaviour.
+		variables: v.optional(v.array(mailSnippetVariableValidator)),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

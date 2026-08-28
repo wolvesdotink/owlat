@@ -27,6 +27,7 @@ import {
 	usePostboxSnippetPicker,
 	type EditorSnippet,
 } from '~/composables/postbox/usePostboxSnippetPicker';
+import type { SnippetVariableContext } from '~/utils/postboxSnippetVariables';
 import type { Id } from '@owlat/api/dataModel';
 
 export type { EditorSnippet };
@@ -75,10 +76,11 @@ const props = defineProps<{
 	 */
 	snippets?: EditorSnippet[];
 	/**
-	 * First name of the draft's first To recipient, used to resolve
-	 * `{{firstName}}` placeholders on insert. Unknown -> visible `[firstName]`.
+	 * What a snippet's typed variables resolve from at insert time (plan idea
+	 * 13): recipient facts, the sender identity, today's date. An absent value
+	 * leaves its `{{token}}` standing for the preflight to flag.
 	 */
-	snippetFirstName?: string | null;
+	snippetVariableContext?: SnippetVariableContext;
 }>();
 
 const emit = defineEmits<{
@@ -99,12 +101,7 @@ const surfaceRef = ref<HTMLDivElement | null>(null);
 
 // Document lifecycle (empty/marks state, scaffold, modelValue mirroring) lives in
 // a composable so this component stays under the file-size ratchet.
-const {
-	isEmpty,
-	activeMarks,
-	syncActiveMarks,
-	emitContent,
-} = usePostboxEditorDocument({
+const { isEmpty, activeMarks, syncActiveMarks, emitContent } = usePostboxEditorDocument({
 	editorRef,
 	modelValue: () => props.modelValue,
 	// `richText` is defined just below; the getter defers the read past its TDZ.
@@ -162,7 +159,11 @@ function onInput() {
 // this component stays under the file-size ratchet); the overlay is a
 // non-editable sibling of the contenteditable — NEVER part of the DOM the draft
 // serializes from, so an un-accepted ghost can't leak into the sent message.
-const { ghost, ghostStyle, schedule: scheduleGhost } = usePostboxGhostOverlay({
+const {
+	ghost,
+	ghostStyle,
+	schedule: scheduleGhost,
+} = usePostboxGhostOverlay({
 	editorRef,
 	surfaceRef,
 	enabled: () => props.suggestionsEnabled === true,
@@ -180,7 +181,7 @@ const snippetPicker = usePostboxSnippetPicker({
 	editorRef,
 	surfaceRef,
 	snippets: () => props.snippets,
-	firstName: () => props.snippetFirstName,
+	variableContext: () => props.snippetVariableContext ?? {},
 	emitContent,
 });
 
@@ -207,9 +208,7 @@ const rewriteCtl = usePostboxRewriteController({
 // in floating mode, when the rewrite feature is on and the selection is eligible.
 const showAiActions = computed(
 	() =>
-		props.persistentToolbar !== true &&
-		props.rewriteEnabled === true &&
-		rewriteCtl.eligible.value,
+		props.persistentToolbar !== true && props.rewriteEnabled === true && rewriteCtl.eligible.value
 );
 
 // ── Floating format bar (minimal mode) ──────────────────────────────────
@@ -388,7 +387,9 @@ defineExpose({ focus: focusEditor });
 				class="postbox-ghost-text pointer-events-none absolute whitespace-pre select-none"
 				:style="ghostStyle"
 				aria-hidden="true"
-			>{{ ghost.ghost.value }}</div>
+			>
+				{{ ghost.ghost.value }}
+			</div>
 			<PostboxEmojiPicker
 				v-if="emojiShortcodesEnabled && emoji.open.value"
 				:items="emoji.items.value"
@@ -420,20 +421,10 @@ defineExpose({ focus: focusEditor });
 				@link="withFocus(setLink)()"
 				@ai-select="rewriteCtl.onSelect"
 			/>
-			<!-- Snippet "/" picker: a compact caret-anchored dropdown. -->
-			<PostboxSnippetPicker
-				v-if="snippetPicker.open.value"
-				:items="snippetPicker.items.value"
-				:active-index="snippetPicker.index.value"
-				:style="snippetPicker.style.value"
-				@select="snippetPicker.insert"
-				@hover="(i) => (snippetPicker.index.value = i)"
-			/>
+			<!-- Snippet "/" dropdown + the prompt-on-insert dialog behind it. -->
+			<PostboxSnippetSurface :picker="snippetPicker" />
 			<!-- AI rewrite pill + preview + undo affordance (all flag-gated). -->
-			<PostboxRewriteLayer
-				v-if="rewriteEnabled"
-				:controller="rewriteCtl"
-			/>
+			<PostboxRewriteLayer v-if="rewriteEnabled" :controller="rewriteCtl" />
 		</div>
 	</div>
 </template>
