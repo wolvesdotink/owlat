@@ -3899,6 +3899,7 @@
 			},
 			"postboxSnoozeDialog": {
 				"confirm": "Snooze",
+				"scopeLabel": "What to snooze",
 				"title": "Snooze until",
 				"untilReply": "Until they reply",
 				"untilReplySub": "Or in 1 week"
@@ -3941,13 +3942,20 @@
 				"rowLabel": "{subject}, {count} unread"
 			},
 			"postboxThreadHeader": {
-				"noSubject": "(no subject)"
+				"backFromSnooze": "Back from snooze",
+				"markRead": "Mark read",
+				"muted": "Muted",
+				"noSubject": "(no subject)",
+				"unmuteHint": "Unmute this conversation"
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archive",
 				"archivedUndo": "Archived",
 				"cancelFollowUpOperation": "Cancel reply reminder",
+				"capNote": "Showing the newest messages in this view.",
 				"emptyDefaultTitle": "No messages",
+				"emptyFilteredMoreHint": "This filter covers the messages loaded so far — load more to keep looking.",
+				"emptyFilteredTitle": "You're all caught up",
 				"emptyFolderHint": "Move messages here, or route them automatically with a filter.",
 				"emptyFolderTitle": "This folder is empty",
 				"emptyInboxHint": "Press C to write a message, or ⌘K to search and jump anywhere.",
@@ -3956,24 +3964,23 @@
 				"emptyLabelTitle": "No messages with this label",
 				"listLabel": "Messages",
 				"loadMore": "Load more",
-				"capNote": "Showing the newest messages in this view.",
 				"loadingMore": "Loading more…",
 				"markReadOperation": "Mark read",
 				"moveOperation": "Move message",
 				"movedUndo": "Moved",
+				"muteOperation": "Mute conversation",
 				"setUpFilter": "Set up a filter",
+				"showAllMessages": "Show all messages",
 				"snoozeOperation": "Snooze",
 				"starOperation": "Star",
 				"trashOperation": "Move to trash",
-				"trashedUndo": "Moved to Trash",
-				"emptyFilteredTitle": "You're all caught up",
-				"emptyFilteredMoreHint": "This filter covers the messages loaded so far — load more to keep looking.",
-				"showAllMessages": "Show all messages"
+				"trashedUndo": "Moved to Trash"
 			},
 			"postboxThreadReader": {
 				"attachmentDownloadFailed": "That attachment could not be downloaded. Try again.",
 				"blockSender": "Block sender",
 				"ccLine": "· cc {recipients}",
+				"clearSnoozeReturnedOperation": "Dismiss the back-from-snooze note",
 				"downloadAttachment": "Download {filename}",
 				"forward": "Forward",
 				"markReadOperation": "Mark read",
@@ -3981,6 +3988,8 @@
 				"moreActions": "More message actions",
 				"moveOperation": "Move message",
 				"moveToTrashOperation": "Move to trash",
+				"mute": "Mute conversation",
+				"muteOperation": "Mute conversation",
 				"notSpamOperation": "Not spam",
 				"previewAttachment": "Preview {filename}",
 				"renderDark": "Render this message in dark mode",
@@ -3997,18 +4006,23 @@
 				"undoMoved": "Moved",
 				"undoSpam": "Marked as spam",
 				"undoTrashed": "Moved to Trash",
+				"unmute": "Unmute conversation",
 				"unstar": "Unstar"
 			},
 			"postboxThreadRow": {
+				"backFromSnooze": "Back from snooze",
 				"deselect": "Deselect",
 				"markAsRead": "Mark as read",
 				"markAsUnread": "Mark as unread",
 				"markRead": "Mark read",
 				"markUnread": "Mark unread",
+				"mute": "Mute conversation",
+				"mutedChip": "Muted — new mail skips the inbox",
 				"noSubject": "(no subject)",
 				"select": "Select",
 				"snoozedUntil": "Snoozed until {when}",
 				"star": "Star",
+				"unmute": "Unmute conversation",
 				"unstar": "Unstar"
 			},
 			"postboxThreadRowFollowUp": {
@@ -8441,6 +8455,8 @@
 					"suspended": "suspended"
 				},
 				"mailboxes": "Mailboxes",
+				"markReadHelp": "When an open conversation loses its unread mark.",
+				"markReadLabel": "Mark as read",
 				"noDisplayName": "(no display name)",
 				"noMailboxes": "No mailboxes yet. Add your first account to start receiving mail.",
 				"pageTitle": "Preferences — Owlat",
@@ -11494,6 +11510,7 @@
 				"markUnread": "Mark unread",
 				"moveToFolder": "Move to folder",
 				"moveToTrash": "Move to trash",
+				"muteConversation": "Mute conversation",
 				"nextMessage": "Next message",
 				"openMessage": "Open message",
 				"previousMessage": "Previous message",
@@ -12861,6 +12878,15 @@
 					"title": "Switch sending to this instance"
 				}
 			}
+		},
+		"postboxMarkReadPolicy": {
+			"afterDwell": "Mark read after I have read it for a moment",
+			"immediate": "Mark read as soon as I open it",
+			"manual": "Only when I say so"
+		},
+		"postboxSnoozeScope": {
+			"message": "Just this message",
+			"thread": "Whole conversation"
 		}
 	},
 	"sharedPkg": {

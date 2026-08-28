@@ -3899,6 +3899,7 @@
 			},
 			"postboxSnoozeDialog": {
 				"confirm": "Zurückstellen",
+				"scopeLabel": "Was geschlummert wird",
 				"title": "Zurückstellen bis",
 				"untilReply": "Bis eine Antwort kommt",
 				"untilReplySub": "Oder in 1 Woche"
@@ -3941,13 +3942,20 @@
 				"rowLabel": "{subject}, {count} ungelesen"
 			},
 			"postboxThreadHeader": {
-				"noSubject": "(kein Betreff)"
+				"backFromSnooze": "Zurück aus dem Schlummer",
+				"markRead": "Als gelesen markieren",
+				"muted": "Stummgeschaltet",
+				"noSubject": "(kein Betreff)",
+				"unmuteHint": "Stummschaltung dieser Unterhaltung aufheben"
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archivieren",
 				"archivedUndo": "Archiviert",
 				"cancelFollowUpOperation": "Antwort-Erinnerung abbrechen",
+				"capNote": "Es werden die neuesten Nachrichten dieser Ansicht angezeigt.",
 				"emptyDefaultTitle": "Keine Nachrichten",
+				"emptyFilteredMoreHint": "Dieser Filter umfasst die bisher geladenen Nachrichten — laden Sie weitere, um weiterzusuchen.",
+				"emptyFilteredTitle": "Alles erledigt",
 				"emptyFolderHint": "Verschieben Sie Nachrichten hierher oder leiten Sie sie automatisch mit einem Filter weiter.",
 				"emptyFolderTitle": "Dieser Ordner ist leer",
 				"emptyInboxHint": "Drücken Sie C, um eine Nachricht zu schreiben, oder ⌘K, um zu suchen und überall hinzuspringen.",
@@ -3956,24 +3964,23 @@
 				"emptyLabelTitle": "Keine Nachrichten mit diesem Label",
 				"listLabel": "Nachrichten",
 				"loadMore": "Mehr laden",
-				"capNote": "Es werden die neuesten Nachrichten dieser Ansicht angezeigt.",
 				"loadingMore": "Weitere werden geladen…",
 				"markReadOperation": "Als gelesen markieren",
 				"moveOperation": "Nachricht verschieben",
 				"movedUndo": "Verschoben",
+				"muteOperation": "Unterhaltung stummschalten",
 				"setUpFilter": "Filter einrichten",
+				"showAllMessages": "Alle Nachrichten anzeigen",
 				"snoozeOperation": "Zurückstellen",
 				"starOperation": "Markieren",
 				"trashOperation": "In den Papierkorb verschieben",
-				"trashedUndo": "In den Papierkorb verschoben",
-				"emptyFilteredTitle": "Alles erledigt",
-				"emptyFilteredMoreHint": "Dieser Filter umfasst die bisher geladenen Nachrichten — laden Sie weitere, um weiterzusuchen.",
-				"showAllMessages": "Alle Nachrichten anzeigen"
+				"trashedUndo": "In den Papierkorb verschoben"
 			},
 			"postboxThreadReader": {
 				"attachmentDownloadFailed": "Dieser Anhang konnte nicht heruntergeladen werden. Bitte erneut versuchen.",
 				"blockSender": "Absender blockieren",
 				"ccLine": "· Kopie an {recipients}",
+				"clearSnoozeReturnedOperation": "Hinweis „Zurück aus dem Schlummer“ ausblenden",
 				"downloadAttachment": "{filename} herunterladen",
 				"forward": "Weiterleiten",
 				"markReadOperation": "Als gelesen markieren",
@@ -3981,6 +3988,8 @@
 				"moreActions": "Weitere Nachrichtenaktionen",
 				"moveOperation": "Nachricht verschieben",
 				"moveToTrashOperation": "In den Papierkorb verschieben",
+				"mute": "Unterhaltung stummschalten",
+				"muteOperation": "Unterhaltung stummschalten",
 				"notSpamOperation": "Kein Spam",
 				"previewAttachment": "{filename} in der Vorschau anzeigen",
 				"renderDark": "Diese Nachricht im dunklen Modus darstellen",
@@ -3997,18 +4006,23 @@
 				"undoMoved": "Verschoben",
 				"undoSpam": "Als Spam markiert",
 				"undoTrashed": "In den Papierkorb verschoben",
+				"unmute": "Stummschaltung aufheben",
 				"unstar": "Markierung entfernen"
 			},
 			"postboxThreadRow": {
+				"backFromSnooze": "Zurück aus dem Schlummer",
 				"deselect": "Auswahl aufheben",
 				"markAsRead": "Als gelesen markieren",
 				"markAsUnread": "Als ungelesen markieren",
 				"markRead": "Als gelesen markieren",
 				"markUnread": "Als ungelesen markieren",
+				"mute": "Unterhaltung stummschalten",
+				"mutedChip": "Stummgeschaltet – neue Mails überspringen den Posteingang",
 				"noSubject": "(kein Betreff)",
 				"select": "Auswählen",
 				"snoozedUntil": "Zurückgestellt bis {when}",
 				"star": "Markieren",
+				"unmute": "Stummschaltung aufheben",
 				"unstar": "Markierung entfernen"
 			},
 			"postboxThreadRowFollowUp": {
@@ -8441,6 +8455,8 @@
 					"suspended": "gesperrt"
 				},
 				"mailboxes": "Postfächer",
+				"markReadHelp": "Wann eine geöffnete Unterhaltung ihre Ungelesen-Markierung verliert.",
+				"markReadLabel": "Als gelesen markieren",
 				"noDisplayName": "(kein Anzeigename)",
 				"noMailboxes": "Noch keine Postfächer. Fügen Sie Ihr erstes Konto hinzu, um Mail zu empfangen.",
 				"pageTitle": "Einstellungen — Owlat",
@@ -11494,6 +11510,7 @@
 				"markUnread": "Als ungelesen markieren",
 				"moveToFolder": "In Ordner verschieben",
 				"moveToTrash": "In den Papierkorb verschieben",
+				"muteConversation": "Unterhaltung stummschalten",
 				"nextMessage": "Nächste Nachricht",
 				"openMessage": "Nachricht öffnen",
 				"previousMessage": "Vorherige Nachricht",
@@ -12861,6 +12878,15 @@
 					"title": "Versand auf diese Instanz umstellen"
 				}
 			}
+		},
+		"postboxMarkReadPolicy": {
+			"afterDwell": "Als gelesen markieren, nachdem ich kurz gelesen habe",
+			"immediate": "Sofort beim Öffnen als gelesen markieren",
+			"manual": "Nur, wenn ich es sage"
+		},
+		"postboxSnoozeScope": {
+			"message": "Nur diese Nachricht",
+			"thread": "Ganze Unterhaltung"
 		}
 	},
 	"sharedPkg": {

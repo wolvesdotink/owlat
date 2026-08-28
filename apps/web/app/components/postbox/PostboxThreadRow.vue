@@ -22,6 +22,12 @@ export type PostboxThreadRowMessage = {
 	// sent message the watch points at; `dueAt` means the deadline passed
 	// with no reply ("No reply yet" chip).
 	followUp?: { remindAt: number; dueAt?: number; watched: boolean };
+	// The row's thread is MUTED (mail/mute.ts) — new mail on it skips the
+	// inbox and never notifies. Present so the silence is legible.
+	mutedAt?: number;
+	// The row's thread just came BACK from snooze (mail/snooze.ts sweep).
+	// Transient: the reader clears it the first time the thread is opened.
+	snoozeReturnedAt?: number;
 };
 </script>
 
@@ -53,6 +59,7 @@ const emit = defineEmits<{
 	'toggle-read': [];
 	archive: [];
 	trash: [];
+	'toggle-mute': [];
 	'cancel-follow-up': [];
 	/**
 	 * The pointer or the focus ring landed on this row — the list warms its body
@@ -79,7 +86,7 @@ function onCheckboxClick(event: MouseEvent) {
  * Narrow to a literal per branch: Vue types `emit` as an intersection of
  * per-event call signatures, so a union-typed argument matches no overload.
  */
-function triage(e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash') {
+function triage(e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash' | 'toggle-mute') {
 	switch (e) {
 		case 'toggle-star':
 			emit('toggle-star');
@@ -92,6 +99,9 @@ function triage(e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash') {
 			break;
 		case 'trash':
 			emit('trash');
+			break;
+		case 'toggle-mute':
+			emit('toggle-mute');
 			break;
 	}
 }
@@ -127,6 +137,14 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 		label: t('common.archive'),
 		icon: 'lucide:archive',
 		run: () => triage('archive'),
+	},
+	{
+		id: 'mute',
+		label: props.msg.mutedAt
+			? t('components.postbox.postboxThreadRow.unmute')
+			: t('components.postbox.postboxThreadRow.mute'),
+		icon: props.msg.mutedAt ? 'lucide:bell' : 'lucide:bell-off',
+		run: () => triage('toggle-mute'),
 	},
 	{
 		id: 'trash',
@@ -289,6 +307,23 @@ onUnmounted(cancelLongPress);
 									class="w-3.5 h-3.5 text-brand"
 									:title="snoozedTitle(msg.snoozedUntil)"
 								/>
+								<!-- Muted conversation: the reason this thread is quiet, said
+								     out loud rather than left as a mystery. -->
+								<Icon
+									v-if="msg.mutedAt"
+									name="lucide:bell-off"
+									class="w-3.5 h-3.5 text-text-tertiary"
+									:title="t('components.postbox.postboxThreadRow.mutedChip')"
+									:aria-label="t('components.postbox.postboxThreadRow.mutedChip')"
+								/>
+								<!-- Transient "you asked for this back" cue, cleared on open. -->
+								<span
+									v-if="msg.snoozeReturnedAt && !msg.snoozedUntil"
+									class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-border-subtle text-text-tertiary whitespace-nowrap"
+								>
+									<Icon name="lucide:undo-2" class="w-3 h-3" />
+									{{ t('components.postbox.postboxThreadRow.backFromSnooze') }}
+								</span>
 								<Icon
 									v-if="msg.hasAttachments"
 									name="lucide:paperclip"

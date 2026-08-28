@@ -40,6 +40,16 @@ describe('shouldNotify (category x setting matrix)', () => {
 		for (const c of categories) expect(shouldNotify(c, 'everything')).toBe(true);
 	});
 
+	it('never notifies for a MUTED thread, whatever the scope says', () => {
+		// Mute is an explicit per-conversation opt-out, so it outranks the
+		// notification scope — including 'everything'.
+		expect(shouldNotify('person', 'everything', true)).toBe(false);
+		expect(shouldNotify(undefined, 'people-important', true)).toBe(false);
+		expect(shouldNotify('person', 'everything', false)).toBe(true);
+		// Omitting the argument is exactly the pre-mute behaviour.
+		expect(shouldNotify('person', 'everything')).toBe(true);
+	});
+
 	it("'people-important' notifies only for person (and un-classified mail)", () => {
 		expect(shouldNotify('person', 'people-important')).toBe(true);
 		// Absent category falls open so nothing is dropped before classification.

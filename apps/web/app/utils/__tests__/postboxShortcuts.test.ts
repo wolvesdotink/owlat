@@ -41,11 +41,12 @@ describe('resolvePostboxShortcut', () => {
 		expect(resolvePostboxShortcut('u')).toBe('toggleRead');
 	});
 
-	it('maps the extended vocabulary (r/a/f/h/l/v/x/Shift+U/?)', () => {
+	it('maps the extended vocabulary (r/a/f/h/m/l/v/x/Shift+U/?)', () => {
 		expect(resolvePostboxShortcut('r')).toBe('reply');
 		expect(resolvePostboxShortcut('a')).toBe('replyAll');
 		expect(resolvePostboxShortcut('f')).toBe('forward');
 		expect(resolvePostboxShortcut('h')).toBe('snooze');
+		expect(resolvePostboxShortcut('m')).toBe('mute');
 		expect(resolvePostboxShortcut('l')).toBe('label');
 		expect(resolvePostboxShortcut('v')).toBe('move');
 		expect(resolvePostboxShortcut('x')).toBe('toggleSelect');
@@ -61,6 +62,7 @@ describe('resolvePostboxShortcut', () => {
 		// Capitalized variants of mapped keys are NOT mapped (Shift changes meaning).
 		expect(resolvePostboxShortcut('R')).toBeNull();
 		expect(resolvePostboxShortcut('E')).toBeNull();
+		expect(resolvePostboxShortcut('M')).toBeNull();
 	});
 });
 
@@ -144,7 +146,24 @@ describe('POSTBOX_SHORTCUT_GROUPS', () => {
 			POSTBOX_SHORTCUT_GROUPS.flatMap((g) => g.shortcuts.flatMap((s) => [...s.keys]))
 		);
 		// Every single-key triage shortcut shows up in the cheat sheet.
-		for (const key of ['j', 'k', 'e', '#', 's', 'u', 'x', 'r', 'a', 'f', 'h', 'l', 'v', '?', '/']) {
+		for (const key of [
+			'j',
+			'k',
+			'e',
+			'#',
+			's',
+			'u',
+			'x',
+			'r',
+			'a',
+			'f',
+			'h',
+			'm',
+			'l',
+			'v',
+			'?',
+			'/',
+		]) {
 			expect(documentedKeys.has(key), `cheat sheet missing "${key}"`).toBe(true);
 		}
 	});

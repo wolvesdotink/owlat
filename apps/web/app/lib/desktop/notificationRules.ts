@@ -17,12 +17,17 @@ export interface UnreadPeekMessage {
 	fromAddress: string;
 	subject: string;
 	category?: PostboxMailCategory;
+	/** The message's thread is MUTED (mail/mute.ts) — never toast it. */
+	muted?: boolean;
 	receivedAt: number;
 }
 
 /**
  * Should a NEW message of this category fire a toast under the chosen scope?
  *
+ *   - a MUTED thread    → never, whatever the scope says. Mute is an explicit
+ *     per-conversation opt-out, so it outranks the notification setting (and,
+ *     unlike category, it is never a guess).
  *   - 'nothing'          → never.
  *   - 'everything'       → always.
  *   - 'people-important' → only `person`. A message whose category is still
@@ -31,8 +36,10 @@ export interface UnreadPeekMessage {
  */
 export function shouldNotify(
 	category: PostboxMailCategory | undefined,
-	setting: PostboxNotifyAbout
+	setting: PostboxNotifyAbout,
+	muted = false
 ): boolean {
+	if (muted) return false;
 	if (setting === 'nothing') return false;
 	if (setting === 'everything') return true;
 	// people-important

@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxComposeMode, PostboxPendingCompose } from '~/utils/postboxShortcuts';
+import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
 import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import {
@@ -76,13 +77,22 @@ defineExpose({ visibleIds });
 // The triage verbs themselves (one action source for the hover buttons, the
 // context menu, the long-press menu and the single-key shortcuts), including
 // the optimistic hide/restore and the "Undo — Cmd+Z" registration.
-const { archiveMsg, trashMsg, moveMsg, snoozeMsg, toggleStar, toggleRead, cancelFollowUp } =
-	usePostboxRowTriage({
-		hide: hideRow,
-		unhide: unhideRow,
-		setFlags: setRowFlags,
-		clearFlags: clearRowFlags,
-	});
+const {
+	archiveMsg,
+	trashMsg,
+	moveMsg,
+	snoozeMsg,
+	snoozeThread,
+	toggleMute,
+	toggleStar,
+	toggleRead,
+	cancelFollowUp,
+} = usePostboxRowTriage({
+	hide: hideRow,
+	unhide: unhideRow,
+	setFlags: setRowFlags,
+	clearFlags: clearRowFlags,
+});
 
 // Pending compose intent for r/a/f from the list: opening the composer needs the
 // reader's quoting/recipient logic, so we open the message first and let
@@ -102,6 +112,9 @@ function openMessageWithCompose(id: string, mode: PostboxComposeMode) {
 // focus change while the dialog is open can't retarget the action.
 const snoozeOpen = ref(false);
 const snoozeTargetId = ref<Id<'mailMessages'> | null>(null);
+// The focused row's thread, captured with the id so the dialog's default
+// thread scope can't retarget if the focus moves while it is open.
+const snoozeTargetThreadId = ref<string | null>(null);
 const labelOpen = ref(false);
 const labelTargetId = ref<Id<'mailMessages'> | null>(null);
 const moveOpen = ref(false);
@@ -119,10 +132,21 @@ const movableFolders = computed(() =>
 	})
 );
 
-async function snoozeFocused(until: number) {
+async function snoozeFocused(until: number, scope: PostboxSnoozeScope) {
 	const id = snoozeTargetId.value;
+	const threadId = snoozeTargetThreadId.value;
 	snoozeTargetId.value = null;
-	if (id) await snoozeMsg(id, until);
+	snoozeTargetThreadId.value = null;
+	if (!id) return;
+	// Thread scope needs a thread to address; a row without one (legacy/partial
+	// projection) falls back to deferring just the message rather than no-oping.
+	if (scope === 'thread' && threadId) await snoozeThread(id, threadId, until);
+	else await snoozeMsg(id, until);
+}
+
+/** Mute/unmute the focused row's conversation (the `m` shortcut + context menu). */
+function toggleMuteRow(m: PostboxThreadRowMessage) {
+	void toggleMute(m._id, m.mutedAt == null);
 }
 
 async function applyLabelToFocused(labelId: Id<'mailLabels'>) {
@@ -238,7 +262,11 @@ const {
 				break;
 			case 'snooze':
 				snoozeTargetId.value = m._id;
+				snoozeTargetThreadId.value = m.threadId ?? null;
 				snoozeOpen.value = true;
+				break;
+			case 'mute':
+				toggleMuteRow(m);
 				break;
 			case 'label':
 				labelTargetId.value = m._id;
@@ -421,6 +449,7 @@ onMounted(async () => {
 					@toggle-read="toggleRead(msg._id, !msg.flagSeen)"
 					@archive="archiveMsg(msg._id)"
 					@trash="trashMsg(msg._id)"
+					@toggle-mute="toggleMuteRow(msg)"
 					@prefetch="prefetchRow(msg._id)"
 					@cancel-follow-up="cancelFollowUp(msg)"
 				/>
@@ -447,6 +476,7 @@ onMounted(async () => {
 	<!-- Keyboard-flow pickers for the focused row (h / l / v). -->
 	<PostboxSnoozeDialog
 		:open="snoozeOpen"
+		scoped
 		@update:open="snoozeOpen = $event"
 		@confirm="snoozeFocused"
 	/>

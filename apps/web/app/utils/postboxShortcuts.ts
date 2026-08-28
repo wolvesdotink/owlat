@@ -18,6 +18,7 @@ export type PostboxShortcutAction =
 	| 'replyAll'
 	| 'forward'
 	| 'snooze'
+	| 'mute'
 	| 'label'
 	| 'move'
 	| 'toggleSelect'
@@ -45,6 +46,8 @@ export function resolvePostboxShortcut(key: string): PostboxShortcutAction | nul
 			return 'forward';
 		case 'h':
 			return 'snooze';
+		case 'm':
+			return 'mute';
 		case 'l':
 			return 'label';
 		case 'v':
@@ -161,6 +164,7 @@ export const POSTBOX_SHORTCUT_GROUPS: ReadonlyArray<{
 		title: 'shared.postboxShortcuts.groups.organize',
 		shortcuts: [
 			{ keys: ['h'], label: 'shared.postboxShortcuts.labels.snooze' },
+			{ keys: ['m'], label: 'shared.postboxShortcuts.labels.muteConversation' },
 			{ keys: ['l'], label: 'shared.postboxShortcuts.labels.addLabel' },
 			{ keys: ['v'], label: 'shared.postboxShortcuts.labels.moveToFolder' },
 		],

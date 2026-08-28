@@ -107,7 +107,7 @@ export function useDesktopNotifications() {
 	): Promise<void> {
 		const fresh = newlyArrived(messages, seenUnreadIds);
 		if (fresh.length === 0) return;
-		const eligible = fresh.filter((m) => shouldNotify(m.category, notifyAbout.value));
+		const eligible = fresh.filter((m) => shouldNotify(m.category, notifyAbout.value, m.muted));
 		const plan = planNotifications(eligible, threadWindows, now, NOTIFICATION_GROUP_WINDOW_MS);
 		threadWindows = plan.threadWindows;
 		for (const n of plan.notifications) {

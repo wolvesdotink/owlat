@@ -1,6 +1,6 @@
 /**
- * The Postbox list's triage verbs — archive, trash, star, read, snooze, move,
- * cancel-follow-up — as ONE action source.
+ * The Postbox list's triage verbs — archive, trash, star, read, snooze (message
+ * or whole thread), mute, move, cancel-follow-up — as ONE action source.
  *
  * PostboxThreadList owns the v-for, windowing and keyboard handling; every
  * entry point it exposes (hover buttons, right-click menu, long-press menu,
@@ -47,6 +47,12 @@ export function usePostboxRowTriage(args: {
 	});
 	const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 		label: () => t('components.postbox.postboxThreadList.snoozeOperation'),
+	});
+	const snoozeThreadOp = useBackendOperation(api.mail.snooze.snoozeThread, {
+		label: () => t('components.postbox.postboxThreadList.snoozeOperation'),
+	});
+	const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
+		label: () => t('components.postbox.postboxThreadList.muteOperation'),
 	});
 	const moveOp = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('components.postbox.postboxThreadList.moveOperation'),
@@ -124,10 +130,43 @@ export function usePostboxRowTriage(args: {
 		if (!(await snoozeOp.run({ messageId: id, until })).ok) args.unhide(id);
 	}
 
+	/**
+	 * Thread-scope snooze (the dialog's default): defers the whole conversation
+	 * server-side. Only the focused row is hidden optimistically — the siblings
+	 * are on other pages or not rendered, and the subscription drops them a beat
+	 * later anyway.
+	 */
+	async function snoozeThread(id: Id<'mailMessages'>, threadId: string, until: number) {
+		args.hide(id);
+		const outcome = await snoozeThreadOp.run({ threadId: threadId as Id<'mailThreads'>, until });
+		if (!outcome.ok) args.unhide(id);
+	}
+
+	/**
+	 * Mute/unmute the row's conversation. Muting archives the thread's inbox mail
+	 * server-side, so the row is hidden optimistically; unmuting changes nothing
+	 * about where the mail sits and leaves the row alone.
+	 */
+	async function toggleMute(id: Id<'mailMessages'>, muted: boolean) {
+		if (muted) args.hide(id);
+		const outcome = await setMutedOp.run({ messageId: id, muted });
+		if (muted && !outcome.ok) args.unhide(id);
+	}
+
 	function cancelFollowUp(msg: { threadId?: string }) {
 		if (!msg.threadId) return;
 		void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
 	}
 
-	return { archiveMsg, trashMsg, moveMsg, snoozeMsg, toggleStar, toggleRead, cancelFollowUp };
+	return {
+		archiveMsg,
+		trashMsg,
+		moveMsg,
+		snoozeMsg,
+		snoozeThread,
+		toggleMute,
+		toggleStar,
+		toggleRead,
+		cancelFollowUp,
+	};
 }
