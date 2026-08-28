@@ -25,6 +25,7 @@ import {
 	mailSortOrderValidator,
 	mailNotifyAboutValidator,
 	mailUndoSendSecondsValidator,
+	mailMarkReadPolicyValidator,
 } from '../lib/mailSettingsValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
@@ -54,6 +55,7 @@ export const get = publicQuery({
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
 			isSenderScreenerOn: row.isSenderScreenerOn,
+			markReadPolicy: row.markReadPolicy,
 		};
 	},
 });
@@ -75,6 +77,7 @@ export const update = authedMutation({
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
 		isSenderScreenerOn: v.optional(v.boolean()),
+		markReadPolicy: v.optional(mailMarkReadPolicyValidator),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -100,6 +103,7 @@ export const update = authedMutation({
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
 			isSenderScreenerOn?: boolean;
+			markReadPolicy?: (typeof args)['markReadPolicy'];
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
@@ -115,6 +119,7 @@ export const update = authedMutation({
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
 		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;
 		if (args.isSenderScreenerOn !== undefined) patch.isSenderScreenerOn = args.isSenderScreenerOn;
+		if (args.markReadPolicy !== undefined) patch.markReadPolicy = args.markReadPolicy;
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;

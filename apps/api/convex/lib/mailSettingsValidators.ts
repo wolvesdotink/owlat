@@ -69,6 +69,19 @@ export const mailUndoSendSecondsValidator = v.union(
 	v.literal(60)
 );
 
+// Postbox mark-as-read policy (mailUserSettings.markReadPolicy and
+// mail/settings update args) — WHEN an opened conversation loses its unread
+// flags. 'immediate' marks on render (the behaviour every user had before this
+// control existed, and the default an unset row resolves to); 'after-dwell'
+// waits for a short visible dwell and cancels if the reader is navigated away
+// first; 'manual' never marks automatically — the reader shows an explicit
+// mark-read affordance instead. Single source so schema and args can't drift.
+export const mailMarkReadPolicyValidator = v.union(
+	v.literal('immediate'),
+	v.literal('after-dwell'),
+	v.literal('manual')
+);
+
 // Postbox desktop-notification scope (mailUserSettings.notifyAbout and
 // mail/settings update args). 'everything' fires a toast for every new inbox
 // message; 'people-important' only for smart-category `person` mail (and any
