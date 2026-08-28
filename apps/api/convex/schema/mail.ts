@@ -1062,7 +1062,7 @@ export const mailTables = {
 		// What makes `filename:` an INDEXED narrowing rather than a post-filter.
 		.searchIndex('search_filenames', {
 			searchField: 'filename',
-			filterFields: ['mailboxId', 'contentType'],
+			filterFields: ['mailboxId'],
 		}),
 
 	// Resumable backfill of `mailAttachments` over mail that predates the index.

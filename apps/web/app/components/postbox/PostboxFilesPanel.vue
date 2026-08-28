@@ -249,7 +249,7 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 					</span>
 				</button>
 				<NuxtLink
-					:to="`/dashboard/postbox/inbox/${file.messageId}`"
+					:to="`/dashboard/postbox/${file.folderParam}/${file.messageId}`"
 					class="text-xs text-text-tertiary hover:text-brand truncate max-w-[14rem] hidden sm:block"
 					:title="file.subject"
 				>

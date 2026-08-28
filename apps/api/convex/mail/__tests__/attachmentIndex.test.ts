@@ -161,8 +161,10 @@ describe('mail.mailbox.attachments.list', () => {
 		const all = await t.query(api.mail.mailbox.attachments.list, { mailboxId });
 		expect(all.files.map((f) => f.filename)).toEqual(['launch.png', 'contract-v4.pdf']);
 		// The row carries its parent message's subject, so the view can label it
-		// without a second read per file.
+		// without a second read per file, and the folder the message actually
+		// lives in, so opening it lands on the right list pane.
 		expect(all.files[1]?.subject).toBe('contract');
+		expect(all.files[1]?.folderParam).toBe('inbox');
 
 		const pdfs = await t.query(api.mail.mailbox.attachments.list, { mailboxId, kinds: ['pdf'] });
 		expect(pdfs.files.map((f) => f.filename)).toEqual(['contract-v4.pdf']);

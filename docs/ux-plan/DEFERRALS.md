@@ -320,3 +320,67 @@ ones, and they are already a self-contained group on the device page
 `useDesktopSettings`, neither of which touches Convex. Extract that group into a
 component and render it from `/desktop/welcome` — the screen someone with no
 workspace is already looking at — rather than reviving a second settings route.
+
+## 37 — emailed attachments are indexed for browsing, not for the assistant
+
+`mailAttachments` (schema/mail.ts, written by `mail/attachmentIndex.ts`) makes
+every attachment's filename, type, size, sender and date indexable, which is
+what the Files view browses and what turns `filename:` from a post-filter over
+one page of recent mail into an actual search. The resumable backfill covers
+mail that predates the index.
+
+What the plan also asked for and this does NOT do is ingest mail attachments
+into the SEMANTIC file store, so the assistant can answer questions about an
+emailed PDF. That is a different pipeline, not a bigger index: `semanticFiles`
+holds extracted text plus a 1536-dimension embedding per chunk, produced by
+`semanticFileProcessing` (a Node action that downloads the blob, extracts text
+per format and calls the embedding provider). Attachment CONTENT is not stored
+separately at all — it lives inside the raw `.eml` in `ctx.storage`, and the
+Files view extracts a part client-side on demand — so ingesting would mean
+server-side MIME extraction per part, a re-upload per attachment, an embedding
+spend per document, and a contact-scope decision for every chunk (mail from
+contact A must not become retrievable while drafting to contact B). Each of
+those is a policy question, not a mechanical extension of a junction table.
+
+To pick it up: extract parts server-side in the delivery pipeline for the
+previewable/document kinds only, write each as a `semanticFiles` row scoped to
+the sender's contact, and gate the whole path on the existing AI budget/flag —
+then `mailAttachments.messageId` is already the join back to the mail.
+
+## 37 — `filename:` uses the attachment index on one mailbox, not across a fan-out
+
+A text-free `filename:` query on a SINGLE mailbox scans `search_filenames` and
+therefore reaches attachments of any age (`mailbox/search.ts::searchByFilename`).
+The fan-out path — `mailboxIds`, or passing neither `mailboxId` nor `mailboxIds`
+to search every readable mailbox — still walks each mailbox's arrival index and
+matches filenames in the post-filter, so a `filename:` search across several
+mailboxes reaches only as deep as the merged arrival window.
+
+The blocker is the cursor: fan-out merges one keyset per mailbox into a single
+opaque multi-cursor (`mailbox/searchCursor.ts`), and those keysets are
+`mailMessages` positions ordered by `receivedAt`. An attachment-index keyset is
+a different table with a relevance order, so mixing the two would mean a second
+cursor flavour inside the same encoded blob and a merge that cannot compare
+positions across the two.
+
+To pick it up: make the multi-cursor tagged (`{kind: 'messages' | 'attachments',
+position}`) and merge attachment pages on their row's `receivedAt`, which the
+junction already denormalizes for exactly this kind of ordering.
+
+## 39 — "run on existing mail" never forwards, deletes or discards
+
+`mail/filterRun.ts` sweeps the backlog a rule was written for and applies its
+`moveToFolder`, `addLabel`, `markRead` and `markFlagged` actions, resumably and
+idempotently. The other three action types are skipped, and the UI says so
+rather than offering a run that would silently do nothing.
+
+This is a deliberate refusal, not a gap in the implementation. `forward` would
+mail an arbitrary depth of archive to a third party the moment someone ran a
+rule they wrote for future mail; `delete` and `discard` destroy messages with
+nothing to undo them. All three were authored to describe what should happen at
+the inbound moment, and a retroactive sweep is a different question the user was
+never asked. The four that do run are each reversible by hand.
+
+To pick it up, the missing piece is consent, not code: a per-run confirmation
+that names the destructive action and the count it would touch (which the
+dry-run preview already computes), plus an undo journal for the delete case.

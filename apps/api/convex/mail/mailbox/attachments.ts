@@ -15,6 +15,7 @@
 import { v } from 'convex/values';
 import { publicQuery } from '../../lib/authedFunctions';
 import type { Doc, Id } from '../../_generated/dataModel';
+import type { QueryCtx } from '../../_generated/server';
 import { loadReadableMailbox } from '../permissions';
 import { attachmentKind, type AttachmentKind } from '../attachmentIndex';
 
@@ -40,29 +41,44 @@ export interface AttachmentListRow {
 	fromName?: string;
 	subject: string;
 	partIndex: string;
+	/**
+	 * The `<folder>` segment of `/dashboard/postbox/<folder>/<messageId>` — a
+	 * system role, or a `mailFolders` id for a user folder. Read off the parent
+	 * MESSAGE, not off the junction row's denormalized `folderId`, so a file
+	 * whose message was moved still opens the list pane it actually lives in.
+	 */
+	folderParam: string;
 }
 
 /** Hard cap on one page, matching the message search. */
 const MAX_LIMIT = 200;
 
 async function decorate(
-	ctx: { db: { get: (id: Id<'mailMessages'>) => Promise<Doc<'mailMessages'> | null> } },
+	ctx: QueryCtx,
 	rows: Doc<'mailAttachments'>[]
 ): Promise<AttachmentListRow[]> {
 	const out: AttachmentListRow[] = [];
-	// One message can contribute several files; the cache keeps a five-part
-	// message to one read rather than five.
-	const cache = new Map<Id<'mailMessages'>, Doc<'mailMessages'> | null>();
+	// One message can contribute several files, and a mailbox has a handful of
+	// folders; both caches keep a page of files to a few reads rather than one
+	// per row.
+	const messages = new Map<Id<'mailMessages'>, Doc<'mailMessages'> | null>();
+	const folderParams = new Map<Id<'mailFolders'>, string>();
 	for (const row of rows) {
-		let message = cache.get(row.messageId);
+		let message = messages.get(row.messageId);
 		if (message === undefined) {
 			message = await ctx.db.get(row.messageId);
-			cache.set(row.messageId, message);
+			messages.set(row.messageId, message);
 		}
 		// A junction row whose message is gone is a teardown that lost a race.
 		// Skipping it here means the view never opens a file into nothing; the
 		// row itself is cleaned up by whichever delete path missed it.
 		if (!message) continue;
+		let folderParam = folderParams.get(message.folderId);
+		if (folderParam === undefined) {
+			const folder = await ctx.db.get(message.folderId);
+			folderParam = folder?.role ?? message.folderId;
+			folderParams.set(message.folderId, folderParam);
+		}
 		out.push({
 			_id: row._id,
 			messageId: row.messageId,
@@ -75,6 +91,7 @@ async function decorate(
 			fromName: message.fromName,
 			subject: message.subject,
 			partIndex: row.partIndex,
+			folderParam,
 		});
 	}
 	return out;
