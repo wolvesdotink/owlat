@@ -1271,6 +1271,22 @@ export const mailTables = {
 		updatedAt: v.number(),
 	}).index('by_mailbox_and_sender', ['mailboxId', 'senderEmail']),
 
+	// Per-sender remote-image allowlist ("Always show images from this sender").
+	// The reader blocks remote images by default; a row here means the sandboxed
+	// iframe loads this sender's real images on render instead of asking again on
+	// every issue of the same newsletter.
+	//
+	// The row is a narrow grant, not a blanket "trust". Tracking-pixel stripping
+	// (packages/shared/src/postboxTrackers.ts) stays ON for allowlisted senders —
+	// only the explicit per-message "Load everything" escalation lifts that, and
+	// it is never persisted. Presence is the whole record; there is no "blocked"
+	// state, so revoking is a delete and absent = exactly today's behaviour.
+	mailSenderImageAllowlist: defineTable({
+		mailboxId: v.id('mailboxes'),
+		senderEmail: v.string(), // canonical lowercase
+		createdAt: v.number(),
+	}).index('by_mailbox_and_sender', ['mailboxId', 'senderEmail']),
+
 	// Per-mailbox signatures. Default-on-new-draft when isDefault=true.
 	mailSignatures: defineTable({
 		mailboxId: v.id('mailboxes'),
