@@ -121,9 +121,16 @@ const { handleScroll } = usePostboxListAutoLoad({
 				:class="{ 'absolute inset-x-0 top-0': virtualize }"
 				:style="virtualize ? { transform: `translateY(${range.offsetY}px)` } : undefined"
 			>
+				<!-- `pbx-virtual-row` pins the box to exactly the row height the
+				     window math assumes (border-box, so the divide-y hairline is
+				     absorbed rather than added). Without it a natural-height row —
+				     compact density lands near, not on, 52px — drifts a little per
+				     row against translateY, and by a few hundred rows the painted
+				     content no longer matches the ul's fixed totalHeight. -->
 				<li
 					v-for="(thread, localI) in windowedThreads"
 					:key="thread._id"
+					:class="{ 'pbx-virtual-row': virtualize }"
 					style="
 						content-visibility: auto;
 						contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px);

@@ -144,8 +144,10 @@ function pickCategory(label: MailCategory) {
 			@keydown="onKeydown"
 		>
 			<template v-for="(section, sectionIndex) in sections" :key="section.key">
-				<!-- Collapsible section header with a count. -->
-				<li class="sticky top-0 z-10 bg-bg-surface">
+				<!-- Collapsible section header with a count. Pinned to the same
+				     constant the sectioned window math charges per section, so the
+				     header can't drift the rows below it either. -->
+				<li class="sticky top-0 z-10 bg-bg-surface" :class="{ 'pbx-section-header': virtualize }">
 					<button
 						type="button"
 						class="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary hover:bg-bg-elevated"
@@ -170,6 +172,11 @@ function pickCategory(label: MailCategory) {
 						aria-hidden="true"
 						:style="{ height: `${sectionWindow(sectionIndex).padTop}px` }"
 					/>
+					<!-- `pbx-virtual-row` pins the box to exactly the row height the
+					     spacer math assumes (border-box, so the border-b hairline is
+					     absorbed rather than added). Without it a natural-height row
+					     drifts a little per row against padTop/padBottom, and the
+					     section's painted rows stop lining up with its own spacers. -->
 					<li
 						v-for="thread in section.threads.slice(
 							sectionWindow(sectionIndex).startIndex,
@@ -177,6 +184,7 @@ function pickCategory(label: MailCategory) {
 						)"
 						:key="thread._id"
 						class="group relative border-b border-border-subtle"
+						:class="{ 'pbx-virtual-row': virtualize }"
 						style="
 							content-visibility: auto;
 							contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px);

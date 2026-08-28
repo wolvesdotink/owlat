@@ -48,6 +48,20 @@
 	box-sizing: border-box;
 }
 
+/*
+ * The grouped renderers' sticky section header, pinned for the same reason: the
+ * sectioned window math charges every section a fixed header height before its
+ * rows begin, so a header that grew (or shrank) by a pixel would shift every row
+ * under it away from its spacer. MUST equal POSTBOX_SECTION_HEADER_HEIGHT in
+ * app/utils/postboxDensity.ts. Density-independent — the header is a label, not
+ * a row.
+ */
+.pbx-section-header {
+	height: 32px;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
 /* Compact reader: pull the header spacing in so the message body starts higher. */
 [data-density='compact'] .pbx-reader-article {
 	padding-top: 1rem;
