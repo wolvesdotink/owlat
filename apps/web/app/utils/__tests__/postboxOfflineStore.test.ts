@@ -4,6 +4,7 @@ import {
 	reconcileThreadRows,
 	OFFLINE_THREADS_CAP,
 	OFFLINE_BODIES_CAP,
+	OFFLINE_BODY_MAX_BYTES,
 	type OfflineKvDriver,
 } from '../postboxOfflineStore';
 import { createTestI18n } from '~/__tests__/i18n';
@@ -104,6 +105,28 @@ describe('PostboxOfflineStore', () => {
 		// Never keeps more than the cap worth of body entries.
 		const bodyKeys = [...driver.map.keys()].filter((k) => k.startsWith('body:'));
 		expect(bodyKeys).toHaveLength(OFFLINE_BODIES_CAP);
+	});
+
+	it('holds a week of reading, not an afternoon (idea 49 raised the caps)', async () => {
+		// The service worker makes a cold OFFLINE start render the app, which is
+		// only worth something if there is a real archive behind it. These numbers
+		// are the deliverable, so they are pinned rather than derived.
+		expect(OFFLINE_THREADS_CAP).toBe(500);
+		expect(OFFLINE_BODIES_CAP).toBe(200);
+	});
+
+	it('skips a body over OFFLINE_BODY_MAX_BYTES instead of risking the quota', async () => {
+		const driver = memoryDriver();
+		const store = new PostboxOfflineStore(driver);
+		await store.saveBody(MBX, 'small', 'x'.repeat(1000));
+		await store.saveBody(MBX, 'huge', 'x'.repeat(OFFLINE_BODY_MAX_BYTES + 1));
+
+		expect(await store.loadBody(MBX, 'huge')).toBeNull();
+		// The outlier is skipped, NOT treated as a failure: the small body is
+		// still cached, writes stay enabled, and the LRU index is untouched by it.
+		expect((await store.loadBody(MBX, 'small'))?.srcdoc).toHaveLength(1000);
+		expect(store.writesDisabled).toBe(false);
+		expect(await driver.get<string[]>(`body-index:${MBX}`)).toEqual(['small']);
 	});
 
 	it('re-reading a body moves it to most-recently-used (survives eviction)', async () => {

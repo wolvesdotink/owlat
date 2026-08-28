@@ -23,21 +23,29 @@ const fakeStore = {
 // without one.
 const MBX = 'mbx-test';
 
+// The folder rail cache is its own module over the same driver.
+const fakeFolderStore = {
+	saveFolders: vi.fn(async () => {}),
+	loadFolders: vi.fn(async () => [] as unknown[]),
+	loadFoldersMeta: vi.fn(async () => null),
+};
+
 vi.mock('~/utils/postboxOfflineStore', () => ({
 	getPostboxOfflineStore: () => fakeStore,
 }));
 
-import {
-	usePostboxOfflineCache,
-	__resetPostboxOfflineCacheState,
-} from '../usePostboxOfflineCache';
+vi.mock('~/utils/postboxOfflineFolderStore', () => ({
+	getPostboxOfflineFolderStore: () => fakeFolderStore,
+}));
+
+import { usePostboxOfflineCache, __resetPostboxOfflineCacheState } from '../usePostboxOfflineCache';
 
 let desktop = false;
 
 beforeEach(() => {
 	desktop = false;
 	fakeStore.writesDisabled = false;
-	Object.values(fakeStore).forEach((v) => {
+	[...Object.values(fakeStore), ...Object.values(fakeFolderStore)].forEach((v) => {
 		if (typeof v === 'function' && 'mockClear' in v) (v as ReturnType<typeof vi.fn>).mockClear();
 	});
 	localStorage.clear();
@@ -109,6 +117,23 @@ describe('usePostboxOfflineCache — persist gating', () => {
 		fakeStore.writesDisabled = true; // simulate a quota rejection inside the store
 		await cache.persistThreads('inbox', [{ _id: 'a' }]);
 		expect(cache.writesDisabled.value).toBe(true);
+	});
+
+	it('persists the folder rail under the same preference and namespace', async () => {
+		desktop = true;
+		const { persistFolders } = usePostboxOfflineCache(MBX);
+		await persistFolders([{ _id: 'f1', name: 'Inbox' }]);
+		expect(fakeFolderStore.saveFolders).toHaveBeenCalledWith(MBX, [{ _id: 'f1', name: 'Inbox' }]);
+	});
+
+	it('does not cache the folder rail while the preference is OFF', async () => {
+		desktop = false;
+		const cache = usePostboxOfflineCache(MBX);
+		await cache.persistFolders([{ _id: 'f1', name: 'Inbox' }]);
+		expect(await cache.loadFolders()).toEqual([]);
+		expect(await cache.loadFoldersMeta()).toBeNull();
+		expect(fakeFolderStore.saveFolders).not.toHaveBeenCalled();
+		expect(fakeFolderStore.loadFolders).not.toHaveBeenCalled();
 	});
 
 	it('loadThreads is empty while the preference is OFF', async () => {
