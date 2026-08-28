@@ -4386,7 +4386,7 @@
 				"ariaLabel": "Einstellungsbereiche"
 			},
 			"preferencesLanguage": {
-				"hint": "Wird in diesem Browser gespeichert. Noch nicht übersetzte Texte erscheinen auf Englisch.",
+				"hint": "Wird in diesem Browser und in Ihrem Konto gespeichert, damit ein neues Gerät und unsere E-Mails an Sie der Auswahl ebenfalls folgen. Noch nicht übersetzte Texte erscheinen auf Englisch.",
 				"subtitle": "Wählen Sie die Sprache, in der die Owlat-Oberfläche auf diesem Gerät erscheint.",
 				"title": "Sprache"
 			}

@@ -1,6 +1,16 @@
 import { v, type Infer } from 'convex/values';
 
 // Unified-message channel union shared by stored rows and function arguments.
+/**
+ * The interface languages this product ships (`nuxt.config` → `i18n.locales`).
+ *
+ * A closed union rather than `v.string()`: this value is read back to pick the
+ * catalog a system EMAIL renders in, and an unrecognised code there is either a
+ * crash or a silent fall back to English on a channel nobody is watching.
+ * Keep in step with `apps/web/i18n/formats.ts` → `FORMAT_LOCALES`.
+ */
+export const appLocaleValidator = v.union(v.literal('en'), v.literal('de'));
+
 export const unifiedMessageChannelValidator = v.union(
 	v.literal('email'),
 	v.literal('sms'),

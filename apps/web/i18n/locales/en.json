@@ -4386,7 +4386,7 @@
 				"ariaLabel": "Preferences sections"
 			},
 			"preferencesLanguage": {
-				"hint": "Remembered in this browser. Anything not translated yet is shown in English.",
+				"hint": "Remembered in this browser and on your account, so a new device and the emails we send you follow it too. Anything not translated yet is shown in English.",
 				"subtitle": "Choose the language Owlat's interface is shown in on this device.",
 				"title": "Language"
 			}

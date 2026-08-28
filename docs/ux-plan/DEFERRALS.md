@@ -454,3 +454,42 @@ To pick it up: migrate `.vue` files first (the destructure is mechanical), then
 thread a locale argument through the pure builders, then delete
 `bindAppLocale`, `activeFormatLocale` and the plugin — at which point
 `formatters.ts` has no ambient state left.
+
+## 65 — only one of the seven system emails is translated
+
+`userProfiles.locale` is in (optional; absent = English, i.e. exactly today's
+behaviour), the language picker writes it beside the `owlat-locale` cookie, and
+`server/utils/localizedText.ts` now takes a locale instead of being English by
+construction. One system email — the account-deletion confirmation — is
+translated end to end: subject, body, CTA, the copy-the-link fallback, the
+`<html lang>` and the `toLocaleDateString` that used to be hard-coded `'en-US'`.
+
+The other six generators in `apps/api/convex/lib/systemEmails.ts` (organization
+invitation, team-inbox invitation, password reset, change-email verification,
+new-email verification, double-opt-in confirmation) still ship English.
+
+The blocker is not the copy, it is the RECIPIENT. Deletion was picked first
+because the person is an established account: `requestAccountDeletion` already
+holds their `userProfile`, so their language is one field away. Every remaining
+one is addressed to someone we do not have a profile for at the moment we send:
+
+- both invitations go to an address that has no account yet — that is what an
+  invitation is. The inviter's language is the wrong answer (it is the
+  invitee who reads it), so this needs a language on the invitation record,
+  chosen by the inviter or negotiated on the accept screen.
+- password reset, change-email and new-email verification are sent by
+  BetterAuth's own hooks, which hand the generator an email and a URL and no
+  profile lookup; picking up the locale means threading a read through those
+  hooks.
+- the double-opt-in confirmation goes to a marketing CONTACT, not a user.
+  Contacts have no interface language; the honest source would be the sending
+  organization's default locale, which does not exist yet either.
+
+`lib/accountExportTemplates.ts` is untouched for a different reason: it exports
+the member's own stored data (template names, subjects, HTML they wrote), and
+none of the strings it emits are ours to translate.
+
+To pick it up: add a locale to the invitation record and to whatever context
+BetterAuth's email hooks can carry, and add an instance/organization default
+locale for recipients who are not users. The copy tables extend
+`lib/systemEmailCopy.ts`, which is already shaped for it.
