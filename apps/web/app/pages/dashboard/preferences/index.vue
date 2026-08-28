@@ -6,6 +6,8 @@ import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
 import { POSTBOX_REPLY_DEFAULT_OPTIONS } from '~/utils/postboxReplyDefault';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
+import type { PostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
+import { POSTBOX_MARK_READ_POLICY_OPTIONS } from '~/utils/postboxMarkReadPolicy';
 
 const { t } = useI18n();
 
@@ -34,6 +36,8 @@ const {
 	setReplyDefault,
 	density,
 	setDensity,
+	markReadPolicy,
+	setMarkReadPolicy,
 	sendSound,
 	setSendSound,
 	isSaving: isSavingAutoAdvance,
@@ -52,6 +56,11 @@ function onReplyDefaultChange(event: Event) {
 function onDensityChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxDensity;
 	void setDensity(value);
+}
+
+function onMarkReadPolicyChange(event: Event) {
+	const value = (event.target as HTMLSelectElement).value as PostboxMarkReadPolicy;
+	void setMarkReadPolicy(value);
 }
 
 function onWritingSuggestionsChange(event: Event) {
@@ -142,6 +151,33 @@ async function handleDelete() {
 					>
 						<option
 							v-for="option in POSTBOX_AUTO_ADVANCE_OPTIONS"
+							:key="option.value"
+							:value="option.value"
+						>
+							{{ t(option.label) }}
+						</option>
+					</select>
+				</div>
+				<div
+					class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+				>
+					<div class="min-w-0">
+						<label for="postbox-mark-read" class="font-medium text-sm block">
+							{{ t('dashboard.preferences.index.markReadLabel') }}
+						</label>
+						<p class="text-xs text-text-tertiary mt-0.5">
+							{{ t('dashboard.preferences.index.markReadHelp') }}
+						</p>
+					</div>
+					<select
+						id="postbox-mark-read"
+						class="input w-64 shrink-0"
+						:value="markReadPolicy"
+						:disabled="isSavingAutoAdvance"
+						@change="onMarkReadPolicyChange"
+					>
+						<option
+							v-for="option in POSTBOX_MARK_READ_POLICY_OPTIONS"
 							:key="option.value"
 							:value="option.value"
 						>

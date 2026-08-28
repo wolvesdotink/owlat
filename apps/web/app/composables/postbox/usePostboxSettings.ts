@@ -29,6 +29,10 @@
  *   - `undoSendSeconds` — how long a sent message is held before it dispatches
  *     (Off / 10 / 30 / 60). Defaults to 30s, the server's own default, so an
  *     unset preference is exactly the behaviour that shipped before it existed.
+ *   - `markReadPolicy` — when an opened conversation loses its unread flags:
+ *     'immediate' (mark on render, the default and today's behaviour),
+ *     'after-dwell' (mark after a short visible dwell, cancelled by navigating
+ *     away first) or 'manual' (never automatic).
  */
 
 import { api } from '@owlat/api';
@@ -48,6 +52,8 @@ import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { resolvePostboxNotifyAbout } from '~/utils/postboxNotify';
 import type { PostboxUndoSendSeconds } from '~/utils/postboxUndoSendWindow';
 import { resolvePostboxUndoSendSeconds } from '~/utils/postboxUndoSendWindow';
+import type { PostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
+import { resolvePostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
 
 export function usePostboxSettings() {
 	const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
@@ -123,6 +129,13 @@ export function usePostboxSettings() {
 	// a deploy that never toggles it keeps today's behavior.
 	const senderScreener = computed<boolean>(() => data.value?.isSenderScreenerOn ?? false);
 
+	// When an opened conversation is marked read. An unset (or unknown) value
+	// resolves to 'immediate' — exactly the mark-on-render behaviour the reader
+	// had before this control existed.
+	const markReadPolicy = computed<PostboxMarkReadPolicy>(() =>
+		resolvePostboxMarkReadPolicy(data.value?.markReadPolicy)
+	);
+
 	const updateOp = useBackendOperation(api.mail.settings.update, {
 		label: 'Save Postbox settings',
 	});
@@ -186,6 +199,10 @@ export function usePostboxSettings() {
 		await updateOp.run({ isSenderScreenerOn: enabled });
 	}
 
+	async function setMarkReadPolicy(policy: PostboxMarkReadPolicy) {
+		await updateOp.run({ markReadPolicy: policy });
+	}
+
 	return {
 		autoAdvance,
 		writingSuggestions,
@@ -200,6 +217,7 @@ export function usePostboxSettings() {
 		notifyAbout,
 		badgeNonPeople,
 		senderScreener,
+		markReadPolicy,
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
@@ -214,6 +232,7 @@ export function usePostboxSettings() {
 		setNotifyAbout,
 		setBadgeNonPeople,
 		setSenderScreener,
+		setMarkReadPolicy,
 		isSaving: updateOp.isLoading,
 	};
 }

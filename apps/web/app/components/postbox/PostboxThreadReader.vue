@@ -77,6 +77,12 @@ import { extractEmailAddress } from '~/utils/emailAddress';
 import { deriveSenderAuth, type SenderAuthInput, type SenderAuthState } from '~/utils/senderAuth';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
+import {
+	POSTBOX_MARK_READ_DWELL_MS,
+	markReadOnOpen,
+	showsManualMarkRead,
+} from '~/utils/postboxMarkReadPolicy';
+import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
 import { shouldShowSchedulingChip } from '~/utils/postboxSchedulingChip';
 import {
 	classifySecureMessage,
@@ -205,6 +211,10 @@ const readerThread = computed(
 						dueAt?: number;
 						waitingOn?: string;
 					};
+					// Muted conversation + the transient back-from-snooze marker, both
+					// rendered as header chips (mail/mute.ts, mail/snooze.ts).
+					mutedAt?: number;
+					snoozeReturnedAt?: number;
 			  }
 			| null
 			| undefined
@@ -287,26 +297,101 @@ function showSchedulingChip(msg: {
 	});
 }
 
-// Mark-as-read on open (Gmail conversation-view semantics): the first time an
-// unread thread is opened, clear its unread flags. Guarded so the reactive
-// re-fetch that follows (flagSeen flips → query re-runs) doesn't re-fire.
+// Per-user reader preferences: auto-advance after triaging the open message
+// away (archive / trash / snooze / spam — active only in the folder view, the
+// search preview stays put), the primary reply mode, and when an opened
+// conversation is marked read. Read here rather than beside their consumers
+// because the mark-read watcher below runs immediately.
+const { autoAdvance, replyDefault, markReadPolicy } = usePostboxSettings();
+
+// Mark-as-read on open (Gmail conversation-view semantics), under the user's
+// markReadPolicy: 'immediate' clears the unread flags on render (the behaviour
+// the reader always had, and what an unset preference resolves to),
+// 'after-dwell' waits POSTBOX_MARK_READ_DWELL_MS of visible dwell and cancels
+// if the reader is navigated away or torn down first, and 'manual' never fires
+// — the header offers an explicit button instead.
+//
+// Guarded per thread so the reactive re-fetch that follows (flagSeen flips →
+// query re-runs) doesn't re-fire, and so a dwell timer is armed at most once.
 const markThreadReadOp = useBackendOperation(api.mail.messageActions.markThreadRead, {
 	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
 });
 const markedThreads = new Set<string>();
+let dwellTimer: ReturnType<typeof setTimeout> | undefined;
+
+function cancelDwell() {
+	if (dwellTimer !== undefined) {
+		clearTimeout(dwellTimer);
+		dwellTimer = undefined;
+	}
+}
+
+function runMarkThreadRead(threadId: string) {
+	void markThreadReadOp.run({ threadId: threadId as Id<'mailThreads'>, seen: true });
+}
+
+/** True while the open thread still has an unread message (drives the button). */
+const threadHasUnread = computed(() => (threadData.value?.messages ?? []).some((m) => !m.flagSeen));
+const showsManualMarkReadButton = computed(() =>
+	showsManualMarkRead(markReadPolicy.value, threadHasUnread.value)
+);
+
+/** The header's explicit "Mark read" affordance (markReadPolicy 'manual'). */
+function markOpenThreadRead() {
+	const threadId = threadData.value?.thread?._id;
+	if (!threadId) return;
+	markedThreads.add(threadId);
+	runMarkThreadRead(threadId);
+}
+
 watch(
 	() => threadData.value,
 	(data) => {
 		const thread = data?.thread;
 		if (!thread) return;
 		if (markedThreads.has(thread._id)) return;
-		const hasUnread = (data?.messages ?? []).some((m) => !m.flagSeen);
-		if (!hasUnread) return;
+		if (!(data?.messages ?? []).some((m) => !m.flagSeen)) return;
+		const mode = markReadOnOpen(markReadPolicy.value);
+		if (mode === 'never') return;
 		markedThreads.add(thread._id);
-		void markThreadReadOp.run({
-			threadId: thread._id as Id<'mailThreads'>,
-			seen: true,
-		});
+		if (mode === 'now') {
+			runMarkThreadRead(thread._id);
+			return;
+		}
+		// 'after-dwell': a j/k skim past a row or a mis-click never burns the
+		// unread flag, because leaving the reader clears the timer.
+		cancelDwell();
+		const threadId = thread._id;
+		dwellTimer = setTimeout(() => {
+			dwellTimer = undefined;
+			runMarkThreadRead(threadId);
+		}, POSTBOX_MARK_READ_DWELL_MS);
+	},
+	{ immediate: true }
+);
+// Navigating to another conversation (or unmounting) cancels a pending dwell,
+// and re-arms for the newly opened thread through the watcher above.
+watch(
+	() => props.message._id,
+	() => cancelDwell()
+);
+onBeforeUnmount(cancelDwell);
+
+// Back-from-snooze marker (mail/snooze.ts): a one-shot recognition cue, so
+// opening the thread is what dismisses it. Fired once per thread per mount;
+// the mutation is idempotent server-side.
+const clearSnoozeReturnedOp = useBackendOperation(api.mail.snooze.clearSnoozeReturned, {
+	label: () => t('components.postbox.postboxThreadReader.clearSnoozeReturnedOperation'),
+});
+const clearedSnoozeReturned = new Set<string>();
+watch(
+	() => threadData.value?.thread,
+	(thread) => {
+		const t2 = thread as { _id: string; snoozeReturnedAt?: number } | null | undefined;
+		if (!t2?.snoozeReturnedAt) return;
+		if (clearedSnoozeReturned.has(t2._id)) return;
+		clearedSnoozeReturned.add(t2._id);
+		void clearSnoozeReturnedOp.run({ threadId: t2._id as Id<'mailThreads'> });
 	},
 	{ immediate: true }
 );
@@ -396,6 +481,12 @@ const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 const snoozeUntilReplyOp = useBackendOperation(api.mail.snooze.snoozeUntilReply, {
 	label: () => t('components.postbox.postboxThreadReader.snoozeUntilReplyOperation'),
 });
+const snoozeThreadOp = useBackendOperation(api.mail.snooze.snoozeThread, {
+	label: () => t('components.postbox.postboxThreadReader.snoozeOperation'),
+});
+const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
+	label: () => t('components.postbox.postboxThreadReader.muteOperation'),
+});
 const moveOp = useBackendOperation(api.mail.messageActions.move, {
 	label: () => t('components.postbox.postboxThreadReader.moveOperation'),
 });
@@ -418,12 +509,6 @@ function registerTriageUndo(
 		...(before ? { before } : {}),
 	});
 }
-
-// Auto-advance after triaging the open message away (archive / trash /
-// snooze / spam): open the adjacent conversation in list order per the
-// user's preference, falling back to the list at the ends. Active only in
-// the folder view (advance props present); the search preview stays put.
-const { autoAdvance, replyDefault } = usePostboxSettings();
 
 // Reply / reply-all / forward composer concerns (popup openers, the pinned
 // inline reply box, and the list→reader r/a/f hand-off).
@@ -589,8 +674,32 @@ const snoozeDialogOpen = ref(false);
 const labelDialogOpen = ref(false);
 const moveDialogOpen = ref(false);
 
-function snoozeOpenMessage(until: number) {
+function snoozeOpenMessage(until: number, scope: PostboxSnoozeScope) {
+	const threadId = readerThread.value?._id;
+	// Thread scope is the dialog's default; a reader opened on a row whose thread
+	// hasn't loaded yet falls back to deferring just this message.
+	if (scope === 'thread' && threadId) {
+		void runAndAdvance(() =>
+			snoozeThreadOp.run({ threadId: threadId as Id<'mailThreads'>, until })
+		);
+		return;
+	}
 	void runAndAdvance(() => snoozeOp.run({ messageId: messageId.value, until }));
+}
+
+/**
+ * Mute/unmute the open conversation. Muting archives the thread's inbox mail
+ * server-side, so it triages the reader away exactly like archive does;
+ * unmuting only drops the marker and keeps the thread open.
+ */
+const isThreadMuted = computed(() => readerThread.value?.mutedAt != null);
+function toggleOpenThreadMute() {
+	const muted = !isThreadMuted.value;
+	if (muted) {
+		void runAndAdvance(() => setMutedOp.run({ messageId: messageId.value, muted: true }));
+		return;
+	}
+	void setMutedOp.run({ messageId: messageId.value, muted: false });
 }
 function snoozeOpenMessageUntilReply(capUntil: number) {
 	void runAndAdvance(() => snoozeUntilReplyOp.run({ messageId: messageId.value, capUntil }));
@@ -653,6 +762,9 @@ function runReaderAction(action: string) {
 			break;
 		case 'snooze':
 			snoozeDialogOpen.value = true;
+			break;
+		case 'mute':
+			toggleOpenThreadMute();
 			break;
 		case 'label':
 			labelDialogOpen.value = true;
@@ -848,6 +960,10 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			:latest-outbound-id="latestOutboundId"
 			:label-ids="threadLabels"
 			:labels="labelMap"
+			:show-mark-read="showsManualMarkReadButton"
+			:marking-read="markThreadReadOp.isLoading.value"
+			@unmute="toggleOpenThreadMute"
+			@mark-read="markOpenThreadRead"
 		/>
 
 		<!-- Sealed Mail (E5): thread-level trust surfaces for the correspondent —
@@ -1214,6 +1330,25 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 									role="menuitem"
 									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
 									@click="
+										toggleOpenThreadMute();
+										close();
+									"
+								>
+									<Icon
+										:name="isThreadMuted ? 'lucide:bell' : 'lucide:bell-off'"
+										class="w-4 h-4 text-text-tertiary"
+									/>
+									{{
+										isThreadMuted
+											? t('components.postbox.postboxThreadReader.unmute')
+											: t('components.postbox.postboxThreadReader.mute')
+									}}
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+									@click="
 										reportSpamMessage(msg._id);
 										close();
 									"
@@ -1267,6 +1402,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		<PostboxSnoozeDialog
 			:open="snoozeDialogOpen"
 			:hint-text="snoozeHintText"
+			scoped
 			@update:open="snoozeDialogOpen = $event"
 			@confirm="snoozeOpenMessage"
 			@confirm-until-reply="snoozeOpenMessageUntilReply"
