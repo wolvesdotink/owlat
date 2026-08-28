@@ -312,6 +312,11 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				icon: 'lucide:user-cog',
 			},
 			{
+				name: 'shared.dashboardNavigation.items.preferences.security',
+				href: '/dashboard/preferences/security',
+				icon: 'lucide:shield-check',
+			},
+			{
 				name: 'shared.dashboardNavigation.items.preferences.filters',
 				href: '/dashboard/preferences/filters',
 				icon: 'lucide:list-filter',

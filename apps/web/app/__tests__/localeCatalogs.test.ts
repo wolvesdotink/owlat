@@ -323,6 +323,23 @@ describe('UI message catalogs', () => {
 		'dashboard.preferences.appPasswords.smtpValue',
 		'dashboard.preferences.forwarding.addressPlaceholder',
 		'dashboard.preferences.index.displayNamePlaceholder',
+		// Browser and OS names are product names; German uses them verbatim. Only
+		// the two `unknown` fallbacks in those blocks are prose, and both ARE
+		// translated — which is what keeps this run of entries honest.
+		'dashboard.preferences.security.device.browsers.chrome',
+		'dashboard.preferences.security.device.browsers.edge',
+		'dashboard.preferences.security.device.browsers.firefox',
+		'dashboard.preferences.security.device.browsers.opera',
+		'dashboard.preferences.security.device.browsers.safari',
+		'dashboard.preferences.security.device.platforms.android',
+		'dashboard.preferences.security.device.platforms.chromeOs',
+		'dashboard.preferences.security.device.platforms.ios',
+		'dashboard.preferences.security.device.platforms.ipados',
+		'dashboard.preferences.security.device.platforms.linux',
+		'dashboard.preferences.security.device.platforms.macos',
+		'dashboard.preferences.security.device.platforms.windows',
+		// "IP {address}" — the abbreviation and the placeholder, nothing else.
+		'dashboard.preferences.security.sessions.ipLabel',
 		'dashboard.preferences.signatures.bodyPlaceholder',
 		'dashboard.send.blocks.index.sort.name',
 		'dashboard.send.emails.detail.settings.languageWithNative',

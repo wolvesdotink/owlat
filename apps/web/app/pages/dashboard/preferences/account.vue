@@ -448,6 +448,16 @@ const daysRemaining = computed(() => {
 						{{ t('dashboard.preferences.account.changePasswordSubmit') }}
 					</UiButton>
 				</form>
+				<!--
+					The password is one of two things guarding this account, and until
+					now the other one had no entry point anywhere in the app. Sessions
+					and two-factor live one click from the field that sets the first.
+				-->
+				<p class="text-sm text-text-secondary mt-4 pt-4 border-t border-border-subtle">
+					<NuxtLink to="/dashboard/preferences/security" class="link">
+						{{ t('dashboard.preferences.account.securityLink') }}
+					</NuxtLink>
+				</p>
 			</div>
 
 			<!-- Pending Deletion Banner -->

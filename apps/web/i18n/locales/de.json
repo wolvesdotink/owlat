@@ -8502,6 +8502,7 @@
 				"reasonPlaceholder": "Helfen Sie uns besser zu werden und teilen Sie uns mit, warum Sie gehen...",
 				"requestDeletionAction": "Kontolöschung beantragen",
 				"requestDeletionOperation": "Kontolöschung beantragen",
+				"securityLink": "Anmeldung und Sicherheit: aktive Sitzungen und Zwei-Faktor →",
 				"sendConfirmation": "Bestätigung senden",
 				"signedInAs": "Angemeldet als {email}.",
 				"subheading": "Verwalten Sie Ihr Profil, Ihr Passwort, Ihre Daten und Ihr Konto",
@@ -8675,6 +8676,120 @@
 					"notFoundTitle": "Dieses Team-Postfach ist nicht verfügbar",
 					"pageTitle": "Mitglieder des Team-Postfachs — Owlat",
 					"title": "Mitglieder des Team-Postfachs"
+				}
+			},
+			"security": {
+				"pageTitle": "Anmeldung und Sicherheit — Owlat",
+				"heading": "Anmeldung und Sicherheit",
+				"subheading": "Wo dein Konto angemeldet ist — und welcher zweite Faktor es schützt.",
+				"device": {
+					"browsers": {
+						"owlatDesktop": "Owlat-Desktop-App",
+						"edge": "Edge",
+						"opera": "Opera",
+						"firefox": "Firefox",
+						"chrome": "Chrome",
+						"safari": "Safari",
+						"unknown": "Unbekannter Browser"
+					},
+					"platforms": {
+						"ios": "iPhone",
+						"ipados": "iPad",
+						"android": "Android",
+						"chromeOs": "ChromeOS",
+						"macos": "macOS",
+						"windows": "Windows",
+						"linux": "Linux",
+						"unknown": "Unbekanntes System"
+					},
+					"lastSeen": {
+						"now": "gerade eben",
+						"minutes": "vor {count} Min.",
+						"hours": "vor {count} Std.",
+						"days": "vor {count} T."
+					}
+				},
+				"sessions": {
+					"heading": "Wo du angemeldet bist",
+					"description": "Alle Browser und Apps, die gerade eine Sitzung für dieses Konto halten.",
+					"loadFailed": "Deine Sitzungen konnten nicht geladen werden. Lade die Seite neu.",
+					"empty": "Es ist nichts an diesem Konto angemeldet.",
+					"currentBadge": "Dieses Gerät",
+					"ipLabel": "IP {address}",
+					"ipUnknown": "IP nicht erfasst",
+					"lastSeenLabel": "zuletzt benutzt {when}",
+					"signedInSince": "Angemeldet seit {date}",
+					"revoke": "Abmelden",
+					"revokeDialogTitle": "Dieses Gerät abmelden?",
+					"revokeDialogDescription": "Es verliert sofort den Zugriff. Wer es benutzt, muss sich neu anmelden.",
+					"revokeConfirm": "Gerät abmelden",
+					"revoked": "Das Gerät wurde abgemeldet.",
+					"revokeFailed": "Das Gerät konnte nicht abgemeldet werden.",
+					"signOutOthers": "Überall sonst abmelden",
+					"signOutOthersDialogTitle": "Überall sonst abmelden?",
+					"signOutOthersDialogDescription": "Alle Sitzungen außer dieser enden sofort. Hier bleibst du angemeldet.",
+					"signOutOthersConfirm": "Überall sonst abmelden",
+					"signedOutOthers": "Alle anderen Sitzungen wurden abgemeldet.",
+					"signOutOthersFailed": "Die anderen Sitzungen konnten nicht abgemeldet werden."
+				},
+				"twoFactor": {
+					"heading": "Zwei-Faktor-Authentifizierung",
+					"description": "Ein zweiter Faktor schützt ein Konto auch dann noch, wenn sein Passwort durchsickert.",
+					"authenticatorApp": "Authenticator-App",
+					"statusOn": "Aktiv",
+					"statusOff": "Aus",
+					"onDetail": "Nach dem Passwort wird ein sechsstelliger Code abgefragt.",
+					"offDetail": "Dein Passwort ist das Einzige, was dieses Konto schützt.",
+					"enable": "Authenticator-App einrichten",
+					"disable": "Abschalten",
+					"regenerate": "Neue Backup-Codes",
+					"setup": {
+						"title": "Authenticator-App einrichten",
+						"passwordStep": "Bestätige zuerst das Passwort, mit dem du dich anmeldest.",
+						"passwordLabel": "Aktuelles Passwort",
+						"start": "Weiter",
+						"scanTitle": "Scanne das mit deiner Authenticator-App",
+						"scanAlt": "QR-Code mit deinem Einrichtungsschlüssel",
+						"manualTitle": "Keine Kamera? Tippe stattdessen diesen Schlüssel ein.",
+						"manualAccount": "Konto: {account}",
+						"copyKey": "Schlüssel kopieren",
+						"keyCopied": "Einrichtungsschlüssel kopiert.",
+						"codesTitle": "Sichere deine Backup-Codes",
+						"codesBody": "Jeder Code meldet dich einmal an, falls du den Authenticator verlierst. Bewahre sie woanders auf als auf dem Gerät, auf dem er läuft.",
+						"download": "Codes herunterladen",
+						"savedContinue": "Ich habe sie gesichert",
+						"confirmBody": "Tippe die sechs Ziffern ein, die deine App gerade zeigt. Vorher ist Zwei-Faktor nicht aktiv.",
+						"codeLabel": "Sechsstelliger Code",
+						"confirm": "Zwei-Faktor aktivieren",
+						"enabled": "Zwei-Faktor-Authentifizierung ist aktiv."
+					},
+					"errors": {
+						"wrongPassword": "Dieses Passwort stimmt nicht.",
+						"invalidCode": "Dieser Code wurde nicht akzeptiert. Codes wechseln alle 30 Sekunden — nimm den, der gerade angezeigt wird.",
+						"failed": "Das hat nicht geklappt. Versuch es noch einmal."
+					},
+					"disableDialog": {
+						"title": "Zwei-Faktor-Authentifizierung abschalten?",
+						"body": "Das Konto wird dann nur noch vom Passwort geschützt, und deine Backup-Codes verlieren ihre Gültigkeit.",
+						"passwordLabel": "Aktuelles Passwort",
+						"confirm": "Zwei-Faktor abschalten",
+						"disabled": "Zwei-Faktor-Authentifizierung ist aus."
+					},
+					"regenerateDialog": {
+						"title": "Neue Backup-Codes erzeugen",
+						"body": "Deine bisherigen Codes verlieren ihre Gültigkeit, sobald neue ausgegeben sind. Der neue Satz wird sofort heruntergeladen.",
+						"passwordLabel": "Aktuelles Passwort",
+						"confirm": "Erzeugen und herunterladen",
+						"done": "Neue Backup-Codes ausgegeben."
+					},
+					"file": {
+						"heading": "Owlat-Backup-Codes",
+						"account": "Konto: {email}",
+						"issued": "Ausgestellt: {date}",
+						"noteOnce": "Jeder Code funktioniert genau einmal.",
+						"noteReplace": "Sobald du neue Codes erzeugst, ist jeder Code in dieser Datei wertlos.",
+						"noteStore": "Bewahre diese Datei woanders auf als auf dem Gerät mit deiner Authenticator-App."
+					}
 				}
 			},
 			"signatures": {
@@ -10153,6 +10268,7 @@
 				"plugins": "Plugins",
 				"providerRouting": "Anbieter-Routing",
 				"secureMail": "Sichere Mail",
+				"security": "Anmeldung und Sicherheit",
 				"segments": "Segmente",
 				"sendingDomains": "Versanddomains",
 				"signatures": "Signaturen",
@@ -10501,6 +10617,7 @@
 					"desktop": "Desktop",
 					"filters": "Filter",
 					"overview": "Übersicht",
+					"security": "Anmeldung und Sicherheit",
 					"signatures": "Signaturen"
 				},
 				"send": {

@@ -8502,6 +8502,7 @@
 				"reasonPlaceholder": "Help us improve by sharing why you're leaving...",
 				"requestDeletionAction": "Request Account Deletion",
 				"requestDeletionOperation": "Request account deletion",
+				"securityLink": "Sign-in and security: active sessions and two-factor →",
 				"sendConfirmation": "Send confirmation",
 				"signedInAs": "Signed in as {email}.",
 				"subheading": "Manage your profile, password, data, and account",
@@ -8675,6 +8676,120 @@
 					"notFoundTitle": "This team inbox isn't available",
 					"pageTitle": "Team inbox members — Owlat",
 					"title": "Team inbox members"
+				}
+			},
+			"security": {
+				"pageTitle": "Sign-in and security — Owlat",
+				"heading": "Sign-in and security",
+				"subheading": "Where your account is signed in, and the second factor guarding it.",
+				"device": {
+					"browsers": {
+						"owlatDesktop": "Owlat desktop app",
+						"edge": "Edge",
+						"opera": "Opera",
+						"firefox": "Firefox",
+						"chrome": "Chrome",
+						"safari": "Safari",
+						"unknown": "Unrecognised browser"
+					},
+					"platforms": {
+						"ios": "iPhone",
+						"ipados": "iPad",
+						"android": "Android",
+						"chromeOs": "ChromeOS",
+						"macos": "macOS",
+						"windows": "Windows",
+						"linux": "Linux",
+						"unknown": "Unrecognised system"
+					},
+					"lastSeen": {
+						"now": "just now",
+						"minutes": "{count} min ago",
+						"hours": "{count} h ago",
+						"days": "{count} d ago"
+					}
+				},
+				"sessions": {
+					"heading": "Where you're signed in",
+					"description": "Every browser and app currently holding a session for this account.",
+					"loadFailed": "Your sessions could not be loaded. Reload the page to try again.",
+					"empty": "Nothing is signed in to this account.",
+					"currentBadge": "This device",
+					"ipLabel": "IP {address}",
+					"ipUnknown": "IP not recorded",
+					"lastSeenLabel": "last used {when}",
+					"signedInSince": "Signed in {date}",
+					"revoke": "Sign out",
+					"revokeDialogTitle": "Sign out this device?",
+					"revokeDialogDescription": "It loses access straight away. Anyone using it has to sign in again.",
+					"revokeConfirm": "Sign out this device",
+					"revoked": "That device has been signed out.",
+					"revokeFailed": "That device could not be signed out.",
+					"signOutOthers": "Sign out everywhere else",
+					"signOutOthersDialogTitle": "Sign out everywhere else?",
+					"signOutOthersDialogDescription": "Every session except this one ends straight away. You stay signed in here.",
+					"signOutOthersConfirm": "Sign out everywhere else",
+					"signedOutOthers": "Every other session has been signed out.",
+					"signOutOthersFailed": "The other sessions could not be signed out."
+				},
+				"twoFactor": {
+					"heading": "Two-factor authentication",
+					"description": "A second factor keeps an account safe even after its password leaks.",
+					"authenticatorApp": "Authenticator app",
+					"statusOn": "On",
+					"statusOff": "Off",
+					"onDetail": "A six-digit code is asked for after your password.",
+					"offDetail": "Your password is the only thing guarding this account.",
+					"enable": "Set up authenticator app",
+					"disable": "Turn off",
+					"regenerate": "New backup codes",
+					"setup": {
+						"title": "Set up your authenticator app",
+						"passwordStep": "Confirm the password you sign in with to begin.",
+						"passwordLabel": "Current password",
+						"start": "Continue",
+						"scanTitle": "Scan this with your authenticator app",
+						"scanAlt": "QR code holding your authenticator setup key",
+						"manualTitle": "No camera? Type this key instead.",
+						"manualAccount": "Account: {account}",
+						"copyKey": "Copy key",
+						"keyCopied": "Setup key copied.",
+						"codesTitle": "Save your backup codes",
+						"codesBody": "Each code signs you in once if you lose the authenticator. Keep them somewhere other than the device running it.",
+						"download": "Download codes",
+						"savedContinue": "I've saved them",
+						"confirmBody": "Type the six digits your app shows now. Two-factor is not on until this succeeds.",
+						"codeLabel": "Six-digit code",
+						"confirm": "Turn on two-factor",
+						"enabled": "Two-factor authentication is on."
+					},
+					"errors": {
+						"wrongPassword": "That password is not right.",
+						"invalidCode": "That code was not accepted. Codes change every 30 seconds — try the one showing now.",
+						"failed": "That did not work. Try again."
+					},
+					"disableDialog": {
+						"title": "Turn off two-factor authentication?",
+						"body": "The account goes back to being guarded by its password alone, and your backup codes stop working.",
+						"passwordLabel": "Current password",
+						"confirm": "Turn off two-factor",
+						"disabled": "Two-factor authentication is off."
+					},
+					"regenerateDialog": {
+						"title": "Generate new backup codes",
+						"body": "The codes you have now stop working the moment new ones are issued. The new set downloads straight away.",
+						"passwordLabel": "Current password",
+						"confirm": "Generate and download",
+						"done": "New backup codes issued."
+					},
+					"file": {
+						"heading": "Owlat backup codes",
+						"account": "Account: {email}",
+						"issued": "Issued: {date}",
+						"noteOnce": "Each code works exactly once.",
+						"noteReplace": "Generating new codes makes every code in this file useless.",
+						"noteStore": "Keep this file somewhere other than the device running your authenticator app."
+					}
 				}
 			},
 			"signatures": {
@@ -10153,6 +10268,7 @@
 				"plugins": "Plugins",
 				"providerRouting": "Provider Routing",
 				"secureMail": "Secure mail",
+				"security": "Sign-in and security",
 				"segments": "Segments",
 				"sendingDomains": "Sending Domains",
 				"signatures": "Signatures",
@@ -10501,6 +10617,7 @@
 					"desktop": "Desktop",
 					"filters": "Filters",
 					"overview": "Overview",
+					"security": "Sign-in and security",
 					"signatures": "Signatures"
 				},
 				"send": {

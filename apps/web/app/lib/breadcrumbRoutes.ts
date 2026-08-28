@@ -330,6 +330,11 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/preferences',
 		page: 'shared.breadcrumbRoutes.pages.account',
 	},
+	'/dashboard/preferences/security': {
+		section: 'shared.breadcrumbRoutes.sections.preferences',
+		sectionHref: '/dashboard/preferences',
+		page: 'shared.breadcrumbRoutes.pages.security',
+	},
 	'/dashboard/preferences/filters': {
 		section: 'shared.breadcrumbRoutes.sections.preferences',
 		sectionHref: '/dashboard/preferences',
