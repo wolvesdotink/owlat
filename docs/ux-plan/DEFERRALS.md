@@ -721,3 +721,29 @@ is per-CONTACT rather than per-thread and would rank nothing within one sender.
 
 To pick it up: maintain a per-sender rollup row (count, first seen, auth tally)
 updated in the delivery pipeline, and read it beside the bounded page.
+
+## 49 — offline search covers what the shell can already reach, not cached bodies
+
+The service worker, the raised caps (500 rows / 200 bodies) and the cached
+folder rail landed. Offline SEARCH over cached bodies — the part idea 49 offers
+as the no-tradeoff alternative to widening the server-side snippet (idea 32) —
+did not.
+
+Two things are missing, and neither is small. First, `usePostboxSearch` is a
+thin wrapper over a Convex keyset cursor (`usePostboxCursorFeed` +
+`mail/mailbox/search.search`); an offline mode is a second, differently-shaped
+result source behind the same box, including a client implementation of the
+`from:` / `is:` / `before:` grammar that `postboxSearchQuery.ts` parses but the
+BACKEND currently evaluates. Second, the cached bodies are not searchable as
+mail: `body:{ns}:{messageId}` stores the post-sanitize iframe `srcdoc`, with no
+message → thread mapping and no text extraction, so a hit could be scored but
+not turned into a row the list can render. The cached thread rows carry
+subject/from/snippet and cover inbox + snoozed only, so a naive "search what is
+cached" would silently answer a different question than the online one — the
+worst failure mode a search box has.
+
+To pick it up: store a plain-text projection plus the owning threadId beside
+each cached body, add a matcher over the parsed query that runs against
+{subject, from, snippet, bodyText} in `app/utils/`, and branch
+`usePostboxSearch` on `isOffline` with the result set explicitly labelled as
+"cached mail only" so nobody reads an empty offline result as an empty mailbox.
