@@ -28,6 +28,8 @@ export type OrganizationDeletionTable =
 	| 'mediaAssets'
 	| 'semanticFileContacts'
 	| 'semanticFiles'
+	| 'mailAttachments'
+	| 'mailAttachmentBackfillJobs'
 	| 'mailMessages'
 	| 'mailDrafts'
 	| 'transactionalSends'
@@ -54,6 +56,7 @@ export type OrganizationDeletionTable =
 	| 'mailVoiceProfiles'
 	| 'mailContactStyleOverrides'
 	| 'mailFilters'
+	| 'mailFilterRunJobs'
 	| 'mailSignatures'
 	| 'mailSnippets'
 	| 'mailSavedSearches'
@@ -205,6 +208,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mediaAssets'),
 	v.literal('semanticFileContacts'),
 	v.literal('semanticFiles'),
+	v.literal('mailAttachments'),
+	v.literal('mailAttachmentBackfillJobs'),
 	v.literal('mailMessages'),
 	v.literal('mailDrafts'),
 	v.literal('transactionalSends'),
@@ -231,6 +236,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailVoiceProfiles'),
 	v.literal('mailContactStyleOverrides'),
 	v.literal('mailFilters'),
+	v.literal('mailFilterRunJobs'),
 	v.literal('mailSignatures'),
 	v.literal('mailSnippets'),
 	v.literal('mailSavedSearches'),

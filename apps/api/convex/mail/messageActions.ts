@@ -15,6 +15,7 @@ import { requireMailboxAccess } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { adjustFolderUnseen, bumpFolderModseq } from './folders';
 import { clearThreadNeedsReply } from './needsReply';
+import { removeMessageAttachments } from './attachmentIndex';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
 
 type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
@@ -359,6 +360,9 @@ export const purge = authedMutation({
 			}
 
 			touchedThreads.add(message.threadId);
+			// The attachment index is a function of the message table; a row that
+			// outlived its message would list a file that opens into nothing.
+			await removeMessageAttachments(ctx, id);
 			await ctx.db.delete(id);
 		}
 		for (const t of touchedThreads) {

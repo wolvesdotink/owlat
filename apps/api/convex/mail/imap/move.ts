@@ -12,6 +12,7 @@ import { internalMutation } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { rebuildThreadAggregates } from '../messageActions';
 import { bumpFolderModseq } from '../folders';
+import { indexMessageAttachments, removeMessageAttachments } from '../attachmentIndex';
 
 /**
  * COPY — clones a message into another folder of the SAME mailbox.
@@ -65,13 +66,24 @@ export const copyMessages = internalMutation({
 			void _ms;
 			void _ca;
 			void _ua;
-			await ctx.db.insert('mailMessages', {
+			const copyId = await ctx.db.insert('mailMessages', {
 				...rest,
 				folderId: target._id,
 				uid: newUid,
 				modseq: newModseq,
 				createdAt: now,
 				updatedAt: now,
+			});
+			// The copy is its own message row, so it gets its own junction rows —
+			// otherwise a COPY into a folder would silently drop the copy's files
+			// out of the Files view and out of `filename:`.
+			await indexMessageAttachments(ctx, {
+				_id: copyId,
+				mailboxId: rest.mailboxId,
+				folderId: target._id,
+				fromAddress: rest.fromAddress,
+				receivedAt: rest.receivedAt,
+				attachments: rest.attachments,
 			});
 			pairs.push({ sourceUid: m.uid, targetUid: newUid });
 		}
@@ -211,6 +223,7 @@ export const expungeFolder = internalMutation({
 			} catch {
 				/* storage may already be gone */
 			}
+			await removeMessageAttachments(ctx, m._id);
 			await ctx.db.delete(m._id);
 		}
 

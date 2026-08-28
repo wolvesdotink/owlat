@@ -126,6 +126,14 @@ export type MessageSeed = {
 	receivedAt?: number;
 	/** Which system folder to file it in — the folder must already be seeded. */
 	role?: SeededFolderRole;
+	/** Attachment metadata as it sits on the row (NOT the junction index). */
+	attachments?: {
+		filename: string;
+		contentType: string;
+		size: number;
+		contentId?: string;
+		partIndex: string;
+	}[];
 };
 
 /**
@@ -187,8 +195,8 @@ export async function seedMessage(
 			snippet,
 			rawStorageId,
 			rawSize: 3,
-			attachments: [],
-			hasAttachments: false,
+			attachments: seed.attachments ?? [],
+			hasAttachments: (seed.attachments?.length ?? 0) > 0,
 			flagSeen: false,
 			flagFlagged: false,
 			flagAnswered: false,

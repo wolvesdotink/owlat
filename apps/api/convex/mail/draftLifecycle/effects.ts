@@ -24,6 +24,7 @@ import { isSanctionedSendAsForUser } from '../identities';
 import { followUpWaitingOn } from '../followUps';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { indexMessageAttachments } from '../attachmentIndex';
 import { refuse } from '../../lib/lifecycle';
 import {
 	DRAFT_LIFECYCLE,
@@ -173,6 +174,17 @@ async function runSentEffects(
 				state: 'queued' as const,
 			})),
 		},
+	});
+
+	// Attachment index (idea 37): what you sent is a file you will go looking
+	// for as often as one you received, so the Sent row is indexed too.
+	await indexMessageAttachments(ctx, {
+		_id: messageId,
+		mailboxId: sendingMailboxId,
+		folderId: sentFolder._id,
+		fromAddress: draft.fromAddress.toLowerCase(),
+		receivedAt: now,
+		attachments: context.attachmentsMeta,
 	});
 
 	// patch_sent_folder effect

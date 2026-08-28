@@ -14,6 +14,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { redirectMutedDelivery } from '../mute';
+import { indexMessageAttachments } from '../attachmentIndex';
 import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
@@ -249,6 +250,18 @@ export async function insertDeliveredMessage(
 		unsubscribe: params.unsubscribe,
 		createdAt: now,
 		updatedAt: now,
+	});
+
+	// Attachment index (idea 37): the indexable mirror of the array we just
+	// wrote, so `filename:` narrows on an index and the Files view can browse
+	// this message's files without loading the message.
+	await indexMessageAttachments(ctx, {
+		_id: messageId,
+		mailboxId: mailbox._id,
+		folderId: folder._id,
+		fromAddress,
+		receivedAt: params.receivedAt,
+		attachments: params.attachments,
 	});
 
 	await ctx.db.patch(folder._id, {

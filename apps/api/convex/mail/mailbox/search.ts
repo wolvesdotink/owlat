@@ -378,6 +378,59 @@ async function scanMailbox(
 }
 
 /**
+ * Index-driven `filename:` — the scan runs over `mailAttachments`, not over
+ * `mailMessages`.
+ *
+ * The junction table (schema/mail.ts, written by `mail/attachmentIndex.ts`) is
+ * the only indexable view of what used to be an unindexable array on the
+ * message, so this is where `filename:` stops being a post-filter that could
+ * only see one page of recent mail and becomes an actual search.
+ *
+ * The page unit is an ATTACHMENT, so several files on one message collapse to a
+ * single result row (dedup within the page) and the returned page can be
+ * shorter than the attachment page. The cursor is the attachment index's, which
+ * keeps continuation exact: rows are consumed, never skipped. The remaining
+ * clause facets (`from:`, `is:unread`, dates, sizes, exclusions) still run as
+ * post-filters against the loaded message, so the operator composes with
+ * everything else in the grammar exactly as before.
+ */
+async function searchByFilename(
+	ctx: QueryCtx,
+	mailboxId: Id<'mailboxes'>,
+	clause: SearchClause,
+	names: ResolvedNames,
+	limit: number,
+	cursor: string | null
+): Promise<{ messages: Doc<'mailMessages'>[]; hasMore: boolean; nextCursor: string | null }> {
+	const page = await ctx.db
+		.query('mailAttachments')
+		.withSearchIndex('search_filenames', (q) =>
+			q.search('filename', clause.filename as string).eq('mailboxId', mailboxId)
+		)
+		.paginate({ cursor, numItems: limit });
+
+	const seen = new Set<Id<'mailMessages'>>();
+	const messages: Doc<'mailMessages'>[] = [];
+	for (const row of page.page) {
+		if (seen.has(row.messageId)) continue;
+		seen.add(row.messageId);
+		const message = await ctx.db.get(row.messageId);
+		// A junction row that outlived its message (a teardown that lost a race)
+		// must not surface as a result.
+		if (!message || message.mailboxId !== mailboxId) continue;
+		// The search index is token/prefix-based; the operator's contract is a
+		// SUBSTRING, so the message-level check still has the final say.
+		if (matchesClause(message, clause, names, false)) messages.push(message);
+	}
+
+	return {
+		messages,
+		hasMore: !page.isDone,
+		nextCursor: page.isDone ? null : page.continueCursor,
+	};
+}
+
+/**
  * Free-text + structured search across messages in one or many mailboxes.
  *
  * Keyset-paginated: pass `nextCursor` from the previous response to walk past
@@ -455,6 +508,15 @@ export const search = publicQuery({
 		const folderId = single?.folderRole
 			? (names.folderByRole.get(single.folderRole) ?? undefined)
 			: undefined;
+
+		// `filename:` with no free text scans the ATTACHMENT index instead of the
+		// message table (idea 37). Before `mailAttachments` existed the operand
+		// could only ever be a post-filter over one page of arrival-ordered mail,
+		// so a contract sent two years ago was unfindable no matter how exactly
+		// its name was typed. Now the scan itself is the filename search.
+		if (single && !single.text && single.filename) {
+			return searchByFilename(ctx, mailboxId, single, names, limit, cursor ?? null);
+		}
 
 		// Both branches paginate natively: the text branch over the search index,
 		// the no-text branch over the arrival index. The page may shrink below

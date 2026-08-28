@@ -168,6 +168,11 @@ export const TENANT_TABLES = [
 	'agentShadowScorecard',
 
 	// ── Personal mail (Postbox) — children first, mailbox last ──
+	// The attachment index and its backfill job are derived from `mailMessages`,
+	// but they carry this org's filenames and senders verbatim, so they wipe with
+	// the mail they mirror rather than being treated as a regenerable cache.
+	'mailAttachments',
+	'mailAttachmentBackfillJobs',
 	'mailMessages',
 	'mailThreads',
 	'mailDrafts',
@@ -176,6 +181,7 @@ export const TENANT_TABLES = [
 	'mailContactStyleOverrides',
 	'mailFolders',
 	'mailFilters',
+	'mailFilterRunJobs',
 	'mailSignatures',
 	'mailSnippets',
 	'mailSavedSearches',

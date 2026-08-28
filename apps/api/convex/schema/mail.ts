@@ -1001,10 +1001,95 @@ export const mailTables = {
 		mailboxId: v.id('mailboxes'),
 		name: v.string(),
 		color: v.optional(v.string()),
+		// Nesting (idea 38), mirroring `mailFolders.parentId`. A label's `name` is
+		// its LEAF segment only — `Work/Clients/Acme` is three rows, each pointing
+		// at its parent — so renaming a branch never has to rewrite descendants.
+		// Absent = a root label, which is exactly what every pre-nesting row is.
+		parentId: v.optional(v.id('mailLabels')),
+		// Manual sibling order, ascending; ties break on name so a fresh mailbox
+		// (every row at the default 0) still renders alphabetically as before.
+		order: v.optional(v.number()),
+		// Pinned labels sort above their unpinned siblings at the same depth.
+		isPinned: v.optional(v.boolean()),
 		createdAt: v.number(),
 	})
 		.index('by_mailbox', ['mailboxId'])
-		.index('by_mailbox_and_name', ['mailboxId', 'name']),
+		.index('by_mailbox_and_name', ['mailboxId', 'name'])
+		// Sibling lookup for the tree build, the create-time dedup within one
+		// parent, and the reparent cycle guard.
+		.index('by_mailbox_and_parent', ['mailboxId', 'parentId']),
+
+	// Attachment index — one row per (message, attachment part).
+	//
+	// `mailMessages.attachments` is an ARRAY, which Convex cannot index: a
+	// `filename:` search could only ever be a post-filter over a page of
+	// arrival-ordered rows, and there was no way to browse attachments at all.
+	// This junction table is the indexable mirror of that array, exactly as
+	// `semanticFileContacts` mirrors `semanticFiles.contactIds`
+	// (schema/knowledge.ts).
+	//
+	// Written by `mail/attachmentIndex.ts` from every path that inserts a
+	// `mailMessages` row (inbound delivery, sent mail, IMAP APPEND, IMAP COPY)
+	// and torn down by the same module when a message row is deleted. Existing
+	// mail is picked up by the resumable backfill (`mail/attachmentBackfill.ts`),
+	// so the Files view is complete rather than "everything since the deploy".
+	//
+	// The row DENORMALIZES `fromAddress` / `receivedAt` / `folderId` off the
+	// parent message so the Files view can facet and sort without loading every
+	// message; those three are immutable in practice except for `folderId`,
+	// which the index deliberately does not chase (a moved message's file still
+	// lists — the Files view is a mailbox-wide index, not a folder view).
+	mailAttachments: defineTable({
+		mailboxId: v.id('mailboxes'),
+		messageId: v.id('mailMessages'),
+		filename: v.string(),
+		contentType: v.string(),
+		size: v.number(),
+		receivedAt: v.number(),
+		// Denormalized sender, lowercased — the Files view's "From" facet.
+		fromAddress: v.string(),
+		folderId: v.optional(v.id('mailFolders')),
+		// MIME part path, so the Files view can extract exactly the same part the
+		// reader does (`extractAttachmentAt`).
+		partIndex: v.string(),
+	})
+		// Teardown + "does this message already have rows?" (backfill idempotence).
+		.index('by_message', ['messageId'])
+		// The Files view's default listing: newest first across the mailbox.
+		.index('by_mailbox_and_received', ['mailboxId', 'receivedAt'])
+		// The "From" facet, newest first within one sender.
+		.index('by_mailbox_and_from', ['mailboxId', 'fromAddress', 'receivedAt'])
+		// What makes `filename:` an INDEXED narrowing rather than a post-filter.
+		.searchIndex('search_filenames', {
+			searchField: 'filename',
+			filterFields: ['mailboxId', 'contentType'],
+		}),
+
+	// Resumable backfill of `mailAttachments` over mail that predates the index.
+	//
+	// One row per mailbox (found/replaced via `by_mailbox`), so a re-run resumes
+	// or restarts rather than forking a second walk. The job pages
+	// `mailMessages` by cursor and writes the junction rows for each page,
+	// rescheduling itself — the same shape as `mail/labels.stripLabelReferences`,
+	// with a row on top so the Files view can show progress and the user can
+	// cancel a walk mid-flight.
+	mailAttachmentBackfillJobs: defineTable({
+		mailboxId: v.id('mailboxes'),
+		status: v.union(
+			v.literal('running'),
+			v.literal('completed'),
+			v.literal('cancelled'),
+			v.literal('failed')
+		),
+		// Resumable pagination cursor over `mailMessages` (Convex continueCursor).
+		cursor: v.optional(v.string()),
+		scannedCount: v.number(),
+		indexedCount: v.number(),
+		startedAt: v.number(),
+		updatedAt: v.number(),
+		finishedAt: v.optional(v.number()),
+		errorMessage: v.optional(v.string()),
+	}).index('by_mailbox', ['mailboxId']),
 
 	// Saved searches — a named, re-runnable Postbox query.
 	//
@@ -1210,12 +1295,49 @@ export const mailTables = {
 				forwardTo: v.optional(v.string()),
 			})
 		),
+		// ONE grouping level (idea 39): `all` AND-s the conditions, `any` OR-s
+		// them. Absent = `all`, which is exactly the pre-toggle behavior, so no
+		// existing filter changes meaning. There is deliberately no nesting —
+		// mixed AND/OR trees are a second grammar, and "define two filters" has
+		// always been the escape hatch.
+		matchType: v.optional(v.union(v.literal('all'), v.literal('any'))),
 		stopProcessing: v.boolean(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_mailbox_and_priority', ['mailboxId', 'priority']),
+
+	// Resumable "run this filter on existing mail" job.
+	//
+	// A new filter has never seen the backlog that motivated it. This walks
+	// `mailMessages` by cursor, re-evaluates ONE filter's conditions per page and
+	// applies its SAFE actions (label / move / mark read / mark flagged) — never
+	// `forward`, `delete` or `discard`, which are irreversible and were authored
+	// for the inbound moment, not for a retroactive sweep over years of mail.
+	//
+	// One row per filter (`by_filter`), so re-running resumes or restarts rather
+	// than forking a second walk; the row is the progress readout and the cancel
+	// switch. Same shape as `mailAttachmentBackfillJobs`.
+	mailFilterRunJobs: defineTable({
+		mailboxId: v.id('mailboxes'),
+		filterId: v.id('mailFilters'),
+		status: v.union(
+			v.literal('running'),
+			v.literal('completed'),
+			v.literal('cancelled'),
+			v.literal('failed')
+		),
+		cursor: v.optional(v.string()),
+		scannedCount: v.number(),
+		matchedCount: v.number(),
+		startedAt: v.number(),
+		updatedAt: v.number(),
+		finishedAt: v.optional(v.number()),
+		errorMessage: v.optional(v.string()),
+	})
+		.index('by_filter', ['filterId'])
+		.index('by_mailbox', ['mailboxId']),
 
 	// Aliases — alternate addresses (e.g. marcel+sales@hl.camp) that
 	// deliver into the same mailbox. Cheap rewrites at the MX layer.

@@ -55,6 +55,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mediaAssets',
 	'semanticFileContacts', // junction mirror — clear before its parent files
 	'semanticFiles',
+	// Attachment index: a junction mirror of mailMessages, cleared before its
+	// parent rows so the sweep never leaves a file pointing at a deleted message.
+	'mailAttachments',
+	'mailAttachmentBackfillJobs',
 	'mailMessages',
 	'mailDrafts',
 	'transactionalSends',
@@ -114,6 +118,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailVoiceProfiles',
 	'mailContactStyleOverrides',
 	'mailFilters',
+	'mailFilterRunJobs',
 	'mailSignatures',
 	'mailSnippets',
 	'mailSavedSearches',
@@ -283,6 +288,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mediaAssets: mediaAssetsStep,
 	semanticFileContacts: makeSweepStep('semanticFileContacts'),
 	semanticFiles: semanticFilesStep,
+	mailAttachments: makeSweepStep('mailAttachments'),
+	mailAttachmentBackfillJobs: makeSweepStep('mailAttachmentBackfillJobs'),
 	mailMessages: mailMessagesStep,
 	mailDrafts: mailDraftsStep,
 	transactionalSends: transactionalSendsStep,
@@ -297,6 +304,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailVoiceProfiles: makeSweepStep('mailVoiceProfiles'),
 	mailContactStyleOverrides: makeSweepStep('mailContactStyleOverrides'),
 	mailFilters: makeSweepStep('mailFilters'),
+	mailFilterRunJobs: makeSweepStep('mailFilterRunJobs'),
 	mailSignatures: makeSweepStep('mailSignatures'),
 	mailSnippets: makeSweepStep('mailSnippets'),
 	mailSavedSearches: makeSweepStep('mailSavedSearches'),
