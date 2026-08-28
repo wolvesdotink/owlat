@@ -13,10 +13,10 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
-import type { Id } from '../_generated/dataModel';
-import { throwForbidden, throwInvalidInput } from '../_utils/errors';
+import type { Doc, Id } from '../_generated/dataModel';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
-import { requireMessageAccess } from './permissions';
+import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 
 export const snooze = authedMutation({
@@ -113,29 +113,155 @@ export async function clearSnoozeUntilReplyForThread(
 	}
 }
 
+/**
+ * Return one message to its folder: drop the snooze columns and re-enter the
+ * folder unread count. Shared by the manual unsnooze verbs and the wake sweep
+ * so "coming back" means the same thing on all three paths.
+ */
+async function clearMessageSnooze(
+	ctx: MutationCtx,
+	message: Doc<'mailMessages'>,
+	now: number
+): Promise<void> {
+	if (message.snoozedUntil == null) return;
+	await ctx.db.patch(message._id, {
+		snoozedUntil: undefined,
+		snoozedFromFolderId: undefined,
+		isSnoozeUntilReply: undefined,
+		updatedAt: now,
+	});
+	// Returning to its folder re-enters the unread count. The decrement happened
+	// when `snoozedUntil` was SET, and nothing re-adds it when the wake time
+	// merely passes — so the presence of the column, not `isMessageSnoozed`, is
+	// what says the message is currently out of the count.
+	if (!message.flagSeen) {
+		await adjustFolderUnseen(ctx, message.folderId, 1);
+	}
+}
+
+/**
+ * Snooze a whole CONVERSATION (idea 18) — the scope the `h` shortcut and the
+ * snooze dialog now default to.
+ *
+ * Message-level snooze is still the primitive: this patches every INBOX-folder
+ * message of the thread with the same wake timestamp, so the thread leaves the
+ * inbox as one unit and the existing hide-from-folder filter, unread accounting
+ * and Snoozed view all work unchanged. Only inbox mail is touched — a sent copy
+ * or an already-archived sibling was never in the inbox and has nothing to
+ * defer.
+ *
+ * Because every message shares one `until`, the sweep finds them all in the
+ * same pass; `internalSweep` additionally finishes any thread it starts, so a
+ * page boundary can never resurface half a conversation.
+ */
+// authz: thread → mailbox access via requireMailboxAccess; org membership via
+// authedMutation.
+export const snoozeThread = authedMutation({
+	args: { threadId: v.id('mailThreads'), until: v.number() },
+	handler: async (ctx, args): Promise<{ ok: true; snoozed: number }> => {
+		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
+		if (!owned.ok) throwForbidden('Thread not accessible');
+		if (args.until <= Date.now()) {
+			throwInvalidInput('Snooze time must be in the future');
+		}
+		const now = Date.now();
+		const messages = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
+			.collect(); // bounded: one thread's messages
+		let snoozed = 0;
+		for (const m of messages) {
+			const alreadySnoozed = isMessageSnoozed(m, now);
+			if (!alreadySnoozed) {
+				const folder = await ctx.db.get(m.folderId);
+				if (folder?.role !== 'inbox') continue;
+			}
+			await ctx.db.patch(m._id, {
+				snoozedUntil: args.until,
+				snoozedFromFolderId: m.snoozedFromFolderId ?? m.folderId,
+				updatedAt: now,
+			});
+			if (!m.flagSeen && !alreadySnoozed) {
+				await adjustFolderUnseen(ctx, m.folderId, -1);
+			}
+			snoozed += 1;
+		}
+		// Deferring the conversation supersedes any "you came back from snooze"
+		// marker still on it from a previous round trip.
+		if (thread.snoozeReturnedAt !== undefined) {
+			await ctx.db.patch(args.threadId, { snoozeReturnedAt: undefined, updatedAt: now });
+		}
+		return { ok: true, snoozed };
+	},
+});
+
+/** Wake a whole conversation early — the inverse of {@link snoozeThread}. */
+// authz: thread → mailbox access via requireMailboxAccess; org membership via
+// authedMutation.
+export const unsnoozeThread = authedMutation({
+	args: { threadId: v.id('mailThreads') },
+	handler: async (ctx, args): Promise<{ ok: true; woken: number }> => {
+		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
+		if (!owned.ok) throwForbidden('Thread not accessible');
+		const now = Date.now();
+		const messages = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
+			.collect(); // bounded: one thread's messages
+		let woken = 0;
+		for (const m of messages) {
+			if (m.snoozedUntil == null) continue;
+			await clearMessageSnooze(ctx, m, now);
+			woken += 1;
+		}
+		return { ok: true, woken };
+	},
+});
+
+/**
+ * Dismiss the transient "back from snooze" marker (idea 19). Called the first
+ * time the resurfaced thread is opened, so the chip is a one-shot recognition
+ * cue rather than sticky state. Fail-soft: a thread without the marker is a
+ * no-op, and the mutation is safe to fire on every open.
+ */
+// authz: thread → mailbox access via requireMailboxAccess; org membership via
+// authedMutation.
+export const clearSnoozeReturned = authedMutation({
+	args: { threadId: v.id('mailThreads') },
+	handler: async (ctx, args) => {
+		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
+		if (!owned.ok) throwForbidden('Thread not accessible');
+		if (thread.snoozeReturnedAt === undefined) return;
+		await ctx.db.patch(args.threadId, { snoozeReturnedAt: undefined, updatedAt: Date.now() });
+	},
+});
+
 export const unsnooze = authedMutation({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
 		const owned = await requireMessageAccess(ctx, args.messageId);
 		if (!owned.ok) throwForbidden('Message not accessible');
-		const message = owned.message;
-		const wasSnoozed = isMessageSnoozed(message, Date.now());
-		await ctx.db.patch(args.messageId, {
-			snoozedUntil: undefined,
-			snoozedFromFolderId: undefined,
-			isSnoozeUntilReply: undefined,
-			updatedAt: Date.now(),
-		});
-		// Returning to its folder re-enters the unread count.
-		if (wasSnoozed && !message.flagSeen) {
-			await adjustFolderUnseen(ctx, message.folderId, 1);
-		}
+		await clearMessageSnooze(ctx, owned.message, Date.now());
 	},
 });
 
 // ── Internal cron sweep ────────────────────────────────────────────
 
-/** Cron entry: pulls due-snoozed message ids and wakes them. */
+/**
+ * Cron entry: pulls due-snoozed message ids and wakes them.
+ *
+ * Thread-atomic (idea 18): every thread the page touches is FINISHED before the
+ * sweep returns — any sibling message of that thread which is also due but fell
+ * past the `take()` boundary is woken in the same transaction. A conversation
+ * therefore resurfaces as one row, never as a trickle across sweep ticks.
+ *
+ * Each woken thread is stamped `snoozeReturnedAt` (idea 19, ported from the
+ * Team Inbox's `inboxThreads.snoozeReturnedAt`) so the list row and the reader
+ * header can say "back from snooze" until the thread is next opened.
+ */
 export const internalSweep = internalMutation({
 	args: {},
 	handler: async (ctx) => {
@@ -151,24 +277,37 @@ export const internalSweep = internalMutation({
 			.take(100);
 		const due = dueRows.filter((m) => m.snoozedUntil != null);
 		const touchedThreads = new Set<Id<'mailThreads'>>();
+		const wokenIds = new Set<Id<'mailMessages'>>();
 		for (const m of due) {
-			await ctx.db.patch(m._id, {
-				snoozedUntil: undefined,
-				snoozedFromFolderId: undefined,
-				isSnoozeUntilReply: undefined,
-				updatedAt: now,
-			});
-			// Re-enter the unread count as the message floats back.
-			if (!m.flagSeen) {
-				await adjustFolderUnseen(ctx, m.folderId, 1);
-			}
+			await clearMessageSnooze(ctx, m, now);
+			wokenIds.add(m._id);
 			touchedThreads.add(m.threadId);
+		}
+		// Finish every thread the page started: a thread-level snooze writes one
+		// `until` across all its inbox messages, and a take() boundary in the
+		// middle of that set would otherwise resurface the conversation in pieces.
+		for (const tid of touchedThreads) {
+			const siblings = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_thread', (q) => q.eq('threadId', tid))
+				.collect(); // bounded: one thread's messages
+			for (const m of siblings) {
+				if (wokenIds.has(m._id)) continue;
+				if (m.snoozedUntil == null || m.snoozedUntil > now) continue;
+				await clearMessageSnooze(ctx, m, now);
+				wokenIds.add(m._id);
+			}
 		}
 		for (const tid of touchedThreads) {
 			const t = await ctx.db.get(tid);
 			if (!t) continue;
-			await ctx.db.patch(tid, { lastMessageAt: now, updatedAt: now });
+			await ctx.db.patch(tid, {
+				lastMessageAt: now,
+				// Transient recognition cue; the reader clears it on open.
+				snoozeReturnedAt: now,
+				updatedAt: now,
+			});
 		}
-		return { woken: due.length };
+		return { woken: wokenIds.size };
 	},
 });
