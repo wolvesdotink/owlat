@@ -49,6 +49,16 @@ const searchResults: SearchResults = {
 			url: '/dashboard/campaigns/campaign1',
 		},
 	],
+	mail: [
+		{
+			id: 'message1',
+			type: 'mail',
+			title: 'Spring invoice',
+			subtitle: 'Ada Lovelace · attached',
+			url: '/dashboard/postbox/inbox/message1',
+			mailboxId: 'mailbox1',
+		},
+	],
 };
 
 beforeEach(() => {
@@ -94,6 +104,10 @@ beforeEach(() => {
 			getRegisteredShortcuts: () => [],
 		}),
 		useModalFocus: vi.fn(),
+		// The palette points the Postbox selection at a mail hit's own mailbox
+		// before navigating; the state-only composable keeps that off the query
+		// layer, so the audit only needs its setter.
+		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId: vi.fn() }),
 		COMMAND_PALETTE_OPEN_EVENT,
 		useOrganizationQuery: () => queryResult(searchResults),
 	});

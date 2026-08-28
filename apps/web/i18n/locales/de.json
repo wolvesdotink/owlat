@@ -312,12 +312,16 @@
 			}
 		},
 		"appCommandPalette": {
+			"back": "Zurück",
 			"clearQuery": "Leeren",
 			"clearRecent": "Löschen",
 			"dialogLabel": "Befehlspalette",
+			"modeHint": "Befehle, Personen, Labels",
 			"navigate": "Navigieren",
 			"noMatches": "Keine Treffer",
 			"noResults": "Keine Ergebnisse für \"{query}\"",
+			"noSubject": "(kein Betreff)",
+			"searchMailFor": "E-Mails durchsuchen nach \"{query}\"",
 			"searchPlaceholder": "Suchen oder Befehl ausführen…",
 			"searching": "Wird gesucht…",
 			"select": "Auswählen"
@@ -10197,6 +10201,8 @@
 				"campaigns": "Kampagnen",
 				"contacts": "Kontakte",
 				"context": "Kontext",
+				"goTo": "Gehe zu",
+				"mail": "E-Mail",
 				"navigation": "Gehe zu",
 				"recent": "Letzte Suchen",
 				"templates": "Vorlagen"
@@ -11415,7 +11421,11 @@
 				"failed": "Dieser Entwurf konnte nicht geprüft werden. Bitte versuchen Sie es erneut."
 			},
 			"usePostboxCommandSurface": {
+				"argument": {
+					"labelPrompt": "Label vergeben"
+				},
 				"groups": {
+					"labels": "Labels",
 					"mailbox": "Postfach",
 					"postbox": "Postbox",
 					"switchMailbox": "Postfach wechseln"
@@ -11427,6 +11437,7 @@
 					"compose": "Neue Nachricht verfassen",
 					"contacts": "Kontakte",
 					"forward": "Weiterleiten",
+					"labelAs": "Label vergeben…",
 					"move": "Konversation verschieben…",
 					"print": "Konversation drucken",
 					"replyAll": "Allen antworten",

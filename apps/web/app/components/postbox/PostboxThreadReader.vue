@@ -826,8 +826,15 @@ function onReaderShortcut(event: KeyboardEvent) {
 // forward, report spam, block sender, print, …) dispatch this event so they
 // stay discoverable and runnable without a visible button.
 function onPaletteCommand(event: Event) {
-	const action = (event as CustomEvent<{ action?: string }>).detail?.action;
-	if (action) runReaderAction(action);
+	const detail = (event as CustomEvent<{ action?: string; labelId?: string }>).detail;
+	if (!detail?.action) return;
+	// "Label as…" is the one palette command that carries an argument (the
+	// chosen label), so it lands here rather than in the argument-less switch.
+	if (detail.action === 'label') {
+		if (detail.labelId) void applyLabelToOpenMessage(detail.labelId as Id<'mailLabels'>);
+		return;
+	}
+	runReaderAction(detail.action);
 }
 
 onMounted(() => {

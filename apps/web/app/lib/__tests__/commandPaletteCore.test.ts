@@ -33,7 +33,7 @@ function searchHit(id: string): SearchResult {
 	return { id, type: 'contact', title: id, subtitle: '', url: `/x/${id}` };
 }
 
-const EMPTY_RESULTS: SearchResults = { contacts: [], emails: [], campaigns: [] };
+const EMPTY_RESULTS: SearchResults = { contacts: [], emails: [], campaigns: [], mail: [] };
 
 /** Deps with sensible non-empty defaults; each test overrides what it needs. */
 function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePaletteProviderDeps {
@@ -45,6 +45,8 @@ function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePalette
 		searchResults: () => EMPTY_RESULTS,
 		onRecentTerm: () => {},
 		buildResultItems: (results) => results.map((r) => paletteItem(`search:${r.id}`)),
+		buildMailItems: (results) => results.map((r) => paletteItem(`mail:${r.id}`)),
+		buildSearchMailItem: (term) => paletteItem(`mail:search-for:${term}`),
 		...overrides,
 	};
 }
@@ -53,7 +55,7 @@ function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePalette
 function build(id: string, query: string, overrides: Partial<CorePaletteProviderDeps> = {}) {
 	const provider = buildCorePaletteProviders(makeDeps(overrides)).find((p) => p.id === id);
 	if (!provider) throw new Error(`no core provider ${id}`);
-	return provider.build({ query });
+	return provider.build({ query, mode: 'all' });
 }
 
 function groupByKey(groups: PaletteGroup[], key: string): PaletteGroup | undefined {
@@ -61,16 +63,17 @@ function groupByKey(groups: PaletteGroup[], key: string): PaletteGroup | undefin
 }
 
 describe('buildCorePaletteProviders — provider set', () => {
-	it('is exactly the five core providers, in priority order, at fixed priorities', () => {
+	it('is exactly the six core providers, in priority order, at fixed priorities', () => {
 		const providers = buildCorePaletteProviders(makeDeps());
 		expect(providers.map((p) => p.id)).toEqual([
 			'core:recent',
 			'core:verbs',
 			'core:context',
 			'core:search',
+			'core:mail',
 			'core:navigation',
 		]);
-		expect(providers.map((p) => p.priority)).toEqual([10, 20, 30, 40, 50]);
+		expect(providers.map((p) => p.priority)).toEqual([10, 20, 30, 40, 45, 50]);
 	});
 
 	it('declares no flag or route gate on any core provider (core is always consulted)', () => {
@@ -121,7 +124,12 @@ describe('core:verbs and core:context', () => {
 
 describe('core:search', () => {
 	it('is silent below the query threshold and until results resolve', () => {
-		const results: SearchResults = { contacts: [searchHit('c1')], emails: [], campaigns: [] };
+		const results: SearchResults = {
+			contacts: [searchHit('c1')],
+			emails: [],
+			campaigns: [],
+			mail: [],
+		};
 		expect(build('core:search', 'a', { searchResults: () => results })).toEqual([]);
 		expect(build('core:search', 'acme', { searchResults: () => undefined })).toEqual([]);
 	});
@@ -131,6 +139,7 @@ describe('core:search', () => {
 			contacts: [searchHit('c1')],
 			campaigns: [searchHit('m1')],
 			emails: [searchHit('e1')],
+			mail: [],
 		};
 		const groups = build('core:search', 'acme', { searchResults: () => results });
 		expect(groups.map((g) => [g.key, g.order, g.cap, g.items.map((i) => i.id)])).toEqual([
@@ -138,6 +147,50 @@ describe('core:search', () => {
 			['campaigns', 21, 5, ['search:m1']],
 			['templates', 22, 5, ['search:e1']],
 		]);
+	});
+});
+
+describe('core:mail', () => {
+	const withMail = (mail: SearchResult[]) => ({
+		searchResults: () => ({ ...EMPTY_RESULTS, mail }),
+	});
+
+	it('is silent below the query threshold', () => {
+		expect(build('core:mail', 'a', withMail([searchHit('m1')]))).toEqual([]);
+	});
+
+	it('emits the mail hits at order 18, cap 5, above the search-mail row at 19', () => {
+		const groups = build('core:mail', 'invoice', withMail([searchHit('m1')]));
+		expect(groups.map((g) => [g.key, g.order, g.cap, g.items.map((i) => i.id)])).toEqual([
+			['mail', 18, 5, ['mail:m1']],
+			['mail-search', 19, undefined, ['mail:search-for:invoice']],
+		]);
+		expect(t(groups[0]?.heading ?? '')).toBe('Mail');
+	});
+
+	it('still offers the search-mail row while hits are missing or unresolved', () => {
+		expect(build('core:mail', 'invoice', withMail([])).map((g) => g.key)).toEqual(['mail-search']);
+		expect(
+			build('core:mail', 'invoice', { searchResults: () => undefined }).map((g) => g.key)
+		).toEqual(['mail-search']);
+	});
+});
+
+describe('group modes', () => {
+	it('tags the command-ish groups so a `>` search finds them', () => {
+		const modeOf = (id: string, key: string) => groupByKey(build(id, ''), key)?.mode;
+		expect(modeOf('core:verbs', 'verbs')).toBe('commands');
+		expect(modeOf('core:context', 'context')).toBe('commands');
+		expect(modeOf('core:navigation', 'navigation')).toBe('commands');
+	});
+
+	it('tags contacts as people and leaves the rest out of narrowed modes', () => {
+		const search = build('core:search', 'acme', {
+			searchResults: () => ({ ...EMPTY_RESULTS, contacts: [searchHit('c1')] }),
+		});
+		expect(groupByKey(search, 'contacts')?.mode).toBe('people');
+		expect(groupByKey(search, 'campaigns')?.mode).toBeUndefined();
+		expect(groupByKey(build('core:recent', ''), 'recent')?.mode).toBeUndefined();
 	});
 });
 

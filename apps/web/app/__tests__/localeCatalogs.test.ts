@@ -407,6 +407,7 @@ describe('UI message catalogs', () => {
 		'shared.mailAutodiscover.provider.yahoo.name',
 		'shared.mandrillRelayStatus.outstanding.dkim',
 		'shared.mandrillRelayStatus.outstanding.spf',
+		'shared.postbox.usePostboxCommandSurface.groups.labels',
 		'shared.postbox.usePostboxCommandSurface.groups.postbox',
 		'shared.postbox.usePostboxThreadCategories.options.newsletter',
 		'shared.postbox.usePostboxThreadCategories.options.person',

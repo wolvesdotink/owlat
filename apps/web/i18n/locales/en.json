@@ -312,12 +312,16 @@
 			}
 		},
 		"appCommandPalette": {
+			"back": "Back",
 			"clearQuery": "Clear",
 			"clearRecent": "Clear",
 			"dialogLabel": "Command palette",
+			"modeHint": "Commands, people, labels",
 			"navigate": "Navigate",
 			"noMatches": "No matches",
 			"noResults": "No results for \"{query}\"",
+			"noSubject": "(no subject)",
+			"searchMailFor": "Search mail for \"{query}\"",
 			"searchPlaceholder": "Search or run a command…",
 			"searching": "Searching…",
 			"select": "Select"
@@ -10197,6 +10201,8 @@
 				"campaigns": "Campaigns",
 				"contacts": "Contacts",
 				"context": "Context",
+				"goTo": "Go to",
+				"mail": "Mail",
 				"navigation": "Go to",
 				"recent": "Recent searches",
 				"templates": "Templates"
@@ -11415,7 +11421,11 @@
 				"failed": "Could not coach this draft. Try again."
 			},
 			"usePostboxCommandSurface": {
+				"argument": {
+					"labelPrompt": "Label as"
+				},
 				"groups": {
+					"labels": "Labels",
 					"mailbox": "Mailbox",
 					"postbox": "Postbox",
 					"switchMailbox": "Switch mailbox"
@@ -11427,6 +11437,7 @@
 					"compose": "Compose new message",
 					"contacts": "Contacts",
 					"forward": "Forward",
+					"labelAs": "Label as…",
 					"move": "Move conversation…",
 					"print": "Print conversation",
 					"replyAll": "Reply all",
