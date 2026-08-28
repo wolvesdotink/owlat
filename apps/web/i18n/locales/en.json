@@ -3854,9 +3854,10 @@
 				}
 			},
 			"postboxReplyGuard": {
-				"body": "This message failed its sender authentication checks, so it may not really be from who it claims. If you reply, your response goes to whoever actually sent it. Reply anyway?",
+				"body": "This message may not really be from who it claims. Here is what we noticed:",
+				"destination": "Your reply would be addressed to {address}.",
 				"replyAnyway": "Reply anyway",
-				"title": "This sender couldn't be verified"
+				"title": "Check this sender before you reply"
 			},
 			"postboxReplyQueueStrip": {
 				"dismissLabel": "Dismiss reply queue reminder",
@@ -11973,6 +11974,9 @@
 				"detail": "Sent by {sender}, which is not authorized to send for {domain}.",
 				"detailUnknownSender": "Sent by {sender}, which is not authorized to send for this sender.",
 				"summary": "Sender not authorized"
+			},
+			"risk": {
+				"replyToRedirect": "This message asks for replies at a different domain than the one it says it is from."
 			},
 			"unauthenticated": {
 				"detail": "We couldn't confirm this message really came from {domain}.",

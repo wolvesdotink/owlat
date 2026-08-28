@@ -347,8 +347,11 @@ describe('deriveReplyRisk', () => {
 			heuristics: { isReplyToMismatch: true },
 		});
 		expect(risk?.reasons).toEqual(['replyToMismatch']);
+		// Deliberately NOT the badge's "replies would go" line: this client
+		// addresses a reply to the From address, so the honest claim is about what
+		// the message asked for.
 		expect(risk!.lines.map(render)).toEqual([
-			'Replies would go to a different domain than this message claims to be from.',
+			'This message asks for replies at a different domain than the one it says it is from.',
 		]);
 	});
 

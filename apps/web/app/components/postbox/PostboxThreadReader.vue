@@ -74,7 +74,14 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { extractEmailAddress } from '~/utils/emailAddress';
-import { deriveSenderAuth, type SenderAuthInput, type SenderAuthState } from '~/utils/senderAuth';
+import {
+	deriveReplyRisk,
+	deriveSenderAuth,
+	senderAuthInputOf,
+	senderRiskInputOf,
+	type ReplyRisk,
+	type SenderAuthInput,
+} from '~/utils/senderAuth';
 import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import {
@@ -494,10 +501,9 @@ const snoozeThreadOp = useBackendOperation(api.mail.snooze.snoozeThread, {
 const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
 	label: () => t('components.postbox.postboxThreadReader.muteOperation'),
 });
-const setNotifyOnReplyOp = useBackendOperation(
-	api.mail.threadAlerts.setNotifyOnReplyForMessage,
-	{ label: () => t('components.postbox.postboxThreadReader.notifyOnReplyOperation') }
-);
+const setNotifyOnReplyOp = useBackendOperation(api.mail.threadAlerts.setNotifyOnReplyForMessage, {
+	label: () => t('components.postbox.postboxThreadReader.notifyOnReplyOperation'),
+});
 const moveOp = useBackendOperation(api.mail.messageActions.move, {
 	label: () => t('components.postbox.postboxThreadReader.moveOperation'),
 });
@@ -578,22 +584,7 @@ const threadCounterpart = computed(() => {
 });
 
 function senderAuthInput(msg: PostboxReaderMessage): SenderAuthInput {
-	return {
-		fromDomain: extractEmailAddress(msg.fromAddress).split('@')[1],
-		spfResult: msg.spfResult,
-		dkimResult: msg.dkimResult,
-		dmarcResult: msg.dmarcResult,
-		dmarcPolicy: msg.dmarcPolicy,
-		envelopeFromDomain: msg.envelopeFromDomain,
-		dkimSigningDomain: msg.dkimSigningDomain,
-		dmarcOverride: msg.dmarcOverride,
-		arcSealer: msg.arcSealer,
-	};
-}
-
-function senderAuthState(msg: PostboxReaderMessage): SenderAuthState | null {
-	if (!authBadgesEnabled.value) return null;
-	return deriveSenderAuth(senderAuthInput(msg))?.state ?? null;
+	return senderAuthInputOf(msg);
 }
 
 function senderAuthSummary(msg: PostboxReaderMessage): string {
@@ -604,18 +595,35 @@ function senderAuthSummary(msg: PostboxReaderMessage): string {
 		: t('components.postbox.postboxThreadReader.senderCouldNotBeVerified');
 }
 
-// Reply guard: intercept reply / reply-all on a message that FAILED sender
-// authentication with a one-time-per-thread confirm. Non-failed senders (and a
-// flag-off state) pass straight through — DMARC→Spam routing is untouched.
+// Reply guard: intercept reply / reply-all with a one-time-per-thread confirm on
+// the sender shapes a reply walks into (UX plan idea 56) — a DMARC failure, a
+// pass belonging to another domain, a look-alike of a known contact's domain, or
+// a Reply-To that redirects elsewhere. Everything else (and a flag-off state)
+// passes straight through; DMARC→Spam routing is untouched.
 const replyGuardEl = ref<{
-	guard: (threadId: string, state: SenderAuthState | null, action: () => void) => void;
+	guard: (
+		threadId: string,
+		risk: ReplyRisk | null,
+		destination: string,
+		action: () => void
+	) => void;
 } | null>(null);
+
+/** The reply risk for `msg`, or null when the badge flag is off. */
+function replyRisk(msg: PostboxReaderMessage): ReplyRisk | null {
+	if (!authBadgesEnabled.value) return null;
+	return deriveReplyRisk(senderRiskInputOf(msg));
+}
 
 /**
  * Run `action` behind the reply guard for `msg`: a one-time-per-thread confirm
- * when `msg` failed sender authentication, else straight through. Shared by
- * every reply/reply-all entry point (per-message buttons, keyboard, inline box,
- * list hand-off) so none of them can bypass the interstitial.
+ * when the sender is in one of the flagged shapes, else straight through. Shared
+ * by every reply/reply-all entry point (per-message buttons, keyboard, inline
+ * box, list hand-off) so none of them can bypass the interstitial.
+ *
+ * The destination it names is the From address, because that is what a reply is
+ * actually addressed to here (`buildReplySpec` prefills `To: [fromAddress]`) —
+ * naming the Reply-To instead would describe a send this client does not make.
  */
 function runGuarded(msg: PostboxReaderMessage | undefined, action: () => void) {
 	if (!msg) {
@@ -623,7 +631,7 @@ function runGuarded(msg: PostboxReaderMessage | undefined, action: () => void) {
 		return;
 	}
 	const threadId = msg.threadId ?? msg._id;
-	replyGuardEl.value?.guard(threadId, senderAuthState(msg), action);
+	replyGuardEl.value?.guard(threadId, replyRisk(msg), extractEmailAddress(msg.fromAddress), action);
 }
 
 function guardedOpen(msg: PostboxReaderMessage, open: (m: PostboxReaderMessage) => void) {

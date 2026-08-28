@@ -3854,9 +3854,10 @@
 				}
 			},
 			"postboxReplyGuard": {
-				"body": "Diese Nachricht hat die Absender-Authentifizierung nicht bestanden und stammt möglicherweise nicht wirklich von der angegebenen Person. Wenn Sie antworten, geht Ihre Antwort an denjenigen, der sie tatsächlich gesendet hat. Trotzdem antworten?",
+				"body": "Diese Nachricht stammt möglicherweise nicht wirklich von der angegebenen Person. Das ist uns aufgefallen:",
+				"destination": "Ihre Antwort ginge an {address}.",
 				"replyAnyway": "Trotzdem antworten",
-				"title": "Dieser Absender konnte nicht verifiziert werden"
+				"title": "Prüfen Sie diesen Absender, bevor Sie antworten"
 			},
 			"postboxReplyQueueStrip": {
 				"dismissLabel": "Erinnerung an die Antwort-Warteschlange ausblenden",
@@ -11973,6 +11974,9 @@
 				"detail": "Gesendet von {sender}, die nicht berechtigt ist, für {domain} zu senden.",
 				"detailUnknownSender": "Gesendet von {sender}, die nicht berechtigt ist, für diesen Absender zu senden.",
 				"summary": "Absender nicht autorisiert"
+			},
+			"risk": {
+				"replyToRedirect": "Diese Nachricht bittet um Antworten an eine andere Domain als die, von der sie zu stammen angibt."
 			},
 			"unauthenticated": {
 				"detail": "Wir konnten nicht bestätigen, dass diese Nachricht wirklich von {domain} stammt.",

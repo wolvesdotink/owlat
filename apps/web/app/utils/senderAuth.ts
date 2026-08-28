@@ -353,7 +353,11 @@ export function deriveSenderRisk(input: SenderRiskInput): SenderRiskLine[] {
 		});
 	}
 	if (input.heuristics?.isReplyToMismatch) {
-		lines.push({ reason: 'replyToMismatch', text: 'shared.senderAuth.heuristics.replyToMismatch' });
+		// NOT the badge's `heuristics.replyToMismatch` line, which says replies
+		// "would go" elsewhere. This client addresses a reply to the From address
+		// (`buildReplySpec`), so the honest claim here is about what the MESSAGE
+		// asked for, and the interstitial names the real destination itself.
+		lines.push({ reason: 'replyToMismatch', text: 'shared.senderAuth.risk.replyToRedirect' });
 	}
 	return lines;
 }
