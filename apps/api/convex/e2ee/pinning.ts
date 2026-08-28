@@ -163,3 +163,51 @@ export function evaluatePin(ctx: PinContext): PinDecision {
 export function reacceptObservedKey(observedFingerprint: string): PinDecision {
 	return decide('reaccept', observedFingerprint, observedFingerprint, 'pinned', true);
 }
+
+// ─── Human verification (plan idea 54) ───────────────────────────────────────
+//
+// TOFU says "this is the key we saw first". Verification says "a person compared
+// this fingerprint with its owner over some other channel and it matched". The
+// two are independent: pinning is automatic, verification never is.
+//
+// The flag is therefore stored as the FINGERPRINT that was verified, not as a
+// boolean. A boolean would survive a key change and keep claiming a human
+// checked a key nobody has ever seen; storing the checked value makes the claim
+// self-invalidating — the moment the pin moves (a signed rotation, an explicit
+// re-accept) the stored fingerprint no longer matches and the contact reads as
+// unverified again, with no sweep, no migration and no way to forget.
+
+/** What a stored verification amounts to, given where the pin is NOW. */
+export type VerificationState =
+	/** Never verified by anyone here. */
+	| 'unverified'
+	/** A human verified exactly the key we would seal to today. */
+	| 'verified'
+	/** A human verified a key, but the pin has moved on since — the check is void. */
+	| 'stale';
+
+/**
+ * Resolve the verification state of a recipient row. Pure, and the SINGLE
+ * definition both planes use, so the backend's badge and the composer's lock can
+ * never disagree about whether a contact is verified.
+ *
+ * `stale` deliberately does not decay to `unverified`: "you checked a different
+ * key" is a more useful thing to tell someone than "you never checked", and it
+ * is the state that should make a reader look twice.
+ */
+export function resolveVerificationState(row: {
+	pinnedFingerprint?: string | null;
+	verifiedFingerprint?: string | null;
+}): VerificationState {
+	if (!row.verifiedFingerprint) return 'unverified';
+	if (!row.pinnedFingerprint) return 'stale';
+	return fingerprintsEqual(row.pinnedFingerprint, row.verifiedFingerprint) ? 'verified' : 'stale';
+}
+
+/** Convenience predicate: is the key we would seal to today human-verified? */
+export function isKeyVerified(row: {
+	pinnedFingerprint?: string | null;
+	verifiedFingerprint?: string | null;
+}): boolean {
+	return resolveVerificationState(row) === 'verified';
+}

@@ -1397,7 +1397,11 @@ export const mailTables = {
 	mailAuthFailures: defineTable({
 		address: v.string(), // lowercase canonical
 		ip: v.optional(v.string()),
-		scope: v.union(v.literal('imap'), v.literal('smtp')),
+		// Which credential prompt the failure came from. `recovery-kit` is the
+		// Sealed-Mail password re-prompt (plan idea 55); it shares the table but
+		// NOT the budget — `e2ee/memberKeys.ts` counts only its own scope, so a
+		// fumbled settings prompt can never lock a mail client out of submission.
+		scope: v.union(v.literal('imap'), v.literal('smtp'), v.literal('recovery-kit')),
 		occurredAt: v.number(),
 	})
 		.index('by_address_and_time', ['address', 'occurredAt'])

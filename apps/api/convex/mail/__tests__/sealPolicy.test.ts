@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+	allRecipientsVerified,
 	canSendWithSealState,
 	decideSeal,
 	deriveSealState,
@@ -187,7 +188,9 @@ describe('mail/sealPolicy · explicit plaintext consent', () => {
 describe('mail/sealPolicy · toRecipientSealViews', () => {
 	it('never carries key material off the server', () => {
 		const views = toRecipientSealViews([trusted('bob@b.test')]);
-		expect(views).toEqual([{ address: 'bob@b.test', outcome: 'trusted', hasUsableKey: true }]);
+		expect(views).toEqual([
+			{ address: 'bob@b.test', outcome: 'trusted', hasUsableKey: true, verified: false },
+		]);
 		expect(JSON.stringify(views)).not.toContain('KEY:');
 	});
 
@@ -227,5 +230,48 @@ describe('mail/sealPolicy · toRecipientSealViews', () => {
 			const blocked = state.kind === 'cannotSeal' && state.reason === 'recipient_no_key';
 			expect(blocked).toBe(!everyoneHasKey);
 		}
+	});
+});
+
+/**
+ * Human verification (plan idea 54) rides on the recipient views so the composer
+ * can say "sealed to verified recipients" — and must NEVER leak into the sealing
+ * decision itself: an unverified pinned key still seals exactly as it did before
+ * the feature existed.
+ */
+describe('mail/sealPolicy · verification is display, never a seal gate', () => {
+	const verified = (address: string): RecipientKeyState => ({
+		...trusted(address),
+		verified: true,
+	});
+
+	it('marks a verified recipient, and only when their key can actually seal', () => {
+		const views = toRecipientSealViews([
+			verified('bob@b.test'),
+			// "Verified" about a key we would not use has no referent, so it is
+			// dropped rather than shown next to a recipient we cannot seal to.
+			{ address: 'carol@c.test', outcome: 'keyChanged', verified: true },
+		]);
+		expect(views.map((v) => v.verified)).toEqual([true, false]);
+	});
+
+	it('defaults to unverified for a recipient nobody has checked', () => {
+		expect(toRecipientSealViews([trusted('bob@b.test')])[0]?.verified).toBe(false);
+	});
+
+	it('does not change whether a draft seals', () => {
+		const unverifiedState = deriveSealState('auto', [trusted('bob@b.test')], true);
+		const verifiedState = deriveSealState('auto', [verified('bob@b.test')], true);
+		expect(verifiedState).toEqual(unverifiedState);
+		expect(verifiedState.kind).toBe('willSeal');
+	});
+
+	it('claims "all verified" only on a unanimous yes', () => {
+		expect(allRecipientsVerified(toRecipientSealViews([verified('bob@b.test')]))).toBe(true);
+		expect(
+			allRecipientsVerified(toRecipientSealViews([verified('bob@b.test'), trusted('dan@d.test')]))
+		).toBe(false);
+		// Nobody to have verified: not a claim worth making.
+		expect(allRecipientsVerified([])).toBe(false);
 	});
 });

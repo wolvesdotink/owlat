@@ -44,6 +44,13 @@ export interface RecipientKeyState {
 	outcome: RecipientKeyOutcome;
 	/** Armored PUBLIC key of the pinned fingerprint; present only when trusted. */
 	pinnedPublicKeyArmored?: string;
+	/**
+	 * Whether a human here verified the fingerprint we would seal to (plan idea
+	 * 54, resolved by `e2ee/pinning.ts:resolveVerificationState`). Display only:
+	 * it NEVER changes whether a message seals, only how confidently the composer
+	 * says so — an unverified pinned key still seals exactly as it always did.
+	 */
+	verified?: boolean;
 }
 
 /**
@@ -73,6 +80,12 @@ export interface RecipientSealView {
 	address: string;
 	outcome: RecipientKeyOutcome;
 	hasUsableKey: boolean;
+	/**
+	 * A human here compared this recipient's fingerprint with its owner and it
+	 * matched (plan idea 54). Only ever true for a key that can actually seal —
+	 * "verified" about a key we would not use is a claim with no referent.
+	 */
+	verified: boolean;
 }
 
 /**
@@ -86,7 +99,20 @@ export function toRecipientSealViews(recipients: RecipientKeyState[]): Recipient
 		address: r.address,
 		outcome: r.outcome,
 		hasUsableKey: hasUsableSealKey(r),
+		verified: hasUsableSealKey(r) && r.verified === true,
 	}));
+}
+
+/**
+ * Is EVERY recipient of this draft a human-verified contact? The composer's lock
+ * says "sealed to verified recipients" only on a unanimous yes, mirroring the
+ * all-or-nothing rule {@link deriveSealState} uses for sealing itself: a claim
+ * that holds for three of four recipients is a claim the reader would misread.
+ *
+ * An empty list is NOT verified — there is nobody to have verified.
+ */
+export function allRecipientsVerified(recipients: readonly RecipientSealView[]): boolean {
+	return recipients.length > 0 && recipients.every((r) => r.verified);
 }
 
 /** Everything the dispatch-time seal decision reads, gathered by a V8 query. */
