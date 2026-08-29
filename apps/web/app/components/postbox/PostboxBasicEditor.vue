@@ -477,7 +477,9 @@ defineExpose({ focus: focusEditor });
 .postbox-basic-editor :deep(code) {
 	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	font-size: 0.9em;
-	background: var(--color-bg-subtle, #f2f2f2);
+	/* `--color-bg-subtle` is not a token — the fallback painted light gray in
+	   dark mode too. `-surface` is the real one, and it themes. */
+	background: var(--color-bg-surface, #f2f2f2);
 	border: 1px solid var(--color-border-subtle, #e0e0e0);
 	border-radius: 3px;
 	padding: 0.1em 0.3em;

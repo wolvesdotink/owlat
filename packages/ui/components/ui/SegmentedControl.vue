@@ -165,7 +165,9 @@ const indicatorStyle = computed(() => {
 	display: grid;
 	grid-template-columns: v-bind('`repeat(${options.length}, 1fr)`');
 	background: var(--color-bg-surface, #f3f4f6);
-	border: 1px solid var(--color-border, #e5e7eb);
+	/* `--color-border` never existed in the token set, so the old fallback
+	   painted a light-gray ring in BOTH themes — glaring on the dark theme. */
+	border: 1px solid var(--color-border-default, #e5e7eb);
 	border-radius: 8px;
 	padding: 3px;
 }
