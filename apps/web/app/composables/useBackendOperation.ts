@@ -80,6 +80,20 @@ export type BackendOperationValue<R> =
 	Awaited<R> extends BackendOperationResult<infer T> ? T : never;
 
 /**
+ * One live operation, as its caller holds it.
+ *
+ * Named so a composable can accept an operation its OWNER created — the
+ * composer's autosave drives the same `drafts.create`/`drafts.update` pair the
+ * rest of the composer does, and re-creating them there would mean two toast
+ * labels and two loading flags for one write.
+ */
+export interface BackendOperation<M extends FunctionReference<'mutation' | 'action'>> {
+	run: (args: FunctionArgs<M>) => Promise<BackendOperationResult<FunctionReturnType<M>>>;
+	isLoading: Readonly<Ref<boolean>>;
+	inlineError: Readonly<Ref<string | null>>;
+}
+
+/**
  * The **Operation module** for writes (ADR-0036): run a Convex mutation/action,
  * normalize any throw into the shared `{ category, message, data? }` vocabulary,
  * and apply the one category → treatment policy (toast vs inline vs redirect,
@@ -96,11 +110,7 @@ export type BackendOperationValue<R> =
 export function useBackendOperation<M extends FunctionReference<'mutation' | 'action'>>(
 	operation: M,
 	opts: BackendOperationOptions
-): {
-	run: (args: FunctionArgs<M>) => Promise<BackendOperationResult<FunctionReturnType<M>>>;
-	isLoading: Readonly<Ref<boolean>>;
-	inlineError: Readonly<Ref<string | null>>;
-} {
+): BackendOperation<M> {
 	const client = useConvex();
 	const { t } = useI18n();
 	const { showToast } = useToast();
