@@ -30,9 +30,11 @@
 		color-scheme: dark;
 	}
 
-	/* A placeholder longer than its input fades out with an ellipsis instead of
-	 * clipping mid-character (the Postbox search bar's operator hint, for one). */
-	input::placeholder {
+	/* A placeholder (or unfocused value) longer than its input ends in an
+	 * ellipsis instead of clipping mid-character (the Postbox search bar's
+	 * operator hint, for one). On the element, not ::placeholder — Chrome
+	 * ignores text-overflow on the pseudo but inherits it from the input. */
+	input {
 		text-overflow: ellipsis;
 	}
 
