@@ -100,7 +100,7 @@ function onSendSoundChange(event: Event) {
 		<header class="px-5 py-3 border-b border-border-subtle">
 			<h2 class="font-semibold">{{ t('components.preferences.preferencesReading.reading') }}</h2>
 		</header>
-		<div class="px-5 py-4 flex items-center justify-between gap-4">
+		<div class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
 			<div class="min-w-0">
 				<label for="postbox-auto-advance" class="font-medium text-sm block">
 					{{ t('components.preferences.preferencesReading.autoAdvanceLabel') }}
@@ -111,7 +111,7 @@ function onSendSoundChange(event: Event) {
 			</div>
 			<select
 				id="postbox-auto-advance"
-				class="input w-64 shrink-0"
+				class="input w-full sm:w-64 shrink-0"
 				:value="autoAdvance"
 				:disabled="isSaving"
 				@change="onAutoAdvanceChange"
@@ -126,7 +126,7 @@ function onSendSoundChange(event: Event) {
 			</select>
 		</div>
 		<div
-			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+			class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle"
 		>
 			<div class="min-w-0">
 				<label for="postbox-mark-read" class="font-medium text-sm block">
@@ -138,7 +138,7 @@ function onSendSoundChange(event: Event) {
 			</div>
 			<select
 				id="postbox-mark-read"
-				class="input w-64 shrink-0"
+				class="input w-full sm:w-64 shrink-0"
 				:value="markReadPolicy"
 				:disabled="isSaving"
 				@change="onMarkReadPolicyChange"
@@ -153,7 +153,7 @@ function onSendSoundChange(event: Event) {
 			</select>
 		</div>
 		<div
-			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+			class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle"
 		>
 			<div class="min-w-0">
 				<label for="postbox-density" class="font-medium text-sm block">
@@ -165,7 +165,7 @@ function onSendSoundChange(event: Event) {
 			</div>
 			<select
 				id="postbox-density"
-				class="input w-64 shrink-0"
+				class="input w-full sm:w-64 shrink-0"
 				:value="density"
 				:disabled="isSaving"
 				@change="onDensityChange"
@@ -180,7 +180,7 @@ function onSendSoundChange(event: Event) {
 			</select>
 		</div>
 		<div
-			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+			class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle"
 		>
 			<div class="min-w-0">
 				<label for="postbox-reading-pane" class="font-medium text-sm block">
@@ -192,7 +192,7 @@ function onSendSoundChange(event: Event) {
 			</div>
 			<select
 				id="postbox-reading-pane"
-				class="input w-64 shrink-0"
+				class="input w-full sm:w-64 shrink-0"
 				:value="readingPane"
 				:disabled="isSaving"
 				@change="onReadingPaneChange"
@@ -210,7 +210,7 @@ function onSendSoundChange(event: Event) {
 		     answers to touch and pen, but people configure their phone from their
 		     desktop, and a control that hides itself where it is easiest to reach
 		     is a control nobody finds. -->
-		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+		<div class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
 				<label for="postbox-swipe-left" class="font-medium text-sm block">
 					{{ t('components.preferences.preferencesReading.swipeLeftLabel') }}
@@ -221,7 +221,7 @@ function onSendSoundChange(event: Event) {
 			</div>
 			<select
 				id="postbox-swipe-left"
-				class="input w-64 shrink-0"
+				class="input w-full sm:w-64 shrink-0"
 				:value="swipeLeftAction"
 				:disabled="isSaving"
 				@change="onSwipeChange('left', $event)"
@@ -231,7 +231,7 @@ function onSendSoundChange(event: Event) {
 				</option>
 			</select>
 		</div>
-		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+		<div class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
 				<label for="postbox-swipe-right" class="font-medium text-sm block">
 					{{ t('components.preferences.preferencesReading.swipeRightLabel') }}
@@ -242,7 +242,7 @@ function onSendSoundChange(event: Event) {
 			</div>
 			<select
 				id="postbox-swipe-right"
-				class="input w-64 shrink-0"
+				class="input w-full sm:w-64 shrink-0"
 				:value="swipeRightAction"
 				:disabled="isSaving"
 				@change="onSwipeChange('right', $event)"
@@ -253,7 +253,7 @@ function onSendSoundChange(event: Event) {
 			</select>
 		</div>
 		<div
-			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
+			class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle"
 		>
 			<div class="min-w-0">
 				<label for="postbox-reply-default" class="font-medium text-sm block">
@@ -271,7 +271,7 @@ function onSendSoundChange(event: Event) {
 			</div>
 			<select
 				id="postbox-reply-default"
-				class="input w-64 shrink-0"
+				class="input w-full sm:w-64 shrink-0"
 				:value="replyDefault"
 				:disabled="isSaving"
 				@change="onReplyDefaultChange"

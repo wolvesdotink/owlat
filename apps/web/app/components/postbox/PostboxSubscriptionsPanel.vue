@@ -177,10 +177,13 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 			</div>
 
 			<ul class="divide-y divide-border-subtle">
+				<!-- `flex-wrap` + the label's flex-basis floor: on a narrow screen the
+				     counts (and the manual "open page" link) wrap under the sender
+				     instead of crushing the name column to nothing. -->
 				<li
 					v-for="sender in senders"
 					:key="sender.senderEmail"
-					class="px-5 py-3 flex items-center gap-3"
+					class="px-5 py-3 flex flex-wrap items-center gap-x-3 gap-y-1"
 				>
 					<input
 						:id="`subscription-${sender.senderEmail}`"
@@ -195,13 +198,16 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 						"
 						@change="toggle(sender.senderEmail)"
 					/>
-					<label :for="`subscription-${sender.senderEmail}`" class="min-w-0 flex-1 cursor-pointer">
+					<label
+						:for="`subscription-${sender.senderEmail}`"
+						class="min-w-0 flex-1 basis-40 cursor-pointer"
+					>
 						<span class="font-medium text-sm block truncate">{{
 							sender.senderName || sender.senderEmail
 						}}</span>
 						<span class="text-xs text-text-tertiary block truncate">{{ sender.senderEmail }}</span>
 					</label>
-					<span class="text-xs text-text-tertiary shrink-0 text-right">
+					<span class="ml-auto text-xs text-text-tertiary shrink-0 text-right">
 						{{
 							t(
 								'components.postbox.postboxSubscriptionsPanel.volume',

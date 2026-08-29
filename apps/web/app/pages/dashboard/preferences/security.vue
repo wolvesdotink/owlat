@@ -110,7 +110,11 @@ async function confirmSignOutOthers() {
 
 		<!-- ── Active sessions ── -->
 		<section class="card !p-0 mb-6">
-			<header class="px-5 py-3 border-b border-border-subtle flex items-center justify-between">
+			<!-- Stacks under ~sm: side by side, the "sign out everywhere" button
+			     wrapped one word per line beside the heading column. -->
+			<header
+				class="px-5 py-3 border-b border-border-subtle flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between"
+			>
 				<div>
 					<h2 class="font-semibold">
 						{{ t('dashboard.preferences.security.sessions.heading') }}

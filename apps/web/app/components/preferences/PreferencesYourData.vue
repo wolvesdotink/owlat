@@ -107,7 +107,10 @@ async function downloadAllMail() {
 			</div>
 		</dl>
 
-		<div class="px-5 py-4 border-t border-border-subtle flex items-center justify-between gap-4">
+		<!-- Stacks under ~sm so the label column is never crushed beside the select. -->
+		<div
+			class="px-5 py-4 border-t border-border-subtle flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+		>
 			<div class="min-w-0">
 				<label for="trash-auto-purge" class="font-medium text-sm block">
 					{{ t('components.preferences.preferencesYourData.trashPurgeLabel') }}
@@ -118,7 +121,7 @@ async function downloadAllMail() {
 			</div>
 			<select
 				id="trash-auto-purge"
-				class="input w-48 shrink-0"
+				class="input w-full sm:w-48 shrink-0"
 				:value="trashAutoPurgeDays"
 				:disabled="isSaving"
 				@change="onTrashHorizonChange"

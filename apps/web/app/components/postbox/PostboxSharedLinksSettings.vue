@@ -63,8 +63,15 @@ async function confirmRevoke() {
 		</header>
 
 		<ul class="divide-y divide-border-subtle">
-			<li v-for="row in shares" :key="row._id" class="px-5 py-3 flex items-center gap-3">
-				<div class="min-w-0 flex-1">
+			<!-- `flex-wrap` + the filename block's flex-basis floor: on a narrow
+			     screen the status chip and action buttons wrap under the filename
+			     instead of crushing it and running past the viewport. -->
+			<li
+				v-for="row in shares"
+				:key="row._id"
+				class="px-5 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
+			>
+				<div class="min-w-0 flex-1 basis-48">
 					<p class="font-medium text-sm truncate">{{ row.filename }}</p>
 					<p class="text-xs text-text-tertiary">
 						{{ formatCompactFileSize(row.size) }} · {{ t(postboxShareLinkScopeKey(row.scope)) }} ·
@@ -82,7 +89,7 @@ async function confirmRevoke() {
 					>{{ t(postboxShareLinkStatusKey(row.state)) }}</span
 				>
 
-				<div class="flex items-center gap-2 shrink-0">
+				<div class="ml-auto flex items-center gap-2 shrink-0">
 					<!-- Only offered while the URL would actually resolve; the server
 					     withholds it otherwise, so there is nothing to copy. -->
 					<UiButton

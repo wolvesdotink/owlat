@@ -209,7 +209,11 @@ async function copyManualKey() {
 					{{ t('dashboard.preferences.security.twoFactor.description') }}
 				</p>
 			</header>
-			<div class="px-5 py-4 flex items-center justify-between gap-4">
+			<!-- Stacks under ~sm so the label column is never crushed to one word
+			     per line beside the (wide) enable button. -->
+			<div
+				class="px-5 py-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+			>
 				<div class="min-w-0">
 					<p class="font-medium text-sm flex items-center gap-2">
 						{{ t('dashboard.preferences.security.twoFactor.authenticatorApp') }}
