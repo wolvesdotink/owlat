@@ -4043,6 +4043,7 @@
 				"heading": "Tastenkürzel",
 				"hint": "Wählen Sie die Belegung, die Sie kennen, und ändern Sie einzelne Tasten. Drücken Sie eine Taste, während eine Zeile darauf wartet.",
 				"listening": "Taste drücken …",
+				"modifierRefused": "Tastenkürzel sind hier Einzeltasten – drücken Sie eine Taste ohne Strg, Cmd oder Alt.",
 				"presetLabel": "Tastaturbelegung",
 				"presets": {
 					"gmail": "Gmail",

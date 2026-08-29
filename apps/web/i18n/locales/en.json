@@ -4043,6 +4043,7 @@
 				"heading": "Keyboard shortcuts",
 				"hint": "Pick the map you already know, then move the keys you disagree with. Press a key while a row is listening.",
 				"listening": "Press a key…",
+				"modifierRefused": "Shortcuts here are single keys — press a key without Ctrl, Cmd or Alt.",
 				"presetLabel": "Keyboard map",
 				"presets": {
 					"gmail": "Gmail",

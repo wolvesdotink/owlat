@@ -18,9 +18,10 @@
  * memorable, and the fixed chords (Esc, ⌘Enter, ⌘1–9) are platform conventions
  * the catalog marks non-remappable.
  */
+import { captureShortcutKey } from '~/utils/postboxShortcutCapture';
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
 import { SHORTCUT_PRESET_IDS, type ShortcutPreset } from '~/utils/shortcutPresets';
-import { chordFromEvent, formatChord } from '~/utils/shortcutRegistry';
+import { formatChord } from '~/utils/shortcutRegistry';
 
 const { t } = useI18n();
 const {
@@ -43,8 +44,10 @@ const remappable = SHORTCUT_CATALOG.filter(
 
 /** The row currently listening for a keypress, if any. */
 const capturing = ref<string | null>(null);
-/** The shortcut a refused remap collided with (rendered under that row). */
-const blockedBy = ref<{ id: string; conflictLabel: string } | null>(null);
+/** Why a capture was refused, rendered under that row. */
+const refused = ref<{ id: string; reason: 'taken' | 'modifier'; conflictLabel: string } | null>(
+	null
+);
 
 function chordsFor(id: string): string[] {
 	return [...(bindings.value.byId.get(id) ?? [])];
@@ -60,29 +63,33 @@ function labelForId(id: string): string {
 }
 
 function startCapture(id: string) {
-	blockedBy.value = null;
+	refused.value = null;
 	capturing.value = capturing.value === id ? null : id;
 }
 
-/** Modifier presses on their own are the user reaching for a chord, not a key. */
-const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
-
 async function onCaptureKey(id: string, event: KeyboardEvent) {
-	if (MODIFIER_KEYS.has(event.key)) return;
+	// `captureShortcutKey` owns the rules (bare modifier, Escape, and the
+	// modifier chords no dispatch path could ever resolve) — see the module.
+	const capture = captureShortcutKey(event);
+	if (capture.kind === 'ignore') return;
 	event.preventDefault();
 	event.stopPropagation();
-	if (event.key === 'Escape') {
+	if (capture.kind === 'cancel') {
 		capturing.value = null;
 		return;
 	}
-	const result = await remapShortcut(id, [chordFromEvent(event)]);
+	if (capture.kind === 'refuse') {
+		refused.value = { id, reason: 'modifier', conflictLabel: '' };
+		return;
+	}
+	const result = await remapShortcut(id, [capture.chord]);
 	if (result.ok) {
 		capturing.value = null;
-		blockedBy.value = null;
+		refused.value = null;
 		return;
 	}
 	const taken = result.conflicts[0]?.ids.find((other) => other !== id);
-	blockedBy.value = { id, conflictLabel: taken ? labelForId(taken) : '' };
+	refused.value = { id, reason: 'taken', conflictLabel: taken ? labelForId(taken) : '' };
 }
 
 const presetOptions = computed(() =>
@@ -163,11 +170,13 @@ const hasOverrides = computed(() => overridesById.value.size > 0);
 					</UiButton>
 				</div>
 
-				<p v-if="blockedBy?.id === def.id" class="text-xs text-error mt-1">
+				<p v-if="refused?.id === def.id" class="text-xs text-error mt-1">
 					{{
-						t('components.postbox.postboxShortcutSettings.taken', {
-							shortcut: blockedBy.conflictLabel,
-						})
+						refused.reason === 'modifier'
+							? t('components.postbox.postboxShortcutSettings.modifierRefused')
+							: t('components.postbox.postboxShortcutSettings.taken', {
+									shortcut: refused.conflictLabel,
+								})
 					}}
 				</p>
 			</li>
