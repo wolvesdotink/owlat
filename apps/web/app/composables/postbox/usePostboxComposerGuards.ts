@@ -128,12 +128,13 @@ export function usePostboxComposerGuards(
 	const knownDomains = computed<string[]>(() => domainData.value ?? []);
 
 	/**
-	 * Recipients never written to before. Empty while the answer is in flight:
-	 * an unanswered query is not evidence of a stranger, and branding a close
-	 * colleague "first time" for a beat would discredit the cue permanently.
+	 * Recipients never written to before. Empty while the answer is in flight
+	 * (or absent — `== null` covers both): an unanswered query is not evidence
+	 * of a stranger, and branding a close colleague "first time" for a beat
+	 * would discredit the cue permanently.
 	 */
 	const firstTimeAddresses = computed<string[]>(() =>
-		knownData.value === undefined ? [] : firstTimeRecipients(sources.recipients(), knownData.value)
+		knownData.value == null ? [] : firstTimeRecipients(sources.recipients(), knownData.value)
 	);
 
 	// ── Advisory preflight (idea 6) ──────────────────────────────────────────
