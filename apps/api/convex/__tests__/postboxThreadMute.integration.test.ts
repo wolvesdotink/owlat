@@ -201,9 +201,10 @@ describe('conversation mute', () => {
 			rfcMessageId: 'loud-1@example.com',
 		});
 
-		expect(await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true })).toEqual(
-			{ ok: true, threadId }
-		);
+		expect(await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true })).toEqual({
+			ok: true,
+			threadId,
+		});
 
 		const thread = await t.run((ctx) => ctx.db.get(threadId));
 		expect(thread?.mutedAt).toBeGreaterThan(0);

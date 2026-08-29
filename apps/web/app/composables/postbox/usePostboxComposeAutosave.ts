@@ -69,107 +69,107 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		updateDraft,
 	} = opts;
 
-async function ensureDraft(): Promise<Id<'mailDrafts'> | null> {
-	if (draftId.value) return draftId.value;
-	if (ensuring.value) return null;
-	ensuring.value = true;
-	try {
-		const result = await createDraft.run({
-			mailboxId: opts.mailboxId,
-			inReplyToMessageId: opts.inReplyToMessageId,
-		});
-		if (!result.ok) return null;
-		draftId.value = result.result.draftId as Id<'mailDrafts'>;
-		if (result.result.inReplySubject && !subject.value) {
-			subject.value = result.result.inReplySubject.match(/^re\s*:\s*/i)
-				? result.result.inReplySubject
-				: `Re: ${result.result.inReplySubject}`;
+	async function ensureDraft(): Promise<Id<'mailDrafts'> | null> {
+		if (draftId.value) return draftId.value;
+		if (ensuring.value) return null;
+		ensuring.value = true;
+		try {
+			const result = await createDraft.run({
+				mailboxId: opts.mailboxId,
+				inReplyToMessageId: opts.inReplyToMessageId,
+			});
+			if (!result.ok) return null;
+			draftId.value = result.result.draftId as Id<'mailDrafts'>;
+			if (result.result.inReplySubject && !subject.value) {
+				subject.value = result.result.inReplySubject.match(/^re\s*:\s*/i)
+					? result.result.inReplySubject
+					: `Re: ${result.result.inReplySubject}`;
+			}
+			if (result.result.inReplyFrom && toAddresses.value.length === 0) {
+				toAddresses.value = [result.result.inReplyFrom];
+			}
+			return draftId.value;
+		} finally {
+			ensuring.value = false;
 		}
-		if (result.result.inReplyFrom && toAddresses.value.length === 0) {
-			toAddresses.value = [result.result.inReplyFrom];
+	}
+
+	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	let pendingSave: Promise<void> | null = null;
+
+	function schedulePersist() {
+		// A scheduled (or pending_send) row is read-only until unscheduled —
+		// drafts.update rejects it. Skip autosave so touching a field while
+		// reviewing a scheduled draft doesn't spam 'Save draft' error toasts.
+		if (draftState.value !== 'draft') return;
+		if (saveTimer) clearTimeout(saveTimer);
+		saveTimer = setTimeout(() => {
+			pendingSave = persist();
+		}, AUTOSAVE_DEBOUNCE_MS);
+	}
+
+	async function persist(): Promise<void> {
+		const id = await ensureDraft();
+		if (!id) return;
+		isSaving.value = true;
+		try {
+			const result = await updateDraft.run({
+				draftId: id,
+				toAddresses: toAddresses.value,
+				ccAddresses: ccAddresses.value,
+				bccAddresses: bccAddresses.value,
+				subject: subject.value,
+				bodyHtml: bodyHtml.value,
+				// Only persist blocks when in 'full' mode — keeps simple-mode
+				// drafts small and unambiguous on the wire.
+				bodyBlocks: composerMode.value === 'full' ? JSON.stringify(bodyBlocks.value) : undefined,
+				composerMode: composerMode.value,
+				// Always sent: a timestamp arms, explicit null clears server-side.
+				followUpRemindAt: followUpRemindAt.value,
+			});
+			if (!result.ok) return;
+			lastSavedAt.value = (result.result.savedAt as number) ?? Date.now();
+		} finally {
+			isSaving.value = false;
+		}
+	}
+
+	/**
+	 * Flush any pending autosave immediately and return the draft id (creating
+	 * the row if it doesn't exist yet). Used when promoting an inline reply to
+	 * a popup so the popup reopens the SAME draft with nothing lost.
+	 */
+	async function flush(): Promise<Id<'mailDrafts'> | null> {
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+		}
+		// Scheduled/pending rows are read-only (drafts.update rejects them) —
+		// just report the id without persisting.
+		if (draftState.value === 'draft') {
+			pendingSave = persist();
+			await pendingSave;
 		}
 		return draftId.value;
-	} finally {
-		ensuring.value = false;
 	}
-}
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingSave: Promise<void> | null = null;
-
-function schedulePersist() {
-	// A scheduled (or pending_send) row is read-only until unscheduled —
-	// drafts.update rejects it. Skip autosave so touching a field while
-	// reviewing a scheduled draft doesn't spam 'Save draft' error toasts.
-	if (draftState.value !== 'draft') return;
-	if (saveTimer) clearTimeout(saveTimer);
-	saveTimer = setTimeout(() => {
-		pendingSave = persist();
-	}, AUTOSAVE_DEBOUNCE_MS);
-}
-
-async function persist(): Promise<void> {
-	const id = await ensureDraft();
-	if (!id) return;
-	isSaving.value = true;
-	try {
-		const result = await updateDraft.run({
-			draftId: id,
-			toAddresses: toAddresses.value,
-			ccAddresses: ccAddresses.value,
-			bccAddresses: bccAddresses.value,
-			subject: subject.value,
-			bodyHtml: bodyHtml.value,
-			// Only persist blocks when in 'full' mode — keeps simple-mode
-			// drafts small and unambiguous on the wire.
-			bodyBlocks: composerMode.value === 'full' ? JSON.stringify(bodyBlocks.value) : undefined,
-			composerMode: composerMode.value,
-			// Always sent: a timestamp arms, explicit null clears server-side.
-			followUpRemindAt: followUpRemindAt.value,
-		});
-		if (!result.ok) return;
-		lastSavedAt.value = (result.result.savedAt as number) ?? Date.now();
-	} finally {
-		isSaving.value = false;
-	}
-}
-
-/**
- * Flush any pending autosave immediately and return the draft id (creating
- * the row if it doesn't exist yet). Used when promoting an inline reply to
- * a popup so the popup reopens the SAME draft with nothing lost.
- */
-async function flush(): Promise<Id<'mailDrafts'> | null> {
-	if (saveTimer) {
-		clearTimeout(saveTimer);
-		saveTimer = null;
-	}
-	// Scheduled/pending rows are read-only (drafts.update rejects them) —
-	// just report the id without persisting.
-	if (draftState.value === 'draft') {
-		pendingSave = persist();
-		await pendingSave;
-	}
-	return draftId.value;
-}
-
-// Watch for any field change
-watch(
-	[
-		toAddresses,
-		ccAddresses,
-		bccAddresses,
-		subject,
-		bodyHtml,
-		bodyBlocks,
-		composerMode,
-		followUpRemindAt,
-	],
-	() => {
-		schedulePersist();
-	},
-	{ deep: true }
-);
+	// Watch for any field change
+	watch(
+		[
+			toAddresses,
+			ccAddresses,
+			bccAddresses,
+			subject,
+			bodyHtml,
+			bodyBlocks,
+			composerMode,
+			followUpRemindAt,
+		],
+		() => {
+			schedulePersist();
+		},
+		{ deep: true }
+	);
 
 	/** Drop a debounced write on the floor — the row is going away or is stale. */
 	function cancelAutosave(): void {

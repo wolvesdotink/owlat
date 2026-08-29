@@ -13,7 +13,6 @@
 
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type { FolderRole } from './shared';
 
 /**
  * Excluded operands (`-from:ines`), per operator. Arrays because several

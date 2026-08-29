@@ -1,7 +1,6 @@
 import { httpRouter } from 'convex/server';
 import { authComponent, createAuth } from './auth/auth';
 import { trackOpen, trackClick } from './delivery/trackingHttp';
-import { handleCors } from './auth/apiAuth';
 import { seedAdmin } from './seedAdmin';
 import { seedDemoHttp } from './seedDemo';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';

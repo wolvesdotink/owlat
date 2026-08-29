@@ -64,9 +64,7 @@ describe('resolveAttachmentShareExpiryDays', () => {
 	});
 
 	it('never lets an out-of-range lifetime reach the stored expiry', () => {
-		expect(attachmentShareExpiryAt(NOW, 3650)).toBe(
-			NOW + DEFAULT_EXPIRY_DAYS * DAY
-		);
+		expect(attachmentShareExpiryAt(NOW, 3650)).toBe(NOW + DEFAULT_EXPIRY_DAYS * DAY);
 		expect(attachmentShareExpiryAt(NOW, 30)).toBe(NOW + 30 * DAY);
 	});
 });
@@ -124,28 +122,19 @@ describe('isAttachmentShareServable', () => {
 describe('isAttachmentSharePurgeable', () => {
 	it('never purges a row that still owns bytes', () => {
 		expect(
-			isAttachmentSharePurgeable(
-				{ expiresAt: NOW - 10 * PURGE_GRACE_MS, hasBytes: true },
-				NOW
-			)
+			isAttachmentSharePurgeable({ expiresAt: NOW - 10 * PURGE_GRACE_MS, hasBytes: true }, NOW)
 		).toBe(false);
 	});
 
 	it('keeps a byte-less row through the grace window so the list can explain it', () => {
 		expect(
-			isAttachmentSharePurgeable(
-				{ expiresAt: NOW - PURGE_GRACE_MS + 1, hasBytes: false },
-				NOW
-			)
+			isAttachmentSharePurgeable({ expiresAt: NOW - PURGE_GRACE_MS + 1, hasBytes: false }, NOW)
 		).toBe(false);
 	});
 
 	it('purges once the grace window has fully elapsed', () => {
 		expect(
-			isAttachmentSharePurgeable(
-				{ expiresAt: NOW - PURGE_GRACE_MS, hasBytes: false },
-				NOW
-			)
+			isAttachmentSharePurgeable({ expiresAt: NOW - PURGE_GRACE_MS, hasBytes: false }, NOW)
 		).toBe(true);
 	});
 

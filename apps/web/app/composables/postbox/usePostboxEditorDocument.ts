@@ -10,10 +10,7 @@
  * the raw DOM in isolation.
  */
 import { onMounted, ref, watch, type Ref } from 'vue';
-import {
-	EMPTY_ACTIVE_MARKS,
-	type ActiveMarks,
-} from '@owlat/ui/composables/useRichText';
+import { EMPTY_ACTIVE_MARKS, type ActiveMarks } from '@owlat/ui/composables/useRichText';
 
 export function usePostboxEditorDocument(opts: {
 	editorRef: Ref<HTMLDivElement | null>;

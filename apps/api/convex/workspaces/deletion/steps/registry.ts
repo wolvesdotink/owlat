@@ -10,10 +10,7 @@
  * See docs/adr/0025-organization-deletion-module-family.md.
  */
 
-import type {
-	OrganizationDeletionStepModule,
-	OrganizationDeletionTable,
-} from './_common';
+import type { OrganizationDeletionStepModule, OrganizationDeletionTable } from './_common';
 
 // Distinct steps with per-row side effects the generic sweep can't express:
 // storage-blob purges (mediaAssets / semanticFiles / mailMessages /

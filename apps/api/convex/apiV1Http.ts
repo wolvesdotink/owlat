@@ -27,7 +27,6 @@ import { sendTransactional } from './transactional/api';
 import { addContactToTopic, removeContactFromTopic } from './topics/apiHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
-
 	// API health check (no authentication required)
 	http.route({
 		path: '/api/v1/health',
