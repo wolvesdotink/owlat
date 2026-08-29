@@ -10,9 +10,10 @@
  * table contains.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { defineComponent, nextTick } from 'vue';
+import { defineComponent, nextTick, ref } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
+import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyboard';
 import {
 	applyShortcutPreferences,
 	pushShortcutScope,
@@ -153,6 +154,57 @@ describe('useKeyboardShortcuts — scoping', () => {
 		expect(newItem).toHaveBeenCalledTimes(1);
 		press('n');
 		expect(newItem).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('useKeyboardShortcuts — one arbiter per press', () => {
+	/**
+	 * A thread list binds its keydown to the LISTBOX, so its handler runs on the
+	 * way up to the document dispatcher. Before the pending chord moved into the
+	 * registry neither knew about the other and `g` `s` did both jobs: star the
+	 * focused message and navigate to Starred.
+	 */
+	it('does not let a focused thread list triage the completing key of a chord', async () => {
+		const goStarred = vi.fn();
+		wrapper = mountHost((api) => {
+			api.registerShortcut({ id: 'postbox.goStarred', handler: goStarred, ignoreInputs: true });
+		});
+		await nextTick();
+		const release = pushShortcutScope('postbox');
+
+		const actions: string[] = [];
+		const items = ref([{ _id: 'a' }, { _id: 'b' }]);
+		const { focusedIndex, onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onAction: (key) => actions.push(key),
+		});
+		const listbox = document.createElement('div');
+		listbox.setAttribute('role', 'listbox');
+		listbox.addEventListener('keydown', (event) => onKeydown(event as KeyboardEvent));
+		document.body.appendChild(listbox);
+		const send = (key: string) =>
+			listbox.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+
+		send('j'); // a row is focused — mid-triage, which is when `g s` is used
+		expect(focusedIndex.value).toBe(0);
+
+		send('g');
+		send('s');
+
+		expect(goStarred).toHaveBeenCalledTimes(1);
+		// `s` alone would have starred the focused row.
+		expect(actions).not.toContain('s');
+
+		// The chord is spent, so the next `s` is triage again.
+		send('s');
+		expect(actions).toEqual(['g', 's']);
+		expect(goStarred).toHaveBeenCalledTimes(1);
+
+		listbox.remove();
+		release();
 	});
 });
 

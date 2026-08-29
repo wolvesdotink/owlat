@@ -828,6 +828,10 @@ function onReaderShortcut(event: KeyboardEvent) {
 	// deliver plain keydowns with altKey — never treat those as triage keys.
 	if (event.metaKey || event.ctrlKey || event.altKey) return;
 	if (isEditableTarget(event.target)) return;
+	// Already claimed on the way up — most often the second half of a `g`
+	// sequence chord, which the app-wide dispatcher completed at the document
+	// level. Acting on it here as well would star AND navigate on `g` `s`.
+	if (event.defaultPrevented) return;
 	const el = event.target as HTMLElement | null;
 	// The focused thread list and any open dialog own their keys.
 	if (el?.closest?.('[role="listbox"], [role="dialog"]')) return;

@@ -75,6 +75,50 @@ export function activeShortcutScopes(): ShortcutScope[] {
 export function resetShortcutScopes(): void {
 	depth.clear();
 	order = [];
+	clearPendingChord();
+}
+
+/**
+ * The half-typed sequence chord (`g` …) the app is currently holding.
+ *
+ * It lives HERE, next to the bindings, rather than inside the app-wide
+ * dispatcher, because it is not only the dispatcher's business. Element-level
+ * handlers — the thread list's triage keys — run on the way UP to the document,
+ * so without a shared "a chord is in flight" signal `g` then `s` both starred
+ * the focused message and navigated to Starred. One buffer, one arbiter: the
+ * dispatcher completes the chord, everyone else stands down while
+ * `isChordPending()` is true.
+ */
+let pendingChord: string | null = null;
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** How long a half-finished sequence chord waits for its second key. */
+export const CHORD_WINDOW_MS = 500;
+
+/** The step being held, or `null` when no chord is in flight. */
+export function pendingChordStep(): string | null {
+	return pendingChord;
+}
+
+/** True while a sequence chord is half-typed — see `pendingChordStep`. */
+export function isChordPending(): boolean {
+	return pendingChord !== null;
+}
+
+/** Hold `step` as the first half of a sequence chord. */
+export function beginChord(step: string): void {
+	clearPendingChord();
+	pendingChord = step;
+	pendingTimer = setTimeout(clearPendingChord, CHORD_WINDOW_MS);
+}
+
+/** Drop whatever chord is in flight (completed, timed out, or Escaped). */
+export function clearPendingChord(): void {
+	if (pendingTimer) {
+		clearTimeout(pendingTimer);
+		pendingTimer = null;
+	}
+	pendingChord = null;
 }
 
 const bindingsRef = shallowRef<ShortcutBindings>(buildShortcutBindings(SHORTCUT_CATALOG));

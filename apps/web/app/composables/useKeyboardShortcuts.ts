@@ -18,7 +18,10 @@ import { isHelpOverlayClaimed } from '~/utils/helpOverlayOwnership';
 import { chordFromEvent } from '~/utils/shortcutRegistry';
 import {
 	activeShortcutScopes,
+	beginChord,
+	clearPendingChord,
 	isActiveChordPrefix,
+	pendingChordStep,
 	resolveActiveChord,
 	shortcutBindings,
 } from '~/utils/shortcutScope';
@@ -38,11 +41,6 @@ interface ShortcutConfig {
 // outlive the component that made them until it unregisters.
 const shortcuts = ref<Map<string, ShortcutConfig>>(new Map());
 const isHelpModalOpen = ref(false);
-const chordBuffer = ref<string | null>(null);
-const chordTimeout = ref<ReturnType<typeof setTimeout> | null>(null);
-
-/** How long a half-finished sequence chord (`g` …) waits for its second key. */
-const CHORD_WINDOW_MS = 500;
 
 // Track whether the composable has been initialized
 let isInitialized = false;
@@ -65,14 +63,6 @@ function isInputFocused(): boolean {
 	}
 
 	return false;
-}
-
-function clearChord() {
-	if (chordTimeout.value) {
-		clearTimeout(chordTimeout.value);
-		chordTimeout.value = null;
-	}
-	chordBuffer.value = null;
 }
 
 /** Fire the handler bound to `id`, if any. Reports whether anything ran. */
@@ -112,7 +102,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
 	// Handle Escape - always process for closing modals
 	if (key === 'escape') {
-		clearChord();
+		clearPendingChord();
 		if (isHelpModalOpen.value) {
 			event.preventDefault();
 			isHelpModalOpen.value = false;
@@ -132,11 +122,13 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
 	// Second half of a sequence chord (`g` then …). Always consumes the key,
 	// whether or not the pair is bound — a half-typed `g` must not leak into a
-	// single-key action.
-	if (chordBuffer.value) {
-		const pending = `${chordBuffer.value} ${step}`;
-		clearChord();
-		dispatch(resolveActiveChord(pending, scopes), event);
+	// single-key action. The buffer lives in `shortcutScope` so element-level
+	// handlers (the thread list) can stand down for exactly this press instead
+	// of triaging on the same key.
+	const held = pendingChordStep();
+	if (held) {
+		clearPendingChord();
+		dispatch(resolveActiveChord(`${held} ${step}`, scopes), event);
 		return;
 	}
 
@@ -145,8 +137,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 	// Not a shortcut on its own, but the start of one: hold it briefly.
 	if (isActiveChordPrefix(step, scopes)) {
 		event.preventDefault();
-		chordBuffer.value = step;
-		chordTimeout.value = setTimeout(clearChord, CHORD_WINDOW_MS);
+		beginChord(step);
 	}
 }
 

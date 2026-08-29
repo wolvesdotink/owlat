@@ -61,6 +61,9 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 		items: opts.items,
 		resetKey: opts.resetKey,
 		rowDomId: opts.rowDomId,
+		// Movement resolves against the `review` half of the catalog, so a
+		// Postbox remap of j/k does not silently move this queue too.
+		scope: 'review',
 		onActivate: opts.onOpen,
 		onAction: (key, row) => {
 			// The shared agent-task-card vocabulary first: digits pick a chip.
