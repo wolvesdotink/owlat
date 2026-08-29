@@ -33,6 +33,17 @@ function declarationFor(token: string): SnippetVariable | undefined {
 	return variables.value.find((v) => v.token === token);
 }
 
+/**
+ * Render a token the way it appears in the snippet body.
+ *
+ * This lives in the script block on purpose: the braces cannot be built inline
+ * in the template, because the Vue tokenizer closes the interpolation on the
+ * first `}}` it meets and the production build fails to parse the leftovers.
+ */
+function tokenLiteral(token: string): string {
+	return `{{${token}}}`;
+}
+
 /** An empty selection is "let the composer guess" — i.e. no declaration at all. */
 function setSource(token: string, source: SnippetVariableSource | '') {
 	const existing = declarationFor(token);
@@ -62,7 +73,7 @@ function setLabel(token: string, label: string) {
 		</p>
 		<div v-for="token in tokens" :key="token" class="flex flex-wrap items-center gap-2">
 			<code class="rounded bg-bg-surface px-1.5 py-0.5 font-mono text-xs text-text-secondary">
-				{{ `{{${token}}}` }}
+				{{ tokenLiteral(token) }}
 			</code>
 			<select
 				class="input w-56 text-sm"
