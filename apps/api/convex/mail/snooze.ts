@@ -196,30 +196,6 @@ export const snoozeThread = authedMutation({
 	},
 });
 
-/** Wake a whole conversation early — the inverse of {@link snoozeThread}. */
-// authz: thread → mailbox access via requireMailboxAccess; org membership via
-// authedMutation.
-export const unsnoozeThread = authedMutation({
-	args: { threadId: v.id('mailThreads') },
-	handler: async (ctx, args): Promise<{ ok: true; woken: number }> => {
-		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
-		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
-		if (!owned.ok) throwForbidden('Thread not accessible');
-		const now = Date.now();
-		const messages = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect(); // bounded: one thread's messages
-		let woken = 0;
-		for (const m of messages) {
-			if (m.snoozedUntil == null) continue;
-			await clearMessageSnooze(ctx, m, now);
-			woken += 1;
-		}
-		return { ok: true, woken };
-	},
-});
-
 /**
  * Dismiss the transient "back from snooze" marker (idea 19). Called the first
  * time the resurfaced thread is opened, so the chip is a one-shot recognition

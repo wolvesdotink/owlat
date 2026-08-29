@@ -7,7 +7,7 @@
  *     take() page boundary are woken in the same pass
  *   - the sweep stamps `snoozeReturnedAt`, the list row carries it, and
  *     clearSnoozeReturned (fired on open) drops it
- *   - unsnoozeThread wakes the conversation early
+ *   - unsnoozeMany wakes the conversation early from the list
  *   - snoozeThread rejects a past timestamp and a mailbox the caller can't reach
  */
 
@@ -238,7 +238,6 @@ describe('postbox thread-scope snooze', () => {
 			await expect(
 				t.mutation(api.mail.snooze.snoozeThread, { threadId, until: Date.now() + HOUR })
 			).rejects.toThrow();
-			await expect(t.mutation(api.mail.snooze.unsnoozeThread, { threadId })).rejects.toThrow();
 			await expect(t.mutation(api.mail.snooze.clearSnoozeReturned, { threadId })).rejects.toThrow();
 		} finally {
 			sessionMock.userId = 'test-user';
@@ -246,7 +245,7 @@ describe('postbox thread-scope snooze', () => {
 		}
 	});
 
-	it('unsnoozeThread wakes the whole conversation early', async () => {
+	it('unsnoozeMany wakes the whole conversation early', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seed(t);
 		const threadId = await newThread(t, seeded, 'planning');
@@ -255,8 +254,10 @@ describe('postbox thread-scope snooze', () => {
 		await t.run((ctx) => ctx.db.patch(seeded.inboxId, { totalCount: 2, unseenCount: 2 }));
 		await t.mutation(api.mail.snooze.snoozeThread, { threadId, until: Date.now() + HOUR });
 
-		expect(await t.mutation(api.mail.snooze.unsnoozeThread, { threadId })).toEqual({
-			ok: true,
+		// The list is where a snoozed conversation is woken early: the rows are
+		// selected and unsnoozed together. There is no thread-keyed twin — one
+		// would have shipped with nothing on the instance able to call it.
+		expect(await t.mutation(api.mail.snooze.unsnoozeMany, { messageIds: [a, b] })).toEqual({
 			woken: 2,
 		});
 		expect((await t.run((ctx) => ctx.db.get(a)))?.snoozedUntil).toBeUndefined();

@@ -116,37 +116,14 @@ async function applyUnmute(ctx: MutationCtx, thread: Doc<'mailThreads'>): Promis
 	await ctx.db.patch(thread._id, { mutedAt: undefined, updatedAt: Date.now() });
 }
 
-/** Mute a conversation and archive what it already has in the Inbox. */
-// authz: thread → mailbox access via requireMailboxAccess; org membership via
-// authedMutation.
-export const muteThread = authedMutation({
-	args: { threadId: v.id('mailThreads') },
-	handler: async (ctx, args): Promise<{ ok: true; archived: number }> => {
-		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
-		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
-		if (!owned.ok) throwForbidden('Thread not accessible');
-		return await applyMute(ctx, thread);
-	},
-});
-
-/** Unmute a conversation: new mail lands in the Inbox again. */
-// authz: thread → mailbox access via requireMailboxAccess; org membership via
-// authedMutation.
-export const unmuteThread = authedMutation({
-	args: { threadId: v.id('mailThreads') },
-	handler: async (ctx, args): Promise<{ ok: true }> => {
-		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
-		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
-		if (!owned.ok) throwForbidden('Thread not accessible');
-		await applyUnmute(ctx, thread);
-		return { ok: true };
-	},
-});
-
 /**
- * Mute/unmute keyed off the MESSAGE the UI has in hand — the list row and the
- * reader both address mail by message id, so making every caller resolve the
- * thread first would duplicate that lookup at each call site.
+ * Mute/unmute a conversation, keyed off the MESSAGE the UI has in hand.
+ *
+ * The ONE entry point, and message-keyed on purpose: the list row and the
+ * reader both address mail by message id, so a thread-keyed twin would make
+ * every call site resolve the thread first — and, having existed, would sit
+ * there with no caller. The mute itself is still a CONVERSATION fact; this
+ * resolves the thread once and stamps it.
  */
 // authz: message → thread → mailbox access via requireMailboxAccess; org
 // membership via authedMutation.

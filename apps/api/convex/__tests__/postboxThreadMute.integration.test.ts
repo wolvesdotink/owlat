@@ -1,6 +1,7 @@
 /**
  * Conversation mute (mail/mute.ts + the four places that read `mutedAt`):
- *   - muteThread stamps the marker AND archives the mail already in the Inbox
+ *   - setMutedForMessage stamps the marker AND archives the mail already in the
+ *     Inbox
  *   - new inbound mail on a muted thread is delivered straight to Archive
  *     (deliveryPipeline/insert.ts → redirectMutedDelivery), never the Inbox
  *   - a muted thread is excluded from the Reply Queue and from the
@@ -8,8 +9,8 @@
  *   - newestUnreadInbox marks the row `muted` so the desktop notifier can
  *     stay silent
  *   - the list-row projection carries `mutedAt` for the chip
- *   - unmuteThread clears the marker and does NOT un-archive what mute filed
- *   - both mutations refuse a mailbox the caller does not own
+ *   - unmuting clears the marker and does NOT un-archive what mute filed
+ *   - it refuses a mailbox the caller does not own, either direction
  *
  * Plus its opt-in twin, the per-thread reply alert (mail/threadAlerts.ts):
  * the marker, its `alerted` flag on the unread peek, and the invariant that
@@ -200,10 +201,9 @@ describe('conversation mute', () => {
 			rfcMessageId: 'loud-1@example.com',
 		});
 
-		expect(await t.mutation(api.mail.mute.muteThread, { threadId })).toEqual({
-			ok: true,
-			archived: 1,
-		});
+		expect(await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true })).toEqual(
+			{ ok: true, threadId }
+		);
 
 		const thread = await t.run((ctx) => ctx.db.get(threadId));
 		expect(thread?.mutedAt).toBeGreaterThan(0);
@@ -218,11 +218,11 @@ describe('conversation mute', () => {
 	it('new inbound mail on a muted thread lands in Archive, not the Inbox', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seed(t);
-		const { threadId } = await seedThread(t, seeded, {
+		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'loud thread',
 			rfcMessageId: 'loud-1@example.com',
 		});
-		await t.mutation(api.mail.mute.muteThread, { threadId });
+		await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true });
 
 		await deliverInbound(t, {
 			subject: 'Re: loud thread',
@@ -252,8 +252,8 @@ describe('conversation mute', () => {
 			subject: 'loud thread',
 			rfcMessageId: 'loud-1@example.com',
 		});
-		await t.mutation(api.mail.mute.muteThread, { threadId });
-		await t.mutation(api.mail.mute.unmuteThread, { threadId });
+		await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true });
+		await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: false });
 
 		expect((await t.run((ctx) => ctx.db.get(threadId)))?.mutedAt).toBeUndefined();
 		// The mail the mute filed stays filed — unmute is not an un-archive.
@@ -292,7 +292,7 @@ describe('conversation mute', () => {
 			(await t.query(api.mail.needsReply.listQueue, { mailboxId: seeded.mailboxId })).items
 		).toHaveLength(1);
 
-		await t.mutation(api.mail.mute.muteThread, { threadId });
+		await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true });
 
 		// Mute clears the flag outright, and the read skips it belt-and-braces.
 		expect((await t.run((ctx) => ctx.db.get(threadId)))?.needsReply).toBeUndefined();
@@ -310,7 +310,7 @@ describe('conversation mute', () => {
 		});
 		// Mute first, then re-flag directly (simulating a classification that was
 		// already in flight when the mute landed).
-		await t.mutation(api.mail.mute.muteThread, { threadId });
+		await t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true });
 		await t.run((ctx) =>
 			ctx.db.patch(threadId, {
 				needsReply: {
@@ -362,7 +362,7 @@ describe('conversation mute', () => {
 	it('refuses to mute a thread in a mailbox the caller has no membership on', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seed(t);
-		const { threadId } = await seedThread(t, seeded, {
+		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'loud thread',
 			rfcMessageId: 'loud-1@example.com',
 		});
@@ -370,13 +370,11 @@ describe('conversation mute', () => {
 		sessionMock.userId = 'someone-else';
 		sessionMock.role = 'editor';
 		try {
-			await expect(t.mutation(api.mail.mute.muteThread, { threadId })).rejects.toThrow();
-			await expect(t.mutation(api.mail.mute.unmuteThread, { threadId })).rejects.toThrow();
 			await expect(
-				t.mutation(api.mail.mute.setMutedForMessage, {
-					messageId: (await t.run((ctx) => ctx.db.get(threadId)))!.latestMessageId!,
-					muted: true,
-				})
+				t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: true })
+			).rejects.toThrow();
+			await expect(
+				t.mutation(api.mail.mute.setMutedForMessage, { messageId, muted: false })
 			).rejects.toThrow();
 		} finally {
 			sessionMock.userId = 'test-user';
