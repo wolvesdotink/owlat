@@ -199,8 +199,8 @@ export const mailTrashAutoPurgeDaysValidator = v.union(
 //
 // ABSENT means the shared default (14 days), not "no expiry". Share links did
 // not exist before this setting, so there is no prior behaviour to preserve;
-// the value both planes fall back to is
-// `ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS`, and the literals here are exactly
+// the fallback both planes go through is
+// `resolveAttachmentShareExpiryDays`, and the literals here are exactly
 // `ATTACHMENT_SHARE_EXPIRY_DAY_CHOICES` (Convex validators must be literal, so
 // the set is spelled out here and unit-tested against the shared constant).
 export const mailShareLinkExpiryDaysValidator = v.union(

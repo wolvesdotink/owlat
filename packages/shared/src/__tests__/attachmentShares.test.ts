@@ -1,14 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-	ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS,
 	ATTACHMENT_SHARE_PATH,
-	ATTACHMENT_SHARE_PURGE_GRACE_MS,
 	ATTACHMENT_SHARE_TOKEN_LENGTH,
 	attachmentShareExpiryAt,
-	attachmentShareRemainingMs,
 	attachmentShareState,
 	attachmentShareUrl,
-	isAttachmentShareScope,
 	isAttachmentShareServable,
 	isAttachmentSharePurgeable,
 	isAttachmentShareToken,
@@ -17,6 +13,17 @@ import {
 
 const DAY = 24 * 60 * 60 * 1_000;
 const NOW = 1_760_000_000_000;
+
+/**
+ * The default lifetime and the purge grace window are module-private — the only
+ * supported way to observe either is through the predicate that applies it. The
+ * literals are restated here on purpose: they pin the promise the copy makes
+ * ("links expire", "the row survives long enough to explain itself") rather than
+ * re-deriving it from the implementation, so changing the constant fails here
+ * instead of silently redefining the guarantee.
+ */
+const DEFAULT_EXPIRY_DAYS = 14;
+const PURGE_GRACE_MS = 30 * DAY;
 
 describe('isAttachmentShareToken', () => {
 	const good = 'a'.repeat(ATTACHMENT_SHARE_TOKEN_LENGTH);
@@ -49,16 +56,16 @@ describe('resolveAttachmentShareExpiryDays', () => {
 	});
 
 	it('falls back to the default for absent, unknown or hostile values', () => {
-		expect(resolveAttachmentShareExpiryDays(undefined)).toBe(ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS);
-		expect(resolveAttachmentShareExpiryDays(null)).toBe(ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS);
-		expect(resolveAttachmentShareExpiryDays(3650)).toBe(ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS);
-		expect(resolveAttachmentShareExpiryDays(0)).toBe(ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS);
-		expect(resolveAttachmentShareExpiryDays(-1)).toBe(ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS);
+		expect(resolveAttachmentShareExpiryDays(undefined)).toBe(DEFAULT_EXPIRY_DAYS);
+		expect(resolveAttachmentShareExpiryDays(null)).toBe(DEFAULT_EXPIRY_DAYS);
+		expect(resolveAttachmentShareExpiryDays(3650)).toBe(DEFAULT_EXPIRY_DAYS);
+		expect(resolveAttachmentShareExpiryDays(0)).toBe(DEFAULT_EXPIRY_DAYS);
+		expect(resolveAttachmentShareExpiryDays(-1)).toBe(DEFAULT_EXPIRY_DAYS);
 	});
 
 	it('never lets an out-of-range lifetime reach the stored expiry', () => {
 		expect(attachmentShareExpiryAt(NOW, 3650)).toBe(
-			NOW + ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS * DAY
+			NOW + DEFAULT_EXPIRY_DAYS * DAY
 		);
 		expect(attachmentShareExpiryAt(NOW, 30)).toBe(NOW + 30 * DAY);
 	});
@@ -90,17 +97,6 @@ describe('attachmentShareState', () => {
 	});
 });
 
-describe('attachmentShareRemainingMs', () => {
-	it('counts down a live link', () => {
-		expect(attachmentShareRemainingMs({ expiresAt: NOW + 3 * DAY }, NOW)).toBe(3 * DAY);
-	});
-
-	it('is zero for anything that is not live', () => {
-		expect(attachmentShareRemainingMs({ expiresAt: NOW - DAY }, NOW)).toBe(0);
-		expect(attachmentShareRemainingMs({ expiresAt: NOW + DAY, revokedAt: NOW }, NOW)).toBe(0);
-	});
-});
-
 describe('isAttachmentShareServable', () => {
 	const live = { expiresAt: NOW + DAY, scope: 'anyone' as const, hasBytes: true };
 
@@ -129,7 +125,7 @@ describe('isAttachmentSharePurgeable', () => {
 	it('never purges a row that still owns bytes', () => {
 		expect(
 			isAttachmentSharePurgeable(
-				{ expiresAt: NOW - 10 * ATTACHMENT_SHARE_PURGE_GRACE_MS, hasBytes: true },
+				{ expiresAt: NOW - 10 * PURGE_GRACE_MS, hasBytes: true },
 				NOW
 			)
 		).toBe(false);
@@ -138,7 +134,7 @@ describe('isAttachmentSharePurgeable', () => {
 	it('keeps a byte-less row through the grace window so the list can explain it', () => {
 		expect(
 			isAttachmentSharePurgeable(
-				{ expiresAt: NOW - ATTACHMENT_SHARE_PURGE_GRACE_MS + 1, hasBytes: false },
+				{ expiresAt: NOW - PURGE_GRACE_MS + 1, hasBytes: false },
 				NOW
 			)
 		).toBe(false);
@@ -147,7 +143,7 @@ describe('isAttachmentSharePurgeable', () => {
 	it('purges once the grace window has fully elapsed', () => {
 		expect(
 			isAttachmentSharePurgeable(
-				{ expiresAt: NOW - ATTACHMENT_SHARE_PURGE_GRACE_MS, hasBytes: false },
+				{ expiresAt: NOW - PURGE_GRACE_MS, hasBytes: false },
 				NOW
 			)
 		).toBe(true);
@@ -156,7 +152,7 @@ describe('isAttachmentSharePurgeable', () => {
 	it('measures the grace window from the revocation, not the untouched expiry', () => {
 		const row = {
 			expiresAt: NOW + 365 * DAY,
-			revokedAt: NOW - ATTACHMENT_SHARE_PURGE_GRACE_MS,
+			revokedAt: NOW - PURGE_GRACE_MS,
 			hasBytes: false,
 		};
 		expect(isAttachmentSharePurgeable(row, NOW)).toBe(true);
@@ -181,18 +177,5 @@ describe('attachmentShareUrl', () => {
 		expect(attachmentShareUrl('https://x.convex.site', 'a/b?c')).toBe(
 			`https://x.convex.site${ATTACHMENT_SHARE_PATH}a%2Fb%3Fc`
 		);
-	});
-});
-
-describe('isAttachmentShareScope', () => {
-	it('accepts exactly the two scopes', () => {
-		expect(isAttachmentShareScope('anyone')).toBe(true);
-		expect(isAttachmentShareScope('mailbox')).toBe(true);
-	});
-
-	it('rejects anything else, including the near-misses', () => {
-		expect(isAttachmentShareScope('public')).toBe(false);
-		expect(isAttachmentShareScope('')).toBe(false);
-		expect(isAttachmentShareScope(undefined)).toBe(false);
 	});
 });

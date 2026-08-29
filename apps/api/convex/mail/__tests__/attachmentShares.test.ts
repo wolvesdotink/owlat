@@ -15,10 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
-import {
-	ATTACHMENT_SHARE_EXPIRY_DAY_CHOICES,
-	ATTACHMENT_SHARE_PURGE_GRACE_MS,
-} from '@owlat/shared/attachmentShares';
+import { ATTACHMENT_SHARE_EXPIRY_DAY_CHOICES } from '@owlat/shared/attachmentShares';
 import { mailShareLinkExpiryDaysValidator } from '../../lib/mailSettingsValidators';
 import { modules, seedMailbox } from './helpers.testlib';
 
@@ -468,11 +465,11 @@ describe('the expiry sweep', () => {
 		await t.mutation(internal.mail.attachmentShareRetention.sweepExpiredShares, {});
 		expect(await shareRow(t, shareId)).not.toBeNull();
 
-		// Age it past the grace window and sweep again.
+		// Age it well past any grace window and sweep again. The exact window is
+		// the shared module's business (and its own test's); what this asserts is
+		// that the sweep eventually reclaims the record at all.
 		await t.run(async (ctx) => {
-			await ctx.db.patch(shareId, {
-				expiresAt: Date.now() - ATTACHMENT_SHARE_PURGE_GRACE_MS - DAY,
-			});
+			await ctx.db.patch(shareId, { expiresAt: Date.now() - 365 * DAY });
 		});
 		await t.mutation(internal.mail.attachmentShareRetention.sweepExpiredShares, {});
 		expect(await shareRow(t, shareId)).toBeNull();

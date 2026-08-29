@@ -12,9 +12,10 @@
  *
  *   1. The bytes go the moment a link lapses. Storage is reclaimed, and there
  *      is nothing left to leak even if a future bug weakened the route.
- *   2. The ROW goes `ATTACHMENT_SHARE_PURGE_GRACE_MS` later. It is what lets
- *      the settings list answer "what happened to that link?" for the month
- *      after it dies, which is exactly when someone asks.
+ *   2. The ROW goes a grace window later — `isAttachmentSharePurgeable` owns
+ *      the deadline. It is what lets the settings list answer "what happened to
+ *      that link?" for the month after it dies, which is exactly when someone
+ *      asks.
  *
  * Bounded per tick and resumable: the `by_expiry` index is walked in expiry
  * order and stopped at `now`, so a tick's work is proportional to what actually

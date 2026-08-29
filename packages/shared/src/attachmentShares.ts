@@ -54,8 +54,12 @@ export type AttachmentShareExpiryDays = (typeof ATTACHMENT_SHARE_EXPIRY_DAY_CHOI
  * Lifetime applied when the owner has never chosen one. Two weeks is long enough
  * for a recipient who reads mail on Monday and acts on it the next weekend, and
  * short enough that a forgotten link is not a permanent open door.
+ *
+ * Module-private on purpose: every plane reaches the default through
+ * {@link resolveAttachmentShareExpiryDays}, so there is no way to read the
+ * fallback without also going through the narrowing that makes it safe.
  */
-export const ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS: AttachmentShareExpiryDays = 14;
+const DEFAULT_EXPIRY_DAYS: AttachmentShareExpiryDays = 14;
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -65,7 +69,7 @@ export function resolveAttachmentShareExpiryDays(
 ): AttachmentShareExpiryDays {
 	return ATTACHMENT_SHARE_EXPIRY_DAY_CHOICES.includes(value as AttachmentShareExpiryDays)
 		? (value as AttachmentShareExpiryDays)
-		: ATTACHMENT_SHARE_DEFAULT_EXPIRY_DAYS;
+		: DEFAULT_EXPIRY_DAYS;
 }
 
 /** Absolute expiry for a link created at `createdAt` with `days` of life. */
@@ -87,12 +91,6 @@ export function attachmentShareExpiryAt(createdAt: number, days: number): number
  *                 external link dies, the file stays.
  */
 export type AttachmentShareScope = 'anyone' | 'mailbox';
-
-export const ATTACHMENT_SHARE_SCOPES: readonly AttachmentShareScope[] = ['anyone', 'mailbox'];
-
-export function isAttachmentShareScope(value: unknown): value is AttachmentShareScope {
-	return value === 'anyone' || value === 'mailbox';
-}
 
 /** Lifecycle state of one share row, as both planes report it. */
 export type AttachmentShareState = 'live' | 'revoked' | 'expired';
@@ -116,11 +114,6 @@ export function attachmentShareState(
 	return row.expiresAt <= now ? 'expired' : 'live';
 }
 
-/** Milliseconds until a live link lapses; `0` once it is no longer live. */
-export function attachmentShareRemainingMs(row: AttachmentShareLifecycle, now: number): number {
-	return attachmentShareState(row, now) === 'live' ? Math.max(0, row.expiresAt - now) : 0;
-}
-
 /** The fields the public serving route gates on. */
 export interface AttachmentShareServable extends AttachmentShareLifecycle {
 	scope: AttachmentShareScope;
@@ -141,8 +134,13 @@ export function isAttachmentShareServable(row: AttachmentShareServable, now: num
  * How long a dead row lingers before the sweep deletes it outright. The BYTES go
  * as soon as the link stops being live; the row survives so the management list
  * can still explain what happened to a link a recipient is asking about.
+ *
+ * Module-private on purpose: the only question any caller has is "may the sweep
+ * delete this row yet", and {@link isAttachmentSharePurgeable} is the answer.
+ * Exporting the window as well invites a second, drifting copy of the deadline
+ * arithmetic in the cron or the settings list.
  */
-export const ATTACHMENT_SHARE_PURGE_GRACE_MS = 30 * DAY_MS;
+const PURGE_GRACE_MS = 30 * DAY_MS;
 
 /** Whether a dead row is old enough for the sweep to delete the record itself. */
 export function isAttachmentSharePurgeable(
@@ -151,7 +149,7 @@ export function isAttachmentSharePurgeable(
 ): boolean {
 	if (row.hasBytes) return false;
 	const deadAt = row.revokedAt ?? row.expiresAt;
-	return now - deadAt >= ATTACHMENT_SHARE_PURGE_GRACE_MS;
+	return now - deadAt >= PURGE_GRACE_MS;
 }
 
 /** Public URL for a token, given the deployment's HTTP-actions site origin. */
