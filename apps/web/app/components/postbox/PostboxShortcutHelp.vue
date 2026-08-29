@@ -20,6 +20,7 @@
 import { claimHelpOverlay } from '~/utils/helpOverlayOwnership';
 import { postboxShortcutSheet } from '~/utils/postboxShortcuts';
 import { shortcutSheetKeys } from '~/utils/shortcutRegistry';
+import { resolveActiveShortcut } from '~/utils/shortcutScope';
 
 const { t } = useI18n();
 
@@ -39,7 +40,9 @@ usePostboxShortcutScope();
 const open = useState('postbox:shortcut-help', () => false);
 
 function onGlobalKey(event: KeyboardEvent) {
-	if (event.key !== '?' || event.metaKey || event.ctrlKey || event.altKey) return;
+	// Resolved, not matched: `postbox.help` is offered for remapping, so the
+	// key that opens this sheet has to be the key the sheet itself advertises.
+	if (resolveActiveShortcut(event, ['postbox']) !== 'postbox.help') return;
 	if (isEditableTarget(event.target)) return;
 	event.preventDefault();
 	open.value = !open.value;

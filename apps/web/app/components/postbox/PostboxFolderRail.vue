@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { resolveActiveShortcut } from '~/utils/shortcutScope';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -112,7 +113,9 @@ function onGlobalKey(event: KeyboardEvent) {
 		toggleRail();
 		return;
 	}
-	if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+	// `postbox.search` through the registry, not a literal '/': the settings
+	// card offers this key for remapping, so the handler has to honour it.
+	if (resolveActiveShortcut(event, ['postbox']) !== 'postbox.search') return;
 	const el = event.target as HTMLElement | null;
 	if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
 		return;
