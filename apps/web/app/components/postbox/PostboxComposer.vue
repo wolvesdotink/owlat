@@ -476,29 +476,22 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@toggle-toolbar="toggleToolbar"
 			@switch-mode="switchMode"
 		/>
-		<!-- Plan idea 9: the recipients drive the timezone-aware presets. To/Cc/Bcc
-		     together, since the dialog only speaks up when they share ONE zone. -->
-		<PostboxScheduleDialog
-			:open="scheduleOpen"
+		<!-- Every dialog that PARKS a send until the sender answers: the schedule
+		     picker, the unsealed-send decision, the stale-reply warning. Grouped
+		     in one component because they share the contract — each confirm
+		     replays the very send it interrupted, options and all. -->
+		<PostboxComposerDialogs
+			v-model:schedule-open="scheduleOpen"
+			v-model:stale-open="staleConfirmOpen"
 			:mailbox-id="mailboxId"
 			:recipients="[...toAddresses, ...ccAddresses, ...bccAddresses]"
-			@update:open="scheduleOpen = $event"
-			@confirm="(ts) => handleSend({ scheduledSendAt: ts })"
-		/>
-		<!-- Sealed Mail (E5): the decision behind every unsealed send; confirming
-		     replays the parked send (scheduled time included) as an explicit act. -->
-		<PostboxComposerSealConfirmDialog
-			:open="seal.confirmOpen"
+			:seal-confirm-open="seal.confirmOpen"
 			:seal-state="seal.state"
-			@update:open="seal.setConfirmOpen"
-			@confirm="seal.confirmUnsealed"
-		/>
-		<!-- Team-inbox collision safety: a teammate replied to this thread after
-		     this reply was opened. Confirm before sending a duplicate. -->
-		<PostboxStaleReplyDialog
-			v-model:open="staleConfirmOpen"
-			:reply-by-name="staleReplyByName"
-			@confirm="confirmStaleSend"
+			:stale-reply-by-name="staleReplyByName"
+			@schedule="(ts: number) => handleSend({ scheduledSendAt: ts })"
+			@update:seal-confirm-open="seal.setConfirmOpen"
+			@confirm-unsealed="seal.confirmUnsealed"
+			@confirm-stale="confirmStaleSend"
 		/>
 	</div>
 </template>
