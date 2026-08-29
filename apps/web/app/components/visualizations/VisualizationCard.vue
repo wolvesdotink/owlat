@@ -101,7 +101,7 @@ const handleRemove = async () => {
 					<Icon
 						name="lucide:refresh-cw"
 						class="w-4 h-4"
-						:class="{ 'animate-spin': isRefreshing }"
+						:class="{ 'animate-spin motion-reduce:animate-none': isRefreshing }"
 					/>
 				</button>
 				<button

@@ -29,7 +29,8 @@ const borderStyleOptions = [
 
 const previewStyle = computed(() => {
 	if (borderStyle.value === 'none' || borderWidth.value === 0) {
-		return { borderBottom: '1px dashed var(--color-border, #d1d5db)' };
+		// `--color-border` is not a token; -default is (and themes correctly).
+		return { borderBottom: '1px dashed var(--color-border-default, #d1d5db)' };
 	}
 	return {
 		borderBottom: `${borderWidth.value}px ${borderStyle.value} ${borderColor.value}`,

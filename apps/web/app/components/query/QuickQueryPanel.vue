@@ -119,7 +119,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 				<div class="max-h-[60vh] overflow-y-auto">
 					<!-- Loading -->
 					<div v-if="isLoading" class="px-4 py-8 text-center text-text-tertiary">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin mx-auto mb-2 text-brand" />
+						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none mx-auto mb-2 text-brand" />
 						<p class="text-sm">{{ t('components.query.quickQueryPanel.searching') }}</p>
 					</div>
 

@@ -1,30 +1,39 @@
 <script setup lang="ts">
+/**
+ * The filter editor.
+ *
+ * Two things beyond the plain condition/action rows (idea 39): the match-any
+ * toggle — ONE grouping level, because a mixed AND/OR tree is a second grammar
+ * and "define two filters" is still the escape hatch — and a dry-run preview
+ * that runs the DRAFT conditions over recent mail through the same predicate
+ * delivery uses. A preview computed by a parallel implementation would be worth
+ * less than no preview at all, so the server evaluates it.
+ */
+
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatCompactRelativeTime } from '~/utils/formatters';
 import type {
+	FilterMatchType,
 	MailFilterCondition,
 	FilterAction,
 } from '~/composables/postbox/usePostboxFilters';
 
+interface FilterDraft {
+	name: string;
+	conditions: MailFilterCondition[];
+	actions: FilterAction[];
+	matchType: FilterMatchType;
+	stopProcessing: boolean;
+}
+
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
-	modelValue: {
-		name: string;
-		conditions: MailFilterCondition[];
-		actions: FilterAction[];
-		stopProcessing: boolean;
-	};
+	modelValue: FilterDraft;
 }>();
 
 const emit = defineEmits<{
-	(
-		e: 'update:modelValue',
-		value: {
-			name: string;
-			conditions: MailFilterCondition[];
-			actions: FilterAction[];
-			stopProcessing: boolean;
-		}
-	): void;
+	(e: 'update:modelValue', value: FilterDraft): void;
 }>();
 
 const { t } = useI18n();
@@ -33,7 +42,15 @@ const mailboxIdRef = computed(() => props.mailboxId);
 const { folders } = usePostboxFolders(mailboxIdRef);
 const { labels } = usePostboxLabels(mailboxIdRef);
 
-const local = reactive(JSON.parse(JSON.stringify(props.modelValue)));
+/**
+ * Same ceiling the server enforces on a `pinToSection` name — the name is the
+ * section's identity and becomes an index key on every message it files, so the
+ * input stops where the mutation would truncate rather than silently losing the
+ * tail of what was typed.
+ */
+const MAX_SECTION_NAME_LENGTH = 60;
+
+const local = reactive<FilterDraft>(JSON.parse(JSON.stringify(props.modelValue)));
 
 watch(local, (v) => emit('update:modelValue', JSON.parse(JSON.stringify(v))), {
 	deep: true,
@@ -106,6 +123,33 @@ function removeCondition(idx: number) {
 	local.conditions.splice(idx, 1);
 }
 
+// ── Dry run ────────────────────────────────────────────────────────────────
+// Opt-in rather than always-on: a preview is a fixed recent-window scan, and
+// firing one on every keystroke of a half-typed value would be a scan per
+// character for an answer nobody asked for yet.
+const previewOpen = ref(false);
+
+const previewArgs = computed(() => {
+	if (!previewOpen.value) return 'skip' as const;
+	// A condition with no operand matches on an empty string, which would make
+	// the preview claim the whole mailbox while the user is still typing.
+	const usable = local.conditions.filter(
+		(c) => c.field === 'hasAttachment' || (c.value ?? '').trim() !== '' || c.valueNumber != null
+	);
+	if (usable.length === 0) return 'skip' as const;
+	return {
+		mailboxId: props.mailboxId,
+		conditions: usable,
+		...(local.matchType === 'any' ? { matchType: 'any' as const } : {}),
+	};
+});
+
+const { data: previewData, isLoading: previewLoading } = useConvexQuery(
+	api.mail.filters.preview,
+	() => previewArgs.value
+);
+const preview = computed(() => previewData.value ?? null);
+
 function addAction() {
 	local.actions.push({ type: 'addLabel' });
 }
@@ -128,25 +172,38 @@ function removeAction(idx: number) {
 		</div>
 
 		<section>
-			<header class="flex items-center justify-between mb-2">
+			<header class="flex items-center justify-between mb-2 gap-3">
 				<h3 class="text-sm font-semibold">
 					{{ t('components.postbox.postboxFilterRuleBuilder.conditionsHeading') }}
 				</h3>
-				<button
-					type="button"
-					class="text-sm text-brand hover:underline"
-					@click="addCondition"
-				>
+				<!-- ONE grouping level. `all` is the default and what every filter
+				     written before this toggle means. -->
+				<label class="flex items-center gap-1.5 text-xs text-text-secondary ml-auto">
+					{{ t('components.postbox.postboxFilterRuleBuilder.matchLabel') }}
+					<select
+						v-model="local.matchType"
+						class="input input-sm"
+						:aria-label="t('components.postbox.postboxFilterRuleBuilder.matchLabel')"
+					>
+						<option value="all">
+							{{ t('components.postbox.postboxFilterRuleBuilder.matchAll') }}
+						</option>
+						<option value="any">
+							{{ t('components.postbox.postboxFilterRuleBuilder.matchAny') }}
+						</option>
+					</select>
+				</label>
+				<button type="button" class="text-sm text-brand hover:underline" @click="addCondition">
 					{{ t('components.postbox.postboxFilterRuleBuilder.addCondition') }}
 				</button>
 			</header>
 			<div class="space-y-2">
-				<div
-					v-for="(cond, idx) in local.conditions"
-					:key="idx"
-					class="flex items-center gap-2"
-				>
-					<select v-model="cond.field" class="input flex-shrink-0 w-36" @change="onFieldChange(cond)">
+				<div v-for="(cond, idx) in local.conditions" :key="idx" class="flex items-center gap-2">
+					<select
+						v-model="cond.field"
+						class="input flex-shrink-0 w-36"
+						@change="onFieldChange(cond)"
+					>
 						<option v-for="opt in FIELD_OPTIONS" :key="opt.value" :value="opt.value">
 							{{ opt.label }}
 						</option>
@@ -200,20 +257,12 @@ function removeAction(idx: number) {
 				<h3 class="text-sm font-semibold">
 					{{ t('components.postbox.postboxFilterRuleBuilder.actionsHeading') }}
 				</h3>
-				<button
-					type="button"
-					class="text-sm text-brand hover:underline"
-					@click="addAction"
-				>
+				<button type="button" class="text-sm text-brand hover:underline" @click="addAction">
 					{{ t('components.postbox.postboxFilterRuleBuilder.addAction') }}
 				</button>
 			</header>
 			<div class="space-y-2">
-				<div
-					v-for="(action, idx) in local.actions"
-					:key="idx"
-					class="flex items-center gap-2"
-				>
+				<div v-for="(action, idx) in local.actions" :key="idx" class="flex items-center gap-2">
 					<select v-model="action.type" class="input w-44 flex-shrink-0">
 						<option value="moveToFolder">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.moveToFolder') }}
@@ -232,6 +281,12 @@ function removeAction(idx: number) {
 						</option>
 						<option value="delete">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.delete') }}
+						</option>
+						<!-- Split inbox (idea 24): the one action that REARRANGES the
+						     inbox instead of emptying it — the message stays put and
+						     gains a section. -->
+						<option value="pinToSection">
+							{{ t('components.postbox.postboxFilterRuleBuilder.actions.pinToSection') }}
 						</option>
 						<option value="discard">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.discard') }}
@@ -262,6 +317,17 @@ function removeAction(idx: number) {
 						class="input flex-1"
 						:placeholder="t('components.postbox.postboxFilterRuleBuilder.forwardToPlaceholder')"
 					/>
+					<!-- Free text, not a picker: there is no section table. A section
+					     exists exactly as long as an enabled rule names it, and typing
+					     the same name in a second rule feeds the same section. -->
+					<input
+						v-else-if="action.type === 'pinToSection'"
+						v-model="action.sectionName"
+						type="text"
+						class="input flex-1"
+						:maxlength="MAX_SECTION_NAME_LENGTH"
+						:placeholder="t('components.postbox.postboxFilterRuleBuilder.sectionNamePlaceholder')"
+					/>
 					<span v-else class="flex-1 text-xs text-text-tertiary" />
 					<button
 						type="button"
@@ -282,5 +348,55 @@ function removeAction(idx: number) {
 			<input v-model="local.stopProcessing" type="checkbox" />
 			{{ t('components.postbox.postboxFilterRuleBuilder.stopProcessing') }}
 		</label>
+
+		<!-- Dry run: what this rule would catch in recent mail, before it governs
+		     anything. Opt-in, so a half-typed rule does not scan per keystroke. -->
+		<section class="border-t border-border-subtle pt-3">
+			<button
+				type="button"
+				class="text-sm text-brand hover:underline"
+				:aria-expanded="previewOpen"
+				@click="previewOpen = !previewOpen"
+			>
+				{{
+					previewOpen
+						? t('components.postbox.postboxFilterRuleBuilder.hidePreview')
+						: t('components.postbox.postboxFilterRuleBuilder.showPreview')
+				}}
+			</button>
+			<div v-if="previewOpen" class="mt-2">
+				<div v-if="previewLoading" class="flex items-center gap-2 text-xs text-text-tertiary">
+					<Icon
+						name="lucide:loader-2"
+						class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
+					/>
+					{{ t('components.postbox.postboxFilterRuleBuilder.previewRunning') }}
+				</div>
+				<template v-else-if="preview">
+					<p class="text-xs text-text-secondary">
+						{{
+							t('components.postbox.postboxFilterRuleBuilder.previewSummary', {
+								count: preview.matchCount,
+								scanned: preview.scanned,
+							})
+						}}
+					</p>
+					<ul v-if="preview.matches.length > 0" class="mt-1.5 space-y-1">
+						<li
+							v-for="match in preview.matches"
+							:key="match.messageId"
+							class="text-xs text-text-tertiary flex items-baseline gap-2 min-w-0"
+						>
+							<span class="truncate flex-1">{{ match.subject }}</span>
+							<span class="truncate max-w-[10rem]">{{ match.fromAddress }}</span>
+							<span class="flex-shrink-0">{{ formatCompactRelativeTime(match.receivedAt) }}</span>
+						</li>
+					</ul>
+				</template>
+				<p v-else class="text-xs text-text-tertiary">
+					{{ t('components.postbox.postboxFilterRuleBuilder.previewNeedsValue') }}
+				</p>
+			</div>
+		</section>
 	</div>
 </template>

@@ -8,7 +8,12 @@ import { requireMailboxAccess } from './permissions';
 import { getMailSyncConfig, getMtaConfig } from './mtaClient';
 import { resolveMailboxTransport } from './outboundTransport';
 import { hasActiveSigningKey, loadRecipientKeyStates } from './outboundQueries';
-import { deriveSealState, type SealState } from './sealPolicy';
+import {
+	deriveSealState,
+	toRecipientSealViews,
+	type RecipientSealView,
+	type SealState,
+} from './sealPolicy';
 
 /**
  * True iff this mailbox has the same outbound transport the dispatcher would
@@ -40,19 +45,32 @@ export async function getDraftHandler(ctx: QueryCtx, args: { draftId: Id<'mailDr
 }
 
 /**
+ * The composer's view of sealing for one draft: the aggregate verdict, plus the
+ * per-recipient key states it was derived from (plan idea 11) so the envelope
+ * can say WHO is blocking encryption instead of only that someone is.
+ * `recipients` carries public trust state only — never key material — and is
+ * empty whenever the aggregate verdict did not turn on recipient keys at all
+ * (flag off, no draft recipients).
+ */
+export interface ComposerSealView {
+	state: SealState;
+	recipients: RecipientSealView[];
+}
+
+/**
  * Derive the composer's seal promise from the same policy, recipient-key, and
  * sender-signing-key inputs used by dispatch, without exposing private keys.
  */
 export async function getComposerSealStateHandler(
 	ctx: QueryCtx,
 	args: { draftId: Id<'mailDrafts'> }
-): Promise<SealState | null> {
+): Promise<ComposerSealView | null> {
 	const draft = await ctx.db.get(args.draftId);
 	if (!draft) return null;
 	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 	if (!owned.ok) return null;
 	if (!(await isFeatureEnabled(ctx, 'sealedMail'))) {
-		return { kind: 'cannotSeal', reason: 'flag_off' };
+		return { state: { kind: 'cannotSeal', reason: 'flag_off' }, recipients: [] };
 	}
 	const settings = await ctx.db.query('instanceSettings').first();
 	const policy = settings?.sealPolicy ?? 'auto';
@@ -62,7 +80,13 @@ export async function getComposerSealStateHandler(
 		...draft.bccAddresses,
 	]);
 	const hasSigningKey = await hasActiveSigningKey(ctx, draft.fromAddress);
-	return deriveSealState(policy, recipients, hasSigningKey);
+	return {
+		state: deriveSealState(policy, recipients, hasSigningKey),
+		// Same list, same order, projected to the public verdict per address —
+		// derived from the very states the aggregate above was computed from, so
+		// the chips and the lock cannot disagree.
+		recipients: toRecipientSealViews(recipients),
+	};
 }
 
 export async function listForMailboxHandler(ctx: QueryCtx, args: { mailboxId: Id<'mailboxes'> }) {

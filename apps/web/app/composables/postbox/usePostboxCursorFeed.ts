@@ -44,17 +44,32 @@ import type { ArgsOrFactory } from '~/composables/useConvexQuery';
  * views at one page.
  */
 interface FeedPage {
-	messages: Array<{ _id: string }>;
 	hasMore?: boolean;
 	nextCursor: string | null;
+	[rows: string]: unknown;
 }
 
-export function usePostboxCursorFeed<Query extends FunctionReference<'query'>>(
+export function usePostboxCursorFeed<
+	Query extends FunctionReference<'query'>,
+	RowsKey extends string = 'messages',
+>(
 	query: Query,
 	args: ArgsOrFactory<FunctionArgs<Query>>,
 	resetKey: Ref<unknown>,
-	options?: { keepPreviousData?: boolean; hardResetKey?: Ref<unknown> }
+	options?: {
+		keepPreviousData?: boolean;
+		hardResetKey?: Ref<unknown>;
+		/**
+		 * Which field of the page holds the rows. Every message list calls it
+		 * `messages`; the Files view pages ATTACHMENTS, so its page says `files`.
+		 * The paging machinery is identical either way — only the noun differs.
+		 */
+		rowsKey?: RowsKey;
+	}
 ) {
+	const rowsKey = options?.rowsKey ?? 'messages';
+	const rowsOf = (page: FeedPage | undefined): Array<{ _id: string }> =>
+		(page?.[rowsKey] as Array<{ _id: string }> | undefined) ?? [];
 	const resolveBaseArgs = (): FunctionArgs<Query> | 'skip' =>
 		typeof args === 'function' ? (args as () => FunctionArgs<Query> | 'skip')() : args;
 
@@ -107,7 +122,7 @@ export function usePostboxCursorFeed<Query extends FunctionReference<'query'>>(
 	watch(feedTail, (page) => {
 		if (!page || !tailKey.value) return;
 		const next = new Map(tailSegments.value);
-		next.set(tailKey.value, [...page.messages]);
+		next.set(tailKey.value, [...rowsOf(page)]);
 		tailSegments.value = next;
 	});
 	watch(feedFirst, () => {
@@ -116,7 +131,7 @@ export function usePostboxCursorFeed<Query extends FunctionReference<'query'>>(
 
 	/** The live first page's rows, or none while a hard reset is pending. */
 	const firstRows = computed<SegmentRows>(() =>
-		suppressRetained.value ? [] : (feedFirst.value?.messages ?? [])
+		suppressRetained.value ? [] : rowsOf(feedFirst.value)
 	);
 
 	const accumulated = computed(() => {
@@ -184,7 +199,7 @@ export function usePostboxCursorFeed<Query extends FunctionReference<'query'>>(
 		tailCursor.value = next;
 	}
 
-	type Rows = FunctionReturnType<Query>['messages'];
+	type Rows = FunctionReturnType<Query>[RowsKey];
 	return {
 		rows: computed(() => accumulated.value as Rows),
 		/** True only while the FIRST page is pending — never during a Load more. */

@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-	detectSnippetTrigger,
-	rankSnippets,
-	firstNameOf,
-	resolveSnippetPlaceholders,
-} from '../postboxSnippets';
+import { detectSnippetTrigger, rankSnippets, firstNameOf } from '../postboxSnippets';
 
 describe('detectSnippetTrigger', () => {
 	it('triggers on a "/" at the very start of the input', () => {
@@ -82,36 +77,5 @@ describe('firstNameOf', () => {
 		expect(firstNameOf(null)).toBeUndefined();
 		expect(firstNameOf(undefined)).toBeUndefined();
 		expect(firstNameOf('   ')).toBeUndefined();
-	});
-});
-
-describe('resolveSnippetPlaceholders', () => {
-	it('replaces a known placeholder with the value', () => {
-		expect(
-			resolveSnippetPlaceholders('<p>Hi {{firstName}},</p>', { firstName: 'Ada' })
-		).toBe('<p>Hi Ada,</p>');
-	});
-
-	it('inserts a visible [token] when the value is unknown/empty', () => {
-		expect(
-			resolveSnippetPlaceholders('<p>Hi {{firstName}},</p>', {})
-		).toBe('<p>Hi [firstName],</p>');
-		expect(
-			resolveSnippetPlaceholders('<p>Hi {{firstName}},</p>', { firstName: '' })
-		).toBe('<p>Hi [firstName],</p>');
-	});
-
-	it('tolerates whitespace inside the braces', () => {
-		expect(
-			resolveSnippetPlaceholders('{{ firstName }}', { firstName: 'Ada' })
-		).toBe('Ada');
-	});
-
-	it('HTML-escapes the resolved value (untrusted recipient data)', () => {
-		expect(
-			resolveSnippetPlaceholders('{{firstName}}', {
-				firstName: '<img src=x onerror=alert(1)>',
-			})
-		).toBe('&lt;img src=x onerror=alert(1)&gt;');
 	});
 });

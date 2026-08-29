@@ -1,10 +1,21 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { ref, nextTick } from 'vue';
 import { usePostboxListKeyboard } from '../usePostboxListKeyboard';
+import {
+	applyShortcutPreferences,
+	beginChord,
+	clearPendingChord,
+	resetShortcutPreferences,
+} from '~/utils/shortcutScope';
 
 function key(k: string) {
 	return new KeyboardEvent('keydown', { key: k });
 }
+
+afterEach(() => {
+	resetShortcutPreferences();
+	clearPendingChord();
+});
 
 describe('usePostboxListKeyboard', () => {
 	it('navigates with j/k and activates with Enter', () => {
@@ -122,5 +133,108 @@ describe('usePostboxListKeyboard', () => {
 		onKeydown(new KeyboardEvent('keydown', { key: 'r', metaKey: true }));
 		onKeydown(new KeyboardEvent('keydown', { key: 'e', ctrlKey: true }));
 		expect(actions).toEqual([]);
+	});
+	it('Shift+J/K moves the focus and drags the selection with it', () => {
+		const items = ref([{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }]);
+		const extended: Array<[string, string | undefined]> = [];
+		const { focusedIndex, onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onExtendSelection: (to, from) => extended.push([to._id, from?._id]),
+		});
+		onKeydown(key('j')); // focus 'a'
+		onKeydown(key('J'));
+		expect(focusedIndex.value).toBe(1);
+		// The row the focus LEFT comes along, so the first press selects both ends.
+		expect(extended).toEqual([['b', 'a']]);
+
+		onKeydown(key('K'));
+		expect(focusedIndex.value).toBe(0);
+		expect(extended[1]).toEqual(['a', 'b']);
+	});
+
+	it('Shift+J from nothing focused starts at the first row', () => {
+		const items = ref([{ _id: 'a' }, { _id: 'b' }]);
+		const extended: string[] = [];
+		const { focusedIndex, onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onExtendSelection: (to) => extended.push(to._id),
+		});
+		onKeydown(key('J'));
+		expect(focusedIndex.value).toBe(0);
+		expect(extended).toEqual(['a']);
+	});
+
+	it('Shift+J/K falls through to onAction on a surface without a selection model', () => {
+		const items = ref([{ _id: 'a' }, { _id: 'b' }]);
+		const actions: string[] = [];
+		const { focusedIndex, onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onAction: (k) => actions.push(k),
+		});
+		onKeydown(key('j')); // focus 'a'
+		onKeydown(key('J'));
+		// No selection model: the key is delegated and the focus stays put.
+		expect(actions).toEqual(['J']);
+		expect(focusedIndex.value).toBe(0);
+	});
+
+	it('moves on the key the user remapped next/previous to, not the shipped one', () => {
+		// The settings card offers `postbox.next` for remapping, so the list has
+		// to resolve through the registry rather than matching 'j' literally.
+		applyShortcutPreferences('owlat', [
+			{ id: 'postbox.next', keys: ['y'] },
+			{ id: 'postbox.previous', keys: ['t'] },
+		]);
+		const items = ref([{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }]);
+		const actions: string[] = [];
+		const { focusedIndex, onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onAction: (k) => actions.push(k),
+		});
+		onKeydown(key('y'));
+		onKeydown(key('y'));
+		expect(focusedIndex.value).toBe(1);
+		onKeydown(key('t'));
+		expect(focusedIndex.value).toBe(0);
+		// The old key is free now — it delegates instead of moving.
+		onKeydown(key('j'));
+		expect(focusedIndex.value).toBe(0);
+		expect(actions).toEqual(['j']);
+	});
+
+	it('stands down while a sequence chord is in flight', () => {
+		// `g` is held by the app-wide dispatcher, which owns the completing key.
+		// Triaging it here too would star the row AND navigate to Starred.
+		const items = ref([{ _id: 'a' }, { _id: 'b' }]);
+		const actions: string[] = [];
+		const { focusedIndex, onKeydown } = usePostboxListKeyboard({
+			items,
+			resetKey: ref('inbox'),
+			rowDomId: (m) => `row-${m._id}`,
+			onActivate: () => {},
+			onAction: (k) => actions.push(k),
+		});
+		onKeydown(key('j')); // focus 'a'
+		beginChord('g');
+		onKeydown(key('s'));
+		onKeydown(key('j'));
+		expect(actions).toEqual([]);
+		expect(focusedIndex.value).toBe(0);
+
+		clearPendingChord();
+		onKeydown(key('s'));
+		expect(actions).toEqual(['s']);
 	});
 });

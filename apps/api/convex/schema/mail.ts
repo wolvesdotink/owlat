@@ -1,19 +1,36 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
+import { spamVerdictValidator, draftQualityValidator } from '../lib/convexValidators';
 import {
+	mailAttachmentShareScanValidator,
+	mailAttachmentShareScopeValidator,
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
+	mailSnippetVariableValidator,
+	mailTriageVerbValidator,
+	mailUnsubscribeValidator,
+} from '../lib/mailContentValidators';
+import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
 	mailViewModeValidator,
+	mailReadingPaneValidator,
+	mailListSizeValidator,
 	mailInboxModeValidator,
+	mailSortOrderValidator,
 	mailNotifyAboutValidator,
-	mailUnsubscribeValidator,
-	spamVerdictValidator,
-	draftQualityValidator,
-} from '../lib/convexValidators';
+	mailUndoSendSecondsValidator,
+	mailMarkReadPolicyValidator,
+	mailQuietHoursValidator,
+	mailDailyBriefEmailValidator,
+	mailTrashAutoPurgeDaysValidator,
+	mailShareLinkExpiryDaysValidator,
+	mailSwipeActionValidator,
+	mailShortcutPresetValidator,
+	mailShortcutOverridesValidator,
+} from '../lib/mailSettingsValidators';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
@@ -374,6 +391,56 @@ export const mailTables = {
 		// query (e.g. an ops sweep) needs it.
 		.index('by_account', ['accountId']),
 
+	// Upload-based archive import (idea 50) — the migration path for people who
+	// have no live account left to connect.
+	//
+	// `mailboxMigrations` above walks a CONNECTED external mailbox over IMAP. That
+	// covers a move; it does nothing for the far more common shape of the problem:
+	// a Gmail Takeout `.mbox` on a laptop, a `.eml` saved out of a dead client, an
+	// archive from a provider that closed. This table is the same job idea over
+	// bytes the user hands us instead of a server we can log into.
+	//
+	// RESUMABILITY is `cursorBytes`: the byte offset into the uploaded archive up
+	// to which every message has been committed. The parse (`@owlat/mail-message`)
+	// and the split (`@owlat/shared/mboxArchive`) both run in an action that
+	// budgets itself and reschedules, so an archive larger than one action's
+	// lifetime finishes across as many runs as it takes and a failed run re-reads
+	// only the messages after the last commit. The offsets are BYTES because the
+	// action decodes the archive as latin1 — one char per byte.
+	mailArchiveImports: defineTable({
+		userId: v.string(), // BetterAuth user (mailbox owner who uploaded it)
+		mailboxId: v.id('mailboxes'),
+		// The uploaded archive. Deleted when the job reaches a terminal state —
+		// the imported messages are the artifact, not the upload.
+		storageId: v.optional(v.id('_storage')),
+		// What the user picked it from, for the wizard's copy only.
+		filename: v.string(),
+		// `mbox` splits on `From_` separators; `eml` is one message, whole file.
+		format: v.union(v.literal('mbox'), v.literal('eml')),
+		totalBytes: v.number(),
+		// Resume point: bytes fully committed. Never moves backwards.
+		cursorBytes: v.number(),
+		messagesImported: v.number(),
+		// Duplicates (same Message-ID already in the mailbox) and entries the
+		// parser could not turn into a message. Counted, never silently dropped.
+		messagesSkipped: v.number(),
+		// Gmail Takeout labels created on the way in (`X-Gmail-Labels`).
+		labelsCreated: v.number(),
+		status: v.union(
+			v.literal('importing'),
+			v.literal('completed'),
+			v.literal('failed'),
+			v.literal('cancelled')
+		),
+		lastError: v.optional(v.string()),
+		startedAt: v.number(),
+		completedAt: v.optional(v.number()),
+		updatedAt: v.number(),
+	})
+		// The wizard reads the caller's most recent job for their mailbox.
+		.index('by_mailbox', ['mailboxId'])
+		.index('by_user', ['userId']),
+
 	// Staged "move my mailbox here" job — the full move of a connected external
 	// mailbox onto an Owlat-hosted mailbox on the SAME address, ending with the
 	// external account demoted to a READ-ONLY ARCHIVE. Distinct from
@@ -470,6 +537,16 @@ export const mailTables = {
 		subject: v.string(),
 		normalizedSubject: v.string(),
 		snippet: v.string(),
+		// DEEP BODY SEARCH (idea 32) — a normalized ~8KB excerpt of the same body
+		// `snippet` takes its first 200 characters from, indexed by
+		// `search_message_bodies` below. WIDENS the sealed-at-rest plaintext
+		// carve-out documented at that index, so it is written ONLY when the
+		// instance opt-in `instanceSettings.isBodySearchIndexingEnabled` is on;
+		// ABSENT is the default and is exactly the pre-idea-32 behaviour. Turning
+		// the switch back off schedules a sweep that clears it again
+		// (`mail/bodySearchBackfill.purgeSearchBodies`). See `mail/searchBody.ts`
+		// and docs/adr/0059-widened-body-search-carve-out.md.
+		searchBody: v.optional(v.string()),
 
 		// Storage refs
 		rawStorageId: v.id('_storage'),
@@ -492,6 +569,16 @@ export const mailTables = {
 		customFlags: v.array(v.string()),
 		labelIds: v.array(v.id('mailLabels')),
 
+		// When this message was moved INTO the trash (idea 67). Stamped by
+		// `moveMessagesToFolder` on a trash destination and cleared on the way
+		// out, so it always answers "how long has this been in the bin" — which
+		// `receivedAt` cannot (a year-old message trashed today) and `updatedAt`
+		// cannot either (any flag change moves it). Read only by the opt-in
+		// trash auto-purge sweep; absent on every row trashed before the field
+		// existed, and the sweep treats absent as "not yet dateable" rather than
+		// as "old", so turning the setting on can never destroy mail whose age in
+		// the bin is unknown.
+		trashedAt: v.optional(v.number()),
 		// Snooze (P8): hides the message from the inbox until the timestamp
 		// passes; a 1-min cron sweep returns it (and bumps the thread
 		// `lastMessageAt` so the inbox sort floats it back to the top).
@@ -505,6 +592,14 @@ export const mailTables = {
 		// conversation resurfaces the moment the awaited reply lands. If no reply
 		// arrives, the normal snooze sweep resurfaces it once at the cap.
 		isSnoozeUntilReply: v.optional(v.boolean()),
+
+		// Split inbox (idea 24): the named inbox SECTION a `pinToSection` filter
+		// filed this message into. Purely a reading arrangement — the row stays in
+		// whatever folder it was delivered to, and a message with no section simply
+		// renders in the trailing "Everything else" section, so absent = exactly
+		// today's flat inbox. Stamped at delivery (deliveryPipeline/routing) and by
+		// the retroactive sweep (mail/filterRun.ts); never read by IMAP.
+		pinnedSection: v.optional(v.string()),
 
 		// List mail: parsed List-Unsubscribe / List-Unsubscribe-Post target
 		// (RFC 2369 / RFC 8058), extracted once at ingest from the raw header
@@ -652,8 +747,21 @@ export const mailTables = {
 		// Folder-scoped arrival order — backs the per-folder list page directly (no
 		// mailbox-wide overfetch-then-filter that starved minority folders).
 		.index('by_folder_and_received', ['folderId', 'receivedAt'])
+		// Split inbox (idea 24) — ONE INDEX PER SECTION SLICE, which is what keeps
+		// the sectioned renderer from starving a section. Paging a single mixed
+		// feed and bucketing it client-side would let a chatty section eat the
+		// whole page and leave a quiet one permanently empty; instead each section
+		// walks its OWN arrival-ordered range with its OWN limit. The `by_seen`
+		// sibling backs the per-section unread count as a bounded indexed take
+		// rather than a scan of the section.
+		.index('by_folder_and_section_and_received', ['folderId', 'pinnedSection', 'receivedAt'])
+		.index('by_folder_and_section_and_seen', ['folderId', 'pinnedSection', 'flagSeen'])
 		// Mailbox-scoped snooze range — backs the "Snoozed" view without scanning
 		// the whole mailbox.
+		// Trash auto-purge (idea 67): expired-first within one bin. `trashedAt` is
+		// optional, so the sweep pins the range with `gte(0)` to exclude the rows
+		// that carry no stamp at all.
+		.index('by_folder_and_trashed', ['folderId', 'trashedAt'])
 		.index('by_mailbox_and_snoozed', ['mailboxId', 'snoozedUntil'])
 		.index('by_thread', ['threadId'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])
@@ -682,11 +790,37 @@ export const mailTables = {
 		.searchIndex('search_messages', {
 			searchField: 'snippet',
 			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
+		})
+		// THE WIDENED CARVE-OUT (idea 32, ADR-0059). Same exception as above, one
+		// order of magnitude deeper: `searchBody` is a ~8KB normalized excerpt
+		// instead of a 200-character one, so a phrase at character 1,400 of a
+		// contract is findable instead of silently absent. Because that is a real
+		// change in what a database dump reveals, the column is written ONLY on an
+		// instance that opted in (`instanceSettings.isBodySearchIndexingEnabled`);
+		// everywhere else it is absent and this index is empty, which costs
+		// nothing and matches the snippet-only behaviour exactly.
+		//
+		// A SECOND INDEX, NOT A REPOINTED ONE: repointing `search_messages` at
+		// `searchBody` would drop every message delivered before the switch out of
+		// search until a backfill finished. The read path (`mail/searchBody.ts`
+		// `resolveBodySearchMode`) picks this index only once the per-mailbox
+		// backfill reports `completed`, so search never narrows behind the user's
+		// back.
+		.searchIndex('search_message_bodies', {
+			searchField: 'searchBody',
+			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
 		}),
 
 	// Conversation grouping across folders. Aggregates updated by mutations.
 	mailThreads: defineTable({
 		mailboxId: v.id('mailboxes'),
+		// ANTI-LOOP MARKER (idea 29). Set on the thread of a daily brief this
+		// deployment mailed to the owner's own mailbox, so the NEXT brief skips it.
+		// Without it the brief is ordinary inbox mail from a known correspondent
+		// and would happily become an item in tomorrow's digest — a digest of the
+		// digest, compounding daily. Absent on every other thread, so the brief
+		// builder's behaviour for real mail is unchanged.
+		isSelfDeliveredBrief: v.optional(v.boolean()),
 		normalizedSubject: v.string(),
 		participants: v.array(v.string()),
 		messageCount: v.number(),
@@ -892,6 +1026,27 @@ export const mailTables = {
 				generatedAt: v.number(),
 			})
 		),
+		// Muted conversation (`mail/mute.ts`). Set when the owner mutes the thread:
+		// new inbound mail on it skips the inbox (the delivery pipeline routes it
+		// straight to Archive), it never fires a desktop notification, and it is
+		// excluded from the Reply Queue. Absent ⇒ exactly today's behaviour; the
+		// mute is a property of the CONVERSATION, not of the sender, so muting one
+		// noisy thread never silences the same person elsewhere.
+		mutedAt: v.optional(v.number()),
+		// Per-thread "notify me when they reply" (`mail/threadAlerts.ts`). Set when
+		// the owner asks to be alerted about this ONE conversation: a new message
+		// on it fires a desktop toast even when the notification scope is
+		// people-only and even inside quiet hours. The opt-in twin of `mutedAt` —
+		// absent ⇒ exactly today's behaviour, and the two are mutually exclusive
+		// (arming the alert unmutes, muting disarms the alert).
+		notifyOnReplyAt: v.optional(v.number()),
+		// Transient "came back from snooze" marker (ported from the Team Inbox's
+		// `inboxThreads.snoozeReturnedAt`). Stamped by the snooze wake sweep, shown
+		// as a quiet chip on the list row and in the reader header, and cleared the
+		// first time the thread is opened — so a resurfaced conversation is
+		// recognisable as "you asked for this back" rather than looking like new
+		// mail. Advisory display state only: nothing routes off it.
+		snoozeReturnedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -974,7 +1129,151 @@ export const mailTables = {
 		mailboxId: v.id('mailboxes'),
 		name: v.string(),
 		color: v.optional(v.string()),
+		// Nesting (idea 38), mirroring `mailFolders.parentId`. A label's `name` is
+		// its LEAF segment only — `Work/Clients/Acme` is three rows, each pointing
+		// at its parent — so renaming a branch never has to rewrite descendants.
+		// Absent = a root label, which is exactly what every pre-nesting row is.
+		parentId: v.optional(v.id('mailLabels')),
+		// Manual sibling order, ascending; ties break on name so a fresh mailbox
+		// (every row at the default 0) still renders alphabetically as before.
+		order: v.optional(v.number()),
+		// Pinned labels sort above their unpinned siblings at the same depth.
+		isPinned: v.optional(v.boolean()),
 		createdAt: v.number(),
+	})
+		.index('by_mailbox', ['mailboxId'])
+		.index('by_mailbox_and_name', ['mailboxId', 'name'])
+		// Sibling lookup for the tree build, the create-time dedup within one
+		// parent, and the reparent cycle guard.
+		.index('by_mailbox_and_parent', ['mailboxId', 'parentId']),
+
+	// Attachment index — one row per (message, attachment part).
+	//
+	// `mailMessages.attachments` is an ARRAY, which Convex cannot index: a
+	// `filename:` search could only ever be a post-filter over a page of
+	// arrival-ordered rows, and there was no way to browse attachments at all.
+	// This junction table is the indexable mirror of that array, exactly as
+	// `semanticFileContacts` mirrors `semanticFiles.contactIds`
+	// (schema/knowledge.ts).
+	//
+	// Written by `mail/attachmentIndex.ts` from every path that inserts a
+	// `mailMessages` row (inbound delivery, sent mail, IMAP APPEND, IMAP COPY)
+	// and torn down by the same module when a message row is deleted. Existing
+	// mail is picked up by the resumable backfill (`mail/attachmentBackfill.ts`),
+	// so the Files view is complete rather than "everything since the deploy".
+	//
+	// The row DENORMALIZES `fromAddress` / `receivedAt` / `folderId` off the
+	// parent message so the Files view can facet and sort without loading every
+	// message; those three are immutable in practice except for `folderId`,
+	// which the index deliberately does not chase (a moved message's file still
+	// lists — the Files view is a mailbox-wide index, not a folder view).
+	mailAttachments: defineTable({
+		mailboxId: v.id('mailboxes'),
+		messageId: v.id('mailMessages'),
+		filename: v.string(),
+		contentType: v.string(),
+		size: v.number(),
+		receivedAt: v.number(),
+		// Denormalized sender, lowercased — the Files view's "From" facet.
+		fromAddress: v.string(),
+		folderId: v.optional(v.id('mailFolders')),
+		// MIME part path, so the Files view can extract exactly the same part the
+		// reader does (`extractAttachmentAt`).
+		partIndex: v.string(),
+	})
+		// Teardown + "does this message already have rows?" (backfill idempotence).
+		.index('by_message', ['messageId'])
+		// The Files view's default listing: newest first across the mailbox.
+		.index('by_mailbox_and_received', ['mailboxId', 'receivedAt'])
+		// The "From" facet, newest first within one sender.
+		.index('by_mailbox_and_from', ['mailboxId', 'fromAddress', 'receivedAt'])
+		// What makes `filename:` an INDEXED narrowing rather than a post-filter.
+		.searchIndex('search_filenames', {
+			searchField: 'filename',
+			filterFields: ['mailboxId'],
+		}),
+
+	// Resumable backfill of `mailAttachments` over mail that predates the index.
+	//
+	// One row per mailbox (found/replaced via `by_mailbox`), so a re-run resumes
+	// or restarts rather than forking a second walk. The job pages
+	// `mailMessages` by cursor and writes the junction rows for each page,
+	// rescheduling itself — the same shape as `mail/labels.stripLabelReferences`,
+	// with a row on top so the Files view can show progress and the user can
+	// cancel a walk mid-flight.
+	mailAttachmentBackfillJobs: defineTable({
+		mailboxId: v.id('mailboxes'),
+		status: v.union(
+			v.literal('running'),
+			v.literal('completed'),
+			v.literal('cancelled'),
+			v.literal('failed')
+		),
+		// Resumable pagination cursor over `mailMessages` (Convex continueCursor).
+		cursor: v.optional(v.string()),
+		scannedCount: v.number(),
+		indexedCount: v.number(),
+		startedAt: v.number(),
+		updatedAt: v.number(),
+		finishedAt: v.optional(v.number()),
+		errorMessage: v.optional(v.string()),
+	}).index('by_mailbox', ['mailboxId']),
+
+	// Resumable backfill of `mailMessages.searchBody` over mail that predates the
+	// deep-search opt-in (idea 32). Same one-row-per-mailbox shape as
+	// `mailAttachmentBackfillJobs` above, with two differences that matter:
+	//
+	//  - `mode` — an `index` walk WRITES excerpts; a `purge` walk CLEARS them. The
+	//    purge is what makes the opt-out real: turning the instance switch off
+	//    stops new writes AND removes the plaintext already stored. Only a
+	//    `completed` `index` job opens the `search_message_bodies` read path
+	//    (`mail/searchBody.isBodySearchIndexComplete`), so a completed purge can
+	//    never be mistaken for a ready index.
+	//  - the walk runs from an ACTION, not a mutation: a large body lives in a
+	//    storage blob and blob contents are unreadable from a query/mutation.
+	mailBodySearchBackfillJobs: defineTable({
+		mailboxId: v.id('mailboxes'),
+		mode: v.union(v.literal('index'), v.literal('purge')),
+		status: v.union(
+			v.literal('running'),
+			v.literal('completed'),
+			v.literal('cancelled'),
+			v.literal('failed')
+		),
+		// Resumable pagination cursor over `mailMessages` (Convex continueCursor).
+		cursor: v.optional(v.string()),
+		scannedCount: v.number(),
+		/** Rows whose `searchBody` this walk actually wrote (or cleared). */
+		indexedCount: v.number(),
+		startedAt: v.number(),
+		updatedAt: v.number(),
+		finishedAt: v.optional(v.number()),
+		errorMessage: v.optional(v.string()),
+	}).index('by_mailbox', ['mailboxId']),
+
+	// Saved searches — a named, re-runnable Postbox query.
+	//
+	// `rawQuery` is the query STRING exactly as typed, not the parsed payload:
+	// the grammar is the user's, the parser is free to grow (negation, OR, new
+	// operators all landed after this table), and re-parsing on read means a
+	// saved search picks up every parser fix instead of freezing the shape it
+	// had on the day it was saved. It is also what the `?q=` URL carries, so a
+	// saved search and a bookmarked one are the same thing.
+	//
+	// Mailbox-scoped, like labels and snippets: a query naming this mailbox's
+	// folders and labels is meaningless in another one.
+	mailSavedSearches: defineTable({
+		mailboxId: v.id('mailboxes'),
+		name: v.string(),
+		rawQuery: v.string(),
+		// Pinned entries render in the folder rail; the rest live on the search
+		// page. Kept explicit rather than derived so unpinning is not a delete.
+		isPinned: v.boolean(),
+		// Manual rail order, ascending. Assigned at insert (append to the end);
+		// ties break on creation time so a duplicated order can't reshuffle.
+		order: v.number(),
+		createdAt: v.number(),
+		updatedAt: v.number(),
 	})
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_mailbox_and_name', ['mailboxId', 'name']),
@@ -1099,7 +1398,14 @@ export const mailTables = {
 	mailAuthFailures: defineTable({
 		address: v.string(), // lowercase canonical
 		ip: v.optional(v.string()),
-		scope: v.union(v.literal('imap'), v.literal('smtp')),
+		// Which credential prompt the failure came from. `recovery-kit` is the
+		// Sealed-Mail password re-prompt (plan idea 55); it shares the table but
+		// NOT the budget. Both readers count only the scopes they own —
+		// `e2ee/memberKeys.ts` counts `recovery-kit`, `mail/authRateLimit.ts`
+		// counts `imap`/`smtp` — so a fumbled settings prompt can never lock a
+		// mail client out of submission, nor a mail client the settings prompt.
+		// A new scope MUST be filtered in by its own reader, never inherited.
+		scope: v.union(v.literal('imap'), v.literal('smtp'), v.literal('recovery-kit')),
 		occurredAt: v.number(),
 	})
 		.index('by_address_and_time', ['address', 'occurredAt'])
@@ -1149,19 +1455,65 @@ export const mailTables = {
 					v.literal('markFlagged'),
 					v.literal('forward'),
 					v.literal('delete'),
+					// Split inbox (idea 24): file the message into a NAMED SECTION of
+					// the inbox instead of moving it out of sight. The message stays in
+					// Inbox — `pinnedSection` on the row is the only thing that changes —
+					// so a section is a reading arrangement, never a hiding place.
+					v.literal('pinToSection'),
 					v.literal('discard')
 				),
 				folderId: v.optional(v.id('mailFolders')),
 				labelId: v.optional(v.id('mailLabels')),
 				forwardTo: v.optional(v.string()),
+				// For `pinToSection` — the section's display name, which IS its
+				// identity (there is no section table; the set of sections is derived
+				// from the enabled filters that name one).
+				sectionName: v.optional(v.string()),
 			})
 		),
+		// ONE grouping level (idea 39): `all` AND-s the conditions, `any` OR-s
+		// them. Absent = `all`, which is exactly the pre-toggle behavior, so no
+		// existing filter changes meaning. There is deliberately no nesting —
+		// mixed AND/OR trees are a second grammar, and "define two filters" has
+		// always been the escape hatch.
+		matchType: v.optional(v.union(v.literal('all'), v.literal('any'))),
 		stopProcessing: v.boolean(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_mailbox_and_priority', ['mailboxId', 'priority']),
+
+	// Resumable "run this filter on existing mail" job.
+	//
+	// A new filter has never seen the backlog that motivated it. This walks
+	// `mailMessages` by cursor, re-evaluates ONE filter's conditions per page and
+	// applies its SAFE actions (label / move / mark read / mark flagged) — never
+	// `forward`, `delete` or `discard`, which are irreversible and were authored
+	// for the inbound moment, not for a retroactive sweep over years of mail.
+	//
+	// One row per filter (`by_filter`), so re-running resumes or restarts rather
+	// than forking a second walk; the row is the progress readout and the cancel
+	// switch. Same shape as `mailAttachmentBackfillJobs`.
+	mailFilterRunJobs: defineTable({
+		mailboxId: v.id('mailboxes'),
+		filterId: v.id('mailFilters'),
+		status: v.union(
+			v.literal('running'),
+			v.literal('completed'),
+			v.literal('cancelled'),
+			v.literal('failed')
+		),
+		cursor: v.optional(v.string()),
+		scannedCount: v.number(),
+		matchedCount: v.number(),
+		startedAt: v.number(),
+		updatedAt: v.number(),
+		finishedAt: v.optional(v.number()),
+		errorMessage: v.optional(v.string()),
+	})
+		.index('by_filter', ['filterId'])
+		.index('by_mailbox', ['mailboxId']),
 
 	// Aliases — alternate addresses (e.g. marcel+sales@hl.camp) that
 	// deliver into the same mailbox. Cheap rewrites at the MX layer.
@@ -1252,6 +1604,65 @@ export const mailTables = {
 		updatedAt: v.number(),
 	}).index('by_mailbox_and_sender', ['mailboxId', 'senderEmail']),
 
+	// Per-sender remote-image allowlist ("Always show images from this sender").
+	// The reader blocks remote images by default; a row here means the sandboxed
+	// iframe loads this sender's real images on render instead of asking again on
+	// every issue of the same newsletter.
+	//
+	// The row is a narrow grant, not a blanket "trust". Tracking-pixel stripping
+	// (packages/shared/src/postboxTrackers.ts) stays ON for allowlisted senders —
+	// only the explicit per-message "Load everything" escalation lifts that, and
+	// it is never persisted. Presence is the whole record; there is no "blocked"
+	// state, so revoking is a delete and absent = exactly today's behaviour.
+	mailSenderImageAllowlist: defineTable({
+		mailboxId: v.id('mailboxes'),
+		senderEmail: v.string(), // canonical lowercase
+		createdAt: v.number(),
+	}).index('by_mailbox_and_sender', ['mailboxId', 'senderEmail']),
+
+	// Per-sender triage tally (idea 27) — the observation behind "you archive
+	// everything from noreply@x, always archive it?".
+	//
+	// The rule engine is powerful and entirely manual: the system can watch
+	// someone archive-on-sight from the same sender forty times and say nothing.
+	// One row per (mailbox, sender, verb), incremented by the triage mutations in
+	// mail/messageActions.ts. This is a COUNTER, not a log — no message ids, no
+	// subjects, nothing that outlives the mail it describes.
+	//
+	// `count` is messages triaged; `sessions` is how many separate triage ACTIONS
+	// produced them. Both gate a suggestion, so one bulk sweep over a backlog can
+	// never manufacture a rule on its own — the recurrence gate the edit-learning
+	// flywheel (mailVoiceProfiles.derivedAdjustments) uses, applied to triage.
+	//
+	// A suggestion is only ever an OFFER, exactly like autonomySuggestions:
+	// `dismissedAt` records that the user declined it (and stops it coming back),
+	// `actedFilterId` names the rule they accepted it into — which is also what
+	// the undo deletes. Bounded per mailbox and pruned by retention, so the table
+	// stays a small rolling picture of recent habits rather than a history.
+	mailTriageTallies: defineTable({
+		mailboxId: v.id('mailboxes'),
+		senderAddress: v.string(), // canonical lowercase
+		// The verbs that map onto a filter action a user would plausibly automate.
+		verb: mailTriageVerbValidator,
+		count: v.number(),
+		sessions: v.number(),
+		firstAt: v.number(),
+		lastAt: v.number(),
+		// The user declined this suggestion. Set once; the suggestion never
+		// returns for this sender+verb (a nag is worse than no suggestion).
+		dismissedAt: v.optional(v.number()),
+		// The rule the user accepted this suggestion into. Present ⇒ the reader
+		// shows the rule (with an undo) instead of the offer.
+		actedFilterId: v.optional(v.id('mailFilters')),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		// The reader's footer read: every verb tallied for one sender.
+		.index('by_mailbox_and_sender', ['mailboxId', 'senderAddress'])
+		// Eviction + retention both walk least-recently-touched first.
+		.index('by_mailbox_and_last', ['mailboxId', 'lastAt'])
+		.index('by_last', ['lastAt']),
+
 	// Per-mailbox signatures. Default-on-new-draft when isDefault=true.
 	mailSignatures: defineTable({
 		mailboxId: v.id('mailboxes'),
@@ -1273,6 +1684,12 @@ export const mailTables = {
 		name: v.string(),
 		shortcut: v.string(),
 		bodyHtml: v.string(),
+		// Typed variables the composer resolves at insertion (plan idea 13):
+		// recipient facts, the sender identity, the date, or a prompt-on-insert
+		// question. Optional so existing rows read as undefined — an undeclared
+		// token still resolves through the client's implicit name table, so
+		// absent = exactly today's `{{firstName}}` behaviour.
+		variables: v.optional(v.array(mailSnippetVariableValidator)),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -1302,18 +1719,55 @@ export const mailTables = {
 		// undefined; the reader defaults it to 'comfortable'.
 		density: v.optional(mailDensityValidator),
 		// Inbox list view mode: 'flat' (single message list), 'conversations'
-		// (thread-grouped), or 'categories' (smart-inbox sections). Inbox-only —
-		// other folders always render flat. Optional so existing rows read as
-		// undefined; the reader defaults it to 'flat'.
+		// (thread-grouped), 'categories' (smart-inbox sections), 'bundled' (the
+		// flat feed with consecutive low-signal runs folded into one row per
+		// category) or 'sections' (the split inbox — the sections a user's
+		// `pinToSection` filter rules name). Inbox-only — other folders always
+		// render flat. Optional so existing rows read as undefined; the reader
+		// defaults it to 'flat'.
 		viewMode: v.optional(mailViewModeValidator),
+		// Reading-pane layout: 'right' (the reader beside the list — the geometry
+		// that shipped before this control existed), 'bottom' (a full-width list
+		// above the reader) or 'off' (no reading pane; opening a message
+		// navigates). Optional so existing rows read as undefined; the layout
+		// defaults it to 'right'.
+		readingPane: v.optional(mailReadingPaneValidator),
+		// Where the divider between the list and the reader sits, in CSS pixels —
+		// one field per axis, because the two layouts split along different ones
+		// and a single number would carry a nonsensical size across a pane switch.
+		// `listWidth` applies to the 'right' pane, `listHeight` to 'bottom'.
+		// Unbounded on the wire; the client clamps on read and write, so an
+		// out-of-range row resolves to a sane layout instead of a broken one.
+		// Optional so existing rows read as undefined; absent ⇒ 384px / 320px,
+		// exactly the hardcoded geometry.
+		listWidth: v.optional(mailListSizeValidator),
+		listHeight: v.optional(mailListSizeValidator),
 		// Inbox landing mode: 'today' (focused single-column landing view) vs
 		// 'browse' (the full three-pane folder UI). Persisted as the last-used
 		// mode. Optional so existing rows read as undefined; the reader defaults
 		// it to 'today'.
 		inboxMode: v.optional(mailInboxModeValidator),
+		// Message-list sort order: 'newest' (arrival descending) vs 'oldest'
+		// (ascending, for clearing a backlog front to back). Date direction only.
+		// Optional so existing rows read as undefined; the list defaults it to
+		// 'newest' — exactly the hardcoded order it had before the control.
+		sortOrder: v.optional(mailSortOrderValidator),
 		// Play a short confirmation sound when a message is dispatched. Optional so
 		// existing rows read as undefined; the reader defaults it OFF (opt-in).
 		isSendSoundOn: v.optional(v.boolean()),
+		// Undo-send window, in seconds: how long a sent message waits in
+		// `pending_send` before it dispatches (0 = Off, dispatch immediately and
+		// show no undo toast). Optional so existing rows read as undefined; the
+		// composer then sends no `undoSendDelayMs` at all and the server's
+		// DEFAULT_UNDO_SEND_DELAY_MS (30s) applies — exactly today's behaviour.
+		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
+		// When an opened conversation loses its unread flags: 'immediate' (mark on
+		// render), 'after-dwell' (mark after a short visible dwell, cancelled by
+		// navigating away first) or 'manual' (never automatic — the reader offers
+		// an explicit mark-read button). Optional so existing rows read as
+		// undefined; the reader defaults it to 'immediate', which is exactly the
+		// mark-on-render behaviour it had before this control existed.
+		markReadPolicy: v.optional(mailMarkReadPolicyValidator),
 		// Desktop notification scope: which new inbox mail fires a native toast.
 		// Optional so existing rows read as undefined; the desktop reader defaults it
 		// to 'people-important' once smart categories exist and 'everything'
@@ -1324,15 +1778,135 @@ export const mailTables = {
 		// truthful). Optional so existing rows read as undefined; the reader defaults
 		// it ON (badge counts everything — the pre-existing behavior).
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
+		// Quiet hours: a local-time window (with a weekday mask) during which
+		// desktop toasts are held back and rolled into a single "N while you were
+		// away" summary when the window ends. Evaluated client-side in
+		// `lib/desktop/notificationRules` because the minutes are the USER's local
+		// clock, not a UTC instant. Optional so existing rows read as undefined;
+		// absent ⇒ no quiet window at all, exactly today's behaviour.
+		quietHours: v.optional(mailQuietHoursValidator),
+		// Hide message previews: a toast then carries a generic "New message" line
+		// instead of the sender and subject (for shared or projected screens). The
+		// notification is still actionable — only its body changes. Optional so
+		// existing rows read as undefined; the reader defaults it OFF, which is
+		// exactly the sender+subject preview that shipped before it existed.
+		isHidePreviewOn: v.optional(v.boolean()),
 		// HEY-style first-time-sender screener. When ON, mail from a sender who is
 		// not a known contact / VIP / already-accepted is held OUT of the Reply
 		// Queue and clarification loop until the owner accepts them. Optional so
 		// existing rows read as undefined; the reader defaults it OFF (opt-in), so
 		// a deploy that never toggles it keeps today's behaviour.
 		isSenderScreenerOn: v.optional(v.boolean()),
+		// Daily-brief email delivery (idea 29): the opt-in `mailDailyBriefs`
+		// documented but never had. Absent ⇒ nothing is ever mailed, which is
+		// exactly today's behaviour. `minute` is minutes past the user's LOCAL
+		// midnight and `utcOffsetMinutes` carries the offset the cron needs, since
+		// the sender has no request (and therefore no clock) behind it.
+		dailyBriefEmail: v.optional(mailDailyBriefEmailValidator),
+		// When a brief was last mailed to this user. The delivery cron compares
+		// its LOCAL day against today's, which is what makes the send
+		// at-most-once-per-day and idempotent across cron ticks and retries.
+		lastDailyBriefEmailAt: v.optional(v.number()),
+		// Trash auto-purge horizon in days (idea 67): how long a trashed message
+		// survives before `mail/trashRetention.ts` deletes it for good. `0` is
+		// "Never", and so is ABSENT — Owlat has never auto-emptied a trash folder,
+		// so an untouched row keeps exactly today's behaviour and the sweep only
+		// looks at rows that opted in.
+		trashAutoPurgeDays: v.optional(mailTrashAutoPurgeDaysValidator),
+		// Default lifetime, in days, of an attachment share link this user creates
+		// (idea 10). Absent ⇒ the shared default of 14 days; share links did not
+		// exist before this field, so there is no older behaviour to preserve.
+		shareLinkExpiryDays: v.optional(mailShareLinkExpiryDaysValidator),
+		// What a horizontal swipe on a thread row does, per direction (idea 21).
+		// Touch and pen only. Absent ⇒ the default mapping (left archives, right
+		// snoozes) rather than "off": rows had no touch verbs at all before this,
+		// so there is no earlier behaviour for an untouched row to preserve. A
+		// user who wants a direction inert stores 'none' there.
+		swipeLeftAction: v.optional(mailSwipeActionValidator),
+		swipeRightAction: v.optional(mailSwipeActionValidator),
+		// When this user dismissed the one-time "your mail is sealed" nudge (idea
+		// 55) — the pointer from the inbox to the Preferences card that explains
+		// sealing and offers the recovery kit. A TIMESTAMP rather than a boolean so
+		// the strip can be brought back deliberately later (a re-nudge after a key
+		// rotation, say) by comparing against the event, instead of needing a
+		// second flag. ABSENT means "not shown yet", not "already seen": the nudge
+		// is new, so there is no earlier behaviour for an untouched row to
+		// preserve — the same reasoning `shareLinkExpiryDays` uses — and it is
+		// gated on the `sealedMail` flag, which is off by default.
+		// Keyboard map this user drives the app with (idea 43b): a named preset
+		// plus their own per-shortcut remaps on top. Absent ⇒ the shipped 'owlat'
+		// map with no remaps, which is exactly the keyboard before the setting
+		// existed. The registry that consumes both lives in the web app; the
+		// backend only stores the choice.
+		shortcutPreset: v.optional(mailShortcutPresetValidator),
+		shortcutOverrides: v.optional(mailShortcutOverridesValidator),
+		sealedMailNudgeSeenAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),
+
+	// Attachment share links (idea 10) — the file the composer took OUT of a
+	// message and put behind a URL instead.
+	//
+	// WHY A ROW AND NOT JUST A SIGNED URL. The sealed-blob proxy already hands
+	// out capability URLs, but those are minted for a caller the query site just
+	// authorized and they die in an hour. A share link is the opposite: it is
+	// handed to a stranger, it has to survive for weeks, and — because it does —
+	// its owner must be able to see it in a list and kill it. None of that is
+	// expressible in a signature; it needs a record.
+	//
+	// THE BYTES. `storageId` is the SAME blob the draft attachment used: the
+	// composer detaches the part from the draft rather than deleting it, so
+	// nothing is re-uploaded and the file never exists twice. That also means the
+	// row OWNS the blob from then on — the draft no longer knows about it, so if
+	// this row does not delete it, nothing will. It goes optional precisely so
+	// "the bytes are gone" is representable: revocation and the expiry sweep both
+	// reclaim storage immediately and clear the field, while the record survives
+	// so the management list can still explain a link a recipient is asking about.
+	//
+	// THE SCAN GATE. A row only exists after the same ClamAV path the outbound
+	// send uses returned something other than `infected`, and `scanVerdict`
+	// records which outcome opened the door. Sharing must not be the hole that
+	// lets a file this instance would refuse to SEND reach the internet anyway.
+	mailAttachmentShares: defineTable({
+		mailboxId: v.id('mailboxes'),
+		// BetterAuth user id of the creator, so the management list is the acting
+		// person's own links even inside a shared team mailbox.
+		userId: v.string(),
+		// The blob, while it still exists. Absent ⇒ reclaimed (revoked or swept).
+		storageId: v.optional(v.id('_storage')),
+		filename: v.string(),
+		contentType: v.string(),
+		size: v.number(),
+		// The unguessable capability. 32 chars of the URL alphabet (192 bits) —
+		// this IS the access control for an `anyone`-scoped link.
+		token: v.string(),
+		scope: mailAttachmentShareScopeValidator,
+		// Provenance, for the list ("shared from this draft/message"). Optional
+		// because the source row can be discarded or purged long before the link
+		// lapses, and a dangling id must not strand the share.
+		sourceDraftId: v.optional(v.id('mailDrafts')),
+		sourceMessageId: v.optional(v.id('mailMessages')),
+		expiresAt: v.number(),
+		// Stamped by the owner's immediate revoke. Wins over `expiresAt` when both
+		// are true: revocation is the deliberate fact and the list must say so.
+		revokedAt: v.optional(v.number()),
+		// Which malware-scan outcome allowed the share ('clean' | 'skipped').
+		scanVerdict: mailAttachmentShareScanValidator,
+		// Serving telemetry, so an owner can tell a link nobody used from one that
+		// leaked. Incremented by the public route.
+		downloadCount: v.number(),
+		lastAccessedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		// The public serving route's only lookup.
+		.index('by_token', ['token'])
+		// The management list: this person's links inside one mailbox.
+		.index('by_mailbox_user', ['mailboxId', 'userId'])
+		// The expiry sweep walks rows in expiry order and stops at `now`, so a
+		// tick's work is proportional to what actually lapsed, not to the table.
+		.index('by_expiry', ['expiresAt']),
 
 	// Bidirectional commitment / deadline tracking (Daily Brief). A commitment is
 	// either a deadline SOMEONE GAVE the owner (`inbound` — "please send it by

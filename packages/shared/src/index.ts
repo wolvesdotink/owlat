@@ -30,6 +30,7 @@ export {
 	trySplitZone,
 	zoneRelativeHost,
 } from './dnsZone';
+export { boundedEditDistance, LOOKALIKE_MAX_EDITS } from './editDistance';
 export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost';
 export { SES_RELAY_PROOF_MAX_AGE_MS, MANDRILL_RELAY_PROOF_MAX_AGE_MS } from './deliveryProof';
 export {

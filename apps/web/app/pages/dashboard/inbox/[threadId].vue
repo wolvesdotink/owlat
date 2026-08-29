@@ -573,6 +573,12 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							</span>
 						</div>
 
+						<!-- The mirror of the Postbox reader's strip (idea 31): this
+						     message also sits in someone's personal mailbox, and it may
+						     already have been answered there. Read-only; renders nothing
+						     unless the viewer is permitted on both surfaces. -->
+						<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
+
 						<!-- Subject -->
 						<p v-if="message.subject" class="text-text-primary font-medium mb-2">
 							{{ message.subject }}

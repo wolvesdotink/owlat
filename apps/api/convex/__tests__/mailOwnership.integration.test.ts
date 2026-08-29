@@ -816,7 +816,7 @@ describe('mail.snooze ownership + counter math', () => {
 		const afterSnooze = await getFolder(t, a.inboxId);
 		expect(afterSnooze?.unseenCount).toBe(0); // hidden ⇒ leaves the count
 
-		await t.mutation(api.mail.snooze.unsnooze, { messageId });
+		await t.mutation(api.mail.snooze.unsnoozeMany, { messageIds: [messageId] });
 		const afterUnsnooze = await getFolder(t, a.inboxId);
 		expect(afterUnsnooze?.unseenCount).toBe(1); // mirror: back in the count
 	});
@@ -835,7 +835,7 @@ describe('mail.snooze ownership + counter math', () => {
 		await t.mutation(api.mail.snooze.snooze, { messageId, until });
 		expect((await getFolder(t, a.inboxId))?.unseenCount).toBe(0);
 
-		await t.mutation(api.mail.snooze.unsnooze, { messageId });
+		await t.mutation(api.mail.snooze.unsnoozeMany, { messageIds: [messageId] });
 		expect((await getFolder(t, a.inboxId))?.unseenCount).toBe(0);
 	});
 

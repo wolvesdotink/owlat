@@ -79,7 +79,7 @@ const groupIcon = {
 							class="h-5 w-5 shrink-0"
 							:class="[
 								DELIVERABILITY_STATUS_PRESENTATION[item.status].className.split(' ').at(-1),
-								{ 'animate-spin': item.status === 'pending-dns' },
+								{ 'animate-spin motion-reduce:animate-none': item.status === 'pending-dns' },
 							]"
 						/>
 						<div class="min-w-0 flex-1">

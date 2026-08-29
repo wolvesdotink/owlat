@@ -162,7 +162,15 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 	 * must never silently vanish.
 	 */
 	async function queueSend(
-		payload: OfflineComposePayload
+		payload: OfflineComposePayload,
+		/**
+		 * The sender's undo-send window (plan idea 8), when they have set one.
+		 * Bounds the toast ONLY — the item stays un-queueable for as long as it is
+		 * queued either way. Deliberately NOT part of the payload: `sendOptions` is
+		 * replayed verbatim by the drain, which dispatches a drained item at once.
+		 * `0` (Off) is meaningful and must survive, so only `undefined` falls back.
+		 */
+		undoWindowMs?: number
 	): Promise<{ undoToken: string; sendAt: number }> {
 		const s = store();
 		if (!s) throw new Error('Send failed');
@@ -186,11 +194,13 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 		await refreshCounts(ns);
 		return {
 			undoToken: makeQueuedToken(ns, item.id),
-			// Same shape the server returns: the scheduled time, or now + the
-			// undo window (caller's delay when given, server-default otherwise).
+			// Same shape the server returns: the scheduled time, or now + the undo
+			// window (the caller's per-send delay, else their preferred window,
+			// else the server-matching default).
 			sendAt:
 				payload.sendOptions?.scheduledSendAt ??
-				Date.now() + (payload.sendOptions?.undoSendDelayMs ?? OFFLINE_QUEUE_UNDO_WINDOW_MS),
+				Date.now() +
+					(payload.sendOptions?.undoSendDelayMs ?? undoWindowMs ?? OFFLINE_QUEUE_UNDO_WINDOW_MS),
 		};
 	}
 

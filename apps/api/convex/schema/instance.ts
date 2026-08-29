@@ -69,6 +69,14 @@ export const instanceTables = {
 		// Plaintext SMTP is rejected by default with 550 5.7.10. Owners/admins
 		// may explicitly disable the floor for compatibility with legacy senders.
 		isInboundTlsRequired: v.optional(v.boolean()),
+		// DEEP BODY SEARCH (idea 32, ADR-0059). When on, delivery writes a ~8KB
+		// normalized excerpt to `mailMessages.searchBody` and mail search reads the
+		// `search_message_bodies` index instead of the 200-character `snippet` one.
+		// That WIDENS the sealed-at-rest plaintext carve-out, so it is opt-in:
+		// unset ⇒ off ⇒ byte-identical to the snippet-only behaviour. Flipping it
+		// back to false schedules a sweep that clears every excerpt already
+		// written. Admin-gated write via `workspaces/settings.update`.
+		isBodySearchIndexingEnabled: v.optional(v.boolean()),
 		// Trusted ARC forwarders (Sealed Mail A5): domains whose validated ARC seal
 		// (RFC 8617) we honour to RESCUE a DMARC fail on inbound forwarded mail —
 		// a mailing-list / forwarding message that broke DKIM but whose sealer

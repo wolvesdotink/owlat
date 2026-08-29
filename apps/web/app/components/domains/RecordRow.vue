@@ -117,7 +117,7 @@ const registrationSettled = computed(
 						>
 							<Icon
 								:name="getStatusIcon(domain.status)"
-								:class="['w-3 h-3', domain.status === 'registering' && 'animate-spin']"
+								:class="['w-3 h-3', domain.status === 'registering' && 'animate-spin motion-reduce:animate-none']"
 							/>
 							{{ statusLabel }}
 						</span>
@@ -173,7 +173,7 @@ const registrationSettled = computed(
 					:disabled="isForcing"
 					@click.stop="emit('forceVerify')"
 				>
-					<Icon v-if="isForcing" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isForcing" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					<Icon v-else name="lucide:wand-2" class="w-4 h-4" />
 					{{ t('components.domains.recordRow.forceVerify') }}
 					<span
@@ -200,7 +200,7 @@ const registrationSettled = computed(
 					<Icon
 						v-if="isVerifying || domain.status === 'registering'"
 						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
 					/>
 					<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
 					<template v-if="domain.status === 'registering'">{{
@@ -260,7 +260,7 @@ const registrationSettled = computed(
 						v-if="domain.status === 'registering'"
 						class="flex items-center gap-3 py-8 justify-center"
 					>
-						<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-info" />
+						<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-info" />
 						<p class="text-sm text-text-secondary">
 							{{ t('components.domains.recordRow.settingUp') }}
 						</p>

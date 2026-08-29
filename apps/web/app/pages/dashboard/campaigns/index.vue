@@ -73,8 +73,8 @@ onMounted(() => {
 	});
 });
 onUnmounted(() => {
-	unregisterShortcut('n');
-	unregisterShortcut('escape');
+	unregisterShortcut('global.newItem');
+	unregisterShortcut('global.close');
 });
 
 // The active pill drives a SERVER-SIDE status filter for the browse pills so the

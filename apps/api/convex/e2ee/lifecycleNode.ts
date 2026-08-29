@@ -17,6 +17,8 @@
  *     INSTANCE_SECRET (the versioned re-seal migration);
  *   - `exportRecoveryKit` (admin) — the ONLY sanctioned private-key egress: the
  *     armored private key + plain-language instructions for one address;
+ *   - `exportOwnRecoveryKit` (member) — the SAME egress, narrowed to the
+ *     caller's own address and gated on a password re-prompt (plan idea 55);
  *   - `importRecoveryKit` (admin) — restore an address key from a recovery kit.
  */
 
@@ -32,6 +34,8 @@ import { rotationStatementText } from './pinning';
 import { keyCertifiesAddress } from './discoveryVerify';
 import { generateKeypair, KEY_ALGORITHM } from './keysNode';
 import { buildRecoveryKit, type RecoveryKit } from './recoveryKit';
+import { guardRecoveryKitExport, type RecoveryKitDenial } from './recoveryKitGate';
+import { verifyCurrentUserPassword } from '../auth/passwordReauth';
 
 /**
  * Sign a rotation statement (old -> new) with the OLD armored private key,
@@ -157,17 +161,15 @@ async function assertSealedMailEnabled(ctx: ActionCtx): Promise<void> {
 }
 
 /** The recovery-kit egress shape — the ONE place a private key leaves the vault. */
-const recoveryKitValidator = v.union(
-	v.null(),
-	v.object({
-		address: v.string(),
-		fingerprint: v.string(),
-		privateKeyArmored: v.string(),
-		instructions: v.string(),
-		filename: v.string(),
-		generatedAt: v.number(),
-	})
-);
+const recoveryKitFields = {
+	address: v.string(),
+	fingerprint: v.string(),
+	privateKeyArmored: v.string(),
+	instructions: v.string(),
+	filename: v.string(),
+	generatedAt: v.number(),
+};
+const recoveryKitValidator = v.union(v.null(), v.object(recoveryKitFields));
 
 /**
  * The recovery-kit EXPORT core (no auth) — read the address's active key and
@@ -246,6 +248,61 @@ export const exportRecoveryKit = authedAction({
 		// rebuilt instance before the flag is re-enabled.)
 		await assertSealedMailEnabled(ctx);
 		return exportRecoveryKitCore(ctx, args.address);
+	},
+});
+
+/** The member export's result: the kit, or the reason it was refused. */
+const ownRecoveryKitValidator = v.union(
+	v.object({ ok: v.literal(true), kit: v.object(recoveryKitFields) }),
+	v.object({
+		ok: v.literal(false),
+		reason: v.union(
+			v.literal('feature_off'),
+			v.literal('not_your_address'),
+			v.literal('throttled'),
+			v.literal('bad_password'),
+			v.literal('no_key')
+		),
+	})
+);
+
+/**
+ * MEMBER: build the recovery kit for one of the caller's OWN addresses, behind a
+ * password re-prompt (plan idea 55).
+ *
+ * Same egress as the admin export above, with two narrowings that are the whole
+ * point of it existing: the address must be one the caller actually sends as,
+ * and a live session is not sufficient — the password is asked for again. Both
+ * are enforced by `e2ee/recoveryKitGate.ts`, in a fixed order its unit test
+ * pins, so nothing here decides when to skip a check.
+ *
+ * Failures come back as a REASON rather than an exception because the client has
+ * to tell four of them apart ("wrong password" and "too many tries" want very
+ * different copy), and because a thrown error carrying that distinction ends up
+ * in logs and toasts that were never written for it.
+ */
+// authz: authedAction floor (org member) + the gate: ownership is re-derived
+// from the caller's SESSION inside `e2ee.memberKeys.isOwnSendableAddress`, never
+// from an argument, and the password re-prompt is verified server-side.
+export const exportOwnRecoveryKit = authedAction({
+	args: { address: v.string(), password: v.string() },
+	returns: ownRecoveryKitValidator,
+	handler: async (
+		ctx,
+		args
+	): Promise<{ ok: true; kit: RecoveryKit } | { ok: false; reason: RecoveryKitDenial }> => {
+		const address = normalizeEmail(args.address);
+		const result = await guardRecoveryKitExport<RecoveryKit>({
+			isFeatureEnabled: () => ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}),
+			ownsAddress: () => ctx.runQuery(internal.e2ee.memberKeys.isOwnSendableAddress, { address }),
+			isThrottled: () => ctx.runQuery(internal.e2ee.memberKeys.isRecoveryKitThrottled, { address }),
+			verifyPassword: () => verifyCurrentUserPassword(ctx, args.password),
+			recordFailure: async () => {
+				await ctx.runMutation(internal.e2ee.memberKeys.recordRecoveryKitFailure, { address });
+			},
+			exportKit: () => exportRecoveryKitCore(ctx, address),
+		});
+		return result.ok ? { ok: true, kit: result.kit } : { ok: false, reason: result.reason };
 	},
 });
 

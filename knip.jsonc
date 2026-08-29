@@ -29,12 +29,16 @@
 		"apps/web": {
 			// `i18n/` is loaded by @nuxtjs/i18n by convention (i18n.config.ts and the
 			// locale catalogs it lists), so nothing in the source graph imports it.
+			// `service-worker/` is a Nuxt public-asset dir (nuxt.config.ts `dir`
+			// entry): sw.js ships verbatim to /sw.js and is fetched by the browser,
+			// never imported, so the source graph cannot reach it.
 			"entry": [
 				"app/**/*.{vue,ts}",
 				"server/**/*.ts",
 				"e2e/**/*.ts",
 				"scripts/**",
 				"i18n/**/*.ts",
+				"service-worker/**/*.js",
 			],
 			"playwright": { "config": ["e2e/playwright.config.ts"] },
 		},

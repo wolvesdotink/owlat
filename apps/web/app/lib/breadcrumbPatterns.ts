@@ -14,7 +14,61 @@ export interface PatternConfig {
 	getConfig: (match: RegExpMatchArray) => RouteConfig;
 }
 
+/**
+ * Postbox system folders, by the `[folder]` route param. A custom folder is
+ * addressed by its `mailFolders` id instead and has no key here — the trail then
+ * skips the folder crumb rather than printing a raw document id.
+ *
+ * Reuses the reader's own folder-role catalog so the crumb reads the same word
+ * as the folder rail the message was opened from.
+ */
+const POSTBOX_FOLDER_ROLE_KEYS: Record<string, string> = {
+	inbox: 'components.postbox.postboxLayout.folderRoles.inbox',
+	drafts: 'components.postbox.postboxLayout.folderRoles.drafts',
+	sent: 'components.postbox.postboxLayout.folderRoles.sent',
+	archive: 'components.postbox.postboxLayout.folderRoles.archive',
+	spam: 'components.postbox.postboxLayout.folderRoles.spam',
+	trash: 'components.postbox.postboxLayout.folderRoles.trash',
+	snoozed: 'components.postbox.postboxLayout.folderRoles.snoozed',
+};
+
 export const patternConfigs: PatternConfig[] = [
+	/**
+	 * An open message: /dashboard/postbox/<folder>/<messageId>.
+	 *
+	 * Without an entry here the slug fallback took over and printed the raw
+	 * `mailMessages` id as the last crumb ("Mm_…"). The page crumb is a fixed
+	 * "Message" label: the subject is not on the route, and a trail is not the
+	 * place to wait on a query.
+	 *
+	 * `(?!label\/)` keeps /dashboard/postbox/label/<labelId> — a folder-shaped
+	 * two-segment route that is NOT a message — on its own trail.
+	 */
+	{
+		pattern: /^\/dashboard\/postbox\/(?!label\/)([^/]+)\/([^/]+)$/,
+		getConfig: (match) => {
+			const folderKey = POSTBOX_FOLDER_ROLE_KEYS[match[1] ?? ''];
+			return {
+				// The sidebar's own key: the trail must not say "Postbox" beside a
+				// sidebar that says "Mail" (same rule as the member Audience remap).
+				section: 'shared.dashboardNavigation.sections.postbox',
+				sectionHref: '/dashboard/postbox/inbox',
+				...(folderKey
+					? { subsection: folderKey, subsectionHref: `/dashboard/postbox/${match[1]}` }
+					: {}),
+				page: 'shared.breadcrumbPatterns.pages.message',
+			};
+		},
+	},
+	// A label's message list — same raw-id problem, same fixed-label answer.
+	{
+		pattern: /^\/dashboard\/postbox\/label\/([^/]+)$/,
+		getConfig: () => ({
+			section: 'shared.dashboardNavigation.sections.postbox',
+			sectionHref: '/dashboard/postbox/inbox',
+			page: 'shared.breadcrumbPatterns.pages.label',
+		}),
+	},
 	// Email template edit
 	{
 		pattern: /^\/dashboard\/send\/emails\/([^/]+)\/edit$/,

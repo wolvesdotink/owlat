@@ -77,7 +77,7 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 	<div v-if="state === 'loading'" class="flex-1 flex items-center justify-center p-12">
 		<Icon
 			name="lucide:loader-2"
-			class="w-6 h-6 animate-spin text-text-tertiary"
+			class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
 			:aria-label="t('postbox.mailboxGuard.loading')"
 		/>
 	</div>

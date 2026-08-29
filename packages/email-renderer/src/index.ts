@@ -4,6 +4,8 @@ export { diffEmails } from './diff';
 export type { EmailDiff, EmailDiffChange } from './diff';
 export { analyzeEmail, getEmailHealthScore, suggestOptimizations } from './analyzer';
 export { renderPlainText, resolvePlainText, hasPlainTextOverride } from './plaintext';
+export { renderDraftBodies } from './draftBodies';
+export type { DraftBodies, DraftBodySource, RenderDraftBodiesOptions } from './draftBodies';
 export { validateBlocks, ValidationError } from './validator';
 export { inlineCss } from './inliner';
 export {

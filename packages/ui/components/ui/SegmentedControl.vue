@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, nextTick } from 'vue';
 
 interface SegmentOption {
 	value: string;
@@ -71,11 +71,60 @@ const handleKeyDown = (event: KeyboardEvent) => {
 	}
 };
 
+/**
+ * The sliding highlight is MEASURED off the selected button rather than
+ * computed as `100 / options.length`.
+ *
+ * The track is `repeat(N, 1fr)`, and `1fr` is `minmax(auto, 1fr)`: a label wider
+ * than its equal share (Conversations next to Flat) grows its column and shrinks
+ * the others. An indicator sized at a flat 1/N of the track then runs past the
+ * short first segment and paints over the next label — the exact defect this
+ * replaces. Reading `offsetLeft`/`offsetWidth` costs one layout read per change
+ * and is correct for any label lengths, in any locale, at any font size.
+ */
+const measured = ref<{ left: number; width: number } | null>(null);
+const rootRef = ref<HTMLElement | null>(null);
+
+function measure() {
+	const button = tabButtonRefs.value[selectedIndex.value];
+	// `offsetWidth === 0` means the control is display:none or not laid out yet
+	// (and, in jsdom/happy-dom, that there is no layout at all): keep the
+	// analytical fallback rather than collapsing the indicator to nothing.
+	if (!button || button.offsetWidth === 0) {
+		measured.value = null;
+		return;
+	}
+	measured.value = { left: button.offsetLeft, width: button.offsetWidth };
+}
+
+let observer: ResizeObserver | null = null;
+
+onMounted(() => {
+	measure();
+	// The track resizes with its container (and with a late webfont swap), which
+	// moves every column boundary the indicator is pinned to.
+	if (typeof ResizeObserver !== 'undefined' && rootRef.value) {
+		observer = new ResizeObserver(() => measure());
+		observer.observe(rootRef.value);
+	}
+});
+
+onBeforeUnmount(() => {
+	observer?.disconnect();
+	observer = null;
+});
+
+watch([selectedIndex, () => props.options], () => void nextTick(measure));
+
 const indicatorStyle = computed(() => {
-	const count = props.options.length;
-	const width = 100 / count;
+	const geometry = measured.value;
+	if (geometry) return { left: `${geometry.left}px`, width: `${geometry.width}px` };
+	// Pre-measure (SSR's first paint) fallback: equal columns, offset by the 3px
+	// track padding. Replaced by the measured geometry on mount.
+	const share = 100 / props.options.length;
 	return {
-		width: `calc(${width}% - 3px)`,
+		left: '3px',
+		width: `calc(${share}% - 3px)`,
 		transform: `translateX(calc(${selectedIndex.value * 100}% + ${selectedIndex.value * 3}px))`,
 	};
 });
@@ -83,6 +132,7 @@ const indicatorStyle = computed(() => {
 
 <template>
 	<div
+		ref="rootRef"
 		role="tablist"
 		class="segmented-control"
 		:class="`segmented-control--${size}`"
@@ -115,19 +165,25 @@ const indicatorStyle = computed(() => {
 	display: grid;
 	grid-template-columns: v-bind('`repeat(${options.length}, 1fr)`');
 	background: var(--color-bg-surface, #f3f4f6);
-	border: 1px solid var(--color-border, #e5e7eb);
+	/* `--color-border` never existed in the token set, so the old fallback
+	   painted a light-gray ring in BOTH themes — glaring on the dark theme. */
+	border: 1px solid var(--color-border-default, #e5e7eb);
 	border-radius: 8px;
 	padding: 3px;
 }
 
+/* `left`/`width` (and, before the first measurement, `transform`) are supplied
+   inline from the measured geometry — see `indicatorStyle`. */
 .segmented-control__indicator {
 	position: absolute;
 	top: 3px;
-	left: 3px;
 	height: calc(100% - 6px);
 	background: var(--color-brand, #c4785a);
 	border-radius: 5px;
-	transition: transform var(--motion-moderate) var(--ease-spring);
+	transition:
+		left var(--motion-moderate) var(--ease-spring),
+		width var(--motion-moderate) var(--ease-spring),
+		transform var(--motion-moderate) var(--ease-spring);
 	z-index: 0;
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }

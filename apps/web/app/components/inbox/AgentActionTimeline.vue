@@ -85,7 +85,7 @@ function statusLabel(status: string): string {
 					:class="[
 						'w-3.5 h-3.5 shrink-0',
 						statusBadge(a.status).color,
-						a.status === 'running' ? 'animate-spin' : '',
+						a.status === 'running' ? 'animate-spin motion-reduce:animate-none' : '',
 					]"
 				/>
 				<span class="text-text-primary">{{ actionLabel(a.actionType) }}</span>

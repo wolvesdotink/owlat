@@ -689,7 +689,7 @@ const activeKeysCount = computed(() => {
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="button" class="gap-2" :disabled="isCreating" @click="handleCreate">
-					<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					{{
 						isCreating
 							? t('dashboard.admin.team.api.index.form.creating')

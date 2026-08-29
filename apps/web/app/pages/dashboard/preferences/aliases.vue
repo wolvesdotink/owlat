@@ -7,7 +7,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.aliases.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
@@ -55,18 +55,13 @@ async function confirmRemove() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-3xl mx-auto">
-		<PreferencesBackLink />
-
+	<div>
 		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em]">
-				{{ t('dashboard.preferences.aliases.heading') }}
-			</h1>
 			<I18nT
 				keypath="dashboard.preferences.aliases.subheading"
 				tag="p"
 				scope="global"
-				class="text-text-secondary mt-1"
+				class="text-text-secondary"
 			>
 				<template #address>
 					<span v-if="currentMailbox" class="font-mono text-sm">{{ currentMailbox.address }}</span>
@@ -96,7 +91,7 @@ async function confirmRemove() {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.aliases.activeAliases') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
 			<div v-else-if="aliases.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.aliases.empty') }}

@@ -50,9 +50,9 @@ export function resolveSpamVerdict(input: {
 
 /**
  * Reduce the user's matching filter rules to a delivery decision: an override
- * folder, flags, labels, filter-level forward targets, and the two
- * short-circuits (`discard` drops the message entirely; `delete` routes it to
- * Trash).
+ * folder, flags, labels, an inbox section, filter-level forward targets, and the
+ * two short-circuits (`discard` drops the message entirely; `delete` routes it
+ * to Trash).
  */
 export function resolveFilterOutcome(
 	filters: Doc<'mailFilters'>[],
@@ -64,11 +64,19 @@ export function resolveFilterOutcome(
 	labelIds: Id<'mailLabels'>[];
 	flagSeen: boolean;
 	flagFlagged: boolean;
+	pinnedSection?: string;
 	filterForwardTo: string[];
 } {
 	const evalResult = evaluateFilters(filters, message);
 	const moveAction = evalResult.actions.find((a) => a.type === 'moveToFolder');
+	// A message has ONE section — the first `pinToSection` in priority order wins,
+	// exactly like `moveToFolder`. Two rules that both claim a message are a
+	// precedence question the user already answers by ordering their filters.
+	const pinAction = evalResult.actions.find(
+		(a) => a.type === 'pinToSection' && (a.sectionName ?? '').length > 0
+	);
 	return {
+		pinnedSection: pinAction?.sectionName,
 		// `discard` short-circuits — the caller drops the message entirely (and
 		// its staged storage blob) without writing it anywhere.
 		isDiscarded: evalResult.actions.some((a) => a.type === 'discard'),

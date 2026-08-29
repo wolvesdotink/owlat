@@ -81,7 +81,7 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
 			<Icon
 				v-if="loading && activeIntent === opt.intent"
 				name="lucide:loader-2"
-				class="h-3.5 w-3.5 animate-spin"
+				class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
 			/>
 			<Icon v-else :name="opt.icon" class="h-3.5 w-3.5" />
 			<span>{{ t(opt.label) }}</span>
@@ -97,7 +97,7 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
 				<Icon
 					v-if="loading && activeIntent === 'translate'"
 					name="lucide:loader-2"
-					class="h-3.5 w-3.5 animate-spin"
+					class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
 				/>
 				<Icon v-else name="lucide:languages" class="h-3.5 w-3.5" />
 				<span>{{ t('components.postbox.postboxRewriteActions.translate') }}</span>

@@ -31,8 +31,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-	unregisterShortcut('n');
-	unregisterShortcut('escape');
+	unregisterShortcut('global.newItem');
+	unregisterShortcut('global.close');
 });
 
 // Get the current user's organization
@@ -454,7 +454,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 												<Icon
 													v-if="toggleingId === automation._id"
 													name="lucide:loader-2"
-													class="w-4 h-4 animate-spin"
+													class="w-4 h-4 animate-spin motion-reduce:animate-none"
 												/>
 												<Icon
 													v-else-if="automation.status === 'active'"
@@ -610,7 +610,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 					:disabled="isDeleting || automationToDelete?.status === 'active'"
 					@click="handleDelete"
 				>
-					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					{{
 						isDeleting
 							? t('dashboard.automations.index.deleting')

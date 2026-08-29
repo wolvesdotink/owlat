@@ -11,9 +11,10 @@ import { usePostboxTriageUndo } from '~/composables/postbox/usePostboxTriageUndo
  *    resolve/snooze/reassign feels instant instead of waiting on the live
  *    subscription. A failed mutation restores the row; the ConvexClient has no
  *    native optimistic updates.
- *  - `usePostboxTriageUndo` surfaces the one-slot "Resolved — Undo" toast (also
- *    reachable with Cmd/Ctrl+Z outside text fields) whose inverse re-runs the
- *    reverse mutation.
+ *  - `usePostboxTriageUndo` surfaces the "Resolved — Undo" toast (also
+ *    reachable with Cmd/Ctrl+Z outside text fields, which that composable binds
+ *    app-wide) whose inverse re-runs the reverse mutation. Its registry is a
+ *    bounded stack, so a burst of resolves walks back one keypress at a time.
  *
  * The caller supplies, per action, the row id, the toast label, whether the row
  * leaves the current filtered view (only then is it optimistically hidden — a
@@ -60,5 +61,5 @@ export function useInboxTriage<T extends { _id: string }>(rows: Ref<T[]>) {
 		return true;
 	}
 
-	return { visible, run, onWindowKeydown: undo.onWindowKeydown };
+	return { visible, run };
 }

@@ -81,6 +81,13 @@ export const tables = {
 		backupCodes: v.string(),
 		userId: v.string(),
 		verified: v.optional(v.union(v.null(), v.boolean())),
+		// Account-lockout counters written by the two-factor plugin on every
+		// failed verification (`verify-two-factor.mjs`). Convex rejects writes of
+		// undeclared fields, so leaving these out makes the FIRST wrong code throw
+		// instead of counting. `lockedUntil` is a plugin `date` field, which the
+		// Convex adapter stores as epoch milliseconds (supportsDates: false).
+		failedVerificationCount: v.optional(v.union(v.null(), v.number())),
+		lockedUntil: v.optional(v.union(v.null(), v.number())),
 	}).index('userId', ['userId']),
 	passkey: defineTable({
 		name: v.optional(v.union(v.null(), v.string())),

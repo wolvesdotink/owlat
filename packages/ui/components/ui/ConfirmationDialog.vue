@@ -122,7 +122,7 @@ const handleBackdropClick = () => {
 				:disabled="isLoading"
 				@click="handleConfirm"
 			>
-				<Icon v-if="isLoading" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon v-if="isLoading" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				<Icon v-else :name="config.icon" class="w-4 h-4" />
 				{{ isLoading ? t('ui.actions.pleaseWait') : resolvedConfirmText }}
 			</button>

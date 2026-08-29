@@ -1,6 +1,6 @@
 /**
- * The Postbox list's triage verbs — archive, trash, star, read, snooze, move,
- * cancel-follow-up — as ONE action source.
+ * The Postbox list's triage verbs — archive, trash, star, read, snooze (message
+ * or whole thread), mute, move, cancel-follow-up — as ONE action source.
  *
  * PostboxThreadList owns the v-for, windowing and keyboard handling; every
  * entry point it exposes (hover buttons, right-click menu, long-press menu,
@@ -18,12 +18,17 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { PostboxFlagOverride } from './usePostboxOptimisticFlags';
 
 export function usePostboxRowTriage(args: {
 	/** Hide a row optimistically while its mutation is in flight. */
 	hide: (id: Id<'mailMessages'>) => void;
 	/** Restore a row whose mutation failed, or that the user undid. */
 	unhide: (id: Id<'mailMessages'>) => void;
+	/** Paint a star / read change on a row while its mutation is in flight. */
+	setFlags: (id: Id<'mailMessages'>, patch: PostboxFlagOverride) => void;
+	/** Drop a row's painted flags — the mutation failed, the server value wins. */
+	clearFlags: (id: Id<'mailMessages'>) => void;
 }) {
 	const { t } = useI18n();
 	const triageUndo = usePostboxTriageUndo();
@@ -42,6 +47,12 @@ export function usePostboxRowTriage(args: {
 	});
 	const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 		label: () => t('components.postbox.postboxThreadList.snoozeOperation'),
+	});
+	const snoozeThreadOp = useBackendOperation(api.mail.snooze.snoozeThread, {
+		label: () => t('components.postbox.postboxThreadList.snoozeOperation'),
+	});
+	const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
+		label: () => t('components.postbox.postboxThreadList.muteOperation'),
 	});
 	const moveOp = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('components.postbox.postboxThreadList.moveOperation'),
@@ -97,12 +108,20 @@ export function usePostboxRowTriage(args: {
 			moveOp.run({ messageIds: [id], targetFolderId })
 		);
 
-	function toggleStar(id: Id<'mailMessages'>, starred: boolean) {
-		void setStarOp.run({ messageId: id, starred });
+	/**
+	 * Star and mark-read keep their row, so instead of the hide/restore pair they
+	 * paint the new flag immediately and drop the claim if the mutation fails —
+	 * the list's `usePostboxOptimisticFlags` prunes it once the subscription
+	 * delivers the confirmed row.
+	 */
+	async function toggleStar(id: Id<'mailMessages'>, starred: boolean) {
+		args.setFlags(id, { flagFlagged: starred });
+		if (!(await setStarOp.run({ messageId: id, starred })).ok) args.clearFlags(id);
 	}
 
-	function toggleRead(id: Id<'mailMessages'>, seen: boolean) {
-		void markReadOp.run({ messageId: id, seen });
+	async function toggleRead(id: Id<'mailMessages'>, seen: boolean) {
+		args.setFlags(id, { flagSeen: seen });
+		if (!(await markReadOp.run({ messageId: id, seen })).ok) args.clearFlags(id);
 	}
 
 	/** Snooze is row-removing but has no `moved` inverse — it un-hides on failure. */
@@ -111,10 +130,43 @@ export function usePostboxRowTriage(args: {
 		if (!(await snoozeOp.run({ messageId: id, until })).ok) args.unhide(id);
 	}
 
+	/**
+	 * Thread-scope snooze (the dialog's default): defers the whole conversation
+	 * server-side. Only the focused row is hidden optimistically — the siblings
+	 * are on other pages or not rendered, and the subscription drops them a beat
+	 * later anyway.
+	 */
+	async function snoozeThread(id: Id<'mailMessages'>, threadId: string, until: number) {
+		args.hide(id);
+		const outcome = await snoozeThreadOp.run({ threadId: threadId as Id<'mailThreads'>, until });
+		if (!outcome.ok) args.unhide(id);
+	}
+
+	/**
+	 * Mute/unmute the row's conversation. Muting archives the thread's inbox mail
+	 * server-side, so the row is hidden optimistically; unmuting changes nothing
+	 * about where the mail sits and leaves the row alone.
+	 */
+	async function toggleMute(id: Id<'mailMessages'>, muted: boolean) {
+		if (muted) args.hide(id);
+		const outcome = await setMutedOp.run({ messageId: id, muted });
+		if (muted && !outcome.ok) args.unhide(id);
+	}
+
 	function cancelFollowUp(msg: { threadId?: string }) {
 		if (!msg.threadId) return;
 		void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
 	}
 
-	return { archiveMsg, trashMsg, moveMsg, snoozeMsg, toggleStar, toggleRead, cancelFollowUp };
+	return {
+		archiveMsg,
+		trashMsg,
+		moveMsg,
+		snoozeMsg,
+		snoozeThread,
+		toggleMute,
+		toggleStar,
+		toggleRead,
+		cancelFollowUp,
+	};
 }

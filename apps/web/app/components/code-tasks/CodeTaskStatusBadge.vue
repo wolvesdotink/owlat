@@ -51,7 +51,7 @@ const statusConfig = computed((): { label: string; classes: string; pulse: boole
 	>
 		<span
 			v-if="statusConfig.pulse"
-			class="w-1.5 h-1.5 rounded-full bg-current animate-pulse"
+			class="w-1.5 h-1.5 rounded-full bg-current animate-pulse motion-reduce:animate-none"
 		/>
 		{{ statusConfig.label }}
 	</span>

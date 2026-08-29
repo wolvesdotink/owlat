@@ -11,16 +11,25 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { PostboxSortOrder } from '~/utils/postboxSortOrder';
+import { POSTBOX_SORT_ORDER_DEFAULT, postboxSortOrderArg } from '~/utils/postboxSortOrder';
 
 export function usePostboxThreads(args: {
 	mailboxId: Ref<Id<'mailboxes'> | null>;
 	folderRole: Ref<string>;
 	// Custom (non-role) folder addressed by id; takes precedence over folderRole.
 	folderId?: Ref<Id<'mailFolders'> | undefined>;
+	// Arrival direction (newest / oldest). Absent means newest — the order the
+	// list had before the control existed.
+	sortOrder?: Ref<PostboxSortOrder>;
 }) {
-	// Folder switch: drop the accumulated tail, keep the previous folder's rows
-	// on screen until the new first page lands.
-	const resetKey = computed(() => args.folderId?.value ?? args.folderRole.value);
+	const sortOrder = computed(() => args.sortOrder?.value ?? POSTBOX_SORT_ORDER_DEFAULT);
+	// Folder switch OR sort flip: drop the accumulated tail, keep the previous
+	// rows on screen until the new first page lands. A cursor is minted for one
+	// index direction, so flipping the order invalidates every one of them.
+	const resetKey = computed(
+		() => `${args.folderId?.value ?? args.folderRole.value}:${sortOrder.value}`
+	);
 	// Mailbox switch: additionally suppress the retained page — rows from
 	// account A must never render under account B, however briefly.
 	const hardResetKey = computed(() => args.mailboxId.value);
@@ -31,9 +40,19 @@ export function usePostboxThreads(args: {
 			() => {
 				if (!args.mailboxId.value) return 'skip';
 				const folderId = args.folderId?.value;
+				// The default order is sent as nothing at all, so a user who never
+				// touches the control keeps the exact query shape (and cursors) the
+				// list had before it existed.
+				const order = postboxSortOrderArg(sortOrder.value);
+				const sort = order ? { sortOrder: order } : {};
 				return folderId
-					? { mailboxId: args.mailboxId.value, folderId, limit: 50 }
-					: { mailboxId: args.mailboxId.value, folderRole: args.folderRole.value, limit: 50 };
+					? { mailboxId: args.mailboxId.value, folderId, limit: 50, ...sort }
+					: {
+							mailboxId: args.mailboxId.value,
+							folderRole: args.folderRole.value,
+							limit: 50,
+							...sort,
+						};
 			},
 			resetKey,
 			// Keep the prior folder's rows visible while the next folder loads, so

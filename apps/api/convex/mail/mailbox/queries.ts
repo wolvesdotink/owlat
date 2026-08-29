@@ -13,9 +13,11 @@
 import { v } from 'convex/values';
 import type { QueryCtx } from '../../_generated/server';
 import { publicQuery } from '../../lib/authedFunctions';
+import { mailSortOrderValidator } from '../../lib/mailSettingsValidators';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { loadReadableMailbox, loadAccessibleMailboxes } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
+import { isThreadMuted } from '../../lib/mailMute';
 import { readSession, type FolderRole } from './shared';
 
 /**
@@ -25,41 +27,64 @@ import { readSession, type FolderRole } from './shared';
  */
 type RowFollowUp = { remindAt: number; dueAt?: number; watched: boolean };
 
-async function attachThreadFollowUps(
+/**
+ * Thread-level state a list row renders as a chip: the follow-up watch, the
+ * mute marker (mail/mute.ts) and the transient back-from-snooze marker
+ * (mail/snooze.ts). Each key is spread in only when the thread actually has it,
+ * so a row without any of them travels with exactly the shape the list had
+ * before these existed (an `undefined` never rides as a present key).
+ */
+type RowThreadState = {
+	followUp?: RowFollowUp;
+	mutedAt?: number;
+	snoozeReturnedAt?: number;
+};
+
+async function attachThreadState(
 	ctx: QueryCtx,
 	messages: Doc<'mailMessages'>[]
-): Promise<Array<Doc<'mailMessages'> & { followUp?: RowFollowUp }>> {
-	const cache = new Map<Id<'mailThreads'>, Doc<'mailThreads'>['followUp']>();
-	const out: Array<Doc<'mailMessages'> & { followUp?: RowFollowUp }> = [];
+): Promise<Array<Doc<'mailMessages'> & RowThreadState>> {
+	const cache = new Map<Id<'mailThreads'>, Doc<'mailThreads'> | null>();
+	const out: Array<Doc<'mailMessages'> & RowThreadState> = [];
 	for (const m of messages) {
 		if (!cache.has(m.threadId)) {
-			const thread = await ctx.db.get(m.threadId);
-			cache.set(m.threadId, thread?.followUp);
+			cache.set(m.threadId, await ctx.db.get(m.threadId));
 		}
-		const followUp = cache.get(m.threadId);
-		out.push(
-			followUp
+		const thread = cache.get(m.threadId) ?? null;
+		const followUp = thread?.followUp;
+		const state: RowThreadState = {
+			...(followUp
 				? {
-						...m,
 						followUp: {
 							remindAt: followUp.remindAt,
 							dueAt: followUp.dueAt,
 							watched: followUp.messageId === m._id,
 						},
 					}
-				: m
-		);
+				: {}),
+			...(thread?.mutedAt !== undefined ? { mutedAt: thread.mutedAt } : {}),
+			...(thread?.snoozeReturnedAt !== undefined
+				? { snoozeReturnedAt: thread.snoozeReturnedAt }
+				: {}),
+		};
+		out.push({ ...m, ...state });
 	}
 	return out;
 }
 
 /**
- * List messages in a mailbox (most-recent first), for the webmail UI.
+ * List messages in a mailbox, for the webmail UI.
+ *
+ * `sortOrder` flips the arrival direction on the same index: 'newest' (the
+ * default, and the only order this view had before) reads descending, 'oldest'
+ * ascending for clearing a backlog front to back. Omitting it is exactly the
+ * previous behaviour, so a client that never sends it is unaffected.
  *
  * Keyset-paginated: pass `nextCursor` from the previous response to fetch the
  * next page. The cursor is opaque (a Convex paginate cursor minted for this
- * exact index + filter) and stays valid across live updates of already-read
- * rows; a folder switch simply starts again without one.
+ * exact index + filter + direction) and stays valid across live updates of
+ * already-read rows; a folder switch or a sort flip simply starts again
+ * without one.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listMessages = publicQuery({
@@ -69,13 +94,22 @@ export const listMessages = publicQuery({
 		folderId: v.optional(v.id('mailFolders')),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
+		sortOrder: v.optional(mailSortOrderValidator),
 	},
 	handler: async (ctx, args) => {
-		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false, nextCursor: null };
+		const empty = {
+			messages: [] as Array<Doc<'mailMessages'> & RowThreadState>,
+			hasMore: false,
+			nextCursor: null,
+		};
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return empty;
 
 		const now = Date.now();
+		// Arrival direction, applied to every branch below so the folder, custom
+		// folder, label and Snoozed views never disagree about what "oldest" means.
+		const oldestFirst = args.sortOrder === 'oldest';
+		const order = oldestFirst ? ('asc' as const) : ('desc' as const);
 		const limit = Math.min(args.limit ?? 50, 500);
 		const pagination = { cursor: args.cursor ?? null, numItems: limit };
 		// A message is hidden from its origin folder while snoozedUntil is in the
@@ -94,8 +128,10 @@ export const listMessages = publicQuery({
 				)
 				.take(limit + 1);
 			const hasMore = raw.length > limit;
-			const messages = raw.slice(0, limit).sort((a, b) => b.receivedAt - a.receivedAt);
-			return { messages, hasMore, nextCursor: null };
+			const messages = raw
+				.slice(0, limit)
+				.sort((a, b) => (oldestFirst ? a.receivedAt - b.receivedAt : b.receivedAt - a.receivedAt));
+			return { messages: await attachThreadState(ctx, messages), hasMore, nextCursor: null };
 		}
 
 		// Custom-folder view, addressed directly by id — custom IMAP folders carry
@@ -107,10 +143,10 @@ export const listMessages = publicQuery({
 			const page = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
-				.order('desc')
+				.order(order)
 				.paginate(pagination);
 			return {
-				messages: await attachThreadFollowUps(
+				messages: await attachThreadState(
 					ctx,
 					page.page.filter((m) => !isSnoozed(m))
 				),
@@ -131,10 +167,10 @@ export const listMessages = publicQuery({
 			const page = await ctx.db
 				.query('mailMessages')
 				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
-				.order('desc')
+				.order(order)
 				.paginate(pagination);
 			return {
-				messages: await attachThreadFollowUps(
+				messages: await attachThreadState(
 					ctx,
 					page.page.filter((m) => !isSnoozed(m))
 				),
@@ -147,10 +183,10 @@ export const listMessages = publicQuery({
 		const page = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
-			.order('desc')
+			.order(order)
 			.paginate(pagination);
 		return {
-			messages: await attachThreadFollowUps(
+			messages: await attachThreadState(
 				ctx,
 				page.page.filter((m) => !isSnoozed(m))
 			),
@@ -227,7 +263,7 @@ export const listByLabel = publicQuery({
 		);
 
 		return {
-			messages: await attachThreadFollowUps(ctx, matching.slice(0, limit)),
+			messages: await attachThreadState(ctx, matching.slice(0, limit)),
 			hasMore: matching.length > limit,
 			nextCursor: null,
 		};
@@ -361,6 +397,13 @@ export const newestUnreadInbox = publicQuery({
 				fromAddress: string;
 				subject: string;
 				category?: 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
+				/** Muted conversation (mail/mute.ts) — never fires a desktop toast. */
+				muted?: boolean;
+				/**
+				 * Thread armed with "notify me when they reply" (mail/threadAlerts.ts)
+				 * — pierces the people-only scope AND quiet hours.
+				 */
+				alerted?: boolean;
 				receivedAt: number;
 			}>,
 		};
@@ -397,17 +440,25 @@ export const newestUnreadInbox = publicQuery({
 			// message; dedupe thread reads within this bounded window (a thread
 			// often has several unread messages) so we do at most one .get per
 			// distinct thread.
-			const threadCategory = new Map<
+			const threadState = new Map<
 				Id<'mailThreads'>,
-				'person' | 'newsletter' | 'notification' | 'receipt' | 'other' | undefined
+				{
+					category?: 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
+					muted: boolean;
+					alerted: boolean;
+				}
 			>();
 			for (const m of recent) {
 				if (m.flagSeen || isMessageSnoozed(m, now)) continue;
-				let category = threadCategory.get(m.threadId);
-				if (!threadCategory.has(m.threadId)) {
+				let state = threadState.get(m.threadId);
+				if (!state) {
 					const thread = await ctx.db.get(m.threadId);
-					category = thread?.category?.label;
-					threadCategory.set(m.threadId, category);
+					state = {
+						category: thread?.category?.label,
+						muted: isThreadMuted(thread),
+						alerted: thread?.notifyOnReplyAt != null,
+					};
+					threadState.set(m.threadId, state);
 				}
 				collected.push({
 					messageId: m._id,
@@ -415,7 +466,9 @@ export const newestUnreadInbox = publicQuery({
 					fromName: m.fromName,
 					fromAddress: m.fromAddress,
 					subject: m.subject,
-					category,
+					category: state.category,
+					muted: state.muted,
+					alerted: state.alerted,
 					receivedAt: m.receivedAt,
 				});
 			}

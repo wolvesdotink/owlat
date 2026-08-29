@@ -437,7 +437,7 @@ const handleEdit = () => {
 										{{ t('dashboard.automations.detail.index.funnel.pending', { count: step.stats.pending }) }}
 									</span>
 									<span v-if="step.stats.executing > 0" class="flex items-center gap-1">
-										<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin" />
+										<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin motion-reduce:animate-none" />
 										{{ t('dashboard.automations.detail.index.funnel.executing', { count: step.stats.executing }) }}
 									</span>
 									<span v-if="step.stats.failed > 0" class="flex items-center gap-1 text-error">
@@ -484,7 +484,7 @@ const handleEdit = () => {
 
 				<!-- Loading -->
 				<div v-if="runsLoading && !runs" class="p-8 flex justify-center">
-					<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
+					<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none" />
 				</div>
 
 				<!-- Empty state -->
@@ -528,7 +528,7 @@ const handleEdit = () => {
 											:name="getRunStatusBadge(run.status).icon"
 											:class="[
 												'w-3 h-3',
-												getRunStatusBadge(run.status).animated ? 'animate-spin' : '',
+												getRunStatusBadge(run.status).animated ? 'animate-spin motion-reduce:animate-none' : '',
 											]"
 										/>
 										{{ getRunStatusBadge(run.status).label }}

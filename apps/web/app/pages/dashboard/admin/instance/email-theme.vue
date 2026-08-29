@@ -378,7 +378,7 @@ const buttonTextColor = computed(() => {
 							</p>
 
 							<UiButton type="submit" class="gap-2" :disabled="isSaving || !isFormDirty">
-								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 								<Icon v-else name="lucide:check" class="w-4 h-4" />
 								{{
 									isSaving

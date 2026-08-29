@@ -38,6 +38,17 @@ export interface BackendOperationOptions {
 	 * Return `false` (or omit the option) and nothing changes.
 	 */
 	onError?: (error: OperationError) => boolean;
+	/**
+	 * Announce a completed run into the app's live region (`useAnnounce`), so a
+	 * screen-reader user is told the write landed. ON by default: the majority
+	 * of this app's saves repaint nothing louder than a button label, and the
+	 * failure path is already spoken by the toast.
+	 *
+	 * Set `false` for an operation that runs on a timer, per keystroke, or once
+	 * per row of a bulk action — announcing those is not information, it is
+	 * noise that talks over whatever the person was actually reading.
+	 */
+	announce?: boolean;
 }
 
 /**
@@ -69,6 +80,20 @@ export type BackendOperationValue<R> =
 	Awaited<R> extends BackendOperationResult<infer T> ? T : never;
 
 /**
+ * One live operation, as its caller holds it.
+ *
+ * Named so a composable can accept an operation its OWNER created — the
+ * composer's autosave drives the same `drafts.create`/`drafts.update` pair the
+ * rest of the composer does, and re-creating them there would mean two toast
+ * labels and two loading flags for one write.
+ */
+export interface BackendOperation<M extends FunctionReference<'mutation' | 'action'>> {
+	run: (args: FunctionArgs<M>) => Promise<BackendOperationResult<FunctionReturnType<M>>>;
+	isLoading: Readonly<Ref<boolean>>;
+	inlineError: Readonly<Ref<string | null>>;
+}
+
+/**
  * The **Operation module** for writes (ADR-0036): run a Convex mutation/action,
  * normalize any throw into the shared `{ category, message, data? }` vocabulary,
  * and apply the one category → treatment policy (toast vs inline vs redirect,
@@ -85,14 +110,11 @@ export type BackendOperationValue<R> =
 export function useBackendOperation<M extends FunctionReference<'mutation' | 'action'>>(
 	operation: M,
 	opts: BackendOperationOptions
-): {
-	run: (args: FunctionArgs<M>) => Promise<BackendOperationResult<FunctionReturnType<M>>>;
-	isLoading: Readonly<Ref<boolean>>;
-	inlineError: Readonly<Ref<string | null>>;
-} {
+): BackendOperation<M> {
 	const client = useConvex();
 	const { t } = useI18n();
 	const { showToast } = useToast();
+	const { announce } = useAnnounce();
 	const posthog = usePostHog();
 
 	const isLoading = ref(false);
@@ -153,6 +175,15 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 				opts.type === 'action'
 					? await client.action(operation as FunctionReference<'action'>, args)
 					: await client.mutation(operation as FunctionReference<'mutation'>, args);
+			// The one place every successful write in the app passes through, which
+			// is why the announcement lives here rather than at several hundred
+			// call sites that would each have to remember it. The label is the same
+			// one telemetry reports — a getter on a localized surface, so a locale
+			// change is reflected at announcement time, not at setup time.
+			if (opts.announce !== false) {
+				const label = typeof opts.label === 'function' ? opts.label() : opts.label;
+				announce(t('shared.useBackendOperation.announceDone', { label }));
+			}
 			return { ok: true, result: result as FunctionReturnType<M> };
 		} catch (e) {
 			applyTreatment(e);

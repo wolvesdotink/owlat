@@ -325,7 +325,7 @@ async function handleRemoveSuppression() {
 							:title="t('dashboard.audience.contacts.detail.resendDoiTitle')"
 							@click="handleResendDoi"
 						>
-							<Icon v-if="isResendingDoi" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+							<Icon v-if="isResendingDoi" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 							<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
 							{{
 								isResendingDoi
@@ -666,7 +666,7 @@ async function handleRemoveSuppression() {
 									<Icon
 										v-if="isLoadingMoreActivities"
 										name="lucide:loader-2"
-										class="w-4 h-4 animate-spin mr-2"
+										class="w-4 h-4 animate-spin motion-reduce:animate-none mr-2"
 									/>
 									{{
 										isLoadingMoreActivities
@@ -770,7 +770,7 @@ async function handleRemoveSuppression() {
 									<Icon
 										v-if="isAddingToTopic"
 										name="lucide:loader-2"
-										class="w-3 h-3 animate-spin"
+										class="w-3 h-3 animate-spin motion-reduce:animate-none"
 									/>
 									<Icon v-else name="lucide:plus" class="w-3 h-3" />
 									{{ t('dashboard.audience.contacts.detail.topics.addToTopic') }}

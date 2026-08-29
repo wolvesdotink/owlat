@@ -9,6 +9,35 @@
 		color: var(--color-text-primary);
 	}
 
+	/* Native form controls follow the brand instead of the UA's blue. Scoped to
+	 * the controls that actually paint with it rather than inherited from body,
+	 * so nothing else picks up UA re-theming as a side effect. */
+	input[type='checkbox'],
+	input[type='radio'],
+	input[type='range'],
+	progress {
+		accent-color: var(--color-brand);
+	}
+
+	/* Without a color-scheme the UA draws these controls light-scheme even on
+	 * the dark theme — a stark white unchecked checkbox on a near-black card.
+	 * Scoped to the native-drawn controls (not :root) so element backgrounds,
+	 * scrollbars and styled inputs keep their token-driven colors. */
+	.dark input[type='checkbox'],
+	.dark input[type='radio'],
+	.dark input[type='range'],
+	.dark progress {
+		color-scheme: dark;
+	}
+
+	/* A placeholder (or unfocused value) longer than its input ends in an
+	 * ellipsis instead of clipping mid-character (the Postbox search bar's
+	 * operator hint, for one). On the element, not ::placeholder — Chrome
+	 * ignores text-overflow on the pseudo but inherits it from the input. */
+	input {
+		text-overflow: ellipsis;
+	}
+
 	/*
 	 * Keyboard focus ring for bespoke interactive elements (icon buttons, links,
 	 * custom widgets) that don't carry their own `focus:` styling. Uses

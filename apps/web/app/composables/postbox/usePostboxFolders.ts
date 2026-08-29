@@ -1,5 +1,7 @@
 /**
- * Folder list with reactive unread counts.
+ * Folder list with reactive unread counts, served from the device cache while
+ * the live query is pending (see `usePostboxOfflineFolders`) so a cold or
+ * offline start renders a navigable rail rather than an empty one.
  */
 
 import { api } from '@owlat/api';
@@ -12,7 +14,16 @@ export function usePostboxFolders(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
 
-	const folders = computed(() => data.value ?? []);
+	const liveFolders = computed(() => data.value ?? []);
+
+	// Serve the device-cached rail while the query is pending, so a cold (or
+	// offline) start renders a navigable sidebar instead of an empty one. Live
+	// rows replace them the instant they arrive.
+	const { rows: folders, showingCached } = usePostboxOfflineFolders({
+		mailboxId,
+		liveFolders,
+		isLoading,
+	});
 
 	const folderBySlug = (slug: string) => {
 		return folders.value.find((f) => f.role === slug);
@@ -57,5 +68,7 @@ export function usePostboxFolders(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		unreadByRole,
 		folderBySlug,
 		isLoading,
+		/** True while the rail is the cached snapshot, not the live query. */
+		showingCached,
 	};
 }

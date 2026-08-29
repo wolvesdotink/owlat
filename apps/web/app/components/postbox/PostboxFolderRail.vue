@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { resolveActiveShortcut } from '~/utils/shortcutScope';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -14,7 +15,21 @@ const { t } = useI18n();
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const { systemFolders, customFolders, unreadByRole } = usePostboxFolders(mailboxIdRef);
-const { labels } = usePostboxLabels(mailboxIdRef);
+const { create: createLabel } = usePostboxLabels(mailboxIdRef);
+
+// Label creation accepts a PATH (`Work/Clients/Acme`) — the backend creates any
+// missing ancestor — so nesting is one action rather than three.
+const creatingLabel = ref(false);
+const newLabelName = ref('');
+
+async function confirmCreateLabel() {
+	const name = newLabelName.value.trim();
+	if (!name) return;
+	if (await createLabel(name)) {
+		newLabelName.value = '';
+		creatingLabel.value = false;
+	}
+}
 
 // Collapsible folder rail — icon strip when collapsed. Persisted per-device.
 // forceExpanded (drawer staging) wins over the saved preference.
@@ -60,6 +75,20 @@ async function confirmDeleteFolder() {
 	deletingFolder.value = null;
 }
 
+// Pinned saved searches — recurring questions ("unread from Ines", "invoices
+// with attachments") as rail rows. Each is a plain `?q=` link, so a pinned
+// search and a bookmarked one are the same navigation.
+const { pinnedSearches, setPinned } = usePostboxSavedSearches(mailboxIdRef);
+const route = useRoute();
+const activeSavedQuery = computed(() =>
+	route.path === '/dashboard/postbox/search' ? String(route.query['q'] ?? '') : ''
+);
+
+// The open label view, so the tree can reveal (and mark) its branch.
+const activeLabelId = computed(() =>
+	route.path.startsWith('/dashboard/postbox/label/') ? String(route.params['labelId'] ?? '') : ''
+);
+
 // Search entry point: a box in the folder rail + a "/" shortcut to focus it.
 const searchQuery = ref('');
 const searchBar = ref<{ focus: () => void } | null>(null);
@@ -84,7 +113,9 @@ function onGlobalKey(event: KeyboardEvent) {
 		toggleRail();
 		return;
 	}
-	if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+	// `postbox.search` through the registry, not a literal '/': the settings
+	// card offers this key for remapping, so the handler has to honour it.
+	if (resolveActiveShortcut(event, ['postbox']) !== 'postbox.search') return;
 	const el = event.target as HTMLElement | null;
 	if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
 		return;
@@ -127,6 +158,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			v-if="!railCollapsed"
 			ref="searchBar"
 			v-model="searchQuery"
+			:mailbox-id="mailboxId"
 			@submit="goSearch"
 		/>
 		<button
@@ -147,60 +179,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			:collapsed="railCollapsed"
 		/>
 
-		<!-- Reply Queue — AI task list of emails waiting on a reply (virtual
-		     view like Snoozed; threads stay in their folders). -->
-		<NuxtLink
-			to="/dashboard/postbox/reply-queue"
-			class="rounded text-sm hover:bg-bg-surface"
-			:class="
-				railCollapsed
-					? 'relative flex items-center justify-center w-9 h-9'
-					: 'flex items-center gap-2 px-2.5 py-1.5'
-			"
-			:title="railCollapsed ? t('components.postbox.postboxFolderRail.replyQueue') : undefined"
-			:aria-label="
-				railCollapsed
-					? replyQueueCount > 0
-						? t('components.postbox.postboxFolderRail.replyQueueAriaLabel', {
-								count: replyQueueCount,
-							})
-						: t('components.postbox.postboxFolderRail.replyQueue')
-					: undefined
-			"
-		>
-			<Icon name="lucide:reply" class="w-4 h-4" />
-			<template v-if="!railCollapsed">
-				<span class="flex-1">{{ t('components.postbox.postboxFolderRail.replyQueue') }}</span>
-				<span v-if="replyQueueCount > 0" class="text-xs font-medium text-text-secondary">{{
-					replyQueueCount
-				}}</span>
-			</template>
-			<span
-				v-else-if="replyQueueCount > 0"
-				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-text-primary text-text-inverse text-2xs leading-4 font-medium text-center"
-				>{{ replyQueueCount > 99 ? '99+' : replyQueueCount }}</span
-			>
-		</NuxtLink>
+		<!-- The virtual views (Reply Queue, Snoozed, Files, Subscriptions). None of
+		     them has a backing folder — nothing moves when you open one — so they
+		     travel together, in their own component. -->
+		<PostboxFolderRailVirtualViews
+			:collapsed="railCollapsed"
+			:folder-role="folderRole"
+			:reply-queue-count="replyQueueCount"
+		/>
 
-		<!-- Virtual "Snoozed" view (no backing system folder; messages stay in
-		     their origin folder, hidden until the wakeup cron). -->
-		<NuxtLink
-			to="/dashboard/postbox/snoozed"
-			class="rounded text-sm hover:bg-bg-surface"
-			:class="[
-				railCollapsed
-					? 'flex items-center justify-center w-9 h-9'
-					: 'flex items-center gap-2 px-2.5 py-1.5',
-				{ 'bg-bg-surface text-brand': folderRole === 'snoozed' },
-			]"
-			:title="railCollapsed ? t('components.postbox.postboxFolderRail.snoozed') : undefined"
-			:aria-label="railCollapsed ? t('components.postbox.postboxFolderRail.snoozed') : undefined"
-		>
-			<Icon name="lucide:clock" class="w-4 h-4" />
-			<span v-if="!railCollapsed" class="flex-1">{{
-				t('components.postbox.postboxFolderRail.snoozed')
-			}}</span>
-		</NuxtLink>
 		<!-- Secondary destination: lighter weight than the mail folders so the
 		     inbox/folders read as the primary rail. -->
 		<NuxtLink
@@ -313,6 +300,41 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			</ul>
 		</div>
 
+		<!-- Pinned saved searches. Expanded-only, and rendered only once something
+		     is pinned: an empty section would be a permanent unexplained heading
+		     in a rail that is already dense. -->
+		<div v-if="!railCollapsed && pinnedSearches.length > 0" class="mt-3">
+			<header class="flex items-center justify-between mb-1 px-2">
+				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
+					t('components.postbox.postboxFolderRail.pinnedSearchesHeading')
+				}}</span>
+			</header>
+			<ul class="flex flex-col gap-0.5">
+				<li v-for="saved in pinnedSearches" :key="saved._id" class="group flex items-center">
+					<NuxtLink
+						:to="savedSearchPath(saved.rawQuery)"
+						class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
+						:class="{ 'bg-bg-surface text-brand': activeSavedQuery === saved.rawQuery }"
+						:title="saved.rawQuery"
+					>
+						<Icon name="lucide:search" class="w-4 h-4 flex-shrink-0" />
+						<span class="truncate">{{ saved.name }}</span>
+					</NuxtLink>
+					<button
+						type="button"
+						class="opacity-0 group-hover:opacity-100 p-1 text-text-tertiary hover:text-text-primary"
+						:title="t('components.postbox.postboxFolderRail.unpinSearch')"
+						:aria-label="
+							t('components.postbox.postboxFolderRail.unpinSearchAriaLabel', { name: saved.name })
+						"
+						@click="setPinned(saved._id, false)"
+					>
+						<Icon name="lucide:pin-off" class="w-3 h-3" />
+					</button>
+				</li>
+			</ul>
+		</div>
+
 		<!-- Shown expanded so the "Manage labels" affordance (the only way to
 		     create the first label) stays reachable; the empty case is handled
 		     by the "No labels yet" row below. Collapsed hides labels with the
@@ -322,32 +344,42 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
 					t('components.postbox.postboxFolderRail.labelsHeading')
 				}}</span>
-				<button
-					type="button"
-					class="text-text-tertiary hover:text-text-primary"
-					:title="t('components.postbox.postboxFolderRail.manageLabels')"
-					@click="labelManagerOpen = true"
-				>
-					<Icon name="lucide:settings-2" class="w-3.5 h-3.5" />
-				</button>
-			</header>
-			<ul class="flex flex-col gap-0.5">
-				<li v-for="label in labels" :key="label._id">
-					<NuxtLink
-						:to="`/dashboard/postbox/label/${label._id}`"
-						class="flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface"
+				<span class="flex items-center gap-1.5">
+					<button
+						type="button"
+						class="text-text-tertiary hover:text-text-primary"
+						:title="t('components.postbox.postboxFolderRail.newLabel')"
+						@click="
+							creatingLabel = true;
+							newLabelName = '';
+						"
 					>
-						<span
-							class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-							:style="{ backgroundColor: label.color || '#6b7280' }"
-						/>
-						<span class="truncate">{{ label.name }}</span>
-					</NuxtLink>
-				</li>
-				<li v-if="labels.length === 0" class="text-xs text-text-tertiary px-2 py-1">
-					{{ t('components.postbox.postboxFolderRail.noLabels') }}
-				</li>
-			</ul>
+						<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+					</button>
+					<button
+						type="button"
+						class="text-text-tertiary hover:text-text-primary"
+						:title="t('components.postbox.postboxFolderRail.manageLabels')"
+						@click="labelManagerOpen = true"
+					>
+						<Icon name="lucide:settings-2" class="w-3.5 h-3.5" />
+					</button>
+				</span>
+			</header>
+			<div v-if="creatingLabel" class="px-2 py-1">
+				<input
+					v-model="newLabelName"
+					:placeholder="t('components.postbox.postboxFolderRail.labelNamePlaceholder')"
+					class="input input-sm"
+					:aria-label="t('components.postbox.postboxFolderRail.newLabelNameAriaLabel')"
+					@keyup.enter="confirmCreateLabel"
+					@keyup.esc="creatingLabel = false"
+				/>
+				<p class="text-2xs text-text-tertiary mt-1">
+					{{ t('components.postbox.postboxFolderRail.labelNestingHint') }}
+				</p>
+			</div>
+			<PostboxLabelTree :mailbox-id="mailboxId" :active-label-id="activeLabelId" />
 		</div>
 
 		<!-- Collapse toggle pinned to the rail bottom (also Cmd/Ctrl+Shift+D). -->
@@ -372,9 +404,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				:name="railCollapsed ? 'lucide:chevrons-right' : 'lucide:chevrons-left'"
 				class="w-4 h-4"
 			/>
-			<span v-if="!railCollapsed">{{
-				t('components.postbox.postboxFolderRail.collapse')
-			}}</span>
+			<span v-if="!railCollapsed">{{ t('components.postbox.postboxFolderRail.collapse') }}</span>
 		</button>
 	</aside>
 

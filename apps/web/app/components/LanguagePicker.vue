@@ -11,8 +11,19 @@
  * makes the choice outlive the tab: with `strategy: 'no_prefix'` the URL carries
  * no locale, so browser detection would otherwise win back the next page load
  * for anyone whose browser language is not the one they picked.
+ *
+ * The choice is ALSO written to the account (`userProfiles.locale`), which the
+ * cookie cannot stand in for anywhere: a cookie does not exist on a device this
+ * person has not opened yet, and it does not exist at all for a system EMAIL,
+ * which the backend composes with no request behind it. Someone who set the
+ * product to German and then got their account-deletion confirmation in English
+ * was reading the gap this closes.
  */
+import { api } from '@owlat/api';
+
 const { t, locale, locales, setLocale } = useI18n();
+const { isAuthenticated } = useAuth();
+const client = useConvex();
 
 /** The module's own union of registered codes — `setLocale` accepts nothing else. */
 type AppLocale = typeof locale.value;
@@ -34,9 +45,30 @@ async function choose(code: AppLocale) {
 	if (isSwitching.value || code === locale.value) return;
 	isSwitching.value = true;
 	try {
+		// Cookie first: it is what the next page load reads, and it must land
+		// even if the account write cannot.
 		await setLocale(code);
+		await rememberOnAccount(code);
 	} finally {
 		isSwitching.value = false;
+	}
+}
+
+/**
+ * Echo the choice onto the account. Deliberately NOT through
+ * `useBackendOperation`: by the time this runs the language has already
+ * changed, so there is nothing for a red toast to tell anyone — a fallback for
+ * the next device failed to save, and the correct treatment is silence plus a
+ * retry the next time the picker is touched. Skipped entirely when signed out
+ * (the setup and auth screens mount this picker too), where the mutation would
+ * only 403.
+ */
+async function rememberOnAccount(code: AppLocale) {
+	if (!isAuthenticated.value || !client) return;
+	try {
+		await client.mutation(api.auth.userProfiles.setLocale, { locale: code });
+	} catch {
+		// The cookie already holds the choice; this is the durable copy.
 	}
 }
 </script>

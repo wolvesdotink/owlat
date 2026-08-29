@@ -172,6 +172,9 @@ export const requestAccountDeletion = authedMutation({
 			scheduledForDeletion: now + thirtyDaysInMs,
 			cancellationToken,
 			siteUrl,
+			// The mail warns about something irreversible, so it goes out in the
+			// language this person set the product to. Absent = English.
+			locale: userProfile.locale,
 		});
 
 		return {

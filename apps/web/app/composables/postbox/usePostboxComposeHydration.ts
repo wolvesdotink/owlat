@@ -26,6 +26,13 @@ interface ComposeHydrationTargets {
 	scheduledSendAt: Ref<number | null>;
 	followUpRemindAt: Ref<number | null>;
 	attachments: Ref<ComposerAttachment[]>;
+	/**
+	 * When the SERVER last saved this row. Filled from `lastEditedAt` so a
+	 * reopened draft reports a real "Saved at …" instead of a blank until its
+	 * first autosave — and so the local draft mirror (plan idea 7) has a server
+	 * clock to reconcile against the moment hydration lands.
+	 */
+	lastSavedAt: Ref<number | null>;
 }
 
 export function usePostboxComposeHydration(
@@ -51,6 +58,7 @@ export function usePostboxComposeHydration(
 				state?: 'draft' | 'pending_send' | 'scheduled';
 				scheduledSendAt?: number;
 				followUpRemindAt?: number;
+				lastEditedAt?: number;
 				attachments?: Array<{
 					storageId: string;
 					filename: string;
@@ -59,6 +67,7 @@ export function usePostboxComposeHydration(
 				}>;
 			};
 			fields.draftState.value = draft.state ?? 'draft';
+			if (draft.lastEditedAt) fields.lastSavedAt.value = draft.lastEditedAt;
 			fields.scheduledSendAt.value = draft.scheduledSendAt ?? null;
 			if (fields.followUpRemindAt.value === null) {
 				fields.followUpRemindAt.value = draft.followUpRemindAt ?? null;

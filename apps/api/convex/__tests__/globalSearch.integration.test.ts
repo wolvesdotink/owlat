@@ -8,14 +8,19 @@ import {
 	createTestTransactionalEmail,
 	createTestCampaign,
 } from './factories';
+import { seedFolder, seedMailbox, seedMessage } from '../mail/__tests__/helpers.testlib';
 
 /**
  * globalSearch.search — the dashboard Cmd-K palette. It fans a query across the
- * contacts / emailTemplates / transactionalEmails / campaigns search indexes and
- * shapes each hit into a typed, deep-linkable result. Only the soft-delete/PII
- * branch was covered before; this exercises the email + transactional + campaign
- * branches, the result mapping (titles, subtitles, URLs), the short-query
- * short-circuit, and the per-category limit.
+ * contacts / emailTemplates / transactionalEmails / campaigns / mailMessages
+ * search indexes and shapes each hit into a typed, deep-linkable result. Only
+ * the soft-delete/PII branch was covered before; this exercises the email +
+ * transactional + campaign branches, the result mapping (titles, subtitles,
+ * URLs), the short-query short-circuit, and the per-category limit.
+ *
+ * Mail is the one per-USER category (every other one is org-wide), so its
+ * assertions carry the scoping: another user's mailbox, Spam and Trash must
+ * never appear in a palette that anyone can open from any screen.
  */
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -26,6 +31,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('admin-1'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'admin-1', role: 'owner' }),
+		// The mail branch derives the caller's mailboxes from the session rather
+		// than from an argument, so it needs the full session, not just the id.
+		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
+			userId: 'admin-1',
+			role: 'owner',
+			activeOrganizationId: 'org-1',
+		}),
 	};
 });
 
@@ -158,7 +170,55 @@ describe('globalSearch.search', () => {
 		});
 
 		const res = await t.query(api.globalSearch.search, { query: 'z' });
-		expect(res).toEqual({ contacts: [], emails: [], campaigns: [] });
+		expect(res).toEqual({ contacts: [], emails: [], campaigns: [], mail: [] });
+	});
+
+	it('surfaces mail from every mailbox the caller can read, newest first', async () => {
+		const t = convexTest(schema, modules);
+		const personal = await seedMailbox(t, { userId: 'admin-1', address: 'a@hinterland.camp' });
+		const team = await seedMailbox(t, { userId: 'admin-1', address: 'team@hinterland.camp' });
+		await seedFolder(t, personal);
+		await seedFolder(t, team);
+		const older = await seedMessage(t, personal, {
+			subject: `${TOKEN} older`,
+			snippet: `${TOKEN} older`,
+			fromName: 'Ada Lovelace',
+			receivedAt: 1_000,
+		});
+		const newer = await seedMessage(t, team, {
+			subject: `${TOKEN} newer`,
+			snippet: `${TOKEN} newer`,
+			receivedAt: 2_000,
+		});
+
+		const res = await t.query(api.globalSearch.search, { query: TOKEN });
+
+		expect(res.mail.map((m) => m.id)).toEqual([newer, older]);
+		expect(res.mail[1]).toMatchObject({
+			id: older,
+			type: 'mail',
+			title: `${TOKEN} older`,
+			subtitle: `Ada Lovelace · ${TOKEN} older`,
+			url: `/dashboard/postbox/inbox/${older}`,
+			mailboxId: personal,
+		});
+	});
+
+	it('never surfaces another user’s mail, spam, or trash', async () => {
+		const t = convexTest(schema, modules);
+		const mine = await seedMailbox(t, { userId: 'admin-1', address: 'a@hinterland.camp' });
+		const theirs = await seedMailbox(t, { userId: 'someone-else', address: 'b@hinterland.camp' });
+		await seedFolder(t, mine);
+		await seedFolder(t, mine, 'spam');
+		await seedFolder(t, mine, 'trash');
+		await seedFolder(t, theirs);
+		await seedMessage(t, mine, { subject: `${TOKEN} junk`, snippet: TOKEN, role: 'spam' });
+		await seedMessage(t, mine, { subject: `${TOKEN} deleted`, snippet: TOKEN, role: 'trash' });
+		await seedMessage(t, theirs, { subject: `${TOKEN} private`, snippet: TOKEN });
+
+		const res = await t.query(api.globalSearch.search, { query: TOKEN });
+
+		expect(res.mail).toEqual([]);
 	});
 
 	it('respects the per-category limit', async () => {

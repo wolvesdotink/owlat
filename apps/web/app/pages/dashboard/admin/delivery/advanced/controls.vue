@@ -314,7 +314,7 @@ async function changePreset(
 					aria-live="polite"
 					:aria-label="t('dashboard.admin.delivery.advanced.controls.loading')"
 				>
-					<div class="h-40 animate-pulse rounded-xl bg-bg-surface" />
+					<div class="h-40 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
 				</div>
 			</template>
 
@@ -437,7 +437,7 @@ async function changePreset(
 					>
 						<template #loading>
 							<div
-								class="mt-3 h-16 animate-pulse rounded-lg bg-bg-surface"
+								class="mt-3 h-16 animate-pulse motion-reduce:animate-none rounded-lg bg-bg-surface"
 								role="status"
 								aria-live="polite"
 								:aria-label="t('dashboard.admin.delivery.advanced.controls.pullBacksLoading')"

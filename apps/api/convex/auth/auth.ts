@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth';
-import { organization, oneTimeToken } from 'better-auth/plugins';
+import { organization, oneTimeToken, twoFactor } from 'better-auth/plugins';
 import { createAccessControl } from 'better-auth/plugins/access';
 import { getOptional, getRequired, getBoolean } from '../lib/env';
 import {
@@ -203,6 +203,26 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 		session: {
 			expiresIn: 60 * 60 * 24 * 3, // 3 days
 			updateAge: 60 * 60 * 12, // Update session every 12 hours
+			// Freshness OFF, deliberately.
+			//
+			// BetterAuth's `freshAge` (default 24h, measured from session
+			// CREATION and never refreshed by updateAge) gates exactly three
+			// endpoints. Two are unreachable on this instance: `/delete-user` is
+			// 404 because `user.deleteUser` is not enabled — account deletion runs
+			// through convex/auth/accountManagement.ts instead — and
+			// `/unlink-account` has nothing to unlink with no social providers
+			// configured. The third is `/list-sessions`, which the sign-in and
+			// security page is built on.
+			//
+			// So the default would buy no protection here and would instead make
+			// that page fail with SESSION_NOT_FRESH for two of every three days of
+			// a session's life. A security page that usually cannot load is worse
+			// than one with no freshness gate: it teaches people to ignore it.
+			// Revoking is unaffected either way — the revoke endpoints use the
+			// authoritative-session middleware, which has no freshness component.
+			//
+			// Re-enabling `user.deleteUser` means revisiting this.
+			freshAge: 0,
 			cookieCache: {
 				enabled: true,
 				maxAge: 5 * 60, // 5 minutes
@@ -243,6 +263,25 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			// token (bound to the just-authenticated session) that it hands back to
 			// the desktop app via the `owlat://auth?ott=` deep link.
 			oneTimeToken(),
+			// TOTP two-factor. Enrolment is entirely opt-in and lives on
+			// /dashboard/preferences/security: nothing about sign-in changes for an
+			// account that never enables it, and the plugin only intercepts
+			// `/sign-in/email` once `user.twoFactorEnabled` is true (the response
+			// then carries `twoFactorRedirect` instead of a session, and the web
+			// login page prompts for the code).
+			//
+			// Only the TOTP and backup-code factors are wired. `otpOptions` is
+			// deliberately left unconfigured: an emailed OTP would travel over the
+			// very mailbox the second factor exists to protect. Without a
+			// `sendOTP`, `/two-factor/send-otp` fails closed with
+			// OTP_NOT_CONFIGURED, so the factor cannot be reached at all.
+			//
+			// The plugin's schema additions (`twoFactor.failedVerificationCount`,
+			// `twoFactor.lockedUntil`, `user.twoFactorEnabled`) are mirrored into
+			// convex/betterAuth/schema.ts — Convex rejects writes of undeclared
+			// fields, so the account-lockout counter would otherwise throw on the
+			// first wrong code. authSchemaParity.test.ts holds that mirror exact.
+			twoFactor({ issuer: 'Owlat' }),
 			// Convex plugin provides /convex/token and /convex/jwks endpoints
 			// Required for Convex client authentication via JWT
 			convex({

@@ -6,6 +6,7 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { subscriptionBatchSummary, summarizeSubscriptionBatch } from '~/utils/postboxSubscriptions';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -13,44 +14,100 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const { showToast } = useToast();
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 const { folders } = usePostboxFolders(mailboxIdRef);
-const { labels, setOnMessage } = usePostboxLabels(mailboxIdRef);
+const { labels } = usePostboxLabels(mailboxIdRef);
 
 const moveOpen = ref(false);
 const labelOpen = ref(false);
 const snoozeOpen = ref(false);
 
-const snoozeMutation = useBackendOperation(api.mail.snooze.snooze, {
+// Label / snooze / unsnooze are ONE mutation over the whole selection, like
+// every other verb in this bar. They used to loop the single-message mutation
+// per selected row: a 200-message selection meant 200 round trips, 200 live
+// re-renders, and a failure halfway through left the selection half-applied
+// with nothing able to name where it stopped.
+const setLabelOnSelection = useBackendOperation(api.mail.labels.setOnMessages, {
+	label: () => t('components.postbox.postboxQuickActionsBar.operations.label'),
+});
+const snoozeMutation = useBackendOperation(api.mail.snooze.snoozeMany, {
 	label: () => t('components.postbox.postboxQuickActionsBar.operations.snooze'),
 });
-
-async function applyLabel(labelId: Id<'mailLabels'>) {
-	for (const id of bulk.ids.value) {
-		await setOnMessage(id, labelId, true);
-	}
-	labelOpen.value = false;
-}
-
-async function snoozeSelected(until: number) {
-	for (const id of bulk.ids.value) {
-		const result = await snoozeMutation.run({ messageId: id, until });
-		if (!result.ok) return;
-	}
-	bulk.clear();
-}
-
-const unsnoozeMutation = useBackendOperation(api.mail.snooze.unsnooze, {
+const unsnoozeMutation = useBackendOperation(api.mail.snooze.unsnoozeMany, {
 	label: () => t('components.postbox.postboxQuickActionsBar.operations.unsnooze'),
 });
 
+async function applyLabel(labelId: Id<'mailLabels'>) {
+	labelOpen.value = false;
+	if (bulk.ids.value.length === 0) return;
+	await setLabelOnSelection.run({ messageIds: bulk.ids.value, labelId, add: true });
+}
+
+async function snoozeSelected(until: number) {
+	if (bulk.ids.value.length === 0) return;
+	const result = await snoozeMutation.run({ messageIds: bulk.ids.value, until });
+	if (!result.ok) return;
+	bulk.clear();
+}
+
 async function unsnoozeSelected() {
-	for (const id of bulk.ids.value) {
-		const result = await unsnoozeMutation.run({ messageId: id });
-		if (!result.ok) return;
+	if (bulk.ids.value.length === 0) return;
+	const result = await unsnoozeMutation.run({ messageIds: bulk.ids.value });
+	if (!result.ok) return;
+	bulk.clear();
+}
+
+// Unsubscribe + archive, for whatever list mail is in the selection. The
+// selected ROWS collapse to their distinct senders server-side (a selection of
+// six newsletters is usually two or three publishers), and each sender comes
+// back paired with the message the POST should use, so the action operates on
+// exactly the rows the verb was offered for — including rows in Archive, Spam
+// or a label view, which the subscriptions panel's inbox window never sees.
+//
+// Only One-Click senders come back, so the button self-hides when the selection
+// holds nothing this verb can finish: a page-only or mailto-only newsletter is
+// left to the reader's own unsubscribe chip rather than being promised here.
+const { data: selectionSenders } = useConvexQuery(api.mail.subscriptions.sendersOfMessages, () =>
+	bulk.ids.value.length > 0 ? { mailboxId: props.mailboxId, messageIds: bulk.ids.value } : 'skip'
+);
+const unsubscribableSenders = computed(() => selectionSenders.value ?? []);
+
+const unsubscribeOp = useBackendOperation(api.mail.subscriptions.unsubscribeAndArchive, {
+	label: () => t('components.postbox.postboxQuickActionsBar.operations.unsubscribe'),
+	type: 'action',
+});
+
+async function unsubscribeSelected() {
+	const senderEmails = unsubscribableSenders.value.map((sender) => sender.senderEmail);
+	if (senderEmails.length === 0) return;
+	// N state-changing POSTs at third parties — always behind an explicit yes.
+	if (
+		!window.confirm(
+			t(
+				'components.postbox.postboxQuickActionsBar.unsubscribeConfirm',
+				{ count: senderEmails.length },
+				senderEmails.length
+			)
+		)
+	) {
+		return;
 	}
+	const outcome = await unsubscribeOp.run({
+		mailboxId: props.mailboxId,
+		senderEmails,
+		messageIds: bulk.ids.value,
+	});
+	if (!outcome.ok) return;
+	// Every line, not just the headline: "2 unsubscribed" alone hides the 148
+	// archived and the one that still needs finishing by hand.
+	const summary = subscriptionBatchSummary(summarizeSubscriptionBatch(outcome.result.results));
+	const message = summary.lines
+		.map((line) => t(line.key, { count: line.count }, line.count))
+		.join(' · ');
+	if (message) showToast(message, summary.tone);
 	bulk.clear();
 }
 
@@ -251,6 +308,28 @@ const movableFolders = computed(() =>
 					<Icon name="lucide:shield-alert" class="w-4 h-4" />
 				</template>
 				{{ t('components.postbox.postboxQuickActionsBar.spam') }}
+			</UiButton>
+			<!-- Unsubscribe + archive: only offered when the selection actually
+			     holds One-Click list mail, so it is never a dead button. -->
+			<UiButton
+				v-if="unsubscribableSenders.length > 0"
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
+				:loading="unsubscribeOp.isLoading.value"
+				:title="
+					t(
+						'components.postbox.postboxQuickActionsBar.unsubscribeTitle',
+						{ count: unsubscribableSenders.length },
+						unsubscribableSenders.length
+					)
+				"
+				@click="unsubscribeSelected()"
+			>
+				<template #iconLeft>
+					<Icon name="lucide:bell-off" class="w-4 h-4" />
+				</template>
+				{{ t('components.postbox.postboxQuickActionsBar.unsubscribe') }}
 			</UiButton>
 			<span class="flex-1" />
 			<UiButton

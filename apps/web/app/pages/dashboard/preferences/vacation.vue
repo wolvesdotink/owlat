@@ -6,7 +6,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.vacation.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
@@ -78,14 +78,9 @@ async function confirmDisable() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-3xl mx-auto">
-		<PreferencesBackLink />
-
+	<div>
 		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em]">
-				{{ t('dashboard.preferences.vacation.title') }}
-			</h1>
-			<p class="text-text-secondary mt-1">
+			<p class="text-text-secondary">
 				{{ t('dashboard.preferences.vacation.intro') }}
 			</p>
 		</header>
@@ -166,7 +161,7 @@ async function confirmDisable() {
 					{{ t('dashboard.preferences.vacation.turnOff') }}
 				</UiButton>
 				<UiButton type="button" :disabled="saving" @click="save">
-					<Icon v-if="saving" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin" />
+					<Icon v-if="saving" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none" />
 					{{ saving ? t('common.saving') : t('common.save') }}
 				</UiButton>
 			</div>

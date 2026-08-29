@@ -20,6 +20,7 @@
  * failed navigation) — a stale flag is discarded rather than shown.
  */
 
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { workspaceAccentTints } from '~/lib/desktop/workspaceAccent';
 
 /** sessionStorage key carrying the pending-switch skeleton descriptor. */
@@ -211,15 +212,6 @@ function buildSkeleton(accent: string, label: string): HTMLElement {
 
 	root.append(titlebar, body);
 	return root;
-}
-
-/** Whether the viewer has asked to reduce motion (crossfades collapse to cuts). */
-function prefersReducedMotion(): boolean {
-	return (
-		typeof window !== 'undefined' &&
-		typeof window.matchMedia === 'function' &&
-		window.matchMedia('(prefers-reduced-motion: reduce)').matches
-	);
 }
 
 /**

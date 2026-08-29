@@ -13,8 +13,7 @@
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { logError } from '../../lib/runtimeLog';
-import { renderEmailHtml, resolvePlainText, renderAmpEmail } from '@owlat/email-renderer';
-import type { EditorBlock } from '@owlat/shared/types';
+import { renderDraftBodies } from '@owlat/email-renderer';
 import { getMtaConfig, scanAttachmentBytes } from '../mtaClient';
 import { buildMessageId, buildRfc822, type DraftRow } from '../rfc822';
 import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
@@ -28,56 +27,6 @@ export interface DraftAttachmentBuffer {
 	isInline: boolean;
 	contentId?: string;
 	data: Buffer;
-}
-
-/**
- * Resolve the final HTML + plain-text (+ optional AMP) bodies for an outbound
- * draft.
- *
- *   - composerMode='full': bodyBlocks holds the block document built by
- *     the @owlat/email-builder; we render it through the email-renderer
- *     pipeline directly. Block-designed bodies also get an AMP4Email
- *     rendering so interactive blocks (accordion, carousel) ship as a
- *     `text/x-amp-html` alternative for AMP-capable clients.
- *   - composerMode='simple' (or unset): bodyHtml holds rich-text HTML
- *     produced by our in-house PostboxBasicEditor. We wrap it in a
- *     synthetic text block so it inherits the same boilerplate, CSS
- *     inlining, dark-mode handling, etc. No AMP variant — the simple
- *     editor has no interactive blocks.
- */
-function renderDraftBodies(draft: DraftRow): { html: string; text: string; amp?: string } {
-	const wantsFull =
-		draft.composerMode === 'full' ||
-		(!draft.composerMode && draft.bodyBlocks && draft.bodyBlocks !== '[]');
-
-	if (wantsFull && draft.bodyBlocks) {
-		try {
-			const blocks = JSON.parse(draft.bodyBlocks) as EditorBlock[];
-			if (blocks.length > 0) {
-				const html = renderEmailHtml(blocks);
-				const text = resolvePlainText(blocks, draft.bodyText);
-				// Only attach an AMP part when the design actually uses an
-				// interactive block — otherwise the AMP body is byte-for-byte
-				// equivalent to the static fallback and just inflates the message.
-				const amp = blocks.some((b) => b.type === 'accordion' || b.type === 'carousel')
-					? renderAmpEmail(blocks, { title: draft.subject })
-					: undefined;
-				return { html, text, amp };
-			}
-		} catch (err) {
-			logError('[Outbound] Failed to parse block-based body, falling back to bodyHtml:', err);
-		}
-	}
-
-	// Simple mode (or empty designer): wrap bodyHtml in a single text block.
-	const wrapped: EditorBlock = {
-		id: 'postbox-body',
-		type: 'text',
-		content: { html: draft.bodyHtml || '' },
-	} as unknown as EditorBlock;
-	const html = renderEmailHtml([wrapped]);
-	const text = resolvePlainText([wrapped], draft.bodyText);
-	return { html, text };
 }
 
 /**
@@ -190,7 +139,13 @@ export async function buildOutboundMime(
 		}
 	}
 
-	const rendered = renderDraftBodies(draft);
+	// Same derivation the composer's "Preview as sent" shows (idea 14): one
+	// implementation in @owlat/email-renderer, so the preview cannot drift from
+	// what actually goes on the wire.
+	const rendered = renderDraftBodies(draft, {
+		onBlockParseError: (err) =>
+			logError('[Outbound] Failed to parse block-based body, falling back to bodyHtml:', err),
+	});
 	draft.bodyHtml = rendered.html;
 	draft.bodyText = rendered.text;
 	draft.bodyAmp = rendered.amp;

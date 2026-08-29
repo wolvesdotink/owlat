@@ -1,6 +1,16 @@
 import { v, type Infer } from 'convex/values';
 
 // Unified-message channel union shared by stored rows and function arguments.
+/**
+ * The interface languages this product ships (`nuxt.config` → `i18n.locales`).
+ *
+ * A closed union rather than `v.string()`: this value is read back to pick the
+ * catalog a system EMAIL renders in, and an unrecognised code there is either a
+ * crash or a silent fall back to English on a channel nobody is watching.
+ * Keep in step with `apps/web/i18n/formats.ts` → `FORMAT_LOCALES`.
+ */
+export const appLocaleValidator = v.union(v.literal('en'), v.literal('de'));
+
 export const unifiedMessageChannelValidator = v.union(
 	v.literal('email'),
 	v.literal('sms'),
@@ -266,89 +276,17 @@ export const spamVerdictValidator = v.union(
 	v.literal('quarantine')
 );
 
-// Postbox reader auto-advance preference (mailUserSettings.autoAdvance and
-// mail/settings update args) — single source so schema and args can't drift.
-export const mailAutoAdvanceValidator = v.union(
-	v.literal('next'),
-	v.literal('previous'),
-	v.literal('back-to-list')
-);
-
-// Postbox default reply behavior (mailUserSettings.replyDefault and mail/settings
-// update args) — whether the primary reply affordance / `r` opens a plain Reply
-// or a Reply-all. Single source so schema and args can't drift.
-export const mailReplyDefaultValidator = v.union(v.literal('reply'), v.literal('reply-all'));
-
-// Postbox list/reader density (mailUserSettings.density and mail/settings update
-// args) — 'comfortable' (the roomy default) vs 'compact' (tighter rows +
-// single-line subject/snippet). Single source so schema and args can't drift.
-export const mailDensityValidator = v.union(v.literal('comfortable'), v.literal('compact'));
-
-// Postbox inbox list view mode (mailUserSettings.viewMode and mail/settings
-// update args) — 'flat' (single message list, the default), 'conversations'
-// (thread-grouped rows), or 'categories' (People / Newsletters / Notifications
-// / Receipts sections). Inbox-only; other folders always render flat. Single
-// source so schema and args can't drift.
-export const mailViewModeValidator = v.union(
-	v.literal('flat'),
-	v.literal('conversations'),
-	v.literal('categories')
-);
-
-// Postbox inbox landing mode (mailUserSettings.inboxMode and mail/settings
-// update args) — 'today' (the focused single-column landing view; the default)
-// vs 'browse' (the full three-pane folder UI). Inbox-only; persisted as the
-// user's last-used mode. Single source so schema and args can't drift.
-export const mailInboxModeValidator = v.union(v.literal('today'), v.literal('browse'));
-
-// Postbox desktop-notification scope (mailUserSettings.notifyAbout and
-// mail/settings update args). 'everything' fires a toast for every new inbox
-// message; 'people-important' only for smart-category `person` mail (and any
-// message whose category is absent — fail-open so nothing is silently dropped
-// before the classifier has run); 'nothing' suppresses toasts entirely. Single
-// source so schema and args can't drift.
-export const mailNotifyAboutValidator = v.union(
-	v.literal('everything'),
-	v.literal('people-important'),
-	v.literal('nothing')
-);
-
 // Email template kind (emailTemplates.type and its CRUD args)
 export const emailTemplateTypeValidator = v.union(
 	v.literal('marketing'),
 	v.literal('transactional')
 );
 
-// Attachment metadata embedded in raw .eml (mailMessages.attachments)
-export const mailMessageAttachmentValidator = v.object({
-	filename: v.string(),
-	contentType: v.string(),
-	size: v.number(),
-	contentId: v.optional(v.string()),
-	partIndex: v.string(),
-});
-
-// Sealed-Mail validators (sealPolicyValidator / sealSkipReasonValidator /
-// mailEncryptionInfoValidator) live in `../mail/sealPolicy.ts` for the ~500 LOC ratchet.
-
-// Parsed List-Unsubscribe / List-Unsubscribe-Post target (mailMessages.unsubscribe).
-// Parsed ONCE at ingest from the raw header block (see @owlat/shared/listUnsubscribe)
-// so the reader can render the Unsubscribe chip without re-opening the raw .eml.
-export const mailUnsubscribeValidator = v.object({
-	httpUrl: v.optional(v.string()),
-	mailtoUrl: v.optional(v.string()),
-	oneClick: v.boolean(),
-});
-
-// Compose-draft attachment referencing Convex storage (mailDrafts.attachments)
-export const mailDraftAttachmentValidator = v.object({
-	storageId: v.id('_storage'),
-	filename: v.string(),
-	contentType: v.string(),
-	size: v.number(),
-	isInline: v.boolean(),
-	contentId: v.optional(v.string()),
-});
+// Mail CONTENT validators (attachment metadata, List-Unsubscribe, triage verbs,
+// snippet variables, draft attachments, share-link scope/scan) live in the
+// sibling lib/mailContentValidators.ts, alongside the mail SETTINGS validators
+// in lib/mailSettingsValidators.ts, to keep this shared module under the
+// ~500 LOC file-size ratchet.
 
 // Edit-learning flywheel validators (`editDeltaKindValidator`,
 // `editAdjustmentValidator`) live in the feature-local sibling

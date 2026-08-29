@@ -25,7 +25,8 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { nextTable, ORGANIZATION_DELETION_STEPS, STEPS } from '../workspaces/deletion/walker';
+import { nextTable } from '../workspaces/deletion/walker';
+import { ORGANIZATION_DELETION_STEPS, STEPS } from '../workspaces/deletion/steps/registry';
 import type { OrganizationDeletionTable } from '../workspaces/deletion/steps/_common';
 import {
 	createTestContact,

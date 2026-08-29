@@ -6,7 +6,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.signatures.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
@@ -75,18 +75,11 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-3xl mx-auto">
-		<PreferencesBackLink />
-
-		<header class="mb-6 flex items-center justify-between">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em]">
-					{{ t('dashboard.preferences.signatures.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">
-					{{ t('dashboard.preferences.signatures.intro') }}
-				</p>
-			</div>
+	<div>
+		<header class="mb-6 flex items-center justify-between gap-4">
+			<p class="text-text-secondary">
+				{{ t('dashboard.preferences.signatures.intro') }}
+			</p>
 			<UiButton v-if="mailboxId && !editor" type="button" @click="startCreate">
 				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.signatures.newSignature') }}
@@ -123,7 +116,7 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.signatures.yourSignatures') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
 			<div v-else-if="signatures.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.signatures.empty') }}

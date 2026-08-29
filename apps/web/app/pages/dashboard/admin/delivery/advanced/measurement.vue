@@ -195,8 +195,8 @@ const decisionLabel = computed(() => {
 					aria-live="polite"
 					:aria-label="t('dashboard.admin.delivery.advanced.measurement.loadingLabel')"
 				>
-					<div class="h-56 animate-pulse rounded-xl bg-bg-surface" />
-					<div class="h-56 animate-pulse rounded-xl bg-bg-surface" />
+					<div class="h-56 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<div class="h-56 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
 				</div>
 			</template>
 

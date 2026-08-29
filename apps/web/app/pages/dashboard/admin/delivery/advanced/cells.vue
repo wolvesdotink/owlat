@@ -134,7 +134,7 @@ function select(cellKey: string): void {
 					aria-live="polite"
 					:aria-label="t('dashboard.admin.delivery.advanced.cells.loading')"
 				>
-					<div class="h-64 animate-pulse rounded-xl bg-bg-surface" />
+					<div class="h-64 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
 				</div>
 			</template>
 
@@ -169,7 +169,7 @@ function select(cellKey: string): void {
 					>
 						<template #loading>
 							<div
-								class="mt-3 h-24 animate-pulse rounded-lg bg-bg-surface"
+								class="mt-3 h-24 animate-pulse motion-reduce:animate-none rounded-lg bg-bg-surface"
 								role="status"
 								aria-live="polite"
 								:aria-label="t('dashboard.admin.delivery.advanced.cells.evidenceLoading')"
@@ -202,7 +202,7 @@ function select(cellKey: string): void {
 					>
 						<template #loading>
 							<div
-								class="mt-3 h-24 animate-pulse rounded-lg bg-bg-surface"
+								class="mt-3 h-24 animate-pulse motion-reduce:animate-none rounded-lg bg-bg-surface"
 								role="status"
 								aria-live="polite"
 								:aria-label="t('dashboard.admin.delivery.advanced.cells.historyLoading')"

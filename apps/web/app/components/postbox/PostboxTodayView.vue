@@ -24,6 +24,7 @@
  * under prefers-reduced-motion).
  */
 import { api } from '@owlat/api';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
 import {
@@ -142,8 +143,10 @@ watch(
 		void nextTick(() => {
 			const el = forYouSection.value;
 			if (!el) return;
-			const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-			el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+			el.scrollIntoView({
+				block: 'start',
+				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+			});
 			pendingForYouScroll.value = false;
 			// Strip the consumed fragment so re-clicking the titlebar pill (which
 			// navigates to the same URL) re-sets the hash → re-arms the flag →

@@ -308,7 +308,7 @@ async function handleSave() {
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton class="gap-2" :disabled="isSaving" @click="handleSave">
-				<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				{{ isSaving ? t('common.saving') : t('components.channels.channelConfigForm.save') }}
 			</UiButton>
 		</div>

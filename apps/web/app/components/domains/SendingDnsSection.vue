@@ -124,7 +124,7 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailF
 			class="inline-flex items-center gap-1.5 text-xs text-text-secondary whitespace-nowrap"
 			:title="t('components.domains.recordRow.autoRecheckTitle')"
 		>
-			<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin" />
+			<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin motion-reduce:animate-none" />
 			{{ t('components.domains.recordRow.checkingDns') }}
 		</span>
 	</div>
@@ -202,7 +202,7 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailF
 				<Icon
 					v-if="isUpdatingDmarc"
 					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin text-text-tertiary"
+					class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
 				/>
 			</div>
 			<p class="mt-2 text-xs text-text-secondary">

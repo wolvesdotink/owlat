@@ -133,7 +133,7 @@ const totalNewSubscribers = computed(() => {
 							<Icon
 								v-if="statsLoading"
 								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin text-text-tertiary"
+								class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
 							/>
 						</div>
 					</div>

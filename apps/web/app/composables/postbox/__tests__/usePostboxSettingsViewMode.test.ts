@@ -43,6 +43,12 @@ describe('usePostboxSettings viewMode', () => {
 		expect(viewMode.value).toBe('conversations');
 	});
 
+	it('reflects the bundled mode', () => {
+		settingsRow.value = { viewMode: 'bundled' };
+		const { viewMode } = usePostboxSettings();
+		expect(viewMode.value).toBe('bundled');
+	});
+
 	it('normalises an unknown stored mode to flat', () => {
 		settingsRow.value = { viewMode: 'stacked' };
 		const { viewMode } = usePostboxSettings();

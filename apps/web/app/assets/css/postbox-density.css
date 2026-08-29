@@ -35,6 +35,30 @@
 }
 
 /*
+ * Danger-only sender-trust marker (UX plan idea 51).
+ *
+ * The row accent is an INSET shadow, not a border: the windowed list positions
+ * rows by a fixed JS height, so a real border would add 3px to a marked row and
+ * desync it from the spacer math. A shadow paints inside the box and costs no
+ * layout at any density.
+ *
+ * Density is where the chip earns its keep or costs too much. Comfortable shows
+ * icon + label. Compact trades the label away — a compact row is deliberately
+ * one visual line, and the label would push the subject out of it — leaving the
+ * icon, which keeps the row marked; the accessible name on the chip carries the
+ * full sentence either way, so nothing is lost to a screen reader. On touch
+ * (where compact rows get their 44px floor back) the label returns: the extra
+ * height is already paid for, and a bare icon is a poor tap-sized explanation.
+ */
+.pbx-row-danger {
+	box-shadow: inset 3px 0 0 var(--color-error);
+}
+
+[data-density='compact'] .pbx-row-trust-label {
+	display: none;
+}
+
+/*
  * Windowed thread list: when the list virtualizes (large folders) each row is
  * absolutely positioned by a JS row height (POSTBOX_ROW_HEIGHT), so the row box
  * must be pinned to exactly `--pbx-row-intrinsic` rather than growing with its
@@ -48,6 +72,20 @@
 	box-sizing: border-box;
 }
 
+/*
+ * The grouped renderers' sticky section header, pinned for the same reason: the
+ * sectioned window math charges every section a fixed header height before its
+ * rows begin, so a header that grew (or shrank) by a pixel would shift every row
+ * under it away from its spacer. MUST equal POSTBOX_SECTION_HEADER_HEIGHT in
+ * app/utils/postboxDensity.ts. Density-independent — the header is a label, not
+ * a row.
+ */
+.pbx-section-header {
+	height: 32px;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
 /* Compact reader: pull the header spacing in so the message body starts higher. */
 [data-density='compact'] .pbx-reader-article {
 	padding-top: 1rem;
@@ -56,6 +94,35 @@
 
 [data-density='compact'] .pbx-reader-header {
 	margin-bottom: 0.75rem;
+}
+
+/*
+ * Reply-all and Forward in the reader's per-message action row.
+ *
+ * They used to be `hidden group-hover:inline-flex` at EVERY density, which put
+ * the two verbs people reach for most behind a pointer hover: invisible while
+ * reading, invisible on touch, and a second click away in the ⋯ menu. At the
+ * comfortable default they now simply show. Compact is where trading them for
+ * vertical rhythm is the point, so there they stay hover-revealed — and the
+ * (hover: none) rule pins them open on touch, where hover never fires and the
+ * reveal would never happen at all.
+ */
+.pbx-reader-secondary-action {
+	display: inline-flex;
+}
+
+[data-density='compact'] .pbx-reader-secondary-action {
+	display: none;
+}
+
+[data-density='compact'] .pbx-reader-message:hover .pbx-reader-secondary-action {
+	display: inline-flex;
+}
+
+@media (hover: none) {
+	[data-density='compact'] .pbx-reader-secondary-action {
+		display: inline-flex;
+	}
 }
 
 /*
@@ -82,6 +149,13 @@
 	[data-density='compact'] .postbox-thread-list .pbx-row-link {
 		padding-top: 0.65rem;
 		padding-bottom: 0.65rem;
+	}
+
+	/* That touch floor buys back the vertical room compact traded away, so the
+	   trust marker's label comes back with it — a bare icon is a poor
+	   explanation on the surface with no hover and no title tooltip. */
+	[data-density='compact'] .postbox-thread-list .pbx-row-trust-label {
+		display: inline;
 	}
 
 	/* The long-press context menu is the touch route to the triage verbs —

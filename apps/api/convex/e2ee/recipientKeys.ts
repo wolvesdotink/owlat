@@ -14,16 +14,23 @@
  *     cache, so *which* addresses we have pinned keys for is org-private
  *     correspondence metadata that must not be an anonymous enumeration oracle.
  *   - `reacceptKeyChange` (admin) — the explicit re-accept transition.
+ *   - `setContactKeyVerified` (authed member) — record/withdraw the HUMAN
+ *     verification of a contact's key (plan idea 54).
  *
  * Nothing here uses `authedIdentityMutation` (a locked Sealed-Mail rule).
+ *
+ * The pure decision logic these writes apply lives in `e2ee/pinning.ts`, which
+ * stays free of Convex imports by design (its whole state machine is testable
+ * without a database); this file is the only place those decisions become rows.
  */
 
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
-import { adminMutation, authedQuery } from '../lib/authedFunctions';
+import { adminMutation, authedMutation, authedQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
-import { reacceptObservedKey } from './pinning';
+import { throwForbidden } from '../_utils/errors';
+import { fingerprintsEqual, normalizeFingerprint, reacceptObservedKey } from './pinning';
 
 const outcomeValidator = v.union(
 	v.literal('trusted'),
@@ -145,9 +152,19 @@ export const getRecipientKeyStatus = authedQuery({
 			discoveredAt: v.union(v.number(), v.null()),
 			source: v.union(sourceValidator, v.null()),
 			expiresAt: v.number(),
+			// Human verification (idea 54). The CHECKED fingerprint rides along so
+			// the client resolves the same three-way state the backend does —
+			// verified / stale / unverified — from this one read.
+			verifiedFingerprint: v.union(v.string(), v.null()),
+			verifiedAt: v.union(v.number(), v.null()),
+			// Whether the CALLER is the one who made the claim. The user id itself
+			// stays server-side: "you" versus "a teammate" is the whole distinction
+			// the copy needs, and the id would hand the roster to anyone who can read
+			// a contact.
+			verifiedByMe: v.boolean(),
 		})
 	),
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const address = normalizeEmail(args.address);
 		const row = await ctx.db
 			.query('recipientKeys')
@@ -161,7 +178,81 @@ export const getRecipientKeyStatus = authedQuery({
 			discoveredAt: row.discoveredAt ?? null,
 			source: row.source ?? null,
 			expiresAt: row.expiresAt,
+			verifiedFingerprint: row.verifiedFingerprint ?? null,
+			verifiedAt: row.verifiedAt ?? null,
+			verifiedByMe: !!row.verifiedBy && row.verifiedBy === session.userId,
 		};
+	},
+});
+
+/**
+ * Record — or withdraw — the HUMAN verification of a contact's sealing key
+ * (plan idea 54). TOFU already decided which key we seal to; this records that a
+ * person compared that fingerprint with its owner over some other channel and it
+ * matched.
+ *
+ * Three properties make the claim trustworthy:
+ *
+ *   1. It is bound to a FINGERPRINT the caller passed in, which must still equal
+ *      the current pin. A panel that has been open since before a rotation
+ *      therefore cannot mark a key its reader never actually saw — the call
+ *      fails instead, and they re-read the fresh one.
+ *   2. It is ATTRIBUTED (`verifiedBy`), so the badge can say who made it.
+ *   3. It expires by construction: the stored fingerprint stops matching the pin
+ *      the moment the key changes, and `resolveVerificationState` reads that as
+ *      stale (see `schema/e2ee.ts`).
+ *
+ * Any org member may set it — unlike `reacceptKeyChange` this changes NOTHING
+ * about which key Owlat seals to, it only annotates the key already pinned, and
+ * a verification ritual that needed an admin in the room is a ritual nobody
+ * performs. Withdrawing (`verified: false`) needs no fingerprint match: removing
+ * a trust claim is always the safe direction.
+ */
+// authz: authedMutation (any org member). Deliberately NOT admin: this records
+// an attributed human observation about a PUBLIC fingerprint and cannot change
+// the pinned key, so it is strictly weaker than reacceptKeyChange next door.
+export const setContactKeyVerified = authedMutation({
+	args: {
+		address: v.string(),
+		verified: v.boolean(),
+		// Required when verifying: the fingerprint the caller actually compared.
+		fingerprint: v.optional(v.string()),
+	},
+	returns: v.object({ verified: v.boolean() }),
+	handler: async (ctx, args, session) => {
+		await assertFeatureEnabled(ctx, 'sealedMail');
+		const address = normalizeEmail(args.address);
+		const row = await ctx.db
+			.query('recipientKeys')
+			.withIndex('by_address', (q) => q.eq('address', address))
+			.first();
+		if (!row) throwForbidden('No sealing key is known for this address');
+
+		if (!args.verified) {
+			await ctx.db.patch(row._id, {
+				verifiedFingerprint: undefined,
+				verifiedAt: undefined,
+				verifiedBy: undefined,
+				updatedAt: Date.now(),
+			});
+			return { verified: false };
+		}
+
+		// Verifying a key we would not seal to is meaningless, and verifying one
+		// the caller did not see is the whole failure this guard exists for.
+		if (!row.pinnedFingerprint || row.outcome !== 'trusted') {
+			throwForbidden('This address has no trusted key to verify');
+		}
+		if (!args.fingerprint || !fingerprintsEqual(args.fingerprint, row.pinnedFingerprint)) {
+			throwForbidden('The key changed since it was displayed; check the new one');
+		}
+		await ctx.db.patch(row._id, {
+			verifiedFingerprint: normalizeFingerprint(row.pinnedFingerprint),
+			verifiedAt: Date.now(),
+			verifiedBy: session.userId,
+			updatedAt: Date.now(),
+		});
+		return { verified: true };
 	},
 });
 

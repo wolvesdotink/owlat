@@ -116,7 +116,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					Edit
 				</template>
 				<template #option-preview>
-					<Loader2 v-if="isGeneratingHtml" class="w-4 h-4 animate-spin" />
+					<Loader2 v-if="isGeneratingHtml" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					<Eye v-else class="w-4 h-4" />
 					Preview
 				</template>
@@ -189,7 +189,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 
 			<!-- Save Button -->
 			<UiButton variant="primary" size="sm" :disabled="isSaving" @click="emit('save')">
-				<Loader2 v-if="isSaving" class="w-4 h-4 animate-spin" />
+				<Loader2 v-if="isSaving" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				<Save v-else class="w-4 h-4" />
 				{{ isSaving ? 'Saving...' : 'Save' }}
 			</UiButton>

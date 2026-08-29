@@ -81,7 +81,7 @@ const usagePercent = computed(() => {
 			</div>
 
 			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
 
 			<div v-else-if="!overview" class="py-4 text-center">

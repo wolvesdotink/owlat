@@ -263,7 +263,7 @@ const createdOn = computed(() =>
 			     getSharedExternalAccount subscription; show a pending state until it
 			     resolves so the panel isn't briefly empty and formless. -->
 			<div v-if="reconnectLoading && !reconnectAccountForForm" class="p-4 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
 			<PostboxMailboxConnectForm
 				v-else-if="reconnectAccountForForm"

@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { appLocaleValidator } from '../lib/convexValidators';
 import { internalMutation } from '../_generated/server';
 import { authedIdentityMutation } from '../lib/authedFunctions';
 import {
@@ -99,5 +100,37 @@ export const createInternal = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+	},
+});
+
+/**
+ * Remember the interface language this person just picked.
+ *
+ * The `owlat-locale` cookie is still what decides the render, and it is still
+ * written first — this is the copy that survives the cookie: a new device before
+ * its first visit, and every system EMAIL, which the backend composes with no
+ * request (and therefore no cookie) behind it. Someone who set the product to
+ * German and then got their account-deletion confirmation in English was
+ * reading a mail this field now fixes.
+ *
+ * Auth: the authenticated-identity floor, and the row is looked up BY the
+ * caller's own subject rather than by an id from the arguments — so there is no
+ * shape of this call that writes another account's language.
+ */
+export const setLocale = authedIdentityMutation({
+	args: { locale: appLocaleValidator },
+	handler: async (ctx, args) => {
+		const identity = await requireAuthenticatedIdentity(ctx);
+		const profile = await ctx.db
+			.query('userProfiles')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', identity.subject))
+			.first();
+		// No profile yet (mid-signup, or a seeded account): the cookie already
+		// carries the choice, and `create` will write the row soon enough. A
+		// preference is not worth failing a language switch over.
+		if (!profile) return null;
+		if (profile.locale === args.locale) return profile._id;
+		await ctx.db.patch(profile._id, { locale: args.locale, updatedAt: Date.now() });
+		return profile._id;
 	},
 });

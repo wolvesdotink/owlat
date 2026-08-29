@@ -140,7 +140,7 @@ function getTypeBadgeClass(type: string): string {
 							<Icon
 								v-if="countsLoading || blocksStatsLoading"
 								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin text-text-tertiary"
+								class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
 							/>
 						</div>
 					</div>
@@ -196,7 +196,7 @@ function getTypeBadgeClass(type: string): string {
 				<div class="card">
 					<!-- Loading state -->
 					<div v-if="templatesLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 					</div>
 
 					<!-- Empty state -->
@@ -270,7 +270,7 @@ function getTypeBadgeClass(type: string): string {
 				<div class="card">
 					<!-- Loading state -->
 					<div v-if="blocksLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 					</div>
 
 					<!-- Empty state -->

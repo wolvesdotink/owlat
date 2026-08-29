@@ -48,6 +48,9 @@
  *   - Full-text SEARCH indexes (`mailMessages.snippet`, the `searchableText`
  *     search fields) — Convex indexes plaintext; sealing them would break
  *     server-side search. They hold a snippet/keywords, never the full body.
+ *     `mailMessages.searchBody` (ADR-0059) is the same exception widened to a
+ *     ~8KB excerpt, and is the ONLY one that is opt-in per instance: unset ⇒
+ *     never written, and turning it off clears what was written.
  *   - VECTOR embeddings — derived from plaintext at ingest and stored as floats.
  *   - Export — `contacts/dataExport.ts` DECRYPTS on export so the owner's own
  *     GDPR data package is readable.

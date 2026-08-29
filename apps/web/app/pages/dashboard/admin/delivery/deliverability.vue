@@ -219,9 +219,9 @@ async function copyReport() {
 					class="space-y-5"
 					:aria-label="t('dashboard.admin.delivery.deliverability.loadingChecks')"
 				>
-					<div class="h-32 animate-pulse rounded-xl bg-bg-surface" />
-					<div class="h-80 animate-pulse rounded-xl bg-bg-surface" />
-					<div class="h-48 animate-pulse rounded-xl bg-bg-surface" />
+					<div class="h-32 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<div class="h-80 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<div class="h-48 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
 				</div>
 			</template>
 			<template #empty>

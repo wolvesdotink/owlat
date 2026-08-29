@@ -26,11 +26,11 @@
  */
 
 import { v } from 'convex/values';
+import { spamVerdictValidator } from '../lib/convexValidators';
 import {
 	mailMessageAttachmentValidator,
 	mailUnsubscribeValidator,
-	spamVerdictValidator,
-} from '../lib/convexValidators';
+} from '../lib/mailContentValidators';
 import { internalMutation, internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -124,6 +124,7 @@ export const ingestFromWebhook = internalAction({
 				htmlBodyInline: prepared.html.inline,
 				htmlBodyStorageId: prepared.html.storageId,
 				snippet: prepared.snippet,
+				searchBody: prepared.searchBody,
 				messageId: args.messageId,
 				inReplyTo: args.inReplyTo,
 				references: args.references,
@@ -193,6 +194,9 @@ export const deliverToMailbox = internalMutation({
 		htmlBodyInline: v.optional(v.string()),
 		htmlBodyStorageId: v.optional(v.id('_storage')),
 		snippet: v.optional(v.string()),
+		// Deep-search excerpt (idea 32). Always sent by the ingest action; the
+		// insert step drops it unless the instance opted in.
+		searchBody: v.optional(v.string()),
 		messageId: v.string(),
 		inReplyTo: v.optional(v.string()),
 		references: v.optional(v.string()),
@@ -347,6 +351,7 @@ export const deliverToMailbox = internalMutation({
 			htmlBodyInline: args.htmlBodyInline,
 			htmlBodyStorageId: args.htmlBodyStorageId,
 			snippet: args.snippet,
+			searchBody: args.searchBody,
 			messageId: args.messageId,
 			inReplyTo: args.inReplyTo,
 			references: args.references,
@@ -370,6 +375,7 @@ export const deliverToMailbox = internalMutation({
 			inboundEncryptionInfo: args.inboundEncryptionInfo,
 			inboundSignatureInfo: args.inboundSignatureInfo,
 			unsubscribe: args.unsubscribe,
+			pinnedSection: filterOutcome.pinnedSection,
 			countUsedBytes: true,
 		});
 
@@ -378,8 +384,11 @@ export const deliverToMailbox = internalMutation({
 		// needs a reply prompt), and only on this webhook ingest path so bulk
 		// IMAP backfill can't fan out background LLM work. The Precedence
 		// header rides along because it is not persisted on the message row.
+		// The row's ACTUAL folder is what counts: a MUTED thread's delivery was
+		// re-routed to Archive inside the insert (mail/mute.ts), and neither the
+		// Reply Queue nor the category classifier should spend work on it.
 		const delivered = await ctx.db.get(messageId);
-		if (delivered && folder.role === 'inbox') {
+		if (delivered && folder.role === 'inbox' && delivered.folderId === folder._id) {
 			await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
 				precedence: args.antiLoopHeaders?.['precedence'],
 			});

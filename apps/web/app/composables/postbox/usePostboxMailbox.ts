@@ -13,17 +13,15 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { derivePostboxSidebarSections } from '~/utils/postboxMailboxSections';
 
-const STORAGE_KEY = 'owlat:postbox:active-mailbox';
-
 export function usePostboxMailbox() {
 	const { data, isLoading, error } = useConvexQuery(api.mail.mailbox.identity.list, () => ({}));
 	const mailboxes = computed(() => data.value ?? []);
 
 	// Shared across every consumer so a switch in the sidebar reaches the page,
-	// reader, and composer at once. Seeded once from localStorage on the client.
-	const persistedId = useState<Id<'mailboxes'> | null>('postbox:active-mailbox', () =>
-		import.meta.client ? (localStorage.getItem(STORAGE_KEY) as Id<'mailboxes'> | null) : null
-	);
+	// reader, and composer at once — including the app-wide command palette,
+	// which owns the selection through `usePostboxActiveMailbox` alone (no
+	// Postbox subscriptions on non-Postbox screens).
+	const { activeMailboxId: persistedId, setActiveMailboxId } = usePostboxActiveMailbox();
 
 	const currentMailbox = computed(() => {
 		const list = mailboxes.value;
@@ -35,12 +33,7 @@ export function usePostboxMailbox() {
 		return list[0] ?? null;
 	});
 
-	const setCurrentMailbox = (id: Id<'mailboxes'>) => {
-		persistedId.value = id;
-		if (import.meta.client) {
-			localStorage.setItem(STORAGE_KEY, id);
-		}
-	};
+	const setCurrentMailbox = setActiveMailboxId;
 
 	// Switch to a mailbox and land on its inbox rather than a folder/message id
 	// that only exists in the previous mailbox. Shared by the sidebar switcher and

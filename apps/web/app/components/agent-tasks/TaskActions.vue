@@ -63,7 +63,7 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 				<Icon
 					v-if="primaryLoading"
 					name="lucide:loader-2"
-					class="w-3.5 h-3.5 animate-spin"
+					class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
 					aria-hidden="true"
 				/>
 				<Icon v-else-if="primaryIcon" :name="primaryIcon" class="w-3.5 h-3.5" aria-hidden="true" />

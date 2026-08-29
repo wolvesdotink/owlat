@@ -141,13 +141,13 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 		<!-- Loading: skeleton over spinner-only, matching the native-feel bar. -->
 		<div v-if="isLoading" class="p-6 space-y-4" aria-busy="true">
 			<div class="flex items-center gap-3">
-				<div class="w-10 h-10 rounded-xl bg-bg-surface animate-pulse" />
+				<div class="w-10 h-10 rounded-xl bg-bg-surface animate-pulse motion-reduce:animate-none" />
 				<div class="flex-1 space-y-2">
-					<div class="h-4 w-40 rounded bg-bg-surface animate-pulse" />
-					<div class="h-3 w-64 rounded bg-bg-surface animate-pulse" />
+					<div class="h-4 w-40 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
+					<div class="h-3 w-64 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
 				</div>
 			</div>
-			<div v-for="n in 3" :key="n" class="h-12 rounded-lg bg-bg-surface animate-pulse" />
+			<div v-for="n in 3" :key="n" class="h-12 rounded-lg bg-bg-surface animate-pulse motion-reduce:animate-none" />
 		</div>
 
 		<!-- Error -->

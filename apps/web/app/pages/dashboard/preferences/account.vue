@@ -9,13 +9,19 @@ import {
 	isSaveFilePickerCancellation,
 	openIncrementalJsonDownload,
 } from '~/utils/incrementalJsonDownload';
+import {
+	accountExportPercent,
+	buildAccountExportManifest,
+	plannedRowTotal,
+	type AccountExportManifestRow,
+} from '~/utils/accountExportProgress';
 
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.preferences.account.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 });
 
@@ -169,6 +175,37 @@ const { showToast: showNotification } = useToast();
 const isExportingJson = ref(false);
 const isExportingCsv = ref(false);
 
+// ── Export manifest + progress (idea 67) ───────────────────────────────────
+// The manifest is read BEFORE the run so the card can say what the file will
+// contain and how much of it there is; the bar then counts rows actually
+// written against that plan. Both are pure derivations in
+// `~/utils/accountExportProgress`.
+const exportManifest = ref<AccountExportManifestRow[]>([]);
+const isManifestLoading = ref(false);
+const exportedRows = ref(0);
+const plannedRows = computed(() => plannedRowTotal(exportManifest.value));
+const exportPercent = computed(() =>
+	accountExportPercent({ rowsWritten: exportedRows.value, plannedRows: plannedRows.value })
+);
+
+async function loadExportManifest() {
+	if (!userId.value || !convex) return;
+	isManifestLoading.value = true;
+	try {
+		const plan = await convex.action(api.auth.accountExport.getExportPlan, {
+			userId: userId.value,
+		});
+		exportManifest.value = buildAccountExportManifest(plan);
+	} catch {
+		// A manifest is an extra: failing to read it must never block the export
+		// itself, so the card falls back to "we could not count this in advance".
+		exportManifest.value = [];
+	} finally {
+		isManifestLoading.value = false;
+	}
+}
+watch(userId, (id) => void (id ? loadExportManifest() : undefined), { immediate: true });
+
 // Delete account state
 const showDeleteModal = ref(false);
 const deleteReason = ref('');
@@ -197,13 +234,16 @@ const handleExportJson = async () => {
 	if (!userId.value || !convex) return;
 
 	isExportingJson.value = true;
+	exportedRows.value = 0;
 
 	try {
 		const filename = `owlat-data-export-${new Date().toISOString().split('T')[0]}.json`;
 		// The native picker requires the original click's transient user activation,
 		// so open the destination before the first network request.
 		const sink = await openIncrementalJsonDownload(filename);
-		await writeAccountJsonExport(convex, userId.value, sink);
+		await writeAccountJsonExport(convex, userId.value, sink, () => {
+			exportedRows.value += 1;
+		});
 
 		showNotification(t('dashboard.preferences.account.exportJsonSuccess'));
 	} catch (error) {
@@ -321,15 +361,8 @@ const daysRemaining = computed(() => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="mb-6">
-			<PreferencesBackLink />
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.preferences.account.heading') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">{{ t('dashboard.preferences.account.subheading') }}</p>
-		</div>
+	<div>
+		<p class="mb-6 text-text-secondary">{{ t('dashboard.preferences.account.subheading') }}</p>
 
 		<!-- Loading State -->
 		<div v-if="deletionLoading && !pendingDeletion" class="flex items-center justify-center py-16">
@@ -448,6 +481,16 @@ const daysRemaining = computed(() => {
 						{{ t('dashboard.preferences.account.changePasswordSubmit') }}
 					</UiButton>
 				</form>
+				<!--
+					The password is one of two things guarding this account, and until
+					now the other one had no entry point anywhere in the app. Sessions
+					and two-factor live one click from the field that sets the first.
+				-->
+				<p class="text-sm text-text-secondary mt-4 pt-4 border-t border-border-subtle">
+					<NuxtLink to="/dashboard/preferences/security" class="link">
+						{{ t('dashboard.preferences.account.securityLink') }}
+					</NuxtLink>
+				</p>
 			</div>
 
 			<!-- Pending Deletion Banner -->
@@ -493,7 +536,11 @@ const daysRemaining = computed(() => {
 					</p>
 
 					<UiButton class="gap-2" :disabled="isCancelling" @click="handleCancelDeletion">
-						<Icon v-if="isCancelling" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+						<Icon
+							v-if="isCancelling"
+							name="lucide:loader-2"
+							class="w-4 h-4 animate-spin motion-reduce:animate-none"
+						/>
 						<Icon v-else name="lucide:x-circle" class="w-4 h-4" />
 						{{
 							isCancelling
@@ -547,7 +594,7 @@ const daysRemaining = computed(() => {
 										<Icon
 											v-if="isExportingJson"
 											name="lucide:loader-2"
-											class="w-4 h-4 animate-spin"
+											class="w-4 h-4 animate-spin motion-reduce:animate-none"
 										/>
 										<Icon v-else name="lucide:download" class="w-4 h-4" />
 										{{
@@ -556,6 +603,13 @@ const daysRemaining = computed(() => {
 												: t('dashboard.preferences.account.exportJsonAction')
 										}}
 									</UiButton>
+									<PreferencesExportManifest
+										:rows="exportManifest"
+										:is-loading="isManifestLoading"
+										:is-exporting="isExportingJson"
+										:rows-written="exportedRows"
+										:percent="exportPercent"
+									/>
 								</div>
 							</div>
 						</div>
@@ -581,7 +635,7 @@ const daysRemaining = computed(() => {
 										<Icon
 											v-if="isExportingCsv"
 											name="lucide:loader-2"
-											class="w-4 h-4 animate-spin"
+											class="w-4 h-4 animate-spin motion-reduce:animate-none"
 										/>
 										<Icon v-else name="lucide:download" class="w-4 h-4" />
 										{{
@@ -596,6 +650,13 @@ const daysRemaining = computed(() => {
 					</div>
 				</div>
 			</div>
+
+			<!--
+				What is kept, for how long, and the mail archive. Between the export
+				and the deletion on purpose: it answers the question a person has
+				once they start thinking about either.
+			-->
+			<PreferencesYourData />
 
 			<!-- Delete Account Section -->
 			<div v-if="!pendingDeletion" class="card p-0 overflow-hidden border-error/20">
@@ -751,7 +812,11 @@ const daysRemaining = computed(() => {
 					:disabled="isDeleting || deleteConfirmText !== 'DELETE'"
 					@click="handleDeleteAccount"
 				>
-					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon
+						v-if="isDeleting"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
 					<Icon v-else name="lucide:trash-2" class="w-4 h-4" />
 					{{
 						isDeleting
