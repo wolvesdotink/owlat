@@ -84,8 +84,10 @@ describe('useKeyboardShortcuts — sequence chords', () => {
 		press('g');
 		const stray = press('q');
 		expect(push).not.toHaveBeenCalled();
-		// Consumed by the chord, not passed on as a single-key shortcut.
-		expect(stray.defaultPrevented).toBe(false);
+		// Consumed by the chord, not passed on as a single-key shortcut. The
+		// buffer is cleared before window-level handlers run, so the claim has to
+		// be visible on the event itself.
+		expect(stray.defaultPrevented).toBe(true);
 	});
 
 	it('forgets a half-typed chord once its window closes', () => {
@@ -205,6 +207,44 @@ describe('useKeyboardShortcuts — one arbiter per press', () => {
 
 		listbox.remove();
 		release();
+	});
+
+	/**
+	 * The reader (and the inbox mode toggle) bind to the WINDOW, so they run
+	 * after the document dispatcher has already cleared the pending chord —
+	 * `isChordPending()` is false by then and cannot tell them anything. Their
+	 * only remaining signal is `defaultPrevented`, so the dispatcher has to set
+	 * it for every chord completion, bound pair or not. Otherwise `g` `u` marks
+	 * the open message unread and `g` `#` trashes it.
+	 */
+	it('marks an UNBOUND chord completion claimed, so window-level triage stands down', async () => {
+		wrapper = mountHost((api) => {
+			api.registerNavigationShortcuts();
+		});
+		await nextTick();
+
+		const readerActions: string[] = [];
+		const reader = (event: KeyboardEvent) => {
+			// Verbatim shape of PostboxThreadReader.onReaderShortcut's guard.
+			if (event.defaultPrevented) return;
+			readerActions.push(event.key);
+		};
+		window.addEventListener('keydown', reader);
+
+		// `bubbles`, so the press reaches the window listener the way a real one
+		// does — after the document dispatcher has had its say.
+		press('g', { bubbles: true });
+		const tail = press('u', { bubbles: true });
+
+		expect(tail.defaultPrevented).toBe(true);
+		expect(readerActions).toEqual([]);
+		expect(push).not.toHaveBeenCalled();
+
+		// …and the very next `u`, with no chord in flight, is triage again.
+		press('u', { bubbles: true });
+		expect(readerActions).toEqual(['u']);
+
+		window.removeEventListener('keydown', reader);
 	});
 });
 

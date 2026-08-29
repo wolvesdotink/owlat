@@ -128,6 +128,11 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 	const held = pendingChordStep();
 	if (held) {
 		clearPendingChord();
+		// preventDefault BEFORE dispatching, and whether or not the pair resolves:
+		// the pending buffer is already cleared by the time window-level handlers
+		// see this press, so `defaultPrevented` is the only signal left telling
+		// them the key was the tail of a chord.
+		event.preventDefault();
 		dispatch(resolveActiveChord(`${held} ${step}`, scopes), event);
 		return;
 	}
