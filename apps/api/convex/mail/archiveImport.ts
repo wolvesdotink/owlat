@@ -30,8 +30,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 import { insertDeliveredMessage } from './deliveryPipeline/insert';
-import { mailMessageAttachmentValidator } from '../lib/convexValidators';
-import { resolveLabelPath } from './labels';
+import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
+import { resolveLabelPath } from './labelsTree';
 
 /**
  * Largest archive one job accepts. Defined in `@owlat/shared` because the upload

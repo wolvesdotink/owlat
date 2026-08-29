@@ -22,7 +22,7 @@ import { authedMutation } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import { throwForbidden } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
-import { resolveLabelPath } from './labels';
+import { resolveLabelPath } from './labelsTree';
 
 /** Filters accepted in one import. Gmail's own limit is well under this. */
 const MAX_IMPORTED_FILTERS = 100;
