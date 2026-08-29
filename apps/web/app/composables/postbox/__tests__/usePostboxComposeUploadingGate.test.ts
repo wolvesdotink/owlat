@@ -33,6 +33,10 @@ vi.mock('@owlat/api', () => ({
 				listSendAsIdentities: 'identities.listSendAs',
 			},
 			signatures: { list: 'signatures.list' },
+			// usePostboxCompose reads the undo-send window through
+			// usePostboxSettings (plan idea 8); unanswered here, so it resolves to
+			// the 30s default and puts no `undoSendDelayMs` on the wire.
+			settings: { get: 'settings.get', update: 'settings.update' },
 		},
 	},
 }));
@@ -88,6 +92,7 @@ beforeEach(() => {
 	});
 	// The offline-outbox chain (E2) pulls these at composable setup; inert here.
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useConvex', () => null);
 });

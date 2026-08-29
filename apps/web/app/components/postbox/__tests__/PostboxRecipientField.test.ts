@@ -87,3 +87,123 @@ describe('PostboxRecipientField — external-domain cue', () => {
 		expect(chips[1]?.attributes('title')).toBeUndefined();
 	});
 });
+
+describe('PostboxRecipientField — did you mean … ? (plan idea 4)', () => {
+	/** Commit a chip the way a user does: type it, press Enter. */
+	async function commit(wrapper: ReturnType<typeof mountField>, address: string) {
+		const input = wrapper.get('input');
+		await input.setValue(address);
+		await input.trigger('keydown', { key: 'Enter' });
+		return input;
+	}
+
+	it('offers a correction after a near-miss domain is committed', async () => {
+		const wrapper = mountField({ knownDomains: ['northwind.studio'] });
+		await commit(wrapper, 'anna@gmial.com');
+
+		const hint = wrapper.get('[data-testid="postbox-domain-suggestion"]');
+		expect(hint.text()).toContain('Did you mean anna@gmail.com?');
+	});
+
+	it('stays silent on a domain the mailbox actually writes to', async () => {
+		const wrapper = mountField({ knownDomains: ['northwind.studio'] });
+		await commit(wrapper, 'ines@northwind.studio');
+
+		expect(wrapper.find('[data-testid="postbox-domain-suggestion"]').exists()).toBe(false);
+	});
+
+	it('replaces the mistyped chip in place when the fix is taken', async () => {
+		const wrapper = mountField({ modelValue: ['ines@northwind.studio'] });
+		await commit(wrapper, 'anna@gmial.com');
+		// The parent owns the model; mirror the commit back as v-model would.
+		await wrapper.setProps({ modelValue: ['ines@northwind.studio', 'anna@gmial.com'] });
+		await wrapper.get('[data-testid="postbox-domain-suggestion"] button').trigger('click');
+
+		const emits = wrapper.emitted('update:modelValue');
+		expect(emits?.at(-1)?.[0]).toEqual(['ines@northwind.studio', 'anna@gmail.com']);
+		expect(wrapper.find('[data-testid="postbox-domain-suggestion"]').exists()).toBe(false);
+	});
+
+	it('keeps the address as typed when the sender says so, and never blocks', async () => {
+		const wrapper = mountField();
+		await commit(wrapper, 'anna@gmial.com');
+		await wrapper.setProps({ modelValue: ['anna@gmial.com'] });
+		const buttons = wrapper.findAll('[data-testid="postbox-domain-suggestion"] button');
+		await buttons[1]?.trigger('click');
+
+		expect(wrapper.find('[data-testid="postbox-domain-suggestion"]').exists()).toBe(false);
+		// The chip the user typed is still there — a suggestion is not a veto.
+		expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual(['anna@gmial.com']);
+	});
+
+	it('drops the hint when the chip it is about is removed', async () => {
+		const wrapper = mountField();
+		await commit(wrapper, 'anna@gmial.com');
+		await wrapper.setProps({ modelValue: ['anna@gmial.com'] });
+		await wrapper.get('[draggable="true"] button').trigger('click');
+
+		expect(wrapper.find('[data-testid="postbox-domain-suggestion"]').exists()).toBe(false);
+	});
+});
+
+describe('PostboxRecipientField — first-time recipients (plan idea 5)', () => {
+	it('marks only the addresses the mailbox has never written to', () => {
+		const wrapper = mountField({
+			modelValue: ['ines@northwind.studio', 'stranger@acme-corp.io'],
+			firstTimeAddresses: ['stranger@acme-corp.io'],
+		});
+		const chips = wrapper.findAll('[draggable="true"]');
+		expect(chips[0]?.find('[data-testid="postbox-first-time-chip"]').exists()).toBe(false);
+		expect(chips[1]?.text()).toContain('first time');
+	});
+
+	it('says nothing while the mailbox has not answered yet', () => {
+		const wrapper = mountField({ modelValue: ['stranger@acme-corp.io'] });
+		expect(wrapper.find('[data-testid="postbox-first-time-chip"]').exists()).toBe(false);
+	});
+});
+
+describe('PostboxRecipientField — per-recipient seal state (plan idea 11)', () => {
+	it('marks each chip with its own key verdict', () => {
+		const wrapper = mountField({
+			modelValue: ['ines@northwind.studio', 'jonas@acme-corp.io'],
+			sealStates: [
+				{ address: 'ines@northwind.studio', outcome: 'trusted', hasUsableKey: true },
+				{ address: 'jonas@acme-corp.io', outcome: 'notFound', hasUsableKey: false },
+			],
+		});
+		const chips = wrapper.findAll('[draggable="true"]');
+		expect(chips[0]?.find('[data-testid="postbox-chip-seal-sealed"]').exists()).toBe(true);
+		expect(chips[0]?.find('[data-testid="postbox-chip-no-key"]').exists()).toBe(false);
+		// The keyless one is named in words, not only glyphed.
+		expect(chips[1]?.find('[data-testid="postbox-chip-seal-noKey"]').exists()).toBe(true);
+		expect(chips[1]?.text()).toContain('no key');
+	});
+
+	it('matches a chip to its verdict regardless of the case it was typed in', () => {
+		const wrapper = mountField({
+			modelValue: ['Ines@Northwind.Studio'],
+			sealStates: [{ address: 'ines@northwind.studio', outcome: 'trusted', hasUsableKey: true }],
+		});
+		expect(wrapper.find('[data-testid="postbox-chip-seal-sealed"]').exists()).toBe(true);
+	});
+
+	it('says nothing about sealing when the composer passed no verdicts', () => {
+		const wrapper = mountField({ modelValue: ['ines@northwind.studio'] });
+		expect(wrapper.find('[data-testid="postbox-chip-no-key"]').exists()).toBe(false);
+		expect(wrapper.html()).not.toContain('postbox-chip-seal');
+		// …and the address itself is still rendered.
+		expect(wrapper.get('[draggable="true"]').text()).toContain('ines@northwind.studio');
+	});
+
+	it('leaves a chip the server has not answered for unmarked', () => {
+		const wrapper = mountField({
+			modelValue: ['ines@northwind.studio', 'just-typed@acme-corp.io'],
+			sealStates: [{ address: 'ines@northwind.studio', outcome: 'trusted', hasUsableKey: true }],
+		});
+		const chips = wrapper.findAll('[draggable="true"]');
+		expect(chips[0]?.find('[data-testid="postbox-chip-seal-sealed"]').exists()).toBe(true);
+		expect(chips[1]?.html()).not.toContain('postbox-chip-seal');
+		expect(chips[1]?.text()).toContain('just-typed@acme-corp.io');
+	});
+});

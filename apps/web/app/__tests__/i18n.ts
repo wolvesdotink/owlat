@@ -12,6 +12,7 @@ import { expect } from 'vitest';
 import type { VueWrapper } from '@vue/test-utils';
 import { createI18n, useI18n } from 'vue-i18n';
 import en from '~~/i18n/locales/en.json';
+import { datetimeFormats, numberFormats } from '~~/i18n/formats';
 
 /** A fresh i18n instance per suite — locale state must not leak between mounts. */
 export function createTestI18n() {
@@ -22,6 +23,10 @@ export function createTestI18n() {
 		// `de` present but empty: @nuxtjs/i18n augments createI18n to require every
 		// declared locale, and these suites only ever mount the English copy.
 		messages: { en, de: {} },
+		// The same named styles the app installs. A suite formatting against a
+		// different set would be asserting output the browser never renders.
+		datetimeFormats,
+		numberFormats,
 	});
 }
 

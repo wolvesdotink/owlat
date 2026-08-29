@@ -1,36 +1,32 @@
 import { escapeHtml } from '@owlat/shared/html';
+import {
+	containsTemplateVariable,
+	extractTemplateVariableNames,
+	replaceTemplateVariables,
+} from '@owlat/shared/templateVariables';
 
 /**
- * Variable detection utilities for template variables (e.g., {{variableName}})
- * Regex mirrors the one used in emailWorker.ts replaceVariables()
+ * Variable detection utilities for template variables (e.g., {{variableName}}).
+ *
+ * The GRAMMAR lives in `@owlat/shared/templateVariables` — one definition
+ * shared with the send path's personalization pass and the Postbox composer's
+ * snippets, rather than a regex copied per call site. What stays here is this
+ * surface's POLICY: what a token becomes when nobody supplied a value.
  */
-
-const VARIABLE_PATTERN = /\{\{(\w+)(?:\|'[^']*')?\}\}/;
-const VARIABLE_PATTERN_GLOBAL = /\{\{(\w+)(?:\|'[^']*')?\}\}/g;
-const VARIABLE_PATTERN_WITH_FALLBACK = /\{\{(\w+)(?:\|'([^']*)')?\}\}/g;
 
 /** Check if a string contains one or more template variables */
 export function containsVariable(value: string | undefined | null): boolean {
-	if (!value) return false;
-	return VARIABLE_PATTERN.test(value);
+	return containsTemplateVariable(value);
 }
 
 /** Extract the variable name from a simple {{variableName}} string */
 export function extractVariableName(value: string | undefined | null): string | null {
-	if (!value) return null;
-	const match = value.match(VARIABLE_PATTERN);
-	return match ? match[1]! : null;
+	return extractTemplateVariableNames(value)[0] ?? null;
 }
 
 /** Extract all variable names from a string */
 export function extractVariableNames(value: string | undefined | null): string[] {
-	if (!value) return [];
-	const names: string[] = [];
-	let match: RegExpExecArray | null;
-	while ((match = VARIABLE_PATTERN_GLOBAL.exec(value)) !== null) {
-		names.push(match[1]!);
-	}
-	return names;
+	return extractTemplateVariableNames(value);
 }
 
 /**
@@ -88,21 +84,21 @@ export function fillPreviewVariables(
 	options: FillPreviewVariablesOptions = {}
 ): string {
 	const { values = {}, labels = {}, escape = false } = options;
-	const applyEscape = (value: string) => (escape ? escapeHtml(value) : value);
 
-	return content.replace(
-		VARIABLE_PATTERN_WITH_FALLBACK,
-		(_match, key: string, fallback?: string) => {
+	return replaceTemplateVariables(
+		content,
+		(key, fallback) => {
 			const provided = values[key];
-			if (provided !== undefined && provided !== null && provided !== '') {
-				return applyEscape(String(provided));
-			}
-			if (fallback !== undefined) return applyEscape(fallback);
-			const defaultValue =
+			if (provided !== undefined && provided !== null && provided !== '') return String(provided);
+			if (fallback !== undefined) return fallback;
+			// Never null: a preview that leaves raw tokens standing is unreadable,
+			// which is the whole difference between this and the send-time pass.
+			return (
 				SAMPLE_VALUES[key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()] ??
 				labels[key] ??
-				humanizeVariableKey(key);
-			return applyEscape(defaultValue);
-		}
+				humanizeVariableKey(key)
+			);
+		},
+		{ escape: escape ? escapeHtml : undefined }
 	);
 }

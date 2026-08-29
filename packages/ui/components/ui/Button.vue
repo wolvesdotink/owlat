@@ -102,7 +102,7 @@ const element = computed(() => {
 		<Icon
 			v-if="loading"
 			name="lucide:loader-2"
-			class="w-4 h-4 animate-spin"
+			class="w-4 h-4 animate-spin motion-reduce:animate-none"
 			:class="{ 'mr-2': $slots['default'] }"
 		/>
 		<slot />

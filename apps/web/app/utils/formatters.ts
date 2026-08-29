@@ -1,15 +1,64 @@
 /**
- * Date and time formatting utilities
+ * Date, number and size formatting — the PURE half.
+ *
+ * `useFormat()` (app/composables/useFormat.ts) is the front door: it reads the
+ * reader's language off the active vue-i18n instance and the "Never" /
+ * "Invalid date" literals out of the message catalog. Reach for this module
+ * only from code that has no component to hang a composable off — the pure
+ * `utils/*` builders that assemble copy for the delivery console, and anything
+ * that formats before an i18n instance exists.
+ *
+ * Every function here still takes an explicit `locale`, and its DEFAULT is the
+ * language the app is currently rendering in rather than a hard-coded
+ * `'en-US'`. That default is what `bindAppLocale` below installs, and it is why
+ * a call site that predates `useFormat()` no longer paints American dates in a
+ * German UI: the fix could not live at the call sites, because the bug was the
+ * default.
  */
+import { capitalize as _capitalize } from '@owlat/shared';
+import { compactRelativeTime, isSameYear, relativeTimeParts } from '~/utils/relativeTime';
 
 /**
  * Capitalize the first character of a string, leaving the rest untouched
  * (e.g. "delivered" -> "Delivered"). Re-exported from `@owlat/shared` so it is
- * available as a Nuxt auto-import in web templates and code — the single home
- * for the `s.charAt(0).toUpperCase() + s.slice(1)` idiom that was inlined
- * across ~10 rows/pages/composables.
+ * available as a Nuxt auto-import in web templates and code.
  */
-export { capitalize } from '@owlat/shared';
+export const capitalize = _capitalize;
+
+/** The literals a formatter has to fall back to when there is no date. */
+export interface FormatLabels {
+	never: string;
+	invalidDate: string;
+	invalidTime: string;
+}
+
+/**
+ * English, and only until the app boots. The Nuxt plugin
+ * `plugins/i18n-format.client.ts` replaces both of these with the active locale
+ * and the catalog's own wording on the first render and on every language
+ * change; a unit test that never boots the app gets the English defaults, which
+ * is what its assertions are written against.
+ */
+let appLocale = 'en-US';
+let appLabels: FormatLabels = {
+	never: 'Never',
+	invalidDate: 'Invalid date',
+	invalidTime: 'Invalid time',
+};
+
+/**
+ * Point the defaults at the language the app is rendering in. Called by the
+ * i18n plugin, not by feature code.
+ */
+export function bindAppLocale(locale: string, labels: FormatLabels): void {
+	appLocale = locale;
+	appLabels = labels;
+}
+
+/** The active locale, for a caller that has to build its own `Intl`. */
+export function activeFormatLocale(): string {
+	return appLocale;
+}
 
 export type DateFormatStyle = 'short' | 'medium' | 'long' | 'full' | 'relative';
 
@@ -48,13 +97,13 @@ const dateFormatOptions: Record<
 export function formatDate(
 	date: Date | number | string | undefined | null,
 	style: DateFormatStyle = 'medium',
-	locale = 'en-US'
+	locale = appLocale
 ): string {
-	if (date === undefined || date === null) return 'Never';
+	if (date === undefined || date === null) return appLabels.never;
 
 	const d = date instanceof Date ? date : new Date(date);
 
-	if (isNaN(d.getTime())) return 'Invalid date';
+	if (isNaN(d.getTime())) return appLabels.invalidDate;
 
 	if (style === 'relative') {
 		return formatRelativeTime(d);
@@ -71,16 +120,15 @@ export function formatDate(
  */
 export function formatShortDate(
 	date: Date | number | string | undefined | null,
-	locale = 'en-US'
+	locale = appLocale
 ): string {
-	if (date === undefined || date === null) return 'Never';
+	if (date === undefined || date === null) return appLabels.never;
 
 	const d = date instanceof Date ? date : new Date(date);
 
-	if (isNaN(d.getTime())) return 'Invalid date';
+	if (isNaN(d.getTime())) return appLabels.invalidDate;
 
-	const isCurrentYear = d.getFullYear() === new Date().getFullYear();
-	return formatDate(d, isCurrentYear ? 'short' : 'medium', locale);
+	return formatDate(d, isSameYear(d.getTime(), Date.now()) ? 'short' : 'medium', locale);
 }
 
 /**
@@ -90,13 +138,13 @@ export function formatShortDate(
  */
 export function formatDateTime(
 	date: Date | number | string | undefined | null,
-	locale = 'en-US'
+	locale = appLocale
 ): string {
-	if (date === undefined || date === null) return 'Never';
+	if (date === undefined || date === null) return appLabels.never;
 
 	const d = date instanceof Date ? date : new Date(date);
 
-	if (isNaN(d.getTime())) return 'Invalid date';
+	if (isNaN(d.getTime())) return appLabels.invalidDate;
 
 	return new Intl.DateTimeFormat(locale, {
 		year: 'numeric',
@@ -114,13 +162,13 @@ export function formatDateTime(
  */
 export function formatTime(
 	date: Date | number | string | undefined | null,
-	locale = 'en-US'
+	locale = appLocale
 ): string {
 	if (date === undefined || date === null) return '';
 
 	const d = date instanceof Date ? date : new Date(date);
 
-	if (isNaN(d.getTime())) return 'Invalid time';
+	if (isNaN(d.getTime())) return appLabels.invalidTime;
 
 	return new Intl.DateTimeFormat(locale, {
 		hour: '2-digit',
@@ -128,79 +176,52 @@ export function formatTime(
 	}).format(d);
 }
 
-/**
- * Format a date as relative time (e.g., "2 hours ago", "in 3 days")
- * @param date - Date object, timestamp, or ISO string
- */
-export function formatRelativeTime(date: Date | number | string | undefined | null): string {
-	if (date === undefined || date === null) return 'Never';
-
-	const d = date instanceof Date ? date : new Date(date);
-
-	if (isNaN(d.getTime())) return 'Invalid date';
-
-	const now = new Date();
-	const diffInSeconds = Math.floor((now.getTime() - d.getTime()) / 1000);
-	const diffInMinutes = Math.floor(diffInSeconds / 60);
-	const diffInHours = Math.floor(diffInMinutes / 60);
-	const diffInDays = Math.floor(diffInHours / 24);
-	const diffInWeeks = Math.floor(diffInDays / 7);
-	const diffInMonths = Math.floor(diffInDays / 30);
-	const diffInYears = Math.floor(diffInDays / 365);
-
-	// Future dates
-	if (diffInSeconds < 0) {
-		const absDiffInSeconds = Math.abs(diffInSeconds);
-		const absDiffInMinutes = Math.floor(absDiffInSeconds / 60);
-		const absDiffInHours = Math.floor(absDiffInMinutes / 60);
-		const absDiffInDays = Math.floor(absDiffInHours / 24);
-
-		if (absDiffInSeconds < 60) return 'in a few seconds';
-		if (absDiffInMinutes < 60)
-			return `in ${absDiffInMinutes} minute${absDiffInMinutes !== 1 ? 's' : ''}`;
-		if (absDiffInHours < 24) return `in ${absDiffInHours} hour${absDiffInHours !== 1 ? 's' : ''}`;
-		if (absDiffInDays < 7) return `in ${absDiffInDays} day${absDiffInDays !== 1 ? 's' : ''}`;
-		return formatDate(d, 'medium');
-	}
-
-	// Past dates
-	if (diffInSeconds < 60) return 'just now';
-	if (diffInMinutes < 60) return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`;
-	if (diffInHours < 24) return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`;
-	if (diffInDays < 7) return `${diffInDays} day${diffInDays !== 1 ? 's' : ''} ago`;
-	if (diffInWeeks < 4) return `${diffInWeeks} week${diffInWeeks !== 1 ? 's' : ''} ago`;
-	if (diffInMonths < 12) return `${diffInMonths} month${diffInMonths !== 1 ? 's' : ''} ago`;
-	return `${diffInYears} year${diffInYears !== 1 ? 's' : ''} ago`;
+/** `Intl.RelativeTimeFormat` for the active locale, in the requested style. */
+function relativeFormatter(style: Intl.RelativeTimeFormatStyle): Intl.RelativeTimeFormat {
+	return new Intl.RelativeTimeFormat(appLocale, { numeric: 'auto', style });
 }
 
 /**
- * Format a past timestamp as a *compact* relative string ("Just now", "5m ago",
- * "3h ago", "2d ago"), falling back to a short date past 7 days. This is the
- * single home for the terse "Nx ago" style that was previously copy-pasted as a
- * local helper across ~10 cards/pages (audience, campaigns report, code tasks,
- * channel config, API keys, automations, inbox review, mail, recent contacts).
+ * A timestamp as relative time: "2 hours ago", "in 3 days", "yesterday".
  *
- * For verbose output ("5 minutes ago") or future dates, use formatRelativeTime.
+ * `Intl.RelativeTimeFormat` owns the words. What this replaced was a ladder of
+ * thresholds with `${n !== 1 ? 's' : ''}` on the end and "ago" concatenated on
+ * — English grammar hard-coded into a formatter, with no German output at all.
+ * `numeric: 'auto'` is what yields "yesterday" instead of "1 day ago", in
+ * whatever the reader's language spells that.
+ *
+ * @param date - Date object, timestamp, or ISO string
+ */
+export function formatRelativeTime(date: Date | number | string | undefined | null): string {
+	if (date === undefined || date === null) return appLabels.never;
+	const d = date instanceof Date ? date : new Date(date);
+	if (isNaN(d.getTime())) return appLabels.invalidDate;
+
+	const { value, unit } = relativeTimeParts(d.getTime(), Date.now());
+	return relativeFormatter('long').format(value, unit);
+}
+
+/**
+ * The terse style for list rows and chips ("5m ago", "3h ago", "2d ago"),
+ * falling back to a short calendar date past a week — the point at which a
+ * duration stops being an answer to "when was this?". Single home for the form
+ * that was copy-pasted as a local helper across ~10 cards and pages.
+ *
+ * For the verbose form, or for future dates, use `formatRelativeTime`.
  *
  * @param timestamp - Epoch milliseconds, or null/undefined
- * @param options.emptyLabel - Shown when timestamp is null/undefined (default "Never")
+ * @param options.emptyLabel - Shown when timestamp is null/undefined
  */
 export function formatCompactRelativeTime(
 	timestamp: number | undefined | null,
 	options: { emptyLabel?: string } = {}
 ): string {
 	if (timestamp === undefined || timestamp === null) {
-		return options.emptyLabel ?? 'Never';
+		return options.emptyLabel ?? appLabels.never;
 	}
-	const diff = Date.now() - timestamp;
-	const minutes = Math.floor(diff / 60_000);
-	const hours = Math.floor(diff / 3_600_000);
-	const days = Math.floor(diff / 86_400_000);
-	if (minutes < 1) return 'Just now';
-	if (minutes < 60) return `${minutes}m ago`;
-	if (hours < 24) return `${hours}h ago`;
-	if (days < 7) return `${days}d ago`;
-	return formatDate(timestamp, 'short');
+	const rendered = compactRelativeTime(timestamp, Date.now());
+	if (rendered.kind === 'date') return formatDate(rendered.at, 'short');
+	return relativeFormatter('narrow').format(rendered.parts.value, rendered.parts.unit);
 }
 
 /**
@@ -212,7 +233,7 @@ export function formatCompactRelativeTime(
  * @param value - Number to format
  * @param locale - Locale string (defaults to 'en-US')
  */
-export function formatNumber(value: number | undefined | null, locale = 'en-US'): string {
+export function formatNumber(value: number | undefined | null, locale = appLocale): string {
 	if (value === undefined || value === null) return '0';
 	return new Intl.NumberFormat(locale).format(value);
 }
@@ -222,7 +243,7 @@ export function formatNumber(value: number | undefined | null, locale = 'en-US')
  * @param value - Number to format
  * @param locale - Locale string (defaults to 'en-US')
  */
-export function formatCompactNumber(value: number | undefined | null, locale = 'en-US'): string {
+export function formatCompactNumber(value: number | undefined | null, locale = appLocale): string {
 	if (value === undefined || value === null) return '0';
 	return new Intl.NumberFormat(locale, {
 		notation: 'compact',

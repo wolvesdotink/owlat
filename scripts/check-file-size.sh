@@ -24,6 +24,13 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# `comm` compares byte-wise while `sort` honours LC_COLLATE, so under a UTF-8
+# locale the two disagree about where `_` and `.` fall in a path and comm starts
+# printing "input is not in sorted order" — and, worse, silently mis-reports
+# entries either side of the disagreement. Pin both to C so the ratchet's answer
+# does not depend on the developer's locale.
+export LC_ALL=C
+
 baseline_file="scripts/file-size-baseline.txt"
 cap=500
 

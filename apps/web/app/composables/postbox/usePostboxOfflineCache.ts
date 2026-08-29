@@ -15,6 +15,7 @@
  * to the online-only UX with no branching of its own.
  */
 
+import { getPostboxOfflineFolderStore } from '~/utils/postboxOfflineFolderStore';
 import { getPostboxOfflineStore, type OfflineBodyEntry } from '~/utils/postboxOfflineStore';
 
 const STORAGE_KEY = 'owlat:postbox:offline-cache-enabled';
@@ -58,7 +59,7 @@ export function __resetPostboxOfflineCacheState() {
  *   of threads and bodies are no-ops without it (e.g. the settings screen, which
  *   only toggles the preference and clears the whole store).
  */
-export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | undefined>) {
+export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | null | undefined>) {
 	const { isDesktop } = useDesktopContext();
 
 	/** The cache namespace: the active mailboxId, or null when none is bound. */
@@ -103,6 +104,10 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | und
 	const writesDisabled = writesDisabledRef;
 
 	const store = IS_CLIENT ? getPostboxOfflineStore() : null;
+	// Same DB and driver, separate module (see postboxOfflineFolderStore.ts).
+	// It has no disabled latch of its own: the folder rail is a few KB, so a
+	// failure there is swallowed per call rather than closing the whole cache.
+	const folderStore = IS_CLIENT ? getPostboxOfflineFolderStore() : null;
 
 	/** Mirror the store's disabled flag into the reactive settings surface. */
 	function syncDisabled() {
@@ -133,6 +138,26 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | und
 		const ns = namespace.value;
 		if (!enabled.value || !store || !ns) return null;
 		return store.loadThreadsMeta(ns, folderRole);
+	}
+
+	async function persistFolders<T>(rows: readonly T[]): Promise<void> {
+		const ns = namespace.value;
+		if (!canPersist.value || !folderStore || !ns) return;
+		// Same structured-clone hazard as the thread rows: a Convex proxy would
+		// throw on the way into IndexedDB.
+		await folderStore.saveFolders(ns, toPlain(rows));
+	}
+
+	async function loadFolders<T>(): Promise<T[]> {
+		const ns = namespace.value;
+		if (!enabled.value || !folderStore || !ns) return [];
+		return folderStore.loadFolders<T>(ns);
+	}
+
+	async function loadFoldersMeta() {
+		const ns = namespace.value;
+		if (!enabled.value || !folderStore || !ns) return null;
+		return folderStore.loadFoldersMeta(ns);
 	}
 
 	async function persistBody(messageId: string, srcdoc: string): Promise<void> {
@@ -166,6 +191,9 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | und
 		persistThreads,
 		loadThreads,
 		loadThreadsMeta,
+		persistFolders,
+		loadFolders,
+		loadFoldersMeta,
 		persistBody,
 		loadBody,
 		clearCache,

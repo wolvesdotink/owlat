@@ -296,7 +296,7 @@ function formatDuration(start?: number, end?: number) {
 
 				<div class="flex gap-2 flex-wrap">
 					<UiButton variant="outline" size="sm" :disabled="checking" @click="checkNow">
-						<Icon v-if="checking" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+						<Icon v-if="checking" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 						<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
 						{{ t('dashboard.admin.system.index.updates.checkNow') }}
 					</UiButton>
@@ -453,7 +453,7 @@ function formatDuration(start?: number, end?: number) {
 									:class="{
 										'bg-success': row.status === 'success',
 										'bg-error': row.status === 'failed',
-										'bg-brand animate-pulse': row.status === 'running',
+										'bg-brand animate-pulse motion-reduce:animate-none': row.status === 'running',
 									}"
 								/>
 								{{ row.status }}

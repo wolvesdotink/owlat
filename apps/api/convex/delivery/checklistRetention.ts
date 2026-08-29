@@ -9,6 +9,11 @@
  */
 
 import { v } from 'convex/values';
+import {
+	DELIVERABILITY_COMPLETED_RETENTION_DAYS,
+	DELIVERABILITY_EVIDENCE_RETENTION_DAYS,
+	RETENTION_DAY_MS,
+} from '@owlat/shared/retentionHorizons';
 import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
@@ -20,9 +25,13 @@ import {
 } from './checklistAlertRecipients';
 import { resolveDeliverabilityAlert } from './checklistAlertResolution';
 
-const DAY_MS = 24 * 60 * 60 * 1_000;
-export const DELIVERABILITY_EVIDENCE_RETENTION_MS = 90 * DAY_MS;
-export const DELIVERABILITY_COMPLETED_RETENTION_MS = 30 * DAY_MS;
+// The horizons themselves live in `@owlat/shared/retentionHorizons`, because the
+// "Your data" card states them to the user and a promise that drifts from the
+// sweep enforcing it is worse than no promise.
+export const DELIVERABILITY_EVIDENCE_RETENTION_MS =
+	DELIVERABILITY_EVIDENCE_RETENTION_DAYS * RETENTION_DAY_MS;
+export const DELIVERABILITY_COMPLETED_RETENTION_MS =
+	DELIVERABILITY_COMPLETED_RETENTION_DAYS * RETENTION_DAY_MS;
 export const DELIVERABILITY_RETENTION_BATCH_SIZE = 128;
 export const DELIVERABILITY_ALERT_RETENTION_BATCH_SIZE = 4;
 

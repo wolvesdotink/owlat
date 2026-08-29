@@ -90,14 +90,21 @@
 	--color-border-default: #e4e4e4;
 	--color-border-strong: #d0d0d0;
 
-	--color-success: #5a7a50;
+	/* WCAG AA as TEXT. Each of these is read as a word far more often than it
+	   is painted as a fill (text-warning/text-success outnumber bg-warning/
+	   bg-success ~4:1 in this codebase), and at their old values none of the
+	   four cleared 4.5:1 on the content surfaces they sit on — warning was the
+	   worst at 3.3:1, barely darker than the paper. The floor is enforced by
+	   __tests__/tokenContrast.test.ts; solid fills inherit the same, slightly
+	   deeper hue rather than carrying a second variant nothing would keep true. */
+	--color-success: #55744b; /* 5.05:1 on bg-base, 4.81:1 on -subtle */
 	--color-success-subtle: #f1f6f0;
-	--color-warning: #a8853a;
+	--color-warning: #8a6a25; /* 4.83:1 on bg-base, 4.63:1 on -subtle (was 3.31:1) */
 	--color-warning-subtle: #faf5ea;
-	--color-error: #a85545;
+	--color-error: #a85545; /* 4.97:1 on bg-base, 4.63:1 on -subtle */
 	--color-error-subtle: #faf0ee;
 	--color-error-strong: #9c3520; /* solid danger fills — see tokens.css */
-	--color-info: #4a7a9a;
+	--color-info: #46748f; /* 4.84:1 on bg-base, 4.60:1 on -subtle */
 	--color-info-subtle: #eff5f9;
 
 	--shadow-sm: var(--shadow-2);

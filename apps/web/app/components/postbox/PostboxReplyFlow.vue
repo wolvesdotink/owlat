@@ -271,7 +271,7 @@ function urgencyLabel(urgency: string): string {
 
 <template>
 	<div v-if="isLoading && !flow.active.value" class="p-10 text-center">
-		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary mx-auto" />
+		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary mx-auto" />
 	</div>
 
 	<!-- Quiet inbox-zero moment before entering (or an empty queue). -->

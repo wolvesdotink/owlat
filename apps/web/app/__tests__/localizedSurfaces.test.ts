@@ -12,7 +12,7 @@
  * plus, for every one of them, that no raw key path and no unfilled
  * `{placeholder}` survives into visible text, placeholders or accessible names.
  */
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, h, ref } from 'vue';
 
@@ -24,16 +24,22 @@ import RegisterPage from '../pages/auth/register.vue';
 import ForgotPasswordPage from '../pages/auth/forgot-password.vue';
 import ResetPasswordPage from '../pages/auth/reset-password.vue';
 import WelcomePage from '../pages/welcome.vue';
+import DesktopConnectPage from '../pages/desktop/connect.vue';
 
 // ── Nuxt auto-imports the pages reach for ──
 let routeQuery: Record<string, string> = {};
 let headOptions: { title?: () => string } = {};
-const signInWithEmail = vi.fn(async () => ({}));
+// Typed as a record so a test can hand back BetterAuth's two-factor answer
+// (`{ twoFactorRedirect: true }`) without widening at the call site.
+const signInWithEmail = vi.fn(async (): Promise<Record<string, unknown>> => ({}));
+const completeTwoFactorSignIn = vi.fn(async () => ({}));
 const signUpWithEmail = vi.fn(async () => ({ user: { id: 'user-1' } }));
 const forgotPassword = vi.fn(async () => undefined);
 const resetPassword = vi.fn(async () => undefined);
 const organization = ref<{ name: string } | null>(null);
 const user = ref<{ id: string; name?: string } | null>({ id: 'user-1' });
+/** The desktop handshake watches this alongside `user` before handing a token back. */
+const isPending = ref(false);
 const workspaceSettings = ref<{ isMigrationMode: boolean } | undefined>({ isMigrationMode: false });
 const settingsLoading = ref(false);
 
@@ -69,7 +75,9 @@ beforeAll(() => {
 		useRouter: () => ({ push: vi.fn() }),
 		useAuth: () => ({
 			user,
+			isPending,
 			signInWithEmail,
+			completeTwoFactorSignIn,
 			signUpWithEmail,
 			forgotPassword,
 			resetPassword,
@@ -89,6 +97,7 @@ beforeEach(() => {
 	headOptions = {};
 	organization.value = null;
 	user.value = { id: 'user-1' };
+	isPending.value = false;
 	workspaceSettings.value = { isMigrationMode: false };
 	settingsLoading.value = false;
 	vi.clearAllMocks();
@@ -160,6 +169,188 @@ describe('auth/login', () => {
 
 		expect(w.text()).toContain('Email is required');
 		expect(w.text()).toContain('Password is required');
+		expectFullyLocalized(w);
+	});
+
+	/**
+	 * The second stage only ever appears after a real 2FA account signs in, so it
+	 * is the surface most likely to ship with an untranslated key: nothing in the
+	 * default render touches it. These three drive it from the response that
+	 * produces it rather than by poking internal state.
+	 */
+	describe('two-factor challenge', () => {
+		async function reachChallenge() {
+			signInWithEmail.mockResolvedValueOnce({ twoFactorRedirect: true });
+			const w = mountSurface(LoginPage);
+			await w.get('#email').setValue('ada@northwind.studio');
+			await w.get('#password').setValue('a-long-enough-password');
+			await w.get('form').trigger('submit');
+			await flushPromises();
+			return w;
+		}
+
+		it('replaces the credentials form with the code prompt', async () => {
+			const w = await reachChallenge();
+
+			expect(w.text()).toContain('One more step');
+			expect(w.text()).toContain('Enter the six-digit code your authenticator app is showing.');
+			expect(w.text()).toContain('Verify');
+			expect(w.text()).toContain('Use a backup code');
+			expect(w.text()).toContain('Start over');
+			// The password fields are gone — the password leg is already done.
+			expect(w.find('#password').exists()).toBe(false);
+			expect(w.get('#two-factor-code').exists()).toBe(true);
+			expectFullyLocalized(w);
+		});
+
+		it('renders the backup-code copy after switching method', async () => {
+			const w = await reachChallenge();
+			const [switchMethod] = w.findAll('button[type="button"]');
+			await switchMethod!.trigger('click');
+
+			expect(w.text()).toContain(
+				'Enter one of the backup codes you saved when you turned two-factor on.'
+			);
+			expect(w.text()).toContain('Use your authenticator app');
+			expectFullyLocalized(w);
+		});
+
+		it('goes back to the credentials form on start over', async () => {
+			const w = await reachChallenge();
+			const buttons = w.findAll('button[type="button"]');
+			await buttons[buttons.length - 1]!.trigger('click');
+
+			expect(w.get('#password').exists()).toBe(true);
+			expect(w.find('#two-factor-code').exists()).toBe(false);
+			expectFullyLocalized(w);
+		});
+	});
+});
+
+/**
+ * The desktop handshake runs the SAME password sign-in as the page above, in the
+ * system browser, and finishes by handing a one-time token back over `owlat://`.
+ * When two-factor arrived it was the page that could not follow: the sign-in
+ * returned `{ twoFactorRedirect: true }` with no session, the `user` watcher that
+ * mints the token never fired, and the form sat there saying nothing. Enabling
+ * 2FA made the desktop app unconnectable. These drive the page from that exact
+ * response.
+ */
+describe('desktop/connect', () => {
+	/**
+	 * The page watches `user` for the whole of its life and fetches a one-time
+	 * token the moment it turns truthy. Left mounted, it would do that from
+	 * inside whichever later test signs a user back in, so every mount here is
+	 * torn down.
+	 */
+	let mounted: ReturnType<typeof mountSurface>[] = [];
+
+	beforeEach(() => {
+		// Signed out, arriving from the desktop app's deep link.
+		user.value = null;
+		routeQuery = { state: 'nonce-1', redirect: 'owlat://auth' };
+		mounted = [];
+	});
+
+	afterEach(() => {
+		for (const w of mounted) w.unmount();
+	});
+
+	function mountConnect() {
+		const w = mountSurface(DesktopConnectPage);
+		mounted.push(w);
+		return w;
+	}
+
+	async function reachChallenge() {
+		signInWithEmail.mockResolvedValueOnce({ twoFactorRedirect: true });
+		const w = mountConnect();
+		await w.get('#email').setValue('ada@northwind.studio');
+		await w.get('#password').setValue('a-long-enough-password');
+		await w.get('form').trigger('submit');
+		await flushPromises();
+		return w;
+	}
+
+	it('renders the credentials form for a signed-out visitor', () => {
+		const w = mountConnect();
+
+		expect(w.text()).toContain('Connect the desktop app');
+		expect(w.text()).toContain('Sign in & connect');
+		expectFullyLocalized(w);
+	});
+
+	it('asks for the second factor instead of stalling on a missing session', async () => {
+		const w = await reachChallenge();
+
+		expect(w.text()).toContain('One more step');
+		expect(w.text()).toContain('Enter the six-digit code your authenticator app is showing.');
+		expect(w.text()).toContain('Verify');
+		// The credentials stage is gone, and the page is not pretending to sign in.
+		expect(w.find('#password').exists()).toBe(false);
+		expect(w.text()).not.toContain('Signing you in to the desktop app');
+		expect(w.get('#two-factor-code').exists()).toBe(true);
+		expectFullyLocalized(w);
+	});
+
+	it('redeems the typed code, digits only, so the handshake can finish', async () => {
+		const w = await reachChallenge();
+		await w.get('#two-factor-code').setValue('12 34-56');
+		await w.get('form').trigger('submit');
+		await flushPromises();
+
+		expect(completeTwoFactorSignIn).toHaveBeenCalledWith({ code: '123456', method: 'totp' });
+	});
+
+	it('holds the submit until six digits are in', async () => {
+		const w = await reachChallenge();
+		await w.get('#two-factor-code').setValue('1234');
+
+		expect(w.get('button[type="submit"]').attributes('disabled')).toBeDefined();
+		await w.get('form').trigger('submit');
+		await flushPromises();
+		expect(completeTwoFactorSignIn).not.toHaveBeenCalled();
+	});
+
+	it('sends a backup code verbatim, on the backup endpoint', async () => {
+		const w = await reachChallenge();
+		const [switchMethod] = w.findAll('button[type="button"]');
+		await switchMethod!.trigger('click');
+
+		expect(w.text()).toContain(
+			'Enter one of the backup codes you saved when you turned two-factor on.'
+		);
+		expectFullyLocalized(w);
+
+		await w.get('#two-factor-code').setValue('MZ4T-9QQX');
+		await w.get('form').trigger('submit');
+		await flushPromises();
+
+		expect(completeTwoFactorSignIn).toHaveBeenCalledWith({
+			code: 'MZ4T-9QQX',
+			method: 'backup-code',
+		});
+	});
+
+	it('shows the failure rather than swallowing it', async () => {
+		completeTwoFactorSignIn.mockRejectedValueOnce(new Error('That code was not accepted.'));
+		const w = await reachChallenge();
+		await w.get('#two-factor-code').setValue('123456');
+		await w.get('form').trigger('submit');
+		await flushPromises();
+
+		expect(w.text()).toContain('That code was not accepted.');
+		// Still on the challenge: a wrong code is a retry, not a restart.
+		expect(w.get('#two-factor-code').exists()).toBe(true);
+	});
+
+	it('goes back to the credentials form on start over', async () => {
+		const w = await reachChallenge();
+		const buttons = w.findAll('button[type="button"]');
+		await buttons[buttons.length - 1]!.trigger('click');
+
+		expect(w.get('#password').exists()).toBe(true);
+		expect(w.find('#two-factor-code').exists()).toBe(false);
 		expectFullyLocalized(w);
 	});
 });

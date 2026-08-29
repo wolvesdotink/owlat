@@ -55,7 +55,7 @@ async function requestAccess() {
 
 		<!-- Show loading while checking organization status -->
 		<div v-if="orgLoading" class="relative flex flex-col items-center">
-			<Icon name="lucide:loader-2" class="w-8 h-8 text-text-tertiary animate-spin" />
+			<Icon name="lucide:loader-2" class="w-8 h-8 text-text-tertiary animate-spin motion-reduce:animate-none" />
 		</div>
 
 		<!-- Invite-only: no organization yet, but the door isn't locked. -->

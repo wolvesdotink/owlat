@@ -108,7 +108,7 @@ async function handleSave(
 
 		<!-- Loading State -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 		</div>
 
 		<!-- Adaptive Dashboard Grid -->

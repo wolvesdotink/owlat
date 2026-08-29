@@ -124,6 +124,26 @@ describe('mail.settings get/update', () => {
 		).rejects.toThrow();
 	});
 
+	it('round-trips the list sort order without clobbering other preferences', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { viewMode: 'categories' });
+		await t.mutation(api.mail.settings.update, { sortOrder: 'oldest' });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			viewMode: 'categories',
+			sortOrder: 'oldest',
+		});
+	});
+
+	it('rejects a sort order outside the union', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.mail.settings.update, {
+				sortOrder: 'largest' as unknown as 'newest',
+			})
+		).rejects.toThrow();
+	});
+
 	it('rejects a view mode outside the union', async () => {
 		const t = convexTest(schema, modules);
 		await expect(
@@ -140,6 +160,95 @@ describe('mail.settings get/update', () => {
 				autoAdvance: 'sideways' as unknown as 'next',
 			})
 		).rejects.toThrow();
+	});
+
+	it('round-trips the quiet-hours window and mask without clobbering other preferences', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { notifyAbout: 'people-important' });
+		await t.mutation(api.mail.settings.update, {
+			quietHours: { enabled: true, startMinute: 1320, endMinute: 420, days: [1, 2, 3, 4, 5] },
+		});
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			notifyAbout: 'people-important',
+			quietHours: { enabled: true, startMinute: 1320, endMinute: 420, days: [1, 2, 3, 4, 5] },
+		});
+	});
+
+	it('keeps the configured window when quiet hours are switched off', async () => {
+		// `enabled` is a stored field precisely so switching off is not "forget it":
+		// the patch-shaped mutation has no way to express clearing a field.
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, {
+			quietHours: { enabled: true, startMinute: 1320, endMinute: 420, days: [5] },
+		});
+		await t.mutation(api.mail.settings.update, {
+			quietHours: { enabled: false, startMinute: 1320, endMinute: 420, days: [5] },
+		});
+		const row = await t.query(api.mail.settings.get, {});
+		expect(row?.quietHours).toEqual({
+			enabled: false,
+			startMinute: 1320,
+			endMinute: 420,
+			days: [5],
+		});
+	});
+
+	it('rejects a quiet-hours object missing a field', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.mail.settings.update, {
+				quietHours: { enabled: true, startMinute: 1320 } as unknown as {
+					enabled: boolean;
+					startMinute: number;
+					endMinute: number;
+					days: number[];
+				},
+			})
+		).rejects.toThrow();
+	});
+
+	it('round-trips the hide-preview toggle', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { isHidePreviewOn: true });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			isHidePreviewOn: true,
+		});
+	});
+
+	it('round-trips the keyboard preset and per-shortcut remaps', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, { shortcutPreset: 'gmail' });
+		await t.mutation(api.mail.settings.update, {
+			shortcutOverrides: [{ id: 'postbox.archive', keys: ['y'] }],
+		});
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			shortcutPreset: 'gmail',
+			shortcutOverrides: [{ id: 'postbox.archive', keys: ['y'] }],
+		});
+	});
+
+	it('rejects a keyboard preset outside the union', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(api.mail.settings.update, {
+				shortcutPreset: 'vim' as unknown as 'gmail',
+			})
+		).rejects.toThrow();
+	});
+
+	it('stores an empty remap list, which is how the user clears every change', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.mail.settings.update, {
+			shortcutOverrides: [{ id: 'postbox.archive', keys: ['y'] }],
+		});
+		await t.mutation(api.mail.settings.update, { shortcutOverrides: [] });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			shortcutOverrides: [],
+		});
 	});
 
 	it("is scoped per user: one user's preference is invisible to another", async () => {

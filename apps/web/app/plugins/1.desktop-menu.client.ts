@@ -27,7 +27,8 @@ export default defineNuxtPlugin({
 				if (getCurrentWebviewWindow().label !== 'main') return;
 
 				const { onMenuAction } = await import('@owlat/desktop/src/menu');
-				await onMenuAction('preferences', () => void router.push('/desktop/settings'));
+				// Device settings live in Preferences; /desktop/settings only redirects here.
+				await onMenuAction('preferences', () => void router.push('/dashboard/preferences/device'));
 				await onMenuAction('new-workspace', () => void router.push('/desktop/welcome'));
 				// Re-dispatched as the window event the auto-updater already listens
 				// for (see lib/desktop/updater.client.ts).

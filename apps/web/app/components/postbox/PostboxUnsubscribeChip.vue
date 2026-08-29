@@ -105,7 +105,7 @@ async function onClick() {
 		<Icon
 			:name="oneClickOp.isLoading.value ? 'lucide:loader-2' : 'lucide:bell-off'"
 			class="w-3 h-3"
-			:class="{ 'animate-spin': oneClickOp.isLoading.value }"
+			:class="{ 'animate-spin motion-reduce:animate-none': oneClickOp.isLoading.value }"
 		/>
 		{{ t('components.postbox.postboxUnsubscribeChip.unsubscribe') }}
 	</button>

@@ -1,6 +1,6 @@
 import { createAuthClient } from 'better-auth/vue';
 import { convexClient, crossDomainClient } from '@convex-dev/better-auth/client/plugins';
-import { organizationClient } from 'better-auth/client/plugins';
+import { organizationClient, twoFactorClient } from 'better-auth/client/plugins';
 import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import { keychainStorage } from '~/lib/desktop/keychainStorage';
 
@@ -11,10 +11,10 @@ function createWebAuthClient() {
 	const siteUrl =
 		typeof window !== 'undefined'
 			? window.location.origin
-			: (globalThis.process?.env?.['NUXT_PUBLIC_SITE_URL'] || 'http://localhost:3000');
+			: globalThis.process?.env?.['NUXT_PUBLIC_SITE_URL'] || 'http://localhost:3000';
 	return createAuthClient({
 		baseURL: siteUrl,
-		plugins: [convexClient(), organizationClient()],
+		plugins: [convexClient(), organizationClient(), twoFactorClient()],
 	});
 }
 
@@ -33,6 +33,11 @@ export const authClient: ReturnType<typeof createWebAuthClient> = isDesktopRunti
 			plugins: [
 				convexClient(),
 				organizationClient(),
+				// No `onTwoFactorRedirect` / `twoFactorPage` on either client: the
+				// challenge is a STEP inside the login form, not a route. Configuring
+				// a redirect here would navigate away mid-submit and strand the
+				// desktop app, which has no such route to navigate to.
+				twoFactorClient(),
 				crossDomainClient({ storage: keychainStorage }),
 			],
 		}) as unknown as ReturnType<typeof createWebAuthClient>)

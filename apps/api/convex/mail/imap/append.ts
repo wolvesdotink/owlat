@@ -16,6 +16,7 @@ import { normalizeSubject } from '../../lib/emailAddress';
 import { normalizeEmail } from '@owlat/shared';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { isImapSystemFlag } from './flags';
+import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
@@ -122,6 +123,14 @@ export const appendMessage = internalMutation({
 			subject: args.subject,
 			normalizedSubject,
 			snippet: args.snippet,
+			// Deep body search (idea 32): an APPENDed message is a delivered message
+			// as far as search is concerned, so it carries the same excerpt under the
+			// same instance opt-in. Skipping it here would leave a hole the body index
+			// cannot report — an IMAP-uploaded message findable only by its first 200
+			// characters, on an instance that believes it searches whole bodies.
+			searchBody: (await isBodySearchIndexingEnabled(ctx))
+				? buildSearchBody(args.textBodyInline, args.htmlBodyInline) || undefined
+				: undefined,
 			rawStorageId: args.rawStorageId,
 			rawSize: args.rawSize,
 			textBodyInline: await sealBodyAtWriteMaybe(args.textBodyInline),

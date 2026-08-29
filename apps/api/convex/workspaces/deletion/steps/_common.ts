@@ -28,6 +28,9 @@ export type OrganizationDeletionTable =
 	| 'mediaAssets'
 	| 'semanticFileContacts'
 	| 'semanticFiles'
+	| 'mailAttachments'
+	| 'mailAttachmentBackfillJobs'
+	| 'mailBodySearchBackfillJobs'
 	| 'mailMessages'
 	| 'mailDrafts'
 	| 'transactionalSends'
@@ -54,8 +57,10 @@ export type OrganizationDeletionTable =
 	| 'mailVoiceProfiles'
 	| 'mailContactStyleOverrides'
 	| 'mailFilters'
+	| 'mailFilterRunJobs'
 	| 'mailSignatures'
 	| 'mailSnippets'
+	| 'mailSavedSearches'
 	| 'mailUserSettings'
 	| 'mailAppPasswords'
 	| 'mailboxMembers'
@@ -131,12 +136,16 @@ export type OrganizationDeletionTable =
 	| 'mailThreads'
 	| 'mailContacts'
 	| 'mailSenderCategoryOverrides'
+	| 'mailSenderImageAllowlist'
+	| 'mailAttachmentShares'
+	| 'mailTriageTallies'
 	| 'mailForwarding'
 	| 'mailVacationResponders'
 	| 'mailVacationLog'
 	| 'mailAuditLog'
 	| 'mailAuthFailures'
 	| 'mailboxMigrations'
+	| 'mailArchiveImports'
 	| 'mailboxMoves'
 	| 'externalMailFolderSync'
 	| 'externalMailAccounts'
@@ -203,6 +212,9 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mediaAssets'),
 	v.literal('semanticFileContacts'),
 	v.literal('semanticFiles'),
+	v.literal('mailAttachments'),
+	v.literal('mailAttachmentBackfillJobs'),
+	v.literal('mailBodySearchBackfillJobs'),
 	v.literal('mailMessages'),
 	v.literal('mailDrafts'),
 	v.literal('transactionalSends'),
@@ -229,8 +241,10 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailVoiceProfiles'),
 	v.literal('mailContactStyleOverrides'),
 	v.literal('mailFilters'),
+	v.literal('mailFilterRunJobs'),
 	v.literal('mailSignatures'),
 	v.literal('mailSnippets'),
+	v.literal('mailSavedSearches'),
 	v.literal('mailUserSettings'),
 	v.literal('mailAppPasswords'),
 	v.literal('mailboxMembers'),
@@ -306,12 +320,16 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailThreads'),
 	v.literal('mailContacts'),
 	v.literal('mailSenderCategoryOverrides'),
+	v.literal('mailSenderImageAllowlist'),
+	v.literal('mailAttachmentShares'),
+	v.literal('mailTriageTallies'),
 	v.literal('mailForwarding'),
 	v.literal('mailVacationResponders'),
 	v.literal('mailVacationLog'),
 	v.literal('mailAuditLog'),
 	v.literal('mailAuthFailures'),
 	v.literal('mailboxMigrations'),
+	v.literal('mailArchiveImports'),
 	v.literal('mailboxMoves'),
 	v.literal('externalMailFolderSync'),
 	v.literal('externalMailAccounts'),

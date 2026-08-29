@@ -44,6 +44,75 @@ export interface RecipientKeyState {
 	outcome: RecipientKeyOutcome;
 	/** Armored PUBLIC key of the pinned fingerprint; present only when trusted. */
 	pinnedPublicKeyArmored?: string;
+	/**
+	 * Whether a human here verified the fingerprint we would seal to (plan idea
+	 * 54, resolved by `e2ee/pinning.ts:resolveVerificationState`). Display only:
+	 * it NEVER changes whether a message seals, only how confidently the composer
+	 * says so — an unverified pinned key still seals exactly as it always did.
+	 */
+	verified?: boolean;
+}
+
+/**
+ * Can this dispatch actually seal to this recipient? The ONE definition — a
+ * pinned key is usable only when the row is `trusted` AND the public material is
+ * actually there. Read by the dispatch decision, by the composer's aggregate
+ * state, and by the per-recipient chip view, so the three can never disagree
+ * about who is keyless. A type predicate, so the dispatch path gets the armored
+ * key narrowed to a string for free rather than re-asserting it.
+ */
+function hasUsableSealKey(
+	recipient: RecipientKeyState
+): recipient is RecipientKeyState & { pinnedPublicKeyArmored: string } {
+	return recipient.outcome === 'trusted' && !!recipient.pinnedPublicKeyArmored;
+}
+
+/**
+ * ONE recipient's key as the composer shows it on their chip (plan idea 11).
+ * Carries the public trust state plus `hasUsableKey` — whether that key can
+ * actually seal to them. The two are NOT the same: a `trusted` row whose pinned
+ * public key is missing cannot seal, and a composer that reasoned from `outcome`
+ * alone would draw a lock on a chip the dispatch path counts as keyless.
+ * Deliberately free of `pinnedPublicKeyArmored`: the chip needs the verdict, not
+ * the material.
+ */
+export interface RecipientSealView {
+	address: string;
+	outcome: RecipientKeyOutcome;
+	hasUsableKey: boolean;
+	/**
+	 * A human here compared this recipient's fingerprint with its owner and it
+	 * matched (plan idea 54). Only ever true for a key that can actually seal —
+	 * "verified" about a key we would not use is a claim with no referent.
+	 */
+	verified: boolean;
+}
+
+/**
+ * Project recipient key states down to what the composer chips may see, using
+ * the EXACT usability predicate {@link deriveSealState} applies. Pure, and the
+ * single definition of "this recipient can be sealed to", so the per-chip glyph
+ * and the aggregate lock cannot disagree about who is blocking encryption.
+ */
+export function toRecipientSealViews(recipients: RecipientKeyState[]): RecipientSealView[] {
+	return recipients.map((r) => ({
+		address: r.address,
+		outcome: r.outcome,
+		hasUsableKey: hasUsableSealKey(r),
+		verified: hasUsableSealKey(r) && r.verified === true,
+	}));
+}
+
+/**
+ * Is EVERY recipient of this draft a human-verified contact? The composer's lock
+ * says "sealed to verified recipients" only on a unanimous yes, mirroring the
+ * all-or-nothing rule {@link deriveSealState} uses for sealing itself: a claim
+ * that holds for three of four recipients is a claim the reader would misread.
+ *
+ * An empty list is NOT verified — there is nobody to have verified.
+ */
+export function allRecipientsVerified(recipients: readonly RecipientSealView[]): boolean {
+	return recipients.length > 0 && recipients.every((r) => r.verified);
 }
 
 /** Everything the dispatch-time seal decision reads, gathered by a V8 query. */
@@ -144,9 +213,7 @@ export function decideSeal(inputs: SealInputs): SealDecision {
 	// D2: seal ONLY when ALL recipients have a usable pinned key.
 	const keys: string[] = [];
 	for (const r of inputs.recipients) {
-		if (r.outcome !== 'trusted' || !r.pinnedPublicKeyArmored) {
-			return { seal: false, reason: 'recipient_no_key' };
-		}
+		if (!hasUsableSealKey(r)) return { seal: false, reason: 'recipient_no_key' };
 		keys.push(r.pinnedPublicKeyArmored);
 	}
 	if (!inputs.hasSigningKey) return { seal: false, reason: 'no_signing_key' };
@@ -206,8 +273,9 @@ export function deriveSealState(
 	if (recipients.length === 0) return { kind: 'cannotSeal', reason: 'no_recipients' };
 	const changed = recipients.filter((r) => r.outcome === 'keyChanged').map((r) => r.address);
 	if (changed.length > 0) return { kind: 'keyChanged', addresses: changed };
-	const allTrusted = recipients.every((r) => r.outcome === 'trusted' && !!r.pinnedPublicKeyArmored);
-	if (!allTrusted) return { kind: 'cannotSeal', reason: 'recipient_no_key' };
+	if (!recipients.every(hasUsableSealKey)) {
+		return { kind: 'cannotSeal', reason: 'recipient_no_key' };
+	}
 	if (!hasSigningKey) return { kind: 'cannotSeal', reason: 'no_signing_key' };
 	// Keys are ready. Under `ask` the org wants a human decision, so the composer
 	// reports "won't seal automatically" rather than promising encryption.

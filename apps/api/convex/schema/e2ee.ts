@@ -139,6 +139,20 @@ export const e2eeTables = {
 		// `/.well-known/owlat.json` manifest (TOFU on the instance identity). Absent
 		// when the manifest was missing/unverifiable and the key came from WKD alone.
 		instanceFingerprint: v.optional(v.string()),
+		// HUMAN verification (plan idea 54): the fingerprint a person actually
+		// compared with its owner over some other channel — in the room, on a call,
+		// by scanning the QR code next to it. Stored as the CHECKED VALUE rather
+		// than a boolean so the claim invalidates itself: the moment the pin moves
+		// (a signed rotation, an explicit re-accept) this no longer matches and the
+		// contact reads as unverified again, with no sweep to remember to run.
+		// `e2ee/pinning.ts:resolveVerificationState` is the only interpreter.
+		verifiedFingerprint: v.optional(v.string()),
+		// When the check happened, and which org member made the claim (BetterAuth
+		// user id). Attribution is what keeps this honest: the panel says "you
+		// verified this key" or "a teammate did", never an unowned "verified" badge
+		// everybody assumes somebody else earned.
+		verifiedAt: v.optional(v.number()),
+		verifiedBy: v.optional(v.string()),
 		// Cache expiry: re-discover once `Date.now() >= expiresAt` (24h positive /
 		// 1h negative). Indexed so the refresh cron can page the soon-to-expire rows.
 		expiresAt: v.number(),

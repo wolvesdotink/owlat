@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { ConvexError } from 'convex/values';
+import { useAnnounce } from '../useAnnounce';
 import { useBackendOperation } from '../useBackendOperation';
 import { createTestI18n } from '~/__tests__/i18n';
 
@@ -27,6 +28,11 @@ describe('useBackendOperation', () => {
 		vi.stubGlobal('useToast', () => ({ showToast }));
 		vi.stubGlobal('usePostHog', () => ({ captureError }));
 		vi.stubGlobal('navigateTo', navigate);
+		// The REAL announcer: what a successful write says into the live region
+		// is behaviour this composable owns, and a spy would only prove it called
+		// something.
+		vi.stubGlobal('useAnnounce', useAnnounce);
+		useAnnounce().clear();
 	});
 
 	describe('success path', () => {
@@ -75,6 +81,66 @@ describe('useBackendOperation', () => {
 
 			expect(action).toHaveBeenCalledOnce();
 			expect(mutation).not.toHaveBeenCalled();
+		});
+	});
+
+	/**
+	 * Most of this app's saves repaint nothing louder than a button label, so
+	 * without this a screen-reader user gets no confirmation that a write landed
+	 * at all. Announcing HERE rather than at the call sites is the point: this is
+	 * the one place every successful mutation in the app passes through.
+	 */
+	describe('announcement', () => {
+		it('announces a completed write with the operation label', async () => {
+			mutation.mockResolvedValue(null);
+			const { run } = useBackendOperation(fakeOp, { label: 'Save signature' });
+
+			await run({});
+
+			expect(useAnnounce().politeMessage.value).toBe('Done: Save signature');
+		});
+
+		it('calls a getter label at announcement time, not at setup time', async () => {
+			mutation.mockResolvedValue(null);
+			let label = 'Save signature';
+			const { run } = useBackendOperation(fakeOp, { label: () => label });
+
+			label = 'Save snippet';
+			await run({});
+
+			expect(useAnnounce().politeMessage.value).toBe('Done: Save snippet');
+		});
+
+		it('re-announces an identical save so the second one is not silent', async () => {
+			mutation.mockResolvedValue(null);
+			const { run } = useBackendOperation(fakeOp, { label: 'Save signature' });
+
+			await run({});
+			const first = useAnnounce().politeMessage.value;
+			await run({});
+
+			// Same words, different DOM text — a live region only speaks on change.
+			expect(useAnnounce().politeMessage.value).not.toBe(first);
+			expect(useAnnounce().politeMessage.value.trim()).toBe('Done: Save signature');
+		});
+
+		it('stays quiet when the caller opts out', async () => {
+			mutation.mockResolvedValue(null);
+			const { run } = useBackendOperation(fakeOp, { label: 'Autosave draft', announce: false });
+
+			await run({});
+
+			expect(useAnnounce().politeMessage.value).toBe('');
+		});
+
+		it('says nothing on a failure — the toast already does, assertively', async () => {
+			mutation.mockRejectedValue(new ConvexError({ category: 'forbidden', message: 'No access' }));
+			const { run } = useBackendOperation(fakeOp, { label: 'Save signature' });
+
+			await run({});
+
+			expect(showToast).toHaveBeenCalled();
+			expect(useAnnounce().politeMessage.value).toBe('');
 		});
 	});
 

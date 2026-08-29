@@ -1,21 +1,11 @@
 import { httpRouter } from 'convex/server';
 import { authComponent, createAuth } from './auth/auth';
 import { trackOpen, trackClick } from './delivery/trackingHttp';
-import { handleCors, healthCheck } from './auth/apiAuth';
 import { seedAdmin } from './seedAdmin';
 import { seedDemoHttp } from './seedDemo';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
+import { registerPublicApiRoutes } from './apiV1Http';
 import { resetHttp } from './devShortcuts/reset';
-import {
-	createContact,
-	getContact,
-	updateContact,
-	deleteContact,
-	listContacts,
-} from './contacts/api';
-import { sendEvent } from './eventsApi';
-import { sendTransactional } from './transactional/api';
-import { addContactToTopic, removeContactFromTopic } from './topics/apiHttp';
 import {
 	handleOneClickUnsubscribe,
 	handleSeedProbeUnsubscribe,
@@ -30,6 +20,7 @@ import {
 import { pluginFeedbackWebhook } from './webhooks/pluginFeedbackHttp';
 import { handleMailWebhook } from './mail/webhook';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
+import { serveAttachmentShare } from './mail/attachmentShareHttp';
 import { handleVerifyCredential } from './mail/authHttp';
 import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
 import { handleSmsWebhook, handleWhatsAppWebhook, handleGenericWebhook } from './webhooks/channels';
@@ -118,119 +109,11 @@ http.route({
 });
 
 // ============ PUBLIC API v1 ROUTES ============
-
-// API health check (no authentication required)
-http.route({
-	path: '/api/v1/health',
-	method: 'GET',
-	handler: healthCheck,
-});
-
-// CORS preflight handlers for API routes
-// Contacts API
-http.route({
-	path: '/api/v1/contacts',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-http.route({
-	pathPrefix: '/api/v1/contacts/',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-// Events API
-http.route({
-	path: '/api/v1/events',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-// Transactional API
-http.route({
-	path: '/api/v1/transactional',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-// Topics API (single prefix covers all topic sub-paths)
-http.route({
-	pathPrefix: '/api/v1/topics/',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-// ============ CONTACTS API ENDPOINTS ============
-
-// GET /api/v1/contacts - List contacts
-http.route({
-	path: '/api/v1/contacts',
-	method: 'GET',
-	handler: listContacts,
-});
-
-// POST /api/v1/contacts - Create contact
-http.route({
-	path: '/api/v1/contacts',
-	method: 'POST',
-	handler: createContact,
-});
-
-// GET /api/v1/contacts/{id} - Get contact by ID or email
-http.route({
-	pathPrefix: '/api/v1/contacts/',
-	method: 'GET',
-	handler: getContact,
-});
-
-// PUT /api/v1/contacts/{id} - Update contact
-http.route({
-	pathPrefix: '/api/v1/contacts/',
-	method: 'PUT',
-	handler: updateContact,
-});
-
-// DELETE /api/v1/contacts/{id} - Delete contact
-http.route({
-	pathPrefix: '/api/v1/contacts/',
-	method: 'DELETE',
-	handler: deleteContact,
-});
-
-// ============ EVENTS API ENDPOINTS ============
-
-// POST /api/v1/events - Send event to trigger automations
-http.route({
-	path: '/api/v1/events',
-	method: 'POST',
-	handler: sendEvent,
-});
-
-// ============ TRANSACTIONAL API ENDPOINTS ============
-
-// POST /api/v1/transactional - Send transactional email
-http.route({
-	path: '/api/v1/transactional',
-	method: 'POST',
-	handler: sendTransactional,
-});
-
-// ============ TOPICS API ENDPOINTS ============
-
-// POST /api/v1/topics/{topicId}/contacts - Add contact to topic
-http.route({
-	pathPrefix: '/api/v1/topics/',
-	method: 'POST',
-	handler: addContactToTopic,
-});
-
-// DELETE /api/v1/topics/{topicId}/contacts/{emailOrId} - Remove contact from topic
-http.route({
-	pathPrefix: '/api/v1/topics/',
-	method: 'DELETE',
-	handler: removeContactFromTopic,
-});
+// The whole /api/v1 surface (health, CORS preflights, contacts, events,
+// transactional, topics) registers from `apiV1Http.ts`, the same way the
+// sample-data routes do. It is one versioned contract with one set of URLs, and
+// keeping it here pushed this file past the ~500 LOC ratchet.
+registerPublicApiRoutes(http);
 
 // ============ FORM SUBMISSION ENDPOINTS ============
 
@@ -346,6 +229,17 @@ http.route({
 	path: '/sealed-blob',
 	method: 'GET',
 	handler: serveSealedBlob,
+});
+
+// GET /attachment-share/{token} - the PUBLIC expiring-token download for a file
+// the composer lifted out of a message (plan idea 10). No session and no
+// signature: the token in the path is the whole capability, and every gate
+// (revoked / expired / narrowed to the mailbox / bytes reclaimed) is decided
+// per request inside the handler.
+http.route({
+	pathPrefix: '/attachment-share/',
+	method: 'GET',
+	handler: serveAttachmentShare,
 });
 
 // ============ CHANNEL WEBHOOK ENDPOINTS ============

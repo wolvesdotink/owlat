@@ -135,7 +135,7 @@ function redirectToRegister() {
 					<div
 						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
 					>
-						<Icon name="lucide:loader-2" class="w-8 h-8 text-brand animate-spin" />
+						<Icon name="lucide:loader-2" class="w-8 h-8 text-brand animate-spin motion-reduce:animate-none" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{

@@ -538,7 +538,7 @@ onMounted(() => {
 							</p>
 							<p class="text-xl font-semibold text-text-primary">
 								<template v-if="countLoading">
-									<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin inline" />
+									<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none inline" />
 								</template>
 								<template v-else>
 									{{ matchingCount?.toLocaleString(locale) ?? 0 }}

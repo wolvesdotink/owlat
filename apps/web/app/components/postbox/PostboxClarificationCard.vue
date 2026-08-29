@@ -170,7 +170,7 @@ function onCardKeydown(event: KeyboardEvent) {
 			persist) never strands the card. Dismiss stays for actually clearing. -->
 		<div v-else-if="state === 'drafting'" class="mt-2" data-testid="clarification-drafting">
 			<div class="flex items-center gap-2 text-sm text-text-secondary">
-				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				{{ t('components.postbox.postboxClarificationCard.drafting') }}
 			</div>
 			<div class="flex items-center gap-2 mt-2">

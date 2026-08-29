@@ -243,7 +243,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 							<Icon
 								v-if="verifyingId === td._id"
 								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin"
+								class="w-4 h-4 animate-spin motion-reduce:animate-none"
 							/>
 							<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
 							{{

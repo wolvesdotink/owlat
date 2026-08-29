@@ -5,7 +5,10 @@
  *   - Filters are stored as structured JSON (conditions + actions). NO `eval`,
  *     no shell-out — the evaluator below is a pure-JS dispatcher over a fixed
  *     allowlist of operators.
- *   - Conditions inside one filter are AND-ed. To OR, define multiple filters.
+ *   - Conditions inside one filter are grouped by `matchType`: `all` AND-s them
+ *     (the default, and what every filter written before the toggle means),
+ *     `any` OR-s them. ONE grouping level only — mixed trees are a second
+ *     grammar, and "define two filters" is still the escape hatch.
  *   - Filters run in `priority` ascending order. A matching filter whose
  *     `stopProcessing=true` halts further evaluation.
  *   - Actions accumulate (e.g. `markRead` + `addLabel` is one filter, two
@@ -14,9 +17,11 @@
 
 import { v } from 'convex/values';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { removeFilterRunJob } from './filterRun';
+import { evalMessageFromRow, filterConditionsMatch } from './filtersEval';
 
 // ── Public CRUD ───────────────────────────────────────────────────
 
@@ -58,6 +63,9 @@ const conditionValidator = v.object({
 	valueNumber: v.optional(v.number()),
 });
 
+/** One grouping level: `all` AND-s the conditions, `any` OR-s them. */
+const matchTypeValidator = v.union(v.literal('all'), v.literal('any'));
+
 const actionValidator = v.object({
 	type: v.union(
 		v.literal('moveToFolder'),
@@ -66,12 +74,51 @@ const actionValidator = v.object({
 		v.literal('markFlagged'),
 		v.literal('forward'),
 		v.literal('delete'),
+		v.literal('pinToSection'),
 		v.literal('discard')
 	),
 	folderId: v.optional(v.id('mailFolders')),
 	labelId: v.optional(v.id('mailLabels')),
 	forwardTo: v.optional(v.string()),
+	sectionName: v.optional(v.string()),
 });
+
+/**
+ * Longest section name we persist. The name IS the section's identity (there is
+ * no section table — the inbox's sections are derived from the enabled filters
+ * that name one), so it is bounded here rather than only in the UI: an unbounded
+ * name would become an unbounded index key on every message it files.
+ */
+export const MAX_SECTION_NAME_LENGTH = 60;
+
+/**
+ * Normalise a section name to the form stored on the message row and used as the
+ * section's identity: trimmed, inner whitespace collapsed, length-capped. Two
+ * filters that name "Deploys" and " Deploys " are the same section — which is
+ * what a user typing the name twice means.
+ */
+export function normalizeSectionName(name: string): string {
+	return name.replace(/\s+/g, ' ').trim().slice(0, MAX_SECTION_NAME_LENGTH);
+}
+
+/**
+ * Canonicalise the actions of a filter before they are persisted. Only
+ * `pinToSection` has anything to canonicalise today: its `sectionName` is
+ * normalised here — at the ONE write boundary — so the name stored on the filter
+ * is byte-identical to the name later stamped onto every message row, and a
+ * `pinToSection` with no usable name is rejected rather than silently filing
+ * mail into a section nothing can name.
+ */
+export function normalizeFilterActions<
+	T extends { type: string; sectionName?: string | undefined },
+>(actions: T[]): T[] {
+	return actions.map((action) => {
+		if (action.type !== 'pinToSection') return action;
+		const sectionName = normalizeSectionName(action.sectionName ?? '');
+		if (!sectionName) throwInvalidInput('A pin-to-section action needs a section name');
+		return { ...action, sectionName };
+	});
+}
 
 export const create = authedMutation({
 	args: {
@@ -81,6 +128,7 @@ export const create = authedMutation({
 		priority: v.optional(v.number()),
 		conditions: v.array(conditionValidator),
 		actions: v.array(actionValidator),
+		matchType: v.optional(matchTypeValidator),
 		stopProcessing: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
@@ -96,8 +144,9 @@ export const create = authedMutation({
 		if (args.actions.length === 0) {
 			throwInvalidInput('At least one action is required');
 		}
+		const actions = normalizeFilterActions(args.actions);
 		// Validate any folder/label refs belong to this mailbox
-		for (const action of args.actions) {
+		for (const action of actions) {
 			if (action.folderId) {
 				const folder = await ctx.db.get(action.folderId);
 				if (!folder || folder.mailboxId !== args.mailboxId) {
@@ -128,7 +177,10 @@ export const create = authedMutation({
 			isEnabled: args.isEnabled ?? true,
 			priority,
 			conditions: args.conditions,
-			actions: args.actions,
+			actions,
+			// Absent means `all` — the pre-toggle meaning — so an omitted arg
+			// stores nothing rather than stamping a default onto every row.
+			...(args.matchType && args.matchType !== 'all' ? { matchType: args.matchType } : {}),
 			stopProcessing: args.stopProcessing ?? false,
 			createdAt: now,
 			updatedAt: now,
@@ -144,6 +196,7 @@ export const update = authedMutation({
 		priority: v.optional(v.number()),
 		conditions: v.optional(v.array(conditionValidator)),
 		actions: v.optional(v.array(actionValidator)),
+		matchType: v.optional(matchTypeValidator),
 		stopProcessing: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
@@ -156,7 +209,12 @@ export const update = authedMutation({
 		if (args.isEnabled !== undefined) patch['isEnabled'] = args.isEnabled;
 		if (args.priority !== undefined) patch['priority'] = args.priority;
 		if (args.conditions !== undefined) patch['conditions'] = args.conditions;
-		if (args.actions !== undefined) patch['actions'] = args.actions;
+		if (args.actions !== undefined) patch['actions'] = normalizeFilterActions(args.actions);
+		// `all` clears the field rather than storing it, keeping "absent = today's
+		// behavior" true for a filter that is toggled back.
+		if (args.matchType !== undefined) {
+			patch['matchType'] = args.matchType === 'all' ? undefined : args.matchType;
+		}
 		if (args.stopProcessing !== undefined) patch['stopProcessing'] = args.stopProcessing;
 		await ctx.db.patch(args.filterId, patch);
 	},
@@ -169,128 +227,124 @@ export const remove = authedMutation({
 		if (!filter) return;
 		const owned = await requireMailboxAccess(ctx, filter.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Filter not accessible');
+		// The retroactive-run job is bookkeeping ABOUT this filter; leaving it
+		// behind would strand a "running" row whose next batch stops on a missing
+		// filter and can never be started or cancelled again.
+		await removeFilterRunJob(ctx, args.filterId);
 		await ctx.db.delete(args.filterId);
 	},
 });
 
-// ── Pure evaluator ────────────────────────────────────────────────
+/**
+ * Priority step between adjacent filters after a reorder. Kept wide (matching
+ * the append step in `create`) so a later single-filter insert has room between
+ * two neighbours without rewriting the run.
+ */
+const PRIORITY_STEP = 100;
 
-export interface EvalMessage {
-	from: string;
-	to: string[];
-	cc: string[];
-	subject: string;
-	bodyText?: string;
-	bodyHtml?: string;
-	headers?: Record<string, string | undefined>;
-	size: number;
-	hasAttachment: boolean;
-}
-
-export interface EvalResultAction {
-	type: 'moveToFolder' | 'addLabel' | 'markRead' | 'markFlagged' | 'forward' | 'delete' | 'discard';
-	folderId?: Id<'mailFolders'>;
-	labelId?: Id<'mailLabels'>;
-	forwardTo?: string;
-}
-
-export interface EvalResult {
-	matchedFilterIds: Id<'mailFilters'>[];
-	actions: EvalResultAction[];
-	stopped: boolean;
-}
-
-function fieldValue(message: EvalMessage, field: string, headerName?: string): unknown {
-	switch (field) {
-		case 'from':
-			return message.from.toLowerCase();
-		case 'to':
-			return message.to.join(' ').toLowerCase();
-		case 'cc':
-			return message.cc.join(' ').toLowerCase();
-		case 'subject':
-			return (message.subject ?? '').toLowerCase();
-		case 'body':
-			return ((message.bodyText ?? '') + ' ' + (message.bodyHtml ?? '')).toLowerCase();
-		case 'header':
-			if (!headerName) return '';
-			return (message.headers?.[headerName.toLowerCase()] ?? '').toLowerCase();
-		case 'size':
-			return message.size;
-		case 'hasAttachment':
-			return message.hasAttachment;
-		default:
-			return '';
-	}
-}
-
-function compileRegex(pattern: string): RegExp | null {
-	try {
-		return new RegExp(pattern, 'i');
-	} catch {
-		return null;
-	}
-}
-
-function conditionMatches(
-	condition: Doc<'mailFilters'>['conditions'][number],
-	message: EvalMessage
-): boolean {
-	const lhs = fieldValue(message, condition.field, condition.headerName);
-	const value = (condition.value ?? '').toLowerCase();
-	switch (condition.op) {
-		case 'contains':
-			return typeof lhs === 'string' && value.length > 0 && lhs.includes(value);
-		case 'notContains':
-			return typeof lhs === 'string' && (value.length === 0 || !lhs.includes(value));
-		case 'equals':
-			return typeof lhs === 'string' && lhs === value;
-		case 'matches': {
-			if (typeof lhs !== 'string') return false;
-			const re = compileRegex(condition.value ?? '');
-			return re ? re.test(lhs) : false;
+/**
+ * Write a new run order in one transaction.
+ *
+ * `priority` decided evaluation order from day one — and `stopProcessing` makes
+ * that order load-bearing — but there was no way to change it, so a rule that
+ * needed to run first could only be recreated. The caller sends the ids in the
+ * order it wants and gets 100, 200, 300…; ids from another mailbox are skipped
+ * rather than fatal, so a stale list cannot sink the whole reorder.
+ */
+export const reorder = authedMutation({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		/** Filter ids, first to run to last. */
+		filterIds: v.array(v.id('mailFilters')),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
+		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		const now = Date.now();
+		let slot = 0;
+		for (const filterId of args.filterIds) {
+			const filter = await ctx.db.get(filterId);
+			if (!filter || filter.mailboxId !== args.mailboxId) continue;
+			slot += 1;
+			const priority = slot * PRIORITY_STEP;
+			if (filter.priority === priority) continue;
+			await ctx.db.patch(filterId, { priority, updatedAt: now });
 		}
-		case 'greaterThan':
-			return typeof lhs === 'number' && lhs > (condition.valueNumber ?? 0);
-		case 'lessThan':
-			return typeof lhs === 'number' && lhs < (condition.valueNumber ?? 0);
-		case 'isTrue':
-			return Boolean(lhs);
-		default:
-			return false;
-	}
+	},
+});
+
+/**
+ * How much recent mail the dry-run preview evaluates. A preview is a sanity
+ * check ("does this catch what I think it catches?"), not a search, so it reads
+ * a fixed recent window and says so.
+ */
+export const PREVIEW_SCAN_WINDOW = 300;
+
+/** Rows the preview hands back — enough to recognise a message, no body. */
+export interface FilterPreviewMatch {
+	messageId: Id<'mailMessages'>;
+	fromAddress: string;
+	subject: string;
+	receivedAt: number;
 }
 
 /**
- * Evaluate a filter list against an inbound message. Pure function — safe
- * to call from inside an internalMutation.
+ * Dry-run: which of the mailbox's recent messages would this rule match?
+ *
+ * Takes the DRAFT conditions rather than a saved filter id, so the preview runs
+ * against what is on screen — the point is to see the rule before committing to
+ * it. Runs the exact same `filterConditionsMatch` the delivery pipeline uses;
+ * a preview computed by a second, parallel implementation would be worth less
+ * than no preview at all.
  */
-export function evaluateFilters(filters: Doc<'mailFilters'>[], message: EvalMessage): EvalResult {
-	const ordered = [...filters].filter((f) => f.isEnabled).sort((a, b) => a.priority - b.priority);
+// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+export const preview = publicQuery({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		conditions: v.array(conditionValidator),
+		matchType: v.optional(matchTypeValidator),
+		limit: v.optional(v.number()),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{ matches: FilterPreviewMatch[]; scanned: number; matchCount: number }> => {
+		const empty = { matches: [], scanned: 0, matchCount: 0 };
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
+		if (!owned.ok) return empty;
+		if (args.conditions.length === 0) return empty;
 
-	const matched: Id<'mailFilters'>[] = [];
-	const actions: EvalResultAction[] = [];
-	let stopped = false;
+		const scanned = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
+			.order('desc')
+			.take(PREVIEW_SCAN_WINDOW);
 
-	for (const filter of ordered) {
-		if (filter.conditions.length === 0) continue;
-		const allMatch = filter.conditions.every((c) => conditionMatches(c, message));
-		if (!allMatch) continue;
-
-		matched.push(filter._id);
-		for (const action of filter.actions) {
-			actions.push({
-				type: action.type,
-				folderId: action.folderId,
-				labelId: action.labelId,
-				forwardTo: action.forwardTo,
-			});
+		const draft = { conditions: args.conditions, matchType: args.matchType };
+		const matching: typeof scanned = [];
+		for (const m of scanned) {
+			if (filterConditionsMatch(draft, await evalMessageFromRow(m))) matching.push(m);
 		}
-		if (filter.stopProcessing) {
-			stopped = true;
-			break;
-		}
-	}
+		const limit = Math.min(Math.max(1, args.limit ?? 20), 100);
+		return {
+			matches: matching.slice(0, limit).map((m) => ({
+				messageId: m._id,
+				fromAddress: m.fromAddress,
+				subject: m.subject,
+				receivedAt: m.receivedAt,
+			})),
+			scanned: scanned.length,
+			// The honest total inside the window, so the panel can say "12 of the
+			// last 300" instead of implying the preview is the whole answer.
+			matchCount: matching.length,
+		};
+	},
+});
 
-	return { matchedFilterIds: matched, actions, stopped };
-}
+// ── Pure evaluator ────────────────────────────────────────────────
+//
+// Lives in ./filtersEval (this file was over the size cap). Re-exported here so
+// every existing importer — delivery, the preview, the retroactive sweep —
+// keeps reaching it through `mail/filters`.
+export { filterConditionsMatch, evalMessageFromRow, evaluateFilters } from './filtersEval';
+export type { EvalMessage, EvalResult, EvalResultAction } from './filtersEval';

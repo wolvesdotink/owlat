@@ -142,7 +142,7 @@ const metaLine = computed(() => {
 				>
 					<Icon
 						:name="row.statusBadge.icon"
-						:class="['w-3 h-3', row.campaign.status === 'sending' ? 'animate-spin' : '']"
+						:class="['w-3 h-3', row.campaign.status === 'sending' ? 'animate-spin motion-reduce:animate-none' : '']"
 					/>
 					{{ message(row.statusBadge.label) }}
 				</span>

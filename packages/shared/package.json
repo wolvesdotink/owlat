@@ -21,6 +21,10 @@
 			"types": "./src/types/index.ts",
 			"import": "./src/types/index.ts"
 		},
+		"./templateVariables": {
+			"types": "./src/templateVariables.ts",
+			"import": "./src/templateVariables.ts"
+		},
 		"./registry": {
 			"types": "./src/registry/index.ts",
 			"import": "./src/registry/index.ts"
@@ -145,6 +149,18 @@
 			"types": "./src/postboxLinkTransparency.ts",
 			"import": "./src/postboxLinkTransparency.ts"
 		},
+		"./retentionHorizons": {
+			"types": "./src/retentionHorizons.ts",
+			"import": "./src/retentionHorizons.ts"
+		},
+		"./mboxArchive": {
+			"types": "./src/mboxArchive.ts",
+			"import": "./src/mboxArchive.ts"
+		},
+		"./gmailTakeout": {
+			"types": "./src/gmailTakeout.ts",
+			"import": "./src/gmailTakeout.ts"
+		},
 		"./mailMime": {
 			"types": "./src/mailMime.ts",
 			"import": "./src/mailMime.ts"
@@ -168,6 +184,10 @@
 		"./attachments": {
 			"types": "./src/attachments.ts",
 			"import": "./src/attachments.ts"
+		},
+		"./attachmentShares": {
+			"types": "./src/attachmentShares.ts",
+			"import": "./src/attachmentShares.ts"
 		},
 		"./bounceClassification": {
 			"types": "./src/bounceClassification.ts",

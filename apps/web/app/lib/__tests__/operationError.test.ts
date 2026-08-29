@@ -7,6 +7,9 @@ import {
 	operationCopy,
 	resolveOperationCopy,
 	isTransportFailure,
+	operationToastCopy,
+	isSurfacedOperationError,
+	SurfacedOperationError,
 } from '../operationError';
 import { createTestI18n } from '~/__tests__/i18n';
 
@@ -135,5 +138,57 @@ describe('operationCopy', () => {
 		expect(copyFor({ category: 'unauthenticated', message: 'No identity' })).toContain(
 			'session has expired'
 		);
+	});
+});
+
+/**
+ * The catch-block half of the seam. Three postbox call sites used to swallow a
+ * throw into `console.error` and show the user nothing; these are the two rules
+ * that make routing them through a toast safe — a surface-specific line only
+ * where the policy has nothing better to say, and silence for a failure an
+ * Operation module has already put on screen.
+ */
+describe('operationToastCopy', () => {
+	const FALLBACK = 'components.postbox.postboxThreadReader.attachmentDownloadFailed';
+
+	it('uses the surface fallback where the policy would say only "something went wrong"', () => {
+		expect(operationToastCopy(new Error('boom'), FALLBACK)).toEqual({ key: FALLBACK });
+	});
+
+	it('keeps a transport failure as the connection line, not the fallback', () => {
+		expect(operationToastCopy(new Error('Failed to fetch'), FALLBACK)).toEqual({
+			key: 'shared.operationError.network',
+		});
+	});
+
+	it('keeps a categorized backend refusal, which says more than any fallback', () => {
+		expect(
+			operationToastCopy(
+				new ConvexError({ category: 'forbidden', message: 'This mailbox is not yours' }),
+				FALLBACK
+			)
+		).toEqual({ text: 'This mailbox is not yours' });
+	});
+
+	it('still produces copy with no fallback offered', () => {
+		expect(operationToastCopy(new Error('boom'))).toEqual({
+			key: 'shared.operationError.generic',
+		});
+	});
+});
+
+describe('SurfacedOperationError', () => {
+	it('marks a re-throw whose failure has already been shown', () => {
+		expect(isSurfacedOperationError(new SurfacedOperationError('Send failed'))).toBe(true);
+	});
+
+	it('does not claim an ordinary throw', () => {
+		expect(isSurfacedOperationError(new Error('Send failed'))).toBe(false);
+		expect(isSurfacedOperationError('Send failed')).toBe(false);
+		expect(isSurfacedOperationError(undefined)).toBe(false);
+	});
+
+	it('is an Error, so an unhandled one still reports a stack', () => {
+		expect(new SurfacedOperationError('x')).toBeInstanceOf(Error);
 	});
 });

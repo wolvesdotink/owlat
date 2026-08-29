@@ -1,4 +1,19 @@
 /**
+ * Reduced motion, re-exported from the UI layer so it is a Nuxt auto-import
+ * here too. The implementation lives in `@owlat/ui` because `NumberTicker`
+ * needs it and a layer component cannot reach into the app.
+ *
+ * `useReducedMotion` is the reactive one (templates, computeds); the plain
+ * `prefersReducedMotion` is for the animation helpers under `lib/` that are not
+ * components and have nothing to re-render.
+ */
+export {
+	prefersReducedMotion,
+	useReducedMotion,
+	REDUCED_MOTION_QUERY,
+} from '@owlat/ui/composables/useReducedMotion';
+
+/**
  * Reactive `window.matchMedia`.
  *
  * The app runs with `ssr: false`, so the first value is already the real one —

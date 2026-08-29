@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
 
-const { t, te } = useI18n();
+const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.inbox.quarantine.pageTitle') });
 
@@ -64,13 +64,6 @@ const confirmBlock = async () => {
 	if (!pendingBlock.value) return;
 	await onBlock(pendingBlock.value._id);
 	pendingBlock.value = null;
-};
-
-// The injection taxonomy is a backend enum; an unrecognised value renders as
-// stored rather than as a key path.
-const getInjectionTypeLabel = (type: string) => {
-	const key = `dashboard.inbox.quarantine.injectionTypes.${type}`;
-	return te(key) ? t(key) : type;
 };
 </script>
 
@@ -152,34 +145,10 @@ const getInjectionTypeLabel = (type: string) => {
 					</div>
 				</div>
 
-				<!-- Security flags -->
-				<div v-if="message.securityFlags" class="mb-4 p-3 bg-error-subtle rounded-lg">
-					<p class="text-xs text-error font-medium uppercase tracking-wider mb-2">
-						{{ t('dashboard.inbox.quarantine.securityAlert') }}
-					</p>
-					<div class="space-y-1">
-						<p v-if="message.securityFlags.injectionType" class="text-sm text-text-primary">
-							<span class="font-medium">{{ t('dashboard.inbox.quarantine.typeLabel') }}</span>
-							{{ getInjectionTypeLabel(message.securityFlags.injectionType) }}
-						</p>
-						<p class="text-sm text-text-primary">
-							<span class="font-medium">{{ t('dashboard.inbox.quarantine.confidenceLabel') }}</span>
-							{{
-								t('dashboard.inbox.quarantine.confidenceValue', {
-									percent: Math.round((message.securityFlags.confidence ?? 0) * 100),
-								})
-							}}
-						</p>
-						<p v-if="message.securityFlags.flaggedContent" class="text-sm text-text-secondary mt-2">
-							<span class="font-medium text-text-primary">
-								{{ t('dashboard.inbox.quarantine.flaggedContentLabel') }}
-							</span>
-							<code class="ml-1 px-1.5 py-0.5 bg-bg-surface rounded text-xs">
-								{{ message.securityFlags.flaggedContent }}
-							</code>
-						</p>
-					</div>
-				</div>
+				<!-- Outcome first, then the reasons, then the machine's own record. A
+				     non-expert is making a security decision here, so the enum and the
+				     confidence number are the LAST thing on the card, not the first. -->
+				<InboxQuarantineReason class="mb-4" :flags="message.securityFlags" />
 
 				<!-- Message preview -->
 				<p v-if="message.subject" class="text-text-primary font-medium text-sm mb-1">

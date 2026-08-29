@@ -6,9 +6,37 @@ import {
 
 const MAX_DESTINATION_WRITE_BYTES = 64 * 1024;
 const OPFS_EXPORT_PREFIX = '.owlat-account-export-';
+
+/**
+ * What a streamed download is producing. The JSON account export and the mbox
+ * mail archive share every byte of the destination machinery below — the picker
+ * dialog, the OPFS spill file, the buffered writer — and differ only in what
+ * they must call the file.
+ */
+export interface IncrementalDownloadKind {
+	/** Shown in the native save dialog's file-type row. */
+	description: string;
+	mimeType: string;
+	/** Leading dot, e.g. `.mbox`. */
+	extension: string;
+}
+
+export const JSON_DOWNLOAD_KIND: IncrementalDownloadKind = {
+	description: 'JSON data',
+	mimeType: 'application/json',
+	extension: '.json',
+};
+
+export const MBOX_DOWNLOAD_KIND: IncrementalDownloadKind = {
+	description: 'Mail archive',
+	mimeType: 'application/mbox',
+	extension: '.mbox',
+};
+
 const OPFS_STALE_EXPORT_AGE_MS = 24 * 60 * 60 * 1000;
 const OPFS_STALE_SCAN_LIMIT = 64;
 const OPFS_STALE_REMOVE_LIMIT = 16;
+
 function firstNonWhitespaceIndex(value: string): number {
 	return value.search(/\S/);
 }
@@ -120,7 +148,10 @@ function downloadFile(file: File, filename: string): void {
 	revokeObjectUrlAfterDownloadNavigation(url);
 }
 
-async function openPickerSink(filename: string): Promise<TextChunkSink | null> {
+async function openPickerSink(
+	filename: string,
+	kind: IncrementalDownloadKind
+): Promise<TextChunkSink | null> {
 	const pickerWindow = window as SaveFilePickerWindow;
 	if (!pickerWindow.showSaveFilePicker) return null;
 	let handle: FileSystemFileHandle;
@@ -129,8 +160,8 @@ async function openPickerSink(filename: string): Promise<TextChunkSink | null> {
 			suggestedName: filename,
 			types: [
 				{
-					description: 'JSON data',
-					accept: { 'application/json': ['.json'] },
+					description: kind.description,
+					accept: { [kind.mimeType]: [kind.extension] },
 				},
 			],
 		});
@@ -185,13 +216,16 @@ async function removeStaleOriginPrivateFileSystemExports(
 	}
 }
 
-async function openOriginPrivateFileSystemSink(filename: string): Promise<TextChunkSink | null> {
+async function openOriginPrivateFileSystemSink(
+	filename: string,
+	kind: IncrementalDownloadKind
+): Promise<TextChunkSink | null> {
 	const storage = navigator.storage;
 	if (typeof storage?.getDirectory !== 'function') return null;
 
 	const directory = await storage.getDirectory();
 	await removeStaleOriginPrivateFileSystemExports(directory);
-	const temporaryName = `${OPFS_EXPORT_PREFIX}${crypto.randomUUID()}.json`;
+	const temporaryName = `${OPFS_EXPORT_PREFIX}${crypto.randomUUID()}${kind.extension}`;
 	const handle = await directory.getFileHandle(temporaryName, { create: true });
 	const removeTemporaryFile = async () => {
 		try {
@@ -236,14 +270,26 @@ async function openOriginPrivateFileSystemSink(filename: string): Promise<TextCh
 	};
 }
 
-export async function openIncrementalJsonDownload(filename: string): Promise<TextChunkSink> {
-	const pickerSink = await openPickerSink(filename);
+/**
+ * Open a destination for a download too large to hold in memory: the native
+ * save picker when the browser has one, otherwise a temporary file in the
+ * origin-private file system that is handed to the user when it closes.
+ */
+export async function openIncrementalDownload(
+	filename: string,
+	kind: IncrementalDownloadKind
+): Promise<TextChunkSink> {
+	const pickerSink = await openPickerSink(filename, kind);
 	if (pickerSink) return pickerSink;
 
-	const originPrivateFileSystemSink = await openOriginPrivateFileSystemSink(filename);
+	const originPrivateFileSystemSink = await openOriginPrivateFileSystemSink(filename, kind);
 	if (originPrivateFileSystemSink) return originPrivateFileSystemSink;
 
 	throw new Error('This browser does not support streaming account-export downloads');
+}
+
+export async function openIncrementalJsonDownload(filename: string): Promise<TextChunkSink> {
+	return await openIncrementalDownload(filename, JSON_DOWNLOAD_KIND);
 }
 
 function bufferedSink(destination: TextChunkSink): TextChunkSink {

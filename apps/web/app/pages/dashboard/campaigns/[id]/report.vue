@@ -344,7 +344,7 @@ const loadPrevClicked = () => {
 								:disabled="isDuplicating"
 								@click="handleDuplicate"
 							>
-								<Icon v-if="isDuplicating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon v-if="isDuplicating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 								<Icon v-else name="lucide:copy" class="w-4 h-4" />
 								{{
 									isDuplicating
@@ -577,7 +577,7 @@ const loadPrevClicked = () => {
 					<!-- Opened Contacts Tab -->
 					<div v-if="selectedTab === 'opened'">
 						<div v-if="openedLoading && !openedContacts" class="p-8 flex justify-center">
-							<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
+							<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none" />
 						</div>
 
 						<div
@@ -676,7 +676,7 @@ const loadPrevClicked = () => {
 					<!-- Clicked Contacts Tab -->
 					<div v-if="selectedTab === 'clicked'">
 						<div v-if="clickedLoading && !clickedContacts" class="p-8 flex justify-center">
-							<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
+							<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none" />
 						</div>
 
 						<div

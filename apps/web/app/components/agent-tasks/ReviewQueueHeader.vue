@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { REVIEW_SHORTCUT_GROUPS } from '~/utils/reviewShortcuts';
+import { reviewShortcutLegend } from '~/utils/reviewShortcuts';
 
 /**
  * Review Queue page header: back link, title, the Focus-mode switch, and the
@@ -17,6 +17,11 @@ const emit = defineEmits<{ (e: 'focus'): void }>();
 // The header was lifted out of ReviewBrowseList, so it keeps that surface's
 // catalog namespace rather than minting a second copy of the same sentences.
 const { t } = useI18n();
+
+// Generated from the one shortcut registry, so the legend cannot promise a key
+// the resolver no longer answers (and it follows the user's remaps).
+const { platform } = useDesktopContext();
+const legend = computed(() => reviewShortcutLegend(import.meta.client && platform.value === 'mac'));
 </script>
 
 <template>
@@ -53,14 +58,10 @@ const { t } = useI18n();
 			v-if="hasRows"
 			class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 text-xs text-text-tertiary"
 		>
-			<span
-				v-for="hint in REVIEW_SHORTCUT_GROUPS"
-				:key="hint.label"
-				class="inline-flex items-center gap-1"
-			>
+			<span v-for="hint in legend" :key="hint.label" class="inline-flex items-center gap-1">
 				<kbd
-					v-for="k in hint.keys"
-					:key="k"
+					v-for="(k, index) in hint.keys"
+					:key="index"
 					class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
 					>{{ k }}</kbd
 				>

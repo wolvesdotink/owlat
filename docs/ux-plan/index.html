@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Owlat UX improvement plan</title>
+<style>
+  :root{
+    --paper:#faf9f7; --card:#ffffff; --ink:#1c1917; --muted:#78716c;
+    --line:#e7e0d8; --accent:#c05b2e; --accent-soft:#fdf1ec;
+    --good:#3f6f4f; --good-soft:#eef4ef; --warn:#8a6a25; --warn-soft:#faf3e3;
+    --bad:#b3402e; --bad-soft:#fbeeec; --info:#3b5b7a; --info-soft:#edf2f7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:1100px;margin:0 auto;padding:48px 28px 120px}
+  h1,h2,h3{font-family:Georgia,"Times New Roman",serif;font-weight:600;line-height:1.2}
+  h1{font-size:42px;margin:0 0 8px}
+  h1 em{color:var(--accent);font-style:italic}
+  h2{font-size:28px;margin:64px 0 6px;padding-top:24px;border-top:1px solid var(--line)}
+  h2 .sec{color:var(--accent);font-size:15px;font-family:inherit;display:block;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+  h3{font-size:19px;margin:28px 0 8px}
+  p{margin:8px 0}
+  .lede{font-size:17px;color:#44403c;max-width:820px}
+  .meta{color:var(--muted);font-size:13px;margin-bottom:28px}
+  a{color:var(--accent)}
+  code{background:#f1ece6;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:12px 0}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;background:var(--card)}
+  th{background:#f5f1ec;font-weight:600}
+
+  /* table of contents */
+  .toc{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin:24px 0}
+  .toc a{display:block;background:var(--card);border:1px solid var(--line);border-radius:10px;
+         padding:12px 14px;text-decoration:none;color:var(--ink)}
+  .toc a b{color:var(--accent)}
+  .toc a span{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+
+  /* idea cards */
+  .idea{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:18px 22px;margin:14px 0}
+  .idea h4{margin:0 0 6px;font-size:16.5px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .idea h4 .num{font-family:Georgia,serif;color:var(--accent);font-size:15px;min-width:28px}
+  .idea p{font-size:14.5px;margin:6px 0}
+  .idea p b:first-child{font-weight:650}
+  .chips{display:inline-flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+  .chip{font-size:11px;font-weight:600;letter-spacing:.03em;border-radius:999px;padding:2px 9px;border:1px solid transparent;white-space:nowrap}
+  .imp-h{background:var(--bad-soft);color:var(--bad);border-color:#eccfc9}
+  .imp-m{background:var(--warn-soft);color:var(--warn);border-color:#eadfc2}
+  .imp-l{background:#f3f1ee;color:var(--muted);border-color:var(--line)}
+  .eff{background:var(--info-soft);color:var(--info);border-color:#d4dfe9}
+  .tier{background:var(--good-soft);color:var(--good);border-color:#d3e2d6}
+  details{margin-top:8px}
+  summary{cursor:pointer;color:var(--muted);font-size:12.5px}
+  details ul{margin:6px 0 2px;padding-left:18px;font-size:12.5px;color:#57534e}
+  details li{margin:2px 0}
+
+  /* before / after */
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0 4px}
+  @media(max-width:860px){.ba{grid-template-columns:1fr}}
+  .pane{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--paper)}
+  .pane .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+             padding:7px 12px;border-bottom:1px solid var(--line)}
+  .lbl.now{background:var(--accent-soft);color:var(--accent)}
+  .lbl.new{background:var(--good-soft);color:var(--good)}
+  .pane .body{padding:12px}
+  .pane .note{font-size:12px;color:var(--muted);padding:8px 12px 10px;border-top:1px dashed var(--line)}
+
+  /* mock kit */
+  .mk{font-size:12px;line-height:1.4}
+  .mk .mrow{display:flex;gap:9px;align-items:flex-start;background:var(--card);
+            border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin:6px 0;position:relative}
+  .mk .mrow.sel{background:#f2ece5}
+  .mav{width:26px;height:26px;border-radius:50%;flex:0 0 26px;display:flex;align-items:center;justify-content:center;
+       color:#fff;font-size:10px;font-weight:700;background:#7c8a6e}
+  .mav.rust{background:#b0603c}.mav.olive{background:#6d7a55}.mav.slate{background:#5f6c7b}.mav.plum{background:#7a5b6e}
+  .mcol{flex:1;min-width:0}
+  .msender{font-weight:650;display:flex;gap:8px;align-items:baseline}
+  .msender .mtime{margin-left:auto;color:var(--muted);font-weight:400;font-size:11px}
+  .msub{font-weight:550}
+  .msnip{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mchip{display:inline-block;font-size:10px;font-weight:600;border-radius:999px;padding:1px 7px;
+         border:1px solid var(--line);background:#f5f1ec;color:#57534e;vertical-align:1px}
+  .mchip.ok{background:var(--good-soft);color:var(--good);border-color:#cfe0d3}
+  .mchip.warn{background:var(--warn-soft);color:var(--warn);border-color:#e7dcbd}
+  .mchip.bad{background:var(--bad-soft);color:var(--bad);border-color:#ecccc5}
+  .mchip.acc{background:var(--accent-soft);color:var(--accent);border-color:#f0d5c7}
+  .mbtn{display:inline-block;background:#1c1917;color:#fff;border-radius:999px;padding:4px 13px;
+        font-size:11.5px;font-weight:600}
+  .mbtn.ghost{background:transparent;color:var(--ink);border:1px solid #cfc7bc}
+  .mbanner{border-radius:9px;padding:8px 11px;margin:6px 0;font-size:11.5px;border:1px solid}
+  .mbanner.warn{background:var(--warn-soft);border-color:#e7dcbd;color:#6b5420}
+  .mbanner.bad{background:var(--bad-soft);border-color:#ecccc5;color:#8f3626}
+  .mbanner.ok{background:var(--good-soft);border-color:#cfe0d3;color:#33593f}
+  .mbanner.info{background:var(--info-soft);border-color:#d4dfe9;color:#37536e}
+  .mhdr{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:10px 0 4px}
+  .minput{background:var(--card);border:1px solid #d6cec3;border-radius:8px;padding:6px 10px;color:var(--muted);margin:4px 0}
+  .mfield{display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line);padding:5px 0;background:var(--card);padding-left:10px;padding-right:10px}
+  .mfield .k{color:var(--muted);width:52px;flex:0 0 52px}
+  .mcardm{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:6px 0}
+  .msec{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:700;letter-spacing:.09em;
+        text-transform:uppercase;color:var(--muted);margin:10px 2px 2px}
+  .msec .cnt{background:#eee8e0;border-radius:999px;padding:0 7px;font-size:10px}
+  .mtool{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:8px;
+         padding:4px 8px;margin:6px 0;width:max-content}
+  .mtool span{display:inline-block;min-width:20px;text-align:center;padding:2px 4px;border-radius:5px;color:#57534e}
+  .mtool span:hover{background:#f1ece6}
+  .mkbd{display:inline-block;border:1px solid #cfc7bc;border-bottom-width:2px;border-radius:5px;
+        background:#fff;padding:0 5px;font:11px ui-monospace,Menlo,monospace}
+  .strike{color:var(--muted);text-decoration:line-through}
+
+  /* screenshots */
+  .gallery{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:18px 0}
+  @media(max-width:860px){.gallery{grid-template-columns:1fr}}
+  figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  figure img{width:100%;display:block}
+  figcaption{padding:9px 13px;font-size:12.5px;color:#57534e;border-top:1px solid var(--line)}
+  figcaption b{color:var(--ink)}
+  .shotpane img{width:100%;display:block;border-radius:8px;border:1px solid var(--line)}
+
+  .crop{border:1px solid var(--line);border-radius:8px;background-repeat:no-repeat;margin:6px 0}
+  .swatches{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
+  .sw{border:1px solid var(--line);border-radius:10px;background:#fff;padding:12px 14px;font-size:12px;width:230px}
+  .sw .txt{font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--muted);margin:10px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Owlat <em>UX improvement plan</em></h1>
+<p class="meta">August 27, 2026 · branch <code>f11e3bfed</code> · 68 proposals across 6 themes · every idea cites the files it touches</p>
+
+<p class="lede">This plan comes from five parallel research passes over the actual codebase (inbox triage, composition and sending, search and power features, trust and accessibility, plus a full map of the current screens) and a rendered capture of the real UI via the <code>scripts/uiaudit</code> harness. The headline: Owlat's foundations are unusually good, and the biggest wins are not new pillars. They are finishing what's built, and showing users data the backend already computes but the UI never renders.</p>
+
+<h3>The five findings that shape everything below</h3>
+<table>
+<tr><th style="width:30px">#</th><th>Finding</th><th>Why it matters</th></tr>
+<tr><td>1</td><td>A personal-mail send that bounces is <b>invisible</b>. Per-recipient bounce states, reasons and error codes are parsed, classified, stored in <code>mailMessages.outbound</code> and audited, then never read by a single file in <code>apps/web</code>.</td><td>The user believes the mail arrived. This is the worst failure mode an email client can have, and fixing it is mostly one query and one component.</td></tr>
+<tr><td>2</td><td>Body search only indexes the <b>first 200 characters</b> of each message (<code>buildSnippet</code> ends in <code>source.slice(0, 200)</code>).</td><td>A phrase from the middle of any email is unfindable, with no signal that the index just doesn't reach that far. Users stop trusting search.</td></tr>
+<tr><td>3</td><td>The app is installable as a PWA but has <b>no service worker</b>, so a cold offline start is a blank window despite a 493-line IndexedDB offline layer.</td><td>All that offline work only helps a warm tab or the desktop app.</td></tr>
+<tr><td>4</td><td>The sender-auth verdict (including the <code>misaligned</code> impersonation state) renders only <b>inside an opened message</b>, never in the list where triage decisions are made.</td><td>Phishing gets clicked from the list, not the reader.</td></tr>
+<tr><td>5</td><td>Star and mark-read, the two highest-frequency actions, are the <b>only triage actions that are not optimistic</b>. Every archive and snooze is instant; every star waits for a round-trip.</td><td>The cheapest perceived-speed win in the codebase, roughly 40 lines.</td></tr>
+</table>
+
+<div class="toc">
+  <a href="#current"><b>Current state</b><span>14 real screenshots of the app as it renders today</span></a>
+  <a href="#theme-a"><b>A · Outbound confidence</b><span>16 ideas · bounces, guards, scheduling, the editor</span></a>
+  <a href="#theme-b"><b>B · Triage and reading</b><span>15 ideas · mute, snooze, bundling, split inbox, notifications</span></a>
+  <a href="#theme-c"><b>C · Search and organization</b><span>9 ideas · the 200-char ceiling, saved searches, files</span></a>
+  <a href="#theme-d"><b>D · Power and speed</b><span>10 ideas · bulk, palette, shortcuts, offline, import</span></a>
+  <a href="#theme-e"><b>E · Trust and safety</b><span>7 ideas · list-level warnings, headers, sessions and 2FA</span></a>
+  <a href="#theme-f"><b>F · Coherence and accessibility</b><span>11 ideas · settings, contrast, locale, paper cuts</span></a>
+  <a href="#roadmap"><b>Roadmap</b><span>Now / next / later, with the ship-this-week list</span></a>
+</div>
+
+<p class="legend">
+  How to read the cards:&nbsp;
+  <span class="chip imp-h">Impact high</span>
+  <span class="chip imp-m">Impact medium</span>
+  <span class="chip eff">Effort S/M/L</span>
+  <span class="chip tier">Now / Next / Later</span>
+  &nbsp;·&nbsp; Visual panels compare <span class="chip" style="background:var(--accent-soft);color:var(--accent)">TODAY</span> against <span class="chip" style="background:var(--good-soft);color:var(--good)">PROPOSED</span>. Today panels are real screenshots where available, otherwise wireframes drawn from the actual component structure.
+</p>
+
+<!-- ============================================================ -->
+<h2 id="current"><span class="sec">Baseline</span>The current state, as it actually renders</h2>
+<p>Captured from branch HEAD with the <code>scripts/uiaudit</code> mock-backend harness at 1440x900. Two products share the shell: <b>Postbox</b> (the personal mail client) and the <b>Team Inbox</b> (the AI-assisted shared queue). Postbox is mature: snooze with "until they reply", a reply queue, smart categories, a daily brief, a sender screener, sealed mail, undo send, offline outbox, and a full single-key shortcut vocabulary all ship today. The plan builds on that, it does not restart it.</p>
+
+<div class="gallery">
+  <figure><a href="assets/current-mail-today.png"><img src="assets/current-mail-today.png" alt="Postbox Today view"></a>
+    <figcaption><b>Postbox, Today view (the default landing).</b> A single focused column: "For you" action items, today's mail, and a roll-up of auto-filed low-signal messages.</figcaption></figure>
+  <figure><a href="assets/current-mail-list.png"><img src="assets/current-mail-list.png" alt="Postbox browse view"></a>
+    <figcaption><b>Postbox, Browse view.</b> Folder rail, list with view-mode control and filter chips, empty reader. Note the view-mode control already truncating to "In..." at 1440px (idea 68).</figcaption></figure>
+  <figure><a href="assets/current-mail-reading.png"><img src="assets/current-mail-reading.png" alt="Postbox reader"></a>
+    <figcaption><b>Postbox, reading.</b> Verified-sender badge, sealing-key banner, attachment chip. The breadcrumb prints a raw document id (idea 68).</figcaption></figure>
+  <figure><a href="assets/current-compose.png"><img src="assets/current-compose.png" alt="Standalone composer"></a>
+    <figcaption><b>Standalone composer.</b> From/To/Subject and a bare "Write your message" area. No visible formatting affordance at rest (idea 16).</figcaption></figure>
+  <figure><a href="assets/current-inbox.png"><img src="assets/current-inbox.png" alt="Team Inbox"></a>
+    <figcaption><b>Team Inbox.</b> Count pills, status chips, assignee presence. Sorted by needs-attention; nothing shows how long a customer has waited (idea 30).</figcaption></figure>
+  <figure><a href="assets/current-thread.png"><img src="assets/current-thread.png" alt="Team Inbox thread"></a>
+    <figcaption><b>Team Inbox thread.</b> AI classification strip, agent draft with approve/edit/reject, contact sidebar.</figcaption></figure>
+  <figure><a href="assets/current-settings.png"><img src="assets/current-settings.png" alt="Preferences"></a>
+    <figcaption><b>Preferences.</b> One long page plus eight sub-page tiles. Every settings page hand-rolls its own wrapper; going from Filters to Aliases means going back to this hub (idea 59).</figcaption></figure>
+  <figure><a href="assets/current-command-palette.png"><img src="assets/current-command-palette.png" alt="Command palette"></a>
+    <figcaption><b>Command palette.</b> Create and navigation entries. It cannot find an email, the app's primary content type (idea 36).</figcaption></figure>
+  <figure><a href="assets/current-dashboard.png"><img src="assets/current-dashboard.png" alt="Dashboard"></a>
+    <figcaption><b>Dashboard home.</b> Getting-started checklist plus mostly-empty analytics cards. Accurate picture of a fresh instance.</figcaption></figure>
+  <figure><a href="assets/current-welcome.png"><img src="assets/current-welcome.png" alt="Welcome"></a>
+    <figcaption><b>First-login welcome.</b> Name, signature, notification scope. The signature placeholder ships a personal name (idea 68).</figcaption></figure>
+  <figure><a href="assets/current-login.png"><img src="assets/current-login.png" alt="Login"></a>
+    <figcaption><b>Sign-in.</b> Password only. Sessions, passkeys and 2FA tables exist in the auth schema with zero UI (idea 57).</figcaption></figure>
+  <figure><a href="assets/current-setup.png"><img src="assets/current-setup.png" alt="Setup wizard"></a>
+    <figcaption><b>Instance setup wizard, step 0.</b></figcaption></figure>
+  <figure><a href="assets/current-mail-list-dark.png"><img src="assets/current-mail-list-dark.png" alt="Postbox dark"></a>
+    <figcaption><b>Postbox in dark mode.</b> The truncated view-mode control reproduces here too.</figcaption></figure>
+  <figure><a href="assets/current-inbox-dark.png"><img src="assets/current-inbox-dark.png" alt="Team Inbox dark"></a>
+    <figcaption><b>Team Inbox in dark mode.</b></figcaption></figure>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="theme-a"><span class="sec">Theme A · 16 ideas</span>Outbound confidence: no send fails silently</h2>
+<p>The richest vein in the whole review. The delivery backend (bounce classifier, alignment preflight, Google Postmaster ingestion, per-recipient lifecycle) is deep, but nearly all of it is wired to campaigns and admin screens. The person writing a normal email gets none of it. Most of Theme A is surfacing, not building.</p>
+
+<div class="idea">
+  <h4><span class="num">1</span>Show per-recipient delivery status on sent messages
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S/M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> <code>mailMessages.outbound</code> stores per-recipient state (queued / sent / bounced / failed), bounce message, error code and timestamps. No public query exposes it and no component renders it. A hard bounce looks identical to a delivered mail.</p>
+  <p><b>Proposal.</b> Add a mailbox-scoped public query over the existing data and render a delivery strip on sent messages in the thread reader, with a "resend to the failed recipient only" action. No new backend state, no new writers.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mcardm">
+        <div class="msender"><span class="mav rust">AM</span>&nbsp;Ada Marlow <span style="color:var(--muted);font-weight:400">to ines@, jonas@acme.example</span><span class="mtime">12:40</span></div>
+        <p style="margin:8px 0 4px">Hi both, contract attached. Can you counter-sign by Friday?</p>
+        <span class="mchip">contract-v4.pdf · 1.2 MB</span>
+      </div>
+      <div class="note" style="border:0;padding:2px 2px 0">Message sits in Sent. Jonas's copy hard-bounced 90 seconds later. Nothing changes on screen, ever.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm">
+        <div class="msender"><span class="mav rust">AM</span>&nbsp;Ada Marlow <span style="color:var(--muted);font-weight:400">to ines@, jonas@acme.example</span><span class="mtime">12:40</span></div>
+        <p style="margin:8px 0 4px">Hi both, contract attached. Can you counter-sign by Friday?</p>
+        <span class="mchip">contract-v4.pdf · 1.2 MB</span>
+        <div class="mbanner ok" style="margin-top:9px">✓ &nbsp;ines@northwind.studio · delivered 12:41</div>
+        <div class="mbanner bad">✕ &nbsp;jonas@acme.example · couldn't be delivered: their mailbox is full. Not a problem on your side. &nbsp;<b><u>Resend to jonas only</u></b></div>
+      </div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>apps/api/convex/schema/mail.ts</code> (the <code>outbound</code> object, ~L571-611)</li>
+    <li><code>apps/api/convex/mail/postboxOutboundLifecycle.ts</code> (sole writer; states already terminal-safe)</li>
+    <li>Gap: <code>postboxOutboundAudit.ts</code> / <code>outboundQueries.ts</code> export only internal queries; a public mailbox-scoped read does not exist yet</li>
+    <li>New component beside <code>apps/web/app/components/postbox/PostboxThreadReader.vue</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">2</span>Translate bounces into plain language
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> The stored <code>bounceMessage</code> is a raw SMTP string ("550 5.7.1 Unauthenticated email ... DMARC policy"). It hides the one thing the user needs: whose fault it is and what to do.</p>
+  <p><b>Proposal.</b> Reuse the MTA's bounce classifier to map every failure to a cause, a fault attribution (your setup / their mailbox / temporary) and one next action, as an i18n-keyed catalog following the existing <code>senderAlignment.ts</code> registry pattern. This is the copy inside idea 1's red row.</p>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>apps/mta/src/bounce/classifier.ts</code>, <code>outcome.ts</code>, <code>types.ts</code></li>
+    <li>Pattern to copy: <code>apps/web/app/utils/senderAlignment.ts</code>, <code>deliveryReadiness.ts</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">3</span>Warn before the send that is guaranteed to bounce
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> The From picker already renders a DMARC-alignment chip, but the pre-send gate chain (seal, attachment, stale-reply) never consults it. A user with a broken identity sends straight into a certain rejection and learns from a bounce.</p>
+  <p><b>Proposal.</b> Add an alignment gate to <code>handleSend</code> using the verdict already computed inches away on screen. Warn with the chip's existing plain-language reason and a link to the fix. Warn, don't hard-block, so self-hosters mid-setup are never trapped.</p>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>apps/web/app/components/postbox/PostboxComposerEnvelope.vue</code> (computes <code>senderAuthDisplay</code>, L67-80)</li>
+    <li>Guard shape to copy: <code>usePostboxStaleReplyGuard.ts</code> / <code>usePostboxComposerSealLock.ts</code> (<code>blockSend</code> + <code>onConfirm</code> replay)</li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">4</span>Catch recipient typos and lookalike domains
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> <code>marcel@gmial.com</code> is syntactically valid and sends without a murmur. A misdirected email is unrecoverable and a real privacy exposure. The bounded-edit-distance algorithm already exists in the repo, built for the inbound mirror image of this problem.</p>
+  <p><b>Proposal.</b> On chip commit, compare the domain against contact-frecency domains and common providers; suggest inline, never block. Ideas 4, 5 and 6 share one visual below.</p>
+  <details><summary>Code anchors</summary><ul>
+    <li>Reuse: <code>apps/api/convex/mail/senderHeuristics.ts</code> (<code>boundedEditDistance</code>, <code>LOOKALIKE_MAX_EDITS</code>)</li>
+    <li><code>PostboxRecipientField.vue</code> (<code>addRecipient</code>), pure helper home: <code>apps/web/app/utils/recipientHints.ts</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">5</span>Flag first-time recipients before send
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> External chips are flagged, but an address you have never written to looks identical to your closest colleague's. This is how autocomplete mis-picks land.</p>
+  <p><b>Proposal.</b> <code>contacts.senderState</code> already knows <code>isKnown</code>. Mark never-emailed recipients with a "first time" chip and list only those addresses in a one-line dismissible confirm on send.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">6</span>Always-on deterministic pre-send checks
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> The only draft self-check is the AI coach, which is manual, flag-gated, and absent on self-hosted instances with AI off. Meanwhile the checks that need no model (empty subject, a leftover <code>[TODO]</code>, an unfilled <code>{{firstName}}</code> variable, link text disagreeing with its href) cost nothing.</p>
+  <p><b>Proposal.</b> One pure module mirroring <code>attachmentMention.ts</code>, rendered as a quiet footer chip, not a modal. Budget matters: chips for advisory checks, the existing replay-confirm dialog only for irreversible mistakes.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today (ideas 4 + 5 + 6)</div><div class="body mk">
+      <div class="mfield"><span class="k">To</span> <span class="mchip">ines@northwind.studio ✕</span> <span class="mchip">anna@gmial.com ✕</span> <span class="mchip">j.weber@acme-corp.io ✕</span></div>
+      <div class="mfield"><span class="k">Subject</span> <span style="color:var(--muted)">(empty)</span></div>
+      <div class="mcardm">Hi all, numbers attached. [TODO: add Q3 figure] Best, Ada</div>
+      <div style="margin-top:8px"><span class="mbtn">Send</span></div>
+      <div class="note" style="border:0;padding:4px 2px 0">All three problems ship. The typo bounces, the stranger gets the mail, the [TODO] goes out.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mfield"><span class="k">To</span> <span class="mchip">ines@northwind.studio ✕</span> <span class="mchip warn">anna@gmial.com ✕</span> <span class="mchip acc">j.weber@acme-corp.io · first time ✕</span></div>
+      <div class="mbanner warn" style="margin-top:4px">Did you mean <b>anna@gmail.com</b>? &nbsp;<u>Fix it</u> · <u>Keep as typed</u></div>
+      <div class="mfield"><span class="k">Subject</span> <span style="color:var(--muted)">(empty)</span></div>
+      <div class="mcardm">Hi all, numbers attached. [TODO: add Q3 figure] Best, Ada</div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center"><span class="mbtn">Send</span>
+        <span class="mchip warn">2 checks: no subject · "[TODO]" left in body</span></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">7</span>Mirror drafts locally for crash recovery
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Autosave is server-only on a 1.5s debounce. A tab crash or typing while offline loses everything since the last upsert. The offline outbox covers sends, not keystrokes. Losing a long draft is the single most trust-destroying thing a mail client can do.</p>
+  <p><b>Proposal.</b> Mirror composer state into the existing IndexedDB store on every change; on open, offer "Restore unsaved changes" when the local mirror is newer than the server row. Clear on confirmed save; never resurrect deliberately discarded drafts.</p>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>usePostboxCompose.ts</code> (<code>AUTOSAVE_DEBOUNCE_MS</code>, <code>flush</code>), <code>postboxOfflineStore.ts</code>, race precedent in <code>usePostboxOfflineOutbox.ts</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">8</span>Let users pick their undo-send window
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> The backend already accepts <code>undoSendDelayMs</code>; the web client just never passes it, so everyone lives with the hardcoded 30 seconds. The plumbing exists end to end.</p>
+  <p><b>Proposal.</b> A setting (Off / 10s / 30s / 60s) in <code>PostboxSendingSettings.vue</code>, threaded through <code>send()</code>. One setting plus one argument.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mbanner info">Sending in 30s... &nbsp;<b><u>Undo</u></b></div>
+      <div class="note" style="border:0;padding:4px 2px 0">30s for everyone. Cautious users can't get 60; confident users can't get 10.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm"><b>Undo send</b><br><span style="color:var(--muted)">Hold messages after you hit send</span><br>
+      <span class="mchip">Off</span> <span class="mchip">10s</span> <span class="mchip acc">30s ✓</span> <span class="mchip">60s</span></div>
+      <div class="mbanner info">Sending in 60s... &nbsp;<b><u>Undo</u></b></div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>draftLifecycle/types.ts</code> (<code>DEFAULT_UNDO_SEND_DELAY_MS</code>), <code>drafts.ts</code> L370 (validator arg exists), <code>usePostboxCompose.ts</code> L317/385 (accepts, never passed)</li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">9</span>Schedule sends in the recipient's timezone
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> The three presets compute in the sender's local time. Emailing Berlin from San Francisco, "tomorrow 9:00" lands at 18:00. A Friday-evening send rots over the weekend because there is no "next weekday" preset.</p>
+  <p><b>Proposal.</b> Infer the recipient's timezone from prior message headers, offer "tomorrow 9:00 their time" labeled with both clocks, add "next weekday morning", and degrade silently when the timezone is unknown.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mcardm"><b>Schedule send</b><br>
+      <span class="mchip">Tomorrow 9:00</span> <span class="mchip">Tomorrow 13:00</span> <span class="mchip">Monday 9:00</span> <span class="mchip">Custom...</span></div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm"><b>Schedule send</b> <span class="mchip">to Berlin · CET</span><br>
+      <span class="mchip acc">Tomorrow 9:00 their time <span style="color:var(--muted)">(00:00 yours)</span></span>
+      <span class="mchip">Tomorrow 9:00 yours</span><br>
+      <span class="mchip">Next weekday morning</span> <span class="mchip">Custom...</span></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">10</span>Turn oversized attachments into share links
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort L</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> The attachment meter's own source says it nudges "toward a link for oversized files", and no link feature exists. Over-budget users hit a dead end, and large attachments are a top bounce cause.</p>
+  <p><b>Proposal.</b> "Share as link instead" when the meter goes amber: store the file, insert an expiring access-scoped URL, add a revocation list in settings. Reuse the sealed-blob HTTP path for the authenticated variant. The largest single build in Theme A: needs a table, an expiry cron, and revocation UI.</p>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>postboxAttachmentMeter.ts</code> (the comment promising this), <code>packages/shared/src/attachments.ts</code> (<code>MAX_ATTACHMENT_BYTES</code>), precedent <code>apps/api/convex/mail/sealedBlobHttp.ts</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">11</span>Show which recipient blocks encryption
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort S/M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> The seal lock renders one aggregate verdict. With five recipients and a <code>recipient_no_key</code> block, the sender can't tell who is preventing encryption, so the only move is sending everything in plaintext. The per-recipient discovery states are already computed and returned.</p>
+  <p><b>Proposal.</b> A lock or no-key glyph on each chip; removing the blocking recipient restores a sealed send. Presentation only, and it must not weaken the deliberate no-silent-downgrade guarantee.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mfield"><span class="k">To</span> <span class="mchip">ines@ ✕</span> <span class="mchip">mei@ ✕</span> <span class="mchip">jonas@acme ✕</span></div>
+      <div class="mbanner warn">🔓 This message can't be sealed. Send unsealed?</div>
+      <div class="note" style="border:0;padding:4px 2px 0">Which recipient? No way to know. All-or-nothing plaintext.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mfield"><span class="k">To</span> <span class="mchip ok">🔒 ines@ ✕</span> <span class="mchip ok">🔒 mei@ ✕</span> <span class="mchip warn">🔓 jonas@acme · no key ✕</span></div>
+      <div class="mbanner warn">jonas@acme has no sealing key. <u>Remove jonas to send sealed</u> · <u>Send unsealed to all</u> · <u>Invite jonas to seal</u></div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>apps/api/convex/mail/sealPolicy.ts</code> (per-recipient states), <code>sealComposer.ts</code> (<code>deriveComposerLock</code>), <code>PostboxComposerSealLock.vue</code>, <code>PostboxRecipientField.vue</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">12</span>A personal sending-health card
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Readiness panels, the deliverability dashboard and Postmaster data all live behind the admin hub. A regular user whose mail quietly lands in spam has no signal at all.</p>
+  <p><b>Proposal.</b> A compact member-readable card in Postbox settings: is my domain verified, is my transport aligned, how many of my last 100 sends bounced, and the one thing to fix. <code>ReadinessPanel</code> documents that its queries are already member-readable, so the precedent exists.</p>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>components/delivery/ReadinessPanel.vue</code>, <code>utils/deliveryReadiness.ts</code>, <code>delivery/alignmentPreflight.ts</code>, <code>delivery/health.ts</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">13</span>Grow snippets into templates with variables
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> Snippets support exactly one variable (<code>{{firstName}}</code>). A complete variable system already exists in <code>packages/email-builder/src/utils/variables.ts</code> and is simply not reachable from Postbox.</p>
+  <p><b>Proposal.</b> Typed variables (recipient, company, sender identity, date, custom prompts) resolved at insertion; unfilled ones caught by idea 6's preflight. Optionally expose the builder's saved blocks as full-mode templates.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">14</span>Preview the message as it will actually arrive
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> The outbound builder derives a <code>text/plain</code> alternative the sender never sees, often mangled for block-built messages. Terminal and accessibility readers get whatever <code>resolvePlainText</code> produced.</p>
+  <p><b>Proposal.</b> "Preview as sent" in the composer footer: rendered HTML, the real plain-text part, and a dark-mode rendering side by side. The builder's device-preview machinery already exists to borrow.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">15</span>Fix the forgot-attachment guard's blind spots
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> The hint is a single English regex (<code>attach|enclosed</code>). It fires on "attached to the project", misses German and French entirely in a localized app, and presents through a native <code>window.confirm</code> while every other dialog is themed.</p>
+  <p><b>Proposal.</b> Localize per active locale, add negative-context patterns and "see the deck/PDF" phrasing, detect the forward case where a referenced attachment was removed, and replace the confirm with an inline undo-style bar. A guard that mis-fires trains users to dismiss all future warnings.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">16</span>Give the composer a visible, modern editor
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort L</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> The simple editor is hand-rolled <code>contenteditable</code> on the deprecated <code>execCommand</code> API: bold, italic, underline, two heading levels, lists, quote, link, and nothing else. No tables, no color, no font size. The default "floating toolbar on selection" means the standalone composer shows no formatting affordance at all at rest (screenshot below). The escape hatch is the full designer, a much heavier mental model for a reply.</p>
+  <p><b>Proposal.</b> Migrate the simple mode to a maintained editor model (ProseMirror/TipTap), keep the floating-bar aesthetic but show a discoverable "Aa" state, and extend the vocabulary (code block, table, color) without pushing anyone into the block designer.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today (real screenshot)</div><div class="body shotpane">
+      <img src="assets/current-compose.png" alt="Current standalone composer, no toolbar visible">
+    </div><div class="note">Nothing indicates formatting exists until you select text.</div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm">
+        <div class="mfield"><span class="k">From</span> ada@northwind.studio</div>
+        <div class="mfield"><span class="k">To</span> <span class="mchip">ines@northwind.studio ✕</span></div>
+        <div class="mfield"><span class="k">Subject</span> Q3 launch recap</div>
+        <div class="mtool"><span><b>B</b></span><span><i>I</i></span><span><u>U</u></span><span>H1</span><span>H2</span><span>“ ”</span><span>• list</span><span>1. list</span><span>🔗</span><span>⌗ code</span><span>▦ table</span><span>A͟</span></div>
+        <p style="color:var(--muted)">Write your message... &nbsp;<span class="mkbd">/</span> snippets · <span class="mkbd">:</span> emoji</p>
+        <div style="margin-top:6px"><span class="mbtn">Send</span> &nbsp;<span class="mchip">Aa persistent toolbar ✓</span></div>
+      </div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>PostboxBasicEditor.vue</code> + <code>packages/ui/composables/useRichText.ts</code> (execCommand core), <code>PostboxEditorToolbar.vue</code>, designer fallback via <code>packages/email-builder</code></li>
+  </ul></details>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="theme-b"><span class="sec">Theme B · 15 ideas</span>Triage and reading: finish the inbox verbs</h2>
+<p>Postbox already has snooze, a reply queue, smart categories, a screener and a daily brief. What's missing are the escape hatches and the layers between "one undifferentiated pile" and "out of sight, out of mind".</p>
+
+<div class="idea">
+  <h4><span class="num">17</span>Mute conversation
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S/M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> There is no way to silence a 40-person reply-all storm. Archive un-archives on the next reply; a filter rule is sender-scoped and lives in a different screen. Grep confirms zero mute foundation exists.</p>
+  <p><b>Proposal.</b> <code>mutedAt</code> on <code>mailThreads</code>. Muted threads auto-archive new inbound, never toast, never enter the reply queue, and show a quiet chip with one-click unmute.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mcardm"><b>Thread actions</b><br>
+      <span class="mchip">Archive</span> <span class="mchip">Trash</span> <span class="mchip">Spam</span> <span class="mchip">Block sender</span> <span class="mchip">Snooze</span> <span class="mchip">Move</span></div>
+      <div class="note" style="border:0;padding:4px 2px 0">Every new reply re-surfaces the thread and fires a notification. Forever.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm"><b>Thread actions</b><br>
+      <span class="mchip">Archive</span> <span class="mchip">Trash</span> <span class="mchip">Spam</span> <span class="mchip">Block sender</span> <span class="mchip">Snooze</span> <span class="mchip acc">🔕 Mute</span></div>
+      <div class="mrow"><span class="mav slate">RE</span><div class="mcol">
+        <div class="msender">RE: All-hands agenda (47 replies) <span class="mchip">🔕 muted</span><span class="mtime">2d</span></div>
+        <div class="msnip">New replies file straight to Archive. No toasts, no reply-queue entries.</div>
+      </div></div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>schema/mail.ts</code> (<code>mailThreads</code> ~L688), new verb in <code>mail/messageActions.ts</code>, one branch in <code>deliveryPipeline/insert.ts</code> and <code>lib/desktop/notificationRules.ts</code>, exclusion in <code>mail/needsReply.ts</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">18</span>Snooze the thread, not one message
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> <code>mail/snooze.ts</code> snoozes a single message row. Snoozing a live conversation hides the newest message while the rest stays in the inbox. The mental model says "put this conversation away"; the behavior doesn't.</p>
+  <p><b>Proposal.</b> <code>snoozeThread</code>/<code>unsnoozeThread</code> patch every inbox message on the thread; the wake sweep resurfaces the whole thread as one row. Default the <span class="mkbd">h</span> shortcut to thread scope with a "just this message" secondary.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">19</span>Mark messages returning from snooze
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> A woken message reappears indistinguishable from new mail, so users re-read it from scratch. The Team Inbox already solved this (<code>snoozeReturnedAt</code> drives a returned marker); Postbox never got the port.</p>
+  <p><b>Proposal.</b> Mirror the field, set it in the existing sweep, render a transient "Back from snooze, you asked for this at 9:00" chip. Clear on open. A straight port of a pattern already in the repo.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">20</span>Remember "show images" per sender
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Image blocking is a local <code>ref(false)</code>. A trusted newsletter demands the same click on every single issue, which trains people to hit "Load everything" reflexively and defeats the tracker protection.</p>
+  <p><b>Proposal.</b> "Always for this sender" on the banner, persisted per mailbox + sender, revocable in settings. Tracker-pixel stripping stays on regardless.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mbanner info">Remote images blocked. &nbsp;<u>Show images</u> · <u>Load everything</u></div>
+      <div class="note" style="border:0;padding:4px 2px 0">Same banner, same click, every issue, forever.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mbanner info">Remote images blocked. &nbsp;<u>Show once</u> · <u>Always for stratechery.com</u></div>
+      <div class="mbanner ok">Images from stratechery.com load automatically. Tracking pixels are still stripped. <u>Manage trusted senders</u></div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>PostboxMessageBody.vue</code> (~L95-100, 355-395), <code>packages/shared/src/postboxTrackers.ts</code>, table shape to copy: <code>mailSenderCategoryOverrides</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">21</span>Swipe to triage on touch
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Grep for <code>swipe</code>/<code>touchstart</code> across the app returns nothing. On phones the only triage routes are hover buttons (need a pointer) and right-click menus (need a right-click). The mobile layout is otherwise real: off-canvas rail, list/reader swap, compose FAB. The rows just have no touch verbs.</p>
+  <p><b>Proposal.</b> A pointer-event swipe layer on thread rows: left archives, right snoozes, configurable second actions, colored reveal track, undo toast via the existing <code>usePostboxTriageUndo</code>, threshold respecting reduced motion.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mrow"><span class="mav olive">MT</span><div class="mcol">
+        <div class="msender">Mei Tanaka<span class="mtime">1d</span></div>
+        <div class="msub">Re: September newsletter draft</div>
+      </div></div>
+      <div class="note" style="border:0;padding:4px 2px 0">On touch: tap to open is the only gesture. Triage means open, then hunt the overflow menu.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div style="display:flex;border-radius:9px;overflow:hidden;border:1px solid var(--line);margin:6px 0">
+        <div style="background:var(--good);color:#fff;display:flex;align-items:center;padding:0 14px;font-weight:700;font-size:11px">ARCHIVE</div>
+        <div style="flex:1;background:var(--card);padding:9px 11px;transform:translateX(0)">
+          <div class="msender">Mei Tanaka<span class="mtime">1d</span></div>
+          <div class="msub">Re: September newsletter draft →</div>
+        </div>
+      </div>
+      <div style="display:flex;border-radius:9px;overflow:hidden;border:1px solid var(--line);margin:6px 0">
+        <div style="flex:1;background:var(--card);padding:9px 11px">
+          <div class="msender">← Brightpath Finance<span class="mtime">2d</span></div>
+          <div class="msub">Renewal quote for 40 seats</div>
+        </div>
+        <div style="background:var(--warn);color:#fff;display:flex;align-items:center;padding:0 14px;font-weight:700;font-size:11px">SNOOZE</div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">22</span>Quiet hours, per-thread alerts, and a real permission flow
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Notification control is one global select (Everything / People &amp; important / Nothing) with no time dimension and no per-thread override, so the real choice is all-day noise or all-day silence. Separately, the desktop app never requests notification permission (<code>.show()</code> is called straight from Rust), so the first toast can silently vanish on macOS and Windows, and previews always include sender and subject, which is unfortunate on a shared screen.</p>
+  <p><b>Proposal.</b> A quiet-hours window and weekday mask in <code>mailUserSettings</code>, evaluated in the pure rules module; suppressed toasts roll into one "12 while you were away" summary. A per-thread "notify me when they reply" that pierces quiet hours. A permission request with a test button in first-run, a denied-state banner linking the OS pane, and a "hide message preview" toggle.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mcardm"><b>Notifications</b><br>
+      <div class="mfield"><span class="k" style="width:110px;flex-basis:110px">Notify me about</span> <span class="mchip">People &amp; important ▾</span></div>
+      <div class="mfield"><span class="k" style="width:110px;flex-basis:110px">Unread badge</span> ✓</div></div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm"><b>Notifications</b> <span class="mchip ok">permission granted · send test</span><br>
+      <div class="mfield"><span class="k" style="width:110px;flex-basis:110px">Notify me about</span> <span class="mchip">People &amp; important ▾</span></div>
+      <div class="mfield"><span class="k" style="width:110px;flex-basis:110px">Quiet hours</span> <span class="mchip acc">22:00 – 07:00 · Mon–Fri</span></div>
+      <div class="mfield"><span class="k" style="width:110px;flex-basis:110px">Hide preview</span> <span class="mchip">show "New message" only</span></div></div>
+      <div class="mbanner info">🔔 This thread: <b>notify me when they reply</b> (pierces quiet hours)</div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>schema/mail.ts</code> (<code>mailUserSettings</code> L1285-1335), <code>lib/desktop/notificationRules.ts</code> (<code>shouldNotify</code>, pure and unit-tested), <code>apps/desktop/src/notifications.ts</code>, <code>src-tauri/src/notifications.rs</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">23</span>Bundle low-signal mail into one row
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> The category classifier already labels every thread (person / newsletter / notification / receipt), but in the flat inbox twelve newsletters still cost twelve rows and twelve decisions.</p>
+  <p><b>Proposal.</b> Collapse consecutive non-person threads into an expandable bundle row per category, with bulk archive and unsubscribe on the bundle. Ship as a fourth view mode so nobody's list changes under them. Pure client-side grouping over an existing feed.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mrow"><span class="mav slate">ND</span><div class="mcol"><div class="msender">Northwind Digest<span class="mtime">9h</span></div><div class="msnip">Weekly delivery summary</div></div></div>
+      <div class="mrow"><span class="mav plum">ST</span><div class="mcol"><div class="msender">Stratechery<span class="mtime">11h</span></div><div class="msnip">The AI bundle, continued</div></div></div>
+      <div class="mrow"><span class="mav olive">GH</span><div class="mcol"><div class="msender">GitHub<span class="mtime">12h</span></div><div class="msnip">[owlat] 3 new issues</div></div></div>
+      <div class="mrow"><span class="mav rust">LL</span><div class="mcol"><div class="msender">Lumen Labs Billing<span class="mtime">1d</span></div><div class="msnip">Your receipt for August</div></div></div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mrow"><span class="mav plum">📰</span><div class="mcol">
+        <div class="msender">Newsletters · 2 new<span class="mtime">11h</span></div>
+        <div class="msnip">Latest: Stratechery, Northwind Digest</div>
+        <div style="margin-top:4px"><span class="mchip">Expand ▾</span> <span class="mchip">Archive all</span> <span class="mchip">Unsubscribe...</span></div>
+      </div></div>
+      <div class="mrow"><span class="mav olive">🔔</span><div class="mcol">
+        <div class="msender">Notifications &amp; receipts · 2 new<span class="mtime">12h</span></div>
+        <div class="msnip">GitHub, Lumen Labs Billing</div>
+      </div></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">24</span>Split inbox sections from filter rules
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M/L</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> <code>mailFilters</code> is a full condition/action engine, but its only reading effect is moving mail to another folder, which hides it. There is nothing between one pile and out-of-sight.</p>
+  <p><b>Proposal.</b> A <code>pinToSection</code> filter action naming a user-defined inbox section; render ordered, collapsible sections with unread counts. This is the Superhuman/Shortwave split inbox, and the rule engine is already built.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mrow"><span class="mav olive">CI</span><div class="mcol"><div class="msender">CI Bot<span class="mtime">5m</span></div><div class="msnip">deploy #4112 green</div></div></div>
+      <div class="mrow"><span class="mav rust">IW</span><div class="mcol"><div class="msender">Ines Weber<span class="mtime">24m</span></div><div class="msnip">Invoice 4471 looks double-charged</div></div></div>
+      <div class="mrow"><span class="mav olive">CI</span><div class="mcol"><div class="msender">CI Bot<span class="mtime">1h</span></div><div class="msnip">deploy #4111 green</div></div></div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="msec">Team <span class="cnt">1</span></div>
+      <div class="mrow"><span class="mav rust">IW</span><div class="mcol"><div class="msender">Ines Weber<span class="mtime">24m</span></div><div class="msnip">Invoice 4471 looks double-charged</div></div></div>
+      <div class="msec">Deploys <span class="cnt">2</span> <span style="margin-left:auto;text-transform:none;letter-spacing:0">collapse ▾</span></div>
+      <div class="mrow"><span class="mav olive">CI</span><div class="mcol"><div class="msender">CI Bot<span class="mtime">5m</span></div><div class="msnip">deploy #4112 green</div></div></div>
+      <div class="msec">Everything else <span class="cnt">12</span></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">25</span>A mark-as-read policy
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> The reader fires <code>markThreadRead</code> the moment a thread renders. Arrow-keying past a row destroys the unread signal, and the unread flag is the base every other triage feature and the dock badge depend on.</p>
+  <p><b>Proposal.</b> <code>markReadPolicy: immediate | after-dwell | manual</code> in <code>mailUserSettings</code>. Default to a ~2s visible dwell that cancels on navigate-away. Sits beside prefs that already exist.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">26</span>Bulk unsubscribe: a subscriptions panel
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> The RFC 8058 one-click machinery exists per message; hygiene across a hundred senders is a hundred chores, so nobody does it.</p>
+  <p><b>Proposal.</b> Group senders carrying <code>unsubscribe</code> data with volume and last-opened columns, multi-select, one "unsubscribe and archive all" action with a legible partial-failure summary.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mbanner info">📧 Northwind Digest &nbsp;<span class="mchip">Unsubscribe</span></div>
+      <div class="note" style="border:0;padding:4px 2px 0">One chip, one message at a time, only visible while reading that message.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm"><b>Subscriptions</b> <span class="mchip">34 senders</span>
+        <div class="mfield"><span>☑</span> Northwind Digest <span style="margin-left:auto;color:var(--muted)">52/yr · last opened 6mo ago</span></div>
+        <div class="mfield"><span>☑</span> Daily Deals Now <span style="margin-left:auto;color:var(--muted)">210/yr · never opened</span></div>
+        <div class="mfield"><span>☐</span> Stratechery <span style="margin-left:auto;color:var(--muted)">48/yr · opened yesterday</span></div>
+        <div style="margin-top:8px"><span class="mbtn">Unsubscribe + archive all (2)</span></div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">27</span>Suggest rules from observed behavior
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort M</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> The rule engine is powerful and entirely manual. The system watches someone archive-on-sight from the same sender forty times and says nothing. The Team Inbox already has the suggestion pattern (<code>autonomySuggestions</code>); Postbox has no equivalent.</p>
+  <p><b>Proposal.</b> A bounded per-sender triage tally; when one verb dominates over N occurrences, a dismissible "You archive everything from noreply@x. Always archive it?" prompt that one-click creates the filter, with undo and a link to the rule it made. Strictly opt-in per suggestion, never auto-applied.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">28</span>Reading-pane layouts: right, bottom, off
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> One hardcoded geometry: a fixed 384px list left, reader right. On a wide monitor the reader is a line-length problem; on a laptop the list truncates every subject. No resize handle.</p>
+  <p><b>Proposal.</b> <code>readingPane: right | bottom | off</code> plus a persisted list width with a drag handle (keyboard-accessible fallback). The persistence pattern is exactly what <code>density</code> and <code>viewMode</code> already do.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk" style="display:flex;gap:10px">
+      <div style="border:1px solid var(--line);border-radius:8px;width:150px;height:90px;display:flex">
+        <div style="width:34%;border-right:1px solid var(--line);background:#f1ece6"></div>
+        <div style="flex:1;background:var(--card)"></div>
+      </div>
+      <div style="align-self:center;color:var(--muted);font-size:11.5px">List right of rail, reader right of list. That's it, at every width.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk" style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="border:1px solid var(--line);border-radius:8px;width:110px;height:70px;display:flex">
+        <div style="width:34%;border-right:2px solid var(--accent);background:#f1ece6"></div><div style="flex:1;background:var(--card)"></div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:8px;width:110px;height:70px;display:flex;flex-direction:column">
+        <div style="height:45%;border-bottom:1px solid var(--line);background:#f1ece6"></div><div style="flex:1;background:var(--card)"></div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:8px;width:110px;height:70px;background:#f1ece6"></div>
+      <div style="width:100%;color:var(--muted);font-size:11.5px">Right (resizable) · Bottom (wide list) · Off (full-width list, open navigates)</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">29</span>Deliver the daily brief as a digest
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort M</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> The brief is built by a cron and rendered only at the top of Today. The schema comment says email delivery is "a separate opt-in" that doesn't exist. A brief you only see after opening the app can't do a brief's job.</p>
+  <p><b>Proposal.</b> Opt-in delivery to the user's own mailbox (or a desktop push summary) at a chosen local time, deep links per item, and an anti-loop guard so a self-delivered brief never re-enters the brief.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">30</span>Team Inbox: show how long customers have waited
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S/M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> Sorts are needs-attention or newest; "newest" actively buries the oldest neglected thread, and nothing anywhere shows waiting time. That's the one metric a shared inbox exists to manage.</p>
+  <p><b>Proposal.</b> Derive waiting time from <code>lastMessageAt</code> when the newest message is inbound; an aging chip that escalates at thresholds, an "oldest waiting" sort (the index already supports it), and a "waiting &gt; 24h" pill.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mrow"><div class="mcol"><div class="msender">Refund never arrived <span class="mchip warn">Waiting on us</span><span class="mtime">newest 2h</span></div>
+      <div class="msnip">sofia@example.com · first message 3 days ago, but you can't tell</div></div></div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div style="margin-bottom:6px"><span class="mchip">Open 12</span> <span class="mchip">Mine 4</span> <span class="mchip bad">Waiting &gt; 24h · 3</span> <span class="mchip acc">Sort: oldest waiting ▾</span></div>
+      <div class="mrow"><div class="mcol"><div class="msender">Refund never arrived <span class="mchip bad">⏱ waiting 3d 2h</span><span class="mtime">2h</span></div>
+      <div class="msnip">sofia@example.com</div></div></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">31</span>Link the same conversation across Postbox and Team Inbox
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M/L</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> Mail to a shared address that is also visible personally exists twice with no link. A user can reply from Postbox while a teammate drafts in the Team Inbox; neither side knows.</p>
+  <p><b>Proposal.</b> A read-only correlation on <code>rfc822MessageId</code> surfaced as an "Also in Team Inbox, assigned to Ana, draft pending" strip in each reader. No data merge. The authorization design across the personal/org boundary is the real work.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="theme-c"><span class="sec">Theme C · 9 ideas</span>Search and organization</h2>
+<p>The query grammar is genuinely good (<code>from:</code>, <code>is:</code>, <code>has:</code>, dates, quoted phrases, removable chips) and almost none of it is discoverable, durable, or deep enough.</p>
+
+<div class="idea">
+  <h4><span class="num">32</span>Lift the 200-character body-search ceiling
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort L</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> <code>snippet</code> (the first 200 chars) is the only indexed body field. Anything deeper is unfindable, silently. This interacts with sealing: bodies are sealed at rest and the snippet is the documented plaintext carve-out, so widening it needs an ADR and an admin opt-out for instances that prefer sealing over searchability. Idea 49's offline search is the no-tradeoff alternative for cached mail.</p>
+  <p><b>Proposal.</b> A dedicated <code>searchBody</code> field (4-16KB normalized excerpt) populated at delivery, with the security review, migration backfill and opt-out done properly.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="minput">🔍 "penalty clause"</div>
+      <div class="mcardm" style="text-align:center;color:var(--muted);padding:18px">No results<br><span style="font-size:11px">The phrase is at character 1,400 of a contract email you got last week. The index stops at 200.</span></div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="minput">🔍 "penalty clause"</div>
+      <div class="mrow"><span class="mav rust">BF</span><div class="mcol">
+        <div class="msender">Brightpath Finance<span class="mtime">6d</span></div>
+        <div class="msub">Renewal terms, redlined</div>
+        <div class="msnip">...late delivery triggers the <b style="background:var(--warn-soft)">penalty clause</b> in section 8.2, capped at...</div>
+      </div></div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>deliveryPipeline/insert.ts</code> (<code>buildSnippet</code>, L25), <code>schema/mail.ts</code> (search index L682, at-rest exception comment L675-681), <code>lib/atRestBodies.ts</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">33</span>Saved searches, pinned in the rail
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S/M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> No persisted query exists anywhere in the schema. Every recurring question ("unread from my boss", "invoices with attachments") gets retyped daily.</p>
+  <p><b>Proposal.</b> A <code>mailSavedSearches</code> table, a "save this search" affordance, pinned entries in the folder rail with counts, and URLs so they're bookmarkable. The parser, the query and the rail sections all exist; this is one CRUD table.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mhdr">Folders</div>
+      <div class="mfield">📥 Inbox <span style="margin-left:auto">6</span></div>
+      <div class="mfield">📤 Sent</div>
+      <div class="mhdr">Labels</div>
+      <div class="mfield">🔴 Billing</div>
+      <div class="note" style="border:0;padding:4px 2px 0">"is:unread from:ines has:attachment" — typed again every morning.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mhdr">Folders</div>
+      <div class="mfield">📥 Inbox <span style="margin-left:auto">6</span></div>
+      <div class="mhdr">Pinned searches</div>
+      <div class="mfield">🔍 Unread from Ines <span style="margin-left:auto">3</span></div>
+      <div class="mfield">🔍 Invoices w/ attachments <span style="margin-left:auto">2</span></div>
+      <div class="mhdr">Labels</div>
+      <div class="mfield">🔴 Billing</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">34</span>Search autocomplete, scaffolding and history
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> The search bar is a 53-line plain input. Nothing suggests <code>is:unread</code> exists; chips can only remove a filter, never add one; and there's no debounce, so every keystroke re-subscribes a Convex query (the debounce composable exists, unused by Postbox).</p>
+  <p><b>Proposal.</b> A dropdown offering operator completions as you type, values resolved from the address book and labels, and recent postbox queries via the same localStorage pattern the palette ships.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="minput">🔍 fr|</div>
+      <div class="note" style="border:0;padding:4px 2px 0">Nothing. The operator grammar is invisible unless you already know it.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="minput" style="color:var(--ink)">🔍 fr|</div>
+      <div class="mcardm" style="margin-top:2px">
+        <div class="mfield"><b>from:</b> <span style="color:var(--muted)">sender address or name</span></div>
+        <div class="mfield" style="padding-left:22px"><span class="mav rust" style="width:18px;height:18px;flex-basis:18px;font-size:8px">IW</span> from:ines@northwind.studio</div>
+        <div class="mfield" style="padding-left:22px"><span class="mav olive" style="width:18px;height:18px;flex-basis:18px;font-size:8px">MT</span> from:mei@tanaka.jp</div>
+        <div class="mhdr">Recent</div>
+        <div class="mfield">🕘 is:unread has:attachment</div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">35</span>Bring search grammar to filter-grammar parity
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Filters support <code>cc</code>, <code>body</code>, <code>header</code>, <code>size</code>, regex and negation. Search supports none of those, no <code>OR</code>, no <code>-</code> negation. Users learn one grammar in Filters and find it missing in Search.</p>
+  <p><b>Proposal.</b> Add <code>cc:</code>, <code>bcc:</code>, <code>filename:</code> (needs idea 37), <code>larger:</code>/<code>smaller:</code>, leading-minus negation and single-level OR to the parser and the post-filter chain.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">36</span>Search all mailboxes, and put mail in the command palette
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Search takes one required <code>mailboxId</code>, so personal plus team means two searches. And <code>globalSearch.ts</code> fans out over contacts, templates and campaigns but not mail, so the palette cannot find an email.</p>
+  <p><b>Proposal.</b> Accept an array of readable mailboxes, merge by <code>receivedAt</code>, and add a mail provider to the palette. "⌘K, type a name, hit the email" is the flagship interaction of every modern client, and the palette infrastructure is already there.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today (real screenshot)</div><div class="body shotpane">
+      <img src="assets/current-command-palette.png" alt="Command palette without mail results">
+    </div><div class="note">Create and navigation entries only. No message can appear here.</div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="minput" style="color:var(--ink)">⌘K &nbsp;invoice 4471</div>
+      <div class="mcardm">
+        <div class="mhdr">Mail</div>
+        <div class="mfield"><span class="mav rust" style="width:18px;height:18px;flex-basis:18px;font-size:8px">IW</span> Invoice 4471 looks like it double-charged us <span style="margin-left:auto;color:var(--muted)">Ada · 24m</span></div>
+        <div class="mfield"><span class="mav slate" style="width:18px;height:18px;flex-basis:18px;font-size:8px">SU</span> Re: Invoice 4471 <span style="margin-left:auto;color:var(--muted)">Support · 2h</span></div>
+        <div class="mhdr">Go to</div>
+        <div class="mfield">🔍 Search mail for "invoice 4471"</div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">37</span>An attachment index and a Files view
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort L</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> "Where's that contract PDF?" is a top-three mail task and is unserved: filenames live inside an unindexable array on the message, so <code>filename:</code> is impossible and there is no browsing at all.</p>
+  <p><b>Proposal.</b> A <code>mailAttachments</code> junction table written at delivery (with a backfill), a Files view with type/sender/date facets opening the existing Quick Look lightbox, and mail attachments ingested into the semantic file store so the assistant can answer questions about an emailed PDF.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="note" style="border:0;padding:2px">The only route: remember who sent it, find the thread, scroll to the message, find the chip.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div style="margin-bottom:6px"><span class="mchip acc">All</span> <span class="mchip">PDFs</span> <span class="mchip">Images</span> <span class="mchip">From: Brightpath ▾</span></div>
+      <div class="mfield">📄 contract-v4.pdf <span style="margin-left:auto;color:var(--muted)">Brightpath · 1.2 MB · 6d</span></div>
+      <div class="mfield">📄 invoice-4471.pdf <span style="margin-left:auto;color:var(--muted)">Ines · 82 KB · 24m</span></div>
+      <div class="mfield">🖼 launch-banner.png <span style="margin-left:auto;color:var(--muted)">Mei · 640 KB · 1d</span></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">38</span>Nested labels with unread counts
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> Folders have <code>parentId</code> and counts; labels are a flat, unordered, uncounted wall. Thirty labels render alphabetically with no signal which have new mail.</p>
+  <p><b>Proposal.</b> <code>parentId</code>, <code>order</code> and <code>isPinned</code> on <code>mailLabels</code>, a collapsible tree with counts, <code>Work/Clients/Acme</code> nesting on create, mirroring folders.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">39</span>Filter builder: OR groups, reorder, dry-run, apply-to-existing
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort L</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> Conditions are AND-only; <code>priority</code> exists in the schema with no reordering UI even though <code>stopProcessing</code> makes order matter; you can't preview what a rule would match; and a new rule never cleans up the backlog that motivated it.</p>
+  <p><b>Proposal.</b> Four separable pieces: a match-any toggle, drag-to-reorder writing <code>priority</code>, a preview panel running the compiled predicate over recent mail, a batched "run on existing mail", plus "create filter from this message" in the reader overflow.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">40</span>A sort control on the list
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> Everything is hardcoded newest-first. "Oldest first" is the standard way to clear a backlog; "largest first" is how you reclaim quota. Neither is reachable.</p>
+  <p><b>Proposal.</b> A header dropdown persisted in settings. Date direction is just flipping <code>.order()</code> on the existing index (S); size needs a new index (M).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="theme-d"><span class="sec">Theme D · 10 ideas</span>Power and speed</h2>
+<p>For the keyboard-first audience this product clearly targets, depth of the existing systems matters more than new ones: one-slot undo, selection without ranges, five disconnected shortcut systems.</p>
+
+<div class="idea">
+  <h4><span class="num">41</span>Range select, select-all-matching, batched bulk actions
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Three defects in one layer: no shift-click or Shift+J/K range select (<code>selectMany</code> exists with zero call sites), no select-all or "select all N matching", and bulk label/snooze run N sequential round-trips in a for loop, bailing on first failure. Labelling 200 messages fires 200 mutations.</p>
+  <p><b>Proposal.</b> A selection anchor (the review queue already has range-extend to copy), a header tri-state checkbox with "select all N", and <code>setOnMessages</code>-style batch mutations.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">42</span>Fuzzy matching and argument mode in the palette
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Palette filtering is plain substring, so "pbx settings" matches nothing, and <code>PaletteItem.run</code> takes no arguments, so "Label as..." would need one item per label.</p>
+  <p><b>Proposal.</b> Subsequence fuzzy scoring with matched-character highlighting, mode prefixes (<code>&gt;</code> commands, <code>@</code> people, <code>#</code> labels), and a two-step argument flow. The filter functions are pure and unit-tested, so the scoring swap is contained.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">43</span>One shortcut registry, and fix the double-opening "?"
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort L (bug fix: S)</span><span class="chip tier">Now (fix) / Later (registry)</span></span></h4>
+  <p><b>Problem.</b> Five shortcut systems, no shared registry. Live bug: on Postbox routes, <span class="mkbd">?</span> is caught by both a document listener and a window listener, so two help overlays open at once. The global cheat sheet is hardcoded and already wrong (it says <span class="mkbd">g s</span> goes to Settings; the code routes it to Admin), and it lists none of the Postbox keys. Nothing is remappable.</p>
+  <p><b>Proposal.</b> Ship the <span class="mkbd">?</span> collision fix immediately. Then one scoped registry with conflict detection, both cheat sheets generated from it, and user remapping with Gmail/Superhuman/Outlook presets.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk" style="position:relative;height:130px">
+      <div class="mcardm" style="position:absolute;left:8px;top:10px;width:70%;box-shadow:0 4px 14px rgba(0,0,0,.08)"><b>Keyboard shortcuts</b><br><span style="color:var(--muted)">g d Dashboard · g s Settings (wrong: goes to Admin) ...</span></div>
+      <div class="mcardm" style="position:absolute;left:26%;top:52px;width:70%;box-shadow:0 4px 14px rgba(0,0,0,.12)"><b>Postbox shortcuts</b><br><span style="color:var(--muted)">j/k move · e archive · h snooze ...</span></div>
+    </div><div class="note">Press ? in Postbox: both modals, stacked. Two sources of truth, one already stale.</div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm"><b>Keyboard shortcuts</b> <span class="mchip">This screen: Postbox</span>
+        <div class="mfield"><span class="mkbd">j</span>/<span class="mkbd">k</span> move <span style="margin-left:auto"><span class="mkbd">e</span> archive</span></div>
+        <div class="mfield"><span class="mkbd">g</span> then <span class="mkbd">i</span> go to inbox <span style="margin-left:auto"><span class="mkbd">z</span> undo triage</span></div>
+        <div class="mfield" style="border:0"><span class="mchip acc">Preset: Owlat ▾</span> <span class="mchip">Remap...</span></div>
+      </div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li>Collision: <code>useKeyboardShortcuts.ts</code> L66 vs <code>PostboxShortcutHelp.vue</code> L16. Drift: <code>KeyboardShortcutsHelp.vue</code> L15-48 hardcoded, <code>getRegisteredShortcuts()</code> has zero callers. Remap seam: <code>postboxShortcuts.ts</code></li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">44</span>An undo stack instead of one slot
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Undo exists in three places, each holding exactly one entry; a second action makes the first unreachable. One-deep undo quietly discourages the fast keyboard triage the product is built for.</p>
+  <p><b>Proposal.</b> Generalize <code>usePostboxTriageUndo</code> into a bounded LIFO stack (10 entries) with repeated ⌘Z, registered app-wide so any screen can push an inverse.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">45</span>A sender profile panel
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> The backend knows a lot per sender (VIP, screener state, frecency, auth verdicts) and there is no single place to see everything from one person. Clicking a sender does nothing.</p>
+  <p><b>Proposal.</b> A slide-over from the sender line: recent threads, shared attachments, VIP and screener toggles, auth history, and "search all mail from this sender" wired to <code>from:</code>.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="msender"><span class="mav rust">IW</span>&nbsp;Ines Weber &lt;ines@northwind.studio&gt;</div>
+      <div class="note" style="border:0;padding:4px 2px 0">A text label. Not clickable.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm">
+        <div class="msender"><span class="mav rust">IW</span>&nbsp;Ines Weber <span class="mchip ok">✓ authenticated, 214 msgs</span></div>
+        <div style="margin:6px 0"><span class="mchip acc">★ VIP</span> <span class="mchip">Screener: accepted</span> <span class="mchip">🔒 key pinned</span></div>
+        <div class="mhdr">Recent threads</div>
+        <div class="mfield">Invoice 4471 double-charged <span style="margin-left:auto;color:var(--muted)">24m</span></div>
+        <div class="mfield">Onboarding call move? <span style="margin-left:auto;color:var(--muted)">1h</span></div>
+        <div class="mhdr">Attachments (7)</div>
+        <div><span class="mchip">invoice-4471.pdf</span> <span class="mchip">seats.xlsx</span></div>
+        <div style="margin-top:8px"><span class="mbtn ghost">Search all mail from Ines</span></div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">46</span>Make star and mark-read optimistic
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> Both are fire-and-forget with no local state change, so the star icon waits for a Convex round-trip while archive and snooze are instant. The two highest-frequency actions are the only laggy ones.</p>
+  <p><b>Proposal.</b> An optimistic flag-override map beside the existing hidden-ids set, pruned when the subscription confirms. <code>usePostboxOptimisticHide</code> is the exact pattern, roughly 40 lines. The best perceived-speed-per-line change available.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">47</span>Prefetch on hover, not just keyboard focus
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> The read-ahead system (150ms debounce, LRU-6, concurrency-capped) triggers only on keyboard focus. Mouse users, the larger half, pay a full round-trip on every click.</p>
+  <p><b>Proposal.</b> Fire the same debounced prefetch on row <code>mouseenter</code> and <code>focusin</code>. One event handler; the composable needs no change.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">48</span>Virtualize the grouped and category lists
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> The flat list windows above 100 rows; Groups and Categories use bare <code>v-for</code>. Category view is exactly where a heavy inbox lands, so the mode most likely to hold thousands of rows is the one without windowing.</p>
+  <p><b>Proposal.</b> Extend <code>usePostboxVirtualList</code> with section-aware offsets, adopt in both components, add auto-load near bottom, and throttle <code>onListScroll</code> to animation frames.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">49</span>A service worker: boot offline, search offline
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort L</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> The biggest architectural mismatch found: a 493-line IndexedDB store, offline outbox, cached bodies and offline banners, behind a manifest that promises installability, and no service worker anywhere. A cold offline load is a blank window.</p>
+  <p><b>Proposal.</b> Precached app shell with navigation fallback so a cold start renders from the existing cache; raise the 200-row/50-body caps; then offline search over cached bodies, which delivers full-body search locally with no server-side sealing tradeoff (see idea 32). Needs care with the CSP branches, the desktop build and the updater.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">50</span>Import files and labels; export mbox
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort L</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> Migration only handles a live IMAP/Google connection. A Takeout archive, a Thunderbird <code>.mbox</code> or a folder of <code>.eml</code> files has no path in, and a Gmail migration silently drops the user's labels and filters, usually the thing they most want preserved. There is also no bulk export, which undercuts the data-ownership pitch of a self-hosted client.</p>
+  <p><b>Proposal.</b> Upload-based import reusing the existing parse-and-insert pipeline, Gmail labels mapped to <code>mailLabels</code> and filters to <code>mailFilters</code>, and a "download all my mail" mbox export.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="theme-e"><span class="sec">Theme E · 7 ideas</span>Trust and safety</h2>
+<p>The derivations here are excellent, pure, and honesty-audited. They just don't reach the moments where users decide: the list, the reply, the quarantine release, the account itself.</p>
+
+<div class="idea">
+  <h4><span class="num">51</span>Show sender trust in the thread list
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> The five-state auth verdict, including <code>misaligned</code> (the classic impersonation shape), renders only inside an opened thread. Triage is where phishing gets clicked, and the list shows nothing.</p>
+  <p><b>Proposal.</b> A compact danger-only marker on rows for <code>failed</code>, <code>misaligned</code> and the lookalike-domain heuristic. Silent for verified and unauthenticated, so the list doesn't become a wall of shields.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mrow"><span class="mav slate">BF</span><div class="mcol">
+        <div class="msender">Brightpath Finance<span class="mtime">2h</span></div>
+        <div class="msub">Urgent: update your payment details</div>
+        <div class="msnip">Your account will be suspended unless...</div>
+      </div></div>
+      <div class="note" style="border:0;padding:4px 2px 0">Sent from brightpath-finance.co, a lookalike of your real contact's domain. Indistinguishable in the list.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mrow" style="border-left:3px solid var(--bad)"><span class="mav slate">BF</span><div class="mcol">
+        <div class="msender">Brightpath Finance <span class="mchip bad">⚠ sender not verified</span><span class="mtime">2h</span></div>
+        <div class="msub">Urgent: update your payment details</div>
+        <div class="msnip">Looks like brightpath.com, but isn't. Opens with the full warning expanded.</div>
+      </div></div>
+    </div></div>
+  </div>
+  <details><summary>Code anchors</summary><ul>
+    <li><code>utils/senderAuth.ts</code> (<code>deriveSenderAuth</code>, pure, done), fields persisted in <code>schema/mail.ts</code> ~L523-560, row chip slots exist (<code>PostboxTeamReplyBadge</code> precedent)</li>
+  </ul></details>
+</div>
+
+<div class="idea">
+  <h4><span class="num">52</span>A message-details panel with the real headers
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> There is no "show original" anywhere. Raw headers are persisted for audit and no query exposes them. The auth badge makes claims the user cannot check, which is at odds with the app's honesty-first design.</p>
+  <p><b>Proposal.</b> A disclosure in the reader header: From/Return-Path/Reply-To, each auth verdict with the exact domain it authenticated, the ARC sealer when a rescue applied, and "download original". Makes the badge falsifiable.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mchip ok">✓ Verified sender ▾</div>
+      <div class="note" style="border:0;padding:4px 2px 0">The chevron expands one sentence. Verified how? Against what domain? No way to see.</div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm">
+        <div class="mhdr">Message details</div>
+        <div class="mfield"><span class="k" style="width:80px;flex-basis:80px">SPF</span> <span class="mchip ok">pass</span> northwind.studio</div>
+        <div class="mfield"><span class="k" style="width:80px;flex-basis:80px">DKIM</span> <span class="mchip ok">pass</span> d=northwind.studio</div>
+        <div class="mfield"><span class="k" style="width:80px;flex-basis:80px">DMARC</span> <span class="mchip ok">pass</span> aligned</div>
+        <div class="mfield"><span class="k" style="width:80px;flex-basis:80px">Reply-To</span> <span class="mchip warn">differs</span> billing@other-domain.example</div>
+        <div style="margin-top:6px"><span class="mbtn ghost">Download original (.eml)</span></div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">53</span>Rewrite quarantine in plain language
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S/M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> Quarantine shows a raw <code>injectionType</code> enum and a bare confidence percentage, to a non-expert making a security decision. The repo already solved this exact problem once: <code>TrustChip</code> replaced numbers with "Ready to send / Worth a look / Needs you".</p>
+  <p><b>Proposal.</b> Outcome-first line ("We held this back because it looks like it's pretending to be your bank"), reasons as bullets, enum and confidence demoted to a footer.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">54</span>Safety numbers for pinned keys
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort M</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> Trust-on-first-use is done well (pinning, key-change banner, refusal to seal to unaccepted keys), but there is no out-of-band verification: no QR, no compare-in-person, no verified state. A pinned key is only as good as the first discovery.</p>
+  <p><b>Proposal.</b> A "verify this contact" step: grouped fingerprint, QR code, read-aloud numeric form, a <code>verified</code> flag on <code>recipientKeys</code>, and distinct display in the seal lock. The feature encrypted-mail users ask for by name.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">55</span>Give members their own recovery kit
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> A real, well-documented private-key backup exists, reachable only from an admin page. The person whose mail is sealed cannot see the loss risk or act on it.</p>
+  <p><b>Proposal.</b> A member-visible "your mail is sealed" card in preferences with a recovery-kit download behind a password re-prompt, plus a one-time nudge in first-run when sealed mail is on. The re-auth gate is the security-sensitive part.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">56</span>Widen the reply guard to the attacks it misses
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> The guard only fires on <code>failed</code>. It ignores <code>misaligned</code> (the impersonation state), Reply-To mismatch (the reply goes somewhere other than the displayed sender) and lookalike domains, which together are how business email compromise actually lands.</p>
+  <p><b>Proposal.</b> Fire on those three too, and show the actual destination address in the interstitial rather than a generic warning. Keep the per-thread consent memory. The guard, the store and the derivations all exist.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">57</span>Sessions, passkeys and two-factor auth
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort L (sessions alone: S)</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> The BetterAuth schema defines <code>session</code> (with IP and user agent), <code>twoFactor</code> and <code>passkey</code> tables. None are wired; the account page offers only a password change. Email is the recovery root for everything else the user owns.</p>
+  <p><b>Proposal.</b> A "sign-in and security" section: active sessions with revoke and sign-out-everywhere (needs no new plugin, ship first), passkeys, TOTP with backup codes.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today</div><div class="body mk">
+      <div class="mcardm"><b>Account</b>
+        <div class="mfield">Change password <span style="margin-left:auto">→</span></div>
+      </div>
+    </div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk">
+      <div class="mcardm"><b>Sign-in &amp; security</b>
+        <div class="mhdr">Where you're signed in</div>
+        <div class="mfield">💻 This device · Linux · Berlin <span style="margin-left:auto;color:var(--muted)">now</span></div>
+        <div class="mfield">📱 iPhone · 84.121.x.x <span style="margin-left:auto"><span class="mchip">Revoke</span></span></div>
+        <div class="mhdr">Passkeys</div>
+        <div class="mfield">🔑 YubiKey 5 · added May 2026 <span style="margin-left:auto"><span class="mchip">Remove</span></span></div>
+        <div class="mhdr">Two-factor</div>
+        <div class="mfield">Authenticator app <span class="mchip ok">on</span> <span style="margin-left:auto"><span class="mchip">Backup codes</span></span></div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="theme-f"><span class="sec">Theme F · 11 ideas</span>Coherence, accessibility, platform</h2>
+<p>The a11y and i18n machinery is unusually strong and test-enforced, which makes the remaining gaps sharp-edged: they sit precisely on the surfaces the tests don't cover.</p>
+
+<div class="idea">
+  <h4><span class="num">58</span>One settings registry, searchable from the palette
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Settings destinations are declared in four hand-maintained places, already drifted: aliases, vacation, snippets, writing-voice and app-passwords exist as pages but are missing from the nav table, so the palette can't find them. On an instance without mail they have no entry point at all. And search only ever finds destinations, never controls.</p>
+  <p><b>Proposal.</b> A declarative registry of path, title key, section, keywords and gate, consumed by the hub, the breadcrumbs, and a palette provider that indexes individual controls ("dark mode", "auto-advance") and deep-links to the section.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">59</span>A preferences layout with a persistent sidebar
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> No preferences layout exists. Thirteen pages hand-roll the same wrapper, two have already dropped the shared back link, and moving from Filters to Aliases means returning to the hub every time.</p>
+  <p><b>Proposal.</b> <code>layouts/preferences.vue</code> with a left nav driven by idea 58's registry. Delete twelve hand-rolled wrappers and the drift class with them.</p>
+  <div class="ba">
+    <div class="pane"><div class="lbl now">Today (real screenshot)</div><div class="body shotpane">
+      <img src="assets/current-settings.png" alt="Current preferences hub">
+    </div><div class="note">One long hub page; each sub-page is a dead end with a back link.</div></div>
+    <div class="pane"><div class="lbl new">Proposed</div><div class="body mk" style="display:flex;gap:10px">
+      <div style="flex:0 0 118px">
+        <div class="mhdr">Preferences</div>
+        <div class="mfield" style="border:0;padding:3px 6px">Appearance</div>
+        <div class="mfield" style="border:0;padding:3px 6px;background:var(--accent-soft);border-radius:6px;color:var(--accent);font-weight:600">Filters</div>
+        <div class="mfield" style="border:0;padding:3px 6px">Aliases</div>
+        <div class="mfield" style="border:0;padding:3px 6px">Signatures</div>
+        <div class="mfield" style="border:0;padding:3px 6px">Vacation</div>
+        <div class="mhdr">This device</div>
+        <div class="mfield" style="border:0;padding:3px 6px">Offline cache</div>
+        <div class="mfield" style="border:0;padding:3px 6px">Notifications</div>
+      </div>
+      <div style="flex:1">
+        <div class="mcardm"><b>Filters</b><br><span style="color:var(--muted)">Rules run top to bottom on new mail.</span>
+          <div class="mfield" style="margin-top:6px">⠿ from:ci@ → Deploys section <span style="margin-left:auto"><span class="mchip ok">on</span></span></div>
+          <div class="mfield">⠿ from:noreply@ → Archive <span style="margin-left:auto"><span class="mchip ok">on</span></span></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">60</span>Merge the desktop settings island
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort M</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> <code>/desktop/settings</code> is a 441-line page with its own chrome, reachable only from the native menu, and it duplicates the appearance and notification controls that also live in preferences. Platform detection is spelled three ways, twice with the deprecated <code>navigator.platform</code>.</p>
+  <p><b>Proposal.</b> Fold it into the preferences layout as a self-hiding "this device" section (the pattern <code>PostboxOfflineSettings</code> already uses), keep the old route as a redirect, collapse detection onto <code>useDesktopContext</code>.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">61</span>Fix the warning color's contrast, then gate it with a test
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> Light-mode <code>--color-warning: #a8853a</code> is about 3.45:1 on white, a WCAG AA failure, and it is the text color of exactly the security states that most need reading (TrustChip's "Worth a look" at 10px uppercase, the security badge's warn tone, the key-change banner). Nothing catches it: the axe harness disables color-contrast because happy-dom has no CSS engine.</p>
+  <p><b>Proposal.</b> Darken the text token to ~4.6:1, keep a lighter fill token, and add a unit test that parses <code>light.css</code>/<code>dark.css</code> and asserts a contrast floor for every text/background pairing (precedent: <code>deadTokens.lint.test.ts</code>).</p>
+  <div class="swatches">
+    <div class="sw"><div class="txt" style="color:#a8853a">Worth a look</div>Today: <code>#a8853a</code> on white = 3.45:1 <span class="mchip bad">fails AA</span></div>
+    <div class="sw"><div class="txt" style="color:#8a6a25">Worth a look</div>Proposed: <code>#8a6a25</code> on white ≈ 4.6:1 <span class="mchip ok">passes AA</span></div>
+  </div>
+</div>
+
+<div class="idea">
+  <h4><span class="num">62</span>An a11y suite for Postbox, and names for its unnamed controls
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> Five well-built axe suites cover public pages, auth, the shell, setup and overlays. Postbox, the biggest screen in the product, has none, and it shows: the compose field renders <code>role="textbox"</code> with no accessible name at all, and the search bar has neither label nor role. A screen-reader user cannot identify the composer.</p>
+  <p><b>Proposal.</b> <code>postboxA11y.test.ts</code> over layout, list, reader and composer; a preferences suite over all 13 pages; fix the two labels while adding them.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">63</span>A shared announcer, and announce settings saves
+    <span class="chips"><span class="chip imp-h">Impact high</span><span class="chip eff">Effort S/M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Twenty-two ad-hoc live regions cluster in admin screens because those authors happened to remember; preferences has zero, so flipping "auto-advance" produces silence for a screen-reader user. No route-change announcement exists, and <code>&lt;main tabindex="-1"&gt;</code> is never focused on navigation, so keyboard users re-tab from the top of the sidebar on every page change.</p>
+  <p><b>Proposal.</b> One <code>useAnnounce()</code> with a polite region in the dashboard layout, called from <code>useBackendOperation</code> so every save announces by default, plus a route-change announcement and focus move to main.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">64</span>Finish reduced motion
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort S/M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> The CSS backstop is good, but of 144 <code>animate-spin</code> usages exactly one carries <code>motion-reduce:animate-none</code>, zero of 29 <code>animate-pulse</code> do, and three files hand-roll their own <code>matchMedia</code> check. Spinners are the most common motion in the app and the kind that triggers vestibular symptoms.</p>
+  <p><b>Proposal.</b> One <code>useReducedMotion()</code> composable, gate the JS-driven tickers on it, and a source lint asserting every spin/pulse utility carries the motion-reduce variant.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">65</span>Put the locale on the account; localize system mail
+    <span class="chips"><span class="chip imp-h">Impact med/high</span><span class="chip eff">Effort M</span><span class="chip tier">Next</span></span></h4>
+  <p><b>Problem.</b> Language lives only in a browser cookie, and the server-side text helper imports <code>en.json</code> directly. A German user gets English password resets, deletion notices and invites. That's the difference between a translated UI and a translated product.</p>
+  <p><b>Proposal.</b> An optional <code>locale</code> on the user record written when the picker changes (cookie stays as the fast path), threaded through the transactional templates.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">66</span>Fix the date formatters that ignore the locale
+    <span class="chips"><span class="chip imp-h">Impact high (for de)</span><span class="chip eff">Effort M</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> <code>formatters.ts</code> defaults to <code>en-US</code> and 63 of 72 call sites pass no locale, so German pages show "Mar 3, 2024". <code>formatRelativeTime</code> builds English by hand with manual pluralization, and "Never" / "Invalid date" are hardcoded literals bypassing i18n. Meanwhile ~40 other components do it correctly, and locale key parity is test-perfect at 9,295/9,295, which makes this the actual localization defect.</p>
+  <p><b>Proposal.</b> Replace the module with a <code>useFormat()</code> composable reading the active locale, use <code>Intl.RelativeTimeFormat</code>, move the literals into the catalog, add <code>datetimeFormats</code> to the i18n config. Mechanical across the 63 call sites.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">67</span>Data control: export manifest, mbox, visible retention
+    <span class="chips"><span class="chip imp-m">Impact med/high</span><span class="chip eff">Effort M</span><span class="chip tier">Later</span></span></h4>
+  <p><b>Problem.</b> The JSON export is technically impressive (OPFS streaming, paged reads) and its UX is a button and a spinner: no manifest of what's included, no progress, and retention horizons are hardcoded server-side with nothing surfaced to the user.</p>
+  <p><b>Proposal.</b> A pre-run manifest with row counts, a real progress bar, and a "your data" card stating retention plainly with a per-mailbox Trash auto-purge setting. The mbox export itself is idea 50.</p>
+</div>
+
+<div class="idea">
+  <h4><span class="num">68</span>The paper-cut pack
+    <span class="chips"><span class="chip imp-m">Impact medium</span><span class="chip eff">Effort S each</span><span class="chip tier">Now</span></span></h4>
+  <p><b>Problem.</b> Small, visible, and cheap. Each of these was observed either in the rendered capture or directly in code.</p>
+  <p><b>The view-mode control truncates at 1440px</b>, a common laptop-external-monitor width, and the sliding highlight overlaps the next label (both themes):</p>
+  <div class="crop" style="width:380px;height:44px;background-image:url(assets/current-mail-list.png);background-position:-480px -70px"></div>
+  <p><b>The breadcrumb prints a raw document id</b>, capitalized, as if it were a page title:</p>
+  <div class="crop" style="width:430px;height:34px;background-image:url(assets/current-mail-reading.png);background-position:-268px -16px"></div>
+  <ul style="font-size:14px">
+    <li>The forgot-attachment guard uses a native <code>window.confirm</code> while every other dialog is themed (also idea 15).</li>
+    <li>Attachment download failure is a silent no-op: the spinner stops, nothing explains why (<code>handleAttachmentDownload</code> catch block).</li>
+    <li>Composer failure paths log to <code>console.error</code> and hope the operation layer toasted.</li>
+    <li>The theme picker's three buttons have no <code>aria-pressed</code>/<code>role</code>; selection is border color alone. The language picker one card down does it correctly. Copy it.</li>
+    <li>The welcome screen's signature placeholder ships a personal name ("e.g. Marcel · Owlat").</li>
+    <li>Reply-all and forward are <code>hidden group-hover:</code>, pointer-biased; keep them visible at the reader's default density.</li>
+    <li>Three <code>imprint.*</code> keys sit untranslated in <code>en.json</code>; the UI package has an "actually translated" test, the app catalog doesn't. Port the assertion.</li>
+    <li>The sealing-key banner says "Key changed — needs review" on first contact, which reads as an alarm when nothing is wrong yet.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="roadmap"><span class="sec">Sequencing</span>Roadmap</h2>
+
+<h3>Ship this week (small, high ratio, mostly one-file changes)</h3>
+<table>
+<tr><th>Idea</th><th>What</th><th>Why first</th></tr>
+<tr><td>46</td><td>Optimistic star and mark-read</td><td>~40 lines, the largest perceived-speed gain available</td></tr>
+<tr><td>47</td><td>Hover prefetch</td><td>One event handler on an already-built system</td></tr>
+<tr><td>43a</td><td>Fix the double-opening "?" overlay</td><td>Live, visible bug</td></tr>
+<tr><td>3</td><td>Alignment warning before a doomed send</td><td>The verdict is already on screen; copy an existing guard</td></tr>
+<tr><td>56</td><td>Widen the reply guard</td><td>S effort, covers the BEC shapes the guard misses</td></tr>
+<tr><td>61</td><td>Warning-contrast token + test</td><td>A WCAG failure on the security chips</td></tr>
+<tr><td>8</td><td>Undo-send window setting</td><td>Backend already accepts the parameter</td></tr>
+<tr><td>68</td><td>Paper cuts (pick any)</td><td>Each is S and user-visible</td></tr>
+</table>
+
+<h3>Now (the rest of the near-term tier)</h3>
+<p>1 + 2 (bounce surfacing, the single most important fix in this plan) · 4, 5, 6 (composer confidence layer) · 15 (attachment guard) · 17 (mute) · 18 (thread snooze) · 19 (snooze-return chip) · 25 (mark-read policy) · 30 (team waiting age) · 33 (saved searches) · 40 (date sort) · 51 (trust in the list) · 53 (quarantine language) · 62 (Postbox a11y suite) · 66 (formatters).</p>
+
+<h3>Next (M-sized, design-light)</h3>
+<p>7 (draft mirror) · 9 (timezone scheduling) · 11 (per-recipient seal) · 12 (sending-health card) · 20 (per-sender images) · 21 (swipe) · 22 (quiet hours + permission) · 23 (bundling) · 26 (bulk unsubscribe) · 28 (reading panes) · 34, 35, 36 (search completion) · 41 (bulk selection) · 42 (fuzzy palette) · 44 (undo stack) · 45 (sender profile) · 48 (virtualize grouped) · 52 (message details) · 55 (recovery kit) · 57 (sessions first, then passkeys/2FA) · 58, 59 (settings registry + layout) · 63, 64, 65 (announcer, reduced motion, account locale).</p>
+
+<h3>Later (L-sized, need an ADR or real design)</h3>
+<p>10 (share links) · 13 (templates) · 14 (send preview) · 16 (editor migration) · 24 (split inbox) · 27 (rule suggestions) · 29 (brief digest) · 31 (cross-product linking) · 32 (body-search ceiling, with 49's offline search as the lower-risk sibling) · 37 (attachment index) · 38 (nested labels) · 39 (filter builder) · 43b (shortcut registry + remapping) · 49 (service worker) · 50 (import/export) · 54 (safety numbers) · 60 (desktop settings merge) · 67 (data control).</p>
+
+<h3>Conventions every idea must respect</h3>
+<ul>
+  <li>All copy through <code>useI18n()</code> with keys in <code>apps/web/i18n/locales/</code>; both locales, parity is test-enforced.</li>
+  <li>New per-user preferences go on <code>mailUserSettings</code> with a validator in <code>lib/convexValidators.ts</code>, read through <code>usePostboxSettings.ts</code>, following the "absent = today's behavior" convention.</li>
+  <li>Composer guards adopt the existing <code>blockSend(opts)</code> + <code>onConfirm</code> replay contract; watch the warning budget, chips for advisory, dialogs only for irreversible.</li>
+  <li>Pure logic in <code>utils/postbox*.ts</code> / <code>lib/desktop/*.ts</code> so it tests without mounting Convex components.</li>
+  <li>Read <code>apps/api/convex/CONVENTIONS.md</code> before new backend files; env access through <code>lib/env.ts</code>.</li>
+  <li>Ideas 3, 4, 5, 6 and 15 stay deterministic on purpose, so self-hosted instances with AI off get the full confidence layer.</li>
+</ul>
+
+<p class="meta" style="margin-top:40px">Sources: five research passes over the repo (inbox triage; composition and sending, including a full outbound-pipeline map; search, organization and performance; trust, onboarding and accessibility; and a screen-by-screen map of <code>apps/web</code>), plus a rendered capture of 14 screens via <code>scripts/uiaudit</code> with mock fixtures. File paths were verified by the research passes at branch <code>f11e3bfed</code>.</p>
+
+</div>
+</body>
+</html>

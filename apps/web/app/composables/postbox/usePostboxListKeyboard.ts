@@ -7,16 +7,44 @@
  * reference (which zeroed focus mid-triage), it re-derives the index from the
  * focused row's id, holding the slot when that row is removed (e.g. archived),
  * and only resets when `resetKey` changes (a folder switch).
+ *
+ * The movement keys are RESOLVED through the shortcut registry rather than
+ * matched here, so a user who remaps `postbox.next` moves the list too — the
+ * settings card offers the remap, and this is what makes it true. `scope`
+ * picks which half of the catalog answers, because the Review Queue reuses
+ * this composable with its own `review.*` vocabulary.
  */
+import type { ShortcutScope } from '~/utils/shortcutRegistry';
+import { isChordPending, resolveActiveShortcut } from '~/utils/shortcutScope';
+
 export function usePostboxListKeyboard<T extends { _id: string }>(opts: {
 	items: Ref<T[]>;
 	resetKey: Ref<unknown>;
 	rowDomId: (item: T) => string;
 	onActivate: (item: T) => void;
 	onAction?: (key: string, item: T) => void;
+	/** Which catalog scope owns next/previous/open here. Defaults to `postbox`. */
+	scope?: ShortcutScope;
+	/**
+	 * Shift+J / Shift+K — move the focus AND drag the selection with it (the
+	 * Postbox half of the Review Queue's `extendSelect*` vocabulary). Called
+	 * with the row the focus lands on; the caller extends from its own anchor.
+	 * Surfaces without a selection model simply leave it out and Shift+J/K
+	 * falls through to `onAction` like any other key.
+	 */
+	onExtendSelection?: (item: T, from: T | undefined) => void;
 }) {
 	const focusedIndex = ref(-1);
 	let focusedId: string | undefined;
+	// Resolve against THIS surface's scope alone, deliberately without the
+	// global fallthrough: an unclaimed key on a focused row must stay inert
+	// rather than reach the app-wide map.
+	const scope = opts.scope ?? 'postbox';
+	const scopes: readonly ShortcutScope[] = [scope];
+	const NEXT = `${scope}.next`;
+	const PREVIOUS = `${scope}.previous`;
+	const OPEN = `${scope}.open`;
+	const EXTEND = `${scope}.extendSelection`;
 
 	watch(focusedIndex, (idx) => {
 		focusedId = opts.items.value[idx]?._id;
@@ -53,31 +81,45 @@ export function usePostboxListKeyboard<T extends { _id: string }>(opts: {
 	function onKeydown(event: KeyboardEvent) {
 		const items = opts.items.value;
 		if (items.length === 0) return;
+		// A sequence chord is half-typed (`g` …) and the app-wide dispatcher is
+		// holding it. It owns the completing key: answering it here too would
+		// star the focused message AND navigate to Starred on `g` `s`.
+		if (isChordPending()) return;
 		const cur = focusedIndex.value;
-		switch (event.key) {
-			case 'j':
-			case 'ArrowDown':
+		switch (resolveActiveShortcut(event, scopes)) {
+			case NEXT:
 				event.preventDefault();
 				focusedIndex.value = Math.min(cur + 1, items.length - 1);
-				break;
-			case 'k':
-			case 'ArrowUp':
+				return;
+			case PREVIOUS:
 				event.preventDefault();
 				focusedIndex.value = Math.max(cur - 1, 0);
-				break;
-			case 'Enter': {
+				return;
+			case EXTEND: {
+				// Shift+j / Shift+k. Without a selection model this is just another
+				// key — fall through to onAction rather than swallowing it.
+				if (!opts.onExtendSelection) break;
+				event.preventDefault();
+				// From "nothing focused" both keys land on the first row.
+				const next = event.key === 'J' ? Math.min(cur + 1, items.length - 1) : Math.max(cur - 1, 0);
+				focusedIndex.value = next;
+				const landed = items[next];
+				// The row the focus LEFT is where a first Shift+J/K anchors, so the
+				// very first press selects both ends rather than only the new one.
+				if (landed) opts.onExtendSelection(landed, items[cur]);
+				return;
+			}
+			case OPEN: {
 				const m = items[cur];
 				if (m) opts.onActivate(m);
-				break;
-			}
-			default: {
-				// Never treat a Cmd/Ctrl/Alt chord (browser shortcut / Windows
-				// menu accelerator like Alt+E) as a triage key.
-				if (event.metaKey || event.ctrlKey || event.altKey) return;
-				const m = items[cur];
-				if (m && opts.onAction) opts.onAction(event.key, m);
+				return;
 			}
 		}
+		// Never treat a Cmd/Ctrl/Alt chord (browser shortcut / Windows menu
+		// accelerator like Alt+E) as a triage key.
+		if (event.metaKey || event.ctrlKey || event.altKey) return;
+		const m = items[cur];
+		if (m && opts.onAction) opts.onAction(event.key, m);
 	}
 
 	return { focusedIndex, activeId, onKeydown };

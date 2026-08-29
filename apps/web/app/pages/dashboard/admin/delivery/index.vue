@@ -279,7 +279,7 @@ const sendingDetail = computed(() => {
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<Icon name="lucide:loader-2" class="w-8 h-8 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-8 h-8 animate-spin motion-reduce:animate-none text-text-tertiary" />
 		</div>
 
 		<UiErrorAlert
@@ -361,7 +361,7 @@ const sendingDetail = computed(() => {
 					>
 						<template #loading>
 							<div
-								class="h-40 animate-pulse rounded-xl bg-bg-surface"
+								class="h-40 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface"
 								role="status"
 								aria-live="polite"
 								:aria-label="t('dashboard.admin.delivery.index.trend.loading')"
@@ -400,7 +400,7 @@ const sendingDetail = computed(() => {
 			>
 				<template #loading>
 					<div
-						class="h-40 animate-pulse rounded-xl bg-bg-surface"
+						class="h-40 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface"
 						role="status"
 						aria-live="polite"
 						:aria-label="t('dashboard.admin.delivery.index.domains.loading')"

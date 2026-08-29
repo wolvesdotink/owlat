@@ -6,6 +6,11 @@
  * the flag is on; the query re-runs on the draft's row, so it recomputes as
  * recipients change.
  *
+ * The same read carries the PER-RECIPIENT key verdicts (plan idea 11), which the
+ * envelope renders on the chips and the lock names as blockers. They are a view
+ * of the very states the aggregate was derived from — public trust only, no key
+ * material — so the two can never disagree about who is keyless.
+ *
  * It also owns the SEND GATE for unsealable drafts: a message that can't be
  * sealed never downgrades quietly, so `blockSend` parks the attempted send and
  * asks the sender to proceed or cancel (`PostboxComposerSealConfirmDialog`).
@@ -21,6 +26,11 @@ import { computed, reactive, ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { deriveUnsealedPrompt, sealSendBlock, type SealState } from '~/utils/sealComposer';
+import {
+	allRecipientsVerified,
+	sealBlockingRecipients,
+	type RecipientSealView,
+} from '~/utils/sealRecipients';
 
 /** The send options parked while the sender decides; replayed on confirm. */
 export type SealGateSendOptions = { scheduledSendAt?: number; allowUnsealed?: boolean };
@@ -48,7 +58,27 @@ export function usePostboxComposerSealLock(
 		return sealedMailEnabled.value && id ? { draftId: id } : ('skip' as const);
 	});
 
-	const composerSealState = computed(() => (sealStateQuery.data.value ?? null) as SealState | null);
+	/** The query's whole answer: the aggregate verdict plus its recipient views. */
+	const sealView = computed(
+		() =>
+			(sealStateQuery.data.value ?? null) as {
+				state: SealState;
+				recipients: RecipientSealView[];
+			} | null
+	);
+
+	const composerSealState = computed(() => sealView.value?.state ?? null);
+	const sealRecipients = computed<RecipientSealView[]>(() => sealView.value?.recipients ?? []);
+	/** Who to name (with a remove affordance) when a missing key is the blocker. */
+	const blockingRecipients = computed(() =>
+		sealBlockingRecipients(composerSealState.value, sealRecipients.value)
+	);
+	/**
+	 * Every recipient's key has been verified by a human here (plan idea 54) —
+	 * the lock's stronger wording. Display only: it feeds no send gate, so a
+	 * verified draft and an unverified one are sent by exactly the same path.
+	 */
+	const allVerified = computed(() => allRecipientsVerified(sealRecipients.value));
 
 	// True while the answer is still on its way for a draft that exists — the lock
 	// says "checking" rather than staying blank, so the sender is never left to
@@ -110,6 +140,9 @@ export function usePostboxComposerSealLock(
 	return reactive({
 		enabled: sealedMailEnabled,
 		state: composerSealState,
+		recipients: sealRecipients,
+		blockingRecipients,
+		allVerified,
 		pending: composerSealPending,
 		confirmOpen,
 		blockSend,

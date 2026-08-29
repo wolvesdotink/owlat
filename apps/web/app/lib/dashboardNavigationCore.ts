@@ -15,6 +15,7 @@
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { SectionKey } from '~/composables/useSidebarState';
 import type { OrganizationRole } from '~/composables/useOrganization';
+import { SETTINGS_REGISTRY } from './settingsRegistry';
 
 /**
  * A sidebar destination. `name` is an i18n KEY for every CORE entry — this
@@ -47,7 +48,6 @@ const anyFlag =
 	(...keys: readonly FeatureFlagKey[]): Gate =>
 	(env) =>
 		keys.some((key) => env.isFeatureEnabled(key));
-const desktopOnly: Gate = (env) => env.isDesktop;
 const ROLE_RANK: Record<OrganizationRole, number> = { editor: 0, admin: 1, owner: 2 };
 export const minRole =
 	(minimum: OrganizationRole): Gate =>
@@ -68,6 +68,21 @@ export interface CoreSection {
 	readonly gate?: Gate;
 	readonly items: readonly CoreItem[];
 }
+
+/**
+ * The Preferences destinations, projected out of the settings registry so the
+ * sidebar/palette table and the Preferences IA cannot drift apart again. A
+ * hidden entry (a wizard you enter from a button) is left out; everything else
+ * keeps its own registry gate, which is a strict subset of a navigation gate.
+ */
+const PREFERENCES_ITEMS: readonly CoreItem[] = SETTINGS_REGISTRY.filter(
+	(entry) => !entry.hidden
+).map((entry) => ({
+	name: entry.titleKey,
+	href: entry.path,
+	icon: entry.icon,
+	...(entry.gate ? { gate: entry.gate } : {}),
+}));
 
 /**
  * The canonical core navigation, registered first and in this exact order.
@@ -300,41 +315,11 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		name: 'shared.dashboardNavigation.sections.preferences',
 		icon: 'lucide:settings',
 		href: '/dashboard/preferences',
-		items: [
-			{
-				name: 'shared.dashboardNavigation.items.preferences.overview',
-				href: '/dashboard/preferences',
-				icon: 'lucide:settings',
-			},
-			{
-				name: 'shared.dashboardNavigation.items.preferences.account',
-				href: '/dashboard/preferences/account',
-				icon: 'lucide:user-cog',
-			},
-			{
-				name: 'shared.dashboardNavigation.items.preferences.filters',
-				href: '/dashboard/preferences/filters',
-				icon: 'lucide:list-filter',
-				gate: anyFlag('postbox', 'mail.external'),
-			},
-			{
-				name: 'shared.dashboardNavigation.items.preferences.signatures',
-				href: '/dashboard/preferences/signatures',
-				icon: 'lucide:signature',
-				gate: anyFlag('postbox', 'mail.external'),
-			},
-			{
-				name: 'shared.dashboardNavigation.items.preferences.connectedMailboxes',
-				href: '/dashboard/preferences/external-account',
-				icon: 'lucide:mail-plus',
-				gate: anyFlag('postbox', 'mail.external'),
-			},
-			{
-				name: 'shared.dashboardNavigation.items.preferences.desktop',
-				href: '/desktop/settings',
-				icon: 'lucide:monitor',
-				gate: desktopOnly,
-			},
-		],
+		// Every Preferences page renders the layout's own left nav, so the sidebar
+		// shows one flat link; these items are palette-only. They are DERIVED from
+		// the settings registry rather than restated here — the hand-maintained
+		// copy had already lost aliases, vacation, snippets, writing voice and app
+		// passwords, which made them unreachable from ⌘K.
+		items: PREFERENCES_ITEMS,
 	},
 ];

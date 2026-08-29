@@ -13,6 +13,7 @@ import { auditA11y, dashboardShellStubs, installNuxtStubs, queryResult } from '~
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useCommandPaletteProviders } from '~/composables/useCommandPaletteProviders';
 import { useCommandPaletteRegistry } from '~/composables/useCommandPaletteRegistry';
+import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import type { SearchResults } from '~/lib/commandPaletteCore';
@@ -49,6 +50,16 @@ const searchResults: SearchResults = {
 			url: '/dashboard/campaigns/campaign1',
 		},
 	],
+	mail: [
+		{
+			id: 'message1',
+			type: 'mail',
+			title: 'Spring invoice',
+			subtitle: 'Ada Lovelace · attached',
+			url: '/dashboard/postbox/inbox/message1',
+			mailboxId: 'mailbox1',
+		},
+	],
 };
 
 beforeEach(() => {
@@ -69,6 +80,7 @@ beforeEach(() => {
 		}),
 		useCommandPaletteProviders,
 		useCommandPaletteRegistry,
+		useCommandPaletteRecents,
 		useDebouncedSearch,
 		useBreadcrumbs: () => ({
 			breadcrumbs: ref([
@@ -94,6 +106,10 @@ beforeEach(() => {
 			getRegisteredShortcuts: () => [],
 		}),
 		useModalFocus: vi.fn(),
+		// The palette points the Postbox selection at a mail hit's own mailbox
+		// before navigating; the state-only composable keeps that off the query
+		// layer, so the audit only needs its setter.
+		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId: vi.fn() }),
 		COMMAND_PALETTE_OPEN_EVENT,
 		useOrganizationQuery: () => queryResult(searchResults),
 	});

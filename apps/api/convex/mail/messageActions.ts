@@ -15,7 +15,14 @@ import { requireMailboxAccess } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { adjustFolderUnseen, bumpFolderModseq } from './folders';
 import { clearThreadNeedsReply } from './needsReply';
+import { purgeMessageRow } from './messagePurge';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
+import { rebuildThreadAggregates } from './threadAggregates';
+import { recordTriageVerb } from './triageTally';
+
+// Re-exported so the modules that reach the rebuild through this one keep
+// working unchanged; it lives in ./threadAggregates now (size cap).
+export { rebuildThreadAggregates };
 
 type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
 
@@ -30,62 +37,6 @@ export type MovedMessage = {
 };
 
 type MoveResult = { ok: true; moved: MovedMessage[] };
-
-/** Re-derive a thread's aggregate counters from its current messages. */
-export async function rebuildThreadAggregates(
-	ctx: MutationCtx,
-	threadId: Id<'mailThreads'>
-): Promise<void> {
-	const thread = await ctx.db.get(threadId);
-	if (!thread) return;
-	const messages = await ctx.db
-		.query('mailMessages')
-		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect(); // bounded: one thread's messages
-
-	if (messages.length === 0) {
-		await ctx.db.delete(threadId);
-		return;
-	}
-
-	const sorted = [...messages].sort((a, b) => b.receivedAt - a.receivedAt);
-	const latest = sorted[0]!;
-	const oldest = sorted[sorted.length - 1]!;
-	const unread = messages.filter((m) => !m.flagSeen).length;
-	const hasFlagged = messages.some((m) => m.flagFlagged);
-	const hasAttachments = messages.some((m) => m.hasAttachments);
-	const folderRoles = new Set<string>();
-	for (const m of messages) {
-		const folder = await ctx.db.get(m.folderId);
-		if (folder?.role) folderRoles.add(folder.role);
-	}
-	const labelIds = new Set<Id<'mailLabels'>>();
-	for (const m of messages) {
-		for (const l of m.labelIds) labelIds.add(l);
-	}
-	const participants = new Set<string>();
-	for (const m of messages) {
-		participants.add(m.fromAddress);
-		for (const a of m.toAddresses) participants.add(a);
-	}
-
-	await ctx.db.patch(threadId, {
-		messageCount: messages.length,
-		unreadCount: unread,
-		hasFlagged,
-		hasAttachments,
-		lastMessageAt: latest.receivedAt,
-		firstMessageAt: oldest.receivedAt,
-		latestSnippet: latest.snippet,
-		latestFromAddress: latest.fromAddress,
-		latestSubject: latest.subject,
-		latestMessageId: latest._id,
-		folderRoles: Array.from(folderRoles),
-		labelIds: Array.from(labelIds),
-		participants: Array.from(participants),
-		updatedAt: Date.now(),
-	});
-}
 
 /** Apply a flag delta to a single message and update folder/thread caches. */
 async function applyFlagDelta(
@@ -168,6 +119,102 @@ export const markThreadRead = authedMutation({
 	},
 });
 
+/**
+ * Move messages into a folder: new UID + modseq per row, both folders'
+ * counters, thread aggregates, and the Reply-Queue dismissal on archive/trash.
+ *
+ * Exported and ctx-only so callers WITHOUT a session — the retroactive filter
+ * sweep (`mail/filterRun.ts`), which runs as a scheduled internal mutation —
+ * reuse this exact bookkeeping instead of a second, drifting copy. The caller
+ * is responsible for authorization; the public `move` below does it.
+ */
+export async function moveMessagesToFolder(
+	ctx: MutationCtx,
+	args: { messageIds: Id<'mailMessages'>[]; targetFolderId: Id<'mailFolders'> }
+): Promise<MoveResult> {
+	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
+	const now = Date.now();
+	const moved: MovedMessage[] = [];
+	const touchedThreads = new Set<Id<'mailThreads'>>();
+	const sourceFolderTouches = new Map<Id<'mailFolders'>, { count: number; unread: number }>();
+
+	// Cache the target folder counters in memory and write once at the end
+	let targetUidNext = target.uidNext;
+	let targetModseq = target.highestModseq + 1;
+	let targetTotalDelta = 0;
+	let targetUnseenDelta = 0;
+
+	for (const id of args.messageIds) {
+		const message = await ctx.db.get(id);
+		if (!message) continue;
+		if (message.folderId === args.targetFolderId) continue;
+		if (message.mailboxId !== target.mailboxId) continue;
+
+		const sourceFolder = await ctx.db.get(message.folderId);
+		if (!sourceFolder) continue;
+
+		// Snoozed messages aren't in either folder's unseenCount (see snooze.ts),
+		// so a move must not shift the counter for them.
+		const countsUnread = !message.flagSeen && !isMessageSnoozed(message, now);
+
+		const sourceTouch = sourceFolderTouches.get(sourceFolder._id) ?? {
+			count: 0,
+			unread: 0,
+		};
+		sourceTouch.count += 1;
+		if (countsUnread) sourceTouch.unread += 1;
+		sourceFolderTouches.set(sourceFolder._id, sourceTouch);
+
+		const uid = targetUidNext++;
+		const modseq = targetModseq++;
+		targetTotalDelta += 1;
+		if (countsUnread) targetUnseenDelta += 1;
+
+		await ctx.db.patch(id, {
+			folderId: args.targetFolderId,
+			uid,
+			modseq,
+			// Stamp entry into the bin and clear it on the way out, so the opt-in
+			// auto-purge sweep can date a message by how long it has been TRASHED
+			// rather than by when it arrived (idea 67).
+			trashedAt: target.role === 'trash' ? now : undefined,
+			updatedAt: Date.now(),
+		});
+		moved.push({ messageId: id, sourceFolderId: sourceFolder._id });
+		touchedThreads.add(message.threadId);
+	}
+
+	// Apply target folder deltas
+	await ctx.db.patch(args.targetFolderId, {
+		uidNext: targetUidNext,
+		highestModseq: Math.max(target.highestModseq, targetModseq - 1),
+		totalCount: target.totalCount + targetTotalDelta,
+		unseenCount: target.unseenCount + targetUnseenDelta,
+		updatedAt: Date.now(),
+	});
+
+	// Apply source folder deltas
+	for (const [sourceId, touch] of sourceFolderTouches) {
+		const source = await ctx.db.get(sourceId);
+		if (!source) continue;
+		await ctx.db.patch(sourceId, {
+			totalCount: Math.max(0, source.totalCount - touch.count),
+			unseenCount: Math.max(0, source.unseenCount - touch.unread),
+			highestModseq: source.highestModseq + 1,
+			updatedAt: Date.now(),
+		});
+	}
+
+	// Archiving or trashing a thread's mail dismisses the Reply Queue signal
+	// (the owner triaged it away without replying).
+	const clearsNeedsReply = target.role === 'archive' || target.role === 'trash';
+	for (const t of touchedThreads) {
+		await rebuildThreadAggregates(ctx, t);
+		if (clearsNeedsReply) await clearThreadNeedsReply(ctx, t);
+	}
+	return { ok: true, moved };
+}
+
 /** Move messages to a destination folder. Allocates new UID per message. */
 export const move = authedMutation({
 	args: {
@@ -178,83 +225,7 @@ export const move = authedMutation({
 		const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
 		const owned = await requireMailboxAccess(ctx, target.mailboxId);
 		if (!owned.ok) throwForbidden('Folder not accessible');
-
-		const now = Date.now();
-		const moved: MovedMessage[] = [];
-		const touchedThreads = new Set<Id<'mailThreads'>>();
-		const sourceFolderTouches = new Map<Id<'mailFolders'>, { count: number; unread: number }>();
-
-		// Cache the target folder counters in memory and write once at the end
-		let targetUidNext = target.uidNext;
-		let targetModseq = target.highestModseq + 1;
-		let targetTotalDelta = 0;
-		let targetUnseenDelta = 0;
-
-		for (const id of args.messageIds) {
-			const message = await ctx.db.get(id);
-			if (!message) continue;
-			if (message.folderId === args.targetFolderId) continue;
-			if (message.mailboxId !== target.mailboxId) continue;
-
-			const sourceFolder = await ctx.db.get(message.folderId);
-			if (!sourceFolder) continue;
-
-			// Snoozed messages aren't in either folder's unseenCount (see snooze.ts),
-			// so a move must not shift the counter for them.
-			const countsUnread = !message.flagSeen && !isMessageSnoozed(message, now);
-
-			const sourceTouch = sourceFolderTouches.get(sourceFolder._id) ?? {
-				count: 0,
-				unread: 0,
-			};
-			sourceTouch.count += 1;
-			if (countsUnread) sourceTouch.unread += 1;
-			sourceFolderTouches.set(sourceFolder._id, sourceTouch);
-
-			const uid = targetUidNext++;
-			const modseq = targetModseq++;
-			targetTotalDelta += 1;
-			if (countsUnread) targetUnseenDelta += 1;
-
-			await ctx.db.patch(id, {
-				folderId: args.targetFolderId,
-				uid,
-				modseq,
-				updatedAt: Date.now(),
-			});
-			moved.push({ messageId: id, sourceFolderId: sourceFolder._id });
-			touchedThreads.add(message.threadId);
-		}
-
-		// Apply target folder deltas
-		await ctx.db.patch(args.targetFolderId, {
-			uidNext: targetUidNext,
-			highestModseq: Math.max(target.highestModseq, targetModseq - 1),
-			totalCount: target.totalCount + targetTotalDelta,
-			unseenCount: target.unseenCount + targetUnseenDelta,
-			updatedAt: Date.now(),
-		});
-
-		// Apply source folder deltas
-		for (const [sourceId, touch] of sourceFolderTouches) {
-			const source = await ctx.db.get(sourceId);
-			if (!source) continue;
-			await ctx.db.patch(sourceId, {
-				totalCount: Math.max(0, source.totalCount - touch.count),
-				unseenCount: Math.max(0, source.unseenCount - touch.unread),
-				highestModseq: source.highestModseq + 1,
-				updatedAt: Date.now(),
-			});
-		}
-
-		// Archiving or trashing a thread's mail dismisses the Reply Queue signal
-		// (the owner triaged it away without replying).
-		const clearsNeedsReply = target.role === 'archive' || target.role === 'trash';
-		for (const t of touchedThreads) {
-			await rebuildThreadAggregates(ctx, t);
-			if (clearsNeedsReply) await clearThreadNeedsReply(ctx, t);
-		}
-		return { ok: true, moved };
+		return moveMessagesToFolder(ctx, args);
 	},
 });
 
@@ -275,10 +246,16 @@ export const archive = authedMutation({
 			)
 			.first();
 		if (!archive) throwInvalidState('Archive folder missing');
-		return await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
-			messageIds: args.messageIds,
-			targetFolderId: archive._id,
-		});
+		const result = await ctx.runMutation(
+			(await import('../_generated/api')).api.mail.messageActions.move,
+			{ messageIds: args.messageIds, targetFolderId: archive._id }
+		);
+		// Idea 27: one triage SESSION observed for these senders. Recorded on the
+		// human-initiated wrapper only — the retroactive filter sweep also moves
+		// mail through `move`, and a rule's own work must never become evidence
+		// for suggesting that rule again.
+		await recordTriageVerb(ctx, args.messageIds, 'archive');
+		return result;
 	},
 });
 
@@ -299,10 +276,12 @@ export const trash = authedMutation({
 			)
 			.first();
 		if (!trash) throwInvalidState('Trash folder missing');
-		return await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
-			messageIds: args.messageIds,
-			targetFolderId: trash._id,
-		});
+		const result = await ctx.runMutation(
+			(await import('../_generated/api')).api.mail.messageActions.move,
+			{ messageIds: args.messageIds, targetFolderId: trash._id }
+		);
+		await recordTriageVerb(ctx, args.messageIds, 'trash');
+		return result;
 	},
 });
 
@@ -317,49 +296,7 @@ export const purge = authedMutation({
 			if (!message) continue;
 			const owned = await requireMailboxAccess(ctx, message.mailboxId);
 			if (!owned.ok) continue;
-
-			const folder = await ctx.db.get(message.folderId);
-			if (folder) {
-				// A snoozed unread message isn't in unseenCount; don't decrement it.
-				const wasCounted = !message.flagSeen && !isMessageSnoozed(message, Date.now());
-				await ctx.db.patch(folder._id, {
-					totalCount: Math.max(0, folder.totalCount - 1),
-					unseenCount: Math.max(0, folder.unseenCount - (wasCounted ? 1 : 0)),
-					highestModseq: folder.highestModseq + 1,
-					updatedAt: Date.now(),
-				});
-			}
-
-			const mailbox = await ctx.db.get(message.mailboxId);
-			if (mailbox) {
-				await ctx.db.patch(message.mailboxId, {
-					usedBytes: Math.max(0, mailbox.usedBytes - message.rawSize),
-					updatedAt: Date.now(),
-				});
-			}
-
-			try {
-				await ctx.storage.delete(message.rawStorageId);
-			} catch {
-				// Storage may already be gone — proceed to row deletion
-			}
-			if (message.textBodyStorageId) {
-				try {
-					await ctx.storage.delete(message.textBodyStorageId);
-				} catch {
-					/* noop */
-				}
-			}
-			if (message.htmlBodyStorageId) {
-				try {
-					await ctx.storage.delete(message.htmlBodyStorageId);
-				} catch {
-					/* noop */
-				}
-			}
-
-			touchedThreads.add(message.threadId);
-			await ctx.db.delete(id);
+			touchedThreads.add(await purgeMessageRow(ctx, message));
 		}
 		for (const t of touchedThreads) {
 			await rebuildThreadAggregates(ctx, t);
@@ -428,7 +365,9 @@ async function moveToRoleWithVerdict(
 export const reportSpam = authedMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult> => {
-		return await moveToRoleWithVerdict(ctx, args.messageIds, 'spam', 'spam');
+		const result = await moveToRoleWithVerdict(ctx, args.messageIds, 'spam', 'spam');
+		await recordTriageVerb(ctx, args.messageIds, 'spam');
+		return result;
 	},
 });
 

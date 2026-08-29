@@ -20,6 +20,14 @@ type AccountExportContext = {
 	client: ConvexClient;
 	userId: string;
 	exportSessionId: Id<'accountExportSessions'>;
+	/**
+	 * Called once per row actually WRITTEN into the document (idea 67), so the
+	 * card can show a bar instead of a spinner. Counted at the three yield sites
+	 * rather than inside the page iterator: the mailbox list is walked once per
+	 * mailbox-scoped resource, and counting there would report a mailbox three
+	 * times.
+	 */
+	onRow?: (resource: string) => void;
 };
 
 async function* iterateAccountExportPageRows(
@@ -56,6 +64,7 @@ async function* accountExportRowWriters(
 	options: ExportPageOptions = {}
 ): AsyncGenerator<JsonValueWriter> {
 	for await (const row of iterateAccountExportPageRows(context, resource, options)) {
+		context.onRow?.(resource);
 		const contentDownloadUrl = row['contentDownloadUrl'];
 		if (typeof contentDownloadUrl !== 'string') {
 			yield jsonValue(row);
@@ -89,7 +98,8 @@ async function* accountExportRowWriters(
 export async function writeAccountJsonExport(
 	client: ConvexClient,
 	userId: string,
-	sink: TextChunkSink
+	sink: TextChunkSink,
+	onRow?: (resource: string) => void
 ): Promise<void> {
 	let serializationStarted = false;
 	try {
@@ -98,9 +108,11 @@ export async function writeAccountJsonExport(
 			client,
 			userId,
 			exportSessionId: manifest.exportSessionId as Id<'accountExportSessions'>,
+			...(onRow ? { onRow } : {}),
 		};
 		async function* mailboxWriters(): AsyncGenerator<JsonValueWriter> {
 			for await (const mailbox of iterateAccountExportPageRows(context, 'mailboxes')) {
+				context.onRow?.('mailboxes');
 				yield jsonValue(mailbox);
 			}
 		}
@@ -125,6 +137,7 @@ export async function writeAccountJsonExport(
 				if (typeof organizationId !== 'string') {
 					throw new Error('Account export membership is missing its organization ID');
 				}
+				context.onRow?.('organizationMemberships');
 				yield jsonObject([
 					['organization', jsonValue(membership['organization'])],
 					['role', jsonValue(membership['role'])],

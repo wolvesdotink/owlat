@@ -123,6 +123,39 @@ export function buildReplySpec(
 	};
 }
 
+/**
+ * The compose seed for a RESEND of `target` to a subset of its recipients — the
+ * "resend to the failed recipient only" action on the delivery strip (plan idea
+ * 1). Same subject, same body, same attachments, new recipient list.
+ *
+ * No quote block and no "Forwarded message" header: this is the same message
+ * going out again, not a commentary on it, and the person receiving it never got
+ * a first copy to have the resend read as a reply to.
+ *
+ * `inReplyToMessageId` is deliberately NOT set even though it would thread the
+ * resend under the original. Sending a draft that carries it stamps
+ * `flagAnswered` on the referenced message (`draftLifecycle/effects.ts`), and a
+ * resend of our own mail is not us answering ourselves. The identical subject is
+ * what threads it.
+ *
+ * The body runs through the same sanitize-html allowlist every quote does: it
+ * lands in the composer's contenteditable, which is an `innerHTML` sink in the
+ * app origin.
+ */
+export function buildResendSpec(
+	mailboxId: Id<'mailboxes'>,
+	target: ReplyQuoteTarget,
+	toAddresses: string[]
+): Omit<ComposerSpec, 'id' | 'minimized'> {
+	return {
+		mailboxId,
+		prefillTo: toAddresses,
+		prefillSubject: target.subject,
+		prefillBodyHtml: originalAsHtml(target),
+		forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
+	};
+}
+
 /** A "Forwarded message" header block followed by the original body. */
 export function buildForwardedBody(msg: QuoteSource): string {
 	const to = (msg.toAddresses ?? []).map(escapeHtml).join(', ');

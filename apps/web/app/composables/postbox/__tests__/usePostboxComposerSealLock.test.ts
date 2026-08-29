@@ -8,11 +8,16 @@
  * Cancelling sends nothing and forgets the parked attempt, so the next try asks
  * again. A key change is never bypassable, and with the flag off the gate is
  * inert.
+ *
+ * The same read also carries the PER-RECIPIENT verdicts (plan idea 11); the gate
+ * passes them through and names the keyless ones as blockers, without adding a
+ * second route to plaintext.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, type Ref } from 'vue';
 
 import type { SealState } from '~/utils/sealComposer';
+import type { RecipientSealView } from '~/utils/sealRecipients';
 import { createTestI18n } from '~/__tests__/i18n';
 import {
 	usePostboxComposerSealLock,
@@ -23,7 +28,10 @@ vi.mock('@owlat/api', () => ({
 	api: { mail: { drafts: { getComposerSealState: 'drafts.getComposerSealState' } } },
 }));
 
-let sealStateData: Ref<SealState | undefined>;
+/** The query's whole answer: the aggregate verdict plus its recipient views. */
+type SealView = { state: SealState; recipients: RecipientSealView[] };
+
+let sealStateData: Ref<SealView | undefined>;
 let flagOn: boolean;
 const toasts: string[] = [];
 
@@ -32,7 +40,7 @@ const toasts: string[] = [];
 const { t } = createTestI18n().global;
 
 beforeEach(() => {
-	sealStateData = ref<SealState | undefined>(undefined);
+	sealStateData = ref<SealView | undefined>(undefined);
 	flagOn = true;
 	toasts.length = 0;
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => flagOn }));
@@ -40,6 +48,11 @@ beforeEach(() => {
 	vi.stubGlobal('useConvexQuery', () => ({ data: sealStateData }));
 	vi.stubGlobal('useI18n', () => ({ t }));
 });
+
+/** Answer the seal query with a verdict and, optionally, its recipient views. */
+function answer(state: SealState, recipients: RecipientSealView[] = []) {
+	sealStateData.value = { state, recipients };
+}
 
 function mountGate() {
 	const confirmed: SealGateSendOptions[] = [];
@@ -53,7 +66,7 @@ function mountGate() {
 
 describe('usePostboxComposerSealLock', () => {
 	it('lets a sealed send through untouched', async () => {
-		sealStateData.value = { kind: 'willSeal' };
+		answer({ kind: 'willSeal' });
 		const { seal, confirmed } = mountGate();
 		expect(await seal.blockSend()).toBe(false);
 		expect(seal.confirmOpen).toBe(false);
@@ -61,7 +74,7 @@ describe('usePostboxComposerSealLock', () => {
 	});
 
 	it('parks an unsealable send and asks before anything goes out in plaintext', async () => {
-		sealStateData.value = { kind: 'cannotSeal', reason: 'recipient_no_key' };
+		answer({ kind: 'cannotSeal', reason: 'recipient_no_key' });
 		const { seal, confirmed } = mountGate();
 		expect(await seal.blockSend({ scheduledSendAt: 1234 })).toBe(true);
 		// Blocked, prompted, and nothing sent yet.
@@ -78,7 +91,7 @@ describe('usePostboxComposerSealLock', () => {
 	});
 
 	it('cancelling sends nothing and forgets the attempt, so the next try asks again', async () => {
-		sealStateData.value = { kind: 'cannotSeal', reason: 'policy_ask' };
+		answer({ kind: 'cannotSeal', reason: 'policy_ask' });
 		const { seal, confirmed } = mountGate();
 		await seal.blockSend({ scheduledSendAt: 999 });
 		seal.setConfirmOpen(false);
@@ -91,7 +104,7 @@ describe('usePostboxComposerSealLock', () => {
 	});
 
 	it('never offers plaintext for a changed key — it points at the review instead', async () => {
-		sealStateData.value = { kind: 'keyChanged', addresses: ['bob@b.test'] };
+		answer({ kind: 'keyChanged', addresses: ['bob@b.test'] });
 		const { seal, confirmed } = mountGate();
 		expect(await seal.blockSend({ allowUnsealed: true })).toBe(true);
 		expect(seal.confirmOpen).toBe(false);
@@ -110,11 +123,29 @@ describe('usePostboxComposerSealLock', () => {
 	});
 
 	it('with no recipients there is nothing to decide, so no prompt opens', async () => {
-		sealStateData.value = { kind: 'cannotSeal', reason: 'no_recipients' };
+		answer({ kind: 'cannotSeal', reason: 'no_recipients' });
 		const { seal } = mountGate();
 		expect(await seal.blockSend()).toBe(true);
 		expect(seal.confirmOpen).toBe(false);
 		expect(toasts).toEqual(['Add a recipient to see whether this message can be sealed.']);
+	});
+
+	it('names the keyless recipients as the blockers, and nobody else', async () => {
+		answer({ kind: 'cannotSeal', reason: 'recipient_no_key' }, [
+			{ address: 'ines@x.test', outcome: 'trusted', hasUsableKey: true },
+			{ address: 'jonas@acme.test', outcome: 'notFound', hasUsableKey: false },
+		]);
+		const { seal } = mountGate();
+		expect(seal.recipients.map((r) => r.address)).toEqual(['ines@x.test', 'jonas@acme.test']);
+		expect(seal.blockingRecipients).toEqual(['jonas@acme.test']);
+	});
+
+	it('names no blocker for a draft that will seal', async () => {
+		answer({ kind: 'willSeal' }, [
+			{ address: 'ines@x.test', outcome: 'trusted', hasUsableKey: true },
+		]);
+		const { seal } = mountGate();
+		expect(seal.blockingRecipients).toEqual([]);
 	});
 
 	it('is inert when the feature flag is off', async () => {

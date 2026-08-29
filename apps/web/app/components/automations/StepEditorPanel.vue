@@ -63,7 +63,7 @@ const updateConfig = (config: StepConfigByKind[StepKind]) => {
 
 			<div class="mt-8 pt-6 border-t border-border-subtle">
 				<UiButton full-width class="gap-2" :disabled="isSaving" @click="emit('save')">
-					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					<Icon v-else name="lucide:save" class="w-4 h-4" />
 					{{ isSaving ? t('common.saving') : t('components.automations.stepEditorPanel.save') }}
 				</UiButton>

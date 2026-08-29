@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import {
+	type PaletteArgumentSpec,
 	type PaletteGroup,
 	type PaletteItem,
+	buildArgumentGroups,
 	flattenGroups,
+	groupsForMode,
+	highlightSegments,
 	mergeGroups,
 	moveSelection,
+	parsePaletteQuery,
 } from '~/lib/commandPalette';
 import { resolvePaletteGroups } from '~/lib/commandPaletteRegistry';
 import {
-	MAX_RECENT_SEARCHES,
 	SEARCH_MIN_QUERY,
 	type SearchResult,
 	type SearchResults,
@@ -21,7 +26,7 @@ import {
  * it works on EVERY dashboard page. Assembled from an ordered, deduplicated
  * provider registry (`~/lib/commandPaletteRegistry`):
  *   1. core providers, built here and consulted first — recent searches, verbs,
- *      sidebar-context switch, object search, and navigation;
+ *      sidebar-context switch, object search, mail, and navigation;
  *   2. surface/plugin providers registered while mounted (e.g. the Postbox
  *      layout registers its reader actions + folders, route-gated to Postbox).
  *
@@ -30,13 +35,19 @@ import {
  * `mergeGroups` sort/cap. The palette is the shared shell; every contributor —
  * core or plugin — flows through the same registry, so nothing forks it.
  *
+ * Typing is fuzzy (subsequence, with the matched characters highlighted), a
+ * leading `>`/`@`/`#` narrows to commands/people/labels, and an item may ask
+ * for an ARGUMENT — selecting it opens a second step with its own option list
+ * instead of running. All of that arithmetic is pure (`~/lib/commandPalette`);
+ * this component only holds the state and renders it.
+ *
  * The Cmd+Shift+K knowledge Quick Query keeps its own shortcut; it is surfaced
  * here as the "Ask knowledge…" action (dispatches `owlat:open-knowledge-query`,
  * which the layout listens for).
  */
 
 const { t } = useI18n();
-const { verbItems, contextItems, navItems } = useCommandPaletteProviders();
+const { verbItems, contextItems, navItems, settingsItems } = useCommandPaletteProviders();
 const registryProviders = useCommandPaletteRegistry();
 const { isEnabled: isFlagEnabled } = useFeatureFlag();
 const route = useRoute();
@@ -53,55 +64,25 @@ const { searchQuery, debouncedSearch, setImmediate } = useDebouncedSearch(300);
 // are handled by onInputKeydown below (single source of truth).
 useModalFocus(dialogRef, () => open.value);
 
-// ── Recent object-search queries (carried over from the old GlobalSearch modal)
-const RECENT_KEY = 'owlat_recent_searches';
-const recentSearches = ref<string[]>([]);
+// ── Recent object-search terms (localStorage-backed; see the composable).
+const { recentSearches, loadRecent, saveRecent, clearRecent } = useCommandPaletteRecents();
 
-function loadRecent() {
-	if (import.meta.server) return;
-	try {
-		const stored = localStorage.getItem(RECENT_KEY);
-		recentSearches.value = stored ? (JSON.parse(stored) as string[]) : [];
-	} catch {
-		recentSearches.value = [];
-	}
-}
+// ── Mode prefixes: the typed `>`/`@`/`#` never reaches a provider or the search
+// index — providers see the bare term, and the mode filters the merged groups.
+const parsedQuery = computed(() => parsePaletteQuery(searchQuery.value));
+const searchTerm = computed(() => parsedQuery.value.term);
+const debouncedTerm = computed(() => parsePaletteQuery(debouncedSearch.value).term);
 
-function saveRecent(term: string) {
-	const trimmed = term.trim();
-	if (!trimmed || import.meta.server) return;
-	recentSearches.value = [trimmed, ...recentSearches.value.filter((s) => s !== trimmed)].slice(
-		0,
-		MAX_RECENT_SEARCHES
-	);
-	try {
-		localStorage.setItem(RECENT_KEY, JSON.stringify(recentSearches.value));
-	} catch {
-		// Ignore quota / disabled storage.
-	}
-}
-
-function clearRecent() {
-	recentSearches.value = [];
-	if (import.meta.client) {
-		try {
-			localStorage.removeItem(RECENT_KEY);
-		} catch {
-			// Ignore.
-		}
-	}
-}
-
-// ── Object search (contacts / templates / campaigns) via the shared index.
+// ── Object search (contacts / templates / campaigns / mail) via the shared index.
 const { data: searchData } = useOrganizationQuery(api.globalSearch.search, () =>
 	// undefined → the wrapper skips the subscription (no empty / <2-char query).
-	debouncedSearch.value.trim().length >= SEARCH_MIN_QUERY
-		? { query: debouncedSearch.value, limit: 5 }
+	debouncedTerm.value.trim().length >= SEARCH_MIN_QUERY
+		? { query: debouncedTerm.value, limit: 5 }
 		: undefined
 );
 const searchResults = computed(() => searchData.value as SearchResults | undefined);
 const isSearching = computed(
-	() => searchQuery.value.trim().length >= SEARCH_MIN_QUERY && searchResults.value === undefined
+	() => searchTerm.value.trim().length >= SEARCH_MIN_QUERY && searchResults.value === undefined
 );
 
 function iconForType(type: string): string {
@@ -117,10 +98,43 @@ function toResultItems(results: SearchResult[]): PaletteItem[] {
 		subtitle: result.subtitle,
 		icon: iconForType(result.type),
 		run: () => {
-			saveRecent(searchQuery.value);
+			saveRecent(searchTerm.value);
 			void navigateTo(result.url);
 		},
 	}));
+}
+
+// ── Mail hits. Selecting one may cross mailboxes, so the active Postbox mailbox
+// is pointed at the message's own mailbox before navigating — otherwise the
+// thread opens against whichever mailbox happened to be selected and reads as
+// "not found". The selection composable is the state-only one: this component
+// is mounted on every dashboard page and must not open Postbox subscriptions.
+const { setActiveMailboxId } = usePostboxActiveMailbox();
+
+function toMailItems(results: SearchResult[]): PaletteItem[] {
+	return results.map((result) => ({
+		id: `mail:${result.id}`,
+		label: result.title.trim() || t('components.appCommandPalette.noSubject'),
+		subtitle: result.subtitle,
+		icon: 'lucide:mail',
+		run: () => {
+			saveRecent(searchTerm.value);
+			if (result.mailboxId) setActiveMailboxId(result.mailboxId as Id<'mailboxes'>);
+			void navigateTo(result.url);
+		},
+	}));
+}
+
+function toSearchMailItem(term: string): PaletteItem {
+	return {
+		id: 'mail:search-for',
+		label: t('components.appCommandPalette.searchMailFor', { query: term }),
+		icon: 'lucide:search',
+		run: () => {
+			saveRecent(term);
+			void navigateTo({ path: '/dashboard/postbox/search', query: { q: term } });
+		},
+	};
 }
 
 // ── Core providers, consulted before any surface/plugin provider. Their
@@ -133,25 +147,42 @@ const coreProviders = buildCorePaletteProviders({
 	verbItems: () => verbItems.value,
 	contextItems: () => contextItems.value,
 	navItems: () => navItems.value,
+	settingsItems: () => settingsItems.value,
 	searchResults: () => searchResults.value,
 	onRecentTerm: (term) => setImmediate(term),
 	buildResultItems: (results) => toResultItems(results),
+	buildMailItems: (results) => toMailItems(results),
+	buildSearchMailItem: (term) => toSearchMailItem(term),
 });
 
+// ── Argument step. While an item's argument is pending the palette shows only
+// that item's options; the query box filters them and Escape backs out.
+const pendingArgument = ref<{ item: PaletteItem; spec: PaletteArgumentSpec } | null>(null);
+
 // ── Assemble the ordered, capped group list: gate + order + dedup providers,
-// then sort/drop-empties/cap. Core providers form their own trust tier and are
-// always consulted before any registered surface/plugin provider, so a
-// registered provider can add work but never override a core group or item.
-const groups = computed<PaletteGroup[]>(() =>
-	mergeGroups(
-		resolvePaletteGroups(
-			coreProviders,
-			registryProviders.value,
-			{ path: route.path, isFlagEnabled },
-			{ query: searchQuery.value }
+// keep the groups the typed mode admits, then sort/drop-empties/cap. Core
+// providers form their own trust tier and are always consulted before any
+// registered surface/plugin provider, so a registered provider can add work but
+// never override a core group or item.
+const groups = computed<PaletteGroup[]>(() => {
+	const pending = pendingArgument.value;
+	if (pending) return mergeGroups(buildArgumentGroups(pending.spec, searchQuery.value));
+	return mergeGroups(
+		groupsForMode(
+			resolvePaletteGroups(
+				coreProviders,
+				registryProviders.value,
+				{ path: route.path, isFlagEnabled },
+				{ query: searchTerm.value, mode: parsedQuery.value.mode }
+			),
+			parsedQuery.value.mode
 		)
-	)
-);
+	);
+});
+
+// What the rows highlight against: the argument step filters on the raw box,
+// everything else on the prefix-stripped term.
+const matchTerm = computed(() => (pendingArgument.value ? searchQuery.value : searchTerm.value));
 
 const flatItems = computed(() => flattenGroups(groups.value));
 const flatIndexById = computed(() => {
@@ -169,6 +200,7 @@ async function openPalette() {
 	open.value = true;
 	searchQuery.value = '';
 	activeIndex.value = 0;
+	pendingArgument.value = null;
 	loadRecent();
 	await nextTick();
 	inputEl.value?.focus();
@@ -178,10 +210,28 @@ function close() {
 	open.value = false;
 	searchQuery.value = '';
 	activeIndex.value = 0;
+	pendingArgument.value = null;
+}
+
+/** Leave the argument step, back to the palette that opened it. */
+function cancelArgument() {
+	pendingArgument.value = null;
+	searchQuery.value = '';
+	activeIndex.value = 0;
+	void nextTick(() => inputEl.value?.focus());
 }
 
 function runItem(item: PaletteItem | undefined) {
 	if (!item) return;
+	if (item.argument) {
+		// Two-step: ask for the argument instead of running. `run` never fires for
+		// an item that has one, so a provider can leave it as a no-op.
+		pendingArgument.value = { item, spec: item.argument };
+		searchQuery.value = '';
+		activeIndex.value = 0;
+		void nextTick(() => inputEl.value?.focus());
+		return;
+	}
 	if (item.keepOpen) {
 		item.run();
 		void nextTick(() => inputEl.value?.focus());
@@ -194,7 +244,16 @@ function runItem(item: PaletteItem | undefined) {
 function onInputKeydown(event: KeyboardEvent) {
 	if (event.key === 'Escape') {
 		event.preventDefault();
-		close();
+		// Escape unwinds one level at a time: out of the argument step first.
+		if (pendingArgument.value) cancelArgument();
+		else close();
+		return;
+	}
+	// Backspacing past the start of an empty argument query also backs out, the
+	// way a deleted chip behaves everywhere else in the app.
+	if (event.key === 'Backspace' && pendingArgument.value && searchQuery.value === '') {
+		event.preventDefault();
+		cancelArgument();
 		return;
 	}
 	if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -264,6 +323,12 @@ onBeforeUnmount(() => {
 				<!-- Search input -->
 				<div class="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
 					<Icon name="lucide:search" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<span
+						v-if="pendingArgument"
+						class="flex-shrink-0 text-xs px-2 py-1 rounded bg-bg-surface text-text-secondary"
+					>
+						{{ t(pendingArgument.spec.promptKey) }}
+					</span>
 					<input
 						ref="inputEl"
 						v-model="searchQuery"
@@ -308,8 +373,8 @@ onBeforeUnmount(() => {
 						<Icon name="lucide:search" class="w-8 h-8 mx-auto mb-2 opacity-50" />
 						<p class="text-sm">
 							{{
-								searchQuery.trim().length >= SEARCH_MIN_QUERY
-									? t('components.appCommandPalette.noResults', { query: searchQuery })
+								searchTerm.trim().length >= SEARCH_MIN_QUERY
+									? t('components.appCommandPalette.noResults', { query: searchTerm })
 									: t('components.appCommandPalette.noMatches')
 							}}
 						</p>
@@ -349,13 +414,27 @@ onBeforeUnmount(() => {
 						>
 							<Icon :name="item.icon" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 							<span class="flex-1 min-w-0">
-								<span class="block text-sm truncate">{{ item.label }}</span>
+								<span class="block text-sm truncate">
+									<!-- The fuzzy scorer matched these characters; bolding them is what
+									     makes a subsequence hit ("pbx" → Postbox) legible. -->
+									<span
+										v-for="(segment, segmentIndex) in highlightSegments(item.label, matchTerm)"
+										:key="segmentIndex"
+										:class="segment.isMatch ? 'font-semibold text-text-primary' : undefined"
+										>{{ segment.text }}</span
+									>
+								</span>
 								<span v-if="item.subtitle" class="block text-xs text-text-tertiary truncate">{{
 									item.subtitle
 								}}</span>
 							</span>
+							<Icon
+								v-if="item.argument"
+								name="lucide:chevron-right"
+								class="w-4 h-4 flex-shrink-0 text-text-tertiary"
+							/>
 							<kbd
-								v-if="item.hint"
+								v-else-if="item.hint"
 								class="text-2xs text-text-tertiary border border-border-subtle rounded px-1"
 								>{{ item.hint }}</kbd
 							>
@@ -383,7 +462,13 @@ onBeforeUnmount(() => {
 						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
 							>esc</kbd
 						>
-						{{ t('common.close') }}
+						{{ pendingArgument ? t('components.appCommandPalette.back') : t('common.close') }}
+					</span>
+					<span v-if="!pendingArgument" class="hidden sm:flex items-center gap-1">
+						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
+							>&gt; @ #</kbd
+						>
+						{{ t('components.appCommandPalette.modeHint') }}
 					</span>
 				</div>
 			</div>

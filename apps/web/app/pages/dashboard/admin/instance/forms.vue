@@ -516,7 +516,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="submit" form="add-form" class="gap-2" :disabled="isAdding">
-					<Icon v-if="isAdding" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isAdding" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					<Icon v-else name="lucide:plus" class="w-4 h-4" />
 					{{
 						isAdding
@@ -645,7 +645,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="submit" form="edit-form" class="gap-2" :disabled="isSaving">
-					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					<Icon v-else name="lucide:check" class="w-4 h-4" />
 					{{
 						isSaving

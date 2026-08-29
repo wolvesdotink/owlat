@@ -14,8 +14,9 @@
  *     hides something important is a trust-killer, so the exact bundled threads
  *     are always inspectable.
  *
- * Persisted snapshots remain available to internal reporting. Never sends or
- * modifies mail; an email delivery of the brief is a separate opt-in. Deterministic — the ranking
+ * Persisted snapshots remain available to internal reporting. This cron never
+ * sends or modifies mail; the opt-in EMAIL delivery of a persisted brief lives
+ * in mail/briefEmail.ts and reads these snapshots. Deterministic — the ranking
  * reads scores already persisted by the Reply Queue classifier, so the cron
  * itself makes no LLM call and can't fail-open into hiding a real task.
  */
@@ -156,6 +157,13 @@ async function buildBriefForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>
 	const bundledEntries: BundledEntry[] = [];
 
 	for (const thread of threads) {
+		// ANTI-LOOP (idea 29): a brief this deployment mailed to the owner is
+		// ordinary inbox mail from a known correspondent. Without this skip it
+		// becomes an item in tomorrow's brief, which is mailed, which becomes an
+		// item in the day after's — a digest of the digest, compounding daily.
+		// mail/briefEmail.ts stamps the marker at delivery.
+		if (thread.isSelfDeliveredBrief) continue;
+
 		// Pending reply / clarification.
 		const nr = thread.needsReply;
 		if (nr) {

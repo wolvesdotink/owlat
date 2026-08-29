@@ -213,7 +213,7 @@ const busy = computed(
 				<h2 class="font-semibold">{{ t('components.postbox.teamInboxMembersPanel.members') }}</h2>
 			</header>
 			<div v-if="membersLoading && members.length === 0" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
 			<div v-else-if="membersError" class="p-6 text-sm text-error">
 				{{ t('components.postbox.teamInboxMembersPanel.loadError') }}

@@ -1,8 +1,8 @@
 /**
  * Pure factory for the app command palette's built-in ("core") providers.
  *
- * The five core providers — recent searches, verbs, sidebar-context switch,
- * object search, and navigation — used to live as inline closures inside
+ * The core providers — recent searches, verbs, sidebar-context switch, settings
+ * controls, object search, mail, and navigation — used to live as inline closures inside
  * `AppCommandPalette.vue`, so their ids, priorities, group keys, `order`/`cap`
  * values, and idle-vs-query gating conditions were untestable without mounting
  * the component. This factory extracts that composition, taking the reactive
@@ -15,9 +15,24 @@
  * condition); the component owns only the data and the item `run` closures it
  * injects. Kept free of Vue/Nuxt so the whole matrix is unit-testable — which is
  * also why every group heading here is an i18n KEY the palette translates.
+ *
+ * Each group also declares which prefix MODE it answers to (`>` commands, `@`
+ * people, `#` labels); a group with no `mode` shows only in the unprefixed
+ * palette. The shell does the filtering — see `groupsForMode` — so a provider
+ * never re-implements the prefix grammar.
  */
 import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalette';
 import type { CommandPaletteProvider } from './commandPaletteRegistry';
+import { filterByKeywords } from './settingsRegistry';
+
+/**
+ * A palette row for one SETTINGS CONTROL rather than a destination. It carries
+ * localized synonyms so "dark" finds Appearance and "out of office" finds the
+ * vacation auto-reply; the words are search-only and never rendered.
+ */
+export interface SettingsPaletteItem extends PaletteItem {
+	keywords: readonly string[];
+}
 
 /** A single object-search hit from the shared search index. */
 export interface SearchResult {
@@ -26,13 +41,17 @@ export interface SearchResult {
 	title: string;
 	subtitle: string;
 	url: string;
+	/** Mail hits only: the mailbox the message lives in (may not be the active one). */
+	mailboxId?: string;
 }
 
-/** The three object-search result lists surfaced by the palette. */
+/** The object-search result lists surfaced by the palette. */
 export interface SearchResults {
 	contacts: SearchResult[];
 	emails: SearchResult[];
 	campaigns: SearchResult[];
+	/** Messages across every mailbox the caller can read. */
+	mail: SearchResult[];
 }
 
 /** Max recent-search terms kept and shown in the idle palette. */
@@ -56,17 +75,31 @@ export interface CorePaletteProviderDeps {
 	contextItems: () => PaletteItem[];
 	/** Navigation items — every sidebar destination. */
 	navItems: () => PaletteItem[];
+	/**
+	 * Individual settings CONTROLS (dark mode, auto-advance, notify me about),
+	 * each deep-linking to the section that holds it. Search-only: they stay out
+	 * of the idle palette so ⌘K opens on destinations, not on twenty switches.
+	 */
+	settingsItems: () => SettingsPaletteItem[];
 	/** Current object-search results, or undefined while none have resolved. */
 	searchResults: () => SearchResults | undefined;
 	/** Refill the palette query with a recent term (palette stays open). */
 	onRecentTerm: (term: string) => void;
 	/** Map one object-search list to palette items (adds save-recent + navigate). */
 	buildResultItems: (results: SearchResult[]) => PaletteItem[];
+	/**
+	 * Map mail hits to palette items. Separate from `buildResultItems` because
+	 * opening a message may first have to switch the active mailbox, and because
+	 * an empty subject needs the component's translator.
+	 */
+	buildMailItems: (results: SearchResult[]) => PaletteItem[];
+	/** The "search all mail for <term>" escape hatch under the mail hits. */
+	buildSearchMailItem: (term: string) => PaletteItem;
 }
 
 /**
  * Build the ordered core provider set. Priorities fix the consult/dedup order
- * (10/20/30/40/50); each provider's group `order` still drives the final render
+ * (10/20/30/35/40/45/50); each provider's group `order` still drives the final render
  * sort in `mergeGroups`. Pure.
  */
 export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): CommandPaletteProvider[] {
@@ -104,6 +137,7 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 					key: 'verbs',
 					heading: 'common.create',
 					order: 5,
+					mode: 'commands',
 					items: filterItems(deps.verbItems(), query),
 				},
 			],
@@ -117,9 +151,30 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 					key: 'context',
 					heading: 'shared.commandPaletteCore.groups.context',
 					order: 6,
+					mode: 'commands',
 					items: filterItems(deps.contextItems(), query),
 				},
 			],
+		},
+		{
+			// Settings controls — the switches themselves, matched on their synonyms
+			// as well as their names. Only once something is typed: the idle palette
+			// answers "where do I go", not "which switch exists".
+			id: 'core:settings',
+			priority: 35,
+			build: ({ query }): PaletteGroup[] => {
+				if (!query.trim()) return [];
+				return [
+					{
+						key: 'settings',
+						heading: 'shared.commandPaletteCore.groups.settings',
+						order: 30,
+						cap: 6,
+						mode: 'commands',
+						items: filterByKeywords(deps.settingsItems(), query),
+					},
+				];
+			},
 		},
 		{
 			// Object search — only once the query is meaningful and results arrived.
@@ -134,6 +189,7 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 						heading: 'shared.commandPaletteCore.groups.contacts',
 						order: 20,
 						cap: 5,
+						mode: 'people',
 						items: deps.buildResultItems(results.contacts),
 					},
 					{
@@ -154,6 +210,36 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 			},
 		},
 		{
+			// Mail — messages across every readable mailbox, plus the "search all
+			// mail" escape hatch that always closes the section.
+			id: 'core:mail',
+			priority: 45,
+			build: ({ query }): PaletteGroup[] => {
+				const term = query.trim();
+				if (term.length < SEARCH_MIN_QUERY) return [];
+				const results = deps.searchResults();
+				const groups: PaletteGroup[] = [];
+				if (results && results.mail.length > 0) {
+					groups.push({
+						key: 'mail',
+						heading: 'shared.commandPaletteCore.groups.mail',
+						order: 18,
+						cap: 5,
+						items: deps.buildMailItems(results.mail),
+					});
+				}
+				// Offered even while the hits are still resolving (and when there are
+				// none): the full mail search understands operators this never will.
+				groups.push({
+					key: 'mail-search',
+					heading: 'shared.commandPaletteCore.groups.goTo',
+					order: 19,
+					items: [deps.buildSearchMailItem(term)],
+				});
+				return groups;
+			},
+		},
+		{
 			// Navigation — every sidebar destination.
 			id: 'core:navigation',
 			priority: 50,
@@ -163,6 +249,7 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 					heading: 'shared.commandPaletteCore.groups.navigation',
 					order: 40,
 					cap: 8,
+					mode: 'commands',
 					items: filterItems(deps.navItems(), query),
 				},
 			],

@@ -24,6 +24,8 @@ describe('resolvePostboxViewMode', () => {
 		expect(resolvePostboxViewMode('flat')).toBe('flat');
 		expect(resolvePostboxViewMode('conversations')).toBe('conversations');
 		expect(resolvePostboxViewMode('categories')).toBe('categories');
+		expect(resolvePostboxViewMode('bundled')).toBe('bundled');
+		expect(resolvePostboxViewMode('sections')).toBe('sections');
 	});
 
 	it('normalises an unknown stored value to flat', () => {
@@ -32,11 +34,13 @@ describe('resolvePostboxViewMode', () => {
 });
 
 describe('POSTBOX_VIEW_MODE_OPTIONS', () => {
-	it('offers exactly the three modes, flat first', () => {
+	it('offers exactly the five modes, flat first', () => {
 		expect(POSTBOX_VIEW_MODE_OPTIONS.map((o) => o.value)).toEqual([
 			'flat',
 			'conversations',
 			'categories',
+			'bundled',
+			'sections',
 		]);
 	});
 
@@ -45,6 +49,8 @@ describe('POSTBOX_VIEW_MODE_OPTIONS', () => {
 			'Flat',
 			'Conversations',
 			'Categories',
+			'Bundled',
+			'Sections',
 		]);
 	});
 });
@@ -54,12 +60,16 @@ describe('postboxListRenderer', () => {
 		expect(postboxListRenderer('flat', 'inbox')).toBe('flat');
 		expect(postboxListRenderer('conversations', 'inbox')).toBe('conversations');
 		expect(postboxListRenderer('categories', 'inbox')).toBe('categories');
+		expect(postboxListRenderer('bundled', 'inbox')).toBe('bundled');
+		expect(postboxListRenderer('sections', 'inbox')).toBe('sections');
 	});
 
 	it('keeps every non-inbox folder flat regardless of mode', () => {
 		for (const folder of ['archive', 'sent', 'trash', 'spam', 'snoozed']) {
 			expect(postboxListRenderer('conversations', folder)).toBe('flat');
 			expect(postboxListRenderer('categories', folder)).toBe('flat');
+			expect(postboxListRenderer('bundled', folder)).toBe('flat');
+			expect(postboxListRenderer('sections', folder)).toBe('flat');
 		}
 	});
 });

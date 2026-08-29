@@ -342,6 +342,11 @@ export const get = publicQuery({
  * PUBLIC trust state — never any private key material. Returns `null` (rather
  * than throwing) when the draft is gone or the caller can't access its mailbox,
  * so the composer renders no lock instead of an error.
+ *
+ * Returns the per-recipient key verdicts alongside the aggregate (plan idea 11)
+ * so the envelope can mark WHICH chip blocks encryption. Same projection
+ * (`toRecipientSealViews`), same public-trust-only rule: an address, its
+ * discovery outcome, and whether it can be sealed to — no key material.
  */
 // public: soft-auth — returns null for anonymous; mailbox access is enforced in-handler
 export const getComposerSealState = publicQuery({

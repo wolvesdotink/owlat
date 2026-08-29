@@ -99,6 +99,31 @@ export function mergeRecipients(
 	return merged;
 }
 
+/**
+ * The recipients that are NOT in `knownAddresses` — the people this mailbox has
+ * never written to. Compared by canonical address (so `"Ada" <A@X.com>` matches
+ * the stored `a@x.com`), order preserved, deduped, raw strings returned.
+ *
+ * The caller must only ask once the known set has actually loaded: treating a
+ * pending answer as "nothing is known" would brand every recipient a stranger,
+ * which is precisely the false alarm this cue must never raise.
+ */
+export function firstTimeRecipients(
+	addresses: readonly string[],
+	knownAddresses: readonly string[]
+): string[] {
+	const known = new Set(knownAddresses.map(canonicalEmailAddress));
+	const seen = new Set<string>();
+	const strangers: string[] = [];
+	for (const address of addresses) {
+		const canon = canonicalEmailAddress(address);
+		if (!canon || known.has(canon) || seen.has(canon)) continue;
+		seen.add(canon);
+		strangers.push(address);
+	}
+	return strangers;
+}
+
 /** Best display label for a recipient chip/hint: the name, else the local part. */
 export function recipientLabel(raw: string): string {
 	const parsed = parseAddress(raw);

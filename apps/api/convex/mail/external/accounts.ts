@@ -51,6 +51,7 @@ import {
 	CONNECTABLE_ACCOUNT_STATUSES,
 } from './accountShared';
 import { markOnboardingStep } from '../../auth/userOnboarding';
+import { removeMessageAttachments } from '../attachmentIndex';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -247,6 +248,7 @@ export const _purgeChunk = internalMutation({
 			await ctx.storage.delete(m.rawStorageId).catch(() => undefined);
 			if (m.textBodyStorageId) await ctx.storage.delete(m.textBodyStorageId).catch(() => undefined);
 			if (m.htmlBodyStorageId) await ctx.storage.delete(m.htmlBodyStorageId).catch(() => undefined);
+			await removeMessageAttachments(ctx, m._id);
 			await ctx.db.delete(m._id);
 		}
 		if (messages.length === PURGE_CHUNK) {

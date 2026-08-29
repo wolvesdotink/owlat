@@ -23,6 +23,7 @@
  * instead of navigating to the three-pane route.
  */
 import { isEditableTarget, resolvePostboxShortcut } from '~/utils/postboxShortcuts';
+import { resolveActiveShortcut } from '~/utils/shortcutScope';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 
 const { t } = useI18n();
@@ -74,12 +75,15 @@ function onWindowKeydown(event: KeyboardEvent) {
 		emit('close');
 		return;
 	}
-	if (event.key === 'j' || event.key === 'ArrowDown') {
+	// Resolved through the registry so a remapped next/previous moves the
+	// overlay too, exactly as it moves the list underneath it.
+	const moveId = resolveActiveShortcut(event, ['postbox']);
+	if (moveId === 'postbox.next') {
 		event.preventDefault();
 		step(1);
 		return;
 	}
-	if (event.key === 'k' || event.key === 'ArrowUp') {
+	if (moveId === 'postbox.previous') {
 		event.preventDefault();
 		step(-1);
 		return;

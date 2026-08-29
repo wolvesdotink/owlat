@@ -168,6 +168,16 @@ export const TENANT_TABLES = [
 	'agentShadowScorecard',
 
 	// ── Personal mail (Postbox) — children first, mailbox last ──
+	// The attachment index and its backfill job are derived from `mailMessages`,
+	// but they carry this org's filenames and senders verbatim, so they wipe with
+	// the mail they mirror rather than being treated as a regenerable cache.
+	'mailAttachments',
+	'mailAttachmentBackfillJobs',
+	// The deep-body-search backfill job (idea 32). Same reasoning as the
+	// attachment job above: it is derived bookkeeping over `mailMessages`, but it
+	// names this org's mailboxes, so it wipes with the mail it walked. (The
+	// excerpt itself is a COLUMN on `mailMessages` and needs no entry here.)
+	'mailBodySearchBackfillJobs',
 	'mailMessages',
 	'mailThreads',
 	'mailDrafts',
@@ -176,8 +186,10 @@ export const TENANT_TABLES = [
 	'mailContactStyleOverrides',
 	'mailFolders',
 	'mailFilters',
+	'mailFilterRunJobs',
 	'mailSignatures',
 	'mailSnippets',
+	'mailSavedSearches',
 	'mailUserSettings',
 	'mailAliases',
 	'mailForwarding',
@@ -186,12 +198,20 @@ export const TENANT_TABLES = [
 	'mailAppPasswords',
 	'mailContacts',
 	'mailSenderCategoryOverrides',
+	'mailSenderImageAllowlist',
+	// Attachment share links (idea 10). Each row is one of this org's files —
+	// filename, size and the token that opens it — so it wipes with the mail it
+	// was lifted out of. Deleting the row is also the only thing that stops the
+	// link resolving, which makes leaving it behind unthinkable.
+	'mailAttachmentShares',
+	'mailTriageTallies',
 	'mailCommitments',
 	'mailDailyBriefs',
 	'mailBriefCards',
 	'mailAuditLog',
 	'mailAuthFailures',
 	'mailboxMigrations',
+	'mailArchiveImports',
 	'mailboxMoves',
 	'externalMailFolderSync',
 	'externalMailAccounts',

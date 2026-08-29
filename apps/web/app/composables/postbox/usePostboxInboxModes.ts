@@ -24,6 +24,9 @@ import {
 } from '~/utils/postboxViewMode';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
+import type { ShortcutScope } from '~/utils/shortcutRegistry';
+import { chordFromEvent } from '~/utils/shortcutRegistry';
+import { resolveActiveChord } from '~/utils/shortcutScope';
 
 interface PostboxInboxModesOptions {
 	folderRole: Ref<string>;
@@ -111,11 +114,18 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 	// from Today mode; the rail consumes + clears the flag on mount).
 	const searchAutofocus = useState('postbox:search-autofocus', () => false);
 
-	// Mode shortcuts (window-level, like the layout's triage-undo chord): B (and
-	// Cmd/Ctrl-B) toggles Today ↔ Browse from the inbox list; Esc returns from
-	// Browse to Today; `/` from Today jumps to Browse with the search focused
-	// (search never renders inside the Today column). All inert in text inputs,
-	// while a message is open, and while any dialog is up.
+	// Mode shortcuts (window-level, like the layout's triage-undo chord):
+	// `postbox.toggleBrowse` (and Cmd/Ctrl-B) toggles Today ↔ Browse from the
+	// inbox list; Esc returns from Browse to Today; `postbox.search` from Today
+	// jumps to Browse with the search focused (search never renders inside the
+	// Today column). All inert in text inputs, while a message is open, and
+	// while any dialog is up.
+	//
+	// Both keys go through the REGISTRY rather than being matched literally, so
+	// a preset that frees `b` (Gmail spends it on snooze) or a user who remaps
+	// either one is honoured — otherwise `b` on the Gmail map would open the
+	// snooze dialog and flip the mode underneath it on the same press.
+	const MODE_SCOPES: readonly ShortcutScope[] = ['postbox'];
 	function onModeKeydown(event: KeyboardEvent) {
 		// The mobile folder drawer owns Esc while it is open.
 		if (event.key === 'Escape' && railOpen.value) {
@@ -126,7 +136,11 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 		if (isEditableTarget(event.target)) return;
 		if (event.defaultPrevented) return;
 		if (document.querySelector('[role="dialog"]')) return;
-		if (event.key.toLowerCase() === 'b' && !event.altKey && !event.shiftKey) {
+		const chord = chordFromEvent(event);
+		// Cmd/Ctrl-B is kept as its own case: the registry deliberately owns no
+		// modifier chords, and this one has to keep working from anywhere.
+		const id = resolveActiveChord(chord, MODE_SCOPES);
+		if (chord === 'mod+b' || id === 'postbox.toggleBrowse') {
 			event.preventDefault();
 			switchInboxMode(inboxMode.value === 'today' ? 'browse' : 'today');
 			return;
@@ -136,7 +150,7 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 			switchInboxMode('today');
 			return;
 		}
-		if (event.key === '/' && todayActive.value) {
+		if (id === 'postbox.search' && todayActive.value) {
 			event.preventDefault();
 			searchAutofocus.value = true;
 			switchInboxMode('browse');

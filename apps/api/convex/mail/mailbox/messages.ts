@@ -78,6 +78,183 @@ export const listThreadMessages = publicQuery({
 });
 
 /**
+ * The header facts behind the reader's sender badge — the "message details"
+ * disclosure (UX plan idea 52).
+ *
+ * The badge tells a reader "verified sender" and nothing lets them check it.
+ * This is the read that makes the claim falsifiable: the addresses the message
+ * carries (From, Reply-To), each authentication verdict WITH the exact domain it
+ * authenticated, and the forwarder whose ARC seal was honoured when a rescue
+ * applied. Every value is a field persisted at ingest from the raw header block;
+ * the panel adds no interpretation the badge does not already make.
+ *
+ * A QUERY, not an action, and therefore a read over the header fields we PARSED,
+ * not over the raw `.eml` bytes: Convex queries cannot read storage blobs, and
+ * fetching a multi-megabyte message to display four lines would be a poor trade
+ * on every message open. The raw bytes stay behind {@link getMessageRawUrl},
+ * which the panel's "download original" already uses — so a reader who wants the
+ * literal header block can still have it, in one click.
+ *
+ * The `Return-Path` line is served as the envelope sender DOMAIN
+ * (`envelopeFromDomain`), which is what SPF actually authenticated and what we
+ * persist; the full envelope address is not stored (see docs/ux-plan/DEFERRALS).
+ *
+ * Recipient-scoped: `loadReadableMessage` is the same owner/admin + active
+ * mailbox gate every other by-id read in this file uses, so a message id from
+ * another mailbox returns null rather than a header dump.
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
+export const getMessageDetails = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	returns: v.union(
+		v.null(),
+		v.object({
+			fromAddress: v.string(),
+			fromName: v.optional(v.string()),
+			replyToAddress: v.optional(v.string()),
+			toAddresses: v.array(v.string()),
+			ccAddresses: v.array(v.string()),
+			rfc822MessageId: v.string(),
+			receivedAt: v.number(),
+			rawSize: v.number(),
+			spfResult: v.optional(v.string()),
+			dkimResult: v.optional(v.string()),
+			dmarcResult: v.optional(v.string()),
+			dmarcPolicy: v.optional(v.string()),
+			envelopeFromDomain: v.optional(v.string()),
+			dkimSigningDomain: v.optional(v.string()),
+			dmarcOverride: v.optional(v.string()),
+			arcSealer: v.optional(v.string()),
+		})
+	),
+	handler: async (ctx, args) => {
+		const message = await loadReadableMessage(ctx, args.messageId);
+		if (!message) return null;
+		// Explicit spreads rather than a destructure of the whole row: an
+		// `undefined` must never travel as a present key, because the panel
+		// distinguishes "this header was absent" from "this header was empty".
+		return {
+			fromAddress: message.fromAddress,
+			...(message.fromName !== undefined ? { fromName: message.fromName } : {}),
+			...(message.replyToAddress !== undefined ? { replyToAddress: message.replyToAddress } : {}),
+			toAddresses: message.toAddresses,
+			ccAddresses: message.ccAddresses,
+			rfc822MessageId: message.rfc822MessageId,
+			receivedAt: message.receivedAt,
+			rawSize: message.rawSize,
+			...(message.spfResult !== undefined ? { spfResult: message.spfResult } : {}),
+			...(message.dkimResult !== undefined ? { dkimResult: message.dkimResult } : {}),
+			...(message.dmarcResult !== undefined ? { dmarcResult: message.dmarcResult } : {}),
+			...(message.dmarcPolicy !== undefined ? { dmarcPolicy: message.dmarcPolicy } : {}),
+			...(message.envelopeFromDomain !== undefined
+				? { envelopeFromDomain: message.envelopeFromDomain }
+				: {}),
+			...(message.dkimSigningDomain !== undefined
+				? { dkimSigningDomain: message.dkimSigningDomain }
+				: {}),
+			...(message.dmarcOverride !== undefined ? { dmarcOverride: message.dmarcOverride } : {}),
+			...(message.arcSealer !== undefined ? { arcSealer: message.arcSealer } : {}),
+		};
+	},
+});
+
+/**
+ * Per-recipient OUTBOUND delivery state for every sent message in a thread —
+ * the read behind the reader's delivery strip (plan idea 1).
+ *
+ * `mailMessages.outbound` has existed since ADR-0012 (the Postbox outbound
+ * lifecycle module is its sole writer) but nothing PUBLIC ever exposed it, so a
+ * hard bounce looked exactly like a delivered mail. This adds the read and
+ * nothing else: no new state, no new writer, no change to the lifecycle.
+ *
+ * Thread-scoped rather than message-scoped so the conversation view needs ONE
+ * subscription for the whole thread instead of one per message, and seeded from
+ * the open message exactly like {@link listThreadMessages} beside it.
+ *
+ * The projection is deliberate — `mtaJobId` is dispatch bookkeeping the reader
+ * has no use for and never leaves the backend. Everything returned is the
+ * caller's own sent mail: the addresses they sent to and what the receiving
+ * side said about it.
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
+export const listThreadOutboundDelivery = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	returns: v.union(
+		v.null(),
+		v.array(
+			v.object({
+				messageId: v.id('mailMessages'),
+				state: v.union(
+					v.literal('queued'),
+					v.literal('sent'),
+					v.literal('bounced'),
+					v.literal('failed'),
+					v.literal('partial')
+				),
+				recipients: v.array(
+					v.object({
+						idx: v.number(),
+						address: v.string(),
+						state: v.union(
+							v.literal('queued'),
+							v.literal('sent'),
+							v.literal('bounced'),
+							v.literal('failed')
+						),
+						sentAt: v.optional(v.number()),
+						acceptedAt: v.optional(v.number()),
+						bouncedAt: v.optional(v.number()),
+						failedAt: v.optional(v.number()),
+						bounceMessage: v.optional(v.string()),
+						errorCode: v.optional(v.string()),
+					})
+				),
+			})
+		)
+	),
+	handler: async (ctx, args) => {
+		const seed = await ctx.db.get(args.messageId);
+		if (!seed) return null;
+		const mailbox = await loadReadableMailbox(ctx, seed.mailboxId);
+		if (!mailbox) return null;
+		const siblings = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread', (q) => q.eq('threadId', seed.threadId))
+			.collect(); // bounded: one thread's messages
+		siblings.sort((a, b) => a.receivedAt - b.receivedAt);
+		// Only SENT rows carry `outbound`; an inbound message contributes nothing,
+		// so a purely inbound thread yields an empty array (never a false "queued").
+		return siblings.flatMap((message) =>
+			message.outbound ? [{ messageId: message._id, ...projectOutbound(message.outbound) }] : []
+		);
+	},
+});
+
+/**
+ * Narrow a stored `outbound` object to what the reader may see: every
+ * per-recipient field EXCEPT `mtaJobId`, which is dispatch bookkeeping. Written
+ * as explicit spreads rather than a destructure so an `undefined` never travels
+ * as a present key — the reader must be able to tell "no bounce text" from
+ * "empty bounce text".
+ */
+function projectOutbound(outbound: NonNullable<Doc<'mailMessages'>['outbound']>) {
+	return {
+		state: outbound.state,
+		recipients: outbound.recipients.map((r) => ({
+			idx: r.idx,
+			address: r.address,
+			state: r.state,
+			...(r.sentAt !== undefined ? { sentAt: r.sentAt } : {}),
+			...(r.acceptedAt !== undefined ? { acceptedAt: r.acceptedAt } : {}),
+			...(r.bouncedAt !== undefined ? { bouncedAt: r.bouncedAt } : {}),
+			...(r.failedAt !== undefined ? { failedAt: r.failedAt } : {}),
+			...(r.bounceMessage !== undefined ? { bounceMessage: r.bounceMessage } : {}),
+			...(r.errorCode !== undefined ? { errorCode: r.errorCode } : {}),
+		})),
+	};
+}
+
+/**
  * Team-inbox collision safety. Given any message in a thread, return the
  * thread's newest OUTBOUND reply — who sent it and when — so the reader can
  * show "last reply by …" and the composer can warn a second teammate before

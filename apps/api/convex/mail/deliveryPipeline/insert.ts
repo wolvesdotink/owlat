@@ -13,6 +13,9 @@ import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { redirectMutedDelivery } from '../mute';
+import { indexMessageAttachments } from '../attachmentIndex';
+import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
@@ -85,6 +88,11 @@ export async function insertDeliveredMessage(
 		/** Preview snippet derived from the FULL body before any inline/blob split
 		 * (so >64KB bodies still get a non-empty list/search snippet). */
 		snippet?: string;
+		/** Deep-search excerpt (idea 32), derived from the FULL body before the
+		 * inline/blob split for the same reason as `snippet` — the interesting
+		 * depth of a long message is exactly what gets split into a blob. Only
+		 * PERSISTED when the instance opted in; the caller always computes it. */
+		searchBody?: string;
 		messageId: string;
 		inReplyTo?: string;
 		references?: string;
@@ -118,11 +126,18 @@ export async function insertDeliveredMessage(
 		inboundSignatureInfo?: InboundSignatureInfo;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
 		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+		/** Split inbox (idea 24): the named inbox section a `pinToSection` filter
+		 * claimed this message for. Absent ⇒ the message renders in the trailing
+		 * "Everything else" section, which is exactly today's flat inbox. */
+		pinnedSection?: string;
 		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
 		countUsedBytes?: boolean;
 	}
 ): Promise<Id<'mailMessages'>> {
-	const { mailbox, folder } = params;
+	const { mailbox } = params;
+	// Reassigned below when the resolved thread turns out to be MUTED: the row is
+	// then filed straight into Archive instead of the Inbox (mail/mute.ts).
+	let folder = params.folder;
 	const recipient = mailbox.address;
 	const fromAddress = extractEmail(params.from);
 	const fromName = extractName(params.from);
@@ -132,6 +147,14 @@ export async function insertDeliveredMessage(
 	const normalizedSubject = normalizeSubject(params.subject);
 	const now = Date.now();
 	const snippet = params.snippet ?? buildSnippet(params.textBodyInline, params.htmlBodyInline);
+	// Deep body search (idea 32): the ONE gate for the widened plaintext
+	// carve-out. Off (the default) leaves the column absent, which is exactly the
+	// snippet-only row this pipeline wrote before the field existed. An empty
+	// excerpt is stored as absent too — an empty search field indexes nothing.
+	const excerpt = (await isBodySearchIndexingEnabled(ctx))
+		? (params.searchBody ?? buildSearchBody(params.textBodyInline, params.htmlBodyInline))
+		: '';
+	const searchBody = excerpt || undefined;
 	const hasAttachments = params.attachments.length > 0;
 	const flagSeen = params.flagSeen ?? false;
 	// Unread delta is shared by the folder + thread counters so they stay in
@@ -185,6 +208,11 @@ export async function insertDeliveredMessage(
 		});
 	}
 
+	// Mute (mail/mute.ts) is applied AFTER threading and BEFORE the UID/modseq
+	// allocation, so a muted thread's new mail is allocated in — and counted
+	// against — the folder it actually lands in.
+	folder = await redirectMutedDelivery(ctx, threadId, folder);
+
 	const uid = folder.uidNext;
 	const modseq = folder.highestModseq + 1;
 
@@ -206,6 +234,7 @@ export async function insertDeliveredMessage(
 		subject: params.subject,
 		normalizedSubject,
 		snippet,
+		searchBody,
 		rawStorageId: params.rawStorageId,
 		rawSize: params.rawSize,
 		textBodyInline: await sealBodyAtWriteMaybe(params.textBodyInline),
@@ -238,8 +267,21 @@ export async function insertDeliveredMessage(
 		inboundEncryptionInfo: params.inboundEncryptionInfo,
 		inboundSignatureInfo: params.inboundSignatureInfo,
 		unsubscribe: params.unsubscribe,
+		pinnedSection: params.pinnedSection,
 		createdAt: now,
 		updatedAt: now,
+	});
+
+	// Attachment index (idea 37): the indexable mirror of the array we just
+	// wrote, so `filename:` narrows on an index and the Files view can browse
+	// this message's files without loading the message.
+	await indexMessageAttachments(ctx, {
+		_id: messageId,
+		mailboxId: mailbox._id,
+		folderId: folder._id,
+		fromAddress,
+		receivedAt: params.receivedAt,
+		attachments: params.attachments,
 	});
 
 	await ctx.db.patch(folder._id, {

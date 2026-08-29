@@ -78,6 +78,11 @@ export const update = authedMutation({
 		// Require STARTTLS before accepting MAIL FROM. Defaults ON; owners/admins
 		// can disable it for legacy senders that cannot negotiate TLS.
 		isInboundTlsRequired: v.optional(v.boolean()),
+		// Deep body search (idea 32, ADR-0059) — index a ~8KB body excerpt instead
+		// of only the 200-char snippet. Defaults OFF because it widens the
+		// sealed-at-rest plaintext carve-out; turning it back off schedules the
+		// sweep that clears the excerpts already written (see below).
+		isBodySearchIndexingEnabled: v.optional(v.boolean()),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),
@@ -155,6 +160,18 @@ export const update = authedMutation({
 		}
 		if (args.isInboundTlsRequired !== undefined) {
 			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.pushInboundTlsPolicy, {});
+		}
+		// THE OPT-OUT HAS TO REMOVE, NOT JUST STOP (ADR-0059). Deep body search
+		// widens the plaintext carve-out to a ~8KB excerpt per message; an operator
+		// who turns it off is asking for that plaintext to be gone, not merely for
+		// new mail to skip it. A true→false transition therefore schedules the
+		// sweep that clears every `searchBody` already written. Gated on the
+		// TRANSITION (not on the argument) so re-saving an unrelated setting
+		// while it is already off cannot restart the walk.
+		if (args.isBodySearchIndexingEnabled === false && existing?.isBodySearchIndexingEnabled) {
+			await ctx.scheduler.runAfter(0, internal.mail.bodySearchBackfill.purgeSearchBodies, {
+				cursor: null,
+			});
 		}
 		return settingsId;
 	},

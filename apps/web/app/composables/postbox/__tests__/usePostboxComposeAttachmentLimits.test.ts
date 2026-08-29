@@ -23,6 +23,9 @@ vi.mock('@owlat/api', () => ({
 				addAttachment: 'drafts.addAttachment',
 				removeAttachment: 'drafts.removeAttachment',
 			},
+			attachmentSharesActions: {
+				shareDraftAttachment: 'attachmentSharesActions.shareDraftAttachment',
+			},
 		},
 	},
 }));

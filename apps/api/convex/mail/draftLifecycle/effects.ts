@@ -24,6 +24,8 @@ import { isSanctionedSendAsForUser } from '../identities';
 import { followUpWaitingOn } from '../followUps';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { indexMessageAttachments } from '../attachmentIndex';
+import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { refuse } from '../../lib/lifecycle';
 import {
 	DRAFT_LIFECYCLE,
@@ -132,6 +134,12 @@ async function runSentEffects(
 		subject: draft.subject || '(no subject)',
 		normalizedSubject,
 		snippet,
+		// Deep body search (idea 32) over the Sent copy too, under the same
+		// instance opt-in — "what did I write to them about the penalty clause" is
+		// the same question as the inbound one, and the full text is right here.
+		searchBody: (await isBodySearchIndexingEnabled(ctx))
+			? buildSearchBody(context.bodyText, context.bodyHtml) || undefined
+			: undefined,
 		rawStorageId: context.rawStorageId,
 		rawSize: context.rawSize,
 		textBodyInline: await sealBodyAtWriteMaybe(
@@ -173,6 +181,17 @@ async function runSentEffects(
 				state: 'queued' as const,
 			})),
 		},
+	});
+
+	// Attachment index (idea 37): what you sent is a file you will go looking
+	// for as often as one you received, so the Sent row is indexed too.
+	await indexMessageAttachments(ctx, {
+		_id: messageId,
+		mailboxId: sendingMailboxId,
+		folderId: sentFolder._id,
+		fromAddress: draft.fromAddress.toLowerCase(),
+		receivedAt: now,
+		attachments: context.attachmentsMeta,
 	});
 
 	// patch_sent_folder effect

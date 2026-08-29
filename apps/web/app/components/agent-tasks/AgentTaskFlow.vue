@@ -172,6 +172,9 @@ const MAX_DOTS = 9;
 				<span class="text-text-tertiary/80">{{
 					t('components.agentTasks.agentTaskFlow.nextLabel')
 				}}</span>
+				<!-- Explicit space: the compiler's whitespace condensing drops the
+				     newline-only text node, gluing "Next:" to the peek label. -->
+				{{ ' ' }}
 				<slot name="peek">{{ peekLabel }}</slot>
 			</p>
 		</footer>
