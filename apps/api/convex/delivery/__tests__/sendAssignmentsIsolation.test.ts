@@ -19,7 +19,7 @@ import { internal } from '../../_generated/api';
 import { createTestSendAssignment } from '../../__tests__/factories';
 import { readAssignmentForSend } from '../sendAssignments';
 import { TENANT_TABLES } from '../../lib/tenantTables';
-import { ORGANIZATION_DELETION_STEPS, STEPS } from '../../workspaces/deletion/walker';
+import { ORGANIZATION_DELETION_STEPS, STEPS } from '../../workspaces/deletion/steps/registry';
 
 import { modules } from '../../__tests__/testModules';
 
